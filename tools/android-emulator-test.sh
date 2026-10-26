@@ -11,6 +11,9 @@
 #   --forbid TEXT       fail if a line contains TEXT (repeatable; default: none)
 #   --timeout SECONDS   how long to wait for the expected lines after the launch (default 120)
 #   --seconds SECONDS   with no --expect: how long the app runs before the checks (default 20)
+#   --two-finger-tap    TAP_AFTER seconds (--tap-after, default 10) after the launch, two fingers
+#                       touch the screen together and lift (tools/android-two-finger-tap.sh)
+#   --tap-after SECONDS when --two-finger-tap taps
 #   --out DIR           results (default build/android-emulator): logcat.txt (-v tag, the run),
 #                       logcat-full.txt (-v threadtime, everything), screen.png, emulator.log,
 #                       result.txt
@@ -40,7 +43,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
-    sed -n '2,41p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,44p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 2
 }
 
@@ -52,6 +55,8 @@ FORBIDS=()
 ORDERED=0
 TIMEOUT=120
 SECONDS_TO_RUN=20
+TWO_FINGER_TAP=0
+TAP_AFTER=10
 OUT="build/android-emulator"
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -66,6 +71,8 @@ while [[ $# -gt 0 ]]; do
         --forbid) FORBIDS+=("$2"); shift 2 ;;
         --timeout) TIMEOUT="$2"; shift 2 ;;
         --seconds) SECONDS_TO_RUN="$2"; shift 2 ;;
+        --two-finger-tap) TWO_FINGER_TAP=1; shift ;;
+        --tap-after) TAP_AFTER="$2"; shift 2 ;;
         --out) OUT="$2"; shift 2 ;;
         *) usage ;;
     esac
@@ -106,6 +113,7 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
     -v "$ROOT:/src" -w /src \
     -e HOME=/src/build/.cache/home \
     -e APK="$APK_IN" -e OUT="/src/$OUT" -e ORDERED="$ORDERED" -e TIMEOUT="$TIMEOUT" -e SECONDS_TO_RUN="$SECONDS_TO_RUN" \
+    -e TWO_FINGER_TAP="$TWO_FINGER_TAP" -e TAP_AFTER="$TAP_AFTER" \
     -e BOOT_TIMEOUT="${EMULATOR_BOOT_TIMEOUT:-600}" -e MEMORY="${EMULATOR_MEMORY:-3072}" -e CORES="${EMULATOR_CORES:-4}" \
     --tmpfs "/avd:rw,exec,size=${EMULATOR_TMPFS_GB:-10}g,mode=1777" \
     "$IMAGE_ID" bash -euo pipefail -c '
@@ -154,6 +162,9 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
         adb logcat -c
         log "launching $PACKAGE"
         adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
+        if [[ "$TWO_FINGER_TAP" == 1 ]]; then
+            ( sleep "$TAP_AFTER"; bash /src/tools/android-two-finger-tap.sh > "$OUT/tap.log" 2>&1 ) &
+        fi
 
         # every expected line (in order with ORDERED=1) in the logcat; a crash ends the wait
         # check: one line per expectation (found / OUT OF ORDER / MISSING), exit 1 if one is missing

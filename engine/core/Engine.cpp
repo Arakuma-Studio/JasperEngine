@@ -125,6 +125,7 @@ bool Engine::frameRunning = false;
 
 CursorType Engine::mouseCursorType = CursorType::ARROW;
 MouseMode Engine::mouseMode = MouseMode::NORMAL;
+bool Engine::windowFocused = true;
 
 Semaphore Engine::drawSemaphore;
 
@@ -558,9 +559,72 @@ CursorType Engine::getMouseCursor(){
 
 void Engine::setMouseMode(MouseMode mode){
     Engine::mouseMode = mode;
+    // a browser locks the pointer at the next gesture (systemPointerLockChanged), a
+    // desktop window at once
+    if (mode != MouseMode::CAPTURED){
+        Input::setPointerLockState(PointerLockState::UNLOCKED);
+    }else{
+#ifdef __EMSCRIPTEN__
+        if (Input::getPointerLockState() != PointerLockState::LOCKED)
+            Input::setPointerLockState(PointerLockState::PENDING);
+#else
+        Input::setPointerLockState(windowFocused ? PointerLockState::LOCKED : PointerLockState::PENDING);
+#endif
+    }
     if (viewLoaded){
         System::instance().setMouseMode(mode);
     }
+}
+
+void Engine::systemPointerLockChanged(bool locked){
+    if (mouseMode != MouseMode::CAPTURED){
+        Input::setPointerLockState(PointerLockState::UNLOCKED);
+        return;
+    }
+    Input::setPointerLockState(locked ? PointerLockState::LOCKED : PointerLockState::PENDING);
+}
+
+void Engine::systemFocusChanged(bool focused){
+    windowFocused = focused;
+    if (focused){
+#ifndef __EMSCRIPTEN__
+        if (mouseMode == MouseMode::CAPTURED)
+            Input::setPointerLockState(PointerLockState::LOCKED);
+#endif
+        return;
+    }
+
+    // what is held comes up first, through the events (the documents and onKeyUp hear it,
+    // as PlayInput::releaseAll does in the editor), so nothing stays pressed while another
+    // window has the keyboard; the fingers are cancelled
+    for (int key = 0; key <= D_KEY_LAST; key++){
+        if (Input::getKey(key))
+            systemKeyUp(key, false, 0);
+    }
+    const Vector2 mouse = Input::getMousePosition();
+    float screenX = viewRect.getX();
+    float screenY = viewRect.getY();
+    if (canvasWidth != 0)
+        screenX += (mouse.x / (float)canvasWidth) * viewRect.getWidth();
+    if (canvasHeight != 0)
+        screenY += (mouse.y / (float)canvasHeight) * viewRect.getHeight();
+    for (int button = 0; button <= D_MOUSE_BUTTON_LAST; button++){
+        if (Input::getMouseButton(button)){
+            systemMouseUp(button, screenX, screenY, 0);
+            // released out of the canvas: transformCoordPos dropped the event
+            if (Input::getMouseButton(button))
+                Input::releaseMousePressed(button);
+        }
+    }
+    systemTouchCancel();
+    Input::setModifiers(0);
+    Input::clearPendingDeltas();
+    if (mouseMode == MouseMode::CAPTURED)
+        Input::setPointerLockState(PointerLockState::PENDING);
+}
+
+bool Engine::isWindowFocused(){
+    return windowFocused;
 }
 
 MouseMode Engine::getMouseMode(){
@@ -568,7 +632,8 @@ MouseMode Engine::getMouseMode(){
 }
 
 void Engine::setMousePosition(float x, float y){
-    Input::setMousePosition(x, y);
+    // a warp is no motion: the next move's delta starts here
+    Input::warpMouse(x, y);
 
     if (!viewLoaded)
         return;
@@ -1475,6 +1540,9 @@ void Engine::systemDraw(){
 
     // avoid increment updateTimeCount after resume; a held simulation only draws
     if (!paused && !simulationHeld) {
+        // the input of the frame: the events since the last running frame (Input.h)
+        Input::beginFrame();
+
         double frameDelta = deltatime;
         gameTime += frameDelta;
         gameFrames++;
@@ -1489,6 +1557,8 @@ void Engine::systemDraw(){
 
             int fixedLoops = 0;
             while (updateTimeCount >= updateTime && fixedLoops < MAX_UPDATES_PER_FRAME) {
+                // edges read in the step are the fixed window's: each is seen by one step
+                Input::beginFixedStep();
                 Engine::onFixedUpdate.call();
                 for (int i = 0; i < scenes.size(); i++) {
                     scenes[i]->fixedUpdate(updateTime);
@@ -1497,6 +1567,7 @@ void Engine::systemDraw(){
                     scheduler.advance(TimeDomain::FixedSteps, 1.0);
                     scheduler.process(TimeDomain::FixedSteps);
                 }
+                Input::endFixedStep();
                 updateTimeCount -= updateTime;
                 fixedLoops++;
             }
@@ -2026,12 +2097,15 @@ void Engine::systemTouchStart(int pointer, float x, float y){
                 return documents->dispatchWorldPointer(pointer, D_MOUSE_BUTTON_1, x, y, Input::getModifiers(), PointerPhase::DOWN, true, covered);
             }))
             uiEventReceived = true;
+        if (uiEventReceived)
+            Input::setTouchConsumedByUI(pointer);
 
         if (!ignoreEventsHandledByUI || !uiEventReceived){
             Engine::onTouchStart.call(pointer, x, y);
             if (Engine::isCallMouseInTouchEvent()){
                 Input::addMousePressed(D_MOUSE_BUTTON_1);
-                Input::setMousePosition(x, y);
+                // the finger is where the pointer jumps to, not a motion
+                Input::warpMouse(x, y);
                 Engine::onMouseDown.call(D_MOUSE_BUTTON_1, x, y, 0);
             }
         }
@@ -2102,7 +2176,7 @@ void Engine::systemTouchMove(int pointer, float x, float y){
         if (!ignoreEventsHandledByUI || !uiEventReceived){
             Engine::onTouchMove.call(pointer, x, y);
             if (Engine::isCallMouseInTouchEvent()){
-                Input::setMousePosition(x, y);
+                Input::moveMouse(x, y);
                 Engine::onMouseMove.call(x, y, 0);
             }
         }
@@ -2122,7 +2196,7 @@ void Engine::systemTouchCancel(int pointer){
     if (index == -1)
         return;
     Vector2 pos = Input::getTouchPosition(pointer);
-    Input::removeTouch(pointer);
+    Input::cancelTouch(pointer);
 
     // the documents that tracked it let go of it without a click
     bool consumed = false;
@@ -2137,7 +2211,7 @@ void Engine::systemTouchCancel(int pointer){
 
 void Engine::systemMouseDown(int button, float x, float y, int mods){
     if (transformCoordPos(x, y)){
-        Input::addMousePressed(button);
+        Input::addMousePressed(button, mods);
         Input::setMousePosition(x, y);
         if (mods != 0)
             Input::setModifiers(mods);
@@ -2164,6 +2238,8 @@ void Engine::systemMouseDown(int button, float x, float y, int mods){
                 return documents->dispatchWorldPointer(0, button, x, y, mods, PointerPhase::DOWN, false, covered);
             }))
             uiEventReceived = true;
+        if (uiEventReceived)
+            Input::setPressConsumedByUI(Input::mouseControl(button));
 
         if (!ignoreEventsHandledByUI || !uiEventReceived){
             Engine::onMouseDown.call(button, x, y, mods);
@@ -2216,7 +2292,7 @@ void Engine::systemMouseUp(int button, float x, float y, int mods){
 
 void Engine::systemMouseMove(float x, float y, int mods){
     if (transformCoordPos(x, y)){
-        Input::setMousePosition(x, y);
+        Input::moveMouse(x, y);
         if (mods != 0)
             Input::setModifiers(mods);
 
@@ -2286,6 +2362,8 @@ void Engine::systemMouseScroll(float xoffset, float yoffset, int mods){
     const bool consumed = dispatchToDocuments(getScenesSnapshot(), [&](UIDocumentSystem* documents){
         return documents->eventOnWheel(xoffset, yoffset, mods);
     }) != nullptr;
+    if (!consumed)
+        Input::addMouseScrollForGame(xoffset, yoffset);
 
     if (!ignoreEventsHandledByUI || !consumed)
         Engine::onMouseScroll.call(xoffset, yoffset, mods);
@@ -2305,7 +2383,7 @@ void Engine::systemMouseLeave(){
 }
 
 void Engine::systemKeyDown(int key, bool repeat, int mods){
-    Input::addKeyPressed(key);
+    Input::addKeyPressed(key, repeat, mods);
     if (mods != 0)
         Input::setModifiers(mods);
 
@@ -2315,6 +2393,8 @@ void Engine::systemKeyDown(int key, bool repeat, int mods){
     const bool consumed = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
         return documents->eventOnKeyDown(key, repeat, mods);
     }) != nullptr;
+    if (consumed && !repeat)
+        Input::setPressConsumedByUI(Input::keyControl(key));
 
     if (!ignoreEventsHandledByUI || !consumed)
         Engine::onKeyDown.call(key, repeat, mods);
@@ -2463,6 +2543,8 @@ void Engine::systemGamepadButtonDown(int gamepad, int button){
     Input::addGamepadButtonPressed(gamepad, button);
 
     const bool consumed = gamepadKeyDown(getScenesSnapshot(), gamepad, gamepadKeyOfButton(button));
+    if (consumed)
+        Input::setPressConsumedByUI(Input::gamepadControl(Input::getGamepadSlot(gamepad), button));
 
     if (!ignoreEventsHandledByUI || !consumed)
         Engine::onGamepadButtonDown.call(gamepad, button);
@@ -2482,6 +2564,7 @@ void Engine::systemGamepadAxisMove(int gamepad, int axis, float value){
     Input::setGamepadAxisValue(gamepad, axis, value);
 
     const bool consumed = gamepadAxisToDocuments(getScenesSnapshot(), gamepad, axis, value);
+    Input::setGamepadAxisConsumedByUI(gamepad, axis, consumed);
 
     const std::pair<int, int> id(gamepad, axis);
     if (ignoreEventsHandledByUI && consumed){

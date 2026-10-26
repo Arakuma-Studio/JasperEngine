@@ -907,6 +907,7 @@ endif()
 set(JASPERENGINE_SRCS
     core/Engine.cpp
     core/Input.cpp
+    core/input/InputControlPath.cpp
     core/Log.cpp
     core/log/Logger.cpp
     core/log/LogFormat.cpp

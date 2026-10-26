@@ -502,7 +502,9 @@
 		7128CFAD25BA717500965B51 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 7128CFAA25BA717500965B51 /* LaunchScreen.storyboard */; };
 		7128CFAE25BA717500965B51 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 7128CFAB25BA717500965B51 /* Main.storyboard */; };
 		7128D08625BB033D00965B51 /* Input.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7128D08525BB033D00965B51 /* Input.cpp */; };
+		434F4D50312728BAD70188F6 /* InputControlPath.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5008747FD51D6BC1D7 /* InputControlPath.cpp */; };
 		7128D08725BB033D00965B51 /* Input.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7128D08525BB033D00965B51 /* Input.cpp */; };
+		434F4D50B62CBA2A0B777D36 /* InputControlPath.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5008747FD51D6BC1D7 /* InputControlPath.cpp */; };
 		7128D0AE25BB18DC00965B51 /* StringUtils.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7128D0AC25BB18DC00965B51 /* StringUtils.cpp */; };
 		7128D0AF25BB18DC00965B51 /* StringUtils.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7128D0AC25BB18DC00965B51 /* StringUtils.cpp */; };
 		7128D0B025BB18DC00965B51 /* StringUtils.h in Headers */ = {isa = PBXBuildFile; fileRef = 7128D0AD25BB18DC00965B51 /* StringUtils.h */; };
@@ -4341,7 +4343,9 @@
 		7128CFAB25BA717500965B51 /* Main.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; path = Main.storyboard; sourceTree = "<group>"; };
 		7128D00425BA74A000965B51 /* JasperEngine_macOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = JasperEngine_macOS.entitlements; sourceTree = "<group>"; };
 		7128D05D25BB02F800965B51 /* Input.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Input.h; sourceTree = "<group>"; };
+		434F4D50E7F57628F40D5CD6 /* InputControlPath.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = input/InputControlPath.h; sourceTree = "<group>"; };
 		7128D08525BB033D00965B51 /* Input.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = Input.cpp; sourceTree = "<group>"; };
+		434F4D5008747FD51D6BC1D7 /* InputControlPath.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = input/InputControlPath.cpp; sourceTree = "<group>"; };
 		7128D0AC25BB18DC00965B51 /* StringUtils.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = StringUtils.cpp; sourceTree = "<group>"; };
 		7128D0AD25BB18DC00965B51 /* StringUtils.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = StringUtils.h; sourceTree = "<group>"; };
 		7128D0FE25C2354A00965B51 /* SystemRender.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SystemRender.cpp; sourceTree = "<group>"; };
@@ -8045,7 +8049,9 @@
 				7162FC7225962A0E0075B97D /* Engine.cpp */,
 				175DCCB9300FA22F008C19EC /* Export.h */,
 				7128D05D25BB02F800965B51 /* Input.h */,
+				434F4D50E7F57628F40D5CD6 /* InputControlPath.h */,
 				7128D08525BB033D00965B51 /* Input.cpp */,
+				434F4D5008747FD51D6BC1D7 /* InputControlPath.cpp */,
 				7162FC2F25962A0E0075B97D /* io */,
 				7162FC6925962A0E0075B97D /* Log.h */,
 				7162FC2C25962A0E0075B97D /* Log.cpp */,
@@ -13870,6 +13876,7 @@
 				1721303B2FB012BD00390DC2 /* SoundPool.cpp in Sources */,
 				715CB118288CD40E0049344B /* Terrain.cpp in Sources */,
 				7128D08725BB033D00965B51 /* Input.cpp in Sources */,
+				434F4D50B62CBA2A0B777D36 /* InputControlPath.cpp in Sources */,
 				713D82AB259D307F00567F9F /* Texture.cpp in Sources */,
 				175DCCC43022C5E9008C19EC /* Mirror.cpp in Sources */,
 				71451BE0270CA17F00712643 /* PositionTween.cpp in Sources */,
@@ -14343,6 +14350,7 @@
 				71451BD1270CA17F00712643 /* SpriteAnimation.cpp in Sources */,
 				715CB117288CD40E0049344B /* Terrain.cpp in Sources */,
 				7128D08625BB033D00965B51 /* Input.cpp in Sources */,
+				434F4D50312728BAD70188F6 /* InputControlPath.cpp in Sources */,
 				175DCCC33022C5E9008C19EC /* Mirror.cpp in Sources */,
 				7162FD3D25963AE00075B97D /* Plane.cpp in Sources */,
 				71451BDF270CA17F00712643 /* PositionTween.cpp in Sources */,

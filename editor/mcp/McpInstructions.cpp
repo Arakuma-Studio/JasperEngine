@@ -30,7 +30,7 @@ scripts. Each tool edit is an undoable command, live to a human watching. Build 
 with tools, write code with your own file tools, verify by playing, screenshots and the Console.
 tools/list is authoritative for tool names and arguments; read a tool's description before
 first use. Deeper reference: jasper://docs/... (Lua scripting and API, C++ scripting, physics,
-shaders, materials, prefabs, assets, HTML/CSS UI, data safety, undo, profiling, ECS, Unity glossary).
+input, shaders, materials, prefabs, assets, HTML/CSS UI, data safety, undo, profiling, ECS, Unity glossary).
 
 ## Unity names -> engine names
 Tools, component names and script APIs use the engine names.
@@ -139,6 +139,8 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   your calls and runs only inside wait, send_input or step).
 - wait: run for seconds, game_seconds or frames, or until a Lua condition is truthy; input
   sends send_input events while it waits (hold a key for 2 game seconds, then check).
+- A tap: send_input hold_frames 0 (down and up in one frame, which Input.getKeyDown and
+  getKeyUp both see); get_input_state shows the frame's edges. More: jasper://docs/input.
 - run_build runs an exported desktop player: input events, screenshots_at (seconds since
   launch); returns its errors (Lua ones too) and the log tail.
 

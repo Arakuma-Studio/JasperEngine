@@ -298,6 +298,8 @@ namespace jasperengine {
 
         static CursorType mouseCursorType;
         static MouseMode mouseMode;
+        // the platform window has the keyboard (systemFocusChanged)
+        static bool windowFocused;
 
         // the atmosphere quality tier of each platform group (desktop, mobile, web) and the
         // game's runtime override, if any
@@ -418,9 +420,13 @@ namespace jasperengine {
         static void setMouseCursor(CursorType type);
         static CursorType getMouseCursor();
 
+        // CAPTURED locks the pointer: Input::getPointerLockState is LOCKED once the platform
+        // did it (a browser waits for a click or key press: PENDING until then)
         static void setMouseMode(MouseMode mode);
         static MouseMode getMouseMode();
+        // Warps the pointer (canvas pixels); the next move's Input::getMouseDelta starts there
         static void setMousePosition(float x, float y);
+        static bool isWindowFocused();
         
         static Platform getPlatform();
         static GraphicBackend getGraphicBackend();
@@ -567,6 +573,13 @@ namespace jasperengine {
 
         static void systemPause();
         static void systemResume();
+
+        // The platform window gained or lost the keyboard focus. On a loss what is held comes
+        // up (key, mouse button: their events and Input edges) and the fingers are cancelled,
+        // so nothing stays pressed; a captured pointer is PENDING until the focus comes back.
+        static void systemFocusChanged(bool focused);
+        // The browser's pointer lock became active or ended (pointerlockchange)
+        static void systemPointerLockChanged(bool locked);
 
         static void systemTouchStart(int pointer, float x, float y);
         static void systemTouchEnd(int pointer, float x, float y);

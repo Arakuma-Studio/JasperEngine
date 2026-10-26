@@ -26,6 +26,7 @@
 #include "Catalog.h"
 #include "Engine.h"
 #include "Input.h"
+#include "input/InputControlPath.h"
 #include "Project.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
@@ -462,131 +463,36 @@ Json runningScenesJson(Project* project) {
 
 // ================================================================== input
 
+// The control names are InputControlNames' (engine/core/input/InputControlPath.cpp), shared with
+// InputActions' control paths and get_input_state
 int parseKeyName(const Json& value) {
     if (value.is_number_integer()) return value.get<int>();
     if (!value.is_string()) return D_KEY_UNKNOWN;
-    std::string name = lowerCopy(value.get<std::string>());
-    if (name.size() == 1) {
-        const char c = name[0];
-        if (c >= 'a' && c <= 'z') return D_KEY_A + (c - 'a');
-        if (c >= '0' && c <= '9') return D_KEY_0 + (c - '0');
-        switch (c) {
-            case ' ': return D_KEY_SPACE;
-            case '\'': return D_KEY_APOSTROPHE;
-            case ',': return D_KEY_COMMA;
-            case '-': return D_KEY_MINUS;
-            case '.': return D_KEY_PERIOD;
-            case '/': return D_KEY_SLASH;
-            case ';': return D_KEY_SEMICOLON;
-            case '=': return D_KEY_EQUAL;
-            case '[': return D_KEY_LEFT_BRACKET;
-            case '\\': return D_KEY_BACKSLASH;
-            case ']': return D_KEY_RIGHT_BRACKET;
-            case '`': return D_KEY_GRAVE_ACCENT;
-            default: return D_KEY_UNKNOWN;
-        }
-    }
-    for (char& c : name) if (c == ' ' || c == '-') c = '_';
-    if (name.rfind("key_", 0) == 0) name = name.substr(4);
-    if (name.rfind("d_key_", 0) == 0) name = name.substr(6);
-    static const std::map<std::string, int> keys = {
-        {"space", D_KEY_SPACE}, {"spacebar", D_KEY_SPACE},
-        {"apostrophe", D_KEY_APOSTROPHE}, {"comma", D_KEY_COMMA}, {"minus", D_KEY_MINUS}, {"period", D_KEY_PERIOD},
-        {"slash", D_KEY_SLASH}, {"semicolon", D_KEY_SEMICOLON}, {"equal", D_KEY_EQUAL}, {"equals", D_KEY_EQUAL},
-        {"left_bracket", D_KEY_LEFT_BRACKET}, {"backslash", D_KEY_BACKSLASH}, {"right_bracket", D_KEY_RIGHT_BRACKET},
-        {"grave_accent", D_KEY_GRAVE_ACCENT}, {"backquote", D_KEY_GRAVE_ACCENT},
-        {"escape", D_KEY_ESCAPE}, {"esc", D_KEY_ESCAPE}, {"enter", D_KEY_ENTER}, {"return", D_KEY_ENTER},
-        {"tab", D_KEY_TAB}, {"backspace", D_KEY_BACKSPACE}, {"insert", D_KEY_INSERT}, {"delete", D_KEY_DELETE},
-        {"del", D_KEY_DELETE},
-        {"right", D_KEY_RIGHT}, {"left", D_KEY_LEFT}, {"down", D_KEY_DOWN}, {"up", D_KEY_UP},
-        {"right_arrow", D_KEY_RIGHT}, {"left_arrow", D_KEY_LEFT}, {"down_arrow", D_KEY_DOWN}, {"up_arrow", D_KEY_UP},
-        {"arrow_right", D_KEY_RIGHT}, {"arrow_left", D_KEY_LEFT}, {"arrow_down", D_KEY_DOWN}, {"arrow_up", D_KEY_UP},
-        {"page_up", D_KEY_PAGE_UP}, {"pageup", D_KEY_PAGE_UP}, {"page_down", D_KEY_PAGE_DOWN}, {"pagedown", D_KEY_PAGE_DOWN},
-        {"home", D_KEY_HOME}, {"end", D_KEY_END},
-        {"caps_lock", D_KEY_CAPS_LOCK}, {"scroll_lock", D_KEY_SCROLL_LOCK}, {"num_lock", D_KEY_NUM_LOCK},
-        {"print_screen", D_KEY_PRINT_SCREEN}, {"pause", D_KEY_PAUSE},
-        {"kp_decimal", D_KEY_KP_DECIMAL}, {"kp_divide", D_KEY_KP_DIVIDE}, {"kp_multiply", D_KEY_KP_MULTIPLY},
-        {"kp_subtract", D_KEY_KP_SUBTRACT}, {"kp_add", D_KEY_KP_ADD}, {"kp_enter", D_KEY_KP_ENTER}, {"kp_equal", D_KEY_KP_EQUAL},
-        {"left_shift", D_KEY_LEFT_SHIFT}, {"shift", D_KEY_LEFT_SHIFT}, {"left_control", D_KEY_LEFT_CONTROL},
-        {"left_ctrl", D_KEY_LEFT_CONTROL}, {"control", D_KEY_LEFT_CONTROL}, {"ctrl", D_KEY_LEFT_CONTROL},
-        {"left_alt", D_KEY_LEFT_ALT}, {"alt", D_KEY_LEFT_ALT}, {"left_super", D_KEY_LEFT_SUPER}, {"super", D_KEY_LEFT_SUPER},
-        {"right_shift", D_KEY_RIGHT_SHIFT}, {"right_control", D_KEY_RIGHT_CONTROL}, {"right_ctrl", D_KEY_RIGHT_CONTROL},
-        {"right_alt", D_KEY_RIGHT_ALT}, {"right_super", D_KEY_RIGHT_SUPER}, {"menu", D_KEY_MENU}
-    };
-    auto it = keys.find(name);
-    if (it != keys.end()) return it->second;
-    if (name.size() >= 2 && name[0] == 'f' && std::all_of(name.begin() + 1, name.end(), ::isdigit)) {
-        const int n = std::stoi(name.substr(1));
-        if (n >= 1 && n <= 25) return D_KEY_F1 + n - 1;
-    }
-    if (name.rfind("kp_", 0) == 0 && name.size() == 4 && std::isdigit(static_cast<unsigned char>(name[3]))) {
-        return D_KEY_KP_0 + (name[3] - '0');
-    }
-    if (name.rfind("numpad", 0) == 0 && name.size() == 7 && std::isdigit(static_cast<unsigned char>(name[6]))) {
-        return D_KEY_KP_0 + (name[6] - '0');
-    }
-    return D_KEY_UNKNOWN;
+    return InputControlNames::parseKey(value.get<std::string>());
 }
 
 std::string keyName(int key) {
-    if (key >= D_KEY_A && key <= D_KEY_Z) return std::string(1, static_cast<char>('a' + key - D_KEY_A));
-    if (key >= D_KEY_0 && key <= D_KEY_9) return std::string(1, static_cast<char>('0' + key - D_KEY_0));
-    if (key >= D_KEY_F1 && key <= D_KEY_F25) return "f" + std::to_string(key - D_KEY_F1 + 1);
-    switch (key) {
-        case D_KEY_SPACE: return "space";
-        case D_KEY_ENTER: return "enter";
-        case D_KEY_ESCAPE: return "escape";
-        case D_KEY_TAB: return "tab";
-        case D_KEY_BACKSPACE: return "backspace";
-        case D_KEY_LEFT: return "left";
-        case D_KEY_RIGHT: return "right";
-        case D_KEY_UP: return "up";
-        case D_KEY_DOWN: return "down";
-        case D_KEY_LEFT_SHIFT: return "left_shift";
-        case D_KEY_LEFT_CONTROL: return "left_control";
-        case D_KEY_LEFT_ALT: return "left_alt";
-        default: return std::to_string(key);
-    }
+    return InputControlNames::keyName(key);
 }
 
 int parseMouseButton(const Json& value) {
     if (value.is_null()) return D_MOUSE_BUTTON_LEFT;
     if (value.is_number_integer()) return std::clamp(value.get<int>(), 0, D_MOUSE_BUTTON_LAST);
-    const std::string name = value.is_string() ? lowerCopy(value.get<std::string>()) : std::string();
-    if (name == "left" || name.empty()) return D_MOUSE_BUTTON_LEFT;
-    if (name == "right") return D_MOUSE_BUTTON_RIGHT;
-    if (name == "middle") return D_MOUSE_BUTTON_MIDDLE;
-    return -1;
+    const std::string name = value.is_string() ? value.get<std::string>() : std::string();
+    if (name.empty()) return D_MOUSE_BUTTON_LEFT;
+    return InputControlNames::parseMouseButton(name);
 }
 
 int parseGamepadButton(const Json& value) {
     if (value.is_number_integer()) return std::clamp(value.get<int>(), 0, D_GAMEPAD_BUTTON_LAST);
     if (!value.is_string()) return -1;
-    static const std::map<std::string, int> buttons = {
-        {"a", D_GAMEPAD_BUTTON_A}, {"b", D_GAMEPAD_BUTTON_B}, {"x", D_GAMEPAD_BUTTON_X}, {"y", D_GAMEPAD_BUTTON_Y},
-        {"cross", D_GAMEPAD_BUTTON_CROSS}, {"circle", D_GAMEPAD_BUTTON_CIRCLE}, {"square", D_GAMEPAD_BUTTON_SQUARE},
-        {"triangle", D_GAMEPAD_BUTTON_TRIANGLE}, {"left_bumper", D_GAMEPAD_BUTTON_LEFT_BUMPER}, {"lb", D_GAMEPAD_BUTTON_LEFT_BUMPER},
-        {"right_bumper", D_GAMEPAD_BUTTON_RIGHT_BUMPER}, {"rb", D_GAMEPAD_BUTTON_RIGHT_BUMPER},
-        {"back", D_GAMEPAD_BUTTON_BACK}, {"select", D_GAMEPAD_BUTTON_BACK}, {"start", D_GAMEPAD_BUTTON_START},
-        {"guide", D_GAMEPAD_BUTTON_GUIDE}, {"left_thumb", D_GAMEPAD_BUTTON_LEFT_THUMB}, {"ls", D_GAMEPAD_BUTTON_LEFT_THUMB},
-        {"right_thumb", D_GAMEPAD_BUTTON_RIGHT_THUMB}, {"rs", D_GAMEPAD_BUTTON_RIGHT_THUMB},
-        {"dpad_up", D_GAMEPAD_BUTTON_DPAD_UP}, {"dpad_right", D_GAMEPAD_BUTTON_DPAD_RIGHT},
-        {"dpad_down", D_GAMEPAD_BUTTON_DPAD_DOWN}, {"dpad_left", D_GAMEPAD_BUTTON_DPAD_LEFT}
-    };
-    auto it = buttons.find(lowerCopy(value.get<std::string>()));
-    return it == buttons.end() ? -1 : it->second;
+    return InputControlNames::parseGamepadButton(value.get<std::string>());
 }
 
 int parseGamepadAxis(const Json& value) {
     if (value.is_number_integer()) return std::clamp(value.get<int>(), 0, D_GAMEPAD_AXIS_LAST);
     if (!value.is_string()) return -1;
-    static const std::map<std::string, int> axes = {
-        {"left_x", D_GAMEPAD_AXIS_LEFT_X}, {"left_y", D_GAMEPAD_AXIS_LEFT_Y}, {"right_x", D_GAMEPAD_AXIS_RIGHT_X},
-        {"right_y", D_GAMEPAD_AXIS_RIGHT_Y}, {"left_trigger", D_GAMEPAD_AXIS_LEFT_TRIGGER}, {"lt", D_GAMEPAD_AXIS_LEFT_TRIGGER},
-        {"right_trigger", D_GAMEPAD_AXIS_RIGHT_TRIGGER}, {"rt", D_GAMEPAD_AXIS_RIGHT_TRIGGER}
-    };
-    auto it = axes.find(lowerCopy(value.get<std::string>()));
-    return it == axes.end() ? -1 : it->second;
+    return InputControlNames::parseGamepadAxis(value.get<std::string>());
 }
 
 int parseMods(const Json& value) {
@@ -634,7 +540,7 @@ Json heldInputJson() {
     Json keys = Json::array();
     for (int key : held.keys) keys.push_back(keyName(key));
     Json buttons = Json::array();
-    for (int button : held.mouseButtons) buttons.push_back(button == 0 ? "left" : button == 1 ? "right" : button == 2 ? "middle" : std::to_string(button));
+    for (int button : held.mouseButtons) buttons.push_back(InputControlNames::mouseButtonName(button));
     Json touches = Json::array();
     for (const auto& [pointer, point] : held.touches) touches.push_back(pointer);
     Json pads = Json::array();
@@ -2435,7 +2341,8 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
         error = "space must be canvas, normalized or view";
         return false;
     }
-    int holdFrames = std::clamp(event.value("hold_frames", 2), 1, 100000);
+    // 0: the press and its release in the same frame (a tap Input.getKeyDown and getKeyUp both see)
+    int holdFrames = std::clamp(event.value("hold_frames", 2), 0, 100000);
     const int holdMs = std::clamp(event.value("hold_ms", 0), 0, 600000);
     const int mods = parseMods(event.value("mods", Json::array()));
     McpContext* c = &ctx;
@@ -2547,7 +2454,7 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
         const std::string action = lowerCopy(event.value("action", "click"));
         const int button = parseMouseButton(event.contains("button") ? event["button"] : Json());
         if (button < 0) {
-            error = "button must be left, right or middle";
+            error = "button must be left, right, middle or button4..button8";
             return false;
         }
         EventPoint from, to;
@@ -2556,9 +2463,11 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
             return false;
         }
         const bool hasPoint = from.given;
+        // a move without a point and with dx, dy goes that far from the pointer (mouse-look)
+        const bool relativeMove = action == "move" && !hasPoint && (event.contains("dx") || event.contains("dy"));
         // down / up / click without a point: where the pointer is
-        if (!hasPoint && (action == "move" || action == "drag")) {
-            error = "mouse " + action + " needs x and y (or position [x,y], or target)";
+        if (!hasPoint && !relativeMove && (action == "move" || action == "drag")) {
+            error = "mouse " + action + " needs x and y (or position [x,y], or target), or dx/dy for a move";
             return false;
         }
         if (!to.target.empty() && action != "drag") {
@@ -2619,7 +2528,26 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
         // a point resolved once per event: a click's down and up happen at the same place
         auto at = std::make_shared<Vector2>();
 
-        if (action == "move") {
+        if (action == "move" && relativeMove) {
+            const double dx = event.value("dx", 0.0);
+            const double dy = event.value("dy", 0.0);
+            add([moveTo, dx, dy, space]() {
+                const Rect view = Engine::getViewRect();
+                const double canvasW = std::max(1, Engine::getCanvasWidth());
+                const double canvasH = std::max(1, Engine::getCanvasHeight());
+                // the event's space to view pixels
+                double sx = 1.0, sy = 1.0;
+                if (space == "canvas") {
+                    sx = view.getWidth() / canvasW;
+                    sy = view.getHeight() / canvasH;
+                } else if (space == "normalized") {
+                    sx = view.getWidth();
+                    sy = view.getHeight();
+                }
+                const Vector2 from = currentPointerView();
+                return moveTo(Vector2(static_cast<float>(from.x + dx * sx), static_cast<float>(from.y + dy * sy)));
+            }, gapFrames, 0, "mouse move");
+        } else if (action == "move") {
             add([resolve, moveTo, from]() {
                 Vector2 p;
                 const std::string err = resolve(from, p);
@@ -3706,10 +3634,10 @@ void registerPlayTools(McpRegistry& registry) {
         tool.description =
             "Inject input into the running game across frames (no focus needed). events in order, each {type, ...}, "
             "first action the default:\nkey: key (space, a, 0, left, f1, kp_0...), action press|down|up, hold_frames "
-            "(2), hold_ms, mods [shift,ctrl,alt,super]\ntext: text; ime: text, cursor (code points; -1 selects); "
+            "(2; 0 = up in the same frame), hold_ms, mods [shift,ctrl,alt,super]\ntext: text; ime: text, cursor (code points; -1 selects); "
             "ime_commit: text; ime_cancel; mouse_leave, mouse_enter\nmouse: action "
             "click|double_click|down|up|move|drag|scroll, x, y (default: the pointer), button left|right|middle, to "
-            "[x,y] + steps (drag), dx, dy\ntouch: action tap|start|move|end|cancel|swipe, pointer, x, y, "
+            "[x,y] + steps (drag), dx, dy (scroll; move without x, y: relative)\ntouch: action tap|start|move|end|cancel|swipe, pointer, x, y, "
             "to\nmouse/touch target, to_target: CSS selector of a UI Document element (its center; document: "
             "which)\ngamepad: gamepad (0), button (a, b, start, dpad_up...) + action, or axis "
             "(left_x..right_trigger) + value -1..1\nwait: frames, ms. release_all.\nspace: canvas px from top-left "

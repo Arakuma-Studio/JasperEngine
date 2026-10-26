@@ -130,11 +130,16 @@ LRESULT CALLBACK windowProc(HWND handle, UINT message,
             return 0;
         case WM_MOVE:
         case WM_DISPLAYCHANGE:
+            WindowWin::updateCursorClip();
+            break;
         case WM_SETFOCUS:
             WindowWin::updateCursorClip();
+            Engine::systemFocusChanged(true);
             break;
         case WM_KILLFOCUS:
             WindowWin::handleFocusLost();
+            // held keys and buttons come up, so none stays pressed
+            Engine::systemFocusChanged(false);
             break;
         case WM_SETCURSOR:
             if (LOWORD(lParam) == HTCLIENT && WindowWin::isCursorHidden()) {

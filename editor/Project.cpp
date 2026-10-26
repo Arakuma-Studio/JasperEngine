@@ -69,6 +69,7 @@
 #include "texture/Texture.h"
 #include "component/UIDocumentComponent.h"
 #include "Engine.h"
+#include "Input.h"
 #include "pool/ShaderPool.h"
 #include "shader/ShaderBuilder.h"
 #include "shader/ShaderVariantCollector.h"
@@ -3960,6 +3961,8 @@ void editor::Project::resetEngineConfigs(bool executeViewChanged) {
     Engine::setSimulationHeld(false);
     // a game may have turned it off
     Engine::setAsyncLoading(true);
+    // Input is static: no level, edge or delta of the last Play reaches the next
+    Input::resetFrameState();
 
     if (executeViewChanged) {
         Engine::systemViewChanged();
@@ -7913,6 +7916,9 @@ void editor::Project::start(uint32_t sceneId) {
     }
 
     editor::getEditorHost().stopTransientPreviews();
+
+    // the edges and deltas since the last Play (or of the editor's own use) are not the game's
+    Input::resetFrameState();
 
     // Exit any editor camera preview before starting: covers the owned-runtime path
     // where the source scene's render never enters play mode, so stopping wouldn't

@@ -89,6 +89,8 @@ namespace luabridge
     template<> struct Stack<AdMobRating> : EnumWrapper<AdMobRating>{};
     template<> struct Stack<CursorType> : EnumWrapper<CursorType>{};
     template<> struct Stack<MouseMode> : EnumWrapper<MouseMode>{};
+    template<> struct Stack<TouchPhase> : EnumWrapper<TouchPhase>{};
+    template<> struct Stack<PointerLockState> : EnumWrapper<PointerLockState>{};
     template<> struct Stack<ResourceLoadState> : EnumWrapper<ResourceLoadState>{};
     template<> struct Stack<LightState> : EnumWrapper<LightState>{};
     template<> struct Stack<UIEventState> : EnumWrapper<UIEventState>{};
@@ -173,6 +175,24 @@ namespace luabridge
                 return makeErrorCode(ErrorCode::LuaStackOverflow);
             lua_setfield(L, -2, "position");
 
+            // Input.TOUCH_BEGAN .. TOUCH_CANCELED
+            lua_pushinteger(L, static_cast<int>(touch.phase));
+            lua_setfield(L, -2, "phase");
+
+            if (!luabridge::push(L, touch.delta))
+                return makeErrorCode(ErrorCode::LuaStackOverflow);
+            lua_setfield(L, -2, "delta");
+
+            if (!luabridge::push(L, touch.startPosition))
+                return makeErrorCode(ErrorCode::LuaStackOverflow);
+            lua_setfield(L, -2, "startPosition");
+
+            lua_pushnumber(L, touch.time);
+            lua_setfield(L, -2, "time");
+
+            lua_pushboolean(L, touch.began);
+            lua_setfield(L, -2, "began");
+
             return {};
         }
 
@@ -192,6 +212,22 @@ namespace luabridge
             Vector2 position = *result;
 
             Touch touch = {pointer, position};
+            // the frame fields, when the table has them (a Touch from getTouch)
+            lua_getfield(L, index, "phase");
+            if (lua_type(L, -1) == LUA_TNUMBER)
+                touch.phase = static_cast<TouchPhase>(lua_tointeger(L, -1));
+            lua_getfield(L, index, "delta");
+            if (auto delta = luabridge::get<Vector2>(L, -1))
+                touch.delta = *delta;
+            lua_getfield(L, index, "startPosition");
+            if (auto start = luabridge::get<Vector2>(L, -1))
+                touch.startPosition = *start;
+            lua_getfield(L, index, "time");
+            if (lua_type(L, -1) == LUA_TNUMBER)
+                touch.time = (float)lua_tonumber(L, -1);
+            lua_getfield(L, index, "began");
+            touch.began = lua_toboolean(L, -1) != 0;
+            lua_pop(L, 7);
             return touch;
         }
 

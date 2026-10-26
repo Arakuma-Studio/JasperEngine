@@ -46,6 +46,8 @@ private:
 
     static EM_BOOL canvas_resize(int eventType, const void *reserved, void *userData);
     static EM_BOOL webgl_context_callback(int emsc_type, const void* reserved, void* user_data);
+    static EM_BOOL pointerlock_callback(int eventType, const EmscriptenPointerlockChangeEvent* e, void* userData);
+    static EM_BOOL focus_callback(int eventType, const EmscriptenFocusEvent* e, void* userData);
 
     static EM_BOOL renderLoop(double time, void* userdata);
 

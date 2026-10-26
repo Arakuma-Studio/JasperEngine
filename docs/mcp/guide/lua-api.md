@@ -348,16 +348,25 @@ Functions:
 
 | Function | Returns |
 |---|---|
-| `Input.isKeyPressed(key)` | bool, key currently held |
-| `Input.isMousePressed(button)` | bool, button held |
+| `Input.isKeyPressed(key)`, `Input.getKey(key)` | bool, key currently held |
+| `Input.getKeyDown(key)`, `Input.getKeyUp(key)` | bool, pressed / released this frame (both true for a tap inside one frame; the fixed step's window in `onFixedUpdate`) |
+| `Input.isMousePressed(button)`, `Input.getMouseButton(button)` | bool, button held |
+| `Input.getMouseButtonDown(button)`, `Input.getMouseButtonUp(button)` | bool, this frame |
+| `Input.getGamepadButtonDown(id, button)`, `Input.getGamepadButtonUp(id, button)` | bool, this frame |
+| `Input.anyKeyDown()` | bool, a key, mouse or gamepad button pressed this frame |
+| `Input.getMouseDelta()` | `Vector2`, canvas pixels moved this frame |
+| `Input.getMouseScrollDelta()` | `Vector2`, wheel offsets of this frame |
+| `Input.getTouchCount()`, `Input.getTouch(i)` | this frame's touches (0-based), also those lifted in the frame: `{pointer, position, phase, delta, startPosition, time, began}` |
+| `Input.getTouchDown(pointer)`, `Input.getTouchUp(pointer)` | bool, this frame |
+| `Input.getPointerLockState()` | `Input.POINTER_UNLOCKED` / `POINTER_PENDING` / `POINTER_LOCKED` |
 | `Input.isTouch()` | bool, any touch active |
 | `Input.isMouseEntered()` | bool |
 | `Input.getMousePosition()` | `Vector2` |
-| `Input.getMouseScroll()` | `Vector2` |
+| `Input.getMouseScroll()` | `Vector2`, deprecated: the last wheel event, never reset (use `getMouseScrollDelta`) |
 | `Input.getTouchPosition(pointer)` | `Vector2` |
 | `Input.numTouches()` | integer |
 | `Input.findTouchIndex(pointer)` | integer |
-| `Input.getTouches()` | list of `Touch` (Touch class is NOT bound; prefer `numTouches`/`getTouchPosition` or touch events) |
+| `Input.getTouches()` | list of the fingers down now, each a table `{pointer, position, phase, delta, startPosition, time, began}` |
 | `Input.isGamepadConnected(id)`, `Input.getGamepadName(id)`, `Input.isGamepadButtonPressed(id, button)`, `Input.getGamepadAxis(id, axis)`, `Input.numGamepads()`, `Input.getGamepadId(index)` | gamepad |
 | `Input.getModifiers()` | bitmask of `Input.MODIFIER_*` |
 
@@ -378,6 +387,9 @@ Constants (static properties, integers, no parentheses):
   `MOUSE_BUTTON_1` .. `MOUSE_BUTTON_8`, `MOUSE_BUTTON_LAST`.
 - Modifiers: `Input.MODIFIER_SHIFT`, `MODIFIER_CONTROL`, `MODIFIER_ALT`, `MODIFIER_SUPER`,
   `MODIFIER_CAPS_LOCK`, `MODIFIER_NUM_LOCK`.
+- Touch phases: `Input.TOUCH_BEGAN`, `TOUCH_MOVED`, `TOUCH_STATIONARY`, `TOUCH_ENDED`,
+  `TOUCH_CANCELED`. Pointer lock: `Input.POINTER_UNLOCKED`, `POINTER_PENDING`, `POINTER_LOCKED`.
+  Frames and fixed steps: `jasper://docs/input`.
 - Gamepad buttons: `Input.GAMEPAD_BUTTON_A`, `_B`, `_X`, `_Y`, `_LEFT_BUMPER`,
   `_RIGHT_BUMPER`, `_BACK`, `_START`, `_GUIDE`, `_LEFT_THUMB`, `_RIGHT_THUMB`, `_DPAD_UP`,
   `_DPAD_RIGHT`, `_DPAD_DOWN`, `_DPAD_LEFT`, `_LAST`, `_CROSS`, `_CIRCLE`, `_SQUARE`,
