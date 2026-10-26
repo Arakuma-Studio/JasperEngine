@@ -76,8 +76,6 @@ TEST(AnimationClipContract, HookStructsStartUnset){
     EXPECT_FALSE(app.projectClosed);
     EXPECT_FALSE(app.createClipAsset);
     EXPECT_FALSE(app.dropClips);
-    ClipUndoFocus focus;
-    EXPECT_FALSE(focus.sceneView || focus.inspector || focus.hierarchy || focus.animationWindow);
 
     AnimationClipInspectorHooks inspector;
     EXPECT_FALSE(inspector.openClip);
@@ -182,7 +180,7 @@ TEST(AnimationClipContract, Controller){
     EXPECT_FALSE(controller.isRecording());
     EXPECT_TRUE(controller.getDocument() == nullptr);
     EXPECT_TRUE(controller.sampledBoundTransforms().empty());
-    EXPECT_FALSE(controller.ownsUndo(ClipUndoFocus()));
+    EXPECT_FALSE(controller.ownsUndo());
     controller.stopTransientPreviews();
     controller.stopPreview();
     std::string error;

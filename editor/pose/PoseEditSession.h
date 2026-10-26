@@ -92,7 +92,8 @@ namespace jasperengine::editor{
         // the window makes its session active while it is open (null: none)
         static void setActive(PoseEditSession* session);
         // suspend() on the active session, if any: before scene commands that copy entities
-        // (duplicate, copy, delete, create or apply a prefab), so they copy rest bones
+        // (duplicate, copy, delete, create or apply a prefab), so they copy rest bones. The pose
+        // only: clip previews stop through suspendActiveFor with the entities copied or stored
         static void suspendActive();
         // suspend() on the active session when it poses a model of scene `sceneId`: before every
         // scene undo / redo step (CommandHistory::beforeStep), which then runs on the rest bones
@@ -170,7 +171,8 @@ namespace jasperengine::editor{
         // A copy of `roots` with their descendants (a Hierarchy drag, a prefab) would contain the
         // bound model or one of its bones
         bool copiesPosedEntities(uint32_t sceneId, const std::vector<Entity>& roots) const;
-        // suspend() on the active session when copiesPosedEntities(sceneId, roots)
+        // suspend() on the active session when copiesPosedEntities(sceneId, roots), and the clip
+        // previews of, under or above `roots` restore (PreviewOwner::stopFor, animation clips 9.R7)
         static void suspendActiveFor(uint32_t sceneId, const std::vector<Entity>& roots);
         // The Scene view routes keys to the pose window (set by the window each frame; the
         // Scene view shows a "Pose keys" hint while it is true)

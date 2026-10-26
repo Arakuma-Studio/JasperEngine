@@ -44,8 +44,9 @@ void editor::PoseEditSession::setActive(PoseEditSession* session){
 }
 
 void editor::PoseEditSession::suspendActive(){
-    // the clip previews too (animation clips 9.R7): what is copied or stored next is the rest
-    PreviewOwner::stopFor(0, {}, nullptr, activeSession);
+    // the pose only (it comes back on the next update): the clip previews of what is copied or
+    // stored stop through suspendActiveFor, which the commands and copy paths call with their
+    // entities (a copy of another GameObject keeps a clip preview and Record going)
     if (activeSession && activeSession->bound()){
         activeSession->suspend();
     }

@@ -570,9 +570,7 @@ TEST_F(AnimationClipControllerTest, KeyingCommitsAreProjectStepsAndADragIsOneSte
     EXPECT_FALSE(s.sceneProject->isModified);
     // R5b: the newest undoable step is the clip commit, whatever window has focus
     EXPECT_TRUE(c.newestStepIsClipEdit());
-    ClipUndoFocus focus;
-    focus.sceneView = true;
-    EXPECT_TRUE(animationClipAppHooks().ownsUndo(focus));
+    EXPECT_TRUE(animationClipAppHooks().ownsUndo());
 
     // K with the Arm moved: keys every bound track at the playhead with the current values
     s.transform(s.arm).position = Vector3(4, 4, 4);
@@ -675,9 +673,7 @@ TEST_F(AnimationClipControllerTest, RecordKeysEditsOfTheBoundHierarchyAndRestore
     EXPECT_TRUE(ClipRecordHooks::claims(s.id, s.hand, ClipChannel::Rotation));
     EXPECT_FALSE(ClipRecordHooks::claims(s.id, s.prop, ClipChannel::Position)) << "not under the root";
     EXPECT_FALSE(ClipRecordHooks::claims(s.id + 1000, s.hand, ClipChannel::Position));
-    ClipUndoFocus focus;
-    focus.sceneView = true;
-    EXPECT_TRUE(animationClipAppHooks().ownsUndo(focus)) << "Record routes the Scene view's undo to the project";
+    EXPECT_TRUE(animationClipAppHooks().ownsUndo()) << "Record routes the Scene view's undo to the project";
 
     // a gizmo drag of the Hand: two record calls of one drag, one project step, no scene step
     const size_t start = project()->getProjectCommandHistory()->position();
@@ -992,18 +988,26 @@ TEST_F(AnimationClipControllerTest, CopiesDuplicatesAndDeletesTakeTheRestNotTheP
     ASSERT_NE(arm, NULL_ENTITY);
     expectNear(s.transform(arm).position, Vector3(5, 5, 5), "the undone delete brings the rest back");
 
-    // the prefab sites (create, apply, revert) call these two: a scene-wide stop and a rooted one
+    // the copy and prefab sites (copy, create, apply, revert) pass their GameObjects: only a preview
+    // of, under or above them stops. suspendActive() is the pose's alone (final review M1): a copy of
+    // another GameObject keeps the clip preview and Record going
     ASSERT_TRUE(c.bindRoot(s.id, hero, &error)) << error;
     c.seek(1.0f);
     ASSERT_TRUE(c.isPreviewing());
     PoseEditSession::suspendActiveFor(s.id, {s.prop});
     EXPECT_TRUE(c.isPreviewing()) << "not under the given roots";
+    PoseEditSession::suspendActive();
+    EXPECT_TRUE(c.isPreviewing()) << "suspendActive suspends the pose only";
+    c.setRecording(true);
+    ASSERT_TRUE(c.isRecording());
+    PoseEditSession::suspendActive();
+    ImGuiContext* clipboard = ImGui::CreateContext();
+    ASSERT_TRUE(EntityClipboard::copyGameObjects(project(), s.id, {s.prop}));
+    ImGui::DestroyContext(clipboard);
+    EXPECT_TRUE(c.isRecording()) << "a copy of an unrelated GameObject keeps Record on";
     PoseEditSession::suspendActiveFor(s.id, {hero});
     EXPECT_FALSE(c.isPreviewing());
-    c.seek(1.0f);
-    ASSERT_TRUE(c.isPreviewing());
-    PoseEditSession::suspendActive();
-    EXPECT_FALSE(c.isPreviewing());
+    EXPECT_FALSE(c.isRecording());
     expectNear(s.transform(arm).position, Vector3(5, 5, 5), "restored");
 }
 
@@ -1015,14 +1019,10 @@ TEST_F(AnimationClipControllerTest, UndoGoesToTheClipOnlyWhileItsCommitIsTheNewe
     std::string error;
     ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
     CommandHistory* history = CommandHandle::get(s.id);
-    ClipUndoFocus sceneView;
-    sceneView.sceneView = true;
-    ClipUndoFocus window;
-    window.animationWindow = true;
 
     // a scene step made before: the scene's
     ASSERT_TRUE(history->addCommand(new PropertyCmd<Vector3>(project(), s.id, s.prop, ComponentType::Transform, "position", Vector3(1, 1, 1))));
-    EXPECT_FALSE(animationClipAppHooks().ownsUndo(window));
+    EXPECT_FALSE(animationClipAppHooks().ownsUndo());
 
     // Record on, the Hand recorded: the project's, from any window
     c.setTime(0.5f);
@@ -1032,21 +1032,21 @@ TEST_F(AnimationClipControllerTest, UndoGoesToTheClipOnlyWhileItsCommitIsTheNewe
     value.value = {0, 2, 0};
     ASSERT_TRUE(ClipRecordHooks::record(s.id, s.hand, value, ClipRecordHooks::beginDrag()));
     ClipRecordHooks::endDrag();
-    EXPECT_TRUE(animationClipAppHooks().ownsUndo(sceneView));
+    EXPECT_TRUE(animationClipAppHooks().ownsUndo());
     EXPECT_TRUE(c.newestStepIsClipEdit());
 
     // the Prop moved (not recorded: a scene step): the scene's again, even with Record on
     ASSERT_FALSE(ClipRecordHooks::claims(s.id, s.prop, ClipChannel::Position));
     ASSERT_TRUE(history->addCommand(new PropertyCmd<Vector3>(project(), s.id, s.prop, ComponentType::Transform, "position", Vector3(7, 7, 7))));
-    EXPECT_FALSE(animationClipAppHooks().ownsUndo(sceneView)) << "Record never steals a scene undo";
-    EXPECT_FALSE(animationClipAppHooks().ownsUndo(window));
+    EXPECT_FALSE(animationClipAppHooks().ownsUndo()) << "Record never steals a scene undo";
+    EXPECT_FALSE(animationClipAppHooks().ownsUndo());
 
     // that move undone: the record commit is the newest undoable step again
     ASSERT_TRUE(history->undo());
-    EXPECT_TRUE(animationClipAppHooks().ownsUndo(sceneView));
+    EXPECT_TRUE(animationClipAppHooks().ownsUndo());
     // and once the record commit is undone, the older scene step is the newest one
     ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
-    EXPECT_FALSE(animationClipAppHooks().ownsUndo(window));
+    EXPECT_FALSE(animationClipAppHooks().ownsUndo());
     // another project step that is no clip commit: not routed by the clip mode
     c.setRecording(false);
     c.stopPreview();
@@ -1318,21 +1318,43 @@ namespace {
     struct Routing {
         Project* project;
         uint32_t sceneId;
-        ClipUndoFocus focus;
+        bool placementBusy = false;
 
         std::string undo() {
-            if (animationClipAppHooks().ownsUndo(focus)) {
+            if (clipUndoGoesToProject(placementBusy)) {
                 return project->getProjectCommandHistory()->undo() ? "project" : "project (nothing)";
             }
             return CommandHandle::get(sceneId)->undo() ? "scene" : "scene (nothing)";
         }
         std::string redo() {
-            if (animationClipAppHooks().ownsRedo(focus)) {
+            if (clipRedoGoesToProject(placementBusy, false)) {
                 return project->getProjectCommandHistory()->redo() ? "project" : "project (nothing)";
             }
             return CommandHandle::get(sceneId)->redo() ? "scene" : "scene (nothing)";
         }
     };
+}
+
+// Final review M3: while a Physics Placement gesture runs or settles in the selected scene, Ctrl+Z
+// goes to the scene history even when a clip commit is the newest step (the scene's undo cancels the
+// gesture, PhysicsPlacementWindow::beforeHistoryChange) and redo waits there too
+TEST_F(AnimationClipControllerTest, APlacementGestureKeepsUndoOnTheScene) {
+    ClipScene s = clipScene();
+    AnimationClipController& c = controller();
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    AnimationClipController::KeyRef end;
+    ASSERT_TRUE(AnimationClipController::findKey(c.getDocument()->data(), "Arm", ClipChannel::Position, 1.0f, end));
+    ASSERT_TRUE(c.setKeyValue(end, {0, 4, 0}, "", &error)) << error;
+    ASSERT_TRUE(c.newestStepIsClipEdit());
+    EXPECT_FALSE(clipUndoGoesToProject(true)) << "the gesture's undo comes first";
+    EXPECT_TRUE(clipUndoGoesToProject(false));
+    Routing routing{project(), s.id};
+    EXPECT_EQ(routing.undo(), "project");
+    ASSERT_TRUE(c.newestRedoIsClipEdit());
+    EXPECT_FALSE(clipRedoGoesToProject(true, true)) << "redo waits for the gesture on the scene";
+    EXPECT_TRUE(clipRedoGoesToProject(false, false));
+    EXPECT_EQ(routing.redo(), "project");
 }
 
 TEST_F(AnimationClipControllerTest, RedoGoesWhereTheStepUndoneLastWas) {
@@ -1342,8 +1364,7 @@ TEST_F(AnimationClipControllerTest, RedoGoesWhereTheStepUndoneLastWas) {
     ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
     ASSERT_TRUE(animationClipAppHooks().ownsRedo);
     CommandHistory* scene = CommandHandle::get(s.id);
-    Routing routing{project(), s.id, {}};
-    routing.focus.sceneView = true;
+    Routing routing{project(), s.id};
     auto move = [&](const Vector3& to){
         // one step per move (no merge with the move before)
         scene->addCommandNoMerge(new PropertyCmd<Vector3>(project(), s.id, s.prop, ComponentType::Transform, "position", to));
@@ -1644,8 +1665,6 @@ TEST_F(AnimationClipControllerTest, MarkedClipCommitsRouteUndoWithoutAController
     ClipScene s = clipScene();
     AnimationClipController::release(project());
     CommandHistory* history = CommandHandle::get(s.id);
-    ClipUndoFocus sceneView;
-    sceneView.sceneView = true;
     ASSERT_TRUE(history->addCommand(new PropertyCmd<Vector3>(project(), s.id, s.prop, ComponentType::Transform, "position", Vector3(1, 1, 1))));
     std::string error;
     std::shared_ptr<AnimationClipDocument> document = AnimationClipDocument::open(project(), "assets/anim/arm.anim", &error);
@@ -1655,21 +1674,21 @@ TEST_F(AnimationClipControllerTest, MarkedClipCommitsRouteUndoWithoutAController
     ClipData data = document->data();
     data.frameRate = 24.0f;
     ASSERT_TRUE(document->commit(data, "Frame Rate", "", &error)) << error;
-    EXPECT_FALSE(animationClipAppHooks().ownsUndo(sceneView));
+    EXPECT_FALSE(animationClipAppHooks().ownsUndo());
     // the Inspector's: marked
     data.frameRate = 25.0f;
     const uint64_t clock = AnimationClipController::clipCommitClock(project());
     ASSERT_TRUE(document->commit(data, "Frame Rate", "", &error)) << error;
     AnimationClipController::markClipCommit(clock);
-    EXPECT_TRUE(animationClipAppHooks().ownsUndo(sceneView)) << "Ctrl+Z undoes the Inspector's clip edit";
+    EXPECT_TRUE(animationClipAppHooks().ownsUndo()) << "Ctrl+Z undoes the Inspector's clip edit";
     // a newer scene step is undone first
     ASSERT_TRUE(history->addCommand(new PropertyCmd<Vector3>(project(), s.id, s.prop, ComponentType::Transform, "position", Vector3(2, 2, 2))));
-    EXPECT_FALSE(animationClipAppHooks().ownsUndo(sceneView));
+    EXPECT_FALSE(animationClipAppHooks().ownsUndo());
     ASSERT_TRUE(history->undo());
-    EXPECT_TRUE(animationClipAppHooks().ownsUndo(sceneView));
+    EXPECT_TRUE(animationClipAppHooks().ownsUndo());
     ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
     EXPECT_FLOAT_EQ(document->data().frameRate, 24.0f);
-    EXPECT_FALSE(animationClipAppHooks().ownsUndo(sceneView));
+    EXPECT_FALSE(animationClipAppHooks().ownsUndo());
 }
 
 // I5: a scene undo giving an entry back its old path hint (the clip was renamed since) points it

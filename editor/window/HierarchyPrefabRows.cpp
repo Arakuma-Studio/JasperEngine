@@ -212,8 +212,10 @@ void editor::HierarchyWindow::requestCreateVariant(uint32_t sceneId, Entity root
         return;
     }
     const std::filesystem::path path = CreatePrefabVariantAssetCmd::defaultPath(project, base);
-    // a posed character goes back to its rest bones first, so they are what gets copied
+    // a posed character goes back to its rest bones first, so they are what gets copied, and a
+    // clip preview of the instance restores (9.R7)
     PoseEditSession::suspendActive();
+    PoseEditSession::suspendActiveFor(sceneId, {root});
     CommandHandle::get(sceneId)->addCommandNoMerge(new CreatePrefabCmd(project, sceneId,
         {{path, Stream::encodeEntity(root, sceneProject->scene, project, sceneProject)}}, true));
     revealInProject(path);

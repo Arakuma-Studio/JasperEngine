@@ -119,6 +119,11 @@ namespace jasperengine::editor{
                          std::string* note = nullptr, std::string* error = nullptr);
         // whether bake() can run on the target, with the reason when it cannot (inspector tooltip)
         static bool canBake(Scene* scene, Entity target, std::string* reason = nullptr);
+        // What a bake reads is the scene's rest: the clip previews of the target, its meshes and
+        // bound lattices (or of a root above them) restore and a pose suspends (animation clips
+        // 9.R6/R7). bake() calls it first; a caller that asks canBake right before bake calls it
+        // before canBake
+        static void restoreForBake(uint32_t sceneId, Scene* scene, Entity target);
 
         // creates a lattice entity fitted around `targets` (or a unit lattice at `fallbackPosition`
         // without targets) and binds it to them, one undo step; NULL_ENTITY on failure

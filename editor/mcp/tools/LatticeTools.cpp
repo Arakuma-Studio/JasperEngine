@@ -1099,7 +1099,9 @@ bool opBake(Session& s, const Json& op, const std::string& where, Json& result, 
         target = targets[0];
     }
     std::string path, note, why;
-    // canBake gives the inspector's reason (a generated mesh, no bakeable binding...) before any work
+    // canBake gives the inspector's reason (a generated mesh, no bakeable binding...) before any
+    // work, on what the bake reads: the scene with its previews restored
+    LatticeEditorOps::restoreForBake(s.sceneId, s.scene(), target);
     if (!LatticeEditorOps::canBake(s.scene(), target, &why)) {
         return opFailed(error, where + ".target", label(s.scene(), target) + " cannot be baked: " + why);
     }

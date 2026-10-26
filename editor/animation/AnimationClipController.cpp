@@ -93,10 +93,10 @@ namespace{
             };
             // by the one history timeline, with or without a controller: the Inspector's clip
             // commits count too (R5c)
-            hooks.ownsUndo = [](const ClipUndoFocus&){
+            hooks.ownsUndo = [](){
                 return AnimationClipController::newestUndoIsClipCommit(nullptr);
             };
-            hooks.ownsRedo = [](const ClipUndoFocus&){
+            hooks.ownsRedo = [](){
                 return AnimationClipController::newestRedoIsClipCommit(nullptr);
             };
             hooks.takesKeys = [](){
@@ -1932,9 +1932,8 @@ void AnimationClipController::stopTransientPreviews(){
     stopPreview();
 }
 
-bool AnimationClipController::ownsUndo(const ClipUndoFocus& focus) const{
+bool AnimationClipController::ownsUndo() const{
     // R5b: by the newest undoable step, whatever window has focus (Record never steals a scene undo)
-    (void)focus;
     return newestStepIsClipEdit();
 }
 
@@ -1946,8 +1945,7 @@ bool AnimationClipController::newestRedoIsClipEdit() const{
     return project && newestRedoIsClipCommit(project);
 }
 
-bool AnimationClipController::ownsRedo(const ClipUndoFocus& focus) const{
-    (void)focus;
+bool AnimationClipController::ownsRedo() const{
     return newestRedoIsClipEdit();
 }
 

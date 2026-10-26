@@ -3084,6 +3084,16 @@ void editor::ProjectWindow::saveMaterialFile(const fs::path& directory, const ch
     scanDirectory(currentPath);
 }
 
+// every GameObject of the encoded prefabs (the dropped scene objects): their clip previews restore
+// before the prefab is made of them
+static std::vector<Entity> prefabEntities(const std::vector<std::pair<fs::path, YAML::Node>>& prefabs) {
+    std::vector<Entity> entities;
+    for (const auto& prefab : prefabs) {
+        editor::ProjectUtils::collectEntities(prefab.second, entities);
+    }
+    return entities;
+}
+
 void editor::ProjectWindow::saveEntityFile(const fs::path& directory, const char* entityContent, size_t contentLen) {
     std::string yamlString;
     if (contentLen >= sizeof(EntityPayload)) {
@@ -3188,7 +3198,9 @@ void editor::ProjectWindow::saveEntityFile(const fs::path& directory, const char
         return;
     }
 
-    PoseEditSession::suspendActive();   // prefabs of a posed character keep its rest bones
+    // prefabs of a posed character keep its rest bones; clip previews of the GameObjects restore
+    PoseEditSession::suspendActive();
+    PoseEditSession::suspendActiveFor(sceneId, prefabEntities(prefabs));
     CreatePrefabCmd* createPrefabCmd = new CreatePrefabCmd(project, sceneId, prefabs);
     CommandHandle::get(sceneId)->addCommandNoMerge(createPrefabCmd);
 
@@ -3216,6 +3228,7 @@ void editor::ProjectWindow::showPrefabOrVariantPopup() {
     bool done = false;
     if (ImGui::Button("Original Prefab", ImVec2(buttonWidth, 0))) {
         PoseEditSession::suspendActive();
+        PoseEditSession::suspendActiveFor(pendingPrefabDrop.sceneId, prefabEntities(pendingPrefabDrop.prefabs));
         CommandHandle::get(pendingPrefabDrop.sceneId)->addCommandNoMerge(new CreatePrefabCmd(project, pendingPrefabDrop.sceneId, pendingPrefabDrop.prefabs));
         done = true;
     }
@@ -3229,6 +3242,7 @@ void editor::ProjectWindow::showPrefabOrVariantPopup() {
             }
         }
         PoseEditSession::suspendActive();
+        PoseEditSession::suspendActiveFor(pendingPrefabDrop.sceneId, prefabEntities(prefabs));
         CreatePrefabCmd* command = new CreatePrefabCmd(project, pendingPrefabDrop.sceneId, prefabs);
         for (size_t i = 0; i < prefabs.size(); i++) {
             command->setVariant(i, i < pendingPrefabDrop.instanceRoots.size() && pendingPrefabDrop.instanceRoots[i]);
@@ -3942,7 +3956,7 @@ void editor::ProjectWindow::openFile(const FileEntry& file, const fs::path& file
     } else if (Util::isPrefabFile(filePath.string())) {
         editor::getEditorHost().openPrefabAsset(filePath);  // Unity: Prefab Mode
     } else {
-        // also an .anim until the Animation window opens clips: its JSON text
+        // text files (an .anim only when the clip hooks are unset: its JSON text)
         codeEditor->openFile(filePath.string(), true);
     }
 }

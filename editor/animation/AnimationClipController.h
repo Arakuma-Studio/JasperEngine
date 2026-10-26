@@ -51,7 +51,6 @@ namespace jasperengine::editor{
 
     class Project;
     struct SceneProject;
-    struct ClipUndoFocus;
 
     class AnimationClipController{
     public:
@@ -230,8 +229,8 @@ namespace jasperengine::editor{
         // UI marks with markClipCommit (the Inspector's .anim asset section, Extract / Create
         // file writes). MCP tools never mark theirs.
 
-        bool ownsUndo(const ClipUndoFocus& focus) const;
-        bool ownsRedo(const ClipUndoFocus& focus) const;
+        bool ownsUndo() const;
+        bool ownsRedo() const;
         bool newestStepIsClipEdit() const;
         bool newestRedoIsClipEdit() const;
         // the same for `project` (null: the timeline's), with or without a controller

@@ -2076,13 +2076,15 @@ void editor::App::show(){
     project.syncPlayRuntimeSelections();
 
     if (!ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) {
+        // a Physics Placement gesture of the selected scene: its undo cancels it, before any clip step
+        const bool placementBusy = physicsPlacementWindow->isBusy(project.getSelectedSceneId());
         if (projectWindow->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Resources;
         } else if (codeEditor->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Code;
         } else if (poseAnimationWindow->ownsUndo(sceneWindow->isFocused())) {
             lastFocusedWindow = LastFocusedWindow::PoseAnimation;
-        } else if (animationClipAppHooks().ownsUndo && animationClipAppHooks().ownsUndo(clipUndoFocus())) {
+        } else if (clipUndoGoesToProject(placementBusy)) {
             lastFocusedWindow = LastFocusedWindow::AnimationClip;
         }else{
             lastFocusedWindow = LastFocusedWindow::AnySceneWindow;
@@ -2090,8 +2092,7 @@ void editor::App::show(){
         // redo decided on its own (R5b): a clip commit undone last is redone on the project history
         clipRedoToProject = false;
         if (lastFocusedWindow == LastFocusedWindow::AnimationClip || lastFocusedWindow == LastFocusedWindow::AnySceneWindow) {
-            clipRedoToProject = animationClipAppHooks().ownsRedo ? animationClipAppHooks().ownsRedo(clipUndoFocus())
-                                                                 : lastFocusedWindow == LastFocusedWindow::AnimationClip;
+            clipRedoToProject = clipRedoGoesToProject(placementBusy, lastFocusedWindow == LastFocusedWindow::AnimationClip);
         }
     }
 
@@ -3704,21 +3705,6 @@ void editor::App::stopTransientPreviews() {
 bool editor::App::dispatchClipDrop(uint32_t sceneId, Entity target, const std::vector<std::string>& paths) {
     if (!animationClipAppHooks().dropClips) return false;
     return animationClipAppHooks().dropClips(&project, sceneId, target, paths);
-}
-
-editor::ClipUndoFocus editor::App::clipUndoFocus() const {
-    ClipUndoFocus focus;
-    focus.sceneView = sceneWindow && sceneWindow->isFocused();
-    focus.hierarchy = hierarchyWindow && hierarchyWindow->isFocused();
-    // the Inspector and the Animation window keep no focus flag: ImGui's focused window
-    ImGuiContext* context = ImGui::GetCurrentContext();
-    ImGuiWindow* focused = context ? context->NavWindow : nullptr;
-    if (focused) {
-        ImGuiWindow* root = focused->RootWindow;
-        focus.inspector = root == ImGui::FindWindowByName(InspectorWindow::WINDOW_NAME);
-        focus.animationWindow = root == ImGui::FindWindowByName(AnimationWindow::WINDOW_NAME);
-    }
-    return focus;
 }
 
 bool editor::App::redoGoesToProjectHistory() const {
