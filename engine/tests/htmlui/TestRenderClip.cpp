@@ -89,6 +89,8 @@ TEST(RenderClip, ContentClearOfCornersDrawsNoMask){
 
 TEST(RenderClip, RoundedClipIsAnalyticAndAntialiased){
     JASPER_REQUIRE_GPU();
+    // (S16's analytic clip and its goldens: on whatever the run's switches, AC1)
+    S16On s16;
     const std::string rml = documentOf(fullCss, "<div id=\"clip\"><div id=\"child\"/></div>");
     for (int samples : {1, 4}){
         Frame frame;
