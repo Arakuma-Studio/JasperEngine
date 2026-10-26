@@ -15,8 +15,9 @@ def main():
     parser.add_argument("binary", type=Path)
     parser.add_argument("--symbolicate", type=Path, required=True)
     parser.add_argument("--expect-asan", action="store_true")
+    parser.add_argument("--mode", action="append", help="run selected subprocess modes")
     args = parser.parse_args()
-    modes = ["segv", "abort", "terminate", "stack_overflow", "worker_segv", "worker_stack_overflow", "fpe", "guard_worker"]
+    modes = ["segv", "abort", "terminate", "stack_overflow", "worker_segv", "worker_stack_overflow", "fpe", "guard_worker", "concurrent", "recursive"]
     if os.name == "nt":
         modes.append("pure_call")
     else:
@@ -24,8 +25,8 @@ def main():
     expected = {"segv": signal.SIGSEGV, "abort": signal.SIGABRT, "terminate": signal.SIGABRT,
                 "stack_overflow": signal.SIGSEGV, "worker_segv": signal.SIGSEGV,
                 "worker_stack_overflow": signal.SIGSEGV, "fpe": signal.SIGFPE,
-                "guard_worker": signal.SIGSEGV, "chain": signal.SIGSEGV}
-    for mode in modes + ["hang"]:
+                "guard_worker": signal.SIGSEGV, "concurrent": signal.SIGSEGV, "recursive": signal.SIGSEGV, "chain": signal.SIGSEGV}
+    for mode in args.mode or modes + ["hang"]:
         with tempfile.TemporaryDirectory(prefix="je-native-crash-") as root:
             env = dict(os.environ, JASPERENGINE_CRASH_REPORT_DIR=root)
             # Let ASan's previous handler print, then die with the original fatal signal.
@@ -33,6 +34,12 @@ def main():
             result = subprocess.run([str(args.binary.resolve()), "--mode", mode, "--out", root],
                                     capture_output=True, text=True, timeout=12, env=env)
             files = list(Path(root).glob("reports/*/" + ("hang-001.txt" if mode == "hang" else "crash.txt")))
+            if mode == "recursive":
+                assert result.returncode != 0, result
+                assert "JASPERENGINE CRASH: recursive fault" in result.stderr, result.stderr
+                assert not files, "the recursive test faults before opening its report"
+                print("PASS native crash: recursive (immediate termination)")
+                continue
             assert len(files) == 1, (mode, result.returncode, result.stderr[-5000:])
             report = files[0].read_text()
             assert len(re.findall(r"^#\d+ ", report, re.M)) >= 3, (mode, report)
@@ -42,6 +49,10 @@ def main():
                 assert "recovered after" in result.stderr, result.stderr
             else:
                 assert result.returncode != 0, mode
+                if mode == "concurrent":
+                    assert "modules:" in report and "core:" in report, report
+                    assert (files[0].parent / "log-tail.txt").is_file(), report
+                    assert "thread_name: First fault" in report, report
                 if os.name != "nt":
                     assert result.returncode in (-expected[mode], 77), (mode, result.returncode, result.stderr)
                 for key in ("product", "version", "build_id", "platform", "backend", "reason", "fault_address",

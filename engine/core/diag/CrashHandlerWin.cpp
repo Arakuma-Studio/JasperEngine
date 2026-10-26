@@ -129,6 +129,7 @@ MINIDUMP_TYPE dumpType() {
 DWORD WINAPI writer(void*) {
     if (WaitForSingleObject(request, INFINITE) != WAIT_OBJECT_0) return 0;
     auto& s = state();
+    if (s.beforeReportForTesting) s.beforeReportForTesting();
     CreateDirectoryA(s.sessionDir, nullptr);
     // DbgHelp is process-wide and single threaded. Never wait indefinitely on a lock the
     // faulting thread may own. A failed lock still yields a report with its saved PC/SP.

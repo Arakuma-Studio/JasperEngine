@@ -225,6 +225,7 @@ void fatal(int sig, siginfo_t* info, void* context) {
         return;
     }
     s.reportingThread.store(threadId(), std::memory_order_relaxed);
+    if (s.beforeReportForTesting) s.beforeReportForTesting();
     if (s.sessionDir[0]) mkdir(s.sessionDir, 0700);
     const int report = s.crashFile[0] ? open(s.crashFile, O_CREAT | O_WRONLY | O_TRUNC, 0600) : -1;
     raw(report, s.header, s.headerLength);

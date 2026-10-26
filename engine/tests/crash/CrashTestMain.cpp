@@ -15,6 +15,7 @@
 //   hang     starts the watchdog (200 ms) and stalls the main thread for 700 ms in a phase
 
 #include "diag/CrashHandler.h"
+#include "diag/detail/CrashState.h"
 #include "diag/HangWatchdog.h"
 #include "log/Logger.h"
 #include "util/CrashGuard.h"
@@ -29,7 +30,10 @@
 #include <fstream>
 #include <string>
 #include <thread>
-#if !defined(_WIN32)
+#if defined(_WIN32)
+#include <windows.h>
+#else
+#include <time.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <unistd.h>
@@ -38,6 +42,27 @@
 using namespace jasperengine;
 
 namespace je_crash_test {
+    std::atomic<bool> reportEntered{false};
+    bool recursiveFault = false;
+    void pauseReport() {
+        reportEntered.store(true, std::memory_order_release);
+        if (recursiveFault) {
+#if defined(_WIN32)
+            RaiseException(EXCEPTION_ACCESS_VIOLATION, EXCEPTION_NONCONTINUABLE, 0, nullptr);
+#else
+            raise(SIGSEGV);
+#endif
+        }
+        // Deterministically leave time for a different thread to fault inside this report.
+        // The POSIX hook itself only uses lock-free atomics and async-signal-safe calls.
+#if defined(_WIN32)
+        Sleep(250);
+#else
+        timespec pause{0, 250000000};
+        while (nanosleep(&pause, &pause) != 0) {}
+#endif
+    }
+
 #if !defined(_WIN32)
     char sentinelPath[1024]{};
     void previousHandler(int sig, siginfo_t*, void*) {
@@ -131,6 +156,19 @@ int main(int argc, char** argv) {
         return 0;
     }
 #endif
+    if (name == "concurrent" || name == "recursive") {
+        log("last line before the crash");
+        recursiveFault = name == "recursive";
+        diag::crash::detail::state().beforeReportForTesting = pauseReport;
+        auto first = thread::spawnNamed("First fault", [] { diag::crash::debugCrash("segv"); });
+        if (!recursiveFault) {
+            while (!reportEntered.load(std::memory_order_acquire)) std::this_thread::yield();
+            auto second = thread::spawnNamed("Second fault", [] { diag::crash::debugCrash("segv"); });
+            second.join();
+        }
+        first.join();
+        return 1;
+    }
     if (name == "chain") { log("last line before the crash"); diag::crash::debugCrash("segv"); }
     if (name == "worker_stack_overflow") {
         log("last line before the crash");
