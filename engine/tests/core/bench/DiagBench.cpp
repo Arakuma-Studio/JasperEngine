@@ -47,14 +47,18 @@ namespace{
         return bench::percentile(samples, 0.5);
     }
 
-    // the process's CPU while the main thread sleeps: the watchdog's polls only
+    // the process's CPU while the main thread idles as the editor's loop does (a beat per
+    // 100 ms wait): the watchdog's polls, and 50 beats, only
     double watchdogIdleCpuPercent(){
         diag::WatchdogConfig config;
         diag::watchdog::start(config);
         diag::heartbeat();
         const std::clock_t cpuStart = std::clock();
         const auto start = bench::Clock::now();
-        std::this_thread::sleep_for(std::chrono::seconds(5));
+        for (int i = 0; i < 50; i++){
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            diag::heartbeat();
+        }
         const double cpu = static_cast<double>(std::clock() - cpuStart) / CLOCKS_PER_SEC;
         const double wall = bench::secondsSince(start);
         diag::watchdog::stop();
