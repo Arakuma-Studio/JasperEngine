@@ -689,3 +689,9 @@ one line pointing here.
   S16's own goldens, now under `S16On`; `s17/views_scrolled` needs oe-port's golden in that run;
   `HtmlUIWidgetsPerf.ModelSetAndTreeFlatten` (S17) once took 12 ms on the loaded host (1.6 ms in
   the next run).
+- Merged oe-port e1ca0c71a (upstream round 1, 432a9be1f). Gate re-running on the merged tree
+  (htmlui suites on B, the rest on C, timings on E). MCP failures of the earlier gate that were
+  not S16's are fixed on BF2's branch (S04 asset type, S17 patch reload, the "Loading" dialog).
+- AC1 golden drift: oe-port's own render of `p1/texture_effects` matches its golden at the
+  golden's commit 723cbba62 and is 30 pixels off from the phase-3 merge 08ec10485 on (bisect of
+  the phase-3 branch between them in progress).
