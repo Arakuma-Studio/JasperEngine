@@ -348,6 +348,11 @@ bool TextureCookQueue::cookedEntry(const std::string& assetPath, CookedTextureEn
 void TextureCookQueue::request(const std::string& assetPath, TextureFamily family, int priority){
     if (!project || !isCookableTexture(assetPath))
         return;
+    // a reference to a file that is not there (a model's missing image) is the reference's
+    // problem, reported where it resolves: nothing to cook
+    std::error_code missing;
+    if (!fs::is_regular_file(absoluteOf(assetPath), missing))
+        return;
     std::lock_guard<std::mutex> lock(mutex);
     Entry& entry = entries[{assetPath, (int)family}];
     if (entry.queued || entry.job){
@@ -569,6 +574,12 @@ bool TextureCookQueue::getState(const std::string& assetPath, TextureFamily fami
     return true;
 }
 
+bool TextureCookQueue::isPending(const std::string& assetPath, TextureFamily family) const{
+    std::lock_guard<std::mutex> lock(mutex);
+    auto it = entries.find({assetPath, (int)family});
+    return it != entries.end() && (it->second.queued || it->second.job);
+}
+
 TextureCookStatus TextureCookQueue::badgeStatus(const std::string& assetPath) const{
     std::lock_guard<std::mutex> lock(mutex);
     TextureCookStatus worst = TextureCookStatus::None;
@@ -719,6 +730,9 @@ void TextureCookQueue::collectJobs(){
         }
         bool swap = false;
         bool planned = false;
+        // the source went away while it cooked (deleted, moved): no cook and no error
+        std::error_code missing;
+        const bool gone = !job->result.ok && !fs::is_regular_file(job->inputs.absolute, missing);
         {
             std::lock_guard<std::mutex> lock(mutex);
             if (job->cooking)
@@ -758,7 +772,7 @@ void TextureCookQueue::collectJobs(){
                     state.plan = job->result.plan;
                     state.record = job->result.record;
                     swap = job->family == getViewFamily();
-                }else if (job->result.cancelled || job->cancel){
+                }else if (job->result.cancelled || job->cancel || gone){
                     state.status = TextureCookStatus::None;
                 }else{
                     state.status = TextureCookStatus::Failed;
@@ -772,7 +786,7 @@ void TextureCookQueue::collectJobs(){
         if (job->result.ok && !job->sourceOnly && !job->result.cacheHit)
             Out::info("Cooked %s for %s: %s, %.0f ms", job->assetPath.c_str(), textureFamilyName(job->family),
                       job->result.record.label.c_str(), job->result.record.cookMs);
-        else if (!job->result.ok && !job->result.cancelled && !job->cancel)
+        else if (!job->result.ok && !job->result.cancelled && !job->cancel && !gone)
             Out::error("Texture cook of %s for %s failed: %s", job->assetPath.c_str(), textureFamilyName(job->family),
                        job->result.error.c_str());
         if (swap)

@@ -126,6 +126,8 @@ namespace jasperengine::editor {
         void cancelAll();
 
         bool getState(const std::string& assetPath, TextureFamily family, TextureCookState& out) const;
+        // queued or cooking (a cooked texture being cooked again keeps its Cooked state, stale)
+        bool isPending(const std::string& assetPath, TextureFamily family) const;
         // the worst state of a texture over the families it was queued for (Project window badge)
         TextureCookStatus badgeStatus(const std::string& assetPath) const;
 

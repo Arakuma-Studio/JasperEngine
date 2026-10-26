@@ -3843,9 +3843,7 @@ void reimportTexturesTool(const CallPtr& call) {
         call->waitUntil([&queue, assetPaths, families]() {
             for (const std::string& path : assetPaths) {
                 for (TextureFamily family : families) {
-                    TextureCookState state;
-                    if (queue.getState(path, family, state) &&
-                        (state.status == TextureCookStatus::Queued || state.status == TextureCookStatus::Cooking))
+                    if (queue.isPending(path, family))
                         return false;
                 }
             }
