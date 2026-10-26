@@ -136,6 +136,11 @@ public:
 		for (ClipMemo& memo : clip_memos)
 			memo.offset_parent = nullptr;
 	}
+	/// Fork (S16-F6): the paint traversal takes its shortcuts this pass (the clip memo, transforms updated once): while the
+	/// render interface culls (RenderInterface::CullsOffscreenPaint), read at PrepareRender.
+	bool PaintShortcuts() const { return paint_shortcuts; }
+	/// That of the last render pass prepared (elements updating their transform read it without finding their manager).
+	static bool LastPaintShortcuts();
 
 private:
 	void ApplyClipMask(const ClipMaskGeometryList& clip_elements);
@@ -173,6 +178,7 @@ private:
 	int clip_memo_next = 0;
 	// Fork (S16-F6): state.transform is the identity (SetTransform(nullptr) then compares nothing)
 	bool transform_identity = true;
+	bool paint_shortcuts = false;
 	int compiled_filter_count = 0;
 	int compiled_shader_count = 0;
 

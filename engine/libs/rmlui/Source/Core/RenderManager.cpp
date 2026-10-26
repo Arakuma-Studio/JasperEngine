@@ -8,6 +8,10 @@
 
 namespace Rml {
 
+// Fork (S16-F6): RenderManager::LastPaintShortcuts
+static bool last_paint_shortcuts = false;
+
+
 RenderManager::RenderManager(RenderInterface* render_interface) : render_interface(render_interface), texture_database(MakeUnique<TextureDatabase>())
 {
 	RMLUI_ASSERT(render_interface);
@@ -52,7 +56,14 @@ void RenderManager::PrepareRender(Vector2i dimensions)
 #endif
 
 	ResetClipMemo();
+	paint_shortcuts = render_interface->CullsOffscreenPaint();
+	last_paint_shortcuts = paint_shortcuts;
 	SetViewport(dimensions);
+}
+
+bool RenderManager::LastPaintShortcuts()
+{
+	return last_paint_shortcuts;
 }
 
 void RenderManager::SetViewport(Vector2i dimensions)
@@ -158,7 +169,7 @@ void RenderManager::SetClipMask(ClipMaskGeometryList in_clip_elements)
 void RenderManager::SetTransform(const Matrix4f* p_new_transform)
 {
 	// Fork (S16-F6): most elements have no transform, as the state: nothing to compare (two calls per element rendered)
-	if (!p_new_transform && transform_identity)
+	if (!p_new_transform && transform_identity && paint_shortcuts)
 		return;
 
 	static const Matrix4f identity_transform = Matrix4f::Identity();

@@ -264,12 +264,6 @@ void Element::Render()
 	if (stacking_context_dirty)
 		BuildLocalStackingContext();
 
-	// Fork (S16-F6): a transform updated now changes the clipping region of the elements it clips
-	if (dirty_transform || dirty_perspective)
-	{
-		if (RenderManager* render_manager = GetRenderManager())
-			render_manager->ResetClipMemo();
-	}
 	UpdateTransformState();
 	ElementUtilities::ApplyTransform(*this);
 
@@ -4011,11 +4005,21 @@ void Element::UpdateTransformState()
 			transform_state->SetTransform(nullptr);
 
 		perspective_or_transform_changed |= (had_transform != have_transform);
+
+		// Fork (S16-F6): done until something dirties it again (RmlUi 6.3 kept the flag set: once dirtied, an element
+		// computed its transform anew at every render, and it is dirtied again whenever an input of it changes:
+		// a transform property, its offset or box while it has a transform state, its stacking parent's transform)
+		if (RenderManager::LastPaintShortcuts())
+			dirty_transform = false;
 	}
 
 	// A change in perspective or transform will require an update to children transforms as well.
 	if (perspective_or_transform_changed)
 	{
+		// Fork (S16-F6): and changes the clipping regions of the elements it clips
+		if (RenderManager* render_manager = GetRenderManager())
+			render_manager->ResetClipMemo();
+
 		for (Element* stacking_child : stacking_context)
 			stacking_child->DirtyTransformState(false, true);
 	}

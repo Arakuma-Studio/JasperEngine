@@ -280,7 +280,7 @@ bool ElementUtilities::SetClippingRegion(Element* element, bool force_clip_self)
 	// starts there; a scroll container's scrollbars, which differ, have 'clip: 1'): the region found for the first is used
 	// for the others of the render pass, without walking the ancestors and building the mask list again.
 	Element* offset_parent = nullptr;
-	if (!force_clip_self && element->GetComputedValues().clip() == Style::Clip::Type::Auto)
+	if (render_manager.PaintShortcuts() && !force_clip_self && element->GetComputedValues().clip() == Style::Clip::Type::Auto)
 		offset_parent = element->GetOffsetParent();
 	if (offset_parent)
 	{
