@@ -538,7 +538,7 @@ Entities are plain integers (`0` = none).
 | `backgroundColor` (Vector4, rw); `setBackgroundColor(r,g,b[,a])` | |
 | `gravity2D` (Vector2, rw); `setGravity2D(x, y)` | |
 | `gravity3D` (Vector3, rw); `setGravity3D(x, y, z)` | |
-| `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `shadowQuality` (`ShadowQuality` AUTO/NONE (hard only)/LOW/MEDIUM/HIGH/ULTRA, the shadow quality tier), `shadowDistance` (metres, 0: the tier's), `shadowFadeFraction`, `shadowCascadeBlend`, `effectiveShadowTier` (read-only `ShadowTier` LOW/MEDIUM/HIGH/ULTRA; `jasper://docs/shadows`), `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA; fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
+| `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `litQuality` (`LitQuality.STANDARD` / `HIGH`: the built-in Lit's specular anti-aliasing and direct-light energy compensation; new scenes are High, scenes saved before it Standard), `physicalLightEV100` (the exposure, -6..24, lights in lux, candela or lumen are drawn at: Sunny 15, Overcast 12, Interior 7, Night 2), `shadowQuality` (`ShadowQuality` AUTO/NONE (hard only)/LOW/MEDIUM/HIGH/ULTRA, the shadow quality tier), `shadowDistance` (metres, 0: the tier's), `shadowFadeFraction`, `shadowCascadeBlend`, `effectiveShadowTier` (read-only `ShadowTier` LOW/MEDIUM/HIGH/ULTRA; `jasper://docs/shadows`), `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA; fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
 | `getPhysicsSystem()`, `getAudioSystem()`, `getActionSystem()`, `getMeshSystem()`, `getRenderSystem()`, `getUISystem()` | subsystem objects |
 | `findEntitiesWith({"Transform", "MeshComponent"}[, {"UIComponent"}])` | -> table of Entity with every listed component and none of the excluded ones, in the order of the first one's array (parents before children for `Transform`); names are the component class names |
 | `getChangeTick()` | -> integer: the scene's change tick; a change made after the call is stamped with a newer one |
@@ -811,6 +811,19 @@ rule, `DISABLED`, `NEVER` ... `ALWAYS`), `ref`, `readMask`, `writeMask` (0-255),
 `RGB`, `ALL`, or the bits `R`, `G`, `B`, `A` summed): on the material (`m.stencil.ref = 2`
 edits the copy's) and on UI, Points and LineRenderer objects (a copy there: set it back,
 `local s = image.stencil; s.compare = MaterialStencilCompare.EQUAL; image.stencil = s`).
+Built-in Lit extended lobes (glTF `KHR_materials_*`; the same copy-then-set rule; each lobe
+compiles in only while its `...Enabled` is true, so animating a factor never recompiles):
+`emissiveStrength` (multiplies `emissiveFactor`), `clearcoatEnabled`, `clearcoatFactor`,
+`clearcoatRoughness`, `clearcoatNormalScale`; `sheenEnabled`, `sheenColor` (Vector3, linear),
+`sheenRoughness`; `anisotropyEnabled`, `anisotropyStrength`, `anisotropyRotation` (radians);
+`iridescenceEnabled`, `iridescenceFactor`, `iridescenceIor`, `iridescenceThicknessRange`
+(Vector2, nm); `transmissionEnabled`, `transmissionFactor`; `volumeEnabled`, `thicknessFactor`,
+`attenuationColor`, `attenuationDistance` (`math.huge`: no absorption); `specularEnabled`,
+`specularFactor`, `specularColor`, `ior`; `hexTilingEnabled`, `hexTilingRotation`,
+`hexTilingContrast`. Their maps read only: `clearcoatTexture`, `clearcoatNormalTexture`,
+`sheenTexture`, `anisotropyTexture`, `iridescenceTexture`, `transmissionTexture`,
+`specularTexture`. E.g. `local m = mesh:getMaterial(); m.clearcoatEnabled = true;
+m.clearcoatFactor = 1; mesh:setMaterial(m)`. More: `jasper://docs/materials`.
 `extraPass` (`MaterialPass`, edited in place on the copy, then `setMaterial`): one more draw
 of the submesh after its mesh's main draws (`order = MaterialPassOrder.BEFORE`: ahead of
 them; on a mesh of several submeshes every After pass draws after all of its submeshes and
@@ -886,9 +899,14 @@ cos(pitch)cos(yaw)) * distance, then `setTarget(target)`.
 Light rw: `type` (`LightType.*`), `enabled`, `direction` (Vector3), `color` (Vector3),
 `range`, `intensity`, `innerConeAngle`, `outerConeAngle`, `shadows`, `cameraNear`,
 `cameraFar`, `automaticShadowCamera`, `numCascades` (0: the quality tier's), `cullingMask`, `shading`
-(`LightShading.*`, the stage evaluating it on MIXED-lighting materials); methods
-`setDirection(x,y,z)`, `setColor(r,g,b)`, `setConeAngle(a)`, `setRange(r)`,
-`setIntensity(i)`, `setShadows(b)`, `setShadowCameraNearFar(n, f)`.
+(`LightShading.*`, the stage evaluating it on MIXED-lighting materials), `intensityUnit`
+(`LightUnit.ENGINE`, `LUX` for a directional light, `CANDELA` or `LUMEN` for a point or spot;
+setting the property keeps the number, which then means the new unit),
+`useColorTemperature`, `colorTemperature` (Kelvin, 1000-20000, 6500 white; `color` filters
+it); methods `setDirection(x,y,z)`, `setColor(r,g,b)`, `setConeAngle(a)`, `setRange(r)`,
+`setIntensity(i)`, `setIntensityUnit(unit, preserveBrightness)` (true converts the intensity so
+the light stays as bright, through `scene.physicalLightEV100`), `setShadows(b)`,
+`setShadowCameraNearFar(n, f)`.
 Shadows (`jasper://docs/shadows`) rw: `shadowType` (`ShadowType.NONE/HARD/SOFT`), `shadowStrength`
 (0-1), `shadowBias` and `shadowNormalBias` (shadow texels), `shadowResolution` (0: the tier's),
 `cascadeSplitMode` (`CascadeSplitMode.AUTO/MANUAL`), `cascadeSplits` (Vector3, fractions of the
@@ -1079,7 +1097,7 @@ Color/Alpha/Size/Rotation/Scale/Sprite. Plus Action `start()`, `stop()`, `pause(
   `maxDistance`, `qualityOverride`.
 - `Light`: also rw `volumetricIntensity` (point and spot lights in High quality volumetric fog).
 - `Skybox`: `setTextures(...)`, `setTexture(...)`, rw `color`, `alpha`, `rotation`.
-- `Terrain`, `ReflectionProbe`, `Mirror`, `Bone`: editor-configured; see bindings.
+- `Terrain`, `ReflectionProbe`, `Mirror`, `Bone`: editor-configured; see bindings. A Terrain's painted layers (`TerrainSurfaceLayer`) also have `hexTiling` (anti-repetition of the flat projection) and `hexRotation` (0..1).
 - `ObjectRender.getLivePipelineCount()` (static, diagnostics): the render pipelines objects
   made and did not destroy yet (a leak check: the count before creating objects and after
   destroying them, once their loads settled).
@@ -1222,6 +1240,8 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
 | `LightShading` | `BOTH`, `PIXEL`, `VERTEX` |
 | `LightState` | `OFF`, `ON`, `AUTO` |
 | `ShadowQuality` | `NONE`, `LOW`, `MEDIUM`, `HIGH` |
+| `LitQuality` | `STANDARD`, `HIGH` (`scene.litQuality`) |
+| `LightUnit` | `ENGINE`, `LUX`, `CANDELA`, `LUMEN` (`light.intensityUnit`) |
 | `SceneColorScale` | `FULL`, `HALF` |
 | `TonemapMode` | `NONE`, `ACES`, `NEUTRAL`, `REINHARD`, `AGX` (`PostProcessingSettings.tonemap`) |
 | `MonochromeMode` | `GRAYSCALE`, `SEPIA` (`PostProcessingSettings.monochromeMode`) |

@@ -39,6 +39,8 @@ namespace {
 
         void SetUp() override{
             scene.setBackgroundColor(0.42f, 0.58f, 0.82f, 1.0f);
+            // the goldens were drawn before S11's Lit Quality: Standard is that shader exactly
+            scene.setLitQuality(LitQuality::STANDARD);
             camera.setType(CameraType::CAMERA_PERSPECTIVE);
             camera.setPosition(0.0f, 6.0f, 25.0f);
             camera.setTarget(0.0f, 3.0f, -60.0f);

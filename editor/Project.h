@@ -653,6 +653,7 @@ namespace jasperengine::editor{
         bool physics2DEnabled;  // Box2D in exported builds; Play always has it
         bool physics3DEnabled;  // Jolt in exported builds; Play always has it
         bool runtimeShadersEnabled;  // exported builds compile the shader variants they lack
+        PbrTier mobilePbrTier;       // the lobes Android, iOS and HTML5 exports draw
         // Tags and Layers: user tags, and user layer names indexed by layer (MAX_LAYERS
         // entries, empty for built-in and unnamed layers)
         std::vector<std::string> tags;
@@ -1082,6 +1083,7 @@ namespace jasperengine::editor{
         static constexpr bool defaultPhysics2DEnabled = true;
         static constexpr bool defaultPhysics3DEnabled = true;
         static constexpr bool defaultRuntimeShadersEnabled = true;
+        static constexpr PbrTier defaultMobilePbrTier = PbrTier::REDUCED;
         static constexpr int defaultCxxStandard = cxxStandards[0];
 
         Project();
@@ -1198,6 +1200,11 @@ namespace jasperengine::editor{
         // The editor always compiles.
         void setRuntimeShadersEnabled(bool enabled);
         bool isRuntimeShadersEnabled() const;
+        // Project Settings > Graphics > Mobile PBR Tier: the extended lobes the Android, iOS and
+        // HTML5 exports draw (Reduced: no iridescence, anisotropy direction maps or clear coat
+        // normal maps, MaterialPbr). Desktop exports and the editor draw them all.
+        void setMobilePbrTier(PbrTier tier);
+        PbrTier getMobilePbrTier() const;
 
         // Project Settings > Tags and Layers. Also sets the engine's TagManager, which the
         // Inspector and Play read; names are kept as TagManager accepts them (trimmed,

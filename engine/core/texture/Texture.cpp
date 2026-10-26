@@ -198,6 +198,21 @@ void Texture::setId(const std::string& id){
     }
 }
 
+void Texture::setGenerated(const std::string& id){
+    destroy();
+
+    this->id = id;
+    this->framebuffer = NULL;
+    this->type = TextureType::TEXTURE_2D;
+    this->numFaces = 1;
+    this->loadFromPath = false;
+    this->releaseDataAfterLoad = true;
+    this->needLoad = true;
+    this->svgScale = 1.0f;
+    this->data = TextureDataPool::get(id);
+    this->render = TexturePool::get(id);
+}
+
 void Texture::setCubeMap(const std::string& path){
     destroy();
 
@@ -422,6 +437,16 @@ TextureLoadResult Texture::load() {
         data.reset();
         if (loadFromPath) {
             needLoad = true;
+        }
+    }
+
+    // pixels a job makes instead of a file (a packed lobe map, TextureDataPool::setGenerator)
+    if (!loadFromPath && !id.empty()) {
+        TextureLoadResult generated = TextureDataPool::loadGenerated(id);
+        if (generated.state != ResourceLoadState::NotStarted) {
+            if (generated && generated.data)
+                data = generated.data;
+            return generated;
         }
     }
 

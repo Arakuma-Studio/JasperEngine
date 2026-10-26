@@ -110,6 +110,7 @@ void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneConte
         submesh.gbufferShaderProperties = 0;
         submesh.customShaderId = 0;
         submesh.customDepthShaderId = 0;
+        submesh.litDefineBits = 0;
         resetBuffer(submesh.lodIndices);
         submesh.needUpdateTexture = false;
         submesh.needUpdateDepthTexture = false;
@@ -117,6 +118,11 @@ void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneConte
         for (Texture* texture : {&submesh.material.baseColorTexture, &submesh.material.emissiveTexture,
                 &submesh.material.metallicRoughnessTexture, &submesh.material.occlusionTexture, &submesh.material.normalTexture}) {
             remapFramebufferTexture(*texture, ctx);
+        }
+        if (MaterialPbrExtensions* pbr = submesh.material.pbr.editIfSet()) {
+            for (int m = 0; m < (int)PbrMap::COUNT; m++) {
+                remapFramebufferTexture(MaterialPbr::getMap(*pbr, (PbrMap)m), ctx);
+            }
         }
     }
     mesh.bonesBuffer = BufferRender();

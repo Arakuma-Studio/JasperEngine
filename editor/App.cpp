@@ -2533,6 +2533,12 @@ void editor::App::parseBenchmarkArgs(int argc, char** argv) {
         } else if (arg == "--depth-prepass") {
             if (const char* value = requireValue(i, "--depth-prepass"))
                 benchmarkDepthPrepass = (std::strcmp(value, "off") != 0 && std::strcmp(value, "0") != 0) ? 1 : 0;
+        } else if (arg == "--lit-quality") {
+            if (const char* value = requireValue(i, "--lit-quality")) {
+                if (std::strcmp(value, "standard") == 0) benchmarkLitQuality = 0;
+                else if (std::strcmp(value, "high") == 0) benchmarkLitQuality = 1;
+                else failBenchmark(std::string("--lit-quality must be standard or high, not ") + value);
+            }
         } else if (arg == "--name") {
             if (const char* value = requireValue(i, "--name"))
                 benchmarkName = value;
@@ -3513,6 +3519,8 @@ void editor::App::tickBenchmark() {
             selected->scene->setMeshLodEnabled(benchmarkMeshLod != 0);
         if (benchmarkDepthPrepass >= 0)
             selected->scene->setDepthPrepassEnabled(benchmarkDepthPrepass != 0);
+        if (benchmarkLitQuality >= 0)
+            selected->scene->setLitQuality(benchmarkLitQuality ? LitQuality::HIGH : LitQuality::STANDARD);
         selected->displaySettings.showGrid3D = false;
         selected->displaySettings.showOrigin = false;
         selected->displaySettings.hideSelectionOutline = true;
