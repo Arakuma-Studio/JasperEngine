@@ -1,0 +1,52 @@
+type: Prefab
+version: 4
+guid: 30aeaad93c80be96b89030fe283e7a8b
+nextEntity: 1002
+root: 1001
+members:
+  - type: Entity
+    entity: 1001
+    name: Lamp
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      light:
+        enabled: true
+        type: spot
+        direction: [0, 0, 0]
+        worldDirection: [0, 0, 0]
+        color: [1, 1, 1]
+        range: 0
+        intensity: 1
+        innerConeCos: 0.76604444
+        outerConeCos: 0.64278764
+        spotMask:
+          textureType: 2D
+          source: path
+          path: textures/mask.png
+          guid: f20edc826a355e7ac9118237ce2cd7a0
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        cullingMask: 4294967295
+        shadows: false
+        automaticShadowCamera: true
+        shadowBias: 1
+        mapResolution: 0
+        shadowCameraNearFar: [0.1, 10]
+        numShadowCascades: 0

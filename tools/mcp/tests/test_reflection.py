@@ -273,7 +273,7 @@ async def test_inspector_layout_parity(ed: Editor):
         if made.is_error:
             problems.append(f"{case}: create_entity {entity_type}: {made.text[:200]}")
             continue
-        entity = made.value()["entity_id"]
+        entity = made.value["entity_id"]
         await ed.call("select_entities", scene=scene, entities=[entity])
         for index, values in enumerate(states):
             if values:
@@ -336,7 +336,7 @@ async def test_schema(ed: Editor):
         if made.is_error:
             problems.append(f"create_entity {entity_type}: {made.text[:200]}")
             continue
-        entity = made.value()["entity_id"]
+        entity = made.value["entity_id"]
         values = await ed.call("get_entity", scene=scenes[scene_type], entity=entity)
         for component, props in values["components"].items():
             if component not in schemas:

@@ -1,0 +1,1337 @@
+formatVersion: 2
+guid: 9833476a37f04d96e0e409177f514f7a
+id: 1
+name: Nested Scene
+scene:
+  backgroundColor: [0, 0, 0, 1]
+  shadowQuality: auto
+  meshLodEnabled: true
+  meshLodThreshold: 1
+  depthPrepassEnabled: false
+  lightState: false
+  globalIlluminationIntensity: 0.1
+  globalIlluminationColor: [1, 1, 1]
+  ambientLight2DIntensity: 1
+  ambientLight2DColor: [1, 1, 1]
+  shadow2DQuality: low
+  ssaoEnabled: false
+  ssaoRadius: 0.5
+  ssaoIntensity: 1
+  ssaoBias: 0.025
+  ssrEnabled: false
+  ssrMaxDistance: 8
+  ssrThickness: 0.5
+  ssrMaxSteps: 48
+  ssrIntensity: 1
+  ssrBlur: 0
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+  fixedResolutionEnabled: false
+  fixedResolutionWidth: 640
+  fixedResolutionHeight: 360
+  fixedResolutionFilter: nearest
+  enableUIEvents: not_set
+sceneType: scene_2d
+mainCamera: 0
+maxValues:
+  maxSubmeshes: 1
+  maxTilemapTilesRect: 0
+  maxTilemapTiles: 0
+  maxExternalBuffers: 0
+  maxSpriteFrames: 0
+  maxBones: 128
+  maxColliders2D: 0
+  maxColliderPoints2D: 0
+  maxColliders3D: 0
+  maxColliderVertices3D: 0
+  maxColliderIndices3D: 0
+shaderKeys:
+  - type: mesh
+    properties: 3075
+  - type: depth
+  - type: depth
+    properties: 1
+  - type: depth
+    properties: 129
+  - type: blit
+entities:
+  - type: Entity
+    entity: 1001
+    name: Forest
+    components:
+      transform:
+        position: [250, 60, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: sprites/ground.png
+                guid: 6da86ed364ad55ac29447a0999cd2f23
+                minFilter: linear
+                magFilter: linear
+                wrapU: clamp_to_edge
+                wrapV: clamp_to_edge
+                releaseDataAfterLoad: true
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 6
+            faceCulling: false
+            textureShadow: false
+            hasTexCoord1: false
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: false
+            hasTextureRect: true
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [0, 0, 0]
+          max: [0, 0, 0]
+        verticesAABB:
+          min: [0, 0, 0]
+          max: [0, 0, 0]
+        worldAABB:
+          min: [0, 0, 0]
+          max: [0, 0, 0]
+        receiveLights: false
+        receiveIBL: false
+        castShadows: false
+        receiveShadows: false
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: true
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      sprite:
+        enabled: true
+        width: 400
+        height: 60
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: bottom_center
+    children:
+      - type: Entity
+        entity: 1002
+        name: Wind
+        components:
+          transform:
+            position: [0, 0, 0]
+            rotation: [1, 0, 0, 0]
+            scale: [1, 1, 1]
+            worldPosition: [0, 0, 0]
+            worldRotation: [1, 0, 0, 0]
+            worldScale: [1, 1, 1]
+            localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+            normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+            visible: true
+            billboardRotation: [1, 0, 0, 0]
+            billboard: false
+            fakeBillboard: false
+            cylindricalBillboard: false
+          action:
+            state: Stopped
+            speed: 1
+            target: 0
+            ownedTarget: false
+      - type: Entity
+        entity: 1003
+        name: Tree
+        components:
+          transform:
+            position: [0, 60, 0]
+            rotation: [1, 0, 0, 0]
+            scale: [1, 1, 1]
+            worldPosition: [0, 0, 0]
+            worldRotation: [1, 0, 0, 0]
+            worldScale: [1, 1, 1]
+            localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+            normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+            visible: true
+            billboardRotation: [1, 0, 0, 0]
+            billboard: false
+            fakeBillboard: false
+            cylindricalBillboard: false
+          mesh:
+            enabled: true
+            submeshes:
+              - material:
+                  baseColorFactor: [1, 1, 1, 1]
+                  metallicFactor: 1
+                  roughnessFactor: 1
+                  alphaCutoff: 0.5
+                  foliageTransmission: 0
+                  alphaMode: AUTO
+                  emissiveFactor: [0, 0, 0]
+                  baseColorTexture:
+                    textureType: 2D
+                    source: path
+                    path: sprites/rock.png
+                    guid: 3d7db38a9143846dc003c29c55eb5c4e
+                    minFilter: linear
+                    magFilter: linear
+                    wrapU: clamp_to_edge
+                    wrapV: clamp_to_edge
+                    releaseDataAfterLoad: true
+                  baseColorTexCoord: 0
+                  metallicRoughnessTexCoord: 0
+                  occlusionTexCoord: 0
+                  emissiveTexCoord: 0
+                  normalTexCoord: 0
+                  name: ""
+                textureRect: [0, 0, 1, 1]
+                primitiveType: triangles
+                vertexCount: 6
+                faceCulling: false
+                textureShadow: false
+                hasTexCoord1: false
+                hasTexCoord2: false
+                hasNormalMap: false
+                hasTangent: false
+                hasVertexColor3: false
+                hasVertexColor4: false
+                hasTextureRect: true
+                hasSkinning: false
+                hasMorphTarget: false
+                hasMorphNormal: false
+                hasMorphTangent: false
+            normAdjustJoint: 1
+            normAdjustWeight: 1
+            morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+            aabb:
+              min: [0, 0, 0]
+              max: [0, 0, 0]
+            verticesAABB:
+              min: [0, 0, 0]
+              max: [0, 0, 0]
+            worldAABB:
+              min: [0, 0, 0]
+              max: [0, 0, 0]
+            receiveLights: false
+            receiveIBL: false
+            castShadows: false
+            receiveShadows: false
+            lodEnabled: true
+            lodBias: 1
+            renderInReflectionProbes: true
+            shadowsBillboard: true
+            transparent: true
+            autoTransparency: true
+            cullingMode: back
+            windingOrder: ccw
+          sprite:
+            enabled: true
+            width: 120
+            height: 260
+            automaticFlipY: true
+            flipY: true
+            textureScaleFactor: 0
+            pivotPreset: bottom_center
+        children:
+          - type: Entity
+            entity: 1004
+            name: Trunk
+            components:
+              transform:
+                position: [0, -20, 0]
+                rotation: [1, 0, 0, 0]
+                scale: [1, 1, 1]
+                worldPosition: [0, 0, 0]
+                worldRotation: [1, 0, 0, 0]
+                worldScale: [1, 1, 1]
+                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                visible: true
+                billboardRotation: [1, 0, 0, 0]
+                billboard: false
+                fakeBillboard: false
+                cylindricalBillboard: false
+              mesh:
+                enabled: true
+                submeshes:
+                  - material:
+                      baseColorFactor: [0.5, 0.35, 0.2, 1]
+                      metallicFactor: 1
+                      roughnessFactor: 1
+                      alphaCutoff: 0.5
+                      foliageTransmission: 0
+                      alphaMode: AUTO
+                      emissiveFactor: [0, 0, 0]
+                      baseColorTexture:
+                        textureType: 2D
+                        source: path
+                        path: sprites/ground.png
+                        guid: 6da86ed364ad55ac29447a0999cd2f23
+                        minFilter: linear
+                        magFilter: linear
+                        wrapU: clamp_to_edge
+                        wrapV: clamp_to_edge
+                        releaseDataAfterLoad: true
+                      baseColorTexCoord: 0
+                      metallicRoughnessTexCoord: 0
+                      occlusionTexCoord: 0
+                      emissiveTexCoord: 0
+                      normalTexCoord: 0
+                      name: ""
+                    textureRect: [0, 0, 1, 1]
+                    primitiveType: triangles
+                    vertexCount: 6
+                    faceCulling: false
+                    textureShadow: false
+                    hasTexCoord1: false
+                    hasTexCoord2: false
+                    hasNormalMap: false
+                    hasTangent: false
+                    hasVertexColor3: false
+                    hasVertexColor4: false
+                    hasTextureRect: true
+                    hasSkinning: false
+                    hasMorphTarget: false
+                    hasMorphNormal: false
+                    hasMorphTangent: false
+                normAdjustJoint: 1
+                normAdjustWeight: 1
+                morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+                aabb:
+                  min: [0, 0, 0]
+                  max: [0, 0, 0]
+                verticesAABB:
+                  min: [0, 0, 0]
+                  max: [0, 0, 0]
+                worldAABB:
+                  min: [0, 0, 0]
+                  max: [0, 0, 0]
+                receiveLights: false
+                receiveIBL: false
+                castShadows: false
+                receiveShadows: false
+                lodEnabled: true
+                lodBias: 1
+                renderInReflectionProbes: true
+                shadowsBillboard: true
+                transparent: true
+                autoTransparency: true
+                cullingMode: back
+                windingOrder: ccw
+              sprite:
+                enabled: true
+                width: 80
+                height: 40
+                automaticFlipY: true
+                flipY: true
+                textureScaleFactor: 0
+                pivotPreset: bottom_center
+          - type: Entity
+            entity: 1005
+            name: Rope
+            components:
+              transform:
+                position: [-60, 100, 0]
+                rotation: [1, 0, 0, 0]
+                scale: [1, 1, 1]
+                worldPosition: [0, 0, 0]
+                worldRotation: [1, 0, 0, 0]
+                worldScale: [1, 1, 1]
+                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                visible: true
+                billboardRotation: [1, 0, 0, 0]
+                billboard: false
+                fakeBillboard: false
+                cylindricalBillboard: false
+          - type: Entity
+            entity: 1015
+            name: Lens
+            components:
+              transform:
+                position: [40, 20, 0]
+                rotation: [1, 0, 0, 0]
+                scale: [1, 1, 1]
+                worldPosition: [0, 0, 0]
+                worldRotation: [1, 0, 0, 0]
+                worldScale: [1, 1, 1]
+                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                visible: true
+                billboardRotation: [1, 0, 0, 0]
+                billboard: false
+                fakeBillboard: false
+                cylindricalBillboard: false
+              script:
+                scripts:
+                  - type: lua
+                    path: Watcher.lua
+                    pathGuid: ccd7df9d83cc824fe794a4ec25ed9dc7
+                    className: Watcher
+                    enabled: true
+                    properties:
+                      - name: target
+                        displayName: Target
+                        type: EntityReference
+                        ptrTypeName: Sprite
+                        value: 0
+                        defaultValue: 0
+          - type: Entity
+            entity: 1006
+            name: Branch
+            components:
+              transform:
+                position: [120, 150, 0]
+                rotation: [1, 0, 0, 0]
+                scale: [1, 1, 1]
+                worldPosition: [0, 0, 0]
+                worldRotation: [1, 0, 0, 0]
+                worldScale: [1, 1, 1]
+                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                visible: true
+                billboardRotation: [1, 0, 0, 0]
+                billboard: false
+                fakeBillboard: false
+                cylindricalBillboard: false
+              mesh:
+                enabled: true
+                submeshes:
+                  - material:
+                      baseColorFactor: [0.7, 0.5, 0.3, 1]
+                      metallicFactor: 1
+                      roughnessFactor: 1
+                      alphaCutoff: 0.5
+                      foliageTransmission: 0
+                      alphaMode: AUTO
+                      emissiveFactor: [0, 0, 0]
+                      baseColorTexture:
+                        textureType: 2D
+                        source: path
+                        path: sprites/rock-down.png
+                        guid: 1035926b6b910eaf387e747d96dba4e8
+                        minFilter: linear
+                        magFilter: linear
+                        wrapU: clamp_to_edge
+                        wrapV: clamp_to_edge
+                        releaseDataAfterLoad: true
+                      baseColorTexCoord: 0
+                      metallicRoughnessTexCoord: 0
+                      occlusionTexCoord: 0
+                      emissiveTexCoord: 0
+                      normalTexCoord: 0
+                      name: ""
+                    textureRect: [0, 0, 1, 1]
+                    primitiveType: triangles
+                    vertexCount: 6
+                    faceCulling: false
+                    textureShadow: false
+                    hasTexCoord1: false
+                    hasTexCoord2: false
+                    hasNormalMap: false
+                    hasTangent: false
+                    hasVertexColor3: false
+                    hasVertexColor4: false
+                    hasTextureRect: true
+                    hasSkinning: false
+                    hasMorphTarget: false
+                    hasMorphNormal: false
+                    hasMorphTangent: false
+                normAdjustJoint: 1
+                normAdjustWeight: 1
+                morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+                aabb:
+                  min: [0, 0, 0]
+                  max: [0, 0, 0]
+                verticesAABB:
+                  min: [0, 0, 0]
+                  max: [0, 0, 0]
+                worldAABB:
+                  min: [0, 0, 0]
+                  max: [0, 0, 0]
+                receiveLights: false
+                receiveIBL: false
+                castShadows: false
+                receiveShadows: false
+                lodEnabled: true
+                lodBias: 1
+                renderInReflectionProbes: true
+                shadowsBillboard: true
+                transparent: true
+                autoTransparency: true
+                cullingMode: back
+                windingOrder: ccw
+              sprite:
+                enabled: true
+                width: 60
+                height: 140
+                automaticFlipY: true
+                flipY: true
+                textureScaleFactor: 0
+                pivotPreset: bottom_center
+            children:
+              - type: Entity
+                entity: 1007
+                name: Twig
+                components:
+                  transform:
+                    position: [60, 40, 0]
+                    rotation: [1, 0, 0, 0]
+                    scale: [1, 1, 1]
+                    worldPosition: [0, 0, 0]
+                    worldRotation: [1, 0, 0, 0]
+                    worldScale: [1, 1, 1]
+                    localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                    modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                    normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                    visible: true
+                    billboardRotation: [1, 0, 0, 0]
+                    billboard: false
+                    fakeBillboard: false
+                    cylindricalBillboard: false
+                  mesh:
+                    enabled: true
+                    submeshes:
+                      - material:
+                          baseColorFactor: [1, 1, 1, 1]
+                          metallicFactor: 1
+                          roughnessFactor: 1
+                          alphaCutoff: 0.5
+                          foliageTransmission: 0
+                          alphaMode: AUTO
+                          emissiveFactor: [0, 0, 0]
+                          baseColorTexture:
+                            textureType: 2D
+                            source: path
+                            path: sprites/rock.png
+                            guid: 3d7db38a9143846dc003c29c55eb5c4e
+                            minFilter: linear
+                            magFilter: linear
+                            wrapU: clamp_to_edge
+                            wrapV: clamp_to_edge
+                            releaseDataAfterLoad: true
+                          baseColorTexCoord: 0
+                          metallicRoughnessTexCoord: 0
+                          occlusionTexCoord: 0
+                          emissiveTexCoord: 0
+                          normalTexCoord: 0
+                          name: ""
+                        textureRect: [0, 0, 1, 1]
+                        primitiveType: triangles
+                        vertexCount: 6
+                        faceCulling: false
+                        textureShadow: false
+                        hasTexCoord1: false
+                        hasTexCoord2: false
+                        hasNormalMap: false
+                        hasTangent: false
+                        hasVertexColor3: false
+                        hasVertexColor4: false
+                        hasTextureRect: true
+                        hasSkinning: false
+                        hasMorphTarget: false
+                        hasMorphNormal: false
+                        hasMorphTangent: false
+                    normAdjustJoint: 1
+                    normAdjustWeight: 1
+                    morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+                    aabb:
+                      min: [0, 0, 0]
+                      max: [0, 0, 0]
+                    verticesAABB:
+                      min: [0, 0, 0]
+                      max: [0, 0, 0]
+                    worldAABB:
+                      min: [0, 0, 0]
+                      max: [0, 0, 0]
+                    receiveLights: false
+                    receiveIBL: false
+                    castShadows: false
+                    receiveShadows: false
+                    lodEnabled: true
+                    lodBias: 1
+                    renderInReflectionProbes: true
+                    shadowsBillboard: true
+                    transparent: true
+                    autoTransparency: true
+                    cullingMode: back
+                    windingOrder: ccw
+                  sprite:
+                    enabled: true
+                    width: 30
+                    height: 80
+                    automaticFlipY: true
+                    flipY: true
+                    textureScaleFactor: 0
+                    pivotPreset: bottom_center
+              - type: Entity
+                entity: 1008
+                name: Screen
+                components:
+                  transform:
+                    position: [-80, 40, 0]
+                    rotation: [1, 0, 0, 0]
+                    scale: [1, 1, 1]
+                    worldPosition: [0, 0, 0]
+                    worldRotation: [1, 0, 0, 0]
+                    worldScale: [1, 1, 1]
+                    localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                    modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                    normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                    visible: true
+                    billboardRotation: [1, 0, 0, 0]
+                    billboard: false
+                    fakeBillboard: false
+                    cylindricalBillboard: false
+                  mesh:
+                    enabled: true
+                    submeshes:
+                      - material:
+                          baseColorFactor: [1, 1, 1, 1]
+                          metallicFactor: 1
+                          roughnessFactor: 1
+                          alphaCutoff: 0.5
+                          foliageTransmission: 0
+                          alphaMode: AUTO
+                          emissiveFactor: [0, 0, 0]
+                          baseColorTexture:
+                            textureType: 2D
+                            source: path
+                            path: sprites/ground.png
+                            guid: 6da86ed364ad55ac29447a0999cd2f23
+                            minFilter: linear
+                            magFilter: linear
+                            wrapU: clamp_to_edge
+                            wrapV: clamp_to_edge
+                            releaseDataAfterLoad: true
+                          baseColorTexCoord: 0
+                          metallicRoughnessTexCoord: 0
+                          occlusionTexCoord: 0
+                          emissiveTexCoord: 0
+                          normalTexCoord: 0
+                          name: ""
+                        textureRect: [0, 0, 1, 1]
+                        primitiveType: triangles
+                        vertexCount: 6
+                        faceCulling: false
+                        textureShadow: false
+                        hasTexCoord1: false
+                        hasTexCoord2: false
+                        hasNormalMap: false
+                        hasTangent: false
+                        hasVertexColor3: false
+                        hasVertexColor4: false
+                        hasTextureRect: true
+                        hasSkinning: false
+                        hasMorphTarget: false
+                        hasMorphNormal: false
+                        hasMorphTangent: false
+                    normAdjustJoint: 1
+                    normAdjustWeight: 1
+                    morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+                    aabb:
+                      min: [0, 0, 0]
+                      max: [0, 0, 0]
+                    verticesAABB:
+                      min: [0, 0, 0]
+                      max: [0, 0, 0]
+                    worldAABB:
+                      min: [0, 0, 0]
+                      max: [0, 0, 0]
+                    receiveLights: false
+                    receiveIBL: false
+                    castShadows: false
+                    receiveShadows: false
+                    lodEnabled: true
+                    lodBias: 1
+                    renderInReflectionProbes: true
+                    shadowsBillboard: true
+                    transparent: true
+                    autoTransparency: true
+                    cullingMode: back
+                    windingOrder: ccw
+                  sprite:
+                    enabled: true
+                    width: 120
+                    height: 40
+                    automaticFlipY: true
+                    flipY: true
+                    textureScaleFactor: 0
+                    pivotPreset: bottom_center
+              - type: Entity
+                entity: 1014
+                name: Eye
+                components:
+                  transform:
+                    position: [-30, 20, 0]
+                    rotation: [1, 0, 0, 0]
+                    scale: [1, 1, 1]
+                    worldPosition: [0, 0, 0]
+                    worldRotation: [1, 0, 0, 0]
+                    worldScale: [1, 1, 1]
+                    localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                    modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                    normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                    visible: true
+                    billboardRotation: [1, 0, 0, 0]
+                    billboard: false
+                    fakeBillboard: false
+                    cylindricalBillboard: false
+                  script:
+                    scripts:
+                      - type: lua
+                        path: Watcher.lua
+                        pathGuid: ccd7df9d83cc824fe794a4ec25ed9dc7
+                        className: Watcher
+                        enabled: true
+                        properties:
+                          - name: target
+                            displayName: Target
+                            type: EntityReference
+                            ptrTypeName: Sprite
+                            value: 0
+                            defaultValue: 0
+              - type: Entity
+                entity: 1009
+                name: Leaf
+                components:
+                  transform:
+                    position: [0, 180, 0]
+                    rotation: [1, 0, 0, 0]
+                    scale: [1, 1, 1]
+                    worldPosition: [0, 0, 0]
+                    worldRotation: [1, 0, 0, 0]
+                    worldScale: [1, 1, 1]
+                    localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                    modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                    normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                    visible: true
+                    billboardRotation: [1, 0, 0, 0]
+                    billboard: false
+                    fakeBillboard: false
+                    cylindricalBillboard: false
+                  mesh:
+                    enabled: true
+                    submeshes:
+                      - material:
+                          baseColorFactor: [0.4, 1, 0.4, 1]
+                          metallicFactor: 1
+                          roughnessFactor: 1
+                          alphaCutoff: 0.5
+                          foliageTransmission: 0
+                          alphaMode: AUTO
+                          emissiveFactor: [0, 0, 0]
+                          baseColorTexture:
+                            textureType: 2D
+                            source: path
+                            path: sprites/plane-sheet.png
+                            guid: a24fdc2bf2f6147f4b94acb3faf772da
+                            minFilter: linear
+                            magFilter: linear
+                            wrapU: clamp_to_edge
+                            wrapV: clamp_to_edge
+                            releaseDataAfterLoad: true
+                          baseColorTexCoord: 0
+                          metallicRoughnessTexCoord: 0
+                          occlusionTexCoord: 0
+                          emissiveTexCoord: 0
+                          normalTexCoord: 0
+                          name: ""
+                        textureRect: [0, 0, 1, 1]
+                        primitiveType: triangles
+                        vertexCount: 6
+                        faceCulling: false
+                        textureShadow: false
+                        hasTexCoord1: false
+                        hasTexCoord2: false
+                        hasNormalMap: false
+                        hasTangent: false
+                        hasVertexColor3: false
+                        hasVertexColor4: false
+                        hasTextureRect: true
+                        hasSkinning: false
+                        hasMorphTarget: false
+                        hasMorphNormal: false
+                        hasMorphTangent: false
+                    normAdjustJoint: 1
+                    normAdjustWeight: 1
+                    morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+                    aabb:
+                      min: [0, 0, 0]
+                      max: [0, 0, 0]
+                    verticesAABB:
+                      min: [0, 0, 0]
+                      max: [0, 0, 0]
+                    worldAABB:
+                      min: [0, 0, 0]
+                      max: [0, 0, 0]
+                    receiveLights: false
+                    receiveIBL: false
+                    castShadows: false
+                    receiveShadows: false
+                    lodEnabled: true
+                    lodBias: 1
+                    renderInReflectionProbes: true
+                    shadowsBillboard: true
+                    transparent: true
+                    autoTransparency: true
+                    cullingMode: back
+                    windingOrder: ccw
+                  sprite:
+                    enabled: true
+                    width: 88
+                    height: 73
+                    automaticFlipY: true
+                    flipY: true
+                    textureScaleFactor: 0
+                    pivotPreset: bottom_center
+                children:
+                  - type: Entity
+                    entity: 1010
+                    name: Petal
+                    components:
+                      transform:
+                        position: [60, 0, 0]
+                        rotation: [1, 0, 0, 0]
+                        scale: [1, 1, 1]
+                        worldPosition: [0, 0, 0]
+                        worldRotation: [1, 0, 0, 0]
+                        worldScale: [1, 1, 1]
+                        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                        visible: true
+                        billboardRotation: [1, 0, 0, 0]
+                        billboard: false
+                        fakeBillboard: false
+                        cylindricalBillboard: false
+                      mesh:
+                        enabled: true
+                        submeshes:
+                          - material:
+                              baseColorFactor: [1, 0.6, 0.8, 1]
+                              metallicFactor: 1
+                              roughnessFactor: 1
+                              alphaCutoff: 0.5
+                              foliageTransmission: 0
+                              alphaMode: AUTO
+                              emissiveFactor: [0, 0, 0]
+                              baseColorTexture:
+                                textureType: 2D
+                                source: path
+                                path: sprites/rock.png
+                                guid: 3d7db38a9143846dc003c29c55eb5c4e
+                                minFilter: linear
+                                magFilter: linear
+                                wrapU: clamp_to_edge
+                                wrapV: clamp_to_edge
+                                releaseDataAfterLoad: true
+                              baseColorTexCoord: 0
+                              metallicRoughnessTexCoord: 0
+                              occlusionTexCoord: 0
+                              emissiveTexCoord: 0
+                              normalTexCoord: 0
+                              name: ""
+                            textureRect: [0, 0, 1, 1]
+                            primitiveType: triangles
+                            vertexCount: 6
+                            faceCulling: false
+                            textureShadow: false
+                            hasTexCoord1: false
+                            hasTexCoord2: false
+                            hasNormalMap: false
+                            hasTangent: false
+                            hasVertexColor3: false
+                            hasVertexColor4: false
+                            hasTextureRect: true
+                            hasSkinning: false
+                            hasMorphTarget: false
+                            hasMorphNormal: false
+                            hasMorphTangent: false
+                        normAdjustJoint: 1
+                        normAdjustWeight: 1
+                        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+                        aabb:
+                          min: [0, 0, 0]
+                          max: [0, 0, 0]
+                        verticesAABB:
+                          min: [0, 0, 0]
+                          max: [0, 0, 0]
+                        worldAABB:
+                          min: [0, 0, 0]
+                          max: [0, 0, 0]
+                        receiveLights: false
+                        receiveIBL: false
+                        castShadows: false
+                        receiveShadows: false
+                        lodEnabled: true
+                        lodBias: 1
+                        renderInReflectionProbes: true
+                        shadowsBillboard: true
+                        transparent: true
+                        autoTransparency: true
+                        cullingMode: back
+                        windingOrder: ccw
+                      sprite:
+                        enabled: true
+                        width: 30
+                        height: 60
+                        automaticFlipY: true
+                        flipY: true
+                        textureScaleFactor: 0
+                        pivotPreset: bottom_center
+                  - type: Entity
+                    entity: 1011
+                    name: Bud
+                    components:
+                      transform:
+                        position: [-60, 0, 0]
+                        rotation: [1, 0, 0, 0]
+                        scale: [1, 1, 1]
+                        worldPosition: [0, 0, 0]
+                        worldRotation: [1, 0, 0, 0]
+                        worldScale: [1, 1, 1]
+                        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                        visible: true
+                        billboardRotation: [1, 0, 0, 0]
+                        billboard: false
+                        fakeBillboard: false
+                        cylindricalBillboard: false
+                      mesh:
+                        enabled: true
+                        submeshes:
+                          - material:
+                              baseColorFactor: [1, 1, 0.4, 1]
+                              metallicFactor: 1
+                              roughnessFactor: 1
+                              alphaCutoff: 0.5
+                              foliageTransmission: 0
+                              alphaMode: AUTO
+                              emissiveFactor: [0, 0, 0]
+                              baseColorTexture:
+                                textureType: 2D
+                                source: path
+                                path: sprites/rock.png
+                                guid: 3d7db38a9143846dc003c29c55eb5c4e
+                                minFilter: linear
+                                magFilter: linear
+                                wrapU: clamp_to_edge
+                                wrapV: clamp_to_edge
+                                releaseDataAfterLoad: true
+                              baseColorTexCoord: 0
+                              metallicRoughnessTexCoord: 0
+                              occlusionTexCoord: 0
+                              emissiveTexCoord: 0
+                              normalTexCoord: 0
+                              name: ""
+                            textureRect: [0, 0, 1, 1]
+                            primitiveType: triangles
+                            vertexCount: 6
+                            faceCulling: false
+                            textureShadow: false
+                            hasTexCoord1: false
+                            hasTexCoord2: false
+                            hasNormalMap: false
+                            hasTangent: false
+                            hasVertexColor3: false
+                            hasVertexColor4: false
+                            hasTextureRect: true
+                            hasSkinning: false
+                            hasMorphTarget: false
+                            hasMorphNormal: false
+                            hasMorphTangent: false
+                        normAdjustJoint: 1
+                        normAdjustWeight: 1
+                        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+                        aabb:
+                          min: [0, 0, 0]
+                          max: [0, 0, 0]
+                        verticesAABB:
+                          min: [0, 0, 0]
+                          max: [0, 0, 0]
+                        worldAABB:
+                          min: [0, 0, 0]
+                          max: [0, 0, 0]
+                        receiveLights: false
+                        receiveIBL: false
+                        castShadows: false
+                        receiveShadows: false
+                        lodEnabled: true
+                        lodBias: 1
+                        renderInReflectionProbes: true
+                        shadowsBillboard: true
+                        transparent: true
+                        autoTransparency: true
+                        cullingMode: back
+                        windingOrder: ccw
+                      sprite:
+                        enabled: true
+                        width: 20
+                        height: 40
+                        automaticFlipY: true
+                        flipY: true
+                        textureScaleFactor: 0
+                        pivotPreset: bottom_center
+                      action:
+                        state: Stopped
+                        speed: 1
+                        target: 0
+                        ownedTarget: false
+                  - type: Entity
+                    entity: 1013
+                    name: Thorn
+                    components:
+                      transform:
+                        position: [0, -40, 0]
+                        rotation: [1, 0, 0, 0]
+                        scale: [1, 1, 1]
+                        worldPosition: [0, 0, 0]
+                        worldRotation: [1, 0, 0, 0]
+                        worldScale: [1, 1, 1]
+                        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                        visible: true
+                        billboardRotation: [1, 0, 0, 0]
+                        billboard: false
+                        fakeBillboard: false
+                        cylindricalBillboard: false
+                      mesh:
+                        enabled: true
+                        submeshes:
+                          - material:
+                              baseColorFactor: [1, 1, 1, 1]
+                              metallicFactor: 1
+                              roughnessFactor: 1
+                              alphaCutoff: 0.5
+                              foliageTransmission: 0
+                              alphaMode: AUTO
+                              emissiveFactor: [0, 0, 0]
+                              baseColorTexture:
+                                textureType: 2D
+                                source: path
+                                path: sprites/rock-down.png
+                                guid: 1035926b6b910eaf387e747d96dba4e8
+                                minFilter: linear
+                                magFilter: linear
+                                wrapU: clamp_to_edge
+                                wrapV: clamp_to_edge
+                                releaseDataAfterLoad: true
+                              baseColorTexCoord: 0
+                              metallicRoughnessTexCoord: 0
+                              occlusionTexCoord: 0
+                              emissiveTexCoord: 0
+                              normalTexCoord: 0
+                              name: ""
+                            textureRect: [0, 0, 1, 1]
+                            primitiveType: triangles
+                            vertexCount: 6
+                            faceCulling: false
+                            textureShadow: false
+                            hasTexCoord1: false
+                            hasTexCoord2: false
+                            hasNormalMap: false
+                            hasTangent: false
+                            hasVertexColor3: false
+                            hasVertexColor4: false
+                            hasTextureRect: true
+                            hasSkinning: false
+                            hasMorphTarget: false
+                            hasMorphNormal: false
+                            hasMorphTangent: false
+                        normAdjustJoint: 1
+                        normAdjustWeight: 1
+                        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+                        aabb:
+                          min: [0, 0, 0]
+                          max: [0, 0, 0]
+                        verticesAABB:
+                          min: [0, 0, 0]
+                          max: [0, 0, 0]
+                        worldAABB:
+                          min: [0, 0, 0]
+                          max: [0, 0, 0]
+                        receiveLights: false
+                        receiveIBL: false
+                        castShadows: false
+                        receiveShadows: false
+                        lodEnabled: true
+                        lodBias: 1
+                        renderInReflectionProbes: true
+                        shadowsBillboard: true
+                        transparent: true
+                        autoTransparency: true
+                        cullingMode: back
+                        windingOrder: ccw
+                      sprite:
+                        enabled: true
+                        width: 20
+                        height: 30
+                        automaticFlipY: true
+                        flipY: true
+                        textureScaleFactor: 0
+                        pivotPreset: bottom_center
+                  - type: Entity
+                    entity: 1012
+                    name: LeafCam
+                    components:
+                      transform:
+                        position: [0, 0, 0]
+                        rotation: [1, 0, 0, 0]
+                        scale: [1, 1, 1]
+                        worldPosition: [0, 0, 0]
+                        worldRotation: [1, 0, 0, 0]
+                        worldScale: [1, 1, 1]
+                        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                        visible: true
+                        billboardRotation: [1, 0, 0, 0]
+                        billboard: false
+                        fakeBillboard: false
+                        cylindricalBillboard: false
+                      camera:
+                        enabled: true
+                        type: camera_2d
+                        cullingMask: 4294967295
+                        target: [0, 0, 0]
+                        up: [0, 1, 0]
+                        leftClip: 0
+                        rightClip: 10
+                        bottomClip: 0
+                        topClip: 10
+                        yfov: 0.75
+                        aspect: 1
+                        nearClip: -10
+                        farClip: 10
+                        renderToTexture: true
+                        transparentSort: true
+                        depthTest: true
+                        useTarget: true
+                        autoResize: true
+                        framebufferWidth: 256
+                        framebufferHeight: 256
+                        framebufferFilter: linear
+  - type: Entity
+    entity: 1020
+    name: Pointer
+    components:
+      action:
+        state: Stopped
+        speed: 1
+        target: 0
+        ownedTarget: false
+  - type: Entity
+    entity: 1021
+    name: Cross
+    components:
+      action:
+        state: Stopped
+        speed: 1
+        target: 0
+        ownedTarget: false
+  - type: Entity
+    entity: 1022
+    name: Field
+    components:
+      transform:
+        position: [900, 30, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: sprites/ground.png
+                guid: 6da86ed364ad55ac29447a0999cd2f23
+                minFilter: linear
+                magFilter: linear
+                wrapU: clamp_to_edge
+                wrapV: clamp_to_edge
+                releaseDataAfterLoad: true
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 6
+            faceCulling: false
+            textureShadow: false
+            hasTexCoord1: false
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: false
+            hasTextureRect: true
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [0, 0, 0]
+          max: [0, 0, 0]
+        verticesAABB:
+          min: [0, 0, 0]
+          max: [0, 0, 0]
+        worldAABB:
+          min: [0, 0, 0]
+          max: [0, 0, 0]
+        receiveLights: false
+        receiveIBL: false
+        castShadows: false
+        receiveShadows: false
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: true
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      sprite:
+        enabled: true
+        width: 300
+        height: 30
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: bottom_center
+  - type: Entity
+    entity: 1023
+    name: Spy
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      script:
+        scripts:
+          - type: lua
+            path: Watcher.lua
+            pathGuid: ccd7df9d83cc824fe794a4ec25ed9dc7
+            className: Watcher
+            enabled: true
+            properties:
+              - name: target
+                displayName: Target
+                type: EntityReference
+                ptrTypeName: Sprite
+                value: 0
+                defaultValue: 0
+  - type: Entity
+    entity: 1024
+    name: Spy2
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      script:
+        scripts:
+          - type: lua
+            path: Watcher.lua
+            pathGuid: ccd7df9d83cc824fe794a4ec25ed9dc7
+            className: Watcher
+            enabled: true
+            properties:
+              - name: target
+                displayName: Target
+                type: EntityReference
+                ptrTypeName: Sprite
+                value: 0
+                defaultValue: 0
+gravity2D:
+  - 0
+  - 0
