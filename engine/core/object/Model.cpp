@@ -12,10 +12,7 @@
 #include "animation/AnimationPlayerRuntime.h"
 #include "animation/ModelSubClips.h"
 
-#include "tiny_gltf.h"
-
 #include <algorithm>
-#include <mutex>
 
 using namespace jasperengine;
 
@@ -50,18 +47,26 @@ static void fadeOutModelAnimations(Scene* scene, const ModelComponent& model, En
 
 // The entity animation of the model named `name` (-1 when none). The names the Inspector shows
 // come first: the sub-clip names of the file's animations (the second of two glTF animations
-// both named "Wave" is "Wave 2"; an entity renamed since keeps its file name there). Then, as
-// before, its entity name (the first of that name), and the sub-clip names of the entity names
-// (the only names without the parse, or when the counts differ).
+// both named "Wave" is "Wave 2"; an entity renamed since keeps its file name there), which
+// loadGLTF keeps on the component (no pooled-glTF lock here: a call never waits for another
+// model's load). Then, as before, its entity name (the first of that name), and the sub-clip
+// names of the entity names (the only names without a glTF parse, or when the counts differ).
 static int findModelAnimationIndex(Scene* scene, const ModelComponent& model, const std::string& name){
-    std::vector<std::string> entityNames(model.animations.size());
-    for (int i = 0; i < (int)model.animations.size(); i++){
+    const size_t count = model.animations.size();
+    auto valid = [&](size_t i){
         Entity animEntity = model.animations[i];
-        if (animEntity == NULL_ENTITY || !scene->isEntityCreated(animEntity) ||
-            !scene->getSignature(animEntity).test(scene->getComponentId<AnimationComponent>()))
-            continue;
-        // the loader names an unnamed animation "Animation <i>" itself: a valid entity's name is never empty
-        entityNames[i] = scene->getEntityName(animEntity);
+        return animEntity != NULL_ENTITY && scene->isEntityCreated(animEntity) &&
+               scene->getSignature(animEntity).test(scene->getComponentId<AnimationComponent>());
+    };
+    if (model.animationClipNames.size() == count){
+        for (size_t i = 0; i < count; i++){
+            if (model.animationClipNames[i] == name && valid(i)) return (int)i;
+        }
+    }
+    // the loader names an unnamed animation "Animation <i>" itself: a valid entity's name is never empty
+    std::vector<std::string> entityNames(count);
+    for (size_t i = 0; i < count; i++){
+        if (valid(i)) entityNames[i] = scene->getEntityName(model.animations[i]);
     }
     auto find = [&](const std::vector<std::string>& names){
         for (int i = 0; i < (int)names.size(); i++){
@@ -69,19 +74,6 @@ static int findModelAnimationIndex(Scene* scene, const ModelComponent& model, co
         }
         return -1;
     };
-    if (model.gltfModel){
-        std::vector<std::string> fileNames;
-        {
-            std::lock_guard<std::recursive_mutex> lock(MeshSystem::getPooledGLTFMutex());
-            if (model.gltfModel->animations.size() == model.animations.size()){
-                for (const tinygltf::Animation& animation : model.gltfModel->animations) fileNames.push_back(animation.name);
-            }
-        }
-        if (!fileNames.empty()){
-            const int index = find(anim::subClipNames(fileNames));
-            if (index >= 0) return index;
-        }
-    }
     const int index = find(entityNames);
     return index >= 0 ? index : find(anim::subClipNames(entityNames));
 }

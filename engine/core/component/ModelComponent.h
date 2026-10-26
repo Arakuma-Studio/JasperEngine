@@ -50,6 +50,11 @@ namespace jasperengine{
         std::map<std::string, int> morphNameMapping;
 
         std::vector<Entity> animations;
+        // The sub-clip names of the file's glTF animations, in file order (anim::subClipNames:
+        // the second "Wave" is "Wave 2"), set by loadGLTF while it holds the pooled-glTF lock and
+        // cleared with the parse: Model::playAnimation / findAnimation read these instead of the
+        // shared tinygltf::Model, so they never wait for another model's load
+        std::vector<std::string> animationClipNames;
 
         std::string filename;
 

@@ -40,6 +40,7 @@
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <mutex>
 #include <thread>
 
 using namespace jasperengine;
@@ -724,6 +725,45 @@ TEST(ModelSubClips, ModelFindsDuplicateAnimationNamesByTheirSubClipNames){
     EXPECT_EQ(model.findAnimation("Walk").getEntity(), animations[0]);
     scene.setEntityName(animations[0], "Walk");
     scene.setEntityName(animations[3], "Wave");
+}
+
+// F2 (final review I1): the names findAnimation / playAnimation look up are kept on the component
+// by loadGLTF, so a lookup never takes the pooled-glTF lock that a model loading on another
+// thread holds for its whole build
+TEST(ModelSubClips, FindAnimationDoesNotWaitForAnotherModelsLoad){
+    Scene scene;
+    Model model(&scene);
+    ASSERT_TRUE(model.loadModel(fixturePath("hero_animated.gltf")));
+    const ModelComponent& component = scene.getComponent<ModelComponent>(model.getEntity());
+    ASSERT_TRUE(ModelPool::getGLTF(MeshSystem::getModelFilenameKey(fixturePath("hero_animated.gltf"))) == component.gltfModel)
+        << "the pooled parse, the one loads lock";
+    EXPECT_EQ(component.animationClipNames, (std::vector<std::string>{"Walk", "Idle", "Animation 2", "Wave", "Wave 2"}));
+    const std::vector<Entity> animations = component.animations;
+
+    // a loader thread holds the lock (as MeshSystem::loadGLTF of a pooled model does) until released
+    std::atomic<bool> locked{false};
+    std::atomic<bool> release{false};
+    std::thread loader([&](){
+        std::lock_guard<std::recursive_mutex> lock(MeshSystem::getPooledGLTFMutex());
+        locked = true;
+        const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while (!release && std::chrono::steady_clock::now() < until) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    });
+    while (!locked) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    const auto start = std::chrono::steady_clock::now();
+    const Entity wave2 = model.findAnimation("Wave 2").getEntity();
+    model.playAnimation("Walk", 0.0f);
+    const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    release = true;
+    loader.join();
+    EXPECT_EQ(wave2, animations[4]);
+    const ActionComponent& walk = scene.getComponent<ActionComponent>(animations[0]);
+    EXPECT_TRUE(walk.startTrigger || walk.state == ActionState::Running);
+    EXPECT_LT(seconds, 5.0) << "the lookups waited for the loader's lock";
+
+    // the names go with the parse
+    scene.getSystem<MeshSystem>()->destroyModel(scene.getComponent<ModelComponent>(model.getEntity()));
+    EXPECT_TRUE(scene.getComponent<ModelComponent>(model.getEntity()).animationClipNames.empty());
 }
 
 // Blend shape weights and model (re)loads (MeshComponent::morphWeightsSet): a freshly loaded model

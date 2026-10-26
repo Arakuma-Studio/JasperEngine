@@ -6,6 +6,7 @@
 #include "Scene.h"
 #include "Engine.h"
 #include "System.h"
+#include "animation/ModelSubClips.h"
 #include "buffer/InterleavedBuffer.h"
 #include "io/FileData.h"
 #include "io/Data.h"
@@ -4797,6 +4798,15 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         pooledModelLock = std::unique_lock<std::recursive_mutex>(getPooledGLTFMutex());
     }
 
+    // the animations' sub-clip names, read here under the lock once: Model::findAnimation looks
+    // names up from these, without the lock (loads never change the animations array)
+    {
+        std::vector<std::string> animationNames;
+        animationNames.reserve(model.gltfModel->animations.size());
+        for (const tinygltf::Animation& animation : model.gltfModel->animations) animationNames.push_back(animation.name);
+        model.animationClipNames = anim::subClipNames(animationNames);
+    }
+
     // Build parent map and collect all nodes that own a mesh primitive.
     int meshNode    = -1; // first skinned mesh node — used for skeleton lookup
     std::vector<int> meshNodes;
@@ -6434,6 +6444,7 @@ void MeshSystem::destroyModel(ModelComponent& model){
     if (model.gltfModel){
         model.gltfModel.reset();
     }
+    model.animationClipNames.clear();
 
     if (model.objModel){
         model.objModel.reset();
