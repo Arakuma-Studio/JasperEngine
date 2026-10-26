@@ -282,11 +282,14 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 -s STACK_SIZE=4MB \
                 -s EXPORTED_FUNCTIONS=\"['_getScreenWidth','_getScreenHeight','_changeCanvasSize','_main']\" \
                 -s EXPORTED_RUNTIME_METHODS=\"['ccall', 'cwrap']\" \
+                --pre-js ${PLATFORM_ROOT}/crash_pre.js \
                 ${EM_PRELOAD_FILES} \
                 ${EM_ADDITIONAL_LINK_FLAGS} \
                 ${USE_PTHREADS} \
                 ${ALLOW_MEMORY_GROWTH} \
                 ${USE_WEBGL2}"
+            # the pre-js is read at link time: a change of it relinks
+            LINK_DEPENDS ${PLATFORM_ROOT}/crash_pre.js
         )
     endif()
 
@@ -908,6 +911,10 @@ set(JASPERENGINE_SRCS
     core/Engine.cpp
     core/Input.cpp
     core/Log.cpp
+    core/diag/CrashHandler.cpp
+    core/diag/CrashHandlerUnarmed.cpp
+    core/diag/CrashHandlerWeb.cpp
+    core/diag/HangWatchdog.cpp
     core/log/Logger.cpp
     core/log/LogFormat.cpp
     core/log/Backtrace.cpp

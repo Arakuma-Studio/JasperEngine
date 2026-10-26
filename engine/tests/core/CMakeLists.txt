@@ -19,10 +19,22 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(CORE_TEST_COUNTS_ALLOCATIONS ON)
 endif()
 
+# the process the crash-diagnostics tests start (engine/tests/crash/CrashTestMain.cpp): it
+# installs the crash handler on a report root of the test's own, then crashes, hangs or reports
+find_package(Threads REQUIRED)
+add_executable(jasperengine-crash-test ${CMAKE_CURRENT_SOURCE_DIR}/../crash/CrashTestMain.cpp)
+target_link_libraries(jasperengine-crash-test PRIVATE jasperengine Threads::Threads)
+jasperengine_apply_cxx_standard(jasperengine-crash-test)
+jasperengine_target_warnings(jasperengine-crash-test)
+set_target_properties(jasperengine-crash-test PROPERTIES FOLDER "tests")
+
 jasperengine_add_test_target(jasperengine-core-tests
     SOURCES ${CORE_TEST_SOURCES} ${CORE_TEST_ALLOCATION_COUNTER}
     INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/support
+    DEFINITIONS
+        JASPER_TEST_CRASH_TEST_BINARY="$<TARGET_FILE:jasperengine-crash-test>"
 )
+add_dependencies(jasperengine-core-tests jasperengine-crash-test)
 
 # a unit of its own: it redefines JASPERENGINE_PROFILER to 0 before the profiling macros
 jasperengine_skip_unity_build(

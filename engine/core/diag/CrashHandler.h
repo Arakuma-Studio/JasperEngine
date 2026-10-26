@@ -58,6 +58,8 @@ namespace jasperengine::diag::crash {
         size_t keepReports = 5;
         uint64_t keepBytes = 50ull << 20;
         int keepUnhandledDays = 0;
+        // Web: the page's "The game stopped working. [Reload]" overlay (crash_pre.js)
+        bool webOverlay = true;
     };
 
     // The editor's config: 256 KiB ring, 20 reports and 2 GiB kept, editor dumps
@@ -79,10 +81,9 @@ namespace jasperengine::diag::crash {
 
     // Once, on the main thread, as early as possible. Prepares the report folders, the session
     // marker, the ring and retention everywhere; arms a handler where this build has a backend
-    // (JASPERENGINE_CRASH_BACKEND: Windows and the web today). Returns whether one was armed: on
-    // Linux, macOS, Android and iOS the POSIX backend is not part of this build yet, nothing is
-    // armed, and the process keeps whatever handler it had (the editor's
-    // editor/util/CrashHandler).
+    // (the web's page hooks today). Returns whether one was armed: on Windows, Linux, macOS,
+    // Android and iOS the native backends are not part of this build yet, nothing is armed, and
+    // the process keeps whatever handler it had (the editor's editor/util/CrashHandler).
     JASPERENGINE_API bool install(const Config& config);
     JASPERENGINE_API bool isInstalled();
     // A clean exit: the session marker goes (an unclean one leaves it for the next start)

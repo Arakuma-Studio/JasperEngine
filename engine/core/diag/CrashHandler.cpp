@@ -921,20 +921,11 @@ namespace jasperengine::diag::crash {
     std::optional<DebugCrashRequest> debugCrashRequest() {
         std::string spec;
 #if defined(__EMSCRIPTEN__)
-        char* query = reinterpret_cast<char*>(EM_ASM_PTR({
-            var value = "";
-            try {
-                if (typeof location !== "undefined") {
-                    value = new URLSearchParams(location.search).get("jasperengine_debug_crash") || "";
-                }
-            } catch (e) {
-            }
-            return stringToNewUTF8(value);
-        }));
-        if (query) {
-            spec = query;
-            std::free(query);
-        }
+        // a static buffer of the runtime: copied at once
+        const char* query = emscripten_run_script_string(
+            "(function(){try{return new URLSearchParams(location.search).get('jasperengine_debug_crash')||''}"
+            "catch(e){return ''}})()");
+        if (query) spec = query;
 #else
         if (const char* env = std::getenv("JASPERENGINE_DEBUG_CRASH")) spec = env;
 #endif
