@@ -26,8 +26,9 @@ TEST(Photometry, Kelvin){
         const float ratio = color.z / color.x;
         // flat at 0 below 1900 K (no blue), rising from there
         EXPECT_GE(ratio, previousRatio) << kelvin;
-        if (kelvin > 2000.0f)
+        if (kelvin > 2000.0f) {
             EXPECT_GT(ratio, previousRatio) << kelvin;
+        }
         previousRatio = ratio;
     }
     // out of range clamps
