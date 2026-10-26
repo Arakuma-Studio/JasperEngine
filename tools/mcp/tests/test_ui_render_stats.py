@@ -98,6 +98,10 @@ async def test_render_stats(ed: Editor):
     ed.check(got["stencilDraws"] == 0, f"no stencil draw: {got}")
     ed.check(got["boxShadowTextures"] == 0, f"no box-shadow texture: {got}")
     ed.check(got["atlasBytes"] > 0 and got["atlasBytes"] % (1024 * 1024) == 0, f"R8 glyph pages of 1 MiB: {got}")
+    # S15's generic render stats carry the selected scene's HTML UI counters too (R27)
+    generic = await ed.call("get_render_stats")
+    html_ui = generic.get("html_ui", {})
+    ed.check(all(field in html_ui for field in FIELDS) and html_ui.get("drawCalls", 0) > 0, f"get_render_stats html_ui: {html_ui}")
 
 
 async def test_paint_and_raster(ed: Editor):
