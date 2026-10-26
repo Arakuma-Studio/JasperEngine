@@ -1,0 +1,10 @@
+{
+  "description": "tools/test-projects/particles (WEB_PROJECT=particles tools/build.sh web, and with WASM_SIMD=0 the scalar kernels): a curl-noise fire and a ribbon seeked to 2 s and held. The live counts and the state hashes are the same with the simd128 and the scalar kernels (bit-identical paths).",
+  "isolated": true,
+  "console": [
+    {
+      "text": "[gate] particles ",
+      "level": "log"
+    }
+  ]
+}
