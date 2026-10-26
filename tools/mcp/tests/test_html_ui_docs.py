@@ -285,7 +285,7 @@ async def test_guide_examples_table():
 
 # assert_ui's check types (HtmlUIAssertions' AssertKind, phase-4 spec 3.6.2)
 ASSERT_CHECK_TYPES = {"exists", "count", "visible", "text_fits", "no_overlap", "within_parent", "within_viewport", "contrast",
-                      "min_size"}
+                      "min_size", "virtual_window", "tooltip", "selected"}
 
 
 # ---------------------------------------------------------------------------- 2. html/css blocks (CLI)

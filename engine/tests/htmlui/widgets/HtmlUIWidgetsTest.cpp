@@ -634,6 +634,9 @@ TEST_F(HtmlUIWidgets, ServerBrowserExampleFlow){
     ASSERT_TRUE(head.isValid());
     const UIRect headRect = head.getBoundingClientRect();
     context()->ProcessMouseMove((int)(headRect.x + 3.0f), (int)(headRect.y + 3.0f), 0);
+    if (Rml::Element* hovered = context()->GetHoverElement())
+        std::fprintf(stderr, "[dbg] hover %s rect %.0f,%.0f %.0fx%.0f tooltip=%s inner=%s\n", hovered->GetAddress().c_str(), headRect.x, headRect.y, headRect.width, headRect.height,
+                     hovered->GetAttribute<Rml::String>("tooltip", "-").c_str(), head.getAttribute("tooltip").c_str());
     for (double t = 100.1; t < 101.2; t += 0.1){
         HtmlUIClock::setFixedTime(t);
         update();
