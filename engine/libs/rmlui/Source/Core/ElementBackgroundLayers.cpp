@@ -702,7 +702,15 @@ static bool MakeGradientTiles(RenderManager& render_manager, Element* element, B
 	const RenderBox clip_box = element->GetRenderBox(clip_area, box_index, false);
 	if (clip_box.HasBorderRadius())
 	{
-		// the shape the mask layer would cut: the clip box's fill area and its inner radii
+		// the shape the mask layer would cut: the clip box's fill area and its inner radii. Not under a border of gaps
+		// (dashed, dotted, ...): there the curve's edge shows, and the mask's coverage is the browsers' (BrowserParity
+		// paint/clip-padding-radius)
+		const ComputedValues& computed = element->GetComputedValues();
+		const Style::BorderStyle styles[] = {computed.border_top_style(), computed.border_right_style(), computed.border_bottom_style(),
+			computed.border_left_style()};
+		for (Style::BorderStyle style : styles)
+			if (style != Style::BorderStyle::None && style != Style::BorderStyle::Hidden && style != Style::BorderStyle::Solid)
+				return false;
 		if (!grid)
 			return false;
 		const BorderMetrics metrics = GeometryBackgroundBorder::ComputeBorderMetrics(clip_box.GetBorderOffset(), clip_box.GetBorderWidths(),
