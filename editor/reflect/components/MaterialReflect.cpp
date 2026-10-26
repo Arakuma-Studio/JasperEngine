@@ -46,7 +46,7 @@ namespace {
         JE_FIELD(MaterialPass, depthOffsetFactor, .updateFlags = kMeshReload),
         JE_FIELD(MaterialPass, depthOffsetUnits, .updateFlags = kMeshReload),
         JE_FIELD(MaterialPass, stencil, .structDesc = &kMaterialStencilStruct, .flags = ListWhole, .updateFlags = kMeshReload),
-        JE_FIELD(MaterialPass, colorWrite, .updateFlags = kMeshReload, .min = -1.0f, .max = 15.0f),
+        JE_FIELD(MaterialPass, colorWrite, .ops = &ops::ColorWrite, .updateFlags = kMeshReload, .min = -1.0f, .max = 15.0f),
         JE_FIELD(MaterialPass, order, .enumDesc = &enums::kMaterialPassOrder, .updateFlags = kMeshReload),
     };
 
@@ -96,7 +96,7 @@ namespace {
         JE_FIELD(Material, depthOffsetUnits, .updateFlags = kMeshReload),
         JE_FIELD(Material, sortPriority, .updateFlags = kMeshReload),
         JE_FIELD(Material, stencil, .structDesc = &kMaterialStencilStruct, .flags = ListWhole, .updateFlags = kMeshReload),
-        JE_FIELD(Material, colorWrite, .updateFlags = kMeshReload, .min = -1.0f, .max = 15.0f),
+        JE_FIELD(Material, colorWrite, .ops = &ops::ColorWrite, .updateFlags = kMeshReload, .min = -1.0f, .max = 15.0f),
         detail::makeField<MaterialPass>("extraPass", &extraPassRef,
                                         FieldMeta{.flags = ListWhole, .updateFlags = kMeshReload | kTexture | UpdateFlags_Shader_Uniforms}),
     };

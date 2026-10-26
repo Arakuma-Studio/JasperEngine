@@ -257,7 +257,7 @@ namespace {
         JE_FIELD(PointsComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kShaderReload),
         JE_FIELD(PointsComponent, depthWrite, .enumDesc = &enums::kMaterialDepthWrite, .updateFlags = kShaderReload),
         JE_FIELD(PointsComponent, stencil, .flags = ListWhole, .updateFlags = kShaderReload),
-        JE_FIELD(PointsComponent, colorWrite, .updateFlags = kShaderReload, .min = -1.0f, .max = 15.0f),
+        JE_FIELD(PointsComponent, colorWrite, .ops = &ops::ColorWrite, .updateFlags = kShaderReload, .min = -1.0f, .max = 15.0f),
         JE_FIELD(PointsComponent, points, .flags = ListWhole, .updateFlags = kPoints),
         JE_FIELD(PointsComponent, numFramesRect, .flags = ComponentOnly),
         JE_FIELD(PointsComponent, framesRect, .count = JE_COUNT(PointsComponent, numFramesRect)),
@@ -273,7 +273,7 @@ namespace {
         JE_FIELD(LineRendererComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kShaderReload),
         JE_FIELD(LineRendererComponent, depthWrite, .enumDesc = &enums::kMaterialDepthWrite, .updateFlags = kShaderReload),
         JE_FIELD(LineRendererComponent, stencil, .flags = ListWhole, .updateFlags = kShaderReload),
-        JE_FIELD(LineRendererComponent, colorWrite, .updateFlags = kShaderReload, .min = -1.0f, .max = 15.0f),
+        JE_FIELD(LineRendererComponent, colorWrite, .ops = &ops::ColorWrite, .updateFlags = kShaderReload, .min = -1.0f, .max = 15.0f),
         JE_FIELD(LineRendererComponent, lines, .flags = ListWhole, .updateFlags = kLines),
     };
 

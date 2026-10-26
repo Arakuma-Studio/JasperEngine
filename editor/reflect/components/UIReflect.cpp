@@ -304,7 +304,7 @@ namespace {
         JE_FIELD(UIComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kShaderReload),
         JE_FIELD(UIComponent, depthWrite, .enumDesc = &enums::kMaterialDepthWrite, .updateFlags = kShaderReload),
         JE_FIELD(UIComponent, stencil, .flags = ListWhole, .updateFlags = kShaderReload),
-        JE_FIELD(UIComponent, colorWrite, .updateFlags = kShaderReload, .min = -1.0f, .max = 15.0f),
+        JE_FIELD(UIComponent, colorWrite, .ops = &ops::ColorWrite, .updateFlags = kShaderReload, .min = -1.0f, .max = 15.0f),
     };
 
     std::string uiCodegen(EntityRegistry* registry, Entity entity, const CodegenContext& ctx) {

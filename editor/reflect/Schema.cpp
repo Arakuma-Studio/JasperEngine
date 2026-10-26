@@ -68,6 +68,12 @@ Json reflect::detail::intSchema(const FieldDesc& field) {
     return schema;
 }
 
+Json reflect::detail::colorWriteSchema(const FieldDesc& field) {
+    Json schema = intSchema(field);
+    schema["type"] = Json::array({"integer", "string"});
+    return schema;
+}
+
 Json reflect::detail::uintSchema(const FieldDesc& field) {
     Json schema{{"type", "integer"}, {"minimum", 0}};
     if (field.ops->kind == Kind::LayerMask) schema["maximum"] = 4294967295u;
@@ -161,7 +167,8 @@ Json reflect::detail::arraySchema(const FieldDesc& field) {
     } else if (field.elementOps && field.elementOps->schema) {
         items = field.elementOps->schema(field);
     }
-    return Json{{"type", "array"}, {"items", items}};
+    // (an empty list reads as null)
+    return Json{{"type", Json::array({"array", "null"})}, {"items", items}};
 }
 
 Json reflect::detail::customSchema(const FieldDesc&) {

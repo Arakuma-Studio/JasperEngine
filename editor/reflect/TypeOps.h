@@ -170,6 +170,7 @@ namespace jasperengine::editor::reflect {
         // ---- JSON Schema
         Json boolSchema(const FieldDesc&);
         Json intSchema(const FieldDesc&);
+        Json colorWriteSchema(const FieldDesc&);
         Json uintSchema(const FieldDesc&);
         Json numberSchema(const FieldDesc&);
         Json vector2Schema(const FieldDesc&);
@@ -331,6 +332,12 @@ namespace jasperengine::editor::reflect {
             &detail::construct<unsigned int>, &detail::destroy<unsigned int>, &detail::copy<unsigned int>, &detail::equalByOperator<unsigned int>,
             &detail::uintToYaml, &detail::uintFromIntYaml, nullptr, nullptr, nullptr, false, &detail::uintLiteral, &detail::uintSchema},
             &detail::uintScalar);
+        // a color write mask (-1: the shader's, 0..15: r 1, g 2, b 4, a 8), which MCP also reads and
+        // writes by name ("auto", "rgb"...)
+        inline constexpr TypeOps ColorWrite = detail::withScalar(TypeOps{"int", Kind::Int, PropertyType::Int, sizeof(int),
+            &detail::construct<int>, &detail::destroy<int>, &detail::copy<int>, &detail::equalByOperator<int>,
+            &detail::intToYaml, &detail::intFromYaml, nullptr, nullptr, nullptr, false, &detail::intLiteral, &detail::colorWriteSchema},
+            &detail::intScalar);
         // an int clamped to the field's hard range when read (a UI document's texture size)
         inline constexpr TypeOps IntClampedOnRead = detail::withScalar(TypeOps{"int", Kind::Int, PropertyType::Int, sizeof(int),
             &detail::construct<int>, &detail::destroy<int>, &detail::copy<int>, &detail::equalByOperator<int>,
