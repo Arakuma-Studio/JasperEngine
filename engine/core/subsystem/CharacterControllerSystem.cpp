@@ -343,7 +343,10 @@ int CharacterControllerSystem::moveBy(Runtime& runtime, CharacterControllerCompo
     JPH::DefaultObjectLayerFilter objectFilter(*physics->object_vs_object_layer_filter, runtime.objectLayer);
     JPH::ShapeFilter shapeFilter;
     const JPH::Vec3 gravity = toJolt(physics->getGravity3D());
-    bool groundToAir = character.IsSupported();
+    // supported now, or at the end of the last move: the post-step refresh at rest drops a
+    // contact more than Jolt's collision tolerance (1 mm) away, which a character walking off an
+    // edge already is, and stick-to-floor would never run there
+    bool groundToAir = character.IsSupported() || runtime.supportedByMove;
     character.Update(dt, gravity, broadPhaseFilter, objectFilter, bodyFilter, shapeFilter, *physics->temp_allocator);
     if (character.IsSupported())
         groundToAir = false;
@@ -404,6 +407,7 @@ int CharacterControllerSystem::moveBy(Runtime& runtime, CharacterControllerCompo
         }
     }
 
+    runtime.supportedByMove = character.IsSupported();
     const JPH::RVec3 after = character.GetPosition();
     controller.velocity = fromJolt(JPH::Vec3(after - before)) * (1.0f / dt);
     readGroundState(runtime, controller);
@@ -740,4 +744,5 @@ void CharacterControllerSystem::clear(){
 }
 
 #endif
+
 

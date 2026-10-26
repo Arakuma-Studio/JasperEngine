@@ -56,6 +56,8 @@ namespace jasperengine{
             Vector3 syncedPosition;
             // simpleMove's own vertical speed (gravity), reset on the ground
             float verticalSpeed = 0.0f;
+            // Jolt said supported at the end of the last move (moveBy's stick-to-floor)
+            bool supportedByMove = false;
             // root motion (setRootMotion), applied in every fixed step until the next publish
             bool hasRootMotion = false;
             Vector3 rootVelocity;
