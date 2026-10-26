@@ -269,6 +269,7 @@ size_t captureMainThreadStack(char* out, size_t capacity, const char** why) {
 #else
     return 0;
 #endif
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
     size_t length = 0;
     for (size_t i = 0; i < frameCount; i++) {
         std::string description;
@@ -288,5 +289,6 @@ size_t captureMainThreadStack(char* out, size_t capacity, const char** why) {
         length = appendText(out, capacity, length, "\n");
     }
     return length;
+#endif
 }
 }
