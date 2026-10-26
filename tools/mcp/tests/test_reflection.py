@@ -397,7 +397,7 @@ async def test_multi_edit_undo(ed: Editor):
 async def test_inspector_frame_cost(ed: Editor):
     """R19: the default Inspector's body for 200 selected GameObjects (Light 2D, a default-drawn
     component), median ms per frame of its profiler scope over 60 frames. Logged; held to 3 ms
-    only with JASPER_BENCH_ASSERT=1 (the benchmark server, a release build)."""
+    only in the benchmark run (JASPER_TEST_PERF_SLACK, docs/testing.md), times that factor."""
     scene = (await ed.call("create_scene", name="InspectorCost", type="2D", path="scenes/InspectorCost"))["scene"]["id"]
     entities = [(await ed.call("create_entity", scene=scene, type="light_2d"))["entity_id"] for _ in range(200)]
     await ed.call("select_scene", scene=scene)
@@ -409,5 +409,6 @@ async def test_inspector_frame_cost(ed: Editor):
     check(flat["rows"], f"no 'Inspector Default Component' scope in the capture: {flat}")
     ms = flat["rows"][0]["total_ms"]
     print(f"[bench] default Inspector, 200 Light 2D: {ms:.3f} ms per frame (median frame of 60)")
-    if os.environ.get("JASPER_BENCH_ASSERT") == "1":
-        check(ms <= 3.0, f"the default Inspector took {ms:.3f} ms per frame for 200 GameObjects (R19: 3 ms)")
+    slack = float(os.environ.get("JASPER_TEST_PERF_SLACK") or 0)
+    if slack > 0:
+        check(ms <= 3.0 * slack, f"the default Inspector took {ms:.3f} ms per frame for 200 GameObjects (R19: 3 ms)")

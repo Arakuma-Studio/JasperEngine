@@ -30,7 +30,7 @@
 # builds only, UNIT_SUITE=core or editor builds and runs one of the two; JASPER_TEST_UPDATE_GOLDEN=1
 # rewrites the core goldens (glcore only) and the reflection snapshot; JASPER_REFLECT_WRITE_FIXTURE=1
 # regenerates tools/fixtures/reflection-parity/AllComponents.scene (docs/specs/S08-reflection.md);
-# JASPER_BENCH_ASSERT=1 holds the reflection benchmarks to their budgets (JASPER_BENCH_ENTITIES: scene size).
+# JASPER_BENCH_ENTITIES sets the reflection codec benchmark's scene size (ReflectCodecBench).
 # linux, web, unit-tests, htmlui-tests: CXX_STANDARD=<n> builds at another supported C++ standard
 # than the default (JASPERENGINE_CXX_STANDARD), next to the default build (build/linux/editor-cxx<n>,
 # build/web/cxx<n>, ...). linux first checks engine/ and editor/ with tools/check-cxx-subset.py and
@@ -183,7 +183,7 @@ CPUS="${CPUS:-${DOCKER_CPUS:-${JOBS:-}}}"
 [[ -n "$CPUS" ]] && CPU_FLAGS=(--cpus "$CPUS")
 ENV_FLAGS=()
 for name in JASPER_HTMLUI_UPDATE_GOLDEN JASPER_HTMLUI_WRITE_ACTUAL JASPER_TEST_UPDATE_GOLDEN JASPER_TEST_WRITE_ACTUAL \
-            JASPER_TEST_KEEP_TEMP JASPER_REFLECT_WRITE_FIXTURE JASPER_BENCH_ASSERT JASPER_BENCH_ENTITIES JASPER_HTMLUI_PERF_SLACK \
+            JASPER_TEST_KEEP_TEMP JASPER_REFLECT_WRITE_FIXTURE JASPER_BENCH_ENTITIES JASPER_HTMLUI_PERF_SLACK \
             JASPER_TEST_PERF_SLACK HTMLUI_LIVE_NETWORK JASPER_CHROME; do
     # (JASPER_HTMLUI_PERF_SLACK: the HTML UI performance tests' tolerance on a loaded host, compat_perf_test.cpp;
     # JASPER_TEST_PERF_SLACK: the core tests' wall-clock budgets are enforced only when it is set)

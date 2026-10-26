@@ -5,8 +5,10 @@
 // R17, AC14): encode and decode of a synthetic scene (Transform + Sprite + Light + AudioSource +
 // Rigidbody2D on every GameObject), median of 5 runs each. Built into jasperengine-editor-tests
 // (editor/tests/EditorTests.cmake) as ReflectCodecBench.*: 1,000 GameObjects by default,
-// JASPER_BENCH_ENTITIES=10000 for the acceptance size; JASPER_BENCH_ASSERT=1 (the benchmark
+// JASPER_BENCH_ENTITIES=10000 for the acceptance size; JASPER_TEST_PERF_SLACK (the benchmark
 // server, a release build) holds each to +5% of the legacy codec. Prints "[bench] reflect codec".
+
+#include "support/EditorTestSupport.h"
 
 #include "reflect/Reflect.h"
 #include "reflect/legacy/LegacyCodecs.h"
@@ -139,9 +141,9 @@ namespace reflect_codec_bench {
         std::printf("[bench] reflect codec, %zu GameObjects: encode %.2f ms (legacy %.2f ms, %+.1f%%), decode %.2f ms (legacy %.2f ms, %+.1f%%)\n",
                     entries.size(), reflectEncode, legacyEncode, 100.0 * (reflectEncode / legacyEncode - 1.0), reflectDecode, legacyDecode,
                     100.0 * (reflectDecode / legacyDecode - 1.0));
-        if (std::getenv("JASPER_BENCH_ASSERT")) {
-            EXPECT_LE(reflectEncode, legacyEncode * 1.05);
-            EXPECT_LE(reflectDecode, legacyDecode * 1.05);
+        if (const double slack = editor::test::perfSlack(); slack > 0.0) {
+            EXPECT_LE(reflectEncode, legacyEncode * 1.05 * slack);
+            EXPECT_LE(reflectDecode, legacyDecode * 1.05 * slack);
         }
     }
 

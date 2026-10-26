@@ -115,7 +115,6 @@ namespace catalog_snapshot_test {
             item["enum_options"] = options;
             components.push_back(item);
         }
-        releaseCameraFramebuffers(&scene);
 
         // every property of the fixture scenes' components, indices folded, with how often it was seen
         std::map<std::string, Json> seen;

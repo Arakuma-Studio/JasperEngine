@@ -3,8 +3,10 @@
 
 // Path resolution cost (docs/specs/S08-reflection.md R18, AC14): resolving a flat and an indexed
 // path allocates nothing (counted by this binary's operator new) and its median time is logged
-// ("[bench] resolve"); JASPER_BENCH_ASSERT=1 (the benchmark server, a release build) also holds
-// it to 150 ns.
+// ("[bench] resolve"); with JASPER_TEST_PERF_SLACK (the benchmark run on E, docs/testing.md) it
+// is also held to 150 ns times that factor.
+
+#include "support/EditorTestSupport.h"
 
 #include "reflect/Reflect.h"
 #include "reflect/ReflectIndex.h"
@@ -83,10 +85,10 @@ namespace reflect_resolve_bench_test {
         return batches[batches.size() / 2];
     }
 
-    TEST(ReflectResolve, FlatAndIndexedPathsDoNotAllocate) {
+    TEST(ReflectResolveBench, FlatAndIndexedPathsDoNotAllocate) {
         // the name indexes are built before the measure (once, at editor start)
         reflect::buildNameIndexes();
-        const bool assertTime = std::getenv("JASPER_BENCH_ASSERT") != nullptr;
+        const double slack = editor::test::perfSlack();
 
         LightComponent light;
         unsigned long long allocations = 0;
@@ -100,9 +102,9 @@ namespace reflect_resolve_bench_test {
         std::printf("[bench] resolve mesh.submeshes[3].material.baseColorFactor: %.1f ns median\n", indexed);
         EXPECT_EQ(allocations, 0u);
 
-        if (assertTime) {
-            EXPECT_LE(flat, 150.0);
-            EXPECT_LE(indexed, 150.0);
+        if (slack > 0.0) {
+            EXPECT_LE(flat, 150.0 * slack);
+            EXPECT_LE(indexed, 150.0 * slack);
         }
     }
 

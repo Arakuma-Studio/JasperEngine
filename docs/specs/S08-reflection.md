@@ -522,7 +522,7 @@ Recorded by the implementation (branch `feat/s08-reflection`).
   ease options leave out `custom`, as before. Camera keeps both tokens (R5 default).
 - **Benchmarks.** `ReflectCodecBench` (R17) and `ReflectResolve` (R18) always log their numbers
   and always check for zero allocations. The time budgets are asserted only with
-  `JASPER_BENCH_ASSERT=1`, on the benchmark server.
+  `JASPER_TEST_PERF_SLACK`, in the benchmark run on E (docs/testing.md).
 - **Goldens.** `test_golden_resave` waits 5 frames after opening each scene before saving it
   (in the capture and in the check), so values the systems compute on the first frames (mesh
   vertex counts, UI layout, camera clips) do not depend on load speed. The codegen golden's
