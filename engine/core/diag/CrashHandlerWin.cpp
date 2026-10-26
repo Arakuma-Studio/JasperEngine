@@ -91,7 +91,7 @@ void writeFrame(HANDLE file, size_t index, DWORD64 pc, bool symbols) {
     char name[MAX_PATH]{};
     IMAGEHLP_MODULE64 module{};
     module.SizeOfStruct = sizeof(module);
-    if (symbols && SymGetModuleInfo64(GetCurrentProcess(), pc, &module)) {
+    if (symbols && SymGetModuleInfo64(static_cast<HANDLE>(Backtrace::dbgHelpProcess()), pc, &module)) {
         appendText(name, sizeof(name), 0, module.ImageName);
     }
     if (name[0]) n = appendText(buffer, sizeof(buffer), n, name);
@@ -103,7 +103,7 @@ void writeFrame(HANDLE file, size_t index, DWORD64 pc, bool symbols) {
         auto* symbol = reinterpret_cast<SYMBOL_INFO*>(storage);
         symbol->SizeOfStruct = sizeof(SYMBOL_INFO); symbol->MaxNameLen = 255;
         DWORD64 displacement = 0;
-        if (SymFromAddr(GetCurrentProcess(), pc, &displacement, symbol)) {
+        if (SymFromAddr(static_cast<HANDLE>(Backtrace::dbgHelpProcess()), pc, &displacement, symbol)) {
             n = appendText(buffer, sizeof(buffer), n, " [");
             n = appendText(buffer, sizeof(buffer), n, symbol->Name);
             n = appendText(buffer, sizeof(buffer), n, "+");
@@ -131,9 +131,10 @@ DWORD WINAPI writer(void*) {
     // DbgHelp is process-wide and single threaded. Never wait indefinitely on a lock the
     // faulting thread may own. A failed lock still yields a report with its saved PC/SP.
     std::unique_lock<std::timed_mutex> lock(Backtrace::dbgHelpMutex(), std::defer_lock);
-    const bool symbols = lock.try_lock_for(std::chrono::milliseconds(200));
+    const bool locked = lock.try_lock_for(std::chrono::milliseconds(200));
+    const bool symbols = locked && Backtrace::initializeSymbolsLocked();
     bool dumped = false;
-    if (symbols) {
+    if (locked) {
         HANDLE dump = openFile(s.dumpFile);
         MINIDUMP_EXCEPTION_INFORMATION exception{faultThread, &faultPointers, FALSE};
         if (dump != INVALID_HANDLE_VALUE) {
@@ -174,7 +175,7 @@ DWORD WINAPI writer(void*) {
     size_t count = 0;
     if (frame.AddrPC.Offset) addresses[count++] = frame.AddrPC.Offset;
     if (symbols) {
-        while (count < 64 && StackWalk64(machine, GetCurrentProcess(), faultThreadHandle, &frame, &context, nullptr,
+        while (count < 64 && StackWalk64(machine, static_cast<HANDLE>(Backtrace::dbgHelpProcess()), faultThreadHandle, &frame, &context, nullptr,
                                         SymFunctionTableAccess64, SymGetModuleBase64, nullptr) && frame.AddrPC.Offset) {
             addresses[count++] = frame.AddrPC.Offset;
         }
@@ -270,8 +271,7 @@ bool installPlatform(const Config&) {
     if (!request || !completed) return false;
     {
         std::lock_guard<std::timed_mutex> lock(Backtrace::dbgHelpMutex());
-        SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS);
-        SymInitialize(GetCurrentProcess(), nullptr, TRUE);
+        Backtrace::initializeSymbolsLocked();
     }
     HANDLE worker = CreateThread(nullptr, 0, writer, nullptr, 0, nullptr);
     if (!worker) return false;

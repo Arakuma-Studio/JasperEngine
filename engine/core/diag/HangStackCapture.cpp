@@ -67,12 +67,12 @@ DWORD WINAPI walkMain(void*) {
         // block; the watchdog that resumes the main thread never calls DbgHelp.
         std::unique_lock<std::timed_mutex> lock(Backtrace::dbgHelpMutex(), std::defer_lock);
         frameCount = 0;
-        if (lock.try_lock_for(std::chrono::milliseconds(200))) {
+        if (lock.try_lock_for(std::chrono::milliseconds(200)) && Backtrace::initializeSymbolsLocked()) {
             CONTEXT context = capturedContext;
             STACKFRAME64 frame{};
             const DWORD machine = machineFrame(context, frame);
             if (frame.AddrPC.Offset) frames[frameCount++] = reinterpret_cast<void*>(frame.AddrPC.Offset);
-            while (frameCount < maxFrames && StackWalk64(machine, GetCurrentProcess(), mainThread, &frame, &context,
+            while (frameCount < maxFrames && StackWalk64(machine, static_cast<HANDLE>(Backtrace::dbgHelpProcess()), mainThread, &frame, &context,
                     nullptr, SymFunctionTableAccess64, SymGetModuleBase64, nullptr) && frame.AddrPC.Offset) {
                 frames[frameCount++] = reinterpret_cast<void*>(frame.AddrPC.Offset);
             }
@@ -117,7 +117,7 @@ void initializeMainThreadCapture() {
         // Every Sym* call (including startup) shares the logger's process-wide lock.
         {
             std::lock_guard<std::timed_mutex> lock(Backtrace::dbgHelpMutex());
-            SymInitialize(GetCurrentProcess(), nullptr, TRUE);
+            Backtrace::initializeSymbolsLocked();
         }
         HANDLE helper = CreateThread(nullptr, 0, walkMain, nullptr, 0, nullptr);
         if (!helper) return;
