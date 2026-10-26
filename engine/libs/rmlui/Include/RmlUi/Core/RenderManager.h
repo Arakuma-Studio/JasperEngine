@@ -108,17 +108,34 @@ public:
 	void RequestRender();
 	bool ConsumeRenderRequest();
 
-	/// Fork (S16-F6): the clipping region ElementUtilities::SetClippingRegion found for an element whose own 'clip' is auto:
-	/// that of every such element of the same offset parent (but its scrollbars), kept for the elements after it in the
-	/// render pass. Forgotten at each pass and when an element's transform is updated during it (ResetClipMemo).
+	/// Fork (S16-F6): the clipping regions ElementUtilities::SetClippingRegion found for elements whose own 'clip' is auto:
+	/// that of every such element of the same offset parent, kept for the elements after it in the render pass (the last
+	/// few offset parents). Forgotten at each pass and when an element's transform is updated during it (ResetClipMemo).
 	struct ClipMemo {
 		const void* offset_parent = nullptr;
 		bool scissor = false;
 		Rectanglei region;
 		ClipMaskGeometryList masks;
 	};
-	ClipMemo& GetClipMemo() { return clip_memo; }
-	void ResetClipMemo() { clip_memo.offset_parent = nullptr; }
+	ClipMemo* FindClipMemo(const void* offset_parent)
+	{
+		for (ClipMemo& memo : clip_memos)
+			if (memo.offset_parent == offset_parent)
+				return &memo;
+		return nullptr;
+	}
+	ClipMemo& AddClipMemo(const void* offset_parent)
+	{
+		ClipMemo& memo = clip_memos[clip_memo_next];
+		clip_memo_next = (clip_memo_next + 1) % clip_memo_count;
+		memo.offset_parent = offset_parent;
+		return memo;
+	}
+	void ResetClipMemo()
+	{
+		for (ClipMemo& memo : clip_memos)
+			memo.offset_parent = nullptr;
+	}
 
 private:
 	void ApplyClipMask(const ClipMaskGeometryList& clip_elements);
@@ -151,7 +168,11 @@ private:
 	UniquePtr<TextureDatabase> texture_database;
 
 	bool render_requested = false;
-	ClipMemo clip_memo;
+	static constexpr int clip_memo_count = 8;
+	ClipMemo clip_memos[clip_memo_count];
+	int clip_memo_next = 0;
+	// Fork (S16-F6): state.transform is the identity (SetTransform(nullptr) then compares nothing)
+	bool transform_identity = true;
 	int compiled_filter_count = 0;
 	int compiled_shader_count = 0;
 

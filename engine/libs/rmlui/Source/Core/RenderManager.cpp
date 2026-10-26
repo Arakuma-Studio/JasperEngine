@@ -157,6 +157,10 @@ void RenderManager::SetClipMask(ClipMaskGeometryList in_clip_elements)
 
 void RenderManager::SetTransform(const Matrix4f* p_new_transform)
 {
+	// Fork (S16-F6): most elements have no transform, as the state: nothing to compare (two calls per element rendered)
+	if (!p_new_transform && transform_identity)
+		return;
+
 	static const Matrix4f identity_transform = Matrix4f::Identity();
 	const Matrix4f& new_transform = (p_new_transform ? *p_new_transform : identity_transform);
 
@@ -165,6 +169,7 @@ void RenderManager::SetTransform(const Matrix4f* p_new_transform)
 		render_interface->SetTransform(p_new_transform);
 		state.transform = new_transform;
 	}
+	transform_identity = (!p_new_transform || state.transform == identity_transform);
 }
 
 void RenderManager::ApplyClipMask(const ClipMaskGeometryList& clip_elements)

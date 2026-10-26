@@ -122,6 +122,9 @@ static bool IsScrollbarPart(const Element* element, Element* scroll_container)
 {
 	if (!element || element->GetParentNode() != scroll_container)
 		return false;
+	// (ElementScroll gives its scrollbars and corner 'clip: 1': a child whose clip is auto is none of them)
+	if (element->GetComputedValues().clip() == Style::Clip::Type::Auto)
+		return false;
 	ElementScroll* scroll = scroll_container->GetElementScroll();
 	if (element == scroll->GetScrollbar(ElementScroll::VERTICAL) || element == scroll->GetScrollbar(ElementScroll::HORIZONTAL))
 		return true;
@@ -274,25 +277,23 @@ bool ElementUtilities::SetClippingRegion(Element* element, bool force_clip_self)
 	RenderManager& render_manager = context->GetRenderManager();
 
 	// Fork (S16-F6): an element whose own 'clip' is auto is clipped as every such element of its offset parent (the walk
-	// starts there; only a scroll container's scrollbars differ): the region found for the first is used for the others of
-	// the render pass, without walking the ancestors and building the mask list again.
+	// starts there; a scroll container's scrollbars, which differ, have 'clip: 1'): the region found for the first is used
+	// for the others of the render pass, without walking the ancestors and building the mask list again.
 	Element* offset_parent = nullptr;
 	if (!force_clip_self && element->GetComputedValues().clip() == Style::Clip::Type::Auto)
-	{
 		offset_parent = element->GetOffsetParent();
-		if (offset_parent && IsScrollbarPart(element, offset_parent))
-			offset_parent = nullptr;
-	}
-	RenderManager::ClipMemo& memo = render_manager.GetClipMemo();
-	if (offset_parent && memo.offset_parent == offset_parent)
+	if (offset_parent)
 	{
-		if (memo.scissor)
-			render_manager.SetScissorRegion(memo.region);
-		else
-			render_manager.DisableScissorRegion();
-		if (render_manager.GetState().clip_mask_list != memo.masks)
-			render_manager.SetClipMask(memo.masks);
-		return true;
+		if (const RenderManager::ClipMemo* memo = render_manager.FindClipMemo(offset_parent))
+		{
+			if (memo->scissor)
+				render_manager.SetScissorRegion(memo->region);
+			else
+				render_manager.DisableScissorRegion();
+			if (render_manager.GetState().clip_mask_list != memo->masks)
+				render_manager.SetClipMask(memo->masks);
+			return true;
+		}
 	}
 
 	Rectanglei clip_region;
@@ -301,7 +302,7 @@ bool ElementUtilities::SetClippingRegion(Element* element, bool force_clip_self)
 	const bool scissoring_enabled = GetClippingRegion(element, clip_region, &clip_mask_list, force_clip_self);
 	if (offset_parent)
 	{
-		memo.offset_parent = offset_parent;
+		RenderManager::ClipMemo& memo = render_manager.AddClipMemo(offset_parent);
 		memo.scissor = scissoring_enabled;
 		memo.region = clip_region;
 		memo.masks = clip_mask_list;
