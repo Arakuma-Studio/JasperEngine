@@ -221,6 +221,18 @@ void RenderManager::RenderPrimitives(Span<const BoxPrimitive> primitives, Vector
 		render_interface->RenderPrimitives(primitives, translation.Round());
 }
 
+bool RenderManager::IsOutsideScissor(Rectanglef rectangle)
+{
+	if (!state.scissor_region.Valid() || !render_interface->CullsOffscreenPaint())
+		return false;
+	static const Matrix4f identity = Matrix4f::Identity();
+	if (state.transform != identity)
+		return false;
+	const Rectanglei& scissor = state.scissor_region;
+	return rectangle.Right() <= (float)scissor.Left() || rectangle.Left() >= (float)scissor.Right() || rectangle.Bottom() <= (float)scissor.Top() ||
+		rectangle.Top() >= (float)scissor.Bottom();
+}
+
 void RenderManager::SetState(const RenderState& next)
 {
 	SetScissorRegion(next.scissor_region);

@@ -261,6 +261,26 @@ void ElementText::OnRender()
 
 	RenderManager& render_manager = GetContext()->GetRenderManager();
 
+	// Fork (S16-F4): text wholly outside the scissor region is not drawn (nor made again) this frame: its lines' boxes,
+	// with a font size of margin, and the shadows' and effects' reach
+	if (!lines.empty())
+	{
+		const auto& computed = GetComputedValues();
+		const float font_size = computed.font_size();
+		float margin = font_size + 2.f;
+		if (computed.has_text_shadow() || computed.has_font_effect())
+			margin = 3.f * font_size + 64.f;
+		Rectanglef bounds = Rectanglef::MakeInvalid();
+		for (const Line& line : lines)
+		{
+			const Rectanglef box = Rectanglef::FromCorners(line.position - Vector2f(0.f, font_size), line.position + Vector2f((float)line.width, font_size));
+			bounds = bounds.Valid() ? bounds.Join(box) : box;
+		}
+		const Vector2f offset = GetAbsoluteOffset();
+		if (render_manager.IsOutsideScissor(Rectanglef::FromCorners(offset + bounds.TopLeft() - Vector2f(margin), offset + bounds.BottomRight() + Vector2f(margin))))
+			return;
+	}
+
 	// The opacity the parent draws with changes without a property change of ours (it is not inherited).
 	const float draw_opacity = (GetParentNode() ? GetParentNode()->GetDrawOpacity() : 1.f);
 	if (draw_opacity != opacity)

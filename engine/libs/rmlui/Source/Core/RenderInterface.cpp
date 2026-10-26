@@ -32,6 +32,11 @@ bool RenderInterface::SupportsPrimitives()
 	return false;
 }
 
+bool RenderInterface::CullsOffscreenPaint()
+{
+	return false;
+}
+
 void RenderInterface::RenderPrimitives(Span<const BoxPrimitive> /*primitives*/, Vector2f /*translation*/) {}
 
 void RenderInterface::SetTransform(const Matrix4f* /*transform*/) {}

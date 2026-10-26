@@ -26,8 +26,9 @@ public:
 	void DirtyOutline();
 
 	Geometry* GetClipGeometry(Element* element, BoxArea clip_area);
-	// Fork (S16-F2): the shape GetClipGeometry's geometry covers, relative to the element's border box.
-	static ClipShape GetClipShape(Element* element, BoxArea clip_area);
+	// Fork (S16-F2): the shape GetClipGeometry's geometry covers, relative to the element's border box (kept with the
+	// geometry: a clipping element's shape is asked for by every element it clips, every frame).
+	ClipShape GetClipShape(Element* element, BoxArea clip_area);
 
 	// The size of a device pixel in the element's units, for its feathered edges.
 	static float GetFeatherUnit(Element* element);
@@ -35,6 +36,14 @@ public:
 	// Fork (S16-F1): whether the background, border and box shadows were last generated as primitives, and when not
 	// why (a static string; empty when the render interface draws no primitives).
 	bool IsPaintedAsPrimitives() const { return painted_as_primitives; }
+
+	// Fork (S16, culling): how far the background, border and box shadows reach outside the border box, once
+	// generated (false while they are to be generated again: the reach is unknown).
+	bool GetInkReach(float& reach) const
+	{
+		reach = ink_reach;
+		return !background_dirty && !border_dirty;
+	}
 	const char* GetPaintReason() const { return paint_reason; }
 
 private:
@@ -44,7 +53,10 @@ private:
 		Texture texture;
 		SharedPtr<BoxShadowRenderable> box_shadow_and_background_border;
 		Vector<BoxPrimitive> primitives; // fork (S16-F1): drawn instead of the geometry
+		ClipShape clip_shape;            // fork (S16-F2): the clip geometry's shape, while the geometry is valid
+		bool clip_shape_valid = false;
 	};
+	static ClipShape ComputeClipShape(Element* element, BoxArea clip_area);
 	// Renders the background's geometry, or its primitives.
 	static void RenderBackground(RenderManager& render_manager, const Background& background, Vector2f offset);
 	// Fork (S16-F1): why the element's boxes cannot be primitives (nullptr: they can).
@@ -74,6 +86,7 @@ private:
 	float feather_unit = 1.f;
 	bool painted_as_primitives = false;
 	const char* paint_reason = "";
+	float ink_reach = 1.f;
 
 	StableMap<BackgroundType, Background> backgrounds;
 };

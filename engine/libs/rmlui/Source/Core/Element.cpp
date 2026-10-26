@@ -274,10 +274,26 @@ void Element::Render()
 	// A hidden element (CSS visibility) paints nothing of its own; its visible descendants paint (phase 3, p3-paint).
 	if (computed.visibility() == Style::Visibility::Visible && ElementUtilities::SetClippingRegion(this))
 	{
-		meta->background_border.Render(this);
-		if (effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image()))
-			effects.RenderEffects(RenderStage::Decoration);
-		meta->background_border.RenderBorder(this);
+		// Fork (S16-F4): a background, border and box shadow wholly outside the scissor region are not painted (a long
+		// scrolled list draws its visible rows only); the decorators are inside the border box
+		float reach = 0.f;
+		bool outside = false;
+		if (GetNumBoxes() == 1 && meta->background_border.GetInkReach(reach))
+		{
+			if (RenderManager* render_manager = GetRenderManager())
+			{
+				const Vector2f position = GetAbsoluteOffset(BoxArea::Border);
+				const Vector2f size = main_box.GetSize(BoxArea::Border);
+				outside = render_manager->IsOutsideScissor(Rectanglef::FromPositionSize(position - Vector2f(reach), size + Vector2f(2.f * reach)));
+			}
+		}
+		if (!outside)
+		{
+			meta->background_border.Render(this);
+			if (effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image()))
+				effects.RenderEffects(RenderStage::Decoration);
+			meta->background_border.RenderBorder(this);
+		}
 
 		{
 			RMLUI_ZoneScopedNC("OnRender", 0x228B22);

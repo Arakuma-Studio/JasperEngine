@@ -192,6 +192,8 @@ namespace jasperengine {
         // fork S16-F1: solid backgrounds, borders, outlines and box shadows as HTMLUI_PRIM instances
         // (setSdfPrimitivesForTesting, the project's htmlUiSdfPrimitives)
         bool SupportsPrimitives() override;
+        // fork S16-F4: elements skip what is wholly outside the scissor (with the batched replay, D1)
+        bool CullsOffscreenPaint() override;
         void RenderPrimitives(Rml::Span<const Rml::BoxPrimitive> primitives, Rml::Vector2f translation) override;
 
         // engine side, called by HtmlUIContext (HtmlUIContextRender.cpp)

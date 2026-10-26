@@ -183,7 +183,7 @@ bool ElementUtilities::GetClippingRegion(Element* element, Rectanglei& out_clip_
 					{
 						ClipMaskGeometry clip{clip_operation, clip_geometry, absolute_offset, transform};
 						clip.has_shape = true;
-						clip.shape = ElementBackgroundBorder::GetClipShape(clipping_element, clip_area);
+						clip.shape = clipping_element->GetElementBackgroundBorder()->GetClipShape(clipping_element, clip_area);
 						out_clip_mask_list->push_back(clip);
 					}
 				}
@@ -307,7 +307,7 @@ ScopedReplacedContentClip::ScopedReplacedContentClip(Element* element, bool enab
 	const ClipMaskOperation operation = (clip_mask_list.empty() ? ClipMaskOperation::Set : ClipMaskOperation::Intersect);
 	ClipMaskGeometry clip{operation, clip_geometry, element->GetAbsoluteOffset(BoxArea::Border).Round(), transform};
 	clip.has_shape = true;
-	clip.shape = ElementBackgroundBorder::GetClipShape(element, BoxArea::Content);
+	clip.shape = element->GetElementBackgroundBorder()->GetClipShape(element, BoxArea::Content);
 	clip_mask_list.push_back(clip);
 	manager->SetClipMask(std::move(clip_mask_list));
 }

@@ -334,6 +334,12 @@ bool RmlRenderer::SupportsPrimitives(){
     return sdfPrimitivesEnabled;
 }
 
+bool RmlRenderer::CullsOffscreenPaint(){
+    // (immediate drawing has no frame to cull for; the culled elements are the ones the scissor
+    // would clip, so the image is the same: part of the batching layer, off with it)
+    return batchingEnabled && frameState == FrameState::ACTIVE;
+}
+
 HtmlUIPrimitive RmlRenderer::toInstance(const Rml::BoxPrimitive& primitive, Rml::Vector2f translation){
     HtmlUIPrimitive instance;
     std::memset(&instance, 0, sizeof(instance));

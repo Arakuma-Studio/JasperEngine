@@ -143,6 +143,9 @@ public:
 	virtual bool SupportsPrimitives();
 	/// Fork (S16-F1): draws the primitives in order, like RenderGeometry (the scissor, clip mask and transform apply).
 	virtual void RenderPrimitives(Span<const BoxPrimitive> primitives, Vector2f translation);
+	/// Fork (S16-F4): whether elements may skip painting their background, border and text when it lies wholly outside the
+	/// scissor region (no transform): what the render interface would clip anyway. Asked every frame.
+	virtual bool CullsOffscreenPaint();
 
 	/// Called by RmlUi when it wants the renderer to use a new transform matrix.
 	/// @param[in] transform The new transform to apply, or nullptr if no transform applies to the current element.

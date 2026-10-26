@@ -437,6 +437,26 @@ Geometry* ElementBackgroundBorder::GetClipGeometry(Element* element, BoxArea cli
 
 ClipShape ElementBackgroundBorder::GetClipShape(Element* element, BoxArea clip_area)
 {
+	BackgroundType type = {};
+	switch (clip_area)
+	{
+	case Rml::BoxArea::Border: type = BackgroundType::ClipBorder; break;
+	case Rml::BoxArea::Padding: type = BackgroundType::ClipPadding; break;
+	case Rml::BoxArea::Content: type = BackgroundType::ClipContent; break;
+	default: return ComputeClipShape(element, clip_area);
+	}
+	Background& background = GetOrCreateBackground(type);
+	if (!background.clip_shape_valid || !background.geometry)
+	{
+		background.clip_shape = ComputeClipShape(element, clip_area);
+		// (valid while the clip geometry is: both go when the box changes)
+		background.clip_shape_valid = (bool)background.geometry;
+	}
+	return background.clip_shape;
+}
+
+ClipShape ElementBackgroundBorder::ComputeClipShape(Element* element, BoxArea clip_area)
+{
 	// The fill area of the render box with its inner curves, as MeshUtilities::GenerateBackground draws it.
 	const RenderBox box = element->GetRenderBox(clip_area, 0, false);
 	const BorderMetrics metrics =
@@ -511,6 +531,21 @@ void ElementBackgroundBorder::GenerateGeometry(Element* element)
 		{
 			if (shadow.blur_radius.number > GeometryBoxShadow::primitive_blur_limit)
 				obstacle = "box-shadow blur";
+		}
+	}
+	// Fork (S16, culling): the reach of the outer shadows past the border box (a Gaussian's 3 sigma is 1.5 blur radii), and a
+	// pixel of antialiased edge
+	ink_reach = 1.f;
+	if (has_box_shadow)
+	{
+		const BoxShadowList& resolved =
+			(obstacle || shadows.empty()) ? GeometryBoxShadow::Resolve(element, background_color, border_colors, opacity).shadow_list : shadows;
+		for (const BoxShadow& shadow : resolved)
+		{
+			if (shadow.inset)
+				continue;
+			const float offset = Math::Max(Math::Absolute(shadow.offset_x.number), Math::Absolute(shadow.offset_y.number));
+			ink_reach = Math::Max(ink_reach, offset + Math::Max(shadow.spread_distance.number, 0.f) + 1.5f * shadow.blur_radius.number + 2.f);
 		}
 	}
 	painted_as_primitives = (obstacle == nullptr);

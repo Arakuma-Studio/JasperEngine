@@ -77,6 +77,10 @@ public:
 	bool SupportsPrimitives() const;
 	/// Fork (S16-F1): draws box primitives at the translation with the current state.
 	void RenderPrimitives(Span<const BoxPrimitive> primitives, Vector2f translation);
+	/// Fork (S16-F4): whether the rectangle (absolute, before any transform) is drawn wholly outside the scissor region, so that
+	/// painting it may be skipped: the render interface culls (RenderInterface::CullsOffscreenPaint), a scissor region is set
+	/// and no transform applies. False when unsure.
+	bool IsOutsideScissor(Rectanglef rectangle);
 
 	Texture LoadTexture(const String& source, const String& document_path = String());
 	/// Fork (phase 3, p3-paint): the texture of 'source' joined with the document path, with 'query' (a query parameter)
