@@ -38,6 +38,8 @@ def main():
                 assert result.returncode != 0, result
                 if os.name != "nt":
                     assert result.returncode == -signal.SIGSEGV, result.stderr
+                    if args.expect_asan:
+                        assert "AddressSanitizer" not in result.stderr, "recursive faults must go directly to the OS action"
                 assert " report=" not in result.stderr, result.stderr
                 assert not files, "the recursive test faults before opening its report"
                 print("PASS native crash: recursive (immediate termination)")
