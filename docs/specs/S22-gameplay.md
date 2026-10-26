@@ -643,3 +643,20 @@ Recorded during implementation (branch `feat/s22-gameplay`).
   - `GameObject:getCharacterController()` adds the component when it is missing, as `getRigidbody()`.
   - R36 on C (not enforced): one move 0.005 ms; ten controllers + the step 0.60 ms, of which the step
     of the 1k static bodies alone is 0.23 ms and the ten inner bodies 0.27 ms.
+- **P3 water on upstream's Water.** Upstream (synced into oe-port) already has water surfaces made
+  from `library:water` meshes, `Water::getWaves`/`getTime` and a Rigidbody `buoyancy` factor
+  (Jolt `ApplyBuoyancyImpulse`). S22 builds on them rather than adding a second water model.
+  - There is one wave twin, `util/WaterWaves.h`, pinned to the GLSL. `Water::getWaves` calls it,
+    and `Water::getTime` is `Engine::getShaderTime`.
+  - `WaterVolumeComponent` (R30) and `BuoyancyComponent` (R32) come on top. A body with an enabled
+    Buoyancy floats by its columns and ignores the Rigidbody `buoyancy` factor.
+  - `Water.sample` and `sampleHeight` read Water Volumes first, then the mesh surfaces.
+  - Upstream's `Water.getHeight` / `isUnderwater` and the underwater post pass still see only the
+    mesh surfaces.
+  - AUTO columns sit on the face of the colliders' bounds that faces down now, along that axis
+    (not always the local −Y face). Without this, a rolling body sank, because its columns ended
+    up on its side.
+  - CUSTOM columns stand along the body's local up. At most 9 columns are used.
+  - upstream's `test_water.py` waited inside one Lua call for `Water.getTime()` to move. The
+    clock is now latched once a frame (R29), so it waits frames instead.
+  - R37 on C (not enforced): 100 bodies × 4 columns take 0.075 ms a step.
