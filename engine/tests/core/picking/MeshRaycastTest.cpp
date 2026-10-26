@@ -29,6 +29,9 @@
 #include <thread>
 #include <vector>
 
+#include <algorithm>
+#include <string>
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -284,6 +287,10 @@ TEST(MeshRaycast, Lod0TrianglesWhileLod2IsDrawn){
 
 TEST(MeshRaycast, SkinnedArmRaised){
     Scene scene;
+    // RenderSystem poses the bounds (skinnedAABB) only while the scene has a camera
+    Camera camera(&scene);
+    camera.setType(CameraType::CAMERA_PERSPECTIVE);
+    camera.activate();
     const Entity character = makeSkinnedArm(scene);
     settleScene(scene);
     ASSERT_TRUE(picking::isPosed(scene.getComponent<MeshComponent>(character)));
@@ -300,8 +307,16 @@ TEST(MeshRaycast, SkinnedArmRaised){
     const Vector3 middle = bone * Vector3(2.5f, 0, 0);
     // the bounds follow the bones (RenderSystem's skinnedAABB), the posed copy the vertices
     const AABB& bounds = scene.getComponent<MeshComponent>(character).worldAABB;
-    ASSERT_TRUE(bounds.contains(middle)) << middle.toString() << " outside " << bounds.getMinimum().toString() << " "
-                                         << bounds.getMaximum().toString();
+    {
+        const MeshComponent& m = scene.getComponent<MeshComponent>(character);
+        auto box = [](const AABB& b){ return b.isNull() ? std::string("null") : b.getMinimum().toString() + "-" + b.getMaximum().toString(); };
+        std::string bones;
+        for (size_t b = 0; b < std::min<size_t>(m.bonesAABB.size(), 3); b++) bones += " [" + std::to_string(b) + "] " + box(m.bonesAABB[b]);
+        ASSERT_TRUE(bounds.contains(middle)) << middle.toString() << " outside " << box(bounds) << "; aabb " << box(m.aabb)
+                                             << " skinned " << box(m.skinnedAABB) << " bonesAABB " << m.bonesAABB.size() << bones
+                                             << " bonesMatrix " << m.bonesMatrix.size() << " needUpdateAABB " << m.needUpdateAABB
+                                             << " loaded " << m.loaded << " buffer " << m.buffer.getSize();
+    }
     {
         const PickCache::EntryPtr entry = scene.getPickBvh().meshEntry(character, false);
         ASSERT_TRUE(entry);
