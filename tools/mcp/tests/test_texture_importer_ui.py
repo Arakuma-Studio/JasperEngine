@@ -85,8 +85,12 @@ async def item(ed: Editor, label: str, window_name: str | None = None) -> list |
     args = {"label": label}
     if window_name:
         args["window"] = window_name
-    items = (await ed.call("find_ui_item", **args))["items"]
-    return items[0]["rect"] if items else None
+    # find_ui_item's rects are {x, y, width, height} in window coordinates (editor_status gives lists)
+    items = [i for i in (await ed.call("find_ui_item", **args))["items"] if i.get("visible", True)]
+    if not items:
+        return None
+    r = items[0]["rect"]
+    return [r["x"], r["y"], r["width"], r["height"]]
 
 
 async def wait_item(ed: Editor, label: str, window_name: str | None = None, timeout: float = 30.0) -> list:

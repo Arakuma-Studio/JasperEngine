@@ -1,7 +1,7 @@
 """Exports of cooked textures (docs/specs/S14-texture-compression.md R9, AC12): a source export of
 tools/fixtures/textures ships assets/je-cooked/<family>/ for every family a platform of it loads,
 with an index.json whose files exist, leaves out the sources its cooks replace (but ships those a
-reference reads from the file: the glTF's external normal map), reserves je-cooked, and its
+reference reads from the file; a glTF's external images load cooked), reserves je-cooked, and its
 packaging keeps one family per platform (CMake copies, the web's --preload-file, Gradle's synced
 assets, the Xcode run script) with the Android manifest asking for ASTC.
 """
@@ -24,7 +24,8 @@ async def test_source_export_ships_cooked_families(ed: Editor):
     out = ed.scratch.root / "export-source"
     r = await ed.call("build_project", mode="source", output_dir=str(out), platform="android", timeout_seconds=1500)
     ed.check_eq(r["status"], "succeeded", f"{r}")
-    assets = out / "assets"
+    # a source export: the engine at the root, the game project under project/
+    assets = out / "project" / "assets"
     cooked = assets / "je-cooked"
     for family in ("desktop", "mobile", "web"):
         index_path = cooked / family / "index.json"
@@ -46,10 +47,11 @@ async def test_source_export_ships_cooked_families(ed: Editor):
     ed.check_eq(desktop["textures/ao.png"]["format"], "R8")
     ed.check_in("cpu", desktop["textures/ao.png"]["flags"])
 
-    # sources: the cooked ones stay out, the glTF's external image ships (tinygltf reads it)
+    # sources: the cooked ones stay out, the glTF's external image too (the model loads its cook)
     ed.check(not (assets / "textures" / "photo.png").exists(), "photo.png ships cooked only")
     ed.check(not (assets / "textures" / "ao.png").exists(), "ao.png ships cooked only")
-    ed.check((assets / "textures" / "normal.png").exists(), "the glTF's normal map ships as a file too")
+    ed.check(not (assets / "textures" / "normal.png").exists(), "the glTF's normal map ships cooked only")
+    ed.check((assets / "models" / "panel.gltf").exists(), "the model ships")
     ed.check(not any(p.suffix == ".meta" for p in assets.rglob("*")), "no metas in the export")
 
     # the web's .data packs the assets less the other families (--exclude-file): >= 60% smaller
@@ -89,7 +91,7 @@ async def test_etc2_fallback_and_reserved_name(ed: Editor):
     out = ed.scratch.root / "export-etc2"
     r = await ed.call("build_project", mode="source", output_dir=str(out), platform="android", timeout_seconds=1500)
     ed.check_eq(r["status"], "succeeded", f"{r}")
-    etc2 = json.loads((out / "assets" / "je-cooked" / "android_etc2" / "index.json").read_text())["textures"]
+    etc2 = json.loads((out / "project" / "assets" / "je-cooked" / "android_etc2" / "index.json").read_text())["textures"]
     ed.check_eq(etc2["textures/photo.png"]["format"], "ETC2_RGB8")
     manifest = (out / "workspaces" / "androidstudio" / "app" / "src" / "main" / "AndroidManifest.xml").read_text()
     ed.check("supports-gl-texture" not in manifest, "with the ETC2 fallback no store filter")
@@ -98,6 +100,6 @@ async def test_etc2_fallback_and_reserved_name(ed: Editor):
     reserved = ed.project / "assets" / "je-cooked"
     reserved.mkdir()
     (reserved / "x.txt").write_text("mine")
-    r = await ed.call("build_project", mode="source", output_dir=str(ed.scratch.root / "export-reserved"), timeout_seconds=900)
-    ed.check(r["status"] != "succeeded", f"{r}")
-    ed.check_in("je-cooked", json.dumps(r))
+    msg = await ed.call("build_project", mode="source", output_dir=str(ed.scratch.root / "export-reserved"), timeout_seconds=900,
+                        expect_error=True)
+    ed.check_in("je-cooked", msg)

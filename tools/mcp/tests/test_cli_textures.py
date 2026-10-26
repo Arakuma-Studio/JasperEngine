@@ -100,7 +100,7 @@ def check_report(report: dict) -> None:
             assert isinstance(total[key], int), (family, key)
 
 
-def test_cook_textures_cli():
+async def test_cook_textures_cli():
     work = Path(tempfile.mkdtemp(prefix="jasper-cli-textures-"))
     try:
         project = work / "project"
