@@ -19,7 +19,7 @@ def main():
     args = parser.parse_args()
     modes = ["segv", "abort", "terminate", "stack_overflow", "worker_segv", "worker_stack_overflow", "fpe", "guard_worker", "concurrent", "recursive"]
     if os.name == "nt":
-        modes.append("pure_call")
+        modes.extend(["pure_call", "recursive_abort"])
     else:
         modes.extend(["chain", "chain_after_return"])
     expected = {"segv": signal.SIGSEGV, "abort": signal.SIGABRT, "terminate": signal.SIGABRT,
@@ -32,9 +32,9 @@ def main():
             # Let ASan's previous handler print, then die with the original fatal signal.
             env["ASAN_OPTIONS"] = env.get("ASAN_OPTIONS", "") + ":abort_on_error=0:exitcode=77:disable_coredump=1"
             result = subprocess.run([str(args.binary.resolve()), "--mode", mode, "--out", root],
-                                    capture_output=True, text=True, timeout=3 if mode == "recursive" else 12, env=env)
+                                    capture_output=True, text=True, timeout=3 if mode.startswith("recursive") else 12, env=env)
             files = list(Path(root).glob("reports/*/" + ("hang-001.txt" if mode == "hang" else "crash.txt")))
-            if mode == "recursive":
+            if mode.startswith("recursive"):
                 assert result.returncode != 0, result
                 if os.name != "nt":
                     assert result.returncode == -signal.SIGSEGV, result.stderr
@@ -42,7 +42,7 @@ def main():
                         assert "AddressSanitizer" not in result.stderr, "recursive faults must go directly to the OS action"
                 assert " report=" not in result.stderr, result.stderr
                 assert not files, "the recursive test faults before opening its report"
-                print("PASS native crash: recursive (immediate termination)")
+                print(f"PASS native crash: {mode} (immediate termination)")
                 continue
             assert len(files) == 1, (mode, result.returncode, result.stderr[-5000:])
             report = files[0].read_text()

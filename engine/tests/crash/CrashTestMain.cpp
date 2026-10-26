@@ -22,6 +22,7 @@
 #include "thread/ThreadUtil.h"
 
 #include <chrono>
+#include <csignal>
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
@@ -44,10 +45,14 @@ using namespace jasperengine;
 namespace je_crash_test {
     std::atomic<bool> reportEntered{false};
     bool recursiveFault = false;
+#if defined(_WIN32)
+    bool recursiveAbort = false;
+#endif
     void pauseReport() {
         reportEntered.store(true, std::memory_order_release);
         if (recursiveFault) {
 #if defined(_WIN32)
+            if (recursiveAbort) std::abort();
             RaiseException(EXCEPTION_ACCESS_VIOLATION, EXCEPTION_NONCONTINUABLE, 0, nullptr);
 #else
             raise(SIGSEGV);
@@ -149,6 +154,12 @@ int main(int argc, char** argv) {
         if (std::strcmp(mode, "chain_after_return") == 0) sigaction(SIGSEGV, &sentinel, nullptr);
     }
 #endif
+#if defined(_WIN32)
+    if (std::strcmp(mode, "recursive_abort") == 0) {
+        // Recursive faults must bypass a previous abort callback that cannot make progress.
+        std::signal(SIGABRT, [](int) { Sleep(10000); });
+    }
+#endif
     diag::crash::install(config);
     log(std::string("crash test mode ") + mode);
 
@@ -167,9 +178,12 @@ int main(int argc, char** argv) {
         return 0;
     }
 #endif
-    if (name == "concurrent" || name == "recursive") {
+    if (name == "concurrent" || name == "recursive" || name == "recursive_abort") {
         log("last line before the crash");
-        recursiveFault = name == "recursive";
+        recursiveFault = name != "concurrent";
+#if defined(_WIN32)
+        recursiveAbort = name == "recursive_abort";
+#endif
         diag::crash::detail::state().beforeReportForTesting = pauseReport;
         auto first = thread::spawnNamed("First fault", [] { diag::crash::debugCrash("segv"); });
         if (!recursiveFault) {
