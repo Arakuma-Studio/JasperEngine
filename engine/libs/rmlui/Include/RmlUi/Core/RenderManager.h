@@ -108,6 +108,18 @@ public:
 	void RequestRender();
 	bool ConsumeRenderRequest();
 
+	/// Fork (S16-F6): the clipping region ElementUtilities::SetClippingRegion found for an element whose own 'clip' is auto:
+	/// that of every such element of the same offset parent (but its scrollbars), kept for the elements after it in the
+	/// render pass. Forgotten at each pass and when an element's transform is updated during it (ResetClipMemo).
+	struct ClipMemo {
+		const void* offset_parent = nullptr;
+		bool scissor = false;
+		Rectanglei region;
+		ClipMaskGeometryList masks;
+	};
+	ClipMemo& GetClipMemo() { return clip_memo; }
+	void ResetClipMemo() { clip_memo.offset_parent = nullptr; }
+
 private:
 	void ApplyClipMask(const ClipMaskGeometryList& clip_elements);
 
@@ -139,6 +151,7 @@ private:
 	UniquePtr<TextureDatabase> texture_database;
 
 	bool render_requested = false;
+	ClipMemo clip_memo;
 	int compiled_filter_count = 0;
 	int compiled_shader_count = 0;
 

@@ -294,6 +294,8 @@ namespace {
             instance.b[3] += t.y;
             break;
         case HtmlUIPrimitive::BOX:
+        case HtmlUIPrimitive::GRADIENT:
+            // (a gradient's p, v and origin are in its area's own px)
             instance.a[0] += t.x;
             instance.a[1] += t.y;
             break;
@@ -381,6 +383,11 @@ HtmlUIPrimitive RmlRenderer::toInstance(const Rml::BoxPrimitive& primitive, Rml:
         }
         instance.f[0] = (shader->function == RmlCompiledShader::Function::RADIAL) ? 1.0f : 0.0f;
         instance.f[1] = (float)count;
+        // the shader's (0, 0) in the area's px (a background tile's origin) and the tiles' period
+        instance.params[1] = primitive.gradient_origin.x;
+        instance.params[3] = primitive.gradient_origin.y;
+        instance.f[2] = std::max(primitive.gradient_repeat.x, 0.0f);
+        instance.f[3] = std::max(primitive.gradient_repeat.y, 0.0f);
         break;
     }
     }

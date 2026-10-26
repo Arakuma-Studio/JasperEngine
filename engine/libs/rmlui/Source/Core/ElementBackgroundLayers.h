@@ -83,6 +83,9 @@ private:
 		// A cross-fade (an interpolated background-image): the images added in a layer (BlendMode::Plus), as Chromium's
 		// CrossfadeGeneratedImage draws them.
 		Vector<FadeImage> fade;
+		// Fork (S16-F5): a gradient image drawn as primitives (RenderInterface::SupportsGradientPrimitive) instead of the
+		// geometry and, under a rounded clip box, the mask layer: their radii clip it.
+		Vector<BoxPrimitive> primitives;
 	};
 
 	void Generate(Element* element, const Rectanglef* canvas, Element* area_element);

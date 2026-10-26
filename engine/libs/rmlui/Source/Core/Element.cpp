@@ -264,6 +264,12 @@ void Element::Render()
 	if (stacking_context_dirty)
 		BuildLocalStackingContext();
 
+	// Fork (S16-F6): a transform updated now changes the clipping region of the elements it clips
+	if (dirty_transform || dirty_perspective)
+	{
+		if (RenderManager* render_manager = GetRenderManager())
+			render_manager->ResetClipMemo();
+	}
 	UpdateTransformState();
 	ElementUtilities::ApplyTransform(*this);
 

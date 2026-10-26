@@ -51,6 +51,7 @@ void RenderManager::PrepareRender(Vector2i dimensions)
 	RMLUI_ASSERTMSG(render_stack.empty(), "Unbalanced render stack detected, ensure every PushLayer call has a corresponding call to PopLayer.");
 #endif
 
+	ResetClipMemo();
 	SetViewport(dimensions);
 }
 
@@ -254,6 +255,7 @@ void RenderManager::SetState(const RenderState& next)
 
 void RenderManager::ResetState()
 {
+	ResetClipMemo();
 	SetState(RenderState{});
 }
 

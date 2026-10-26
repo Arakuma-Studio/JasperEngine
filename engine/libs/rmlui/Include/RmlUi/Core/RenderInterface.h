@@ -54,6 +54,9 @@ struct BoxPrimitive {
 	Rectanglef clip_box;                 // shadows
 	Array<Vector2f, 4> clip_radii = {};
 	CompiledShaderHandle shader = {};    // Gradient: its compiled shader (RenderInterface::SupportsGradientPrimitive)
+	Vector2f gradient_origin;            // Gradient: where the shader's (0, 0) is relative to border_box's top-left (a
+	                                     // background image tile's origin; zero for a decorator's fill area)
+	Vector2f gradient_repeat;            // Gradient: the period of its tiles along each axis (0: one tile)
 };
 
 /**

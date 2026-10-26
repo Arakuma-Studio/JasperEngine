@@ -155,7 +155,13 @@ void main() {
     }else if (mode == 4){
         // a gradient over its fill area (S16-F5): htmlui_gradient.frag's linear or radial function, at
         // most four stops (positions in v_e, colours in v_border0-3), in the area's own px
-        vec2 uv = p - v_a.xy;
+        // the gradient's own px: from its origin (a background tile's, v_params.yw), repeated with the
+        // tiles' period (v_f.zw, 0: one tile)
+        vec2 uv = p - v_a.xy - v_params.yw;
+        if (v_f.z > 0.0)
+            uv.x -= v_f.z * floor(uv.x / v_f.z);
+        if (v_f.w > 0.0)
+            uv.y -= v_f.w * floor(uv.y / v_f.w);
         float t;
         if (v_f.x < 0.5){
             float distSquare = max(dot(v_d.zw, v_d.zw), 1e-12);

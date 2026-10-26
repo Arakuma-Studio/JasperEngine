@@ -21,8 +21,10 @@ namespace jasperengine {
                                 // GRADIENT: p and v of htmlui_gradient.frag (fill-area px)
         float e[4];             // BOX: the fill's insets (top, right, bottom, left); shadows: the clip box's radii (x);
                                 // GRADIENT: the stops' positions
-        float f[4];             // shadows: the clip box's radii (y); GRADIENT: x: 0 linear, 1 radial; y: stop count
-        float params[4];        // x: mode, y: sigma (shadows), z: QUAD: the texture slot + 1 (0: untextured), w: 0
+        float f[4];             // shadows: the clip box's radii (y); GRADIENT: x: 0 linear, 1 radial; y: stop count;
+                                // zw: the period of its tiles (0: one tile)
+        float params[4];        // x: mode, y: sigma (shadows), z: QUAD: the texture slot + 1 (0: untextured), w: 0;
+                                // GRADIENT: yw: the gradient's origin in the area's px
         uint8_t color[4];       // premultiplied: the quad's colour, the fill, the shadow's colour
         uint8_t border[4][4];   // BOX: top, right, bottom, left; GRADIENT: the stops' colours
     };
