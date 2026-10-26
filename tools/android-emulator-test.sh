@@ -195,12 +195,7 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
             sleep 2
         done
         result=0
-        check > "$OUT/result.txt" || result=1
-        while IFS= read -r forbidden; do
-            [[ -z "$forbidden" ]] && continue
-            hit="$(grep -F -- "$forbidden" "$OUT/logcat.txt" | head -1 || true)"
-            if [[ -n "$hit" ]]; then echo "FORBIDDEN    $hit" >> "$OUT/result.txt"; result=1; fi
-        done < "$OUT/forbid.txt"
+        : > "$OUT/result.txt"
         if [[ "$EXPECT_NATIVE_CRASH" == 1 ]]; then
             # debuggerd writes after the first fatal log line; wait for the report and
             # tombstone rather than ending the test when the signal is first observed.
@@ -231,6 +226,14 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
             echo "$crashes" | sed "s/^/CRASH        /" >> "$OUT/result.txt"
             result=1
         fi
+        # A native fault can be observed before our logcat lines have been collected.
+        # Check the final snapshot after the report/tombstone wait, not the early one.
+        check >> "$OUT/result.txt" || result=1
+        while IFS= read -r forbidden; do
+            [[ -z "$forbidden" ]] && continue
+            hit="$(grep -F -- "$forbidden" "$OUT/logcat.txt" | head -1 || true)"
+            if [[ -n "$hit" ]]; then echo "FORBIDDEN    $hit" >> "$OUT/result.txt"; result=1; fi
+        done < "$OUT/forbid.txt"
         if (( result )); then echo FAIL >> "$OUT/result.txt"; else echo PASS >> "$OUT/result.txt"; fi
         sed "s/^/android-emulator-test: /" "$OUT/result.txt"
         adb exec-out screencap -p > "$OUT/screen.png" 2>/dev/null || true
