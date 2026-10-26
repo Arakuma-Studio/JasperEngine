@@ -1,7 +1,7 @@
 # S17 acceptance (HTML UI widgets)
 
 The record of `docs/specs/S17-htmlui-widgets.md` §7 on `feat/s17-htmlui-widgets`, merged with
-`oe-port` (`f93897204`). Every build and test ran on the remote build servers through `rb.sh`: the
+`oe-port` (`c62ecba1c`). Every build and test ran on the remote build servers through `rb.sh`: the
 suites on B (shared), the timing gates on E (the benchmark host, nothing else running), the web
 builds on C, the editor and the MCP tests on D, the Android build and emulator on A. The deviations
 from the spec are in its "Deviations" section.
@@ -29,21 +29,37 @@ from the spec are in its "Deviations" section.
 
 ## Run record
 
-- glcore, the whole `jasperengine-htmlui-tests` (B, `JASPER_HTMLUI_PERF_SLACK=3`): 3,351 passed, 74
-  skipped (the usual), failures fixed and rerun: `CompatLuaTest.DocumentScriptsRunInPlay` (a patch
-  re-added a text a script had replaced: the 3-way rule now keeps nodes a script removed),
-  `ForkFeatures.PresentFeatures` and `NativeFeatureConsistency.EveryFeatureHasASample` (S17's two
-  runtime-only fork features).
-- Vulkan (`HTMLUI_BACKEND=vulkan`, B): 3,353 passed, 74 skipped, the same three tests failed
-  before the fixes above (`HtmlUITemplates.CreatesDocumentAndStyleSheetWithFreeNames` failed on
-  both backends before the `oe-port` merge; it is not S17's).
-- RmlUi's own tests (`tools/htmlui/run-rmlui-tests.sh`, A): 461 of 463 passed before the
-  `VirtualViews` documents got a font (the shell treats the missing-font warning as an error).
+The final runs, on the branch merged with `oe-port` `c62ecba1c`:
+
+- glcore, the whole `jasperengine-htmlui-tests` (B, `JASPER_HTMLUI_PERF_SLACK=3`): 3,356 passed, 74
+  skipped (the usual), 1 failed: `EffectPerfTest.GridSteadyStateAndBudgets` (564 s on the shared
+  host; it passes on E, and it is not S17's).
+- Vulkan (`HTMLUI_BACKEND=vulkan`, C): the S17 suites (widgets, goldens, tooltips, drag and drop, reconcile, reload, Markdown, placement, views, texture mode, examples, compat Lua and hot reload; timing excluded) 142 ran, 0 failed. An earlier whole-suite Vulkan run: 3,353
+  passed, with the same three failures the glcore run had then (fixed below).
+- Perf (E, nothing else running): the eight S17 timing tests and `EffectPerfTest` pass; numbers in AC13.
+- Editor (D): `htmlui-editor-tests` 72 ran, 0 failed. MCP (D): `gen_tool_docs.py` (193 tools,
+  `docs/mcp/TOOLS.md` regenerated), `tool_budget.py --check` within `tools/mcp/budget.json`
+  (`html_ui` 1 tool, 1,100 chars; guide 15,708 of 16,384 bytes), then the HTML UI, budget,
+  conventions, groups, coverage, generators, Lua API and protocol tests: 134 passed, 0 failed, 2
+  skipped. `test_html_ui_examples.py` (every example at every viewport) passed after the S23 merge.
+- RmlUi's own tests (`tools/htmlui/run-rmlui-tests.sh`, C): 463 of 463 passed.
 - Web (C): `WEB_PROJECT=htmlui-widgets` + `GATE=htmlui-widgets` PASS, `tools/build.sh web` +
-  `web-gate` (sample-project) PASS. The first htmlui-widgets gate failed on a debug-build assertion
-  of the fork ("Missing specification for one or more Property IDs", P5-1's id counted too early),
-  fixed in `StyleSheetSpecification.cpp` (FORK.md "P5-1 fix").
-- Perf (E): see AC13. `MarkdownParser.HostileInputsParseInLinearTime` failed there at first
-  ('[' x 500,000 then links: 76.7 ms against 3.6 ms at a quarter): glibc page faults, not the
-  parser (linear with the allocator's thresholds pinned). The nodes and brackets are now chunked
-  and the test keeps the heap: 11.1 ms against 2.1 ms.
+  `web-gate` (sample-project) PASS.
+- Android (A): `ANDROID_PROJECT=htmlui-widgets` on the API 34 emulator: both `android-expect.txt`
+  lines PASS. Smoke (`tools/fixtures/post-processing`) PASS.
+
+Failures found on the way and fixed:
+
+- `CompatLuaTest.DocumentScriptsRunInPlay`: a patch re-added a text a script had replaced; the
+  3-way rule now keeps nodes a script removed unless the author changed them.
+- `ForkFeatures.PresentFeatures` and `NativeFeatureConsistency.EveryFeatureHasASample`: S17's two
+  runtime-only fork features.
+- The first htmlui-widgets web gate failed on a debug-build assertion of the fork ("Missing
+  specification for one or more Property IDs", P5-1's id counted too early), fixed in
+  `StyleSheetSpecification.cpp` (FORK.md "P5-1 fix").
+- `MarkdownParser.HostileInputsParseInLinearTime` failed on E at first ('[' x 500,000 then links:
+  76.7 ms against 3.6 ms at a quarter): glibc page faults, not the parser. The nodes and brackets
+  are now chunked and the test keeps the heap: 11.1 ms against 2.1 ms.
+- UBSan: a misaligned read in the fork's `SVGCache` hash (FORK.md "SVG hash fix"). A UBSan report
+  in `ShaderData` (a `bool` load) predates S17 and stops `SANITIZE=address,undefined` runs early;
+  `SANITIZE=address` ran the S17 tests clean.
