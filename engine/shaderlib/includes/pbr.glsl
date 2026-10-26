@@ -1,7 +1,10 @@
 // Based on https://github.com/KhronosGroup/glTF-Sample-Viewer shaders
 
 #include "includes/srgb.glsl"
-#include "includes/normal_map.glsl"
+// (only where a normal map is sampled: the other variants stay the program they were)
+#ifdef HAS_NORMAL_MAP
+    #include "includes/normal_map.glsl"
+#endif
 
 float clampedDot(vec3 x, vec3 y){
     return clamp(dot(x, y), 0.0, 1.0);

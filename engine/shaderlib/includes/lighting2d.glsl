@@ -12,7 +12,9 @@
 #ifndef LIGHTING2D_GLSL
 #define LIGHTING2D_GLSL
 
-#include "includes/normal_map.glsl"
+#ifdef HAS_NORMAL_MAP
+    #include "includes/normal_map.glsl"
+#endif
 
 uniform u_fs_lighting2d {
     vec4 position_range[MAX_LIGHTS_2D];  //position.xy, height.z, range.w

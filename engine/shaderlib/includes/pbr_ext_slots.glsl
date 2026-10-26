@@ -16,8 +16,6 @@
 #ifndef PBR_EXT_SLOTS_GLSL
 #define PBR_EXT_SLOTS_GLSL
 
-#include "includes/normal_map.glsl"
-
 #if !defined(PBR_EXT) && (defined(PBR_CLEARCOAT) || defined(PBR_SHEEN) || defined(PBR_ANISOTROPY) || \
     defined(PBR_IRIDESCENCE) || defined(PBR_TRANSMISSION) || defined(PBR_SPECULAR) || defined(PBR_HEX_TILING))
     #define PBR_EXT
