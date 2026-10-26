@@ -331,7 +331,13 @@ void addModule(uintptr_t begin, uintptr_t end, uintptr_t base, const char* name)
         if (end > modules[i].end) modules[i].end = end;
         return;
     }
-    if (moduleCount == sizeof(modules) / sizeof(modules[0])) return;
+    if (moduleCount == sizeof(modules) / sizeof(modules[0])) {
+        // Android's app_process can load hundreds of system images before the game. Keep
+        // our image even when the bounded cache is full; raw maps retain the evicted one.
+        const uintptr_t owner = reinterpret_cast<uintptr_t>(&capture);
+        if (owner < begin || owner >= end) return;
+        --moduleCount;
+    }
     auto& module = modules[moduleCount++];
     module.begin = begin; module.end = end; module.base = base;
     const char* basename = name;
