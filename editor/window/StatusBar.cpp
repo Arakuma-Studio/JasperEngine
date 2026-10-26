@@ -16,6 +16,21 @@
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
+std::string StatusBar::transientText;
+double StatusBar::transientUntil = 0.0;
+
+void StatusBar::setTransientMessage(const std::string& text, double seconds) {
+    transientText = text;
+    transientUntil = (ImGui::GetCurrentContext() ? ImGui::GetTime() : 0.0) + seconds;
+}
+
+std::string StatusBar::getTransientMessage() {
+    if (transientText.empty() || !ImGui::GetCurrentContext() || ImGui::GetTime() > transientUntil) {
+        return std::string();
+    }
+    return transientText;
+}
+
 StatusBar::StatusBar(std::function<void()> openAssetPipeline)
     : openAssetPipeline(std::move(openAssetPipeline)) {
 }
@@ -48,6 +63,12 @@ void StatusBar::show() {
         }
         if (reloads.reloadingCount() > 0) label = "Reloading " + std::to_string(reloads.reloadingCount()) + "... " + label;
 
+        const std::string transient = getTransientMessage();
+        if (!transient.empty()) {
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted(transient.c_str());
+            ImGui::SameLine();
+        }
         const float width = ImGui::CalcTextSize(label.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f;
         ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - width));
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));

@@ -71,6 +71,7 @@ namespace jasperengine::editor{
         float walkSpeedOffset = 0.0f;
 
         Vector2 linesOffset;
+        int gridPlane = 0;
         float lastGridSpacing;
         float lastGridFarClip = 0.0f;
 
@@ -121,6 +122,10 @@ namespace jasperengine::editor{
         void update(std::vector<Entity> selEntities, std::vector<Entity> entities, Entity mainCamera, const SceneDisplaySettings& settings = SceneDisplaySettings{}) override;
 
         ViewportGizmo* getViewportGizmo();
+
+        // 0 the XZ plane (perspective and top/bottom views), 1 XY (front/back), 2 YZ (sides)
+        void setGridPlane(int plane) override;
+        int getGridPlane() const override { return gridPlane; }
     };
 
 }

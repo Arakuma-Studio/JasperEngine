@@ -363,6 +363,7 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 auto sceneNode = editorNode["scene_view"];
                 if (sceneNode["exact_pick"]) sceneViewSettings.exactPick = sceneNode["exact_pick"].as<bool>();
                 if (sceneNode["align_to_surface"]) sceneViewSettings.alignToSurface = sceneNode["align_to_surface"].as<bool>();
+                if (sceneNode["rulers"]) sceneViewSettings.rulers = sceneNode["rulers"].as<bool>();
             }
             if (editorNode["profiler"]) {
                 auto profilerNode = editorNode["profiler"];
@@ -586,6 +587,7 @@ bool AppSettings::saveSettings() {
         YAML::Node sceneViewNode;
         sceneViewNode["exact_pick"] = sceneViewSettings.exactPick;
         sceneViewNode["align_to_surface"] = sceneViewSettings.alignToSurface;
+        sceneViewNode["rulers"] = sceneViewSettings.rulers;
         editorNode["scene_view"] = sceneViewNode;
         YAML::Node profilerNode;
         profilerNode["budget_fps"] = profilerSettings.budgetFps;

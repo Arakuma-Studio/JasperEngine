@@ -10,6 +10,7 @@
 
 #include "Project.h"
 #include "LineDrawUtils.h"
+#include "util/Angle.h"
 
 #include <algorithm>
 #include <cmath>
@@ -2210,4 +2211,20 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
 
 editor::ViewportGizmo* editor::SceneRender3D::getViewportGizmo(){
     return &viewgizmo;
+}
+
+void editor::SceneRender3D::setGridPlane(int plane){
+    plane = std::clamp(plane, 0, 2);
+    if (plane == gridPlane){
+        return;
+    }
+    gridPlane = plane;
+    // the grid is built in XZ: a quarter turn about X lays it in XY, about Z in YZ
+    if (plane == 1){
+        lines->setRotation(Quaternion(Angle::degToDefault(90.0f), Vector3(1, 0, 0)));
+    }else if (plane == 2){
+        lines->setRotation(Quaternion(Angle::degToDefault(90.0f), Vector3(0, 0, 1)));
+    }else{
+        lines->setRotation(Quaternion());
+    }
 }

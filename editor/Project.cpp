@@ -14,6 +14,7 @@
 #include "io/AtomicFile.h"
 #include "Factory.h"
 #include "picking/ScenePicker.h"
+#include "sceneview/SceneViewVisibility.h"
 #include "picking/SceneBvh.h"
 #include "Workspace.h"
 #include "registry/PhysicsLayers.h"
@@ -6062,7 +6063,9 @@ void editor::Project::updateSceneRender(uint32_t sceneId){
     }
 
     syncSceneRenderEditLayer(sceneId);
-    sceneProject->sceneRender->update(sceneProject->selectedEntities, sceneProject->entities, sceneProject->mainCamera, sceneProject->displaySettings);
+    // what the Scene view hides (R22, R23) has no icon or gizmo there either
+    sceneProject->sceneRender->update(sceneProject->selectedEntities, sceneview::visibleEntities(*sceneProject, sceneProject->entities),
+                                      sceneProject->mainCamera, sceneProject->displaySettings);
 }
 
 std::vector<editor::SceneProject>& editor::Project::getScenes(){

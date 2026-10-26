@@ -44,7 +44,7 @@ namespace jasperengine::editor {
         static constexpr float ACCELERATION_SECONDS = 0.6f;
         static constexpr float ACCELERATION_START = 0.25f;
 
-        // the values clamped to their ranges (near < far, min <= speed <= max)
+        // the values clamped to their ranges (near < far, speed 0.01..1000, min <= max)
         void clamp();
         bool operator==(const SceneCameraSettings& other) const;
     };
@@ -110,7 +110,8 @@ namespace jasperengine::editor {
         SceneViewLayout layout = SceneViewLayout::SINGLE;
         int activePane = 0;                 // the pane taking input and drawing the gizmos
         int maximizedPane = -1;             // a double-clicked pane header fills the view
-        // panes[0] is the editor camera of the view; [1..3] the others of Split and Quad
+        // panes[0] is the free (perspective) pane, [1..3] the others of Split and Quad; the
+        // active one is drawn by the editor camera, the others through cameras of their own
         std::array<SceneViewPane, MAX_PANES> panes;
 
         std::array<CameraBookmark, BOOKMARK_SLOTS> bookmarks;
@@ -126,7 +127,7 @@ namespace jasperengine::editor {
 
         int paneCount() const { return layout == SceneViewLayout::QUAD ? 4 : (layout == SceneViewLayout::SPLIT ? 2 : 1); }
         // the panes of a layout as Unity arranges them: Split = Persp | Top, Quad = Top, Front,
-        // Side, Persp (the free pane is always panes[0], the editor camera)
+        // Side, Persp (panes[0] is the free one)
         static SceneViewAxis defaultPaneAxis(SceneViewLayout layout, int pane);
         void setLayout(SceneViewLayout layout);
     };

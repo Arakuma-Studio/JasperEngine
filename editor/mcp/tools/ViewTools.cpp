@@ -16,6 +16,7 @@
 #include "mcp/McpValues.h"
 
 #include "App.h"
+#include "Backend.h"
 #include "AppSettings.h"
 #include "Engine.h"
 #include "Project.h"
@@ -741,6 +742,25 @@ Json sceneCameraJson(SceneProject* sp) {
     if (sp->sceneType == SceneType::SCENE_3D) {
         out["distance"] = camera->getDistanceFromTarget();
         out["mode"] = "3d";
+        // S26: projection, axis view and the Scene Camera settings
+        if (SceneWindow* sw = Backend::getApp().getSceneWindow()) {
+            SceneViewController& view = sw->getViewController();
+            const SceneCameraPose pose = view.currentPose(*sp);
+            const SceneCameraSettings& settings = sp->viewState.camera;
+            out["projection"] = pose.orthographic ? "orthographic" : "perspective";
+            out["ortho_size"] = pose.orthoSize;
+            out["fov"] = settings.fieldOfView;
+            out["near"] = camera->getNearClip();
+            out["far"] = camera->getFarClip();
+            const SceneViewAxis axis = view.viewAxis(*sp);
+            out["view"] = SceneViewStateStream::axisName(axis);
+            out["camera_settings"] = {{"speed", settings.speed}, {"speed_min", settings.speedMin}, {"speed_max", settings.speedMax},
+                                      {"shift_multiplier", settings.shiftMultiplier}, {"acceleration", settings.acceleration},
+                                      {"easing", settings.easing}, {"dynamic_clipping", settings.dynamicClipping},
+                                      {"near", settings.nearClip}, {"far", settings.farClip}};
+            out["layout"] = SceneViewStateStream::layoutName(sp->viewState.layout);
+            out["active_pane"] = sp->viewState.activePane;
+        }
     } else {
         out["zoom"] = static_cast<SceneRender2D*>(sp->sceneRender)->getZoom();
         out["mode"] = "2d";
@@ -845,10 +865,32 @@ void setSceneCameraTool(const CallPtr& call) {
         }
     }
 
+    for (const char* key : {"projection", "ortho_size", "fov", "near", "far", "view", "camera_settings"}) {
+        if (!is3D && args.contains(key)) {
+            call->fail(std::string(key) + " is for 3D scenes; \"" + sp->name + "\" is " + McpRefs::sceneTypeName(sp->sceneType) + ".");
+            return;
+        }
+    }
+    SceneViewAxis viewAxis = SceneViewAxis::FREE;
+    if (args.contains("view") && (!args["view"].is_string() || !SceneViewStateStream::parseAxis(args["view"].get<std::string>(), viewAxis) ||
+                                  viewAxis == SceneViewAxis::FREE)) {
+        call->fail("view must be top, bottom, front, back, left or right.");
+        return;
+    }
+    if (args.contains("projection") && args["projection"] != "perspective" && args["projection"] != "orthographic") {
+        call->fail("projection must be \"perspective\" or \"orthographic\".");
+        return;
+    }
+    if (args.contains("near") && args.contains("far") && args.value("near", 0.0f) >= args.value("far", 0.0f)) {
+        call->fail("near must be less than far.");
+        return;
+    }
+
     const uint32_t sceneId = sp->id;
-    whenSceneViewReady(call, sceneId, true, 10000, [call, sceneId, is3D, position, target, center](bool ready, const std::string& err) {
+    whenSceneViewReady(call, sceneId, true, 10000, [call, sceneId, is3D, position, target, center, viewAxis](bool ready, const std::string& err) {
         const Json& a = call->args();
-        Project* p = call->ctx().project();
+        McpContext& c = call->ctx();
+        Project* p = c.project();
         SceneProject* s = p->getScene(sceneId);
         if (!s || !s->sceneRender || !s->sceneRender->getCamera()) {
             call->fail("The scene closed.");
@@ -888,6 +930,40 @@ void setSceneCameraTool(const CallPtr& call) {
                 const Vector3 dir = (camera->getTarget() - camera->getPosition()).normalize();
                 if (std::abs(dir.y) < 0.99f) camera->setUp(0, 1, 0);
             }
+            // S26 (R17, R18, R21): the Scene Camera settings, projection, axis view, framing;
+            // an agent's camera moves land at once (Camera Easing is for the user's)
+            SceneViewController& view = c.sceneWindow()->getViewController();
+            view.ensureApplied(*s);
+            SceneCameraSettings settings = s->viewState.camera;
+            bool settingsChanged = false;
+            if (a.contains("fov")) { settings.fieldOfView = a.value("fov", settings.fieldOfView); settingsChanged = true; }
+            if (a.contains("near")) { settings.nearClip = a.value("near", settings.nearClip); settingsChanged = true; }
+            if (a.contains("far")) { settings.farClip = a.value("far", settings.farClip); settingsChanged = true; }
+            if (a.contains("camera_settings") && a["camera_settings"].is_object()) {
+                const Json& cs = a["camera_settings"];
+                settings.speed = cs.value("speed", settings.speed);
+                settings.acceleration = cs.value("acceleration", settings.acceleration);
+                settings.easing = cs.value("easing", settings.easing);
+                settings.dynamicClipping = cs.value("dynamic_clipping", settings.dynamicClipping);
+                settingsChanged = true;
+            }
+            if (settingsChanged) {
+                view.applyCameraSettings(*s, settings);
+                changed.push_back("camera_settings");
+            }
+            if (a.contains("projection")) {
+                view.setProjection(*s, a["projection"] == "orthographic");
+                changed.push_back("projection");
+            }
+            if (a.contains("view")) {
+                view.setAxisView(*s, viewAxis);
+                view.finishTween(*s);
+                changed.push_back("view");
+            }
+            if (a.contains("ortho_size")) {
+                view.setOrthoSize(*s, a.value("ortho_size", 10.0f));
+                changed.push_back("ortho_size");
+            }
         } else {
             auto* render2D = static_cast<SceneRender2D*>(s->sceneRender);
             SceneWindow* sw = call->ctx().sceneWindow();
@@ -918,6 +994,17 @@ void setSceneCameraTool(const CallPtr& call) {
                 camera->setTarget(x, y, t.z);
             }
         }
+        if (a.value("frame_all", false)) {
+            SceneViewController& view = c.sceneWindow()->getViewController();
+            view.ensureApplied(*s);
+            if (!view.frameAll(*s)) {
+                call->fail("Nothing in \"" + s->name + "\" to frame.");
+                return;
+            }
+            view.finishTween(*s);
+            changed.push_back("frame_all");
+        }
+        if (!changed.empty()) p->saveWorkspaceFile();
         if (a.contains("display")) {
             for (auto it = a["display"].begin(); it != a["display"].end(); ++it) {
                 if (it.key() == "grid_spacing_2d" && it.value().is_number()) s->displaySettings.gridSpacing2D = it.value().get<float>();
@@ -984,6 +1071,8 @@ void frameEntityTool(const CallPtr& call) {
         }
         if (entities.empty()) w->frameSelection(sceneId);
         else w->frameEntities(sceneId, sceneId, entities);
+        // an agent's framing lands at once (Camera Easing animates the user's)
+        w->getViewController().finishTween(*s);
         s->needUpdateRender = true;
         Json data = {{"scene", McpRefs::sceneJson(p, *s)}, {"camera", sceneCameraJson(s)}};
         data["framed"] = entities.empty() ? Json("selection") : framed;
@@ -1259,6 +1348,27 @@ void configureGameViewTool(const CallPtr& call) {
 
 } // namespace
 
+namespace w3 {
+
+SceneProject* resolveSceneViewScene(Project* project, const Json& ref, std::string& error) {
+    return resolveViewScene(project, ref, error);
+}
+
+void whenSceneViewShown(const CallPtr& call, uint32_t sceneId, bool focus, int timeoutMs,
+                        std::function<void(bool ready, const std::string& error)> then) {
+    whenSceneViewReady(call, sceneId, focus, timeoutMs, std::move(then));
+}
+
+void replyWithSceneShot(const CallPtr& call, uint32_t sceneId, const std::string& text, Json data) {
+    replyMaybeWithScreenshot(call, sceneId, text, std::move(data));
+}
+
+Json sceneViewCameraJson(SceneProject* sceneProject) {
+    return sceneCameraJson(sceneProject);
+}
+
+} // namespace w3
+
 void registerViewTools(McpRegistry& registry) {
     using namespace schema;
 
@@ -1303,6 +1413,15 @@ void registerViewTools(McpRegistry& registry) {
             {"center", vec2("World point at the view centre.")},
             {"zoom", number("World units per pixel.", 0.01, 1000)},
             {"display", anyObject("Overlay flags, e.g. {show_grid_3d: false, show_post_processing: true}; saved with the workspace.")},
+            {"projection", stringEnum("", {"perspective", "orthographic"})},
+            {"ortho_size", number("Half height.", 0.001, 100000)},
+            {"fov", number("", 4, 120)},
+            {"near", number("", 0.001, 1000)},
+            {"far", number("", 1, 1000000)},
+            {"view", stringEnum("Axis view.", {"top", "bottom", "front", "back", "left", "right"})},
+            {"frame_all", boolean("As Alt+F.")},
+            {"camera_settings", object({{"speed", number("", 0.01, 1000)}, {"acceleration", boolean("")}, {"easing", boolean("")},
+                                        {"dynamic_clipping", boolean("")}})},
             {"screenshot", sceneShot},
             {"max_width", maxWidth}
         });

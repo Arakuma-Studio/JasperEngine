@@ -22,6 +22,7 @@ namespace jasperengine::editor::mcp {
     void registerPrefabTools(McpRegistry& registry);
     void registerPlayTools(McpRegistry& registry);
     void registerViewTools(McpRegistry& registry);
+    void registerSceneViewTools(McpRegistry& registry);   // S26
     void registerShadowTools(McpRegistry& registry);
     void registerConsoleTools(McpRegistry& registry);
     void registerScriptTools(McpRegistry& registry);

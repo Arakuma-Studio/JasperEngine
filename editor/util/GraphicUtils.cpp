@@ -451,3 +451,55 @@ bool editor::GraphicUtils::encodeFramebufferPng(Framebuffer* framebuffer, std::v
     if (outHeight) *outHeight = finalHeight;
     return true;
 }
+
+bool editor::GraphicUtils::encodeFramebufferThumbnailPng(Framebuffer* framebuffer, int width, int height, std::vector<uint8_t>& out) {
+    out.clear();
+    if (width <= 0 || height <= 0 || !framebuffer || !framebuffer->isCreated() || framebuffer->getWidth() == 0 ||
+            framebuffer->getHeight() == 0) {
+        return false;
+    }
+    uint8_t* pixels = nullptr;
+    bool needDelete = false;
+    if (!readFramebufferPixels(framebuffer, pixels, needDelete) || !pixels) {
+        if (needDelete) delete[] pixels;
+        return false;
+    }
+    const int sourceWidth = static_cast<int>(framebuffer->getWidth());
+    const int sourceHeight = static_cast<int>(framebuffer->getHeight());
+    // the largest centred rectangle of the thumbnail's aspect
+    int cropWidth = sourceWidth;
+    int cropHeight = static_cast<int>(static_cast<long long>(sourceWidth) * height / width);
+    if (cropHeight > sourceHeight) {
+        cropHeight = sourceHeight;
+        cropWidth = std::max(1, static_cast<int>(static_cast<long long>(sourceHeight) * width / height));
+    }
+    cropHeight = std::max(1, cropHeight);
+    const int x0 = (sourceWidth - cropWidth) / 2;
+    const int y0 = (sourceHeight - cropHeight) / 2;
+    std::vector<uint8_t> rgb(static_cast<size_t>(cropWidth) * cropHeight * 3);
+    for (int y = 0; y < cropHeight; ++y) {
+        const uint8_t* src = pixels + (static_cast<size_t>(y0 + y) * sourceWidth + x0) * 4;
+        uint8_t* dst = rgb.data() + static_cast<size_t>(y) * cropWidth * 3;
+        for (int x = 0; x < cropWidth; ++x) {
+            dst[x * 3 + 0] = src[x * 4 + 0];
+            dst[x * 3 + 1] = src[x * 4 + 1];
+            dst[x * 3 + 2] = src[x * 4 + 2];
+        }
+    }
+    if (needDelete) delete[] pixels;
+
+    std::vector<uint8_t> scaled(static_cast<size_t>(width) * height * 3);
+    if (!stbir_resize_uint8_srgb(rgb.data(), cropWidth, cropHeight, 0, scaled.data(), width, height, 0, STBIR_RGB)) {
+        return false;
+    }
+    auto append = [](void* context, void* data, int size) {
+        auto* bytes = static_cast<std::vector<uint8_t>*>(context);
+        const uint8_t* begin = static_cast<const uint8_t*>(data);
+        bytes->insert(bytes->end(), begin, begin + size);
+    };
+    if (!stbi_write_png_to_func(append, &out, width, height, 3, scaled.data(), width * 3)) {
+        out.clear();
+        return false;
+    }
+    return true;
+}

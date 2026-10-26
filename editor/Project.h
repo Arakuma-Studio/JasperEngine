@@ -819,6 +819,7 @@ namespace jasperengine::editor{
         void prepareRuntimeScene(PlayRuntimeScene& entry);
         // the Scene view's picking (editor/picking) reads the pickable GameObjects and their bounds
         friend class ScenePicker;
+        friend class SceneViewController;
         std::shared_ptr<PlaySession> buildRuntimeSceneStack(uint32_t sceneId, std::vector<size_t>& stackIndices);
         Entity getSceneCamera(const SceneProject* sceneProject) const;
         void cleanupPlaySession(const std::shared_ptr<PlaySession>& session);

@@ -616,21 +616,7 @@ void editor::SceneRender::drawSceneView(int width, int height, const std::vector
 
     // Gizmos and icons placed after the scene's update: their transforms are settled
     // here for this draw (the scene's next update takes them from there)
-    {
-        RenderSystem* renderSystem = scene->getSystem<RenderSystem>().get();
-        auto transforms = scene->getComponentArray<Transform>();
-        for (size_t i = 0; i < transforms->size(); i++){
-            Transform& transform = transforms->getComponentFromIndex(i);
-            const Entity entity = transforms->getEntity(i);
-            if (!transform.needUpdate || !renderSystem->isEditorOverlay(entity)){
-                continue;
-            }
-            renderSystem->updateTransform(transform, entity);
-            if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
-                mesh->worldAABB = transform.modelMatrix * (mesh->skinnedAABB.isNull() ? mesh->aabb : mesh->skinnedAABB);
-            }
-        }
-    }
+    settleOverlayTransforms();
 
     const Rect full(0, 0, (float)width, (float)height);
     const bool previewing = !isPlaying && isPreviewCameraActive();
@@ -676,6 +662,65 @@ void editor::SceneRender::drawSceneView(int width, int height, const std::vector
     addOverlayLayers(layers, width, height);
 
     Engine::drawView(SCENE_VIEW_ID, &framebuffer, layers);
+}
+
+void editor::SceneRender::settleOverlayTransforms(){
+    RenderSystem* renderSystem = scene->getSystem<RenderSystem>().get();
+    auto transforms = scene->getComponentArray<Transform>();
+    for (size_t i = 0; i < transforms->size(); i++){
+        Transform& transform = transforms->getComponentFromIndex(i);
+        const Entity entity = transforms->getEntity(i);
+        if (!transform.needUpdate || !renderSystem->isEditorOverlay(entity)){
+            continue;
+        }
+        renderSystem->updateTransform(transform, entity);
+        if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
+            mesh->worldAABB = transform.modelMatrix * (mesh->skinnedAABB.isNull() ? mesh->aabb : mesh->skinnedAABB);
+        }
+    }
+}
+
+void editor::SceneRender::drawPaneView(uint32_t viewId, Entity paneCamera, Framebuffer* target, int width, int height, const PaneViewFlags& flags){
+    if (width <= 0 || height <= 0 || !target || paneCamera == NULL_ENTITY){
+        return;
+    }
+    if (!target->isCreated() || target->getWidth() != (unsigned int)width || target->getHeight() != (unsigned int)height){
+        target->destroy();
+        target->setWidth((unsigned int)width);
+        target->setHeight((unsigned int)height);
+        JE_GPU_ALLOC_SCOPE(Editor, "Scene view pane");
+        target->create();
+    }
+
+    // the grid in the pane's axis plane for this draw only
+    const int gridPlane = getGridPlane();
+    setGridPlane(flags.gridPlane);
+    settleOverlayTransforms();
+
+    const Rect full(0, 0, (float)width, (float)height);
+    std::vector<Engine::ViewLayer> layers;
+    Engine::ViewLayer base;
+    base.scene = scene;
+    base.camera = paneCamera;
+    base.viewRect = full;
+    base.editorOverlays = true;
+    base.disableFog = displaySettings.disableFog;
+    base.canvasWidth = (float)width;
+    base.canvasHeight = (float)height;
+    base.disableFaceCulling = displaySettings.disableFaceCulling;
+    base.postProcessing = flags.postProcessing;
+    base.disableClouds = displaySettings.disableClouds;
+    base.shadows = flags.shadows;
+    layers.push_back(base);
+    for (Scene* childScene : childSceneLayers){
+        if (childScene && childScene != scene){
+            layers.push_back({childScene, childScene->getCamera(), full, false, false, false, (float)width, (float)height});
+        }
+    }
+    Engine::drawView(viewId, target, layers);
+
+    setGridPlane(gridPlane);
+    settleOverlayTransforms();
 }
 
 void editor::SceneRender::setChildSceneLayers(const std::vector<Scene*>& layers){

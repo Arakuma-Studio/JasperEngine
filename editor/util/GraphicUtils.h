@@ -27,6 +27,11 @@ namespace jasperengine::editor {
         static bool encodeFramebufferPng(Framebuffer* framebuffer, std::vector<uint8_t>& out, bool flipY = false,
                                          int maxWidth = 0, int* outWidth = nullptr, int* outHeight = nullptr);
 
+        // The framebuffer's centre, cropped to the aspect of width x height and scaled to it, as
+        // a PNG in memory (RGB): the Scene view's camera bookmark previews (S26 R19). Same
+        // readback and row order as encodeFramebufferPng.
+        static bool encodeFramebufferThumbnailPng(Framebuffer* framebuffer, int width, int height, std::vector<uint8_t>& out);
+
         // A colour target's pixels, RGBA8 rows top first (the Frame Debugger's pass preview read
         // back for MCP). Synchronous, main thread. False when it is not created or the read fails.
         static bool readRenderPixels(FramebufferRender* render, int width, int height, std::vector<uint8_t>& rgba);

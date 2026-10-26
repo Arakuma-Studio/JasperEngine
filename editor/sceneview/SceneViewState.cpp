@@ -108,7 +108,8 @@ void SceneCameraSettings::clamp(){
     if (speedMin > speedMax){
         std::swap(speedMin, speedMax);
     }
-    speed = std::clamp(finite(speed) ? speed : 10.0f, speedMin, speedMax);
+    // the field takes 0.01..1000; Speed Min and Max bound what the wheel steps it to
+    speed = std::clamp(finite(speed) ? speed : 10.0f, MIN_SPEED, MAX_SPEED);
     shiftMultiplier = std::clamp(finite(shiftMultiplier) ? shiftMultiplier : 3.0f, 1.0f, 100.0f);
 }
 
@@ -243,7 +244,8 @@ void SceneViewStateStream::encode(const SceneViewState& state, YAML::Node& node)
     view["axisOrtho"] = state.axisOrtho;
     view["orthoSize"] = state.orthoSize;
     YAML::Node panes(YAML::NodeType::Sequence);
-    for (int pane = 1; pane < SceneViewState::MAX_PANES; pane++){
+    // every pane, the free one too: when another is active the editor camera is that one's
+    for (int pane = 0; pane < SceneViewState::MAX_PANES; pane++){
         const SceneViewPane& p = state.panes[(size_t)pane];
         YAML::Node paneNode;
         paneNode["axis"] = axisName(p.axis);
@@ -332,9 +334,9 @@ SceneViewState SceneViewStateStream::decode(const YAML::Node& node){
         state.axisOrtho = readBool(view["axisOrtho"], false);
         state.orthoSize = std::max(0.0001f, readFloat(view["orthoSize"], state.orthoSize));
         if (const YAML::Node panes = view["panes"]; panes && panes.IsSequence()){
-            for (size_t i = 0; i < panes.size() && i + 1 < (size_t)SceneViewState::MAX_PANES; i++){
+            for (size_t i = 0; i < panes.size() && i < (size_t)SceneViewState::MAX_PANES; i++){
                 const YAML::Node paneNode = panes[i];
-                SceneViewPane& pane = state.panes[i + 1];
+                SceneViewPane& pane = state.panes[i];
                 if (!paneNode.IsMap()){
                     continue;
                 }

@@ -9,6 +9,10 @@
 #include "jobs/JobSystem.h"
 #include "profiler/Profile.h"
 
+#include <algorithm>
+#include <chrono>
+#include <cstdlib>
+#include <thread>
 #include <vector>
 
 using namespace jasperengine;
@@ -57,6 +61,18 @@ PickDiskCache* PickCache::getDiskCache() const{
     return disk.load(std::memory_order_acquire);
 }
 
+namespace {
+
+    int backgroundBuildDelayMs(){
+        static const int delay = [](){
+            const char* value = std::getenv("JASPER_PICK_BUILD_DELAY_MS");
+            return value ? std::max(0, std::atoi(value)) : 0;
+        }();
+        return delay;
+    }
+
+}
+
 PickCache::EntryPtr PickCache::acquire(uint64_t hash){
     std::lock_guard<std::mutex> lock(mutex);
     auto it = entries.find(hash);
@@ -99,6 +115,11 @@ PickCache::EntryPtr PickCache::create(uint64_t hash, PickGeometry&& geometry, bo
         options.name = "mesh-bvh";
         std::weak_ptr<Entry> weak = entry;
         entry->task = jobs::submit([this, weak](){
+            // tests: JASPER_PICK_BUILD_DELAY_MS keeps a background build pending that long, to
+            // see the Scene view's waiting click and refused drop (docs/testing.md)
+            if (const int delay = backgroundBuildDelayMs(); delay > 0){
+                std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+            }
             if (EntryPtr owned = weak.lock()){
                 runBuild(owned);
             }

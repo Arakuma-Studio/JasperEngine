@@ -2348,7 +2348,8 @@ void editor::App::show(){
 
     if (!popupOpen && !projectWindow->isFocused() && !jobsMemoryWindow->isFocused() && !codeEditor->isFocused()){
 
-        if (ImGui::IsKeyPressed(ImGuiKey_Delete) || ImGui::IsKeyPressed(ImGuiKey_Backspace)) deleteSelection();
+        // a selected Scene view measure takes Delete itself (S26 R24)
+        if ((ImGui::IsKeyPressed(ImGuiKey_Delete) || ImGui::IsKeyPressed(ImGuiKey_Backspace)) && !sceneWindow->handlesDeleteKey()) deleteSelection();
 
         if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_D)) duplicateSelection();
 
@@ -3200,6 +3201,8 @@ void editor::App::engineRender(){
 
             project.beginPrefabStageDraw(sceneProject.id);
             Engine::systemDraw();
+            // Split and Quad: the other panes, after the frame (only those that changed)
+            sceneWindow->renderInactivePanes(sceneProject);
             project.endPrefabStageDraw(sceneProject.id);
 
             if (steppingFrame) {
@@ -3314,6 +3317,7 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
     if (sceneViewShown){
         project.updateSceneRender(sceneProject.id);
         sceneRender->drawSceneView(sceneWidth, sceneHeight, project.getRunningRuntimeLayers(sceneProject.id), true);
+        sceneWindow->renderInactivePanes(sceneProject);
     }
 
     projectWindow->processMaterialThumbnails();
@@ -3361,6 +3365,7 @@ void editor::App::renderSceneBesideGame(SceneProject& sceneProject) {
 
     project.beginPrefabStageDraw(sceneProject.id);
     sceneRender->drawSceneView(width, height, childLayers, false);
+    sceneWindow->renderInactivePanes(sceneProject);
     project.endPrefabStageDraw(sceneProject.id);
 
     renderedSceneThisFrame = true;

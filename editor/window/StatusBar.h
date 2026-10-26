@@ -4,6 +4,7 @@
 #pragma once
 
 #include <functional>
+#include <string>
 
 namespace jasperengine::editor {
 
@@ -15,8 +16,15 @@ namespace jasperengine::editor {
         explicit StatusBar(std::function<void()> openAssetPipeline);
         void show();
 
+        // A short message on the bar's left for `seconds` ("Preparing picking for Rock..."),
+        // replacing the one shown
+        static void setTransientMessage(const std::string& text, double seconds);
+        static std::string getTransientMessage();
+
     private:
         std::function<void()> openAssetPipeline;
+        static std::string transientText;
+        static double transientUntil;
     };
 
 }

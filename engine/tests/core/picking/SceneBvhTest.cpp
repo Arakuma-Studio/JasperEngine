@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cmath>
 #include <random>
 #include <set>
 #include <vector>
@@ -172,7 +173,9 @@ TEST(SceneBvh, ParallelRefitEqualsSerial){
     std::uniform_real_distribution<float> step(-2.0f, 2.0f);
     for (size_t i = 0; i < boxes.size(); i++){
         const Vector3 delta(step(rng), step(rng), step(rng));
-        boxes[i] = AABB(boxes[i].getMinimum() + delta, boxes[i].getMaximum() + delta * 1.5f);
+        // moved and grown (a valid box: Debug builds assert min <= max)
+        const Vector3 grow(std::fabs(delta.x) * 0.5f, std::fabs(delta.y) * 0.5f, std::fabs(delta.z) * 0.5f);
+        boxes[i] = AABB(boxes[i].getMinimum() + delta, boxes[i].getMaximum() + delta + grow);
         serial.setLeafBox((uint32_t)i, boxes[i]);
         parallel.setLeafBox((uint32_t)i, boxes[i]);
     }

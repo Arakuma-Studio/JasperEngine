@@ -6,7 +6,9 @@
 #include "imgui.h"
 #include "Project.h"
 #include "object/Camera.h"
+#include "sceneview/SceneViewController.h"
 #include <map>
+#include <memory>
 #include <unordered_map>
 #include <unordered_set>
 #include <set>
@@ -50,6 +52,9 @@ namespace jasperengine::editor {
 
         std::vector<uint32_t> closeSceneQueue;
 
+        // S26: picking flow, camera, bookmarks, panes, measures, Layers (SceneViewController.cpp)
+        std::unique_ptr<SceneViewController> viewController;
+
         // Prefab Mode: the stage the Prefab Mode tab showed last frame (a new one takes focus,
         // leaving it gives the focus back to the scene)
         uint32_t shownPrefabStage = NULL_PROJECT_SCENE;
@@ -68,7 +73,8 @@ namespace jasperengine::editor {
         void sceneEventHandler(SceneProject* sceneProject);
         void endLook(uint32_t sceneId);
         void handleResourceFileDragDrop(SceneProject* sceneProject);
-        Vector3 getModelDropPosition(SceneProject* sceneProject, float x, float y, Entity hitEntity);
+        // R16: what a drop at (x, y) lands on (the preview's own entities ignored)
+        SceneSurfaceHit getDropSurface(SceneProject* sceneProject, float x, float y, const std::unordered_set<Entity>& ignore);
         void handleTileRectDragDrop(SceneProject* sceneProject);
 
         // Prefab dragged from the Project window over a Scene view (Unity's way): an instance
@@ -80,9 +86,8 @@ namespace jasperengine::editor {
         std::unordered_set<Entity> prefabDragEntities;
         void updatePrefabDrag(SceneProject* sceneProject, const std::vector<std::string>& paths, float x, float y, bool delivery);
         void cancelPrefabDrag();
-        Vector3 getPrefabDropPosition(SceneProject* sceneProject, float x, float y, bool& keepZ);
+        Vector3 getPrefabDropPosition(SceneProject* sceneProject, float x, float y, bool& keepZ, SceneSurfaceHit* surface = nullptr);
         bool handleViewportGizmoClick(SceneProject* sceneProject, float canvasX, float canvasY, int canvasWidth);
-        void snapCameraToDirection(Camera* camera, const Vector3& direction);
         void focusSceneWindow(const SceneProject& sceneProject) const;
         void requestOpenParentScene(uint32_t childSceneId, uint32_t parentSceneId);
         void drawParentSceneButton(const SceneProject& sceneProject);
@@ -90,7 +95,7 @@ namespace jasperengine::editor {
         std::string getWindowTitle(const SceneProject& sceneProject) const;
         Entity resolveStructureSelection(uint32_t viewportSceneId, uint32_t sceneId, Entity entity) const;
         Entity findSelectableObjectByRay(uint32_t sceneId, float x, float y, uint32_t* outSceneId = nullptr);
-        bool selectObjectByRay(uint32_t sceneId, float x, float y, bool shiftPressed);
+        bool selectObjectByRay(uint32_t sceneId, float x, float y, bool shiftPressed, bool ctrlPressed = false);
         ImVec2 canvasFramebufferScale(uint32_t sceneId) const;
         ImVec2 canvasEngineScale(uint32_t sceneId) const;
         float canvasDpi(uint32_t sceneId) const;
@@ -101,6 +106,13 @@ namespace jasperengine::editor {
         static constexpr const char* PREFAB_STAGE_WINDOW_ID = "###PrefabMode";
 
         SceneWindow(Project* project);
+        ~SceneWindow();
+
+        SceneViewController& getViewController() { return *viewController; }
+        // after the frame's draw of a scene: its inactive Split/Quad panes that need it
+        void renderInactivePanes(SceneProject& sceneProject);
+        // a measure is selected in the focused view: Delete removes it, not the selection
+        bool handlesDeleteKey() const;
 
         void show();
         bool isFocused() const;

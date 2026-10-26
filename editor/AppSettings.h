@@ -74,9 +74,10 @@ struct GameViewSettings {
 struct SceneViewSettings {
     bool exactPick = false;       // a click selects what is under it, never its prefab or model root
     bool alignToSurface = false;  // drops turn their up axis onto the surface normal
+    bool rulers = false;          // top and left rulers in 2D, UI and orthographic axis views
 
     bool operator==(const SceneViewSettings& other) const {
-        return exactPick == other.exactPick && alignToSurface == other.alignToSurface;
+        return exactPick == other.exactPick && alignToSurface == other.alignToSurface && rulers == other.rulers;
     }
     bool operator!=(const SceneViewSettings& other) const { return !(*this == other); }
 };
