@@ -3,7 +3,7 @@
   "textures/normal.png": {
    "bytes": 10544,
    "faces": 1,
-   "file": "fe7fe8fe9adaf930490fd7d1b3018cda90295c405dae7ff540327f10fa377158.ktx2",
+   "file": "30a3af1c54f5d67a3e613a0359f98011ea80549c0676c90cb38910e94ea22106.ktx2",
    "flags": [
     "normalRG",
     "streamable"
@@ -17,7 +17,7 @@
   "textures/photo.png": {
    "bytes": 10873,
    "faces": 1,
-   "file": "ea187c4e403740ee311edece2db94782a0520d357d9126264591a569af78ad1f.ktx2",
+   "file": "074f0aeb1ed7ffe003df10f1083bbd01471a5c38dded36b52b4ba9d01e7603bb.ktx2",
    "flags": [
     "streamable"
    ],
@@ -44,7 +44,7 @@
   "textures/solid.png": {
    "bytes": 612,
    "faces": 1,
-   "file": "8e66691183e589943027493e1326a6533af163119495e26db6af9d94abc768ec.ktx2",
+   "file": "a27d244b49c0c85d92dd3dc8e31fba88d491ef790b3c1379268d7182adb70f8d.ktx2",
    "flags": [
     "streamable"
    ],
@@ -55,9 +55,9 @@
    "width": 64
   },
   "textures/sprite.png": {
-   "bytes": 757,
+   "bytes": 937,
    "faces": 1,
-   "file": "3efaffd8899f54e692e11d2576266cec48a3ecfce2b18241f7eb119727afc211.ktx2",
+   "file": "87da82daac6eace3af705e75d2b3825df09bff86be9e4410f2614a16500030ab.ktx2",
    "flags": [
     "alpha"
    ],
