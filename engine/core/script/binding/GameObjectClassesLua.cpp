@@ -1606,10 +1606,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
     // CharacterController(2D).move's result, Unity's CollisionFlags
     luabridge::getGlobalNamespace(L)
         .beginNamespace("CollisionFlags")
-        .addVariable("NONE", (int)CharacterCollision_None)
-        .addVariable("SIDES", (int)CharacterCollision_Sides)
-        .addVariable("ABOVE", (int)CharacterCollision_Above)
-        .addVariable("BELOW", (int)CharacterCollision_Below)
+        .addVariable("NONE", CharacterCollisionFlags::CharacterCollision_None)
+        .addVariable("SIDES", CharacterCollisionFlags::CharacterCollision_Sides)
+        .addVariable("ABOVE", CharacterCollisionFlags::CharacterCollision_Above)
+        .addVariable("BELOW", CharacterCollisionFlags::CharacterCollision_Below)
         .endNamespace();
 
 #ifdef JASPERENGINE_PHYSICS_3D
