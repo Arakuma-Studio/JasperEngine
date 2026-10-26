@@ -505,20 +505,20 @@ Recorded by the implementation (branch `feat/s08-reflection`).
   `po2Slider`, `textureCube` and `modelEntity`. `InspectorWindow.cpp` is 10,870 lines.
 - **Extra table vocabulary** beyond R3/R4: flags `NoDefault`, `NonStructural`, `CodegenIfChanged`,
   `CodegenRuntime`, `Transient`, `EmptyIsDefault`, `NullIfEmpty`, `NotListed`, `ListWhole`,
-  `ListElements`, `ListEachElement`, `ListTemplate` and `ComponentOnly`. These keep the Catalog
+  `ListElements`, `ListEachElement`, `ListTemplate`, `ComponentOnly` and `Clamped`. These keep the Catalog
   property listing and codegen identical to before. Fields `enabledIf`, `enumMask`, `cppPath`,
   `count` (`JE_COUNT`) and `elementOps` were also added. `ComponentDesc` gained
   `remove`/`extraProperty`/`extraProperties` (Script properties, Model maps) and `extraKeys`.
 - **Decode differences** (R7/R32, accepted per §9):
-  - UIDocument no longer clamps `textureWidth`/`textureHeight` to 1..8192 or `pixelRatio` to
-    ≥ 0 on load. The hard ranges apply to edits.
   - An unknown ReflectionProbe `mode`/`updateMode` token now keeps the base value and is
     reported. Before, it silently became `static`/`on_load`.
   - LocalVolumetricFog and VolumetricClouds are now also `markChanged` when decoded over an
     existing component, like every other generic component.
   - The Animation `actionFrameCount` pseudo-property is no longer listed. Through MCP it read a
     dangling pointer.
-- **MCP.** `set_properties` refuses `Derived` fields as well as `ReadOnly`/`NoMcpWrite` ones. MCP
+- **MCP.** `set_properties` refuses `Derived` fields as well as `ReadOnly`/`NoMcpWrite` ones. A
+  field flagged `Clamped` (UIDocument `textureWidth`/`textureHeight`) is clamped rather than
+  refused outside its range: its load clamps too, and the existing suite relies on that. MCP
   ease options leave out `custom`, as before. Camera keeps both tokens (R5 default).
 - **Benchmarks.** `ReflectCodecBench` (R17) and `ReflectResolve` (R18) always log their numbers
   and always check for zero allocations. The time budgets are asserted only with

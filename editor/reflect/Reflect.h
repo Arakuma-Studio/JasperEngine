@@ -84,7 +84,8 @@ namespace jasperengine::editor::reflect {
         ListElements     = 1u << 23,  // an array of values whose elements are listed as properties too ("pathPoints[2]")
         ListEachElement  = 1u << 24,  // each element of an array of structs is listed itself besides its members ("colliders[1]")
         ListTemplate     = 1u << 25,  // listed without a component as one element with no index ("submeshes[].material")
-        ComponentOnly    = 1u << 26   // listed for a component only, not for its type (list_component_types)
+        ComponentOnly    = 1u << 26,  // listed for a component only, not for its type (list_component_types)
+        Clamped          = 1u << 27   // a value outside the hard range is clamped into it (load and edit), not refused
     };
 
     constexpr uint32_t operator|(FieldFlags a, FieldFlags b) { return static_cast<uint32_t>(a) | static_cast<uint32_t>(b); }

@@ -1987,7 +1987,8 @@ bool McpValues::checkReflectedChanges(std::vector<Change>& changes, std::vector<
                              field->kind == reflect::Kind::UInt || field->kind == reflect::Kind::Vector2 || field->kind == reflect::Kind::Vector3 ||
                              field->kind == reflect::Kind::Vector4;
         const Json& value = change.op == "set" || change.op == "insert" ? change.value : Json();
-        if (numeric && reflect::hasRange(*field) && outsideRange(value, field->min, field->max, bad)) {
+        // (a Clamped field takes any value: the edit clamps it, as its load does)
+        if (numeric && !(field->flags & reflect::Clamped) && reflect::hasRange(*field) && outsideRange(value, field->min, field->max, bad)) {
             const double nearest = bad < field->min ? field->min : field->max;
             error = component + "." + change.property + " must be " + rangeText(*field) + " (" + Json(bad).dump() + " is out of range); the nearest "
                     "valid value is " + Json(McpValues::number(static_cast<float>(nearest))).dump() + ".";
