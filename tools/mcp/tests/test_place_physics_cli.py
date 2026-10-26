@@ -502,11 +502,14 @@ async def test_save_writes_the_scene():
     # a document written before format versions gets its formatVersion on the first save (S03
     # R20/R21), and one written before asset identity its GUID when the project opens (S04):
     # nothing else
-    # (at any level: the project's scene list names its scenes by GUID too)
+    # (at any level: the project's scene list names its scenes by GUID too, filepathGuid)
+    def identity_key(key):
+        return key in ("formatVersion", "guid", "formerGuids") or key.endswith("Guid")
+
     def without_new_identity(old, new):
         if isinstance(old, dict) and isinstance(new, dict):
             return {k: without_new_identity(old.get(k), v) for k, v in new.items()
-                    if k in old or k not in ("formatVersion", "guid", "formerGuids")}
+                    if k in old or not identity_key(k)}
         if isinstance(old, list) and isinstance(new, list) and len(old) == len(new):
             return [without_new_identity(a, b) for a, b in zip(old, new)]
         return new
