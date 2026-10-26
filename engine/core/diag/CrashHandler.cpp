@@ -597,7 +597,7 @@ namespace jasperengine::diag::crash {
 
     bool install(const Config& input) {
         Common& c = common();
-        std::lock_guard<std::mutex> lock(c.mutex);
+        std::unique_lock<std::mutex> lock(c.mutex);
         CrashState& s = detail::state();
         if (c.installed) return false;
         c.installed = true;
