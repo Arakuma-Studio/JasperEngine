@@ -523,12 +523,12 @@ std::string alphaModeName(MaterialAlphaMode mode) {
 Json materialToJson(Project* project, const Material& material) {
     Json data = {
         {"baseColorFactor", McpValues::toJson(material.baseColorFactor)},
-        {"metallicFactor", material.metallicFactor},
-        {"roughnessFactor", material.roughnessFactor},
-        {"alphaCutoff", material.alphaCutoff},
+        {"metallicFactor", McpValues::number(material.metallicFactor)},
+        {"roughnessFactor", McpValues::number(material.roughnessFactor)},
+        {"alphaCutoff", McpValues::number(material.alphaCutoff)},
         {"alphaMode", alphaModeName(material.alphaMode)},
         {"emissiveFactor", McpValues::toJson(material.emissiveFactor)},
-        {"foliageTransmission", material.foliageTransmission}
+        {"foliageTransmission", McpValues::number(material.foliageTransmission)}
     };
     McpValues::materialStochasticToJson(material, data);
     for (const auto& [name, member] : materialTextures()) {
@@ -539,7 +539,7 @@ Json materialToJson(Project* project, const Material& material) {
     // shader library: the shader, its values and the render state
     McpValues::materialShaderLibraryToJson(project, nullptr, material, data, true);
     // the built-in Lit's emission intensity and extended lobes (those set)
-    data["emissiveStrength"] = material.emissiveStrength;
+    data["emissiveStrength"] = McpValues::number(material.emissiveStrength);
     if (material.pbr != MaterialPbrExtensions()) data["pbr"] = McpValues::materialPbrToJson(project, nullptr, material.pbr);
     return data;
 }
