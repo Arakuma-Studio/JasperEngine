@@ -152,7 +152,8 @@ namespace jasperengine {
             uint64_t geometryHash = 0;
             uint64_t poseHash = 0;
             std::shared_ptr<MeshBvh> bvh;          // a refitted copy of the bind-pose tree
-            std::vector<uint32_t> indices;          // the gather's, to refit the next pose
+            std::vector<uint32_t> indices;          // the gather's
+            std::vector<uint32_t> leafCorners;      // its corners in the tree's leaf order, to refit each pose
             std::vector<Vector3> bindPositions;
             std::vector<Vector3> posed;
         };

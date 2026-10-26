@@ -152,6 +152,10 @@ namespace jasperengine {
         // New corner positions (the geometry's vertex order, e.g. a posed copy): the
         // triangles take them and the boxes are refitted bottom up; the topology is kept.
         void refit(std::span<const Vector3> positions, std::span<const uint32_t> indices);
+        // the same with the corners already in leaf order (leafCorners of the geometry's
+        // indices, made once per mesh): what a repeated pose refits with
+        std::vector<uint32_t> leafCorners(std::span<const uint32_t> indices) const;
+        void refitCorners(std::span<const Vector3> positions, std::span<const uint32_t> corners);
 
         bool empty() const { return triangles.empty(); }
         bool hasTree() const { return !nodes.empty(); }

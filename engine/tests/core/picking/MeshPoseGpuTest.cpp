@@ -95,7 +95,8 @@ TEST(MeshPose, MatchesGpuSkinning){
     ASSERT_GT(width, 0);
 
     std::vector<uint8_t> images[3];
-    const char* shaders[3] = {"picking/world_position_x.frag", "picking/world_position_y.frag", "picking/world_position_z.frag"};
+    const char* shaders[3] = {"picking/world_position.vert|picking/world_position_x.frag", "picking/world_position.vert|picking/world_position_y.frag",
+                             "picking/world_position.vert|picking/world_position_z.frag"};
     for (int axis = 0; axis < 3; axis++){
         mesh.customShader = shaders[axis];
         mesh.needReload = true;

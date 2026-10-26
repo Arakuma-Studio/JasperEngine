@@ -98,23 +98,29 @@ namespace {
     }
 
     // a 50k-vertex grid, every vertex on 4 bones
-    Entity makeSkinnedGrid(Scene& scene, uint32_t side){
+    // a side x side vertex grid in the y = 0 plane ((side - 1)^2 * 2 triangles, 32-bit indices),
+    // `spacing` apart from `origin`; skinned: 4 influences per vertex over 32 bones
+    Entity makeGrid(Scene& scene, uint32_t side, bool skinned, float spacing, Vector3 origin){
         const Entity entity = scene.createEntity();
         scene.addComponent<Transform>(entity);
         scene.addComponent<MeshComponent>(entity);
         MeshComponent& mesh = scene.getComponent<MeshComponent>(entity);
         mesh.buffer.addAttribute(AttributeType::POSITION, 3);
-        mesh.buffer.addAttribute(AttributeType::BONEIDS, 4);
-        mesh.buffer.addAttribute(AttributeType::BONEWEIGHTS, 4);
+        if (skinned){
+            mesh.buffer.addAttribute(AttributeType::BONEIDS, 4);
+            mesh.buffer.addAttribute(AttributeType::BONEWEIGHTS, 4);
+        }
         Attribute* position = mesh.buffer.getAttribute(AttributeType::POSITION);
-        Attribute* ids = mesh.buffer.getAttribute(AttributeType::BONEIDS);
-        Attribute* weights = mesh.buffer.getAttribute(AttributeType::BONEWEIGHTS);
+        Attribute* ids = skinned ? mesh.buffer.getAttribute(AttributeType::BONEIDS) : nullptr;
+        Attribute* weights = skinned ? mesh.buffer.getAttribute(AttributeType::BONEWEIGHTS) : nullptr;
         for (uint32_t z = 0; z < side; z++){
             for (uint32_t x = 0; x < side; x++){
-                mesh.buffer.addVector3(position, Vector3((float)x * 0.1f, 0.0f, (float)z * 0.1f));
-                const float b = (float)((x / 16) % 28);
-                mesh.buffer.addVector4(ids, Vector4(b, b + 1, b + 2, b + 3));
-                mesh.buffer.addVector4(weights, Vector4(0.4f, 0.3f, 0.2f, 0.1f));
+                mesh.buffer.addVector3(position, origin + Vector3((float)x * spacing, 0.0f, (float)z * spacing));
+                if (skinned){
+                    const float b = (float)((x / 16) % 28);
+                    mesh.buffer.addVector4(ids, Vector4(b, b + 1, b + 2, b + 3));
+                    mesh.buffer.addVector4(weights, Vector4(0.4f, 0.3f, 0.2f, 0.1f));
+                }
             }
         }
         // 32-bit indices in an external buffer, as a glTF primitive has them
@@ -134,15 +140,17 @@ namespace {
         indices.copyToOwnData();
         mesh.numSubmeshes = 1;
         Submesh& submesh = mesh.submeshes[0];
-        submesh.hasSkinning = true;
+        submesh.hasSkinning = skinned;
         auto attribute = [&](AttributeType type, const Attribute& source){
             Attribute copy = source;
             copy.setBufferName("vertices");
             submesh.attributes[type] = copy;
         };
         attribute(AttributeType::POSITION, *position);
-        attribute(AttributeType::BONEIDS, *ids);
-        attribute(AttributeType::BONEWEIGHTS, *weights);
+        if (skinned){
+            attribute(AttributeType::BONEIDS, *ids);
+            attribute(AttributeType::BONEWEIGHTS, *weights);
+        }
         submesh.attributes[AttributeType::INDEX] = Attribute(AttributeDataType::UNSIGNED_INT, "indices32", 1, 0, (unsigned int)list.size(), false, false);
         for (int b = 0; b < 32; b++){
             mesh.bonesMatrix[(size_t)b] = Matrix4();
@@ -222,8 +230,8 @@ int main(int argc, char** argv){
     // ---- R28, R29: one 1M-triangle mesh and 500 small ones
     {
         auto scene = std::make_unique<Scene>();
-        Primitive ground(scene.get());
-        ground.createPlane(200.0f, 200.0f, 707);
+        // 708 x 708 vertices: 999,698 triangles over 200 x 200 units
+        const Entity groundEntity = makeGrid(*scene, 708, false, 200.0f / 707.0f, Vector3(-100.0f, 0.0f, -100.0f));
         std::vector<std::unique_ptr<Primitive>> boxes;
         std::mt19937 rng(3);
         std::uniform_real_distribution<float> position(-95.0f, 95.0f);
@@ -235,7 +243,7 @@ int main(int argc, char** argv){
         }
         settle(*scene);
 
-        MeshComponent& groundMesh = scene->getComponent<MeshComponent>(ground.getEntity());
+        MeshComponent& groundMesh = scene->getComponent<MeshComponent>(groundEntity);
         PickGeometry geometry;
         picking::gather(groundMesh, geometry); // warm
         const auto gatherStart = bench::Clock::now();
@@ -346,7 +354,7 @@ int main(int argc, char** argv){
     // ---- R30: a 50k-vertex, 4-influence skinned mesh
     {
         auto scene = std::make_unique<Scene>();
-        const Entity character = makeSkinnedGrid(*scene, 224); // 50,176 vertices
+        const Entity character = makeGrid(*scene, 224, true, 0.1f, Vector3(0, 0, 0)); // 50,176 vertices
         settle(*scene);
         SceneBvh& bvh = scene->getPickBvh();
         const PickCache::EntryPtr entry = bvh.meshEntry(character, true);
@@ -375,6 +383,26 @@ int main(int argc, char** argv){
         results.add("skinned_pose_refit_ms_50k", bench::percentile(poses, 0.5), "ms");
         results.add("skinned_repeat_pick_ms", bench::percentile(repeats, 0.5), "ms");
         results.add("static_pick_ms", bench::percentile(statics, 0.5), "ms");
+        // the two halves of a pose: the vertices, then the refit
+        if (bindPose){
+            PickGeometry geometry;
+            PickGeometryLayout layout;
+            picking::gather(mesh, geometry, &layout);
+            std::vector<Vector3> posedPositions;
+            std::vector<double> skin, refit;
+            MeshBvh copy = *bindPose;
+            const std::vector<uint32_t> corners = copy.leafCorners(geometry.indices);
+            for (int i = 0; i < 20; i++){
+                auto start = bench::Clock::now();
+                picking::poseGeometry(mesh, layout, geometry.positions, posedPositions);
+                skin.push_back(millisecondsSince(start));
+                start = bench::Clock::now();
+                copy.refitCorners(posedPositions, corners);
+                refit.push_back(millisecondsSince(start));
+            }
+            results.add("skinned_pose_vertices_ms_50k", bench::percentile(skin, 0.5), "ms");
+            results.add("skinned_refit_ms_50k", bench::percentile(refit, 0.5), "ms");
+        }
     }
 
     const char* path = bench::jsonPath(argc, argv, "je-bench-picking.json");

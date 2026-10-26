@@ -4,6 +4,7 @@
 #include "MeshPose.h"
 
 #include "component/MeshComponent.h"
+#include "jobs/JobSystem.h"
 
 #include <algorithm>
 #include <cmath>
@@ -342,11 +343,25 @@ bool picking::poseGeometry(const MeshComponent& mesh, const PickGeometryLayout& 
             continue;
         }
         const PoseParameters parameters = poseParameters(mesh, s);
-        VertexPoseInput input;
-        for (uint32_t v = 0; v < source.vertexCount && (size_t)source.base + v < positions.size(); v++){
-            input.position = positions[(size_t)source.base + v];
-            fillInput(sources, v, input);
-            posed[(size_t)source.base + v] = poseVertex(input, parameters);
+        const uint32_t count = (uint32_t)std::min<size_t>(source.vertexCount, positions.size() > source.base ? positions.size() - source.base : 0);
+        auto poseRange = [&](uint32_t begin, uint32_t end){
+            VertexPoseInput input;
+            for (uint32_t v = begin; v < end; v++){
+                input.position = positions[(size_t)source.base + v];
+                fillInput(sources, v, input);
+                posed[(size_t)source.base + v] = poseVertex(input, parameters);
+            }
+        };
+        // each vertex on its own: chunks of a large mesh run on the workers (R30)
+        constexpr uint32_t CHUNK = 4096;
+        if (count > CHUNK * 2){
+            const size_t chunks = (count + CHUNK - 1) / CHUNK;
+            jobs::parallelFor(chunks, [&](size_t chunk){
+                const uint32_t begin = (uint32_t)chunk * CHUNK;
+                poseRange(begin, std::min(count, begin + CHUNK));
+            });
+        }else{
+            poseRange(0, count);
         }
         any = true;
     }

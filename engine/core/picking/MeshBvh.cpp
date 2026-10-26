@@ -7,12 +7,14 @@
 // Gamecrafters Guild Limited and contributors, MIT License (NOTICE.md).
 
 #include "MeshBvh.h"
+#include "jobs/JobSystem.h"
 #include "MeshBvhSimd.h"
 #include "BinnedSah.h"
 
 #include "Log.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <cstdlib>
@@ -674,22 +676,47 @@ MeshBvh MeshBvh::build(const PickGeometry& geometry){
 }
 
 void MeshBvh::refitNodes(){
+    // the leaf slots' boxes first, the bulk of the work: each node's on its own, so a large
+    // mesh's (a posed copy, R30) on the workers
+    auto leafBoxes = [this](size_t index, Box* slotBoxes){
+        const Node& node = nodes[index];
+        for (int s = 0; s < 8; s++){
+            if (!(node.valid & (1u << s)) || node.count[s] == 0){
+                continue;
+            }
+            for (uint32_t t = node.first[s]; t < node.first[s] + node.count[s]; t++){
+                slotBoxes[s].expand(triangleBox(triangles[t]));
+            }
+            widen(slotBoxes[s]);
+        }
+    };
+    constexpr size_t NODE_CHUNK = 256;
+    std::vector<std::array<Box, 8>> leafSlotBoxes;
+    if (triangles.size() > 16384){
+        leafSlotBoxes.resize(nodes.size());
+        jobs::parallelFor((nodes.size() + NODE_CHUNK - 1) / NODE_CHUNK, [&](size_t chunk){
+            for (size_t index = chunk * NODE_CHUNK; index < std::min(nodes.size(), (chunk + 1) * NODE_CHUNK); index++){
+                leafBoxes(index, leafSlotBoxes[index].data());
+            }
+        });
+    }
+
     // full-precision box of each node, filled children first (they come after their parent)
     std::vector<Box> nodeBoxes(nodes.size());
     for (size_t index = nodes.size(); index-- > 0;){
         Node& node = nodes[index];
         Box slotBoxes[8];
+        if (leafSlotBoxes.empty()){
+            leafBoxes(index, slotBoxes);
+        }else{
+            std::copy(leafSlotBoxes[index].begin(), leafSlotBoxes[index].end(), slotBoxes);
+        }
         Box box;
         for (int s = 0; s < 8; s++){
             if (!(node.valid & (1u << s))){
                 continue;
             }
-            if (node.count[s] > 0){
-                for (uint32_t t = node.first[s]; t < node.first[s] + node.count[s]; t++){
-                    slotBoxes[s].expand(triangleBox(triangles[t]));
-                }
-                widen(slotBoxes[s]);
-            }else{
+            if (node.count[s] == 0){
                 slotBoxes[s] = nodeBoxes[node.first[s]];
             }
             box.expand(slotBoxes[s]);
@@ -730,23 +757,51 @@ void MeshBvh::refitNodes(){
     }
 }
 
+std::vector<uint32_t> MeshBvh::leafCorners(std::span<const uint32_t> indices) const{
+    std::vector<uint32_t> corners(triangles.size() * 3, UINT32_MAX);
+    for (size_t t = 0; t < triangles.size(); t++){
+        const size_t corner = (size_t)triangles[t].index * 3;
+        if (corner + 2 < indices.size()){
+            corners[t * 3 + 0] = indices[corner];
+            corners[t * 3 + 1] = indices[corner + 1];
+            corners[t * 3 + 2] = indices[corner + 2];
+        }
+    }
+    return corners;
+}
+
 void MeshBvh::refit(std::span<const Vector3> positions, std::span<const uint32_t> indices){
-    Box box;
-    for (Triangle& triangle : triangles){
-        const size_t corner = (size_t)triangle.index * 3;
-        if (corner + 2 >= indices.size()){
-            continue;
+    refitCorners(positions, leafCorners(indices));
+}
+
+void MeshBvh::refitCorners(std::span<const Vector3> positions, std::span<const uint32_t> corners){
+    const size_t count = std::min(triangles.size(), corners.size() / 3);
+    auto update = [&](size_t begin, size_t end){
+        for (size_t t = begin; t < end; t++){
+            const uint32_t a = corners[t * 3], b = corners[t * 3 + 1], c = corners[t * 3 + 2];
+            if (a >= positions.size() || b >= positions.size() || c >= positions.size()){
+                continue;
+            }
+            Triangle& triangle = triangles[t];
+            triangle.v0 = positions[a];
+            triangle.v1 = positions[b];
+            triangle.v2 = positions[c];
         }
-        const uint32_t a = indices[corner], b = indices[corner + 1], c = indices[corner + 2];
-        if (a >= positions.size() || b >= positions.size() || c >= positions.size()){
-            continue;
-        }
-        triangle.v0 = positions[a];
-        triangle.v1 = positions[b];
-        triangle.v2 = positions[c];
-        box.expand(triangleBox(triangle));
+    };
+    // the corners of a large mesh in chunks on the workers (a posed copy, R30)
+    constexpr size_t CHUNK = 8192;
+    if (count > CHUNK * 2){
+        jobs::parallelFor((count + CHUNK - 1) / CHUNK, [&](size_t chunk){
+            update(chunk * CHUNK, std::min(count, (chunk + 1) * CHUNK));
+        });
+    }else{
+        update(0, count);
     }
     if (nodes.empty()){
+        Box box;
+        for (const Triangle& triangle : triangles){
+            box.expand(triangleBox(triangle));
+        }
         bounds = box.empty() ? AABB() : AABB(box.mn[0], box.mn[1], box.mn[2], box.mx[0], box.mx[1], box.mx[2]);
         return;
     }

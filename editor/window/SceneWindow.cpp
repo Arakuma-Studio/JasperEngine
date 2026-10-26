@@ -379,7 +379,7 @@ std::string editor::SceneWindow::getWindowTitle(const SceneProject& sceneProject
 
 // R16: a triangle, terrain or UI rect under the pointer (pickable layers, the preview left
 // out), else the ground plane, else 10 units along the ray
-SceneSurfaceHit editor::SceneWindow::getDropSurface(SceneProject* sceneProject, float x, float y, const std::unordered_set<Entity>& ignore) {
+editor::SceneSurfaceHit editor::SceneWindow::getDropSurface(SceneProject* sceneProject, float x, float y, const std::unordered_set<Entity>& ignore) {
     const std::vector<Entity> ignored(ignore.begin(), ignore.end());
     return viewController->surfaceAt(*sceneProject, x, y, ignored, false);
 }

@@ -30,7 +30,9 @@
 #include "profiler/Profile.h"
 #include "util/STBText.h"
 
+#include <cstring>
 #include <algorithm>
+#include <bit>
 #include <chrono>
 #include <cmath>
 #include <limits>
@@ -122,6 +124,19 @@ AABB SceneBvhTree::getLeafBox(uint32_t leaf) const{
     return AABB(node.mn[0], node.mn[1], node.mn[2], node.mx[0], node.mx[1], node.mx[2]);
 }
 
+namespace {
+
+    // 10 bits of each axis interleaved (the Morton order of a centroid in the cloud's bounds)
+    uint32_t spreadBits(uint32_t v){
+        v = (v | (v << 16)) & 0x030000FFu;
+        v = (v | (v << 8)) & 0x0300F00Fu;
+        v = (v | (v << 4)) & 0x030C30C3u;
+        v = (v | (v << 2)) & 0x09249249u;
+        return v;
+    }
+
+}
+
 void SceneBvhTree::build(std::span<const AABB> boxes){
     clear();
     const size_t count = boxes.size();
@@ -131,6 +146,8 @@ void SceneBvhTree::build(std::span<const AABB> boxes){
 
     std::vector<float> centroids(count * 3);
     std::vector<float> bounds(count * 6);
+    float cloudMin[3] = { FLOAT_MAX,  FLOAT_MAX,  FLOAT_MAX};
+    float cloudMax[3] = {-FLOAT_MAX, -FLOAT_MAX, -FLOAT_MAX};
     for (size_t i = 0; i < count; i++){
         float mn[3], mx[3];
         boxOf(boxes[i], mn, mx);
@@ -140,8 +157,23 @@ void SceneBvhTree::build(std::span<const AABB> boxes){
             // an empty box sorts at the origin, an unbounded one too
             const float c = (mn[a] <= mx[a] && mn[a] > -FLOAT_MAX && mx[a] < FLOAT_MAX) ? (mn[a] + mx[a]) * 0.5f : 0.0f;
             centroids[i * 3 + a] = c;
+            cloudMin[a] = c < cloudMin[a] ? c : cloudMin[a];
+            cloudMax[a] = c > cloudMax[a] ? c : cloudMax[a];
         }
     }
+    // each leaf's Morton code in the cloud's centroid bounds (the lower levels split by it)
+    std::vector<uint32_t> codes(count);
+    for (size_t i = 0; i < count; i++){
+        uint32_t code = 0;
+        for (int a = 0; a < 3; a++){
+            const float extent = cloudMax[a] - cloudMin[a];
+            const float t = extent > 0.0f ? (centroids[i * 3 + a] - cloudMin[a]) / extent : 0.0f;
+            const uint32_t q = (uint32_t)std::min(1023.0f, std::max(0.0f, t * 1023.0f));
+            code |= spreadBits(q) << (2 - a);
+        }
+        codes[i] = code;
+    }
+
     std::vector<uint32_t> order(count);
     for (uint32_t i = 0; i < (uint32_t)count; i++){
         order[i] = i;
@@ -150,10 +182,42 @@ void SceneBvhTree::build(std::span<const AABB> boxes){
     nodes.reserve(count * 2 - 1);
     leafNode.assign(count, 0);
 
-    // pre-order: a node's index is taken when it is popped, so each subtree is one range
-    struct Work { uint32_t first, count, parent, depth; bool right; };
+    // Pre-order: a node's index is taken when it is popped, so each subtree is one range.
+    // Large ranges split by binned SAH (binned on a sample of at most SAH_SAMPLE, the
+    // partition gathering each side's centroid bounds); a range of LBVH_RANGE or fewer is
+    // sorted by Morton code once and split at its highest differing code bit (a binary
+    // search per node, no pass over the range).
+    constexpr uint32_t LBVH_RANGE = 512;
+    constexpr uint32_t SAH_SAMPLE = 2048;
+    struct Work {
+        uint32_t first, count, parent, depth;
+        bool right;
+        bool sorted;
+        float cmn[3], cmx[3];
+    };
     std::vector<Work> work;
-    work.push_back({0u, (uint32_t)count, UINT32_MAX, 0u, false});
+    {
+        Work root{0u, (uint32_t)count, UINT32_MAX, 0u, false, false, {}, {}};
+        for (int a = 0; a < 3; a++){
+            root.cmn[a] = cloudMin[a];
+            root.cmx[a] = cloudMax[a];
+        }
+        work.push_back(root);
+    }
+    auto rangeBounds = [&](uint32_t first, uint32_t rangeCount, float cmn[3], float cmx[3]){
+        for (int a = 0; a < 3; a++){
+            cmn[a] = FLOAT_MAX;
+            cmx[a] = -FLOAT_MAX;
+        }
+        for (uint32_t i = 0; i < rangeCount; i++){
+            const float* c = &centroids[(size_t)order[first + i] * 3];
+            for (int a = 0; a < 3; a++){
+                cmn[a] = c[a] < cmn[a] ? c[a] : cmn[a];
+                cmx[a] = c[a] > cmx[a] ? c[a] : cmx[a];
+            }
+        }
+    };
+    std::vector<uint32_t> sample;
     while (!work.empty()){
         const Work item = work.back();
         work.pop_back();
@@ -179,55 +243,98 @@ void SceneBvhTree::build(std::span<const AABB> boxes){
             continue;
         }
 
-        float cmn[3] = { FLOAT_MAX,  FLOAT_MAX,  FLOAT_MAX};
-        float cmx[3] = {-FLOAT_MAX, -FLOAT_MAX, -FLOAT_MAX};
-        for (uint32_t i = 0; i < item.count; i++){
-            const uint32_t id = order[item.first + i];
-            for (int a = 0; a < 3; a++){
-                const float c = centroids[(size_t)id * 3 + a];
-                cmn[a] = c < cmn[a] ? c : cmn[a];
-                cmx[a] = c > cmx[a] ? c : cmx[a];
-            }
-        }
-
+        Work left{item.first, 0u, index, item.depth + 1, false, item.sorted, {}, {}};
+        Work right{item.first, 0u, index, item.depth + 1, true, item.sorted, {}, {}};
         uint32_t leftCount = 0;
-        bool split = false;
-        if (item.depth < TREE_SAH_DEPTH && item.count > 2){
+        uint32_t* begin = order.data() + item.first;
+
+        if (item.sorted || item.count <= LBVH_RANGE || item.depth >= TREE_SAH_DEPTH){
+            if (!item.sorted){
+                std::sort(begin, begin + item.count, [&](uint32_t x, uint32_t y){
+                    return codes[x] < codes[y] || (codes[x] == codes[y] && x < y);
+                });
+                left.sorted = right.sorted = true;
+            }
+            const uint32_t firstCode = codes[begin[0]];
+            const uint32_t lastCode = codes[begin[item.count - 1]];
+            if (firstCode == lastCode){
+                leftCount = item.count / 2;
+            }else{
+                // the first element with the highest differing bit set
+                const uint32_t bit = 31u - (uint32_t)std::countl_zero(firstCode ^ lastCode);
+                const uint32_t above = ~((2u << bit) - 1u);   // the bits over `bit` (codes are 30-bit)
+                const uint32_t pivot = (firstCode & above) | (1u << bit);
+                uint32_t lo = 0, hi = item.count - 1;
+                while (lo < hi){
+                    const uint32_t mid = (lo + hi) / 2;
+                    if (codes[begin[mid]] < pivot) lo = mid + 1; else hi = mid;
+                }
+                leftCount = lo;
+                if (leftCount == 0 || leftCount >= item.count){
+                    leftCount = item.count / 2;
+                }
+            }
+        }else{
+            for (int a = 0; a < 3; a++){
+                left.cmn[a] = right.cmn[a] = FLOAT_MAX;
+                left.cmx[a] = right.cmx[a] = -FLOAT_MAX;
+            }
             BinnedSahRange range;
-            range.order = std::span<const uint32_t>(order).subspan(item.first, item.count);
+            if (item.count > SAH_SAMPLE){
+                const uint32_t stride = item.count / SAH_SAMPLE;
+                sample.clear();
+                for (uint32_t i = 0; i < item.count; i += stride){
+                    sample.push_back(begin[i]);
+                }
+                range.order = sample;
+            }else{
+                range.order = std::span<const uint32_t>(begin, item.count);
+            }
             range.centroids = centroids;
             range.bounds = bounds;
             for (int a = 0; a < 3; a++){
-                range.centroidMin[a] = cmn[a];
-                range.centroidMax[a] = cmx[a];
+                range.centroidMin[a] = item.cmn[a];
+                range.centroidMax[a] = item.cmx[a];
             }
             const BinnedSahCandidate candidate = findBestBinnedSahSplit(range);
+            bool split = false;
             if (candidate.found){
-                uint32_t* begin = order.data() + item.first;
+                // the predicate runs once per element: it also gathers each side's centroid bounds
                 uint32_t* middle = std::partition(begin, begin + item.count, [&](uint32_t id){
-                    return binnedSahBinOf(centroids[(size_t)id * 3 + candidate.axis], candidate.axisMin, candidate.scale) <= candidate.bin;
+                    const float* c = &centroids[(size_t)id * 3];
+                    const bool goesLeft = binnedSahBinOf(c[candidate.axis], candidate.axisMin, candidate.scale) <= candidate.bin;
+                    Work& side = goesLeft ? left : right;
+                    for (int a = 0; a < 3; a++){
+                        side.cmn[a] = c[a] < side.cmn[a] ? c[a] : side.cmn[a];
+                        side.cmx[a] = c[a] > side.cmx[a] ? c[a] : side.cmx[a];
+                    }
+                    return goesLeft;
                 });
                 leftCount = (uint32_t)(middle - begin);
                 split = leftCount > 0 && leftCount < item.count;
             }
-        }
-        if (!split){
-            int axis = 0;
-            for (int a = 1; a < 3; a++){
-                if (cmx[a] - cmn[a] > cmx[axis] - cmn[axis]) axis = a;
+            if (!split){
+                int axis = 0;
+                for (int a = 1; a < 3; a++){
+                    if (item.cmx[a] - item.cmn[a] > item.cmx[axis] - item.cmn[axis]) axis = a;
+                }
+                leftCount = item.count / 2;
+                std::nth_element(begin, begin + leftCount, begin + item.count, [&](uint32_t x, uint32_t y){
+                    const float cx = centroids[(size_t)x * 3 + axis];
+                    const float cy = centroids[(size_t)y * 3 + axis];
+                    return cx < cy || (cx == cy && x < y);
+                });
+                rangeBounds(item.first, leftCount, left.cmn, left.cmx);
+                rangeBounds(item.first + leftCount, item.count - leftCount, right.cmn, right.cmx);
             }
-            leftCount = item.count / 2;
-            uint32_t* begin = order.data() + item.first;
-            std::nth_element(begin, begin + leftCount, begin + item.count, [&](uint32_t x, uint32_t y){
-                const float cx = centroids[(size_t)x * 3 + axis];
-                const float cy = centroids[(size_t)y * 3 + axis];
-                return cx < cy || (cx == cy && x < y);
-            });
         }
 
+        left.count = leftCount;
+        right.first = item.first + leftCount;
+        right.count = item.count - leftCount;
         // the left subtree is popped (numbered) first
-        work.push_back({item.first + leftCount, item.count - leftCount, index, item.depth + 1, true});
-        work.push_back({item.first, leftCount, index, item.depth + 1, false});
+        work.push_back(right);
+        work.push_back(left);
     }
 
     refitAll(false);
@@ -523,6 +630,7 @@ const MeshBvh* SceneBvh::posedTree(Entity entity, const MeshBvh& bindPose, uint6
             return nullptr;
         }
         posed.bvh = std::make_shared<MeshBvh>(bindPose);
+        posed.leafCorners = posed.bvh->leafCorners(geometry.indices);
         posed.indices = std::move(geometry.indices);
         posed.bindPositions = std::move(geometry.positions);
         posed.geometryHash = geometryHash;
@@ -533,7 +641,7 @@ const MeshBvh* SceneBvh::posedTree(Entity entity, const MeshBvh& bindPose, uint6
 
     JE_PROFILE_SCOPE("MeshBvh pose");
     poseGeometry(*mesh, layout, posed.bindPositions, posed.posed);
-    posed.bvh->refit(posed.posed, posed.indices);
+    posed.bvh->refitCorners(posed.posed, posed.leafCorners);
     posed.poseHash = pose;
     return posed.bvh.get();
 }
