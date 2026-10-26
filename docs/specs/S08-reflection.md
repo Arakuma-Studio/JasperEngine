@@ -520,7 +520,7 @@ Recorded by the implementation (branch `feat/s08-reflection`).
   field flagged `Clamped` (UIDocument `textureWidth`/`textureHeight`) is clamped rather than
   refused outside its range: its load clamps too, and the existing suite relies on that. MCP
   ease options leave out `custom`, as before. Camera keeps both tokens (R5 default).
-- **Benchmarks.** `ReflectCodecBench` (R17) and `ReflectResolve` (R18) always log their numbers
+- **Benchmarks.** `ReflectCodecBench` (R17) and `ReflectResolveBench` (R18) always log their numbers
   and always check for zero allocations. The time budgets are asserted only with
   `JASPER_TEST_PERF_SLACK`, in the benchmark run on E (docs/testing.md).
 - **Goldens.** `test_golden_resave` waits 5 frames after opening each scene before saving it
