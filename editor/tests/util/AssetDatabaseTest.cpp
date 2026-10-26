@@ -202,6 +202,24 @@ TEST_F(AssetDatabaseTest, OpenWritesTheCache){
     EXPECT_NE(project.read(".jasperengine/assetdb/index.json").find(guidA), std::string::npos);
 }
 
+#if defined(__linux__)
+// A file name in another encoding (Latin-1 'é' on Linux, where names are bytes) can't go in the
+// JSON cache: its entry is left out, the others are cached, and the open does not throw (it
+// failed the project's load)
+TEST_F(AssetDatabaseTest, ANonUtf8NameIsLeftOutOfTheCache){
+    project.write("a.prefab", prefab(guidA));
+    project.write("caf\xe9.prefab", prefab(guidB));
+    ASSERT_NO_THROW(open());
+    EXPECT_EQ(database.getGuid("caf\xe9.prefab"), guidB);
+    const std::string cache = project.read(".jasperengine/assetdb/index.json");
+    EXPECT_NE(cache.find(guidA), std::string::npos);
+    EXPECT_EQ(cache.find(guidB), std::string::npos);
+    database.close();
+    ASSERT_NO_THROW(open());
+    EXPECT_EQ(database.getGuid("caf\xe9.prefab"), guidB);
+}
+#endif
+
 TEST_F(AssetDatabaseTest, CloseForgetsEverything){
     project.write("a.prefab", prefab(guidA));
     open();
