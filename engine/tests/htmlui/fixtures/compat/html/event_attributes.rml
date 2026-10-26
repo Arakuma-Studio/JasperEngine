@@ -10,7 +10,7 @@ focus: auto;
 tab-index: auto;
 }
 .htmlui-h2 {
-drag: drag;
+drag: drag-drop;
 }
 </style>
 </head

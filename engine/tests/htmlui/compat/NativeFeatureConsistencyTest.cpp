@@ -26,6 +26,8 @@
 
 #include <RmlUi/Core.h>
 #include <RmlUi/Core/PropertyDictionary.h>
+
+#include <algorithm>
 #include <RmlUi/Core/StyleSheetSpecification.h>
 
 #include <gtest/gtest.h>
@@ -402,8 +404,13 @@ namespace {
 }
 
 TEST(NativeFeatureConsistency, EveryFeatureHasASample){
+    // S17's features change no CSS rewrite: the virtual views use them at runtime (their fallbacks:
+    // HtmlUIWidgets.ModelBindingWithoutRowAliases, VirtualViews.layout_boundary)
+    const ForkFeature runtimeOnly[] = {ForkFeature::RowAliases, ForkFeature::LayoutBoundary};
     for (size_t i = 1; i < (size_t)ForkFeature::Count; i++){
         const ForkFeature feature = (ForkFeature)i;
+        if (std::find(std::begin(runtimeOnly), std::end(runtimeOnly), feature) != std::end(runtimeOnly))
+            continue;
         EXPECT_TRUE(std::any_of(std::begin(kSamples), std::end(kSamples), [&](const FeatureSample& s){ return s.feature == feature; }))
             << forkFeatureName(feature) << " has no sample in NativeFeatureConsistencyTest.cpp";
     }

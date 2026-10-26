@@ -1,0 +1,1 @@
+<div class="markdown-body"><p>&lt;script&gt;alert(1)&lt;/script&gt;</p><p>&lt;img src=x onerror=alert(1)&gt;</p><p>&lt;div class=&quot;x&quot;&gt;a block of HTML&lt;/div&gt;</p><p>text with &lt;b&gt;bold tags&lt;/b&gt; and &lt;!-- a comment --&gt; inline</p></div>

@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>list</title>
+  <style>
+    body { margin: 0; font-family: sans-serif; font-size: 14px; }
+    #above { display: block; width: 120px; height: 32px; }
+    #list { height: 600px; width: 320px; }
+    .row { height: 48px; }
+  </style>
+</head>
+<body>
+  <button id="above">Above</button>
+  <div data-model="inv">
+    <list-view id="list" items="items" as="item, i" item-height="48" selection="multiple" key="id">
+      <template><div class="row" data-event-click="pick(i)"><span class="name">{{item.name}}</span> <span class="n">{{i}}</span></div></template>
+    </list-view>
+  </div>
+</body>
+</html>

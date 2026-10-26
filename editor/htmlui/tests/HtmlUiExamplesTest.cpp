@@ -116,7 +116,8 @@ TEST(HtmlUiExamples, EmbeddedTreeIsTheLibrary){
 
 TEST(HtmlUiExamples, NamesFollowTheManifest){
     EXPECT_EQ(HtmlUiExamples::names(), (std::vector<std::string>{"main_menu", "pause_menu", "hud", "inventory", "settings", "dialogue",
-                                                                 "shop", "toasts", "loading", "video_menu", "blank"}));
+                                                                 "shop", "toasts", "loading", "video_menu", "server_browser",
+                                                                 "chat_log", "quest_log", "blank"}));
     EXPECT_EQ(HtmlUiExamples::manifest().value("version", 0), 1);
     EXPECT_TRUE(HtmlUiExamples::has("hud"));
     EXPECT_TRUE(HtmlUiExamples::has("blank"));

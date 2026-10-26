@@ -1,7 +1,7 @@
 """The HTML/CSS UI example library (phase 4, p4-examples, spec §3.7, §3.9, §5.4).
 
-docs/mcp/guide/html-ui-examples holds ten examples (phase 6 added video_menu) and the blank template (examples.json is the
-manifest). The editor embeds them and writes them into every project's
+docs/mcp/guide/html-ui-examples holds thirteen examples (phase 6 added video_menu; S17 server_browser, chat_log and
+quest_log) and the blank template (examples.json is the manifest). The editor embeds them and writes them into every project's
 .jasperengine/engine-api/html-ui-examples/. Per example <n> (generated from the manifest):
 
   test_<n>_files_in_project   the project copy has the example's files, byte for byte
@@ -84,12 +84,17 @@ SURFACE = {
     "loading": ["div.loading", "lottie#spinner", "#progress-track", "#progress-fill", "#percent", ".tip", "#press-key", ".loading-card"],
     "video_menu": ["video.backdrop-video#backdrop", ".scrim", "h1.title", "nav.menu", "button.menu-button#play", "button.menu-button#continue",
                    "button.menu-button#options", "button.menu-button#quit", "button.motion#motion", "#motion-label", "footer.footer"],
+    "server_browser": ["div.browser", "table-view#servers.servers", "button.chip#region-eu", "#count", "button#refresh", "#detail-name",
+                       "button#join.join", ".ping-head", "template#ping-help"],
+    "chat_log": ["section.chat", "list-view#messages.messages", "input#draft.draft", "button#send.send", "#online"],
+    "quest_log": ["section.log", "tree-view#tree.tree", "markdown#journal", "#progress", "article.journal"],
     "blank": ["main.screen", "h1"],
 }
 
 # Examples whose CSS animations run from the document's load (infinite keyframes) and that make
 # no data model (createDataModel reloads a document): play keeps the document the editor loaded,
-# so their phase at play start depends on the wall time spent in edit mode. The test reloads them
+# so their phase at play start depends on the wall time spent in edit mode. The test rebuilds them (a
+# patch reload keeps running animations, S17)
 # once play is held, which starts them on the fixed UI clock (video_menu: its autoplay video too).
 RESTART_CSS = {"main_menu", "video_menu"}
 
@@ -328,19 +333,21 @@ async def test_pngdiff():
 # ---------------------------------------------------------------------------------------- library rules
 
 async def test_manifest_and_authoring_rules():
-    """examples.json lists the ten examples then blank; each example follows the library's rules
+    """examples.json lists the thirteen examples then blank; each example follows the library's rules
     (spec §3.7.1): one html linking one css, assets under assets/, a purpose comment at the top, a
     `<Pascal>UI` Lua class with byId and the onLoad binding, generic font families, nothing remote,
     the size limits, and the public ids and classes."""
     check(MANIFEST.get("version") == 1, "manifest version 1")
-    check(NAMES == ["main_menu", "pause_menu", "hud", "inventory", "settings", "dialogue", "shop", "toasts", "loading", "video_menu", "blank"],
+    check(NAMES == ["main_menu", "pause_menu", "hud", "inventory", "settings", "dialogue", "shop", "toasts", "loading", "video_menu",
+                    "server_browser", "chat_log", "quest_log", "blank"],
           f"manifest order: {NAMES}")
     on_disk = sorted(p.name for p in LIBRARY.iterdir() if p.is_dir())
     check(on_disk == sorted(NAMES), f"folders {on_disk}")
     check((LIBRARY / "LICENSE-lucide.txt").is_file() and "ISC License" in (LIBRARY / "LICENSE-lucide.txt").read_text(),
           "LICENSE-lucide.txt with the ISC license")
     keys = {"name", "title", "example", "description", "demonstrates", "html", "css", "lua", "assets", "viewports", "checks"}
-    check_types = {"exists", "count", "visible", "text_fits", "no_overlap", "within_parent", "within_viewport", "contrast", "min_size"}
+    check_types = {"exists", "count", "visible", "text_fits", "no_overlap", "within_parent", "within_viewport", "contrast", "min_size",
+                   "virtual_window", "tooltip", "selected"}
     for name, entry in ENTRIES.items():
         where = f"examples.json {name}"
         check(set(entry) == keys, f"{where}: keys {sorted(entry)}")
@@ -599,15 +606,17 @@ async def inventory_before(ed: Editor, n: str, first: bool) -> None:
                                          "to_target": ".slot:nth-child(6)", "document": n, "steps": 8}], frames_after=5)
     check(await lua(ed, f"local m = {doc_lua(n)}:getDataModel('inventory'); return m.items[1].id, m.items[6].id") == ["", "sword"],
           "dragging slot 1 onto slot 6 swaps the entries")
-    await hover(ed, n, ".slot:nth-child(3)", frames_after=20)
-    check(await lua(ed, f"local d = {doc_lua(n)}; return d:getElementById('tooltip').classList:contains('show'), "
-                        f"d:getElementById('tooltip-title').textContent") == [True, "Health Potion"], "hovering a slot shows its tooltip")
+    # the drag carried its slot in event.dataTransfer: no drag state is left in the script or the document
+    check(await lua(ed, f"local d = {doc_lua(n)}; return #d:querySelectorAll('.htmlui-drag-ghost'), UIDrag.isActive()") == [0, False],
+          "the ghost went with the drag")
+    await hover(ed, n, ".slot:nth-child(3)", frames_after=30)
+    check(await lua(ed, f"local t = {doc_lua(n)}.tooltip; return t.visible, t.text:find('Health Potion') ~= nil") == [True, True],
+          "hovering a slot shows its tooltip (el:setTooltip with a function)")
 
 
 async def inventory_after(ed: Editor, n: str) -> None:
-    await hover(ed, n, ".slot:nth-child(7)")
-    check(await lua(ed, f"return {doc_lua(n)}:getElementById('tooltip').classList:contains('show')") == [False],
-          "an empty slot hides the tooltip")
+    await hover(ed, n, ".slot:nth-child(7)", frames_after=30)
+    check(await lua(ed, f"return {doc_lua(n)}.tooltip.visible") == [False], "an empty slot has no tooltip")
     # the gamepad (p4-input): the first key focuses the first slot, the d-pad moves through the grid
     # (the tooltip follows), A picks an item up and puts it down, B cancels, the close button is reachable
     slot = (f"local d = {doc_lua(n)}; local s = d:querySelectorAll('.grid > .slot'); "
@@ -617,8 +626,9 @@ async def inventory_after(ed: Editor, n: str) -> None:
     check(await lua(ed, slot) == [1], "the first gamepad key focuses the first slot")
     await pad(ed, "dpad_right", "dpad_down")
     check(await lua(ed, slot) == [8], "right then down: slot 8 (six columns)")
-    check(await lua(ed, f"local d = {doc_lua(n)}; return d:getElementById('tooltip').classList:contains('show'), "
-                        f"d:getElementById('tooltip-title').textContent") == [True, "Vault Key"], "the tooltip follows the focus")
+    await ed.call("wait", frames=30)
+    check(await lua(ed, f"local t = {doc_lua(n)}.tooltip; return t.visible, t.text:find('Vault Key') ~= nil") == [True, True],
+          "the tooltip follows the focus (after its delay)")
     model = f"{doc_lua(n)}:getDataModel('inventory')"
     await pad(ed, "a")
     check(await lua(ed, f"return {model}.picked") == [8], "A picks the key up")
@@ -838,6 +848,87 @@ async def video_menu_after(ed: Editor, n: str) -> None:
     check(await focused(ed, n) == "continue" and "video_menu: continue" in await console_messages(ed), "the d-pad and A do the same")
 
 
+def view_lua(n: str, element_id: str) -> str:
+    return f"{doc_lua(n)}:getElementById('{element_id}').itemsView"
+
+
+async def server_browser_before(ed: Editor, n: str, first: bool) -> None:
+    view = view_lua(n, "servers")
+    check(await lua(ed, f"local v = {view}; return v.count, v:getState().pool <= v:getState().poolBound") == [10000, True],
+          "ten thousand servers, a pool of rows")
+    await click(ed, n, ".htmlui-header-cell[data-column=name]", frames_after=10)
+    check(await lua(ed, f"local v = {view}; local s = v:getState(); return s.sortKey, s.sortDirection") == ["name", "asc"],
+          "a header click sorts by its column")
+    await click(ed, n, '.htmlui-row[aria-rowindex="2"]', frames_after=10)
+    name = await lua(ed, f"return {doc_lua(n)}:getDataModel('browser').selected.name")
+    check(name[0] != "" and await lua(ed, f"return {doc_lua(n)}:getElementById('detail-name').textContent") == name,
+          f"the selected server fills the details: {name}")
+
+
+async def server_browser_after(ed: Editor, n: str) -> None:
+    view = view_lua(n, "servers")
+    await click(ed, n, "#region-eu", frames_after=10)
+    regions = await lua(ed, f"local m = {doc_lua(n)}:getDataModel('browser'); return m.servers[1].region, m.servers[#m.servers].region, m.shown")
+    check(regions[:2] == ["EU", "EU"] and 0 < regions[2] < 10000, f"the Europe chip filters: {regions}")
+    await ed.console_since(None, limit=1)
+    # (the chip has the focus: a row click gives it back to the table)
+    await click(ed, n, '.htmlui-row[aria-rowindex="2"]', frames_after=10)
+    await ed.call("send_input", events=[{"type": "key", "key": "down"}, {"type": "key", "key": "enter"}], frames_after=5)
+    check(await lua(ed, f"return {view}.activeIndex") == [3], "Down moves the selection")
+    check(any(m.startswith("servers: joining ") for m in await console_messages(ed)), "Enter joins the selected server")
+    await hover(ed, n, ".ping-head", frames_after=40)
+    check(await lua(ed, f"local t = {doc_lua(n)}.tooltip; return t.visible, t.text:find('round trip') ~= nil") == [True, True],
+          "the Ping header's rich tooltip (tooltip=\"#ping-help\")")
+    await hover(ed, n, '.htmlui-row[aria-rowindex="4"] .name', frames_after=40)
+    check(await lua(ed, f"local t = {doc_lua(n)}.tooltip; return t.visible, t.text:find('players') ~= nil") == [True, True],
+          "a row's title tooltip")
+
+
+async def chat_log_before(ed: Editor, n: str, first: bool) -> None:
+    view = view_lua(n, "messages")
+    check(await lua(ed, f"local v = {view}; local first, last = v:getVisibleRange(); return v.count, last") == [120, 120],
+          "120 messages, the view at the end (anchor=\"end\")")
+    await lua(ed, f"{doc_lua(n)}:getElementById('draft').value = 'gg **all**'")
+    await ed.console_since(None, limit=1)
+    await click(ed, n, "#send", frames_after=10)
+    check("chat: sent gg **all**" in await console_messages(ed), "Send posts the draft")
+    check(await lua(ed, f"local v = {view}; local first, last = v:getVisibleRange(); return v.count, last") == [121, 121],
+          "the new message shows at the end")
+    check(await lua(ed, f"return {view}:getRow(121):querySelector('strong').textContent") == ["all"], "its Markdown is rendered")
+
+
+async def chat_log_after(ed: Editor, n: str) -> None:
+    view = view_lua(n, "messages")
+    await lua(ed, f"{doc_lua(n)}:getElementById('messages').scrollTop = 0")
+    await ed.call("wait", game_seconds=4.5)
+    values = await lua(ed, f"local v = {view}; local first, last = v:getVisibleRange(); return v.count, first, last")
+    check(values[0] == 122 and values[1] == 1 and values[2] < 122, f"scrolled up, a new message leaves the view where it is: {values}")
+
+
+async def quest_log_before(ed: Editor, n: str, first: bool) -> None:
+    view = view_lua(n, "tree")
+    check(await lua(ed, f"return {view}.count") == [8], "the two first chapters open: 3 chapters and 5 quests")
+    await click(ed, n, '.htmlui-row[aria-rowindex="3"]', frames_after=10)
+    check((await lua(ed, f"return {doc_lua(n)}:getElementById('journal').textContent:find('vault key') ~= nil"))[0],
+          "the selected quest's notes in the journal")
+
+
+async def quest_log_after(ed: Editor, n: str) -> None:
+    view = view_lua(n, "tree")
+    await click(ed, n, '.htmlui-row[aria-rowindex="1"]', frames_after=10)
+    check((await lua(ed, f"return {doc_lua(n)}:getElementById('journal').textContent:find('Journal') ~= nil"))[0],
+          "a chapter shows the journal's first page (<markdown src>)")
+    await ed.call("send_input", events=[{"type": "key", "key": "left"}], frames_after=5)
+    check(await lua(ed, f"return {view}.count, {view}:isExpanded('main')") == [5, False], "Left closes the chapter")
+    await ed.call("send_input", events=[{"type": "key", "key": "right"}, {"type": "key", "key": "right"}], frames_after=5)
+    check(await lua(ed, f"return {view}.activeIndex, {view}:getNode({view}.activeIndex).key") == [2, "map"],
+          "Right opens it, then goes to its first quest")
+    await ed.console_since(None, limit=1)
+    await pad(ed, "a", frames_after=10)
+    check("quests: finished The old map" in await console_messages(ed), "A finishes the quest")
+    check(await lua(ed, f"return {doc_lua(n)}:getElementById('progress').textContent") == ["2 of 6 done"], "the progress counts it")
+
+
 async def blank_before(ed: Editor, n: str, first: bool) -> None:
     check(await lua(ed, f"return {doc_lua(n)}:querySelector('h1').textContent") == ["Blank"], "the heading")
 
@@ -907,7 +998,7 @@ def _make_tests(name: str) -> None:
                 cursor = await console_cursor(ed)
                 await ed.call("play", action="start", scene=state["scene"], fixed_fps=60, auto_pause=True)
                 if name in RESTART_CSS:
-                    await lua(ed, f"{doc_lua(name)}:reload()")
+                    await lua(ed, f"{doc_lua(name)}:reload{{mode = \"rebuild\"}}")
                 await ed.call("wait", frames=90)
                 await before(ed, name, run == 0)
                 captures.append(await capture(ed, f"{name}.play{run}"))
@@ -953,7 +1044,7 @@ def _make_tests(name: str) -> None:
         try:
             await ed.call("play", action="start", scene=state["scene"], fixed_fps=60, auto_pause=True)
             if name in RESTART_CSS:
-                await lua(ed, f"{doc_lua(name)}:reload()")
+                await lua(ed, f"{doc_lua(name)}:reload{{mode = \"rebuild\"}}")
             await ed.call("wait", frames=90)
             await before(ed, name, True)
             r = await ed.call("assert_ui", entity=name, checks=entry["checks"], viewports=entry["viewports"])

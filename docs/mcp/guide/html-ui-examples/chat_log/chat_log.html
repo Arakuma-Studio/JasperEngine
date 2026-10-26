@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<!--
+  Chat log: a team chat whose messages are Markdown, in a list that sticks to its end.
+  Shows: <list-view> with measured row heights (item-height="auto": every message as tall as its
+  text), anchor="end" (new messages keep the view at the bottom while it is there; scrolled up,
+  it stays where the reader is), data-markdown (each message's text rendered as Markdown, HTML in
+  it shown as text), data-class-* for one's own messages, a composer with Enter to send, and new
+  messages arriving on game time.
+  In the editor (no Lua) the log is empty: press Play to see the messages.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Chat log</title>
+  <link rel="stylesheet" href="chat_log.css">
+</head>
+<body>
+  <div class="page">
+    <section class="chat" data-model="chat">
+      <header class="titlebar">
+        <h2><i data-lucide="message-square"></i> Team chat</h2>
+        <span id="online" class="online">{{ online }} online</span>
+      </header>
+
+      <list-view id="messages" class="messages" items="messages" item-height="auto" estimated-height="64" anchor="end" selection="none">
+        <template>
+          <div class="message" data-class-mine="item.mine">
+            <span class="avatar" data-style-background-color="item.color">{{ item.initial }}</span>
+            <div class="bubble">
+              <span class="author">{{ item.author }}</span>
+              <div class="text" data-markdown="item.text"></div>
+            </div>
+          </div>
+        </template>
+      </list-view>
+
+      <div class="composer">
+        <input id="draft" class="draft" type="text" placeholder="Say something. **Markdown** works.">
+        <button id="send" class="send" aria-label="Send"><i data-lucide="send"></i></button>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

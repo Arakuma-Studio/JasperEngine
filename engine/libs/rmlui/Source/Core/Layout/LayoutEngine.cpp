@@ -1,6 +1,7 @@
 #include "LayoutEngine.h"
 #include "../../../Include/RmlUi/Core/Element.h"
 #include "../../../Include/RmlUi/Core/Log.h"
+#include "../../../Include/RmlUi/Core/Math.h"
 #include "../../../Include/RmlUi/Core/Profiling.h"
 #include "ContainerBox.h"
 #include "FormattingContext.h"
@@ -81,6 +82,28 @@ void LayoutEngine::FormatElement(Element* element, Vector2f containing_block)
 		// size of each element's scrollable area, we can finally clamp the scroll offset.
 		element->ClampScrollOffsetRecursive();
 	}
+}
+
+void LayoutEngine::FormatLayoutBoundary(Element* element)
+{
+	RMLUI_ASSERT(element);
+	RMLUI_ZoneScoped;
+
+	LayoutMeasureCache::Scope measure_cache;
+
+	// The containing block of its percentages (min-height and the like, resolved against the box's own size otherwise)
+	// as its parent's formatting saw it: the parent's content box.
+	Vector2f containing_block(0.f);
+	if (Element* parent = element->GetParentNode())
+		containing_block = Math::Max(parent->GetBox().GetSize(BoxArea::Content), Vector2f(0.f));
+	RootBox root(containing_block);
+
+	const Box box = element->GetBox();
+	auto layout_box = FormattingContext::FormatIndependent(&root, element, &box, FormattingContextType::Block);
+	if (!layout_box)
+		Log::Message(Log::LT_ERROR, "Error while formatting layout boundary: %s", element->GetAddress().c_str());
+
+	element->ClampScrollOffsetRecursive();
 }
 
 } // namespace Rml

@@ -83,7 +83,9 @@ public:
 
 	void OnElementRemove(Element* element);
 
-	bool Update(DataModel& model, const DirtyVariables& dirty_variables);
+	// Fork (P7-D): dirty_rows, rows whose aliases were re-pointed: the views attached to them or their descendants are
+	// updated too.
+	bool Update(DataModel& model, const DirtyVariables& dirty_variables, const SmallUnorderedSet<Element*>& dirty_rows);
 
 private:
 	using DataViewList = Vector<DataViewPtr>;
@@ -95,6 +97,12 @@ private:
 
 	using NameViewMap = UnorderedMultimap<String, DataView*>;
 	NameViewMap name_view_map;
+
+	// Fork (P7-D): the views by the element they are attached to.
+	using ElementViewMap = UnorderedMultimap<Element*, DataView*>;
+	ElementViewMap element_view_map;
+
+	void CollectRowViews(Element* element, Vector<DataView*>& out) const;
 };
 
 } // namespace Rml

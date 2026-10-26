@@ -1574,6 +1574,8 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         [](SettingsContext&) { return Json(AppSettings::getHtmlUiAutoImport()); }));
     addOrAbort(registry, uiRow("preferences.html_ui_verbose_diagnostics", general, "HTML UI", "Verbose Diagnostics", "css compatibility notes",
         [](SettingsContext&) { return Json(AppSettings::getHtmlUiVerboseDiagnostics()); }));
+    addOrAbort(registry, uiRow("preferences.html_ui_hot_reload", general, "HTML UI", "Hot Reload", "patch rebuild reconcile html reload",
+        [](SettingsContext&) { return Json(AppSettings::getHtmlUiPatchReload() ? "patch" : "rebuild"); }));
     addOrAbort(registry, uiRow("preferences.code_editor_font_size", "Code Editor", "", "Font Size", "text zoom",
         [](SettingsContext&) { return Json(AppSettings::getCodeEditorFontSize()); }));
     const char* pipeline = "Asset Pipeline";

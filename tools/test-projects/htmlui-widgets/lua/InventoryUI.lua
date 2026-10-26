@@ -1,0 +1,1 @@
+../../../../docs/mcp/guide/html-ui-examples/inventory/InventoryUI.lua

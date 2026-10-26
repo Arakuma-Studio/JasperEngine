@@ -50,10 +50,113 @@ namespace {
         }
     };
 
+    // The content of a <markdown> element is raw text (S17 R24): its bytes, between the start tag
+    // and `</markdown`, are Markdown, not HTML (`<https://x>`, `*` and `<b>` are written as they
+    // are). Before lexbor parses the text, findMarkdownContent finds those ranges and they are
+    // blanked (spaces, newlines kept, so every offset stays), and the converter hands each
+    // element its raw content in HtmlNode::text. Comments and the raw text elements are skipped,
+    // so a `<markdown` written in them is not one.
+    struct RawContent {
+        size_t begin = 0;   // the byte after the start tag's `>`
+        size_t end = 0;     // the `<` of `</markdown`, or the end of the text
+    };
+
+    // `name` (lower case) at `at`, in any case, followed by what ends a tag name
+    bool startsWithTag(std::string_view text, size_t at, std::string_view name){
+        if (at + name.size() > text.size())
+            return false;
+        for (size_t i = 0; i < name.size(); i++){
+            const char c = text[at + i];
+            if ((c >= 'A' && c <= 'Z' ? (char)(c - 'A' + 'a') : c) != name[i])
+                return false;
+        }
+        if (at + name.size() == text.size())
+            return true;
+        const char next = text[at + name.size()];
+        return next == ' ' || next == '\t' || next == '\n' || next == '\r' || next == '\f' || next == '/' || next == '>';
+    }
+
+    // the position of `</name` (case-insensitive) at or after `from`, text.size() when there is none
+    size_t findEndTag(std::string_view text, size_t from, std::string_view name){
+        for (size_t at = text.find("</", from); at != std::string_view::npos; at = text.find("</", at + 2)){
+            if (startsWithTag(text, at + 2, name))
+                return at;
+        }
+        return text.size();
+    }
+
+    // the byte after the `>` that ends the start tag at `at` (quoted values may hold `>`)
+    size_t startTagEnd(std::string_view text, size_t at){
+        char quote = 0;
+        for (size_t i = at; i < text.size(); i++){
+            const char c = text[i];
+            if (quote){
+                if (c == quote)
+                    quote = 0;
+            }else if (c == '"' || c == '\''){
+                quote = c;
+            }else if (c == '>'){
+                return i + 1;
+            }
+        }
+        return text.size();
+    }
+
+    std::vector<RawContent> findMarkdownContent(std::string_view text){
+        std::vector<RawContent> ranges;
+        // elements whose content is text for the parser too: a `<markdown` inside one is text
+        static constexpr std::string_view rawText[] = {"script", "style", "textarea", "title", "xmp", "noembed", "noframes", "iframe"};
+        for (size_t at = text.find('<'); at != std::string_view::npos && at < text.size(); at = text.find('<', at + 1)){
+            if (text.compare(at, 4, "<!--") == 0){
+                const size_t close = text.find("-->", at + 4);
+                if (close == std::string_view::npos)
+                    break;
+                at = close + 2;
+                continue;
+            }
+            bool skipped = false;
+            for (std::string_view name : rawText){
+                if (startsWithTag(text, at + 1, name)){
+                    const size_t close = findEndTag(text, startTagEnd(text, at), name);
+                    at = close >= text.size() ? text.size() : close + 1;
+                    skipped = true;
+                    break;
+                }
+            }
+            if (skipped || !startsWithTag(text, at + 1, "markdown"))
+                continue;
+            const size_t begin = startTagEnd(text, at);
+            // `<markdown .../>` holds nothing (the transform moves what the parser puts inside after it)
+            if (begin >= 2 && text[begin - 2] == '/')
+                continue;
+            const size_t end = findEndTag(text, begin, "markdown");
+            ranges.push_back(RawContent{begin, end});
+            at = end >= text.size() ? text.size() : end;
+            if (at >= text.size())
+                break;
+        }
+        return ranges;
+    }
+
+    // the text lexbor parses: `ranges` blanked
+    std::string blankRanges(std::string_view text, const std::vector<RawContent>& ranges){
+        std::string blanked(text);
+        for (const RawContent& range : ranges){
+            for (size_t i = range.begin; i < range.end; i++){
+                if (blanked[i] != '\n')
+                    blanked[i] = ' ';
+            }
+        }
+        return blanked;
+    }
+
     struct Converter {
         Buffer buffer;
         DiagnosticSink* sink;
         bool depthReported = false;
+        // the text before blanking and its <markdown> contents (findMarkdownContent)
+        std::string_view original;
+        const std::vector<RawContent>* markdown = nullptr;
 
         static std::string toString(const lxb_char_t* data, size_t length){
             return data ? std::string(reinterpret_cast<const char*>(data), length) : std::string();
@@ -70,7 +173,8 @@ namespace {
         // `<` .. `>` of a start tag: lexbor gives the byte after `<` and the end of the name; the
         // tag ends at the first `>` after the name and every attribute (the end of a quoted
         // value stops before its closing quote, which cannot be `>`)
-        SourceRef startTagRange(const lxb_dom_node_t* node, const lxb_dom_element_t* element, bool& selfClosing) const{
+        SourceRef startTagRange(const lxb_dom_node_t* node, const lxb_dom_element_t* element, bool& selfClosing,
+                                const char** tagEnd = nullptr) const{
             selfClosing = false;
             const lxb_char_t* begin = node->jasper_src_begin;
             if (!buffer.contains(begin) || reinterpret_cast<const char*>(begin) == buffer.begin)
@@ -93,6 +197,8 @@ namespace {
             const char* end = (p < last) ? p + 1 : last;
             if (p < last && p > buffer.begin && *(p - 1) == '/')
                 selfClosing = true;
+            if (tagEnd)
+                *tagEnd = end;
             // `<` (an element made from an end tag, `</br>`, starts at `</`)
             const char* open = reinterpret_cast<const char*>(begin) - 1;
             if (*open == '/' && open > buffer.begin && *(open - 1) == '<')
@@ -154,9 +260,21 @@ namespace {
                         : lxb_dom_element_qualified_name(element, &length);
                     out->tag = toString(name, length);
                     bool selfClosing = false;
-                    out->ref = startTagRange(node, element, selfClosing);
+                    const char* tagEnd = nullptr;
+                    out->ref = startTagRange(node, element, selfClosing, &tagEnd);
+                    if (buffer.file == 0)
+                        out->ref = SourceRef{};
                     out->implied = !out->ref.valid();
                     out->selfClosingSyntax = selfClosing;
+                    if (markdown && tagEnd && out->ns == Namespace::Html && out->tag == "markdown"){
+                        const size_t begin = (size_t)(tagEnd - buffer.begin);
+                        for (const RawContent& range : *markdown){
+                            if (range.begin == begin){
+                                out->text = std::string(original.substr(range.begin, range.end - range.begin));
+                                break;
+                            }
+                        }
+                    }
                     const bool keepCase = out->ns != Namespace::Html;
                     size_t attributes = 0;
                     for (const lxb_dom_attr_t* attribute = element->first_attr; attribute; attribute = attribute->next)
@@ -369,9 +487,14 @@ HtmlDocument HtmlParser::parseDocument(uint32_t file, std::string_view text, Dia
         return result;
     }
 
-    lxb_status_t status = lxb_html_document_parse(document, reinterpret_cast<const lxb_char_t*>(text.data()), text.size());
+    const std::vector<RawContent> markdown = findMarkdownContent(text);
+    const std::string blanked = markdown.empty() ? std::string() : blankRanges(text, markdown);
+    const std::string_view parsed = markdown.empty() ? text : std::string_view(blanked);
+    lxb_status_t status = lxb_html_document_parse(document, reinterpret_cast<const lxb_char_t*>(parsed.data()), parsed.size());
 
-    Converter converter{Buffer{text.data(), text.size(), file, 0}, sink};
+    Converter converter{Buffer{parsed.data(), parsed.size(), file, 0}, sink};
+    converter.original = text;
+    converter.markdown = &markdown;
     if (status == LXB_STATUS_OK){
         lxb_dom_node_t* top = lxb_dom_interface_node(document);
         for (lxb_dom_node_t* node = top->first_child; node; node = node->next){
@@ -410,8 +533,13 @@ HtmlDocument HtmlParser::parseFragment(uint32_t file, std::string_view text, uin
     lxb_dom_element_t* context = lxb_dom_document_create_element(lxb_dom_interface_document(document),
                                                                  reinterpret_cast<const lxb_char_t*>(tag.data()), tag.size(), nullptr);
     if (context){
-        lxb_dom_node_t* fragment = lxb_html_document_parse_fragment(document, context, reinterpret_cast<const lxb_char_t*>(text.data()), text.size());
-        Converter converter{Buffer{text.data(), text.size(), file, baseOffset}, sink};
+        const std::vector<RawContent> markdown = findMarkdownContent(text);
+        const std::string blanked = markdown.empty() ? std::string() : blankRanges(text, markdown);
+        const std::string_view parsed = markdown.empty() ? text : std::string_view(blanked);
+        lxb_dom_node_t* fragment = lxb_html_document_parse_fragment(document, context, reinterpret_cast<const lxb_char_t*>(parsed.data()), parsed.size());
+        Converter converter{Buffer{parsed.data(), parsed.size(), file, baseOffset}, sink};
+        converter.original = text;
+        converter.markdown = &markdown;
         if (fragment){
             converter.convertChildren(fragment, result.root.get(), 1);
             converter.reportErrors(document);
