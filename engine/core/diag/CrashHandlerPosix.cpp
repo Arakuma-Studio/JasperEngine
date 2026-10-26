@@ -60,6 +60,9 @@ struct AlternateStack {
     }
 };
 thread_local AlternateStack alternate;
+#if defined(__APPLE__)
+thread_local char preparedThreadName[64]{};
+#endif
 
 void raw(int fd, const char* text, size_t size) {
     if (fd < 0) return;
@@ -248,7 +251,11 @@ void fatal(int sig, siginfo_t* info, void* context) {
     number(report, "pc: ", pc, true);
     number(report, "sp: ", sp, true);
     number(report, "thread: ", static_cast<uint64_t>(threadId()));
-#if !defined(__APPLE__)
+#if defined(__APPLE__)
+    n = appendText(text, sizeof(text), 0, "thread_name: ");
+    appendText(text, sizeof(text), n, preparedThreadName);
+    line(report, text);
+#else
     char threadName[16]{};
     prctl(PR_GET_NAME, threadName, 0, 0, 0);
     n = appendText(text, sizeof(text), 0, "thread_name: ");
@@ -337,6 +344,10 @@ void handleFatalSignal(int sig, siginfo_t* info, void* context) {
 namespace jasperengine::diag::crash::detail {
 void prepareThreadPlatform() {
     using namespace je_crash_posix;
+#if defined(__APPLE__)
+    // A fatal handler must not query pthread's name or take its internal locks.
+    pthread_getname_np(pthread_self(), preparedThreadName, sizeof(preparedThreadName));
+#endif
     if (alternate.memory != MAP_FAILED) return;
     stack_t current{};
     if (sigaltstack(nullptr, &current) != 0) return;
