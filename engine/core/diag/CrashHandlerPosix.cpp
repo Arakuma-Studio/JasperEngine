@@ -44,10 +44,10 @@ namespace je_crash_posix {
 using namespace jasperengine::diag::crash::detail;
 constexpr int signals[] = {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT, SIGTRAP};
 struct sigaction previous[sizeof(signals) / sizeof(signals[0])]{};
-struct Module { uintptr_t begin, end, base; char name[512]; };
-Module modules[512]{};
+struct Module { uintptr_t begin, end, base; char name[256]; };
+Module modules[128]{};
 size_t moduleCount = 0;
-char moduleList[32768]{};
+char moduleList[16384]{};
 size_t moduleListBytes = 0;
 
 struct AlternateStack {
@@ -323,14 +323,24 @@ void fatal(int sig, siginfo_t* info, void* context) {
     chain(sig, info, context);
 }
 void addModule(uintptr_t begin, uintptr_t end, uintptr_t base, const char* name) {
+    // One entry per image, rather than copying its path for every load segment. Keep
+    // basenames in frames: symbolication can use the build's symbols on another machine.
+    for (size_t i = 0; i < moduleCount; i++) {
+        if (modules[i].base != base) continue;
+        if (begin < modules[i].begin) modules[i].begin = begin;
+        if (end > modules[i].end) modules[i].end = end;
+        return;
+    }
     if (moduleCount == sizeof(modules) / sizeof(modules[0])) return;
     auto& module = modules[moduleCount++];
     module.begin = begin; module.end = end; module.base = base;
-    appendText(module.name, sizeof(module.name), 0, name);
+    const char* basename = name;
+    for (const char* c = name; *c; c++) if (*c == '/') basename = c + 1;
+    appendText(module.name, sizeof(module.name), 0, basename);
 #if defined(__APPLE__)
-    moduleListBytes = appendText(moduleList, sizeof(moduleList), moduleListBytes, name);
-    moduleListBytes = appendText(moduleList, sizeof(moduleList), moduleListBytes, " ");
     moduleListBytes = appendHex(moduleList, sizeof(moduleList), moduleListBytes, base);
+    moduleListBytes = appendText(moduleList, sizeof(moduleList), moduleListBytes, " ");
+    moduleListBytes = appendText(moduleList, sizeof(moduleList), moduleListBytes, name);
     moduleListBytes = appendText(moduleList, sizeof(moduleList), moduleListBytes, "\n");
 #endif
 }

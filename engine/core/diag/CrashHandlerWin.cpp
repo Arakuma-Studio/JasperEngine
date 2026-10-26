@@ -94,7 +94,9 @@ void writeFrame(HANDLE file, size_t index, DWORD64 pc, bool symbols) {
     if (symbols && SymGetModuleInfo64(static_cast<HANDLE>(Backtrace::dbgHelpProcess()), pc, &module)) {
         appendText(name, sizeof(name), 0, module.ImageName);
     }
-    if (name[0]) n = appendText(buffer, sizeof(buffer), n, name);
+    const char* basename = name;
+    for (const char* c = name; *c; c++) if (*c == '/' || *c == '\\') basename = c + 1;
+    if (name[0]) n = appendText(buffer, sizeof(buffer), n, basename);
     else { n = appendText(buffer, sizeof(buffer), n, "module@"); n = appendHex(buffer, sizeof(buffer), n, base); }
     n = appendText(buffer, sizeof(buffer), n, "+");
     n = appendHex(buffer, sizeof(buffer), n, pc - base);
