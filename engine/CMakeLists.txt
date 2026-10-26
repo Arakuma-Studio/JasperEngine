@@ -1190,6 +1190,7 @@ set(JASPERENGINE_SRCS
     core/texture/Framebuffer.cpp
     core/texture/IBLEnvironment.cpp
     core/texture/Ktx2.cpp
+    core/texture/Ktx2Write.cpp
     core/texture/MipChain.cpp
     core/texture/MaterialPbr.cpp
     core/texture/TexturePack.cpp

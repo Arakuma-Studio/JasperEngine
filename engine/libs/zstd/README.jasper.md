@@ -17,4 +17,6 @@ Not vendored: `lib/dictBuilder`, `lib/legacy`, `lib/deprecated`, `programs/`, `c
   decompress) and `zstd` (everything), C, `ZSTD_DISABLE_ASM` (the x86-64 Huffman assembly is the
   only `.S` file; without it the decoder is portable C on every compiler), no legacy formats, no
   multithreading, `XXH_NAMESPACE`, hidden visibility (the API's visibility macros are emptied).
+  The decoder is built small (S14 R21): `DYNAMIC_BMI2=0`, `HUF_FORCE_DECOMPRESS_X1`,
+  `ZSTD_FORCE_DECOMPRESS_SEQUENCES_SHORT` (upstream's size options; every frame still decodes).
 - No source file is changed.

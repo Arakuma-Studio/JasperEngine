@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 # (c) Eduardo Doria and contributors
 # SPDX-License-Identifier: MIT
-"""The size the cooked-texture runtime adds to a game (docs/specs/S14-texture-compression.md R21):
-the code and data of its objects in a Release build tree, as `size` (native ELF) or the object
-files' code sections (wasm) count them.
+"""The size the cooked-texture runtime adds to a game (docs/specs/S14-texture-compression.md R21).
 
-    python3 tools/textures/runtime_size.py <build dir> [--wasm] [--json out.json]
+    python3 tools/textures/runtime_size.py --binary <linked game executable> [--json out.json]
+    python3 tools/textures/runtime_size.py --wasm <web build dir> [--json out.json]
 
-Native counts Zstandard's decoder, the KTX2 reader/writer, the CPU decoders (bcdec), the
-fallback plans and the cooked index (R21's "zstd decoder + bcdec + KTX2 reader"); the mip
-chain and the preparation are listed apart (the raw path's, which replaced
-SokolTexture::generateMipmaps). --wasm adds the Basis Universal transcoder. Budgets: native
-<= 120 KB, wasm <= 250 KB.
+Native (budget 120 KB): the code and data symbols of a linked Release game (`nm -S`, what
+stripping keeps) that are Zstandard's decoder, bcdec and the KTX2 reader, R21's list. The rest
+of the texture runtime (CPU decodes, fallback plans, the cooked index, the Basis wrapper) is
+listed apart. Run it on build/linux/engine/jasperengine-project after tools/build.sh linux.
+
+Wasm (budget 250 KB): the code and data sections of the web build's objects (relocatable wasm)
+of the Basis Universal transcoder, Zstandard's decoder and the texture runtime's sources. Object
+sections count the inline and template code each object carries before the linker merges
+copies, so this is an upper bound.
 """
 
 import argparse
@@ -21,28 +24,38 @@ import re
 import subprocess
 import sys
 
+KTX2_WRITER = re.compile(r"Ktx2::(write|makeDfd|makeUastcDfd|rewriteKeyValues)\b")
+NATIVE_GROUPS = [
+    ("zstd_decoder", re.compile(r"^(ZSTD_|HUF_|FSE_|ZSTDv|JE_ZSTD_|ERR_getErrorString|HIST_)")),
+    ("bcdec", re.compile(r"^bcdec_")),
+    ("ktx2_reader", re.compile(r"^jasperengine::(Ktx2::|Ktx2MemorySource::|Ktx2PrefixSource::|Ktx2ByteSource::|ktx2detail::)")),
+    ("texture_runtime", re.compile(r"^jasperengine::(TextureDecode::|TextureFallback::|CookedTextures::|BasisTranscode::)")),
+    ("basisu_transcoder", re.compile(r"^basist::")),
+]
+COUNTED_NATIVE = ("zstd_decoder", "bcdec", "ktx2_reader")
+
 RUNTIME = ("Ktx2.cpp", "TextureDecode.cpp", "TextureFallback.cpp", "TextureFormat.cpp", "CookedTextures.cpp",
            "BasisTranscode.cpp")
-RAW_PATH = ("MipChain.cpp", "TexturePrepare.cpp")
 ZSTD = re.compile(r"/zstd_decompress\.dir/")
 BASIS = re.compile(r"/basisu_transcoder\.dir/")
 
 
-def objects(build):
-    for directory, _, names in os.walk(build):
-        for name in names:
-            if name.endswith((".o", ".obj")):
-                yield os.path.join(directory, name)
-
-
-def native_size(path):
-    out = subprocess.run(["size", "-A", path], capture_output=True, text=True, check=True).stdout
-    total = 0
+def native(binary):
+    out = subprocess.run(["nm", "-S", "-C", "--size-sort", binary], capture_output=True, text=True, check=True).stdout
+    groups = {name: 0 for name, _ in NATIVE_GROUPS}
     for line in out.splitlines():
-        parts = line.split()
-        if len(parts) >= 2 and parts[0].startswith((".text", ".rodata", ".data")) and parts[1].isdigit():
-            total += int(parts[1])
-    return total
+        parts = line.split(maxsplit=3)
+        if len(parts) < 4 or parts[2].lower() not in "tdrbv":
+            continue
+        name = parts[3]
+        if KTX2_WRITER.search(name):
+            continue
+        for group, pattern in NATIVE_GROUPS:
+            if pattern.search(name):
+                groups[group] += int(parts[1], 16)
+                break
+    counted = sum(groups[g] for g in COUNTED_NATIVE)
+    return groups, counted, 120 * 1024
 
 
 def wasm_size(path):
@@ -68,31 +81,36 @@ def wasm_size(path):
     return total
 
 
+def wasm(build):
+    groups = {"runtime": 0, "zstd_decompress": 0, "basisu_transcoder": 0}
+    seen = set()
+    for directory, _, names in os.walk(build):
+        for file in names:
+            if not file.endswith((".o", ".obj")):
+                continue
+            path = os.path.join(directory, file)
+            name = file.rsplit(".", 1)[0]
+            group = None
+            if ZSTD.search(path):
+                group = "zstd_decompress"
+            elif BASIS.search(path):
+                group = "basisu_transcoder"
+            elif "/jasperengine.dir/" in path and name in RUNTIME:
+                group = "runtime"
+            if group and (group, name) not in seen:
+                seen.add((group, name))
+                groups[group] += wasm_size(path)
+    return groups, sum(groups.values()), 250 * 1024
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("build")
-    ap.add_argument("--wasm", action="store_true")
+    mode = ap.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--binary", help="a linked native game executable")
+    mode.add_argument("--wasm", help="a web build directory")
     ap.add_argument("--json")
     args = ap.parse_args()
-    measure = wasm_size if args.wasm else native_size
-    groups = {"runtime": 0, "zstd_decompress": 0, "raw_path": 0, "basisu_transcoder": 0}
-    seen = set()
-    for path in objects(args.build):
-        name = os.path.basename(path).rsplit(".", 1)[0]
-        group = None
-        if ZSTD.search(path):
-            group = "zstd_decompress"
-        elif BASIS.search(path):
-            group = "basisu_transcoder"
-        elif "/jasperengine.dir/" in path and name in RUNTIME:
-            group = "runtime"
-        elif "/jasperengine.dir/" in path and name in RAW_PATH:
-            group = "raw_path"
-        if group and (group, name) not in seen:
-            seen.add((group, name))
-            groups[group] += measure(path)
-    budget = 250 * 1024 if args.wasm else 120 * 1024
-    counted = groups["runtime"] + groups["zstd_decompress"] + (groups["basisu_transcoder"] if args.wasm else 0)
+    groups, counted, budget = native(args.binary) if args.binary else wasm(args.wasm)
     report = {"groups": groups, "counted": counted, "budget": budget, "ok": counted <= budget}
     for group, size in groups.items():
         print("%-18s %8.1f KB" % (group, size / 1024.0))

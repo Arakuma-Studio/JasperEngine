@@ -48,5 +48,13 @@ function(jasperengine_zstd_library name)
 endfunction()
 
 jasperengine_zstd_library(zstd_decompress ${ZSTD_COMMON_SOURCES} ${ZSTD_DECOMPRESS_SOURCES})
+# the decoder every game links, built small (spec S14 R21: zstd + bcdec + the KTX2 reader within
+# 120 KB): one code path instead of a generic and a BMI2 copy of each hot loop, the single-symbol
+# Huffman decoder only and the short-offset sequence decoder only. Every Zstandard frame still
+# decodes; large frames decode somewhat slower (a 2048² BC7 file loads in about 3 ms, R19: 12)
+target_compile_definitions(zstd_decompress PRIVATE
+    DYNAMIC_BMI2=0
+    HUF_FORCE_DECOMPRESS_X1=1
+    ZSTD_FORCE_DECOMPRESS_SEQUENCES_SHORT=1)
 jasperengine_zstd_library(zstd ${ZSTD_COMPRESS_SOURCES})
 target_link_libraries(zstd PUBLIC zstd_decompress)
