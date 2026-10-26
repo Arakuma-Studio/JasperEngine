@@ -275,6 +275,14 @@ LONG WINAPI filter(EXCEPTION_POINTERS* info) {
 }
 void synthetic(const char* reason, DWORD code) {
     auto& s = state();
+    const DWORD current = GetCurrentThreadId();
+    if (current == writerThread || (faultOwner.load(std::memory_order_acquire) == current &&
+            !s.reportDone.load(std::memory_order_acquire))) {
+        // The CRT default is process termination. Do not enter an arbitrary saved abort
+        // callback (or wait for the writer) when the reporter itself has faulted again.
+        TerminateProcess(GetCurrentProcess(), code);
+        std::_Exit(3);
+    }
     if (!s.pendingReasonSet.load(std::memory_order_relaxed)) {
         appendText(s.pendingReason, sizeof(s.pendingReason), 0, reason);
         s.pendingReasonSet.store(true, std::memory_order_release);
