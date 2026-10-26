@@ -610,3 +610,7 @@ passes, smoke PASS. `tools/crash/test_symbolicate.py` passes on B against a fres
   segfault chaining to ASan, concurrent report completion, direct recursive termination and
   saved-handler chaining after a completed report. No unexpected leak or UB diagnostic is
   emitted by the fixed runs; the red controls' sanitizer SEGV output is deliberate evidence.
+- Server D crash/protocol MCP gate: 18 passed, 0 failed, 0 skipped in 53.3 s
+  (`test_crash.py` 6/6, `test_protocol.py` 12/12), including `test_runaway_lua` and the
+  native segfault/restart notice. This verifies the S28 fixes merged at `3b0dd7a14` together
+  with the native follow-up. All temporary red-control sources were restored afterward.
