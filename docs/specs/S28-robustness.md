@@ -597,9 +597,16 @@ passes, smoke PASS. `tools/crash/test_symbolicate.py` passes on B against a fres
   standalone game). The crash CTests (`native-crash-reports`, `posix-crash-signal-safety`,
   `crash.symbolicate`) pass 3/3 in 15.77 s. All 13 POSIX subprocess modes pass, including
   complete concurrent-fault reports, immediate recursive termination, and saved-handler
-  chaining after an earlier report's handler returned. Symbolicated stacks contain the fault
-  function once and no engine handler frames.
+  chaining after an earlier report's handler returned. The segfault cases' symbolicated stacks contain the
+  fault function once; all symbolicated crash stacks omit engine handler frames.
 - Windows review additionally covers recursive CRT faults: the synthetic path now terminates
   directly before invoking any saved abort callback. Its Windows-only `recursive_abort`
   subprocess installs a deliberately stalled previous abort handler; execution awaits a
   Windows host, alongside the existing Windows dump/deadline checks.
+- Server D ASan+UBSan red controls also fail as intended: the original concurrent handler
+  exits 77 with no report, and the original recursive handler enters ASan's saved handler
+  instead of taking the OS action directly (the subprocess exits 77). After restoring the
+  fixed sources and rebuilding, all 13 sanitizer subprocess modes pass, including ordinary
+  segfault chaining to ASan, concurrent report completion, direct recursive termination and
+  saved-handler chaining after a completed report. No unexpected leak or UB diagnostic is
+  emitted by the fixed runs; the red controls' sanitizer SEGV output is deliberate evidence.
