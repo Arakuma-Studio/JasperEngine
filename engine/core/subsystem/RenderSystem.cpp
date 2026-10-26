@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "RenderSystem.h"
+#include "profiler/Profile.h"
+#include "profiler/FrameTimes.h"
 #include "TransformPropagation.h"
 #include "InstanceSort.h"
 #include "RenderSystemShared.h"
@@ -47,6 +49,7 @@ namespace {
     static_assert(sizeof(Matrix4) == sizeof(float) * 16);
 
     bool bindSkinningResource(ObjectRender& render, ShaderData& shader, MeshComponent& mesh){
+        JE_GPU_ALLOC_SCOPE(Meshes, "Skinning");
         const size_t boneCount = mesh.bonesMatrix.size();
         const unsigned int size = static_cast<unsigned int>(boneCount * sizeof(Matrix4));
         const int storageSlot = shader.getStorageBufferIndex(StorageBufferType::VS_SKINNING);
@@ -486,6 +489,7 @@ RenderSystem::RenderSystem(Scene* scene): SubSystem(scene), atmosphere(this){
 }
 
 RenderSystem::~RenderSystem(){
+    setDynamicResolutionGpuTiming(false);
 }
 
 void RenderSystem::load(){
@@ -686,11 +690,13 @@ void RenderSystem::destroy(){
 void RenderSystem::updateFramebuffer(CameraComponent& camera){
     if (camera.framebuffer->isCreated()){
         camera.framebuffer->destroy();
+        JE_GPU_ALLOC_SCOPE(RenderTargets, "Camera target");
         camera.framebuffer->create();
     }
 }
 
 void RenderSystem::createEmptyTextures(){
+    JE_GPU_ALLOC_SCOPE(Textures, "Default textures");
     if (!emptyTexturesCreated){
         void* data_array[6];
         size_t size_array[6];
@@ -776,6 +782,7 @@ void RenderSystem::createEmptyTextures(){
     // Point-only scenes still declare the projective sampler, so keep a
     // type-compatible binding available even if it is never sampled.
     if (!emptyShadowDepth.isCreated()){
+        JE_GPU_ALLOC_SCOPE(ShadowMaps, "Empty shadow map");
         emptyShadowDepth.createFramebufferTexture(
             TextureType::TEXTURE_2D, true, true, 1, 1,
             TextureFilter::LINEAR, TextureFilter::LINEAR,
@@ -1782,6 +1789,7 @@ bool RenderSystem::ensureShadow2DAtlas(unsigned int width){
     }
 
     shadow2DAtlasFramebuffer.destroyFramebuffer();
+    JE_GPU_ALLOC_SCOPE(ShadowMaps, "2D light atlas");
     if (!shadow2DAtlasFramebuffer.createFramebuffer(
             TextureType::TEXTURE_2D, (int)width, MAX_LIGHTS_2D,
             TextureFilter::NEAREST, TextureFilter::NEAREST,
@@ -2226,6 +2234,7 @@ void RenderSystem::renderReflectionProbeCapture(){
     unsigned int resolution = std::max(16u, std::min(probe->resolution, 1024u));
     if (!runtime.captureFramebuffer.isCreated() || runtime.resolution != resolution){
         runtime.captureFramebuffer.destroyFramebuffer();
+        JE_GPU_ALLOC_SCOPE(RenderTargets, "Reflection probe");
         if (!runtime.captureFramebuffer.createFramebuffer(TextureType::TEXTURE_CUBE, (int)resolution, (int)resolution,
                 TextureFilter::LINEAR, TextureFilter::LINEAR, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE, false)){
             return;
@@ -3430,6 +3439,7 @@ void RenderSystem::bakePostColorLut(TextureRender& texture, int& textureSize, Po
         textureSize = 0;
     }
     if (!texture.isCreated()){
+        JE_GPU_ALLOC_SCOPE(PostFX, "Post colour LUT");
         if (!texture.createDynamicColorTexture(stage == PostColorLut::Stage::GRADE ? "post grade LUT" : "post colour LUT", n * n, n))
             return;
         textureSize = n;
@@ -3720,6 +3730,7 @@ bool RenderSystem::ensurePostSceneFramebuffer(unsigned int width, unsigned int h
     rv().postSceneFramebuffer.setMagFilter(TextureFilter::LINEAR);
     rv().postSceneFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
     rv().postSceneFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    JE_GPU_ALLOC_SCOPE(PostFX, "Post scene");
     rv().postSceneFramebuffer.create();
     rv().postSceneWidth = width;
     rv().postSceneHeight = height;
@@ -3801,6 +3812,7 @@ void RenderSystem::renderUber(TextureRender* source, unsigned int sourceWidth, u
         targetHeight = viewport.getY() + viewport.getHeight();
     }else if (Framebuffer* target = targetFramebuffer()){
         if (!target->isCreated()){
+            JE_GPU_ALLOC_SCOPE(RenderTargets, "View target");
             target->create();
         }
         // source and destination are both flipped on GL
@@ -4000,6 +4012,7 @@ bool RenderSystem::ensureMsaaFramebuffer(unsigned int width, unsigned int height
     rv().msaaWidth = 0;
     rv().msaaHeight = 0;
     rv().msaaSamples = 1;
+    JE_GPU_ALLOC_SCOPE(RenderTargets, "MSAA");
     if (!rv().msaaFramebuffer.getRender().createMultisampleFramebuffer((int)width, (int)height, samples))
         return false;
     rv().msaaWidth = width;
@@ -4023,6 +4036,7 @@ bool RenderSystem::ensureMsaaResolveFramebuffer(unsigned int width, unsigned int
     resolve.setWrapV(TextureWrap::CLAMP_TO_EDGE);
     // only resolved into (the multisampled target has the depth)
     resolve.setDepthAttachment(FramebufferDepth::NONE);
+    JE_GPU_ALLOC_SCOPE(RenderTargets, "MSAA resolve");
     resolve.create();
     return resolve.isCreated();
 }
@@ -4058,6 +4072,7 @@ TextureRender* RenderSystem::renderBloomChain(TextureRender* source, unsigned in
         return nullptr;
     PostChainTargets& targets = rv().bloomTargets;
     const int levels = PostChainTargets::LEVELS - 1;
+    JE_GPU_ALLOC_SCOPE(PostFX, "Bloom");
     if (!ensurePostChainTargets(targets, sourceWidth, sourceHeight, levels))
         return nullptr;
 
@@ -4103,6 +4118,7 @@ TextureRender* RenderSystem::renderBlurChain(TextureRender* source, unsigned int
     const int levels = getBlurLevels(radius);
     const float spread = levels > 0 ? radius / (float)levels : 1.0f;
     PostChainTargets& targets = rv().blurTargets;
+    JE_GPU_ALLOC_SCOPE(PostFX, "Blur");
     if (!ensurePostChainTargets(targets, sourceWidth, sourceHeight, levels))
         return nullptr;
 
@@ -4435,6 +4451,7 @@ bool RenderSystem::loadShadowCaster2DPass(unsigned int vertexCapacity){
     if (bufferSize == 0)
         return false;
 
+    JE_GPU_ALLOC_SCOPE(ShadowMaps, "2D shadow casters");
     shadowCaster2DBuffer.getRender()->createBuffer(bufferSize, shadowCaster2DBuffer.getData(), shadowCaster2DBuffer.getType(), shadowCaster2DBuffer.getUsage());
     for (auto const &attr : shadowCaster2DBuffer.getAttributes()) {
         render.addAttribute(shaderData.getAttrIndex(attr.first), shadowCaster2DBuffer.getRender(), attr.second.getElements(), attr.second.getDataType(), shadowCaster2DBuffer.getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
@@ -5015,6 +5032,7 @@ void RenderSystem::updateDynamicResolution(){
     const bool run = dynamicResolutionIdle[0] == '\0';
     const bool connected = dynamicResolutionConnected;
     dynamicResolutionConnected = false;
+    setDynamicResolutionGpuTiming(run);
     if (!run){
         dynamicResolutionRunning = false;
         dynamicResolutionScale = postTiers.renderScale;
@@ -5046,12 +5064,28 @@ void RenderSystem::updateDynamicResolution(){
     DynamicResolutionSample sample;
     sample.framePeriodMs = (float)(Engine::getFramePeriod() * 1000.0);
     sample.cpuBusyMs = (float)(Engine::getFrameCpuTime() * 1000.0);
+    // the game frame's GPU time from the timer queries (S15), a few frames old; without one
+    // (no timer on this device) the controller uses its frame law
     sample.gpuMs = dynamicResolutionFakeGpuMs;
+    if (sample.gpuMs <= 0.0f){
+        const double gpuMs = FrameTimes::latestGpuMs();
+        sample.gpuMs = gpuMs > 0.0 ? (float)gpuMs : 0.0f;
+    }
     sample.appliedScale = dynamicResolutionScale;
     sample.scaleIsConnected = connected;
     sample.valid = connected && sample.framePeriodMs > 0.0f;
     const float deltaSeconds = (float)std::min(Engine::getFramePeriod(), 0.25);
     dynamicResolutionScale = dynamicResolution.update(sample, deltaSeconds, ++dynamicResolutionFrame);
+}
+
+void RenderSystem::setDynamicResolutionGpuTiming(bool on){
+    if (on == dynamicResolutionGpuTiming)
+        return;
+    dynamicResolutionGpuTiming = on;
+    if (on)
+        SystemRender::acquireGpuTiming();
+    else
+        SystemRender::releaseGpuTiming();
 }
 
 void RenderSystem::setDisableFixedResolution(bool disableFixedResolution){
@@ -5140,6 +5174,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         }
 
         if (!bufferRender->isCreated()) {
+            JE_GPU_ALLOC_SCOPE(Meshes, scene->getEntityName(entity));
             if (!bufferRender->createBuffer(buf.second->getSize(), buf.second->getData(), buf.second->getType(), buf.second->getUsage())) {
                 Log::error("Cannot create GPU buffer '%s' (%zu bytes) for mesh entity %u; resource pool may be exhausted",
                            buf.first.c_str(), buf.second->getSize(), entity);
@@ -5157,6 +5192,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
     if (instmesh){
         // Now buffer size is zero than it needed to be calculated
         size_t bufferSize = instmesh->maxInstances * instmesh->buffer.getStride();
+        JE_GPU_ALLOC_SCOPE(Meshes, "Instanced meshes");
         instmesh->buffer.getRender()->createBuffer(bufferSize, instmesh->buffer.getData(), instmesh->buffer.getType(), instmesh->buffer.getUsage());
 
         instmesh->needUpdateBuffer = true;
@@ -5166,6 +5202,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         for (int v = 0; v < MAX_TERRAIN_VIEWS; v++){
             for (int s = 0; s < 2; s++){
                 size_t bufferSize = terrain->nodes.size() * terrain->views[v].nodesbuffer[s].getStride();
+                JE_GPU_ALLOC_SCOPE(Terrain, "Terrain");
                 terrain->views[v].nodesbuffer[s].getRender()->createBuffer(bufferSize, terrain->views[v].nodesbuffer[s].getData(), terrain->views[v].nodesbuffer[s].getType(), terrain->views[v].nodesbuffer[s].getUsage());
             }
         }
@@ -6146,6 +6183,7 @@ void RenderSystem::pollMeshLod(MeshComponent& mesh, Submesh& submesh){
     }
 
     if (submesh.lodData->numLevels > 1 && !submesh.lodIndices.getRender()->isCreated()){
+        JE_GPU_ALLOC_SCOPE(Meshes, "Mesh LODs");
         submesh.lodIndices.getRender()->createBuffer(submesh.lodIndices.getSize(), submesh.lodIndices.getData(), BufferType::INDEX_BUFFER, BufferUsage::IMMUTABLE);
     }
 }
@@ -6495,6 +6533,7 @@ bool RenderSystem::bindSmoothNormals(ObjectRender& render, ShaderData& shaderDat
     // once per entry: on the async thread the buffer is created later, isCreated() is false
     // until then, and the other renders of the submesh bind the same buffer
     if (!entry.created){
+        JE_GPU_ALLOC_SCOPE(Meshes, "Smooth normals");
         if (entry.data.empty() || !entry.buffer.createBuffer((unsigned int)entry.data.size(), entry.data.data(), BufferType::VERTEX_BUFFER, BufferUsage::IMMUTABLE))
             return false;
         entry.created = true;
@@ -7193,6 +7232,7 @@ void RenderSystem::uploadInstanceViews(InstanceView* views, size_t count){
             render->destroyBuffer();
         if (!render->isCreated()){
             view.capacity = size + size / 2;
+            JE_GPU_ALLOC_SCOPE(Uniforms, "Instance data");
             render->createBuffer(view.capacity, nullptr, BufferType::VERTEX_BUFFER, BufferUsage::STREAM);
         }
         view.buffer.setData((unsigned char*)view.data.data(), size);
@@ -7829,6 +7869,7 @@ bool RenderSystem::ensureSSAOFramebuffers(unsigned int width, unsigned int heigh
     rv().ssaoDepthFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
     // drawn only by PIP_DEPTH pipelines, which ignore stencil
     rv().ssaoDepthFramebuffer.setDepthStencil(false);
+    JE_GPU_ALLOC_SCOPE(PostFX, "SSAO");
     rv().ssaoDepthFramebuffer.create();
 
     rv().ssaoFramebuffer.setWidth(width);
@@ -7839,6 +7880,7 @@ bool RenderSystem::ensureSSAOFramebuffers(unsigned int width, unsigned int heigh
     rv().ssaoFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
     // fullscreen passes only (PIP_EFFECT): no stencil (see FramebufferDepth::DEPTH)
     rv().ssaoFramebuffer.setDepthAttachment(FramebufferDepth::DEPTH);
+    JE_GPU_ALLOC_SCOPE(PostFX, "SSAO");
     rv().ssaoFramebuffer.create();
 
     // blurred AO is sampled bilinearly by the lit meshes
@@ -7849,6 +7891,7 @@ bool RenderSystem::ensureSSAOFramebuffers(unsigned int width, unsigned int heigh
     rv().ssaoBlurFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
     rv().ssaoBlurFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
     rv().ssaoBlurFramebuffer.setDepthAttachment(FramebufferDepth::DEPTH);
+    JE_GPU_ALLOC_SCOPE(PostFX, "SSAO");
     rv().ssaoBlurFramebuffer.create();
 
     rv().ssaoWidth = width;
@@ -8215,6 +8258,7 @@ RenderSystem::SceneInputTarget* RenderSystem::ensureSceneInputTarget(bool color,
     framebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
     // drawn by PIP_DEPTH (the depth pre-pass) or PIP_EFFECT (the copy): depth only, no stencil
     framebuffer.setDepthAttachment(FramebufferDepth::DEPTH);
+    JE_GPU_ALLOC_SCOPE(PostFX, "Scene inputs");
     framebuffer.create();
     if (!framebuffer.isCreated())
         return nullptr;
@@ -8247,6 +8291,7 @@ bool RenderSystem::ensureSceneColorRedirect(unsigned int width, unsigned int hei
     framebuffer.setMagFilter(TextureFilter::LINEAR);
     framebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
     framebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    JE_GPU_ALLOC_SCOPE(PostFX, "Scene colour");
     framebuffer.create();
     if (framebuffer.isCreated())
         sceneInputStats.targetsCreated++;
@@ -8356,6 +8401,7 @@ bool RenderSystem::ensureGBufferFramebuffer(unsigned int width, unsigned int hei
     rv().gbufferFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
     // drawn only by PIP_GBUFFER pipelines, which ignore stencil
     rv().gbufferFramebuffer.setDepthStencil(false);
+    JE_GPU_ALLOC_SCOPE(RenderTargets, "GBuffer");
     rv().gbufferFramebuffer.create();
 
     return rv().gbufferFramebuffer.isCreated();
@@ -8602,6 +8648,7 @@ bool RenderSystem::ensureSSRFramebuffers(unsigned int width, unsigned int height
     rv().sceneColorFramebuffer.setMagFilter(TextureFilter::LINEAR);
     rv().sceneColorFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
     rv().sceneColorFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    JE_GPU_ALLOC_SCOPE(PostFX, "Scene colour");
     rv().sceneColorFramebuffer.create();
 
     // reflection color + mask
@@ -8613,6 +8660,7 @@ bool RenderSystem::ensureSSRFramebuffers(unsigned int width, unsigned int height
     rv().ssrFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
     // fullscreen passes only (PIP_EFFECT): no stencil (see FramebufferDepth::DEPTH)
     rv().ssrFramebuffer.setDepthAttachment(FramebufferDepth::DEPTH);
+    JE_GPU_ALLOC_SCOPE(PostFX, "SSR");
     rv().ssrFramebuffer.create();
 
     // glossy-blurred reflection (sampled by the composite when blur > 0)
@@ -8623,6 +8671,7 @@ bool RenderSystem::ensureSSRFramebuffers(unsigned int width, unsigned int height
     rv().ssrBlurFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
     rv().ssrBlurFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
     rv().ssrBlurFramebuffer.setDepthAttachment(FramebufferDepth::DEPTH);
+    JE_GPU_ALLOC_SCOPE(PostFX, "SSR");
     rv().ssrBlurFramebuffer.create();
 
     rv().ssrWidth = width;
@@ -8798,6 +8847,7 @@ bool RenderSystem::ensureFixedResFramebuffer(unsigned int width, unsigned int he
     rv().fixedResFramebuffer.setMagFilter(filter);
     rv().fixedResFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
     rv().fixedResFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    JE_GPU_ALLOC_SCOPE(RenderTargets, "Fixed resolution");
     rv().fixedResFramebuffer.create();
 
     rv().fixedResWidth = width;
@@ -8816,6 +8866,7 @@ void RenderSystem::renderBlit(TextureRender* source, Rect viewport){
     bool flipGL = false;
     if (Framebuffer* target = targetFramebuffer()){
         if (!target->isCreated()){
+            JE_GPU_ALLOC_SCOPE(RenderTargets, "View target");
             target->create();
         }
         // source and destination are both flipped on GL, so no un-flip needed
@@ -9015,6 +9066,7 @@ bool RenderSystem::ensurePostProcessFramebuffers(unsigned int width, unsigned in
         rv().postProcessFramebuffer[i].setWrapV(TextureWrap::CLAMP_TO_EDGE);
         // buffer 0 takes the colour pass (meshes, stencil); the others only the chain's passes
         rv().postProcessFramebuffer[i].setDepthAttachment(i == 0 ? FramebufferDepth::DEPTH_STENCIL : FramebufferDepth::DEPTH);
+        JE_GPU_ALLOC_SCOPE(PostFX, "Post-process");
         rv().postProcessFramebuffer[i].create();
     }
 
@@ -9067,6 +9119,7 @@ Framebuffer* RenderSystem::postProcessOutput(unsigned int width, unsigned int he
             framebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
             framebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
             framebuffer.setDepthAttachment(FramebufferDepth::DEPTH);
+            JE_GPU_ALLOC_SCOPE(PostFX, "Post-process output");
             framebuffer.create();
         }
     }
@@ -9441,6 +9494,7 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
     if (bufferSize == 0)
         return false;
 
+    JE_GPU_ALLOC_SCOPE(UI, "UI");
     ui.buffer.getRender()->createBuffer(bufferSize, ui.buffer.getData(), ui.buffer.getType(), ui.buffer.getUsage());
     if (ui.buffer.isRenderAttributes()) {
         for (auto const &attr : ui.buffer.getAttributes()) {
@@ -9457,6 +9511,7 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
         bufferSize = minBufferSize;
 
     if (ui.indices.getCount() > 0){
+        JE_GPU_ALLOC_SCOPE(UI, "UI");
         ui.indices.getRender()->createBuffer(bufferSize, ui.indices.getData(), ui.indices.getType(), ui.indices.getUsage());
         ui.vertexCount = ui.indices.getCount();
         Attribute indexattr = ui.indices.getAttributes()[AttributeType::INDEX];
@@ -9657,6 +9712,7 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t p
     // Now buffer size is zero than it needed to be calculated
     size_t bufferSize = points.maxPoints * points.buffer.getStride();
 
+    JE_GPU_ALLOC_SCOPE(Particles, "Points");
     points.buffer.getRender()->createBuffer(bufferSize, points.buffer.getData(), points.buffer.getType(), points.buffer.getUsage());
     if (points.buffer.isRenderAttributes()) {
         for (auto const &attr : points.buffer.getAttributes()) {
@@ -9750,6 +9806,7 @@ bool RenderSystem::loadLines(Entity entity, LineRendererComponent& lines, uint16
     if (bufferSize == 0)
         return false;
 
+    JE_GPU_ALLOC_SCOPE(Meshes, "Lines");
     lines.buffer.getRender()->createBuffer(bufferSize, lines.buffer.getData(), lines.buffer.getType(), lines.buffer.getUsage());
     if (lines.buffer.isRenderAttributes()) {
         for (auto const &attr : lines.buffer.getAttributes()) {
@@ -10070,6 +10127,7 @@ bool RenderSystem::loadSky(Entity entity, SkyboxComponent& sky, uint16_t pipelin
 
     sky.needUpdateTexture = false;
 
+    JE_GPU_ALLOC_SCOPE(Meshes, "Skybox");
     sky.buffer.getRender()->createBuffer(sky.buffer.getSize(), sky.buffer.getData(), sky.buffer.getType(), sky.buffer.getUsage());
 
     if (sky.buffer.isRenderAttributes()) {
@@ -11946,6 +12004,7 @@ void RenderSystem::update(double dt){
 
             bool created = false;
             if (!camera.framebuffer->isCreated() && validSize){
+                JE_GPU_ALLOC_SCOPE(RenderTargets, "Camera target");
                 camera.framebuffer->create();
                 created = true;
             }
@@ -13238,6 +13297,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             destination = uberSource;
         }else if (pass.renderToTexture){
             if (!camera.framebuffer->isCreated()){
+                JE_GPU_ALLOC_SCOPE(RenderTargets, "Camera target");
                 camera.framebuffer->create();
             }
             destination = &camera.framebuffer->getRender();
@@ -13245,6 +13305,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             destination = &rv().fixedResFramebuffer.getRender();
         }else if (target){
             if (!target->isCreated()){
+                JE_GPU_ALLOC_SCOPE(RenderTargets, "View target");
                 target->create();
             }
             destination = &target->getRender();
@@ -13290,6 +13351,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     }else if (!pass.renderToTexture){
         if (target){
             if (!target->isCreated()){
+                JE_GPU_ALLOC_SCOPE(RenderTargets, "View target");
                 target->create();
             }
             startColorPass(&target->getRender());
@@ -13301,6 +13363,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         colorPassViewportApplied = true;
     }else{
         if (!camera.framebuffer->isCreated()){
+            JE_GPU_ALLOC_SCOPE(RenderTargets, "Camera target");
             camera.framebuffer->create();
         }
         colorPassViewport = Rect(0, 0, (float)camera.framebuffer->getWidth(), (float)camera.framebuffer->getHeight());
@@ -13863,6 +13926,7 @@ bool RenderSystem::bindViewPointsOrder(Entity entity, PointsComponent& points, T
         render->destroyBuffer();
     if (!render->isCreated()){
         pointsView.capacity = size + size / 2;
+        JE_GPU_ALLOC_SCOPE(Particles, "Points");
         render->createBuffer(pointsView.capacity, nullptr, BufferType::VERTEX_BUFFER, BufferUsage::STREAM);
     }
     pointsView.buffer.setData((unsigned char*)pointsView.points.data(), size);
@@ -14181,6 +14245,7 @@ void RenderSystem::selectPassTerrain(PassObjects& objects, CameraComponent& came
             for (int s = 0; s < 2; s++){
                 InterleavedBuffer& buffer = view.nodesbuffer[s];
                 buffer.getRender()->destroyBuffer();
+                JE_GPU_ALLOC_SCOPE(Terrain, "Terrain");
                 buffer.getRender()->createBuffer(needed, nullptr, buffer.getType(), buffer.getUsage());
             }
             capacity = needed;
@@ -14399,6 +14464,7 @@ void RenderSystem::renderViewMirrors(RenderView& view, CameraComponent& camera){
             mirrorView.framebuffer.destroy();
             mirrorView.framebuffer.setWidth(width);
             mirrorView.framebuffer.setHeight(height);
+            JE_GPU_ALLOC_SCOPE(RenderTargets, "Mirror");
             mirrorView.framebuffer.create();
             mirrorView.ready = false;
         }
@@ -14596,6 +14662,7 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
     }
 
     if (!view.target->isCreated()){
+        JE_GPU_ALLOC_SCOPE(RenderTargets, "View target");
         view.target->create();
     }
 

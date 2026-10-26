@@ -6,6 +6,18 @@
 
 using namespace jasperengine;
 
+namespace {
+    bool scriptsReloading = false;
+}
+
+bool ScriptBase::isReloading() {
+    return scriptsReloading;
+}
+
+void ScriptBase::setReloading(bool reloading) {
+    scriptsReloading = reloading;
+}
+
 bool jasperengine::isScriptActive(Scene* scene, Entity entity, const void* instance) {
     if (!scene || entity == NULL_ENTITY || !scene->isEntityCreated(entity)) {
         return true;

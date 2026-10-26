@@ -114,7 +114,9 @@ async def test_dynamic_resolution_in_play(ed: Editor):
         ed.check(got["dynamic_resolution"]["accepted_changes"] <= 30, f"rare changes: {got['dynamic_resolution']}")
 
         # a pinned scale: the uber pass's source is drawn at half the size
-        await ed.call("set_post_processing_debug", scene=sid, fake_gpu_ms=None)
+        # (pinned at 1 first: with the GPU timer the controller's GPU law follows the software
+        # device's real GPU time, over the 16.7 ms target)
+        await ed.call("set_post_processing_debug", scene=sid, fake_gpu_ms=None, force_render_scale=1.0)
         await ed.call("wait", frames=10)
         start = log_length(ed)
         full = source_sizes(ed, start - 400 if start > 400 else 0)

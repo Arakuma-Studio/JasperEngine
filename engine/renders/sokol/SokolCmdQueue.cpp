@@ -5,8 +5,11 @@
 // ---------------------------------------
 
 #include <algorithm>
+#include <cstdio>
 
 #include "SokolCmdQueue.h"
+#include "profiler/GpuMemory.h"
+#include "SokolPassPreview.h"
 #include "SokolPipelineCache.h"
 
 using namespace jasperengine;
@@ -62,11 +65,25 @@ void SokolCmdQueue::execute_commands()
 			switch (command.type)
 			{
 			case SokolRenderCommand::TYPE::MAKE_BUFFER:
-				sg_init_buffer(command.make_buffer.buffer, command.make_buffer.desc);
+			{
+#if JASPERENGINE_PROFILER
+				gpumem::Scope allocScope(gpumem::ScopeState{command.allocCategory, command.allocOwner});
+#endif
+				sg_buffer_desc desc = command.make_buffer.desc;
+				desc.label = command.allocLabel[0] ? command.allocLabel : nullptr;
+				sg_init_buffer(command.make_buffer.buffer, &desc);
 				break;
+			}
 			case SokolRenderCommand::TYPE::MAKE_IMAGE:
-				sg_init_image(command.make_image.image, command.make_image.desc);
+			{
+#if JASPERENGINE_PROFILER
+				gpumem::Scope allocScope(gpumem::ScopeState{command.allocCategory, command.allocOwner});
+#endif
+				sg_image_desc desc = command.make_image.desc;
+				desc.label = command.allocLabel[0] ? command.allocLabel : nullptr;
+				sg_init_image(command.make_image.image, &desc);
 				break;
+			}
 			case SokolRenderCommand::TYPE::MAKE_SAMPLER:
 				sg_init_sampler(command.make_sampler.sampler, command.make_sampler.desc);
 				break;
@@ -109,6 +126,7 @@ void SokolCmdQueue::execute_commands()
 				break;
 			case SokolRenderCommand::TYPE::END_PASS:
 				sg_end_pass();
+				SokolPassPreview::afterEndPass();
 				break;
 			case SokolRenderCommand::TYPE::CUSTOM:
 				command.custom.custom_cb(command.custom.custom_data);
@@ -179,6 +197,13 @@ sg_buffer SokolCmdQueue::add_command_make_buffer(const sg_buffer_desc& desc)
 	SokolRenderCommand& command = m_commands[m_pending_commands_index].emplace_back(SokolRenderCommand::TYPE::MAKE_BUFFER);
 
 	command.make_buffer.desc = desc;
+	if (desc.label)
+		std::snprintf(command.allocLabel, sizeof(command.allocLabel), "%s", desc.label);
+#if JASPERENGINE_PROFILER
+	const gpumem::ScopeState scope = gpumem::currentScope();
+	command.allocCategory = scope.category;
+	command.allocOwner = scope.owner;
+#endif
 	
 	command.make_buffer.buffer = sg_alloc_buffer();
 	
@@ -190,6 +215,13 @@ sg_image SokolCmdQueue::add_command_make_image(const sg_image_desc& desc)
 	SokolRenderCommand& command = m_commands[m_pending_commands_index].emplace_back(SokolRenderCommand::TYPE::MAKE_IMAGE);
 
 	command.make_image.desc = desc;
+	if (desc.label)
+		std::snprintf(command.allocLabel, sizeof(command.allocLabel), "%s", desc.label);
+#if JASPERENGINE_PROFILER
+	const gpumem::ScopeState scope = gpumem::currentScope();
+	command.allocCategory = scope.category;
+	command.allocOwner = scope.owner;
+#endif
 
 	command.make_image.image = sg_alloc_image();
 	

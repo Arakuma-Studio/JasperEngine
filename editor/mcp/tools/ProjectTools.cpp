@@ -1070,6 +1070,8 @@ const std::vector<Setting>& settingsTable() {
         add(boolSetting("player.threading.web_multithreaded", "Web export also builds a pthreads player, picked when the page is cross-origin isolated.",
                         [](Project& p) { return p.getThreadingSettings().webMultithreaded; },
                         [](Project& p, bool v) { ThreadingProjectSettings settings = p.getThreadingSettings(); settings.webMultithreaded = v; p.setThreadingSettings(settings); }));
+        add(boolSetting("player.development_build", "Development Build: Release builds keep the profiler and --profile/--profile-capture (S15).",
+                        [](Project& p) { return p.isDevelopmentBuild(); }, [](Project& p, bool v) { p.setDevelopmentBuild(v); }));
         add(boolSetting("player.pack_native_resources", "Experimental: pack assets and Lua into resources.pak in native builds instead of copying folders.",
                         [](Project& p) { return p.shouldPackNativeResources(); }, [](Project& p, bool v) { p.setPackNativeResources(v); }));
 

@@ -31,6 +31,8 @@
 #include "window/ConsoleWindow.h"
 #include "window/GameWindow.h"
 #include "window/JobsMemoryWindow.h"
+#include "window/profiler/FrameDebuggerWindow.h"
+#include "window/profiler/ProfilerWindow.h"
 #include "window/PlayModeChangesWindow.h"
 #include "window/SceneWindow.h"
 #include "window/SystemsWindow.h"
@@ -1083,6 +1085,22 @@ void focusWindowTool(const CallPtr& call) {
     } else if (window == "jobs_memory") {
         app.getJobsMemoryWindow()->setOpen(true);
         imguiName = JobsMemoryWindow::WINDOW_NAME;
+    } else if (window == "profiler") {
+        ProfilerWindow* profiler = app.getProfilerWindow();
+        profiler->setOpen(true);
+        imguiName = ProfilerWindow::WINDOW_NAME;
+        // what Load does, without the file dialog
+        const Json options = args.value("profiler", Json::object());
+        if (options.contains("load") && options["load"].is_string()) {
+            std::string error;
+            if (!profiler->loadCapture(options["load"].get<std::string>(), error)) {
+                call->fail("profiler.load: " + error);
+                return;
+            }
+        }
+    } else if (window == "frame_debugger") {
+        app.getFrameDebuggerWindow()->setOpen(true);
+        imguiName = FrameDebuggerWindow::WINDOW_NAME;
     } else if (window == "undo_history") {
         app.getUndoHistoryWindow()->setOpen(true);
         imguiName = UndoHistoryWindow::WINDOW_NAME;
@@ -1091,7 +1109,7 @@ void focusWindowTool(const CallPtr& call) {
         imguiName = PlayModeChangesWindow::WINDOW_NAME;
     } else {
         call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, terrain, mcp, "
-                   "systems, jobs_memory, preferences, undo_history, play_mode_changes.");
+                   "systems, jobs_memory, profiler, frame_debugger, preferences, undo_history, play_mode_changes.");
         return;
     }
     // A window opened just now exists after its next draw
@@ -1110,6 +1128,11 @@ void focusWindowTool(const CallPtr& call) {
             }
             if (window == "console") data["console"] = consoleStateJson(*call->ctx().consoleWindow());
             if (window == "preferences") data["page"] = call->ctx().app().getEditorSettingsWindow().pageName();
+            if (window == "profiler") {
+                const ProfilerWindow* profiler = call->ctx().app().getProfilerWindow();
+                data["profiler"] = {{"target", profiler->getTarget()}, {"frames", profiler->targetFrameCount()},
+                                    {"recording", profiler->isRecording()}};
+            }
             if (window == "systems") {
                 // each row's Enabled checkbox, as the OS pointer sees it; visible: inside the table's scroll view
                 const ImVec2 origin = ImGui::GetMainViewport()->Pos;
@@ -1292,7 +1315,7 @@ void registerViewTools(McpRegistry& registry) {
             "systems: returns each row's Enabled checkbox rect.";
         tool.inputSchema = object({
             {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "terrain", "mcp",
-                                       "systems", "jobs_memory", "preferences", "undo_history", "play_mode_changes"})},
+                                       "systems", "jobs_memory", "profiler", "frame_debugger", "preferences", "undo_history", "play_mode_changes"})},
             {"scene", sceneRef("window scene: whose tab.")},
             {"console", object({
                 {"hidden_categories", array(string(""), "The Category filter: categories not shown.")},
@@ -1300,7 +1323,8 @@ void registerViewTools(McpRegistry& registry) {
                 {"select", integer("Select the row of this message id (as a click).")}
             })},
             {"page", string("preferences: General, Code Editor, Undo, External Tools, Logging, Shader Cache.")},
-            {"close", boolean("preferences: close it.")}
+            {"close", boolean("preferences: close it.")},
+            {"profiler", object({{"load", string("A .jetrace.json to load (as Load).")}})}
         }, {"window"});
         tool.annotations.idempotent = true;
         tool.handler = focusWindowTool;

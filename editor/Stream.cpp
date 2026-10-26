@@ -1809,6 +1809,10 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
             exportNode["sourceCode"] = sourceCodeNode;
         }
 
+        if (project->isDevelopmentBuild()) {
+            exportNode["developmentBuild"] = true;
+        }
+
         const DesktopExportSettings& desktop = project->getDesktopExportSettings();
         if (desktop.graphicBackendConfigured) {
             YAML::Node desktopNode;
@@ -2279,6 +2283,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
                 sourceCode.graphicBackendsConfigured = true;
             }
         }
+
+        project->setDevelopmentBuild(exportNode["developmentBuild"] && exportNode["developmentBuild"].as<bool>());
 
         if (exportNode["desktop"] && exportNode["desktop"].IsMap()) {
             const YAML::Node& desktopNode = exportNode["desktop"];

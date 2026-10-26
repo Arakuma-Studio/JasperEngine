@@ -11,6 +11,7 @@
 #include "Scene.h"
 #include "Engine.h"
 #include "Log.h"
+#include "profiler/Profile.h"
 #include "pool/ShaderPool.h"
 #include "render/shadow/CascadeFit.h"
 #include "util/Angle.h"
@@ -314,6 +315,7 @@ bool RenderSystem::ensureShadowAtlases(){
         needUpdateShadowBindings = true;
         // LINEAR on a comparison sampler is hardware PCF: each tap is bilinearly filtered over
         // 2x2 comparison results; the white border reads as lit
+        JE_GPU_ALLOC_SCOPE(ShadowMaps, std::strstr(label, "static") ? "Static shadow cache" : (std::strstr(label, "point") ? "Point shadow atlas" : "CSM atlas"));
         if (!atlas.createDepthOnlyFramebuffer((int)layout.width, (int)layout.height,
                 TextureFilter::LINEAR, TextureFilter::LINEAR,
                 TextureWrap::CLAMP_TO_BORDER, TextureWrap::CLAMP_TO_BORDER, true)){
@@ -1278,6 +1280,7 @@ bool RenderSystem::ensureOwnShadowAtlas(CameraShadows& target, bool projective){
     else
         target.releasePoint();
     // LINEAR on a comparison sampler is hardware PCF, as on the frame's atlases
+    JE_GPU_ALLOC_SCOPE(ShadowMaps, projective ? "Camera CSM atlas" : "Camera point shadow atlas");
     if (width <= 0 || height <= 0 || !atlas.createDepthOnlyFramebuffer(
             width, height,
             TextureFilter::LINEAR, TextureFilter::LINEAR,
@@ -1912,6 +1915,7 @@ void RenderSystem::renderShadowAtlasDebug(){
     const int width = std::max((int)panels.size(), 1) * panelSize;
     if (!shadowAtlasDebugTarget.isCreated() || shadowAtlasDebugTarget.getColorTexture().getWidth() != width){
         shadowAtlasDebugTarget.destroyFramebuffer();
+        JE_GPU_ALLOC_SCOPE(Editor, "Shadow atlas view");
         if (!shadowAtlasDebugTarget.createFramebuffer(TextureType::TEXTURE_2D, width, panelSize,
                 TextureFilter::LINEAR, TextureFilter::LINEAR, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE, false, FramebufferDepth::NONE)){
             return;

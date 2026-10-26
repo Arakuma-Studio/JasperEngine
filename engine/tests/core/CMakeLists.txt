@@ -46,6 +46,10 @@ if(NOT HEX_LATTICE_OLD STREQUAL HEX_LATTICE_BLOCK)
     file(WRITE ${HEX_LATTICE_INL} "${HEX_LATTICE_BLOCK}")
 endif()
 target_include_directories(jasperengine-core-tests PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
+# a unit of its own: it redefines JASPERENGINE_PROFILER to 0 before the profiling macros
+jasperengine_skip_unity_build(
+    REASON "ProfilerCompileOutTest compiles the profiling macros with the profiler off"
+    SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/profiler/ProfilerCompileOutTest.cpp)
 
 # the logger's backtraces name the test functions (LoggerTest.ErrorCarriesBacktrace): dladdr
 # sees the executable's symbols
