@@ -139,6 +139,78 @@ assets without `desktop` and `web`, and the Xcode workspace's targets remove the
 platform does not load (`tools/textures/xcode_add_texture_libs.py`). An Android manifest
 declares `GL_KHR_texture_compression_astc_ldr` unless the ETC2 fallback is on.
 
+## Measurements
+
+Measured on the benchmark server (4 dedicated AMD EPYC-Milan vCPUs, Linux, GL 3.3 on Mesa
+llvmpipe for the uploads) with `JASPER_TEST_PERF_SLACK=1 UNIT_TEST_ARGS='--gtest_filter=
+TextureLoadBench*:TextureCookBench*:TextureEncodeSize*:TextureEncodeQuality*' tools/build.sh
+unit-tests`: the generated corpus of `editor/tests/support/TextureCorpus.cpp`, Normal quality,
+bits per mip-0 texel with the mips.
+
+Per texture and family (`TextureCookBench.CorpusBitsPerTexelAndQuality`):
+
+| texture | family | format | VRAM bpt | disk bpt | quality |
+|---|---|---|---|---|---|
+| photo 2048² | desktop | BC1 + Zstd | 5.33 | 3.82 | 45.06 dB |
+| photo 2048² | mobile | ASTC 6x6 + Zstd | 4.76 | 4.37 | 47.70 dB |
+| photo 2048² | android_etc2 | ETC2 RGB8 + Zstd | 5.33 | 2.84 | 40.36 dB |
+| photo 2048² | web | ETC1S q128 | 5.33 | 1.22 | 39.94 dB |
+| gradient 1024² | desktop | BC1 + Zstd | 5.33 | 2.30 | 48.70 dB |
+| gradient 1024² | mobile | ASTC 6x6 + Zstd | 4.78 | 1.53 | 49.72 dB |
+| gradient 1024² | android_etc2 | ETC2 RGB8 + Zstd | 5.33 | 1.28 | 40.23 dB |
+| gradient 1024² | web | ETC1S q128 | 5.33 | 0.35 | 37.40 dB |
+| ui 1024×512 | desktop | BC7 RDO 0.5 + Zstd | 8.00 | 0.11 | 55.71 dB |
+| ui 1024×512 | mobile | ASTC 6x6 + Zstd | 3.59 | 0.12 | 58.63 dB |
+| ui 1024×512 | android_etc2 | ETC2 RGBA8 + Zstd | 8.00 | 0.14 | 41.55 dB |
+| ui 1024×512 | web | UASTC RDO 1 + Zstd | 8.00 | 0.18 | 60.75 dB |
+| foliage 1024² | desktop | BC7 RDO 1 + Zstd | 10.67 | 4.50 | 39.46 dB |
+| foliage 1024² | mobile | ASTC 6x6 + Zstd | 4.78 | 3.75 | 43.87 dB |
+| foliage 1024² | android_etc2 | ETC2 RGBA8 + Zstd | 10.67 | 4.06 | 39.15 dB |
+| foliage 1024² | web | ETC1S q128 | 10.67 | 1.66 | 38.63 dB |
+| normal 2048² | desktop | BC5 + Zstd | 10.67 | 9.81 | 0.36° mean |
+| normal 2048² | mobile | ASTC 6x6 + Zstd | 4.76 | 4.29 | 0.86° mean |
+| normal 2048² | android_etc2 | EAC RG11 + Zstd | 10.67 | 7.32 | 0.82° mean |
+| normal 2048² | web | UASTC RDO 1 + Zstd | 10.67 | 5.37 | 1.13° mean |
+| mask 1024² | desktop | BC4 + Zstd | 5.33 | 5.10 | 50.36 dB |
+| mask 1024² | mobile | ASTC 8x8 + Zstd | 2.67 | 2.34 | 46.21 dB |
+| mask 1024² | android_etc2 | EAC R11 + Zstd | 5.33 | 4.71 | 50.28 dB |
+| mask 1024² | web | ETC1S q255 | 5.33 | 1.60 | 42.94 dB |
+| albedo 1024² | desktop | BC1 + Zstd | 5.33 | 2.24 | 46.40 dB |
+| albedo 1024² | mobile | ASTC 6x6 + Zstd | 4.78 | 3.75 | 48.09 dB |
+| albedo 1024² | android_etc2 | ETC2 RGB8 + Zstd | 5.33 | 1.82 | 40.88 dB |
+| albedo 1024² | web | ETC1S q128 | 5.33 | 0.91 | 41.33 dB |
+| sky 2048×1024 (HDR) | desktop | BC6H + Zstd | 10.67 | 4.32 | 0.0030 rel. RMSE |
+| sky 2048×1024 (HDR) | mobile, android_etc2 | RGB9E5 + Zstd | 42.67 | 5.50 | 0.0014 rel. RMSE |
+| sky 2048×1024 (HDR) | web | UASTC HDR 4x4 + Zstd | 10.67 | 4.46 | 0.0027 rel. RMSE |
+
+Corpus averages against the budgets (`TextureEncodeSize`, `TextureEncodeQuality`, 512² corpus):
+
+| | disk bpt (R18) | VRAM bpt (R17) | PSNR (AC4 floor) |
+|---|---|---|---|
+| desktop BC1 | 2.99 (≤ 4.8) | 5.33 (5.33) | 46.26 dB (34) |
+| desktop BC7 RDO λ1 + zstd | 2.60 (≤ 7.5) | 10.67 (10.67) | 44.39 dB (40) |
+| mobile ASTC 6x6 + zstd | 3.53 (≤ 4.6) | 4.83 (4.74, deviation 19) | 48.12 dB (36) |
+| web ETC1S q128 | 1.05 (≤ 2.0) | 5.33 | 39.64 dB (31) |
+| web UASTC λ1 + zstd | 4.62 (≤ 6.0) | 10.67 | 47.16 dB (39) |
+| web normal UASTC λ1 | 5.72 (≤ 6.0) | 10.67 | 1.12° mean, 3.19° p99 |
+
+Other floors: BC7 High 52.67 dB (42), ASTC 4x4 / 5x5 / 8x8 / 10x10 54.35 / 50.73 / 45.36 /
+42.56 dB (42 / 39 / 32 / 29), ETC2 RGB 40.46 dB (34), BC4 50.42 dB (42), UASTC λ0 transcoded to
+BC7 / ASTC 4x4 52.44 / 54.71 dB (41); normals BC5 0.36°, EAC RG11 0.82°, ASTC 6x6 0.86° mean
+(≤ 1.5°); BC6H and RGB9E5 0.90% and 0.14% relative RMSE (≤ 3%).
+
+Times (R19, R20):
+
+| | measured | budget |
+|---|---|---|
+| load of a 2048² BC7 KTX2 with mips: loader thread (read + zstd) | 3.05 ms | 12 ms |
+| the same: main-thread upload | 0.428 ms | 0.5 ms |
+| PNG decode + mip generation + upload of the same image | 70.1 ms (20.2× the KTX2) | ≥ 3× |
+| cold 2048² cook, desktop BC1 | 1.10 s | 3 s |
+| cold 2048² cook, mobile ASTC 6x6 (normal effort) | 1.30 s | 6 s |
+| cold 2048² cook, web UASTC λ1 | 9.57 s | 12 s |
+| warm cook (cache hits) of 200 textures | 0.01 s | 10 s |
+
 ## Libraries
 
 Zstandard 1.5.7 (decoder in every game, encoder in the editor), bcdec, Basis Universal 2.50 (the

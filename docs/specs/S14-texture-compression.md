@@ -611,3 +611,8 @@ alternative, recorded here).
     the nightly GLES3 smoke set (the textures fixture), the Android emulator run of
     `tools/test-projects/texture-formats` (SwiftShader GLES3, the mobile family) and the WebGL2
     browser gate of the same project.
+22. **UASTC effort (R20, risk 3).** `normal` effort encodes UASTC with basisu's *faster* pack
+    level and a 2 KB RDO window (`fast`: fastest, 1 KB; `best`: slower, 4 KB). basisu's default
+    level with its 4 KB window took 30.7 s for the 2048² λ1 cook on the benchmark server; this
+    takes 9.57 s, for 0.4 dB less PSNR (47.2 dB, floor 39) and smaller files after Zstandard
+    (4.62 bpt corpus, 5.72 bpt normal maps).
