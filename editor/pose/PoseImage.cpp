@@ -5,6 +5,8 @@
 
 #include "stb_image.h"
 #include "stb_image_write.h"
+#include "io/AtomicFile.h"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <cmath>
@@ -411,12 +413,8 @@ bool editor::PoseImage::writePng(const std::string& path) const{
     if (!encodePng(png)){
         return false;
     }
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
-    if (!file){
-        return false;
-    }
-    file.write(reinterpret_cast<const char*>(png.data()), (std::streamsize)png.size());
-    return (bool)file;
+    // atomic (S03): a failed write leaves an existing image whole
+    return io::writeFileAtomic(FileUtils::pathFromUtf8(path), std::string_view(reinterpret_cast<const char*>(png.data()), png.size())).ok();
 }
 
 bool editor::PoseImage::decodePng(const uint8_t* bytes, size_t size, PoseImage& out){

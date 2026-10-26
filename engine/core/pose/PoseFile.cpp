@@ -6,6 +6,7 @@
 #include "io/Data.h"
 #include "io/File.h"
 #include "io/FileData.h"
+#include "io/AtomicFile.h"
 
 #include <filesystem>
 
@@ -58,29 +59,12 @@ namespace jasperengine::pose {
         return true;
     }
 
+    // the S03 atomic write: a hidden temporary sibling, synced and renamed over the file (a
+    // crash or a full disk mid-write leaves the old file whole; a read-only file is refused)
     bool writeTextFile(const std::string& path, const std::string& text, std::string* error){
-        const std::string systemPath = FileData::getSystemPath(path);
-        const std::string temporary = systemPath + ".tmp";
-        {
-            File file;
-            if (file.open(temporary.c_str(), true) != FileErrors::FILEDATA_OK){
-                return fail(error, "cannot write '" + path + "'");
-            }
-            const unsigned int size = static_cast<unsigned int>(text.size());
-            const bool written = size == 0 ||
-                                 file.write(reinterpret_cast<unsigned char*>(const_cast<char*>(text.data())), size) == size;
-            file.close();   // flushed and closed before the rename (close is idempotent: the destructor's is a no-op)
-            if (!written){
-                std::error_code ignored;
-                fs::remove(utf8Path(temporary), ignored);
-                return fail(error, "failed writing '" + path + "'");
-            }
-        }
-        std::error_code code;
-        fs::rename(utf8Path(temporary), utf8Path(systemPath), code);
-        if (code){
-            fs::remove(utf8Path(temporary), code);
-            return fail(error, "cannot replace '" + path + "'");
+        const io::WriteResult written = io::writeFileAtomic(utf8Path(FileData::getSystemPath(path)), text);
+        if (!written.ok()){
+            return fail(error, "cannot write '" + path + "': " + io::describeWriteError(written));
         }
         return true;
     }

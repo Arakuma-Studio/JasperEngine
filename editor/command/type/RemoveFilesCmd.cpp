@@ -3,7 +3,9 @@
 
 #include "RemoveFilesCmd.h"
 
-#include <cstdio>
+#include "Out.h"
+#include "util/FileUtils.h"
+
 #include <fstream>
 #include <iterator>
 
@@ -13,14 +15,11 @@ namespace fs = std::filesystem;
 
 namespace {
 
+// the removed file back, written the atomic way (S03)
 bool writeWhole(const fs::path& path, const std::string& content) {
     std::error_code ec;
     fs::create_directories(path.parent_path(), ec);
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out) return false;
-    out << content;
-    out.close();
-    return static_cast<bool>(out);
+    return FileUtils::writeFileReplacing(path, content);
 }
 
 }
@@ -61,7 +60,7 @@ void editor::RemoveFilesCmd::undo() {
     }
     if (failed) {
         // Command::undo cannot fail; the history step stays (a redo removes what came back)
-        printf("Error: restoring a removed file failed (permissions or a full disk)\n");
+        Out::error("Restoring a removed file failed (permissions or a full disk)");
     }
     if (afterChange) afterChange(files);
 }

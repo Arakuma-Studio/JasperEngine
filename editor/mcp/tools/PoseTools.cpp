@@ -11,6 +11,7 @@
 // save_template ops and get_pose_animation {templates: true}, in the "templates" block.
 #include "McpTools.h"
 #include "W4Shared.h"
+#include "io/AtomicFile.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -2084,8 +2085,8 @@ void renderPoseAnimationTool(const CallPtr& call) {
         if (!saveTarget.empty()) {
             std::error_code ec;
             if (saveTarget.has_parent_path()) fs::create_directories(saveTarget.parent_path(), ec);
-            std::ofstream file(saveTarget, std::ios::binary | std::ios::trunc);
-            if (!file || !file.write(reinterpret_cast<const char*>(png.data()), static_cast<std::streamsize>(png.size()))) {
+            // atomic (S03): a failed write leaves an existing file whole
+            if (!io::writeFileAtomic(saveTarget, std::string_view(reinterpret_cast<const char*>(png.data()), png.size())).ok()) {
                 call->fail("Could not write the PNG to " + projectRel(project, saveTarget) + ".");
                 return;
             }
