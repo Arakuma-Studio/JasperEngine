@@ -49,7 +49,9 @@ TEST(CommandCatalog, DefaultTableIsConsistent) {
         EXPECT_TRUE(ids.insert(def.id).second) << "duplicate id " << def.id;
         EXPECT_FALSE(def.group.empty()) << def.id;
         EXPECT_FALSE(def.name.empty()) << def.id;
-        if (def.readOnly) EXPECT_FALSE(def.gesture.empty()) << def.id;
+        if (def.readOnly) {
+            EXPECT_FALSE(def.gesture.empty()) << def.id;
+        }
     }
     // no two defaults collide (a broad binding over a panel's is a shadow, allowed)
     EXPECT_TRUE(catalog.resolveConflicts().empty());

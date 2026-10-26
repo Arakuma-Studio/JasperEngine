@@ -94,7 +94,9 @@ TEST(HierarchyFilter, TenThousandUnder8ms) {
         best = std::min(best, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
     }
     std::printf("[ bench ] Hierarchy filter over 10000 GameObjects: %.2f ms (budget 8)\n", best);
-    if (checkBudgets) EXPECT_LE(best, 16.0);
+    if (checkBudgets) {
+        EXPECT_LE(best, 16.0);
+    }
 }
 
 TEST(ComponentAddDialogSearch, RanksTypos) {

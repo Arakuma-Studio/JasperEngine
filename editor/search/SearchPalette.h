@@ -42,6 +42,15 @@ namespace jasperengine::editor {
         // run_command's key form: the entry of that key in a fresh snapshot
         bool runKey(const std::string& key, bool alternate, std::string* error);
 
+        // What the popup shows (editor_status ui.search_palette, the UI tests)
+        struct UiState {
+            bool open = false;
+            std::string query;
+            std::vector<std::string> results;   // "kind: label", in order
+            int selected = 0;
+        };
+        UiState uiState() const;
+
     private:
         App* app;
         bool openRequested = false;

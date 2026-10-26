@@ -102,7 +102,9 @@ TEST(SearchSnapshotSlow, BuildUnder25ms) {
     }
     EXPECT_EQ(entries, 30700u);
     std::printf("[ bench ] palette snapshot of %zu entries: %.2f ms (budget 25, CI 50)\n", entries, best);
-    if (checkBudgets) EXPECT_LE(best, 50.0);
+    if (checkBudgets) {
+        EXPECT_LE(best, 50.0);
+    }
 }
 
 TEST(SearchEngineSlow, TwentyThousandEntries) {
@@ -122,7 +124,9 @@ TEST(SearchEngineSlow, TwentyThousandEntries) {
     std::sort(times.begin(), times.end());
     const double p95 = times[times.size() * 95 / 100];
     std::printf("[ bench ] scoring 20000 entries: p95 %.2f ms, median %.2f ms (budget 30, CI 60)\n", p95, times[times.size() / 2]);
-    if (checkBudgets) EXPECT_LE(p95, 60.0);
+    if (checkBudgets) {
+        EXPECT_LE(p95, 60.0);
+    }
     // an asset: query evaluates the grammar over the snapshot's records
     const auto start = Clock::now();
     const std::vector<SearchResult> assets = SearchEngine::query(buildSnapshot(world), "asset: t:texture rock");

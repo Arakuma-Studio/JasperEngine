@@ -63,7 +63,9 @@ TEST(SettingsRegistry, CoversMcpKeys) {
         }
     }
     const SettingRow* gravity = registry.find("physics.gravity");
-    if (gravity) EXPECT_EQ(registry.location(*gravity).rfind("Project Settings > ", 0), 0u);
+    if (gravity) {
+        EXPECT_EQ(registry.location(*gravity).rfind("Project Settings > ", 0), 0u);
+    }
 }
 
 TEST(SettingsRegistry, RefusesUnwiredRows) {
