@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneWindow.h"
+#include "util/EditorScripts.h"
 #include "DocumentFile.h"
 #include "util/BidiText.h"
 #include "imgui_internal.h"
@@ -1457,7 +1458,22 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         if (ImGui::IsMouseReleased(ImGuiMouseButton_Right) && lookActive[sceneId]) {
             io.AddMousePosEvent(lookReturnPos[sceneId].x, lookReturnPos[sceneId].y);
             lookActive[sceneId] = false;
+            // a short right click (no look): the editor scripts' SceneView/... items (S23)
+            if (io.MouseDownDurationPrev[ImGuiMouseButton_Right] < 0.25f && !EditorScripts::get().itemsFor("sceneview").empty()) {
+                sceneScriptMenuPending = true;
+            }
         }
+    }
+    if (sceneScriptMenuPending && !ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+        sceneScriptMenuPending = false;
+        ImGui::OpenPopup("##SceneViewScriptMenu");
+    }
+    if (ImGui::BeginPopup("##SceneViewScriptMenu")) {
+        EditorMenuRunContext scriptContext;
+        scriptContext.sceneId = sceneId;
+        for (Entity selected : project->getSelectedEntities(sceneId)) scriptContext.selection.push_back(selected);
+        EditorScripts::get().drawContextItems("sceneview", {}, scriptContext);
+        ImGui::EndPopup();
     }
 
     // Focus loss clears the buttons without reporting a release, and the Alt+LMB term

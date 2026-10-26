@@ -456,10 +456,10 @@ subfolder). Use it for shared helper modules.
 
 ```lua
 GameObject.instantiate(original)                              -- -> GameObject or nil
-GameObject.instantiate(original, parent [, worldSpace])       -- parent: GameObject or a script self
-GameObject.instantiate(original, position, rotation [, parent]) -- Vector3, Quaternion (world)
-GameObject.instantiate(prefab, scene [, position, rotation])  -- prefab into a given scene
-GameObject.destroy(obj [, delaySeconds])                      -- deferred to end of frame
+GameObject.instantiate(original, parent --[[, worldSpace]])    -- parent: GameObject or a script self
+GameObject.instantiate(original, position, rotation --[[, parent]]) -- Vector3, Quaternion (world)
+GameObject.instantiate(prefab, scene --[[, position, rotation]]) -- prefab into a given scene
+GameObject.destroy(obj --[[, delaySeconds]])                   -- deferred to end of frame
 GameObject.destroyImmediate(obj)
 ```
 
@@ -591,7 +591,7 @@ or `(r,g,b,a)`.
 ```lua
 local h = Timer.after(2.0, function() self:explode() end, { owner = self })   -- once, in 2 s of game time
 Timer.every(0.5, function() self:blink() end, { count = 10, owner = self })    -- 10 times
-Timer.nextFrame(fn [, opts]);  Timer.afterFrames(3, fn [, opts]);  Timer.afterFixedSteps(1, fn [, opts])
+Timer.nextFrame(fn --[[, opts]]);  Timer.afterFrames(3, fn --[[, opts]]);  Timer.afterFixedSteps(1, fn --[[, opts]])
 local co = Timer.run(function()              -- a coroutine the scheduler drives
     Timer.wait(1.0)                          -- game seconds (or the run's clock)
     Timer.waitRealtime(0.5)                  -- wall-clock seconds, even while paused
@@ -1290,3 +1290,56 @@ Rigidbody wrappers by index.
 24. **Pass `owner = self` to `Timer.*`**: a timer without an owner outlives its script (until
     Play stops) and calls into a script that is gone. With `owner = self` it dies with the
     script, like the script's event subscriptions.
+
+## 7. Hot reload and editor scripts
+
+Saving a script while the game plays reloads it in place (Preferences > Scripting > Script
+Changes While Playing, MCP `set_script_settings changes_while_playing`). Every live instance keeps
+its table and fields. Its functions become the new ones, and events registered by name are
+registered again. `init` does not run again, and anonymous callbacks and timers created by the
+old code are dropped. A file that does not compile or fails at load keeps the old code running
+(`reload_scripts` `kept_old` with `{path, line}`). Define `onReload` to redo what `init`
+derived:
+
+```lua
+local Spinner = { properties = { { name = "speed", type = "float", default = 90 } } }
+
+function Spinner:init()
+    self.angle = 0
+    RegisterEngineEvent(self, "onUpdate")
+end
+
+function Spinner:onUpdate()
+    self.angle = self.angle + self.speed * Engine.deltatime
+end
+
+function Spinner:onReload(info)
+    Log.print("reloaded " .. info.path)
+end
+
+return Spinner
+```
+
+Properties: a property that keeps its type keeps its runtime value. int <-> float, bool,
+string and vector types convert. A property whose type changed in another way, and a new
+property, gets its default. A removed property is cleared. Modules from `require` are patched in
+place, so their local variables start over: keep state in fields.
+
+Editor scripts (`---@menu` / `---@toolbar` / `---@validate` annotations in a `.lua` under a
+folder named `Editor`) run in an editor-only state with the math classes and the `Editor`
+table (`Editor.call(tool, args)` -> `{ok, text, data}`, `Editor.selection()`,
+`Editor.select(ids)`, `Editor.log(...)`). They are never part of the game, so `require`
+refuses them and exports leave them out. MCP: `list_editor_menus`, `run_editor_menu` (one undo
+step per run). User docs: `docs/scripting.md`.
+
+The math classes, checked at runtime by the doc test (a ```` ```lua run ```` block runs in a Play
+fixture through `eval_lua`):
+
+```lua run
+local a = Vector3(1, 2, 3)
+local b = a * 2 + Vector3.UNIT_X
+assert(b.x == 3 and b.y == 4 and b.z == 6)
+assert(math.abs(Vector3(3, 4, 0):length() - 5) < 1e-6)
+local q = Quaternion(0, 0, 45)
+assert(math.abs(q:getRoll() - 45) < 1e-3)
+```

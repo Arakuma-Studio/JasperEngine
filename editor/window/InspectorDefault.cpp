@@ -142,6 +142,14 @@ namespace {
         settings.help = reflect::tooltip(field);
         if (field.step > 0.0f) settings.stepSize = field.step;
         if (field.format) settings.format = field.format;
+        // what a number typed into it is in ("25cm" on a Meters field, S23)
+        switch (field.unit) {
+            case reflect::Unit::Meters: settings.unit = NumericUnit::Meters; break;
+            case reflect::Unit::Degrees: settings.unit = NumericUnit::Degrees; break;
+            case reflect::Unit::Seconds: settings.unit = NumericUnit::Seconds; break;
+            case reflect::Unit::Pixels: settings.unit = NumericUnit::Pixels; break;
+            default: break;
+        }
         if (field.kind == reflect::Kind::Int && std::isfinite(field.min) && std::isfinite(field.max)) {
             settings.intMin = static_cast<int>(field.min);
             settings.intMax = static_cast<int>(field.max);

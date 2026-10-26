@@ -1004,6 +1004,8 @@ set(JASPERENGINE_SRCS
     core/htmlui/effects/EffectValue.cpp
     core/asset/AssetMap.cpp
     core/asset/Guid.cpp
+    core/graph/Graph.cpp
+    core/graph/GraphRegistry.cpp
     core/io/AssetIOService.cpp
     core/io/Data.cpp
     core/io/File.cpp
@@ -1111,9 +1113,11 @@ set(JASPERENGINE_SRCS
     core/render/shadow/ShadowTypes.cpp
     core/script/LuaBinding.cpp
     core/script/LuaFunctionBase.cpp
+    core/script/LuaReload.cpp
     core/script/LuaScript.cpp
     core/script/ScriptBase.cpp
     core/script/ScriptProperty.cpp
+    core/script/ToolchainFingerprint.cpp
     core/script/binding/ActionClassesLua.cpp
     core/script/binding/CoreClassesLua.cpp
     core/script/binding/ECSClassesLua.cpp
@@ -1230,6 +1234,14 @@ set(RENDER_SOKOL_SRC
     renders/sokol/SokolTraceHub.cpp
     renders/sokol/SokolVramTracker.cpp
 )
+
+# The engine build a C++ script library must be made for (ToolchainFingerprint.h): the
+# editor's version string, on this one file only so a new commit does not rebuild the engine
+if(DEFINED JASPERENGINE_EDITOR_VERSION)
+    set_source_files_properties(core/script/ToolchainFingerprint.cpp PROPERTIES
+        COMPILE_DEFINITIONS "JASPERENGINE_ABI_VERSION=\"${JASPERENGINE_EDITOR_VERSION}\""
+        SKIP_UNITY_BUILD_INCLUSION ON)
+endif()
 
 add_library(
     jasperengine

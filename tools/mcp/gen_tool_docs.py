@@ -45,6 +45,8 @@ MODULES: list[tuple[str, str]] = [
     ("ShadowTools", "Shadows"),
     ("ConsoleTools", "Console"),
     ("ScriptTools", "Scripts"),
+    ("ScriptingTools", "Scripting: hot reload, script status, editor menus, expressions"),
+    ("GraphTools", "Graphs"),
     ("AssetTools", "Assets, materials and shaders"),
     ("AssetIdentityTools", "Asset identity: GUIDs, references, missing assets"),
     ("DocsTools", "Docs"),
