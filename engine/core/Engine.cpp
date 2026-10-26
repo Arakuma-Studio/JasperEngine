@@ -1181,8 +1181,10 @@ void Engine::calculateCanvas(){
 namespace {
     // the game started the logger (an editor starts its own before the engine)
     bool engineOwnsLogger = false;
+#ifndef JASPERENGINE_EDITOR
     // the game installed the crash handler and the watchdog (the editor does its own)
     bool engineOwnsDiagnostics = false;
+#endif
     // frames systemDraw ran, stamped on log records
     uint64_t drawnFrames = 0;
 
@@ -1230,7 +1232,8 @@ namespace {
         system->installLogSinks();
     }
 
-    const char* graphicBackendName(){
+#ifndef JASPERENGINE_EDITOR
+    [[maybe_unused]] const char* graphicBackendName(){
         switch (Engine::getGraphicBackend()){
             case GraphicBackend::GLCORE: return "glcore";
             case GraphicBackend::GLES3: return "gles3";
@@ -1276,6 +1279,7 @@ namespace {
     #endif
         (void)system;
     }
+#endif
 }
 
 void Engine::systemInit(int argc, char* argv[], System* system){
