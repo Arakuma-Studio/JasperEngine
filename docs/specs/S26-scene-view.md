@@ -611,6 +611,10 @@ Where the implementation differs from the text above, and why.
   `pick_at` waits for a building BVH (the click R33 describes for the user defers instead);
   `apply` takes `shift` and `ctrl` too; `set_scene_view_layout` takes `capture` (one image per
   pane) and returns each pane's draw count. `editor_status` reports the status bar's message.
+- **AC5's target.** The test target is the core tests' RGBA8 framebuffer, not an RGBA32F one: the
+  debug shader draws each vertex as a point of its own and writes its world x, y, z and its index
+  as 24-bit fixed point over four frames (a step of 1e-6 over [-8, 8], far under the 1e-4
+  tolerance), so it runs unchanged on glcore and Vulkan.
 - **AC7's model.** The test imports a 140k-triangle generated lattice and holds background builds
   pending with `JASPER_PICK_BUILD_DELAY_MS` (a test knob read once by `PickCache`), instead of
   importing a 2M-triangle model: what the test checks is the pending state, which the knob makes
