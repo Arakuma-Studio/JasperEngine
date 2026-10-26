@@ -18,6 +18,7 @@
 #include "component/RigidbodyComponent.h"
 #include "subsystem/PhysicsSystem.h"
 #include "Jolt/Physics/Body/BodyLock.h"
+#include "Jolt/Physics/Body/BodyLockInterface.h"
 #endif
 
 #include <algorithm>
@@ -173,30 +174,50 @@ void WaterSystem::applyBuoyancy(float dt){
 
     const float gravity = physics->getGravity3D().length();
     JPH::BodyInterface& bodies = physics->getBodyInterface3D();
+    // between steps, on the thread that steps: one body lock each, no mutex (R37's budget)
+    const JPH::BodyLockInterface& locks = physics->world3D.GetBodyLockInterfaceNoLock();
     for (size_t i = 0; i < buoyancies->size(); i++){
         const BuoyancyComponent& buoyancy = buoyancies->getComponentFromIndex(i);
         const Entity entity = buoyancies->getEntity(i);
         if (!buoyancy.enabled || !scene->isEntityActiveInHierarchy(entity))
             continue;
         const RigidbodyComponent* rigidbody = scene->findComponent<RigidbodyComponent>(entity);
-        if (!rigidbody || !rigidbody->enabled || rigidbody->type != BodyType::DYNAMIC || rigidbody->body.IsInvalid() ||
-                !bodies.IsAdded(rigidbody->body))
+        if (!rigidbody || !rigidbody->enabled || rigidbody->type != BodyType::DYNAMIC || rigidbody->body.IsInvalid())
             continue;
 
         const JPH::BodyID id = rigidbody->body;
-        JPH::RefConst<JPH::Shape> shape = bodies.GetShape(id);
+        JPH::BodyLockWrite lock(locks, id);
+        if (!lock.Succeeded())
+            continue;
+        JPH::Body& body = lock.GetBody();
+        // out of the world (disabled, inactive GameObject) it does not float
+        if (!body.IsInBroadPhase())
+            continue;
+        const JPH::Shape* shape = body.GetShape();
         if (!shape)
             continue;
-        JPH::RVec3 position;
-        JPH::Quat rotation;
-        bodies.GetPositionAndRotation(id, position, rotation);
+        // the shape's frame is the centre of mass's
+        const JPH::RMat44 frame = body.GetCenterOfMassTransform();
+        const JPH::Quat rotation = body.GetRotation();
         const JPH::AABox bounds = shape->GetLocalBounds();
-        const float columnHeight = bounds.mMax.GetY() - bounds.mMin.GetY();
+
+        // The columns: AUTO grids sit on the face of the colliders' bounds that faces down now
+        // (a body that rolls over keeps its columns under it) and run up the bounds along that
+        // axis; CUSTOM points stand along the body's own up. A column's height is its length
+        // seen vertically: how deep in it the water can reach.
+        const JPH::Vec3 localDown = rotation.Conjugated() * JPH::Vec3(0.0f, -1.0f, 0.0f);
+        int axis = 1;
+        float sign = 1.0f;
+        if (buoyancy.columns != BuoyancyColumns::CUSTOM){
+            const JPH::Vec3 a = localDown.Abs();
+            axis = a.GetX() > a.GetY() ? (a.GetX() > a.GetZ() ? 0 : 2) : (a.GetY() > a.GetZ() ? 1 : 2);
+            sign = localDown[axis] > 0.0f ? -1.0f : 1.0f;   // the up of the column, along +axis or -axis
+        }
+        const float columnLength = bounds.mMax[axis] - bounds.mMin[axis];
+        const float columnHeight = columnLength * std::fabs(localDown[axis]);
         if (!(columnHeight > 0.0f))
             continue;
 
-        // the columns' bottoms in body space: an n x n grid on the bounds' bottom face, or the
-        // custom points (local space, scaled like the colliders)
         JPH::Vec3 bottoms[9];
         int columns = 0;
         if (buoyancy.columns == BuoyancyColumns::CUSTOM){
@@ -209,12 +230,15 @@ void WaterSystem::applyBuoyancy(float dt){
             }
         }else{
             const int n = buoyancy.columns == BuoyancyColumns::AUTO_3x3 ? 3 : 2;
+            const int u = (axis + 1) % 3, v = (axis + 2) % 3;
+            const float face = sign > 0.0f ? bounds.mMin[axis] : bounds.mMax[axis];
             for (int a = 0; a < n; a++){
                 for (int b = 0; b < n; b++){
-                    const float u = (a + 0.5f) / n;
-                    const float v = (b + 0.5f) / n;
-                    bottoms[columns++] = JPH::Vec3(bounds.mMin.GetX() + (bounds.mMax.GetX() - bounds.mMin.GetX()) * u, bounds.mMin.GetY(),
-                                                   bounds.mMin.GetZ() + (bounds.mMax.GetZ() - bounds.mMin.GetZ()) * v);
+                    JPH::Vec3 point;
+                    point.SetComponent(axis, face);
+                    point.SetComponent(u, bounds.mMin[u] + (bounds.mMax[u] - bounds.mMin[u]) * (a + 0.5f) / n);
+                    point.SetComponent(v, bounds.mMin[v] + (bounds.mMax[v] - bounds.mMin[v]) * (b + 0.5f) / n);
+                    bottoms[columns++] = point;
                 }
             }
         }
@@ -232,7 +256,7 @@ void WaterSystem::applyBuoyancy(float dt){
         int submerged = 0;
         bool movingWater = false;
         for (int c = 0; c < columns; c++){
-            const JPH::RVec3 bottom = position + rotation * bottoms[c];
+            const JPH::RVec3 bottom = frame * bottoms[c];
             float height = 0.0f;
             float rate = 0.0f;
             Vector2 slope;
@@ -253,7 +277,7 @@ void WaterSystem::applyBuoyancy(float dt){
         if (submerged == 0)
             continue;
         // a body asleep in still water stays asleep
-        if (!movingWater && !bodies.IsActive(id))
+        if (!movingWater && !body.IsActive())
             continue;
 
         const float dragScale = std::max(0.0f, buoyancy.dragScale);
@@ -265,21 +289,26 @@ void WaterSystem::applyBuoyancy(float dt){
             const float rho = column.volume->density;
             // Archimedes: the weight of the water the column's submerged part displaces
             const JPH::Vec3 lift(0.0f, rho * gravity * columnVolume * fraction, 0.0f);
-            const JPH::Vec3 pointVelocity = bodies.GetPointVelocity(id, column.point);
+            const JPH::Vec3 pointVelocity = body.GetPointVelocity(column.point);
             const JPH::Vec3 relative = pointVelocity - JPH::Vec3(column.waterVelocity.x, column.waterVelocity.y, column.waterVelocity.z);
             const JPH::Vec3 drag = relative * (-column.volume->linearDrag * dragScale * rho * columnVolume * fraction);
-            bodies.AddForce(id, lift + drag, column.point, JPH::EActivation::Activate);
+            body.AddForce(lift + drag, column.point);
             submergedVolume += columnVolume * fraction;
             angularDrag += column.volume->angularDrag * rho * columnVolume * fraction;
         }
         // against the turning, by the submerged volume
-        if (submergedVolume > 0.0f){
-            const JPH::Vec3 angular = bodies.GetAngularVelocity(id);
-            bodies.AddTorque(id, angular * (-angularDrag * dragScale), JPH::EActivation::Activate);
-        }
+        if (submergedVolume > 0.0f)
+            body.AddTorque(body.GetAngularVelocity() * (-angularDrag * dragScale));
+        // a sleeping body the water moves wakes (outside the lock)
+        const bool wake = !body.IsActive();
+        lock.ReleaseLock();
+        if (wake)
+            bodies.ActivateBody(id);
     }
     (void)dt;
 #else
     (void)dt;
 #endif
 }
+
+
