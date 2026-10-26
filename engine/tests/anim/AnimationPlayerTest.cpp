@@ -1186,18 +1186,18 @@ TEST_F(Player, PerformanceBudget){
     }
     step(1.0 / 60.0, 3);
 
-    // The median frame of this thread's CPU time, normalised to an idle host. The host runs other
-    // builds in parallel: wall time and averages carry their preemptions, and even thread CPU time
-    // grows with the load (a busy SMT sibling, shared caches, the clock lowered with every core
-    // busy). So each measured frame is paired with a small fixed reference workload of the same kind
-    // (quaternion slerps and TRS matrices over arrays that stay in the caches) run right after it,
-    // under the same conditions: the frame counts as `ms * REFERENCE_IDLE_MS / reference ms` when
-    // the reference ran slower than on this host idle (REFERENCE_IDLE_MS, measured on it), never
-    // scaled up. The reference does not track memory contention as the player feels it (other
-    // processes thrashing the shared cache): a phase whose normalised median is over the budget runs
-    // again, up to PASSES times, and the best pass counts. A regression of the player still shows
-    // in full: the reference does not run the player's code, every pass measures every frame of its
-    // phase, and a player over the budget is over it in every pass.
+    // The budget as a ratio, so it holds on any host. Each measured frame (this thread's CPU time:
+    // wall time carries the preemptions of the other builds this host runs) is paired with a fixed
+    // reference workload run right after it, under the same conditions: quaternion slerps and TRS
+    // matrices like the player's sampling, plus a strided pass over ~400 KB of matrices so memory
+    // traffic and shared-cache contention slow it as they slow the players' transforms and tracks.
+    // The reference's time is the best of 3 runs (noise). A frame counts as `ms / reference ms`,
+    // and the phase's median ratio must stay under BUDGET_RATIO: the spec's "2 ms a frame on this
+    // host" (8 cores, gcc 13, Release) in units of the reference measured on it idle. Host speed and
+    // load scale both sides; a regression of the player still shows in full (the reference does
+    // not run the player's code). A phase over the budget runs again, up to PASSES times, and the
+    // best pass counts. The absolute 2 ms is printed and asserted only when JASPER_PERF_ABSOLUTE_MS
+    // is set (a reference machine or CI: JASPER_PERF_ABSOLUTE_MS=2).
     struct clock{
         using time_point = std::chrono::duration<double>;
         static time_point now(){
@@ -1214,60 +1214,70 @@ TEST_F(Player, PerformanceBudget){
         to[i] = Quaternion((float)((i * 7) % 360), Vector3(1, 0, 0));
         offsets[i] = Vector3((float)(i % 13), (float)(i % 7), (float)(i % 5));
     }
+    // 6400 matrices of 64 bytes, visited in a fixed scattered order (a stride prime to the count)
+    std::vector<Matrix4> memory(6400);
+    const size_t STRIDE = 97;
     volatile float sink = 0.0f;
-    auto reference = [&](float t){
+    auto referenceOnce = [&](float t){
         const clock::time_point start = clock::now();
         for (size_t i = 0; i < from.size(); i++){
             const Quaternion q = Quaternion::slerp(t, from[i], to[i]);
             transforms[i] = Matrix4::translateMatrix(offsets[i]) * q.getRotationMatrix() * Matrix4::scaleMatrix(Vector3(1, 1, 1));
         }
+        for (size_t n = 0, i = 0; n < memory.size(); n++, i = (i + STRIDE) % memory.size()){
+            memory[i][3][0] += transforms[n % transforms.size()][3][1];
+        }
         float sum = 0.0f;
         for (size_t i = 0; i < transforms.size(); i += 61) sum += transforms[i][3][0];
+        for (size_t i = 0; i < memory.size(); i += 641) sum += memory[i][3][0];
         sink = sink + sum;
         return std::chrono::duration<double, std::milli>(clock::now() - start).count();
     };
-    // the reference on this host (8 cores, gcc 13, Release) with nothing else running
-    const double REFERENCE_IDLE_MS = 0.355;
+    auto reference = [&](float t){
+        return std::min(referenceOnce(t), std::min(referenceOnce(t), referenceOnce(t)));
+    };
+    // the reference (best of 3) on this host (8 cores, gcc 13, Release) with nothing else running,
+    // and the spec's 2 ms there: the ratio is the budget
+    const double REFERENCE_IDLE_MS = 0.403;
     const double BUDGET_MS = 2.0;
+    const double BUDGET_RATIO = BUDGET_MS / REFERENCE_IDLE_MS;
+    const char* absoluteEnv = std::getenv("JASPER_PERF_ABSOLUTE_MS");
+    const double ABSOLUTE_MS = absoluteEnv ? std::atof(absoluteEnv) : 0.0;
     const int PASSES = 5;
-    struct Phase{
-        std::vector<double> raw, normalised, references;
-        double median(const std::vector<double>& values) const{
-            std::vector<double> sorted = values;
-            std::sort(sorted.begin(), sorted.end());
-            return sorted[sorted.size() / 2];
-        }
+    auto median = [](std::vector<double> values){
+        std::sort(values.begin(), values.end());
+        return values[values.size() / 2];
     };
-    auto frame = [&](Phase& phase, int f){
-        clock::time_point start = clock::now();
-        scene.getSystem<ActionSystem>()->update(1.0 / 60.0);
-        const double ms = std::chrono::duration<double, std::milli>(clock::now() - start).count();
-        const double ref = reference((float)(f % 60) / 60.0f);
-        phase.raw.push_back(ms);
-        phase.references.push_back(ref);
-        phase.normalised.push_back(ms * std::min(1.0, REFERENCE_IDLE_MS / ref));
-    };
-    auto report = [](const char* name, const Phase& phase){
-        std::printf("[ perf ]   %s: median %.3f ms, normalised %.3f ms (reference median %.3f ms)\n", name, phase.median(phase.raw),
-                    phase.median(phase.normalised), phase.median(phase.references));
-        return phase.median(phase.normalised);
+    struct Result{
+        double ratio = 1e9;     // median of ms / reference ms
+        double ms = 1e9;        // median frame time
     };
     // a phase of 120 frames (`step` before each), best of up to PASSES passes
     auto best = [&](const char* name, const std::function<void()>& step){
-        double result = 1e9;
-        for (int pass = 0; pass < PASSES && result >= BUDGET_MS; pass++){
-            Phase phase;
+        Result result;
+        for (int pass = 0; pass < PASSES && (result.ratio >= BUDGET_RATIO || (ABSOLUTE_MS > 0.0 && result.ms >= ABSOLUTE_MS)); pass++){
+            std::vector<double> raw, ratios, references;
             for (int f = 0; f < 120; f++){
                 step();
-                frame(phase, f);
+                const clock::time_point start = clock::now();
+                scene.getSystem<ActionSystem>()->update(1.0 / 60.0);
+                const double ms = std::chrono::duration<double, std::milli>(clock::now() - start).count();
+                const double ref = reference((float)(f % 60) / 60.0f);
+                raw.push_back(ms);
+                references.push_back(ref);
+                ratios.push_back(ms / ref);
             }
-            result = std::min(result, report(name, phase));
+            const Result phase{median(ratios), median(raw)};
+            std::printf("[ perf ]   %s: median %.3f ms, %.2f x the reference (median %.3f ms; budget %.2f x)\n", name, phase.ms,
+                        phase.ratio, median(references), BUDGET_RATIO);
+            result.ratio = std::min(result.ratio, phase.ratio);
+            result.ms = std::min(result.ms, phase.ms);
         }
         return result;
     };
-    const double still = best("still", [](){});
+    const Result still = best("still", [](){});
     // one spawn a frame under a parent (bumps the hierarchy revision), one parentless
-    const double spawning = best("spawning", [&](){
+    const Result spawning = best("spawning", [&](){
         child(bullets, "Bullet");
         Entity loose = scene.createEntity();
         scene.addComponent<Transform>(loose, {});
@@ -1276,20 +1286,25 @@ TEST_F(Player, PerformanceBudget){
     Entity bone = scene.findEntity("Bone30");
     ASSERT_NE(bone, NULL_ENTITY);
     Entity attached = NULL_ENTITY;
-    const double underBone = best("under a bone", [&](){
+    const Result underBone = best("under a bone", [&](){
         if (attached != NULL_ENTITY) scene.destroyEntity(attached);
         attached = scene.createEntity();
         scene.addComponent<Transform>(attached, {});
         scene.addEntityChild(bone, attached, false);
         scene.setEntityName(attached, "Spark");
     });
-    std::printf("[ perf ] 100 players x 60 bones (6100 tracks): %.3f ms a frame, %.3f ms with a spawn per frame, %.3f ms with one "
-                "under a bone (medians, normalised to an idle host: reference %.3f ms)\n", still, spawning, underBone, REFERENCE_IDLE_MS);
+    std::printf("[ perf ] 100 players x 60 bones (6100 tracks): %.3f ms a frame (%.2f x the reference), %.3f ms (%.2f x) with a "
+                "spawn per frame, %.3f ms (%.2f x) with one under a bone (medians; budget %.2f x = %.1f ms on the reference host)\n",
+                still.ms, still.ratio, spawning.ms, spawning.ratio, underBone.ms, underBone.ratio, BUDGET_RATIO, BUDGET_MS);
 #if defined(NDEBUG) && !defined(__SANITIZE_ADDRESS__)
-    // the median thread CPU time of a frame, normalised to an idle host (Release builds: the
-    // budget means nothing under the sanitizers, which slow everything several times)
-    EXPECT_LT(spawning, BUDGET_MS);
-    EXPECT_LT(underBone, BUDGET_MS);
+    // Release builds: the budget means nothing under the sanitizers, which slow everything
+    // several times (and the reference less than the player)
+    EXPECT_LT(spawning.ratio, BUDGET_RATIO);
+    EXPECT_LT(underBone.ratio, BUDGET_RATIO);
+    if (ABSOLUTE_MS > 0.0){
+        EXPECT_LT(spawning.ms, ABSOLUTE_MS) << "JASPER_PERF_ABSOLUTE_MS";
+        EXPECT_LT(underBone.ms, ABSOLUTE_MS) << "JASPER_PERF_ABSOLUTE_MS";
+    }
 #endif
     // they play
     AnimationPlayerComponent& any = scene.getComponentFromIndex<AnimationPlayerComponent>(0);
