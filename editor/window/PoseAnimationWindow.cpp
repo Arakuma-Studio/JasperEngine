@@ -27,6 +27,7 @@
 #include "util/Util.h"
 
 #include "pose/PoseInspectorHooks.h"
+#include "animation/ClipRecordHooks.h"
 #include "AppSettings.h"
 
 #include <algorithm>
@@ -141,9 +142,9 @@ editor::PoseAnimationWindow::PoseAnimationWindow(Project* project): project(proj
     poseInspectorHooks().open = [this](Project*, uint32_t sceneId, Entity model, const std::string& animation){
         openFromAsset(animation, sceneId, model);
     };
-    poseInspectorHooks().beforeTransformWrite = [](uint32_t sceneId, Entity entity){
-        PoseEditSession::suspendActiveForBone(sceneId, entity);
-    };
+    // scene commands, undo and redo writing a posed bone's Transform edit its rest (one of the
+    // chained channel write listeners, with the Animation window's clip preview: 9.R5)
+    channelWriteListener = ClipRecordHooks::addBeforeChannelWrite(&PoseEditSession::beforeChannelWrite);
     // the Templates tab (phase 6, PoseAnimationWindowTemplates.cpp) through the tab extension point
     const auto& tabs = extraTabs();
     if (std::none_of(tabs.begin(), tabs.end(), [](const Tab& tab){ return tab.name == TEMPLATES_TAB; })){
@@ -153,7 +154,7 @@ editor::PoseAnimationWindow::PoseAnimationWindow(Project* project): project(proj
 
 editor::PoseAnimationWindow::~PoseAnimationWindow(){
     poseInspectorHooks().open = nullptr;
-    poseInspectorHooks().beforeTransformWrite = nullptr;
+    ClipRecordHooks::removeChannelWriteListener(channelWriteListener);
     if (PoseEditSession::active() == &session){
         PoseEditSession::setActive(nullptr);
     }
@@ -1214,7 +1215,7 @@ void editor::PoseAnimationWindow::drawTransport(){
     const std::string label = poseui::transportLabel(length, static_cast<int>(animation->poses.size()), previewing, time,
                                                      session.previewFrame());
     const float labelWidth = ImGui::CalcTextSize("00.00 / 00.00 s \xC2\xB7 frame 0000").x;
-    const float bakeWidth = ImGui::CalcTextSize(ICON_FA_FILM " Bake").x + ImGui::GetStyle().FramePadding.x * 2 + Theme::dpi(150.0f);
+    const float bakeWidth = ImGui::CalcTextSize(ICON_FA_FILM " Bake " ICON_FA_CARET_DOWN).x + ImGui::GetStyle().FramePadding.x * 2 + Theme::dpi(150.0f);
     const bool oneRow = !compactLayout && ImGui::GetContentRegionAvail().x > Theme::dpi(900.0f) + bakeWidth;
     const bool narrow = ImGui::GetContentRegionAvail().x < labelWidth + Theme::dpi(320.0f);
     const float rightWidth = labelWidth + Theme::dpi(200.0f) + (oneRow ? bakeWidth + Theme::dpi(16.0f) : 0.0f);
@@ -1255,9 +1256,33 @@ void editor::PoseAnimationWindow::drawTransport(){
 
     // bake: on the same row when there is room
     if (oneRow) ImGui::SameLine(0.0f, Theme::dpi(16.0f));
-    if (ImGui::Button(ICON_FA_FILM " Bake")) bake();
-    ImGui::SetItemTooltip("Bake to an Animation of the character (same frames as the preview; baking again updates it).\n"
-                          "Plays with Model:playAnimation(name) and in the Animation window.");
+    // Bake: to a shared Animation Clip (primary) or into the scene (the entity Animation)
+    if (ImGui::Button(ICON_FA_FILM " Bake " ICON_FA_CARET_DOWN)) ImGui::OpenPopup("##PoseBakeMenu");
+    ImGui::SetItemTooltip("Bake the frames of the preview to an Animation Clip (.anim, shared) or into the scene");
+    if (ImGui::BeginPopup("##PoseBakeMenu")){
+        if (ImGui::MenuItem(ICON_FA_FILM " Bake to Animation Clip")){
+            const auto& doc = session.document();
+            if (!doc || !session.bound()){
+                setStatus("Pick a character and an animation to bake", true);
+            }else{
+                PoseClipBakeResult result;
+                std::string error;
+                const std::string name = bakeName.empty() ? fileStem(doc->path()) : bakeName;
+                if (!PoseBaker::bakeToClip(project, session.sceneId(), session.model(), *doc, name, "", result, error)){
+                    setStatus("Bake failed: " + error, true);
+                }else{
+                    setStatus("Baked " + std::to_string(result.frames) + " frames to '" + result.clip + "' (state '" + result.name +
+                              "' of the Animation Player on " + characterName() + ")", false);
+                }
+            }
+        }
+        ImGui::SetItemTooltip("Writes <name>.anim next to the pose animation (baking again updates it) and lists it in the\n"
+                              "character's Animation Player: one clip any character with the same bones can play.");
+        if (ImGui::MenuItem(ICON_FA_DIAGRAM_PROJECT " Bake into Scene")) bake();
+        ImGui::SetItemTooltip("Bake to an Animation of the character in this scene (baking again updates it).\n"
+                              "Plays with Model:playAnimation(name) and in the Animation window.");
+        ImGui::EndPopup();
+    }
     ImGui::SameLine();
     char nameBuffer[128];
     std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", bakeName.c_str());

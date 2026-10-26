@@ -295,6 +295,174 @@ async def test_cli_hook_mode():
         check_eq(r.returncode, 1, f"unreadable hook input exits 1 (shown to the user, not the agent): {r.stderr}")
 
 
+# ---------------------------------------------------------------------------- CLI: animation clips
+
+CLIP_GUID = "0123456789abcdef0123456789abcdef"
+# a finding's fields (--format json)
+FINDING_KEYS = {"tool", "path", "line", "col", "severity", "message"}
+GOOD_CLIP = json.dumps({"format": "jasperengine.anim", "version": 1, "guid": CLIP_GUID, "wrap": "loop",
+                        "tracks": [{"path": "", "channel": "position", "keys": [[0, [0, 0, 0]], [1, [0, 1, 0]]]}]}, indent=2) + "\n"
+# a JSON syntax error on line 5 (a closing brace where a value belongs)
+BROKEN_CLIP = '{\n  "format": "jasperengine.anim",\n  "version": 1,\n  "tracks": [\n}\n'
+WARN_CLIP = json.dumps({"format": "jasperengine.anim", "version": 1, "wrap": "sideways", "tracks": []}, indent=2) + "\n"
+UNITY_CLIP = "%YAML 1.1\n%TAG !u! tag:unity3d.com,2011:\n--- !u!74 &7400000\nAnimationClip:\n  m_Name: Walk\n"
+# what a saved scene holds for Animation Players (Stream::encodeAnimationPlayerComponent), paths
+# relative to the assets folder (assets/ in the scratch project; findings name files project-relative)
+CLIP_SCENE = """name: Clips
+entities:
+  - name: Mover
+    components:
+      animationplayer:
+        clips:
+          - clip: anim/good.anim
+            guid: 0123456789abcdef0123456789abcdef
+          - clip: anim/missing.anim
+          - clip: old/good.anim
+            guid: 0123456789abcdef0123456789abcdef
+          - clip: models/none.gltf#Walk
+          - clip: models/hero_animated.gltf#Walk
+          - clip: models/hero_animated.gltf#Wave 2
+          - clip: models/hero_animated.gltf#2
+          - clip: models/hero_animated.gltf#Run
+  - name: Instance
+    components:
+      transform:
+        position: [0, 0, 0]
+    prefabInstance:
+      overrides:
+        - registryEntity: 3
+          properties:
+            animationplayer: [clips]
+          components:
+            animationplayer:
+              clips:
+                - clip: anim/override_missing.anim
+                - clip: models/hero_animated.gltf#Jump
+"""
+HERO_ANIMATED = harness.REPO / "tools" / "fixtures" / "pose-animation" / "assets" / "models" / "hero_animated.gltf"
+
+
+async def test_cli_anims():
+    with scratch_project() as project:
+        clips = {"assets/anim/good.anim": GOOD_CLIP, "assets/anim/broken.anim": BROKEN_CLIP,
+                 "assets/anim/warn.anim": WARN_CLIP, "assets/anim/unity.anim": UNITY_CLIP}
+        for rel, text in clips.items():
+            write(project, rel, text)
+        write(project, "Clips.scene", CLIP_SCENE)
+        (project / "assets/models").mkdir(parents=True, exist_ok=True)
+        shutil.copy(HERO_ANIMATED, project / "assets/models/hero_animated.gltf")
+
+        # the default set first: it loads the project for the shader check, which changes no clip
+        # (read-only loads: no GUID written into the clips without one), and finds what --anims finds
+        code, everything = run_json(project)
+        check("anims" in everything["checked"], f"the default set checks clips: {everything['checked']}")
+        for rel, text in clips.items():
+            check_eq((project / rel).read_text(), text, f"{rel} is unchanged by the check")
+        code, data = run_json(project, "--anims")
+        anim_findings = sorted(json.dumps(f, sort_keys=True) for f in everything["findings"] if f["tool"] == "anim")
+        check_eq(anim_findings, sorted(json.dumps(f, sort_keys=True) for f in data["findings"]),
+                 "the default set's clip findings are --anims' (whatever runs first)")
+        check_eq(code, 1, f"errors exit 1: {data}")
+        check_eq(data["checked"], {"anims": 4}, "the four clips are read (anims only)")
+        found = {}
+        for f in data["findings"]:
+            check_eq(set(f), FINDING_KEYS, "six keys")
+            check_eq(f["tool"], "anim", "tool")
+            found.setdefault(f["path"], []).append(f)
+        broken = found["assets/anim/broken.anim"]
+        check(len(broken) == 1 and broken[0]["severity"] == "error" and broken[0]["line"] == 5 and broken[0]["col"] > 0,
+              f"a JSON syntax error with line:col: {broken}")
+        warn = found["assets/anim/warn.anim"]
+        check(len(warn) == 1 and warn[0]["severity"] == "warning" and warn[0]["message"].startswith("wrap:"),
+              f"a lenient warning with its JSON path: {warn}")
+        unity = found["assets/anim/unity.anim"]
+        check(unity[0]["severity"] == "error" and "Unity .anim (YAML)" in unity[0]["message"], f"Unity YAML refused: {unity}")
+        check("assets/anim/good.anim" not in found, f"a valid clip has no findings: {found.get('assets/anim/good.anim')}")
+        scene = sorted((f["severity"], f["message"]) for f in found.get("Clips.scene", []))
+        check_eq(len(scene), 6, f"the scene's references: missing clip, moved clip, missing model, two unknown model "
+                                f"animations, the override's missing clip: {scene}")
+        check(any(s == "error" and "'anim/missing.anim'" in m and "does not exist" in m for s, m in scene), f"missing clip: {scene}")
+        check(any(s == "warning" and "'old/good.anim'" in m and "moved to 'assets/anim/good.anim'" in m for s, m in scene),
+              f"a moved clip found by its GUID: {scene}")
+        check(any(s == "error" and "'models/none.gltf'" in m for s, m in scene), f"a model clip without its model: {scene}")
+        # model#name: the names the Inspector shows (duplicates numbered, an index), read from the model file
+        run = [m for s, m in scene if "#Run" in m]
+        check(len(run) == 1 and "has no animation 'Run'" in run[0] and "'Walk', 'Idle', 'Animation 2', 'Wave', 'Wave 2'" in run[0],
+              f"an unknown animation name lists the model's: {run}")
+        check(not any("hero_animated.gltf#Walk'" in m or "#Wave 2'" in m or "#2'" in m for s, m in scene), f"known names and an index pass: {scene}")
+        # the clip entries of a prefab instance's overrides are checked too
+        check(any(s == "error" and "override_missing.anim" in m for s, m in scene), f"an override's missing clip: {scene}")
+        check(any(s == "error" and "#Jump" in m and "has no animation 'Jump'" in m for s, m in scene), f"an override's model clip: {scene}")
+
+        # text: compiler style; the default set includes the clips
+        r = run_check(project, "--anims")
+        check("assets/anim/broken.anim:5:" in r.stdout and ": error: " in r.stdout, f"text output: {r.stdout}")
+        check("anims 4 clips" in r.stderr, f"summary counts the clips: {r.stderr}")
+
+        # --files: only the named clips, no reference scan
+        code, data = run_json(project, "--files", "assets/anim/good.anim")
+        check_eq((code, data["checked"], data["findings"]), (0, {"anims": 1}, []), "--files a valid clip")
+        code, data = run_json(project, "--files", "assets/anim/broken.anim", "assets/anim/warn.anim")
+        check_eq((code, data["checked"]["anims"], len(data["findings"])), (1, 2, 2), f"--files two clips: {data}")
+
+        # hook mode: an agent wrote a broken clip
+        hook = {"hook_event_name": "PostToolUse", "tool_name": "Write", "cwd": str(project),
+                "tool_input": {"file_path": str(project / "assets/anim/broken.anim"), "content": "..."}}
+        r = run_check(project, "--hook", stdin=json.dumps(hook))
+        check_eq(r.returncode, 2, f"a broken clip exits 2 in hook mode: {r.stderr}")
+        check("assets/anim/broken.anim:5:" in r.stderr, r.stderr)
+        for rel, text in clips.items():
+            check_eq((project / rel).read_text(), text, f"{rel} is unchanged after every run")
+
+
+OTHER_GUID = "fedcba9876543210fedcba9876543210"
+# an entry whose path exists but whose GUID names another clip (the editor plays the GUID's file)
+GUID_SCENE = """name: Guids
+entities:
+  - name: Mover
+    components:
+      animationplayer:
+        clips:
+          - clip: anim/other.anim
+            guid: 0123456789abcdef0123456789abcdef
+          - clip: anim/good.anim
+            guid: 0123456789abcdef0123456789abcdef
+"""
+
+
+# one path twice: first with its own GUID, then with other.anim's (the editor plays other.anim there)
+TWICE_SCENE = GUID_SCENE.replace("name: Guids", "name: Twice").replace(
+    "          - clip: anim/other.anim\n            guid: 0123456789abcdef0123456789abcdef\n"
+    "          - clip: anim/good.anim\n            guid: 0123456789abcdef0123456789abcdef\n",
+    "          - clip: anim/good.anim\n            guid: 0123456789abcdef0123456789abcdef\n"
+    "          - clip: anim/good.anim\n            guid: " + OTHER_GUID + "\n")
+
+
+async def test_cli_anims_guid_mismatch_and_unreadable_yaml():
+    with scratch_project() as project:
+        write(project, "assets/anim/good.anim", GOOD_CLIP)
+        write(project, "assets/anim/other.anim", GOOD_CLIP.replace(CLIP_GUID, OTHER_GUID))
+        write(project, "Guids.scene", GUID_SCENE)
+        write(project, "Broken.prefab", "name: Broken\nentities: [ {name: A\n")
+        # two entries of one path: its own GUID (fine), then another clip's GUID (verify review minor 8)
+        write(project, "Twice.scene", TWICE_SCENE)
+        code, data = run_json(project, "--anims")
+        found = {}
+        for f in data["findings"]:
+            found.setdefault(f["path"], []).append((f["severity"], f["message"]))
+        scene = found.get("Guids.scene", [])
+        check_eq(len(scene), 1, f"one finding: the entry whose GUID names another clip (the matching one is fine): {scene}")
+        check(scene and scene[0][0] == "warning" and "'anim/other.anim' has the GUID of 'assets/anim/good.anim'" in scene[0][1],
+              f"GUID/path mismatch: {scene}")
+        twice = found.get("Twice.scene", [])
+        check(len(twice) == 1 and "'anim/good.anim' has the GUID of 'assets/anim/other.anim'" in twice[0][1],
+              f"the second entry of the same path with another clip's GUID is checked too: {twice}")
+        prefab = found.get("Broken.prefab", [])
+        check(len(prefab) == 1 and prefab[0][0] == "warning" and "could not read Animation Player entries" in prefab[0][1],
+              f"a YAML that fails to parse is reported, not skipped: {prefab}")
+        check_eq(code, 0, f"warnings only: exit 0: {data}")
+
+
 # ---------------------------------------------------------------------------- CLI: shaders
 
 async def test_cli_shaders():

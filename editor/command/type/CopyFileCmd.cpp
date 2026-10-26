@@ -54,6 +54,12 @@ void editor::CopyFileCmd::moveFile(const fs::path& source, const fs::path& desti
     if (isDirectory || Util::isAssetFile(extension)) {
         project->remapAssetFilePath(source, destination);
     }
+    // clips: their GUIDs follow, documents and players learn the new path
+    // clips (their GUIDs follow) and models (their sub-clips): open documents follow, players reload
+    if (isDirectory || Util::isAnimationClipFile(extension) || Util::isModelFile(extension)) {
+        project->remapClipFilePath(source, destination);
+    }
+    project->remapInspectedAsset(source, destination);
     if (isDirectory || Util::isShaderFile(extension)) {
         project->remapShaderFilePath(source, destination);
     }
@@ -61,6 +67,9 @@ void editor::CopyFileCmd::moveFile(const fs::path& source, const fs::path& desti
 
 bool editor::CopyFileCmd::execute(){
     bool touchedShaderSource = false;
+    // moves: every file first, then the clips' hints (a clip moved in the same step is at its
+    // final place when its hint is rewritten, whatever the order of the files)
+    std::vector<std::pair<fs::path, fs::path>> moved;
 
     for (const auto& fdata : files) {
         fs::path sourceFs = fdata.sourceDirectory / fdata.filename;
@@ -77,12 +86,13 @@ bool editor::CopyFileCmd::execute(){
                     const auto options = fs::copy_options::overwrite_existing |
                         (isDir ? fs::copy_options::recursive : fs::copy_options::none);
                     fs::copy(sourceFs, destFs, options);
-                    // copied prefabs are new assets: new GUIDs, the same ones on a redo
-                    if (project && (isDir || Util::isPrefabFile(extension))) {
+                    // copied prefabs and clips are new assets: new GUIDs, the same ones on a redo
+                    if (project && (isDir || AssetDatabase::isTrackedFile(destFs))) {
                         project->importPrefabFiles(destFs, true, &copyGuids);
                     }
                 }else{
                     moveFile(sourceFs, destFs, isDir);
+                    moved.emplace_back(sourceFs, destFs);
                 }
             }
         } catch (const fs::filesystem_error& e) {
@@ -96,11 +106,21 @@ bool editor::CopyFileCmd::execute(){
     if (project && touchedShaderSource)
         project->invalidateCustomShaders();
 
+    // clips previewing a moved model (or taken from it) name it again, in this step
+    if (project) {
+        for (const auto& [source, destination] : moved) {
+            std::vector<ClipHintEdit> edits = remapClipHints(project, source, destination);
+            clipHintEdits.insert(clipHintEdits.end(), edits.begin(), edits.end());
+        }
+    }
+
     return true;
 }
 
 void editor::CopyFileCmd::undo(){
     bool touchedShaderSource = false;
+    restoreClipHints(project, clipHintEdits);
+    clipHintEdits.clear();
 
     for (const auto& fdata : files) {
         fs::path sourceFs = fdata.targetDirectory / fdata.filename;
@@ -122,6 +142,13 @@ void editor::CopyFileCmd::undo(){
                     // instances of the copies made since become Missing Prefabs
                     if (project && (isDir || Util::isPrefabFile(extension))) {
                         project->cleanupPrefabFilePath(sourceFs);
+                    }
+                    // references to the copied clips stay (Missing until a redo)
+                    if (project && (isDir || Util::isAnimationClipFile(extension))) {
+                        project->cleanupClipFilePath(sourceFs);
+                    }
+                    if (project) {
+                        project->cleanupInspectedAsset(sourceFs);
                     }
                 }else{
                     moveFile(sourceFs, destFs, isDir);

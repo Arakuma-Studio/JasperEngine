@@ -6,6 +6,8 @@
 // colliders and joints, UI widget trees and rect layouts, particle systems, models, and the
 // point lists of polygons / shadow casters / line renderers.
 #include "McpTools.h"
+#include "AnimationClipTools.h"
+#include "AnimationKeys.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -102,6 +104,8 @@
 namespace jasperengine::editor::mcp {
 
 namespace {
+
+using namespace anim_keys;
 
 namespace fs = std::filesystem;
 
@@ -209,6 +213,10 @@ bool parseColor3(const Json& value, Vector3& out) {
     return McpValues::parseVector3(value, out);
 }
 
+} // namespace
+
+namespace anim_keys {
+
 // Ease names as Stream writes them (QUAD_IN_OUT); any case, '-' or '_'
 bool parseEase(const Json& value, EaseType& out, std::string& error) {
     if (!value.is_string()) {
@@ -229,6 +237,11 @@ bool parseEase(const Json& value, EaseType& out, std::string& error) {
 std::string easeName(EaseType type) {
     return lowerText(Stream::easeTypeToString(type));
 }
+
+
+} // namespace anim_keys
+
+namespace {
 
 // Resolves "scene" (default selected) and an entity argument
 struct Target {
@@ -2472,8 +2485,6 @@ void setSpriteAnimationTool(const CallPtr& call) {
 
 // ================================================================== keyframe animations and tweens
 
-enum class Channel { Position, Rotation, Scale, Morph, Lattice };
-
 const std::vector<std::pair<const char*, Channel>>& channels() {
     static const std::vector<std::pair<const char*, Channel>> table = {
         {"position", Channel::Position}, {"rotation", Channel::Rotation}, {"scale", Channel::Scale}, {"morph", Channel::Morph},
@@ -2510,20 +2521,9 @@ std::string actionKind(Scene* scene, Entity action) {
     return "action";
 }
 
-struct Key {
-    float time = 0.0f;
-    Vector3 vec;
-    Quaternion quat;
-    std::vector<float> weights;
-    // lattice: offsets of points (flat indices, ascending, once each), or the lattice's own
-    // current offsets chosen as editor keying does (resolved by the caller)
-    std::vector<int> points;
-    std::vector<Vector3> offsets;
-    bool current = false;
-    bool rest = false;     // "rest": every keyed point at zero
-    std::string pose;      // a pose name: the pose's offsets
-    EaseType ease = EaseType::LINEAR;
-};
+} // namespace
+
+namespace anim_keys {
 
 // A lattice key's points: {"<index>": [x,y,z]}, [[[i,j,k] | index, [x,y,z]], ...], "current",
 // "rest" or the name of one of the lattice's poses
@@ -2620,7 +2620,7 @@ bool parseLatticePoints(const Json& v, const LatticeComponent& lattice, Key& key
     return true;
 }
 
-bool parseKeys(Channel channel, const Json& value, std::vector<Key>& keys, std::string& error, const LatticeComponent* lattice = nullptr) {
+bool parseKeys(Channel channel, const Json& value, std::vector<Key>& keys, std::string& error, const LatticeComponent* lattice) {
     if (!value.is_array() || value.empty()) {
         error = "keys must be a non-empty array of {time, value, ease}.";
         return false;
@@ -2658,7 +2658,9 @@ bool parseKeys(Channel channel, const Json& value, std::vector<Key>& keys, std::
         }
         const Json& v = item["value"];
         bool ok = true;
-        if (channel == Channel::Rotation) ok = McpValues::parseQuaternion(v, key.quat);
+        // a key read back from a result carries {euler, quat}: euler (the field agents edit) wins,
+        // the quat is only read when it is alone
+        if (channel == Channel::Rotation) ok = McpValues::parseQuaternion(v.is_object() && v.contains("euler") ? Json{{"euler", v["euler"]}} : v, key.quat);
         else if (channel == Channel::Morph) {
             ok = v.is_array();
             for (const Json& w : v) {
@@ -2681,6 +2683,11 @@ bool parseKeys(Channel channel, const Json& value, std::vector<Key>& keys, std::
     std::stable_sort(keys.begin(), keys.end(), [](const Key& a, const Key& b) { return a.time < b.time; });
     return true;
 }
+
+
+} // namespace anim_keys
+
+namespace {
 
 // Existing keys of a track entity, so merge mode can add to them
 void readKeys(Scene* scene, Entity action, Channel channel, std::vector<Key>& keys) {
@@ -2743,6 +2750,10 @@ void addTrackWrites(MultiPropertyCmd& multi, const Target& target, Entity action
         case Channel::Lattice: break; // whole tracks, addLatticeTrackWrites
     }
 }
+
+} // namespace
+
+namespace anim_keys {
 
 // The "current" lattice keys take the lattice's offsets, the points chosen as the Animation
 // window's keying chooses them (selected points, else moved points plus the track's own)
@@ -2849,6 +2860,11 @@ LatticeTrackData latticeTrackData(Scene* scene, Entity track, const std::vector<
     data.outTangents.clear();
     return data;
 }
+
+
+} // namespace anim_keys
+
+namespace {
 
 void addLatticeTrackWrites(MultiPropertyCmd& multi, const Target& target, Entity action, const LatticeTrackData& data) {
     addProp<std::vector<float>>(multi, target, action, ComponentType::KeyframeTracksComponent, "times", data.times);
@@ -2982,6 +2998,15 @@ Entity findTrack(Scene* scene, const std::vector<ActionFrame>& frames, Entity ta
 }
 
 void editAnimationTool(const CallPtr& call) {
+    // clip: an .anim file (AnimationClipTools.cpp); the two modes refuse each other's arguments
+    if (has(call->args(), "clip")) {
+        clip_tools::editClip(call);
+        return;
+    }
+    if (const std::string rejected = clip_tools::rejectedArgument(call->args(), false); !rejected.empty()) {
+        call->fail(rejected);
+        return;
+    }
     Target target;
     if (!resolveSceneArg(call, target) || !sceneStopped(call, target)) return;
     const Json& args = call->args();
@@ -3278,6 +3303,20 @@ void editAnimationTool(const CallPtr& call) {
 }
 
 void getAnimationTool(const CallPtr& call) {
+    const Json& args = call->args();
+    if (has(args, "clip")) {
+        clip_tools::getClip(call);
+        return;
+    }
+    if (has(args, "times") || has(args, "root")) {
+        call->fail(std::string(has(args, "times") ? "times samples" : "root checks the bindings of") +
+                   " a clip file: pass clip (an .anim path or a model clip \"assets/models/hero.gltf#Walk\").");
+        return;
+    }
+    if (!has(args, "entity")) {
+        call->fail("Pass entity (an Animation, or a GameObject that is animated or has an Animation Player) or clip (an .anim path).");
+        return;
+    }
     Target target;
     if (!resolveEntityArg(call, target)) return;
     Scene* scene = target.engineScene();
@@ -3298,17 +3337,38 @@ void getAnimationTool(const CallPtr& call) {
         }
         if (related) list.push_back(animationJson(target, entity, keyLimit));
     }
-    if (list.empty()) {
-        call->fail("\"" + scene->getEntityName(target.entity) + "\" is not an Animation and no Animation targets it. Create one with edit_animation {target}.");
+    // the Animation Player that plays it (its own, else the nearest ancestor's): clips by path
+    const Json players = clip_tools::playersJson(target.project, target.scene, target.entity);
+    if (list.empty() && players.empty()) {
+        call->fail("\"" + scene->getEntityName(target.entity) + "\" is not an Animation, no Animation targets it and no Animation Player plays it. "
+                   "Create one with edit_animation {target} (scene) or {clip, create: {}} (a shared clip file).");
         return;
     }
-    call->ok(std::to_string(list.size()) + " animation(s) for \"" + scene->getEntityName(target.entity) + "\".",
-             Json{{"entity", entityJson(target, target.entity)}, {"animations", list}});
+    std::string text = std::to_string(list.size()) + " animation(s) for \"" + scene->getEntityName(target.entity) + "\".";
+    for (const Json& player : players) {
+        text += " Animation Player on \"" + player["entity"].value("name", std::string()) + "\": " + std::to_string(player["states"].size()) + " clip(s)";
+        for (const Json& state : player["states"]) {
+            text += "\n  " + state["name"].get<std::string>() + ": " + state["clip"].get<std::string>() + (state.contains("missing") ? " (missing)" : "");
+        }
+        for (const Json& bindings : player["bindings"]) {
+            if (!bindings["missing"].empty()) {
+                text += "\n  " + bindings["state"].get<std::string>() + ": " + std::to_string(bindings["missing"].size()) + " unbound track(s)";
+            }
+        }
+    }
+    call->ok(text, Json{{"entity", entityJson(target, target.entity)}, {"players", players}, {"animations", list}});
 }
 
 void previewAnimationTool(const CallPtr& call) {
     Target target;
     if (!resolveEntityArg(call, target, "animation")) return;
+    // a GameObject with (or under) an Animation Player: its clip through AnimationClipController
+    if (clip_tools::previewPlayer(call, target.scene, target.entity)) return;
+    if (has(call->args(), "state")) {
+        call->fail("state picks a clip of an Animation Player; \"" + target.engineScene()->getEntityName(target.entity) +
+                   "\" is played by no Animation Player.");
+        return;
+    }
     Scene* scene = target.engineScene();
     AnimationWindow* window = call->ctx().animationWindow();
     if (!window) {
@@ -3316,7 +3376,8 @@ void previewAnimationTool(const CallPtr& call) {
         return;
     }
     if (!scene->findComponent<AnimationComponent>(target.entity) || !scene->findComponent<ActionComponent>(target.entity)) {
-        call->fail("\"" + scene->getEntityName(target.entity) + "\" is not an Animation (it needs Animation and Action components).");
+        call->fail("\"" + scene->getEntityName(target.entity) + "\" is not an Animation (it needs Animation and Action components); for a "
+                   "clip, give a GameObject whose Animation Player lists it (add_component animationplayer).");
         return;
     }
     if (target.scene->playState != ScenePlayState::STOPPED) {
@@ -4684,37 +4745,49 @@ void registerWorldTools(McpRegistry& registry) {
         setSpriteAnimationTool, false, false);
 
     // ---------------------------------------------------------------- animation
+    // (clip: the .anim mode of AnimationClipTools.cpp; grammar, tween fields and the two-way
+    // argument table in docs/mcp/guide/animation.md)
+    // a key item without additionalProperties: keys read back from a result carry in/out (tangents),
+    // which clip mode takes; the handler checks the fields
+    Json openKeyItem = object({{"time", number("")}, {"value", any("")}, {"points", any("")}, {"ease", string("")}}, {"time"});
+    openKeyItem.erase("additionalProperties");
     add("edit_animation", "Edit Animation",
-        "Author an Animation timeline (seconds); no animation: creates one under target. tracks: keys {time, "
-        "value, ease} of local position/scale, rotation (quaternion or euler; > 180 degrees needs middle keys, "
-        "or a spin tween), morph weights or lattice offsets (points {\"i\": [x,y,z]} | [[[i,j,k],[x,y,z]]], "
-        "\"current\", \"rest\" or a pose name); ease to the next key: linear, step, "
-        "<quad|cubic|sine|back|bounce|elastic...>_<in|out|in_out>; the same target+channel replaces or merges; "
-        "relative: offsets from the target's pose when the track starts (anchored UI moves by its offset). "
-        "tweens: tween actions (from: current). add_actions: existing actions; set_frames/remove_actions: "
-        "pre-call indices.",
+        "Keyframes in seconds. clip (.anim): a shared clip file, tracks by path from the GameObject whose "
+        "Animation Player plays it; create {from?: entity Animation or \"model.gltf#Walk\"}; root checks paths "
+        "(bindings); a project undo step (from an Animation, or a model clip with root: scene). Without clip: an entity Animation (creates one under target), tweens, "
+        "actions; a scene step. tracks: keys {time, value|points, ease} of local position/scale, rotation "
+        "(quaternion or euler; > 180 degrees needs middle keys), morph weights or lattice points; the same "
+        "path|target+channel replaces or merges; relative: offsets from the pose when it starts. "
+        "Guide: jasper://docs/animation.",
         object({
             {"scene", sceneRef()},
+            {"clip", assetPath("")},
+            {"create", object({{"from", any("")}, {"remove_tracks", boolean("")}})},
+            {"root", entityRef("")},
             {"animation", entityRef("")},
             {"target", entityRef("Required to create.")},
             {"name", string("")},
             {"tracks", array(object({
                 {"channel", stringEnum("", {"position", "rotation", "scale", "morph", "lattice"})},
-                {"keys", array(object({{"time", number("")}, {"value", any("")}, {"points", any("")}, {"ease", string("")}}, {"time"}), "")},
+                {"keys", array(openKeyItem, "")},
+                {"path", string("")},
                 {"target", entityRef("Default: target.")},
                 {"start_time", number("")},
                 {"mode", withDefault(stringEnum("", {"replace", "merge"}), "replace")},
-                {"loop", boolean("Starts over after the last key.")},
-                {"relative", boolean("Not morph.")},
+                {"loop", boolean("")},
+                {"relative", boolean("")},
                 {"name", string("")}
             }, {"channel", "keys"}), "")},
+            {"events", array(object({{"time", number("")}, {"function", string("")}, {"args", array(any(""), "")}}, {"time", "function"}), "")},
+            {"events_mode", withDefault(stringEnum("", {"replace", "merge"}), "replace")},
+            {"wrap", stringEnum("", {"once", "loop", "ping_pong", "clamp_forever"})},
+            {"frame_rate", number("")},
+            {"length", number("-1: auto.")},
             {"tweens", array(object({
                 {"type", stringEnum("", {"position", "rotation", "scale", "color", "alpha"})},
                 {"from", any("")}, {"to", any("")},
                 {"duration", number("> 0.")}, {"ease", string("")}, {"loop", boolean("")},
-                {"ping_pong", boolean("There and back, in twice the duration.")},
-                {"spin", boolean("rotation: turns from by angle around axis instead of reaching to.")},
-                {"axis", any("spin: default [0, 1, 0].")}, {"angle", number("spin: degrees, default 360.")},
+                {"ping_pong", boolean("")}, {"spin", boolean("")}, {"axis", any("")}, {"angle", number("")},
                 {"start_time", number("")}, {"target", entityRef("Default: target.")},
                 {"name", string("")}
             }, {"type"}), "")},
@@ -4733,22 +4806,28 @@ void registerWorldTools(McpRegistry& registry) {
         editAnimationTool, false, false);
 
     add("get_animation", "Get Animation",
-        "An Animation's timeline: loop, duration, autoplay, target and actions (index, kind, GameObject, target, "
-        "start_time, duration, lane, keys or tween values). For another GameObject: animations targeting it or "
-        "its children (model clips too).",
+        "entity: an Animation's timeline (loop, duration, autoplay, target, actions with kind, keys or tween "
+        "values), or for another GameObject the animations targeting it or its children (model clips too) and "
+        "the Animation Player playing it (states, clips, bindings). clip (.anim or \"model.gltf#Walk\"): its "
+        "settings, tracks, events, users; times: values sampled there; root: bindings.",
         object({
             {"scene", sceneRef()},
-            {"entity", entityRef("Animation, or an animated GameObject.")},
+            {"entity", entityRef("")},
+            {"clip", assetPath("")},
+            {"times", array(number(""), "Seconds.")},
+            {"root", entityRef("")},
             {"max_keys", withDefault(integer("Per track."), 50)}
-        }, {"entity"}),
+        }),
         getAnimationTool, true, true);
 
     add("preview_animation", "Preview Animation",
         "Edit-mode preview (Animation window): play, pause, seek (time), stop (restores the authored "
-        "state; always stop when done). Selects the animation; wait_ms lets it play first.",
+        "state; always stop when done). animation: an Animation, or a GameObject whose Animation Player plays "
+        "state (default its default clip; returns bound transforms). Selects it; wait_ms lets it play first (it loops).",
         object({
             {"scene", sceneRef()},
             {"animation", entityRef()},
+            {"state", string("")},
             {"action", withDefault(stringEnum("", {"play", "pause", "stop", "seek"}), "play")},
             {"time", number("seek: seconds.")},
             {"wait_ms", integer("", 0, 30000)}

@@ -3,9 +3,13 @@
 
 // Prefab asset files: GUID resolution through the AssetDatabase, the standalone prefab
 // list, prefab file discovery, load and save, path remapping on rename/move and what a
-// deletion leaves (Missing Prefab instances, see ProjectPrefabMissing.cpp).
+// deletion leaves (Missing Prefab instances, see ProjectPrefabMissing.cpp). The other asset
+// type referenced by GUID, the .anim animation clip, resolves here too (animation clips spec
+// 9.R8): its references are Animation Player entries {clip: path hint, guid}.
 
 #include "Project.h"
+#include "animation/AnimationClipDocument.h"
+#include "animation/ModelSubClips.h"
 #include "Factory.h"
 #include "Out.h"
 #include "Stream.h"
@@ -99,6 +103,8 @@ void editor::Project::resolveRegistryPrefabRefs(EntityRegistry* registry) {
             resolvePrefabReference(component);
         }
     }
+    // the clips the prefab's Animation Players use follow their GUIDs the same way
+    resolveRegistryClipRefs(registry);
 }
 
 void editor::Project::resolveScenePrefabInfos(SceneProject& sceneProject) {
@@ -157,7 +163,16 @@ void editor::Project::importPrefabFiles(const std::filesystem::path& path, bool 
     applyAssetChanges(assetDatabase.importAssets(path, copy, copyGuids));
 }
 
-void editor::Project::applyAssetChanges(const std::vector<AssetDatabase::Change>& changes) {
+void editor::Project::applyAssetChanges(const std::vector<AssetDatabase::Change>& allChanges) {
+    // .anim clips: their references follow in applyClipAssetChanges, the rest is prefabs'
+    std::vector<AssetDatabase::Change> changes;
+    std::vector<AssetDatabase::Change> clipChanges;
+    for (const AssetDatabase::Change& change : allChanges) {
+        (Util::isAnimationClipFile(change.path.string()) ? clipChanges : changes).push_back(change);
+    }
+    if (!clipChanges.empty()) {
+        applyClipAssetChanges(clipChanges);
+    }
     if (changes.empty()) {
         return;
     }
@@ -390,6 +405,168 @@ void editor::Project::cleanupPrefabFilePath(const std::filesystem::path& deleted
         } else {
             ++it;
         }
+    }
+}
+
+// ---- Animation clip references (animation clips spec 4.1, 9.R8/R26) ----
+
+bool editor::Project::resolveClipReference(AnimationPlayerClip& entry, bool mayImport) {
+    if (entry.clip.empty() && entry.guid.empty()) {
+        return false;
+    }
+    // sub-clips ("<model>#<clip>") are path-only: they follow the model's rename instead
+    if (anim::isSubClipReference(entry.clip) || !assetDatabase.isOpen() || projectPath.empty()) {
+        return false;
+    }
+
+    fs::path hint = entry.clip.empty() ? fs::path() : normalizeToProjectRelative(resolveAssetPath(entry.clip));
+    // a path outside the project is never imported (nor given a GUID)
+    if (!hint.empty() && (hint.is_absolute() || *hint.begin() == "..")) {
+        hint.clear();
+    }
+    std::error_code ec;
+    const bool hintExists = !hint.empty() && fs::is_regular_file(projectPath / hint, ec);
+
+    fs::path resolved;
+    if (!entry.guid.empty()) {
+        resolved = assetDatabase.getPath(entry.guid);
+        if (resolved.empty() && mayImport && hintExists && assetDatabase.getGuid(hint).empty() &&
+            AssetDatabase::readGuid(projectPath / hint) == entry.guid) {
+            // made outside the editor since the last refresh (what else the database learns
+            // waits for the next refresh, as for prefabs)
+            std::vector<AssetDatabase::Change> found = assetDatabase.importAssets(hint);
+            pendingAssetChanges.insert(pendingAssetChanges.end(), found.begin(), found.end());
+            resolved = assetDatabase.getPath(entry.guid);
+        }
+        if (resolved.empty()) {
+            return false;   // no file has it: Missing, the hint stays (an undone delete relinks it)
+        }
+    } else {
+        if (hint.empty()) {
+            return false;
+        }
+        std::string guid = assetDatabase.getGuid(hint);
+        if (guid.empty() && mayImport && hintExists) {
+            std::vector<AssetDatabase::Change> found = assetDatabase.importAssets(hint);
+            pendingAssetChanges.insert(pendingAssetChanges.end(), found.begin(), found.end());
+            guid = assetDatabase.getGuid(hint);
+        }
+        if (guid.empty()) {
+            // written before the file had a GUID, and moved since: the GUID its path got
+            const fs::path moved = assetDatabase.getPath(AssetDatabase::legacyGuid(hint));
+            if (moved.empty()) {
+                return false;
+            }
+            guid = AssetDatabase::legacyGuid(hint);
+            resolved = moved;
+        } else {
+            resolved = hint;
+        }
+        // filled in silently: where the reference points did not change
+        entry.guid = guid;
+    }
+
+    const std::string form = normalizeToAssetsRelative(projectPath / resolved).generic_string();
+    if (fs::path(entry.clip).lexically_normal().generic_string() == form) {
+        return false;
+    }
+    entry.clip = form;
+    return true;
+}
+
+bool editor::Project::resolveRegistryClipRefs(EntityRegistry* registry, bool mayImport) {
+    if (!registry) {
+        return false;
+    }
+    bool changed = false;
+    auto players = registry->getComponentArray<AnimationPlayerComponent>();
+    for (size_t i = 0; i < players->size(); i++) {
+        AnimationPlayerComponent& player = players->getComponentFromIndex(i);
+        bool playerChanged = false;
+        for (AnimationPlayerClip& entry : player.clips) {
+            playerChanged |= resolveClipReference(entry, mayImport);
+        }
+        if (playerChanged) {
+            player.needsLoad = true;
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+void editor::Project::applyClipAssetChanges(const std::vector<AssetDatabase::Change>& changes) {
+    std::vector<fs::path> touched;
+    for (const AssetDatabase::Change& change : changes) {
+        touched.push_back((projectPath / change.path).lexically_normal());
+        if (change.type == AssetDatabase::Change::Type::Moved && !change.oldPath.empty()) {
+            touched.push_back((projectPath / change.oldPath).lexically_normal());
+        }
+        if (change.type != AssetDatabase::Change::Type::Moved && change.type != AssetDatabase::Change::Type::Added) {
+            continue;   // removed: the references stay (Missing); modified: only the content changed
+        }
+        // moved outside the editor, or back (an undone delete): every entry with the GUID
+        // points at the file again
+        const std::string form = normalizeToAssetsRelative(projectPath / change.path).generic_string();
+        auto relink = [&](EntityRegistry* registry) {
+            bool changed = false;
+            if (!registry) {
+                return changed;
+            }
+            auto players = registry->getComponentArray<AnimationPlayerComponent>();
+            for (size_t i = 0; i < players->size(); i++) {
+                AnimationPlayerComponent& player = players->getComponentFromIndex(i);
+                for (AnimationPlayerClip& entry : player.clips) {
+                    if (entry.guid != change.guid || anim::isSubClipReference(entry.clip)) {
+                        continue;
+                    }
+                    player.needsLoad = true;
+                    if (fs::path(entry.clip).lexically_normal().generic_string() != form) {
+                        entry.clip = form;
+                        changed = true;
+                    }
+                }
+            }
+            return changed;
+        };
+        for (SceneProject* sceneProject : getScenesAndPrefabStages()) {
+            if (sceneProject->scene && relink(sceneProject->scene)) {
+                sceneProject->isModified = true;
+            }
+        }
+        // prefab assets in memory only: their files keep the GUID that finds the clip
+        for (auto& [prefabPath, prefab] : prefabAssets) {
+            relink(prefab.registry.get());
+        }
+    }
+    AnimationClipDocument::filesChanged(touched, this);
+}
+
+void editor::Project::remapClipFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath) {
+    if (projectPath.empty()) {
+        return;
+    }
+    std::error_code ec;
+    // a directory's tracked files moved with remapPrefabFilePath; a model is not tracked
+    if (!fs::is_directory(newPath, ec) && (Util::isAnimationClipFile(oldPath.string()) || Util::isAnimationClipFile(newPath.string()))) {
+        applyAssetChanges(assetDatabase.moveAssets(oldPath, newPath));
+    }
+    // open documents (clips, a model's sub-clips) go with their files
+    AnimationClipDocument::filesMoved(oldPath.lexically_normal(), newPath.lexically_normal());
+    AnimationClipDocument::filesChanged({oldPath.lexically_normal(), newPath.lexically_normal()}, this);
+}
+
+void editor::Project::cleanupClipFilePath(const std::filesystem::path& deletedPath) {
+    if (projectPath.empty()) {
+        return;
+    }
+    // what cleanupPrefabFilePath did not remove already (an undone copy)
+    assetDatabase.removeAssets(deletedPath);
+    AnimationClipDocument::filesChanged({deletedPath.lexically_normal()}, this);
+}
+
+void editor::Project::forEachPrefabAsset(const std::function<void(const std::filesystem::path& path, Prefab& prefab)>& visit) {
+    for (auto& [prefabPath, prefab] : prefabAssets) {
+        visit(prefabPath, prefab);
     }
 }
 

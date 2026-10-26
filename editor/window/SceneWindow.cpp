@@ -31,6 +31,7 @@
 #include "Out.h"
 #include "App.h"
 #include "EditorHost.h"
+#include "animation/AnimationClipAppHooks.h"
 #include "Theme.h"
 #include "Widgets.h"
 #include "window/GameWindow.h"
@@ -266,6 +267,8 @@ bool editor::SceneWindow::selectObjectByRay(uint32_t sceneId, float x, float y, 
             }
             project->addSelectedEntity(hitSceneId, hitEntity);
             project->setSelectedSceneForProperties(hitSceneId);
+            // a user selection makes the GameObject the inspected object (animation clips 9.R30)
+            project->clearInspectedAsset();
             if (HierarchyWindow* structure = Backend::getApp().getHierarchyWindow()) {
                 structure->revealEntity(hitSceneId, hitEntity);
             }
@@ -275,6 +278,7 @@ bool editor::SceneWindow::selectObjectByRay(uint32_t sceneId, float x, float y, 
 
         project->clearAllSelections(sceneId);
         project->setSelectedSceneForProperties(sceneId);
+        project->clearInspectedAsset();
         project->syncSceneRenderEditLayer(sceneId);
     }
 
@@ -539,6 +543,20 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                             CommandHandle::get(sceneProject->id)->addCommandNoMerge(
                                 new ModelLoadCmd(project, sceneProject->id, modelEntityName, dropPosition, droppedAssetPath));
 
+                            focusSceneWindow(*sceneProject);
+                        }
+                    }
+                } else if (Util::isAnimationClipFile(droppedRelativePath)) {
+                    // clips onto a GameObject: an Animation Player (added or reused) plays them,
+                    // one scene step (animation clips spec 4.1; the hook is the converters')
+                    if (selEntity != NULL_ENTITY && animationClipAppHooks().dropClips &&
+                        sceneProject->playState == ScenePlayState::STOPPED && !project->isAnyScenePlaying()) {
+                        if (ImGui::AcceptDragDropPayload("resource_files")) {
+                            std::vector<std::string> clips;
+                            for (const std::string& path : receivedStrings) {
+                                if (Util::isAnimationClipFile(path)) clips.push_back(path);
+                            }
+                            Backend::getApp().dispatchClipDrop(sceneProject->id, selEntity, clips);
                             focusSceneWindow(*sceneProject);
                         }
                     }
@@ -1629,6 +1647,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 sceneProject->sceneRender->clearPolygonPointSelection();
                 sceneProject->sceneRender->clearTrackPointSelection();
                 project->selectObjectsByRect(sceneId, clickStartPos, clickEndPos);
+                project->clearInspectedAsset();
                 project->syncSceneRenderEditLayer(sceneId);
             }
 

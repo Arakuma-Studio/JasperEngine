@@ -626,6 +626,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/DocsTools.cpp
     ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
     ${EDITOR_DIR}/mcp/tools/WorldTools.cpp
+    ${EDITOR_DIR}/mcp/tools/AnimationClipTools.cpp
     ${EDITOR_DIR}/mcp/tools/LatticeTools.cpp
     ${EDITOR_DIR}/mcp/tools/HtmlUiTools.cpp
     ${EDITOR_DIR}/mcp/tools/UIEffectTools.cpp
@@ -680,6 +681,13 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/pose/PoseUiLogic.cpp
     ${EDITOR_DIR}/pose/PoseViewport.cpp
     ${EDITOR_DIR}/pose/PoseViewportLogic.cpp
+    ${EDITOR_DIR}/animation/AnimationClipController.cpp
+    ${EDITOR_DIR}/animation/AnimationClipDocument.cpp
+    ${EDITOR_DIR}/animation/ClipConverters.cpp
+    ${EDITOR_DIR}/animation/ClipRecordHooks.cpp
+    ${EDITOR_DIR}/animation/ClipValidation.cpp
+    ${EDITOR_DIR}/animation/PlayerModelLayout.cpp
+    ${EDITOR_DIR}/animation/PreviewOwner.cpp
 
     ${EDITOR_DIR}/htmlui/ContentSniffer.cpp
     ${EDITOR_DIR}/htmlui/GoogleFontsImporter.cpp
@@ -706,6 +714,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/PostProcessingPresets.cpp
 
     ${EDITOR_DIR}/window/InspectorWindow.cpp
+    ${EDITOR_DIR}/window/InspectorWindowClips.cpp
     ${EDITOR_DIR}/window/InspectorShaderLibrary.cpp
     ${EDITOR_DIR}/window/InspectorPostProcessing.cpp
     ${EDITOR_DIR}/window/InspectorFluid.cpp
@@ -723,6 +732,12 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/ImageViewerWindow.cpp
     ${EDITOR_DIR}/window/CodeEditor.cpp
     ${EDITOR_DIR}/window/AnimationWindow.cpp
+    ${EDITOR_DIR}/window/AnimationWindowClipSheet.cpp
+    ${EDITOR_DIR}/window/AnimationWindowClipEvents.cpp
+    ${EDITOR_DIR}/window/AnimationWindowClipCurves.cpp
+    ${EDITOR_DIR}/window/AnimationWindowClipRecord.cpp
+    ${EDITOR_DIR}/window/AnimationWindowClipMode.cpp
+    ${EDITOR_DIR}/window/AnimationWindowClipDraw.cpp
     ${EDITOR_DIR}/window/PoseAnimationWindow.cpp
     ${EDITOR_DIR}/window/PoseAnimationWindowTemplates.cpp
     ${EDITOR_DIR}/window/TerrainEditWindow.cpp
@@ -808,6 +823,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/UnlinkMaterialCmd.cpp
     ${EDITOR_DIR}/command/type/LinkMaterialCmd.cpp
     ${EDITOR_DIR}/command/type/CreatePrefabCmd.cpp
+    ${EDITOR_DIR}/command/type/CreateClipCmd.cpp
+    ${EDITOR_DIR}/command/type/ClipSceneActions.cpp
     ${EDITOR_DIR}/command/type/CreatePrefabVariantAssetCmd.cpp
     ${EDITOR_DIR}/command/type/ComponentToPrefabSharedCmd.cpp
     ${EDITOR_DIR}/command/type/UnpackPrefabCmd.cpp

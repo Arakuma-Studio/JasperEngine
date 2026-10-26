@@ -795,8 +795,12 @@ namespace jasperengine::editor{
         std::vector<AssetDatabase::Change> pendingAssetChanges;
 
         // What the database reports changed: moved prefabs get their new path everywhere in
-        // memory, removed ones leave Missing Prefab instances behind, added ones relink them
+        // memory, removed ones leave Missing Prefab instances behind, added ones relink them;
+        // the .anim changes go to applyClipAssetChanges
         void applyAssetChanges(const std::vector<AssetDatabase::Change>& changes);
+        // .anim files moved, added (copies, a delete undone), removed or edited outside the
+        // editor: the references in memory follow the GUIDs, documents and players reload
+        void applyClipAssetChanges(const std::vector<AssetDatabase::Change>& changes);
         // The in-memory part of a prefab rename or move (a file or a directory): prefab assets,
         // scene and prefab PrefabComponents, scene prefab lists and the standalone list
         void remapPrefabPathsInMemory(const fs::path& oldRelative, const fs::path& newRelative);
@@ -941,7 +945,9 @@ namespace jasperengine::editor{
         static bool applyToMaterialShaders(Material& material, const std::function<bool(std::string&)>& transform);
         // Runs an asset transform over every scene, prefab and material file,
         // marking what changed.
-        void applyAssetPathChange(const std::function<bool(std::string&)>& transform);
+        // savePrefabAssets false: loaded prefab assets change in memory only (an .anim rename: their
+        // files keep the GUID that finds the clip, spec 9.R8), else they are saved as for any asset
+        void applyAssetPathChange(const std::function<bool(std::string&)>& transform, bool savePrefabAssets = true);
         // Applies a transform to the customShader of every renderable component (Mesh/UI/
         // Points/Lines/Sky) and the scene defaults across all scenes and prefabs, and to the
         // fork shader of every submesh material and extra pass there and in .material files,
@@ -1021,7 +1027,22 @@ namespace jasperengine::editor{
         std::set<ShaderKey> collectStandaloneShaderKeys();
         void buildStandaloneShaderCache(const std::set<ShaderKey>& shaderKeys);
 
+    private:
+        // see getInspectedAsset()
+        std::filesystem::path inspectedAsset;
+
     public:
+        // Unity's activeObject (animation clips spec 9.R30): the asset the Inspector shows, set by
+        // the Project window when a single asset is clicked (T2b), cleared by any scene selection
+        // change (T2c); empty = the Inspector shows the scene selection. Absolute path.
+        void setInspectedAsset(const std::filesystem::path& absolutePath);
+        void clearInspectedAsset();
+        const std::filesystem::path& getInspectedAsset() const;
+        // the inspected asset follows a rename or move of it (or of a folder holding it), and is
+        // cleared when it (or its folder) is deleted; the file commands call these (T2b)
+        void remapInspectedAsset(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
+        void cleanupInspectedAsset(const std::filesystem::path& deletedPath);
+
         // The C++ scripts the build compiles: every scene's and the build prefabs'
         std::vector<SceneScriptSource> getBuildCppScripts() const { return collectAllSceneCppScripts(); }
         // Writes what a C++ build of the scripts needs (scene and prefab sources, the generated
@@ -1576,6 +1597,28 @@ namespace jasperengine::editor{
         // A prefab file or a directory holding some appeared (a copy, a deleted file put back
         // by an undo): they are registered, and Missing Prefab instances they resolve relinked
         void importPrefabFiles(const std::filesystem::path& path, bool copy = false, std::map<std::string, std::string>* copyGuids = nullptr);
+
+        // ---- Animation clip references (animation clips spec 4.1, 9.R8/R26; ProjectPrefabPaths.cpp) ----
+        // Where an Animation Player entry's .anim points now: by GUID (a GUID no file has keeps
+        // its path: the Inspector shows it Missing, and undoing the delete relinks it), else by
+        // its path (a file not in the database yet is added when `mayImport`). The path hint is
+        // repaired (asset-relative) and a missing GUID filled in. Sub-clip entries
+        // ("<model>#<clip>") are path-only. True when the entry changed.
+        bool resolveClipReference(AnimationPlayerClip& entry, bool mayImport = true);
+        // Every Animation Player entry of a registry (a scene, a prefab asset, a play copy); true
+        // when one changed (the players reload). `mayImport` false reads the database only (the
+        // play startup worker)
+        bool resolveRegistryClipRefs(EntityRegistry* registry, bool mayImport = true);
+        // The editor renamed or moved an .anim file or a directory (RenameFileCmd, CopyFileCmd):
+        // the database moves a single file (a directory moves in remapPrefabFilePath), the open
+        // clip documents, AnimationClipPool and the players learn both paths. The references
+        // themselves follow in remapAssetFilePath (visitAssetPathsInRegistry).
+        void remapClipFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
+        // The editor deleted an .anim file or a directory (or undid a copy): the references stay
+        // (R8), the database forgets the files, the documents, the pool and the players learn
+        void cleanupClipFilePath(const std::filesystem::path& deletedPath);
+        // Every loaded prefab asset (clip users and reference walks)
+        void forEachPrefabAsset(const std::function<void(const std::filesystem::path& path, Prefab& prefab)>& visit);
 
         // Missing Prefab instances (SceneProject::missingPrefabs)
         const MissingPrefabInstance* getMissingPrefab(uint32_t sceneId, Entity entity) const;

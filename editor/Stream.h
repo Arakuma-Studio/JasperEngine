@@ -466,6 +466,16 @@ namespace jasperengine::editor {
         static YAML::Node encodePoseAnimatorComponent(const PoseAnimatorComponent& animator);
         static PoseAnimatorComponent decodePoseAnimatorComponent(const YAML::Node& node, const PoseAnimatorComponent* oldAnimator = nullptr);
 
+        // Animation Player (spec 3.2, 9.R8/R14/R25): the authored fields only. clips[] entries
+        // are {clip, guid, name, wrap}: clip is the path hint (asset-relative .anim or
+        // "<model>#<clip>"), guid the .anim's GUID (empty, and not written, for sub-clips),
+        // name and wrap written when set. A plain string entry reads as {clip}. Decoding never
+        // loads (play startup decodes off the main thread). Over an old component its runtime
+        // stays (states, rest values) and a changed clip list sets needsLoad; the callbacks
+        // are cleared.
+        static YAML::Node encodeAnimationPlayerComponent(const AnimationPlayerComponent& player);
+        static AnimationPlayerComponent decodeAnimationPlayerComponent(const YAML::Node& node, const AnimationPlayerComponent* oldPlayer = nullptr);
+
         static YAML::Node encodeCameraComponent(const CameraComponent& camera);
         static CameraComponent decodeCameraComponent(const YAML::Node& node, const CameraComponent* oldCamera = nullptr);
 

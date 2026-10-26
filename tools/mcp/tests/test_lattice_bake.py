@@ -789,3 +789,45 @@ async def test_mcp_bake(ed: Editor):
     ed.check(raw.is_error and "McpBall" in raw.text and "McpBox" in raw.text, f"two targets: name one ({raw.text})")
     await ed.call("delete_entities", scene=sid, entities=[ball, box, cage])
     await ed.check_alive()
+
+
+async def test_bake_during_a_clip_preview(ed: Editor):
+    """Animation clips 9.R6/R7 (final review M2): a clip preview animating the cage's offsets
+    restores before a bake, so the file holds the scene's deformation. The clip goes from the
+    cage's offsets to its rest: previewed at its end the cage is at rest (a bake of what is shown
+    would find nothing to bake)."""
+    if not (ed.project / MODELS / "ball.gltf").is_file():
+        await setup_scene(ed)
+    sid = await scene(ed)
+    ball = await create(ed, "model", name="PreviewBall", model=f"{MODELS}/ball.gltf", position=[0.6, 0.4, -0.5])
+    made = await ed.call("edit_lattice", scene=sid, create={"targets": [ball], "name": "PreviewCage"},
+                         ops=[{"op": "move", "select": "all", "offset": [0.2, 0.1, 0.0], "space": "world"}])
+    cage = made["lattice"]["id"]
+    clip = "assets/anim/preview_cage.anim"
+    r = await ed.call_raw("edit_animation", {"clip": clip, "create": {}, "root": cage, "tracks": [
+        {"path": "", "channel": "lattice", "keys": [{"time": 0, "points": "current"}, {"time": 1, "points": "rest"}]}]})
+    ed.check(not r.is_error, r.text[:800])
+    await ed.call("add_component", scene=sid, entity=cage, component="animationplayer",
+                  values={"animationplayer": {"clips": [{"clip": clip}]}})
+    r = await ed.call_raw("preview_animation", {"animation": cage, "action": "seek", "time": 1.0})
+    ed.check(not r.is_error and r.structured["previewing"], r.text[:600])
+    await frames(ed, 5)
+
+    before = sorted(p.name for p in (ed.project / MODELS).iterdir())
+    r = await ed.call_raw("edit_lattice", {"scene": sid, "lattice": cage, "ops": [{"op": "bake", "target": ball}]})
+    ed.check(not r.is_error, f"the bake reads the scene, not the previewed rest: {r.text[:600]}")
+    state = await ed.call("preview_animation", animation=cage, action="pause")
+    ed.check(not state["previewing"], f"the bake stopped the preview: {state}")
+    filename = await model_file(ed, ball)
+    added = sorted(set(p.name for p in (ed.project / MODELS).iterdir()) - set(before))
+    ed.check_eq(added, [Path(filename).name], "one new file")
+    doc, bufs = read_glb(ed.project / filename)
+    positions = accessor(doc, bufs, doc["meshes"][0]["primitives"][0]["attributes"]["POSITION"])
+    verts = [v[0] for v in ball_vertices()]
+    for v in [0, 30, 120, len(verts) - 1]:
+        expected = [p + delta for p, delta in zip(verts[v], (0.2, 0.1, 0.0))]
+        ed.check(near(positions[v], expected, 2e-4), f"baked vertex {v}: {positions[v]} vs the scene's deformation {expected}")
+    await ed.call("undo", scene=sid)
+    await frames(ed, 10)
+    await ed.call("delete_entities", scene=sid, entities=[ball, cage])
+    await ed.check_alive()

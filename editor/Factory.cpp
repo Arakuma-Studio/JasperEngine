@@ -1135,6 +1135,14 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
         if (mesh.morphWeights[w] != 0.0f)
             code << ind << "mesh.morphWeights[" << w << "] = " << formatFloat(mesh.morphWeights[w]) << ";\n";
     }
+    // the model's load keeps these weights (zeros too) instead of its file's defaults, as the
+    // editor saves them (Stream): weights a load or an edit set, or non-zero ones set before any
+    // load, up to the targets they cover (more in the model file: theirs are its defaults)
+    const int presentCount = morphWeightsPresentCount(mesh.morphWeights);
+    if (mesh.morphWeightsSet || presentCount > 0) {
+        code << ind << "mesh.morphWeightsSet = true;\n";
+        code << ind << "mesh.morphTargetCount = " << (mesh.morphWeightsSet ? mesh.morphTargetCount : presentCount) << ";\n";
+    }
     if (!mesh.customShader.empty())
         code << ind << "mesh.customShader = " << formatString(mesh.customShader) << ";\n";
     if (!mesh.customDepthShader.empty())
@@ -1889,6 +1897,41 @@ std::string editor::Factory::createPoseAnimatorComponent(int indentSpaces, Entit
     return code.str();
 }
 
+static const char* formatClipWrapMode(ClipWrapMode wrap) {
+    switch (wrap) {
+        case ClipWrapMode::Once: return "ClipWrapMode::Once";
+        case ClipWrapMode::Loop: return "ClipWrapMode::Loop";
+        case ClipWrapMode::PingPong: return "ClipWrapMode::PingPong";
+        case ClipWrapMode::ClampForever: return "ClipWrapMode::ClampForever";
+        case ClipWrapMode::Default: break;
+    }
+    return "ClipWrapMode::Default";
+}
+
+std::string editor::Factory::createAnimationPlayerComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<AnimationPlayerComponent>(entity)) return "";
+    AnimationPlayerComponent& player = scene->getComponent<AnimationPlayerComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "AnimationPlayerComponent animationplayer;\n";
+    if (!player.enabled) code << ind << "animationplayer.enabled = false;\n";
+    // the runtime loads them by path (the exporter copies every asset file); GUIDs are the editor's
+    if (!player.clips.empty()) code << ind << "animationplayer.clips.resize(" << player.clips.size() << ");\n";
+    for (size_t i = 0; i < player.clips.size(); i++) {
+        const AnimationPlayerClip& entry = player.clips[i];
+        const std::string target = "animationplayer.clips[" + std::to_string(i) + "]";
+        code << ind << target << ".clip = " << formatString(entry.clip) << ";\n";
+        if (!entry.name.empty()) code << ind << target << ".name = " << formatString(entry.name) << ";\n";
+        if (entry.wrap != ClipWrapMode::Default) code << ind << target << ".wrap = " << formatClipWrapMode(entry.wrap) << ";\n";
+    }
+    if (!player.defaultClip.empty()) code << ind << "animationplayer.defaultClip = " << formatString(player.defaultClip) << ";\n";
+    code << ind << "animationplayer.playAutomatically = " << formatBool(player.playAutomatically) << ";\n";
+    code << ind << "animationplayer.speed = " << formatFloat(player.speed) << ";\n";
+    code << ind << "animationplayer.defaultFadeTime = " << formatFloat(player.defaultFadeTime) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "AnimationPlayerComponent", "animationplayer", assignExisting);
+    return code.str();
+}
+
 std::string editor::Factory::createUIDocumentComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<UIDocumentComponent>(entity)) return "";
     UIDocumentComponent& document = scene->getComponent<UIDocumentComponent>(entity);
@@ -2558,6 +2601,8 @@ std::string editor::Factory::createModelComponent(int indentSpaces, EntityRegist
     code << ind << "ModelComponent modelcomp;\n";
     code << ind << "modelcomp.filename = " << formatString(model.filename) << ";\n";
     code << ind << "modelcomp.mergeStaticMeshes = " << formatBool(model.mergeStaticMeshes) << ";\n";
+    // an Animation Player plays the model's clips: no entity animations (9.R15)
+    if (!model.animationEntities) code << ind << "modelcomp.animationEntities = false;\n";
     code << ind << "modelcomp.skeleton = " << formatEntity(model.skeleton, entityVarNames) << ";\n";
     if (!model.animations.empty()) {
         code << ind << "modelcomp.animations.clear();\n";
@@ -2897,6 +2942,7 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::UIDocumentComponent: return createUIDocumentComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::FluidSimulationComponent: return createFluidSimulationComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::PoseAnimatorComponent: return createPoseAnimatorComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::AnimationPlayerComponent: return createAnimationPlayerComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::CameraComponent: return createCameraComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::AudioSourceComponent: return createAudioSourceComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::ScriptComponent: return createScriptComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
@@ -3407,6 +3453,9 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
     }
     for (const std::string& model : resources.models) {
         out << ind2 << "resources.models.push_back(" << formatString(model) << ");\n";
+    }
+    for (const std::string& clip : resources.clips) {
+        out << ind2 << "resources.clips.push_back(" << formatString(clip) << ");\n";
     }
     out << ind2 << "return resources;\n";
     out << ind << "}\n";

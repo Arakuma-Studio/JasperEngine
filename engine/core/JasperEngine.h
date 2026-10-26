@@ -67,6 +67,7 @@
 #include "component/LatticeTracksComponent.h"
 #include "component/ReflectionProbeComponent.h"
 #include "component/PoseAnimatorComponent.h"
+#include "component/AnimationPlayerComponent.h"
 #include "component/ModelComponent.h"
 #include "component/MorphTracksComponent.h"
 #include "component/ShadowCaster2DComponent.h"
@@ -143,6 +144,7 @@
 #include "object/Lattice.h"
 #include "object/Model.h"
 #include "object/PoseAnimator.h"
+#include "object/AnimationPlayer.h"
 #include "object/GameObject.h"
 #include "object/ShadowCaster2D.h"
 #include "object/Points.h"
@@ -180,6 +182,7 @@
 #include "pool/TextureDataPool.h"
 #include "pool/TexturePool.h"
 #include "pool/ModelPool.h"
+#include "pool/AnimationClipPool.h"
 
 #include "registry/EntityRegistry.h"
 #include "registry/TagManager.h"
@@ -213,6 +216,15 @@
 #include "lattice/LatticeSolver.h"
 #include "lattice/LatticePresets.h"
 #include "lattice/LatticeRender.h"
+// animation clips: the public part. In anim::, ClipBinding.h (binding paths) and
+// KeyframeSampling.h (the samplers; ActionSystem::sampleClip returns their TrackSample) are public
+// too; AnimationPlayerRuntime.h and ModelSubClips.h are internal
+#include "animation/ClipTypes.h"
+#include "animation/AnimationClip.h"
+#include "animation/AnimationClipIO.h"
+#include "animation/AnimationEvent.h"
+#include "animation/ClipBinding.h"
+#include "animation/KeyframeSampling.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"

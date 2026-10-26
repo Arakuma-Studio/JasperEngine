@@ -2118,7 +2118,7 @@ void getRuntimeEntityTool(const CallPtr& call) {
                 try {
                     // context reads give enum names and resolvable entity refs; custom values stay
                     // out of this listing (they can be large)
-                    props[name] = property.type == PropertyType::Custom ? McpValues::toJson(project, name, property)
+                    props[name] = property.type == PropertyType::Custom ? McpValues::toJson(project, type, name, property)
                                                                          : McpValues::readProperty(ctx, name, property);
                 } catch (const std::exception&) {
                     props[name] = "<unreadable>";

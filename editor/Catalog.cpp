@@ -118,8 +118,17 @@ namespace {
             return false;
         }
 
+        // one spelling per index ("00" would alias "0" under another override name), and no
+        // value that wraps around
+        if (text[pos] == '0' && pos + 1 < text.size() && std::isdigit(static_cast<unsigned char>(text[pos + 1]))) {
+            return false;
+        }
         size_t parsedValue = 0;
+        size_t digits = 0;
         while (pos < text.size() && std::isdigit(static_cast<unsigned char>(text[pos]))) {
+            if (++digits > 9) {
+                return false;
+            }
             parsedValue = parsedValue * 10 + static_cast<size_t>(text[pos] - '0');
             pos++;
         }
@@ -719,6 +728,18 @@ namespace {
         makeFastProperty<PoseAnimatorComponent, float, &PoseAnimatorComponent::weight>("weight", PropertyType::Float, UpdateFlags_PoseAnimator_Reload),
     };
 
+    // enabled is the shared component checkbox (findEnabledGetter). The clip list is `clips`
+    // (Custom: the whole list, what a prefab override of the list holds) plus
+    // clips[i].clip/guid/name/wrap (resolveAnimationPlayerPropertyFast); the runtime fields are
+    // not properties. The settings are read by the player when it plays (no update flag).
+    static const FastPropertyDescriptor kAnimationPlayerProperties[] = {
+        makeFastProperty<AnimationPlayerComponent, std::vector<AnimationPlayerClip>, &AnimationPlayerComponent::clips>("clips", PropertyType::Custom, UpdateFlags_AnimationPlayer_Reload),
+        makeFastProperty<AnimationPlayerComponent, std::string, &AnimationPlayerComponent::defaultClip>("defaultClip", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<AnimationPlayerComponent, bool, &AnimationPlayerComponent::playAutomatically>("playAutomatically", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<AnimationPlayerComponent, float, &AnimationPlayerComponent::speed>("speed", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<AnimationPlayerComponent, float, &AnimationPlayerComponent::defaultFadeTime>("defaultFadeTime", PropertyType::Float, UpdateFlags_None),
+    };
+
     static const FastPropertyDescriptor kCameraProperties[] = {
         makeFastProperty<CameraComponent, CameraType, &CameraComponent::type>("type", PropertyType::Enum, UpdateFlags_Camera),
         // read by RenderSystem when the camera draws
@@ -870,6 +891,19 @@ namespace {
         // Flat properties
         PropertyData result = resolveDirectProperties(comp, propertyName, kMeshTopProperties);
         if (result.ref) return result;
+
+        // morphWeights[N]: one blend shape weight, so a prefab instance overrides weights one by
+        // one (the Inspector's Blend Shapes rows, animation clips T3c)
+        if (propertyName.compare(0, 13, "morphWeights[") == 0) {
+            size_t pos = 13;
+            size_t weight = 0;
+            if (!parseIndex(propertyName, pos, weight) || pos + 1 != propertyName.size() || propertyName[pos] != ']' ||
+                weight >= (size_t)MAX_MORPHTARGETS) {
+                return PropertyData();
+            }
+            static float defWeight = 0.0f;
+            return {PropertyType::Float, UpdateFlags_None, (void*)&defWeight, (void*)&comp->morphWeights[weight]};
+        }
 
         // Submeshes: submeshes[N].field
         if (propertyName.compare(0, 10, "submeshes[") != 0) {
@@ -1828,6 +1862,42 @@ namespace {
         return resolveDirectProperties(static_cast<PoseAnimatorComponent*>(comp), propertyName, kPoseAnimatorProperties);
     }
 
+    // clips[i].clip / .guid / .name are strings; clips[i].wrap is a ClipWrapMode, one byte, so it
+    // is Custom (PropertyCmd<ClipWrapMode>, copyPropertyValue) and never an int-sized Enum
+    PropertyData resolveAnimationPlayerPropertyFast(void* compRef, const std::string& propertyName) {
+        AnimationPlayerComponent* comp = static_cast<AnimationPlayerComponent*>(compRef);
+        if (!comp) return PropertyData();
+
+        PropertyData result = resolveDirectProperties(comp, propertyName, kAnimationPlayerProperties);
+        if (result.ref) return result;
+
+        if (propertyName.compare(0, 6, "clips[") == 0) {
+            size_t pos = 6;
+            size_t index = 0;
+            if (!parseIndex(propertyName, pos, index)) return PropertyData();
+            if (pos + 1 >= propertyName.length() || propertyName[pos] != ']') return PropertyData();
+            if (index < comp->clips.size()) {
+                static AnimationPlayerClip defClip;
+                AnimationPlayerClip& entry = comp->clips[index];
+                const std::string fieldName = propertyName.substr(pos + 1);
+                if (fieldName == ".clip") {
+                    return {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.clip, (void*)&entry.clip};
+                }
+                if (fieldName == ".guid") {
+                    return {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.guid, (void*)&entry.guid};
+                }
+                if (fieldName == ".name") {
+                    return {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.name, (void*)&entry.name};
+                }
+                if (fieldName == ".wrap") {
+                    return {PropertyType::Custom, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.wrap, (void*)&entry.wrap};
+                }
+            }
+        }
+
+        return PropertyData();
+    }
+
     PropertyData resolveLight2DPropertyFast(void* comp, const std::string& propertyName) {
         return resolveDirectProperties(static_cast<Light2DComponent*>(comp), propertyName, kLight2DProperties);
     }
@@ -2224,6 +2294,12 @@ namespace {
             return {PropertyType::Bool, UpdateFlags_Model, (void*)&def.mergeStaticMeshes, (void*)&comp->mergeStaticMeshes};
         }
 
+        // read by the loader on the next load or reload; the scene step that turns it off
+        // ("Use Animation Player", 9.R15) removes the animation entities itself
+        if (propertyName == "animationEntities") {
+            return {PropertyType::Bool, UpdateFlags_None, (void*)&def.animationEntities, (void*)&comp->animationEntities};
+        }
+
         if (propertyName == "skeleton") {
             return {PropertyType::Entity, UpdateFlags_Mesh_Reload, (void*)&def.skeleton, (void*)&comp->skeleton};
         }
@@ -2486,6 +2562,7 @@ namespace {
 
         ps["filename"] = {PropertyType::String, UpdateFlags_Model, (void*)&def.filename, compRef ? (void*)&comp->filename : nullptr};
         ps["mergeStaticMeshes"] = {PropertyType::Bool, UpdateFlags_Model, (void*)&def.mergeStaticMeshes, compRef ? (void*)&comp->mergeStaticMeshes : nullptr};
+        ps["animationEntities"] = {PropertyType::Bool, UpdateFlags_None, (void*)&def.animationEntities, compRef ? (void*)&comp->animationEntities : nullptr};
         ps["skeleton"] = {PropertyType::Entity, UpdateFlags_Mesh_Reload, (void*)&def.skeleton, compRef ? (void*)&comp->skeleton : nullptr};
         ps["animations"] = {PropertyType::Custom, UpdateFlags_None, (void*)&def.animations, compRef ? (void*)&comp->animations : nullptr};
 
@@ -2877,6 +2954,23 @@ namespace {
         enumerateFromDescriptors(comp, ps, kPoseAnimatorProperties);
     }
 
+    void enumerateAnimationPlayerProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
+        AnimationPlayerComponent* comp = static_cast<AnimationPlayerComponent*>(compRef);
+
+        enumerateFromDescriptors(compRef, ps, kAnimationPlayerProperties);
+
+        // without a component: the "clips[]" templates
+        static AnimationPlayerClip defClip;
+        for (size_t i = 0; i < (compRef ? comp->clips.size() : 1); i++) {
+            const std::string prefix = "clips[" + (compRef ? std::to_string(i) : std::string()) + "]";
+            AnimationPlayerClip* entry = compRef ? &comp->clips[i] : nullptr;
+            ps[prefix + ".clip"] = {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.clip, entry ? (void*)&entry->clip : nullptr};
+            ps[prefix + ".guid"] = {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.guid, entry ? (void*)&entry->guid : nullptr};
+            ps[prefix + ".name"] = {PropertyType::String, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.name, entry ? (void*)&entry->name : nullptr};
+            ps[prefix + ".wrap"] = {PropertyType::Custom, UpdateFlags_AnimationPlayer_Reload, (void*)&defClip.wrap, entry ? (void*)&entry->wrap : nullptr};
+        }
+    }
+
     void enumerateLight2DProperties(void* comp, std::map<std::string, PropertyData>& ps) {
         enumerateFromDescriptors(comp, ps, kLight2DProperties);
     }
@@ -3008,6 +3102,12 @@ namespace {
         MeshComponent& def = getDefaultComponent<MeshComponent>();
 
         enumerateFromDescriptors(compRef, ps, kMeshTopProperties);
+
+        static float defWeight = 0.0f;
+        for (int w = 0; w < (compRef ? MAX_MORPHTARGETS : 1); w++) {
+            std::string idx = compRef ? std::to_string(w) : "";
+            ps["morphWeights[" + idx + "]"] = {PropertyType::Float, UpdateFlags_None, (void*)&defWeight, compRef ? (void*)&comp->morphWeights[w] : nullptr};
+        }
 
         for (int s = 0; s < (compRef ? (int)comp->submeshes.size() : 1); s++) {
             std::string idx = compRef ? std::to_string(s) : "";
@@ -3601,6 +3701,7 @@ namespace {
         {ComponentType::UIDocumentComponent, &findComponentPtr<UIDocumentComponent>, &resolveUIDocumentPropertyFast, &enumerateUIDocumentProperties},
         {ComponentType::FluidSimulationComponent, &findComponentPtr<FluidSimulationComponent>, &resolveFluidSimulationPropertyFast, &enumerateFluidSimulationProperties},
         {ComponentType::PoseAnimatorComponent, &findComponentPtr<PoseAnimatorComponent>, &resolvePoseAnimatorPropertyFast, &enumeratePoseAnimatorProperties},
+        {ComponentType::AnimationPlayerComponent, &findComponentPtr<AnimationPlayerComponent>, &resolveAnimationPlayerPropertyFast, &enumerateAnimationPlayerProperties},
         {ComponentType::Light2DComponent, &findComponentPtr<Light2DComponent>, &resolveLight2DPropertyFast, &enumerateLight2DProperties},
         {ComponentType::ShadowCaster2DComponent, &findComponentPtr<ShadowCaster2DComponent>, &resolveShadowCaster2DPropertyFast, &enumerateShadowCaster2DProperties},
         {ComponentType::CameraComponent, &findComponentPtr<CameraComponent>, &resolveCameraPropertyFast, &enumerateCameraProperties},
@@ -3673,6 +3774,7 @@ namespace {
             case ComponentType::LatticeComponent: return &getEnabledRef<LatticeComponent>;
             case ComponentType::LatticeModifierComponent: return &getEnabledRef<LatticeModifierComponent>;
             case ComponentType::LatticeFollowerComponent: return &getEnabledRef<LatticeFollowerComponent>;
+            case ComponentType::AnimationPlayerComponent: return &getEnabledRef<AnimationPlayerComponent>;
             default: return nullptr;
         }
     }
@@ -3820,6 +3922,8 @@ std::string computeComponentName(editor::ComponentType component){
         name = "LatticeTracksComponent";
     }else if(component == ComponentType::PoseAnimatorComponent){
         name = "PoseAnimatorComponent";
+    }else if(component == ComponentType::AnimationPlayerComponent){
+        name = "AnimationPlayerComponent";
     }else if(component == ComponentType::Light2DComponent){
         name = "Light2DComponent";
     }else if(component == ComponentType::ShadowCaster2DComponent){
@@ -3966,6 +4070,7 @@ std::string editor::Catalog::getComponentDisplayName(ComponentType component){
         case ComponentType::LatticeFollowerComponent: return "Lattice Follower";
         case ComponentType::LatticeTracksComponent: return "Lattice Tracks";
         case ComponentType::PoseAnimatorComponent: return "Pose Animator";
+        case ComponentType::AnimationPlayerComponent: return "Animation Player";
     }
     return getComponentName(component);
 }
@@ -4031,6 +4136,7 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
         case ComponentType::LatticeFollowerComponent: return ICON_FA_LOCATION_ARROW;
         case ComponentType::LatticeTracksComponent: return ICON_FA_CUBES_STACKED;
         case ComponentType::PoseAnimatorComponent: return ICON_FA_PERSON_RUNNING;
+        case ComponentType::AnimationPlayerComponent: return ICON_FA_FILM;
     }
     return ICON_FA_PUZZLE_PIECE;
 }
@@ -4092,6 +4198,8 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<LatticeTracksComponent>();
         case ComponentType::PoseAnimatorComponent:
             return registry->getComponentId<PoseAnimatorComponent>();
+        case ComponentType::AnimationPlayerComponent:
+            return registry->getComponentId<AnimationPlayerComponent>();
         case ComponentType::Light2DComponent:
             return registry->getComponentId<Light2DComponent>();
         case ComponentType::ShadowCaster2DComponent:
@@ -4210,6 +4318,8 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::LatticeTracksComponent;
     }else if(normalizedName == "poseanimator"){
         return ComponentType::PoseAnimatorComponent;
+    }else if(normalizedName == "animationplayer"){
+        return ComponentType::AnimationPlayerComponent;
     }else if(normalizedName == "light2d"){
         return ComponentType::Light2DComponent;
     }else if(normalizedName == "shadowcaster2d"){
@@ -4421,6 +4531,9 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     }
     if (registry->findComponent<PoseAnimatorComponent>(entity)){
         ret.push_back(ComponentType::PoseAnimatorComponent);
+    }
+    if (registry->findComponent<AnimationPlayerComponent>(entity)){
+        ret.push_back(ComponentType::AnimationPlayerComponent);
     }
     if (registry->findComponent<MorphTracksComponent>(entity)){
         ret.push_back(ComponentType::MorphTracksComponent);
@@ -5315,6 +5428,13 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
             }
         }
     }
+    if (updateFlags & UpdateFlags_AnimationPlayer_Reload){
+        // the clip list changed (an entry added, removed, retargeted, renamed or rewrapped): the
+        // player loads it again and rebinds, keeping its states and rest values
+        if (AnimationPlayerComponent* player = registry->findComponent<AnimationPlayerComponent>(entity)){
+            player->needsLoad = true;
+        }
+    }
 }
 
 void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourceEntity,
@@ -5484,6 +5604,14 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
             YAML::Node encoded = Stream::encodePoseAnimatorComponent(sourceRegistry->getComponent<PoseAnimatorComponent>(sourceEntity));
             PoseAnimatorComponent& target = targetRegistry->getComponent<PoseAnimatorComponent>(targetEntity);
             target = Stream::decodePoseAnimatorComponent(encoded, &target);
+            break;
+        }
+
+        case ComponentType::AnimationPlayerComponent: {
+            // decoded over the target's own: what it plays stays, a changed clip list reloads
+            YAML::Node encoded = Stream::encodeAnimationPlayerComponent(sourceRegistry->getComponent<AnimationPlayerComponent>(sourceEntity));
+            AnimationPlayerComponent& target = targetRegistry->getComponent<AnimationPlayerComponent>(targetEntity);
+            target = Stream::decodeAnimationPlayerComponent(encoded, &target);
             break;
         }
 
@@ -5802,6 +5930,14 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
             } else if (compType == ComponentType::LatticeModifierComponent && property == "bindings") {
                 auto* source = Catalog::getPropertyRef<std::vector<LatticeBinding>>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<std::vector<LatticeBinding>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::AnimationPlayerComponent && property == "clips") {
+                auto* source = Catalog::getPropertyRef<std::vector<AnimationPlayerClip>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<AnimationPlayerClip>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::AnimationPlayerComponent && property.compare(0, 6, "clips[") == 0 && endsWith(property, "].wrap")) {
+                auto* source = Catalog::getPropertyRef<ClipWrapMode>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<ClipWrapMode>(targetRegistry, targetEntity, compType, property);
                 if (source && target) *target = *source;
             } else if (compType == ComponentType::LatticeTracksComponent && property == "points") {
                 auto* source = Catalog::getPropertyRef<std::vector<int>>(sourceRegistry, sourceEntity, compType, property);

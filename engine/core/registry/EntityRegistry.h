@@ -27,6 +27,7 @@
 #include "component/UIDocumentComponent.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/PoseAnimatorComponent.h"
+#include "component/AnimationPlayerComponent.h"
 #include "component/ImageComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/LayoutGroupComponent.h"
@@ -81,9 +82,20 @@ namespace jasperengine {
         EntityManager entityManager;
         ComponentManager componentManager;
         EntityPool defaultPool = EntityPool::User;
+        // see hierarchyRevision() / nameRevision()
+        uint64_t hierarchyRev = 0;
+        uint64_t nameRev = 0;
+        // see takeHierarchyLog()
+        std::vector<Entity> renamedLog;
+        std::vector<Entity> destroyedLog;
+        bool hierarchyLogOverflow = false;
+        void logHierarchyChange(std::vector<Entity>& log, Entity entity);
 
         void moveChildAux(Entity entity, bool increase, bool stopIfFound);
-        void changeTransformChildren(Entity entity);
+        // true when `entity` had children (now its parent's)
+        bool changeTransformChildren(Entity entity);
+        // the entity has a Transform with a parent or with children
+        bool isInHierarchy(Entity entity);
 
     protected:
         virtual void onComponentAdded(Entity entity, ComponentId componentId) { (void)entity; (void)componentId; }
@@ -135,6 +147,8 @@ namespace jasperengine {
 
         void setEntityName(Entity entity, const std::string& name);
         std::string getEntityName(Entity entity) const;
+        // the same without a copy (valid until the entity is renamed or destroyed; "" when unknown)
+        const std::string& getEntityNameRef(Entity entity) const;
 
         // Looks up an existing entity by its name (as shown in the editor Structure panel).
         // Returns the first match, or NULL_ENTITY when no entity has that name.
@@ -174,6 +188,25 @@ namespace jasperengine {
         void setDefaultEntityPool(EntityPool pool);
         EntityPool getDefaultEntityPool() const;
 
+        // Increases when the Transform hierarchy or a name changes in a way that can move a
+        // path-bound target (animation clips spec 2.2, 9.R9): setEntityName of an entity under a
+        // parent (a root's or a lone entity's name is in no path), addEntityChild,
+        // child moves and sorts, a Transform with a parent added or removed, destroying or
+        // recreating an entity that has a parent or children, clear(). Creating a parentless
+        // entity leaves it unchanged. Animation Players compare it each frame and rebind.
+        uint64_t hierarchyRevision() const;
+        // Increases with the renames among those (an entity under a parent renamed), recreateEntity
+        // and clear(): a player whose bound entities kept their parents and places compares
+        // names only when it changed
+        uint64_t nameRevision() const;
+        // For code that changes Transform::parent directly instead of through addEntityChild
+        void hierarchyChanged();
+        // The entities renamed under a parent and the ones destroyed (or recreated) with a parent
+        // or children since the last call, for the Animation Players' validation (ActionSystem
+        // takes it once per update); `overflow` when more happened than the log keeps (or a
+        // clear()): then everything counts as changed
+        void takeHierarchyLog(std::vector<Entity>& renamed, std::vector<Entity>& destroyed, bool& overflow);
+
         void clear();
 
         // Component methods
@@ -195,6 +228,10 @@ namespace jasperengine {
 
         template<typename T>
         void addComponent(Entity entity, const T& component){
+            if constexpr (std::is_same_v<T, Transform>) {
+                // a Transform that arrives with its parent set (decode, clone) joins a hierarchy
+                if (component.parent != NULL_ENTITY) hierarchyRev++;
+            }
             componentManager.addComponent<T>(entity, component);
             auto signature = entityManager.getSignature(entity);
             signature.set(componentManager.getComponentId<T>(), true);
@@ -206,6 +243,9 @@ namespace jasperengine {
         template<typename T>
         void addComponent(Entity entity, T&& component){
             using Component = std::remove_cv_t<std::remove_reference_t<T>>;
+            if constexpr (std::is_same_v<Component, Transform>) {
+                if (component.parent != NULL_ENTITY) hierarchyRev++;
+            }
             componentManager.addComponent<Component>(entity, std::forward<T>(component));
             auto signature = entityManager.getSignature(entity);
             signature.set(componentManager.getComponentId<Component>(), true);
@@ -219,7 +259,11 @@ namespace jasperengine {
             onComponentRemoved(entity, componentManager.getComponentId<T>());
 
             if (componentManager.getComponentId<T>() == getComponentId<Transform>()) {
-                changeTransformChildren(entity);
+                Transform* removed = componentManager.findComponent<Transform>(entity);
+                // children are reparented to its parent: a hierarchy change when it had either
+                if (changeTransformChildren(entity) || (removed && removed->parent != NULL_ENTITY)) {
+                    hierarchyRev++;
+                }
             }
 
             componentManager.removeComponent<T>(entity);

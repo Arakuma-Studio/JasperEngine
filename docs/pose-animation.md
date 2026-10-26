@@ -7,7 +7,8 @@ stop-motion...) and **humanize** adds the small things that make it look alive: 
 follow-through, idle sway, joint limits.
 
 The result is a `.poseanim` asset. It plays live on a model with the **Pose Animator** component
-(and from Lua), or bakes to a normal keyframe Animation. Poses are stored as joint angles that do
+(and from Lua), or bakes to a shared Animation Clip (`.anim`, see
+[animation-clips.md](animation-clips.md)) or to a keyframe Animation in the scene. Poses are stored as joint angles that do
 not depend on the model's skeleton, so the same asset plays on every humanoid model: a T-pose
 or an A-pose rig, Mixamo, Blender, Unreal or VRM bone names. There is no retargeting step.
 
@@ -58,10 +59,18 @@ and `render_pose_animation` (see [docs/mcp/guide/pose-animation.md](mcp/guide/po
    - **Pose Animator** (live): add **Add Component > Animation > Pose Animator** to the model's
      GameObject and set its Animation, Autoplay, Speed and Weight. It plays in play mode and in the
      built game, and Lua controls it (below). Its **Open** button opens the asset in the window,
-     **Bake** bakes it.
-   - **Bake**: the window's **Bake** button writes the frames to a keyframe Animation of the
-     character, named in the field next to it, which `Model:playAnimation(name)` plays like any
-     imported clip. Baking again rewrites the same tracks. The bake is one scene undo step.
+     **Bake** opens the same menu (Bake to Animation Clip / Bake into Scene, below).
+   - **Bake**: the window's **Bake** button opens a menu. The name comes from the field next to
+     it (by default the file name). Either way the bake is one scene undo step, and baking again
+     updates the same result.
+     - **Bake to Animation Clip** writes `<name>.anim` next to the pose animation: the mapped
+       bones' rotations and the hips' position. It lists the clip in the
+       character's Animation Player (adding one when needed), so a script plays it with
+       `GameObject(self.scene, self.entity):getAnimationPlayer():play(name)` or
+       `Model(self.scene, self.entity):playAnimation(name)`, and every other character with the
+       same bone names can play it. Its keys can be edited in the Animation window.
+     - **Bake into Scene** writes the frames to a keyframe Animation of the character in this
+       scene, which `Model:playAnimation(name)` plays like any imported clip.
 
 ### Onion skin, balance and Global Edit
 
@@ -225,5 +234,8 @@ The complete reference is in [docs/mcp/guide/lua-api.md](mcp/guide/lua-api.md) (
   side by hand misses the sign of the centre twists and the hips offset.
 - **Changing the feel does nothing.** Poses with their own transition (Custom transition, or after
   Auto Timing) ignore the animation's feel; **Reset Custom** under the timing bar clears them.
-- **The bake does not play.** Bake writes an Animation named in the field (default: the file name)
-  on the model; play it with `Model:playAnimation("walk")`. Baking again replaces its keys.
+- **The bake does not play.** Both bakes use the name in the field (default: the file name).
+  **Bake to Animation Clip** adds the state `walk` to the character's Animation Player: play it with
+  `Model:playAnimation("walk")` or the player's `play("walk")`, or set it as the Default Clip.
+  **Bake into Scene** writes an Animation named `walk` on the model; play it with
+  `Model:playAnimation("walk")`. Baking again replaces the keys.

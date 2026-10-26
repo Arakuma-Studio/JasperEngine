@@ -360,13 +360,20 @@ bool editor::PasteEntitiesCmd::execute(){
         }
 
         Signature blockSignature;
+        bool reparented = false;
         for (size_t i = tailStart; i < tailEnd; i++) {
             Transform& transform = transforms->getComponentFromIndex(i);
             if (transform.parent == NULL_ENTITY && parent != NULL_ENTITY) {
                 transform.parent = parent;
                 transform.needUpdate = true;
+                reparented = true;
             }
             blockSignature |= scene->getSignature(transforms->getEntity(i));
+        }
+        // parents written in place: Animation Players rebind (the sort below bumps it too, but
+        // a block already in place is not sorted)
+        if (reparented) {
+            scene->hierarchyChanged();
         }
 
         if (destination < tailStart) {

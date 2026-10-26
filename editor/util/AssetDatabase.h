@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 // Unity's AssetDatabase, for the asset types referenced by GUID: a 128-bit id written in
-// the asset file itself (a top-level `guid:` key), mapped to the file's project-relative
-// path. References store the GUID and the path as a hint, so a file renamed or moved,
-// inside the editor or outside it, is still found. Only .prefab files are tracked now;
-// isTrackedFile is the one place another type (scenes, materials) would be added.
-// The contract is in editor/project/PREFABS.md.
+// the asset file itself (a top-level `guid:` key in a .prefab, the top-level "guid" member of
+// an .anim clip's JSON), mapped to the file's project-relative path. References store the GUID
+// and the path as a hint, so a file renamed or moved, inside the editor or outside it, is still
+// found. .prefab and .anim files are tracked; isTrackedFile is the one place another type
+// (scenes, materials) would be added. The contract is in editor/project/PREFABS.md (clips:
+// animation clips spec 9.R8).
 
 #pragma once
 
@@ -41,16 +42,20 @@ namespace jasperengine::editor {
         static std::string legacyGuid(const std::filesystem::path& relativePath);
         static bool isGuid(const std::string& text);
 
-        // The file's top-level `guid:` value, empty without one
+        // The file's top-level `guid:` value (an .anim: its "guid" member), empty without one
         static std::string readGuid(const std::filesystem::path& fullPath);
         // Writes `guid` as the file's top-level `guid:` value, the rest of the file unchanged
-        // (a line replaced or inserted at the top)
+        // (a line replaced or inserted at the top; an .anim: the "guid" member replaced or
+        // inserted after "version", false for a file that is not a JasperEngine clip)
         static bool writeGuid(const std::filesystem::path& fullPath, const std::string& guid);
 
         // Scans the project: every tracked file gets a GUID (legacy files are upgraded on
         // disk), a GUID found twice stays with the file that had it before (the cache from the
         // last session, else the older file) and the other file gets a new one
         void open(const std::filesystem::path& projectPath);
+        // Read-only (a CLI check, a headless analysis): GUIDs are given in memory only, no asset
+        // file and no cache is ever written. Kept across open/close.
+        void setReadOnly(bool readOnly);
         void close();
         bool isOpen() const;
 
@@ -88,6 +93,7 @@ namespace jasperengine::editor {
 
         // The editor saves scenes (and their prefabs) on a background thread too
         mutable std::recursive_mutex mutex;
+        bool readOnly = false;
         std::filesystem::path projectPath;
         std::map<std::string, Entry> byPath;               // generic relative path -> entry
         std::unordered_map<std::string, std::string> byGuid; // guid -> generic relative path
@@ -101,6 +107,8 @@ namespace jasperengine::editor {
         void stat(const std::string& relative, Entry& entry) const;
         void insert(const std::string& relative, const std::string& guid);
         void erase(const std::string& relative);
+        // writeGuid into a project file, unless read-only
+        bool writeFileGuid(const std::string& relative, const std::string& guid);
         // A GUID no other registered file has, written into the file
         std::string assignNewGuid(const std::string& relative, const std::string& preferred = std::string());
         // Tracked files below a path (the path itself when it is a file), generic relative

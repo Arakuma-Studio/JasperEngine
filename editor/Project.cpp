@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "Project.h"
+#include "animation/AnimationClipDocument.h"
+#include "animation/ModelSubClips.h"
 #include "pose/PoseAnimationDocument.h"
 #include "pose/PoseRigProvider.h"
 #include "pose/PoseSheetRenderer.h"
@@ -50,6 +52,7 @@
 #include "subsystem/PoseAnimatorSystem.h"
 #include "pose/ModelRig.h"
 #include "pose/PoseAnimatorRuntime.h"
+#include "animation/ModelSubClips.h"
 #include "htmlui/anim/AnimEngine.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateEntityCmd.h"
@@ -663,6 +666,36 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
         }
     });
 
+    // Animation Player clips: the .anim path (its GUID stays), or the model part of
+    // "<model>#<clip>" (R26). A reference the transform empties (its file deleted) is kept: the
+    // Inspector shows it missing, and undoing the delete relinks it (R8).
+    visitComponents(registry->getComponentArray<AnimationPlayerComponent>(), [&](AnimationPlayerComponent& player) {
+        bool playerChanged = false;
+        for (AnimationPlayerClip& entry : player.clips) {
+            if (entry.clip.empty()) {
+                continue;
+            }
+            anim::SubClipReference reference;
+            if (anim::parseSubClipReference(entry.clip, reference)) {
+                std::string model = reference.model;
+                if (transform(model) && !model.empty() && model != reference.model) {
+                    entry.clip = anim::formatSubClipReference(model, reference.clip);
+                    playerChanged = true;
+                }
+                continue;
+            }
+            std::string path = entry.clip;
+            if (transform(path) && !path.empty() && path != entry.clip) {
+                entry.clip = path;
+                playerChanged = true;
+            }
+        }
+        if (playerChanged) {
+            player.needsLoad = true;
+            changed = true;
+        }
+    });
+
     // the document itself; references inside its HTML/CSS are not rewritten (phase 4)
     visitComponents(registry->getComponentArray<UIDocumentComponent>(), [&](UIDocumentComponent& document) {
         if (!document.filename.empty() && transform(document.filename)) {
@@ -797,6 +830,18 @@ SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* regis
 
     visitComponents(registry->getComponentArray<AudioSourceComponent>(), [&](AudioSourceComponent& sound) {
         addFile(resources.sounds, sound.filename);
+    });
+
+    // Animation Player clips (AnimationClipPool); a model sub-clip is built once its model is
+    // loaded, so the model is preloaded too
+    visitComponents(registry->getComponentArray<AnimationPlayerComponent>(), [&](AnimationPlayerComponent& player) {
+        for (const AnimationPlayerClip& entry : player.clips) {
+            anim::SubClipReference reference;
+            if (anim::parseSubClipReference(entry.clip, reference)) {
+                addFile(resources.models, reference.model);
+            }
+            addFile(resources.clips, entry.clip);
+        }
     });
 
     // UIDocumentComponent: nothing to preload. RmlUi reads a document and its stylesheets when
@@ -1335,7 +1380,7 @@ static bool visitSceneSettingsAssetPaths(Scene* scene, const std::function<bool(
     return passesChanged || lutChanged;
 }
 
-void editor::Project::applyAssetPathChange(const std::function<bool(std::string&)>& transform) {
+void editor::Project::applyAssetPathChange(const std::function<bool(std::string&)>& transform, bool savePrefabAssets) {
     for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
         SceneProject& sceneProject = *sceneProjectPtr;
         if (!sceneProject.scene)
@@ -1350,7 +1395,7 @@ void editor::Project::applyAssetPathChange(const std::function<bool(std::string&
     }
 
     for (auto& [prefabPath, prefab] : prefabAssets) {
-        if (!prefab.registry || !visitAssetPathsInRegistry(prefab.registry.get(), transform)) {
+        if (!prefab.registry || !visitAssetPathsInRegistry(prefab.registry.get(), transform) || !savePrefabAssets) {
             continue;
         }
 
@@ -1379,6 +1424,11 @@ void editor::Project::remapAssetFilePath(const std::filesystem::path& oldPath, c
         return;
     }
 
+    // An .anim is found by its GUID (spec 9.R8): a loaded prefab asset using it follows in memory,
+    // its file is not rewritten (it resolves when read). Anything else saves the prefab assets
+    // it changes, as before.
+    std::error_code ec;
+    const bool clipFile = !fs::is_directory(newPath, ec) && Util::isAnimationClipFile(oldPath.string());
     applyAssetPathChange([&](std::string& assetPath) -> bool {
         std::string updated;
         if (!remapRelativeString(oldRelative, newRelative, assetPath, updated)) {
@@ -1386,7 +1436,7 @@ void editor::Project::remapAssetFilePath(const std::filesystem::path& oldPath, c
         }
         assetPath = updated;
         return true;
-    });
+    }, !clipFile);
 }
 
 void editor::Project::cleanupAssetFilePath(const std::filesystem::path& deletedPath) {
@@ -1853,6 +1903,8 @@ bool editor::Project::reloadModelFile(const fs::path& fbxPath, bool synchronous)
     }
 
     MeshSystem::invalidateModelFile(filename);
+    // its sub-clips (AnimationClipPool "<model>#*"), their documents and the players using them
+    AnimationClipDocument::filesChanged({fbxPath.lexically_normal()}, this);
     const bool wasAsync = Engine::isAsyncLoading();
     if (synchronous) {
         Engine::setAsyncLoading(false);
@@ -3367,6 +3419,9 @@ editor::SceneProject* editor::Project::createRuntimeCloneFromSource(const SceneP
     runtime->id = source->id;
     runtime->defaultCamera = createDefaultCamera(runtime->sceneType, runtime->scene);
     Stream::decodeSceneProjectEntities(this, runtime.get(), sceneNode);
+    // clip references written before a rename point at the file by GUID (the play startup
+    // worker may run this: the database is only read)
+    resolveRegistryClipRefs(runtime->scene, false);
     pauseEngineScene(runtime->scene, true);
 
     return runtime.release();
@@ -4996,6 +5051,12 @@ void editor::Project::loadSceneProjectData(SceneProject* sceneProject, const YAM
 
     updateSceneCppScripts(sceneProject);
     updateScenePrefabs(sceneProject);
+
+    // Animation Player clips follow their GUIDs (R8): a hint a rename left stale is repaired (the
+    // scene is then modified, as for prefab references)
+    if (resolveRegistryClipRefs(sceneProject->scene)) {
+        sceneProject->prefabRefsChanged = true;
+    }
 }
 
 bool editor::Project::loadChildSceneInline(uint32_t childSceneId) {
@@ -5267,8 +5328,11 @@ void editor::Project::resetEngineConfigs(bool executeViewChanged) {
 }
 
 void editor::Project::resetConfigs() {
-    // pose animation documents and rigs belong to the project
+    // pose animation and clip documents and rigs belong to the project
     PoseAnimationDocument::closeAll();
+    AnimationClipDocument::closeAll();
+    // the Inspector's asset was a file of the old project
+    inspectedAsset.clear();
     PoseRigProvider::clear();
     // and the offscreen renderers render_pose_animation keeps of its models
     PoseSheetRenderer::clearShared();
@@ -5744,6 +5808,8 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         sceneProject->scene->getSystem<AudioSystem>()->stopSceneSounds();
         // what the animators played (and the bone poses they remember) goes with Play
         sceneProject->scene->getSystem<PoseAnimatorSystem>()->resetAnimators();
+        // and the Animation Players (animation clips spec 3.3)
+        sceneProject->scene->getSystem<ActionSystem>()->resetPlayers();
 
         // The copy goes with Stop, so its id does too: after the prefab instances the game
         // made in it went (their destroyer finds the copy by that id), before the copy is
@@ -9234,4 +9300,37 @@ std::vector<editor::SceneProject*> editor::Project::getRunningRuntimeLayerScenes
     }
 
     return runningLayers;
+}
+
+void editor::Project::setInspectedAsset(const std::filesystem::path& absolutePath){
+    inspectedAsset = absolutePath;
+}
+
+void editor::Project::clearInspectedAsset(){
+    inspectedAsset.clear();
+}
+
+void editor::Project::remapInspectedAsset(const std::filesystem::path& oldPath, const std::filesystem::path& newPath){
+    if (inspectedAsset.empty()) {
+        return;
+    }
+    const std::filesystem::path relative = inspectedAsset.lexically_normal().lexically_relative(oldPath.lexically_normal());
+    if (relative.empty() || *relative.begin() == "..") {
+        return;
+    }
+    inspectedAsset = relative == "." ? newPath.lexically_normal() : (newPath / relative).lexically_normal();
+}
+
+void editor::Project::cleanupInspectedAsset(const std::filesystem::path& deletedPath){
+    if (inspectedAsset.empty()) {
+        return;
+    }
+    const std::filesystem::path relative = inspectedAsset.lexically_normal().lexically_relative(deletedPath.lexically_normal());
+    if (!relative.empty() && *relative.begin() != "..") {
+        inspectedAsset.clear();
+    }
+}
+
+const std::filesystem::path& editor::Project::getInspectedAsset() const{
+    return inspectedAsset;
 }

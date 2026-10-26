@@ -297,6 +297,12 @@ bool editor::PoseAnimationDocument::commit(const pose::PoseAnimationData& newDat
     if (!onDisk){
         return fail(error, "'" + relativePath + "' does not exist any more");
     }
+    // written by something else since it was read (the poll or auto-sync had not seen it yet):
+    // the edit was made on old content, so it is not written over the new one
+    if (stampChanged()){
+        reloadFromDisk();
+        return fail(error, "'" + relativePath + "' changed on disk since it was read: it was reloaded, make the edit again");
+    }
     pose::PoseAnimationData copy = newData;
     std::vector<pose::ClampReport> reports;
     pose::clampData(copy, reports);

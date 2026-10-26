@@ -1099,7 +1099,9 @@ bool opBake(Session& s, const Json& op, const std::string& where, Json& result, 
         target = targets[0];
     }
     std::string path, note, why;
-    // canBake gives the inspector's reason (a generated mesh, no bakeable binding...) before any work
+    // canBake gives the inspector's reason (a generated mesh, no bakeable binding...) before any
+    // work, on what the bake reads: the scene with its previews restored
+    LatticeEditorOps::restoreForBake(s.sceneId, s.scene(), target);
     if (!LatticeEditorOps::canBake(s.scene(), target, &why)) {
         return opFailed(error, where + ".target", label(s.scene(), target) + " cannot be baked: " + why);
     }
@@ -1456,11 +1458,9 @@ void registerLatticeTools(McpRegistry& registry) {
         "Lattice (FFD cage) edits as in the Scene view; one undo step, undone on any error. lattice: "
         "default: selected/only one; create {targets, name, resolution, fit_padding} fits one "
         "around targets, bound. Then resolution (resamples), interpolation, outside, fade_distance, "
-        "then ops in order: set {points: [{ijk|index, offset|position, space}]}, move {select, offset, "
-        "rotate (deg), scale, pivot center|lattice|[x,y,z], space, falloff {radius, curve}}, reset {select}, "
-        "preset {name, axis, toward, amount, seed, mode, select}, mirror {axis, from +|-}, fit {targets, "
-        "padding}, bind {target, weight, stage, submesh, mask, include_children}, unbind {target}, follow "
-        "{target, rest}, pose {save|apply|delete: name, weight}, bake {target}. select (default all): all, exterior, interior, "
+        "then ops in order (fields: jasper://docs/lattice): set {points}, move {select, offset, rotate, scale}, "
+        "reset, preset {name}, mirror, fit, bind {target}, unbind, follow, pose {save|apply|delete}, bake. "
+        "select (default all): all, exterior, interior, "
         "selected, +x..-z, [points] or {face, i, j, k (n|[lo,hi]), points, box, sphere (world)} intersected. "
         "Offsets: lattice-local (unit cube). Returns targets, moved_points, max_offset, warnings, "
         "points (detail points), samples (sample: world points -> deformed, stretch). No edits: a read (play "

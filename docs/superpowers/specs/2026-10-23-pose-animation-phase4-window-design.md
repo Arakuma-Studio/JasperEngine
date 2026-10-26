@@ -104,8 +104,9 @@ Additions (implementation; the members above are unchanged, these are extra):
     `PrefabOverrideCmd`, `PrefabOverridesCmd::applyAll`, and the MCP create_prefab / create_prefab_variant
     encodes.
   - Commands are never recorded against posed bone values (re-review ruling): a `PropertyCmd` on a
-    Transform, an `ObjectTransformCmd` and a Transform `ComponentValuesCmd` (paste values, reset) call `poseInspectorHooks().beforeTransformWrite` before they
-    read the old values, and the window's hook `suspendActiveForBone` restores the rest when the entity
+    Transform, an `ObjectTransformCmd` and a Transform `ComponentValuesCmd` (paste values, reset) notify `ClipRecordHooks::beforeChannelWrite` (animation clips 9.R5;
+    it replaced `poseInspectorHooks().beforeTransformWrite`) before they read the old values, and the
+    window's listener `PoseEditSession::beforeChannelWrite` -> `suspendActiveForBone` restores the rest when the entity
     is a posed bone (not the model): the edit applies to the rest pose (Inspector, gizmo, MCP
     set_transform / set_properties alike). Scene undo / redo (second re-review ruling): since commands
     carry rest values, `CommandHistory::beforeStep` -> `suspendActiveForScene` suspends the posing
@@ -117,6 +118,14 @@ Additions (implementation; the members above are unchanged, these are extra):
     move suspends when the branch holds a posed bone or the model, or the old or new parent is (or is
     under) one (a prop held by a posed hand), and recomputes the moved GameObject's world (and the
     non-bone GameObjects between it and the bone) from the restored rest (`suspendActiveForMove`).
+    With animation clips (merge of main into animation-clips) the reparent, and its undo, go
+    through `MoveEntityOrderCmd::prepareReparent`: only a real parent change (a reorder among the
+    same siblings recomputes nothing, so the pose and the clip previews go on), the clip previews
+    of the branch or of either place stop first (`PreviewOwner::stopFor`, clips 9.R7), then
+    `suspendActiveForMove`, then the moved GameObject's and the new parent's chains are recomputed
+    from the root down (a prop under a previewed bone had its world from the preview too). A
+    prefab override record suspends as well (clips 9.R7: every `PrefabOverrideCmd` operation and
+    its undo).
   - Saving the bones (the first apply) recomputes, parents first, the matrices of every bone (and
     ancestor) whose Transform has an update pending (`refreshPendingTransforms`, the transform
     system's `RenderSystem::updateTransform`): a keyboard / menu undo runs in `App::show` before the

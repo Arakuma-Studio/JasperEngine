@@ -5,6 +5,7 @@
 
 #include "command/Command.h"
 #include "Project.h"
+#include "animation/AnimationClipDocument.h"
 #include <vector>
 #include <string>
 #include <filesystem>
@@ -22,9 +23,14 @@ namespace jasperengine::editor{
         fs::path newFilename;
         fs::path directory;
 
+        // .anim files whose preview/source paths followed the rename (animation clips spec
+        // 9.R26), put back by the undo
+        std::vector<ClipHintEdit> clipHintEdits;
+
         // Relocates the cached thumbnail so a rename doesn't force it to regenerate.
         void moveThumbnail(const fs::path& oldThumbnail, const fs::path& renamedFile);
-        void renameFile(const fs::path& source, const fs::path& destination);
+        // false when there was no source to rename
+        bool renameFile(const fs::path& source, const fs::path& destination);
 
     public:
         RenameFileCmd(Project* project, std::string oldName, std::string newName, std::string directory);

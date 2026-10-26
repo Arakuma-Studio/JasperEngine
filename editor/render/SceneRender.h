@@ -100,6 +100,8 @@ namespace jasperengine::editor{
         float selectionOffset;
 
         Command* lastCommand;
+        // this drag already said that Record does not key it (ClipRecordHooks::note)
+        bool gizmoRecordNoted = false;
 
         CursorSelected cursorSelected;
 
@@ -412,6 +414,24 @@ namespace jasperengine::editor{
         // sceneId is this scene: its history takes the commands. While an edit layer is set
         // the tools work on the layer's selection, and its commands target the layer.
         virtual void mouseDragEvent(float x, float y, float origX, float origY, Project* project, size_t sceneId, std::vector<Entity> selEntities, bool disableSelection, bool invertRotationSnap, bool preserveAspectRatio);
+
+        // Record (animation clips 9.R5), the transform gizmo's drag: `localMatrix` is `entity`'s
+        // new local matrix from `gizmo` (Move: Position, Rotate: Rotation, Scale: Scale). When
+        // Record claims that channel for some of `selection`, a claimed entity's value is recorded
+        // (the live value and a key at the playhead, one merge key per drag, no scene command) and
+        // an unclaimed one stays as it is; returns false when Record does not take the drag (the
+        // caller builds the scene command). Rotate / Scale about another pivot also key the moved
+        // position. The drag's release ends the gesture (endGizmoRecord).
+        // `selectionClaimed`: gizmoRecordClaims of the drag's selection (asked once per drag event)
+        bool recordGizmoTransform(uint32_t sceneId, Entity entity, const Matrix4& localMatrix, GizmoSelected gizmo,
+                                  bool selectionClaimed);
+        bool gizmoRecordClaims(uint32_t sceneId, GizmoSelected gizmo, const std::vector<Entity>& selection) const;
+        // the gizmo drag's step for one GameObject (Move / Rotate / Scale of its new local matrix):
+        // recorded (null) or the ObjectTransformCmd to add (the caller adds it; the drag's release,
+        // mouseReleaseEvent, ends its merging and the record gesture)
+        Command* buildObjectTransformDrag(Project* project, uint32_t sceneId, Entity entity, const Matrix4& localMatrix,
+                                          GizmoSelected gizmo, bool selectionClaimed);
+        void endGizmoRecord();
 
         virtual bool isAnyGizmoSideSelected() const;
 

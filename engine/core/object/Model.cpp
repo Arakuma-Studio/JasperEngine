@@ -8,8 +8,91 @@
 #include "subsystem/MeshSystem.h"
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
+#include "component/AnimationPlayerComponent.h"
+#include "animation/AnimationPlayerRuntime.h"
+#include "animation/ModelSubClips.h"
+
+#include <algorithm>
 
 using namespace jasperengine;
+
+// The Animation Player on the model's GameObject: playAnimation / stopAnimations go to it first
+// (animation clips spec 3.4, 9.R15/R42); the entity animations stay the fallback
+static AnimationPlayerComponent* findModelPlayer(Scene* scene, Entity entity){
+    return scene->isEntityCreated(entity) ? scene->findComponent<AnimationPlayerComponent>(entity) : nullptr;
+}
+
+static bool playerHasState(const AnimationPlayerComponent& player, const std::string& name){
+    std::vector<std::string> names = anim::playerStateNames(player.clips);
+    return std::find(names.begin(), names.end(), name) != names.end();
+}
+
+// every running entity animation of the model fades out (except `keep`)
+static void fadeOutModelAnimations(Scene* scene, const ModelComponent& model, Entity keep, float fadeTime){
+    for (Entity animEntity : model.animations){
+        if (animEntity == keep || animEntity == NULL_ENTITY || !scene->isEntityCreated(animEntity))
+            continue;
+
+        Signature signature = scene->getSignature(animEntity);
+        if (!signature.test(scene->getComponentId<AnimationComponent>()) ||
+            !signature.test(scene->getComponentId<ActionComponent>()))
+            continue;
+
+        ActionComponent& action = scene->getComponent<ActionComponent>(animEntity);
+        if (action.state == ActionState::Running || action.state == ActionState::Paused || action.startTrigger){
+            Animation(scene, animEntity).fadeOut(fadeTime);
+        }
+    }
+}
+
+// The entity animation of the model named `name` (-1 when none). The names the Inspector shows
+// come first: the sub-clip names of the file's animations (the second of two glTF animations
+// both named "Wave" is "Wave 2"; an entity renamed since keeps its file name there), which
+// loadGLTF keeps on the component (no pooled-glTF lock here: a call never waits for another
+// model's load). Then, as before, its entity name (the first of that name), and the sub-clip
+// names of the entity names (the only names without a glTF parse, or when the counts differ).
+static int findModelAnimationIndex(Scene* scene, const ModelComponent& model, const std::string& name){
+    const size_t count = model.animations.size();
+    auto valid = [&](size_t i){
+        Entity animEntity = model.animations[i];
+        return animEntity != NULL_ENTITY && scene->isEntityCreated(animEntity) &&
+               scene->getSignature(animEntity).test(scene->getComponentId<AnimationComponent>());
+    };
+    if (model.animationClipNames.size() == count){
+        for (size_t i = 0; i < count; i++){
+            if (model.animationClipNames[i] == name && valid(i)) return (int)i;
+        }
+    }
+    // the loader names an unnamed animation "Animation <i>" itself: a valid entity's name is never empty
+    std::vector<std::string> entityNames(count);
+    for (size_t i = 0; i < count; i++){
+        if (valid(i)) entityNames[i] = scene->getEntityName(model.animations[i]);
+    }
+    auto find = [&](const std::vector<std::string>& names){
+        for (int i = 0; i < (int)names.size(); i++){
+            if (!entityNames[i].empty() && names[i] == name) return i;
+        }
+        return -1;
+    };
+    const int index = find(entityNames);
+    return index >= 0 ? index : find(anim::subClipNames(entityNames));
+}
+
+// the entity animation `index` crossfades in, the model's other running ones out
+static void playModelEntityAnimation(Scene* scene, const ModelComponent& model, int index, float fadeTime){
+    Entity target;
+    try{
+        target = model.animations.at(index);
+    }catch (const std::out_of_range& e){
+        Log::error("Playing non-existent animation: %s", e.what());
+        return;
+    }
+
+    // Fade out every other animation of this model that is currently running.
+    fadeOutModelAnimations(scene, model, target, fadeTime);
+
+    Animation(scene, target).fadeIn(fadeTime);
+}
 
 Model::Model(Scene* scene): Mesh(scene){
     addComponent<ModelComponent>();
@@ -101,13 +184,9 @@ Animation Model::getAnimation(int index){
 Animation Model::findAnimation(const std::string& name){
     ModelComponent& model = getComponent<ModelComponent>();
 
-    for (int i = 0; i < model.animations.size(); i++){
-        Signature signature = scene->getSignature(model.animations[i]);
-        if (signature.test(scene->getComponentId<AnimationComponent>())){
-            if (scene->getEntityName(model.animations[i]) == name){
-                return Animation(scene, model.animations[i]);
-            }
-        }
+    int index = findModelAnimationIndex(scene, model, name);
+    if (index >= 0){
+        return Animation(scene, model.animations[index]);
     }
     Log::error("Retrieving non-existent animation: %s", name.c_str());
     throw std::out_of_range("vector animations is out of range");
@@ -116,34 +195,32 @@ Animation Model::findAnimation(const std::string& name){
 void Model::playAnimation(int index, float fadeTime){
     ModelComponent& model = getComponent<ModelComponent>();
 
-    Entity target;
-    try{
-        target = model.animations.at(index);
-    }catch (const std::out_of_range& e){
-        Log::error("Playing non-existent animation: %s", e.what());
-        return;
-    }
-
-    // Fade out every other animation of this model that is currently running.
-    for (Entity animEntity : model.animations){
-        if (animEntity == target || animEntity == NULL_ENTITY || !scene->isEntityCreated(animEntity))
-            continue;
-
-        Signature signature = scene->getSignature(animEntity);
-        if (!signature.test(scene->getComponentId<AnimationComponent>()) ||
-            !signature.test(scene->getComponentId<ActionComponent>()))
-            continue;
-
-        ActionComponent& action = scene->getComponent<ActionComponent>(animEntity);
-        if (action.state == ActionState::Running || action.state == ActionState::Paused || action.startTrigger){
-            Animation(scene, animEntity).fadeOut(fadeTime);
+    // with an Animation Player an index is one of its states first (as a name is); an index past
+    // its states is the entity animation of that index, which the player's states make room for
+    if (AnimationPlayerComponent* player = findModelPlayer(scene, entity)){
+        std::vector<std::string> names = anim::playerStateNames(player->clips);
+        if (index >= 0 && index < (int)names.size()){
+            anim::playState(*player, names[(size_t)index], fadeTime, getName());
+            fadeOutModelAnimations(scene, model, NULL_ENTITY, fadeTime);
+            return;
         }
+        if (index < 0 || index >= (int)model.animations.size()){
+            Log::error("Playing non-existent animation: '%s' has no Animation Player state or animation %i", getName().c_str(), index);
+            return;
+        }
+        anim::fadeOutStates(*player, fadeTime);
     }
 
-    Animation(scene, target).fadeIn(fadeTime);
+    playModelEntityAnimation(scene, model, index, fadeTime);
 }
 
 void Model::playAnimation(int index){
+    AnimationPlayerComponent* player = findModelPlayer(scene, entity);
+    if (player && index >= 0 && index < (int)player->clips.size()){
+        playAnimation(index, player->defaultFadeTime);
+        return;
+    }
+
     ModelComponent& model = getComponent<ModelComponent>();
 
     float fadeTime = 0.0f;
@@ -161,14 +238,22 @@ void Model::playAnimation(int index){
 void Model::playAnimation(const std::string& name, float fadeTime){
     ModelComponent& model = getComponent<ModelComponent>();
 
-    for (int i = 0; i < (int)model.animations.size(); i++){
-        Signature signature = scene->getSignature(model.animations[i]);
-        if (signature.test(scene->getComponentId<AnimationComponent>())){
-            if (scene->getEntityName(model.animations[i]) == name){
-                playAnimation(i, fadeTime);
-                return;
-            }
+    // a state of the Animation Player first; else the entity animation of that name, which the
+    // player's states then make room for
+    AnimationPlayerComponent* player = findModelPlayer(scene, entity);
+    if (player && playerHasState(*player, name)){
+        anim::playState(*player, name, fadeTime, getName());
+        fadeOutModelAnimations(scene, model, NULL_ENTITY, fadeTime);
+        return;
+    }
+
+    int index = findModelAnimationIndex(scene, model, name);
+    if (index >= 0){
+        if (player){
+            anim::fadeOutStates(*player, fadeTime);
         }
+        playModelEntityAnimation(scene, model, index, fadeTime);
+        return;
     }
 
     Log::error("Playing non-existent animation: %s", name.c_str());
@@ -177,14 +262,20 @@ void Model::playAnimation(const std::string& name, float fadeTime){
 void Model::playAnimation(const std::string& name){
     ModelComponent& model = getComponent<ModelComponent>();
 
-    for (int i = 0; i < (int)model.animations.size(); i++){
-        Signature signature = scene->getSignature(model.animations[i]);
-        if (signature.test(scene->getComponentId<AnimationComponent>())){
-            if (scene->getEntityName(model.animations[i]) == name){
-                playAnimation(i, scene->getComponent<AnimationComponent>(model.animations[i]).defaultFadeTime);
-                return;
-            }
+    AnimationPlayerComponent* player = findModelPlayer(scene, entity);
+    if (player && playerHasState(*player, name)){
+        playAnimation(name, player->defaultFadeTime);
+        return;
+    }
+
+    int index = findModelAnimationIndex(scene, model, name);
+    if (index >= 0){
+        const float fadeTime = scene->getComponent<AnimationComponent>(model.animations[index]).defaultFadeTime;
+        if (player){
+            anim::fadeOutStates(*player, fadeTime);
         }
+        playModelEntityAnimation(scene, model, index, fadeTime);
+        return;
     }
 
     Log::error("Playing non-existent animation: %s", name.c_str());
@@ -192,6 +283,10 @@ void Model::playAnimation(const std::string& name){
 
 void Model::stopAnimations(float fadeTime){
     ModelComponent& model = getComponent<ModelComponent>();
+
+    if (AnimationPlayerComponent* player = findModelPlayer(scene, entity)){
+        anim::fadeOutStates(*player, fadeTime);
+    }
 
     for (Entity animEntity : model.animations){
         if (animEntity == NULL_ENTITY || !scene->isEntityCreated(animEntity))
@@ -274,6 +369,11 @@ void Model::setMorphWeight(int id, float value){
 
     if (id >= 0 && id < MAX_MORPHTARGETS){
         mesh.morphWeights[id] = value;
+        // the weights are the mesh's own now, up to this target at least: a load (also one still
+        // running) keeps them; targets past the count get the file's defaults
+        // (MeshComponent::morphTargetCount)
+        mesh.morphWeightsSet = true;
+        mesh.morphTargetCount = std::max(mesh.morphTargetCount, id + 1);
     }else{
         Log::error("Retrieving non-existent morph weight '%i'", id);
     }

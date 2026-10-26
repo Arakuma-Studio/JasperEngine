@@ -6,6 +6,7 @@
 
 #include "App.h"
 #include "Backend.h"
+#include "animation/AnimationClipAppHooks.h"
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include "util/BidiText.h"
@@ -291,6 +292,8 @@ void editor::HierarchyWindow::applyEntitySelection(uint32_t sceneId, Entity enti
     selectedScenes.clear();
     project->setSelectedSceneForProperties(sceneId);
     clearSubSelectionForEntity(sceneId, entity);
+    // a user selection makes the GameObject the inspected object (animation clips 9.R30)
+    project->clearInspectedAsset();
 
     selectionAnchorSceneId = sceneId;
     selectionAnchorEntity = entity;
@@ -1884,11 +1887,29 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
             }
         }
 
+        // clips onto a GameObject: an Animation Player (added or reused) plays them, one scene
+        // step (animation clips spec 4.1; the hook is the converters')
+        // (not a payload the drop above took: a prefab with a clip makes the instance only)
+        if (!allowResourceDragDrop && !node.isScene && !node.isPlayCreated && animationClipAppHooks().dropClips && !project->isAnyScenePlaying()) {
+            const ImGuiPayload* peek = ImGui::GetDragDropPayload();
+            std::vector<std::string> clips;
+            if (peek && peek->IsDataType("resource_files")) {
+                for (const std::string& path : Util::getStringsFromPayload(peek)) {
+                    if (Util::isAnimationClipFile(path)) clips.push_back(path);
+                }
+            }
+            if (!clips.empty() && ImGui::AcceptDragDropPayload("resource_files")) {
+                Backend::getApp().dispatchClipDrop(getNodeSceneId(node), node.id, clips);
+                ImGui::SetWindowFocus(HierarchyWindow::WINDOW_NAME);
+            }
+        }
+
         ImGui::EndDragDropTarget();
     }
 
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGui::IsAnyItemHovered() && ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows)) {
         project->clearAllSelections(project->getSelectedSceneId());
+        project->clearInspectedAsset();
         selectedScenes.clear();
         project->setSelectedSceneForProperties(project->getSelectedSceneId());
         resetEntitySelectionAnchor();

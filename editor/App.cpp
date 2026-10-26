@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "window/AnimationWindowClip.h"
 
 #include "imgui_internal.h"
 #include "Platform.h"
@@ -48,6 +49,8 @@
 #include "render/preview/PoseRender.h"
 #include "pose/PoseTemplates.h"
 #include "pose/PoseViewport.h"
+#include "animation/AnimationClipAppHooks.h"
+#include "animation/AnimationClipController.h"
 
 #include <filesystem>
 #include <cstdlib>
@@ -291,6 +294,7 @@ enum class AppMenuCommand : uint32_t {
     AssetsCreateLuaScript,
     AssetsCreateHtmlDocument,
     AssetsCreatePoseAnimation,
+    AssetsCreateAnimationClip,      // shown only once AnimationClipAppHooks::createClipAsset is set
     AssetsCreateCppScript,
     AssetsShowInFileManager,
     AssetsOpen,
@@ -452,7 +456,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
     bool canUndo = false;
     bool canRedo = false;
     if (!textInput) {
-        if (lastFocusedWindow == LastFocusedWindow::Resources || lastFocusedWindow == LastFocusedWindow::PoseAnimation) {
+        if (undoGoesToProjectHistory()) {
             canUndo = project.getProjectCommandHistory()->canUndo();
             canRedo = project.getProjectCommandHistory()->canRedo();
         } else if (lastFocusedWindow == LastFocusedWindow::Code) {
@@ -461,6 +465,14 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         } else if (hasSelectedScene) {
             canUndo = CommandHandle::get(selectedSceneId)->canUndo();
             canRedo = CommandHandle::get(selectedSceneId)->canRedo();
+        }
+        // redo is routed on its own (animation clips R5b)
+        if (redoGoesToProjectHistory() != undoGoesToProjectHistory()) {
+            if (redoGoesToProjectHistory()) {
+                canRedo = project.getProjectCommandHistory()->canRedo();
+            } else if (hasSelectedScene) {
+                canRedo = CommandHandle::get(selectedSceneId)->canRedo();
+            }
         }
     }
 
@@ -550,19 +562,25 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuCommand(AppMenuCommand::EditorSettings, "Preferences...")
     }));
 
+    std::vector<PlatformMenuItem> assetsCreateItems = {
+        menuCommand(AppMenuCommand::AssetsCreateFolder, "Folder"),
+        menuSeparator(),
+        menuCommand(AppMenuCommand::AssetsCreateLuaScript, "Lua Script"),
+        menuCommand(AppMenuCommand::AssetsCreateCppScript, "C++ Script"),
+        menuSeparator(),
+        menuCommand(AppMenuCommand::AssetsCreateHtmlDocument, "HTML Document"),
+        menuSeparator(),
+        menuCommand(AppMenuCommand::AssetsCreatePoseAnimation, "Pose Animation")
+    };
+    // Animation Clip: once the clip asset task set its hook
+    if (animationClipAppHooks().createClipAsset) {
+        assetsCreateItems.push_back(menuCommand(AppMenuCommand::AssetsCreateAnimationClip, "Animation Clip"));
+    }
+    assetsCreateItems.push_back(menuSeparator());
+    assetsCreateItems.push_back(menuSubmenu("Scene", newSceneItems(), !isProjectBusy));
+
     menu.menus.push_back(menuSubmenu("Assets", {
-        menuSubmenu("Create", {
-            menuCommand(AppMenuCommand::AssetsCreateFolder, "Folder"),
-            menuSeparator(),
-            menuCommand(AppMenuCommand::AssetsCreateLuaScript, "Lua Script"),
-            menuCommand(AppMenuCommand::AssetsCreateCppScript, "C++ Script"),
-            menuSeparator(),
-            menuCommand(AppMenuCommand::AssetsCreateHtmlDocument, "HTML Document"),
-            menuSeparator(),
-            menuCommand(AppMenuCommand::AssetsCreatePoseAnimation, "Pose Animation"),
-            menuSeparator(),
-            menuSubmenu("Scene", newSceneItems(), !isProjectBusy)
-        }),
+        menuSubmenu("Create", assetsCreateItems),
         menuCommand(AppMenuCommand::AssetsShowInFileManager, "Show in File Manager"),
         menuCommand(AppMenuCommand::AssetsOpen, "Open", singleAsset),
         menuCommand(AppMenuCommand::AssetsRename, "Rename", singleAsset),
@@ -705,7 +723,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             exit();
             break;
         case AppMenuCommand::Undo:
-            if (lastFocusedWindow == LastFocusedWindow::Resources || lastFocusedWindow == LastFocusedWindow::PoseAnimation) {
+            if (undoGoesToProjectHistory()) {
                 project.getProjectCommandHistory()->undo();
                 projectWindow->refreshCurrentDirectory();
             } else if (lastFocusedWindow == LastFocusedWindow::Code) {
@@ -715,7 +733,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             }
             break;
         case AppMenuCommand::Redo:
-            if (lastFocusedWindow == LastFocusedWindow::Resources || lastFocusedWindow == LastFocusedWindow::PoseAnimation) {
+            if (redoGoesToProjectHistory()) {
                 project.getProjectCommandHistory()->redo();
                 projectWindow->refreshCurrentDirectory();
             } else if (lastFocusedWindow == LastFocusedWindow::Code) {
@@ -908,6 +926,12 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::AssetsCreatePoseAnimation:
             projectWindow->assetsCreatePoseAnimation();
+            break;
+        case AppMenuCommand::AssetsCreateAnimationClip:
+            if (animationClipAppHooks().createClipAsset) {
+                animationClipAppHooks().createClipAsset(&project);
+                projectWindow->refreshCurrentDirectory();
+            }
             break;
         case AppMenuCommand::AssetsShowInFileManager:
             projectWindow->assetsShowInFileManager();
@@ -1738,6 +1762,8 @@ void editor::App::setup() {
     layoutIniPath = (AppSettings::getConfigDirectory() / "editor_layout_v2.ini").string();
     io.IniFilename = layoutIniPath.c_str();
     registerLayoutSettings();
+    // the Animation window's saved label width and view (before the first frame loads the ini)
+    AnimationWindowClip::registerSettingsHandler();
 
     // Separate from the window scale: the layout keeps the scale it was built at,
     // while the window is measured on whichever monitor it closes on.
@@ -1836,6 +1862,9 @@ void editor::App::setup() {
 bool editor::App::canEditSelection(bool duplicate) {
     // Enabled items keep their native key equivalent, stealing it from a focused text field.
     if (ImGui::GetIO().WantTextInput) return false;
+    // the focused Animation window owns Delete / Backspace / Ctrl+D (AnimationClipAppHooks::takesKeys):
+    // covers the scene key block and the native menu key equivalents
+    if (animationClipAppHooks().takesKeys && animationClipAppHooks().takesKeys()) return false;
     if (lastFocusedWindow != LastFocusedWindow::AnySceneWindow || project.isAnyScenePlaying()) return false;
     const uint32_t sceneId = project.getSelectedSceneId();
     uint32_t targetSceneId = sceneId;
@@ -2047,16 +2076,28 @@ void editor::App::show(){
     project.syncPlayRuntimeSelections();
 
     if (!ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) {
+        // a Physics Placement gesture of the selected scene: its undo cancels it, before any clip step
+        const bool placementBusy = physicsPlacementWindow->isBusy(project.getSelectedSceneId());
         if (projectWindow->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Resources;
         } else if (codeEditor->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Code;
         } else if (poseAnimationWindow->ownsUndo(sceneWindow->isFocused())) {
             lastFocusedWindow = LastFocusedWindow::PoseAnimation;
+        } else if (clipUndoGoesToProject(placementBusy)) {
+            lastFocusedWindow = LastFocusedWindow::AnimationClip;
         }else{
             lastFocusedWindow = LastFocusedWindow::AnySceneWindow;
         }
+        // redo decided on its own (R5b): a clip commit undone last is redone on the project history
+        clipRedoToProject = false;
+        if (lastFocusedWindow == LastFocusedWindow::AnimationClip || lastFocusedWindow == LastFocusedWindow::AnySceneWindow) {
+            clipRedoToProject = clipRedoGoesToProject(placementBusy, lastFocusedWindow == LastFocusedWindow::AnimationClip);
+        }
     }
+
+    // the Animation window handles its own keys while focused (AnimationClipAppHooks::takesKeys)
+    const bool clipWindowKeys = animationClipAppHooks().takesKeys && animationClipAppHooks().takesKeys();
 
     ImGuiIO& io = ImGui::GetIO();
     bool isUndo = !io.WantTextInput && (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z) && !io.KeyShift);
@@ -2081,7 +2122,7 @@ void editor::App::show(){
         // Play mode (Ctrl+P, Ctrl+Shift+P, Ctrl+Alt+P, F5/F6/F7) and tool shortcuts
         // a Scene view posing the window's character keeps its letter keys for the pose (E: Global Edit)
         const bool scenePosing = sceneWindow->isFocused() && poseAnimationWindow->ownsUndo(true) && !poseAnimationWindow->isFocused();
-        mainToolbar->handleShortcuts(!codeEditor->isFocused() && !poseAnimationWindow->isFocused() && !scenePosing);
+        mainToolbar->handleShortcuts(!codeEditor->isFocused() && !poseAnimationWindow->isFocused() && !scenePosing && !clipWindowKeys);
         if (ImGui::IsKeyPressed(ImGuiKey_F1)) executeMenuCommand({static_cast<uint32_t>(AppMenuCommand::Documentation), {}});
 
         // Unity menu shortcuts. Not while typing: text fields and the code editor
@@ -2142,15 +2183,28 @@ void editor::App::show(){
         }
     }
 
-    if (!popupOpen && !poseKeys && !projectWindow->isFocused() && !codeEditor->isFocused()){
+    // clip edits of the Animation window are project files too (the window runs its own keys)
+    const bool clipKeys = lastFocusedWindow == LastFocusedWindow::AnimationClip;
+    const bool clipRedo = !poseKeys && clipRedoToProject;
+    if (!popupOpen && clipKeys) {
+        if (isUndo) project.getProjectCommandHistory()->undo();
+        // a scene redo while the window takes the keys (the scene block below is off then)
+        if (isRedo && !clipRedo && clipWindowKeys) CommandHandle::get(project.getSelectedSceneId())->redo();
+    }
+    if (!popupOpen && clipRedo && isRedo) {
+        project.getProjectCommandHistory()->redo();
+    }
+
+    // Record routing undo from the Scene view keeps the scene's other keys (Delete, Ctrl+D...)
+    if (!popupOpen && !poseKeys && !(clipKeys && clipWindowKeys) && !projectWindow->isFocused() && !codeEditor->isFocused()){
         uint32_t sceneId = project.getSelectedSceneId();
 
         // Update the Undo and Redo button logic (during a physics gesture or its settle, undo
         // cancels it and redo waits: CommandHistory::beforeChange)
-        if (isUndo) {
+        if (isUndo && !clipKeys) {
             CommandHandle::get(sceneId)->undo();
         }
-        if (isRedo) {
+        if (isRedo && !clipRedo) {
             CommandHandle::get(sceneId)->redo();
         }
 
@@ -2171,7 +2225,7 @@ void editor::App::show(){
         }
 
         // F2 renames inline in the Hierarchy when it has focus, else in the Inspector
-        if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F2, false)) {
+        if (!clipWindowKeys && !io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F2, false)) {
             if (!(hierarchyWindow->isFocused() && hierarchyWindow->renameSelected())) inspectorWindow->focusNameInput();
         }
 
@@ -2438,6 +2492,8 @@ void editor::App::engineInit(int argc, char** argv) {
     CommandHistory::beforeChange = [this](size_t sceneId, CommandHistory::Change change){
         return physicsPlacementWindow->beforeHistoryChange((uint32_t)sceneId, change);
     };
+    // the clip editor's history timeline (undo routing, R5b) after the listeners above
+    AnimationClipController::installHistoryTimeline(&project);
 
     ShaderPool::setShaderBuilder([this](jasperengine::ShaderKey shaderKey) -> jasperengine::ShaderBuildResult {
         static jasperengine::editor::ShaderBuilder builder;  // Make static to reuse
@@ -2722,6 +2778,10 @@ void editor::App::engineRender(){
     project.refreshFbxImports();
     project.refreshAssetDatabase();
     project.updateGeneratedSources();
+    // clip previews (the Animation window's clip mode, MCP preview_animation) advance every frame
+    if (animationClipAppHooks().frame) {
+        animationClipAppHooks().frame(&project, ImGui::GetIO().DeltaTime, ImGui::GetFrameCount());
+    }
     // Prefab Mode's Auto Save waits for the edit in progress (a drag, a field being typed)
     project.updatePrefabStages(ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsAnyItemActive()
         || ImGui::GetIO().WantTextInput || physicsPlacementWindow->isAnyBusy());
@@ -3425,6 +3485,10 @@ void editor::App::setWakeCallback(std::function<void()> cb) {
 }
 
 void editor::App::shutdownBackgroundWork() {
+    // clip previews restored while the scenes still exist (nothing of them runs at static exit)
+    if (animationClipAppHooks().projectClosed) {
+        animationClipAppHooks().projectClosed();
+    }
     loadingPump = nullptr;
     pendingProjectChange = nullptr;
     // Before glfwTerminate/SDL_Quit: pending MCP calls fail, the HTTP listener closes.
@@ -3482,6 +3546,9 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
     if (animationWindow) {
         animationWindow->clearSceneState(sceneId);
     }
+    if (animationClipAppHooks().sceneClosed) {
+        animationClipAppHooks().sceneClosed(sceneId);
+    }
 
     if (poseAnimationWindow) {
         poseAnimationWindow->clearSceneState(sceneId);
@@ -3495,6 +3562,10 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
 void editor::App::prepareForProjectSwitch() {
     // the posed bones go back while their scenes still exist
     poseAnimationWindow->prepareForProjectSwitch();
+    // and the clip previews (documents and the shared clip controller are released)
+    if (animationClipAppHooks().projectClosed) {
+        animationClipAppHooks().projectClosed();
+    }
     imageViewerWindow->closeAll();
     // a synthesis started in this project is cancelled and never written into the next one
     textureSynthesisWindow->resetForProjectSwitch();
@@ -3607,6 +3678,14 @@ void editor::App::stopTransientPreviews() {
     if (poseAnimationWindow) {
         poseAnimationWindow->stopTransientPreviews();
     }
+    // and the Animation window's previewed targets to their snapshots (animation clips 9.R6):
+    // the entity-sequence mode, then the clip mode
+    if (animationWindow) {
+        animationWindow->stopTransientPreviews();
+    }
+    if (animationClipAppHooks().stopTransientPreviews) {
+        animationClipAppHooks().stopTransientPreviews();
+    }
     if (terrainEditWindow) {
         terrainEditWindow->endStroke();
         terrainEditWindow->updateFoliagePreview();
@@ -3621,6 +3700,23 @@ void editor::App::stopTransientPreviews() {
         physicsPlacementWindow->finaliseGestures();
     }
     mcp::stopPlacementPreviews(&project);
+}
+
+bool editor::App::dispatchClipDrop(uint32_t sceneId, Entity target, const std::vector<std::string>& paths) {
+    if (!animationClipAppHooks().dropClips) return false;
+    return animationClipAppHooks().dropClips(&project, sceneId, target, paths);
+}
+
+bool editor::App::redoGoesToProjectHistory() const {
+    if (lastFocusedWindow == LastFocusedWindow::AnimationClip || lastFocusedWindow == LastFocusedWindow::AnySceneWindow) {
+        return clipRedoToProject;
+    }
+    return undoGoesToProjectHistory();
+}
+
+bool editor::App::undoGoesToProjectHistory() const {
+    return lastFocusedWindow == LastFocusedWindow::Resources || lastFocusedWindow == LastFocusedWindow::PoseAnimation ||
+           lastFocusedWindow == LastFocusedWindow::AnimationClip;
 }
 
 void editor::App::flushSceneMaterialWrites(uint32_t sceneId) {

@@ -34,8 +34,11 @@ void editor::RenameFileCmd::moveThumbnail(const fs::path& oldThumbnail, const fs
     fs::rename(oldThumbnail, newThumbnail, ec);
 }
 
-void editor::RenameFileCmd::renameFile(const fs::path& sourceFs, const fs::path& destFs){
-    if (fs::exists(sourceFs)) {
+bool editor::RenameFileCmd::renameFile(const fs::path& sourceFs, const fs::path& destFs){
+    if (!fs::exists(sourceFs)) {
+        return false;
+    }
+    {
         bool isDir = fs::is_directory(sourceFs);
         // Resolve the thumbnail path before the rename, while the source still exists.
         fs::path oldThumbnail = project ? project->getThumbnailPath(sourceFs) : fs::path();
@@ -59,22 +62,35 @@ void editor::RenameFileCmd::renameFile(const fs::path& sourceFs, const fs::path&
             if (isDir || Util::isAssetFile(extension)) {
                 project->remapAssetFilePath(sourceFs, destFs);
             }
+            // clips (their GUIDs follow) and models (their sub-clips): open documents follow, players reload
+            if (isDir || Util::isAnimationClipFile(extension) || Util::isAnimationClipFile(destFs.extension().string()) ||
+                Util::isModelFile(extension)) {
+                project->remapClipFilePath(sourceFs, destFs);
+            }
+            project->remapInspectedAsset(sourceFs, destFs);
             if (isDir || Util::isShaderFile(extension)) {
                 project->remapShaderFilePath(sourceFs, destFs);
                 project->invalidateCustomShaders();
             }
         }
     }
+    return true;
 }
 
 bool editor::RenameFileCmd::execute(){
     fs::path sourceFs = directory / oldFilename;
     fs::path destFs = directory / newFilename;
+    bool renamed = false;
     try {
-        renameFile(sourceFs, destFs);
+        renamed = renameFile(sourceFs, destFs);
     } catch (const fs::filesystem_error& e) {
         printf("Error: Renaming %s: %s\n", sourceFs.string().c_str(), e.what());
         return false;
+    }
+    // clips previewing the renamed model (or taken from it) name it again, in this step
+    clipHintEdits.clear();
+    if (renamed) {
+        clipHintEdits = remapClipHints(project, sourceFs, destFs);
     }
 
     return true;
@@ -83,6 +99,8 @@ bool editor::RenameFileCmd::execute(){
 void editor::RenameFileCmd::undo(){
     fs::path sourceFs = directory / newFilename;
     fs::path destFs = directory / oldFilename;
+    restoreClipHints(project, clipHintEdits);
+    clipHintEdits.clear();
     try {
         renameFile(sourceFs, destFs);
     } catch (const fs::filesystem_error& e) {

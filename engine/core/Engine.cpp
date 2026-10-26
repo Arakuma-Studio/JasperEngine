@@ -26,6 +26,7 @@
 #include "component/AudioSourceComponent.h"
 #include "component/ActionComponent.h"
 #include "component/PoseAnimatorComponent.h"
+#include "component/AnimationPlayerComponent.h"
 #include "pool/TexturePool.h"
 #include "pool/SoundPool.h"
 #include "pool/TextureDataPool.h"
@@ -33,6 +34,7 @@
 #include "pool/FontPool.h"
 #include "pool/ModelPool.h"
 #include "pool/MeshLodPool.h"
+#include "pool/AnimationClipPool.h"
 #include "shader/RuntimeShaderCompiler.h"
 #ifndef NO_THREAD_SUPPORT
     #include "thread/ThreadPoolManager.h"
@@ -822,6 +824,7 @@ void Engine::clearPools(){
     FontPool::clear();
     ModelPool::clear();
     MeshLodPool::clear();
+    AnimationClipPool::clear();
 }
 
 void Engine::clearUnusedPools(){
@@ -832,6 +835,7 @@ void Engine::clearUnusedPools(){
     FontPool::clearUnused();
     ModelPool::clearUnused();
     MeshLodPool::clearUnused();
+    AnimationClipPool::clearUnused();
 }
 
 void Engine::removeSubscriptionsByTag(const std::string& substring) {
@@ -990,6 +994,13 @@ void Engine::clearComponentSubscriptions(Scene* scene) {
     auto animators = scene->getComponentArray<PoseAnimatorComponent>();
     for (size_t i = 0; i < animators->size(); i++) {
         animators->getComponentFromIndex(i).onFinish.clear();
+    }
+
+    auto players = scene->getComponentArray<AnimationPlayerComponent>();
+    for (size_t i = 0; i < players->size(); i++) {
+        AnimationPlayerComponent& player = players->getComponentFromIndex(i);
+        player.onEvent.clear();
+        player.onFinish.clear();
     }
 }
 

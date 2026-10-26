@@ -20,16 +20,18 @@ namespace jasperengine::editor{
     class Project;
 
     struct PoseInspectorHooks{
-        // Bake `animation` into an Animation clip of the model entity (one scene undo step).
-        // Called in edit mode only; reports its own errors.
+        // Bake `animation` into the scene: an entity Animation of the model (one scene undo step;
+        // the Bake menu's "Bake into Scene"). Called in edit mode only; reports its own errors.
         std::function<void(Project* project, uint32_t sceneId, Entity model, const std::string& animation)> bake;
+        // Bake `animation` to an Animation Clip (<name>.anim next to it, listed in the model's
+        // Animation Player; one scene undo step; the Bake menu's primary "Bake to Animation Clip")
+        std::function<void(Project* project, uint32_t sceneId, Entity model, const std::string& animation)> bakeToClip;
         // Open `animation` in the Pose Animation window, bound to the model entity
         std::function<void(Project* project, uint32_t sceneId, Entity model, const std::string& animation)> open;
-        // A scene command is about to read and write `entity`'s Transform (PropertyCmd,
-        // ObjectTransformCmd: Inspector, gizmo, MCP set_transform / set_properties): a posed bone
-        // goes back to its rest first, so the command records and edits the rest pose, never the
-        // posed values (final review)
-        std::function<void(uint32_t sceneId, Entity entity)> beforeTransformWrite;
+        // (A posed bone's Transform written by a scene command goes back to its rest first: the Pose
+        // window listens to ClipRecordHooks::beforeChannelWrite, PoseEditSession::beforeChannelWrite.
+        // Only position / rotation / scale writes notify: the old slot also fired for the other
+        // Transform properties (visible, billboard...), which carry no posed values.)
     };
 
     // the editor-wide hooks (set once at startup by the tasks that own them)

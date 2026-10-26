@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include "animation/ClipTypes.h"
 #include "ecs/Entity.h"
 #include "component/MeshComponent.h"
 #include "math/AABB.h"
@@ -91,7 +92,8 @@ namespace jasperengine::editor{
         // the window makes its session active while it is open (null: none)
         static void setActive(PoseEditSession* session);
         // suspend() on the active session, if any: before scene commands that copy entities
-        // (duplicate, copy, delete, create or apply a prefab), so they copy rest bones
+        // (duplicate, copy, delete, create or apply a prefab), so they copy rest bones. The pose
+        // only: clip previews stop through suspendActiveFor with the entities copied or stored
         static void suspendActive();
         // suspend() on the active session when it poses a model of scene `sceneId`: before every
         // scene undo / redo step (CommandHistory::beforeStep), which then runs on the rest bones
@@ -100,6 +102,11 @@ namespace jasperengine::editor{
         // suspend() on the active session when `entity` of `sceneId` is one of its posed bones
         // (not the model): before a command reads and writes its Transform
         static void suspendActiveForBone(uint32_t sceneId, Entity entity);
+        // The Pose window's ClipRecordHooks::beforeChannelWrite listener (animation clips 9.R5,
+        // it replaced poseInspectorHooks().beforeTransformWrite): a scene command, undo or redo is
+        // about to write `channel` of `entity`; a Transform channel of a posed bone suspends the
+        // pose first, so the command records and edits the rest pose, never the posed values
+        static void beforeChannelWrite(uint32_t sceneId, Entity entity, ClipChannel channel);
         // suspend() before `source` of `sceneId` moves from under `oldParent` to under `newParent`
         // keeping its world transform, when the branch holds a posed bone or the model, or either
         // parent is (or is under) a posed bone or the model
@@ -164,7 +171,8 @@ namespace jasperengine::editor{
         // A copy of `roots` with their descendants (a Hierarchy drag, a prefab) would contain the
         // bound model or one of its bones
         bool copiesPosedEntities(uint32_t sceneId, const std::vector<Entity>& roots) const;
-        // suspend() on the active session when copiesPosedEntities(sceneId, roots)
+        // suspend() on the active session when copiesPosedEntities(sceneId, roots), and the clip
+        // previews of, under or above `roots` restore (PreviewOwner::stopFor, animation clips 9.R7)
         static void suspendActiveFor(uint32_t sceneId, const std::vector<Entity>& roots);
         // The Scene view routes keys to the pose window (set by the window each frame; the
         // Scene view shows a "Pose keys" hint while it is true)

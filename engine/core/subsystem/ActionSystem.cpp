@@ -6,7 +6,7 @@
 #include "Scene.h"
 #include "util/Color.h"
 #include "util/Angle.h"
-#include "math/Interpolation.h"
+#include "animation/KeyframeSampling.h"
 #include "subsystem/MeshSystem.h"
 #include "lattice/LatticeSolver.h"
 #include "subsystem/UISystem.h"
@@ -1441,39 +1441,25 @@ void ActionSystem::keyframeUpdate(double dt, ActionComponent& action, KeyframeTr
     if (keyframe.times.size() == 0)
         return;
 
-    float currentTime = action.timecount;
-
-    keyframe.interpolation = 0;
-
-    keyframe.index = 0;
-    while (keyframe.index < (keyframe.times.size()-1) && keyframe.times[keyframe.index] < currentTime){
-        keyframe.index++;
-    }
-
-    float previousTime = 0;
-    float nextTime = keyframe.times[keyframe.index];
-
-    if (keyframe.index > 0){
-        previousTime = keyframe.times[keyframe.index-1];
-    }
-
-    if (nextTime > previousTime){
-        keyframe.interpolation = (currentTime - previousTime) / (nextTime - previousTime);
-    }
-
-    if (keyframe.interpolation > 1){
-        keyframe.interpolation = 1;
-    }
-
     // Per-segment easing: easings[i] shapes the segment from key i to key i+1.
     // Empty easings (e.g. GLTF LINEAR clips) keep pure linear interpolation;
     // GLTF STEP clips use EaseType::STEP here.
-    if (keyframe.index > 0){
-        size_t segment = (size_t)keyframe.index - 1;
-        if (segment < keyframe.easings.size() && keyframe.easings[segment] != EaseType::LINEAR){
-            keyframe.interpolation = Ease::getFunction(keyframe.easings[segment])(keyframe.interpolation);
-        }
+    anim::KeyLocation at = anim::locateKey(keyframe.times.data(), keyframe.times.size(),
+                                           keyframe.easings.data(), keyframe.easings.size(), action.timecount);
+    keyframe.index = (int)at.index;
+    keyframe.interpolation = at.interpolation;
+}
+
+// The sampler location of the keyframe's current index and interpolation (keyframeUpdate,
+// or the clip end that processRunningAction forces)
+static anim::KeyLocation keyLocation(const KeyframeTracksComponent& keyframe){
+    anim::KeyLocation at;
+    at.index = (size_t)keyframe.index;
+    at.interpolation = keyframe.interpolation;
+    if (keyframe.index > 0 && (size_t)keyframe.index < keyframe.times.size()){
+        at.segmentDuration = keyframe.times[keyframe.index] - keyframe.times[keyframe.index-1];
     }
+    return at;
 }
 
 // Tangent presence is what marks a track as GLTF CUBICSPLINE; editor-authored
@@ -1489,23 +1475,16 @@ static bool hasCubicSplineTangents(const KeyframeTracksComponent& keyframe, cons
 // instead of reading out of bounds.
 template<typename TracksComp>
 static bool trackIndexValid(const KeyframeTracksComponent& keyframe, const TracksComp& tracks){
-    return !tracks.values.empty() && (size_t)keyframe.index < tracks.values.size();
+    return anim::keyIndexValid(keyLocation(keyframe), tracks.values.size());
 }
 
 // Sample a vector track at the current playhead: cubic Hermite when tangents
 // are present, lerp otherwise.
 template<typename TracksComp>
 static Vector3 sampleVectorTrack(const KeyframeTracksComponent& keyframe, const TracksComp& tracks){
-    Vector3 previous = tracks.values[(keyframe.index > 0) ? keyframe.index - 1 : 0];
-
-    if (hasCubicSplineTangents(keyframe, tracks.values, tracks.inTangents, tracks.outTangents)){
-        float td = keyframe.times[keyframe.index] - keyframe.times[keyframe.index-1];
-        return Interpolation::cubicSpline(keyframe.interpolation, td,
-                previous, tracks.outTangents[keyframe.index-1],
-                tracks.values[keyframe.index], tracks.inTangents[keyframe.index]);
-    }
-
-    return previous + keyframe.interpolation * (tracks.values[keyframe.index] - previous);
+    bool cubic = hasCubicSplineTangents(keyframe, tracks.values, tracks.inTangents, tracks.outTangents);
+    return anim::sampleVector3(keyLocation(keyframe), tracks.values.data(),
+                               cubic ? tracks.inTangents.data() : nullptr, cubic ? tracks.outTangents.data() : nullptr);
 }
 
 void ActionSystem::translateTracksUpdate(KeyframeTracksComponent& keyframe, TranslateTracksComponent& translatetracks, Entity target, float weight){
@@ -1540,25 +1519,11 @@ void ActionSystem::rotateTracksUpdate(KeyframeTracksComponent& keyframe, RotateT
     if (weight <= 0.0f || !trackIndexValid(keyframe, rotatetracks))
         return;
 
-    Quaternion previousRotation = rotatetracks.values[(keyframe.index > 0) ? keyframe.index - 1 : 0];
-
-    Quaternion value;
-    if (hasCubicSplineTangents(keyframe, rotatetracks.values, rotatetracks.inTangents, rotatetracks.outTangents)){
-        float td = keyframe.times[keyframe.index] - keyframe.times[keyframe.index-1];
-        value = Interpolation::cubicSpline(keyframe.interpolation, td,
-                previousRotation, rotatetracks.outTangents[keyframe.index-1],
-                rotatetracks.values[keyframe.index], rotatetracks.inTangents[keyframe.index]);
-        // spec: the interpolated quaternion MUST be normalized before applying.
-        // Guard the all-zero result the spec warns exporters about (v_k == -v_k+1):
-        // normalizing it would spread NaN through the pose blend.
-        if (value.norm() > FLT_EPSILON){
-            value.normalize();
-        }else{
-            value = (keyframe.interpolation < 0.5f) ? previousRotation : rotatetracks.values[keyframe.index];
-        }
-    }else{
-        value = Quaternion::slerp(keyframe.interpolation, previousRotation, rotatetracks.values[keyframe.index]);
-    }
+    // slerp, or Hermite normalized with the zero-norm guard (KeyframeSampling)
+    bool cubic = hasCubicSplineTangents(keyframe, rotatetracks.values, rotatetracks.inTangents, rotatetracks.outTangents);
+    Quaternion value = anim::sampleQuaternion(keyLocation(keyframe), rotatetracks.values.data(),
+                                              cubic ? rotatetracks.inTangents.data() : nullptr,
+                                              cubic ? rotatetracks.outTangents.data() : nullptr);
     if (keyframe.relative){
         value = keyframe.baseRotation * value;
     }
@@ -1581,23 +1546,20 @@ void ActionSystem::morphTracksUpdate(KeyframeTracksComponent& keyframe, MorphTra
         return;
 
     const std::vector<float>& previousMorph = morpthtracks.values[(keyframe.index > 0) ? keyframe.index - 1 : 0];
+    const std::vector<float>& nextMorph = morpthtracks.values[keyframe.index];
 
-    if ((keyframe.index == 0) || (morpthtracks.values[keyframe.index].size() == morpthtracks.values[keyframe.index-1].size())) {
+    if ((keyframe.index == 0) || (nextMorph.size() == previousMorph.size())) {
         bool cubic = hasCubicSplineTangents(keyframe, morpthtracks.values, morpthtracks.inTangents, morpthtracks.outTangents) &&
                      morpthtracks.outTangents[keyframe.index-1].size() == previousMorph.size() &&
-                     morpthtracks.inTangents[keyframe.index].size() == morpthtracks.values[keyframe.index].size();
-        float td = cubic ? keyframe.times[keyframe.index] - keyframe.times[keyframe.index-1] : 0;
+                     morpthtracks.inTangents[keyframe.index].size() == nextMorph.size();
+        size_t count = std::min(nextMorph.size(), (size_t)MAX_MORPHTARGETS);
+        float values[MAX_MORPHTARGETS];
+        anim::sampleFloatRow(keyLocation(keyframe), previousMorph.data(), nextMorph.data(), count,
+                             cubic ? morpthtracks.outTangents[keyframe.index-1].data() : nullptr,
+                             cubic ? morpthtracks.inTangents[keyframe.index].data() : nullptr, values);
         MorphBlendAccum& accum = morphBlend[target];
-        for (int morphIndex = 0; morphIndex < morpthtracks.values[keyframe.index].size() && morphIndex < MAX_MORPHTARGETS; morphIndex++) {
-            float value;
-            if (cubic){
-                value = Interpolation::cubicSpline(keyframe.interpolation, td,
-                        previousMorph[morphIndex], morpthtracks.outTangents[keyframe.index-1][morphIndex],
-                        morpthtracks.values[keyframe.index][morphIndex], morpthtracks.inTangents[keyframe.index][morphIndex]);
-            }else{
-                value = previousMorph[morphIndex] + keyframe.interpolation * (morpthtracks.values[keyframe.index][morphIndex] - previousMorph[morphIndex]);
-            }
-            accum.sums[morphIndex] += value * weight;
+        for (size_t morphIndex = 0; morphIndex < count; morphIndex++) {
+            accum.sums[morphIndex] += values[morphIndex] * weight;
             accum.weights[morphIndex] += weight;
         }
     }else{
@@ -1621,7 +1583,9 @@ void ActionSystem::latticeTracksUpdate(KeyframeTracksComponent& keyframe, Lattic
     bool cubic = hasCubicSplineTangents(keyframe, latticetracks.values, latticetracks.inTangents, latticetracks.outTangents) &&
                  latticetracks.outTangents[keyframe.index-1].size() == previous.size() &&
                  latticetracks.inTangents[keyframe.index].size() == next.size();
-    float td = cubic ? keyframe.times[keyframe.index] - keyframe.times[keyframe.index-1] : 0;
+    const Vector3* previousOut = cubic ? latticetracks.outTangents[keyframe.index-1].data() : nullptr;
+    const Vector3* nextIn = cubic ? latticetracks.inTangents[keyframe.index].data() : nullptr;
+    anim::KeyLocation at = keyLocation(keyframe);
 
     int pointCount = lattice::pointCount(latticecomp.resolutionX, latticecomp.resolutionY, latticecomp.resolutionZ);
 
@@ -1642,13 +1606,8 @@ void ActionSystem::latticeTracksUpdate(KeyframeTracksComponent& keyframe, Lattic
             continue;
 
         Vector3 value;
-        if (cubic){
-            value = Interpolation::cubicSpline(keyframe.interpolation, td,
-                    previous[n], latticetracks.outTangents[keyframe.index-1][n],
-                    next[n], latticetracks.inTangents[keyframe.index][n]);
-        }else{
-            value = previous[n] + keyframe.interpolation * (next[n] - previous[n]);
-        }
+        anim::sampleVector3Row(at, &previous[n], &next[n], 1,
+                               cubic ? previousOut + n : nullptr, cubic ? nextIn + n : nullptr, &value);
         accum.sums[point] += value * weight;
         accum.weights[point] += weight;
     }
@@ -1662,6 +1621,9 @@ void ActionSystem::clearPoseBlend(){
             it = latticeBlend.erase(it);
         }else{
             it->second.active = false;
+            if (!it->second.hasRest.empty()){
+                std::fill(it->second.hasRest.begin(), it->second.hasRest.end(), 0);
+            }
             ++it;
         }
     }
@@ -1672,12 +1634,28 @@ void ActionSystem::flushPoseBlend(){
         Entity target = entry.first;
         TransformBlendAccum& accum = entry.second;
 
-        if (!scene->isEntityCreated(target))
-            continue;
-
+        // one lookup: a destroyed entity has no components
         Transform* transform = scene->findComponent<Transform>(target);
         if (!transform)
             continue;
+
+        // an Animation Player's rest fills the weight the contributors leave (spec 9.R1)
+        if (accum.hasRestPosition && accum.positionWeight > 0.0f && accum.positionWeight < 1.0f){
+            accum.positionSum = accum.positionSum + accum.restPosition * (1.0f - accum.positionWeight);
+            accum.positionWeight = 1.0f;
+        }
+        if (accum.hasRestScale && accum.scaleWeight > 0.0f && accum.scaleWeight < 1.0f){
+            accum.scaleSum = accum.scaleSum + accum.restScale * (1.0f - accum.scaleWeight);
+            accum.scaleWeight = 1.0f;
+        }
+        if (accum.hasRestRotation && accum.rotationWeight > 0.0f && accum.rotationWeight < 1.0f){
+            Quaternion rest = accum.restRotation;
+            if (accum.hasRotationRef && accum.rotationRef.dot(rest) < 0.0f){
+                rest = -rest;
+            }
+            accum.rotationSum = accum.rotationSum + rest * (1.0f - accum.rotationWeight);
+            accum.rotationWeight = 1.0f;
+        }
 
         bool changed = false;
         if (accum.positionWeight > 0.0f){
@@ -1719,7 +1697,11 @@ void ActionSystem::flushPoseBlend(){
 
         for (int i = 0; i < MAX_MORPHTARGETS; i++){
             if (accum.weights[i] > 0.0f){
-                mesh->morphWeights[i] = accum.sums[i] / accum.weights[i];
+                if (accum.hasRest[i] && accum.weights[i] < 1.0f){
+                    mesh->morphWeights[i] = accum.sums[i] + accum.rest[i] * (1.0f - accum.weights[i]);
+                }else{
+                    mesh->morphWeights[i] = accum.sums[i] / accum.weights[i];
+                }
             }
         }
     }
@@ -1741,7 +1723,9 @@ void ActionSystem::flushPoseBlend(){
         bool changed = false;
         for (size_t i = 0; i < count; i++){
             if (accum.weights[i] > 0.0f){
-                Vector3 value = accum.sums[i] / accum.weights[i];
+                Vector3 value = (i < accum.hasRest.size() && accum.hasRest[i] && accum.weights[i] < 1.0f) ?
+                                accum.sums[i] + accum.rest[i] * (1.0f - accum.weights[i]) :
+                                accum.sums[i] / accum.weights[i];
                 if (latticecomp->offsets.size() < pointCount){
                     latticecomp->offsets.resize(pointCount, Vector3(0, 0, 0));
                 }
@@ -2246,6 +2230,7 @@ void ActionSystem::update(double dt){
     }
 
     clearPoseBlend();
+    poseBlendScope = true;
 
     //Animations actions
     auto animations = scene->getComponentArray<AnimationComponent>();
@@ -2287,8 +2272,15 @@ void ActionSystem::update(double dt){
 
 	}
 
+    // Animation Players add their states to the same blend
+    updatePlayers(dt);
+
     // Write the blended (weighted-average) pose to each animated target.
     flushPoseBlend();
+    poseBlendScope = false;
+
+    // clip events and onFinish, after the pose is written
+    dispatchPlayerCallbacks();
 }
 
 void ActionSystem::onComponentAdded(Entity entity, ComponentId componentId) {

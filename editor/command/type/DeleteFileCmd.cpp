@@ -96,6 +96,9 @@ bool editor::DeleteFileCmd::execute(){
             project->cleanupScriptFilePath(deletedPath);
             project->cleanupAssetFilePath(deletedPath);
             project->cleanupShaderFilePath(deletedPath);
+            // clip references stay (Missing); documents, the pool and the players learn
+            project->cleanupClipFilePath(deletedPath);
+            project->cleanupInspectedAsset(deletedPath);
         }
         if (deletedShaderSource)
             project->invalidateCustomShaders();
@@ -113,7 +116,8 @@ void editor::DeleteFileCmd::undo(){
                 fs::rename(file.trashFile, file.originalFile);
                 restoredShaderSource |= fs::is_directory(file.originalFile) ||
                                         Util::isShaderFile(file.originalFile.string());
-                // Prefabs come back with their GUIDs: their Missing Prefab instances relink
+                // Prefabs and clips come back with their GUIDs: their Missing Prefab instances
+                // and the clip references relink
                 if (project) {
                     project->importPrefabFiles(file.originalFile);
                 }

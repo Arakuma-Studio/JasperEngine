@@ -169,10 +169,16 @@ namespace jasperengine::editor{
             return fileExtension(path) == ".poseanim";
         }
 
+        // Animation clips (AnimationPlayerComponent clips, the Animation window); a model
+        // sub-clip reference ("hero.gltf#Walk") is not a file and is not one
+        inline static bool isAnimationClipFile(const std::string& path) {
+            return fileExtension(path) == ".anim";
+        }
+
         // Files referenced relative to the assets directory
         inline static bool isAssetFile(const std::string& path) {
             return isImageFile(path) || isModelFile(path) || isFontFile(path) || isAudioFile(path) ||
-                   isHtmlFile(path) || isCssFile(path) || isPoseAnimationFile(path);
+                   isHtmlFile(path) || isCssFile(path) || isPoseAnimationFile(path) || isAnimationClipFile(path);
         }
 
         inline static bool isScriptFile(const std::string& path) {

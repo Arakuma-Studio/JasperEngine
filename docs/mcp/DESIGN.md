@@ -125,6 +125,9 @@ editor/mcp/
     DocsTools.cpp         engine API docs and resources
     BuildTools.cpp        export, build and player jobs
     WorldTools.cpp        terrain, tilemaps, animation, physics, UI and audio
+    AnimationClipTools.cpp the clip-file mode of edit/get/preview_animation (.anim through
+                          AnimationClipDocument, bindings, preview through AnimationClipController),
+                          the .anim parts of get_asset_info / write_file (no tools of its own)
     LatticeTools.cpp      edit_lattice (lattice deformer cages)
     PlacementTools.cpp    physics placement (place_with_physics: drop, separate, move, snap, gather,
                           distribute in edit mode), sharing physics/PlacementSession with the Scene
@@ -272,7 +275,13 @@ the same work and reports it itself):
 - **Scan**: stat-based against a cached map (mtime + size) of the project's tracked files
   (Lua, C++ `.h/.hpp/.hh/.hxx/.inl/.c/.cc/.cpp/.cxx`, shaders `.vert/.frag/.glsl`,
   `.material`, HTML UI `.html/.htm/.css`, pose files `.poseanim/.humanoid` (their open
-  `PoseAnimationDocument`s reload); assets: images (`.svg` included), fonts `.ttf/.otf`,
+  `PoseAnimationDocument`s reload), animation clips `.anim` (their open
+  `AnimationClipDocument`s reload, `AnimationClipPool` drops them and the Animation Players
+  using them reload, during play too; load errors and warnings of `.anim` and `.poseanim`
+  files become `problems`); models `.gltf/.glb/.obj/.fbx` and glTF `.bin` buffers (picked up
+  but not reported: only `AnimationClipDocument::filesChanged` sees them, which drops the
+  pooled parse, the model's sub-clips and their documents and reloads the players using them;
+  no full sync, so no thumbnail and no FBX import); assets: images (`.svg` included), fonts `.ttf/.otf`,
   `.json/.lottie`) and folders (mtime: an added, removed or renamed entry), skipping
   hidden folders (`.jasperengine`, `.git`...), `build`, `node_modules` and `trash`.
   `.scene`, `.prefab`, `project.yaml` and the terrain maps the editor writes from its

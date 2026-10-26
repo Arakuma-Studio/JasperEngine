@@ -151,6 +151,8 @@ namespace jasperengine::editor{
     private:
         Project* project;
         PoseEditSession session;
+        // its ClipRecordHooks::beforeChannelWrite listener (PoseEditSession::beforeChannelWrite)
+        int channelWriteListener = 0;
         PoseThumbnails thumbnails;
         PoseThumbnails liveThumbnails;          // the primary card while posing
 

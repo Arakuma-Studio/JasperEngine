@@ -8,6 +8,7 @@
 #include "Scene.h"
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
+#include "component/AnimationPlayerComponent.h"
 #include "component/AudioSourceComponent.h"
 #include "component/BoneComponent.h"
 #include "component/CameraComponent.h"
@@ -113,7 +114,7 @@ namespace {
                   ProgressbarComponent, InputFieldComponent, MeshPolygonComponent, PolygonComponent, AnimationComponent,
                   KeyframeTracksComponent, MorphTracksComponent, RotateTracksComponent, TranslateTracksComponent,
                   ScaleTracksComponent, TerrainComponent, AudioSourceComponent, TilemapComponent, InstancedMeshComponent,
-                  PrefabComponent, ReflectionProbeComponent, UIDocumentComponent, PoseAnimatorComponent, ScriptComponent>(scene, entity);
+                  PrefabComponent, ReflectionProbeComponent, UIDocumentComponent, PoseAnimatorComponent, AnimationPlayerComponent, ScriptComponent>(scene, entity);
 #ifdef JASPERENGINE_PHYSICS_2D
         stripEach<Rigidbody2DComponent, Joint2DComponent>(scene, entity);
 #endif

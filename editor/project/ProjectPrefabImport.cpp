@@ -14,6 +14,8 @@
 #include "util/CameraTextureLink.h"
 #include "util/ProjectUtils.h"
 #include "util/YamlNumbers.h"
+#include "component/MeshComponent.h"
+#include <cstdlib>
 
 #include <algorithm>
 #include <functional>
@@ -192,6 +194,15 @@ namespace jasperengine::editor::prefabinternal {
                 continue;
             }
             Catalog::copyPropertyValue(from.registry.get(), from.entity, target, entity, type, *it);
+            // an overridden blend shape weight is the instance's own, also past the targets the
+            // asset's weights cover: a model load keeps it (MeshComponent::morphTargetCount)
+            if (type == ComponentType::MeshComponent && it->compare(0, 13, "morphWeights[") == 0) {
+                if (MeshComponent* mesh = target->findComponent<MeshComponent>(entity)) {
+                    const int index = std::atoi(it->c_str() + 13);
+                    mesh->morphWeightsSet = true;
+                    mesh->morphTargetCount = std::max(mesh->morphTargetCount, std::min(index + 1, MAX_MORPHTARGETS));
+                }
+            }
             ++it;
         }
     }

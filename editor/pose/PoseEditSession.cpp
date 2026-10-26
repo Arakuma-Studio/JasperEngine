@@ -3,6 +3,7 @@
 
 #include "PoseEditSession.h"
 
+#include "animation/PreviewOwner.h"
 #include "Project.h"
 #include "Scene.h"
 #include "component/ModelComponent.h"
@@ -43,13 +44,16 @@ void editor::PoseEditSession::setActive(PoseEditSession* session){
 }
 
 void editor::PoseEditSession::suspendActive(){
+    // the pose only (it comes back on the next update): the clip previews of what is copied or
+    // stored stop through suspendActiveFor, which the commands and copy paths call with their
+    // entities (a copy of another GameObject keeps a clip preview and Record going)
     if (activeSession && activeSession->bound()){
         activeSession->suspend();
     }
 }
 
 void editor::PoseEditSession::suspendActiveForScene(uint32_t sceneId){
-    // the step runs on the rest bones (commands carry rest values: beforeTransformWrite); the
+    // the step runs on the rest bones (commands carry rest values: beforeChannelWrite); the
     // next update saves what it left as the rest and poses again over it
     PoseEditSession* session = activeSession;
     if (session && session->bound() && session->sceneId() == sceneId){
@@ -100,7 +104,15 @@ void editor::PoseEditSession::suspendActiveForBone(uint32_t sceneId, Entity enti
     }
 }
 
+void editor::PoseEditSession::beforeChannelWrite(uint32_t sceneId, Entity entity, ClipChannel channel){
+    if (channel == ClipChannel::Position || channel == ClipChannel::Rotation || channel == ClipChannel::Scale){
+        suspendActiveForBone(sceneId, entity);
+    }
+}
+
 void editor::PoseEditSession::suspendActiveFor(uint32_t sceneId, const std::vector<Entity>& roots){
+    // a clip preview of (or under, or above) the copied entities restores first (9.R7)
+    if (!roots.empty()) PreviewOwner::stopFor(sceneId, roots, nullptr, activeSession);
     if (activeSession && activeSession->copiesPosedEntities(sceneId, roots)){
         activeSession->suspend();
     }
@@ -270,6 +282,7 @@ bool editor::PoseEditSession::bind(Scene* scene, uint32_t sceneId, Entity model,
         applyCurrent();
     }else{
         currentMode = Mode::Idle;
+        PreviewOwner::releaseFor(this);
     }
     notify();
     return true;
@@ -295,6 +308,7 @@ void editor::PoseEditSession::dropBinding(){
     savedBones.clear();
     savedMeshes.clear();
     applied = false;
+    PreviewOwner::releaseFor(this);
     gate = poseui::BoneWriteGate();
     sidecarFile.clear();
     handleActive = false;
@@ -629,6 +643,7 @@ void editor::PoseEditSession::update(float dt){
                 globalEditPose = -1;
             }
             currentMode = Mode::Idle;
+            PreviewOwner::releaseFor(this);
             notify();
         }
         return;
@@ -696,6 +711,8 @@ void editor::PoseEditSession::goIdle(){
     restoreBones();
     playing = false;
     currentMode = Mode::Idle;
+    // idle: the model's pose ownership goes (a suspended pose keeps it, 9.R7)
+    PreviewOwner::releaseFor(this);
     if (changed) notify();
 }
 
@@ -847,8 +864,13 @@ void editor::PoseEditSession::applyPose(const pose::HumanPose& pose){
     const std::vector<Entity>& entities = rigInfoPtr->boneEntities;
     const pose::Skeleton& skeleton = rigPtr->skeleton();
     if (!applied){
+        // the model's one edit-mode pose owner (animation clips 9.R7): a clip preview on it or
+        // above it restores its snapshot first, so the bones saved below are the scene's
+        const PreviewOwner::Token poseToken = PreviewOwner::acquireFor(this, sceneIdValue, modelEntity, scenePtr, "Pose Animation", [this](){ goIdle(); });
+        PreviewOwner::setWrites(poseToken, [this](Entity entity){ return ownsEntity(sceneIdValue, entity); });
         // a step that wrote bones this frame (a keyboard / menu undo runs before this update,
-        // before the transform system): their matrices first, so what is saved is consistent
+        // before the transform system), or the preview's restore just now: their matrices
+        // first, so what is saved is consistent
         refreshPendingTransforms();
         // the bones as the scene has them, put back by restoreBones()
         savedBones.clear();
