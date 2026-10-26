@@ -1,0 +1,8 @@
+name: HtmlUiContracts
+canvasWidth: 1280
+canvasHeight: 720
+scalingMode: letterbox
+assetsDir: assets
+luaDir: scripts
+scenes:
+  - filepath: Main Scene.scene

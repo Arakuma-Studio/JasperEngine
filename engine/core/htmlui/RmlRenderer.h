@@ -72,10 +72,6 @@ namespace jasperengine {
         // layer 0 (its colour texture is the resolve image under MSAA); nullptr when not created
         FramebufferRender* getComposited();
         Framebuffer* getLayer(int index) const;
-        int getLayerCount() const;          // created layers
-        int getPostprocessCount() const;    // created post-process targets
-        // framebuffers created over the target's life (performance tests)
-        uint64_t getCreateCount() const;
         // changes whenever one of its framebuffers is made (unique across targets): what a
         // renderer knows about their contents holds while it is the same
         uint64_t getGeneration() const;
@@ -101,7 +97,6 @@ namespace jasperengine {
         int width = 0;
         int height = 0;
         int sampleCount = 1;
-        uint64_t createCount = 0;
         uint64_t generation = 0;
     };
 
@@ -227,15 +222,6 @@ namespace jasperengine {
         static void sigmaToParameters(float desiredSigma, int& passLevel, float& sigma);
         static void blurWeights(float sigma, float weights[4]);
 
-        // tests: false draws every backdrop through its temporary layer, as RmlUi's GL3 renderer
-        // (DeferredComposite); the images are the same
-        static void setCompositeFusionForTesting(bool enabled);
-        // tests: false draws every call at once instead of recording the frame and replaying it
-        // in endFrame (phase-1 spec 3.2.10); the images are the same. Read by beginFrame
-        static void setCommandRecordingForTesting(bool enabled);
-        static bool isCommandRecording();
-        // the commands the last frame recorded (0 when it drew immediately)
-        size_t getLastFrameCommandCount() const;
 
         // For phase-5 effects (they draw with the same geometry layout and u_vs_htmluiParams):
         // projection x the SetTransform matrix (or projection alone)
@@ -243,7 +229,6 @@ namespace jasperengine {
         // target px, top-left origin; invalid when no scissor is enabled
         Rml::Rectanglei getCurrentScissor() const;
         bool isClipMaskEnabled() const;
-        uint8_t getStencilRef() const;          // the stencil value geometry is tested against
         Rml::Vector2f getPixelScale() const;    // target px per document px
         // geometry state in the current layer: blend, the stencil test of the clip mask
         PipelineState getGeometryState(BlendMode blend = BlendMode::PREMULTIPLIED) const;
@@ -257,8 +242,6 @@ namespace jasperengine {
         size_t getLiveGeometryCount() const;
         size_t getLiveTextureCount() const;
         size_t getLastFrameDrawCount() const;   // geometry and shader draws of the last frame
-        // GPU buffers, textures and framebuffers this renderer created over its life (performance tests)
-        uint64_t getGpuCreateCount() const;
         size_t getGeometryBufferCount() const;  // GPU buffers holding geometry (pages, dedicated, free)
         // RmlUi made textures before the view existed (a document laid out by a scene's script
         // in init: <img> sizes load their file): they have no GPU texture and draw nothing
@@ -481,7 +464,6 @@ namespace jasperengine {
         std::vector<DeferredRelease> deferredReleases;
         std::vector<KeptMesh> keptMeshes;
         size_t keptMeshesUsed = 0;
-        size_t lastFrameCommandCount = 0;
 
         std::unordered_set<RmlGeometry*> liveGeometry;
         std::vector<RmlGeometry*> releasedGeometry;   // released, kept for reuse (RmlGeometry::alive)
@@ -534,7 +516,6 @@ namespace jasperengine {
         uint64_t frameMissesStart = 0;
         uint64_t frameAppliesStart = 0;
         size_t lastFrameDrawCount = 0;
-        uint64_t gpuCreateCount = 0;
         bool texturesWithoutView = false;
 
         // GPU objects

@@ -103,6 +103,8 @@ namespace jasperengine::editor{
 
     protected:
         void hideAllGizmos() override;
+        void dropGoneGizmos() override;
+        using SceneRender::dropGoneGizmos;
         void drawOverlayTargets() override;
 
     public:

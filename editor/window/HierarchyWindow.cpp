@@ -5,9 +5,11 @@
 #include "util/EditorScripts.h"
 #include "window/dialog/DataSafetyDialogs.h"
 #include "StreamPreserved.h"
+#include "pose/PoseEditSession.h"
 
 #include "App.h"
 #include "Backend.h"
+#include "animation/AnimationClipAppHooks.h"
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include "util/BidiText.h"
@@ -294,6 +296,8 @@ void editor::HierarchyWindow::applyEntitySelection(uint32_t sceneId, Entity enti
     selectedScenes.clear();
     project->setSelectedSceneForProperties(sceneId);
     clearSubSelectionForEntity(sceneId, entity);
+    // a user selection makes the GameObject the inspected object (animation clips 9.R30)
+    project->clearInspectedAsset();
 
     selectionAnchorSceneId = sceneId;
     selectionAnchorEntity = entity;
@@ -1366,6 +1370,8 @@ std::vector<char> editor::HierarchyWindow::buildEntityPayload(const TreeNode& no
     std::vector<Entity> virtualChildren = ProjectUtils::getVirtualChildren(sceneProject->scene, draggedEntities);
     exportEntities.insert(exportEntities.end(), virtualChildren.begin(), virtualChildren.end());
 
+    // a posed character (Pose Animation window) in the copy is encoded with its rest bones
+    PoseEditSession::suspendActiveFor(sceneProject->id, exportEntities);
     YAML::Node entityData;
     if (exportEntities.size() == 1) {
         entityData = Stream::encodeEntity(draggedEntities[0], sceneProject->scene, project, sceneProject);
@@ -1641,11 +1647,17 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
 
     if (!node.isChildScene && !isChildSceneEntity && !node.isPlayCreated) {
         if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
-            // Add entity drag drop payload for dragging to resources
+            // Add entity drag drop payload for dragging to resources: encoded on the drag's first
+            // frame only (ImGui keeps the data), so a posed character is suspended once per drag
             if (!node.isScene) {
-                std::vector<char> payloadData = buildEntityPayload(node);
-                if (!payloadData.empty()) {
-                    ImGui::SetDragDropPayload("entity", payloadData.data(), payloadData.size());
+                const ImGuiPayload* current = ImGui::GetDragDropPayload();
+                if (current && current->IsDataType("entity")) {
+                    ImGui::SetDragDropPayload("entity", nullptr, 0, ImGuiCond_Once);
+                } else {
+                    std::vector<char> payloadData = buildEntityPayload(node);
+                    if (!payloadData.empty()) {
+                        ImGui::SetDragDropPayload("entity", payloadData.data(), payloadData.size(), ImGuiCond_Once);
+                    }
                 }
             }
 
@@ -1880,11 +1892,29 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
             }
         }
 
+        // clips onto a GameObject: an Animation Player (added or reused) plays them, one scene
+        // step (animation clips spec 4.1; the hook is the converters')
+        // (not a payload the drop above took: a prefab with a clip makes the instance only)
+        if (!allowResourceDragDrop && !node.isScene && !node.isPlayCreated && animationClipAppHooks().dropClips && !project->isAnyScenePlaying()) {
+            const ImGuiPayload* peek = ImGui::GetDragDropPayload();
+            std::vector<std::string> clips;
+            if (peek && peek->IsDataType("resource_files")) {
+                for (const std::string& path : Util::getStringsFromPayload(peek)) {
+                    if (Util::isAnimationClipFile(path)) clips.push_back(path);
+                }
+            }
+            if (!clips.empty() && ImGui::AcceptDragDropPayload("resource_files")) {
+                Backend::getApp().dispatchClipDrop(getNodeSceneId(node), node.id, clips);
+                ImGui::SetWindowFocus(HierarchyWindow::WINDOW_NAME);
+            }
+        }
+
         ImGui::EndDragDropTarget();
     }
 
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGui::IsAnyItemHovered() && ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows)) {
         project->clearAllSelections(project->getSelectedSceneId());
+        project->clearInspectedAsset();
         selectedScenes.clear();
         project->setSelectedSceneForProperties(project->getSelectedSceneId());
         resetEntitySelectionAnchor();

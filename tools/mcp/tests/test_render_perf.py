@@ -15,7 +15,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import harness
 from harness import Editor
 
 HERE = Path(__file__).resolve().parent
@@ -66,7 +65,10 @@ async def errors(ed: Editor):
     return [e for e in await ed.console_since(None) if e.get("type") == "error"]
 
 
-async def test_scene(ed: Editor):
+async def prepare_scene(ed: Editor):
+    if S.get("editor") is ed:
+        return
+    S.clear()
     sid = (await ed.call("create_scene", name="RenderPerf", type="3D", path="scenes/RenderPerf"))["scene"]["id"]
     S["scene"] = sid
     await ed.call("create_entity", scene=sid, type="plane", name="Ground", scale=[30, 1, 30],
@@ -95,10 +97,12 @@ async def test_scene(ed: Editor):
     await ed.call("wait", frames=30)
     S["base"] = await ed.screenshot(view="game", path=shots(ed) / "base.png", max_width=960)
     ed.check(not await errors(ed), "no console errors building the scene")
+    S["editor"] = ed
 
 
 async def test_offview_caster_still_shadows_the_view(ed: Editor):
     """The slab is outside the view; its shadow is in it, so the cascades keep it"""
+    await prepare_scene(ed)
     sid = S["scene"]
     lit = S["base"]
     await ed.call("set_properties", scene=sid, entity="Slab", values={"mesh": {"castShadows": False}})
@@ -124,6 +128,7 @@ async def test_offview_caster_still_shadows_the_view(ed: Editor):
 
 
 async def test_probe_ssr_and_shadows_render(ed: Editor):
+    await prepare_scene(ed)
     sid = S["scene"]
     names = {s["name"] for s in (await ed.call("get_build_info", include_shaders=True))["shaders"]}
     ed.check("Probe Filter" in names, f"the probe filter ships with a probe: {sorted(names)}")

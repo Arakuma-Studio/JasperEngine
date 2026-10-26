@@ -33,6 +33,8 @@ const std::vector<ScriptEventSourceInfo>& sourceList() {
         {S::Action, "Action", ICON_FA_PLAY, "ActionComponent.h", "ActionComponent", "REGISTER_COMPONENT_EVENT", "Action"},
         {S::AudioSource, "AudioSource", ICON_FA_VOLUME_HIGH, "AudioSourceComponent.h", "AudioSourceComponent", "REGISTER_COMPONENT_EVENT", "AudioSource"},
         {S::UIDocument, "UI Document", ICON_FA_FILE_CODE, "UIDocumentComponent.h", "UIDocumentComponent", "REGISTER_COMPONENT_EVENT", "UIDocument"},
+        {S::PoseAnimator, "Pose Animator", ICON_FA_PERSON_RUNNING, "PoseAnimatorComponent.h", "PoseAnimatorComponent", "REGISTER_COMPONENT_EVENT", "PoseAnimator"},
+        {S::AnimationPlayer, "Animation Player", ICON_FA_FILM, "AnimationPlayerComponent.h", "AnimationPlayerComponent", "REGISTER_COMPONENT_EVENT", "AnimationPlayer"},
         {S::Physics2D, "Physics 2D", ICON_FA_CIRCLE, "PhysicsSystem.h", "", "REGISTER_EVENT", ""},
         {S::Physics3D, "Physics 3D", ICON_FA_CUBE, "PhysicsSystem.h", "", "REGISTER_EVENT", ""},
     };
@@ -117,6 +119,11 @@ const std::vector<ScriptEvent>& eventList() {
 
         {S::UIDocument, "onLoad", nullptr, "The document has loaded (also after every hot reload)", {}},
         {S::UIDocument, "onUnload", nullptr, "The document is about to unload", {}},
+
+        {S::PoseAnimator, "onFinish", nullptr, "A one-shot pose animation reached its end", {}},
+
+        {S::AnimationPlayer, "onEvent", nullptr, "A clip event fired (its function name, args, state and time)", {{"const AnimationEvent&", "event"}}},
+        {S::AnimationPlayer, "onFinish", nullptr, "A once state ended, or a clamp forever state first reached its end", {{"const std::string&", "state"}}},
 
         {S::Physics2D, "beginContact2D", "Contacts", "Any two Rigidbody 2Ds start touching, needs Contact Events on a Collider 2D", contact2D},
         {S::Physics2D, "endContact2D", "Contacts", "Any two Rigidbody 2Ds stop touching, needs Contact Events on a Collider 2D", contact2D},
@@ -912,9 +919,11 @@ std::string cppSignature(const ScriptEvent& event, const std::string& name, bool
     std::string params;
     for (const ScriptEventParam& param : event.params) {
         if (!params.empty()) params += ", ";
-        // Engine types are the capitalized ones
-        if (qualify && std::isupper(static_cast<unsigned char>(param.type[0]))) params += "jasperengine::";
-        params += std::string(param.type) + " " + param.name;
+        // Engine types are the capitalized ones ("const AnimationEvent&" too)
+        std::string type = param.type;
+        const size_t base = type.compare(0, 6, "const ") == 0 ? 6 : 0;
+        if (qualify && base < type.size() && std::isupper(static_cast<unsigned char>(type[base]))) type.insert(base, "jasperengine::");
+        params += type + " " + param.name;
     }
     return std::string(event.returnsBool ? "bool " : "void ") + name + "(" + params + ")";
 }

@@ -15,6 +15,8 @@
 #include "Catalog.h"
 #include "util/YamlNumbers.h"
 #include "lattice/LatticeTypes.h"
+#include "animation/AnimationClipIO.h"
+#include "animation/ModelSubClips.h"
 #include "Factory.h"
 #include "pool/SoundPool.h"
 #include "pool/ShaderPool.h"
@@ -35,6 +37,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <set>
 #include <stdexcept>
 
@@ -2920,6 +2923,49 @@ YAML::Node editor::Stream::encodeSceneProject(const Project* project, const Scen
     return root;
 }
 
+// The C++ scripts a scene file's header lists (what the scene had when saved)
+void editor::Stream::decodeSceneCppScripts(SceneProject* sceneProject, const YAML::Node& node) {
+    sceneProject->cppScripts.clear();
+    if (node["cppScripts"]) {
+        for (const auto& scriptNode : node["cppScripts"]) {
+            SceneScriptSource script;
+
+            if (scriptNode["path"]) {
+                script.path = fs::path(scriptNode["path"].as<std::string>());
+            }
+            if (scriptNode["headerPath"]) {
+                script.headerPath = fs::path(scriptNode["headerPath"].as<std::string>());
+            }
+            if (scriptNode["className"]) {
+                script.className = scriptNode["className"].as<std::string>();
+            }
+            if (scriptNode["properties"]) {
+                for (const auto& propNode : scriptNode["properties"]) {
+                    ScriptPropertyInfo prop;
+                    if (propNode["name"]) {
+                        prop.name = propNode["name"].as<std::string>();
+                    }
+                    if (propNode["isPtr"]) {
+                        prop.isPtr = YamlNumbers::as<bool>(propNode["isPtr"]);
+                    }
+                    if (propNode["ptrTypeName"]) {
+                        prop.ptrTypeName = propNode["ptrTypeName"].as<std::string>();
+                    }
+                    script.properties.push_back(prop);
+                }
+            }
+
+            sceneProject->cppScripts.push_back(script);
+        }
+    } else if (node["cppScriptPaths"]) {
+        for (const auto& pathNode : node["cppScriptPaths"]) {
+            SceneScriptSource script;
+            script.path = fs::path(pathNode.as<std::string>());
+            sceneProject->cppScripts.push_back(script);
+        }
+    }
+}
+
 void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::Node& node, bool loadScene) {
     if (node["id"]) sceneProject->id = YamlNumbers::as<uint32_t>(node["id"]);
     if (node["name"]) sceneProject->name = node["name"].as<std::string>();
@@ -2977,45 +3023,7 @@ void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::
         }
     }
 
-    sceneProject->cppScripts.clear();
-    if (node["cppScripts"]) {
-        for (const auto& scriptNode : node["cppScripts"]) {
-            SceneScriptSource script;
-
-            if (scriptNode["path"]) {
-                script.path = fs::path(scriptNode["path"].as<std::string>());
-            }
-            if (scriptNode["headerPath"]) {
-                script.headerPath = fs::path(scriptNode["headerPath"].as<std::string>());
-            }
-            if (scriptNode["className"]) {
-                script.className = scriptNode["className"].as<std::string>();
-            }
-            if (scriptNode["properties"]) {
-                for (const auto& propNode : scriptNode["properties"]) {
-                    ScriptPropertyInfo prop;
-                    if (propNode["name"]) {
-                        prop.name = propNode["name"].as<std::string>();
-                    }
-                    if (propNode["isPtr"]) {
-                        prop.isPtr = YamlNumbers::as<bool>(propNode["isPtr"]);
-                    }
-                    if (propNode["ptrTypeName"]) {
-                        prop.ptrTypeName = propNode["ptrTypeName"].as<std::string>();
-                    }
-                    script.properties.push_back(prop);
-                }
-            }
-
-            sceneProject->cppScripts.push_back(script);
-        }
-    } else if (node["cppScriptPaths"]) {
-        for (const auto& pathNode : node["cppScriptPaths"]) {
-            SceneScriptSource script;
-            script.path = fs::path(pathNode.as<std::string>());
-            sceneProject->cppScripts.push_back(script);
-        }
-    }
+    decodeSceneCppScripts(sceneProject, node);
 
     sceneProject->prefabs.clear();
     if (node["prefabs"]) {
@@ -4395,6 +4403,16 @@ YAML::Node editor::Stream::encodeComponentsLive(const Entity entity, const Entit
         compNode[Catalog::getComponentName(ComponentType::LatticeTracksComponent, true)] = encodeLatticeTracksComponent(tracks);
     }
 
+    if (signature.test(registry->getComponentId<PoseAnimatorComponent>())) {
+        const PoseAnimatorComponent& animator = registry->getComponent<PoseAnimatorComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::PoseAnimatorComponent, true)] = encodePoseAnimatorComponent(animator);
+    }
+
+    if (signature.test(registry->getComponentId<AnimationPlayerComponent>())) {
+        const AnimationPlayerComponent& player = registry->getComponent<AnimationPlayerComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::AnimationPlayerComponent, true)] = encodeAnimationPlayerComponent(player);
+    }
+
     if (signature.test(registry->getComponentId<CameraComponent>())) {
         const CameraComponent& camera = registry->getComponent<CameraComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::CameraComponent, true)] = encodeCameraComponent(camera);
@@ -4940,6 +4958,26 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }
     });
 
+    StreamLoad::decodeComponent(ComponentType::PoseAnimatorComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
+        PoseAnimatorComponent* existing = registry->findComponent<PoseAnimatorComponent>(entity);
+        PoseAnimatorComponent animator = decodePoseAnimatorComponent(componentNode, existing);
+        if (!signature.test(registry->getComponentId<PoseAnimatorComponent>())){
+            registry->addComponent<PoseAnimatorComponent>(entity, std::move(animator));
+        }else{
+            registry->getComponent<PoseAnimatorComponent>(entity) = std::move(animator);
+        }
+    });
+
+    StreamLoad::decodeComponent(ComponentType::AnimationPlayerComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
+        AnimationPlayerComponent* existing = registry->findComponent<AnimationPlayerComponent>(entity);
+        AnimationPlayerComponent player = decodeAnimationPlayerComponent(componentNode, existing);
+        if (!signature.test(registry->getComponentId<AnimationPlayerComponent>())){
+            registry->addComponent<AnimationPlayerComponent>(entity, std::move(player));
+        }else{
+            registry->getComponent<AnimationPlayerComponent>(entity) = std::move(player);
+        }
+    });
+
     StreamLoad::decodeComponent(ComponentType::CameraComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         CameraComponent* existing = registry->findComponent<CameraComponent>(entity);
         CameraComponent camera = decodeCameraComponent(componentNode, existing);
@@ -5415,13 +5453,24 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
     node["normAdjustJoint"] = YamlNumbers::text(mesh.normAdjustJoint);
     node["normAdjustWeight"] = YamlNumbers::text(mesh.normAdjustWeight);
 
-    // Encode morph weights array
-    YAML::Node morphWeightsNode;
-    morphWeightsNode.SetStyle(YAML::EmitterStyle::Flow);
-    for(int i = 0; i < MAX_MORPHTARGETS; i++) {
-        morphWeightsNode[i] = YamlNumbers::text(mesh.morphWeights[i]);
+    // Encode morph weights: only the mesh's own (MeshComponent::morphWeightsSet, or a weight set
+    // before any load): a mesh saved before its model ever loaded gets the file's defaults then,
+    // and the target count the weights cover lets targets a re-export adds get theirs
+    bool anyWeight = false;
+    for (int i = 0; i < MAX_MORPHTARGETS; i++) anyWeight = anyWeight || mesh.morphWeights[i] != 0.0f;
+    if (mesh.morphWeightsSet || anyWeight) {
+        YAML::Node morphWeightsNode;
+        morphWeightsNode.SetStyle(YAML::EmitterStyle::Flow);
+        for(int i = 0; i < MAX_MORPHTARGETS; i++) {
+            morphWeightsNode[i] = YamlNumbers::text(mesh.morphWeights[i]);
+        }
+        node["morphWeights"] = morphWeightsNode;
+        // the count only when it says more than the weights: without it, decode takes the count up
+        // to the last non-zero weight (as older versions saved them), so a scene saved before the
+        // count existed re-saves byte for byte
+        const int count = mesh.morphWeightsSet ? mesh.morphTargetCount : morphWeightsPresentCount(mesh.morphWeights);
+        if (count != morphWeightsPresentCount(mesh.morphWeights)) node["morphTargetCount"] = count;
     }
-    node["morphWeights"] = morphWeightsNode;
 
     // Encode AABBs
     node["aabb"] = encodeAABB(mesh.aabb);
@@ -5503,12 +5552,18 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     if (node["normAdjustJoint"]) mesh.normAdjustJoint = YamlNumbers::as<float>(node["normAdjustJoint"]);
     if (node["normAdjustWeight"]) mesh.normAdjustWeight = YamlNumbers::as<float>(node["normAdjustWeight"]);
 
-    // Decode morph weights
+    // Decode morph weights: saved weights are the mesh's own, a model (re)load keeps them
+    // (MeshComponent::morphWeightsSet)
     if (node["morphWeights"]) {
         auto morphWeightsNode = node["morphWeights"];
         for(int i = 0; i < MAX_MORPHTARGETS; i++) {
             mesh.morphWeights[i] = YamlNumbers::as<float>(morphWeightsNode[i]);
         }
+        mesh.morphWeightsSet = true;
+        // (weights saved without their count, by an older version, cover up to their last non-zero
+        // weight: MeshComponent::morphTargetCount)
+        mesh.morphTargetCount = node["morphTargetCount"] ? std::clamp(node["morphTargetCount"].as<int>(), 0, MAX_MORPHTARGETS)
+                                                         : morphWeightsPresentCount(mesh.morphWeights);
     }
 
     if (node["aabb"]) mesh.aabb = decodeAABB(node["aabb"]);
@@ -6385,6 +6440,9 @@ YAML::Node editor::Stream::encodeModelComponent(const ModelComponent& model) {
     // come back with the file and nodes it had.
     encodeAssetRef(node, "filename", model.filename);
     node["mergeStaticMeshes"] = model.mergeStaticMeshes;
+    // written only when off (an Animation Player plays the model's clips, 9.R15), so files with
+    // models save as before; decoding reads a missing key as on, never as the old value
+    if (!model.animationEntities) node["animationEntities"] = false;
 
     node["skeleton"] = static_cast<uint32_t>(model.skeleton);
 
@@ -6443,6 +6501,20 @@ ModelComponent editor::Stream::decodeModelComponent(const YAML::Node& node, cons
     // Also check for the old modelPath for exact backward compatibility with old save files
     if (node["filename"]) model.filename = decodeAssetRef(node, "filename");
     if (node["mergeStaticMeshes"]) model.mergeStaticMeshes = YamlNumbers::as<bool>(node["mergeStaticMeshes"]);
+    // absent (or emptied by a paste over a Model that had it) is the default, on
+    model.animationEntities = true;
+    if (const YAML::Node value = node["animationEntities"]; value && value.IsScalar() && !value.Scalar().empty()) {
+        bool flag = true;
+        if (YamlNumbers::readPlain(value.Scalar(), flag)) {
+            model.animationEntities = flag;
+        } else {
+            try {
+                model.animationEntities = value.as<bool>();
+            } catch (const YAML::Exception&) {
+                model.animationEntities = true;
+            }
+        }
+    }
     if (node["skeleton"]) model.skeleton = static_cast<Entity>(YamlNumbers::as<uint32_t>(node["skeleton"]));
 
     if (node["animations"]) {
@@ -7051,6 +7123,146 @@ FluidSimulationComponent editor::Stream::decodeFluidSimulationComponent(const YA
     }
 
     return fluid;
+}
+
+YAML::Node editor::Stream::encodePoseAnimatorComponent(const PoseAnimatorComponent& animator) {
+    YAML::Node node;
+    // written when empty too: decoding over a component with an animation must clear it
+    node["animation"] = animator.animation;
+    node["autoplay"] = animator.autoplay;
+    encodeFinite(node, "speed", animator.speed);
+    encodeFinite(node, "weight", animator.weight);
+    return node;
+}
+
+PoseAnimatorComponent editor::Stream::decodePoseAnimatorComponent(const YAML::Node& node, const PoseAnimatorComponent* oldAnimator) {
+    // the old one's runtime state (what it loaded, where it plays) stays while the
+    // animation is the same: paste and play-stop restore decode over an existing component
+    PoseAnimatorComponent animator;
+    if (oldAnimator) {
+        animator = *oldAnimator;
+    }
+    // callbacks are the running game's (scripts register them again): a snapshot or a copy
+    // restored over the component must not bring back a released Lua function
+    animator.onFinish.clear();
+
+    // a missing key is the default, not the old value
+    const PoseAnimatorComponent defaults;
+    auto given = [&node](const char* key) {
+        const YAML::Node value = node[key];
+        return value && !value.IsNull() && !(value.IsScalar() && value.Scalar().empty());
+    };
+    animator.animation = given("animation") ? node["animation"].as<std::string>() : std::string();
+    animator.autoplay = given("autoplay") ? YamlNumbers::as<bool>(node["autoplay"]) : defaults.autoplay;
+    animator.speed = given("speed") ? decodeFinite(node["speed"], defaults.speed) : defaults.speed;
+    animator.weight = given("weight") ? std::clamp(decodeFinite(node["weight"], defaults.weight), 0.0f, 1.0f) : defaults.weight;
+
+    if (oldAnimator && oldAnimator->animation != animator.animation) {
+        animator.needsLoad = true;
+    }
+
+    return animator;
+}
+
+YAML::Node editor::Stream::encodeAnimationPlayerComponent(const AnimationPlayerComponent& player) {
+    YAML::Node node;
+    node["enabled"] = YamlNumbers::text(player.enabled);
+    // written when empty too: decoding over a player with clips must clear them
+    YAML::Node clipsNode(YAML::NodeType::Sequence);
+    for (const AnimationPlayerClip& entry : player.clips) {
+        YAML::Node entryNode;
+        entryNode["clip"] = entry.clip;
+        if (!entry.guid.empty()) entryNode["guid"] = entry.guid;
+        if (!entry.name.empty()) entryNode["name"] = entry.name;
+        if (entry.wrap != ClipWrapMode::Default) entryNode["wrap"] = anim::wrapName(entry.wrap);
+        clipsNode.push_back(entryNode);
+    }
+    node["clips"] = clipsNode;
+    node["defaultClip"] = player.defaultClip;
+    node["playAutomatically"] = YamlNumbers::text(player.playAutomatically);
+    encodeFinite(node, "speed", player.speed);
+    encodeFinite(node, "defaultFadeTime", player.defaultFadeTime);
+    return node;
+}
+
+AnimationPlayerComponent editor::Stream::decodeAnimationPlayerComponent(const YAML::Node& node, const AnimationPlayerComponent* oldPlayer) {
+    // the old one's runtime (states, rest values, bindings) stays: paste and play-stop restore
+    // decode over an existing component; a changed clip list reloads it (needsLoad)
+    AnimationPlayerComponent player;
+    if (oldPlayer) {
+        player = *oldPlayer;
+    }
+    // callbacks are the running game's (scripts subscribe again): a snapshot or a copy restored
+    // over the component must not bring back a released Lua function
+    player.onEvent.clear();
+    player.onFinish.clear();
+
+    // a missing key is the default, not the old value
+    const AnimationPlayerComponent defaults;
+    auto given = [&node](const char* key) {
+        const YAML::Node value = node[key];
+        return value && !value.IsNull() && !(value.IsScalar() && value.Scalar().empty());
+    };
+    // a value of the wrong shape is the default (one bad key never fails the scene's load)
+    auto boolean = [&node, &given](const char* key, bool fallback) {
+        if (!given(key) || !node[key].IsScalar()) return fallback;
+        bool value = fallback;
+        if (YamlNumbers::readPlain(node[key].Scalar(), value)) return value;
+        try {
+            return node[key].as<bool>();
+        } catch (const YAML::Exception&) {
+            return fallback;
+        }
+    };
+    player.enabled = boolean("enabled", defaults.enabled);
+
+    std::vector<AnimationPlayerClip> clips;
+    const YAML::Node clipsNode = node["clips"];
+    if (clipsNode && clipsNode.IsSequence()) {
+        for (const YAML::Node& entryNode : clipsNode) {
+            AnimationPlayerClip entry;
+            if (entryNode.IsScalar()) {
+                // a plain path: {clip}
+                entry.clip = entryNode.Scalar();
+            } else if (entryNode.IsMap() && (!entryNode["clip"] || entryNode["clip"].IsScalar() || entryNode["clip"].IsNull())) {
+                auto text = [&entryNode](const char* key) {
+                    const YAML::Node value = entryNode[key];
+                    return value && value.IsScalar() ? value.Scalar() : std::string();
+                };
+                entry.clip = text("clip");
+                entry.guid = text("guid");
+                entry.name = text("name");
+                const std::string wrap = text("wrap");
+                if (!wrap.empty() && !anim::wrapFromName(wrap, entry.wrap)) {
+                    // once per (clip, wrap): paste, undo, prefab diffs and play startup decode it again
+                    static std::mutex warnedMutex;
+                    static std::set<std::string> warned;
+                    std::lock_guard<std::mutex> lock(warnedMutex);
+                    if (warned.insert(entry.clip + "\n" + wrap).second) {
+                        Out::warning("Animation Player clip \"%s\": unknown wrap \"%s\" (default, once, loop, ping_pong, clamp_forever), using default",
+                                     entry.clip.c_str(), wrap.c_str());
+                    }
+                    entry.wrap = ClipWrapMode::Default;
+                }
+            } else {
+                // a list, or a map whose clip is not a path
+                continue;
+            }
+            clips.push_back(std::move(entry));
+        }
+    }
+    player.clips = std::move(clips);
+
+    player.defaultClip = given("defaultClip") && node["defaultClip"].IsScalar() ? node["defaultClip"].Scalar() : std::string();
+    player.playAutomatically = boolean("playAutomatically", defaults.playAutomatically);
+    player.speed = given("speed") ? decodeFinite(node["speed"], defaults.speed) : defaults.speed;
+    player.defaultFadeTime = given("defaultFadeTime") ? std::max(0.0f, decodeFinite(node["defaultFadeTime"], defaults.defaultFadeTime)) : defaults.defaultFadeTime;
+
+    if (oldPlayer && oldPlayer->clips != player.clips) {
+        player.needsLoad = true;
+    }
+
+    return player;
 }
 
 ReflectionProbeComponent editor::Stream::decodeReflectionProbeComponent(const YAML::Node& node, const ReflectionProbeComponent* oldProbe) {

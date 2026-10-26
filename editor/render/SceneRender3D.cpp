@@ -3,6 +3,7 @@
 
 #include "SceneRender3D.h"
 #include "profiler/Profile.h"
+#include "pose/PoseViewport.h"
 
 #include "resources/icons/sun-icon_png.h"
 #include "resources/icons/bulb-icon_png.h"
@@ -269,9 +270,16 @@ editor::SceneRender3D::SceneRender3D(Scene* scene): SceneRender(scene, false, tr
 
     uilayer.setViewportGizmoTexture(viewgizmo.getFramebuffer());
 
+    poseViewport = std::make_unique<PoseViewport>(scene, toolslayer.getScene());
 }
 
 editor::SceneRender3D::~SceneRender3D(){
+    // the pose overlays and ghosts first: they live in this scene and the tools layer
+    poseViewport.reset();
+
+    // a gizmo the scene destroyed is not deleted through an id that may be another entity's now
+    dropGoneGizmos();
+
     delete lines;
     delete selLines;
 
@@ -1769,6 +1777,22 @@ void editor::SceneRender3D::createSpotLightCones(Entity entity, const Transform&
     lo.lines->addLine(position, endPos, Vector4(0.8, 0.8, 0.8, 1.0));
 }
 
+void editor::SceneRender3D::dropGoneGizmos(){
+    SceneRender::dropGoneGizmos();
+
+    const RenderSystem& render = *scene->getSystem<RenderSystem>();
+    dropGoneGizmos(lightObjects, render, &LightObjects::icon, &LightObjects::lines);
+    dropGoneGizmos(cameraObjects, render, &CameraObjects::icon, &CameraObjects::lines);
+    dropGoneGizmos(soundObjects, render, &SoundObjects::icon);
+    dropGoneGizmos(bodyObjects, render, &BodyObjects::lines);
+    dropGoneGizmos(jointLines, render);
+    dropGoneGizmos(boneLines, render);
+    dropGoneGizmos(linePointLines, render);
+    dropGoneGizmos(polygonPointLines, render);
+    dropGoneGizmos(trackLines, render);
+    dropGoneGizmos(reflectionProbeLines, render);
+}
+
 void editor::SceneRender3D::hideAllGizmos(){
     SceneRender::hideAllGizmos();
 
@@ -1868,6 +1892,9 @@ void editor::SceneRender3D::updateSelLines(std::vector<OBB> obbs){
 
 void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<Entity> entities, Entity mainCamera, const SceneDisplaySettings& settings){
     SceneRender::update(selEntities, entities, mainCamera, settings);
+
+    // pose animation handles, floor and ghosts (hidden while playing or previewing a camera)
+    poseViewport->update(camera, getViewWidth(), getViewHeight(), overlayScale, isPlaying || isPreviewCameraActive());
 
     if (isPreviewCameraActive()){
         return;

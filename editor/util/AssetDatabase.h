@@ -4,7 +4,8 @@
 // Unity's AssetDatabase: every asset of the project (editor/asset/AssetTypes.cpp decides
 // which files are assets) has a 128-bit GUID that survives renames and moves, inside the
 // editor or outside it. Engine YAML assets (.prefab, .scene, .material) keep it in the file
-// as a top-level `guid:` key; every other asset in a `<file>.meta` sidecar (AssetMeta).
+// as a top-level `guid:` key, .anim clips as the top-level "guid" member of their JSON
+// (animation clips spec 9.R8); every other asset in a `<file>.meta` sidecar (AssetMeta).
 // Model files list their sub-assets (meshes, materials, ...) with derived GUIDs. An asset
 // may list former GUIDs (redirects): references to them resolve to it.
 //
@@ -107,11 +108,12 @@ namespace jasperengine::editor {
         static bool isGuid(const std::string& text);
 
         // The file's top-level `guid:` value, empty without one (block style: the first such
-        // line; a flow style document is parsed)
+        // line; a flow style document is parsed; an .anim: its "guid" member)
         static std::string readGuid(const std::filesystem::path& fullPath);
         // Writes `guid` as the file's top-level `guid:` value, the rest of the file unchanged
         // (a line replaced or inserted at the top); a flow style document is written again
-        // in block style, the GUID first
+        // in block style, the GUID first. An .anim: the "guid" member replaced or inserted
+        // after "version"; false for a file that is not a JasperEngine clip
         static bool writeGuid(const std::filesystem::path& fullPath, const std::string& guid);
         // In-file identity with the former GUIDs (`formerGuids:` right after `guid:`); a flow
         // style document is parsed when read and written again in block style, identity first
@@ -125,6 +127,9 @@ namespace jasperengine::editor {
         // (the cache from the last session, else the older file) and the other file gets a
         // new one. assetsDir is relative to the project (data files are assets only there).
         void open(const std::filesystem::path& projectPath, const std::filesystem::path& assetsDir = std::filesystem::path());
+        // Read-only (a CLI check, a headless analysis): GUIDs are given in memory only, no asset
+        // file, meta or cache is ever written. Kept across open/close.
+        void setReadOnly(bool readOnly);
         void close();
         // The temporary siblings of atomic writes the last open() walked past (the project's
         // orphan sweep uses this walk instead of one of its own)
@@ -237,6 +242,7 @@ namespace jasperengine::editor {
 
         // The editor saves scenes (and their prefabs) on a background thread too
         mutable std::recursive_mutex mutex;
+        bool readOnly = false;
         std::filesystem::path projectPath;
         std::filesystem::path assetsDir;
         bool caseInsensitive = false;

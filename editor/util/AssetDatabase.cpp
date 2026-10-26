@@ -14,6 +14,7 @@
 #include "util/SHA1.h"
 
 #include "json.hpp"
+#include "animation/AnimationClipIO.h"
 #include "yaml-cpp/yaml.h"
 
 #include <algorithm>
@@ -231,6 +232,57 @@ namespace {
             out.push_back({entry.key, entry.guid, entry.name, kind});
         }
         return out;
+
+    // .anim clips are JSON: their GUID is the top-level "guid" member (AnimationClipIO)
+    bool isClipFile(const fs::path& path) {
+        return editor::Util::isAnimationClipFile(path.string());
+    }
+
+    // A clip's in-file identity: "guid" and, for an asset that took over others (R8), the
+    // "formerGuids" array (an unknown key to AnimationClipIO, which writes it back as it is)
+    bool clipIdentity(const std::string& text, Guid& guid, std::vector<Guid>& formerGuids) {
+        guid = Guid::parse(anim::readClipGuid(text));
+        if (text.find("\"formerGuids\"") != std::string::npos) {
+            const Json root = Json::parse(text, nullptr, false);
+            if (root.is_object() && root.contains("formerGuids") && root["formerGuids"].is_array()) {
+                for (const Json& former : root["formerGuids"]) {
+                    const Guid parsed = former.is_string() ? Guid::parse(former.get<std::string>()) : Guid();
+                    if (!parsed.isNull()) formerGuids.push_back(parsed);
+                }
+            }
+        }
+        return !guid.isNull();
+    }
+
+    // The clip text with that identity: only the "guid" member replaced or inserted after
+    // "version" (the rest byte-identical) while there are no former GUIDs to write or drop;
+    // else the clip written again canonically. False for a text that is not a clip.
+    bool withClipIdentity(std::string& text, const Guid& guid, const std::vector<Guid>& formerGuids) {
+        anim::ClipParseResult parsed = anim::parseClip(text);
+        if (!parsed.ok()) {
+            return false;
+        }
+        ClipData& data = *parsed.data;
+        auto& unknown = data.unknownKeys;
+        const auto had = std::find_if(unknown.begin(), unknown.end(), [](const auto& key) { return key.first == "formerGuids"; });
+        if (formerGuids.empty() && had == unknown.end()) {
+            return anim::replaceClipGuid(text, guid.str());
+        }
+        if (had != unknown.end()) {
+            unknown.erase(had);
+        }
+        if (!formerGuids.empty()) {
+            std::vector<Guid> sorted = formerGuids;
+            std::sort(sorted.begin(), sorted.end());
+            sorted.erase(std::unique(sorted.begin(), sorted.end()), sorted.end());
+            Json list = Json::array();
+            for (const Guid& former : sorted) list.push_back(former.str());
+            unknown.emplace_back("formerGuids", list.dump());
+        }
+        data.guid = guid.str();
+        text = anim::writeClip(data);
+        return true;
+    }
     }
 
 }
@@ -276,6 +328,10 @@ bool editor::AssetDatabase::isGuid(const std::string& text) {
 }
 
 std::string editor::AssetDatabase::readGuid(const fs::path& fullPath) {
+    if (isClipFile(fullPath)) {
+        std::string text;
+        return editor::assetio::readFile(fullPath, text) ? anim::readClipGuid(text) : std::string();
+    }
     std::ifstream file(fullPath, std::ios::binary);
     if (!file) {
         return {};
@@ -302,6 +358,10 @@ std::string editor::AssetDatabase::readGuid(const fs::path& fullPath) {
 bool editor::AssetDatabase::readInFileIdentity(const fs::path& fullPath, Guid& guid, std::vector<Guid>& formerGuids) {
     guid = Guid();
     formerGuids.clear();
+    if (isClipFile(fullPath)) {
+        std::string text;
+        return assetio::readFile(fullPath, text) && clipIdentity(text, guid, formerGuids);
+    }
     std::ifstream file(fullPath, std::ios::binary);
     if (!file) {
         return false;
@@ -359,6 +419,19 @@ bool editor::AssetDatabase::writeInFileIdentity(const fs::path& fullPath, const 
     std::string text;
     if (!assetio::readFile(fullPath, text)) {
         return false;
+    }
+    if (isClipFile(fullPath)) {
+        // a file that is not a clip (a Unity YAML .anim, broken JSON: its error must keep its
+        // line) is left alone
+        if (!withClipIdentity(text, guid, formerGuids)) {
+            return false;
+        }
+        std::string error;
+        if (!assetio::writeFile(fullPath, text, assetio::Durability::Document, &error)) {
+            Out::warning("Could not write the GUID of %s: %s", fullPath.string().c_str(), error.c_str());
+            return false;
+        }
+        return true;
     }
     const std::string newline = text.find("\r\n") != std::string::npos ? "\r\n" : "\n";
     std::string identity = "guid: " + guid.str() + newline;
@@ -685,6 +758,9 @@ bool editor::AssetDatabase::readIdentity(const std::string& relative, AssetType 
 }
 
 bool editor::AssetDatabase::writeIdentity(const Entry& entry) const {
+    if (readOnly) {
+        return false;   // in memory only: a check or a headless analysis changes no project file
+    }
     const AssetTypeInfo& info = AssetTypes::info(entry.type);
     if (info.identity == AssetIdentity::InFile) {
         Guid current;
@@ -818,8 +894,13 @@ editor::AssetDatabase::Entry editor::AssetDatabase::identify(const std::string& 
     // R3: the legacy GUID when nothing uses it, so two machines upgrading the same commit agree
     entry.guid = freshGuid(preferredGuid);
     refreshSubAssets(entry, nullptr);
-    if (!writeIdentity(entry)) {
-        Out::warning("The GUID of %s is kept in memory only", relative.c_str());
+    if (!writeIdentity(entry) && !readOnly) {
+        // a clip that does not parse (a Unity YAML .anim, broken JSON) is reported by the clip
+        // checks, not here
+        std::string text;
+        if (!(isClipFile(relative) && assetio::readFile(projectPath / relative, text) && !anim::parseClip(text).ok())) {
+            Out::warning("The GUID of %s is kept in memory only", relative.c_str());
+        }
     }
     statFile(relative, entry.writeTime, entry.size);
     if (AssetTypes::info(type).identity == AssetIdentity::Sidecar) {
@@ -1100,8 +1181,13 @@ void editor::AssetDatabase::loadCache(std::map<std::string, Entry>& cached) cons
     }
 }
 
+void editor::AssetDatabase::setReadOnly(bool value) {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    readOnly = value;
+}
+
 void editor::AssetDatabase::saveCache() const {
-    if (projectPath.empty()) {
+    if (projectPath.empty() || readOnly) {
         return;
     }
     writeCache(snapshotCache());
@@ -1478,7 +1564,12 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh(const 
         }
         Entry updated;
         const bool identified = readIdentity(relative, type, updated, nullptr);
-        if (!identified) {
+        // A clip rewritten with another existing clip's GUID (JSON copied from it by an agent):
+        // still this asset, its references keep finding it (written again with its own)
+        auto owner = identified ? byGuid.find(updated.guid) : byGuid.end();
+        const bool copiedClipGuid = isClipFile(relative) && owner != byGuid.end() && owner->second != relativeKeyOf(relative) &&
+                                    byPath.count(owner->second) && fileExists(byPath.at(owner->second).path);
+        if (!identified || copiedClipGuid) {
             // Written again without its identity (another tool, or the meta deleted): it is
             // still the same asset
             updated = known;
@@ -2135,7 +2226,7 @@ void editor::AssetDatabase::saveCacheInBackground() {
     CacheSnapshot snapshot;
     {
         std::lock_guard<std::recursive_mutex> dbLock(mutex);
-        if (!projectPath.empty()) snapshot = snapshotCache();
+        if (!projectPath.empty() && !readOnly) snapshot = snapshotCache();
     }
     writeCache(snapshot);
 }

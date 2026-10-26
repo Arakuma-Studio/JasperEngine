@@ -389,10 +389,11 @@ in both runs the binary aborts and `gtest-gate` fails on the missing XML.
 | `SANITIZE=thread UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=-*Gpu*' tools/build.sh unit-tests` | 354 ran, 0 failed, no race report |
 | `WERROR=1 tools/build.sh unit-tests` | both trees build with `-Werror`; 356 + 218 ran, 0 failed |
 
-What the first ASan runs found, and the fixes: ThorVG replaces the global `operator new`/`delete`
+What the first ASan runs found, and the fixes: ThorVG replaced the global `operator new`/`delete`
 but not the sized `delete`, so ASan's sized `delete` freed ThorVG's `malloc` blocks
-(alloc-dealloc-mismatch in the first static initializer); an ASan build now keeps the sanitizer's
-operators (`NOTICE.md` lists the local change). The editor leaked the default sky's six decoded
+(alloc-dealloc-mismatch in the first static initializer); the vendored ThorVG no longer replaces
+them at all (`engine/libs/thorvg/CMakeLists.txt` lists the local patch), and the core tests'
+allocation counter replaces the plain forms in the test binary only. The editor leaked the default sky's six decoded
 faces (about 7 MB) every time a scene with `useDefaultTexture` was decoded after the first
 (`ProjectUtils::setDefaultSkyTexture` now reuses the pooled faces). A `CameraComponent` value owns
 a `Framebuffer` that only `RenderSystem` frees, when its entity is destroyed; the tests free the

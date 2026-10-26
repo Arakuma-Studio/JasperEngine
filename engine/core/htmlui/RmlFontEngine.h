@@ -51,10 +51,6 @@ namespace jasperengine {
     //   and quads sheared by 12 degrees.
     class JASPERENGINE_INTERNAL RmlFontEngine : public Rml::FontEngineInterface {
     public:
-        static constexpr int pageSize = 1024;
-        static constexpr size_t maxPages = 16;
-        static constexpr size_t maxWidthCacheEntries = 8192;
-
         RmlFontEngine();
         ~RmlFontEngine() override;
 
@@ -89,13 +85,6 @@ namespace jasperengine {
         // bumps the version (that context's text is regenerated), pages and glyphs stay
         void setRasterScale(Rml::RenderManager& renderManager, float scale);
         float getRasterScale(const Rml::RenderManager& renderManager) const;   // its own, else the default
-        // the default for render managers without their own scale (phase 0's global scale);
-        // change -> clear glyphs/pages, version++
-        void setRasterScale(float scale);
-        float getRasterScale() const;
-        size_t getPageCount() const;        // tests: base glyph pages
-        size_t getEffectPageCount() const;  // tests: RGBA8 pages of effect glyphs
-        size_t getEffectSetCount() const;   // tests: prepared effect sets
 
         // phase-2 hook H6: whether a family is known (a generic family, a built-in or a loaded
         // face), for HTMLUI-CSS-0023 (FontRegistry::hasFamily)
@@ -109,12 +98,11 @@ namespace jasperengine {
         void setRenderTextForTesting(bool render);
         bool getRenderTextForTesting() const;
 
-        // tests: the faces of a handle's chain, primary first; the "family, family" list split
-        // and normalized as GetFontFaceHandle does
-        std::vector<const FontFace*> getChain(Rml::FontFaceHandle handle) const;
-        static std::vector<std::string> splitFamilyList(const std::string& families);
-
     private:
+        static constexpr int pageSize = 1024;
+        static constexpr size_t maxPages = 16;
+        static constexpr size_t maxWidthCacheEntries = 8192;
+        static std::vector<std::string> splitFamilyList(const std::string& families);
         struct FaceHandle {
             std::vector<std::shared_ptr<FontFace>> chain;
             std::vector<const FontFace*> faces;
@@ -203,7 +191,6 @@ namespace jasperengine {
         int widthsVersion = 0;
 
         int version = 1;
-        float rasterScale = 1.0f;
         bool renderText = true;
         bool warnedOverflow = false;
 

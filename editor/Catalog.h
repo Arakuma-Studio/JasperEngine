@@ -69,6 +69,10 @@ namespace jasperengine::editor{
         // a lattice's offsets, resolution or settings, or a modifier's bindings changed: bumps
         // LatticeComponent::revision and lets an over-full modifier warn again
         UpdateFlags_Lattice             = (uint64_t)1 << 40,
+        // a Pose Animator's animation path changed: load it again
+        UpdateFlags_PoseAnimator_Reload = (uint64_t)1 << 41,
+        // an Animation Player's clip list changed: the next update reloads and rebinds it
+        UpdateFlags_AnimationPlayer_Reload = (uint64_t)1 << 42,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -136,12 +140,15 @@ namespace jasperengine::editor{
         LatticeFollowerComponent,
         LatticeTracksComponent,
         LocalVolumetricFogComponent,
-        VolumetricCloudsComponent
+        VolumetricCloudsComponent,
+        PoseAnimatorComponent,
+        // Unity's legacy Animation component (animation clips spec 3.2)
+        AnimationPlayerComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::VolumetricCloudsComponent;
+    constexpr ComponentType LastComponentType = ComponentType::AnimationPlayerComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;

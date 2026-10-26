@@ -5,6 +5,7 @@
 
 #include "Stream.h"
 #include "command/type/ModelLoadCmd.h"
+#include "pose/PoseEditSession.h"
 #include "util/ProjectUtils.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -266,6 +267,10 @@ bool editor::ModelClearCmd::execute(){
     // A load of this Model still running would put the model back after it is emptied (a redo
     // can come right behind the redo of that load), so it lands now
     ModelLoadCmd::completePendingLoad(sceneId, entity);
+    // what is saved below (the mesh's blend shape weights, the world kept by what hangs on the
+    // model's nodes) is the rest: a clip preview of, under or above the model restores and a pose
+    // suspends first (animation clips 9.R7, final review I1)
+    PoseEditSession::suspendActiveFor(sceneId, {entity});
 
     const ModelComponent& model = scene->getComponent<ModelComponent>(entity);
     if (!hasContent(model)) {
@@ -379,6 +384,9 @@ void editor::ModelClearCmd::undo(){
         return;
     }
     Scene* scene = sceneProject->scene;
+    // the restored values are the rest: a preview started since (on the emptied GameObject or
+    // above it) must not snapshot over them (9.R7)
+    PoseEditSession::suspendActiveFor(sceneId, {entity});
 
     if (hadMesh) {
         if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)) {

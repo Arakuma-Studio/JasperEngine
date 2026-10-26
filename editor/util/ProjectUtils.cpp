@@ -1107,6 +1107,20 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<LatticeTracksComponent>(entity, Stream::decodeLatticeTracksComponent(componentNode));
             }
             break;
+        case ComponentType::PoseAnimatorComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<PoseAnimatorComponent>(entity, {});
+            }else{
+                registry->addComponent<PoseAnimatorComponent>(entity, Stream::decodePoseAnimatorComponent(componentNode));
+            }
+            break;
+        case ComponentType::AnimationPlayerComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<AnimationPlayerComponent>(entity, {});
+            }else{
+                registry->addComponent<AnimationPlayerComponent>(entity, Stream::decodeAnimationPlayerComponent(componentNode));
+            }
+            break;
         case ComponentType::Light2DComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
                 registry->addComponent<Light2DComponent>(entity, {});
@@ -1604,6 +1618,19 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
                 oldComponent = Stream::encodeLatticeTracksComponent(registry->getComponent<LatticeTracksComponent>(entity));
             }
             registry->removeComponent<LatticeTracksComponent>(entity);
+            break;
+        case ComponentType::PoseAnimatorComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodePoseAnimatorComponent(registry->getComponent<PoseAnimatorComponent>(entity));
+            }
+            registry->removeComponent<PoseAnimatorComponent>(entity);
+            break;
+        case ComponentType::AnimationPlayerComponent:
+            // the bound channels keep the last sampled pose (Unity): nothing to restore
+            if (encodeComponent){
+                oldComponent = Stream::encodeAnimationPlayerComponent(registry->getComponent<AnimationPlayerComponent>(entity));
+            }
+            registry->removeComponent<AnimationPlayerComponent>(entity);
             break;
         case ComponentType::Light2DComponent:
             if (encodeComponent){

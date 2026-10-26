@@ -124,6 +124,13 @@ namespace jasperengine::editor {
 
         void show();
         bool isFocused() const;
+        // a camera drag (look, orbit, pan) is running in a Scene view
+        bool isNavigatingCamera() const;
+        // A left click (no drag, no pose handle) at engine canvas (x, y) of a posing Scene view:
+        // a click off the posed character leaves posing (PoseViewport::clicked with the selection
+        // pick and the raw hit). True when posing ended. Also the MCP test hook's click.
+        // `picked` / `rawHit` (optional) receive the two picks.
+        bool poseClick(uint32_t sceneId, float x, float y, Entity* picked = nullptr, Entity* rawHit = nullptr);
         void resetProjectState();
         void clearSceneState(uint32_t sceneId);
         void requestPlayFocus(uint32_t sceneId);

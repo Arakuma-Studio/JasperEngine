@@ -14,6 +14,7 @@
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/FluidSystem.h"
 #include "subsystem/ActionSystem.h"
+#include "subsystem/PoseAnimatorSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "util/Color.h"
@@ -35,6 +36,8 @@ void Scene::init(){
     lifetime = std::make_shared<char>(0);
 
     registerSystem<ActionSystem>();
+    // after the clips' blend is flushed, before the world matrices and the skinning
+    registerSystem<PoseAnimatorSystem>();
     registerSystem<MeshSystem>();
     registerSystem<LatticeSystem>();
     registerSystem<UISystem>();
@@ -88,6 +91,15 @@ void Scene::removeSubscriptionsByTag(const std::string& substring) {
         sound.onStart.removeByTagSubstring(tag);
         sound.onPause.removeByTagSubstring(tag);
         sound.onStop.removeByTagSubstring(tag);
+    });
+
+    removeComponentSubscriptionsByTag<PoseAnimatorComponent>(this, substring, [](PoseAnimatorComponent& animator, const std::string& tag) {
+        animator.onFinish.removeByTagSubstring(tag);
+    });
+
+    removeComponentSubscriptionsByTag<AnimationPlayerComponent>(this, substring, [](AnimationPlayerComponent& player, const std::string& tag) {
+        player.onEvent.removeByTagSubstring(tag);
+        player.onFinish.removeByTagSubstring(tag);
     });
 
     removeComponentSubscriptionsByTag<UIComponent>(this, substring, [](UIComponent& ui, const std::string& tag) {

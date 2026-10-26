@@ -39,14 +39,15 @@ Prefab = .prefab asset (PrefabComponent on the instance root; PrefabAsset in scr
 Mesh Filter/Renderer = MeshComponent (Primitive for box/sphere/plane...). Sprite Renderer =
 SpriteComponent. Rigidbody / Rigidbody 2D = RigidbodyComponent (Jolt) / Rigidbody2DComponent
 (Box2D). Collider = an entry of the Rigidbody's colliders list, not a separate component.
-Most others are Unity's name + "Component" (AudioSourceComponent...).
+Most others are Unity's name + "Component" (AudioSourceComponent...). Legacy Animation =
+AnimationPlayerComponent (AnimationComponent: entity sequences).
 Build Settings = export; Scenes in Build = the scene list in project.yaml.
 
 ## Addressing
-- scene: numeric id, scene name, or project-relative .scene path. Omitted = the selected
-  scene. While playing, runtime-state tools resolve to the playing scene. parent: omitted =
-  the scene root. max_width 0 = full size.
-- entity: numeric id, or a path of names from the scene root joined by "/" with "#N" for the
+- scene: numeric id ("12" ok), scene name, or project-relative .scene path. Omitted = the
+  selected scene. While playing, runtime-state tools resolve to the playing scene. parent:
+  omitted = the scene root. max_width 0 = full size.
+- entity: numeric id ("12" ok), or a path of names from the scene root joined by "/" with "#N" for the
   Nth earlier sibling of the same name ("Player/Gun", "Enemy#2"), or a bare name unique in the
   scene; {"id"|"name"|"path"} objects (as results return them) work too. Ambiguous names fail
   and list the matching paths. Results return both id and path; prefer ids within a session.
@@ -151,6 +152,9 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 - UI widgets (HTML/CSS UI: below): create_ui lays out in pixels, y DOWN from the parent's
   top-left. Put HUDs and menus in a UI scene attached as a child scene (set_child_scene): in a
   2D scene layout groups stack bottom-up and pointer input needs a UI camera.
+- Humanoid poses (.poseanim): get_pose_animation -> edit_pose_animation -> render_pose_animation
+  (jasper://docs/pose-animation). Clips (.anim): edit_animation {clip, create}, played by an
+  Animation Player (jasper://docs/animation).
 
 ## Atmosphere
 A Fog of type "height" is physically based height fog (volumetric: true adds light shafts and

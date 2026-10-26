@@ -527,6 +527,14 @@ RenderSystem::RenderSystem(Scene* scene): SubSystem(scene), atmosphere(this){
     shadowCaster2DNeedUpdateBuffer = false;
     hasReflectionProbes = false;
     capturingReflectionProbe = false;
+    // read before the first load() (updateTransform of an editor scene's transforms, the mesh
+    // shader environment of a variant probe, headless tools): nothing until load() looks
+    hasLights = false;
+    hasShadows = false;
+    hasFog = false;
+    hasIBL = false;
+    hasLights2D = false;
+    hasShadows2D = false;
 
     lightListEpoch = 1;
     lightListCap = 0;

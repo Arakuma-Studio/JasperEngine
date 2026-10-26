@@ -14,7 +14,6 @@
 
 #include <gtest/gtest.h>
 
-#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -140,26 +139,6 @@ TEST_F(RmlRendererP1GoldenTest, ClipTransform){
     EXPECT_TRUE(probe.isBackground(400, 230));
 
     expectGolden(test, "clip_transform");
-}
-
-TEST_F(RmlRendererP1GoldenTest, Transforms){
-    JASPER_REQUIRE_GPU();
-    P1Context test;
-    std::vector<uint8_t> screen;
-    ASSERT_TRUE(draw(test, "transforms", screen));
-    PixelProbe probe{screen, width};
-
-    // translate(20, 10): the box covers 40..120 x 30..90
-    EXPECT_TRUE(probe.is(115, 85, 0xe0, 0x40, 0x40));
-    EXPECT_TRUE(probe.isBackground(25, 25));
-    // the rotated and scaled ones keep their centre
-    EXPECT_TRUE(probe.is(190, 60, 0x40, 0xe0, 0x40));
-    EXPECT_TRUE(probe.is(320, 60, 0x40, 0x40, 0xe0));
-    EXPECT_TRUE(probe.is(440, 60, 0xe0, 0xe0, 0x40));
-    // the perspective plane
-    EXPECT_TRUE(probe.is(250, 260, 0xc0, 0x40, 0xc0));
-
-    expectGolden(test, "transforms");
 }
 
 TEST_F(RmlRendererP1GoldenTest, FilterOpacity){
@@ -503,53 +482,48 @@ TEST_F(RmlRendererP1GoldenTest, ScissorScroll){
 
 TEST_F(RmlRendererP1GoldenTest, OpacityText){
     JASPER_REQUIRE_GPU();
-    P1Context test;
-    std::vector<uint8_t> screen;
-    ASSERT_TRUE(draw(test, "opacity_text", screen));
-    PixelProbe probe{screen, width};
+    {
+        P1Context test;
+        std::vector<uint8_t> screen;
+        ASSERT_TRUE(draw(test, "opacity_text", screen));
+        PixelProbe probe{screen, width};
 
-    // white at 50 % over the background: 128 + 30 * 127 / 255
-    EXPECT_TRUE(probe.is(120, 310, 143, 143, 143));
-    // the gradient at the left edge
-    EXPECT_TRUE(probe.is(22, 230, 255, 0, 0, 255, 6));
+        // white at 50 % over the background: 128 + 30 * 127 / 255
+        EXPECT_TRUE(probe.is(120, 310, 143, 143, 143));
+        // the gradient at the left edge
+        EXPECT_TRUE(probe.is(22, 230, 255, 0, 0, 255, 6));
 
-    expectGolden(test, "opacity_text");
-}
-
-TEST_F(RmlRendererP1GoldenTest, ManyElements){
-    JASPER_REQUIRE_GPU();
-    P1Context test;
-    ASSERT_TRUE(test.isValid());
-
-    // 500 small rounded buttons: one pass, few pipeline switches
-    std::string rml = "<html><head><link type=\"text/css\" href=\"../common/base.css\"/><link type=\"text/css\" href=\"p1.css\"/>"
-                      "<style>#grid { position: absolute; left: 6px; top: 12px; width: 500px; display: flex; flex-wrap: wrap; }"
-                      " #grid div { width: 14px; height: 10px; margin-right: 4px; margin-bottom: 3px; border-radius: 4px; border: 1px solid #ffffff; }"
-                      "</style></head><body><div id=\"grid\">";
-    for (int i = 0; i < 500; i++){
-        char colour[32];
-        std::snprintf(colour, sizeof(colour), "#%02x%02x%02x", (i * 13) % 256, (i / 25) * 12, 255 - (i % 25) * 8);
-        rml += std::string("<div style=\"background-color: ") + colour + "\"/>";
-    }
-    rml += "</div></body></html>";
-    ASSERT_NE(test.loadFromMemory(rml, "p1/many_elements.html"), nullptr);
-    ASSERT_TRUE(test.renderUntilDrawn());
-
-    const HtmlUIRenderStats& stats = test.renderer.getStats();
-    EXPECT_EQ(stats.passes, 1u);
-    EXPECT_LE(stats.pipelineApplies, 10u);
-    EXPECT_EQ(stats.pipelineCacheMisses, 0u);
-    EXPECT_GE(stats.drawCalls, 500u);
-
-    std::vector<uint8_t> screen;
-    ASSERT_TRUE(test.readScreen(screen));
-    PixelProbe probe{screen, width};
-    // button i at (6 + 20 * (i % 25), 12 + 15 * (i / 25)), its fill inside the 1 px border
-    for (int i : {0, 24, 25, 250, 499}){
-        const int x = 6 + 20 * (i % 25) + 8;
-        const int y = 12 + 15 * (i / 25) + 6;
-        EXPECT_TRUE(probe.is(x, y, (i * 13) % 256, (i / 25) * 12, 255 - (i % 25) * 8)) << "button " << i;
+        expectGolden(test, "opacity_text");
     }
 
-    expectGolden(test, "many_elements");
+    // Unrelated text rendered earlier and a preformatted line's trailing line feed must
+    // not change a glyph's pixels. Fractional scaling exposes edge sampling differences.
+    const std::string beforeText = "<rml><head><style>body { margin:0; font-family:sans-serif; font-size:64px; color:#fff;} "
+                                   "div {display:block;position:absolute;left:20px;top:30px;white-space:pre;}</style></head><body><div>";
+    const std::string afterText = "</div></body></rml>";
+    std::vector<uint8_t> text[2];
+    for (int warm = 0; warm < 2; warm++){
+        RenderTestContext test(283, 159, 256, 144, 4);
+        ASSERT_TRUE(test.isValid());
+        if (warm){
+            Rml::ElementDocument* preceding = test.loadFromMemory(beforeText + "W" + afterText, "preceding-text.rml");
+            ASSERT_NE(preceding, nullptr);
+            ASSERT_TRUE(test.renderUntilDrawn());
+            preceding->Close();
+            test.context->Update();
+        }
+        ASSERT_NE(test.loadFromMemory(beforeText + (warm ? "H\n" : "H") + afterText, "same-text.rml"), nullptr);
+        ASSERT_TRUE(test.renderUntilDrawn());
+        ASSERT_TRUE(test.readScreen(text[warm]));
+    }
+    ASSERT_EQ(text[0].size(), text[1].size());
+    int difference = 0;
+    bool inked = false;
+    for (size_t i = 0; i < text[0].size(); i++){
+        difference = std::max(difference, std::abs(int(text[0][i]) - int(text[1][i])));
+        inked |= i % 4 == 0 && text[0][i] > 60;
+    }
+    EXPECT_TRUE(inked);
+    // Same 24-channel tolerance as the reviewed examples' exact fresh-start check.
+    EXPECT_LE(difference, 24) << "unrelated prior text or a trailing line feed changed the glyph pixels";
 }

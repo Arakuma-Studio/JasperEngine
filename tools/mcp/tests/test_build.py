@@ -122,14 +122,14 @@ async def test_prepare_project(ed: Editor):
 
 async def test_refusals(ed: Editor):
     out = str(ed.scratch.root / "x")
-    await ed.call("build_project", mode="console", output_dir=out, expect_error=True)
-    await ed.call("build_project", mode="source", output_dir="relative/dir", expect_error=True)
+    await ed.check_error("build_project", mode="console", output_dir=out, contains="mode")
+    await ed.check_error("build_project", mode="source", output_dir="relative/dir", contains="absolute")
     msg = await ed.call("build_project", mode="source", output_dir=str(ed.project / "Builds"), expect_error=True)
     ed.check_in("inside the project", msg)
     msg = await ed.call("build_project", mode="desktop", output_dir=out, graphics_api="d3d11", expect_error=True)
     ed.check_in("opengl", msg)
-    await ed.call("build_project", mode="source", output_dir=out, backends=["glide"], expect_error=True)
-    await ed.call("build_project", mode="desktop", output_dir=out, build_type="Fast", expect_error=True)
+    await ed.check_error("build_project", mode="source", output_dir=out, backends=["glide"], contains="backends")
+    await ed.check_error("build_project", mode="desktop", output_dir=out, build_type="Fast", contains="build_type")
     info = await ed.call("get_build_info")
     if not info["web"]["available"]:
         msg = await ed.call("build_project", mode="web", output_dir=out, expect_error=True)
@@ -263,7 +263,6 @@ async def test_cancel_desktop_build(ed: Editor):
     ed.check_in(job_id, msg)
     await ed.call("create_project", path=str(ed.scratch.root / "not-now"), expect_error=True)
 
-    await asyncio.sleep(2)
     await ed.call("cancel_job", job_id=job_id)
     job = await wait_job(ed, job_id, 180, poll=1.0)
     ed.check_eq(job["status"], "cancelled", f"{job}")
@@ -278,8 +277,8 @@ async def test_generate_shaders(ed: Editor):
     ed.check_eq(r["status"], "succeeded", f"{r}")
     files = [p for p in out.rglob("*") if p.is_file()]
     ed.check(files, "shader files written")
-    await ed.call("generate_shaders", output_dir="rel", expect_error=True)
-    await ed.call("generate_shaders", output_dir=str(out), format="text", expect_error=True)
+    await ed.check_error("generate_shaders", output_dir="rel", contains="absolute")
+    await ed.check_error("generate_shaders", output_dir=str(out), format="text", contains="format")
 
 
 async def test_run_build_process_handling(ed: Editor):
@@ -309,8 +308,8 @@ async def test_run_build_process_handling(ed: Editor):
     ed.check_eq(mime, "image/png")
     ed.check(data[:8] == b"\x89PNG\r\n\x1a\n", "PNG data")
 
-    await ed.call("run_build", path=str(bin_dir / "missing"), expect_error=True)
-    await ed.call("run_build", path="relative", expect_error=True)
+    await ed.check_error("run_build", path=str(bin_dir / "missing"), contains="No executable")
+    await ed.check_error("run_build", path="relative", contains="absolute")
     msg = await ed.call("run_build", path=str(bin_dir), expect_error=True)   # two executables there
     ed.check_in("No player executable", msg)
 

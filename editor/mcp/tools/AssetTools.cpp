@@ -8,6 +8,7 @@
 #include "mcp/McpDataSafety.h"
 #include "DocumentFile.h"
 #include "W4Shared.h"
+#include "AnimationClipTools.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -22,6 +23,8 @@
 #include "Out.h"
 #include "Project.h"
 #include "Stream.h"
+#include "animation/AnimationClipDocument.h"
+#include "animation/ModelSubClips.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
 #include "command/CommandNames.h"
@@ -48,6 +51,7 @@
 #include "texture/Material.h"
 #include "texture/TextureData.h"
 #include "util/Base64.h"
+#include "util/AssetDatabase.h"
 #include "util/FbxImporter.h"
 #include "util/FileUtils.h"
 #include "util/ProjectChecks.h"
@@ -382,6 +386,14 @@ Json gltfSummary(const Json& gltf) {
     Json animations = Json::array();
     if (gltf.contains("animations") && gltf["animations"].is_array()) {
         const Json accessors = gltf.value("accessors", Json::array());
+        // the sub-clip names ("<model>#<name>" references, the loader's animation entity names):
+        // "Animation <i>" when unnamed, "<name> <k>" for a later duplicate (spec 9.R11)
+        std::vector<std::string> ownNames;
+        for (const Json& animation : gltf["animations"]) {
+            ownNames.push_back(animation.is_object() && animation.contains("name") && animation["name"].is_string()
+                                   ? animation["name"].get<std::string>() : std::string());
+        }
+        const std::vector<std::string> clipNames = jasperengine::anim::subClipNames(ownNames);
         for (size_t i = 0; i < gltf["animations"].size() && i < 100; i++) {
             const Json& animation = gltf["animations"][i];
             double duration = 0.0;
@@ -394,7 +406,7 @@ Json gltfSummary(const Json& gltf) {
                     }
                 }
             }
-            animations.push_back({{"name", animation.value("name", "animation " + std::to_string(i))},
+            animations.push_back({{"name", clipNames[i]},
                                   {"channels", animation.contains("channels") ? animation["channels"].size() : 0},
                                   {"duration_seconds", std::round(duration * 1000.0) / 1000.0}});
         }
@@ -925,6 +937,9 @@ void getAssetInfoTool(const CallPtr& call) {
         const uint32_t id = project->findSceneByPath(file);
         data["in_project"] = id != NULL_PROJECT_SCENE;
         if (const SceneProject* scene = project->getScene(id)) data["scene"] = McpRefs::sceneJson(project, *scene);
+    } else if (kind == "animation" && Util::isAnimationClipFile(rel)) {
+        // an .anim clip: settings, tracks, events, load warnings and the Animation Players using it
+        clip_tools::clipAssetInfo(project, file, data, text);
     }
     if (CodeEditor* editor = call->ctx().codeEditor()) {
         if (editor->isFileOpen(file.string())) data["open_in_code_editor"] = {{"unsaved", editor->isFileModified(file.string())}};
@@ -969,8 +984,15 @@ void viewAssetTool(const CallPtr& call) {
         replyImage(call, file, rel, maxSize, extensionOf(file) == ".png" ? synthesisAssetInfo(project, file, false) : Json());
         return;
     }
-    if (!(Util::isImageFile(rel) || Util::isModelFile(rel) || Util::isMaterialFile(rel) || Util::isPrefabFile(rel))) {
-        call->fail("view_asset shows images, and thumbnails of models, materials and prefabs. For scenes use the screenshot tools.");
+    if (Util::isAnimationClipFile(rel)) {
+        call->fail(rel + " is an animation clip (no image): see it with preview_animation {animation: <a GameObject whose Animation Player "
+                   "plays it>, action: seek, time} and a screenshot, or read its values with get_animation {clip, times}.");
+        return;
+    }
+    // .poseanim: the middle pose on its preview model (the Project window's thumbnail)
+    if (!(Util::isImageFile(rel) || Util::isModelFile(rel) || Util::isMaterialFile(rel) || Util::isPrefabFile(rel) ||
+          extensionOf(file) == ".poseanim")) {
+        call->fail("view_asset shows images, and thumbnails of models, materials, prefabs and pose animations. For scenes use the screenshot tools.");
         return;
     }
     // The Project window's thumbnail, generated on demand
@@ -1145,6 +1167,15 @@ void writeFileTool(const CallPtr& call) {
             return;
         }
     }
+    // Clips must stay loadable (Animation Players read them): content problems are warnings
+    std::vector<std::string> clipWarnings;
+    if (Util::isAnimationClipFile(rel)) {
+        std::string why;
+        if (!clip_tools::checkClipText(content, clipWarnings, why)) {
+            call->fail("Not a valid animation clip: " + why + ". Prefer edit_animation {clip} (the format: jasper://docs/animation).");
+            return;
+        }
+    }
     std::string error;
     if (!writeFilesUndoable(call->ctx(), {{file, content}}, error)) {
         call->fail(error);
@@ -1164,6 +1195,10 @@ void writeFileTool(const CallPtr& call) {
         }
     } else if (Util::isScriptFile(rel)) {
         text += " C++: run compile_scripts to check it.";
+    } else if (Util::isAnimationClipFile(rel)) {
+        data["warnings"] = clipWarnings;
+        text += clipWarnings.empty() ? std::string(" Valid clip.") : " Clip loads with " + std::to_string(clipWarnings.size()) + " warning(s) (the bad parts are dropped):";
+        for (size_t i = 0; i < clipWarnings.size() && i < 8; i++) text += "\n" + clipWarnings[i];
     }
     if (Util::isShaderFile(rel)) {
         std::vector<ProjectChecks::ShaderUse> forks = ProjectChecks::shaderForksUsingFiles(project, {rel});
@@ -1334,7 +1369,8 @@ void moveAssetTool(const CallPtr& call) {
     const Guid guid = project->getAssetDatabase().getAssetGuid(toRel);
     if (!guid.isNull()) data["guid"] = guid.str();
     std::string text = std::string(copy ? "Copied " : "Moved ") + fromRel + " to " + toRel +
-        (copy ? " (new GUIDs)." : "; references follow it by GUID and no referrer file was written. Undo with scope project.");
+        (copy ? (Util::isAnimationClipFile(toRel) ? " (a new clip with its own GUID; Animation Players keep the original)." : " (new GUIDs).")
+              : "; references follow it by GUID and no referrer file was written. Undo with scope project.");
     for (const AssetOps::TextReference& broken : report->textReferencesBroken) {
         text += "\nStill names the old path: " + broken.referrer + ":" + std::to_string(broken.line) + " (" + broken.target + ")";
     }
@@ -1380,14 +1416,27 @@ void deleteAssetTool(const CallPtr& call) {
     for (const fs::path& file : files) {
         for (const AssetOps::TextReference& reference : AssetOps::textReferencesInto(*project, file)) broken.push_back(reference);
     }
-    if (!addProjectCommand(call->ctx(), new DeleteFileCmd(project, files, project->getProjectPath()))) {
+    // the Animation Players using a deleted clip keep the reference (Missing; undo relinks it)
+    size_t clipUsers = 0;
+    for (const Json& entry : deleted) {
+        const std::string rel = entry["path"].get<std::string>();
+        if (Util::isAnimationClipFile(rel)) clipUsers += findClipUsers(project, rel).size();
+    }
+    auto* deleteCmd = new DeleteFileCmd(project, files, project->getProjectPath());
+    if (!addProjectCommand(call->ctx(), deleteCmd)) {
         call->fail("Couldn't delete the files.");
         return;
     }
     syncFiles(call->ctx(), files, false);
-    call->ok("Moved " + std::to_string(files.size()) + " item(s) to the project trash; references to them stay and show as missing "
-             "(undo with scope project restores the files and resolves them again).",
-             Json{{"deleted", deleted}, {"text_references_broken", textReferencesJson(broken)}});
+    Json data = {{"deleted", deleted}, {"text_references_broken", textReferencesJson(broken)}};
+    std::string text = "Moved " + std::to_string(files.size()) + " item(s) to the project trash; references to them stay and show as missing "
+                       "(undo with scope project restores the files and resolves them again).";
+    if (clipUsers > 0) {
+        data["clip_users"] = clipUsers;
+        text += " " + std::to_string(clipUsers) + " Animation Player clip entr" + (clipUsers == 1 ? "y keeps" : "ies keep") +
+                " the reference (Missing until the clip is back; undo relinks).";
+    }
+    call->ok(text, data);
 }
 
 // The remote half of import_files (phase-4 spec §3.6.5): the HTML UI importers (network) run on a
@@ -3085,7 +3134,7 @@ void searchFilesTool(const CallPtr& call) {
 void registerAssetTools(McpRegistry& registry) {
     using namespace schema;
 
-    const std::vector<std::string> types = {"any", "texture", "model", "audio", "font", "html", "css", "script", "scene", "prefab", "material", "shader", "folder", "other"};
+    const std::vector<std::string> types = {"any", "texture", "model", "audio", "font", "html", "css", "script", "scene", "prefab", "material", "shader", "animation", "folder", "other"};
 
     {
         ToolDef tool;
@@ -3118,6 +3167,7 @@ void registerAssetTools(McpRegistry& registry) {
             "One project file's details by type: image size/channels (synthesized PNG: its recipe, changed sources, "
             "regenerate arguments); model meshes, materials, animations, nodes (an FBX: of its glTF conversion, fbx_import.state); "
             "WAV format/duration; .material fields, "
+            ".anim clip settings, tracks, events, users; "
             "linked submeshes; shader includes, forks using it; Lua syntax; scene status; unsaved code editor edits.";
         tool.inputSchema = object({{"path", assetPath("")}}, {"path"});
         tool.annotations.readOnly = true;
@@ -3148,8 +3198,7 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "read_file";
         tool.title = "Read File";
         tool.description =
-            "Read a project text file (as on disk); the result text is the content. For clients without file access "
-            "(remote HTTP).";
+            "Read a project text file (as on disk); the result text is the content.";
         tool.inputSchema = object({
             {"path", assetPath("")},
             {"start_line", withDefault(integer("1-based.", 1, 100000000), 1)},
@@ -3167,7 +3216,7 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "Write File";
         tool.description =
             "Create or change a project text file (undo scope project; for clients without file access) and "
-            "validate it: Lua syntax, forks using it recompiled (errors with lines), materials parsed. content = "
+            "validate it: Lua syntax, forks using it recompiled (errors with lines), materials and .anim clips parsed. content = "
             "whole file, or edits [{old_text, new_text}] (old_text must match once unless replace_all). Refuses "
             "project.yaml, .scene, .prefab and files with unsaved code editor edits.";
         tool.inputSchema = object({
@@ -3202,7 +3251,7 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "Move / Rename / Copy Asset";
         tool.description =
             "Rename/move a file or folder, updating references in scenes, prefabs, materials, script entries and "
-            "shader forks (as the Project window does); or copy it (a copied prefab gets a new GUID). The "
+            "shader forks, Animation Players (as the Project window does); or copy it (a copied prefab or clip gets a new GUID). The "
             "destination must not exist; its folder must.";
         tool.inputSchema = object({
             {"path", assetPath("")},
@@ -3244,7 +3293,7 @@ void registerAssetTools(McpRegistry& registry) {
             {"overwrite", withDefault(boolean(""), false)},
             {"fonts", array(string(""), "")},
             {"icons", array(string(""), "")},
-            {"from_document", assetPath(".html/.css")},
+            {"from_document", assetPath("")},
             {"rewrite", withDefault(boolean(""), true)}
         });
         tool.annotations.openWorld = true;
@@ -3269,7 +3318,7 @@ void registerAssetTools(McpRegistry& registry) {
             "Create a shared .material file (linked submeshes follow its edits) from defaults or a mesh submesh's "
             "material (entity + submesh; linked unless link=false), plus values.";
         tool.inputSchema = object({
-            {"path", assetPath("New .material path.")},
+            {"path", assetPath("")},
             {"values", materialValues},
             {"scene", sceneRef()},
             {"entity", entityRef("Mesh to copy from (and link).")},
@@ -3290,7 +3339,7 @@ void registerAssetTools(McpRegistry& registry) {
             "Change the given fields of a .material file; linked submeshes update. Current fields: get_asset_info.";
         tool.inputSchema = object({
             {"path", assetPath("")},
-            {"values", anyObject("The fields to change, as create_material's values (null removes).")},
+            {"values", anyObject("As create_material's values.")},
             {"allow_data_loss", boolean("")}
         }, {"path", "values"});
         tool.handler = updateMaterialTool;
@@ -3344,8 +3393,8 @@ void registerAssetTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"entities", entities()},
-            {"submesh", integer("One submesh (default: every submesh).", 0, 1024)},
-            {"path", assetPath("A .material file instead of entities.")},
+            {"submesh", integer("", 0, 1024)},
+            {"path", assetPath("")},
             {"allow_data_loss", boolean("")}
         }, {"preset"});
         tool.allowedWhilePlaying = false;
@@ -3390,7 +3439,7 @@ void registerAssetTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"component", componentName("Default: auto-detect.")},
-            {"submesh", integer("A submesh's material (default 0 when its material has a shader).")},
+            {"submesh", integer("Submesh (default 0 if its material has a shader).")},
             {"pass_index", integer("A post-process pass instead.")}
         });
         tool.annotations.readOnly = true;
@@ -3410,7 +3459,7 @@ void registerAssetTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"component", componentName("Default: auto-detect.")},
-            {"submesh", integer("A submesh's material (default 0 when its material has a shader).")},
+            {"submesh", integer("Submesh (default 0 if its material has a shader).")},
             {"pass_index", integer("A post-process pass instead.")},
             {"name", string("")},
             {"value", {{"type", {"number", "array", "string"}}, {"items", {{"type", "number"}}},
@@ -3434,7 +3483,7 @@ void registerAssetTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"type", stringEnum("", {"mesh", "ui", "points", "lines", "sky", "postprocess"})},
             {"name", string("One shader (\"toon\" or \"library:toon\"); implies detail.")},
-            {"detail", withDefault(boolean("Parameters, textures, features, keywords, inputs, state and their rules."), false)}
+            {"detail", withDefault(boolean(""), false)}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -3447,9 +3496,9 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "check_shader";
         tool.title = "Check Shader";
         tool.description =
-            "Compile shader forks or library shaders now: errors (line, message, log). shader: a customShader base "
-            "(\"shaders/Water\"), its .vert/.frag, or \"library:<name>[#FEATURES]\"; shader_type if unused yet. No "
-            "shader: every custom and library shader in use. A failing shader draws as the built-in one.";
+            "Compile shader forks or library shaders now: errors (line, message, log). shader: a customShader "
+            "base (\"shaders/Water\"), its .vert/.frag, or \"library:<name>[#FEATURES]\"; shader_type if unused "
+            "yet. No shader: every custom and library shader in use.";
         tool.inputSchema = object({
             {"shader", string("")},
             {"shader_type", stringEnum("", {"mesh", "ui", "sky", "points", "lines", "depth", "post_process"})}
@@ -3518,8 +3567,8 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "search_files";
         tool.title = "Search Files";
         tool.description =
-            "Grep project text files (scripts, shaders, docs, configs), for HTTP clients without file access. "
-            "ECMAScript regex; matches [{path, line, text, context}].";
+            "Grep project text files (scripts, shaders, docs, configs). ECMAScript regex; matches [{path, "
+            "line, text, context}].";
         tool.inputSchema = object({
             {"pattern", string("")},
             {"regex", boolean("")},

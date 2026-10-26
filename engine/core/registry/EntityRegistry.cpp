@@ -84,6 +84,8 @@ EntityRegistry::EntityRegistry() {
     registerComponent<LatticeTracksComponent>(ComponentOrder::Insertion, "LatticeTracksComponent");
     registerComponent<LocalVolumetricFogComponent>(ComponentOrder::Insertion, "LocalVolumetricFogComponent");
     registerComponent<VolumetricCloudsComponent>(ComponentOrder::Insertion, "VolumetricCloudsComponent");
+    registerComponent<PoseAnimatorComponent>(ComponentOrder::Insertion, "PoseAnimatorComponent");
+    registerComponent<AnimationPlayerComponent>(ComponentOrder::Insertion, "AnimationPlayerComponent");
 
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());
@@ -138,14 +140,24 @@ void EntityRegistry::sortComponentsByTransform(Signature entitySignature){
     if (structuralLocked("sortComponentsByTransform")) {
         return;
     }
+    // after a reorder of the Transform array (moveChildToIndex, the editor's block moves)
+    hierarchyRev++;
+    markHierarchyOrderDirty(entitySignature);
+}
+
+void EntityRegistry::markHierarchyOrderDirty(Signature entitySignature){
     (entitySignature & hierarchyTypes).forEachSet([&](size_t id){
         componentManager.getArray((ComponentId)id)->markOrderDirty();
     });
 }
 
 void EntityRegistry::transformChanged(Entity entity){
-    // where the entity sorts among its Hierarchy components' arrays changed
-    sortComponentsByTransform(entityManager.getSignature(entity));
+    // where the entity sorts among its Hierarchy components' arrays changed (a hierarchy change
+    // only when the Transform has a parent or children: addComponent / removeComponent count it)
+    if (structuralLocked("transformChanged")) {
+        return;
+    }
+    markHierarchyOrderDirty(entityManager.getSignature(entity));
 }
 
 void EntityRegistry::moveChildAux(Entity entity, bool increase, bool stopIfFound){
@@ -183,7 +195,7 @@ void EntityRegistry::moveChildAux(Entity entity, bool increase, bool stopIfFound
     }
 }
 
-void EntityRegistry::changeTransformChildren(Entity entity){
+bool EntityRegistry::changeTransformChildren(Entity entity){
     // Get the parent of the entity being removed before it's deleted
     Transform* removedTransform = findComponent<Transform>(entity);
     if (!removedTransform) {
@@ -192,6 +204,7 @@ void EntityRegistry::changeTransformChildren(Entity entity){
     const Entity newParent = removedTransform->parent;
 
     // the children are in the entity's branch, right after it
+    bool hadChildren = false;
     auto transformArray = getComponentArray<Transform>();
     const size_t first = transformArray->getIndex(entity) + 1;
     const size_t last = findBranchLastIndex(entity);
@@ -201,8 +214,23 @@ void EntityRegistry::changeTransformChildren(Entity entity){
             childTransform.parent = newParent;
             childTransform.needUpdate = true;
             childTransform.needUpdateChildVisibility = true;
+            hadChildren = true;
         }
     }
+    return hadChildren;
+}
+
+bool EntityRegistry::isInHierarchy(Entity entity){
+    if (!entityManager.isCreated(entity) || !entityManager.getSignature(entity).test(getComponentId<Transform>())){
+        return false;
+    }
+    auto transforms = componentManager.getComponentArray<Transform>();
+    const size_t index = transforms->getIndex(entity);
+    if (transforms->getComponentFromIndex(index).parent != NULL_ENTITY){
+        return true;
+    }
+    // children follow their parent in the array (its branch)
+    return index + 1 < transforms->size() && transforms->getComponentFromIndex(index + 1).parent == entity;
 }
 
 Entity EntityRegistry::createEntity() {
@@ -236,6 +264,10 @@ bool EntityRegistry::recreateEntity(Entity entity) {
     if (structuralLocked("recreateEntity")) {
         return false;
     }
+    // undo of a delete: the entity's place in the hierarchy comes back
+    hierarchyRev++;
+    nameRev++;
+    logHierarchyChange(destroyedLog, entity);
     return entityManager.recreateEntity(entity);
 }
 
@@ -259,6 +291,10 @@ void EntityRegistry::destroyEntity(Entity entity) {
     }
     if (structuralLocked("destroyEntity")) {
         return;
+    }
+    if (isInHierarchy(entity)) {
+        hierarchyRev++;
+        logHierarchyChange(destroyedLog, entity);
     }
 
     const Signature signature = entityManager.getSignature(entity);
@@ -291,6 +327,12 @@ void EntityRegistry::destroyEntities(const std::vector<Entity>& entities) {
             destroyEntity(entities[0]);
         }
         return;
+    }
+    for (Entity entity : entities) {
+        if (isInHierarchy(entity)) {
+            hierarchyRev++;
+            logHierarchyChange(destroyedLog, entity);
+        }
     }
     for (Entity entity : entities) {
         // a callback can destroy others of the list (a model its nodes)
@@ -500,11 +542,22 @@ size_t EntityRegistry::getSystemEntityCount() const {
 }
 
 void EntityRegistry::setEntityName(Entity entity, const std::string& name) {
+    // only a name under a parent is part of a path (a root's or a lone entity's never is)
+    if (entityManager.isCreated(entity) && entityManager.getSignature(entity).test(getComponentId<Transform>()) &&
+        componentManager.getComponent<Transform>(entity).parent != NULL_ENTITY && entityManager.getName(entity) != name) {
+        hierarchyRev++;
+        nameRev++;
+        logHierarchyChange(renamedLog, entity);
+    }
     entityManager.setName(entity, name);
 }
 
 std::string EntityRegistry::getEntityName(Entity entity) const {
     return entityManager.getName(entity);
+}
+
+const std::string& EntityRegistry::getEntityNameRef(Entity entity) const {
+    return entityManager.getNameRef(entity);
 }
 
 Entity EntityRegistry::findEntity(const std::string& name) const {
@@ -613,12 +666,14 @@ bool EntityRegistry::isParentOf(Entity parent, Entity child) const {
         return false;
     }
 
-    for (int i = index - 1; i >= 0; i--){
-        Entity entity = transforms->getEntity(i);
-        Transform& transform = transforms->getComponentFromIndex(i);
-        if (entity == lastParent){
-            lastParent = transform.parent;
-
+    int i = index - 1;
+    while (i >= 0){
+        // Walk adjacent bone chains directly, without hashing each parent.
+        for (; i >= 0; i--){
+            if (transforms->getEntity(i) != lastParent){
+                break;
+            }
+            lastParent = transforms->getComponentFromIndex(i).parent;
             if (lastParent == parent){
                 return true;
             }
@@ -626,6 +681,20 @@ bool EntityRegistry::isParentOf(Entity parent, Entity child) const {
                 return false;
             }
         }
+        if (i < 0){
+            break;
+        }
+        // Skip unrelated branches between a child and a more distant parent.
+        if (!transforms->hasEntity(lastParent)){
+            return false;
+        }
+        size_t parentIndex = transforms->getIndex(lastParent);
+        // Keep the old backwards-only traversal, including its behavior for
+        // malformed hierarchy order and cycles.
+        if (parentIndex >= static_cast<size_t>(i)){
+            return false;
+        }
+        i = static_cast<int>(parentIndex);
     }
 
     return false;
@@ -678,7 +747,39 @@ EntityPool EntityRegistry::getDefaultEntityPool() const {
     return defaultPool;
 }
 
+uint64_t EntityRegistry::hierarchyRevision() const {
+    return hierarchyRev;
+}
+
+uint64_t EntityRegistry::nameRevision() const {
+    return nameRev;
+}
+
+void EntityRegistry::hierarchyChanged() {
+    hierarchyRev++;
+}
+
+void EntityRegistry::logHierarchyChange(std::vector<Entity>& log, Entity entity) {
+    if (log.size() < 256) {
+        log.push_back(entity);
+    } else {
+        hierarchyLogOverflow = true;
+    }
+}
+
+void EntityRegistry::takeHierarchyLog(std::vector<Entity>& renamed, std::vector<Entity>& destroyed, bool& overflow) {
+    renamed.swap(renamedLog);
+    destroyed.swap(destroyedLog);
+    overflow = hierarchyLogOverflow;
+    renamedLog.clear();
+    destroyedLog.clear();
+    hierarchyLogOverflow = false;
+}
+
 void EntityRegistry::clear() {
+    hierarchyRev++;
+    nameRev++;
+    hierarchyLogOverflow = true;
     std::vector<Entity> entities = getEntityList();
     for (Entity entity : entities) {
         // An owner's removal callbacks can destroy other entities in this snapshot.
@@ -706,6 +807,7 @@ void EntityRegistry::addEntityChild(Entity parent, Entity child, bool changeTran
         }
 
         transformChild.needUpdate = true;
+        hierarchyRev++;
 
         if (parent == NULL_ENTITY){
             size_t newIndex = findBranchLastIndex(findOldestParent(child)) + 1;

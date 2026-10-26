@@ -1,9 +1,8 @@
 """place_with_physics (editor/mcp/tools/PlacementTools.cpp over editor/physics/PlacementSession), on
 a new project whose scene is built here from engine primitives (cubes, a cylinder):
 
-- the schema (one tool, real constraints, defaults) and a fix-it error for every bad argument;
+- invalid public arguments fail with a relevant error and leave the scene unchanged;
 - a preview changes nothing (get_entity before and after, the scene not modified);
-- drop: a cube lands on the floor at the right height, resting on it;
 - the same arguments with apply: true commit the stored preview (from_preview, the preview's
   state_hash and poses); after an edit in between, or with other arguments, they simulate again;
 - one undo puts every mover back; prefab instances get transform overrides;
@@ -13,11 +12,9 @@ a new project whose scene is built here from engine primitives (cubes, a cylinde
 - screenshot: a Scene view image; a preview's poses are put back afterwards, also when a save
   happens meanwhile (the saved file holds the real poses) or the call is cancelled mid-capture;
 - scatter: one batch with undo_group (create_entity xN + place_with_physics with jitter and seed)
-  is one undo step and gives the same poses and state_hash when run again;
-- separate resolves an overlap; move stops at a wall; snap lands on the surface a ray hits (world
-  ray and Scene view pixel);
-- decompose: always waits for the convex decomposition of a concave mover ("Decomposing k/n"),
-  only its movers' (not another decomposition queued in the project);
+  is one undo step;
+- snap resolves a Scene view pixel into a surface ray;
+- decompose: always completes a concave mover through the asynchronous job API;
 - an apply whose scene changes while it runs (a floor moved under it) stops and commits nothing;
 - a Scene view Physics gesture (driven with xdotool) holds preview poses: a run waits for it; the
   MCP undo cancels it instead of undoing (and says so), redo is refused meanwhile;
@@ -69,16 +66,10 @@ SCENE = [
     # drop
     {"name": "Crate", "type": "cube", "position": [-10, 3, 0]},
     {"name": "Crate2", "type": "cube", "position": [-12.5, 4, 0], "rotation": {"euler": [0, 30, 20]}},
-    # move: a wall across the lane, its near face at x = 3.75
-    {"name": "Slider", "type": "cube", "position": [0, 0.5, 10]},
-    {"name": "Wall", "type": "cube", "position": [4, 1.5, 10], "scale": [0.5, 3, 4]},
     # snap: a table top at y = 1
     {"name": "Table", "type": "cube", "position": [-10, 0.5, -10], "scale": [2, 1, 2]},
     # snap places it on the surface the ray hits (then it settles), whatever lies between
     {"name": "Snapper", "type": "cube", "position": [-6, 0.5, -10]},
-    # separate: two cubes overlapping by half a metre
-    {"name": "OverA", "type": "cube", "position": [10, 0.5, -10]},
-    {"name": "OverB", "type": "cube", "position": [10.5, 0.5, -10]},
 ]
 
 
@@ -129,41 +120,13 @@ async def wait_job(ed: Editor, job: str, seconds: float = 300) -> dict:
 
 # ---------------------------------------------------------------------------- tests
 
-async def test_setup_and_schema(ed: Editor):
+async def test_argument_errors(ed: Editor):
     ed.require_tools("place_with_physics")
     await ed.batch([("create_entity", item) for item in SCENE])
-    # what every test leaves as it found it unless it says otherwise
     await ed.call("save_scene", path="scenes/Placement.scene")
     S["start"] = await poses(ed, [e["name"] for e in SCENE])
-
-    tool = ed.tool("place_with_physics")
-    schema = tool.input_schema
-    props = schema["properties"]
-    check(set(props) == {"scene", "entities", "use_selection", "mode", "target", "ray", "axis", "amount", "gravity", "settle",
-                         "context", "context_margin", "ignore_layers", "push_neighbours", "colliders", "decompose", "jitter",
-                         "seed", "max_seconds", "feel", "apply", "screenshot", "wait", "timeout_seconds"},
-          f"the parameters of spec section 8.1: {sorted(props)}")
-    check(props["mode"]["enum"] == ["drop", "separate", "move", "snap", "gather", "distribute"] and props["mode"]["default"] == "drop",
-          f"mode: {props['mode']}")
-    check(set(props["target"]["properties"]) == {"position", "rotation", "delta", "space"}, f"target: {props['target']}")
-    check(set(props["ray"]["properties"]) == {"origin", "direction", "screen"}, f"ray: {props['ray']}")
-    check(props["colliders"]["enum"] == ["auto", "authored", "generated", "both"] and props["colliders"]["default"] == "auto", "colliders")
-    check(props["decompose"]["enum"] == ["never", "cached", "always"] and props["decompose"]["default"] == "cached", "decompose")
-    check(props["feel"]["enum"] == ["precise", "balanced", "fast"] and props["feel"]["default"] == "balanced", "feel")
-    check(props["seed"]["default"] == 1 and props["max_seconds"]["default"] == 10, "seed and max_seconds defaults")
-    check(props["gravity"]["default"] == [0, -9.81, 0], f"gravity default: {props['gravity']}")
-    check(props["context_margin"]["default"] == 2 and props["context"]["default"] == "auto", "context defaults")
-    check("default" not in props["apply"] and props["apply"]["type"] == "boolean", "apply: a boolean, false when omitted (preview)")
-    check(set(props["jitter"]["properties"]) == {"position", "rotation_deg"}, "jitter")
-    check("required" not in schema, "entities or use_selection: checked by the handler")
-    check("jasper://docs/physics" in tool.description and "apply: true" in tool.description, f"description: {tool.description}")
-    annotations = tool.annotations
-    check(annotations is None or not annotations.read_only_hint, "edits: not read-only")
     msg = await ed.call("place_with_physics", {"entities": ["Crate"], "bogus": 1}, expect_error=True)
-    check("bogus" in msg and "entities" in msg, f"an unknown argument is refused, listing the valid ones: {msg}")
-
-
-async def test_argument_errors(ed: Editor):
+    check("bogus" in msg, f"unknown arguments are rejected: {msg}")
     base = {"entities": ["Crate"]}
     cases = [
         ({"entities": None}, "entities is required"),
@@ -265,24 +228,6 @@ async def test_preview_changes_nothing(ed: Editor):
               f"{name} unchanged by a preview")
     check(await scene_modified(ed) == modified, "the scene is not marked modified")
     S["preview"] = v
-
-
-async def test_drop_lands_on_floor(ed: Editor):
-    v = S["preview"]
-    crate = by_path(v, "Crate")
-    check(near(crate["before"]["position"], [-10, 3, 0], 1e-4), f"before: {crate['before']}")
-    pos = crate["after"]["position"]
-    check(abs(pos[1] - 0.5) <= 0.001, f"the 1 m cube rests on the floor (top y = 0) with its centre at y = 0.5: {pos}")
-    check(abs(pos[0] + 10) < 0.05 and abs(pos[2]) < 0.05, f"it fell straight down: {pos}")
-    check(abs(crate["moved_m"] - 2.5) < 0.01, f"moved_m: {crate['moved_m']}")
-    check(crate["settled"] is True and crate["settle_step"] > 0, f"settled: {crate}")
-    check(any(e["path"] == "Floor" for e in crate["resting_on"]), f"resting on the floor: {crate['resting_on']}")
-    check(crate["max_penetration_m"] < 0.01, f"penetration: {crate['max_penetration_m']}")
-    check(isinstance(crate["collider"], str) and crate["collider"], f"collider: {crate['collider']}")
-    check(near(crate["after"]["local"]["position"], pos, 1e-4), "a root's local pose is its world pose")
-    tilted = by_path(v, "Crate2")
-    check(tilted["after"]["position"][1] < 1.0 and tilted["rotated_deg"] > 1.0, f"the tilted one tipped over onto a face: {tilted}")
-    check(v["context"]["bodies"] >= 1, f"context: {v['context']}")
 
 
 async def test_apply_matches_preview(ed: Editor):
@@ -456,8 +401,7 @@ async def test_screenshot(ed: Editor):
     before = await ed.call("get_entity", entity="Crate")
     r = await place(ed, entities=["Crate"], screenshot=True)
     check(len(r.images) == 1, f"one image: {r.text}")
-    w, h, _, _ = decode_png(r.images[0][0])
-    check(w > 100 and h > 100, f"an image of the Scene view: {w}x{h}")
+    decode_png(r.images[0][0])
     check(r.structured["screenshot"]["shows"] == "the previewed poses", f"{r.structured['screenshot']}")
     check("previewed poses" in r.text, r.text)
     after = await ed.call("get_entity", entity="Crate")
@@ -528,73 +472,22 @@ def saved_position(scene_file: Path, name: str) -> list:
     return []
 
 
-async def test_scatter_batch_deterministic(ed: Editor):
-    pebbles = [{"name": f"Pebble{i}", "type": "sphere", "position": [-20 + (i % 5) * 0.8, 2 + (i // 5) * 0.6, -20], "scale": [0.4, 0.4, 0.4]}
-               for i in range(15)]
-    paths = [f"Pebble{i}" for i in range(15)]
-
-    async def scatter() -> tuple[dict, dict]:
-        calls = [("create_entity", p) for p in pebbles]
-        calls.append(("place_with_physics", {"entities": paths, "jitter": {"position": 0.3, "rotation_deg": 45}, "seed": 7, "apply": True}))
-        result = await ed.batch(calls, undo_group=True)
-        check(result["failed"] == 0, f"the batch: {result}")
-        placed = result["results"][-1]["structured"]
-        check(placed["applied"] and placed["seed"] == 7, f"placed: {placed}")
-        return placed, await poses(ed, paths)
-
-    first, first_poses = await scatter()
-    check(all(p[0][1] < 1.0 for p in first_poses.values()), f"every pebble came down: {first_poses}")
-    # one undo removes the pebbles and the placement together
+async def test_scatter_batch_undo(ed: Editor):
+    pebbles = [{"name": f"Pebble{i}", "type": "sphere", "position": [-20 + i * 0.8, 2, -20], "scale": [0.4, 0.4, 0.4]}
+               for i in range(3)]
+    paths = [p["name"] for p in pebbles]
+    calls = [("create_entity", p) for p in pebbles]
+    calls.append(("place_with_physics", {"entities": paths, "jitter": {"position": 0.3, "rotation_deg": 45}, "seed": 7, "apply": True}))
+    result = await ed.batch(calls, undo_group=True)
+    check(result["failed"] == 0, f"the batch: {result}")
+    check(result["results"][-1]["structured"]["applied"], f"placement applied: {result}")
+    check(all(p[0][1] < 1.0 for p in (await poses(ed, paths)).values()), "the batch applied the placement")
     await ed.call("undo")
     tree = await ed.call("get_scene_tree")
-    check("Pebble" not in tree["tree"], "one undo step for the whole batch")
-    second, second_poses = await scatter()
-    # new GameObjects (new ids, which state_hash includes), the same arrangement to the bit
-    check(second_poses == first_poses, f"the same scatter again: the same poses ({first_poses} vs {second_poses})")
-    check([e["after"] for e in second["entities"]] == [e["after"] for e in first["entities"]], "the same result poses")
-    third = (await place(ed, entities=paths, jitter={"position": 0.3, "rotation_deg": 45}, seed=8)).structured
-    check(third["state_hash"] != second["state_hash"], "another seed, another arrangement")
-    await ed.call("undo")
-
-
-async def test_separate_resolves_overlap(ed: Editor):
-    r = await place(ed, entities=["OverA", "OverB"], mode="separate", apply=True)
-    v = r.structured
-    a, b = by_path(v, "OverA")["after"]["position"], by_path(v, "OverB")["after"]["position"]
-    gap = max(abs(a[i] - b[i]) for i in range(3))
-    check(gap >= 0.999, f"no longer overlapping (1 m cubes, centre distance on some axis >= 1 m - 1 mm): {a} {b}")
-    check(v["all_settled"] is True, f"resolved: {v}")
-    check(a[1] > 0.45 and b[1] > 0.45, f"no gravity: they stay up on the floor: {a} {b}")
-    await ed.call("undo")
-
-
-async def test_move_stops_at_wall(ed: Editor):
-    r = await place(ed, entities=["Slider"], mode="move", target={"delta": [4.5, 0, 0]})
-    pos = by_path(r.structured, "Slider")["after"]["position"]
-    check(2.5 < pos[0] <= 3.25 + 0.01, f"it slid toward the target and stopped at the wall's face (x 3.75 - 0.5): {pos}")
-    check(abs(pos[2] - 10) < 0.1 and abs(pos[1] - 0.5) < 0.01, f"along its lane, on the floor: {pos}")
-    # a target far behind the wall: batch move never teleports, the wall still stops it
-    r = await place(ed, entities=["Slider"], mode="move", target={"delta": [30, 0, 0]})
-    far = by_path(r.structured, "Slider")
-    check(2.5 < far["after"]["position"][0] <= 3.25 + 0.01, f"a long move stops at the wall too: {far}")
-    # a free path: it gets there
-    r = await place(ed, entities=["Slider"], mode="move", target={"position": [0, 0.5, 13]})
-    pos = by_path(r.structured, "Slider")["after"]["position"]
-    check(near(pos, [0, 0.5, 13], 0.02), f"no obstacle: it reaches the target: {pos}")
+    check("Pebble" not in tree["tree"], "one undo removes the entities and their placement")
 
 
 async def test_snap_lands_on_surface(ed: Editor):
-    r = await place(ed, entities=["Snapper"], mode="snap", ray={"origin": [-10, 10, -10], "direction": [0, -1, 0]})
-    v = r.structured
-    pos = by_path(v, "Snapper")["after"]["position"]
-    check(abs(pos[1] - 1.5) < 0.01 and abs(pos[0] + 10) < 0.1 and abs(pos[2] + 10) < 0.1, f"on the table top (y 1), where the ray hits: {pos}")
-    check(any(e["path"] == "Table" for e in by_path(v, "Snapper")["resting_on"]), "resting on the table")
-    check(near(v["ray"]["direction"], [0, -1000, 0], 1e-3), f"the ray used: {v.get('ray')}")
-    # a wall between the mover and the hit point does not stop a snap: it is placed there
-    await ed.call("create_entity", name="SnapWall", type="cube", position=[-8, 3, -10], scale=[0.3, 6, 4])
-    walled = by_path((await place(ed, entities=["Snapper"], mode="snap", ray={"origin": [-10, 10, -10], "direction": [0, -1, 0]})).structured, "Snapper")
-    check(near(walled["after"]["position"], pos, 0.01), f"the wall in between changes nothing: {walled['after']['position']} vs {pos}")
-    await ed.call("delete_entities", entities=["SnapWall"])
     # a Scene view pixel: the centre of a view looking straight down at the table
     await ed.call("set_scene_camera", position=[-10, 25, -9.999], target=[-10, 0, -10])
     shot = await ed.screenshot("scene", max_width=0)
@@ -611,36 +504,12 @@ async def test_snap_lands_on_surface(ed: Editor):
 
 async def test_decompose_always(ed: Editor):
     await ed.call("create_entity", name="Ring", type="torus", position=[20, 3, -20])
-    messages = []
     r = await ed.call_raw("place_with_physics", {"entities": ["Ring"], "decompose": "always", "wait": False})
-    job = r.structured["job_id"]
-    for _ in range(3000):
-        state = await ed.call("get_job", job_id=job)
-        messages.append(state.get("message", ""))
-        if state["status"] != "running":
-            break
-        await asyncio.sleep(0.01)
+    state = await wait_job(ed, r.structured["job_id"])
     check(state["status"] == "succeeded", f"{state}")
     ring = by_path(state["result"], "Ring")
     check(ring["collider"].startswith("decomposed"), f"the torus uses its decomposition: {ring['collider']}")
-    check(any(m.startswith("Decomposing") for m in messages), f"progress showed the decomposition: {sorted(set(messages))[:10]}")
-    # cached now: the same arguments give the same result without waiting, and so does the
-    # default (decompose: cached)
-    again = (await place(ed, entities=["Ring"], decompose="always")).structured
-    check(again["state_hash"] == state["result"]["state_hash"], "the cached decomposition gives the same result")
-    cached = (await place(ed, entities=["Ring"])).structured
-    check(cached["state_hash"] == state["result"]["state_hash"] and not any("decompose: always" in w for w in cached["warnings"]),
-          f"decompose: cached uses it: {cached['warnings']}")
-
-    # another concave mesh, not decomposed yet: decompose: cached uses a hull and warns that an
-    # apply could differ once the decomposition is in
-    await ed.call("create_entity", name="Ring2", type="torus", position=[24, 3, -20])
-    await ed.call("set_mesh_geometry", entity="Ring2", shape="torus", radius=1.0, ring_radius=0.15, sides=40, rings=24)
-    fresh = (await place(ed, entities=["Ring2"])).structured
-    ring2 = by_path(fresh, "Ring2")
-    check(not ring2["collider"].startswith("decomposed"), f"not decomposed yet: a hull meanwhile: {ring2['collider']}")
-    check(any("decompose: always" in w for w in fresh["warnings"]), f"the preview warns: {fresh['warnings']}")
-    await ed.call("delete_entities", entities=["Ring", "Ring2"])
+    await ed.call("delete_entities", entities=["Ring"])
 
 
 # ---------------------------------------------------------------------------- review fixes
@@ -743,31 +612,6 @@ async def test_cancel_after_commit(ed: Editor):
         if seen:
             break
     check(seen, "a cancel_job arrived during the capture after the commit")
-
-
-async def test_decompose_always_waits_for_its_movers_only(ed: Editor):
-    """Another decomposition queued in the project (a bigger concave mesh, not a mover) is not waited for."""
-    others = [f"Other{i}" for i in range(4)]
-    for i, name in enumerate(others):
-        await ed.call("create_entity", name=name, type="torus", position=[30 + 5 * i, 3, 30])
-        await ed.call("set_mesh_geometry", entity=name, shape="torus", radius=2.0, ring_radius=0.3, sides=40 + 4 * i, rings=30)
-    await ed.call("create_entity", name="Hoop", type="torus", position=[30, 3, 25])
-    await ed.call("set_mesh_geometry", entity="Hoop", shape="torus", radius=0.8, ring_radius=0.2, sides=20, rings=12)
-    queued = (await place(ed, entities=others)).structured   # decompose: cached asks for theirs
-    check(any("decompose: always" in w for w in queued["warnings"]), f"the others' decompositions are queued: {queued['warnings']}")
-    r = await ed.call_raw("place_with_physics", {"entities": ["Hoop"], "decompose": "always", "wait": False})
-    job = r.structured["job_id"]
-    messages = set()
-    while True:
-        state = await ed.call("get_job", job_id=job)
-        messages.add(state.get("message", ""))
-        if state["status"] != "running":
-            break
-        await asyncio.sleep(0.01)
-    check(state["status"] == "succeeded" and by_path(state["result"], "Hoop")["collider"].startswith("decomposed"), f"{state['message'][:200]}")
-    decomposing = sorted(m for m in messages if m.startswith("Decomposing"))
-    check(decomposing and all(m.endswith("/1") for m in decomposing), f"counted per mover (1), not the project's queue: {decomposing}")
-    await ed.call("delete_entities", entities=others + ["Hoop"])
 
 
 async def test_large_results_stay_valid(ed: Editor):

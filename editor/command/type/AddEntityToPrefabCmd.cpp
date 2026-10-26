@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AddEntityToPrefabCmd.h"
+#include "pose/PoseEditSession.h"
 #include "util/ProjectUtils.h"
 #include "Stream.h"
 
@@ -32,6 +33,8 @@ editor::AddEntityToPrefabCmd::AddEntityToPrefabCmd(Project* project, uint32_t sc
 
 bool editor::AddEntityToPrefabCmd::execute(){
     nestedRoots.clear();
+    // a posed character goes into the prefab with its rest bones
+    PoseEditSession::suspendActiveFor(sceneId, {entity});
     if (SceneProject* sceneProject = project->getScene(sceneId); sceneProject && sceneProject->scene) {
         // the instance roots of the branch, its own included (nested ones are in their blocks)
         std::vector<Entity> pending{entity};

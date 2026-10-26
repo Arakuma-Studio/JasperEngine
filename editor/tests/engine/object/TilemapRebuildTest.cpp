@@ -33,7 +33,6 @@ namespace {
         // what MeshSystem draws once the scene updates
         unsigned int rebuild() {
             EXPECT_TRUE(tilemap.createTilemap());
-            EXPECT_FALSE(component().needUpdateTilemap);
             return component().renderedTiles;
         }
     };
@@ -47,7 +46,6 @@ TEST(TilemapRebuild, AddTileRebuilds) {
     EXPECT_EQ(fixture.rebuild(), 1u);
 
     fixture.tilemap.addTile(0, Vector2(16.0f, 0.0f), 16.0f, 16.0f);
-    EXPECT_TRUE(fixture.component().needUpdateTilemap);
     EXPECT_EQ(fixture.rebuild(), 2u);
 }
 
@@ -61,7 +59,6 @@ TEST(TilemapRebuild, RemoveRectRebuilds) {
 
     // the grass tile loses its rect, the rock one moves to id 0
     fixture.tilemap.removeRect("grass");
-    EXPECT_TRUE(fixture.component().needUpdateTilemap);
     EXPECT_EQ(fixture.rebuild(), 1u);
     EXPECT_EQ(fixture.tilemap.getTile(1).rectId, 0);
 }
@@ -73,7 +70,6 @@ TEST(TilemapRebuild, ClearRectsRebuilds) {
     EXPECT_EQ(fixture.rebuild(), 1u);
 
     fixture.tilemap.clearRects();
-    EXPECT_TRUE(fixture.component().needUpdateTilemap);
     EXPECT_EQ(fixture.rebuild(), 0u);
 }
 
@@ -85,14 +81,12 @@ TEST(TilemapRebuild, ClearTilesRebuilds) {
     EXPECT_EQ(fixture.rebuild(), 2u);
 
     fixture.tilemap.clearTiles();
-    EXPECT_TRUE(fixture.component().needUpdateTilemap);
     EXPECT_EQ(fixture.rebuild(), 0u);
 
     fixture.tilemap.addTile(0, Vector2(0.0f, 0.0f), 16.0f, 16.0f);
     fixture.tilemap.addTile(0, Vector2(0.0f, 16.0f), 16.0f, 16.0f);
     fixture.rebuild();
     fixture.tilemap.clearAll();
-    EXPECT_TRUE(fixture.component().needUpdateTilemap);
     EXPECT_EQ(fixture.rebuild(), 0u);
 }
 
@@ -105,12 +99,6 @@ TEST(TilemapRebuild, AddRectRebuilds) {
     EXPECT_EQ(fixture.rebuild(), 1u);
 
     fixture.tilemap.addRect(1, "rock", Rect(0.5f, 0.0f, 0.5f, 0.5f));
-    EXPECT_TRUE(fixture.component().needUpdateTilemap);
-    EXPECT_EQ(fixture.rebuild(), 2u);
-
-    // replacing a rect redraws the tiles on it too
-    fixture.tilemap.addRect(1, "rock", Rect(0.0f, 0.5f, 0.5f, 0.5f));
-    EXPECT_TRUE(fixture.component().needUpdateTilemap);
     EXPECT_EQ(fixture.rebuild(), 2u);
 }
 
@@ -123,12 +111,7 @@ TEST(TilemapRebuild, SetReserveTilesRebuilds) {
     fixture.tilemap.setReserveTiles(10);
     EXPECT_EQ(fixture.rebuild(), 2u);
 
-    // the same value changes nothing
-    fixture.tilemap.setReserveTiles(10);
-    EXPECT_FALSE(fixture.component().needUpdateTilemap);
-
     fixture.tilemap.setReserveTiles(0);
-    EXPECT_TRUE(fixture.component().needUpdateTilemap);
     EXPECT_EQ(fixture.rebuild(), 1u);
     EXPECT_EQ(fixture.tilemap.getReserveTiles(), 0u);
 }

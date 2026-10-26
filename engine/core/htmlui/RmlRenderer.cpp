@@ -251,23 +251,6 @@ Framebuffer* RmlRenderTarget::getLayer(int index) const{
     return layers[index].get();
 }
 
-int RmlRenderTarget::getLayerCount() const{
-    return (int)layers.size();
-}
-
-int RmlRenderTarget::getPostprocessCount() const{
-    int count = 0;
-    for (const std::unique_ptr<Framebuffer>& target : postprocess){
-        if (target)
-            count++;
-    }
-    return count;
-}
-
-uint64_t RmlRenderTarget::getCreateCount() const{
-    return createCount;
-}
-
 namespace {
     std::atomic<uint64_t> targetGenerations{0};
 }
@@ -301,7 +284,6 @@ Framebuffer* RmlRenderTarget::ensureLayer(int index){
     desc.label = "htmlui-layer";
 
     std::unique_ptr<Framebuffer> layer = std::make_unique<Framebuffer>();
-    createCount++;
     generation = ++targetGenerations;
     if (!layer->create(desc)){
         Log::error("[HTML UI] could not create the %d x %d layer %d (%d samples)", width, height, index, sampleCount);
@@ -330,7 +312,6 @@ Framebuffer* RmlRenderTarget::ensurePostprocess(int index){
     desc.label = "htmlui-postprocess";
 
     std::unique_ptr<Framebuffer> target = std::make_unique<Framebuffer>();
-    createCount++;
     generation = ++targetGenerations;
     if (!target->create(desc)){
         Log::error("[HTML UI] could not create the %d x %d post-process target %d", width, height, index);
@@ -529,7 +510,6 @@ bool RmlRenderer::appendTransient(const void* data, size_t bytes, bool index, Bu
             created->capacity *= 2;
         created->index = index;
         created->frame = frame;
-        gpuCreateCount++;
         if (!created->buffer.createBuffer((unsigned int)created->capacity, nullptr, index ? BufferType::INDEX_BUFFER : BufferType::VERTEX_BUFFER, BufferUsage::STREAM)){
             Log::error("[HTML UI] could not create a %u-byte geometry buffer", (unsigned int)created->capacity);
             return false;
@@ -570,7 +550,6 @@ bool RmlRenderer::allocateRange(const void* data, size_t bytes, bool index, RmlG
             created->capacity = capacity;
             created->index = index;
             created->dedicated = true;
-            gpuCreateCount++;
             if (!created->buffer.createBuffer((unsigned int)capacity, nullptr, index ? BufferType::INDEX_BUFFER : BufferType::VERTEX_BUFFER, BufferUsage::STREAM)){
                 Log::error("[HTML UI] could not create a %u-byte geometry buffer", (unsigned int)capacity);
                 return false;
@@ -609,7 +588,6 @@ bool RmlRenderer::allocateRange(const void* data, size_t bytes, bool index, RmlG
         created->capacity = pageBytes;
         created->index = index;
         created->shadow.resize(pageBytes);
-        gpuCreateCount++;
         if (!created->buffer.createBuffer((unsigned int)pageBytes, nullptr, index ? BufferType::INDEX_BUFFER : BufferType::VERTEX_BUFFER, BufferUsage::STREAM)){
             Log::error("[HTML UI] could not create a %u-byte geometry page", (unsigned int)pageBytes);
             return false;
@@ -768,7 +746,6 @@ HtmlUITexture* RmlRenderer::createStaticTexture(const uint8_t* rgba, int width, 
 
     void* data[1] = {const_cast<uint8_t*>(rgba)};
     size_t size[1] = {(size_t)width * (size_t)height * 4};
-    gpuCreateCount++;
     // LINEAR (or NEAREST) min filter: no mipmaps
     if (!texture->ownedRender->createTexture(label, width, height, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, data, size,
                                              filter, filter, wrapU, wrapV)){
@@ -1017,10 +994,6 @@ bool RmlRenderer::isClipMaskEnabled() const{
     return clipMaskEnabled;
 }
 
-uint8_t RmlRenderer::getStencilRef() const{
-    return stencilRef;
-}
-
 Rml::Vector2f RmlRenderer::getPixelScale() const{
     const float sx = (contextSize.x > 0) ? (float)targetSize.x / (float)contextSize.x : 1.0f;
     const float sy = (contextSize.y > 0) ? (float)targetSize.y / (float)contextSize.y : 1.0f;
@@ -1195,14 +1168,6 @@ void RmlRenderer::ensureResolved(Framebuffer& layer){
     // a pass that only resolves
     if (beginPass(layer, kind, index, LoadAction::LOAD, LoadAction::LOAD))
         endPass(true);
-}
-
-namespace {
-    std::atomic<bool> compositeFusion{true};
-}
-
-void RmlRenderer::setCompositeFusionForTesting(bool enabled){
-    compositeFusion = enabled;
 }
 
 void RmlRenderer::flushDeferredComposite(){
@@ -1470,7 +1435,7 @@ void RmlRenderer::RenderToClipMask(Rml::ClipMaskOperation operation, Rml::Compil
         RmlGeometry* geometry = reinterpret_cast<RmlGeometry*>(handle);
         if (!geometry || geometry->vertices.empty() || geometry->indices.empty())
             return;
-        // the reference the replay will test against (getStencilRef during the traversal)
+        // the reference the replay will test against
         switch (operation){
         case Rml::ClipMaskOperation::Set:
         case Rml::ClipMaskOperation::SetInverse:
@@ -1670,7 +1635,7 @@ void RmlRenderer::compositeLayersNow(Rml::LayerHandle sourceHandle, Rml::LayerHa
     if (!destinationLayer)
         return;
     // a filtered composite into a just pushed layer (a backdrop's): deferred, see DeferredComposite
-    if (compositeFusion && blendMode == Rml::BlendMode::Blend && !clipMaskEnabled && !context.isPrimaryLayer() && destination == layersSize - 1 &&
+    if (blendMode == Rml::BlendMode::Blend && !clipMaskEnabled && !context.isPrimaryLayer() && destination == layersSize - 1 &&
         destination > 0 && destination < (int)layerClearPending.size() && layerClearPending[destination] && !isEmpty(currentScissorTarget())){
         deferred.layer = destination;
         deferred.post = context.primaryIndex;
@@ -1889,7 +1854,6 @@ HtmlUITexture* RmlRenderer::createLayerTexture(int width, int height){
     desc.depth = DepthStencilFormat::NONE;
     desc.sampleCount = 1;
     desc.label = "htmlui-layer-texture";
-    gpuCreateCount++;
     if (!texture->ownedTarget->create(desc)){
         Log::error("[HTML UI] could not create a %d x %d layer texture", desc.width, desc.height);
         return nullptr;
@@ -2341,7 +2305,6 @@ bool RmlRenderer::loadPipelines(){
     const uint8_t white[4] = {255, 255, 255, 255};
     void* whiteData[1] = {const_cast<uint8_t*>(white)};
     size_t whiteSize[1] = {sizeof(white)};
-    gpuCreateCount++;
     if (!placeholderWhite.createTexture("htmlui-white", 1, 1, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, whiteData, whiteSize,
                                         TextureFilter::NEAREST, TextureFilter::NEAREST, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE)){
         Log::error("[HTML UI] could not create the placeholder texture");
@@ -2359,7 +2322,6 @@ bool RmlRenderer::loadPipelines(){
         {Rml::Vector2f(-1.0f, -1.0f), white4, Rml::Vector2f(0.0f, 1.0f)},
     };
     const uint32_t quadIndices[6] = {0, 1, 2, 0, 2, 3};
-    gpuCreateCount += 2;
     if (!compositeVertexBuffer.createBuffer(sizeof(quad), (void*)quad, BufferType::VERTEX_BUFFER, BufferUsage::IMMUTABLE) ||
         !compositeIndexBuffer.createBuffer(sizeof(quadIndices), (void*)quadIndices, BufferType::INDEX_BUFFER, BufferUsage::IMMUTABLE)){
         Log::error("[HTML UI] could not create the HTML UI composite");
@@ -2442,22 +2404,6 @@ void RmlRenderer::abortFrame(){
 //-------------------------------------------------------------------------------------------
 // RmlRenderer: command recording (phase-1 spec 3.2.10)
 //-------------------------------------------------------------------------------------------
-
-namespace {
-    std::atomic<bool> commandRecording{true};
-}
-
-void RmlRenderer::setCommandRecordingForTesting(bool enabled){
-    commandRecording = enabled;
-}
-
-bool RmlRenderer::isCommandRecording(){
-    return commandRecording;
-}
-
-size_t RmlRenderer::getLastFrameCommandCount() const{
-    return lastFrameCommandCount;
-}
 
 RmlRenderer::Command& RmlRenderer::recordCommand(CommandType type){
     commands.emplace_back();
@@ -2631,7 +2577,7 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
 
     // RmlUi's calls are recorded until endFrame replays them
     frameStartScissor = scissorRegion;
-    recording = commandRecording;
+    recording = true;
     if (recording){
         recordLayers = 1;
         commands.clear();
@@ -2658,10 +2604,8 @@ bool RmlRenderer::endFrame(){
     }
 
     // the recorded frame, drawn in one go
-    lastFrameCommandCount = 0;
     if (recording){
         recording = false;
-        lastFrameCommandCount = commands.size();
         replayCommands();
     }
 
@@ -2893,10 +2837,6 @@ size_t RmlRenderer::getLiveTextureCount() const{
 
 size_t RmlRenderer::getLastFrameDrawCount() const{
     return lastFrameDrawCount;
-}
-
-uint64_t RmlRenderer::getGpuCreateCount() const{
-    return gpuCreateCount;
 }
 
 //-------------------------------------------------------------------------------------------

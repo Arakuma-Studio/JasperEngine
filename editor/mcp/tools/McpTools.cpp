@@ -43,6 +43,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerBuildTools, "Build and export", ""},
     {registerWorldTools, "World: terrain, tilemaps, sprites, animation, particles, physics, UI, models", ""},
     {registerLatticeTools, "Lattices (free-form deformation)", "animation"},   // upstream (lattice deformer)
+    {registerPoseTools, "Pose animation", "animation"},   // upstream (Pose Animation)
     {registerPlacementTools, "Physics placement", "editor_ux"},   // upstream (Physics Placement)
     {registerHtmlUiTools, "HTML/CSS UI", ""},
     {registerUiEffectTools, "HTML/CSS UI", ""},

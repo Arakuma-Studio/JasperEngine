@@ -1,4 +1,4 @@
-# Taffy fixtures that are not compared (BoxParityTest skips them and says why), written by
+# Unsupported upstream Taffy fixtures that are not copied or instantiated, written by
 # tools/htmlui/import-taffy-fixtures.py import. One per line: <suite>/<name> reason=<class> # <why>.
 # Classes: taffy-invalid (spec 5.3), rtl-excluded, writing-mode-excluded (phase-3 spec 2.2), needs-script (none left:
 # the two track-list scripts are evaluated into the fixtures).

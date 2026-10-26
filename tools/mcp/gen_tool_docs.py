@@ -61,6 +61,7 @@ MODULES: list[tuple[str, str]] = [
     ("HtmlUiTools", "HTML/CSS UI"),
     ("UIEffectTools", "HTML/CSS UI"),
     ("EcsTools", "ECS and systems"),
+    ("PoseTools", "Pose animation"),
 ]
 GROUPS = [title for _, title in MODULES]
 

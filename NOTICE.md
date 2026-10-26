@@ -43,7 +43,7 @@ Vector graphics of the HTML/CSS UI (all MIT):
 
 | Library | Version | Location | Used for |
 |---|---|---|---|
-| [ThorVG](https://github.com/thorvg/thorvg) | 1.2.0 (`caa5af1167d7`), local change: no global `operator new`/`delete` under ASan | `engine/libs/thorvg/` (`LICENSE`) | Lottie (`<lottie>`), CPU renderer |
+| [ThorVG](https://github.com/thorvg/thorvg) | 1.2.0 (`caa5af1167d7`) | `engine/libs/thorvg/` (`LICENSE`; one local patch: its global `operator new`/`delete` replacement removed, with the one allocation that relied on it (`rleRender`) made a `new`, noted in `CMakeLists.txt`) | Lottie (`<lottie>`), CPU renderer |
 | [LunaSVG](https://github.com/sammycage/lunasvg) | 3.5.0 (`cf3594d5232e`) | `engine/libs/lunasvg/` (`LICENSE`) | SVG (RmlUi's SVG plugin, `.svg` textures) |
 | [plutovg](https://github.com/sammycage/plutovg) | 1.3.3 (bundled with LunaSVG) | `engine/libs/lunasvg/plutovg/` (`LICENSE`; its rasteriser derives from FreeType's, `source/FTL.TXT`) | LunaSVG's rasteriser |
 

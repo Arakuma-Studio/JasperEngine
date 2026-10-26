@@ -1,1 +1,0 @@
-compat/html/implied_elements.html:1:1: info: the document has no <!DOCTYPE html>: browsers render it in quirks mode (fix: start the file with <!DOCTYPE html>) [HTMLUI-HTML-0001]

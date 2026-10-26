@@ -21,6 +21,8 @@ EDITOR = {"create": True, "name": "Busy Test", "xvfb": "harness"}
 TIMEOUT = 1800
 JOBS = 3
 
+_PREPARED = None
+
 
 async def wait_job(ed: Editor, job_id: str, timeout: float) -> dict:
     deadline = time.monotonic() + timeout
@@ -74,15 +76,20 @@ async def human_play_attempt(ed: Editor, job_id: str) -> None:
     await ed.call("respond_dialog", choice="ok")
 
 
-async def test_prepare(ed: Editor):
+async def prepare(ed: Editor):
+    global _PREPARED
+    if _PREPARED is ed:
+        return
     await ed.call("create_entity", name="Box", type="box")
     saved = await ed.call("save_project", untitled_scene_dir="scenes")
     scene = saved["scenes_in_build"][0]
     await ed.call("edit_build_scenes", action="set_start", scene=scene["id"])
     await ed.call("set_project_settings", values={"graphics.runtime_shaders": False, "preferences.build_jobs": JOBS})
+    _PREPARED = ed
 
 
 async def test_export_job_refusals(ed: Editor):
+    await prepare(ed)
     info = await ed.call("get_build_info")
     if not info["desktop"]["available"]:
         skip(f"no desktop build tools: {info['desktop'].get('missing_tools')}")
@@ -122,6 +129,7 @@ async def test_export_job_refusals(ed: Editor):
 
 
 async def test_script_compile_job_refusals(ed: Editor):
+    await prepare(ed)
     if not (shutil.which("cmake") and (shutil.which("c++") or shutil.which("g++") or shutil.which("clang++"))):
         skip("no C++ toolchain (cmake + compiler) on PATH for the editor")
     await ed.call("create_script", kind="cpp_script", name="BusySpinner", entity="Box")

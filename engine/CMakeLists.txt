@@ -983,6 +983,30 @@ set(JASPERENGINE_SRCS
     core/action/keyframe/RotateTracks.cpp
     core/action/keyframe/ScaleTracks.cpp
     core/action/keyframe/TranslateTracks.cpp
+    core/animation/AnimationClip.cpp
+    core/animation/AnimationClipIO.cpp
+    core/animation/AnimationEvent.cpp
+    core/animation/AnimationPlayerRuntime.cpp
+    core/animation/ClipBinding.cpp
+    core/animation/KeyframeSampling.cpp
+    core/animation/ModelSubClips.cpp
+    core/pose/HumanBones.cpp
+    core/pose/HumanoidMap.cpp
+    core/pose/HumanoidMapIO.cpp
+    core/pose/ModelRig.cpp
+    core/pose/PoseAnimationIO.cpp
+    core/pose/PoseAnimatorRuntime.cpp
+    core/pose/PoseDofs.cpp
+    core/pose/PoseFile.cpp
+    core/pose/PoseIK.cpp
+    core/pose/PoseMetrics.cpp
+    core/pose/PoseRealisation.cpp
+    core/pose/PoseRanges.cpp
+    core/pose/PoseRig.cpp
+    core/pose/PoseSampler.cpp
+    core/pose/PoseSecondary.cpp
+    core/pose/PoseSkin.cpp
+    core/pose/PoseTween.cpp
     core/buffer/Attribute.cpp
     core/buffer/Buffer.cpp
     core/buffer/ExternalBuffer.cpp
@@ -1099,6 +1123,8 @@ set(JASPERENGINE_SRCS
     core/object/FluidSimulation.cpp
     core/object/Lattice.cpp
     core/object/Model.cpp
+    core/object/PoseAnimator.cpp
+    core/object/AnimationPlayer.cpp
     core/object/GameObject.cpp
     core/object/ShadowCaster2D.cpp
     core/object/Points.cpp
@@ -1137,6 +1163,7 @@ set(JASPERENGINE_SRCS
     core/pool/TexturePool.cpp
     core/pool/ModelPool.cpp
     core/pool/MeshLodPool.cpp
+    core/pool/AnimationClipPool.cpp
     core/registry/EntityCloner.cpp
     core/registry/EntityRegistry.cpp
     core/registry/TagManager.cpp
@@ -1191,6 +1218,8 @@ set(JASPERENGINE_SRCS
     core/shader/ShaderVariantCollection.cpp
     core/shader/ShaderVariantCompiler.cpp
     core/subsystem/ActionSystem.cpp
+    core/subsystem/ActionSystemPlayers.cpp
+    core/subsystem/PoseAnimatorSystem.cpp
     core/subsystem/FluidSystem.cpp
     core/fluid/FluidSimulator.cpp
     core/fluid/FluidPresets.cpp
@@ -1325,6 +1354,13 @@ if(JASPERENGINE_CONVEX_DECOMPOSITION)
         COMPILE_DEFINITIONS JASPERENGINE_CONVEX_DECOMPOSITION
         INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/libs/vhacd
     )
+endif()
+
+# The clip pool's test seams (pool/AnimationClipPoolTesting.h) exist only in builds with the anim
+# or editor unit tests: the define stays on the two sources, so a shipped engine has none of it
+if(JASPERENGINE_ANIM_TESTS OR JASPERENGINE_EDITOR_TESTS)
+    set_property(SOURCE core/pool/AnimationClipPool.cpp core/animation/ModelSubClips.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS JASPERENGINE_ANIM_TEST_HOOKS)
 endif()
 
 jasperengine_htmlui_compat_embed(jasperengine)
@@ -1634,4 +1670,8 @@ endif()
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     jasperengine_check_cxx_standards()
+endif()
+
+if(JASPERENGINE_ANIM_TESTS)
+    add_subdirectory(tests/anim)
 endif()

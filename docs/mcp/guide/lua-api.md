@@ -177,6 +177,7 @@ RegisterEvent(self, self.scene:getPhysicsSystem().beginContact2D, "onBeginContac
 | `InputField(...):getInputFieldComponent()` | `onChange`, `onSubmit` | none |
 | `Action(...):getActionComponent()` (any Action/Tween/Animation entity) | `onStart`, `onPause`, `onStop`, `onStep` | none |
 | `AudioSource(...):getAudioSourceComponent()` | `onStart`, `onPause`, `onStop` | none |
+| `PoseAnimator(...):getPoseAnimatorComponent()` | `onFinish` | none |
 | `self.scene:getPhysicsSystem()` (2D) | `beginContact2D`, `endContact2D` | `bodyA, shapeA, bodyB, shapeB` (Rigidbody2D, index, Rigidbody2D, index) |
 | same | `beginSensorContact2D`, `endSensorContact2D` | `sensorBody, sensorShape, visitorBody, visitorShape` |
 | same | `hitContact2D` | `bodyA, shapeA, bodyB, shapeB, point (Vector2), normal (Vector2), speed` |
@@ -736,16 +737,16 @@ EntityHandle
  |   |- RectTransform
  |       |- Text, Polygon, LayoutGroup
  |       |- Image -> Button, Panel, Scrollbar, Progressbar, InputField
- |- AudioSource, Rigidbody2D, Rigidbody, Fog, VolumetricClouds, Skybox
+ |- AudioSource, PoseAnimator, AnimationPlayer, Rigidbody2D, Rigidbody, Fog, VolumetricClouds, Skybox
  |- Action -> Tween (AlphaTween, ColorTween, PositionTween, RotationTween, ScaleTween),
              ParticleSystem, SpriteAnimation, Animation,
              KeyframeTracks (MorphTracks, LatticeTracks, RotateTracks, ScaleTracks, TranslateTracks)
-Joint2D, Joint3D (standalone classes)
+Joint2D, Joint3D, AnimationState, AnimationEvent (standalone classes)
 ```
 
 Constructors: every wrapper has `(Scene, Entity)` to wrap an existing entity. Most also have
 `(Scene)` which creates a new entity with that component. Exceptions: `Rigidbody2D`,
-`Rigidbody` and `Bone` have only `(Scene, Entity)`; `AudioSource` also has `(Scene, is3D)`.
+`Rigidbody`, `Bone`, `PoseAnimator` and `AnimationPlayer` have only `(Scene, Entity)`; `AudioSource` also has `(Scene, is3D)`.
 
 A wrapper made with `(Scene)` owns its new entity (`entityOwned` is true): when the garbage
 collector takes it, the entity is destroyed. Keep it (e.g. in `self`) as long as the object
@@ -787,6 +788,8 @@ after its scene ended (play stop, scene change) does nothing: the scene destroye
 | `removeRigidbody2D()` | method | |
 | `getRigidbody()` / `removeRigidbody()` | method | 3D, same semantics |
 | `getRay(direction)` | method | Ray from world position |
+| `getAnimationPlayer()` | method | the GameObject's `AnimationPlayer` (4.8.2), `nil` when it has none (it never adds one) |
+| `hasAnimationPlayer()` | method | bool |
 | `GameObject.instantiate`, `GameObject.destroy`, `GameObject.destroyImmediate` | static | section 2.6 |
 
 There is no `getComponent`: wrap the same entity with the class you need
@@ -910,13 +913,121 @@ intervalMs, loop)`, plus Action: `start()`, `pause()`, `stop()`, `isRunning()`,
 ### 4.8 Model (Mesh)
 
 `loadModel(path)`, `loadGLTF(path)`, `loadOBJ(path)`, `getAnimation(i)`,
-`findAnimation(name)`, `playAnimation(indexOrName [, fadeTime])`, `stopAnimations()`,
+`findAnimation(name)`, `playAnimation(indexOrName [, fadeTime])`, `stopAnimations(fadeTime)`,
 `getBone(indexOrName)`, `getMorphWeight(indexOrName)`, `setMorphWeight(indexOrName, w)`,
-`resetToBindPose()`, `enabled` (rw).
+`resetToBindPose()`, `enabled` (rw), `getPoseAnimator()` (the model's PoseAnimator, added when missing).
+
+With an Animation Player on the Model's GameObject (4.8.2), `playAnimation(name [, fadeTime])`
+crossfades to the player's state of that name (over the player's `defaultFadeTime` when no fade
+is given) and fades out the model's running entity animations; an index is a player state, in
+list order (0-based); an index past the player's states is the entity animation of that index. A
+name the player lacks falls back to the entity animation of that name (the player's
+states fade out). `stopAnimations(fadeTime)` fades the player out too. Without a player,
+`playAnimation` uses the model's entity animations (glTF animations loaded as Animation
+entities), as before; `getAnimation` / `findAnimation` always return entity animations (none
+after the Inspector's Use Animation Player). Two glTF animations with the same name are both
+named like that as entity animations, but without a player `playAnimation` and `findAnimation`
+take the names the Inspector shows: `"Wave"` is the first one and `"Wave 2"` the second. With a
+player, its states are `"Wave"` and `"Wave 2"`.
+
+### 4.8.1 PoseAnimator (EntityHandle)
+
+Plays a pose animation (`.poseanim`, path relative to the assets folder) live on a humanoid
+Model; it lives on the Model's GameObject. `PoseAnimator(scene, entity)` adds the component when
+missing, `model:getPoseAnimator()` does the same. It runs in play mode and in games, not in the
+editor's edit mode. Models load asynchronously: until `isLoaded()` the animator waits (calls made
+before are kept: `play`, `goToPose`...). A missing or invalid file logs one error and leaves the bones
+alone; the animator tries the file again every second (and at once on `setAnimation`), so a fixed
+file plays without a restart.
+
+`setAnimation(path)` / `getAnimation()` (loads again), `play()`, `pause()`, `stop()` (time 0,
+shows pose 0), `isPlaying()`, `setTime(t)` / `getTime()` / `getLength()` (seconds),
+`setSpeed(s)` / `getSpeed()` (negative plays backwards), `setWeight(w)` / `getWeight()` (0..1
+blend over the Model's clips or rest pose), `autoplay` (rw), `getPoseCount()`, `getPoseName(i)`,
+`findPose(name)` (0-based; -1 when absent), `goToPose(indexOrName [, duration [, overshoot [,
+anticipation]]])` (live spring transition from the pose shown, then holds that pose; playback
+stops; returns false for an unknown pose), `isLoaded()`, `onFinish` (a function called when a
+one-shot animation ends), `getPoseAnimatorComponent()`.
+
+```lua
+local anim = Model(self.scene, self.entity):getPoseAnimator()
+anim.onFinish = function() anim:goToPose("Idle", 0.2) end
+anim:play()
+```
+
+Crossfade over the Model's clip by moving the weight each frame, e.g. in `onUpdate`:
+`anim:setWeight(anim:getWeight() + (target - anim:getWeight()) * math.min(1, Engine.deltatime * 8))`.
+Ready-made animations: `get_pose_animation {templates: true}` (`jasper://docs/pose-animation`).
 
 `loadModel` / `loadGLTF` also take an `.fbx` path: it loads the glTF the editor converted the FBX
 into (`.jasperengine/imported/<path>.fbx.glb` in the editor, `<path>.fbx.glb` next to it in an
 exported game, which ships only that). Every FBX of the assets is converted before Play and export.
+
+### 4.8.2 AnimationPlayer (EntityHandle)
+
+Unity's legacy Animation component: plays Animation Clips (`.anim` files, or a model's read-only
+clips `"models/hero.gltf#Walk"`, paths relative to the assets folder) with fades, blends, queues
+and wrap modes, and fires clip events. `AnimationPlayer(scene, entity)` adds the component when
+missing; `GameObject:getAnimationPlayer()` returns `nil` without one. Players run in play mode
+and in games (edit mode previews clips in the Animation window). Calls made before the clips load
+are kept. Clip tracks bind by path below the player's GameObject; renames and reparents rebind
+on the next frame. User guide: `docs/animation-clips.md`; agents: `jasper://docs/animation`.
+
+| Member | Notes |
+|---|---|
+| `play(name)` | instant: the other states stop (rewound), `name` plays from 0 at weight 1 (from its end when the speed is negative); clears the queue |
+| `play(name, fade)` | `fade` > 0: same as `crossFade(name, fade)` |
+| `crossFade(name [, fade])` | fades the others out and `name` in; no fade = `defaultFadeTime` |
+| `blend(name, weight [, fade])` | moves one state's weight, the others untouched; total weight under 1 is filled by the rest (scene) pose |
+| `queue(name [, fade])` | plays after the playing states finish (loop / ping_pong: at the end of the current cycle; clamp_forever: on reaching its end); with a fade it starts `fade` s earlier and crossfades; queuing the playing state restarts it; nothing playing = play |
+| `stop()`, `stop(name)` | stop and rewind, the pose stays; clear the queue |
+| `rewind()`, `rewind(name)` | time 0 |
+| `sample()` | applies the current times once (e.g. paused) |
+| `isPlaying()`, `isPlaying(name)` | bool; false for a `once` state that ended (held) |
+| `getState(name)` | an `AnimationState` (below) |
+| `addClip(path [, name])` | appends an entry (`name` empty = the file stem / model clip name); false when the name is taken |
+| `removeClip(name)`, `getClipCount()`, `getClipName(i)` | `getClipName` is 0-based, `""` out of range |
+| `speed`, `defaultClip`, `defaultFadeTime`, `playAutomatically`, `enabled` | rw; `speed` multiplies every state (negative plays backwards); `enabled = false`: time stops, nothing is written |
+| `isLoaded()` | every clip loaded and bound |
+| `onEvent` | rw, a function called with ONE `AnimationEvent` (below) per clip event |
+| `onFinish` | rw, a function called with the state name when a `once` state ends, and once when a `clamp_forever` state first reaches its end (never for loop / ping_pong) |
+| `getAnimationPlayerComponent()` | the ECS component: `enabled`, `defaultClip`, `playAutomatically`, `speed`, `defaultFadeTime`, `needsLoad`, `onEvent`, `onFinish` |
+
+A `once` state that reaches its end fires `onFinish`, stops advancing and **holds its last pose**
+at its weight until a fade (crossFade / play with a fade / blend to 0) or `stop` releases it, so
+`onFinish` then `crossFade("Idle", 0.2)` blends from the end pose; with nothing else playing the
+pose stays. `play(name)` or `blend(name, w > 0)` of a held state restarts it; `blend(name, 0,
+fade)` fades it out. Events and `onFinish` run after the frame's animation update, in time order; player
+calls made inside them take effect next frame.
+
+`AnimationState` (by player + state name, looked up on every access; works across clip list
+changes): rw `time`, `normalizedTime`, `speed` (the state's own), `weight`, `wrap` (`"once"`,
+`"loop"`, `"ping_pong"`, `"clamp_forever"`; `"default"` = the entry's), `enabled` (false pauses);
+ro `name`, `clip`, `length`; `isValid()`. An unknown name reads defaults and writes nothing.
+
+`AnimationEvent` (a copy): `functionName`, `state`, `time` (seconds in the clip), `args` (a
+1-based table of numbers, strings and booleans), `getArgCount()`, `getArgType(i)` (`"number"`,
+`"string"`, `"boolean"`), `getNumberArg(i)`, `getStringArg(i)`, `getBoolArg(i)` (0-based `i`).
+An event fires for every state with weight > 0 that is not fading out (in a crossfade, only the
+incoming clip), forward, backward and across loops, once per crossing. It calls every `onEvent`
+subscriber, then the method named `functionName` on each enabled Lua script of the player's own
+GameObject with the args spread as parameters. An event named like a method the engine calls
+itself (`init`, `onDestroy`) or an engine event (`onUpdate`, `onKeyDown`...) calls that method
+again with the event's args (as Unity's `SendMessage`; the clip's binding report warns): give
+events their own names.
+
+```lua
+function Hero:init()
+    self.player = GameObject(self.scene, self.entity):getAnimationPlayer()
+    self.player.onEvent = function(event) print(event.functionName, event.args[1]) end
+    self.player.onFinish = function(state)
+        if state == "Attack" then self.player:crossFade("Idle", 0.2) end
+    end
+    self.player:play("Walk")
+end
+
+function Hero:onFootstep(side, strength) end    -- clip event {function: "onFootstep", args: ["left", 1]}
+```
 
 ### 4.9 Camera (GameObject) - partial
 
@@ -1479,12 +1590,16 @@ Rigidbody wrappers by index.
 19. **Canvas size in `init`**: `Engine.canvasWidth/Height` can be 0 in exported builds during
     `init`; use `Engine.preferredCanvasWidth/Height` there.
 20. **`Log.*` take a single string**; build messages with `..`/`tostring`/`string.format`.
-21. **`onDestroy` is only for runtime destruction**; to clean up when play stops nothing is
+21. **Animation Player callbacks take one value**: `player.onEvent = function(event) ... end`
+    (`event.functionName`, `event.args[1]`), not `function(name, args)`; `onFinish` gets the
+    state name. `GameObject:getAnimationPlayer()` is `nil` without the component (unlike
+    `getRigidbody2D`, it never adds one).
+22. **`onDestroy` is only for runtime destruction**; to clean up when play stops nothing is
     called. Event subscriptions (`RegisterEvent`/`RegisterEngineEvent`, with or without a tag)
     are removed automatically when the script goes away.
-22. **Colors** on wrappers (`setColor`, `color`, Button colors) are sRGB 0..1 values;
+23. **Colors** on wrappers (`setColor`, `color`, Button colors) are sRGB 0..1 values;
     raw component fields (`UIComponent.color`, `ButtonComponent.colorNormal`) are linear.
-23. **Integers**: entity ids, indices and enum values are integers; do not pass fractional
+24. **Integers**: entity ids, indices and enum values are integers; do not pass fractional
     numbers to them (`math.floor` first).
 24. **Pass `owner = self` to `Timer.*`**: a timer without an owner outlives its script (until
     Play stops) and calls into a script that is gone. With `owner = self` it dies with the

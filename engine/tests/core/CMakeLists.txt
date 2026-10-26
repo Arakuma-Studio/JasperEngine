@@ -11,8 +11,8 @@
 file(GLOB_RECURSE CORE_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*Test.cpp)
 
 # The allocation counter of the zero-allocation tests and the benches. It counts at malloc,
-# wrapped by GNU ld (the vendored ThorVG already replaces the plain operator new), so it counts
-# on Linux; elsewhere those tests skip.
+# wrapped by GNU ld (it replaces the plain operator new with malloc), so it counts on Linux;
+# elsewhere those tests skip.
 set(CORE_TEST_ALLOCATION_COUNTER ${CMAKE_CURRENT_SOURCE_DIR}/support/AllocationCounter.cpp)
 set(CORE_TEST_COUNTS_ALLOCATIONS OFF)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")

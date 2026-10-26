@@ -43,6 +43,17 @@ bool editor::AddComponentCmd::execute() {
             CameraTextureLink::resolve(scene);
         }
 
+        if (componentType == ComponentType::AnimationPlayerComponent){
+            if (!executed){
+                for (Entity entity : entities){
+                    PlayerModelLayout::ensureNodeHierarchyForPlayer(project, (uint32_t)sceneId, entity, layoutReloads);
+                }
+            }else{
+                PlayerModelLayout::redoReloads(layoutReloads);
+            }
+        }
+        executed = true;
+
         sceneProject->isModified = true;
     }
 
@@ -53,6 +64,9 @@ void editor::AddComponentCmd::undo() {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (sceneProject) {
         Scene* scene = sceneProject->scene;
+
+        // the model reloads ran after the component was added
+        PlayerModelLayout::undoReloads(layoutReloads);
 
         for (Entity& entity : entities){
             // Undoing an add removes only the component introduced by this command. Any
@@ -80,6 +94,10 @@ bool editor::AddComponentCmd::mergeWith(Command* otherCommand){
                 entities.push_back(otherEntity);
             }
             prefabUndo.mergeOlder(otherCmd->prefabUndo);
+            // the older command's reloads ran first
+            PlayerModelLayout::Reloads reloads = std::move(otherCmd->layoutReloads);
+            for (auto& reload : layoutReloads) reloads.push_back(std::move(reload));
+            layoutReloads = std::move(reloads);
 
             wasModified = wasModified && otherCmd->wasModified;
 

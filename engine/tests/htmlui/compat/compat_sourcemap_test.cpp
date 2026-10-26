@@ -160,7 +160,8 @@ TEST(CompatSourceMap, StyleProblemsAreReportedAtTheHtmlLine){
     // a diagnostic of the document sits at line 5 of the HTML
     bool found = false;
     for (const Diagnostic& diagnostic : DocumentLoader::diagnosticsOf(document)){
-        if (diagnostic.file == "@htmlui/test/map/style.html" && diagnostic.line == 5 && diagnostic.severity != Severity::Info)
+        if (diagnostic.file == "@htmlui/test/map/style.html" && diagnostic.line == 5 &&
+            diagnostic.code == codes::UnsupportedValue && diagnostic.subject == "width")
             found = true;
     }
     EXPECT_TRUE(found);

@@ -46,6 +46,19 @@ def decode_png(data: bytes):
     return width, height, ch, rows
 
 
+def image_difference(a: bytes, b: bytes, step: int = 4) -> float:
+    """Mean RGB difference of same-sized screenshots, sampled every `step` pixels."""
+    wa, ha, ca, ra = decode_png(a)
+    wb, hb, cb, rb = decode_png(b)
+    assert (wa, ha) == (wb, hb), f"sizes differ: {wa}x{ha} vs {wb}x{hb}"
+    total = count = 0
+    for y in range(0, ha, step):
+        for x in range(0, wa, step):
+            total += sum(abs(ra[y][x * ca + k] - rb[y][x * cb + k]) for k in range(3))
+            count += 3
+    return total / max(count, 1)
+
+
 class Shot:
     """A Game view screenshot addressed in canvas pixels."""
 

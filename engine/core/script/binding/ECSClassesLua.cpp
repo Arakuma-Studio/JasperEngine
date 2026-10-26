@@ -30,6 +30,9 @@
 #include "component/InputFieldComponent.h"
 #include "component/ParticleSystemComponent.h"
 #include "component/AudioSourceComponent.h"
+#include "component/PoseAnimatorComponent.h"
+#include "component/AnimationPlayerComponent.h"
+#include "animation/AnimationEvent.h"
 #include "component/SpriteComponent.h"
 #include "component/FogComponent.h"
 #include "component/FluidSimulationComponent.h"
@@ -752,6 +755,30 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("rotationModifier", &ParticleSystemComponent::rotationModifier, &setTrackedMember<&ParticleSystemComponent::rotationModifier>)
         .addProperty("scaleInitializer", &ParticleSystemComponent::scaleInitializer, &setTrackedMember<&ParticleSystemComponent::scaleInitializer>)
         .addProperty("scaleModifier", &ParticleSystemComponent::scaleModifier, &setTrackedMember<&ParticleSystemComponent::scaleModifier>)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<PoseAnimatorComponent>("PoseAnimatorComponent")
+        .addProperty("animation", &PoseAnimatorComponent::animation, &PoseAnimatorComponent::animation)
+        .addProperty("autoplay", &PoseAnimatorComponent::autoplay, &PoseAnimatorComponent::autoplay)
+        .addProperty("speed", &PoseAnimatorComponent::speed, &PoseAnimatorComponent::speed)
+        .addProperty("weight", &PoseAnimatorComponent::weight, &PoseAnimatorComponent::weight)
+        .addProperty("playing", &PoseAnimatorComponent::playing)
+        .addProperty("time", &PoseAnimatorComponent::time)
+        .addProperty("needsLoad", &PoseAnimatorComponent::needsLoad, &PoseAnimatorComponent::needsLoad)
+        .addProperty("onFinish", [] (PoseAnimatorComponent* self, lua_State* L) { return &self->onFinish; }, [] (PoseAnimatorComponent* self, lua_State* L) { self->onFinish = L; })
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<AnimationPlayerComponent>("AnimationPlayerComponent")
+        .addProperty("enabled", &AnimationPlayerComponent::enabled, &AnimationPlayerComponent::enabled)
+        .addProperty("defaultClip", &AnimationPlayerComponent::defaultClip, &AnimationPlayerComponent::defaultClip)
+        .addProperty("playAutomatically", &AnimationPlayerComponent::playAutomatically, &AnimationPlayerComponent::playAutomatically)
+        .addProperty("speed", &AnimationPlayerComponent::speed, &AnimationPlayerComponent::speed)
+        .addProperty("defaultFadeTime", &AnimationPlayerComponent::defaultFadeTime, &AnimationPlayerComponent::defaultFadeTime)
+        .addProperty("needsLoad", &AnimationPlayerComponent::needsLoad, &AnimationPlayerComponent::needsLoad)
+        .addProperty("onEvent", [] (AnimationPlayerComponent* self, lua_State*) { return &self->onEvent; }, [] (AnimationPlayerComponent* self, lua_State* L) { self->onEvent = L; })
+        .addProperty("onFinish", [] (AnimationPlayerComponent* self, lua_State*) { return &self->onFinish; }, [] (AnimationPlayerComponent* self, lua_State* L) { self->onFinish = L; })
         .endClass();
 
     luabridge::getGlobalNamespace(L)

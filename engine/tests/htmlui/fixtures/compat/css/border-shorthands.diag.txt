@@ -1,3 +1,0 @@
-compat/css/border-shorthands.css:3:10: warning: 'border-style: dashed' is drawn solid until the fork has BorderStyle (fix: use solid, or draw the pattern with an image) [HTMLUI-CSS-0006]
-compat/css/border-shorthands.css:8:53: warning: 'border-style: double' is drawn solid until the fork has BorderStyle (fix: use solid, or draw the pattern with an image) [HTMLUI-CSS-0006]
-compat/css/border-shorthands.css:15:12: warning: 'border: 1px solid #ff0000ff #0000ffff' is not supported; declaration dropped (fix: write border: <width> <style> <color>) [HTMLUI-CSS-0004]

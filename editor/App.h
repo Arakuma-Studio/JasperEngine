@@ -19,6 +19,7 @@
 #include "window/ImageViewerWindow.h"
 #include "window/CodeEditor.h"
 #include "window/AnimationWindow.h"
+#include "window/PoseAnimationWindow.h"
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
 #include "window/PhysicsPlacementWindow.h"
@@ -208,6 +209,7 @@ namespace jasperengine::editor{
         ProjectWindow* projectWindow;
         ImageViewerWindow* imageViewerWindow;
         AnimationWindow* animationWindow;
+        PoseAnimationWindow* poseAnimationWindow;
         TerrainEditWindow* terrainEditWindow;
         TextureSynthesisWindow* textureSynthesisWindow;
         PhysicsPlacementWindow* physicsPlacementWindow;
@@ -287,7 +289,15 @@ namespace jasperengine::editor{
             None,
             AnySceneWindow, // Represents any of the scene-related windows (Scene, Properties, Hierarchy)
             Resources,
-            Code
+            Code,
+            // the Pose Animation window, or a Scene view posing its character: its keys are the
+            // window's (its edits' undo is the timeline's, as project-history steps)
+            PoseAnimation,
+            // the newest undoable step across the scene and project histories is a clip commit
+            // made through the editor UI, whatever has focus (animation clips spec 9.R5b/R5c,
+            // AnimationClipAppHooks::ownsUndo): the Animation window keeps its keys while it takes
+            // them (the timeline undoes the commit, its newest step)
+            AnimationClip
         } lastFocusedWindow;
 
         void saveFunc();
@@ -409,6 +419,10 @@ namespace jasperengine::editor{
         void updateResourcesPath() override;
         void updateWindowTitle(const std::string& projectName) override;
         void stopTransientPreviews() override;
+        // Clip files dropped onto a scene object (Scene view, Hierarchy): adds or reuses its
+        // Animation Player with the clips, one scene step (AnimationClipAppHooks::dropClips).
+        // False when not handled (no hook yet, or nothing to add).
+        bool dispatchClipDrop(uint32_t sceneId, Entity target, const std::vector<std::string>& paths);
         void flushSceneMaterialWrites(uint32_t sceneId) override;
         void saveAllCodeEditors() override;
         void requestScenePlayFocus(uint32_t sceneId) override;
@@ -482,6 +496,7 @@ namespace jasperengine::editor{
         ImageViewerWindow* getImageViewerWindow() const override;
         ProjectWindow* getProjectWindow() const override;
         AnimationWindow* getAnimationWindow() const;
+        PoseAnimationWindow* getPoseAnimationWindow() const;
         HierarchyWindow* getHierarchyWindow() const;
         TerrainEditWindow* getTerrainEditWindow() const;
         SystemsWindow* getSystemsWindow() const;

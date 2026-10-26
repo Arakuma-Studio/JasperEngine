@@ -14,14 +14,11 @@
 //   at fixed times, an anime-driven registered property, the conflict of two live documents (the first
 //   registered applies until it unloads), release on unload and id reuse, a hot reload that
 //   changes a definition, the property id capacity, registration after use, @starting-style and transition-behavior, the
-//   unregistered fallback, the fork feature's probe;
-// - goldens: the fixtures of fixtures/p3/property (also compared with Chromium by BrowserParity)
-//   rendered by the engine into golden/property/<name>[.<capture>].png.
+//   unregistered fallback; the all-feature suite owns fork probing.
+// - rendering parity: BrowserParity compares fixtures/p3/property with Chromium captures.
 //
 // Registrations last while a document that registers them is loaded: each test uses names of its own.
 
-#include "FixtureRunner.h"
-#include "harness/ImageCompare.h"
 #include "harness/RecordingRenderInterface.h"
 #include "harness/TestSystem.h"
 
@@ -378,8 +375,6 @@ TEST(RegisteredPropertyTest, DiagnosticCodes){
     EXPECT_EQ(conflict->severity, Severity::Warning);
     EXPECT_EQ(invalid->severity, Severity::Error);
     EXPECT_TRUE(invalid->severityByCase);
-    for (const DiagCodeInfo* info : {unsupported, conflict, invalid})
-        EXPECT_GT(std::string(info->help).size(), 80u);
     EXPECT_EQ(findDiagnosticCode("HTMLUI-AT-0013"), conflict);
 }
 
@@ -399,15 +394,6 @@ TEST(RegisteredPropertyTest, WithoutTheForkFeatureItIsPhaseTwo){
 }
 
 // ---- load
-
-TEST(RegisteredPropertyTest, ForkFeatureProbe){
-    ASSERT_TRUE(HtmlUI::acquire());
-    const std::optional<bool> probed = ForkFeatures::probe(ForkFeature::RegisteredProperties);
-    ASSERT_TRUE(probed.has_value());
-    EXPECT_TRUE(*probed);
-    EXPECT_EQ(Rml::GetNumContexts(), 0);
-    HtmlUI::release();
-}
 
 // Registered properties take RmlUi's free property ids (4096 in all; the engine's own properties use about 250): what is
 // left with every engine property registered, and a registration past the last id stays unregistered with a warning.
@@ -738,47 +724,3 @@ TEST(RegisteredPropertyTest, UnregisteredFallback){
     EXPECT_TRUE(Rml::StyleSheetSpecification::IsRegisteredCustomProperty(Rml::StyleSheetSpecification::GetPropertyId("--rpu-reg")));
     EXPECT_TRUE(p.errors.empty()) << p.errors.front();
 }
-
-// ---- goldens: the engine's render of the parity fixtures
-
-namespace {
-
-    std::vector<std::string> propertyFixtures(){
-        std::vector<std::string> names;
-        for (const BrowserFixture& fixture : listBrowserFixtures()){
-            if (fixture.area == "property")
-                names.push_back(fixture.name);
-        }
-        return names;
-    }
-
-}
-
-class RegisteredPropertyGolden : public ::testing::TestWithParam<std::string> {};
-
-TEST_P(RegisteredPropertyGolden, Renders){
-    const std::string name = GetParam();
-    FixtureSidecar sidecar;
-    std::string error;
-    ASSERT_TRUE(loadSidecar(browserFixturesDirectory() + "/property/" + name + ".json", sidecar, &error)) << error;
-    FixtureRunner runner(sidecar.width, sidecar.height, sidecar.sampleCount);
-    if (!runner.valid())
-        GTEST_SKIP() << "no headless GPU context";
-    std::vector<FixtureRunner::Capture> captures;
-    ASSERT_TRUE(runner.load("fixtures/p3/property/" + name + ".html", &error)) << error;
-    ASSERT_TRUE(runner.run(sidecar, captures, &error)) << error;
-    ASSERT_FALSE(captures.empty());
-    for (const FixtureRunner::Capture& capture : captures){
-        const std::string golden = "property/" + name + (capture.suffix.empty() ? std::string() : "." + capture.suffix);
-        const std::vector<uint8_t> straight = compat::unpremultiplied(capture.image);
-        const CompareResult result = compareWithGolden(golden, straight, capture.image.width, capture.image.height);
-        EXPECT_TRUE(result.passed) << golden << ": " << result.message;
-    }
-}
-
-INSTANTIATE_TEST_SUITE_P(Fixtures, RegisteredPropertyGolden, ::testing::ValuesIn(propertyFixtures()),
-                         [](const ::testing::TestParamInfo<std::string>& info){
-                             std::string name = info.param;
-                             std::replace(name.begin(), name.end(), '-', '_');
-                             return name;
-                         });

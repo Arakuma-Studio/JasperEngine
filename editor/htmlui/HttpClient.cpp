@@ -206,11 +206,6 @@ void HttpClient::setDefaultTimeoutSeconds(int seconds){
     defaults().timeoutSeconds = seconds > 0 ? seconds : kDefaultTimeoutSeconds;
 }
 
-int HttpClient::getDefaultTimeoutSeconds(){
-    std::lock_guard<std::mutex> lock(defaults().mutex);
-    return defaults().timeoutSeconds;
-}
-
 void HttpClient::cancelAll(){
     Active& state = active();
     std::lock_guard<std::mutex> lock(state.mutex);

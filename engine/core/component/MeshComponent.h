@@ -376,6 +376,21 @@ namespace jasperengine{
         Matrix4 mirrorViewProjection;
 
         float morphWeights[MAX_MORPHTARGETS] = {};
+        // the weights are this component's own: read from a saved scene or prefab (the editor's
+        // Stream, an exported game's factory code) or kept from an earlier load of the same model
+        // (edits, deliberate zeros). A model load gives the file's default weights only when this
+        // is false (a freshly loaded model) or when it loads another model file.
+        bool morphWeightsSet = false;
+        // how many targets those weights cover: the mesh's target count at its last load (saved
+        // with them). A reload of a model file that has more targets now gives the new ones the
+        // file's defaults. Weights saved without it (older files) or set before any load cover
+        // the targets up to their last non-zero weight (morphWeightsPresentCount): the zeros after
+        // it get the file's defaults, as every load gave them before the count existed.
+        int morphTargetCount = 0;
+        // the blend shape (morph target) names of this mesh in its model file (glTF
+        // extras.targetNames), index = weight; empty when the file names none. Filled by the
+        // model load (per mesh: two meshes of a model can name their targets differently), not saved.
+        std::vector<std::string> morphTargetNames;
 
         // lattice deformation (spec 2026-10-23-lattice-deformer-design.md §5): filled by
         // LatticeRender::prepare, uploaded and bound by RenderSystem
@@ -444,7 +459,17 @@ namespace jasperengine{
         // reloads once the new variant's shaders are built (needReload then)
         bool needVariantReload = false;
     };
-    
+
+    // the targets weights without a count cover: up to the last non-zero one
+    // (MeshComponent::morphTargetCount)
+    inline int morphWeightsPresentCount(const float* weights){
+        int count = 0;
+        for (int i = 0; i < MAX_MORPHTARGETS; i++){
+            if (weights[i] != 0.0f) count = i + 1;
+        }
+        return count;
+    }
+
 }
 
 #endif //MESH_COMPONENT_H
