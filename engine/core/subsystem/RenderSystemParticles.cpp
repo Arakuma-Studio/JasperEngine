@@ -334,7 +334,7 @@ bool RenderSystem::loadParticles(Entity entity, ParticleSystemComponent& particl
     const std::string& reference = variants.reference;
     const uint16_t customId = reference.empty() ? 0 : ShaderPool::registerCustomShader(reference);
     std::shared_ptr<const ShaderManifest> manifest = manifestOf(base);
-    const uint32_t postColor = postColorProperty(ShaderType::PARTICLES);
+    const uint64_t postColor = postColorProperty(ShaderType::PARTICLES);
     const bool drawsQuads = variants.quads;
     const bool drawsMeshes = variants.meshes;
     const bool drawsTrails = variants.trails;
@@ -342,7 +342,7 @@ bool RenderSystem::loadParticles(Entity entity, ParticleSystemComponent& particl
     const bool sixWay = r.lighting == LightingMode::SixWay;
     const bool receiveShadows = r.receiveShadows;
 
-    auto shaderFor = [&](uint32_t properties, uint16_t id) -> std::shared_ptr<ShaderRender> {
+    auto shaderFor = [&](uint64_t properties, uint16_t id) -> std::shared_ptr<ShaderRender> {
         std::shared_ptr<ShaderRender> shader = ShaderPool::get(ShaderType::PARTICLES, properties, id);
         if (!shader->isCreated() && id != 0 && ShaderPool::isShaderBuildFailed(ShaderType::PARTICLES, properties, id)){
             // a fork that failed to compile: the built-in shader keeps the system visible
@@ -707,7 +707,7 @@ void RenderSystem::drawParticles(Entity entity, ParticleSystemComponent& particl
     fs.emissionColor = Vector4(emissionLinear, rd.emission.empty() ? 0.0f : 1.0f);
     fs.sixWay = Vector4((float)(int)r.sixWayLayout, r.sixWayContrast, 0.0f, 0.0f);
 
-    auto applyBlocks = [&](ObjectRender& render, ParticleRenderData::Slots& slots, uint32_t properties){
+    auto applyBlocks = [&](ObjectRender& render, ParticleRenderData::Slots& slots, uint64_t properties){
         size_t size = sizeof(vs_particles_params_t);
         if (properties & ((1u << 5) | (1u << 6))){        // 'Lit', 'Sxw'
             vsLights(size);

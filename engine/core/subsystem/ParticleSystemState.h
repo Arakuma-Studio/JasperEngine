@@ -50,9 +50,9 @@ namespace jasperengine{
             std::shared_ptr<ShaderRender> shader;
             std::shared_ptr<ShaderRender> trailShader;
             std::shared_ptr<ShaderRender> meshShader;
-            uint32_t properties = 0;
-            uint32_t trailProperties = 0;
-            uint32_t meshProperties = 0;
+            uint64_t properties = 0;
+            uint64_t trailProperties = 0;
+            uint64_t meshProperties = 0;
             uint16_t customShaderId = 0;
             uint16_t trailCustomShaderId = 0;
             std::shared_ptr<const ShaderManifest> manifest;

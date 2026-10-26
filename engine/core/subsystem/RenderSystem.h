@@ -2448,9 +2448,9 @@ namespace jasperengine{
 			bool quads = false;
 			bool meshes = false;
 			bool trails = false;
-			uint32_t quadProperties = 0;
-			uint32_t meshProperties = 0;
-			uint32_t trailProperties = 0;
+			uint64_t quadProperties = 0;
+			uint64_t meshProperties = 0;
+			uint64_t trailProperties = 0;
 			std::string reference;   // empty: the built-in shader
 		};
 		static ParticleVariantSet getParticleVariants(const particles::CompiledEffect& effect, bool fog);
