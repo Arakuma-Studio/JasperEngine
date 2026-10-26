@@ -631,3 +631,15 @@ one line pointing here.
   the list's scissor. Changes: S16-F4 culling, clip shapes cached.
 - B1: four texture slots per `HTMLUI_PRIM` draw; the benchmark prints the effect draws (shaders,
   composites, filters, clip masks).
+- Vulkan `RenderPrimitive.MatchesTheMeshPath` (whole suite only): root cause found. The test made
+  layer targets of 8 samples; lavapipe (Mesa 23.2.1, the test image's Vulkan device) has
+  `framebufferColorSampleCounts` 1 and 4 only (`vulkaninfo` in the image). An image of 8 samples
+  is invalid Vulkan usage that neither sokol nor lavapipe rejects (GL llvmpipe fails the
+  framebuffer, which the test skipped); its draws landed in memory not the image's, so what the
+  readback saw depended on the heap the earlier tests left: the failure images
+  (`primitives-borders-8.mesh.png`, `-transforms-8.sdf.png`) are the right document shifted by a
+  linear memory offset with foreign bytes in the first/last rows, on the mesh path as much as the
+  primitive path. Fix (012d4cd61): `RmlRenderTarget::ensure` and `HtmlUIContext::getSampleCount`
+  take `FramebufferRender::getMaxMsaaSamples` (the device's highest count up to the asked one, as
+  the scene MSAA already did), so an editor preference of 8 on such a device is 4, not undefined;
+  the comparison skips counts the device lacks; `RenderP1Test.SampleCountChoice` checks the clamp.
