@@ -155,6 +155,9 @@ Json reflect::detail::arraySchema(const FieldDesc& field) {
             properties[member.name] = fieldSchema(*field.structDesc, member);
         }
         items = Json{{"type", "object"}, {"properties", properties}};
+    } else if (field.elementOps && field.elementOps->kind == Kind::Array) {
+        // arrays of arrays (a morph track's weights per key): the field describes one level only
+        items = Json{{"type", "array"}};
     } else if (field.elementOps && field.elementOps->schema) {
         items = field.elementOps->schema(field);
     }
