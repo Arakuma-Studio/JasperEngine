@@ -8,6 +8,9 @@
 #include "util/Angle.h"
 #include "util/Color.h"
 #include "subsystem/RenderSystem.h"
+#include "util/LightPhotometry.h"
+#include <algorithm>
+#include <cmath>
 #include <math.h>
 
 using namespace jasperengine;
@@ -32,6 +35,8 @@ void Light::setType(LightType type){
 
     if (lightcomp.type != type){
         lightcomp.type = type;
+        // a unit the new type cannot take: its neighbour, the same number (lux is candela at 1 m)
+        lightcomp.intensityUnit = LightPhotometry::validUnit(lightcomp.intensityUnit, type);
 
         lightcomp.needUpdateShadowCamera = true;
         lightcomp.needUpdateShadowMap = true;
@@ -115,6 +120,47 @@ float  Light::getIntensity() const{
     LightComponent& lightcomp = getComponent<LightComponent>();
 
     return lightcomp.intensity;
+}
+
+void Light::setIntensityUnit(LightUnit unit){
+    setIntensityUnit(unit, false);
+}
+
+void Light::setIntensityUnit(LightUnit unit, bool preserveBrightness){
+    LightComponent& lightcomp = getComponent<LightComponent>();
+
+    LightPhotometry::setIntensityUnit(lightcomp, unit, preserveBrightness, scene->getPhysicalLightEV100());
+}
+
+LightUnit Light::getIntensityUnit() const{
+    LightComponent& lightcomp = getComponent<LightComponent>();
+
+    return lightcomp.intensityUnit;
+}
+
+void Light::setUseColorTemperature(bool use){
+    LightComponent& lightcomp = getComponent<LightComponent>();
+
+    lightcomp.useColorTemperature = use;
+}
+
+bool Light::isUseColorTemperature() const{
+    LightComponent& lightcomp = getComponent<LightComponent>();
+
+    return lightcomp.useColorTemperature;
+}
+
+void Light::setColorTemperature(float kelvin){
+    LightComponent& lightcomp = getComponent<LightComponent>();
+
+    if (std::isfinite(kelvin))
+        lightcomp.colorTemperature = std::clamp(kelvin, LightPhotometry::MIN_TEMPERATURE, LightPhotometry::MAX_TEMPERATURE);
+}
+
+float Light::getColorTemperature() const{
+    LightComponent& lightcomp = getComponent<LightComponent>();
+
+    return lightcomp.colorTemperature;
 }
 
 void Light::setConeAngle(float inner, float outer){

@@ -37,6 +37,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerScriptTools, "Scripts", ""},
     {registerAssetTools, "Assets, materials and shaders", ""},
     {registerSynthesisTools, "Texture synthesis", "assets_pipeline"},   // upstream (texture synthesis)
+    {registerMaterialsLightingTools, "Assets, materials and shaders", "rendering_fx"},   // S11
     {registerAssetIdentityTools, "Asset identity: GUIDs, references, missing assets", "assets_pipeline"},   // S04
     {registerDocsTools, "Docs", ""},
     {registerBuildTools, "Build and export", ""},

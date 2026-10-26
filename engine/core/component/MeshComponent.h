@@ -32,8 +32,8 @@
 namespace jasperengine{
 
     // Submesh fields a model load rewrites from its source file, so an edit to one only survives
-    // the load while it is flagged in Submesh::overrideFields.
-    enum SubmeshOverrideFlags : uint32_t {
+    // the load while it is flagged in Submesh::overrideFields (64 bits, saved as a number).
+    enum SubmeshOverrideFlags : uint64_t {
         SubmeshOverride_BaseColorFactor          = 1 << 0,
         SubmeshOverride_MetallicFactor           = 1 << 1,
         SubmeshOverride_RoughnessFactor          = 1 << 2,
@@ -68,7 +68,12 @@ namespace jasperengine{
         SubmeshOverride_ColorWrite               = 1 << 28,
         SubmeshOverride_ExtraPass                = 1 << 29,
         // Stochastic Tiling: material.stochasticTiling and its four values under one bit
-        SubmeshOverride_StochasticTiling         = 1 << 30,
+        // (upstream's, in released files)
+        SubmeshOverride_StochasticTiling         = 1ull << 30,
+        // the extended lobes and hex tiling (Material::pbr, all of it) and the emissive strength,
+        // which a glTF model sets (KHR_materials_*; S11's, after Stochastic Tiling's bit)
+        SubmeshOverride_PbrExtensions            = 1ull << 31,
+        SubmeshOverride_EmissiveStrength         = 1ull << 32,
 
         SubmeshOverride_ShaderLibrary = SubmeshOverride_Shader | SubmeshOverride_ShaderParams |
                                         SubmeshOverride_ShaderTextures | SubmeshOverride_ShaderFeatures |
@@ -85,7 +90,8 @@ namespace jasperengine{
                                    SubmeshOverride_EmissiveTexture | SubmeshOverride_MetallicRoughnessTexture |
                                    SubmeshOverride_OcclusionTexture | SubmeshOverride_NormalTexture |
                                    SubmeshOverride_FoliageTransmission | SubmeshOverride_ShaderLibrary |
-                                   SubmeshOverride_StochasticTiling
+                                   SubmeshOverride_StochasticTiling | SubmeshOverride_PbrExtensions |
+                                   SubmeshOverride_EmissiveStrength
     };
 
     // The lights reaching a mesh (an instanced batch counts as one mesh), picked by
@@ -191,6 +197,11 @@ namespace jasperengine{
         // cached here so the matching ShaderPool::remove uses the same key
         uint16_t customShaderId = 0;
         uint16_t customDepthShaderId = 0;
+        // the built-in Lit's defines its colour variant was loaded with (the "builtin:lit#..."
+        // reference, SubmeshShaderVariant::litDefines, as MaterialPbr::getDefineBits) and the
+        // extension maps that variant binds, in slot order (u_pbrExtTexture0..2; COUNT: none)
+        uint32_t litDefineBits = 0;
+        PbrMap pbrMaps[MaterialPbr::MAX_EXTENSION_MAPS] = {PbrMap::COUNT, PbrMap::COUNT, PbrMap::COUNT};
 
         int slotVSParams = -1;
         int slotFSParams = -1;
@@ -223,6 +234,11 @@ namespace jasperengine{
         std::pair<int, int> slotVSLatticeTexture = {-1, -1};
         int slotVSTerrain = -1;
         int slotFSTerrainLayers = -1;
+        // u_fs_pbrParams of a built-in Lit lobe variant ends with the lobes' values (and the UV
+        // sets with a second set): its size, their offsets (bytes; size 0: no lobes)
+        uint16_t pbrParamsSize = 0;
+        uint16_t pbrExtOffset = 0;
+        int16_t pbrSetsOffset = -1;
 
         int slotVSDepthParams = -1;
         unsigned int sizeVSDepthParams = 0; // reflected: an older fork declares the block without mvpMatrix
@@ -273,7 +289,7 @@ namespace jasperengine{
         PrimitiveType primitiveType = PrimitiveType::TRIANGLES;
         unsigned int vertexCount = 0;
 
-        uint32_t overrideFields = 0; // SubmeshOverrideFlags edited after import, kept across loads
+        uint64_t overrideFields = 0; // SubmeshOverrideFlags edited after import, kept across loads
 
         // material.lighting the shader variant was picked for
         MaterialLighting loadedLighting = MaterialLighting::AUTO;

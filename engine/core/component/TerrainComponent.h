@@ -101,6 +101,11 @@ namespace jasperengine{
         float stochasticBlendSharpness = 0.4f;  //0-1: how narrow the blend between cells is
         float stochasticContrast = 0.45f;       //0-1: keeps the texture's contrast where cells blend
         float stochasticRotation = 0.0f;        //0-1: random turn per cell, share of +-180 degrees
+        // hex tiling (includes/hex_tiling.glsl): the flat projection sampled on three randomly
+        // rotated copies instead of its near and far tiling, which hides the repetition; the
+        // side planes stay planar. hexRotation 0..1 is the share of a turn a tile may rotate.
+        bool hexTiling = false;
+        float hexRotation = 1;
 
         bool operator == (const TerrainSurfaceLayer& other) const{
             return pbr == other.pbr &&
@@ -121,7 +126,9 @@ namespace jasperengine{
                    stochasticCellSize == other.stochasticCellSize &&
                    stochasticBlendSharpness == other.stochasticBlendSharpness &&
                    stochasticContrast == other.stochasticContrast &&
-                   stochasticRotation == other.stochasticRotation;
+                   stochasticRotation == other.stochasticRotation &&
+                   hexTiling == other.hexTiling &&
+                   hexRotation == other.hexRotation;
         }
 
         bool operator != (const TerrainSurfaceLayer& other) const{
@@ -234,7 +241,18 @@ namespace jasperengine{
     // terrain shader (its per-layer block)
     inline bool hasTerrainSurfaceLayers(const TerrainComponent& terrain){
         for (const TerrainSurfaceLayer& layer : terrain.surfaceLayers){
-            if (layer.pbr || layer.uvScale != Vector2(1, 1) || layer.uvOffset != Vector2(0, 0) || layer.stochasticTiling){
+            if (layer.pbr || layer.uvScale != Vector2(1, 1) || layer.uvOffset != Vector2(0, 0) || layer.stochasticTiling ||
+                    layer.hexTiling){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // a layer hex tiles (TERRAIN_HEX_TILING): the terrain draws its surface layers' path
+    inline bool hasTerrainHexLayers(const TerrainComponent& terrain){
+        for (const TerrainSurfaceLayer& layer : terrain.surfaceLayers){
+            if (layer.hexTiling){
                 return true;
             }
         }

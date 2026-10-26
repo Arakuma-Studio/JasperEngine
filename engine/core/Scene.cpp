@@ -461,6 +461,25 @@ int Scene::getMaxLightsPerObject() const{
     return settings.maxLightsPerObject;
 }
 
+void Scene::setLitQuality(LitQuality litQuality){
+    // a new quality reloads the lit meshes' variants (RenderSystem::update)
+    settings.litQuality = litQuality;
+}
+
+LitQuality Scene::getLitQuality() const{
+    return settings.litQuality;
+}
+
+void Scene::setPhysicalLightEV100(float ev100){
+    // the lights in physical units resolve again (RenderSystem::resolveLights)
+    if (std::isfinite(ev100))
+        settings.physicalLightEV100 = std::clamp(ev100, -6.0f, 24.0f);
+}
+
+float Scene::getPhysicalLightEV100() const{
+    return settings.physicalLightEV100;
+}
+
 void Scene::setAmbientLight2D(float intensity, Vector3 color){
     settings.ambientLight2DIntensity = intensity;
     settings.ambientLight2DColor = Color::sRGBToLinear(color);

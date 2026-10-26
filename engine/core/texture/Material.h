@@ -7,6 +7,8 @@
 #include "asset/AssetRef.h"
 #include "math/Vector3.h"
 #include "texture/Texture.h"
+#include "texture/MaterialPbr.h"
+#include "util/OutOfLineValue.h"
 #include "shader/ShaderUniforms.h"
 #include <memory>
 #include <string>
@@ -169,63 +171,8 @@ namespace jasperengine{
 
     // Material::extraPass: a MaterialPass kept out of line, so the materials without one (most
     // of them, 16 inline in every MeshComponent of a game build) pay a pointer instead of the
-    // whole pass. A value: copies are deep, comparisons by value, and an unset pass reads and
-    // compares as MaterialPass(). Read through get(), * and -> (never allocate); write through
-    // edit(), which allocates it. A copy of a pass equal to MaterialPass() stays unset.
-    class JASPERENGINE_API MaterialExtraPass{
-    private:
-        std::unique_ptr<MaterialPass> pass;
-
-        static const MaterialPass& defaults(){
-            static const MaterialPass none;
-            return none;
-        }
-        static std::unique_ptr<MaterialPass> copyOf(const MaterialPass* other){
-            return (other && *other != defaults()) ? std::make_unique<MaterialPass>(*other) : nullptr;
-        }
-
-    public:
-        MaterialExtraPass() = default;
-        MaterialExtraPass(const MaterialPass& other): pass(copyOf(&other)) {}
-        MaterialExtraPass(const MaterialExtraPass& other): pass(copyOf(other.pass.get())) {}
-        MaterialExtraPass(MaterialExtraPass&& other) noexcept = default;
-        MaterialExtraPass& operator = (MaterialExtraPass&& other) noexcept = default;
-        MaterialExtraPass& operator = (const MaterialExtraPass& other){
-            if (this != &other)
-                pass = copyOf(other.pass.get());
-            return *this;
-        }
-        // keeps its storage when it has one (a Lua reference to it stays valid)
-        MaterialExtraPass& operator = (const MaterialPass& other){
-            if (pass)
-                *pass = other;
-            else
-                pass = copyOf(&other);
-            return *this;
-        }
-
-        const MaterialPass& get() const { return pass ? *pass : defaults(); }
-        const MaterialPass& operator * () const { return get(); }
-        const MaterialPass* operator -> () const { return &get(); }
-        operator const MaterialPass& () const { return get(); }
-
-        // the pass to write, made (as MaterialPass()) when unset
-        MaterialPass& edit(){
-            if (!pass)
-                pass = std::make_unique<MaterialPass>();
-            return *pass;
-        }
-        // the pass to write if there is one, else null (nothing is made)
-        MaterialPass* editIfSet() { return pass.get(); }
-        // whether it is allocated (it may still hold MaterialPass())
-        bool isSet() const { return pass != nullptr; }
-        void reset() { pass.reset(); }
-
-        bool operator == (const MaterialExtraPass& other) const { return get() == other.get(); }
-        bool operator != (const MaterialExtraPass& other) const { return !(get() == other.get()); }
-        bool operator == (const MaterialPass& other) const { return get() == other; }
-        bool operator != (const MaterialPass& other) const { return !(get() == other); }
-    };
+    // whole pass (see OutOfLineValue)
+    using MaterialExtraPass = OutOfLineValue<MaterialPass>;
 
     struct JASPERENGINE_API Material{
         // --- start shader part
@@ -301,8 +248,13 @@ namespace jasperengine{
         // --- shader library phase 2 (docs/superpowers/specs/2026-10-10-shader-library-phase2-design.md)
         MaterialStencil stencil;
         int colorWrite = -1;  // -1 AUTO, else MaterialColorWriteBits
+        // KHR_materials_emissive_strength: scales emissiveFactor (the upload multiplies the
+        // shader part's copy), so the factor keeps glTF's 0..1 colour
+        float emissiveStrength = 1.0f;
         // one optional extra draw of the submesh, out of line (MaterialExtraPass)
         MaterialExtraPass extraPass;
+        // the built-in Lit's extended lobes and hex tiling, out of line (MaterialPbr.h)
+        OutOfLineValue<MaterialPbrExtensions> pbr;
 
         bool operator == (const Material& other) const {
             return baseColorFactor == other.baseColorFactor &&
@@ -342,7 +294,9 @@ namespace jasperengine{
                    sortPriority == other.sortPriority &&
                    stencil == other.stencil &&
                    colorWrite == other.colorWrite &&
-                   extraPass == other.extraPass;
+                   emissiveStrength == other.emissiveStrength &&
+                   extraPass == other.extraPass &&
+                   pbr == other.pbr;
         }
 
         bool operator != (const Material& other) const {

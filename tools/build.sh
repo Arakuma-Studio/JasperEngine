@@ -37,6 +37,7 @@
 # HTMLUI_TEST_ARGS goes to the test binary (e.g. --gtest_filter=Golden*),
 # JASPER_HTMLUI_UPDATE_GOLDEN=1 rewrites the golden images (glcore only).
 # JASPER_HTMLUI_WRITE_ACTUAL=1 keeps every compared image in the test output directory (both backends).
+# JASPER_ZERO_COST_UPDATE=1 rewrites the built-in Lit's zero-cost hash list (ShaderZeroCostTest, unit-tests).
 # htmlui-editor-tests: HTMLUI_TEST_ARGS goes to the test binary, RUN=0 builds only,
 # HTMLUI_LIVE_NETWORK=1 adds the live Google Fonts test.
 # mcp-tests: MCP_SUITE=ci (default; the CI = True files) or all (needs JASPER_FIXTURE, the
@@ -182,7 +183,7 @@ CPUS="${CPUS:-${DOCKER_CPUS:-${JOBS:-}}}"
 [[ -n "$CPUS" ]] && CPU_FLAGS=(--cpus "$CPUS")
 ENV_FLAGS=()
 for name in JASPER_HTMLUI_UPDATE_GOLDEN JASPER_HTMLUI_WRITE_ACTUAL JASPER_TEST_UPDATE_GOLDEN JASPER_TEST_WRITE_ACTUAL \
-            JASPER_TEST_KEEP_TEMP JASPER_HTMLUI_PERF_SLACK JASPER_TEST_PERF_SLACK HTMLUI_LIVE_NETWORK JASPER_CHROME; do
+            JASPER_TEST_KEEP_TEMP JASPER_HTMLUI_PERF_SLACK JASPER_TEST_PERF_SLACK HTMLUI_LIVE_NETWORK JASPER_CHROME JASPER_ZERO_COST_UPDATE; do
     # (JASPER_HTMLUI_PERF_SLACK: the HTML UI performance tests' tolerance on a loaded host, compat_perf_test.cpp;
     # JASPER_TEST_PERF_SLACK: the core tests' wall-clock budgets are enforced only when it is set)
     [[ -n "${!name:-}" ]] && ENV_FLAGS+=(-e "$name=${!name}")

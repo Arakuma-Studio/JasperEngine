@@ -34,6 +34,8 @@ async def setup(ed: Editor) -> dict:
     made = await ed.call("create_scene", name="AtmosphereLab", type="3D", path="scenes/AtmosphereLab")
     S["scene"] = made["scene"]["id"]
     await ed.call("select_scene", scene=S["scene"])
+    # the goldens were drawn before S11's Lit Quality (a new scene is High): Standard is that shader
+    await ed.call("set_scene_settings", scene=S["scene"], settings={"lit_quality": "standard"})
     ground = await ed.call("create_entity", scene=S["scene"], type="plane", name="Ground")
     await ed.call("set_transform", scene=S["scene"], entity=ground["entity_id"], scale=[50, 1, 50])
     await ed.call("create_entity", scene=S["scene"], type="box", name="Box")

@@ -17,6 +17,7 @@
 #include "component/TilemapComponent.h"
 #include "component/Transform.h"
 #include "math/Ray.h"
+#include "texture/TexturePack.h"
 
 #include "jobs/JobSystem.h"
 
@@ -29,6 +30,7 @@
 namespace tinygltf {
     struct Accessor;
     struct Image;
+    struct Material;
     class Model;
     class TinyGLTF;
 }
@@ -122,6 +124,23 @@ namespace jasperengine{
         bool canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std::string* reason = nullptr) const;
         int convertGLTFColorToVec4(const tinygltf::Accessor& accessor, ModelComponent& model);
         bool loadGLTFTexture(int textureIndex, ModelComponent& model, Texture& texture, const std::string& textureName);
+        // glTF material extensions (MeshSystemGltfPbr.cpp): the KHR_materials_* lobes into
+        // Material::pbr and emissiveStrength, KHR_materials_unlit as the library Unlit shader
+        // (vertexColor: the primitive has COLOR_0). False only when a texture cannot be made.
+        bool loadGLTFMaterialExtensions(const tinygltf::Material& gltfMaterial, ModelComponent& model, Material& material, bool vertexColor);
+        // a lobe's map from its glTF textures: one as it is, two (or one in another channel
+        // than the lobe's layout puts it) packed into the layout on a job
+        struct GltfLobeMap{
+            int first = -1;
+            int second = -1;
+            int firstTexCoord = 0;
+            int secondTexCoord = 0;
+            const TexturePack::Layout* layout = nullptr; // null: a lobe with one texture
+            const char* name = "";
+        };
+        bool loadGLTFLobeMap(ModelComponent& model, const GltfLobeMap& lobeMap, Texture& map, int& texCoord);
+        // one warning per extension a model uses and the engine does not read (an error when required)
+        static void reportGLTFExtensions(const tinygltf::Model& gltf, const std::string& filename);
         std::string getBufferName(int bufferViewIndex, ModelComponent& model);
         Matrix4 getGLTFNodeMatrix(int nodeIndex, ModelComponent& model);
         Matrix4 getGLTFMeshGlobalMatrix(int nodeIndex, ModelComponent& model, std::map<int, int>& nodesParent);
@@ -172,6 +191,10 @@ namespace jasperengine{
         static bool usesTextureRect(const Submesh& submesh);
         // Puts the fields a model load must keep (Submesh::overrideFields) on a loaded submesh
         static void applySubmeshOverride(const Submesh& saved, Submesh& submesh);
+        // The edited lobes over the ones a load made: all of them (one override bit), but a map
+        // that is still the file's keeps the loaded texture, which knows how to make its pixels
+        // (a map packed from two of the file's images, TexturePack)
+        static void restorePbrExtensions(const MaterialPbrExtensions& saved, OutOfLineValue<MaterialPbrExtensions>& loaded);
         // true when a frame of another size needs the sprite rebuilt for its texture scale factor
         static bool changesSpriteInset(const SpriteComponent& sprite, const Rect& oldRect, const Rect& newRect);
 

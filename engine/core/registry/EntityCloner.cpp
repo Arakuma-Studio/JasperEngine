@@ -98,6 +98,12 @@ void remapMaterialTextures(Material& material, const CloneContext& ctx) {
     if (MaterialPass* pass = material.extraPass.editIfSet()) {
         remapFramebufferTextures(pass->shaderTextures, ctx);
     }
+    // S11's extension maps
+    if (MaterialPbrExtensions* pbr = material.pbr.editIfSet()) {
+        for (int m = 0; m < (int)PbrMap::COUNT; m++) {
+            remapFramebufferTexture(MaterialPbr::getMap(*pbr, (PbrMap)m), ctx);
+        }
+    }
 }
 
 template<typename T>
@@ -146,6 +152,7 @@ void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneConte
         submesh.gbufferShaderProperties = 0;
         submesh.customShaderId = 0;
         submesh.customDepthShaderId = 0;
+        submesh.litDefineBits = 0;
         resetBuffer(submesh.lodIndices);
         submesh.needUpdateTexture = false;
         submesh.needUpdateDepthTexture = false;

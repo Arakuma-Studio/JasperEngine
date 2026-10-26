@@ -131,7 +131,7 @@ namespace {
     // reload. textureRect is absent on purpose: no loader touches it.
     struct SubmeshOverrideField {
         const char* name;
-        uint32_t fields;
+        uint64_t fields;
     };
 
     const SubmeshOverrideField submeshOverrideFields[] = {
@@ -169,13 +169,15 @@ namespace {
         {"material.stochasticBlendSharpness", SubmeshOverride_StochasticTiling},
         {"material.stochasticContrast", SubmeshOverride_StochasticTiling},
         {"material.stochasticRotation", SubmeshOverride_StochasticTiling},
+        {"material.emissiveStrength", SubmeshOverride_EmissiveStrength},
+        {"material.pbr", SubmeshOverride_PbrExtensions},
         {"faceCulling", SubmeshOverride_FaceCulling},
         {"textureShadow", SubmeshOverride_TextureShadow},
         {"primitiveType", SubmeshOverride_PrimitiveType}
     };
 
     // Splits "submeshes[N].<field>" into the submesh it addresses and the override bits it writes.
-    bool parseSubmeshOverrideProperty(const std::string& propertyName, size_t& submeshIndex, uint32_t& fields) {
+    bool parseSubmeshOverrideProperty(const std::string& propertyName, size_t& submeshIndex, uint64_t& fields) {
         if (propertyName.compare(0, 10, "submeshes[") != 0) {
             return false;
         }
@@ -202,8 +204,33 @@ namespace {
             fields = SubmeshOverride_ExtraPass;
             return true;
         }
+        // so does a field of the extended lobes (one bit for all of them)
+        if (field.compare(0, 13, "material.pbr.") == 0) {
+            fields = SubmeshOverride_PbrExtensions;
+            return true;
+        }
 
         return false;
+    }
+
+    // A field of a material's extended lobes and hex tiling ("pbr.<lobe>.<field>",
+    // MaterialPbr's table; the value is made on access, as the extra pass). An enabled flag, a
+    // map or its UV set picks the built-in Lit's variant, built while the loaded one draws
+    // (RenderSystem, from the texture update); the factors are uniforms.
+    PropertyData getMaterialPbrProperty(Material& material, Material* def, const std::string& path, bool hasRef) {
+        const PbrField* field = MaterialPbr::findField(path);
+        if (!field) return PropertyData();
+        PropertyType type = PropertyType::Float;
+        uint64_t flags = UpdateFlags_None;
+        switch (field->type) {
+            case PbrFieldType::Bool: type = PropertyType::Bool; flags = UpdateFlags_Mesh_Texture; break;
+            case PbrFieldType::Float: type = PropertyType::Float; break;
+            case PbrFieldType::Vector2: type = PropertyType::Vector2; break;
+            case PbrFieldType::Color: type = PropertyType::Vector3; break;
+            case PbrFieldType::Texture: type = PropertyType::Texture; flags = UpdateFlags_Mesh_Texture; break;
+            case PbrFieldType::TexCoord: type = PropertyType::Int; flags = UpdateFlags_Mesh_Texture; break;
+        }
+        return {type, flags, def ? field->ref(def->pbr.edit()) : nullptr, hasRef ? field->ref(material.pbr.edit()) : nullptr};
     }
 
     // The shader library fields of a submesh material ("submeshes[N].material.<field>"). The
@@ -292,6 +319,10 @@ namespace {
                     def ? (void*)&def->extraPass.edit() : nullptr, hasRef ? (void*)&material.extraPass.edit() : nullptr};
         if (field.compare(0, 10, "extraPass.") == 0)
             return getMaterialPassProperty(hasRef ? &material.extraPass.edit() : nullptr, def ? &def->extraPass.edit() : nullptr, field.substr(10));
+        if (field.compare(0, 4, "pbr.") == 0)
+            return getMaterialPbrProperty(material, def, field.substr(4), hasRef);
+        if (field == "emissiveStrength")
+            return data(PropertyType::Float, UpdateFlags_None, &Material::emissiveStrength);
         return getStencilColorWriteProperty(hasRef ? &material.stencil : nullptr, def ? &def->stencil : nullptr,
                                             hasRef ? &material.colorWrite : nullptr, def ? &def->colorWrite : nullptr, field, UpdateFlags_Mesh_Reload);
     }
@@ -559,6 +590,10 @@ namespace {
         makeFastProperty<LightComponent, unsigned int, &LightComponent::numShadowCascades>("numShadowCascades", PropertyType::UInt, UpdateFlags_LightShadowCamera | UpdateFlags_Scene_Mesh_Variant),
         // read by RenderSystem when it picks each mesh's lights
         makeFastProperty<LightComponent, LightShading, &LightComponent::shading>("shading", PropertyType::Enum, UpdateFlags_None),
+        // photometric units and colour temperature, resolved on the CPU (util/LightPhotometry.h)
+        makeFastProperty<LightComponent, LightUnit, &LightComponent::intensityUnit>("intensityUnit", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<LightComponent, bool, &LightComponent::useColorTemperature>("useColorTemperature", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<LightComponent, float, &LightComponent::colorTemperature>("colorTemperature", PropertyType::Float, UpdateFlags_None),
         // shadows (docs/rendering/shadows.md): what the maps depend on reaches RenderSystem
         // through the light's settings hash every frame, the rest is read by the receivers
         makeFastProperty<LightComponent, bool, &LightComponent::softShadows>("softShadows", PropertyType::Bool, UpdateFlags_None),
@@ -1683,6 +1718,9 @@ namespace {
         if (fieldName == ".stochasticBlendSharpness") return {PropertyType::Float, UpdateFlags_Terrain_Texture, &def.stochasticBlendSharpness, &layer.stochasticBlendSharpness};
         if (fieldName == ".stochasticContrast") return {PropertyType::Float, UpdateFlags_Terrain_Texture, &def.stochasticContrast, &layer.stochasticContrast};
         if (fieldName == ".stochasticRotation") return {PropertyType::Float, UpdateFlags_Terrain_Texture, &def.stochasticRotation, &layer.stochasticRotation};
+        // hex tiling: a variant define and a uniform, which RenderSystem follows on its own
+        if (fieldName == ".hexTiling") return {PropertyType::Bool, UpdateFlags_None, &def.hexTiling, &layer.hexTiling};
+        if (fieldName == ".hexRotation") return {PropertyType::Float, UpdateFlags_None, &def.hexRotation, &layer.hexRotation};
         return PropertyData();
     }
 
@@ -2837,6 +2875,8 @@ namespace {
             field(".stochasticBlendSharpness", PropertyType::Float, (void*)&defSurfaceLayer.stochasticBlendSharpness, layer ? (void*)&layer->stochasticBlendSharpness : nullptr);
             field(".stochasticContrast", PropertyType::Float, (void*)&defSurfaceLayer.stochasticContrast, layer ? (void*)&layer->stochasticContrast : nullptr);
             field(".stochasticRotation", PropertyType::Float, (void*)&defSurfaceLayer.stochasticRotation, layer ? (void*)&layer->stochasticRotation : nullptr);
+            field(".hexTiling", PropertyType::Bool, (void*)&defSurfaceLayer.hexTiling, layer ? (void*)&layer->hexTiling : nullptr);
+            field(".hexRotation", PropertyType::Float, (void*)&defSurfaceLayer.hexRotation, layer ? (void*)&layer->hexRotation : nullptr);
         }
 
         ps["foliageLayers"] = {PropertyType::Custom, UpdateFlags_Terrain_Foliage, (void*)&def.foliageLayers, compRef ? (void*)&comp->foliageLayers : nullptr};
@@ -3088,6 +3128,11 @@ namespace {
             ps["submeshes[" + idx + "].material"] = {PropertyType::Material, UpdateFlags_Mesh_Texture | UpdateFlags_Mesh_Reload | UpdateFlags_Shader_Uniforms, (void*)&defSub.material, compRef ? (void*)&sub.material : nullptr};
             for (const char* field : kMaterialLibraryFields) {
                 ps["submeshes[" + idx + "].material." + field] = getMaterialLibraryProperty(sub.material, &defSub.material, field, compRef != nullptr);
+            }
+            ps["submeshes[" + idx + "].material.emissiveStrength"] = getMaterialLibraryProperty(sub.material, &defSub.material, "emissiveStrength", compRef != nullptr);
+            for (const PbrField& field : MaterialPbr::getFields()) {
+                ps["submeshes[" + idx + "].material.pbr." + MaterialPbr::getFieldPath(field)] =
+                    getMaterialPbrProperty(sub.material, &defSub.material, MaterialPbr::getFieldPath(field), compRef != nullptr);
             }
             ps["submeshes[" + idx + "].material.name"] = {PropertyType::Asset, UpdateFlags_None, (void*)&defSub.material.name, compRef ? (void*)&sub.material.name : nullptr};
             ps["submeshes[" + idx + "].material.baseColorFactor"] = {PropertyType::Vector4, UpdateFlags_None, (void*)&defSub.material.baseColorFactor, compRef ? (void*)&sub.material.baseColorFactor : nullptr};
@@ -4770,7 +4815,7 @@ uint64_t editor::Catalog::getComponentStructuralUpdateFlags(ComponentType compTy
     }
 }
 
-uint32_t* editor::Catalog::getSubmeshOverrideMask(EntityRegistry* registry, Entity entity, ComponentType component, const std::string& propertyName, uint32_t& propertyFields) {
+uint64_t* editor::Catalog::getSubmeshOverrideMask(EntityRegistry* registry, Entity entity, ComponentType component, const std::string& propertyName, uint64_t& propertyFields) {
     if (component != ComponentType::MeshComponent) {
         return nullptr;
     }
@@ -5947,9 +5992,9 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
     }
 
     // The override bit travels with the value, or the target keeps it only until its model loads.
-    uint32_t propertyFields = 0;
-    if (uint32_t* source = getSubmeshOverrideMask(sourceRegistry, sourceEntity, compType, property, propertyFields)) {
-        if (uint32_t* target = getSubmeshOverrideMask(targetRegistry, targetEntity, compType, property, propertyFields)) {
+    uint64_t propertyFields = 0;
+    if (uint64_t* source = getSubmeshOverrideMask(sourceRegistry, sourceEntity, compType, property, propertyFields)) {
+        if (uint64_t* target = getSubmeshOverrideMask(targetRegistry, targetEntity, compType, property, propertyFields)) {
             *target = (*target & ~propertyFields) | (*source & propertyFields);
         }
     }

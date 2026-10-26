@@ -543,6 +543,7 @@ const EnumMap<Scaling> scalingModes[] = {
     {"crop", Scaling::CROP}, {"stretch", Scaling::STRETCH}, {"native", Scaling::NATIVE}};
 const EnumMap<TextureStrategy> textureStrategies[] = {
     {"fit", TextureStrategy::FIT}, {"resize", TextureStrategy::RESIZE}, {"none", TextureStrategy::NONE}};
+const EnumMap<PbrTier> pbrTiers[] = {{"full", PbrTier::FULL}, {"reduced", PbrTier::REDUCED}};
 const EnumMap<AtmosphereQuality> atmosphereQualities[] = {
     {"off", AtmosphereQuality::OFF}, {"low", AtmosphereQuality::LOW}, {"medium", AtmosphereQuality::MEDIUM}, {"high", AtmosphereQuality::HIGH}};
 const EnumMap<ShadowTier> shadowTiers[] = {
@@ -1287,6 +1288,21 @@ const std::vector<Setting>& settingsTable() {
                 TextureStrategy v;
                 if (!parseEnum(textureStrategies, value, v, error)) return false;
                 if (apply) ctx.project()->setTextureStrategy(v);
+                return true;
+            };
+            add(s);
+        }
+        {
+            Setting s;
+            s.key = "graphics.mobile_pbr_tier";
+            s.type = "enum";
+            s.values = enumNames(pbrTiers);
+            s.description = "Built-in Lit extended lobes on Android, iOS and HTML5 exports: reduced leaves out iridescence, anisotropy direction maps and clear coat normal maps.";
+            s.get = [](McpContext& ctx) { return Json(enumName(pbrTiers, ctx.project()->getMobilePbrTier())); };
+            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                PbrTier v;
+                if (!parseEnum(pbrTiers, value, v, error)) return false;
+                if (apply) ctx.project()->setMobilePbrTier(v);
                 return true;
             };
             add(s);

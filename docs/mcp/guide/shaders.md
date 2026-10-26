@@ -212,6 +212,17 @@ editable `includes/` folder beside the fork.
   `includes/pbr.glsl` (or a copy of it from after the feature) before its `main()`. A fork with
   `fork_includes` copies of the includes made before the feature needs them copied again.
 
+A fork of the built-in Mesh shader keeps the material's extended lobes and hex tiling
+(clear coat, sheen, ... `jasper://docs/materials`) and the High Lit Quality when it keeps
+their hooks: the `#ifdef PBR_EXT` members at the end of `u_fs_pbrParams` (and the `PBR_EXT`
+define before it), `#include "includes/pbr_ext_slots.glsl"` before `includes/pbr.glsl`,
+`includes/specular_aa.glsl` and `includes/pbr_ext.glsl` after `includes/ibl.glsl`, and the
+`#ifdef PBR_*` / `USE_LIT_QUALITY` blocks of `main()` (`pbrExtSurface`, `pbrExtView`,
+`pbrExtEnvironment`, `pbrExtDirect`, `pbrExtTransmission`, `pbrExtComposite`). The engine adds
+their defines to the fork's variants (`<fork>#PBR_CLEARCOAT,...`); a fork written before them
+compiles them as unused defines and draws without the lobes (the Inspector says "This shader
+does not implement advanced surface"): fork again to get them.
+
 ## Editing a fork
 
 The forked files are complete engine shaders with a strict structure: a `#version` line,

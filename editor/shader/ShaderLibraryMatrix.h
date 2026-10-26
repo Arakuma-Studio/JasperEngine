@@ -46,6 +46,22 @@ namespace jasperengine::editor {
 
         // compiles every variant for every backend and validates the manifest
         static Result run(const std::string& name, const std::vector<ShaderBackend>& backends);
+
+        // The built-in Lit's own variants (docs/specs/S11-materials-lighting.md, section 6.3):
+        // each extended lobe alone, per pixel and mixed, with and without its map; every lobe
+        // with three maps; transmission with volume; hex tiling unlit and lit; a hex tiled
+        // painted Terrain; the High Lit Quality on the base variants. Each in the worst-case
+        // scene for textures (pixel lights with shadows, IBL, SSAO, the post colour), so the
+        // budget check covers the 16 fragment textures of GLES3 and WebGL2.
+        static constexpr const char* BUILTIN_LIT_NAME = "builtin_lit";
+        static std::vector<Variant> buildBuiltinLitVariants();
+        static Result runBuiltinLit(const std::vector<ShaderBackend>& backends);
+
+    private:
+        // compiles the variants for the backends into result (problems against file), the
+        // colour variants' reflection of the first backend into reflections
+        static void compileVariants(const std::vector<Variant>& variants, const std::vector<ShaderBackend>& backends,
+                                    const std::string& file, Result& result, std::vector<ShaderData>* reflections);
     };
 
 }

@@ -49,6 +49,7 @@ MODULES: list[tuple[str, str]] = [
     ("GraphTools", "Graphs"),
     ("AssetTools", "Assets, materials and shaders"),
     ("SynthesisTools", "Texture synthesis"),
+    ("MaterialsLightingTools", "Assets, materials and shaders"),
     ("AssetIdentityTools", "Asset identity: GUIDs, references, missing assets"),
     ("DocsTools", "Docs"),
     ("BuildTools", "Build and export"),
