@@ -130,6 +130,10 @@ namespace jasperengine {
         // Data the engine can rebuild (the runtime shader cache): the user data directory,
         // except on Apple platforms, which keep caches apart from what the user saves
         virtual std::string getCachePath();
+        // Where a game's crash and hang reports go (diag/CrashHandler.h): <user data>/crash
+        // (Android: the internal files dir; iOS: Library/Caches/crash). Empty: no reports (the
+        // web, whose crashes the page hooks report, and the unit tests)
+        virtual std::string getCrashReportPath();
         virtual std::string getLuaPath();
         virtual std::string getShaderPath();
 

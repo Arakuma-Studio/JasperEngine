@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AppSettings.h"
+#include "diag/HangWatchdog.h"
 #include "Backend.h"
 #include "EditorHost.h"
 
@@ -994,6 +995,7 @@ int editor::Backend::init(int argc, char* argv[]) {
                     ? [NSDate dateWithTimeIntervalSinceNow:app.idleWaitSeconds(IDLE_WAIT_TIMEOUT)]
                     : NSDate.distantPast;
                 processEvents(deadline);
+                diag::heartbeat();
                 if (backend->shouldClose) break;
                 app.processProjectChange();
                 if (backend->shouldClose) break;

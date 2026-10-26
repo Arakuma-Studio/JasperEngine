@@ -39,6 +39,7 @@ public:
     virtual std::string getAssetPath() override;
     virtual std::string getUserDataPath() override;
     virtual std::string getCachePath() override;
+    virtual std::string getCrashReportPath() override;
     virtual std::string getLuaPath() override;
     virtual std::string getShaderPath() override;
 

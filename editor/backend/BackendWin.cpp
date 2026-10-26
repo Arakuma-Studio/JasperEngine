@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Backend.h"
+#include "diag/HangWatchdog.h"
 #include "EditorHost.h"
 #include "EditorFrame.h"
 #include "GamepadWin.h"
@@ -918,6 +919,7 @@ int editor::Backend::init(int argc, char* argv[]) {
     backend->liveResizeFrame = [&]() { renderFrame(true); };
     while (!backend->shouldClose) {
         processMessages(backend->editorFrame.isIdle() ? app.idleWaitSeconds(0.1) : 0.0);
+        diag::heartbeat();
         if (backend->shouldClose) break;
         app.processProjectChange();
         if (backend->shouldClose) break;

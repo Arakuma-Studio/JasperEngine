@@ -677,10 +677,12 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/HtmlUiTools.cpp
     ${EDITOR_DIR}/mcp/tools/UIEffectTools.cpp
     ${EDITOR_DIR}/mcp/tools/EcsTools.cpp
+    ${EDITOR_DIR}/mcp/tools/DiagnosticsTools.cpp
 
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp
     ${EDITOR_DIR}/util/BidiText.cpp
     ${EDITOR_DIR}/util/CrashHandler.cpp
+    ${EDITOR_DIR}/util/EditorDiagnostics.cpp
     ${EDITOR_DIR}/util/GraphicUtils.cpp
     ${EDITOR_DIR}/util/CameraTextureLink.cpp
     ${EDITOR_DIR}/util/Clipboard.cpp

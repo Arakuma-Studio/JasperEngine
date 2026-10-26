@@ -1120,6 +1120,7 @@ set(JASPERENGINE_SRCS
     core/render/shadow/ShadowTypes.cpp
     core/script/LuaBinding.cpp
     core/script/LuaFunctionBase.cpp
+    core/script/LuaWatchdog.cpp
     core/script/LuaReload.cpp
     core/script/LuaScript.cpp
     core/script/ScriptBase.cpp
@@ -1127,6 +1128,7 @@ set(JASPERENGINE_SRCS
     core/script/ToolchainFingerprint.cpp
     core/script/binding/ActionClassesLua.cpp
     core/script/binding/CoreClassesLua.cpp
+    core/script/binding/CrashClassesLua.cpp
     core/script/binding/ECSClassesLua.cpp
     core/script/binding/IOClassesLua.cpp
     core/script/binding/MathClassesLua.cpp

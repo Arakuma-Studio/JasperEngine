@@ -158,6 +158,11 @@ std::string System::getCachePath(){
     return getUserDataPath();
 }
 
+std::string System::getCrashReportPath(){
+    const std::string userData = getUserDataPath();
+    return userData.empty() ? std::string() : userData + "/crash";
+}
+
 std::string System::getLuaPath(){
     return getAssetPath();
 }

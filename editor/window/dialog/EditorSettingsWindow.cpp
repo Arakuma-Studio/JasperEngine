@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "EditorSettingsWindow.h"
+#include "diag/CrashHandler.h"
 #include "SceneBackup.h"
 #include "Out.h"
 
@@ -53,6 +54,7 @@ namespace {
         Undo,
         ExternalTools,
         Logging,
+        Diagnostics,
         ShaderCache,
         Count
     };
@@ -66,6 +68,7 @@ namespace {
         {"Undo", "", "undo redo history max steps memory limit record selection review play mode changes keep values"},
         {"External Tools", "", "cmake compiler kit emscripten sdk emsdk web desktop ffmpeg video import av1 external script editor ide visual studio code vscode rider clion xcode sublime zed"},
         {"Logging", "", "log level category console file backtrace errors source location debug trace"},
+        {"Diagnostics", "", "hang watchdog not responding freeze report after runaway lua interrupt crash notice reports folder"},
         {"Shader Cache", "", "clear shader cache"},
     };
     constexpr int preferencesCategoryCount = static_cast<int>(PreferencesCategory::Count);
@@ -233,6 +236,7 @@ void EditorSettingsWindow::open(Project* project) {
     m_undoRecordSelection = AppSettings::getUndoRecordSelection();
     m_undoReviewPlayChanges = AppSettings::getUndoReviewPlayChanges();
     m_logging = AppSettings::getLoggingSettings();
+    m_diagnostics = AppSettings::getDiagnosticsSettings();
     m_defaultExportDirectory = AppSettings::getDefaultExportDirectory();
     refreshEmsdkStatus();
 }
@@ -336,6 +340,7 @@ void EditorSettingsWindow::drawSettings() {
         case PreferencesCategory::Undo: drawUndoSettings(); break;
         case PreferencesCategory::ExternalTools: drawExternalToolsSettings(); break;
         case PreferencesCategory::Logging: drawLoggingSettings(); break;
+        case PreferencesCategory::Diagnostics: drawDiagnosticsSettings(); break;
         case PreferencesCategory::ShaderCache: drawAdvancedSettings(); break;
         default: break;
     }
@@ -844,6 +849,58 @@ void EditorSettingsWindow::drawLoggingSettings() {
     });
 }
 
+void EditorSettingsWindow::drawDiagnosticsSettings() {
+    prefsDrawSettingsPanel("##EditorDiagnosticsSettingsPanel", [this]() {
+        const DiagnosticsSettings defaults;
+        if (prefsBeginSettingsRow("Hang Watchdog",
+                             "Writes a hang report when the editor stops responding (docs/crash-diagnostics.md).",
+                             m_diagnostics.hangWatchdog != defaults.hangWatchdog)) {
+            m_diagnostics.hangWatchdog = defaults.hangWatchdog;
+        }
+        ImGui::Checkbox("##HangWatchdog", &m_diagnostics.hangWatchdog);
+
+        if (prefsBeginSettingsRow("Report After (s)",
+                             "How long the editor may not respond before a report. Known long work (loading, imports, "
+                             "native dialogs) gets more time.",
+                             m_diagnostics.reportAfterSeconds != defaults.reportAfterSeconds)) {
+            m_diagnostics.reportAfterSeconds = defaults.reportAfterSeconds;
+        }
+        ImGui::BeginDisabled(!m_diagnostics.hangWatchdog);
+        ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+        ImGui::DragInt("##HangReportAfter", &m_diagnostics.reportAfterSeconds, 0.2f, DiagnosticsSettings::minReportAfterSeconds,
+                       DiagnosticsSettings::maxReportAfterSeconds, "%d", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::EndDisabled();
+
+        if (prefsBeginSettingsRow("Interrupt Runaway Lua In Play After (s)",
+                             "A Lua function that runs this long in Play without returning gets a \"script interrupted\" "
+                             "error; Play goes on. 0 = never.",
+                             m_diagnostics.breakLuaAfterSeconds != defaults.breakLuaAfterSeconds)) {
+            m_diagnostics.breakLuaAfterSeconds = defaults.breakLuaAfterSeconds;
+        }
+        ImGui::BeginDisabled(!m_diagnostics.hangWatchdog);
+        ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+        ImGui::DragInt("##BreakLuaAfter", &m_diagnostics.breakLuaAfterSeconds, 0.2f, 0,
+                       DiagnosticsSettings::maxBreakLuaAfterSeconds, "%d", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::EndDisabled();
+
+        if (prefsBeginSettingsRow("Show Crash Notice On Startup",
+                             "After a session that ended unexpectedly, a notice under the menu bar points to its report.",
+                             m_diagnostics.showCrashNotice != defaults.showCrashNotice)) {
+            m_diagnostics.showCrashNotice = defaults.showCrashNotice;
+        }
+        ImGui::Checkbox("##ShowCrashNotice", &m_diagnostics.showCrashNotice);
+
+        sectionRow("Reports");
+        prefsBeginSettingsRow("Crash Reports", "Crash and hang reports of this editor, one folder per session.");
+        if (ImGui::Button("Open Crash Reports Folder")) {
+            const std::filesystem::path folder = diag::crash::reportsDirectory();
+            std::error_code ec;
+            std::filesystem::create_directories(folder, ec);
+            openInFileManager(folder);
+        }
+    });
+}
+
 void EditorSettingsWindow::drawAdvancedSettings() {
     prefsDrawSettingsPanel("##EditorAdvancedSettingsPanel", [this]() {
         prefsBeginSettingsRow("Shader Cache", "Shared by projects for this editor version. Shaders are rebuilt when needed.");
@@ -886,6 +943,7 @@ bool EditorSettingsWindow::applySettings() {
     AppSettings::setCodeEditorFontSize(m_codeEditorFontSize);
     AppSettings::setUndo(m_undoMaxSteps, m_undoMemoryLimitMB, m_undoRecordSelection, m_undoReviewPlayChanges);
     AppSettings::setLoggingSettings(m_logging);
+    AppSettings::setDiagnosticsSettings(m_diagnostics);
     AppSettings::setDefaultExportDirectory(m_defaultExportDirectory);
     AppSettings::setCMakePath(m_cmakeOverride);
     LocalBuildSettings build;

@@ -1099,7 +1099,8 @@ void getBuildInfoTool(const CallPtr& call) {
 
 // Lines of a log that mean the program crashed or can't work (tools/smoke-test.sh fatal_lines)
 bool isFatalLine(const std::string& line) {
-    static const std::regex fatal(R"(\(PANIC\)|[Mm]issing (precompiled )?shader|[Aa]ssertion|Aborted|Segmentation fault|terminate called|core dumped|AddressSanitizer|stack smashing)");
+    // JASPERENGINE CRASH: the engine's crash handler (docs/crash-diagnostics.md); its HANG lines are warnings
+    static const std::regex fatal(R"(JASPERENGINE CRASH:|\(PANIC\)|[Mm]issing (precompiled )?shader|[Aa]ssertion|Aborted|Segmentation fault|terminate called|core dumped|AddressSanitizer|stack smashing)");
     return std::regex_search(line, fatal);
 }
 
@@ -1466,8 +1467,14 @@ void finishPlayerRun(const CallPtr& call, const std::shared_ptr<PlayerRun>& run)
     Json fatal = Json::array();
     Json errors = Json::array();
     size_t errorCount = 0, warningCount = 0;
+    // "JASPERENGINE CRASH: <reason> report=<folder>": the player's crash report folder
+    std::string crashReport;
     for (const std::string& line : lines) {
         if (isFatalLine(line) && fatal.size() < 30) fatal.push_back(line);
+        if (crashReport.empty() && line.find("JASPERENGINE CRASH:") != std::string::npos) {
+            const size_t at = line.rfind(" report=");
+            if (at != std::string::npos) crashReport = line.substr(at + 8);
+        }
         if (isErrorLine(line)) {
             errorCount++;
             if (errors.size() < 30) errors.push_back(line.size() > 2000 ? line.substr(0, 2000) + "..." : line);
@@ -1500,6 +1507,7 @@ void finishPlayerRun(const CallPtr& call, const std::shared_ptr<PlayerRun>& run)
         {"fatal_lines", fatal},
         {"log_file", run->logPath.generic_string()}
     };
+    if (!crashReport.empty()) data["crash_report"] = crashReport;
     bool crashed = !fatal.empty();
     std::string how;
     if (run->killedByUs) {

@@ -4,6 +4,8 @@
 #include <unordered_map>
 #include "LuaBinding.h"
 #include "log/Logger.h"
+#include "diag/HangWatchdog.h"
+#include "LuaWatchdog.h"
 #include "util/SubscriptionOwnerIndex.h"
 #include "shader/ShaderManifest.h"
 #include "asset/AssetMap.h"
@@ -380,6 +382,9 @@ namespace {
 #endif
 
 int LuaBinding::pcallWithTraceback(lua_State* L, int nargs, int nresults){
+    // a stall in here is a Lua phase: the hang watchdog names the function, and in editor Play
+    // may interrupt it (script/LuaWatchdog.h)
+    diag::PhaseScope phase("lua");
 #if JASPERENGINE_PROFILER
     LuaProfileScope profile(L, lua_gettop(L) - nargs);
 #endif
@@ -395,11 +400,14 @@ int LuaBinding::pcallWithTraceback(lua_State* L, int nargs, int nresults){
 }
 
 void LuaBinding::luaCallback(int nargs, int nresults, int msgh){
+    diag::PhaseScope phase("lua");
 #if JASPERENGINE_PROFILER
     LuaProfileScope profile(luastate, lua_gettop(luastate) - nargs);
 #endif
     int status = lua_pcall(luastate, nargs, nresults, msgh);
     if (status != 0){
+        // an interrupted runaway function is logged like any error here
+        LuaWatchdog::takeInterrupt();
         logLuaError("Lua Error: %s", getLuaStackErrorString(luastate, -1).c_str());
         lua_pop(luastate, 1);
     }
@@ -782,6 +790,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerUtilClasses(L);
     registerThreadClasses(L);
     registerProfilerClasses(L);
+    registerCrashClasses(L);
     registerHtmlUIClasses(L);
     registerHtmlUIAnimeClasses(L);
     registerHtmlUIVectorClasses(L);
@@ -1197,6 +1206,7 @@ void LuaBinding::callLuaScriptFunction(lua_State* L, ScriptEntry& scriptEntry, c
     if (lua_isfunction(L, -1)) {
         lua_pushvalue(L, -2);
         if (pcallWithTraceback(L, 1, 0) != LUA_OK) {
+            LuaWatchdog::takeInterrupt();
             logLuaError("Lua %s() failed for '%s': %s", function, scriptEntry.className.c_str(), getLuaStackErrorString(L, -1).c_str());
             lua_pop(L, 1);
         }

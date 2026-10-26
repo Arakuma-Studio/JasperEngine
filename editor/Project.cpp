@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "Project.h"
+#include "diag/HangWatchdog.h"
+#include "util/EditorDiagnostics.h"
 #include "util/ScriptReloadService.h"
 #include "util/ScriptStatus.h"
 #include "util/EditorScripts.h"
@@ -4922,6 +4924,8 @@ bool editor::Project::saveProjectToPath(const std::filesystem::path& path) {
 }
 
 bool editor::Project::loadProject(const std::filesystem::path requestedPath, bool updateLastOpened) {
+    // the load pumps the loading UI (App::reportLoadingProgress beats); its budget covers the gaps
+    const diag::BusyScope busy("Loading project", 120'000);
     if (isAnyScenePlaying()) {
         Out::warning("Cannot load a project while a scene is running or stopping.");
         return false;
@@ -5238,6 +5242,7 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
     if (!sceneProject || path.empty()) {
         return false;
     }
+    const diag::BusyScope busy("Saving scene " + sceneProject->name, 120'000);
 
     // A file that did not load completely is not written over unless the loss was accepted
     const bool ownFile = isSceneSaveGated(sceneProject, path);
@@ -7841,6 +7846,8 @@ void editor::Project::start(uint32_t sceneId) {
         Out::error("Failed to find scene %u to start", sceneId);
         return;
     }
+    // Play's main-thread startup steps (saving, the script build hand-off, scene copies)
+    const diag::BusyScope busy("Starting Play", 120'000);
 
     {
         std::scoped_lock lock(playSessionMutex);
@@ -7858,6 +7865,8 @@ void editor::Project::start(uint32_t sceneId) {
         return;
     }
 
+    // Play's Lua may now be interrupted when it runs away (Preferences > Diagnostics)
+    EditorDiagnostics::setPlaying(true, sceneProject->name);
     jasperengine::CrashHook::set(
         [this, sceneId](const std::string& tag, const std::string& errorInfo) {
             // Log the scene and entity context
@@ -8011,6 +8020,8 @@ void editor::Project::stop(uint32_t sceneId) {
         Out::error("Failed to find scene %u to stop", sceneId);
         return;
     }
+    const diag::BusyScope busy("Stopping Play", 120'000);
+    EditorDiagnostics::setPlaying(false, sceneProject->name);
 
     if (sceneProject->playState == ScenePlayState::STOPPED) {
         Out::warning("Scene %u is not currently playing", sceneId);
