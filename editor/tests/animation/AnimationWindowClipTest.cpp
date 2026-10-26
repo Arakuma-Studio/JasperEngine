@@ -74,7 +74,7 @@ namespace {
     };
 
     fs::path repoPath(const fs::path& relative) {
-        return (fs::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / ".." / relative).lexically_normal();
+        return (fs::path(JASPER_TEST_REPO_DIR) / relative).lexically_normal();
     }
 
     struct Headless {

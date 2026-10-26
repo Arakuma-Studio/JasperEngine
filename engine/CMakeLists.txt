@@ -1356,9 +1356,9 @@ if(JASPERENGINE_CONVEX_DECOMPOSITION)
     )
 endif()
 
-# The clip pool's test seams (pool/AnimationClipPoolTesting.h) exist only in builds with the anim
-# or editor unit tests: the define stays on the two sources, so a shipped engine has none of it
-if(JASPERENGINE_ANIM_TESTS OR JASPERENGINE_EDITOR_TESTS)
+# The clip pool's test seams (pool/AnimationClipPoolTesting.h) exist only in builds with the unit
+# tests (JASPERENGINE_TESTS): the define stays on the two sources, so a shipped engine has none of it
+if(JASPERENGINE_TESTS)
     set_property(SOURCE core/pool/AnimationClipPool.cpp core/animation/ModelSubClips.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS JASPERENGINE_ANIM_TEST_HOOKS)
 endif()
@@ -1672,6 +1672,3 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     jasperengine_check_cxx_standards()
 endif()
 
-if(JASPERENGINE_ANIM_TESTS)
-    add_subdirectory(tests/anim)
-endif()

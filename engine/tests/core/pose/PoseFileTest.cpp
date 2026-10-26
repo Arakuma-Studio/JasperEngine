@@ -2,13 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 // .poseanim and .humanoid file helpers (PoseFile.h). They read and write through the engine file
-// API, which needs the engine's System: a gtest Environment of this file starts the engine once
-// per process with a minimal System (Engine::systemInit, like the HTML UI test harness).
+// API, which needs the engine's System: the core tests' (TestSystem); the tests use absolute paths.
 
 #include <gtest/gtest.h>
 
-#include "Engine.h"
-#include "System.h"
 #include "io/File.h"
 #include "pose/HumanBones.h"
 #include "pose/ModelRig.h"
@@ -22,32 +19,6 @@ using namespace jasperengine;
 using namespace jasperengine::pose;
 
 namespace {
-
-    // The engine's System for the pose tests: the defaults of the base class (paths relative to
-    // the working directory, the C file API); the tests use absolute paths
-    class PoseTestSystem : public System {
-    public:
-        int getScreenWidth() override { return 640; }
-        int getScreenHeight() override { return 360; }
-    };
-
-    class EngineEnvironment : public ::testing::Environment {
-    public:
-        void SetUp() override {
-            static bool started = false;   // the engine starts once per process
-            if (started){
-                return;
-            }
-            started = true;
-            static char name[] = "jasperengine-pose-tests";
-            static char* argv[] = {name, nullptr};
-            Engine::systemInit(1, argv, new PoseTestSystem());   // owned by the engine for the process
-        }
-    };
-
-    // gtest owns the environment; registered when this file is loaded
-    const ::testing::Environment* const engineEnvironment =
-        ::testing::AddGlobalTestEnvironment(new EngineEnvironment());
 
     PoseAnimationData sampleData(){
         PoseAnimationData data;

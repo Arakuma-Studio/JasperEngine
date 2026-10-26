@@ -82,7 +82,7 @@ namespace {
     };
 
     fs::path fixtureModel(const std::string& name) {
-        return (fs::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / ".." / "tools" / "fixtures" / "pose-animation" /
+        return (fs::path(JASPER_TEST_REPO_DIR) / "tools" / "fixtures" / "pose-animation" /
                 "assets" / "models" / name).lexically_normal();
     }
 

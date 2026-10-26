@@ -4,7 +4,7 @@
 // PoseImage (spec: pose animation phase 3, section 3): drawing, the bitmap font, the contact
 // sheet layout and the PNG round trip.
 
-#include "editor/pose/PoseImage.h"
+#include "pose/PoseImage.h"
 
 #include <gtest/gtest.h>
 

@@ -466,7 +466,7 @@ TEST_F(ClipRecordSourcesTest, LatticeDragsRecordOneKeyEditPerDrag) {
 // suspends the pose first, so the command records and edits the rest pose
 TEST_F(ClipRecordSourcesTest, PoseWindowSuspendsThroughTheChannelWriteChain) {
     fs::create_directories(assets() / "models");
-    fs::copy_file(fs::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / ".." / "tools" / "fixtures" / "pose-animation" / "assets" /
+    fs::copy_file(fs::path(JASPER_TEST_REPO_DIR) / "tools" / "fixtures" / "pose-animation" / "assets" /
                   "models" / "hero_tpose.gltf", assets() / "models/hero.gltf", fs::copy_options::overwrite_existing);
     RecordScene s = recordScene();
     Model heroModel(s.scene);

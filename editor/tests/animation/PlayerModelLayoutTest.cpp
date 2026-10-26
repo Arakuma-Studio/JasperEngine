@@ -59,7 +59,7 @@ namespace {
     }
 
     fs::path fixtureModel(const std::string& name) {
-        return (fs::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / ".." / "tools" / "fixtures" / "pose-animation" /
+        return (fs::path(JASPER_TEST_REPO_DIR) / "tools" / "fixtures" / "pose-animation" /
                 "assets" / "models" / name).lexically_normal();
     }
 
@@ -346,7 +346,7 @@ TEST_F(PlayerModelLayoutTest, TheLayoutReloadStopsThePreviewsOfTheModelFirst) {
 // hierarchy (the mesh moves from the model entity to its node's entity), undo and redo
 TEST_F(PlayerModelLayoutTest, BlendShapeWeightsSurviveTheLayoutSwitch) {
     const uint32_t sceneId = newScene();
-    const std::string morph = (fs::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / ".." / "tools" / "fixtures" / "shader-library" /
+    const std::string morph = (fs::path(JASPER_TEST_REPO_DIR) / "tools" / "fixtures" / "shader-library" /
                                "assets" / "models" / "skinned_morph.gltf").lexically_normal().generic_string();
     const Entity model = createModel(sceneId, morph);
     Scene* scene = sceneOf(sceneId);
@@ -382,7 +382,7 @@ TEST_F(PlayerModelLayoutTest, BlendShapeWeightsSurviveTheLayoutSwitch) {
 // (MeshComponent::morphTargetCount): a re-exported file with a target more gives that one its
 // default, the kept ones stay; a mesh never loaded gets every default
 TEST_F(PlayerModelLayoutTest, KeptBlendShapeWeightsCoverOnlyTheTargetsTheyHad) {
-    const fs::path source = (fs::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / ".." / "tools" / "fixtures" / "shader-library" /
+    const fs::path source = (fs::path(JASPER_TEST_REPO_DIR) / "tools" / "fixtures" / "shader-library" /
                              "assets" / "models" / "skinned_morph.gltf").lexically_normal();
     nlohmann::json gltf = nlohmann::json::parse(readAll(source));
     gltf["meshes"][0]["weights"] = {0.25};
@@ -413,7 +413,7 @@ TEST_F(PlayerModelLayoutTest, KeptBlendShapeWeightsCoverOnlyTheTargetsTheyHad) {
 // FX6: the layout switch carries a part's weights only for the targets they cover: a target past
 // the count (a re-export added it) gets the file's default on the rebuilt mesh
 TEST_F(PlayerModelLayoutTest, TheLayoutSwitchCarriesWeightsOnlyForTheTargetsTheyCover) {
-    const fs::path source = (fs::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / ".." / "tools" / "fixtures" / "shader-library" /
+    const fs::path source = (fs::path(JASPER_TEST_REPO_DIR) / "tools" / "fixtures" / "shader-library" /
                              "assets" / "models" / "skinned_morph.gltf").lexically_normal();
     nlohmann::json gltf = nlohmann::json::parse(readAll(source));
     // two targets (the same shape twice), defaults 0.25 and 0.5

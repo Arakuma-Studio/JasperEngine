@@ -110,7 +110,7 @@ namespace {
         writeClip("anim/run.anim", RUN_GUID);
         // T1c's animated hero: Walk, Idle, Animation 2 (unnamed), Wave, Wave 2
         fs::create_directories(assets() / "models");
-        fs::copy_file(fs::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / ".." / "tools" / "fixtures" / "pose-animation" / "assets" /
+        fs::copy_file(fs::path(JASPER_TEST_REPO_DIR) / "tools" / "fixtures" / "pose-animation" / "assets" /
                       "models" / "hero_animated.gltf", assets() / "models/hero.gltf", fs::copy_options::overwrite_existing);
     }
 

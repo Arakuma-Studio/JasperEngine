@@ -5,9 +5,9 @@
 // screen-plane drag, ring axes on the canonical axes, joint limits during a ring drag, the 5
 // degree snap, the foot snap, the floor grid, onion ghost indices
 
-#include "TestUtil.h"
+#include "pose/TestUtil.h"
 
-#include "editor/pose/PoseViewportLogic.h"
+#include "pose/PoseViewportLogic.h"
 #include "pose/PoseIK.h"
 #include "pose/PoseMetrics.h"
 #include "pose/PoseSampler.h"

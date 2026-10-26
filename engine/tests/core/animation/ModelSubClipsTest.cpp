@@ -50,7 +50,7 @@ namespace {
     const std::vector<std::string> heroClips = {"Walk", "Idle", "Animation 2", "Wave", "Wave 2"};
 
     std::string fixturePath(const std::string& name){
-        return std::string(ANIM_POSE_FIXTURE_MODELS_DIR) + "/" + name;
+        return std::string(JASPER_TEST_REPO_DIR "/tools/fixtures/pose-animation/assets/models") + "/" + name;
     }
 
     std::string readFile(const std::string& path){
@@ -770,7 +770,7 @@ TEST(ModelSubClips, FindAnimationDoesNotWaitForAnotherModelsLoad){
 // gets its file's default weights; weights it holds after that (edited, all zero on purpose) or
 // read from a saved scene survive a reload of the same file; another model file takes its own
 TEST(ModelSubClips, MorphWeightsKeepTheSavedStateOverTheFileDefaults){
-    nlohmann::json gltf = nlohmann::json::parse(readFile(std::string(ANIM_FIXTURES_DIR) + "/runtime-shaders/assets/skinned_morph.gltf"));
+    nlohmann::json gltf = nlohmann::json::parse(readFile(std::string(JASPER_TEST_REPO_DIR "/tools/fixtures") + "/runtime-shaders/assets/skinned_morph.gltf"));
     ASSERT_EQ(gltf["meshes"].size(), 1u);
     gltf["meshes"][0]["weights"] = {0.75};
     const std::string withDefaults = animtest::writeAsset("models/morphs/defaults.gltf", gltf.dump());
@@ -844,7 +844,7 @@ TEST(ModelSubClips, MorphWeightsKeepTheSavedStateOverTheFileDefaults){
 // targets are named differently ("Bend" on Strip, "Smile" and "Blink" on Face) keeps each mesh's
 // own names; the model's name table still finds every name
 TEST(ModelSubClips, MorphTargetNamesArePerMesh){
-    nlohmann::json gltf = nlohmann::json::parse(readFile(std::string(ANIM_FIXTURES_DIR) + "/runtime-shaders/assets/skinned_morph.gltf"));
+    nlohmann::json gltf = nlohmann::json::parse(readFile(std::string(JASPER_TEST_REPO_DIR "/tools/fixtures") + "/runtime-shaders/assets/skinned_morph.gltf"));
     nlohmann::json face = gltf["meshes"][0];
     face["name"] = "Face";
     face["primitives"][0]["targets"].push_back(face["primitives"][0]["targets"][0]);

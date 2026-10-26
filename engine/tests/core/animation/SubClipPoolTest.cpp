@@ -45,7 +45,7 @@ namespace {
     }
 
     std::string heroText(){
-        return readFile(std::string(ANIM_POSE_FIXTURE_MODELS_DIR) + "/hero_animated.gltf");
+        return readFile(std::string(JASPER_TEST_REPO_DIR "/tools/fixtures/pose-animation/assets/models") + "/hero_animated.gltf");
     }
 
     // each test (and each --gtest_repeat run) gets its own copy: generations outlive clear()

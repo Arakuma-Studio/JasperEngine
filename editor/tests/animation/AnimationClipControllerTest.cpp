@@ -23,6 +23,7 @@
 #include "animation/PreviewOwner.h"
 #include "Stream.h"
 #include "command/CommandHandle.h"
+#include "command/UndoTimeline.h"
 #include "command/type/ClipSceneActions.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/CreatePrefabCmd.h"
@@ -770,7 +771,7 @@ TEST_F(AnimationClipControllerTest, ReleasedOnProjectCloseAndDroppedWithItsScene
 // owner at a time, each snapshot taken from the unpreviewed scene, so the scene ends as saved
 TEST_F(AnimationClipControllerTest, PoseWindowAndClipPreviewInEveryOrderLeaveTheSavedScene) {
     fs::create_directories(assets() / "models");
-    fs::copy_file(fs::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / ".." / "tools" / "fixtures" / "pose-animation" / "assets" /
+    fs::copy_file(fs::path(JASPER_TEST_REPO_DIR) / "tools" / "fixtures" / "pose-animation" / "assets" /
                   "models" / "hero_tpose.gltf", assets() / "models/hero.gltf", fs::copy_options::overwrite_existing);
 
     ClipScene s = clipScene();
@@ -1056,7 +1057,7 @@ TEST_F(AnimationClipControllerTest, UndoGoesToTheClipOnlyWhileItsCommitIsTheNewe
 // to Idle instead of being stopped by the pose's next update (I3)
 TEST_F(AnimationClipControllerTest, ASuspendedPoseWindowYieldsTheModelToAClipPreview) {
     fs::create_directories(assets() / "models");
-    fs::copy_file(fs::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / ".." / "tools" / "fixtures" / "pose-animation" / "assets" /
+    fs::copy_file(fs::path(JASPER_TEST_REPO_DIR) / "tools" / "fixtures" / "pose-animation" / "assets" /
                   "models" / "hero_tpose.gltf", assets() / "models/hero.gltf", fs::copy_options::overwrite_existing);
     ClipScene s = clipScene();
     Model heroModel(s.scene);
@@ -1162,7 +1163,7 @@ TEST_F(AnimationClipControllerTest, StopsDeferredBySavingOnSceneSwitchAndOnADele
 // Sub-clips are read-only (I2)
 TEST_F(AnimationClipControllerTest, AModelsAnimationIsReadOnly) {
     fs::create_directories(assets() / "models");
-    fs::copy_file(fs::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / ".." / "tools" / "fixtures" / "pose-animation" / "assets" /
+    fs::copy_file(fs::path(JASPER_TEST_REPO_DIR) / "tools" / "fixtures" / "pose-animation" / "assets" /
                   "models" / "hero_animated.gltf", assets() / "models/hero_animated.gltf", fs::copy_options::overwrite_existing);
     ClipScene s = clipScene();
     AnimationClipController& c = controller();
@@ -1314,30 +1315,30 @@ TEST_F(AnimationClipControllerTest, RelativeKeysModifiedKeysPendingValuesAndColl
 // ---- review round 2: redo routed by the newest redoable step (R5b) -------------------------
 
 namespace {
-    // the App's routing (App::show): undo and redo decided on their own by the clip hooks
+    // the App's routing (App::undoRedo): one step of S24's timeline of the selected scene, which
+    // takes the newer of the scene's and the project's top steps (a clip commit is a project step)
+    // and redoes in the reverse order of the undos; the history that took it
     struct Routing {
         Project* project;
         uint32_t sceneId;
-        bool placementBusy = false;
 
         std::string undo() {
-            if (clipUndoGoesToProject(placementBusy)) {
-                return project->getProjectCommandHistory()->undo() ? "project" : "project (nothing)";
-            }
-            return CommandHandle::get(sceneId)->undo() ? "scene" : "scene (nothing)";
+            std::vector<UndoTimeline::Step> steps;
+            if (!UndoTimeline::undo(sceneId, nullptr, &steps) || steps.empty()) return "nothing";
+            return steps.front().project ? "project" : "scene";
         }
         std::string redo() {
-            if (clipRedoGoesToProject(placementBusy, false)) {
-                return project->getProjectCommandHistory()->redo() ? "project" : "project (nothing)";
-            }
-            return CommandHandle::get(sceneId)->redo() ? "scene" : "scene (nothing)";
+            std::vector<UndoTimeline::Step> steps;
+            if (!UndoTimeline::redo(sceneId, nullptr, &steps) || steps.empty()) return "nothing";
+            return steps.front().project ? "project" : "scene";
         }
     };
 }
 
 // Final review M3: while a Physics Placement gesture runs or settles in the selected scene, Ctrl+Z
-// goes to the scene history even when a clip commit is the newest step (the scene's undo cancels the
-// gesture, PhysicsPlacementWindow::beforeHistoryChange) and redo waits there too
+// cancels the gesture even when a clip commit is the newest step, and redo waits: the timeline asks
+// CommandHistory::beforeChange first (PhysicsPlacementWindow::beforeHistoryChange). The App keeps the
+// Animation window's key focus off while the gesture runs (clipUndoGoesToProject).
 TEST_F(AnimationClipControllerTest, APlacementGestureKeepsUndoOnTheScene) {
     ClipScene s = clipScene();
     AnimationClipController& c = controller();
@@ -1350,10 +1351,25 @@ TEST_F(AnimationClipControllerTest, APlacementGestureKeepsUndoOnTheScene) {
     EXPECT_FALSE(clipUndoGoesToProject(true)) << "the gesture's undo comes first";
     EXPECT_TRUE(clipUndoGoesToProject(false));
     Routing routing{project(), s.id};
+
+    // a gesture running: undo cancels it (the clip commit stays), redo waits
+    int cancels = 0;
+    const auto before = CommandHistory::beforeChange;
+    CommandHistory::beforeChange = [&](size_t, CommandHistory::Change change){
+        if (change == CommandHistory::Change::Undo) cancels++;
+        return change == CommandHistory::Change::Add;
+    };
+    EXPECT_EQ(routing.undo(), "nothing");
+    EXPECT_EQ(cancels, 1);
+    EXPECT_TRUE(c.newestStepIsClipEdit()) << "the clip commit is not undone while the gesture runs";
+    CommandHistory::beforeChange = before;
+
     EXPECT_EQ(routing.undo(), "project");
     ASSERT_TRUE(c.newestRedoIsClipEdit());
-    EXPECT_FALSE(clipRedoGoesToProject(true, true)) << "redo waits for the gesture on the scene";
-    EXPECT_TRUE(clipRedoGoesToProject(false, false));
+    CommandHistory::beforeChange = [](size_t, CommandHistory::Change change){ return change != CommandHistory::Change::Redo; };
+    EXPECT_EQ(routing.redo(), "nothing") << "redo waits for the gesture";
+    EXPECT_TRUE(c.newestRedoIsClipEdit());
+    CommandHistory::beforeChange = before;
     EXPECT_EQ(routing.redo(), "project");
 }
 
@@ -1362,7 +1378,6 @@ TEST_F(AnimationClipControllerTest, RedoGoesWhereTheStepUndoneLastWas) {
     AnimationClipController& c = controller();
     std::string error;
     ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
-    ASSERT_TRUE(animationClipAppHooks().ownsRedo);
     CommandHistory* scene = CommandHandle::get(s.id);
     Routing routing{project(), s.id};
     auto move = [&](const Vector3& to){
@@ -1785,7 +1800,7 @@ TEST_F(AnimationClipControllerTest, ResolutionChangesAndComponentRemovalsTakeThe
 // first load of something new under the previewed root leaves the preview and Record running
 TEST_F(AnimationClipControllerTest, AFirstModelLoadStopsOnlyAPreviewOfTheEntityItself) {
     fs::create_directories(assets() / "models");
-    fs::copy_file(fs::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / ".." / "tools" / "fixtures" / "pose-animation" / "assets" /
+    fs::copy_file(fs::path(JASPER_TEST_REPO_DIR) / "tools" / "fixtures" / "pose-animation" / "assets" /
                   "models" / "hero_tpose.gltf", assets() / "models/hero.gltf", fs::copy_options::overwrite_existing);
     Engine::setAsyncLoading(false);
     ClipScene s = clipScene();

@@ -3,9 +3,9 @@
 
 // The Pose Animation window's logic without ImGui (editor/pose/PoseUiLogic, phase 4 section 4)
 
-#include "TestUtil.h"
+#include "pose/TestUtil.h"
 
-#include "editor/pose/PoseUiLogic.h"
+#include "pose/PoseUiLogic.h"
 
 #include "pose/PoseDofs.h"
 #include "pose/PoseRanges.h"

@@ -417,7 +417,7 @@ TEST_F(AnimationClipAssets, SubClipDocumentsAreReadOnly) {
     EXPECT_NE(error.find("does not exist"), std::string::npos) << error;
 
     // the pose fixture's animated hero (T1c; buffers embedded)
-    const fs::path fixture = fs::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / ".." / "tools" / "fixtures" / "pose-animation" /
+    const fs::path fixture = fs::path(JASPER_TEST_REPO_DIR) / "tools" / "fixtures" / "pose-animation" /
                              "assets" / "models" / "hero_animated.gltf";
     ASSERT_TRUE(fs::is_regular_file(fixture)) << fixture;
     fs::copy_file(fixture, root() / dir / "hero_animated.gltf", fs::copy_options::overwrite_existing);
@@ -1222,7 +1222,7 @@ TEST_F(AnimationClipAssets, AClipRewrittenWithAnotherClipsGuidKeepsItsOwn) {
 // Sub-clip users by name and by index are the same animation
 TEST_F(AnimationClipAssets, SubClipUsersByNameAndIndex) {
     const std::string dir = folder("subusers");
-    const fs::path fixture = fs::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / ".." / "tools" / "fixtures" / "pose-animation" /
+    const fs::path fixture = fs::path(JASPER_TEST_REPO_DIR) / "tools" / "fixtures" / "pose-animation" /
                              "assets" / "models" / "hero_animated.gltf";
     fs::copy_file(fixture, root() / dir / "hero.gltf", fs::copy_options::overwrite_existing);
     std::vector<anim::ModelClipInfo> clips;
@@ -1262,7 +1262,7 @@ TEST_F(AnimationClipAssets, AReadOnlyDatabaseWritesNoFile) {
     EXPECT_EQ(readAll(dir / "clips" / "new.anim"), clip);
     EXPECT_EQ(readAll(dir / "clips" / "broken.anim"), broken);
     EXPECT_EQ(readAll(dir / "Thing.prefab"), prefab);
-    EXPECT_FALSE(fs::exists(dir / ".jasperengine" / "assetdb.yaml")) << "no cache written";
+    EXPECT_FALSE(fs::exists(dir / ".jasperengine" / "assetdb")) << "no cache written";
     readOnly.close();
 
     // a normal database upgrades the good clip, never the broken one (its error keeps its line)

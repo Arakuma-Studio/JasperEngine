@@ -129,22 +129,18 @@ normal engine build.
   inputs and malformed UTF-8. Compares every shaped glyph field. Overflowing range
   arguments are rejected before iterator arithmetic.
 
-All comparison runners provide ASan/UBSan checks. The full Release editor, editor unit
-tests, pose tests and lattice tests provide integration coverage.
+All comparison runners provide ASan/UBSan checks. The full Release editor and the unit
+tests (jasperengine-editor-tests, jasperengine-core-tests: the pose and lattice suites
+among them, docs/testing.md) provide integration coverage.
 
 ```bash
-cmake -S . -B build/validation -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DJASPERENGINE_EDITOR_TESTS=ON \
-  -DJASPERENGINE_POSE_TESTS=ON -DJASPERENGINE_LATTICE_TESTS=ON
-cmake --build build/validation --target jasperengine-editor \
-  jasperengine-editor-tests jasperengine-pose-tests jasperengine-lattice-tests -j4
-build/validation/jasperengine-editor-tests
-build/validation/jasperengine-pose-tests
-build/validation/jasperengine-lattice-tests
+UNIT_SUITE=editor tools/build.sh unit-tests   # the editor suites (pose window logic, clips)
+UNIT_SUITE=core tools/build.sh unit-tests     # the engine suites (pose core, clips, lattice)
 ```
 
 The Release editor/engine build and final incremental build passed. Integration
-suites passed 624 tests with zero failures: 357 editor, 230 pose and 37 lattice.
+suites passed 624 tests with zero failures (measured upstream as 357 editor, 230 pose
+and 37 lattice, before the suites joined the two unit-test binaries).
 One editor test was skipped because it covers the decomposition-disabled build
 configuration, while this build enables decomposition. All six isolated
 comparisons also passed their differential checks and ASan/UBSan runs.

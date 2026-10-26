@@ -1082,7 +1082,7 @@ TEST_F(Player, ResetPlayersStartsOver){
 
 // a model sub-clip played on the model it comes from: every track binds and the bones move
 TEST_F(Player, PlaysModelSubClipsOnTheirModel){
-    const std::string path = std::string(ANIM_POSE_FIXTURE_MODELS_DIR) + "/hero_animated.gltf";
+    const std::string path = std::string(JASPER_TEST_REPO_DIR "/tools/fixtures/pose-animation/assets/models") + "/hero_animated.gltf";
     Model model(&scene);
     const Entity hero = model.getEntity();
     AnimationPlayer object(&scene, hero);
@@ -1113,7 +1113,7 @@ TEST_F(Player, PlaysModelSubClipsOnTheirModel){
 // Final review M1: in async loading a player whose model sub-clip is still building waits for it
 // as for its models (time stops, the play call is kept), then plays from the start
 TEST_F(Player, WaitsForASubClipBuildingOffTheMainThread){
-    const std::string path = std::string(ANIM_POSE_FIXTURE_MODELS_DIR) + "/hero_animated.gltf";
+    const std::string path = std::string(JASPER_TEST_REPO_DIR "/tools/fixtures/pose-animation/assets/models") + "/hero_animated.gltf";
     Model model(&scene);
     const Entity hero = model.getEntity();
     ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(hero, path, false, false, false));

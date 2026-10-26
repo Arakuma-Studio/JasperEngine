@@ -21,7 +21,12 @@ endif()
 
 jasperengine_add_test_target(jasperengine-core-tests
     SOURCES ${CORE_TEST_SOURCES} ${CORE_TEST_ALLOCATION_COUNTER}
+        # the animation clip tests' asset root (a temporary directory around each of them)
+        ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimTestEnvironment.cpp
     INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/support
+    DEFINITIONS
+        # the repository root: the fixture projects of tools/fixtures (pose and clip tests' models)
+        JASPER_TEST_REPO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../.."
 )
 
 # HexTilingTest compiles the hex lattice block of the shader library as C++: the lines between

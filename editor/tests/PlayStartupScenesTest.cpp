@@ -275,18 +275,9 @@ TEST(PlayedScene, NoSceneLeavesTheProjectWhilePlaying) {
     open.filepath = "scenes/Open.scene";
     addScene(project, 805, "Other");
 
-    // what deleting a path would take out of the project: a closed scene's entry
-    EXPECT_TRUE(project.deletionRemovesScene(closedFile));
-    EXPECT_TRUE(project.deletionRemovesScene(dir / "scenes")) << "a folder holding it";
-    EXPECT_FALSE(project.deletionRemovesScene(openFile)) << "an open scene only loses its path";
-    EXPECT_FALSE(project.deletionRemovesScene(dir / "scenes" / "Other.scene"));
-    EXPECT_FALSE(project.deletionRemovesScene(playedFile)) << "open, and nothing plays";
-
     EXPECT_FALSE(project.refuseSceneRemovalWhilePlaying("remove a scene")) << "stopped: allowed";
-    EXPECT_FALSE(project.refuseDeletionWhilePlaying({closedFile}));
 
     PlaySessionTestAccess::beginSession(project, 801);
-    EXPECT_TRUE(project.deletionRemovesScene(playedFile)) << "the played scene's file";
     std::string reason;
     EXPECT_TRUE(project.refuseSceneRemovalWhilePlaying("remove a scene", &reason, false));
     EXPECT_NE(reason.find("while a scene is playing"), std::string::npos) << reason;
@@ -298,35 +289,22 @@ TEST(PlayedScene, NoSceneLeavesTheProjectWhilePlaying) {
     project.removeScene(805);
     EXPECT_NE(findScene(project, 805), nullptr) << "removing a scene is refused while playing";
 
-    reason.clear();
-    EXPECT_TRUE(project.refuseDeletionWhilePlaying({openFile, closedFile}, &reason, false));
-    EXPECT_NE(reason.find("Listed.scene"), std::string::npos) << reason;
-
+    // Deleting a scene's file never takes its scene out of the project (S04 R15: the entry stays,
+    // Missing until the file comes back), the closed one's and the played one's alike: no
+    // deletion needs refusing while playing
     DeleteFileCmd deleteClosed(&project, {closedFile}, dir);
-    deleteClosed.setAlertOnRefusal(false);
-    EXPECT_FALSE(deleteClosed.execute()) << "deleting a closed scene's file is refused while playing";
-    EXPECT_NE(deleteClosed.getRefusal().find("while a scene is playing"), std::string::npos);
-    EXPECT_TRUE(fs::exists(closedFile));
-    EXPECT_NE(findScene(project, 803), nullptr);
-
+    EXPECT_TRUE(deleteClosed.execute());
+    EXPECT_FALSE(fs::exists(closedFile));
+    EXPECT_NE(findScene(project, 803), nullptr) << "the closed scene stays listed";
     DeleteFileCmd deletePlayed(&project, {playedFile}, dir);
-    deletePlayed.setAlertOnRefusal(false);
-    EXPECT_FALSE(deletePlayed.execute()) << "the played scene's file too";
+    EXPECT_TRUE(deletePlayed.execute());
+    ASSERT_NE(findScene(project, 801), nullptr) << "the played scene stays, run in place";
+    deletePlayed.undo();
+    deleteClosed.undo();
+    EXPECT_TRUE(fs::exists(closedFile)) << "undo puts the files back";
     EXPECT_TRUE(fs::exists(playedFile));
-
-    DeleteFileCmd deleteOpen(&project, {openFile}, dir);
-    EXPECT_TRUE(deleteOpen.execute()) << "an open scene's file may go: the scene stays, without a path";
-    EXPECT_TRUE(deleteOpen.getRefusal().empty());
-    EXPECT_FALSE(fs::exists(openFile));
-    ASSERT_NE(findScene(project, 804), nullptr);
-    EXPECT_TRUE(findScene(project, 804)->filepath.empty());
 
     PlaySessionTestAccess::endSession(project);
     EXPECT_FALSE(project.refuseSceneRemovalWhilePlaying("remove a scene"));
-    DeleteFileCmd deleteStopped(&project, {closedFile}, dir);
-    EXPECT_TRUE(deleteStopped.execute()) << "allowed once stopped";
-    EXPECT_FALSE(fs::exists(closedFile));
-    EXPECT_EQ(findScene(project, 803), nullptr) << "the closed scene left the project with its file";
-
     fs::remove_all(dir);
 }
