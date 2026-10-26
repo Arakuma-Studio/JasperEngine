@@ -65,9 +65,10 @@ and `render_pose_animation` (see [docs/mcp/guide/pose-animation.md](mcp/guide/po
      updates the same result.
      - **Bake to Animation Clip** writes `<name>.anim` next to the pose animation: the mapped
        bones' rotations and the hips' position. It lists the clip in the
-       character's Animation Player (adding one when needed), so
-       `AnimationPlayer:play(name)`, `Model:playAnimation(name)` and every other character with
-       the same bone names can play it. Its keys can be edited in the Animation window.
+       character's Animation Player (adding one when needed), so a script plays it with
+       `GameObject(self.scene, self.entity):getAnimationPlayer():play(name)` or
+       `Model(self.scene, self.entity):playAnimation(name)`, and every other character with the
+       same bone names can play it. Its keys can be edited in the Animation window.
      - **Bake into Scene** writes the frames to a keyframe Animation of the character in this
        scene, which `Model:playAnimation(name)` plays like any imported clip.
 

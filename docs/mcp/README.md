@@ -315,4 +315,6 @@ tools/mcp/run-tests.sh --fake tools/mcp/tests/test_protocol.py  # protocol check
 ```
 
 The harness API and conventions are described in the docstrings of `tools/mcp/harness.py`
-and `tools/mcp/run_tests.py`. Every tool needs a test.
+and `tools/mcp/run_tests.py`. Every tool needs a test. The files that drive the editor with real X
+input (`xvfb: "harness"`: the Animation window and Record tests, Physics Placement's Scene view
+gesture) need `xdotool` (`apt install xdotool`); without it the Animation window and Record tests fail.

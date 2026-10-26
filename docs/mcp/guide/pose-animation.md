@@ -129,7 +129,7 @@ writes a shared `.anim` instead: the mapped bones' rotations and the hips' posit
 the model. `true` writes `<name>.anim` next to the `.poseanim`. It lists the clip in the model's
 Animation Player (adding one), as one scene step (`undo {scope: "scene"}`). Baking again rewrites
 the clip it baked before (GUID kept); another file of that name makes it take a free one
-(`walk 2.anim`), and an explicit path that exists is refused. Prefer
+(`walk 2.anim`), and an explicit path to an existing file not baked from this pose animation is refused. Prefer
 it for characters: every rig with the same bone names plays it. To play it live instead, attach a
 Pose Animator:
 `add_component {entity: "Hero", component: "poseanimator", values: {poseanimator: {animation:

@@ -109,8 +109,8 @@ sorted by path then channel, events by time). Writing the same data twice gives 
   returns `bindings: {root, resolved, total, missing: [{path, channel, status, nearest,
   fix, message}], missing_handlers}`. `nearest` lists existing paths by edit distance: a clip
   made for Hero on Robot reports `Hero/mixamorig:Hips/mixamorig:Spine` → nearest
-  `Robot/pelvis/spine`. Without `root`, edit_animation reports against the first Animation
-  Player that uses the clip.
+  `Robot/pelvis/spine` (another rig: see the fixes below). Without `root`, edit_animation
+  reports against the first Animation Player that uses the clip.
 - `status`: `missing_path`, `missing_component` (no Transform, no morph targets, no Lattice),
   `lattice_index_out_of_range`, `morph_index_out_of_range`, `legacy_model_layout`,
   `unaddressable_name`. Tracks bound to the first of several same-named siblings are listed in
@@ -121,13 +121,21 @@ sorted by path then channel, events by time). Writing the same data twice gives 
   `legacy_fix` says it).
 - Missing paths are not errors: shared clips may target rigs that are not loaded. At runtime an
   unresolved track is skipped; renames and reparents rebind live.
+- Path fixes are for renamed or reparented objects of the same rig. Rotation keys are absolute
+  local rotations, so a clip made for another character rig (other bone names and rest
+  orientations: Hero's walk on Robot) is mangled by renamed paths: give that character its own
+  clip, e.g. bake its `.poseanim` on that model (`edit_pose_animation {path, bake: {model:
+  "Robot", clip: true}}`, pose-animation guide) or key one on it.
 - Fixing a missing path: rename the GameObject to match, or rename the track's path in the file.
   A `missing_path` with a nearest path carries `fix`, a `write_file` edit that renames it to
   `fix_path`: the first nearest path that is neither a track of the clip (same channel) nor
   another fix's target, so the fixes never merge two tracks and apply together (`fix_with` says
   so): `write_file {path: "<clip>", edits: [missing[0].fix, ...]}` keeps every key and tangent.
-  Check each `fix_path` is the bone you mean (two legs may go to one thigh's neighbour otherwise).
-  No free nearest path: `fix_conflict` instead (rename by hand). A file not in the canonical
+  Check each `fix_path` is the bone you mean. A nearest path whose name says the other side
+  (Left/Right vs .L/.R) is skipped, and so is one whose rest rotation is more than 90 degrees from
+  the clip's first rotation key of the path: no fix then, but `rest_mismatch` (another rig, and
+  `rig_mismatch` says what to do) or, when no free nearest path is left, `fix_conflict` (rename
+  by hand). A file not in the canonical
   layout (written by hand) gets no fixes, and `fix_with` says how to rename instead. By hand: the
   canonical file has one track per `{"path": "<old>", "channel": "rotation"` line; or read the
   track (`get_animation {clip, max_keys: 100000}`), send its keys (with their `in`/`out`) under
@@ -183,7 +191,8 @@ even at low weight, and every state of a `blend` fires. It calls, in order:
 1. every `onEvent` subscriber of the player with ONE `AnimationEvent` value:
    `event.functionName`, `event.args` (a 1-based table), `event.state`, `event.time`;
 2. the method named `function` on each Lua script of the player's GameObject, with the args
-   spread as parameters.
+   spread as parameters. A `function` named like a lifecycle method (`init`, `onDestroy`) or an
+   engine event (`onUpdate`...) calls that method again: `bindings.warnings` says so; use own names.
 
 ```lua
 local Hero = {}
@@ -310,7 +319,7 @@ changed it (else the file stays and the console says so).
   writes the mapped bones' rotations and the hips' position and adds the clip to the model's
   Animation Player. `true` writes `<name>.anim` next to the `.poseanim`; `clip` may be an `.anim`
   path instead. Baking again rewrites the clip it baked before (GUID kept); another file of that
-  name makes it take a free one (`walk 2.anim`), and an explicit path that exists is refused. The
+  name makes it take a free one (`walk 2.anim`), and an explicit path to an existing file not baked from this pose animation is refused. The
   result's `bake.tracks` is a count (as in the entity bake).
 - No tool does the Inspector's **Use Animation Player** (entity animations replaced by the
   player): a model with entity animations and a player has two writers; `Model:playAnimation`

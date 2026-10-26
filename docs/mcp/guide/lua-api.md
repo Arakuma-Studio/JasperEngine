@@ -895,7 +895,10 @@ ro `name`, `clip`, `length`; `isValid()`. An unknown name reads defaults and wri
 An event fires for every state with weight > 0 that is not fading out (in a crossfade, only the
 incoming clip), forward, backward and across loops, once per crossing. It calls every `onEvent`
 subscriber, then the method named `functionName` on each enabled Lua script of the player's own
-GameObject with the args spread as parameters.
+GameObject with the args spread as parameters. An event named like a method the engine calls
+itself (`init`, `onDestroy`) or an engine event (`onUpdate`, `onKeyDown`...) calls that method
+again with the event's args (as Unity's `SendMessage`; the clip's binding report warns): give
+events their own names.
 
 ```lua
 function Hero:init()

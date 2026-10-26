@@ -190,6 +190,11 @@ When an event fires, the engine calls, in order:
 2. the method with the event's function name on each enabled Lua script of the player's own
    GameObject (not its children), with the args as parameters: `onFootstep("left", 1)`.
 
+Give events their own function names. An event named like a method the engine calls by itself
+(`init`, `onDestroy`) or like an engine event a script registers (`onUpdate`, `onKeyDown`...) calls
+that method again, with the event's args (Unity's `SendMessage` does the same). The binding report
+(Inspector, Animation window, `get_animation`) warns about it.
+
 Events and `onFinish` are dispatched after the frame's animation update, in time order. Player
 calls made inside a handler take effect on the next frame. An event that nothing handles logs one
 warning per clip and function in play mode. At edit time, the Bindings foldout and the window's
@@ -286,12 +291,16 @@ Because paths are relative, a clip plays on any GameObject whose children have t
   `door_open.anim`. Edit the clip once and both change. The players are normal prefab properties,
   so a prefab instance can override the clip list or one entry's wrap.
 - **Two scenes**: reference the same file from each.
-- **Two characters of one rig** (same bone names): one walk clip plays on both. For a character
-  whose bones are named differently, the Bindings foldout lists the paths that don't resolve, each
-  with the nearest existing path. **Retarget...** in the window's row menu renames a path in the
-  clip. That changes the clip for every user, and the dialog says how many there are in open
-  scenes. To keep the original, copy the file in the Project window first: the copy gets its own
-  identity.
+- **Two characters of one rig** (same bone names): one walk clip plays on both. When objects of the
+  rig were renamed or moved, the Bindings foldout lists the paths that don't resolve, each with the
+  nearest existing path. **Retarget...** in the window's row menu renames a path in the clip. That
+  changes the clip for every user, and the dialog says how many there are in open scenes. To keep
+  the original, copy the file in the Project window first: the copy gets its own identity.
+- **Another character rig** (other bone names and rest orientations): renaming paths doesn't make
+  a clip fit it. Rotation keys are absolute local rotations, so the other rig's bones end up turned
+  wrong (legs up, arms twisted). Make that character its own clip: bake a Pose Animation on it
+  (**Bake to Animation Clip**), or key a new clip on it. For agents, the binding report offers no
+  rename fix for such paths (`rest_mismatch`).
 
 The files are referenced by GUID (the `guid` key the editor writes into each clip) plus the path.
 Renaming or moving a clip keeps every Animation Player pointing at it: open scenes and loaded
