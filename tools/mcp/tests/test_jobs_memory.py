@@ -101,6 +101,11 @@ async def test_loading_count_never_idle_mid_decode(ed: Editor):
     """40 textures load asynchronously: Engine.getQueuedResourceCount() never reads 0 while a
     load is in progress, and get_memory_stats reports the GPU textures afterwards."""
     paths = await setup_textures(ed)
+    # their cooks first (S14: the editor cooks new textures on the Background lane, and a raw load
+    # asks for one): during the storm every Background body is then an asset load, of the cooks
+    cooked = await ed.call("reimport_textures", paths=paths, platforms=["desktop"], wait=True, timeout_s=600)
+    ed.check(not cooked["timed_out"], "the storm textures cooked")
+    vram = sum(row["platforms"]["desktop"]["vram_bytes"] for row in cooked["textures"])
     made = await ed.call("create_scene", name="Storm", type="3D", path="scenes/Storm")
     scene = made["scene"]["id"]
     calls = []
@@ -154,7 +159,7 @@ async def test_loading_count_never_idle_mid_decode(ed: Editor):
     stats = await ed.call("get_memory_stats", prefix="Texture")
     gpu = [r for r in stats["records"] if r["residency"] == "Gpu"]
     ed.check(len(gpu) >= 1, f"a Gpu texture record: {stats['records']}")
-    ed.check(sum(r["current"] for r in gpu) >= TEXTURES * SIZE * SIZE * 4 // 2, f"the textures are counted: {gpu}")
+    ed.check(sum(r["current"] for r in gpu) >= vram // 2, f"the textures are counted ({vram} bytes cooked): {gpu}")
     ed.check(stats["totals"]["Gpu"] > 0, "Gpu total")
 
 
