@@ -1,12 +1,14 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// S26 AC5 (R6, D5): the CPU posing of picking against the GPU's. A skinned and morphed glTF strip,
-// its tip bent and its morph target half on, drawn by the library's mesh.vert (skinning.glsl,
-// morphtarget.glsl) with a debug fragment stage writing the world position (one axis per frame,
-// 24-bit fixed point: fixtures/picking/world_position_<axis>.frag). For every pixel inside the
-// strip, the position the GPU drew equals the point a MeshRaycast through that pixel's centre hits
-// on the CPU-posed triangles, within 1e-4. Runs on glcore and Vulkan (lavapipe).
+// S26 AC5 (R6, R30, D5): the CPU posing of picking against the GPU's. A skinned and morphed glTF
+// strip, its tip bent and its morph target half on, drawn by a debug variant of the skinned mesh
+// vertex shader (fixtures/picking/world_position.vert: skinning.glsl and morphtarget.glsl, as the
+// library's mesh shaders call them) as one point per vertex, in a cell of its own; one frame per
+// value writes each point's world x, y, z and its vertex index as 24-bit fixed point
+// (world_position_<x|y|z|index>.frag). Every vertex the GPU drew equals the vertex
+// picking::poseGeometry poses on the CPU, in world space, within 1e-4. Runs on glcore and Vulkan
+// (lavapipe).
 
 #include "Engine.h"
 #include "Scene.h"
@@ -14,7 +16,7 @@
 #include "object/Camera.h"
 #include "object/Model.h"
 #include "picking/MeshPose.h"
-#include "picking/MeshRaycast.h"
+#include "picking/PickGeometry.h"
 #include "subsystem/RenderSystem.h"
 #include "util/Angle.h"
 
@@ -25,7 +27,6 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
-#include <cmath>
 #include <vector>
 
 using namespace jasperengine;
@@ -37,9 +38,11 @@ namespace {
     constexpr float RANGE = 16.0f;
 
     // the world coordinate a pixel of the debug shader holds
+    double decodeInteger(const uint8_t* rgba){
+        return (double)rgba[0] * 65536.0 + (double)rgba[1] * 256.0 + (double)rgba[2];
+    }
     float decode(const uint8_t* rgba){
-        const double value = (double)rgba[0] * 65536.0 + (double)rgba[1] * 256.0 + (double)rgba[2];
-        return (float)(value / 16777215.0 * RANGE + RANGE_MIN);
+        return (float)(decodeInteger(rgba) / 16777215.0 * RANGE + RANGE_MIN);
     }
 
     Entity skinnedMeshEntity(Scene& scene){
@@ -94,59 +97,63 @@ TEST(MeshPose, MatchesGpuSkinning){
     const int height = (int)target.getHeight();
     ASSERT_GT(width, 0);
 
-    std::vector<uint8_t> images[3];
-    const char* shaders[3] = {"picking/world_position.vert|picking/world_position_x.frag", "picking/world_position.vert|picking/world_position_y.frag",
-                             "picking/world_position.vert|picking/world_position_z.frag"};
-    for (int axis = 0; axis < 3; axis++){
-        mesh.customShader = shaders[axis];
+    // the strip's vertices as picking gathers them (before it is drawn as points)
+    PickGeometry geometry;
+    PickGeometryLayout layout;
+    ASSERT_TRUE(picking::gather(mesh, geometry, &layout));
+    ASSERT_EQ(layout.submeshes.size(), 1u);
+    const uint32_t vertexCount = layout.submeshes[0].vertexCount;
+    ASSERT_GT(vertexCount, 0u);
+    ASSERT_LE(vertexCount, 256u) << "one 16 x 16 cell per vertex";
+    mesh.submeshes[0].primitiveType = PrimitiveType::POINTS;
+
+    std::vector<uint8_t> images[4];
+    const char* shaders[4] = {"picking/world_position.vert|picking/world_position_x.frag", "picking/world_position.vert|picking/world_position_y.frag",
+                              "picking/world_position.vert|picking/world_position_z.frag", "picking/world_position.vert|picking/world_position_index.frag"};
+    for (int pass = 0; pass < 4; pass++){
+        mesh.customShader = shaders[pass];
         mesh.needReload = true;
         ASSERT_TRUE(GpuEnvironment::runFrames([&scene](){ return scene.getSystem<RenderSystem>()->isAllLoaded(); }))
-            << shaders[axis] << " never compiled";
+            << shaders[pass] << " never compiled";
         GpuEnvironment::drawFrames(2);
-        ASSERT_TRUE(readTexture(target.getRender().getColorTexture(), width, height, images[axis]));
+        ASSERT_TRUE(readTexture(target.getRender().getColorTexture(), width, height, images[pass]));
     }
     ASSERT_TRUE(picking::isPosed(mesh)) << "the strip is skinned and morphed";
 
-    // every pixel well inside the strip (its 3x3 neighbourhood drawn: no edge, no MSAA blend)
-    auto drawn = [&](int x, int y){
-        return x >= 0 && y >= 0 && x < width && y < height && images[0][((size_t)y * width + x) * 4 + 3] == 255;
-    };
-    int compared = 0;
+    // the CPU pose of the bone matrices and morph weights the frames drew with
+    std::vector<Vector3> posed;
+    ASSERT_TRUE(picking::poseGeometry(mesh, layout, geometry.positions, posed));
+    const Matrix4& modelMatrix = scene.getComponent<Transform>(strip).modelMatrix;
+
+    std::vector<bool> seen(vertexCount, false);
     float worst = 0.0f;
-    for (int y = 1; y < height - 1; y++){
-        for (int x = 1; x < width - 1; x++){
-            bool inside = true;
-            for (int dy = -1; dy <= 1 && inside; dy++){
-                for (int dx = -1; dx <= 1 && inside; dx++){
-                    inside = drawn(x + dx, y + dy);
-                }
-            }
-            if (!inside){
-                continue;
-            }
-            const Ray ray = camera.screenToRay((float)x + 0.5f, (float)y + 0.5f);
-            MeshRaycastOptions options;
-            options.hitBackfaces = true;
-            const MeshRaycastHit hit = MeshRaycast::raycastEntity(&scene, strip, ray, options);
-            if (!hit.hit){
-                ADD_FAILURE() << "the GPU drew the strip at (" << x << ", " << y << ") where the CPU pose has nothing";
-                continue;
-            }
+    float moved = 0.0f;
+    for (int y = 0; y < height; y++){
+        for (int x = 0; x < width; x++){
             const size_t i = ((size_t)y * width + x) * 4;
+            if (images[3][i + 3] != 255){
+                continue;
+            }
+            const double index = decodeInteger(&images[3][i]);
+            ASSERT_LT(index, (double)vertexCount) << "pixel (" << x << ", " << y << ") names no vertex";
+            const uint32_t vertex = (uint32_t)index;
+            seen[vertex] = true;
             const Vector3 gpu(decode(&images[0][i]), decode(&images[1][i]), decode(&images[2][i]));
-            const float error = (gpu - hit.point).length();
+            const Vector3 cpu = modelMatrix * posed[layout.submeshes[0].base + vertex];
+            const float error = (gpu - cpu).length();
             worst = std::max(worst, error);
-            compared++;
+            moved = std::max(moved, (cpu - modelMatrix * geometry.positions[layout.submeshes[0].base + vertex]).length());
             if (error > 1e-4f){
-                ADD_FAILURE() << "pixel (" << x << ", " << y << "): GPU " << gpu.toString() << " CPU " << hit.point.toString();
-                if (compared > 50){
-                    break;
-                }
+                ADD_FAILURE() << "vertex " << vertex << ": GPU " << gpu.toString() << " CPU " << cpu.toString();
             }
         }
     }
-    EXPECT_GT(compared, 200) << "too few pixels of the strip were drawn";
+    for (uint32_t v = 0; v < vertexCount; v++){
+        EXPECT_TRUE(seen[v]) << "the GPU drew no point for vertex " << v;
+    }
     EXPECT_LE(worst, 1e-4f);
+    // the pose moves the strip (a bind-pose CPU copy would not match)
+    EXPECT_GT(moved, 0.05f);
     EXPECT_NO_ENGINE_ERRORS();
     Engine::removeScene(&scene);
 }

@@ -1,19 +1,18 @@
 #version 450
 
-// @shader mesh
-// @name "World Position (Y, S26 test)"
-// @require position
-
-// S26 AC5 (MeshPose.MatchesGpuSkinning): the debug variant of the skinned mesh shaders. Its
-// vertex stage (world_position.vert) skins and morphs as every library mesh shader; this one
-// writes the world position's y as a 24-bit fixed point in RGB over [-8, 8], alpha 1.
+// S26 AC5 (MeshPose.MatchesGpuSkinning): a fragment stage of the debug variant of the skinned
+// mesh shaders (world_position.vert): the world position's y as a 24-bit fixed point in RGB over [-8, 8], alpha 1.
 
 in vec3 v_position;
+in float v_vertex;
 
 out vec4 g_finalColor;
 
 void main() {
-    float value = clamp((v_position.y + 8.0) / 16.0, 0.0, 1.0) * 16777215.0;
+    // both varyings read in every stage (no vertex output goes unread)
+    if (v_vertex < 0.0 || any(isnan(v_position)) || any(isinf(v_position)))
+        discard;
+    float value = floor(clamp((v_position.y + 8.0) / 16.0, 0.0, 1.0) * 16777215.0 + 0.5);
     float high = floor(value / 65536.0);
     float mid = floor((value - high * 65536.0) / 256.0);
     float low = value - high * 65536.0 - mid * 256.0;
