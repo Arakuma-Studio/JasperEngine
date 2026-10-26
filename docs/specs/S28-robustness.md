@@ -614,3 +614,6 @@ passes, smoke PASS. `tools/crash/test_symbolicate.py` passes on B against a fres
   (`test_crash.py` 6/6, `test_protocol.py` 12/12), including `test_runaway_lua` and the
   native segfault/restart notice. This verifies the S28 fixes merged at `3b0dd7a14` together
   with the native follow-up. All temporary red-control sources were restored afterward.
+- Final source `a1555b8d1` omits optional secondary-fault stderr notes, so a full pipe cannot
+  add an engine write after the bounded wait. Server D revalidation passes again: WERROR
+  editor/install and standalone game, 3/3 crash CTests (15.66 s), and all 13 ASan+UBSan modes.
