@@ -584,8 +584,11 @@ one line pointing here.
 - **AC8 compare budget.** `RenderPrimitive.MatchesTheMeshPath` uses the default threshold and mean
   with up to 0.5 % bad pixels (default 0.05 %): at 1 and 4 samples the meshes' feathered edges,
   polygonal curves and aliased shadow textures differ from the exact coverage on edge pixels
-  (largest measured: 0.29 %, rotated boxes at 1 sample). A sample count the device cannot render
-  (llvmpipe at 8: incomplete layer targets, for both paths) is reported and skipped.
+  (largest measured: 0.29 %, rotated boxes at 1 sample). A sample count the device has no
+  targets for (llvmpipe and lavapipe have 1 and 4) is reported and skipped: the HTML UI targets
+  take the highest count the device has up to the asked one (`FramebufferRender::getMaxMsaaSamples`),
+  since an 8-sample image on lavapipe is invalid Vulkan usage that no layer rejects (it drew into
+  memory not its own, the whole-suite-only failures of round 2).
 - **Atlas placement (R13).** Glyphs fill the newest page; with room in the budget then the others'
   space, then a new page; with the budget full a new page in place of the least recently used one
   (unused in this frame and the last). A glyph that finds every page used in this frame or the last
