@@ -62,7 +62,6 @@ namespace jasperengine::diag::crash::detail {
 
         // The first entry reports. Other threads wait up to eight seconds for reportDone
         // before chaining; recursive faults on the reporting thread terminate immediately.
-        std::atomic<int> entries{0};
         std::atomic<int64_t> reportingThread{0};
         std::atomic<bool> reportDone{false};
         // Internal subprocess-test seam; production leaves this null. A test callback must

@@ -49,7 +49,10 @@ Module modules[128]{};
 size_t moduleCount = 0;
 char moduleList[16384]{};
 size_t moduleListBytes = 0;
-thread_local volatile sig_atomic_t reportingHere = 0;
+// Native pthread identities are pointer/integer tokens on our POSIX platforms. Using a
+// lock-free owner avoids initializing emulated C++ TLS from an Android signal handler.
+static_assert(std::atomic<pthread_t>::is_always_lock_free);
+std::atomic<pthread_t> reportOwner{};
 
 struct AlternateStack {
     void* memory = MAP_FAILED;
@@ -223,13 +226,13 @@ void fatal(int sig, siginfo_t* info, void* context) {
     auto& s = state();
     // Test the calling thread before touching shared state: a fault in the handler itself
     // cannot wait for its own report (or enter a possibly broken previous handler).
-    if (reportingHere) {
-        line(STDERR_FILENO, "JASPERENGINE CRASH: recursive fault while reporting");
-        defaultAction(sig);
-    }
-    reportingHere = 1;
-    const int entry = s.entries.fetch_add(1, std::memory_order_relaxed);
-    if (entry != 0) {
+    const pthread_t current = pthread_self();
+    pthread_t expected{};
+    if (!reportOwner.compare_exchange_strong(expected, current, std::memory_order_acq_rel)) {
+        if (expected == current) {
+            line(STDERR_FILENO, "JASPERENGINE CRASH: recursive fault while reporting");
+            defaultAction(sig);
+        }
         const uint64_t deadline = monotonicNs() + 8000000000ULL;
         for (unsigned attempts = 0; attempts < 8000 && !s.reportDone.load(std::memory_order_acquire)
                 && monotonicNs() < deadline; ++attempts) {
@@ -241,7 +244,6 @@ void fatal(int sig, siginfo_t* info, void* context) {
         appendSigned(note, sizeof(note), n, threadId());
         line(STDERR_FILENO, note);
         chain(sig, info, context);
-        reportingHere = 0;
         return;
     }
     s.reportingThread.store(threadId(), std::memory_order_relaxed);
@@ -357,7 +359,6 @@ void fatal(int sig, siginfo_t* info, void* context) {
     line(STDERR_FILENO, text);
     s.reportDone.store(true, std::memory_order_release);
     chain(sig, info, context);
-    reportingHere = 0;
 }
 void addModule(uintptr_t begin, uintptr_t end, uintptr_t base, const char* name) {
     // One entry per image, rather than copying its path for every load segment. Keep
