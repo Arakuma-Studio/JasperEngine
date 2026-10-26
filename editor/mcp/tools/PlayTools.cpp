@@ -2013,6 +2013,27 @@ Json scriptStateJson(Project* project, SceneProject* sp, Entity entity, int maxD
     return scripts;
 }
 
+// what a component holds at runtime besides its properties (the last move and step of a
+// character controller), read only
+void addRuntimeState(Scene* scene, Entity entity, ComponentType type, const std::set<std::string>& onlyProps, Json& props) {
+    auto put = [&](const char* name, Json value) {
+        if (onlyProps.empty() || onlyProps.count(name)) props[name] = std::move(value);
+    };
+    auto vec2 = [](const Vector2& v) { return Json::array({v.x, v.y}); };
+    if (type == ComponentType::CharacterController2DComponent) {
+        const CharacterController2DComponent* c = scene->findComponent<CharacterController2DComponent>(entity);
+        if (!c) return;
+        put("isGrounded", c->isGrounded);
+        put("isOnSteepSlope", c->isOnSteepSlope);
+        put("collisionFlags", c->collisionFlags);
+        put("velocity", vec2(c->velocity));
+        put("groundNormal", vec2(c->groundNormal));
+        put("groundEntity", c->groundEntity == NULL_ENTITY ? Json() : Json(c->groundEntity));
+        put("groundVelocity", vec2(c->groundVelocity));
+        put("refusedWithRigidbody", c->refusedWithRigidbody);
+    }
+}
+
 void getRuntimeEntityTool(const CallPtr& call) {
     const Json& args = call->args();
     McpContext& ctx = call->ctx();
@@ -2069,6 +2090,7 @@ void getRuntimeEntityTool(const CallPtr& call) {
                     props[name] = "<unreadable>";
                 }
             }
+            addRuntimeState(sp->scene, entity, type, onlyProps, props);
         }
         components[componentNameOf(type)] = props;
     }

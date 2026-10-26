@@ -7,6 +7,7 @@
 #include "EntityHandle.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "Rigidbody2D.h"
+#include "CharacterController2D.h"
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "Rigidbody.h"
@@ -110,6 +111,9 @@ namespace jasperengine{
 #ifdef JASPERENGINE_PHYSICS_2D
         Rigidbody2D getRigidbody2D();
         void removeRigidbody2D();
+        // the GameObject's 2D CharacterController, added with its defaults when it has none
+        CharacterController2D getCharacterController2D();
+        void removeCharacterController2D();
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
         Rigidbody getRigidbody();

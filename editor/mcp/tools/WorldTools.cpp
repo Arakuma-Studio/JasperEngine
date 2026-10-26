@@ -1251,6 +1251,15 @@ void editCollidersTool(const CallPtr& call) {
         return;
     }
 
+    if (!hasBody) {
+        // a character controller there already moves the GameObject
+        const std::string conflict = Catalog::getComponentConflict(scene, target.entity, bodyType);
+        if (!conflict.empty()) {
+            call->fail(conflict);
+            return;
+        }
+    }
+
     std::string error;
     auto multi = std::make_unique<MultiPropertyCmd>();
     if (!hasBody) multi->addCommand(std::make_unique<AddComponentCmd>(target.project, target.sceneId(), target.entity, bodyType));

@@ -86,6 +86,24 @@ default arguments): a missing `wake` reads as false.
 - Contacts in Lua: `RegisterEvent(self, self.scene:getPhysicsSystem().beginContact2D, "onHit")`
   fires for every contacting pair in the scene (filter by body).
 
+## Character controllers
+
+A Character Controller 2D (`CharacterController2DComponent`) is a kinematic, upright capsule moved
+by script: `cc:move(motion)` slides it at once (no gravity) and returns `CollisionFlags`;
+`cc:simpleMove(speed)` adds its own gravity and returns `isGrounded`. Call them in `onUpdate` or
+`onFixedUpdate`, never from a contact callback. Box2D 3.0 has no mover, so the engine slides the
+capsule on Box2D's casts (at most 4 iterations a move). It climbs steps up to `stepOffset`
+(points), treats surfaces steeper than `slopeLimit` as walls (`isOnSteepSlope`), keeps
+`skinWidth` off colliders, sticks to the floor going down steps, is carried by the kinematic or
+dynamic body it stands on (`movingPlatforms`) and pushes dynamic bodies it walks into
+(`pushBodies`: an impulse `pushStrength x dt` along the move; not what it stands on).
+- It has no Box2D body: ray casts, sensors and other controllers do not see it, and it does not
+  turn with a rotating platform. There is no `onControllerColliderHit` in 2D.
+- It cannot share a GameObject with a Rigidbody 2D: Add Component and `add_component` refuse;
+  one loaded with both does nothing and logs once.
+- Its layer, the 2D Layer Collision Matrix and `categoryBits`/`maskBits` filter what it hits.
+- `get_runtime_entity` shows `isGrounded`, `collisionFlags`, `velocity`, `groundEntity`, ...
+
 ## 2D lighting (not physics, but often confused)
 
 A Light 2D (`light_2d`) adds on top of the scene's 2D ambient (`ambient_light_2d_color`,

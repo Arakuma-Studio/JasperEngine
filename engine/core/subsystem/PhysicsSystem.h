@@ -11,6 +11,7 @@
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "component/Rigidbody2DComponent.h"
 #include "component/Joint2DComponent.h"
+#include "component/CharacterController2DComponent.h"
 #include "object/physics/Contact2D.h"
 #include "object/physics/Manifold2D.h"
 #include "box2d/box2d.h"
@@ -31,6 +32,7 @@
 
 #include "registry/TagManager.h"
 
+#include <memory>
 #include <mutex>
 #include <string>
 #include <unordered_set>
@@ -44,9 +46,12 @@ namespace jasperengine{
 	class JoltBroadPhaseLayers;
 	class JoltObjectVsBroadPhaseLayerFilter;
 	class JoltObjectLayerPairFilter;
+	class CharacterController2DSystem;
 	
 
 	class JASPERENGINE_API PhysicsSystem : public SubSystem {
+
+		friend class CharacterController2DSystem;
 
 	private:
 		Vector2 gravity2D;
@@ -63,6 +68,9 @@ namespace jasperengine{
 		uint32_t appliedLayerVersion2D = 0;
 		std::vector<Entity> pendingLayerRefresh2D;
 		std::vector<b2ShapeId> shapeScratch2D;
+
+		// the 2D CharacterControllers (S22 P5), moved on this world's queries
+		std::unique_ptr<CharacterController2DSystem> characters2D;
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
 		bool lock3DBodies;
@@ -166,7 +174,18 @@ namespace jasperengine{
 		// Re-applies the GameObject layer to the shapes of the entity's Rigidbody 2D;
 		// inside a step, right after it
 		void refreshRigidbody2DLayer(Entity entity);
+
+		// A 2D CharacterController's move (points) and simpleMove (points per second), at once
+		// (docs/mcp/guide/physics.md): the collision flags, and whether it is grounded
+		int moveCharacter2D(Entity entity, const Vector2& motion);
+		bool simpleMoveCharacter2D(Entity entity, const Vector2& speed);
 #endif
+
+		// The entity's world pose now, its parents first, when the render pass has not
+		// resolved its Transform yet
+		void resolveTransformWorldPose(Entity entity);
+		// Puts the entity at a world pose (written parent-local)
+		void setTransformWorldPose(Entity entity, const Vector3& position, const Quaternion& rotation);
 
 #ifdef JASPERENGINE_PHYSICS_3D
         void setLock3DBodies(bool lock3DBodies);

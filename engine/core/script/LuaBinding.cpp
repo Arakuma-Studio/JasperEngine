@@ -56,6 +56,7 @@
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "object/physics/Rigidbody2D.h"
 #include "object/physics/Joint2D.h"
+#include "object/physics/CharacterController2D.h"
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "object/physics/Rigidbody.h"
@@ -960,6 +961,7 @@ bool LuaBinding::pushEntityHandleByType(lua_State* L, jasperengine::Scene* scene
 #ifdef JASPERENGINE_PHYSICS_2D
     DISPATCH_TYPE(Rigidbody2D, "rigidbody2d");
     DISPATCH_TYPE(Joint2D, "joint2d");
+    DISPATCH_TYPE(CharacterController2D, "charactercontroller2d");
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
     DISPATCH_TYPE(Rigidbody, "rigidbody");

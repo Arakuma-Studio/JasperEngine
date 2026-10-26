@@ -1926,7 +1926,10 @@ void editor::InspectorWindow::handleComponentMenu(const char* popupId, SceneProj
 bool editor::InspectorWindow::canAddComponent(SceneProject* sceneProject, Entity entity, ComponentType cpType) {
     // Check if entity already has this component
     std::vector<ComponentType> existingComponents = Catalog::findComponents(sceneProject->scene, entity);
-    return std::find(existingComponents.begin(), existingComponents.end(), cpType) == existingComponents.end();
+    if (std::find(existingComponents.begin(), existingComponents.end(), cpType) != existingComponents.end())
+        return false;
+    // a character controller and a rigidbody of its dimension never share a GameObject
+    return Catalog::getComponentConflict(sceneProject->scene, entity, cpType).empty();
 }
 
 // Prefab (prefab) text color, as in the Hierarchy
@@ -13085,6 +13088,59 @@ void editor::InspectorWindow::drawJoint2DComponent(ComponentType cpType, ScenePr
     endTable();
 }
 
+void editor::InspectorWindow::drawCharacterController2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    Scene* scene = sceneProject->scene;
+
+    RowSettings settings;
+    settings.secondColSize = 6 * ImGui::GetFontSize();
+    RowSettings settingsSlope = settings;
+    settingsSlope.help = "Surfaces steeper than this (degrees) are not walked on: they act as walls";
+    RowSettings settingsStep = settings;
+    settingsStep.help = "Steps up to this high (points) are climbed while walking on the ground; 0 climbs none";
+    RowSettings settingsSkin = settings;
+    settingsSkin.help = "How far (points) the capsule stays off what it touches";
+    RowSettings settingsPush = settings;
+    settingsPush.help = "Dynamic bodies it walks into get an impulse of this (N) x dt along the move";
+    RowSettings settingsPlatforms;
+    settingsPlatforms.help = "Carried by the kinematic or dynamic body it stands on";
+
+    beginTable(cpType, getLabelSize("Min Move Distance"));
+    propertyRow(RowPropertyType::Vector2, cpType, "center", "Center", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "height", "Height", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "radius", "Radius", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "slopeLimit", "Slope Limit", sceneProject, entities, settingsSlope);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "stepOffset", "Step Offset", sceneProject, entities, settingsStep);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "skinWidth", "Skin Width", sceneProject, entities, settingsSkin);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "minMoveDistance", "Min Move Distance", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "pushStrength", "Push Strength", sceneProject, entities, settingsPush);
+    propertyRow(RowPropertyType::Bool, cpType, "pushBodies", "Push Bodies", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::Bool, cpType, "movingPlatforms", "Moving Platforms", sceneProject, entities, settingsPlatforms);
+    endTable();
+
+    for (Entity entity : entities){
+        if (scene->findComponent<Rigidbody2DComponent>(entity)){
+            ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
+            ImGui::SameLine();
+            ImGui::TextWrapped("A Character Controller 2D does nothing on a GameObject with a Rigidbody 2D: remove one of them.");
+            break;
+        }
+    }
+
+    // what the last move and physics step left, while the scene plays
+    if (sceneProject->playState != ScenePlayState::STOPPED && entities.size() == 1){
+        const CharacterController2DComponent& controller = scene->getComponent<CharacterController2DComponent>(entities[0]);
+        std::string flags;
+        if (controller.collisionFlags & CharacterCollision_Sides) flags += " Sides";
+        if (controller.collisionFlags & CharacterCollision_Above) flags += " Above";
+        if (controller.collisionFlags & CharacterCollision_Below) flags += " Below";
+        ImGui::SeparatorText("Runtime");
+        ImGui::TextDisabled("Grounded: %s   On Steep Slope: %s", controller.isGrounded ? "yes" : "no", controller.isOnSteepSlope ? "yes" : "no");
+        ImGui::TextDisabled("Collision Flags:%s", flags.empty() ? " None" : flags.c_str());
+        ImGui::TextDisabled("Velocity: %.1f, %.1f", controller.velocity.x, controller.velocity.y);
+        ImGui::TextDisabled("Ground Velocity: %.1f, %.1f", controller.groundVelocity.x, controller.groundVelocity.y);
+    }
+}
+
 void editor::InspectorWindow::drawJoint3DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     Joint3DComponent& joint = sceneProject->scene->getComponent<Joint3DComponent>(entities[0]);
 
@@ -15214,6 +15270,8 @@ void editor::InspectorWindow::show(){
                     drawRigidbodyComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::Joint2DComponent){
                     drawJoint2DComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::CharacterController2DComponent){
+                    drawCharacterController2DComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::Joint3DComponent){
                     drawJoint3DComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::ActionComponent){

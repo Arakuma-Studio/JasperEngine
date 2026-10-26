@@ -23,6 +23,15 @@ bool editor::AddComponentCmd::execute() {
     if (sceneProject) {
         Scene* scene = sceneProject->scene;
 
+        // a character controller and a rigidbody of its dimension never share a GameObject
+        for (Entity entity : entities){
+            const std::string conflict = Catalog::getComponentConflict(scene, entity, componentType);
+            if (!conflict.empty()){
+                Out::error("%s", conflict.c_str());
+                return false;
+            }
+        }
+
         for (Entity& entity : entities){
             prefabUndo.capture(project, sceneId, entity);
             ProjectUtils::addEntityComponent(scene, entity, componentType, sceneProject->entities);

@@ -85,6 +85,7 @@ ComponentAddDialog::ComponentAddDialog() {
         {"Physics 2D", ICON_FA_CIRCLE, {
             {ComponentType::Rigidbody2DComponent, "2D Rigidbody with colliders, simulated by Box2D"},
             {ComponentType::Joint2DComponent, "Connects two 2D Rigidbodies"},
+            {ComponentType::CharacterController2DComponent, "A capsule moved by script that climbs steps and slopes"},
         }},
         {"Audio", ICON_FA_VOLUME_HIGH, {
             {ComponentType::AudioSourceComponent, "Plays an audio clip"},

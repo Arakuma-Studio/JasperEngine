@@ -115,7 +115,7 @@ Wrapper class names accepted as `type` (case-insensitive): `GameObject`, `Camera
 `Light2D`, `ShadowCaster2D`, `Mesh`, `Primitive`, `Mirror`, `Terrain`, `Tilemap`, `Model`,
 `MeshPolygon`, `Points`, `LineRenderer`, `Sprite`, `AudioSource`, `RectTransform`,
 `LayoutGroup`, `Polygon`, `Text`, `Image`, `Button`, `Panel`, `Scrollbar`, `Progressbar`,
-`InputField`, `Bone`, `Fog`, `LocalVolumetricFog`, `VolumetricClouds`, `Skybox`, `ReflectionProbe`, `Rigidbody2D`, `Joint2D`,
+`InputField`, `Bone`, `Fog`, `LocalVolumetricFog`, `VolumetricClouds`, `Skybox`, `ReflectionProbe`, `Rigidbody2D`, `Joint2D`, `CharacterController2D`,
 `Rigidbody`, `Joint3D`, `Action`, `Tween`, `AlphaTween`, `ColorTween`, `PositionTween`,
 `RotationTween`, `ScaleTween`, `Animation`, `ParticleSystem`, `SpriteAnimation`,
 `MorphTracks`, `RotateTracks`, `ScaleTracks`, `TranslateTracks`, `EntityHandle`.
@@ -1029,6 +1029,23 @@ Restart a one-shot: `snd:stop(); snd:play()`.
 `Joint2D(scene [, entity])`: `setDistanceJoint(bodyA, bodyB [, anchorA, anchorB, ...])`,
 `setRevoluteJoint`, `setPrismaticJoint`, `setMouseJoint`, `setWheelJoint`, `setWeldJoint`,
 `setMotorJoint`, `getType()` (partial; arguments follow the C++ headers).
+
+#### 4.13.1 CharacterController2D (EntityHandle)
+
+`go:getCharacterController2D()` (adds one with defaults if missing), `go:removeCharacterController2D()`,
+or `CharacterController2D(scene, entity)`. Points and points per second, as Rigidbody2D.
+
+| Member | Kind | Notes |
+|---|---|---|
+| `move(motionV2)` | method | slides by motion now (no gravity), writes the Transform; returns `CollisionFlags` bits |
+| `simpleMove(speedV2)` | method | speed.y ignored, own gravity (`Physics` 2D gravity); returns `isGrounded` |
+| `center` | rw `Vector2` | offset from the Transform position |
+| `height`, `radius`, `slopeLimit`, `stepOffset`, `skinWidth`, `minMoveDistance`, `pushStrength` | rw number | defaults: height 128, radius 32 (2 m x 0.5 m at 64 points a metre) |
+| `pushBodies`, `movingPlatforms`, `enabled` | rw bool | |
+| `setBitsFilter(category, mask)`, `categoryBits`, `maskBits` | method / ro | |
+| `isGrounded`, `isOnSteepSlope`, `collisionFlags`, `velocity`, `groundNormal`, `groundEntity`, `groundVelocity` | ro | the last move and physics step |
+
+`CollisionFlags.NONE`, `SIDES` (1), `ABOVE` (2), `BELOW` (4): test with `flags & CollisionFlags.SIDES ~= 0`.
 
 ### 4.14 Rigidbody (EntityHandle) - 3D physics (Jolt)
 

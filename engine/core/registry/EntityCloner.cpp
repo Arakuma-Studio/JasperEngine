@@ -469,6 +469,20 @@ void prepare<Joint2DComponent>(Joint2DComponent& joint, Entity, CloneContext& ct
     joint.bodyB = ctx.remap(joint.bodyB);
     joint.needUpdateJoint = true;
 }
+
+template<>
+void prepare<CharacterController2DComponent>(CharacterController2DComponent& controller, Entity, CloneContext&) {
+    // the copy has not moved yet: the original's last move and step are not its own
+    const CharacterController2DComponent defaults;
+    controller.isGrounded = defaults.isGrounded;
+    controller.isOnSteepSlope = defaults.isOnSteepSlope;
+    controller.collisionFlags = defaults.collisionFlags;
+    controller.velocity = defaults.velocity;
+    controller.groundNormal = defaults.groundNormal;
+    controller.groundEntity = defaults.groundEntity;
+    controller.groundVelocity = defaults.groundVelocity;
+    controller.refusedWithRigidbody = defaults.refusedWithRigidbody;
+}
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
@@ -584,6 +598,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
 #ifdef JASPERENGINE_PHYSICS_2D
     copyComponent<Rigidbody2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<Joint2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<CharacterController2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
     copyComponent<RigidbodyComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

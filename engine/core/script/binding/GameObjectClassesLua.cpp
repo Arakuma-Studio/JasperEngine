@@ -47,6 +47,7 @@
 #include "PrefabAsset.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "Rigidbody2D.h"
+#include "CharacterController2D.h"
 #include "Joint2D.h"
 #include "Contact2D.h"
 #include "Manifold2D.h"
@@ -546,6 +547,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 #ifdef JASPERENGINE_PHYSICS_2D
         .addFunction("getRigidbody2D", &GameObject::getRigidbody2D)
         .addFunction("removeRigidbody2D", &GameObject::removeRigidbody2D)
+        .addFunction("getCharacterController2D", &GameObject::getCharacterController2D)
+        .addFunction("removeCharacterController2D", &GameObject::removeCharacterController2D)
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
         .addFunction("getRigidbody", &GameObject::getRigidbody)
@@ -1595,6 +1598,46 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("dopplerFactor", &AudioSource::getDopplerFactor, &AudioSource::setDopplerFactor)
         .addFunction("getAudioSourceComponent", &AudioSource::getComponent<AudioSourceComponent>)
         .endClass();
+
+    // CharacterController(2D).move's result, Unity's CollisionFlags
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("CollisionFlags")
+        .addVariable("NONE", (int)CharacterCollision_None)
+        .addVariable("SIDES", (int)CharacterCollision_Sides)
+        .addVariable("ABOVE", (int)CharacterCollision_Above)
+        .addVariable("BELOW", (int)CharacterCollision_Below)
+        .endNamespace();
+
+#ifdef JASPERENGINE_PHYSICS_2D
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<CharacterController2D, EntityHandle>("CharacterController2D")
+        .addConstructor <void (Scene*, Entity)> ()
+        .addProperty("valid", &CharacterController2D::isValid)
+        .addProperty("enabled", &CharacterController2D::isEnabled, &CharacterController2D::setEnabled)
+        .addFunction("move", &CharacterController2D::move)
+        .addFunction("simpleMove", &CharacterController2D::simpleMove)
+        .addProperty("center", &CharacterController2D::getCenter, &CharacterController2D::setCenter)
+        .addProperty("height", &CharacterController2D::getHeight, &CharacterController2D::setHeight)
+        .addProperty("radius", &CharacterController2D::getRadius, &CharacterController2D::setRadius)
+        .addProperty("slopeLimit", &CharacterController2D::getSlopeLimit, &CharacterController2D::setSlopeLimit)
+        .addProperty("stepOffset", &CharacterController2D::getStepOffset, &CharacterController2D::setStepOffset)
+        .addProperty("skinWidth", &CharacterController2D::getSkinWidth, &CharacterController2D::setSkinWidth)
+        .addProperty("minMoveDistance", &CharacterController2D::getMinMoveDistance, &CharacterController2D::setMinMoveDistance)
+        .addProperty("pushStrength", &CharacterController2D::getPushStrength, &CharacterController2D::setPushStrength)
+        .addProperty("pushBodies", &CharacterController2D::isPushBodies, &CharacterController2D::setPushBodies)
+        .addProperty("movingPlatforms", &CharacterController2D::isMovingPlatforms, &CharacterController2D::setMovingPlatforms)
+        .addFunction("setBitsFilter", &CharacterController2D::setBitsFilter)
+        .addProperty("categoryBits", &CharacterController2D::getCategoryBits)
+        .addProperty("maskBits", &CharacterController2D::getMaskBits)
+        .addProperty("isGrounded", &CharacterController2D::isGrounded)
+        .addProperty("isOnSteepSlope", &CharacterController2D::isOnSteepSlope)
+        .addProperty("collisionFlags", &CharacterController2D::getCollisionFlags)
+        .addProperty("velocity", &CharacterController2D::getVelocity)
+        .addProperty("groundNormal", &CharacterController2D::getGroundNormal)
+        .addProperty("groundEntity", &CharacterController2D::getGroundEntity)
+        .addProperty("groundVelocity", &CharacterController2D::getGroundVelocity)
+        .endClass();
+#endif
 
 #ifdef JASPERENGINE_PHYSICS_2D
     luabridge::getGlobalNamespace(L)

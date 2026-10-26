@@ -1034,6 +1034,8 @@ std::string editor::HierarchyWindow::getObjectIcon(Signature signature, Scene* s
             return ICON_FA_VOLUME_HIGH;
         }
         return ICON_FA_FILE_AUDIO;
+    }else if (signature.test(scene->getComponentId<CharacterController2DComponent>())){
+        return ICON_FA_PERSON_WALKING;
     }else if (signature.test(scene->getComponentId<Rigidbody2DComponent>()) || signature.test(scene->getComponentId<RigidbodyComponent>())){
         return ICON_FA_WEIGHT_HANGING;
     }else if (signature.test(scene->getComponentId<Transform>())){

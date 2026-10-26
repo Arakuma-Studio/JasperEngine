@@ -380,7 +380,7 @@ bool editor::Project::pushPrefabStage(const std::filesystem::path& relative, uin
             EntityRegistry* registry = levelPrefab->registry.get();
             ui = ui || hasAnyComponent(this, registry, {levelPrefab->root}, {ComponentType::RectTransformComponent, ComponentType::UIComponent});
             twoD = twoD || hasAnyComponent(this, registry, levelPrefab->registryEntities, {ComponentType::SpriteComponent, ComponentType::TilemapComponent,
-                ComponentType::Rigidbody2DComponent, ComponentType::Joint2DComponent, ComponentType::Light2DComponent,
+                ComponentType::Rigidbody2DComponent, ComponentType::Joint2DComponent, ComponentType::CharacterController2DComponent, ComponentType::Light2DComponent,
                 ComponentType::ShadowCaster2DComponent, ComponentType::SpriteAnimationComponent});
         }
         if (ui) {

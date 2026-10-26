@@ -328,6 +328,17 @@ Rigidbody2D GameObject::getRigidbody2D(){
 void GameObject::removeRigidbody2D(){
     scene->getSystem<PhysicsSystem>()->removeRigidbody2D(entity);
 }
+
+CharacterController2D GameObject::getCharacterController2D(){
+    if (!scene->findComponent<CharacterController2DComponent>(entity))
+        scene->addComponent<CharacterController2DComponent>(entity, {});
+    return CharacterController2D(scene, entity);
+}
+
+void GameObject::removeCharacterController2D(){
+    if (scene->findComponent<CharacterController2DComponent>(entity))
+        scene->removeComponent<CharacterController2DComponent>(entity);
+}
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D

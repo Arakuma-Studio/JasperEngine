@@ -8,6 +8,7 @@
 
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "util/Box2DAux.h"
+#include "subsystem/CharacterController2DSystem.h"
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "util/JoltPhysicsAux.h"
@@ -312,6 +313,7 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
 #ifdef JASPERENGINE_PHYSICS_2D
 	declareHookType(scene->getComponentId<Rigidbody2DComponent>());
 	declareHookType(scene->getComponentId<Joint2DComponent>());
+	declareHookType(scene->getComponentId<CharacterController2DComponent>());
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
 	declareHookType(scene->getComponentId<RigidbodyComponent>());
@@ -328,6 +330,7 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
     this->gravity3D = settingsDefaults.gravity3D;
 #ifdef JASPERENGINE_PHYSICS_2D
     this->pointsToMeterScale2D = 64.0;
+    characters2D = std::make_unique<CharacterController2DSystem>(scene, this);
 
     // The Box2D world is created lazily (see ensureWorld2D): Box2D's global b2_worlds[] pool is
     // capped at B2_MAX_WORLDS (128) and is not thread-safe. Editor preview/thumbnail/gizmo scenes
@@ -404,6 +407,7 @@ PhysicsSystem::~PhysicsSystem(){
     flushPendingDestroys3D();
 #endif
 #ifdef JASPERENGINE_PHYSICS_2D
+    characters2D.reset();
     if (b2World_IsValid(world2D)){
         b2DestroyWorld(world2D);
     }
@@ -507,6 +511,14 @@ void PhysicsSystem::setPointsToMeterScale2D(float pointsToMeterScale2D){
 
 bool PhysicsSystem::isSteppingWorld2D() const{
     return steppingWorld2D;
+}
+
+int PhysicsSystem::moveCharacter2D(Entity entity, const Vector2& motion){
+    return characters2D->move(entity, motion);
+}
+
+bool PhysicsSystem::simpleMoveCharacter2D(Entity entity, const Vector2& speed){
+    return characters2D->simpleMove(entity, speed);
 }
 
 // Box2D drops a shape's contacts and pairs it again whenever its filter changes. With
@@ -758,6 +770,14 @@ void PhysicsSystem::updateTransformFromRigidbody2D(Entity entity, Vector2 positi
     updateTransformFromRigidbody(entity, worldPosition, Quaternion(angle, Vector3(0, 0, 1)));
 }
 #endif
+
+void PhysicsSystem::resolveTransformWorldPose(Entity entity){
+    resolveWorldPose(scene, entity);
+}
+
+void PhysicsSystem::setTransformWorldPose(Entity entity, const Vector3& position, const Quaternion& rotation){
+    updateTransformFromRigidbody(entity, position, rotation);
+}
 
 void PhysicsSystem::updateTransformFromRigidbody(Entity entity, Vector3 position, Quaternion rotation){
     Transform* transform = scene->findComponent<Transform>(entity);
@@ -3099,6 +3119,9 @@ void PhysicsSystem::fixedUpdate(double dt){
             Box2DAux::manageEvents(scene, world2D);
         }
     }
+
+    // the 2D controllers ride what moved in the step and see what is under them now
+    characters2D->postStep(fixedStep);
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
@@ -3247,6 +3270,8 @@ void PhysicsSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
 	} else if (componentId == scene->getComponentId<Joint2DComponent>()) {
 		Joint2DComponent& joint2d = scene->getComponent<Joint2DComponent>(entity);
 		destroyJoint2D(joint2d);
+	} else if (componentId == scene->getComponentId<CharacterController2DComponent>()) {
+		characters2D->remove(entity);
 	}
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D

@@ -1221,6 +1221,8 @@ if(JASPERENGINE_PHYSICS_2D)
         core/object/physics/Contact2D.cpp
         core/object/physics/Joint2D.cpp
         core/object/physics/Manifold2D.cpp
+        core/object/physics/CharacterController2D.cpp
+        core/subsystem/CharacterController2DSystem.cpp
     )
 endif()
 

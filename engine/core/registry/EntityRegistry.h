@@ -70,6 +70,7 @@
 #include "component/TilemapComponent.h"
 #include "component/Rigidbody2DComponent.h"
 #include "component/Joint2DComponent.h"
+#include "component/CharacterController2DComponent.h"
 #include "component/RigidbodyComponent.h"
 #include "component/Joint3DComponent.h"
 #include "component/InstancedMeshComponent.h"

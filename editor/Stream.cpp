@@ -4149,6 +4149,11 @@ YAML::Node editor::Stream::encodeComponentsLive(const Entity entity, const Entit
         compNode[Catalog::getComponentName(ComponentType::Joint2DComponent, true)] = encodeJoint2DComponent(joint);
     }
 
+    if (signature.test(registry->getComponentId<CharacterController2DComponent>())) {
+        const CharacterController2DComponent& controller = registry->getComponent<CharacterController2DComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::CharacterController2DComponent, true)] = encodeCharacterController2DComponent(controller);
+    }
+
     if (signature.test(registry->getComponentId<Joint3DComponent>())) {
         const Joint3DComponent& joint = registry->getComponent<Joint3DComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::Joint3DComponent, true)] = encodeJoint3DComponent(joint);
@@ -4697,6 +4702,17 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<Joint2DComponent>(entity) = std::move(joint);
             registry->markChanged<Joint2DComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
+        }
+    });
+
+    StreamLoad::decodeComponent(ComponentType::CharacterController2DComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
+        CharacterController2DComponent* existing = registry->findComponent<CharacterController2DComponent>(entity);
+        CharacterController2DComponent controller = decodeCharacterController2DComponent(componentNode, existing);
+        if (!signature.test(registry->getComponentId<CharacterController2DComponent>())){
+            registry->addComponent<CharacterController2DComponent>(entity, std::move(controller));
+        }else{
+            registry->getComponent<CharacterController2DComponent>(entity) = std::move(controller);
+            registry->markChanged<CharacterController2DComponent>(entity);
         }
     });
 
@@ -7277,6 +7293,50 @@ Joint2DComponent editor::Stream::decodeJoint2DComponent(const YAML::Node& node, 
     if (node["enabled"]) joint.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
     return joint;
+}
+
+// ===========================================
+// CharacterController2DComponent encode/decode
+// ===========================================
+
+YAML::Node editor::Stream::encodeCharacterController2DComponent(const CharacterController2DComponent& controller) {
+    YAML::Node node;
+    node["enabled"] = controller.enabled;
+    node["center"] = encodeVector2(controller.center);
+    node["height"] = controller.height;
+    node["radius"] = controller.radius;
+    node["slopeLimit"] = controller.slopeLimit;
+    node["stepOffset"] = controller.stepOffset;
+    node["skinWidth"] = controller.skinWidth;
+    node["minMoveDistance"] = controller.minMoveDistance;
+    node["pushStrength"] = controller.pushStrength;
+    node["pushBodies"] = controller.pushBodies;
+    node["movingPlatforms"] = controller.movingPlatforms;
+    node["categoryBits"] = controller.categoryBits;
+    node["maskBits"] = controller.maskBits;
+    return node;
+}
+
+CharacterController2DComponent editor::Stream::decodeCharacterController2DComponent(const YAML::Node& node, const CharacterController2DComponent* oldController) {
+    // the runtime state (the last move and step) stays the live component's
+    CharacterController2DComponent controller;
+    if (oldController) {
+        controller = *oldController;
+    }
+    if (node["enabled"]) controller.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    if (node["center"]) controller.center = decodeVector2(node["center"]);
+    if (node["height"]) controller.height = YamlNumbers::as<float>(node["height"]);
+    if (node["radius"]) controller.radius = YamlNumbers::as<float>(node["radius"]);
+    if (node["slopeLimit"]) controller.slopeLimit = YamlNumbers::as<float>(node["slopeLimit"]);
+    if (node["stepOffset"]) controller.stepOffset = YamlNumbers::as<float>(node["stepOffset"]);
+    if (node["skinWidth"]) controller.skinWidth = YamlNumbers::as<float>(node["skinWidth"]);
+    if (node["minMoveDistance"]) controller.minMoveDistance = YamlNumbers::as<float>(node["minMoveDistance"]);
+    if (node["pushStrength"]) controller.pushStrength = YamlNumbers::as<float>(node["pushStrength"]);
+    if (node["pushBodies"]) controller.pushBodies = YamlNumbers::as<bool>(node["pushBodies"]);
+    if (node["movingPlatforms"]) controller.movingPlatforms = YamlNumbers::as<bool>(node["movingPlatforms"]);
+    if (node["categoryBits"]) controller.categoryBits = YamlNumbers::as<uint16_t>(node["categoryBits"]);
+    if (node["maskBits"]) controller.maskBits = YamlNumbers::as<uint16_t>(node["maskBits"]);
+    return controller;
 }
 
 // ==============================

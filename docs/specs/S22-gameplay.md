@@ -595,3 +595,31 @@ Unit tests are gtest in `engine/tests/core/input/`, `engine/tests/core/physics/`
 - **2D controller quality** comes from our own solver. Default: P5 ships only if AC19 passes.
   Otherwise it slips without blocking P1–P4.
 - **Mobile benchmark numbers** are not yet measured. Record them here (AC17) when P2/P3 land.
+
+## 10. Deviations
+
+Recorded during implementation (branch `feat/s22-gameplay`).
+
+- **P4 modifiers.** A press counts with the modifiers held when it was made (`pressMods`), so a
+  same-window Ctrl+S tap is still Ctrl+S. A control held across windows counts with the modifiers
+  held now: releasing Shift while W stays down makes a `forbiddenMods: [shift]` binding of W
+  actuate on the next window, and releasing Ctrl ends a held Ctrl+S.
+- **P4 send_input.** The `input_action` event's line in the tool description lists its own keys
+  only; `hold_frames`, `down`/`up` and `release_all` work as for the other events. The
+  description was shortened elsewhere to stay inside the `send_input` budget (1923 characters).
+- **P5 2D controller.**
+  - It has no Box2D body (D2 lists none). Rays, `Physics2D` queries, sensors and other 2D
+    controllers do not see it. There is no `onControllerColliderHit` in 2D, and it stays upright
+    on a rotating platform, carried by the velocity where it stands.
+  - Walkability is the contact normal's, as in Jolt. A riser counts as a step when it is no higher
+    than `stepOffset`, measured by the contact that stopped the walk lying below the bottom it lands
+    with. A riser taller than `stepOffset` is not climbed by perching the round bottom on its edge.
+  - A step climbed onto a corner lands up to `radius + skinWidth` further on, as Jolt's
+    `mWalkStairsStepForwardTest`. That one frame moves further than the requested motion.
+  - Stick-to-floor casts down `stepOffset`. It slides down a nosing that is too steep to stand on,
+    and keeps the result only on walkable ground.
+  - Pushing skips what it stands on.
+  - `GameObject:getCharacterController2D()` adds the component when it is missing, as
+    `getRigidbody2D()` does.
+  - Add Component, `add_component`, `create_entity`, `edit_colliders` and the add command itself
+    refuse a Character Controller 2D next to a Rigidbody 2D.

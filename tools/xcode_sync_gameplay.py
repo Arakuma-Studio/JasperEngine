@@ -31,6 +31,12 @@ FILES = [
     ("input/InputVirtualControls.cpp", "Input.cpp"),
     ("input/InputVirtualControls.h", "Input.h"),
     ("script/binding/GameplayClassesLua.cpp", "script/binding/ProfilerClassesLua.cpp"),
+    ("component/CharacterCollision.h", "component/Joint2DComponent.h"),
+    ("component/CharacterController2DComponent.h", "component/Joint2DComponent.h"),
+    ("subsystem/CharacterController2DSystem.cpp", "subsystem/PhysicsSystem.cpp"),
+    ("subsystem/CharacterController2DSystem.h", "subsystem/PhysicsSystem.h"),
+    ("object/physics/CharacterController2D.cpp", "object/physics/Joint2D.cpp"),
+    ("object/physics/CharacterController2D.h", "object/physics/Joint2D.h"),
 ]
 
 

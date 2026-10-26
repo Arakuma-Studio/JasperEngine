@@ -79,6 +79,9 @@ EntityRegistry::EntityRegistry() {
     registerComponent<UIDocumentComponent>(ComponentOrder::Insertion, "UIDocumentComponent");
     registerComponent<LocalVolumetricFogComponent>(ComponentOrder::Insertion, "LocalVolumetricFogComponent");
     registerComponent<VolumetricCloudsComponent>(ComponentOrder::Insertion, "VolumetricCloudsComponent");
+#ifdef JASPERENGINE_PHYSICS_2D
+    registerComponent<CharacterController2DComponent>(ComponentOrder::Insertion, "CharacterController2DComponent");
+#endif
 
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());
