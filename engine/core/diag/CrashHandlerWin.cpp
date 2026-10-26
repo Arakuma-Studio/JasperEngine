@@ -243,15 +243,11 @@ void submit(EXCEPTION_POINTERS* info) {
     // A recursive exception on either the submitting thread or the writer must reach the
     // OS immediately. Other faulting threads wait for the complete report before chaining.
     if (current == writerThread) {
-        line(GetStdHandle(STD_ERROR_HANDLE), "JASPERENGINE CRASH: recursive fault while reporting");
         return;
     }
     DWORD expected = 0;
     if (!faultOwner.compare_exchange_strong(expected, current, std::memory_order_acq_rel)) {
         if (expected == current) {
-            if (!state().reportDone.load(std::memory_order_acquire)) {
-                line(GetStdHandle(STD_ERROR_HANDLE), "JASPERENGINE CRASH: recursive fault while reporting");
-            }
             return;
         }
         WaitForSingleObject(completed, 8000);
@@ -271,7 +267,6 @@ LONG WINAPI filter(EXCEPTION_POINTERS* info) {
     const DWORD current = GetCurrentThreadId();
     if (current == writerThread || (faultOwner.load(std::memory_order_acquire) == current &&
             !state().reportDone.load(std::memory_order_acquire))) {
-        line(GetStdHandle(STD_ERROR_HANDLE), "JASPERENGINE CRASH: recursive fault while reporting");
         return EXCEPTION_CONTINUE_SEARCH;
     }
     if (info && info->ExceptionRecord && info->ContextRecord) submit(info);

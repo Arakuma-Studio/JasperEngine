@@ -230,7 +230,6 @@ void fatal(int sig, siginfo_t* info, void* context) {
     pthread_t expected{};
     if (!reportOwner.compare_exchange_strong(expected, current, std::memory_order_acq_rel)) {
         if (expected == current) {
-            line(STDERR_FILENO, "JASPERENGINE CRASH: recursive fault while reporting");
             defaultAction(sig);
         }
         const uint64_t deadline = monotonicNs() + 8000000000ULL;

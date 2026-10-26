@@ -36,7 +36,9 @@ def main():
             files = list(Path(root).glob("reports/*/" + ("hang-001.txt" if mode == "hang" else "crash.txt")))
             if mode == "recursive":
                 assert result.returncode != 0, result
-                assert "JASPERENGINE CRASH: recursive fault" in result.stderr, result.stderr
+                if os.name != "nt":
+                    assert result.returncode == -signal.SIGSEGV, result.stderr
+                assert "JASPERENGINE CRASH:" not in result.stderr, result.stderr
                 assert not files, "the recursive test faults before opening its report"
                 print("PASS native crash: recursive (immediate termination)")
                 continue
