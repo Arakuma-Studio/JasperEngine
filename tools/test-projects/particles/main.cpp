@@ -20,7 +20,6 @@
 
 #include "JasperEngine.h"
 #include "math/noise/CurlNoiseBatch.h"
-#include "math/simd/SimdFloat4.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "subsystem/ParticleSystemState.h"
 #include "jobs/JobSystem.h"
@@ -33,6 +32,7 @@
 #include "../../../engine/tests/core/bench/BenchUtil.h"
 #include "../../../engine/tests/core/bench/ParticleReferenceStack.h"
 
+#include <cstring>
 #include <memory>
 #include <string>
 #include <vector>
@@ -162,7 +162,8 @@ namespace webbench {
         report("ref_30k_sim_ms", sim);
         report("ref_30k_nonoise_sim_ms", quietSim);
         report("ref_30k_prep_ms", prep);
-        if (!simd::kNativeIsSimd){
+        // the engine's kernels say which build this is (this file is not built for simd128)
+        if (std::strcmp(noise::curlNativeBackend(), "scalar") == 0){
             Log::print("[bench] particles_web_budgets=scalar (the fallback build: no budget)");
             return;
         }
