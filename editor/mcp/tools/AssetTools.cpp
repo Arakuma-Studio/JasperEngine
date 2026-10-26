@@ -1949,8 +1949,10 @@ void linkMaterialTool(const CallPtr& call) {
 
 // The fields a preset sets on a default material, as get_asset_info / update_material name them
 Json presetFieldsJson(Project* project, const MaterialPreset& preset) {
-    const Json before = materialToJson(project, Material());
-    const Json after = materialToJson(project, applyMaterialPreset(preset, Material()));
+    // in the form a submesh's material reads back in (get_entity, set_properties): enum names
+    // and float text as McpValues gives them
+    const Json before = McpValues::materialToJson(project, nullptr, Material());
+    const Json after = McpValues::materialToJson(project, nullptr, applyMaterialPreset(preset, Material()));
     Json sets = Json::object();
     for (auto it = after.begin(); it != after.end(); ++it) {
         if (!before.contains(it.key()) || before[it.key()] != it.value()) sets[it.key()] = it.value();
