@@ -95,6 +95,9 @@ namespace jasperengine { namespace particles {
         static PackResult packWith(bool scalar, const EmitterRuntime& emitter, const RenderView& view, memory::Arena& arena, jobs::JobSystem* jobs);
         // per-particle trails and ribbons
         static TrailPack packTrails(const EmitterRuntime& emitter, memory::Arena& arena);
+        // the points of each ribbon's strip when there are several (one strip holds every live
+        // particle): the effect's most per ribbon, so the strips' triangles are fixed at load
+        static uint32_t ribbonStripPoints(const ParticleProgram& program);
 
         // the 16-bit LSD radix sort of `count` indices by key (two 8-bit passes), stable; the
         // first pass carries each key next to its index, so the second reads them in order

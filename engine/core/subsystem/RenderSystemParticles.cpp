@@ -492,9 +492,11 @@ bool RenderSystem::loadParticles(Entity entity, ParticleSystemComponent& particl
         ShaderData& shaderData = rd.trailShader->shaderData;
         const unsigned int stride = sizeof(TrailVertex);
         BufferRender* source = &particleTrailPlaceholder;
-        // the strips' triangles: every pair of points a quad (sized for the rings)
-        const uint32_t points = prog.trails.maxPoints + 1;
-        const uint32_t strips = std::max<uint32_t>(state.runtime.trails().ringCount(), 1u);
+        // the strips' triangles: every pair of points a quad (sized for the rings, or the ribbons
+        // at their fixed stride)
+        const bool ribbons = prog.trails.mode == TrailMode::Ribbon;
+        const uint32_t points = ribbons ? ParticleRenderPrep::ribbonStripPoints(prog) : prog.trails.maxPoints + 1;
+        const uint32_t strips = ribbons ? std::max(prog.trails.ribbonCount, 1u) : std::max<uint32_t>(state.runtime.trails().ringCount(), 1u);
         if (rd.trailIndexCapacity < strips || rd.trailIndexPoints != points){
             if (rd.trailIndexCapacity > 0)
                 rd.trailIndices.destroyBuffer();
@@ -781,7 +783,10 @@ void RenderSystem::drawParticles(Entity entity, ParticleSystemComponent& particl
 
     if (hasTrails){
         const TrailPack trails = ParticleRenderPrep::packTrails(state.runtime, arena);
-        if (trails.strips > 0 && trails.strips <= rd.trailIndexCapacity){
+        // the triangles cover one strip of up to their points, or strips of exactly that many
+        const bool fits = trails.strips <= rd.trailIndexCapacity &&
+                          (trails.strips == 1 ? trails.pointsPerStrip <= rd.trailIndexPoints : trails.pointsPerStrip == rd.trailIndexPoints);
+        if (trails.strips > 0 && fits){
             BufferRender* trailBuffer = nullptr;
             size_t trailOffset = 0;
             const size_t bytes = sizeof(TrailVertex) * (size_t)trails.strips * trails.pointsPerStrip * 2;
@@ -793,7 +798,7 @@ void RenderSystem::drawParticles(Entity entity, ParticleSystemComponent& particl
                 render.draw(0, trails.strips * (trails.pointsPerStrip - 1) * 6, 1);
                 drawn++;
             }
-        }else if (trails.strips > rd.trailIndexCapacity){
+        }else if (trails.strips > 0){
             // more rings than the index buffer was made for: it grows on the next load
             rd.needReload = true;
         }

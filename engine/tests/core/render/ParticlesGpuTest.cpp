@@ -23,6 +23,7 @@
 #include "HeadlessContext.h"
 #include "ImageCompare.h"
 #include "LogCapture.h"
+#include "Readback.h"
 
 #include <gtest/gtest.h>
 
@@ -207,4 +208,40 @@ TEST_F(ParticlesGpu, TrailsAndRibbons){
     ASSERT_TRUE(render(1.0));
     EXPECT_GOLDEN_OPTIONS("particles_trails", goldenTolerance());
     EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(ParticlesGpu, LongRibbonDrawsEveryParticle){
+    JASPER_REQUIRE_GPU();
+    // a ribbon of ~110 particles rising from y = -1 to y = 2.7: more than a per-particle trail's
+    // points, so its triangles must come from the ribbon's own layout (they once covered only the
+    // newest 17 particles, and WebGL refused the draw)
+    system(Vector3(0.0f, -1.0f, 0.0f), R"({"version": 1, "duration": 10, "looping": true, "seed": 3, "maxParticles": 200, "modules": [
+        {"type": "main", "startLifetime": 4, "startSpeed": 1, "startSize": 0.3, "startColor": [1, 0.75, 0.4, 1]},
+        {"type": "emission", "rateOverTime": 30},
+        {"type": "shape", "shape": "cone", "angle": 0, "radius": 0},
+        {"type": "trails", "mode": "ribbon", "ribbonCount": 1, "lifetime": 1.0},
+        {"type": "renderer", "renderMode": "none", "blend": "additive"}]})");
+    ASSERT_TRUE(render(3.7));
+    EXPECT_NO_ENGINE_ERRORS();
+
+    Framebuffer& target = GpuEnvironment::target();
+    const int width = (int)target.getWidth(), height = (int)target.getHeight();
+    std::vector<uint8_t> rgba;
+    ASSERT_TRUE(readTexture(target.getRender().getColorTexture(), width, height, rgba));
+    // lit pixels in the central columns, above and below the image's middle (world y = 1)
+    auto litRows = [&](int fromRow, int toRow){
+        int rows = 0;
+        for (int y = fromRow; y < toRow; y++){
+            for (int x = width / 2 - width / 20; x <= width / 2 + width / 20; x++){
+                if (rgba[((size_t)y * width + x) * 4] > 120){
+                    rows++;
+                    break;
+                }
+            }
+        }
+        return rows;
+    };
+    const int upper = litRows(0, height / 2), lower = litRows(height / 2, height);
+    EXPECT_GT(lower, height / 10) << "the ribbon's newest part, near the emitter";
+    EXPECT_GT(upper, height / 10) << "the ribbon's oldest part, far from the emitter (" << upper << " lit rows)";
 }

@@ -628,6 +628,12 @@ float ParticleRenderPrep::fromHalf(uint16_t h){
     return f;
 }
 
+uint32_t ParticleRenderPrep::ribbonStripPoints(const ParticleProgram& program){
+    // with fewer live particles than two per ribbon there are count / 2 ribbons of at most 3
+    const uint32_t ribbons = std::max(1u, program.trails.ribbonCount);
+    return std::max((program.maxParticles + ribbons - 1) / ribbons, 3u);
+}
+
 TrailPack ParticleRenderPrep::packTrails(const EmitterRuntime& emitter, memory::Arena& arena){
     TrailPack pack;
     const ParticleProgram* prog = emitter.program();
@@ -808,7 +814,9 @@ TrailPack ParticleRenderPrep::packTrails(const EmitterRuntime& emitter, memory::
         radixSort16(low, order, scratch, keyScratch, count);
         radixSort16(high, order, scratch, keyScratch, count);
     }
-    const uint32_t perRibbon = (count + ribbons - 1) / ribbons;
+    // one ribbon holds them all; several have the effect's fixed stride (the renderer's
+    // triangles), the points past a ribbon's own repeating its last
+    const uint32_t perRibbon = ribbons == 1 ? count : ribbonStripPoints(*prog);
     pack.pointsPerStrip = perRibbon;
     pack.strips = ribbons;
     pack.worldSpace = false;

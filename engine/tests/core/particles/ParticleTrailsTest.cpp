@@ -158,14 +158,49 @@ TEST(ParticleTrails, RibbonsConnectParticlesInSpawnOrder){
     memory::Arena arena("ParticleTrailsTest");
     const TrailPack pack = ParticleRenderPrep::packTrails(sim.runtime, arena);
     ASSERT_EQ(pack.strips, 2u);
-    EXPECT_EQ(pack.pointsPerStrip, 10u);
+    // the strips have the effect's fixed stride (the renderer's triangles): 1000 particles over 2
+    ASSERT_EQ(pack.pointsPerStrip, ParticleRenderPrep::ribbonStripPoints(*sim.runtime.program()));
+    EXPECT_EQ(pack.pointsPerStrip, 500u);
     for (uint32_t r = 0; r < 2; r++){
-        // newest first, every other particle (spawn index modulo 2)
+        // newest first, every other particle (spawn index modulo 2), then the last point repeated
+        const TrailVertex* strip = pack.vertices + (size_t)r * pack.pointsPerStrip * 2;
         float previous = 1e9f;
-        for (uint32_t k = 0; k < pack.pointsPerStrip; k++){
-            const float x = pack.vertices[(r * pack.pointsPerStrip + k) * 2].center[0];
-            EXPECT_LT(x, previous) << "ribbon " << r << " point " << k;
-            previous = x;
+        for (uint32_t k = 0; k < 10; k++){
+            EXPECT_LT(strip[k * 2].center[0], previous) << "ribbon " << r << " point " << k;
+            previous = strip[k * 2].center[0];
+        }
+        for (uint32_t k = 10; k < pack.pointsPerStrip; k++){
+            EXPECT_EQ(strip[k * 2].center[0], previous) << "ribbon " << r << " point " << k;
         }
     }
+}
+
+TEST(ParticleTrails, OneRibbonHoldsEveryLiveParticle){
+    // more live particles than a per-particle trail has points: the one strip takes them all
+    ParticleEffectDocument d;
+    d.tickRate = 30;
+    d.simulationSpace = SimulationSpace::World;
+    d.maxParticles = 200;
+    d.main.startLifetime = MinMaxCurve(100.0f);
+    d.main.startSpeed = MinMaxCurve(0.0f);
+    d.shape.enabled = false;
+    d.emission.rateOverTime = MinMaxCurve(30.0f);
+    d.trails.present = true;
+    d.trails.mode = TrailMode::Ribbon;
+    d.interpolate = false;
+    Sim sim(d);
+    for (int t = 0; t < 60; t++){
+        sim.moveTo(0.1f * t, 0.0f, 0.0f);
+        sim.ticks(1);
+    }
+    ASSERT_EQ(sim.count(), 60u);
+    memory::Arena arena("ParticleTrailsTest");
+    const TrailPack pack = ParticleRenderPrep::packTrails(sim.runtime, arena);
+    ASSERT_EQ(pack.strips, 1u);
+    EXPECT_EQ(pack.pointsPerStrip, 60u);
+    EXPECT_LE(pack.pointsPerStrip, ParticleRenderPrep::ribbonStripPoints(*sim.runtime.program()));
+    // newest (near the emitter's last place, x = 5.9) to oldest (its first, x = 0); a particle
+    // is born at its moment between two ticks along the emitter's move
+    EXPECT_NEAR(pack.vertices[0].center[0], 5.9f, 0.1f);
+    EXPECT_NEAR(pack.vertices[59 * 2].center[0], 0.0f, 0.1f);
 }
