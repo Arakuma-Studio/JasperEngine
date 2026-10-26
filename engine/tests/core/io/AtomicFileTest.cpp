@@ -77,6 +77,35 @@ TEST(AtomicFile, WritesNewFileAndCreatesDirectories){
     EXPECT_TRUE(temporarySiblings(target.parent_path()).empty());
 }
 
+TEST(AtomicFile, WithoutCreateDirectoriesAMissingFolderFails){
+    TestTempDir dir("atomic");
+    io::AtomicWriteOptions options;
+    options.createDirectories = false;
+
+    const fs::path missing = dir / "gone/c.txt";
+    const io::WriteResult refused = io::writeFileAtomic(missing, "hello", options);
+    EXPECT_FALSE(refused.ok());
+    EXPECT_EQ(refused.error, io::WriteError::MissingDirectory);
+    EXPECT_EQ(refused.code, std::errc::no_such_file_or_directory);
+    EXPECT_EQ(io::describeWriteError(refused), "its folder does not exist");
+    EXPECT_STREQ(io::writeErrorName(refused.error), "missing_directory");
+    EXPECT_FALSE(fs::exists(dir / "gone"));
+
+    // a streamed temp is not published there either, and goes
+    const fs::path temp = io::makeTemporarySiblingPath(dir / "c.txt");
+    TestTempDir::write(temp, "streamed");
+    const io::WriteResult unpublished = io::publishFile(temp, missing, options);
+    EXPECT_EQ(unpublished.error, io::WriteError::MissingDirectory);
+    EXPECT_FALSE(fs::exists(temp));
+    EXPECT_FALSE(fs::exists(dir / "gone"));
+
+    // an existing folder takes the file as usual
+    const fs::path present = dir / "c.txt";
+    ASSERT_TRUE(io::writeFileAtomic(present, "hello", options).ok());
+    EXPECT_EQ(TestTempDir::read(present), "hello");
+    EXPECT_TRUE(temporarySiblings(dir.path()).empty());
+}
+
 TEST(AtomicFile, ReplacesExistingBytes){
     TestTempDir dir("atomic");
     const fs::path target = dir / "doc.scene";

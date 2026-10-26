@@ -15,7 +15,7 @@ Conventions shared by every tool (explained once in the server instructions, not
 - [Components and properties](#components-and-properties) (11): `add_component`, `copy_component`, `get_entity`, `get_inspector_layout`, `list_component_types`, `paste_component`, `remove_component`, `reset_component`, `set_mesh_geometry`, `set_properties`, `set_transform`
 - [Prefabs](#prefabs) (12): `add_to_prefab`, `create_prefab`, `create_prefab_variant`, `get_prefab_info`, `instantiate_prefab`, `list_prefabs`, `prefab_mode`, `prefab_overrides`, `remove_from_prefab`, `replace_prefab`, `set_standalone_prefab`, `unpack_prefab`
 - [Play mode and input](#play-mode-and-input) (11): `apply_play_changes`, `discard_play_changes`, `eval_lua`, `get_play_changes`, `get_play_state`, `get_runtime_entity`, `list_runtime_entities`, `play`, `send_input`, `set_runtime_property`, `wait`
-- [Views and screenshots](#views-and-screenshots) (5): `configure_game_view`, `focus_window`, `frame_entity`, `screenshot`, `set_scene_camera`
+- [Views and screenshots](#views-and-screenshots) (6): `configure_game_view`, `find_ui_item`, `focus_window`, `frame_entity`, `screenshot`, `set_scene_camera`
 - [Shadows](#shadows) (2): `get_shadow_stats`, `set_shadow_debug`
 - [Console](#console) (6): `clear_console`, `get_log_config`, `list_timers`, `read_console`, `set_log_level`, `wait_for_log`
 - [Scripts](#scripts) (10): `attach_script`, `check_script`, `code_editor`, `compile_scripts`, `create_script`, `detach_script`, `list_scripts`, `set_script_properties`, `sync_files`, `update_script_entry`
@@ -1441,6 +1441,20 @@ Read (no arguments) or change the Game view toolbar settings (editor preferences
 | `scale` | number (1.0..5.0) |  | Zoom. |
 | `show_stats` | boolean |  |  |
 | `simulate_touch` | boolean |  | Mouse = one finger. Not while playing. |
+
+
+### `find_ui_item`
+
+*Find UI Item*
+
+Group: `editor_ux` (listed once `tool_groups` enables it, callable either way). Hints: read-only, idempotent
+
+Where editor controls with this label are drawn now (window coords, as focus_window's rect), to click them with send_input or real input. Only drawn items: scroll or open their panel first.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `label` | string | yes | Text, or the whole label with its ## id. |
+| `window` | string |  | Only in windows whose name contains this. |
 
 
 ### `focus_window`

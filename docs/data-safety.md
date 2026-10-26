@@ -118,6 +118,9 @@ io::AtomicWriteOptions cache;
 cache.durability = io::Durability::Cache;                             // no fsync: caches, thumbnails, exports
 cache.skipIfUnchanged = true;                                         // leaves an identical file (and its mtime) alone
 io::writeFileAtomic(path, bytes, cache);
+io::AtomicWriteOptions existing;
+existing.createDirectories = false;                                   // a missing folder fails (MissingDirectory) instead of being created
+io::writeFileAtomic(folderTheUserPicked / name, bytes, existing);
 io::publishFile(io::makeTemporarySiblingPath(path), path, options);   // for writers that stream to a file
 io::renameWithRetry(from, to, ec);                                    // moves and renames
 if (!result.ok()) Out::error(DocumentFiles::saveFailureMessage(path, result));

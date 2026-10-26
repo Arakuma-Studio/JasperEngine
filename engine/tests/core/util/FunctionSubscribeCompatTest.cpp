@@ -185,7 +185,9 @@ TEST(FunctionSubscribeCompatTest, ZeroAllocCall) {
     EXPECT_EQ(sum, 2002);
 }
 
-#if !defined(__EMSCRIPTEN__) && !defined(JASPERENGINE_SANITIZE_THREAD)
+// The subscribers crash on purpose (a null store, caught by the crash guard): UBSan reports that
+// store as undefined behaviour and halts first, and TSan does not run the guard's handler
+#if !defined(__EMSCRIPTEN__) && !defined(JASPERENGINE_SANITIZE_THREAD) && !defined(JASPERENGINE_SANITIZE_UNDEFINED)
 TEST(FunctionSubscribeCompatTest, CrashingSubscriberIsRemovedAndReported) {
     std::vector<std::string> reported;
     CrashHook::set([&reported](const std::string& tag, const std::string& error) { reported.push_back(tag + ": " + error); });
