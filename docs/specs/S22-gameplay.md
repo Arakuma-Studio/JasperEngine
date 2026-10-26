@@ -623,3 +623,23 @@ Recorded during implementation (branch `feat/s22-gameplay`).
     `getRigidbody2D()` does.
   - Add Component, `add_component`, `create_entity`, `edit_colliders` and the add command itself
     refuse a Character Controller 2D next to a Rigidbody 2D.
+- **P2 3D controller.**
+  - R26 "disables the controller": the controller gives way at runtime and logs once
+    (`refusedWithRigidbody`). Its saved `enabled` checkbox is left alone, so removing the Rigidbody
+    brings it back.
+  - R20 `ExtendedUpdate` is run as its steps (Update, StickToFloor, WalkStairs) with two additions:
+    - A stair walk is kept only when what stopped the walk is no higher than `stepOffset` over the
+      ground it left and ends below the feet. Without this, Jolt climbs a riser taller than
+      `stepOffset` by sliding the round bottom up its edge, or perches on it.
+    - When Jolt's StickToFloor lands on a nosing too steep to stand on, a sweep down along it is
+      kept only on walkable ground.
+    - Stick-to-floor also counts a move that ended supported. The post-step refresh at rest drops
+      contacts beyond Jolt's 1 mm tolerance, and a character walking off an edge is past that.
+  - The OE stair settings stand (min step forward `max(0.02, r)`, forward test
+    `max(0.15, r + 0.05)`), so a climbed step can land up to a radius further on in that frame.
+  - Moves skip every inner body (their own and other controllers'); controllers meet only through
+    `CharacterVsCharacterCollisionSimple`, so `characterCollisions` off lets two pass through.
+  - The post-step pass refreshes contacts only when the ground is not static or has left the world.
+  - `GameObject:getCharacterController()` adds the component when it is missing, as `getRigidbody()`.
+  - R36 on C (not enforced): one move 0.005 ms; ten controllers + the step 0.60 ms, of which the step
+    of the 1k static bodies alone is 0.23 ms and the ten inner bodies 0.27 ms.
