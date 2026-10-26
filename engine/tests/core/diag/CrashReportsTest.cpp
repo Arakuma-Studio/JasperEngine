@@ -236,6 +236,11 @@ TEST(CrashGuard, WorkerCrashReachesHandler) {
 }
 
 #if !defined(_WIN32)
+TEST(CrashChain, PreviousHandlerMayReturn) {
+    TempDir dir;
+    EXPECT_EQ(runCrashTest({"--mode", "chain_return", "--out", dir.str()}), 0);
+    EXPECT_TRUE(dir.exists("sentinel"));
+}
 TEST(CrashChain, PreviousHandlerRuns) {
     TempDir dir;
     EXPECT_NE(runCrashTest({"--mode", "chain", "--out", dir.str()}), -1);

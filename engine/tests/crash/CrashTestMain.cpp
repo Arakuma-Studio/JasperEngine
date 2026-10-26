@@ -40,9 +40,16 @@ using namespace jasperengine;
 namespace je_crash_test {
 #if !defined(_WIN32)
     char sentinelPath[1024]{};
-    void previousHandler(int, siginfo_t*, void*) {
+    void previousHandler(int sig, siginfo_t*, void*) {
         int fd = open(sentinelPath, O_CREAT | O_WRONLY, 0600);
         if (fd >= 0) { const ssize_t ignored = write(fd, "chained\n", 8); (void)ignored; close(fd); }
+        if (sig != SIGTRAP) {
+            struct sigaction action{};
+            sigemptyset(&action.sa_mask);
+            action.sa_handler = SIG_DFL;
+            sigaction(sig, &action, nullptr);
+            raise(sig);
+        }
     }
 #endif
 #if defined(_MSC_VER)
@@ -102,20 +109,28 @@ int main(int argc, char** argv) {
     config.version = "test";
     config.backend = "none";
 #if !defined(_WIN32)
-    if (std::strcmp(mode, "chain") == 0) {
+    if (std::strcmp(mode, "chain") == 0 || std::strcmp(mode, "chain_return") == 0) {
         const std::string file = (root / "sentinel").string();
         std::memcpy(sentinelPath, file.c_str(), file.size() + 1);
         struct sigaction sentinel{};
         sigemptyset(&sentinel.sa_mask);
         sentinel.sa_sigaction = previousHandler;
         sentinel.sa_flags = SA_SIGINFO;
-        sigaction(SIGSEGV, &sentinel, nullptr);
+        sigaction(std::strcmp(mode, "chain_return") == 0 ? SIGTRAP : SIGSEGV, &sentinel, nullptr);
     }
 #endif
     diag::crash::install(config);
     log(std::string("crash test mode ") + mode);
 
     const std::string name = mode;
+#if !defined(_WIN32)
+    if (name == "chain_return") {
+        raise(SIGTRAP);
+        diag::crash::shutdown();
+        Logger::shutdown();
+        return 0;
+    }
+#endif
     if (name == "chain") { log("last line before the crash"); diag::crash::debugCrash("segv"); }
     if (name == "worker_stack_overflow") {
         log("last line before the crash");

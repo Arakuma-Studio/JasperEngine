@@ -200,8 +200,11 @@ void chain(int sig, siginfo_t* info, void* context) {
     if (old.sa_handler != SIG_DFL && old.sa_handler != SIG_IGN) {
         if (old.sa_flags & SA_SIGINFO) old.sa_sigaction(sig, info, context);
         else old.sa_handler(sig);
+        // A previous handler owns what happens next (it may fix the context, or debuggerd
+        // may already have queued its own re-delivery). Do not replace that decision.
+        return;
     }
-    // A previous handler returning must not resume the faulting instruction indefinitely.
+    // Default/ignored fatal signals still need the OS's original terminating action.
     struct sigaction def{};
     def.sa_handler = SIG_DFL;
     sigemptyset(&def.sa_mask);
