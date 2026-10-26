@@ -62,6 +62,7 @@ struct AlternateStack {
 thread_local AlternateStack alternate;
 #if defined(__APPLE__)
 thread_local char preparedThreadName[64]{};
+thread_local int64_t preparedThreadId = 0;
 #endif
 
 void raw(int fd, const char* text, size_t size) {
@@ -88,7 +89,7 @@ uint64_t monotonicNs() {
 }
 int64_t threadId() {
 #if defined(__APPLE__)
-    return static_cast<int64_t>(pthread_mach_thread_np(pthread_self()));
+    return preparedThreadId;
 #else
     return static_cast<int64_t>(syscall(SYS_gettid));
 #endif
@@ -347,6 +348,9 @@ void prepareThreadPlatform() {
 #if defined(__APPLE__)
     // A fatal handler must not query pthread's name or take its internal locks.
     pthread_getname_np(pthread_self(), preparedThreadName, sizeof(preparedThreadName));
+    uint64_t id = 0;
+    pthread_threadid_np(nullptr, &id);
+    preparedThreadId = static_cast<int64_t>(id);
 #endif
     if (alternate.memory != MAP_FAILED) return;
     stack_t current{};
