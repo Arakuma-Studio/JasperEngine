@@ -15,6 +15,7 @@ import asyncio
 import json
 import math
 import re
+import shutil
 import time
 
 import harness
@@ -29,6 +30,17 @@ S: dict = {}
 
 
 # ---------------------------------------------------------------------------- helpers
+
+def bone_side(path: str):
+    """The side a bone name says ("L", "R" or None): Left/Right, or a lone l / r between separators."""
+    leaf = path.rsplit("/", 1)[-1].lower()
+    if ("left" in leaf) != ("right" in leaf):
+        return "L" if "left" in leaf else "R"
+    if "left" in leaf:
+        return None
+    sides = {t.upper() for t in re.split(r"[^a-z0-9]+", leaf) if t in ("l", "r")}
+    return sides.pop() if len(sides) == 1 else None
+
 
 async def edit(ed: Editor, **args):
     """edit_animation that must succeed: (structured result, text)"""
@@ -130,9 +142,12 @@ async def test_tools_and_schema(ed: Editor):
 
 
 async def test_create_and_read(ed: Editor):
-    (ed.project / "assets" / "anim").mkdir(parents=True, exist_ok=True)
+    # agents review M1: the guide's first call in a fresh project makes the clip's folder (as the
+    # pose tools do), no create_folder first
+    ed.check(not (ed.project / "assets" / "anim").exists(), "the fixture has no assets/anim folder")
     out, text = await edit(ed, clip=BOB, create={}, wrap="loop", frame_rate=24, tracks=BOB_TRACKS,
                            events=[{"time": 0.5, "function": "onBob", "args": ["up", 2, True]}])
+    ed.check("made the folder assets/anim" in out["changes"], f"the folder is made: {out['changes']}")
     ed.check_eq(out["clip"], BOB, "project-relative clip")
     ed.check(out["created"] and not out["read_only"], f"created: {out}")
     ed.check_eq((out["wrap"], out["frame_rate"], out["length"]), ("loop", 24, 1), "settings")
@@ -239,7 +254,12 @@ async def test_file_mode_rejections(ed: Editor):
         await refused(ed, "edit_animation", {"clip": "assets/anim/copy.anim", "create": {"from": given}}, "move_asset")
     await refused(ed, "edit_animation", {"clip": "assets/anim/copy.anim", "create": {"remove_tracks": True}}, "needs from")
     await refused(ed, "edit_animation", {"clip": "assets/anim/copy.anim", "create": {"from": WALK_SUB, "remove_tracks": True}}, "needs from")
-    await refused(ed, "edit_animation", {"clip": "assets/nofolder/x.anim", "create": {}}, "create_folder")
+    made, _ = await edit(ed, clip="assets/nofolder/deeper/x.anim", create={})
+    ed.check(made["created"] and (ed.project / "assets/nofolder/deeper/x.anim").is_file(), f"nested folders made: {made}")
+    shutil.rmtree(ed.project / "assets" / "nofolder")
+    (ed.project / "assets" / "nofolder.anim").write_text("")
+    await refused(ed, "edit_animation", {"clip": "assets/nofolder.anim/x.anim", "create": {}}, "is a file, not a folder")
+    (ed.project / "assets" / "nofolder.anim").unlink()
     await refused(ed, "edit_animation", {"clip": WALK_SUB, "wrap": "loop"}, "read-only")
     # all or nothing: a valid track and a bad event change nothing
     await refused(ed, "edit_animation", {"clip": BOB, "tracks": [{"path": "Arm", "channel": "scale", "keys": [{"time": 0, "value": [2, 2, 2]}]}],
@@ -407,39 +427,56 @@ async def test_bindings_hero_robot(ed: Editor):
     ed.check(all(p.startswith("Hero/") for p in S["walk_paths"]), f"Hero's paths include its glTF root node: {S['walk_paths'][:3]}")
     spine = next((m for m in b["missing"] if m["path"] == "Hero/mixamorig:Hips/mixamorig:Spine" and m["channel"] == "rotation"), None)
     ed.check(spine is not None and spine["nearest"][:1] == ["Robot/pelvis/spine"], f"the guide's nearest example: {spine}")
+    # final agents review I1: Robot is another rig. Rotation keys are absolute local rotations and its
+    # rest orientations differ from Hero's (its thighs rest turned 180 degrees): a renamed path would
+    # mangle it, so those paths get no fix but rest_mismatch, rig_mismatch says to make Robot its own
+    # clip, and no fix goes to a bone of the other side (Left/Right vs .L/.R)
+    ed.check("rig_mismatch" in b and "bake" in b["rig_mismatch"], f"the report says Robot is another rig: {json.dumps(b)[:900]}")
+    legs = [m for m in b["missing"] if m["channel"] == "rotation" and m["path"].endswith(("mixamorig:LeftUpLeg", "mixamorig:RightUpLeg"))]
+    ed.check_eq(len(legs), 2, f"both legs are missing on Robot: {[m['path'] for m in b['missing']]}")
+    ed.check(all("fix" not in m and "rest_mismatch" in m for m in legs), f"no thigh fix (other rest pose): {legs}")
+    for m in b["missing"]:
+        if "fix" in m:
+            ed.check(bone_side(m["path"]) is None or bone_side(m["fix_path"]) in (None, bone_side(m["path"])),
+                     f"a fix keeps its side: {m['path']} -> {m['fix_path']}")
+    text = (await ed.call_raw("get_animation", {"clip": "assets/anim/walk.anim", "root": "Robot"})).text
+    ed.check("no fix: another rig's rest pose" in text and "another rig" in text, f"the text says it too: {text[:900]}")
+
+    # path fixes are for renamed or reparented objects of the same rig: Hero's glTF root node renamed,
+    # every track misses, each gets a fix (the rig's own rest), and the fixes apply together
+    await ed.call("rename_entity", entity="Hero/Hero", name="HeroRig")
+    renamed = (await ed.call("get_animation", clip="assets/anim/walk.anim", root="Hero"))["bindings"]
+    ed.check_eq(renamed["resolved"], 0, f"no path binds after the rename: {json.dumps(renamed)[:600]}")
+    fixes = [m for m in renamed["missing"] if "fix" in m]
+    ed.check_eq(len(fixes), len(S["walk_paths"]), f"every missing path carries fix: {json.dumps(renamed)[:900]}")
+    ed.check(all(m["fix_path"] == "HeroRig" + m["path"][len("Hero"):] for m in fixes), f"the renamed node's paths: {fixes[:2]}")
+    ed.check("rig_mismatch" not in renamed and "fix_with" in renamed, f"the same rig: {renamed.get('rig_mismatch')}")
+    spine = next(m for m in fixes if m["path"] == "Hero/mixamorig:Hips/mixamorig:Spine" and m["channel"] == "rotation")
     # agents review I3: the fix is a write_file edit renaming the path, every key kept
-    ed.check("fix_with" in b and all("fix" in m for m in b["missing"] if m["status"] == "missing_path" and m["nearest"]),
-             f"missing paths with a nearest one carry fix: {json.dumps(b)[:600]}")
-    await ed.call("move_asset", path="assets/anim/walk.anim", to="assets/anim/walk_robot.anim", copy=True)
-    before = await ed.call("get_animation", clip="assets/anim/walk_robot.anim", root="Robot", max_keys=100000)
+    await ed.call("move_asset", path="assets/anim/walk.anim", to="assets/anim/walk_one.anim", copy=True)
+    before = await ed.call("get_animation", clip="assets/anim/walk_one.anim", root="Hero", max_keys=100000)
     keys_before = next(t for t in before["tracks"] if t["path"] == spine["path"] and t["channel"] == "rotation")["keys"]
-    r = await ed.call_raw("write_file", {"path": "assets/anim/walk_robot.anim", "edits": [spine["fix"]]})
+    r = await ed.call_raw("write_file", {"path": "assets/anim/walk_one.anim", "edits": [spine["fix"]]})
     ed.check(not r.is_error, f"the fix applies: {r.text[:500]}")
-    after = await ed.call("get_animation", clip="assets/anim/walk_robot.anim", root="Robot", max_keys=100000)
+    after = await ed.call("get_animation", clip="assets/anim/walk_one.anim", root="Hero", max_keys=100000)
     ed.check_eq(after["bindings"]["resolved"], before["bindings"]["resolved"] + 1, "the renamed track binds")
-    moved = next(t for t in after["tracks"] if t["path"] == "Robot/pelvis/spine" and t["channel"] == "rotation")
+    moved = next(t for t in after["tracks"] if t["path"] == spine["fix_path"] and t["channel"] == "rotation")
     ed.check_eq(moved["keys"], keys_before, "every key kept")
     ed.check(not any(m["path"] == spine["path"] for m in after["bindings"]["missing"]), "no longer missing")
     # FX4 (verify review A): every fix applied together merges no tracks and loses no key
     await ed.call("move_asset", path="assets/anim/walk.anim", to="assets/anim/walk_all.anim", copy=True)
-    full = await ed.call("get_animation", clip="assets/anim/walk_all.anim", root="Robot", max_keys=100000)
-    misses = full["bindings"]["missing"]
-    fixes = [m for m in misses if "fix" in m]
+    full = await ed.call("get_animation", clip="assets/anim/walk_all.anim", root="Hero", max_keys=100000)
+    fixes = [m for m in full["bindings"]["missing"] if "fix" in m]
     ed.check(len(fixes) > 2, f"several fixes: {len(fixes)}")
     existing = {(t["path"], t["channel"]) for t in full["tracks"]}
     targets = [(m["fix_path"], m["channel"]) for m in fixes]
     ed.check_eq(len(set(targets)), len(targets), f"no two fixes share a target: {targets}")
     ed.check(not set(targets) & existing, f"no fix targets a track the clip has: {set(targets) & existing}")
-    legs = [m for m in misses if m["channel"] == "rotation" and m["path"].endswith(("mixamorig:LeftUpLeg", "mixamorig:RightUpLeg"))]
-    ed.check_eq(len(legs), 2, f"both legs are missing on Robot: {[m['path'] for m in legs]}")
-    ed.check(all("fix" in m or "fix_conflict" in m for m in legs) and
-             len({m.get("fix_path") for m in legs if "fix" in m}) == sum("fix" in m for m in legs),
-             f"the two legs never get the same thigh: {[(m['path'], m.get('fix_path'), m.get('fix_conflict')) for m in legs]}")
-    ed.check("apply together" in full["bindings"]["fix_with"], full["bindings"]["fix_with"])
+    ed.check("apply together" in full["bindings"]["fix_with"] and "same rig" in full["bindings"]["fix_with"], full["bindings"]["fix_with"])
     keys_by_path = {(t["path"], t["channel"]): t["keys"] for t in full["tracks"]}
     r = await ed.call_raw("write_file", {"path": "assets/anim/walk_all.anim", "edits": [m["fix"] for m in fixes]})
     ed.check(not r.is_error, f"every fix applies in one write_file: {r.text[:500]}")
-    applied = await ed.call("get_animation", clip="assets/anim/walk_all.anim", root="Robot", max_keys=100000)
+    applied = await ed.call("get_animation", clip="assets/anim/walk_all.anim", root="Hero", max_keys=100000)
     ed.check_eq(len(applied["tracks"]), len(full["tracks"]), "no track merged into another")
     ed.check(not any("merged" in w for w in applied["warnings"]), f"no merge warning: {applied['warnings']}")
     after_by_path = {(t["path"], t["channel"]): t["keys"] for t in applied["tracks"]}
@@ -448,6 +485,8 @@ async def test_bindings_hero_robot(ed: Editor):
                     f"{m['path']} -> {m['fix_path']} keeps its keys")
     ed.check_eq(sum(len(k) for k in after_by_path.values()), sum(len(k) for k in keys_by_path.values()), "no key lost")
     ed.check_eq(applied["bindings"]["resolved"], full["bindings"]["resolved"] + len(fixes), "each fixed track binds")
+    ed.check_eq(applied["bindings"]["resolved"], applied["bindings"]["total"], "the renamed rig binds the fixed clip whole")
+    await ed.call("rename_entity", entity="Hero/HeroRig", name="Hero")
     # a bone's bound transform in the preview is the sampled value
     r = await ed.call_raw("preview_animation", {"animation": "Hero", "action": "seek", "time": 0.3})
     ed.check(not r.is_error and r.structured["bound_total"] >= len(r.structured["bound"]) and 0 < len(r.structured["bound"]) <= 8,
@@ -515,6 +554,10 @@ async def test_bake_to_clip(ed: Editor):
     bake = r.structured["bake"]
     ed.check(bake["clip"].endswith(".anim") and bake["tracks"] > 10 and bake["added_player"], f"baked: {bake}")
     ed.check("one scene undo step" in r.text, r.text)
+    # agents review M2: a bake-only call says the pose file is unchanged (the clip was written), and
+    # the Lua hint runs as written
+    ed.check("(pose file unchanged)" in r.text and "nothing written" not in r.text, r.text)
+    ed.check(f'GameObject(self.scene, self.entity):getAnimationPlayer():play("{bake["name"]}")' in r.text, r.text)
     clip = await ed.call("get_animation", clip=bake["clip"], root="Hero")
     ed.check(clip["bindings"]["missing"] == [] and clip["source"]["kind"] == "pose", f"bone paths bind on Hero: {json.dumps(clip['bindings'])[:500]}")
     info = await ed.call("get_animation", entity="Hero")
@@ -1040,7 +1083,8 @@ async def test_guide_names_exist(ed: Editor):
     known |= {"missing_component", "lattice_index_out_of_range", "morph_index_out_of_range", "legacy_model_layout",
               "unaddressable_name", "duplicate_sibling_name", "missing_path", "quad_out", "in_out", "external_changes", "frame_rate",
               # results of calls this test does not repeat: create {from}, an extract, a missing path with a fix, > 50 users
-              "added_player", "removed_tracks", "model_clip_users", "fix_with", "users_total", "fix_path", "fix_conflict"}
+              "added_player", "removed_tracks", "model_clip_users", "fix_with", "users_total", "fix_path", "fix_conflict",
+              "rest_mismatch", "rig_mismatch"}
     words = set(re.findall(r"(?<![\w./:-])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?![\w(])", text))
     unknown = sorted(w for w in words if w not in known)
     ed.check(not unknown, f"the guide names unknown things: {unknown}")

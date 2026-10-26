@@ -78,9 +78,10 @@ LIMITS.update({"get_pose_animation": 1100, "edit_pose_animation": 3000, "render_
 # edit_animation's grammar and tween texts to jasper://docs/animation, synthesize_texture's params
 # fields to jasper://docs/texture-synthesis, edit_lattice's per-op fields, render_pose_animation's
 # legend and get_pose_animation's metric names to their guides: 146 tools measured 107802; the
-# limit lowered to that + 300, and caps on the three animation tools. Measured after the final
-# review fixes (tool_budget.py, FX4): 107871, edit_animation 3494 (6 under its cap: a wording change
-# there needs an equal trim), get_animation 670, preview_animation 654
+# limit lowered to that + 300, and caps on the three animation tools. Measured after the merge with
+# main and the final review fixes (tool_budget.py, F2): 107841 (261 under TOTAL_LIMIT), edit_animation
+# 3494 (6 under its cap: a wording change there needs an equal trim), get_animation 670,
+# preview_animation 654
 LIMITS.update({"edit_animation": 3500, "get_animation": 750, "preview_animation": 700})
 TOTAL_LIMIT = 108102
 

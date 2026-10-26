@@ -1606,8 +1606,10 @@ void editPoseAnimationTool(const CallPtr& call) {
     Json out = {{"path", document->path()}, {"pose_count", document->data().poses.size()}, {"length", full["length"]},
                 {"changes", state.changes}, {"clamped", clampJson(clamped)}, {"warnings", state.warnings},
                 {"preset", full["preset"]}, {"poses", full["poses"]}};
+    // a bake-only call writes its bake below: the pose file is what did not change (agents review M2)
     std::string text = document->path() + ": " + std::to_string(document->data().poses.size()) + " pose(s), " +
-                       fmt(full["length"].get<double>()) + " s" + (changed ? "" : " (no change: nothing written)");
+                       fmt(full["length"].get<double>()) + " s" +
+                       (changed ? "" : bakeModel != NULL_ENTITY ? " (pose file unchanged)" : " (no change: nothing written)");
     // as get: why the poses have no metrics (the preview model is not a usable humanoid)
     if (rigUse.info && !rigUse.info->rig) {
         out["rig_error"] = rigUse.info->error;

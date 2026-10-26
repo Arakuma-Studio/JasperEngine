@@ -496,7 +496,8 @@ bool editor::PoseBaker::bakeToClip(Project* project, uint32_t sceneId, Entity mo
 std::string editor::PoseBaker::clipBakeStatusLine(const std::string& animation, const PoseClipBakeResult& result){
     return "Baked '" + animation + "' to the clip '" + result.clip + "' (" + std::to_string(result.tracks) + " tracks, " +
            std::to_string(result.frames) + " keys each), state '" + result.name + "' of the Animation Player" +
-           (result.addedPlayer ? " (added)" : "") + ": AnimationPlayer:play(\"" + result.name + "\")";
+           (result.addedPlayer ? " (added)" : "") + "; in a Lua script of the model: GameObject(self.scene, self.entity):"
+           "getAnimationPlayer():play(\"" + result.name + "\") or Model(self.scene, self.entity):playAnimation(\"" + result.name + "\")";
 }
 
 namespace {
