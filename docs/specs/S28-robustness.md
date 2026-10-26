@@ -593,3 +593,13 @@ passes, smoke PASS. `tools/crash/test_symbolicate.py` passes on B against a fres
   `--mode concurrent`. It failed because no `crash.txt` existed: exit `-11`, stderr
   `JASPERENGINE CRASH: another fatal signal while reporting`. The separate `--mode recursive`
   control terminated immediately. The gate restored the fixed sources before its next build.
+- Server D fixed-source gate: `WERROR=1 tools/build.sh linux` passes (editor/install and
+  standalone game). The crash CTests (`native-crash-reports`, `posix-crash-signal-safety`,
+  `crash.symbolicate`) pass 3/3 in 15.77 s. All 13 POSIX subprocess modes pass, including
+  complete concurrent-fault reports, immediate recursive termination, and saved-handler
+  chaining after an earlier report's handler returned. Symbolicated stacks contain the fault
+  function once and no engine handler frames.
+- Windows review additionally covers recursive CRT faults: the synthetic path now terminates
+  directly before invoking any saved abort callback. Its Windows-only `recursive_abort`
+  subprocess installs a deliberately stalled previous abort handler; execution awaits a
+  Windows host, alongside the existing Windows dump/deadline checks.
