@@ -31,6 +31,9 @@
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
 #include <mach-o/loader.h>
+#if defined(__aarch64__) || defined(__arm64__)
+#include <mach/arm/thread_status.h>
+#endif
 #else
 #include <link.h>
 #include <sys/prctl.h>
@@ -101,9 +104,9 @@ const char* reason(int sig) {
 void registers(void* context, uintptr_t& pc, uintptr_t& sp) {
     if (!context) return;
     const auto* uc = static_cast<ucontext_t*>(context);
-#if defined(__APPLE__) && defined(__aarch64__)
-    pc = uc->uc_mcontext->__ss.__pc;
-    sp = uc->uc_mcontext->__ss.__sp;
+#if defined(__APPLE__) && (defined(__aarch64__) || defined(__arm64__))
+    pc = arm_thread_state64_get_pc(uc->uc_mcontext->__ss);
+    sp = arm_thread_state64_get_sp(uc->uc_mcontext->__ss);
 #elif defined(__APPLE__) && defined(__x86_64__)
     pc = uc->uc_mcontext->__ss.__rip;
     sp = uc->uc_mcontext->__ss.__rsp;

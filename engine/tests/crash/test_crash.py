@@ -14,6 +14,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("binary", type=Path)
     parser.add_argument("--symbolicate", type=Path, required=True)
+    parser.add_argument("--expect-asan", action="store_true")
     args = parser.parse_args()
     modes = ["segv", "abort", "terminate", "stack_overflow", "worker_segv", "worker_stack_overflow", "fpe", "guard_worker"]
     if os.name == "nt":
@@ -49,6 +50,9 @@ def main():
                 tail = (files[0].parent / "log-tail.txt").read_text()
                 assert "last line before the crash" in tail or mode == "guard_worker", (mode, tail)
                 assert "JASPERENGINE CRASH:" in result.stderr, (mode, result.stderr)
+                if args.expect_asan and mode == "segv":
+                    assert "AddressSanitizer" in result.stderr, "the previous sanitizer handler did not run"
+                    assert result.stderr.index("JASPERENGINE CRASH:") < result.stderr.index("AddressSanitizer"), result.stderr
                 if mode == "chain":
                     assert (Path(root) / "sentinel").exists(), result.stderr
                 if os.name == "nt":
