@@ -499,3 +499,7 @@ The initial full normal run's two `CrashHook.*` failures were a real report-hook
 reentrancy deadlock; this branch fixes it, and both refreshed normal and sanitizer focused
 runs pass them. Fatal helper processes deliberately print sanitizer signal diagnostics after
 our report; those are expected evidence that the saved sanitizer handler is still chained.
+- Server D, full normal rerun after the hook fix: 1,077 core tests and 392 editor tests pass,
+  zero failures, zero skips (both process exit codes zero). This includes both
+  `LoggerCrashFlushTest` cases through the editor compatibility forwarder. The initial shared-D
+  timing failure did not recur in this run.
