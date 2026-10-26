@@ -345,6 +345,10 @@ namespace jasperengine::editor {
         void notifyProjectPathChange();
         void cancelThumbnailWork();
         void resumeThumbnailWork();
+        // Stops thumbnail generation for good, before the engine view goes
+        // (App::engineViewDestroyed): a step renders preview scenes off the main thread and
+        // commits their render commands, which must be executed before the queue shuts down.
+        void stopThumbnailWork();
 
         void handleExternalDragEnter();
         void handleExternalDragLeave();

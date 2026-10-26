@@ -106,12 +106,15 @@ namespace jasperengine::editor {
         static std::string legacyGuid(const std::filesystem::path& relativePath);
         static bool isGuid(const std::string& text);
 
-        // The file's top-level `guid:` value, empty without one
+        // The file's top-level `guid:` value, empty without one (block style: the first such
+        // line; a flow style document is parsed)
         static std::string readGuid(const std::filesystem::path& fullPath);
         // Writes `guid` as the file's top-level `guid:` value, the rest of the file unchanged
-        // (a line replaced or inserted at the top)
+        // (a line replaced or inserted at the top); a flow style document is written again
+        // in block style, the GUID first
         static bool writeGuid(const std::filesystem::path& fullPath, const std::string& guid);
-        // In-file identity with the former GUIDs (`formerGuids:` right after `guid:`)
+        // In-file identity with the former GUIDs (`formerGuids:` right after `guid:`); a flow
+        // style document is parsed when read and written again in block style, identity first
         static bool readInFileIdentity(const std::filesystem::path& fullPath, Guid& guid, std::vector<Guid>& formerGuids);
         static bool writeInFileIdentity(const std::filesystem::path& fullPath, const Guid& guid, const std::vector<Guid>& formerGuids);
 

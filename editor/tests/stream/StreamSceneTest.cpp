@@ -41,14 +41,6 @@ namespace {
             Stream::decodeSceneProjectEntities(nullptr, &project, node);
         }
         ~LoadedScene(){
-            // a closed scene does not delete its cameras' framebuffers (RenderSystem deletes one only
-            // when its entity is destroyed); free them so LeakSanitizer sees the tests' own leaks
-            ComponentArray<CameraComponent>* cameras = scene->getComponentArray<CameraComponent>();
-            for (size_t i = 0; i < cameras->size(); i++){
-                CameraComponent& camera = cameras->getComponentFromIndex(i);
-                delete camera.framebuffer;
-                camera.framebuffer = nullptr;
-            }
             project.scene = nullptr;
         }
 

@@ -207,7 +207,25 @@ Vector2& Vector2::operator *= ( const float fScalar ){
 Vector2& Vector2::operator *= ( const Vector2& rkVector ){
     x *= rkVector.x;
     y *= rkVector.y;
-    
+
+    return *this;
+}
+
+Vector2& Vector2::operator /= ( const float fScalar ){
+    assert( fScalar != 0.0 );
+
+    float fInv = 1.0f / fScalar;
+
+    x *= fInv;
+    y *= fInv;
+
+    return *this;
+}
+
+Vector2& Vector2::operator /= ( const Vector2& rkVector ){
+    x /= rkVector.x;
+    y /= rkVector.y;
+
     return *this;
 }
 

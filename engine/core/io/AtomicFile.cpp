@@ -430,6 +430,21 @@ namespace {
         return buffer;
     }
 
+    // The target's folder: created when missing, or (createDirectories false) required
+    WriteResult prepareDirectory(const fs::path& directory, const AtomicWriteOptions& options){
+        std::error_code ec;
+        if (!options.createDirectories){
+            if (!fs::is_directory(directory, ec))
+                return failure(WriteError::MissingDirectory, ec ? ec : std::make_error_code(std::errc::no_such_file_or_directory),
+                               "open directory", directory);
+            return {};
+        }
+        fs::create_directories(directory, ec);
+        if (ec)
+            return failure(WriteError::CreateDirectory, ec, "create directory", directory);
+        return {};
+    }
+
 }
 
 WriteResult writeFileAtomic(const fs::path& target, std::string_view bytes, const AtomicWriteOptions& options){
@@ -444,10 +459,9 @@ WriteResult writeFileAtomic(const fs::path& target, std::string_view bytes, cons
         return failure(WriteError::ReadOnlyTarget, std::make_error_code(std::errc::permission_denied), "replace", realTarget);
 
     if (realTarget.has_parent_path()){
-        std::error_code ec;
-        fs::create_directories(realTarget.parent_path(), ec);
-        if (ec)
-            return failure(WriteError::CreateDirectory, ec, "create directory", realTarget.parent_path());
+        WriteResult prepared = prepareDirectory(realTarget.parent_path(), options);
+        if (!prepared.ok())
+            return prepared;
     }
 
     const fs::path temp = makeTemporarySiblingPath(realTarget);
@@ -464,11 +478,10 @@ WriteResult publishFile(const fs::path& temp, const fs::path& target, const Atom
         return failure(WriteError::OpenTemp, std::make_error_code(std::errc::no_such_file_or_directory), "open", temp);
     }
     if (realTarget.has_parent_path()){
-        std::error_code ec;
-        fs::create_directories(realTarget.parent_path(), ec);
-        if (ec){
+        WriteResult prepared = prepareDirectory(realTarget.parent_path(), options);
+        if (!prepared.ok()){
             removeQuietly(temp);
-            return failure(WriteError::CreateDirectory, ec, "create directory", realTarget.parent_path());
+            return prepared;
         }
     }
     return publishPrepared(temp, realTarget, options, false);
@@ -540,6 +553,7 @@ const char* writeErrorName(WriteError error){
         case WriteError::None: return "none";
         case WriteError::Unchanged: return "unchanged";
         case WriteError::CreateDirectory: return "create_directory";
+        case WriteError::MissingDirectory: return "missing_directory";
         case WriteError::OpenTemp: return "open_temp";
         case WriteError::WriteTemp: return "write_temp";
         case WriteError::SyncTemp: return "sync_temp";
@@ -557,6 +571,8 @@ std::string describeWriteError(const WriteResult& result){
         return "the file is read-only (is it locked by version control?)";
     if (result.error == WriteError::Cancelled)
         return "the write was cancelled";
+    if (result.error == WriteError::MissingDirectory)
+        return "its folder does not exist";
     if (result.code == std::errc::no_space_on_device)
         return "the disk is full";
     switch (result.error){

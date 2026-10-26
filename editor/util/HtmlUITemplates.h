@@ -17,7 +17,8 @@ namespace jasperengine::editor {
         static std::string documentText(const std::string& name);
         // RCSS that RmlUi 6.3 accepts as it is (and standard CSS a browser shows the same way)
         static std::string styleSheetText();
-        // Writes <name>.html and <name>.css; false (and error) when a file cannot be written
+        // Writes <name>.html and <name>.css into the existing `directory`; false (and error) when
+        // a file cannot be written or the directory does not exist (it is never created)
         static bool createDocument(const std::filesystem::path& directory, const std::string& name, std::string& error);
     };
 
