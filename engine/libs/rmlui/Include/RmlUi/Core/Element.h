@@ -641,6 +641,15 @@ public:
 	/// Return the computed values of the element's properties. These values are updated as appropriate on every Context::Update.
 	const ComputedValues& GetComputedValues() const;
 
+	/// Fork (P7-L): makes the element a layout boundary, or a normal element again. A boundary is a box whose size its
+	/// descendants cannot change (the owner decides: a positioned scroll container of a definite width and height, as
+	/// the engine's virtual list views are): a layout dirtied inside it formats the boundary alone, again in its
+	/// current box, instead of the whole document (ElementDocument::UpdateLayout). A change of the boundary itself or
+	/// outside it lays the document out as before.
+	void SetLayoutBoundary(bool boundary);
+	/// Fork (P7-L): true when the element is a layout boundary.
+	bool IsLayoutBoundary() const;
+
 protected:
 	void Update(float dp_ratio, Vector2f vp_dimensions);
 	void Render();
@@ -835,6 +844,9 @@ private:
 	bool line_clamp_hidden : 1;
 	// It draws a line-clamp ellipsis itself as a block container (ElementMeta::line_clamp_ellipsis, fork P6-L1).
 	bool draws_line_clamp_ellipsis : 1;
+	// A layout boundary (fork P7-L, SetLayoutBoundary), and queued for a layout of its own by its document.
+	bool layout_boundary : 1;
+	bool layout_boundary_dirty : 1;
 
 	OwnedElementList children;
 	int num_non_dom_children;
@@ -907,6 +919,7 @@ private:
 	friend class Rml::ElementScroll;
 	friend class Rml::ElementCascade;
 	friend class Rml::LineClampAccess;
+	friend class Rml::ElementDocument;
 	friend RMLUICORE_API void Rml::ReleaseFontResources();
 };
 

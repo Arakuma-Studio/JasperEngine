@@ -78,6 +78,26 @@ struct InspectMedia {
     InspectRect controlsBar, playButton, timeline, muteButton;
 };
 
+// A virtual view's window (S17 R39): <list-view>, <grid-view>, <tree-view>, <table-view>. Indices
+// are 0-based (data-model indices, data-for's i); -1 for none
+struct InspectWidget {
+    std::string kind;                  // "list", "grid", "tree", "table"
+    int count = 0;
+    int first = -1, last = -1;         // the visible items
+    int pool = 0;                      // row elements
+    int poolBound = 0;                 // the most the pool may hold (R2)
+    int overscan = 0;
+    int lanes = 1;
+    std::string selection;             // "none", "single", "multiple"
+    std::vector<int> selected;
+    std::vector<std::string> selectedKeys;
+    int active = -1;
+    float scrollTop = 0, totalHeight = 0;
+    std::string source;                // "model:<name>", "lua", ""
+    bool layoutBoundary = false, rowAliases = false;
+    std::string sortKey, sortDirection;
+};
+
 struct InspectElement {
     int index = -1;            // position in the returned list
     int parent = -1;           // index of the parent in the list, -1 when not listed
@@ -94,6 +114,7 @@ struct InspectElement {
     InspectFlags flags;
     std::vector<InspectEffect> effects;   // p5-tooling: the effects it draws with, in property order
     std::shared_ptr<InspectMedia> media;  // p6-video: a <video>'s state, null for other elements
+    std::shared_ptr<InspectWidget> widget;   // S17: a virtual view's window, null for other elements
 };
 
 struct InspectBoxModel {
@@ -140,6 +161,33 @@ struct InspectDetail {
     InspectRaster raster;
 };
 
+// The document's tooltip and the drag in progress (S17 R39); refs as InspectElement::ref
+struct InspectTooltip {
+    bool visible = false;
+    std::string source;                // the element it is about
+    std::string text;
+    InspectRect rect;
+    std::string side;
+};
+
+struct InspectDrag {
+    bool active = false;
+    std::string source, target;        // target: the drop target under the drag ("" none)
+    std::vector<std::string> types;
+    bool allowed = false;
+    std::string effect;                // the dropEffect it would end with
+    bool programmatic = false;         // UIDrag
+};
+
+// The last hot reload of the document (S17 R31)
+struct InspectReload {
+    std::string mode;                  // "patch", "rebuild"; "" before one
+    int kept = 0, updated = 0, inserted = 0, removed = 0, replaced = 0, runtimeKept = 0, scriptsRerun = 0;
+    std::string fallbackReason;
+    double ms = 0;
+    std::vector<std::string> causes;
+};
+
 struct DocumentInfo {
     Entity entity = NULL_ENTITY;
     std::string html;                 // asset-relative (the component's filename)
@@ -152,6 +200,9 @@ struct DocumentInfo {
     std::vector<compat::Diagnostic> diagnostics;
     std::vector<std::string> dependencies;
     std::vector<std::string> dataModels;
+    InspectTooltip tooltip;            // S17
+    InspectDrag drag;
+    InspectReload reload;
 };
 
 class JASPERENGINE_API HtmlUIInspector {

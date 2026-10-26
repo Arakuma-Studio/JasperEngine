@@ -3,6 +3,7 @@
 
 #include "HtmlCssLexer.h"
 
+#include <algorithm>
 #include <cstring>
 #include <initializer_list>
 
@@ -525,6 +526,17 @@ std::vector<HtmlCssLexer::Token> HtmlCssLexer::lexLine(Language language, const 
         lexHtml(line, state, tokens);
     }
     return tokens;
+}
+
+HtmlCssLexer::NamePosition HtmlCssLexer::htmlNamePosition(const std::string& line, int column, State lineState) {
+    column = std::max(0, std::min<int>(column, static_cast<int>(line.size())));
+    if (column >= 1 && line[column - 1] == '<') return NamePosition::Tag;
+    if (column >= 2 && line[column - 1] == '/' && line[column - 2] == '<') return NamePosition::Tag;
+    lexLine(Language::Html, line.substr(0, column), lineState);
+    const bool afterSpace = column == 0 || line[column - 1] == ' ' || line[column - 1] == '\t';
+    if (lineState.inHtmlTag && !lineState.expectingAttributeValue && lineState.attributeQuote == 0 && afterSpace)
+        return NamePosition::Attribute;
+    return NamePosition::None;
 }
 
 bool HtmlCssLexer::expectsCssProperty(Language language, const State& state) {

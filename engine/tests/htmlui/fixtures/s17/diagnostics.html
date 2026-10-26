@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>diagnostics</title>
+  <style>
+    body { margin: 0; font-family: sans-serif; font-size: 14px; }
+    #chat { height: 200px; width: 300px; }
+    .line { height: 20px; }
+  </style>
+</head>
+<body>
+  <!-- no definite height: HTMLUI-HTML-0029, 20 rows laid out -->
+  <list-view id="unsized" item-height="20">
+    <template><div class="line"></div></template>
+  </list-view>
+  <list-view id="chat" item-height="20" anchor="end">
+    <template><div class="line"></div></template>
+  </list-view>
+  <div data-model="big">
+    <!-- 600 elements: HTMLUI-HTML-0031 -->
+    <p class="many" data-for="row : rows">{{row}}</p>
+  </div>
+</body>
+</html>

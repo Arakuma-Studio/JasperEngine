@@ -1,0 +1,3 @@
+<div class="markdown-body"><p>The reply streams a code block:</p><pre><code data-lang="python">def f(x):
+    return x * 2
+</code></pre></div>

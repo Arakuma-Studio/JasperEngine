@@ -5,6 +5,7 @@
 
 #include "Log.h"
 #include "script/LuaBinding.h"
+#include "htmlui/widgets/DragDropSession.h"
 
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
@@ -27,7 +28,7 @@ namespace {
     const char* const kSameNames[] = {
         "click", "dblclick", "mousedown", "mouseup", "mousemove", "mouseover", "mouseout", "keydown", "keyup",
         "focus", "blur", "scroll", "resize", "load", "unload", "submit", "animationend", "transitionend",
-        "dragstart", "drag", "dragend", "dragover", "dragdrop", "textinput",
+        "dragstart", "drag", "dragend", "dragmove", "dragdrop", "dragout", "textinput",
         // the phase-3 fork's CSS animation and transition events
         "animationstart", "animationiteration", "animationcancel", "transitionrun", "transitionstart", "transitioncancel",
     };
@@ -163,7 +164,7 @@ const std::string& HtmlUIEventNames::supportedList(){
             text += name;
             text += ", ";
         }
-        text += "wheel, input, change and custom events";
+        text += "dragenter, dragover, dragleave, drop, wheel, input, change and custom events";
         return text;
     }();
     return list;
@@ -176,7 +177,10 @@ bool HtmlUIEventNames::toRml(const std::string& domType, std::string& rmlType, c
         return false;
     }
 
-    if (domType == "wheel"){
+    if (const char* drag = htmlui::DragDropSession::rmlEventOf(domType); drag[0]){
+        // HTML5's dragenter, dragover (repeating), dragleave and drop (S17 R18)
+        rmlType = drag;
+    }else if (domType == "wheel"){
         rmlType = "mousescroll";
     }else if (domType == "input"){
         // RmlUi fires change on every edit of a text field and on toggles
@@ -214,15 +218,30 @@ bool HtmlUIEventNames::isRepeat(const Rml::Event* event){
     return event && event == repeatedKeyDown && event->GetType() == "keydown";
 }
 
-// the document whose <script type="text/lua"> is running (ScriptScope); scripts run on the main thread
+// the document whose <script type="text/lua"> is running (ScriptScope) and the script's index;
+// scripts run on the main thread
 static const Rml::Element* runningScriptDocument = nullptr;
+static int runningScript = -1;
 
-HtmlUIEventListener::ScriptScope::ScriptScope(const Rml::Element* document): previous(runningScriptDocument){
+HtmlUIEventListener::ScriptScope::ScriptScope(const Rml::Element* document, int script): previous(runningScriptDocument), previousScript(runningScript){
     runningScriptDocument = document;
+    runningScript = script;
 }
 
 HtmlUIEventListener::ScriptScope::~ScriptScope(){
     runningScriptDocument = previous;
+    runningScript = previousScript;
+}
+
+std::vector<HtmlUIEventListener*> HtmlUIEventListener::listenersOfScript(const Rml::Element* document, int script){
+    std::vector<HtmlUIEventListener*> result;
+    for (const auto& pair : byId()){
+        HtmlUIEventListener* listener = pair.second;
+        if (!listener->detached && listener->scriptDocument == document && (script < 0 || listener->scriptIndex == script))
+            result.push_back(listener);
+    }
+    std::sort(result.begin(), result.end(), [](HtmlUIEventListener* a, HtmlUIEventListener* b){ return a->id < b->id; });
+    return result;
 }
 
 HtmlUIEventListener::HtmlUIEventListener(uint64_t id, std::string domType, std::string rmlType, bool capture, bool once, Callback callback):
@@ -244,6 +263,7 @@ HtmlUIEventListener* HtmlUIEventListener::attach(Rml::Element* element, const st
 
     HtmlUIEventListener* listener = new HtmlUIEventListener(nextListenerId++, domType, rmlType, capture, once, std::move(callback));
     listener->scriptDocument = runningScriptDocument;
+    listener->scriptIndex = runningScript;
     element->AddEventListener(rmlType, listener, capture);
 
     if (domType == "change"){
@@ -308,6 +328,7 @@ HtmlUIEventListener* HtmlUIEventListener::moveTo(Rml::Element* target){
 
     HtmlUIEventListener* moved = new HtmlUIEventListener(id, domType, rmlType, capture, once, std::move(callback));
     moved->scriptDocument = scriptDocument;
+    moved->scriptIndex = scriptIndex;
     // the id now names the moved listener; this one is deleted without its callback
     byId()[id] = moved;
     target->AddEventListener(rmlType, moved, capture);

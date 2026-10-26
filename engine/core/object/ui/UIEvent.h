@@ -5,6 +5,7 @@
 #define UIEVENT_H
 
 #include "Export.h"
+#include "UIDataTransfer.h"
 #include "UIElement.h"
 #include "UIValue.h"
 
@@ -47,6 +48,12 @@ namespace jasperengine{
         // CSS animation and transition events (animationstart, ..., transitionend): the keyframes
         // name, the transitioned property, and the seconds the animation or transition had run
         std::string getAnimationName() const; std::string getPropertyName() const; float getElapsedTime() const;
+
+        // drag events (S17): the drag's data (invalid on other events), and over a virtual view
+        // where among its rows the pointer is: the 1-based item (0 elsewhere) and "before", "after"
+        // or "on" (the row's top and bottom quarters, its middle)
+        UIDataTransfer getDataTransfer() const;
+        int getDropIndex() const; std::string getDropPosition() const;
 
     private:
         friend struct HtmlUIScriptAccess;   // p1-lua internals (HtmlUIScriptInternal.h) create and read the state

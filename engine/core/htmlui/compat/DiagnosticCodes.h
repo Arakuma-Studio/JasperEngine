@@ -92,6 +92,10 @@ namespace jasperengine::htmlui::compat {
         inline constexpr DiagCode SelfClosingTag{DiagArea::HTML, 26};   // p2-html
         inline constexpr DiagCode UnsupportedMediaFormat{DiagArea::HTML, 27};   // phase 6, p6-video
         inline constexpr DiagCode MediaAttributeIgnored{DiagArea::HTML, 28};    // phase 6, p6-video
+        inline constexpr DiagCode VirtualViewHeight{DiagArea::HTML, 29};        // S17: runtime
+        inline constexpr DiagCode VirtualViewTemplate{DiagArea::HTML, 30};      // S17
+        inline constexpr DiagCode LargeDataFor{DiagArea::HTML, 31};             // S17: runtime
+        inline constexpr DiagCode MarkdownRawHtml{DiagArea::HTML, 32};          // S17
         // CSS
         inline constexpr DiagCode UnknownProperty{DiagArea::CSS, 1};
         inline constexpr DiagCode UnsupportedProperty{DiagArea::CSS, 2};

@@ -17,6 +17,9 @@
 #include "object/Camera.h"
 #include "object/Primitive.h"
 #include "object/ui/Image.h"
+#include "object/ui/UIDataTransfer.h"
+#include "object/ui/UIDocument.h"
+#include "object/ui/UIItemsView.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "texture/Framebuffer.h"
 
@@ -717,4 +720,57 @@ TEST_F(TextureModeTest, StatePreservingReload){
     ASSERT_NE(system().getDocument(entity), nullptr);
     EXPECT_EQ(system().getDocument(entity)->GetContext(), system().getContext()->getRmlContext());
     EXPECT_EQ(system().getDocument(entity)->GetElementById("name")->GetAttribute<Rml::String>("value", ""), "kept");
+}
+
+// S17 R32: a TEXTURE-mode document has tooltips, drags and virtual views through world-space input
+TEST_F(TextureModeTest, WidgetsThroughWorldPointer){
+    Primitive& surface = wall(0, 0, 0);
+    UIDocument document = textureDocument("s17/texture_widgets.html", surface.getEntity());
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    HtmlUIClock::setFixedTime(50.0);
+
+    // the list view's rows, bound by a provider
+    UIItemsView list = document.getElementById("list").getItemsView();
+    ASSERT_TRUE(list.isValid());
+    UIItemsProvider provider;
+    provider.count = 100;
+    provider.bind = [](const UIElement& row, int index){ row.querySelector(".row").setTextContent("item " + std::to_string(index)); };
+    list.setProvider(provider);
+    GpuEnvironment::drawFrames(2);
+    EXPECT_EQ(list.getVisibleRange().first, 1);
+    EXPECT_EQ(list.getRow(1).getTextContent(), "item 1");
+
+    // the title's tooltip after the delay, inside the texture
+    EXPECT_TRUE(pointer(PointerPhase::MOVE, Vector3(-0.5f, 0.5f, 0)));
+    for (double t = 50.1; t <= 51.0; t += 0.1){
+        HtmlUIClock::setFixedTime(t);
+        GpuEnvironment::drawFrames(1);
+    }
+    UITooltipInfo tip = document.getTooltip();
+    ASSERT_TRUE(tip.visible);
+    EXPECT_EQ(tip.text, "World tip");
+    EXPECT_GE(tip.rect.x, 0.0f);
+    EXPECT_LE(tip.rect.x + tip.rect.width, 256.0f);
+    EXPECT_LE(tip.rect.y + tip.rect.height, 256.0f);
+
+    // a drag from the top-right quadrant to the bottom-right one
+    int drops = 0;
+    UIElement source = document.getElementById("src");
+    source.addEventListener("dragstart", [](UIEvent& event){ event.getDataTransfer().setData("item", "axe"); });
+    document.getElementById("bin").addEventListener("drop", [&drops](UIEvent& event){
+        drops += event.getDataTransfer().getData("item") == "axe" ? 1 : 0;
+    });
+    EXPECT_TRUE(pointer(PointerPhase::MOVE, Vector3(0.5f, 0.5f, 0)));
+    EXPECT_TRUE(pointer(PointerPhase::DOWN, Vector3(0.5f, 0.5f, 0)));
+    EXPECT_TRUE(pointer(PointerPhase::MOVE, Vector3(0.45f, 0.4f, 0)));
+    HtmlUIClock::setFixedTime(51.1);
+    GpuEnvironment::drawFrames(1);
+    EXPECT_FALSE(document.getTooltip().visible) << "a press hides the tooltip";
+    EXPECT_TRUE(pointer(PointerPhase::MOVE, Vector3(0.5f, -0.5f, 0)));
+    HtmlUIClock::setFixedTime(51.2);
+    GpuEnvironment::drawFrames(1);
+    EXPECT_TRUE(pointer(PointerPhase::UP, Vector3(0.5f, -0.5f, 0)));
+    GpuEnvironment::drawFrames(1);
+    EXPECT_EQ(drops, 1);
+    HtmlUIClock::reset();
 }

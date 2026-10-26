@@ -1482,7 +1482,7 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addProperty("filename", &UIDocument::getFilename, &UIDocument::setFilename)
         .addFunction("getUIDocumentComponent", &UIDocument::getComponent<UIDocumentComponent>)
         .addFunction("load", &UIDocument::load)
-        .addFunction("reload", &UIDocument::reload)
+        .addFunction("reload", (void (UIDocument::*)())&UIDocument::reload)
         .addFunction("isLoaded", &UIDocument::isLoaded)
         .addProperty("loaded", &UIDocument::isLoaded)
         .addFunction("show", &UIDocument::show)

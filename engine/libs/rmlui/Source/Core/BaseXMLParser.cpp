@@ -1,6 +1,7 @@
 #include "../../Include/RmlUi/Core/BaseXMLParser.h"
 #include "../../Include/RmlUi/Core/Profiling.h"
 #include "../../Include/RmlUi/Core/Stream.h"
+#include "../../Include/RmlUi/Core/StringUtilities.h"
 #include "XMLParseTools.h"
 #include <string.h>
 
@@ -24,6 +25,11 @@ bool BaseXMLParser::IsCDATATag(const String& tag)
 void BaseXMLParser::RegisterInnerXMLAttribute(const String& attribute_name)
 {
 	attributes_for_inner_xml_data.insert(attribute_name);
+}
+
+void BaseXMLParser::RegisterInnerXMLTag(const String& tag, const String& unless_attribute)
+{
+	tags_for_inner_xml_data[StringUtilities::ToLower(tag)] = unless_attribute;
 }
 
 void BaseXMLParser::Parse(Stream* stream)
@@ -191,11 +197,20 @@ bool BaseXMLParser::ReadOpenTag()
 
 	bool section_opened = false;
 
+	// Fork (P7-T): a tag whose content is data (RegisterInnerXMLTag), unless it has the attribute that turns that off.
+	auto inner_xml_tag = tags_for_inner_xml_data.empty() ? tags_for_inner_xml_data.end() : tags_for_inner_xml_data.find(StringUtilities::ToLower(tag_name));
+
 	if (PeekString(">"))
 	{
 		// Simple open tag.
 		HandleElementStartInternal(tag_name, XMLAttributes());
 		section_opened = true;
+		if (inner_xml_tag != tags_for_inner_xml_data.end() && !inner_xml_data)
+		{
+			inner_xml_data = true;
+			inner_xml_data_terminate_depth = open_tag_depth;
+			inner_xml_data_index_begin = xml_index;
+		}
 	}
 	else if (PeekString("/") && PeekString(">"))
 	{
@@ -213,6 +228,8 @@ bool BaseXMLParser::ReadOpenTag()
 		XMLAttributes attributes;
 		if (!ReadAttributes(attributes, parse_inner_xml_as_data))
 			return false;
+		if (inner_xml_tag != tags_for_inner_xml_data.end() && (inner_xml_tag->second.empty() || attributes.count(inner_xml_tag->second) == 0))
+			parse_inner_xml_as_data = true;
 
 		if (PeekString(">"))
 		{

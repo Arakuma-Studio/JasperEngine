@@ -1076,12 +1076,13 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	instance->properties.property_map->ReserveUnnamed(PropertyId::NumDefinedIds);
 	instance->properties.shorthand_map->ReserveUnnamed(ShorthandId::NumDefinedIds);
 
+	// (checked before the fork's own ids below: they are past the defined ones and would count as extra)
+	RMLUI_ASSERTMSG(instance->properties.shorthand_map->AssertAllInserted(ShorthandId::NumDefinedIds), "Missing specification for one or more Shorthand IDs.");
+	RMLUI_ASSERTMSG(instance->properties.property_map->AssertAllInserted(PropertyId::NumDefinedIds), "Missing specification for one or more Property IDs.");
+
 	// Fork (phase 5, P5-1): a filter list applied before 'filter' (the engine's gradient text of effect layers); after the
 	// reservation, so its id is past the defined ones
 	text_fill_id = RegisterProperty(PropertyId::Invalid, "-jfx-text-fill", "", false, false).AddParser("filter", "filter").GetId();
-
-	RMLUI_ASSERTMSG(instance->properties.shorthand_map->AssertAllInserted(ShorthandId::NumDefinedIds), "Missing specification for one or more Shorthand IDs.");
-	RMLUI_ASSERTMSG(instance->properties.property_map->AssertAllInserted(PropertyId::NumDefinedIds), "Missing specification for one or more Property IDs.");
 	// clang-format on
 }
 

@@ -18,7 +18,7 @@ namespace jasperengine::htmlui::compat {
     // TextShadow TextProperties Sticky BoxParity AnimationLonghands IndividualTransforms
     // (phase-3 Appendix A) and RelativeFontWeight ColorFunctions (found by p3-integration's
     // audit), phase 5
-    // RegisteredProperties TextFillFilter, phase 6 Justify TextIndent LineClamp. Each new value gets
+    // RegisteredProperties TextFillFilter, phase 6 Justify TextIndent LineClamp, S17 RowAliases LayoutBoundary. Each new value gets
     // a kPresent entry, a name and a probe in ForkFeatures.cpp.
     enum class ForkFeature : uint8_t {
         None, Calc, BorderStyle, PercentRadius, PseudoElements, RootIsWhere, Fixed,
@@ -38,6 +38,8 @@ namespace jasperengine::htmlui::compat {
         Justify,                                    // phase 6, p6-justify: text-align: justify, text-align-last, text-justify
         TextIndent,                                 // phase 6, p6-justify: text-indent (P6-J2)
         LineClamp,                                  // phase 6, p6-line-clamp (-webkit-line-clamp, P6-L1)
+        RowAliases,                                 // S17: rebindable row aliases of the virtual views (P7-D)
+        LayoutBoundary,                             // S17: layout boundaries formatted alone (P7-L)
         Count
     };
 

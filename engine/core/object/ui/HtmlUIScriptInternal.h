@@ -13,6 +13,7 @@
 #include "UIElementInternal.h"
 #include "UIDataModel.h"
 #include "UIEvent.h"
+#include "UIReloadReport.h"
 #include "UIValue.h"
 #include "ecs/Entity.h"
 
@@ -145,6 +146,9 @@ namespace jasperengine{
         std::map<std::string, std::unique_ptr<HtmlUIDataModelRecord>> models;
         struct Notification { Entity entity; bool loaded; };
         std::vector<Notification> notifications;   // onUnload/onLoad, fired after the context update
+        // S17: the patch reloads whose onReload fires after the context update
+        struct Reload { Entity entity; UIReloadReport report; };
+        std::vector<Reload> reloads;
         // removed while one of their data-event callbacks ran: destroyed after the update
         std::vector<std::unique_ptr<HtmlUIDataModelRecord>> removedDuringEvents;
         // empty RmlUi models (missing variables allowed) for the data-model names a document

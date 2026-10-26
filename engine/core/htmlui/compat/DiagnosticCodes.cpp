@@ -83,7 +83,9 @@ namespace {
          "RmlUi reads this data-* attribute as a data binding (data-if, data-for, data-event-*, ...), but no data-model "
          "encloses it. Rename the attribute, or wrap the element in a data-model."},
         {codes::TitleTooltip, I, false, "title-tooltip", "title tooltip not shown",
-         "The engine shows no tooltips for title attributes. Build a tooltip element and show it on mouseover from Lua."},
+         "No longer reported (S17): title attributes show a tooltip after a hover or focus delay (UIDocument.tooltip.configure, "
+         "tooltip-delay; tooltip=\"#id\" and el:setTooltip for rich ones). Documents compiled before reported it when the engine "
+         "showed no tooltips."},
         {codes::BaseIgnored, W, false, "base-ignored", "<base> ignored",
          "<base href> is ignored: URLs resolve against the file that references them."},
         {codes::ImageCandidateChosen, I, false, "image-candidate-chosen", "Image candidate chosen",
@@ -120,6 +122,21 @@ namespace {
          "A <video> attribute or content without an engine equivalent was dropped: playsinline (videos always play inline), "
          "crossorigin, controlslist, disablepictureinpicture, disableremoteplayback, x-webkit-airplay, mediagroup, and the "
          "fallback content inside <video> (browsers that play video never show it either)."},
+        {codes::VirtualViewHeight, W, false, "virtual-view-height", "Virtual view without a definite height",
+         "A <list-view>, <grid-view>, <tree-view> or <table-view> grew to the height of all its rows: it has no definite "
+         "height, so it cannot scroll its rows. It lays out 20 rows instead. Give it a height (height, max-height, or flex: 1 "
+         "inside a container of a definite height)."},
+        {codes::VirtualViewTemplate, E, false, "virtual-view-template", "Virtual view template",
+         "A <list-view>, <grid-view>, <tree-view> or <table-view> needs exactly one <template> child: the markup of a row "
+         "(a table-view's cells come from its <table-column> children instead, each with an optional <template>). The view "
+         "shows no rows without one, and only the first of several."},
+        {codes::LargeDataFor, I, false, "large-data-for", "Large data-for",
+         "A data-for made more than 500 elements: every one of them is laid out and drawn. A <list-view items=\"...\"> (or "
+         "grid-view, table-view) makes only the rows on screen and keeps a 10,000-row list fast on mobile."},
+        {codes::MarkdownRawHtml, I, false, "markdown-raw-html", "HTML in Markdown",
+         "The Markdown of a <markdown> element holds HTML markup. Markdown is rendered without HTML passthrough: the markup "
+         "shows as its text (text from servers or players is safe this way). Write Markdown, or put the HTML outside the "
+         "<markdown> element."},
 
         // ---- CSS
         {codes::UnknownProperty, W, false, "unknown-property", "Unknown property",

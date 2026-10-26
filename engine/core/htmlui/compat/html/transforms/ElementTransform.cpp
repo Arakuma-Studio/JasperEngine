@@ -12,9 +12,12 @@
 #include "htmlui/compat/Diagnostics.h"
 #include "htmlui/compat/ImportManifest.h"
 #include "htmlui/compat/SupportTables.h"
+#include "htmlui/compat/SourceFiles.h"
 #include "htmlui/compat/UrlResolver.h"
+#include "htmlui/compat/VirtualFiles.h"
 #include "htmlui/compat/html/RmlSerializer.h"
 #include "htmlui/compat/runtime/SvgPreprocess.h"
+#include "htmlui/widgets/Markdown/MarkdownHtml.h"
 
 #include <algorithm>
 #include <cmath>
@@ -802,6 +805,79 @@ namespace {
         }
     }
 
+    // <markdown> (S17 R24-R25): the Markdown of src= or of the element's raw content (HtmlParser
+    // keeps it in `text`, dedented here) rendered to RML at compile, its images resolved as
+    // <img src> is. The element keeps src (a later setAttribute("src") loads the new file) and
+    // gets data-htmlui-markdown: rendered here, the runtime does not render it again. HTML in an
+    // inline source is shown as text: HTMLUI-HTML-0032 (Info).
+    void mapMarkdown(TransformContext& context, HtmlNode& node, size_t index){
+        HtmlNode& element = *node.children[index];
+        if (element.selfClosingSyntax && !element.children.empty()){
+            // <markdown src="..."/> holds nothing: what the parser put inside goes after it
+            std::vector<std::unique_ptr<HtmlNode>> moved = std::move(element.children);
+            element.children.clear();
+            size_t at = index + 1;
+            for (std::unique_ptr<HtmlNode>& child : moved)
+                node.insertChild(at++, std::move(child));
+        }
+
+        const std::string src = trim(element.attr("src"));
+        std::string markdown;
+        const bool inlineSource = src.empty();
+        if (!inlineSource){
+            ResolvedUrl resolved;
+            context.resolveUrl(src, "markdown", element.ref, &resolved);
+            if (!resolved.dropped() && resolved.local() && resolved.exists){
+                if (readAssetFile(context.fileAccess, resolved.assetPath, markdown)){
+                    stripUtf8Bom(markdown);
+                }else{
+                    context.sink.report(codes::FileNotFound, element.ref, "Markdown file '" + resolved.assetPath + "' could not be read",
+                                        "", "", resolved.assetPath);
+                }
+            }
+        }else{
+            markdown = jasperengine::htmlui::markdown::dedent(element.text);
+        }
+
+        jasperengine::htmlui::markdown::RenderOptions options;
+        options.resolveUrl = [&context, &element](const std::string& url, bool image) -> std::string {
+            return image ? context.resolveUrl(url, "image", element.ref) : url;
+        };
+        jasperengine::htmlui::markdown::RenderResult rendered = jasperengine::htmlui::markdown::renderToRml(markdown, options);
+        if (inlineSource && rendered.rawHtml){
+            context.sink.report(codes::MarkdownRawHtml, element.ref, "the Markdown of <markdown> holds HTML markup: it is shown as text",
+                                "write Markdown, or put the HTML outside the <markdown> element", "", "markdown");
+        }
+        element.children.clear();
+        element.text.clear();
+        element.appendChild(HtmlNode::makeRaw(std::move(rendered.rml)));
+        element.setAttr("data-htmlui-markdown", "");
+    }
+
+    // <list-view>, <grid-view>, <tree-view>, <table-view> (S17 R1): the row markup is the single
+    // <template> child (a placeholder by now); a table's cells may come from its columns instead
+    void checkItemsView(TransformContext& context, HtmlNode& element){
+        int templates = 0;
+        int columns = 0;
+        for (const std::unique_ptr<HtmlNode>& child : element.children){
+            if (child->is("htmltemplate"))
+                templates++;
+            else if (child->is("table-column"))
+                columns++;
+        }
+        const bool table = element.tag == "table-view";
+        if (templates > 1){
+            context.sink.report(codes::VirtualViewTemplate, element.ref,
+                                "<" + element.tag + "> has " + std::to_string(templates) + " <template> children: its rows use the first",
+                                "keep one <template> with the markup of a row", "", element.tag);
+        }else if (templates == 0 && !(table && columns > 0)){
+            context.sink.report(codes::VirtualViewTemplate, element.ref,
+                                table ? "<table-view> has no <table-column> and no <template>: it shows no cells"
+                                      : "<" + element.tag + "> has no <template> child: it shows no rows",
+                                table ? "add <table-column key=\"...\"> children" : "add a <template> with the markup of a row", "", element.tag);
+        }
+    }
+
     bool isCustomElementName(const std::string& tag){
         return tag.find('-') != std::string::npos;
     }
@@ -833,6 +909,7 @@ namespace {
             "frameset", "frame", "applet", "marquee", "track", "param", "map", "area", "datalist", "selectedcontent",
             "lottie-player", "dotlottie-player", "dotlottie-wc", "picture", "img", "wbr", "slot", "meter", "output",
             "select", "optgroup", "q", "font", "bdi", "bdo", "ruby", "rt", "rp", "dialog", "table", "progress", "fieldset",
+            "markdown", "list-view", "grid-view", "tree-view", "table-view",
         });
         if (!special.contains(tag)){
             if (startsWith(tag, "html-reserved-"))
@@ -855,6 +932,14 @@ namespace {
 
         if (tag == "video"){
             mapVideo(context, element);
+            return true;
+        }
+        if (tag == "markdown"){
+            mapMarkdown(context, node, index);
+            return true;
+        }
+        if (tag == "list-view" || tag == "grid-view" || tag == "tree-view" || tag == "table-view"){
+            checkItemsView(context, element);
             return true;
         }
         if (tag == "audio" || tag == "iframe" || tag == "canvas" || tag == "object" || tag == "embed" ||

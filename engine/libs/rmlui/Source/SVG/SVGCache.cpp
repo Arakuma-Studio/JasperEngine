@@ -15,6 +15,7 @@
 #include "../../Include/RmlUi/Core/Utilities.h"
 #include "../Core/ControlledLifetimeResource.h"
 #include <algorithm>
+#include <cstring>
 #include <lunasvg.h>
 
 #ifdef RMLUI_SVG_DEBUG
@@ -51,7 +52,10 @@ struct hash<::Rml::SVG::SVGKey> {
 		Rml::Utilities::HashCombine(hash, key.dimensions.y);
 		Rml::Utilities::HashCombine(hash, key.crop_to_content);
 		static_assert(sizeof(uint32_t) == sizeof(key.colour), "Expecting color to be 4 bytes");
-		Rml::Utilities::HashCombine(hash, *reinterpret_cast<const uint32_t*>(&key.colour[0]));
+		// Fork: copied out (the colour's bytes need not be 4-byte aligned; UBSan stopped on the cast)
+		uint32_t colour = 0;
+		memcpy(&colour, &key.colour[0], sizeof(colour));
+		Rml::Utilities::HashCombine(hash, colour);
 		return hash;
 	}
 };

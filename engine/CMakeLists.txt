@@ -1132,6 +1132,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/HtmlUIVectorLua.cpp
     core/script/binding/HtmlUIMediaLua.cpp
+    core/script/binding/HtmlUIWidgetsLua.cpp
     core/script/binding/UtilClassesLua.cpp
     core/script/binding/HtmlUIClassesLua.cpp
     core/script/binding/HtmlUIAnimeLua.cpp
@@ -1154,6 +1155,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/UIDocumentSystemRender.cpp
     core/subsystem/UIDocumentSystemInput.cpp
     core/subsystem/UIDocumentSystemScript.cpp
+    core/subsystem/UIDocumentSystemPatch.cpp
     core/subsystem/UIDocumentSystemReload.cpp
     core/subsystem/UIDocumentSystemCompat.cpp
     core/subsystem/UIDocumentSystemTexture.cpp
@@ -1203,6 +1205,9 @@ set(JASPERENGINE_SRCS
 # HTML/CSS compatibility layer (phase 2): globbed per directory
 include(core/htmlui/compat/CompatSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${HTMLUI_COMPAT_SRCS})
+# HTML UI widgets (S17): virtual views, tooltips, drag and drop, Markdown
+include(core/htmlui/widgets/WidgetsSources.cmake)
+list(APPEND JASPERENGINE_SRCS ${HTMLUI_WIDGETS_SRCS})
 include(libs/lucide/lucide.cmake)
 
 if(JASPERENGINE_PHYSICS_2D)

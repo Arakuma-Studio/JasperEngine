@@ -68,6 +68,12 @@ namespace jasperengine::editor {
         // True if state, the state right before a word, puts that word where a CSS property name
         // goes: in a declaration block before its ':', or in an Html style="" value
         static bool expectsCssProperty(Language language, const State& state);
+
+        // Where an Html word starting at `column` of `line` goes (lineState: the previous line's
+        // end state): an element name right after "<" or "</", an attribute name inside a tag
+        // after a space and outside a value (S17 R38)
+        enum class NamePosition { None, Tag, Attribute };
+        static NamePosition htmlNamePosition(const std::string& line, int column, State lineState);
     };
 
 } // namespace jasperengine::editor

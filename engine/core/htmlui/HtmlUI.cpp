@@ -10,6 +10,7 @@
 #include "vector/UILottieElement.h"
 #include "media/UIVideoElement.h"
 #include "compat/runtime/RuntimeRegistry.h"
+#include "widgets/WidgetsRuntime.h"
 #include "effects/EffectRegistry.h"
 #include "effects/EffectSimulator.h"
 
@@ -96,6 +97,8 @@ bool HtmlUI::acquire(){
     UIVideoElement::registerInstancer();
     // the compat layer's runtime emulations (phase-2 hook H1), before any document loads
     htmlui::compat::registerRuntime();
+    // the S17 widgets: virtual views, markdown, tooltips, drag and drop
+    htmlui::WidgetsRuntime::registerAll();
     // the UI effects (phase 5): their typed instancers, property parsers and runtime plugin
     htmlui::EffectRegistry::get().initialise();
 
@@ -134,6 +137,7 @@ void HtmlUI::release(){
     UILottieElement::releaseInstancer();
     UIVideoElement::releaseInstancer();
     htmlui::compat::releaseRuntime();
+    htmlui::WidgetsRuntime::releaseAll();
     htmlui::EffectRegistry::get().shutdown();
     ThorVGRuntime::release();
 

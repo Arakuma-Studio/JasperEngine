@@ -1,0 +1,1 @@
+<div class="markdown-body"><ol><li>Build it:<pre><code data-lang="sh">tools/build.sh linux</code></pre></li><li>Run it.<ul><li>check the log<pre><code>tail -f out.log</code></pre></li></ul></li></ol></div>

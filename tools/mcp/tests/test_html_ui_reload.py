@@ -6,7 +6,7 @@ The editor's HtmlUIWatcher hands changed files to UIDocumentSystem::reloadChange
 - play mode: a CSS change shows within 2 s and keeps the DOM (an element handle stored in a
   Lua global stays valid); an HTML change reloads the document keeping the input's value,
   the scroll position and the focus, and a listener on an element with an id still fires;
-  onLoad runs once more.
+  a patch (S17): onReload runs, onLoad does not.
 The Lua checks need p1-lua's element API (UIDocument in Lua); without it they are skipped.
 
 Runs on a scratch copy of the fixture project (canvas 1280 x 720).
@@ -59,6 +59,7 @@ PROBE = """---@class ReloadProbe : ScriptInstance
 local ReloadProbe = {
     properties = {
         { name = "loads", displayName = "Loads", type = "int", default = 0 },
+        { name = "reloads", displayName = "Reloads", type = "int", default = 0 },
         { name = "clicks", displayName = "Clicks", type = "int", default = 0 },
     }
 }
@@ -66,6 +67,8 @@ local ReloadProbe = {
 function ReloadProbe:init()
     self.doc = UIDocument(self.scene, self.entity)
     RegisterEvent(self, self.doc.onLoad, "onDocumentLoad")
+    -- S17: an HTML edit patches the live document (onReload), it does not load it again
+    self.doc.onReload = function(report) self.reloads = self.reloads + 1 end
     local probe = self
     self.doc:getElementById("go"):addEventListener("click", function(event) probe.clicks = probe.clicks + 1 end)
     _G.reloadBox = self.doc:getElementById("box")
@@ -199,7 +202,8 @@ async def test_play_mode_html_change_keeps_state(ed: Editor):
         ed.check_eq(values[0], "kept", "the input's value survived the reload")
         ed.check(abs(values[1] - 40) < 1, f"scrollTop after the reload: {values[1]}")
         ed.check_eq(values[2], True, "the input kept the focus")
-        ed.check_eq((await lua(ed, "return script('Menu', 'ReloadProbe').loads"))[0], loads_before + 1, "onLoad ran again")
+        ed.check_eq(await lua(ed, "local p = script('Menu', 'ReloadProbe'); return p.loads, p.reloads"), [loads_before, 1],
+                    "a patch: onReload ran, onLoad did not (S17)")
 
         # the listener added in init on #go moved to the new #go
         await ed.call("send_input", events=[{"type": "mouse", "action": "click", "x": 100, "y": 320}], space="canvas", frames_after=2)
@@ -279,6 +283,8 @@ local PanelProbe = {
 function PanelProbe:init()
     self.doc = UIDocument(self.scene, self.entity)
     RegisterEvent(self, self.doc.onLoad, "onDocumentLoad")
+    -- S17: an HTML edit patches the live document: onReload instead of onLoad
+    self.doc.onReload = function(report) self:onDocumentLoad() end
     self:bind()
 end
 

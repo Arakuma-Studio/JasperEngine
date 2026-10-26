@@ -1834,6 +1834,18 @@ void editor::InspectorWindow::handleComponentMenu(const char* popupId, SceneProj
 
         ImGui::EndDisabled();
 
+        // S17: a hot reload patches an .html document in place; this one loads it again as before
+        if (cpType == ComponentType::UIDocumentComponent && !entities.empty()) {
+            std::shared_ptr<UIDocumentSystem> documents = sceneProject->scene->getSystem<UIDocumentSystem>();
+            const bool loaded = documents && documents->isDocumentLoaded(entities.front());
+            if (ImGui::MenuItem("Reload (Rebuild)", nullptr, false, loaded)) {
+                for (Entity entity : entities)
+                    documents->reloadDocument(entity, true, UIReloadMode::REBUILD);
+                sceneProject->needUpdateRender = true;
+            }
+            ImGui::SetItemTooltip("Load the document again: new elements, scripts run again, onUnload and onLoad (Reload patches it in place)");
+            ImGui::Separator();
+        }
         // the project's editor scripts: CONTEXT/<Component>/... items (S23)
         {
             EditorMenuRunContext scriptContext;
@@ -9820,7 +9832,8 @@ void editor::InspectorWindow::drawUIDocumentComponent(ComponentType cpType, Scen
             if (documents) documents->reloadDocument(entity, true);
             sceneProject->needUpdateRender = true;
         }
-        ImGui::SetItemTooltip("Load the document again, keeping scroll, focus and form values (saved files reload by themselves)");
+        ImGui::SetItemTooltip("Patch the document with its file: elements, Lua handles, listeners, form values, scroll and focus stay "
+                              "(saved files reload by themselves; the component menu's Reload (Rebuild) loads it again)");
         ImGui::EndDisabled();
     }else{
         propertyRow(RowPropertyType::Asset, cpType, "filename", "Source", sceneProject, entities, sourceSettings);
