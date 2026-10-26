@@ -15,6 +15,7 @@
 #include "Engine.h"
 #include "Platform.h"
 #include "Project.h"
+#include "asset/AssetOps.h"
 #include "animation/AnimationClipAppHooks.h"
 #include "animation/AnimationClipController.h"
 #include "animation/AnimationClipIO.h"
@@ -1652,11 +1653,10 @@ TEST_F(AnimationClipControllerTest, TheInspectorDocumentCacheFollowsTheFileAfter
     AnimationClipController& c = controller();
     ASSERT_TRUE(c.openClip(original, &error)) << error;
 
-    // the inline rename (RenameFileCmd: the move on disk, then the remap)
+    // the inline rename (RenameFileCmd: AssetOps::move)
     const fs::path from = assets() / "anim" / "New Animation.anim";
     const fs::path to = assets() / "anim" / "Walk.anim";
-    fs::rename(from, to);
-    project()->remapClipFilePath(from, to);
+    ASSERT_TRUE(AssetOps::move(*project(), from, to).ok);
     EXPECT_EQ(first->path(), "assets/anim/Walk.anim") << "the document followed its file";
     EXPECT_EQ(c.getClipPath(), "assets/anim/Walk.anim");
 
@@ -1728,9 +1728,7 @@ TEST_F(AnimationClipControllerTest, SceneUndoReResolvesStaleClipPathsByGuid) {
     // renamed (the Project window's rename): the entry follows
     const fs::path from = assets() / "anim" / "run.anim";
     const fs::path to = assets() / "anim" / "sprint.anim";
-    fs::rename(from, to);
-    project()->remapAssetFilePath(from, to);
-    project()->remapClipFilePath(from, to);
+    ASSERT_TRUE(AssetOps::move(*project(), from, to).ok);
     ASSERT_EQ(s.scene->getComponent<AnimationPlayerComponent>(s.hero).clips.back().clip, "anim/sprint.anim");
 
     // a scene step removing it, undone: the recorded value has the old hint, re-resolved

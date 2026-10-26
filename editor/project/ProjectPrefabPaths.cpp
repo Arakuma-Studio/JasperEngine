@@ -233,7 +233,9 @@ void editor::Project::applyAssetChanges(const std::vector<AssetDatabase::Change>
     std::vector<AssetDatabase::Change> changes;
     std::vector<AssetDatabase::Change> clipChanges;
     for (const AssetDatabase::Change& change : allChanges) {
-        if (Util::isAnimationClipFile(change.path.string()) || Util::isAnimationClipFile(change.oldPath.string())) {
+        if (Util::isAnimationClipFile(change.path.string()) || Util::isAnimationClipFile(change.oldPath.string()) ||
+            (change.type == AssetDatabase::Change::Type::Moved && Util::isModelFile(change.path.string()))) {
+            // (a moved model: the Animation Player sub-clips taken from it name it again)
             clipChanges.push_back(change);
         } else if (Util::isPrefabFile(change.path.string()) || Util::isPrefabFile(change.oldPath.string())) {
             changes.push_back(change);
@@ -493,6 +495,27 @@ bool editor::Project::resolveRegistryClipRefs(EntityRegistry* registry, bool may
 void editor::Project::applyClipAssetChanges(const std::vector<AssetDatabase::Change>& changes) {
     std::vector<fs::path> touched;
     for (const AssetDatabase::Change& change : changes) {
+        if (Util::isModelFile(change.path.string()) && !Util::isAnimationClipFile(change.path.string())) {
+            // a model moved: "<model>#<clip>" entries are path-only, their model part follows (R26)
+            const std::string from = normalizeToAssetsRelative(projectPath / change.oldPath).generic_string();
+            const std::string to = normalizeToAssetsRelative(projectPath / change.path).generic_string();
+            auto remap = [&](std::string& path) {
+                if (path != from) return false;
+                path = to;
+                return true;
+            };
+            for (SceneProject* sceneProject : getScenesAndPrefabStages()) {
+                if (sceneProject->scene && visitClipPathsInRegistry(sceneProject->scene, remap)) {
+                    sceneProject->isModified = true;
+                }
+            }
+            for (auto& [prefabPath, prefab] : prefabAssets) {
+                if (prefab.registry && visitClipPathsInRegistry(prefab.registry.get(), remap)) {
+                    prefab.isModified = true;
+                }
+            }
+            continue;
+        }
         touched.push_back((projectPath / change.path).lexically_normal());
         if (change.type == AssetDatabase::Change::Type::Moved && !change.oldPath.empty()) {
             touched.push_back((projectPath / change.oldPath).lexically_normal());

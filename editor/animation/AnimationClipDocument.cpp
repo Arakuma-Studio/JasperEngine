@@ -310,7 +310,8 @@ namespace {
             if (fs::is_regular_file(path, ec)){
                 project->importPrefabFiles(path);
             }else{
-                project->cleanupClipFilePath(path);
+                // gone (an undone creation): the database forgets it, its references stay Missing
+                project->onAssetFilesChanged(project->getAssetDatabase().removeAssets(path));
             }
         }
         AnimationClipDocument::filesChanged(changed, project);

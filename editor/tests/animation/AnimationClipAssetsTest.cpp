@@ -440,9 +440,9 @@ TEST_F(AnimationClipAssets, SubClipDocumentsAreReadOnly) {
 
 TEST_F(AnimationClipAssets, AssetDatabaseReadsAndWritesTheJsonGuid) {
     const std::string dir = folder("database");
-    EXPECT_TRUE(AssetDatabase::isTrackedFile("a/b/walk.anim"));
-    EXPECT_TRUE(AssetDatabase::isTrackedFile("a/b/WALK.ANIM"));
-    EXPECT_FALSE(AssetDatabase::isTrackedFile("a/hero.gltf#Walk"));
+    EXPECT_TRUE(project()->getAssetDatabase().isTrackedFile("a/b/walk.anim"));
+    EXPECT_TRUE(project()->getAssetDatabase().isTrackedFile("a/b/WALK.ANIM"));
+    EXPECT_FALSE(project()->getAssetDatabase().isTrackedFile("a/hero.gltf#Walk"));
 
     // a clip written without a GUID gets one (inserted after "version", the rest unchanged)
     ClipData data = positionClip();

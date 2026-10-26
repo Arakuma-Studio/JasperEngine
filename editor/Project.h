@@ -933,7 +933,8 @@ namespace jasperengine::editor{
         // the .anim changes go to applyClipAssetChanges
         void applyAssetChanges(const std::vector<AssetDatabase::Change>& changes);
         // .anim files moved, added (copies, a delete undone), removed or edited outside the
-        // editor: the references in memory follow the GUIDs, documents and players reload
+        // editor: the references in memory follow the GUIDs, documents and players reload; a
+        // moved model: the sub-clip entries taken from it name it again
         void applyClipAssetChanges(const std::vector<AssetDatabase::Change>& changes);
         // The in-memory part of a prefab rename or move (a file or a directory): prefab assets,
         // scene and prefab PrefabComponents, scene prefab lists and the standalone list

@@ -17,6 +17,7 @@
 #include "Factory.h"
 #include "Platform.h"
 #include "Project.h"
+#include "asset/AssetOps.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "mcp/McpValues.h"
 
@@ -306,29 +307,32 @@ TEST(AnimationPlayerProject, AClipListReadAndWrittenBackKeepsItsMissingClips) {
 TEST(AnimationPlayerProject, MovesRemapClipsAndTheModelPartOfSubClips) {
     ASSERT_TRUE(headless().ready);
     resetAssets();
+    // the files the test wrote reach the asset database as an outside change would
+    project()->onAssetFilesChanged(project()->getAssetDatabase().refresh());
     PlayerScene s = playerScene({entry("anim/walk.anim", WALK_GUID), entry("models/hero.gltf#Walk"), entry("anim/run.anim", RUN_GUID)});
     s.player().needsLoad = false;
 
-    // the clips' folder moved (what RenameFileCmd does after the move)
-    project()->remapAssetFilePath(assets() / "anim", assets() / "clips");
+    // the clips' folder moved (RenameFileCmd: AssetOps::move): the entries follow the GUIDs
+    ASSERT_TRUE(AssetOps::move(*project(), assets() / "anim", assets() / "clips").ok);
     EXPECT_EQ(s.player().clips[0], entry("clips/walk.anim", WALK_GUID));
     EXPECT_EQ(s.player().clips[2], entry("clips/run.anim", RUN_GUID));
     EXPECT_TRUE(s.player().needsLoad);
     EXPECT_TRUE(s.sceneProject->isModified);
 
     // the model moved: the model part of the sub-clip follows (R26), the .anim entries stay
-    project()->remapAssetFilePath(assets() / "models/hero.gltf", assets() / "characters/hero.gltf");
+    fs::create_directories(assets() / "characters");
+    ASSERT_TRUE(AssetOps::move(*project(), assets() / "models/hero.gltf", assets() / "characters/hero.gltf").ok);
     EXPECT_EQ(s.player().clips[1].clip, "characters/hero.gltf#Walk");
     EXPECT_EQ(s.player().clips[0].clip, "clips/walk.anim");
 
     // a deletion keeps the references (R8: Missing, and undoing the delete relinks them)
     s.player().needsLoad = false;
-    project()->cleanupAssetFilePath(assets() / "clips");
-    project()->cleanupAssetFilePath(assets() / "characters/hero.gltf");
+    fs::path trashedClips, trashedModel;
+    ASSERT_TRUE(AssetOps::remove(*project(), assets() / "clips", trashedClips).ok);
+    ASSERT_TRUE(AssetOps::remove(*project(), assets() / "characters/hero.gltf", trashedModel).ok);
     EXPECT_EQ(s.player().clips[0].clip, "clips/walk.anim");
     EXPECT_EQ(s.player().clips[1].clip, "characters/hero.gltf#Walk");
     EXPECT_EQ(s.player().clips[2].clip, "clips/run.anim");
-    EXPECT_FALSE(s.player().needsLoad);
 }
 
 // ---- scene resources -----------------------------------------------------------------------

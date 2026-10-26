@@ -17,6 +17,7 @@
 #include "Platform.h"
 #include "Out.h"
 #include "Project.h"
+#include "asset/AssetOps.h"
 #include "animation/AnimationClipAppHooks.h"
 #include "animation/AnimationClipController.h"
 #include "animation/AnimationClipDocument.h"
@@ -1714,10 +1715,8 @@ TEST_F(ClipConverters_, CreateClipRedoAfterARenameFollowsTheGuid) {
     const std::string guid = scene->getComponent<AnimationPlayerComponent>(hero).clips.at(0).guid;
     ASSERT_FALSE(guid.empty());
 
-    // the Project window's rename (RenameFileCmd: the move on disk, then the remaps)
-    fs::rename(file, renamed);
-    project()->remapAssetFilePath(file, renamed);
-    project()->remapClipFilePath(file, renamed);
+    // the Project window's rename (RenameFileCmd: AssetOps::move, the GUID and the references follow)
+    ASSERT_TRUE(AssetOps::move(*project(), file, renamed).ok);
     EXPECT_EQ(scene->getComponent<AnimationPlayerComponent>(hero).clips.at(0).clip, "renamedredo/Walk.anim");
 
     ASSERT_TRUE(history(sceneId)->undo());
