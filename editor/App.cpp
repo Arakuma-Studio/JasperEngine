@@ -4292,7 +4292,8 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v37: S15's PASS_PREVIEW before HTMLUI_PRIM (the merge of both); the HTML UI's rounded-rect
     //      distance and border colours changed (S16).
     // v38: HTMLUI_PRIM samples four textures (u_htmluiTexture0-3, u_fs_htmluiSlots, S16).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v38";
+    // v39: HTMLUI_PRIM gradients take their origin and tile period (S16-F5).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v39";
 }
 
 void editor::App::pushTabNotificationStyle(){
