@@ -13,6 +13,7 @@
 #include "registry/TagManager.h"
 
 #include <cstdint>
+#include <functional>
 #include <span>
 
 namespace jasperengine {
@@ -61,6 +62,8 @@ namespace jasperengine {
         Entity restrictTo = NULL_ENTITY;
         // entities with any of these EntityMetadata::editorFlags bits are skipped
         uint8_t excludeEditorFlags = 0;
+        // when set, only the entities it accepts (the editor: a view's own GameObjects)
+        std::function<bool(Entity)> accept;
     };
 
     struct PickHit {

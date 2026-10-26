@@ -375,11 +375,11 @@ TEST(MeshBvh, TriangleStrip){
         const Vector3& b = gathered.positions[gathered.indices[t * 3 + 1]];
         const Vector3& c = gathered.positions[gathered.indices[t * 3 + 2]];
         const Vector3 n = (b - a).crossProduct(c - a);
-        EXPECT_LT(n.y, 0.0f) << "triangle " << t;
+        EXPECT_GT(n.y, 0.0f) << "triangle " << t;
     }
     MeshBvhRay ray;
-    ray.origin = Vector3(2.3f, -1.0f, 0.5f);
-    ray.direction = Vector3(0, 1, 0);
+    ray.origin = Vector3(2.3f, 1.0f, 0.5f);
+    ray.direction = Vector3(0, -1, 0);
     MeshBvhHit hit;
     ASSERT_TRUE(raycastTriangles(gathered, ray, hit));
     EXPECT_TRUE(hit.frontFacing);

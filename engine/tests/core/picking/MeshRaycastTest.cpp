@@ -12,6 +12,7 @@
 #include "component/InstancedMeshComponent.h"
 #include "component/MeshComponent.h"
 #include "component/TerrainComponent.h"
+#include "object/Camera.h"
 #include "object/Mesh.h"
 #include "object/Points.h"
 #include "object/Primitive.h"
@@ -134,6 +135,10 @@ TEST(MeshRaycast, BackfaceCulledRoom){
 
 TEST(MeshRaycast, Kinds){
     Scene scene;
+    // sprites and terrains read the scene's camera when they build
+    Camera camera(&scene);
+    camera.setType(CameraType::CAMERA_PERSPECTIVE);
+    camera.activate();
 
     // a sprite turned 45 degrees: its bounds' corners are a gap
     Sprite sprite(&scene);
@@ -268,12 +273,14 @@ TEST(MeshRaycast, SkinnedArmRaised){
 
     // bind pose: the arm lies along +x
     const Ray atBindArm(Vector3(2, 10, 0), Vector3(0, -20, 0));
-    const Ray atRaisedArm(Vector3(1, 1.5f, 10), Vector3(0, 0, -20));
     EXPECT_TRUE(MeshRaycast::raycast(&scene, atBindArm).hit);
 
     raiseArm(scene, character);
     settleScene(scene);
-    // raised: hit where it is drawn now (x around 1, y in [0, 2]), missed where it was
+    // raised: hit where it is drawn now (the middle of the arm through its bone), missed
+    // where it was
+    const Vector3 middle = scene.getComponent<MeshComponent>(character).bonesMatrix[1] * Vector3(2, 0, 0);
+    const Ray atRaisedArm(middle + Vector3(0, 0, 10), Vector3(0, 0, -20));
     MeshRaycastHit hit = MeshRaycast::raycast(&scene, atRaisedArm);
     ASSERT_TRUE(hit.hit);
     EXPECT_EQ(hit.entity, character);

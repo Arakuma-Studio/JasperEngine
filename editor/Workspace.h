@@ -27,6 +27,9 @@ public:
         SceneDisplaySettings displaySettings;
         YAML::Node editorCamera;
         bool hasDisplaySettings = false;
+        // the Scene view's camera settings, layout, bookmarks, measures and filters (S26), and
+        // the entry's keys this version does not know
+        SceneViewState viewState;
     };
 
     // .jasperengine/user, created on demand
@@ -60,6 +63,10 @@ public:
 
     // Keyed by project-relative path, so reordering scenes never rewrites this file
     const SceneState* getSceneState(const std::filesystem::path& sceneFilepath) const;
+
+    // A scene's workspace entry (tests: what save() writes and load() reads back)
+    static YAML::Node encodeSceneEntry(const SceneProject& sceneProject);
+    static SceneState decodeSceneEntry(const YAML::Node& node);
 
 private:
     static std::filesystem::path getWorkspaceFile(const std::filesystem::path& projectPath);

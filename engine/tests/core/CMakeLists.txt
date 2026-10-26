@@ -6,7 +6,8 @@
 # CPU suites build and run on Linux, Windows and macOS; *Gpu suites run on Linux (Xvfb).
 #
 # je-bench-jobs and je-bench-memory are the job system and allocator benchmarks (S06 R23-R26)
-# tools/perf/check_bench.py gates on, from their JSON output (docs/jobs-memory.md).
+# tools/perf/check_bench.py gates on, from their JSON output (docs/jobs-memory.md); je-bench-picking
+# the triangle picking budgets (S26 R28-R31, docs/scene-view-picking.md).
 
 file(GLOB_RECURSE CORE_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*Test.cpp)
 
@@ -58,7 +59,8 @@ set_target_properties(jasperengine-core-tests PROPERTIES ENABLE_EXPORTS ON)
 find_package(Threads REQUIRED)
 add_executable(je-bench-jobs ${CMAKE_CURRENT_SOURCE_DIR}/bench/JobsBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
 add_executable(je-bench-memory ${CMAKE_CURRENT_SOURCE_DIR}/bench/MemoryBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
-foreach(target je-bench-jobs je-bench-memory)
+add_executable(je-bench-picking ${CMAKE_CURRENT_SOURCE_DIR}/bench/PickingBench.cpp)
+foreach(target je-bench-jobs je-bench-memory je-bench-picking)
     target_link_libraries(${target} PRIVATE jasperengine Threads::Threads)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/support)
     jasperengine_apply_cxx_standard(${target})

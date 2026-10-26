@@ -26,6 +26,7 @@
 #include "component/Transform.h"
 #include "component/UIComponent.h"
 #include "jobs/JobSystem.h"
+#include "subsystem/RenderSystem.h"
 #include "profiler/Profile.h"
 #include "util/STBText.h"
 
@@ -331,6 +332,13 @@ bool SceneBvhTree::slab(const Node& node, const float origin[3], const float inv
         if (node.mn[a] > node.mx[a]){
             return false; // empty
         }
+        // parallel to the slab: inside it (its faces included) or never
+        if (invDir[a] >= 1e29f || invDir[a] <= -1e29f){
+            if (origin[a] < node.mn[a] || origin[a] > node.mx[a]){
+                return false;
+            }
+            continue;
+        }
         float tNear = (node.mn[a] - origin[a]) * invDir[a];
         float tFar = (node.mx[a] - origin[a]) * invDir[a];
         if (tNear > tFar){
@@ -577,8 +585,17 @@ void SceneBvh::collectLeaves(){
     const ComponentId pointsId = scene->getComponentId<PointsComponent>();
     const ComponentId linesId = scene->getComponentId<LineRendererComponent>();
     const ComponentId occluderId = scene->getComponentId<ShadowCaster2DComponent>();
+#ifdef JASPERENGINE_EDITOR
+    // the editor's gizmos, icons and grid live in the scene they annotate: never picked
+    const RenderSystem* renderSystem = scene->getSystem<RenderSystem>().get();
+#endif
     for (size_t i = 0; i < transforms->size(); i++){
         const Entity entity = transforms->getEntity(i);
+#ifdef JASPERENGINE_EDITOR
+        if (renderSystem->isEditorOverlay(entity)){
+            continue;
+        }
+#endif
         const Signature signature = scene->getSignature(entity);
         const bool particleTarget = particleTargets.count(entity) > 0;
         if (signature.test(meshId)){
@@ -842,6 +859,9 @@ bool SceneBvh::passes(const Leaf& leaf, const PickFilter& filter) const{
         return false;
     }
     if (std::find(filter.ignore.begin(), filter.ignore.end(), leaf.entity) != filter.ignore.end()){
+        return false;
+    }
+    if (filter.accept && !filter.accept(leaf.entity)){
         return false;
     }
     if (!filter.includeInactive){

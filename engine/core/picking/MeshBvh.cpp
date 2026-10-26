@@ -69,6 +69,24 @@ namespace {
         float area() const { return boxSurfaceArea(mn, mx); }
     };
 
+    // A leaf's box grows a little past its triangles, so a ray along one of its faces (an
+    // axis-aligned ray of an orthographic view, exactly on a vertex line) is strictly inside:
+    // the slab test of a zero direction component then never sees 0 times its huge reciprocal
+    inline float margin(float x){
+        const float relative = std::fabs(x) * (1.0f / 1048576.0f);
+        return relative > 1e-20f ? relative : 1e-20f;
+    }
+
+    inline void widen(Box& box){
+        if (box.empty()){
+            return;
+        }
+        for (int a = 0; a < 3; a++){
+            box.mn[a] -= margin(box.mn[a]);
+            box.mx[a] += margin(box.mx[a]);
+        }
+    }
+
     inline float decode(float boxMin, uint8_t q, float scale){
         return boxMin + (float)q * scale;
     }
@@ -663,6 +681,7 @@ void MeshBvh::refitNodes(){
                 for (uint32_t t = node.first[s]; t < node.first[s] + node.count[s]; t++){
                     slotBoxes[s].expand(triangleBox(triangles[t]));
                 }
+                widen(slotBoxes[s]);
             }else{
                 slotBoxes[s] = nodeBoxes[node.first[s]];
             }

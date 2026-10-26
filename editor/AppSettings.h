@@ -70,6 +70,17 @@ struct GameViewSettings {
     bool operator!=(const GameViewSettings& other) const { return !(*this == other); }
 };
 
+// Scene view toolbar toggles that follow the user, not the scene (S26 R12, R16)
+struct SceneViewSettings {
+    bool exactPick = false;       // a click selects what is under it, never its prefab or model root
+    bool alignToSurface = false;  // drops turn their up axis onto the surface normal
+
+    bool operator==(const SceneViewSettings& other) const {
+        return exactPick == other.exactPick && alignToSurface == other.alignToSurface;
+    }
+    bool operator!=(const SceneViewSettings& other) const { return !(*this == other); }
+};
+
 // Window > Analysis > Profiler and Frame Debugger (S15 R34): editor-wide, never in the project
 struct ProfilerSettings {
     int budgetFps = 60;          // the frame budget line: 30, 60, 90, 120, 144 or 240 fps (0: none)
@@ -167,6 +178,7 @@ private:
     static bool editorVSyncEnabled;
     static PanelVisibilitySettings panelVisibility;
     static GameViewSettings gameViewSettings;
+    static SceneViewSettings sceneViewSettings;
     static ProfilerSettings profilerSettings;
 
     // MCP server over HTTP (Editor Settings / MCP window); stdio needs no setting
@@ -293,6 +305,8 @@ public:
 
     static GameViewSettings getGameViewSettings();
     static void setGameViewSettings(const GameViewSettings& settings);
+    static SceneViewSettings getSceneViewSettings();
+    static void setSceneViewSettings(const SceneViewSettings& settings);
 
     static ProfilerSettings getProfilerSettings();
     static void setProfilerSettings(const ProfilerSettings& settings);

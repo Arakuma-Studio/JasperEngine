@@ -45,13 +45,7 @@ std::vector<TabEntry> decodeTabs(const YAML::Node& node) {
 }
 
 Workspace::SceneState decodeSceneState(const YAML::Node& node) {
-    Workspace::SceneState state;
-    state.hasDisplaySettings = Stream::hasSceneDisplaySettings(node);
-    Stream::decodeSceneDisplaySettings(node, state.displaySettings);
-    if (node["editorCamera"]) {
-        state.editorCamera = YAML::Clone(node["editorCamera"]);
-    }
-    return state;
+    return Workspace::decodeSceneEntry(node);
 }
 
 // Every field here is a view preference, so a section hand-edited into something a
@@ -66,6 +60,57 @@ void readSection(const char* what, const std::string& source, Fn&& read) {
 }
 
 } // namespace
+
+Workspace::SceneState Workspace::decodeSceneEntry(const YAML::Node& node) {
+    SceneState state;
+    state.hasDisplaySettings = Stream::hasSceneDisplaySettings(node);
+    Stream::decodeSceneDisplaySettings(node, state.displaySettings);
+    if (node["editorCamera"]) {
+        state.editorCamera = YAML::Clone(node["editorCamera"]);
+        // the fly speed moved to cameraSettings (an older offset migrates, SceneViewStateStream)
+        if (state.editorCamera.IsMap() && state.editorCamera["walkSpeed"]) {
+            state.editorCamera.remove("walkSpeed");
+        }
+    }
+    state.viewState = SceneViewStateStream::decode(node);
+    // the display settings' keys are Stream's, not unknown ones
+    if (state.viewState.unknownKeys.IsMap()) {
+        const YAML::Node display = Stream::encodeSceneDisplaySettings(SceneDisplaySettings());
+        for (const auto& entry : display) {
+            state.viewState.unknownKeys.remove(entry.first.as<std::string>());
+        }
+    }
+    return state;
+}
+
+YAML::Node Workspace::encodeSceneEntry(const SceneProject& sceneProject) {
+    YAML::Node sceneNode = Stream::encodeSceneDisplaySettings(sceneProject.displaySettings);
+
+    // A closed scene has no renderer, so its camera is whatever was last read
+    if (sceneProject.sceneRender) {
+        if (Camera* editorCam = sceneProject.sceneRender->getCamera()) {
+            float zoom = 0.0f;
+            if (sceneProject.sceneType == SceneType::SCENE_2D || sceneProject.sceneType == SceneType::SCENE_UI) {
+                zoom = static_cast<SceneRender2D*>(sceneProject.sceneRender)->getZoom();
+            }
+            sceneNode["editorCamera"] = Stream::encodeEditorCamera(editorCam, zoom, 0.0f);
+        }
+    } else if (sceneProject.editorCameraState.IsDefined()) {
+        sceneNode["editorCamera"] = sceneProject.editorCameraState;
+    }
+
+    // the GameObjects hidden or locked that are still there (R36)
+    SceneViewState viewState = sceneProject.viewState;
+    if (sceneProject.scene) {
+        for (std::set<Entity>* entities : {&viewState.hiddenEntities, &viewState.pickLockedEntities}) {
+            for (auto it = entities->begin(); it != entities->end();) {
+                it = sceneProject.scene->isEntityCreated(*it) ? std::next(it) : entities->erase(it);
+            }
+        }
+    }
+    SceneViewStateStream::encode(viewState, sceneNode);
+    return sceneNode;
+}
 
 fs::path Workspace::getUserDirectory(const fs::path& projectPath) {
     return projectPath / ".jasperengine" / "user";
@@ -226,6 +271,7 @@ std::map<std::string, YAML::Node> Workspace::statesForUnresolvedScenes(const Pro
         if (it->second.editorCamera.IsDefined()) {
             sceneNode["editorCamera"] = YAML::Clone(it->second.editorCamera);
         }
+        SceneViewStateStream::encode(it->second.viewState, sceneNode);
         if (sceneNode.size()) {
             retained[key] = sceneNode;
         }
@@ -271,24 +317,7 @@ bool Workspace::save(const Project* project) {
             continue;
         }
 
-        YAML::Node sceneNode = Stream::encodeSceneDisplaySettings(sceneProject.displaySettings);
-
-        // A closed scene has no renderer, so its camera is whatever was last read
-        if (sceneProject.sceneRender) {
-            if (Camera* editorCam = sceneProject.sceneRender->getCamera()) {
-                float zoom = 0.0f;
-                float walkSpeedOffset = 0.0f;
-                if (sceneProject.sceneType == SceneType::SCENE_2D || sceneProject.sceneType == SceneType::SCENE_UI) {
-                    zoom = static_cast<SceneRender2D*>(sceneProject.sceneRender)->getZoom();
-                } else if (sceneProject.sceneType == SceneType::SCENE_3D) {
-                    walkSpeedOffset = static_cast<SceneRender3D*>(sceneProject.sceneRender)->getWalkSpeedOffset();
-                }
-                sceneNode["editorCamera"] = Stream::encodeEditorCamera(editorCam, zoom, walkSpeedOffset);
-            }
-        } else if (sceneProject.editorCameraState.IsDefined()) {
-            sceneNode["editorCamera"] = sceneProject.editorCameraState;
-        }
-
+        const YAML::Node sceneNode = encodeSceneEntry(sceneProject);
         scenesNode[sceneKey(sceneProject.filepath)] = sceneNode;
     }
 
