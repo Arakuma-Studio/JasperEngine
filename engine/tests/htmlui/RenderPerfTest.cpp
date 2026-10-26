@@ -25,7 +25,9 @@
 //
 // CPU time is the engine's own work, the frame's wall time less the graphics backend's share
 // (RenderBackendTime: llvmpipe and lavapipe do on this thread what a GPU driver does not), the
-// median of the measured frames; gates take the least of up to 3 runs and the
+// median of the measured frames, each started with the GPU idle (finishGpu: the software
+// rasterizer's threads, one per core, would otherwise take the cores from the engine's thread
+// while they draw the last frame, more for the heavier frame); gates take the least of up to 3 runs and the
 // JASPER_HTMLUI_PERF_SLACK factor (compat/PerfFixtures.h). Results go to
 // build/<platform>/htmlui-render-bench[-vulkan].json and the table to docs/html-ui/render-benchmark.md.
 
@@ -130,6 +132,9 @@ namespace {
             clock += 1.0 / 60.0;
             if (perFrame)
                 perFrame(i);
+            // the last frame rasterized first: llvmpipe's threads (as many as the cores) would
+            // otherwise compete with this frame's engine work for the CPU, which a GPU does not
+            finishGpu();
             RenderBackendTime::reset();
             const auto start = std::chrono::steady_clock::now();
             runner.frameAt(clock, true);

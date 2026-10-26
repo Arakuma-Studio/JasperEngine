@@ -161,6 +161,17 @@ static bool readVulkanImage(TextureRender& texture, int width, int height, int b
 }
 #endif
 
+bool jasperengine::test::finishGpu(){
+#if defined(SOKOL_VULKAN)
+    sg_environment environment = System::instance().getSokolEnvironment();
+    VkQueue queue = reinterpret_cast<VkQueue>(const_cast<void*>(environment.vulkan.queue));
+    return queue != VK_NULL_HANDLE && vkQueueWaitIdle(queue) == VK_SUCCESS;
+#else
+    glFinish();
+    return true;
+#endif
+}
+
 bool jasperengine::test::readTexture(TextureRender& texture, int width, int height, std::vector<uint8_t>& rgba){
     return readTexturePixels(texture, width, height, 4, rgba);
 }
