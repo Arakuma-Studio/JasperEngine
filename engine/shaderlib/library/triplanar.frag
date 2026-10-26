@@ -14,6 +14,10 @@
 // @property dirtColor color (0.23, 0.17, 0.11, 1) "Dirt colour" feature=NOISE_MASK
 // @property dirtStrength range(0, 1) 0.65 "Dirt strength" feature=NOISE_MASK
 // @property dirtContrast range(0.5, 8) 2.5 "Dirt contrast" feature=NOISE_MASK
+// @property stochasticCellSize range(0.25, 4) 1 "Cell Size" feature=STOCHASTIC
+// @property stochasticBlendSharpness range(0, 1) 0.4 "Blend Sharpness" feature=STOCHASTIC
+// @property stochasticContrast range(0, 1) 0.45 "Contrast" feature=STOCHASTIC
+// @property stochasticRotation range(0, 1) 0 "Rotation" feature=STOCHASTIC
 // @texture u_baseTexture white "Texture (walls with TOP_BOTTOM)"
 // @texture u_topTexture white "Floor texture (faces up)" feature=TOP_BOTTOM
 // @texture u_bottomTexture white "Ceiling texture (faces down)" feature=TOP_BOTTOM
@@ -21,6 +25,7 @@
 // @keywords SPACE "Space" WORLD OBJECT
 // @feature TOP_BOTTOM "Separate floor and ceiling textures"
 // @feature NOISE_MASK "Dirt overlay"
+// @feature STOCHASTIC "Stochastic Tiling"
 
 // The three projections (YZ for faces along X, XZ along Y, XY along Z, each mirrored by
 // the normal's sign so the texture reads the right way round on every face) blend by
@@ -41,7 +46,17 @@ uniform u_fs_customParams {
     float noiseTiling;
     float dirtStrength;
     float dirtContrast;
+    #ifdef STOCHASTIC
+        float stochasticCellSize;
+        float stochasticBlendSharpness;
+        float stochasticContrast;
+        float stochasticRotation;
+    #endif
 } customParams;
+
+#ifdef STOCHASTIC
+    #include "library/stochastic_surface.glsl"
+#endif
 
 uniform texture2D u_baseTexture;
 uniform sampler u_base_smp;
@@ -104,14 +119,44 @@ void main() {
     weights /= max(weights.x + weights.y + weights.z, 1e-5);
 
     TriplanarUV uv = triplanarUV(p * customParams.tiling, n);
-    vec4 sideX = texture(sampler2D(u_baseTexture, u_base_smp), uv.x);
-    vec4 sideZ = texture(sampler2D(u_baseTexture, u_base_smp), uv.z);
-    #ifdef TOP_BOTTOM
-        // both sampled (no texture fetch under divergent control flow), picked by the sign
-        vec4 sideY = mix(texture(sampler2D(u_bottomTexture, u_bottom_smp), uv.y),
-                         texture(sampler2D(u_topTexture, u_top_smp), uv.y), step(0.0, n.y));
+    #ifdef STOCHASTIC
+        // one lattice per projection, set up while the control flow is uniform (it takes the
+        // UV's derivatives); its reads are textureGrad, so a projection of no weight is skipped
+        vec4 stochasticSettings = stochasticCustomParams();
+        StochasticTiling stochasticX = stochasticSetup(uv.x, stochasticSettings, 0u);
+        StochasticTiling stochasticY = stochasticSetup(uv.y, stochasticSettings, 1u);
+        StochasticTiling stochasticZ = stochasticSetup(uv.z, stochasticSettings, 2u);
+        vec4 sideX = vec4(0.0);
+        vec4 sideY = vec4(0.0);
+        vec4 sideZ = vec4(0.0);
+        if (weights.x > 0.0){
+            sideX = stochasticTextureLuminance(u_baseTexture, u_base_smp, stochasticX);
+        }
+        if (weights.z > 0.0){
+            sideZ = stochasticTextureLuminance(u_baseTexture, u_base_smp, stochasticZ);
+        }
+        if (weights.y > 0.0){
+            #ifdef TOP_BOTTOM
+                // only the texture the sign picks
+                if (n.y >= 0.0){
+                    sideY = stochasticTextureLuminance(u_topTexture, u_top_smp, stochasticY);
+                }else{
+                    sideY = stochasticTextureLuminance(u_bottomTexture, u_bottom_smp, stochasticY);
+                }
+            #else
+                sideY = stochasticTextureLuminance(u_baseTexture, u_base_smp, stochasticY);
+            #endif
+        }
     #else
-        vec4 sideY = texture(sampler2D(u_baseTexture, u_base_smp), uv.y);
+        vec4 sideX = texture(sampler2D(u_baseTexture, u_base_smp), uv.x);
+        vec4 sideZ = texture(sampler2D(u_baseTexture, u_base_smp), uv.z);
+        #ifdef TOP_BOTTOM
+            // both sampled (no texture fetch under divergent control flow), picked by the sign
+            vec4 sideY = mix(texture(sampler2D(u_bottomTexture, u_bottom_smp), uv.y),
+                             texture(sampler2D(u_topTexture, u_top_smp), uv.y), step(0.0, n.y));
+        #else
+            vec4 sideY = texture(sampler2D(u_baseTexture, u_base_smp), uv.y);
+        #endif
     #endif
     vec4 albedo = sRGBToLinear(sideX * weights.x + sideY * weights.y + sideZ * weights.z);
     albedo *= customParams.baseColor * v_color;

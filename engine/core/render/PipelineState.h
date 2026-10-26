@@ -138,6 +138,12 @@ namespace jasperengine {
             format.depth = DepthStencilFormat::NONE;
             format.sampleCount = 1;
             break;
+        case PipelineType::PIP_RTT_COLORONLY:
+            // a face and level of a colour texture (the reflection probe prefilter)
+            format.color = ColorFormat::RGBA;
+            format.depth = DepthStencilFormat::NONE;
+            format.sampleCount = 1;
+            break;
         default:
             // depth-only attachments: the fullscreen effect targets (PIP_EFFECT), the depth,
             // shadow and G-buffer passes (attachment 0 RGBA8)

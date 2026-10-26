@@ -24,6 +24,9 @@ namespace jasperengine{
 
             std::shared_ptr<TextureRender> render = NULL;
             Framebuffer* framebuffer;
+            // keeps a shared framebuffer alive while this texture shows it (one made with
+            // std::make_shared, see Framebuffer); empty for the others
+            std::shared_ptr<Framebuffer> framebufferOwner;
             unsigned long lastFramebufferVersion = 0;
 
             TextureType type;
@@ -59,6 +62,8 @@ namespace jasperengine{
             bool alphaBorderAuto;
 
             void reloadAlphaBorder(bool wasFixed);
+            // after a sampler change: lets go of the texture of the previous pool key
+            void releaseSamplerRender(const std::string& previousRenderId);
             // Takes the pool's entry when it was replaced since `data` was taken: O(1), and
             // one atomic load while nothing was replaced
             void refreshFromPool() const;
@@ -101,7 +106,11 @@ namespace jasperengine{
             void destroy();
             void invalidateRender();
 
+            // a framebuffer that was made and is gone draws the destroyed-framebuffer fallback
+            // (setDestroyedFramebufferFallback: RenderSystem's transparent black), else
+            // fallBackTexture; with no fallBackTexture, its texture as it is
             TextureRender* getRender(TextureRender* fallBackTexture = NULL);
+            static void setDestroyedFramebufferFallback(TextureRender* texture);
             std::string getPath(size_t index = 0) const;
             // The asset GUID of a source path: the editor resolves texture references by it
             // and keeps the path as a hint. A new path in a slot drops its GUID.
@@ -113,6 +122,8 @@ namespace jasperengine{
             // keeps a null data pointer even though it is not empty().
             bool hasData() const;
             const std::string& getId() const;
+            // the TexturePool key: the id plus a non-default sampler state
+            std::string getRenderId() const;
 
             size_t getNumFaces() const;
             TextureType getType() const;

@@ -21,6 +21,8 @@
 #include "util/HtmlUiExamples.h"
 #include "json.hpp"
 #include "lua.h"
+#include "Jolt/Jolt.h"
+#include "Jolt/Physics/Collision/ObjectLayer.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -426,6 +428,36 @@ bool editor::Generator::buildProject(const fs::path& buildPath, const std::strin
             }
         }
     });
+}
+
+// The Jolt configuration the editor's engine library was built with, as compile definitions.
+// It changes Jolt's class layouts (the engine's PhysicsSystem holds a JPH::PhysicsSystem by
+// value), so scripts linking that library compile Jolt's headers the same way: the object
+// layer size, and JPH_DEBUG, which Jolt otherwise derives from the script's own NDEBUG.
+static std::string joltCompileDefinitions() {
+    std::string definitions = "JPH_OBJECT_LAYER_BITS=" + std::to_string(JPH_OBJECT_LAYER_BITS);
+#ifdef JPH_DEBUG
+    // empty, as Jolt defines it, so its own definition is no redefinition
+    definitions += " JPH_DEBUG=";
+#else
+    definitions += " JPH_NO_DEBUG";
+#endif
+#ifdef JPH_ENABLE_ASSERTS
+    definitions += " JPH_ENABLE_ASSERTS";
+#endif
+#ifdef JPH_DEBUG_RENDERER
+    definitions += " JPH_DEBUG_RENDERER";
+#endif
+#ifdef JPH_PROFILE_ENABLED
+    definitions += " JPH_PROFILE_ENABLED";
+#endif
+#ifdef JPH_DOUBLE_PRECISION
+    definitions += " JPH_DOUBLE_PRECISION";
+#endif
+#ifdef JPH_SHARED_LIBRARY
+    definitions += " JPH_SHARED_LIBRARY";
+#endif
+    return definitions;
 }
 
 // Relative to ${PROJECT_ROOT} so the generated CMakeLists.txt reads the same on every
@@ -1007,8 +1039,7 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     std::string factorySources = "set(FACTORY_SOURCES\n";
     std::unordered_set<std::string> addedFactorySources;
     for (const auto& sceneData : scenes) {
-        std::string sceneName = Factory::toIdentifier(sceneData.name);
-        std::string filename = sceneName + ".cpp";
+        std::string filename = Factory::sceneToFileName(sceneData.id, sceneData.name) + ".cpp";
         if (addedFactorySources.insert(filename).second) {
             factorySources += "    " + internalPathStr + "/generated/" + filename + "\n";
         }
@@ -1144,8 +1175,9 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "# Build mode: when ON, build as JasperEngine Editor plugin (shared library)\n";
     cmakeContent += "option(JASPERENGINE_EDITOR_PLUGIN \"Build as JasperEngine Editor plugin\" OFF)\n";
 
-    // Both modes link the editor's engine library, which always has both physics backends
-    cmakeContent += "add_compile_definitions(JASPERENGINE_PHYSICS_2D JASPERENGINE_PHYSICS_3D)\n\n";
+    // Both modes link the editor's engine library, which always has both physics backends.
+    // Jolt's configuration changes its class layouts, so it has to match the engine's.
+    cmakeContent += "add_compile_definitions(JASPERENGINE_PHYSICS_2D JASPERENGINE_PHYSICS_3D " + joltCompileDefinitions() + ")\n\n";
 
     cmakeContent += getToolchainFloorCheck();
     cmakeContent += getEditorPluginAbiCheck();
@@ -1567,7 +1599,7 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
     agentsContent += "## Working with the editor (MCP)\n\n";
     agentsContent += "JasperEngine Editor embeds an MCP server: build scenes, prefabs, UI and project settings, and playtest, through its tools instead of editing `*.scene`/`*.prefab`/`project.yaml` by hand "
                      "(the open editor would overwrite such edits). Start it with `jasperengine-editor mcp --project <this directory>` as a stdio MCP server, "
-                     "or attach to an editor that is already open over HTTP (Editor Settings > MCP, `http://127.0.0.1:47615/mcp` by default). "
+                     "or attach to an editor that is already open over HTTP (Window > MCP: `http://127.0.0.1:47615/mcp` by default, with the bearer token that window copies). "
                      "The server's instructions and the `jasper://guide` / `jasper://docs/...` resources explain the tools. "
                      "From a shell, `jasperengine-editor call <tool> [--flags]` runs any of them (`call <tool> --help` lists its parameters; `--project <this directory>` starts a one-shot headless editor when none has the project open).\n\n";
     agentsContent += "- Scripts, shaders and other text files: edit them on disk with your own tools. The editor picks the changes up automatically before every MCP tool call "
@@ -1578,6 +1610,9 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
     agentsContent += "- C++ API: the headers in `" + engineApiRelativePath.generic_string() + "/`; `.clangd` (with `" + (relativeInternalPath / "clangd").generic_string() +
                      "/compile_commands.json`) lets clangd resolve them, e.g. `clangd --check=scripts/Player.cpp`. "
                      "C++ scripts build when a scene plays, or with the `compile_scripts` tool.\n";
+    agentsContent += "- Features with their own reference (`jasper://docs` lists them all), e.g. the GPU fluid simulation (Fluid Simulation component: "
+                     "`create_entity` type `fluid_simulation`, presets, seeded deterministic runs, Lua `FluidSimulation`; `jasper://docs/fluid`) "
+                     "and post-processing (`jasper://docs/post-processing`).\n";
     agentsContent += "- Checks without the editor: `jasperengine-editor check --project . [--files <paths...>] [--cpp]` (Lua syntax and load, shaders, HTML/CSS UI, C++ build; exit code 1 on errors). "
                      "As an agent hook after every edit, shell commands included: `jasperengine-editor check --project <this directory> --hook` "
                      "(PostToolUse; it checks what changed since its last run and logs to `" + relativeInternalPath.generic_string() + "/check-hook.log`).\n\n";
@@ -2150,22 +2185,20 @@ std::vector<editor::PrefabInstanceInfo> editor::Generator::writePrefabSources(co
     return prefabInstances;
 }
 
-void editor::Generator::writeSceneSource(Scene* scene, const std::string& sceneName, const std::vector<Entity>& entities, const Entity camera, const fs::path& projectPath, const fs::path& projectInternalPath, std::vector<PrefabInstanceInfo>& prefabInstances, const SceneResources& resources){
+void editor::Generator::writeSceneSource(Scene* scene, uint32_t sceneId, const std::string& sceneName, const std::vector<Entity>& entities, const Entity camera, const fs::path& projectPath, const fs::path& projectInternalPath, std::vector<PrefabInstanceInfo>& prefabInstances, const SceneResources& resources){
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
 
-    std::string sceneIdStr = Factory::toIdentifier(sceneName);
+    std::string sceneContent = Factory::createScene(0, scene, sceneId, sceneName, entities, camera, projectPath, generatedPath, prefabInstances, resources);
 
-    std::string sceneContent = Factory::createScene(0, scene, sceneName, entities, camera, projectPath, generatedPath, prefabInstances, resources);
-
-    std::string filename = sceneIdStr + ".cpp";
+    std::string filename = Factory::sceneToFileName(sceneId, sceneName) + ".cpp";
     const fs::path sourceFile = generatedPath / filename;
 
     FileUtils::writeIfChanged(sourceFile, sceneContent);
 }
 
-void editor::Generator::clearSceneSource(const std::string& sceneName, const fs::path& projectInternalPath) {
+void editor::Generator::clearSceneSource(uint32_t sceneId, const std::string& sceneName, const fs::path& projectInternalPath) {
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
-    std::string filename = Factory::toIdentifier(sceneName) + ".cpp";
+    std::string filename = Factory::sceneToFileName(sceneId, sceneName) + ".cpp";
     const fs::path sourceFile = generatedPath / filename;
 
     if (fs::exists(sourceFile)) {
@@ -2177,9 +2210,9 @@ void editor::Generator::clearSceneSource(const std::string& sceneName, const fs:
     }
 }
 
-bool editor::Generator::hasSceneSource(const std::string& sceneName, const fs::path& projectInternalPath) const {
+bool editor::Generator::hasSceneSource(uint32_t sceneId, const std::string& sceneName, const fs::path& projectInternalPath) const {
     // one written by an older editor lacks what main.cpp calls
-    std::ifstream file(getGeneratedPath(projectInternalPath) / (Factory::toIdentifier(sceneName) + ".cpp"));
+    std::ifstream file(getGeneratedPath(projectInternalPath) / (Factory::sceneToFileName(sceneId, sceneName) + ".cpp"));
     std::string header;
     return std::getline(file, header) && header == Factory::sceneSourceHeader;
 }
@@ -2221,7 +2254,7 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
 
     // Forward declarations for per-scene initialization functions (defined in generated scene .cpp files)
     for (const auto& sceneData : scenes) {
-        std::string sceneName = Factory::toIdentifier(sceneData.name);
+        std::string sceneName = Factory::sceneToFileName(sceneData.id, sceneData.name);
         mainContent += "void create_" + sceneName + "(Scene* scene);\n";
         mainContent += "SceneResources resources_" + sceneName + "();\n";
     }
@@ -2233,7 +2266,7 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
 
     std::map<uint32_t, std::string> sceneIdToName;
     for (const auto& sceneData : scenes) {
-        std::string sceneName = "_" + Factory::toIdentifier(sceneData.name);
+        std::string sceneName = "_" + Factory::sceneToFileName(sceneData.id, sceneData.name);
         mainContent += "static Scene* " + sceneName + " = nullptr;\n";
         sceneIdToName[sceneData.id] = sceneName;
     }
@@ -2243,12 +2276,12 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     // cross-scene references resolve, then build and start the new ones
     auto emitStackSetup = [&](const SceneBuildInfo& sceneData) {
         for (const auto sceneId : sceneData.involvedScenes) {
-            std::string sceneName = "_" + Factory::toIdentifier(sceneIdToName[sceneId]);
+            std::string sceneName = sceneIdToName[sceneId];
             mainContent += "    bool " + sceneName + "_needsInit = false;\n";
         }
         mainContent += "\n";
         for (const auto sceneId : sceneData.involvedScenes) {
-            std::string sceneName = "_" + Factory::toIdentifier(sceneIdToName[sceneId]);
+            std::string sceneName = sceneIdToName[sceneId];
             mainContent += "    if (!" + sceneName + "){\n";
             mainContent += "        " + sceneName + " = new Scene();\n";
             mainContent += "        SceneManager::setScenePtr(" + std::to_string(sceneId) + ", " + sceneName + ");\n";
@@ -2257,14 +2290,14 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         }
         mainContent += "\n";
         for (const auto sceneId : sceneData.involvedScenes) {
-            std::string sceneName = "_" + Factory::toIdentifier(sceneIdToName[sceneId]);
+            std::string sceneName = sceneIdToName[sceneId];
             mainContent += "    if (" + sceneName + "_needsInit) {\n";
             mainContent += "        create" + sceneName + "(" + sceneName + ");\n";
             mainContent += "    }\n";
         }
         mainContent += "\n";
         for (const auto sceneId : sceneData.involvedScenes) {
-            std::string sceneName = "_" + Factory::toIdentifier(sceneIdToName[sceneId]);
+            std::string sceneName = sceneIdToName[sceneId];
             mainContent += "    if (" + sceneName + "_needsInit) {\n";
             mainContent += "        initScripts(" + sceneName + ");\n";
             mainContent += "    }\n";
@@ -2274,14 +2307,25 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     // Per-stack load and add functions. The add one only creates the scenes, leaving the
     // running stack alone; SceneManager::addChildScene() puts them on screen.
     for (const auto& sceneData : scenes) {
-        std::string stackId = Factory::toIdentifier(sceneData.name);
+        std::string stackId = Factory::sceneToFileName(sceneData.id, sceneData.name);
         mainContent += "// --- Scene stack: " + sceneData.name + " ---\n";
 
         mainContent += "void load_" + stackId + "() {\n";
+        // A loaded stack starts again, except scenes still on screen (the loading scene)
+        for (const auto sceneId : sceneData.involvedScenes) {
+            std::string sceneName = sceneIdToName[sceneId];
+            mainContent += "    if (" + sceneName + " && !Engine::isSceneRunning(" + sceneName + ")) {\n";
+            mainContent += "        cleanupScripts(" + sceneName + ");\n";
+            mainContent += "        SceneManager::removeScenePtr(" + std::to_string(sceneId) + ");\n";
+            mainContent += "        delete " + sceneName + ";\n";
+            mainContent += "        " + sceneName + " = nullptr;\n";
+            mainContent += "    }\n";
+        }
+        mainContent += "\n";
         emitStackSetup(sceneData);
         mainContent += "\n";
         for (const auto sceneId : sceneData.activeScenes) {
-            std::string sceneName = "_" + Factory::toIdentifier(sceneIdToName[sceneId]);
+            std::string sceneName = sceneIdToName[sceneId];
             if (sceneData.id == sceneId) {
                 mainContent += "    Engine::setScene(" + sceneName + ");\n";
             } else {
@@ -2292,7 +2336,7 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         for (const auto& sceneDataAux: scenes) {
             if (sceneDataAux.id == sceneData.id) continue;
             if (std::find(sceneData.involvedScenes.begin(), sceneData.involvedScenes.end(), sceneDataAux.id) != sceneData.involvedScenes.end()) continue;
-            std::string sceneName = "_" + Factory::toIdentifier(sceneDataAux.name);
+            std::string sceneName = "_" + Factory::sceneToFileName(sceneDataAux.id, sceneDataAux.name);
 
             // A script run by initScripts() above may have added a stack of its own through
             // SceneManager::addChildScene(). Deleting any of its scenes here would leave a
@@ -2302,7 +2346,7 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
             std::string guard = sceneName;
             for (const auto& owner : scenes) {
                 if (std::find(owner.involvedScenes.begin(), owner.involvedScenes.end(), sceneDataAux.id) == owner.involvedScenes.end()) continue;
-                guard += " && !Engine::isSceneRunning(_" + Factory::toIdentifier(owner.name) + ")";
+                guard += " && !Engine::isSceneRunning(_" + Factory::sceneToFileName(owner.id, owner.name) + ")";
             }
             mainContent += "    if (" + guard + ") {\n";
             mainContent += "        cleanupScripts(" + sceneName + ");\n";
@@ -2461,7 +2505,7 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
 
     // Register all stacks with SceneManager
     for (const auto& sceneData : scenes) {
-        std::string stackId = Factory::toIdentifier(sceneData.name);
+        std::string stackId = Factory::sceneToFileName(sceneData.id, sceneData.name);
         std::string sceneIds;
         for (size_t i = 0; i < sceneData.activeScenes.size(); i++) {
             if (i > 0) sceneIds += ", ";

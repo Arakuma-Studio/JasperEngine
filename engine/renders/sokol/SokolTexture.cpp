@@ -16,6 +16,8 @@
 #include <mutex>
 #include <unordered_map>
 
+#include "meshoptimizer.h"
+
 // Sokol never sets TRANSFER_SRC, needed to copy render targets out for editor
 // thumbnails (GraphicUtils). Wrapping the call keeps sokol itself unpatched
 // (re-check when sokol_gfx is updated)
@@ -226,6 +228,42 @@ sg_wrap SokolTexture::getWrap(TextureWrap textureWrap){
     return _SG_WRAP_DEFAULT;
 }
 
+// GLES3 and WebGL2 have no unorm16 textures (sokol reports R16 unsupported there),
+// so 16-bit heightmaps go up as R32F where float textures filter, else as R16F,
+// which always does. Every mip level is converted; returns the converted pixels (one
+// block), freed once the image is made, and the bytes they take.
+static void* unorm16ToFloat(sg_image_desc* desc, uint64_t* bytes = nullptr){
+    const bool full = sg_query_pixelformat(SG_PIXELFORMAT_R32F).filter;
+    const size_t texel = full ? sizeof(float) : sizeof(uint16_t);
+    size_t total = 0;
+    for (int level = 0; level < SG_MAX_MIPMAPS && desc->data.mip_levels[level].ptr; level++){
+        total += desc->data.mip_levels[level].size / sizeof(uint16_t) * texel;
+    }
+    unsigned char* block = (unsigned char*)malloc(total);
+    unsigned char* at = block;
+    for (int level = 0; level < SG_MAX_MIPMAPS && desc->data.mip_levels[level].ptr; level++){
+        const uint16_t* source = (const uint16_t*)desc->data.mip_levels[level].ptr;
+        const size_t count = desc->data.mip_levels[level].size / sizeof(uint16_t);
+        for (size_t i = 0; i < count; i++){
+            if (full){
+                const float value = source[i] / 65535.0f;
+                memcpy(at + i * texel, &value, texel);
+            }else{
+                const uint16_t value = meshopt_quantizeHalf(source[i] / 65535.0f);
+                memcpy(at + i * texel, &value, texel);
+            }
+        }
+        desc->data.mip_levels[level].ptr = at;
+        desc->data.mip_levels[level].size = count * texel;
+        at += count * texel;
+    }
+    desc->pixel_format = full ? SG_PIXELFORMAT_R32F : SG_PIXELFORMAT_R16F;
+    if (bytes){
+        *bytes = total;
+    }
+    return block;
+}
+
 bool SokolTexture::createTexture(
             const std::string& label, int width, int height,
             ColorFormat colorFormat, TextureType type, int numFaces, void* data[], size_t size[], 
@@ -277,6 +315,11 @@ bool SokolTexture::createTexture(
         image_desc.data.mip_levels[0].size = size[0];
     }
 
+    void* converted = NULL;
+    if (pixelFormat == SG_PIXELFORMAT_R16 && !sg_query_pixelformat(SG_PIXELFORMAT_R16).filter){
+        converted = unorm16ToFloat(&image_desc);
+    }
+
     if (Engine::isAsyncThread()){
         image = SokolCmdQueue::add_command_make_image(image_desc);
     }else{
@@ -287,6 +330,9 @@ bool SokolTexture::createTexture(
     // frees immediately, and the data is only consumed inside sg_make_image
     if (combined){
         SystemRender::scheduleCleanup(std::free, combined);
+    }
+    if (converted){
+        SystemRender::scheduleCleanup(std::free, converted);
     }
     if (Engine::isAsyncThread()){
         sampler = SokolCmdQueue::add_command_make_sampler(sampler_desc);
@@ -375,6 +421,12 @@ bool SokolTexture::createTextureLevels(
         imageDesc.data.mip_levels[level].size = levels[level].size;
     }
 
+    // a 16-bit height map where unorm16 does not filter (GLES3, WebGL2): as float, full precision
+    void* converted = nullptr;
+    if (format == GpuTextureFormat::R16 && !sg_query_pixelformat(SG_PIXELFORMAT_R16).filter){
+        converted = unorm16ToFloat(&imageDesc, &bytes);
+    }
+
     sg_sampler_desc samplerDesc = {};
     samplerDesc.min_filter = getFilter(minFilter);
     samplerDesc.mag_filter = getFilter(magFilter);
@@ -388,6 +440,10 @@ bool SokolTexture::createTextureLevels(
     }else{
         image = sg_make_image(imageDesc);
         sampler = sg_make_sampler(samplerDesc);
+    }
+    // after the image: the synchronous path frees at once, and sg_make_image consumed the data
+    if (converted){
+        SystemRender::scheduleCleanup(std::free, converted);
     }
     trackImageBytes(image, bytes);
     createTextureView(label.c_str());
@@ -631,7 +687,7 @@ void SokolTexture::createTextureView(const char* label){
 bool SokolTexture::createFramebufferTexture(
             TextureType type, bool depth, bool shadowMap, int width, int height,
             TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV,
-            ColorFormat colorFormat, int sampleCount, bool depthStencil, bool resolve){
+            ColorFormat colorFormat, int sampleCount, bool depthStencil, bool resolve, int numMipmaps){
     sg_image_desc img_desc = {0};
     if (depth){
         img_desc.usage.depth_stencil_attachment = true;
@@ -661,6 +717,8 @@ bool SokolTexture::createFramebufferTexture(
 
     //if not set Sokol gets default from sg_desc.context.sample_count
     img_desc.sample_count = (sampleCount > 1 && !resolve) ? sampleCount : 1;
+    // levels a pass each renders into (multisampled images have one)
+    img_desc.num_mipmaps = (!depth && img_desc.sample_count == 1 && numMipmaps > 1) ? numMipmaps : 1;
 
     if (depth){
         // DEPTH_STENCIL: GL/GLES3 DEPTH24_STENCIL8, D3D11 R24G8_TYPELESS (D24S8 to draw, depth
@@ -679,6 +737,10 @@ bool SokolTexture::createFramebufferTexture(
             img_desc.pixel_format = SG_PIXELFORMAT_RGBA32F;
         }else if (colorFormat == ColorFormat::R32F){
             img_desc.pixel_format = SG_PIXELFORMAT_R32F;
+        }else if (colorFormat == ColorFormat::RG16F){
+            img_desc.pixel_format = SG_PIXELFORMAT_RG16F;
+        }else if (colorFormat == ColorFormat::R16F){
+            img_desc.pixel_format = SG_PIXELFORMAT_R16F;
         }else{
             img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
         }

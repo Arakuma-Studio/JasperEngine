@@ -50,6 +50,8 @@
 #include "texture/TextureCookQueue.h"
 #include "util/EditorScripts.h"
 #include "htmlui/HtmlUiImportCli.h"
+#include "texsynth/SynthesisCli.h"
+#include "physics/PlacementCli.h"
 #include "htmlui/effects/EffectManifest.h"
 #include "htmlui/effects/EffectRegistry.h"
 #include "shader/ShaderVariantCompiler.h"
@@ -263,6 +265,8 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " check [options]          Check Lua scripts, shader forks, C++ scripts and HTML/CSS UI (compiler-style).\n"
         << "  " << commandName << " assets check|migrate     Missing asset references (JSON); rewrite references with GUIDs.\n"
         << "  " << commandName << " import-ui [options]      Import the remote resources of HTML UI documents.\n"
+        << "  " << commandName << " synthesize-texture [options]  Synthesize a texture (tileable, inpainted, ...) from examples.\n"
+        << "  " << commandName << " place-physics [options]  Drop, separate or move GameObjects with edit-time physics.\n"
         << "  " << commandName << " ui-support               Print the HTML/CSS support tables as JSON (developer: docs generation).\n"
         << "  " << commandName << " ui-effects [options]     List the HTML UI effects (--json, --validate, --project <dir>).\n"
         << "  " << commandName << " mcp [options]            Run the editor as an MCP server on stdio.\n"
@@ -843,7 +847,7 @@ static void writeSceneDump(Project& project, const fs::path& outPath) {
                     Entity target = NULL_ENTITY;
                     if (property.type == PropertyType::Entity) target = *static_cast<Entity*>(property.ref);
                     else if (property.type == PropertyType::EntityReference) target = static_cast<EntityReference*>(property.ref)->entity;
-                    else if (property.type == PropertyType::Texture) target = CameraTextureLink::parse(static_cast<Texture*>(property.ref)->getId());
+                    else if (property.type == PropertyType::Texture) target = CameraTextureLink::parseLink(static_cast<Texture*>(property.ref)->getId());
                     else continue;
                     if (target == NULL_ENTITY) continue;
                     node["refs"][Catalog::getComponentName(type, true) + "." + name] =
@@ -2029,9 +2033,12 @@ void printCheckUsage(const std::string& commandName) {
         << "      --cpp                C++ scripts: configured and built like Play does (slow the first time).\n"
         << "      --ui                 HTML/CSS UI documents: the compatibility diagnostics (dropped or rewritten\n"
         << "                           constructs, missing or remote files) with file:line:col, code and fix.\n"
-        << "      --textures           Texture import problems: a reference that does not fit the texture's\n"
-        << "                           type, a size block formats cannot take, a format the data does not fit.\n"
-        << "      --all                Lua, shaders, C++, UI and textures. Default: --lua --shaders --ui --textures.\n"
+        << "      --textures           Textures: import problems (a reference that does not fit the texture's\n"
+        << "                           type, a size block formats cannot take, a format the data does not fit)\n"
+        << "                           and synthesized textures (PNGs with a jasper.synthesis recipe) whose\n"
+        << "                           sources changed or went missing since (regenerate them).\n"
+        << "      --all                Lua, shaders, C++, UI and textures.\n"
+        << "                           Default: --lua --shaders --ui --textures.\n"
         << "      --files <paths...>   Only these files (absolute, or relative to the current directory or\n"
         << "                           the project); files outside the project or of other kinds are ignored.\n"
         << "      --format <format>    text (default) or json.\n"
@@ -2433,7 +2440,7 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         std::vector<ProjectChecks::ShaderUse> forks = (shadersAll || include) ? ProjectChecks::shaderForksInProject(&project)
                                                                               : ProjectChecks::shaderForksUsingFiles(&project, shaderFiles);
         for (ProjectChecks::ShaderUse& use : forks) {
-            const uint64_t key = ProjectChecks::prepareShaderCheck(&project, use);
+            const ShaderKey key = ProjectChecks::prepareShaderCheck(&project, use);
             const ProjectChecks::ShaderCheck check = ProjectChecks::runShaderCheck(&project, use, key);
             // a UI effect's forms (phase 5) share their source: an error is reported once
             for (const ProjectChecks::Finding& finding : check.findings) {
@@ -2447,6 +2454,12 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         // with files those drawing with the forks checked
         const std::vector<ProjectChecks::Finding> sceneInputs = ProjectChecks::sceneInputFindings(&project, shadersAll ? nullptr : &forks);
         run.findings.insert(run.findings.end(), sceneInputs.begin(), sceneInputs.end());
+        // Stochastic Tiling's warnings (tilted normal maps under Rotation, no effect): the
+        // scenes' materials and terrain layers, when every shader is checked
+        if (shadersAll) {
+            const std::vector<ProjectChecks::Finding> stochastic = ProjectChecks::stochasticTilingFindings(&project);
+            run.findings.insert(run.findings.end(), stochastic.begin(), stochastic.end());
+        }
         run.checked.push_back({"shaders", forks.size()});
     }
 
@@ -2455,7 +2468,7 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         size_t count = 0;
         const std::vector<ProjectChecks::Finding> textures = TextureCli::check(project, textureFiles, count);
         run.findings.insert(run.findings.end(), textures.begin(), textures.end());
-        run.checked.push_back({"textures", count});
+        run.checked.push_back({"texture_imports", count});
     }
 
     if (cppWanted) {
@@ -2534,7 +2547,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     std::vector<fs::path> luaFiles;
     std::vector<std::string> shaderFiles;
     std::vector<fs::path> uiFiles;
-    std::vector<std::string> textureFiles;   // project-relative
+    std::vector<std::string> textureFiles;   // project-relative: cookable textures (import settings)
+    std::vector<fs::path> synthesisFiles;    // images: synthesized ones, or their examples
     bool cppFiles = false;
     std::vector<std::string> checkedNames;   // project-relative, for the hook log
     const bool fileMode = options.filesGiven || options.hook;
@@ -2567,6 +2581,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
             } else if (isCookableTexture(name)) {
                 if (textures) textureFiles.push_back(name);
             }
+            // a synthesized PNG, or an image a synthesized texture was made from
+            if (textures && Util::isImageFile(name)) synthesisFiles.push_back(path);
         }
     } else if (lua) {
         luaFiles = ProjectChecks::findProjectFiles(root, {".lua"});
@@ -2575,7 +2591,9 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     const bool shadersWanted = fileMode ? !shaderFiles.empty() : shaders;
     const bool cppWanted = cpp && (!fileMode || cppFiles);
     const bool uiWanted = fileMode ? !uiFiles.empty() : ui;
+    // --textures: the import check (cookable textures, the engine) and the synthesis recipes
     const bool texturesWanted = fileMode ? !textureFiles.empty() : textures;
+    const bool synthesisWanted = fileMode ? !synthesisFiles.empty() : textures;
 
     // The UI check is pure parsing (no engine): first, and the engine starts only for the others
     ProjectChecks::UiCheck uiCheck;
@@ -2596,6 +2614,12 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     if (uiWanted) {
         run.findings.insert(run.findings.end(), uiCheck.findings.begin(), uiCheck.findings.end());
         run.checked.push_back({"ui", uiCheck.documents + uiCheck.stylesheets});
+    }
+    if (synthesisWanted) {
+        // reads PNG headers and hashes the sources of synthesized ones: no engine
+        const ProjectChecks::SynthesisCheck synthesis = ProjectChecks::checkSynthesisRecipes(root, fileMode ? synthesisFiles : std::vector<fs::path>());
+        run.findings.insert(run.findings.end(), synthesis.findings.begin(), synthesis.findings.end());
+        run.checked.push_back({"textures", synthesis.recipes});
     }
     ProjectChecks::sortFindings(run.findings);
     const size_t errors = ProjectChecks::countSeverity(run.findings, "error");
@@ -2642,7 +2666,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         const nlohmann::json out = {{"ok", errors == 0}, {"errors", errors}, {"warnings", warnings}, {"checked", checked},
                                     {"findings", ProjectChecks::toJson(run.findings)},
                                     {"seconds", std::round(seconds * 100.0) / 100.0}};
-        std::cout << out.dump(1) << std::endl;
+        // a finding's path may not be UTF-8 (a Latin-1 file name): shown with U+FFFD, never an abort
+        std::cout << out.dump(1, ' ', false, nlohmann::json::error_handler_t::replace) << std::endl;
     } else {
         for (const ProjectChecks::Finding& finding : run.findings) std::cout << ProjectChecks::toText(finding) << "\n";
         std::cout.flush();
@@ -2652,7 +2677,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     }
     if (!options.quiet) {
         std::string what;
-        const std::map<std::string, std::string> units = {{"lua", "file"}, {"shaders", "fork"}, {"cpp", "script"}, {"ui", "file"}, {"textures", "texture"}};
+        const std::map<std::string, std::string> units = {{"lua", "file"}, {"shaders", "fork"}, {"cpp", "script"}, {"ui", "file"},
+                                                          {"textures", "recipe"}, {"texture_imports", "texture"}};
         for (const auto& [category, count] : run.checked) {
             what += (what.empty() ? "" : ", ") + category + " " + plural(count, units.at(category));
         }
@@ -2895,6 +2921,16 @@ int CommandLine::runImportUiCommand(int argc, char** argv, const char* executabl
     EditorHostOverrideGuard hostOverride(nullptr);
     Out::setConsoleWindow(nullptr);
     return htmlui::runImportUi(argc, argv, getCommandName(executableName), std::cout, std::cerr);
+}
+
+int CommandLine::runSynthesizeTextureCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    return texsynth::runSynthesizeTexture(argc, argv, getCommandName(executableName), std::cout, std::cerr);
+}
+
+int CommandLine::runPlacePhysicsCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    return runPlacePhysics(argc, argv, getCommandName(executableName), std::cout, std::cerr);
 }
 
 int CommandLine::runHelpCommand(int argc, char** argv, const char* executableName) {

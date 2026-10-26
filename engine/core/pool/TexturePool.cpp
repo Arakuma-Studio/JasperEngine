@@ -29,6 +29,15 @@ std::set<std::string>& TexturePool::getInvalidated(){
     return *invalidated;
 };
 
+std::string TexturePool::getRenderId(const std::string& id, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV){
+	if (id.empty() || (minFilter == TextureFilter::LINEAR && magFilter == TextureFilter::LINEAR &&
+	                   wrapU == TextureWrap::REPEAT && wrapV == TextureWrap::REPEAT)){
+		return id;
+	}
+	return id + "|sampler=" + std::to_string((int)minFilter) + "," + std::to_string((int)magFilter) + "," +
+	       std::to_string((int)wrapU) + "," + std::to_string((int)wrapV);
+}
+
 std::shared_ptr<TextureRender> TexturePool::get(const std::string& id){
 	auto& map = getMap();
 	auto it = map.find(id);
@@ -131,24 +140,7 @@ std::shared_ptr<TextureRender> TexturePool::get(const std::string& id, TextureTy
 			}
 		}
 	}
-	// R16 is not a GLES3 / WebGL2 format: those sample its high byte as R8 (the CPU keeps R16)
-	if (format == GpuTextureFormat::R16 && !SystemRender::isTextureFormatSupported(GpuTextureFormat::R16)){
-		auto* converted = new std::vector<std::vector<uint8_t>>(levels.size());
-		for (size_t level = 0; level < levels.size(); level++){
-			const size_t n = levels[level].size / 2;
-			(*converted)[level].resize(n);
-			for (size_t i = 0; i < n; i++){
-				uint16_t v;
-				std::memcpy(&v, levels[level].data + i * 2, 2);
-				(*converted)[level][i] = (uint8_t)(((uint32_t)v * 255u + 32767u) / 65535u);
-			}
-			levels[level].data = (*converted)[level].data();
-			levels[level].size = n;
-		}
-		delete owned;
-		owned = converted;
-		format = GpuTextureFormat::R8;
-	}
+	// (R16 where unorm16 does not filter, GLES3 and WebGL2, goes up as float: SokolTexture)
 	width = levels.empty() ? 0 : levels[0].width;
 	height = levels.empty() ? 0 : levels[0].height;
 
@@ -187,6 +179,12 @@ std::shared_ptr<TextureRender> TexturePool::get(const std::string& id, TextureTy
 	return shared;
 }
 
+bool TexturePool::holds(const std::string& id, const std::shared_ptr<TextureRender>& render){
+	auto& map = getMap();
+	auto it = map.find(id);
+	return render && it != map.end() && it->second == render;
+}
+
 void TexturePool::add(const std::string& id, std::shared_ptr<TextureRender> render){
 	if (!id.empty() && render){
 		getMap()[id] = render;
@@ -217,21 +215,31 @@ void TexturePool::remove(const std::string& id){
 // meanwhile, so it must stay alive. The id is only marked stale — get() then reports a miss
 // so callers reload, and get() with data destroys and recreates the texture in-place inside
 // the same shared object, letting every holder pick up the rebuilt texture. Unreferenced
-// entries are destroyed and erased immediately, like remove().
+// entries are destroyed and erased immediately, like remove(). The id's sampler variants
+// (getRenderId) hold the same image, so they are invalidated with it.
 void TexturePool::invalidate(const std::string& id){
 	auto& map = getMap();
-	auto it = map.find(id);
-	if (it == map.end()){
-		return;
+
+	std::vector<std::string> keys = {id};
+	const std::string prefix = id + "|sampler=";
+	for (auto it = map.lower_bound(prefix); it != map.end() && it->first.compare(0, prefix.size(), prefix) == 0; ++it){
+		keys.push_back(it->first);
 	}
 
-	if (!it->second || it->second.use_count() <= 1){
-		if (it->second){
-			it->second->destroyTexture();
+	for (const std::string& key : keys){
+		auto it = map.find(key);
+		if (it == map.end()){
+			continue;
 		}
-		map.erase(it);
-	}else{
-		getInvalidated().insert(id);
+
+		if (!it->second || it->second.use_count() <= 1){
+			if (it->second){
+				it->second->destroyTexture();
+			}
+			map.erase(it);
+		}else{
+			getInvalidated().insert(key);
+		}
 	}
 }
 

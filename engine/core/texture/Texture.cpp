@@ -8,6 +8,19 @@
 using namespace jasperengine;
 
 namespace {
+    // owns the face data: a project switch frees the Texture (and the pool entry) before the
+    // render queue runs the deferred cleanup
+    struct TextureFaceCleanup{
+        std::shared_ptr<std::array<TextureData,6>> data;
+        size_t face;
+    };
+
+    void cleanupTextureFace(void* cleanupData){
+        TextureFaceCleanup* cleanup = static_cast<TextureFaceCleanup*>(cleanupData);
+        TextureData::cleanupTexture(&cleanup->data->at(cleanup->face));
+        delete cleanup;
+    }
+
     void clearPathGuids(Guid (&guids)[6]){
         for (Guid& guid : guids){
             guid = Guid();
@@ -52,13 +65,28 @@ Texture::Texture(const std::string& id, TextureData data): Texture(){
     adoptPoolData(TextureDataPool::get(id, *this->data.get()));
 }
 
+namespace {
+    TextureRender* destroyedFramebufferFallback = nullptr;
+
+    // a framebuffer owned by a std::shared_ptr is shared with the textures showing it
+    std::shared_ptr<Framebuffer> ownerOf(Framebuffer* framebuffer){
+        return framebuffer ? framebuffer->weak_from_this().lock() : nullptr;
+    }
+}
+
+void Texture::setDestroyedFramebufferFallback(TextureRender* texture){
+    destroyedFramebufferFallback = texture;
+}
+
 Texture::Texture(Framebuffer* framebuffer): Texture(){
     this->framebuffer = framebuffer;
+    this->framebufferOwner = ownerOf(framebuffer);
 }
 
 Texture::Texture(const Texture& rhs){
     render = rhs.render;
     framebuffer = rhs.framebuffer;
+    framebufferOwner = rhs.framebufferOwner;
     type = rhs.type;
     id = rhs.id;
     for (int i = 0; i < 6; i++){
@@ -85,6 +113,7 @@ Texture& Texture::operator=(const Texture& rhs){
     if (this != &rhs) {
         render = rhs.render;
         framebuffer = rhs.framebuffer;
+        framebufferOwner = rhs.framebufferOwner;
         type = rhs.type;
         id = rhs.id;
         for (int i = 0; i < 6; i++){
@@ -159,6 +188,7 @@ void Texture::setPath(const std::string& path){
     }
     this->paths[0] = newPath;
     this->framebuffer = NULL;
+    this->framebufferOwner.reset();
     this->type = TextureType::TEXTURE_2D;
     this->numFaces = 1;
     this->loadFromPath = true;
@@ -166,7 +196,7 @@ void Texture::setPath(const std::string& path){
     this->needLoad = true;
 
     this->id = buildPathTextureId();
-    this->render = TexturePool::get(id);
+    this->render = TexturePool::get(getRenderId());
 }
 
 void Texture::setData(const std::string& id, TextureData data){
@@ -174,6 +204,7 @@ void Texture::setData(const std::string& id, TextureData data){
 
     this->id = id;
     this->framebuffer = NULL;
+    this->framebufferOwner.reset();
     this->type = TextureType::TEXTURE_2D;
     this->numFaces = 1;
     this->loadFromPath = false;
@@ -186,14 +217,14 @@ void Texture::setData(const std::string& id, TextureData data){
     this->data->at(0) = data;
     adoptPoolData(TextureDataPool::get(id, *this->data.get()));
 
-    this->render = TexturePool::get(id);
+    this->render = TexturePool::get(getRenderId());
 }
 
 void Texture::setId(const std::string& id){
     this->id = id;
     clearPathGuids(pathGuids);
     if (!id.empty()) {
-        this->render = TexturePool::get(id);
+        this->render = TexturePool::get(getRenderId());
         adoptPoolData(TextureDataPool::get(id));
     }
 }
@@ -231,6 +262,7 @@ void Texture::setCubeMap(const std::string& path){
     }
 
     this->framebuffer = NULL;
+    this->framebufferOwner.reset();
     this->type = TextureType::TEXTURE_CUBE;
     this->numFaces = 6;
     this->loadFromPath = true;
@@ -239,7 +271,7 @@ void Texture::setCubeMap(const std::string& path){
     this->svgScale = 1.0f;
 
     this->id = "cube|" + path;
-    this->render = TexturePool::get(id);
+    this->render = TexturePool::get(getRenderId());
 }
 
 void Texture::setCubePath(size_t index, const std::string& path){
@@ -259,6 +291,7 @@ void Texture::setCubePath(size_t index, const std::string& path){
     destroy();
 
     this->framebuffer = NULL;
+    this->framebufferOwner.reset();
     this->type = TextureType::TEXTURE_CUBE;
     this->numFaces = 6;
     this->loadFromPath = true;
@@ -267,7 +300,7 @@ void Texture::setCubePath(size_t index, const std::string& path){
     this->svgScale = 1.0f;
 
     this->id = buildCubeTextureId(paths);
-    this->render = TexturePool::get(id);
+    this->render = TexturePool::get(getRenderId());
 }
 
 void Texture::setCubePaths(const std::string& front, const std::string& back,
@@ -293,6 +326,7 @@ void Texture::setCubePaths(const std::string& front, const std::string& back,
     this->paths[3] = down;
 
     this->framebuffer = NULL;
+    this->framebufferOwner.reset();
     this->type = TextureType::TEXTURE_CUBE;
     this->numFaces = 6;
     this->loadFromPath = true;
@@ -301,7 +335,7 @@ void Texture::setCubePaths(const std::string& front, const std::string& back,
     this->svgScale = 1.0f;
 
     this->id = buildCubeTextureId(paths);
-    this->render = TexturePool::get(id);
+    this->render = TexturePool::get(getRenderId());
 }
 
 void Texture::setCubeDatas(const std::string& id, TextureData front, TextureData back, TextureData left, TextureData right, TextureData up, TextureData down){
@@ -309,6 +343,7 @@ void Texture::setCubeDatas(const std::string& id, TextureData front, TextureData
 
     this->id = id;
     this->framebuffer = NULL;
+    this->framebufferOwner.reset();
     this->type = TextureType::TEXTURE_CUBE;
     this->numFaces = 6;
     this->loadFromPath = false;
@@ -329,13 +364,14 @@ void Texture::setCubeDatas(const std::string& id, TextureData front, TextureData
     this->data->at(3) = down;
     adoptPoolData(TextureDataPool::get(id, *this->data.get()));
 
-    this->render = TexturePool::get(id);
+    this->render = TexturePool::get(getRenderId());
 }
 
 void Texture::setFramebuffer(Framebuffer* framebuffer){
     destroy();
 
     this->framebuffer = framebuffer;
+    this->framebufferOwner = ownerOf(framebuffer);
     this->id.clear();
     clearPathGuids(pathGuids);
     this->numFaces = 1;
@@ -491,16 +527,33 @@ void Texture::destroy(){
 
         if (render) {
             render.reset();
-            TexturePool::remove(id);
+            TexturePool::remove(getRenderId());
         }
 
         if (data) {
+            // remove() works on the pool's current copy, which may no longer be this one
+            const bool pooled = data == TextureDataPool::get(id);
             data.reset();
-            TextureDataPool::remove(id);
+            if (pooled) {
+                TextureDataPool::remove(id);
+            }
         }
 
         if (!framebuffer){
             needLoad = true;
+        }
+    }
+}
+
+// The sampler is part of the pool key, so the next getRender() takes (or builds) the texture of
+// the new one. The old one is removed from the pool unless other Textures still use it (also
+// when it was invalidated; a loading placeholder is not the pool's, and leaves its entry alone).
+void Texture::releaseSamplerRender(const std::string& previousRenderId){
+    if (render && previousRenderId != getRenderId()){
+        const bool pooled = TexturePool::holds(previousRenderId, render);
+        render.reset();
+        if (pooled){
+            TexturePool::remove(previousRenderId);
         }
     }
 }
@@ -518,11 +571,20 @@ void Texture::invalidateRender(){
 TextureRender* Texture::getRender(TextureRender* fallBackTexture){
     if (framebuffer){
         lastFramebufferVersion = framebuffer->getVersion();
+        // a framebuffer that was made and is gone (its owner freed it: a removed fluid, a
+        // view loss) shows a transparent placeholder until it is made again (a new version):
+        // what drew nothing before draws nothing still. One never made yet is not ready (its
+        // texture, not created)
+        if (fallBackTexture && framebuffer->getVersion() > 0 && !framebuffer->isCreated()){
+            if (destroyedFramebufferFallback && destroyedFramebufferFallback->isCreated())
+                return destroyedFramebufferFallback;
+            return fallBackTexture;
+        }
         return &framebuffer->getRender().getColorTexture();
     }
 
     // Fast path: GPU texture already created and cached.
-    render = TexturePool::get(id);
+    render = TexturePool::get(getRenderId());
     if (render){
         return render.get();
     }
@@ -538,12 +600,12 @@ TextureRender* Texture::getRender(TextureRender* fallBackTexture){
     }
 
     if (!id.empty()){
-        render = TexturePool::get(id, type, data, minFilter, magFilter, wrapU, wrapV);
+        render = TexturePool::get(getRenderId(), type, data, minFilter, magFilter, wrapU, wrapV);
     }
 
     if (render && releaseDataAfterLoad && data){
         for (int f = 0; f < numFaces; f++){
-            SystemRender::scheduleCleanup(TextureData::cleanupTexture, &data->at(f));
+            SystemRender::scheduleCleanup(cleanupTextureFace, new TextureFaceCleanup{data, (size_t)f});
         }
     }
 
@@ -578,6 +640,10 @@ bool Texture::hasData() const{
 
 const std::string& Texture::getId() const{
     return id;
+}
+
+std::string Texture::getRenderId() const{
+    return TexturePool::getRenderId(id, minFilter, magFilter, wrapU, wrapV);
 }
 
 size_t Texture::getNumFaces() const{
@@ -720,7 +786,9 @@ void Texture::setMinFilter(TextureFilter filter){
     if (framebuffer){
         framebuffer->setMinFilter(filter);
     }
+    const std::string previousRenderId = getRenderId();
     minFilter = filter;
+    releaseSamplerRender(previousRenderId);
 }
 
 TextureFilter Texture::getMinFilter() const{
@@ -734,7 +802,9 @@ void Texture::setMagFilter(TextureFilter filter){
     if (framebuffer){
         framebuffer->setMagFilter(filter);
     }
+    const std::string previousRenderId = getRenderId();
     magFilter = filter;
+    releaseSamplerRender(previousRenderId);
 }
 
 TextureFilter Texture::getMagFilter() const{
@@ -748,7 +818,9 @@ void Texture::setWrapU(TextureWrap wrapU){
     if (framebuffer){
         framebuffer->setWrapU(wrapU);
     }
+    const std::string previousRenderId = getRenderId();
     this->wrapU = wrapU;
+    releaseSamplerRender(previousRenderId);
 }
 
 TextureWrap Texture::getWrapU() const{
@@ -762,7 +834,9 @@ void Texture::setWrapV(TextureWrap wrapV){
     if (framebuffer){
         framebuffer->setWrapV(wrapV);
     }
+    const std::string previousRenderId = getRenderId();
     this->wrapV = wrapV;
+    releaseSamplerRender(previousRenderId);
 }
 
 void Texture::setSvgScale(float scale){
@@ -780,7 +854,7 @@ void Texture::setSvgScale(float scale){
         svgScale = scale;
         id = buildPathTextureId();
         needLoad = true;
-        render = TexturePool::get(id);
+        render = TexturePool::get(getRenderId());
     }else{
         svgScale = scale;
     }
@@ -819,7 +893,7 @@ void Texture::reloadAlphaBorder(bool wasFixed){
     destroy();
     id = buildPathTextureId();
     needLoad = true;
-    render = TexturePool::get(id);
+    render = TexturePool::get(getRenderId());
 }
 
 TextureWrap Texture::getWrapV() const{

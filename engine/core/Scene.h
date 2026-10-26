@@ -260,6 +260,11 @@ namespace jasperengine{
         void setGravity3D(Vector3 gravity);
         void setGravity3D(float x, float y, float z);
 
+        // forwarder to PhysicsSystem::setInterpolation: bodies drawn between their last two
+        // fixed steps, so they move smoothly at any frame rate
+        void setPhysicsInterpolation(bool interpolation);
+        bool isPhysicsInterpolation() const;
+
         void setDefaultMeshShader(const std::string& path);
         const std::string& getDefaultMeshShader() const;
 
@@ -340,6 +345,16 @@ namespace jasperengine{
             }
             scheduleSubSystem(descriptor.name, system.get(), descriptor);
             return system;
+        }
+
+        // the registered system of that type, or nullptr (getSystem asserts it exists)
+        template<typename T>
+        std::shared_ptr<T> findSystem(){
+            const char* typeName = typeid(T).name();
+
+            auto it = std::find_if(systems.begin(), systems.end(), [&](const auto& pair) { return pair.first == typeName; });
+
+            return it != systems.end() ? std::dynamic_pointer_cast<T>(it->second) : nullptr;
         }
 
         // A system function run in the descriptor's phase (see SystemScheduler)

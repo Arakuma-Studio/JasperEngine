@@ -213,7 +213,8 @@ void ReflectionProbe::setTextures(const std::string& texturePositiveX, const std
                         const std::string& texturePositiveZ, const std::string& textureNegativeZ){
     ReflectionProbeComponent& probe = getComponent<ReflectionProbeComponent>();
 
-    probe.texture.setCubePaths(texturePositiveX, textureNegativeX, texturePositiveY, textureNegativeY, texturePositiveZ, textureNegativeZ);
+    // front, back, left, right, up, down
+    probe.texture.setCubePaths(texturePositiveZ, textureNegativeZ, textureNegativeX, texturePositiveX, texturePositiveY, textureNegativeY);
 
     invalidateCapture();
 }

@@ -59,6 +59,11 @@ namespace {
 #endif
 }
 
+// release builds of sokol carry no message, the log item's name still says what failed
+#define _SG_LOGITEM_XMACRO(item, msg) #item,
+static const char* sokolLogItems[] = { _SG_LOG_ITEMS };
+#undef _SG_LOGITEM_XMACRO
+
 void sokol_log(const char* tag,                // e.g. 'sg'
                     uint32_t log_level,             // 0=panic, 1=error, 2=warn, 3=info
                     uint32_t log_item_id,           // SG_LOGITEM_*
@@ -75,9 +80,13 @@ void sokol_log(const char* tag,                // e.g. 'sg'
         return;
     }
     // release builds of sokol carry no message: name the log item and its line instead
-    char unnamed[96];
+    char unnamed[160];
     if (!message_or_null){
-        snprintf(unnamed, sizeof(unnamed), "sokol %s log item %u (line %u)", tag ? tag : "", log_item_id, line_nr);
+        if (log_item_id < sizeof(sokolLogItems) / sizeof(sokolLogItems[0])){
+            snprintf(unnamed, sizeof(unnamed), "sokol %s %s (line %u)", tag ? tag : "", sokolLogItems[log_item_id], line_nr);
+        }else{
+            snprintf(unnamed, sizeof(unnamed), "sokol %s log item %u (line %u)", tag ? tag : "", log_item_id, line_nr);
+        }
         message_or_null = unnamed;
     }
     if (log_level == 0){
@@ -206,6 +215,8 @@ const RenderFeatures& SokolSystem::getFeatures(){
         const sg_pixelformat_info rgba16f = sg_query_pixelformat(SG_PIXELFORMAT_RGBA16F);
         const sg_pixelformat_info rgba32f = sg_query_pixelformat(SG_PIXELFORMAT_RGBA32F);
         const sg_pixelformat_info r32f = sg_query_pixelformat(SG_PIXELFORMAT_R32F);
+        const sg_pixelformat_info rg16f = sg_query_pixelformat(SG_PIXELFORMAT_RG16F);
+        const sg_pixelformat_info r16f = sg_query_pixelformat(SG_PIXELFORMAT_R16F);
         features.renderRGBA16F = rgba16f.render;
         features.blendRGBA16F = rgba16f.blend;
         features.filterRGBA16F = rgba16f.filter;
@@ -215,6 +226,13 @@ const RenderFeatures& SokolSystem::getFeatures(){
         features.renderR32F = r32f.render;
         features.blendR32F = r32f.blend;
         features.filterR32F = r32f.filter;
+        features.renderRG16F = rg16f.render;
+        features.blendRG16F = rg16f.blend;
+        features.filterRG16F = rg16f.filter;
+        features.renderR16F = r16f.render;
+        features.blendR16F = r16f.blend;
+        features.filterR16F = r16f.filter;
+        features.maxTextureSize2D = sg_query_limits().max_image_size_2d;
         for (size_t f = 0; f < kGpuTextureFormatCount; f++)
             features.textureFormats.set((GpuTextureFormat)f, SokolTexture::isFormatSupported((GpuTextureFormat)f));
         featuresQueried = true;

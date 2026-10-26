@@ -23,7 +23,7 @@ import subprocess
 import time
 import uuid
 
-from harness import Editor, RawEditor, skip
+from harness import HTTP_TOKEN, Editor, RawEditor, skip
 
 
 def _free_port() -> int:
@@ -59,7 +59,8 @@ class Http:
             self.writer = None
 
     def head(self, body_len: int | None, extra: dict | None = None, accept: str = "application/json, text/event-stream") -> bytes:
-        lines = ["POST /mcp HTTP/1.1", f"Host: 127.0.0.1:{self.port}", "Content-Type: application/json", f"Accept: {accept}"]
+        lines = ["POST /mcp HTTP/1.1", f"Host: 127.0.0.1:{self.port}", "Content-Type: application/json", f"Accept: {accept}",
+                 f"Authorization: Bearer {HTTP_TOKEN}"]
         if body_len is not None:
             lines.append(f"Content-Length: {body_len}")
         if self.session:

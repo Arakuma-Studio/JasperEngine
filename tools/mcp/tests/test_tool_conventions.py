@@ -67,7 +67,7 @@ PREDATING_NAMES = {
     "prefab_overrides", "preview_animation", "read_console", "read_engine_source", "read_file", "redo",
     "remove_component", "remove_from_prefab", "rename_entity", "rename_scene", "replace_prefab",
     "reset_component", "respond_dialog", "run_build", "sample_terrain", "save_project", "save_scene",
-    "screenshot", "sculpt_terrain", "search_engine_api", "search_engine_source", "search_files",
+    "screenshot", "sculpt_terrain", "search_engine_api", "synthesize_texture", "search_engine_source", "search_files",
     "select_entities", "select_scene", "send_input", "set_child_scene", "set_entity_state", "set_joint",
     "set_main_camera", "set_mesh_geometry", "set_model", "set_project_settings", "set_properties",
     "set_rect_layout", "set_runtime_property", "set_scene_camera", "set_scene_settings",

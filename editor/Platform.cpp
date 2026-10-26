@@ -73,6 +73,10 @@ std::string editor::Platform::getUserDataPath(){
     return project->getUserDataPath().string();
 }
 
+std::string editor::Platform::getImportPath(){
+    return project->getImportPath().string();
+}
+
 sg_environment editor::Platform::getSokolEnvironment(){
     #if defined(SOKOL_VULKAN) || defined(SOKOL_METAL)
     return Backend::getSokolEnvironment();

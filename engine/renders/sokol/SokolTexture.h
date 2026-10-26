@@ -68,12 +68,13 @@ namespace jasperengine{
 
         // sampleCount > 1: an MSAA attachment, never sampled (no texture view or sampler);
         // depthStencil: DEPTH_STENCIL instead of DEPTH (not sampled either); resolve: a 1-sample
-        // MSAA resolve attachment, sampled like a colour attachment
+        // MSAA resolve attachment, sampled like a colour attachment; numMipmaps: the levels of a
+        // single-sampled colour attachment (each rendered by a pass into it, SokolCamera)
         bool createFramebufferTexture(
                     TextureType type, bool depth, bool shadowMap, int width, int height,
                     TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV,
                     ColorFormat colorFormat = ColorFormat::RGBA, int sampleCount = 1,
-                    bool depthStencil = false, bool resolve = false);
+                    bool depthStencil = false, bool resolve = false, int numMipmaps = 1);
 
         bool createDynamicTexture(const std::string& label, int width, int height);
         bool createDynamicTexture(const std::string& label, int width, int height,

@@ -369,10 +369,11 @@ TEST(ProfilerBench, ScopePair){
     profiler::clearHistory();
     // what the clock alone costs (two reads a pair)
     const double clockNs = measure([](){
-        volatile int64_t sink = 0;
+        // unsigned: the sum wraps (a signed one overflows, UB that UBSan stops on)
+        volatile uint64_t sink = 0;
         for (int i = 0; i < pairs; i++){
-            sink = sink + std::chrono::steady_clock::now().time_since_epoch().count();
-            sink = sink + std::chrono::steady_clock::now().time_since_epoch().count();
+            sink = sink + static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
+            sink = sink + static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
         }
     });
     std::printf("[bench] profiler scope pair %.1f ns recording (two steady_clock reads: %.1f ns), %.2f ns off\n", ns, clockNs, offNs);
