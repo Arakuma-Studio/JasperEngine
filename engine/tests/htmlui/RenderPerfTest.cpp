@@ -18,6 +18,8 @@
 // - B5 text-effects: 50 labels with text-shadow, outline and glow: no layer pushed for them once
 //   their distance glyphs exist.
 // - B6: B2 at 1024 x 1024, a texture-mode document's own context: B2's draw budgets.
+// - B7 virtual-list: an S17 <list-view> of 10 000 rows scrolled 100 px a frame (its rows recycle):
+//   <= 16 draws, no stencil draw, the engine's CPU time <= baseline + 5 %.
 // - Gathering: <= 0.2 ms per 10 000 gathered vertices (the first frame of B2, everything new).
 // - The 1-sample report (AC14): every benchmark at one sample with the defaults, printed, not gated.
 //
@@ -35,6 +37,7 @@
 #include "HtmlUIClock.h"
 #include "RmlFontEngine.h"
 #include "htmlui/compat/ImportManifest.h"
+#include "htmlui/widgets/ItemsViewElement.h"
 #include "render/RenderBackendTime.h"
 
 #include "json.hpp"
@@ -227,24 +230,29 @@ namespace {
         out << results().dump(2) << "\n";
     }
 
+    // after the load, what every frame does (B7 scrolls its list)
+    using Prepare = std::function<std::function<void(int)>(FixtureRunner&)>;
+
     // one document both ways: the baseline, then S16 (gated on the engine time when target > 0)
     void both(const std::string& asset, int size, BenchRun& baseline, BenchRun& s16, const std::function<double(const BenchRun&)>& target = {},
-              const std::string& assetRoot = std::string(), int samples = 4){
+              const std::string& assetRoot = std::string(), int samples = 4, const Prepare& prepare = {}){
         {
             S16Mode off(false);
             FixtureRunner runner(size, size == 1024 ? 1024 : 720, samples);
             ASSERT_TRUE(runner.valid());
             ASSERT_TRUE(load(runner, asset, assetRoot));
-            baseline = gated([&](){ return measure(runner); }, 0.0);
+            const std::function<void(int)> perFrame = prepare ? prepare(runner) : std::function<void(int)>();
+            baseline = gated([&](){ return measure(runner, 30, 120, perFrame); }, 0.0);
         }
         {
             S16Mode on(true);
             FixtureRunner runner(size, size == 1024 ? 1024 : 720, samples);
             ASSERT_TRUE(runner.valid());
             ASSERT_TRUE(load(runner, asset, assetRoot));
+            const std::function<void(int)> perFrame = prepare ? prepare(runner) : std::function<void(int)>();
             HtmlUI::getFontEngine().finishDistanceGlyphsForTesting();
             const double limit = target ? target(baseline) : 0.0;
-            s16 = gated([&](){ return measure(runner); }, limit);
+            s16 = gated([&](){ return measure(runner, 30, 120, perFrame); }, limit);
         }
     }
 
@@ -363,6 +371,50 @@ TEST(HtmlUIRenderPerf, B6TextureList500){
     EXPECT_LE(s16.maxDraws, 16u);
     EXPECT_EQ(s16.maxStencilDraws, 0u);
     EXPECT_EQ(s16.maxBoxShadowTextures, 0u);
+}
+
+// an S17 virtual list (<list-view>, 10 000 rows bound by a C++ provider) scrolled 100 px a frame
+// (6 000 px/s): its rows recycle every frame, so the run cache misses on them; the culling and
+// the instanced runs still keep the draws and the engine time (S17's widgets, round 2)
+TEST(HtmlUIRenderPerf, B7VirtualListScroll){
+    JASPER_REQUIRE_GPU();
+    const double slack = compat::perfSlack();
+    const Prepare scroll = [](FixtureRunner& runner) -> std::function<void(int)> {
+        Rml::Element* element = runner.document() ? runner.document()->GetElementById("list") : nullptr;
+        htmlui::ItemsViewElement* list = rmlui_dynamic_cast<htmlui::ItemsViewElement*>(element);
+        EXPECT_NE(list, nullptr);
+        if (!list)
+            return {};
+        htmlui::ItemsViewElement::Provider provider;
+        provider.count = 10000;
+        provider.bind = [](Rml::Element* row, int index){
+            static const char* const zones[] = {"Harbor", "Forest", "Ruins", "Peaks"};
+            if (Rml::Element* name = row->QuerySelector(".name"))
+                name->SetInnerRML("Player " + std::to_string(index + 1));
+            if (Rml::Element* zone = row->QuerySelector(".zone"))
+                zone->SetInnerRML(zones[index % 4]);
+            if (Rml::Element* level = row->QuerySelector(".level"))
+                level->SetInnerRML("Lv " + std::to_string(index % 60 + 1));
+        };
+        list->setProvider(provider);
+        runner.frameAt(runner.time() + 1.0 / 60.0, true);
+        return [list](int){
+            const float span = list->GetScrollHeight() - list->GetClientHeight();
+            float top = list->GetScrollTop() + 100.0f;
+            if (top > span)
+                top = 0.0f;
+            list->SetScrollTop(top);
+        };
+    };
+    BenchRun baseline, s16;
+    both("fixtures/bench/virtual-list.html", 1280, baseline, s16, [&](const BenchRun& b){ return b.engineMs * 1.05 * slack + 0.05; },
+         std::string(), 4, scroll);
+    record("B7 virtual-list scroll", baseline, s16);
+    EXPECT_GT(baseline.last.geometrySubmitted, 100u) << "the rows are drawn";
+    EXPECT_LE(s16.maxDraws, 16u);
+    EXPECT_EQ(s16.maxStencilDraws, 0u);
+    EXPECT_LE(s16.maxDraws, baseline.maxDraws);
+    EXPECT_LE(s16.engineMs, baseline.engineMs * 1.05 * slack + 0.05);
 }
 
 TEST(HtmlUIRenderPerf, GatherCost){
