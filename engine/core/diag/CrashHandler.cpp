@@ -457,11 +457,20 @@ namespace je_crash_common {
         return total;
     }
 
+    // Offers every pending report not offered yet to the hook. Called without the common lock:
+    // the hook and the report readers take it themselves.
     void deliverPending(Common& c) {
-        if (!c.hook) return;
-        crash::ReportHook hook = c.hook;
+        crash::ReportHook hook;
+        {
+            std::lock_guard<std::mutex> lock(c.mutex);
+            hook = c.hook;
+        }
+        if (!hook) return;
         for (const ReportInfo& report : crash::pendingReports()) {
-            if (!c.delivered.insert(report.id).second) continue;
+            {
+                std::lock_guard<std::mutex> lock(c.mutex);
+                if (!c.delivered.insert(report.id).second) continue;
+            }
             bool handled = false;
             try {
                 handled = hook(report);
@@ -575,7 +584,7 @@ namespace jasperengine::diag::crash {
 
     bool install(const Config& input) {
         Common& c = common();
-        std::lock_guard<std::mutex> lock(c.mutex);
+        std::unique_lock<std::mutex> lock(c.mutex);
         CrashState& s = detail::state();
         if (c.installed) return false;
         c.installed = true;
@@ -651,6 +660,7 @@ namespace jasperengine::diag::crash {
         if (!c.ringSinkAdded && s.ring) {
             c.ringSinkAdded = Logger::addSink(std::make_unique<CrashRingSink>()) != 0;
         }
+        lock.unlock();
         deliverPending(c);
         return armed;
     }
@@ -868,9 +878,13 @@ namespace jasperengine::diag::crash {
 
     void setReportHook(ReportHook hook) {
         Common& c = common();
-        std::lock_guard<std::mutex> lock(c.mutex);
-        c.hook = std::move(hook);
-        if (c.installed) deliverPending(c);
+        bool installed = false;
+        {
+            std::lock_guard<std::mutex> lock(c.mutex);
+            c.hook = std::move(hook);
+            installed = c.installed;
+        }
+        if (installed) deliverPending(c);
     }
 
     bool isDebugCrashMode(std::string_view mode) {
