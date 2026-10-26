@@ -24,11 +24,22 @@
 
 namespace jasperengine::editor::reflect {
 
+    // A table pointer a field may give (`.ops = &ops::Entity`): whether it was given is a flag, not a
+    // null test, since GCC's UBSan builds cannot test the address of an inline constexpr object
+    // (every TypeOps) against null in a constant expression
+    template<typename T>
+    struct Given {
+        const T* ptr = nullptr;
+        bool set = false;
+        constexpr Given() = default;
+        constexpr Given(const T* value) : ptr(value), set(true) {}
+    };
+
     struct FieldMeta {
         const char* yamlKey = nullptr;
-        const TypeOps* ops = nullptr;          // instead of the member type's (an encoding quirk, Entity, LayerMask)
+        Given<TypeOps> ops;                    // instead of the member type's (an encoding quirk, Entity, LayerMask)
         const EnumDesc* enumDesc = nullptr;
-        const StructDesc* structDesc = nullptr;  // the members of a struct its type has no traits for
+        Given<StructDesc> structDesc;          // the members of a struct its type has no traits for
         uint32_t flags = 0;
         uint64_t updateFlags = 0;
         AssetKind asset = AssetKind::None;
@@ -50,7 +61,7 @@ namespace jasperengine::editor::reflect {
         uint64_t enumMask = 0;
         const char* cppPath = nullptr;
         size_t (*count)(const void* owner) = nullptr;
-        const TypeOps* elementOps = nullptr;   // instead of the element type's (Entity elements)
+        Given<TypeOps> elementOps;             // instead of the element type's (Entity elements)
     };
 
     namespace detail {
@@ -66,7 +77,7 @@ namespace jasperengine::editor::reflect {
             FieldDesc desc{name, meta.yamlKey ? meta.yamlKey : name, Kind::Custom, nullptr, ref};
             // a type without traits needs FieldMeta::ops (a null one fails here, at compile time)
             if constexpr (requires { Traits::ops; }) {
-                desc.ops = meta.ops ? meta.ops : Traits::ops;
+                desc.ops = meta.ops.set ? meta.ops.ptr : Traits::ops;
                 if constexpr (requires { Traits::structDesc; }) {
                     desc.structDesc = Traits::structDesc;
                 }
@@ -79,10 +90,10 @@ namespace jasperengine::editor::reflect {
                     }
                 }
             } else {
-                desc.ops = meta.ops;
+                desc.ops = meta.ops.ptr;
             }
             desc.kind = desc.ops->kind;
-            if (meta.structDesc) desc.structDesc = meta.structDesc;
+            if (meta.structDesc.set) desc.structDesc = meta.structDesc.ptr;
             desc.enumDesc = meta.enumDesc;
             desc.flags = meta.flags;
             desc.updateFlags = meta.updateFlags;
@@ -105,7 +116,7 @@ namespace jasperengine::editor::reflect {
             desc.enumMask = meta.enumMask;
             desc.cppPath = meta.cppPath;
             desc.count = meta.count;
-            if (meta.elementOps) desc.elementOps = meta.elementOps;
+            if (meta.elementOps.set) desc.elementOps = meta.elementOps.ptr;
             return desc;
         }
 
