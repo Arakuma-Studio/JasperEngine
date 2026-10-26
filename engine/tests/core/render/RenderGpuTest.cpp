@@ -66,20 +66,39 @@ TEST_F(RenderGpu, UnlitColouredPlane){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
+namespace {
+    void litCube(Primitive& cube, Light& sun){
+        cube.createBox(1.5f, 1.5f, 1.5f);
+        cube.setColor(0.2f, 0.6f, 0.9f);
+        cube.setRotation(0.0f, 30.0f, 0.0f);
+        sun.setType(LightType::DIRECTIONAL);
+        sun.setDirection(-0.4f, -1.0f, -0.6f);
+        sun.setIntensity(1.5f);
+        sun.setShadows(false);
+    }
+}
+
+// Lit Quality Standard is the shader of before S11: the golden written before it still matches
+// (a Scene() is High since S11, docs/specs/S11-materials-lighting.md R3)
 TEST_F(RenderGpu, LitCube){
     JASPER_REQUIRE_GPU();
+    scene.setLitQuality(LitQuality::STANDARD);
     Primitive cube(&scene);
-    cube.createBox(1.5f, 1.5f, 1.5f);
-    cube.setColor(0.2f, 0.6f, 0.9f);
-    cube.setRotation(0.0f, 30.0f, 0.0f);
-
     Light sun(&scene);
-    sun.setType(LightType::DIRECTIONAL);
-    sun.setDirection(-0.4f, -1.0f, -0.6f);
-    sun.setIntensity(1.5f);
-    sun.setShadows(false);
-
+    litCube(cube, sun);
     ASSERT_TRUE(render()) << "the scene never finished loading";
     EXPECT_GOLDEN("render_lit_cube");
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// High: specular anti-aliasing and the direct light's multiscatter compensation
+TEST_F(RenderGpu, LitCubeHigh){
+    JASPER_REQUIRE_GPU();
+    ASSERT_EQ(scene.getLitQuality(), LitQuality::HIGH);
+    Primitive cube(&scene);
+    Light sun(&scene);
+    litCube(cube, sun);
+    ASSERT_TRUE(render()) << "the scene never finished loading";
+    EXPECT_GOLDEN("render_lit_cube_high");
     EXPECT_NO_ENGINE_ERRORS();
 }

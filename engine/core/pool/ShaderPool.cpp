@@ -10,7 +10,10 @@
 #include "shader/ShaderDataSerializer.h"
 #include "shader/ShaderVariantCompiler.h"
 #include "util/Base64.h"
+#include "shader/ShaderManifest.h"
+#include "texture/MaterialPbr.h"
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <algorithm>
@@ -270,6 +273,10 @@ std::string ShaderPool::getCustomShaderBasename(uint16_t customId){
         }
         return "fx_" + effect;
     }
+    // a variant of the built-in Lit ("builtin:lit#PBR_CLEARCOAT,...") is "lit_" and two
+    // letters per define, short enough for every platform's paths (MaterialPbr)
+    if (ShaderReference::getBase(name) == ShaderReference::BUILTIN_LIT)
+        return MaterialPbr::getVariantBasename(ShaderReference::getFeatures(name));
     std::string base = name;
     // Sanitize the project-relative base into a filesystem-safe, deterministic token
     // (e.g. "shaders/myMesh" -> "shaders_myMesh") used in .sdat filenames.
@@ -807,9 +814,19 @@ std::shared_ptr<ShaderRender> ShaderPool::get(ShaderType shaderType, uint32_t pr
             return shared;
         }
         if (shaderBuilderFn) {
+            static const bool timing = std::getenv("JASPER_SHADER_TIMING") != nullptr;
+            const auto t0 = std::chrono::steady_clock::now();
             ShaderBuildResult result = shaderBuilderFn(shaderKey);
+            const auto t1 = std::chrono::steady_clock::now();
+            if (timing && std::chrono::duration<double, std::milli>(t1 - t0).count() > 5.0)
+                Log::print("[shader-timing] builder %s: %.1f ms (state %d)", getShaderStr(shaderType, properties, customId).c_str(),
+                          std::chrono::duration<double, std::milli>(t1 - t0).count(), (int)result.state);
             if (result.state == ResourceLoadState::Finished) {
+                const auto c0 = std::chrono::steady_clock::now();
                 shared->createShader(result.data);
+                if (timing)
+                    Log::print("[shader-timing] create %s: %.1f ms", getShaderStr(shaderType, properties, customId).c_str(),
+                              std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - c0).count());
                 failedShaders().erase(shaderKey);
             } else if (result.state == ResourceLoadState::Loading) {
                 // Shader is still building, do nothing
@@ -1223,6 +1240,10 @@ std::string ShaderPool::resolveCustomShaderBasename(const std::string& basename)
         }
         return libraryEffectPrefix + name;
     }
+    // the built-in Lit's variants map back without a resolver too
+    std::vector<std::string> litDefines;
+    if (MaterialPbr::parseVariantBasename(basename, litDefines))
+        return ShaderReference::withFeatures(ShaderReference::BUILTIN_LIT, litDefines);
     const auto& resolver = customShaderNameResolver();
     return resolver ? resolver(basename) : std::string();
 }

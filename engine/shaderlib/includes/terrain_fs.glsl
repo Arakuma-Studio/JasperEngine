@@ -38,7 +38,7 @@ const int TERRAIN_BLENDMAPS = 3;
         vec4 colorFactor[MAX_TERRAIN_LAYERS]; //rgb tint (linear), a = 1.0 on a PBR layer
         vec4 uvTransform[MAX_TERRAIN_LAYERS]; //xy scale of the detail tiling, zw offset
         vec4 surface[MAX_TERRAIN_LAYERS];     //roughness, metallic, normal strength, occlusion strength
-        vec4 slices[MAX_TERRAIN_LAYERS];      //color, normal and surface slice
+        vec4 slices[MAX_TERRAIN_LAYERS];      //color, normal and surface slice; w hex rotation (< 0 off, TERRAIN_HEX_TILING)
     } terrainLayers;
 
     #ifdef HAS_NORMALS
@@ -212,6 +212,81 @@ vec4 getTerrainColor(vec4 color){
     }
 #endif
 
+#ifdef TERRAIN_HEX_TILING
+    // Hex tiling of a layer (TerrainSurfaceLayer::hexTiling): its flat projection sampled on
+    // three rotated copies (includes/hex_tiling.glsl) instead of its near and far tiling; the
+    // side planes stay as they are. Every tap is a textureGrad with the flat gradients turned by
+    // its tile, so the branch on the blend map around it needs no derivatives.
+    #include "includes/hex_tiling.glsl"
+
+    // how hard the copies blend by luminance (the Lit material's default contrast)
+    const float TERRAIN_HEX_CONTRAST = 0.6;
+
+    HexTaps terrainHexTaps(vec2 scale, vec2 offset, float rotation){
+        return hexSetup(v_terrainTextureDetailTiled * scale + offset, terrainFlatDX * scale, terrainFlatDY * scale, rotation);
+    }
+
+    vec4 terrainHexTap(float slice, HexTaps taps, int k){
+        if (k == 0) return sampleTerrainSlice(slice, taps.uv0, taps.dx0, taps.dy0);
+        if (k == 1) return sampleTerrainSlice(slice, taps.uv1, taps.dx1, taps.dy1);
+        return sampleTerrainSlice(slice, taps.uv2, taps.dx2, taps.dy2);
+    }
+
+    // the flat projection blended by weights, under the side planes as getTerrainSlice does
+    vec4 getTerrainSliceHex(float slice, vec2 scale, vec2 offset, HexTaps taps, vec3 weights){
+        vec4 color = terrainHexTap(slice, taps, 0) * weights.x + terrainHexTap(slice, taps, 1) * weights.y +
+                     terrainHexTap(slice, taps, 2) * weights.z;
+
+        #ifdef HAS_NORMALS
+            vec4 side = sampleTerrainSlice(slice, terrainSideXUV * scale + offset, terrainSideXDX * scale, terrainSideXDY * scale) * terrainSideWeight.x +
+                        sampleTerrainSlice(slice, terrainSideZUV * scale + offset, terrainSideZDX * scale, terrainSideZDY * scale) * terrainSideWeight.y;
+            color = mix(color, side, terrainSideAmount);
+        #endif
+
+        return color;
+    }
+
+    // the layer's colour, whose taps' luminance sets the weights its other maps take
+    vec4 getTerrainColorHex(float slice, vec2 scale, vec2 offset, HexTaps taps, out vec3 weights){
+        vec4 c0 = terrainHexTap(slice, taps, 0);
+        vec4 c1 = terrainHexTap(slice, taps, 1);
+        vec4 c2 = terrainHexTap(slice, taps, 2);
+        weights = hexWeights(taps.barycentrics, vec3(hexLuminance(c0.rgb), hexLuminance(c1.rgb), hexLuminance(c2.rgb)), TERRAIN_HEX_CONTRAST);
+        vec4 color = c0 * weights.x + c1 * weights.y + c2 * weights.z;
+
+        #ifdef HAS_NORMALS
+            vec4 side = sampleTerrainSlice(slice, terrainSideXUV * scale + offset, terrainSideXDX * scale, terrainSideXDY * scale) * terrainSideWeight.x +
+                        sampleTerrainSlice(slice, terrainSideZUV * scale + offset, terrainSideZDX * scale, terrainSideZDY * scale) * terrainSideWeight.y;
+            color = mix(color, side, terrainSideAmount);
+        #endif
+
+        return color;
+    }
+
+    #ifdef HAS_NORMALS
+        // getTerrainLayerNormal with the flat normal from the hex taps, each turned back by its tile
+        vec3 getTerrainLayerNormalHex(float slice, vec2 scale, vec2 offset, float strength, HexTaps taps, vec3 weights){
+            vec3 geom = normalize(v_terrainNormal);
+
+            vec3 n0 = hexNormalBack(terrainHexTap(slice, taps, 0).xyz * 2.0 - 1.0, taps.cs0);
+            vec3 n1 = hexNormalBack(terrainHexTap(slice, taps, 1).xyz * 2.0 - 1.0, taps.cs1);
+            vec3 n2 = hexNormalBack(terrainHexTap(slice, taps, 2).xyz * 2.0 - 1.0, taps.cs2);
+            vec3 flatNormal = n0 * weights.x + n1 * weights.y + n2 * weights.z;
+            flatNormal.xy *= strength;
+            vec3 normal = vec3(flatNormal.xy + geom.xz, abs(flatNormal.z) * geom.y).xzy;
+
+            vec3 sideX = sampleTerrainTangentNormal(slice, terrainSideXUV * scale + offset, terrainSideXDX * scale, terrainSideXDY * scale, strength);
+            vec3 sideZ = sampleTerrainTangentNormal(slice, terrainSideZUV * scale + offset, terrainSideZDX * scale, terrainSideZDY * scale, strength);
+            sideX.x *= terrainFaceX;
+            sideZ.x *= terrainFaceZ;
+            vec3 sideNormal = vec3(sideX.xy + geom.zy, abs(sideX.z) * geom.x).zyx * terrainSideWeight.x +
+                              vec3(sideZ.xy + geom.xy, abs(sideZ.z) * geom.z).xyz * terrainSideWeight.y;
+
+            return normalize(mix(normal, sideNormal, terrainSideAmount));
+        }
+    #endif
+#endif
+
 // Everything the painted layers cover, evaluated once and shared by the color pass and
 // the G-buffer. Whatever weight the layers leave unclaimed keeps the values handed in.
 TerrainSurface getTerrainSurface(vec4 baseColor, vec3 baseNormal, float baseRoughness, float baseMetallic){
@@ -242,7 +317,21 @@ TerrainSurface getTerrainSurface(vec4 baseColor, vec3 baseNormal, float baseRoug
             vec2 scale = terrainLayers.uvTransform[index].xy;
             vec2 offset = terrainLayers.uvTransform[index].zw;
 
+            #ifdef TERRAIN_HEX_TILING
+                // a hex layer's taps and weights, shared by its maps
+                bool hexLayer = terrainLayers.slices[index].w >= 0.0;
+                HexTaps hexTaps;
+                vec3 hexWeights = vec3(1.0, 0.0, 0.0);
+                vec4 color;
+                if (hexLayer){
+                    hexTaps = terrainHexTaps(scale, offset, terrainLayers.slices[index].w);
+                    color = getTerrainColorHex(terrainLayers.slices[index].x, scale, offset, hexTaps, hexWeights);
+                }else{
+                    color = getTerrainSlice(terrainLayers.slices[index].x, scale, offset);
+                }
+            #else
             vec4 color = getTerrainSlice(terrainLayers.slices[index].x, scale, offset);
+            #endif
             float height = color.a;
             float roughness = baseRoughness;
             float metallic = baseMetallic;
@@ -259,7 +348,12 @@ TerrainSurface getTerrainSurface(vec4 baseColor, vec3 baseNormal, float baseRoug
 
                 float surfaceSlice = terrainLayers.slices[index].z;
                 if (surfaceSlice >= 0.0){
+                    #ifdef TERRAIN_HEX_TILING
+                        vec4 orm = hexLayer ? getTerrainSliceHex(surfaceSlice, scale, offset, hexTaps, hexWeights)
+                                            : getTerrainSlice(surfaceSlice, scale, offset);
+                    #else
                     vec4 orm = getTerrainSlice(surfaceSlice, scale, offset);
+                    #endif
                     occlusion = mix(1.0, orm.r, terrainLayers.surface[index].w);
                     roughness *= orm.g;
                     metallic *= orm.b;
@@ -269,7 +363,15 @@ TerrainSurface getTerrainSurface(vec4 baseColor, vec3 baseNormal, float baseRoug
                 #ifdef HAS_NORMALS
                     float normalSlice = terrainLayers.slices[index].y;
                     if (normalSlice >= 0.0){
+                        #ifdef TERRAIN_HEX_TILING
+                            if (hexLayer){
+                                normal = terrainShadingNormal(getTerrainLayerNormalHex(normalSlice, scale, offset, terrainLayers.surface[index].z, hexTaps, hexWeights));
+                            }else{
+                                normal = terrainShadingNormal(getTerrainLayerNormal(normalSlice, scale, offset, terrainLayers.surface[index].z));
+                            }
+                        #else
                         normal = terrainShadingNormal(getTerrainLayerNormal(normalSlice, scale, offset, terrainLayers.surface[index].z));
+                        #endif
                     }
                 #endif
             }

@@ -1073,7 +1073,9 @@ void getBuildInfoTool(const CallPtr& call) {
         const bool excluded = overrides.exclusions.count(key) > 0;
         if (!excluded) included++;
         if (args.value("include_shaders", false)) {
-            Json item = {{"key", shaderKeyText(key)}, {"name", shaderName(key)}, {"from_scenes", fromScenes.count(key) > 0}};
+            Json item = {{"key", shaderKeyText(key)}, {"name", shaderName(key)}, {"from_scenes", fromScenes.count(key) > 0},
+                         {"shader", ShaderPool::getShaderStr(ShaderPool::getShaderTypeFromKey(key), ShaderPool::getPropertiesFromKey(key),
+                                                             ShaderPool::getCustomIdFromKey(key))}};
             if (excluded) item["excluded"] = true;
             shaders.push_back(item);
         }

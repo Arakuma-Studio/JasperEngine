@@ -238,7 +238,7 @@ void MeshSystem::applySubmeshOverrides(const SubmeshOverrides& overrides, Entity
 }
 
 void MeshSystem::applySubmeshOverride(const Submesh& saved, Submesh& submesh) {
-    const uint32_t fields = saved.overrideFields;
+    const uint64_t fields = saved.overrideFields;
 
     Material& material = submesh.material;
     const Material& savedMaterial = saved.material;
@@ -290,6 +290,8 @@ void MeshSystem::applySubmeshOverride(const Submesh& saved, Submesh& submesh) {
     if (fields & SubmeshOverride_Stencil)        material.stencil        = savedMaterial.stencil;
     if (fields & SubmeshOverride_ColorWrite)     material.colorWrite     = savedMaterial.colorWrite;
     if (fields & SubmeshOverride_ExtraPass)      material.extraPass      = savedMaterial.extraPass;
+    if (fields & SubmeshOverride_EmissiveStrength) material.emissiveStrength = savedMaterial.emissiveStrength;
+    if (fields & SubmeshOverride_PbrExtensions)  restorePbrExtensions(savedMaterial.pbr, material.pbr);
 
     if (fields & SubmeshOverride_FaceCulling)   submesh.faceCulling   = saved.faceCulling;
     if (fields & SubmeshOverride_TextureShadow) submesh.textureShadow = saved.textureShadow;
@@ -297,6 +299,19 @@ void MeshSystem::applySubmeshOverride(const Submesh& saved, Submesh& submesh) {
 
     submesh.overrideFields = fields;
     submesh.needUpdateTexture = true;
+}
+
+void MeshSystem::restorePbrExtensions(const MaterialPbrExtensions& saved, OutOfLineValue<MaterialPbrExtensions>& loaded) {
+    MaterialPbrExtensions result = saved;
+    const MaterialPbrExtensions& fresh = loaded.get();
+    for (int m = 0; m < (int)PbrMap::COUNT; m++) {
+        const PbrMap map = (PbrMap)m;
+        const Texture& freshMap = MaterialPbr::getMap(fresh, map);
+        Texture& savedMap = MaterialPbr::getMap(result, map);
+        if (!freshMap.empty() && savedMap.getId() == freshMap.getId())
+            savedMap = freshMap;
+    }
+    loaded = result;
 }
 
 void MeshSystem::prepareSpriteMesh(MeshComponent& mesh){
@@ -4529,6 +4544,9 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         }
     }
 
+    // the extensions it uses that are not read: once per model
+    reportGLTFExtensions(*model.gltfModel, filename);
+
     if (meshNodes.empty()) {
         Log::error("GLTF model has no mesh nodes: %s", filename.c_str());
         if (asyncLoad) {
@@ -4864,6 +4882,11 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 continue;
             }
 
+            // the extended lobes come from the file alone (an edit of them is put back by the
+            // submesh overrides once every mesh is filled)
+            mesh.submeshes[i].material.pbr = MaterialPbrExtensions();
+            mesh.submeshes[i].material.emissiveStrength = 1.0f;
+
             if (mat) {
                 // glTF texCoord selects the UV set per texture. Only two sets are
                 // supported (a_texcoord1 / a_texcoord2); any higher index falls back
@@ -4923,6 +4946,9 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                     if (value.IsNumber() && std::isfinite(value.GetNumberAsDouble()))
                         mesh.submeshes[i].material.foliageTransmission = std::clamp((float)value.GetNumberAsDouble(), 0.0f, 1.0f);
                 }
+                // KHR_materials_* (MeshSystemGltfPbr.cpp)
+                if (!loadGLTFMaterialExtensions(*mat, model, mesh.submeshes[i].material, primitive.attributes.count("COLOR_0") > 0))
+                    continue;
             }
 
             // Alpha-masked glTF materials need the base-color alpha in the depth

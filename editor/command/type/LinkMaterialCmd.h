@@ -29,7 +29,7 @@ namespace jasperengine::editor{
         Material newMaterial;
         Material oldMaterial;
         std::string oldLinkedFilePath;
-        uint32_t oldOverrideFields = 0;
+        uint64_t oldOverrideFields = 0;
 
     public:
         LinkMaterialCmd(Project* project, uint32_t sceneId, Entity entity, ComponentType componentType,

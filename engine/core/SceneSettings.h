@@ -48,6 +48,15 @@ namespace jasperengine{
         ATLAS           // the shadow atlases and static caches drawn over the view
     };
 
+    // Shading quality of the built-in Lit (docs/specs/S11-materials-lighting.md). STANDARD is the
+    // shader as it always was; HIGH adds geometric specular anti-aliasing (roughness widened by
+    // the normal's screen-space variance, against shimmering highlights) and multiscatter energy
+    // compensation of the direct lights (rough metals keep their energy). One variant bit.
+    enum class LitQuality {
+        STANDARD,
+        HIGH
+    };
+
     // Resolution of the scene-colour copy sampled by shaders requiring scenecolor.
     enum class SceneColorScale {
         FULL,   // the camera pass's resolution
@@ -355,6 +364,13 @@ namespace jasperengine{
         // lights evaluated per object (1..16); the rest of the lights reaching it are folded
         // into its spherical-harmonics ambient
         int maxLightsPerObject = 8;
+
+        // new scenes shade at HIGH; a scene file without the key is STANDARD (as it was drawn)
+        LitQuality litQuality = LitQuality::HIGH;
+        // the camera exposure lights authored in physical units (lux, candela, lumen) are drawn
+        // at (util/LightPhotometry.h): Sunny 15, Overcast 12, Interior 7, Night 2. Lights in
+        // engine units ignore it.
+        float physicalLightEV100 = 15.0f;
 
         // default 1.0 keeps 2D scenes visually unchanged until the user dims it
         Vector3 ambientLight2DColor = Vector3(1.0, 1.0, 1.0); // stored linear

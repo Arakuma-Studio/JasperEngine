@@ -97,6 +97,16 @@ namespace jasperengine {
                             ShaderData& out, std::string* error = nullptr, std::string* log = nullptr,
                             const ProgressFn& progress = {}, const std::function<bool()>& cancelled = {});
 
+        // The preprocessed GLSL of one variant's two stages, as compile() would parse them for
+        // the backend (includes expanded, the variant's #defines applied). A stage the variant
+        // does not have is left empty. False (and an error) when it cannot be preprocessed.
+        static bool preprocess(ShaderKey key, ShaderBackend backend, const CustomShaderSources* customSources,
+                               std::string& vertexSource, std::string& fragmentSource, std::string* error = nullptr);
+        // A preprocessed source without what only positions it: #line directives, blank lines
+        // and indentation. Two sources the compiler sees as the same program normalize alike
+        // when they differ only by comments, guarded-out blocks or layout.
+        static std::string normalizePreprocessed(const std::string& source);
+
         // The engine's per-stage resource budget a compiled variant must fit on every backend
         // (shadercompiler.h: 8 uniform blocks, 16 textures, 16 samplers, 16 texture-sampler
         // pairs; GLES3 has 16 fragment texture units). Empty when it fits, else what is over.

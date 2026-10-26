@@ -40,6 +40,7 @@
 # JASPER_HTMLUI_S16_OFF=1 runs the HTML UI tests with S16's batching, SDF primitives and transform-aware
 # text off (docs/specs/S16-ui-render-text.md AC1); JASPER_HTMLUI_BATCHING=0 / JASPER_HTMLUI_SDF_PRIMITIVES=0
 # turn one of them off.
+# JASPER_ZERO_COST_UPDATE=1 rewrites the built-in Lit's zero-cost hash list (ShaderZeroCostTest, unit-tests).
 # htmlui-editor-tests: HTMLUI_TEST_ARGS goes to the test binary, RUN=0 builds only,
 # HTMLUI_LIVE_NETWORK=1 adds the live Google Fonts test.
 # mcp-tests: MCP_SUITE=ci (default; the CI = True files) or all (needs JASPER_FIXTURE, the
@@ -185,7 +186,7 @@ CPUS="${CPUS:-${DOCKER_CPUS:-${JOBS:-}}}"
 ENV_FLAGS=()
 for name in JASPER_HTMLUI_UPDATE_GOLDEN JASPER_HTMLUI_WRITE_ACTUAL JASPER_TEST_UPDATE_GOLDEN JASPER_TEST_WRITE_ACTUAL \
             JASPER_TEST_KEEP_TEMP JASPER_HTMLUI_PERF_SLACK JASPER_TEST_PERF_SLACK HTMLUI_LIVE_NETWORK JASPER_CHROME \
-            JASPER_HTMLUI_S16_OFF JASPER_HTMLUI_BATCHING JASPER_HTMLUI_SDF_PRIMITIVES JASPERENGINE_GPU_TIMER JASPER_HTMLUI_PROFILE; do
+            JASPER_HTMLUI_S16_OFF JASPER_HTMLUI_BATCHING JASPER_HTMLUI_SDF_PRIMITIVES JASPERENGINE_GPU_TIMER JASPER_HTMLUI_PROFILE JASPER_ZERO_COST_UPDATE; do
     # (JASPER_HTMLUI_PERF_SLACK: the HTML UI performance tests' tolerance on a loaded host, compat_perf_test.cpp;
     # JASPER_TEST_PERF_SLACK: the core tests' wall-clock budgets are enforced only when it is set)
     [[ -n "${!name:-}" ]] && ENV_FLAGS+=(-e "$name=${!name}")
