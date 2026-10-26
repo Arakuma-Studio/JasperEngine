@@ -2705,6 +2705,8 @@ void MeshSystem::calculateMeshAABB(MeshComponent& mesh){
     mesh.aabb = mesh.verticesAABB;
 
     mesh.needUpdateAABB = true;
+    // picking hashes the new geometry when it next needs it
+    mesh.pickGeometryHash = 0;
 }
 
 void MeshSystem::createPlaneNodeSubmesh(unsigned int submeshIndex, MeshComponent& mesh, int width, int height, int widthSegments, int heightSegments){

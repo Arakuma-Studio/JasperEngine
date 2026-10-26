@@ -1133,6 +1133,9 @@ namespace jasperengine{
 		// the camera pass being drawn culls no face (a Scene view's debug toggle)
 		bool passDisablesFaceCulling = false;
 #endif
+		// the camera pass being drawn is the editor's Scene view (CameraComponent::editorView)
+		// with GameObjects hidden there (EDITOR_HIDDEN): isLayerVisible leaves those out
+		bool passHidesEditorHidden = false;
 
 		// whether the pass being drawn culls no face (always false outside the editor)
 		bool passNoFaceCulling() const{

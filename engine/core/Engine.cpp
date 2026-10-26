@@ -37,6 +37,7 @@
 #include "io/AssetIOService.h"
 #include "jobs/JobSystem.h"
 #include "memory/Arena.h"
+#include "picking/PickCache.h"
 #include "profiler/FrameTimes.h"
 #include "profiler/Profile.h"
 #if JASPERENGINE_PROFILER
@@ -503,6 +504,14 @@ void Engine::setAllowEventsOutCanvas(bool allowEventsOutCanvas){
 
 bool Engine::isAllowEventsOutCanvas(){
     return allowEventsOutCanvas;
+}
+
+void Engine::setMeshRaycastMaxTriangles(unsigned int maxTriangles){
+    PickCache::setMaxTriangles(maxTriangles);
+}
+
+unsigned int Engine::getMeshRaycastMaxTriangles(){
+    return PickCache::getMaxTriangles();
 }
 
 void Engine::setIgnoreEventsHandledByUI(bool ignoreEventsHandledByUI){

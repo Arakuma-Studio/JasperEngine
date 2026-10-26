@@ -5,6 +5,7 @@
 #include "profiler/Profile.h"
 #include "profiler/FrameTimes.h"
 #include "TransformPropagation.h"
+#include "picking/PickTypes.h"
 #include "InstanceSort.h"
 #include "RenderSystemShared.h"
 #include "object/Camera.h"
@@ -7179,6 +7180,9 @@ void RenderSystem::updateMeshBuffers(MeshComponent& mesh){
     if (!mesh.needUpdateBuffer)
         return;
 
+    // what picking hashed may be gone (a script edits the vertices, a tilemap rebuilds)
+    mesh.pickGeometryHash = 0;
+
     if (mesh.buffer.getUsage() != BufferUsage::IMMUTABLE)
         mesh.buffer.getRender()->updateBuffer(mesh.buffer.getSize(), mesh.buffer.getData());
     if (mesh.indices.getUsage() != BufferUsage::IMMUTABLE)
@@ -11342,6 +11346,9 @@ bool RenderSystem::isRenderActive(Entity entity) const{
 }
 
 bool RenderSystem::isLayerVisible(Entity entity, uint32_t cullingMask) const{
+    if (passHidesEditorHidden && (scene->getEntityEditorFlags(entity) & EDITOR_HIDDEN)){
+        return false;
+    }
     return cullingMask == LAYER_MASK_EVERYTHING || (cullingMask & (1u << scene->getEntityLayer(entity))) != 0;
 }
 
@@ -12225,6 +12232,9 @@ void RenderSystem::update(double dt){
                 }
 
                 instmesh->needUpdateInstances = false;
+                if (instancesNeedUpdate){
+                    scene->markPickDirty(entity);
+                }
 
                 InstanceViewSettings viewSettings = {instmesh->cullInstances, mesh.castShadows, mesh.lodEnabled, mesh.lodBias, instmesh->cullDistance};
                 if (transform.needUpdate || viewSettings != instmesh->viewSettings){
@@ -12409,6 +12419,7 @@ void RenderSystem::update(double dt){
                                                            : (transform.modelMatrix * mesh.skinnedAABB);
 
                 mesh.needUpdateAABB = false;
+                scene->markPickDirty(entity);
 
                 // Tilemap chunk bounds are refreshed with the mesh AABB: rebuilding a
                 // tilemap recalculates that AABB, and MeshSystem updates before this
@@ -12448,6 +12459,7 @@ void RenderSystem::update(double dt){
             if (ui.needUpdateAABB || transform.needUpdate){
                 ui.worldAABB = transform.modelMatrix * ui.aabb;
                 ui.needUpdateAABB = false;
+                scene->markPickDirty(entity);
             }
         }else if (signature.test(scene->getComponentId<PointsComponent>())){
             PointsComponent& points = scene->getComponent<PointsComponent>(entity);
@@ -12944,6 +12956,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // so does the Scene view's face culling toggle: its camera's depth, G-buffer and color
     // passes draw every face, a camera image or reflection keeps the game's culling
     passDisablesFaceCulling = isMainCamera && !pass.renderToTexture && (rv().secondary ? rv().disableFaceCulling : disableFaceCulling);
+    // the Scene view's per-GameObject visibility (the Hierarchy's eye): its camera only
+    passHidesEditorHidden = camera.editorView && !pass.renderToTexture && scene->hasEntityEditorFlags();
 #else
     const bool primaryPass = true;
 #endif
@@ -13769,6 +13783,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     if (useMsaaRedirect){
         renderBlit(&rv().msaaResolveFramebuffer.getRender().getColorTexture(), targetViewRect());
     }
+    passHidesEditorHidden = false;
 }
 
 void RenderSystem::onComponentAdded(Entity entity, ComponentId componentId) {

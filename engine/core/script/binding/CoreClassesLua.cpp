@@ -23,6 +23,7 @@
 #include "System.h"
 #include "registry/PhysicsLayers.h"
 #include "math/Ray.h"
+#include "picking/MeshRaycast.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "Rigidbody2D.h"
 #include "Contact2D.h"
@@ -312,6 +313,196 @@ namespace{
     }
 #endif
 
+
+    // ---- MeshRaycast (docs/scripting/mesh-raycast.md): Physics.raycast's arguments and
+    // distance semantics, against what is drawn
+
+    Scene* luaMeshRaycastScene(lua_State* L, const char* function){
+        if (luabridge::isInstance<Scene*>(L, 1)){
+            auto result = luabridge::get<Scene*>(L, 1);
+            if (result && result.value()){
+                return result.value();
+            }
+        }
+        luaL_error(L, "%s: argument 1 must be a Scene", function);
+        return nullptr;
+    }
+
+    bool luaMeshRaycastRay(lua_State* L, int index, Ray& ray){
+        if (!luabridge::isInstance<Ray>(L, index)){
+            return false;
+        }
+        auto result = luabridge::get<Ray>(L, index);
+        if (!result){
+            return false;
+        }
+        ray = result.value();
+        return true;
+    }
+
+    // an entity number or a GameObject (any EntityHandle)
+    bool luaMeshRaycastEntity(lua_State* L, int index, Entity& entity){
+        if (lua_isinteger(L, index)){
+            entity = (Entity)lua_tointeger(L, index);
+            return true;
+        }
+        if (luabridge::isInstance<EntityHandle>(L, index)){
+            auto handle = luabridge::get<EntityHandle*>(L, index);
+            if (handle && handle.value()){
+                entity = handle.value()->getEntity();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // { hitBackfaces = false, includeInactive = false, ignore = {e1, e2}, kinds = MeshRaycast.MESH | ... }
+    MeshRaycastOptions luaMeshRaycastOptions(lua_State* L, int index, const char* function){
+        MeshRaycastOptions options;
+        if (lua_isnoneornil(L, index)){
+            return options;
+        }
+        if (!lua_istable(L, index)){
+            luaL_error(L, "%s: options must be a table", function);
+            return options;
+        }
+        index = lua_absindex(L, index);
+        lua_getfield(L, index, "hitBackfaces");
+        if (!lua_isnil(L, -1)) options.hitBackfaces = lua_toboolean(L, -1) != 0;
+        lua_pop(L, 1);
+        lua_getfield(L, index, "includeInactive");
+        if (!lua_isnil(L, -1)) options.includeInactive = lua_toboolean(L, -1) != 0;
+        lua_pop(L, 1);
+        lua_getfield(L, index, "kinds");
+        if (!lua_isnil(L, -1)) options.kinds = (uint32_t)luaL_checkinteger(L, -1) & MeshRaycast::ALL;
+        lua_pop(L, 1);
+        lua_getfield(L, index, "ignore");
+        if (lua_istable(L, -1)){
+            const lua_Integer count = (lua_Integer)lua_rawlen(L, -1);
+            for (lua_Integer i = 1; i <= count; i++){
+                lua_rawgeti(L, -1, i);
+                Entity entity = NULL_ENTITY;
+                if (luaMeshRaycastEntity(L, -1, entity)){
+                    options.ignore.push_back(entity);
+                }else{
+                    lua_pop(L, 2);
+                    luaL_error(L, "%s: options.ignore[%d] is not an entity", function, (int)i);
+                    return options;
+                }
+                lua_pop(L, 1);
+            }
+        }else if (!lua_isnil(L, -1)){
+            lua_pop(L, 1);
+            luaL_error(L, "%s: options.ignore must be a table of entities", function);
+            return options;
+        }
+        lua_pop(L, 1);
+        return options;
+    }
+
+    void luaPushMeshRaycastHit(lua_State* L, const MeshRaycastHit& hit){
+        if (!luabridge::push(L, hit)){
+            lua_pushnil(L);
+        }
+    }
+
+    // raycast / raycastAll: (scene, ray [, layerMask [, options]]) or
+    // (scene, origin, direction, maxDistance [, layerMask [, options]])
+    template<bool all>
+    int luaMeshRaycast(lua_State* L){
+        const char* function = all ? "MeshRaycast.raycastAll" : "MeshRaycast.raycast";
+        Scene* scene = luaMeshRaycastScene(L, function);
+        Ray ray;
+        if (luaMeshRaycastRay(L, 2, ray)){
+            const uint32_t layerMask = luaOptLayerMask(L, 3, LAYER_MASK_DEFAULT_RAYCAST);
+            const MeshRaycastOptions options = luaMeshRaycastOptions(L, 4, function);
+            if (all){
+                const std::vector<MeshRaycastHit> hits = MeshRaycast::raycastAll(scene, ray, layerMask, options);
+                lua_createtable(L, (int)hits.size(), 0);
+                for (size_t i = 0; i < hits.size(); i++){
+                    luaPushMeshRaycastHit(L, hits[i]);
+                    lua_rawseti(L, -2, (lua_Integer)(i + 1));
+                }
+            }else{
+                luaPushMeshRaycastHit(L, MeshRaycast::raycast(scene, ray, layerMask, options));
+            }
+            return 1;
+        }
+        if (!luabridge::isInstance<Vector3>(L, 2) || !luabridge::isInstance<Vector3>(L, 3)){
+            return luaL_error(L, "%s: expected (scene, ray [, layerMask [, options]]) or (scene, origin, direction, maxDistance [, layerMask [, options]])", function);
+        }
+        auto origin = luabridge::get<Vector3>(L, 2);
+        auto direction = luabridge::get<Vector3>(L, 3);
+        if (!origin || !direction){
+            return luaL_error(L, "%s: expected (scene, ray [, layerMask [, options]]) or (scene, origin, direction, maxDistance [, layerMask [, options]])", function);
+        }
+        const float maxDistance = (float)luaL_checknumber(L, 4);
+        const uint32_t layerMask = luaOptLayerMask(L, 5, LAYER_MASK_DEFAULT_RAYCAST);
+        const MeshRaycastOptions options = luaMeshRaycastOptions(L, 6, function);
+        if (all){
+            const std::vector<MeshRaycastHit> hits = MeshRaycast::raycastAll(scene, origin.value(), direction.value(), maxDistance, layerMask, options);
+            lua_createtable(L, (int)hits.size(), 0);
+            for (size_t i = 0; i < hits.size(); i++){
+                luaPushMeshRaycastHit(L, hits[i]);
+                lua_rawseti(L, -2, (lua_Integer)(i + 1));
+            }
+        }else{
+            luaPushMeshRaycastHit(L, MeshRaycast::raycast(scene, origin.value(), direction.value(), maxDistance, layerMask, options));
+        }
+        return 1;
+    }
+
+    // raycastEntity(scene, entity, ray [, options])
+    int luaMeshRaycastEntityHit(lua_State* L){
+        const char* function = "MeshRaycast.raycastEntity";
+        Scene* scene = luaMeshRaycastScene(L, function);
+        Entity entity = NULL_ENTITY;
+        if (!luaMeshRaycastEntity(L, 2, entity)){
+            return luaL_error(L, "%s: argument 2 must be an entity", function);
+        }
+        Ray ray;
+        if (!luaMeshRaycastRay(L, 3, ray)){
+            return luaL_error(L, "%s: argument 3 must be a Ray", function);
+        }
+        luaPushMeshRaycastHit(L, MeshRaycast::raycastEntity(scene, entity, ray, luaMeshRaycastOptions(L, 4, function)));
+        return 1;
+    }
+
+    // prepare(scene [, entities])
+    int luaMeshRaycastPrepare(lua_State* L){
+        const char* function = "MeshRaycast.prepare";
+        Scene* scene = luaMeshRaycastScene(L, function);
+        std::vector<Entity> entities;
+        if (lua_istable(L, 2)){
+            const lua_Integer count = (lua_Integer)lua_rawlen(L, 2);
+            for (lua_Integer i = 1; i <= count; i++){
+                lua_rawgeti(L, 2, i);
+                Entity entity = NULL_ENTITY;
+                if (!luaMeshRaycastEntity(L, -1, entity)){
+                    lua_pop(L, 1);
+                    return luaL_error(L, "%s: entities[%d] is not an entity", function, (int)i);
+                }
+                entities.push_back(entity);
+                lua_pop(L, 1);
+            }
+        }else if (!lua_isnoneornil(L, 2)){
+            return luaL_error(L, "%s: argument 2 must be a table of entities", function);
+        }
+        MeshRaycast::prepare(scene, entities);
+        return 0;
+    }
+
+    lua_Integer luaMeshRaycastHitKind(const MeshRaycastHit* hit){ return (lua_Integer)(1u << (uint32_t)hit->kind); }
+    lua_Integer luaMeshRaycastHitEntity(const MeshRaycastHit* hit){ return (lua_Integer)hit->entity; }
+    lua_Integer luaMeshRaycastHitSubmesh(const MeshRaycastHit* hit){ return (lua_Integer)hit->submesh; }
+    lua_Integer luaMeshRaycastHitTriangle(const MeshRaycastHit* hit){ return (lua_Integer)hit->triangle; }
+    lua_Integer luaMeshRaycastHitInstance(const MeshRaycastHit* hit){ return (lua_Integer)hit->instance; }
+    lua_Integer luaMeshRaycastMesh(){ return MeshRaycast::MESH; }
+    lua_Integer luaMeshRaycastInstance(){ return MeshRaycast::INSTANCE; }
+    lua_Integer luaMeshRaycastTerrain(){ return MeshRaycast::TERRAIN; }
+    lua_Integer luaMeshRaycastUI(){ return MeshRaycast::UI; }
+    lua_Integer luaMeshRaycastBounds(){ return MeshRaycast::BOUNDS; }
+    lua_Integer luaMeshRaycastAll(){ return MeshRaycast::ALL; }
 }
 
 void LuaBinding::registerCoreClasses(lua_State *L){
@@ -710,6 +901,37 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("raycast", &luaRaycast<Vector2, false, true>)
         .addStaticFunction("raycastAll", &luaRaycast<Vector2, true, true>)
 #endif
+        .endClass();
+
+    // MeshRaycast: ray casts against what is drawn (triangles, terrains, UI rects), no physics
+    luabridge::getGlobalNamespace(L)
+        .beginClass<MeshRaycastHit>("MeshRaycastHit")
+        .addProperty("hit", &MeshRaycastHit::hit, false)
+        .addProperty("distance", &MeshRaycastHit::distance, false)
+        .addProperty("point", &MeshRaycastHit::point, false)
+        .addProperty("normal", &MeshRaycastHit::normal, false)
+        .addProperty("faceNormal", &MeshRaycastHit::faceNormal, false)
+        .addProperty("barycentric", &MeshRaycastHit::barycentric, false)
+        .addProperty("pending", &MeshRaycastHit::pending, false)
+        .addProperty("entity", &luaMeshRaycastHitEntity)
+        .addProperty("submesh", &luaMeshRaycastHitSubmesh)
+        .addProperty("triangle", &luaMeshRaycastHitTriangle)
+        .addProperty("instance", &luaMeshRaycastHitInstance)
+        .addProperty("kind", &luaMeshRaycastHitKind)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<MeshRaycast>("MeshRaycast")
+        .addStaticProperty("MESH", &luaMeshRaycastMesh)
+        .addStaticProperty("INSTANCE", &luaMeshRaycastInstance)
+        .addStaticProperty("TERRAIN", &luaMeshRaycastTerrain)
+        .addStaticProperty("UI", &luaMeshRaycastUI)
+        .addStaticProperty("BOUNDS", &luaMeshRaycastBounds)
+        .addStaticProperty("ALL", &luaMeshRaycastAll)
+        .addStaticFunction("raycast", &luaMeshRaycast<false>)
+        .addStaticFunction("raycastAll", &luaMeshRaycast<true>)
+        .addStaticFunction("raycastEntity", &luaMeshRaycastEntityHit)
+        .addStaticFunction("prepare", &luaMeshRaycastPrepare)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

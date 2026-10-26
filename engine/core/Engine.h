@@ -404,6 +404,11 @@ namespace jasperengine {
         static void setIgnoreEventsHandledByUI(bool ignoreEventsHandledByUI);
         static bool isIgnoreEventsHandledByUI();
 
+        // MeshRaycast and the editor's picking test the triangles of meshes up to this many
+        // (default 2M); larger ones answer with their bounds (docs/scripting/mesh-raycast.md)
+        static void setMeshRaycastMaxTriangles(unsigned int maxTriangles);
+        static unsigned int getMeshRaycastMaxTriangles();
+
         static bool isUIEventReceived();
         
         static void setUpdateTimeMS(unsigned int updateTimeMS);

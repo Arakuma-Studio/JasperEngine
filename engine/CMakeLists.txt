@@ -947,6 +947,15 @@ set(JASPERENGINE_SRCS
     core/ecs/ChangeTracking.cpp
     core/ecs/CommandBuffer.cpp
     core/ecs/SystemScheduler.cpp
+    core/picking/BinnedSah.cpp
+    core/picking/MeshBvh.cpp
+    core/picking/MeshBvhSimd_avx2.cpp
+    core/picking/MeshBvhSimd_neon.cpp
+    core/picking/MeshPose.cpp
+    core/picking/MeshRaycast.cpp
+    core/picking/PickCache.cpp
+    core/picking/PickGeometry.cpp
+    core/picking/SceneBvh.cpp
     core/htmlui/HtmlUI.cpp
     core/htmlui/HtmlUIClock.cpp
     core/htmlui/HtmlUIContext.cpp
@@ -1270,6 +1279,17 @@ list(FILTER JASPERENGINE_UNITY_SKIP INCLUDE REGEX "core/htmlui/")
 jasperengine_skip_unity_build(
     REASON "the HTML UI subsystem: per-file helper sets with the same names"
     SOURCES ${JASPERENGINE_UNITY_SKIP})
+# Triangle picking (core/picking/, S26): every SIMD path of the BVH slab test does the same
+# arithmetic, which needs the compiler not to fuse a multiply and an add (arm64 GCC and Clang do
+# by default); its own units, since a unity batch would apply that to its neighbours too
+set(JASPERENGINE_PICKING_SRCS ${JASPERENGINE_SRCS})
+list(FILTER JASPERENGINE_PICKING_SRCS INCLUDE REGEX "^core/picking/")
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    set_source_files_properties(${JASPERENGINE_PICKING_SRCS} PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+endif()
+jasperengine_skip_unity_build(
+    REASON "the picking sources: no floating-point contraction, per unit"
+    SOURCES ${JASPERENGINE_PICKING_SRCS})
 jasperengine_target_unity_build(jasperengine)
 
 target_compile_definitions(jasperengine
