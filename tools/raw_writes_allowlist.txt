@@ -10,6 +10,7 @@ editor/cli/CommandLine.cpp :: std::ofstream out(log, std::ios::app); :: hook log
 editor/AppSettings.cpp :: std::ofstream f(probe); :: write probe of the settings directory, removed at once
 editor/htmlui/HttpClient.cpp :: std::ofstream out(config, std::ios::binary); :: private temporary curl config, removed after the request
 editor/Conector.cpp :: fs::copy_file(fullLibPath, candidate :: hot-reload copy of the script library under a unique name in a temp directory
+editor/util/EditorScripts.cpp :: fs::copy_file(built, copy, fs::copy_options::overwrite_existing, ec); :: S23 hot-reload copy of the C++ editor-script library under a unique generation name (build output, not a document)
 
 # output to a path the user named on the command line
 editor/App.cpp :: std::ofstream file(benchmarkOut); :: --benchmark-out report
