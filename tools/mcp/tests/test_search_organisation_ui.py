@@ -5,9 +5,11 @@
 - The one dispatcher: Ctrl+Shift+C focuses the Console from the Hierarchy; after set_shortcut
   rebinds it, the old chord does nothing and the new one works; keys typed into the palette's
   field never run commands.
+- Edit > Shortcuts... (AC8): capturing Ctrl+S on Duplicate does not save the scene, the conflict
+  modal appears, and Cancel leaves both bindings as they were.
 
-Widgets are found through editor_status (windows.focused, ui.search_palette), never by pixel
-offsets, so a layout change cannot make a click land elsewhere.
+Widgets are found through editor_status (windows.focused, ui.search_palette) and find_ui_item
+(where a control is drawn now), never by fixed pixel offsets.
 """
 
 from __future__ import annotations
@@ -31,6 +33,31 @@ class Keys:
         if not windows:
             skip("no editor window found")
         self.window = windows[-1]
+        self.ed = ed
+        x, y = 0, 0
+        for line in self.xdo("getwindowgeometry", self.window).splitlines():
+            if "Position:" in line:
+                x, y = (int(v) for v in line.split("Position:")[1].split("(")[0].strip().split(","))
+        self.origin = (x, y)
+
+    async def click_item(self, label: str, window: str | None = None):
+        """a real click at the centre of where find_ui_item says the control is drawn"""
+        for _ in range(30):
+            args = {"label": label} | ({"window": window} if window else {})
+            visible = [i for i in (await self.ed.call("find_ui_item", **args))["items"] if i["visible"]]
+            if visible:
+                rect = visible[0]["rect"]
+                at = (int(self.origin[0] + rect["x"] + rect["width"] / 2), int(self.origin[1] + rect["y"] + rect["height"] / 2))
+                self.xdo("mousemove", str(at[0]), str(at[1]))
+                await asyncio.sleep(0.3)
+                # press and release frames apart: in one frame the widget never sees the press
+                self.xdo("mousedown", "1")
+                await asyncio.sleep(0.15)
+                self.xdo("mouseup", "1")
+                await asyncio.sleep(0.5)
+                return
+            await self.ed.call("wait", frames=5)
+        self.ed.fail(f"find_ui_item: no visible {label!r}" + (f" in {window!r}" if window else ""))
 
     def xdo(self, *args: str) -> str:
         return subprocess.run(["xdotool", *args], env=self.env, capture_output=True, text=True, timeout=20).stdout
@@ -131,3 +158,31 @@ async def test_dispatcher_follows_rebinding(ed: Editor):
         await wait_for(ed, lambda s: s["windows"]["focused"] == "Console", "the new chord")
     finally:
         await ed.call("set_shortcut", id="window.console", chords=None)
+
+
+async def test_shortcut_capture_conflict_cancel(ed: Editor):
+    keys = Keys(ed)
+    keys.focus()
+    made = await ed.call("create_scene", name="Capture", type="3D", path="scenes/Capture")
+    scene = made["scene"]["id"]
+    await ed.call("select_scene", scene=scene)
+    await ed.call("save_scene", scene=scene, path="scenes/Capture.scene")
+    await ed.call("create_entity", scene=scene, type="box", name="Unsaved")
+    ed.check(scene in (await status(ed))["unsaved"]["scene_ids"], "the scene has unsaved changes")
+
+    await ed.call("run_command", id="edit.shortcuts")
+    await keys.click_item("##ShortcutSearch", "Shortcuts")
+    await keys.type("duplicate")
+    await keys.click_item("Ctrl+D", "Shortcuts")          # Duplicate's binding: capture
+    await keys.key("ctrl+s")                              # captured, not run
+    s = await status(ed)
+    ed.check(scene in s["unsaved"]["scene_ids"], "Ctrl+S during the capture did not save")
+    await keys.key("Return")                              # keep it: Save holds it
+    await keys.click_item("Cancel", "Shortcut in Use")
+    for _ in range(3):
+        s = await status(ed)
+    ed.check(scene in s["unsaved"]["scene_ids"], "still not saved")
+    listed = {i["id"]: i for i in (await ed.call("list_shortcuts"))["shortcuts"]}
+    ed.check_eq(listed["edit.duplicate"]["chords"], ["Ctrl+D"], "Cancel keeps Duplicate's binding")
+    ed.check_eq(listed["file.save"]["chords"], ["Ctrl+S"], "and Save's")
+    await keys.key("Escape")
