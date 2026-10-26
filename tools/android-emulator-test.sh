@@ -188,19 +188,24 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
                     exit failed
                 }" "$OUT/expect.txt" "$OUT/logcat.txt"
         }
-        if [[ -s "$OUT/expect.txt" ]]; then WAIT=$TIMEOUT; else WAIT=$SECONDS_TO_RUN; fi
+        if grep -q . "$OUT/expect.txt"; then WAIT=$TIMEOUT; else WAIT=$SECONDS_TO_RUN; fi
         start=$SECONDS
         while true; do
             adb logcat -d -v tag > "$OUT/logcat.txt"
             adb logcat -d -v threadtime > "$OUT/logcat-full.txt"
             crashes="$(grep -E "FATAL EXCEPTION|Fatal signal|>>> $PACKAGE <<<" "$OUT/logcat-full.txt" | head -10 || true)"
-            if [[ -s "$OUT/expect.txt" ]] && check > /dev/null; then break; fi
+            if grep -q . "$OUT/expect.txt" && check > /dev/null; then break; fi
             [[ -n "$crashes" ]] && break
             (( SECONDS - start > WAIT )) && break
             sleep 2
         done
         result=0
         check > "$OUT/result.txt" || result=1
+        # no expectation (--no-ready): the app must at least still be running after its seconds
+        if ! grep -q . "$OUT/expect.txt" && [[ -z "$(adb shell pidof "$PACKAGE" 2>/dev/null | tr -d "\r")" ]]; then
+            echo "NOT RUNNING  $PACKAGE exited within ${WAIT}s" >> "$OUT/result.txt"
+            result=1
+        fi
         while IFS= read -r forbidden; do
             [[ -z "$forbidden" ]] && continue
             hit="$(grep -F -- "$forbidden" "$OUT/logcat.txt" | head -1 || true)"
