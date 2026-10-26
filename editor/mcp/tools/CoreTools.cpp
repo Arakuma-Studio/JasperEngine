@@ -19,6 +19,7 @@
 #include "util/ScriptStatus.h"
 
 #include "App.h"
+#include "search/SearchPalette.h"
 #include "EditorVersion.h"
 #include "Project.h"
 #include "command/CommandHandle.h"
@@ -588,6 +589,10 @@ void editorStatusTool(const CallPtr& call) {
     }
     if (MissingAssetsWindow* missing = app.getMissingAssetsWindow()) {
         ui["missing_assets"] = {{"open", missing->isOpen()}};
+    }
+    if (SearchPalette* palette = app.getSearchPalette()) {
+        const SearchPalette::UiState state = palette->uiState();
+        ui["search_palette"] = {{"open", state.open}, {"query", state.query}, {"results", state.results}, {"selected", state.selected}};
     }
 
     const SceneProject* selected = project->getSelectedScene();

@@ -634,3 +634,43 @@ Unit tests are in `editor/tests/{search,shortcuts,layout,organisation,settings}/
   were never saved. Default: id first, `EntityPath` hint second, then Missing.
 - **D9 Licence.** Copied scorer and palette values keep the OpenEngine MIT line. `NOTICE.md`
   gets the entry in the same change as the port (R1 needs none).
+
+## Deviations (implementation)
+
+Recorded by the implementer; each is the closest correct alternative to the text above.
+
+1. **Tool names and group.** §6.7's `layout_presets`, `asset_labels`, `saved_searches` and
+   `bookmarks` are `edit_layout_presets`, `edit_asset_labels`, `edit_saved_searches` and
+   `edit_bookmarks`: S31's verb_noun rule (`test_tool_conventions.py`). All eight tools are in
+   S31's `editor_ux` group, which the conventions table already gave S25. `edit_bookmarks` also
+   has `navigate` (what a click in the window does). `list_shortcuts` adds `menu_shortcut` (the
+   chord the main menu's item shows now), `also_in`, `gesture` and `agent_safe`; `editor_status`
+   adds `windows {focused, open}` and `ui.search_palette`, which AC11, AC13 and the UI tests read.
+2. **AC11's `:gravity`.** No project-wide gravity setting exists (gravity is per scene, in the
+   scene's physics settings, not Project Settings), so there is no row to find. The MCP test
+   searches `:collision` and finds the Physics page's layer collision matrix row instead.
+3. **Typing chords.** Function keys and Escape are not typing chords (§6.3 lists every key that
+   types or edits text): F2, F5-F7 and F1 fire while a field has the keyboard, when their context
+   allows it (Rename is Editor context, so it still does not).
+4. **Scene View context.** A Scene View binding fires while the Scene view is focused *or* under
+   the mouse, as the old key block did (Home, the numpad views, the terrain brush keys).
+5. **Catalog entries.** `CommandDef` owns its strings and adds `alsoIn` (Cut, Copy, Paste and
+   Select All bind in the Hierarchy and the Scene View, where the old code read them),
+   `macPrimary` (Redo is Cmd+Shift+Z on macOS, Ctrl+Y elsewhere), `repeat` (Undo, Redo, Delete,
+   Frame Selected and the terrain brush keys repeat while held), `keyGate` (the keyboard-only
+   conditions of the old code) and `agentSafe`.
+6. **Grammar details.** Bare words match the name in Filter mode and AND together (every word);
+   a `"quoted phrase"` is an exact, case-insensitive substring. The structured editor's "Name
+   contains" row writes a quoted phrase. A key the token table does not have is bare text.
+7. **Label UI.** The selection's label strip (chips and the Labels menu) is in the Project
+   window's bottom bar, not under an Inspector asset preview (the Inspector has none for most
+   assets); label colours, rename and delete are in Project Settings > Editor > Asset Labels.
+8. **D1 spike result.** Runtime ini reload between frames (`ClearIniSettings` +
+   `LoadIniSettingsFromMemory`, then a DockBuilder check of the dockspace and a post-load frame)
+   works with docking: `test_layout_presets` applies presets 51 times and checks the dock node
+   count does not grow. The DockBuilder-replay fallback was not needed. A preset or working
+   layout whose ini leaves the dockspace without nodes falls back to Default.
+9. **Reference doc.** `docs/editor/keyboard-shortcuts.md` is written by the unit test itself
+   when run with `JASPER_UPDATE_SHORTCUT_DOCS=1` (`CommandCatalog.MarkdownReferenceMatchesDocs`);
+   without it the test compares byte for byte. Help > Keyboard Shortcuts opens the Shortcuts
+   window in its read-only reference mode, which shows the same table with the current bindings.

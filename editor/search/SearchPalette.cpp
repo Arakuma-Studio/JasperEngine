@@ -548,3 +548,18 @@ void SearchPalette::show() {
     }
     ImGui::EndPopup();
 }
+
+SearchPalette::UiState SearchPalette::uiState() const {
+    UiState state;
+    state.open = isOpen();
+    state.query = queryBuffer;
+    state.selected = selected;
+    if (snapshot) {
+        for (const SearchResult& result : results) {
+            if (result.entry >= snapshot->entries.size()) continue;
+            const SearchEntry& entry = snapshot->entries[result.entry];
+            state.results.push_back(std::string(searchKindName(entry.kind)) + ": " + entry.label);
+        }
+    }
+    return state;
+}
