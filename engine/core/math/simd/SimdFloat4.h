@@ -116,6 +116,12 @@ namespace jasperengine { namespace simd {
         static uint32_t movemask(u4 m){ return (m.v[0] >> 31) | ((m.v[1] >> 31) << 1) | ((m.v[2] >> 31) << 2) | ((m.v[3] >> 31) << 3); }
         static float lane(f4 a, int i){ return a.v[i]; }
         static uint32_t ilane(u4 a, int i){ return a.v[i]; }
+        // lane l of a, b, c, d to out[4 l .. 4 l + 3] (four records of four words from four columns)
+        static void storeTransposed(uint32_t* out, u4 a, u4 b, u4 c, u4 d){
+            for (int l = 0; l < 4; l++){
+                out[l * 4 + 0] = a.v[l]; out[l * 4 + 1] = b.v[l]; out[l * 4 + 2] = c.v[l]; out[l * 4 + 3] = d.v[l];
+            }
+        }
     };
 
     // ---------------------------------------------------------------- SSE2
@@ -197,6 +203,14 @@ namespace jasperengine { namespace simd {
         static uint32_t movemask(u4 m){ return (uint32_t)_mm_movemask_ps(_mm_castsi128_ps(m)); }
         static float lane(f4 a, int i){ alignas(16) float v[4]; _mm_store_ps(v, a); return v[i]; }
         static uint32_t ilane(u4 a, int i){ alignas(16) uint32_t v[4]; _mm_store_si128((__m128i*)v, a); return v[i]; }
+        static void storeTransposed(uint32_t* out, u4 a, u4 b, u4 c, u4 d){
+            const __m128i ab0 = _mm_unpacklo_epi32(a, b), ab1 = _mm_unpackhi_epi32(a, b);
+            const __m128i cd0 = _mm_unpacklo_epi32(c, d), cd1 = _mm_unpackhi_epi32(c, d);
+            _mm_storeu_si128((__m128i*)(out + 0), _mm_unpacklo_epi64(ab0, cd0));
+            _mm_storeu_si128((__m128i*)(out + 4), _mm_unpackhi_epi64(ab0, cd0));
+            _mm_storeu_si128((__m128i*)(out + 8), _mm_unpacklo_epi64(ab1, cd1));
+            _mm_storeu_si128((__m128i*)(out + 12), _mm_unpackhi_epi64(ab1, cd1));
+        }
     };
 #endif
 
@@ -298,6 +312,11 @@ namespace jasperengine { namespace simd {
         }
         static float lane(f4 a, int i){ float v[4]; vst1q_f32(v, a); return v[i]; }
         static uint32_t ilane(u4 a, int i){ uint32_t v[4]; vst1q_u32(v, a); return v[i]; }
+        static void storeTransposed(uint32_t* out, u4 a, u4 b, u4 c, u4 d){
+            uint32x4x4_t v;
+            v.val[0] = a; v.val[1] = b; v.val[2] = c; v.val[3] = d;
+            vst4q_u32(out, v);
+        }
     };
 #endif
 
@@ -367,6 +386,14 @@ namespace jasperengine { namespace simd {
         static uint32_t movemask(u4 m){ return (uint32_t)wasm_i32x4_bitmask(m); }
         static float lane(f4 a, int i){ float v[4]; wasm_v128_store(v, a); return v[i]; }
         static uint32_t ilane(u4 a, int i){ uint32_t v[4]; wasm_v128_store(v, a); return v[i]; }
+        static void storeTransposed(uint32_t* out, u4 a, u4 b, u4 c, u4 d){
+            const v128_t ab0 = wasm_i32x4_shuffle(a, b, 0, 4, 1, 5), ab1 = wasm_i32x4_shuffle(a, b, 2, 6, 3, 7);
+            const v128_t cd0 = wasm_i32x4_shuffle(c, d, 0, 4, 1, 5), cd1 = wasm_i32x4_shuffle(c, d, 2, 6, 3, 7);
+            wasm_v128_store(out + 0, wasm_i64x2_shuffle(ab0, cd0, 0, 2));
+            wasm_v128_store(out + 4, wasm_i64x2_shuffle(ab0, cd0, 1, 3));
+            wasm_v128_store(out + 8, wasm_i64x2_shuffle(ab1, cd1, 0, 2));
+            wasm_v128_store(out + 12, wasm_i64x2_shuffle(ab1, cd1, 1, 3));
+        }
     };
 #endif
 

@@ -12,6 +12,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <random>
 #include <vector>
@@ -126,5 +127,39 @@ TEST(CurlNoise, SimdMatchesReference){
         }
         EXPECT_LE(worst, 1e-5f) << potentials << " potentials, " << curlNativeBackend();
         EXPECT_EQ(mismatches, 0u) << potentials << " potentials: SIMD and scalar differ";
+    }
+}
+
+// The 8-wide path (AVX2 processors) gives the 4-wide path's samples bit for bit, at any
+// frequency and offset and for both fields
+TEST(CurlNoise, WideMatchesNativeExactly){
+    if (!curlWideAvailable()){
+        GTEST_SKIP() << "no 8-wide curl noise on this processor";
+    }
+    std::mt19937 rng(41);
+    std::uniform_real_distribution<float> coordinate(-700.0f, 700.0f);
+    const size_t count = 4096;
+    std::vector<float> x(count), y(count), z(count);
+    for (size_t i = 0; i < count; i++){
+        x[i] = coordinate(rng);
+        y[i] = coordinate(rng);
+        z[i] = coordinate(rng);
+    }
+    for (int potentials : {2, 3}){
+        const float frequency = 0.37f, offset = 2.5f;
+        std::vector<float> wx(count), wy(count), wz(count);
+        curlNoiseWide(potentials, x.data(), y.data(), z.data(), count, frequency, offset, 1234u, wx.data(), wy.data(), wz.data());
+        std::vector<float> sx(count), sy(count), sz(count), nx(count), ny(count), nz(count);
+        for (size_t i = 0; i < count; i++){
+            sx[i] = x[i] * frequency + offset;
+            sy[i] = y[i] * frequency + offset;
+            sz[i] = z[i] * frequency + offset;
+        }
+        curlNoiseBatch(CurlBackend::Native, potentials, sx.data(), sy.data(), sz.data(), count, 1234u, nx.data(), ny.data(), nz.data());
+        for (size_t i = 0; i < count; i++){
+            ASSERT_EQ(std::memcmp(&wx[i], &nx[i], 4), 0) << potentials << " potentials, sample " << i;
+            ASSERT_EQ(std::memcmp(&wy[i], &ny[i], 4), 0) << potentials << " potentials, sample " << i;
+            ASSERT_EQ(std::memcmp(&wz[i], &nz[i], 4), 0) << potentials << " potentials, sample " << i;
+        }
     }
 }

@@ -759,7 +759,6 @@ void ParticleSubsystem::update(double dt){
         }
         EmitterTask task;
         task.runtime = &state.runtime;
-        prepareInput(particles, *transform, task.input);
 
         const ParticleEffectDocument& d = state.effect->document;
         float cameraDistance = 0.0f;
@@ -779,6 +778,12 @@ void ParticleSubsystem::update(double dt){
         task.dt = cullingStep(d.cullingMode, d.looping, visible, dt, d.tickRate, state.cull, maxTicks);
         task.maxTicks = maxTicks;
         state.culled = !visible;
+        if (task.dt <= 0.0){
+            // paused by its culling: nothing to simulate this frame (R15: a culled emitter is nearly free)
+            state.ticks = 0;
+            continue;
+        }
+        prepareInput(particles, *transform, task.input);
         tasks.push_back(task);
         taskEntities.push_back(entity);
     }

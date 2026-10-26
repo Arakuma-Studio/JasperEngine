@@ -23,6 +23,7 @@
 #include "Scene.h"
 #include "component/ParticleSystemComponent.h"
 #include "component/Transform.h"
+#include "object/Camera.h"
 #include "jobs/JobSystem.h"
 #include "memory/Arena.h"
 #include "particles/EmitterRuntime.h"
@@ -279,25 +280,39 @@ namespace {
         return bench::percentile(samples, 0.5);
     }
 
-    // the extra frame cost of an off-screen Automatic emitter (no camera ever sees it)
+    // the frame cost of an out-of-sight Automatic (looping) emitter: what 100 more of them add to
+    // a scene's particle update, per emitter (the camera is past their Distance LOD's far end)
     double culledEmitterUs(){
-        const double empty = emptySchedulerUs();
-        Scene scene;
-        Entity entity = scene.createEntity();
-        scene.addComponent<Transform>(entity, {});
-        ParticleSystemComponent component;
-        component.inlineEffect = referenceStack(false, 200.0f);
-        component.inlineEffect.maxParticles = 1024;
-        scene.addComponent<ParticleSystemComponent>(entity, component);
-        auto particles = scene.getSystem<ParticleSubsystem>();
-        for (int i = 0; i < 100; i++) particles->update(kTick);
-        std::vector<double> samples;
-        for (int i = 0; i < 2000; i++){
-            const auto start = bench::Clock::now();
-            particles->update(kTick);
-            samples.push_back(bench::secondsSince(start) * 1.0e6);
-        }
-        return std::max(0.0, bench::percentile(samples, 0.5) - empty);
+        auto frameUs = [](int emitters){
+            Scene scene;
+            Camera camera(&scene);
+            camera.setPosition(0.0f, 0.0f, 10000.0f);
+            // no transform system runs here: the world position the culling reads, set directly
+            scene.getComponent<Transform>(camera.getEntity()).worldPosition = Vector3(0.0f, 0.0f, 10000.0f);
+            scene.setCamera(&camera);
+            for (int e = 0; e < emitters; e++){
+                Entity entity = scene.createEntity();
+                scene.addComponent<Transform>(entity, {});
+                ParticleSystemComponent component;
+                component.inlineEffect = referenceStack(false, 200.0f);
+                component.inlineEffect.maxParticles = 1024;
+                component.inlineEffect.lod.enabled = true;
+                component.inlineEffect.lod.maxDistance = 100.0f;
+                scene.addComponent<ParticleSystemComponent>(entity, component);
+            }
+            auto particles = scene.getSystem<ParticleSubsystem>();
+            for (int i = 0; i < 100; i++) particles->update(kTick);
+            std::vector<double> samples;
+            for (int i = 0; i < 1000; i++){
+                const auto start = bench::Clock::now();
+                particles->update(kTick);
+                samples.push_back(bench::secondsSince(start) * 1.0e6);
+            }
+            return bench::percentile(samples, 0.5);
+        };
+        const double one = frameUs(1);
+        const double many = frameUs(101);
+        return std::max(0.0, (many - one) / 100.0);
     }
 
 }
@@ -339,10 +354,25 @@ int main(int argc, char** argv){
         results.add("ref_100k_parallel_speedup_ratio", sim1 / std::max(sim, 1e-9) / (kWorkers + 1), "of workers+1");
         results.add("ref_100k_simd_speedup", simScalar1 / std::max(sim1, 1e-9), "x");
         const double prep = prepMs(ref, pool, false);
-        const double sorted = prepMs(ref, pool, true);
+        const double prep1 = prepMs(ref, single, false);
         results.add("ref_100k_prep_ms", prep, "ms");
-        results.add("ref_100k_sorted_prep_ms", sorted, "ms");
-        results.add("ref_100k_sort_extra_ms", std::max(0.0, sorted - prep), "ms");
+        results.add("ref_100k_prep_1t_ms", prep1, "ms");
+        // the 8-worker CI budgets (R21, R22) on a machine with fewer cores: the single-thread
+        // time over 9 threads at R24's least parallel efficiency (0.6, gated above as measured)
+        results.add("ref_100k_sim_8w_projected_ms", sim1 / (9.0 * 0.6), "ms");
+        results.add("ref_100k_prep_8w_projected_ms", prep1 / (9.0 * 0.6), "ms");
+
+        // ref_100k_sorted: the stack alpha-blended and sorted by distance, packed for a view
+        // that sorts (back to front) and for one that does not
+        ParticleEffectDocument sortedDoc = referenceStack(true, 50000.0f);
+        sortedDoc.renderer.blend = ParticleBlend::Alpha;
+        sortedDoc.renderer.sortMode = SortMode::ByDistance;
+        Scenario sortedRef(sortedDoc, 1);
+        sortedRef.settle(pool);
+        const double unsorted1 = prepMs(sortedRef, single, false, 20);
+        const double sorted1 = prepMs(sortedRef, single, true, 20);
+        results.add("ref_100k_sorted_prep_1t_ms", sorted1, "ms");
+        results.add("ref_100k_sort_extra_1t_ms", std::max(0.0, sorted1 - unsorted1), "ms");
 
         Scenario quiet(referenceStack(false, 50000.0f), 1);
         quiet.settle(pool);
@@ -353,6 +383,7 @@ int main(int argc, char** argv){
         setForceScalarKernels(false);
         results.add("ref_100k_nonoise_sim_ms", quietSim, "ms");
         results.add("ref_100k_nonoise_sim_1t_ms", quiet1, "ms");
+        results.add("ref_100k_nonoise_sim_8w_projected_ms", quiet1 / (9.0 * 0.6), "ms");
         // the Noise kernel alone: what it adds to a tick, scalar against native
         results.add("noise_simd_speedup", std::max(simScalar1 - quietScalar1, 0.0) / std::max(sim1 - quiet1, 1e-9), "x");
     }
@@ -371,6 +402,12 @@ int main(int argc, char** argv){
         s.settle(pool);
         results.add("trails_10k_sim_ms", s.tickMs(pool), "ms");
         results.add("trails_10k_prep_ms", prepMs(s, pool, false), "ms");
+        {
+            memory::Arena arena("je-bench-particles");
+            const TrailPack t = ParticleRenderPrep::packTrails(*s.runtimes[0], arena);
+            results.add("trails_10k_strips", t.strips, "strips");
+            results.add("trails_10k_points_per_strip", t.pointsPerStrip, "points");
+        }
         const ParticleTrails& t = s.runtimes[0]->trails();
         const double points = (double)t.ringCount() * (double)t.pointsPerRing();
         results.add("trails_bytes_per_point", points > 0.0 ? (double)t.memoryBytes() / points : 0.0, "B");

@@ -16,6 +16,15 @@
 #include "math/noise/GradientCurl3D.h"
 #include "math/simd/SimdFloat4.h"
 
+// the corner loops unrolled at any optimisation level: their side indices become constants
+#if defined(__clang__)
+    #define JE_CURL_UNROLL _Pragma("clang loop unroll(full)")
+#elif defined(__GNUC__)
+    #define JE_CURL_UNROLL _Pragma("GCC unroll 8")
+#else
+    #define JE_CURL_UNROLL
+#endif
+
 namespace jasperengine { namespace noise {
 
     template<class B>
@@ -34,72 +43,130 @@ namespace jasperengine { namespace noise {
         }
 
         // h % 3, exact: h = a * 65536 + b and 65536 = 1 (mod 3), so h = a + b (mod 3) with
-        // a + b < 2^17, which a float holds and divides by 3 exactly enough to floor
+        // s = a + b < 2^17: s / 3 is within 2^-7 of its exact value as a float product with
+        // 1/3, never across a whole number, so truncating it is the exact quotient
         static u4 mod3(u4 h){
-            const f4 s = B::cvt(B::iadd(B::template isrl<16>(h), B::iand(h, B::iset1(0xffffu))));
-            const f4 q = B::floor(B::div(s, B::set1(3.0f)));
-            return B::cvtt(B::sub(s, B::mul(q, B::set1(3.0f))));
+            const u4 s = B::iadd(B::template isrl<16>(h), B::iand(h, B::iset1(0xffffu)));
+            const u4 q = B::cvtt(B::mul(B::cvt(s), B::set1(0.333333343f)));
+            return B::isub(s, B::iadd(q, B::template isll<1>(q)));
         }
 
-        static V3 potentialGradient(f4 px, f4 py, f4 pz, u4 seed){
+        // What the lattice gives one axis of the samples: the two cells a corner picks (masked to
+        // the 256-cell period), and per side (0 lower, 1 upper) the offset into the cell, the
+        // fade weight and its slope. The three potentials read the same axes in other slots.
+        struct Axis {
+            u4 cell[2];
+            f4 delta[2], weight[2], slope[2];
+        };
+
+        static Axis axisOf(f4 p){
             const f4 period = B::set1(gradientcurl3d::kPeriod);
-            const f4 invPeriod = B::set1(1.0f / gradientcurl3d::kPeriod);
             const f4 one = B::set1(1.0f);
-            f4 p[3] = {px, py, pz};
-            u4 cell[3];
-            f4 fraction[3], fade[3], slope[3];
-            for (int axis = 0; axis < 3; axis++){
-                // fmod(p, 256) moved into [0, 256): the same value as the reference's
-                const f4 wrapped = B::sub(p[axis], B::mul(B::floor(B::mul(p[axis], invPeriod)), period));
-                const f4 whole = B::floor(wrapped);
-                cell[axis] = B::cvtt(whole);
-                const f4 t = B::sub(wrapped, whole);
-                fraction[axis] = t;
-                const f4 t3 = B::mul(B::mul(t, t), t);
-                fade[axis] = B::mul(t3, B::add(B::mul(t, B::sub(B::mul(t, B::set1(6.0f)), B::set1(15.0f))), B::set1(10.0f)));
-                const f4 tm1 = B::sub(t, one);
-                slope[axis] = B::mul(B::mul(B::mul(B::mul(B::set1(30.0f), t), t), tm1), tm1);
+            // fmod(p, 256) moved into [0, 256]: the same value as the reference's
+            const f4 wrapped = B::sub(p, B::mul(B::floor(B::mul(p, B::set1(1.0f / gradientcurl3d::kPeriod))), period));
+            // not negative: truncation is the floor
+            const u4 cell = B::cvtt(wrapped);
+            const f4 t = B::sub(wrapped, B::cvt(cell));
+            const f4 t3 = B::mul(B::mul(t, t), t);
+            const f4 fade = B::mul(t3, B::add(B::mul(t, B::sub(B::mul(t, B::set1(6.0f)), B::set1(15.0f))), B::set1(10.0f)));
+            const f4 tm1 = B::sub(t, one);
+            const f4 slope = B::mul(B::mul(B::mul(B::mul(B::set1(30.0f), t), t), tm1), tm1);
+            Axis a;
+            const u4 mask255 = B::iset1(255u);
+            a.cell[0] = B::iand(cell, mask255);
+            a.cell[1] = B::iand(B::iadd(cell, B::iset1(1u)), mask255);
+            a.delta[0] = B::sub(t, B::zero());
+            a.delta[1] = B::sub(t, one);
+            a.weight[0] = B::sub(one, fade);
+            a.weight[1] = fade;
+            a.slope[0] = B::neg(slope);
+            a.slope[1] = slope;
+            return a;
+        }
+
+        // the sign bit of each lane where `bitMask` of `bits` is clear (a -1 gradient component)
+        static f4 negativeWhereClear(u4 bits, uint32_t bitMask){
+            const u4 clear = B::icmpeq(B::iand(bits, B::iset1(bitMask)), B::iset1(0u));
+            return B::castf(B::iand(clear, B::iset1(0x80000000u)));
+        }
+
+        // g * v for a gradient component g of +1, -1 (its sign bit set) or 0 (its axis absent): exact
+        static f4 signedMasked(f4 v, f4 sign, u4 absent){
+            return B::castf(B::iandnot(absent, B::ixor(B::castu(v), B::castu(sign))));
+        }
+
+        // The gradient of one potential, which reads axis `ax[j]` in its slot j; `terms[axis][j][u]`
+        // is that axis' cell on side u times slot j's prime (the hash input, shared by the three
+        // potentials). The same values, in the same order of operations, as the reference.
+        static V3 potentialGradient(const Axis (&axes)[3], const int (&ax)[3], const u4 (&terms)[3][3][2], u4 seed){
+            const Axis& A0 = axes[ax[0]];
+            const Axis& A1 = axes[ax[1]];
+            const Axis& A2 = axes[ax[2]];
+            // the weight products the corners share: (w0 w1), (s0 w1), (s1 w0), (s2 w0)
+            f4 w01[2][2], s0w1[2][2], s1w0[2][2], s2w0[2][2];
+            JE_CURL_UNROLL
+            for (int u = 0; u < 2; u++){
+                JE_CURL_UNROLL
+                for (int v = 0; v < 2; v++){
+                    w01[u][v] = B::mul(A0.weight[u], A1.weight[v]);
+                    s0w1[u][v] = B::mul(A0.slope[u], A1.weight[v]);
+                    s1w0[u][v] = B::mul(A1.slope[u], A0.weight[v]);
+                    s2w0[u][v] = B::mul(A2.slope[u], A0.weight[v]);
+                }
             }
             V3 result{B::zero(), B::zero(), B::zero()};
-            const u4 mask255 = B::iset1(255u);
+            JE_CURL_UNROLL
             for (uint32_t corner = 0; corner < 8; corner++){
-                u4 h = seed;
-                f4 delta[3], weights[3], slopes[3];
-                for (int axis = 0; axis < 3; axis++){
-                    const uint32_t upper = (corner >> axis) & 1u;
-                    h = B::ixor(h, B::imul(B::iand(B::iadd(cell[axis], B::iset1(upper)), mask255), B::iset1(gradientcurl3d::kAxisPrimes[axis])));
-                    delta[axis] = upper ? B::sub(fraction[axis], one) : B::sub(fraction[axis], B::zero());
-                    weights[axis] = upper ? fade[axis] : B::sub(one, fade[axis]);
-                    slopes[axis] = upper ? slope[axis] : B::neg(slope[axis]);
-                }
+                const int u0 = (int)(corner & 1u), u1 = (int)((corner >> 1) & 1u), u2 = (int)((corner >> 2) & 1u);
+                u4 h = B::ixor(seed, terms[ax[0]][0][u0]);
+                h = B::ixor(h, terms[ax[1]][1][u1]);
+                h = B::ixor(h, terms[ax[2]][2][u2]);
                 h = hash(h);
                 const u4 absent = mod3(h);
-                const u4 sign = B::template isrl<2>(h);
-                const u4 bit0 = B::icmpeq(B::iand(sign, B::iset1(1u)), B::iset1(1u));
-                const u4 bit1 = B::icmpeq(B::iand(sign, B::iset1(2u)), B::iset1(2u));
-                const f4 s0 = B::select(bit0, one, B::neg(one));
-                const f4 s1 = B::select(bit1, one, B::neg(one));
                 const u4 absent0 = B::icmpeq(absent, B::iset1(0u));
                 const u4 absent1 = B::icmpeq(absent, B::iset1(1u));
                 const u4 absent2 = B::icmpeq(absent, B::iset1(2u));
-                // the first present axis takes bit 0, the second bit 1
-                const f4 g0 = B::select(absent0, B::zero(), s0);
-                const f4 g1 = B::select(absent0, s0, B::select(absent1, B::zero(), s1));
-                const f4 g2 = B::select(absent2, B::zero(), s1);
-                const f4 dot = B::add(B::add(B::mul(g0, delta[0]), B::mul(g1, delta[1])), B::mul(g2, delta[2]));
-                const f4 weight = B::mul(B::mul(weights[0], weights[1]), weights[2]);
-                const f4 ws0 = B::mul(B::mul(slopes[0], weights[1]), weights[2]);
-                const f4 ws1 = B::mul(B::mul(slopes[1], weights[0]), weights[2]);
-                const f4 ws2 = B::mul(B::mul(slopes[2], weights[0]), weights[1]);
-                result.x = B::add(result.x, B::add(B::mul(g0, weight), B::mul(dot, ws0)));
-                result.y = B::add(result.y, B::add(B::mul(g1, weight), B::mul(dot, ws1)));
-                result.z = B::add(result.z, B::add(B::mul(g2, weight), B::mul(dot, ws2)));
+                const u4 sign = B::template isrl<2>(h);
+                // the first present axis takes bit 0 of the sign, the second bit 1
+                const f4 signA = negativeWhereClear(sign, 1u);
+                const f4 signB = negativeWhereClear(sign, 2u);
+                const f4 sign1 = B::castf(B::ior(B::iand(absent0, B::castu(signA)), B::iandnot(absent0, B::castu(signB))));
+                const f4 dot = B::add(B::add(signedMasked(A0.delta[u0], signA, absent0), signedMasked(A1.delta[u1], sign1, absent1)),
+                                      signedMasked(A2.delta[u2], signB, absent2));
+                const f4 weight = B::mul(w01[u0][u1], A2.weight[u2]);
+                const f4 ws0 = B::mul(s0w1[u0][u1], A2.weight[u2]);
+                const f4 ws1 = B::mul(s1w0[u1][u0], A2.weight[u2]);
+                const f4 ws2 = B::mul(s2w0[u2][u0], A1.weight[u1]);
+                result.x = B::add(result.x, B::add(signedMasked(weight, signA, absent0), B::mul(dot, ws0)));
+                result.y = B::add(result.y, B::add(signedMasked(weight, sign1, absent1), B::mul(dot, ws1)));
+                result.z = B::add(result.z, B::add(signedMasked(weight, signB, absent2), B::mul(dot, ws2)));
             }
             return result;
         }
 
+        // the hash inputs of every (axis, slot, side): the axis' cell times the slot's prime
+        static void hashTerms(const Axis (&axes)[3], u4 (&terms)[3][3][2]){
+            for (int axis = 0; axis < 3; axis++){
+                for (int slot = 0; slot < 3; slot++){
+                    const u4 prime = B::iset1(gradientcurl3d::kAxisPrimes[slot]);
+                    terms[axis][slot][0] = B::imul(axes[axis].cell[0], prime);
+                    terms[axis][slot][1] = B::imul(axes[axis].cell[1], prime);
+                }
+            }
+        }
+
+        // gradientcurl3d::hash, as this back end's own function: a file built for another
+        // instruction set (CurlNoiseAvx2.cpp) never emits a copy of a baseline inline function
+        static uint32_t scalarHash(uint32_t x){
+            x ^= x >> 16;
+            x *= 0x7feb352du;
+            x ^= x >> 15;
+            x *= 0x846ca68bu;
+            return x ^ (x >> 16);
+        }
+
         static u4 potentialSeed(uint32_t seed, uint32_t component){
-            return B::iset1(gradientcurl3d::hash(seed + component * 0x9e3779b9u));
+            return B::iset1(scalarHash(seed + component * 0x9e3779b9u));
         }
 
         // non-finite lanes sample the origin (and give zero below), so no conversion sees them
@@ -110,13 +177,14 @@ namespace jasperengine { namespace noise {
 
         static V3 curl3(f4 x, f4 y, f4 z, uint32_t seed){
             const u4 ok = finite(x, y, z);
-            x = B::select(ok, x, B::zero());
-            y = B::select(ok, y, B::zero());
-            z = B::select(ok, z, B::zero());
+            const Axis axes[3] = {axisOf(B::select(ok, x, B::zero())), axisOf(B::select(ok, y, B::zero())), axisOf(B::select(ok, z, B::zero()))};
+            u4 terms[3][3][2];
+            hashTerms(axes, terms);
             // potential c reads (p[(c+1)%3], p[(c+2)%3], p[c]) and its gradient lands on those axes
-            const V3 a = potentialGradient(y, z, x, potentialSeed(seed, 0));   // d0/d(y, z, x)
-            const V3 b = potentialGradient(z, x, y, potentialSeed(seed, 1));   // d1/d(z, x, y)
-            const V3 c = potentialGradient(x, y, z, potentialSeed(seed, 2));   // d2/d(x, y, z)
+            const int read0[3] = {1, 2, 0}, read1[3] = {2, 0, 1}, read2[3] = {0, 1, 2};
+            const V3 a = potentialGradient(axes, read0, terms, potentialSeed(seed, 0));   // d0/d(y, z, x)
+            const V3 b = potentialGradient(axes, read1, terms, potentialSeed(seed, 1));   // d1/d(z, x, y)
+            const V3 c = potentialGradient(axes, read2, terms, potentialSeed(seed, 2));   // d2/d(x, y, z)
             // potential[0] = (a.z, a.x, a.y), potential[1] = (b.y, b.z, b.x), potential[2] = (c.x, c.y, c.z)
             V3 r;
             r.x = B::select(ok, B::sub(c.y, b.x), B::zero());
@@ -127,11 +195,12 @@ namespace jasperengine { namespace noise {
 
         static V3 curl2(f4 x, f4 y, f4 z, uint32_t seed){
             const u4 ok = finite(x, y, z);
-            x = B::select(ok, x, B::zero());
-            y = B::select(ok, y, B::zero());
-            z = B::select(ok, z, B::zero());
-            const V3 a = potentialGradient(y, z, x, potentialSeed(seed, 0));
-            const V3 b = potentialGradient(z, x, y, potentialSeed(seed, 1));
+            const Axis axes[3] = {axisOf(B::select(ok, x, B::zero())), axisOf(B::select(ok, y, B::zero())), axisOf(B::select(ok, z, B::zero()))};
+            u4 terms[3][3][2];
+            hashTerms(axes, terms);
+            const int read0[3] = {1, 2, 0}, read1[3] = {2, 0, 1};
+            const V3 a = potentialGradient(axes, read0, terms, potentialSeed(seed, 0));
+            const V3 b = potentialGradient(axes, read1, terms, potentialSeed(seed, 1));
             // (-d1/dz, d0/dz, d1/dx - d0/dy)
             V3 r;
             r.x = B::select(ok, B::neg(b.x), B::zero());
@@ -162,5 +231,7 @@ namespace jasperengine { namespace noise {
     }
 
 }}
+
+#undef JE_CURL_UNROLL
 
 #endif // NOISE_GRADIENTCURL3DSIMD_H

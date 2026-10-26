@@ -96,6 +96,13 @@ namespace jasperengine { namespace particles {
         alignas(16) float vy[kChunkSize];
         alignas(16) float vz[kChunkSize];
         alignas(16) float dt[kChunkSize];   // per-particle dt (spawn pre-advance)
+        // the Noise module's 8-wide path: the field summed over the octaves, one octave's sample
+        alignas(32) float noiseX[kChunkSize];
+        alignas(32) float noiseY[kChunkSize];
+        alignas(32) float noiseZ[kChunkSize];
+        alignas(32) float curlX[kChunkSize];
+        alignas(32) float curlY[kChunkSize];
+        alignas(32) float curlZ[kChunkSize];
         bool hasAccel = false;
         bool hasAnimated = false;
     };

@@ -97,7 +97,8 @@ TEST(ParticleRender, RadixSortIsStable){
     for (auto& k : keys) k = (uint16_t)(rng() % 300);
     std::vector<uint32_t> order(keys.size()), scratch(keys.size());
     for (uint32_t i = 0; i < order.size(); i++) order[i] = i;
-    ParticleRenderPrep::radixSort16(keys.data(), order.data(), scratch.data(), (uint32_t)keys.size());
+    std::vector<uint16_t> keyScratch(keys.size());
+    ParticleRenderPrep::radixSort16(keys.data(), order.data(), scratch.data(), keyScratch.data(), (uint32_t)keys.size());
     for (size_t i = 1; i < order.size(); i++){
         ASSERT_LE(keys[order[i - 1]], keys[order[i]]);
         if (keys[order[i - 1]] == keys[order[i]]){

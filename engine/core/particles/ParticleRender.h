@@ -96,8 +96,9 @@ namespace jasperengine { namespace particles {
         // per-particle trails and ribbons
         static TrailPack packTrails(const EmitterRuntime& emitter, memory::Arena& arena);
 
-        // the 16-bit LSD radix sort of `count` indices by key (two 8-bit passes), stable
-        static void radixSort16(const uint16_t* keys, uint32_t* indices, uint32_t* scratch, uint32_t count);
+        // the 16-bit LSD radix sort of `count` indices by key (two 8-bit passes), stable; the
+        // first pass carries each key next to its index, so the second reads them in order
+        static void radixSort16(const uint16_t* keys, uint32_t* indices, uint32_t* scratch, uint16_t* keyScratch, uint32_t count);
 
         // IEEE half from float (round to nearest even), and back
         static uint16_t toHalf(float value);

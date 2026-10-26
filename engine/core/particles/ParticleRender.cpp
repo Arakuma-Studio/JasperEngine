@@ -279,6 +279,27 @@ namespace {
                 const u4 velZW = pair(half(vz), half(rp.mesh ? sz : K::k(rp.emissive)));
                 const u4 xb = B::castu(px), yb = B::castu(py), zb = B::castu(pz);
 
+                // four whole billboard records: transposed straight into the instances (with their
+                // sort keys when the view sorts)
+                if (keepBits == 0xfu && !job.mesh && !job.custom && !job.meshIndex){
+                    if (job.keys){
+                        alignas(16) uint32_t keys[4];
+                        B::storeu4(keys, sortKeys(job, L, px, py, pz));
+                        for (int l = 0; l < 4; l++) job.keys[written + l] = (uint16_t)keys[l];
+                    }
+                    static_assert(sizeof(ParticleInstance) == 8 * sizeof(uint32_t), "two rows of four words");
+                    alignas(16) uint32_t rows[2][16];
+                    B::storeTransposed(rows[0], xb, yb, zb, color);
+                    B::storeTransposed(rows[1], sizeXY, rotationFrame, velXY, velZW);
+                    uint32_t* out = reinterpret_cast<uint32_t*>(&job.instances[written]);
+                    for (int l = 0; l < 4; l++){
+                        std::memcpy(out + l * 8, rows[0] + l * 4, 16);
+                        std::memcpy(out + l * 8 + 4, rows[1] + l * 4, 16);
+                    }
+                    written += 4;
+                    continue;
+                }
+
                 alignas(16) uint32_t ax[4], ay[4], az[4], ac[4], as[4], ar[4], av[4], aw[4];
                 B::storeu4(ax, xb); B::storeu4(ay, yb); B::storeu4(az, zb); B::storeu4(ac, color);
                 B::storeu4(as, sizeXY); B::storeu4(ar, rotationFrame); B::storeu4(av, velXY); B::storeu4(aw, velZW);
@@ -314,30 +335,8 @@ namespace {
                     }
                 }
                 alignas(16) uint32_t keyBits[4] = {0, 0, 0, 0};
-                if (job.keys){
-                    f4 metric;
-                    switch (rp.sort){
-                        case SortMode::ByDepth: {
-                            metric = K::dot3(B::sub(px, K::k(job.view->position[0])), B::sub(py, K::k(job.view->position[1])), B::sub(pz, K::k(job.view->position[2])),
-                                             K::k(job.view->forward[0]), K::k(job.view->forward[1]), K::k(job.view->forward[2]));
-                            break;
-                        }
-                        case SortMode::OldestInFront:
-                            // the youngest first: the oldest drawn last, on top
-                            metric = B::sub(K::k(1.0f), L.normAge);
-                            break;
-                        case SortMode::YoungestInFront:
-                            metric = L.normAge;
-                            break;
-                        case SortMode::ByDistance:
-                        default:
-                            metric = K::length3(B::sub(px, K::k(job.view->position[0])), B::sub(py, K::k(job.view->position[1])), B::sub(pz, K::k(job.view->position[2])));
-                            break;
-                    }
-                    // far first: the key falls as the metric grows
-                    const f4 q = M::clamp01(B::mul(B::sub(metric, K::k(job.sortLo)), K::k(job.sortScale)));
-                    B::storeu4(keyBits, B::cvtt(B::mul(B::sub(K::k(1.0f), q), K::k(65535.0f))));
-                }
+                if (job.keys)
+                    B::storeu4(keyBits, sortKeys(job, L, px, py, pz));
                 for (uint32_t l = 0; l < 4; l++){
                     if (!(keepBits & (1u << l)))
                         continue;
@@ -372,6 +371,31 @@ namespace {
                 }
             }
             return written - outBegin;
+        }
+
+        // the 16-bit back-to-front keys of four particles: far first, the key falls as the metric grows
+        static u4 sortKeys(const PackJob& job, const typename K::Lane& L, f4 px, f4 py, f4 pz){
+            const RenderParams& rp = job.prog->render;
+            f4 metric;
+            switch (rp.sort){
+                case SortMode::ByDepth:
+                    metric = K::dot3(B::sub(px, K::k(job.view->position[0])), B::sub(py, K::k(job.view->position[1])), B::sub(pz, K::k(job.view->position[2])),
+                                     K::k(job.view->forward[0]), K::k(job.view->forward[1]), K::k(job.view->forward[2]));
+                    break;
+                case SortMode::OldestInFront:
+                    // the youngest first: the oldest drawn last, on top
+                    metric = B::sub(K::k(1.0f), L.normAge);
+                    break;
+                case SortMode::YoungestInFront:
+                    metric = L.normAge;
+                    break;
+                case SortMode::ByDistance:
+                default:
+                    metric = K::length3(B::sub(px, K::k(job.view->position[0])), B::sub(py, K::k(job.view->position[1])), B::sub(pz, K::k(job.view->position[2])));
+                    break;
+            }
+            const f4 q = M::clamp01(B::mul(B::sub(metric, K::k(job.sortLo)), K::k(job.sortScale)));
+            return B::cvtt(B::mul(B::sub(K::k(1.0f), q), K::k(65535.0f)));
         }
 
         // how many of [begin, end) thinning keeps
@@ -486,7 +510,7 @@ namespace {
         uint32_t* scratch = arena.allocateArrayForOverwrite<uint32_t>(total);
         for (uint32_t i = 0; i < total; i++) order[i] = i;
         if (sort)
-            ParticleRenderPrep::radixSort16(job.keys, order, scratch, total);
+            ParticleRenderPrep::radixSort16(job.keys, order, scratch, arena.allocateArrayForOverwrite<uint16_t>(total), total);
         if (job.meshIndex){
             uint32_t counts[kMaxRendererMeshes] = {};
             for (uint32_t i = 0; i < total; i++) counts[job.meshIndex[i]]++;
@@ -530,33 +554,54 @@ PackResult ParticleRenderPrep::pack(const EmitterRuntime& emitter, const RenderV
     return packWith(forceScalarKernels(), emitter, view, arena, jobs);
 }
 
-void ParticleRenderPrep::radixSort16(const uint16_t* keys, uint32_t* indices, uint32_t* scratch, uint32_t count){
-    uint32_t histogram[2][256] = {};
+void ParticleRenderPrep::radixSort16(const uint16_t* keys, uint32_t* indices, uint32_t* scratch, uint16_t* keyScratch, uint32_t count){
+    uint32_t low[256] = {}, high[256] = {};
     for (uint32_t i = 0; i < count; i++){
-        histogram[0][keys[i] & 255u]++;
-        histogram[1][keys[i] >> 8]++;
+        const uint16_t k = keys[indices[i]];
+        low[k & 255u]++;
+        high[k >> 8]++;
     }
-    for (int pass = 0; pass < 2; pass++){
-        uint32_t sum = 0;
-        for (uint32_t b = 0; b < 256; b++){
-            const uint32_t n = histogram[pass][b];
-            histogram[pass][b] = sum;
-            sum += n;
-        }
-        const int shift = pass * 8;
-        for (uint32_t i = 0; i < count; i++){
-            const uint32_t index = indices[i];
-            scratch[histogram[pass][(keys[index] >> shift) & 255u]++] = index;
-        }
-        std::memcpy(indices, scratch, count * sizeof(uint32_t));
+    uint32_t sumLow = 0, sumHigh = 0;
+    for (uint32_t b = 0; b < 256; b++){
+        const uint32_t l = low[b], h = high[b];
+        low[b] = sumLow;
+        high[b] = sumHigh;
+        sumLow += l;
+        sumHigh += h;
     }
+    for (uint32_t i = 0; i < count; i++){
+        const uint32_t index = indices[i];
+        const uint16_t k = keys[index];
+        const uint32_t at = low[k & 255u]++;
+        scratch[at] = index;
+        keyScratch[at] = k;
+    }
+    for (uint32_t i = 0; i < count; i++)
+        indices[high[keyScratch[i] >> 8]++] = scratch[i];
 }
 
 uint16_t ParticleRenderPrep::toHalf(float value){
-    alignas(16) float in[4] = {value, 0, 0, 0};
-    alignas(16) uint32_t out[4];
-    simd::Scalar::storeu4(out, Pack<simd::Scalar>::half(simd::Scalar::loadu(in)));
-    return (uint16_t)out[0];
+    // Pack::half on one value, without the vector round trip
+    uint32_t bits;
+    std::memcpy(&bits, &value, 4);
+    const uint32_t sign = bits & 0x80000000u;
+    const uint32_t x = bits ^ sign;
+    uint32_t h;
+    if ((int32_t)x > 0x7f800000){
+        h = 0x7e00u;
+    }else if ((int32_t)x > 0x477fefff){
+        h = 0x7c00u;
+    }else if ((int32_t)x < 0x38800000){
+        float f;
+        std::memcpy(&f, &x, 4);
+        f += 0.5f;
+        uint32_t dn;
+        std::memcpy(&dn, &f, 4);
+        h = dn - 0x3f000000u;
+    }else{
+        h = (x + 0xc8000fffu + ((x >> 13) & 1u)) >> 13;
+    }
+    return (uint16_t)(h | (sign >> 16));
 }
 
 float ParticleRenderPrep::fromHalf(uint16_t h){
@@ -605,51 +650,85 @@ TrailPack ParticleRenderPrep::packTrails(const EmitterRuntime& emitter, memory::
     const float now = (float)emitter.time();
 
     // a strip of points, newest first, written as pairs of vertices; unused points repeat
-    // the last pair so their quads have no area
+    // the last pair so their quads have no area. Width and colour are worked out per point only
+    // when they vary along the trail.
+    const bool constantWidth = tp.width.kind == CurveParam::Const;
+    const bool constantTrailColor = tp.colorOverTrail.kind == GradientParam::Const;
+    const bool constantLifetimeColor = tp.colorOverLifetime.kind == GradientParam::Const;
     auto writeStrip = [&](TrailVertex* out, uint32_t points, uint32_t capacity, const float* xs, const float* ys, const float* zs,
                           const float* ages, uint32_t baseColor, float baseWidth, float lifetime){
+        float base[4] = {1, 1, 1, 1};
+        if (tp.inheritParticleColor){
+            base[0] = decode[baseColor & 255u]; base[1] = decode[(baseColor >> 8) & 255u];
+            base[2] = decode[(baseColor >> 16) & 255u]; base[3] = (float)(baseColor >> 24) / 255.0f;
+        }
+        float m[4];
+        // the parts of the colour that do not vary, multiplied in once
+        float fixedColor[4] = {base[0], base[1], base[2], base[3]};
+        if (constantTrailColor){
+            gradientScalar(*prog, tp.colorOverTrail, d, m);
+            for (int c = 0; c < 4; c++) fixedColor[c] *= m[c];
+        }
+        if (constantLifetimeColor){
+            gradientScalar(*prog, tp.colorOverLifetime, d, m);
+            for (int c = 0; c < 4; c++) fixedColor[c] *= m[c];
+        }
+        const uint32_t fixedPacked = encodeColor(fixedColor);
+        const uint16_t fixedHalfWidth = toHalf(baseWidth * curveScalar(*prog, tp.width, d) * 0.5f);
         float length = 0.0f;
-        for (uint32_t k = 0; k < capacity; k++){
-            const uint32_t p = std::min(k, points - 1);
+        const uint32_t used = std::min(points, capacity);
+        for (uint32_t k = 0; k < used; k++){
+            const uint32_t p = k;
             const float u = points > 1 ? (float)p / (float)(points - 1) : 0.0f;
             // the tangent: the neighbours' difference
             const uint32_t a = p > 0 ? p - 1 : p, b = p + 1 < points ? p + 1 : p;
-            const float t[3] = {xs[a] - xs[b], ys[a] - ys[b], zs[a] - zs[b]};
-            if (k > 0 && k < points){
+            if (k > 0){
                 const float dx = xs[p] - xs[p - 1], dy = ys[p] - ys[p - 1], dz = zs[p] - zs[p - 1];
                 length += std::sqrt(dx * dx + dy * dy + dz * dz);
             }
-            d.normAge = u;
-            const float width = baseWidth * curveScalar(*prog, tp.width, d) * 0.5f;
-            float color[4] = {1, 1, 1, 1};
-            if (tp.inheritParticleColor){
-                color[0] = decode[baseColor & 255u]; color[1] = decode[(baseColor >> 8) & 255u];
-                color[2] = decode[(baseColor >> 16) & 255u]; color[3] = (float)(baseColor >> 24) / 255.0f;
+            uint16_t halfWidth = fixedHalfWidth;
+            if (!constantWidth){
+                d.normAge = u;
+                halfWidth = toHalf(baseWidth * curveScalar(*prog, tp.width, d) * 0.5f);
             }
-            float m[4];
-            gradientScalar(*prog, tp.colorOverTrail, d, m);
-            for (int c = 0; c < 4; c++) color[c] *= m[c];
-            d.normAge = lifetime > 0.0f ? std::clamp(ages[p] / lifetime, 0.0f, 1.0f) : 0.0f;
-            gradientScalar(*prog, tp.colorOverLifetime, d, m);
-            for (int c = 0; c < 4; c++) color[c] *= m[c];
+            uint32_t packed = fixedPacked;
+            if (!constantTrailColor || !constantLifetimeColor){
+                float color[4] = {fixedColor[0], fixedColor[1], fixedColor[2], fixedColor[3]};
+                if (!constantTrailColor){
+                    d.normAge = u;
+                    gradientScalar(*prog, tp.colorOverTrail, d, m);
+                    for (int c = 0; c < 4; c++) color[c] *= m[c];
+                }
+                if (!constantLifetimeColor){
+                    d.normAge = lifetime > 0.0f ? std::clamp(ages[p] / lifetime, 0.0f, 1.0f) : 0.0f;
+                    gradientScalar(*prog, tp.colorOverLifetime, d, m);
+                    for (int c = 0; c < 4; c++) color[c] *= m[c];
+                }
+                packed = encodeColor(color);
+            }
             float texU = u;
             if (tp.textureMode == TrailTextureMode::Tile) texU = baseWidth > 0.0f ? length / (baseWidth * 2.0f) : u;
             else if (tp.textureMode == TrailTextureMode::DistributePerSegment) texU = (float)p / (float)std::max(capacity - 1, 1u);
-            const uint32_t packed = encodeColor(color);
-            for (int side = 0; side < 2; side++){
-                TrailVertex& v = out[k * 2 + side];
-                v.center[0] = xs[p]; v.center[1] = ys[p]; v.center[2] = zs[p];
-                v.tangentWidth[0] = toHalf(t[0]);
-                v.tangentWidth[1] = toHalf(t[1]);
-                v.tangentWidth[2] = toHalf(t[2]);
-                v.tangentWidth[3] = toHalf(width);
-                v.color = packed;
-                // Tile u passes 1: it is stored over kTrailTileRange tiles (USHORT2N holds 0..1)
-                // and the shader scales it back, so the texture repeats along the trail
-                const float stored = tp.textureMode == TrailTextureMode::Tile ? texU / kTrailTileRange : texU;
-                v.uvSide[0] = (uint16_t)(std::clamp(stored, 0.0f, 1.0f) * 65535.0f + 0.5f);
-                v.uvSide[1] = (uint16_t)(side * 65535);
-            }
+            // Tile u passes 1: it is stored over kTrailTileRange tiles (USHORT2N holds 0..1)
+            // and the shader scales it back, so the texture repeats along the trail
+            const float stored = tp.textureMode == TrailTextureMode::Tile ? texU / kTrailTileRange : texU;
+            TrailVertex v;
+            v.center[0] = xs[p]; v.center[1] = ys[p]; v.center[2] = zs[p];
+            v.tangentWidth[0] = toHalf(xs[a] - xs[b]);
+            v.tangentWidth[1] = toHalf(ys[a] - ys[b]);
+            v.tangentWidth[2] = toHalf(zs[a] - zs[b]);
+            v.tangentWidth[3] = halfWidth;
+            v.color = packed;
+            v.uvSide[0] = (uint16_t)(std::clamp(stored, 0.0f, 1.0f) * 65535.0f + 0.5f);
+            v.uvSide[1] = 0;
+            out[k * 2] = v;
+            v.uvSide[1] = 65535;
+            out[k * 2 + 1] = v;
+        }
+        // the unused points: the last pair again
+        for (uint32_t k = used; k < capacity; k++){
+            out[k * 2] = out[(used - 1) * 2];
+            out[k * 2 + 1] = out[(used - 1) * 2 + 1];
         }
     };
 
@@ -725,8 +804,9 @@ TrailPack ParticleRenderPrep::packTrails(const EmitterRuntime& emitter, memory::
         uint16_t* low = arena.allocateArrayForOverwrite<uint16_t>(count);
         uint16_t* high = arena.allocateArrayForOverwrite<uint16_t>(count);
         for (uint32_t i = 0; i < count; i++){ low[i] = (uint16_t)(spawn[i] & 0xffffu); high[i] = (uint16_t)(spawn[i] >> 16); }
-        radixSort16(low, order, scratch, count);
-        radixSort16(high, order, scratch, count);
+        uint16_t* keyScratch = arena.allocateArrayForOverwrite<uint16_t>(count);
+        radixSort16(low, order, scratch, keyScratch, count);
+        radixSort16(high, order, scratch, keyScratch, count);
     }
     const uint32_t perRibbon = (count + ribbons - 1) / ribbons;
     pack.pointsPerStrip = perRibbon;

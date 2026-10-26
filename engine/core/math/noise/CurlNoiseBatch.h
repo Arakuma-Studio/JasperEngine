@@ -24,6 +24,13 @@ namespace jasperengine { namespace noise {
     JASPERENGINE_API void curlNoiseBatch(CurlBackend backend, int potentials, const float* x, const float* y, const float* z,
                                          size_t count, uint32_t seed, float* outX, float* outY, float* outZ);
 
+    // An 8-wide path on processors that have it (x86-64 with AVX2; CurlNoiseAvx2.cpp), bit-identical
+    // to the 4-wide one: the samples at p * frequency + offset, `count` a multiple of 8 (inputs
+    // and outputs padded that far)
+    JASPERENGINE_API bool curlWideAvailable();
+    JASPERENGINE_API void curlNoiseWide(int potentials, const float* x, const float* y, const float* z, size_t count, float frequency,
+                                        float offset, uint32_t seed, float* outX, float* outY, float* outZ);
+
 }}
 
 #endif // NOISE_CURLNOISEBATCH_H

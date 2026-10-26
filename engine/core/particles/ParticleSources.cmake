@@ -5,6 +5,7 @@
 
 set(JASPERENGINE_PARTICLE_SRCS
     core/math/noise/CurlNoiseBatch.cpp
+    core/math/noise/CurlNoiseAvx2.cpp
     core/particles/EmitterRuntime.cpp
     core/particles/LegacyParticleConverter.cpp
     core/particles/ParticleChannels.cpp
@@ -45,3 +46,14 @@ if(EMSCRIPTEN)
     endif()
 endif()
 set_source_files_properties(${JASPERENGINE_PARTICLE_SRCS} PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_PARTICLE_FLAGS}")
+
+# the 8-wide curl noise (x86-64): its one file built for AVX2, picked at run time
+set(JASPERENGINE_PARTICLE_AVX2_FLAGS "")
+if(NOT EMSCRIPTEN AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
+    if(MSVC)
+        set(JASPERENGINE_PARTICLE_AVX2_FLAGS /arch:AVX2)
+    else()
+        set(JASPERENGINE_PARTICLE_AVX2_FLAGS -mavx2)
+    endif()
+endif()
+set_source_files_properties(core/math/noise/CurlNoiseAvx2.cpp PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_PARTICLE_FLAGS};${JASPERENGINE_PARTICLE_AVX2_FLAGS}")

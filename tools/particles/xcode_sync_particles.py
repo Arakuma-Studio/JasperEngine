@@ -38,7 +38,7 @@ SOURCES_ANCHORS = ["71F225492C587388006ED3CA /* ParticleSystem.cpp in Sources */
 FILES = [
     "component/ForceFieldComponent.h",
     "math/Curve.cpp", "math/Curve.h",
-    "math/noise/CurlNoiseBatch.cpp", "math/noise/CurlNoiseBatch.h",
+    "math/noise/CurlNoiseBatch.cpp", "math/noise/CurlNoiseBatch.h", "math/noise/CurlNoiseAvx2.cpp",
     "math/noise/GradientCurl3D.h", "math/noise/GradientCurl3DSimd.h",
     "math/simd/SimdFloat4.h",
     "subsystem/ParticleSubsystem.cpp", "subsystem/ParticleSubsystem.h",

@@ -1234,6 +1234,8 @@
 		71F225482C587388006ED3CA /* ParticleSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 71F225462C587388006ED3CA /* ParticleSystem.h */; };
 		71F225492C587388006ED3CA /* ParticleSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71F225472C587388006ED3CA /* ParticleSystem.cpp */; };
 		71F2254A2C587388006ED3CA /* ParticleSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71F225472C587388006ED3CA /* ParticleSystem.cpp */; };
+		5052544384544A0AC8C91F8A /* CurlNoiseAvx2.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50525443FE0D6FD5E2DBAB38 /* CurlNoiseAvx2.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		50525443D475987FF83292E4 /* CurlNoiseAvx2.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50525443FE0D6FD5E2DBAB38 /* CurlNoiseAvx2.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
 		5052544395B69AD74AAB753C /* RenderSystemParticles.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50525443EAA8440DF17720D1 /* RenderSystemParticles.cpp */; };
 		50525443E5ED12E553AB3EF1 /* RenderSystemParticles.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50525443EAA8440DF17720D1 /* RenderSystemParticles.cpp */; };
 		50525443650BD52E6BBF49BF /* ParticleSystemState.h in Headers */ = {isa = PBXBuildFile; fileRef = 505254430AB9C85866838AFB /* ParticleSystemState.h */; };
@@ -5401,6 +5403,7 @@
 		71F225442C58736B006ED3CA /* InstancedMeshComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InstancedMeshComponent.h; sourceTree = "<group>"; };
 		71F225462C587388006ED3CA /* ParticleSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleSystem.h; sourceTree = "<group>"; };
 		71F225472C587388006ED3CA /* ParticleSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ParticleSystem.cpp; sourceTree = "<group>"; };
+		50525443FE0D6FD5E2DBAB38 /* CurlNoiseAvx2.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CurlNoiseAvx2.cpp; sourceTree = "<group>"; };
 		50525443EAA8440DF17720D1 /* RenderSystemParticles.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RenderSystemParticles.cpp; sourceTree = "<group>"; };
 		505254430AB9C85866838AFB /* ParticleSystemState.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleSystemState.h; sourceTree = "<group>"; };
 		50525443623A48A4E6A367D1 /* ParticleSubsystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleSubsystem.h; sourceTree = "<group>"; };
@@ -8185,6 +8188,7 @@
 				50525443AFD72502E904CCBC /* CurlNoiseBatch.h */,
 				50525443EBDDA190C312568E /* GradientCurl3D.h */,
 				50525443D16E70CA56B08264 /* GradientCurl3DSimd.h */,
+				50525443FE0D6FD5E2DBAB38 /* CurlNoiseAvx2.cpp */,
 			);
 			path = noise;
 			sourceTree = "<group>";
@@ -14092,6 +14096,7 @@
 				713D82AF259D307F00567F9F /* InterleavedBuffer.cpp in Sources */,
 				71E54500284D5BB700C68FAB /* Animation.cpp in Sources */,
 				71F2254A2C587388006ED3CA /* ParticleSystem.cpp in Sources */,
+				5052544384544A0AC8C91F8A /* CurlNoiseAvx2.cpp in Sources */,
 				5052544395B69AD74AAB753C /* RenderSystemParticles.cpp in Sources */,
 				5052544352E2E18F33804236 /* ParticleSubsystem.cpp in Sources */,
 				505254439E6455971E6D11EB /* CurlNoiseBatch.cpp in Sources */,
@@ -14581,6 +14586,7 @@
 				7162FD4525963AE00075B97D /* GameObject.cpp in Sources */,
 				71E544FF284D5BB700C68FAB /* Animation.cpp in Sources */,
 				71F225492C587388006ED3CA /* ParticleSystem.cpp in Sources */,
+				50525443D475987FF83292E4 /* CurlNoiseAvx2.cpp in Sources */,
 				50525443E5ED12E553AB3EF1 /* RenderSystemParticles.cpp in Sources */,
 				50525443E21FA64366D4ADEB /* ParticleSubsystem.cpp in Sources */,
 				50525443C601CFD70A2E4CB0 /* CurlNoiseBatch.cpp in Sources */,

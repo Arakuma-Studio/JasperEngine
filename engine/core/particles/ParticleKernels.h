@@ -14,6 +14,7 @@
 // is a fixed sequence of the back end's operations, so the Scalar instantiation gives the same
 // bits as the SIMD one: the determinism tests compare them.
 
+#include "math/noise/CurlNoiseBatch.h"
 #include "math/noise/GradientCurl3DSimd.h"
 #include "math/simd/SimdFloat4.h"
 #include "particles/ParticleKernelContext.h"
@@ -21,6 +22,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <type_traits>
 
 namespace jasperengine { namespace particles {
 
@@ -985,31 +987,65 @@ namespace jasperengine { namespace particles {
             ChunkScratch& s = *ctx.scratch;
             typedef noise::GradientCurlSimd<B> Curl;
             const float scroll = p.scrollSpeed * ctx.time;
+            // High and Medium 8 samples at a time where the processor has it: the same values
+            // (CurlNoiseAvx2.cpp), summed over the octaves in the same order
+            bool wide = false;
+            if constexpr (std::is_same<B, simd::Native>::value){
+                wide = p.quality != NoiseQuality::Low && noise::curlWideAvailable();
+            }
+            if (wide){
+                const uint32_t count = (end - begin + 7u) & ~7u;
+                const int potentials = p.quality == NoiseQuality::High ? 3 : 2;
+                float frequency = p.frequency;
+                float amplitude = 1.0f;
+                for (uint32_t j = 0; j < count; j += 4){
+                    st(s.noiseX, j, B::zero());
+                    st(s.noiseY, j, B::zero());
+                    st(s.noiseZ, j, B::zero());
+                }
+                for (uint32_t o = 0; o < p.octaves; o++){
+                    noise::curlNoiseWide(potentials, ctx.ch[ChPosX] + begin, ctx.ch[ChPosY] + begin, ctx.ch[ChPosZ] + begin, count, frequency, scroll,
+                                         p.seed + o * 0x632be5abu, s.curlX, s.curlY, s.curlZ);
+                    for (uint32_t j = 0; j < count; j += 4){
+                        st(s.noiseX, j, B::madd(ld(s.curlX, j), k(amplitude), ld(s.noiseX, j)));
+                        st(s.noiseY, j, B::madd(ld(s.curlY, j), k(amplitude), ld(s.noiseY, j)));
+                        st(s.noiseZ, j, B::madd(ld(s.curlZ, j), k(amplitude), ld(s.noiseZ, j)));
+                    }
+                    frequency *= p.octaveScale;
+                    amplitude *= p.octaveMultiplier;
+                }
+            }
             for (uint32_t i = begin; i < end; i += 4){
                 Lane L(ctx, i);
                 const uint32_t j = i - begin;
-                const f4 px = ld(ctx.ch[ChPosX], i), py = ld(ctx.ch[ChPosY], i), pz = ld(ctx.ch[ChPosZ], i);
                 f4 nx = B::zero(), ny = B::zero(), nz = B::zero();
-                float frequency = p.frequency;
-                float amplitude = 1.0f;
-                for (uint32_t o = 0; o < p.octaves; o++){
-                    const f4 sx = B::add(B::mul(px, k(frequency)), k(scroll));
-                    const f4 sy = B::add(B::mul(py, k(frequency)), k(scroll));
-                    const f4 sz = B::add(B::mul(pz, k(frequency)), k(scroll));
-                    const uint32_t seed = p.seed + o * 0x632be5abu;
-                    typename Curl::V3 c;
-                    if (p.quality == NoiseQuality::High){
-                        c = Curl::curl3(sx, sy, sz, seed);
-                    }else if (p.quality == NoiseQuality::Medium){
-                        c = Curl::curl2(sx, sy, sz, seed);
-                    }else{
-                        c = lowField(ctx, p, sx, sy, sz);
+                if (wide){
+                    nx = ld(s.noiseX, j);
+                    ny = ld(s.noiseY, j);
+                    nz = ld(s.noiseZ, j);
+                }else{
+                    const f4 px = ld(ctx.ch[ChPosX], i), py = ld(ctx.ch[ChPosY], i), pz = ld(ctx.ch[ChPosZ], i);
+                    float frequency = p.frequency;
+                    float amplitude = 1.0f;
+                    for (uint32_t o = 0; o < p.octaves; o++){
+                        const f4 sx = B::add(B::mul(px, k(frequency)), k(scroll));
+                        const f4 sy = B::add(B::mul(py, k(frequency)), k(scroll));
+                        const f4 sz = B::add(B::mul(pz, k(frequency)), k(scroll));
+                        const uint32_t seed = p.seed + o * 0x632be5abu;
+                        typename Curl::V3 c;
+                        if (p.quality == NoiseQuality::High){
+                            c = Curl::curl3(sx, sy, sz, seed);
+                        }else if (p.quality == NoiseQuality::Medium){
+                            c = Curl::curl2(sx, sy, sz, seed);
+                        }else{
+                            c = lowField(ctx, p, sx, sy, sz);
+                        }
+                        nx = B::madd(c.x, k(amplitude), nx);
+                        ny = B::madd(c.y, k(amplitude), ny);
+                        nz = B::madd(c.z, k(amplitude), nz);
+                        frequency *= p.octaveScale;
+                        amplitude *= p.octaveMultiplier;
                     }
-                    nx = B::madd(c.x, k(amplitude), nx);
-                    ny = B::madd(c.y, k(amplitude), ny);
-                    nz = B::madd(c.z, k(amplitude), nz);
-                    frequency *= p.octaveScale;
-                    amplitude *= p.octaveMultiplier;
                 }
                 nx = B::mul(nx, k(p.strengthScale));
                 ny = B::mul(ny, k(p.strengthScale));
