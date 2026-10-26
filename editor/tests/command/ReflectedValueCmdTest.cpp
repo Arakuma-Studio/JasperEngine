@@ -13,6 +13,7 @@
 #include "command/CommandHandle.h"
 #include "command/PlayChangeReview.h"
 #include "command/type/ReflectedValueCmd.h"
+#include "reflect/TypeOps.h"
 #include "component/Joint3DComponent.h"
 #include "component/LayoutGroupComponent.h"
 #include "component/LightComponent.h"
