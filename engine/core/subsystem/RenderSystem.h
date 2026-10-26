@@ -697,8 +697,8 @@ namespace jasperengine{
 		bool hasLights = false;
 		bool hasShadows = false;
 		bool hasFog = false;
-		bool hasIBL;
-		bool hasReflectionProbes;
+		bool hasIBL = false;
+		bool hasReflectionProbes = false;
 		bool hasMultipleCameras;
 		// extra cameras the last frame drew, to catch the switch back to main only
 		bool lastMultiCameraDraw;
