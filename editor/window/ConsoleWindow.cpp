@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "ConsoleWindow.h"
+
+#include "shortcuts/CommandCatalog.h"
 #include <cstdio>
 #include "external/IconsFontAwesome6.h"
 #include "util/UIUtils.h"
@@ -805,7 +807,7 @@ void ConsoleWindow::showList(float height) {
 
     if (ImGui::BeginPopup("##ConsoleRowMenu")) {
         const LogData* log = selectedLog();
-        if (ImGui::MenuItem(ICON_FA_COPY " Copy", "Ctrl+C", false, log != nullptr)) {
+        if (ImGui::MenuItem(ICON_FA_COPY " Copy", CommandCatalog::editor().menuShortcutText("console.copy").c_str(), false, log != nullptr)) {
             ImGui::SetClipboardText(log->message.c_str());
         }
         if (ImGui::MenuItem(ICON_FA_CLIPBOARD_LIST " Copy All", nullptr, false, !rows.empty())) {

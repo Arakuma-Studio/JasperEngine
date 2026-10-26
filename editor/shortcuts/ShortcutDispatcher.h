@@ -28,6 +28,8 @@ namespace jasperengine::editor {
         virtual ~ShortcutKeys() = default;
         // the key went down this frame (or repeated, when repeat)
         virtual bool pressed(ImGuiKey key, bool repeat) const = 0;
+        // the key is held
+        virtual bool down(ImGuiKey key) const = 0;
         // the modifiers held (ImGuiMod_*)
         virtual ImGuiKeyChord mods() const = 0;
     };
@@ -36,6 +38,7 @@ namespace jasperengine::editor {
     class ImGuiShortcutKeys final : public ShortcutKeys {
     public:
         bool pressed(ImGuiKey key, bool repeat) const override;
+        bool down(ImGuiKey key) const override;
         ImGuiKeyChord mods() const override;
     };
 

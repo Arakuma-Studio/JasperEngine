@@ -396,6 +396,10 @@ namespace jasperengine::editor{
         void runMenuCommand(const PlatformMenuCommand& command) { executeMenuCommand(command); }
         // The main menu as it is now (the palette's commands, run_command's checks)
         PlatformMenuModel currentMenuModel() { return buildMenuModel(); }
+        // The panels by window name, open or not (editor_status, the layouts)
+        std::map<std::string, bool> openPanels() const { return panelStates(); }
+        // The window with the keyboard focus (its root's ImGui name), "" when none
+        std::string focusedWindowName() const;
 
         void engineInit(int argc, char** argv);
         void engineViewLoaded();

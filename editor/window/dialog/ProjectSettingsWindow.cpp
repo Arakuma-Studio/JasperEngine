@@ -1352,19 +1352,19 @@ void ProjectSettingsWindow::drawPlayerSettings() {
                 if (projectBeginSettingsRow("Log Level", m_playerLogging.level != defaults.level)) {
                     m_playerLogging.level = defaults.level;
                 }
+                static const char* const levelNames[] = {"trace", "debug", "info", "warn", "error", "off"};
+                static const char* const levelLabels[] = {"Trace", "Debug", "Info", "Warning", "Error", "Off"};
+                int levelIndex = 2;
+                for (int i = 0; i < IM_ARRAYSIZE(levelNames); i++) {
+                    if (m_playerLogging.level == levelNames[i]) levelIndex = i;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                if (ImGui::Combo("##PlayerLogLevel", &levelIndex, levelLabels, IM_ARRAYSIZE(levelLabels))) {
+                    m_playerLogging.level = levelNames[levelIndex];
+                }
+                endSettingsRow("The lowest level the built game logs (the console, logcat, the browser console). "
+                    "JASPER_LOG_LEVEL and --log-level override it when the game starts.");
             }
-            static const char* const levelNames[] = {"trace", "debug", "info", "warn", "error", "off"};
-            static const char* const levelLabels[] = {"Trace", "Debug", "Info", "Warning", "Error", "Off"};
-            int levelIndex = 2;
-            for (int i = 0; i < IM_ARRAYSIZE(levelNames); i++) {
-                if (m_playerLogging.level == levelNames[i]) levelIndex = i;
-            }
-            ImGui::SetNextItemWidth(-helpMarkerWidth());
-            if (ImGui::Combo("##PlayerLogLevel", &levelIndex, levelLabels, IM_ARRAYSIZE(levelLabels))) {
-                m_playerLogging.level = levelNames[levelIndex];
-            }
-            endSettingsRow("The lowest level the built game logs (the console, logcat, the browser console). "
-                "JASPER_LOG_LEVEL and --log-level override it when the game starts.");
 
             if (settingsui::beginRow("player.logging.file")) {
                 if (projectBeginSettingsRow("Log File", m_playerLogging.fileLog != defaults.fileLog)) {
@@ -2088,9 +2088,9 @@ void ProjectSettingsWindow::drawWindowsSettings() {
         ImGui::SetNextItemWidth(-helpMarkerWidth());
         ImGui::InputText("##WindowsCompanyName", m_windowsCompanyNameBuffer, sizeof(m_windowsCompanyNameBuffer));
         endSettingsRow("Windows executable metadata company name.");
-
-        const std::string inheritedWindowsVersion = Project::toFourPartVersion(inheritedApplicationVersion());
     }
+
+    const std::string inheritedWindowsVersion = Project::toFourPartVersion(inheritedApplicationVersion());
 
     if (settingsui::beginRow("windows.file_version")) {
         drawOverrideSetting("File Version", "##WindowsFileVersion", m_windowsFileVersionBuffer, inheritedWindowsVersion,
@@ -2294,21 +2294,21 @@ void ProjectSettingsWindow::drawAndroidSettings() {
         }
 
         ImGui::BeginChild("##AndroidPermissionsList", ImVec2(0, Theme::dpi(170.0f)), ImGuiChildFlags_Borders);
-    }
-    for (int i = 0; i < androidPermissionCount; i++) {
-        const AndroidPermissionInfo& permission = androidPermissionInfos[i];
-        bool enabled = m_androidPermissions.count(permission.key) > 0;
-        std::string label = std::string(permission.manifestName) + "##AndroidPermission_" + permission.key;
-        if (ImGui::Checkbox(label.c_str(), &enabled)) {
-            if (enabled) {
-                m_androidPermissions.insert(permission.key);
-            } else {
-                m_androidPermissions.erase(permission.key);
+        for (int i = 0; i < androidPermissionCount; i++) {
+            const AndroidPermissionInfo& permission = androidPermissionInfos[i];
+            bool enabled = m_androidPermissions.count(permission.key) > 0;
+            std::string label = std::string(permission.manifestName) + "##AndroidPermission_" + permission.key;
+            if (ImGui::Checkbox(label.c_str(), &enabled)) {
+                if (enabled) {
+                    m_androidPermissions.insert(permission.key);
+                } else {
+                    m_androidPermissions.erase(permission.key);
+                }
             }
         }
+        ImGui::EndChild();
+        endSettingsRow("Android permissions written to AndroidManifest.xml. Some permissions still require runtime approval in your Android code.");
     }
-    ImGui::EndChild();
-    endSettingsRow("Android permissions written to AndroidManifest.xml. Some permissions still require runtime approval in your Android code.");
 
     if (settingsui::beginRow({"android.allow_backup", "android.keep_screen_on"})) {
         if (projectBeginSettingsRow("Application Options", m_androidAllowBackup != defaults.allowBackup || m_androidKeepScreenOn != defaults.keepScreenOn)) {

@@ -11,6 +11,10 @@ bool ImGuiShortcutKeys::pressed(ImGuiKey key, bool repeat) const {
     return ImGui::IsKeyPressed(key, repeat);
 }
 
+bool ImGuiShortcutKeys::down(ImGuiKey key) const {
+    return ImGui::IsKeyDown(key);
+}
+
 ImGuiKeyChord ImGuiShortcutKeys::mods() const {
     return ImGui::GetIO().KeyMods;
 }
@@ -78,7 +82,7 @@ std::vector<std::string> ShortcutDispatcher::process(const ShortcutKeys& keys, c
     std::vector<std::string> fired;
     if (consumedKey != ImGuiKey_None) {
         // the captured key is still held (or repeating): it belongs to the capture
-        if (keys.pressed(consumedKey, true)) return fired;
+        if (keys.down(consumedKey)) return fired;
         consumedKey = ImGuiKey_None;
     }
     if (capturing || state.popupOpen) return fired;

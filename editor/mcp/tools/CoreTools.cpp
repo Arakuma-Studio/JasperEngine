@@ -626,6 +626,8 @@ void editorStatusTool(const CallPtr& call) {
         {"frame_ms", app.takeFrameStats()},
         {"dialog", dialog},
         {"ui", ui},
+        // S25: what the layouts and the palette change
+        {"windows", {{"focused", app.focusedWindowName()}, {"open", app.openPanels()}}},
         {"mcp", {
             {"server", McpServer::SERVER_NAME},
             {"stdio", status.stdio},

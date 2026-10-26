@@ -497,10 +497,10 @@ void EditorSettingsWindow::drawAssetPipelineSettings() {
                 m_autoRefresh = true;
             }
             ImGui::Checkbox("##AssetAutoRefresh", &m_autoRefresh);
-
-            WatchBackendKind forced;
-            const bool overridden = HotReloadService::getWatcherOverride(forced);
         }
+
+        WatchBackendKind forced;
+        const bool overridden = HotReloadService::getWatcherOverride(forced);
         if (settingsui::beginRow("preferences.file_watcher")) {
             if (prefsBeginSettingsRow("Watcher",
                                  overridden ? "How the editor finds changed files. --file-watcher (or JASPER_FILE_WATCHER) decides it for "
@@ -510,12 +510,12 @@ void EditorSettingsWindow::drawAssetPipelineSettings() {
                                  m_fileWatcher != 0)) {
                 m_fileWatcher = 0;
             }
+            static const char* const watchers[] = {"Auto", "Native", "Polling"};
+            ImGui::SetNextItemWidth(Theme::dpi(160.0f));
+            ImGui::BeginDisabled(overridden);
+            ImGui::Combo("##AssetWatcher", &m_fileWatcher, watchers, IM_ARRAYSIZE(watchers));
+            ImGui::EndDisabled();
         }
-        static const char* const watchers[] = {"Auto", "Native", "Polling"};
-        ImGui::SetNextItemWidth(Theme::dpi(160.0f));
-        ImGui::BeginDisabled(overridden);
-        ImGui::Combo("##AssetWatcher", &m_fileWatcher, watchers, IM_ARRAYSIZE(watchers));
-        ImGui::EndDisabled();
 
         // only polling has an interval
         if (m_fileWatcher == 2) {
@@ -549,10 +549,10 @@ void EditorSettingsWindow::drawScriptingSettings() {
                                  m_scriptChangesWhilePlaying != 0)) {
                 m_scriptChangesWhilePlaying = 0;
             }
+            static const char* const policies[] = {"Reload And Continue Playing", "Reload After Stopping Play", "Stop Playing And Reload"};
+            ImGui::SetNextItemWidth(Theme::dpi(240.0f));
+            ImGui::Combo("##ScriptChangesWhilePlaying", &m_scriptChangesWhilePlaying, policies, IM_ARRAYSIZE(policies));
         }
-        static const char* const policies[] = {"Reload And Continue Playing", "Reload After Stopping Play", "Stop Playing And Reload"};
-        ImGui::SetNextItemWidth(Theme::dpi(240.0f));
-        ImGui::Combo("##ScriptChangesWhilePlaying", &m_scriptChangesWhilePlaying, policies, IM_ARRAYSIZE(policies));
 
         if (settingsui::beginRow("preferences.reload_cpp_during_play")) {
             if (prefsBeginSettingsRow("Reload C++ Scripts During Play",

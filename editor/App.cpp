@@ -4239,6 +4239,13 @@ namespace {
 
 }
 
+std::string editor::App::focusedWindowName() const{
+    const ImGuiContext* context = ImGui::GetCurrentContext();
+    if (!context || !context->NavWindow) return {};
+    const ImGuiWindow* window = context->NavWindow->RootWindow ? context->NavWindow->RootWindow : context->NavWindow;
+    return window->Name ? std::string(window->Name) : std::string();
+}
+
 std::map<std::string, bool> editor::App::panelStates() const{
     std::map<std::string, bool> panels;
     forEachPanel([&panels](const char* name, auto* window) { panels[name] = window->isOpen(); },

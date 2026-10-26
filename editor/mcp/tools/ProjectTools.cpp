@@ -64,11 +64,6 @@ const char* hostPlatformName() {
 #endif
 }
 
-std::string lowerText(std::string text) {
-    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return text;
-}
-
 std::string relText(Project* project, const fs::path& path) {
     if (path.empty()) return {};
     return project->normalizeToProjectRelative(path).generic_string();

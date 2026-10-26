@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// S25: the editor's search and organisation (group "organisation")
+// S25: the editor's search and organisation (group "editor_ux", S31 §6.4)
 //
 //   search_editor          the Search palette's entries (commands, windows, settings, GameObjects, components, assets)
 //   run_command            a catalog command or palette entry, as its menu item or the palette runs it
@@ -42,7 +42,7 @@ namespace {
 
 namespace fs = std::filesystem;
 
-const char* GROUP = "organisation";
+const char* GROUP = "editor_ux";
 
 Json stringList(const Json& value) {
     Json out = Json::array();
@@ -180,7 +180,11 @@ Json shortcutJson(const CommandCatalog& catalog, const CommandDef& def) {
         item["also_in"] = also;
     }
     const std::string path = catalog.menuPath(def.id);
-    if (!path.empty()) item["menu_path"] = path;
+    if (!path.empty()) {
+        // what the main menu's item shows now (recorded each time the menu model changes)
+        item["menu_path"] = path;
+        item["menu_shortcut"] = catalog.menuChord(def.id).format(mac);
+    }
     Json conflicts = Json::array();
     Json shadowed = Json::array();
     for (Chord chord : chords) {
@@ -789,7 +793,7 @@ void registerOrganisationTools(McpRegistry& registry) {
         tool.group = GROUP;
         tool.description =
             "The command catalog: {id, group, name, context, chords, default_chords, overridden, read_only, menu_path, "
-            "conflicts, shadowed_by}. Contexts: global, editor, scene_view, hierarchy, project, console. Ctrl means Cmd on macOS.";
+            "menu_shortcut, conflicts, shadowed_by}. Contexts: global, editor, scene_view, hierarchy, project, console. Ctrl means Cmd on macOS.";
         tool.inputSchema = object({
             {"group", string("File, Edit, Tools, Scene View...")},
             {"context", stringEnum("", {"global", "editor", "scene_view", "hierarchy", "project", "console"})},
