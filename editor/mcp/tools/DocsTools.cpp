@@ -523,9 +523,11 @@ void registerDocsTools(McpRegistry& registry) {
             std::string text;
             if (!project) return notFound("No project is open.");
             const fs::path file = project->getProjectPath() / "AGENTS.md";
-            std::error_code ec;
-            // the editor writes it on play/build; a new project gets it on first read
-            if (!fs::exists(file, ec)) Generator::writeAgentsFile(project->getProjectPath(), project->getProjectInternalPath());
+            // the editor writes it on play/build; a new project gets it on first read. Always
+            // asked for, as Play does: it writes only what is missing (AGENTS.md, then CLAUDE.md),
+            // so a read leaves both even when a generation from a Play wrote AGENTS.md alone
+            // after its CLAUDE.md check
+            Generator::writeAgentsFile(project->getProjectPath(), project->getProjectInternalPath());
             if (!ProjectChecks::readFile(file, text)) return notFound("Can't read the project's AGENTS.md.");
             return textResource(uri, "text/markdown", text);
         };
