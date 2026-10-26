@@ -6,6 +6,7 @@
 #include "reflect/Enums.h"
 #include "util/EditorScripts.h"
 #include "util/NumericExpression.h"
+#include "profiler/Profile.h"
 #include "command/PlayChangeReview.h"
 #include "command/type/RemovePreservedComponentCmd.h"
 #include "StreamPreserved.h"
@@ -10616,6 +10617,8 @@ void editor::InspectorWindow::show(){
                 if (ComponentDrawer drawer = componentDrawer(cpType)){
                     (this->*drawer)(cpType, sceneProject, entities);
                 }else{
+                    // (its cost per frame is measured by test_reflection.py, S08 R19)
+                    JE_PROFILE_SCOPE("Inspector Default Component");
                     drawDefaultComponent(cpType, sceneProject, entities);
                 }
 
