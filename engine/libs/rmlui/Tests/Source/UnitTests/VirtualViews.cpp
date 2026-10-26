@@ -78,7 +78,9 @@ TEST_CASE("VirtualViews.row_aliases")
 	const int index_b = model->InsertRowAlias(row_b, "i", Literal(0));
 	REQUIRE(item_a >= 0);
 	REQUIRE(index_b >= 0);
+	TestsShell::SetNumExpectedWarnings(1);
 	CHECK(model->InsertRowAlias(row_a, "bad", DataAddress()) == -1);
+	TestsShell::SetNumExpectedWarnings(0);
 	const String content = R"(<p class="text">{{ item }}</p><span class="index" data-event-click="picked = i">{{ i }}</span>)";
 	row_a->SetInnerRML(content);
 	row_b->SetInnerRML(content);
