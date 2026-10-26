@@ -402,7 +402,7 @@ TEST(HangWatchdog, WalkerDeadlineResumesMainThread) {
     capture.join();
     watchdog::detail::forceWalkerStallForTest(false);
     watchdog::stop();
-    EXPECT_LT(elapsed, std::chrono::milliseconds(500));
+    EXPECT_LT(elapsed, std::chrono::milliseconds(300));
     EXPECT_NE(failure.find("timed out"), std::string::npos);
 }
 #endif
