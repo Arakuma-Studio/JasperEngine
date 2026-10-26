@@ -226,23 +226,37 @@ void UIDocumentSystem::compatRunScripts(){
         std::shared_ptr<const CompatDocument> compiled = DocumentLoader::compiledOf(document);
         if (!compiled || compiled->scripts.empty())
             continue;
-        for (const DocumentScript& script : compiled->scripts){
+        for (size_t index = 0; index < compiled->scripts.size(); index++){
             // the document may have been reloaded or unloaded by the previous script
             if (getDocument(entity) != document)
                 break;
-            UIDocument handle(scene, entity);
-            std::string error;
-            // the listeners it attaches are the script's (not moved by a reload: it runs again)
-            HtmlUIEventListener::ScriptScope scriptScope(document);
-            if (!HtmlUILua::runDocumentScript(handle, script, &error)){
-                const Diagnostic diagnostic = scriptError(script, error);
-                Log::error("[HTML UI] %s", toText(diagnostic).c_str());
-                DocumentLoader::addRuntimeDiagnostic(document, diagnostic);
-            }
+            compatRunScript(entity, document, *compiled, index);
         }
     }
     if (compatState)
         compatState->runningScripts = false;
+}
+
+bool UIDocumentSystem::compatRunScript(Entity entity, Rml::ElementDocument* document, const CompatDocument& compiled, size_t index){
+    if (index >= compiled.scripts.size())
+        return false;
+    const DocumentScript& script = compiled.scripts[index];
+    UIDocument handle(scene, entity);
+    std::string error;
+    // the listeners it attaches are the script's (not moved by a reload: it runs again; a patch
+    // removes them before it runs this script again)
+    HtmlUIEventListener::ScriptScope scriptScope(document, (int)index);
+    if (!HtmlUILua::runDocumentScript(handle, script, &error)){
+        const Diagnostic diagnostic = scriptError(script, error);
+        Log::error("[HTML UI] %s", toText(diagnostic).c_str());
+        DocumentLoader::addRuntimeDiagnostic(document, diagnostic);
+        return false;
+    }
+    return true;
+}
+
+bool UIDocumentSystem::compatScriptsRun() const{
+    return compatState && compatState->scriptsEnabled;
 }
 
 bool UIDocumentSystem::compatRestyle(Entity entity){

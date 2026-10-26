@@ -73,7 +73,7 @@ namespace {
 
 }
 
-TEST(ExamplesCompat, ManifestListsTheTenExamplesAndBlank){
+TEST(ExamplesCompat, ManifestListsTheExamplesAndBlank){
     const nlohmann::json json = manifest();
     ASSERT_TRUE(json.is_object()) << "examples.json is missing or does not parse";
     ASSERT_TRUE(json["examples"].is_array());
@@ -81,7 +81,8 @@ TEST(ExamplesCompat, ManifestListsTheTenExamplesAndBlank){
     for (const nlohmann::json& entry : json["examples"])
         names.push_back(entry.value("name", ""));
     EXPECT_EQ(names, (std::vector<std::string>{"main_menu", "pause_menu", "hud", "inventory", "settings", "dialogue", "shop",
-                                               "toasts", "loading", "video_menu", "blank"}));
+                                               "toasts", "loading", "video_menu", "server_browser", "chat_log", "quest_log",
+                                               "blank"}));
 }
 
 TEST(ExamplesCompat, EveryExampleIsCleanAtEveryViewport){
@@ -132,5 +133,5 @@ TEST(ExamplesCompat, EveryExampleIsCleanAtEveryViewport){
             EXPECT_TRUE(fs::is_regular_file(fileOf(name + "/" + asset.get<std::string>()))) << asset;
         checked++;
     }
-    EXPECT_EQ(checked, 11);   // ten examples (phase 6 added video_menu) and blank
+    EXPECT_EQ(checked, 14);   // thirteen examples (phase 6 added video_menu, S17 server_browser, chat_log, quest_log) and blank
 }

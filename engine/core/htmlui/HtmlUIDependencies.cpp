@@ -516,6 +516,9 @@ namespace {
                 addAttribute(findAttribute(attributes, "src"), HtmlUIReference::VIDEO, false);
             }else if (tag == "template"){
                 addAttribute(findAttribute(attributes, "src"), HtmlUIReference::TEMPLATE, false);
+            }else if (tag == "markdown"){
+                // S17: <markdown src="notes.md">
+                addAttribute(findAttribute(attributes, "src"), HtmlUIReference::OTHER, false);
             }
 
             if (const Attribute* style = findAttribute(attributes, "style")){

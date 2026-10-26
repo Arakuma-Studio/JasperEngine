@@ -1,0 +1,1 @@
+<div class="markdown-body"><p>Use <code>print(&quot;hi&quot;)</code> and <code>a ` b</code> and <code>padded</code>.</p><p>An `open code span stays text.</p><p><code>&lt;b&gt;not markup&lt;/b&gt;</code> and <code>**not strong**</code> and <code>a &amp; b</code>.</p></div>

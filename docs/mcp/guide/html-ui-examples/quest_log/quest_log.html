@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<!--
+  Quest log: chapters and quests in a tree, a journal page in Markdown.
+  Shows: <tree-view> over a nested data model (children-key, the depth / expanded / hasChildren
+  aliases in its row template, a tree-toggle button), the keys and the gamepad (Right opens a
+  chapter or goes to its first quest, Left closes it or goes to its chapter), the expand and
+  select events, <markdown src> for the journal's first page and el:setMarkdown for the notes of
+  the selected quest (headings, lists, emphasis, quotes, a table).
+  In the editor (no Lua) the tree is empty: press Play to see the quests.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Quest log</title>
+  <link rel="stylesheet" href="quest_log.css">
+</head>
+<body>
+  <div class="page">
+    <section class="log" data-model="quests">
+      <header class="titlebar">
+        <h2><i data-lucide="book-open"></i> Quest log</h2>
+        <span id="progress" class="progress">{{ done }} of {{ total }} done</span>
+      </header>
+
+      <div class="content">
+        <tree-view id="tree" class="tree" items="chapters" item-height="36" key="id" indent="18">
+          <template>
+            <div class="node" data-class-chapter="hasChildren" data-class-done="item.done" data-class-open="expanded">
+              <span class="toggle" tree-toggle data-if="hasChildren"><i data-lucide="chevron-right"></i></span>
+              <span class="title">{{ item.title }}</span>
+              <span class="reward" data-if="!hasChildren">{{ item.reward }}</span>
+            </div>
+          </template>
+        </tree-view>
+
+        <article class="journal">
+          <markdown id="journal" class="page-text" src="assets/quests/journal.md"></markdown>
+        </article>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

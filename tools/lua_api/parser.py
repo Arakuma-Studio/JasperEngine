@@ -2044,6 +2044,77 @@ OVERRIDES[('UIDocument', 'getEffectTime')] = {
     'doc': ['The effects\' clock in seconds: the fixed time when one is set, else the UI clock.'],
     'overloads': [([], 'number')]}
 
+# HTML UI widgets (S17): the lua_CFunctions of the views, tooltips, drag and drop and reloads
+OVERRIDES[('UIItemsView', 'setProvider')] = {
+    'doc': ['The rows from Lua instead of a data model: `count` items, `bind(row, i)` fills a row element for',
+            'item i (1-based), `unbind(row, i)` clears it, `key(i)` names an item (selection, row identity),',
+            '`height(i)` gives a known height. A <tree-view> asks `children(key)` (nil: the roots) for the keys',
+            'of a node\'s children and `hasChildren(key)`; its bind gets the flat index (getNode(i)).'],
+    'overloads': [([('provider', 'UIItemsProvider')], '')]}
+OVERRIDES[('UIItemsView', 'getVisibleRange')] = {
+    'doc': ['The first and last visible items (1-based; 0, 0 when the view is empty).'],
+    'overloads': [([], 'integer, integer')]}
+OVERRIDES[('UIItemsView', 'getSelection')] = {
+    'doc': ['The selected items (1-based, ascending).'], 'overloads': [([], 'integer[]')]}
+OVERRIDES[('UIItemsView', 'getSelectedKeys')] = {
+    'doc': ['The keys of the selected items.'], 'overloads': [([], 'string[]')]}
+OVERRIDES[('UIItemsView', 'getNode')] = {
+    'doc': ['A <tree-view> row\'s node: its key, depth (0 for a root), expanded, hasChildren and parent (flat index, 0 for a root).'],
+    'overloads': [([('index', 'integer')], '{key: string, depth: integer, expanded: boolean, hasChildren: boolean, parent: integer}|nil')]}
+OVERRIDES[('UIItemsView', 'getColumns')] = {
+    'doc': ['A <table-view>\'s columns (<table-column>): key, width, minWidth, sortable, resizable.'],
+    'overloads': [([], '{key: string, width: number, minWidth: number, sortable: boolean, resizable: boolean}[]')]}
+OVERRIDES[('UIItemsView', 'getState')] = {
+    'doc': ['What inspect_ui reports of the view: kind, count, first, last, pool, poolBound, overscan, lanes,',
+            'selection, selected, selectedKeys, active, scrollTop, totalHeight, source, layoutBoundary, rowAliases.'],
+    'overloads': [([], 'table')]}
+for _key_method in ('indexOfKey', 'expand', 'collapse', 'toggle', 'isExpanded'):
+    OVERRIDES[('UIItemsView', _key_method)] = {
+        'doc': {'indexOfKey': ['The item with this key (1-based), 0 for none.'],
+                'expand': ['Expands a <tree-view> node (the expand event fires); false when it has no children or is open.'],
+                'collapse': ['Collapses a <tree-view> node (the collapse event fires); false when it is closed.'],
+                'toggle': ['Expands or collapses a <tree-view> node.'],
+                'isExpanded': ['A <tree-view> node is expanded.']}[_key_method],
+        'overloads': [([('key', 'string|integer')], 'integer' if _key_method == 'indexOfKey' else 'boolean')]}
+OVERRIDES[('UIElement', 'setTooltip')] = {
+    'doc': ['A rich tooltip in place of the title attribute: a text, a copy of an element (made on show), or a',
+            'function called on each show that returns a text or an element (nil: none); nil removes it.',
+            '`options`: placement ("top" default, "bottom", "left", "right", "auto"), delay (s), arrow, interactive.'],
+    'overloads': [([('content', 'string|UIElement|fun(): string|UIElement|nil|nil'), ('options?', 'UITooltipOptions')], '')]}
+OVERRIDES[('UIDataTransfer', 'setData')] = {
+    'doc': ['Puts a value of a type ("item", "text/plain") in the drag: any Lua value, kept by reference until',
+            'the drag ends (a table arrives by identity).'],
+    'overloads': [([('type', 'string'), ('value', 'any')], '')]}
+OVERRIDES[('UIDataTransfer', 'getData')] = {
+    'doc': ['The value of a type, or nil (also in dragenter and dragover, unlike HTML5). "htmlui/row" is',
+            '`{view = <the view>, index = <1-based item>, key = <its key>}` for a drag from a virtual view\'s row.'],
+    'overloads': [([('type', 'string')], 'any')]}
+OVERRIDES[('UIDataTransfer', 'setDragImage')] = {
+    'doc': ['The ghost: a copy of `element` with the pointer at (x, y) in it; nil draws none.'],
+    'overloads': [([('element', 'UIElement|nil'), ('x?', 'number'), ('y?', 'number')], '')]}
+PROPERTY_OVERRIDES[('UIDataTransfer', 'types')] = ('string[]', True)
+OVERRIDES[('UIDrag', 'begin')] = {
+    'doc': ['Starts a drag from `source` without a pointer (gamepad, scripts): dragstart and drag fire on it.',
+            '`options.data` is a table of type -> value, `options.effectAllowed` a DataTransfer effect. False when',
+            'a dragstart listener prevented it.'],
+    'overloads': [([('source', 'UIElement'), ('options?', '{data: table<string, any>|nil, effectAllowed: string|nil}')], 'boolean')]}
+OVERRIDES[('UIDrag', 'over')] = {
+    'doc': ['Moves the drag over `target` (dragleave/dragenter as it changes, then dragover); true when it accepts.'],
+    'overloads': [([('target', 'UIElement')], 'boolean')]}
+OVERRIDES[('UIDrag', 'drop')] = {
+    'doc': ['Drops on `target` (drop when it accepts, else dragleave), then dragend; true when it was dropped.'],
+    'overloads': [([('target', 'UIElement')], 'boolean')]}
+OVERRIDES[('UIDocumentTooltip', 'configure')] = {
+    'doc': ['The document\'s tooltips: `enabled` (title tooltips too), `delay` and `hopWindow` in seconds (0.5).'],
+    'overloads': [([('options', '{enabled: boolean|nil, delay: number|nil, hopWindow: number|nil}')], '')]}
+OVERRIDES[('UIDocument', 'reload')] = {
+    'doc': ['Loads the document again, keeping scroll, focus, form values and listeners. An .html document is',
+            'patched in place (`mode = "patch"`, the default: elements, handles and listeners stay, onReload fires)',
+            'or loaded again (`mode = "rebuild"`: onUnload and onLoad fire).'],
+    'overloads': [([], ''), ([('options', '{mode: "patch"|"rebuild"}')], '')]}
+PROPERTY_OVERRIDES[('UIDocument', 'onReload')] = ('fun(report: UIReloadReport)|nil', False)
+PROPERTY_OVERRIDES[('UIDocument', 'lastReloadReport')] = ('UIReloadReport|nil', False)
+
 # HTML UI (phase 4, p4-guide): class doc lines appended to the generated ones (the guide's URI)
 HTML_UI_CLASS_DOCS = {
     'UIDocument': ['Get it with `UIDocument(self.scene, self.entity)` in a script on the document\'s GameObject.',
@@ -2092,13 +2163,24 @@ HTML_UI_EVENT_TYPES = [
     ('unload', 'the document unloads'),
     ('show', 'the document was shown'),
     ('hide', 'the document was hidden'),
-    ('dragstart', 'a drag began on an element with drag="drag" or drag="drag-drop"'),
+    ('dragstart', 'a drag began on the element (draggable="true"; event.dataTransfer:setData); preventDefault cancels it'),
     ('drag', 'the dragged element moved'),
-    ('dragend', 'the drag ended'),
-    ('dragover', 'a dragged element entered this element'),
-    ('dragmove', 'a dragged element moved over this element'),
-    ('dragout', 'a dragged element left this element'),
-    ('dragdrop', 'a dragged element was dropped on this element'),
+    ('dragend', 'the drag ended (event.dataTransfer.dropEffect: "none" when cancelled or not dropped)'),
+    ('dragenter', 'a drag entered this element'),
+    ('dragover', 'a drag is over this element (on entry and as it moves, once a frame): preventDefault accepts it'),
+    ('dragleave', 'a drag left this element'),
+    ('drop', 'a drag this element accepted was dropped on it (event.dataTransfer:getData)'),
+    ('dragmove', 'RmlUi: a drag="drag-drop" element moved over this element'),
+    ('dragout', 'RmlUi: a dragged element left this element'),
+    ('dragdrop', 'RmlUi: a dragged element was dropped on this element'),
+    ('tooltipshow', 'the element\'s tooltip showed'),
+    ('tooltiphide', 'the element\'s tooltip hid'),
+    ('select', 'a virtual view\'s selection changed (event.detail: {indices, keys})'),
+    ('activate', 'a virtual view\'s item was activated: Enter, gamepad A, double click (event.detail: {index, key})'),
+    ('expand', 'a <tree-view> node expanded (event.detail: {index, key})'),
+    ('collapse', 'a <tree-view> node collapsed (event.detail: {index, key})'),
+    ('sort', 'a <table-view> header asked to sort (event.detail: {key, direction}): sort the data'),
+    ('columnresize', 'a <table-view> column was resized (event.detail: {key, width})'),
     ('animationstart', 'a CSS animation started (event.animationName)'),
     ('animationiteration', 'a CSS animation began a new iteration'),
     ('animationend', 'a CSS animation ended'),
@@ -2489,7 +2571,9 @@ class Builder:
             if visible:
                 self.unresolve(c, m, 'getter takes arguments')
         if cpp_type is None:
-            self.unresolve(c, m, 'getter return type not inferred')
+            # (an override names the type a lambda's return cannot say)
+            if (c.name, m.name) not in PROPERTY_OVERRIDES:
+                self.unresolve(c, m, 'getter return type not inferred')
             m.lua_type = 'any'
         else:
             base, stars = bare_type(cpp_type)

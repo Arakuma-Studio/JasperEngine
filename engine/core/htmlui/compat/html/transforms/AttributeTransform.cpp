@@ -50,8 +50,8 @@ namespace {
             hints.ref = ref;
     }
 
-    bool isBindingAttribute(const std::string& name){
-        static const char* const exact[] = {"data-if", "data-visible", "data-for", "data-value", "data-checked", "data-rml"};
+    bool bindingAttribute(const std::string& name){
+        static const char* const exact[] = {"data-if", "data-visible", "data-for", "data-value", "data-checked", "data-rml", "data-markdown"};
         for (const char* candidate : exact){
             if (name == candidate)
                 return true;
@@ -287,6 +287,17 @@ namespace {
                 ~Rewind(){ if (element.attrs.size() < count) index--; }
             } rewind{element, index, count};
 
+            // S17: data-event-drop & co. are HTML5's drag events, which the engine synthesizes
+            // under its own names (RmlUi's dragover is dragenter, its dragdrop is drop)
+            if (name == "data-event-dragenter" || name == "data-event-dragover" || name == "data-event-dragleave" || name == "data-event-drop"){
+                attribute->name = "data-event-htmlui-" + name.substr(11);
+                if (!inModel){
+                    context.sink.report(codes::BindingAttributeOutsideModel, where,
+                                        "'" + name + "' is read by the engine as a data binding, but no data-model encloses it",
+                                        "put it inside an element with data-model=\"name\", or rename the attribute", "", name);
+                }
+                continue;
+            }
             if (name == "style"){
                 if (!trim(attribute->value).empty()){
                     StyleAttributeSource source;
@@ -357,16 +368,13 @@ namespace {
                 continue;
             }
             if (name == "title" && !svgRoot){
-                context.sink.report(codes::TitleTooltip, where, "title tooltips are not shown", "show a tooltip element from Lua on hover", "", "title");
+                // shown by the tooltips of the S17 runtime (HTMLUI-HTML-0015 is no longer reported)
                 continue;
             }
             if (name == "draggable"){
-                if (equalsIgnoreCase(trim(attribute->value), "true")){
-                    addHint(hints, "drag: drag;", where);
-                    context.sink.reportAs(Severity::Info, codes::UnsupportedAttribute, where,
-                                          "draggable maps to the engine's drag events (dragstart, drag, dragend); there is no HTML5 drop data",
-                                          "", "", "draggable");
-                }
+                // the HTML5 drag events with event.dataTransfer (S17); drag="clone" keeps its RmlUi meaning
+                if (equalsIgnoreCase(trim(attribute->value), "true"))
+                    addHint(hints, "drag: drag-drop;", where);
                 continue;
             }
             if (name == "align" || name == "bgcolor" || name == "valign" || name == "border" || name == "cellpadding" ||
@@ -374,7 +382,7 @@ namespace {
                 legacyHint(context, element, *attribute, hints);
                 continue;
             }
-            if (!inModel && name.compare(0, 5, "data-") == 0 && isBindingAttribute(name)){
+            if (!inModel && name.compare(0, 5, "data-") == 0 && bindingAttribute(name)){
                 context.sink.report(codes::BindingAttributeOutsideModel, where,
                                     "'" + name + "' is read by the engine as a data binding, but no data-model encloses it",
                                     "put it inside an element with data-model=\"name\", or rename the attribute", "", name);
@@ -451,10 +459,15 @@ namespace {
 
 }
 
-void jasperengine::htmlui::compat::transformAttributes(TransformContext& context, HtmlNode& tree){
+bool jasperengine::htmlui::compat::isBindingAttribute(const std::string& name){
+    return bindingAttribute(name);
+}
+
+void jasperengine::htmlui::compat::transformAttributes(TransformContext& context, HtmlNode& tree, bool inModel){
     Walk walk{context, {}};
+    inModel = inModel || tree.hasAttr("data-model");
     // the document root itself (lang, dir, classes); not "#content"/"#fragment"
     if (tree.kind == HtmlNode::Kind::Element && tree.tag != "#content" && tree.tag != "#fragment")
-        processElement(walk, tree, false, tree.hasAttr("data-model"));
-    walkTree(walk, tree, tree.hasAttr("data-model"));
+        processElement(walk, tree, false, inModel);
+    walkTree(walk, tree, inModel);
 }

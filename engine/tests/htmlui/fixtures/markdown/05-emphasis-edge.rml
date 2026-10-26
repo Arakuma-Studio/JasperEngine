@@ -1,0 +1,1 @@
+<div class="markdown-body"><p>call set_play_mode on my_entity_name</p><p>2 * 3 * 4 = 24 and a * b</p><p>**unclosed bold and *unclosed em</p><p><em>foo</em><strong><em>bar</em></strong><em> and **foo</em>bar*</p><p><strong>init</strong> stays, but <em>a</em> is em; a<em>b</em>c is em inside a word</p></div>

@@ -21,7 +21,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `*-*` | native | generic inline element (Info HTMLUI-HTML-0018) |  |
 | `[data-lucide]` | rewritten | replaced by the inline Lucide SVG of the named icon |  |
 
-### Elements: a-n
+### Elements: a-l
 
 | Element | Support | Notes | Instead |
 |---|---|---|---|
@@ -73,6 +73,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `form` | native | RmlUi form (submit event) |  |
 | `frame` | unsupported | placeholder div.htmlui-unsupported (Warning) (HTMLUI-HTML-0002) | use separate documents or flex panels |
 | `frameset` | unsupported | placeholder div.htmlui-unsupported (Warning) (HTMLUI-HTML-0002) | use separate documents or flex panels |
+| `grid-view` | emulated | ItemsViewElement (S17): a virtualized grid of item-width x item-height cells from its <template>; data-model items or a Lua provider |  |
 | `h1` | native | UA display and spacing |  |
 | `h2` | native | UA display and spacing |  |
 | `h3` | native | UA display and spacing |  |
@@ -94,11 +95,18 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `legend` | approximated | on its fieldset's top border; as wide as the fieldset (the gap in the border is as wide as its content) (HTMLUI-HTML-0003) | give the legend a width when its own background or border must end with the text |
 | `li` | native | list marker emulation (display: block + marker element) until the fork has ListMarkers |  |
 | `link` | rewritten | stylesheets collected; other rel values dropped |  |
+| `list-view` | emulated | ItemsViewElement (S17): a virtualized list (pooled rows, uniform or measured heights) from its <template>; data-model items or a Lua provider |  |
 | `listing` | native | UA display and spacing |  |
 | `lottie-player` | rewritten | mapped to <lottie> with its attributes |  |
+
+### Elements: m-x
+
+| Element | Support | Notes | Instead |
+|---|---|---|---|
 | `main` | native | UA display and spacing |  |
 | `map` | unsupported | dropped (Warning) (HTMLUI-HTML-0002) | place positioned links over the image |
 | `mark` | native | UA inline styles |  |
+| `markdown` | emulated | Markdown (S17): inline or src=, rendered to div.markdown-body at compile and by setMarkdown / data-markdown; HTML in it shows as text |  |
 | `marquee` | unsupported | placeholder div.htmlui-unsupported (Warning) (HTMLUI-HTML-0002) | animate the text with @keyframes and transform |
 | `math` | unsupported | placeholder div.htmlui-unsupported (Warning) (HTMLUI-HTML-0002) | use an image or SVG of the formula |
 | `menu` | native | UA display and spacing |  |
@@ -109,11 +117,6 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `noembed` | native | obsolete; hidden by the UA sheet |  |
 | `noframes` | native | obsolete; hidden by the UA sheet |  |
 | `noscript` | rewritten | children kept and rendered (scripting is off; Info) |  |
-
-### Elements: o-x
-
-| Element | Support | Notes | Instead |
-|---|---|---|---|
 | `object` | unsupported | placeholder div.htmlui-unsupported (Warning) (HTMLUI-HTML-0002) | use <img>, or render a texture through UIDocument render-to-texture |
 | `ol` | native | UA display and spacing |  |
 | `optgroup` | rewritten | flattened: options hoisted into the select with a disabled header option (Info) |  |
@@ -149,6 +152,8 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `sup` | native | UA inline styles |  |
 | `svg` | native | phase-1 svg element; currentColor preprocessing |  |
 | `table` | native | UA table display |  |
+| `table-column` | emulated | a <table-view> column (S17): header content, optional cell <template> |  |
+| `table-view` | emulated | ItemsViewElement (S17): a virtualized table of <table-column> columns with a sticky header, sorting and resizing |  |
 | `tbody` | native | UA table display |  |
 | `td` | native | UA table display |  |
 | `template` | rewritten | stored fragment + hidden htmltemplate placeholder |  |
@@ -160,6 +165,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `title` | rewritten | RML title |  |
 | `tr` | native | UA table display |  |
 | `track` | unsupported | dropped (HTMLUI-HTML-0002) | show captions as text elements |
+| `tree-view` | emulated | ItemsViewElement (S17): a virtualized tree of the expanded nodes (children-key), from its <template> |  |
 | `tt` | native | UA inline styles |  |
 | `u` | native | UA inline styles |  |
 | `ul` | native | UA display and spacing |  |
@@ -199,14 +205,22 @@ A construct that is not native is reported where it is written (`check --ui`, th
 
 `*` = every element; `data-*`, `aria-*` and `on*` are patterns.
 
-### Attributes: a-h
+### Attributes: a-g
 
 | Attribute | Element | Support | Notes | Instead |
 |---|---|---|---|---|
 | `action` | `form` | unsupported | no submission: the submit event carries the values (Info) (HTMLUI-HTML-0004) | handle the submit event in Lua |
 | `align` | `*` | rewritten | legacy presentational attribute |  |
 | `alt` | `*` | native | kept |  |
+| `anchor` | `grid-view` | emulated | "end" keeps the view at the end while items are appended (S17) |  |
+| `anchor` | `list-view` | emulated | "end" keeps the view at the end while items are appended (S17) |  |
+| `anchor` | `table-view` | emulated | "end" keeps the view at the end while items are appended (S17) |  |
+| `anchor` | `tree-view` | emulated | "end" keeps the view at the end while items are appended (S17) |  |
 | `aria-*` | `*` | native | kept |  |
+| `as` | `grid-view` | emulated | the aliases of an item and its 0-based index ("item, i") (S17) |  |
+| `as` | `list-view` | emulated | the aliases of an item and its 0-based index ("item, i") (S17) |  |
+| `as` | `table-view` | emulated | the aliases of an item and its 0-based index ("item, i") (S17) |  |
+| `as` | `tree-view` | emulated | the aliases of an item and its 0-based index ("item, i") (S17) |  |
 | `autocapitalize` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `autocomplete` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `autofocus` | `*` | emulated | focused after load |  |
@@ -222,6 +236,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `cellpadding` | `table` | rewritten | legacy presentational attribute |  |
 | `cellspacing` | `table` | rewritten | legacy presentational attribute |  |
 | `checked` | `*` | native | kept |  |
+| `children-key` | `tree-view` | emulated | the field of a node holding its children (default "children") (S17) |  |
 | `class` | `*` | native | kept |  |
 | `color` | `font` | rewritten | legacy presentational attribute |  |
 | `cols` | `*` | native | kept |  |
@@ -249,13 +264,24 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `disabled` | `fieldset` | rewritten | as browsers disable them (Info) |  |
 | `disablepictureinpicture` | `video` | ignored | no picture-in-picture; dropped with an info (HTMLUI-HTML-0028) |  |
 | `disableremoteplayback` | `video` | ignored | no remote playback; dropped with an info (HTMLUI-HTML-0028) |  |
-| `draggable` | `*` | rewritten | presentational hint (Info) |  |
+| `draggable` | `*` | rewritten | mapped: HTML5 drag events with event.dataTransfer, ghost, drop feedback (S17) |  |
+| `dropzone` | `*` | emulated | the element accepts drops of the listed dataTransfer types (copy\|move\|link) (S17) |  |
 | `enctype` | `form` | unsupported | no submission: the submit event carries the values (Info) (HTMLUI-HTML-0004) | handle the submit event in Lua |
 | `enterkeyhint` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `estimated-height` | `grid-view` | emulated | the height of rows not measured yet (item-height="auto") (S17) |  |
+| `estimated-height` | `list-view` | emulated | the height of rows not measured yet (item-height="auto") (S17) |  |
+| `estimated-height` | `table-view` | emulated | the height of rows not measured yet (item-height="auto") (S17) |  |
+| `estimated-height` | `tree-view` | emulated | the height of rows not measured yet (item-height="auto") (S17) |  |
 | `face` | `font` | rewritten | legacy presentational attribute |  |
 | `fetchpriority` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `for` | `*` | native | kept |  |
 | `form` | `*` | emulated | honored by button and submit controls |  |
+| `gap` | `grid-view` | emulated | the space between cells in px (S17) |  |
+
+### Attributes: h-n
+
+| Attribute | Element | Support | Notes | Instead |
+|---|---|---|---|---|
 | `height` | `canvas` | native | intrinsic size hint (below author CSS) |  |
 | `height` | `embed` | native | intrinsic size hint (below author CSS) |  |
 | `height` | `iframe` | native | intrinsic size hint (below author CSS) |  |
@@ -270,22 +296,32 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `hover` | `dotlottie-wc` | rewritten | mapped to the <lottie> attribute |  |
 | `hover` | `lottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `href` | `*` | native | kept |  |
-
-### Attributes: i-r
-
-| Attribute | Element | Support | Notes | Instead |
-|---|---|---|---|---|
 | `id` | `*` | native | kept; id="htmlui-root" is reserved and renamed (Warning) |  |
 | `id` | `html` | rewritten | the root id is reserved; selectors on the author id are rewritten |  |
+| `indent` | `tree-view` | emulated | the indentation per depth in px (default 16) (S17) |  |
 | `inputmode` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `integrity` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `intermission` | `dotlottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `intermission` | `dotlottie-wc` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `intermission` | `lottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `is` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `item-height` | `grid-view` | emulated | the cell height in px (S17) |  |
+| `item-height` | `list-view` | emulated | the row height in px, or "auto" (measured rows) (S17) |  |
+| `item-height` | `table-view` | emulated | the row height in px, or "auto" (measured rows) (S17) |  |
+| `item-height` | `tree-view` | emulated | the row height in px, or "auto" (measured rows) (S17) |  |
+| `item-width` | `grid-view` | emulated | the cell width in px (S17) |  |
 | `itemprop` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `items` | `grid-view` | emulated | the data-model array the rows show (S17) |  |
+| `items` | `list-view` | emulated | the data-model array the rows show (S17) |  |
+| `items` | `table-view` | emulated | the data-model array the rows show (S17) |  |
+| `items` | `tree-view` | emulated | the data-model array the rows show (S17) |  |
 | `itemscope` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `itemtype` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `key` | `grid-view` | emulated | the item field that identifies an item (selection, row identity) (S17) |  |
+| `key` | `list-view` | emulated | the item field that identifies an item (selection, row identity) (S17) |  |
+| `key` | `table-column` | emulated | the item field the cells show ({{item.<key>}}) (S17) |  |
+| `key` | `table-view` | emulated | the item field that identifies an item (selection, row identity) (S17) |  |
+| `key` | `tree-view` | emulated | the node field that identifies a node (default: its index path) (S17) |  |
 | `lang` | `*` | rewritten | kept, plus a presentational hint |  |
 | `loading` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `loop` | `dotlottie-player` | rewritten | mapped to the <lottie> attribute |  |
@@ -302,6 +338,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `method` | `form` | unsupported | no submission: the submit event carries the values (Info) (HTMLUI-HTML-0004) | handle the submit event in Lua |
 | `min` | `*` | native | kept |  |
 | `min` | `meter` | unsupported | dropped (Info) (HTMLUI-HTML-0004) | color the progress fill with a class |
+| `min-width` | `table-column` | emulated | the narrowest a resize makes the column, px (S17) |  |
 | `minlength` | `*` | unsupported | no constraint validation (Info) (HTMLUI-HTML-0004) | validate the value from Lua |
 | `mode` | `dotlottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `mode` | `dotlottie-wc` | rewritten | mapped to the <lottie> attribute |  |
@@ -311,9 +348,18 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `name` | `*` | native | kept |  |
 | `nonce` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `novalidate` | `form` | unsupported | no submission: the submit event carries the values (Info) (HTMLUI-HTML-0004) | handle the submit event in Lua |
+
+### Attributes: o-s
+
+| Attribute | Element | Support | Notes | Instead |
+|---|---|---|---|---|
 | `on*` | `*` | unsupported | JavaScript event handlers are not run; dropped (HTMLUI-HTML-0005) | use element:addEventListener('click', fn) in Lua, or data-event-click |
 | `open` | `*` | native | kept |  |
 | `optimum` | `meter` | unsupported | dropped (Info) (HTMLUI-HTML-0004) | color the progress fill with a class |
+| `overscan` | `grid-view` | emulated | rows kept beyond the viewport on each side (default 4) (S17) |  |
+| `overscan` | `list-view` | emulated | rows kept beyond the viewport on each side (default 4) (S17) |  |
+| `overscan` | `table-view` | emulated | rows kept beyond the viewport on each side (default 4) (S17) |  |
+| `overscan` | `tree-view` | emulated | rows kept beyond the viewport on each side (default 4) (S17) |  |
 | `part` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `pattern` | `*` | unsupported | no constraint validation (Info) (HTMLUI-HTML-0004) | validate the value from Lua |
 | `placeholder` | `*` | native | kept |  |
@@ -329,24 +375,25 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `renderer` | `dotlottie-wc` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `renderer` | `lottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `required` | `*` | native | kept |  |
+| `resizable` | `table-column` | emulated | a 6 px header edge resizes the column (columnresize) (S17) |  |
 | `reversed` | `ol` | native | read by the list marker emulation |  |
 | `role` | `*` | native | kept |  |
 | `rows` | `*` | native | kept |  |
 | `rowspan` | `*` | native | kept |  |
-
-### Attributes: s-w
-
-| Attribute | Element | Support | Notes | Instead |
-|---|---|---|---|---|
 | `segment` | `dotlottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `segment` | `dotlottie-wc` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `segment` | `lottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `selected` | `*` | native | kept |  |
+| `selection` | `grid-view` | emulated | none, single (default) or multiple (S17) |  |
+| `selection` | `list-view` | emulated | none, single (default) or multiple (S17) |  |
+| `selection` | `table-view` | emulated | none, single (default) or multiple (S17) |  |
+| `selection` | `tree-view` | emulated | none, single (default) or multiple (S17) |  |
 | `size` | `*` | native | kept |  |
 | `size` | `font` | rewritten | legacy presentational attribute |  |
 | `sizes` | `img` | rewritten | evaluated at load to choose the srcset candidate |  |
 | `sizes` | `source` | rewritten | resolved at load to choose the img source |  |
 | `slot` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `sortable` | `table-column` | emulated | a header click fires sort {key, direction} (S17) |  |
 | `speed` | `dotlottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `speed` | `dotlottie-wc` | rewritten | mapped to the <lottie> attribute |  |
 | `speed` | `lottie-player` | rewritten | mapped to the <lottie> attribute |  |
@@ -355,6 +402,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `src` | `dotlottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `src` | `dotlottie-wc` | rewritten | mapped to the <lottie> attribute |  |
 | `src` | `lottie-player` | rewritten | mapped to the <lottie> attribute |  |
+| `src` | `markdown` | emulated | the Markdown file (asset path rules; a reload dependency) (S17) |  |
 | `src` | `source` | native | video: a candidate, tried in order at run time |  |
 | `src` | `video` | native | WebM with AV1 video and Opus audio (other formats HTMLUI-HTML-0027) |  |
 | `srcset` | `img` | rewritten | candidate chosen at load by the dp ratio (Info) |  |
@@ -365,12 +413,19 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `state-machine-id` | `lottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `step` | `*` | native | kept |  |
 | `style` | `*` | rewritten | rewritten by the CSS stage, positions preserved |  |
+
+### Attributes: t-w
+
+| Attribute | Element | Support | Notes | Instead |
+|---|---|---|---|---|
 | `tabindex` | `*` | rewritten | -1 -> tab-index: none; focus: auto; 0 -> tab-index: auto; positive order ignored |  |
 | `target` | `form` | unsupported | no submission: the submit event carries the values (Info) (HTMLUI-HTML-0004) | handle the submit event in Lua |
 | `theme-id` | `dotlottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `theme-id` | `dotlottie-wc` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `theme-id` | `lottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
-| `title` | `*` | unsupported | no tooltips; dropped (Info) (HTMLUI-HTML-0004) | show a tooltip element from Lua on hover |
+| `title` | `*` | emulated | emulated: a tooltip after the hover or focus delay (S17) |  |
+| `tooltip` | `*` | emulated | rich tooltip: #id of an element or <template> of the document, cloned on show (S17) |  |
+| `tooltip-delay` | `*` | emulated | the element's tooltip delay in ms (S17) |  |
 | `translate` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `type` | `*` | native | kept |  |
 | `type` | `source` | native | video: skipped when canPlayType gives "" (video/webm with AV1, Opus plays) |  |
@@ -384,6 +439,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `width` | `input` | native | intrinsic size hint (below author CSS) |  |
 | `width` | `object` | native | intrinsic size hint (below author CSS) |  |
 | `width` | `svg` | native | intrinsic size hint (below author CSS) |  |
+| `width` | `table-column` | emulated | the column width in px (S17) |  |
 | `width` | `video` | native | intrinsic size hint (below author CSS) |  |
 
 ## CSS properties
@@ -2264,7 +2320,7 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-HTML-0012` | info | **noscript rendered** (`noscript-rendered`): Scripting is off from HTML's point of view, so the content of <noscript> is shown. |
 | `HTMLUI-HTML-0013` | warning | **Reserved name** (`reserved-name`): The document used a name the compatibility layer reserves (id htmlui-root, the htmlbody element, data-htmlui-* attributes); it was renamed. Pick another name. |
 | `HTMLUI-HTML-0014` | warning | **Binding attribute outside a data model** (`binding-attribute-outside-model`): RmlUi reads this data-* attribute as a data binding (data-if, data-for, data-event-*, ...), but no data-model encloses it. Rename the attribute, or wrap the element in a data-model. |
-| `HTMLUI-HTML-0015` | info | **title tooltip not shown** (`title-tooltip`): The engine shows no tooltips for title attributes. Build a tooltip element and show it on mouseover from Lua. |
+| `HTMLUI-HTML-0015` | info | **title tooltip not shown** (`title-tooltip`): No longer reported (S17): title attributes show a tooltip after a hover or focus delay (UIDocument.tooltip.configure, tooltip-delay; tooltip="#id" and el:setTooltip for rich ones). Documents compiled before reported it when the engine showed no tooltips. |
 | `HTMLUI-HTML-0016` | warning | **<base> ignored** (`base-ignored`): <base href> is ignored: URLs resolve against the file that references them. |
 | `HTMLUI-HTML-0017` | info | **Image candidate chosen** (`image-candidate-chosen`): srcset/sizes or <picture> sources were resolved once, at load, for the canvas size and pixel ratio; the note names the chosen file. |
 | `HTMLUI-HTML-0018` | info | **Unknown custom element** (`unknown-custom-element`): An undefined custom element renders as a generic inline element, as in a browser without its JavaScript definition. |
@@ -2278,6 +2334,10 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-HTML-0026` | warning | **Self-closing tag** (`self-closing-tag`): In HTML, <div/> (any element that is not void, such as img, br or input) does not close the element: everything after it goes inside it until its parent ends, which changes the layout. Browsers do the same. Write <div></div>. |
 | `HTMLUI-HTML-0027` | by case (warning) | **Unsupported media format** (`unsupported-media-format`): A <video> (or <source>) names a file the engine cannot play: the engine plays WebM with AV1 video and Opus audio on every platform (MP4, MOV, Ogg, H.264, HEVC, VP8, VP9 and Theora are not decoded). The source is skipped, and the video shows its poster or nothing. Convert the file: MCP import_files and the Project window convert videos with a user-installed FFmpeg (SVT-AV1 or libaom, libopus). Error when no source of the <video> can be played. |
 | `HTMLUI-HTML-0028` | info | **Media attribute ignored** (`media-attribute-ignored`): A <video> attribute or content without an engine equivalent was dropped: playsinline (videos always play inline), crossorigin, controlslist, disablepictureinpicture, disableremoteplayback, x-webkit-airplay, mediagroup, and the fallback content inside <video> (browsers that play video never show it either). |
+| `HTMLUI-HTML-0029` | warning | **Virtual view without a definite height** (`virtual-view-height`): A <list-view>, <grid-view>, <tree-view> or <table-view> grew to the height of all its rows: it has no definite height, so it cannot scroll its rows. It lays out 20 rows instead. Give it a height (height, max-height, or flex: 1 inside a container of a definite height). |
+| `HTMLUI-HTML-0030` | error | **Virtual view template** (`virtual-view-template`): A <list-view>, <grid-view>, <tree-view> or <table-view> needs exactly one <template> child: the markup of a row (a table-view's cells come from its <table-column> children instead, each with an optional <template>). The view shows no rows without one, and only the first of several. |
+| `HTMLUI-HTML-0031` | info | **Large data-for** (`large-data-for`): A data-for made more than 500 elements: every one of them is laid out and drawn. A <list-view items="..."> (or grid-view, table-view) makes only the rows on screen and keeps a 10,000-row list fast on mobile. |
+| `HTMLUI-HTML-0032` | info | **HTML in Markdown** (`markdown-raw-html`): The Markdown of a <markdown> element holds HTML markup. Markdown is rendered without HTML passthrough: the markup shows as its text (text from servers or players is safe this way). Write Markdown, or put the HTML outside the <markdown> element. |
 
 ### IMP
 

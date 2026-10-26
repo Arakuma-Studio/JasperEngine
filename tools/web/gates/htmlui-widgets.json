@@ -1,0 +1,15 @@
+{
+  "description": "tools/test-projects/htmlui-widgets (WEB_PROJECT=htmlui-widgets tools/build.sh web): S17's server_browser (a 10,000-row <table-view> from a data model) and inventory (HTML5 drag and drop, rich tooltips) examples with their Lua scripts on WebGL2, loaded with no error or warning in either document.",
+  "isolated": true,
+  "console": [
+    {
+      "text": "[widgets] server_browser rows 10000 problems 0 shown 1..",
+      "level": "log"
+    },
+    {
+      "text": "[widgets] inventory slots 24 problems 0",
+      "level": "log"
+    }
+  ],
+  "ordered": true
+}

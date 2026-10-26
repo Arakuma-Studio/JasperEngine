@@ -7,6 +7,7 @@
 #include "RmlRenderer.h"
 #include "RmlTextInputHandler.h"
 #include "compat/runtime/RuntimeRegistry.h"
+#include "widgets/WidgetsRuntime.h"
 #include "effects/EffectRuntime.h"
 #include "compat/CompatOptions.h"
 #include "compat/DocumentLoader.h"
@@ -311,6 +312,8 @@ void HtmlUIContext::update(){
     if (context){
         // focus tracking, animation fill modes (phase-2 hook H1)
         htmlui::compat::updateRuntime(context);
+        // S17: tooltips, drags, runtime diagnostics
+        htmlui::WidgetsRuntime::update(context);
         context->Update();
     }
     markUpdated();

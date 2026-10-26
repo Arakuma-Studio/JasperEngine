@@ -270,7 +270,8 @@ void HtmlUIScriptState::reloadUsersOf(Entity owner, const std::string& name){
     }
 
     if (uses){
-        system->reloadDocument(owner, true);
+        // a rebuild: the elements bound to the placeholder model are made again for the real one
+        system->reloadDocument(owner, true, UIReloadMode::REBUILD);
         // the reload is part of the createDataModel call (a script's init makes its models
         // first, then registers onLoad): its onUnload/onLoad run now, as for UIDocument::load,
         // not later for handlers registered after it
@@ -384,6 +385,14 @@ void HtmlUIScriptState::fireNotifications(){
         }else{
             component->onUnload.call();
         }
+    }
+    // S17: the patch reloads (the document stayed: no onUnload/onLoad)
+    std::vector<Reload> patched = std::move(reloads);
+    reloads.clear();
+    for (const Reload& reload : patched){
+        UIDocumentComponent* component = system->scene->findComponent<UIDocumentComponent>(reload.entity);
+        if (component && component->onReload)
+            component->onReload(reload.report);
     }
 }
 
