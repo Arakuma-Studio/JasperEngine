@@ -1106,6 +1106,13 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<Joint2DComponent>(entity, Stream::decodeJoint2DComponent(componentNode));
             }
             break;
+        case ComponentType::CharacterControllerComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<CharacterControllerComponent>(entity, {});
+            }else{
+                registry->addComponent<CharacterControllerComponent>(entity, Stream::decodeCharacterControllerComponent(componentNode));
+            }
+            break;
         case ComponentType::CharacterController2DComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
                 registry->addComponent<CharacterController2DComponent>(entity, {});
@@ -1575,6 +1582,12 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
                 oldComponent = Stream::encodeJoint2DComponent(registry->getComponent<Joint2DComponent>(entity));
             }
             registry->removeComponent<Joint2DComponent>(entity);
+            break;
+        case ComponentType::CharacterControllerComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeCharacterControllerComponent(registry->getComponent<CharacterControllerComponent>(entity));
+            }
+            registry->removeComponent<CharacterControllerComponent>(entity);
             break;
         case ComponentType::CharacterController2DComponent:
             if (encodeComponent){

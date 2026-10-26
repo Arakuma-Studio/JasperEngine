@@ -116,7 +116,7 @@ Wrapper class names accepted as `type` (case-insensitive): `GameObject`, `Camera
 `MeshPolygon`, `Points`, `LineRenderer`, `Sprite`, `AudioSource`, `RectTransform`,
 `LayoutGroup`, `Polygon`, `Text`, `Image`, `Button`, `Panel`, `Scrollbar`, `Progressbar`,
 `InputField`, `Bone`, `Fog`, `LocalVolumetricFog`, `VolumetricClouds`, `Skybox`, `ReflectionProbe`, `Rigidbody2D`, `Joint2D`, `CharacterController2D`,
-`Rigidbody`, `Joint3D`, `Action`, `Tween`, `AlphaTween`, `ColorTween`, `PositionTween`,
+`Rigidbody`, `Joint3D`, `CharacterController`, `Action`, `Tween`, `AlphaTween`, `ColorTween`, `PositionTween`,
 `RotationTween`, `ScaleTween`, `Animation`, `ParticleSystem`, `SpriteAnimation`,
 `MorphTracks`, `RotateTracks`, `ScaleTracks`, `TranslateTracks`, `EntityHandle`.
 An unknown name falls back to `EntityHandle` (with a warning in the log).
@@ -1072,6 +1072,25 @@ or `CharacterController2D(scene, entity)`. Points and points per second, as Rigi
 `setDistanceJoint`, `setPointJoint`, `setHingeJoint`, `setConeJoint`, `setPrismaticJoint`,
 `setSwingTwistJoint`, `setSixDOFJoint`, `setPathJoint`, `setGearJoint`,
 `setRackAndPinionJoint`, `setPulleyJoint`, `getType()` (partial).
+
+#### 4.14.1 CharacterController (EntityHandle)
+
+`go:getCharacterController()` (adds one with defaults if missing), `go:removeCharacterController()`,
+or `CharacterController(scene, entity)`. World units (metres).
+
+| Member | Kind | Notes |
+|---|---|---|
+| `move(motionV3)` | method | sweeps by motion now (no gravity), writes the Transform; returns `CollisionFlags` bits |
+| `simpleMove(speedV3)` | method | speed.y ignored, own gravity; returns `isGrounded` |
+| `trySetSize(height, radius, centerV3)` | method | false (old size kept) when it does not fit there |
+| `center` | rw `Vector3` | setting `center`, `height`, `radius` goes through `trySetSize` |
+| `height`, `radius`, `slopeLimit`, `stepOffset`, `skinWidth`, `minMoveDistance`, `mass`, `pushStrength` | rw number | Unity defaults: 2, 0.5, 45, 0.3, 0.02, 0.001; mass 70, push 100 N |
+| `pushBodies`, `movingPlatforms`, `inheritPlatformYaw`, `detectCollisions`, `characterCollisions`, `enhancedEdgeRemoval`, `enabled` | rw bool | |
+| `setBitsFilter(category, mask)`, `categoryBits`, `maskBits` | method / ro | |
+| `isGrounded`, `isOnSteepSlope`, `collisionFlags`, `velocity`, `groundNormal`, `groundEntity`, `groundVelocity` | ro | the last move and physics step |
+
+Script hook `function MyScript:onControllerColliderHit(hit)`: `hit.controller`, `hit.entity`,
+`hit.point`, `hit.normal`, `hit.moveDirection`, `hit.moveLength`.
 
 ### 4.15 Actions and Tweens
 

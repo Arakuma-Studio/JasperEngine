@@ -88,6 +88,32 @@ default arguments): a missing `wake` reads as false.
 
 ## Character controllers
 
+A Character Controller (`CharacterControllerComponent`, Unity's) is a kinematic capsule moved by
+script on Jolt's CharacterVirtual. `cc:move(motion)` sweeps it at once (world units, no gravity)
+and returns `CollisionFlags` (SIDES 1, ABOVE 2, BELOW 4); `cc:simpleMove(speed)` ignores `speed.y`,
+adds its own gravity and returns `isGrounded`. Move in `onUpdate` or `onFixedUpdate` (dt is the
+fixed step there), never from a contact callback.
+- It climbs steps up to `stepOffset`, sticks to the floor going down them, slides on walls and
+  treats surfaces steeper than `slopeLimit` as walls. `isGrounded` is Jolt's OnGround: on a too
+  steep surface it is false and `isOnSteepSlope` is true (Unity's isGrounded is any contact below).
+- After every physics step it rides what it stands on (`movingPlatforms`, turning with it with
+  `inheritPlatformYaw`), whether or not a script moved it, and `isGrounded` follows a platform
+  that drops away. `move`'s displacement never includes the platform's.
+- It pushes dynamic bodies with up to `pushStrength` N (`pushBodies`); with `detectCollisions`
+  a kinematic inner body lets rays (`Physics.raycast` returns the controller), triggers and
+  dynamic bodies see it. Its contacts with bodies are not in `onContactAdded3D` (no Rigidbody
+  there); a trigger's are, with `Rigidbody.valid` false on the controller's side.
+- Controllers block each other with `characterCollisions` (both on).
+- `onControllerColliderHit(hit)` in its Lua scripts (and `PhysicsSystem.onControllerColliderHit`)
+  gets each body or controller a move touched: `hit.entity`, `point`, `normal`, `moveDirection`,
+  `moveLength`.
+- Write its Transform to teleport it. A new `height`/`radius`/`center` while playing is tried
+  at once (`cc:trySetSize(h, r, c)` returns false and keeps the old one when it would not fit).
+- `PhysicsSystem:setRootMotion(entity, worldVelocity, yawRate)` (S21's Animator) moves and turns
+  it in every fixed step until the next call.
+- Never on a GameObject with a Rigidbody: Add Component and `add_component` refuse, and one loaded
+  with both does nothing and logs once.
+
 A Character Controller 2D (`CharacterController2DComponent`) is a kinematic, upright capsule moved
 by script: `cc:move(motion)` slides it at once (no gravity) and returns `CollisionFlags`;
 `cc:simpleMove(speed)` adds its own gravity and returns `isGrounded`. Call them in `onUpdate` or

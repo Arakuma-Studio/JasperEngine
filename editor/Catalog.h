@@ -126,11 +126,12 @@ namespace jasperengine::editor{
         UIDocumentComponent,
         LocalVolumetricFogComponent,
         VolumetricCloudsComponent,
-        CharacterController2DComponent
+        CharacterController2DComponent,
+        CharacterControllerComponent
     };
 
     // the last ComponentType (loops over every type)
-    constexpr ComponentType LAST_COMPONENT_TYPE = ComponentType::CharacterController2DComponent;
+    constexpr ComponentType LAST_COMPONENT_TYPE = ComponentType::CharacterControllerComponent;
 
     enum class PropertyType{
         Bool,

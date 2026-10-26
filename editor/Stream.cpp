@@ -4154,6 +4154,11 @@ YAML::Node editor::Stream::encodeComponentsLive(const Entity entity, const Entit
         compNode[Catalog::getComponentName(ComponentType::CharacterController2DComponent, true)] = encodeCharacterController2DComponent(controller);
     }
 
+    if (signature.test(registry->getComponentId<CharacterControllerComponent>())) {
+        const CharacterControllerComponent& controller = registry->getComponent<CharacterControllerComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::CharacterControllerComponent, true)] = encodeCharacterControllerComponent(controller);
+    }
+
     if (signature.test(registry->getComponentId<Joint3DComponent>())) {
         const Joint3DComponent& joint = registry->getComponent<Joint3DComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::Joint3DComponent, true)] = encodeJoint3DComponent(joint);
@@ -4713,6 +4718,17 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             registry->getComponent<CharacterController2DComponent>(entity) = std::move(controller);
             registry->markChanged<CharacterController2DComponent>(entity);
+        }
+    });
+
+    StreamLoad::decodeComponent(ComponentType::CharacterControllerComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
+        CharacterControllerComponent* existing = registry->findComponent<CharacterControllerComponent>(entity);
+        CharacterControllerComponent controller = decodeCharacterControllerComponent(componentNode, existing);
+        if (!signature.test(registry->getComponentId<CharacterControllerComponent>())){
+            registry->addComponent<CharacterControllerComponent>(entity, std::move(controller));
+        }else{
+            registry->getComponent<CharacterControllerComponent>(entity) = std::move(controller);
+            registry->markChanged<CharacterControllerComponent>(entity);
         }
     });
 
@@ -7334,6 +7350,60 @@ CharacterController2DComponent editor::Stream::decodeCharacterController2DCompon
     if (node["pushStrength"]) controller.pushStrength = YamlNumbers::as<float>(node["pushStrength"]);
     if (node["pushBodies"]) controller.pushBodies = YamlNumbers::as<bool>(node["pushBodies"]);
     if (node["movingPlatforms"]) controller.movingPlatforms = YamlNumbers::as<bool>(node["movingPlatforms"]);
+    if (node["categoryBits"]) controller.categoryBits = YamlNumbers::as<uint16_t>(node["categoryBits"]);
+    if (node["maskBits"]) controller.maskBits = YamlNumbers::as<uint16_t>(node["maskBits"]);
+    return controller;
+}
+
+// =========================================
+// CharacterControllerComponent encode/decode
+// =========================================
+
+YAML::Node editor::Stream::encodeCharacterControllerComponent(const CharacterControllerComponent& controller) {
+    YAML::Node node;
+    node["enabled"] = controller.enabled;
+    node["center"] = encodeVector3(controller.center);
+    node["height"] = controller.height;
+    node["radius"] = controller.radius;
+    node["slopeLimit"] = controller.slopeLimit;
+    node["stepOffset"] = controller.stepOffset;
+    node["skinWidth"] = controller.skinWidth;
+    node["minMoveDistance"] = controller.minMoveDistance;
+    node["mass"] = controller.mass;
+    node["pushStrength"] = controller.pushStrength;
+    node["pushBodies"] = controller.pushBodies;
+    node["movingPlatforms"] = controller.movingPlatforms;
+    node["inheritPlatformYaw"] = controller.inheritPlatformYaw;
+    node["detectCollisions"] = controller.detectCollisions;
+    node["characterCollisions"] = controller.characterCollisions;
+    node["enhancedEdgeRemoval"] = controller.enhancedEdgeRemoval;
+    node["categoryBits"] = controller.categoryBits;
+    node["maskBits"] = controller.maskBits;
+    return node;
+}
+
+CharacterControllerComponent editor::Stream::decodeCharacterControllerComponent(const YAML::Node& node, const CharacterControllerComponent* oldController) {
+    // the runtime state (the last move and step, the character's handle) stays the live component's
+    CharacterControllerComponent controller;
+    if (oldController) {
+        controller = *oldController;
+    }
+    if (node["enabled"]) controller.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    if (node["center"]) controller.center = decodeVector3(node["center"]);
+    if (node["height"]) controller.height = YamlNumbers::as<float>(node["height"]);
+    if (node["radius"]) controller.radius = YamlNumbers::as<float>(node["radius"]);
+    if (node["slopeLimit"]) controller.slopeLimit = YamlNumbers::as<float>(node["slopeLimit"]);
+    if (node["stepOffset"]) controller.stepOffset = YamlNumbers::as<float>(node["stepOffset"]);
+    if (node["skinWidth"]) controller.skinWidth = YamlNumbers::as<float>(node["skinWidth"]);
+    if (node["minMoveDistance"]) controller.minMoveDistance = YamlNumbers::as<float>(node["minMoveDistance"]);
+    if (node["mass"]) controller.mass = YamlNumbers::as<float>(node["mass"]);
+    if (node["pushStrength"]) controller.pushStrength = YamlNumbers::as<float>(node["pushStrength"]);
+    if (node["pushBodies"]) controller.pushBodies = YamlNumbers::as<bool>(node["pushBodies"]);
+    if (node["movingPlatforms"]) controller.movingPlatforms = YamlNumbers::as<bool>(node["movingPlatforms"]);
+    if (node["inheritPlatformYaw"]) controller.inheritPlatformYaw = YamlNumbers::as<bool>(node["inheritPlatformYaw"]);
+    if (node["detectCollisions"]) controller.detectCollisions = YamlNumbers::as<bool>(node["detectCollisions"]);
+    if (node["characterCollisions"]) controller.characterCollisions = YamlNumbers::as<bool>(node["characterCollisions"]);
+    if (node["enhancedEdgeRemoval"]) controller.enhancedEdgeRemoval = YamlNumbers::as<bool>(node["enhancedEdgeRemoval"]);
     if (node["categoryBits"]) controller.categoryBits = YamlNumbers::as<uint16_t>(node["categoryBits"]);
     if (node["maskBits"]) controller.maskBits = YamlNumbers::as<uint16_t>(node["maskBits"]);
     return controller;

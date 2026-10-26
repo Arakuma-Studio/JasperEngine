@@ -802,6 +802,24 @@ namespace {
         makeFastProperty<CharacterController2DComponent, bool, &CharacterController2DComponent::movingPlatforms>("movingPlatforms", PropertyType::Bool, UpdateFlags_None),
     };
 
+    static const FastPropertyDescriptor kCharacterControllerProperties[] = {
+        makeFastProperty<CharacterControllerComponent, Vector3, &CharacterControllerComponent::center>("center", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<CharacterControllerComponent, float, &CharacterControllerComponent::height>("height", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<CharacterControllerComponent, float, &CharacterControllerComponent::radius>("radius", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<CharacterControllerComponent, float, &CharacterControllerComponent::slopeLimit>("slopeLimit", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<CharacterControllerComponent, float, &CharacterControllerComponent::stepOffset>("stepOffset", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<CharacterControllerComponent, float, &CharacterControllerComponent::skinWidth>("skinWidth", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<CharacterControllerComponent, float, &CharacterControllerComponent::minMoveDistance>("minMoveDistance", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<CharacterControllerComponent, float, &CharacterControllerComponent::mass>("mass", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<CharacterControllerComponent, float, &CharacterControllerComponent::pushStrength>("pushStrength", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<CharacterControllerComponent, bool, &CharacterControllerComponent::pushBodies>("pushBodies", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<CharacterControllerComponent, bool, &CharacterControllerComponent::movingPlatforms>("movingPlatforms", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<CharacterControllerComponent, bool, &CharacterControllerComponent::inheritPlatformYaw>("inheritPlatformYaw", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<CharacterControllerComponent, bool, &CharacterControllerComponent::detectCollisions>("detectCollisions", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<CharacterControllerComponent, bool, &CharacterControllerComponent::characterCollisions>("characterCollisions", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<CharacterControllerComponent, bool, &CharacterControllerComponent::enhancedEdgeRemoval>("enhancedEdgeRemoval", PropertyType::Bool, UpdateFlags_None),
+    };
+
     static const FastPropertyDescriptor kJoint3DProperties[] = {
         makeFastProperty<Joint3DComponent, Joint3DType, &Joint3DComponent::type>("type", PropertyType::Enum, UpdateFlags_Joint3D),
         makeFastProperty<Joint3DComponent, Entity, &Joint3DComponent::bodyA>("bodyA", PropertyType::Entity, UpdateFlags_Joint3D),
@@ -1749,6 +1767,10 @@ namespace {
 
     PropertyData resolveCharacterController2DPropertyFast(void* comp, const std::string& propertyName) {
         return resolveDirectProperties(static_cast<CharacterController2DComponent*>(comp), propertyName, kCharacterController2DProperties);
+    }
+
+    PropertyData resolveCharacterControllerPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<CharacterControllerComponent*>(comp), propertyName, kCharacterControllerProperties);
     }
 
     PropertyData resolveJoint3DPropertyFast(void* comp, const std::string& propertyName) {
@@ -2751,6 +2773,10 @@ namespace {
         enumerateFromDescriptors(comp, ps, kCharacterController2DProperties);
     }
 
+    void enumerateCharacterControllerProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kCharacterControllerProperties);
+    }
+
     void enumerateJoint3DProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
         Joint3DComponent* comp = static_cast<Joint3DComponent*>(compRef);
         Joint3DComponent& def = getDefaultComponent<Joint3DComponent>();
@@ -3455,6 +3481,7 @@ namespace {
         {ComponentType::ScriptComponent, &findComponentPtr<ScriptComponent>, &resolveScriptPropertyFast, &enumerateScriptProperties},
         {ComponentType::Joint2DComponent, &findComponentPtr<Joint2DComponent>, &resolveJoint2DPropertyFast, &enumerateJoint2DProperties},
         {ComponentType::CharacterController2DComponent, &findComponentPtr<CharacterController2DComponent>, &resolveCharacterController2DPropertyFast, &enumerateCharacterController2DProperties},
+        {ComponentType::CharacterControllerComponent, &findComponentPtr<CharacterControllerComponent>, &resolveCharacterControllerPropertyFast, &enumerateCharacterControllerProperties},
         {ComponentType::Joint3DComponent, &findComponentPtr<Joint3DComponent>, &resolveJoint3DPropertyFast, &enumerateJoint3DProperties},
         {ComponentType::Rigidbody2DComponent, &findComponentPtr<Rigidbody2DComponent>, &resolveRigidbody2DPropertyFast, &enumerateRigidbody2DProperties},
         {ComponentType::RigidbodyComponent, &findComponentPtr<RigidbodyComponent>, &resolveRigidbodyPropertyFast, &enumerateRigidbodyProperties},
@@ -3509,6 +3536,7 @@ namespace {
             case ComponentType::RigidbodyComponent: return &getEnabledRef<RigidbodyComponent>;
             case ComponentType::Joint2DComponent: return &getEnabledRef<Joint2DComponent>;
             case ComponentType::CharacterController2DComponent: return &getEnabledRef<CharacterController2DComponent>;
+            case ComponentType::CharacterControllerComponent: return &getEnabledRef<CharacterControllerComponent>;
             case ComponentType::Joint3DComponent: return &getEnabledRef<Joint3DComponent>;
             case ComponentType::UIComponent: return &getEnabledRef<UIComponent>;
             case ComponentType::UIDocumentComponent: return &getEnabledRef<UIDocumentComponent>;
@@ -3663,6 +3691,8 @@ std::string computeComponentName(editor::ComponentType component){
         name = "Joint2DComponent";
     }else if(component == ComponentType::CharacterController2DComponent){
         name = "CharacterController2DComponent";
+    }else if(component == ComponentType::CharacterControllerComponent){
+        name = "CharacterControllerComponent";
     }else if(component == ComponentType::Joint3DComponent){
         name = "Joint3DComponent";
     }else if(component == ComponentType::KeyframeTracksComponent){
@@ -3768,6 +3798,7 @@ std::string editor::Catalog::getComponentDisplayName(ComponentType component){
         case ComponentType::InstancedMeshComponent: return "Mesh Instancing";
         case ComponentType::Joint2DComponent: return "Joint 2D";
         case ComponentType::CharacterController2DComponent: return "Character Controller 2D";
+        case ComponentType::CharacterControllerComponent: return "Character Controller";
         case ComponentType::Joint3DComponent: return "Joint";
         case ComponentType::KeyframeTracksComponent: return "Keyframe Tracks";
         case ComponentType::MeshPolygonComponent: return "Polygon Mesh";
@@ -3830,6 +3861,7 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
         case ComponentType::InstancedMeshComponent: return ICON_FA_CLONE;
         case ComponentType::Joint2DComponent: return ICON_FA_LINK;
         case ComponentType::CharacterController2DComponent: return ICON_FA_PERSON_WALKING;
+        case ComponentType::CharacterControllerComponent: return ICON_FA_PERSON_WALKING;
         case ComponentType::Joint3DComponent: return ICON_FA_LINK;
         case ComponentType::KeyframeTracksComponent: return ICON_FA_KEY;
         case ComponentType::MeshPolygonComponent: return ICON_FA_DRAW_POLYGON;
@@ -3866,6 +3898,8 @@ ComponentType editor::Catalog::getConflictingComponent(ComponentType type){
     switch (type){
         case ComponentType::CharacterController2DComponent: return ComponentType::Rigidbody2DComponent;
         case ComponentType::Rigidbody2DComponent: return ComponentType::CharacterController2DComponent;
+        case ComponentType::CharacterControllerComponent: return ComponentType::RigidbodyComponent;
+        case ComponentType::RigidbodyComponent: return ComponentType::CharacterControllerComponent;
         default: return ComponentType::Transform;
     }
 }
@@ -3948,6 +3982,8 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<Joint2DComponent>();
         case ComponentType::CharacterController2DComponent:
             return registry->getComponentId<CharacterController2DComponent>();
+        case ComponentType::CharacterControllerComponent:
+            return registry->getComponentId<CharacterControllerComponent>();
         case ComponentType::Joint3DComponent:
             return registry->getComponentId<Joint3DComponent>();
         case ComponentType::KeyframeTracksComponent:
@@ -4060,6 +4096,8 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::Joint2DComponent;
     }else if(normalizedName == "charactercontroller2d"){
         return ComponentType::CharacterController2DComponent;
+    }else if(normalizedName == "charactercontroller"){
+        return ComponentType::CharacterControllerComponent;
     }else if(normalizedName == "joint3d"){
         return ComponentType::Joint3DComponent;
     }else if(normalizedName == "keyframetracks"){
@@ -4232,6 +4270,9 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     }
     if (registry->findComponent<CharacterController2DComponent>(entity)){
         ret.push_back(ComponentType::CharacterController2DComponent);
+    }
+    if (registry->findComponent<CharacterControllerComponent>(entity)){
+        ret.push_back(ComponentType::CharacterControllerComponent);
     }
     if (registry->findComponent<Joint3DComponent>(entity)){
         ret.push_back(ComponentType::Joint3DComponent);
@@ -5332,6 +5373,11 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
         case ComponentType::CharacterController2DComponent: {
             YAML::Node encoded = Stream::encodeCharacterController2DComponent(sourceRegistry->getComponent<CharacterController2DComponent>(sourceEntity));
             targetRegistry->getComponent<CharacterController2DComponent>(targetEntity) = Stream::decodeCharacterController2DComponent(encoded);
+            break;
+        }
+        case ComponentType::CharacterControllerComponent: {
+            YAML::Node encoded = Stream::encodeCharacterControllerComponent(sourceRegistry->getComponent<CharacterControllerComponent>(sourceEntity));
+            targetRegistry->getComponent<CharacterControllerComponent>(targetEntity) = Stream::decodeCharacterControllerComponent(encoded);
             break;
         }
 

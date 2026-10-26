@@ -2032,6 +2032,19 @@ void addRuntimeState(Scene* scene, Entity entity, ComponentType type, const std:
         put("groundVelocity", vec2(c->groundVelocity));
         put("refusedWithRigidbody", c->refusedWithRigidbody);
     }
+    if (type == ComponentType::CharacterControllerComponent) {
+        const CharacterControllerComponent* c = scene->findComponent<CharacterControllerComponent>(entity);
+        if (!c) return;
+        auto vec3 = [](const Vector3& v) { return Json::array({v.x, v.y, v.z}); };
+        put("isGrounded", c->isGrounded);
+        put("isOnSteepSlope", c->isOnSteepSlope);
+        put("collisionFlags", c->collisionFlags);
+        put("velocity", vec3(c->velocity));
+        put("groundNormal", vec3(c->groundNormal));
+        put("groundEntity", c->groundEntity == NULL_ENTITY ? Json() : Json(c->groundEntity));
+        put("groundVelocity", vec3(c->groundVelocity));
+        put("refusedWithRigidbody", c->refusedWithRigidbody);
+    }
 }
 
 void getRuntimeEntityTool(const CallPtr& call) {

@@ -320,6 +320,10 @@ editor::SceneRender3D::~SceneRender3D(){
     for (auto& pair : fogVolumeLines) {
         delete pair.second;
     }
+
+    for (auto& pair : controllerLines) {
+        delete pair.second;
+    }
 }
 
 void editor::SceneRender3D::createLines(){
@@ -508,6 +512,78 @@ void editor::SceneRender3D::createOrUpdateFogVolumeLines(Entity entity, const Tr
     drawShape(half, outerColor);
     if (blend > 0.0f && inner.x > 0.0f && inner.y > 0.0f && inner.z > 0.0f)
         drawShape(inner, innerColor);
+}
+
+// The upright capsule a CharacterController moves (as CharacterControllerSystem sizes it: radius by
+// the larger of the X and Z scales, height by Y, no rotation), the band of the step it climbs over
+// its feet, and the cone of the steepest slope it walks
+void editor::SceneRender3D::createOrUpdateControllerLines(Entity entity, const Transform& transform, const CharacterControllerComponent& controller, bool visible, bool highlighted){
+    LineRenderer* lines = controllerLines[entity];
+    lines->clearLines();
+    lines->setVisible(transform.visible && visible);
+    if (!transform.visible || !visible) return;
+
+    const Vector3 scale(std::fabs(transform.worldScale.x), std::fabs(transform.worldScale.y), std::fabs(transform.worldScale.z));
+    const float radius = std::max(0.0f, controller.radius) * std::max(scale.x, scale.z);
+    const float height = std::max(0.0f, controller.height) * scale.y;
+    if (radius <= 0.0f) return;
+    const float halfSegment = std::max(0.0f, height * 0.5f - radius);
+    const Vector3 center = transform.worldPosition + controller.center * scale;
+    const Vector3 top = center + Vector3(0.0f, halfSegment, 0.0f);
+    const Vector3 bottom = center - Vector3(0.0f, halfSegment, 0.0f);
+    const float alpha = highlighted ? 1.0f : 0.4f;
+    const Vector4 color = controller.enabled ? Vector4(0.45f, 0.95f, 0.35f, alpha) : Vector4(0.6f, 0.6f, 0.6f, alpha);
+    const int segments = 32;
+    const float pi = 3.14159265f;
+
+    auto circle = [&](const Vector3& at, float r, const Vector4& c){
+        Vector3 previous;
+        for (int i = 0; i <= segments; i++){
+            const float a = 2.0f * pi * (float)i / (float)segments;
+            const Vector3 point = at + Vector3(std::cos(a) * r, 0.0f, std::sin(a) * r);
+            if (i > 0) lines->addLine(previous, point, c);
+            previous = point;
+        }
+    };
+    // the two rings, the four sides, and the half circles over and under them
+    circle(top, radius, color);
+    circle(bottom, radius, color);
+    for (int k = 0; k < 4; k++){
+        const float a = 0.5f * pi * (float)k;
+        const Vector3 side(std::cos(a) * radius, 0.0f, std::sin(a) * radius);
+        lines->addLine(top + side, bottom + side, color);
+    }
+    for (int plane = 0; plane < 2; plane++){
+        Vector3 previousTop, previousBottom;
+        for (int i = 0; i <= segments / 2; i++){
+            const float a = pi * (float)i / (float)(segments / 2);
+            const float h = std::cos(a) * radius;
+            const float v = std::sin(a) * radius;
+            const Vector3 offset = plane == 0 ? Vector3(h, 0.0f, 0.0f) : Vector3(0.0f, 0.0f, h);
+            const Vector3 pointTop = top + offset + Vector3(0.0f, v, 0.0f);
+            const Vector3 pointBottom = bottom + offset - Vector3(0.0f, v, 0.0f);
+            if (i > 0){
+                lines->addLine(previousTop, pointTop, color);
+                lines->addLine(previousBottom, pointBottom, color);
+            }
+            previousTop = pointTop;
+            previousBottom = pointBottom;
+        }
+    }
+
+    const Vector3 feet = bottom - Vector3(0.0f, radius, 0.0f);
+    const Vector4 bandColor(color.x, color.y, color.z, color.w * 0.6f);
+    // the step band: what it climbs is below this ring
+    if (controller.stepOffset > 0.0f)
+        circle(feet + Vector3(0.0f, controller.stepOffset * scale.y, 0.0f), radius * 1.15f, bandColor);
+    // the slope cone: surfaces steeper than slopeLimit (from the horizontal) are walls
+    const float slope = std::clamp(controller.slopeLimit, 0.0f, 89.0f) * pi / 180.0f;
+    const float reach = radius * 1.5f;
+    for (int k = 0; k < 8; k++){
+        const float a = 2.0f * pi * (float)k / 8.0f;
+        const Vector3 out = feet + Vector3(std::cos(a) * reach, std::tan(slope) * reach, std::sin(a) * reach);
+        lines->addLine(feet, out, bandColor);
+    }
 }
 
 // endpoint handles for a selected Lines entity, drawn as small 3-axis crosses
@@ -1808,6 +1884,9 @@ void editor::SceneRender3D::hideAllGizmos(){
     for (auto& pair : fogVolumeLines) {
         pair.second->setVisible(false);
     }
+    for (auto& pair : controllerLines) {
+        pair.second->setVisible(false);
+    }
 }
 
 void editor::SceneRender3D::activate(){
@@ -1937,6 +2016,7 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
     std::set<Entity> currentTrackLines;
     std::set<Entity> currentReflectionProbes;
     std::set<Entity> currentFogVolumes;
+    std::set<Entity> currentControllers;
 
     for (Entity& entity: entities){
         Signature signature = scene->getSignature(entity);
@@ -2054,6 +2134,15 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             currentFogVolumes.insert(entity);
             ensureOverlayLines(fogVolumeLines, entity);
             createOrUpdateFogVolumeLines(entity, transform, volume, selectedEntities.find(entity) != selectedEntities.end());
+        }
+
+        if (signature.test(scene->getComponentId<CharacterControllerComponent>()) && signature.test(scene->getComponentId<Transform>())) {
+            const CharacterControllerComponent& controller = scene->getComponent<CharacterControllerComponent>(entity);
+            Transform& transform = scene->getComponent<Transform>(entity);
+            currentControllers.insert(entity);
+            ensureOverlayLines(controllerLines, entity);
+            const bool highlighted = isDescendantSelected(entity);
+            createOrUpdateControllerLines(entity, transform, controller, displaySettings.showAllBodies || highlighted, highlighted);
         }
 
         if (signature.test(scene->getComponentId<ReflectionProbeComponent>()) && signature.test(scene->getComponentId<Transform>())) {
@@ -2185,6 +2274,15 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             itTrackLines = trackLines.erase(itTrackLines);
         } else {
             ++itTrackLines;
+        }
+    }
+
+    for (auto it = controllerLines.begin(); it != controllerLines.end();) {
+        if (currentControllers.find(it->first) == currentControllers.end()) {
+            delete it->second;
+            it = controllerLines.erase(it);
+        } else {
+            ++it;
         }
     }
 

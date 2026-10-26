@@ -81,6 +81,7 @@ ComponentAddDialog::ComponentAddDialog() {
         {"Physics", ICON_FA_CUBE, {
             {ComponentType::RigidbodyComponent, "Rigidbody with colliders, simulated by Jolt"},
             {ComponentType::Joint3DComponent, "Connects two Rigidbodies"},
+            {ComponentType::CharacterControllerComponent, "A capsule moved by script that climbs steps and slopes"},
         }},
         {"Physics 2D", ICON_FA_CIRCLE, {
             {ComponentType::Rigidbody2DComponent, "2D Rigidbody with colliders, simulated by Box2D"},
