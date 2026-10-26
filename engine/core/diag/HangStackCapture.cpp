@@ -40,6 +40,8 @@ HANDLE readyEvent = nullptr;
 CONTEXT capturedContext{};
 std::atomic<bool> disabled{false};
 std::atomic<bool> stallWalker{false};
+char capturedText[16384]{};
+size_t capturedTextBytes = 0;
 
 DWORD machineFrame(CONTEXT& context, STACKFRAME64& frame) {
     frame.AddrPC.Mode = frame.AddrFrame.Mode = frame.AddrStack.Mode = AddrModeFlat;
@@ -60,6 +62,50 @@ DWORD machineFrame(CONTEXT& context, STACKFRAME64& frame) {
     return IMAGE_FILE_MACHINE_I386;
 #endif
 }
+// Run symbol APIs only in the helper: even after ResumeThread, DbgHelp itself can
+// block on a loader lock. The watchdog's deadline must include symbol formatting.
+void formatCapturedFrames(bool symbols) {
+    capturedTextBytes = 0;
+    for (size_t i = 0; i < frameCount; i++) {
+        const DWORD64 pc = reinterpret_cast<uintptr_t>(frames[i]);
+        MEMORY_BASIC_INFORMATION memory{};
+        const uintptr_t base = VirtualQuery(frames[i], &memory, sizeof(memory))
+            ? reinterpret_cast<uintptr_t>(memory.AllocationBase) : 0;
+        IMAGEHLP_MODULE64 module{};
+        module.SizeOfStruct = sizeof(module);
+        const char* name = nullptr;
+        if (symbols && SymGetModuleInfo64(static_cast<HANDLE>(Backtrace::dbgHelpProcess()), pc, &module)) {
+            name = module.ImageName;
+            for (const char* c = name; *c; c++) if (*c == '/' || *c == '\\') name = c + 1;
+        }
+        size_t n = capturedTextBytes;
+        n = appendText(capturedText, sizeof(capturedText), n, "#");
+        n = appendDecimal(capturedText, sizeof(capturedText), n, i);
+        n = appendText(capturedText, sizeof(capturedText), n, " ");
+        if (name && *name) n = appendText(capturedText, sizeof(capturedText), n, name);
+        else {
+            n = appendText(capturedText, sizeof(capturedText), n, "module@");
+            n = appendHex(capturedText, sizeof(capturedText), n, base);
+        }
+        n = appendText(capturedText, sizeof(capturedText), n, "+");
+        n = appendHex(capturedText, sizeof(capturedText), n, pc - base);
+        if (symbols) {
+            alignas(SYMBOL_INFO) char storage[sizeof(SYMBOL_INFO) + 256]{};
+            auto* symbol = reinterpret_cast<SYMBOL_INFO*>(storage);
+            symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+            symbol->MaxNameLen = 255;
+            DWORD64 displacement = 0;
+            if (SymFromAddr(static_cast<HANDLE>(Backtrace::dbgHelpProcess()), pc, &displacement, symbol)) {
+                n = appendText(capturedText, sizeof(capturedText), n, " [");
+                n = appendText(capturedText, sizeof(capturedText), n, symbol->Name);
+                n = appendText(capturedText, sizeof(capturedText), n, "+");
+                n = appendHex(capturedText, sizeof(capturedText), n, displacement);
+                n = appendText(capturedText, sizeof(capturedText), n, "]");
+            }
+        }
+        capturedTextBytes = appendText(capturedText, sizeof(capturedText), n, "\n");
+    }
+}
 DWORD WINAPI walkMain(void*) {
     while (WaitForSingleObject(requestEvent, INFINITE) == WAIT_OBJECT_0) {
         if (stallWalker.load(std::memory_order_relaxed)) Sleep(1000);
@@ -76,6 +122,9 @@ DWORD WINAPI walkMain(void*) {
                     nullptr, SymFunctionTableAccess64, SymGetModuleBase64, nullptr) && frame.AddrPC.Offset) {
                 frames[frameCount++] = reinterpret_cast<void*>(frame.AddrPC.Offset);
             }
+            formatCapturedFrames(true);
+        } else {
+            capturedTextBytes = 0;
         }
         SetEvent(readyEvent);
     }
@@ -173,6 +222,7 @@ size_t captureMainThreadStack(char* out, size_t capacity, const char** why) {
     if (disabled.load(std::memory_order_acquire)) { if (why) *why = "capture timed out (disabled for session)"; return 0; }
     if (GetCurrentThreadId() == mainThreadId) {
         frameCount = Backtrace::capture(frames, maxFrames);
+        formatCapturedFrames(false);
     } else {
         if (SuspendThread(mainThread) == static_cast<DWORD>(-1)) return 0;
         // From here the watchdog owns the resume, including every error and timeout path.
@@ -192,6 +242,7 @@ size_t captureMainThreadStack(char* out, size_t capacity, const char** why) {
             return 0;
         }
     }
+    return appendText(out, capacity, 0, capturedText);
 #elif !defined(__EMSCRIPTEN__)
     if (disabled.load(std::memory_order_acquire)) { if (why) *why = "capture timed out (disabled for session)"; return 0; }
     if (pthread_equal(mainThread, pthread_self())) {

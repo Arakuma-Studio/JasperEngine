@@ -232,7 +232,7 @@ void submit(EXCEPTION_POINTERS* info) {
 }
 LONG WINAPI filter(EXCEPTION_POINTERS* info) {
     if (info && info->ExceptionRecord && info->ContextRecord) submit(info);
-    if (previousFilter && previousFilter != filter) previousFilter(info);
+    if (previousFilter && previousFilter != filter) return previousFilter(info);
     return EXCEPTION_CONTINUE_SEARCH; // WER/debuggers still receive the original exception
 }
 void synthetic(const char* reason, DWORD code) {
