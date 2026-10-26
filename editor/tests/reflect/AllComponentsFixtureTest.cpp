@@ -40,7 +40,8 @@ namespace all_components_fixture_test {
             "vertexCount", "levels", "rootGridSize", "resolution", "mapResolution", "numShadowCascades", "index", "model", "cursorIndex",
             "selectionAnchor", "containerBoxIndex", "textureWidth", "textureHeight", "framebufferWidth", "framebufferHeight", "fontSize",
             "maxTextSize", "minBufferCount", "minIndicesCount", "colorWrite", "sortPriority", "customShader", "customDepthShader",
-            "shader", "length", "playingTime", "width", "height", "heightMap", "filename"};
+            "shader", "length", "playingTime", "width", "height", "heightMap", "filename", "actionFrameCount", "numFramesRect", "numTilesRect",
+            "numTiles", "numVertices", "numIndices"};
         const size_t dot = name.rfind('.');
         const std::string leaf = dot == std::string::npos ? name : name.substr(dot + 1);
         for (const char* item : names) {

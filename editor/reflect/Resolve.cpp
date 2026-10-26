@@ -5,6 +5,7 @@
 // resolved over a per-struct sorted name index (names and aliases) without heap allocation.
 
 #include "reflect/ReflectIndex.h"
+#include "reflect/TypeOps.h"
 
 #include "registry/EntityRegistry.h"
 

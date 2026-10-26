@@ -488,8 +488,8 @@ const ComponentDesc kModelDesc{
     .hasEnabled = true, .structural = true, JE_COMPONENT_ACCESS(ModelComponent),
     .codec = &kModelCodec,
     .codegen = JE_FACTORY_CODEGEN(createModelComponent),
-    .extraProperties = &modelExtraProperties,
     .extraKeys = kModelKnownKeys,
+    .extraProperties = &modelExtraProperties,
 };
 
 namespace {

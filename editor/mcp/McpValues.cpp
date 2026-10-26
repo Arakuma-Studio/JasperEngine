@@ -206,6 +206,9 @@ const EnumOptions& tableOptions(const reflect::EnumDesc& desc, uint64_t mask = 0
     return options;
 }
 
+// framebuffers have no mipmaps: their filters
+constexpr uint64_t kFramebufferFilters = reflect::enums::bit((int)TextureFilter::NEAREST) | reflect::enums::bit((int)TextureFilter::LINEAR);
+
 const EnumOptions& atmosphereQualityOptions() {
     static const EnumOptions options = {
         {(int)AtmosphereQuality::OFF, "off", "Off"},
@@ -450,8 +453,7 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"scene_color_scale", &sceneColorScaleOptions()},
         {"texture_filter", &tableOptions(reflect::enums::kTextureFilter)},
         // framebuffers have no mipmaps
-        {"framebuffer_filter", &tableOptions(reflect::enums::kTextureFilter,
-                                             reflect::enums::bit((int)TextureFilter::NEAREST) | reflect::enums::bit((int)TextureFilter::LINEAR))},
+        {"framebuffer_filter", &tableOptions(reflect::enums::kTextureFilter, kFramebufferFilters)},
         {"texture_wrap", &tableOptions(reflect::enums::kTextureWrap)},
         {"texture_alpha_border", &tableOptions(reflect::enums::kTextureAlphaBorder)},
         {"material_alpha_mode", &tableOptions(reflect::enums::kMaterialAlphaMode)},
@@ -810,11 +812,11 @@ Json McpValues::textureToJson(Project* project, SceneProject* scene, const Textu
             out["cube"] = faces;
         }
     }
-    out["min_filter"] = enumToJson((int)texture.getMinFilter(), textureFilterOptions());
-    out["mag_filter"] = enumToJson((int)texture.getMagFilter(), textureFilterOptions());
-    out["wrap_u"] = enumToJson((int)texture.getWrapU(), textureWrapOptions());
-    out["wrap_v"] = enumToJson((int)texture.getWrapV(), textureWrapOptions());
-    out["alpha_border"] = enumToJson((int)texture.getAlphaBorder(), textureAlphaBorderOptions());
+    out["min_filter"] = enumToJson((int)texture.getMinFilter(), tableOptions(reflect::enums::kTextureFilter));
+    out["mag_filter"] = enumToJson((int)texture.getMagFilter(), tableOptions(reflect::enums::kTextureFilter));
+    out["wrap_u"] = enumToJson((int)texture.getWrapU(), tableOptions(reflect::enums::kTextureWrap));
+    out["wrap_v"] = enumToJson((int)texture.getWrapV(), tableOptions(reflect::enums::kTextureWrap));
+    out["alpha_border"] = enumToJson((int)texture.getAlphaBorder(), tableOptions(reflect::enums::kTextureAlphaBorder));
     return out;
 }
 
@@ -914,11 +916,11 @@ bool McpValues::textureFromJson(Project* project, SceneProject* scene, const Jso
         setter(parsed);
         return true;
     };
-    if (!applyEnum("min_filter", textureFilterOptions(), [&](int v) { out.setMinFilter(static_cast<TextureFilter>(v)); })) return false;
-    if (!applyEnum("mag_filter", framebufferFilterOptions(), [&](int v) { out.setMagFilter(static_cast<TextureFilter>(v)); })) return false;
-    if (!applyEnum("wrap_u", textureWrapOptions(), [&](int v) { out.setWrapU(static_cast<TextureWrap>(v)); })) return false;
-    if (!applyEnum("wrap_v", textureWrapOptions(), [&](int v) { out.setWrapV(static_cast<TextureWrap>(v)); })) return false;
-    if (!applyEnum("alpha_border", textureAlphaBorderOptions(), [&](int v) { out.setAlphaBorder(static_cast<TextureAlphaBorder>(v)); })) return false;
+    if (!applyEnum("min_filter", tableOptions(reflect::enums::kTextureFilter), [&](int v) { out.setMinFilter(static_cast<TextureFilter>(v)); })) return false;
+    if (!applyEnum("mag_filter", tableOptions(reflect::enums::kTextureFilter, kFramebufferFilters), [&](int v) { out.setMagFilter(static_cast<TextureFilter>(v)); })) return false;
+    if (!applyEnum("wrap_u", tableOptions(reflect::enums::kTextureWrap), [&](int v) { out.setWrapU(static_cast<TextureWrap>(v)); })) return false;
+    if (!applyEnum("wrap_v", tableOptions(reflect::enums::kTextureWrap), [&](int v) { out.setWrapV(static_cast<TextureWrap>(v)); })) return false;
+    if (!applyEnum("alpha_border", tableOptions(reflect::enums::kTextureAlphaBorder), [&](int v) { out.setAlphaBorder(static_cast<TextureAlphaBorder>(v)); })) return false;
     if (value.contains("svg_scale")) {
         if (!value["svg_scale"].is_number() || !(value["svg_scale"].get<float>() > 0.0f)) {
             error = "svg_scale must be a number > 0.";
@@ -937,7 +939,7 @@ Json McpValues::materialToJson(Project* project, SceneProject* scene, const Mate
         {"roughnessFactor", number(material.roughnessFactor)},
         {"alphaCutoff", number(material.alphaCutoff)},
         {"foliageTransmission", number(material.foliageTransmission)},
-        {"alphaMode", enumToJson((int)material.alphaMode, alphaModeOptions())},
+        {"alphaMode", enumToJson((int)material.alphaMode, tableOptions(reflect::enums::kMaterialAlphaMode))},
         {"emissiveFactor", toJson(material.emissiveFactor)}
     };
     for (const MaterialTextureField& field : MATERIAL_TEXTURES) {
@@ -1010,7 +1012,7 @@ bool McpValues::materialFromJson(Project* project, SceneProject* scene, const Js
     if (value.contains("alphaMode")) {
         int mode = 0;
         std::string why;
-        if (!enumFromJson(value["alphaMode"], alphaModeOptions(), mode, why)) {
+        if (!enumFromJson(value["alphaMode"], tableOptions(reflect::enums::kMaterialAlphaMode), mode, why)) {
             error = "alphaMode: " + why;
             return false;
         }
@@ -1603,7 +1605,7 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                 if (!Catalog::supportsLighting(static_cast<MaterialLighting>(parsed), manifest.get())) {
                     std::string modes = "auto";
                     for (MaterialLighting mode : Catalog::getShaderLightingModes(manifest.get())) {
-                        modes += ", " + enumToJson((int)mode, materialLightingOptions()).get<std::string>();
+                        modes += ", " + enumToJson((int)mode, tableOptions(reflect::enums::kMaterialLighting)).get<std::string>();
                     }
                     error = "Property " + propertyName + ": " + (shader.empty() ? std::string("the built-in Lit shader") : shader) +
                             " takes " + modes + ".";

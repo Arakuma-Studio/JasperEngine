@@ -147,9 +147,10 @@ namespace {
         JE_FIELD(FogComponent, linearStart),
         JE_FIELD(FogComponent, linearEnd),
         // the height fog's fields, written only away from their defaults: a distance fog's file is as it was
-        JE_FIELD(FogComponent, colorMode, .enumDesc = &enums::kFogColorMode, .flags = OmitIfDefault | CodegenIfChanged, .group = "Height Fog",
+        JE_FIELD(FogComponent, colorMode, .enumDesc = &enums::kFogColorMode, .flags = OmitIfDefault | CodegenIfChanged,
                  .tooltip = "Constant Color: the fog takes its Color. Sky Color: the colour of the sky at the horizon (a cube map Skybox, or a "
-                            "sky shader with a horizonColor property)."),
+                            "sky shader with a horizonColor property).",
+                 .group = "Height Fog"),
         JE_FIELD(FogComponent, attenuationDistance, .flags = OmitIfDefault | CodegenIfChanged, .unit = Unit::Meters, .min = 0.0f,
                  .tooltip = "The distance light travels in the fog below the Base Height before 63% of it is absorbed. Smaller: denser fog.",
                  .group = "Height Fog"),
@@ -232,9 +233,10 @@ namespace {
     // ---------------------------------------------------------------- Mirror
 
     constexpr FieldDesc kMirrorFields[] = {
-        JE_FIELD(MirrorComponent, normal, .drawer = "direction",
+        JE_FIELD(MirrorComponent, normal,
                  .tooltip = "Reflecting surface normal in local space (the mirror plane is this normal at the GameObject's position). Flip "
-                            "its sign if the reflection clips the wrong side. The reflection camera is created automatically."),
+                            "its sign if the reflection clips the wrong side. The reflection camera is created automatically.",
+                 .drawer = "direction"),
     };
 
     // ---------------------------------------------------------------- Reflection Probe
