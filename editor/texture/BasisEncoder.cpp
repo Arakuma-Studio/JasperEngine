@@ -86,8 +86,6 @@ namespace {
             if (lambda > 0.0f){
                 basisu::uastc_rdo_params params;
                 params.m_lambda = lambda;
-                // twice basisu's default window: more matches for zstd within a band
-                params.m_lz_dict_size = 8192;
                 basisu::uastc_rdo((uint32_t)count, blocks, pixels.data(), params, flags, nullptr, 0);
             }
             return true;
@@ -228,7 +226,7 @@ namespace {
     class BasisEncoder final : public ITextureEncoder {
     public:
         const char* name() const override { return "basisu"; }
-        std::string version() const override { return std::string("basisu ") + BASISU_LIB_VERSION_STRING + " bands16 rg-alpha dict8k"; }
+        std::string version() const override { return std::string("basisu ") + BASISU_LIB_VERSION_STRING + " bands16 rg-alpha"; }
         // SSE off, but not proven identical across CPUs (D11)
         bool isaInvariant() const override { return false; }
 

@@ -131,7 +131,8 @@ CorpusImage jasperengine::editor::test::corpusImage(const std::string& name, int
                 // the tangent-space normal of a height field
                 image.type = TextureImportType::Normal;
                 const float e = 1.0f / 64.0f;
-                auto h = [&](float a, float b){ return corpusFbm(a * 2.0f, b * 2.0f, 9, 5) * 0.6f; };
+                // four octaves: the finest bump spans about 4 texels, as in a sculpted or baked map
+                auto h = [&](float a, float b){ return corpusFbm(a * 2.0f, b * 2.0f, 9, 4) * 0.6f; };
                 const float hx = (h(u + e, v) - h(u - e, v)) / (2.0f * e) * 0.15f;
                 const float hy = (h(u, v + e) - h(u, v - e)) / (2.0f * e) * 0.15f;
                 const float len = std::sqrt(hx * hx + hy * hy + 1.0f);
