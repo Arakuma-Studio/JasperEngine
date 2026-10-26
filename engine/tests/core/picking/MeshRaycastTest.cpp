@@ -189,6 +189,16 @@ TEST(MeshRaycast, Kinds){
     EXPECT_FALSE(hit.hit && hit.entity == sprite.getEntity());
 
     // tilemap: a tile hits, the hole misses
+    {
+        const MeshComponent& tiles = scene.getComponent<MeshComponent>(tilemap.getEntity());
+        PickGeometryLayout layout;
+        const bool sources = picking::resolveSources(tiles, layout);
+        ASSERT_TRUE(sources) << "the tilemap's mesh has no CPU triangles (" << tiles.numSubmeshes << " submeshes)";
+        ASSERT_EQ(picking::countTriangles(layout), 4u);
+        ASSERT_FALSE(tiles.worldAABB.isNull());
+        ASSERT_TRUE(tiles.worldAABB.contains(Vector3(32, 2, 0))) << tiles.worldAABB.getMinimum().toString() << " "
+                                                                 << tiles.worldAABB.getMaximum().toString();
+    }
     hit = MeshRaycast::raycast(&scene, Vector3(30 + 2, 2, 50), Vector3(0, 0, -1), 100.0f);
     ASSERT_TRUE(hit.hit);
     EXPECT_EQ(hit.entity, tilemap.getEntity());
@@ -277,9 +287,9 @@ TEST(MeshRaycast, SkinnedArmRaised){
 
     raiseArm(scene, character);
     settleScene(scene);
-    // raised: hit where it is drawn now (the middle of the arm through its bone), missed
+    // raised: hit where it is drawn now (the outer half of the arm through its bone), missed
     // where it was
-    const Vector3 middle = scene.getComponent<MeshComponent>(character).bonesMatrix[1] * Vector3(2, 0, 0);
+    const Vector3 middle = scene.getComponent<MeshComponent>(character).bonesMatrix[1] * Vector3(2.5f, 0, 0);
     const Ray atRaisedArm(middle + Vector3(0, 0, 10), Vector3(0, 0, -20));
     MeshRaycastHit hit = MeshRaycast::raycast(&scene, atRaisedArm);
     ASSERT_TRUE(hit.hit);
