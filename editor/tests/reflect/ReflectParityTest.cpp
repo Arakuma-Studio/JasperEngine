@@ -37,34 +37,28 @@ namespace reflect_parity_test {
         return copy;
     }
 
-    YAML::Node mapWithoutKey(const YAML::Node& map, const std::string& key) {
-        YAML::Node copy(YAML::NodeType::Map);
-        for (auto it = map.begin(); it != map.end(); ++it) {
-            if (it->first.Scalar() != key) copy[it->first.Scalar()] = it->second;
-        }
-        return copy;
-    }
-
-    // The hand-written decode as S03 ran it (StreamLoad::decodeComponent): a key whose value threw
-    // is left out and the decode runs again
+    // The hand-written decode as S03 ran it (StreamLoad::decodeComponent): each key whose value
+    // threw is left out (S03 finds them one by one from the error's position; here, the keys that
+    // throw on their own) and the decode runs again
     template<typename T, typename Decode>
     T legacyDecode(Decode decode, YAML::Node node, const T* base) {
-        for (int attempt = 0; attempt < 16; attempt++) {
+        try {
+            return decode(node, base);
+        } catch (const YAML::Exception&) {
+        }
+        YAML::Node kept(YAML::NodeType::Map);
+        for (auto it = node.begin(); it != node.end(); ++it) {
+            YAML::Node single(YAML::NodeType::Map);
+            single[it->first.Scalar()] = it->second;
             try {
-                return decode(node, base);
+                (void)decode(single, base);
+                kept[it->first.Scalar()] = it->second;
             } catch (const YAML::Exception&) {
-                bool narrowed = false;
-                for (auto it = node.begin(); it != node.end() && !narrowed; ++it) {
-                    const std::string key = it->first.Scalar();
-                    try {
-                        (void)decode(mapWithoutKey(node, key), base);
-                        node = mapWithoutKey(node, key);
-                        narrowed = true;
-                    } catch (const YAML::Exception&) {
-                    }
-                }
-                if (!narrowed) break;
             }
+        }
+        try {
+            return decode(kept, base);
+        } catch (const YAML::Exception&) {
         }
         return decode(YAML::Node(YAML::NodeType::Map), base);
     }

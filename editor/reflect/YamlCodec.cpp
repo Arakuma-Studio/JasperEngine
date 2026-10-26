@@ -146,6 +146,8 @@ namespace {
             if (!isSaved(field)) continue;
             keys.emplace_back(field.yamlKey);
             for (const char* alias : field.aliases) keys.emplace_back(alias);
+            // the fonts' GUIDs beside their paths (fontDecodeKey)
+            if (field.ops->propertyType == PropertyType::Font) keys.emplace_back(std::string(field.yamlKey) + "Guid");
         }
     }
 

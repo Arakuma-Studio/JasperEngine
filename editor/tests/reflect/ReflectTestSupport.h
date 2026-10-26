@@ -134,7 +134,8 @@ namespace jasperengine::editor::test {
                 Texture& texture = *static_cast<Texture*>(value);
                 texture = Texture();
                 if (chance(60)) {
-                    texture.setPath(path().empty() ? std::string("textures/b.png") : path());
+                    const std::string file = path();
+                    texture.setPath(file.empty() ? std::string("textures/b.png") : file);
                     texture.setPathGuid(0, guid());
                     texture.setMinFilter(static_cast<TextureFilter>(integer(0, 5)));
                     texture.setMagFilter(static_cast<TextureFilter>(integer(0, 1)));

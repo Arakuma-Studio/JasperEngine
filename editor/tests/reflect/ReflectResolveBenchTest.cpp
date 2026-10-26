@@ -64,6 +64,8 @@ namespace reflect_resolve_bench_test {
     // median ns per resolve of `path`, over batches of 1000
     double medianNanoseconds(const reflect::ComponentDesc& desc, void* comp, std::string_view path, unsigned long long& allocations) {
         std::vector<double> batches;
+        // (reserved first: only the resolves are counted)
+        batches.reserve(51);
         void* sink = nullptr;
         const unsigned long long before = reflectBenchAllocations;
         for (int batch = 0; batch < 51; batch++) {

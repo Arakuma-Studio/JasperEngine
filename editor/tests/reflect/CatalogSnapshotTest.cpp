@@ -24,6 +24,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <map>
+#include <vector>
 
 namespace fs = std::filesystem;
 using namespace jasperengine;
@@ -230,6 +231,9 @@ TEST(ReflectRegistry, CatalogSnapshot) {
     const Json expected = Json::parse(in);
     std::vector<std::string> differences;
     listDifferences(expected, now, "", differences);
+    // the differences docs/specs/S08-reflection.md (Deviations) accepts: Animation's
+    // actionFrameCount, a count that read a dangling pointer, is no longer listed
+    std::erase_if(differences, [](const std::string& line) { return line.ends_with("/actionFrameCount: missing now"); });
     std::string text;
     for (const std::string& line : differences) text += "\n  " + line;
     EXPECT_TRUE(differences.empty()) << "Catalog differs from the snapshot taken before reflection:" << text;
