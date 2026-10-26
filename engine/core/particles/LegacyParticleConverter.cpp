@@ -388,6 +388,8 @@ ParticleEffectDocument LegacyParticleConverter::convert(const LegacyParticleSyst
     }
     r.texture = target.texture;
     r.textureGuid = target.textureGuid;
+    // the old points drew squares without a texture
+    r.untexturedShape = UntexturedShape::Square;
     r.shader = "library:particles";
     r.shaderFeatures = target.shaderFeatures;
     r.shaderProperties = target.shaderProperties;

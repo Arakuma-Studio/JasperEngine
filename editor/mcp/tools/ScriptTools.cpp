@@ -99,6 +99,7 @@ std::string assetType(const fs::path& path) {
     const std::string p = path.string();
     if (Util::isImageFile(p)) return "texture";
     if (Util::isColorLutFile(p)) return "color_lut";
+    if (Util::isParticleEffectFile(p)) return "particle_effect";
     if (Util::isModelFile(p)) return "model";
     if (Util::isAudioFile(p)) return "audio";
     if (Util::isFontFile(p)) return "font";

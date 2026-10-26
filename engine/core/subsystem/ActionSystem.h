@@ -92,6 +92,8 @@ namespace jasperengine{
 		// an action whose target is a particle system and which has no other kind (D1): its
 		// start, stop and pause play, stop and pause the system
 		bool isParticleController(Entity entity, const ActionComponent& action);
+		// an editor preview steps no systems: a running controller advances its particles itself
+		void previewParticleController(double dt, Entity entity, const ActionComponent& action);
 
 		//Keyframe
 		void keyframeUpdate(double dt, ActionComponent& action, KeyframeTracksComponent& keyframe);

@@ -703,9 +703,9 @@ EntityHandle
  |   |- RectTransform
  |       |- Text, Polygon, LayoutGroup
  |       |- Image -> Button, Panel, Scrollbar, Progressbar, InputField
- |- AudioSource, Rigidbody2D, Rigidbody, Fog, VolumetricClouds, Skybox
+ |- AudioSource, Rigidbody2D, Rigidbody, Fog, VolumetricClouds, Skybox, ParticleSystem
  |- Action -> Tween (AlphaTween, ColorTween, PositionTween, RotationTween, ScaleTween),
-             ParticleSystem, SpriteAnimation, Animation, MorphTracks, RotateTracks,
+             SpriteAnimation, Animation, MorphTracks, RotateTracks,
              ScaleTracks, TranslateTracks
 Joint2D, Joint3D (standalone classes)
 ```
@@ -1050,18 +1050,47 @@ Animation (Action): rw `loop`, `ownedActions`, `blendWeight`, `defaultFadeTime`;
 `Ease(EaseType.X)` / `Ease.linear(t)`, `Ease.easeInQuad(t)`, `Ease.easeOutQuad(t)`,
 `Ease.easeInOutQuad(t)`, ... `Ease.easeOutBounce(t)` (static helpers, t in 0..1).
 
-### 4.16 ParticleSystem (Action) - partial
+### 4.16 ParticleSystem
 
-rw: `enabled`, `rate`, `maxPerUpdate`, `emitter`, `loop`, `localSpace`, `emitterShape`
-(`ParticleEmitterShape.*`). Methods: `reset()`, `addBurst(time, count)` / `addBurst(time, minCount, maxCount)`,
-`setBursts(...)`, `clearBursts()`, `setLifeInitializer(min [, max])`, `setPositionInitializer(minV3 [, maxV3])`,
-`setSpherePositionInitializer(r [, r2])`, `setCirclePositionInitializer(...)`,
-`setVelocityInitializer(minV3 [, maxV3])`, `setAccelerationInitializer(...)`,
-`setColorInitializer(minV3 [, maxV3])`, `setAlphaInitializer(...)`,
-`setSizeInitializer(...)`, `setRotationInitializer(...)`, `setScaleInitializer(...)`, and
+A GameObject with a Particle System (`ParticleSystem(scene)` makes one; a script property of
+type ParticleSystem, or `object(ref, 'ParticleSystem')` in eval_lua). Methods: `play()`,
+`pause()`, `stop([clear])` (true also removes the particles), `restart()`,
+`emit(count [, {position, velocity, size, color, lifetime}])`, `seek(t)` (restart and simulate to
+t seconds), `step(ticks)`, `sendTrigger(name)` (the effect's Trigger sub-emitters named so),
+`setFloat(name, v)` / `setVector3(name, v)` / `setColor(name, v)` and `getFloat` / `getVector3` /
+`getColor` for the effect's exposed parameters (false / nil for an unknown name),
+`setInlineEffect(json)` / `getInlineEffect()`, `addCollisionPlane(gameObject)` /
+`clearCollisionPlanes()`. rw: `enabled`, `playOnAwake`, `playbackSpeed`, `seed` (0: a new seed
+at every play), `effect` (a .particles path; "" plays the inline effect). ro: `isPlaying`,
+`isPaused`, `isEmitting`, `particleCount`, `time`.
+
+Events, one batch per frame on the main thread after the simulation (plain tables, 1-based):
+`onCollision(fn)` (position, normal, velocity, particleId, killed; at most the Collision
+module's maxCollisionEvents per tick), `onParticleDeath(fn)` (position, velocity, particleId),
+`onSubEmit(fn)` (position, entry, count, trigger: "birth", "death", "collision" or "trigger").
+
+```lua
+local ps = ParticleSystem(scene)
+ps.effect = "fx/sparks.particles"
+ps:play()
+ps:onCollision(function(events)
+    print(#events .. " hits, first at " .. events[1].position.y)
+end)
+```
+
+Deprecated (the old Action API, kept for old scripts: they edit the inline effect and warn
+once): rw `maxParticles`, `rate`, `maxPerUpdate`, `emitter`, `loop`, `localSpace`,
+`emitterShape` (`ParticleEmitterShape.*`), `running`; `start()`, `reset()`, `setTarget(go)`,
+`addBurst(time, count)` / `addBurst(time, minCount, maxCount)`, `setBursts(...)`,
+`clearBursts()`, `setLifeInitializer(min [, max])`, `setPositionInitializer(minV3 [, maxV3])`,
+`setSpherePositionInitializer(...)`, `setHemispherePositionInitializer(...)`,
+`setCirclePositionInitializer(...)`, `setConePositionInitializer(...)`,
+`setVelocityInitializer(...)`, `setAccelerationInitializer(...)`, `setColorInitializer(...)`,
+`addColorGradientStop(...)`, `setColorGradient(...)`, `clearColorGradient()`,
+`setAlphaInitializer(...)`, `setSizeInitializer(...)`, `setSpriteIntializer(...)`,
+`setRotationInitializer(...)`, `setScaleInitializer(...)` and
 `set*Modifier(fromTime, toTime, from, to [, EaseType])` for Position/Velocity/Acceleration/
-Color/Alpha/Size/Rotation/Scale/Sprite. Plus Action `start()`, `stop()`, `pause()`.
-(Component getter is misspelled in the binding: `getParticlesomponent()`.)
+Color/Alpha/Size/Sprite/Rotation/Scale. More: jasper://docs/particles.
 
 ### 4.17 Other wrappers (partial)
 

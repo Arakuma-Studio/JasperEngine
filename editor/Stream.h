@@ -11,6 +11,7 @@
 #include "math/Vector3.h"
 #include "math/Quaternion.h"
 #include "math/Matrix4.h"
+#include "particles/LegacyParticleSystem.h"
 
 #include <filesystem>
 #include <unordered_map>
@@ -428,6 +429,8 @@ namespace jasperengine::editor {
 
         static YAML::Node encodeFogComponent(const FogComponent& fog);
         static FogComponent decodeFogComponent(const YAML::Node& node, const FogComponent* oldFog = nullptr);
+        static YAML::Node encodeForceFieldComponent(const ForceFieldComponent& field);
+        static ForceFieldComponent decodeForceFieldComponent(const YAML::Node& node, const ForceFieldComponent* oldField = nullptr);
         static YAML::Node encodeLocalVolumetricFogComponent(const LocalVolumetricFogComponent& volume);
         static LocalVolumetricFogComponent decodeLocalVolumetricFogComponent(const YAML::Node& node, const LocalVolumetricFogComponent* oldVolume = nullptr);
         static YAML::Node encodeVolumetricCloudsComponent(const VolumetricCloudsComponent& clouds);
@@ -540,6 +543,8 @@ namespace jasperengine::editor {
 
         static YAML::Node encodeParticleSystemComponent(const ParticleSystemComponent& particles);
         static ParticleSystemComponent decodeParticleSystemComponent(const YAML::Node& node, const ParticleSystemComponent* oldParticles = nullptr);
+        // a scene's particle system as written before S20 (the scene migration reads it)
+        static LegacyParticleSystem decodeLegacyParticleSystem(const YAML::Node& node);
 
         static YAML::Node encodeInstancedMeshComponent(const InstancedMeshComponent& instmesh);
         static InstancedMeshComponent decodeInstancedMeshComponent(const YAML::Node& node, const InstancedMeshComponent* oldInstmesh = nullptr);

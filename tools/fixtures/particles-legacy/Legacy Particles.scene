@@ -1,0 +1,132 @@
+formatVersion: 2
+id: 1
+name: Legacy Particles
+scene:
+  backgroundColor: [0.1, 0.1, 0.12, 1]
+  gravity3D: [0, -9.81, 0]
+sceneType: scene_3d
+mainCamera: 0
+entities:
+  - type: Entity
+    entity: 1001
+    name: Fire
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+      points:
+        enabled: true
+        maxPoints: 200
+        transparent: true
+        points: []
+  - type: Entity
+    entity: 1002
+    name: Fire Particles
+    components:
+      action:
+        state: Running
+        speed: 1
+        target: 1001
+        ownedTarget: false
+      particlesystem:
+        enabled: true
+        maxParticles: 200
+        emitter: true
+        loop: true
+        localSpace: false
+        rate: 60
+        maxPerUpdate: 100
+        bursts: []
+        lifeInitializer:
+          minLife: 0.5
+          maxLife: 1
+        positionInitializer:
+          shape: Circle
+          radius: 0.25
+          innerRadius: 0
+        velocityInitializer:
+          minVelocity: [-0.15, 1, -0.15]
+          maxVelocity: [0.15, 2, 0.15]
+        sizeInitializer:
+          minSize: 0.35
+          maxSize: 0.5
+        sizeModifier:
+          fromTime: 0
+          toTime: 1
+          fromSize: 0.45
+          toSize: 0.05
+          function: LINEAR
+        alphaModifier:
+          fromTime: 0
+          toTime: 1
+          fromAlpha: 1
+          toAlpha: 0
+          function: QUAD_OUT
+        colorGradient:
+          useSRGB: true
+          stops:
+            - time: 0
+              color: [1, 0.9, 0.4]
+            - time: 0.4
+              color: [1, 0.45, 0.1]
+            - time: 1
+              color: [0.35, 0.08, 0.03]
+  - type: Entity
+    entity: 1003
+    name: Explosion
+    components:
+      transform:
+        position: [4, 1, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+      points:
+        enabled: true
+        maxPoints: 250
+        transparent: true
+        points: []
+  - type: Entity
+    entity: 1004
+    name: Explosion Particles
+    components:
+      action:
+        state: Stopped
+        speed: 1
+        target: 1003
+        ownedTarget: false
+      particlesystem:
+        enabled: true
+        maxParticles: 250
+        emitter: true
+        loop: false
+        localSpace: true
+        rate: 0
+        bursts:
+          - time: 0
+            minCount: 160
+            maxCount: 200
+        lifeInitializer:
+          minLife: 0.5
+          maxLife: 1.2
+        positionInitializer:
+          shape: Sphere
+          radius: 0.2
+        velocityInitializer:
+          minVelocity: [-6, -6, -6]
+          maxVelocity: [6, 6, 6]
+        accelerationInitializer:
+          minAcceleration: [0, -9.8, 0]
+          maxAcceleration: [0, -9.8, 0]
+        colorInitializer:
+          minColor: [1, 1, 0.6]
+          maxColor: [1, 1, 0.6]
+          useSRGB: true
+        rotationInitializer:
+          minRotation: [1, 0, 0, 0]
+          maxRotation: [0.7071068, 0, 0, 0.7071068]
+        scaleInitializer:
+          minScale: [1, 1, 1]
+          maxScale: [2, 2, 2]
+          linearSort: true

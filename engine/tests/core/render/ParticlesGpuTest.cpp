@@ -1,0 +1,210 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+// Particle systems on the headless device (docs/specs/S20-particles.md AC6, AC8): one golden per
+// render mode family: the billboard alignments, stretched billboards, mesh particles, frame
+// blending, six-way lighting, soft particles with the near fade, and trails and ribbons. Each
+// system is seeked to a fixed time with a fixed seed and paused, so every frame draws the same
+// particles. Goldens in engine/tests/core/golden/particles_*.png, made on glcore
+// (JASPER_TEST_UPDATE_GOLDEN=1) and matched on the other backends within the cross-backend bound.
+// The textures are tools/particles/make_test_textures.py's (fixtures/particles/textures).
+
+#include "Engine.h"
+#include "Scene.h"
+#include "component/ParticleSystemComponent.h"
+#include "object/Camera.h"
+#include "object/Light.h"
+#include "object/ParticleSystem.h"
+#include "object/Primitive.h"
+#include "subsystem/ParticleSubsystem.h"
+#include "subsystem/RenderSystem.h"
+
+#include "GpuEnvironment.h"
+#include "HeadlessContext.h"
+#include "ImageCompare.h"
+#include "LogCapture.h"
+
+#include <gtest/gtest.h>
+
+#include <cstring>
+#include <memory>
+#include <string>
+#include <vector>
+
+using namespace jasperengine;
+using namespace jasperengine::test;
+
+namespace {
+
+    // the goldens are glcore's; another backend is held to the cross-backend bound
+    CompareOptions goldenTolerance(){
+        CompareOptions options;
+        const bool goldenBackend = std::strcmp(HeadlessContext::getBackendName(), "glcore") == 0;
+        options.pixelThreshold = 16;
+        options.maxBadFraction = goldenBackend ? 0.005 : 0.03;
+        options.maxMeanDiff = goldenBackend ? 1.0 : 3.0;
+        return options;
+    }
+
+    class ParticlesGpu : public ::testing::Test {
+    protected:
+        Scene scene;
+        Camera camera{&scene};
+        std::vector<std::unique_ptr<ParticleSystem>> systems;
+        std::vector<std::unique_ptr<Primitive>> primitives;
+
+        void SetUp() override{
+            scene.setBackgroundColor(0.08f, 0.09f, 0.12f, 1.0f);
+            scene.setLitQuality(LitQuality::STANDARD);
+            camera.setType(CameraType::CAMERA_PERSPECTIVE);
+            camera.setPosition(0.0f, 1.5f, 9.0f);
+            camera.setTarget(0.0f, 1.0f, 0.0f);
+            camera.activate();
+            Engine::setScene(&scene);
+        }
+
+        void TearDown() override{
+            systems.clear();
+            Engine::removeScene(&scene);
+        }
+
+        // a system at `position` playing `json` (an inline effect), seeked to `time` and paused
+        ParticleSystem& system(const Vector3& position, const std::string& json){
+            systems.push_back(std::make_unique<ParticleSystem>(&scene));
+            ParticleSystem& ps = *systems.back();
+            ps.setPosition(position);
+            EXPECT_TRUE(ps.setInlineEffect(json)) << json;
+            ps.setPlayOnAwake(false);
+            return ps;
+        }
+
+        Primitive& plane(const Vector3& position, float size, const Vector3& color){
+            primitives.push_back(std::make_unique<Primitive>(&scene));
+            Primitive& p = *primitives.back();
+            p.createPlane(size, size);
+            p.setPosition(position.x, position.y, position.z);
+            p.setColor(color.x, color.y, color.z);
+            return p;
+        }
+
+        // the effects bind on the first frame; then each one is seeked and held
+        bool render(double time){
+            Scene* current = &scene;
+            if (!GpuEnvironment::runFrames([current](){ return current->getSystem<RenderSystem>()->isAllLoaded(); }))
+                return false;
+            for (auto& ps : systems){
+                ps->seek((float)time);
+                ps->pause();
+            }
+            return GpuEnvironment::runFrames([current](){ return current->getSystem<RenderSystem>()->isAllLoaded(); });
+        }
+    };
+
+    // a burst of particles flying out, seed fixed (the mode and the extra keys of `renderer`)
+    std::string burst(const std::string& renderer, const std::string& extraModules = "", int count = 24, float speed = 0.8f){
+        return R"({"version": 1, "duration": 5, "looping": false, "seed": 17, "maxParticles": 200, "modules": [
+            {"type": "main", "startLifetime": 5, "startSpeed": )" + std::to_string(speed) + R"(, "startSize": 0.45,
+             "startColor": [1, 0.75, 0.4, 1]},
+            {"type": "emission", "rateOverTime": 0, "bursts": [{"time": 0, "count": )" + std::to_string(count) + R"(}]},
+            {"type": "shape", "shape": "sphere", "radius": 0.3})" + extraModules + R"(,
+            {"type": "renderer", )" + renderer + R"(}]})";
+    }
+
+}
+
+TEST_F(ParticlesGpu, BillboardModes){
+    JASPER_REQUIRE_GPU();
+    const char* modes[] = {"billboard", "facingCameraPosition", "horizontalBillboard", "verticalBillboard", "worldOriented"};
+    for (int i = 0; i < 5; i++){
+        system(Vector3(-4.0f + 2.0f * (float)i, 1.0f, 0.0f),
+               burst(std::string(R"("renderMode": ")") + modes[i] + R"(", "texture": "particles/textures/spark.png", "blend": "additive")"));
+    }
+    ASSERT_TRUE(render(1.0));
+    EXPECT_GOLDEN_OPTIONS("particles_billboard_modes", goldenTolerance());
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(ParticlesGpu, StretchedAndUntextured){
+    JASPER_REQUIRE_GPU();
+    // stretched along their velocity, and the soft disc / square a billboard draws without a texture
+    system(Vector3(-2.5f, 1.0f, 0.0f), burst(R"("renderMode": "stretchedBillboard", "speedScale": 0.4, "lengthScale": 1.5,
+        "texture": "particles/textures/spark.png", "blend": "additive")", "", 24, 3.0f));
+    system(Vector3(1.0f, 1.0f, 0.0f), burst(R"("renderMode": "billboard")"));
+    system(Vector3(3.5f, 1.0f, 0.0f), burst(R"("renderMode": "billboard", "untexturedShape": "square")"));
+    ASSERT_TRUE(render(0.6));
+    EXPECT_GOLDEN_OPTIONS("particles_stretched", goldenTolerance());
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(ParticlesGpu, MeshParticles){
+    JASPER_REQUIRE_GPU();
+    Light sun(&scene);
+    sun.setType(LightType::DIRECTIONAL);
+    sun.setDirection(-0.4f, -0.8f, -0.5f);
+    sun.setIntensity(3.0f);
+    sun.setShadows(false);
+    system(Vector3(-1.5f, 1.0f, 0.0f), burst(R"("renderMode": "mesh", "meshes": [{"type": "primitive", "primitive": "cube"}],
+        "lighting": "lit")", R"(, {"type": "rotationOverLifetime", "angularVelocity": 90})", 16));
+    system(Vector3(1.5f, 1.0f, 0.0f), burst(R"("renderMode": "mesh", "meshes": [{"type": "primitive", "primitive": "sphere"},
+        {"type": "primitive", "primitive": "torus"}], "meshSelection": "index", "lighting": "lit")", "", 16));
+    ASSERT_TRUE(render(1.2));
+    EXPECT_GOLDEN_OPTIONS("particles_mesh", goldenTolerance());
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(ParticlesGpu, FrameBlending){
+    JASPER_REQUIRE_GPU();
+    // the same sheet without and with frame blending, half-way between frames
+    const std::string sheet = R"(, {"type": "textureSheetAnimation", "tilesX": 4, "tilesY": 4, "frameOverTime": {"mode": "curve",
+        "curve": [[0, 0], [1, 1]]}, "cycles": 1)";
+    system(Vector3(-2.0f, 1.0f, 0.0f), burst(R"("renderMode": "billboard", "texture": "particles/textures/sheet.png")", sheet + "}", 12, 0.5f));
+    system(Vector3(2.0f, 1.0f, 0.0f), burst(R"("renderMode": "billboard", "texture": "particles/textures/sheet.png")",
+                                            sheet + R"(, "frameBlending": true})", 12, 0.5f));
+    ASSERT_TRUE(render(1.55));
+    EXPECT_GOLDEN_OPTIONS("particles_frame_blend", goldenTolerance());
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(ParticlesGpu, SixWayLighting){
+    JASPER_REQUIRE_GPU();
+    Light sun(&scene);
+    sun.setType(LightType::DIRECTIONAL);
+    sun.setDirection(1.0f, -0.3f, -0.2f);
+    sun.setColor(1.0f, 0.8f, 0.6f);
+    sun.setIntensity(4.0f);
+    sun.setShadows(false);
+    system(Vector3(0.0f, 1.0f, 0.0f), burst(R"("renderMode": "billboard", "lighting": "sixWay", "sixWayLayout": "rgba",
+        "sixWayMapA": "particles/textures/sixway_a.png", "sixWayMapB": "particles/textures/sixway_b.png", "blend": "alpha",
+        "sortMode": "byDistance")", "", 20, 0.6f));
+    ASSERT_TRUE(render(1.0));
+    EXPECT_GOLDEN_OPTIONS("particles_sixway", goldenTolerance());
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(ParticlesGpu, SoftParticlesAndNearFade){
+    JASPER_REQUIRE_GPU();
+    // big particles cutting a floor: soft fades where they meet it; the near fade where they reach the camera
+    plane(Vector3(0.0f, 0.8f, 0.0f), 20.0f, Vector3(0.4f, 0.45f, 0.5f));
+    system(Vector3(-1.5f, 0.8f, 0.0f), burst(R"("renderMode": "billboard", "texture": "particles/textures/spark.png",
+        "shader": "library:particles", "shaderFeatures": ["SOFT"], "shaderProperties": [{"name": "softness", "value": [0.6, 0, 0, 0]}])",
+        "", 8, 0.3f));
+    system(Vector3(1.5f, 1.2f, 6.5f), burst(R"("renderMode": "billboard", "texture": "particles/textures/spark.png",
+        "shader": "library:particles", "shaderFeatures": ["NEAR_FADE"], "shaderProperties": [{"name": "nearFadeStart", "value": [1.0, 0, 0, 0]}, {"name": "nearFadeEnd", "value": [3.0, 0, 0, 0]}])",
+        "", 8, 0.3f));
+    ASSERT_TRUE(render(1.0));
+    EXPECT_GOLDEN_OPTIONS("particles_soft_nearfade", goldenTolerance());
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(ParticlesGpu, TrailsAndRibbons){
+    JASPER_REQUIRE_GPU();
+    const std::string gravity = R"(, {"type": "forceOverLifetime", "y": -1.5})";
+    system(Vector3(-2.0f, 1.5f, 0.0f), burst(R"("renderMode": "billboard", "texture": "particles/textures/spark.png", "blend": "additive")",
+        gravity + R"(, {"type": "trails", "mode": "perParticle", "lifetime": 0.6, "widthOverTrail": {"mode": "curve", "curve": [[0, 1], [1, 0]]}})",
+        10, 2.0f));
+    system(Vector3(2.0f, 1.5f, 0.0f), burst(R"("renderMode": "none", "blend": "additive")",
+        gravity + R"(, {"type": "trails", "mode": "ribbon", "ribbonCount": 1, "lifetime": 1.0})", 10, 2.0f));
+    ASSERT_TRUE(render(1.0));
+    EXPECT_GOLDEN_OPTIONS("particles_trails", goldenTolerance());
+    EXPECT_NO_ENGINE_ERRORS();
+}

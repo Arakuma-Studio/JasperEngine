@@ -14,6 +14,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -94,6 +95,7 @@ namespace jasperengine { namespace particles {
         size_t (*size)(const void* vector);
         void (*resize)(void* vector, size_t count);
         void* (*at)(void* vector, size_t index);
+        void (*erase)(void* vector, size_t index);
     };
 
     struct FieldDesc {
@@ -175,6 +177,13 @@ namespace jasperengine { namespace particles {
         // its multiplier; a MinMaxGradient without a member as its colour. False when the
         // document has no such parameter or its field does not take the value.
         static bool setExposed(ParticleEffectDocument& document, std::string_view name, const Vector4& value);
+
+        // Every asset path the document holds (textures, models, child effects; FieldFlag_AssetPath)
+        // with its GUID field, in modules present or not: what an editor resolves, renames and
+        // exports. The visitor may change both.
+        enum class AssetKind : uint8_t { Texture, Model, Effect };
+        using AssetVisitor = std::function<void(std::string& path, std::string& guid, AssetKind kind, const std::string& field)>;
+        static void visitAssets(ParticleEffectDocument& document, const AssetVisitor& visit);
         static bool getExposed(const ParticleEffectDocument& document, std::string_view name, Vector4& value);
 
         // Enum tables shared with the editor (names in JSON and in the UI)

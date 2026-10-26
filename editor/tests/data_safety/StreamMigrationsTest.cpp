@@ -49,12 +49,12 @@ TEST(StreamMigrations, MigrateStampsVersionFirst){
     YAML::Node root = YAML::Load("{name: Level1, entities: [{name: A}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_EQ(result.versionRead, 0);
-    EXPECT_EQ(result.versionCurrent, 2);
+    EXPECT_EQ(result.versionCurrent, 3);
     EXPECT_TRUE(result.migrated());
     EXPECT_FALSE(result.newer());
     ASSERT_TRUE(root.IsMap());
     EXPECT_EQ(root.begin()->first.Scalar(), "formatVersion");
-    EXPECT_EQ(root["formatVersion"].as<int>(), 2);
+    EXPECT_EQ(root["formatVersion"].as<int>(), 3);
     EXPECT_EQ(root["name"].as<std::string>(), "Level1");
     EXPECT_EQ(root["entities"][0]["name"].as<std::string>(), "A");
     EXPECT_EQ(root.size(), 3u);
@@ -62,7 +62,7 @@ TEST(StreamMigrations, MigrateStampsVersionFirst){
     // current: nothing to do
     const MigrationResult again = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_FALSE(again.migrated());
-    EXPECT_EQ(again.versionRead, 2);
+    EXPECT_EQ(again.versionRead, 3);
 }
 
 TEST(StreamMigrations, NewerIsLeftUntouched){
@@ -71,8 +71,8 @@ TEST(StreamMigrations, NewerIsLeftUntouched){
     EXPECT_TRUE(result.newer());
     EXPECT_FALSE(result.migrated());
     EXPECT_EQ(root["formatVersion"].as<int>(), 99);
-    EXPECT_EQ(StreamMigrations::newerFormatMessage(DocumentKind::Scene, 3),
-            "Written by a newer JasperEngine (scene format 3; this editor writes 2).");
+    EXPECT_EQ(StreamMigrations::newerFormatMessage(DocumentKind::Scene, 4),
+            "Written by a newer JasperEngine (scene format 4; this editor writes 3).");
 }
 
 TEST(StreamMigrations, OldPrefabsAreLeftToThePrefabLoader){
@@ -107,7 +107,7 @@ TEST(StreamMigrations, SceneV1ToV2ShadowBiasInTexels){
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_EQ(result.versionRead, 1);
     ASSERT_EQ(result.applied.size(), 1u);
-    EXPECT_EQ(root["formatVersion"].as<int>(), 2);
+    EXPECT_EQ(root["formatVersion"].as<int>(), 3);
     EXPECT_EQ(root["scene"]["shadowQuality"].as<std::string>(), "auto");
     EXPECT_FLOAT_EQ(root["entities"][0]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
     EXPECT_FLOAT_EQ(root["entities"][1]["children"][0]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
@@ -144,4 +144,60 @@ TEST(StreamMigrations, SceneV1ToV2ClearsTheRetiredMeshBit){
     EXPECT_EQ(root["shaderKeys"][0]["properties"].as<uint32_t>(), (1u << 3) | (1u << 4));
     EXPECT_EQ(root["shaderKeys"][1]["properties"].as<uint32_t>(), 32u);
     EXPECT_EQ(root["shaderKeys"][2].as<uint64_t>(), ShaderPool::getShaderKey(ShaderType::MESH, (1u << 3) | (1u << 4)));
+}
+
+TEST(StreamMigrations, SceneV2ToV3ParticleSystemsMoveToTheirTargets){
+    // S20: an old Particle System action drawing into a Points GameObject becomes an inline
+    // effect on that GameObject; the action stays its controller (Play On Awake off), the empty
+    // Points go, the log says what happened
+    YAML::Node root = YAML::Load(
+        "{formatVersion: 2, entities: ["
+        "{type: Entity, entity: 1001, name: Fire, components: {transform: {position: [0, 0, 0]}, points: {maxPoints: 50, points: []}}},"
+        "{type: Entity, entity: 1002, name: Fire Particles, components: {action: {state: Running, speed: 2, target: 1001},"
+        " particlesystem: {maxParticles: 50, rate: 25, loop: true, lifeInitializer: {minLife: 1, maxLife: 2},"
+        " bursts: [{time: 0, minCount: 5, maxCount: 7}]}}},"
+        "{type: Entity, entity: 1003, name: Lonely, components: {particlesystem: {rate: 3}}}]}");
+    const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
+    EXPECT_EQ(result.versionRead, 2);
+    ASSERT_EQ(result.applied.size(), 1u);
+    EXPECT_EQ(root["formatVersion"].as<int>(), 3);
+
+    const YAML::Node fire = root["entities"][0]["components"];
+    ASSERT_TRUE(fire["particlesystem"]);
+    EXPECT_FALSE(fire["points"]) << "the empty Points of its only system go";
+    EXPECT_FALSE(fire["particlesystem"]["playOnAwake"].as<bool>()) << "the action plays it";
+    EXPECT_FLOAT_EQ(fire["particlesystem"]["playbackSpeed"].as<float>(), 2.0f);
+    const std::string effect = fire["particlesystem"]["inlineEffect"].as<std::string>();
+    EXPECT_NE(effect.find("\"rateOverTime\": 25"), std::string::npos) << effect;
+    EXPECT_NE(effect.find("\"bursts\""), std::string::npos) << effect;
+
+    const YAML::Node controller = root["entities"][1]["components"];
+    EXPECT_TRUE(controller["action"]);
+    EXPECT_FALSE(controller["particlesystem"]);
+
+    // without a target the system stays where it was, and gets a Transform to emit from
+    const YAML::Node lonely = root["entities"][2]["components"];
+    EXPECT_TRUE(lonely["particlesystem"]);
+    EXPECT_TRUE(lonely["transform"]);
+    EXPECT_TRUE(lonely["particlesystem"]["playOnAwake"].as<bool>());
+
+    ASSERT_EQ(result.log.lines.size(), 2u);
+    EXPECT_NE(result.log.lines[0].find("Particle System of Fire Particles: converted to an inline effect on its target Fire"), std::string::npos)
+        << result.log.lines[0];
+    EXPECT_NE(result.log.lines[1].find("no Transform"), std::string::npos) << result.log.lines[1];
+
+    // a format 3 scene is not touched again
+    EXPECT_TRUE(StreamMigrations::migrate(DocumentKind::Scene, root).applied.empty());
+}
+
+TEST(StreamMigrations, PrefabV4ToV5ParticleSystems){
+    YAML::Node root = YAML::Load(
+        "{type: Prefab, version: 4, members: ["
+        "{type: Entity, entity: 1001, name: Dust, components: {transform: {position: [0, 0, 0]}, points: {points: []}}},"
+        "{type: Entity, entity: 1002, name: Dust FX, components: {action: {target: 1001}, particlesystem: {rate: 9}}}]}");
+    const MigrationResult result = StreamMigrations::migrate(DocumentKind::Prefab, root);
+    EXPECT_TRUE(result.migrated());
+    EXPECT_EQ(root["version"].as<int>(), 5);
+    EXPECT_TRUE(root["members"][0]["components"]["particlesystem"]);
+    EXPECT_FALSE(root["members"][1]["components"]["particlesystem"]);
 }

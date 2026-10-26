@@ -187,6 +187,37 @@ bool RenderSystem::appendParticleStream(ParticleStream& stream, const void* data
 
 // ---------------------------------------------------------------- loading
 
+RenderSystem::ParticleVariantSet RenderSystem::getParticleVariants(const CompiledEffect& effect, bool fog){
+    const RendererModule& r = effect.document.renderer;
+    const RenderParams& rp = effect.program.render;
+    ParticleVariantSet set;
+    set.quads = r.renderMode != RenderMode::Mesh && r.renderMode != RenderMode::None;
+    set.meshes = r.renderMode == RenderMode::Mesh;
+    set.trails = effect.program.trails.enabled;
+    set.reference = r.shader.empty() ? std::string() : getComponentShaderReference(r.shader, r.shaderFeatures, materialBlend(r.blend));
+
+    ParticlesShaderFlags flags;
+    flags.texture = !r.texture.empty();
+    flags.stretch = r.renderMode == RenderMode::StretchedBillboard;
+    flags.frameBlend = rp.frameBlending != 0;
+    flags.lit = r.lighting == LightingMode::Lit;
+    flags.sixWay = r.lighting == LightingMode::SixWay;
+    flags.customData = rp.customData != 0;
+    flags.receiveShadows = r.receiveShadows;
+    flags.fog = fog;
+    set.quadProperties = ShaderPool::getParticlesProperties(flags);
+    ParticlesShaderFlags meshFlags = flags;
+    meshFlags.mesh = true;
+    meshFlags.stretch = false;
+    set.meshProperties = ShaderPool::getParticlesProperties(meshFlags);
+    ParticlesShaderFlags trailFlags;
+    trailFlags.trail = true;
+    trailFlags.texture = !r.trailTexture.empty() || !r.texture.empty();
+    trailFlags.fog = fog;
+    set.trailProperties = ShaderPool::getParticlesProperties(trailFlags);
+    return set;
+}
+
 uint64_t RenderSystem::particleRenderKey(const ParticleSystemState& state) const{
     // what the load reads: the effect's render settings (not its simulation), the scene's fog
     // and post colour, the pipelines
@@ -201,12 +232,12 @@ uint64_t RenderSystem::particleRenderKey(const ParticleSystemState& state) const
     h = mix(h, (uint64_t)r.receiveShadows);
     h = mixString(h, r.shader);
     for (const std::string& f : r.shaderFeatures) h = mixString(h, f);
-    for (const ShaderProperty& p : r.shaderProperties){
+    for (const particles::ShaderProperty& p : r.shaderProperties){
         h = mixString(h, p.name);
         h = mix(h, (uint64_t)std::hash<float>()(p.value.x) ^ ((uint64_t)std::hash<float>()(p.value.y) << 1) ^
                        ((uint64_t)std::hash<float>()(p.value.z) << 2) ^ ((uint64_t)std::hash<float>()(p.value.w) << 3));
     }
-    for (const ShaderTexture& t : r.shaderTextures){
+    for (const particles::ShaderTexture& t : r.shaderTextures){
         h = mixString(h, t.name);
         h = mixString(h, t.path);
     }
@@ -283,33 +314,27 @@ bool RenderSystem::loadParticles(Entity entity, ParticleSystemComponent& particl
             return false;
     }
     rd.shaderTextures.clear();
-    for (const ShaderTexture& t : r.shaderTextures)
+    for (const particles::ShaderTexture& t : r.shaderTextures)
         rd.shaderTextures.push_back({t.name, Texture(t.path)});
     rd.shaderUniforms.clear();
-    for (const ShaderProperty& p : r.shaderProperties)
+    for (const particles::ShaderProperty& p : r.shaderProperties)
         rd.shaderUniforms.push_back({p.name, p.value});
 
-    // the shader and its variant: the Renderer's (library:particles by default), with the
+    // the shader and its variants: the Renderer's (library:particles by default), with the
     // variant bits of the effect's modules and the BLEND_* define of its blend
     const std::string base = r.shader;
     const MaterialBlendMode blend = materialBlend(r.blend);
-    const std::string reference = getComponentShaderReference(base, r.shaderFeatures, blend);
-    const uint16_t customId = base.empty() ? 0 : ShaderPool::registerCustomShader(reference);
+    const ParticleVariantSet variants = getParticleVariants(*state.effect, hasFog);
+    const std::string& reference = variants.reference;
+    const uint16_t customId = reference.empty() ? 0 : ShaderPool::registerCustomShader(reference);
     std::shared_ptr<const ShaderManifest> manifest = manifestOf(base);
-
-    ParticlesShaderFlags flags;
-    flags.texture = !r.texture.empty();
-    flags.stretch = r.renderMode == RenderMode::StretchedBillboard;
-    flags.frameBlend = rp.frameBlending != 0;
-    flags.lit = r.lighting == LightingMode::Lit;
-    flags.sixWay = r.lighting == LightingMode::SixWay;
-    flags.customData = rp.customData != 0;
-    flags.receiveShadows = r.receiveShadows;
-    flags.fog = hasFog;
     const uint32_t postColor = postColorProperty(ShaderType::PARTICLES);
-    const bool drawsQuads = r.renderMode != RenderMode::Mesh && r.renderMode != RenderMode::None;
-    const bool drawsMeshes = r.renderMode == RenderMode::Mesh;
-    const bool drawsTrails = prog.trails.enabled;
+    const bool drawsQuads = variants.quads;
+    const bool drawsMeshes = variants.meshes;
+    const bool drawsTrails = variants.trails;
+    const bool customData = rp.customData != 0;
+    const bool sixWay = r.lighting == LightingMode::SixWay;
+    const bool receiveShadows = r.receiveShadows;
 
     auto shaderFor = [&](uint32_t properties, uint16_t id) -> std::shared_ptr<ShaderRender> {
         std::shared_ptr<ShaderRender> shader = ShaderPool::get(ShaderType::PARTICLES, properties, id);
@@ -320,16 +345,9 @@ bool RenderSystem::loadParticles(Entity entity, ParticleSystemComponent& particl
         }
         return shader;
     };
-    rd.properties = ShaderPool::getParticlesProperties(flags) | postColor;
-    ParticlesShaderFlags meshFlags = flags;
-    meshFlags.mesh = true;
-    meshFlags.stretch = false;
-    rd.meshProperties = ShaderPool::getParticlesProperties(meshFlags) | postColor;
-    ParticlesShaderFlags trailFlags;
-    trailFlags.trail = true;
-    trailFlags.texture = !rd.trailTexture.empty();
-    trailFlags.fog = hasFog;
-    rd.trailProperties = ShaderPool::getParticlesProperties(trailFlags) | postColor;
+    rd.properties = variants.quadProperties | postColor;
+    rd.meshProperties = variants.meshProperties | postColor;
+    rd.trailProperties = variants.trailProperties | postColor;
     rd.customShaderId = customId;
     rd.shader = drawsQuads ? shaderFor(rd.properties, customId) : nullptr;
     rd.meshShader = drawsMeshes ? shaderFor(rd.meshProperties, customId) : nullptr;
@@ -340,7 +358,7 @@ bool RenderSystem::loadParticles(Entity entity, ParticleSystemComponent& particl
     }
     rd.manifest = manifest;
 
-    const RenderState renderState = resolveComponentRenderState(blend, r.depthWrite ? MaterialDepthWrite::ON : MaterialDepthWrite::OFF,
+    const RenderState renderState = resolveComponentRenderState(blend, r.depthWrite ? MaterialDepthWrite::ENABLED : MaterialDepthWrite::DISABLED,
                                                                 manifest.get(), r.shaderFeatures, false);
     rd.state = renderState;
     rd.sortPriority = r.sortPriority + (manifest ? manifest->resolveState(ShaderReference::getEnabledFeatures(base, r.shaderFeatures)).priority : 0);
@@ -350,7 +368,7 @@ bool RenderSystem::loadParticles(Entity entity, ParticleSystemComponent& particl
     auto bindCommon = [&](ObjectRender& render, ShaderData& shaderData, ParticleRenderData::Slots& slots, bool trail) -> bool {
         slots.vsParams = shaderData.getUniformBlockIndex(UniformBlockType::PARTICLES_VS_PARAMS);
         slots.fsParams = shaderData.getUniformBlockIndex(UniformBlockType::PARTICLES_FS_PARAMS);
-        slots.fsShadowData = flags.receiveShadows && !trail ? shaderData.getUniformBlockIndexByName("u_fs_shadow_data") : -1;
+        slots.fsShadowData = receiveShadows && !trail ? shaderData.getUniformBlockIndexByName("u_fs_shadow_data") : -1;
         slots.customVS.resolve(shaderData, "u_vs_customParams");
         slots.customFS.resolve(shaderData, "u_fs_customParams");
         slots.customVS.writeValues(rd.shaderUniforms, nullptr, manifest.get());
@@ -360,7 +378,7 @@ bool RenderSystem::loadParticles(Entity entity, ParticleSystemComponent& particl
             render.addTexture(shaderData.getTextureIndex(TextureShaderType::PARTICLES), ShaderStageType::FRAGMENT, base.getRender(&emptyWhite));
         render.addTexture(shaderData.getTextureIndex(TextureShaderType::PARTICLEEMISSION), ShaderStageType::FRAGMENT,
                           rd.emission.empty() ? &emptyWhite : rd.emission.getRender(&emptyWhite));
-        if (flags.sixWay && !trail){
+        if (sixWay && !trail){
             render.addTexture(shaderData.getTextureIndex(TextureShaderType::PARTICLESIXWAYA), ShaderStageType::FRAGMENT,
                               rd.sixWayA.empty() ? &emptyWhite : rd.sixWayA.getRender(&emptyWhite));
             render.addTexture(shaderData.getTextureIndex(TextureShaderType::PARTICLESIXWAYB), ShaderStageType::FRAGMENT,
@@ -383,7 +401,7 @@ bool RenderSystem::loadParticles(Entity entity, ParticleSystemComponent& particl
         render.addAttribute(shaderData.getAttrIndex(AttributeType::PARTICLESIZE), source, 2, AttributeDataType::HALF, stride, 16, false, perInstance);
         render.addAttribute(shaderData.getAttrIndex(AttributeType::PARTICLEROTATIONFRAME), source, 2, AttributeDataType::UNSIGNED_SHORT, stride, 20, true, perInstance);
         render.addAttribute(shaderData.getAttrIndex(AttributeType::PARTICLEVELOCITY), source, 4, AttributeDataType::HALF, stride, 24, false, perInstance);
-        if (flags.customData)
+        if (customData)
             render.addAttribute(shaderData.getAttrIndex(AttributeType::PARTICLECUSTOM), &particleCustomPlaceholder, 4, AttributeDataType::HALF,
                                 sizeof(ParticleCustomInstance), 0, false, perInstance);
     };
@@ -596,7 +614,7 @@ void RenderSystem::drawParticles(Entity entity, ParticleSystemComponent& particl
     const Matrix4 worldToSim = simToWorld.inverse();
 
     // the view in simulation space
-    RenderView view;
+    particles::RenderView view;
     const Vector3 eye = worldToSim * camTransform.worldPosition;
     view.position[0] = eye.x; view.position[1] = eye.y; view.position[2] = eye.z;
     Vector3 forward = -camera.worldDirection;
@@ -669,7 +687,10 @@ void RenderSystem::drawParticles(Entity entity, ParticleSystemComponent& particl
     };
 
     fs_particles_params_t fs;
-    fs.blend = Vector4((float)(int)r.blend, 0.0f, 0.0f, 0.0f);
+    // a billboard without a texture (nor a sheet over it) draws a soft disc unless it asks for squares
+    const bool sheet = d.textureSheetAnimation.present && d.textureSheetAnimation.enabled;
+    const bool disc = r.texture.empty() && r.untexturedShape == UntexturedShape::Disc && !sheet;
+    fs.blend = Vector4((float)(int)r.blend, disc ? 1.0f : 0.0f, 0.0f, 0.0f);
     const Vector3 emissionLinear = Color::sRGBToLinear(Vector3(r.emissionColor.x, r.emissionColor.y, r.emissionColor.z));
     fs.emissionColor = Vector4(emissionLinear, rd.emission.empty() ? 0.0f : 1.0f);
     fs.sixWay = Vector4((float)(int)r.sixWayLayout, r.sixWayContrast, 0.0f, 0.0f);

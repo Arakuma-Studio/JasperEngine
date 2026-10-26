@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "particles/ParticleEffectLibrary.h"
+#include "util/ParticleMigrationReport.h"
 #include "util/NumericExpression.h"
 #include "util/EditorFingerprint.h"
 #include "util/ScriptReloadService.h"
@@ -3927,6 +3929,9 @@ void editor::App::prepareForProjectSwitch() {
     consoleWindow->clear();
     sceneWindow->resetProjectState();
     gameWindow->resetProjectState();
+    // the next project's .particles files are other files under the same paths
+    particles::ParticleEffectLibrary::clear();
+    ParticleMigrationReport::clear();
     dockspaceNeedsRebuild = true;
 }
 

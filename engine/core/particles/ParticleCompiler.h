@@ -45,6 +45,9 @@ namespace jasperengine { namespace particles {
         static uint32_t lutSize(const Curve& curve, float tolerance);
         // 256 linear values of the RGBA8 sRGB channel values (gamma 2.2)
         static const float* srgbDecodeTable();
+        // The emitter shape's outline as line segments (point pairs) in the emitter's space,
+        // with the shape's position, rotation and scale: the Scene view's gizmo
+        static void shapeOutline(const ShapeModule& shape, std::vector<Vector3>& segments);
     };
 
 }}

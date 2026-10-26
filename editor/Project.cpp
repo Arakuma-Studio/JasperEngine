@@ -46,6 +46,7 @@
 #include "AppSettings.h"
 #include "Out.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/ParticleSubsystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/anim/AnimEngine.h"
@@ -4108,6 +4109,8 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     scene->getSystem<PhysicsSystem>()->setPaused(pause);
     scene->getSystem<ActionSystem>()->setPaused(pause);
     scene->getSystem<AudioSystem>()->setPaused(pause);
+    // Edit mode: only the previewed (selected) Particle Systems simulate, driven by the editor
+    scene->getSystem<ParticleSubsystem>()->setPaused(pause);
 }
 
 void editor::Project::copyEngineApiToProject() {

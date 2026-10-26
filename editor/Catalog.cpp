@@ -613,6 +613,34 @@ namespace {
         makeFastPropertyNoDefault<ShadowCaster2DComponent, std::vector<Vector2>, &ShadowCaster2DComponent::points>("points", PropertyType::Custom, UpdateFlags_None),
     };
 
+    // the effect (an asset, else the inline document) and how the component plays it; the
+    // modules are edited as a whole document (UpdateFlags_Particles rebinds it, keeping the live
+    // particles when only parameters changed)
+    static const FastPropertyDescriptor kParticleSystemProperties[] = {
+        makeFastProperty<ParticleSystemComponent, bool, &ParticleSystemComponent::enabled>("enabled", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<ParticleSystemComponent, AssetRef, &ParticleSystemComponent::effect>("effect", PropertyType::Asset, UpdateFlags_Particles),
+        makeFastPropertyNoDefault<ParticleSystemComponent, particles::ParticleEffectDocument, &ParticleSystemComponent::inlineEffect>("inlineEffect", PropertyType::Custom, UpdateFlags_Particles),
+        makeFastProperty<ParticleSystemComponent, bool, &ParticleSystemComponent::playOnAwake>("playOnAwake", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<ParticleSystemComponent, uint32_t, &ParticleSystemComponent::seed>("seed", PropertyType::UInt, UpdateFlags_Particles),
+        makeFastProperty<ParticleSystemComponent, float, &ParticleSystemComponent::playbackSpeed>("playbackSpeed", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<ParticleSystemComponent, std::vector<ParticleExposedValue>, &ParticleSystemComponent::exposedValues>("exposedValues", PropertyType::Custom, UpdateFlags_Particles),
+        makeFastPropertyNoDefault<ParticleSystemComponent, std::vector<Entity>, &ParticleSystemComponent::collisionPlanes>("collisionPlanes", PropertyType::Custom, UpdateFlags_None),
+    };
+
+    static const FastPropertyDescriptor kForceFieldProperties[] = {
+        makeFastProperty<ForceFieldComponent, bool, &ForceFieldComponent::enabled>("enabled", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<ForceFieldComponent, ForceFieldShapeType, &ForceFieldComponent::shape>("shape", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<ForceFieldComponent, Vector3, &ForceFieldComponent::size>("size", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<ForceFieldComponent, ForceFieldKind, &ForceFieldComponent::kind>("kind", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<ForceFieldComponent, float, &ForceFieldComponent::strength>("strength", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<ForceFieldComponent, Vector3, &ForceFieldComponent::direction>("direction", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<ForceFieldComponent, float, &ForceFieldComponent::turbulence>("turbulence", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<ForceFieldComponent, float, &ForceFieldComponent::pulseFrequency>("pulseFrequency", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<ForceFieldComponent, float, &ForceFieldComponent::frequency>("frequency", PropertyType::Float, UpdateFlags_None),
+        makeFastPropertyNoDefault<ForceFieldComponent, Curve, &ForceFieldComponent::falloff>("falloff", PropertyType::Custom, UpdateFlags_None),
+        makeFastProperty<ForceFieldComponent, uint32_t, &ForceFieldComponent::layers>("layers", PropertyType::UInt, UpdateFlags_None),
+    };
+
     static const FastPropertyDescriptor kFogProperties[] = {
         makeFastProperty<FogComponent, FogType, &FogComponent::type>("type", PropertyType::Enum, UpdateFlags_None),
         makeFastProperty<FogComponent, Vector3, &FogComponent::color>("color", PropertyType::Vector3, UpdateFlags_None),
@@ -1772,138 +1800,13 @@ namespace {
         return getRigidbodyPropertyFast(static_cast<RigidbodyComponent*>(comp), propertyName);
     }
 
-    PropertyData getParticlesPropertyFast(ParticleSystemComponent* comp, const std::string& propertyName) {
-        ParticleSystemComponent& def = getDefaultComponent<ParticleSystemComponent>();
-        if (!comp) return PropertyData();
-
-        // Top-level properties
-        if (propertyName == "maxParticles") return {PropertyType::UInt, UpdateFlags_None, &def.maxParticles, &comp->maxParticles};
-        if (propertyName == "emitter") return {PropertyType::Bool, UpdateFlags_None, &def.emitter, &comp->emitter};
-        if (propertyName == "loop") return {PropertyType::Bool, UpdateFlags_None, &def.loop, &comp->loop};
-        if (propertyName == "localSpace") return {PropertyType::Bool, UpdateFlags_None, &def.localSpace, &comp->localSpace};
-        if (propertyName == "rate") return {PropertyType::Int, UpdateFlags_None, &def.rate, &comp->rate};
-        if (propertyName == "maxPerUpdate") return {PropertyType::Int, UpdateFlags_None, &def.maxPerUpdate, &comp->maxPerUpdate};
-        if (propertyName == "bursts") return {PropertyType::Custom, UpdateFlags_None, &def.bursts, &comp->bursts};
-
-        // Life Initializer
-        if (propertyName == "lifeInitializer.minLife") return {PropertyType::Float, UpdateFlags_None, &def.lifeInitializer.minLife, &comp->lifeInitializer.minLife};
-        if (propertyName == "lifeInitializer.maxLife") return {PropertyType::Float, UpdateFlags_None, &def.lifeInitializer.maxLife, &comp->lifeInitializer.maxLife};
-
-        // Position Initializer
-        if (propertyName == "positionInitializer.shape") return {PropertyType::Enum, UpdateFlags_None, &def.positionInitializer.shape, &comp->positionInitializer.shape};
-        if (propertyName == "positionInitializer.minPosition") return {PropertyType::Vector3, UpdateFlags_None, &def.positionInitializer.minPosition, &comp->positionInitializer.minPosition};
-        if (propertyName == "positionInitializer.maxPosition") return {PropertyType::Vector3, UpdateFlags_None, &def.positionInitializer.maxPosition, &comp->positionInitializer.maxPosition};
-        if (propertyName == "positionInitializer.radius") return {PropertyType::Float, UpdateFlags_None, &def.positionInitializer.radius, &comp->positionInitializer.radius};
-        if (propertyName == "positionInitializer.innerRadius") return {PropertyType::Float, UpdateFlags_None, &def.positionInitializer.innerRadius, &comp->positionInitializer.innerRadius};
-        if (propertyName == "positionInitializer.coneAngle") return {PropertyType::Float, UpdateFlags_None, &def.positionInitializer.coneAngle, &comp->positionInitializer.coneAngle};
-        if (propertyName == "positionInitializer.coneHeight") return {PropertyType::Float, UpdateFlags_None, &def.positionInitializer.coneHeight, &comp->positionInitializer.coneHeight};
-
-        // Position Modifier
-        if (propertyName == "positionModifier.fromTime") return {PropertyType::Float, UpdateFlags_None, &def.positionModifier.fromTime, &comp->positionModifier.fromTime};
-        if (propertyName == "positionModifier.toTime") return {PropertyType::Float, UpdateFlags_None, &def.positionModifier.toTime, &comp->positionModifier.toTime};
-        if (propertyName == "positionModifier.function") return {PropertyType::Ease, UpdateFlags_None, &def.positionModifier.function, &comp->positionModifier.function};
-        if (propertyName == "positionModifier.fromPosition") return {PropertyType::Vector3, UpdateFlags_None, &def.positionModifier.fromPosition, &comp->positionModifier.fromPosition};
-        if (propertyName == "positionModifier.toPosition") return {PropertyType::Vector3, UpdateFlags_None, &def.positionModifier.toPosition, &comp->positionModifier.toPosition};
-
-        // Velocity Initializer
-        if (propertyName == "velocityInitializer.minVelocity") return {PropertyType::Vector3, UpdateFlags_None, &def.velocityInitializer.minVelocity, &comp->velocityInitializer.minVelocity};
-        if (propertyName == "velocityInitializer.maxVelocity") return {PropertyType::Vector3, UpdateFlags_None, &def.velocityInitializer.maxVelocity, &comp->velocityInitializer.maxVelocity};
-
-        // Velocity Modifier
-        if (propertyName == "velocityModifier.fromTime") return {PropertyType::Float, UpdateFlags_None, &def.velocityModifier.fromTime, &comp->velocityModifier.fromTime};
-        if (propertyName == "velocityModifier.toTime") return {PropertyType::Float, UpdateFlags_None, &def.velocityModifier.toTime, &comp->velocityModifier.toTime};
-        if (propertyName == "velocityModifier.function") return {PropertyType::Ease, UpdateFlags_None, &def.velocityModifier.function, &comp->velocityModifier.function};
-        if (propertyName == "velocityModifier.fromVelocity") return {PropertyType::Vector3, UpdateFlags_None, &def.velocityModifier.fromVelocity, &comp->velocityModifier.fromVelocity};
-        if (propertyName == "velocityModifier.toVelocity") return {PropertyType::Vector3, UpdateFlags_None, &def.velocityModifier.toVelocity, &comp->velocityModifier.toVelocity};
-
-        // Acceleration Initializer
-        if (propertyName == "accelerationInitializer.minAcceleration") return {PropertyType::Vector3, UpdateFlags_None, &def.accelerationInitializer.minAcceleration, &comp->accelerationInitializer.minAcceleration};
-        if (propertyName == "accelerationInitializer.maxAcceleration") return {PropertyType::Vector3, UpdateFlags_None, &def.accelerationInitializer.maxAcceleration, &comp->accelerationInitializer.maxAcceleration};
-
-        // Acceleration Modifier
-        if (propertyName == "accelerationModifier.fromTime") return {PropertyType::Float, UpdateFlags_None, &def.accelerationModifier.fromTime, &comp->accelerationModifier.fromTime};
-        if (propertyName == "accelerationModifier.toTime") return {PropertyType::Float, UpdateFlags_None, &def.accelerationModifier.toTime, &comp->accelerationModifier.toTime};
-        if (propertyName == "accelerationModifier.function") return {PropertyType::Ease, UpdateFlags_None, &def.accelerationModifier.function, &comp->accelerationModifier.function};
-        if (propertyName == "accelerationModifier.fromAcceleration") return {PropertyType::Vector3, UpdateFlags_None, &def.accelerationModifier.fromAcceleration, &comp->accelerationModifier.fromAcceleration};
-        if (propertyName == "accelerationModifier.toAcceleration") return {PropertyType::Vector3, UpdateFlags_None, &def.accelerationModifier.toAcceleration, &comp->accelerationModifier.toAcceleration};
-
-        // Color Initializer
-        if (propertyName == "colorInitializer.minColor") return {PropertyType::Vector3, UpdateFlags_None, &def.colorInitializer.minColor, &comp->colorInitializer.minColor};
-        if (propertyName == "colorInitializer.maxColor") return {PropertyType::Vector3, UpdateFlags_None, &def.colorInitializer.maxColor, &comp->colorInitializer.maxColor};
-        if (propertyName == "colorInitializer.useSRGB") return {PropertyType::Bool, UpdateFlags_None, &def.colorInitializer.useSRGB, &comp->colorInitializer.useSRGB};
-
-        // Color Modifier
-        if (propertyName == "colorModifier.fromTime") return {PropertyType::Float, UpdateFlags_None, &def.colorModifier.fromTime, &comp->colorModifier.fromTime};
-        if (propertyName == "colorModifier.toTime") return {PropertyType::Float, UpdateFlags_None, &def.colorModifier.toTime, &comp->colorModifier.toTime};
-        if (propertyName == "colorModifier.function") return {PropertyType::Ease, UpdateFlags_None, &def.colorModifier.function, &comp->colorModifier.function};
-        if (propertyName == "colorModifier.fromColor") return {PropertyType::Vector3, UpdateFlags_None, &def.colorModifier.fromColor, &comp->colorModifier.fromColor};
-        if (propertyName == "colorModifier.toColor") return {PropertyType::Vector3, UpdateFlags_None, &def.colorModifier.toColor, &comp->colorModifier.toColor};
-        if (propertyName == "colorModifier.useSRGB") return {PropertyType::Bool, UpdateFlags_None, &def.colorModifier.useSRGB, &comp->colorModifier.useSRGB};
-
-        // Color Gradient (overrides colorModifier when non-empty)
-        if (propertyName == "colorGradient") return {PropertyType::Custom, UpdateFlags_None, &def.colorGradient, &comp->colorGradient};
-
-        // Alpha Initializer
-        if (propertyName == "alphaInitializer.minAlpha") return {PropertyType::Float, UpdateFlags_None, &def.alphaInitializer.minAlpha, &comp->alphaInitializer.minAlpha};
-        if (propertyName == "alphaInitializer.maxAlpha") return {PropertyType::Float, UpdateFlags_None, &def.alphaInitializer.maxAlpha, &comp->alphaInitializer.maxAlpha};
-
-        // Alpha Modifier
-        if (propertyName == "alphaModifier.fromTime") return {PropertyType::Float, UpdateFlags_None, &def.alphaModifier.fromTime, &comp->alphaModifier.fromTime};
-        if (propertyName == "alphaModifier.toTime") return {PropertyType::Float, UpdateFlags_None, &def.alphaModifier.toTime, &comp->alphaModifier.toTime};
-        if (propertyName == "alphaModifier.function") return {PropertyType::Ease, UpdateFlags_None, &def.alphaModifier.function, &comp->alphaModifier.function};
-        if (propertyName == "alphaModifier.fromAlpha") return {PropertyType::Float, UpdateFlags_None, &def.alphaModifier.fromAlpha, &comp->alphaModifier.fromAlpha};
-        if (propertyName == "alphaModifier.toAlpha") return {PropertyType::Float, UpdateFlags_None, &def.alphaModifier.toAlpha, &comp->alphaModifier.toAlpha};
-
-        // Size Initializer
-        if (propertyName == "sizeInitializer.minSize") return {PropertyType::Float, UpdateFlags_None, &def.sizeInitializer.minSize, &comp->sizeInitializer.minSize};
-        if (propertyName == "sizeInitializer.maxSize") return {PropertyType::Float, UpdateFlags_None, &def.sizeInitializer.maxSize, &comp->sizeInitializer.maxSize};
-
-        // Size Modifier
-        if (propertyName == "sizeModifier.fromTime") return {PropertyType::Float, UpdateFlags_None, &def.sizeModifier.fromTime, &comp->sizeModifier.fromTime};
-        if (propertyName == "sizeModifier.toTime") return {PropertyType::Float, UpdateFlags_None, &def.sizeModifier.toTime, &comp->sizeModifier.toTime};
-        if (propertyName == "sizeModifier.function") return {PropertyType::Ease, UpdateFlags_None, &def.sizeModifier.function, &comp->sizeModifier.function};
-        if (propertyName == "sizeModifier.fromSize") return {PropertyType::Float, UpdateFlags_None, &def.sizeModifier.fromSize, &comp->sizeModifier.fromSize};
-        if (propertyName == "sizeModifier.toSize") return {PropertyType::Float, UpdateFlags_None, &def.sizeModifier.toSize, &comp->sizeModifier.toSize};
-
-        // Sprite Initializer
-        if (propertyName == "spriteInitializer.frames") return {PropertyType::Custom, UpdateFlags_None, &def.spriteInitializer.frames, &comp->spriteInitializer.frames};
-
-        // Sprite Modifier
-        if (propertyName == "spriteModifier.fromTime") return {PropertyType::Float, UpdateFlags_None, &def.spriteModifier.fromTime, &comp->spriteModifier.fromTime};
-        if (propertyName == "spriteModifier.toTime") return {PropertyType::Float, UpdateFlags_None, &def.spriteModifier.toTime, &comp->spriteModifier.toTime};
-        if (propertyName == "spriteModifier.function") return {PropertyType::Ease, UpdateFlags_None, &def.spriteModifier.function, &comp->spriteModifier.function};
-        if (propertyName == "spriteModifier.frames") return {PropertyType::Custom, UpdateFlags_None, &def.spriteModifier.frames, &comp->spriteModifier.frames};
-
-        // Rotation Initializer
-        if (propertyName == "rotationInitializer.minRotation") return {PropertyType::Quat, UpdateFlags_None, &def.rotationInitializer.minRotation, &comp->rotationInitializer.minRotation};
-        if (propertyName == "rotationInitializer.maxRotation") return {PropertyType::Quat, UpdateFlags_None, &def.rotationInitializer.maxRotation, &comp->rotationInitializer.maxRotation};
-        if (propertyName == "rotationInitializer.shortestPath") return {PropertyType::Bool, UpdateFlags_None, &def.rotationInitializer.shortestPath, &comp->rotationInitializer.shortestPath};
-
-        // Rotation Modifier
-        if (propertyName == "rotationModifier.fromTime") return {PropertyType::Float, UpdateFlags_None, &def.rotationModifier.fromTime, &comp->rotationModifier.fromTime};
-        if (propertyName == "rotationModifier.toTime") return {PropertyType::Float, UpdateFlags_None, &def.rotationModifier.toTime, &comp->rotationModifier.toTime};
-        if (propertyName == "rotationModifier.function") return {PropertyType::Ease, UpdateFlags_None, &def.rotationModifier.function, &comp->rotationModifier.function};
-        if (propertyName == "rotationModifier.fromRotation") return {PropertyType::Quat, UpdateFlags_None, &def.rotationModifier.fromRotation, &comp->rotationModifier.fromRotation};
-        if (propertyName == "rotationModifier.toRotation") return {PropertyType::Quat, UpdateFlags_None, &def.rotationModifier.toRotation, &comp->rotationModifier.toRotation};
-        if (propertyName == "rotationModifier.shortestPath") return {PropertyType::Bool, UpdateFlags_None, &def.rotationModifier.shortestPath, &comp->rotationModifier.shortestPath};
-
-        // Scale Initializer
-        if (propertyName == "scaleInitializer.minScale") return {PropertyType::Vector3, UpdateFlags_None, &def.scaleInitializer.minScale, &comp->scaleInitializer.minScale};
-        if (propertyName == "scaleInitializer.maxScale") return {PropertyType::Vector3, UpdateFlags_None, &def.scaleInitializer.maxScale, &comp->scaleInitializer.maxScale};
-        if (propertyName == "scaleInitializer.linearSort") return {PropertyType::Bool, UpdateFlags_None, &def.scaleInitializer.linearSort, &comp->scaleInitializer.linearSort};
-
-        // Scale Modifier
-        if (propertyName == "scaleModifier.fromTime") return {PropertyType::Float, UpdateFlags_None, &def.scaleModifier.fromTime, &comp->scaleModifier.fromTime};
-        if (propertyName == "scaleModifier.toTime") return {PropertyType::Float, UpdateFlags_None, &def.scaleModifier.toTime, &comp->scaleModifier.toTime};
-        if (propertyName == "scaleModifier.function") return {PropertyType::Ease, UpdateFlags_None, &def.scaleModifier.function, &comp->scaleModifier.function};
-        if (propertyName == "scaleModifier.fromScale") return {PropertyType::Vector3, UpdateFlags_None, &def.scaleModifier.fromScale, &comp->scaleModifier.fromScale};
-        if (propertyName == "scaleModifier.toScale") return {PropertyType::Vector3, UpdateFlags_None, &def.scaleModifier.toScale, &comp->scaleModifier.toScale};
-
-        return PropertyData();
-    }
 
     PropertyData resolveParticlesPropertyFast(void* comp, const std::string& propertyName) {
-        return getParticlesPropertyFast(static_cast<ParticleSystemComponent*>(comp), propertyName);
+        return resolveDirectProperties(static_cast<ParticleSystemComponent*>(comp), propertyName, kParticleSystemProperties);
+    }
+
+    PropertyData resolveForceFieldPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<ForceFieldComponent*>(comp), propertyName, kForceFieldProperties);
     }
 
     PropertyData getInstancedMeshPropertyFast(InstancedMeshComponent* comp, const std::string& propertyName) {
@@ -2970,102 +2873,12 @@ namespace {
         }
     }
 
-    void enumerateParticlesProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
-        ParticleSystemComponent* comp = static_cast<ParticleSystemComponent*>(compRef);
-        ParticleSystemComponent& def = getDefaultComponent<ParticleSystemComponent>();
+    void enumerateParticlesProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kParticleSystemProperties);
+    }
 
-        ps["maxParticles"] = {PropertyType::UInt, UpdateFlags_None, &def.maxParticles, comp ? &comp->maxParticles : nullptr};
-        ps["emitter"] = {PropertyType::Bool, UpdateFlags_None, &def.emitter, comp ? &comp->emitter : nullptr};
-        ps["loop"] = {PropertyType::Bool, UpdateFlags_None, &def.loop, comp ? &comp->loop : nullptr};
-        ps["localSpace"] = {PropertyType::Bool, UpdateFlags_None, &def.localSpace, comp ? &comp->localSpace : nullptr};
-        ps["rate"] = {PropertyType::Int, UpdateFlags_None, &def.rate, comp ? &comp->rate : nullptr};
-        ps["maxPerUpdate"] = {PropertyType::Int, UpdateFlags_None, &def.maxPerUpdate, comp ? &comp->maxPerUpdate : nullptr};
-        ps["bursts"] = {PropertyType::Custom, UpdateFlags_None, &def.bursts, comp ? &comp->bursts : nullptr};
-
-        ps["lifeInitializer.minLife"] = {PropertyType::Float, UpdateFlags_None, &def.lifeInitializer.minLife, comp ? &comp->lifeInitializer.minLife : nullptr};
-        ps["lifeInitializer.maxLife"] = {PropertyType::Float, UpdateFlags_None, &def.lifeInitializer.maxLife, comp ? &comp->lifeInitializer.maxLife : nullptr};
-
-        ps["positionInitializer.shape"] = {PropertyType::Enum, UpdateFlags_None, &def.positionInitializer.shape, comp ? &comp->positionInitializer.shape : nullptr};
-        ps["positionInitializer.minPosition"] = {PropertyType::Vector3, UpdateFlags_None, &def.positionInitializer.minPosition, comp ? &comp->positionInitializer.minPosition : nullptr};
-        ps["positionInitializer.maxPosition"] = {PropertyType::Vector3, UpdateFlags_None, &def.positionInitializer.maxPosition, comp ? &comp->positionInitializer.maxPosition : nullptr};
-        ps["positionInitializer.radius"] = {PropertyType::Float, UpdateFlags_None, &def.positionInitializer.radius, comp ? &comp->positionInitializer.radius : nullptr};
-        ps["positionInitializer.innerRadius"] = {PropertyType::Float, UpdateFlags_None, &def.positionInitializer.innerRadius, comp ? &comp->positionInitializer.innerRadius : nullptr};
-        ps["positionInitializer.coneAngle"] = {PropertyType::Float, UpdateFlags_None, &def.positionInitializer.coneAngle, comp ? &comp->positionInitializer.coneAngle : nullptr};
-        ps["positionInitializer.coneHeight"] = {PropertyType::Float, UpdateFlags_None, &def.positionInitializer.coneHeight, comp ? &comp->positionInitializer.coneHeight : nullptr};
-        ps["positionModifier.fromTime"] = {PropertyType::Float, UpdateFlags_None, &def.positionModifier.fromTime, comp ? &comp->positionModifier.fromTime : nullptr};
-        ps["positionModifier.toTime"] = {PropertyType::Float, UpdateFlags_None, &def.positionModifier.toTime, comp ? &comp->positionModifier.toTime : nullptr};
-        ps["positionModifier.function"] = {PropertyType::Ease, UpdateFlags_None, &def.positionModifier.function, comp ? &comp->positionModifier.function : nullptr};
-        ps["positionModifier.fromPosition"] = {PropertyType::Vector3, UpdateFlags_None, &def.positionModifier.fromPosition, comp ? &comp->positionModifier.fromPosition : nullptr};
-        ps["positionModifier.toPosition"] = {PropertyType::Vector3, UpdateFlags_None, &def.positionModifier.toPosition, comp ? &comp->positionModifier.toPosition : nullptr};
-
-        ps["velocityInitializer.minVelocity"] = {PropertyType::Vector3, UpdateFlags_None, &def.velocityInitializer.minVelocity, comp ? &comp->velocityInitializer.minVelocity : nullptr};
-        ps["velocityInitializer.maxVelocity"] = {PropertyType::Vector3, UpdateFlags_None, &def.velocityInitializer.maxVelocity, comp ? &comp->velocityInitializer.maxVelocity : nullptr};
-        ps["velocityModifier.fromTime"] = {PropertyType::Float, UpdateFlags_None, &def.velocityModifier.fromTime, comp ? &comp->velocityModifier.fromTime : nullptr};
-        ps["velocityModifier.toTime"] = {PropertyType::Float, UpdateFlags_None, &def.velocityModifier.toTime, comp ? &comp->velocityModifier.toTime : nullptr};
-        ps["velocityModifier.function"] = {PropertyType::Ease, UpdateFlags_None, &def.velocityModifier.function, comp ? &comp->velocityModifier.function : nullptr};
-        ps["velocityModifier.fromVelocity"] = {PropertyType::Vector3, UpdateFlags_None, &def.velocityModifier.fromVelocity, comp ? &comp->velocityModifier.fromVelocity : nullptr};
-        ps["velocityModifier.toVelocity"] = {PropertyType::Vector3, UpdateFlags_None, &def.velocityModifier.toVelocity, comp ? &comp->velocityModifier.toVelocity : nullptr};
-
-        ps["accelerationInitializer.minAcceleration"] = {PropertyType::Vector3, UpdateFlags_None, &def.accelerationInitializer.minAcceleration, comp ? &comp->accelerationInitializer.minAcceleration : nullptr};
-        ps["accelerationInitializer.maxAcceleration"] = {PropertyType::Vector3, UpdateFlags_None, &def.accelerationInitializer.maxAcceleration, comp ? &comp->accelerationInitializer.maxAcceleration : nullptr};
-        ps["accelerationModifier.fromTime"] = {PropertyType::Float, UpdateFlags_None, &def.accelerationModifier.fromTime, comp ? &comp->accelerationModifier.fromTime : nullptr};
-        ps["accelerationModifier.toTime"] = {PropertyType::Float, UpdateFlags_None, &def.accelerationModifier.toTime, comp ? &comp->accelerationModifier.toTime : nullptr};
-        ps["accelerationModifier.function"] = {PropertyType::Ease, UpdateFlags_None, &def.accelerationModifier.function, comp ? &comp->accelerationModifier.function : nullptr};
-        ps["accelerationModifier.fromAcceleration"] = {PropertyType::Vector3, UpdateFlags_None, &def.accelerationModifier.fromAcceleration, comp ? &comp->accelerationModifier.fromAcceleration : nullptr};
-        ps["accelerationModifier.toAcceleration"] = {PropertyType::Vector3, UpdateFlags_None, &def.accelerationModifier.toAcceleration, comp ? &comp->accelerationModifier.toAcceleration : nullptr};
-
-        ps["colorInitializer.minColor"] = {PropertyType::Vector3, UpdateFlags_None, &def.colorInitializer.minColor, comp ? &comp->colorInitializer.minColor : nullptr};
-        ps["colorInitializer.maxColor"] = {PropertyType::Vector3, UpdateFlags_None, &def.colorInitializer.maxColor, comp ? &comp->colorInitializer.maxColor : nullptr};
-        ps["colorInitializer.useSRGB"] = {PropertyType::Bool, UpdateFlags_None, &def.colorInitializer.useSRGB, comp ? &comp->colorInitializer.useSRGB : nullptr};
-        ps["colorModifier.fromTime"] = {PropertyType::Float, UpdateFlags_None, &def.colorModifier.fromTime, comp ? &comp->colorModifier.fromTime : nullptr};
-        ps["colorModifier.toTime"] = {PropertyType::Float, UpdateFlags_None, &def.colorModifier.toTime, comp ? &comp->colorModifier.toTime : nullptr};
-        ps["colorModifier.function"] = {PropertyType::Ease, UpdateFlags_None, &def.colorModifier.function, comp ? &comp->colorModifier.function : nullptr};
-        ps["colorModifier.fromColor"] = {PropertyType::Vector3, UpdateFlags_None, &def.colorModifier.fromColor, comp ? &comp->colorModifier.fromColor : nullptr};
-        ps["colorModifier.toColor"] = {PropertyType::Vector3, UpdateFlags_None, &def.colorModifier.toColor, comp ? &comp->colorModifier.toColor : nullptr};
-        ps["colorModifier.useSRGB"] = {PropertyType::Bool, UpdateFlags_None, &def.colorModifier.useSRGB, comp ? &comp->colorModifier.useSRGB : nullptr};
-
-        ps["colorGradient"] = {PropertyType::Custom, UpdateFlags_None, &def.colorGradient, comp ? &comp->colorGradient : nullptr};
-
-        ps["alphaInitializer.minAlpha"] = {PropertyType::Float, UpdateFlags_None, &def.alphaInitializer.minAlpha, comp ? &comp->alphaInitializer.minAlpha : nullptr};
-        ps["alphaInitializer.maxAlpha"] = {PropertyType::Float, UpdateFlags_None, &def.alphaInitializer.maxAlpha, comp ? &comp->alphaInitializer.maxAlpha : nullptr};
-        ps["alphaModifier.fromTime"] = {PropertyType::Float, UpdateFlags_None, &def.alphaModifier.fromTime, comp ? &comp->alphaModifier.fromTime : nullptr};
-        ps["alphaModifier.toTime"] = {PropertyType::Float, UpdateFlags_None, &def.alphaModifier.toTime, comp ? &comp->alphaModifier.toTime : nullptr};
-        ps["alphaModifier.function"] = {PropertyType::Ease, UpdateFlags_None, &def.alphaModifier.function, comp ? &comp->alphaModifier.function : nullptr};
-        ps["alphaModifier.fromAlpha"] = {PropertyType::Float, UpdateFlags_None, &def.alphaModifier.fromAlpha, comp ? &comp->alphaModifier.fromAlpha : nullptr};
-        ps["alphaModifier.toAlpha"] = {PropertyType::Float, UpdateFlags_None, &def.alphaModifier.toAlpha, comp ? &comp->alphaModifier.toAlpha : nullptr};
-
-        ps["sizeInitializer.minSize"] = {PropertyType::Float, UpdateFlags_None, &def.sizeInitializer.minSize, comp ? &comp->sizeInitializer.minSize : nullptr};
-        ps["sizeInitializer.maxSize"] = {PropertyType::Float, UpdateFlags_None, &def.sizeInitializer.maxSize, comp ? &comp->sizeInitializer.maxSize : nullptr};
-        ps["sizeModifier.fromTime"] = {PropertyType::Float, UpdateFlags_None, &def.sizeModifier.fromTime, comp ? &comp->sizeModifier.fromTime : nullptr};
-        ps["sizeModifier.toTime"] = {PropertyType::Float, UpdateFlags_None, &def.sizeModifier.toTime, comp ? &comp->sizeModifier.toTime : nullptr};
-        ps["sizeModifier.function"] = {PropertyType::Ease, UpdateFlags_None, &def.sizeModifier.function, comp ? &comp->sizeModifier.function : nullptr};
-        ps["sizeModifier.fromSize"] = {PropertyType::Float, UpdateFlags_None, &def.sizeModifier.fromSize, comp ? &comp->sizeModifier.fromSize : nullptr};
-        ps["sizeModifier.toSize"] = {PropertyType::Float, UpdateFlags_None, &def.sizeModifier.toSize, comp ? &comp->sizeModifier.toSize : nullptr};
-
-        ps["spriteInitializer.frames"] = {PropertyType::Custom, UpdateFlags_None, &def.spriteInitializer.frames, comp ? &comp->spriteInitializer.frames : nullptr};
-        ps["spriteModifier.fromTime"] = {PropertyType::Float, UpdateFlags_None, &def.spriteModifier.fromTime, comp ? &comp->spriteModifier.fromTime : nullptr};
-        ps["spriteModifier.toTime"] = {PropertyType::Float, UpdateFlags_None, &def.spriteModifier.toTime, comp ? &comp->spriteModifier.toTime : nullptr};
-        ps["spriteModifier.function"] = {PropertyType::Ease, UpdateFlags_None, &def.spriteModifier.function, comp ? &comp->spriteModifier.function : nullptr};
-        ps["spriteModifier.frames"] = {PropertyType::Custom, UpdateFlags_None, &def.spriteModifier.frames, comp ? &comp->spriteModifier.frames : nullptr};
-
-        ps["rotationInitializer.minRotation"] = {PropertyType::Quat, UpdateFlags_None, &def.rotationInitializer.minRotation, comp ? &comp->rotationInitializer.minRotation : nullptr};
-        ps["rotationInitializer.maxRotation"] = {PropertyType::Quat, UpdateFlags_None, &def.rotationInitializer.maxRotation, comp ? &comp->rotationInitializer.maxRotation : nullptr};
-        ps["rotationInitializer.shortestPath"] = {PropertyType::Bool, UpdateFlags_None, &def.rotationInitializer.shortestPath, comp ? &comp->rotationInitializer.shortestPath : nullptr};
-        ps["rotationModifier.fromTime"] = {PropertyType::Float, UpdateFlags_None, &def.rotationModifier.fromTime, comp ? &comp->rotationModifier.fromTime : nullptr};
-        ps["rotationModifier.toTime"] = {PropertyType::Float, UpdateFlags_None, &def.rotationModifier.toTime, comp ? &comp->rotationModifier.toTime : nullptr};
-        ps["rotationModifier.function"] = {PropertyType::Ease, UpdateFlags_None, &def.rotationModifier.function, comp ? &comp->rotationModifier.function : nullptr};
-        ps["rotationModifier.fromRotation"] = {PropertyType::Quat, UpdateFlags_None, &def.rotationModifier.fromRotation, comp ? &comp->rotationModifier.fromRotation : nullptr};
-        ps["rotationModifier.toRotation"] = {PropertyType::Quat, UpdateFlags_None, &def.rotationModifier.toRotation, comp ? &comp->rotationModifier.toRotation : nullptr};
-        ps["rotationModifier.shortestPath"] = {PropertyType::Bool, UpdateFlags_None, &def.rotationModifier.shortestPath, comp ? &comp->rotationModifier.shortestPath : nullptr};
-
-        ps["scaleInitializer.minScale"] = {PropertyType::Vector3, UpdateFlags_None, &def.scaleInitializer.minScale, comp ? &comp->scaleInitializer.minScale : nullptr};
-        ps["scaleInitializer.maxScale"] = {PropertyType::Vector3, UpdateFlags_None, &def.scaleInitializer.maxScale, comp ? &comp->scaleInitializer.maxScale : nullptr};
-        ps["scaleInitializer.linearSort"] = {PropertyType::Bool, UpdateFlags_None, &def.scaleInitializer.linearSort, comp ? &comp->scaleInitializer.linearSort : nullptr};
-        ps["scaleModifier.fromTime"] = {PropertyType::Float, UpdateFlags_None, &def.scaleModifier.fromTime, comp ? &comp->scaleModifier.fromTime : nullptr};
-        ps["scaleModifier.toTime"] = {PropertyType::Float, UpdateFlags_None, &def.scaleModifier.toTime, comp ? &comp->scaleModifier.toTime : nullptr};
-        ps["scaleModifier.function"] = {PropertyType::Ease, UpdateFlags_None, &def.scaleModifier.function, comp ? &comp->scaleModifier.function : nullptr};
-        ps["scaleModifier.fromScale"] = {PropertyType::Vector3, UpdateFlags_None, &def.scaleModifier.fromScale, comp ? &comp->scaleModifier.fromScale : nullptr};
-        ps["scaleModifier.toScale"] = {PropertyType::Vector3, UpdateFlags_None, &def.scaleModifier.toScale, comp ? &comp->scaleModifier.toScale : nullptr};
+    void enumerateForceFieldProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kForceFieldProperties);
     }
 
     PropertyData getPointsPropertyFast(PointsComponent* comp, const std::string& propertyName) {
@@ -3422,6 +3235,7 @@ namespace {
         {ComponentType::FogComponent, &findComponentPtr<FogComponent>, &resolveFogPropertyFast, &enumerateFogProperties},
         {ComponentType::LocalVolumetricFogComponent, &findComponentPtr<LocalVolumetricFogComponent>, &resolveLocalVolumetricFogPropertyFast, &enumerateLocalVolumetricFogProperties},
         {ComponentType::VolumetricCloudsComponent, &findComponentPtr<VolumetricCloudsComponent>, &resolveVolumetricCloudsPropertyFast, &enumerateVolumetricCloudsProperties},
+        {ComponentType::ForceFieldComponent, &findComponentPtr<ForceFieldComponent>, &resolveForceFieldPropertyFast, &enumerateForceFieldProperties},
         {ComponentType::MirrorComponent, &findComponentPtr<MirrorComponent>, &resolveMirrorPropertyFast, &enumerateMirrorProperties},
         {ComponentType::ReflectionProbeComponent, &findComponentPtr<ReflectionProbeComponent>, &resolveReflectionProbePropertyFast, &enumerateReflectionProbeProperties},
         {ComponentType::UIDocumentComponent, &findComponentPtr<UIDocumentComponent>, &resolveUIDocumentPropertyFast, &enumerateUIDocumentProperties},
@@ -3489,6 +3303,7 @@ namespace {
             case ComponentType::Joint3DComponent: return &getEnabledRef<Joint3DComponent>;
             case ComponentType::UIComponent: return &getEnabledRef<UIComponent>;
             case ComponentType::UIDocumentComponent: return &getEnabledRef<UIDocumentComponent>;
+            case ComponentType::ForceFieldComponent: return &getEnabledRef<ForceFieldComponent>;
             default: return nullptr;
         }
     }
@@ -3622,6 +3437,8 @@ std::string computeComponentName(editor::ComponentType component){
         name = "LocalVolumetricFogComponent";
     }else if(component == ComponentType::VolumetricCloudsComponent){
         name = "VolumetricCloudsComponent";
+    }else if(component == ComponentType::ForceFieldComponent){
+        name = "ForceFieldComponent";
     }else if(component == ComponentType::MirrorComponent){
         name = "MirrorComponent";
     }else if(component == ComponentType::ReflectionProbeComponent){
@@ -3770,6 +3587,7 @@ std::string editor::Catalog::getComponentDisplayName(ComponentType component){
         case ComponentType::UIDocumentComponent: return "UI Document";
         case ComponentType::LocalVolumetricFogComponent: return "Local Volumetric Fog";
         case ComponentType::VolumetricCloudsComponent: return "Volumetric Clouds";
+        case ComponentType::ForceFieldComponent: return "Force Field";
     }
     return getComponentName(component);
 }
@@ -3831,6 +3649,7 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
         case ComponentType::UIDocumentComponent: return ICON_FA_FILE_CODE;
         case ComponentType::LocalVolumetricFogComponent: return ICON_FA_SMOG;
         case ComponentType::VolumetricCloudsComponent: return ICON_FA_CLOUD;
+        case ComponentType::ForceFieldComponent: return ICON_FA_WIND;
     }
     return ICON_FA_PUZZLE_PIECE;
 }
@@ -3884,6 +3703,8 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<LocalVolumetricFogComponent>();
         case ComponentType::VolumetricCloudsComponent:
             return registry->getComponentId<VolumetricCloudsComponent>();
+        case ComponentType::ForceFieldComponent:
+            return registry->getComponentId<ForceFieldComponent>();
         case ComponentType::MirrorComponent:
             return registry->getComponentId<MirrorComponent>();
         case ComponentType::ReflectionProbeComponent:
@@ -3994,6 +3815,8 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::LocalVolumetricFogComponent;
     }else if(normalizedName == "volumetricclouds"){
         return ComponentType::VolumetricCloudsComponent;
+    }else if(normalizedName == "forcefield"){
+        return ComponentType::ForceFieldComponent;
     }else if(normalizedName == "mirror"){
         return ComponentType::MirrorComponent;
     }else if(normalizedName == "reflectionprobe"){
@@ -4155,6 +3978,9 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     }
     if (registry->findComponent<VolumetricCloudsComponent>(entity)){
         ret.push_back(ComponentType::VolumetricCloudsComponent);
+    }
+    if (registry->findComponent<ForceFieldComponent>(entity)){
+        ret.push_back(ComponentType::ForceFieldComponent);
     }
     if (registry->findComponent<MirrorComponent>(entity)){
         ret.push_back(ComponentType::MirrorComponent);
@@ -5068,6 +4894,11 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
             document->needReload = true;
         }
     }
+    if (updateFlags & UpdateFlags_Particles){
+        if (ParticleSystemComponent* particles = registry->findComponent<ParticleSystemComponent>(entity)){
+            particles->needReload = true;
+        }
+    }
 }
 
 void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourceEntity,
@@ -5212,6 +5043,11 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
         case ComponentType::VolumetricCloudsComponent: {
             YAML::Node encoded = Stream::encodeVolumetricCloudsComponent(sourceRegistry->getComponent<VolumetricCloudsComponent>(sourceEntity));
             targetRegistry->getComponent<VolumetricCloudsComponent>(targetEntity) = Stream::decodeVolumetricCloudsComponent(encoded);
+            break;
+        }
+
+        case ComponentType::ForceFieldComponent: {
+            targetRegistry->getComponent<ForceFieldComponent>(targetEntity) = sourceRegistry->getComponent<ForceFieldComponent>(sourceEntity);
             break;
         }
 
@@ -5543,6 +5379,22 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
             } else if (property == "shaderFeatures" || endsWith(property, "material.shaderFeatures") || endsWith(property, "extraPass.shaderFeatures")) {
                 auto* source = Catalog::getPropertyRef<std::vector<std::string>>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<std::vector<std::string>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::ParticleSystemComponent && property == "inlineEffect") {
+                auto* source = Catalog::getPropertyRef<particles::ParticleEffectDocument>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<particles::ParticleEffectDocument>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::ParticleSystemComponent && property == "exposedValues") {
+                auto* source = Catalog::getPropertyRef<std::vector<ParticleExposedValue>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<ParticleExposedValue>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::ParticleSystemComponent && property == "collisionPlanes") {
+                auto* source = Catalog::getPropertyRef<std::vector<Entity>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<Entity>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::ForceFieldComponent && property == "falloff") {
+                auto* source = Catalog::getPropertyRef<Curve>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<Curve>(targetRegistry, targetEntity, compType, property);
                 if (source && target) *target = *source;
             }
             break;

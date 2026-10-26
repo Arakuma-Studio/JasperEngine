@@ -415,7 +415,7 @@ async def test_particles(ed: Editor):
     ed.check(fire["gradient_stops"] == 3 and fire["rate"] == 60, f"fire preset: {fire}")
     system = fire["particle_system"]
     ed.check_in("particlesystem", await components(ed, sid, system["id"]))
-    ed.check_in("points", await components(ed, sid, fire["emitter"]["id"]))
+    ed.check_eq(fire["emitter"]["id"], system["id"], "the Particle System GameObject emits and draws itself")
     boom = await ed.call("create_particles", scene=sid, entity=system["id"], preset="explosion", bursts=[{"time": 0, "count": [50, 80]}])
     ed.check_eq(boom["loop"], False)
     ed.check_eq(boom["bursts"], 1)

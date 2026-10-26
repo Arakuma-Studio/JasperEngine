@@ -63,6 +63,7 @@ const std::vector<std::string>& StreamSchema::knownFieldKeys(ComponentType type)
         {ComponentType::CameraComponent, {"aspect", "autoResize", "bottomClip", "cullingMask", "depthTest", "enabled", "farClip", "framebufferFilter", "framebufferHeight", "framebufferWidth", "leftClip", "nearClip", "renderToTexture", "rightClip", "target", "topClip", "transparentSort", "type", "up", "useTarget", "yfov"}},
         {ComponentType::ColorTweenComponent, {"endColor", "startColor", "useSRGB"}},
         {ComponentType::FogComponent, {"anisotropy", "attenuationDistance", "baseHeight", "color", "colorMode", "density", "directionalInscattering", "lightShafts", "linearEnd", "linearStart", "maxFogDistance", "maxOpacity", "maximumHeight", "noiseIntensity", "noiseScale", "qualityOverride", "skyFill", "skyFillAngle", "startDistance", "type", "volumetric", "volumetricDistance", "wind"}},
+        {ComponentType::ForceFieldComponent, {"direction", "enabled", "falloff", "frequency", "kind", "layers", "pulseFrequency", "shape", "size", "strength", "turbulence"}},
         {ComponentType::ImageComponent, {"patchMarginBottom", "patchMarginLeft", "patchMarginRight", "patchMarginTop", "textureScaleFactor"}},
         {ComponentType::InputFieldComponent, {"cursor", "cursorBlink", "cursorColor", "cursorIndex", "cursorWidth", "disabled", "password", "passwordChar", "placeholder", "placeholderColor", "selection", "selectionAnchor", "selectionColor", "text"}},
         {ComponentType::InstancedMeshComponent, {"cullDistance", "cullInstances", "distanceFade", "enabled", "fadeEnd", "fadeStart", "instancedBillboard", "instancedCylindricalBillboard", "instances", "maxInstances"}},
@@ -79,7 +80,7 @@ const std::vector<std::string>& StreamSchema::knownFieldKeys(ComponentType type)
         {ComponentType::ModelComponent, {"animations", "bonesIdMapping", "bonesNameMapping", "enabled", "filename", "mergeStaticMeshes", "meshNodesMapping", "nodesIdMapping", "skeleton"}},
         {ComponentType::MorphTracksComponent, {"inTangents", "outTangents", "values"}},
         {ComponentType::PanelComponent, {"canBringToFront", "canMove", "canResize", "defaultHeaderMargin", "headerMarginBottom", "headerMarginLeft", "headerMarginRight", "headerMarginTop", "headercontainer", "headerimage", "headertext", "minHeight", "minWidth", "resizeMargin", "titleAnchorPreset"}},
-        {ComponentType::ParticleSystemComponent, {"accelerationInitializer", "accelerationModifier", "alphaInitializer", "alphaModifier", "bursts", "colorGradient", "colorInitializer", "colorModifier", "emitter", "enabled", "lifeInitializer", "localSpace", "loop", "maxParticles", "maxPerUpdate", "positionInitializer", "positionModifier", "rate", "rotationInitializer", "rotationModifier", "scaleInitializer", "scaleModifier", "sizeInitializer", "sizeModifier", "spriteInitializer", "spriteModifier", "velocityInitializer", "velocityModifier"}},
+        {ComponentType::ParticleSystemComponent, {"collisionPlanes", "effect", "effectGuid", "enabled", "exposedValues", "inlineEffect", "playOnAwake", "playbackSpeed", "seed"}},
         {ComponentType::PointsComponent, {"autoTransparency", "blendMode", "colorWrite", "customShader", "depthWrite", "enabled", "framesRect", "maxPoints", "points", "shaderFeatures", "shaderTextures", "shaderUniforms", "stencil", "texture", "transparent"}},
         {ComponentType::PolygonComponent, {"points"}},
         {ComponentType::PositionTweenComponent, {"endPosition", "startPosition"}},
@@ -469,6 +470,27 @@ const EnumTable<FogColorMode>& StreamSchema::fogColorMode() {
         {FogColorMode::COLOR, "color"},
         {FogColorMode::SKY, "sky"},
     }, FogColorMode::COLOR);
+    return table;
+}
+
+const EnumTable<ForceFieldShapeType>& StreamSchema::forceFieldShape() {
+    static const EnumTable<ForceFieldShapeType> table("ForceFieldShapeType", {
+        {ForceFieldShapeType::Sphere, "sphere"},
+        {ForceFieldShapeType::Box, "box"},
+        {ForceFieldShapeType::Cylinder, "cylinder"},
+        {ForceFieldShapeType::Infinite, "infinite"},
+    }, ForceFieldShapeType::Sphere);
+    return table;
+}
+
+const EnumTable<ForceFieldKind>& StreamSchema::forceFieldKind() {
+    static const EnumTable<ForceFieldKind> table("ForceFieldKind", {
+        {ForceFieldKind::Directional, "directional"},
+        {ForceFieldKind::Radial, "radial"},
+        {ForceFieldKind::Vortex, "vortex"},
+        {ForceFieldKind::Turbulence, "turbulence"},
+        {ForceFieldKind::Drag, "drag"},
+    }, ForceFieldKind::Directional);
     return table;
 }
 

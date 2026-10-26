@@ -10,6 +10,8 @@
 #include "asset/TextReferences.h"
 
 #include "json.hpp"
+#include "particles/ParticleEffectCodec.h"
+#include "particles/ParticleModules.h"
 #include "yaml-cpp/yaml.h"
 
 #include <algorithm>
@@ -136,6 +138,7 @@ bool AssetIndex::isReferrerType(AssetType type, const std::string& relativePath)
     switch (type) {
         case AssetType::Scene: case AssetType::Prefab: case AssetType::Material:
         case AssetType::UIDocument: case AssetType::Stylesheet: case AssetType::Shader: case AssetType::Model:
+        case AssetType::ParticleEffect:
             return true;
         case AssetType::Script:
             return indexExtension(relativePath) == ".lua";
@@ -251,6 +254,32 @@ std::vector<DepEdge> AssetIndex::extractFile(const AssetDatabase& database, cons
                     }
                     addText(reference, target);
                 }
+                break;
+            }
+            case AssetType::ParticleEffect: {
+                // the effect's textures, models and child effects (assets-relative, with GUIDs)
+                std::string text;
+                if (!assetio::readFile(full, text)) break;
+                particles::ParticleEffectDocument document;
+                std::vector<particles::Diagnostic> diagnostics;
+                // (an effect with errors still names its assets)
+                particles::ParticleEffectCodec::read(text, document, diagnostics);
+                particles::ParticleModules::visitAssets(document, [&](std::string& path, std::string& guid, particles::ParticleModules::AssetKind kind, const std::string& field) {
+                    if (path.empty()) return;
+                    DepEdge edge;
+                    edge.referrer = referrer;
+                    edge.kind = DepEdgeKind::Other;
+                    edge.field = field;
+                    edge.expected = kind == particles::ParticleModules::AssetKind::Model ? AssetType::Model
+                                  : (kind == particles::ParticleModules::AssetKind::Effect ? AssetType::ParticleEffect : AssetType::Texture);
+                    edge.target = Guid::parse(guid);
+                    edge.targetPath = toProjectRelative(roots, AssetPathBase::Assets, path);
+                    if (edge.target.isNull()) {
+                        const AssetDatabase::Resolution resolution = database.resolve(Guid(), edge.targetPath, edge.expected, false);
+                        if (resolution.found()) edge.target = resolution.guid;
+                    }
+                    if (isValidDepEdge(edge)) edges.push_back(std::move(edge));
+                });
                 break;
             }
             case AssetType::Model: {

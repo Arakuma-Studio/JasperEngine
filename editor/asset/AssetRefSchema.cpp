@@ -20,6 +20,9 @@
 #include "component/TextComponent.h"
 #include "component/UIComponent.h"
 #include "component/UIDocumentComponent.h"
+#include "component/ParticleSystemComponent.h"
+#include "particles/ParticleEffectCodec.h"
+#include "particles/ParticleModules.h"
 #include "pool/TexturePool.h"
 #include "registry/EntityRegistry.h"
 #include "util/Util.h"
@@ -127,6 +130,9 @@ namespace {
         row(C::ModelComponent, "filename", Shape::Asset, AssetType::Model, Base::Assets);
         row(C::AudioSourceComponent, "filename", Shape::Asset, AssetType::Audio, Base::Assets);
         row(C::UIDocumentComponent, "filename", Shape::Asset, AssetType::UIDocument, Base::Assets);
+
+        row(C::ParticleSystemComponent, "effect", Shape::Asset, AssetType::ParticleEffect, Base::Assets);
+        row(C::ParticleSystemComponent, "inlineEffect", Shape::ParticleEffect, AssetType::Unknown, Base::Assets);
 
         // Lua entries are relative to the Lua directory (the extractor and visitor switch base)
         row(C::ScriptComponent, "scripts[].path", Shape::Asset, AssetType::Script, Base::Project);
@@ -426,6 +432,30 @@ namespace {
         }
     }
 
+    AssetType effectAssetType(particles::ParticleModules::AssetKind kind) {
+        switch (kind) {
+            case particles::ParticleModules::AssetKind::Model: return AssetType::Model;
+            case particles::ParticleModules::AssetKind::Effect: return AssetType::ParticleEffect;
+            case particles::ParticleModules::AssetKind::Texture: break;
+        }
+        return AssetType::Texture;
+    }
+
+    // the asset paths an inline effect's modules hold ("inlineEffect.renderer.texture"); true
+    // when one changed
+    bool visitInlineEffect(RefVisit& visit, particles::ParticleEffectDocument& document, const AssetRefField& row, const std::string& prefix) {
+        bool changed = false;
+        particles::ParticleModules::visitAssets(document, [&](std::string& path, std::string& guid, particles::ParticleModules::AssetKind kind, const std::string& field) {
+            AssetRef ref(path, Guid::parse(guid));
+            if (visit.asset(ref, row, prefix + "." + field, AssetPathBase::Assets, false, effectAssetType(kind)) || ref.guid.str() != guid) {
+                path = ref.path;
+                guid = ref.guid.isNull() ? std::string() : ref.guid.str();
+                changed = true;
+            }
+        });
+        return changed;
+    }
+
     void visitRegistry(EntityRegistry& registry, Entity only, RefVisit& visit) {
         using C = ComponentType;
 
@@ -539,6 +569,12 @@ namespace {
                 audio.loadFailed = false;
                 audio.needUpdate = true;
             }
+        });
+
+        eachComponent<ParticleSystemComponent>(registry, only, visit, C::ParticleSystemComponent, [&](ParticleSystemComponent& particles) {
+            bool changed = visit.asset(particles.effect, componentRow(C::ParticleSystemComponent, "effect"), "effect");
+            changed |= visitInlineEffect(visit, particles.inlineEffect, componentRow(C::ParticleSystemComponent, "inlineEffect"), "inlineEffect");
+            if (changed) particles.needReload = true;
         });
 
         eachComponent<UIDocumentComponent>(registry, only, visit, C::UIDocumentComponent, [&](UIDocumentComponent& document) {
@@ -737,6 +773,15 @@ namespace {
                             found(row, AssetRef(scalar(value)), field);
                         }
                         break;
+                    case AssetRefShape::ParticleEffect: {
+                        particles::ParticleEffectDocument document;
+                        std::vector<particles::Diagnostic> diagnostics;
+                        particles::ParticleEffectCodec::read(scalar(value), document, diagnostics);
+                        particles::ParticleModules::visitAssets(document, [&](std::string& path, std::string& guid, particles::ParticleModules::AssetKind kind, const std::string& inner) {
+                            found(row, AssetRef(path, Guid::parse(guid)), field + "." + inner, 0, AssetPathBase::Assets, true, effectAssetType(kind));
+                        });
+                        break;
+                    }
                     case AssetRefShape::ScriptProperty: {
                         const std::string type = scalar(value["type"]);
                         const YAML::Node propertyValue = value["value"];
@@ -904,7 +949,8 @@ namespace {
             }
             p++;
         }
-        return p == parts.size() || (pattern.empty() && field == "path");
+        // an inline effect's row holds the paths inside it ("inlineEffect.renderer.texture")
+        return p == parts.size() || (pattern.empty() && field == "path") || (shape == AssetRefShape::ParticleEffect && p > 0);
     }
 
 }

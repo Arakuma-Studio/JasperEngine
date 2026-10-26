@@ -8,10 +8,12 @@
 #include "ParticleTestUtil.h"
 
 #include "memory/Arena.h"
+#include "particles/ParticleCompiler.h"
 #include "particles/ParticleRender.h"
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <random>
@@ -160,4 +162,49 @@ TEST(ParticleRender, NativeMatchesScalar){
     const PackResult scalar = ParticleRenderPrep::packWith(true, sim.runtime, view, b, nullptr);
     ASSERT_EQ(native.count, scalar.count);
     EXPECT_EQ(std::memcmp(native.instances, scalar.instances, native.count * sizeof(ParticleInstance)), 0);
+}
+
+// the Scene view's emitter gizmo: a box's 12 edges at its size, a cone's rims at the base radius
+// and at the length, all moved by the shape's position and turned by its rotation
+TEST(ParticleRender, ShapeOutline){
+    using namespace jasperengine::particles;
+    ShapeModule box;
+    box.shape = ShapeType::Box;
+    box.scale = Vector3(2.0f, 4.0f, 6.0f);
+    box.position = Vector3(10.0f, 0.0f, 0.0f);
+    std::vector<Vector3> segments;
+    ParticleCompiler::shapeOutline(box, segments);
+    ASSERT_EQ(segments.size(), 24u);
+    float maxX = -1e9f, maxY = -1e9f, maxZ = -1e9f;
+    for (const Vector3& p : segments){
+        maxX = std::max(maxX, p.x);
+        maxY = std::max(maxY, p.y);
+        maxZ = std::max(maxZ, p.z);
+    }
+    EXPECT_NEAR(maxX, 11.0f, 1e-5f);
+    EXPECT_NEAR(maxY, 2.0f, 1e-5f);
+    EXPECT_NEAR(maxZ, 3.0f, 1e-5f);
+
+    ShapeModule cone;
+    cone.shape = ShapeType::Cone;
+    cone.radius = 1.0f;
+    cone.angle = 45.0f;
+    cone.length = 2.0f;
+    ParticleCompiler::shapeOutline(cone, segments);
+    ASSERT_FALSE(segments.empty());
+    float base = 0.0f, top = 0.0f;
+    for (const Vector3& p : segments){
+        const float r = std::sqrt(p.x * p.x + p.z * p.z);
+        if (std::fabs(p.y) < 1e-5f) base = std::max(base, r);
+        if (std::fabs(p.y - 2.0f) < 1e-5f) top = std::max(top, r);
+    }
+    EXPECT_NEAR(base, 1.0f, 1e-4f);
+    EXPECT_NEAR(top, 3.0f, 1e-4f);    // radius + length * tan(45)
+
+    // turned 90 degrees around Z: the cone's axis (+Y) points along -X
+    cone.rotation = Vector3(0.0f, 0.0f, 90.0f);
+    ParticleCompiler::shapeOutline(cone, segments);
+    float minX = 1e9f;
+    for (const Vector3& p : segments) minX = std::min(minX, p.x);
+    EXPECT_NEAR(minX, -2.0f, 1e-4f);
 }

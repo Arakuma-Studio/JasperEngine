@@ -67,6 +67,7 @@
 #include "component/PanelComponent.h"
 #include "component/ParticleSystemComponent.h"
 #include "component/ForceFieldComponent.h"
+#include "particles/ParticleEffectCodec.h"
 #include "component/PointsComponent.h"
 #include "component/PolygonComponent.h"
 #include "component/PositionTweenComponent.h"

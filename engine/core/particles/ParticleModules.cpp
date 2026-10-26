@@ -64,6 +64,7 @@ namespace {
         ops.size = [](const void* v) -> size_t { return static_cast<const V*>(v)->size(); };
         ops.resize = [](void* v, size_t n){ static_cast<V*>(v)->resize(n); };
         ops.at = [](void* v, size_t i) -> void* { return &(*static_cast<V*>(v))[i]; };
+        ops.erase = [](void* v, size_t i){ V& vector = *static_cast<V*>(v); vector.erase(vector.begin() + (std::ptrdiff_t)i); };
         return ops;
     }
 
@@ -124,6 +125,7 @@ namespace {
                                        {"localOriented", "Local Oriented", 6}, {"mesh", "Mesh", 7}, {"none", "None", 8}};
     const EnumOption kVerticalLocks[] = {{"world", "World Y", 0}, {"emitter", "Emitter Y", 1}};
     const EnumOption kMeshSelections[] = {{"random", "Random", 0}, {"index", "By Spawn Index", 1}};
+    const EnumOption kUntexturedShapes[] = {{"disc", "Soft Disc", 0}, {"square", "Square", 1}};
     const EnumOption kBlends[] = {{"alpha", "Alpha", 0}, {"premultiplied", "Premultiplied", 1}, {"additive", "Additive", 2}, {"multiply", "Multiply", 3}};
     const EnumOption kSortModes[] = {{"none", "None", 0}, {"byDistance", "By Distance", 1}, {"oldestInFront", "Oldest in Front", 2},
                                      {"youngestInFront", "Youngest in Front", 3}, {"byDepth", "By Depth", 4}};
@@ -568,6 +570,9 @@ namespace {
         f.push_back(arrayField<std::vector<ShaderTexture>>("shaderTextures", "Shader Textures", JE_ACC(RendererModule, shaderTextures), &shaderTextureDesc(), 16));
         f.push_back(field("texture", "Texture", FieldType::String, JE_ACC(RendererModule, texture), FieldFlag_AssetPath));
         f.push_back(field("textureGuid", "Texture GUID", FieldType::String, JE_ACC(RendererModule, textureGuid), FieldFlag_Guid | FieldFlag_Hidden));
+        f.push_back(shownIf(enumField("untexturedShape", "Without Texture", JE_ACC(RendererModule, untexturedShape), kUntexturedShapes, FieldFlag_Advanced,
+                                      "what a billboard draws without a texture: a soft disc (Unity's default particle) or a square (the old points)"),
+                            JE_IF(RendererModule, m.texture.empty())));
         f.push_back(field("trailTexture", "Trail Texture", FieldType::String, JE_ACC(RendererModule, trailTexture), FieldFlag_AssetPath));
         f.push_back(field("trailTextureGuid", "Trail Texture GUID", FieldType::String, JE_ACC(RendererModule, trailTextureGuid), FieldFlag_Guid | FieldFlag_Hidden));
         f.push_back(enumField("blend", "Blend", JE_ACC(RendererModule, blend), kBlends));
@@ -970,4 +975,42 @@ bool ParticleModules::setExposed(ParticleEffectDocument& document, std::string_v
 
 bool ParticleModules::getExposed(const ParticleEffectDocument& document, std::string_view name, Vector4& value){
     return accessExposed(const_cast<ParticleEffectDocument&>(document), name, value, false);
+}
+
+namespace {
+
+    void visitStruct(const StructDesc& desc, void* owner, const std::string& prefix, const ParticleModules::AssetVisitor& visit){
+        for (size_t f = 0; f < desc.fields.size(); f++){
+            const FieldDesc& field = desc.fields[f];
+            const std::string path = prefix.empty() ? std::string(field.key) : prefix + "." + field.key;
+            if (field.flags & FieldFlag_AssetPath){
+                std::string& value = *static_cast<std::string*>(field.field(owner));
+                // its GUID is the field after it
+                std::string* guid = nullptr;
+                if (f + 1 < desc.fields.size() && (desc.fields[f + 1].flags & FieldFlag_Guid))
+                    guid = static_cast<std::string*>(desc.fields[f + 1].field(owner));
+                std::string none;
+                const std::string key = field.key;
+                const ParticleModules::AssetKind kind = key == "model" ? ParticleModules::AssetKind::Model
+                                                      : (key == "effect" ? ParticleModules::AssetKind::Effect : ParticleModules::AssetKind::Texture);
+                visit(value, guid ? *guid : none, kind, path);
+            }else if (field.type == FieldType::Struct && field.element){
+                visitStruct(*field.element, field.field(owner), path, visit);
+            }else if (field.type == FieldType::Array && field.element){
+                void* vector = field.field(owner);
+                const size_t count = field.array.size(vector);
+                for (size_t i = 0; i < count; i++)
+                    visitStruct(*field.element, field.array.at(vector, i), path + "[" + std::to_string(i) + "]", visit);
+            }
+        }
+    }
+
+}
+
+void ParticleModules::visitAssets(ParticleEffectDocument& document, const AssetVisitor& visit){
+    visitStruct(documentFields(), &document, std::string(), visit);
+    for (const ModuleDesc& module : all())
+        visitStruct(module.fields, module.module(document), module.key, visit);
+    for (size_t i = 0; i < document.subEmitters.size(); i++)
+        visitStruct(subEmitterFields(), &document.subEmitters[i], "subEmitters[" + std::to_string(i) + "]", visit);
 }

@@ -11,6 +11,7 @@
 #include "render/AtmospherePresets.h"
 #include "render/preview/MeshPreviewRender.h"
 #include "render/preview/DirectionRender.h"
+#include "render/preview/ParticlePreviewRender.h"
 #include "util/PrimitiveParameters.h"
 #include "window/dialog/ScriptCreateDialog.h"
 #include "window/dialog/ShaderForkDialog.h"
@@ -24,10 +25,16 @@
 #include "soloud_wav.h"
 
 #include <functional>
+#include <set>
+
+namespace jasperengine::particles {
+    struct ParticleEffectDocument;
+}
 
 namespace jasperengine::editor{
 
     class SceneWindow;
+    class CommandHistory;
     class ForkShaderCmd;
     class MultiPropertyCmd;
 
@@ -208,7 +215,6 @@ namespace jasperengine::editor{
         void startActionPreview(Entity entity, Scene* scene, SceneProject* sceneProject);
         void stopActionPreview(Scene* scene, SceneProject* sceneProject);
         void stopActionPreviewIfActive();
-        void updateParticlePreviewSnapshot(YAML::Node& components, const ParticleSystemComponent& particles);
 
         // Dirty material helpers
         void markMaterialDirty(unsigned int sceneId, Entity entity, int submeshIndex, const std::string& relativePath);
@@ -359,10 +365,6 @@ namespace jasperengine::editor{
         bool propertyHeader(std::string label, float secondColSize = -1, bool defChanged = false, bool child = false);
         bool propertyRow(RowPropertyType type, ComponentType cpType, std::string id, std::string label, SceneProject* sceneProject, std::vector<Entity> entities, RowSettings settings = RowSettings());
         bool propertyRowWithAutoButton(RowPropertyType propType, ComponentType cpType, std::string id, std::string label, std::string autoId, std::string autoLabel, SceneProject* sceneProject, std::vector<Entity> entities, RowSettings settings = RowSettings());
-        void setParticleFrames(ComponentType cpType, const std::string& propertyId, SceneProject* sceneProject, Entity entity, const std::vector<int>& frames);
-        void setParticleBursts(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::vector<ParticleBurst>& bursts);
-        void setParticleColorGradient(ComponentType cpType, SceneProject* sceneProject, Entity entity, const ParticleColorGradient& gradient);
-        void drawParticleFrameList(ComponentType cpType, const std::string& propertyId, const std::string& tableId, SceneProject* sceneProject, const std::vector<Entity>& entities);
         // Shared "Shader" row for components that support forking a built-in shader
         // (Mesh/UI/Points/Lines/Sky): fork, edit files, open .vert/.frag, reset to built-in,
         // plus .vert/.frag drag-drop. The .vert/.frag entry points may share a base name or
@@ -532,6 +534,24 @@ namespace jasperengine::editor{
         void drawAudioComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawSkyboxComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawParticleSystemComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawParticleExposedValues(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                       const particles::ParticleEffectDocument& document);
+        void drawParticleCollisionPlanes(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+        void drawForceFieldComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // a particle edit's undo step, merging until the edit ends (InspectorParticles.cpp)
+        void pushParticleCommand(CommandHistory* history, Command* command, bool commit);
+        Command* particleEditCmd = nullptr;
+        // a .particles asset picked in the Project window, shown until the GameObject selection
+        // changes (Unity: the newest selection is what the Inspector shows)
+        std::string inspectedParticleAsset;
+        std::string lastProjectParticleFile;
+        uint32_t inspectedParticleScene = 0;
+        std::vector<Entity> inspectedParticleSelection;
+        ParticlePreviewRender particleAssetPreview;
+        bool updateInspectedParticleAsset(SceneProject* sceneProject, const std::vector<Entity>& entities);
+        void drawParticleAssetInspector();
+        // the curve and gradient fields whose keys are open, by field path
+        std::set<std::string> particleExpanded;
         void drawLineRendererComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawPolygonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawMeshPolygonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

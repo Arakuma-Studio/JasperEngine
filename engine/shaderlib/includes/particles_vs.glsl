@@ -49,7 +49,9 @@ uniform u_vs_particlesParams {
 #endif
 in vec3 i_particlePosition;         // trails: the point
 in vec4 i_particleColor;            // rgb sRGB-encoded (gamma 2.2), a linear
-in vec2 i_particleSize;             // trails: unused
+#ifndef PARTICLE_TRAIL
+    in vec2 i_particleSize;
+#endif
 in vec2 i_particleRotFrame;         // x rotation / 2pi, y frame / frame count (blend in the fraction); trails: x u, y side
 in vec4 i_particleVelocity;         // xyz velocity (simulation space), w emission (mesh: the size z); trails: xyz tangent, w half width
 #ifdef CUSTOM_DATA

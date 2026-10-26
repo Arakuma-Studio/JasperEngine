@@ -65,6 +65,10 @@ namespace jasperengine::editor{
         std::map<Entity, LineRenderer*> reflectionProbeLines;
         // a selected Local Volumetric Fog's outer shape and its inner (blend distance) one
         std::map<Entity, LineRenderer*> fogVolumeLines;
+        // a selected Particle System's emitter shape, bounds and collision planes; a Force
+        // Field's shape (S20 R28: the Particle Effect panel's gizmo toggles)
+        std::map<Entity, LineRenderer*> particleLines;
+        std::map<Entity, LineRenderer*> forceFieldLines;
 
         ViewportGizmo viewgizmo;
 
@@ -96,6 +100,8 @@ namespace jasperengine::editor{
         void createOrUpdateTrackLines(Entity entity, const TranslateTracksComponent& tracks, bool visible);
         void createOrUpdateReflectionProbeLines(Entity entity, const Transform& transform, const ReflectionProbeComponent& probe, bool visible);
         void createOrUpdateFogVolumeLines(Entity entity, const Transform& transform, const LocalVolumetricFogComponent& volume, bool visible);
+        void createOrUpdateParticleLines(Entity entity, const Transform& transform, const ParticleSystemComponent& particles, bool visible);
+        void createOrUpdateForceFieldLines(Entity entity, const Transform& transform, const ForceFieldComponent& field, bool visible);
         void createCameraFrustum(Entity entity, const Transform& transform, const CameraComponent& cameraComponent, bool fixedSizeFrustum, bool isMainCamera);
         void createDirectionalLightArrow(Entity entity, const Transform& transform, const LightComponent& light, bool isSelected);
         void createPointLightSphere(Entity entity, const Transform& transform, const LightComponent& light, bool isSelected);

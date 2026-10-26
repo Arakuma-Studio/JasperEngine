@@ -28,6 +28,7 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "particles/ParticleRender.h"
+#include "subsystem/ParticleSystemState.h"
 #include <memory>
 #include <algorithm>
 #include <chrono>
@@ -8056,6 +8057,8 @@ void RenderSystem::setSceneInputUser(Entity entity, bool points, uint32_t inputs
         usage |= user.second;
     for (const auto& user : sceneInputPoints)
         usage |= user.second;
+    for (const auto& user : sceneInputParticles)
+        usage |= user.second;
     sceneInputUsage = usage;
 }
 
@@ -8101,6 +8104,20 @@ void RenderSystem::predictSceneInputUsers(){
             auto found = sceneInputPoints.find(entity);
             setSceneInputUser(entity, true, inputs | (found != sceneInputPoints.end() ? found->second : 0));
         }
+    }
+    // the particle systems about to load (their effect bound, the render not yet)
+    auto particleArray = scene->getComponentArray<ParticleSystemComponent>();
+    for (size_t i = 0; i < particleArray->size(); i++){
+        const ParticleSystemComponent& particles = particleArray->getComponentFromIndex(i);
+        if (!particles.state || !particles.state->effect || particles.state->render.loaded)
+            continue;
+        const particles::RendererModule& renderer = particles.state->effect->document.renderer;
+        std::shared_ptr<const ShaderManifest> manifest = findManifest(renderer.shader);
+        if (!manifest)
+            continue;
+        const uint32_t inputs = manifest->resolveRequire(ShaderReference::getEnabledFeatures(renderer.shader, renderer.shaderFeatures)) & ShaderRequire_SceneInputs;
+        if (inputs)
+            setParticleSceneInputUser(particleArray->getEntity(i), inputs);
     }
 }
 
@@ -8163,7 +8180,7 @@ bool RenderSystem::hasVisibleGBufferDepthMismatch(CameraComponent& camera, int i
 RenderSystem::SceneInputDetails RenderSystem::getSceneInputDetails(){
     SceneInputDetails usage;
     usage.reads = sceneInputUsage;
-    usage.readers = (uint32_t)(sceneInputMeshes.size() + sceneInputPoints.size());
+    usage.readers = (uint32_t)(sceneInputMeshes.size() + sceneInputPoints.size() + sceneInputParticles.size());
     usage.passes = lastSceneInputStats.passes;
     usage.depthPrePasses = lastSceneInputStats.depthPrePasses;
     usage.sharedDepth = lastSceneInputStats.sharedDepth;

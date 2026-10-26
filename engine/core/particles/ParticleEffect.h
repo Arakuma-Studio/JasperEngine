@@ -363,6 +363,8 @@ namespace jasperengine { namespace particles {
     enum class LightingMode : uint8_t { Unlit, Lit, SixWay };
     // the three map layouts of OpenEngine's particle_six_way.glsl
     enum class SixWayLayout : uint8_t { RGBA, TopLeftRightBottomBackFront, PositiveNegative };
+    // a billboard without a texture: Unity's default particle (a soft disc), or the old points' square
+    enum class UntexturedShape : uint8_t { Disc, Square };
 
     struct ShaderProperty {
         std::string name;
@@ -400,6 +402,7 @@ namespace jasperengine { namespace particles {
         std::vector<ShaderTexture> shaderTextures;
         std::string texture;
         std::string textureGuid;
+        UntexturedShape untexturedShape = UntexturedShape::Disc;
         std::string trailTexture;
         std::string trailTextureGuid;
         ParticleBlend blend = ParticleBlend::Alpha;

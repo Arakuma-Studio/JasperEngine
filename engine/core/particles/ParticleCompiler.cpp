@@ -517,6 +517,102 @@ const float* ParticleCompiler::srgbDecodeTable(){
     return table.data();
 }
 
+void ParticleCompiler::shapeOutline(const ShapeModule& s, std::vector<Vector3>& out){
+    out.clear();
+    float r[9];
+    eulerMatrix(s.rotation, r);
+    const bool box = s.shape == ShapeType::Box || s.shape == ShapeType::Rectangle;
+    // a box's scale is its size; the other shapes scale by it
+    const Vector3 scale = box ? Vector3(1.0f, 1.0f, 1.0f) : s.scale;
+    auto toEmitter = [&](const Vector3& p){
+        const float x = p.x * scale.x, y = p.y * scale.y, z = p.z * scale.z;
+        return Vector3(r[0] * x + r[3] * y + r[6] * z + s.position.x,
+                       r[1] * x + r[4] * y + r[7] * z + s.position.y,
+                       r[2] * x + r[5] * y + r[8] * z + s.position.z);
+    };
+    auto segment = [&](const Vector3& a, const Vector3& b){
+        out.push_back(toEmitter(a));
+        out.push_back(toEmitter(b));
+    };
+    const int steps = 32;
+    // an arc of a circle around +Y at height y, or around another axis by `plane`
+    // (0: XZ, 1: XY, 2: YZ), from angle `from` over `span`
+    auto arc = [&](float radius, float y, float from, float span, int plane){
+        auto at = [&](float a){
+            const float c = std::cos(a) * radius, sn = std::sin(a) * radius;
+            if (plane == 1) return Vector3(c, sn, 0.0f);
+            if (plane == 2) return Vector3(0.0f, sn, c);
+            return Vector3(c, y, sn);
+        };
+        for (int i = 0; i < steps; i++)
+            segment(at(from + span * (float)i / steps), at(from + span * (float)(i + 1) / steps));
+    };
+    const float pi = 3.14159265358979f;
+    const float span = std::clamp(s.arc, 0.0f, 360.0f) * kDegToRad;
+    switch (s.shape){
+        case ShapeType::Sphere:
+            arc(s.radius, 0.0f, 0.0f, 2.0f * pi, 0);
+            arc(s.radius, 0.0f, 0.0f, 2.0f * pi, 1);
+            arc(s.radius, 0.0f, 0.0f, 2.0f * pi, 2);
+            break;
+        case ShapeType::Hemisphere:
+            arc(s.radius, 0.0f, 0.0f, 2.0f * pi, 0);
+            arc(s.radius, 0.0f, 0.0f, pi, 1);
+            arc(s.radius, 0.0f, 0.0f, pi, 2);
+            break;
+        case ShapeType::Cone: {
+            const float top = s.radius + s.length * std::tan(std::min(s.angle, 89.9f) * kDegToRad);
+            arc(s.radius, 0.0f, 0.0f, span, 0);
+            arc(top, s.length, 0.0f, span, 0);
+            for (int i = 0; i < 4; i++){
+                const float a = span * (float)i / 4.0f;
+                segment(Vector3(std::cos(a) * s.radius, 0.0f, std::sin(a) * s.radius), Vector3(std::cos(a) * top, s.length, std::sin(a) * top));
+            }
+            break;
+        }
+        case ShapeType::Circle:
+            arc(s.radius, 0.0f, 0.0f, span, 0);
+            if (span < 2.0f * pi){
+                segment(Vector3(0.0f, 0.0f, 0.0f), Vector3(s.radius, 0.0f, 0.0f));
+                segment(Vector3(0.0f, 0.0f, 0.0f), Vector3(std::cos(span) * s.radius, 0.0f, std::sin(span) * s.radius));
+            }
+            break;
+        case ShapeType::Donut:
+            arc(s.radius + s.donutRadius, 0.0f, 0.0f, span, 0);
+            arc(std::max(0.0f, s.radius - s.donutRadius), 0.0f, 0.0f, span, 0);
+            arc(s.radius, s.donutRadius, 0.0f, span, 0);
+            arc(s.radius, -s.donutRadius, 0.0f, span, 0);
+            break;
+        case ShapeType::Edge:
+            segment(Vector3(-s.radius, 0.0f, 0.0f), Vector3(s.radius, 0.0f, 0.0f));
+            break;
+        case ShapeType::Box: {
+            const Vector3 h = s.scale * 0.5f;
+            const Vector3 c[8] = {
+                Vector3(-h.x, -h.y, -h.z), Vector3(h.x, -h.y, -h.z), Vector3(h.x, h.y, -h.z), Vector3(-h.x, h.y, -h.z),
+                Vector3(-h.x, -h.y, h.z), Vector3(h.x, -h.y, h.z), Vector3(h.x, h.y, h.z), Vector3(-h.x, h.y, h.z)
+            };
+            const int edges[12][2] = {{0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 5}, {5, 6}, {6, 7}, {7, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
+            for (const auto& e : edges) segment(c[e[0]], c[e[1]]);
+            break;
+        }
+        case ShapeType::Rectangle: {
+            const float hx = s.scale.x * 0.5f, hz = s.scale.z * 0.5f;
+            segment(Vector3(-hx, 0.0f, -hz), Vector3(hx, 0.0f, -hz));
+            segment(Vector3(hx, 0.0f, -hz), Vector3(hx, 0.0f, hz));
+            segment(Vector3(hx, 0.0f, hz), Vector3(-hx, 0.0f, hz));
+            segment(Vector3(-hx, 0.0f, hz), Vector3(-hx, 0.0f, -hz));
+            break;
+        }
+        case ShapeType::Mesh:
+            // the mesh shows itself; a cross marks the shape's origin
+            segment(Vector3(-0.25f, 0.0f, 0.0f), Vector3(0.25f, 0.0f, 0.0f));
+            segment(Vector3(0.0f, -0.25f, 0.0f), Vector3(0.0f, 0.25f, 0.0f));
+            segment(Vector3(0.0f, 0.0f, -0.25f), Vector3(0.0f, 0.0f, 0.25f));
+            break;
+    }
+}
+
 std::shared_ptr<CompiledEffect> ParticleCompiler::compile(const ParticleEffectDocument& document, const CompileEnvironment& environment){
     auto effect = std::make_shared<CompiledEffect>();
     compile(document, environment, *effect);

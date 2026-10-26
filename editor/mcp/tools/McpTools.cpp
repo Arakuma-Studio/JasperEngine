@@ -48,6 +48,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerProfilerTools, "Profiling and render diagnostics", "profiling"},   // S15
     {registerScriptingTools, "Scripting: hot reload, script status, editor menus, expressions", "scripting"},   // S23
     {registerGraphTools, "Graphs", "scripting"},   // S23
+    {registerParticleTools, "Particles: effects, modules, playback, capture", "particles"},   // S20
 };
 
 // JASPER_MCP_SELFTEST_GROUP: one tool in the test-only group "selftest", for the tests of

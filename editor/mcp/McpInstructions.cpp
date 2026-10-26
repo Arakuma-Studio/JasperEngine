@@ -30,7 +30,7 @@ scripts. Each tool edit is an undoable command, live to a human watching. Build 
 with tools, write code with your own file tools, verify by playing, screenshots and the Console.
 tools/list is authoritative for tool names and arguments; read a tool's description before
 first use. Deeper reference: jasper://docs/... (Lua scripting and API, C++ scripting, physics,
-shaders, materials, prefabs, assets, HTML/CSS UI, data safety, undo, profiling, ECS, Unity glossary).
+shaders, materials, prefabs, assets, HTML/CSS UI, data safety, undo, profiling, ECS, particles, Unity glossary).
 
 ## Unity names -> engine names
 Tools, component names and script APIs use the engine names.
@@ -160,6 +160,15 @@ Local Volumetric Fog volumes near the camera); create_entity volumetric_clouds a
 apply_atmosphere_preset sets a look (list_atmosphere_presets); get_atmosphere_info says what
 ran (tier, passes, resolution). Atmosphere Quality is per platform (project settings
 quality.atmosphere_quality_*). More: jasper://docs/atmosphere.
+
+## Particles
+create_particles makes a Particle System from a preset (fire, smoke, sparks, explosion, snow,
+rain, magic). The particles group edits its effect: particles_get_effect (JSON, modules keyed by
+type), particles_edit_effect (a merge patch {"modules": {"emission": {"rateOverTime": 20}}}, one
+undo step), particles_add_module / particles_remove_module. A .particles asset
+(particles_create_effect, particles_assign) is shared: editing it changes every system using it.
+particles_control plays, seeks and emits (Edit mode too), particles_stats and particles_capture
+check. More: jasper://docs/particles.
 
 ## Physics
 - Add a body and its collider to the SAME GameObject in one step (edit_colliders with

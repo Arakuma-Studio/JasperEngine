@@ -17,6 +17,13 @@
 
 using namespace jasperengine;
 
+ActionSystem::ActionSystem(Scene* scene): SubSystem(scene){
+    signature.set(scene->getComponentId<ActionComponent>());
+    // the types onComponentRemoved handles
+    declareHookType(scene->getComponentId<ActionComponent>());
+    declareHookType(scene->getComponentId<AnimationComponent>());
+}
+
 void ActionSystem::actionStart(Entity entity){
     ActionComponent& action = scene->getComponent<ActionComponent>(entity);
     Signature signature = scene->getSignature(entity);
@@ -63,6 +70,11 @@ bool ActionSystem::isParticleController(Entity entity, const ActionComponent& ac
     const Signature signature = scene->getSignature(entity);
     return !signature.test(scene->getComponentId<TweenComponent>()) && !signature.test(scene->getComponentId<SpriteAnimationComponent>()) &&
            !signature.test(scene->getComponentId<AnimationComponent>()) && !signature.test(scene->getComponentId<KeyframeTracksComponent>());
+}
+
+void ActionSystem::previewParticleController(double dt, Entity entity, const ActionComponent& action){
+    if (isParticleController(entity, action))
+        scene->getSystem<ParticleSubsystem>()->previewAdvance(action.target, dt);
 }
 
 void ActionSystem::actionComponentStart(ActionComponent& action){
@@ -985,6 +997,7 @@ void ActionSystem::updateAnimationPreview(double dt, const std::vector<Entity>& 
             if (childSig.test(scene->getComponentId<AnimationComponent>())) {
                 previewAnimation(childEntity);
             } else {
+                previewParticleController(dt, childEntity, childAction);
                 processRunningAction(dt, childEntity, childAction);
             }
         }
@@ -1020,6 +1033,7 @@ void ActionSystem::updateActionPreview(double dt, Entity entity){
     actionStateChange(entity, action);
 
     if (action.state == ActionState::Running){
+        previewParticleController(dt, entity, action);
         clearPoseBlend();
         processRunningAction(dt, entity, action);
         flushPoseBlend();

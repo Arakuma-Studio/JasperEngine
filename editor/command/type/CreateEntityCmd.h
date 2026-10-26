@@ -64,6 +64,7 @@ namespace jasperengine::editor{
         MORPH_TRACKS,
         MODEL,
         PARTICLE_SYSTEM,
+        FORCE_FIELD,
         POINTS,
         LINE_RENDERER,
         MESH_POLYGON,

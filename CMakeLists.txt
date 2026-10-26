@@ -669,6 +669,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/ScriptTools.cpp
     ${EDITOR_DIR}/mcp/tools/ScriptingTools.cpp
     ${EDITOR_DIR}/mcp/tools/GraphTools.cpp
+    ${EDITOR_DIR}/mcp/tools/ParticleTools.cpp
     ${EDITOR_DIR}/mcp/tools/AssetTools.cpp
     ${EDITOR_DIR}/mcp/tools/MaterialsLightingTools.cpp
     ${EDITOR_DIR}/mcp/tools/AssetIdentityTools.cpp
@@ -692,6 +693,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/StatusBar.cpp
     ${EDITOR_DIR}/reload/handlers/Assets.cpp
     ${EDITOR_DIR}/reload/handlers/Audio.cpp
+    ${EDITOR_DIR}/reload/handlers/Particles.cpp
     ${EDITOR_DIR}/reload/handlers/Common.cpp
     ${EDITOR_DIR}/reload/handlers/Fonts.cpp
     ${EDITOR_DIR}/reload/handlers/HtmlUi.cpp
@@ -716,6 +718,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/asset/TextReferences.cpp
     ${EDITOR_DIR}/util/Prefab.cpp
     ${EDITOR_DIR}/util/ProjectUtils.cpp
+    ${EDITOR_DIR}/util/ParticleEffectEdit.cpp
+    ${EDITOR_DIR}/util/ParticleMigrationReport.cpp
     ${EDITOR_DIR}/util/EditorFingerprint.cpp
     ${EDITOR_DIR}/util/EditorScripts.cpp
     ${EDITOR_DIR}/util/ExternalCodeEditor.cpp
@@ -766,6 +770,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorWindow.cpp
     ${EDITOR_DIR}/window/InspectorShaderLibrary.cpp
     ${EDITOR_DIR}/window/InspectorMaterialPbr.cpp
+    ${EDITOR_DIR}/window/InspectorParticles.cpp
     ${EDITOR_DIR}/window/InspectorPostProcessing.cpp
     ${EDITOR_DIR}/window/InspectorShadows.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
@@ -775,6 +780,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/PlayModeChangesWindow.cpp
     ${EDITOR_DIR}/window/UndoHistoryWindow.cpp
     ${EDITOR_DIR}/window/SceneWindow.cpp
+    ${EDITOR_DIR}/window/ParticleEffectOverlay.cpp
     ${EDITOR_DIR}/window/PrefabStageBar.cpp
     ${EDITOR_DIR}/window/ExternalChangeBar.cpp
     ${EDITOR_DIR}/window/GameWindow.cpp
@@ -825,6 +831,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/render/preview/DirectionRender.cpp
     ${EDITOR_DIR}/render/preview/ModelRender.cpp
     ${EDITOR_DIR}/render/preview/PrefabRender.cpp
+    ${EDITOR_DIR}/render/preview/ParticlePreviewRender.cpp
 
     ${EDITOR_DIR}/command/CommandHandle.cpp
     ${EDITOR_DIR}/command/CommandHistory.cpp
@@ -878,6 +885,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/ForkShaderCmd.cpp
     ${EDITOR_DIR}/command/type/TerrainMapPatchCmd.cpp
     ${EDITOR_DIR}/command/type/GraphEditCmd.cpp
+    ${EDITOR_DIR}/command/type/ParticleEffectAssetCmd.cpp
 
     ${IMGUI_SOURCES}
     ${TINYEXPR_SOURCES}

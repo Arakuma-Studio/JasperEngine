@@ -197,6 +197,7 @@ const std::vector<EntityKind>& entityKinds() {
         {"volumetric_clouds", EntityCreationType::VOLUMETRIC_CLOUDS, "Volumetric Clouds"},
         {"reflection_probe", EntityCreationType::REFLECTION_PROBE, "Reflection Probe"},
         {"particle_system", EntityCreationType::PARTICLE_SYSTEM, "Particle System"},
+        {"force_field", EntityCreationType::FORCE_FIELD, "Force Field"},
         {"points", EntityCreationType::POINTS, "Points"},
         {"line_renderer", EntityCreationType::LINE_RENDERER, "Line Renderer"},
         {"mesh_polygon", EntityCreationType::MESH_POLYGON, "Mesh Polygon"},

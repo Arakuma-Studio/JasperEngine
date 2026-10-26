@@ -48,6 +48,8 @@
 #include <unordered_set>
 
 namespace jasperengine{
+
+	namespace particles { struct CompiledEffect; }
 	// Legacy u_fs_lighting, declared by forks written before per-object lights: filled per
 	// draw with the object's first MAX_LIGHTS pixel lights (the camera part per camera)
 	typedef struct fs_lighting_t {
@@ -2352,6 +2354,18 @@ namespace jasperengine{
 		static RenderState resolveComponentRenderState(MaterialBlendMode blendMode, MaterialDepthWrite depthWrite,
 		                                               const MaterialStencil& stencil, int colorWrite, const ShaderManifest* manifest,
 		                                               const std::vector<std::string>& shaderFeatures, bool legacyCulling);
+		// The variants a particle effect draws with (without the post-processing colour bit): its
+		// quads, meshes and trails, the shader reference (its features and blend define)
+		struct ParticleVariantSet{
+			bool quads = false;
+			bool meshes = false;
+			bool trails = false;
+			uint32_t quadProperties = 0;
+			uint32_t meshProperties = 0;
+			uint32_t trailProperties = 0;
+			std::string reference;   // empty: the built-in shader
+		};
+		static ParticleVariantSet getParticleVariants(const particles::CompiledEffect& effect, bool fog);
 		// the shader-library custom shader string of a UI/points/lines/sky shader with its
 		// features and the BLEND_* define of its blend mode (Skybox: AUTO)
 		static std::string getComponentShaderReference(const std::string& customShader, const std::vector<std::string>& shaderFeatures,

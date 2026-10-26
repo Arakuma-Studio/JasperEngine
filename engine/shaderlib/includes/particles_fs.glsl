@@ -44,7 +44,7 @@ in float v_emissive;
 #endif
 
 uniform u_fs_particlesParams {
-    vec4 blend;           // x the blend of the built-in shader: 0 alpha, 1 premultiplied, 2 additive, 3 multiply
+    vec4 blend;           // x the blend of the built-in shader: 0 alpha, 1 premultiplied, 2 additive, 3 multiply; y a soft disc without texture
     vec4 emissionColor;   // rgb the emission colour (linear), w 1 with an emission map
     vec4 sixWay;          // x layout (0 RGBA, 1 top/left/right + bottom/back/front, 2 positive/negative), y contrast
 } particlesFsParams;
@@ -75,6 +75,13 @@ vec4 particleTexel(){
         #endif
         return texel;
     #else
+        #if !defined(PARTICLE_MESH) && !defined(PARTICLE_TRAIL)
+            // no texture: Unity's default particle, a soft disc (blend.y; the old points' square without it)
+            if (particlesFsParams.blend.y > 0.5){
+                float edge = clamp(1.0 - length(v_uv * 2.0 - 1.0), 0.0, 1.0);
+                return vec4(1.0, 1.0, 1.0, edge * edge * (3.0 - 2.0 * edge));
+            }
+        #endif
         return vec4(1.0);
     #endif
 }

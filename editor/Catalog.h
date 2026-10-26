@@ -63,6 +63,8 @@ namespace jasperengine::editor{
         UpdateFlags_Scene_Mesh_Variant  = (uint64_t)1 << 37,
         // a UIDocument's file changed: load it again
         UpdateFlags_UIDocument_Reload   = (uint64_t)1 << 38,
+        // a particle system's effect changed (asset, inline document, exposed values, seed)
+        UpdateFlags_Particles           = (uint64_t)1 << 39,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -125,11 +127,12 @@ namespace jasperengine::editor{
         ReflectionProbeComponent,
         UIDocumentComponent,
         LocalVolumetricFogComponent,
-        VolumetricCloudsComponent
+        VolumetricCloudsComponent,
+        ForceFieldComponent
     };
 
     // the last ComponentType (loops over every type)
-    constexpr ComponentType LAST_COMPONENT_TYPE = ComponentType::VolumetricCloudsComponent;
+    constexpr ComponentType LAST_COMPONENT_TYPE = ComponentType::ForceFieldComponent;
 
     enum class PropertyType{
         Bool,

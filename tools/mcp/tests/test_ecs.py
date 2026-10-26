@@ -250,7 +250,7 @@ async def test_systems_window(ed: Editor):
         shot = await ed.call_raw("screenshot", {"view": "editor", "save_path": str(EVIDENCE / "systems-window.png")})
         ed.check(not shot.is_error and shot.images, f"editor screenshot: {shot.text[:300]}")
 
-        # the table: the seven systems with their timings
+        # the table: the eight systems with their timings
         schedule = await ed.call("get_system_schedule", runtime=True)
         for system in SYSTEMS:
             timing = system_entry(schedule, "Update", system)["timing"]
