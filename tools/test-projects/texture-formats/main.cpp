@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 // S14's test project: cooked textures through the runtime of a platform. assets/je-cooked/ holds
-// the desktop, mobile and web cooks of source/ (make_assets.sh), as an export ships them; the
-// build loads its family's (ETC1S / UASTC transcoded at load on the web, ASTC on Android,
-// BC on desktop), falls back where the GPU cannot sample a format, and draws them. A solid
+// the desktop, mobile, android_etc2 and web cooks of source/ (make_assets.sh), as an export with
+// the ETC2 fallback ships them; the build loads its family's (ETC1S / UASTC transcoded at load on
+// the web, ASTC on Android, ETC2 on an Android GPU without ASTC such as the emulator's
+// SwiftShader, BC on desktop), falls back where the GPU cannot sample a format, and draws them. A solid
 // texture fills the canvas centre: the gate checks its colour (WEB_PROJECT=texture-formats
 // tools/build.sh web, GATE=texture-formats tools/build.sh web-gate; ANDROID_PROJECT=texture-formats
 // tools/build.sh android with android-expect.txt).

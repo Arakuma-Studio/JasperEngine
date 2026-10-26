@@ -1,4 +1,6 @@
 # tools/android-emulator-test.sh --ordered --expect-file: what the texture-formats project logs on
-# Android (`logcat -v tag`): the mobile family (ASTC), loaded and drawn.
-I/JasperEngine: [gate] texture family mobile
+# the Android emulator (`logcat -v tag`). SwiftShader's GLES3 has no ASTC, so the runtime takes the
+# android_etc2 family the project ships (an export with the ETC2 fallback), loaded and drawn.
+I/JasperEngine: This GPU has no ASTC: loading the android_etc2 textures
+I/JasperEngine: [gate] texture family android_etc2
 I/JasperEngine: [gate] textures loaded 4 compressed yes
