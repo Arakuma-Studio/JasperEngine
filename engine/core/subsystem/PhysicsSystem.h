@@ -50,16 +50,22 @@ namespace jasperengine{
 	class JoltObjectLayerPairFilter;
 	class CharacterController2DSystem;
 	class CharacterControllerSystem;
+	class WaterSystem;
+	struct WaterSample;
 	
 
 	class JASPERENGINE_API PhysicsSystem : public SubSystem {
 
 		friend class CharacterController2DSystem;
 		friend class CharacterControllerSystem;
+		friend class WaterSystem;
 
 	private:
 		Vector2 gravity2D;
 		Vector3 gravity3D;
+
+		// the Water Volumes and the Buoyancies floating in them (S22 P3)
+		std::unique_ptr<WaterSystem> water;
 
 		bool interpolation;
 
@@ -216,6 +222,12 @@ namespace jasperengine{
 		int moveCharacter2D(Entity entity, const Vector2& motion);
 		bool simpleMoveCharacter2D(Entity entity, const Vector2& speed);
 #endif
+
+		// What the water is at a world point: in it, the surface over it with the frame's waves,
+		// its normal and the water's velocity (Water Volumes first, then library:water meshes)
+		WaterSample sampleWater(const Vector3& point) const;
+		// the surface height at a world XZ, NaN where no water is
+		float sampleWaterHeight(float x, float z) const;
 
 		// The entity's world pose now, its parents first, when the render pass has not
 		// resolved its Transform yet

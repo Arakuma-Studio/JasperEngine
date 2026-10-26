@@ -4456,6 +4456,14 @@ YAML::Node editor::Stream::encodeComponentsLive(const Entity entity, const Entit
         compNode[Catalog::getComponentName(ComponentType::CharacterController2DComponent, true)] = encodeCharacterController2DComponent(controller);
     }
 
+    if (signature.test(registry->getComponentId<WaterVolumeComponent>())) {
+        compNode[Catalog::getComponentName(ComponentType::WaterVolumeComponent, true)] = encodeWaterVolumeComponent(registry->getComponent<WaterVolumeComponent>(entity));
+    }
+
+    if (signature.test(registry->getComponentId<BuoyancyComponent>())) {
+        compNode[Catalog::getComponentName(ComponentType::BuoyancyComponent, true)] = encodeBuoyancyComponent(registry->getComponent<BuoyancyComponent>(entity));
+    }
+
     if (signature.test(registry->getComponentId<CharacterControllerComponent>())) {
         const CharacterControllerComponent& controller = registry->getComponent<CharacterControllerComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::CharacterControllerComponent, true)] = encodeCharacterControllerComponent(controller);
@@ -5080,6 +5088,28 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             registry->getComponent<CharacterController2DComponent>(entity) = std::move(controller);
             registry->markChanged<CharacterController2DComponent>(entity);
+        }
+    });
+
+    StreamLoad::decodeComponent(ComponentType::WaterVolumeComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
+        WaterVolumeComponent* existing = registry->findComponent<WaterVolumeComponent>(entity);
+        WaterVolumeComponent volume = decodeWaterVolumeComponent(componentNode, existing);
+        if (!signature.test(registry->getComponentId<WaterVolumeComponent>())){
+            registry->addComponent<WaterVolumeComponent>(entity, std::move(volume));
+        }else{
+            registry->getComponent<WaterVolumeComponent>(entity) = std::move(volume);
+            registry->markChanged<WaterVolumeComponent>(entity);
+        }
+    });
+
+    StreamLoad::decodeComponent(ComponentType::BuoyancyComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
+        BuoyancyComponent* existing = registry->findComponent<BuoyancyComponent>(entity);
+        BuoyancyComponent buoyancy = decodeBuoyancyComponent(componentNode, existing);
+        if (!signature.test(registry->getComponentId<BuoyancyComponent>())){
+            registry->addComponent<BuoyancyComponent>(entity, std::move(buoyancy));
+        }else{
+            registry->getComponent<BuoyancyComponent>(entity) = std::move(buoyancy);
+            registry->markChanged<BuoyancyComponent>(entity);
         }
     });
 
@@ -7841,6 +7871,73 @@ CharacterController2DComponent editor::Stream::decodeCharacterController2DCompon
     if (node["categoryBits"]) controller.categoryBits = YamlNumbers::as<uint16_t>(node["categoryBits"]);
     if (node["maskBits"]) controller.maskBits = YamlNumbers::as<uint16_t>(node["maskBits"]);
     return controller;
+}
+
+// =====================================================
+// WaterVolumeComponent and BuoyancyComponent encode/decode
+// =====================================================
+
+YAML::Node editor::Stream::encodeWaterVolumeComponent(const WaterVolumeComponent& volume) {
+    YAML::Node node;
+    node["enabled"] = volume.enabled;
+    node["size"] = encodeVector3(volume.size);
+    node["surfaceOffset"] = volume.surfaceOffset;
+    node["infinite"] = volume.infinite;
+    node["density"] = volume.density;
+    node["flow"] = encodeVector3(volume.flow);
+    node["linearDrag"] = volume.linearDrag;
+    node["angularDrag"] = volume.angularDrag;
+    node["waves"] = StreamSchema::waterVolumeWaves().toString(volume.waves);
+    return node;
+}
+
+WaterVolumeComponent editor::Stream::decodeWaterVolumeComponent(const YAML::Node& node, const WaterVolumeComponent* oldVolume) {
+    WaterVolumeComponent volume;
+    if (oldVolume) {
+        volume = *oldVolume;
+    }
+    if (node["enabled"]) volume.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    if (node["size"]) volume.size = decodeVector3(node["size"]);
+    if (node["surfaceOffset"]) volume.surfaceOffset = YamlNumbers::as<float>(node["surfaceOffset"]);
+    if (node["infinite"]) volume.infinite = YamlNumbers::as<bool>(node["infinite"]);
+    if (node["density"]) volume.density = YamlNumbers::as<float>(node["density"]);
+    if (node["flow"]) volume.flow = decodeVector3(node["flow"]);
+    if (node["linearDrag"]) volume.linearDrag = YamlNumbers::as<float>(node["linearDrag"]);
+    if (node["angularDrag"]) volume.angularDrag = YamlNumbers::as<float>(node["angularDrag"]);
+    if (node["waves"]) volume.waves = decodeEnum(node, "waves", StreamSchema::waterVolumeWaves());
+    return volume;
+}
+
+YAML::Node editor::Stream::encodeBuoyancyComponent(const BuoyancyComponent& buoyancy) {
+    YAML::Node node;
+    node["enabled"] = buoyancy.enabled;
+    node["columns"] = StreamSchema::buoyancyColumns().toString(buoyancy.columns);
+    YAML::Node points(YAML::NodeType::Sequence);
+    for (const Vector3& point : buoyancy.customPoints) {
+        points.push_back(encodeVector3(point));
+    }
+    node["customPoints"] = points;
+    node["volumeScale"] = buoyancy.volumeScale;
+    node["dragScale"] = buoyancy.dragScale;
+    return node;
+}
+
+BuoyancyComponent editor::Stream::decodeBuoyancyComponent(const YAML::Node& node, const BuoyancyComponent* oldBuoyancy) {
+    BuoyancyComponent buoyancy;
+    if (oldBuoyancy) {
+        buoyancy = *oldBuoyancy;
+    }
+    if (node["enabled"]) buoyancy.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    if (node["columns"]) buoyancy.columns = decodeEnum(node, "columns", StreamSchema::buoyancyColumns());
+    if (node["customPoints"] && node["customPoints"].IsSequence()) {
+        buoyancy.customPoints.clear();
+        for (const YAML::Node& point : node["customPoints"]) {
+            buoyancy.customPoints.push_back(decodeVector3(point));
+        }
+    }
+    if (node["volumeScale"]) buoyancy.volumeScale = YamlNumbers::as<float>(node["volumeScale"]);
+    if (node["dragScale"]) buoyancy.dragScale = YamlNumbers::as<float>(node["dragScale"]);
+    return buoyancy;
 }
 
 // =========================================

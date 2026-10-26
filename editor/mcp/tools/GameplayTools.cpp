@@ -19,12 +19,15 @@
 #include "command/type/InputActionsEditCmd.h"
 #include "input/InputActions.h"
 #include "input/InputControlPath.h"
+#include "object/environment/Water.h"
+#include "mcp/tools/PlayViewCommon.h"
 #include "io/FileData.h"
 #include "util/ProjectChecks.h"
 
 #include <filesystem>
 
 #include <cmath>
+#include <cstdio>
 #include <set>
 #include <string>
 
@@ -362,6 +365,59 @@ void getInputStateTool(const CallPtr& call) {
     call->ok(text, data);
 }
 
+// sample_water: what the water is at points (Water.sample), the running scene while playing
+void sampleWaterTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    std::string error;
+    SceneProject* scene = nullptr;
+    if (project->getPlaySessionSceneId() != NULL_PROJECT_SCENE && !args.contains("scene")) {
+        scene = w3::resolveRuntimeScene(project, Json(), error);
+    } else {
+        scene = McpRefs::resolveScene(project, args.contains("scene") ? args["scene"] : Json(), error);
+    }
+    if (!scene) {
+        call->fail(error);
+        return;
+    }
+    if (!scene->scene) {
+        call->fail(McpRefs::notOpenError(project, *scene));
+        return;
+    }
+    if (!args.contains("points") || !args["points"].is_array() || args["points"].empty()) {
+        call->fail("points: a list of [x, y, z] world points.");
+        return;
+    }
+    auto vec = [](const Vector3& v) { return Json::array({v.x, v.y, v.z}); };
+    Json samples = Json::array();
+    std::string text;
+    for (const Json& point : args["points"]) {
+        if (!point.is_array() || point.size() != 3 || !point[0].is_number() || !point[1].is_number() || !point[2].is_number()) {
+            call->fail("points: each one [x, y, z] numbers.");
+            return;
+        }
+        const Vector3 p(point[0].get<float>(), point[1].get<float>(), point[2].get<float>());
+        const WaterSample sample = Water::sample(scene->scene, p);
+        Json item = {{"point", vec(p)}, {"in_water", sample.inWater}};
+        if (sample.hasWater()) {
+            item["surface_height"] = sample.surfaceHeight;
+            item["normal"] = vec(sample.normal);
+            item["flow_velocity"] = vec(sample.flowVelocity);
+            item["volume"] = McpRefs::entityJson(scene, sample.volume);
+        } else {
+            item["surface_height"] = nullptr;
+        }
+        samples.push_back(item);
+        char line[160];
+        if (sample.hasWater())
+            std::snprintf(line, sizeof(line), "(%g, %g, %g): %s, surface %.6g\n", p.x, p.y, p.z, sample.inWater ? "in water" : "above", sample.surfaceHeight);
+        else
+            std::snprintf(line, sizeof(line), "(%g, %g, %g): no water\n", p.x, p.y, p.z);
+        text += line;
+    }
+    call->ok(text, Json{{"scene_id", scene->id}, {"shader_time", Engine::getShaderTime()}, {"samples", samples}});
+}
+
 } // namespace
 
 void registerGameplayTools(McpRegistry& registry) {
@@ -414,6 +470,26 @@ void registerGameplayTools(McpRegistry& registry) {
             {"dry_run", withDefault(boolean(""), false)}
         }, {"path", "ops"});
         tool.handler = editInputActionsTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "sample_water";
+        tool.title = "Sample Water";
+        tool.description =
+            "What the water is at world points (Lua Water.sample), at this frame's shader time: in_water, the surface "
+            "height over the point with the waves the shader draws (null: no water there), its normal, the water's "
+            "velocity (flow + the surface rising) and the Water Volume (or library:water mesh). The running scene "
+            "while playing.";
+        tool.inputSchema = object({
+            {"points", Json{{"type", "array"}, {"minItems", 1}, {"maxItems", 256},
+                            {"items", Json{{"type", "array"}, {"minItems", 3}, {"maxItems", 3}, {"items", Json{{"type", "number"}}}}}}},
+            {"scene", sceneRef()}
+        }, {"points"});
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = sampleWaterTool;
         registry.addTool(std::move(tool));
     }
 }

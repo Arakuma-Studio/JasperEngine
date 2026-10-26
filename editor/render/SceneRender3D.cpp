@@ -12,6 +12,7 @@
 #include "LineDrawUtils.h"
 
 #include <algorithm>
+#include "util/WaterEditorUtils.h"
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -324,6 +325,14 @@ editor::SceneRender3D::~SceneRender3D(){
     for (auto& pair : controllerLines) {
         delete pair.second;
     }
+
+    for (auto& pair : waterVolumeLines) {
+        delete pair.second;
+    }
+
+    for (auto& pair : buoyancyLines) {
+        delete pair.second;
+    }
 }
 
 void editor::SceneRender3D::createLines(){
@@ -512,6 +521,68 @@ void editor::SceneRender3D::createOrUpdateFogVolumeLines(Entity entity, const Tr
     drawShape(half, outerColor);
     if (blend > 0.0f && inner.x > 0.0f && inner.y > 0.0f && inner.z > 0.0f)
         drawShape(inner, innerColor);
+}
+
+// A Water Volume: the box of water under its surface (in the GameObject's frame, as WaterSystem
+// tests it) and the flat surface itself, crossed; an infinite one as a wide surface only
+void editor::SceneRender3D::createOrUpdateWaterVolumeLines(Entity entity, const Transform& transform, const WaterVolumeComponent& volume, bool visible, bool highlighted){
+    LineRenderer* lines = waterVolumeLines[entity];
+    lines->clearLines();
+    lines->setVisible(transform.visible && visible);
+    if (!transform.visible || !visible) return;
+
+    const float alpha = highlighted ? 1.0f : 0.4f;
+    const Vector4 boxColor = volume.enabled ? Vector4(0.3f, 0.6f, 1.0f, alpha) : Vector4(0.6f, 0.6f, 0.6f, alpha);
+    const Vector4 surfaceColor = volume.enabled ? Vector4(0.5f, 0.85f, 1.0f, alpha) : Vector4(0.7f, 0.7f, 0.7f, alpha);
+    auto world = [&](float x, float y, float z){ return transform.modelMatrix * Vector3(x, y, z); };
+    const float top = volume.surfaceOffset;
+    if (volume.infinite){
+        const float extent = 50.0f;
+        for (int i = -5; i <= 5; i++){
+            const float t = extent * (float)i / 5.0f;
+            lines->addLine(transform.worldPosition + Vector3(-extent, top, t), transform.worldPosition + Vector3(extent, top, t), surfaceColor);
+            lines->addLine(transform.worldPosition + Vector3(t, top, -extent), transform.worldPosition + Vector3(t, top, extent), surfaceColor);
+        }
+        return;
+    }
+    const float hx = std::fabs(volume.size.x) * 0.5f;
+    const float hz = std::fabs(volume.size.z) * 0.5f;
+    const float bottom = top - std::fabs(volume.size.y);
+    const Vector3 p[8] = {
+        world(-hx, bottom, -hz), world(hx, bottom, -hz), world(hx, bottom, hz), world(-hx, bottom, hz),
+        world(-hx, top, -hz), world(hx, top, -hz), world(hx, top, hz), world(-hx, top, hz)
+    };
+    const int edges[8][2] = {{0,1}, {1,2}, {2,3}, {3,0}, {0,4}, {1,5}, {2,6}, {3,7}};
+    for (const auto& edge : edges) lines->addLine(p[edge[0]], p[edge[1]], boxColor);
+    // the surface, with a cross: where the waves rest
+    lines->addLine(p[4], p[5], surfaceColor);
+    lines->addLine(p[5], p[6], surfaceColor);
+    lines->addLine(p[6], p[7], surfaceColor);
+    lines->addLine(p[7], p[4], surfaceColor);
+    lines->addLine(p[4], p[6], surfaceColor);
+    lines->addLine(p[5], p[7], surfaceColor);
+}
+
+// A Buoyancy's columns: each from its bottom up the colliders' height, as WaterSystem samples
+void editor::SceneRender3D::createOrUpdateBuoyancyLines(Entity entity, const Transform& transform, const BuoyancyComponent& buoyancy, bool visible, bool highlighted){
+    LineRenderer* lines = buoyancyLines[entity];
+    lines->clearLines();
+    lines->setVisible(transform.visible && visible);
+    if (!transform.visible || !visible) return;
+
+    Vector3 min, max;
+    const std::vector<Vector3> bottoms = WaterEditorUtils::columnBottoms(scene, entity, buoyancy, min, max);
+    if (bottoms.empty()) return;
+    const float height = max.y > min.y ? max.y - min.y : 1.0f;
+    const Vector4 color = buoyancy.enabled ? Vector4(1.0f, 0.75f, 0.25f, highlighted ? 1.0f : 0.4f) : Vector4(0.6f, 0.6f, 0.6f, 0.4f);
+    const float tick = std::max(0.02f, height * 0.05f);
+    for (const Vector3& bottom : bottoms){
+        const Vector3 a = transform.modelMatrix * bottom;
+        const Vector3 b = transform.modelMatrix * (bottom + Vector3(0.0f, height, 0.0f));
+        lines->addLine(a, b, color);
+        lines->addLine(transform.modelMatrix * (bottom - Vector3(tick, 0.0f, 0.0f)), transform.modelMatrix * (bottom + Vector3(tick, 0.0f, 0.0f)), color);
+        lines->addLine(transform.modelMatrix * (bottom - Vector3(0.0f, 0.0f, tick)), transform.modelMatrix * (bottom + Vector3(0.0f, 0.0f, tick)), color);
+    }
 }
 
 // The upright capsule a CharacterController moves (as CharacterControllerSystem sizes it: radius by
@@ -1887,6 +1958,12 @@ void editor::SceneRender3D::hideAllGizmos(){
     for (auto& pair : controllerLines) {
         pair.second->setVisible(false);
     }
+    for (auto& pair : waterVolumeLines) {
+        pair.second->setVisible(false);
+    }
+    for (auto& pair : buoyancyLines) {
+        pair.second->setVisible(false);
+    }
 }
 
 void editor::SceneRender3D::activate(){
@@ -2017,6 +2094,8 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
     std::set<Entity> currentReflectionProbes;
     std::set<Entity> currentFogVolumes;
     std::set<Entity> currentControllers;
+    std::set<Entity> currentWaterVolumes;
+    std::set<Entity> currentBuoyancies;
 
     for (Entity& entity: entities){
         Signature signature = scene->getSignature(entity);
@@ -2134,6 +2213,24 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             currentFogVolumes.insert(entity);
             ensureOverlayLines(fogVolumeLines, entity);
             createOrUpdateFogVolumeLines(entity, transform, volume, selectedEntities.find(entity) != selectedEntities.end());
+        }
+
+        if (signature.test(scene->getComponentId<WaterVolumeComponent>()) && signature.test(scene->getComponentId<Transform>())) {
+            const WaterVolumeComponent& volume = scene->getComponent<WaterVolumeComponent>(entity);
+            Transform& transform = scene->getComponent<Transform>(entity);
+            currentWaterVolumes.insert(entity);
+            ensureOverlayLines(waterVolumeLines, entity);
+            const bool highlighted = isDescendantSelected(entity);
+            createOrUpdateWaterVolumeLines(entity, transform, volume, displaySettings.showAllBodies || highlighted, highlighted);
+        }
+
+        if (signature.test(scene->getComponentId<BuoyancyComponent>()) && signature.test(scene->getComponentId<Transform>())) {
+            const BuoyancyComponent& buoyancy = scene->getComponent<BuoyancyComponent>(entity);
+            Transform& transform = scene->getComponent<Transform>(entity);
+            currentBuoyancies.insert(entity);
+            ensureOverlayLines(buoyancyLines, entity);
+            const bool highlighted = isDescendantSelected(entity);
+            createOrUpdateBuoyancyLines(entity, transform, buoyancy, displaySettings.showAllBodies || highlighted, highlighted);
         }
 
         if (signature.test(scene->getComponentId<CharacterControllerComponent>()) && signature.test(scene->getComponentId<Transform>())) {
@@ -2274,6 +2371,17 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             itTrackLines = trackLines.erase(itTrackLines);
         } else {
             ++itTrackLines;
+        }
+    }
+
+    for (const auto& pair : {std::make_pair(&waterVolumeLines, &currentWaterVolumes), std::make_pair(&buoyancyLines, &currentBuoyancies)}) {
+        for (auto it = pair.first->begin(); it != pair.first->end();) {
+            if (pair.second->find(it->first) == pair.second->end()) {
+                delete it->second;
+                it = pair.first->erase(it);
+            } else {
+                ++it;
+            }
         }
     }
 

@@ -1117,6 +1117,8 @@ set(JASPERENGINE_SRCS
     core/object/environment/ReflectionProbe.cpp
     core/object/environment/Skybox.cpp
     core/object/environment/Water.cpp
+    core/object/environment/WaterVolume.cpp
+    core/object/physics/Buoyancy.cpp
     core/object/environment/VolumetricClouds.cpp
     core/object/ui/Button.cpp
     core/object/ui/LayoutGroup.cpp
@@ -1208,6 +1210,7 @@ set(JASPERENGINE_SRCS
     core/lattice/LatticeRender.cpp
     core/subsystem/MeshSystemGltfPbr.cpp
     core/subsystem/PhysicsSystem.cpp
+    core/subsystem/WaterSystem.cpp
     core/subsystem/AtmosphereRenderer.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/RenderSystemShadows.cpp

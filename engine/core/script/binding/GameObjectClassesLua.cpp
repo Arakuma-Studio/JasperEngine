@@ -51,6 +51,8 @@
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "Rigidbody2D.h"
 #include "CharacterController2D.h"
+#include "Buoyancy.h"
+#include "WaterVolume.h"
 #include "CharacterController.h"
 #include "ControllerColliderHit.h"
 #include "Joint2D.h"
@@ -471,6 +473,40 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addStaticFunction("getNormal", &Water::getNormal)
         .addStaticFunction("isUnderwater", &Water::isUnderwater)
         .addStaticFunction("getTime", &Water::getTime)
+        .addStaticFunction("sample", &Water::sample)
+        .addStaticFunction("sampleHeight", &Water::sampleHeight)
+        .endClass();
+
+    // what the water is at a point (Water.sample)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<WaterSample>("WaterSample")
+        .addProperty("inWater", &WaterSample::isInWater)
+        .addProperty("surfaceHeight", &WaterSample::getSurfaceHeight)
+        .addProperty("normal", &WaterSample::getNormal)
+        .addProperty("flowVelocity", &WaterSample::getFlowVelocity)
+        .addProperty("volume", &WaterSample::getVolume)
+        .addProperty("hasWater", &WaterSample::hasWater)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("WaterVolumeWaves")
+        .addVariable("FROM_MATERIAL", WaterVolumeWaves::FROM_MATERIAL)
+        .addVariable("NONE", WaterVolumeWaves::NONE)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<WaterVolume, EntityHandle>("WaterVolume")
+        .addConstructor <void (Scene*, Entity)> ()
+        .addProperty("valid", &WaterVolume::isValid)
+        .addProperty("enabled", &WaterVolume::isEnabled, &WaterVolume::setEnabled)
+        .addProperty("size", &WaterVolume::getSize, &WaterVolume::setSize)
+        .addProperty("surfaceOffset", &WaterVolume::getSurfaceOffset, &WaterVolume::setSurfaceOffset)
+        .addProperty("infinite", &WaterVolume::isInfinite, &WaterVolume::setInfinite)
+        .addProperty("density", &WaterVolume::getDensity, &WaterVolume::setDensity)
+        .addProperty("flow", &WaterVolume::getFlow, &WaterVolume::setFlow)
+        .addProperty("linearDrag", &WaterVolume::getLinearDrag, &WaterVolume::setLinearDrag)
+        .addProperty("angularDrag", &WaterVolume::getAngularDrag, &WaterVolume::setAngularDrag)
+        .addProperty("waves", &WaterVolume::getWaves, &WaterVolume::setWaves)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -569,7 +605,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("removeRigidbody", &GameObject::removeRigidbody)
         .addFunction("getCharacterController", &GameObject::getCharacterController)
         .addFunction("removeCharacterController", &GameObject::removeCharacterController)
+        .addFunction("getBuoyancy", &GameObject::getBuoyancy)
 #endif
+        .addFunction("getWaterVolume", &GameObject::getWaterVolume)
         .addFunction("getRay", &GameObject::getRay)
         .endClass();
 
@@ -1897,6 +1935,26 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("groundNormal", &CharacterController::getGroundNormal)
         .addProperty("groundEntity", &CharacterController::getGroundEntity)
         .addProperty("groundVelocity", &CharacterController::getGroundVelocity)
+        .endClass();
+#endif
+
+#ifdef JASPERENGINE_PHYSICS_3D
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("BuoyancyColumns")
+        .addVariable("AUTO_2x2", BuoyancyColumns::AUTO_2x2)
+        .addVariable("AUTO_3x3", BuoyancyColumns::AUTO_3x3)
+        .addVariable("CUSTOM", BuoyancyColumns::CUSTOM)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<Buoyancy, EntityHandle>("Buoyancy")
+        .addConstructor <void (Scene*, Entity)> ()
+        .addProperty("valid", &Buoyancy::isValid)
+        .addProperty("enabled", &Buoyancy::isEnabled, &Buoyancy::setEnabled)
+        .addProperty("columns", &Buoyancy::getColumns, &Buoyancy::setColumns)
+        .addProperty("customPoints", &Buoyancy::getCustomPoints, &Buoyancy::setCustomPoints)
+        .addProperty("volumeScale", &Buoyancy::getVolumeScale, &Buoyancy::setVolumeScale)
+        .addProperty("dragScale", &Buoyancy::getDragScale, &Buoyancy::setDragScale)
         .endClass();
 #endif
 

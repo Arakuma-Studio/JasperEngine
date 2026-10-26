@@ -86,6 +86,8 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::RigidbodyComponent, "Rigidbody with colliders, simulated by Jolt"},
             {ComponentType::Joint3DComponent, "Connects two Rigidbodies"},
             {ComponentType::CharacterControllerComponent, "A capsule moved by script that climbs steps and slopes"},
+            {ComponentType::WaterVolumeComponent, "A body of water: what has a Buoyancy floats in it"},
+            {ComponentType::BuoyancyComponent, "Floats its dynamic Rigidbody in Water Volumes"},
         }},
         {"Physics 2D", ICON_FA_CIRCLE, {
             {ComponentType::Rigidbody2DComponent, "2D Rigidbody with colliders, simulated by Box2D"},

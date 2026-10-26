@@ -2494,6 +2494,43 @@ std::string editor::Factory::createRigidbodyComponent(int indentSpaces, EntityRe
     return code.str();
 }
 
+std::string editor::Factory::createWaterVolumeComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting) {
+    if (!scene->findComponent<WaterVolumeComponent>(entity)) return "";
+    const WaterVolumeComponent& volume = scene->getComponent<WaterVolumeComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "WaterVolumeComponent waterVolume;\n";
+    code << ind << "waterVolume.size = " << formatVector3(volume.size) << ";\n";
+    code << ind << "waterVolume.surfaceOffset = " << formatFloat(volume.surfaceOffset) << ";\n";
+    code << ind << "waterVolume.infinite = " << formatBool(volume.infinite) << ";\n";
+    code << ind << "waterVolume.density = " << formatFloat(volume.density) << ";\n";
+    code << ind << "waterVolume.flow = " << formatVector3(volume.flow) << ";\n";
+    code << ind << "waterVolume.linearDrag = " << formatFloat(volume.linearDrag) << ";\n";
+    code << ind << "waterVolume.angularDrag = " << formatFloat(volume.angularDrag) << ";\n";
+    code << ind << "waterVolume.waves = " << (volume.waves == WaterVolumeWaves::NONE ? "WaterVolumeWaves::NONE" : "WaterVolumeWaves::FROM_MATERIAL") << ";\n";
+    if (!volume.enabled) code << ind << "waterVolume.enabled = false;\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "WaterVolumeComponent", "waterVolume", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createBuoyancyComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting) {
+    if (!scene->findComponent<BuoyancyComponent>(entity)) return "";
+    const BuoyancyComponent& buoyancy = scene->getComponent<BuoyancyComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    const char* columns = buoyancy.columns == BuoyancyColumns::AUTO_3x3 ? "BuoyancyColumns::AUTO_3x3"
+                        : buoyancy.columns == BuoyancyColumns::CUSTOM ? "BuoyancyColumns::CUSTOM" : "BuoyancyColumns::AUTO_2x2";
+    code << ind << "BuoyancyComponent buoyancy;\n";
+    code << ind << "buoyancy.columns = " << columns << ";\n";
+    for (const Vector3& point : buoyancy.customPoints)
+        code << ind << "buoyancy.customPoints.push_back(" << formatVector3(point) << ");\n";
+    code << ind << "buoyancy.volumeScale = " << formatFloat(buoyancy.volumeScale) << ";\n";
+    code << ind << "buoyancy.dragScale = " << formatFloat(buoyancy.dragScale) << ";\n";
+    if (!buoyancy.enabled) code << ind << "buoyancy.enabled = false;\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "BuoyancyComponent", "buoyancy", assignExisting);
+    return code.str();
+}
+
 std::string editor::Factory::createCharacterControllerComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting) {
     if (!scene->findComponent<CharacterControllerComponent>(entity)) return "";
     const CharacterControllerComponent& controller = scene->getComponent<CharacterControllerComponent>(entity);
@@ -3109,6 +3146,8 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::Rigidbody2DComponent: return guardPhysicsCode(createRigidbody2DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames), "JASPERENGINE_PHYSICS_2D");
         case ComponentType::RigidbodyComponent: return guardPhysicsCode(createRigidbodyComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames), "JASPERENGINE_PHYSICS_3D");
         case ComponentType::Joint2DComponent: return guardPhysicsCode(createJoint2DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames), "JASPERENGINE_PHYSICS_2D");
+        case ComponentType::WaterVolumeComponent: return createWaterVolumeComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting);
+        case ComponentType::BuoyancyComponent: return createBuoyancyComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting);
         case ComponentType::CharacterControllerComponent: return guardPhysicsCode(createCharacterControllerComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting), "JASPERENGINE_PHYSICS_3D");
         case ComponentType::CharacterController2DComponent: return guardPhysicsCode(createCharacterController2DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting), "JASPERENGINE_PHYSICS_2D");
         case ComponentType::Joint3DComponent: return guardPhysicsCode(createJoint3DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames), "JASPERENGINE_PHYSICS_3D");

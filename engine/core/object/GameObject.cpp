@@ -361,8 +361,20 @@ void GameObject::removeCharacterController(){
     if (scene->findComponent<CharacterControllerComponent>(entity))
         scene->removeComponent<CharacterControllerComponent>(entity);
 }
+
+Buoyancy GameObject::getBuoyancy(){
+    if (!scene->findComponent<BuoyancyComponent>(entity))
+        scene->addComponent<BuoyancyComponent>(entity, {});
+    return Buoyancy(scene, entity);
+}
 #endif
 
 Ray GameObject::getRay(Vector3 direction){
     return Ray(getWorldPosition(), direction);
+}
+
+WaterVolume GameObject::getWaterVolume(){
+    if (!scene->findComponent<WaterVolumeComponent>(entity))
+        scene->addComponent<WaterVolumeComponent>(entity, {});
+    return WaterVolume(scene, entity);
 }

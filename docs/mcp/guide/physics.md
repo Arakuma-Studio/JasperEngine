@@ -114,6 +114,27 @@ float: Jolt has no volume for them; use convex shapes), the mass from their dens
 it. Scripts read the surface with `Water.getHeight(scene, x, z)` / `Water.getNormal` /
 `Water.isUnderwater(scene, point)` (Lua API 2.10.1).
 
+### Water Volumes and Buoyancy
+
+For water with a box (or an ocean), a density, a current and drags, add a **Water Volume**
+(`WaterVolumeComponent`, e.g. on the Water GameObject) and give floating bodies a **Buoyancy**
+(`BuoyancyComponent`) instead of the Rigidbody `buoyancy` factor:
+- The volume's surface is its GameObject's world height at `surfaceOffset`, plus the waves of
+  its `library:water` material (`waves: from_material`; the material is the only place their
+  values live). Below it the water fills the local box `size` (XZ the extent, Y the depth), or
+  everything with `infinite`. Where volumes overlap the highest surface wins.
+- A Buoyancy floats its dynamic Rigidbody by Archimedes on columns (2x2, 3x3 on the bottom of
+  its colliders' bounds, or `customPoints`): each carries its share of the colliders' volume
+  (`volumeScale`), pushed up by `density x |g| x` its submerged part and slowed by the volume's
+  `linearDrag` / `angularDrag` (`dragScale`) against the water's own motion (`flow` and the
+  waves rising). A box floats as deep as its density is of the water's. It rides the waves the
+  shader draws (one shader time a frame). A body with a Buoyancy ignores the Rigidbody `buoyancy`.
+- `Water.sample(scene, point)` / `Water.sampleHeight(scene, x, z)` and the `sample_water` tool
+  read the volumes first, then the `library:water` meshes; they work in edit mode.
+- The inspector warns when the mesh is too coarse for the waves (the drawn surface is linear
+  between vertices; things float on the exact curve), when a Buoyancy has no dynamic Rigidbody
+  or no volume to float in, and when it is as dense as the water.
+
 ## Layers, contacts and queries
 
 - Each backend has a Layer Collision Matrix (Project Settings > Physics / Physics 2D), saved in

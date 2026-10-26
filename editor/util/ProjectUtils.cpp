@@ -1142,6 +1142,20 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<Joint2DComponent>(entity, Stream::decodeJoint2DComponent(componentNode));
             }
             break;
+        case ComponentType::WaterVolumeComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<WaterVolumeComponent>(entity, {});
+            }else{
+                registry->addComponent<WaterVolumeComponent>(entity, Stream::decodeWaterVolumeComponent(componentNode));
+            }
+            break;
+        case ComponentType::BuoyancyComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<BuoyancyComponent>(entity, {});
+            }else{
+                registry->addComponent<BuoyancyComponent>(entity, Stream::decodeBuoyancyComponent(componentNode));
+            }
+            break;
         case ComponentType::CharacterControllerComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
                 registry->addComponent<CharacterControllerComponent>(entity, {});
@@ -1648,6 +1662,18 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
                 oldComponent = Stream::encodeJoint2DComponent(registry->getComponent<Joint2DComponent>(entity));
             }
             registry->removeComponent<Joint2DComponent>(entity);
+            break;
+        case ComponentType::WaterVolumeComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeWaterVolumeComponent(registry->getComponent<WaterVolumeComponent>(entity));
+            }
+            registry->removeComponent<WaterVolumeComponent>(entity);
+            break;
+        case ComponentType::BuoyancyComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeBuoyancyComponent(registry->getComponent<BuoyancyComponent>(entity));
+            }
+            registry->removeComponent<BuoyancyComponent>(entity);
             break;
         case ComponentType::CharacterControllerComponent:
             if (encodeComponent){

@@ -6,6 +6,7 @@
 #include "physics/JoltShapeBuilder.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
+#include "subsystem/WaterSystem.h"
 #include "object/environment/Water.h"
 #include "util/Angle.h"
 
@@ -221,6 +222,7 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
 #endif
 
 	this->scene = scene;
+	water = std::make_unique<WaterSystem>(scene, this);
 
     // Default gravity comes from SceneSettings, the single source of truth for scene-setting
     // defaults. The live gravity value is then owned/mutated here (pushed to the Box2D/Jolt
@@ -3196,6 +3198,8 @@ void PhysicsSystem::fixedUpdate(double dt){
 
 		// the bodies floating in a library:water (Water.h)
 		Water::applyBuoyancy(scene, fixedStep);
+		// and the ones a Buoyancy floats in Water Volumes, by its columns (WaterSystem)
+		water->applyBuoyancy(fixedStep);
 
 		StepScope stepScope(this);
 		// the contact listener runs on Jolt's threads, serialized by getCallbackMutex3D, while
@@ -3334,3 +3338,11 @@ bool PhysicsSystem::isCharacterInnerBody(const JPH::BodyID& body) const{
     return characters3D && characters3D->isInnerBody(body);
 }
 #endif
+
+WaterSample PhysicsSystem::sampleWater(const Vector3& point) const{
+    return water->sample(point);
+}
+
+float PhysicsSystem::sampleWaterHeight(float x, float z) const{
+    return water->sampleHeight(x, z);
+}

@@ -90,6 +90,8 @@ EntityRegistry::EntityRegistry() {
 #ifdef JASPERENGINE_PHYSICS_3D
     registerComponent<CharacterControllerComponent>(ComponentOrder::Insertion, "CharacterControllerComponent");
 #endif
+    registerComponent<WaterVolumeComponent>(ComponentOrder::Insertion, "WaterVolumeComponent");
+    registerComponent<BuoyancyComponent>(ComponentOrder::Insertion, "BuoyancyComponent");
 
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());

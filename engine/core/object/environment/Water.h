@@ -9,6 +9,7 @@
 #include "math/Vector2.h"
 #include "math/Vector3.h"
 #include "math/Vector4.h"
+#include "subsystem/WaterSystem.h"
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -63,14 +64,14 @@ namespace jasperengine{
         static const char* const SHADER;            // "library:water"
         static const char* const UNDERWATER_SHADER; // "library:underwater"
 
-        // The clock the shader library animates by (frame.time.x): seconds since the
-        // engine started, wall-clock, also running in the editor and while the game is
-        // paused or its time scaled
+        // The clock the shader library animates by (frame.time.x): Engine::getShaderTime, the
+        // wall clock latched once a frame (or whole fixed frames under a fixed frame delta),
+        // also running in the editor and while the game is paused or its time scaled
         static float getTime();
 
-        // The waves of library:water (WAVES, library/water.glsl's waterWaves, the same float
-        // arithmetic) at a world XZ: x the height above the rest level, yz its slope along
-        // world X and Z
+        // The waves of library:water (WAVES, library/water.glsl's waterWaves through its C++
+        // twin util/WaterWaves.h) at a world XZ: x the height above the rest level, yz its slope
+        // along world X and Z
         static Vector3 getWaves(float x, float z, float time, const Vector2& direction, float height, float waveLength, float speed);
 
         // every water surface of the scene (none without library:water meshes)
@@ -89,6 +90,13 @@ namespace jasperengine{
         static std::optional<Vector3> getNormal(Scene* scene, float x, float z);
         // Whether a world point is under the surface of the water it is in (findSurface)
         static bool isUnderwater(Scene* scene, const Vector3& point);
+
+        // What the water is at a world point (docs/specs/S22-gameplay.md R31): Water Volumes
+        // first, then these surfaces; with the frame's waves (Engine::getShaderTime). Usable in
+        // edit mode.
+        static WaterSample sample(Scene* scene, const Vector3& point);
+        // its surface height at a world XZ; nil where no water is
+        static std::optional<float> sampleHeight(Scene* scene, float x, float z);
 
         // Engine hooks (see above)
         static void applyBuoyancy(Scene* scene, float deltaTime);

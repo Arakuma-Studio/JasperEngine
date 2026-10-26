@@ -728,6 +728,8 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<Joint3DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CharacterControllerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
 #endif
+    copyComponent<WaterVolumeComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<BuoyancyComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<InstancedMeshComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<PrefabComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ReflectionProbeComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

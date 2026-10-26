@@ -59,6 +59,8 @@
 #include "component/Joint2DComponent.h"
 #include "component/CharacterController2DComponent.h"
 #include "component/CharacterControllerComponent.h"
+#include "component/WaterVolumeComponent.h"
+#include "component/BuoyancyComponent.h"
 #include "component/Joint3DComponent.h"
 #include "component/KeyframeTracksComponent.h"
 #include "component/LightComponent.h"

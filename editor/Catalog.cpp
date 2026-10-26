@@ -922,6 +922,24 @@ namespace {
         makeFastProperty<CharacterControllerComponent, bool, &CharacterControllerComponent::enhancedEdgeRemoval>("enhancedEdgeRemoval", PropertyType::Bool, UpdateFlags_None),
     };
 
+    static const FastPropertyDescriptor kWaterVolumeProperties[] = {
+        makeFastProperty<WaterVolumeComponent, Vector3, &WaterVolumeComponent::size>("size", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<WaterVolumeComponent, float, &WaterVolumeComponent::surfaceOffset>("surfaceOffset", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<WaterVolumeComponent, bool, &WaterVolumeComponent::infinite>("infinite", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<WaterVolumeComponent, float, &WaterVolumeComponent::density>("density", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<WaterVolumeComponent, Vector3, &WaterVolumeComponent::flow>("flow", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<WaterVolumeComponent, float, &WaterVolumeComponent::linearDrag>("linearDrag", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<WaterVolumeComponent, float, &WaterVolumeComponent::angularDrag>("angularDrag", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<WaterVolumeComponent, WaterVolumeWaves, &WaterVolumeComponent::waves>("waves", PropertyType::Enum, UpdateFlags_None),
+    };
+
+    static const FastPropertyDescriptor kBuoyancyProperties[] = {
+        makeFastProperty<BuoyancyComponent, BuoyancyColumns, &BuoyancyComponent::columns>("columns", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<BuoyancyComponent, float, &BuoyancyComponent::volumeScale>("volumeScale", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<BuoyancyComponent, float, &BuoyancyComponent::dragScale>("dragScale", PropertyType::Float, UpdateFlags_None),
+        makeFastPropertyNoDefault<BuoyancyComponent, std::vector<Vector3>, &BuoyancyComponent::customPoints>("customPoints", PropertyType::Custom, UpdateFlags_None),
+    };
+
     static const FastPropertyDescriptor kJoint3DProperties[] = {
         makeFastProperty<Joint3DComponent, Joint3DType, &Joint3DComponent::type>("type", PropertyType::Enum, UpdateFlags_Joint3D),
         makeFastProperty<Joint3DComponent, Entity, &Joint3DComponent::bodyA>("bodyA", PropertyType::Entity, UpdateFlags_Joint3D),
@@ -1999,6 +2017,14 @@ namespace {
         return resolveDirectProperties(static_cast<CharacterControllerComponent*>(comp), propertyName, kCharacterControllerProperties);
     }
 
+    PropertyData resolveWaterVolumePropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<WaterVolumeComponent*>(comp), propertyName, kWaterVolumeProperties);
+    }
+
+    PropertyData resolveBuoyancyPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<BuoyancyComponent*>(comp), propertyName, kBuoyancyProperties);
+    }
+
     PropertyData resolveJoint3DPropertyFast(void* comp, const std::string& propertyName) {
         Joint3DComponent* joint = static_cast<Joint3DComponent*>(comp);
         if (!joint) return PropertyData();
@@ -3062,6 +3088,14 @@ namespace {
         enumerateFromDescriptors(comp, ps, kCharacterControllerProperties);
     }
 
+    void enumerateWaterVolumeProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kWaterVolumeProperties);
+    }
+
+    void enumerateBuoyancyProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kBuoyancyProperties);
+    }
+
     void enumerateJoint3DProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
         Joint3DComponent* comp = static_cast<Joint3DComponent*>(compRef);
         Joint3DComponent& def = getDefaultComponent<Joint3DComponent>();
@@ -3776,6 +3810,8 @@ namespace {
         {ComponentType::Joint2DComponent, &findComponentPtr<Joint2DComponent>, &resolveJoint2DPropertyFast, &enumerateJoint2DProperties},
         {ComponentType::CharacterController2DComponent, &findComponentPtr<CharacterController2DComponent>, &resolveCharacterController2DPropertyFast, &enumerateCharacterController2DProperties},
         {ComponentType::CharacterControllerComponent, &findComponentPtr<CharacterControllerComponent>, &resolveCharacterControllerPropertyFast, &enumerateCharacterControllerProperties},
+        {ComponentType::WaterVolumeComponent, &findComponentPtr<WaterVolumeComponent>, &resolveWaterVolumePropertyFast, &enumerateWaterVolumeProperties},
+        {ComponentType::BuoyancyComponent, &findComponentPtr<BuoyancyComponent>, &resolveBuoyancyPropertyFast, &enumerateBuoyancyProperties},
         {ComponentType::Joint3DComponent, &findComponentPtr<Joint3DComponent>, &resolveJoint3DPropertyFast, &enumerateJoint3DProperties},
         {ComponentType::Rigidbody2DComponent, &findComponentPtr<Rigidbody2DComponent>, &resolveRigidbody2DPropertyFast, &enumerateRigidbody2DProperties},
         {ComponentType::RigidbodyComponent, &findComponentPtr<RigidbodyComponent>, &resolveRigidbodyPropertyFast, &enumerateRigidbodyProperties},
@@ -3835,6 +3871,8 @@ namespace {
             case ComponentType::Joint2DComponent: return &getEnabledRef<Joint2DComponent>;
             case ComponentType::CharacterController2DComponent: return &getEnabledRef<CharacterController2DComponent>;
             case ComponentType::CharacterControllerComponent: return &getEnabledRef<CharacterControllerComponent>;
+            case ComponentType::WaterVolumeComponent: return &getEnabledRef<WaterVolumeComponent>;
+            case ComponentType::BuoyancyComponent: return &getEnabledRef<BuoyancyComponent>;
             case ComponentType::Joint3DComponent: return &getEnabledRef<Joint3DComponent>;
             case ComponentType::UIComponent: return &getEnabledRef<UIComponent>;
             case ComponentType::UIDocumentComponent: return &getEnabledRef<UIDocumentComponent>;
@@ -4005,6 +4043,10 @@ std::string computeComponentName(editor::ComponentType component){
         name = "CharacterController2DComponent";
     }else if(component == ComponentType::CharacterControllerComponent){
         name = "CharacterControllerComponent";
+    }else if(component == ComponentType::WaterVolumeComponent){
+        name = "WaterVolumeComponent";
+    }else if(component == ComponentType::BuoyancyComponent){
+        name = "BuoyancyComponent";
     }else if(component == ComponentType::Joint3DComponent){
         name = "Joint3DComponent";
     }else if(component == ComponentType::KeyframeTracksComponent){
@@ -4111,6 +4153,8 @@ std::string editor::Catalog::getComponentDisplayName(ComponentType component){
         case ComponentType::Joint2DComponent: return "Joint 2D";
         case ComponentType::CharacterController2DComponent: return "Character Controller 2D";
         case ComponentType::CharacterControllerComponent: return "Character Controller";
+        case ComponentType::WaterVolumeComponent: return "Water Volume";
+        case ComponentType::BuoyancyComponent: return "Buoyancy";
         case ComponentType::Joint3DComponent: return "Joint";
         case ComponentType::KeyframeTracksComponent: return "Keyframe Tracks";
         case ComponentType::MeshPolygonComponent: return "Polygon Mesh";
@@ -4179,6 +4223,8 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
         case ComponentType::Joint2DComponent: return ICON_FA_LINK;
         case ComponentType::CharacterController2DComponent: return ICON_FA_PERSON_WALKING;
         case ComponentType::CharacterControllerComponent: return ICON_FA_PERSON_WALKING;
+        case ComponentType::WaterVolumeComponent: return ICON_FA_WATER;
+        case ComponentType::BuoyancyComponent: return ICON_FA_LIFE_RING;
         case ComponentType::Joint3DComponent: return ICON_FA_LINK;
         case ComponentType::KeyframeTracksComponent: return ICON_FA_KEY;
         case ComponentType::MeshPolygonComponent: return ICON_FA_DRAW_POLYGON;
@@ -4316,6 +4362,10 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<CharacterController2DComponent>();
         case ComponentType::CharacterControllerComponent:
             return registry->getComponentId<CharacterControllerComponent>();
+        case ComponentType::WaterVolumeComponent:
+            return registry->getComponentId<WaterVolumeComponent>();
+        case ComponentType::BuoyancyComponent:
+            return registry->getComponentId<BuoyancyComponent>();
         case ComponentType::Joint3DComponent:
             return registry->getComponentId<Joint3DComponent>();
         case ComponentType::KeyframeTracksComponent:
@@ -4440,6 +4490,10 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::CharacterController2DComponent;
     }else if(normalizedName == "charactercontroller"){
         return ComponentType::CharacterControllerComponent;
+    }else if(normalizedName == "watervolume"){
+        return ComponentType::WaterVolumeComponent;
+    }else if(normalizedName == "buoyancy"){
+        return ComponentType::BuoyancyComponent;
     }else if(normalizedName == "joint3d"){
         return ComponentType::Joint3DComponent;
     }else if(normalizedName == "keyframetracks"){
@@ -4630,6 +4684,12 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     }
     if (registry->findComponent<CharacterControllerComponent>(entity)){
         ret.push_back(ComponentType::CharacterControllerComponent);
+    }
+    if (registry->findComponent<WaterVolumeComponent>(entity)){
+        ret.push_back(ComponentType::WaterVolumeComponent);
+    }
+    if (registry->findComponent<BuoyancyComponent>(entity)){
+        ret.push_back(ComponentType::BuoyancyComponent);
     }
     if (registry->findComponent<Joint3DComponent>(entity)){
         ret.push_back(ComponentType::Joint3DComponent);
@@ -5766,6 +5826,16 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
         case ComponentType::CharacterControllerComponent: {
             YAML::Node encoded = Stream::encodeCharacterControllerComponent(sourceRegistry->getComponent<CharacterControllerComponent>(sourceEntity));
             targetRegistry->getComponent<CharacterControllerComponent>(targetEntity) = Stream::decodeCharacterControllerComponent(encoded);
+            break;
+        }
+        case ComponentType::WaterVolumeComponent: {
+            YAML::Node encoded = Stream::encodeWaterVolumeComponent(sourceRegistry->getComponent<WaterVolumeComponent>(sourceEntity));
+            targetRegistry->getComponent<WaterVolumeComponent>(targetEntity) = Stream::decodeWaterVolumeComponent(encoded);
+            break;
+        }
+        case ComponentType::BuoyancyComponent: {
+            YAML::Node encoded = Stream::encodeBuoyancyComponent(sourceRegistry->getComponent<BuoyancyComponent>(sourceEntity));
+            targetRegistry->getComponent<BuoyancyComponent>(targetEntity) = Stream::decodeBuoyancyComponent(encoded);
             break;
         }
 

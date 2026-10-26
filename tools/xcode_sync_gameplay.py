@@ -43,6 +43,15 @@ FILES = [
     ("object/physics/CharacterController.h", "object/physics/Joint3D.h"),
     ("subsystem/CharacterControllerSystem.cpp", "subsystem/PhysicsSystem.cpp"),
     ("subsystem/CharacterControllerSystem.h", "subsystem/PhysicsSystem.h"),
+    ("util/WaterWaves.h", "object/environment/Water.h"),
+    ("component/WaterVolumeComponent.h", "component/Joint3DComponent.h"),
+    ("component/BuoyancyComponent.h", "component/Joint3DComponent.h"),
+    ("subsystem/WaterSystem.cpp", "subsystem/PhysicsSystem.cpp"),
+    ("subsystem/WaterSystem.h", "subsystem/PhysicsSystem.h"),
+    ("object/environment/WaterVolume.cpp", "object/environment/Water.cpp"),
+    ("object/environment/WaterVolume.h", "object/environment/Water.h"),
+    ("object/physics/Buoyancy.cpp", "object/physics/Joint3D.cpp"),
+    ("object/physics/Buoyancy.h", "object/physics/Joint3D.h"),
 ]
 
 

@@ -8,6 +8,8 @@
 #include "Input.h"
 #include "input/InputActions.h"
 #include "component/CharacterCollision.h"
+#include "component/WaterVolumeComponent.h"
+#include "component/BuoyancyComponent.h"
 #include "FileData.h"
 #include "thread/ResourceProgress.h"
 #include "jobs/JobTypes.h"
@@ -97,6 +99,8 @@ namespace luabridge
     template<> struct Stack<InputActionPhase> : EnumWrapper<InputActionPhase>{};
     template<> struct Stack<InputActionType> : EnumWrapper<InputActionType>{};
     template<> struct Stack<CharacterCollisionFlags> : EnumWrapper<CharacterCollisionFlags>{};
+    template<> struct Stack<WaterVolumeWaves> : EnumWrapper<WaterVolumeWaves>{};
+    template<> struct Stack<BuoyancyColumns> : EnumWrapper<BuoyancyColumns>{};
     template<> struct Stack<ResourceLoadState> : EnumWrapper<ResourceLoadState>{};
     template<> struct Stack<LightState> : EnumWrapper<LightState>{};
     template<> struct Stack<UIEventState> : EnumWrapper<UIEventState>{};

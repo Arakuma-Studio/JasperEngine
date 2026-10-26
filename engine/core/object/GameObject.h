@@ -12,6 +12,8 @@
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "Rigidbody.h"
 #include "CharacterController.h"
+#include "Buoyancy.h"
+#include "WaterVolume.h"
 #endif
 #include "math/Ray.h"
 #include "manager/PrefabAsset.h"
@@ -122,7 +124,11 @@ namespace jasperengine{
         // the GameObject's CharacterController, added with its defaults when it has none
         CharacterController getCharacterController();
         void removeCharacterController();
+        // the GameObject's Buoyancy, added with its defaults when it has none
+        Buoyancy getBuoyancy();
 #endif
+        // the GameObject's Water Volume, added with its defaults when it has none
+        WaterVolume getWaterVolume();
 
         Ray getRay(Vector3 direction);
     };

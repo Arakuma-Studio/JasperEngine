@@ -66,6 +66,8 @@ namespace jasperengine::editor{
         // a selected Local Volumetric Fog's outer shape and its inner (blend distance) one
         std::map<Entity, LineRenderer*> fogVolumeLines;
         std::map<Entity, LineRenderer*> controllerLines;
+        std::map<Entity, LineRenderer*> waterVolumeLines;
+        std::map<Entity, LineRenderer*> buoyancyLines;
 
         ViewportGizmo viewgizmo;
 
@@ -97,6 +99,8 @@ namespace jasperengine::editor{
         void createOrUpdateTrackLines(Entity entity, const TranslateTracksComponent& tracks, bool visible);
         void createOrUpdateReflectionProbeLines(Entity entity, const Transform& transform, const ReflectionProbeComponent& probe, bool visible);
         void createOrUpdateFogVolumeLines(Entity entity, const Transform& transform, const LocalVolumetricFogComponent& volume, bool visible);
+        void createOrUpdateWaterVolumeLines(Entity entity, const Transform& transform, const WaterVolumeComponent& volume, bool visible, bool highlighted);
+        void createOrUpdateBuoyancyLines(Entity entity, const Transform& transform, const BuoyancyComponent& buoyancy, bool visible, bool highlighted);
         void createOrUpdateControllerLines(Entity entity, const Transform& transform, const CharacterControllerComponent& controller, bool visible, bool highlighted);
         void createCameraFrustum(Entity entity, const Transform& transform, const CameraComponent& cameraComponent, bool fixedSizeFrustum, bool isMainCamera);
         void createDirectionalLightArrow(Entity entity, const Transform& transform, const LightComponent& light, bool isSelected);
