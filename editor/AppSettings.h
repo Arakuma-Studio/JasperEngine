@@ -4,11 +4,26 @@
 #pragma once
 
 #include <filesystem>
+#include <map>
 #include <string>
 #include <vector>
 #include "yaml-cpp/yaml.h"
 
 namespace jasperengine::editor {
+
+// Preferences > Logging (settings.yaml "logging"). Defaults are the editor's behaviour
+// before categories existed: Info everywhere, the log file at Info.
+struct LoggingSettings {
+    std::map<std::string, std::string> categoryLevels;   // category -> level name (only those changed)
+    std::string fileLevel = "info";
+    bool backtraceOnError = true;
+    bool showSource = true;
+
+    bool operator==(const LoggingSettings& other) const {
+        return categoryLevels == other.categoryLevels && fileLevel == other.fileLevel &&
+               backtraceOnError == other.backtraceOnError && showSource == other.showSource;
+    }
+};
 
 struct PanelVisibilitySettings {
     bool hierarchy = true;
@@ -19,6 +34,7 @@ struct PanelVisibilitySettings {
     bool terrain = false;
     bool mcp = false;
     bool game = true;
+    bool undoHistory = true;
 
     bool operator==(const PanelVisibilitySettings& other) const {
         return hierarchy == other.hierarchy
@@ -28,7 +44,8 @@ struct PanelVisibilitySettings {
             && animation == other.animation
             && terrain == other.terrain
             && mcp == other.mcp
-            && game == other.game;
+            && game == other.game
+            && undoHistory == other.undoHistory;
     }
 
     bool operator!=(const PanelVisibilitySettings& other) const {
@@ -42,12 +59,42 @@ struct GameViewSettings {
     float scale = 1.0f;          // zoom of the game image
     bool maximizeOnPlay = false;
     bool showStats = false;
+    // Preview Atmosphere Quality: -1 the project's, else an AtmosphereQuality (Off..High)
+    int atmosphereQuality = -1;
 
     bool operator==(const GameViewSettings& other) const {
         return aspect == other.aspect && scale == other.scale
-            && maximizeOnPlay == other.maximizeOnPlay && showStats == other.showStats;
+            && maximizeOnPlay == other.maximizeOnPlay && showStats == other.showStats
+            && atmosphereQuality == other.atmosphereQuality;
     }
     bool operator!=(const GameViewSettings& other) const { return !(*this == other); }
+};
+
+// Window > Analysis > Profiler and Frame Debugger (S15 R34): editor-wide, never in the project
+struct ProfilerSettings {
+    int budgetFps = 60;          // the frame budget line: 30, 60, 90, 120, 144 or 240 fps (0: none)
+    bool showCpu = true;         // the modules shown in the module list
+    bool showGpu = true;
+    bool showRendering = true;
+    bool showMemory = true;
+    bool showMonitors = true;
+    int cpuView = 0;             // detail pane: 0 Hierarchy, 1 Timeline
+    int sortColumn = 1;          // Hierarchy: 0 name, 1 total, 2 self, 3 calls
+    bool sortAscending = false;
+    bool pauseOnSpike = false;   // stop recording on a frame over pauseOverMs
+    float pauseOverMs = 50.0f;
+    int memoryGroup = 0;         // GPU Memory table: 0 by category, 1 by owner
+    std::vector<std::string> monitors{"FPS", "Draw calls", "VRAM estimated"};
+    int debuggerMode = 0;        // Frame Debugger preview: Color, Alpha, Depth, R, G, B
+
+    bool operator==(const ProfilerSettings& other) const {
+        return budgetFps == other.budgetFps && showCpu == other.showCpu && showGpu == other.showGpu &&
+            showRendering == other.showRendering && showMemory == other.showMemory && showMonitors == other.showMonitors &&
+            cpuView == other.cpuView && sortColumn == other.sortColumn && sortAscending == other.sortAscending &&
+            pauseOnSpike == other.pauseOnSpike && pauseOverMs == other.pauseOverMs && memoryGroup == other.memoryGroup &&
+            monitors == other.monitors && debuggerMode == other.debuggerMode;
+    }
+    bool operator!=(const ProfilerSettings& other) const { return !(*this == other); }
 };
 
 // Compiler paths and job count are machine-specific, so they live in the project's
@@ -65,6 +112,13 @@ class AppSettings {
 private:
     static std::filesystem::path configFilePath;
     static YAML::Node settingsData;
+    // settingsData as last read from (or written to) the file
+    static YAML::Node loadedSettings;
+    static bool autosaveEnabled;
+    static int autosaveIntervalSeconds;
+    // settingsData parsed into the members
+    static bool applySettings(const YAML::Node& node);
+    static bool writeMerged();
     
     // Recent projects list (max 10)
     static std::vector<std::filesystem::path> recentProjects;
@@ -113,16 +167,36 @@ private:
     static bool editorVSyncEnabled;
     static PanelVisibilitySettings panelVisibility;
     static GameViewSettings gameViewSettings;
+    static ProfilerSettings profilerSettings;
 
     // MCP server over HTTP (Editor Settings / MCP window); stdio needs no setting
     static bool mcpHttpEnabled;
     static int mcpHttpPort;
     static std::string mcpHttpToken;
+    static std::string mcpToolGroups;
 
     // HTML UI (phase-2 §3.13.4): imports of remote resources when documents load; Info
     // diagnostics logged one by one
     static bool htmlUiAutoImport;
+    static bool assetAutoRefresh;
+    static std::string assetWatcher;          // auto, native, polling
+    static float assetPollingInterval;        // seconds, 0.25..10
+    static bool assetLogReloads;
     static bool htmlUiVerboseDiagnostics;
+    // Scripting (S23)
+    static std::string scriptChangesWhilePlaying;   // reload, after_stop, stop_and_reload
+    static bool reloadCppDuringPlay;
+    static std::string externalScriptEditor;        // builtin, vscode, visualstudio, rider, clion, xcode, sublime, zed, system, custom
+    static std::string externalScriptEditorCommand; // the custom one: {file} {line} {column} {project}
+
+    // Undo (Editor Settings > Undo): steps per history, the memory limit of every history
+    // together (MB, 0 = unlimited), standalone selection changes as steps, and the Play Mode
+    // Changes review on Stop
+    static int undoMaxSteps;
+    static int undoMemoryLimitMB;
+    static bool undoRecordSelection;
+    static bool undoReviewPlayChanges;
+    static LoggingSettings loggingSettings;
 
     // Private methods
     static void ensureConfigDirectory();
@@ -138,6 +212,8 @@ public:
     // preferUserDirectory: keep the files in the per-user config directory unless the working
     // directory already has a settings.yaml (MCP mode, started in the client's folder)
     static bool initialize(bool preferUserDirectory = false);
+    // An explicit settings file (tests)
+    static bool initializeWithFile(const std::filesystem::path& file);
 
     // Directory where editor config files live (settings.yaml, layout ini, ...)
     static std::filesystem::path getConfigDirectory();
@@ -217,23 +293,89 @@ public:
     static GameViewSettings getGameViewSettings();
     static void setGameViewSettings(const GameViewSettings& settings);
 
+    static ProfilerSettings getProfilerSettings();
+    static void setProfilerSettings(const ProfilerSettings& settings);
+
     // MCP server HTTP transport: off by default, port 47615. A non-empty token makes
     // clients send "Authorization: Bearer <token>".
     static bool getMcpHttpEnabled();
     static int getMcpHttpPort();
     static std::string getMcpHttpToken();
+    // mcp.tool_groups: the tool groups MCP sessions list besides core ("a,b" or "all")
+    static std::string getMcpToolGroups();
+    // The per-user config directory (settings.yaml of a desktop start, the MCP instance
+    // registry): %APPDATA%/JasperEngine, ~/Library/Application Support/JasperEngine,
+    // $XDG_CONFIG_HOME/jasperengine or ~/.config/jasperengine
+    static std::filesystem::path getUserConfigDirectory();
     static void setMcpHttp(bool enabled, int port);
 
     // HTML UI: download the remote resources (Google Fonts, stylesheets, images, Lottie) a
     // document references when it loads (default on); log every Info diagnostic (default off)
+    // Asset Pipeline (S05 R26): Auto Refresh of files changed on disk (default on), the file
+    // watcher (auto, native, polling), the polling interval (0.25-10 s), Console lines for
+    // reloads (default on). Editor-wide, not per project.
+    static bool getAutoRefresh();
+    static void setAutoRefresh(bool enabled);
+    static std::string getFileWatcher();
+    static void setFileWatcher(const std::string& kind);
+    static float getPollingInterval();
+    static void setPollingInterval(float seconds);
+    static bool getLogReloads();
+    static void setLogReloads(bool enabled);
+
+    // Scripting (S23 R8, R10): what a script saved while a scene plays does ("reload": Reload
+    // And Continue Playing, the default; "after_stop": Reload After Stopping Play;
+    // "stop_and_reload": Stop Playing And Reload), and whether C++ scripts reload too
+    // (default off). Editor-wide.
+    static std::string getScriptChangesWhilePlaying();
+    static void setScriptChangesWhilePlaying(const std::string& policy);
+    static bool getReloadCppDuringPlay();
+    static void setReloadCppDuringPlay(bool enabled);
+    // External Tools > External Script Editor (S23 R28): where Console locations and "Open in
+    // External Editor" go (default the built-in Code Editor), and the Custom command template
+    static std::string getExternalScriptEditor();
+    static void setExternalScriptEditor(const std::string& id);
+    static std::string getExternalScriptEditorCommand();
+    static void setExternalScriptEditorCommand(const std::string& command);
+
     static bool getHtmlUiAutoImport();
     static void setHtmlUiAutoImport(bool enabled);
     static bool getHtmlUiVerboseDiagnostics();
     static void setHtmlUiVerboseDiagnostics(bool enabled);
 
+    // Undo settings, applied to CommandHistory/Project when set or loaded (clamped to their ranges)
+    static constexpr int minUndoMaxSteps = 50;
+    static constexpr int maxUndoMaxSteps = 10000;
+    static constexpr int defaultUndoMaxSteps = 1000;
+    static constexpr int minUndoMemoryLimitMB = 64;
+    static constexpr int maxUndoMemoryLimitMB = 8192;
+    static constexpr int defaultUndoMemoryLimitMB = 512;
+    static int getUndoMaxSteps();
+    static int getUndoMemoryLimitMB();
+    static bool getUndoRecordSelection();
+    static bool getUndoReviewPlayChanges();
+    static void setUndo(int maxSteps, int memoryLimitMB, bool recordSelection, bool reviewPlayChanges);
+    static void applyUndoSettings();
+    // Preferences > Logging; set applies them to the logger at once (then --log-level again)
+    static LoggingSettings getLoggingSettings();
+    static void setLoggingSettings(const LoggingSettings& settings);
+    static void applyLoggingSettings();
+
     // Load and save settings
     static bool loadSettings();
+    // Locked read-merge-write: only the top-level keys this process changed since its load
+    // are written over the file's, recent projects merge as an ordered union (docs/data-safety.md)
     static bool saveSettings();
+
+    // Scene Auto Save (Editor Settings > General): a backup of each modified scene, never the
+    // scene file itself
+    static constexpr int defaultAutosaveInterval = 60;
+    static constexpr int minAutosaveInterval = 30;
+    static constexpr int maxAutosaveInterval = 300;
+    static bool isAutosaveEnabled();
+    static void setAutosaveEnabled(bool enabled);
+    static int getAutosaveIntervalSeconds();
+    static void setAutosaveIntervalSeconds(int seconds);
 };
 
 } // namespace jasperengine::editor

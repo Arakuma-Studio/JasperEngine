@@ -175,6 +175,10 @@ namespace jasperengine{
         // modified less than that long ago is left for a later call, its stamps untouched, so
         // files written back to back (one edit) reload once, not once per file the poll saw
         std::vector<Reloaded> reloadChangedFiles(const std::vector<std::string>& files, double settleSeconds = 0.0);
+        // The editor's hot reload knows these files changed since the documents read them (a
+        // save can keep the time and size of the one before, in the same timestamp tick): the
+        // next reloadChangedFiles naming them reloads the documents reading them
+        void forgetFileStamps(const std::vector<std::string>& files);
         // Tests: called after a document's files were read by a (re)load and before the load
         // records what they were (p5-tooling: a file changed in that window is still seen as
         // changed by the next reloadChangedFiles); nullptr removes it

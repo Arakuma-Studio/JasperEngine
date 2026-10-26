@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "io/AtomicFile.h"
+
 #include <cstddef>
 #include <filesystem>
 
@@ -16,7 +18,14 @@ namespace jasperengine::editor {
 //
 // This lives in the editor utility layer (not in any feature/UI/AI module) so the
 // terrain editor and the AI terrain capability share one encoder.
+// The file is replaced atomically (a Document write: terrain maps are user data).
 bool writeGray16Png(const std::filesystem::path& path, int width, int height,
                     const unsigned char* pixels, std::size_t pixelByteCount);
+
+// An 8-bit PNG (1-4 channels) encoded in memory (stbi_write_png_to_func) and written with
+// io::writeFileAtomic: a crash never leaves half an image. Cache durability for thumbnails and
+// screenshots, Document for maps the user paints.
+bool writePng(const std::filesystem::path& path, int width, int height, int channels, const void* pixels,
+              int strideBytes, io::Durability durability = io::Durability::Document);
 
 } // namespace jasperengine::editor

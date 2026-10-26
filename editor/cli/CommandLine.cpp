@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "CommandLine.h"
+#include "log/Logger.h"
+#include "io/AtomicFile.h"
+#include "util/FileUtils.h"
 
 #include "AppSettings.h"
 #include "JasperEngine.h"
@@ -13,6 +16,7 @@
 #include "Stream.h"
 #include "Factory.h"
 #include "Catalog.h"
+#include "command/CommandHistory.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/AddEntityToPrefabCmd.h"
 #include "command/type/DeleteEntityCmd.h"
@@ -38,7 +42,11 @@
 #include "command/type/PasteEntitiesCmd.h"
 #include "util/EntityClipboard.h"
 #include "util/EntityPath.h"
+#include "asset/AssetRefEditor.h"
+#include "asset/AssetFileWrite.h"
+#include "json.hpp"
 #include "util/ProjectChecks.h"
+#include "util/EditorScripts.h"
 #include "htmlui/HtmlUiImportCli.h"
 #include "htmlui/effects/EffectManifest.h"
 #include "htmlui/effects/EffectRegistry.h"
@@ -108,6 +116,8 @@ struct ExportCliOptions {
     std::vector<std::string> shaderSpecs;   // as given: expanded again once the engine (and project) is up
     bool help = false;
     bool listScenes = false;
+    bool allowMissingAssets = false;
+    bool developmentBuild = false;
 };
 
 struct ShaderCliOptions {
@@ -249,11 +259,23 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " benchmark [options]      Measure scene FPS with vsync off.\n"
         << "  " << commandName << " scene-dump [options]     Dump every scene's GameObjects (developer check).\n"
         << "  " << commandName << " check [options]          Check Lua scripts, shader forks, C++ scripts and HTML/CSS UI (compiler-style).\n"
+        << "  " << commandName << " assets check|migrate     Missing asset references (JSON); rewrite references with GUIDs.\n"
         << "  " << commandName << " import-ui [options]      Import the remote resources of HTML UI documents.\n"
         << "  " << commandName << " ui-support               Print the HTML/CSS support tables as JSON (developer: docs generation).\n"
         << "  " << commandName << " ui-effects [options]     List the HTML UI effects (--json, --validate, --project <dir>).\n"
         << "  " << commandName << " mcp [options]            Run the editor as an MCP server on stdio.\n"
+        << "  " << commandName << " call [options] <tool> ...  Run one MCP tool of an editor from the shell.\n"
+        << "  " << commandName << " batch [options] < calls  Run MCP tool calls from stdin (one JSON per line).\n"
+        << "  " << commandName << " list-tools [options]     List the MCP tools (--json: their definitions).\n"
+        << "  " << commandName << " editors [--json]         List the running editors that serve MCP over HTTP.\n"
         << "  " << commandName << " --mcp-port <port>        Open the editor with the MCP server on HTTP.\n\n"
+        << "Profiler (with the editor, mcp or --mcp-port):\n"
+        << "  --profile                  Record from the start (Window > Analysis > Profiler).\n"
+        << "  --profile-capture <path>   Capture frames once the scenes are loaded, write a .jetrace.json.\n"
+        << "  --profile-frames <n>       Frames of that capture (1 to 600). Default: 300.\n\n"
+        << "With any of them (and the env JASPER_FILE_WATCHER; the flag wins):\n"
+        << "  --file-watcher=auto|native|polling|off   How the editor finds files changed on disk (default: the\n"
+        << "                                           Asset Pipeline preference, auto).\n\n"
         << "Run a subcommand with --help for its options.\n";
 }
 
@@ -271,6 +293,8 @@ static void printUsage(const std::string& commandName) {
         << "      --shader <spec>         Shader type and optional properties, e.g. mesh:Uv1,Nor. Can repeat.\n"
         << "                              UI effects: uieffect/<name>[:Flt] (Flt: the filter form), uieffect/all.\n"
         << "      --list-scenes           Print project scenes and exit.\n"
+        << "      --allow-missing-assets  Export even when the build references missing assets.\n"
+        << "      --development-build     A Development Build: the profiler and --profile in a Release game.\n"
         << "  -h, --help                  Show this help.\n\n"
         << "--project and --out are absolute or relative to the current directory; --assets and --lua\n"
         << "are relative to the project (as in project.yaml).\n"
@@ -294,8 +318,12 @@ static void printBenchmarkUsage(const std::string& commandName) {
         << "      --depth-prepass <on|off> Override the scene's depth prepass setting.\n"
         << "      --name <label>     Label written into the JSON result.\n"
         << "      --out <path>       Write JSON to this file in addition to stdout.\n"
+        << "      --gpu-passes       Time every GPU pass of the measured frames: \"gpu\" in the JSON, with\n"
+        << "                         the frame's and each pass label's median/p95/mean ms (docs/profiling.md).\n"
+        << "      --profile-capture <path>  Write a .jetrace.json profiler capture of the measured frames.\n"
+        << "      --profile          Record the measured frames in the profiler (its overhead included).\n"
         << "  -h, --help             Show this help.\n\n"
-        << "--project and --out are absolute or relative to the current directory.\n"
+        << "--project, --out and --profile-capture are absolute or relative to the current directory.\n"
         << "Vsync is forced off. The scene camera is used for the capture.\n";
 }
 
@@ -366,6 +394,10 @@ static bool parseArgs(int argc, char** argv, ExportCliOptions& options, std::str
             options.shaderSpecs.push_back(value);
         } else if (arg == "--list-scenes") {
             options.listScenes = true;
+        } else if (arg == "--allow-missing-assets") {
+            options.allowMissingAssets = true;
+        } else if (arg == "--development-build") {
+            options.developmentBuild = true;
         } else {
             error = "Unknown argument: " + arg;
             return false;
@@ -592,6 +624,8 @@ int CommandLine::runExportCommand(int argc, char** argv, const char* executableN
         return builder.buildShader(shaderKey, projectPtr);
     });
 
+    // exports and benchmarks run next to an open editor (CI, a terminal): they take no lock
+    project.setSkipProjectLock(true);
     if (!project.loadProject(options.projectPath, false)) {
         return 1;
     }
@@ -607,6 +641,8 @@ int CommandLine::runExportCommand(int argc, char** argv, const char* executableN
     config.luaDir    = options.luaDir.empty()    ? project.getLuaDir()    : options.luaDir;
     config.startSceneId = resolveStartSceneId(project, options.startScene);
     config.packNativeResources = project.shouldPackNativeResources();
+    config.allowMissingAssets = options.allowMissingAssets;
+    config.developmentBuild = options.developmentBuild;
     config.selectedBackends   = options.backends;
     expandShaderSpecsAgain(options.shaderSpecs, options.shaderKeys);
     config.shaderKeysOverride = options.shaderKeys;
@@ -758,6 +794,9 @@ int CommandLine::runBenchmarkHelp(const char* executableName) {
 
 
 // ---- scene-dump: a developer check of what loading a project gives ----
+
+// --allow-data-loss: saves of scenes that did not load completely are written anyway
+static DegradedSavePolicy sceneDumpSavePolicy = DegradedSavePolicy::Refuse;
 //
 // Loads every scene of a project headless and writes, per scene, every GameObject by its
 // hierarchy path (names, and an index among same-named siblings): name, state, parent and
@@ -838,8 +877,12 @@ static void writeSceneDump(Project& project, const fs::path& outPath) {
     if (outPath.empty()) {
         std::cout << out.c_str() << "\n";
     } else {
-        std::ofstream file(outPath);
-        file << out.c_str() << "\n";
+        io::AtomicWriteOptions options;
+        options.durability = io::Durability::Cache;
+        const io::WriteResult written = io::writeFileAtomic(outPath, std::string(out.c_str()) + "\n", options);
+        if (!written.ok()) {
+            std::cerr << "scene-dump: could not write " << outPath.string() << ": " << io::describeWriteError(written) << "\n";
+        }
     }
 }
 
@@ -925,9 +968,8 @@ static EntityCreationType creationKind(const YAML::Node& op) {
 }
 
 static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
-    std::vector<std::unique_ptr<Command>> done;
-    std::vector<std::unique_ptr<Command>> undone;
-    size_t playFloor = 0;
+    // the editor's own history: its merges, no-op drops, groups and play floor
+    CommandHistory history(NULL_PROJECT_SCENE);
     static const std::map<std::string, PrefabOverrideCmd::Operation> operations = {
         {"recordProperty", PrefabOverrideCmd::Operation::RecordProperty}, {"revertProperty", PrefabOverrideCmd::Operation::RevertProperty},
         {"applyProperty", PrefabOverrideCmd::Operation::ApplyProperty}, {"recordState", PrefabOverrideCmd::Operation::RecordState},
@@ -940,18 +982,14 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
         const std::string name = op["op"].as<std::string>();
         std::cout << "op " << name << (op["entity"] ? " " + op["entity"].as<std::string>() : std::string()) << "\n";
         auto runCommand = [&](Command* command) {
-            std::unique_ptr<Command> owned(command);
-            if (!owned->execute()) {
+            if (!history.addCommandNoMerge(command)) {
                 std::cout << "  (failed)\n";
-                return;
             }
-            done.push_back(std::move(owned));
-            undone.clear();
         };
         if (name == "save") {
             for (SceneProject& sceneProject : project.getScenes()) {
                 if (sceneProject.scene && !sceneProject.filepath.empty()) {
-                    project.saveSceneToPath(sceneProject.id, sceneProject.filepath, false);
+                    project.saveSceneToPath(sceneProject.id, sceneProject.filepath, false, sceneDumpSavePolicy);
                 }
             }
             continue;
@@ -997,10 +1035,9 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             }
             // Stop drops what was done while playing from the history
             if (name == "playStart") {
-                playFloor = done.size();
+                history.beginPlaySession();
             } else {
-                while (done.size() > playFloor) done.pop_back();
-                undone.clear();
+                history.endPlaySession(true);
             }
             continue;
         }
@@ -1034,18 +1071,19 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             continue;
         }
         if (name == "undo") {
-            if (!done.empty()) {
-                done.back()->undo();
-                undone.push_back(std::move(done.back()));
-                done.pop_back();
-            }
+            history.undo();
             continue;
         }
         if (name == "redo") {
-            if (!undone.empty()) {
-                undone.back()->execute();
-                done.push_back(std::move(undone.back()));
-                undone.pop_back();
+            history.redo();
+            continue;
+        }
+        if (name == "history") {
+            // the steps, oldest first: "id name", the redo tail marked
+            const std::vector<const UndoEntry*> entries = history.entries();
+            for (size_t i = 0; i < entries.size(); i++) {
+                std::cout << "  " << entries[i]->info.id << " " << entries[i]->name()
+                          << (i < history.appliedCount() ? "" : " (redo)") << "\n";
             }
             continue;
         }
@@ -1054,9 +1092,8 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             const fs::path out = resolveOpsPath(op["out"].as<std::string>());
             fs::create_directories(out);
             for (const auto& [path, baked] : project.bakePrefabsForExport()) {
-                std::ofstream file(out / (Factory::prefabToFileName(path) + ".cpp"));
-                file << Factory::createPrefab(path, *baked, project.getProjectPath(), out,
-                    [&project](const fs::path& p) { return project.getPrefabGuid(p); });
+                FileUtils::writeFile(out / (Factory::prefabToFileName(path) + ".cpp"), Factory::createPrefab(path, *baked, project.getProjectPath(), out,
+                    [&project](const fs::path& p) { return project.getPrefabGuid(p); }));
             }
             continue;
         }
@@ -1321,6 +1358,8 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
                     case PropertyType::Int: command->addPropertyCmd<int>(&project, id, target, type, property, value.as<int>()); break;
                     case PropertyType::UInt: command->addPropertyCmd<unsigned int>(&project, id, target, type, property, value.as<unsigned int>()); break;
                     case PropertyType::String: command->addPropertyCmd<std::string>(&project, id, target, type, property, value.as<std::string>()); break;
+                    case PropertyType::Asset: command->addPropertyCmd<AssetRef>(&project, id, target, type, property, AssetRef(value.as<std::string>())); break;
+                    case PropertyType::Shader: command->addPropertyCmd<ShaderRef>(&project, id, target, type, property, ShaderRef(value.as<std::string>())); break;
                     case PropertyType::Vector3: command->addPropertyCmd<Vector3>(&project, id, target, type, property,
                         Vector3(value[0].as<float>(), value[1].as<float>(), value[2].as<float>())); break;
                     case PropertyType::Vector4: command->addPropertyCmd<Vector4>(&project, id, target, type, property,
@@ -1584,15 +1623,22 @@ static int runSceneDump(int argc, char** argv, const std::string& commandName) {
     fs::path outPath;
     fs::path opsPath;
     bool save = false;
+    bool allowDataLoss = false;
+    bool ignoreLock = false;
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
         if ((arg == "--project" || arg == "-p") && i + 1 < argc) projectArg = CommandLine::projectArgPath(argv[++i]);
         else if ((arg == "--out" || arg == "-o") && i + 1 < argc) outPath = CommandLine::absoluteArgPath(argv[++i]);
         else if (arg == "--ops" && i + 1 < argc) opsPath = CommandLine::absoluteArgPath(argv[++i]);
         else if (arg == "--save") save = true;
+        else if (arg == "--allow-data-loss") allowDataLoss = true;
+        else if (arg == "--ignore-lock") ignoreLock = true;
         else {
             std::cerr << commandName << " scene-dump --project <dir|project.yaml> [--out <file>] [--ops <file>] [--save]\n"
-                      << "(paths absolute or relative to the current directory)\n";
+                      << "    [--allow-data-loss] [--ignore-lock]\n"
+                      << "(paths absolute or relative to the current directory)\n"
+                      << "--save refuses (exit 4) to write a scene that did not load completely unless --allow-data-loss;\n"
+                      << "a project another editor has open fails (exit 3, project_locked) unless --ignore-lock.\n";
             return 2;
         }
     }
@@ -1612,7 +1658,16 @@ static int runSceneDump(int argc, char** argv, const std::string& commandName) {
     Engine::pauseGameEvents(true);
     Engine::setAsyncLoading(false);
 
+    // a dump only reads: only a writer takes the project's lock (R10)
+    const bool writes = save || !opsPath.empty();
+    project.setSkipProjectLock(!writes);
+    project.setIgnoreProjectLock(ignoreLock);
+    sceneDumpSavePolicy = allowDataLoss ? DegradedSavePolicy::SaveAnyway : DegradedSavePolicy::Refuse;
     if (!project.loadProject(projectArg, false)) {
+        if (project.wasProjectLocked()) {
+            std::cerr << "scene-dump: project_locked: " << project.getProjectLockMessage() << " (--ignore-lock opens it anyway)\n";
+            return 3;
+        }
         return 1;
     }
 
@@ -1620,6 +1675,12 @@ static int runSceneDump(int argc, char** argv, const std::string& commandName) {
     for (size_t i = 0; i < scenes.size(); i++) {
         if (!scenes[i].filepath.empty() && !scenes[i].scene) {
             project.loadScene(scenes[i].filepath, false, false, true);
+        }
+    }
+    // the load report of every scene, on stderr (R39)
+    for (const SceneProject& sceneProject : scenes) {
+        for (const LoadIssue& issue : sceneProject.loadReport.issues) {
+            std::cerr << issue.consoleLine() << "\n";
         }
     }
 
@@ -1631,13 +1692,246 @@ static int runSceneDump(int argc, char** argv, const std::string& commandName) {
     writeSceneDump(project, outPath);
 
     if (save) {
+        bool refused = false;
         for (SceneProject& sceneProject : scenes) {
             if (sceneProject.scene && !sceneProject.filepath.empty()) {
-                project.saveSceneToPath(sceneProject.id, sceneProject.filepath, false);
+                SaveResult result = SaveResult::Failed;
+                project.saveSceneToPath(sceneProject.id, sceneProject.filepath, false, sceneDumpSavePolicy, &result);
+                if (result == SaveResult::RefusedDegraded) {
+                    std::cerr << "scene-dump: not saved: " << sceneProject.filepath.generic_string() << " did not load completely "
+                              << "(--allow-data-loss writes it anyway)\n";
+                    refused = true;
+                }
             }
+        }
+        if (refused) {
+            return 4;
         }
     }
     return 0;
+}
+
+// ---- assets: asset identity from a shell or CI (docs/specs/S04-asset-identity.md R32) ----
+//
+//   assets check --project P     the missing references, the ones resolved only by path and the
+//                                orphan metas, as JSON on stdout; exit code 1 when any is missing
+//   assets migrate --project P   rewrites every scene, prefab, material and project.yaml with the
+//                                GUIDs of what they reference (idempotent: a second run writes nothing)
+
+// assets bench (developer, tools/performance/assetdb_bench.py): the asset database and the
+// dependency index alone on a project, timed in milliseconds as JSON: a cold open (no cache),
+// the full index, a warm open, one referrer's incremental update, find_references, resolution
+static int runAssetsBench(const fs::path& projectArg) {
+    using Json = nlohmann::json;
+    using Clock = std::chrono::steady_clock;
+    auto ms = [](Clock::time_point since) {
+        return std::chrono::duration<double, std::milli>(Clock::now() - since).count();
+    };
+    const fs::path project = fs::is_regular_file(projectArg) ? projectArg.parent_path() : projectArg;
+    std::string assetsDir = "assets";
+    try {
+        const YAML::Node root = YAML::LoadFile((project / "project.yaml").string());
+        if (root["assetsDir"]) assetsDir = root["assetsDir"].as<std::string>();
+    } catch (const std::exception&) {
+    }
+    const AssetIndex::Roots roots{assetsDir, assetsDir};
+    Json result;
+    std::error_code ec;
+    {
+        // the identity pass with no cache (the metas exist: the project was opened before)
+        fs::remove_all(project / ".jasperengine" / "assetdb", ec);
+        AssetDatabase database;
+        database.setBackgroundHashing(false);
+        Clock::time_point start = Clock::now();
+        database.open(project, assetsDir);
+        result["cold_identity_ms"] = ms(start);
+        AssetIndex index;
+        start = Clock::now();
+        index.open(&database, project, roots);
+        index.waitUntilReady();
+        result["cold_index_ms"] = ms(start);
+        result["assets"] = database.assetCount();
+        index.close();
+    }
+    AssetDatabase database;
+    database.setBackgroundHashing(false);
+    Clock::time_point start = Clock::now();
+    database.open(project, assetsDir);
+    result["warm_open_ms"] = ms(start);
+    AssetIndex index;
+    start = Clock::now();
+    index.open(&database, project, roots);
+    index.waitUntilReady();
+    result["warm_index_ms"] = ms(start);
+
+    // the poll with nothing changed: the walk (a background thread in the editor) and what the
+    // main thread does with it (R23)
+    start = Clock::now();
+    const AssetDatabase::DiskScan scan = database.scanDisk();
+    result["poll_walk_ms"] = ms(start);
+    start = Clock::now();
+    database.refresh(scan);
+    result["poll_apply_ms"] = ms(start);
+
+    // one referrer edited and saved: its entry and its edges are updated (the save's path, and
+    // what an S05 watcher event does); the YAML parse is part of it
+    std::string referrer;
+    Guid referrerGuid;
+    database.forEachAsset([&](const AssetDatabase::AssetInfo& info) {
+        if (referrer.empty() && info.type == AssetType::Scene) {
+            referrer = info.path;
+            referrerGuid = info.guid;
+        }
+    });
+    if (!referrer.empty()) {
+        std::string text;
+        assetio::readFile(project / referrer, text);
+        assetio::writeFile(project / referrer, text + "\n", assetio::Durability::Cache);
+        fs::last_write_time(project / referrer, fs::last_write_time(project / referrer) + std::chrono::seconds(2));
+        // as in the editor: the cache is written by the background thread, not by the save
+        database.setBackgroundHashing(true);
+        start = Clock::now();
+        database.registerAsset(project / referrer, referrerGuid.str());
+        index.updateReferrer(referrer);
+        result["single_update_ms"] = ms(start);
+        // the same through a full refresh (the poll finding it)
+        assetio::writeFile(project / referrer, text, assetio::Durability::Cache);
+        fs::last_write_time(project / referrer, fs::last_write_time(project / referrer) + std::chrono::seconds(4));
+        start = Clock::now();
+        index.update(database.refresh());
+        result["refresh_update_ms"] = ms(start);
+    }
+
+    // Find References of the most referenced asset
+    std::vector<AssetDatabase::AssetInfo> assets;
+    database.forEachAsset([&](const AssetDatabase::AssetInfo& info) { assets.push_back(info); });
+    double worst = 0.0;
+    size_t found = 0;
+    for (size_t i = 0; i < assets.size() && i < 200; i++) {
+        start = Clock::now();
+        found += index.referencesTo(assets[i].guid, assets[i].path, true, 500).size();
+        worst = std::max(worst, ms(start));
+    }
+    result["find_references_worst_ms"] = worst;
+    result["references_found"] = found;
+
+    // resolution: a hash map lookup
+    const size_t rounds = 1000000;
+    start = Clock::now();
+    size_t hits = 0;
+    for (size_t i = 0; i < rounds; i++) {
+        hits += database.resolve(assets[i % assets.size()].guid, std::string(), AssetType::Unknown, false).found();
+    }
+    result["resolve_ns"] = ms(start) * 1.0e6 / static_cast<double>(rounds);
+    result["resolved"] = hits;
+    index.close();
+    std::cout << result.dump(2) << "\n";
+    return 0;
+}
+
+static int runAssets(int argc, char** argv, const std::string& commandName) {
+    using Json = nlohmann::json;
+    const std::string usage = commandName + " assets check|migrate --project <dir|project.yaml>\n"
+                              "(paths absolute or relative to the current directory)\n";
+    if (argc >= 4 && std::string(argv[1]) == "bench" && (std::string(argv[2]) == "--project" || std::string(argv[2]) == "-p")) {
+        return runAssetsBench(CommandLine::projectArgPath(argv[3]));
+    }
+    if (argc < 2 || (std::string(argv[1]) != "check" && std::string(argv[1]) != "migrate")) {
+        std::cerr << usage;
+        return 2;
+    }
+    const std::string action = argv[1];
+    fs::path projectArg;
+    for (int i = 2; i < argc; i++) {
+        const std::string arg = argv[i];
+        if ((arg == "--project" || arg == "-p") && i + 1 < argc) {
+            projectArg = CommandLine::projectArgPath(argv[++i]);
+        } else {
+            std::cerr << usage;
+            return 2;
+        }
+    }
+    if (projectArg.empty()) {
+        std::cerr << commandName << " assets: --project is required\n";
+        return 2;
+    }
+
+    EditorHostOverrideGuard hostOverride(nullptr);
+    Out::setConsoleWindow(nullptr);
+    AppSettings::initialize();
+
+    Project project;
+    auto platform = std::make_unique<Platform>(&project);
+    Engine::systemInit(argc, argv, platform.get());
+    EngineRuntimeGuard engineRuntime;
+    Engine::pauseGameEvents(true);
+    Engine::setAsyncLoading(false);
+
+    if (!project.loadProject(projectArg, false)) {
+        return 1;
+    }
+    project.getAssetIndex().waitUntilReady();
+
+    if (action == "migrate") {
+        std::vector<std::string> files;
+        project.getAssetDatabase().forEachAsset([&](const AssetDatabase::AssetInfo& info) {
+            if (info.type == AssetType::Scene || info.type == AssetType::Prefab || info.type == AssetType::Material) {
+                files.push_back(info.path);
+            }
+        });
+        std::sort(files.begin(), files.end());
+        files.push_back("project.yaml");
+        Json written = Json::array();
+        int failures = 0;
+        for (const std::string& file : files) {
+            bool changed = false;
+            std::string error;
+            if (!AssetRefEditor::migrateFile(project, file, changed, error)) {
+                std::cerr << error << "\n";
+                failures++;
+            } else if (changed) {
+                written.push_back(file);
+            }
+        }
+        std::cout << Json{{"files_written", written}, {"checked", files.size()}}.dump(2) << "\n";
+        return failures > 0 ? 1 : 0;
+    }
+
+    MissingAssetTracker& tracker = project.getMissingAssets();
+    tracker.update(project.getAssetDatabase(), project.getAssetIndex(), true);
+    auto referrerJson = [](const MissingAssetTracker::Referrer& referrer) {
+        Json item{{"owner", referrer.ownerPath}, {"field", referrer.field}, {"locator", referrer.locator}};
+        if (referrer.entity != 0) item["entity"] = Json{{"id", referrer.entity}, {"path", referrer.entityPath}};
+        if (!referrer.component.empty()) item["component"] = referrer.component;
+        return item;
+    };
+    Json missing = Json::array();
+    for (const MissingAssetTracker::Group& group : tracker.getGroups()) {
+        Json referrers = Json::array();
+        for (const MissingAssetTracker::Referrer& referrer : group.referrers) referrers.push_back(referrerJson(referrer));
+        missing.push_back({{"guid", group.guid.isNull() ? Json(nullptr) : Json(group.guid.str())},
+                           {"expected_type", assetTypeName(group.expected)}, {"last_path", group.lastPath},
+                           {"referrers", referrers}});
+    }
+    Json healed = Json::array();
+    for (const MissingAssetTracker::ResolvedByPath& entry : tracker.getResolvedByPath()) {
+        Json referrers = Json::array();
+        for (const MissingAssetTracker::Referrer& referrer : entry.referrers) referrers.push_back(referrerJson(referrer));
+        healed.push_back({{"referenced_guid", entry.referencedGuid.str()}, {"guid", entry.currentGuid.str()},
+                          {"path", entry.path}, {"referrers", referrers}});
+    }
+    Json orphans = Json::array();
+    for (const AssetDatabase::OrphanMeta& orphan : tracker.getOrphanMetas()) {
+        orphans.push_back({{"meta", orphan.metaPath}, {"asset", orphan.assetPath}, {"guid", orphan.guid.str()}});
+    }
+    std::cout << Json{{"assets", project.getAssetDatabase().assetCount()}, {"missing", missing},
+                      {"resolved_by_path", healed}, {"orphan_metas", orphans}}.dump(2) << "\n";
+    return missing.empty() ? 0 : 1;
+}
+
+int CommandLine::runAssetsCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    return runAssets(argc, argv, getCommandName(executableName));
 }
 
 int CommandLine::runSceneDumpCommand(int argc, char** argv, const char* executableName) {
@@ -1868,23 +2162,10 @@ void saveHookState(const fs::path& file, const HookState& state) {
         if (!keys.empty()) uiReported[rel] = std::vector<std::string>(keys.begin(), keys.end());
     }
     const nlohmann::json json = {{"version", 2}, {"files", files}, {"ui_reported", uiReported}};
-    std::error_code ec;
-    fs::create_directories(file.parent_path(), ec);
     // a hook running in parallel must never read half a file
-    const fs::path temp = file.string() + ".tmp" + std::to_string(static_cast<long long>(
-        std::chrono::steady_clock::now().time_since_epoch().count() % 1000000007));
-    {
-        std::ofstream out(temp, std::ios::binary | std::ios::trunc);
-        if (!out) return;
-        out << json.dump();
-        if (!out) {
-            out.close();
-            fs::remove(temp, ec);
-            return;
-        }
-    }
-    fs::rename(temp, file, ec);
-    if (ec) fs::remove(temp, ec);
+    io::AtomicWriteOptions options;
+    options.durability = io::Durability::Cache;
+    io::writeFileAtomic(file, json.dump(), options);
 }
 
 fs::path hookStateFile(const fs::path& root) {
@@ -1925,7 +2206,7 @@ void appendHookLog(const fs::path& root, const std::string& tool, const std::vec
     if (!fs::is_directory(dir, ec)) fs::create_directories(dir, ec);
     const fs::path log = dir / HOOK_LOG_FILE;
     if (fs::file_size(log, ec) > HOOK_LOG_MAX_BYTES && !ec) {
-        fs::rename(log, dir / (std::string(HOOK_LOG_FILE) + ".1"), ec);
+        io::renameWithRetry(log, dir / (std::string(HOOK_LOG_FILE) + ".1"), ec);
     }
     std::ofstream out(log, std::ios::app);
     if (!out) return;
@@ -1958,6 +2239,8 @@ fs::path canonicalOr(const fs::path& path) {
 class QuietOutput {
 public:
     QuietOutput() {
+        // the logger writes the console from its own thread: what came before goes out first
+        Logger::flush();
         std::cout.flush();
         std::cerr.flush();
         std::fflush(stdout);
@@ -1983,6 +2266,8 @@ public:
 #endif
     }
     ~QuietOutput() {
+        // and what was logged while quiet is written while the descriptors still point at null
+        Logger::flush();
         std::cout.flush();
         std::cerr.flush();
         std::fflush(stdout);
@@ -2032,10 +2317,30 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         const std::vector<std::string> engineGlobals = ProjectChecks::engineLuaGlobals();
         const fs::path luaRoot = ProjectChecks::luaRootFromProjectFile(root);
         size_t count = 0;
+        // the scenes and prefabs, as text: an editor script attached to a GameObject is a mistake
+        std::vector<std::pair<std::string, std::string>> documents;
+        for (const fs::path& document : ProjectChecks::findProjectFiles(root, {".scene", ".prefab"})) {
+            std::string text;
+            if (ProjectChecks::readFile(document, text)) documents.push_back({ProjectChecks::projectRelative(root, document), std::move(text)});
+        }
         for (const fs::path& file : luaFiles) {
             std::string code;
             if (!ProjectChecks::readFile(file, code)) continue;
             count++;
+            // an editor script (S23): its syntax only (it runs when its menu item is clicked)
+            if (EditorScripts::isLuaEditorScript(file.lexically_relative(root), code)) {
+                const std::string rel = ProjectChecks::projectRelative(root, file);
+                const ProjectChecks::LuaSyntax syntax = ProjectChecks::checkLuaSyntax(code, rel);
+                if (!syntax.ok) run.findings.push_back({"lua", rel, syntax.line, 0, "error", syntax.message});
+                const std::string luaRelative = file.lexically_relative(luaRoot).generic_string();
+                for (const auto& [document, text] : documents) {
+                    if (text.find(luaRelative) != std::string::npos) {
+                        run.findings.push_back({"lua", rel, 0, 0, "warning", "an editor script (Editor/ with ---@menu annotations) is attached to a "
+                                                "GameObject in " + document + ": it does not run in the game"});
+                    }
+                }
+                continue;
+            }
             lua_State* L = ProjectChecks::newIsolatedLuaState(luaRoot, engineGlobals);
             const ProjectChecks::LuaScriptCheck check = ProjectChecks::checkLuaScript(code, ProjectChecks::projectRelative(root, file), L);
             ProjectChecks::closeIsolatedLuaState(L);
@@ -2045,6 +2350,8 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
     }
 
     if (shadersWanted || cppWanted) {
+        // checks only read the project: no lock, an open editor is fine
+        project.setSkipProjectLock(true);
         if (!project.loadProject(root, false)) {
             run.fatal = "the project could not be loaded: " + root.string();
             return run;
@@ -2532,6 +2839,55 @@ int CommandLine::runHelpCommand(int argc, char** argv, const char* executableNam
     std::cerr << commandName << ": unknown argument '" << argument << "'\n\n";
     printMainUsage(commandName);
     return 2;
+}
+
+// ---- the profiler's options, for the engine (S15 R38)
+
+namespace {
+    std::vector<std::string>& profilerFlags(){
+        static std::vector<std::string> flags;
+        return flags;
+    }
+}
+
+bool CommandLine::takeProfilerFlags(std::vector<char*>& args){
+    std::vector<std::string>& taken = profilerFlags();
+    for (size_t i = 1; i < args.size();){
+        const std::string arg = args[i];
+        const bool record = arg == "--profile";
+        const bool capture = arg == "--profile-capture" || arg.rfind("--profile-capture=", 0) == 0;
+        const bool frames = arg == "--profile-frames" || arg.rfind("--profile-frames=", 0) == 0;
+        if (!record && !capture && !frames){
+            i++;
+            continue;
+        }
+        size_t used = 1;
+        std::string value;
+        if (!record){
+            const size_t equals = arg.find('=');
+            if (equals != std::string::npos){
+                value = arg.substr(equals + 1);
+            }else if (i + 1 < args.size()){
+                value = args[i + 1];
+                used = 2;
+            }else{
+                std::cerr << arg << " needs a value\n";
+                return false;
+            }
+        }
+        if (record)
+            taken.push_back("--profile");
+        else if (capture)
+            taken.push_back("--profile-capture=" + absoluteArgPath(value).string());
+        else
+            taken.push_back("--profile-frames=" + value);
+        args.erase(args.begin() + static_cast<long>(i), args.begin() + static_cast<long>(i + used));
+    }
+    return true;
+}
+
+const std::vector<std::string>& CommandLine::takenProfilerFlags(){
+    return profilerFlags();
 }
 
 }

@@ -14,6 +14,8 @@ Runs on a scratch copy of the fixture project (canvas 1280 x 720).
 
 import asyncio
 import json
+import os
+import random
 import re
 import shutil
 import time
@@ -761,6 +763,36 @@ async def test_rapid_saves_during_play(ed: Editor):
         ed.check(not errors, f"no errors: {errors}")
     finally:
         await ed.call("play", action="stop")
+
+
+async def test_burst_after_writing_call_during_play(ed: Editor):
+    """S05: the race behind test_rapid_saves_during_play's rare failure, run many times. A save
+    right after a writing call is held by the paused reloader (and picked up by the next call);
+    the held batch then reloads in the middle of the next burst of saves, reading a half-written
+    file. The reload must not take the burst's last save as reloaded: it stamps what the file was
+    before it read it, so the burst's own change reloads it. JASPER_BURST_ROUNDS sets the rounds."""
+    ed.require_tools("play")
+    rounds = int(os.environ.get("JASPER_BURST_ROUNDS", "40"))
+    await ed.call("play", action="start", scene=P["scene"])
+    wrong = []
+    try:
+        for n in range(rounds):
+            disk_write(ed, PANEL_CSS, PANEL_STYLE.replace("#ff0000", "#40ff40"))
+            await title_color(ed, play=True)
+            await ed.call("read_console", limit=1)
+            # the held batch is applied by the frame after the call: land the burst around it
+            time.sleep(random.random() * 0.25)
+            last = n % 9
+            for i in range(8):
+                (ed.project / PANEL_CSS).write_text(PANEL_STYLE.replace("#ff0000", f"#0{i}0{i}0{last}"), encoding="utf-8")
+            time.sleep(0.02)
+            _, value = await title_color(ed, play=True)
+            if rgb(value) != (7, 7, last):
+                wrong.append(f"round {n}: {value}, not #07070{last}")
+    finally:
+        await ed.call("play", action="stop")
+    print(f"     [burst] {len(wrong)} of {rounds} rounds showed an older save")
+    ed.check_eq(wrong, [], "every burst's last save is what the document shows")
 
 
 async def test_delete_document_file_during_play(ed: Editor):

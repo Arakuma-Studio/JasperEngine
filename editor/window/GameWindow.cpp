@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "GameWindow.h"
+#include "profiler/FrameTimes.h"
 
 #include "imgui_internal.h"
 #include "Engine.h"
@@ -347,6 +348,24 @@ void editor::GameWindow::drawToolbar() {
     }
     ImGui::SetItemTooltip("Zoom into the game image (double-click resets)");
 
+    // Preview Atmosphere Quality: the tier of volumetric fog and clouds this view shows
+    static const char* const atmosphereLabels[] = {"Project", "Off", "Low", "Medium", "High"};
+    ImGui::SameLine(0, Theme::dpi(12.0f));
+    ImGui::SetNextItemWidth(Theme::dpi(90.0f));
+    const int atmosphereIndex = std::clamp(settings.atmosphereQuality + 1, 0, 4);
+    if (ImGui::BeginCombo("##GameAtmosphere", atmosphereLabels[atmosphereIndex])) {
+        for (int i = 0; i < 5; i++) {
+            if (ImGui::Selectable(atmosphereLabels[i], atmosphereIndex == i)) {
+                settings.atmosphereQuality = i - 1;
+                editPassDirty = true;
+                saveSettings();
+            }
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::SetItemTooltip("Preview Atmosphere Quality: the volumetric fog and clouds tier of this view (Project: the project's "
+                          "desktop Atmosphere Quality). A script's Engine.setAtmosphereQuality still wins.");
+
     // The played scene's HTML UI documents (the RmlUi debugger inspects and draws in them)
     UIDocumentSystem* playedDocuments = nullptr;
     const uint32_t playedSceneId = project->getPlaySessionSceneId();
@@ -550,18 +569,34 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     const float fps = ImGui::GetIO().Framerate;
     const float ms = fps > 0.0f ? 1000.0f / fps : 0.0f;
 
-    char lines[5][96];
+    char lines[6][96];
     int lineCount = 4;
     snprintf(lines[0], sizeof(lines[0]), "Statistics");
     snprintf(lines[1], sizeof(lines[1]), "Graphics: %.1f FPS (%.1f ms)", fps, ms);
     snprintf(lines[2], sizeof(lines[2]), "Draw calls: %u   Tris: %llu", frameStats.drawCalls, (unsigned long long)frameStats.triangles);
     snprintf(lines[3], sizeof(lines[3]), "Screen: %dx%d", width, height);
+    // the frame's CPU time, and its GPU time while something times the passes (the Profiler)
+    const FrameTimeSample frameTime = FrameTimes::latest();
+    if (frameTime.frame > 0) {
+        float gpuMs = -1.0f;
+        for (size_t i = FrameTimes::size(); i-- > 0 && FrameTimes::size() - i <= 8;) {
+            if (FrameTimes::at(i).gpuMs >= 0.0f) {
+                gpuMs = FrameTimes::at(i).gpuMs;
+                break;
+            }
+        }
+        if (gpuMs >= 0.0f)
+            snprintf(lines[lineCount], sizeof(lines[lineCount]), "CPU %.2f ms  GPU %.2f ms", frameTime.cpuMs, gpuMs);
+        else
+            snprintf(lines[lineCount], sizeof(lines[lineCount]), "CPU %.2f ms", frameTime.cpuMs);
+        lineCount++;
+    }
     // the scene's HTML UI documents (their offscreen passes are not in the counters above)
     UIDocumentSystem* documents = (sceneProject && sceneProject->scene) ? sceneProject->scene->getSystem<UIDocumentSystem>().get() : nullptr;
     if (documents && documents->hasDocuments()) {
         const HtmlUIRenderStats& ui = documents->getRenderStats();
-        snprintf(lines[4], sizeof(lines[4]), "HTML UI: %u passes, %u draws, %u pipelines", ui.passes, ui.drawCalls, ui.pipelineApplies);
-        lineCount = 5;
+        snprintf(lines[lineCount], sizeof(lines[lineCount]), "HTML UI: %u passes, %u draws, %u pipelines", ui.passes, ui.drawCalls, ui.pipelineApplies);
+        lineCount++;
     }
 
     float boxWidth = 0.0f;

@@ -2,11 +2,15 @@
 // SPDX-License-Identifier: MIT
 
 #include "McpServer.h"
+#include "log/LogSinks.h"
 
 #include "McpAutoSync.h"
 #include "McpContext.h"
+#include "McpInstances.h"
+#include "McpToolGroups.h"
 #include "McpTransportHttp.h"
 #include "McpTransportStdio.h"
+#include "McpUndo.h"
 #include "tools/McpTools.h"
 
 #include "App.h"
@@ -19,6 +23,7 @@
 #include <csignal>
 #include <cstdlib>
 #include <cstdio>
+#include <optional>
 
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::mcp;
@@ -66,7 +71,13 @@ void McpServer::start(App& app) {
     ctx = std::make_unique<McpContext>(app, *this);
     McpAutoSync::get().serverStarted();
 
-    registerAllTools();
+    buildToolRegistry(reg);
+    chooseInitialToolGroups();
+
+    // notifications/message: off until a session asks (logging/setLevel)
+    auto sink = std::make_unique<CallbackSink>("mcp", [this](const LogRecord& record) { sendLogNotification(record); });
+    sink->minLevel.store(LogLevel::Off, std::memory_order_relaxed);
+    logSink = Logger::addSink(std::move(sink));
 
     const McpLaunchOptions& options = mcpLaunchOptions();
 #ifndef _WIN32
@@ -88,31 +99,57 @@ void McpServer::start(App& app) {
     }
 }
 
-void McpServer::registerAllTools() {
-    // Fixed order (tools/list order)
-    registerCoreTools(reg);
-    registerProjectTools(reg);
-    registerSceneTools(reg);
-    registerEntityTools(reg);
-    registerComponentTools(reg);
-    registerPrefabTools(reg);
-    registerPlayTools(reg);
-    registerViewTools(reg);
-    registerConsoleTools(reg);
-    registerScriptTools(reg);
-    registerAssetTools(reg);
-    registerDocsTools(reg);
-    registerBuildTools(reg);
-    registerWorldTools(reg);
-    registerHtmlUiTools(reg);
-    registerUiEffectTools(reg);
+void McpServer::chooseInitialToolGroups() {
+    const McpLaunchOptions& options = mcpLaunchOptions();
+    std::vector<std::string> groups = options.toolGroups;
+    if (!options.toolGroupsSet) {
+        // `mcp --tool-groups` validated its names before the editor started; a stale name in
+        // the settings must not keep the editor from starting
+        std::string error;
+        if (!parseToolGroupList(AppSettings::getMcpToolGroups(), groups, error)) {
+            Out::warning("Editor settings mcp.tool_groups: %s; no tool group is enabled by default.", error.c_str());
+            groups.clear();
+        }
+    }
+    initialToolGroups = std::set<std::string>(groups.begin(), groups.end());
+}
+
+Json McpServer::listTools(const SessionPtr& session, const Json& params) const {
+    // params._meta["jasper/groups"]: "all" or a list of groups instead of the session's (the
+    // CLI, the test harness and the docs/budget generators list every group this way)
+    bool all = false;
+    std::set<std::string> groups;
+    const Json* requested = nullptr;
+    if (params.contains("_meta") && params["_meta"].is_object() && params["_meta"].contains("jasper/groups")) {
+        requested = &params["_meta"]["jasper/groups"];
+    }
+    if (requested && requested->is_string() && requested->get<std::string>() == "all") {
+        all = true;
+    } else if (requested && requested->is_array()) {
+        for (const Json& item : *requested) {
+            if (item.is_string()) groups.insert(item.get<std::string>());
+        }
+    } else {
+        groups = sessionToolGroups(session);
+    }
+    Json tools = Json::array();
+    for (const ToolDef& def : reg.tools()) {
+        const std::string& group = McpRegistry::groupOf(def);
+        if (all || group == CORE_TOOL_GROUP || groups.count(group)) tools.push_back(McpRegistry::toolToJson(def));
+    }
+    return Json{{"tools", tools}};
 }
 
 void McpServer::stop() {
     if (!started) return;
+    if (logSink) {
+        Logger::removeSink(logSink);
+        logSink = 0;
+    }
     if (httpTransport) {
         httpTransport->stop();
     }
+    instanceRecord.httpStopped();
     // Calls still waiting on frames would never finish now
     std::vector<Deferred> pending;
     pending.swap(deferred);
@@ -130,13 +167,17 @@ void McpServer::setHttpEnabled(bool enabled, int port) {
     }
     if (!enabled) {
         httpTransport->stop();
+        instanceRecord.httpStopped();
         return;
     }
     if (httpTransport->isRunning() && httpTransport->port() == port) return;
     std::string error;
     if (httpTransport->start(port, error)) {
         Out::info("MCP server listening on http://127.0.0.1:%d/mcp", port);
+        // `jasperengine-editor call` finds this editor through its instance file
+        instanceRecord.httpStarted(port, !AppSettings::getMcpHttpToken().empty(), currentProjectPath());
     } else {
+        instanceRecord.httpStopped();
         Out::error("MCP HTTP server could not start on port %d: %s", port, error.c_str());
     }
 }
@@ -198,12 +239,104 @@ void McpServer::endActivity(uint64_t seq, const ToolResult& result, double durat
     }
 }
 
+// ---------------------------------------------------------------- log notifications
+
+const char* McpServer::mcpLogLevelName(LogLevel level) {
+    switch (level) {
+        case LogLevel::Trace:
+        case LogLevel::Debug: return "debug";
+        case LogLevel::Info:  return "info";
+        case LogLevel::Warn:  return "warning";
+        case LogLevel::Error: return "error";
+        default:              return "critical";
+    }
+}
+
+bool McpServer::parseMcpLogLevel(const std::string& name, LogLevel& out) {
+    if (name == "debug") out = LogLevel::Debug;
+    else if (name == "info" || name == "notice") out = LogLevel::Info;
+    else if (name == "warning") out = LogLevel::Warn;
+    else if (name == "error") out = LogLevel::Error;
+    else if (name == "critical" || name == "alert" || name == "emergency") out = LogLevel::Fatal;
+    else return false;
+    return true;
+}
+
+void McpServer::setSessionLogLevel(const SessionPtr& session, LogLevel level) {
+    {
+        std::lock_guard<std::mutex> lock(sessionMutex);
+        session->logLevel = level == LogLevel::Off ? -1 : static_cast<int>(level);
+    }
+    updateLogSinkLevel();
+}
+
+void McpServer::setAllSessionsLogLevel(LogLevel level) {
+    {
+        std::lock_guard<std::mutex> lock(sessionMutex);
+        for (auto& [id, session] : sessions) {
+            session->logLevel = level == LogLevel::Off ? -1 : static_cast<int>(level);
+        }
+    }
+    updateLogSinkLevel();
+}
+
+void McpServer::updateLogSinkLevel() {
+    if (!logSink) return;
+    int lowest = static_cast<int>(LogLevel::Off);
+    {
+        std::lock_guard<std::mutex> lock(sessionMutex);
+        for (const auto& [id, session] : sessions) {
+            if (session->logLevel >= 0) lowest = std::min(lowest, session->logLevel);
+        }
+    }
+    Logger::setSinkLevel(logSink, static_cast<LogLevel>(lowest));
+}
+
+void McpServer::sendLogNotification(const LogRecord& record) {
+    // the logger's drain thread: copies only, the transports queue what they send
+    std::vector<SessionPtr> listeners;
+    {
+        std::lock_guard<std::mutex> lock(sessionMutex);
+        for (const auto& [id, session] : sessions) {
+            if (session->logLevel >= 0 && static_cast<int>(record.level) >= session->logLevel) listeners.push_back(session);
+        }
+    }
+    if (listeners.empty()) return;
+    std::string text(record.text);
+    truncateUtf8(text, 16 * 1024);
+    Json data = sanitizeUtf8(text);
+    const Json notification = {
+        {"jsonrpc", "2.0"},
+        {"method", "notifications/message"},
+        {"params", {{"level", mcpLogLevelName(record.level)}, {"logger", record.category->name}, {"data", data}}}
+    };
+    for (const SessionPtr& session : listeners) {
+        if (session->transport == "stdio") {
+            // at any time on stdio
+            if (stdioTransport) stdioTransport->send(notification);
+            continue;
+        }
+        // on HTTP, on the SSE stream of a request in flight (there is no standalone stream)
+        std::shared_ptr<McpReply> reply;
+        {
+            std::lock_guard<std::mutex> lock(inflightMutex);
+            const std::string prefix = session->id + "|";
+            for (auto it = inflightReplies.lower_bound(prefix); it != inflightReplies.end() &&
+                 it->first.compare(0, prefix.size(), prefix) == 0; ++it) {
+                if ((reply = it->second.lock())) break;
+            }
+        }
+        if (reply) reply->notify(notification);
+    }
+}
+
 // ---------------------------------------------------------------- sessions
 
 SessionPtr McpServer::createSession(const std::string& transport) {
     auto session = std::make_shared<McpSession>();
     session->transport = transport;
     std::lock_guard<std::mutex> lock(sessionMutex);
+    session->toolGroups = initialToolGroups;
     if (transport == "stdio") {
         session->id = "stdio";
     } else {
@@ -224,17 +357,31 @@ SessionPtr McpServer::findSession(const std::string& id) const {
     return it != sessions.end() ? it->second : nullptr;
 }
 
+std::set<std::string> McpServer::sessionToolGroups(const SessionPtr& session) const {
+    if (!session) return initialToolGroups;
+    std::lock_guard<std::mutex> lock(sessionMutex);
+    return session->toolGroups;
+}
+
+void McpServer::setSessionToolGroups(const SessionPtr& session, std::set<std::string> groups) {
+    if (!session) return;
+    std::lock_guard<std::mutex> lock(sessionMutex);
+    session->toolGroups = std::move(groups);
+}
+
 void McpServer::closeSession(const std::string& id) {
     {
         std::lock_guard<std::mutex> lock(sessionMutex);
         sessions.erase(id);
     }
+    updateLogSinkLevel();
     // Its pending requests have nobody to answer to
     std::lock_guard<std::mutex> lock(inflightMutex);
     const std::string prefix = id + "|";
     for (auto it = inflight.begin(); it != inflight.end();) {
         if (it->first.compare(0, prefix.size(), prefix) == 0) {
             if (CallPtr call = it->second.lock()) call->requestCancel();
+            inflightReplies.erase(it->first);
             it = inflight.erase(it);
         } else {
             ++it;
@@ -442,7 +589,8 @@ void McpServer::handleRequest(const SessionPtr& session, const Json& message, co
         Json result = {
             {"protocolVersion", version},
             {"capabilities", {
-                {"tools", {{"listChanged", false}}},
+                // tool_groups changes a session's listing
+                {"tools", {{"listChanged", true}}},
                 {"resources", {{"subscribe", false}, {"listChanged", false}}},
                 {"prompts", {{"listChanged", false}}},
                 {"logging", Json::object()}
@@ -466,11 +614,7 @@ void McpServer::handleRequest(const SessionPtr& session, const Json& message, co
     }
 
     if (method == "tools/list") {
-        Json tools = Json::array();
-        for (const ToolDef& def : reg.tools()) {
-            tools.push_back(McpRegistry::toolToJson(def));
-        }
-        reply->respond(makeResult(id, Json{{"tools", tools}}));
+        reply->respond(makeResult(id, listTools(session, params)));
         return;
     }
 
@@ -602,6 +746,14 @@ void McpServer::handleRequest(const SessionPtr& session, const Json& message, co
     }
 
     if (method == "logging/setLevel") {
+        LogLevel level;
+        const std::string name = params.contains("level") && params["level"].is_string() ? params["level"].get<std::string>() : "";
+        if (!parseMcpLogLevel(name, level)) {
+            reply->respond(makeError(id, -32602, "logging/setLevel needs level: debug, info, notice, warning, error, "
+                                                 "critical, alert or emergency."));
+            return;
+        }
+        setSessionLogLevel(session, level);
         reply->respond(makeResult(id, Json::object()));
         return;
     }
@@ -633,9 +785,11 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
     }
 
     std::string client;
+    std::string clientName;
     {
         std::lock_guard<std::mutex> lock(sessionMutex);
         client = session->clientName.empty() ? session->transport : session->clientName;
+        clientName = session->clientName;
     }
     const uint64_t seq = beginActivity(client, name, args);
     const std::string key = inflightKey(session->id, id);
@@ -655,9 +809,10 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
             {
                 std::lock_guard<std::mutex> lock(inflightMutex);
                 inflight.erase(key);
+                inflightReplies.erase(key);
             }
             endActivity(seq, result, done.elapsedMs(), done.cancelled());
-            trace("done", done.tool() + " " + key + (result.isError ? " error" : " ok"));
+            trace("done", done.tool() + " " + key + (done.cancelled() ? " cancelled" : result.isError ? " error" : " ok"));
             // What the tool wrote is its own, not an external change: settled on the main
             // thread once the handler has returned (before the client's next call runs)
             if (autoSync->settle && autoSync->start != std::chrono::system_clock::time_point{}) {
@@ -679,6 +834,14 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
             }
         });
 
+    call->setSession(session);
+    call->setNotifier([reply](const Json& notification) {
+        if (!reply->streamsNotifications()) return false;
+        reply->notify(notification);
+        return true;
+    });
+    call->setClient(McpUndo::clientName(clientName), id.dump());
+
     if (params.contains("_meta") && params["_meta"].is_object() && params["_meta"].contains("progressToken")) {
         const Json token = params["_meta"]["progressToken"];
         auto last = std::make_shared<double>(0.0);
@@ -695,6 +858,7 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
     {
         std::lock_guard<std::mutex> lock(inflightMutex);
         inflight[key] = call;
+        inflightReplies[key] = reply;
     }
 
     trace("queued", name + " " + key);
@@ -848,11 +1012,34 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
         }
     }
 
+    // An edit tool's undo steps are the agent's (S24 R24): attributed while its handler and
+    // its deferred continuations run, folded into one step per history when it replies, and
+    // named in the result (structured.undo). Read-only and control tools (batch) are not.
+    const ToolActivity activity = effectiveActivity(def);
+    if ((activity != ToolActivity::Read && activity != ToolActivity::Control) || def.attributesUndo) {
+        UndoOrigin origin;
+        origin.kind = UndoOriginKind::Agent;
+        origin.client = call->client().empty() ? std::string("Agent") : call->client();
+        origin.callId = call->requestId();
+        origin.tool = def.name;
+        origin.call = call->serial();
+        call->setUndoOrigin(std::move(origin));
+    }
+
     // Alerts raised by the tool are part of its answer: the agent can't see the window
     const uint64_t alertSerial = app.getAlertSerial();
-    call->setFinalizer([this, alertSerial, notes](ToolResult& result) {
+    const std::string toolTitle = def.title.empty() ? def.name : def.title;
+    std::weak_ptr<McpCall> weakCall = call;
+    call->setFinalizer([this, alertSerial, notes, toolTitle, weakCall](ToolResult& result) {
         result.text += notes;
         if (!appPtr || !appPtr->isMainThread()) return;
+        if (CallPtr done = weakCall.lock(); done && done->attributed()) {
+            Json undo = McpUndo::foldCall(*done, toolTitle);
+            if (!undo.is_null()) {
+                if (result.structured.is_null()) result.structured = Json::object();
+                if (result.structured.is_object()) result.structured["undo"] = undo;
+            }
+        }
         App& app = *appPtr;
         EditorDialogInfo raised;
         if (app.getAlertSerial() == alertSerial || !app.getOpenDialog(raised) || raised.kind != "alert") return;
@@ -870,6 +1057,8 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
     });
 
     try {
+        std::optional<UndoOriginScope> attribution;
+        if (call->attributed()) attribution.emplace(call->getUndoOrigin());
         def.handler(call);
     } catch (const Json::type_error& e) {
         // an argument a handler read without checking its type: still an error the agent can fix
@@ -902,6 +1091,19 @@ void McpServer::runNested(const CallPtr& parent, const std::string& tool, const 
         if (CallPtr p = weakParent.lock()) p->progress(progressDone, total, tool + ": " + message);
     });
     call->setParent(parent);
+    call->setClient(parent->client(), parent->requestId());
+    execute(call, *def);
+}
+
+void McpServer::runLocal(const std::string& tool, const Json& args, const std::string& client,
+                         std::function<void(const ToolResult&)> done) {
+    const ToolDef* def = reg.findTool(tool);
+    if (!def || !started) {
+        done(ToolResult::error(def ? "The MCP server is not running." : "Unknown tool: " + tool + "."));
+        return;
+    }
+    auto call = std::make_shared<McpCall>(*this, tool, args, [done](McpCall&, const ToolResult& result) { done(result); });
+    call->setClient(client, std::string());
     execute(call, *def);
 }
 
@@ -919,9 +1121,15 @@ bool McpServer::hasDeferred(const McpCall* call) const {
     return false;
 }
 
+std::string McpServer::currentProjectPath() const {
+    if (!appPtr || !appPtr->getProject()) return {};
+    return appPtr->getProject()->getProjectPath().generic_string();
+}
+
 void McpServer::tick() {
     if (!started) return;
     if (ctx) McpAutoSync::get().prepare(*ctx);
+    if (instanceRecord.active()) instanceRecord.projectChanged(currentProjectPath());
     if (deferred.empty()) return;
 
     // Callbacks may defer again (chained waits), so work on a snapshot
@@ -938,6 +1146,9 @@ void McpServer::tick() {
             continue;
         }
         try {
+            // a continuation of an attributed call is the agent's too
+            std::optional<UndoOriginScope> attribution;
+            if (call->attributed()) attribution.emplace(call->getUndoOrigin());
             if (item.frames >= 0) {
                 if (item.frames > 0) {
                     item.frames--;

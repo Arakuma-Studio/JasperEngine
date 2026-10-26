@@ -10,7 +10,10 @@
 #include "render/preview/PrefabRender.h"
 
 #include <iostream>
+#include "io/watch/FileWatcher.h"
+
 #include <filesystem>
+#include <span>
 #include <string>
 #include <vector>
 #include <thread>
@@ -42,7 +45,8 @@ namespace jasperengine::editor {
         AUDIO,
         FONT,
         HTML,
-        CSS
+        CSS,
+        COLOR_LUT
     };
 
     struct FileEntry {
@@ -72,6 +76,30 @@ namespace jasperengine::editor {
     };
 
     class ProjectWindow {
+    public:
+        // What the window showed in its last frame, in window pixels: the listing's entries,
+        // the search box and the S04 items of an open context menu (editor_status reports it,
+        // so a test or an agent can click them for real)
+        struct UiRect {
+            float x = 0, y = 0, w = 0, h = 0;
+        };
+        struct UiTreeNode {
+            std::string path;          // project-relative ("." the project)
+            UiRect rect;               // a click shows the folder in the listing
+            float arrowX = 0, arrowY = 0;  // a click there opens or closes the node
+            bool open = false;
+        };
+        struct UiState {
+            bool drawn = false;
+            std::vector<UiTreeNode> tree;
+            std::string directory;     // project-relative
+            std::string search;
+            std::string selected;
+            UiRect searchBox;
+            std::vector<std::pair<std::string, UiRect>> entries;
+            std::vector<std::pair<std::string, UiRect>> contextMenu;
+        };
+
     private:
         Project* project;
         CodeEditor* codeEditor;
@@ -114,6 +142,7 @@ namespace jasperengine::editor {
         Texture fontIcon;
         Texture htmlIcon;
         Texture cssIcon;
+        Texture lutIcon;
         // Bounded cache of GPU thumbnail textures; must stay well below the
         // sokol image/sampler pool sizes (2048), which are shared with scenes
         static constexpr size_t MAX_THUMBNAIL_TEXTURES = 512;
@@ -147,6 +176,10 @@ namespace jasperengine::editor {
         char searchBuffer[128];
         std::string searchText;
 
+        UiState uiState;      // the last frame's
+        UiState uiBuilding;   // this frame's
+        static UiRect lastItemRect();
+
         bool isRenaming;
         bool renameSelectPending;
         std::string fileBeingRenamed;
@@ -158,8 +191,6 @@ namespace jasperengine::editor {
 
         bool isCreatingNewDirectory;
 
-        std::filesystem::file_time_type lastWriteTime;
-        float timeSinceLastCheck;
 
         // Children of each folder-tree node: renderDirectoryTree() runs every frame,
         // and enumerating there was the tree's whole cost. Re-read only when the
@@ -201,7 +232,10 @@ namespace jasperengine::editor {
         ModelRender modelRender;
 
         // Thumbnail generation
-        std::thread thumbnailThread;
+        // thumbnail generation: one request per step of a Background strand
+        jobs::SerialQueue thumbnails{"thumbnails", jobs::Lane::Background};
+        std::atomic<bool> thumbnailStepScheduled{false};
+        bool thumbnailWarmupDone = false; // the strand's steps only
         std::mutex thumbnailMutex;
         std::queue<ThumbnailRequest> thumbnailQueue;
         std::atomic<bool> stopThumbnailThread;
@@ -282,7 +316,10 @@ namespace jasperengine::editor {
         static bool writeImageThumbnail(const fs::path& sourcePath, const fs::path& thumbnailPath);
 
         void queueThumbnailGeneration(const fs::path& filePath, FileType type, bool forceRegenerate = false);
-        void thumbnailWorker();
+        void thumbnailStep();
+        void scheduleThumbnailStep();
+        // state a thumbnail step waits on changed: wakes cancelThumbnailWork's wait, schedules a step
+        void notifyThumbnailWork();
         ImTextureID getThumbnailTexture(const std::string& thumbnailPath, int& outWidth, int& outHeight);
         void evictThumbnailTexture(const std::string& thumbnailKey);
         void enforceThumbnailCacheLimit();
@@ -291,6 +328,11 @@ namespace jasperengine::editor {
         void saveMaterialFile(const fs::path& directory, const char* materialContent, size_t contentLen, const MaterialPayload* sourceMaterial = nullptr);
 
         fs::path uniqueRelativePath(const fs::path& directory, const std::string& baseName, const std::string& extension);
+
+        // a .cube colour LUT (S13): its summary for the tooltip (read once through the LUT
+        // cache), and a double-click's assignment to the open scene's Color Grading (one undo step)
+        std::string colorLutTooltip(const fs::path& filePath);
+        void assignColorLut(const fs::path& filePath);
 
     public:
         static constexpr const char* WINDOW_NAME = "Project";
@@ -322,9 +364,16 @@ namespace jasperengine::editor {
         void cleanupThumbnails();
 
         void refreshCurrentDirectory();
+        // Files changed on disk (the file watcher, through the hot reload; S05 R14): the open
+        // folder lists again only when the changes touch it (selection, scroll and a rename in
+        // progress kept), the folder tree when folders changed, thumbnails of changed files
+        // are made again
+        void onFilesChanged(std::span<const FileChange> changes);
         // videos the engine does not play, converted into targetDir by FFmpeg on a worker (phase 6)
         static void importVideos(const std::vector<fs::path>& videos, const fs::path& targetDir);
         fs::path getCurrentPath() const { return currentPath; }
+
+        const UiState& getUiState() const { return uiState; }
         void saveEntityFile(const fs::path& directory, const char* entityContent, size_t contentLen);
 
         void show();
@@ -341,6 +390,8 @@ namespace jasperengine::editor {
         // Assets > Create > HTML Document: NewDocument.html + NewDocument.css (HtmlUITemplates)
         void assetsCreateHtmlDocument();
         void assetsShowInFileManager();
+        // The files selected in the folder view (absolute), for editor-script menu items
+        std::vector<fs::path> getSelectedFiles() const;
         void assetsOpenSelected();
         void assetsRenameSelected();
         void assetsDeleteSelected();

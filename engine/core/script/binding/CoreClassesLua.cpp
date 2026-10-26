@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "LuaBinding.h"
+#include <optional>
+#include "log/Logger.h"
+
+#include <algorithm>
 
 #include "lua.hpp"
 
@@ -14,6 +18,7 @@
 #include "SceneManager.h"
 #include "PrefabManager.h"
 #include "PrefabAsset.h"
+#include "asset/AssetMap.h"
 #include "Input.h"
 #include "System.h"
 #include "registry/PhysicsLayers.h"
@@ -44,6 +49,18 @@
 
 using namespace jasperengine;
 
+namespace {
+    // What Log.category(name) returns: a category's trace/debug/info/warn/error
+    struct LuaLogCategory {
+        LogCategory* category;
+    };
+
+    void luaLog(lua_State* L, LogLevel level, const LogCategory& category, const char* text) {
+        if (!Logger::shouldLog(level, category)) return;
+        LuaBinding::logFromLua(L, level, category, text ? std::string_view(text) : std::string_view("(nil)"));
+    }
+}
+
 // LayerMask.getMask("Default", "Enemies") or LayerMask.getMask({"Default", "Enemies"}).
 // Unity returns an int: layer 31 makes it negative, as there.
 static int luaLayerMaskGetMask(lua_State* L){
@@ -66,6 +83,45 @@ static int luaLayerMaskGetMask(lua_State* L){
     }
     lua_pushinteger(L, (lua_Integer)(int32_t)TagManager::getMask(names));
     return 1;
+}
+
+// Scene:findEntitiesWith / findChangedEntities / markChanged: component types by the name
+// they were registered with ("Transform", "MeshComponent"). False (logged) on an unknown name
+// or a value that is not a string.
+static bool luaComponentId(lua_State* L, int index, Scene* scene, const char* function, ComponentId& id){
+    if (lua_type(L, index) != LUA_TSTRING){
+        Log::error("Scene:%s: component names must be strings", function);
+        return false;
+    }
+    const std::string name = lua_tostring(L, index);
+    if (!scene->findComponentId(name, id)){
+        Log::error("Scene:%s: no component type '%s'", function, name.c_str());
+        return false;
+    }
+    return true;
+}
+
+// a Lua list of component names at `index` (nothing there: an empty list)
+static bool luaComponentIds(lua_State* L, int index, Scene* scene, const char* function, std::vector<ComponentId>& ids){
+    if (lua_isnoneornil(L, index)){
+        return true;
+    }
+    if (!lua_istable(L, index)){
+        Log::error("Scene:%s: expected a table of component names", function);
+        return false;
+    }
+    const lua_Integer count = (lua_Integer)lua_rawlen(L, index);
+    for (lua_Integer i = 1; i <= count; i++){
+        lua_rawgeti(L, index, i);
+        ComponentId id;
+        const bool ok = luaComponentId(L, -1, scene, function, id);
+        lua_pop(L, 1);
+        if (!ok){
+            return false;
+        }
+        ids.push_back(id);
+    }
+    return true;
 }
 
 // Physics and Physics2D. Layer masks are read as Unity's int and any integer is taken by
@@ -494,6 +550,36 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("LOW", ShadowQuality::LOW)
         .addVariable("MEDIUM", ShadowQuality::MEDIUM)
         .addVariable("HIGH", ShadowQuality::HIGH)
+        .addVariable("AUTO", ShadowQuality::AUTO)
+        .addVariable("ULTRA", ShadowQuality::ULTRA)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("ShadowType")
+        .addVariable("NONE", ShadowType::NONE)
+        .addVariable("HARD", ShadowType::HARD)
+        .addVariable("SOFT", ShadowType::SOFT)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("ShadowUpdateMode")
+        .addVariable("AUTO", ShadowUpdateMode::AUTO)
+        .addVariable("EVERY_FRAME", ShadowUpdateMode::EVERY_FRAME)
+        .addVariable("ON_DEMAND", ShadowUpdateMode::ON_DEMAND)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("CascadeSplitMode")
+        .addVariable("AUTO", CascadeSplitMode::AUTO)
+        .addVariable("MANUAL", CascadeSplitMode::MANUAL)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("ShadowTier")
+        .addVariable("LOW", ShadowTier::LOW)
+        .addVariable("MEDIUM", ShadowTier::MEDIUM)
+        .addVariable("HIGH", ShadowTier::HIGH)
+        .addVariable("ULTRA", ShadowTier::ULTRA)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -515,6 +601,33 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .beginNamespace("MonochromeMode")
         .addVariable("GRAYSCALE", MonochromeMode::GRAYSCALE)
         .addVariable("SEPIA", MonochromeMode::SEPIA)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("FilmGrainType")
+        .addVariable("CLASSIC", FilmGrainType::CLASSIC)
+        .addVariable("LENS", FilmGrainType::LENS)
+        .addVariable("FILMIC", FilmGrainType::FILMIC)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("FilmGateMask")
+        .addVariable("NONE", FilmGateMask::NONE)
+        .addVariable("ROUNDED", FilmGateMask::ROUNDED)
+        .addVariable("ACADEMY_137", FilmGateMask::ACADEMY_137)
+        .addVariable("WIDESCREEN_185", FilmGateMask::WIDESCREEN_185)
+        .addVariable("ANAMORPHIC_239", FilmGateMask::ANAMORPHIC_239)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("LutInputEncoding")
+        .addVariable("AUTO", LutInputEncoding::AUTO)
+        .addVariable("SRGB", LutInputEncoding::SRGB)
+        .addVariable("LINEAR", LutInputEncoding::LINEAR)
+        .addVariable("LOGC3", LutInputEncoding::LOGC3)
+        .addVariable("ACESCCT", LutInputEncoding::ACESCCT)
+        .addVariable("CINEON", LutInputEncoding::CINEON)
+        .addVariable("DAVINCI_INTERMEDIATE", LutInputEncoding::DAVINCI_INTERMEDIATE)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -594,6 +707,13 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("HTMLUI_GRADIENT", ShaderType::HTMLUI_GRADIENT)
         .addVariable("HTMLUI_POST", ShaderType::HTMLUI_POST)
         .addVariable("UI_EFFECT", ShaderType::UI_EFFECT)
+        .addVariable("ATMOSPHERE_DEPTH", ShaderType::ATMOSPHERE_DEPTH)
+        .addVariable("VOLUMETRIC_FOG", ShaderType::VOLUMETRIC_FOG)
+        .addVariable("ATMOSPHERE_DENOISE", ShaderType::ATMOSPHERE_DENOISE)
+        .addVariable("VOLUMETRIC_CLOUDS", ShaderType::VOLUMETRIC_CLOUDS)
+        .addVariable("SKY_COMPOSITE", ShaderType::SKY_COMPOSITE)
+        .addVariable("VOLUMETRIC_COMPOSITE", ShaderType::VOLUMETRIC_COMPOSITE)
+        .addVariable("PASS_PREVIEW", ShaderType::PASS_PREVIEW)
         .endNamespace();
 
     // Shader variants by spec ("mesh:Uv1,Vc4"), or by type and property bits; an
@@ -712,6 +832,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("viewRect", &Engine::getViewRect)
         .addStaticProperty("scalingMode", &Engine::getScalingMode, &Engine::setScalingMode)
         .addStaticProperty("textureStrategy", &Engine::getTextureStrategy, &Engine::setTextureStrategy)
+        .addStaticFunction("setAtmosphereQuality", &Engine::setAtmosphereQuality)
+        .addStaticFunction("getAtmosphereQuality", &Engine::getAtmosphereQuality)
+        .addStaticFunction("resetAtmosphereQuality", &Engine::resetAtmosphereQuality)
         .addStaticProperty("callMouseInTouchEvent", &Engine::isCallMouseInTouchEvent, &Engine::setCallMouseInTouchEvent)
         .addStaticProperty("callTouchInMouseEvent", &Engine::isCallTouchInMouseEvent, &Engine::setCallTouchInMouseEvent)
         .addStaticFunction("setCallTouchInMouseEvent", &Engine::setCallTouchInMouseEvent)
@@ -814,6 +937,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("gain", &PostProcessingSettings::gain, &PostProcessingSettings::gain)
         .addProperty("lutTexture", &PostProcessingSettings::lutTexture, &PostProcessingSettings::lutTexture)
         .addProperty("lutContribution", &PostProcessingSettings::lutContribution, &PostProcessingSettings::lutContribution)
+        .addProperty("lutInputEncoding", &PostProcessingSettings::lutInputEncoding, &PostProcessingSettings::lutInputEncoding)
         .addProperty("lutSize", &PostProcessingSettings::lutSize, &PostProcessingSettings::lutSize)
         .addProperty("monochromeEnabled", &PostProcessingSettings::monochromeEnabled, &PostProcessingSettings::monochromeEnabled)
         .addProperty("monochromeMode", &PostProcessingSettings::monochromeMode, &PostProcessingSettings::monochromeMode)
@@ -841,6 +965,31 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("filmGrainEnabled", &PostProcessingSettings::filmGrainEnabled, &PostProcessingSettings::filmGrainEnabled)
         .addProperty("filmGrainIntensity", &PostProcessingSettings::filmGrainIntensity, &PostProcessingSettings::filmGrainIntensity)
         .addProperty("filmGrainResponse", &PostProcessingSettings::filmGrainResponse, &PostProcessingSettings::filmGrainResponse)
+        .addProperty("filmGrainType", &PostProcessingSettings::filmGrainType, &PostProcessingSettings::filmGrainType)
+        .addProperty("filmGrainSize", &PostProcessingSettings::filmGrainSize, &PostProcessingSettings::filmGrainSize)
+        .addProperty("filmGrainColored", &PostProcessingSettings::filmGrainColored, &PostProcessingSettings::filmGrainColored)
+        .addProperty("filmFrameRate", &PostProcessingSettings::filmFrameRate, &PostProcessingSettings::filmFrameRate)
+        .addProperty("vhsEnabled", &PostProcessingSettings::vhsEnabled, &PostProcessingSettings::vhsEnabled)
+        .addProperty("vhsIntensity", &PostProcessingSettings::vhsIntensity, &PostProcessingSettings::vhsIntensity)
+        .addProperty("vhsWobble", &PostProcessingSettings::vhsWobble, &PostProcessingSettings::vhsWobble)
+        .addProperty("vhsTracking", &PostProcessingSettings::vhsTracking, &PostProcessingSettings::vhsTracking)
+        .addProperty("vhsColorBleed", &PostProcessingSettings::vhsColorBleed, &PostProcessingSettings::vhsColorBleed)
+        .addProperty("vhsTapeNoise", &PostProcessingSettings::vhsTapeNoise, &PostProcessingSettings::vhsTapeNoise)
+        .addProperty("vhsChromaStreaks", &PostProcessingSettings::vhsChromaStreaks, &PostProcessingSettings::vhsChromaStreaks)
+        .addProperty("vhsDropouts", &PostProcessingSettings::vhsDropouts, &PostProcessingSettings::vhsDropouts)
+        .addProperty("vhsScanlines", &PostProcessingSettings::vhsScanlines, &PostProcessingSettings::vhsScanlines)
+        .addProperty("vhsInterference", &PostProcessingSettings::vhsInterference, &PostProcessingSettings::vhsInterference)
+        .addProperty("vhsGlitches", &PostProcessingSettings::vhsGlitches, &PostProcessingSettings::vhsGlitches)
+        .addProperty("vhsSpeed", &PostProcessingSettings::vhsSpeed, &PostProcessingSettings::vhsSpeed)
+        .addProperty("filmDamageEnabled", &PostProcessingSettings::filmDamageEnabled, &PostProcessingSettings::filmDamageEnabled)
+        .addProperty("filmDamageIntensity", &PostProcessingSettings::filmDamageIntensity, &PostProcessingSettings::filmDamageIntensity)
+        .addProperty("filmHairAmount", &PostProcessingSettings::filmHairAmount, &PostProcessingSettings::filmHairAmount)
+        .addProperty("filmScratchAmount", &PostProcessingSettings::filmScratchAmount, &PostProcessingSettings::filmScratchAmount)
+        .addProperty("filmDustAmount", &PostProcessingSettings::filmDustAmount, &PostProcessingSettings::filmDustAmount)
+        .addProperty("filmDustSize", &PostProcessingSettings::filmDustSize, &PostProcessingSettings::filmDustSize)
+        .addProperty("filmGateWeave", &PostProcessingSettings::filmGateWeave, &PostProcessingSettings::filmGateWeave)
+        .addProperty("filmGateMask", &PostProcessingSettings::filmGateMask, &PostProcessingSettings::filmGateMask)
+        .addProperty("filmGateMaskFeather", &PostProcessingSettings::filmGateMaskFeather, &PostProcessingSettings::filmGateMaskFeather)
         .addProperty("sharpenEnabled", &PostProcessingSettings::sharpenEnabled, &PostProcessingSettings::sharpenEnabled)
         .addProperty("sharpenIntensity", &PostProcessingSettings::sharpenIntensity, &PostProcessingSettings::sharpenIntensity)
         .addProperty("bloomEnabled", &PostProcessingSettings::bloomEnabled, &PostProcessingSettings::bloomEnabled)
@@ -852,8 +1001,16 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("blurEnabled", &PostProcessingSettings::blurEnabled, &PostProcessingSettings::blurEnabled)
         .addProperty("blurRadius", &PostProcessingSettings::blurRadius, &PostProcessingSettings::blurRadius)
         .addProperty("blurIntensity", &PostProcessingSettings::blurIntensity, &PostProcessingSettings::blurIntensity)
+        .addProperty("halationEnabled", &PostProcessingSettings::halationEnabled, &PostProcessingSettings::halationEnabled)
+        .addProperty("halationIntensity", &PostProcessingSettings::halationIntensity, &PostProcessingSettings::halationIntensity)
+        .addProperty("halationThreshold", &PostProcessingSettings::halationThreshold, &PostProcessingSettings::halationThreshold)
+        .addProperty("halationRadius", &PostProcessingSettings::halationRadius, &PostProcessingSettings::halationRadius)
+        .addProperty("halationTint", &PostProcessingSettings::halationTint, &PostProcessingSettings::halationTint)
         .addProperty("renderScale", &PostProcessingSettings::renderScale, &PostProcessingSettings::renderScale)
         .addProperty("msaaSamples", &PostProcessingSettings::msaaSamples, &PostProcessingSettings::msaaSamples)
+        .addProperty("dynamicResolutionEnabled", &PostProcessingSettings::dynamicResolutionEnabled, &PostProcessingSettings::dynamicResolutionEnabled)
+        .addProperty("dynamicResolutionMinScale", &PostProcessingSettings::dynamicResolutionMinScale, &PostProcessingSettings::dynamicResolutionMinScale)
+        .addProperty("dynamicResolutionTargetFps", &PostProcessingSettings::dynamicResolutionTargetFps, &PostProcessingSettings::dynamicResolutionTargetFps)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -930,6 +1087,53 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__eq", &PrefabAsset::operator==)
         .addFunction("__tostring", [](const PrefabAsset* self) { return "PrefabAsset(" + self->getPath() + ")"; })
         .endClass();
+
+    // Asset identity (S04): what an Asset script property holds, and Asset.ref returns
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ScriptAssetRef>("AssetRef")
+        .addProperty("guid", &ScriptAssetRef::getGuid)
+        .addProperty("path", &ScriptAssetRef::getPath)
+        .addProperty("type", &ScriptAssetRef::getType)
+        .addProperty("valid", &ScriptAssetRef::isValid)
+        .addFunction("isValid", &ScriptAssetRef::isValid)
+        .addFunction("__eq", &ScriptAssetRef::operator==)
+        .addFunction("__tostring", [](const ScriptAssetRef* self) { return "AssetRef(" + self->getPath() + ")"; })
+        .endClass();
+
+    // Asset.path(guid) -> string|nil, Asset.guid(path) -> string|nil,
+    // Asset.exists(guidOrPath) -> bool, Asset.ref(guidOrPath) -> AssetRef
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("Asset")
+        .addFunction("path", +[](lua_State* state) -> int {
+            const char* text = luaL_checkstring(state, 1);
+            std::string path;
+            if (Guid::isValidText(text) && AssetMap::findPath(Guid::parse(text), path)) {
+                lua_pushstring(state, path.c_str());
+            } else {
+                lua_pushnil(state);
+            }
+            return 1;
+        })
+        .addFunction("guid", +[](lua_State* state) -> int {
+            const Guid guid = AssetMap::findGuid(luaL_checkstring(state, 1));
+            if (guid.isNull()) {
+                lua_pushnil(state);
+            } else {
+                lua_pushstring(state, guid.str().c_str());
+            }
+            return 1;
+        })
+        .addFunction("exists", +[](lua_State* state) -> int {
+            lua_pushboolean(state, ScriptAssetRef::make(luaL_checkstring(state, 1)).isValid());
+            return 1;
+        })
+        .addFunction("ref", +[](lua_State* state) -> int {
+            if (!luabridge::push<ScriptAssetRef>(state, ScriptAssetRef::make(luaL_checkstring(state, 1)))) {
+                lua_pushnil(state);
+            }
+            return 1;
+        })
+        .endNamespace();
 
     luabridge::getGlobalNamespace(L)
         .beginClass<FunctionSubscribe<void()>>("FunctionSubscribe_V")
@@ -1274,7 +1478,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
             }),
             luabridge::overload<Material*, const std::string&, const Vector3&, lua_State*>(+[](Material* self, const std::string& name, const Vector3& value, lua_State* L) {
                 // a colour given as (r, g, b) is opaque
-                const std::string shader = self->shader.empty() ? LuaBinding::getMaterialDrawnShader(L, 1) : self->shader;
+                const std::string shader = self->shader.empty() ? LuaBinding::getMaterialDrawnShader(L, 1) : self->shader.path;
                 ShaderUniforms::set(self->shaderParams, name, LuaBinding::getShaderParamValue(shader, name, value));
             }),
             luabridge::overload<Material*, const std::string&, const Vector2&>(+[](Material* self, const std::string& name, const Vector2& value) {
@@ -1284,7 +1488,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
                 ShaderUniforms::set(self->shaderParams, name, Vector4(value, 0.0f, 0.0f, 0.0f));
             }))
         .addFunction("getShaderParam", +[](const Material* self, const std::string& name, lua_State* L) -> Vector4 {
-            const std::string shader = self->shader.empty() ? LuaBinding::getMaterialDrawnShader(L, 1) : self->shader;
+            const std::string shader = self->shader.empty() ? LuaBinding::getMaterialDrawnShader(L, 1) : self->shader.path;
             return ShaderLibraryValues::getParam(self->shaderParams, shader, name);
         })
         .addFunction("removeShaderParam", +[](Material* self, const std::string& name) -> bool {
@@ -1309,11 +1513,11 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         })
         // a @feature on or off, or a @keywords value ("GROUP_VALUE") chosen
         .addFunction("setShaderFeature", +[](Material* self, const std::string& define, bool enabled, lua_State* L) {
-            const std::string shader = self->shader.empty() ? LuaBinding::getMaterialDrawnShader(L, 1) : self->shader;
+            const std::string shader = self->shader.empty() ? LuaBinding::getMaterialDrawnShader(L, 1) : self->shader.path;
             ShaderLibraryValues::setFeature(self->shaderFeatures, shader, define, enabled);
         })
         .addFunction("isShaderFeatureEnabled", +[](const Material* self, const std::string& define, lua_State* L) -> bool {
-            const std::string shader = self->shader.empty() ? LuaBinding::getMaterialDrawnShader(L, 1) : self->shader;
+            const std::string shader = self->shader.empty() ? LuaBinding::getMaterialDrawnShader(L, 1) : self->shader.path;
             return ShaderLibraryValues::isFeatureEnabled(self->shaderFeatures, shader, define);
         })
         .endClass();
@@ -1414,6 +1618,10 @@ void LuaBinding::registerCoreClasses(lua_State *L){
             luabridge::overload<float, float, float>(&Scene::setBackgroundColor),
             luabridge::overload<float, float, float, float>(&Scene::setBackgroundColor))
         .addProperty("shadowQuality", &Scene::getShadowQuality, &Scene::setShadowQuality)
+        .addProperty("shadowDistance", &Scene::getShadowDistance, &Scene::setShadowDistance)
+        .addProperty("shadowFadeFraction", &Scene::getShadowFadeFraction, &Scene::setShadowFadeFraction)
+        .addProperty("shadowCascadeBlend", &Scene::isShadowCascadeBlend, &Scene::setShadowCascadeBlend)
+        .addProperty("effectiveShadowTier", &Scene::getEffectiveShadowTier)
         .addProperty("lightState", &Scene::getLightState, &Scene::setLightState)
         .addProperty("globalIlluminationColor", &Scene::getGlobalIlluminationColor, (void (Scene::*)(Vector3))&Scene::setGlobalIllumination)
         .addProperty("globalIlluminationIntensity", &Scene::getGlobalIlluminationIntensity, (void (Scene::*)(float))&Scene::setGlobalIllumination)
@@ -1478,16 +1686,109 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("getMeshSystem", [] (Scene* self, lua_State* L) { return self->getSystem<MeshSystem>().get(); })
         .addFunction("getPhysicsSystem", [] (Scene* self, lua_State* L) { return self->getSystem<PhysicsSystem>().get(); })
         .addFunction("getRenderSystem", [] (Scene* self, lua_State* L) { return self->getSystem<RenderSystem>().get(); })
+        // dynamic resolution as the renderer applies it (S13): {enabled, running, overridden, scale,
+        // minScale, maxScale, source ("gpu", "frame", "none"), smoothedMs, targetMs, saturatedLow,
+        // ineffective, acceptedChanges, probeSeconds}
+        .addFunction("getDynamicResolution", [] (Scene* self, lua_State* L) -> luabridge::LuaRef {
+            luabridge::LuaRef table = luabridge::newTable(L);
+            std::shared_ptr<RenderSystem> render = self->getSystem<RenderSystem>();
+            const DynamicResolutionStatus status = render ? render->getDynamicResolutionStatus() : DynamicResolutionStatus();
+            table["enabled"] = status.enabled;
+            table["running"] = status.running;
+            table["idle"] = std::string(status.idle);
+            table["overridden"] = status.overridden;
+            table["scale"] = status.scale;
+            table["minScale"] = status.minScale;
+            table["maxScale"] = status.maxScale;
+            table["source"] = std::string(status.source);
+            table["smoothedMs"] = status.smoothedMs;
+            table["targetMs"] = status.targetMs;
+            table["saturatedLow"] = status.saturatedLow;
+            table["ineffective"] = status.ineffective;
+            table["acceptedChanges"] = (double)status.acceptedChanges;
+            table["probeSeconds"] = status.probeSeconds;
+            return table;
+        })
+        // pins the main camera's render scale (0.5..1) over dynamic resolution; nil releases it
+        .addFunction("setDynamicResolutionOverride", [] (Scene* self, std::optional<float> scale) {
+            if (std::shared_ptr<RenderSystem> render = self->getSystem<RenderSystem>())
+                render->setDynamicResolutionOverride(scale ? *scale : 0.0f);
+        })
         .addFunction("getUISystem", [] (Scene* self, lua_State* L) { return self->getSystem<UISystem>().get(); })
+        // change tracking: the tick a change made from now on is newer than
+        .addFunction("getChangeTick", [] (Scene* self, lua_State* L) -> lua_Integer { return (lua_Integer)self->changeTick(); })
+        // findEntitiesWith({"Transform", "MeshComponent"}[, {"UIComponent"}]): ids in the
+        // order of the first type's array (parents before children for Transform)
+        .addFunction("findEntitiesWith", [] (Scene* self, lua_State* L) -> std::vector<Entity> {
+            std::vector<ComponentId> include, exclude;
+            if (!luaComponentIds(L, 2, self, "findEntitiesWith", include) || !luaComponentIds(L, 3, self, "findEntitiesWith", exclude)){
+                return {};
+            }
+            return self->queryEntities(include, exclude);
+        })
+        // findChangedEntities("Transform", sinceTick): those whose component changed after it
+        .addFunction("findChangedEntities", [] (Scene* self, lua_State* L) -> std::vector<Entity> {
+            ComponentId id;
+            if (!luaComponentId(L, 2, self, "findChangedEntities", id)){
+                return {};
+            }
+            const Tick since = (Tick)std::max<lua_Integer>(0, luaL_optinteger(L, 3, 0));
+            return self->queryEntities({id}, {}, &since);
+        })
+        // markChanged(entity, "MeshComponent"): false when the entity has no such component
+        .addFunction("markChanged", [] (Scene* self, lua_State* L) -> bool {
+            ComponentId id;
+            if (!luaComponentId(L, 3, self, "markChanged", id)){
+                return false;
+            }
+            return self->markChanged(id, (Entity)luaL_checkinteger(L, 2));
+        })
+        .endClass();
+
+    // Log.*: category lua, with the calling chunk and line. debug is compiled out of release
+    // builds as before; Log.category(name) gives a category's own trace...error
+    luabridge::getGlobalNamespace(L)
+        .beginClass<Log>("Log")
+        .addStaticFunction("print", [] (const char* text, lua_State* L) { luaLog(L, LogLevel::Info, logCategoryLua(), text); })
+        .addStaticFunction("info", [] (const char* text, lua_State* L) { luaLog(L, LogLevel::Info, logCategoryLua(), text); })
+        .addStaticFunction("verbose", [] (const char* text, lua_State* L) { luaLog(L, LogLevel::Trace, logCategoryLua(), text); })
+        .addStaticFunction("debug", [] (const char* text, lua_State* L) {
+        #ifndef NDEBUG
+            luaLog(L, LogLevel::Debug, logCategoryLua(), text);
+        #else
+            (void)text; (void)L;
+        #endif
+        })
+        .addStaticFunction("warn", [] (const char* text, lua_State* L) { luaLog(L, LogLevel::Warn, logCategoryLua(), text); })
+        .addStaticFunction("error", [] (const char* text, lua_State* L) { luaLog(L, LogLevel::Error, logCategoryLua(), text); })
+        // false (and a warning) for an unknown level name
+        .addStaticFunction("setLevel", [] (const std::string& level, std::optional<std::string> category, lua_State* L) {
+            LogLevel value;
+            if (!parseLogLevel(level.c_str(), value)) {
+                luaLog(L, LogLevel::Warn, logCategoryLua(),
+                       ("Log.setLevel: unknown level '" + level + "' (trace, debug, info, warn, error, fatal, off)").c_str());
+                return false;
+            }
+            Logger::setCategoryLevel(category ? Logger::registerCategory(*category, LogLevel::Info) : logCategoryLua(), value);
+            return true;
+        })
+        .addStaticFunction("getLevel", [] (std::optional<std::string> category) -> std::string {
+            const LogCategory* found = category ? Logger::findCategory(*category) : &logCategoryLua();
+            return logLevelName(found ? Logger::categoryLevel(*found) : Logger::defaultLevel());
+        })
+        .addStaticFunction("category", [] (const std::string& name) {
+            return LuaLogCategory{&Logger::registerCategory(name, LogLevel::Info)};
+        })
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .beginClass<Log>("Log")
-        .addStaticFunction("print", [] (const char* text) { Log::print("%s", text ? text : "(nil)"); })
-        .addStaticFunction("verbose", [] (const char* text) { Log::verbose("%s", text ? text : "(nil)"); })
-        .addStaticFunction("debug", [] (const char* text) { Log::debug("%s", text ? text : "(nil)"); })
-        .addStaticFunction("warn", [] (const char* text) { Log::warn("%s", text ? text : "(nil)"); })
-        .addStaticFunction("error", [] (const char* text) { Log::error("%s", text ? text : "(nil)"); })
+        .beginClass<LuaLogCategory>("LogCategory")
+        .addProperty("name", [] (const LuaLogCategory* self) { return std::string(self->category->name); })
+        .addFunction("trace", [] (LuaLogCategory* self, const char* text, lua_State* L) { luaLog(L, LogLevel::Trace, *self->category, text); })
+        .addFunction("debug", [] (LuaLogCategory* self, const char* text, lua_State* L) { luaLog(L, LogLevel::Debug, *self->category, text); })
+        .addFunction("info", [] (LuaLogCategory* self, const char* text, lua_State* L) { luaLog(L, LogLevel::Info, *self->category, text); })
+        .addFunction("warn", [] (LuaLogCategory* self, const char* text, lua_State* L) { luaLog(L, LogLevel::Warn, *self->category, text); })
+        .addFunction("error", [] (LuaLogCategory* self, const char* text, lua_State* L) { luaLog(L, LogLevel::Error, *self->category, text); })
         .endClass();
 
     luabridge::getGlobalNamespace(L)

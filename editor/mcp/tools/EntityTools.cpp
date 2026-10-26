@@ -14,6 +14,7 @@
 
 #include "Out.h"
 #include "Project.h"
+#include "command/PlayChangeReview.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/DeleteEntityCmd.h"
@@ -192,6 +193,8 @@ const std::vector<EntityKind>& entityKinds() {
         {"spot_light", EntityCreationType::SPOT_LIGHT, "Spot Light"},
         {"skybox", EntityCreationType::SKYBOX, "Skybox"},
         {"fog", EntityCreationType::FOG, "Fog"},
+        {"local_volumetric_fog", EntityCreationType::LOCAL_VOLUMETRIC_FOG, "Local Volumetric Fog"},
+        {"volumetric_clouds", EntityCreationType::VOLUMETRIC_CLOUDS, "Volumetric Clouds"},
         {"reflection_probe", EntityCreationType::REFLECTION_PROBE, "Reflection Probe"},
         {"particle_system", EntityCreationType::PARTICLE_SYSTEM, "Particle System"},
         {"points", EntityCreationType::POINTS, "Points"},
@@ -595,6 +598,10 @@ void createEntityTool(const CallPtr& call) {
                 return true;
             }
             void undo() override { inner->undo(); }
+            std::string describe() const override { return inner->describe(); }
+            const char* typeName() const override { return inner->typeName(); }
+            size_t memoryBytes() const override { return sizeof(*this) + inner->memoryBytes(); }
+            void collectKeepCommands(KeepContext& context) const override { inner->collectKeepCommands(context); }
         };
         why = "The GameObject could not be created.";
         return new Capture(cmd, created);
@@ -1122,7 +1129,7 @@ void registerEntityTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"type", withDefault(stringEnum("", types), "empty")},
             {"name", string("Default: the type's Unity name.")},
-            {"parent", entityRef("Default: scene root.")},
+            {"parent", entityRef()},
             {"position", vec3("")},
             {"rotation", quat()},
             {"scale", vec3("")},
@@ -1232,6 +1239,7 @@ void registerEntityTools(McpRegistry& registry) {
             {"add", withDefault(boolean(""), false)}
         });
         tool.annotations.idempotent = true;
+        tool.attributesUndo = true;  // a selection step of the agent (S24 R40)
         tool.handler = selectEntitiesTool;
         registry.addTool(std::move(tool));
     }

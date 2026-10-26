@@ -225,6 +225,8 @@ void getEntityTool(const CallPtr& call) {
         if (type != ComponentType::MeshComponent || name.compare(0, 10, "submeshes[") != 0) return false;
         return std::strtoul(name.c_str() + 10, nullptr, 10) >= usedSubmeshes;
     };
+    // the GUIDs of the asset fields read ("<Component>.<property>" -> GUID, S04)
+    Json assetGuids = Json::object();
     for (ComponentType type : Catalog::findComponents(registry, entity)) {
         if (!filter.empty() && std::find(filter.begin(), filter.end(), type) == filter.end()) continue;
         const std::string name = McpRefs::componentName(type);
@@ -264,6 +266,15 @@ void getEntityTool(const CallPtr& call) {
             if (!property.ref && property.type != PropertyType::Custom) continue;
             if (unusedSubmesh(type, propName)) continue;
             Json value = McpValues::readProperty(ctx, propName, property);
+            std::string guid;
+            if (property.ref && property.type == PropertyType::Asset) {
+                guid = static_cast<AssetRef*>(property.ref)->guid.str();
+            } else if (property.ref && property.type == PropertyType::Texture) {
+                guid = static_cast<Texture*>(property.ref)->getPathGuid(0).str();
+            } else if (property.ref && property.type == PropertyType::Shader) {
+                guid = Stream::shaderRefGuids(*static_cast<ShaderRef*>(property.ref));
+            }
+            if (!guid.empty()) assetGuids[name + "." + propName] = guid;
             if (detail == "values") {
                 if (property.type == PropertyType::Custom && !explicitlyAsked && value.dump().size() > ELIDE_CHARS) {
                     props[propName] = Json{{"$elided", std::to_string(value.is_array() ? value.size() : value.dump().size()) +
@@ -276,6 +287,7 @@ void getEntityTool(const CallPtr& call) {
                 continue;
             }
             Json entry = {{"type", McpValues::propertyTypeName(property.type)}, {"value", value}};
+            if (!guid.empty()) entry["guid"] = guid;
             if (property.def && property.type != PropertyType::Custom) {
                 entry["default"] = McpValues::readProperty(ctx, propName, property, true);
             }
@@ -299,6 +311,7 @@ void getEntityTool(const CallPtr& call) {
         components[name] = props;
     }
     data["components"] = components;
+    if (!assetGuids.empty()) data["asset_guids"] = assetGuids;
     // what its draws read of the scene (phase 3) in their current variants, and the cost
     const Json sceneInputs = McpValues::entitySceneInputsToJson(registry, entity);
     if (!sceneInputs.empty()) {
@@ -815,7 +828,7 @@ void listComponentTypesTool(const CallPtr& call) {
     }
     Json list = Json::array();
     std::string text;
-    const int last = static_cast<int>(ComponentType::UIDocumentComponent);
+    const int last = static_cast<int>(LAST_COMPONENT_TYPE);
     for (int i = 0; i <= last; i++) {
         const ComponentType type = static_cast<ComponentType>(i);
         const std::string name = McpRefs::componentName(type);
@@ -859,12 +872,11 @@ void registerComponentTools(McpRegistry& registry) {
         tool.title = "Set Properties";
         tool.description =
             "Set component properties on GameObjects in one undo step (prefab overrides recorded); returns the "
-            "values read back. Shapes: vectors [x,y,z]; colors [r,g,b(,a)] or \"#RRGGBB[AA]\"; rotations "
-            "{\"euler\":[x,y,z]} or [x,y,z,w]; enums/eases by name; textures/fonts/models by asset path (texture "
-            "{\"camera\": <entity>} = render texture); material: fields object or a .material path (links it); "
-            "GameObject refs (other scene: {\"scene\", \"id\"}) or null; Prefab script properties a .prefab path; "
-            "custom values (colliders, frames, scripts...) as get_entity returns them. Lists: {component, property, "
-            "insert: value, index?} / {..., remove: index}. Paths index (\"submeshes[0].material.baseColorFactor\").";
+            "values read back. Colors also \"#RRGGBB[AA]\"; enums/eases by name; textures/fonts/models by asset path "
+            "(texture {\"camera\": <entity>} = render texture); material: fields object or a .material path (links "
+            "it); GameObject refs or null; Prefab script properties a .prefab path; custom values (colliders, "
+            "frames, scripts...) as get_entity returns them. Lists: {component, property, insert: value, index?} / "
+            "{..., remove: index}. Paths index (\"submeshes[0].material.baseColorFactor\").";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},

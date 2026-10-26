@@ -4,6 +4,9 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
+#include "command/EntityEdit.h"
+#include "command/PlayChangeReview.h"
 #include "command/PrefabEditUndo.h"
 #include "Scene.h"
 #include "math/Vector3.h"
@@ -49,6 +52,19 @@ namespace jasperengine::editor{
         T oldValue;
         T newValue;
         uint32_t oldOverrideFields = 0; // submesh properties only, see getSubmeshOverrideMask
+        bool applied = false;           // the entity had the property when it ran
+    };
+
+    // A string set on an asset reference (Asset, Shader properties) is its path: the reference
+    // as it was, GUIDs included, comes back on undo
+    template<>
+    struct PropertyCmdValue<std::string>{
+        std::string oldValue;
+        std::string newValue;
+        uint32_t oldOverrideFields = 0;
+        bool applied = false;
+        AssetRef oldAsset;
+        ShaderRef oldShader;
     };
 
     // Component types the Hierarchy tree reads nothing from: it caches names, signature
@@ -84,7 +100,7 @@ namespace jasperengine::editor{
     }
 
     template<typename T>
-    class PropertyCmd: public Command{
+    class PropertyCmd: public Command, public EntityEdit{
 
     private:
         Project* project;
@@ -116,17 +132,42 @@ namespace jasperengine::editor{
             if (!sceneProject){
                 return false;
             }
+            bool changed = false;
             for (auto& [entity, value] : values){
                 PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, type, propertyName);
-                T* valueRef = static_cast<T*>(prop.ref);
                 // script properties are per entity, a selection may not share all of them
-                if (!valueRef){
+                if (!prop.ref){
+                    value.applied = false;
                     continue;
                 }
 
-                value.oldValue = T(*valueRef);
-                prefabUndo.capture(project, sceneId, entity);
-                *valueRef = value.newValue;
+                value.applied = true;
+                if constexpr (std::is_same_v<T, std::string>) {
+                    // an asset reference set by its path: a new path drops the GUID (S04)
+                    if (prop.type == PropertyType::Asset) {
+                        AssetRef& ref = *static_cast<AssetRef*>(prop.ref);
+                        value.oldAsset = ref;
+                        value.oldValue = ref.path;
+                        prefabUndo.capture(project, sceneId, entity);
+                        ref = value.newValue;
+                    } else if (prop.type == PropertyType::Shader) {
+                        ShaderRef& ref = *static_cast<ShaderRef*>(prop.ref);
+                        value.oldShader = ref;
+                        value.oldValue = ref.path;
+                        prefabUndo.capture(project, sceneId, entity);
+                        ref = value.newValue;
+                    } else {
+                        std::string* valueRef = static_cast<std::string*>(prop.ref);
+                        value.oldValue = *valueRef;
+                        prefabUndo.capture(project, sceneId, entity);
+                        *valueRef = value.newValue;
+                    }
+                } else {
+                    T* valueRef = static_cast<T*>(prop.ref);
+                    value.oldValue = T(*valueRef);
+                    prefabUndo.capture(project, sceneId, entity);
+                    *valueRef = value.newValue;
+                }
 
                 // Read before the no-op check below: a command merging into this one adopts this
                 // mask, and an entity already at the new value still carries its earlier edits.
@@ -146,12 +187,17 @@ namespace jasperengine::editor{
                     *overrideMask |= propertyFields;
                 }
 
+                Catalog::markChanged(sceneProject->scene, entity, type);
                 Catalog::updateEntity(sceneProject->scene, entity, prop.updateFlags);
 
                 project->recordPrefabEdit(sceneId, entity, type, {propertyName});
+                changed = true;
             }
 
-            sceneProject->isModified = true;
+            // a value set to what it was is no edit (the history drops the command)
+            if (changed){
+                sceneProject->isModified = true;
+            }
 
             if (onValueChanged) {
                 onValueChanged();
@@ -167,12 +213,21 @@ namespace jasperengine::editor{
             }
             for (auto const& [entity, value] : values){
                 PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, type, propertyName);
-                T* valueRef = static_cast<T*>(prop.ref);
-                if (!valueRef){
+                if (!prop.ref){
                     continue;
                 }
 
-                *valueRef = value.oldValue;
+                if constexpr (std::is_same_v<T, std::string>) {
+                    if (prop.type == PropertyType::Asset) {
+                        *static_cast<AssetRef*>(prop.ref) = value.oldAsset;
+                    } else if (prop.type == PropertyType::Shader) {
+                        *static_cast<ShaderRef*>(prop.ref) = value.oldShader;
+                    } else {
+                        *static_cast<std::string*>(prop.ref) = value.oldValue;
+                    }
+                } else {
+                    *static_cast<T*>(prop.ref) = value.oldValue;
+                }
 
                 // Mirrors execute: restored whether or not the value moved.
                 uint32_t propertyFields = 0;
@@ -186,6 +241,7 @@ namespace jasperengine::editor{
                     }
                 }
 
+                Catalog::markChanged(sceneProject->scene, entity, type);
                 Catalog::updateEntity(sceneProject->scene, entity, prop.updateFlags);
             }
             prefabUndo.restore(project, sceneId);
@@ -201,6 +257,88 @@ namespace jasperengine::editor{
             return !isNonStructuralProperty(type, propertyName);
         }
 
+        std::string describe() const override{
+            return "Set " + editedLabel() + " (" + CommandNames::entities(project, sceneId, editedEntities()) + ")";
+        }
+
+        const char* typeName() const override{ return "PropertyCmd"; }
+
+        // Every entity it reached kept its value (a value type without == always counts as an edit)
+        bool isNoOp() const override{
+            for (auto const& [entity, value] : values){
+                if (!value.applied){
+                    continue;
+                }
+                if constexpr (has_equality_operator_v<T>) {
+                    if (!(value.oldValue == value.newValue)){
+                        return false;
+                    }
+                }else{
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        std::vector<Entity> editedEntities() const override{
+            std::vector<Entity> entities;
+            entities.reserve(values.size());
+            for (auto const& [entity, value] : values){
+                entities.push_back(entity);
+            }
+            return entities;
+        }
+
+        std::string editedLabel() const override{
+            return CommandNames::property(propertyName);
+        }
+
+        Project* editedProject() const override{ return project; }
+        uint32_t editedSceneId() const override{ return sceneId; }
+
+        // A fresh PropertyCmd per GameObject, with the value it has now
+        void collectKeepCommands(KeepContext& context) const override{
+            SceneProject* sceneProject = project->getScene(sceneId);
+            if (!sceneProject){
+                return;
+            }
+            for (auto const& [entity, value] : values){
+                if (!value.applied){
+                    continue;
+                }
+                PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, type, propertyName);
+                if (!prop.ref){
+                    continue;
+                }
+                const T current = *static_cast<T*>(prop.ref);
+                KeepRow row;
+                row.kind = KeepRow::Kind::Property;
+                row.entity = entity;
+                row.hasComponent = true;
+                row.component = type;
+                row.property = propertyName;
+                row.playValue = KeepContext::text(current);
+                Project* target = project;
+                const uint32_t id = sceneId;
+                const ComponentType component = type;
+                const std::string name = propertyName;
+                const Entity edited = entity;
+                row.factory = [target, id, edited, component, name, current]() -> std::unique_ptr<Command> {
+                    return std::make_unique<PropertyCmd<T>>(target, id, edited, component, name, current);
+                };
+                row.readEditValue = [target, id, edited, component, name]() -> std::string {
+                    SceneProject* restored = target->getScene(id);
+                    PropertyData now = restored ? Catalog::findProperty(restored->scene, edited, component, name) : PropertyData{};
+                    return now.ref ? KeepContext::text(*static_cast<T*>(now.ref)) : std::string("(none)");
+                };
+                context.add(std::move(row));
+            }
+        }
+
+        uint32_t getSceneId() const{ return sceneId; }
+        ComponentType getComponentType() const{ return type; }
+        const std::string& getPropertyName() const{ return propertyName; }
+
         bool mergeWith(editor::Command* otherCommand) override{
             PropertyCmd* otherCmd = dynamic_cast<PropertyCmd*>(otherCommand);
             if (otherCmd != nullptr){
@@ -210,6 +348,11 @@ namespace jasperengine::editor{
                             // The older command holds the state a single undo has to restore.
                             values[otherEntity].oldValue = otherValue.oldValue;
                             values[otherEntity].oldOverrideFields = otherValue.oldOverrideFields;
+                            if constexpr (std::is_same_v<T, std::string>) {
+                                values[otherEntity].oldAsset = otherValue.oldAsset;
+                                values[otherEntity].oldShader = otherValue.oldShader;
+                            }
+                            values[otherEntity].applied = values[otherEntity].applied || otherValue.applied;
                         }else{
                             values[otherEntity] = otherValue;
                         }

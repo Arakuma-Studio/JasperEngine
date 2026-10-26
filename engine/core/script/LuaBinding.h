@@ -4,6 +4,9 @@
 #ifndef luabinding_h
 #define luabinding_h
 
+#include "log/LogCategory.h"
+#include "log/LogFormatCheck.h"
+#include <string_view>
 #include "Export.h"
 #include "ecs/Entity.h"
 #include <string>
@@ -18,6 +21,7 @@ namespace jasperengine {
     class Vector3;
     class Vector4;
     struct ScriptEntry;
+    struct ScriptProperty;
 
     class JASPERENGINE_API LuaBinding {
         
@@ -32,7 +36,6 @@ namespace jasperengine {
         static int luaRegisterEvent(lua_State* L);
         static int luaRegisterEngineEvent(lua_State* L);
         static int luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex, const char* methodName, const char* tag, bool guardActive);
-        static std::string getScriptSubscriptionTag(int luaRef);
 
         static int moduleLoader(lua_State *L);
         static int handleLuaError(lua_State* L);
@@ -48,6 +51,7 @@ namespace jasperengine {
         static void registerGameObjectClasses(lua_State *L);
         static void registerUtilClasses(lua_State *L);
         static void registerThreadClasses(lua_State *L);
+        static void registerProfilerClasses(lua_State *L);
         static void registerHtmlUIClasses(lua_State *L);
         static void registerHtmlUIAnimeClasses(lua_State *L);
         static void registerHtmlUIVectorClasses(lua_State *L);
@@ -109,7 +113,8 @@ namespace jasperengine {
 
         static void cleanup();
 
-        static void removeScriptSubscriptions(Scene* scene, int luaRef);
+        // Removes the event subscriptions and timers of a script instance (its table)
+        static void removeScriptSubscriptions(int luaRef);
         static void releaseLuaRef(int luaRef);
 
         // For editor scripts use
@@ -127,6 +132,27 @@ namespace jasperengine {
         static void clearLoadedProjectModules();
 
         static std::string getLuaStackErrorString(lua_State* L, int index = -1);
+        // A Lua error (its traceback is in the text): category lua, no C++ backtrace
+        static void logLuaError(const char* format, ...) JE_PRINTF_FORMAT(1, 2);
+        // Logs text with the calling Lua function's chunk and line as its source
+        static void logFromLua(lua_State* L, LogLevel level, const LogCategory& category, std::string_view text);
+
+        // The math classes (Vector2/3/4, Quaternion, Matrix..., Color) in another state: the
+        // editor's sandboxed editor-script state
+        static void registerMathClassesIn(lua_State* L);
+
+        // ---- for the hot reload during Play (LuaReload.cpp)
+
+        // The compiled chunk of a script path becomes the function at `index`: instances made
+        // from now on run it
+        static void setScriptChunk(lua_State* L, const std::string& path, int index);
+        // Pushes a script property's value as an instance field gets it at creation (an unset
+        // prefab or asset is nil; an EntityReference is resolved in `scene` like init's pass 2)
+        static void pushScriptPropertyValue(lua_State* L, Scene* scene, const ScriptProperty& property);
+        // RegisterEvent's work for `self` (index) on the event at eventIndex, in a protected
+        // call: false and the error when it failed
+        static bool replayScriptEvent(lua_State* L, int eventIndex, int selfIndex, const std::string& method,
+                                      const std::string& tag, bool guarded, std::string& error);
         
     };
     

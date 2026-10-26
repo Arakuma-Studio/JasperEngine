@@ -113,6 +113,10 @@ namespace jasperengine{
         // phase 4's in-shader tier) of a shader type, 0 for a type that never applies it (UI,
         // depth, effects)
         static uint32_t getPostColorProperty(ShaderType shaderType);
+        // the mesh variant bit of the High and Ultra shadow filters (USE_SHADOWS_HQ: the Vogel
+        // disk, PCSS and the raw-depth view of the atlas; docs/rendering/shadows.md), set on a
+        // variant that receives shadows when the shadow tier is High or above
+        static uint32_t getShadowsHQProperty();
         static std::string getShaderPropertyName(ShaderType shaderType, int bit, bool shortName = true);
         static ShaderType getShaderTypeFromKey(ShaderKey key);
         static uint32_t getPropertiesFromKey(ShaderKey key);
@@ -169,6 +173,8 @@ namespace jasperengine{
         // the ShaderRender objects, so meshes holding them stay valid and re-bind on
         // their needReload pass.
         static void destroyCustomShaders();
+        // Only the forks `which` names by their custom shader name (a hot reload, S05)
+        static void destroyCustomShaders(const std::function<bool(const std::string& name)>& which);
 
         static const std::vector<ShaderBackend>& getShaderBackends();
         // backend this runtime was built for

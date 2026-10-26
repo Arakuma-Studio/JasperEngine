@@ -15,6 +15,8 @@
 # the audio device Docker lacks is not an error.
 #
 # SMOKE_GAME_ENV="NAME=value ..." is passed to the game's environment.
+# SMOKE_EXPORT_ARGS="..." is added to the export command (e.g. --development-build).
+# SMOKE_GAME_ARGS="..." is passed to the game's command line (e.g. --profile-capture=../capture.jetrace.json).
 # SMOKE_GAME_SECONDS="ready" (the default) screenshots the game once it logs that
 # every scene is loaded and no shader is still compiling (JASPERENGINE_READY_SIGNAL),
 # SMOKE_READY_SETTLE seconds later (2), waiting up to SMOKE_READY_TIMEOUT seconds
@@ -35,7 +37,11 @@
 # more than its variant caches hold (~1000 pipelines: the whole shader-library fixture
 # takes minutes per frame there), so run such a project a few groups at a time.
 # SMOKE_DIR=build/<name> writes there instead of build/smoke, so several smoke tests
-# can run at once from one checkout.
+# can run at once from one checkout. JASPER_DOCKER_IMAGE=<id|tag> runs that image (built from
+# docker/linux.Dockerfile, or linux-backends for SMOKE_BACKEND=vulkan|gles3) instead of building
+# it (CI's prebuilt images).
+# The exported project must configure as a user's game does: without the repository's presets,
+# warnings as errors or sanitizers (docs/testing.md); the test fails otherwise.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -54,14 +60,18 @@ esac
 # The main checkout's compiler cache, even when running from a git worktree.
 MAIN="$(cd "$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
 
-[[ $# -eq 1 && -f "$1/project.yaml" ]] || { sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+[[ $# -eq 1 && -f "$1/project.yaml" ]] || { sed -n '2,44p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 PROJECT="$(cd "$1" && pwd)"
 [[ -x "$ROOT/$EDITOR" ]] || { echo "No editor at $EDITOR; run tools/build.sh linux" >&2; exit 1; }
 
-docker build -q -t "$IMAGE" -f "$ROOT/docker/linux.Dockerfile" "$ROOT/docker" >/dev/null
-if [[ "$BACKEND" != opengl ]]; then
-    IMAGE=jasperengine/linux-backends
-    docker build -q -t "$IMAGE" -f "$ROOT/docker/linux-backends.Dockerfile" "$ROOT/docker" >/dev/null
+if [[ -n "${JASPER_DOCKER_IMAGE:-}" ]]; then
+    IMAGE="$JASPER_DOCKER_IMAGE"
+else
+    docker build -q -t "$IMAGE" -f "$ROOT/docker/linux.Dockerfile" "$ROOT/docker" >/dev/null
+    if [[ "$BACKEND" != opengl ]]; then
+        IMAGE=jasperengine/linux-backends
+        docker build -q -t "$IMAGE" -f "$ROOT/docker/linux-backends.Dockerfile" "$ROOT/docker" >/dev/null
+    fi
 fi
 docker run --rm -v "$ROOT:/src" "$IMAGE" rm -rf "/src/$OUT"
 mkdir -p "$ROOT/$OUT" "$MAIN/build/.cache/ccache"
@@ -87,6 +97,8 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
     -e CCACHE_DIR=/ccache \
     -e EDITOR="/src/$EDITOR" \
     -e SMOKE_GAME_ENV="${SMOKE_GAME_ENV:-}" \
+    -e SMOKE_EXPORT_ARGS="${SMOKE_EXPORT_ARGS:-}" \
+    -e SMOKE_GAME_ARGS="${SMOKE_GAME_ARGS:-}" \
     -e SMOKE_GAME_RUNS="${SMOKE_GAME_RUNS:-}" \
     -e SMOKE_GAME_SECONDS="${SMOKE_GAME_SECONDS:-ready}" \
     -e SMOKE_READY_TIMEOUT="${SMOKE_READY_TIMEOUT:-300}" \
@@ -114,7 +126,8 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
 
         echo "== export"
         # Relative paths, as a user types them (relative to the current directory)
-        "$EDITOR" export --project project --out export --backend "$EXPORT_BACKEND" > export.log 2>&1 \
+        # shellcheck disable=SC2086
+        "$EDITOR" export --project project --out export --backend "$EXPORT_BACKEND" $SMOKE_EXPORT_ARGS > export.log 2>&1 \
             || { echo "FAIL: export"; tail -30 export.log; exit 1; }
         check_log export export.log
 
@@ -126,6 +139,11 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
             || { echo "FAIL: build of the exported project"; tail -30 game-build.log; exit 1; }
         GAME="$(find export-build -maxdepth 1 -type f -executable | head -1)"
         [[ -n "$GAME" ]] || { echo "FAIL: no executable in export-build"; exit 1; }
+        # an exported game builds as a user would: no presets, no Werror, no sanitizer, no warnings
+        [[ ! -e export/CMakePresets.json ]] || { echo "FAIL: the export carries CMakePresets.json"; exit 1; }
+        if grep -E "^JASPERENGINE_(WERROR|WARNINGS|UNITY_BUILD)(:BOOL)?=(ON|TRUE|1)$|^JASPERENGINE_SANITIZE(:STRING)?=.+$" export-build/CMakeCache.txt; then
+            echo "FAIL: the exported project configured with the repository build options above"; exit 1
+        fi
 
         Xvfb :99 -screen 0 1600x900x24 > /dev/null 2>&1 &
         export DISPLAY=:99
@@ -177,7 +195,7 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
         echo "== run game"
         # word splitting of SMOKE_GAME_ENV is wanted: one NAME=value per word
         # shellcheck disable=SC2086
-        (cd "$(dirname "$GAME")" && run ../game ../game.log "$SMOKE_GAME_SECONDS" env JASPERENGINE_READY_SIGNAL=1 $SMOKE_GAME_ENV "./$(basename "$GAME")")
+        (cd "$(dirname "$GAME")" && run ../game ../game.log "$SMOKE_GAME_SECONDS" env JASPERENGINE_READY_SIGNAL=1 $SMOKE_GAME_ENV "./$(basename "$GAME")" $SMOKE_GAME_ARGS)
         check_log game game.log
 
         # the extra runs: "<name> NAME=value ..." entries separated by ";"

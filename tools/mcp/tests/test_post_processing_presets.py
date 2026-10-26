@@ -10,11 +10,12 @@ import zlib
 
 from harness import Editor
 
+CI = True
 EDITOR = {"create": True, "name": "Post Processing Presets"}
 TIMEOUT = 600
 
 SCENE = "scenes/Presets.scene"
-PRESETS = ["none", "mobile", "console", "stylised", "crt_retro"]
+PRESETS = ["none", "mobile", "mobile_adaptive", "console", "stylised", "crt_retro", "film", "vhs"]
 
 
 def png(width: int, height: int) -> bytes:

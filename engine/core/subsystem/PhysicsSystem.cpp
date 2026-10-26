@@ -11,6 +11,8 @@
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "util/JoltPhysicsAux.h"
+#include "util/JoltJobAdapter.h"
+#include "memory/MemoryStats.h"
 #endif
 
 #include <algorithm>
@@ -75,16 +77,29 @@ namespace {
     // Scene) in a static, so ~PhysicsSystem runs during static destruction and must not
     // find these already gone.
     JPH::TempAllocatorImpl& sharedPhysicsTempAllocator(){
-        static JPH::TempAllocatorImpl* instance = new JPH::TempAllocatorImpl(10 * 1024 * 1024);
+        constexpr unsigned int bytes = 10 * 1024 * 1024;
+        static JPH::TempAllocatorImpl* instance = [](){
+            // its block, reserved for the process, in the memory stats
+            static memory::TrackedBytes* tracked = new memory::TrackedBytes("Physics.JoltTempAllocator", memory::Residency::Cpu);
+            tracked->add(bytes);
+            tracked->setCapacity(bytes);
+            return new JPH::TempAllocatorImpl(bytes);
+        }();
         return *instance;
     }
-    JPH::JobSystemThreadPool& sharedPhysicsJobSystem(){
+    // Physics jobs run on the engine's job system (one CPU budget for the engine and Jolt);
+    // JE_JOLT_OWN_POOL keeps Jolt's own pool for one release as a fallback.
+    JPH::JobSystem& sharedPhysicsJobSystem(){
+    #ifdef JE_JOLT_OWN_POOL
         // hardware_concurrency() is unsigned and reports 0 when unknown, so clamp
         // instead of subtracting into a huge worker count on a single-core machine.
         const unsigned int cores = JPH::thread::hardware_concurrency();
         const int workers = (cores > 1) ? (int)(cores - 1) : 1;
         static JPH::JobSystemThreadPool* instance =
             new JPH::JobSystemThreadPool(JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers, workers);
+    #else
+        static JoltJobAdapter* instance = new JoltJobAdapter(JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers);
+    #endif
         return *instance;
     }
 #endif
@@ -291,6 +306,16 @@ JPH::EMotionQuality PhysicsSystem::getRigidbodyMotionQualityToJolt(RigidbodyMoti
 PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
 #ifdef JASPERENGINE_PHYSICS_2D
 	signature.set(scene->getComponentId<Rigidbody2DComponent>());
+#endif
+	// the types onComponentRemoved handles
+	declareNoHookTypes();
+#ifdef JASPERENGINE_PHYSICS_2D
+	declareHookType(scene->getComponentId<Rigidbody2DComponent>());
+	declareHookType(scene->getComponentId<Joint2DComponent>());
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
+	declareHookType(scene->getComponentId<RigidbodyComponent>());
+	declareHookType(scene->getComponentId<Joint3DComponent>());
 #endif
 
 	this->scene = scene;
@@ -1436,7 +1461,7 @@ bool PhysicsSystem::syncRigidbodyColliders(Entity entity, RigidbodyComponent& bo
         }
 
         if (!createCollider3DForIndex(entity, body, i)){
-            Log::error("Cannot create runtime shape %i for 3D Body entity: %u", i, entity);
+            Log::error("Cannot create runtime shape %zu for 3D Body entity: %u", i, entity);
             return false;
         }
     }
@@ -2403,12 +2428,12 @@ bool PhysicsSystem::loadPrismaticJoint3D(Joint3DComponent& joint, Entity bodyA, 
             float offset = limitsMin;
             limitsMin -= offset;
             limitsMax -= offset;
-            Log::warn("Prismatic 3D joint limits did not include 0. Normalized range to [{0}, {1}]", limitsMin, limitsMax);
+            Log::warn("Prismatic 3D joint limits did not include 0. Normalized range to [%f, %f]", limitsMin, limitsMax);
         }else if (limitsMax < 0.0f){
             float offset = limitsMax;
             limitsMin -= offset;
             limitsMax -= offset;
-            Log::warn("Prismatic 3D joint limits did not include 0. Normalized range to [{0}, {1}]", limitsMin, limitsMax);
+            Log::warn("Prismatic 3D joint limits did not include 0. Normalized range to [%f, %f]", limitsMin, limitsMax);
         }
 
         if (std::fabs(limitsMax - limitsMin) < 1.0e-6f){
@@ -2880,7 +2905,7 @@ void PhysicsSystem::addBroadPhaseLayer3D(uint8_t index, uint32_t groupsToInclude
 }
 
 void PhysicsSystem::addBroadPhaseLayer3D(uint8_t index, uint32_t groupsToInclude, uint32_t groupsToExclude){
-    if (index >= 0 && index < MAX_BROADPHASELAYER_3D){
+    if (index < MAX_BROADPHASELAYER_3D){
         broad_phase_layer_interface->ConfigureLayer(JPH::BroadPhaseLayer(index), groupsToInclude, groupsToExclude);
 
         auto bodies3d = scene->getComponentArray<RigidbodyComponent>();
@@ -3020,7 +3045,11 @@ void PhysicsSystem::fixedUpdate(double dt){
         if (bodies2d->size() > 0){
             int32_t subSteps = 4;
             steppingWorld2D = true;
-            b2World_Step(world2D, fixedStep, subSteps);
+            {
+                // what the PreSolve and filter callbacks destroy goes after the step
+                StructuralDeferScope deferScope(*scene);
+                b2World_Step(world2D, fixedStep, subSteps);
+            }
             steppingWorld2D = false;
         }
 
@@ -3064,7 +3093,11 @@ void PhysicsSystem::fixedUpdate(double dt){
             }
         }
 
-        Box2DAux::manageEvents(scene, world2D);
+        {
+            // contact and sensor callbacks: what they destroy goes after the last of them
+            StructuralDeferScope deferScope(*scene);
+            Box2DAux::manageEvents(scene, world2D);
+        }
     }
 #endif
 
@@ -3136,6 +3169,9 @@ void PhysicsSystem::fixedUpdate(double dt){
 		};
 
 		StepScope stepScope(this);
+		// the contact listener runs on Jolt's threads, serialized by getCallbackMutex3D, while
+		// this one waits: what its callbacks destroy goes after the step
+		StructuralDeferScope deferScope(*scene, true);
 		world3D.Update(fixedStep, cCollisionSteps, temp_allocator, job_system);
 	}
 

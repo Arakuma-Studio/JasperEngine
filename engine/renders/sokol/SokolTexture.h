@@ -16,6 +16,7 @@ namespace jasperengine{
         sg_sampler sampler;
         sg_view view;
         size_t streamBytes;   // RGBA8/R8 dynamic textures: the size every update must have (0 = not checked)
+        bool aliasImage = false;   // the image is another texture's (createAliasView): never destroyed here
 
         sg_image_type getTextureType(TextureType textureType);
         sg_filter getFilter(TextureFilter textureFilter);
@@ -38,6 +39,12 @@ namespace jasperengine{
                     ColorFormat colorFormat, TextureType type, int numFaces, void* data[], size_t size[],
                     TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV);
 
+        // a 3D texture of width x height x depth RGBA8 texels (data: x fastest, then y, then
+        // the depth slices), no mipmaps, one filter and wrap on every axis
+        bool createTexture3D(
+                    const std::string& label, int width, int height, int depth, const void* data, size_t size,
+                    TextureFilter filter, TextureWrap wrap);
+
         // creates a cubemap with custom (pre-filtered) mipmap data,
         // data[level] must contain all 6 faces in one contiguous block
         bool createTextureCubeWithMips(
@@ -57,6 +64,13 @@ namespace jasperengine{
         bool createDynamicTexture(const std::string& label, int width, int height);
         bool createDynamicTexture(const std::string& label, int width, int height,
                     ColorFormat colorFormat, TextureFilter filter);
+        // a second view of source's image with a nearest, non-comparison sampler: the raw
+        // depths of a shadow atlas (sampled as unfilterable_float). It does not own the image,
+        // which must outlive it.
+        bool createAliasView(const SokolTexture& source, const char* label);
+        // a view of any image (by id) at one mip level, every slice, with a nearest sampler:
+        // the Frame Debugger's preview of a pass attachment. It does not own the image.
+        bool createImageAliasView(uint32_t imageId, int mipLevel, const char* label);
         // RGBA8, linear filtering, clamped, rewritten whole by updateTexture at most once a frame
         // (the post-processing colour LUTs)
         bool createDynamicColorTexture(const std::string& label, int width, int height);

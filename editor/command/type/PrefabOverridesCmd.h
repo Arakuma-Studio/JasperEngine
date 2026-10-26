@@ -4,6 +4,8 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
+#include "command/CommandMemory.h"
 #include "Project.h"
 
 #include <cstdint>
@@ -30,6 +32,10 @@ namespace jasperengine::editor{
 
         bool execute() override;
         void undo() override;
+
+        // "Revert Removed GameObject (Door)": the instance it goes back into
+        std::string describe() const override { return "Revert Removed GameObject (" + CommandNames::entity(project, sceneId, instanceRoot) + ")"; }
+        const char* typeName() const override { return "RevertPrefabRemovalCmd"; }
     };
 
     // Apply to Prefab of a removed GameObject: it is deleted from the Prefab asset, so from
@@ -55,6 +61,10 @@ namespace jasperengine::editor{
 
         bool execute() override;
         void undo() override;
+
+        std::string describe() const override { return "Apply Removed GameObject to Prefab (" + CommandNames::entity(project, sceneId, instanceRoot) + ")"; }
+        const char* typeName() const override { return "ApplyPrefabRemovalCmd"; }
+        size_t memoryBytes() const override { return sizeof(*this) + CommandMemory::of(apply.recovery) + CommandMemory::of(before); }
     };
 
     // Revert All / Apply All: the steps run in order as one undo step, undone in reverse.
@@ -67,6 +77,7 @@ namespace jasperengine::editor{
         std::vector<bool> stepDone;
         bool executedOnce = false;
         bool wasModified = false;
+        std::string label;  // "Revert All Overrides (Door)"; empty: the first step's name
 
     public:
         PrefabOverridesCmd(Project* project, uint32_t sceneId, std::vector<std::unique_ptr<Command>> steps);
@@ -81,6 +92,10 @@ namespace jasperengine::editor{
 
         bool execute() override;
         void undo() override;
+
+        std::string describe() const override;
+        const char* typeName() const override { return "PrefabOverridesCmd"; }
+        size_t memoryBytes() const override;
     };
 
 }

@@ -581,6 +581,7 @@ std::string editor::Factory::formatFogType(FogType type) {
         case FogType::LINEAR: return "FogType::LINEAR";
         case FogType::EXPONENTIAL: return "FogType::EXPONENTIAL";
         case FogType::EXPONENTIALSQUARED: return "FogType::EXPONENTIALSQUARED";
+        case FogType::HEIGHT: return "FogType::HEIGHT";
         default: return "FogType::LINEAR";
     }
 }
@@ -600,7 +601,9 @@ std::string editor::Factory::formatShadowQuality(ShadowQuality quality) {
         case ShadowQuality::LOW: return "ShadowQuality::LOW";
         case ShadowQuality::MEDIUM: return "ShadowQuality::MEDIUM";
         case ShadowQuality::HIGH: return "ShadowQuality::HIGH";
-        default: return "ShadowQuality::LOW";
+        case ShadowQuality::AUTO: return "ShadowQuality::AUTO";
+        case ShadowQuality::ULTRA: return "ShadowQuality::ULTRA";
+        default: return "ShadowQuality::AUTO";
     }
 }
 
@@ -851,6 +854,10 @@ std::string editor::Factory::formatPostProcessing(int indentSpaces, const PostPr
             case FieldType::String:
                 if (*(const std::string*)value != *(const std::string*)def) text = formatString(*(const std::string*)value);
                 break;
+            case FieldType::Asset:
+                // the game loads by path (an AssetRef assigned a path)
+                if (((const AssetRef*)value)->path != ((const AssetRef*)def)->path) text = formatString(((const AssetRef*)value)->path);
+                break;
             case FieldType::Enum:
                 if (*(const int*)value != *(const int*)def)
                     text = std::string(field.enumType) + "::" + field.enumValues[*(const int*)value];
@@ -905,6 +912,7 @@ std::string editor::Factory::formatScriptPropertyType(ScriptPropertyType type) {
         case ScriptPropertyType::Color4: return "ScriptPropertyType::Color4";
         case ScriptPropertyType::EntityReference: return "ScriptPropertyType::EntityReference";
         case ScriptPropertyType::Prefab: return "ScriptPropertyType::Prefab";
+        case ScriptPropertyType::Asset: return "ScriptPropertyType::Asset";
         default: return "ScriptPropertyType::Bool";
     }
 }
@@ -932,6 +940,10 @@ std::string editor::Factory::formatScriptPropertyValue(const ScriptPropertyValue
         // found by GUID in PrefabManager, as in Play
         const auto& prefab = std::get<PrefabAsset>(value);
         return "PrefabAsset(" + formatString(prefab.getGuid()) + ", " + formatString(prefab.getPath()) + ")";
+    } else if (std::holds_alternative<AssetRef>(value)) {
+        // the path resolved at export; the GUID for Asset.guid / AssetRef.guid in scripts
+        const auto& ref = std::get<AssetRef>(value);
+        return "AssetRef(" + formatString(ref.path) + ", Guid::parse(" + formatString(ref.guid.str()) + "))";
     }
     return "ScriptPropertyValue{}";
 }
@@ -1117,6 +1129,8 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
     code << ind << "mesh.castShadows = " << formatBool(mesh.castShadows) << ";\n";
     code << ind << "mesh.receiveShadows = " << formatBool(mesh.receiveShadows) << ";\n";
     code << ind << "mesh.shadowsBillboard = " << formatBool(mesh.shadowsBillboard) << ";\n";
+    if (mesh.staticShadowCaster)
+        code << ind << "mesh.staticShadowCaster = true;\n";
     code << ind << "mesh.lodEnabled = " << formatBool(mesh.lodEnabled) << ";\n";
     code << ind << "mesh.lodBias = " << formatFloat(mesh.lodBias) << ";\n";
     code << ind << "mesh.renderInReflectionProbes = " << formatBool(mesh.renderInReflectionProbes) << ";\n";
@@ -1774,6 +1788,20 @@ std::string editor::Factory::createLightComponent(int indentSpaces, EntityRegist
     code << ind << "light.shadowCameraNearFar.x = " << formatFloat(light.shadowCameraNearFar.x) << ";\n";
     code << ind << "light.shadowCameraNearFar.y = " << formatFloat(light.shadowCameraNearFar.y) << ";\n";
     code << ind << "light.numShadowCascades = " << formatUInt(light.numShadowCascades) << ";\n";
+    code << ind << "light.softShadows = " << formatBool(light.softShadows) << ";\n";
+    code << ind << "light.shadowStrength = " << formatFloat(light.shadowStrength) << ";\n";
+    code << ind << "light.shadowNormalBias = " << formatFloat(light.shadowNormalBias) << ";\n";
+    code << ind << "light.cascadeSplitMode = " << (light.cascadeSplitMode == CascadeSplitMode::MANUAL ? "CascadeSplitMode::MANUAL" : "CascadeSplitMode::AUTO") << ";\n";
+    code << ind << "light.cascadeSplits = " << formatVector3(light.cascadeSplits) << ";\n";
+    code << ind << "light.shadowDistance = " << formatFloat(light.shadowDistance) << ";\n";
+    code << ind << "light.shadowAngularDiameter = " << formatFloat(light.shadowAngularDiameter) << ";\n";
+    code << ind << "light.shadowSourceRadius = " << formatFloat(light.shadowSourceRadius) << ";\n";
+    if (light.shadowUpdateMode == ShadowUpdateMode::EVERY_FRAME)
+        code << ind << "light.shadowUpdateMode = ShadowUpdateMode::EVERY_FRAME;\n";
+    else if (light.shadowUpdateMode == ShadowUpdateMode::ON_DEMAND)
+        code << ind << "light.shadowUpdateMode = ShadowUpdateMode::ON_DEMAND;\n";
+    if (light.volumetricIntensity != LightComponent().volumetricIntensity)
+        code << ind << "light.volumetricIntensity = " << formatFloat(light.volumetricIntensity) << ";\n";
     if (light.shading == LightShading::PIXEL)
         code << ind << "light.shading = LightShading::PIXEL;\n";
     else if (light.shading == LightShading::VERTEX)
@@ -1830,7 +1858,85 @@ std::string editor::Factory::createFogComponent(int indentSpaces, EntityRegistry
     code << ind << "fog.density = " << formatFloat(fog.density) << ";\n";
     code << ind << "fog.linearStart = " << formatFloat(fog.linearStart) << ";\n";
     code << ind << "fog.linearEnd = " << formatFloat(fog.linearEnd) << ";\n";
+    // the height fog's fields where they differ from the defaults
+    const FogComponent defaults;
+    if (fog.colorMode != defaults.colorMode) code << ind << "fog.colorMode = FogColorMode::SKY;\n";
+    if (fog.attenuationDistance != defaults.attenuationDistance) code << ind << "fog.attenuationDistance = " << formatFloat(fog.attenuationDistance) << ";\n";
+    if (fog.baseHeight != defaults.baseHeight) code << ind << "fog.baseHeight = " << formatFloat(fog.baseHeight) << ";\n";
+    if (fog.maximumHeight != defaults.maximumHeight) code << ind << "fog.maximumHeight = " << formatFloat(fog.maximumHeight) << ";\n";
+    if (fog.startDistance != defaults.startDistance) code << ind << "fog.startDistance = " << formatFloat(fog.startDistance) << ";\n";
+    if (fog.maxFogDistance != defaults.maxFogDistance) code << ind << "fog.maxFogDistance = " << formatFloat(fog.maxFogDistance) << ";\n";
+    if (fog.maxOpacity != defaults.maxOpacity) code << ind << "fog.maxOpacity = " << formatFloat(fog.maxOpacity) << ";\n";
+    if (fog.directionalInscattering != defaults.directionalInscattering) code << ind << "fog.directionalInscattering = " << formatFloat(fog.directionalInscattering) << ";\n";
+    if (fog.anisotropy != defaults.anisotropy) code << ind << "fog.anisotropy = " << formatFloat(fog.anisotropy) << ";\n";
+    if (fog.skyFill != defaults.skyFill) code << ind << "fog.skyFill = " << formatBool(fog.skyFill) << ";\n";
+    if (fog.skyFillAngle != defaults.skyFillAngle) code << ind << "fog.skyFillAngle = " << formatFloat(fog.skyFillAngle) << ";\n";
+    if (fog.volumetric != defaults.volumetric) code << ind << "fog.volumetric = " << formatBool(fog.volumetric) << ";\n";
+    if (fog.volumetricDistance != defaults.volumetricDistance) code << ind << "fog.volumetricDistance = " << formatFloat(fog.volumetricDistance) << ";\n";
+    if (fog.lightShafts != defaults.lightShafts) code << ind << "fog.lightShafts = " << formatBool(fog.lightShafts) << ";\n";
+    if (fog.noiseIntensity != defaults.noiseIntensity) code << ind << "fog.noiseIntensity = " << formatFloat(fog.noiseIntensity) << ";\n";
+    if (fog.noiseScale != defaults.noiseScale) code << ind << "fog.noiseScale = " << formatFloat(fog.noiseScale) << ";\n";
+    if (fog.wind != defaults.wind) code << ind << "fog.wind = " << formatVector3(fog.wind) << ";\n";
+    if (fog.qualityOverride != defaults.qualityOverride) code << ind << "fog.qualityOverride = " << formatAtmosphereQualityOverride(fog.qualityOverride) << ";\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "FogComponent", "fog", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::formatAtmosphereQualityOverride(AtmosphereQualityOverride quality) {
+    switch (quality) {
+        case AtmosphereQualityOverride::LOW: return "AtmosphereQualityOverride::LOW";
+        case AtmosphereQualityOverride::MEDIUM: return "AtmosphereQualityOverride::MEDIUM";
+        default: return "AtmosphereQualityOverride::PROJECT";
+    }
+}
+
+std::string editor::Factory::createLocalVolumetricFogComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<LocalVolumetricFogComponent>(entity)) return "";
+    LocalVolumetricFogComponent& volume = scene->getComponent<LocalVolumetricFogComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "LocalVolumetricFogComponent volume;\n";
+    code << ind << "volume.shape = FogVolumeShape::" << (volume.shape == FogVolumeShape::SPHERE ? "SPHERE" : "BOX") << ";\n";
+    code << ind << "volume.size = " << formatVector3(volume.size) << ";\n";
+    code << ind << "volume.attenuationDistance = " << formatFloat(volume.attenuationDistance) << ";\n";
+    code << ind << "volume.albedo = " << formatVector3(volume.albedo) << ";\n";
+    code << ind << "volume.blendDistance = " << formatFloat(volume.blendDistance) << ";\n";
+    code << ind << "volume.falloff = FogVolumeFalloff::" << (volume.falloff == FogVolumeFalloff::EXPONENTIAL ? "EXPONENTIAL" : "LINEAR") << ";\n";
+    code << ind << "volume.noiseIntensity = " << formatFloat(volume.noiseIntensity) << ";\n";
+    code << ind << "volume.noiseScale = " << formatFloat(volume.noiseScale) << ";\n";
+    code << ind << "volume.scrollSpeed = " << formatVector3(volume.scrollSpeed) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "LocalVolumetricFogComponent", "volume", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createVolumetricCloudsComponent(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<VolumetricCloudsComponent>(entity)) return "";
+    VolumetricCloudsComponent& clouds = scene->getComponent<VolumetricCloudsComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    static const char* const presets[] = {"CUSTOM", "SPARSE", "CLOUDY", "OVERCAST", "STORMY"};
+    static const char* const renderings[] = {"AUTO", "SKY_MAP", "SCREEN"};
+    code << ind << "VolumetricCloudsComponent clouds;\n";
+    code << ind << "clouds.preset = CloudsPreset::" << presets[std::clamp((int)clouds.preset, 0, 4)] << ";\n";
+    code << ind << "clouds.rendering = CloudsRendering::" << renderings[std::clamp((int)clouds.rendering, 0, 2)] << ";\n";
+    code << ind << "clouds.coverage = " << formatFloat(clouds.coverage) << ";\n";
+    code << ind << "clouds.density = " << formatFloat(clouds.density) << ";\n";
+    code << ind << "clouds.shapeScale = " << formatFloat(clouds.shapeScale) << ";\n";
+    code << ind << "clouds.shapeFactor = " << formatFloat(clouds.shapeFactor) << ";\n";
+    code << ind << "clouds.erosionFactor = " << formatFloat(clouds.erosionFactor) << ";\n";
+    code << ind << "clouds.erosionScale = " << formatFloat(clouds.erosionScale) << ";\n";
+    code << ind << "clouds.bottomAltitude = " << formatFloat(clouds.bottomAltitude) << ";\n";
+    code << ind << "clouds.altitudeRange = " << formatFloat(clouds.altitudeRange) << ";\n";
+    code << ind << "clouds.earthCurvature = " << formatFloat(clouds.earthCurvature) << ";\n";
+    code << ind << "clouds.windDirection = " << formatFloat(clouds.windDirection) << ";\n";
+    code << ind << "clouds.windSpeed = " << formatFloat(clouds.windSpeed) << ";\n";
+    code << formatTexture(indentSpaces, clouds.weatherMap, "clouds.weatherMap", projectPath);
+    code << ind << "clouds.weatherMapScale = " << formatFloat(clouds.weatherMapScale) << ";\n";
+    code << ind << "clouds.sunLightDimmer = " << formatFloat(clouds.sunLightDimmer) << ";\n";
+    code << ind << "clouds.ambientLightDimmer = " << formatFloat(clouds.ambientLightDimmer) << ";\n";
+    code << ind << "clouds.maxDistance = " << formatFloat(clouds.maxDistance) << ";\n";
+    code << ind << "clouds.qualityOverride = " << formatAtmosphereQualityOverride(clouds.qualityOverride) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "VolumetricCloudsComponent", "clouds", assignExisting);
     return code.str();
 }
 
@@ -2643,6 +2749,8 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::ShadowCaster2DComponent: return createShadowCaster2DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::FogComponent: return createFogComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::MirrorComponent: return createMirrorComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::LocalVolumetricFogComponent: return createLocalVolumetricFogComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::VolumetricCloudsComponent: return createVolumetricCloudsComponent(indentSpaces, scene, entity, projectPath, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::ReflectionProbeComponent: return createReflectionProbeComponent(indentSpaces, scene, entity, projectPath, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::UIDocumentComponent: return createUIDocumentComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::CameraComponent: return createCameraComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
@@ -3069,6 +3177,12 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
     out << "\n";
     out << ind2 << "scene->setBackgroundColor(" << formatVector4(scene->getBackgroundColor()) << ");\n";
     out << ind2 << "scene->setShadowQuality(" << formatShadowQuality(scene->getShadowQuality()) << ");\n";
+    if (scene->getShadowDistance() != SceneSettings().shadowDistance)
+        out << ind2 << "scene->setShadowDistance(" << formatFloat(scene->getShadowDistance()) << ");\n";
+    if (scene->getShadowFadeFraction() != SceneSettings().shadowFadeFraction)
+        out << ind2 << "scene->setShadowFadeFraction(" << formatFloat(scene->getShadowFadeFraction()) << ");\n";
+    if (scene->isShadowCascadeBlend() != SceneSettings().shadowCascadeBlend)
+        out << ind2 << "scene->setShadowCascadeBlend(" << formatBool(scene->isShadowCascadeBlend()) << ");\n";
     out << ind2 << "scene->setMeshLodEnabled(" << formatBool(scene->isMeshLodEnabled()) << ");\n";
     out << ind2 << "scene->setMeshLodThreshold(" << formatFloat(scene->getMeshLodThreshold()) << ");\n";
     out << ind2 << "scene->setDepthPrepassEnabled(" << formatBool(scene->isDepthPrepassEnabled()) << ");\n";

@@ -42,10 +42,12 @@
 #define MAX_SHADOWCASCADES 4
 #endif
 
-// Projective shadow atlas (directional + spot). Each slot holds one 2D depth map
-// (a spot light, or a single directional cascade) and maps 1:1 to a v_lightProjPos
-// vertex varying, so the slot count is bounded by GPU vertex-output limits: keep the
-// grid small (a 6x6 / 36-slot grid overflows the varyings and breaks shader compiles).
+// Projective shadow atlas (directional + spot). Each slot holds one 2D depth map (a spot
+// light, or a single directional cascade) of its own resolution, packed into the atlas by
+// ShadowSlotPlanner. Shaders compute the shadow coordinates in the fragment stage, but forks
+// written before that still write one v_lightProjPos vertex varying per slot (and every slot
+// costs 9 fragment uniform vectors), so keep the count small: a 6x6 / 36-slot count overflows
+// the varyings and breaks such shaders.
 #ifndef SHADOW_ATLAS_COLS
 #define SHADOW_ATLAS_COLS 3
 #endif
@@ -58,9 +60,9 @@
 #define MAX_SHADOW_ATLAS_SLOTS (SHADOW_ATLAS_COLS * SHADOW_ATLAS_ROWS)
 #endif
 
-// Point shadow atlas (omnidirectional). Each shadow-casting point light consumes
-// SHADOW_CUBE_FACES consecutive slots (one per cube face) and is sampled only in the
-// fragment shader, so this atlas is bounded by texture size rather than varyings.
+// Point shadow atlas (omnidirectional), a depth atlas like the projective one. Each
+// shadow-casting point light consumes SHADOW_CUBE_FACES consecutive slots (one per cube face)
+// and is sampled only in the fragment shader, so this atlas is bounded by texture size.
 #ifndef SHADOW_POINT_ATLAS_COLS
 #define SHADOW_POINT_ATLAS_COLS 6
 #endif
@@ -152,6 +154,7 @@
 #include "util/ThreadUtils.h"
 #include "texture/Framebuffer.h"
 #include "ecs/Entity.h"
+#include "render/AtmosphereQuality.h"
 #include <atomic>
 #include <mutex>
 #include <unordered_set>
@@ -169,6 +172,7 @@
     }
 
 namespace jasperengine {
+    class Scheduler;
 
     class JASPERENGINE_API Scene;
 
@@ -220,6 +224,14 @@ namespace jasperengine {
         Failed
     };
 
+    // Project Settings > Player > Threading (project.yaml `threading:`). -1 is Auto.
+    struct ThreadingSettings {
+        int workers = -1;                // job system workers: applies when it starts (next launch)
+        int reservedFrameWorkers = -1;   // workers kept free of Background work: applies live
+        int ioThreads = -1;              // asset reader threads: applies when the reader service starts
+        double webPumpBudgetMs = 4.0;    // single-thread mode: Background work per frame, live
+    };
+
     class JASPERENGINE_API Engine {
     public:
         // draw calls, instances and triangles submitted by the last systemDraw
@@ -263,6 +275,8 @@ namespace jasperengine {
         static double deltatime;
         static double maxDeltatime;
         static float framerate;
+        static double framePeriod;
+        static double frameCpuTime;
         static FrameStats frameStats;
         static FrameStats currentFrameStats;
         
@@ -274,6 +288,8 @@ namespace jasperengine {
         static uint64_t gameFrames;
         static std::atomic<bool> simulationHeld;
         static bool clampNextDelta;
+        // pauseGameEvents: the editor's Pause (and edit mode), which stops the scheduler's game clocks
+        static bool gameEventsPaused;
 
         static std::atomic<bool> viewLoaded;
         static std::atomic<bool> paused;
@@ -282,6 +298,12 @@ namespace jasperengine {
 
         static CursorType mouseCursorType;
         static MouseMode mouseMode;
+
+        // the atmosphere quality tier of each platform group (desktop, mobile, web) and the
+        // game's runtime override, if any
+        static AtmosphereQuality atmosphereQualityDefaults[3];
+        static bool atmosphereQualityOverridden;
+        static AtmosphereQuality atmosphereQualityOverride;
 
         static Semaphore drawSemaphore;
 
@@ -305,6 +327,8 @@ namespace jasperengine {
         // logs once that every scene is loaded and no shader build is pending
         // (JASPERENGINE_READY_SIGNAL set: tools/smoke-test.sh waits for it)
         static void signalReadyOnce();
+        // every scene drawn is loaded (its HTML UI documents too) and no shader build is pending
+        static bool areScenesLoaded();
         static void includeScene(Scene* scene);
         // Copy for iteration outside sceneListMutex: callbacks invoked while iterating are
         // free to add or remove scenes without invalidating the caller's traversal.
@@ -340,6 +364,10 @@ namespace jasperengine {
         static std::vector<Scene*> getSceneLayers();
 
         static void pauseGameEvents(bool pause);
+        static bool areGameEventsPaused();
+        // One frame of the scheduler's Game (scaled), Unscaled and Frames clocks, unless the
+        // game is paused, held or its events are (the editor's Pause). True when they ran.
+        static bool advanceGameClocks(Scheduler& scheduler, double frameTime);
         
         static int getCanvasWidth();
         static int getCanvasHeight();
@@ -396,13 +424,33 @@ namespace jasperengine {
         
         static Platform getPlatform();
         static GraphicBackend getGraphicBackend();
+
+        // Atmosphere quality (volumetric fog and clouds, docs/specs/S12-atmosphere.md): the
+        // project's tier per platform group (Project Settings > Quality; desktop High, mobile
+        // and web Low by default), which a game may override at runtime. getAtmosphereQuality
+        // is the tier in effect: the override, else this platform's default.
+        static void setAtmosphereQualityDefaults(AtmosphereQuality desktop, AtmosphereQuality mobile, AtmosphereQuality web);
+        static AtmosphereQuality getAtmosphereQualityDefault(Platform platform);
+        static AtmosphereQuality getAtmosphereQualityDefault();
+        static void setAtmosphereQuality(AtmosphereQuality quality);
+        static AtmosphereQuality getAtmosphereQuality();
+        // back to the platform default (the editor calls it when Play stops)
+        static void resetAtmosphereQuality();
+        static bool isAtmosphereQualityOverridden();
         static bool isOpenGL();
         static float getFramerate();
         static float getDeltatime();
+        // the last frame's wall-clock period (from the frame before's start to its start) and
+        // the CPU time it took from its start to its submission (the update and the draw,
+        // without the wait to present), seconds: dynamic resolution's frame law reads them
+        static double getFramePeriod();
+        static double getFrameCpuTime();
 
         static void beginFrameStats();
         static void addDrawStats(uint32_t instances, uint64_t triangles);
         static const FrameStats& getFrameStats();
+        // the draws submitted so far in the frame being drawn (a pass's own count: before and after)
+        static uint32_t getPendingDrawCalls();
 
         // Upper bound (in seconds) for the value returned by getDeltatime() and used by the update loop. Default 0.25.
         static float getMaxDeltatime();
@@ -446,8 +494,17 @@ namespace jasperengine {
         // inside systemDraw(): scenes are updating, a stack must not be torn down
         static bool isFrameRunning();
 
+        // The most workers Background (asset) jobs may occupy at once: the job system's gate,
+        // changed live. 0 returns to the reserve-derived maximum.
         static void setMaxResourceLoadingThreads(size_t maxThreads);
+        // Asset jobs queued or running, queued reads included: 0 only once loading is idle.
         static size_t getQueuedResourceCount();
+
+        // Starts the job system and the asset reader service with these settings when they
+        // are not running yet; once running, the reserve and the pump budget apply live and
+        // the thread counts on the next launch. The generated game main calls it first.
+        static void setThreadingSettings(const ThreadingSettings& settings);
+        static const ThreadingSettings& getThreadingSettings();
 
         static void setFramebuffer(Framebuffer* framebuffer);
         static Framebuffer* getFramebuffer();
@@ -459,6 +516,8 @@ namespace jasperengine {
         // Callbacks scripts left on a scene's components. Needed before the code behind them
         // goes away, like the editor unloading the project library
         static void clearComponentSubscriptions(Scene* scene);
+        // Deprecated (kept one release for C++ glue generated before owner keys): scans every
+        // event for tags containing substring. Use SubscriptionOwnerIndex::releaseOwner.
         static void removeSubscriptionsByTag(const std::string& substring);
 
 #ifdef JASPERENGINE_EDITOR
@@ -483,6 +542,10 @@ namespace jasperengine {
             // the scene's post-processing applies to the camera (the Game view; the Scene view
             // has it off unless its display setting turns it on)
             bool postProcessing = true;
+            // draws without the volumetric clouds (the Scene view's Clouds toggle)
+            bool disableClouds = false;
+            // the atmosphere quality the view previews (the Game view's; -1 the project's)
+            int atmosphereQuality = -1;
         };
 
         // Draws a secondary view: the editor's Scene view while the game plays, or its

@@ -342,6 +342,11 @@ void ObjectManager::destroyImmediate(Scene* scene, Entity entity) {
     if (!scene || entity == NULL_ENTITY || !scene->isEntityCreated(entity)) {
         return;
     }
+    // inside a dispatch loop (StructuralDeferScope) it goes when the loop is done
+    if (scene->isStructuralDeferActive()) {
+        scene->destroyHierarchy(entity);
+        return;
+    }
     destroyNow(scene, {entity});
 }
 

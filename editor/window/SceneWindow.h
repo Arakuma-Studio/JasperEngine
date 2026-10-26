@@ -18,6 +18,7 @@ namespace jasperengine::editor {
 
     class SceneWindow {
     private:
+        bool sceneScriptMenuPending = false;   // a short right click opens the editor scripts' Scene view menu
         Project* project;
         bool windowFocused;
 
@@ -37,6 +38,8 @@ namespace jasperengine::editor {
         std::map<uint32_t, int> width;
         std::map<uint32_t, int> height;
         std::map<uint32_t, ImVec2> framebufferScale;
+        // The view's rect in the editor window's client area (x, y, width, height), last frame
+        std::map<uint32_t, ImVec4> viewRect;
         std::map<uint32_t, float> canvasDpiScale;
 
         std::map<uint32_t, bool> hasNotification;
@@ -54,6 +57,8 @@ namespace jasperengine::editor {
         // Prefab Mode's bar over its Scene view: breadcrumbs, Save, Auto Save, Context
         // (PrefabStageBar.cpp)
         void drawPrefabStageBar(SceneProject& sceneProject);
+        // a scene, prefab or project.yaml another program changed on disk: Reload / Keep Mine (S05)
+        void drawExternalChangeBar(SceneProject& sceneProject);
         std::string getPrefabStageWindowTitle(const SceneProject& sceneProject) const;
         // Leaves Prefab Mode down to `depth` stages, asking to save (deferred to the next frame)
         void requestExitPrefabStages(size_t depth);
@@ -118,6 +123,9 @@ namespace jasperengine::editor {
         bool viewThroughCamera(uint32_t sceneId, Entity cameraEntity);
         void stopViewingCamera(uint32_t sceneId);
 
+        // Where the scene's view sits in the editor window (client-area pixels, as the OS
+        // pointer sees them): false before it was drawn
+        bool getViewRect(uint32_t sceneId, float& x, float& y, float& w, float& h) const;
         int getWidth(uint32_t sceneId) const;
         int getHeight(uint32_t sceneId) const;
         float getOverlayScale(uint32_t sceneId) const;

@@ -5,6 +5,7 @@
 // removed branches back, prefab order placement, and the Play-mode prefab factories.
 
 #include "Project.h"
+#include "util/FileUtils.h"
 #include "ProjectPrefabInternal.h"
 #include "Factory.h"
 #include "Out.h"
@@ -100,6 +101,8 @@ namespace jasperengine::editor::prefabinternal {
         switch (a.type) {
             case PropertyType::Bool: return *static_cast<bool*>(a.ref) == *static_cast<bool*>(b.ref);
             case PropertyType::String: return *static_cast<std::string*>(a.ref) == *static_cast<std::string*>(b.ref);
+            case PropertyType::Asset: return *static_cast<AssetRef*>(a.ref) == *static_cast<AssetRef*>(b.ref);
+            case PropertyType::Shader: return *static_cast<ShaderRef*>(a.ref) == *static_cast<ShaderRef*>(b.ref);
             case PropertyType::Float: return *static_cast<float*>(a.ref) == *static_cast<float*>(b.ref);
             case PropertyType::Double: return *static_cast<double*>(a.ref) == *static_cast<double*>(b.ref);
             case PropertyType::Vector2: return *static_cast<Vector2*>(a.ref) == *static_cast<Vector2*>(b.ref);
@@ -193,6 +196,11 @@ namespace jasperengine::editor::prefabinternal {
             }
             Catalog::copyPropertyValue(from.registry.get(), from.entity, target, entity, type, *it);
             ++it;
+        }
+        // prefab override applied: a change of the component (the whole-component path is
+        // stamped by Stream::decodeComponents)
+        if (!names.empty()) {
+            Catalog::markChanged(target, entity, type);
         }
     }
 
@@ -724,9 +732,17 @@ bool editor::Project::isPrefabRootDefaultOverride(ComponentType type, const std:
 
 bool editor::Project::readPrefabFile(const std::filesystem::path& filepath, Prefab& prefab) {
     try {
-        const YAML::Node node = loadPrefabFile(getProjectPath() / filepath);
-        std::string rootName = filepath.stem().string();
-        prefab.loadRegistry(node, rootName.empty() ? std::string("Prefab") : rootName);
+        // what the asset's file holds that this editor cannot read gates its saves
+        LoadReport loadReport;
+        loadReport.documentPath = FileUtils::pathToUtf8(filepath);
+        {
+            ScopedLoadReport reportScope(loadReport);
+            const YAML::Node node = loadPrefabFile(getProjectPath() / filepath, &prefab.diskSha1);
+            std::string rootName = filepath.stem().string();
+            prefab.loadRegistry(node, rootName.empty() ? std::string("Prefab") : rootName);
+        }
+        prefab.loadReport = std::move(loadReport);
+        logLoadReport(prefab.loadReport);
         resolveRegistryPrefabRefs(prefab.registry.get());
         if (prefab.root == NULL_ENTITY) {
             Out::error("Prefab %s has no GameObject", filepath.string().c_str());

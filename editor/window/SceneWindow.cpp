@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneWindow.h"
+#include "util/EditorScripts.h"
+#include "DocumentFile.h"
 #include "util/BidiText.h"
 #include "imgui_internal.h"
 
@@ -9,6 +11,7 @@
 #include "Input.h"
 #include "external/IconsFontAwesome6.h"
 #include "Backend.h"
+#include "subsystem/RenderSystem.h"
 #include "util/Util.h"
 #include "util/EntityPayload.h"
 #include "command/CommandHandle.h"
@@ -358,7 +361,10 @@ std::string editor::SceneWindow::getWindowTitle(const SceneProject& sceneProject
         icon = ICON_FA_WINDOW_RESTORE + std::string("  ");
     }
     // everything before "###" is drawn, the id after it keeps docking state stable
-    return icon + BidiText::toVisual(sceneProject.name) + ((project->hasSceneUnsavedChanges(sceneProject.id)) ? " *" : "") + "###Scene" + std::to_string(sceneProject.id);
+    // a scene whose load dropped values (docs/data-safety.md): its saves ask first
+    const bool partial = sceneProject.loadReport.dropped() > 0;
+    return icon + BidiText::toVisual(sceneProject.name) + (partial ? " (Partial Load)" : "") +
+        ((project->hasSceneUnsavedChanges(sceneProject.id)) ? " *" : "") + "###Scene" + std::to_string(sceneProject.id);
 }
 
 Vector3 editor::SceneWindow::getModelDropPosition(SceneProject* sceneProject, float x, float y, Entity hitEntity) {
@@ -603,7 +609,7 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                         // Cache the decoded material — only reload when the path changes
                                         if (cachedDragPath != droppedRelativePath) {
                                             fs::path materialPath = project->getProjectPath() / droppedRelativePath;
-                                            YAML::Node materialNode = YAML::LoadFile(materialPath.string());
+                                            YAML::Node materialNode = DocumentFiles::read(materialPath, DocumentKind::Material).root;
                                             cachedDragMaterial = Stream::decodeMaterial(materialNode);
                                             cachedDragMaterial.name = fs::path(droppedRelativePath).lexically_normal().generic_string();
                                             cachedDragPath = droppedRelativePath;
@@ -967,6 +973,11 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
     ImVec2 windowPos = ImGui::GetWindowPos();
     ImVec2 windowSize = ImGui::GetWindowSize();
     ImGuiIO& io = ImGui::GetIO();
+    {
+        // relative to the main window (ImGui positions are screen positions with viewports on)
+        const ImVec2 origin = ImGui::GetMainViewport()->Pos;
+        viewRect[sceneProject->id] = ImVec4(windowPos.x - origin.x, windowPos.y - origin.y, windowSize.x, windowSize.y);
+    }
     float mouseWheel = io.MouseWheel;
     ImVec2 mousePos = io.MousePos;
     ImVec2 mouseDelta = io.MouseDelta;
@@ -1030,7 +1041,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         handPanEnabled || 
         sceneProject->sceneRender->isTerrainEditing() ||
         gizmoSideActive ||
-        sceneProject->sceneType != SceneType::SCENE_3D && ImGui::IsKeyDown(ImGuiKey_Space);
+        (sceneProject->sceneType != SceneType::SCENE_3D && ImGui::IsKeyDown(ImGuiKey_Space));
 
     if (isMouseInWindow){
 
@@ -1447,7 +1458,22 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         if (ImGui::IsMouseReleased(ImGuiMouseButton_Right) && lookActive[sceneId]) {
             io.AddMousePosEvent(lookReturnPos[sceneId].x, lookReturnPos[sceneId].y);
             lookActive[sceneId] = false;
+            // a short right click (no look): the editor scripts' SceneView/... items (S23)
+            if (io.MouseDownDurationPrev[ImGuiMouseButton_Right] < 0.25f && !EditorScripts::get().itemsFor("sceneview").empty()) {
+                sceneScriptMenuPending = true;
+            }
         }
+    }
+    if (sceneScriptMenuPending && !ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+        sceneScriptMenuPending = false;
+        ImGui::OpenPopup("##SceneViewScriptMenu");
+    }
+    if (ImGui::BeginPopup("##SceneViewScriptMenu")) {
+        EditorMenuRunContext scriptContext;
+        scriptContext.sceneId = sceneId;
+        for (Entity selected : project->getSelectedEntities(sceneId)) scriptContext.selection.push_back(selected);
+        EditorScripts::get().drawContextItems("sceneview", {}, scriptContext);
+        ImGui::EndPopup();
     }
 
     // Focus loss clears the buttons without reporting a release, and the Alt+LMB term
@@ -1937,7 +1963,22 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         if (sceneProject.sceneType == SceneType::SCENE_3D) {
             drawSettingRow(ICON_FA_CLONE " Disable face culling", sceneProject.displaySettings.disableFaceCulling);
         }
+        if (sceneProject.sceneType == SceneType::SCENE_3D) {
+            // the shadow debug views (editor only, not saved; MCP shadows_debug_view)
+            static const char* const debugViews[] = {"None", "Cascades", "Shadow Factor", "Texel Density", "Cache", "Atlas"};
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("%s", ICON_FA_CIRCLE_HALF_STROKE " Shadow debug");
+            ImGui::TableSetColumnIndex(1);
+            int view = static_cast<int>(sceneProject.scene->getShadowDebugView());
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::Combo("##ShadowDebugView", &view, debugViews, IM_ARRAYSIZE(debugViews))) {
+                sceneProject.scene->setShadowDebugView(static_cast<ShadowDebugView>(view));
+                sceneProject.needUpdateRender = true;
+            }
+        }
         drawSettingRow(ICON_FA_SMOG " Disable fog", sceneProject.displaySettings.disableFog);
+        drawSettingRow(ICON_FA_CLOUD " Disable clouds", sceneProject.displaySettings.disableClouds);
         if (sceneProject.sceneType != SceneType::SCENE_UI) {
             drawSettingRow(ICON_FA_WAND_MAGIC_SPARKLES " Show post-processing", sceneProject.displaySettings.showPostProcessing);
         }
@@ -2159,6 +2200,7 @@ void editor::SceneWindow::show() {
             if (isStage) {
                 drawPrefabStageBar(sceneProject);
             }
+            drawExternalChangeBar(sceneProject);
 
             // Scene view toolbar (Unity style): view-specific controls only. Play and the
             // transform tools live in the main toolbar. Full-height buttons vertically
@@ -2332,7 +2374,23 @@ void editor::SceneWindow::show() {
                     drawList->AddRect(ImVec2(imageMin.x + frameInset, imageMin.y + frameInset), ImVec2(imageMax.x - frameInset, imageMax.y - frameInset), IM_COL32(255, 219, 51, 235), 0.0f, 0, Theme::dpi(2.0f));
                 } else {
                     // Black until the first render creates the framebuffer.
+                    const ImVec2 canvasMin = ImGui::GetCursorScreenPos();
                     Widgets::image(previewTex, canvasAvail, IM_COL32(0, 0, 0, 255));
+
+                    // the Atlas shadow debug view: the shadow atlases over the bottom-left corner
+                    if (sceneProject.sceneType == SceneType::SCENE_3D && sceneProject.scene->getShadowDebugView() == ShadowDebugView::ATLAS) {
+                        if (TextureRender* atlas = sceneProject.scene->getSystem<RenderSystem>()->getShadowAtlasDebugTexture()) {
+                            const float atlasWidth = std::min(canvasAvail.x, (float)atlas->getWidth());
+                            const float atlasHeight = atlasWidth * (float)atlas->getHeight() / std::max((float)atlas->getWidth(), 1.0f);
+                            const ImVec2 pMin(canvasMin.x, canvasMin.y + canvasAvail.y - atlasHeight);
+                            const ImVec2 pMax(canvasMin.x + atlasWidth, canvasMin.y + canvasAvail.y);
+                            // GL stores render targets bottom-up
+                            const bool flip = Engine::isOpenGL();
+                            ImGui::GetWindowDrawList()->AddImage(Backend::getImGuiTexture(atlas), pMin, pMax,
+                                                                 ImVec2(0.0f, flip ? 1.0f : 0.0f), ImVec2(1.0f, flip ? 0.0f : 1.0f));
+                            sceneProject.needUpdateRender = true;
+                        }
+                    }
                 }
 
                 const bool transitioning = sceneProject.playState == ScenePlayState::SAVING
@@ -2419,6 +2477,18 @@ void editor::SceneWindow::toEngineCanvas(uint32_t sceneId, float& x, float& y) c
     ImVec2 scale = canvasEngineScale(sceneId);
     x *= scale.x;
     y *= scale.y;
+}
+
+bool editor::SceneWindow::getViewRect(uint32_t sceneId, float& x, float& y, float& w, float& h) const {
+    auto it = viewRect.find(sceneId);
+    if (it == viewRect.end()) {
+        return false;
+    }
+    x = it->second.x;
+    y = it->second.y;
+    w = it->second.z;
+    h = it->second.w;
+    return true;
 }
 
 int editor::SceneWindow::getWidth(uint32_t sceneId) const{

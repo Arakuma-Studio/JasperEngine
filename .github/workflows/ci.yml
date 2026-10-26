@@ -4,6 +4,12 @@ name: CI
 # the free tier. Windows and macOS runners bill at 2x and 10x, so they only run
 # on demand: the "Run workflow" button, pull requests into main, v* tags, and
 # published releases.
+#
+# The test jobs (unit, sanitizers, htmlui, e2e, web) run on every push and pull
+# request, in the same Docker images and through the same tools/build.sh targets
+# as the build servers, so a failure reproduces with one command (docs/testing.md).
+# The branch protection of main requires all five. Slower suites run nightly
+# (.github/workflows/nightly.yml).
 on:
   push:
     # '**' and not '*': a single star stops at '/', so fix/x never builds.
@@ -12,6 +18,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      check_release_tag:
+        description: "Dry run of the release job's tag check against this tag (e.g. v1.2.3-bad)"
+        required: false
+        default: ''
   release:
     types: [published]
 
@@ -31,7 +42,241 @@ env:
   LAUNCHERS: -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
 jobs:
-  # ---------------------------------------------------------------- Linux ---
+  # ---------------------------------------------------------------- Tests ---
+  # Each test job builds its image with the GitHub Actions layer cache, hands it to
+  # tools/build.sh as JASPER_DOCKER_IMAGE, and keeps its ccache between runs.
+  unit:
+    name: Unit tests (GCC, warnings as errors)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      JASPER_DOCKER_IMAGE: jasperengine/linux-build:ci
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the Linux image
+        uses: docker/build-push-action@v6
+        with:
+          context: docker
+          file: docker/linux.Dockerfile
+          tags: jasperengine/linux-build:ci
+          load: true
+          cache-from: type=gha,scope=linux-image
+          cache-to: type=gha,scope=linux-image,mode=max
+
+      - uses: actions/cache@v4
+        with:
+          path: build/.cache/ccache
+          key: ccache-unit-${{ github.sha }}
+          restore-keys: ccache-unit-
+
+      - name: Limit the compiler cache
+        run: mkdir -p build/.cache/ccache && echo "max_size = 1.5G" > build/.cache/ccache/ccache.conf
+
+      - name: Third-party notices
+        run: python3 tools/ci/check-notices.py
+
+      - name: Gate and notice checker self-tests
+        run: |
+          python3 tools/ci/test_gtest_gate.py
+          python3 tools/ci/test_check_notices.py
+
+      # AGENTS.md, CLAUDE.md and .claude/rules name paths and build targets that exist (S31 R27)
+      - name: Contributor docs for agents
+        run: python3 tools/check_agent_docs.py
+
+      # docs/data-safety.md: every file write goes through AtomicFile (S03 AC9), and the
+      # known-key tables of editor/StreamSchema.cpp list what each decoder reads (S03 AC12)
+      - name: Data-safety lints
+        run: |
+          python3 tools/check_raw_writes.py --self-test
+          python3 tools/check_raw_writes.py
+          python3 tools/check_stream_keys.py
+
+      - name: CMake presets and option errors
+        run: tools/build.sh exec linux tools/ci/check-presets.sh
+
+      - name: Build and run jasperengine-core-tests and jasperengine-editor-tests
+        run: |
+          set -o pipefail
+          mkdir -p build/test-results
+          WERROR=1 tools/build.sh unit-tests 2>&1 | tee build/test-results/unit-build.log
+
+      - name: Warnings
+        if: always()
+        run: python3 tools/ci/warning-summary.py build/test-results/unit-build.log >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-unit
+          path: build/test-results/**
+          if-no-files-found: warn
+
+  sanitizers:
+    name: Unit tests (ASan + UBSan)
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      JASPER_DOCKER_IMAGE: jasperengine/linux-build:ci
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the Linux image
+        uses: docker/build-push-action@v6
+        with:
+          context: docker
+          file: docker/linux.Dockerfile
+          tags: jasperengine/linux-build:ci
+          load: true
+          cache-from: type=gha,scope=linux-image
+          cache-to: type=gha,scope=linux-image,mode=max
+
+      - uses: actions/cache@v4
+        with:
+          path: build/.cache/ccache
+          key: ccache-sanitizers-${{ github.sha }}
+          restore-keys: ccache-sanitizers-
+
+      - name: Limit the compiler cache
+        run: mkdir -p build/.cache/ccache && echo "max_size = 1.5G" > build/.cache/ccache/ccache.conf
+
+      # GPU suites included: the binaries run under Xvfb on Mesa (tools/sanitizers/lsan.supp)
+      - name: Build and run the unit tests under ASan and UBSan
+        run: SANITIZE=address,undefined tools/build.sh unit-tests
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-sanitizers
+          path: build/test-results/**
+          if-no-files-found: warn
+
+  htmlui:
+    name: HTML UI tests (OpenGL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      JASPER_DOCKER_IMAGE: jasperengine/linux-build:ci
+      # the performance tests' targets on a shared 4-vCPU runner (compat/PerfFixtures.h)
+      JASPER_HTMLUI_PERF_SLACK: '3'
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the Linux image
+        uses: docker/build-push-action@v6
+        with:
+          context: docker
+          file: docker/linux.Dockerfile
+          tags: jasperengine/linux-build:ci
+          load: true
+          cache-from: type=gha,scope=linux-image
+          cache-to: type=gha,scope=linux-image,mode=max
+
+      - uses: actions/cache@v4
+        with:
+          path: build/.cache/ccache
+          key: ccache-htmlui-${{ github.sha }}
+          restore-keys: ccache-htmlui-
+
+      - name: Limit the compiler cache
+        run: mkdir -p build/.cache/ccache && echo "max_size = 1G" > build/.cache/ccache/ccache.conf
+
+      - name: Build and run jasperengine-htmlui-tests
+        run: tools/build.sh htmlui-tests
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-htmlui
+          path: build/test-results/**
+          if-no-files-found: warn
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: golden-diffs-htmlui
+          path: build/linux/htmlui-tests-glcore/tests/htmlui/htmlui-test-output/**
+          if-no-files-found: ignore
+
+  e2e:
+    name: End to end (editor, MCP, smoke test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      JASPER_DOCKER_IMAGE: jasperengine/linux-build:ci
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # git describe for the editor version, as the packaging job
+          fetch-depth: 0
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the Linux image
+        uses: docker/build-push-action@v6
+        with:
+          context: docker
+          file: docker/linux.Dockerfile
+          tags: jasperengine/linux-build:ci
+          load: true
+          cache-from: type=gha,scope=linux-image
+          cache-to: type=gha,scope=linux-image,mode=max
+
+      - uses: actions/cache@v4
+        with:
+          path: build/.cache/ccache
+          key: ccache-e2e-${{ github.sha }}
+          restore-keys: ccache-e2e-
+
+      - name: Limit the compiler cache
+        run: mkdir -p build/.cache/ccache && echo "max_size = 1.5G" > build/.cache/ccache/ccache.conf
+
+      - name: Build the editor and the engine sample project
+        run: |
+          set -o pipefail
+          mkdir -p build/test-results
+          WERROR=1 tools/build.sh linux 2>&1 | tee build/test-results/linux-build.log
+
+      - name: Warnings
+        if: always()
+        run: python3 tools/ci/warning-summary.py build/test-results/linux-build.log >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Third-party notices in the install
+        run: python3 tools/ci/check-notices.py --installed build/linux/editor-install/bin
+
+      - name: HTML UI editor tests
+        run: tools/build.sh htmlui-editor-tests
+
+      - name: MCP tests (the CI suite)
+        run: MCP_SUITE=ci tools/build.sh mcp-tests -j 2
+
+      - name: Smoke test (export, build, run; OpenGL)
+        run: tools/smoke-test.sh tools/fixtures/post-processing
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-e2e
+          path: build/test-results/**
+          if-no-files-found: warn
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-e2e
+          path: |
+            build/smoke/*.png
+            build/smoke/*.log
+          if-no-files-found: ignore
+
+  # ------------------------------------------------------------- Packages ---
   # Skipped on pull_request: the branch's push run already built the same
   # commit, and its checks show on the pull request.
   linux:
@@ -81,6 +326,17 @@ jobs:
 
       - name: Set version
         run: echo "JASPERENGINE_VERSION=$(git describe --tags --match 'v[0-9]*' --always --dirty)" >> "$GITHUB_ENV"
+
+      # The portable C++20 subset (docs/specs/S01-cxx20.md, D7), the file pollers the watcher
+      # replaced (S05 AC22), the compiler floors and the one-standard check of
+      # engine/cmake/JasperEngineToolchain.cmake
+      - name: Check C++ standard and toolchain rules
+        run: |
+          python3 tools/check-cxx-subset.py
+          python3 tools/check-pollers.py --self-test
+          python3 tools/check-pollers.py
+          cmake -P tools/tests/check_toolchain_floor.cmake
+          cmake -P tools/tests/cxx-standard-check/run.cmake
 
       - name: Build editor
         run: |
@@ -210,30 +466,60 @@ jobs:
           if-no-files-found: error
 
   # ------------------------------------------------------------------ Web ---
+  # The engine sample project built in the web image, then run in its headless
+  # Chrome (tools/web/browser_gate.py): no console error, the ready line, the
+  # centre pixel and cross-origin isolation as tools/web/gates/sample-project.json
   web:
-    name: Web (Emscripten)
-    if: github.event_name != 'pull_request'
+    name: Web (Emscripten, browser gate)
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      JASPER_DOCKER_IMAGE: jasperengine/web-build:ci
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - uses: docker/setup-buildx-action@v3
 
-      - uses: emscripten-core/setup-emsdk@v16
+      - name: Build the web image
+        uses: docker/build-push-action@v6
         with:
-          version: 6.0.10
+          context: docker
+          file: docker/web.Dockerfile
+          tags: jasperengine/web-build:ci
+          load: true
+          cache-from: type=gha,scope=web-image
+          cache-to: type=gha,scope=web-image,mode=max
 
-      - uses: hendrikmuhs/ccache-action@v1.2
+      - uses: actions/cache@v4
         with:
-          key: web
-          max-size: 1G
+          path: build/.cache/ccache
+          key: ccache-web-${{ github.sha }}
+          restore-keys: ccache-web-
+
+      - name: Limit the compiler cache
+        run: mkdir -p build/.cache/ccache && echo "max_size = 1G" > build/.cache/ccache/ccache.conf
+
+      - name: Web presets and option errors
+        run: tools/build.sh exec web tools/ci/check-presets.sh web
 
       - name: Build engine sample project
-        run: |
-          emcmake cmake -S engine -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug $LAUNCHERS
-          cmake --build build --target "$ENGINE_TARGET"
+        run: tools/build.sh web
+
+      - name: Browser gate
+        run: tools/build.sh web-gate
+
+      - name: Build the core utilities gate project (logger, Lua Timer)
+        run: WEB_PROJECT=core-utilities tools/build.sh web
+
+      - name: Browser gate, core utilities
+        run: GATE=core-utilities tools/build.sh web-gate
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-web
+          path: build/test-results/**
+          if-no-files-found: warn
 
   # -------------------------------------------------------------- Android ---
   android:
@@ -304,27 +590,62 @@ jobs:
       - name: Set version
         run: echo "JASPERENGINE_VERSION=$(git describe --tags --match 'v[0-9]*' --always --dirty)" >> "$GITHUB_ENV"
 
+      # JASPERENGINE_TESTS adds jasperengine-editor-tests and jasperengine-core-tests, run below
+      # without their GPU suites (those run on Linux). The editor tree has its warnings on; the
+      # engine tree gets them here, and the summary counts them (docs/testing.md, "Warnings").
       - name: Build editor
         run: |
+          set -o pipefail
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl \
-            -DJASPERENGINE_EDITOR_VERSION:STRING="$JASPERENGINE_VERSION" \
+            -DJASPERENGINE_EDITOR_VERSION:STRING="$JASPERENGINE_VERSION" -DJASPERENGINE_TESTS=ON \
             -DCMAKE_INSTALL_PREFIX:PATH=instdir $LAUNCHERS
-          cmake --build build --target "$EDITOR_TARGET" "$EDITOR_TARGET-cmd"
+          cmake --build build --target "$EDITOR_TARGET" "$EDITOR_TARGET-cmd" jasperengine-editor-tests 2>&1 | tee build-editor.log
           cmake --install build --strip
 
       # Release, not Debug: MSVC debug builds write PDBs, which ccache cannot cache.
-      - name: Build engine sample project (OpenGL)
+      - name: Build engine sample project (OpenGL) and the core tests
         run: |
+          set -o pipefail
           cmake -S engine -B build-engine-gl -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl $LAUNCHERS
-          cmake --build build-engine-gl --target "$ENGINE_TARGET"
+            -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DJASPERENGINE_TESTS=ON -DJASPERENGINE_WARNINGS=ON $LAUNCHERS
+          cmake --build build-engine-gl --target "$ENGINE_TARGET" jasperengine-core-tests 2>&1 | tee build-engine.log
+
+      - name: Unit tests (CPU suites)
+        run: |
+          mkdir -p build/test-results
+          status=0
+          build-engine-gl/tests/core/jasperengine-core-tests.exe --gtest_filter=-*Gpu* \
+            --gtest_output=xml:build/test-results/core-windows.xml || status=1
+          build/jasperengine-editor-tests.exe --gtest_filter=-*Gpu* \
+            --gtest_output=xml:build/test-results/editor-windows.xml || status=1
+          python tools/ci/gtest-gate.py --xml build/test-results/core-windows.xml --max-skipped 0 || status=1
+          python tools/ci/gtest-gate.py --xml build/test-results/editor-windows.xml --max-skipped 0 || status=1
+          exit $status
+
+      # jasperengine-editor call --help / --dry-run need no editor (S31 AC15)
+      - name: Call CLI without an editor
+        run: python tools/ci/check-call-cli.py instdir
+
+      - name: Warnings
+        if: always()
+        run: python tools/ci/warning-summary.py build-editor.log build-engine.log >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Third-party notices in the install
+        run: python tools/ci/check-notices.py --installed instdir/bin
 
       - name: Build engine sample project (Vulkan)
         run: |
           cmake -S engine -B build-engine-vk -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DGRAPHIC_BACKEND=vulkan $LAUNCHERS
           cmake --build build-engine-vk --target "$ENGINE_TARGET"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-windows
+          path: build/test-results/**
+          if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v4
         with:
@@ -359,13 +680,15 @@ jobs:
       - name: Set version
         run: echo "JASPERENGINE_VERSION=$(git describe --tags --match 'v[0-9]*' --always --dirty)" >> "$GITHUB_ENV"
 
+      # JASPERENGINE_TESTS adds jasperengine-editor-tests, run below without its GPU suites
       - name: Build editor
         run: |
+          set -o pipefail
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DJASPERENGINE_EDITOR_VERSION:STRING="$JASPERENGINE_VERSION" \
+            -DJASPERENGINE_EDITOR_VERSION:STRING="$JASPERENGINE_VERSION" -DJASPERENGINE_TESTS=ON \
             -DCMAKE_INSTALL_PREFIX:PATH=instdir \
             -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" $LAUNCHERS
-          cmake --build build --target "$EDITOR_TARGET"
+          cmake --build build --target "$EDITOR_TARGET" jasperengine-editor-tests 2>&1 | tee build-editor.log
           cmake --install build --strip
 
       - name: Package the macOS app
@@ -410,6 +733,9 @@ jobs:
             exit 1
           fi
           chmod +x dist/macos-zip/jasperengine-editor
+          # the third-party notices the bundle carries in Resources
+          cp "$APP/Contents/Resources/NOTICE.md" "$APP/Contents/Resources/LICENSE" dist/macos-zip/
+          cp -R "$APP/Contents/Resources/licenses" dist/macos-zip/licenses
           for dylib in dist/macos-zip/*.dylib; do
             [ -e "$dylib" ] && codesign --force --sign - --timestamp=none "$dylib"
           done
@@ -423,10 +749,39 @@ jobs:
           rm -rf dmg-stage
           ls -la dist dist/macos-zip
 
-      - name: Build engine sample project
+      - name: Build engine sample project and the core tests
         run: |
-          cmake -S engine -B build-engine -G Ninja -DCMAKE_BUILD_TYPE=Debug $LAUNCHERS
-          cmake --build build-engine --target "$ENGINE_TARGET"
+          set -o pipefail
+          cmake -S engine -B build-engine -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+            -DJASPERENGINE_TESTS=ON -DJASPERENGINE_WARNINGS=ON $LAUNCHERS
+          cmake --build build-engine --target "$ENGINE_TARGET" jasperengine-core-tests 2>&1 | tee build-engine.log
+
+      - name: Unit tests (CPU suites)
+        run: |
+          mkdir -p build/test-results
+          status=0
+          build-engine/tests/core/jasperengine-core-tests --gtest_filter=-*Gpu* \
+            --gtest_output=xml:build/test-results/core-macos.xml || status=1
+          build/jasperengine-editor-tests --gtest_filter=-*Gpu* \
+            --gtest_output=xml:build/test-results/editor-macos.xml || status=1
+          python3 tools/ci/gtest-gate.py --xml build/test-results/core-macos.xml --max-skipped 0 || status=1
+          python3 tools/ci/gtest-gate.py --xml build/test-results/editor-macos.xml --max-skipped 0 || status=1
+          exit $status
+
+      # jasperengine-editor call --help / --dry-run need no editor (S31 AC15)
+      - name: Call CLI without an editor
+        run: python3 tools/ci/check-call-cli.py dist/macos-zip/jasperengine-editor
+
+      - name: Warnings
+        if: always()
+        run: python3 tools/ci/warning-summary.py build-editor.log build-engine.log >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-macos
+          path: build/test-results/**
+          if-no-files-found: ignore
 
       - name: Build Xcode project (macOS, iOS simulator)
         working-directory: engine/workspaces/xcode
@@ -465,6 +820,17 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      # vX.Y[.Z], and git describe of the built commit is that tag: the version every binary
+      # was stamped with (CMakeLists.txt), so nothing ships under another name
+      - name: Check the release tag
+        env:
+          VERSION: ${{ github.event.release.tag_name }}
+        run: tools/ci/check-release-tag.sh "$VERSION" "$GITHUB_SHA"
+
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -494,3 +860,20 @@ jobs:
           ls -la release
           # --clobber so re-running the workflow on a release replaces the assets.
           gh release upload "$VERSION" release/* --clobber --repo "$GITHUB_REPOSITORY"
+
+  # The release job's tag check on demand ("Run workflow" with check_release_tag), to try it
+  # against a tag without publishing a release
+  release-tag-check:
+    name: Release tag check (dry run)
+    if: github.event_name == 'workflow_dispatch' && inputs.check_release_tag != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Check the tag against the dispatched commit
+        env:
+          VERSION: ${{ inputs.check_release_tag }}
+        run: tools/ci/check-release-tag.sh "$VERSION" "$GITHUB_SHA"

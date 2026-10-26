@@ -4,10 +4,12 @@
 #pragma once
 
 #include "imgui.h"
+#include "json.hpp"
 
 #include "EditorHost.h"
 #include "PlatformMenu.h"
 #include "Project.h"
+#include "command/UndoTimeline.h"
 
 #include "window/InspectorWindow.h"
 #include "window/HierarchyWindow.h"
@@ -18,14 +20,18 @@
 #include "window/CodeEditor.h"
 #include "window/AnimationWindow.h"
 #include "window/TerrainEditWindow.h"
+#include "window/SystemsWindow.h"
+#include "window/AssetPanels.h"
 #include "window/GameWindow.h"
 #include "window/MainToolbar.h"
+#include "window/StatusBar.h"
 #include "window/PlayInput.h"
 
 #include "window/LoadingWindow.h"
 
 #include "window/dialog/ProjectSaveDialog.h"
 #include "window/dialog/SceneSaveDialog.h"
+#include "window/dialog/DataSafetyDialogs.h"
 #include "window/dialog/ExportWindow.h"
 #include "window/dialog/EditorSettingsWindow.h"
 #include "window/dialog/ProjectSettingsWindow.h"
@@ -52,6 +58,12 @@ namespace jasperengine::editor::mcp {
 }
 
 namespace jasperengine::editor{
+
+    class JobsMemoryWindow;
+    class ProfilerWindow;
+    class FrameDebuggerWindow;
+    class UndoHistoryWindow;
+    class PlayModeChangesWindow;
 
     // A dialog waiting for an answer, as MCP reports it to agents (App::getOpenDialog)
     struct EditorDialogInfo {
@@ -96,9 +108,9 @@ namespace jasperengine::editor{
     private:
         Project project;
 
-        std::mutex mainThreadTaskMutex;
-        std::queue<std::function<void()>> mainThreadTasks;
         std::thread::id mainThreadId;
+        // the editor scheduler's Real clock
+        std::chrono::steady_clock::time_point lastSchedulerTime{};
 
         // Whether engineRender() drew a scene this frame, and a wake callback the
         // backend loop uses to decide when it can idle.
@@ -127,8 +139,15 @@ namespace jasperengine::editor{
         float footerDeltaMs = 0.0f;
 
         bool benchmarkEnabled = false;
+        std::vector<float> frameTimes;
         bool benchmarkExit = false;
         bool benchmarkFailed = false;
+        // `mcp --project` on a project another editor holds: project_locked, exit code 3
+        int startupExitCode = 0;
+        // the window title: the project's name, then " - Level1.scene (Partial Load)" while the
+        // scene shown did not load completely
+        std::string windowTitleProject;
+        std::string windowTitleSuffix;
         bool benchmarkCameraReady = false;
         uint32_t benchmarkSceneId = 0;
         std::filesystem::path benchmarkProject;
@@ -148,6 +167,26 @@ namespace jasperengine::editor{
         std::vector<uint64_t> benchmarkTris;
         std::chrono::steady_clock::time_point benchmarkWaitStart{};
         std::chrono::steady_clock::time_point benchmarkMeasureStart{};
+        // --gpu-passes: the GPU time of every pass of the measured frames (S15); --profile-capture
+        // <path>: a .jetrace.json of them
+        bool benchmarkGpuPasses = false;
+        bool benchmarkProfile = false;
+        std::filesystem::path benchmarkCapturePath;
+        uint32_t benchmarkCaptureId = 0;
+        std::vector<double> benchmarkCpuMs;
+        std::vector<double> benchmarkGpuFrameMs;
+        struct BenchmarkPass {
+            std::string label;
+            std::vector<double> frameMs;    // the label's passes summed, per measured frame
+            std::vector<double> counts;
+        };
+        std::vector<BenchmarkPass> benchmarkGpuPassList;
+        uint64_t benchmarkFirstFrame = 0;
+        uint64_t benchmarkLastFrame = 0;
+        uint64_t benchmarkGpuCollected = 0;
+        int benchmarkDrainFrames = 0;
+        std::chrono::steady_clock::time_point continuousFramesUntil{};
+        void collectBenchmarkGpuFrame();
 
         ImGuiID dockspace_id;
         ImGuiID dock_id_middle_top;
@@ -165,9 +204,18 @@ namespace jasperengine::editor{
         AnimationWindow* animationWindow;
         TerrainEditWindow* terrainEditWindow;
         mcp::McpActivityWindow* mcpActivityWindow;
+        SystemsWindow* systemsWindow;
+        MissingAssetsWindow* missingAssetsWindow;
+        AssetReferencesWindow* assetReferencesWindow;
+        JobsMemoryWindow* jobsMemoryWindow;
+        ProfilerWindow* profilerWindow;
+        FrameDebuggerWindow* frameDebuggerWindow;
+        UndoHistoryWindow* undoHistoryWindow;
+        PlayModeChangesWindow* playModeChangesWindow;
         PlayInput* playInput;
         GameWindow* gameWindow;
         MainToolbar* mainToolbar;
+        StatusBar* statusBar;
 
         LoadingWindow* loadingWindow;
 
@@ -199,6 +247,8 @@ namespace jasperengine::editor{
         std::string alertPendingChoice;
         ProjectSaveDialog projectSaveDialog;
         SceneSaveDialog sceneSaveDialog;
+        // Recover Unsaved Changes, Saving Would Lose Data, the second-instance dialog
+        DataSafetyDialogs dataSafetyDialogs;
         ExportWindow exportWindow;
         EditorSettingsWindow editorSettingsWindow;
         ProjectSettingsWindow projectSettingsWindow;
@@ -243,6 +293,20 @@ namespace jasperengine::editor{
         void pasteSelection(bool asChild);
 
         PlatformMenuModel buildMenuModel();
+        // The project's editor-script menu items (EditorScripts) in the main menu
+        void addScriptMenus(PlatformMenuModel& menu);
+        // A menu with editor-script items opened: their ---@validate functions run
+        void validateScriptMenus(const PlatformMenuItem& menu);
+        // Where Ctrl+Z and Edit > Undo go now (UndoTimeline::resolveTarget)
+        UndoTimeline::Target undoTarget() const;
+        // Edit > Undo/Redo and Ctrl+Z/Ctrl+Y: the Code editor's own, or one timeline step
+        void undoRedo(bool undo);
+        // Esc and Ctrl+Z in a drag, popups and focus loss (S24 R12)
+        void handleInteractiveEdits(bool popupOpen);
+        // The ImGui widget being dragged (an Inspector slider, a colour picker, an Animation
+        // window key): its edits are one InteractiveEdit, opened by its first command
+        InteractiveEdit widgetEdit;
+        ImGuiID widgetEditItem = 0;
         void executeMenuCommand(const PlatformMenuCommand& command);
         void showImGuiMenuItems(const std::vector<PlatformMenuItem>& items);
         void showImGuiMenu(const PlatformMenuModel& menu);
@@ -266,7 +330,9 @@ namespace jasperengine::editor{
         void renderGameViewPass(SceneProject& sceneProject);
         void renderGameViewSecondary(SceneProject& sceneProject);
         void renderRunningScene(SceneProject& sceneProject);
-        void pollHtmlUI();
+        void pollExternalChanges();
+        // main-thread time for the file watcher's batches per loop iteration (S05 R22)
+        static constexpr double PUMP_BUDGET_MS = 1.0;
         bool wantsHtmlUIRedraw(const SceneProject& sceneProject);
         void renderSceneBesideGame(SceneProject& sceneProject);
 
@@ -298,7 +364,7 @@ namespace jasperengine::editor{
 
         bool isBenchmarkMode() const { return benchmarkEnabled; }
         bool consumeBenchmarkExit();
-        int getExitCode() const { return benchmarkFailed ? 1 : 0; }
+        int getExitCode() const { return startupExitCode != 0 ? startupExitCode : (benchmarkFailed ? 1 : 0); }
 
         bool isProjectLoading() const { return projectLoading; }
         const std::string& getLoadingStatus() const { return loadingStatus; }
@@ -336,6 +402,9 @@ namespace jasperengine::editor{
         void registerSaveDiscardAlert(std::string title, std::string message, std::function<void()> onSave, std::function<void()> onDiscard = nullptr, std::function<void()> onCancel = nullptr) override;
         void openPrefabAsset(const std::filesystem::path& path, uint32_t contextSceneId = 0, uint32_t contextRoot = 0, bool inContext = true) override;
         void registerSaveSceneDialog(uint32_t sceneId, std::function<void()> callback = nullptr) override;
+        DegradedSavePolicy confirmDegradedSave(const DegradedSaveRequest& request) override;
+        RecoveryChoice resolveSceneRecovery(const SceneBackupInfo& backup) override;
+        bool confirmOpenLockedProject(const ProjectLockInfo& info) override;
         void registerProjectSaveDialog(std::function<void()> callback = nullptr) override;
 
         // Thread-safe: schedules a task to run on the main/GL thread during the next frame.
@@ -343,12 +412,24 @@ namespace jasperengine::editor{
 
         bool didRenderScene() const { return renderedSceneThisFrame; }
         bool hasPendingMainThreadTasks();
+        // How long the idle backend loop may sleep: until the editor scheduler's next timer,
+        // at most maxSeconds
+        double idleWaitSeconds(double maxSeconds) const;
         // Main thread only: keeps the loop drawing while a worker thread drives the UI.
         void requestRedraw();
+        // The editor's drawn frames since the last call (editor_status frame_ms, S05 R31):
+        // {median, p99, max, frames}, each frame's time from its start to its present (an idle
+        // loop draws on demand: the time between two frames would be the idling)
+        nlohmann::json takeFrameStats();
+        void recordFrameTime(double ms);
         bool consumeRedrawRequest();
         // One frame, without waking the loop: for animation that runs while idle.
         void requestFrame();
         bool consumeFrameRequest();
+        // Every view redraws every frame for `seconds` from now, or while a profiler capture
+        // runs (the profiler's captures, the Frame Debugger, an agent waiting for GPU times)
+        void requestContinuousFrames(double seconds);
+        bool wantsContinuousFrames() const;
         // Wakes the backend loop from another thread (enqueueMainThreadTask calls it)
         void setWakeCallback(std::function<void()> cb);
 
@@ -378,14 +459,25 @@ namespace jasperengine::editor{
         InspectorWindow* getInspectorWindow() const override;
         CodeEditor* getCodeEditor() const override;
         ImageViewerWindow* getImageViewerWindow() const override;
-        ProjectWindow* getProjectWindow() const;
+        ProjectWindow* getProjectWindow() const override;
         AnimationWindow* getAnimationWindow() const;
         HierarchyWindow* getHierarchyWindow() const;
         TerrainEditWindow* getTerrainEditWindow() const;
+        SystemsWindow* getSystemsWindow() const;
+        JobsMemoryWindow* getJobsMemoryWindow() const;
+        ProfilerWindow* getProfilerWindow() const { return profilerWindow; }
+        FrameDebuggerWindow* getFrameDebuggerWindow() const { return frameDebuggerWindow; }
+        UndoHistoryWindow* getUndoHistoryWindow() const { return undoHistoryWindow; }
+        PlayModeChangesWindow* getPlayModeChangesWindow() const { return playModeChangesWindow; }
         // Game view: setOpen()/isOpen() toggle it (Window menu), requestFocus() shows it
         GameWindow* getGameWindow() const;
         SceneWindow* getSceneWindow() const;
         ConsoleWindow* getConsoleWindow() const;
+        MissingAssetsWindow* getMissingAssetsWindow() const { return missingAssetsWindow; }
+        void migrateAssetReferences();
+        AssetReferencesWindow* getAssetReferencesWindow() const { return assetReferencesWindow; }
+        // Preferences (Edit > Preferences), for the MCP focus_window tool
+        EditorSettingsWindow& getEditorSettingsWindow() { return editorSettingsWindow; }
         PlayInput* getPlayInput() const;
         void resetLayout();
 

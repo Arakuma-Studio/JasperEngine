@@ -7,8 +7,10 @@
 #include "Entity.h"
 #include "SubSystem.h"
 #include "EntityRegistry.h"
+#include "SystemScheduler.h"
 #include "Export.h"
 #include "SceneSettings.h"
+#include "render/shadow/ShadowTiers.h"
 #include "render/Render.h"
 #include "math/Vector2.h"
 #include <memory>
@@ -39,28 +41,41 @@ namespace jasperengine{
         // reloads) and color-space conversions that can't live in a plain-data struct.
         // Gravity's live value stays in PhysicsSystem; settings.gravity* is only the default.
         SceneSettings settings;
+        // the Scene view's shadow debug view: editor state, not a setting (never saved)
+        ShadowDebugView shadowDebugView = ShadowDebugView::NONE;
 
         UIEventState uiEventState;
 
         std::vector<std::pair<std::string, std::shared_ptr<SubSystem>>> systems;
+        // runs the systems' phases (the SubSystems' and the system functions)
+        SystemScheduler scheduler;
 
         // Alive from construction to the start of the destructor (see getLifetime)
         std::shared_ptr<char> lifetime;
 
         void init();
         Entity createDefaultCamera();
+        // the SubSystem's FixedUpdate, Update and Draw entries in the scheduler
+        void scheduleSubSystem(const std::string& name, SubSystem* system, const SystemDescriptor& descriptor);
+        // the change tick at the end of the last frames (Removed<T> trimming without a gate)
+        Tick frameEndTicks[2] = {0, 0};
 
     protected:
 
+        // The add/remove hooks go only to the systems that handle the type (declareHookType)
         void onComponentAdded(Entity entity, ComponentId componentId) override {
             for (auto const& pair : systems) {
-                pair.second->onComponentAdded(entity, componentId);
+                if (pair.second->handlesHookType(componentId)) {
+                    pair.second->onComponentAdded(entity, componentId);
+                }
             }
         }
 
         void onComponentRemoved(Entity entity, ComponentId componentId) override {
             for (auto const& pair : systems) {
-                pair.second->onComponentRemoved(entity, componentId);
+                if (pair.second->handlesHookType(componentId)) {
+                    pair.second->onComponentRemoved(entity, componentId);
+                }
             }
         }
 
@@ -73,19 +88,23 @@ namespace jasperengine{
 
         void onEntityDestroyed(Entity entity, Signature signature) override {
             for (auto const& pair : systems) {
-                for (ComponentId componentId = 0; componentId < signature.size(); ++componentId) {
-                    if (signature.test(componentId)) {
-                        pair.second->onComponentRemoved(entity, componentId);
-                    }
-                }
+                SubSystem* system = pair.second.get();
+                system->forEachHookType(signature, [&](size_t componentId) {
+                    system->onComponentRemoved(entity, (ComponentId)componentId);
+                });
             }
         }
+
+        // GameObject.destroy semantics (ObjectManager: scripts stopped first)
+        void destroyHierarchyNow(Entity entity) override;
 
     public:
 
         Scene();
         Scene(EntityPool defaultPool);
         virtual ~Scene();
+
+        Scene* asScene() override { return this; }
 
         // A scene is its entities' only registry: a copy would share their sub-resources
         Scene(const Scene&) = delete;
@@ -103,7 +122,11 @@ namespace jasperengine{
         void draw();
         void update(double dt);
         void fixedUpdate(double dt);
+        // The frame's end (draw calls it): Removed<T> entries every enabled system's gate is
+        // past go, or those older than two frames when no system ran
+        void endFrame();
 
+        // Deprecated, as Engine::removeSubscriptionsByTag: SubscriptionOwnerIndex::releaseOwner
         void removeSubscriptionsByTag(const std::string& substring);
 
         void updateCameraSize();
@@ -119,6 +142,18 @@ namespace jasperengine{
 
         void setShadowQuality(ShadowQuality quality);
         ShadowQuality getShadowQuality() const;
+        // directional shadow distance (metres, 0: the quality tier's), its fade and the cascade blend
+        void setShadowDistance(float distance);
+        float getShadowDistance() const;
+        void setShadowFadeFraction(float fraction);
+        float getShadowFadeFraction() const;
+        void setShadowCascadeBlend(bool blend);
+        bool isShadowCascadeBlend() const;
+        // the shadow quality tier the scene renders with (its Quality, or the platform's)
+        ShadowTier getEffectiveShadowTier() const;
+        // the Scene view's shadow debug view (editor only, not saved)
+        void setShadowDebugView(ShadowDebugView view);
+        ShadowDebugView getShadowDebugView() const;
 
         void setMeshLodEnabled(bool enabled);
         bool isMeshLodEnabled() const;
@@ -235,6 +270,9 @@ namespace jasperengine{
 
         void setDefaultCustomShader(ShaderType type, const std::string& path);
         const std::string& getDefaultCustomShader(ShaderType type) const;
+        // The default shader of a type with the asset GUIDs of its files (editor references)
+        const ShaderRef& getDefaultShaderRef(ShaderType type) const;
+        void setDefaultShaderRef(ShaderType type, const ShaderRef& ref);
 
         // ordered user post-process chain; setting it rebuilds the RenderSystem passes
         // unless only uniform values changed
@@ -268,18 +306,39 @@ namespace jasperengine{
 
         // System methods
 
+        // A SubSystem: its fixedUpdate, update and draw run as MainThread | Exclusive systems
+        // named after the class
         template<typename T>
         std::shared_ptr<T> registerSystem(){
+            SystemDescriptor descriptor;
+            descriptor.resources = SystemResource::MainThread | SystemResource::Exclusive;
+            return registerSystem<T>(descriptor);
+        }
+
+        // ...with its own descriptor (reads, writes, resources, dependsOn, everyNFrames) for
+        // its three phase entries; the descriptor's phase is not used, and an empty name is
+        // the class name
+        template<typename T>
+        std::shared_ptr<T> registerSystem(SystemDescriptor descriptor){
             const char* typeName = typeid(T).name();
 
-            auto it = std::find_if(systems.begin(), systems.end(), [&](const auto& pair) { return pair.first == typeName; });
+            [[maybe_unused]] auto it = std::find_if(systems.begin(), systems.end(), [&](const auto& pair) { return pair.first == typeName; });
 
             assert(it == systems.end() && "Registering system more than once");
 
             auto system = std::make_shared<T>(this);
             systems.push_back(std::make_pair(typeName, system));
+            if (descriptor.name.empty()){
+                descriptor.name = ecs::readableTypeName(typeName);
+            }
+            scheduleSubSystem(descriptor.name, system.get(), descriptor);
             return system;
         }
+
+        // A system function run in the descriptor's phase (see SystemScheduler)
+        ScheduledSystem& addSystemFunction(SystemDescriptor descriptor, std::function<void(SystemContext&)> function);
+
+        SystemScheduler& getScheduler();
 
         template<typename T>
         std::shared_ptr<T> getSystem(){

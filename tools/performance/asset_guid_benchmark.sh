@@ -4,7 +4,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUT="${ASSET_GUID_BENCH_OUT:-$ROOT/build/performance/asset-guid}"
 SOURCE="${1:-$ROOT/editor/util/AssetDatabase.cpp}"
 mkdir -p "$OUT"
-"${CXX:-c++}" -std=c++17 -O2 -DNDEBUG -ffunction-sections -fdata-sections \
+"${CXX:-c++}" -std=c++20 -O2 -DNDEBUG -ffunction-sections -fdata-sections \
     -I"$ROOT/editor" -I"$ROOT/editor/util" -I"$ROOT/engine/core" -I"$ROOT/engine/core/script" \
     -I"$ROOT/engine/libs/lua" -I"$ROOT/engine/libs/luabridge3" -I"$ROOT/engine/renders" \
     -I"$ROOT/libs/imgui" -I"$ROOT/libs/yaml-cpp/include" -I"$ROOT/engine/libs/sokol" \

@@ -18,6 +18,8 @@ float AudioSystem::globalVolume = 1.0;
 
 AudioSystem::AudioSystem(Scene* scene): SubSystem(scene){
     signature.set(scene->getComponentId<AudioSourceComponent>());
+    // the type onComponentRemoved handles
+    declareHookType(scene->getComponentId<AudioSourceComponent>());
 
     cameraLastPosition = Vector3(0, 0, 0);
 }
@@ -86,6 +88,7 @@ bool AudioSystem::loadSoundSample(AudioSourceComponent& audio){
         }
 
         audio.sample = result.data;
+        audio.sampleGeneration = SoundPool::generation(audio.filename);
         if (!audio.sample) {
             return false;
         }
@@ -166,17 +169,26 @@ bool AudioSystem::seekSound(AudioSourceComponent& audio, double time){
     return getSoloud().seek(audio.handle, time) == SoLoud::SOLOUD_ERRORS::SO_NO_ERROR;
 }
 
-void AudioSystem::setPaused(bool paused) {
-    this->paused = paused;
+void AudioSystem::applySoundPause(bool pause) {
     if (inited) {
         auto audios = scene->getComponentArray<AudioSourceComponent>();
         for (int i = 0; i < audios->size(); i++) {
             AudioSourceComponent& audio = audios->getComponentFromIndex(i);
             if (audio.handle != 0) {
-                getSoloud().setPause(audio.handle, paused);
+                getSoloud().setPause(audio.handle, pause);
             }
         }
     }
+}
+
+void AudioSystem::setPaused(bool paused) {
+    this->paused = paused;
+    applySoundPause(paused || !schedulerEnabled);
+}
+
+void AudioSystem::onSchedulerEnabledChanged(bool enabled) {
+    schedulerEnabled = enabled;
+    applySoundPause(paused || !schedulerEnabled);
 }
 
 void AudioSystem::stopSceneSounds() {
@@ -332,6 +344,16 @@ void AudioSystem::update(double dt){
             }
             if (pendingStart){
                 audio.startTrigger = false;
+
+                // the file was hot reloaded: this play takes the new sample (one still
+                // playing finishes on the old, which its other sources hold)
+                if (audio.state != AudioSourceState::Paused && audio.sampleGeneration != SoundPool::generation(audio.filename)) {
+                    if (std::shared_ptr<SoLoud::Wav> fresh = SoundPool::get(audio.filename)) {
+                        audio.sample = fresh;
+                        audio.sampleGeneration = SoundPool::generation(audio.filename);
+                        audio.length = audio.sample->getLength();
+                    }
+                }
 
                 if (audio.state != AudioSourceState::Paused || audio.handle == 0) {
                     if (!init()) {

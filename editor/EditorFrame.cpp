@@ -8,6 +8,8 @@
 #include "Log.h"
 
 #include "imgui.h"
+#include "profiler/FrameTimes.h"
+#include "profiler/Profile.h"
 
 #include <chrono>
 #include <thread>
@@ -20,7 +22,7 @@ namespace {
 // Seconds without activity before the loop starts idling
 constexpr double IDLE_ENTER_DELAY = 0.5;
 
-double monotonicSeconds(){
+double frameMonotonicSeconds(){
     using Clock = std::chrono::steady_clock;
     return std::chrono::duration<double>(Clock::now().time_since_epoch()).count();
 }
@@ -31,7 +33,7 @@ void EditorFrame::init(Renderer& renderer, App& app, void (*platformNewFrame)())
     this->renderer = &renderer;
     this->app = &app;
     this->platformNewFrame = platformNewFrame;
-    lastActivityTime = monotonicSeconds();
+    lastActivityTime = frameMonotonicSeconds();
 }
 
 std::string EditorFrame::formatWindowTitle(const std::string& projectName){
@@ -41,9 +43,9 @@ std::string EditorFrame::formatWindowTitle(const std::string& projectName){
 }
 
 bool EditorFrame::isIdle() const{
-    if (app && app->isBenchmarkMode())
+    if (app && (app->isBenchmarkMode() || app->wantsContinuousFrames()))
         return false;
-    return monotonicSeconds() - lastActivityTime > IDLE_ENTER_DELAY;
+    return frameMonotonicSeconds() - lastActivityTime > IDLE_ENTER_DELAY;
 }
 
 // Input, an active widget, a scene redraw or queued cross-thread work keeps the
@@ -81,7 +83,7 @@ bool EditorFrame::run(EditorFrameState& state){
     Backend::setMouseControlSuspended(
         playSessionActive && !project->isMainScenePlaying());
 
-    const double frameStart = monotonicSeconds();
+    const double frameStart = frameMonotonicSeconds();
     const bool idleFrame = !state.forceRedraw && isIdle();
 
     // Unfocused always drops synchronization, so a blocked present can never
@@ -111,11 +113,18 @@ bool EditorFrame::run(EditorFrameState& state){
                                  app->hasPendingMainThreadTasks() || frameRequest;
     const bool frameReady = !state.minimized && renderRequested && renderer->beginFrame();
 
+    // a profiler frame is one rendered loop of the editor (S15 §6.5); idle loops are not frames
+    if (frameReady){
+        FrameTimes::beginFrame();
+        JE_PROFILE_FRAME();
+    }
+
     renderer->newFrame();
     platformNewFrame();
     ImGui::NewFrame();
 
     if (frameReady){
+        JE_PROFILE_SCOPE("Scene Views");
         app->engineRender();
     }else{
         // engineRender() is what normally drains main-thread tasks. Keep draining
@@ -123,31 +132,48 @@ bool EditorFrame::run(EditorFrameState& state){
         app->processMainThreadTasks();
     }
 
-    app->show();
+    {
+        JE_PROFILE_SCOPE("Editor UI");
+        app->show();
+    }
 
     const bool activity = detectActivity(state.redrawRequested);
     if (activity){
-        lastActivityTime = monotonicSeconds();
+        lastActivityTime = frameMonotonicSeconds();
     }
 
-    ImGui::Render();
     bool frameSubmitted = false;
+    {
+        // the editor's own rendering: CPU time only (its renderer is not sokol's)
+        JE_PROFILE_SCOPE("Editor Render");
+        ImGui::Render();
+        if (frameReady){
+            frameSubmitted = renderer->endFrame(ImGui::GetDrawData(), state.width, state.height);
+        }
+
+        if (!frameReady || frameSubmitted){
+            renderer->renderViewports(renderRequested || activity);
+        }
+    }
+
     if (frameReady){
-        frameSubmitted = renderer->endFrame(ImGui::GetDrawData(), state.width, state.height);
+        FrameTimes::endFrameWork();
     }
-
-    if (!frameReady || frameSubmitted){
-        renderer->renderViewports(renderRequested || activity);
-    }
-
     if (frameSubmitted){
+        JE_PROFILE_SCOPE("Present/Wait");
         renderer->present();
     }
     renderer->purgeTextures();
+    // a frame that drew (the editor window, or only its views: headless, minimized)
+    if (frameReady || renderRequested){
+        app->recordFrameTime((frameMonotonicSeconds() - frameStart) * 1000.0);
+    }
 
-    if (!state.focused || state.minimized){
+    // a benchmark measures the frames as fast as they go, focused or not (a headless X server
+    // gives no window the focus)
+    if ((!state.focused || state.minimized) && !app->isBenchmarkMode()){
         const int sleepMs = static_cast<int>(
-            (state.framePeriod - (monotonicSeconds() - frameStart)) * 1000.0);
+            (state.framePeriod - (frameMonotonicSeconds() - frameStart)) * 1000.0);
         if (sleepMs > 0){
             std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs));
         }

@@ -1,0 +1,25 @@
+id: 1
+name: Main Scene
+scene:
+  backgroundColor: [0.16, 0.18, 0.24, 1]
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+sceneType: scene_2d
+mainCamera: 0
+entities:
+  - type: Entity
+    entity: 1001
+    name: Spawner
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+      script:
+        scripts:
+          - type: lua
+            path: CollisionStress.lua
+            className: CollisionStress
+            enabled: true
+            properties: []

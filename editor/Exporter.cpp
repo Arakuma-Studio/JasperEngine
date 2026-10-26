@@ -2,18 +2,29 @@
 // SPDX-License-Identifier: MIT
 
 #include "Exporter.h"
+#include "util/EditorScripts.h"
+#include "asset/AssetFileWrite.h"
+#include "asset/AssetMap.h"
+#include "asset/AssetTypes.h"
+#include "util/PngWriter.h"
+#include "util/AtomicFileStream.h"
 #include "EditorHost.h"
 #include "Factory.h"
 #include "Generator.h"
 #include "Out.h"
 #include "Stream.h"
 #include "util/Base64.h"
+#include "util/CubeLut.h"
+#include "io/AtomicFile.h"
 #include "util/FileUtils.h"
+#include "util/Util.h"
 #include "util/MsBuildProgress.h"
 #include "util/ShaderHeaderBuilder.h"
 #include "pool/ShaderPool.h"
+#include "subsystem/RenderSystem.h"
 #include "shader/ShaderManifest.h"
 #include "shader/ShaderVariantCompiler.h"
+#include "render/shadow/ShadowTiers.h"
 #include "htmlui/HtmlUIDependencies.h"
 #include "htmlui/compat/CompatApi.h"
 #include "htmlui/compat/ua/UserAgentStyle.h"
@@ -25,7 +36,10 @@
 #include "stb_image_write.h"
 
 #include <algorithm>
+#include <chrono>
+#include <thread>
 #include <array>
+#include <set>
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
@@ -34,6 +48,7 @@
 #include <future>
 #include <iterator>
 #include <map>
+#include <sstream>
 #include <vector>
 
 using namespace jasperengine;
@@ -102,22 +117,22 @@ namespace {
         }
     }
 
-    void writeU8(std::ofstream& out, uint8_t value) {
+    void writeU8(std::ostream& out, uint8_t value) {
         out.put(static_cast<char>(value));
     }
 
-    void writeU16(std::ofstream& out, uint16_t value) {
+    void writeU16(std::ostream& out, uint16_t value) {
         out.put(static_cast<char>(value & 0xff));
         out.put(static_cast<char>((value >> 8) & 0xff));
     }
 
-    void writeU32(std::ofstream& out, uint32_t value) {
+    void writeU32(std::ostream& out, uint32_t value) {
         for (int i = 0; i < 4; i++) {
             out.put(static_cast<char>((value >> (i * 8)) & 0xff));
         }
     }
 
-    void writeU64(std::ofstream& out, uint64_t value) {
+    void writeU64(std::ostream& out, uint64_t value) {
         for (int i = 0; i < 8; i++) {
             out.put(static_cast<char>((value >> (i * 8)) & 0xff));
         }
@@ -420,12 +435,20 @@ namespace {
 editor::Exporter::Exporter() {
 }
 
+void editor::Exporter::waitForExport() {
+    // a process-channel job (generate_shaders) must not wait on its own channel: poll
+    if (jobs::isInChannelJob()) {
+        while (exportTask.isValid() && !exportTask.isReady())
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        return;
+    }
+    exportTask.wait();
+}
+
 editor::Exporter::~Exporter() {
     cancelRequested.store(true);
     commandRunner.cancel();
-    if (exportThread.joinable()) {
-        exportThread.join();
-    }
+    waitForExport();
 }
 
 void editor::Exporter::setProgress(const std::string& step, float value) {
@@ -474,9 +497,7 @@ bool editor::Exporter::isCancelled() const {
 }
 
 void editor::Exporter::startExport(Project* proj, const ExportConfig& cfg) {
-    if (exportThread.joinable()) {
-        exportThread.join();
-    }
+    waitForExport();
 
     this->project = proj;
     this->config = cfg;
@@ -487,14 +508,14 @@ void editor::Exporter::startExport(Project* proj, const ExportConfig& cfg) {
         this->progress.started = true;
     }
 
-    // Launch export process in a separate thread so UI does not block
-    exportThread = std::thread(&Exporter::runExport, this);
+    // Run the export on the process channel so the UI does not block
+    jobs::SubmitOptions options;
+    options.name = "export";
+    exportTask = jobs::system().processChannel().submit([this]() { runExport(); }, options);
 }
 
 bool editor::Exporter::exportProject(Project* proj, const ExportConfig& cfg) {
-    if (exportThread.joinable()) {
-        exportThread.join();
-    }
+    waitForExport();
 
     this->project = proj;
     this->config = cfg;
@@ -512,9 +533,7 @@ bool editor::Exporter::exportProject(Project* proj, const ExportConfig& cfg) {
 }
 
 bool editor::Exporter::generateShaders(const ExportConfig& cfg) {
-    if (exportThread.joinable()) {
-        exportThread.join();
-    }
+    waitForExport();
 
     this->project = nullptr;
     this->config = cfg;
@@ -533,6 +552,11 @@ bool editor::Exporter::generateShaders(const ExportConfig& cfg) {
 
 void editor::Exporter::runExport() {
     const bool shaderGenerationOnly = (project == nullptr);
+    if (project && config.mode == ExportMode::Web)
+        config.webMultithreaded = config.webMultithreaded || project->getThreadingSettings().webMultithreaded;
+    // Build Settings > Development Build, whichever front end exports
+    if (project)
+        config.developmentBuild = config.developmentBuild || project->isDevelopmentBuild();
     const bool buildMode = !shaderGenerationOnly && config.mode != ExportMode::SourceCode;
 
     // Generation steps report progress in the [0,1] SourceCode range; for build
@@ -562,6 +586,7 @@ void editor::Exporter::runExport() {
     if (!clearGenerated()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!loadAndSaveAllScenes()) return;
+    if (!checkMissingAssets()) return;
     resolveShaderKeys();
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyGenerated()) return;
@@ -572,6 +597,7 @@ void editor::Exporter::runExport() {
     if (!checkHtmlUIReferences()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyAssets()) return;
+    if (!writeAssetMap()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyCustomShaderSources()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
@@ -597,6 +623,21 @@ void editor::Exporter::runExport() {
             : collectWebArtifacts();
         if (!collected) return;
         if (isCancelled()) { setError("Build cancelled"); return; }
+
+        if (config.mode == ExportMode::Web && config.webMultithreaded) {
+            // the same project again, with pthreads, in a build tree of its own
+            setProgressRaw("Building the multithreaded web player...", BUILD_PROGRESS_START);
+            buildDirName = "build-threads";
+            extraCMakeArgs = "-DEMSCRIPTEN_THREAD_SUPPORT=ON ";
+            const bool threadsBuilt = configureBuild() && !isCancelled() && runBuild() && !isCancelled()
+                && collectWebThreadsArtifacts();
+            buildDirName = "build";
+            extraCMakeArgs.clear();
+            if (!threadsBuilt) {
+                if (isCancelled()) setError("Build cancelled");
+                return;
+            }
+        }
 
         setProgressRaw("Build complete", 1.0f);
         {
@@ -793,7 +834,7 @@ bool editor::Exporter::configureBuild() {
 
     if (isCancelled()) { setError("Build cancelled"); return false; }
 
-    const fs::path buildDir = config.targetDir / "build";
+    const fs::path buildDir = config.targetDir / buildDirName;
 
     // Only explicit VS kits are pinned. Default export may freely select a
     // different toolchain because it rebuilds the engine from source.
@@ -809,7 +850,8 @@ bool editor::Exporter::configureBuild() {
         }
         emcmake = emsdk.emcmake;
         Out::info("Using Emscripten %s", emsdk.description.c_str());
-        kitId = "web\n" + emcmake + "\n" + config.buildType + "\n" + config.graphicBackend;
+        kitId = "web\n" + emcmake + "\n" + config.buildType + "\n" + config.graphicBackend + "\n" + extraCMakeArgs +
+                (config.developmentBuild ? "\ndevelopment" : "");
     } else {
         std::string effectiveGenerator = getEffectiveGenerator();
         // The Xcode generator builds a macOS .app bundle (MACOSX_BUNDLE in the
@@ -824,7 +866,8 @@ bool editor::Exporter::configureBuild() {
             }
             return false;
         }
-        kitId = "desktop\n" + effectiveGenerator + "\n" + config.cmakeCCompiler + "\n" + config.cmakeCxxCompiler + "\n" + config.buildType + "\n" + config.graphicBackend;
+        kitId = "desktop\n" + effectiveGenerator + "\n" + config.cmakeCCompiler + "\n" + config.cmakeCxxCompiler + "\n" + config.buildType + "\n" + config.graphicBackend +
+                (config.developmentBuild ? "\ndevelopment" : "");
         if (!platform.empty()) kitId += "\n" + platform;
     }
 
@@ -885,9 +928,13 @@ bool editor::Exporter::configureBuild() {
         }
     }
     cmd += "-DCMAKE_BUILD_TYPE=" + config.buildType + " ";
+    if (config.developmentBuild) {
+        cmd += "-DJASPERENGINE_DEVELOPMENT_BUILD=ON ";
+    }
     if (!config.graphicBackend.empty()) {
         cmd += "-DGRAPHIC_BACKEND=" + config.graphicBackend + " ";
     }
+    cmd += extraCMakeArgs;
     cmd += "\"" + toCMakePath(config.targetDir.string()) + "\" ";
     cmd += "-B \"" + toCMakePath(buildDir.string()) + "\"";
 
@@ -917,10 +964,7 @@ bool editor::Exporter::configureBuild() {
     }
 
     fs::create_directories(buildDir, ec);
-    std::ofstream f(kitMarker);
-    if (f.is_open()) {
-        f << kitId;
-    }
+    FileUtils::writeFile(kitMarker, kitId);
 
     return true;
 }
@@ -930,7 +974,7 @@ bool editor::Exporter::runBuild() {
 
     if (isCancelled()) { setError("Build cancelled"); return false; }
 
-    const fs::path buildDir = config.targetDir / "build";
+    const fs::path buildDir = config.targetDir / buildDirName;
 
     unsigned int jobs = config.buildJobs == 0 ? Generator::getAutomaticParallelBuildJobs() : config.buildJobs;
     jobs = std::min(jobs, Generator::getMaxParallelBuildJobs());
@@ -1259,10 +1303,12 @@ bool editor::Exporter::writeNativeResourcePack(const fs::path& outputPath, bool&
         return false;
     }
 
-    fs::rename(tempPath, outputPath, ec);
-    if (ec) {
-        setError("Failed to replace resource pack: " + ec.message());
-        fs::remove(tempPath, ec);
+    // published like an atomic write: retried while another program holds the old pack
+    io::AtomicWriteOptions options;
+    options.durability = io::Durability::Cache;
+    const io::WriteResult published = io::publishFile(tempPath, outputPath, options);
+    if (!published.ok()) {
+        setError("Failed to replace resource pack: " + io::describeWriteError(published));
         return false;
     }
 
@@ -1384,6 +1430,125 @@ bool editor::Exporter::collectWebArtifacts() {
     return true;
 }
 
+namespace {
+
+    // Our own cross-origin isolation service worker: a static host that sends no COOP/COEP
+    // headers still gets an isolated page (needed for SharedArrayBuffer, so for threads) after
+    // one reload. It adds the headers to every same-origin response it serves.
+    const char* const COI_SERVICE_WORKER = R"js(// Cross-origin isolation for the multithreaded web player (JasperEngine export).
+// Adds Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy to the responses of this
+// origin, so browsers allow SharedArrayBuffer on hosts that cannot send those headers.
+self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+self.addEventListener("fetch", (event) => {
+    const request = event.request;
+    if (request.cache === "only-if-cached" && request.mode !== "same-origin") return;
+    event.respondWith(fetch(request).then((response) => {
+        if (response.status === 0) return response;
+        const headers = new Headers(response.headers);
+        headers.set("Cross-Origin-Embedder-Policy", "require-corp");
+        headers.set("Cross-Origin-Opener-Policy", "same-origin");
+        headers.set("Cross-Origin-Resource-Policy", "same-origin");
+        return new Response(response.body, {status: response.status, statusText: response.statusText, headers});
+    }).catch((error) => { console.error(error); throw error; }));
+});
+)js";
+
+    // Picks the player: the pthreads build when the page is cross-origin isolated, else the
+    // single-thread one. Without isolation it registers the service worker above and reloads
+    // once (some hosts then serve an isolated page).
+    std::string webPlayerLoader(const std::string& app) {
+        return std::string(R"js(<script>
+(function () {
+    var isolated = self.crossOriginIsolated === true;
+    if (!isolated && window.isSecureContext && "serviceWorker" in navigator && !sessionStorage.getItem("jasperengine-coi-reload")) {
+        navigator.serviceWorker.register("coi-serviceworker.js").then(function (registration) {
+            if (!navigator.serviceWorker.controller) {
+                sessionStorage.setItem("jasperengine-coi-reload", "1");
+                window.location.reload();
+            }
+        }).catch(function (error) { console.warn("coi-serviceworker: " + error); });
+    }
+    var threads = isolated && typeof SharedArrayBuffer !== "undefined";
+    console.log("crossOriginIsolated=" + isolated + " threads=" + threads);
+    var base = threads ? "threads/" : "";
+    window.Module = window.Module || {};
+    var locate = Module.locateFile;
+    Module.locateFile = function (path, prefix) { return locate ? locate(base + path, prefix) : base + path; };
+    var script = document.createElement("script");
+    script.async = true;
+    script.src = base + ")js") + app + R"js(.js";
+    document.body.appendChild(script);
+})();
+</script>)js";
+    }
+
+}
+
+bool editor::Exporter::collectWebThreadsArtifacts() {
+    setProgressRaw("Copying multithreaded artifacts...", 0.97f);
+
+    const fs::path buildDir = config.targetDir / buildDirName;
+    const std::string appName = getAppName();
+    const fs::path threadsDir = config.destinationDir / "threads";
+
+    std::error_code ec;
+    fs::create_directories(threadsDir, ec);
+    if (ec) {
+        setError("Failed to create " + threadsDir.string() + ": " + ec.message());
+        return false;
+    }
+    // the player's code and data; the page is the single-thread build's
+    for (const char* ext : {".js", ".wasm", ".data", ".worker.js"}) {
+        const fs::path src = buildDir / (appName + ext);
+        const bool required = std::string(ext) == ".js" || std::string(ext) == ".wasm";
+        if (!fs::exists(src, ec)) {
+            if (required) {
+                setError("Built multithreaded web output not found: " + src.string());
+                return false;
+            }
+            fs::remove(threadsDir / (appName + ext), ec);
+            continue;
+        }
+        fs::copy_file(src, threadsDir / (appName + ext), fs::copy_options::overwrite_existing, ec);
+        if (ec) {
+            setError("Failed to copy " + src.filename().string() + ": " + ec.message());
+            return false;
+        }
+    }
+
+    if (!FileUtils::writeIfChanged(config.destinationDir / "coi-serviceworker.js", COI_SERVICE_WORKER)) {
+        setError("Failed to write coi-serviceworker.js");
+        return false;
+    }
+    // what hosts that read a _headers file (and the dev server) send for isolation
+    FileUtils::writeIfChanged(config.destinationDir / "_headers",
+        "/*\n  Cross-Origin-Opener-Policy: same-origin\n  Cross-Origin-Embedder-Policy: require-corp\n");
+
+    // the page loads the player through the loader instead of its own <script src>
+    const fs::path page = config.destinationDir / (appName + ".html");
+    std::string html;
+    {
+        std::ifstream in(page, std::ios::binary);
+        html.assign((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    }
+    const std::string marker = "src=\"" + appName + ".js\"";
+    const size_t at = html.find(marker);
+    const size_t open = at == std::string::npos ? std::string::npos : html.rfind("<script", at);
+    const size_t close = at == std::string::npos ? std::string::npos : html.find("</script>", at);
+    if (open == std::string::npos || close == std::string::npos) {
+        setError("The web page does not load " + appName + ".js with a <script src>; the multithreaded build cannot be wired in (custom HTML shell?)");
+        return false;
+    }
+    html.replace(open, close + 9 - open, webPlayerLoader(appName));
+    if (!FileUtils::writeIfChanged(page, html)) {
+        setError("Failed to write " + page.string());
+        return false;
+    }
+    Out::info("Multithreaded web player in threads/: the page uses it when cross-origin isolated (COOP/COEP headers or coi-serviceworker.js)");
+    return true;
+}
+
 bool editor::Exporter::clearGenerated() {
     setProgress("Clearing generated directory...", 0.05f);
 
@@ -1436,12 +1601,19 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                 temporarilyLoaded.push_back(sceneProject.id);
             }
 
-            // Save all scenes to regenerate their .cpp sources
+            // Save all scenes to regenerate their .cpp sources; one that did not load completely
+            // stops the export (its save would drop data)
+            std::string degraded;
             for (size_t i = 0; i < scenes.size(); i++) {
                 auto& sceneProject = scenes[i];
                 if (sceneProject.filepath.empty() || !sceneProject.scene) {
                     continue;
                 }
+                if (project->isSceneSaveGated(&sceneProject)) {
+                    degraded += (degraded.empty() ? "" : ", ") + sceneProject.filepath.generic_string();
+                    continue;
+                }
+                project->warnPreservedNotInBuild(sceneProject);
                 project->saveSceneToPath(sceneProject.id, sceneProject.filepath);
             }
 
@@ -1483,6 +1655,40 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                 });
             }
 
+            // S04: the references of the build (its scenes, and the prefabs and materials they
+            // use) that resolve to no asset, checked by checkMissingAssets()
+            missingBuildReferences.clear();
+            project->getAssetIndex().waitUntilReady();
+            {
+                std::set<Guid> owners;
+                std::vector<Guid> queue;
+                for (const auto& sceneProject : scenes) {
+                    if (sceneProject.filepath.empty()) continue;
+                    const Guid guid = project->getAssetDatabase().getAssetGuid(sceneProject.filepath);
+                    if (!guid.isNull() && owners.insert(guid).second) queue.push_back(guid);
+                }
+                for (size_t i = 0; i < queue.size(); i++) {
+                    for (const DepEdge& edge : project->getAssetIndex().dependenciesOf(queue[i], 1)) {
+                        if (edge.target.isNull() || (edge.expected != AssetType::Prefab && edge.expected != AssetType::Material)) continue;
+                        const AssetDatabase::Resolution found = project->getAssetDatabase().resolve(edge.target, edge.targetPath, edge.expected, false);
+                        if (found.found() && owners.insert(found.guid).second) queue.push_back(found.guid);
+                    }
+                }
+                MissingAssetTracker& tracker = project->getMissingAssets();
+                tracker.update(project->getAssetDatabase(), project->getAssetIndex(), true);
+                for (const MissingAssetTracker::Group& group : tracker.getGroups()) {
+                    for (const MissingAssetTracker::Referrer& referrer : group.referrers) {
+                        if (!owners.count(referrer.owner)) continue;
+                        std::string line = referrer.ownerPath;
+                        if (!referrer.entityPath.empty()) line += " > " + referrer.entityPath;
+                        if (!referrer.component.empty()) line += " > " + referrer.component;
+                        line += "." + referrer.field + ": missing " + std::string(assetTypeName(group.expected)) + " " +
+                                group.lastPath + (group.guid.isNull() ? std::string() : " (GUID " + group.guid.str() + ")");
+                        missingBuildReferences.push_back(line);
+                    }
+                }
+            }
+
             // Unload all scenes that were not loaded before export
             for (uint32_t sceneId : temporarilyLoaded) {
                 SceneProject* sp = project->getScene(sceneId);
@@ -1491,6 +1697,10 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                 }
             }
 
+            if (!degraded.empty()) {
+                throw std::runtime_error("these scenes did not load completely and exporting saves them: " + degraded +
+                                         ". Save them first (Save Anyway drops what this editor could not read, Save As keeps the original).");
+            }
             savePromise.set_value(true);
         } catch (...) {
             savePromise.set_exception(std::current_exception());
@@ -1733,6 +1943,53 @@ bool editor::Exporter::copyGenerated() {
     return true;
 }
 
+bool editor::Exporter::checkMissingAssets() {
+    if (missingBuildReferences.empty()) {
+        return true;
+    }
+    // errors that stop the build, warnings when it goes on anyway
+    for (const std::string& line : missingBuildReferences) {
+        if (config.allowMissingAssets) Out::warning("%s", line.c_str());
+        else Out::error("%s", line.c_str());
+    }
+    if (config.allowMissingAssets) {
+        Out::warning("Exporting with %zu missing asset reference(s) (Export Anyway)", missingBuildReferences.size());
+        return true;
+    }
+    setError(std::to_string(missingBuildReferences.size()) + " reference(s) of the build point at missing assets "
+             "(listed in the Console, and in Window > Assets > Missing Assets). Fix them, or export anyway.");
+    return false;
+}
+
+bool editor::Exporter::writeAssetMap() {
+    // every asset the game can name by GUID: its current path in the form references use
+    // (relative to the assets directory for asset types, to the project otherwise), its
+    // former GUIDs and its sub-assets ("<model>#<key>")
+    const AssetIndex::Roots roots = project->getAssetRoots();
+    std::vector<AssetMap::Entry> entries;
+    project->getAssetDatabase().forEachAsset([&](const AssetDatabase::AssetInfo& info) {
+        const AssetTypeInfo& type = AssetTypes::info(info.type);
+        std::string path = info.path;
+        if (type.base == AssetPathBase::Assets) {
+            if (!roots.assetsDir.empty()) {
+                if (path.compare(0, roots.assetsDir.size() + 1, roots.assetsDir + "/") != 0) return; // not shipped
+                path = path.substr(roots.assetsDir.size() + 1);
+            }
+        }
+        entries.push_back({info.guid, info.type, false, path});
+        for (const Guid& former : info.formerGuids) entries.push_back({former, info.type, true, path});
+        for (const AssetDatabase::SubAsset& sub : info.subAssets) entries.push_back({sub.guid, AssetType::SubAsset, false, path + "#" + sub.key});
+    });
+    const std::vector<uint8_t> bytes = AssetMap::encode(std::move(entries));
+    const fs::path target = getExportProjectRoot() / "assets" / AssetMap::fileName;
+    std::string error;
+    if (!assetio::writeFile(target, std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()), assetio::Durability::Cache, &error)) {
+        setError("Failed to write " + target.string() + ": " + error);
+        return false;
+    }
+    return true;
+}
+
 bool editor::Exporter::copyAssets() {
     setProgress("Copying assets...", 0.35f);
 
@@ -1770,14 +2027,21 @@ bool editor::Exporter::copyAssets() {
             return false;
         }
 
-        // Skip project support files that should not ship as assets
-        if (shouldSkipExportSupportFile(relPath)) continue;
+        // The exporter writes the asset map there (S04)
+        if (relPath == AssetMap::fileName) {
+            setError("\"" + std::string(AssetMap::fileName) + "\" is reserved for the asset map. Rename " + entry.path().string());
+            return false;
+        }
+
+        // Skip project support files that should not ship as assets, and the assets' metas
+        if (shouldSkipExportSupportFile(relPath) || AssetTypes::isMetaFile(relPath)) continue;
 
         // Skip C++ source/header files; registered scripts ship via copyCppScripts
         if (!entry.is_regular_file() || isCppSourceFile(entry.path())) continue;
 
-        // Skip Lua sources already shipped in the lua tree
+        // Skip Lua sources already shipped in the lua tree, and editor scripts
         if (isLuaSourceFile(entry.path()) && luaCopiedSources.count(entry.path().lexically_normal())) continue;
+        if (isLuaSourceFile(entry.path()) && EditorScripts::isEditorOnlyScript(entry.path(), project->getProjectPath())) continue;
 
         // A different file at a path the lua tree already has: Android merges both trees
         // into one assets root and fails on the duplicate, so only one of them can ship.
@@ -1799,9 +2063,42 @@ bool editor::Exporter::copyAssets() {
 
         fs::path destPath = assetsDst / relPath;
         fs::create_directories(destPath.parent_path(), ec);
+
+        // A .cube colour LUT ships cooked (S13 R25): <name>.jlut, float16 with the 3D table at most
+        // 33^3, which the game loads in place of the .cube. One that does not parse ships as it
+        // is, so the game logs the same error the editor does
+        if (Util::isColorLutFile(entry.path().string()) && cookColorLut(entry.path(), destPath)) continue;
+
         fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing, ec);
     }
 
+    return true;
+}
+
+bool editor::Exporter::cookColorLut(const fs::path& source, const fs::path& destination) {
+    std::ifstream in(source, std::ios::binary);
+    std::ostringstream text;
+    text << in.rdbuf();
+    CubeLut lut;
+    std::string error;
+    std::vector<uint8_t> bytes;
+    if (!in || !parseCubeLut(text.str(), lut, error) || !writeJlut(lut, bytes)) {
+        Out::warning("%s ships uncooked: %s", source.filename().string().c_str(), error.empty() ? "it could not be read" : error.c_str());
+        return false;
+    }
+    fs::path cooked = destination;
+    cooked.replace_extension(".jlut");
+    io::AtomicWriteOptions options;
+    options.skipIfUnchanged = true;     // a re-export keeps the build cache's file time
+    const io::WriteResult written = io::writeFileAtomic(cooked, std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()), options);
+    if (!written.ok()) {
+        Out::warning("%s ships uncooked: %s", source.filename().string().c_str(), written.message.c_str());
+        return false;
+    }
+    // a .cube left from an earlier export would shadow nothing (the game prefers the .jlut), but
+    // it is not part of this one
+    std::error_code ec;
+    fs::remove(destination, ec);
     return true;
 }
 
@@ -1894,14 +2191,16 @@ bool editor::Exporter::copyLua() {
         std::string firstComponent = relPath.begin()->string();
         if (!firstComponent.empty() && (firstComponent[0] == '.' || firstComponent == "build")) { it.disable_recursion_pending(); continue; }
 
-        // Skip project support files that should not ship in the Lua directory
-        if (shouldSkipExportSupportFile(relPath)) continue;
+        // Skip project support files that should not ship in the Lua directory, and metas (S04)
+        if (shouldSkipExportSupportFile(relPath) || AssetTypes::isMetaFile(relPath)) continue;
 
         // Skip C++ source/header files; registered scripts ship via copyCppScripts
         if (!entry.is_regular_file() || isCppSourceFile(entry.path())) continue;
 
         if (luaRootIsAssetsRoot && !isLuaSourceFile(entry.path())) continue;
         if (luaRootIsProjectRoot && !isLuaExportFile(entry.path())) continue;
+        // editor scripts (Editor/ with ---@menu annotations) never ship
+        if (EditorScripts::isEditorOnlyScript(entry.path(), project->getProjectPath())) continue;
 
         fs::path destPath = luaDst / relPath;
         fs::create_directories(destPath.parent_path(), ec);
@@ -2031,6 +2330,8 @@ bool editor::Exporter::copyCppScripts() {
                     continue;
                 }
                 if (!it->is_regular_file() || !isCppSourceFile(it->path())) continue;
+                // the C++ editor scripts are the editor's, never a game's
+                if (EditorScripts::isEditorOnlyScript(it->path(), projectRoot)) continue;
 
                 const fs::path relPath = projectRelativePath(it->path());
                 if (relPath.empty() || !copiedPaths.insert(it->path().string()).second) continue;
@@ -2172,6 +2473,8 @@ bool editor::Exporter::copyEngine() {
     if (!copyDir("renders")) return false;
     // the GLSL the build embeds for its runtime shader compiler
     if (!copyDir("shaderlib")) return false;
+    // JasperEngineToolchain.cmake: the C++ standard and the compiler floors
+    if (!copyDir("cmake")) return false;
     if (!copyDir("workspaces")) return false;
     if (config.mode == ExportMode::SourceCode) {
         fs::copy_file(sdkRoot / "jasperengine.py", config.targetDir / "jasperengine.py", fs::copy_options::overwrite_existing, ec);
@@ -2321,6 +2624,15 @@ bool editor::Exporter::copyEngine() {
         projectSettings += indent + std::string("set(JASPERENGINE_PHYSICS_2D ") + (project->isPhysics2DEnabled() ? "ON" : "OFF") + ")";
         projectSettings += indent + std::string("set(JASPERENGINE_PHYSICS_3D ") + (project->isPhysics3DEnabled() ? "ON" : "OFF") + ")";
         projectSettings += indent + std::string("set(JASPERENGINE_RUNTIME_SHADERS ") + (project->isRuntimeShadersEnabled() ? "ON" : "OFF") + ")";
+        // Development Build: the profiler in a Release game (a source export builds it as one)
+        if (config.developmentBuild) {
+            projectSettings += indent + "set(JASPERENGINE_DEVELOPMENT_BUILD ON)";
+        }
+        // Player > Logging
+        const PlayerLoggingSettings& logging = project->getPlayerLogging();
+        projectSettings += indent + "set(JASPERENGINE_LOG_LEVEL \"" + logging.level + "\")";
+        projectSettings += indent + std::string("set(JASPERENGINE_LOG_FILE ") + (logging.fileLog ? "ON" : "OFF") + ")";
+        projectSettings += indent + std::string("set(JASPERENGINE_LOG_BACKTRACE ") + (logging.backtrace ? "ON" : "OFF") + ")";
         cmakeContent.replace(projectSettingsPos, projectSettingsMarker.size(), projectSettings);
     } else {
         Out::warning("Exported CMakeLists.txt is missing the project settings marker; using platform defaults");
@@ -2734,6 +3046,25 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     return true;
 }
 
+bool editor::Exporter::applyXcodeCxxStandard(std::string& pbxproj, int standard) {
+    const std::string key = "CLANG_CXX_LANGUAGE_STANDARD = ";
+    const std::string value = "\"gnu++" + std::to_string(standard) + "\"";
+    bool found = false;
+    size_t pos = 0;
+    while ((pos = pbxproj.find(key, pos)) != std::string::npos) {
+        const size_t start = pos + key.size();
+        const size_t end = pbxproj.find_first_of(";\n", start);
+        if (end == std::string::npos || pbxproj[end] != ';') {
+            pos = start;
+            continue;
+        }
+        pbxproj.replace(start, end - start, value);
+        pos = start + value.size();
+        found = true;
+    }
+    return found;
+}
+
 bool editor::Exporter::writeAppleProjectSettings() {
     const fs::path xcodeDir = config.targetDir / "workspaces" / "xcode";
     const fs::path iosPlistPath = xcodeDir / "ios" / "Info.plist";
@@ -2782,7 +3113,7 @@ bool editor::Exporter::writeAppleProjectSettings() {
             setError("Failed to create Apple icon directory: " + ec.message());
             return false;
         }
-        if (!stbi_write_png(outputPath.string().c_str(), size, size, 4, pixels.data(), size * 4)) {
+        if (!writePng(outputPath, size, size, 4, pixels.data(), size * 4, io::Durability::Cache)) {
             setError("Failed to write Apple icon: " + outputPath.string());
             return false;
         }
@@ -2978,6 +3309,12 @@ bool editor::Exporter::writeAppleProjectSettings() {
         }
         blockStart += block.size() + 2;
     }
+    // The workspace compiles the engine and the project's scripts itself, so it needs the
+    // project's C++ standard too (CMake builds get it from JASPERENGINE_CXX_STANDARD)
+    if (!xcodeProject.empty() && !applyXcodeCxxStandard(xcodeProject, project->getCxxStandard())) {
+        setError("Apple export template has no CLANG_CXX_LANGUAGE_STANDARD setting");
+        return false;
+    }
     FileUtils::writeIfChanged(projectFile, xcodeProject);
     std::string iosPlist;
     if (!readText(iosPlistPath, iosPlist)) {
@@ -3090,11 +3427,8 @@ bool editor::Exporter::writeWindowsResourceFile(bool includeIcon) {
         return false;
     }
 
-    std::ofstream f(projectRoot / "app_icon.rc", std::ios::binary);
-    if (!f) {
-        setError("Failed to write app_icon.rc");
-        return false;
-    }
+    // written in one atomic replace when f goes out of scope
+    AtomicFileStream f(projectRoot / "app_icon.rc", io::Durability::Cache);
 
     if (includeIcon) {
         f << "1 ICON \"app_icon.ico\"\n\n";
@@ -3264,29 +3598,16 @@ bool editor::Exporter::writeAppIcon() {
     std::error_code ec;
     fs::create_directories(projectRoot, ec);
 
-    {
-        std::ofstream f(projectRoot / "app_icon.h", std::ios::binary);
-        if (!f) {
-            Out::warning("Failed to write app_icon.h, exporting without icon");
+    const std::pair<const char*, std::string_view> files[] = {
+        {"app_icon.h", header},
+        {"app_icon.ico", std::string_view(ico.data(), ico.size())},
+        {"app_icon.png", std::string_view(launcherPng.data(), launcherPng.size())},
+    };
+    for (const auto& [name, bytes] : files) {
+        if (FileUtils::writeFile(projectRoot / name, std::string(bytes)) == FileUtils::WriteResult::Failed) {
+            Out::warning("Failed to write %s, exporting without icon", name);
             return false;
         }
-        f << header;
-    }
-    {
-        std::ofstream f(projectRoot / "app_icon.ico", std::ios::binary);
-        if (!f) {
-            Out::warning("Failed to write app_icon.ico, exporting without icon");
-            return false;
-        }
-        f.write(ico.data(), (std::streamsize)ico.size());
-    }
-    {
-        std::ofstream f(projectRoot / "app_icon.png", std::ios::binary);
-        if (!f) {
-            Out::warning("Failed to write app_icon.png, exporting without icon");
-            return false;
-        }
-        f.write(launcherPng.data(), (std::streamsize)launcherPng.size());
     }
 
     return true;
@@ -3345,6 +3666,14 @@ bool editor::Exporter::buildAndSaveShaders() {
         std::string shaderStr = ShaderPool::getShaderStr(type, props, customId);
 
         for (ShaderBackend backend : backends) {
+            // a project's export cooks the High shadow filters ('Shq') only for the backends of
+            // platforms with a High tier or above; there the game renders Medium at most
+            // (RenderSystem::updateShadowTier)
+            if (project && type == ShaderType::MESH && (props & ShaderPool::getShadowsHQProperty()) &&
+                    !ShadowTiers::cooksHighFilters(static_cast<int>(backend))) {
+                current++;
+                continue;
+            }
             float shaderProgress = 0.6f + (0.3f * (float)current / (float)std::max(total, 1));
             std::string fmtStr = ShaderPool::getShaderLangStr(backend);
             setProgress("Building shader: " + shaderStr + " (" + fmtStr + ")", shaderProgress);
@@ -3421,6 +3750,36 @@ const char* editor::Exporter::effectLicensePath() {
     return "licenses/shaders.com-LICENSE.txt";
 }
 
+const char* editor::Exporter::postFxLicensePath() {
+    return "licenses/post-fx-LICENSE.txt";
+}
+
+namespace {
+
+    // writes (or removes, when not shipped) one notice of the export from the engine's shaderlib copy
+    bool writeShaderNotice(const fs::path& targetDir, const char* path, const fs::path& source, bool shipped, std::string& error) {
+        const fs::path target = targetDir / path;
+        std::error_code ec;
+        if (!shipped) {
+            fs::remove(target, ec);
+            if (!ec) fs::remove(target.parent_path(), ec);   // only when empty
+            return true;
+        }
+        if (!fs::is_regular_file(source, ec)) {
+            error = "The notice is missing: " + source.string();
+            return false;
+        }
+        fs::create_directories(target.parent_path(), ec);
+        if (!ec) fs::copy_file(source, target, fs::copy_options::overwrite_existing, ec);
+        if (ec) {
+            error = "Failed to write " + target.string() + ": " + ec.message();
+            return false;
+        }
+        return true;
+    }
+
+}
+
 bool editor::Exporter::writeEffectLicense() {
     // Every UI effect is compiled with the effects include library, which ports functions of
     // the shaders.com kit (engine/shaderlib/effects/LICENSE.shaders-com.txt lists it with the
@@ -3428,42 +3787,41 @@ bool editor::Exporter::writeEffectLicense() {
     const bool effects = std::any_of(config.selectedShaderKeys.begin(), config.selectedShaderKeys.end(), [](ShaderKey key) {
         return ShaderPool::getShaderTypeFromKey(key) == ShaderType::UI_EFFECT;
     });
-    const fs::path target = config.targetDir / effectLicensePath();
-    std::error_code ec;
-    if (!effects) {
-        fs::remove(target, ec);
-        if (!ec) fs::remove(target.parent_path(), ec);   // only when empty
-        return true;
-    }
+    // The uber pass's VHS tape and film simulation adapt MIT code (punikonta's VHS shader,
+    // OpenEngine's film-simulation package with AMD's FidelityFX Lens grain): a build with such
+    // a variant ships their notices (engine/shaderlib/includes/LICENSE.post-fx.txt)
+    const uint32_t postFxBits = UBER_VHS | UBER_FILM_DAMAGE | UBER_GRAIN_LENS | UBER_GRAIN_FILMIC;
+    const bool postFx = std::any_of(config.selectedShaderKeys.begin(), config.selectedShaderKeys.end(), [postFxBits](ShaderKey key) {
+        return ShaderPool::getShaderTypeFromKey(key) == ShaderType::BLIT && (ShaderPool::getPropertiesFromKey(key) & postFxBits) != 0;
+    });
     // copyEngine put the engine's shaderlib next to the export
-    const fs::path source = config.targetDir / "shaderlib" / "effects" / "LICENSE.shaders-com.txt";
-    if (!fs::is_regular_file(source, ec)) {
-        setError("The UI effects notice is missing: " + source.string());
-        return false;
-    }
-    fs::create_directories(target.parent_path(), ec);
-    if (!ec) fs::copy_file(source, target, fs::copy_options::overwrite_existing, ec);
-    if (ec) {
-        setError("Failed to write " + target.string() + ": " + ec.message());
+    std::string error;
+    if (!writeShaderNotice(config.targetDir, effectLicensePath(), config.targetDir / "shaderlib" / "effects" / "LICENSE.shaders-com.txt",
+                           effects, error) ||
+        !writeShaderNotice(config.targetDir, postFxLicensePath(), config.targetDir / "shaderlib" / "includes" / "LICENSE.post-fx.txt",
+                           postFx, error)) {
+        setError(error);
         return false;
     }
     return true;
 }
 
 bool editor::Exporter::copyLicenses() {
-    const fs::path source = config.targetDir / effectLicensePath();
-    const fs::path target = config.destinationDir / effectLicensePath();
-    std::error_code ec;
-    if (!fs::is_regular_file(source, ec)) {
-        fs::remove(target, ec);
-        if (!ec) fs::remove(target.parent_path(), ec);   // only when empty
-        return true;
-    }
-    fs::create_directories(target.parent_path(), ec);
-    if (!ec) fs::copy_file(source, target, fs::copy_options::overwrite_existing, ec);
-    if (ec) {
-        setError("Failed to copy " + target.filename().string() + ": " + ec.message());
-        return false;
+    for (const char* path : {effectLicensePath(), postFxLicensePath()}) {
+        const fs::path source = config.targetDir / path;
+        const fs::path target = config.destinationDir / path;
+        std::error_code ec;
+        if (!fs::is_regular_file(source, ec)) {
+            fs::remove(target, ec);
+            if (!ec) fs::remove(target.parent_path(), ec);   // only when empty
+            continue;
+        }
+        fs::create_directories(target.parent_path(), ec);
+        if (!ec) fs::copy_file(source, target, fs::copy_options::overwrite_existing, ec);
+        if (ec) {
+            setError("Failed to copy " + target.filename().string() + ": " + ec.message());
+            return false;
+        }
     }
     return true;
 }

@@ -3,9 +3,12 @@
 
 #pragma once
 
+#include "util/NumericExpression.h"
+
 #include "Project.h"
 #include "render/Render.h"
 #include "shader/ShaderManifest.h"
+#include "render/AtmospherePresets.h"
 #include "render/preview/MeshPreviewRender.h"
 #include "render/preview/DirectionRender.h"
 #include "util/PrimitiveParameters.h"
@@ -59,6 +62,7 @@ namespace jasperengine::editor{
         LocalEntity,
         ExternalEntity,
         Font,
+        Asset,      // an asset file reference (AssetRef): path, drop target, missing state
         LayerMask  // unsigned int culling mask: Unity's Nothing / Everything / per-layer dropdown
     };
 
@@ -90,6 +94,8 @@ namespace jasperengine::editor{
         // Entities hidden from the LocalEntity picker and rejected on drag-drop
         // (e.g. to prevent self-references)
         std::vector<Entity> excludeEntities;
+        // What a number typed into the row's fields is in (25cm on a Meters field), S23 R25
+        NumericUnit unit = NumericUnit::None;
     };
 
     class InspectorWindow{
@@ -97,6 +103,8 @@ namespace jasperengine::editor{
         Project* project;
         SceneWindow* sceneWindow;
         Command* cmd;
+        // the split bar drag's undo step, merged while the handle is held
+        Command* splitBarCmd = nullptr;
 
         bool windowOpen;
         bool focusRequested;
@@ -488,10 +496,23 @@ namespace jasperengine::editor{
         void drawTilemapComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTerrainComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawLightComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // the light's Shadows section (InspectorShadows.cpp), and its pieces
+        void drawLightShadows(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawShadowSplitBar(SceneProject* sceneProject, std::vector<Entity> entities, const LightComponent& light);
+        // the scene's Shadows settings (Quality, distance, fade, blend, the effective tier)
+        void drawSceneShadows(SceneProject* sceneProject);
         void drawLight2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawShadowCaster2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawFogComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawMirrorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawLocalVolumetricFogComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawVolumetricCloudsComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // the Presets menu of a Fog or Volumetric Clouds: a pick applies it as one undo step
+        void drawAtmospherePresetsMenu(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                       const std::vector<AtmospherePreset>& presets, const char* current);
+        // a foldout of a component's rows (an ImGui tree node, open by default)
+        bool beginFoldout(const char* label);
+        void endFoldout();
         void drawReflectionProbeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawUIDocumentComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCameraComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

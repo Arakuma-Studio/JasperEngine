@@ -11,8 +11,13 @@
 #include "util/FileUtils.h"
 #include "util/ShellEnv.h"
 #include "util/Util.h"
+#include "render/shadow/ShadowTiers.h"
 #include "engine_lua_stubs.h"
 #include "util/ProjectChecks.h"
+#include "util/EditorFingerprint.h"
+#include "util/EditorScripts.h"
+#include "util/LuaApiData.h"
+#include "util/MsBuildProgress.h"
 #include "util/HtmlUiExamples.h"
 #include "json.hpp"
 #include "lua.h"
@@ -73,11 +78,8 @@ editor::Generator::Generator() :
 }
 
 editor::Generator::~Generator() {
-    // Request cancellation and wait for it to finish before destroying
-    try {
-        auto f = cancelBuild();
-        if (f.valid()) f.wait();
-    } catch (...) {}
+    // the build job uses this generator: cancel it and wait for it to end
+    cancelBuild();
     waitForBuildToComplete();
 }
 
@@ -378,10 +380,7 @@ bool editor::Generator::configureCMake(const fs::path& projectPath, const fs::pa
     if (result) {
         std::error_code ec;
         fs::create_directories(buildPath, ec);
-        std::ofstream f(buildPath / ".jasperengine_kit");
-        if (f.is_open()) {
-            f << currentKit;
-        }
+        FileUtils::writeFile(buildPath / ".jasperengine_kit", currentKit);
     }
 
     return result;
@@ -408,8 +407,25 @@ bool editor::Generator::buildProject(const fs::path& buildPath, const std::strin
     buildCommand += " --parallel " + std::to_string(parallelJobs);
     Out::info("Building project with %u parallel jobs...", parallelJobs);
     // The build step invokes the compiler/linker again, so it needs the same
-    // MSVC environment as configure (see CommandRunner::msvcEnvPrefix).
-    return commandRunner.run(CommandRunner::msvcEnvPrefix(generator) + buildCommand, buildPath);
+    // MSVC environment as configure (see CommandRunner::msvcEnvPrefix). Its lines go to the
+    // Console as before, and their progress to the script status (S23 R17).
+    MsBuildProgress msbuild(buildPath, configType);
+    const std::string row = statusRow;
+    float lastFraction = -1.0f;
+    return commandRunner.run(CommandRunner::msvcEnvPrefix(generator) + buildCommand, buildPath, [&](const std::string& line) {
+        Out::build(line);
+        float fraction = -1.0f;
+        if (msbuild.consumeLine(line, fraction) || parseBuildProgress(line, fraction)) {
+            if (fraction - lastFraction >= 0.01f || fraction >= 1.0f) {
+                lastFraction = fraction;
+                ScriptBuildEvent event;
+                event.kind = ScriptBuildEvent::Kind::Progress;
+                event.row = row;
+                event.fraction = fraction;
+                buildEvents().invoke(event);
+            }
+        }
+    });
 }
 
 // Relative to ${PROJECT_ROOT} so the generated CMakeLists.txt reads the same on every
@@ -749,6 +765,22 @@ std::string editor::Generator::buildInitSceneScriptsSource(const std::vector<Sce
 
     // GameObjects instantiated while the game runs (ObjectManager): their Lua scripts are
     // started by the engine, these are the C++ ones
+    // A C++ reload during Play saves the old instances' state and loads it into the new ones
+    // through their ScriptBase (S23 R11): the library knows the classes, the editor does not
+    sourceContent += "template<class T>\n";
+    sourceContent += "static jasperengine::ScriptBase* toScriptBase(T* instance) {\n";
+    sourceContent += "    if constexpr (std::is_base_of_v<jasperengine::ScriptBase, T>) return static_cast<jasperengine::ScriptBase*>(instance);\n";
+    sourceContent += "    else return nullptr;\n";
+    sourceContent += "}\n\n";
+    sourceContent += "extern \"C\" PROJECT_API jasperengine::ScriptBase* jasper_scriptBase(const char* className, void* instance) {\n";
+    sourceContent += "    const std::string name = className ? className : \"\";\n";
+    for (const auto& s : scriptFiles) {
+        sourceContent += "    if (name == \"" + s.className + "\") return toScriptBase(static_cast<" + s.className + "*>(instance));\n";
+    }
+    sourceContent += "    (void)instance;\n";
+    sourceContent += "    return nullptr;\n";
+    sourceContent += "}\n\n";
+
     sourceContent += "extern \"C\" void PROJECT_API initEntityScripts(jasperengine::Scene* scene, const jasperengine::Entity* entities, size_t count) {\n";
     if (!scriptFiles.empty()) {
         sourceContent += "    for (size_t i = 0; i < count; i++) {\n";
@@ -769,7 +801,8 @@ std::string editor::Generator::buildCleanupSceneScriptsSource(const std::vector<
     std::string sourceContent;
 
     if (!scriptFiles.empty()) {
-        sourceContent += "static void deleteCppScripts(jasperengine::Scene* scene, jasperengine::ScriptComponent& scriptComp) {\n";
+        // the scene is not needed any more: a script's subscriptions are found by its address
+        sourceContent += "static void deleteCppScripts(jasperengine::ScriptComponent& scriptComp) {\n";
         sourceContent += "    {\n";
         sourceContent += "        for (auto& scriptEntry : scriptComp.scripts) {\n";
         sourceContent += "            if (scriptEntry.type == ScriptType::LUA) continue;\n";
@@ -777,9 +810,8 @@ std::string editor::Generator::buildCleanupSceneScriptsSource(const std::vector<
         sourceContent += "            if (scriptEntry.instance) {\n";
         for (const auto& s : scriptFiles) {
             sourceContent += "                if (scriptEntry.className == \"" + s.className + "\") {\n";
-            sourceContent += "                    std::string addr = \"_\" + std::to_string(reinterpret_cast<std::uintptr_t>(scriptEntry.instance)) + \"_\";\n";
-            sourceContent += "                    Engine::removeSubscriptionsByTag(addr);\n";
-            sourceContent += "                    scene->removeSubscriptionsByTag(addr);\n";
+            // its REGISTER_* subscriptions and its timers
+            sourceContent += "                    SubscriptionOwnerIndex::releaseOwner(ownerKeyOf(scriptEntry.instance));\n";
             sourceContent += "                    delete static_cast<" + s.className + "*>(scriptEntry.instance);\n";
             sourceContent += "                }\n";
         }
@@ -806,9 +838,7 @@ std::string editor::Generator::buildCleanupSceneScriptsSource(const std::vector<
             sourceContent += "                for (auto& prop : scriptEntry.properties) {\n";
             sourceContent += "                    if (!prop.ownedInstance) continue;\n";
             sourceContent += "\n";
-            sourceContent += "                    std::string addr = \"_\" + std::to_string(reinterpret_cast<std::uintptr_t>(prop.ownedInstance)) + \"_\";\n";
-            sourceContent += "                    Engine::removeSubscriptionsByTag(addr);\n";
-            sourceContent += "                    scene->removeSubscriptionsByTag(addr);\n";
+            sourceContent += "                    SubscriptionOwnerIndex::releaseOwner(ownerKeyOf(prop.ownedInstance));\n";
             sourceContent += "\n";
             sourceContent += deleteContent;
             sourceContent += "\n";
@@ -827,7 +857,7 @@ std::string editor::Generator::buildCleanupSceneScriptsSource(const std::vector<
     if (!scriptFiles.empty()) {
         sourceContent += "    const auto& scriptsArray = scene->getComponentArray<ScriptComponent>();\n";
         sourceContent += "    for (size_t i = 0; i < scriptsArray->size(); i++) {\n";
-        sourceContent += "        deleteCppScripts(scene, scriptsArray->getComponentFromIndex(i));\n";
+        sourceContent += "        deleteCppScripts(scriptsArray->getComponentFromIndex(i));\n";
         sourceContent += "    }\n";
     }
     sourceContent += "}\n\n";
@@ -839,7 +869,7 @@ std::string editor::Generator::buildCleanupSceneScriptsSource(const std::vector<
         sourceContent += "    for (size_t i = 0; i < count; i++) {\n";
         sourceContent += "        if (!scene->isEntityCreated(entities[i])) continue;\n";
         sourceContent += "        if (jasperengine::ScriptComponent* scriptComp = scene->findComponent<jasperengine::ScriptComponent>(entities[i])) {\n";
-        sourceContent += "            deleteCppScripts(scene, *scriptComp);\n";
+        sourceContent += "            deleteCppScripts(*scriptComp);\n";
         sourceContent += "        }\n";
         sourceContent += "    }\n";
     } else {
@@ -848,6 +878,80 @@ std::string editor::Generator::buildCleanupSceneScriptsSource(const std::vector<
     sourceContent += "}\n";
 
     return sourceContent;
+}
+
+std::string editor::Generator::scriptFingerprintSource() {
+    // JASPER_TEST_FINGERPRINT_OVERRIDE=field=value[,field=value]: the library claims another
+    // toolchain (the fingerprint's tests, S23 AC10)
+    std::string fingerprint = "jasperengine::currentToolchainFingerprint()";
+    if (const char* overrides = std::getenv("JASPER_TEST_FINGERPRINT_OVERRIDE")) {
+        std::string list = overrides;
+        size_t start = 0;
+        while (start < list.size()) {
+            size_t end = list.find(',', start);
+            if (end == std::string::npos) end = list.size();
+            const std::string item = list.substr(start, end - start);
+            const size_t equals = item.find('=');
+            if (equals != std::string::npos && equals > 0) {
+                const std::string field = item.substr(0, equals);
+                const std::string value = item.substr(equals + 1);
+                const bool numeric = !value.empty() && std::all_of(value.begin(), value.end(), [](unsigned char c) { return std::isdigit(c); });
+                const bool identifier = std::all_of(field.begin(), field.end(), [](unsigned char c) { return std::isalnum(c); });
+                if (numeric && identifier) {
+                    fingerprint = "jasperengine::withFingerprintOverride(" + fingerprint + ", \"" + field + "\", " + value + "u)";
+                }
+            }
+            start = end + 1;
+        }
+    }
+    std::string source;
+    source += "// The toolchain this library is built with (compiler, standard library and its ABI, CRT,\n";
+    source += "// layout defines, the engine build): the editor reads the marker from the file before it\n";
+    source += "// loads it and compares the export after, and refuses a library that differs.\n";
+    source += "#if defined(JASPERENGINE_EDITOR_PLUGIN)\n";
+    source += "JASPERENGINE_SCRIPT_TOOLCHAIN_FINGERPRINT(" + fingerprint + ")\n";
+    source += "#endif\n\n";
+    return source;
+}
+
+bool editor::Generator::rewriteScriptSources(const std::vector<SceneScriptSource>& scriptFiles) {
+    if (!lastSourceArgs.valid) return false;
+    const SourceFileArgs args = lastSourceArgs;
+    writeSourceFiles(args.projectPath, args.projectInternalPath, args.libName, scriptFiles, args.scenes, args.prefabs,
+                     args.vsyncEnabled, args.windowSettings, args.assetsPath, args.luaPath, args.scriptDirs, args.cxxStandard);
+    return true;
+}
+
+ThreadSafeSignal<const editor::ScriptBuildEvent&>& editor::Generator::buildEvents() {
+    static auto* signal = new ThreadSafeSignal<const ScriptBuildEvent&>();
+    return *signal;
+}
+
+bool editor::Generator::parseBuildProgress(const std::string& line, float& fraction) {
+    size_t at = line.find_first_not_of(" \t");
+    if (at == std::string::npos || line[at] != '[') return false;
+    const size_t close = line.find(']', at);
+    if (close == std::string::npos || close - at > 24) return false;
+    const std::string inside = line.substr(at + 1, close - at - 1);
+    // Ninja: [12/50]
+    const size_t slash = inside.find('/');
+    if (slash != std::string::npos) {
+        const std::string done = inside.substr(0, slash), total = inside.substr(slash + 1);
+        auto digits = [](const std::string& text) {
+            return !text.empty() && std::all_of(text.begin(), text.end(), [](unsigned char c) { return std::isdigit(c); });
+        };
+        if (!digits(done) || !digits(total) || std::stoul(total) == 0) return false;
+        fraction = std::min(1.0f, static_cast<float>(std::stoul(done)) / static_cast<float>(std::stoul(total)));
+        return true;
+    }
+    // Make: [ 45%]
+    std::string percent = inside;
+    percent.erase(std::remove(percent.begin(), percent.end(), ' '), percent.end());
+    if (percent.size() < 2 || percent.back() != '%') return false;
+    percent.pop_back();
+    if (!std::all_of(percent.begin(), percent.end(), [](unsigned char c) { return std::isdigit(c); }) || percent.empty()) return false;
+    fraction = std::min(1.0f, static_cast<float>(std::stoul(percent)) / 100.0f);
+    return true;
 }
 
 std::string editor::Generator::getEditorPluginAbiCheck() {
@@ -872,7 +976,27 @@ std::string editor::Generator::getEditorPluginAbiCheck() {
     return cmakeContent;
 }
 
+std::string editor::Generator::getToolchainFloorCheck() {
+    // The floors of engine/cmake/JasperEngineToolchain.cmake, which the root CMakeLists.txt
+    // passes to the editor; a plugin has no engine tree to include that file from
+    std::string cmakeContent;
+    cmakeContent += "# Oldest compilers with the C++20 JasperEngine uses (as the engine build checks)\n";
+    cmakeContent += "set(JASPERENGINE_CXX_FLOOR_GNU " JASPERENGINE_CXX_FLOOR_GNU ")\n";
+    cmakeContent += "set(JASPERENGINE_CXX_FLOOR_Clang " JASPERENGINE_CXX_FLOOR_CLANG ")\n";
+    cmakeContent += "set(JASPERENGINE_CXX_FLOOR_AppleClang " JASPERENGINE_CXX_FLOOR_APPLECLANG ")\n";
+    cmakeContent += "set(JASPERENGINE_CXX_FLOOR_MSVC " JASPERENGINE_CXX_FLOOR_MSVC ")\n";
+    cmakeContent += "set(JASPERENGINE_CXX_FLOOR \"${JASPERENGINE_CXX_FLOOR_${CMAKE_CXX_COMPILER_ID}}\")\n";
+    cmakeContent += "if(JASPERENGINE_CXX_FLOOR AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS JASPERENGINE_CXX_FLOOR)\n";
+    cmakeContent += "    message(FATAL_ERROR \"JasperEngine requires C++20: the ${CMAKE_CXX_COMPILER_ID} compiler ${CMAKE_CXX_COMPILER_VERSION} is older than \"\n";
+    cmakeContent += "        \"the supported minimum ${CMAKE_CXX_COMPILER_ID} ${JASPERENGINE_CXX_FLOOR}. Update it, or choose another compiler in \"\n";
+    cmakeContent += "        \"Preferences > External Tools.\")\n";
+    cmakeContent += "endif()\n\n";
+    return cmakeContent;
+}
+
 void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::path& projectInternalPath, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::SceneBuildInfo>& scenes, const std::vector<editor::PrefabSceneInfo>& prefabs, bool vsyncEnabled, const WindowSettings& windowSettings, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard) {
+    lastSourceArgs = {true, projectPath, projectInternalPath, assetsPath, luaPath, libName, scriptFiles, scenes, prefabs,
+                      vsyncEnabled, windowSettings, scriptDirs, cxxStandard};
     fs::path relativeInternalPath = fs::relative(projectInternalPath, projectPath);
     fs::path engineApiRelativePath = relativeInternalPath / "engine-api";
 
@@ -965,6 +1089,10 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
                 if (!it->is_regular_file() || !Util::isSourceFile(it->path().string())) {
                     continue;
                 }
+                // the C++ editor scripts build into an editor-only library of their own
+                if (EditorScripts::isEditorOnlyScript(it->path(), projectPath)) {
+                    continue;
+                }
 
                 const fs::path relativePath = fs::relative(it->path(), projectPath, ec);
                 const bool insideProject = !ec && !relativePath.empty() && *relativePath.begin() != "..";
@@ -1019,6 +1147,7 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     // Both modes link the editor's engine library, which always has both physics backends
     cmakeContent += "add_compile_definitions(JASPERENGINE_PHYSICS_2D JASPERENGINE_PHYSICS_3D)\n\n";
 
+    cmakeContent += getToolchainFloorCheck();
     cmakeContent += getEditorPluginAbiCheck();
     cmakeContent += "if(JASPERENGINE_EDITOR_PLUGIN)\n";
     cmakeContent += "    add_compile_definitions(JASPERENGINE_EDITOR_PLUGIN)\n";
@@ -1104,6 +1233,15 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "endif()\n\n";
     cmakeContent += "target_link_libraries(" + libName + " PRIVATE ${JASPERENGINE_LIB} ${PLATFORM_LIBS})\n\n";
     cmakeContent += "# Set compile options based on compiler and platform\n";
+    cmakeContent += "# A C++ reload during Play links a new library while the old one (and, under a debugger, its\n";
+    cmakeContent += "# PDB) is still loaded: each reload generation gets its own PDB name.\n";
+    cmakeContent += "# (Included on MSVC only: a change of the file re-runs the configure step.)\n";
+    cmakeContent += "if(MSVC AND JASPERENGINE_EDITOR_PLUGIN)\n";
+    cmakeContent += "    include(${INTERNAL_DIR}/PluginGeneration.cmake OPTIONAL)\n";
+    cmakeContent += "    if(JASPERENGINE_PLUGIN_GENERATION GREATER 0)\n";
+    cmakeContent += "        set_target_properties(" + libName + " PROPERTIES PDB_NAME \"" + libName + "_${JASPERENGINE_PLUGIN_GENERATION}\")\n";
+    cmakeContent += "    endif()\n";
+    cmakeContent += "endif()\n\n";
     cmakeContent += "if(MSVC)\n";
     cmakeContent += "    # C4251/C4275: exported engine classes (JASPERENGINE_API -> dllimport) expose STL\n";
     cmakeContent += "    # members (std::vector, std::string, FunctionSubscribe, ...). This is safe\n";
@@ -1113,10 +1251,12 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "    # limit to translation units within this single-target plugin project.\n";
     cmakeContent += "    # /utf-8: generated sources embed UTF-8 literals and carry no BOM, so\n";
     cmakeContent += "    # MSVC would otherwise decode them in the active code page.\n";
+    cmakeContent += "    # /Zc:__cplusplus: the real language level, as in the engine build, so header-only\n";
+    cmakeContent += "    # libraries (nlohmann json, LuaBridge3) take the same code paths on both sides.\n";
     cmakeContent += "    if(DEFINED JASPERENGINE_PARALLEL_BUILD_JOBS AND JASPERENGINE_PARALLEL_BUILD_JOBS GREATER 0)\n";
-    cmakeContent += "        target_compile_options(" + libName + " PRIVATE /W4 /EHsc /utf-8 /MP${JASPERENGINE_PARALLEL_BUILD_JOBS} /wd4251 /wd4275)\n";
+    cmakeContent += "        target_compile_options(" + libName + " PRIVATE /W4 /EHsc /utf-8 /Zc:__cplusplus /MP${JASPERENGINE_PARALLEL_BUILD_JOBS} /wd4251 /wd4275)\n";
     cmakeContent += "    else()\n";
-    cmakeContent += "        target_compile_options(" + libName + " PRIVATE /W4 /EHsc /utf-8 /MP /wd4251 /wd4275)\n";
+    cmakeContent += "        target_compile_options(" + libName + " PRIVATE /W4 /EHsc /utf-8 /Zc:__cplusplus /MP /wd4251 /wd4275)\n";
     cmakeContent += "    endif()\n";
     cmakeContent += "else()\n";
     cmakeContent += "    target_compile_options(" + libName + " PRIVATE -Wall -Wextra -fPIC)\n";
@@ -1172,10 +1312,15 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     std::string sourceContent;
     sourceContent += "// This file is auto-generated by JasperEngine Editor. Do not edit manually.\n\n";
     sourceContent += "// This file binds scene script metadata to compiled C++ and Lua scripts for the current build configuration.\n\n";
+    // the engine build the library is made for (the toolchain fingerprint's engine ABI hash)
+    sourceContent += "#define JASPERENGINE_ABI_VERSION \"" + std::string(editorAbiVersion()) + "\"\n";
     sourceContent += "#include <vector>\n";
     sourceContent += "#include <string>\n";
+    sourceContent += "#include <type_traits>\n";
     sourceContent += "#include <stdio.h>\n";
-    sourceContent += "#include \"JasperEngine.h\"\n\n";
+    sourceContent += "#include \"JasperEngine.h\"\n";
+    sourceContent += "#include \"script/ToolchainFingerprint.h\"\n\n";
+    sourceContent += scriptFingerprintSource();
 
     for (const auto& s : scriptFiles) {
         fs::path headerPath = s.headerPath;
@@ -1214,6 +1359,8 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
 
     FileUtils::writeIfChanged(cmakeFile, cmakeContent);
     FileUtils::writeIfChanged(projectInternalPath / "LocalPaths.cmake", localPathsContent);
+    // a Play build is generation 0; a C++ reload during Play writes its own number (MSVC PDB names)
+    FileUtils::writeIfChanged(projectInternalPath / "PluginGeneration.cmake", pluginGenerationCMake(0));
     FileUtils::writeIfChanged(sourceFile, sourceContent);
 
     // Generate .vscode/settings.json for VS Code if it doesn't exist
@@ -1288,6 +1435,7 @@ std::string luaPropertyType(const ScriptProperty& prop, const std::map<std::stri
         case ScriptPropertyType::Vector4:
         case ScriptPropertyType::Color4: return "Vector4";
         case ScriptPropertyType::Prefab: return "PrefabAsset";
+        case ScriptPropertyType::Asset: return "AssetRef";
         case ScriptPropertyType::EntityReference: break;
     }
     // "entity": the GameObject's first Lua script instance, else an EntityHandle
@@ -1348,6 +1496,8 @@ void editor::Generator::writeLuaScriptStubs(const fs::path& projectPath, const f
         for (const fs::path& file : ProjectChecks::findProjectFiles(projectPath, {".lua"})) {
             const std::string name = file.stem().string();
             if (!Util::isInsidePath(file, luaRoot) || !isLuaIdentifier(name) || engineNames.count(name)) continue;
+            // an editor script is no script class (and reading its properties would run it)
+            if (EditorScripts::isEditorOnlyScript(file, projectPath)) continue;
             classes.emplace(name, file);
         }
         std::set<std::string> scriptClasses;
@@ -1418,7 +1568,8 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
     agentsContent += "JasperEngine Editor embeds an MCP server: build scenes, prefabs, UI and project settings, and playtest, through its tools instead of editing `*.scene`/`*.prefab`/`project.yaml` by hand "
                      "(the open editor would overwrite such edits). Start it with `jasperengine-editor mcp --project <this directory>` as a stdio MCP server, "
                      "or attach to an editor that is already open over HTTP (Editor Settings > MCP, `http://127.0.0.1:47615/mcp` by default). "
-                     "The server's instructions and the `jasper://guide` / `jasper://docs/...` resources explain the tools.\n\n";
+                     "The server's instructions and the `jasper://guide` / `jasper://docs/...` resources explain the tools. "
+                     "From a shell, `jasperengine-editor call <tool> [--flags]` runs any of them (`call <tool> --help` lists its parameters; `--project <this directory>` starts a one-shot headless editor when none has the project open).\n\n";
     agentsContent += "- Scripts, shaders and other text files: edit them on disk with your own tools. The editor picks the changes up automatically before every MCP tool call "
                      "(the call's result lists them under `external_changes`, with problems such as Lua syntax errors); no sync step is needed.\n";
     agentsContent += "- Lua API: one stub file per engine class in `" + (engineApiRelativePath / "lua").generic_string() + "/`, and the class of each project script (its properties as fields) in `" +
@@ -1484,7 +1635,7 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
     agentsContent += "A directory listed as a script root (JasperEngine Editor: Project Settings > Directories) is compiled whole: "
                      "source files are built even when no component references them. Discovery skips hidden directories and directories named `build`. The root is an include directory, "
                      "so a header at `<root>/PLAYER/Thing.h` is included as `PLAYER/Thing.h`.\n";
-    agentsContent += "The C++ language standard is Project Settings > Build > C++ Standard (`cxxStandard` in `project.yaml`): "
+    agentsContent += "The C++ language standard is Project Settings > Scripting > C++ Standard (`cxxStandard` in `project.yaml`): "
                      + editor::cxxStandardList() + ". Play and export both build with it; do not edit `CMAKE_CXX_STANDARD` in the generated CMakeLists.txt.\n";
     agentsContent += "Lua scripts (`.lua`) are separate — they are loaded at runtime and are not compiled into the binary.\n\n";
     agentsContent += "## Instantiate and Destroy (prefabs at runtime)\n\n";
@@ -1849,6 +2000,10 @@ void editor::Generator::writeEditorTooling(const fs::path& projectPath, const fs
         const fs::path pluginRelative = relativeInternalPath / "engine-api" / luastubs::luaLsPlugin.name;
         writeLuaApiStubs(projectPath / stubsRelative);
         writeLuaLsPlugin(projectPath / pluginRelative);
+        // the Lua API as data (S23 R46), next to the stubs: for tools and agents
+        if (!FileUtils::writeIfChanged(projectPath / relativeInternalPath / "engine-api" / "lua-api.json", LuaApiData::jsonText())) {
+            Out::warning("Could not write engine-api/lua-api.json");
+        }
         writeLuaRc(projectPath, stubsRelative.generic_string(), pluginRelative.generic_string(),
                    (relativeInternalPath / "engine-api" / "html-ui-examples").generic_string());
         writeCompileDatabase(projectPath, projectInternalPath, cxxStandard, scriptDirs);
@@ -2029,7 +2184,7 @@ bool editor::Generator::hasSceneSource(const std::string& sceneName, const fs::p
     return std::getline(file, header) && header == Factory::sceneSourceHeader;
 }
 
-void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples){
+void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const ThreadingProjectSettings& threading){
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
 
     // The editor used to emit a GLFW application host into every project. It is
@@ -2048,6 +2203,7 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     mainContent += "#ifdef JASPERENGINE_PROJECT_PATH\n";
     mainContent += "#include \"shader/ShaderManifest.h\"\n";
     mainContent += "#include \"shader/ShaderVariantCompiler.h\"\n";
+    mainContent += "#include \"render/shadow/ShadowTiers.h\"\n";
     mainContent += "#include <fstream>\n";
     mainContent += "#include <iterator>\n";
     mainContent += "#endif\n";
@@ -2201,6 +2357,19 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     mainContent += "        return false;\n";
     mainContent += "    });\n";
     mainContent += "#endif\n";
+    // Threading first: the job system and the asset readers start with these counts
+    const ThreadingProjectSettings threadingDefaults;
+    if (threading.workers != threadingDefaults.workers || threading.reservedFrameWorkers != threadingDefaults.reservedFrameWorkers
+        || threading.ioThreads != threadingDefaults.ioThreads || threading.webPumpBudgetMs != threadingDefaults.webPumpBudgetMs) {
+        mainContent += "    {\n";
+        mainContent += "        ThreadingSettings threading;\n";
+        mainContent += "        threading.workers = " + std::to_string(threading.workers) + ";\n";
+        mainContent += "        threading.reservedFrameWorkers = " + std::to_string(threading.reservedFrameWorkers) + ";\n";
+        mainContent += "        threading.ioThreads = " + std::to_string(threading.ioThreads) + ";\n";
+        mainContent += "        threading.webPumpBudgetMs = " + Factory::formatFloat(threading.webPumpBudgetMs) + ";\n";
+        mainContent += "        Engine::setThreadingSettings(threading);\n";
+        mainContent += "    }\n";
+    }
     mainContent += "    Engine::setCanvasSize(" + std::to_string(canvasWidth) + ", " + std::to_string(canvasHeight) + ");\n";
 
     // Scaling mode
@@ -2220,8 +2389,32 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         case TextureStrategy::NONE:   mainContent += "    Engine::setTextureStrategy(TextureStrategy::NONE);\n"; break;
     }
 
+    // Atmosphere Quality per platform group (Project Settings > Quality), before any scene draws
+    auto qualityName = [](AtmosphereQuality quality) -> std::string {
+        switch (quality) {
+            case AtmosphereQuality::OFF: return "AtmosphereQuality::OFF";
+            case AtmosphereQuality::LOW: return "AtmosphereQuality::LOW";
+            case AtmosphereQuality::MEDIUM: return "AtmosphereQuality::MEDIUM";
+            case AtmosphereQuality::HIGH: return "AtmosphereQuality::HIGH";
+        }
+        return "AtmosphereQuality::LOW";
+    };
+    mainContent += "    Engine::setAtmosphereQualityDefaults(" + qualityName(atmosphereQuality[0]) + ", " + qualityName(atmosphereQuality[1]) + ", " +
+                   qualityName(atmosphereQuality[2]) + ");\n";
+
     // MSAA of the HTML UI targets (Project Settings > Graphics), before any document draws
     mainContent += "    UIDocumentSystem::setPreferredSampleCount(" + std::to_string(htmlUiMsaaSamples) + ");\n";
+
+    // the shadow quality tiers of the platforms (Project Settings > Graphics > Shadows), the
+    // editor's own: a scene of Quality Auto renders with its platform's
+    static const char* const tierNames[] = {"LOW", "MEDIUM", "HIGH", "ULTRA"};
+    for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) {
+        const ShadowTier tier = ShadowTiers::getPlatformTier(platform);
+        if (tier != ShadowTiers::defaultTier(platform)) {
+            mainContent += "    ShadowTiers::setPlatformTier(" + std::to_string(platform) + ", ShadowTier::" +
+                tierNames[std::clamp(static_cast<int>(tier), 0, 3)] + ");\n";
+        }
+    }
 
     // Tags and Layers, before any scene or script can ask for them
     if (!tagsAndLayers.tags.empty()) {
@@ -2283,10 +2476,8 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     const LoadingSettings defaults;
     std::string loadingContent;
     if (loadingSettings.asyncLoading) {
-        // web builds without pthreads load synchronously
-        loadingContent += "#ifndef NO_THREAD_SUPPORT\n";
+        // web builds without pthreads load over several frames too (the job system's pump)
         loadingContent += "    Engine::setAsyncLoading(true);\n";
-        loadingContent += "#endif\n";
     }
     for (const auto& sceneData : scenes) {
         if (sceneData.id == loadingSettings.sceneId) {
@@ -2708,79 +2899,123 @@ void editor::Generator::build(const fs::path projectPath, const fs::path buildPa
     lastBuildSucceeded.store(false, std::memory_order_relaxed);
     commandRunner.resetCancel();
 
-    buildFuture = std::async(std::launch::async, [this, projectPath, buildPath, cCompiler, cxxCompiler, generator, parallelJobs]() {
-        try {
-            auto startTime = std::chrono::steady_clock::now();
+    if (jobs::isInChannelJob()) {
+        // already on a blocking thread, which would otherwise wait on its own channel
+        inlineBuilds.fetch_add(1, std::memory_order_acq_rel);
+        runBuild(projectPath, buildPath, cCompiler, cxxCompiler, generator, parallelJobs);
+        inlineBuilds.fetch_sub(1, std::memory_order_acq_rel);
+        return;
+    }
 
-            // The compiled plugin is loaded into the running editor and shares its
-            // engine library, CRT and STL across the shared-library boundary, so it
-            // must use the same build configuration. On Windows especially, a Debug
-            // plugin (/MDd, _ITERATOR_DEBUG_LEVEL=2) loaded by a Release editor (/MD)
-            // has incompatible std::vector/std::string layouts and crashes the moment
-            // the editor calls into it. Match the editor's own configuration; _DEBUG
-            // is defined iff this editor was built against the debug CRT. Elsewhere
-            // NDEBUG decides, since Jolt derives JPH_DEBUG (and its layouts) from it.
-            std::string configType = "Debug";
+    jobs::SubmitOptions options;
+    options.name = "cmake-build";
+    buildTask = jobs::system().processChannel().submit([this, projectPath, buildPath, cCompiler, cxxCompiler, generator, parallelJobs]() {
+        runBuild(projectPath, buildPath, cCompiler, cxxCompiler, generator, parallelJobs);
+    }, options);
+}
+
+void editor::Generator::runBuild(const fs::path& projectPath, const fs::path& buildPath, const std::string& cCompiler, const std::string& cxxCompiler, const std::string& generator, unsigned int parallelJobs) {
+    // the build's state for the script status (S23 R17): started, then finished with its lines
+    const uint64_t firstLog = Out::lastLogId();
+    const auto eventStart = std::chrono::steady_clock::now();
+    {
+        ScriptBuildEvent started;
+        started.kind = ScriptBuildEvent::Kind::Started;
+        started.row = statusRow;
+        started.projectPath = projectPath;
+        buildEvents().invoke(started);
+    }
+    struct FinishedEvent {
+        Generator& generator;
+        fs::path projectPath;
+        uint64_t firstLog;
+        std::chrono::steady_clock::time_point start;
+        ~FinishedEvent() {
+            ScriptBuildEvent finished;
+            finished.kind = ScriptBuildEvent::Kind::Finished;
+            finished.row = generator.statusRow;
+            finished.success = generator.didLastBuildSucceed();
+            finished.cancelled = generator.commandRunner.isCancelRequested();
+            finished.projectPath = projectPath;
+            finished.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+            for (const LogEntry& entry : Out::getLogsSince(firstLog)) {
+                if (entry.type == LogType::Build || entry.type == LogType::Error || entry.type == LogType::Warning) finished.output.push_back(entry.message);
+            }
+            buildEvents().invoke(finished);
+        }
+    } finishedEvent{*this, projectPath, firstLog, eventStart};
+
+    try {
+        auto startTime = std::chrono::steady_clock::now();
+
+        // The compiled plugin is loaded into the running editor and shares its
+        // engine library, CRT and STL across the shared-library boundary, so it
+        // must use the same build configuration. On Windows especially, a Debug
+        // plugin (/MDd, _ITERATOR_DEBUG_LEVEL=2) loaded by a Release editor (/MD)
+        // has incompatible std::vector/std::string layouts and crashes the moment
+        // the editor calls into it. Match the editor's own configuration; _DEBUG
+        // is defined iff this editor was built against the debug CRT. Elsewhere
+        // NDEBUG decides, since Jolt derives JPH_DEBUG (and its layouts) from it.
+        std::string configType = "Debug";
 #if (defined(_WIN32) && !defined(_DEBUG)) || (!defined(_WIN32) && defined(NDEBUG))
-            configType = "Release";
+        configType = "Release";
 #endif
 
-            // Resolve a "Default" selection to a concrete ABI-compatible kit once,
-            // so configure and the build step (which both need the generator, e.g.
-            // for the vcvars prefix) agree on the same toolchain.
-            std::string cc = cCompiler, cxx = cxxCompiler, gen = generator;
-            if (!resolveDefaultKit(cc, cxx, gen)) {
-                return;
-            }
-
-            // Resolve automatic mode and the per-machine safety cap once. The
-            // exact same value must drive both MSVC /MP and cmake --parallel.
-            const unsigned int requestedOrAutomaticJobs = parallelJobs == 0
-                ? getAutomaticParallelBuildJobs()
-                : parallelJobs;
-            const unsigned int effectiveParallelJobs =
-                std::min(requestedOrAutomaticJobs, getMaxParallelBuildJobs());
-
-            if (!configureCMake(projectPath, buildPath, configType, cc, cxx, gen, effectiveParallelJobs)) {
-                if (commandRunner.isCancelRequested()) {
-                    Out::warning("Build configuration cancelled.");
-                } else {
-                    Out::error("CMake configuration failed");
-                }
-                lastBuildSucceeded.store(false, std::memory_order_relaxed);
-                return;
-            }
-
-            if (!buildProject(buildPath, configType, gen, effectiveParallelJobs)) {
-                if (commandRunner.isCancelRequested()) {
-                    Out::warning("Build cancelled.");
-                } else {
-                    Out::error("Build failed");
-                }
-                lastBuildSucceeded.store(false, std::memory_order_relaxed);
-                return;
-            }
-
-            auto endTime = std::chrono::steady_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
-            double seconds = duration.count() / 1000.0;
-            Out::build("Build completed successfully in %.2f seconds.", seconds);
-            lastBuildSucceeded.store(true, std::memory_order_relaxed);
-        } catch (const std::exception& ex) {
-            Out::error("Build exception: %s", ex.what());
-            lastBuildSucceeded.store(false, std::memory_order_relaxed);
+        // Resolve a "Default" selection to a concrete ABI-compatible kit once,
+        // so configure and the build step (which both need the generator, e.g.
+        // for the vcvars prefix) agree on the same toolchain.
+        std::string cc = cCompiler, cxx = cxxCompiler, gen = generator;
+        if (!resolveDefaultKit(cc, cxx, gen)) {
+            return;
         }
-    });
+
+        // Resolve automatic mode and the per-machine safety cap once. The
+        // exact same value must drive both MSVC /MP and cmake --parallel.
+        const unsigned int requestedOrAutomaticJobs = parallelJobs == 0
+            ? getAutomaticParallelBuildJobs()
+            : parallelJobs;
+        const unsigned int effectiveParallelJobs =
+            std::min(requestedOrAutomaticJobs, getMaxParallelBuildJobs());
+
+        if (!configureCMake(projectPath, buildPath, configType, cc, cxx, gen, effectiveParallelJobs)) {
+            if (commandRunner.isCancelRequested()) {
+                Out::warning("Build configuration cancelled.");
+            } else {
+                Out::error("CMake configuration failed");
+            }
+            lastBuildSucceeded.store(false, std::memory_order_relaxed);
+            return;
+        }
+
+        if (!buildProject(buildPath, configType, gen, effectiveParallelJobs)) {
+            if (commandRunner.isCancelRequested()) {
+                Out::warning("Build cancelled.");
+            } else {
+                Out::error("Build failed");
+            }
+            lastBuildSucceeded.store(false, std::memory_order_relaxed);
+            return;
+        }
+
+        auto endTime = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+        double seconds = duration.count() / 1000.0;
+        Out::build("Build completed successfully in %.2f seconds.", seconds);
+        lastBuildSucceeded.store(true, std::memory_order_relaxed);
+    } catch (const std::exception& ex) {
+        Out::error("Build exception: %s", ex.what());
+        lastBuildSucceeded.store(false, std::memory_order_relaxed);
+    }
 }
 
 bool editor::Generator::isBuildInProgress() const {
-    return buildFuture.valid() &&
-           buildFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready;
+    return (buildTask.isValid() && !buildTask.isReady()) || inlineBuilds.load(std::memory_order_acquire) > 0;
 }
 
 void editor::Generator::waitForBuildToComplete() {
-    if (buildFuture.valid()) {
-        buildFuture.wait();
+    buildTask.wait();
+    while (inlineBuilds.load(std::memory_order_acquire) > 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 }
 
@@ -2788,21 +3023,15 @@ bool editor::Generator::didLastBuildSucceed() const {
     return lastBuildSucceeded.load(std::memory_order_relaxed);
 }
 
-std::future<void> editor::Generator::cancelBuild() {
-    // Launch cancellation on a separate thread so the UI thread is not blocked.
-    return std::async(std::launch::async, [this]() {
-        // Check if build is in progress inside the async task
-        if (!isBuildInProgress()) {
-            commandRunner.resetCancel();
-            return;
-        }
-
-        Out::warning("Cancelling build process...");
-        // Attempt to terminate the running process, then wait for the build to complete.
-        commandRunner.cancel();
-        waitForBuildToComplete();
+void editor::Generator::cancelBuild() {
+    if (!isBuildInProgress()) {
         commandRunner.resetCancel();
-        lastBuildSucceeded.store(false, std::memory_order_relaxed);
-        Out::warning("Build process cancelled.");
-    });
+        return;
+    }
+
+    Out::warning("Cancelling build process...");
+    // a build not started never runs; a running one has its process terminated
+    buildTask.cancel();
+    commandRunner.cancel();
+    lastBuildSucceeded.store(false, std::memory_order_relaxed);
 }

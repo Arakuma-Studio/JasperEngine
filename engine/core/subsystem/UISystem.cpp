@@ -22,6 +22,20 @@ static constexpr double UI_DOUBLE_CLICK_TIME = 0.3;
 
 UISystem::UISystem(Scene* scene): SubSystem(scene){
     signature.set(scene->getComponentId<RectTransformComponent>());
+    // the types onComponentRemoved handles
+    uiId = scene->getComponentId<UIComponent>();
+    rectTransformId = scene->getComponentId<RectTransformComponent>();
+    imageId = scene->getComponentId<ImageComponent>();
+    transformId = scene->getComponentId<Transform>();
+    buttonId = scene->getComponentId<ButtonComponent>();
+    panelId = scene->getComponentId<PanelComponent>();
+    scrollbarId = scene->getComponentId<ScrollbarComponent>();
+    progressbarId = scene->getComponentId<ProgressbarComponent>();
+    inputFieldId = scene->getComponentId<InputFieldComponent>();
+    textId = scene->getComponentId<TextComponent>();
+    for (ComponentId id : {uiId, rectTransformId, imageId, transformId, buttonId, panelId, scrollbarId, progressbarId, inputFieldId, textId}){
+        declareHookType(id);
+    }
 
     lastUIFromPointer = NULL_ENTITY;
     lastUIFromPointerHover = NULL_ENTITY;
@@ -1802,7 +1816,6 @@ void UISystem::load(){
 void UISystem::destroy(){
     auto layouts = scene->getComponentArray<RectTransformComponent>();
     for (int i = 0; i < layouts->size(); i++) {
-        RectTransformComponent& layout = layouts->getComponentFromIndex(i);
         Entity entity = layouts->getEntity(i);
         Signature signature = scene->getSignature(entity);
 
@@ -2620,6 +2633,8 @@ void UISystem::resetButtonStates() {
 }
 
 bool UISystem::eventOnCharInput(wchar_t codepoint){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     auto layouts = scene->getComponentArray<RectTransformComponent>();
     for (int i = 0; i < layouts->size(); i++){
         Entity entity = layouts->getEntity(i);
@@ -2641,6 +2656,8 @@ bool UISystem::eventOnCharInput(wchar_t codepoint){
 }
 
 bool UISystem::eventOnKeyDown(int key, bool repeat, int mods){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     auto layouts = scene->getComponentArray<RectTransformComponent>();
     for (int i = 0; i < layouts->size(); i++){
         Entity entity = layouts->getEntity(i);
@@ -2843,6 +2860,8 @@ void UISystem::pointerDownOnUI(Entity entity, float x, float y){
 }
 
 bool UISystem::eventOnPointerDown(float x, float y){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     lastUIFromPointer = NULL_ENTITY;
     lastPanelFromPointer = NULL_ENTITY;
     lastPointerDownPos = Vector2(x, y);
@@ -2932,6 +2951,8 @@ bool UISystem::eventOnPointerDown(float x, float y){
 }
 
 bool UISystem::eventOnPointerUp(float x, float y){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     lastPointerPos = Vector2(-1, -1);
 
     auto layouts = scene->getComponentArray<RectTransformComponent>();
@@ -3219,6 +3240,8 @@ void UISystem::pointerMoveOnUI(Entity entity, float x, float y, Vector2 pointerD
 }
 
 bool UISystem::eventOnPointerMove(float x, float y){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     auto layouts = scene->getComponentArray<RectTransformComponent>();
 
     CursorType cursor = CursorType::ARROW;
@@ -3353,10 +3376,10 @@ bool UISystem::isCoordInside(float x, float y, Transform& transform, RectTransfo
 }
 
 void UISystem::onComponentRemoved(Entity entity, ComponentId componentId) {
-    if (componentId == scene->getComponentId<UIComponent>() ||
-        componentId == scene->getComponentId<RectTransformComponent>() ||
-        componentId == scene->getComponentId<ImageComponent>() ||
-        componentId == scene->getComponentId<Transform>()) {
+    if (componentId == uiId ||
+        componentId == rectTransformId ||
+        componentId == imageId ||
+        componentId == transformId) {
         if (entity == lastUIFromPointer) {
             lastUIFromPointer = NULL_ENTITY;
             pointerDragging = false;
@@ -3371,7 +3394,7 @@ void UISystem::onComponentRemoved(Entity entity, ComponentId componentId) {
         }
     }
 
-    if (componentId == scene->getComponentId<ButtonComponent>()) {
+    if (componentId == buttonId) {
         ButtonComponent& button = scene->getComponent<ButtonComponent>(entity);
         if (button.label != NULL_ENTITY){
             if (isEntityChild(button.label, entity)){
@@ -3380,7 +3403,7 @@ void UISystem::onComponentRemoved(Entity entity, ComponentId componentId) {
             button.label = NULL_ENTITY;
         }
         destroyButton(button);
-    } else if (componentId == scene->getComponentId<PanelComponent>()) {
+    } else if (componentId == panelId) {
         PanelComponent& panel = scene->getComponent<PanelComponent>(entity);
         if (panel.headertext != NULL_ENTITY){
             if (isEntityChild(panel.headertext, entity)){
@@ -3400,7 +3423,7 @@ void UISystem::onComponentRemoved(Entity entity, ComponentId componentId) {
             }
             panel.headerimage = NULL_ENTITY;
         }
-    } else if (componentId == scene->getComponentId<ScrollbarComponent>()) {
+    } else if (componentId == scrollbarId) {
         ScrollbarComponent& scrollbar = scene->getComponent<ScrollbarComponent>(entity);
         if (scrollbar.bar != NULL_ENTITY){
             if (isEntityChild(scrollbar.bar, entity)){
@@ -3408,7 +3431,7 @@ void UISystem::onComponentRemoved(Entity entity, ComponentId componentId) {
             }
             scrollbar.bar = NULL_ENTITY;
         }
-    } else if (componentId == scene->getComponentId<ProgressbarComponent>()) {
+    } else if (componentId == progressbarId) {
         ProgressbarComponent& progressbar = scene->getComponent<ProgressbarComponent>(entity);
         if (progressbar.fill != NULL_ENTITY){
             if (isEntityChild(progressbar.fill, entity)){
@@ -3416,7 +3439,7 @@ void UISystem::onComponentRemoved(Entity entity, ComponentId componentId) {
             }
             progressbar.fill = NULL_ENTITY;
         }
-    } else if (componentId == scene->getComponentId<InputFieldComponent>()) {
+    } else if (componentId == inputFieldId) {
         InputFieldComponent& inputfield = scene->getComponent<InputFieldComponent>(entity);
         if (inputfield.text != NULL_ENTITY){
             if (isEntityChild(inputfield.text, entity)){
@@ -3436,7 +3459,7 @@ void UISystem::onComponentRemoved(Entity entity, ComponentId componentId) {
             }
             inputfield.cursor = NULL_ENTITY;
         }
-    } else if (componentId == scene->getComponentId<TextComponent>()) {
+    } else if (componentId == textId) {
         TextComponent& text = scene->getComponent<TextComponent>(entity);
         destroyText(text);
     }

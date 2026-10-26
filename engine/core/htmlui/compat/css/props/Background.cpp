@@ -297,15 +297,6 @@ namespace {
         return name.view();
     }
 
-    // the vendor prefix of a name ("" when none)
-    std::string_view vendorPrefix(std::string_view name){
-        for (std::string_view prefix : {std::string_view("-webkit-"), std::string_view("-moz-"), std::string_view("-o-"), std::string_view("-ms-")}){
-            if (startsWith(name, prefix))
-                return prefix;
-        }
-        return std::string_view();
-    }
-
     bool isAngle(const ComponentValue& v){
         return v.isToken(TokenType::Dimension) && unitCategory(v.token.unit) == UnitCategory::Angle;
     }

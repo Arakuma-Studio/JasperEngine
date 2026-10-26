@@ -101,20 +101,6 @@ namespace {
         return text.substr(begin, end - begin);
     }
 
-    bool endsWithNoCase(const std::string& text, const char* suffix){
-        const size_t length = std::strlen(suffix);
-        if (text.size() < length)
-            return false;
-        for (size_t i = 0; i < length; i++){
-            char c = text[text.size() - length + i];
-            if (c >= 'A' && c <= 'Z')
-                c = (char)(c - 'A' + 'a');
-            if (c != suffix[i])
-                return false;
-        }
-        return true;
-    }
-
     std::string normalizeAssetPath(std::string path){
         for (char& c : path){
             if (c == '\\')

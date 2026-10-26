@@ -17,14 +17,6 @@
 
 using namespace jasperengine;
 
-Matrix4::Matrix4(){
-    identity();
-}
-
-Matrix4::Matrix4(const Matrix4 &matrix){
-    (*this) = matrix;
-}
-
 Matrix4::Matrix4 (float fEntry00, float fEntry10, float fEntry20, float fEntry30,
                 float fEntry01, float fEntry11, float fEntry21, float fEntry31,
                 float fEntry02, float fEntry12, float fEntry22, float fEntry32,
@@ -53,12 +45,6 @@ Matrix4::Matrix4(const float **matrix){
     }
 }
 
-
-Matrix4& Matrix4::operator=(const Matrix4 &m){
-    memcpy(this->matrix,m.matrix,sizeof(matrix));
-
-    return *this;
-}
 
 Matrix4 Matrix4::operator *(const Matrix4 &m) const{
     Matrix4 prod;

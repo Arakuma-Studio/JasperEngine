@@ -35,6 +35,17 @@ def definition(text, marker):
     return text[start:end]
 
 
+def clock_source(directory, revision):
+    """ChangeTracking.cpp of the revision (the ECS since S07), copied next to its ComponentArray.h; None before"""
+    try:
+        text = source("engine/core/ecs/ChangeTracking.cpp", revision)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+    path = directory / "ChangeTracking.cpp"
+    path.write_text(text)
+    return path
+
+
 def run_variant(out, name, revision, sanitize, only):
     print(f"Compiling {name}: {revision or 'working tree'} ({'ASan/UBSan checks' if sanitize else 'release benchmark'})", flush=True)
     variant = out / name
@@ -50,17 +61,22 @@ def run_variant(out, name, revision, sanitize, only):
     morph.write_text((ROOT / "tools/performance/morph_tracks.cpp").read_text().replace("// PRODUCTION_METHODS", methods))
     includes = [ROOT / "engine/core"] + [p for p in (ROOT / "engine/core").iterdir() if p.is_dir()]
     includes += [ROOT / "engine/libs", ROOT / "engine/libs/lua", ROOT / "engine/libs/luabridge3", ROOT / "engine/libs/sokol", ROOT / "engine/renders"]
-    flags = ["-std=c++17", "-O3", "-DNO_LUA_INIT", "-DSOKOL_GLCORE"]
+    flags = ["-std=c++20", "-O3", "-DNO_LUA_INIT", "-DSOKOL_GLCORE"]
     if sanitize:
-        flags = ["-std=c++17", "-O1", "-g", "-DNO_LUA_INIT", "-DSOKOL_GLCORE", "-DCORE_CHECK_ONLY", "-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
+        flags = ["-std=c++20", "-O1", "-g", "-DNO_LUA_INIT", "-DSOKOL_GLCORE", "-DCORE_CHECK_ONLY", "-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
     for kind, src in (("component", ROOT / "tools/performance/component_sort.cpp"), ("morph", morph)):
         if only and kind != only:
             continue
         binary = variant / kind
         command = [os.environ.get("CXX", "g++"), *flags, *(f"-I{p}" for p in includes)]
+        extra = []
         if kind == "component":
             command.append(f'-DCOMPONENT_ARRAY_HEADER="{header}"')
-        command += [str(src), "-o", str(binary)]
+            # the paged array (S07) stamps change ticks through ChangeClock
+            clock = clock_source(variant, revision)
+            if clock:
+                extra.append(str(clock))
+        command += [str(src), *extra, "-o", str(binary)]
         subprocess.run(command, check=True, cwd=ROOT)
         output = subprocess.check_output([str(binary)], text=True, cwd=ROOT)
         print(f"{name} {kind}: behavior assertions passed", flush=True)
@@ -83,10 +99,11 @@ def paired_component(out):
     header = out / "ComponentArray.paired-baseline.h"
     header.write_text(baseline)
     binary = out / "component-paired"
-    subprocess.run([os.environ.get("CXX", "g++"), "-std=c++17", "-O3",
+    subprocess.run([os.environ.get("CXX", "g++"), "-std=c++20", "-O3",
         f"-I{ROOT / 'engine/core'}", f"-I{ROOT / 'engine/core/ecs'}",
         f'-DBASELINE_COMPONENT_HEADER="{header}"',
-        str(ROOT / "tools/performance/component_sort_paired.cpp"), "-o", str(binary)], check=True)
+        str(ROOT / "tools/performance/component_sort_paired.cpp"), str(ROOT / "engine/core/ecs/ChangeTracking.cpp"),
+        "-o", str(binary)], check=True)
     output = subprocess.check_output([str(binary)], text=True)
     (out / "component-paired.csv").write_text(output)
     rows = list(csv.reader(output.splitlines()))

@@ -6,6 +6,8 @@
 #include "System.h"
 #include "Project.h"
 #include <cstdarg>
+#include <string>
+#include <vector>
 
 namespace jasperengine::editor{
 
@@ -42,7 +44,14 @@ namespace jasperengine::editor{
 
         void quit() override;
 
-        void platformLog(const int type, const char *fmt, va_list args) override;
+        // Starts a program and does not wait for it: argv[0] is looked up on PATH, the
+        // arguments are passed as they are (no shell, so paths with spaces stay one argument),
+        // and the program outlives the editor. False (and why) when it could not start.
+        static bool launchDetached(const std::vector<std::string>& argv, std::string* error = nullptr);
+        // Opens a file with the program the system associates with it (xdg-open, open,
+        // ShellExecute)
+        static bool openWithSystemDefault(const std::string& path, std::string* error = nullptr);
+
     };
 
 }

@@ -4,6 +4,7 @@
 #ifndef TEXT_COMPONENT_H
 #define TEXT_COMPONENT_H
 
+#include "asset/AssetRef.h"
 #include "Engine.h"
 #include "math/Vector2.h"
 #include "util/CharExtent.h"
@@ -16,7 +17,7 @@ namespace jasperengine{
 
     //like a CSS font-family list: the main font first, then the fallbacks tried in order
     //for what it misses. Empty slots are skipped, the built-in fonts close the chain
-    typedef std::array<std::string, MAX_TEXT_FONTS> FontArray;
+    typedef std::array<AssetRef, MAX_TEXT_FONTS> FontArray;
 
     struct JASPERENGINE_API TextComponent{
         bool loaded = false;

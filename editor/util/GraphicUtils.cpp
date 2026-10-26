@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 #include "GraphicUtils.h"
+#include "util/PngWriter.h"
 
 #include "Out.h"
 #include "System.h"
 #include "stb_image_write.h"
 #include "stb_image_resize2.h"
 #include "util/STBText.h"
+#include "jobs/JobSystem.h"
 
 #include <algorithm>
 #include <cstring>
@@ -65,12 +67,9 @@ Vector2 editor::GraphicUtils::getRectTransformCenter(Scene* scene, Entity entity
 // The framebuffer's color texture, width * height RGBA8 rows as the backend stores them
 // (pixels from new[], owned by the caller when needDelete). Synchronous GPU readback,
 // on the main thread.
-static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bool& needDelete) {
+static bool readRenderPixels(FramebufferRender& render, unsigned int width, unsigned int height, uint8_t*& pixels, bool& needDelete) {
     pixels = nullptr;
     needDelete = false;
-
-    unsigned int width = framebuffer->getWidth();
-    unsigned int height = framebuffer->getHeight();
 
     #if defined(SOKOL_GLCORE) || defined(SOKOL_GLES3)
         // OpenGL
@@ -80,7 +79,7 @@ static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bo
         // every command that renders into the texture finished first: GL makes glGetTexImage
         // wait for them, Mesa's llvmpipe (the headless editor's driver) did not always (p4-gaps)
         glFinish();
-        glBindTexture(GL_TEXTURE_2D, framebuffer->getRender().getColorTexture().getGLHandler());
+        glBindTexture(GL_TEXTURE_2D, render.getColorTexture().getGLHandler());
         glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
         glBindTexture(GL_TEXTURE_2D, 0);
     #endif
@@ -94,7 +93,7 @@ static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bo
         VkQueue queue = reinterpret_cast<VkQueue>(
             const_cast<void*>(environment.vulkan.queue));
         VkImage image = reinterpret_cast<VkImage>(const_cast<void*>(
-            framebuffer->getRender().getColorTexture().getVulkanImageHandler()));
+            render.getColorTexture().getVulkanImageHandler()));
         const VkDeviceSize dataSize = static_cast<VkDeviceSize>(width) * height * 4;
         VkBuffer stagingBuffer = VK_NULL_HANDLE;
         VkDeviceMemory stagingMemory = VK_NULL_HANDLE;
@@ -249,7 +248,7 @@ static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bo
 
     #if defined(SOKOL_METAL)
         // Metal
-        auto metalTexPtr = framebuffer->getRender().getColorTexture().getMetalHandler();
+        auto metalTexPtr = render.getColorTexture().getMetalHandler();
         id<MTLTexture> tex = (__bridge id<MTLTexture>)metalTexPtr;
         id<MTLDevice> device = [tex device];
         NSUInteger bytesPerRow = width * 4;
@@ -282,7 +281,7 @@ static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bo
 
     #if defined(SOKOL_D3D11)
         // D3D11
-        auto rtvPtr = framebuffer->getRender().getD3D11HandlerColorRTV();
+        auto rtvPtr = render.getD3D11HandlerColorRTV();
         ID3D11RenderTargetView* rtv = reinterpret_cast<ID3D11RenderTargetView*>(const_cast<void*>(rtvPtr));
 
         ID3D11Device* device = nullptr;
@@ -333,6 +332,24 @@ static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bo
     return true;
 }
 
+static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bool& needDelete) {
+    return readRenderPixels(framebuffer->getRender(), framebuffer->getWidth(), framebuffer->getHeight(), pixels, needDelete);
+}
+
+bool editor::GraphicUtils::readRenderPixels(FramebufferRender* render, int width, int height, std::vector<uint8_t>& rgba) {
+    rgba.clear();
+    if (!render || !render->isCreated() || width <= 0 || height <= 0)
+        return false;
+    uint8_t* pixels = nullptr;
+    bool needDelete = false;
+    const bool read = ::readRenderPixels(*render, (unsigned int)width, (unsigned int)height, pixels, needDelete) && pixels;
+    if (read)
+        rgba.assign(pixels, pixels + (size_t)width * height * 4);
+    if (needDelete)
+        delete[] pixels;
+    return read;
+}
+
 bool editor::GraphicUtils::saveFramebufferImage(Framebuffer* framebuffer, fs::path path, bool flipY, std::function<void()> onComplete) {
     uint8_t* pixels = nullptr;
     bool needDelete = false;
@@ -345,7 +362,8 @@ bool editor::GraphicUtils::saveFramebufferImage(Framebuffer* framebuffer, fs::pa
     }
 
     try {
-        std::thread([pixels, needDelete, width, height, path, flipY, onComplete]() {
+        // must-run (the pixels are freed and onComplete called there): a detached Background job
+        jobs::enqueueDetached([pixels, needDelete, width, height, path, flipY, onComplete]() {
             // Do not use stb's process-global flip flag from concurrent writers.
             // The readback buffer is owned here, so flip its rows directly.
             if (flipY && pixels) {
@@ -358,7 +376,7 @@ bool editor::GraphicUtils::saveFramebufferImage(Framebuffer* framebuffer, fs::pa
                     }
                 }
             }
-            stbi_write_png(path.string().c_str(), width, height, 4, pixels, width * 4);
+            writePng(path, width, height, 4, pixels, width * 4, io::Durability::Cache);
 
             if (needDelete && pixels) {
                 delete[] pixels;
@@ -367,7 +385,7 @@ bool editor::GraphicUtils::saveFramebufferImage(Framebuffer* framebuffer, fs::pa
             if (onComplete) {
                 onComplete();
             }
-        }).detach();
+        }, jobs::Lane::Background, "save-framebuffer-png");
     } catch (...) {
         if (needDelete && pixels) {
             delete[] pixels;

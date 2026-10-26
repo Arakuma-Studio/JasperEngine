@@ -12,6 +12,7 @@
 // the main thread to save scenes, which keeps running since tool handlers return at once) and a
 // watcher thread forwards its progress and log lines (Out) into the McpJob.
 #include "McpTools.h"
+#include "util/SourceLocation.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -21,6 +22,7 @@
 #include "mcp/McpSchema.h"
 #include "mcp/McpValues.h"
 
+#include "jobs/JobSystem.h"
 #include "App.h"
 #include "AppSettings.h"
 #include "Exporter.h"
@@ -335,44 +337,77 @@ struct Diagnostic {
 };
 
 // file:line:col: error: message (GCC/Clang), file(line,col): error C1234: message (MSVC),
-// CMake Error at file:line, linker errors
+// CMake Error at file:line, linker errors. The location is SourceLocation's (the one parser
+// of file locations, the Console's too); this reads the severity and message around it.
 bool parseDiagnostic(const std::string& rawLine, Diagnostic& out) {
     const std::string line = stripAnsi(rawLine);
     if (line.find("error") == std::string::npos && line.find("warning") == std::string::npos &&
-        line.find("Error") == std::string::npos && line.find("undefined reference") == std::string::npos) {
+        line.find("Error") == std::string::npos && line.find("Warning") == std::string::npos &&
+        line.find("undefined reference") == std::string::npos) {
         return false;
     }
-    static const std::regex gcc(R"(^\s*(.+?):(\d+):(?:(\d+):)?\s+(fatal error|error|warning):\s+(.*)$)");
-    static const std::regex msvc(R"(^\s*(.+?)\((\d+)(?:,(\d+))?\)\s*:\s+(fatal error|error|warning)\s+([A-Za-z]+\d+)\s*:\s*(.*)$)");
-    static const std::regex cmake(R"(^\s*CMake (Error|Warning)(?: \(dev\))? at (.+?):(\d+)(.*)$)");
+    size_t first = line.find_first_not_of(" \t");
+    if (first == std::string::npos) return false;
+    const std::vector<SourceLocation> locations = findSourceLocations(line);
+
+    // CMake Error at file:line (command)
+    static const std::string cmakeError = "CMake Error", cmakeWarning = "CMake Warning";
+    if (line.compare(first, cmakeError.size(), cmakeError) == 0 || line.compare(first, cmakeWarning.size(), cmakeWarning) == 0) {
+        const size_t at = line.find(" at ", first);
+        if (at == std::string::npos || locations.empty() || locations[0].begin != at + 4) return false;
+        const bool warning = line.compare(first, cmakeWarning.size(), cmakeWarning) == 0;
+        out.file = locations[0].path;
+        out.line = locations[0].line;
+        out.severity = warning ? "warning" : "error";
+        out.code = "cmake";
+        out.message = std::string(warning ? "CMake Warning" : "CMake Error") + line.substr(locations[0].end);
+        return true;
+    }
+
+    // a compiler line starts with its location, then ": error: ..." or ": error C1234: ..."
+    if (!locations.empty() && locations[0].begin == first) {
+        const SourceLocation& location = locations[0];
+        size_t at = location.end;
+        while (at < line.size() && (line[at] == ' ' || line[at] == ':')) at++;
+        std::string severity;
+        for (const char* word : {"fatal error", "error", "warning"}) {
+            if (line.compare(at, std::strlen(word), word) == 0) {
+                severity = word;
+                at += std::strlen(word);
+                break;
+            }
+        }
+        if (severity.empty()) return false;
+        // MSVC's code: error C2065: ...
+        std::string code;
+        size_t codeEnd = at;
+        while (codeEnd < line.size() && line[codeEnd] == ' ') codeEnd++;
+        size_t letters = codeEnd;
+        while (letters < line.size() && std::isalpha(static_cast<unsigned char>(line[letters]))) letters++;
+        size_t digits = letters;
+        while (digits < line.size() && std::isdigit(static_cast<unsigned char>(line[digits]))) digits++;
+        if (letters > codeEnd && digits > letters) {
+            size_t colon = digits;
+            while (colon < line.size() && line[colon] == ' ') colon++;
+            if (colon < line.size() && line[colon] == ':') {
+                code = line.substr(codeEnd, digits - codeEnd);
+                at = colon;
+            }
+        }
+        if (at >= line.size() || line[at] != ':') return false;
+        at++;
+        while (at < line.size() && line[at] == ' ') at++;
+        out.file = location.path;
+        out.line = location.line;
+        out.column = location.column;
+        out.severity = severity == "warning" ? "warning" : "error";
+        out.code = code;
+        out.message = line.substr(at);
+        return true;
+    }
+
     static const std::regex linker(R"((undefined reference to .*|multiple definition of .*|ld(?:\.\w+)?: (?:error|fatal error): .*|collect2: error: .*|LINK : fatal error .*))");
     std::smatch m;
-    if (std::regex_match(line, m, gcc)) {
-        out.file = m[1];
-        out.line = std::stoi(m[2]);
-        out.column = m[3].matched ? std::stoi(m[3]) : 0;
-        out.severity = m[4] == "warning" ? "warning" : "error";
-        out.message = m[5];
-        return out.file.find(' ') == std::string::npos || out.file.find('/') != std::string::npos ||
-               out.file.find('\\') != std::string::npos;
-    }
-    if (std::regex_match(line, m, msvc)) {
-        out.file = m[1];
-        out.line = std::stoi(m[2]);
-        out.column = m[3].matched ? std::stoi(m[3]) : 0;
-        out.severity = m[4] == "warning" ? "warning" : "error";
-        out.code = m[5];
-        out.message = m[6];
-        return true;
-    }
-    if (std::regex_match(line, m, cmake)) {
-        out.file = m[2];
-        out.line = std::stoi(m[3]);
-        out.severity = m[1] == "Warning" ? "warning" : "error";
-        out.code = "cmake";
-        out.message = "CMake " + std::string(m[1]) + std::string(m[4]);
-        return true;
-    }
     if (std::regex_search(line, m, linker)) {
         out.severity = "error";
         out.code = "link";
@@ -380,27 +415,6 @@ bool parseDiagnostic(const std::string& rawLine, Diagnostic& out) {
         return true;
     }
     return false;
-}
-
-// The project file a build-tree path was copied from: the longest trailing part of the path
-// that exists in the project
-std::string projectFileFor(const fs::path& projectPath, const std::string& file) {
-    if (file.empty()) return {};
-    const fs::path path = fs::path(file).lexically_normal();
-    std::vector<fs::path> parts(path.begin(), path.end());
-    std::error_code ec;
-    for (size_t start = 0; start < parts.size(); start++) {
-        fs::path suffix;
-        for (size_t i = start; i < parts.size(); i++) suffix /= parts[i];
-        if (suffix.is_absolute() || suffix.has_root_name() || suffix.has_root_directory()) continue;
-        // the build cache (.jasperengine/export/...) holds copies: the source is elsewhere
-        if (*suffix.begin() == ".jasperengine") continue;
-        if (parts.size() - start >= 1 && fs::is_regular_file(projectPath / suffix, ec)) {
-            if (parts.size() - start == 1 && start != parts.size() - 1) continue;
-            return suffix.generic_string();
-        }
-    }
-    return {};
 }
 
 // ------------------------------------------------------------------ build runs
@@ -414,7 +428,7 @@ struct BuildRun {
     std::string executableName;
     std::mutex mutex;                     // guards exporter
     std::unique_ptr<Exporter> exporter;
-    std::thread worker;                   // generate_shaders: runs Exporter::generateShaders
+    jobs::Task<void> worker;              // generate_shaders: Exporter::generateShaders on the process channel
     uint64_t logCursor = 0;
     std::vector<Diagnostic> diagnostics;
     size_t errorCount = 0;
@@ -581,7 +595,7 @@ void watchRun(std::shared_ptr<BuildRun> run) {
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
     drainLogs();
 
-    if (r.worker.joinable()) r.worker.join();
+    r.worker.wait();
     {
         // joins the export thread, which has returned
         std::lock_guard<std::mutex> lock(r.mutex);
@@ -601,7 +615,12 @@ void startRun(const std::shared_ptr<BuildRun>& run) {
             if (r->exporter) r->exporter->cancelExport();
         }
     });
-    std::thread(watchRun, run).detach();
+    // The watcher polls the exporter (on the process channel) until it ends. It has a channel
+    // of its own: on the process channel it could hold the slot the export it waits for needs.
+    static jobs::JobChannel* watchChannel = new jobs::JobChannel("build-watch", 2);
+    jobs::SubmitOptions options;
+    options.name = "build-watch";
+    watchChannel->submit([run]() { watchRun(run); }, options);
 }
 
 bool openRunLog(BuildRun& run, Project* project) {
@@ -684,6 +703,7 @@ void buildProjectTool(const CallPtr& call) {
     config.assetsDir = project->getAssetsPath();
     config.luaDir = project->getLuaPath();
     config.packNativeResources = project->shouldPackNativeResources();
+    config.allowMissingAssets = args.value("allow_missing_assets", false);
     std::string error;
 
     uint32_t startScene = project->getStartSceneId();
@@ -980,10 +1000,12 @@ void generateShadersTool(const CallPtr& call) {
         std::lock_guard<std::mutex> lock(manager().mutex);
         manager().active = run;
     }
-    // Shader generation runs the exporter on the calling thread: a worker, not the main thread.
-    // project is not used (no scene saving), so it never waits for the main thread.
+    // Shader generation runs the exporter on the calling thread: a process-channel job, not the
+    // main thread. project is not used (no scene saving), so it never waits for the main thread.
     Exporter* exporter = run->exporter.get();
-    run->worker = std::thread([exporter, config]() { exporter->generateShaders(config); });
+    jobs::SubmitOptions options;
+    options.name = "generate-shaders";
+    run->worker = jobs::system().processChannel().submit([exporter, config]() { exporter->generateShaders(config); }, options);
     startRun(run);
     replyWhenJobDone(call, run->job, args.value("wait", true), args.value("timeout_seconds", 120.0), buildResult);
 }
@@ -1852,15 +1874,16 @@ void registerBuildTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Build;  // busy policy (McpServer::busyRefusal)
         tool.title = "Build Project";
         tool.description =
-            "File > Build Settings > Build, as a job. desktop: a player for this computer (the first build compiles "
-            "the engine: many minutes); web: WebAssembly (needs emsdk); source: a standalone C++/CMake project. "
+            "File > Build Settings > Build, as a job. desktop: a player for this computer (the first one compiles "
+            "the engine: minutes); web: WebAssembly (needs emsdk); source: a standalone C++/CMake project. "
             "Saves all scenes first. Past timeout_seconds a {job_id} (get_job). Result: output_dir, artifacts, "
             "executable, errors [{file, line, message}], warnings, log_file. Don't edit scenes or play meanwhile.";
         tool.inputSchema = object({
             {"mode", withDefault(stringEnum("", {"desktop", "web", "source"}), "desktop")},
             {"output_dir", string("Absolute, outside the project. Default: last for mode.")},
             {"overwrite", withDefault(boolean("source: allow a non-empty output_dir."), false)},
-            {"start_scene", sceneRef("Also becomes the project's start scene. Default: project's.")},
+            {"start_scene", sceneRef("Also set as the start scene. Default: project's.")},
+            {"allow_missing_assets", withDefault(boolean("Build despite missing assets (list_missing_assets)."), false)},
             {"graphics_api", string("desktop: opengl/vulkan/d3d11/metal-macos (per OS); web: opengles. Remembered.")},
             {"platform", stringEnum("source: shader target platform.", {"windows", "macos", "linux", "android", "ios", "web"})},
             {"backends", array(stringItem, "source: opengl/opengles/d3d11/metal-macos/metal-ios/vulkan/all. Remembered.")},

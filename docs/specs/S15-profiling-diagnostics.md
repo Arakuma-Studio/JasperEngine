@@ -546,3 +546,99 @@ path (`ViewTools.cpp` `w3::captureView`) on that target.
   +x% overhead (estimated)" from the measured per-scope cost × event count.
 - **Prebuilt development players (S30)** double the per-platform binaries. *Default:* ship them.
   If S30 cannot, Development Build requires a compiler-based export until it can.
+
+## Deviations
+
+Recorded by the implementation (the branch `feat/s15-profiling`); each is the closest correct
+alternative to what the text above asks.
+
+- **MCP parameter names are snake_case** (S31 R20): `min_frame_ms`, `capture_id`, `deep_lua`,
+  `save_path`, `include_draws`, `max_draws`, `max_rows`, `group_by`, `max_width`. Result keys are
+  snake_case too (`gpu_ms`, `frame_ms`, `spike_interval_frames`). The seven tools are in S31's
+  `profiling` group (4,523 of its 7,000 characters, `tools/mcp/budget.json`); `focus_window`'s
+  `profiler` and `frame_debugger` windows stay in core (+177).
+- **An eighth MCP entry point.** §6.6 lists seven tools; `capture_pass_output` is one of them, and
+  `focus_window` gained `profiler` and `frame_debugger` (the UI tests open the panels with it).
+- **The view parameter's default** is the engine's frame (the running game while playing, else
+  the Scene view), not "game": in edit mode the Game view draws only while its tab is shown, so a
+  default of "game" would often find nothing. `"game"` and `"scene"` name the views explicitly.
+- **The sokol extension's API** grew what the engine needs: `sgj_gpu_timer_setup` takes a desc
+  (`disabled`, for `JASPERENGINE_GPU_TIMER=off`), results carry `frame_valid` and `pass_reason`,
+  and the TU exports `sgj_gpu_timer_get_stats`, `sgj_commit_index`, `sgj_pass_valid`,
+  `sgj_pixel_format_name`, `sgj_query_device_memory`, `sgj_device_name` and
+  `sgj_gpu_timer_set_vulkan_host_query_reset` (whoever creates the VkDevice says whether it enabled
+  `hostQueryReset`; both device creators, `VulkanContext` and the editor's renderer, enable it when
+  supported). The four hooks are where §6.1 puts them; as a consequence the GL query of a pass
+  starts after the backend's begin (its load clears are before it) and ends before the MSAA
+  resolve of the backend's end, and the Vulkan timestamps sit inside the dynamic rendering
+  instance. The hooks are installed while a consumer holds the timer and removed otherwise (R26:
+  one null-pointer test per site), not filled at setup.
+- **Metal** samples four points per render encoder (start and end of the vertex and fragment
+  stages; begin = the first that ran, end = the last), because an encoder that only clears runs no
+  vertex stage. The frame time on Metal is always the command buffer's `GPUEndTime -
+  GPUStartTime` (encoder spans overlap; their first-to-last would not be the frame either).
+- **Threads.** S06 has one worker kind (lanes, not separate background threads), so the lanes are
+  "Job Worker #n", "Job Blocking #n" (S06's blocking channel threads) and "Asset Reader #n"; there
+  is no "Job Background #n". The audio callback runs inside SoLoud's/miniaudio's own thread with no
+  engine code, so it has no scopes and no lane. Thread names come from `thread::setCurrentName`
+  (every engine thread names itself there) and the job system's `onThreadStart` hook.
+- **Frames.** A CPU frame is one rendered iteration of the editor loop (`EditorFrame::run`) or one
+  `Engine::systemDraw` in a game; `cpuMs` is its start to the end of its CPU work (before
+  presenting and waiting), `frameMs` its start to the next frame's start.
+- **AC4's compiled-out baseline** is the editor built from the commit before S15: the editor
+  itself cannot be built without the profiler (its panels and tools use it), and release games
+  have no benchmark mode. `tools/perf/profiler_overhead.py` measures the editor with the profiler
+  idle, recording (`benchmark --profile`) and recording with GPU timers (`--profile
+  --gpu-passes`) against it, interleaving the runs.
+- **AC8's tests** are `VramTrackerGpu.CreateDestroyBalances` and `VramTrackerGpu.QueuedCreationKeepsOwner`
+  (a suite that needs a device ends in `Gpu`, docs/testing.md). "Other+untagged ≤ 5%" is read as
+  the bytes the tracker could not classify (category Other): resources made outside a
+  `JE_GPU_ALLOC_SCOPE` still get a category from their usage and an owner from their label;
+  `get_vram_report` reports `untagged_bytes` separately.
+- **AC9's golden log** compares the line after its `Frame stats (frame N): ` prefix (N depends on
+  how long loading took): `tools/ci/check_profiler_smoke.py --frame-stats
+  engine/tests/data/framestats_baseline.txt build/smoke/game.log build/smoke/game-actions.log` after
+  `SMOKE_GAME_ENV=JASPERENGINE_FRAME_STATS=1 SMOKE_GAME_RUNS="actions
+  JASPERENGINE_FRAME_STATS_ACTIONS=1" tools/smoke-test.sh tools/fixtures/post-processing`.
+  The pass recorder records every pass; the frame stats line keeps listing the passes SokolCamera
+  begins, as before, from SokolCamera's own pass descriptions.
+- **The pass preview shader** (`PASS_PREVIEW`, `shaderlib/pass_preview.frag`) is built on demand
+  by the editor and is not exported (games have no Frame Debugger). Depth is linearised with a
+  near/far the Frame Debugger is given (Linear), else mapped through Levels;
+  `capture_pass_output` normalises depth to the exact range it read back on the CPU (the min-max
+  of R12). Its blit is timed by the GPU timer but left out of pass lists.
+- **The Xcode workspace** builds without the profiler (no `JASPERENGINE_PROFILER` definition, the
+  macros compile out): Apple development builds go through CMake.
+- **Profiler clock.** Scopes read the CPU's counter (`rdtsc` on x86-64, `cntvct_el0` on arm64,
+  steady_clock elsewhere), converted to steady_clock nanoseconds when the main thread drains the
+  rings, with a factor refined every frame: a steady_clock read is a vDSO call costing ~30 ns on
+  the virtual build servers, which put a recording scope pair over R27's 50 ns.
+- **S13 dynamic resolution** (merged after this spec was written) is the GPU consumer of R5: while
+  it runs it holds the GPU timer (in every build, the profiler compiled in or not) and its GPU law
+  is fed the game frame's GPU time (`FrameTimes::latestGpuMs`, the newest of the last 8 frames,
+  a few frames late); `fake_gpu_ms` still takes precedence, and without a timer (WebGPU, Firefox,
+  a device without timestamps) it uses its frame law as before.
+- **AC4 measured** on the benchmark server E (4 dedicated vCPU, llvmpipe under Xvfb,
+  `vblank_mode=0`, `tools/fixtures/post-processing`, 600 measured frames a run) against oe-port
+  f93897204 with the same benchmark fix (below), with `tools/perf/profiler_overhead.py`: shuffled
+  rounds, each configuration's overhead paired with the same round's baseline, mean and 95 %
+  confidence interval. Recording (+1.03 %) and recording with GPU timers (+0.66 %) are well within
+  3 % and 3.5 % (9 rounds). The idle profiler, after taking the idle costs out (a pass's
+  attachments are queried only while a reader wants them; allocation scopes intern their owner
+  only when something is made; the monitors use handles and skip the driver's memory query): 60
+  rounds +0.32 % [+0.06, +0.57], 60 more +0.48 % [+0.19, +0.76], pooled 120 rounds +0.40 %
+  [+0.21, +0.59]. The mean is within 0.5 %; the interval's top is not, on a device whose frame
+  is software rasterisation on the same four cores (a round's own spread is about 1 %). What is
+  left on the idle path per frame is the scopes' relaxed load and branch, sokol's counters and the
+  pass recorder's per-pass record. The idle figure is to be measured again on the real-GPU
+  benchmark machine in the GPU performance campaign, where the CPU does not also rasterise.
+- **`jasperengine-editor benchmark` is no longer throttled when unfocused**: an X server without a
+  window manager focuses no window, and the editor's unfocused frame-period sleep held every
+  benchmark at 16.3 ms (60 fps) whatever its work.
+- **AC12's smoke run**: `SMOKE_EXPORT_ARGS=--development-build SMOKE_READY_SETTLE=60
+  SMOKE_GAME_ARGS="--profile-capture=/src/build/smoke/capture.jetrace.json --profile-frames=30"
+  tools/smoke-test.sh tools/fixtures/post-processing`, then `tools/ci/check_profiler_smoke.py
+  --capture build/smoke/capture.jetrace.json build/smoke/game.log` (the path is the container's;
+  llvmpipe draws the recorded frames slowly, so the game needs the longer settle).
+- **`profiler_capture` is named `capture_profile`**: S31's convention (a new tool's name is
+  verb_noun, `tools/mcp/tests/test_tool_conventions.py`) landed before S15.

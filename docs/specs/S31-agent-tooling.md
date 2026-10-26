@@ -506,3 +506,83 @@ in `tools/mcp/tests/`.
 - **Global flags only before the tool name** may surprise users of their CLI. This is
   intentional, because it is collision-free; `call <tool> --port 1` is treated as the tool
   parameter `port` or rejected with a hint.
+
+## Deviations (implementation)
+
+- **Group limits live in `tools/mcp/budget.json` only.** R17 put a budget in the group table of
+  `McpToolGroups.cpp`; R21 makes budget.json the single source of the limits. The table holds
+  name and description; budget.json `groups` holds a group's limits when they differ from the
+  defaults (`profiling` 7,000/7 for S15, `splines` 6,000 for S18).
+- **A `data_safety` group (S03).** §6.4 names no group for S03. Its three tools
+  (`get_load_report`, `list_scene_backups`, `discard_scene_backup`) went into `data_safety`, and
+  the S06/S09 tools (`get_job_system_stats`, `set_job_system_config`, `get_memory_stats`,
+  `get_log_config`, `set_log_level`, `wait_for_log`, `list_timers`) into `diagnostics` and the
+  S24 ones (`get_undo_history`, `get_play_changes`, `apply_play_changes`,
+  `discard_play_changes`) into `editor_ux`, when
+  S31 merged oe-port: those streams had registered them into core and raised the limit inside
+  `test_html_ui_tools.py`, which took the default listing over 100,000 characters.
+- **The terrain tools moved out of core** (`sculpt_terrain`, `set_terrain_maps`,
+  `sample_terrain`, group `terrain`), against §6.4's "S31 moves nothing out": after the oe-port
+  merge the core listing measured 101,299 characters even without the S03/S06/S09 tools
+  (S03 added `allow_data_loss` to nine tools and `recovery` to `open_scene`, S09 grew
+  `read_console`, and `focus_window` gained the preferences and Console views). Trimming
+  1,300+ more characters of descriptions would have cost agents information; three niche tools
+  in a group cost nothing (callable by name, named in the guide's Tool groups line) and leave
+  about 4,000 characters of room. `allow_data_loss` lost its per-tool description (explained
+  once in the guide's Data safety section).
+- **Core trimmed to fit `tool_groups`.** The 140 core tools measured 100,579 characters before
+  S31. Eight long descriptions were reworded and four repeated schema descriptions (`parent`
+  "Default: scene root.", `max_width` "0 = full size.", the default component and quaternion
+  descriptions) moved to the instructions' Addressing section, as R20 asks for shared
+  conventions; the instructions were tightened to keep the guide, with its generated Tool
+  groups section, within 16,384 bytes.
+- **Schemas brought into the R3 subset:** the `screenshot` option of play/wait/send_input used
+  `oneOf` (now `anyOf`), and the `{euler}` branch of `quat` and the `heightmap`/`blendmap`
+  objects of `set_terrain_maps` were open objects (now `additionalProperties: false`).
+- **`_meta` also carries `jasper/while_playing`**, so `call <tool> --help` against a live editor
+  shows the play rule (R4) without the offline registry. `_meta` is not part of the measured size.
+- **SSE is chosen lazily over HTTP:** a request is answered as an SSE stream when the client
+  accepts `text/event-stream` and a notification (progress, `tools/list_changed`) comes before
+  the answer, instead of "a progressToken was sent". Calls without notifications stay plain JSON.
+- **`mcp --tool-groups` applies to every session of that editor** (stdio and HTTP), and
+  `mcp.tool_groups` is the default when the flag is absent. An unknown name in the flag exits 2;
+  in the settings it is a warning, because the GUI editor cannot exit on a stale setting.
+- **`gen_tool_docs.py --check` ignores the editor version in the header line**: the version
+  (`git describe --always --dirty`) changes with every commit, so comparing it would make the
+  file stale on every commit.
+- **Unit tests** are `editor/tests/cli/SchemaArgsTest.cpp` with the suites `CallArgs` and
+  `SchemaValidate` (S02's `<Subject>Test.cpp` / `TEST(Subject, ...)` naming), not
+  `CallArgsTests.*` / `SchemaValidateTests.*`.
+- **AC6 uses `generate_shaders`** (a job of a few seconds) for `--wait-job` and Ctrl-C;
+  `build_project --wait-job` runs under `JASPER_SLOW_BUILD=1` as specified.
+- **`batch` always prints envelopes** (`--json` is implied); a usage error before any call is one
+  envelope with `code: "usage"`. With `--atomic`, the batch result's images are attached to the
+  last envelope (the MCP `batch` tool does not say which call made them).
+- **The CLI's own stderr lines** (the editor that answered, a spawned editor's pid and scratch
+  directory, image paths, progress) are suppressed by `--quiet`. A spawned editor's stderr goes
+  to `editor.stderr.log` in its scratch directory, which is removed afterwards unless
+  `JASPER_KEEP_SCRATCH=1`.
+- **Coverage** (R23) counts a tool as tested when a test file names it quoted (`"tool_name"`),
+  so a word inside a longer name does not count.
+- **The agent guide has a budget in budget.json** (beyond R19's "≤ 16,384 bytes"): after the
+  S04 merge oe-port's guide measured 17,194 bytes, because each stream trimmed or grew it ad
+  hoc. budget.json's `guide` entry now holds its limits (16,384 bytes in all, 1,500 per `##`
+  section, per-section exceptions with a reason), `tool_budget.py --check` gates them, and
+  conventions.md ("The agent guide") makes the guide workflow plus one digest per area, with an
+  area's detail in `docs/mcp/guide/<area>.md`. The Lua scripts section (3,139 bytes, the largest)
+  became a digest; its full text and example script are `jasper://docs/lua-scripting`.
+- **S04's tools are in `assets_pipeline`** (§6.4 names S04 there): `resolve_asset`,
+  `find_references`, `get_asset_dependencies`, `list_missing_assets`,
+  `retarget_asset_references`, `clear_asset_references`, through their module row in
+  `buildToolRegistry`. S04 had registered them into core and raised the limit in
+  `test_html_ui_tools.py`; its `import_files` and `build_project` parameters stay in core.
+- **S10's tools are in `rendering_fx`** (`get_shadow_stats`, `set_shadow_debug`; §6.4 names no
+  group for S10, and the group's description now names shadow statistics and debug views), and
+  S10's guide paragraph became its own `## Shadows` digest: appended to "Shaders and materials"
+  it took that section over the 1,500-byte section limit. S12's tools
+  (`list_atmosphere_presets`, `apply_atmosphere_preset`, `get_atmosphere_info`) are in
+  `rendering_fx` as §6.4 says, and its guide bullet became an `## Atmosphere` digest the same way;
+  so are S13's (`inspect_color_lut`, `get_post_processing_status`, `set_post_processing_debug`),
+  with post-processing a `## Post-processing` digest of its own. S10, S12 and S13 had raised
+  `TOTAL_LIMIT` in `test_html_ui_tools.py` (S05 too, by 395 characters of core parameters); the
+  merges keep budget.json as the only limits.

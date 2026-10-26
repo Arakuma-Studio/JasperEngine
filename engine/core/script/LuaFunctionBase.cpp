@@ -5,6 +5,7 @@
 
 #include "math/Vector2.h"
 #include "util/FunctionSubscribe.h"
+#include "util/CrashHook.h"
 #include "util/StringUtils.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "object/physics/Rigidbody2D.h"
@@ -17,6 +18,7 @@
 #include "object/physics/CollideShapeResult3D.h"
 #endif
 #include "LuaBinding.h"
+#include "LuaReload.h"
 #include "Log.h"
 
 #include "lua.hpp"
@@ -36,7 +38,7 @@ LuaFunctionBase::LuaFunctionBase(lua_State *vm): m_vm(vm) {
     store_function();
 }
 
-LuaFunctionBase::LuaFunctionBase(const LuaFunctionBase &other): m_vm(other.m_vm) {
+LuaFunctionBase::LuaFunctionBase(const LuaFunctionBase &other): m_vm(other.m_vm), m_record(other.m_record) {
     // copy the registry reference
     lua_rawgeti(m_vm, LUA_REGISTRYINDEX, other.m_func);
     m_func = luaL_ref(m_vm, LUA_REGISTRYINDEX);
@@ -52,6 +54,7 @@ LuaFunctionBase::~LuaFunctionBase(){
 LuaFunctionBase& LuaFunctionBase::operator=(const LuaFunctionBase &other){
     if (this != &other) {
         m_vm = other.m_vm;
+        m_record = other.m_record;
         lua_rawgeti(m_vm, LUA_REGISTRYINDEX, other.m_func);
         m_func = luaL_ref(m_vm, LUA_REGISTRYINDEX);
     }
@@ -64,6 +67,7 @@ void LuaFunctionBase::store_function(){
         lua_pop(m_vm, 1);
         throw std::runtime_error("not a valid function");
     }
+    m_record = lua_reload::callbackRecordForFunction(m_vm);
     // store it in registry for later use
     m_func = luaL_ref(m_vm, LUA_REGISTRYINDEX);
 }
@@ -73,21 +77,23 @@ void LuaFunctionBase::push_function(lua_State *vm, int func){
 }
 
 void LuaFunctionBase::call(int args, int results) {
+    if (m_record && m_record->dropped()) {
+        // an anonymous callback of code a hot reload replaced
+        lua_pop(m_vm, args + 1);
+        for (int i = 0; i < results; i++) {
+            lua_pushnil(m_vm);
+        }
+        return;
+    }
     int status = LuaBinding::pcallWithTraceback(m_vm, args, results);
     if (status) {
         std::string error = LuaBinding::getLuaStackErrorString(m_vm, -1);
         lua_pop(m_vm, 1);
 
-        #ifdef JASPERENGINE_CRASH_GUARD
-        auto& crashHandler = FunctionSubscribeGlobal::getCrashHandler();
-        if (crashHandler) {
-            crashHandler("Lua Script Error", error);
-        } else {
-            Log::error("Lua Error: %s", error.c_str());
+        // while Play runs the editor's crash hook gets it (pause, then stop)
+        if (!CrashHook::report("Lua Script Error", error)) {
+            LuaBinding::logLuaError("Lua Error: %s", error.c_str());
         }
-        #else
-        Log::error("Lua Error: %s", error.c_str());
-        #endif
 
         // Push nil values to satisfy the expected results count
         for (int i = 0; i < results; i++) {

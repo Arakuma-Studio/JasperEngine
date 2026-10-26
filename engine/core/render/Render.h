@@ -52,7 +52,10 @@ namespace jasperengine{
         MULTIPLY,
         ADDITIVE_PREMULTIPLIED,
         SCREEN_PREMULTIPLIED,
-        MULTIPLY_PREMULTIPLIED
+        MULTIPLY_PREMULTIPLIED,
+        // dst - src (premultiplied colour taken away; alpha kept): the atmosphere's
+        // volumetric composite removes the analytic fog it replaces with it
+        SUBTRACT_PREMULTIPLIED
     };
 
     enum class DepthCompare{
@@ -164,7 +167,16 @@ namespace jasperengine{
         HTMLUI,     // HTML/CSS UI geometry and composite: premultiplied alpha, no color conversion
         HTMLUI_GRADIENT, // HTML UI linear/radial/conic gradients (RmlUi CompileShader)
         HTMLUI_POST,     // HTML UI fullscreen passes: layer composite, filters, masks (exclusive variants)
-        UI_EFFECT        // HTML UI effects (phase 5): one per effect and form, the effect in the custom-shader id
+        UI_EFFECT,       // HTML UI effects (phase 5): one per effect and form, the effect in the custom-shader id
+        SHADOW_CACHE,    // the shadow cache's depth copy and slot clear; 'Vis' the atlas debug view (RenderSystem)
+        // the atmosphere's passes (docs/specs/S12-atmosphere.md, RenderSystem's AtmosphereRenderer)
+        ATMOSPHERE_DEPTH,     // reduced-resolution linear depth of the scene (Atmosphere/DepthDownsample)
+        VOLUMETRIC_FOG,       // the volumetric fog march (Atmosphere/VolumetricFog)
+        ATMOSPHERE_DENOISE,   // depth-aware 3x3 blur of a reduced (S, T) target (Atmosphere/Denoise)
+        VOLUMETRIC_CLOUDS,    // the clouds march, Screen and Sky Map (Atmosphere/CloudsScreen, CloudsSkyMap)
+        SKY_COMPOSITE,        // clouds and sky fill over the sky pixels (Atmosphere/SkyComposite)
+        VOLUMETRIC_COMPOSITE, // volumetric fog and Screen clouds over the scene (Atmosphere/VolumetricComposite)
+        PASS_PREVIEW          // the Frame Debugger's pass output preview (S15, SokolPassPreview; editor only)
     };
 
     enum class AttributeType{
@@ -293,7 +305,8 @@ namespace jasperengine{
         GBUFFERALBEDOTEXTURE, // linear base color (rgb) + hasIBL flag (a)
         SHADOW2DATLAS,       // 1D polar shadow rows (one per 2D light)
         SPOTMASKATLAS,       // projected spot masks, one horizontal tile per 3D light slot
-        BONES
+        BONES,
+        SHADOWATLASRAW       // the projective shadow atlas's raw depths (a second view: PCSS)
     };
 
     enum class TextureType {

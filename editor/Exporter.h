@@ -15,7 +15,8 @@
 #include <functional>
 #include <atomic>
 #include <mutex>
-#include <thread>
+
+#include "jobs/JobSystem.h"
 
 namespace jasperengine::editor {
 
@@ -57,6 +58,8 @@ namespace jasperengine::editor {
         std::string cmakeGenerator;
         unsigned int buildJobs = 0;          // 0 = automatic
         std::string buildType = "Release";
+        // Development Build: the profiler and --profile in a Release game (Debug always has them)
+        bool developmentBuild = false;
         // Desktop/Web: value passed to the exported CMake GRAPHIC_BACKEND
         // setting (glcore, gles3, d3d11, metal, or vulkan).
         std::string graphicBackend;
@@ -65,6 +68,11 @@ namespace jasperengine::editor {
         bool packNativeResources = false;
         // Web: emsdk root override ("" = auto-detect via EMSDK env / PATH)
         std::string emsdkPath;
+        // Export anyway when a scene of the build references an asset that is missing (S04)
+        bool allowMissingAssets = false;
+        // Web: also a pthreads build (threads/), which the page picks when cross-origin
+        // isolated (Project Settings > Player > Threading > Web: Multithreaded)
+        bool webMultithreaded = false;
     };
 
     struct ExportProgress {
@@ -91,7 +99,8 @@ namespace jasperengine::editor {
         mutable std::mutex progressMutex;
         std::atomic<bool> cancelRequested{false};
 
-        std::thread exportThread;
+        // the export run on the process channel (it waits on cmake, the compilers, packagers)
+        jobs::Task<void> exportTask;
 
         ShaderBuilder shaderBuilder;
         CommandRunner commandRunner;
@@ -104,6 +113,8 @@ namespace jasperengine::editor {
             std::string filename;   // asset-relative
         };
         std::vector<HtmlUIDocumentUse> htmlUIDocuments;
+        // the build's references to missing assets (S04), found while the scenes are loaded
+        std::vector<std::string> missingBuildReferences;
 
         // Lua sources copyLua() shipped, so copyAssets() can skip them
         std::set<fs::path> luaCopiedSources;
@@ -121,6 +132,8 @@ namespace jasperengine::editor {
         void setDetail(const std::string& line);
         void setError(const std::string& message);
         void runExport();
+        // returns once the export started by startExport has ended
+        void waitForExport();
 
         bool isCancelled() const;
 
@@ -147,6 +160,14 @@ namespace jasperengine::editor {
         bool runBuild();
         bool collectDesktopArtifacts();
         bool collectWebArtifacts();
+        // the pthreads build next to the single-thread one, the cross-origin isolation
+        // service worker, and the page's choice between the two
+        bool collectWebThreadsArtifacts();
+
+        // the build tree configureBuild and runBuild work in ("build", or "build-threads")
+        std::string buildDirName = "build";
+        // CMake options of that tree beyond the export's
+        std::string extraCMakeArgs;
         bool collectSourceResourcePack();
         bool collectPackedTreeEntries(const fs::path& dir, std::vector<fs::path>& out, const fs::path& keep = fs::path());
         bool removeResourcePack(const fs::path& packPath);
@@ -157,6 +178,13 @@ namespace jasperengine::editor {
         bool checkHtmlUIReferences();
         bool copyGenerated();
         bool copyAssets();
+        // a .cube LUT cooked to <destination's name>.jlut; false (warned) when it does not parse
+        bool cookColorLut(const fs::path& source, const fs::path& destination);
+        // S04: a reference of the build's scenes (and the prefabs and materials they use) that
+        // resolves to no asset fails the export, listing each one, unless allowMissingAssets
+        bool checkMissingAssets();
+        // S04: assetmap.bin at the exported assets root, the runtime's GUID <-> path map
+        bool writeAssetMap();
         // Runtime shader compilation builds a fork's variants from its sources, which it
         // reads from the build's assets at their project-relative paths: a script can
         // put any fork of the project on a mesh, so all of them ship
@@ -172,10 +200,13 @@ namespace jasperengine::editor {
         bool buildAndSaveShaders();
         // licenses/shaders.com-LICENSE.txt when the shaders contain a UI effect (phase-5 spec
         // 3.16); removed when they do not. copyLicenses: the build's to the destination.
+        // licenses/post-fx-LICENSE.txt likewise when they contain an uber pass with the VHS tape,
+        // film damage or the Lens / Filmic grain (S13: adapted MIT shader code)
         bool writeEffectLicense();
         bool copyLicenses();
         // the path the export writes the shaders.com notice to, relative to its root
         static const char* effectLicensePath();
+        static const char* postFxLicensePath();
 
         // Aggregates SceneMaxValues across all project scenes and builds the
         // add_definitions() block that sizes the engine's fixed-capacity
@@ -208,6 +239,9 @@ namespace jasperengine::editor {
         ExportProgress getProgress() const;
         bool isRunning() const;
 
+        // Sets every CLANG_CXX_LANGUAGE_STANDARD of an Xcode project to gnu++<standard>;
+        // false when the project has none
+        static bool applyXcodeCxxStandard(std::string& pbxproj, int standard);
         static std::string getShaderDisplayName(ShaderType type, uint32_t properties, uint16_t customId = 0);
         static std::string getCMakeGraphicBackend(::jasperengine::ShaderBackend backend);
         static EmsdkInfo detectEmsdk(const std::string& overridePath);

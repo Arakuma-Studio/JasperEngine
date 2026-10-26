@@ -2877,7 +2877,8 @@ int editor::Backend::init(int argc, char* argv[]) {
     constexpr double IDLE_WAIT_TIMEOUT = 0.1;
 
     while (!backend->shouldClose) {
-        processEvents(backend->editorFrame.isIdle() ? IDLE_WAIT_TIMEOUT : 0.0);
+        // idle: until an event, the next editor timer, or IDLE_WAIT_TIMEOUT
+        processEvents(backend->editorFrame.isIdle() ? app.idleWaitSeconds(IDLE_WAIT_TIMEOUT) : 0.0);
         if (backend->shouldClose) break;
         app.processProjectChange();
         if (backend->shouldClose) break;

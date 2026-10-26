@@ -48,7 +48,7 @@ namespace {
         return ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2.0f;
     }
 
-    void beginSettingsRow(const char* label) {
+    void exportBeginSettingsRow(const char* label) {
         ImGui::TableNextRow(ImGuiTableRowFlags_None, ImGui::GetFrameHeight());
         ImGui::TableNextColumn();
         ImGui::AlignTextToFramePadding();
@@ -583,7 +583,7 @@ void ExportWindow::drawPlatformList() {
 }
 
 void ExportWindow::drawBuildTypeRow() {
-    beginSettingsRow("Build Type");
+    exportBeginSettingsRow("Build Type");
     if (!platformCanBuildPlayer(m_platform)) {
         ImGui::AlignTextToFramePadding();
         ImGui::TextDisabled("C++ Source Project");
@@ -600,8 +600,19 @@ void ExportWindow::drawBuildTypeRow() {
     }
 }
 
+// Unity's Development Build: a Release game that keeps the profiler (and its --profile options)
+void ExportWindow::drawDevelopmentBuildRow() {
+    exportBeginSettingsRow("Development Build");
+    bool development = m_project->isDevelopmentBuild();
+    if (ImGui::Checkbox("##DevelopmentBuild", &development)) {
+        m_project->setDevelopmentBuild(development);
+        m_projectSettingsDirty = true;
+    }
+    ImGui::SetItemTooltip("Keeps the profiler in a Release build: --profile and --profile-capture=<file> record it (docs/profiling.md). Debug builds always have it.");
+}
+
 void ExportWindow::drawSourceBackendsRow() {
-    beginSettingsRow("Graphics APIs");
+    exportBeginSettingsRow("Graphics APIs");
     std::string names;
     for (ShaderBackend backend : platformBackends(m_platform)) {
         if (!names.empty()) names += ", ";
@@ -653,7 +664,7 @@ void ExportWindow::launchBuiltPlayer() {
 }
 
 void ExportWindow::drawOutputDirRow(const char* label) {
-    beginSettingsRow(label);
+    exportBeginSettingsRow(label);
     {
         float browseWidth = ImGui::CalcTextSize("Browse").x + ImGui::GetStyle().FramePadding.x * 2;
         float inputWidth = ImGui::GetContentRegionAvail().x - browseWidth - ImGui::GetStyle().ItemSpacing.x;
@@ -683,7 +694,7 @@ void ExportWindow::drawOutputDirRow(const char* label) {
 }
 
 void ExportWindow::drawGraphicBackendRow() {
-    beginSettingsRow("Graphics API");
+    exportBeginSettingsRow("Graphics API");
 
     if (m_mode == ExportMode::Web) {
         ImGui::AlignTextToFramePadding();
@@ -729,12 +740,12 @@ void ExportWindow::drawDesktopKitRows() {
         }
     }
 
-    beginSettingsRow("Compiler");
+    exportBeginSettingsRow("Compiler");
     ImGui::AlignTextToFramePadding();
     ImGui::TextDisabled("%s", kitDisplay.c_str());
     ImGui::SetItemTooltip("Change in Preferences > External Tools");
 
-    beginSettingsRow("Build Jobs");
+    exportBeginSettingsRow("Build Jobs");
     ImGui::SetNextItemWidth(-1);
     const int previousJobs = m_desktopBuildJobs;
     if (ImGui::InputInt("##DesktopBuildJobs", &m_desktopBuildJobs, 1, 8)) {
@@ -946,6 +957,7 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
         ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
         if (!isCustom) drawBuildTypeRow();
+        drawDevelopmentBuildRow();
         drawOutputDirRow("Output Directory");
         if (m_mode == ExportMode::Desktop) {
             drawGraphicBackendRow();
@@ -1071,6 +1083,10 @@ void ExportWindow::drawSettings() {
         ImGui::CloseCurrentPopup();
     }
     ImGui::SetItemTooltip("Open Project Settings > Player");
+    // S04: a build referencing missing assets fails unless exported anyway
+    ImGui::SameLine();
+    ImGui::Checkbox("Export Anyway", &m_allowMissingAssets);
+    ImGui::SetItemTooltip("Build even when the build's scenes reference missing assets (Window > Assets > Missing Assets lists them)");
 
     const float actionWidth = Theme::dpi(120.0f);
     const float buttonsWidth = actionWidth * 2.0f + style.ItemSpacing.x;
@@ -1151,6 +1167,7 @@ void ExportWindow::startConfiguredExport(bool overwriteTarget) {
     ExportConfig exportConfig;
     exportConfig.mode = m_mode;
     exportConfig.overwriteTarget = overwriteTarget;
+    exportConfig.allowMissingAssets = m_allowMissingAssets;
 
     if (m_mode == ExportMode::SourceCode) {
         exportConfig.targetDir = m_targetDir;
@@ -1242,7 +1259,9 @@ void ExportWindow::drawAddShaderDialog() {
             ShaderType::SSAO, ShaderType::SSAO_BLUR,
             ShaderType::SSR, ShaderType::SSR_BLUR, ShaderType::COMPOSITE,
             ShaderType::SHADOW2D, ShaderType::BLIT, ShaderType::POSTPROCESS, ShaderType::BLOOM,
-            ShaderType::HTMLUI, ShaderType::HTMLUI_GRADIENT, ShaderType::HTMLUI_POST, ShaderType::UI_EFFECT
+            ShaderType::HTMLUI, ShaderType::HTMLUI_GRADIENT, ShaderType::HTMLUI_POST, ShaderType::UI_EFFECT,
+            ShaderType::ATMOSPHERE_DEPTH, ShaderType::VOLUMETRIC_FOG, ShaderType::ATMOSPHERE_DENOISE,
+            ShaderType::VOLUMETRIC_CLOUDS, ShaderType::SKY_COMPOSITE, ShaderType::VOLUMETRIC_COMPOSITE
         };
         constexpr int typeCount = (int)(sizeof(typeValues) / sizeof(typeValues[0]));
         std::vector<std::string> typeNameStrs;

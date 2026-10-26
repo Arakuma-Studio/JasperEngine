@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneRender3D.h"
+#include "profiler/Profile.h"
 
 #include "resources/icons/sun-icon_png.h"
 #include "resources/icons/bulb-icon_png.h"
@@ -315,6 +316,10 @@ editor::SceneRender3D::~SceneRender3D(){
     for (auto& pair : reflectionProbeLines) {
         delete pair.second;
     }
+
+    for (auto& pair : fogVolumeLines) {
+        delete pair.second;
+    }
 }
 
 void editor::SceneRender3D::createLines(){
@@ -451,6 +456,58 @@ void editor::SceneRender3D::createOrUpdateReflectionProbeLines(Entity entity, co
         probeLines->addLine(capturePosition - Vector3(0, captureMarker, 0), capturePosition + Vector3(0, captureMarker, 0), captureColor);
         probeLines->addLine(capturePosition - Vector3(0, 0, captureMarker), capturePosition + Vector3(0, 0, captureMarker), captureColor);
     }
+}
+
+void editor::SceneRender3D::createOrUpdateFogVolumeLines(Entity entity, const Transform& transform, const LocalVolumetricFogComponent& volume, bool visible){
+    LineRenderer* lines = fogVolumeLines[entity];
+    lines->clearLines();
+    lines->setVisible(transform.visible && visible);
+    if (!transform.visible || !visible) return;
+
+    // the volume's frame: its Transform's position and rotation, its size times the scale
+    const Vector3 half(std::fabs(volume.size.x * transform.worldScale.x) * 0.5f,
+                       std::fabs(volume.size.y * transform.worldScale.y) * 0.5f,
+                       std::fabs(volume.size.z * transform.worldScale.z) * 0.5f);
+    const Matrix4 rotation = transform.worldRotation.getRotationMatrix();
+    auto world = [&](const Vector3& local){ return transform.worldPosition + rotation * local; };
+
+    // inside the blend distance the density fades in: the inner shape is where it is full
+    const float blend = std::max(volume.blendDistance, 0.0f);
+    const Vector3 inner(std::max(half.x - blend, 0.0f), std::max(half.y - blend, 0.0f), std::max(half.z - blend, 0.0f));
+    const Vector4 outerColor(0.75f, 0.85f, 1.0f, 1.0f);
+    const Vector4 innerColor(0.45f, 0.6f, 0.9f, 1.0f);
+
+    auto drawShape = [&](const Vector3& e, const Vector4& color){
+        if (volume.shape == FogVolumeShape::SPHERE){
+            // three ellipses through the axes
+            const int segments = 48;
+            for (int axis = 0; axis < 3; axis++){
+                Vector3 previous;
+                for (int i = 0; i <= segments; i++){
+                    const float a = 2.0f * 3.14159265f * (float)i / (float)segments;
+                    const float c = std::cos(a);
+                    const float s = std::sin(a);
+                    Vector3 local = axis == 0 ? Vector3(0.0f, c * e.y, s * e.z) : (axis == 1 ? Vector3(c * e.x, 0.0f, s * e.z) : Vector3(c * e.x, s * e.y, 0.0f));
+                    const Vector3 point = world(local);
+                    if (i > 0) lines->addLine(previous, point, color);
+                    previous = point;
+                }
+            }
+            return;
+        }
+        const Vector3 p[8] = {
+            world(Vector3(-e.x, -e.y, -e.z)), world(Vector3(e.x, -e.y, -e.z)), world(Vector3(e.x, e.y, -e.z)), world(Vector3(-e.x, e.y, -e.z)),
+            world(Vector3(-e.x, -e.y, e.z)), world(Vector3(e.x, -e.y, e.z)), world(Vector3(e.x, e.y, e.z)), world(Vector3(-e.x, e.y, e.z))
+        };
+        const int edges[12][2] = {
+            {0,1}, {1,2}, {2,3}, {3,0}, {4,5}, {5,6}, {6,7}, {7,4},
+            {0,4}, {1,5}, {2,6}, {3,7}
+        };
+        for (const auto& edge : edges) lines->addLine(p[edge[0]], p[edge[1]], color);
+    };
+    drawShape(half, outerColor);
+    if (blend > 0.0f && inner.x > 0.0f && inner.y > 0.0f && inner.z > 0.0f)
+        drawShape(inner, innerColor);
 }
 
 // endpoint handles for a selected Lines entity, drawn as small 3-axis crosses
@@ -1748,6 +1805,9 @@ void editor::SceneRender3D::hideAllGizmos(){
     for (auto& pair : reflectionProbeLines) {
         pair.second->setVisible(false);
     }
+    for (auto& pair : fogVolumeLines) {
+        pair.second->setVisible(false);
+    }
 }
 
 void editor::SceneRender3D::activate(){
@@ -1764,6 +1824,7 @@ void editor::SceneRender3D::drawOverlayTargets(){
     Framebuffer* gizmoTarget = viewgizmo.getFramebuffer();
     gizmoScene->update(Engine::getDeltatime());
     if (!gizmoTarget->isCreated()){
+        JE_GPU_ALLOC_SCOPE(Editor, "Orientation gizmo");
         gizmoTarget->create();
     }
     Engine::drawView(SCENE_VIEW_ID, gizmoTarget, {{gizmoScene, gizmoScene->getCamera(),
@@ -1875,6 +1936,7 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
     std::set<Entity> currentPolygonPoints;
     std::set<Entity> currentTrackLines;
     std::set<Entity> currentReflectionProbes;
+    std::set<Entity> currentFogVolumes;
 
     for (Entity& entity: entities){
         Signature signature = scene->getSignature(entity);
@@ -1984,6 +2046,14 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             bool isSelected = selectedEntities.find(entity) != selectedEntities.end();
 
             createOrUpdateTrackLines(entity, tracks, isSelected);
+        }
+
+        if (signature.test(scene->getComponentId<LocalVolumetricFogComponent>()) && signature.test(scene->getComponentId<Transform>())) {
+            LocalVolumetricFogComponent& volume = scene->getComponent<LocalVolumetricFogComponent>(entity);
+            Transform& transform = scene->getComponent<Transform>(entity);
+            currentFogVolumes.insert(entity);
+            ensureOverlayLines(fogVolumeLines, entity);
+            createOrUpdateFogVolumeLines(entity, transform, volume, selectedEntities.find(entity) != selectedEntities.end());
         }
 
         if (signature.test(scene->getComponentId<ReflectionProbeComponent>()) && signature.test(scene->getComponentId<Transform>())) {
@@ -2115,6 +2185,15 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             itTrackLines = trackLines.erase(itTrackLines);
         } else {
             ++itTrackLines;
+        }
+    }
+
+    for (auto it = fogVolumeLines.begin(); it != fogVolumeLines.end();) {
+        if (currentFogVolumes.find(it->first) == currentFogVolumes.end()) {
+            delete it->second;
+            it = fogVolumeLines.erase(it);
+        } else {
+            ++it;
         }
     }
 

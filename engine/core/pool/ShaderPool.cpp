@@ -134,6 +134,38 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::UI_EFFECT;
         return true;
     }
+    if (typeToken == "shadowcache") {
+        shaderType = ShaderType::SHADOW_CACHE;
+        return true;
+    }
+    if (typeToken == "atmospheredepth") {
+        shaderType = ShaderType::ATMOSPHERE_DEPTH;
+        return true;
+    }
+    if (typeToken == "volumetricfog") {
+        shaderType = ShaderType::VOLUMETRIC_FOG;
+        return true;
+    }
+    if (typeToken == "atmospheredenoise") {
+        shaderType = ShaderType::ATMOSPHERE_DENOISE;
+        return true;
+    }
+    if (typeToken == "volumetricclouds") {
+        shaderType = ShaderType::VOLUMETRIC_CLOUDS;
+        return true;
+    }
+    if (typeToken == "skycomposite") {
+        shaderType = ShaderType::SKY_COMPOSITE;
+        return true;
+    }
+    if (typeToken == "volumetriccomposite") {
+        shaderType = ShaderType::VOLUMETRIC_COMPOSITE;
+        return true;
+    }
+    if (typeToken == "passpreview") {
+        shaderType = ShaderType::PASS_PREVIEW;
+        return true;
+    }
 
     return false;
 }
@@ -489,8 +521,20 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::HTMLUI_GRADIENT: return lowerCase ? "htmluigradient" : "HTML UI Gradient";
         case ShaderType::HTMLUI_POST: return lowerCase ? "htmluipost" : "HTML UI Post";
         case ShaderType::UI_EFFECT: return lowerCase ? "uieffect" : "UI Effect";
+        case ShaderType::SHADOW_CACHE: return lowerCase ? "shadowcache" : "Shadow Cache";
+        case ShaderType::ATMOSPHERE_DEPTH: return lowerCase ? "atmospheredepth" : "Atmosphere Depth";
+        case ShaderType::VOLUMETRIC_FOG: return lowerCase ? "volumetricfog" : "Volumetric Fog";
+        case ShaderType::ATMOSPHERE_DENOISE: return lowerCase ? "atmospheredenoise" : "Atmosphere Denoise";
+        case ShaderType::VOLUMETRIC_CLOUDS: return lowerCase ? "volumetricclouds" : "Volumetric Clouds";
+        case ShaderType::SKY_COMPOSITE: return lowerCase ? "skycomposite" : "Sky Composite";
+        case ShaderType::VOLUMETRIC_COMPOSITE: return lowerCase ? "volumetriccomposite" : "Volumetric Composite";
+        case ShaderType::PASS_PREVIEW: return lowerCase ? "passpreview" : "Pass Preview";
         default:                 return lowerCase ? "unknown": "Unknown";
     }
+}
+
+uint32_t ShaderPool::getShadowsHQProperty(){
+    return 1u << 5;
 }
 
 uint32_t ShaderPool::getPostColorProperty(ShaderType shaderType){
@@ -518,13 +562,16 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::SSR_BLUR: return 0;
         case ShaderType::COMPOSITE: return 0;
         case ShaderType::SHADOW2D: return 0;
-        case ShaderType::BLIT:   return 13;
+        case ShaderType::BLIT:   return 18;
         case ShaderType::BLOOM:  return 4;
         case ShaderType::HTMLUI: return 1;
         case ShaderType::HTMLUI_GRADIENT: return 0;
         case ShaderType::HTMLUI_POST: return 7;
         // Flt (filter form), Stp and Sct (phase 6: a stateful effect's step and scatter forms)
         case ShaderType::UI_EFFECT: return 3;
+        case ShaderType::SHADOW_CACHE: return 1;
+        // the source's texture type: 2D (none), array, cube or 3D
+        case ShaderType::PASS_PREVIEW: return 3;
         default:                 return 0;
     }
 }
@@ -537,7 +584,7 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 2:  return shortName ? "Uv2" : "UV2";
             case 3:  return shortName ? "Puc" : "Punctual";
             case 4:  return shortName ? "Shw" : "Shadow";
-            // case 5 reserved (was 'Pcf'; the PCF filter is uniform-driven now)
+            case 5:  return shortName ? "Shq" : "Shadows HQ";
             case 6:  return shortName ? "Nor" : "Normals";
             case 7:  return shortName ? "Nmp" : "Normal Map";
             case 8:  return shortName ? "Tan" : "Tangents";
@@ -621,6 +668,16 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 5: return shortName ? "Unp" : "Unpremultiply";
             case 6: return shortName ? "Yuv" : "YUV";
         }
+    } else if (shaderType == ShaderType::SHADOW_CACHE) {
+        switch (bit) {
+            case 0: return shortName ? "Vis" : "Atlas View";
+        }
+    } else if (shaderType == ShaderType::PASS_PREVIEW) {
+        switch (bit) {
+            case 0: return shortName ? "Arr" : "Array Source";
+            case 1: return shortName ? "Cub" : "Cube Source";
+            case 2: return shortName ? "Tx3" : "3D Source";
+        }
     } else if (shaderType == ShaderType::UI_EFFECT) {
         switch (bit) {
             case 0: return shortName ? "Flt" : "Filter form";
@@ -661,6 +718,11 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 10: return shortName ? "Blm" : "Bloom";
             case 11: return shortName ? "Blr" : "Blur";
             case 12: return shortName ? "Scl" : "Upscale";
+            case 13: return shortName ? "Vhs" : "VHS";
+            case 14: return shortName ? "Hal" : "Halation";
+            case 15: return shortName ? "Fdm" : "Film Damage";
+            case 16: return shortName ? "Gln" : "Film Grain Lens";
+            case 17: return shortName ? "Gfm" : "Film Grain Filmic";
         }
     } else if (shaderType == ShaderType::BLOOM) {
         // the pass of the bloom and blur chain (bloom.frag); 0 is the dual-filter downsample
@@ -1208,12 +1270,18 @@ void ShaderPool::remove(ShaderType shaderType, uint32_t properties, uint16_t cus
 }
 
 void ShaderPool::destroyCustomShaders(){
+    destroyCustomShaders([](const std::string&){ return true; });
+}
+
+void ShaderPool::destroyCustomShaders(const std::function<bool(const std::string& name)>& which){
     // library shaders ("library:<name>") and the library UI effects ("@effects/<name>") are
     // embedded in the engine: their sources never change with the project
-    auto isFork = [](ShaderKey key){
+    auto isFork = [&which](ShaderKey key){
         const uint16_t customId = getCustomIdFromKey(key);
-        return customId != 0 && getCustomShaderName(customId).compare(0, 8, "library:") != 0 &&
-               !isLibraryCustomShader(customId);
+        if (customId == 0)
+            return false;
+        const std::string name = getCustomShaderName(customId);
+        return name.compare(0, 8, "library:") != 0 && !isLibraryCustomShader(customId) && which(name);
     };
     for (auto& entry : getMap()){
         if (isFork(entry.first) && entry.second && entry.second->isCreated()){
@@ -1248,8 +1316,8 @@ ShaderKey ShaderPool::getStorageKey(ShaderKey key) {
 }
 
 uint32_t ShaderPool::getValidPropertyMask(ShaderType shaderType) {
-    // Derived from the property-name table so a retired bit (e.g. MESH bit 5, the
-    // old 'Pcf') is excluded automatically: it has no short name ("?").
+    // Derived from the property-name table so a retired bit is excluded automatically: it has
+    // no short name ("?").
     uint32_t mask = 0;
     int propCount = getShaderPropertyCount(shaderType);
     for (int i = 0; i < propCount; i++) {
@@ -1263,6 +1331,9 @@ ShaderKey ShaderPool::normalizeKey(ShaderKey key) {
     ShaderType type = getShaderTypeFromKey(key);
     uint16_t customId = getCustomIdFromKey(key);
     uint32_t properties = getPropertiesFromKey(key) & getValidPropertyMask(type);
+    // the high-quality shadow filters only exist in a variant that receives shadows
+    if (type == ShaderType::MESH && !(properties & (1u << 4)))
+        properties &= ~getShadowsHQProperty();
     return getShaderKey(type, properties, customId);
 }
 
@@ -1281,8 +1352,8 @@ uint32_t ShaderPool::getMeshProperties(
     prop |= uv2              ? (1 <<  2) : 0;
     prop |= punctual         ? (1 <<  3) : 0;
     prop |= shadows          ? (1 <<  4) : 0;
-    // bit 5 was USE_SHADOWS_PCF; the PCF filter is uniform-driven now (Scene
-    // shadowQuality). Kept reserved so the other bit positions stay stable.
+    // bit 5 ('Shq', USE_SHADOWS_HQ): set after, by the render system's shadow tier
+    // (getShadowsHQProperty)
     prop |= normals          ? (1 <<  6) : 0;
     prop |= normalMap        ? (1 <<  7) : 0;
     prop |= tangents         ? (1 <<  8) : 0;

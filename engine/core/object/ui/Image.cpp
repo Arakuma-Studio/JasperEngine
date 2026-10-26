@@ -50,6 +50,7 @@ void Image::setPatchMargin(unsigned int margin){
     img.patchMarginTop = margin;
 
     img.needUpdatePatches = true;
+    markChanged<ImageComponent>();
 }
 
 void Image::setPatchMargin(unsigned int marginLeft, unsigned int marginRight, unsigned int marginTop, unsigned int marginBottom){
@@ -61,6 +62,7 @@ void Image::setPatchMargin(unsigned int marginLeft, unsigned int marginRight, un
     img.patchMarginTop = marginTop;
 
     img.needUpdatePatches = true;
+    markChanged<ImageComponent>();
 }
 
 void Image::setPatchMarginBottom(unsigned int marginBottom){
@@ -69,6 +71,7 @@ void Image::setPatchMarginBottom(unsigned int marginBottom){
     img.patchMarginBottom = marginBottom;
 
     img.needUpdatePatches = true;
+    markChanged<ImageComponent>();
 }
 
 void Image::setPatchMarginLeft(unsigned int marginLeft){
@@ -77,6 +80,7 @@ void Image::setPatchMarginLeft(unsigned int marginLeft){
     img.patchMarginLeft = marginLeft;
 
     img.needUpdatePatches = true;
+    markChanged<ImageComponent>();
 }
 
 void Image::setPatchMarginRight(unsigned int marginRight){
@@ -85,6 +89,7 @@ void Image::setPatchMarginRight(unsigned int marginRight){
     img.patchMarginRight = marginRight;
 
     img.needUpdatePatches = true;
+    markChanged<ImageComponent>();
 }
 
 void Image::setPatchMarginTop(unsigned int marginTop){
@@ -93,6 +98,7 @@ void Image::setPatchMarginTop(unsigned int marginTop){
     img.patchMarginTop = marginTop;
 
     img.needUpdatePatches = true;
+    markChanged<ImageComponent>();
 }
 
 unsigned int Image::getPatchMarginBottom() const{
@@ -125,6 +131,7 @@ void Image::setTexture(const std::string& path){
     ui.texture.setPath(path);
 
     ui.needUpdateTexture = true;
+    markChanged<UIComponent>();
 }
 
 void Image::setTexture(const std::string& id, TextureData data){
@@ -133,6 +140,7 @@ void Image::setTexture(const std::string& id, TextureData data){
     ui.texture.setData(id, data);
 
     ui.needUpdateTexture = true;
+    markChanged<UIComponent>();
 }
 
 void Image::setTexture(Framebuffer* framebuffer){
@@ -141,6 +149,7 @@ void Image::setTexture(Framebuffer* framebuffer){
     ui.texture.setFramebuffer(framebuffer);
 
     ui.needUpdateTexture = true;
+    markChanged<UIComponent>();
 }
 
 void Image::setTextureScaleFactor(float textureScaleFactor){
@@ -149,6 +158,7 @@ void Image::setTextureScaleFactor(float textureScaleFactor){
     if (img.textureScaleFactor != textureScaleFactor){
         img.textureScaleFactor = textureScaleFactor;
         img.needUpdatePatches = true;
+        markChanged<ImageComponent>();
     }
 }
 
@@ -196,6 +206,7 @@ void Image::setFlipY(bool flipY){
         ui.flipY = flipY;
 
         img.needUpdatePatches = true;
+        markChanged<ImageComponent>();
     }
 }
 
@@ -236,8 +247,10 @@ std::string Image::getCustomShader() const{
 void Image::setShaderUniform(const std::string& name, const Vector4& value){
     UIComponent& ui = getComponent<UIComponent>();
 
-    if (ShaderUniforms::set(ui.shaderUniforms, name, value))
+    if (ShaderUniforms::set(ui.shaderUniforms, name, value)){
         ui.needUpdateShaderUniforms = true;
+        markChanged<UIComponent>();
+    }
 }
 
 void Image::setShaderUniform(const std::string& name, const Vector3& value){
@@ -265,13 +278,14 @@ bool Image::removeShaderUniform(const std::string& name){
         return false;
 
     ui.needUpdateShaderUniforms = true;
+    markChanged<UIComponent>();
     return true;
 }
 
 Vector4 Image::getShaderParam(const std::string& name) const{
     UIComponent& ui = getComponent<UIComponent>();
 
-    return ShaderLibraryValues::getParam(ui.shaderUniforms, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader, name);
+    return ShaderLibraryValues::getParam(ui.shaderUniforms, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader.path, name);
 }
 
 void Image::setShaderTexture(const std::string& name, const std::string& path){
@@ -292,14 +306,14 @@ void Image::setShaderFeature(const std::string& define, bool enabled){
     UIComponent& ui = getComponent<UIComponent>();
 
     // features are compiled in: another shader variant
-    if (ShaderLibraryValues::setFeature(ui.shaderFeatures, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader, define, enabled))
+    if (ShaderLibraryValues::setFeature(ui.shaderFeatures, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader.path, define, enabled))
         ui.needReload = true;
 }
 
 bool Image::isShaderFeatureEnabled(const std::string& define) const{
     UIComponent& ui = getComponent<UIComponent>();
 
-    return ShaderLibraryValues::isFeatureEnabled(ui.shaderFeatures, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader, define);
+    return ShaderLibraryValues::isFeatureEnabled(ui.shaderFeatures, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader.path, define);
 }
 
 void Image::setBlendMode(MaterialBlendMode blendMode){

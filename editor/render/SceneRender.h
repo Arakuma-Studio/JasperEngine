@@ -9,6 +9,7 @@
 #include "UILayer.h"
 #include "RenderUtil.h"
 #include "command/Command.h"
+#include "command/CommandHistory.h"
 
 #include <memory>
 
@@ -36,6 +37,8 @@ namespace jasperengine::editor{
         bool hideSelectionOutline = false;
         bool disableFaceCulling  = false;
         bool disableFog          = false;
+        // the Scene view draws without the volumetric clouds
+        bool disableClouds       = false;
         // the scene's post-processing in the Scene view (off by default: the Game view shows it)
         bool showPostProcessing  = false;
         bool showGrid2D          = false;
@@ -95,7 +98,12 @@ namespace jasperengine::editor{
         float gizmoScale;
         float selectionOffset;
 
-        Command* lastCommand;
+        // A gizmo or handle drag is one undo step, Esc (or Ctrl+Z) puts it back: the drag's
+        // commands go through this edit, opened by its first one. Once it ends before the
+        // mouse does (cancelled, or committed by a popup), the rest of the drag is ignored.
+        InteractiveEdit dragEdit;
+        bool dragEditStarted = false;
+        bool pushDragCommand(size_t sceneId, Command* command);
 
         CursorSelected cursorSelected;
 
