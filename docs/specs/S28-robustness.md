@@ -421,8 +421,9 @@ Recorded by the S28 implementation (branch `feat/s28-robustness`).
   has no unnamed semaphores, and a realtime-clock step must not extend the 250 ms deadline.
   A timed-out capture disables further stack captures for the process, keeping its storage
   alive for a late handler/helper. Modules are snapshotted at installation for fatal-path
-  frame formatting; Linux/Android also copy the current `/proc/self/maps` so later-loaded
-  libraries can be resolved offline. Windows waits at most eight seconds for the writer,
+  frame formatting; the bounded cache retains our image even when Android loads hundreds
+  of system libraries first. Linux/Android also copy the current `/proc/self/maps` so omitted
+  or later-loaded libraries remain recorded. Windows waits at most eight seconds for the writer,
   below R5's 30-second ceiling. If DbgHelp's process-wide lock is held by the faulting thread,
   the writer skips the dump/walk and writes saved PC/SP instead of waiting on that lock.
   Remaining native-platform checks requiring their hosts: Windows dump inspection (AC3),
@@ -475,6 +476,25 @@ All execution uses `je-remote/rb.sh`; no local builds or tests.
   reported. The sanitizer process exits with the existing 56-byte `jobs::setProfilerHooks`
   leak from `GpuEnvironment::initEngine` (the common test harness), after all assertions pass.
 
+- Server D, full normal rerun after the hook fix: 1,077 core tests and 392 editor tests pass,
+  zero failures, zero skips (both process exit codes zero). This includes both
+  `LoggerCrashFlushTest` cases through the editor compatibility forwarder. The initial shared-D
+  timing failure did not recur in this run.
+- Final refreshed server D checks after the bounded module-cache priority fix:
+  `WERROR=1 tools/build.sh linux` and `tools/build.sh web` both exit zero; native CTest
+  (`native-crash-reports`, `posix-crash-signal-safety`) is 2/2; ASan+UBSan native subprocess
+  tests are 10/10. `LoggerCrashFlushTest.*` is 2/2 in normal and ASan+UBSan builds, with
+  WERROR enabled; only the baseline 56-byte profiler-hook harness allocation remains.
+- Server D MCP: `test_protocol.py` is 12/12; `test_crash.py` is 5/6, including off-main health,
+  the deliberate native segfault/restart notice and abnormal-session hook delivery. The existing
+  `test_runaway_lua` misses its Console interruption error. Isolated controls also fail with
+  `JASPERENGINE_HANG_SIGNAL=0` (40.3 s) and the default signal (37.8 s), so the failure does not
+  require native stack-capture delivery. The S28 Lua implementation owner is investigating.
+- Server D smoke, the remote host's `tools/smoke-test.sh "$HOME/je/fixture-unity"`: export,
+  standalone build, game and editor runs all pass; screenshots are saved and neither log has
+  a crash, error or `JASPERENGINE HANG:` line. The brief's `--img` invocation cannot launch
+  Docker inside the build image, so the same script runs from the remote host instead.
+
 #### Baseline gate failures owned by other streams
 
 Per the integration owner's instruction, this branch does not change texture, scene or profiler
@@ -499,7 +519,3 @@ The initial full normal run's two `CrashHook.*` failures were a real report-hook
 reentrancy deadlock; this branch fixes it, and both refreshed normal and sanitizer focused
 runs pass them. Fatal helper processes deliberately print sanitizer signal diagnostics after
 our report; those are expected evidence that the saved sanitizer handler is still chained.
-- Server D, full normal rerun after the hook fix: 1,077 core tests and 392 editor tests pass,
-  zero failures, zero skips (both process exit codes zero). This includes both
-  `LoggerCrashFlushTest` cases through the editor compatibility forwarder. The initial shared-D
-  timing failure did not recur in this run.
