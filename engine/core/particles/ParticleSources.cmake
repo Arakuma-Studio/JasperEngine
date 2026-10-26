@@ -23,6 +23,7 @@ set(JASPERENGINE_PARTICLE_SRCS
 
 # the engine's side: the subsystem that runs the scene's particle systems and their drawing
 set(JASPERENGINE_PARTICLE_SYSTEM_SRCS
+    core/object/ParticleSystem.cpp
     core/subsystem/ParticleSubsystem.cpp
     core/subsystem/RenderSystemParticles.cpp
 )

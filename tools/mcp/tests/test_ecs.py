@@ -19,7 +19,7 @@ TIMEOUT = 900
 # screenshots of the Systems window kept as evidence (AC17)
 EVIDENCE = Path(__file__).resolve().parents[3] / "build" / "evidence"
 
-SYSTEMS = ["ActionSystem", "MeshSystem", "UISystem", "UIDocumentSystem", "RenderSystem", "PhysicsSystem", "AudioSystem"]
+SYSTEMS = ["ActionSystem", "MeshSystem", "UISystem", "UIDocumentSystem", "RenderSystem", "PhysicsSystem", "ParticleSubsystem", "AudioSystem"]
 
 
 def type_count(stats, name):

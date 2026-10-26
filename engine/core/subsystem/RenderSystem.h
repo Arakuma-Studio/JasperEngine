@@ -18,6 +18,7 @@
 #include "component/LightComponent.h"
 #include "component/Light2DComponent.h"
 #include "component/PointsComponent.h"
+#include "component/ParticleSystemComponent.h"
 #include "component/LineRendererComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/TilemapComponent.h"
@@ -521,7 +522,8 @@ namespace jasperengine{
 	private:
 		enum class TransparentRenderType{
 			MESH,
-			POINTS
+			POINTS,
+			PARTICLES
 		};
 
 		struct TransparentRenderData{
@@ -539,6 +541,7 @@ namespace jasperengine{
 			int sortPriority;
 			// submission order: equal priority and distance draw in it, deterministically
 			uint32_t order;
+			ParticleSystemComponent* particles = nullptr;
 		};
 
 		// opaque mesh of a 3D pass, drawn front to back so early depth rejects covered fragments
@@ -1625,6 +1628,7 @@ namespace jasperengine{
 		// copy of its colour target after the opaque queue and the sky.
 		std::unordered_map<Entity, uint32_t> sceneInputMeshes;
 		std::unordered_map<Entity, uint32_t> sceneInputPoints;
+		std::unordered_map<Entity, uint32_t> sceneInputParticles;
 		uint32_t sceneInputUsage = 0;          // the bits of both maps
 		bool sceneDepthPrograms = false;       // MeshShaderEnvironment::sceneDepth the meshes load with
 		// updates since the last reader of the depth / colour went: the depth programs and the
@@ -2138,6 +2142,45 @@ namespace jasperengine{
 		void destroyUI(Entity entity, UIComponent& ui);
 
 		bool drawPoints(Entity entity, PointsComponent& points, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType);
+
+		// ---- particle systems (RenderSystemParticles.cpp): their GPU objects, their per-view
+		// packing into the frame's streams (sg_append_buffer) and their instanced draws
+		struct ParticleStream{
+			// the pages appended to this frame; the older ones go two frames after they filled
+			std::vector<std::unique_ptr<BufferRender>> pages;
+			std::vector<std::pair<std::unique_ptr<BufferRender>, uint64_t>> retired;
+			size_t capacity = 0;
+			size_t used = 0;
+			uint64_t frame = 0;
+			BufferType type = BufferType::VERTEX_BUFFER;
+		};
+		ParticleStream particleInstanceStream;
+		ParticleStream particleRotationStream;
+		ParticleStream particleCustomStream;
+		ParticleStream particleTrailStream;
+		// the quad's corners and triangles, and what each stream is bound to at load (a draw
+		// swaps it for this frame's page at its offset)
+		BufferRender particleCornerBuffer;
+		BufferRender particleQuadIndexBuffer;
+		BufferRender particleInstancePlaceholder;
+		BufferRender particleRotationPlaceholder;
+		BufferRender particleCustomPlaceholder;
+		BufferRender particleTrailPlaceholder;
+		bool particleStaticBuffers = false;
+		bool ensureParticleBuffers();
+		void destroyParticleBuffers();
+		bool appendParticleStream(ParticleStream& stream, const void* data, size_t bytes, BufferRender*& buffer, size_t& offset);
+		bool loadParticles(Entity entity, ParticleSystemComponent& particles, uint16_t pipelines);
+		void destroyParticles(ParticleSystemComponent& particles);
+		// load, reload and the scene inputs of every particle system (update)
+		void updateParticleRenders(uint16_t pipelines);
+		// what the draw tests besides the component's checkbox: the GameObject active, the
+		// layer, the editor's own views (a disabled MeshComponent it takes its mesh from does not hide it)
+		bool isParticleRenderActive(Entity entity, uint32_t cullingMask) const;
+		bool particleBoundsVisible(const particles::ParticleSystemState& state, CameraComponent& camera);
+		void setParticleSceneInputUser(Entity entity, uint32_t inputs);
+		uint64_t particleRenderKey(const particles::ParticleSystemState& state) const;
+		void drawParticles(Entity entity, ParticleSystemComponent& particles, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType);
 		float getPointsViewportHeight(const CameraComponent& camera) const;
 		float computePointsScale(const CameraComponent& camera, float viewportHeight) const;
 		void destroyPoints(Entity entity, PointsComponent& points);

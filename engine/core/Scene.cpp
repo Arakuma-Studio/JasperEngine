@@ -14,6 +14,7 @@
 #include "subsystem/ActionSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/PhysicsSystem.h"
+#include "subsystem/ParticleSubsystem.h"
 #include "util/Color.h"
 
 #include <algorithm>
@@ -38,6 +39,8 @@ void Scene::init(){
     registerSystem<UIDocumentSystem>();
     registerSystem<RenderSystem>();
     registerSystem<PhysicsSystem>();
+    // after physics (world collisions query it, never while it steps) and the transforms
+    registerSystem<ParticleSubsystem>();
     registerSystem<AudioSystem>();
 
     camera = NULL_ENTITY;

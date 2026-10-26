@@ -644,8 +644,10 @@ TrailPack ParticleRenderPrep::packTrails(const EmitterRuntime& emitter, memory::
                 v.tangentWidth[2] = toHalf(t[2]);
                 v.tangentWidth[3] = toHalf(width);
                 v.color = packed;
-                // Tile u can pass 1: it wraps in the shader by the fraction (USHORT2N holds 0..1)
-                v.uvSide[0] = (uint16_t)(std::clamp(texU - std::floor(texU * 0.999999f), 0.0f, 1.0f) * 65535.0f);
+                // Tile u passes 1: it is stored over kTrailTileRange tiles (USHORT2N holds 0..1)
+                // and the shader scales it back, so the texture repeats along the trail
+                const float stored = tp.textureMode == TrailTextureMode::Tile ? texU / kTrailTileRange : texU;
+                v.uvSide[0] = (uint16_t)(std::clamp(stored, 0.0f, 1.0f) * 65535.0f + 0.5f);
                 v.uvSide[1] = (uint16_t)(side * 65535);
             }
         }

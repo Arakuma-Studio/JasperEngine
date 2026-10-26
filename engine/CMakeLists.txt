@@ -928,7 +928,6 @@ set(JASPERENGINE_SRCS
     core/action/AlphaTween.cpp
     core/action/Animation.cpp
     core/action/ColorTween.cpp
-    core/action/ParticleSystem.cpp
     core/action/PositionTween.cpp
     core/action/RotationTween.cpp
     core/action/ScaleTween.cpp
@@ -1210,7 +1209,7 @@ include(core/htmlui/widgets/WidgetsSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${HTMLUI_WIDGETS_SRCS})
 # Particles (S20): the SIMD kernels' flags, the subsystem and its drawing
 include(core/particles/ParticleSources.cmake)
-list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_PARTICLE_SRCS})
+list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_PARTICLE_SRCS} ${JASPERENGINE_PARTICLE_SYSTEM_SRCS})
 include(libs/lucide/lucide.cmake)
 
 if(JASPERENGINE_PHYSICS_2D)

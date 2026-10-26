@@ -31,6 +31,7 @@
 #include "Model.h"
 #include "MeshPolygon.h"
 #include "Points.h"
+#include "ParticleSystem.h"
 #include "LineRenderer.h"
 #include "Sprite.h"
 #include "object/ui/Text.h"   // by path: lexbor has a dom/interfaces/text.h (Xcode header maps ignore case)
@@ -1042,6 +1043,224 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("width", [] (MeshPolygon* self) -> int { return self->getWidth(); })
         .addProperty("height", [] (MeshPolygon* self) -> int { return self->getHeight(); })
         .addProperty("flipY", &MeshPolygon::isFlipY, &MeshPolygon::setFlipY)
+        .endClass();
+
+    // the frame's particle events (main thread, after the simulation): arrays of plain tables
+    luabridge::getGlobalNamespace(L)
+        .beginClass<FunctionSubscribe<void(const std::vector<ParticleCollisionInfo>&)>>("FunctionSubscribe_V_ParticleCollisions")
+        .addFunction("add", (bool (FunctionSubscribe<void(const std::vector<ParticleCollisionInfo>&)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(const std::vector<ParticleCollisionInfo>&)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(const std::vector<ParticleCollisionInfo>&)>::remove)
+        .endClass();
+    luabridge::getGlobalNamespace(L)
+        .beginClass<FunctionSubscribe<void(const std::vector<ParticleDeathInfo>&)>>("FunctionSubscribe_V_ParticleDeaths")
+        .addFunction("add", (bool (FunctionSubscribe<void(const std::vector<ParticleDeathInfo>&)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(const std::vector<ParticleDeathInfo>&)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(const std::vector<ParticleDeathInfo>&)>::remove)
+        .endClass();
+    luabridge::getGlobalNamespace(L)
+        .beginClass<FunctionSubscribe<void(const std::vector<ParticleSubEmitInfo>&)>>("FunctionSubscribe_V_ParticleSubEmits")
+        .addFunction("add", (bool (FunctionSubscribe<void(const std::vector<ParticleSubEmitInfo>&)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(const std::vector<ParticleSubEmitInfo>&)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(const std::vector<ParticleSubEmitInfo>&)>::remove)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<ParticleSystem, GameObject>("ParticleSystem")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &ParticleSystem::isEnabled, &ParticleSystem::setEnabled)
+        .addFunction("play", &ParticleSystem::play)
+        .addFunction("pause", &ParticleSystem::pause)
+        .addFunction("stop", +[](ParticleSystem* self, lua_State* L) {
+            self->stop(lua_gettop(L) >= 2 && lua_toboolean(L, 2) != 0);
+        })
+        .addFunction("restart", &ParticleSystem::restart)
+        // emit(count [, {position = Vector3, velocity = Vector3, size = n, color = Vector4, lifetime = n}])
+        .addFunction("emit", +[](ParticleSystem* self, lua_State* L) {
+            const unsigned int count = (unsigned int)luaL_checkinteger(L, 2);
+            if (lua_gettop(L) < 3 || lua_isnil(L, 3)){
+                self->emit(count);
+                return;
+            }
+            luaL_checktype(L, 3, LUA_TTABLE);
+            particles::EmitOverrides overrides;
+            lua_getfield(L, 3, "position");
+            Vector3 v;
+            if (luaValueArg<Vector3>(L, -1, v)){
+                overrides.hasPosition = true;
+                overrides.position[0] = v.x; overrides.position[1] = v.y; overrides.position[2] = v.z;
+            }
+            lua_pop(L, 1);
+            lua_getfield(L, 3, "velocity");
+            if (luaValueArg<Vector3>(L, -1, v)){
+                overrides.hasVelocity = true;
+                overrides.velocity[0] = v.x; overrides.velocity[1] = v.y; overrides.velocity[2] = v.z;
+            }
+            lua_pop(L, 1);
+            lua_getfield(L, 3, "size");
+            if (!lua_isnil(L, -1)){
+                overrides.hasSize = true;
+                overrides.size = (float)luaL_checknumber(L, -1);
+            }
+            lua_pop(L, 1);
+            lua_getfield(L, 3, "color");
+            Vector4 c;
+            if (luaValueArg<Vector4>(L, -1, c)){
+                overrides.hasColor = true;
+                overrides.color[0] = c.x; overrides.color[1] = c.y; overrides.color[2] = c.z; overrides.color[3] = c.w;
+            }
+            lua_pop(L, 1);
+            lua_getfield(L, 3, "lifetime");
+            if (!lua_isnil(L, -1)){
+                overrides.hasLifetime = true;
+                overrides.lifetime = (float)luaL_checknumber(L, -1);
+            }
+            lua_pop(L, 1);
+            self->emit(count, overrides);
+        })
+        .addFunction("seek", &ParticleSystem::seek)
+        .addFunction("step", &ParticleSystem::step)
+        .addFunction("sendTrigger", &ParticleSystem::sendTrigger)
+        .addProperty("isPlaying", &ParticleSystem::isPlaying)
+        .addProperty("isPaused", &ParticleSystem::isPaused)
+        .addProperty("isEmitting", &ParticleSystem::isEmitting)
+        .addProperty("particleCount", &ParticleSystem::getParticleCount)
+        .addProperty("time", &ParticleSystem::getTime)
+        .addProperty("playOnAwake", &ParticleSystem::isPlayOnAwake, &ParticleSystem::setPlayOnAwake)
+        .addProperty("playbackSpeed", &ParticleSystem::getPlaybackSpeed, &ParticleSystem::setPlaybackSpeed)
+        .addProperty("seed", &ParticleSystem::getSeed, &ParticleSystem::setSeed)
+        .addProperty("effect", &ParticleSystem::getEffect, &ParticleSystem::setEffect)
+        .addFunction("setInlineEffect", &ParticleSystem::setInlineEffect)
+        .addFunction("getInlineEffect", &ParticleSystem::getInlineEffect)
+        .addFunction("setFloat", &ParticleSystem::setFloat)
+        .addFunction("setVector3", &ParticleSystem::setVector3)
+        .addFunction("setColor", &ParticleSystem::setColor)
+        .addFunction("getFloat", &ParticleSystem::getFloat)
+        .addFunction("getVector3", &ParticleSystem::getVector3)
+        .addFunction("getColor", &ParticleSystem::getColor)
+        .addFunction("addCollisionPlane", &ParticleSystem::addCollisionPlane)
+        .addFunction("clearCollisionPlanes", &ParticleSystem::clearCollisionPlanes)
+        // ps:onCollision(function(events) ... end): a listener of this script (replaces its last)
+        .addFunction("onCollision", +[](ParticleSystem* self, lua_State* L) {
+            luaL_checktype(L, 2, LUA_TFUNCTION);
+            lua_settop(L, 2);
+            return self->getComponent<ParticleSystemComponent>().onCollision.add("lua", L);
+        })
+        .addFunction("onParticleDeath", +[](ParticleSystem* self, lua_State* L) {
+            luaL_checktype(L, 2, LUA_TFUNCTION);
+            lua_settop(L, 2);
+            return self->getComponent<ParticleSystemComponent>().onParticleDeath.add("lua", L);
+        })
+        .addFunction("onSubEmit", +[](ParticleSystem* self, lua_State* L) {
+            luaL_checktype(L, 2, LUA_TFUNCTION);
+            lua_settop(L, 2);
+            return self->getComponent<ParticleSystemComponent>().onSubEmit.add("lua", L);
+        })
+        .addFunction("getParticleSystemComponent", &ParticleSystem::getComponent<ParticleSystemComponent>)
+        // deprecated: the old Action's and its setters (the effect's old view, written back)
+        .addFunction("start", &ParticleSystem::start)
+        .addFunction("reset", &ParticleSystem::reset)
+        .addProperty("running", &ParticleSystem::isRunning)
+        .addFunction("setTarget",
+            luabridge::overload<GameObject*>(&ParticleSystem::setTarget),
+            luabridge::overload<Entity>(&ParticleSystem::setTarget))
+        .addProperty("maxParticles", &ParticleSystem::getMaxParticles, &ParticleSystem::setMaxParticles)
+        .addProperty("rate", &ParticleSystem::getRate, &ParticleSystem::setRate)
+        .addProperty("maxPerUpdate", &ParticleSystem::getMaxPerUpdate, &ParticleSystem::setMaxPerUpdate)
+        .addProperty("emitter", &ParticleSystem::isEmitter, &ParticleSystem::setEmitter)
+        .addProperty("loop", &ParticleSystem::isLoop, &ParticleSystem::setLoop)
+        .addProperty("localSpace", &ParticleSystem::isLocalSpace, &ParticleSystem::setLocalSpace)
+        .addProperty("emitterShape", &ParticleSystem::getPositionInitializerShape, &ParticleSystem::setPositionInitializerShape)
+        .addFunction("setLifeInitializer", 
+            luabridge::overload<float>(&ParticleSystem::setLifeInitializer),
+            luabridge::overload<float, float>(&ParticleSystem::setLifeInitializer))
+        .addFunction("setPositionInitializer", 
+            luabridge::overload<Vector3>(&ParticleSystem::setPositionInitializer),
+            luabridge::overload<Vector3, Vector3>(&ParticleSystem::setPositionInitializer))
+        .addFunction("setSpherePositionInitializer",
+            luabridge::overload<float>(&ParticleSystem::setSpherePositionInitializer),
+            luabridge::overload<float, float>(&ParticleSystem::setSpherePositionInitializer))
+        .addFunction("setHemispherePositionInitializer",
+            luabridge::overload<float>(&ParticleSystem::setHemispherePositionInitializer),
+            luabridge::overload<float, float>(&ParticleSystem::setHemispherePositionInitializer))
+        .addFunction("setCirclePositionInitializer",
+            luabridge::overload<float>(&ParticleSystem::setCirclePositionInitializer),
+            luabridge::overload<float, float>(&ParticleSystem::setCirclePositionInitializer))
+        .addFunction("setConePositionInitializer", &ParticleSystem::setConePositionInitializer)
+        .addFunction("addBurst",
+            luabridge::overload<float, int>(&ParticleSystem::addBurst),
+            luabridge::overload<float, int, int>(&ParticleSystem::addBurst))
+        .addFunction("setBursts", &ParticleSystem::setBursts)
+        .addFunction("clearBursts", &ParticleSystem::clearBursts)
+        .addFunction("setPositionModifier", 
+            luabridge::overload<float, float, Vector3, Vector3>(&ParticleSystem::setPositionModifier),
+            luabridge::overload<float, float, Vector3, Vector3, EaseType>(&ParticleSystem::setPositionModifier),
+            luabridge::overload<float, float, Vector3, Vector3, Ease>(&ParticleSystem::setPositionModifier))
+        .addFunction("setVelocityInitializer", 
+            luabridge::overload<Vector3>(&ParticleSystem::setVelocityInitializer),
+            luabridge::overload<Vector3, Vector3>(&ParticleSystem::setVelocityInitializer))
+        .addFunction("setVelocityModifier", 
+            luabridge::overload<float, float, Vector3, Vector3>(&ParticleSystem::setVelocityModifier),
+            luabridge::overload<float, float, Vector3, Vector3, EaseType>(&ParticleSystem::setVelocityModifier),
+            luabridge::overload<float, float, Vector3, Vector3, Ease>(&ParticleSystem::setVelocityModifier))
+        .addFunction("setAccelerationInitializer", 
+            luabridge::overload<Vector3>(&ParticleSystem::setAccelerationInitializer),
+            luabridge::overload<Vector3, Vector3>(&ParticleSystem::setAccelerationInitializer))
+        .addFunction("setAccelerationModifier", 
+            luabridge::overload<float, float, Vector3, Vector3>(&ParticleSystem::setAccelerationModifier),
+            luabridge::overload<float, float, Vector3, Vector3, EaseType>(&ParticleSystem::setAccelerationModifier),
+            luabridge::overload<float, float, Vector3, Vector3, Ease>(&ParticleSystem::setAccelerationModifier))
+        .addFunction("setColorInitializer", 
+            luabridge::overload<Vector3>(&ParticleSystem::setColorInitializer),
+            luabridge::overload<Vector3, Vector3>(&ParticleSystem::setColorInitializer))
+        .addFunction("setColorModifier", 
+            luabridge::overload<float, float, Vector3, Vector3>(&ParticleSystem::setColorModifier),
+            luabridge::overload<float, float, Vector3, Vector3, EaseType>(&ParticleSystem::setColorModifier),
+            luabridge::overload<float, float, Vector3, Vector3, Ease>(&ParticleSystem::setColorModifier))
+        .addFunction("addColorGradientStop", &ParticleSystem::addColorGradientStop)
+        .addFunction("setColorGradient", &ParticleSystem::setColorGradient)
+        .addFunction("clearColorGradient", &ParticleSystem::clearColorGradient)
+        .addFunction("setColorGradientUseSRGB", &ParticleSystem::setColorGradientUseSRGB)
+        .addFunction("setAlphaInitializer", 
+            luabridge::overload<float>(&ParticleSystem::setAlphaInitializer),
+            luabridge::overload<float, float>(&ParticleSystem::setAlphaInitializer))
+        .addFunction("setAlphaModifier", 
+            luabridge::overload<float, float, float, float>(&ParticleSystem::setAlphaModifier),
+            luabridge::overload<float, float, float, float, EaseType>(&ParticleSystem::setAlphaModifier),
+            luabridge::overload<float, float, float, float, Ease>(&ParticleSystem::setAlphaModifier))
+        .addFunction("setSizeInitializer", 
+            luabridge::overload<float>(&ParticleSystem::setSizeInitializer),
+            luabridge::overload<float, float>(&ParticleSystem::setSizeInitializer))
+        .addFunction("setSizeModifier", 
+            luabridge::overload<float, float, float, float>(&ParticleSystem::setSizeModifier),
+            luabridge::overload<float, float, float, float, EaseType>(&ParticleSystem::setSizeModifier),
+            luabridge::overload<float, float, float, float, Ease>(&ParticleSystem::setSizeModifier))
+        .addFunction("setSpriteIntializer", 
+            luabridge::overload<std::vector<int>>(&ParticleSystem::setSpriteIntializer),
+            luabridge::overload<int, int>(&ParticleSystem::setSpriteIntializer))
+        .addFunction("setSpriteModifier", 
+            luabridge::overload<float, float, std::vector<int>>(&ParticleSystem::setSpriteModifier),
+            luabridge::overload<float, float, std::vector<int>, EaseType>(&ParticleSystem::setSpriteModifier),
+            luabridge::overload<float, float, std::vector<int>, Ease>(&ParticleSystem::setSpriteModifier))
+        .addFunction("setRotationInitializer", 
+            luabridge::overload<float>(&ParticleSystem::setRotationInitializer),
+            luabridge::overload<float, float>(&ParticleSystem::setRotationInitializer),
+            luabridge::overload<Quaternion>(&ParticleSystem::setRotationInitializer),
+            luabridge::overload<Quaternion, Quaternion>(&ParticleSystem::setRotationInitializer))
+        .addFunction("setRotationModifier", 
+            luabridge::overload<float, float, float, float>(&ParticleSystem::setRotationModifier),
+            luabridge::overload<float, float, float, float, EaseType>(&ParticleSystem::setRotationModifier),
+            luabridge::overload<float, float, float, float, Ease>(&ParticleSystem::setRotationModifier),
+            luabridge::overload<float, float, Quaternion, Quaternion>(&ParticleSystem::setRotationModifier),
+            luabridge::overload<float, float, Quaternion, Quaternion, EaseType>(&ParticleSystem::setRotationModifier),
+            luabridge::overload<float, float, Quaternion, Quaternion, Ease>(&ParticleSystem::setRotationModifier))
+        .addFunction("setScaleInitializer", 
+            luabridge::overload<float>(&ParticleSystem::setScaleInitializer),
+            luabridge::overload<Vector3>(&ParticleSystem::setScaleInitializer),
+            luabridge::overload<float, float>(&ParticleSystem::setScaleInitializer),
+            luabridge::overload<Vector3, Vector3>(&ParticleSystem::setScaleInitializer))
+        .addFunction("setScaleModifier", 
+            luabridge::overload<float, float, Vector3, Vector3>(&ParticleSystem::setScaleModifier),
+            luabridge::overload<float, float, float, float>(&ParticleSystem::setScaleModifier),
+            luabridge::overload<float, float, Vector3, Vector3, EaseType>(&ParticleSystem::setScaleModifier),
+            luabridge::overload<float, float, Vector3, Vector3, Ease>(&ParticleSystem::setScaleModifier))
         .endClass();
 
     luabridge::getGlobalNamespace(L)

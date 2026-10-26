@@ -69,7 +69,7 @@
 #include "action/RotationTween.h"
 #include "action/ScaleTween.h"
 #include "action/Animation.h"
-#include "action/ParticleSystem.h"
+#include "object/ParticleSystem.h"
 #include "action/SpriteAnimation.h"
 #include "action/keyframe/MorphTracks.h"
 #include "action/keyframe/RotateTracks.h"

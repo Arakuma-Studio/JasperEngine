@@ -49,6 +49,9 @@ namespace jasperengine { namespace particles {
         uint16_t data[4];
     };
 
+    // the tiles a Tile-mode trail's u covers (its 16-bit u holds u / kTrailTileRange)
+    inline constexpr float kTrailTileRange = 64.0f;
+
     // A trail vertex: FLOAT3 centre, HALF4 (tangent xyz, half width), UBYTE4N colour (sRGB),
     // USHORT2N (u along the trail, side 0 or 1); the shader turns it to face the camera
     struct TrailVertex {
