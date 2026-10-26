@@ -1026,7 +1026,10 @@ TEST(TexSynth, OversizedInputsAreRefusedBeforeDecoding) {
     fs::remove_all(dir);
 }
 
-#ifdef __linux__
+// Not under ASan: the address-space limit is the process size plus 40 MB, and an ASan process's
+// size is its shadow reservation (terabytes): nothing would fail. ASan's allocator also aborts on
+// an allocation it cannot make instead of failing it, which is what this checks the handling of.
+#if defined(__linux__) && !defined(JASPERENGINE_SANITIZE_ADDRESS) && !defined(__SANITIZE_ADDRESS__)
 // In a process of its own (jasperengine-texsynth-oom, built next to this binary, see
 // standalone/SynthesisOutOfMemory.cpp): an address-space limit makes the synthesis' allocations
 // fail, and the result is a failed status, not a terminate
