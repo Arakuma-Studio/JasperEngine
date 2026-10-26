@@ -22,6 +22,15 @@ import xcode_sync_compat as base  # noqa: E402
 FILES = [
     ("input/InputControlPath.cpp", "Input.cpp"),
     ("input/InputControlPath.h", "Input.h"),
+    ("input/InputActionAsset.cpp", "Input.cpp"),
+    ("input/InputActionAsset.h", "Input.h"),
+    ("input/InputActions.cpp", "Input.cpp"),
+    ("input/InputActions.h", "Input.h"),
+    ("input/InputRebind.cpp", "Input.cpp"),
+    ("input/InputRebind.h", "Input.h"),
+    ("input/InputVirtualControls.cpp", "Input.cpp"),
+    ("input/InputVirtualControls.h", "Input.h"),
+    ("script/binding/GameplayClassesLua.cpp", "script/binding/ProfilerClassesLua.cpp"),
 ]
 
 

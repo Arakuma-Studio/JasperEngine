@@ -24,7 +24,9 @@
 		5E5150000000000000000022 /* SokolVramTracker.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E515000000000000000000F /* SokolVramTracker.cpp */; };
 		5E5150000000000000000023 /* SokolVramTracker.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E515000000000000000000F /* SokolVramTracker.cpp */; };
 		5E5150000000000000000024 /* ProfilerClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000012 /* ProfilerClassesLua.cpp */; };
+		434F4D50C6EF06C129A2C1A1 /* GameplayClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D500FDED71A67F616CA /* GameplayClassesLua.cpp */; };
 		5E5150000000000000000025 /* ProfilerClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000012 /* ProfilerClassesLua.cpp */; };
+		434F4D5077FD9C84C36F4F2D /* GameplayClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D500FDED71A67F616CA /* GameplayClassesLua.cpp */; };
 		5E0A1E00000000000000000F /* CascadeFit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E0A1E000000000000000001 /* CascadeFit.cpp */; };
 		5E0A1E000000000000000010 /* CascadeFit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E0A1E000000000000000001 /* CascadeFit.cpp */; };
 		5E0A1E000000000000000011 /* ShadowCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E0A1E000000000000000003 /* ShadowCache.cpp */; };
@@ -502,8 +504,16 @@
 		7128CFAD25BA717500965B51 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 7128CFAA25BA717500965B51 /* LaunchScreen.storyboard */; };
 		7128CFAE25BA717500965B51 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 7128CFAB25BA717500965B51 /* Main.storyboard */; };
 		7128D08625BB033D00965B51 /* Input.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7128D08525BB033D00965B51 /* Input.cpp */; };
+		434F4D504533621485F625C7 /* InputVirtualControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50FF717FBABDEAD7D2 /* InputVirtualControls.cpp */; };
+		434F4D5013A0AB80B4C94403 /* InputRebind.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D506FAF644CD4C6156F /* InputRebind.cpp */; };
+		434F4D5047DE2062B62E1944 /* InputActions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50685CC50B1CBC4DB6 /* InputActions.cpp */; };
+		434F4D50246235CDA4187741 /* InputActionAsset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50D06F100B22C53DA7 /* InputActionAsset.cpp */; };
 		434F4D50312728BAD70188F6 /* InputControlPath.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5008747FD51D6BC1D7 /* InputControlPath.cpp */; };
 		7128D08725BB033D00965B51 /* Input.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7128D08525BB033D00965B51 /* Input.cpp */; };
+		434F4D50F866BE1250EF4E4C /* InputVirtualControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50FF717FBABDEAD7D2 /* InputVirtualControls.cpp */; };
+		434F4D50627A9C492EAD4705 /* InputRebind.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D506FAF644CD4C6156F /* InputRebind.cpp */; };
+		434F4D50B4EF04DF955434B4 /* InputActions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50685CC50B1CBC4DB6 /* InputActions.cpp */; };
+		434F4D504C123D08E8E04205 /* InputActionAsset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50D06F100B22C53DA7 /* InputActionAsset.cpp */; };
 		434F4D50B62CBA2A0B777D36 /* InputControlPath.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5008747FD51D6BC1D7 /* InputControlPath.cpp */; };
 		7128D0AE25BB18DC00965B51 /* StringUtils.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7128D0AC25BB18DC00965B51 /* StringUtils.cpp */; };
 		7128D0AF25BB18DC00965B51 /* StringUtils.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7128D0AC25BB18DC00965B51 /* StringUtils.cpp */; };
@@ -3749,6 +3759,7 @@
 		5E5150000000000000000010 /* SokolVramTracker.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SokolVramTracker.h; sourceTree = "<group>"; };
 		5E5150000000000000000011 /* Profile.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Profile.h; sourceTree = "<group>"; };
 		5E5150000000000000000012 /* ProfilerClassesLua.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ProfilerClassesLua.cpp; sourceTree = "<group>"; };
+		434F4D500FDED71A67F616CA /* GameplayClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GameplayClassesLua.cpp; sourceTree = "<group>"; };
 		5E5150000000000000000013 /* RenderStats.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RenderStats.h; sourceTree = "<group>"; };
 		5E0A1E000000000000000001 /* CascadeFit.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = CascadeFit.cpp; sourceTree = "<group>"; };
 		5E0A1E000000000000000002 /* CascadeFit.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CascadeFit.h; sourceTree = "<group>"; };
@@ -4343,8 +4354,16 @@
 		7128CFAB25BA717500965B51 /* Main.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; path = Main.storyboard; sourceTree = "<group>"; };
 		7128D00425BA74A000965B51 /* JasperEngine_macOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = JasperEngine_macOS.entitlements; sourceTree = "<group>"; };
 		7128D05D25BB02F800965B51 /* Input.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Input.h; sourceTree = "<group>"; };
+		434F4D505A481C39BEF7784E /* InputVirtualControls.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = input/InputVirtualControls.h; sourceTree = "<group>"; };
+		434F4D5060482BAA961FF957 /* InputRebind.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = input/InputRebind.h; sourceTree = "<group>"; };
+		434F4D50B88700EBF5817AFC /* InputActions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = input/InputActions.h; sourceTree = "<group>"; };
+		434F4D50C26E07633B2E11DF /* InputActionAsset.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = input/InputActionAsset.h; sourceTree = "<group>"; };
 		434F4D50E7F57628F40D5CD6 /* InputControlPath.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = input/InputControlPath.h; sourceTree = "<group>"; };
 		7128D08525BB033D00965B51 /* Input.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = Input.cpp; sourceTree = "<group>"; };
+		434F4D50FF717FBABDEAD7D2 /* InputVirtualControls.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = input/InputVirtualControls.cpp; sourceTree = "<group>"; };
+		434F4D506FAF644CD4C6156F /* InputRebind.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = input/InputRebind.cpp; sourceTree = "<group>"; };
+		434F4D50685CC50B1CBC4DB6 /* InputActions.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = input/InputActions.cpp; sourceTree = "<group>"; };
+		434F4D50D06F100B22C53DA7 /* InputActionAsset.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = input/InputActionAsset.cpp; sourceTree = "<group>"; };
 		434F4D5008747FD51D6BC1D7 /* InputControlPath.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = input/InputControlPath.cpp; sourceTree = "<group>"; };
 		7128D0AC25BB18DC00965B51 /* StringUtils.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = StringUtils.cpp; sourceTree = "<group>"; };
 		7128D0AD25BB18DC00965B51 /* StringUtils.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = StringUtils.h; sourceTree = "<group>"; };
@@ -7246,6 +7265,7 @@
 				7105A55C28B305B20092EA05 /* GameObjectClassesLua.cpp */,
 				716803C72DF75E6F00ED71BE /* ThreadClassesLua.cpp */,
 				5E5150000000000000000012 /* ProfilerClassesLua.cpp */,
+				434F4D500FDED71A67F616CA /* GameplayClassesLua.cpp */,
 				7105A56028B305B20092EA05 /* UtilClassesLua.cpp */,
 				50314C550000000000000013 /* HtmlUIClassesLua.h */,
 				50314C550000000000000014 /* HtmlUIClassesLua.cpp */,
@@ -8049,8 +8069,16 @@
 				7162FC7225962A0E0075B97D /* Engine.cpp */,
 				175DCCB9300FA22F008C19EC /* Export.h */,
 				7128D05D25BB02F800965B51 /* Input.h */,
+				434F4D505A481C39BEF7784E /* InputVirtualControls.h */,
+				434F4D5060482BAA961FF957 /* InputRebind.h */,
+				434F4D50B88700EBF5817AFC /* InputActions.h */,
+				434F4D50C26E07633B2E11DF /* InputActionAsset.h */,
 				434F4D50E7F57628F40D5CD6 /* InputControlPath.h */,
 				7128D08525BB033D00965B51 /* Input.cpp */,
+				434F4D50FF717FBABDEAD7D2 /* InputVirtualControls.cpp */,
+				434F4D506FAF644CD4C6156F /* InputRebind.cpp */,
+				434F4D50685CC50B1CBC4DB6 /* InputActions.cpp */,
+				434F4D50D06F100B22C53DA7 /* InputActionAsset.cpp */,
 				434F4D5008747FD51D6BC1D7 /* InputControlPath.cpp */,
 				7162FC2F25962A0E0075B97D /* io */,
 				7162FC6925962A0E0075B97D /* Log.h */,
@@ -13876,6 +13904,10 @@
 				1721303B2FB012BD00390DC2 /* SoundPool.cpp in Sources */,
 				715CB118288CD40E0049344B /* Terrain.cpp in Sources */,
 				7128D08725BB033D00965B51 /* Input.cpp in Sources */,
+				434F4D50F866BE1250EF4E4C /* InputVirtualControls.cpp in Sources */,
+				434F4D50627A9C492EAD4705 /* InputRebind.cpp in Sources */,
+				434F4D50B4EF04DF955434B4 /* InputActions.cpp in Sources */,
+				434F4D504C123D08E8E04205 /* InputActionAsset.cpp in Sources */,
 				434F4D50B62CBA2A0B777D36 /* InputControlPath.cpp in Sources */,
 				713D82AB259D307F00567F9F /* Texture.cpp in Sources */,
 				175DCCC43022C5E9008C19EC /* Mirror.cpp in Sources */,
@@ -13950,6 +13982,7 @@
 				5E5150000000000000000020 /* SokolTraceHub.cpp in Sources */,
 				5E5150000000000000000022 /* SokolVramTracker.cpp in Sources */,
 				5E5150000000000000000024 /* ProfilerClassesLua.cpp in Sources */,
+				434F4D50C6EF06C129A2C1A1 /* GameplayClassesLua.cpp in Sources */,
 				48544D4C0000000000000004 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */,
 				434F4D50EFE51A328840CA82 /* WidgetsRuntime.cpp in Sources */,
@@ -14276,6 +14309,7 @@
 				5E5150000000000000000021 /* SokolTraceHub.cpp in Sources */,
 				5E5150000000000000000023 /* SokolVramTracker.cpp in Sources */,
 				5E5150000000000000000025 /* ProfilerClassesLua.cpp in Sources */,
+				434F4D5077FD9C84C36F4F2D /* GameplayClassesLua.cpp in Sources */,
 				71A41CB529AC3D7C006953D3 /* SokolCmdQueue.cpp in Sources */,
 				503152450000000000000002 /* SokolPipelineCache.cpp in Sources */,
 				7105A56A28B305B20092EA05 /* UtilClassesLua.cpp in Sources */,
@@ -14350,6 +14384,10 @@
 				71451BD1270CA17F00712643 /* SpriteAnimation.cpp in Sources */,
 				715CB117288CD40E0049344B /* Terrain.cpp in Sources */,
 				7128D08625BB033D00965B51 /* Input.cpp in Sources */,
+				434F4D504533621485F625C7 /* InputVirtualControls.cpp in Sources */,
+				434F4D5013A0AB80B4C94403 /* InputRebind.cpp in Sources */,
+				434F4D5047DE2062B62E1944 /* InputActions.cpp in Sources */,
+				434F4D50246235CDA4187741 /* InputActionAsset.cpp in Sources */,
 				434F4D50312728BAD70188F6 /* InputControlPath.cpp in Sources */,
 				175DCCC33022C5E9008C19EC /* Mirror.cpp in Sources */,
 				7162FD3D25963AE00075B97D /* Plane.cpp in Sources */,

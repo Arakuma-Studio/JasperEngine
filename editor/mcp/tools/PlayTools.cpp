@@ -26,6 +26,7 @@
 #include "Catalog.h"
 #include "Engine.h"
 #include "Input.h"
+#include "input/InputActions.h"
 #include "input/InputControlPath.h"
 #include "Project.h"
 #include "command/CommandHandle.h"
@@ -137,8 +138,9 @@ struct HeldInput {
     std::set<int> gamepads;             // connected virtual gamepads
     std::map<int, std::set<int>> gamepadButtons;
     std::map<int, std::set<int>> gamepadAxes;
+    std::set<std::string> actions;      // Input Actions forced down (input_action down)
     bool empty() const {
-        if (!keys.empty() || !mouseButtons.empty() || !touches.empty() || !gamepads.empty()) return false;
+        if (!keys.empty() || !mouseButtons.empty() || !touches.empty() || !gamepads.empty() || !actions.empty()) return false;
         for (const auto& [id, buttons] : gamepadButtons) if (!buttons.empty()) return false;
         return true;
     }
@@ -531,6 +533,7 @@ void releaseHeldInput(McpContext& ctx) {
         for (int axis : axes) Engine::systemGamepadAxisMove(pad, axis, 0.0f);
     }
     for (int pad : held.gamepads) Engine::systemGamepadDisconnect(pad);
+    for (const std::string& action : held.actions) InputActions::releaseInjected(action);
     held = HeldInput();
     if (PlayInput* input = ctx.playInput()) input->setPointerInjected(false);
 }
@@ -550,7 +553,9 @@ Json heldInputJson() {
         if (it != held.gamepadButtons.end()) for (int b : it->second) item["buttons"].push_back(b);
         pads.push_back(item);
     }
-    return {{"keys", keys}, {"mouse_buttons", buttons}, {"touches", touches}, {"gamepads", pads}};
+    Json actions = Json::array();
+    for (const std::string& action : held.actions) actions.push_back(action);
+    return {{"keys", keys}, {"mouse_buttons", buttons}, {"touches", touches}, {"gamepads", pads}, {"input_actions", actions}};
 }
 
 } // namespace
@@ -2783,12 +2788,67 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
         return true;
     }
 
+    // an Input Action forced at top priority (InputActions::inject): press for hold_frames
+    // windows (0: pressed and released in one), down until up, up, or a value for hold_frames
+    if (type == "input_action") {
+        const std::string name = event.value("name", "");
+        if (name.find('/') == std::string::npos) {
+            error = "input_action needs name \"Map/Action\"";
+            return false;
+        }
+        const std::string action = lowerCopy(event.value("action", "press"));
+        Vector2 value(1.0f, 0.0f);
+        if (event.contains("value")) {
+            const Json& v = event["value"];
+            if (v.is_number()) value = Vector2(v.get<float>(), 0.0f);
+            else if (v.is_array() && v.size() == 2 && v[0].is_number() && v[1].is_number()) value = Vector2(v[0].get<float>(), v[1].get<float>());
+            else {
+                error = "input_action value is a number or [x, y]";
+                return false;
+            }
+        }
+        auto exists = [name]() {
+            return InputActions::get(name) ? std::string() : "no Input Action " + name + " is loaded (get_input_state fields actions lists them)";
+        };
+        if (action == "press" || action == "value") {
+            const int windows = holdFrames;
+            add([exists, name, value, windows]() {
+                const std::string err = exists();
+                if (err.empty()) InputActions::inject(name, value, windows);
+                return err;
+            }, std::max(holdFrames, 0), holdMs, "input action " + action + " " + name);
+            add([]() { return std::string(); }, gapFrames, 0, "input action gap");
+        } else if (action == "down") {
+            add([exists, name, value]() {
+                const std::string err = exists();
+                if (err.empty()) {
+                    InputActions::inject(name, value, -1);
+                    state().held.actions.insert(name);
+                }
+                return err;
+            }, gapFrames, 0, "input action down " + name);
+        } else if (action == "up") {
+            add([exists, name]() {
+                const std::string err = exists();
+                if (err.empty()) {
+                    InputActions::releaseInjected(name);
+                    state().held.actions.erase(name);
+                }
+                return err;
+            }, gapFrames, 0, "input action up " + name);
+        } else {
+            error = "input_action action must be press, down, up or value";
+            return false;
+        }
+        return true;
+    }
+
     if (type == "release_all") {
         add([c]() { releaseHeldInput(*c); return std::string(); }, gapFrames, 0, "release all");
         return true;
     }
 
-    error = "type must be key, text, ime, ime_commit, ime_cancel, mouse, mouse_leave, mouse_enter, touch, gamepad, wait or release_all";
+    error = "type must be key, text, ime, ime_commit, ime_cancel, mouse, mouse_leave, mouse_enter, touch, gamepad, input_action, wait or release_all";
     return false;
 }
 
@@ -3632,17 +3692,18 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "send_input";
         tool.title = "Send Input";
         tool.description =
-            "Inject input into the running game across frames (no focus needed). events in order, each {type, ...}, "
-            "first action the default:\nkey: key (space, a, 0, left, f1, kp_0...), action press|down|up, hold_frames "
-            "(2; 0 = up in the same frame), hold_ms, mods [shift,ctrl,alt,super]\ntext: text; ime: text, cursor (code points; -1 selects); "
+            "Inject input into the running game over frames (no focus). events in order, each {type, ...}, "
+            "first action default:\nkey: key (space, a, left, f1, kp_0...), action press|down|up, hold_frames "
+            "(2; 0 = up same frame), hold_ms, mods [shift,ctrl,alt,super]\ntext: text; ime: text, cursor (code points; -1 selects); "
             "ime_commit: text; ime_cancel; mouse_leave, mouse_enter\nmouse: action "
-            "click|double_click|down|up|move|drag|scroll, x, y (default: the pointer), button left|right|middle, to "
+            "click|double_click|down|up|move|drag|scroll, x, y (default: pointer), button left|right|middle, to "
             "[x,y] + steps (drag), dx, dy (scroll; move without x, y: relative)\ntouch: action tap|start|move|end|cancel|swipe, pointer, x, y, "
-            "to\nmouse/touch target, to_target: CSS selector of a UI Document element (its center; document: "
-            "which)\ngamepad: gamepad (0), button (a, b, start, dpad_up...) + action, or axis "
-            "(left_x..right_trigger) + value -1..1\nwait: frames, ms. release_all.\nspace: canvas px from top-left "
+            "to\nmouse/touch target, to_target: CSS selector of a UI Document element (center; document: "
+            "which)\ngamepad: gamepad (0), button (a, b, dpad_up...) + action, or axis "
+            "(left_x..right_trigger) + value -1..1\ninput_action: name Map/Action, action press|down|up|value, value"
+            "\nwait: frames, ms. release_all.\nspace: canvas px from top-left "
             "(Input.getMousePosition), normalized 0..1, view = Game view px. down holds until up/release_all/stop. "
-            "Returns frames, console lines, play state; auto_pause: only events + frames_after run.";
+            "Returns frames, console, play state; auto_pause: only events + frames_after run.";
         tool.inputSchema = object({
             {"events", Json{{"type", "array"}, {"minItems", 1}, {"maxItems", 500}, {"items", eventItem}}},
             {"space", withDefault(stringEnum("", {"canvas", "normalized", "view"}), "canvas")},

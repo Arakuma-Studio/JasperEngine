@@ -1395,6 +1395,23 @@ const std::vector<Setting>& settingsTable() {
         add(boolSetting("physics.enabled", "3D physics (Jolt). Off leaves Rigidbodies and joints out of builds.",
                         [](Project& p) { return p.isPhysics3DEnabled(); }, [](Project& p, bool v) { p.setPhysics3DEnabled(v); }));
         add(layerCollisionSetting("physics.layer_collision_matrix", true));
+        // ---- input
+        add(pathSetting("input.actions", "The Input Actions asset Play and the game load at start (an .inputactions file in the assets directory).",
+                        [](Project& p) -> fs::path& { return p.getInputActionsAsset(); }));
+        {
+            Setting s;
+            s.key = "input.deadzone";
+            s.type = "number";
+            s.description = "Default deadzone of AXIS and VECTOR2 actions (0..0.95).";
+            s.get = [](McpContext& ctx) { return Json(ctx.project()->getInputDeadzone()); };
+            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                double v;
+                if (!readNumber(value, 0.0, 0.95, v, error)) return false;
+                if (apply) ctx.project()->setInputDeadzone(static_cast<float>(v));
+                return true;
+            };
+            add(s);
+        }
         add(boolSetting("physics2d.enabled", "2D physics (Box2D). Off leaves Rigidbody2Ds and joints out of builds.",
                         [](Project& p) { return p.isPhysics2DEnabled(); }, [](Project& p, bool v) { p.setPhysics2DEnabled(v); }));
         add(layerCollisionSetting("physics2d.layer_collision_matrix", false));
@@ -2307,7 +2324,7 @@ void registerProjectTools(McpRegistry& registry) {
             "platform overrides. describe adds each key's type, allowed values, meaning.";
         tool.inputSchema = object({
             {"category", string("player, web, linux, windows, macos, ios, android, graphics, quality, physics, "
-                                "physics2d, scripting, editor, tags_and_layers, preferences or all.")},
+                                "physics2d, input, scripting, editor, tags_and_layers, preferences or all.")},
             {"keys", array(Json{{"type", "string"}}, "Keys or categories.")},
             {"describe", withDefault(boolean(""), false)}
         });

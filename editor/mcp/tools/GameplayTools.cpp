@@ -2,16 +2,27 @@
 // SPDX-License-Identifier: MIT
 
 // Gameplay (docs/specs/S22-gameplay.md): the input state the game reads (levels, the frame's
-// edges and deltas, touches, gamepads, pointer lock). The guide is docs/mcp/guide/input.md.
+// edges and deltas, touches, gamepads, pointer lock, the Input Actions' values), and the
+// .inputactions assets read and edited as undo steps. The guide is docs/mcp/guide/input.md.
 #include "McpTools.h"
 
 #include "mcp/McpCall.h"
+#include "mcp/McpContext.h"
+#include "mcp/McpRefs.h"
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
 
 #include "Engine.h"
 #include "Input.h"
+#include "Project.h"
+#include "command/CommandHistory.h"
+#include "command/type/InputActionsEditCmd.h"
+#include "input/InputActions.h"
 #include "input/InputControlPath.h"
+#include "io/FileData.h"
+#include "util/ProjectChecks.h"
+
+#include <filesystem>
 
 #include <cmath>
 #include <set>
@@ -22,6 +33,7 @@ namespace jasperengine::editor::mcp {
 namespace {
 
 using namespace schema;
+namespace fs = std::filesystem;
 
 double rounded(double value) {
     return std::round(value * 1000.0) / 1000.0;
@@ -131,6 +143,186 @@ Json gamepadsJson() {
     return list;
 }
 
+
+Json toJson(const InputJson& value) {
+    return Json::parse(value.dump());
+}
+
+const char* phaseName(InputActionPhase phase) {
+    switch (phase) {
+        case InputActionPhase::WAITING: return "waiting";
+        case InputActionPhase::STARTED: return "started";
+        case InputActionPhase::PERFORMED: return "performed";
+        case InputActionPhase::CANCELED: return "canceled";
+    }
+    return "waiting";
+}
+
+Json actionsStateJson() {
+    Json maps = Json::array();
+    for (const InputActions::MapState& map : InputActions::getMapStates()) {
+        Json actions = Json::array();
+        for (InputAction* action : InputActions::getMap(map.name).getActions()) {
+            const Vector2 value = action->readVector2();
+            Json item = {
+                {"name", action->getName()},
+                {"type", inputActionTypeName(action->getType())},
+                {"value", action->getType() == InputActionType::VECTOR2 ? vec2Json(value) : Json(rounded(value.x))},
+                {"pressed", action->isPressed()},
+                {"pressed_this_frame", action->wasPressedThisFrame()},
+                {"released_this_frame", action->wasReleasedThisFrame()},
+                {"phase", phaseName(action->getPhase())}
+            };
+            const std::string consumer = action->getConsumedBy();
+            if (!consumer.empty()) item["consumed_by"] = consumer;
+            actions.push_back(item);
+        }
+        Json item = {{"name", map.name}, {"priority", map.priority}, {"enabled", map.enabled}, {"actions", actions}};
+        if (map.gamepad >= 0) item["gamepad"] = map.gamepad;
+        if (map.blocked) item["blocked"] = true;
+        maps.push_back(item);
+    }
+    return {{"asset", InputActions::getAssetPath()}, {"loaded", InputActions::isLoaded()},
+            {"rebinding", InputActions::isRebinding()}, {"maps", maps}};
+}
+
+// the asset file of a call: its text (empty for a file that does not exist yet) and model
+bool readInputActions(const CallPtr& call, fs::path& file, bool create, std::string& text, InputActionAssetDesc& asset,
+                      bool& exists) {
+    const std::string relative = call->args().value("path", std::string());
+    std::string error;
+    if (!McpRefs::resolveProjectPath(call->ctx().project(), relative, file, error, false)) {
+        call->fail(error.empty() ? "path is required (project-relative, e.g. assets/input/player.inputactions)." : error);
+        return false;
+    }
+    if (file.extension() != ".inputactions") {
+        call->fail("path must be an .inputactions file.");
+        return false;
+    }
+    std::error_code ec;
+    exists = fs::exists(file, ec);
+    if (!exists) {
+        if (!create) {
+            call->fail(relative + " does not exist (edit_input_actions creates it).");
+            return false;
+        }
+        text.clear();
+        asset = InputActionAssetDesc();
+        return true;
+    }
+    if (!ProjectChecks::readFile(file, text)) {
+        call->fail("Could not read " + relative + ".");
+        return false;
+    }
+    if (!InputActionAssetDesc::parse(text, asset, error)) {
+        call->fail(relative + " is not an input actions asset: " + error);
+        return false;
+    }
+    return true;
+}
+
+// the asset as an agent reads it: the file's JSON plus each binding's display name
+Json assetJson(const InputActionAssetDesc& asset) {
+    Json out = toJson(asset.toJson());
+    Json names = Json::object();
+    for (const InputActionMapDesc& map : asset.maps) {
+        for (const InputActionDesc& action : map.actions) {
+            for (const InputBindingDesc& binding : action.bindings) {
+                if (binding.isComposite()) {
+                    std::string name;
+                    const std::vector<int> order = binding.composite == InputCompositeType::DPAD_2D ? std::vector<int>{0, 2, 1, 3}
+                                                                                                     : std::vector<int>{0, 1};
+                    for (int index : order) {
+                        if (index >= (int)binding.parts.size()) continue;
+                        if (!name.empty()) name += "/";
+                        name += InputActions::getControlDisplayName(binding.parts[index].second.path, binding.parts[index].second.requiredMods);
+                        names[binding.parts[index].second.id] = InputActions::getControlDisplayName(binding.parts[index].second.path,
+                                                                                                    binding.parts[index].second.requiredMods);
+                    }
+                    names[binding.id] = name;
+                } else {
+                    names[binding.id] = InputActions::getControlDisplayName(binding.path, binding.requiredMods);
+                }
+            }
+        }
+    }
+    return {{"asset", out}, {"display_names", names}};
+}
+
+std::string assetSummary(const InputActionAssetDesc& asset) {
+    std::string text;
+    for (const InputActionMapDesc& map : asset.maps) {
+        text += "\n" + map.name + " (priority " + std::to_string(map.priority) + (map.enabled ? "" : ", disabled") +
+                (map.exclusive ? ", exclusive" : "") + "):";
+        for (const InputActionDesc& action : map.actions) {
+            text += " " + action.name + "[" + inputActionTypeName(action.type) + ": ";
+            for (size_t b = 0; b < action.bindings.size(); b++) {
+                const InputBindingDesc& binding = action.bindings[b];
+                if (b > 0) text += ", ";
+                text += binding.isComposite() ? std::string(inputCompositeName(binding.composite)) : binding.path;
+                text += " #" + binding.id;
+            }
+            text += "]";
+        }
+    }
+    return text;
+}
+
+void getInputActionsTool(const CallPtr& call) {
+    fs::path file;
+    std::string text;
+    InputActionAssetDesc asset;
+    bool exists = false;
+    if (!readInputActions(call, file, false, text, asset, exists)) return;
+    Json data = assetJson(asset);
+    std::error_code ec;
+    const bool playing = InputActions::isLoaded() &&
+                         fs::equivalent(FileData::getSystemPath(InputActions::getAssetPath()), file, ec);
+    data["loaded_in_play"] = playing;
+    call->ok("Input actions " + call->args().value("path", std::string()) + ":" + assetSummary(asset), data);
+}
+
+void editInputActionsTool(const CallPtr& call) {
+    const Json& args = call->args();
+    if (!args.contains("ops") || !args["ops"].is_array() || args["ops"].empty()) {
+        call->fail("ops is a non-empty list of {op, ...}: add_map, add_action, add_binding, add_composite, set, remove, "
+                   "rename, move, duplicate.");
+        return;
+    }
+    fs::path file;
+    std::string before;
+    InputActionAssetDesc asset;
+    bool exists = false;
+    if (!readInputActions(call, file, true, before, asset, exists)) return;
+    std::vector<std::string> names;
+    size_t index = 0;
+    try {
+        for (const Json& op : args["ops"]) {
+            names.push_back(applyInputActionsOp(asset, InputJson::parse(op.dump())));
+            index++;
+        }
+    } catch (const std::exception& e) {
+        call->fail("ops[" + std::to_string(index) + "]: " + e.what() + " (nothing was changed).");
+        return;
+    }
+    const std::string undoName = names.size() == 1 ? names.front() : "Edit Input Actions (" + std::to_string(names.size()) + " Changes)";
+    Json data = assetJson(asset);
+    data["applied"] = names.size();
+    data["undo_name"] = undoName;
+    data["created"] = !exists;
+    if (args.value("dry_run", false)) {
+        data["dry_run"] = true;
+        call->ok("Dry run: " + std::to_string(names.size()) + " op(s) apply; nothing was written." + assetSummary(asset), data);
+        return;
+    }
+    const std::string after = asset.save();
+    Project* project = call->ctx().project();
+    std::error_code ec;
+    fs::create_directories(file.parent_path(), ec);
+    project->getProjectCommandHistory()->addCommandNoMerge(new InputActionsEditCmd(file, before, after, undoName, !exists));
+    call->ok(undoName + " (" + std::to_string(names.size()) + " op(s))." + assetSummary(asset), data);
+}
+
 void getInputStateTool(const CallPtr& call) {
     const Json& args = call->args();
     std::set<std::string> fields;
@@ -161,6 +353,11 @@ void getInputStateTool(const CallPtr& call) {
         data["gamepads"] = gamepadsJson();
         if (!data["gamepads"].empty()) text += "\ngamepads " + data["gamepads"].dump();
     }
+    if (all || fields.count("actions")) {
+        data["actions"] = actionsStateJson();
+        if (InputActions::isLoaded()) text += "\nactions " + data["actions"]["maps"].dump();
+        else text += "\nno Input Actions asset loaded";
+    }
     if (text.size() > 8000) text = text.substr(0, 8000) + " ... (see structuredContent)";
     call->ok(text, data);
 }
@@ -175,14 +372,48 @@ void registerGameplayTools(McpRegistry& registry) {
         tool.description =
             "What the game reads from Input at the last frame that ran: levels (held), the frame's edges "
             "(down/up: getKeyDown/getKeyUp), mouse delta and scroll delta, pointer lock, touches with "
-            "phases, gamepads. auto_pause + send_input frames_after 0: the frame the input landed in (a tap: "
-            "hold_frames 0).";
+            "phases, gamepads, and the Input Actions maps (priority, enabled, blocked) with each action's value, "
+            "phase and consumer. auto_pause + send_input frames_after 0: the frame the input landed in.";
         tool.inputSchema = object({
-            {"fields", array(stringEnum("", {"raw", "touches", "gamepads"}), "Default: all.")}
+            {"fields", array(stringEnum("", {"raw", "touches", "gamepads", "actions"}), "Default: all.")}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.handler = getInputStateTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "get_input_actions";
+        tool.title = "Get Input Actions";
+        tool.description =
+            "An .inputactions asset (project-relative path): its maps, actions and bindings as the file has them (ids, "
+            "paths, composites, groups) plus display_names by binding id, and whether Play runs with it.";
+        tool.inputSchema = object({{"path", string("e.g. assets/input/player.inputactions")}}, {"path"});
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = getInputActionsTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "edit_input_actions";
+        tool.title = "Edit Input Actions";
+        tool.description =
+            "Apply ops to an .inputactions asset as ONE undo step (creates the file if missing; live in Play): "
+            "add_map {name, priority?, enabled?, consume?, exclusive?, ignore_when_ui_consumes?} | add_action {map, "
+            "name, type BUTTON|AXIS|VECTOR2} | add_binding {action Map/Action, path keyboard/space, gamepad/a, "
+            "gamepad/left_stick, mouse/delta, touch/primary/press, virtual/<name>..., groups?, required_mods?} | "
+            "add_composite {action, composite axis1d|dpad2d, parts {up: path...}} | set {map|action|binding id, values} "
+            "| remove | rename {map|action, name} | move {..., index} | duplicate. A bad op changes nothing.";
+        tool.inputSchema = object({
+            {"path", string("")},
+            {"ops", Json{{"type", "array"}, {"minItems", 1}, {"maxItems", 200}, {"items", anyObject("")}}},
+            {"dry_run", withDefault(boolean(""), false)}
+        }, {"path", "ops"});
+        tool.handler = editInputActionsTool;
         registry.addTool(std::move(tool));
     }
 }

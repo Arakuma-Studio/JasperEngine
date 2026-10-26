@@ -18,6 +18,7 @@ namespace jasperengine{
     class Rigidbody;
     class Contact3D;
     class CollideShapeResult3D;
+    class InputActionEvent;
 
     namespace lua_reload { struct CallbackRecord; }
 
@@ -62,6 +63,8 @@ namespace jasperengine{
         void push_value(lua_State *vm, Rigidbody o);
         void push_value(lua_State *vm, Contact3D o);
         void push_value(lua_State *vm, CollideShapeResult3D o);
+        // an input action's callback gets the event itself: event:consume() reaches it
+        void push_value(lua_State *vm, const InputActionEvent& o);
 
         template <typename T>
         static T get_value(lua_State *vm);

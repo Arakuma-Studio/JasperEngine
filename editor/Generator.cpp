@@ -2402,6 +2402,12 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     mainContent += "    Engine::setAtmosphereQualityDefaults(" + qualityName(atmosphereQuality[0]) + ", " + qualityName(atmosphereQuality[1]) + ", " +
                    qualityName(atmosphereQuality[2]) + ");\n";
 
+    // Project Settings > Input: the deadzone, then the default Input Actions asset
+    if (inputDeadzone != 0.15f)
+        mainContent += "    InputActions::setDefaultDeadzone(" + Factory::formatFloat(inputDeadzone) + ");\n";
+    if (!inputActionsAsset.empty())
+        mainContent += "    InputActions::loadDefault(" + Factory::formatString(inputActionsAsset) + ");\n";
+
     // MSAA of the HTML UI targets (Project Settings > Graphics), before any document draws
     mainContent += "    UIDocumentSystem::setPreferredSampleCount(" + std::to_string(htmlUiMsaaSamples) + ");\n";
     // the lobes a mobile or web build draws (Project Settings > Graphics > Mobile PBR Tier);

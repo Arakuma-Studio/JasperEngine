@@ -108,6 +108,8 @@ namespace jasperengine::editor {
         // prefab bar all open prefabs through here.
         virtual void openPrefabAsset(const std::filesystem::path& path, uint32_t contextSceneId = 0,
             uint32_t contextRoot = 0, bool inContext = true);
+        // Window > Input Actions with an .inputactions asset (absolute path)
+        virtual void openInputActions(const std::filesystem::path& path);
         virtual void registerProjectSaveDialog(std::function<void()> callback = nullptr);
 
         virtual InspectorWindow* getInspectorWindow() const;

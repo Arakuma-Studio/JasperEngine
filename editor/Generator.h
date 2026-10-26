@@ -148,6 +148,9 @@ namespace jasperengine::editor {
 
     class Generator {
         std::array<AtmosphereQuality, 3> atmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
+        // Project Settings > Input: the actions asset (assets-relative, "" none) and the deadzone
+        std::string inputActionsAsset;
+        float inputDeadzone = 0.15f;
     private:
         // what the build's events name (setStatusRow)
         std::string statusRow = "cpp";
@@ -253,6 +256,8 @@ namespace jasperengine::editor {
         // the project's Atmosphere Quality per platform group (desktop, mobile, web) the game
         // starts with; set before configure()
         void setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality) { atmosphereQuality = quality; }
+        // the Input Actions the game starts with (InputActions::loadDefault); set before configure()
+        void setInputSettings(const std::string& actionsAsset, float deadzone) { inputActionsAsset = actionsAsset; inputDeadzone = deadzone; }
         // Configures and builds on the process channel; called from a channel job (the Play
         // startup), it builds on that thread instead and returns when done.
         void runBuild(const fs::path& projectPath, const fs::path& buildPath, const std::string& cCompiler, const std::string& cxxCompiler, const std::string& generator, unsigned int parallelJobs);

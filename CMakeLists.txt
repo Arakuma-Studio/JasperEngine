@@ -765,6 +765,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/PostProcessingPresets.cpp
 
     ${EDITOR_DIR}/window/InspectorWindow.cpp
+    ${EDITOR_DIR}/window/InputActionsWindow.cpp
     ${EDITOR_DIR}/window/InspectorShaderLibrary.cpp
     ${EDITOR_DIR}/window/InspectorMaterialPbr.cpp
     ${EDITOR_DIR}/window/InspectorPostProcessing.cpp
@@ -879,6 +880,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/ForkShaderCmd.cpp
     ${EDITOR_DIR}/command/type/TerrainMapPatchCmd.cpp
     ${EDITOR_DIR}/command/type/GraphEditCmd.cpp
+    ${EDITOR_DIR}/command/type/InputActionsEditCmd.cpp
 
     ${IMGUI_SOURCES}
     ${TINYEXPR_SOURCES}

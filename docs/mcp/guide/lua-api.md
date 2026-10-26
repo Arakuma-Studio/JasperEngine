@@ -397,6 +397,33 @@ Constants (static properties, integers, no parentheses):
 - Gamepad axes: `Input.GAMEPAD_AXIS_LEFT_X`, `_LEFT_Y`, `_RIGHT_X`, `_RIGHT_Y`,
   `_LEFT_TRIGGER`, `_RIGHT_TRIGGER`, `_LAST`.
 
+### 2.2.2 InputActions (static) and InputAction
+
+Maps of actions bound to controls, from an `.inputactions` asset (`jasper://docs/input`).
+
+| Function | Notes |
+|---|---|
+| `InputActions.load(path)`, `loadDefault(path)`, `unload()`, `isLoaded()`, `getAssetPath()` | a path in the assets directory |
+| `InputActions.get("Map/Action")` | `InputAction` or nil |
+| `InputActions.getMap(name)` | `InputActionMap`: `enabled` (rw), `priority` (rw), `gamepad` (rw, -1 any), `enable()`, `disable()`, `setGamepad(id)`, `getActions()` |
+| `InputActions.enableMap(name, on)`, `isMapEnabled`, `setMapPriority`, `getMapPriority`, `setGamepad(map, id)`, `getGamepad` | |
+| `InputActions.setVirtual(name, number or Vector2)`, `getVirtual(name)` | `virtual/<name>` controls |
+| `InputActions.bindVirtualStick(element, name)`, `bindVirtualButton(element, name)`, `unbindVirtualControl(element)` | HTML UI on-screen controls |
+| `InputActions.inject(action, number or Vector2, windows)`, `releaseInjected(action)` | 0 windows: a tap, -1: until released |
+| `InputActions.startRebind(action, bindingId, {groups, exclude, cancel, timeout}, fn(result))`, `cancelRebind()`, `isRebinding()` | `result.status` completed, canceled or timed_out; `result.path` |
+| `InputActions.getConflicts(action, bindingId)` | list of `{action, id, path, groups}` |
+| `InputActions.getBindingPath(id)`, `setOverride(id, path)`, `removeOverride(id)`, `saveOverrides()`, `loadOverrides()`, `resetOverrides()` | overrides persist in UserSettings |
+| `InputActions.getBinding(id)` | `InputBinding`: `id`, `path`, `displayName`, `composite`, `overridden`, `getDisplayName()`, `getGroups()`, `getParts()` |
+| `InputActions.getBindingDisplayName(id)`, `getControlDisplayName(path)`, `isControlBound(path)` | "Space", "Ctrl+S", "Left Stick" |
+| `InputActions.defaultDeadzone` | rw, 0.15 |
+
+`InputAction`: `readValue()`, `readVector2()`, `isPressed()`, `wasPressedThisFrame()`,
+`wasReleasedThisFrame()`, `getHeldTime()`, `getPhase()` / `phase` (`InputActionPhase.WAITING`,
+`STARTED`, `PERFORMED`, `CANCELED`), `name`, `mapName`, `path`, `type` (`InputActionType.BUTTON`,
+`AXIS`, `VECTOR2`), `consumedBy`, `getBindings()`, and the events `onStarted`, `onPerformed`,
+`onCanceled` (assign a function; it gets an `InputActionEvent`: `action`, `phase`, `value`,
+`vector2`, `consume()`).
+
 ### 2.2.1 Jobs (static, read-only)
 
 The engine's job system runs asset loading and engine work on worker threads. Lua states are

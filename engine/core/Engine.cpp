@@ -8,6 +8,7 @@
 #include "util/Scheduler.h"
 #include "Scene.h"
 #include "Input.h"
+#include "input/InputActions.h"
 #include "render/SystemRender.h"
 #include "script/LuaBinding.h"
 #include "manager/SceneManager.h"
@@ -1540,8 +1541,10 @@ void Engine::systemDraw(){
 
     // avoid increment updateTimeCount after resume; a held simulation only draws
     if (!paused && !simulationHeld) {
-        // the input of the frame: the events since the last running frame (Input.h)
+        // the input of the frame: the events since the last running frame (Input.h), then
+        // the actions it drives (their callbacks run here, before the fixed steps)
         Input::beginFrame();
+        InputActions::evaluate((float)frameTime);
 
         double frameDelta = deltatime;
         gameTime += frameDelta;
@@ -1568,6 +1571,7 @@ void Engine::systemDraw(){
                     scheduler.process(TimeDomain::FixedSteps);
                 }
                 Input::endFixedStep();
+                InputActions::endFixedStep();
                 updateTimeCount -= updateTime;
                 fixedLoops++;
             }
@@ -1742,9 +1746,10 @@ void Engine::systemViewDestroyed(){
 void Engine::systemShutdown(){
     Engine::onShutdown.call();
 
-    // anime's and the timers' Lua references go while the Lua state still exists
+    // anime's, the timers' and the input actions' Lua references go while the Lua state still exists
     AnimEngine::instance().reset();
     Scheduler::game().clear();
+    InputActions::unload();
     LuaBinding::cleanup();
 
     removeAllSceneLayers(true);

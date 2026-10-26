@@ -908,6 +908,10 @@ set(JASPERENGINE_SRCS
     core/Engine.cpp
     core/Input.cpp
     core/input/InputControlPath.cpp
+    core/input/InputActionAsset.cpp
+    core/input/InputActions.cpp
+    core/input/InputRebind.cpp
+    core/input/InputVirtualControls.cpp
     core/Log.cpp
     core/log/Logger.cpp
     core/log/LogFormat.cpp
@@ -1126,6 +1130,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/MathClassesLua.cpp
     core/script/binding/GameObjectClassesLua.cpp
     core/script/binding/ProfilerClassesLua.cpp
+    core/script/binding/GameplayClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/HtmlUIVectorLua.cpp
     core/script/binding/HtmlUIMediaLua.cpp

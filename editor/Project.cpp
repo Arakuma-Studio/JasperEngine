@@ -70,6 +70,7 @@
 #include "component/UIDocumentComponent.h"
 #include "Engine.h"
 #include "Input.h"
+#include "input/InputActions.h"
 #include "pool/ShaderPool.h"
 #include "shader/ShaderBuilder.h"
 #include "shader/ShaderVariantCollector.h"
@@ -1011,6 +1012,37 @@ void editor::Project::setPlayerLogging(const PlayerLoggingSettings& settings){
 
 const editor::PlayerLoggingSettings& editor::Project::getPlayerLogging() const{
     return playerLogging;
+}
+
+void editor::Project::setInputActionsAsset(const std::filesystem::path& asset){
+    inputActionsAsset = asset;
+}
+
+std::filesystem::path& editor::Project::getInputActionsAsset(){
+    return inputActionsAsset;
+}
+
+const std::filesystem::path& editor::Project::getInputActionsAsset() const{
+    return inputActionsAsset;
+}
+
+std::string editor::Project::getInputActionsEnginePath() const{
+    if (inputActionsAsset.empty())
+        return std::string();
+    const std::filesystem::path absolute = (getProjectPath() / inputActionsAsset).lexically_normal();
+    const std::filesystem::path relative = absolute.lexically_relative(getAssetsPath().lexically_normal());
+    if (relative.empty() || *relative.begin() == "..")
+        return std::string();
+    return relative.generic_string();
+}
+
+void editor::Project::setInputDeadzone(float deadzone){
+    inputDeadzone = std::clamp(deadzone, 0.0f, 0.95f);
+    InputActions::setDefaultDeadzone(inputDeadzone);
+}
+
+float editor::Project::getInputDeadzone() const{
+    return inputDeadzone;
 }
 
 bool editor::Project::isValidHtmlUiMsaaSamples(int samples){
@@ -3963,6 +3995,7 @@ void editor::Project::resetEngineConfigs(bool executeViewChanged) {
     Engine::setAsyncLoading(true);
     // Input is static: no level, edge or delta of the last Play reaches the next
     Input::resetFrameState();
+    InputActions::unload();
 
     if (executeViewChanged) {
         Engine::systemViewChanged();
@@ -4004,6 +4037,8 @@ void editor::Project::resetConfigs() {
     vsyncEnabled = defaultVSyncEnabled;
     setAtmosphereQuality(defaultAtmosphereQuality);
     playerLogging = PlayerLoggingSettings();
+    inputActionsAsset.clear();
+    setInputDeadzone(defaultInputDeadzone);
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
         setShadowTier(platform, ShadowTiers::defaultTier(platform));
@@ -5490,6 +5525,7 @@ void editor::Project::configureGenerator() {
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
     generator.setAtmosphereQuality(atmosphereQuality);
+    generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings, mobilePbrTier);
 }
 
@@ -7484,6 +7520,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
         std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
         std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
         generator.setAtmosphereQuality(atmosphereQuality);
+    generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
         generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings, mobilePbrTier);
         if (hasMissingSceneSources()) {
             generatedSourcesDirty.store(true);
@@ -7919,6 +7956,15 @@ void editor::Project::start(uint32_t sceneId) {
 
     // the edges and deltas since the last Play (or of the editor's own use) are not the game's
     Input::resetFrameState();
+    // Project Settings > Input: the default actions asset, its maps as the asset has them
+    InputActions::unload();
+    InputActions::setDefaultDeadzone(inputDeadzone);
+    if (const std::string actions = getInputActionsEnginePath(); !actions.empty()) {
+        InputActions::loadDefault(actions);
+    } else if (!inputActionsAsset.empty()) {
+        Out::warning("Project Settings > Input: %s is not in the assets directory, Play starts without it",
+                     inputActionsAsset.generic_string().c_str());
+    }
 
     // Exit any editor camera preview before starting: covers the owned-runtime path
     // where the source scene's render never enters play mode, so stopping wouldn't
@@ -8064,6 +8110,8 @@ void editor::Project::stop(uint32_t sceneId) {
         Engine::onViewDestroyed.call();
         Engine::onShutdown.call();
         Engine::pauseGameEvents(true);
+        // the actions' script callbacks go while the Lua state is there
+        InputActions::unload();
         Engine::clearAllSubscriptions(true);
         // the play's timers and coroutines (Lua's Timer): none runs after Stop
         Scheduler::game().clear();
@@ -8096,6 +8144,8 @@ void editor::Project::stop(uint32_t sceneId) {
                 Engine::onViewDestroyed.call();
                 Engine::onShutdown.call();
                 Engine::pauseGameEvents(true);
+                // the actions' script callbacks go while the Lua state is there
+                InputActions::unload();
                 Engine::clearAllSubscriptions(true);
             }
 

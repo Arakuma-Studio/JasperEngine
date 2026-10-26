@@ -74,3 +74,60 @@ held key and button (their `getKeyUp` fires) and makes a lock `POINTER_PENDING`.
   with `frames_after: 0`: the last frame that ran is then the one the input landed in (with
   the default `frames_after: 1` one more frame runs, and its window is empty).
 - To count edges from a script, keep counters in a Lua script and read them with `eval_lua`.
+
+## Input Actions
+
+An `.inputactions` asset (JSON, `"version": 1`, edited in Window > Input Actions or with
+`edit_input_actions`) holds **action maps** of **actions** whose values come from **bindings** to
+controls. Project Settings > Input names the asset Play and the built game load
+(`InputActions.loadDefault`), and the default deadzone; a script can `InputActions.load(path)`
+another (a path in the assets directory).
+
+```lua
+local move = InputActions.get("Gameplay/Move"):readVector2()      -- VECTOR2: length <= 1
+if InputActions.get("Gameplay/Jump"):wasPressedThisFrame() then jump() end
+InputActions.get("Gameplay/Jump").onPerformed = function(e) vy = 5 end
+InputActions.getMap("Menu"):enable()                               -- an exclusive map: Gameplay stops
+```
+
+- **Action types.** `BUTTON` (0..1, pressed at `pressPoint`, default 0.5; `holdTime` > 0 performs
+  after holding that long), `AXIS` (the bindings' sum, -1..1), `VECTOR2` (the sum, radial deadzone,
+  length at most 1). Mouse and touch deltas are neither deadzoned nor clamped (read them in
+  `onUpdate`: in `onFixedUpdate` every step sees the frame's delta).
+- **Control paths.** `keyboard/<key>` (the send_input names: `space`, `a`, `left_shift`, `f1`...),
+  `mouse/left|right|middle|button4..8`, `mouse/delta`, `mouse/delta/x|y`, `mouse/scroll`,
+  `mouse/scroll/x|y`, `gamepad/a|b|x|y|left_bumper|start|dpad_up...`, `gamepad/left_x..right_trigger`
+  (triggers 0..1; the sticks' y is up-positive), `gamepad/left_stick|right_stick`,
+  `touch/primary/press|position|delta`, `touch/count`, `virtual/<name>`.
+- **Composites.** `dpad2d` (parts up, down, left, right: W/A/S/D gives (0, 1) for W, diagonals
+  normalized) and `axis1d` (negative, positive).
+- **Priority and consumption.** Maps are read highest `priority` first; a control a `consume` map
+  uses is unavailable to lower maps that frame, an enabled `exclusive` map blocks every lower map
+  (modal menus). In one priority level a binding that needs modifiers and has them (`Ctrl+S`)
+  suppresses the plain binding of the same key; `forbiddenMods` refuses one. With
+  `ignoreWhenUIConsumes` (default) a press an HTML document or the component UI took does not
+  count. `event:consume()` in a callback keeps the action's controls from lower maps.
+- **Several players.** `InputActions.setGamepad("P2", 1)` (or `map:setGamepad(1)`): -1 any pad.
+- **Edges.** `wasPressedThisFrame`/`wasReleasedThisFrame` follow Input's windows: a tap in one
+  frame is pressed and released (callbacks: started, performed, canceled), one fixed step sees it.
+- **On-screen controls.** `InputActions.bindVirtualStick(element, "move")` and
+  `bindVirtualButton(element, "jump")` make HTML UI elements feed `virtual/move` and
+  `virtual/jump`; `InputActions.setVirtual(name, value)` does it from a script.
+- **Rebinding.** `InputActions.startRebind("Gameplay/Jump", bindingId, {groups = {"Gamepad"},
+  exclude = {"mouse/delta*"}, cancel = "keyboard/escape", timeout = 5}, function(r) ... end)`
+  takes the next key, button or axis past 0.5 (maps are suspended meanwhile) as an override;
+  `getConflicts`, `saveOverrides` (UserSettings, per asset), `resetOverrides`.
+  `binding:getDisplayName()` gives "Space", "Ctrl+S", "Left Stick", "Cross" on a PlayStation pad.
+
+### Agents
+
+- `get_input_actions {path}` reads an asset (ids, paths, display names); `edit_input_actions {path,
+  ops}` applies ops as one undo step (`add_map`, `add_action`, `add_binding`, `add_composite`,
+  `set`, `remove`, `rename`, `move`, `duplicate`; keys snake_case), live during Play. The asset's
+  own JSON keys are camelCase (`pressPoint`, `ignoreWhenUIConsumes`).
+- Set the asset Play loads with `set_project_settings {"values": {"input.actions": "assets/..."}}`.
+- `get_input_state {fields: ["actions"]}`: each map's priority, enabled and blocked state and each
+  action's value, phase, edges and consumer.
+- `send_input {type: "input_action", name: "Gameplay/Jump", action: "press", hold_frames: 0}`
+  forces an action at top priority (press, down, up, value with `value: [x, y]`): the way to test a
+  script's reaction to an action without knowing its bindings.

@@ -6,6 +6,7 @@
 
 #include "Scene.h"
 #include "Input.h"
+#include "input/InputActions.h"
 #include "FileData.h"
 #include "thread/ResourceProgress.h"
 #include "jobs/JobTypes.h"
@@ -91,6 +92,8 @@ namespace luabridge
     template<> struct Stack<MouseMode> : EnumWrapper<MouseMode>{};
     template<> struct Stack<TouchPhase> : EnumWrapper<TouchPhase>{};
     template<> struct Stack<PointerLockState> : EnumWrapper<PointerLockState>{};
+    template<> struct Stack<InputActionPhase> : EnumWrapper<InputActionPhase>{};
+    template<> struct Stack<InputActionType> : EnumWrapper<InputActionType>{};
     template<> struct Stack<ResourceLoadState> : EnumWrapper<ResourceLoadState>{};
     template<> struct Stack<LightState> : EnumWrapper<LightState>{};
     template<> struct Stack<UIEventState> : EnumWrapper<UIEventState>{};

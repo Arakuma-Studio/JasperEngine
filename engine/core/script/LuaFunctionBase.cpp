@@ -18,6 +18,7 @@
 #include "object/physics/CollideShapeResult3D.h"
 #endif
 #include "LuaBinding.h"
+#include "input/InputActions.h"
 #include "LuaReload.h"
 #include "Log.h"
 
@@ -136,6 +137,11 @@ void LuaFunctionBase::push_value(lua_State *vm, wchar_t s){
 
 void LuaFunctionBase::push_value(lua_State *vm, Vector2 o){
     if (!luabridge::push<Vector2>(vm, o))
+        throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
+}
+
+void LuaFunctionBase::push_value(lua_State *vm, const InputActionEvent& o){
+    if (!luabridge::push<InputActionEvent*>(vm, const_cast<InputActionEvent*>(&o)))
         throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
 }
 

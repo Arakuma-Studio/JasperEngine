@@ -63,6 +63,7 @@ namespace jasperengine::editor{
     class ProfilerWindow;
     class FrameDebuggerWindow;
     class UndoHistoryWindow;
+    class InputActionsWindow;
     class PlayModeChangesWindow;
 
     // A dialog waiting for an answer, as MCP reports it to agents (App::getOpenDialog)
@@ -212,6 +213,7 @@ namespace jasperengine::editor{
         ProfilerWindow* profilerWindow;
         FrameDebuggerWindow* frameDebuggerWindow;
         UndoHistoryWindow* undoHistoryWindow;
+        InputActionsWindow* inputActionsWindow;
         PlayModeChangesWindow* playModeChangesWindow;
         PlayInput* playInput;
         GameWindow* gameWindow;
@@ -402,6 +404,7 @@ namespace jasperengine::editor{
         void registerThreeButtonAlert(std::string title, std::string message, std::function<void()> onYes, std::function<void()> onNo = nullptr, std::function<void()> onCancel = nullptr) override;
         void registerSaveDiscardAlert(std::string title, std::string message, std::function<void()> onSave, std::function<void()> onDiscard = nullptr, std::function<void()> onCancel = nullptr) override;
         void openPrefabAsset(const std::filesystem::path& path, uint32_t contextSceneId = 0, uint32_t contextRoot = 0, bool inContext = true) override;
+        void openInputActions(const std::filesystem::path& path) override;
         void registerSaveSceneDialog(uint32_t sceneId, std::function<void()> callback = nullptr) override;
         DegradedSavePolicy confirmDegradedSave(const DegradedSaveRequest& request) override;
         RecoveryChoice resolveSceneRecovery(const SceneBackupInfo& backup) override;

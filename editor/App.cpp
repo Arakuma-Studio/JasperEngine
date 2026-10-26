@@ -33,6 +33,7 @@
 #include "profiler/Profiler.h"
 #include "window/PlayModeChangesWindow.h"
 #include "window/UndoHistoryWindow.h"
+#include "window/InputActionsWindow.h"
 #include "command/PlayChangeReview.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpAutoSync.h"
@@ -150,6 +151,7 @@ editor::App::App(){
     profilerWindow = new ProfilerWindow(this);
     frameDebuggerWindow = new FrameDebuggerWindow(this);
     undoHistoryWindow = new UndoHistoryWindow(&project);
+    inputActionsWindow = new InputActionsWindow(&project);
     playModeChangesWindow = new PlayModeChangesWindow(&project);
     // Stop found edits that can be kept: the window opens, or after an agent's Stop the
     // Console says where they are (S24 R30)
@@ -297,6 +299,7 @@ enum class AppMenuCommand : uint32_t {
     ToggleProfiler,
     ToggleFrameDebugger,
     ToggleUndoHistory,
+    ToggleInputActions,
     TogglePlayModeChanges,
     FocusScene,
     FocusGame,
@@ -710,6 +713,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             menuShortcut(AppMenuCommand::ToggleAnimation, windowMenuLabel(AnimationWindow::WINDOW_NAME), "Ctrl+6")
         }),
         menuCommand(AppMenuCommand::ToggleTerrain, windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
+        menuCommand(AppMenuCommand::ToggleInputActions, windowMenuLabel(InputActionsWindow::WINDOW_NAME)),
         menuSubmenu("Assets", {
             menuCommand(AppMenuCommand::ToggleMissingAssets, windowMenuLabel(MissingAssetsWindow::WINDOW_NAME)),
             menuCommand(AppMenuCommand::ToggleAssetReferences, windowMenuLabel(AssetReferencesWindow::WINDOW_NAME))
@@ -887,6 +891,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleUndoHistory:
             showEditorWindow(undoHistoryWindow);
+            break;
+        case AppMenuCommand::ToggleInputActions:
+            showEditorWindow(inputActionsWindow);
             break;
         case AppMenuCommand::TogglePlayModeChanges:
             showEditorWindow(playModeChangesWindow);
@@ -2428,6 +2435,7 @@ void editor::App::show(){
     profilerWindow->show();
     frameDebuggerWindow->show();
     undoHistoryWindow->show();
+    inputActionsWindow->show();
     playModeChangesWindow->show();
     codeEditor->show();
     gameWindow->show();
@@ -3927,6 +3935,7 @@ void editor::App::prepareForProjectSwitch() {
     consoleWindow->clear();
     sceneWindow->resetProjectState();
     gameWindow->resetProjectState();
+    inputActionsWindow->reset();
     dockspaceNeedsRebuild = true;
 }
 
@@ -4095,6 +4104,11 @@ void editor::App::registerSaveDiscardAlert(std::string title, std::string messag
     registerThreeButtonAlert(std::move(title), std::move(message), std::move(onSave), std::move(onDiscard), std::move(onCancel));
     alert.yesLabel = "Save";
     alert.noLabel = "Discard Changes";
+}
+
+void editor::App::openInputActions(const std::filesystem::path& path) {
+    inputActionsWindow->openFile(path);
+    ImGui::SetWindowFocus(InputActionsWindow::WINDOW_NAME);
 }
 
 void editor::App::openPrefabAsset(const std::filesystem::path& path, uint32_t contextSceneId, uint32_t contextRoot, bool inContext) {
