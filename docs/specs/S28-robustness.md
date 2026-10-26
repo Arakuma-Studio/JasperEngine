@@ -413,19 +413,21 @@ gtest targets.
 
 Recorded by the S28 implementation (branch `feat/s28-robustness`).
 
-- **Native crash backends are not in this branch (decision pending with the user).** Writing the
-  POSIX signal backend, the Windows exception filter / minidump writer and the main-thread stack
-  capture was stopped, and those parts are set aside for a separate decision. What landed is
-  built so they plug in without rework: `diag::crash::detail::installPlatform` /
-  `prepareThreadPlatform` / `platformDebugCrash` (today `CrashHandlerUnarmed.cpp`, selected at
-  compile time for every non-web target, arms nothing) and
-  `diag::watchdog::detail::captureMainThreadStack` (reports `stack: unavailable`). Until then the
-  editor keeps `editor/util/CrashHandler.*` unchanged as its handler (R1's forwarder is not done),
-  games have no native handler (the OS report stays: debuggerd tombstones, ReportCrash, WER), and
-  `std::set_terminate` is only taken when a backend is armed. Open items of this spec, all in
-  that part: R1 (forwarder), R3-R6, R7 (CrashGuard's unguarded branch, with its red test), R18
-  (hang minidumps; the setting is not shown until it works), R19-R22, R25; AC1-AC6, AC7's stack
-  frame, AC10, AC13's segv path (its SIGKILL path is tested), AC15's report lines, AC20.
+- **Native backends are implemented on `feat/s28-native-crash`.** The editor now forwards to
+  the engine POSIX/Windows backends, including alternate stacks/stack guarantees, saved signal
+  actions, Windows writer-thread dumps, CrashGuard forwarding and bounded main-thread capture.
+  Apple uses the signal-capture alternative (SIGUSR2, configurable), rather than a Mach frame
+  walk. POSIX capture waits with monotonic 1 ms polling rather than `sem_timedwait`: Darwin
+  has no unnamed semaphores, and a realtime-clock step must not extend the 250 ms deadline.
+  A timed-out capture disables further stack captures for the process, keeping its storage
+  alive for a late handler/helper. Modules are snapshotted at installation for fatal-path
+  frame formatting; Linux/Android also copy the current `/proc/self/maps` so later-loaded
+  libraries can be resolved offline. Windows waits at most eight seconds for the writer,
+  below R5's 30-second ceiling. If DbgHelp's process-wide lock is held by the faulting thread,
+  the writer skips the dump/walk and writes saved PC/SP instead of waiting on that lock.
+  Remaining native-platform checks requiring their hosts: Windows dump inspection (AC3),
+  Windows forced-walker deadline execution (AC10), Apple builds and simulator checks (AC20).
+  R18's optional hang minidump remains outside this backend task and is not exposed in UI.
 - **Preferences are not undo steps** (R29, R31 `set_hang_watchdog`): Preferences > Diagnostics and
   `set_hang_watchdog` apply at once and save, like every other preference and
   `set_project_settings` (which says "not undoable"); the dialog's Cancel reverts unsaved edits.

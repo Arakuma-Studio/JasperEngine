@@ -144,6 +144,10 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
             sleep 3
         done
         log "booted in $((SECONDS - start))s"
+        if [[ "$EXPECT_NATIVE_CRASH" == 1 ]]; then
+            adb root >/dev/null 2>&1 || true
+            adb wait-for-device
+        fi
         # no screen lock, no animations: the app is in front at once
         adb shell input keyevent 82 >/dev/null 2>&1 || true
         adb shell settings put global window_animation_scale 0 >/dev/null 2>&1 || true
@@ -209,7 +213,10 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
                    grep -q tombstone_ "$OUT/tombstones.txt"; then break; fi
                 sleep 1
             done
-            adb shell run-as "$PACKAGE" sh -c "cat files/crash/reports/*/crash.txt" > "$OUT/crash-report.txt" 2>/dev/null || true
+            REPORT_PATH="$(head -1 "$OUT/crash-paths.txt" | tr -d "\r")"
+            if [[ -n "$REPORT_PATH" ]]; then
+                adb exec-out run-as "$PACKAGE" cat "$REPORT_PATH" > "$OUT/crash-report.txt" 2>/dev/null || true
+            fi
             # An aosp_atd image runs adbd as root. Preserve the OS artifact too, so the
             # package and faulting thread can be checked against our saved report.
             adb pull /data/tombstones "$OUT/tombstones" >/dev/null 2>&1 || true

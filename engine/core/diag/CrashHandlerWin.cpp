@@ -180,6 +180,21 @@ DWORD WINAPI writer(void*) {
         }
     }
     for (size_t i = 0; i < count; i++) writeFrame(report, i, addresses[i], symbols);
+    line(report, "modules:");
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, GetCurrentProcessId());
+    if (snapshot != INVALID_HANDLE_VALUE) {
+        MODULEENTRY32A module{};
+        module.dwSize = sizeof(module);
+        if (Module32FirstA(snapshot, &module)) do {
+            n = appendText(buffer, sizeof(buffer), 0, module.szExePath);
+            n = appendText(buffer, sizeof(buffer), n, " ");
+            n = appendHex(buffer, sizeof(buffer), n, reinterpret_cast<uintptr_t>(module.modBaseAddr));
+            n = appendText(buffer, sizeof(buffer), n, " size=");
+            appendHex(buffer, sizeof(buffer), n, module.modBaseSize);
+            line(report, buffer);
+        } while (Module32NextA(snapshot, &module));
+        CloseHandle(snapshot);
+    }
     if (report != INVALID_HANDLE_VALUE) CloseHandle(report);
     HANDLE tail = openFile(s.tailFile); ring(tail); if (tail != INVALID_HANDLE_VALUE) CloseHandle(tail);
     uint64_t unwritten = 0;
