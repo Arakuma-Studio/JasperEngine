@@ -149,6 +149,7 @@ int AppSettings::undoMemoryLimitMB = AppSettings::defaultUndoMemoryLimitMB;
 bool AppSettings::undoRecordSelection = true;
 bool AppSettings::undoReviewPlayChanges = true;
 bool AppSettings::htmlUiVerboseDiagnostics = false;
+bool AppSettings::htmlUiPatchReload = true;
 LoggingSettings AppSettings::loggingSettings;
 
 bool AppSettings::initialize(bool preferUserDirectory) {
@@ -418,8 +419,10 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             auto htmlUiNode = settingsData["html_ui"];
             if (htmlUiNode["auto_import"]) htmlUiAutoImport = htmlUiNode["auto_import"].as<bool>();
             if (htmlUiNode["verbose_diagnostics"]) htmlUiVerboseDiagnostics = htmlUiNode["verbose_diagnostics"].as<bool>();
+            if (htmlUiNode["hot_reload"]) htmlUiPatchReload = htmlUiNode["hot_reload"].as<std::string>() != "rebuild";
         }
         UIDocumentSystem::setVerboseDiagnostics(htmlUiVerboseDiagnostics);
+        UIDocumentSystem::setDefaultReloadMode(htmlUiPatchReload ? UIReloadMode::PATCH : UIReloadMode::REBUILD);
 
         if (settingsData["undo"]) {
             auto undoNode = settingsData["undo"];
@@ -617,6 +620,7 @@ bool AppSettings::saveSettings() {
         YAML::Node htmlUiNode;
         htmlUiNode["auto_import"] = htmlUiAutoImport;
         htmlUiNode["verbose_diagnostics"] = htmlUiVerboseDiagnostics;
+        htmlUiNode["hot_reload"] = htmlUiPatchReload ? "patch" : "rebuild";
         settingsData["html_ui"] = htmlUiNode;
 
         YAML::Node undoNode;
@@ -1020,6 +1024,15 @@ bool AppSettings::getHtmlUiVerboseDiagnostics() {
 void AppSettings::setHtmlUiVerboseDiagnostics(bool enabled) {
     htmlUiVerboseDiagnostics = enabled;
     UIDocumentSystem::setVerboseDiagnostics(enabled);
+}
+
+bool AppSettings::getHtmlUiPatchReload() {
+    return htmlUiPatchReload;
+}
+
+void AppSettings::setHtmlUiPatchReload(bool patch) {
+    htmlUiPatchReload = patch;
+    UIDocumentSystem::setDefaultReloadMode(patch ? UIReloadMode::PATCH : UIReloadMode::REBUILD);
 }
 
 LoggingSettings AppSettings::getLoggingSettings() {

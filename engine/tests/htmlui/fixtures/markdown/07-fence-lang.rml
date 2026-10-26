@@ -1,0 +1,4 @@
+<div class="markdown-body"><p>Run this:</p><pre><code data-lang="lua">local t = &#123; a = 1, b = &quot;two&quot; }
+for k, v in pairs(t) do
+    print(k, v)   -- &lt;tab&gt; &amp; &quot;quotes&quot;
+end</code></pre><p>Done.</p></div>

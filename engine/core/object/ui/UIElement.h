@@ -24,6 +24,7 @@ namespace Rml {
 namespace jasperengine{
 
     class UIEvent;
+    class UIItemsView;        // UIItemsView.h (S17)
     struct UIElementHandle;   // UIElementInternal.h: holds Rml::ObserverPtr<Rml::Element>
     struct UIElementAccess;   // UIElementInternal.h: engine-internal access to the RmlUi element
 
@@ -64,6 +65,17 @@ namespace jasperengine{
     // Phase-0 members and the phase-1 DOM API are defined in UIElement.cpp (p1-lua), the
     // Lottie control by p1-vector (htmlui/vector/UIElementLottie.cpp). On an invalid handle
     // every C++ method returns a default and logs a warning (once per method).
+
+    // How a tooltip set by setTooltip shows (S17 R15): on a side of the element ("top", "bottom",
+    // "left", "right", or "auto": the side with the most room), after `delay` seconds (the
+    // document's otherwise), with an arrow pointing at the element; an interactive one stays while
+    // the pointer is on it (it takes the pointer)
+    struct UITooltipOptions {
+        std::string placement = "top";
+        std::optional<float> delay;
+        bool arrow = false;
+        bool interactive = false;
+    };
 
     // HTMLMediaElement's MediaError (phase 6): code 1 aborted, 2 network, 3 decode, 4 source not supported
     struct UIMediaError {
@@ -181,6 +193,19 @@ namespace jasperengine{
         // their next step); the number that took it. effectReset restarts them ("" all); how many
         int effectSplat(const UIEffectSplat& splat);
         int effectReset(const std::string& effect = std::string());
+
+        // --- S17: widgets (htmlui/widgets/UIElementWidgets.cpp) ---
+
+        // <list-view>, <grid-view>, <tree-view>, <table-view>: the view (invalid on other elements)
+        UIItemsView getItemsView() const;
+        // the content becomes the rendered Markdown (any element; HTML in it is shown as text)
+        void setMarkdown(const std::string& markdown);
+        // a rich tooltip, in place of the title attribute: a text, a clone of an element, or a
+        // text a function gives on each show; clearTooltip removes it
+        void setTooltip(const std::string& text, const UITooltipOptions& options = UITooltipOptions());
+        void setTooltip(const UIElement& content, const UITooltipOptions& options = UITooltipOptions());
+        void setTooltip(std::function<std::string()> text, const UITooltipOptions& options = UITooltipOptions());
+        void clearTooltip();
 
         // --- phase 1 (p1-vector): <lottie> control; logs an error on other elements ---
 

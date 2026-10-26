@@ -26,10 +26,11 @@ Element* XMLNodeHandlerTemplate::ElementStart(XMLParser* parser, const String& n
 
 	if (template_name.empty())
 	{
-		Log::Message(Log::LT_WARNING,
-			"Inline template injection requires the 'src' attribute with the target template name, but none provided. In element %s",
-			element->GetAddress().c_str());
-		return element;
+		// Fork (P7-T): an inert element; the parser hands its content over as InnerXML data (ElementData).
+		ElementPtr template_element = Factory::InstanceElement(element, name, name, attributes);
+		if (!template_element)
+			return element;
+		return element->AppendChild(std::move(template_element));
 	}
 
 	return XMLParseTools::ParseTemplate(element, template_name);
@@ -40,8 +41,14 @@ bool XMLNodeHandlerTemplate::ElementEnd(XMLParser* /*parser*/, const String& /*n
 	return true;
 }
 
-bool XMLNodeHandlerTemplate::ElementData(XMLParser* parser, const String& data, XMLDataType /*type*/)
+bool XMLNodeHandlerTemplate::ElementData(XMLParser* parser, const String& data, XMLDataType type)
 {
+	// Fork (P7-T): the content of a <template> without 'src', kept as RML for its owner.
+	if (type == XMLDataType::InnerXML)
+	{
+		parser->GetParseFrame()->element->SetAttribute("rmlui-inner-rml", data);
+		return true;
+	}
 	return Factory::InstanceElementText(parser->GetParseFrame()->element, data);
 }
 

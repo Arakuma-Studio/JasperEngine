@@ -1,0 +1,1 @@
+<div class="markdown-body"><table><thead><tr><th>a</th><th>b</th><th>c</th></tr></thead><tbody><tr><td>short</td><td></td><td></td></tr><tr><td>1</td><td>2</td><td>3</td></tr><tr><td>pipe | escaped</td><td>x</td><td>y</td></tr></tbody></table><p>no pipes ends the table</p><table><thead><tr><th>header only</th></tr></thead></table></div>

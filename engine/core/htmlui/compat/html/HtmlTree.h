@@ -40,7 +40,7 @@ namespace jasperengine::htmlui::compat {
         std::string tag;                   // HTML: lowercase local name; SVG/MathML: qualified name, case kept
         Namespace ns = Namespace::Html;
         std::vector<HtmlAttr> attrs;       // source order
-        std::string text;                  // decoded text (Text/Comment), markup (Raw)
+        std::string text;                  // decoded text (Text/Comment), markup (Raw); a <markdown> element: its raw content (HtmlParser)
         SourceRef ref;                     // start tag `<` .. `>` (or the text); invalid when implied
         bool implied = false;              // created by the parser, not by a token of the source
         bool selfClosingSyntax = false;    // written `<tag/>` (meaningless on HTML elements that are not void)

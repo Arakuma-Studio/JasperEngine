@@ -22,6 +22,9 @@
 
 namespace Rml {
 
+// Fork (P7-L): how many UpdateLayout calls formatted layout boundaries alone (GetBoundaryLayoutCount).
+static int num_boundary_layouts = 0;
+
 namespace {
 	constexpr int Infinite = INT_MAX;
 
@@ -620,7 +623,56 @@ void ElementDocument::UpdateLayout()
 		// Ignore dirtied layout during document formatting. Layouting must not require re-iteration.
 		// In particular, scrollbars being enabled may set the dirty flag, but this case is already handled within the layout engine.
 		layout_dirty = false;
+		// (the boundaries were formatted with the document)
+		for (const ObserverPtr<Element>& boundary : dirty_layout_boundaries)
+		{
+			if (Element* element = boundary.get())
+				element->layout_boundary_dirty = false;
+		}
+		dirty_layout_boundaries.clear();
 	}
+	else if (!dirty_layout_boundaries.empty())
+	{
+		// Fork (P7-L): only the inside of layout boundaries changed. Each is formatted again in the box its parent's
+		// formatting gave it; a boundary inside another dirty one is formatted with it.
+		RMLUI_ZoneScopedN("UpdateLayoutBoundaries");
+		Vector<ObserverPtr<Element>> boundaries;
+		boundaries.swap(dirty_layout_boundaries);
+		for (const ObserverPtr<Element>& boundary : boundaries)
+		{
+			if (Element* element = boundary.get())
+				element->layout_boundary_dirty = false;
+		}
+		for (const ObserverPtr<Element>& boundary : boundaries)
+		{
+			Element* element = boundary.get();
+			if (!element || element->GetOwnerDocument() != this || !element->IsLayoutBoundary() || !element->IsVisible(true))
+				continue;
+			bool nested = false;
+			for (Element* ancestor = element->GetParentNode(); ancestor && ancestor != this && !nested; ancestor = ancestor->GetParentNode())
+			{
+				for (const ObserverPtr<Element>& other : boundaries)
+					nested |= (other.get() == ancestor && ancestor->IsLayoutBoundary());
+			}
+			if (!nested)
+				LayoutEngine::FormatLayoutBoundary(element);
+		}
+		num_boundary_layouts++;
+		// (a boundary formatted alone may still dirty the document, e.g. a scrollbar it enables: formatted fully next time)
+	}
+}
+
+void ElementDocument::DirtyLayoutBoundary(Element* boundary)
+{
+	if (layout_dirty || boundary->layout_boundary_dirty)
+		return;
+	boundary->layout_boundary_dirty = true;
+	dirty_layout_boundaries.push_back(boundary->GetObserverPtr());
+}
+
+int ElementDocument::GetBoundaryLayoutCount()
+{
+	return num_boundary_layouts;
 }
 
 void ElementDocument::UpdatePosition()

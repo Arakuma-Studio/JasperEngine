@@ -167,6 +167,10 @@ namespace jasperengine::htmlui::compat {
         // RmlUi's messages about its sheets)
         static void restyle(Rml::ElementDocument* document, const std::shared_ptr<const CompatDocument>& compiled,
                             const CompatOptions& options);
+        // bound to the new compile as restyle does; its sheets rebuilt only when `sheets` (S17's
+        // live patch keeps them when both compiles wrote the same sheets)
+        static void rebind(Rml::ElementDocument* document, const std::shared_ptr<const CompatDocument>& compiled,
+                           const CompatOptions& options, bool sheets);
 
         // HTML fragment for Lua innerHTML/insertAdjacentHTML: parsed in body context,
         // transformed, serialized; style attributes rewritten; returns RML and appends diagnostics.

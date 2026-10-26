@@ -50,6 +50,7 @@ namespace jasperengine::htmlui::compat {
         std::string id;
         std::unique_ptr<HtmlNode> content;   // "#content" element
         SourceRef ref;
+        bool inModel = false;                // inside a data-model (a virtual view's rows bind to it)
     };
 
     // Presentational hints of one element (§3.7.3 step 10): RCSS declarations ranked above the
@@ -125,8 +126,10 @@ namespace jasperengine::htmlui::compat {
     // html/transforms/FormTransform.cpp: step 9
     void transformForms(TransformContext& context, HtmlNode& tree);
     // html/transforms/AttributeTransform.cpp: steps 10-11 (attributes, hints, URLs), duplicate
-    // ids, data-binding names outside a model
-    void transformAttributes(TransformContext& context, HtmlNode& tree);
+    // ids, data-binding names outside a model (inModel: the tree is inside one, a template's content)
+    void transformAttributes(TransformContext& context, HtmlNode& tree, bool inModel = false);
+    // an attribute RmlUi reads as a data binding (data-if, data-for, data-attr-*, data-markdown, ...)
+    bool isBindingAttribute(const std::string& name);
 
     // Lucide icons (§3.7.3 step 7), also used at runtime by the Lua hook (setAttribute("data-lucide"))
     struct LucideIcon {

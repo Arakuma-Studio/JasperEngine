@@ -1,0 +1,5 @@
+# tools/android-emulator-test.sh --ordered --expect-file: what the htmlui-widgets project logs on Android
+# (`logcat -v tag`): the server browser's table of 10,000 rows from its data model and the
+# inventory's 24 slots, loaded with their Lua scripts and no error or warning in either document
+I/JasperEngine: [widgets] server_browser rows 10000 problems 0 shown 1..
+I/JasperEngine: [widgets] inventory slots 24 problems 0

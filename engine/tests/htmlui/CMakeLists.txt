@@ -15,6 +15,7 @@ file(GLOB HTMLUI_TEST_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/effects/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/property/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/video/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/widgets/*.cpp
 )
 
 # editor logic without ImGui or editor state that the HTML UI owns (EditorLogicTests.cpp)
