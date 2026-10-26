@@ -484,8 +484,9 @@ namespace {
                 if (Rml::Element* block = element->GetOffsetParent())
                     origin = block->GetAbsoluteOffset(Rml::BoxArea::Padding);
             }
-            element->SetProperty(Rml::PropertyId::Left, px(result.rect.x - origin.x));
-            element->SetProperty(Rml::PropertyId::Top, px(result.rect.y - origin.y));
+            // whole pixels: text at a fractional offset blurs, and draws differently as the offset moves
+            element->SetProperty(Rml::PropertyId::Left, px(std::round(result.rect.x - origin.x)));
+            element->SetProperty(Rml::PropertyId::Top, px(std::round(result.rect.y - origin.y)));
             element->RemoveProperty(Rml::PropertyId::Visibility);
             for (const PopupSide each : {PopupSide::Top, PopupSide::Bottom, PopupSide::Left, PopupSide::Right})
                 element->SetClass(std::string("htmlui-tooltip-") + popupSideName(each), each == result.side);

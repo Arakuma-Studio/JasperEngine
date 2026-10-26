@@ -173,7 +173,9 @@ body {
 }
 
 .send {
-  width: 42px;
+  /* a touch target (44 x 44) */
+  width: 44px;
+  min-height: 44px;
   display: grid;
   place-items: center;
   color: #03140e;
