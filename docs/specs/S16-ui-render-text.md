@@ -653,3 +653,16 @@ one line pointing here.
   (`translateInstance`), unseen while no CSS gradient took the path.
 - B2: S16-F6 keeps each offset parent's clipping region for the render pass (500 cards: 2000
   elements walked their ancestors and built a mask list each).
+- B2 profile (perf, main thread, benchmark host): `Element::Update` 8.5 %, `Element::Render` 7.2 %,
+  `GetClippingRegion` 4.8 %, `SetTransform` + `Matrix4::operator!=` 6 %, `ElementText::OnRender`
+  3.4 %, `malloc`/mask-list `realloc_insert` 3 %. RmlUi 6.3 never cleared `dirty_transform`, so
+  every element recomputed its transform each render. S16-F6: clip memo keyed by the first
+  clipping offset parent, SetTransform(nullptr) fast path, `dirty_transform` cleared, and elements
+  whose paint bounds lie outside the memo's scissor passed over before any state. The benchmark
+  starts each frame with the GPU idle (`finishGpu`; llvmpipe's 4 threads otherwise share the 4
+  cores with the main thread). B2 on E: 2.389 -> 1.064 ms (44.5 %), B6 2.370 -> 1.046 ms.
+- B1 after the background-layer gradients (E): dialogue 43->14, hud 155->80, inventory 46->6,
+  loading 57->34, main_menu 105->36, pause_menu 42->2, settings 97->17, shop 26->2, toasts
+  82->40, video_menu 32->14; engine time below the baseline in 9 of 11. Met: blank, inventory,
+  pause_menu, settings, shop. The rest are effect passes (backdrop/filter blurs, text-shadow
+  blurs beyond the MSDF reach, opacity layers and their composites, stencil masks under layers).
