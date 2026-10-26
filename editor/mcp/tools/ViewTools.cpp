@@ -1485,7 +1485,7 @@ void registerViewTools(McpRegistry& registry) {
             "Where editor controls with this label are drawn now (window coords, as focus_window's rect), to click "
             "them with send_input or real input. Only drawn items: scroll or open their panel first.";
         tool.inputSchema = object({
-            {"label", string("Text, or the whole label with its ## id.")},
+            {"label", string("Text (a row's text after its icon too), or the whole label with its ## id.")},
             {"window", string("Only in windows whose name contains this.")}
         }, {"label"});
         tool.annotations.readOnly = true;

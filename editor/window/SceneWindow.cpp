@@ -1715,8 +1715,8 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
                 // Tool shortcuts (Q/W/E/R/T, X) live in the main toolbar.
 
-                // F key: Focus camera on selected entities
-                if (ImGui::IsKeyPressed(ImGuiKey_F)) {
+                // F key: Focus camera on selected entities (Alt+F frames all, SceneViewController)
+                if (ImGui::IsKeyPressed(ImGuiKey_F) && !ImGui::GetIO().KeyAlt) {
                     frameSelection(sceneId);
                 }
 

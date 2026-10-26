@@ -12,6 +12,7 @@ layout change fails with the screenshots ($JE_EVIDENCE_DIR, else the scratch dir
 from __future__ import annotations
 
 import asyncio
+import json
 import math
 import os
 import shutil
@@ -239,10 +240,10 @@ async def test_collapsed_group_is_root(ed: Editor):
     found = await ed.call("find_ui_item", label="Shelf", window="Hierarchy")
     items = found.get("items", [])
     if not items:
-        skip(f"the Shelf row was not found: {found}")
+        ed.fail(f"the Shelf row was not found: {found}")
     row = items[0]["rect"]
-    # the tree arrow at the row's left
-    await ui.click(ui.at(row, (6, row["height"] / 2)))
+    # the tree arrow at the row's left (about a font height wide)
+    await ui.click(ui.at(row, (row["height"] / 2, row["height"] / 2)))
     await ed.screenshot("editor", path=str(s["out"] / "s26-collapsed-group.png"))
     got = await ed.call("pick_at", scene=sid, u=0.5, v=0.5)
     ed.check_eq(got["would_select"]["entity"], group, "under a collapsed row: the row (R12 root source)")
@@ -319,20 +320,44 @@ async def test_gizmo_cube_toggles_projection(ed: Editor):
 # ---------------------------------------------------------------------------- AC10
 
 
-async def project_item(ed: Editor, ui: Ui, label: str) -> dict | None:
+async def project_window(ed: Editor) -> dict:
+    return (await ed.call("editor_status"))["ui"]["project_window"]
+
+
+async def project_item(ed: Editor, ui: Ui, name: str) -> dict:
+    """The Project window entry `name` of prefabs/ (editor_status's clickable rects): the folder
+    opened from the tree first"""
     await ed.call("focus_window", window="project")
-    found = await ed.call("find_ui_item", label=label, window="Project")
-    items = found.get("items", [])
-    if not items:
-        folder = await ed.call("find_ui_item", label="prefabs", window="Project")
-        if folder.get("items"):
-            r = folder["items"][0]["rect"]
-            point = ui.at(r, (r["width"] / 2, r["height"] / 2))
-            await ui.move(point)
-            ui.xdo("click", "--repeat", "2", "--delay", "80", "1")
-            await ui.settle(0.6)
-            items = (await ed.call("find_ui_item", label=label, window="Project")).get("items", [])
-    return items[0]["rect"] if items else None
+    state = {}
+    for _ in range(40):
+        state = await project_window(ed)
+        for item in state["entries"]:
+            if item["name"] == name and state["directory"] == "prefabs":
+                x, y, w, h = item["rect"]
+                return {"x": x, "y": y, "width": w, "height": h}
+        for node in state["tree"]:
+            if node["path"] == "prefabs" and state["directory"] != "prefabs":
+                x, y, w, h = node["rect"]
+                await ui.click(ui.at({"x": x, "y": y}, (w / 2, h / 2)))
+                break
+        await asyncio.sleep(0.25)
+    ed.fail(f"prefabs/{name} is not shown in the Project window: {state}")
+
+
+async def scene_view_state(ed: Editor, sid: int) -> dict:
+    result = await ed.session.read_resource(f"jasper://scene-view/{sid}")
+    return json.loads(result.contents[0].text)
+
+
+async def status_message(ed: Editor, text: str, seconds: float = 2.0) -> str:
+    """The status bar's message once it says `text` (it is set a frame or two after the cause)"""
+    message = ""
+    for _ in range(int(seconds / 0.1)):
+        message = (await ed.call("editor_status")).get("status_message", "")
+        if text in message:
+            break
+        await asyncio.sleep(0.1)
+    return message
 
 
 async def test_drop_on_surface(ed: Editor):
@@ -353,9 +378,7 @@ async def test_drop_on_surface(ed: Editor):
         await ed.call("select_scene", scene=sid)
         settings_align = "align" if align else "plain"
         rect, _ = await view(ed, sid)
-        item = await project_item(ed, ui, "Crate")
-        if item is None:
-            skip("the Crate prefab was not found in the Project window")
+        item = await project_item(ed, ui, "Crate.prefab")
         start = ui.at(item, (item["width"] / 2, item["height"] / 2))
         if align:
             ui.xdo("keydown", "alt")
@@ -398,16 +421,17 @@ async def test_drop_refused_while_pending(ed: Editor):
     await ed.call("sync_files")
     await ed.call("set_scene_camera", scene=sid, position=[0, 0, 6], target=[0, 0, 0])
     await ed.call("create_entity", scene=sid, type="model", name="Slab", model="assets/models/slab.obj", select=False)
-    rect, _ = await view(ed, sid)      # loaded and drawn; its BVH is held pending
-    item = await project_item(ed, ui, "Crate")
-    if item is None:
-        skip("the Crate prefab was not found in the Project window")
+    item = await project_item(ed, ui, "Crate.prefab")
     await ed.call("select_scene", scene=sid)
+    rect, _ = await view(ed, sid)      # loaded and drawn; its BVH is held pending
+    state = await scene_view_state(ed, sid)
+    ed.check(state["bvh_cache"]["pending"] >= 1, f"the slab's tree is still building: {state['bvh_cache']}")
     await ui.drag(ui.at(item, (item["width"] / 2, item["height"] / 2)), uv(ui, rect, 0.5, 0.5))
-    status = await ed.call("editor_status")
+    message = await status_message(ed, "Preparing surface")
+    await ed.screenshot("editor", path=str(s["out"] / "s26-drop-refused.png"))
     found = await ed.call("find_entities", scene=sid, name="Crate")
     ed.check(not found["entities"], f"no drop onto a surface whose BVH builds: {found}")
-    ed.check("Preparing surface" in status.get("status_message", ""), f"the status bar says so: {status.get('status_message')!r}")
+    ed.check("Preparing surface" in message, f"the status bar says so: {message!r}")
 
 
 # ---------------------------------------------------------------------------- R33
@@ -424,14 +448,16 @@ async def test_click_waits_for_bvh(ed: Editor):
     grid = made["entity_id"]
     rect, _ = await view(ed, sid)
     await ed.call("select_entities", scene=sid, entities=[])
+    state = await scene_view_state(ed, sid)
+    ed.check(state["bvh_cache"]["pending"] >= 1, f"the grid's tree is still building: {state['bvh_cache']}")
     await ui.click(uv(ui, rect, 0.5, 0.5))
-    await asyncio.sleep(0.3)
-    status = await ed.call("editor_status")
-    ed.check("Preparing picking for Grid" in status.get("status_message", ""), f"status after 100 ms: {status.get('status_message')!r}")
+    message = await status_message(ed, "Preparing picking for Grid")
+    await ed.screenshot("editor", path=str(s["out"] / "s26-click-waiting.png"))
+    ed.check("Preparing picking for Grid" in message, f"the status bar after 100 ms: {message!r}")
     ed.check_eq(await selected(ed, sid), [], "nothing selected through the mesh's bounds meanwhile")
     picked = []
-    for _ in range(40):
-        await ed.call("wait", frames=10)
+    for _ in range(80):
+        await asyncio.sleep(0.25)
         picked = await selected(ed, sid)
         if picked:
             break
