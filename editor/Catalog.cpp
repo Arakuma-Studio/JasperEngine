@@ -115,7 +115,7 @@ namespace {
 
     // The properties of a component come from its reflection table (docs/specs/S08-reflection.md
     // R7, editor/reflect/Properties.cpp)
-    PropertyData tryGetFastProperty(EntityRegistry* registry, Entity entity, ComponentType component, const std::string& propertyName) {
+    PropertyData tableProperty(EntityRegistry* registry, Entity entity, ComponentType component, const std::string& propertyName) {
         const reflect::ComponentDesc* desc = reflect::find(component);
         if (!desc || !registry) {
             return PropertyData();
@@ -1238,7 +1238,7 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
 }
 
 editor::PropertyData editor::Catalog::findProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName){
-    return tryGetFastProperty(registry, entity, component, propertyName);
+    return tableProperty(registry, entity, component, propertyName);
 }
 
 editor::PropertyData editor::Catalog::getProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName){
