@@ -161,9 +161,25 @@ shared `main()` (`TestMain.cpp`) that initialises the engine without a GPU:
   allocations at `malloc` (wrapped by GNU ld, so on Linux; elsewhere `countsAllocations()` is
   false and the counts stay 0). `AllocationCountScope` counts the whole process,
   `ThreadAllocationCount` only the calling thread (for code that must not allocate while the
-  logger's drain thread or the workers may); `perfSlack()` scales performance budgets by
-  `JASPER_TEST_PERF_SLACK` (0 under a sanitizer: budgets are only printed). `*Bench` suites (`LoggerBench`, `SchedulerBench`,
-  `SignalBench`) check the S09 budgets that way and print `[bench]` lines.
+  logger's drain thread or the workers may); `perfSlack()` is the factor wall-clock budgets are
+  enforced with: `JASPER_TEST_PERF_SLACK`, unset (0) by default and under a sanitizer, where the
+  budgets are only printed. `*Bench` suites (`LoggerBench`, `SchedulerBench`, `SignalBench`, S10's
+  `ShadowBench`), `SchedulerTest.Process10kUnder2ms` and S12's `AtmosphereNoise` bake budgets check
+  their budgets that way and print `[bench]` lines; the
+  editor suite's `editor::test::perfSlack()` does the same for `CommandHistoryBench` (S24) and
+  `AutosaveEncodeBench` (S03) (ratios such as a report's overhead stay checked everywhere). The MCP
+  texture storm's frame budget (`test_jobs_memory_ui.py`, S06 AC23) reads the same variable; it assumes
+  a machine whose decode workers and software renderer do not share cores (8+ hardware threads):
+  E's 4 vCPU measure a storm p95 of 1.7x the idle frame against the 1.5x budget, so it runs there
+  only with a slack above that. A
+  shared build server's load alone misses them (10k timers in 20 ms instead of 2), so an ordinary
+  unit test run never fails on wall-clock time; the benchmark run enforces them on the
+  benchmark-only server E, which runs one job at a time:
+
+  ```bash
+  rb.sh E env JASPER_TEST_PERF_SLACK=1 \
+      UNIT_TEST_ARGS='--gtest_filter=*Bench*:SchedulerTest.Process10kUnder2ms:AtmosphereNoise.*' tools/build.sh unit-tests
+  ```
 
 ### Golden images
 

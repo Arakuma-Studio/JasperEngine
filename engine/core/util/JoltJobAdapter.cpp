@@ -16,6 +16,12 @@ JoltJobAdapter::JoltJobAdapter(JPH::uint maxJobs, JPH::uint maxBarriers): JPH::J
     jobPool.Init(maxJobs, maxJobs);
 }
 
+JoltJobAdapter::~JoltJobAdapter(){
+    // a barrier's waiter may have run a job before its envelope reached a worker: the
+    // envelope still holds the job's last reference, and its Release() calls FreeJob here
+    envelopes.wait();
+}
+
 int JoltJobAdapter::GetMaxConcurrency() const{
     // the workers and the thread that steps the world
     return jobs::system().getWorkerCount() + 1;
@@ -45,9 +51,9 @@ void JoltJobAdapter::QueueJob(Job* job){
         return;
     }
     // the envelope keeps the job alive until it ran; a barrier waiter may run it first
-    // (Execute runs a job once)
+    // (Execute runs a job once). Counted: the adapter outlives every envelope
     job->AddRef();
-    system.enqueueDetached([job](){
+    envelopes.run([job](){
         job->Execute();
         job->Release();
     }, jobs::Lane::High, "jolt");

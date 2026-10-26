@@ -5,11 +5,15 @@
 #define TESTS_TESTPACK_H
 
 // A resources.pak in the exporter's format (editor/Exporter.cpp writeResourcePack) holding
-// one entry, so tests read through ResourcePack as an exported game does.
+// one entry, so tests read through ResourcePack as an exported game does. ResourcePack finds
+// it in the working directory (the checkout's root under tools/build.sh), where .gitignore
+// keeps it out of git and out of the build servers' sync, which deleted it mid-run.
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -44,9 +48,20 @@ namespace testsupport {
         putU(shift, 4);
         out.insert(out.end(), body.begin(), body.end());
 
-        if (FILE* file = std::fopen(filename, "wb")){
-            std::fwrite(out.data(), 1, out.size(), file);
-            std::fclose(file);
+        // written beside and renamed over: a second test process of the same checkout, starting
+        // while this one reads the pack, never sees a truncated file
+        const std::string temporary = std::string(filename) + ".tmp" + std::to_string(std::random_device{}()) + "-" +
+            std::to_string((long long)std::chrono::steady_clock::now().time_since_epoch().count());
+        if (FILE* file = std::fopen(temporary.c_str(), "wb")){
+            const bool written = std::fwrite(out.data(), 1, out.size(), file) == out.size();
+            // (Windows' rename does not replace an existing file: the old pack goes first there)
+            bool renamed = std::fclose(file) == 0 && written && std::rename(temporary.c_str(), filename) == 0;
+            if (!renamed && written){
+                std::remove(filename);
+                renamed = std::rename(temporary.c_str(), filename) == 0;
+            }
+            if (!renamed)
+                std::remove(temporary.c_str());
         }
     }
 

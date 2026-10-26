@@ -298,7 +298,8 @@ TEST(SchedulerTest, ZeroAllocSmallCallable) {
 
 TEST(SchedulerTest, Process10kUnder2ms) {
     // the best of 5 rounds: one round is a few milliseconds of wall clock, which a busy build
-    // server's preemption alone can double
+    // server's preemption alone can double. The 2 ms budget is enforced in the benchmark run
+    // (JASPER_TEST_PERF_SLACK, on the benchmark server); elsewhere it is reported
     double best = 1e9;
     for (int round = 0; round < 5; round++) {
         Scheduler scheduler("test");

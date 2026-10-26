@@ -48,7 +48,8 @@ namespace jasperengine { namespace jobs {
     //   once the counter is zero.
     class JASPERENGINE_API JobCounter {
     public:
-        // null: the process JobSystem.
+        // null: the process JobSystem, the one current at each call (a long-lived counter, such
+        // as JoltJobAdapter's, follows the instance a new engine run creates)
         explicit JobCounter(JobSystem* system = nullptr);
         ~JobCounter();
 
