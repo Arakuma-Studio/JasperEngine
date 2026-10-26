@@ -1497,7 +1497,7 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
     const SettingsPage pages[] = {
         {"Player", SettingsScope::Project, 0, "project product application icon resolution splash loading publishing platform"},
         {"Graphics", SettingsScope::Project, 1, "canvas scaling texture shaders shadows"},
-        {"Quality", SettingsScope::Project, 2, "vsync atmosphere"},
+        {"Quality", SettingsScope::Project, 2, "atmosphere fog clouds"},   // VSync: its row (a page match shows every row)
         {"Physics", SettingsScope::Project, 3, "3d jolt"},
         {"Physics 2D", SettingsScope::Project, 4, "2d box2d"},
         {"Scripting", SettingsScope::Project, 5, "lua c++"},
