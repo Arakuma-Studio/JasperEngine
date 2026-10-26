@@ -131,8 +131,8 @@ async def test_importer_from_the_project_window(ed: Editor):
     state = await wait_ui(ed, lambda s: entry(s, "photo.png"), "assets/textures shown")
     await click(ed, entry(state, "photo.png"))
 
-    # the Inspector shows the importer of the selected file, its desktop cook in the table
-    await wait_item(ed, "Apply", "Inspector")
+    # the Inspector shows the importer of the selected file (its platform tabs), its desktop cook
+    await wait_item(ed, "Mobile", "Inspector")
     await cooked(ed, "desktop", "BC1")
     await frames(ed, 6)
     await shot(ed, "1-importer-desktop")
