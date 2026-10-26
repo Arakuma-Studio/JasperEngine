@@ -122,9 +122,10 @@ C++: `diag::crash::setReportHook`, `pendingReports`, `markHandled`, `lastSession
 **Privacy.** Reports hold file paths, log lines and (Windows With Heap) memory of the game. Get
 the player's consent before your hook sends one anywhere.
 
-**Development builds** also take `JASPERENGINE_DEBUG_CRASH=<mode>@<frame>` (segv, abort,
-terminate, stack_overflow, worker_segv, fpe, pure_call, hang; frame 10 by default) and on the web
-`?jasperengine_debug_crash=<mode>`, to check the whole path once.
+**Development builds** also take `JASPERENGINE_DEBUG_CRASH=<mode>[@<frame>]` (segv, abort,
+terminate, stack_overflow, worker_segv, fpe, pure_call, hang; without a frame: 30 frames after
+every scene loaded) and on the web `?jasperengine_debug_crash=<mode>[@<frame>]`, to check the
+whole path once.
 
 ## The web
 

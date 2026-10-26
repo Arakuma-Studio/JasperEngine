@@ -1486,9 +1486,13 @@ void Engine::systemDraw(){
     diag::watchdog::setFrameInfo(drawnFrames, static_cast<float>(framePeriod * 1000.0));
 #if JASPERENGINE_DEVELOPMENT_BUILD && !defined(JASPERENGINE_EDITOR)
     // JASPERENGINE_DEBUG_CRASH=<mode>@<frame> (web: ?jasperengine_debug_crash=<mode>)
+    // without a frame: 30 frames after every scene loaded (after the ready signal's line)
     static const std::optional<diag::crash::DebugCrashRequest> debugCrashRequest = diag::crash::debugCrashRequest();
-    if (debugCrashRequest && drawnFrames == debugCrashRequest->frame){
-        diag::crash::debugCrash(debugCrashRequest->mode);
+    static uint64_t debugCrashLoadedFrames = 0;
+    if (debugCrashRequest){
+        debugCrashLoadedFrames = areScenesLoaded() ? debugCrashLoadedFrames + 1 : 0;
+        const bool due = debugCrashRequest->frame != 0 ? drawnFrames == debugCrashRequest->frame : debugCrashLoadedFrames == 30;
+        if (due) diag::crash::debugCrash(debugCrashRequest->mode);
     }
 #endif
 #ifndef JASPERENGINE_EDITOR

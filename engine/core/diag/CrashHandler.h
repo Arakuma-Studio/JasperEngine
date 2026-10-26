@@ -131,11 +131,12 @@ namespace jasperengine::diag::crash {
     // unknown mode; otherwise it does not return (but hang).
     JASPERENGINE_API bool debugCrash(std::string_view mode, uint32_t hangMs = 6000);
     JASPERENGINE_API bool isDebugCrashMode(std::string_view mode);
-    // JASPERENGINE_DEBUG_CRASH=<mode>@<frame> (web: ?jasperengine_debug_crash=<mode>), parsed
-    // once; Engine::systemDraw fires it at that frame in development builds
+    // JASPERENGINE_DEBUG_CRASH=<mode>[@<frame>] (web: ?jasperengine_debug_crash=<mode>[@<frame>]),
+    // parsed once; Engine::systemDraw fires it at that frame in development builds, or without
+    // one 30 frames after every scene loaded
     struct DebugCrashRequest {
         std::string mode;
-        uint64_t frame = 0;
+        uint64_t frame = 0;   // 0: after loading
     };
     JASPERENGINE_API std::optional<DebugCrashRequest> debugCrashRequest();
 

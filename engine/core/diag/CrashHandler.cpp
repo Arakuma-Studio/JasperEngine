@@ -948,7 +948,8 @@ namespace jasperengine::diag::crash {
         DebugCrashRequest request;
         const size_t at = spec.find('@');
         request.mode = spec.substr(0, at);
-        request.frame = 10;
+        // 0: once every scene loaded (Engine::systemDraw)
+        request.frame = 0;
         if (at != std::string::npos) {
             request.frame = std::strtoull(spec.c_str() + at + 1, nullptr, 10);
         }
