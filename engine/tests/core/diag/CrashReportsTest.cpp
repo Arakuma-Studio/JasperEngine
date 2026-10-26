@@ -34,6 +34,7 @@
 using namespace jasperengine;
 using namespace jasperengine::test;
 namespace fs = std::filesystem;
+namespace crash = jasperengine::diag::crash;
 
 namespace {
 
@@ -133,12 +134,12 @@ TEST(CrashReports, ClassifiesFolders) {
               "JasperEngine hang report v1\nproduct: Test Game\nphase: loading\nbusy_scopes: Importing model.glb\n");
     dir.write("reports/" + sessionId(3) + "/session.json", "{\"product\": \"Test Game\", \"version\": \"2.0\"}\n");
 
-    const auto crash = crash::readReport(crashed);
-    ASSERT_TRUE(crash);
-    EXPECT_EQ(crash->kind, "crash");
-    EXPECT_EQ(crash->reason, "SIGSEGV (invalid memory access)");
-    EXPECT_EQ(crash->product, "Test Game");
-    EXPECT_FALSE(crash->handled);
+    const auto crashReport = crash::readReport(crashed);
+    ASSERT_TRUE(crashReport);
+    EXPECT_EQ(crashReport->kind, "crash");
+    EXPECT_EQ(crashReport->reason, "SIGSEGV (invalid memory access)");
+    EXPECT_EQ(crashReport->product, "Test Game");
+    EXPECT_FALSE(crashReport->handled);
 
     const auto hang = crash::readReport(hung);
     ASSERT_TRUE(hang);

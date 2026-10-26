@@ -123,7 +123,7 @@ namespace je_crash_common {
     // yyyymmddThhmmssZ
     std::string compactUtc(std::time_t time) {
         const std::tm tm = utcTime(time);
-        char text[32];
+        char text[80];
         std::snprintf(text, sizeof(text), "%04d%02d%02dT%02d%02d%02dZ", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
                       tm.tm_hour, tm.tm_min, tm.tm_sec);
         return text;
@@ -132,7 +132,7 @@ namespace je_crash_common {
     // yyyy-mm-ddThh:mm:ssZ
     std::string isoUtc(std::time_t time) {
         const std::tm tm = utcTime(time);
-        char text[32];
+        char text[80];
         std::snprintf(text, sizeof(text), "%04d-%02d-%02dT%02d:%02d:%02dZ", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
                       tm.tm_hour, tm.tm_min, tm.tm_sec);
         return text;
