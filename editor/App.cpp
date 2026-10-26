@@ -37,6 +37,7 @@
 #include "mcp/McpServer.h"
 #include "mcp/McpAutoSync.h"
 #include "reload/HotReloadService.h"
+#include "texture/TextureCookQueue.h"
 
 #include "util/CrashHandler.h"
 #include "util/FileDialogs.h"
@@ -2918,6 +2919,12 @@ void editor::App::pollExternalChanges(){
     wake = htmlui::HtmlUiAutoImport::get().update(&project) || wake;
     // the asset database's walk a watcher batch started (S04 refresh, no poll)
     project.updateAssetScan();
+    // texture cooks (S14 R8): planned and cooked on the Background lane, swapped in here
+    if (!projectLoading && !project.getProjectPath().empty()) {
+        TextureCookQueue& cooks = TextureCookQueue::get();
+        if (cooks.getProject() != &project) cooks.attach(&project);
+        wake = cooks.update() || wake;
+    }
 
     const auto now = std::chrono::steady_clock::now();
     for (const auto& pair : htmlUIRedrawTimes) {

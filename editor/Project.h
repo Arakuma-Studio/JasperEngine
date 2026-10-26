@@ -28,6 +28,7 @@
 #include "util/CxxStandards.h"
 #include "util/Util.h"
 #include "render/shadow/ShadowTiers.h"
+#include "texture/TextureImportSettings.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -684,6 +685,8 @@ namespace jasperengine::editor{
         LoadingSettings loadingSettings;
         ThreadingProjectSettings threadingSettings;
         TerrainEditorSettings terrainEditorSettings;
+        TextureProjectSettings textureSettings;
+        std::vector<std::filesystem::path> inspectedAssets;
         bool simulateTouch;
 
         // True while project.yaml holds the only copy of this user's editor state
@@ -1309,6 +1312,12 @@ namespace jasperengine::editor{
         TerrainEditorSettings& getTerrainEditorSettings();
         const TerrainEditorSettings& getTerrainEditorSettings() const;
 
+        // Project Settings > Texture (S14 R24): per-family cook defaults, the Android ETC2 and
+        // low-memory fallbacks, the runtime quality and budget per platform, the cook cache
+        const TextureProjectSettings& getTextureSettings() const;
+        // stores them; the cook queue re-keys what they change
+        void setTextureSettings(const TextureProjectSettings& settings);
+
         // Play acts as a touch device: the mouse is one finger and isTouchDevice() is true
         bool isSimulateTouch() const;
         void setSimulateTouch(bool simulateTouch);
@@ -1607,6 +1616,11 @@ namespace jasperengine::editor{
         void nextSelectionFrame();
         // Editor Settings > Undo > Record Selection in Undo
         static bool recordSelectionInUndo;
+
+        // The Project window's selected files the Inspector shows (texture import settings),
+        // project-relative; selecting a GameObject clears them
+        void setInspectedAssets(std::vector<std::filesystem::path> assets);
+        const std::vector<std::filesystem::path>& getInspectedAssets() const;
 
         void replaceSelectedEntities(uint32_t sceneId, std::vector<Entity> selectedEntities);
         // A running scene and its Stop destroy entities the Hierarchy lets the user select

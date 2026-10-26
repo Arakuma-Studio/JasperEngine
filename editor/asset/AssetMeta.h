@@ -53,6 +53,9 @@ namespace jasperengine::editor {
         void setSection(const std::string& name, const std::string& valueYaml);
         void removeSection(const std::string& name);
 
+        // metaVersion, guid, formerGuids, subAssets: the sections this class writes itself
+        static bool isKnownSection(const std::string& name) { return isKnown(name); }
+
         void addFormerGuid(const Guid& former);
         bool removeFormerGuid(const Guid& former);
         void setSubAssets(std::vector<SubAsset> entries);

@@ -148,6 +148,10 @@ namespace jasperengine::editor {
 
     class Generator {
         std::array<AtmosphereQuality, 3> atmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
+        // Project Settings > Texture per platform group (desktop, mobile, web; S14 R12)
+        std::array<int, 3> textureQuality = {0, 0, 0};
+        std::array<int, 3> textureBudgetMB = {0, 512, 384};
+        std::array<bool, 3> textureLowMemory = {false, false, true};
     private:
         // what the build's events name (setStatusRow)
         std::string statusRow = "cpp";
@@ -253,6 +257,11 @@ namespace jasperengine::editor {
         // the project's Atmosphere Quality per platform group (desktop, mobile, web) the game
         // starts with; set before configure()
         void setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality) { atmosphereQuality = quality; }
+        void setTextureDefaults(const std::array<int, 3>& quality, const std::array<int, 3>& budgetMB, const std::array<bool, 3>& lowMemory) {
+            textureQuality = quality;
+            textureBudgetMB = budgetMB;
+            textureLowMemory = lowMemory;
+        }
         // Configures and builds on the process channel; called from a channel job (the Play
         // startup), it builds on that thread instead and returns when done.
         void runBuild(const fs::path& projectPath, const fs::path& buildPath, const std::string& cCompiler, const std::string& cxxCompiler, const std::string& generator, unsigned int parallelJobs);

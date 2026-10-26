@@ -12,6 +12,7 @@
 #include "pool/TextureDataPool.h"
 #include "pool/TexturePool.h"
 #include "subsystem/RenderSystem.h"
+#include "texture/TextureCookQueue.h"
 #include "util/Util.h"
 
 using namespace jasperengine;
@@ -23,6 +24,11 @@ void reload::reloadTextures(Context& ctx, const std::vector<fs::path>& files) {
     Project* project = &ctx.project;
     for (const fs::path& path : files) {
         const std::string relative = rel(ctx.project, path);
+        // its cooks are stale: requeued, and the reload below goes raw until they land (S14 R8)
+        if (TextureCookQueue::get().getProject() == project) {
+            const std::string assetPath = ctx.project.normalizeToAssetsRelative(path).generic_string();
+            TextureCookQueue::get().sourceChanged(assetPath);
+        }
         const std::vector<std::string> ids = TextureDataPool::findIdsUsingFile(watch::pathToUtf8(path));
 
         // a scene's color grading LUT: the renderer keeps its strip by path

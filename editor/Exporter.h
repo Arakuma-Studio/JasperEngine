@@ -116,6 +116,10 @@ namespace jasperengine::editor {
         // the build's references to missing assets (S04), found while the scenes are loaded
         std::vector<std::string> missingBuildReferences;
 
+        // S14: the texture sources the export's cooks replaced (asset-relative), which
+        // copyAssets() leaves out
+        std::set<std::string> cookedTextureSources;
+
         // Lua sources copyLua() shipped, so copyAssets() can skip them
         std::set<fs::path> luaCopiedSources;
         // Paths copyLua() wrote, relative to the lua tree, so copyAssets() can keep
@@ -177,6 +181,9 @@ namespace jasperengine::editor {
         // runs checkHtmlUIReferences(...) on htmlUIDocuments; setError on a broken reference
         bool checkHtmlUIReferences();
         bool copyGenerated();
+        // S14: every texture source cooked for the families of the export, into
+        // assets/je-cooked/<family>; a cook error fails the export, naming the file
+        bool cookTextures();
         bool copyAssets();
         // a .cube LUT cooked to <destination's name>.jlut; false (warned) when it does not parse
         bool cookColorLut(const fs::path& source, const fs::path& destination);

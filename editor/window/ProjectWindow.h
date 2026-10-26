@@ -155,6 +155,8 @@ namespace jasperengine::editor {
 
         std::string lastSelectedFile;
         std::unordered_set<std::string> selectedFiles;
+        // the selection the Inspector was last told about (project-relative)
+        std::vector<fs::path> inspectedSelection;
         std::string hoveredFile;
         std::unordered_set<std::string> projectFiles;  // project-relative scene and built prefab paths
         bool ctrlPressed;
@@ -396,6 +398,8 @@ namespace jasperengine::editor {
         void assetsShowInFileManager();
         // The files selected in the folder view (absolute), for editor-script menu items
         std::vector<fs::path> getSelectedFiles() const;
+        // queued / cooking / failed over a texture's icon (S14 R23)
+        void drawTextureCookBadge(ImDrawList* drawList, const FileEntry& file, ImVec2 min, ImVec2 max);
         void assetsOpenSelected();
         void assetsRenameSelected();
         void assetsDeleteSelected();
