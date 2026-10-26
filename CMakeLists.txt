@@ -930,6 +930,16 @@ jasperengine_skip_unity_build(
     REASON "the HTML UI importers, the MCP tools and the reflection tables: per-file helper sets with the same names"
     SOURCES ${JASPERENGINE_EDITOR_UNITY_SKIP})
 
+# GCC's -fsanitize=null does not let the address of an inline constexpr object (a TypeOps the
+# reflection tables point at) be tested in a constant expression: the sources that build tables
+# at compile time (docs/specs/S08-reflection.md D1) skip that one check
+if(JASPERENGINE_SANITIZE_UNDEFINED AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    file(GLOB JASPERENGINE_REFLECT_TABLE_SOURCES ${EDITOR_DIR}/reflect/components/*.cpp)
+    list(APPEND JASPERENGINE_REFLECT_TABLE_SOURCES ${EDITOR_DIR}/tests/reflect/ReflectMigrationTest.cpp)
+    set_source_files_properties(${JASPERENGINE_REFLECT_TABLE_SOURCES} PROPERTIES
+        COMPILE_OPTIONS -fno-sanitize=null SKIP_UNITY_BUILD_INCLUSION ON)
+endif()
+
 function(configure_jasperengine_editor_target target_name)
     add_dependencies(${target_name} generate_api_suggestions)
 
