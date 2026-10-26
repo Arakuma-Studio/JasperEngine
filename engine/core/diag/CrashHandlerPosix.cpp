@@ -238,10 +238,7 @@ void fatal(int sig, siginfo_t* info, void* context) {
             const timespec pause{0, 1000000};
             nanosleep(&pause, nullptr);
         }
-        char note[128];
-        const size_t n = appendText(note, sizeof(note), 0, "JASPERENGINE CRASH: concurrent fault on thread ");
-        appendSigned(note, sizeof(note), n, threadId());
-        line(STDERR_FILENO, note);
+        // Do not add diagnostic I/O here: a full stderr pipe must not extend the wait.
         chain(sig, info, context);
         return;
     }

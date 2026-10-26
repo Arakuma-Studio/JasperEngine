@@ -251,7 +251,6 @@ void submit(EXCEPTION_POINTERS* info) {
             return;
         }
         WaitForSingleObject(completed, 8000);
-        number(GetStdHandle(STD_ERROR_HANDLE), "JASPERENGINE CRASH: concurrent fault on thread ", current);
         return;
     }
     faultThread = current;
