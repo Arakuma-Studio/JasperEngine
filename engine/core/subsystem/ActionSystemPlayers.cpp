@@ -588,6 +588,7 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
     bool waiting = false;
     bool reloaded = false;
     bool resolvedAny = false;
+    bool clipsLoading = false;
     bool namesKnown = false;
     bool namesChanged = true;
     for (auto& model : runtime.modelFiles){
@@ -619,8 +620,16 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
         }
         if (fetch){
             std::string error;
-            std::shared_ptr<const AnimationClip> clip = state.clip.empty() ? nullptr : AnimationClipPool::getOrLoad(state.clip, &error);
-            if (!clip){
+            bool loading = false;
+            std::shared_ptr<const AnimationClip> clip = state.clip.empty() ? nullptr : AnimationClipPool::pollOrLoad(state.clip, loading, &error);
+            if (loading){
+                // a model sub-clip building on the thread pool (async loading): the player waits
+                // for it as for its models (time stops, calls are kept); a bound clip plays on meanwhile
+                if (!state.bindings.clip){
+                    clipsLoading = true;
+                    continue;
+                }
+            }else if (!clip){
                 // an edited clip that no longer loads keeps playing what it was (retried)
                 state.loadFailed = true;
                 state.error = state.clip.empty() ? "no clip" : error;
@@ -694,7 +703,7 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
         collectModels(scene, entity, runtime);
         runtime.modelsRevision = revision;
     }
-    return true;
+    return !clipsLoading;
 }
 
 namespace {

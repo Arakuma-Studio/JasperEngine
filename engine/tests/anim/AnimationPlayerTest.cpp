@@ -11,6 +11,7 @@
 
 #include "AnimTestEnvironment.h"
 
+#include "Engine.h"
 #include "Scene.h"
 #include "action/Animation.h"
 #include "action/keyframe/TranslateTracks.h"
@@ -29,10 +30,14 @@
 #include "lua.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <functional>
+#include <cstdlib>
 #include <ctime>
 #include <cmath>
+#include <mutex>
+#include <thread>
 
 using namespace jasperengine;
 
@@ -1103,6 +1108,49 @@ TEST_F(Player, PlaysModelSubClipsOnTheirModel){
         if (std::fabs(std::fabs(scene.getComponent<Transform>(entry.first).rotation.dot(entry.second)) - 1.0f) > 1e-4f) moved = true;
     }
     EXPECT_TRUE(moved);
+}
+
+// Final review M1: in async loading a player whose model sub-clip is still building waits for it
+// as for its models (time stops, the play call is kept), then plays from the start
+TEST_F(Player, WaitsForASubClipBuildingOffTheMainThread){
+    const std::string path = std::string(ANIM_POSE_FIXTURE_MODELS_DIR) + "/hero_animated.gltf";
+    Model model(&scene);
+    const Entity hero = model.getEntity();
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(hero, path, false, false, false));
+    scene.getComponent<ModelComponent>(hero).needUpdateModel = false;
+    AnimationPlayer object(&scene, hero);
+    object.addClip(path + "#Walk");
+    object.setPlayAutomatically(true);
+
+    const bool wasAsync = Engine::isAsyncLoading();
+    Engine::setAsyncLoading(true);
+    std::atomic<bool> locked{false};
+    std::atomic<bool> released{false};
+    std::thread loader([&](){
+        std::lock_guard<std::recursive_mutex> lock(MeshSystem::getPooledGLTFMutex());
+        locked = true;
+        const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+        while (!released && std::chrono::steady_clock::now() < until) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    });
+    while (!locked) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    const auto start = std::chrono::steady_clock::now();
+    step(0.1, 3);
+    const double waited = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    EXPECT_FALSE(object.isLoaded());
+    EXPECT_TRUE(object.isPlaying("Walk")) << "the automatic play is kept";
+    EXPECT_NEAR(object.getState("Walk").getTime(), 0.0f, 1e-6f) << "time stops while the clip builds";
+    released = true;
+    loader.join();
+    EXPECT_LT(waited, 5.0) << "the updates waited for the loader's lock";
+
+    for (int i = 0; i < 2000 && !object.isLoaded(); i++){
+        step(0.0);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    Engine::setAsyncLoading(wasAsync);
+    ASSERT_TRUE(object.isLoaded()) << object.getStateInfo("Walk").error;
+    step(0.25);
+    EXPECT_NEAR(object.getState("Walk").getTime(), 0.25f, 1e-5f) << "plays from its start once built";
 }
 
 // R9: 100 players of 60 bones and one spawn per frame stay under 2 ms a frame (Release)

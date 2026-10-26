@@ -7,10 +7,14 @@
 #include "animation/AnimationClip.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/ModelSubClips.h"
+#include "Engine.h"
 #include "io/Data.h"
 #include "io/FileData.h"
 #include "subsystem/MeshSystem.h"
+#include "thread/ThreadPoolManager.h"
 
+#include <chrono>
+#include <future>
 #include <map>
 #include <mutex>
 
@@ -193,6 +197,35 @@ namespace{
         return nullptr;
     }
 
+    // pollOrLoad's builds in flight, by getKey; their own mutex, never held with the pool's
+    struct AsyncLoad{
+        std::shared_ptr<const AnimationClip> clip;
+        std::string error;
+    };
+    struct AsyncLoads{
+        std::mutex mutex;
+        std::map<std::string, std::shared_future<AsyncLoad>> pending;
+    };
+
+    AsyncLoads& asyncLoads(){
+        static AsyncLoads* loads = new AsyncLoads();
+        return *loads;
+    }
+
+    // forgets the builds in flight of a model ("<model key>#" prefix), every one when empty
+    void forgetAsyncLoads(const std::string& modelKey){
+        AsyncLoads& loads = asyncLoads();
+        std::lock_guard<std::mutex> lock(loads.mutex);
+        if (modelKey.empty()){
+            loads.pending.clear();
+            return;
+        }
+        const std::string prefix = aliasEpochKey(modelKey);
+        for (auto it = loads.pending.lower_bound(prefix); it != loads.pending.end() && it->first.compare(0, prefix.size(), prefix) == 0;){
+            it = loads.pending.erase(it);
+        }
+    }
+
     std::shared_ptr<const AnimationClip> cachedLocked(PoolState& pool, const std::string& key, std::vector<ClipWarning>* warnings){
         auto it = pool.entries.find(key);
         if (it == pool.entries.end()) return nullptr;
@@ -336,6 +369,53 @@ std::shared_ptr<const AnimationClip> AnimationClipPool::getOrLoad(const std::str
     return cached;
 }
 
+std::shared_ptr<const AnimationClip> AnimationClipPool::pollOrLoad(const std::string& path, bool& loading, std::string* error){
+    loading = false;
+    if (path.empty() || !Engine::isAsyncLoading() || !anim::isSubClipReference(path)){
+        return getOrLoad(path, error);
+    }
+    if (std::shared_ptr<const AnimationClip> cached = get(path)) return cached;
+
+    const std::string key = getKey(path);
+    AsyncLoads& loads = asyncLoads();
+    std::shared_future<AsyncLoad> build;
+    {
+        std::lock_guard<std::mutex> lock(loads.mutex);
+        auto it = loads.pending.find(key);
+        if (it != loads.pending.end()){
+            build = it->second;
+        }else{
+            try{
+                build = ThreadPoolManager::getInstance().enqueue([path](){
+                    AsyncLoad result;
+                    result.clip = getOrLoad(path, &result.error);
+                    return result;
+                }).share();
+                loads.pending[key] = build;
+            }catch (const std::exception&){
+                // the pool is stopping: built on this thread below
+            }
+        }
+        if (build.valid()){
+            if (build.wait_for(std::chrono::seconds(0)) != std::future_status::ready){
+                loading = true;
+                return nullptr;
+            }
+            loads.pending.erase(key);
+        }
+    }
+    if (!build.valid()) return getOrLoad(path, error);
+    try{
+        const AsyncLoad& result = build.get();
+        if (!result.clip && error) *error = result.error;
+        return result.clip;
+    }catch (const std::exception& e){
+        // the pool dropped the task (shutdown)
+        if (error) *error = std::string("cannot load ") + path + ": " + e.what();
+    }
+    return nullptr;
+}
+
 uint64_t AnimationClipPool::getGeneration(const std::string& path){
     Reference ref = reference(path);
     PoolState& pool = state();
@@ -359,6 +439,7 @@ void AnimationClipPool::invalidate(const std::string& path){
         return;
     }
     Reference ref = reference(path);
+    if (ref.subClip) forgetAsyncLoads(ref.key);
     PoolState& pool = state();
     std::lock_guard<std::mutex> lock(pool.mutex);
     std::string key = entryKeyLocked(pool, ref);
@@ -373,6 +454,7 @@ void AnimationClipPool::invalidateModel(const std::string& modelPath){
     // the builders' own parse of the file first: a load after this reads the file again
     anim::dropModelFileParse(modelPath);
     std::string modelKey = pathKey(modelPath);
+    forgetAsyncLoads(modelKey);
     PoolState& pool = state();
     std::lock_guard<std::mutex> lock(pool.mutex);
     dropModelLocked(pool, modelKey);
@@ -380,6 +462,7 @@ void AnimationClipPool::invalidateModel(const std::string& modelPath){
 
 void AnimationClipPool::clear(){
     anim::dropModelFileParse(std::string());
+    forgetAsyncLoads(std::string());
     PoolState& pool = state();
     std::lock_guard<std::mutex> lock(pool.mutex);
     for (const auto& entry : pool.entries){

@@ -12,6 +12,7 @@
 
 #include "AnimTestEnvironment.h"
 
+#include "Engine.h"
 #include "Scene.h"
 #include "animation/AnimationClip.h"
 #include "animation/AnimationClipIO.h"
@@ -25,10 +26,12 @@
 #include "json.hpp"
 #include "tiny_gltf.h"
 
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -323,4 +326,116 @@ TEST_F(SubClipPool, OneParsePerUnpooledModel){
     ASSERT_FALSE(infos.empty());
     EXPECT_EQ(infos[0].name, "Amble");
     EXPECT_EQ(getModelFileParseCount(), before + 6);
+}
+
+namespace {
+
+    // a model loading on another thread: MeshSystem::loadGLTF of a pooled model holds the
+    // pooled-glTF mutex for its whole build
+    class PooledLockHolder{
+    public:
+        PooledLockHolder(): thread([this](){
+            std::lock_guard<std::recursive_mutex> lock(MeshSystem::getPooledGLTFMutex());
+            locked = true;
+            const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+            while (!released && std::chrono::steady_clock::now() < until) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }){
+            while (!locked) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        ~PooledLockHolder(){ release(); }
+        void release(){
+            released = true;
+            if (thread.joinable()) thread.join();
+        }
+    private:
+        std::atomic<bool> locked{false};
+        std::atomic<bool> released{false};
+        std::thread thread;
+    };
+
+    // Engine::setAsyncLoading for one test
+    struct AsyncLoadingScope{
+        explicit AsyncLoadingScope(bool enable): was(Engine::isAsyncLoading()){ Engine::setAsyncLoading(enable); }
+        ~AsyncLoadingScope(){ Engine::setAsyncLoading(was); }
+        bool was;
+    };
+
+    // polls until the build is done (10 s at most)
+    std::shared_ptr<const AnimationClip> pollUntilDone(const std::string& path, std::string* error = nullptr){
+        const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        bool loading = true;
+        std::shared_ptr<const AnimationClip> clip;
+        while (loading && std::chrono::steady_clock::now() < until){
+            clip = AnimationClipPool::pollOrLoad(path, loading, error);
+            if (loading) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        EXPECT_FALSE(loading) << path << " still building";
+        return clip;
+    }
+
+}
+
+// Final review M1: in async loading a sub-clip's first build runs on the thread pool, so a caller
+// on the main thread (a player, a scene preload) never waits for the pooled-glTF mutex a model
+// loading on another thread holds; .anim files and the non-async mode load in the call
+TEST_F(SubClipPool, PollOrLoadBuildsSubClipsOffTheCallingThread){
+    Scene scene;
+    Model holder(&scene);
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(holder.getEntity(), model, false, false, false));
+    ASSERT_TRUE(ModelPool::getGLTF(MeshSystem::getModelFilenameKey(model)));
+    AsyncLoadingScope async(true);
+
+    std::shared_ptr<const AnimationClip> walk;
+    {
+        PooledLockHolder loader;
+        const auto start = std::chrono::steady_clock::now();
+        bool loading = false;
+        std::string error;
+        EXPECT_FALSE(AnimationClipPool::pollOrLoad(clip("Walk"), loading, &error));
+        EXPECT_TRUE(loading) << "the build waits for the lock on the pool's thread";
+        EXPECT_FALSE(AnimationClipPool::pollOrLoad(clip("Walk"), loading, &error));
+        EXPECT_TRUE(loading) << "polled again: the same build";
+        EXPECT_LT(std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count(), 5.0)
+            << "the polls waited for the loader";
+        EXPECT_FALSE(AnimationClipPool::get(clip("Walk")));
+        loader.release();
+        std::string pollError;
+        walk = pollUntilDone(clip("Walk"), &pollError);
+        ASSERT_TRUE(walk) << pollError;
+    }
+    EXPECT_EQ(walk->getTracks().size(), 8u);
+    EXPECT_EQ(AnimationClipPool::get(clip("0")), walk) << "cached as getOrLoad caches it";
+    bool loading = true;
+    EXPECT_EQ(AnimationClipPool::pollOrLoad(clip("Walk"), loading), walk);
+    EXPECT_FALSE(loading) << "cached: no build";
+
+    // a failure comes back from the build with its error, and is not cached
+    std::string error;
+    EXPECT_FALSE(pollUntilDone(clip("Run"), &error));
+    EXPECT_NE(error.find("Run"), std::string::npos) << error;
+
+    // a build in flight when the model is invalidated is forgotten: the next poll builds again
+    {
+        PooledLockHolder loader;
+        EXPECT_FALSE(AnimationClipPool::pollOrLoad(clip("Idle"), loading));
+        EXPECT_TRUE(loading);
+        AnimationClipPool::invalidateModel(model);
+        loader.release();
+        std::shared_ptr<const AnimationClip> idle = pollUntilDone(clip("Idle"), &error);
+        ASSERT_TRUE(idle) << error;
+        EXPECT_EQ(idle->getSource().name, "Idle");
+    }
+
+    // .anim files load in the call, async or not
+    animtest::writeAsset("models/async.anim", "{\"format\": \"jasperengine.anim\", \"version\": 1, \"tracks\": []}");
+    {
+        PooledLockHolder loader;
+        EXPECT_TRUE(AnimationClipPool::pollOrLoad("models/async.anim", loading));
+        EXPECT_FALSE(loading);
+    }
+    // without async loading a sub-clip builds in the call too
+    AnimationClipPool::clear();
+    Engine::setAsyncLoading(false);
+    EXPECT_TRUE(AnimationClipPool::pollOrLoad(clip("Wave"), loading));
+    EXPECT_FALSE(loading);
 }

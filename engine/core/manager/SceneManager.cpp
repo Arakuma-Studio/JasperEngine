@@ -534,7 +534,8 @@ void SceneManager::updatePreloads() {
             it = pending.models.erase(it);
         }
 
-        // clips are small and parse on this thread; a sub-clip waits for its model's preload
+        // .anim clips are small and parse on this thread; a sub-clip waits for its model's
+        // preload, then builds on the thread pool in async loading (AnimationClipPool::pollOrLoad)
         for (auto it = pending.clips.begin(); it != pending.clips.end();) {
             anim::SubClipReference reference;
             if (anim::parseSubClipReference(*it, reference)) {
@@ -548,7 +549,12 @@ void SceneManager::updatePreloads() {
             }
             const std::string clip = *it;
             std::string error;
-            std::shared_ptr<const AnimationClip> loaded = AnimationClipPool::getOrLoad(clip, &error);
+            bool loading = false;
+            std::shared_ptr<const AnimationClip> loaded = AnimationClipPool::pollOrLoad(clip, loading, &error);
+            if (loading) {
+                ++it;
+                continue;
+            }
             if (!loaded) {
                 Log::warn("Preload of animation clip %s failed: %s", clip.c_str(), error.c_str());
             }
