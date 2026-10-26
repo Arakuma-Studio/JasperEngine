@@ -36,9 +36,6 @@ namespace {
         fp.stdlib = toolchain::StdlibLibstdcxx;
         fp.stdlibVersion = 13;
         fp.stdlibAbi = 1;
-        // This fixture models a Release editor even when the tests run in Debug/ASan.
-        fp.iteratorDebugLevel = 0;
-        fp.ndebug = 1;
         return fp;
     }
 
