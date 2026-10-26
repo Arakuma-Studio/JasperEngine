@@ -1,0 +1,153 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+// The GPU mirror of the waves (docs/specs/S22-gameplay.md R28, R29, AC11): a test-only post
+// shader that includes library/water.glsl writes waterWaves(...).x for a 32 x 32 grid into an
+// RGBA32F target at a shader time T, with the xz it evaluated beside it. The readback matches
+// engine/core/util/WaterWaves.h at the same xz and T within 1e-3 x waveHeight + 1e-4: what floats
+// on the water (Buoyancy, Water.sample) rides the waves the GPU draws.
+
+#include "Engine.h"
+#include "pool/ShaderPool.h"
+#include "render/CameraRender.h"
+#include "render/FramebufferRender.h"
+#include "render/ObjectRender.h"
+#include "render/PipelineState.h"
+#include "render/ShaderRender.h"
+#include "render/SystemRender.h"
+#include "shader/ShaderVariantCompiler.h"
+#include "util/WaterWaves.h"
+
+#include "GpuEnvironment.h"
+#include "HeadlessContext.h"
+#include "Readback.h"
+
+#include <gtest/gtest.h>
+
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <string>
+#include <vector>
+
+using namespace jasperengine;
+using namespace jasperengine::test;
+
+namespace {
+
+    constexpr int SIZE = 32;
+
+    // r: the height, g and b: the world xz it is at (so the comparison needs no texel orientation)
+    const char* PROBE = R"(#version 450
+#include "library/water.glsl"
+
+in vec2 v_texcoord;
+out vec4 frag_color;
+
+uniform u_fs_waterProbe {
+    vec4 wave;      // direction.xy, height, waveLength
+    vec4 clock;     // speed, time, extent, unused
+} probe;
+
+void main(){
+    vec2 xz = (v_texcoord - 0.5) * probe.clock.z;
+    vec3 w = waterWaves(xz, probe.clock.y, probe.wave.xy, probe.wave.z, probe.wave.w, probe.clock.x);
+    frag_color = vec4(w.x, xz, 1.0);
+}
+)";
+
+    struct ProbeBlock{
+        float wave[4];
+        float clock[4];
+    };
+
+}
+
+TEST(WaterWavesGpu, MatchesTheCpuTwin){
+    JASPER_REQUIRE_GPU();
+    ASSERT_TRUE(ShaderVariantCompiler::isAvailable());
+    ASSERT_TRUE(SystemRender::getFeatures().renderRGBA32F) << "the backend renders no RGBA32F target";
+
+    const std::string path = "tests/water_waves_probe.frag";
+    const uint16_t id = ShaderPool::registerCustomShader(path);
+    const CustomShaderSources sources = ShaderVariantCompiler::resolveCustomShaderSources(path,
+        [&](const std::string& file, std::string& content){
+            if (file != path)
+                return false;
+            content = PROBE;
+            return true;
+        }, ShaderType::POSTPROCESS);
+    ASSERT_TRUE(sources.valid) << sources.error;
+    ShaderData data;
+    std::string error, log;
+    ASSERT_TRUE(ShaderVariantCompiler::compile(ShaderPool::getShaderKey(ShaderType::POSTPROCESS, 0, id), ShaderPool::getShaderBackend(),
+                                               &sources, data, &error, &log)) << error << "\n" << log;
+
+    ShaderRender shader;
+    ASSERT_TRUE(shader.createShader(data));
+    SystemRender::commitQueue();
+    SystemRender::executeQueue();
+    ASSERT_TRUE(shader.isCreated());
+    const int slot = shader.shaderData.getUniformBlockIndexByName("u_fs_waterProbe");
+    ASSERT_GE(slot, 0);
+
+    FramebufferRender target;
+    FramebufferDesc desc;
+    desc.width = SIZE;
+    desc.height = SIZE;
+    desc.color = ColorFormat::RGBA32F;
+    desc.depth = DepthStencilFormat::NONE;
+    desc.minFilter = TextureFilter::NEAREST;
+    desc.magFilter = TextureFilter::NEAREST;
+    desc.label = "WaterWavesGpu";
+    ASSERT_TRUE(target.createFramebuffer(desc));
+
+    ObjectRender object;
+    object.beginLoad(PrimitiveType::TRIANGLES);
+    object.setShader(&shader);
+    ASSERT_TRUE(object.endLoadDynamic(PrimitiveType::TRIANGLES, IndexType::NONE));
+    PipelineState state;
+    state.target.color = ColorFormat::RGBA32F;
+    state.target.depth = DepthStencilFormat::NONE;
+    state.blend = BlendMode::NONE;
+
+    // a material's waves, at a shader time well into a session, over 40 x 40 world units
+    const Vector2 direction(0.8f, -0.45f);
+    const float height = 0.35f, waveLength = 6.5f, speed = 2.25f, extent = 40.0f;
+    const float time = 1234.5625f;
+    ProbeBlock block = {{direction.x, direction.y, height, waveLength}, {speed, time, extent, 0.0f}};
+
+    CameraRender pass;
+    pass.setClearColor(Vector4(0.0f, 0.0f, 0.0f, 0.0f));
+    pass.startRenderPass(&target);
+    ASSERT_TRUE(object.beginDraw(state));
+    object.applyUniformBlock(slot, sizeof(block), &block);
+    object.draw(0, 3, 1);
+    pass.endRenderPass();
+    SystemRender::commit();
+
+    std::vector<float> texels;
+    ASSERT_TRUE(readTextureFloat(target.getColorTexture(), SIZE, SIZE, texels));
+    ASSERT_EQ(texels.size(), (size_t)SIZE * SIZE * 4);
+
+    const float tolerance = 1e-3f * height + 1e-4f;
+    float worst = 0.0f;
+    int checked = 0;
+    for (int i = 0; i < SIZE * SIZE; i++){
+        const float gpu = texels[i * 4 + 0];
+        const Vector2 xz(texels[i * 4 + 1], texels[i * 4 + 2]);
+        ASSERT_EQ(texels[i * 4 + 3], 1.0f) << "texel " << i << " was not drawn";
+        const WaterWaveSample cpu = waterWaves(xz, time, direction, height, waveLength, speed);
+        worst = std::max(worst, std::fabs(gpu - cpu.height));
+        EXPECT_NEAR(gpu, cpu.height, tolerance) << "at xz (" << xz.x << ", " << xz.y << ")";
+        checked++;
+    }
+    EXPECT_EQ(checked, SIZE * SIZE);
+    std::printf("[gpu] waterWaves GPU vs CPU on %s: worst |dh| %.3g (tolerance %.3g)\n", HeadlessContext::getBackendName(), worst, tolerance);
+
+    object.destroy();
+    shader.destroyShader();
+    target.destroyFramebuffer();
+    SystemRender::commitQueue();
+    SystemRender::executeQueue();
+}

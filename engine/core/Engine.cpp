@@ -114,6 +114,8 @@ double Engine::updateTime = 1.0 / 60.0; //60Hz
 double Engine::timeScale = 1.0;
 double Engine::fixedDeltatime = 0.0;
 double Engine::gameTime = 0.0;
+double Engine::shaderTime = 0.0;
+bool Engine::shaderTimeFixed = false;
 uint64_t Engine::gameFrames = 0;
 std::atomic<bool> Engine::simulationHeld = false;
 bool Engine::clampNextDelta = false;
@@ -784,6 +786,36 @@ void Engine::setMaxDeltatime(float seconds){
 
 double Engine::getSystemTime(){
     return stm_sec(stm_now());
+}
+
+void Engine::latchShaderTime(){
+    // in fixed mode: the clock where fixed mode began (or the delta changed), plus whole frames
+    // of the delta, so no rounding piles up over a long capture
+    static double fixedBase = 0.0;
+    static double fixedDelta = 0.0;
+    static uint64_t fixedFrames = 0;
+    if (fixedDeltatime > 0.0){
+        if (!shaderTimeFixed || fixedDelta != fixedDeltatime){
+            fixedBase = shaderTime;
+            fixedDelta = fixedDeltatime;
+            fixedFrames = 0;
+        }else{
+            fixedFrames++;
+        }
+        shaderTimeFixed = true;
+        shaderTime = fixedBase + (double)fixedFrames * fixedDelta;
+    }else{
+        shaderTimeFixed = false;
+        shaderTime = getSystemTime();
+    }
+}
+
+float Engine::getShaderTime(){
+    return (float)shaderTime;
+}
+
+double Engine::getShaderTimeSeconds(){
+    return shaderTime;
 }
 
 void Engine::setTimeScale(float scale){
@@ -1460,6 +1492,7 @@ void Engine::systemDraw(){
     if (ownFrame){
         FrameTimes::beginFrame();
         JE_PROFILE_FRAME();
+        latchShaderTime();
     }
     JE_PROFILE_SCOPE("Frame");
     SystemRender::setViewTag(SystemRender::FRAME_STATS_FRAME);

@@ -5,6 +5,7 @@
 
 #include "AppSettings.h"
 #include "Backend.h"
+#include "Engine.h"
 #include "Log.h"
 
 #include "imgui.h"
@@ -117,6 +118,8 @@ bool EditorFrame::run(EditorFrameState& state){
     if (frameReady){
         FrameTimes::beginFrame();
         JE_PROFILE_FRAME();
+        // one shader clock for every view the frame draws (each draws through Engine::systemDraw)
+        Engine::latchShaderTime();
     }
 
     renderer->newFrame();

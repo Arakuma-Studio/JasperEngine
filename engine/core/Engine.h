@@ -285,6 +285,9 @@ namespace jasperengine {
         static double timeScale;
         static double fixedDeltatime;
         static double gameTime;
+        // the shader clock of the frame (latchShaderTime), and whether it last advanced by fixedDeltatime
+        static double shaderTime;
+        static bool shaderTimeFixed;
         static uint64_t gameFrames;
         static std::atomic<bool> simulationHeld;
         static bool clampNextDelta;
@@ -478,6 +481,16 @@ namespace jasperengine {
         // measured frame time (capped by maxDeltatime).
         static void setFixedDeltatime(double seconds);
         static double getFixedDeltatime();
+
+        // The shader clock (frame.time.x of shaders, the waves of library:water): latched once a
+        // frame (at the top of systemDraw for a game, by the editor's loop for it), so every fixed
+        // step of the frame, its draw and the CPU's waves (Buoyancy, Water.sample) agree. It is the
+        // wall clock (getSystemTime) when it latches, or, with a fixed frame delta, advances by
+        // exactly that a frame from where the clock was when fixed mode began: captures under
+        // `play fixed_fps` are reproducible.
+        static void latchShaderTime();
+        static float getShaderTime();
+        static double getShaderTimeSeconds();
 
         // Scaled seconds and frames the update loop has run (since start; not while paused or held)
         static double getGameTime();
