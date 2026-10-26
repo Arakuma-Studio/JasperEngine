@@ -7999,8 +7999,9 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
     if (node["playOnAwake"]) particles.playOnAwake = YamlNumbers::as<bool>(node["playOnAwake"]);
     if (node["seed"]) particles.seed = YamlNumbers::as<uint32_t>(node["seed"]);
     if (node["playbackSpeed"]) particles.playbackSpeed = YamlNumbers::as<float>(node["playbackSpeed"]);
+    // written only when not empty: absent is none (over an old component too)
+    particles.exposedValues.clear();
     if (node["exposedValues"] && node["exposedValues"].IsSequence()){
-        particles.exposedValues.clear();
         for (const YAML::Node& value : node["exposedValues"]){
             ParticleExposedValue v;
             if (value["name"]) v.name = value["name"].as<std::string>();
@@ -8008,8 +8009,8 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
             particles.exposedValues.push_back(v);
         }
     }
+    particles.collisionPlanes.clear();
     if (node["collisionPlanes"] && node["collisionPlanes"].IsSequence()){
-        particles.collisionPlanes.clear();
         for (const YAML::Node& plane : node["collisionPlanes"]) particles.collisionPlanes.push_back(YamlNumbers::as<Entity>(plane));
     }
     particles.needReload = true;

@@ -682,12 +682,12 @@ async def test_custom_roundtrip(ed: Editor):
     check_close(ed, await value(ed, caster, "shadowcaster2d", "points"), new_pts)
 
     ps = await create(ed, "particle_system", name="CustomParticles")
-    await set_props(ed, ps, {"particlesystem": {"bursts": [{"time": 0.5, "minCount": 3, "maxCount": 7}]}})
-    bursts = await value(ed, ps, "particlesystem", "bursts")
-    ed.check(len(bursts) == 1 and bursts[0]["minCount"] == 3 and bursts[0]["maxCount"] == 7, f"bursts: {bursts}")
-    await set_props(ed, ps, {"particlesystem": {"spriteInitializer.frames": [0, 2, 4]}})
-    ed.check_eq(await value(ed, ps, "particlesystem", "spriteInitializer.frames"), [0, 2, 4])
-    await ed.check_error("set_properties", entity=ps, changes=[{"component": "particlesystem", "property": "bursts", "remove": 5}],
+    await set_props(ed, ps, {"particlesystem": {"exposedValues": [{"name": "Rate", "value": [3, 0, 0, 0]}]}})
+    values = await value(ed, ps, "particlesystem", "exposedValues")
+    ed.check(len(values) == 1 and values[0]["name"] == "Rate", f"exposedValues: {values}")
+    await set_props(ed, ps, {"particlesystem": {"playOnAwake": False, "seed": 9}})
+    ed.check_eq(await value(ed, ps, "particlesystem", "seed"), 9)
+    await ed.check_error("set_properties", entity=ps, changes=[{"component": "particlesystem", "property": "exposedValues", "remove": 5}],
                          contains="out of range")
 
     # shaderUniforms (typed custom)
