@@ -435,6 +435,9 @@ async def test_hot_reload_edit_mode(ed: Editor):
     await ed.call("clear_console")
     write_bytes(ed, f"{UI}/hot.png", png(8, 8, MAGENTA))
     write_bytes(ed, f"{UI}/hot.ttf", (FONTS / "inter/Inter-400.ttf").read_bytes())
+    # the editor takes these external writes in now: their watcher events may otherwise arrive
+    # after the document's first load below and reload it (a second summary line)
+    await ed.call("sync_files", paths=[f"{UI}/hot.png", f"{UI}/hot.ttf"], full=False)
     await ed.call("write_file", path=f"{UI}/hot-imported.css", content=HOT_IMPORTED)
     await ed.call("write_file", path=f"{UI}/hot.css", content=HOT_CSS)
     await ed.call("write_file", path=HOT, content=HOT_HTML)
