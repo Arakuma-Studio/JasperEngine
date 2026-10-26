@@ -98,14 +98,14 @@ float particleShadow(){
 #ifdef SIXWAY
 // the six responses of the two maps: +X, +Y, +Z and -X, -Y, -Z of the sprite (+Z its front)
 void particleSixWayDecode(vec4 a, vec4 b, out vec3 positive, out vec3 negative, out float opacity, out float emission){
-    int layout = int(particlesFsParams.sixWay.x + 0.5);
-    if (layout == 1){
+    int mapLayout = int(particlesFsParams.sixWay.x + 0.5);
+    if (mapLayout == 1){
         // map A top, left, right; map B bottom, back, front
         positive = vec3(a.b, a.r, b.b);
         negative = vec3(a.g, b.r, b.g);
         opacity = a.a;
         emission = 0.0;
-    }else if (layout == 2){
+    }else if (mapLayout == 2){
         positive = a.rgb;
         negative = b.rgb;
         opacity = a.a;

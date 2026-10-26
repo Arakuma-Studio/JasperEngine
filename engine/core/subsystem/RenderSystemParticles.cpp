@@ -300,12 +300,18 @@ bool RenderSystem::loadParticles(Entity entity, ParticleSystemComponent& particl
     const ParticleProgram& prog = state.effect->program;
     const RenderParams& rp = prog.render;
 
-    // the textures: none still loading
-    rd.texture.setPath(r.texture);
-    rd.trailTexture.setPath(r.trailTexture.empty() ? r.texture : r.trailTexture);
-    rd.sixWayA.setPath(r.sixWayMapA);
-    rd.sixWayB.setPath(r.sixWayMapB);
-    rd.emission.setPath(r.emissionMap);
+    // the textures: none still loading (an empty path is no texture, not a file to load)
+    auto assign = [](Texture& texture, const std::string& path){
+        if (path.empty())
+            texture = Texture();
+        else
+            texture.setPath(path);
+    };
+    assign(rd.texture, r.texture);
+    assign(rd.trailTexture, r.trailTexture.empty() ? r.texture : r.trailTexture);
+    assign(rd.sixWayA, r.sixWayMapA);
+    assign(rd.sixWayB, r.sixWayMapB);
+    assign(rd.emission, r.emissionMap);
     for (Texture* t : {&rd.texture, &rd.trailTexture, &rd.sixWayA, &rd.sixWayB, &rd.emission}){
         if (t->empty())
             continue;
@@ -471,7 +477,11 @@ bool RenderSystem::loadParticles(Entity entity, ParticleSystemComponent& particl
                                 sizeof(ParticleMeshInstance), 0, true, true);
             if (!bindCommon(render, shaderData, rd.meshSlots, false))
                 return false;
-            if (!render.endLoad(pipelines, renderState, msaaPipelineSamples))
+            // a mesh hides its back faces (particles draw without depth writes by default);
+            // a flipped one turns some inside out, so with Flip it draws both sides
+            RenderState meshState = renderState;
+            meshState.faceCulling = r.flip.x == 0.0f && r.flip.y == 0.0f && r.flip.z == 0.0f;
+            if (!render.endLoad(pipelines, meshState, msaaPipelineSamples))
                 return false;
             rd.meshCount++;
         }

@@ -322,7 +322,7 @@ namespace {
         ImGui::PushID(id.c_str());
         labelCell(label, "colour keys (sRGB) and alpha keys over time 0 to 1, at most 8 of each", indent);
         uint8_t mode = (uint8_t)gradient.mode;
-        ImGui::SetNextItemWidth(Theme::dpi(80.0f));
+        ImGui::SetNextItemWidth(editor::Theme::dpi(80.0f));
         const std::vector<EnumOption>& modes = ParticleModules::gradientBlendModes();
         if (enumCombo("##blend", modes.data(), (uint8_t)modes.size(), mode)) {
             gradient.mode = (GradientMode)mode;
@@ -471,7 +471,7 @@ namespace {
             }
             case CurveMode::Curve:
             case CurveMode::TwoCurves: {
-                const float multiplierWidth = Theme::dpi(56.0f);
+                const float multiplierWidth = editor::Theme::dpi(56.0f);
                 const float previewWidth = std::max(8.0f, avail - multiplierWidth - ImGui::GetStyle().ItemSpacing.x);
                 if (curvePreview("##preview", value.curve, value.mode == CurveMode::TwoCurves ? &value.curveMax : nullptr, value.multiplier, previewWidth)) {
                     ui.toggle(id);
@@ -629,7 +629,7 @@ namespace {
         }
         ui.track(edited);
         if (edited && guid) {
-            *guid = path.empty() ? std::string() : ui.project->makeAssetRef(path, AssetPathBase::Assets).guid.str();
+            *guid = path.empty() ? std::string() : ui.project->makeAssetRef(path, editor::AssetPathBase::Assets).guid.str();
         }
         if (ImGui::IsItemHovered() && !path.empty()) ImGui::SetTooltip("%s", path.c_str());
     }
@@ -920,8 +920,8 @@ namespace {
 
     // A two-column table of rows, like the Inspector's (labels at a fixed width)
     void beginRows(const std::string& id, float labelWidth) {
-        labelWidth = std::max(labelWidth, std::min(ImGui::GetContentRegionAvail().x * 0.4f, Theme::dpi(180.0f)));
-        ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(ImGui::GetStyle().CellPadding.x, Theme::dpi(1.0f)));
+        labelWidth = std::max(labelWidth, std::min(ImGui::GetContentRegionAvail().x * 0.4f, editor::Theme::dpi(180.0f)));
+        ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(ImGui::GetStyle().CellPadding.x, editor::Theme::dpi(1.0f)));
         ImGui::BeginTable(("table_" + id).c_str(), 2, ImGuiTableFlags_Resizable);
         ImGui::PopStyleVar();
         ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, labelWidth);

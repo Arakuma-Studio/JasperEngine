@@ -20,6 +20,7 @@
 
 #include "Project.h"
 #include "command/CommandHistory.h"
+#include "command/type/MultiPropertyCmd.h"
 #include "command/type/ParticleEffectAssetCmd.h"
 #include "command/type/PropertyCmd.h"
 #include "component/ParticleSystemComponent.h"

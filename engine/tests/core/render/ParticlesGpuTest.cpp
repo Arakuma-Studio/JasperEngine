@@ -154,13 +154,13 @@ TEST_F(ParticlesGpu, MeshParticles){
 
 TEST_F(ParticlesGpu, FrameBlending){
     JASPER_REQUIRE_GPU();
-    // the same sheet without and with frame blending, half-way between frames
-    const std::string sheet = R"(, {"type": "textureSheetAnimation", "tilesX": 4, "tilesY": 4, "frameOverTime": {"mode": "curve",
-        "curve": [[0, 0], [1, 1]]}, "cycles": 1)";
+    // the same sheet without and with frame blending, half-way between frames 5 and 6 (4 frames a
+    // second at the age of 1.375 s): the left shows frame 5, the right the mix
+    const std::string sheet = R"(, {"type": "textureSheetAnimation", "tilesX": 4, "tilesY": 4, "timeMode": "fps", "fps": 4)";
     system(Vector3(-2.0f, 1.0f, 0.0f), burst(R"("renderMode": "billboard", "texture": "particles/textures/sheet.png")", sheet + "}", 12, 0.5f));
     system(Vector3(2.0f, 1.0f, 0.0f), burst(R"("renderMode": "billboard", "texture": "particles/textures/sheet.png")",
                                             sheet + R"(, "frameBlending": true})", 12, 0.5f));
-    ASSERT_TRUE(render(1.55));
+    ASSERT_TRUE(render(1.375));
     EXPECT_GOLDEN_OPTIONS("particles_frame_blend", goldenTolerance());
     EXPECT_NO_ENGINE_ERRORS();
 }
