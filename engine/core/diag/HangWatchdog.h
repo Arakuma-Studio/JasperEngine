@@ -156,10 +156,11 @@ namespace jasperengine::diag {
 
     namespace watchdog::detail {
 
-        // The platform seam for the main thread's stack in a hang report: frames, one per line
-        // ("#N module+0xoffset [symbol]"), into out; returns the bytes written, or 0 with why it
-        // has none in `why`. Every platform reports "unavailable" until its capture backend is
-        // part of the build (docs/crash-diagnostics.md, "Platform status").
+        // Platform capture is initialized on the watched thread before the worker starts.
+        JASPERENGINE_INTERNAL void initializeMainThreadCapture();
+        // Windows deadline regression: delay the helper beyond the capture budget.
+        JASPERENGINE_API void forceWalkerStallForTest(bool enabled);
+        // Writes #N module+offset [symbol] lines; returns 0 with a reason on timeout/failure.
         JASPERENGINE_API size_t captureMainThreadStack(char* out, size_t capacity, const char** why);
 
     }

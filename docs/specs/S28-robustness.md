@@ -413,19 +413,22 @@ gtest targets.
 
 Recorded by the S28 implementation (branch `feat/s28-robustness`).
 
-- **Native crash backends are not in this branch (decision pending with the user).** Writing the
-  POSIX signal backend, the Windows exception filter / minidump writer and the main-thread stack
-  capture was stopped, and those parts are set aside for a separate decision. What landed is
-  built so they plug in without rework: `diag::crash::detail::installPlatform` /
-  `prepareThreadPlatform` / `platformDebugCrash` (today `CrashHandlerUnarmed.cpp`, selected at
-  compile time for every non-web target, arms nothing) and
-  `diag::watchdog::detail::captureMainThreadStack` (reports `stack: unavailable`). Until then the
-  editor keeps `editor/util/CrashHandler.*` unchanged as its handler (R1's forwarder is not done),
-  games have no native handler (the OS report stays: debuggerd tombstones, ReportCrash, WER), and
-  `std::set_terminate` is only taken when a backend is armed. Open items of this spec, all in
-  that part: R1 (forwarder), R3-R6, R7 (CrashGuard's unguarded branch, with its red test), R18
-  (hang minidumps; the setting is not shown until it works), R19-R22, R25; AC1-AC6, AC7's stack
-  frame, AC10, AC13's segv path (its SIGKILL path is tested), AC15's report lines, AC20.
+- **Native backends are implemented on `feat/s28-native-crash`.** The editor now forwards to
+  the engine POSIX/Windows backends, including alternate stacks/stack guarantees, saved signal
+  actions, Windows writer-thread dumps, CrashGuard forwarding and bounded main-thread capture.
+  Apple uses the signal-capture alternative (SIGUSR2, configurable), rather than a Mach frame
+  walk. POSIX capture waits with monotonic 1 ms polling rather than `sem_timedwait`: Darwin
+  has no unnamed semaphores, and a realtime-clock step must not extend the 250 ms deadline.
+  A timed-out capture disables further stack captures for the process, keeping its storage
+  alive for a late handler/helper. Modules are snapshotted at installation for fatal-path
+  frame formatting; the bounded cache retains our image even when Android loads hundreds
+  of system libraries first. Linux/Android also copy the current `/proc/self/maps` so omitted
+  or later-loaded libraries remain recorded. Windows waits at most eight seconds for the writer,
+  below R5's 30-second ceiling. If DbgHelp's process-wide lock is held by the faulting thread,
+  the writer skips the dump/walk and writes saved PC/SP instead of waiting on that lock.
+  Remaining native-platform checks requiring their hosts: Windows dump inspection (AC3),
+  Windows forced-walker deadline execution (AC10), Apple builds and simulator checks (AC20).
+  R18's optional hang minidump remains outside this backend task and is not exposed in UI.
 - **Preferences are not undo steps** (R29, R31 `set_hang_watchdog`): Preferences > Diagnostics and
   `set_hang_watchdog` apply at once and save, like every other preference and
   `set_project_settings` (which says "not undoable"); the dialog's Cancel reverts unsaved edits.
@@ -449,3 +452,87 @@ Recorded by the S28 implementation (branch `feat/s28-robustness`).
   inside the 1 s rule of non-Slow unit tests.
 - **Tool verbs**: `dismiss` and `debug` were added to the verb list of
   `test_tool_conventions.py` for the spec's `dismiss_crash_notice` and `debug_crash`.
+
+### Native backend validation (`feat/s28-native-crash`)
+
+All execution uses `je-remote/rb.sh`; no local builds or tests.
+
+- Red control, before the backend/CrashGuard fix: server D,
+  `WERROR=1 UNIT_SUITE=core UNIT_TEST_ARGS=--gtest_filter=CrashGuard.WorkerCrashReachesHandler
+  tools/build.sh unit-tests` fails with "a worker crash during a Lua guard must reach the engine
+  handler" (1 ran, 1 failed; no crash.txt).
+- Server D: `ctest --test-dir build/linux/core-tests -R 'native-crash|posix-crash'
+  --output-on-failure`: 2/2 pass. Fatal subprocess modes segv, abort, terminate, main/worker
+  overflow, worker segv, fpe, guarded-worker segv, saved-handler sentinel and the injected
+  main-thread stall all pass; reports retain registers, >=3 frames, build ID and log tail.
+  The object scan finds no printf, malloc/new/delete or mutex-lock import.
+- Server D, ASan+UBSan tree: `python3 -I engine/tests/crash/test_crash.py
+  build/linux/core-tests-address-undefined/tests/core/jasperengine-crash-test
+  --symbolicate tools/crash/symbolicate.py --expect-asan`: all 10 modes pass, explicitly checking
+  that ASan's prior fatal handler prints after the engine report.
+- Server D, refreshed focused gtest run: `Crash*:HangWatchdog.*` runs 29/29 successfully
+  in both normal and ASan+UBSan trees, including the saved handler returning, recovered guard,
+  pending hook and main-thread frame assertions. No new diagnostic allocation leak or UB is
+  reported. The sanitizer process exits with the existing 56-byte `jobs::setProfilerHooks`
+  leak from `GpuEnvironment::initEngine` (the common test harness), after all assertions pass.
+
+- Server D, full normal rerun after the hook fix: 1,077 core tests and 392 editor tests pass,
+  zero failures, zero skips (both process exit codes zero). This includes both
+  `LoggerCrashFlushTest` cases through the editor compatibility forwarder. The initial shared-D
+  timing failure did not recur in this run.
+- Final refreshed server D checks after the bounded module-cache priority fix:
+  `WERROR=1 tools/build.sh linux` and `tools/build.sh web` both exit zero; native CTest
+  (`native-crash-reports`, `posix-crash-signal-safety`) is 2/2; ASan+UBSan native subprocess
+  tests are 10/10. `LoggerCrashFlushTest.*` is 2/2 in normal and ASan+UBSan builds, with
+  WERROR enabled; only the baseline 56-byte profiler-hook harness allocation remains.
+- Server D MCP: `test_protocol.py` is 12/12; `test_crash.py` is 5/6, including off-main health,
+  the deliberate native segfault/restart notice and abnormal-session hook delivery. The existing
+  `test_runaway_lua` misses its Console interruption error. Isolated controls also fail with
+  `JASPERENGINE_HANG_SIGNAL=0` (40.3 s) and the default signal (37.8 s), so the failure does not
+  require native stack-capture delivery. Root cause (`feat/s28-robustness` da086c4a8, in this
+  merge): the interrupt raised its error with `luaL_error(L, "...%.1f s...")`, and
+  `lua_pushfstring` has no precision, so the script failed with "invalid option '%.' to
+  'lua_pushfstring'" instead of "script interrupted"; the message is now formatted with
+  `snprintf` first. Red on server A before the fix (the Console showed that Lua error), green
+  after (`test_crash.py` 5/5); the native branch was based on d397cb284, before the fix.
+- Server D smoke, the remote host's `tools/smoke-test.sh "$HOME/je/fixture-unity"`: export,
+  standalone build, game and editor runs all pass; screenshots are saved and neither log has
+  a crash, error or `JASPERENGINE HANG:` line. The brief's `--img` invocation cannot launch
+  Docker inside the build image, so the same script runs from the remote host instead.
+- Server A, final Android build: `ANDROID_PROJECT=crash-diagnostics tools/build.sh android`
+  passes for all four ABIs. The final API 34 x86_64 emulator run with
+  `tools/android-emulator-test.sh build/android-crash-diagnostics/app-debug.apk
+  --expect-native-crash --expect 'JASPERENGINE CRASH:' --out build/android-native-module-green`
+  exits zero. Artifacts include the engine report, fatal logcat marker and preserved debuggerd
+  tombstone. Both reports identify fault thread 1959 (`je-main`), build ID
+  `ca276c8e0a5b57b07ad161629e5a81ead4421d9f`, and the same first game frame
+  (`libjasperengine-android.so+0x1fc4b4e`, `debugSegv()+14` in the tombstone).
+  The strengthened game-module assertion first failed against the saved old APK, then passed
+  after the bounded module cache retained our image. Final artifacts remain on A in
+  `build/android-native-module-green`; the final APK SHA-256 is
+  `51bafb346db8457f3f9696c7e17d306789001e7687885a76e475da4a3fb995de`.
+
+#### Baseline gate failures owned by other streams
+
+Per the integration owner's instruction, this branch does not change texture, scene or profiler
+ownership and does not suppress their engine/editor leaks. BF2 (`fix/bf2-green-oe-port`) owns
+those fixes. The full ASan+UBSan run identified:
+
+- `Profiler.CommandLineCaptureWritesItsFile`, `JobsHooks.JobsReportBeginAndEnd` and
+  `JobsParallelForLanes.*`: profiler-hook snapshots allocated by `jobs::setProfilerHooks` are
+  retained; the full core run reports 280 bytes in five allocations. Even a focused CPU run
+  inherits one 56-byte snapshot from common engine initialization.
+- `Compat.CorpusRoundTrip` and `HotReloadServiceTests.*`: texture image buffers (default sky
+  and hot reload) and `Project::createSceneRender`/scene restoration ownership leak; the full
+  editor run reports 273,768,644 bytes in 24,640 allocations.
+- `ToolchainFingerprint.CompareNamesEachDifferingField`: the Debug sanitizer fixture already
+  has `ndebug=0`, so assigning zero does not create the third expected mismatch (two vs three).
+  The test fixture remains unchanged on this branch.
+- `NumericExpression.EvaluationWithinBudget` (ASan) and
+  `LoadReportOverheadBench.DecodeWithReport` (normal): wall-clock limits exceeded on shared D.
+  Timing acceptance is authoritative only on E; these unrelated D results are informational.
+
+The initial full normal run's two `CrashHook.*` failures were a real report-hook mutex
+reentrancy deadlock; this branch fixes it, and both refreshed normal and sanitizer focused
+runs pass them. Fatal helper processes deliberately print sanitizer signal diagnostics after
+our report; those are expected evidence that the saved sanitizer handler is still chained.

@@ -7,8 +7,7 @@
 
 namespace jasperengine::editor {
 
-    // Appends the uncaught exception or signal that kills the editor, plus a backtrace, to
-    // the log file. Without it the window just disappears and the user has nothing to send.
+    // Compatibility forwarder to the engine-owned diagnostics handler.
     class CrashHandler {
     public:
         static void install(const std::filesystem::path& logFile);

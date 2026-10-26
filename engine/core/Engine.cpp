@@ -1247,7 +1247,7 @@ namespace {
 
     // A game's crash reports (<user data>/crash) and, in a development build, its main-thread
     // hang watchdog (docs/crash-diagnostics.md)
-    void startGameDiagnostics(System* system){
+    [[maybe_unused]] void startGameDiagnostics(System* system){
     #if JASPERENGINE_CRASH_HANDLER
         diag::crash::Config config;
         #ifdef JASPERENGINE_WINDOW_TITLE

@@ -178,3 +178,34 @@ async def test_notice_after_abnormal_exit():
         ed.check(not reports["notice_open"], f"no notice after the clean exit and the dismissed report: {reports}")
         unhandled = [r for r in reports["reports"] if not r["handled"]]
         ed.check(not unhandled, f"no unhandled report: {unhandled}")
+
+
+async def test_notice_after_crash():
+    with tempfile.TemporaryDirectory(prefix="jasper-segv-root-") as root_text:
+        root = Path(root_text)
+        env = {"JASPERENGINE_CRASH_REPORT_DIR": str(root)}
+        first = Editor(create=True, name="Native Crash CI", env=env, extra_args=["--allow-debug-crash"])
+        await first.__aenter__()
+        try:
+            session = (await first.call("get_crash_reports"))["session"]
+            await first.call("debug_crash", mode="segv")
+            report = root / "reports" / session / "crash.txt"
+            for _ in range(100):
+                if report.exists() and "backtrace:" in report.read_text():
+                    break
+                await asyncio.sleep(0.1)
+            first.check(report.is_file(), "SIGSEGV wrote the native crash report")
+            first.check("reason: SIGSEGV" in report.read_text(), "the report records the original signal")
+        finally:
+            await first.close()
+        async with Editor(create=True, name="Native Crash Restart CI", env=env) as ed:
+            reports = await ed.call("get_crash_reports", include_text=True)
+            ed.check(reports["notice_open"], "a native crash opens the startup notice")
+            crashed = [r for r in reports["reports"] if r["id"] == session]
+            ed.check(crashed and crashed[0]["kind"] == "crash", f"native report listed: {reports}")
+            ed.check(not crashed[0]["handled"], "report starts unhandled")
+            await ed.call("dismiss_crash_notice", id=session)
+            ed.check((report.parent / "handled").is_file(), "dismissal saved")
+        async with Editor(create=True, name="Native Crash Dismissed CI", env=env) as ed:
+            reports = await ed.call("get_crash_reports")
+            ed.check(not reports["notice_open"], "dismissed crash stays dismissed after restart")

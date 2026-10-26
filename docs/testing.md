@@ -108,6 +108,22 @@ tools/android-emulator-test.sh build/android/app-debug.apk --seconds 30 --forbid
 - `EMULATOR_BOOT_TIMEOUT`, `EMULATOR_MEMORY`, `EMULATOR_CORES` and `JASPER_DOCKER_IMAGE` (a
   prebuilt emulator image) tune it.
 
+### Native crash diagnostics
+
+`jasperengine-crash-test` is built with core tests. `ctest --test-dir build/linux/core-tests
+-R 'native-crash|posix-crash' --output-on-failure` runs each deliberate fatal mode in a child,
+checks registers, frames, log tail, signal chaining and overflow reporting, and checks the POSIX
+object for allocation/stdio/mutex imports. It also verifies a main-thread hang frame. These
+checks work in the ASan/UBSan tree too (`core-tests-address-undefined`). Windows/macOS desktop
+CTest builds register the same child-process checks; Windows additionally requires a minidump.
+
+For Android (server A or C), build `ANDROID_PROJECT=crash-diagnostics tools/build.sh android`,
+then `tools/android-emulator-test.sh build/android-crash-diagnostics/app-debug.apk
+--expect-native-crash --expect 'JASPERENGINE CRASH:'`. This fixture segfaults at frame 10.
+The opt-in flag requires the engine report **and** a matching debuggerd tombstone, saves both
+under the emulator result directory, and accepts that deliberate crash. Ordinary emulator tests
+continue to fail on any native crash.
+
 ## Where a test goes
 
 | Code under test | Test file | Target |

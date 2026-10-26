@@ -261,6 +261,18 @@ namespace je_crash_common {
         std::string id;
         dl_iterate_phdr([](struct dl_phdr_info* info, size_t, void* data) -> int {
             std::string& out = *static_cast<std::string*>(data);
+#if defined(__ANDROID__)
+            // NativeActivity lives in the app's .so; app_process is only the OS launcher.
+            // Its build ID cannot locate this game's symbols, so find the module owning us.
+            const uintptr_t owner = reinterpret_cast<uintptr_t>(&buildIdOfMainModule);
+            bool ownsCode = false;
+            for (ElfW(Half) i = 0; i < info->dlpi_phnum; i++) {
+                const auto& phdr = info->dlpi_phdr[i];
+                const uintptr_t begin = info->dlpi_addr + phdr.p_vaddr;
+                if (phdr.p_type == PT_LOAD && owner >= begin && owner - begin < phdr.p_memsz) ownsCode = true;
+            }
+            if (!ownsCode) return 0;
+#endif
             for (ElfW(Half) i = 0; i < info->dlpi_phnum; i++) {
                 const ElfW(Phdr)& header = info->dlpi_phdr[i];
                 if (header.p_type != PT_NOTE) continue;
@@ -467,6 +479,8 @@ namespace je_crash_common {
             hook = c.hook;
         }
         if (!hook) return;
+        // The public report APIs lock Common too, and a hook can itself call those APIs.
+        // Keep the lock only around the once-per-session delivery bookkeeping.
         for (const ReportInfo& report : crash::pendingReports()) {
             {
                 std::lock_guard<std::mutex> lock(c.mutex);

@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+        5E5280000000000000000010 /* HangStackCapture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000012 /* HangStackCapture.cpp */; };
+        5E5280000000000000000011 /* HangStackCapture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000012 /* HangStackCapture.cpp */; };
 		5E5150000000000000000014 /* EngineProfiling.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000001 /* EngineProfiling.cpp */; };
 		5E5150000000000000000015 /* EngineProfiling.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000001 /* EngineProfiling.cpp */; };
 		5E5150000000000000000016 /* FrameTimes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000003 /* FrameTimes.cpp */; };
@@ -14,10 +16,10 @@
 		5E5150000000000000000018 /* GpuMemory.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000005 /* GpuMemory.cpp */; };
 		5E5150000000000000000019 /* GpuMemory.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000005 /* GpuMemory.cpp */; };
 		5E5280000000000000000007 /* CrashHandler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000001 /* CrashHandler.cpp */; };
-		5E5280000000000000000008 /* CrashHandlerUnarmed.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000002 /* CrashHandlerUnarmed.cpp */; };
+		5E5280000000000000000008 /* CrashHandlerPosix.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000002 /* CrashHandlerPosix.cpp */; };
 		5E5280000000000000000009 /* HangWatchdog.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000003 /* HangWatchdog.cpp */; };
 		5E528000000000000000000A /* CrashHandler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000001 /* CrashHandler.cpp */; };
-		5E528000000000000000000B /* CrashHandlerUnarmed.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000002 /* CrashHandlerUnarmed.cpp */; };
+		5E528000000000000000000B /* CrashHandlerPosix.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000002 /* CrashHandlerPosix.cpp */; };
 		5E528000000000000000000C /* HangWatchdog.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000003 /* HangWatchdog.cpp */; };
 		5E515000000000000000001A /* Profiler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000007 /* Profiler.cpp */; };
 		5E515000000000000000001B /* Profiler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000007 /* Profiler.cpp */; };
@@ -3729,6 +3731,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+        5E5280000000000000000012 /* HangStackCapture.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = HangStackCapture.cpp; sourceTree = "<group>"; };
 		5E5150000000000000000001 /* EngineProfiling.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = EngineProfiling.cpp; sourceTree = "<group>"; };
 		5E5150000000000000000002 /* EngineProfiling.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = EngineProfiling.h; sourceTree = "<group>"; };
 		5E5150000000000000000003 /* FrameTimes.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = FrameTimes.cpp; sourceTree = "<group>"; };
@@ -3736,7 +3739,7 @@
 		5E5150000000000000000005 /* GpuMemory.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = GpuMemory.cpp; sourceTree = "<group>"; };
 		5E5150000000000000000006 /* GpuMemory.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GpuMemory.h; sourceTree = "<group>"; };
 		5E5280000000000000000001 /* CrashHandler.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = CrashHandler.cpp; sourceTree = "<group>"; };
-		5E5280000000000000000002 /* CrashHandlerUnarmed.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = CrashHandlerUnarmed.cpp; sourceTree = "<group>"; };
+		5E5280000000000000000002 /* CrashHandlerPosix.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = CrashHandlerPosix.cpp; sourceTree = "<group>"; };
 		5E5280000000000000000003 /* HangWatchdog.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = HangWatchdog.cpp; sourceTree = "<group>"; };
 		5E5280000000000000000004 /* CrashHandler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CrashHandler.h; sourceTree = "<group>"; };
 		5E5280000000000000000005 /* HangWatchdog.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = HangWatchdog.h; sourceTree = "<group>"; };
@@ -7147,8 +7150,9 @@
 			children = (
 				5E5280000000000000000001 /* CrashHandler.cpp */,
 				5E5280000000000000000004 /* CrashHandler.h */,
-				5E5280000000000000000002 /* CrashHandlerUnarmed.cpp */,
+				5E5280000000000000000002 /* CrashHandlerPosix.cpp */,
 				5E5280000000000000000003 /* HangWatchdog.cpp */,
+				5E5280000000000000000012 /* HangStackCapture.cpp */,
 				5E5280000000000000000005 /* HangWatchdog.h */,
 				5E528000000000000000000D /* detail */,
 			);
@@ -13953,8 +13957,9 @@
 				5E5150000000000000000018 /* GpuMemory.cpp in Sources */,
 				5E515000000000000000001A /* Profiler.cpp in Sources */,
 				5E5280000000000000000007 /* CrashHandler.cpp in Sources */,
-				5E5280000000000000000008 /* CrashHandlerUnarmed.cpp in Sources */,
+				5E5280000000000000000008 /* CrashHandlerPosix.cpp in Sources */,
 				5E5280000000000000000009 /* HangWatchdog.cpp in Sources */,
+				5E5280000000000000000010 /* HangStackCapture.cpp in Sources */,
 				5E515000000000000000001C /* SokolPassPreview.cpp in Sources */,
 				5E515000000000000000001E /* SokolPassRecorder.cpp in Sources */,
 				5E5150000000000000000020 /* SokolTraceHub.cpp in Sources */,
@@ -14283,8 +14288,9 @@
 				5E5150000000000000000019 /* GpuMemory.cpp in Sources */,
 				5E515000000000000000001B /* Profiler.cpp in Sources */,
 				5E528000000000000000000A /* CrashHandler.cpp in Sources */,
-				5E528000000000000000000B /* CrashHandlerUnarmed.cpp in Sources */,
+				5E528000000000000000000B /* CrashHandlerPosix.cpp in Sources */,
 				5E528000000000000000000C /* HangWatchdog.cpp in Sources */,
+				5E5280000000000000000011 /* HangStackCapture.cpp in Sources */,
 				5E515000000000000000001D /* SokolPassPreview.cpp in Sources */,
 				5E515000000000000000001F /* SokolPassRecorder.cpp in Sources */,
 				5E5150000000000000000021 /* SokolTraceHub.cpp in Sources */,

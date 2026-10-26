@@ -927,7 +927,9 @@ set(JASPERENGINE_SRCS
     core/Input.cpp
     core/Log.cpp
     core/diag/CrashHandler.cpp
-    core/diag/CrashHandlerUnarmed.cpp
+    core/diag/CrashHandlerPosix.cpp
+    core/diag/CrashHandlerWin.cpp
+    core/diag/HangStackCapture.cpp
     core/diag/CrashHandlerWeb.cpp
     core/diag/HangWatchdog.cpp
     core/log/Logger.cpp

@@ -11,6 +11,7 @@
 #   --forbid TEXT       fail if a line contains TEXT (repeatable; default: none)
 #   --timeout SECONDS   how long to wait for the expected lines after the launch (default 120)
 #   --seconds SECONDS   with no --expect: how long the app runs before the checks (default 20)
+#   --expect-native-crash require our report and the OS tombstone; a deliberate crash passes
 #   --out DIR           results (default build/android-emulator): logcat.txt (-v tag, the run),
 #                       logcat-full.txt (-v threadtime, everything), screen.png, emulator.log,
 #                       result.txt
@@ -50,6 +51,7 @@ APK="$1"; shift
 EXPECTS=()
 FORBIDS=()
 ORDERED=0
+EXPECT_NATIVE_CRASH=0
 TIMEOUT=120
 SECONDS_TO_RUN=20
 OUT="build/android-emulator"
@@ -63,6 +65,7 @@ while [[ $# -gt 0 ]]; do
             done < "$2"
             shift 2 ;;
         --ordered) ORDERED=1; shift ;;
+        --expect-native-crash) EXPECT_NATIVE_CRASH=1; shift ;;
         --forbid) FORBIDS+=("$2"); shift 2 ;;
         --timeout) TIMEOUT="$2"; shift 2 ;;
         --seconds) SECONDS_TO_RUN="$2"; shift 2 ;;
@@ -106,6 +109,7 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
     -v "$ROOT:/src" -w /src \
     -e HOME=/src/build/.cache/home \
     -e APK="$APK_IN" -e OUT="/src/$OUT" -e ORDERED="$ORDERED" -e TIMEOUT="$TIMEOUT" -e SECONDS_TO_RUN="$SECONDS_TO_RUN" \
+    -e EXPECT_NATIVE_CRASH="$EXPECT_NATIVE_CRASH" \
     -e BOOT_TIMEOUT="${EMULATOR_BOOT_TIMEOUT:-600}" -e MEMORY="${EMULATOR_MEMORY:-3072}" -e CORES="${EMULATOR_CORES:-4}" \
     --tmpfs "/avd:rw,exec,size=${EMULATOR_TMPFS_GB:-10}g,mode=1777" \
     "$IMAGE_ID" bash -euo pipefail -c '
@@ -140,6 +144,10 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
             sleep 3
         done
         log "booted in $((SECONDS - start))s"
+        if [[ "$EXPECT_NATIVE_CRASH" == 1 ]]; then
+            adb root >/dev/null 2>&1 || true
+            adb wait-for-device
+        fi
         # no screen lock, no animations: the app is in front at once
         adb shell input keyevent 82 >/dev/null 2>&1 || true
         adb shell settings put global window_animation_scale 0 >/dev/null 2>&1 || true
@@ -187,16 +195,46 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
             sleep 2
         done
         result=0
-        check > "$OUT/result.txt" || result=1
+        : > "$OUT/result.txt"
+        if [[ "$EXPECT_NATIVE_CRASH" == 1 ]]; then
+            # debuggerd writes after the first fatal log line; wait for the report and
+            # tombstone rather than ending the test when the signal is first observed.
+            for attempt in $(seq 1 30); do
+                adb logcat -d -v tag > "$OUT/logcat.txt"
+                adb logcat -d -v threadtime > "$OUT/logcat-full.txt"
+                adb shell run-as "$PACKAGE" find files -name crash.txt > "$OUT/crash-paths.txt" 2>/dev/null || true
+                adb shell ls /data/tombstones > "$OUT/tombstones.txt" 2>/dev/null || true
+                if grep -q "JASPERENGINE CRASH:" "$OUT/logcat.txt" && grep -q "crash.txt" "$OUT/crash-paths.txt" &&
+                   grep -q tombstone_ "$OUT/tombstones.txt"; then break; fi
+                sleep 1
+            done
+            REPORT_PATH="$(head -1 "$OUT/crash-paths.txt" | tr -d "\r")"
+            if [[ -n "$REPORT_PATH" ]]; then
+                adb exec-out run-as "$PACKAGE" cat "$REPORT_PATH" > "$OUT/crash-report.txt" 2>/dev/null || true
+            fi
+            # An aosp_atd image runs adbd as root. Preserve the OS artifact too, so the
+            # package and faulting thread can be checked against our saved report.
+            adb pull /data/tombstones "$OUT/tombstones" >/dev/null 2>&1 || true
+            if grep -q "JASPERENGINE CRASH:" "$OUT/logcat.txt" && grep -q "signal:" "$OUT/crash-report.txt" &&
+               grep -q "^#0 libjasperengine-android.so+0x" "$OUT/crash-report.txt" &&
+               grep -R -q "$PACKAGE" "$OUT/tombstones"; then
+                echo "found        engine report and debuggerd tombstone" >> "$OUT/result.txt"
+            else
+                echo "MISSING      engine report, game-module frame or matching debuggerd tombstone" >> "$OUT/result.txt"
+                result=1
+            fi
+        elif [[ -n "$crashes" ]]; then
+            echo "$crashes" | sed "s/^/CRASH        /" >> "$OUT/result.txt"
+            result=1
+        fi
+        # A native fault can be observed before our logcat lines have been collected.
+        # Check the final snapshot after the report/tombstone wait, not the early one.
+        check >> "$OUT/result.txt" || result=1
         while IFS= read -r forbidden; do
             [[ -z "$forbidden" ]] && continue
             hit="$(grep -F -- "$forbidden" "$OUT/logcat.txt" | head -1 || true)"
             if [[ -n "$hit" ]]; then echo "FORBIDDEN    $hit" >> "$OUT/result.txt"; result=1; fi
         done < "$OUT/forbid.txt"
-        if [[ -n "$crashes" ]]; then
-            echo "$crashes" | sed "s/^/CRASH        /" >> "$OUT/result.txt"
-            result=1
-        fi
         if (( result )); then echo FAIL >> "$OUT/result.txt"; else echo PASS >> "$OUT/result.txt"; fi
         sed "s/^/android-emulator-test: /" "$OUT/result.txt"
         adb exec-out screencap -p > "$OUT/screen.png" 2>/dev/null || true

@@ -433,6 +433,7 @@ void diag::watchdog::start(const WatchdogConfig& input) {
     s.polledBeats.store(s.seenBeats, std::memory_order_relaxed);
     s.stallIndex = 0;
     s.notices.clear();
+    watchdog::detail::initializeMainThreadCapture();
     s.watched = std::this_thread::get_id();
     s.running.store(true, std::memory_order_release);
     if (config.pollMs > 0) {
@@ -543,11 +544,6 @@ void diag::watchdog::poll() {
     Shared& s = shared();
     std::unique_lock<std::mutex> lock(s.mutex);
     if (s.running.load(std::memory_order_relaxed)) tick(s, lock);
-}
-
-size_t diag::watchdog::detail::captureMainThreadStack(char*, size_t, const char** why) {
-    if (why) *why = "unavailable on this platform (the capture backend is not part of this build)";
-    return 0;
 }
 
 diag::BusyScope::BusyScope(std::string_view label, uint32_t budgetMs) {

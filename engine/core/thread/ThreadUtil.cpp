@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ThreadUtil.h"
+#include "diag/CrashHandler.h"
 #include "profiler/Profile.h"
 
 #include <algorithm>
@@ -203,6 +204,7 @@ std::thread spawnNamed(const char* name, std::function<void()> fn, Priority prio
     return std::thread([threadName = std::move(threadName), fn = std::move(fn), priority](){
         setCurrentName(threadName.c_str());
         setCurrentPriority(priority);
+        diag::crash::prepareThread();
         fn();
     });
 }
