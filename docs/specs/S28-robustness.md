@@ -573,3 +573,10 @@ before the first report is complete; it should wait, bounded, for `reportDone` w
 thread is reporting. Minor: POSIX frames carry no `[symbol]` and list the handler's own frames
 after `#0`; the Windows report has no thread name. `symbolicate.py` now places frames of
 libraries loaded after install (`module?+0x<address>`) through the report's maps copy.
+
+After merging oe-port again (S11, 4d5ae3093): server B `WERROR=1 tools/build.sh unit-tests` 1,121 core
+and 398 editor tests, 0 failed; server D `WERROR=1 tools/build.sh linux`, MCP 43/43
+(`test_crash.py` 6/6, `test_protocol.py` 12/12, budget, conventions, coverage, docs, tool groups),
+`tools/build.sh web` + `web-gate` PASS, the crash-diagnostics web gate PASS, `tools/build.sh android`
+passes, smoke PASS. `tools/crash/test_symbolicate.py` passes on B against a fresh
+`jasperengine-crash-test`.
