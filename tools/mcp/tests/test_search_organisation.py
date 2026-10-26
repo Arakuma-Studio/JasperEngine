@@ -46,7 +46,7 @@ async def test_help_lists_tools(ed: Editor):
     for text in ("| Hand Tool | Q |", "| Rect Tool | T |", "| Toggle Global/Local | X |"):
         ed.check_in(text, reference, "docs/editor/keyboard-shortcuts.md")
     ed.check(not any("| T |" in line and "Global" in line for line in reference.splitlines()), "no T + Global/Local line")
-    names = {tool["name"] for tool in await ed.tools("editor_ux")}
+    names = {tool.name for tool in await ed.tools("editor_ux")}
     for tool in ("search_editor", "run_command", "list_shortcuts", "set_shortcut", "edit_layout_presets",
                  "edit_asset_labels", "edit_saved_searches", "edit_bookmarks"):
         ed.check_in(tool, names, "the editor_ux group")
@@ -174,7 +174,7 @@ async def test_layout_presets(ed: Editor):
     await ed.console_since(None, limit=1)
     wide_file.write_text("layoutVersion: 1\nname: Wide\nini: [not, a, string\n")
     fallback = await ed.call("edit_layout_presets", action="apply", name="Wide")
-    ed.check_eq(fallback["active"], "", "the Default layout is used")
+    ed.check_eq(fallback["active"], "Default", "the Default layout is used")
     warnings = [e["message"] for e in await ed.console_since() if "Layout 'Wide'" in e["message"]]
     ed.check(warnings and "Default layout is used" in warnings[0], f"the warning: {warnings}")
     await ed.call("edit_layout_presets", action="reset")
