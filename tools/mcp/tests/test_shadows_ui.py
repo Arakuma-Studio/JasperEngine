@@ -52,14 +52,22 @@ class Ui:
         await self.ed.call("wait", frames=2)
 
     async def at(self, label: str, index: int = 0, window: str = "Inspector") -> tuple[int, int]:
-        """the centre of the widget drawn with this label (window coordinates), as drawn now"""
-        for _ in range(20):
-            items = [item for item in (await self.ed.call("find_ui_item", label=label, window=window))["items"]
-                     if item["visible"]]
+        """the centre of the widget drawn with this label (window coordinates), as drawn now; a
+        widget drawn below its window's visible area is scrolled into view with the wheel"""
+        for _ in range(30):
+            drawn = (await self.ed.call("find_ui_item", label=label, window=window))["items"]
+            items = [item for item in drawn if item["visible"]]
             if len(items) > index:
                 rect = items[index]["rect"]
                 return (int(rect["x"] + rect["width"] / 2), int(rect["y"] + rect["height"] / 2))
-            await self.ed.call("wait", frames=5)
+            if drawn:
+                area = drawn[0]["window_rect"]
+                self.xdo("mousemove", str(int(self.origin[0] + area["x"] + area["width"] / 2)),
+                         str(int(self.origin[1] + area["y"] + area["height"] / 2)))
+                self.xdo("click", "5")
+                await self.settle(0.2)
+            else:
+                await self.ed.call("wait", frames=5)
         raise harness.TestFailure(f"find_ui_item: no visible {label!r} in {window!r}")
 
     async def move(self, point: tuple[int, int]):
@@ -201,11 +209,11 @@ async def test_inspector_shadow_rows_undo(ed: Editor):
     await edit_and_undo(ed, sid, "cascade_count", read("numShadowCascades"),
                         lambda: pick(ed, ui, CASCADE_COUNT, "2", "cascade_count"), differs)
 
-    # the split bar's handle between the first two cascades, dragged right: one step
+    # the cascade split bar (manual splits, 4 cascades)
     await ed.call("set_properties", scene=sid, entity=sun, values={"light": {"cascadeSplitMode": "manual", "numShadowCascades": 4}})
     await ed.call("wait", frames=4)
     await editor_shot(ed, "split_bar")
-    # the first handle, between the first two cascades
+    # a handle of the bar (the first find_ui_item reports visible), dragged right: one step
     handle = await ui.at(SPLIT_HANDLE)
     y = handle[1]
 
