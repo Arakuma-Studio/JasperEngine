@@ -584,3 +584,12 @@ and 398 editor tests, 0 failed; server D `WERROR=1 tools/build.sh linux`, MCP 43
 `tools/build.sh web` + `web-gate` PASS, the crash-diagnostics web gate PASS, `tools/build.sh android`
 passes, smoke PASS. `tools/crash/test_symbolicate.py` passes on B against a fresh
 `jasperengine-crash-test`.
+
+
+### Native review follow-up validation
+
+- Server D red control rebuilt the test-only checkpoint `84c6c0281` (the original handlers
+  plus the internal fault-injection seam), then ran the current subprocess driver with
+  `--mode concurrent`. It failed because no `crash.txt` existed: exit `-11`, stderr
+  `JASPERENGINE CRASH: another fatal signal while reporting`. The separate `--mode recursive`
+  control terminated immediately. The gate restored the fixed sources before its next build.
