@@ -8,6 +8,7 @@
 #include "Stream.h"
 #include "System.h"
 
+#include <cstdlib>
 #include <fstream>
 #include <iterator>
 #include <mutex>
@@ -22,15 +23,14 @@ void editor::test::ensureEngine() {
     // System would leave that capture reading the wrong object
 }
 
-void editor::test::releaseCameraFramebuffers(Scene* scene) {
-    if (!scene)
-        return;
-    ComponentArray<CameraComponent>* cameras = scene->getComponentArray<CameraComponent>();
-    for (size_t i = 0; i < cameras->size(); i++) {
-        CameraComponent& camera = cameras->getComponentFromIndex(i);
-        delete camera.framebuffer;
-        camera.framebuffer = nullptr;
-    }
+double editor::test::perfSlack() {
+#if defined(JASPERENGINE_SANITIZE_ADDRESS) || defined(JASPERENGINE_SANITIZE_THREAD) || defined(JASPERENGINE_SANITIZE_UNDEFINED)
+    return 0.0;
+#else
+    const char* value = std::getenv("JASPER_TEST_PERF_SLACK");
+    const double slack = value ? std::atof(value) : 0.0;
+    return slack > 0.0 ? slack : 0.0;
+#endif
 }
 
 fs::path editor::test::fixture(const std::string& relative) {
@@ -44,7 +44,6 @@ std::string editor::test::readText(const fs::path& path) {
 
 editor::test::DecodedScene::~DecodedScene() {
     if (scene) {
-        releaseCameraFramebuffers(scene->scene);
         delete scene->scene;
         scene->scene = nullptr;
     }

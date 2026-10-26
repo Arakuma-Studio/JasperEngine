@@ -37,6 +37,7 @@
 #include "window/SceneWindow.h"
 #include "window/SystemsWindow.h"
 #include "window/UndoHistoryWindow.h"
+#include "util/UiItemLocator.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -1009,6 +1010,31 @@ Json consoleStateJson(ConsoleWindow& console) {
     return json;
 }
 
+// Where an editor control is drawn now, for tests that click it with real input: the items of
+// the next frames drawn with the label (UiItemLocator)
+void locateUiItemTool(const CallPtr& call) {
+    const Json& args = call->args();
+    const std::string label = args.value("label", std::string());
+    if (label.empty()) {
+        call->fail("label: the item's label (its text, or the whole label with its ## id).");
+        return;
+    }
+    UiItemLocator::start(label, args.value("window", std::string()));
+    call->afterFrames(2, [call, label]() {
+        Json items = Json::array();
+        for (const UiItemLocator::Item& item : UiItemLocator::stop()) {
+            items.push_back({{"label", item.label}, {"window", item.window}, {"visible", item.visible},
+                             {"rect", {{"x", std::round(item.x)}, {"y", std::round(item.y)},
+                                       {"width", std::round(item.width)}, {"height", std::round(item.height)}}},
+                             {"window_rect", {{"x", std::round(item.windowX)}, {"y", std::round(item.windowY)},
+                                              {"width", std::round(item.windowWidth)}, {"height", std::round(item.windowHeight)}}}});
+        }
+        const std::string text = items.empty() ? "No item \"" + label + "\" is drawn (scrolled away, closed or another label)."
+                                               : std::to_string(items.size()) + " item(s) \"" + label + "\".";
+        call->ok(text, Json{{"items", items}});
+    });
+}
+
 void focusWindowTool(const CallPtr& call) {
     const Json& args = call->args();
     McpContext& ctx = call->ctx();
@@ -1328,6 +1354,24 @@ void registerViewTools(McpRegistry& registry) {
         }, {"window"});
         tool.annotations.idempotent = true;
         tool.handler = focusWindowTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "find_ui_item";
+        tool.group = "editor_ux";  // S31 tool groups: listed once enabled, callable always
+        tool.title = "Find UI Item";
+        tool.description =
+            "Where editor controls with this label are drawn now (window coords, as focus_window's rect), to click "
+            "them with send_input or real input. Only drawn items: scroll or open their panel first.";
+        tool.inputSchema = object({
+            {"label", string("Text, or the whole label with its ## id.")},
+            {"window", string("Only in windows whose name contains this.")}
+        }, {"label"});
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = locateUiItemTool;
         registry.addTool(std::move(tool));
     }
 
