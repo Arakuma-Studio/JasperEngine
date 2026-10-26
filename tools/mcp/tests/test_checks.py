@@ -298,6 +298,8 @@ async def test_cli_hook_mode():
 # ---------------------------------------------------------------------------- CLI: animation clips
 
 CLIP_GUID = "0123456789abcdef0123456789abcdef"
+# a finding's fields (--format json)
+FINDING_KEYS = {"tool", "path", "line", "col", "severity", "message"}
 GOOD_CLIP = json.dumps({"format": "jasperengine.anim", "version": 1, "guid": CLIP_GUID, "wrap": "loop",
                         "tracks": [{"path": "", "channel": "position", "keys": [[0, [0, 0, 0]], [1, [0, 1, 0]]]}]}, indent=2) + "\n"
 # a JSON syntax error on line 5 (a closing brace where a value belongs)
@@ -305,23 +307,23 @@ BROKEN_CLIP = '{\n  "format": "jasperengine.anim",\n  "version": 1,\n  "tracks":
 WARN_CLIP = json.dumps({"format": "jasperengine.anim", "version": 1, "wrap": "sideways", "tracks": []}, indent=2) + "\n"
 UNITY_CLIP = "%YAML 1.1\n%TAG !u! tag:unity3d.com,2011:\n--- !u!74 &7400000\nAnimationClip:\n  m_Name: Walk\n"
 # what a saved scene holds for Animation Players (Stream::encodeAnimationPlayerComponent), paths
-# relative to the assets folder (the project root in the default fixture)
+# relative to the assets folder (assets/ in the scratch project; findings name files project-relative)
 CLIP_SCENE = """name: Clips
 entities:
   - name: Mover
     components:
       animationplayer:
         clips:
-          - clip: assets/anim/good.anim
+          - clip: anim/good.anim
             guid: 0123456789abcdef0123456789abcdef
-          - clip: assets/anim/missing.anim
-          - clip: assets/old/good.anim
+          - clip: anim/missing.anim
+          - clip: old/good.anim
             guid: 0123456789abcdef0123456789abcdef
-          - clip: assets/models/none.gltf#Walk
-          - clip: assets/models/hero_animated.gltf#Walk
-          - clip: assets/models/hero_animated.gltf#Wave 2
-          - clip: assets/models/hero_animated.gltf#2
-          - clip: assets/models/hero_animated.gltf#Run
+          - clip: models/none.gltf#Walk
+          - clip: models/hero_animated.gltf#Walk
+          - clip: models/hero_animated.gltf#Wave 2
+          - clip: models/hero_animated.gltf#2
+          - clip: models/hero_animated.gltf#Run
   - name: Instance
     components:
       transform:
@@ -334,8 +336,8 @@ entities:
           components:
             animationplayer:
               clips:
-                - clip: assets/anim/override_missing.anim
-                - clip: assets/models/hero_animated.gltf#Jump
+                - clip: anim/override_missing.anim
+                - clip: models/hero_animated.gltf#Jump
 """
 HERO_ANIMATED = harness.REPO / "tools" / "fixtures" / "pose-animation" / "assets" / "models" / "hero_animated.gltf"
 
@@ -379,10 +381,10 @@ async def test_cli_anims():
         scene = sorted((f["severity"], f["message"]) for f in found.get("Clips.scene", []))
         check_eq(len(scene), 6, f"the scene's references: missing clip, moved clip, missing model, two unknown model "
                                 f"animations, the override's missing clip: {scene}")
-        check(any(s == "error" and "assets/anim/missing.anim" in m and "does not exist" in m for s, m in scene), f"missing clip: {scene}")
-        check(any(s == "warning" and "assets/old/good.anim" in m and "moved to 'assets/anim/good.anim'" in m for s, m in scene),
+        check(any(s == "error" and "'anim/missing.anim'" in m and "does not exist" in m for s, m in scene), f"missing clip: {scene}")
+        check(any(s == "warning" and "'old/good.anim'" in m and "moved to 'assets/anim/good.anim'" in m for s, m in scene),
               f"a moved clip found by its GUID: {scene}")
-        check(any(s == "error" and "assets/models/none.gltf" in m for s, m in scene), f"a model clip without its model: {scene}")
+        check(any(s == "error" and "'models/none.gltf'" in m for s, m in scene), f"a model clip without its model: {scene}")
         # model#name: the names the Inspector shows (duplicates numbered, an index), read from the model file
         run = [m for s, m in scene if "#Run" in m]
         check(len(run) == 1 and "has no animation 'Run'" in run[0] and "'Walk', 'Idle', 'Animation 2', 'Wave', 'Wave 2'" in run[0],
@@ -421,19 +423,19 @@ entities:
     components:
       animationplayer:
         clips:
-          - clip: assets/anim/other.anim
+          - clip: anim/other.anim
             guid: 0123456789abcdef0123456789abcdef
-          - clip: assets/anim/good.anim
+          - clip: anim/good.anim
             guid: 0123456789abcdef0123456789abcdef
 """
 
 
 # one path twice: first with its own GUID, then with other.anim's (the editor plays other.anim there)
 TWICE_SCENE = GUID_SCENE.replace("name: Guids", "name: Twice").replace(
-    "          - clip: assets/anim/other.anim\n            guid: 0123456789abcdef0123456789abcdef\n"
-    "          - clip: assets/anim/good.anim\n            guid: 0123456789abcdef0123456789abcdef\n",
-    "          - clip: assets/anim/good.anim\n            guid: 0123456789abcdef0123456789abcdef\n"
-    "          - clip: assets/anim/good.anim\n            guid: " + OTHER_GUID + "\n")
+    "          - clip: anim/other.anim\n            guid: 0123456789abcdef0123456789abcdef\n"
+    "          - clip: anim/good.anim\n            guid: 0123456789abcdef0123456789abcdef\n",
+    "          - clip: anim/good.anim\n            guid: 0123456789abcdef0123456789abcdef\n"
+    "          - clip: anim/good.anim\n            guid: " + OTHER_GUID + "\n")
 
 
 async def test_cli_anims_guid_mismatch_and_unreadable_yaml():
@@ -450,10 +452,10 @@ async def test_cli_anims_guid_mismatch_and_unreadable_yaml():
             found.setdefault(f["path"], []).append((f["severity"], f["message"]))
         scene = found.get("Guids.scene", [])
         check_eq(len(scene), 1, f"one finding: the entry whose GUID names another clip (the matching one is fine): {scene}")
-        check(scene and scene[0][0] == "warning" and "'assets/anim/other.anim' has the GUID of 'assets/anim/good.anim'" in scene[0][1],
+        check(scene and scene[0][0] == "warning" and "'anim/other.anim' has the GUID of 'assets/anim/good.anim'" in scene[0][1],
               f"GUID/path mismatch: {scene}")
         twice = found.get("Twice.scene", [])
-        check(len(twice) == 1 and "'assets/anim/good.anim' has the GUID of 'assets/anim/other.anim'" in twice[0][1],
+        check(len(twice) == 1 and "'anim/good.anim' has the GUID of 'assets/anim/other.anim'" in twice[0][1],
               f"the second entry of the same path with another clip's GUID is checked too: {twice}")
         prefab = found.get("Broken.prefab", [])
         check(len(prefab) == 1 and prefab[0][0] == "warning" and "could not read Animation Player entries" in prefab[0][1],
