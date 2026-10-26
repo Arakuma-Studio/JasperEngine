@@ -706,3 +706,10 @@ with other streams:
 17. **Other streams' goldens.** S10's and S12's render goldens (GPU unit tests, `test_shadows.py`,
     `test_atmosphere.py`) were drawn before Lit Quality; their scenes now set Standard (the same
     shader), since a new scene is High.
+18. **AC12 frame stall: deferred to S32.** S11's side is done: a lobe variant compiles on a job
+    (S06), the plain variant draws meanwhile, and the stand-in reloads once the new one is built
+    (a bug left it in place until the next texture change; fixed). What remains is engine-wide:
+    the GL link of a new program on the GL thread (1.2-1.3 s on llvmpipe, the same for variants
+    without S11) and the driver's compile at its first draw; S32 "asynchronous shader/pipeline
+    creation" (KHR_parallel_shader_compile on GL/WebGL2, off-thread Vulkan pipelines, async
+    Metal/D3D11, prewarm) takes it. Measurements: `tools/fixtures/pbr-extended/README.md`.

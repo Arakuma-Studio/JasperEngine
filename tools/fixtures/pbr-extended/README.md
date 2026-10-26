@@ -45,7 +45,7 @@ Each lobe-off twin (lobes disabled over MCP) differs from its golden by more tha
 | Check | Result |
 |---|---|
 | 1. ClearCoatTest submesh: Advanced Surface shows Clear Coat with its map | `builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY`, maps used `clearcoat` |
-| 2. Toggle off: *Compiling* then *Ready*, no stall > 50 ms | not met on llvmpipe; see below |
+| 2. Toggle off: *Compiling* then *Ready*, no stall > 50 ms | deferred to S32 (S11 side done: job compile, fallback variant, no stale fallback); see below |
 | 3. Ctrl+Z restores it | clear coat and its map back |
 | 4. Three meshes, Sheen Roughness | 0.8 on all three, one undo step `Set Sheen Roughness (3 Objects)` restores 0 |
 | 5. Four maps | `Extension maps 3 / 3`: clear coat, specular, transmission bound, sheen dropped |
