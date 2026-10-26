@@ -684,7 +684,35 @@ ClipValidationReport ClipValidation::validate(const ClipData& data, EntityRegist
         }
         report.events.push_back(event);
     }
+
+    // An event calls the method of its name on the root's Lua scripts (spec 3.5), Unity's
+    // SendMessage: one named like a method the engine calls itself (init, onDestroy) or an engine
+    // event a script registers (onUpdate...) calls that method again, with the event's args.
+    // Allowed, but said once per name (final review M2; lua-api 4.8.2)
+    std::set<std::string> lifecycleWarned;
+    for (const ClipEventData& clipEvent : data.events){
+        if (!isScriptLifecycleMethod(clipEvent.function) || !lifecycleWarned.insert(clipEvent.function).second) continue;
+        ClipWarning warning;
+        warning.message = "event " + clipEvent.function + " at " + formatSecondsPlain(clipEvent.time) + " s: " + clipEvent.function +
+                          " is a script method the engine calls itself (lifecycle or engine event): the event calls it again, "
+                          "with the event's args; give the event its own function name";
+        report.warnings.push_back(warning);
+    }
     return report;
+}
+
+bool ClipValidation::isScriptLifecycleMethod(const std::string& function){
+    // LuaBinding calls init / onDestroy by name; RegisterEngineEvent's names (lua-api 1.3)
+    static const char* const names[] = {
+        "init", "onDestroy", "onUpdate", "onFixedUpdate", "onPostUpdate", "onDraw", "onViewLoaded", "onCanvasChanged",
+        "onViewDestroyed", "onPause", "onResume", "onShutdown", "onSceneLoaded", "onKeyDown", "onKeyUp", "onCharInput",
+        "onMouseDown", "onMouseUp", "onMouseMove", "onMouseScroll", "onMouseEnter", "onMouseLeave", "onTouchStart",
+        "onTouchMove", "onTouchEnd", "onTouchCancel", "onGamepadConnect", "onGamepadDisconnect", "onGamepadButtonDown",
+        "onGamepadButtonUp", "onGamepadAxisMove"};
+    for (const char* name : names){
+        if (function == name) return true;
+    }
+    return false;
 }
 
 ClipValidationReport ClipValidation::validateInScene(Project* project, SceneProject* scene, const ClipData& data, Entity root){

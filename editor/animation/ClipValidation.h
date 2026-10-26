@@ -11,7 +11,9 @@
 //   EventReport per event, in clip order; `nearest` holds at most ClipValidationOptions::
 //   maxNearest existing paths ordered by edit distance; a ModelComponent in the legacy layout
 //   under the root gives one LegacyModelLayout report instead of N missing paths (R3); a root
-//   with a C++ script skips the missing-handler check (R23).
+//   with a C++ script skips the missing-handler check (R23); an event named like a script lifecycle
+//   method or engine event (init, onDestroy, onUpdate...) adds one warning per name (it calls that
+//   method again).
 
 #pragma once
 
@@ -108,6 +110,9 @@ namespace jasperengine::editor{
         static std::vector<std::string> nearestPaths(EntityRegistry* registry, Entity root, const std::string& path, size_t max = 3);
         // "Arm/Hand : Position" (window rows, tool texts)
         static std::string trackLabel(const ClipTrackData& track);
+        // a method the engine calls on Lua scripts by itself (init, onDestroy) or an engine event
+        // name (onUpdate...): an event of that function calls it again (validate warns)
+        static bool isScriptLifecycleMethod(const std::string& function);
     };
 
 }

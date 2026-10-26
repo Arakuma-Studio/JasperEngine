@@ -495,6 +495,34 @@ TEST_F(ClipConverters_, ValidationEventHandlersAndCppScripts) {
 
     // no root: unchecked
     EXPECT_EQ(ClipValidation::validate(data, nullptr, NULL_ENTITY).events[1].status, EventHandlerStatus::Unchecked);
+    EXPECT_TRUE(ClipValidation::validate(data, nullptr, NULL_ENTITY).warnings.empty());
+
+    // final review M2: an event named like a lifecycle method (or an engine event) calls it again:
+    // warned once per name, with or without a root, and still checked as a handler
+    ClipEventData again = step;
+    again.function = "init";
+    ClipEventData twice = again;
+    twice.time = 0.9f;
+    ClipEventData update = step;
+    update.function = "onUpdate";
+    data.events = {step, again, twice, update};
+    auto lifecycleWarnings = [](const ClipValidationReport& report){
+        std::vector<std::string> out;
+        for (const ClipWarning& warning : report.warnings){
+            if (warning.message.find("calls it again") != std::string::npos) out.push_back(warning.message);
+        }
+        return out;
+    };
+    const std::vector<std::string> warned = lifecycleWarnings(ClipValidation::validate(data, nullptr, NULL_ENTITY));
+    ASSERT_EQ(warned.size(), 2u);
+    EXPECT_EQ(warned[0].rfind("event init at 0.5 s", 0), 0u) << warned[0];
+    EXPECT_EQ(warned[1].rfind("event onUpdate at 0.5 s", 0), 0u) << warned[1];
+    scene->getComponent<ScriptComponent>(hero).scripts.pop_back();
+    ClipValidationReport lifecycle = ClipValidation::validateInScene(project(), project()->getScene(sceneId), data, hero);
+    EXPECT_EQ(lifecycleWarnings(lifecycle).size(), 2u);
+    EXPECT_EQ(lifecycle.events[1].status, EventHandlerStatus::Found) << "Hero:init exists";
+    EXPECT_TRUE(ClipValidation::isScriptLifecycleMethod("onDestroy"));
+    EXPECT_FALSE(ClipValidation::isScriptLifecycleMethod("onStep"));
 }
 
 // The T-pose hero alone loads in the legacy layout; a player added by a path that does not
