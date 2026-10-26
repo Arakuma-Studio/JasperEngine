@@ -560,8 +560,8 @@ one line pointing here.
   `HtmlUIContext` of the texture's size), not through a scene's `UIDocumentComponent`.
 - **textEffectFallbacks** counts a string generated with a CPU font effect and, per frame, each
   blurred `text-shadow` drawn through a layer.
-- **S15's render-stats tool** does not exist yet (S15 has not landed); `HtmlUIRenderStats::
-  forEachField` is what it can report.
+- **S15's render-stats tool** (`get_render_stats`, merged after S16's work) carries the selected
+  scene's `HtmlUIRenderStats` as `html_ui` (`forEachField`), the same fields as `inspect_ui`'s.
 - **R21 B1 draws (reported, not gated).** The examples do not reach "<= 30 % of the baseline and
   <= 40": measured on the benchmark host (`docs/html-ui/render-benchmark.md`) most of their draws
   are not runs but their effects' passes (backdrop blurs, filters, gradients, layer composites),
