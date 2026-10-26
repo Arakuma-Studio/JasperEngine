@@ -1953,12 +1953,19 @@ namespace {
         return false;
     }
 
+    // 255 as "255", 0.5 as "0.5"
+    std::string numberText(double value) {
+        if (std::floor(value) == value && std::fabs(value) < 1e15) return std::to_string(static_cast<long long>(value));
+        return Json(McpValues::number(static_cast<float>(value))).dump();
+    }
+
+    // "0..255", "at least 0", "at most 1"
     std::string rangeText(const reflect::FieldDesc& field) {
         const bool low = std::isfinite(field.min);
         const bool high = std::isfinite(field.max);
-        if (low && high) return "between " + Json(McpValues::number(field.min)).dump() + " and " + Json(McpValues::number(field.max)).dump();
-        if (low) return "at least " + Json(McpValues::number(field.min)).dump();
-        return "at most " + Json(McpValues::number(field.max)).dump();
+        if (low && high) return "in " + numberText(field.min) + ".." + numberText(field.max);
+        if (low) return "at least " + numberText(field.min);
+        return "at most " + numberText(field.max);
     }
 
 }
@@ -1990,8 +1997,8 @@ bool McpValues::checkReflectedChanges(std::vector<Change>& changes, std::vector<
         // (a Clamped field takes any value: the edit clamps it, as its load does)
         if (numeric && !(field->flags & reflect::Clamped) && reflect::hasRange(*field) && outsideRange(value, field->min, field->max, bad)) {
             const double nearest = bad < field->min ? field->min : field->max;
-            error = component + "." + change.property + " must be " + rangeText(*field) + " (" + Json(bad).dump() + " is out of range); the nearest "
-                    "valid value is " + Json(McpValues::number(static_cast<float>(nearest))).dump() + ".";
+            error = component + "." + change.property + " must be " + rangeText(*field) + " (" + numberText(bad) + " is out of range); the nearest "
+                    "valid value is " + numberText(nearest) + ".";
             return false;
         }
     }
