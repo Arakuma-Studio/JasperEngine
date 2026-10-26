@@ -11,6 +11,8 @@
 #include "App.h"
 #include "Backend.h"
 #include "Theme.h"
+#include "htmlui/compat/SupportTables.h"
+#include <set>
 
 #include <algorithm>
 #include <cctype>
@@ -374,6 +376,24 @@ void CustomTextEditor::initializeSuggestions() {
     if (isHtmlOrCss()) {
         for (size_t i = 0; i < kRcssPropertyCount; ++i) {
             suggestions->AddSymbol(kRcssProperties[i], SuggestionKind::Property, "RCSS property");
+        }
+    }
+    // HTML element and attribute names from the compat layer's support tables, so new elements
+    // (<list-view>, <markdown>, ...) and attributes (dropzone, tooltip, ...) come with them (S17 R38).
+    // Offered only where a tag or an attribute name goes, see updateSuggestions
+    if (language == SyntaxLanguage::Html) {
+        using ::jasperengine::htmlui::compat::Support;
+        for (const ::jasperengine::htmlui::compat::ElementSupport& row : ::jasperengine::htmlui::compat::elementTable()) {
+            if (row.support == Support::Unsupported || row.support == Support::Ignored) continue;
+            suggestions->AddSymbol(row.name, SuggestionKind::Class, "HTML element");
+        }
+        std::set<std::string> attributes;
+        for (const ::jasperengine::htmlui::compat::AttributeSupport& row : ::jasperengine::htmlui::compat::attributeTable()) {
+            const std::string name = row.name;
+            if (row.support == Support::Unsupported || row.support == Support::Ignored) continue;
+            if (name.find('*') != std::string::npos || !attributes.insert(name).second) continue;
+            const std::string element = row.element;
+            suggestions->AddSymbol(name, SuggestionKind::Field, element == "*" ? "HTML attribute" : "<" + element + "> attribute");
         }
     }
 }
@@ -817,6 +837,17 @@ bool CustomTextEditor::atCssPropertyName(const TextPosition& wordStart) const {
     // The state right before the word tells where it is
     HtmlCssLexer::lexLine(htmlCssLanguage(), lines[wordStart.line].substr(0, wordStart.column), state);
     return HtmlCssLexer::expectsCssProperty(htmlCssLanguage(), state);
+}
+
+HtmlCssLexer::NamePosition CustomTextEditor::htmlNamePosition(const TextPosition& wordStart) const {
+    if (language != SyntaxLanguage::Html || wordStart.line < 0 || wordStart.line >= static_cast<int>(lines.size())) {
+        return HtmlCssLexer::NamePosition::None;
+    }
+    HtmlCssLexer::State state;
+    if (wordStart.line > 0 && wordStart.line - 1 < static_cast<int>(lineEndStates.size())) {
+        state = lineEndStates[wordStart.line - 1];
+    }
+    return HtmlCssLexer::htmlNamePosition(lines[wordStart.line], wordStart.column, state);
 }
 
 TokenType CustomTextEditor::classifyWord(const std::string& word) const {
@@ -2815,6 +2846,17 @@ void CustomTextEditor::updateSuggestions(bool manualInvoke) {
     if (isHtmlOrCss() && !atCssPropertyName(autoCompleteAnchor)) {
         currentSuggestions.erase(std::remove_if(currentSuggestions.begin(), currentSuggestions.end(),
                                                 [](const SuggestionItem& item) { return item.kind == SuggestionKind::Property; }),
+                                 currentSuggestions.end());
+    }
+    // HTML element names right after "<" or "</", attribute names inside a tag
+    if (language == SyntaxLanguage::Html) {
+        const HtmlCssLexer::NamePosition where = htmlNamePosition(autoCompleteAnchor);
+        currentSuggestions.erase(std::remove_if(currentSuggestions.begin(), currentSuggestions.end(),
+                                                [where](const SuggestionItem& item) {
+                                                    if (item.kind == SuggestionKind::Class) return where != HtmlCssLexer::NamePosition::Tag;
+                                                    if (item.kind == SuggestionKind::Field) return where != HtmlCssLexer::NamePosition::Attribute;
+                                                    return false;
+                                                }),
                                  currentSuggestions.end());
     }
 

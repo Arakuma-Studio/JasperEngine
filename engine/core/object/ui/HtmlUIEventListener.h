@@ -81,17 +81,23 @@ namespace jasperengine{
         // meanwhile is that script's. When its document reloads, the script runs again and
         // attaches it again, so it is removed with the old document instead of moved to the
         // new elements (moved, every reload added one more copy of it).
+        // `script` is the script's index in its document (S17: a live patch runs again only the
+        // scripts that changed, removing the listeners of each first)
         class JASPERENGINE_INTERNAL ScriptScope {
         public:
-            explicit ScriptScope(const Rml::Element* document);
+            explicit ScriptScope(const Rml::Element* document, int script = -1);
             ~ScriptScope();
             ScriptScope(const ScriptScope&) = delete;
             ScriptScope& operator=(const ScriptScope&) = delete;
         private:
             const Rml::Element* previous;
+            int previousScript;
         };
         // the document whose script attached this listener; nullptr for any other listener
         const Rml::Element* getScriptDocument() const { return scriptDocument; }
+        int getScriptIndex() const { return scriptIndex; }
+        // the listeners a document's script attached (every script of the document for script < 0)
+        static std::vector<HtmlUIEventListener*> listenersOfScript(const Rml::Element* document, int script = -1);
 
         void ProcessEvent(Rml::Event& event) override;
         void OnAttach(Rml::Element* element) override;
@@ -112,6 +118,7 @@ namespace jasperengine{
         Rml::ObserverPtr<Rml::Element> element;
         Rml::Element* registeredOn = nullptr;   // key in the per-element registry
         const Rml::Element* scriptDocument = nullptr;   // see ScriptScope
+        int scriptIndex = -1;
         int dispatching = 0;   // ProcessEvent depth: deletion waits for it
         bool detached = false;
     };

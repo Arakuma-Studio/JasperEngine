@@ -6,9 +6,15 @@
 
 #include "asset/AssetRef.h"
 #include "Engine.h"
+#include "object/ui/UIReloadReport.h"
+
+#include <functional>
+#include <memory>
 #include <string>
 
 namespace jasperengine{
+
+    struct HtmlUILuaRef;   // HtmlUIScriptInternal.h
 
     // SCREEN: drawn over the scene in its camera pass; TEXTURE: rendered into its own
     // target texture (UIDocument::getTargetTexture), shown on a mesh or an Image
@@ -31,6 +37,9 @@ namespace jasperengine{
         float pixelRatio = 0.0f;                                    // 0 = automatic (phase-0 dp ratio); TEXTURE mode default 1
         FunctionSubscribe<void()> onLoad;                           // after every (re)load
         FunctionSubscribe<void()> onUnload;
+        // S17: after a live patch reload, which keeps the document (onLoad and onUnload do not fire then)
+        std::function<void(const UIReloadReport&)> onReload;
+        std::shared_ptr<HtmlUILuaRef> onReloadLua;                  // the Lua function behind onReload, when a script set it
 
         // runtime, not serialized (phase 0; phase-1 runtime state lives in UIDocumentSystem)
         bool needReload = true;   // filename changed or reload() requested

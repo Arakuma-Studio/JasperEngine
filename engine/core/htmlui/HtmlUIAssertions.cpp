@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "HtmlUIAssertions.h"
+#include "widgets/ItemsViewElement.h"
+#include "widgets/TooltipManager.h"
 #include "HtmlUIInspectorInternal.h"
 
 #include "Scene.h"
@@ -275,6 +277,76 @@ namespace {
                 failure.ref = spec.selector;
                 failure.message = message;
                 result.failures.push_back(std::move(failure));
+            }
+        }
+
+        // S17: the virtual views' pools and rows
+        void virtualWindow(const std::vector<Rml::Element*>& matches){
+            for (Rml::Element* element : matches){
+                auto* view = rmlui_dynamic_cast<ItemsViewElement*>(element);
+                if (!view){
+                    fail(element, "not a list-view, grid-view, tree-view or table-view");
+                    continue;
+                }
+                const ItemsViewElement::State state = view->getState();
+                const int bound = spec.maxPool >= 0 ? spec.maxPool : state.poolBound;
+                if (state.pool > bound){
+                    fail(element, "the pool holds " + std::to_string(state.pool) + " rows, more than " + std::to_string(bound));
+                    continue;
+                }
+                // every shown row is an item of the view, once (no stale or doubled row)
+                std::set<int> items;
+                Rml::ElementList rows;
+                element->QuerySelectorAll(rows, ".htmlui-row");
+                for (Rml::Element* row : rows){
+                    if (!row->IsVisible(true) || ItemsViewElement::closestView(row) != view)
+                        continue;
+                    const int item = view->itemOfElement(row);
+                    if (item < 0 || item >= state.count){
+                        fail(element, "a shown row holds no item of the view");
+                        break;
+                    }
+                    if (!items.insert(item).second){
+                        fail(element, "item " + std::to_string(item) + " is shown twice");
+                        break;
+                    }
+                }
+            }
+        }
+
+        // S17: the tooltip shown is one of the matches', with the text
+        void tooltip(const std::vector<Rml::Element*>& matches){
+            const TooltipState state = TooltipManager::stateOf(doc.document);
+            if (!state.visible){
+                fail(matches.front(), "no tooltip is shown");
+                return;
+            }
+            if (std::find(matches.begin(), matches.end(), state.source) == matches.end()){
+                fail(matches.front(), "the tooltip shown is " + refs.of(state.source) + "'s");
+                return;
+            }
+            if (!spec.text.empty() && state.text.find(spec.text) == std::string::npos)
+                fail(state.source, "the tooltip says \"" + state.text + "\", not \"" + spec.text + "\"");
+        }
+
+        // S17: the views' selection
+        void selected(const std::vector<Rml::Element*>& matches){
+            for (Rml::Element* element : matches){
+                auto* view = rmlui_dynamic_cast<ItemsViewElement*>(element);
+                if (!view){
+                    fail(element, "not a list-view, grid-view, tree-view or table-view");
+                    continue;
+                }
+                const int n = (int)view->getSelection().size();
+                std::string message;
+                if (spec.count >= 0 && n != spec.count)
+                    message = std::to_string(n) + " selected, expected exactly " + std::to_string(spec.count);
+                else if (spec.min >= 0 && n < spec.min)
+                    message = std::to_string(n) + " selected, expected at least " + std::to_string(spec.min);
+                else if (spec.max >= 0 && n > spec.max)
+                    message = std::to_string(n) + " selected, expected at most " + std::to_string(spec.max);
+                if (!message.empty())
+                    fail(element, message);
             }
         }
 
@@ -664,6 +736,15 @@ AssertResult HtmlUIAssertions::run(Scene* scene, Entity entity, const AssertSpec
             break;
         case AssertKind::MinSize:
             checker.minSize(matches);
+            break;
+        case AssertKind::VirtualWindow:
+            checker.virtualWindow(matches);
+            break;
+        case AssertKind::Tooltip:
+            checker.tooltip(matches);
+            break;
+        case AssertKind::Selected:
+            checker.selected(matches);
             break;
     }
     result.passed = result.error.empty() && result.failures.empty();

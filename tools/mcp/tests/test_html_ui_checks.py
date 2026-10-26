@@ -403,6 +403,25 @@ MALFORMED_CSS = """.a { color: red;
 """
 
 
+async def test_cli_ui_widget_codes():
+    """S17: check --ui reports the compile's widget codes at their element: a view without its
+    <template> (HTMLUI-HTML-0030, error). The runtime codes (0029 a view without a definite height,
+    0031 a data-for of more than 500 elements) need a layout or a model, and 0032 (HTML in
+    Markdown) is a note: none of them is a check finding."""
+    html = ("<!DOCTYPE html>\n<html>\n<head><title>w</title></head>\n<body>\n"
+            "<list-view items=\"rows\" style=\"height: 100px\"></list-view>\n"
+            "<table-view items=\"rows\" style=\"height: 100px\"><table-column key=\"a\">A</table-column></table-view>\n"
+            "<markdown>\n  Some <b>bold</b> text\n</markdown>\n"
+            "</body>\n</html>\n")
+    with scratch_project() as project:
+        write(project, "assets/ui/widgets.html", html)
+        code, data = run_json(project, "--ui", "--files", "assets/ui/widgets.html")
+    findings = [f for f in data["findings"] if f["path"] == "assets/ui/widgets.html"]
+    check_eq([(f["code"], f["severity"], f["line"]) for f in findings], [("HTMLUI-HTML-0030", "error", 5)],
+             f"the list-view without a template, nothing else: {findings}")
+    check_eq(code, 1, "an error exits 1")
+
+
 async def test_cli_ui_files_and_exclusions():
     with scratch_project() as project:
         write(project, "assets/ui/x.css", ".x { mix-blend-mode: multiply; }\n")
@@ -724,6 +743,14 @@ async def test_ui_support_json_and_generated_doc():
     check_eq(support_row(data, "element", "canvas")["code"], "HTMLUI-HTML-0002", "canvas")
     check_eq(support_row(data, "attribute", "on*")["code"], "HTMLUI-HTML-0005", "on*")
     check(support_row(data, "value", "sticky", "position"), "values carry their property")
+    # S17 (AC15): title emulated, draggable mapped to RmlUi's drag, the views and markdown engine elements
+    def global_attribute(name):
+        return next(f for f in data["features"] if f["kind"] == "attribute" and f["name"] == name and f.get("element") == "*")
+    check_eq(global_attribute("title")["support"], "emulated", "title")
+    draggable = global_attribute("draggable")
+    check(draggable["support"] == "rewritten" and draggable["note"].startswith("mapped"), f"draggable: {draggable}")
+    for tag in ("list-view", "grid-view", "tree-view", "table-view", "markdown"):
+        check_eq(support_row(data, "element", tag)["support"], "emulated", tag)
 
     r = gen_support("--check")
     check_eq(r.returncode, 0, f"the committed matrix is current (run tools/mcp/gen_html_ui_support.py):\n{r.stdout[-3000:]}{r.stderr}")

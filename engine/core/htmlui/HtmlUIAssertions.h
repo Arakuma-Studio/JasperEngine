@@ -16,7 +16,11 @@ namespace jasperengine::htmlui {
 // Layout assertions over a live HTML UI document (MCP assert_ui), on top of HtmlUIInspector's
 // view of it (same refs, boxes and coordinates). Zero matches fail every kind except Count
 // with max or count 0 ("selector matched nothing"). Main thread only.
-enum class AssertKind { Exists, Count, Visible, TextFits, NoOverlap, WithinParent, WithinViewport, Contrast, MinSize };
+// S17: VirtualWindow (a virtual view holds at most maxPool rows, by default the bound of its
+// viewport, and every row it shows is its own item, once), Tooltip (the tooltip shown is the
+// selector's, and holds `text`), Selected (a view's selection: count, min, max).
+enum class AssertKind { Exists, Count, Visible, TextFits, NoOverlap, WithinParent, WithinViewport, Contrast, MinSize,
+                        VirtualWindow, Tooltip, Selected };
 
 struct AssertSpec {
     AssertKind kind = AssertKind::Exists;
@@ -32,6 +36,8 @@ struct AssertSpec {
     bool allowScroll = false;  // TextFits: overflow inside an overflow:auto/scroll container passes
     bool singleLine = false;   // TextFits: wrapping to a second line fails
     float minWidth = 44, minHeight = 44;   // MinSize
+    int maxPool = -1;          // VirtualWindow: -1 = the view's own bound (S17 R2)
+    std::string text;          // Tooltip: the text it holds ("" = any)
 };
 
 struct AssertFailure {
