@@ -451,3 +451,21 @@ Recorded by the S28 implementation (branch `feat/s28-robustness`).
   inside the 1 s rule of non-Slow unit tests.
 - **Tool verbs**: `dismiss` and `debug` were added to the verb list of
   `test_tool_conventions.py` for the spec's `dismiss_crash_notice` and `debug_crash`.
+
+### Native backend validation (`feat/s28-native-crash`)
+
+All execution uses `je-remote/rb.sh`; no local builds or tests.
+
+- Red control, before the backend/CrashGuard fix: server D,
+  `WERROR=1 UNIT_SUITE=core UNIT_TEST_ARGS=--gtest_filter=CrashGuard.WorkerCrashReachesHandler
+  tools/build.sh unit-tests` fails with "a worker crash during a Lua guard must reach the engine
+  handler" (1 ran, 1 failed; no crash.txt).
+- Server D: `ctest --test-dir build/linux/core-tests -R 'native-crash|posix-crash'
+  --output-on-failure`: 2/2 pass. Fatal subprocess modes segv, abort, terminate, main/worker
+  overflow, worker segv, fpe, guarded-worker segv, saved-handler sentinel and the injected
+  main-thread stall all pass; reports retain registers, >=3 frames, build ID and log tail.
+  The object scan finds no printf, malloc/new/delete or mutex-lock import.
+- Server D, ASan+UBSan tree: `python3 -I engine/tests/crash/test_crash.py
+  build/linux/core-tests-address-undefined/tests/core/jasperengine-crash-test
+  --symbolicate tools/crash/symbolicate.py --expect-asan`: all 10 modes pass, explicitly checking
+  that ASan's prior fatal handler prints after the engine report.
