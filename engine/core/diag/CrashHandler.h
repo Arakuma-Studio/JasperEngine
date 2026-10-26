@@ -32,10 +32,6 @@
 #include <string_view>
 #include <vector>
 
-#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
-    #include <signal.h>
-#endif
-
 namespace jasperengine::diag::crash {
 
     // What a Windows minidump holds (D4). Small: threads, stacks, modules. WithHeap adds the
@@ -81,8 +77,12 @@ namespace jasperengine::diag::crash {
         bool handled = false;
     };
 
-    // Once, on the main thread, as early as possible. False when it was already installed or
-    // the platform has no handler (the web installs its JavaScript hooks only).
+    // Once, on the main thread, as early as possible. Prepares the report folders, the session
+    // marker, the ring and retention everywhere; arms a handler where this build has a backend
+    // (JASPERENGINE_CRASH_BACKEND: Windows and the web today). Returns whether one was armed: on
+    // Linux, macOS, Android and iOS the POSIX backend is not part of this build yet, nothing is
+    // armed, and the process keeps whatever handler it had (the editor's
+    // editor/util/CrashHandler).
     JASPERENGINE_API bool install(const Config& config);
     JASPERENGINE_API bool isInstalled();
     // A clean exit: the session marker goes (an unclean one leaves it for the next start)
@@ -92,12 +92,6 @@ namespace jasperengine::diag::crash {
     // so its stack overflow still reports; released when the thread ends. thread::spawnNamed
     // and the job system's workers call it; the main thread gets one at install.
     JASPERENGINE_API void prepareThread();
-
-#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
-    // The fatal-signal path itself: reports, then chains to the previous handler. CrashGuard
-    // calls it for a fault outside a guard while its own handlers are installed.
-    JASPERENGINE_API void handleFatalSignal(int signal, siginfo_t* info, void* context);
-#endif
 
     // A line for log-tail.txt (lock-free, a torn line at a wrap is acceptable). The logger feeds
     // it once install() ran; a guarded crash that was recovered adds a breadcrumb.

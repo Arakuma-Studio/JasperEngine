@@ -476,6 +476,8 @@ namespace je_crash_common {
 
     // ---- std::terminate: name the exception, then the SIGABRT path reports
 
+    std::terminate_handler previousTerminate = nullptr;
+
     void onTerminate() {
         CrashState& s = crash::detail::state();
         char reason[sizeof(s.pendingReason)];
@@ -494,6 +496,8 @@ namespace je_crash_common {
         if (!s.pendingReasonSet.exchange(true)) {
             copyText(s.pendingReason, sizeof(s.pendingReason), reason);
         }
+        // a handler installed before ours (the editor's) still writes its part, then aborts
+        if (previousTerminate && previousTerminate != onTerminate) previousTerminate();
         std::abort();
     }
 
@@ -638,8 +642,10 @@ namespace jasperengine::diag::crash {
             io::writeFileAtomic(c.markerFile, markerText(c, started), options);
         }
 
-        std::set_terminate(onTerminate);
         const bool armed = detail::installPlatform(config);
+        // only with a backend to report the abort that follows; otherwise the process's own
+        // terminate handler stays (chained to by onTerminate when there is one)
+        if (armed) previousTerminate = std::set_terminate(onTerminate);
         s.installed.store(true, std::memory_order_release);
 
         if (!c.ringSinkAdded && s.ring) {
