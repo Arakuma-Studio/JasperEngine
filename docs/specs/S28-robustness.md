@@ -566,13 +566,17 @@ All through `je-remote/rb.sh`; merge commit b8808a966 plus the fixes after it.
 - Server E, `je-bench-diag`: heartbeat 2.25 ns (<= 5), 120-byte ring write 11.2 ns (<= 150),
   install 0.58 ms (<= 3), idle watchdog 0.056 % of a core (<= 0.1): every budget holds.
 
-Owner review of the native handlers (reported to the integrator, not changed here): a second
-thread that faults while the first is still writing its report chains at once (POSIX
-`entry == 1` with a default disposition, Windows `submit` returning), which can end the process
-before the first report is complete; it should wait, bounded, for `reportDone` when another
-thread is reporting. Minor: POSIX frames carry no `[symbol]` and list the handler's own frames
-after `#0`; the Windows report has no thread name. `symbolicate.py` now places frames of
-libraries loaded after install (`module?+0x<address>`) through the report's maps copy.
+Owner review follow-up on `feat/s28-native-crash`: concurrent faulting threads now wait up to
+8 seconds for report completion before chaining (lock-free owner plus monotonic/nanosleep wait
+on POSIX, the writer's completion event on Windows). A recursive fault on the reporting thread
+or Windows writer immediately reaches the OS terminating action. A null-by-default internal
+subprocess-test seam delays or recursively faults the first reporter before it opens its report.
+POSIX stacks locate the saved fault PC and omit the handler/trampoline and duplicate PC; if that
+boundary cannot be unwound, only the saved PC is retained. Symbol names are resolved offline
+with `symbolicate.py`, including late-loaded libraries through the maps copy, keeping `dladdr`
+and symbol-loader calls out of the fatal path. Tests check both named fault frames and absence
+of handler frames. Windows dynamically resolves `GetThreadDescription` during installation;
+its writer adds `thread_name`, falling back to `unknown` on older systems.
 
 After merging oe-port again (S11, 4d5ae3093): server B `WERROR=1 tools/build.sh unit-tests` 1,121 core
 and 398 editor tests, 0 failed; server D `WERROR=1 tools/build.sh linux`, MCP 43/43
@@ -580,3 +584,33 @@ and 398 editor tests, 0 failed; server D `WERROR=1 tools/build.sh linux`, MCP 43
 `tools/build.sh web` + `web-gate` PASS, the crash-diagnostics web gate PASS, `tools/build.sh android`
 passes, smoke PASS. `tools/crash/test_symbolicate.py` passes on B against a fresh
 `jasperengine-crash-test`.
+
+
+### Native review follow-up validation
+
+- Server D red control rebuilt the test-only checkpoint `84c6c0281` (the original handlers
+  plus the internal fault-injection seam), then ran the current subprocess driver with
+  `--mode concurrent`. It failed because no `crash.txt` existed: exit `-11`, stderr
+  `JASPERENGINE CRASH: another fatal signal while reporting`. The separate `--mode recursive`
+  control terminated immediately. The gate restored the fixed sources before its next build.
+- Server D fixed-source gate: `WERROR=1 tools/build.sh linux` passes (editor/install and
+  standalone game). The crash CTests (`native-crash-reports`, `posix-crash-signal-safety`,
+  `crash.symbolicate`) pass 3/3 in 15.77 s. All 13 POSIX subprocess modes pass, including
+  complete concurrent-fault reports, immediate recursive termination, and saved-handler
+  chaining after an earlier report's handler returned. The segfault cases' symbolicated stacks contain the
+  fault function once; all symbolicated crash stacks omit engine handler frames.
+- Windows review additionally covers recursive CRT faults: the synthetic path now terminates
+  directly before invoking any saved abort callback. Its Windows-only `recursive_abort`
+  subprocess installs a deliberately stalled previous abort handler; execution awaits a
+  Windows host, alongside the existing Windows dump/deadline checks.
+- Server D ASan+UBSan red controls also fail as intended: the original concurrent handler
+  exits 77 with no report, and the original recursive handler enters ASan's saved handler
+  instead of taking the OS action directly (the subprocess exits 77). After restoring the
+  fixed sources and rebuilding, all 13 sanitizer subprocess modes pass, including ordinary
+  segfault chaining to ASan, concurrent report completion, direct recursive termination and
+  saved-handler chaining after a completed report. No unexpected leak or UB diagnostic is
+  emitted by the fixed runs; the red controls' sanitizer SEGV output is deliberate evidence.
+- Server D crash/protocol MCP gate: 18 passed, 0 failed, 0 skipped in 53.3 s
+  (`test_crash.py` 6/6, `test_protocol.py` 12/12), including `test_runaway_lua` and the
+  native segfault/restart notice. This verifies the S28 fixes merged at `3b0dd7a14` together
+  with the native follow-up. All temporary red-control sources were restored afterward.

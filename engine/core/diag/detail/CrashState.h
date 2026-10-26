@@ -60,11 +60,13 @@ namespace jasperengine::diag::crash::detail {
 
         Tag tags[kTagCount];
 
-        // the bounded re-entry: the first entry reports, a fault while reporting reports one
-        // line and chains, anything after the report chains at once
-        std::atomic<int> entries{0};
+        // The first entry reports. Other threads wait up to eight seconds for reportDone
+        // before chaining; recursive faults on the reporting thread terminate immediately.
         std::atomic<int64_t> reportingThread{0};
         std::atomic<bool> reportDone{false};
+        // Internal subprocess-test seam; production leaves this null. A test callback must
+        // obey the fatal path's signal-safety rules. Set only before any fault.
+        void (*beforeReportForTesting)() = nullptr;
         // set by debugCrash: the report says it was deliberate
         std::atomic<bool> deliberate{false};
         // the terminate handler's reason ("unhandled exception: ..."), reported by the SIGABRT

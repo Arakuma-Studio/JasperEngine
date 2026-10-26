@@ -16,12 +16,14 @@
 //   hang     starts the watchdog (200 ms) and stalls the main thread for 700 ms in a phase
 
 #include "diag/CrashHandler.h"
+#include "diag/detail/CrashState.h"
 #include "diag/HangWatchdog.h"
 #include "log/Logger.h"
 #include "util/CrashGuard.h"
 #include "thread/ThreadUtil.h"
 
 #include <chrono>
+#include <csignal>
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
@@ -30,7 +32,10 @@
 #include <fstream>
 #include <string>
 #include <thread>
-#if !defined(_WIN32)
+#if defined(_WIN32)
+#include <windows.h>
+#else
+#include <time.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <unistd.h>
@@ -39,11 +44,39 @@
 using namespace jasperengine;
 
 namespace je_crash_test {
+    std::atomic<bool> reportEntered{false};
+    bool recursiveFault = false;
+#if defined(_WIN32)
+    bool recursiveAbort = false;
+#endif
+    void pauseReport() {
+        reportEntered.store(true, std::memory_order_release);
+        if (recursiveFault) {
+#if defined(_WIN32)
+            if (recursiveAbort) std::abort();
+            RaiseException(EXCEPTION_ACCESS_VIOLATION, EXCEPTION_NONCONTINUABLE, 0, nullptr);
+#else
+            raise(SIGSEGV);
+#endif
+        }
+        // Deterministically leave time for a different thread to fault inside this report.
+        // The POSIX hook itself only uses lock-free atomics and async-signal-safe calls.
+#if defined(_WIN32)
+        Sleep(250);
+#else
+        timespec pause{0, 250000000};
+        while (nanosleep(&pause, &pause) != 0) {}
+#endif
+    }
+
 #if !defined(_WIN32)
     char sentinelPath[1024]{};
     void previousHandler(int sig, siginfo_t*, void*) {
         int fd = open(sentinelPath, O_CREAT | O_WRONLY, 0600);
-        if (fd >= 0) { const ssize_t ignored = write(fd, "chained\n", 8); (void)ignored; close(fd); }
+        if (fd >= 0) {
+            const ssize_t ignored = write(fd, sig == SIGTRAP ? "trap\n" : "chained\n", sig == SIGTRAP ? 5 : 8);
+            (void)ignored; close(fd);
+        }
         if (sig != SIGTRAP) {
             struct sigaction action{};
             sigemptyset(&action.sa_mask);
@@ -110,14 +143,22 @@ int main(int argc, char** argv) {
     config.version = "test";
     config.backend = "none";
 #if !defined(_WIN32)
-    if (std::strcmp(mode, "chain") == 0 || std::strcmp(mode, "chain_return") == 0) {
+    if (std::strcmp(mode, "chain") == 0 || std::strcmp(mode, "chain_return") == 0 ||
+            std::strcmp(mode, "chain_after_return") == 0) {
         const std::string file = (root / "sentinel").string();
         std::memcpy(sentinelPath, file.c_str(), file.size() + 1);
         struct sigaction sentinel{};
         sigemptyset(&sentinel.sa_mask);
         sentinel.sa_sigaction = previousHandler;
         sentinel.sa_flags = SA_SIGINFO;
-        sigaction(std::strcmp(mode, "chain_return") == 0 ? SIGTRAP : SIGSEGV, &sentinel, nullptr);
+        sigaction(std::strcmp(mode, "chain") == 0 ? SIGSEGV : SIGTRAP, &sentinel, nullptr);
+        if (std::strcmp(mode, "chain_after_return") == 0) sigaction(SIGSEGV, &sentinel, nullptr);
+    }
+#endif
+#if defined(_WIN32)
+    if (std::strcmp(mode, "recursive_abort") == 0) {
+        // Recursive faults must bypass a previous abort callback that cannot make progress.
+        std::signal(SIGABRT, [](int) { Sleep(10000); });
     }
 #endif
     diag::crash::install(config);
@@ -125,6 +166,12 @@ int main(int argc, char** argv) {
 
     const std::string name = mode;
 #if !defined(_WIN32)
+    if (name == "chain_after_return") {
+        log("last line before the crash");
+        raise(SIGTRAP); // The saved handler returns after a complete engine report.
+        raise(SIGSEGV); // A later fault must still reach its own saved handler.
+        return 1;
+    }
     if (name == "chain_return") {
         raise(SIGTRAP);
         diag::crash::shutdown();
@@ -132,6 +179,22 @@ int main(int argc, char** argv) {
         return 0;
     }
 #endif
+    if (name == "concurrent" || name == "recursive" || name == "recursive_abort") {
+        log("last line before the crash");
+        recursiveFault = name != "concurrent";
+#if defined(_WIN32)
+        recursiveAbort = name == "recursive_abort";
+#endif
+        diag::crash::detail::state().beforeReportForTesting = pauseReport;
+        auto first = thread::spawnNamed("First fault", [] { diag::crash::debugCrash("segv"); });
+        if (!recursiveFault) {
+            while (!reportEntered.load(std::memory_order_acquire)) std::this_thread::yield();
+            auto second = thread::spawnNamed("Second fault", [] { diag::crash::debugCrash("segv"); });
+            second.join();
+        }
+        first.join();
+        return 1;
+    }
     if (name == "chain") { log("last line before the crash"); diag::crash::debugCrash("segv"); }
     if (name == "worker_stack_overflow") {
         log("last line before the crash");
