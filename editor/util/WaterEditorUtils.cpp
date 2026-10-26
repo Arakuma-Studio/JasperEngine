@@ -52,7 +52,7 @@ namespace {
         }
     }
 
-    Vector3 worldScale(const Scene* scene, Entity entity){
+    Vector3 worldScale(Scene* scene, Entity entity){
         const Transform* transform = scene->findComponent<Transform>(entity);
         if (!transform)
             return Vector3(1.0f, 1.0f, 1.0f);
@@ -61,7 +61,7 @@ namespace {
 
 }
 
-bool editor::WaterEditorUtils::colliderBounds(const Scene* scene, Entity entity, Vector3& min, Vector3& max){
+bool editor::WaterEditorUtils::colliderBounds(Scene* scene, Entity entity, Vector3& min, Vector3& max){
     const RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(entity);
     if (!body)
         return false;
@@ -82,7 +82,7 @@ bool editor::WaterEditorUtils::colliderBounds(const Scene* scene, Entity entity,
     return any;
 }
 
-bool editor::WaterEditorUtils::colliderMass(const Scene* scene, Entity entity, float& volume, float& mass){
+bool editor::WaterEditorUtils::colliderMass(Scene* scene, Entity entity, float& volume, float& mass){
     const RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(entity);
     volume = 0.0f;
     mass = 0.0f;
@@ -101,7 +101,7 @@ bool editor::WaterEditorUtils::colliderMass(const Scene* scene, Entity entity, f
     return volume > 0.0f;
 }
 
-std::vector<Vector3> editor::WaterEditorUtils::columnBottoms(const Scene* scene, Entity entity, const BuoyancyComponent& buoyancy,
+std::vector<Vector3> editor::WaterEditorUtils::columnBottoms(Scene* scene, Entity entity, const BuoyancyComponent& buoyancy,
                                                              Vector3& boundsMin, Vector3& boundsMax){
     std::vector<Vector3> bottoms;
     const bool bounded = colliderBounds(scene, entity, boundsMin, boundsMax);
@@ -124,7 +124,7 @@ std::vector<Vector3> editor::WaterEditorUtils::columnBottoms(const Scene* scene,
     return bottoms;
 }
 
-float editor::WaterEditorUtils::waterDensity(const Scene* scene, Entity entity){
+float editor::WaterEditorUtils::waterDensity(Scene* scene, Entity entity){
     auto volumes = scene->getComponentArray<WaterVolumeComponent>();
     if (volumes->size() == 0)
         return 0.0f;
@@ -144,7 +144,7 @@ float editor::WaterEditorUtils::waterDensity(const Scene* scene, Entity entity){
     return density;
 }
 
-float editor::WaterEditorUtils::meshVertexSpacing(const Scene* scene, Entity entity){
+float editor::WaterEditorUtils::meshVertexSpacing(Scene* scene, Entity entity){
     const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
     if (!mesh || mesh->vertexCount == 0 || mesh->aabb.isNull())
         return 0.0f;
@@ -156,7 +156,7 @@ float editor::WaterEditorUtils::meshVertexSpacing(const Scene* scene, Entity ent
     return std::sqrt(area / (float)mesh->vertexCount);
 }
 
-float editor::WaterEditorUtils::materialWaveLength(const Scene* scene, Entity entity){
+float editor::WaterEditorUtils::materialWaveLength(Scene* scene, Entity entity){
     const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
     if (!mesh)
         return 0.0f;
