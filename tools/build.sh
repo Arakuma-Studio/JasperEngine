@@ -360,13 +360,13 @@ unit-tests)
         status=0
         if [[ $CORE == 1 ]]; then
             rm -f $RESULTS/$CORE_RESULT.xml
-            env $VK_ENV xvfb-run -a -s '-screen 0 1600x900x24' $TEST_WRAP \
+            env $VK_ENV tools/with-xvfb.sh $TEST_WRAP \
                 $CORE_DIR/tests/core/jasperengine-core-tests --gtest_output=xml:$RESULTS/$CORE_RESULT.xml ${UNIT_TEST_ARGS:-} || status=1
             $GTEST_GATE --xml $RESULTS/$CORE_RESULT.xml --min-tests $CORE_MIN --max-skipped 0 || status=1
         fi
         if [[ $EDITOR == 1 ]]; then
             rm -f $RESULTS/$EDITOR_RESULT.xml
-            xvfb-run -a -s '-screen 0 1600x900x24' $TEST_WRAP \
+            tools/with-xvfb.sh $TEST_WRAP \
                 $EDITOR_DIR/jasperengine-editor-tests --gtest_output=xml:$RESULTS/$EDITOR_RESULT.xml ${UNIT_TEST_ARGS:-} || status=1
             $GTEST_GATE --xml $RESULTS/$EDITOR_RESULT.xml --min-tests $EDITOR_MIN --max-skipped 0 || status=1
         fi
@@ -388,7 +388,7 @@ htmlui-tests)
         set -f  # a --gtest_filter pattern is not a glob
         rm -f $RESULTS/$RESULT.xml
         status=0
-        env $VK_ENV xvfb-run -a -s '-screen 0 1600x900x24' $TEST_WRAP \
+        env $VK_ENV tools/with-xvfb.sh $TEST_WRAP \
             $TESTS_DIR/tests/htmlui/jasperengine-htmlui-tests --gtest_output=xml:$RESULTS/$RESULT.xml ${HTMLUI_TEST_ARGS:-} || status=1
         $GTEST_GATE --xml $RESULTS/$RESULT.xml --max-skipped $HTMLUI_MAX_SKIPPED || status=1
         exit \$status
@@ -404,7 +404,7 @@ htmlui-editor-tests)
         set -f  # a --gtest_filter pattern is not a glob
         rm -f $RESULTS/htmlui-editor.xml
         status=0
-        xvfb-run -a -s '-screen 0 1600x900x24' $OUT/editor/jasperengine-htmlui-editor-tests \
+        tools/with-xvfb.sh $OUT/editor/jasperengine-htmlui-editor-tests \
             --gtest_output=xml:$RESULTS/htmlui-editor.xml ${HTMLUI_TEST_ARGS:-} || status=1
         # the live Google Fonts test skips without HTMLUI_LIVE_NETWORK=1
         $GTEST_GATE --xml $RESULTS/htmlui-editor.xml --max-skipped 1 || status=1

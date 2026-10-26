@@ -27,7 +27,10 @@ worktree of a checkout makes rebuilds cheap.
 Builds `jasperengine-core-tests` in the standalone engine tree (`build/linux/core-tests`, preset
 `engine-linux-tests`, RelWithDebInfo) and `jasperengine-editor-tests` in the editor tree
 (`build/linux/editor-tests`, preset `linux-ci`), runs both under Xvfb, and puts each result
-through the gate (below). An unfiltered run must execute at least 300 core and 150 editor tests,
+through the gate (below). The test targets start their X server with `tools/with-xvfb.sh`, not
+`xvfb-run`: xvfb-run waits forever when Xvfb signals ready before its `wait` starts (a loaded
+builder), whereas the helper reads the display from `Xvfb -displayfd` within `XVFB_TIMEOUT`
+seconds (30). An unfiltered run must execute at least 300 core and 150 editor tests,
 with none skipped.
 
 ```sh
