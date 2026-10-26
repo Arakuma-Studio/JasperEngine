@@ -60,7 +60,8 @@ std::string customSourceCacheKey(editor::Project* project, const std::string& cu
 std::shared_ptr<const CustomSourceSnapshot> resolveCustomSources(editor::Project* project,
                                                                  const std::string& customShader,
                                                                  ShaderType shaderType) {
-    const bool library = ShaderReference::isLibrary(customShader);
+    // the library's and the built-in Lit's variants ("builtin:lit#...", S11) read engine sources only
+    const bool library = ShaderReference::isLibrary(customShader) || ShaderReference::isBuiltin(customShader);
     if ((!project && !library) || customShader.empty()) {
         auto invalid = std::make_shared<CustomSourceSnapshot>();
         invalid->sources.error = "Custom shader project or path is unavailable.";
@@ -296,7 +297,7 @@ ShaderData editor::ShaderBuilder::compileShader(ShaderKey shaderKey, Project* pr
     if (customId != 0 && !ShaderPool::isLibraryCustomShader(customId)) {
         std::string setupError;
         const std::string customShader = ShaderPool::getCustomShaderName(customId);
-        if (!project && !ShaderReference::isLibrary(customShader)) {
+        if (!project && !ShaderReference::isLibrary(customShader) && !ShaderReference::isBuiltin(customShader)) {
             setupError = "Custom shader requested without a project";
         } else {
             if (customShader.empty()) {

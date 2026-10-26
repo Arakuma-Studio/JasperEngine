@@ -87,7 +87,9 @@ async def test_scene_reads_legacy_keys(ed: Editor):
         ed.check_in(want, keys, "decoded legacy key")
     ed.check(not any(k.get("properties", 0) & 0x20 and k["type"] == "mesh" and "keyVersion" not in k for k in keys),
              "the retired bit 5 is dropped where no keyVersion says it is Stochastic Tiling")
-    ed.check(not any("customShader" in k for k in keys), "a legacy key's custom id is not a fork")
+    # (the scene's own variants of the built-in Lit carry its S11 defines as "builtin:lit#...")
+    ed.check(not any("customShader" in k and not str(k["customShader"]).startswith("builtin:lit") for k in keys),
+             f"a legacy key's custom id is not a fork: {keys}")
     again = shader_keys_text(scene_text())
     await ed.call("save_scene", scene=sid, path="scenes/Keys")
     ed.check_eq(shader_keys_text(scene_text()), again, "and re-saves byte-identical")
