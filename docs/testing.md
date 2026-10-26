@@ -461,21 +461,18 @@ S03's tests (`engine/tests/core/io`, `editor/tests/data_safety`) run in the same
 
 ### S16 (HTML UI rendering cost and text)
 
-On oe-port c62ecba1c (server B; timings on E):
+Round 2, on oe-port 50c7afd3d (S11, S17 merged; server B with `JASPER_HTMLUI_PERF_SLACK=3`, timings
+on the benchmark host E):
 
-- `tools/build.sh htmlui-tests` (glcore, without the perf suites and `EffectLifecycleTest.Hundred*`,
-  which run on their own and pass): 3,258 ran, 0 failed, 74 skipped. `BrowserParity` (the 277
-  Chromium references, unchanged) and the batching equivalence pass.
-- `HTMLUI_BACKEND=vulkan`: the same, except `RenderPrimitive.MatchesTheMeshPath` at 8 samples in a
-  whole-suite run on lavapipe (the primitives draw nothing there; it passes alone and in a 200-test
-  render subset, and passed in two whole-suite runs before the S15 merge) and, once, a
-  `CompatPerf` timing.
-- `JASPER_HTMLUI_S16_OFF=1` against the goldens before S16 (AC1): see the spec's Deviations.
-- `HTMLUI_TEST_ARGS=--gtest_filter=HtmlUIRenderPerf.*` on the benchmark host: 8 passed
-  (`docs/html-ui/render-benchmark.md`).
-- `WERROR=1 tools/build.sh linux`, `tools/build.sh htmlui-editor-tests`, the editor unit tests,
-  `tools/build.sh web` + `web-gate`, `tools/build.sh android`, `tools/smoke-test.sh
-  tools/fixtures/post-processing`, `tools/htmlui/run-rmlui-tests.sh --docker`: pass.
-- MCP: `test_ui_render_stats.py`, `test_html_ui_render.py`, `test_html_ui_tools.py`,
-  `test_html_ui_editor.py`, `test_html_ui_basic.py`, `test_protocol.py`, `test_profiler.py`,
-  `test_tool_budget.py`: pass.
+- `tools/build.sh htmlui-tests` (glcore, without the perf suites and `EffectLifecycleTest.Hundred*`):
+  3,379 ran, 0 failed, 74 skipped. `BrowserParity` (the 277 Chromium references, unchanged) and the
+  batching equivalence pass.
+- `HTMLUI_BACKEND=vulkan`, the whole suite twice: 3,379 ran, 0 failed each. The earlier
+  order-dependent `RenderPrimitive.MatchesTheMeshPath` failures were 8-sample layer targets on
+  lavapipe (it has 1 and 4): invalid Vulkan usage that drew into foreign memory; HTML UI targets now
+  take the device's highest count up to the asked one, and the comparison skips 8 there.
+- `JASPER_HTMLUI_S16_OFF=1` against the pre-S16 goldens (AC1): see the spec's Deviations
+  (`p1/texture_effects` traced and fixed).
+- `HTMLUI_TEST_ARGS=--gtest_filter=HtmlUIRenderPerf.*` on the benchmark host: 9 passed
+  (`docs/html-ui/render-benchmark.md`; B2 44 % of the baseline engine time, B6 43 %).
+- GATE_PLACEHOLDER

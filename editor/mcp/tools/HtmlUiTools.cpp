@@ -1956,17 +1956,17 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.name = "inspect_ui";
         tool.title = "Inspect UI Document";
         tool.description =
-            "Inspect a live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] in canvas px "
-            "= send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics; detail full: box "
-            "model + computed styles with the file:line of each rule. at: hit test. file: a .html/.css's diagnostics "
-            "without a document (as `jasperengine-editor check --ui`). Content Lua makes appears in play only.";
+            "Inspect a live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] canvas px = "
+            "send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics; detail full: box model "
+            "+ computed styles with each rule's file:line. at: hit test. file: a .html/.css's diagnostics alone (as "
+            "`check --ui`). Content Lua makes: in play only.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef("With the UI Document (default: the only one).")},
-            {"file", assetPath(".html/.css: its diagnostics only, no live document.")},
-            {"selector", string("CSS selector (default: whole document).")},
-            {"at", vec2("Hit test (canvas px): the element stack.")},
-            {"detail", withDefault(stringEnum("full: box model, attributes, computed styles + sources (max 20 elements).",
+            {"file", assetPath(".html/.css: diagnostics only.")},
+            {"selector", string("CSS selector (default: the document).")},
+            {"at", vec2("Hit test (canvas px): element stack.")},
+            {"detail", withDefault(stringEnum("full: box model, attributes, styles + sources (max 20 elements).",
                                               {"tree", "full"}), "tree")},
             {"depth", integer("Descendant levels (default tree 3, full 0).", 0, 16)},
             {"styles", array(Json{{"type", "string"}}, "Computed CSS properties per element.")},
@@ -1974,7 +1974,7 @@ void registerHtmlUiTools(McpRegistry& registry) {
             {"models", boolean("Data-model values (play).")},
             {"reload", boolean("The last hot reload's report.")},
             {"viewport", vec2("Lay out at [w,h] first (restored after).")},
-            {"screenshot", boolean("Game view image of the matches, outlined.")},
+            {"screenshot", boolean("Game view image, matches outlined.")},
             {"render_stats", boolean("Last frame's render counters.")},
             {"max_width", w3::maxWidthArgSchema(4096, DEFAULT_IMAGE_WIDTH)}
         });
