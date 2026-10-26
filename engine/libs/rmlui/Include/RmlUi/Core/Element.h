@@ -672,6 +672,10 @@ protected:
 	virtual void OnUpdate();
 	/// Called during render after backgrounds, borders, decorators, but before children, are rendered.
 	virtual void OnRender();
+	/// Fork (S16-F6): the rectangle (absolute, before any transform) everything the element paints of its own lies in,
+	/// false when unknown: an element of no subclass has its border box widened by its box shadows' reach; a subclass
+	/// that paints more in OnRender says so by overriding this (the default for every subclass is false).
+	virtual bool GetPaintBounds(Rectanglef& out_bounds);
 	/// Called during update if the element size has been changed.
 	virtual void OnResize();
 	/// Called during a layout operation, when the element is being positioned and sized.

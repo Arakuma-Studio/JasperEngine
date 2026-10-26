@@ -268,6 +268,23 @@ bool ElementUtilities::GetClippingRegion(Element* element, Rectanglei& out_clip_
 	return clip_region.Valid();
 }
 
+const void* ElementUtilities::GetClipMemoKey(Element* offset_parent)
+{
+	// (the elements GetClippingRegion's walk passes without merging a region: 'clip: auto' and no overflow to clip; their
+	// children are clipped as they are)
+	static const int unclipped = 0;
+	Element* key = offset_parent;
+	while (key)
+	{
+		const ComputedValues& computed = key->GetComputedValues();
+		if (computed.clip() != Style::Clip::Type::Auto || computed.overflow_x() != Style::Overflow::Visible ||
+			computed.overflow_y() != Style::Overflow::Visible)
+			return key;
+		key = key->GetOffsetParent();
+	}
+	return &unclipped;
+}
+
 bool ElementUtilities::SetClippingRegion(Element* element, bool force_clip_self)
 {
 	Context* context = element->GetContext();
@@ -277,14 +294,15 @@ bool ElementUtilities::SetClippingRegion(Element* element, bool force_clip_self)
 	RenderManager& render_manager = context->GetRenderManager();
 
 	// Fork (S16-F6): an element whose own 'clip' is auto is clipped as every such element of its offset parent (the walk
-	// starts there; a scroll container's scrollbars, which differ, have 'clip: 1'): the region found for the first is used
-	// for the others of the render pass, without walking the ancestors and building the mask list again.
-	Element* offset_parent = nullptr;
+	// starts there; a scroll container's scrollbars, which differ, have 'clip: 1'), and as its offset parent when that does
+	// not clip (GetClipMemoKey): the region found for the first is used for the others of the render pass, without walking
+	// the ancestors and building the mask list again.
+	const void* memo_key = nullptr;
 	if (render_manager.PaintShortcuts() && !force_clip_self && element->GetComputedValues().clip() == Style::Clip::Type::Auto)
-		offset_parent = element->GetOffsetParent();
-	if (offset_parent)
+		memo_key = GetClipMemoKey(element->GetOffsetParent());
+	if (memo_key)
 	{
-		if (const RenderManager::ClipMemo* memo = render_manager.FindClipMemo(offset_parent))
+		if (const RenderManager::ClipMemo* memo = render_manager.FindClipMemo(memo_key))
 		{
 			if (memo->scissor)
 				render_manager.SetScissorRegion(memo->region);
@@ -300,9 +318,9 @@ bool ElementUtilities::SetClippingRegion(Element* element, bool force_clip_self)
 	ClipMaskGeometryList clip_mask_list;
 
 	const bool scissoring_enabled = GetClippingRegion(element, clip_region, &clip_mask_list, force_clip_self);
-	if (offset_parent)
+	if (memo_key)
 	{
-		RenderManager::ClipMemo& memo = render_manager.AddClipMemo(offset_parent);
+		RenderManager::ClipMemo& memo = render_manager.AddClipMemo(memo_key);
 		memo.scissor = scissoring_enabled;
 		memo.region = clip_region;
 		memo.masks = clip_mask_list;

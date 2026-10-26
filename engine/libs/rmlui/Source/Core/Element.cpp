@@ -241,6 +241,19 @@ void Element::UpdateProperties(const float dp_ratio, const Vector2f vp_dimension
 	}
 }
 
+bool Element::GetPaintBounds(Rectanglef& out_bounds)
+{
+	// (a subclass may paint more in OnRender: unknown unless it says)
+	if (GetClassIdentifier() != Element::GetStaticClassIdentifier() || GetNumBoxes() != 1)
+		return false;
+	float reach = 0.f;
+	if (!meta->background_border.GetInkReach(reach))
+		return false;
+	const Vector2f position = GetAbsoluteOffset(BoxArea::Border);
+	out_bounds = Rectanglef::FromPositionSize(position - Vector2f(reach), main_box.GetSize(BoxArea::Border) + Vector2f(2.f * reach));
+	return true;
+}
+
 void Element::Render()
 {
 #ifdef RMLUI_TRACY_PROFILING
@@ -263,6 +276,27 @@ void Element::Render()
 
 	if (stacking_context_dirty)
 		BuildLocalStackingContext();
+
+	// Fork (S16-F6): an element with nothing to paint but its own (no transform, effects, stacking children or ellipsis)
+	// whose paint bounds lie wholly outside the scissor its clipping region sets (kept by SetClippingRegion for the other
+	// elements of its key) is passed over before any state is set: a long scrolled list's hidden rows cost a few tests
+	if (!transform_state && !dirty_transform && !dirty_perspective && stacking_context.empty() && !local_stacking_context &&
+		!draws_line_clamp_ellipsis && computed.clip() == Style::Clip::Type::Auto && !effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image()))
+	{
+		RenderManager* render_manager = GetRenderManager();
+		if (render_manager && render_manager->PaintShortcuts())
+		{
+			const RenderManager::ClipMemo* memo = render_manager->FindClipMemo(ElementUtilities::GetClipMemoKey(GetOffsetParent()));
+			Rectanglef bounds;
+			if (memo && memo->scissor && GetPaintBounds(bounds))
+			{
+				const Rectanglei& scissor = memo->region;
+				if (bounds.Right() <= (float)scissor.Left() || bounds.Left() >= (float)scissor.Right() || bounds.Bottom() <= (float)scissor.Top() ||
+					bounds.Top() >= (float)scissor.Bottom())
+					return;
+			}
+		}
+	}
 
 	UpdateTransformState();
 	ElementUtilities::ApplyTransform(*this);

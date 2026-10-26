@@ -136,6 +136,8 @@ public:
 
 protected:
 	void OnRender() override;
+	/// Fork (S16-F6): its lines' boxes with a font size of margin, and its shadows' and effects' reach.
+	bool GetPaintBounds(Rectanglef& out_bounds) override;
 
 	void OnPropertyChange(const PropertyIdSet& properties) override;
 
