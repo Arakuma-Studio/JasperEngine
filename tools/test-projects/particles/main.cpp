@@ -7,6 +7,8 @@
 // WebGL2 (WEB_PROJECT=particles tools/build.sh web, GATE=particles tools/build.sh web-gate; with
 // WASM_SIMD=0 both build the scalar kernels). The gate checks the live count and the state hash,
 // which the simd128 and the scalar kernels must give alike (bit-identical), and the canvas centre.
+// On Android (ANDROID_PROJECT=particles tools/build.sh android) the emulator test checks the same
+// lines (android-expect.txt) with the SSE2 or NEON kernels and the GLES3 particles shader.
 //
 // With ?particles_bench=1 (a Release build on the benchmark server: GATE_ARGS=
 // '--query=particles_bench=1 --expect=particles_web_budgets=pass') it first measures the web rows

@@ -1,0 +1,5 @@
+# tools/android-emulator-test.sh --ordered --expect-file: what the particles project logs on Android
+# (`logcat -v tag`): the SIMD kernels it runs (sse2 on the x86_64 emulator, neon on arm64 devices),
+# then the live counts and state hashes of the two effects seeked to 2 s
+I/JasperEngine: [gate] particle kernels:
+I/JasperEngine: [gate] particles
