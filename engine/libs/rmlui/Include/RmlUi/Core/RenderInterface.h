@@ -40,6 +40,7 @@ struct BoxPrimitive {
 		Box,         // border_box filled with 'fill', its border (border_widths) in border_colors
 		ShadowOuter, // the shadow shape border_box in 'fill', blurred by sigma, outside clip_box (the element's border box)
 		ShadowInset, // everything outside the shadow shape border_box in 'fill', blurred by sigma, inside clip_box (the padding box)
+		Gradient,    // fork (S16-F5): border_box (a fill area, its radii) painted by the gradient 'shader' times 'fill' (the opacity)
 	};
 	Kind kind = Kind::Box;
 	Rectanglef border_box;               // Box: the border box; shadows: the shadow's shape (offset and spread applied)
@@ -52,6 +53,7 @@ struct BoxPrimitive {
 	float sigma = 0.f;                   // shadows: half the blur radius
 	Rectanglef clip_box;                 // shadows
 	Array<Vector2f, 4> clip_radii = {};
+	CompiledShaderHandle shader = {};    // Gradient: its compiled shader (RenderInterface::SupportsGradientPrimitive)
 };
 
 /**
@@ -146,6 +148,9 @@ public:
 	/// Fork (S16-F4): whether elements may skip painting their background, border and text when it lies wholly outside the
 	/// scissor region (no transform): what the render interface would clip anyway. Asked every frame.
 	virtual bool CullsOffscreenPaint();
+	/// Fork (S16-F5): whether a gradient (CompileShader's) can be drawn as a BoxPrimitive of kind Gradient over a fill area,
+	/// so that gradient backgrounds batch with the other primitives. Asked when the decorator's data is made.
+	virtual bool SupportsGradientPrimitive(CompiledShaderHandle shader);
 
 	/// Called by RmlUi when it wants the renderer to use a new transform matrix.
 	/// @param[in] transform The new transform to apply, or nullptr if no transform applies to the current element.

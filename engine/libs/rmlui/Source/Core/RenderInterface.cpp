@@ -37,6 +37,11 @@ bool RenderInterface::CullsOffscreenPaint()
 	return false;
 }
 
+bool RenderInterface::SupportsGradientPrimitive(CompiledShaderHandle /*shader*/)
+{
+	return false;
+}
+
 void RenderInterface::RenderPrimitives(Span<const BoxPrimitive> /*primitives*/, Vector2f /*translation*/) {}
 
 void RenderInterface::SetTransform(const Matrix4f* /*transform*/) {}

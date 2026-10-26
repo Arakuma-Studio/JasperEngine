@@ -234,6 +234,8 @@ void Context::DirtyBackgrounds()
 		background->DirtyBackground();
 		background->DirtyBorder();
 		background->DirtyOutline();
+		// the decorators' data too: gradients are primitives or meshes (S16-F5)
+		element->DirtyBorderTopCut();
 		for (int i = 0; i < element->GetNumChildren(true); i++)
 			dirty(element->GetChild(i));
 	};

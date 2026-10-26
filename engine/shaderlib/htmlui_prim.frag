@@ -152,6 +152,31 @@ void main() {
         float cut = (mode == 2) ? clamp(roundedRectSDF(p, v_d, v_e, v_f) / rectEdgeFootprint(p, v_d, dpdx, dpdy), 0.0, 1.0) : box;
         float alpha = (mode == 2) ? shape * (1.0 - cut) : (1.0 - shape) * box;
         color = v_color * alpha;
+    }else if (mode == 4){
+        // a gradient over its fill area (S16-F5): htmlui_gradient.frag's linear or radial function, at
+        // most four stops (positions in v_e, colours in v_border0-3), in the area's own px
+        vec2 uv = p - v_a.xy;
+        float t;
+        if (v_f.x < 0.5){
+            float distSquare = max(dot(v_d.zw, v_d.zw), 1e-12);
+            t = dot(v_d.zw, uv - v_d.xy) / distSquare;
+        }else{
+            t = length(v_d.zw * (uv - v_d.xy));
+        }
+        int count = int(v_f.y + 0.5);
+        vec4 stopColor = v_border0;
+        float previous = v_e.x;
+        for (int i = 1; i < 4; i++){
+            if (i >= count)
+                break;
+            float position = (i == 1) ? v_e.y : ((i == 2) ? v_e.z : v_e.w);
+            vec4 next = (i == 1) ? v_border1 : ((i == 2) ? v_border2 : v_border3);
+            // a hard stop (equal positions) switches at its position
+            float f = (position > previous) ? clamp((t - previous) / (position - previous), 0.0, 1.0) : step(position, t);
+            stopColor = mix(stopColor, next, f);
+            previous = position;
+        }
+        color = v_color * stopColor * htmluiClipShape(p, dpdx, dpdy, v_a, v_b, v_c);
     }else{
         // a quad: the colour, times its slot's texture by kind
         color = v_color;

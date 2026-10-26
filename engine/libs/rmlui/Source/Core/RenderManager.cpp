@@ -221,6 +221,16 @@ void RenderManager::RenderPrimitives(Span<const BoxPrimitive> primitives, Vector
 		render_interface->RenderPrimitives(primitives, translation.Round());
 }
 
+bool RenderManager::SupportsGradientPrimitive(const CompiledShader& shader, CompiledShaderHandle& handle)
+{
+	handle = {};
+	if (!shader || shader.render_manager != this || !render_interface->SupportsPrimitives() ||
+		!render_interface->SupportsGradientPrimitive(shader.resource_handle))
+		return false;
+	handle = shader.resource_handle;
+	return true;
+}
+
 bool RenderManager::IsOutsideScissor(Rectanglef rectangle)
 {
 	if (!state.scissor_region.Valid() || !render_interface->CullsOffscreenPaint())

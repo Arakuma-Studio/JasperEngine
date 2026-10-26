@@ -362,8 +362,37 @@ HtmlUIPrimitive RmlRenderer::toInstance(const Rml::BoxPrimitive& primitive, Rml:
         setRect(instance.d, primitive.clip_box, translation);
         setRadii(instance.e, instance.f, primitive.clip_radii);
         break;
+    case Rml::BoxPrimitive::Kind::Gradient: {
+        // the fill area painted by the gradient (htmlui_gradient.frag's p, v and stops, at most four)
+        instance.params[0] = (float)HtmlUIPrimitive::GRADIENT;
+        const RmlCompiledShader* shader = reinterpret_cast<const RmlCompiledShader*>(primitive.shader);
+        if (!shader)
+            break;
+        instance.d[0] = shader->p.x;
+        instance.d[1] = shader->p.y;
+        instance.d[2] = shader->v.x;
+        instance.d[3] = shader->v.y;
+        const int count = std::min((int)shader->stopPositions.size(), (int)HtmlUIPrimitive::GRADIENT_STOPS);
+        for (int i = 0; i < count; i++){
+            instance.e[i] = shader->stopPositions[(size_t)i];
+            const Rml::Colourf& c = shader->stopColors[(size_t)i];
+            setColor(instance.border[i], Rml::ColourbPremultiplied((Rml::byte)std::lround(c.red * 255.0f), (Rml::byte)std::lround(c.green * 255.0f),
+                                                                   (Rml::byte)std::lround(c.blue * 255.0f), (Rml::byte)std::lround(c.alpha * 255.0f)));
+        }
+        instance.f[0] = (shader->function == RmlCompiledShader::Function::RADIAL) ? 1.0f : 0.0f;
+        instance.f[1] = (float)count;
+        break;
+    }
     }
     return instance;
+}
+
+bool RmlRenderer::SupportsGradientPrimitive(Rml::CompiledShaderHandle handle){
+    if (!sdfPrimitivesEnabled || !handle || htmlui::EffectRenderer::isEffectHandle(handle))
+        return false;
+    const RmlCompiledShader* shader = reinterpret_cast<const RmlCompiledShader*>(handle);
+    const bool plain = shader->function == RmlCompiledShader::Function::LINEAR || shader->function == RmlCompiledShader::Function::RADIAL;
+    return plain && !shader->stopPositions.empty() && shader->stopPositions.size() <= (size_t)HtmlUIPrimitive::GRADIENT_STOPS;
 }
 
 bool RmlRenderer::classifyQuadList(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices, std::vector<HtmlUIPrimitive>* instances){

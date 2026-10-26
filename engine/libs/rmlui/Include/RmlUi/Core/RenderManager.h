@@ -81,6 +81,8 @@ public:
 	/// painting it may be skipped: the render interface culls (RenderInterface::CullsOffscreenPaint), a scissor region is set
 	/// and no transform applies. False when unsure.
 	bool IsOutsideScissor(Rectanglef rectangle);
+	/// Fork (S16-F5): RenderInterface::SupportsGradientPrimitive of the shader, and its handle for the primitive.
+	bool SupportsGradientPrimitive(const CompiledShader& shader, CompiledShaderHandle& handle);
 
 	Texture LoadTexture(const String& source, const String& document_path = String());
 	/// Fork (phase 3, p3-paint): the texture of 'source' joined with the document path, with 'query' (a query parameter)

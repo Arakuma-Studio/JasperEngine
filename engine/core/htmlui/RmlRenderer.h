@@ -194,6 +194,8 @@ namespace jasperengine {
         bool SupportsPrimitives() override;
         // fork S16-F4: elements skip what is wholly outside the scissor (with the batched replay, D1)
         bool CullsOffscreenPaint() override;
+        // fork S16-F5: linear and radial gradients of at most four stops are HTMLUI_PRIM instances
+        bool SupportsGradientPrimitive(Rml::CompiledShaderHandle shader) override;
         void RenderPrimitives(Rml::Span<const Rml::BoxPrimitive> primitives, Rml::Vector2f translation) override;
 
         // engine side, called by HtmlUIContext (HtmlUIContextRender.cpp)
