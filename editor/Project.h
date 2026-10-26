@@ -2088,6 +2088,9 @@ namespace jasperengine::editor{
         // any, as in a Lua-only project, would otherwise be decoded again on every Play. True if
         // it read the file now.
         bool collectClosedSceneCppScripts(SceneProject& sceneProject);
+        // The C++ script list the scene file's header has (what it had when saved), as a closed
+        // scene gets at project load; forgets collectClosedSceneCppScripts' read of it
+        void readSceneFileCppScripts(SceneProject& sceneProject);
         // How many times that read a scene file (tests)
         size_t getClosedSceneScriptReads() const { return closedSceneScriptReads; }
 

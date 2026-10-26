@@ -4489,9 +4489,9 @@ void editor::Project::closeScene(uint32_t sceneId, bool systemClose) {
     } else {
         it->opened = false;
         it->expandedInline = false;
-        // closed: its scripts are its file's again (an unsaved edit may have changed them)
-        it->cppScripts.clear();
-        it->cppScriptsRead = false;
+        // closed: its scripts are its file's again, as at project load (an unsaved edit may have
+        // changed them), for Play, exports and script builds (collectAllSceneCppScripts)
+        readSceneFileCppScripts(*it);
     }
 
     editor::getEditorHost().clearSceneWindowState(sceneId);
@@ -8129,6 +8129,23 @@ bool editor::Project::isPlayStarting() const{
         }
     }
     return false;
+}
+
+void editor::Project::readSceneFileCppScripts(SceneProject& sceneProject) {
+    sceneProject.cppScripts.clear();
+    sceneProject.cppScriptsRead = false;
+    if (sceneProject.filepath.empty()) {
+        return;
+    }
+    fs::path fullPath = sceneProject.filepath;
+    if (fullPath.is_relative()) {
+        fullPath = getProjectPath() / fullPath;
+    }
+    try {
+        Stream::decodeSceneCppScripts(&sceneProject, YAML::LoadFile(fullPath.string()));
+    } catch (const std::exception& e) {
+        Out::warning("Scripts of scene '%s' not read from its file: %s", sceneProject.name.c_str(), e.what());
+    }
 }
 
 bool editor::Project::collectClosedSceneCppScripts(SceneProject& sceneProject) {

@@ -355,6 +355,7 @@ namespace jasperengine::editor {
 
         static YAML::Node encodeSceneProject(const Project* project, const SceneProject* sceneProject);
         static void decodeSceneProject(SceneProject* sceneProject, const YAML::Node& node, bool loadScene);
+        static void decodeSceneCppScripts(SceneProject* sceneProject, const YAML::Node& node);
         // reservedBelow: user ids under it are reserved too and new ones start above it (a
         // prefab stage: ids its prefab handed out once, its nextEntity, are never given to
         // the members of the instances nested in it)

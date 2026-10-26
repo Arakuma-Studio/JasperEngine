@@ -158,34 +158,67 @@ TEST(ClosedSceneScripts, ReadOncePerVersionOfTheFile) {
     fs::remove_all(dir);
 }
 
-TEST(ClosedSceneScripts, ForgottenWhenTheSceneCloses) {
+TEST(ClosedSceneScripts, TheFileListAgainWhenTheSceneCloses) {
     const fs::path dir = tempDir("reopened");
-    const fs::path file = dir / "Reopened.scene";
-    writeLuaOnlyScene(file, "Reopened");
+    fs::create_directories(dir / "scripts");
+    for (const char* name : {"Kept.cpp", "Kept.h", "Unsaved.cpp", "Unsaved.h"}) {
+        std::ofstream(dir / "scripts" / name) << "// " << name << "\n";
+    }
+    // saved with one C++ script: its header lists it (what a closed scene gets at project load)
+    {
+        std::ofstream file(dir / "Reopened.scene", std::ios::binary | std::ios::trunc);
+        file << "id: 78\n"
+                "name: Reopened\n"
+                "scene:\n"
+                "  backgroundColor: [0.1, 0.1, 0.1, 1]\n"
+                "sceneType: scene_3d\n"
+                "mainCamera: 0\n"
+                "cppScripts:\n"
+                "  - path: scripts/Kept.cpp\n"
+                "    headerPath: scripts/Kept.h\n"
+                "    className: Kept\n"
+                "entities: []\n";
+    }
+    writeLuaOnlyScene(dir / "LuaOnly.scene", "LuaOnly");
 
     Project project;
-    SceneProject& listed = addScene(project, 511, "Reopened");
-    listed.opened = false;
-    listed.filepath = file;
-    ASSERT_TRUE(project.collectClosedSceneCppScripts(listed));
-    ASSERT_EQ(project.getClosedSceneScriptReads(), 1u);
+    PlaySessionTestAccess::setProjectPath(project, dir);
+    SceneProject& cpp = addScene(project, 511, "Reopened");
+    cpp.filepath = "Reopened.scene";
+    cpp.scene = new Scene();
+    // open, its scripts changed in memory and not saved
+    cpp.cppScripts.push_back(SceneScriptSource{"scripts/Unsaved.cpp", "scripts/Unsaved.h", "Unsaved", {}});
+    SceneProject& lua = addScene(project, 512, "LuaOnly");
+    lua.filepath = "LuaOnly.scene";
+    lua.scene = new Scene();
+    lua.cppScriptsRead = true;  // read once before it was opened
 
-    // opened, its scripts changed in memory (not saved), closed again
-    SceneProject* reopened = findScene(project, 511);
-    reopened->opened = true;
-    reopened->scene = new Scene();
-    reopened->cppScripts.push_back(SceneScriptSource{"scripts/Removed.cpp", "scripts/Removed.h", "Removed", {}});
+    auto buildClasses = [&project]() {
+        std::vector<std::string> classes;
+        for (const SceneScriptSource& script : project.getBuildCppScripts()) classes.push_back(script.className);
+        return classes;
+    };
+    EXPECT_EQ(buildClasses(), std::vector<std::string>{"Unsaved"}) << "an open scene builds what it has";
+
     project.closeScene(511, true);
+    project.closeScene(512, true);
 
     SceneProject* closed = findScene(project, 511);
     ASSERT_NE(closed, nullptr);
     EXPECT_FALSE(closed->opened);
     EXPECT_EQ(closed->scene, nullptr);
-    EXPECT_FALSE(closed->cppScriptsRead) << "what it had in memory is not its file's";
-    EXPECT_TRUE(closed->cppScripts.empty());
-    EXPECT_TRUE(project.collectClosedSceneCppScripts(*closed)) << "the next Play reads its file again";
-    EXPECT_TRUE(closed->cppScripts.empty());
-    EXPECT_EQ(project.getClosedSceneScriptReads(), 2u);
+    ASSERT_EQ(closed->cppScripts.size(), 1u) << "the file's list again, not what memory had";
+    EXPECT_EQ(closed->cppScripts[0].className, "Kept");
+    // exports (Exporter::copyCppScripts) and script builds (prepareScriptBuild) build this list
+    EXPECT_EQ(buildClasses(), std::vector<std::string>{"Kept"});
+
+    SceneProject* luaClosed = findScene(project, 512);
+    ASSERT_NE(luaClosed, nullptr);
+    EXPECT_TRUE(luaClosed->cppScripts.empty());
+    EXPECT_FALSE(luaClosed->cppScriptsRead) << "the next Play reads its file again";
+    EXPECT_TRUE(project.collectClosedSceneCppScripts(*luaClosed));
+    EXPECT_FALSE(project.collectClosedSceneCppScripts(*luaClosed));
+    EXPECT_EQ(project.getClosedSceneScriptReads(), 1u);
 
     fs::remove_all(dir);
 }
