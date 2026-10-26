@@ -22,7 +22,11 @@ target_compile_definitions(basisu_transcoder PUBLIC ${BASISU_COMMON_DEFINITIONS}
 # the D5 targets only: no PVRTC1/2, ATC, FXT1 (v2.50's XBC7 decoder needs the XUASTC code, so
 # BASISD_SUPPORT_XUASTC stays on). Private: only the .cpp reads them, and the editor's own copy
 # (the encoder's) keeps every target
+# Byte reads of the UASTC bit fields on x86 too, as on ARM and wasm: the default's unaligned
+# uint16 loads are undefined behaviour (UBSan stops the sanitizer runs on them). Only the
+# transcoder's .cpp reads it (both copies)
 target_compile_definitions(basisu_transcoder PRIVATE
+    BASISD_USE_UNALIGNED_WORD_READS=0
     BASISD_SUPPORT_PVRTC1=0
     BASISD_SUPPORT_PVRTC2=0
     BASISD_SUPPORT_ATC=0
@@ -74,7 +78,7 @@ if(JASPERENGINE_TEXTURE_ENCODERS)
         ${BASISU_COMMON_DEFINITIONS}
         BASISU_SUPPORT_ASTCENC=0
         BASISU_DISABLE_ANDROID_ASTC_DECOMP=0)
-    target_compile_definitions(basisu_encoder PRIVATE _LARGEFILE64_SOURCE=1 _FILE_OFFSET_BITS=64)
+    target_compile_definitions(basisu_encoder PRIVATE _LARGEFILE64_SOURCE=1 _FILE_OFFSET_BITS=64 BASISD_USE_UNALIGNED_WORD_READS=0)
     target_link_libraries(basisu_encoder PRIVATE zstd)
     target_compile_options(basisu_encoder PRIVATE
         $<${BASISU_GNU_FE}:-fno-strict-aliasing -ffp-contract=off>

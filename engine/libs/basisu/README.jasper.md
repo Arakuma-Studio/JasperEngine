@@ -25,5 +25,7 @@ shader-deblocking samples, the build files.
 - `CMakeLists.txt`: replaces the upstream build. SSE and OpenCL off (`BASISU_SUPPORT_SSE=0`,
   `BASISU_SUPPORT_OPENCL=0`), `-ffp-contract=off`, hidden visibility. The transcoder is built
   without PVRTC1/2, ATC and FXT1 (`BASISD_SUPPORT_*=0`), which the engine never asks for; XUASTC
-  stays on because v2.50's XBC7 decoder does not compile without it.
+  stays on because v2.50's XBC7 decoder does not compile without it. UASTC bit fields are read
+  byte by byte on x86 too (`BASISD_USE_UNALIGNED_WORD_READS=0`, as upstream does on ARM and wasm):
+  the unaligned `uint16_t` loads are undefined behaviour under UBSan.
 - No source file is changed.

@@ -116,7 +116,9 @@ TEST(Ktx2, SrgbTravelsInTheDfd){
         EXPECT_EQ(info.vkFormat, gpuFormatToVkFormat(GpuTextureFormat::BC7, srgb));
     }
     // linear data stays linear whatever the flag says
-    Ktx2::WriteDesc desc = describe(GpuTextureFormat::BC5, 16, 16, 1, makeLevels(GpuTextureFormat::BC5, 16, 16, 1, 1, 8));
+    // (the descriptor's spans point into these: they outlive the write)
+    const std::vector<std::vector<uint8_t>> bc5Levels = makeLevels(GpuTextureFormat::BC5, 16, 16, 1, 1, 8);
+    Ktx2::WriteDesc desc = describe(GpuTextureFormat::BC5, 16, 16, 1, bc5Levels);
     desc.srgb = true;
     std::vector<uint8_t> file;
     std::string error;
