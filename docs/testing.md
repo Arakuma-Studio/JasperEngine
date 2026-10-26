@@ -475,4 +475,15 @@ on the benchmark host E):
   (`p1/texture_effects` traced and fixed).
 - `HTMLUI_TEST_ARGS=--gtest_filter=HtmlUIRenderPerf.*` on the benchmark host: 9 passed
   (`docs/html-ui/render-benchmark.md`; B2 44 % of the baseline engine time, B6 43 %).
-- GATE_PLACEHOLDER
+- Gate on 592d8ed28 (B): `WERROR=1 tools/build.sh linux`, `tools/build.sh htmlui-editor-tests`,
+  `tools/build.sh unit-tests` (core and editor), `tools/htmlui/run-rmlui-tests.sh --docker`,
+  `tools/build.sh web` + `web-gate`, `tools/build.sh android`, `tools/smoke-test.sh
+  tools/fixtures/post-processing` (glcore and Vulkan): pass. `docs/mcp/TOOLS.md` regenerated with
+  `gen_tool_docs.py` (195 tools).
+- MCP (`test_html_ui_*.py`, `test_ui_render_stats.py`, `test_protocol.py`, `test_profiler.py`,
+  `test_tool_budget.py`): S16's failures fixed (`inspect_ui` over its 1792-char budget; the render
+  stats test counting the cards the list's scrollport culls; S17's example play goldens
+  `inventory`/`server_browser` predating S16, updated with ledger rows). The others failing on this
+  oe-port (`test_html_ui_component` S04 asset type, `test_html_ui_phase2`/`_integration` S17 patch
+  reload, `test_html_ui_effects` "Loading" dialog under load, `test_html_ui_export`,
+  `test_html_ui_agent_sim`) are fixed on BF2's branch, whose run on oe-port passes them.
