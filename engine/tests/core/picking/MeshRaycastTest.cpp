@@ -8,6 +8,7 @@
 #include "picking/MeshRaycast.h"
 #include "picking/MeshPose.h"
 #include "picking/PickCache.h"
+#include "picking/PickGeometry.h"
 #include "action/ParticleSystem.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/MeshComponent.h"
@@ -447,4 +448,50 @@ TEST(MeshRaycast, DistanceSemanticsAndAll){
     const RayReturn asPhysics = hit.toRayReturn();
     EXPECT_TRUE(asPhysics.hit);
     EXPECT_EQ(asPhysics.body, nearBox.getEntity());
+}
+
+TEST(MeshRaycast, UnsignedShortJointsReadAsTheGpuBindsThem){
+    // glTF's UNSIGNED_SHORT joints: the renderer binds every unsigned short attribute normalized
+    // (SokolObject::getVertexFormat, USHORT4N) and the loader scales the ids back with
+    // normAdjustJoint 65535 (MeshSystem::loadGLTF). The CPU pose reads them the same way, or a
+    // vertex on bone 1 reads bone 65535 and loses that influence (S26 AC5).
+    Scene scene;
+    const Entity arm = makeSkinnedArm(scene);
+    MeshComponent& mesh = scene.getComponent<MeshComponent>(arm);
+    const uint32_t vertices = mesh.buffer.getAttribute(AttributeType::POSITION)->getCount();
+    ASSERT_EQ(vertices, 16u);
+
+    // the arm's joint ids again, as unsigned shorts in a buffer of their own (the body's 8
+    // vertices on bone 0, the arm's on bone 1)
+    std::vector<uint16_t> joints((size_t)vertices * 4, 0);
+    for (uint32_t v = 8; v < vertices; v++){
+        joints[(size_t)v * 4] = 1;
+    }
+    ExternalBuffer& buffer = mesh.eBuffers[0];
+    buffer.setName("joints");
+    buffer.setType(BufferType::VERTEX_BUFFER);
+    buffer.setStride(4 * sizeof(uint16_t));
+    buffer.setData(reinterpret_cast<unsigned char*>(joints.data()), joints.size() * sizeof(uint16_t));
+    buffer.setRenderAttributes(false);
+    mesh.numExternalBuffers = 1;
+    Submesh& submesh = mesh.submeshes[0];
+    submesh.attributes[AttributeType::BONEIDS] = Attribute(AttributeDataType::UNSIGNED_SHORT, "joints", 4, 0, vertices, false, false);
+    submesh.hasSkinningNormalization = true;
+    submesh.normAdjustJoint = 65535.0f;
+    submesh.normAdjustWeight = 1.0f;
+    raiseArm(scene, arm);
+
+    PickGeometry geometry;
+    PickGeometryLayout layout;
+    ASSERT_TRUE(picking::gather(mesh, geometry, &layout));
+    picking::VertexPoseInput input;
+    ASSERT_TRUE(picking::readPoseInput(mesh, layout, 0, 12, input));
+    EXPECT_EQ((int)(input.boneIds[0] * picking::poseParameters(mesh, 0).normAdjustJoint), 1);
+
+    std::vector<Vector3> posed;
+    ASSERT_TRUE(picking::poseGeometry(mesh, layout, geometry.positions, posed));
+    for (uint32_t v = 0; v < vertices; v++){
+        const Vector3 expected = (v < 8 ? mesh.bonesMatrix[0] : mesh.bonesMatrix[1]) * geometry.positions[v];
+        EXPECT_LE((posed[v] - expected).length(), 1e-5f) << "vertex " << v << " " << posed[v].toString() << " vs " << expected.toString();
+    }
 }

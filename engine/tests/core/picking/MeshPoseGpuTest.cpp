@@ -27,6 +27,8 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cmath>
+#include <string>
 #include <vector>
 
 using namespace jasperengine;
@@ -141,12 +143,30 @@ TEST(MeshPose, MatchesGpuSkinning){
             const Vector3 gpu(decode(&images[0][i]), decode(&images[1][i]), decode(&images[2][i]));
             const Vector3 cpu = modelMatrix * posed[layout.submeshes[0].base + vertex];
             const float error = (gpu - cpu).length();
-            worst = std::max(worst, error);
+            // (a NaN is the worst there is)
+            worst = std::isnan(error) ? INFINITY : std::max(worst, error);
             moved = std::max(moved, (cpu - modelMatrix * geometry.positions[layout.submeshes[0].base + vertex]).length());
-            if (error > 1e-4f){
-                ADD_FAILURE() << "vertex " << vertex << ": GPU " << gpu.toString() << " CPU " << cpu.toString();
+            if (!(error <= 1e-4f)){
+                // what the CPU posed the vertex from
+                VertexPoseInput input;
+                std::string detail;
+                if (picking::readPoseInput(mesh, layout, 0, vertex, input)){
+                    detail = " skinned " + std::to_string(input.skinned) + " morphs " + std::to_string(input.morphCount);
+                    for (int b = 0; b < 4; b++){
+                        detail += " joint " + std::to_string(input.boneIds[b]) + " weight " + std::to_string(input.boneWeights[b]);
+                    }
+                }
+                ADD_FAILURE() << "vertex " << vertex << ": GPU " << gpu.toString() << " CPU " << cpu.toString() << detail;
             }
         }
+    }
+    if (worst > 1e-4f){
+        const PoseParameters parameters = picking::poseParameters(mesh, 0);
+        std::string bones = "normAdjust " + std::to_string(parameters.normAdjustJoint) + " " + std::to_string(parameters.normAdjustWeight);
+        for (size_t b = 0; b < parameters.bones.size(); b++){
+            bones += "\nbone " + std::to_string(b) + " " + parameters.bones[b].toString();
+        }
+        ADD_FAILURE() << bones;
     }
     for (uint32_t v = 0; v < vertexCount; v++){
         EXPECT_TRUE(seen[v]) << "the GPU drew no point for vertex " << v;

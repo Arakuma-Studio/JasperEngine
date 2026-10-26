@@ -52,7 +52,10 @@ namespace {
             elements = attribute.getElements();
             stride = buffer->getStride() > 0 ? buffer->getStride() : elementSize * elements;
             offset = attribute.getOffset();
-            normalized = attribute.getNormalized();
+            // as the renderer binds it: every unsigned short attribute normalized (Sokol has no
+            // USHORTn format, SokolObject::getVertexFormat), which glTF joints scale back with
+            // normAdjustJoint 65535 (MeshSystem::loadGLTF)
+            normalized = attribute.getNormalized() || type == AttributeDataType::UNSIGNED_SHORT;
         }
     };
 
