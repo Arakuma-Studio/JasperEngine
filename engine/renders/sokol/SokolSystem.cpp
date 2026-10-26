@@ -18,6 +18,7 @@
 #include "SokolPipelineCache.h"
 #include "SokolTraceHub.h"
 #include "render/SystemRender.h"
+#include "SokolTexture.h"
 #include "Log.h"
 #if JASPERENGINE_PROFILER
 #include "profiler/GpuMemory.h"
@@ -214,6 +215,8 @@ const RenderFeatures& SokolSystem::getFeatures(){
         features.renderR32F = r32f.render;
         features.blendR32F = r32f.blend;
         features.filterR32F = r32f.filter;
+        for (size_t f = 0; f < kGpuTextureFormatCount; f++)
+            features.textureFormats.set((GpuTextureFormat)f, SokolTexture::isFormatSupported((GpuTextureFormat)f));
         featuresQueried = true;
     }
     return features;

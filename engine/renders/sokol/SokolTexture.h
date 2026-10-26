@@ -5,7 +5,9 @@
 #define SokolTexture_h
 
 #include "render/Render.h"
+#include "texture/TextureFormat.h"
 #include "sokol_gfx.h"
+#include <span>
 #include <string>
 
 namespace jasperengine{
@@ -23,7 +25,6 @@ namespace jasperengine{
         sg_filter getFilterMipmap(TextureFilter textureFilter);
         sg_wrap getWrap(TextureWrap textureWrap);
 
-        sg_image generateMipmaps(const sg_image_desc* desc_);
         void createTextureView(const char* label);
 
         static const void* getVulkanView(sg_view view);
@@ -34,10 +35,23 @@ namespace jasperengine{
         SokolTexture(const SokolTexture& rhs);
         SokolTexture& operator=(const SokolTexture& rhs);
 
+        // level 0 only (mipmaps come as levels, createTextureLevels)
         bool createTexture(
                     const std::string& label, int width, int height,
                     ColorFormat colorFormat, TextureType type, int numFaces, void* data[], size_t size[],
                     TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV);
+
+        // the levels as given, level 0 first, each holding every face (or array slice); the
+        // sampler's mip filter applies when there are several
+        bool createTextureLevels(
+                    const std::string& label, TextureType type, GpuTextureFormat format,
+                    int width, int height, int numFaces, std::span<const TextureLevel> levels,
+                    TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV);
+
+        // the one sokol format of each cooked format (colour stays UNORM: shaders decode sRGB)
+        static sg_pixel_format toSokol(GpuTextureFormat format, bool srgb);
+        // sampled with linear filtering on this device (after sg_setup)
+        static bool isFormatSupported(GpuTextureFormat format);
 
         // a 3D texture of width x height x depth RGBA8 texels (data: x fastest, then y, then
         // the depth slices), no mipmaps, one filter and wrap on every axis

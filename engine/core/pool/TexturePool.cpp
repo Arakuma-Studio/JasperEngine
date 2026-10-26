@@ -6,6 +6,10 @@
 
 #include "Engine.h"
 #include "Log.h"
+#include "render/SystemRender.h"
+#include "texture/TexturePrepare.h"
+
+#include <cstring>
 
 #include <vector>
 
@@ -53,20 +57,100 @@ std::shared_ptr<TextureRender> TexturePool::get(const std::string& id, TextureTy
 
 	int numFaces = (type == TextureType::TEXTURE_CUBE) ? 6 : 1;
 
-	void* data_array[6];
-	size_t size_array[6];
-
-	for (int f = 0; f < numFaces; f++){
-		data_array[f] = data->at(f).getData();
-		size_array[f] = (size_t)data->at(f).getSize();
-		if (!data_array[f] || size_array[f] == 0){
-			// Pixel data was released or never populated. Skip the upload so we
-			// don't trigger Sokol's VALIDATE_IMAGEDATA_NODATA. The caller will
-			// fall back and Texture::load() will refresh the data on a later try.
-			Log::error("Texture data is empty: %s", id.c_str());
-			return NULL;
+	// the levels to upload: one TextureData with every face (a cooked file), one per face
+	// (raw loads), or plain pixels (setData, model textures) that get their mips here
+	std::vector<TextureLevel> levels;
+	GpuTextureFormat format = GpuTextureFormat::RGBA8;
+	int width = 0;
+	int height = 0;
+	auto* owned = new std::vector<std::vector<uint8_t>>();
+	TextureData& first = data->at(0);
+	std::string error;
+	if (first.hasLevels() && first.getFaceCount() == numFaces){
+		levels = first.getLevels();
+		format = first.getGpuFormat();
+	}else{
+		std::vector<std::vector<TextureLevel>> faceLevels(numFaces);
+		bool leveled = true;
+		for (int f = 0; f < numFaces; f++){
+			TextureData& face = data->at(f);
+			leveled = leveled && face.hasLevels() && face.getFaceCount() == 1 && face.getGpuFormat() == first.getGpuFormat() &&
+			          face.getLevels().size() == first.getLevels().size();
+			if (!face.hasPixels()){
+				// Pixel data was released or never populated. Skip the upload so we
+				// don't trigger Sokol's VALIDATE_IMAGEDATA_NODATA. The caller will
+				// fall back and Texture::load() will refresh the data on a later try.
+				Log::error("Texture data is empty: %s", id.c_str());
+				delete owned;
+				return NULL;
+			}
+		}
+		if (leveled){
+			format = first.getGpuFormat();
+			for (int f = 0; f < numFaces; f++)
+				faceLevels[f] = data->at(f).getLevels();
+		}else{
+			// mips only when the sampler reads them, as the box filter they replace did
+			const bool mipmapped = minFilter == TextureFilter::LINEAR_MIPMAP_LINEAR || minFilter == TextureFilter::LINEAR_MIPMAP_NEAREST ||
+			                       minFilter == TextureFilter::NEAREST_MIPMAP_LINEAR || minFilter == TextureFilter::NEAREST_MIPMAP_NEAREST;
+			std::vector<const TextureData*> faces;
+			for (int f = 0; f < numFaces; f++)
+				faces.push_back(&data->at(f));
+			TextureProcessing processing = TextureProcessing::defaultFor(first, false, numFaces == 6);
+			processing.mipmaps = mipmapped;
+			PreparedTexture prepared;
+			std::vector<std::vector<uint8_t>> combined;
+			if (!TexturePrepare::prepare(faces, processing, prepared, error) ||
+			    !TexturePrepare::toUncompressed(prepared, TexturePrepare::uncompressedFormat(prepared.layout), combined, error)){
+				Log::error("Texture %s: %s", id.c_str(), error.c_str());
+				delete owned;
+				return NULL;
+			}
+			format = TexturePrepare::uncompressedFormat(prepared.layout);
+			*owned = std::move(combined);
+			for (size_t level = 0; level < owned->size(); level++){
+				TextureLevel l;
+				l.width = mipDimension(prepared.width, (int)level);
+				l.height = mipDimension(prepared.height, (int)level);
+				l.data = (*owned)[level].data();
+				l.size = (*owned)[level].size();
+				levels.push_back(l);
+			}
+		}
+		if (leveled){
+			// every face of a level in one block
+			const size_t count = faceLevels[0].size();
+			owned->resize(count);
+			for (size_t level = 0; level < count; level++){
+				for (int f = 0; f < numFaces; f++)
+					(*owned)[level].insert((*owned)[level].end(), faceLevels[f][level].data, faceLevels[f][level].data + faceLevels[f][level].size);
+				TextureLevel l = faceLevels[0][level];
+				l.data = (*owned)[level].data();
+				l.size = (*owned)[level].size();
+				levels.push_back(l);
+			}
 		}
 	}
+	// R16 is not a GLES3 / WebGL2 format: those sample its high byte as R8 (the CPU keeps R16)
+	if (format == GpuTextureFormat::R16 && !SystemRender::isTextureFormatSupported(GpuTextureFormat::R16)){
+		auto* converted = new std::vector<std::vector<uint8_t>>(levels.size());
+		for (size_t level = 0; level < levels.size(); level++){
+			const size_t n = levels[level].size / 2;
+			(*converted)[level].resize(n);
+			for (size_t i = 0; i < n; i++){
+				uint16_t v;
+				std::memcpy(&v, levels[level].data + i * 2, 2);
+				(*converted)[level][i] = (uint8_t)(((uint32_t)v * 255u + 32767u) / 65535u);
+			}
+			levels[level].data = (*converted)[level].data();
+			levels[level].size = n;
+		}
+		delete owned;
+		owned = converted;
+		format = GpuTextureFormat::R8;
+	}
+	width = levels.empty() ? 0 : levels[0].width;
+	height = levels.empty() ? 0 : levels[0].height;
 
 	if (!shared){
 		shared = std::make_shared<TextureRender>();
@@ -79,7 +163,10 @@ std::shared_ptr<TextureRender> TexturePool::get(const std::string& id, TextureTy
 	}
 
 	JE_GPU_ALLOC_SCOPE(Textures, id);
-	if (!shared->createTexture(id, data->at(0).getWidth(), data->at(0).getHeight(), data->at(0).getColorFormat(), type, numFaces, data_array, size_array, minFilter, magFilter, wrapU, wrapV)){
+	const bool created = shared->createTextureLevels(id, type, format, width, height, numFaces, levels, minFilter, magFilter, wrapU, wrapV);
+	// after the creation: the queued path reads the bytes when the queue runs
+	SystemRender::scheduleCleanup([](void* buffers){ delete static_cast<std::vector<std::vector<uint8_t>>*>(buffers); }, owned);
+	if (!created){
 		shared->destroyTexture();
 		if (it != map.end()){
 			map.erase(it);

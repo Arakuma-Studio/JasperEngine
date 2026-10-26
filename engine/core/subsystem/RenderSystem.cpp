@@ -19,6 +19,7 @@
 #include "pool/TexturePool.h"
 #include "math/Vector3.h"
 #include "texture/IBLEnvironment.h"
+#include "texture/MipChain.h"
 #include "util/Angle.h"
 #include "util/Color.h"
 #include "buffer/ExternalBuffer.h"
@@ -4570,8 +4571,6 @@ RenderSystem::TerrainDetailArray* RenderSystem::getTerrainDetailArray(Entity ent
     // Slices share one format, and the packed ones need four channels anyway
     const size_t texels = (size_t)width * height;
     std::vector<std::vector<unsigned char>> slices(sliceKeys.size());
-    std::vector<void*> data(sliceKeys.size());
-    std::vector<size_t> size(sliceKeys.size());
     for (size_t s = 0; s < sliceKeys.size(); s++){
         const SliceSources& src = sliceSources[s];
         // An unassigned map falls back to the neutral value of its channel: white for
@@ -4595,16 +4594,70 @@ RenderSystem::TerrainDetailArray* RenderSystem::getTerrainDetailArray(Entity ent
                 texel[3] = terrainSourceChannel(src.color, t, 3, 0xFF);
             }
         }
-        data[s] = slices[s].data();
-        size[s] = slices[s].size();
+    }
+
+    // the mips of each slice by its kind: colour in linear light, normals renormalized, packed
+    // surface data per channel (MipChain, as every texture: spec S14 D6)
+    const bool mipmapped = minFilter == TextureFilter::LINEAR_MIPMAP_LINEAR || minFilter == TextureFilter::LINEAR_MIPMAP_NEAREST ||
+                           minFilter == TextureFilter::NEAREST_MIPMAP_LINEAR || minFilter == TextureFilter::NEAREST_MIPMAP_NEAREST;
+    std::vector<std::vector<MipLevel>> sliceLevels(sliceKeys.size());
+    for (size_t s = 0; s < sliceKeys.size(); s++){
+        MipChainOptions options;
+        options.maxLevels = mipmapped ? 0 : 1;
+        options.wrap = true;
+        MipLevel base;
+        base.width = width;
+        base.height = height;
+        if (sliceSources[s].kind == SliceSources::SLICE_NORMAL){
+            options.channels = 3;
+            options.type = MipPixelType::F32;
+            options.normalMap = true;
+            base.pixels.resize(texels * 3 * sizeof(float));
+            float* v = reinterpret_cast<float*>(base.pixels.data());
+            for (size_t t = 0; t < texels * 3; t++)
+                v[t] = slices[s][(t / 3) * 4 + t % 3] / 255.0f * 2.0f - 1.0f;
+        }else{
+            const bool colour = sliceSources[s].kind == SliceSources::SLICE_COLOR;
+            options.srgb = colour;
+            options.alphaWeighted = colour;
+            base.pixels = std::move(slices[s]);
+        }
+        sliceLevels[s].push_back(std::move(base));
+        MipChain::build(sliceLevels[s], options);
+        if (sliceSources[s].kind == SliceSources::SLICE_NORMAL){
+            for (MipLevel& level : sliceLevels[s]){
+                const size_t n = (size_t)level.width * (size_t)level.height;
+                const float* v = reinterpret_cast<const float*>(level.pixels.data());
+                std::vector<uint8_t> rgba(n * 4, 0xFF);
+                for (size_t t = 0; t < n; t++)
+                    for (int c = 0; c < 3; c++)
+                        rgba[t * 4 + c] = (uint8_t)std::clamp((int)std::lround((v[t * 3 + c] * 0.5f + 0.5f) * 255.0f), 0, 255);
+                level.pixels = std::move(rgba);
+            }
+        }
+    }
+    std::vector<std::vector<uint8_t>> combined(sliceLevels.empty() ? 0 : sliceLevels[0].size());
+    std::vector<TextureLevel> levels(combined.size());
+    for (size_t level = 0; level < combined.size(); level++){
+        for (const std::vector<MipLevel>& slice : sliceLevels)
+            combined[level].insert(combined[level].end(), slice[level].pixels.begin(), slice[level].pixels.end());
+        levels[level].width = sliceLevels[0][level].width;
+        levels[level].height = sliceLevels[0][level].height;
+        levels[level].data = combined[level].data();
+        levels[level].size = combined[level].size();
     }
 
     TerrainDetailArray& detail = remember(false);
-    if (!detail.render.createTexture("terrain|detail|" + std::to_string(entity), width, height,
-            ColorFormat::RGBA, TextureType::TEXTURE_ARRAY, (int)sliceKeys.size(), data.data(), size.data(),
+    if (!detail.render.createTextureLevels("terrain|detail|" + std::to_string(entity), TextureType::TEXTURE_ARRAY,
+            GpuTextureFormat::RGBA8, width, height, (int)sliceKeys.size(), levels,
             minFilter, sampled->getMagFilter(), sampled->getWrapU(), sampled->getWrapV())){
         detail.failed = true;
         return NULL;
+    }
+    // sokol copied the levels, or the queue holds them until it runs
+    if (Engine::isAsyncThread()){
+        auto* keep = new std::vector<std::vector<uint8_t>>(std::move(combined));
+        SystemRender::scheduleCleanup([](void* buffers){ delete static_cast<std::vector<std::vector<uint8_t>>*>(buffers); }, keep);
     }
 
     return &detail;

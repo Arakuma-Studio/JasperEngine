@@ -18,10 +18,11 @@ set(BASISU_GNU_FE $<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COM
 
 add_library(basisu_transcoder STATIC ${CMAKE_CURRENT_SOURCE_DIR}/transcoder/basisu_transcoder.cpp)
 target_include_directories(basisu_transcoder SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/transcoder)
-target_compile_definitions(basisu_transcoder PUBLIC
-    ${BASISU_COMMON_DEFINITIONS}
-    # the D5 targets only: no PVRTC1/2, ATC, FXT1 (v2.50's XBC7 decoder needs the XUASTC code,
-    # so BASISD_SUPPORT_XUASTC stays on)
+target_compile_definitions(basisu_transcoder PUBLIC ${BASISU_COMMON_DEFINITIONS})
+# the D5 targets only: no PVRTC1/2, ATC, FXT1 (v2.50's XBC7 decoder needs the XUASTC code, so
+# BASISD_SUPPORT_XUASTC stays on). Private: only the .cpp reads them, and the editor's own copy
+# (the encoder's) keeps every target
+target_compile_definitions(basisu_transcoder PRIVATE
     BASISD_SUPPORT_PVRTC1=0
     BASISD_SUPPORT_PVRTC2=0
     BASISD_SUPPORT_ATC=0
@@ -34,7 +35,7 @@ set_target_properties(basisu_transcoder PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     FOLDER "libs")
 
-if(JASPERENGINE_BASISU_ENCODER)
+if(JASPERENGINE_TEXTURE_ENCODERS)
     set(BASISU_ENCODER_SOURCES
         encoder/basisu_backend.cpp
         encoder/basisu_basis_file.cpp

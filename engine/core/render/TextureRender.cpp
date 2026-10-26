@@ -27,6 +27,21 @@ bool TextureRender::createTexture(
         return false;
 }
 
+bool TextureRender::createTextureLevels(const std::string& label, TextureType type, GpuTextureFormat format,
+                                        int width, int height, int numFaces, std::span<const TextureLevel> levels,
+                                        TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV){
+    if (!Engine::isViewLoaded() || isCreated())
+        return false;
+    if (!backend.createTextureLevels(label, type, format, width, height, numFaces, levels, minFilter, magFilter, wrapU, wrapV))
+        return false;
+    gpuFormat = format;
+    levelCount = (int)levels.size();
+    gpuBytes = 0;
+    for (const TextureLevel& level : levels)
+        gpuBytes += level.size;
+    return true;
+}
+
 bool TextureRender::createTexture3D(const std::string& label, int width, int height, int depth, const void* data, size_t size,
                                     TextureFilter filter, TextureWrap wrap){
     return backend.createTexture3D(label, width, height, depth, data, size, filter, wrap);
@@ -80,6 +95,9 @@ bool TextureRender::createAliasView(const TextureRender& source, const char* lab
 void TextureRender::destroyTexture(){
     backend.destroyTexture();
     transparent = false;
+    gpuFormat = GpuTextureFormat::RGBA8;
+    levelCount = 1;
+    gpuBytes = 0;
 }
 
 void TextureRender::setTransparent(bool transparent){
@@ -88,6 +106,18 @@ void TextureRender::setTransparent(bool transparent){
 
 bool TextureRender::isTransparent() const{
     return transparent;
+}
+
+GpuTextureFormat TextureRender::getGpuFormat() const{
+    return gpuFormat;
+}
+
+int TextureRender::getLevelCount() const{
+    return levelCount;
+}
+
+uint64_t TextureRender::getGpuBytes() const{
+    return gpuBytes;
 }
 
 uint32_t TextureRender::getGLHandler() const{
