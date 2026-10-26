@@ -123,6 +123,20 @@ namespace {
                         ".b { left: 200px; top: 50px; border: 2px solid #f0c040; border-radius: 10px; transform: scale(1.5); }"
                         ".c { left: 340px; top: 60px; border: 4px solid #40f0c0; border-radius: 16px; transform: perspective(300px) rotateY(30deg); }",
                         "<div class=\"box a\"/><div class=\"box b\"/><div class=\"box c\"/>"});
+        // CSS background gradients (S16-F5): a rounded one tile, a bordered rounded grid of repeated
+        // tiles, small repeated tiles of a square box, an RCSS decorator, one under a transform
+        list.push_back({"gradients",
+                        ".a { left: 10px; top: 10px; background-image: linear-gradient(to right, #ff4040, #4040ff); border-radius: 12px; }"
+                        ".b { left: 130px; top: 10px; background-image: radial-gradient(circle at 30% 40%, #ffffff, #208020 70%);"
+                        " border: 4px solid #e0e0e080; border-radius: 16px; }"
+                        ".c { left: 250px; top: 10px; background-image: linear-gradient(45deg, #f0c040, transparent); background-size: 30px 20px; }"
+                        ".d { left: 370px; top: 10px; decorator: linear-gradient(180deg, #40f0c0, #102040); }"
+                        ".e { left: 40px; top: 130px; background-image: linear-gradient(90deg, #ff0000 50%, #00ff00 50%); border-radius: 10px;"
+                        " transform: rotate(10deg); }"
+                        ".f { left: 200px; top: 130px; background-image: linear-gradient(to bottom, #ffffff, #000000); background-size: 40px 40px;"
+                        " border-radius: 14px; }",
+                        "<div class=\"box a\"/><div class=\"box b\"/><div class=\"box c\"/><div class=\"box d\"/><div class=\"box e\"/>"
+                        "<div class=\"box f\"/>"});
         list.push_back({"groups",
                         ".a { left: 30px; top: 40px; border: 3px solid #ffffff; border-radius: 12px; filter: blur(2px); }"
                         ".b { left: 180px; top: 40px; border: 3px solid #f0f040; border-radius: 12px; mask-image: linear-gradient(to right, #000000, transparent); }"
@@ -177,6 +191,22 @@ TEST(RenderPrimitive, ShadowsMakeNoTextures){
     EXPECT_EQ(primitives.stats.boxShadowTextures, 0u);
     EXPECT_EQ(primitives.stats.layersPushed, 0u);
     EXPECT_EQ(primitives.stats.filtersApplied, 0u);
+}
+
+TEST(RenderPrimitive, GradientBackgroundsNeedNoMaskLayer){
+    JASPER_REQUIRE_GPU();
+    // a rounded box's CSS gradient: the mesh path masks it in a layer, the primitive clips itself
+    // (S16-F5); the gradients are instances, no shader draw is left
+    const std::string rml = documentOf(".g { left: 20px; top: 20px; border-radius: 12px; border: 2px solid #ffffff;"
+                                       " background-image: linear-gradient(to right, #ff4040, #4040ff); }",
+                                       "<div class=\"box g\"/>");
+    Frame meshes, primitives;
+    ASSERT_TRUE(drawDocument(rml, 4, false, meshes));
+    ASSERT_TRUE(drawDocument(rml, 4, true, primitives));
+    EXPECT_GT(meshes.stats.layersPushed, 0u);
+    EXPECT_EQ(primitives.stats.layersPushed, 0u);
+    EXPECT_GT(primitives.stats.instancesDrawn, 0u);
+    EXPECT_TRUE(similar(primitives.screen, meshes.screen, "rounded gradient"));
 }
 
 TEST(RenderPrimitive, NonQualifyingBoxesKeepTheMeshPath){
