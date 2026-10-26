@@ -27,7 +27,9 @@ namespace jasperengine {
         Script = 11,
         Data = 12,
         SubAsset = 13,  // a mesh, material, animation, skin or image inside a model
-        ColorLut = 14   // a .cube colour LUT (post-processing's lutTexture, S13)
+        ColorLut = 14,  // a .cube colour LUT (post-processing's lutTexture, S13)
+        AnimationClip = 15,     // an .anim clip (Animation Player clips; its GUID in its JSON)
+        PoseAnimation = 16      // a .poseanim pose animation (Pose Animator's animation)
     };
 
     // The lowercase names used by Lua (AssetRef.type), MCP and the editor ("texture", "model", ...)
@@ -47,13 +49,15 @@ namespace jasperengine {
             case AssetType::Data: return "data";
             case AssetType::SubAsset: return "sub_asset";
             case AssetType::ColorLut: return "color_lut";
+            case AssetType::AnimationClip: return "animation_clip";
+            case AssetType::PoseAnimation: return "pose_animation";
             case AssetType::Unknown: break;
         }
         return "unknown";
     }
 
     inline AssetType assetTypeFromName(std::string_view name) {
-        for (uint8_t value = 1; value <= static_cast<uint8_t>(AssetType::ColorLut); value++) {
+        for (uint8_t value = 1; value <= static_cast<uint8_t>(AssetType::PoseAnimation); value++) {
             const AssetType type = static_cast<AssetType>(value);
             if (name == assetTypeName(type)) {
                 return type;

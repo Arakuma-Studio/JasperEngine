@@ -5,6 +5,7 @@
 #define POSE_ANIMATOR_COMPONENT_H
 
 #include "Export.h"
+#include "asset/AssetRef.h"
 #include "util/FunctionSubscribe.h"
 
 #include <memory>
@@ -21,8 +22,8 @@ namespace jasperengine{
     // in the editor's edit mode it does nothing (the Pose Animation window previews itself).
     struct JASPERENGINE_API PoseAnimatorComponent{
         // the .poseanim, relative to the project's assets folder like ModelComponent::filename
-        // (the root an exported game reads its assets from)
-        std::string animation;
+        // (the root an exported game reads its assets from); its GUID is the editor's (S04)
+        AssetRef animation;
         bool autoplay = true;
         float speed = 1.0f;
         float weight = 1.0f;     // 0..1 blend over whatever the ActionSystem wrote this frame

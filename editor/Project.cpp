@@ -448,20 +448,12 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
     return refs || clips;
 }
 
-// The Pose Animator's .poseanim and the Animation Player clips are paths relative to the assets
-// directory too: the .anim path (its GUID stays), or the model part of "<model>#<clip>" (R26).
-// A reference the transform empties (its file deleted) is kept: the Inspector shows it
-// missing, and undoing the delete relinks it (R8).
+// The Animation Player clips are paths relative to the assets directory too: the .anim path
+// (its GUID stays), or the model part of "<model>#<clip>" (R26). A reference the transform
+// empties (its file deleted) is kept: the Inspector shows it missing, and undoing the delete
+// relinks it (R8).
 bool editor::Project::visitClipPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform) {
     bool changed = false;
-    auto animators = registry->getComponentArray<PoseAnimatorComponent>();
-    for (size_t i = 0; i < animators->size(); i++) {
-        PoseAnimatorComponent& animator = animators->getComponentFromIndex(i);
-        if (!animator.animation.empty() && transform(animator.animation)) {
-            animator.needsLoad = true;
-            changed = true;
-        }
-    }
     auto players = registry->getComponentArray<AnimationPlayerComponent>();
     for (size_t i = 0; i < players->size(); i++) {
         AnimationPlayerComponent& player = players->getComponentFromIndex(i);

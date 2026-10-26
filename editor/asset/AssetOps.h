@@ -5,7 +5,8 @@
 // editor file operation takes (the Project window, its commands and MCP). Each operation:
 //   1. moves or copies the files and their metas (a destination that exists is refused);
 //   2. updates the AssetDatabase (GUIDs follow moves, copies get new ones);
-//   3. refreshes the path hints of the loaded scenes, prefab stages and prefab assets.
+//   3. refreshes the path hints of the loaded scenes, prefab stages and prefab assets, and
+//      what follows a file (open animation clip documents, the asset the Inspector shows).
 // A rename or move writes no file but the moved assets and their metas (the project file
 // only when the scene list's hints change). Deleting leaves references intact: they become
 // Missing, and restoring the file resolves them again (R15). References in source text

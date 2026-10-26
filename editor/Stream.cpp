@@ -7128,7 +7128,7 @@ FluidSimulationComponent editor::Stream::decodeFluidSimulationComponent(const YA
 YAML::Node editor::Stream::encodePoseAnimatorComponent(const PoseAnimatorComponent& animator) {
     YAML::Node node;
     // written when empty too: decoding over a component with an animation must clear it
-    node["animation"] = animator.animation;
+    encodeAssetRef(node, "animation", animator.animation);
     node["autoplay"] = animator.autoplay;
     encodeFinite(node, "speed", animator.speed);
     encodeFinite(node, "weight", animator.weight);
@@ -7152,7 +7152,7 @@ PoseAnimatorComponent editor::Stream::decodePoseAnimatorComponent(const YAML::No
         const YAML::Node value = node[key];
         return value && !value.IsNull() && !(value.IsScalar() && value.Scalar().empty());
     };
-    animator.animation = given("animation") ? node["animation"].as<std::string>() : std::string();
+    animator.animation = given("animation") ? decodeAssetRef(node, "animation") : AssetRef();
     animator.autoplay = given("autoplay") ? YamlNumbers::as<bool>(node["autoplay"]) : defaults.autoplay;
     animator.speed = given("speed") ? decodeFinite(node["speed"], defaults.speed) : defaults.speed;
     animator.weight = given("weight") ? std::clamp(decodeFinite(node["weight"], defaults.weight), 0.0f, 1.0f) : defaults.weight;

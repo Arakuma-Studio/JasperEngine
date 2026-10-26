@@ -821,7 +821,7 @@ namespace {
     };
 
     static const FastPropertyDescriptor kPoseAnimatorProperties[] = {
-        makeFastProperty<PoseAnimatorComponent, std::string, &PoseAnimatorComponent::animation>("animation", PropertyType::String, UpdateFlags_PoseAnimator_Reload),
+        makeFastProperty<PoseAnimatorComponent, AssetRef, &PoseAnimatorComponent::animation>("animation", PropertyType::Asset, UpdateFlags_PoseAnimator_Reload),
         makeFastProperty<PoseAnimatorComponent, bool, &PoseAnimatorComponent::autoplay>("autoplay", PropertyType::Bool, UpdateFlags_None),
         makeFastProperty<PoseAnimatorComponent, float, &PoseAnimatorComponent::speed>("speed", PropertyType::Float, UpdateFlags_None),
         // clamped to 0..1 by updateEntity

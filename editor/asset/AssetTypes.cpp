@@ -37,6 +37,10 @@ namespace {
                 {".lua", ".cpp", ".cc", ".cxx", ".h", ".hh", ".hpp", ".hxx"}},
             {{AssetType::Data, AssetIdentity::Sidecar, AssetPathBase::Assets, false, true}, {".json", ".txt", ".csv", ".xml", ".bytes"}},
             {{AssetType::ColorLut, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".cube"}},
+            // animation clips keep their GUID in their own JSON ("guid", AnimationClipIO), as the
+            // engine's YAML assets do; pose animations have a meta like other data files
+            {{AssetType::AnimationClip, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".anim"}},
+            {{AssetType::PoseAnimation, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".poseanim"}},
         };
         return table;
     }

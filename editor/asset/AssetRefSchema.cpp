@@ -20,6 +20,7 @@
 #include "component/TextComponent.h"
 #include "component/UIComponent.h"
 #include "component/UIDocumentComponent.h"
+#include "component/PoseAnimatorComponent.h"
 #include "pool/TexturePool.h"
 #include "registry/EntityRegistry.h"
 #include "util/Util.h"
@@ -127,6 +128,7 @@ namespace {
         row(C::ModelComponent, "filename", Shape::Asset, AssetType::Model, Base::Assets);
         row(C::AudioSourceComponent, "filename", Shape::Asset, AssetType::Audio, Base::Assets);
         row(C::UIDocumentComponent, "filename", Shape::Asset, AssetType::UIDocument, Base::Assets);
+        row(C::PoseAnimatorComponent, "animation", Shape::Asset, AssetType::PoseAnimation, Base::Assets);
 
         // Lua entries are relative to the Lua directory (the extractor and visitor switch base)
         row(C::ScriptComponent, "scripts[].path", Shape::Asset, AssetType::Script, Base::Project);
@@ -543,6 +545,10 @@ namespace {
 
         eachComponent<UIDocumentComponent>(registry, only, visit, C::UIDocumentComponent, [&](UIDocumentComponent& document) {
             if (visit.asset(document.filename, componentRow(C::UIDocumentComponent, "filename"), "filename")) document.needReload = true;
+        });
+
+        eachComponent<PoseAnimatorComponent>(registry, only, visit, C::PoseAnimatorComponent, [&](PoseAnimatorComponent& animator) {
+            if (visit.asset(animator.animation, componentRow(C::PoseAnimatorComponent, "animation"), "animation")) animator.needsLoad = true;
         });
 
         eachComponent<ScriptComponent>(registry, only, visit, C::ScriptComponent, [&](ScriptComponent& scripts) {

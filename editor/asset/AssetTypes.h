@@ -15,8 +15,9 @@
 
 namespace jasperengine::editor {
 
-    // Engine-authored YAML assets keep a top-level `guid:` key in the file; every other asset
-    // gets a `<file name>.meta` sidecar next to it
+    // Engine-authored YAML assets keep a top-level `guid:` key in the file (an .anim clip: the
+    // top-level "guid" member of its JSON); every other asset gets a `<file name>.meta` sidecar
+    // next to it
     enum class AssetIdentity { InFile, Sidecar };
 
     // The root a reference's path hint is relative to. Each reference field keeps the root it

@@ -1061,7 +1061,7 @@ namespace jasperengine::editor{
         // Runs transform over every stored asset reference (component textures and cubemap
         // faces, model and sound filenames, text fonts), rewriting the value in place.
         static bool visitAssetPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform);
-        // The animation paths of visitAssetPathsInRegistry that are not AssetRefs
+        // The Animation Player clips of visitAssetPathsInRegistry (their path and GUID are not an AssetRef)
         static bool visitClipPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform);
         // The files of those references, for SceneManager::preloadScene()
         static SceneResources collectResourcesInRegistry(EntityRegistry* registry);
