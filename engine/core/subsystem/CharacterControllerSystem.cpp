@@ -639,12 +639,12 @@ void CharacterControllerSystem::postStep(float dt){
     if (runtimes.empty())
         return;
     JPH::BodyInterface& bodies = physics->getBodyInterface3D();
-    std::vector<uint32_t> handles;
-    handles.reserve(runtimes.size());
+    // the handles first: a callback of the pass may add or remove characters
+    handleScratch.clear();
     for (const auto& entry : runtimes)
-        handles.push_back(entry.first);
+        handleScratch.push_back(entry.first);
 
-    for (uint32_t handle : handles){
+    for (uint32_t handle : handleScratch){
         auto it = runtimes.find(handle);
         if (it == runtimes.end())
             continue;
@@ -674,10 +674,12 @@ void CharacterControllerSystem::postStep(float dt){
             moveBy(runtime, *controller, carry * dt, dt, false);
             controller->velocity = velocityBefore;
             controller->collisionFlags = flagsBefore;
-        }else{
-            // the ground under it may have gone (a platform dropping away). At rest: Jolt counts
-            // only the contacts a character moves into, and the last move's velocity would leave
-            // out the nosing it stands on while walking off it
+        }else if (character.IsSupported() && (ground.IsInvalid() || !bodies.IsAdded(ground) ||
+                                                bodies.GetMotionType(ground) != JPH::EMotionType::Static)){
+            // the ground under it may have gone (a platform dropping away; a static ground still
+            // in the world is where it was, and with none there is nothing to lose). At rest:
+            // Jolt counts only the contacts a character moves into, and the last move's velocity
+            // would leave out the nosing it stands on while walking off it
             character.SetLinearVelocity(JPH::Vec3::sZero());
             JPH::DefaultBroadPhaseLayerFilter broadPhaseFilter(*physics->object_vs_broadphase_layer_filter, runtime.objectLayer);
             JPH::DefaultObjectLayerFilter objectFilter(*physics->object_vs_object_layer_filter, runtime.objectLayer);

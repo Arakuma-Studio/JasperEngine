@@ -78,6 +78,7 @@ namespace jasperengine{
         std::unordered_set<uint32_t> innerBodies;
         std::unordered_set<Entity> refusedWithRigidbody;
         std::vector<ControllerColliderHit> hitScratch;
+        std::vector<uint32_t> handleScratch;
 
         Runtime* find(Entity entity);
         Runtime* ensure(Entity entity, CharacterControllerComponent& controller);
