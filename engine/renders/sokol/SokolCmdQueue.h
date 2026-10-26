@@ -56,6 +56,12 @@ namespace jasperengine {
 		SokolRenderCommand(TYPE::ENUM _type) : type(_type) {}
 
 		TYPE::ENUM type = TYPE::NOT_SET;
+		// MAKE_BUFFER / MAKE_IMAGE: the JE_GPU_ALLOC_SCOPE the creation was queued in (the VRAM
+		// tracker sees the creation when it runs, on the main thread)
+		uint8_t allocCategory = 0xFF;
+		uint32_t allocOwner = 0;
+		// and its label, copied: the caller's string is gone by the time the command runs
+		char allocLabel[40] = {};
 
 		union
 		{

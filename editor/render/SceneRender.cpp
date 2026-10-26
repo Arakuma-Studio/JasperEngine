@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneRender.h"
+#include "profiler/Profile.h"
 
 #include "resources/icons/camera-icon_png.h"
 #include "resources/icons/audio-source-icon_png.h"
@@ -606,6 +607,7 @@ void editor::SceneRender::drawSceneView(int width, int height, const std::vector
         framebuffer.destroy();
         framebuffer.setWidth((unsigned int)width);
         framebuffer.setHeight((unsigned int)height);
+        JE_GPU_ALLOC_SCOPE(Editor, "Scene view");
         framebuffer.create();
     }
     if (viewWidth != width || viewHeight != height){

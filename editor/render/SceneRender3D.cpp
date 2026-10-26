@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneRender3D.h"
+#include "profiler/Profile.h"
 
 #include "resources/icons/sun-icon_png.h"
 #include "resources/icons/bulb-icon_png.h"
@@ -1823,6 +1824,7 @@ void editor::SceneRender3D::drawOverlayTargets(){
     Framebuffer* gizmoTarget = viewgizmo.getFramebuffer();
     gizmoScene->update(Engine::getDeltatime());
     if (!gizmoTarget->isCreated()){
+        JE_GPU_ALLOC_SCOPE(Editor, "Orientation gizmo");
         gizmoTarget->create();
     }
     Engine::drawView(SCENE_VIEW_ID, gizmoTarget, {{gizmoScene, gizmoScene->getCamera(),

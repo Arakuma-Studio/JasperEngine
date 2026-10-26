@@ -714,6 +714,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("VOLUMETRIC_CLOUDS", ShaderType::VOLUMETRIC_CLOUDS)
         .addVariable("SKY_COMPOSITE", ShaderType::SKY_COMPOSITE)
         .addVariable("VOLUMETRIC_COMPOSITE", ShaderType::VOLUMETRIC_COMPOSITE)
+        .addVariable("PASS_PREVIEW", ShaderType::PASS_PREVIEW)
         .endNamespace();
 
     // Shader variants by spec ("mesh:Uv1,Vc4"), or by type and property bits; an

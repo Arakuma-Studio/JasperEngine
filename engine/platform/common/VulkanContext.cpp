@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "VulkanContext.h"
+#include "render/SystemRender.h"
 
 #include <cstdio>
 #include <cstring>
@@ -201,8 +202,11 @@ namespace {
     }
 
     bool createDevice() {
+        VkPhysicalDeviceVulkan12Features supported12{};
+        supported12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
         VkPhysicalDeviceFeatures2 supported{};
         supported.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        supported.pNext = &supported12;
         vkGetPhysicalDeviceFeatures2(gPhysicalDevice, &supported);
 
         VkPhysicalDeviceDescriptorBufferFeaturesEXT descriptorBuffer{};
@@ -220,6 +224,9 @@ namespace {
         vulkan12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
         vulkan12.pNext = &extendedDynamicState;
         vulkan12.bufferDeviceAddress = VK_TRUE;
+        // the GPU timer resets its timestamp pools from the host (profiling, dynamic resolution)
+        vulkan12.hostQueryReset = supported12.hostQueryReset;
+        SystemRender::setVulkanHostQueryReset(supported12.hostQueryReset == VK_TRUE);
 
         VkPhysicalDeviceVulkan13Features vulkan13{};
         vulkan13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;

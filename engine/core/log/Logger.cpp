@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Logger.h"
+#include "profiler/Profile.h"
 #include "Backtrace.h"
 // timed waits TSan can see (GCC 11 misses libstdc++'s steady-clock wait)
 #include "jobs/detail/TimedWait.h"
@@ -700,6 +701,7 @@ namespace je_logger {
         thread.isDrainThread = true;
         std::snprintf(thread.name, sizeof(thread.name), "je-log");
         logSetOsThreadName("je-log");
+        JE_PROFILE_THREAD("je-log");
 
         std::array<SinkPtr, kMaxSinks> sinks;
         size_t sinkCount = 0;

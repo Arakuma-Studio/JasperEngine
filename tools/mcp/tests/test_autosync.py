@@ -317,7 +317,10 @@ async def test_no_change_timing(ed: Editor):
 
 
 async def test_play_deferred_then_picked_up(ed: Editor):
+    """With Reload After Stopping Play (S23: the default reloads a Lua script in place, see
+    test_script_reload.py) a script edited during Play is deferred"""
     ed.require_tools("play", "get_play_state", "save_scene")
+    await ed.call("set_script_settings", changes_while_playing="after_stop")
     await ed.call("save_scene")
     path = ed.project / "scripts/Mover.lua"
     base = path.read_text()
@@ -339,6 +342,7 @@ async def test_play_deferred_then_picked_up(ed: Editor):
     ed.check("deferred" not in ext, f"still deferred after stop: {ext!r}")
     listed = await ed.call("list_scripts", entity=STATE["eid"])
     ed.check(prop(listed["scripts"][0], "dash") is not None, f"dash not parsed after stop: {listed['scripts'][0]!r}")
+    await ed.call("set_script_settings", changes_while_playing="reload")
 
 
 async def test_sync_files_still_reports(ed: Editor):

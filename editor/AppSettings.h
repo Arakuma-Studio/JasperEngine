@@ -70,6 +70,33 @@ struct GameViewSettings {
     bool operator!=(const GameViewSettings& other) const { return !(*this == other); }
 };
 
+// Window > Analysis > Profiler and Frame Debugger (S15 R34): editor-wide, never in the project
+struct ProfilerSettings {
+    int budgetFps = 60;          // the frame budget line: 30, 60, 90, 120, 144 or 240 fps (0: none)
+    bool showCpu = true;         // the modules shown in the module list
+    bool showGpu = true;
+    bool showRendering = true;
+    bool showMemory = true;
+    bool showMonitors = true;
+    int cpuView = 0;             // detail pane: 0 Hierarchy, 1 Timeline
+    int sortColumn = 1;          // Hierarchy: 0 name, 1 total, 2 self, 3 calls
+    bool sortAscending = false;
+    bool pauseOnSpike = false;   // stop recording on a frame over pauseOverMs
+    float pauseOverMs = 50.0f;
+    int memoryGroup = 0;         // GPU Memory table: 0 by category, 1 by owner
+    std::vector<std::string> monitors{"FPS", "Draw calls", "VRAM estimated"};
+    int debuggerMode = 0;        // Frame Debugger preview: Color, Alpha, Depth, R, G, B
+
+    bool operator==(const ProfilerSettings& other) const {
+        return budgetFps == other.budgetFps && showCpu == other.showCpu && showGpu == other.showGpu &&
+            showRendering == other.showRendering && showMemory == other.showMemory && showMonitors == other.showMonitors &&
+            cpuView == other.cpuView && sortColumn == other.sortColumn && sortAscending == other.sortAscending &&
+            pauseOnSpike == other.pauseOnSpike && pauseOverMs == other.pauseOverMs && memoryGroup == other.memoryGroup &&
+            monitors == other.monitors && debuggerMode == other.debuggerMode;
+    }
+    bool operator!=(const ProfilerSettings& other) const { return !(*this == other); }
+};
+
 // Compiler paths and job count are machine-specific, so they live in the project's
 // own .jasperengine/user/build.yaml rather than in project.yaml, and travel with the
 // project when it moves.
@@ -140,6 +167,7 @@ private:
     static bool editorVSyncEnabled;
     static PanelVisibilitySettings panelVisibility;
     static GameViewSettings gameViewSettings;
+    static ProfilerSettings profilerSettings;
 
     // MCP server over HTTP (Editor Settings / MCP window); stdio needs no setting
     static bool mcpHttpEnabled;
@@ -155,6 +183,11 @@ private:
     static float assetPollingInterval;        // seconds, 0.25..10
     static bool assetLogReloads;
     static bool htmlUiVerboseDiagnostics;
+    // Scripting (S23)
+    static std::string scriptChangesWhilePlaying;   // reload, after_stop, stop_and_reload
+    static bool reloadCppDuringPlay;
+    static std::string externalScriptEditor;        // builtin, vscode, visualstudio, rider, clion, xcode, sublime, zed, system, custom
+    static std::string externalScriptEditorCommand; // the custom one: {file} {line} {column} {project}
 
     // Undo (Editor Settings > Undo): steps per history, the memory limit of every history
     // together (MB, 0 = unlimited), standalone selection changes as steps, and the Play Mode
@@ -260,6 +293,9 @@ public:
     static GameViewSettings getGameViewSettings();
     static void setGameViewSettings(const GameViewSettings& settings);
 
+    static ProfilerSettings getProfilerSettings();
+    static void setProfilerSettings(const ProfilerSettings& settings);
+
     // MCP server HTTP transport: off by default, port 47615. A non-empty token makes
     // clients send "Authorization: Bearer <token>".
     static bool getMcpHttpEnabled();
@@ -286,6 +322,21 @@ public:
     static void setPollingInterval(float seconds);
     static bool getLogReloads();
     static void setLogReloads(bool enabled);
+
+    // Scripting (S23 R8, R10): what a script saved while a scene plays does ("reload": Reload
+    // And Continue Playing, the default; "after_stop": Reload After Stopping Play;
+    // "stop_and_reload": Stop Playing And Reload), and whether C++ scripts reload too
+    // (default off). Editor-wide.
+    static std::string getScriptChangesWhilePlaying();
+    static void setScriptChangesWhilePlaying(const std::string& policy);
+    static bool getReloadCppDuringPlay();
+    static void setReloadCppDuringPlay(bool enabled);
+    // External Tools > External Script Editor (S23 R28): where Console locations and "Open in
+    // External Editor" go (default the built-in Code Editor), and the Custom command template
+    static std::string getExternalScriptEditor();
+    static void setExternalScriptEditor(const std::string& id);
+    static std::string getExternalScriptEditorCommand();
+    static void setExternalScriptEditorCommand(const std::string& command);
 
     static bool getHtmlUiAutoImport();
     static void setHtmlUiAutoImport(bool enabled);

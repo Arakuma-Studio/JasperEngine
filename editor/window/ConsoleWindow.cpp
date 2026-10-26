@@ -10,6 +10,9 @@
 #include "AppSettings.h"
 #include "Backend.h"
 #include "Theme.h"
+#include "Project.h"
+#include "util/ExternalCodeEditor.h"
+#include "util/FileUtils.h"
 #include <cmath>
 
 namespace {
@@ -269,6 +272,7 @@ void ConsoleWindow::addEntry(LogEntry&& entry) {
     logEntry.frame = entry.frame;
     logEntry.threadName = std::move(entry.threadName);
     logEntry.message = std::move(entry.message);
+    logEntry.locations = findSourceLocations(logEntry.message);
     const LogType type = logEntry.type;
     if (seenCategories.insert(logEntry.category).second) needsRebuild = true;
     storedLogLineCount += countRawLines(logEntry.message);
@@ -283,6 +287,63 @@ void ConsoleWindow::addEntry(LogEntry&& entry) {
     if (type == LogType::Error && errorPause) {
         pendingErrorPause = true;
     }
+}
+
+namespace {
+
+    SourceRoots consoleRoots(){
+        SourceRoots roots;
+        if (Project* project = Backend::getApp().getProject()) {
+            roots.project = project->getProjectPath();
+            roots.lua = project->getLuaPath();
+            roots.assets = project->getAssetsPath();
+        }
+        if (!FileUtils::isEngineDirEphemeral()) roots.engine = FileUtils::getEngineDir();
+        return roots;
+    }
+
+}
+
+std::vector<SourceLocation> ConsoleWindow::linkTargets(const LogData& log) {
+    std::vector<SourceLocation> targets;
+    if (!log.file.empty() && log.line > 0) {
+        SourceLocation source;
+        source.path = log.file;
+        source.line = static_cast<int>(log.line);
+        targets.push_back(source);
+    }
+    for (const SourceLocation& location : log.locations) {
+        if (!targets.empty() && targets[0].path == location.path && targets[0].line == location.line) continue;
+        targets.push_back(location);
+    }
+    return targets;
+}
+
+void ConsoleWindow::openLocation(const SourceLocation& location, bool external) {
+    const ResolvedSource resolved = resolveSourceLocation(location.path, consoleRoots());
+    if (!resolved.exists) {
+        Out::warning("%s not found", formatSourceLocation(location.path, location.line, location.column).c_str());
+        return;
+    }
+    std::string error;
+    const bool opened = external ? ExternalCodeEditor::openExternal(resolved.absolute, location.line, location.column, &error)
+                                 : ExternalCodeEditor::open(resolved.absolute, location.line, location.column, true, &error);
+    if (!opened) Out::warning("Could not open %s: %s", FileUtils::pathToUtf8(resolved.absolute).c_str(), error.c_str());
+}
+
+bool ConsoleWindow::openFirstLocation(const LogData& log, bool external) {
+    const std::vector<SourceLocation> targets = linkTargets(log);
+    if (targets.empty()) return false;
+    const SourceRoots roots = consoleRoots();
+    for (const SourceLocation& location : targets) {
+        const ResolvedSource resolved = resolveSourceLocation(location.path, roots);
+        if (resolved.exists && resolved.inProject) {
+            openLocation(location, external);
+            return true;
+        }
+    }
+    openLocation(targets[0], external);
+    return true;
 }
 
 std::string ConsoleWindow::originText(const LogData& log) const {
@@ -660,6 +721,7 @@ void ConsoleWindow::showList(float height) {
     const float iconColumn = ImGui::GetFontSize() + Theme::dpi(10.0f);
 
     int clickedRow = -1;
+    int doubleClickedRow = -1;
     int contextRow = -1;
 
     // Rows touch, so the clipper's step is exactly rowHeight.
@@ -681,6 +743,8 @@ void ConsoleWindow::showList(float height) {
             ImGui::PushID(i);
             ImGui::InvisibleButton("##row", ImVec2(width, rowHeight));
             if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) clickedRow = i;
+            // a double-click opens its first location in the project (click-to-source)
+            if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) doubleClickedRow = i;
             if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) contextRow = i;
             const bool hovered = ImGui::IsItemHovered();
             ImGui::PopID();
@@ -731,6 +795,9 @@ void ConsoleWindow::showList(float height) {
             Backend::getApp().getProjectWindow()->revealAsset(Backend::getApp().getProject()->getProjectPath() / asset);
         }
     }
+    if (doubleClickedRow >= 0 && rows[doubleClickedRow].logIndex < logs.size()) {
+        openFirstLocation(logs[rows[doubleClickedRow].logIndex], false);
+    }
     if (contextRow >= 0 && rows[contextRow].logIndex < logs.size()) {
         selectedLogId = logs[rows[contextRow].logIndex].id;
         hasSelection = true;
@@ -746,6 +813,20 @@ void ConsoleWindow::showList(float height) {
         }
         if (ImGui::MenuItem(ICON_FA_CLIPBOARD_LIST " Copy All", nullptr, false, !rows.empty())) {
             copyAllToClipboard();
+        }
+        const std::vector<SourceLocation> targets = log ? linkTargets(*log) : std::vector<SourceLocation>();
+        if (!targets.empty()) {
+            ImGui::Separator();
+            const std::string where = formatSourceLocation(targets[0].path, targets[0].line, targets[0].column);
+            if (ImGui::MenuItem((ICON_FA_FILE_CODE " Open " + where).c_str())) {
+                openFirstLocation(*log, false);
+            }
+            if (ImGui::MenuItem(ICON_FA_ARROW_UP_RIGHT_FROM_SQUARE " Open in External Editor")) {
+                openFirstLocation(*log, true);
+            }
+            if (ImGui::MenuItem(ICON_FA_LOCATION_DOT " Copy Location")) {
+                ImGui::SetClipboardText(where.c_str());
+            }
         }
         ImGui::Separator();
         if (ImGui::MenuItem(ICON_FA_TRASH " Clear", nullptr, false, !logs.empty())) {
@@ -793,6 +874,31 @@ void ConsoleWindow::showDetails() {
         ImGui::PopStyleColor();
         if (!log->file.empty() && ImGui::IsItemHovered()) {
             ImGui::SetTooltip("%s:%u", log->file.c_str(), log->line);
+        }
+        // every location in the message is a link (click-to-source)
+        const std::vector<SourceLocation> targets = linkTargets(*log);
+        if (!targets.empty()) {
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + Theme::dpi(8.0f));
+            const ImVec4 linkColor = ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive);
+            for (size_t i = 0; i < targets.size(); i++) {
+                const std::string text = formatSourceLocation(targets[i].path, targets[i].line, targets[i].column);
+                if (i > 0) {
+                    ImGui::SameLine();
+                    if (ImGui::GetContentRegionAvail().x < ImGui::CalcTextSize(text.c_str()).x) ImGui::NewLine();
+                }
+                ImGui::PushID(static_cast<int>(i));
+                ImGui::PushStyleColor(ImGuiCol_Text, linkColor);
+                ImGui::TextUnformatted(text.c_str());
+                ImGui::PopStyleColor();
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+                    const ImVec2 min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
+                    ImGui::GetWindowDrawList()->AddLine(ImVec2(min.x, max.y), max, ImGui::GetColorU32(linkColor));
+                    ImGui::SetTooltip("Open %s", text.c_str());
+                }
+                if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) openLocation(targets[i], false);
+                ImGui::PopID();
+            }
         }
         ImGui::PushStyleColor(ImGuiCol_FrameBg, ImGui::GetStyleColorVec4(ImGuiCol_WindowBg));
         ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);

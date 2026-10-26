@@ -46,6 +46,7 @@
 #include "asset/AssetFileWrite.h"
 #include "json.hpp"
 #include "util/ProjectChecks.h"
+#include "util/EditorScripts.h"
 #include "htmlui/HtmlUiImportCli.h"
 #include "htmlui/effects/EffectManifest.h"
 #include "htmlui/effects/EffectRegistry.h"
@@ -116,6 +117,7 @@ struct ExportCliOptions {
     bool help = false;
     bool listScenes = false;
     bool allowMissingAssets = false;
+    bool developmentBuild = false;
 };
 
 struct ShaderCliOptions {
@@ -267,6 +269,10 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " list-tools [options]     List the MCP tools (--json: their definitions).\n"
         << "  " << commandName << " editors [--json]         List the running editors that serve MCP over HTTP.\n"
         << "  " << commandName << " --mcp-port <port>        Open the editor with the MCP server on HTTP.\n\n"
+        << "Profiler (with the editor, mcp or --mcp-port):\n"
+        << "  --profile                  Record from the start (Window > Analysis > Profiler).\n"
+        << "  --profile-capture <path>   Capture frames once the scenes are loaded, write a .jetrace.json.\n"
+        << "  --profile-frames <n>       Frames of that capture (1 to 600). Default: 300.\n\n"
         << "With any of them (and the env JASPER_FILE_WATCHER; the flag wins):\n"
         << "  --file-watcher=auto|native|polling|off   How the editor finds files changed on disk (default: the\n"
         << "                                           Asset Pipeline preference, auto).\n\n"
@@ -288,6 +294,7 @@ static void printUsage(const std::string& commandName) {
         << "                              UI effects: uieffect/<name>[:Flt] (Flt: the filter form), uieffect/all.\n"
         << "      --list-scenes           Print project scenes and exit.\n"
         << "      --allow-missing-assets  Export even when the build references missing assets.\n"
+        << "      --development-build     A Development Build: the profiler and --profile in a Release game.\n"
         << "  -h, --help                  Show this help.\n\n"
         << "--project and --out are absolute or relative to the current directory; --assets and --lua\n"
         << "are relative to the project (as in project.yaml).\n"
@@ -313,8 +320,12 @@ static void printBenchmarkUsage(const std::string& commandName) {
         << "      --out <path>       Write JSON to this file in addition to stdout.\n"
         << "      --ui-stats         Add the scene's HTML UI statistics (draws, merged runs, stencil draws,\n"
         << "                         glyph atlas, ...), averaged over the measured frames, as \"htmlUi\".\n"
+        << "      --gpu-passes       Time every GPU pass of the measured frames: \"gpu\" in the JSON, with\n"
+        << "                         the frame's and each pass label's median/p95/mean ms (docs/profiling.md).\n"
+        << "      --profile-capture <path>  Write a .jetrace.json profiler capture of the measured frames.\n"
+        << "      --profile          Record the measured frames in the profiler (its overhead included).\n"
         << "  -h, --help             Show this help.\n\n"
-        << "--project and --out are absolute or relative to the current directory.\n"
+        << "--project, --out and --profile-capture are absolute or relative to the current directory.\n"
         << "Vsync is forced off. The scene camera is used for the capture.\n";
 }
 
@@ -387,6 +398,8 @@ static bool parseArgs(int argc, char** argv, ExportCliOptions& options, std::str
             options.listScenes = true;
         } else if (arg == "--allow-missing-assets") {
             options.allowMissingAssets = true;
+        } else if (arg == "--development-build") {
+            options.developmentBuild = true;
         } else {
             error = "Unknown argument: " + arg;
             return false;
@@ -631,6 +644,7 @@ int CommandLine::runExportCommand(int argc, char** argv, const char* executableN
     config.startSceneId = resolveStartSceneId(project, options.startScene);
     config.packNativeResources = project.shouldPackNativeResources();
     config.allowMissingAssets = options.allowMissingAssets;
+    config.developmentBuild = options.developmentBuild;
     config.selectedBackends   = options.backends;
     expandShaderSpecsAgain(options.shaderSpecs, options.shaderKeys);
     config.shaderKeysOverride = options.shaderKeys;
@@ -2305,10 +2319,30 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         const std::vector<std::string> engineGlobals = ProjectChecks::engineLuaGlobals();
         const fs::path luaRoot = ProjectChecks::luaRootFromProjectFile(root);
         size_t count = 0;
+        // the scenes and prefabs, as text: an editor script attached to a GameObject is a mistake
+        std::vector<std::pair<std::string, std::string>> documents;
+        for (const fs::path& document : ProjectChecks::findProjectFiles(root, {".scene", ".prefab"})) {
+            std::string text;
+            if (ProjectChecks::readFile(document, text)) documents.push_back({ProjectChecks::projectRelative(root, document), std::move(text)});
+        }
         for (const fs::path& file : luaFiles) {
             std::string code;
             if (!ProjectChecks::readFile(file, code)) continue;
             count++;
+            // an editor script (S23): its syntax only (it runs when its menu item is clicked)
+            if (EditorScripts::isLuaEditorScript(file.lexically_relative(root), code)) {
+                const std::string rel = ProjectChecks::projectRelative(root, file);
+                const ProjectChecks::LuaSyntax syntax = ProjectChecks::checkLuaSyntax(code, rel);
+                if (!syntax.ok) run.findings.push_back({"lua", rel, syntax.line, 0, "error", syntax.message});
+                const std::string luaRelative = file.lexically_relative(luaRoot).generic_string();
+                for (const auto& [document, text] : documents) {
+                    if (text.find(luaRelative) != std::string::npos) {
+                        run.findings.push_back({"lua", rel, 0, 0, "warning", "an editor script (Editor/ with ---@menu annotations) is attached to a "
+                                                "GameObject in " + document + ": it does not run in the game"});
+                    }
+                }
+                continue;
+            }
             lua_State* L = ProjectChecks::newIsolatedLuaState(luaRoot, engineGlobals);
             const ProjectChecks::LuaScriptCheck check = ProjectChecks::checkLuaScript(code, ProjectChecks::projectRelative(root, file), L);
             ProjectChecks::closeIsolatedLuaState(L);
@@ -2807,6 +2841,55 @@ int CommandLine::runHelpCommand(int argc, char** argv, const char* executableNam
     std::cerr << commandName << ": unknown argument '" << argument << "'\n\n";
     printMainUsage(commandName);
     return 2;
+}
+
+// ---- the profiler's options, for the engine (S15 R38)
+
+namespace {
+    std::vector<std::string>& profilerFlags(){
+        static std::vector<std::string> flags;
+        return flags;
+    }
+}
+
+bool CommandLine::takeProfilerFlags(std::vector<char*>& args){
+    std::vector<std::string>& taken = profilerFlags();
+    for (size_t i = 1; i < args.size();){
+        const std::string arg = args[i];
+        const bool record = arg == "--profile";
+        const bool capture = arg == "--profile-capture" || arg.rfind("--profile-capture=", 0) == 0;
+        const bool frames = arg == "--profile-frames" || arg.rfind("--profile-frames=", 0) == 0;
+        if (!record && !capture && !frames){
+            i++;
+            continue;
+        }
+        size_t used = 1;
+        std::string value;
+        if (!record){
+            const size_t equals = arg.find('=');
+            if (equals != std::string::npos){
+                value = arg.substr(equals + 1);
+            }else if (i + 1 < args.size()){
+                value = args[i + 1];
+                used = 2;
+            }else{
+                std::cerr << arg << " needs a value\n";
+                return false;
+            }
+        }
+        if (record)
+            taken.push_back("--profile");
+        else if (capture)
+            taken.push_back("--profile-capture=" + absoluteArgPath(value).string());
+        else
+            taken.push_back("--profile-frames=" + value);
+        args.erase(args.begin() + static_cast<long>(i), args.begin() + static_cast<long>(i + used));
+    }
+    return true;
+}
+
+const std::vector<std::string>& CommandLine::takenProfilerFlags(){
+    return profilerFlags();
 }
 
 }

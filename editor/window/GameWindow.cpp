@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "GameWindow.h"
+#include "profiler/FrameTimes.h"
 
 #include "imgui_internal.h"
 #include "Engine.h"
@@ -568,21 +569,38 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     const float fps = ImGui::GetIO().Framerate;
     const float ms = fps > 0.0f ? 1000.0f / fps : 0.0f;
 
-    char lines[6][112];
+    char lines[7][112];
     int lineCount = 4;
     snprintf(lines[0], sizeof(lines[0]), "Statistics");
     snprintf(lines[1], sizeof(lines[1]), "Graphics: %.1f FPS (%.1f ms)", fps, ms);
     snprintf(lines[2], sizeof(lines[2]), "Draw calls: %u   Tris: %llu", frameStats.drawCalls, (unsigned long long)frameStats.triangles);
     snprintf(lines[3], sizeof(lines[3]), "Screen: %dx%d", width, height);
+    // the frame's CPU time, and its GPU time while something times the passes (the Profiler)
+    const FrameTimeSample frameTime = FrameTimes::latest();
+    if (frameTime.frame > 0) {
+        float gpuMs = -1.0f;
+        for (size_t i = FrameTimes::size(); i-- > 0 && FrameTimes::size() - i <= 8;) {
+            if (FrameTimes::at(i).gpuMs >= 0.0f) {
+                gpuMs = FrameTimes::at(i).gpuMs;
+                break;
+            }
+        }
+        if (gpuMs >= 0.0f)
+            snprintf(lines[lineCount], sizeof(lines[lineCount]), "CPU %.2f ms  GPU %.2f ms", frameTime.cpuMs, gpuMs);
+        else
+            snprintf(lines[lineCount], sizeof(lines[lineCount]), "CPU %.2f ms", frameTime.cpuMs);
+        lineCount++;
+    }
     // the scene's HTML UI documents (their offscreen passes are not in the counters above)
     UIDocumentSystem* documents = (sceneProject && sceneProject->scene) ? sceneProject->scene->getSystem<UIDocumentSystem>().get() : nullptr;
     if (documents && documents->hasDocuments()) {
         const HtmlUIRenderStats& ui = documents->getRenderStats();
-        snprintf(lines[4], sizeof(lines[4]), "HTML UI: %u passes, %u draws (%u merged), %u instances", ui.passes, ui.drawCalls,
-                 ui.runsMerged, ui.instancesDrawn);
-        snprintf(lines[5], sizeof(lines[5]), "HTML UI: %u stencil draws, glyph atlas %.1f MiB", ui.stencilDraws,
+        snprintf(lines[lineCount], sizeof(lines[lineCount]), "HTML UI: %u passes, %u draws (%u merged), %u instances", ui.passes,
+                 ui.drawCalls, ui.runsMerged, ui.instancesDrawn);
+        lineCount++;
+        snprintf(lines[lineCount], sizeof(lines[lineCount]), "HTML UI: %u stencil draws, glyph atlas %.1f MiB", ui.stencilDraws,
                  (double)ui.atlasBytes / (1024.0 * 1024.0));
-        lineCount = 6;
+        lineCount++;
     }
 
     float boxWidth = 0.0f;

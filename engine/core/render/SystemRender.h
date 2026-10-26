@@ -5,10 +5,16 @@
 #define SystemRender_h
 
 #include "Export.h"
+#include "RenderStats.h"
 #include <stddef.h>
 #include <stdint.h>
+#include <string>
+#include <vector>
 
 namespace jasperengine{
+
+    class TextureRender;
+    class FramebufferRender;
 
     // what the device supports, queried once the render system is set up
     struct RenderFeatures {
@@ -43,8 +49,46 @@ namespace jasperengine{
         // the live GPU resources, in the render thread's order (JASPERENGINE_FRAME_STATS=1;
         // nothing otherwise); with a view id, "Frame stats (frame N, view V): ..." for a second view
         // the editor drew and committed in that frame (Engine::drawView)
-        static const uint32_t FRAME_STATS_FRAME = 0xFFFFFFFFu;
+        static constexpr uint32_t FRAME_STATS_FRAME = 0xFFFFFFFFu;
         static void logFrameStats(uint64_t frame, uint32_t view = FRAME_STATS_FRAME);
+
+        // ---- diagnostics (spec S15): what the editor and MCP read, never sokol directly
+
+        // the view the commits from now draw: FRAME_STATS_FRAME for the game frame
+        // (Engine::systemDraw), the view id for Engine::drawView
+        static void setViewTag(uint32_t tag);
+        static uint32_t getViewTag();
+        // a view's counters in the newest frame that drew it (draw calls, instances and
+        // triangles of the game frame are Engine::FrameStats; a view's come from its passes)
+        static RenderStats getRenderStats(uint32_t viewTag);
+        // the ordered passes of a view's newest frame; with resolvedOnly, of the newest one
+        // whose GPU times all arrived when one has
+        static PassList getPassList(uint32_t viewTag, bool resolvedOnly);
+        static std::vector<uint32_t> getRecordedViewTags();
+        static BackendFrameCounters getBackendFrameCounters();
+        // "OpenGL 3.3 core", "Vulkan" ... and the device sokol runs on ("llvmpipe (LLVM 15.0.7, 256 bits)")
+        static const char* getBackendName();
+        static std::string getDeviceName();
+        // per-draw records in the pass lists from now (a capture, the Frame Debugger)
+        static void setDrawListEnabled(bool enabled);
+
+        // GPU timing (sokol_gpu_timer.h) runs while a consumer holds it or a lease runs;
+        // off, no query object is issued
+        static void acquireGpuTiming();
+        static void releaseGpuTiming();
+        static void leaseGpuTiming(double seconds);
+        static GpuTimingState getGpuTimingState();
+        // Vulkan, by whoever makes the VkDevice, before setup: whether it enabled hostQueryReset
+        // (the GPU timer needs it; without it the timer reports device_unsupported)
+        static void setVulkanHostQueryReset(bool enabled);
+
+        // the Frame Debugger's preview of one attachment of a pass (one-shot: the next frame's
+        // matching pass is copied into the preview texture, or refused with a reason)
+        static void requestPassPreview(const PassPreviewRequest& request);
+        static void cancelPassPreview();
+        static PassPreviewResult getPassPreview();
+        static TextureRender* getPassPreviewTexture();
+        static FramebufferRender* getPassPreviewTarget();
 
         static void scheduleCleanup(void (*cleanupFunc)(void* cleanupData), void* cleanupData, int32_t numFramesToDefer = 0);
         static void addQueueCommand(void (*custom_cb)(void* custom_data), void* custom_data);
