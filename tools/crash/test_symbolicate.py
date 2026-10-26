@@ -51,6 +51,17 @@ def main() -> int:
         if "1 of 2 frames named" not in result.stdout:
             failures.append("an unknown module must stay unnamed")
 
+        # a library loaded after install: an absolute address, placed through the maps copy
+        late = root / "late.txt"
+        start = 0x55d000000000
+        late.write_text("JasperEngine crash report v1\nplatform: linux-x86_64\nbuild_id: none\nbacktrace:\n"
+                        f"#0 module?+0x{start + offset + 4:x}\nmodules:\n"
+                        f"{start:x}-{start + 0x10000000:x} r-xp 00000000 08:01 42 {binary}\n")
+        result = symbolicate(str(late))
+        print(result.stdout)
+        if result.returncode != 0 or "=>  main" not in result.stdout:
+            failures.append(f"a late library's frame was not placed through the maps: {result.stdout} {result.stderr}")
+
         windows = root / "win" / "crash.txt"
         windows.parent.mkdir()
         windows.write_text("JasperEngine crash report v1\nplatform: windows-x86_64\nbuild_id: ABC1\nframes:\n#0 game.exe+0x10\n")

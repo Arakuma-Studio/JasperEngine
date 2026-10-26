@@ -8,7 +8,8 @@ REPORT is a crash.txt or hang-NNN.txt (v1), or a report folder (its crash.txt, e
 hang report). Each frame "#N <module>+0x<offset> [<symbol>]" is resolved against the module's
 file: --binary-dir directories first, then the S30 symbol layout <symbols>/<platform>/<build_id>/
 (a .debug / .dSYM / .pdb next to the binary there), then the path the report's modules section
-names. ELF and Mach-O frames go through llvm-symbolizer (else addr2line, else atos on macOS);
+names; a frame of a library loaded after the handler was installed ("module?+0x<address>") is
+placed through the report's raw /proc/self/maps copy. ELF and Mach-O frames go through llvm-symbolizer (else addr2line, else atos on macOS);
 frames after the first are return addresses, so one byte before is looked up. Web frames
 ("wasm-function[N]") are named from the emscripten --emit-symbol-map file. A Windows report
 prints the cdb / Visual Studio steps for its crash.dmp instead.
@@ -28,7 +29,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-FRAME = re.compile(r"^#(?P<index>\d+)\s+(?P<module>[^\s+]+)\+0x(?P<offset>[0-9a-fA-F]+)(?:\s+\[(?P<symbol>.*)\])?\s*$")
+FRAME = re.compile(r"^#(?P<index>\d+)\s+(?P<module>\S+?)\+0x(?P<offset>[0-9a-fA-F]+)(?:\s+\[(?P<symbol>.*)\])?\s*$")
 WASM_FRAME = re.compile(r"wasm-function\[(?P<index>\d+)\]")
 # /proc/self/maps: start-end perms offset dev inode path
 MAPS_LINE = re.compile(r"^[0-9a-fA-F]+-[0-9a-fA-F]+\s+\S+\s+[0-9a-fA-F]+\s+\S+\s+\d+\s+(?P<path>/.+)$")
@@ -52,6 +53,31 @@ def header_value(text: str, key: str) -> str:
         if line.startswith(prefix):
             return line[len(prefix):].strip()
     return ""
+
+
+def mappings(text: str) -> list[tuple[int, int, int, str]]:
+    """(start, end, file offset, path) of the modules section's /proc/self/maps lines"""
+    out = []
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) >= 6 and "-" in parts[0] and parts[5].startswith("/"):
+            try:
+                start, end = (int(x, 16) for x in parts[0].split("-"))
+                out.append((start, end, int(parts[2], 16), parts[5]))
+            except ValueError:
+                continue
+    return out
+
+
+def resolve_unknown(address: int, maps: list[tuple[int, int, int, str]]) -> tuple[str, int] | None:
+    """A frame outside the modules known at install ("module?+0x<absolute>", a library loaded
+    later): its module and module-relative address from the raw maps copy"""
+    for start, end, offset, path in maps:
+        if start <= address < end:
+            # the image's base is its offset-0 mapping; else this segment's start - file offset
+            base = next((s for s, _, o, p in maps if p == path and o == 0), start - offset)
+            return path, address - base
+    return None
 
 
 def module_paths(text: str) -> dict[str, str]:
@@ -174,9 +200,18 @@ def main() -> int:
             frames.append({"index": len(frames), "module": "wasm", "offset": index, "symbol": "",
                            "line": line.strip(), "resolved": symbol_map.get(index, "")})
 
+    maps = mappings(text)
+    for frame in frames:
+        if frame["module"] == "module?":
+            found = resolve_unknown(frame["offset"], maps)
+            if found:
+                path, offset = found
+                known.setdefault(os.path.basename(path), path)
+                frame["module"], frame["offset"] = os.path.basename(path), offset
+
     by_module: dict[str, list[dict]] = {}
     for frame in frames:
-        if frame["module"] != "wasm":
+        if frame["module"] not in ("wasm", "module?"):
             by_module.setdefault(frame["module"], []).append(frame)
     for name, group in by_module.items():
         module = find_module(name, known, args.binary_dir, args.symbols, platform, build_id)
