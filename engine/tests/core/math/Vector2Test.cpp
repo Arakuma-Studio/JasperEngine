@@ -42,6 +42,20 @@ TEST(Vector2, CompoundAssignments){
     EXPECT_EQ(v, Vector2(2, 1));
 }
 
+TEST(Vector2, DivideAssignmentsMatchTheDivisionOperators){
+    Vector2 v(3, -6);
+    Vector2& scaled = (v /= 2.0f);
+    EXPECT_EQ(&scaled, &v);
+    EXPECT_EQ(v, Vector2(1.5f, -3));
+    EXPECT_EQ(v, Vector2(3, -6) / 2.0f);
+
+    Vector2 w(3, -6);
+    Vector2& divided = (w /= Vector2(2, -4));
+    EXPECT_EQ(&divided, &w);
+    EXPECT_EQ(w, Vector2(1.5f, 1.5f));
+    EXPECT_EQ(w, Vector2(3, -6) / Vector2(2, -4));
+}
+
 TEST(Vector2, LengthDistanceAndDot){
     EXPECT_FLOAT_EQ(Vector2(3, 4).length(), 5.0f);
     EXPECT_FLOAT_EQ(Vector2(3, 4).squaredLength(), 25.0f);

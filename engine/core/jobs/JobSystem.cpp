@@ -59,6 +59,11 @@ namespace{
 
     DepLink* const kSealed = reinterpret_cast<DepLink*>(uintptr_t(1));
 
+    // An idle worker spins this long once it runs out of work (R2)
+    constexpr uint64_t kSpinNs = 50000;
+    // Its backstop starts at 1 ms and doubles with every wake that finds nothing, up to 128 ms
+    constexpr int kMaxBackstopShift = 7;
+
     inline void cpuRelax(){
 #if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
         _mm_pause();
@@ -660,6 +665,9 @@ jobs::detail::Scheduler::~Scheduler(){
 }
 
 void jobs::detail::Scheduler::onGateRelease(){
+    // the freed slot before the sleepers count: a worker counted as a sleeper before it
+    // looked at the gate, so one of the two sees the other
+    std::atomic_thread_fence(std::memory_order_seq_cst);
     if (sleepers.load(std::memory_order_seq_cst) > 0 && (backgroundDefault.count() || backgroundHeavy.count()))
         wake(1);
     if (gateListenerCount.load(std::memory_order_acquire) > 0){
@@ -1101,16 +1109,26 @@ void jobs::detail::Scheduler::workerMain(Worker& worker){
         }
     }
 
+    // Idle: one bounded spin when the worker runs out of work, then park. A worker that wakes
+    // to nothing (the backstop, or a wake another worker served) parks again without spinning,
+    // and each such empty wake doubles its backstop (1 ms up to 128 ms): an idle pool costs a
+    // few wake-ups per second, not a thousand per worker with a spin after each. Producers
+    // wake parked workers themselves; the backstop only bounds a wake that was missed.
+    bool spinOnIdle = true;
+    int emptyWakes = 0;
     for (;;){
         int slotClass = -1;
         Runnable* item = findWork(worker, slotClass);
         if (item){
-            // propagate: more backlog than this worker can take
-            if (sleepers.load(std::memory_order_relaxed) > 0 && hasWork())
+            // propagate: more backlog than this worker can take (seq_cst: pairs with a
+            // sleeper's count and a producer that left its wake to this worker)
+            if (sleepers.load(std::memory_order_seq_cst) > 0 && hasWork())
                 wake(1, true);
             execute(item);
             if (slotClass >= 0)
                 gate.release((GateClass)slotClass);
+            spinOnIdle = true;
+            emptyWakes = 0;
             continue;
         }
         if (stopWorkers.load(std::memory_order_acquire))
@@ -1123,22 +1141,28 @@ void jobs::detail::Scheduler::workerMain(Worker& worker){
             h->onIdleBegin();
 
         bool found = false;
-        if (spinners.fetch_add(1, std::memory_order_seq_cst) < maxSpinners){
-            const uint64_t deadline = idleStart + 50000;
-            while (!found){
-                for (int i = 0; i < 64; i++)
-                    cpuRelax();
-                found = hasWork() || stopWorkers.load(std::memory_order_relaxed);
-                if (nowNs() >= deadline)
-                    break;
+        if (spinOnIdle){
+            spinOnIdle = false;
+            if (spinners.fetch_add(1, std::memory_order_seq_cst) < maxSpinners){
+                const uint64_t deadline = idleStart + kSpinNs;
+                while (!found){
+                    for (int i = 0; i < 64; i++)
+                        cpuRelax();
+                    found = hasWork() || stopWorkers.load(std::memory_order_relaxed);
+                    if (nowNs() >= deadline)
+                        break;
+                }
             }
+            spinners.fetch_sub(1, std::memory_order_seq_cst);
         }
-        spinners.fetch_sub(1, std::memory_order_seq_cst);
         if (!found){
             std::unique_lock<std::mutex> lock(sleepMutex);
             sleepers.fetch_add(1, std::memory_order_seq_cst);
-            if (!hasWork() && !stopWorkers.load(std::memory_order_acquire))
-                timedWait(sleepCv, lock, std::chrono::milliseconds(1));
+            if (!hasWork() && !stopWorkers.load(std::memory_order_acquire)){
+                const int backstopMs = 1 << std::min(emptyWakes, kMaxBackstopShift);
+                timedWait(sleepCv, lock, std::chrono::milliseconds(backstopMs));
+                emptyWakes++;
+            }
             sleepers.fetch_sub(1, std::memory_order_seq_cst);
             // awake (notified, timed out or never asleep): the next single wake notifies again
             wakePending.store(false, std::memory_order_seq_cst);
@@ -1624,11 +1648,19 @@ void jobs::detail::Scheduler::channelSubmit(ChannelState* channel, TaskState* ta
     channel->queued++;
     if (singleThread)
         return;
+    // A thread for each job that can start now and no idle thread is there for. An idle thread
+    // stays counted until it wakes, so two submits in a row both found the same one: it took one
+    // job, and the other waited for a thread to free up, for good when the job it took waits for
+    // it (compile_scripts: the build on the process channel, its watcher on a channel of its own)
     uint32_t sumCaps = 0;
-    for (ChannelState* registered : channels)
+    size_t runnable = 0;
+    for (ChannelState* registered : channels){
         sumCaps += registered->cap;
+        const uint32_t freeSlots = registered->running < registered->cap ? registered->cap - registered->running : 0;
+        runnable += std::min(registered->queued, freeSlots);
+    }
     const size_t limit = (size_t)std::min<int>(blockingBudget, (int)sumCaps);
-    if (blockingIdleThreads == 0 && blockingThreads.size() < limit && channel->running < channel->cap){
+    if (runnable > (size_t)blockingIdleThreads && blockingThreads.size() < limit){
         const int index = (int)blockingThreads.size();
         blockingThreads.emplace_back([this, index](){ blockingThreadMain(index); });
     }else{
@@ -1719,6 +1751,9 @@ void jobs::detail::Scheduler::runChannelsInline(){
 
 void jobs::detail::Scheduler::publishCounterJob(CounterQueue* queue, Job* job, Lane lane){
     job->lane = clampLane(lane);
+    // read before the job is queued: from then on a visit of an earlier job may run (and free) it
+    const Lane visitLane = job->lane;
+    const char* const visitName = job->name;
     {
         std::lock_guard<std::mutex> lock(queue->mutex);
         job->next = nullptr;
@@ -1745,7 +1780,7 @@ void jobs::detail::Scheduler::publishCounterJob(CounterQueue* queue, Job* job, L
         if (next)
             runBareJob(next);
         releaseCounterQueue(queue);
-    }, job->lane, GateClass::Default, job->name, 0);
+    }, visitLane, GateClass::Default, visitName, 0);
     visit->flags |= kFlagInternal;
     publishJob(visit);
 }

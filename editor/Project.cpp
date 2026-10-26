@@ -2016,8 +2016,11 @@ ThreadingSettings editor::Project::toEngineThreading(const ThreadingProjectSetti
 void editor::Project::setThreadingSettings(const ThreadingProjectSettings& settings){
     threadingSettings = settings;
     Engine::setThreadingSettings(toEngineThreading(settings));
-    // the standalone build's main.cpp bakes them in
-    markGeneratedSourcesDirty();
+    // the standalone build's main.cpp bakes them in; loading them (project.yaml, the defaults a
+    // load starts from) is not a change: opening a project writes nothing
+    if (modelLoaded){
+        markGeneratedSourcesDirty();
+    }
 }
 
 editor::TerrainEditorSettings& editor::Project::getTerrainEditorSettings(){
