@@ -1213,7 +1213,7 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
     retainCompilerProcess();
 
     const ShaderType shaderType = ShaderPool::getShaderTypeFromKey(key);
-    const uint32_t properties = ShaderPool::getPropertiesFromKey(key);
+    const uint64_t properties = ShaderPool::getPropertiesFromKey(key);
     const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
 
     shadercompiler::args_t args;
