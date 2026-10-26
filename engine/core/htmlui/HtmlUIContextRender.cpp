@@ -12,6 +12,7 @@
 #include "RmlRenderer.h"
 
 #include "Log.h"
+#include "render/FramebufferRender.h"
 #include "render/SystemRender.h"
 
 #include <RmlUi/Core/Context.h>
@@ -65,7 +66,8 @@ int HtmlUIContext::getSampleCount() const{
     const RenderFeatures& features = SystemRender::getFeatures();
     if (!features.msaaRGBA8 || !features.msaaDepthStencil)
         return 1;
-    return preferredSampleCount;
+    // the highest count up to it that the device renders (RmlRenderTarget::ensure)
+    return std::max(FramebufferRender::getMaxMsaaSamples(preferredSampleCount), 1);
 }
 
 void HtmlUIContext::markUpdated(){

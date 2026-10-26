@@ -16,6 +16,7 @@
 #include "RmlFilterContext.h"
 
 #include "pool/ShaderPool.h"
+#include "render/FramebufferRender.h"
 #include "render/ObjectRender.h"
 #include "render/PipelineState.h"
 #include "sokol/SokolPipelineCache.h"
@@ -318,6 +319,18 @@ TEST(RenderP1Test, SampleCountChoice){
     UIDocumentSystem::setPreferredSampleCount(0);
     EXPECT_EQ(UIDocumentSystem::getPreferredSampleCount(), 1);
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "[HTML UI] MSAA sample count"), 3u);
+
+    // 8 where the device has it, else the highest count below (lavapipe and llvmpipe: 4); a
+    // target asked for more samples than the device has is made with that count
+    UIDocumentSystem::setPreferredSampleCount(8);
+    const int device = FramebufferRender::getMaxMsaaSamples(8);
+    EXPECT_GE(device, 1);
+    EXPECT_LE(device, 8);
+    EXPECT_EQ(context.getSampleCount(), device);
+    RmlRenderTarget target;
+    target.ensure(16, 16, 8);
+    EXPECT_EQ(target.getSampleCount(), device);
+    EXPECT_TRUE(target.isCreated());
 
     UIDocumentSystem::setPreferredSampleCount(initial);
 }

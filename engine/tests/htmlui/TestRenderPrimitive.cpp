@@ -10,6 +10,7 @@
 #include "TestRenderCommon.h"
 
 #include "HtmlUIPrimitive.h"
+#include "render/FramebufferRender.h"
 #include "render/SystemRender.h"
 
 #include <RmlUi/Core/MeshUtilities.h>
@@ -48,6 +49,7 @@ namespace {
     struct Frame {
         std::vector<uint8_t> screen;
         HtmlUIRenderStats stats;
+        int samples = 0;
     };
 
     bool drawDocument(const std::string& rml, int samples, bool primitives, Frame& frame){
@@ -56,6 +58,7 @@ namespace {
         if (!test.isValid() || !test.loadFromMemory(rml, "render/primitives.rml") || !test.renderUntilDrawn())
             return false;
         frame.stats = test.renderer.getStats();
+        frame.samples = test.target.getSampleCount();
         return test.readScreen(frame.screen);
     }
 
@@ -135,17 +138,17 @@ TEST(RenderPrimitive, MatchesTheMeshPath){
     for (const Case& test : cases()){
         const std::string rml = documentOf(test.css, test.body);
         for (int samples : {1, 4, 8}){
-            Frame meshes, primitives;
-            const size_t framebufferErrors = TestSystem::get().countLogs(D_LOG_ERROR, "sokol sg log item");
-            ASSERT_TRUE(drawDocument(rml, samples, false, meshes)) << test.name;
-            ASSERT_TRUE(drawDocument(rml, samples, true, primitives)) << test.name;
             const std::string label = std::string(test.name) + " at " + std::to_string(samples) + " samples";
-            // a device that cannot make this sample count's layer targets (llvmpipe at 8) draws
-            // neither path: nothing to compare
-            if (TestSystem::get().countLogs(D_LOG_ERROR, "sokol sg log item") != framebufferErrors){
-                std::printf("[ skipped  ] %s: the device made no complete target\n", label.c_str());
+            // a device without targets of this sample count (llvmpipe and lavapipe have 1 and 4)
+            // gets the count below it: that was compared already
+            if (FramebufferRender::getMaxMsaaSamples(samples) != samples){
+                std::printf("[ skipped  ] %s: the device has no such targets\n", label.c_str());
                 continue;
             }
+            Frame meshes, primitives;
+            ASSERT_TRUE(drawDocument(rml, samples, false, meshes)) << test.name;
+            ASSERT_TRUE(drawDocument(rml, samples, true, primitives)) << test.name;
+            EXPECT_EQ(primitives.samples, samples) << label;
             const ::testing::AssertionResult result = similar(primitives.screen, meshes.screen, label);
             EXPECT_TRUE(result);
             if (!result){

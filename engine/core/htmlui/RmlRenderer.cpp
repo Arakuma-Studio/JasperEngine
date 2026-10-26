@@ -118,7 +118,9 @@ RmlRenderTarget::~RmlRenderTarget(){
 bool RmlRenderTarget::ensure(int width, int height, int sampleCount){
     width = std::max(width, 1);
     height = std::max(height, 1);
-    sampleCount = std::max(sampleCount, 1);
+    // a count the device cannot render (Vulkan has no error for it: lavapipe's targets of 8
+    // samples drew into memory not theirs) is the highest one below it that it can
+    sampleCount = sampleCount > 1 ? std::max(FramebufferRender::getMaxMsaaSamples(sampleCount), 1) : 1;
 
     if (isCreated() && width == this->width && height == this->height && sampleCount == this->sampleCount)
         return false;
