@@ -27,6 +27,7 @@
 #include "pool/TextureDataPool.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "particles/ParticleRender.h"
 #include <memory>
 #include <algorithm>
 #include <chrono>
@@ -6219,7 +6220,7 @@ namespace {
         size_t component = 4;
         switch (attribute->getDataType()){
             case AttributeDataType::BYTE: case AttributeDataType::UNSIGNED_BYTE: component = 1; break;
-            case AttributeDataType::SHORT: case AttributeDataType::UNSIGNED_SHORT: component = 2; break;
+            case AttributeDataType::SHORT: case AttributeDataType::UNSIGNED_SHORT: case AttributeDataType::HALF: component = 2; break;
             default: component = 4; break;
         }
         const size_t pos = (size_t)index * buffer->getStride() + attribute->getOffset();
@@ -6238,6 +6239,7 @@ namespace {
                 case AttributeDataType::INT:{ int32_t v; memcpy(&v, at, 4); value[e] = (float)v; break; }
                 case AttributeDataType::UNSIGNED_INT:{ uint32_t v; memcpy(&v, at, 4); value[e] = (float)v; break; }
                 case AttributeDataType::FLOAT:{ memcpy(&value[e], at, 4); break; }
+                case AttributeDataType::HALF:{ uint16_t v; memcpy(&v, at, 2); value[e] = particles::ParticleRenderPrep::fromHalf(v); break; }
             }
         }
         out = Vector3(value[0], value[1], value[2]);

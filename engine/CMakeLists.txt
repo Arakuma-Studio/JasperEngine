@@ -1208,7 +1208,7 @@ list(APPEND JASPERENGINE_SRCS ${HTMLUI_COMPAT_SRCS})
 # HTML UI widgets (S17): virtual views, tooltips, drag and drop, Markdown
 include(core/htmlui/widgets/WidgetsSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${HTMLUI_WIDGETS_SRCS})
-# Particles (S20): the SIMD kernels' flags
+# Particles (S20): the SIMD kernels' flags, the subsystem and its drawing
 include(core/particles/ParticleSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_PARTICLE_SRCS})
 include(libs/lucide/lucide.cmake)

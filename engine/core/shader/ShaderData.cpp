@@ -119,6 +119,22 @@ int ShaderData::getAttrIndex(AttributeType type){
         attrstr = "i_terrainnode_resolution";
     }else if (type == AttributeType::SMOOTHNORMAL){
         attrstr = "a_smoothNormal";
+    }else if (type == AttributeType::PARTICLECORNER){
+        attrstr = "a_corner";
+    }else if (type == AttributeType::PARTICLEPOSITION){
+        attrstr = "i_particlePosition";
+    }else if (type == AttributeType::PARTICLECOLOR){
+        attrstr = "i_particleColor";
+    }else if (type == AttributeType::PARTICLESIZE){
+        attrstr = "i_particleSize";
+    }else if (type == AttributeType::PARTICLEROTATIONFRAME){
+        attrstr = "i_particleRotFrame";
+    }else if (type == AttributeType::PARTICLEVELOCITY){
+        attrstr = "i_particleVelocity";
+    }else if (type == AttributeType::PARTICLEROTATION){
+        attrstr = "i_particleRotation";
+    }else if (type == AttributeType::PARTICLECUSTOM){
+        attrstr = "i_particleCustom";
     }
 
     if (attrstr.empty()){
@@ -190,6 +206,10 @@ int ShaderData::getUniformBlockIndex(UniformBlockType type){
         ustr = "u_vs_pointsParams";
     }else if (type == UniformBlockType::LINES_VS_PARAMS){
         ustr = "u_vs_linesParams";
+    }else if (type == UniformBlockType::PARTICLES_VS_PARAMS){
+        ustr = "u_vs_particlesParams";
+    }else if (type == UniformBlockType::PARTICLES_FS_PARAMS){
+        ustr = "u_fs_particlesParams";
     }else if (type == UniformBlockType::VS_SKINNING){
         ustr = "u_vs_skinning";
     }else if (type == UniformBlockType::DEPTH_VS_SKINNING){
@@ -315,6 +335,14 @@ std::pair<int, int> ShaderData::getTextureIndex(TextureShaderType type){
         texstr = "u_uiTexture";
     }else if (type == TextureShaderType::POINTS){
         texstr = "u_pointsTexture";
+    }else if (type == TextureShaderType::PARTICLES){
+        texstr = "u_particleTexture";
+    }else if (type == TextureShaderType::PARTICLESIXWAYA){
+        texstr = "u_particleSixWayA";
+    }else if (type == TextureShaderType::PARTICLESIXWAYB){
+        texstr = "u_particleSixWayB";
+    }else if (type == TextureShaderType::PARTICLEEMISSION){
+        texstr = "u_particleEmission";
     }else if (type == TextureShaderType::BONES){
         texstr = "u_bonesTexture";
     }else if (type == TextureShaderType::HEIGHTMAP){

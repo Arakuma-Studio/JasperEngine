@@ -10,12 +10,21 @@ set(JASPERENGINE_PARTICLE_SRCS
     core/particles/ParticleChannels.cpp
     core/particles/ParticleCompiler.cpp
     core/particles/ParticleEffectCodec.cpp
+    core/particles/ParticleEffectLibrary.cpp
     core/particles/ParticleKernels.cpp
+    core/particles/ParticleMeshes.cpp
     core/particles/ParticleModules.cpp
+    core/particles/ParticlePreview.cpp
     core/particles/ParticleRender.cpp
     core/particles/ParticleTrails.cpp
     core/particles/ParticleValues.cpp
     core/particles/ParticleWorld.cpp
+)
+
+# the engine's side: the subsystem that runs the scene's particle systems and their drawing
+set(JASPERENGINE_PARTICLE_SYSTEM_SRCS
+    core/subsystem/ParticleSubsystem.cpp
+    core/subsystem/RenderSystemParticles.cpp
 )
 
 option(JASPERENGINE_WASM_SIMD "Build the WebAssembly particle kernels with simd128" ON)

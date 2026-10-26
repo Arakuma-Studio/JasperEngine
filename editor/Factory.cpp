@@ -851,6 +851,14 @@ std::string editor::Factory::formatAttributeType(AttributeType type) {
         case AttributeType::TERRAINNODERANGE: return "AttributeType::TERRAINNODERANGE";
         case AttributeType::TERRAINNODERESOLUTION: return "AttributeType::TERRAINNODERESOLUTION";
         case AttributeType::SMOOTHNORMAL: return "AttributeType::SMOOTHNORMAL";
+        case AttributeType::PARTICLECORNER: return "AttributeType::PARTICLECORNER";
+        case AttributeType::PARTICLEPOSITION: return "AttributeType::PARTICLEPOSITION";
+        case AttributeType::PARTICLECOLOR: return "AttributeType::PARTICLECOLOR";
+        case AttributeType::PARTICLESIZE: return "AttributeType::PARTICLESIZE";
+        case AttributeType::PARTICLEROTATIONFRAME: return "AttributeType::PARTICLEROTATIONFRAME";
+        case AttributeType::PARTICLEVELOCITY: return "AttributeType::PARTICLEVELOCITY";
+        case AttributeType::PARTICLEROTATION: return "AttributeType::PARTICLEROTATION";
+        case AttributeType::PARTICLECUSTOM: return "AttributeType::PARTICLECUSTOM";
         default: return "AttributeType::POSITION";
     }
 }
@@ -864,6 +872,7 @@ std::string editor::Factory::formatAttributeDataType(AttributeDataType type) {
         case AttributeDataType::INT: return "AttributeDataType::INT";
         case AttributeDataType::UNSIGNED_INT: return "AttributeDataType::UNSIGNED_INT";
         case AttributeDataType::FLOAT: return "AttributeDataType::FLOAT";
+        case AttributeDataType::HALF: return "AttributeDataType::HALF";
         default: return "AttributeDataType::FLOAT";
     }
 }

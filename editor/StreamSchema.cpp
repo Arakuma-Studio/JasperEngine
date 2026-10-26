@@ -268,6 +268,7 @@ const EnumTable<AttributeDataType>& StreamSchema::attributeDataType() {
         {AttributeDataType::INT, "int"},
         {AttributeDataType::UNSIGNED_INT, "unsigned_int"},
         {AttributeDataType::FLOAT, "float"},
+        {AttributeDataType::HALF, "half"},
     }, AttributeDataType::FLOAT);
     return table;
 }
@@ -311,6 +312,14 @@ const EnumTable<AttributeType>& StreamSchema::attributeType() {
         {AttributeType::TERRAINNODERANGE, "terrainnoderange"},
         {AttributeType::TERRAINNODERESOLUTION, "terrainnoderesolution"},
         {AttributeType::SMOOTHNORMAL, "smoothnormal"},
+        {AttributeType::PARTICLECORNER, "particlecorner"},
+        {AttributeType::PARTICLEPOSITION, "particleposition"},
+        {AttributeType::PARTICLECOLOR, "particlecolor"},
+        {AttributeType::PARTICLESIZE, "particlesize"},
+        {AttributeType::PARTICLEROTATIONFRAME, "particlerotationframe"},
+        {AttributeType::PARTICLEVELOCITY, "particlevelocity"},
+        {AttributeType::PARTICLEROTATION, "particlerotation"},
+        {AttributeType::PARTICLECUSTOM, "particlecustom"},
     }, AttributeType::POSITION);
     return table;
 }

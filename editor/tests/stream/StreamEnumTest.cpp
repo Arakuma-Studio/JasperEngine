@@ -71,7 +71,8 @@ TEST(StreamEnum, AttributeDataTypeRoundTrips){
         AttributeDataType::UNSIGNED_SHORT,
         AttributeDataType::INT,
         AttributeDataType::UNSIGNED_INT,
-        AttributeDataType::FLOAT
+        AttributeDataType::FLOAT,
+        AttributeDataType::HALF
     }, AttributeDataType::FLOAT);
 }
 
@@ -113,7 +114,15 @@ TEST(StreamEnum, AttributeTypeRoundTrips){
         AttributeType::TERRAINNODESIZE,
         AttributeType::TERRAINNODERANGE,
         AttributeType::TERRAINNODERESOLUTION,
-        AttributeType::SMOOTHNORMAL
+        AttributeType::SMOOTHNORMAL,
+        AttributeType::PARTICLECORNER,
+        AttributeType::PARTICLEPOSITION,
+        AttributeType::PARTICLECOLOR,
+        AttributeType::PARTICLESIZE,
+        AttributeType::PARTICLEROTATIONFRAME,
+        AttributeType::PARTICLEVELOCITY,
+        AttributeType::PARTICLEROTATION,
+        AttributeType::PARTICLECUSTOM
     }, AttributeType::POSITION);
 }
 
