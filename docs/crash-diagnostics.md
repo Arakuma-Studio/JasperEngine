@@ -13,15 +13,25 @@ next start (below).
 
 | | Report folders, session markers, abnormal-exit detection, log tail ring | Native crash handler (crash.txt with frames, minidump) | Hang watchdog stack capture |
 |---|---|---|---|
-| Linux, Android | yes | pending: the editor keeps its previous handler (`editor/util/CrashHandler`, the FATAL block in editor.log); Android keeps debuggerd's tombstone | pending (reports say `stack: unavailable`) |
-| macOS, iOS | yes | pending (ReportCrash's `.ips` is the report) | pending |
-| Windows | yes | pending (WER's report; the editor's previous handler) | pending |
+| Linux, Android | yes | alternate-stack signal handler, text report; chains to sanitizers/debuggerd | main-thread signal capture, 250 ms deadline |
+| macOS, iOS | yes | alternate-stack signal handler; OS `.ips` remains authoritative | main-thread signal capture (SIGUSR2 by default), 250 ms deadline |
+| Windows | yes | unhandled exceptions and CRT fatal paths; minidump/text writer started at install, WER preserved | suspended context walked on a helper; watchdog resumes within its 250 ms budget |
 | Web | no files (the browser has no user folder) | the page hooks: `JASPERENGINE CRASH:` in the console, `window.jasperengine.onCrash`, the overlay | the browser owns the main thread: no watchdog |
 
-The native backends (`engine/core/diag/CrashHandler{Posix,Win}.cpp`) plug into
-`detail::installPlatform`; until a platform has one, `CrashHandlerUnarmed.cpp` arms nothing and
-the process keeps whatever handler it had. Everything else on this page works on every
-platform today.
+The engine owns installation on every platform. The editor compatibility class forwards to it;
+normal editor startup installs it once through `EditorDiagnostics`. Thread creation through
+`thread::spawnNamed` prepares an alternate signal stack (POSIX) or stack guarantee (Windows).
+
+Hang capture uses `SIGRTMIN+5` on Linux/Android and `SIGUSR2` on Apple. Set
+`JASPERENGINE_HANG_SIGNAL` to a free signal number when another library reserves the default;
+existing custom handlers are never replaced. A capture timeout disables stack capture for that
+session and leaves phase and occupancy reporting active. On Windows, the faulting thread waits
+at most eight seconds for the prestarted writer; a blocked DbgHelp/loader lock cannot prevent
+OS exception handling. A busy DbgHelp lock yields a text report with saved PC/SP and no dump.
+
+`JASPERENGINE_CRASH_CORE=1` raises the POSIX core limit to its hard limit at installation.
+Linux reports include `/proc/self/maps` and the core pattern (or a `coredumpctl` hint). Apple
+reports record the main module UUID; use the matching dSYM and the authoritative OS `.ips`.
 
 ## The report folder
 

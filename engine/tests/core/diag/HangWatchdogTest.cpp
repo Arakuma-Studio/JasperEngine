@@ -22,6 +22,17 @@
 using namespace jasperengine;
 using namespace jasperengine::diag;
 
+// Exported by the test binary so dladdr can name the interrupted main-thread frame.
+#if defined(_MSC_VER)
+__declspec(noinline)
+#else
+__attribute__((noinline))
+#endif
+void stallFunctionOfTheTest(int ms) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+    std::atomic_signal_fence(std::memory_order_seq_cst);
+}
+
 namespace {
 
     constexpr uint64_t kMs = 1000000;
@@ -74,10 +85,6 @@ namespace {
 #endif
     }
 
-    void stallFunctionOfTheTest(int ms) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(ms));
-    }
-
 }
 
 TEST(HangWatchdog, InjectedStallReports) {
@@ -116,7 +123,8 @@ TEST(HangWatchdog, InjectedStallReports) {
     EXPECT_GE(reports[0].stalledMs, 200u);
     EXPECT_EQ(reports[0].phase, "test:stall");
     EXPECT_NE(reports[0].text.find("phase: test:stall"), std::string::npos);
-    EXPECT_NE(reports[0].text.find("stack: "), std::string::npos);
+    EXPECT_NE(reports[0].text.find("stack:\n"), std::string::npos);
+    EXPECT_NE(reports[0].text.find("stallFunctionOfTheTest"), std::string::npos) << reports[0].text;
     EXPECT_EQ(recoveries, 1u);
     EXPECT_TRUE(sawUnresponsive) << "health() answers from another thread while the main thread stalls";
 }
@@ -365,3 +373,36 @@ TEST(HangWatchdog, DisabledByEnvironmentStartsNoThread) {
     EXPECT_FALSE(running);
     EXPECT_FALSE(watchdog::health().enabled);
 }
+
+#if defined(_WIN32)
+TEST(HangWatchdog, WalkerDeadlineResumesMainThread) {
+    WatchdogConfig config;
+    config.pollMs = 0;
+    watchdog::start(config);
+    watchdog::detail::forceWalkerStallForTest(true);
+    std::atomic<bool> capturing{false};
+    std::atomic<bool> done{false};
+    std::string failure;
+    const auto begin = std::chrono::steady_clock::now();
+    std::thread capture([&] {
+        capturing.store(true);
+        char stack[8192];
+        const char* why = nullptr;
+        EXPECT_EQ(watchdog::detail::captureMainThreadStack(stack, sizeof(stack), &why), 0u);
+        failure = why ? why : "";
+        done.store(true);
+    });
+    while (!capturing.load()) std::this_thread::yield();
+    // A stuck walker owns no resume responsibility; the main thread must run again while
+    // the helper is still asleep, and the capture caller must return on its own deadline.
+    while (!done.load() && std::chrono::steady_clock::now() - begin < std::chrono::seconds(2)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    const auto elapsed = std::chrono::steady_clock::now() - begin;
+    capture.join();
+    watchdog::detail::forceWalkerStallForTest(false);
+    watchdog::stop();
+    EXPECT_LT(elapsed, std::chrono::milliseconds(500));
+    EXPECT_NE(failure.find("timed out"), std::string::npos);
+}
+#endif

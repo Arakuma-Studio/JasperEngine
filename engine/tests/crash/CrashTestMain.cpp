@@ -17,8 +17,11 @@
 #include "diag/CrashHandler.h"
 #include "diag/HangWatchdog.h"
 #include "log/Logger.h"
+#include "util/CrashGuard.h"
+#include "thread/ThreadUtil.h"
 
 #include <chrono>
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -26,10 +29,31 @@
 #include <fstream>
 #include <string>
 #include <thread>
+#if !defined(_WIN32)
+#include <fcntl.h>
+#include <signal.h>
+#include <unistd.h>
+#endif
 
 using namespace jasperengine;
 
-namespace {
+namespace je_crash_test {
+#if !defined(_WIN32)
+    char sentinelPath[1024]{};
+    void previousHandler(int, siginfo_t*, void*) {
+        int fd = open(sentinelPath, O_CREAT | O_WRONLY, 0600);
+        if (fd >= 0) { const ssize_t ignored = write(fd, "chained\n", 8); (void)ignored; close(fd); }
+    }
+#endif
+#if defined(_MSC_VER)
+    __declspec(noinline)
+#else
+    __attribute__((noinline))
+#endif
+    void crashTestStall() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(700));
+        std::atomic_signal_fence(std::memory_order_seq_cst);
+    }
 
     const char* argument(int argc, char** argv, const char* name) {
         for (int i = 1; i + 1 < argc; i++) {
@@ -56,6 +80,8 @@ namespace {
 
 }
 
+using namespace je_crash_test;
+
 int main(int argc, char** argv) {
     const char* mode = argument(argc, argv, "--mode");
     const char* out = argument(argc, argv, "--out");
@@ -75,10 +101,46 @@ int main(int argc, char** argv) {
     config.root = root;
     config.version = "test";
     config.backend = "none";
+#if !defined(_WIN32)
+    if (std::strcmp(mode, "chain") == 0) {
+        const std::string file = (root / "sentinel").string();
+        std::memcpy(sentinelPath, file.c_str(), file.size() + 1);
+        struct sigaction sentinel{};
+        sigemptyset(&sentinel.sa_mask);
+        sentinel.sa_sigaction = previousHandler;
+        sentinel.sa_flags = SA_SIGINFO;
+        sigaction(SIGSEGV, &sentinel, nullptr);
+    }
+#endif
     diag::crash::install(config);
     log(std::string("crash test mode ") + mode);
 
     const std::string name = mode;
+    if (name == "chain") { log("last line before the crash"); diag::crash::debugCrash("segv"); }
+    if (name == "worker_stack_overflow") {
+        log("last line before the crash");
+        auto worker = thread::spawnNamed("Overflow worker", [] { diag::crash::debugCrash("stack_overflow"); });
+        worker.join();
+        return 1;
+    }
+    if (name == "guard_recover") {
+#if !defined(_WIN32)
+        CrashInfo info{};
+        if (callWithCrashGuard([] { raise(SIGSEGV); }, &info)) return 1;
+        std::ofstream(root / "ring.txt") << diag::crash::ringContents();
+        diag::crash::shutdown();
+        Logger::shutdown();
+        return 0;
+#endif
+    }
+    if (name == "guard_worker") {
+        CrashInfo info{};
+        callWithCrashGuard([] {
+            auto worker = thread::spawnNamed("Guard worker", [] { diag::crash::debugCrash("segv"); });
+            worker.join();
+        }, &info);
+        return 1;
+    }
     if (diag::crash::isDebugCrashMode(name) && name != "hang") {
         log("last line before the crash");
         diag::crash::debugCrash(name);
@@ -116,7 +178,7 @@ int main(int argc, char** argv) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         {
             diag::PhaseScope phase("crash-test:stall");
-            std::this_thread::sleep_for(std::chrono::milliseconds(700));
+            crashTestStall();
         }
         diag::heartbeat();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));

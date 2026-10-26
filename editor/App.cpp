@@ -4595,7 +4595,6 @@ void editor::App::initializeSettings() {
     // Next to settings.yaml, where a user can find it to report a crash.
     const std::filesystem::path logFile = AppSettings::getConfigDirectory() / "editor.log";
     Out::setLogFile(logFile);
-    CrashHandler::install(logFile);
     // report folders, the session marker and the hang watchdog (docs/crash-diagnostics.md)
     EditorDiagnostics::install(AppSettings::getConfigDirectory());
 

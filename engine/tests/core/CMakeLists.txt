@@ -26,7 +26,17 @@ add_executable(jasperengine-crash-test ${CMAKE_CURRENT_SOURCE_DIR}/../crash/Cras
 target_link_libraries(jasperengine-crash-test PRIVATE jasperengine Threads::Threads)
 jasperengine_apply_cxx_standard(jasperengine-crash-test)
 jasperengine_target_warnings(jasperengine-crash-test)
-set_target_properties(jasperengine-crash-test PROPERTIES FOLDER "tests")
+set_target_properties(jasperengine-crash-test PROPERTIES FOLDER "tests" ENABLE_EXPORTS ON)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME native-crash-reports COMMAND ${Python3_EXECUTABLE} -I
+    ${CMAKE_CURRENT_SOURCE_DIR}/../crash/test_crash.py $<TARGET_FILE:jasperengine-crash-test>
+    --symbolicate ${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/crash/symbolicate.py)
+set_tests_properties(native-crash-reports PROPERTIES TIMEOUT 180)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT JASPERENGINE_UNITY_BUILD)
+    add_test(NAME posix-crash-signal-safety COMMAND ${Python3_EXECUTABLE} -I
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/crash/check_posix_symbols.py
+        ${CMAKE_BINARY_DIR}/CMakeFiles/jasperengine.dir/core/diag/CrashHandlerPosix.cpp.o)
+endif()
 
 jasperengine_add_test_target(jasperengine-core-tests
     SOURCES ${CORE_TEST_SOURCES} ${CORE_TEST_ALLOCATION_COUNTER}

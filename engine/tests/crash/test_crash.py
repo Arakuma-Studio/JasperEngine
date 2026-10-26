@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+"""Native crash/overflow/chaining/hang acceptance tests. Every fatal case is a subprocess."""
+import argparse
+import os
+from pathlib import Path
+import re
+import signal
+import subprocess
+import sys
+import tempfile
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("binary", type=Path)
+    parser.add_argument("--symbolicate", type=Path, required=True)
+    args = parser.parse_args()
+    modes = ["segv", "abort", "terminate", "stack_overflow", "worker_segv", "worker_stack_overflow", "fpe", "guard_worker"]
+    if os.name == "nt":
+        modes.append("pure_call")
+    else:
+        modes.append("chain")
+    expected = {"segv": signal.SIGSEGV, "abort": signal.SIGABRT, "terminate": signal.SIGABRT,
+                "stack_overflow": signal.SIGSEGV, "worker_segv": signal.SIGSEGV,
+                "worker_stack_overflow": signal.SIGSEGV, "fpe": signal.SIGFPE,
+                "guard_worker": signal.SIGSEGV, "chain": signal.SIGSEGV}
+    for mode in modes + ["hang"]:
+        with tempfile.TemporaryDirectory(prefix="je-native-crash-") as root:
+            env = dict(os.environ, JASPERENGINE_CRASH_REPORT_DIR=root)
+            # Let ASan's previous handler print, then die with the original fatal signal.
+            env["ASAN_OPTIONS"] = env.get("ASAN_OPTIONS", "") + ":abort_on_error=0:exitcode=77:disable_coredump=1"
+            result = subprocess.run([str(args.binary.resolve()), "--mode", mode, "--out", root],
+                                    capture_output=True, text=True, timeout=12, env=env)
+            files = list(Path(root).glob("reports/*/" + ("hang-001.txt" if mode == "hang" else "crash.txt")))
+            assert len(files) == 1, (mode, result.returncode, result.stderr[-5000:])
+            report = files[0].read_text()
+            assert len(re.findall(r"^#\d+ ", report, re.M)) >= 3, (mode, report)
+            if mode == "hang":
+                assert result.returncode == 0, result.stderr
+                assert "crashTestStall" in report, report
+                assert "recovered after" in result.stderr, result.stderr
+            else:
+                assert result.returncode != 0, mode
+                if os.name != "nt":
+                    assert result.returncode in (-expected[mode], 77), (mode, result.returncode, result.stderr)
+                for key in ("product", "version", "build_id", "platform", "backend", "reason", "fault_address",
+                            "thread", "pc", "sp", "time_since_start_ms", "session"):
+                    assert re.search(r"^" + key + ": .+", report, re.M), (mode, key, report)
+                tail = (files[0].parent / "log-tail.txt").read_text()
+                assert "last line before the crash" in tail or mode == "guard_worker", (mode, tail)
+                assert "JASPERENGINE CRASH:" in result.stderr, (mode, result.stderr)
+                if mode == "chain":
+                    assert (Path(root) / "sentinel").exists(), result.stderr
+                if os.name == "nt":
+                    assert (files[0].parent / "crash.dmp").stat().st_size > 0
+                else:
+                    named = subprocess.run([sys.executable, "-I", str(args.symbolicate), str(files[0]),
+                                            "--binary-dir", str(args.binary.resolve().parent)],
+                                           capture_output=True, text=True, timeout=30)
+                    assert named.returncode == 0, (mode, named.stdout, named.stderr)
+                    assert "debugSegv" in named.stdout or mode not in ("segv", "worker_segv", "guard_worker"), named.stdout
+            print(f"PASS native crash: {mode}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

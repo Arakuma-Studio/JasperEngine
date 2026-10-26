@@ -220,4 +220,31 @@ TEST(CrashHang, WatchdogWritesAHangReportIntoTheSession) {
     EXPECT_EQ(text.rfind("JasperEngine hang report v1\n", 0), 0u);
     EXPECT_NE(text.find("phase: crash-test:stall"), std::string::npos);
     EXPECT_NE(text.find("product: jasperengine-crash-test"), std::string::npos);
+    EXPECT_NE(text.find("crashTestStall"), std::string::npos) << text;
 }
+
+TEST(CrashGuard, WorkerCrashReachesHandler) {
+    TempDir dir;
+    const int result = runCrashTest({"--mode", "guard_worker", "--out", dir.str()});
+    EXPECT_NE(result, -1) << "crashing worker hung";
+    EXPECT_NE(result, 0);
+    bool reported = false;
+    for (const auto& entry : fs::recursive_directory_iterator(dir.path())) {
+        if (entry.path().filename() == "crash.txt") reported = true;
+    }
+    EXPECT_TRUE(reported) << "a worker crash during a Lua guard must reach the engine handler";
+}
+
+#if !defined(_WIN32)
+TEST(CrashChain, PreviousHandlerRuns) {
+    TempDir dir;
+    EXPECT_NE(runCrashTest({"--mode", "chain", "--out", dir.str()}), -1);
+    EXPECT_TRUE(dir.exists("sentinel"));
+}
+TEST(CrashGuard, RecoveredCrashOnlyAddsBreadcrumb) {
+    TempDir dir;
+    ASSERT_EQ(runCrashTest({"--mode", "guard_recover", "--out", dir.str()}), 0);
+    EXPECT_NE(dir.read("ring.txt").find("recovered a guarded callback crash"), std::string::npos);
+    EXPECT_TRUE(fs::is_empty(dir.path() / "reports"));
+}
+#endif

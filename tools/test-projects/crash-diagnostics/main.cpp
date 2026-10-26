@@ -8,6 +8,7 @@
 // JASPERENGINE_DEBUG_CRASH=<mode>@<frame>. lua/main.lua uses the Lua Crash API.
 
 #include "JasperEngine.h"
+#include "diag/CrashHandler.h"
 using namespace jasperengine;
 
 Scene scene;
@@ -17,4 +18,15 @@ JASPERENGINE_INIT void init(){
     Engine::setScene(&scene);
 
     Log::print("[gate] crash diagnostics: cpp init");
+#if defined(__ANDROID__)
+    // Android cannot inherit a shell environment. This fixture triggers the same frame-10
+    // fault as JASPERENGINE_DEBUG_CRASH=segv@10, retaining debuggerd's original handler.
+    Engine::onUpdate.add("crashDiagnostics", [] {
+        static unsigned frame = 0;
+        if (++frame == 10) {
+            Log::print("last Android log line before deliberate crash");
+            diag::crash::debugCrash("segv");
+        }
+    });
+#endif
 }

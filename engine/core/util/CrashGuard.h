@@ -12,6 +12,7 @@
 #pragma once
 
 #include <functional>
+#include "diag/CrashHandler.h"
 
 // IMPORTANT: Include platform headers at global scope (not inside any namespace)
 // to avoid injecting standard names inside jasperengine::std, which breaks builds.
@@ -128,14 +129,13 @@ namespace jasperengine {
             }
         }
 
-        inline void crashSignalHandler(int sig, siginfo_t* /*info*/, void* /*ucontext*/) {
+        inline void crashSignalHandler(int sig, siginfo_t* info, void* ucontext) {
             if (g_tls.active) {
                 g_tls.lastSig = sig;
                 siglongjmp(g_tls.env, 1);
             } else {
-                // Not guarded: restore default and re-raise to terminate
-                ::signal(sig, SIG_DFL);
-                ::raise(sig);
+                // Another thread can fault while a Lua callback holds this process-wide guard.
+                diag::crash::handleFatalSignal(sig, info, ucontext);
             }
         }
 
@@ -156,7 +156,7 @@ namespace jasperengine {
                 sigaddset(&sa.sa_mask, SIGFPE);
                 sigaddset(&sa.sa_mask, SIGILL);
                 sigaddset(&sa.sa_mask, SIGABRT);
-                sa.sa_flags = SA_SIGINFO | SA_NODEFER;
+                sa.sa_flags = SA_SIGINFO | SA_NODEFER | SA_ONSTACK;
 
                 sigaction(SIGSEGV, &sa, &old_segv);
                 sigaction(SIGBUS,  &sa, &old_bus);
@@ -197,6 +197,7 @@ namespace jasperengine {
             scope.restore();
             return true;
         } else {
+            diag::crash::ringWrite("CrashGuard: recovered a guarded callback crash");
             // We jumped back from a signal
             if (outInfo) {
                 outInfo->code = g_tls.lastSig;
