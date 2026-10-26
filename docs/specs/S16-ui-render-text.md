@@ -675,3 +675,12 @@ one line pointing here.
   glyphs' top rows): 48. Experiments that changed nothing: clip shapes off (X1), the primitive
   program not awaited (X2), the render request (X4). Bisect of oe-port's first-parent merges for
   the 30 running in a scratch worktree; S16's 18 under investigation (glyph placement in the atlas).
+- Suites at 592d8ed28 (server B, `JASPER_HTMLUI_PERF_SLACK=3`): glcore 3379 ran, 0 failed;
+  Vulkan twice, whole suite, 3379 ran, 0 failed each (`MatchesTheMeshPath` skips 8 samples:
+  lavapipe has none). An earlier Vulkan crash (`InputGamepadTest.SelectOpensAndNavigates`) came
+  from a build whose sources were re-synced mid-build (RenderManager's layout changed between
+  objects); it did not recur in four runs, ASan (glcore) reports no error there.
+- AC1 run (S16 off, pre-S16 goldens): `RenderClip.RoundedClipIsAnalyticAndAntialiased` compares
+  S16's own goldens, now under `S16On`; `s17/views_scrolled` needs oe-port's golden in that run;
+  `HtmlUIWidgetsPerf.ModelSetAndTreeFlatten` (S17) once took 12 ms on the loaded host (1.6 ms in
+  the next run).
