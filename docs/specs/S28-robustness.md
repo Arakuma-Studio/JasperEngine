@@ -408,3 +408,44 @@ gtest targets.
   every known long path; AC18 keeps the smoke runs at zero hang lines.
 - Lua interruption may leave a script half-way through its update: acceptable in Play (same as a
   script error today); never enabled in shipped games.
+
+## Deviations
+
+Recorded by the S28 implementation (branch `feat/s28-robustness`).
+
+- **Native crash backends are not in this branch (decision pending with the user).** Writing the
+  POSIX signal backend, the Windows exception filter / minidump writer and the main-thread stack
+  capture was stopped, and those parts are set aside for a separate decision. What landed is
+  built so they plug in without rework: `diag::crash::detail::installPlatform` /
+  `prepareThreadPlatform` / `platformDebugCrash` (today `CrashHandlerUnarmed.cpp`, selected at
+  compile time for every non-web target, arms nothing) and
+  `diag::watchdog::detail::captureMainThreadStack` (reports `stack: unavailable`). Until then the
+  editor keeps `editor/util/CrashHandler.*` unchanged as its handler (R1's forwarder is not done),
+  games have no native handler (the OS report stays: debuggerd tombstones, ReportCrash, WER), and
+  `std::set_terminate` is only taken when a backend is armed. Open items of this spec, all in
+  that part: R1 (forwarder), R3-R6, R7 (CrashGuard's unguarded branch, with its red test), R18
+  (hang minidumps; the setting is not shown until it works), R19-R22, R25; AC1-AC6, AC7's stack
+  frame, AC10, AC13's segv path (its SIGKILL path is tested), AC15's report lines, AC20.
+- **Preferences are not undo steps** (R29, R31 `set_hang_watchdog`): Preferences > Diagnostics and
+  `set_hang_watchdog` apply at once and save, like every other preference and
+  `set_project_settings` (which says "not undoable"); the dialog's Cancel reverts unsaved edits.
+- **Hang threshold in whole seconds** (R29): Report After is in seconds (1-60) as the spec's UI;
+  `set_hang_watchdog threshold_ms` rounds to whole seconds. `JASPERENGINE_HANG_WATCHDOG_MS` keeps
+  millisecond precision.
+- **The heartbeat is a counter** (R12, R26): `diag::heartbeat()` is one relaxed increment (no
+  clock read: a steady-clock read alone costs more than R26's 5 ns); the watchdog timestamps the
+  change when it polls, so a stall is measured to within one poll period (250 ms).
+- **Runaway Lua keeps Play running** (R16): today's script-error path pauses and stops Play, so an
+  interrupt is logged as "Script crash: script interrupted: ..." by the error paths themselves
+  (`LuaWatchdog::takeInterrupt`), not handed to the crash hook, as R16 and AC11 require.
+- **`run_game` is `run_build`** (R31, R34, AC19): the tool's name in this code base; it gains
+  `crash_report`.
+- **Web build hash** (R2, R24): S30's build hash is used when `JASPERENGINE_BUILD_HASH` is defined;
+  until S30 defines it, a hash of the engine's compile time stands in.
+- **Crash Handling settings on Xcode exports** (R30): like Player > Logging, they reach a game
+  through the exported CMake project; the Xcode workspace (iOS, macOS Xcode) builds with the
+  defaults.
+- **`HangWatchdog.*` beat test** (AC7): the "beats every 50 ms" case runs 0.9 s, not 2 s, to stay
+  inside the 1 s rule of non-Slow unit tests.
+- **Tool verbs**: `dismiss` and `debug` were added to the verb list of
+  `test_tool_conventions.py` for the spec's `dismiss_crash_notice` and `debug_crash`.

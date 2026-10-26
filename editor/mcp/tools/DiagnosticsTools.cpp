@@ -94,6 +94,7 @@ void getCrashReportsTool(const CallPtr& call) {
     Json data = {
         {"reports", reports},
         {"folder", diag::crash::reportsDirectory().string()},
+        {"session", diag::crash::sessionId()},
         {"notice_open", notice.has_value()},
     };
     if (notice) data["notice"] = {{"id", notice->id}, {"text", EditorDiagnostics::noticeText(*notice)}};
