@@ -618,12 +618,17 @@ one line pointing here.
   shader's round the tie differently; up to 120 pixels), and `integration/fixed-modal-backdrop`,
   where the `translate(-50%, -50%)` modal's 30 px shadow tail under a backdrop blur differs by up to
   3.
-- **AC1 residual.** With `JASPER_HTMLUI_S16_OFF=1` every golden passes against the unchanged files
-  except `p1/texture_effects` (`IntegrationTest.TextureDocumentDrawsClipsLayersAndFilters`): 48
-  pixels over the threshold (0.073 %, limit 0.05 %), deterministic, on the 4-sample texture
-  document's stencil-clipped disc edge and its outlined label (the same test passes on the oe-port
-  base). Not traced to a single change yet; follow-up. The other S16-off failures are S16's own
-  tests needing S16 on (they now turn it on, `S16On`) and the new goldens.
+- **AC1 `p1/texture_effects` traced (round 2).** With `JASPER_HTMLUI_S16_OFF=1` it was 48 pixels
+  over the threshold (limit 32). Two causes, measured against oe-port's own render of the test
+  (scratch worktree, `JASPER_HTMLUI_WRITE_ACTUAL=1`): (1) oe-port 50c7afd3d alone renders 30 of
+  them, on the stencil-clipped disc's edge, and passes (30 <= 32): its golden (2026-10-11) is older
+  than that rendering; (2) S16 added 18 on the outlined label in the rotated, filtered panel: the
+  white texel block S16 reserves at the start of every glyph page (batching: untextured geometry
+  joins a glyph page's run) moved the glyphs in the atlas, and a transformed glyph samples its
+  atlas neighbours. The block is now reserved only while batching (fix), and the S16-off render is
+  pixel-identical to oe-port's (0 pixels over the threshold between them). The other S16-off
+  failures were S16's own tests needing S16 on (`S16On`), S16's new goldens, and goldens S16
+  updated (the AC1 run uses the pre-S16 files).
 
 ## Acceptance round 2 (working notes)
 
