@@ -106,7 +106,7 @@ TEST(SettingsSearch, FiltersRows) {
     ASSERT_FALSE(rows.empty());
     for (const SettingRow* row : rows) {
         pages.insert(row->page);
-        EXPECT_NE(row->label.find("VSync"), std::string::npos) << row->key << ": " << row->label;
+        EXPECT_NE(row->label.find("VSync"), std::string::npos) << row->key << ": " << row->label << " on " << row->page;
     }
     // Quality (Project Settings) and General (Preferences)
     ASSERT_EQ(pages.size(), 2u);

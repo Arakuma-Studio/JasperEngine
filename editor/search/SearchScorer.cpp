@@ -186,8 +186,9 @@ bool search::filterMatch(std::string_view normQuery, std::string_view normCandid
             if (candidateWord.empty()) continue;
             if (candidateWord.starts_with(queryWord)) {
                 found = true;
-            } else if (queryWord.size() >= 3) {
-                // typos from three letters on: one letter is within one edit of every word
+            } else if (queryWord.size() >= 3 && queryWord[0] == candidateWord[0]) {
+                // typos from three letters on (one letter is within one edit of every word), with
+                // the first letter right: "vsync" must not find every "sync"
                 const int cutoff = cutoffFor(queryWord);
                 found = damerau(queryWord, candidateWord, cutoff) <= cutoff;
             }

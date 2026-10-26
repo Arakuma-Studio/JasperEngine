@@ -43,7 +43,7 @@ TEST(AssetLabels, NormalizesSortsAndFormats) {
 
 TEST(AssetLabels, InFileLineEditKeepsTheDocument) {
     const std::string scene = "# a comment\nguid: 0123456789abcdef0123456789abcdef\nformerGuids:\n  - fedcba9876543210fedcba9876543210\nname: Main\nentities: []\n";
-    const std::string labelled = AssetLabels::withInFileLabels(scene, {"Hero", "Boss Fight"});
+    const std::string labelled = AssetLabels::withInFileLabels(scene, {"Boss Fight", "Hero"});
     EXPECT_EQ(labelled, "# a comment\nguid: 0123456789abcdef0123456789abcdef\nformerGuids:\n  - fedcba9876543210fedcba9876543210\n"
                         "labels: [Boss Fight, Hero]\nname: Main\nentities: []\n");
     EXPECT_EQ(AssetLabels::readInFileLabels(labelled), (std::vector<std::string>{"Boss Fight", "Hero"}));

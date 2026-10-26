@@ -66,6 +66,8 @@ TEST(SearchScorer, FilterModeIsStricterThanRank) {
     EXPECT_TRUE(search::filterMatch("lihgt", "spot light"));
     EXPECT_FALSE(search::filterMatch("ab", "spot light"));
     EXPECT_FALSE(search::filterMatch("xq", "xa"));
+    EXPECT_FALSE(search::filterMatch("vsync", "auto sync"));   // a typo keeps its first letter
+    EXPECT_TRUE(search::filterMatch("vsnyc", "editor vsync"));
     EXPECT_TRUE(search::filterMatch("", "anything"));
     EXPECT_FALSE(search::filterMatch("a", ""));
     EXPECT_TRUE(search::matches(search::MatchMode::Rank, "pl", "spot light"));

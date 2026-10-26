@@ -146,7 +146,7 @@ TEST(ShortcutDispatcher, NativeMenuOwnsItsKeyEquivalents) {
     // a key with no menu item still fires
     EXPECT_EQ(dispatcher.process(FakeKeys::press(chordOf("W")), state), std::vector<std::string>{"tools.move"});
     // Redo's macOS chord is Cmd+Shift+Z
-    EXPECT_EQ(recording.catalog.menuShortcutText("edit.redo"), "Ctrl+Shift+Z");
+    EXPECT_EQ(recording.catalog.menuShortcutText("edit.redo"), "Cmd+Shift+Z");
     state.nativeMenuOwnsKeys = false;
     EXPECT_EQ(dispatcher.process(FakeKeys::press(chordOf("Ctrl+S")), state), std::vector<std::string>{"file.save"});
 }

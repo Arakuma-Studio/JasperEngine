@@ -40,7 +40,8 @@ namespace jasperengine::editor::search {
     // Tree filters (Hierarchy, Project, settings rows) show every included row in tree order, so
     // a bare subsequence hit ("pl" in "spot light") would flood them. Filter accepts a candidate
     // when the normalized query is a substring of it, or when every query word is a word prefix
-    // of some candidate word or, from three letters on, within the Damerau cutoff of one.
+    // of some candidate word or, from three letters on, within the Damerau cutoff of one that
+    // starts with the same letter.
     bool filterMatch(std::string_view normQuery, std::string_view normCandidate);
 
     // matches(): fuzzyScore() >= 0 in Rank mode, filterMatch() in Filter mode

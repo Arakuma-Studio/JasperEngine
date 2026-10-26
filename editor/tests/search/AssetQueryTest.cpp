@@ -140,7 +140,7 @@ TEST(AssetSearchSlow, FiftyThousandUnder30ms) {
         if (i % 11 == 0) labels.push_back("Environment");
         index.add("folder" + std::to_string(i % 200) + "/asset_" + std::to_string(i) + "_rock" + exts[i % 5], types[i % 5], labels);
     }
-    const char* queries[] = {"t:texture l:Hero", "rock 123", "path:folder12/ ext:png", "l:environment OR t:audio"};
+    const char* queries[] = {"t:texture l:Hero", "rock 123", "path:folder10/ ext:png", "l:environment OR t:audio"};
     using Clock = std::chrono::steady_clock;
     for (const char* text : queries) {
         double best = 1e9;
