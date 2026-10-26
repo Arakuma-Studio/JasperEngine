@@ -49,7 +49,7 @@ namespace reflect_mcp_read_test {
             ASSERT_NE(desc, nullptr) << t;
             SCOPED_TRACE(desc->cppName);
 
-            const Json schema = reflect::schema(*desc);
+            const reflect::Json schema = reflect::schema(*desc);
             EXPECT_EQ(schema.value("type", std::string()), "object");
             for (const reflect::FieldDesc& field : desc->body.fields) {
                 EXPECT_TRUE(reflect::fieldMetadata(field).contains("label")) << field.name;
@@ -81,7 +81,7 @@ namespace reflect_mcp_read_test {
             }
         }
 
-        const Json document = reflect::reflectionDocument();
+        const reflect::Json document = reflect::reflectionDocument();
         EXPECT_EQ(document["components"].size(), static_cast<size_t>(LAST_COMPONENT_TYPE) + 1);
         EXPECT_TRUE(document.contains("enums") && document.contains("post_processing"));
 
