@@ -566,13 +566,17 @@ All through `je-remote/rb.sh`; merge commit b8808a966 plus the fixes after it.
 - Server E, `je-bench-diag`: heartbeat 2.25 ns (<= 5), 120-byte ring write 11.2 ns (<= 150),
   install 0.58 ms (<= 3), idle watchdog 0.056 % of a core (<= 0.1): every budget holds.
 
-Owner review of the native handlers (reported to the integrator, not changed here): a second
-thread that faults while the first is still writing its report chains at once (POSIX
-`entry == 1` with a default disposition, Windows `submit` returning), which can end the process
-before the first report is complete; it should wait, bounded, for `reportDone` when another
-thread is reporting. Minor: POSIX frames carry no `[symbol]` and list the handler's own frames
-after `#0`; the Windows report has no thread name. `symbolicate.py` now places frames of
-libraries loaded after install (`module?+0x<address>`) through the report's maps copy.
+Owner review follow-up on `feat/s28-native-crash`: concurrent faulting threads now wait up to
+8 seconds for report completion before chaining (lock-free owner plus monotonic/nanosleep wait
+on POSIX, the writer's completion event on Windows). A recursive fault on the reporting thread
+or Windows writer immediately reaches the OS terminating action. A null-by-default internal
+subprocess-test seam delays or recursively faults the first reporter before it opens its report.
+POSIX stacks locate the saved fault PC and omit the handler/trampoline and duplicate PC; if that
+boundary cannot be unwound, only the saved PC is retained. Symbol names are resolved offline
+with `symbolicate.py`, including late-loaded libraries through the maps copy, keeping `dladdr`
+and symbol-loader calls out of the fatal path. Tests check both named fault frames and absence
+of handler frames. Windows dynamically resolves `GetThreadDescription` during installation;
+its writer adds `thread_name`, falling back to `unknown` on older systems.
 
 After merging oe-port again (S11, 4d5ae3093): server B `WERROR=1 tools/build.sh unit-tests` 1,121 core
 and 398 editor tests, 0 failed; server D `WERROR=1 tools/build.sh linux`, MCP 43/43

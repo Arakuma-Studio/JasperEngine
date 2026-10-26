@@ -249,7 +249,9 @@ void submit(EXCEPTION_POINTERS* info) {
     DWORD expected = 0;
     if (!faultOwner.compare_exchange_strong(expected, current, std::memory_order_acq_rel)) {
         if (expected == current) {
-            line(GetStdHandle(STD_ERROR_HANDLE), "JASPERENGINE CRASH: recursive fault while reporting");
+            if (!state().reportDone.load(std::memory_order_acquire)) {
+                line(GetStdHandle(STD_ERROR_HANDLE), "JASPERENGINE CRASH: recursive fault while reporting");
+            }
             return;
         }
         WaitForSingleObject(completed, 8000);
@@ -267,7 +269,8 @@ void submit(EXCEPTION_POINTERS* info) {
 }
 LONG WINAPI filter(EXCEPTION_POINTERS* info) {
     const DWORD current = GetCurrentThreadId();
-    if (current == writerThread || faultOwner.load(std::memory_order_acquire) == current) {
+    if (current == writerThread || (faultOwner.load(std::memory_order_acquire) == current &&
+            !state().reportDone.load(std::memory_order_acquire))) {
         line(GetStdHandle(STD_ERROR_HANDLE), "JASPERENGINE CRASH: recursive fault while reporting");
         return EXCEPTION_CONTINUE_SEARCH;
     }
