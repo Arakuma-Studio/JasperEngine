@@ -2657,6 +2657,12 @@ void editor::App::parseBenchmarkArgs(int argc, char** argv) {
         } else if (arg == "--depth-prepass") {
             if (const char* value = requireValue(i, "--depth-prepass"))
                 benchmarkDepthPrepass = (std::strcmp(value, "off") != 0 && std::strcmp(value, "0") != 0) ? 1 : 0;
+        } else if (arg == "--lit-quality") {
+            if (const char* value = requireValue(i, "--lit-quality")) {
+                if (std::strcmp(value, "standard") == 0) benchmarkLitQuality = 0;
+                else if (std::strcmp(value, "high") == 0) benchmarkLitQuality = 1;
+                else failBenchmark(std::string("--lit-quality must be standard or high, not ") + value);
+            }
         } else if (arg == "--name") {
             if (const char* value = requireValue(i, "--name"))
                 benchmarkName = value;
@@ -3646,6 +3652,8 @@ void editor::App::tickBenchmark() {
             selected->scene->setMeshLodEnabled(benchmarkMeshLod != 0);
         if (benchmarkDepthPrepass >= 0)
             selected->scene->setDepthPrepassEnabled(benchmarkDepthPrepass != 0);
+        if (benchmarkLitQuality >= 0)
+            selected->scene->setLitQuality(benchmarkLitQuality ? LitQuality::HIGH : LitQuality::STANDARD);
         selected->displaySettings.showGrid3D = false;
         selected->displaySettings.showOrigin = false;
         selected->displaySettings.hideSelectionOutline = true;
@@ -4444,7 +4452,9 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v39: upstream (v34-v38 above) and oe-port's S10/S12 (its v34/v35) together: MESH bit 5 is
     //      'Sto' and S10's high shadow filters moved to bit 33 ('Shq', USE_SHADOWS_HQ); the
     //      fogged variants carry the height fog. Either side's v34-v38 cache holds other variants.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v39";
+    // v40: S11's built-in Lit (lobes, hex tiling, Lit Quality: pbr.glsl, mesh.frag, terrain) with
+    //      upstream's Stochastic Tiling in the same Lit and terrain sources and block layout.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v40";
 }
 
 void editor::App::pushTabNotificationStyle(){
