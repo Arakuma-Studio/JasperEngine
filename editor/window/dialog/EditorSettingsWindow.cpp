@@ -16,6 +16,7 @@
 #include "SettingsCategoryList.h"
 
 #include "reload/HotReloadService.h"
+#include "util/ExternalCodeEditor.h"
 #include "htmlui/VideoImporter.h"
 
 #include <algorithm>
@@ -48,6 +49,7 @@ namespace {
         General,
         CodeEditor,
         AssetPipeline,
+        Scripting,
         Undo,
         ExternalTools,
         Logging,
@@ -60,8 +62,9 @@ namespace {
         {"General", "", "editor vsync default build directory output auto save autosave backup interval"},
         {"Code Editor", "", "font size"},
         {"Asset Pipeline", "", "auto refresh watcher reload polling interval hot reload log reloads file changes"},
+        {"Scripting", "", "script changes while playing reload continue stop lua c++ cpp hot reload during play"},
         {"Undo", "", "undo redo history max steps memory limit record selection review play mode changes keep values"},
-        {"External Tools", "", "cmake compiler kit emscripten sdk emsdk web desktop ffmpeg video import av1"},
+        {"External Tools", "", "cmake compiler kit emscripten sdk emsdk web desktop ffmpeg video import av1 external script editor ide visual studio code vscode rider clion xcode sublime zed"},
         {"Logging", "", "log level category console file backtrace errors source location debug trace"},
         {"Shader Cache", "", "clear shader cache"},
     };
@@ -213,6 +216,16 @@ void EditorSettingsWindow::open(Project* project) {
     m_fileWatcher = AppSettings::getFileWatcher() == "native" ? 1 : AppSettings::getFileWatcher() == "polling" ? 2 : 0;
     m_pollingInterval = AppSettings::getPollingInterval();
     m_logReloads = AppSettings::getLogReloads();
+    {
+        const std::string policy = AppSettings::getScriptChangesWhilePlaying();
+        m_scriptChangesWhilePlaying = policy == "after_stop" ? 1 : policy == "stop_and_reload" ? 2 : 0;
+    }
+    m_reloadCppDuringPlay = AppSettings::getReloadCppDuringPlay();
+    m_externalScriptEditor = 0;
+    for (size_t i = 0; i < ExternalCodeEditor::choices().size(); i++) {
+        if (AppSettings::getExternalScriptEditor() == ExternalCodeEditor::choices()[i].id) m_externalScriptEditor = static_cast<int>(i);
+    }
+    m_externalScriptEditorCommand = AppSettings::getExternalScriptEditorCommand();
     m_htmlUiVerboseDiagnostics = AppSettings::getHtmlUiVerboseDiagnostics();
     m_codeEditorFontSize = AppSettings::getCodeEditorFontSize();
     m_undoMaxSteps = AppSettings::getUndoMaxSteps();
@@ -319,6 +332,7 @@ void EditorSettingsWindow::drawSettings() {
         case PreferencesCategory::General: drawGeneralSettings(); break;
         case PreferencesCategory::CodeEditor: drawCodeEditorSettings(); break;
         case PreferencesCategory::AssetPipeline: drawAssetPipelineSettings(); break;
+        case PreferencesCategory::Scripting: drawScriptingSettings(); break;
         case PreferencesCategory::Undo: drawUndoSettings(); break;
         case PreferencesCategory::ExternalTools: drawExternalToolsSettings(); break;
         case PreferencesCategory::Logging: drawLoggingSettings(); break;
@@ -503,8 +517,60 @@ void EditorSettingsWindow::drawAssetPipelineSettings() {
     });
 }
 
+void EditorSettingsWindow::drawScriptingSettings() {
+    prefsDrawSettingsPanel("##EditorScriptingPanel", [this]() {
+        if (prefsBeginSettingsRow("Script Changes While Playing",
+                             "What saving a script does while a scene plays. Reload And Continue Playing swaps the new code into "
+                             "the running scripts: their fields keep their values, init() does not run again, onReload(info) does. "
+                             "A script with an error keeps running its old code.",
+                             m_scriptChangesWhilePlaying != 0)) {
+            m_scriptChangesWhilePlaying = 0;
+        }
+        static const char* const policies[] = {"Reload And Continue Playing", "Reload After Stopping Play", "Stop Playing And Reload"};
+        ImGui::SetNextItemWidth(Theme::dpi(240.0f));
+        ImGui::Combo("##ScriptChangesWhilePlaying", &m_scriptChangesWhilePlaying, policies, IM_ARRAYSIZE(policies));
+
+        if (prefsBeginSettingsRow("Reload C++ Scripts During Play",
+                             "Experimental. A saved .cpp or .h rebuilds the scripts in the background while the scene keeps "
+                             "playing, then swaps the new library in: DPROPERTY values carry over, other members only through "
+                             "saveReloadState/loadReloadState. A failed build keeps the last good one.",
+                             m_reloadCppDuringPlay)) {
+            m_reloadCppDuringPlay = false;
+        }
+        ImGui::Checkbox("##ReloadCppDuringPlay", &m_reloadCppDuringPlay);
+    });
+}
+
+void EditorSettingsWindow::drawExternalScriptEditorSettings() {
+    const auto& choices = ExternalCodeEditor::choices();
+    if (prefsBeginSettingsRow("External Script Editor",
+                         "Where Console locations and Open in External Editor open a script. Built-in: the Code Editor.",
+                         m_externalScriptEditor != 0)) {
+        m_externalScriptEditor = 0;
+    }
+    ImGui::SetNextItemWidth(Theme::dpi(220.0f));
+    if (ImGui::BeginCombo("##ExternalScriptEditor", choices[static_cast<size_t>(m_externalScriptEditor)].name)) {
+        for (size_t i = 0; i < choices.size(); i++) {
+            if (ImGui::Selectable(choices[i].name, static_cast<int>(i) == m_externalScriptEditor)) m_externalScriptEditor = static_cast<int>(i);
+        }
+        ImGui::EndCombo();
+    }
+    if (std::string(choices[static_cast<size_t>(m_externalScriptEditor)].id) == "custom") {
+        prefsBeginSettingsRow("Command", "The program and its arguments: {file} {line} {column} {project} are filled in. "
+                                         "Quote arguments that contain spaces. Runs without a shell.");
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        char buffer[512];
+        std::snprintf(buffer, sizeof(buffer), "%s", m_externalScriptEditorCommand.c_str());
+        if (ImGui::InputTextWithHint("##ExternalScriptEditorCommand", "myeditor --goto \"{file}:{line}\"", buffer, sizeof(buffer))) {
+            m_externalScriptEditorCommand = buffer;
+        }
+    }
+}
+
 void EditorSettingsWindow::drawExternalToolsSettings() {
     prefsDrawSettingsPanel("##EditorExternalToolsPanel", [this]() {
+        sectionRow("Scripts");
+        drawExternalScriptEditorSettings();
         sectionRow("Desktop Build");
         drawCMakeSettings();
         sectionRow("Web Build");
@@ -807,6 +873,11 @@ bool EditorSettingsWindow::applySettings() {
     AppSettings::setFileWatcher(watcherNames[m_fileWatcher]);
     AppSettings::setPollingInterval(m_pollingInterval);
     AppSettings::setLogReloads(m_logReloads);
+    static const char* const policies[] = {"reload", "after_stop", "stop_and_reload"};
+    AppSettings::setScriptChangesWhilePlaying(policies[m_scriptChangesWhilePlaying]);
+    AppSettings::setReloadCppDuringPlay(m_reloadCppDuringPlay);
+    AppSettings::setExternalScriptEditor(ExternalCodeEditor::choices()[static_cast<size_t>(m_externalScriptEditor)].id);
+    AppSettings::setExternalScriptEditorCommand(m_externalScriptEditorCommand);
     HotReloadService& reloads = HotReloadService::get();
     reloads.setAutoRefresh(m_autoRefresh);
     reloads.setLogReloads(m_logReloads);

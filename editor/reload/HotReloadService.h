@@ -146,8 +146,8 @@ namespace jasperengine::editor {
         void reloadProjectFile();
         void keepMineProjectFile() { projectFileChanged = false; }
 
-        // S23 registers this: a Lua script changed while a scene plays; true when handled.
-        // Unset (or false), the change waits for Play to stop, as before S23.
+        // S23 registers this (ScriptReloadService): a script changed while a scene plays; true
+        // when it is reloaded during Play. Unset (or false), the change waits for Play to stop.
         void setScriptChangedHook(std::function<bool(const std::filesystem::path&)> hook) { scriptChangedHook = std::move(hook); }
 
         // A reload kind's caches (thumbnails, glyph atlases, S14's cooked textures) follow a
@@ -170,7 +170,7 @@ namespace jasperengine::editor {
         // A reload done on the main thread now (scripts, UI, prefabs)
         void recordDone(const std::string& kind, const std::filesystem::path& path, double ms, bool ok = true, const std::string& error = {});
         void notify(const std::filesystem::path& path, const std::string& kind, Event event);
-        // A Lua script changed while a scene plays: S23's hook took it (true), or not
+        // A script changed while a scene plays: S23's hook took it (true), or not
         bool handleScriptInPlay(const std::filesystem::path& path) { return scriptChangedHook && scriptChangedHook(path); }
         // Scripts whose properties wait for Play to stop
         void deferScripts(const std::vector<std::filesystem::path>& paths);

@@ -293,6 +293,10 @@ namespace jasperengine::editor{
         void pasteSelection(bool asChild);
 
         PlatformMenuModel buildMenuModel();
+        // The project's editor-script menu items (EditorScripts) in the main menu
+        void addScriptMenus(PlatformMenuModel& menu);
+        // A menu with editor-script items opened: their ---@validate functions run
+        void validateScriptMenus(const PlatformMenuItem& menu);
         // Where Ctrl+Z and Edit > Undo go now (UndoTimeline::resolveTarget)
         UndoTimeline::Target undoTarget() const;
         // Edit > Undo/Redo and Ctrl+Z/Ctrl+Y: the Code editor's own, or one timeline step
