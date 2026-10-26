@@ -24,6 +24,15 @@ namespace jasperengine { namespace particles {
     inline constexpr uint32_t kBudgetWeb = 131072;
     JASPERENGINE_API uint32_t defaultWorldBudget();
 
+    // what culling leaves an emitter to simulate this frame (R15): Pause stops it off screen,
+    // Pause and Catch-up also keeps the time it missed and runs up to 0.5 s of it on view,
+    // Automatic is that for looping effects and Always Simulate for the others
+    struct CullState {
+        double missed = 0.0;
+    };
+    inline constexpr double kMaxCatchUpSeconds = 0.5;
+    JASPERENGINE_API double cullingStep(CullingMode mode, bool looping, bool visible, double dt, int tickRate, CullState& state, uint32_t& maxTicks);
+
     struct EmitterTask {
         EmitterRuntime* runtime = nullptr;
         EmitterInput input;

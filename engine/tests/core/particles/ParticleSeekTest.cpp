@@ -1,0 +1,160 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+// AC9: seek equals playing to the time; a backward scrub starts from a checkpoint; the
+// checkpoints keep within their cap; prewarm shows the state at the duration, at most 1 ms a frame.
+
+#include "ParticleTestEffects.h"
+#include "ParticleTestUtil.h"
+
+#include "particles/ParticlePreview.h"
+
+#include <gtest/gtest.h>
+
+#include <chrono>
+
+using namespace particletest;
+
+namespace {
+
+    ParticleEffectDocument seekEffect(){
+        ParticleEffectDocument d = referenceStack(true, 400.0f, 4096);
+        d.collision.present = true;
+        CollisionPlane floor;
+        floor.point = Vector3(0.0f, -0.5f, 0.0f);
+        d.collision.planes = {floor};
+        d.trails.present = true;
+        d.trails.ratio = 0.2f;
+        return d;
+    }
+
+}
+
+TEST(ParticleSeek, MatchesPlayback){
+    const auto effect = compileOrFail(seekEffect());
+    EmitterInput input;
+    input.seed = 9;
+    EmitterRuntime played;
+    played.bind(effect);
+    played.reset(9);
+    played.play();
+    // 7.3 s of 30 Hz ticks: 219
+    const double frame = 1.0 / 30.0;
+    for (int f = 0; f < 219; f++) played.advance(input, frame);
+    EmitterRuntime seeked;
+    seeked.bind(effect);
+    seeked.reset(9);
+    seeked.seek(input, 7.3);
+    EXPECT_EQ(seeked.tickCount(), played.tickCount());
+    EXPECT_GT(seeked.count(), 100u);
+    EXPECT_EQ(seeked.stateHash(), played.stateHash());
+}
+
+TEST(ParticleSeek, BackwardScrubStartsFromACheckpoint){
+    const auto effect = compileOrFail(seekEffect());
+    EmitterInput input;
+    EmitterRuntime runtime;
+    runtime.bind(effect);
+    ParticlePreview preview;
+    preview.seek(runtime, input, 20.0);
+    while (!preview.update(runtime, input, 4.0)){}
+    EXPECT_NEAR(runtime.time(), 20.0, 1.0 / 30.0);
+    EXPECT_GE(preview.checkpointCount(), 20u);
+    const uint64_t at20 = runtime.stateHash();
+    // back to 19.5: from the checkpoint at 19 s
+    preview.seek(runtime, input, 19.5);
+    while (!preview.update(runtime, input, 4.0)){}
+    EXPECT_LE(preview.simulatedSeconds(), 0.5 + 1e-6);
+    // and the same state as a seek from the start
+    EmitterRuntime fresh;
+    fresh.bind(effect);
+    fresh.seek(input, 19.5);
+    EXPECT_EQ(runtime.stateHash(), fresh.stateHash());
+    // forward again to 20 matches
+    preview.seek(runtime, input, 20.0);
+    while (!preview.update(runtime, input, 4.0)){}
+    EXPECT_EQ(runtime.stateHash(), at20);
+}
+
+TEST(ParticleSeek, CheckpointsStayWithinTheirCap){
+    ParticleEffectDocument d = referenceStack(false, 8000.0f, 32768);
+    const auto effect = compileOrFail(d);
+    EmitterInput input;
+    EmitterRuntime runtime;
+    runtime.bind(effect);
+    // a cap a few checkpoints of 16 000 particles fill
+    const size_t cap = 4u * 1024u * 1024u;
+    ParticlePreview preview(cap);
+    preview.seek(runtime, input, 30.0);
+    while (!preview.update(runtime, input, 50.0)){}
+    EXPECT_LE(preview.checkpointBytes(), cap);
+    EXPECT_GT(preview.checkpointCount(), 1u);
+    EXPECT_LT(preview.checkpointCount(), 31u);
+    // a scrub back still lands on the same state, from an older checkpoint or from 0
+    preview.seek(runtime, input, 12.0);
+    while (!preview.update(runtime, input, 50.0)){}
+    EmitterRuntime fresh;
+    fresh.bind(effect);
+    fresh.seek(input, 12.0);
+    EXPECT_EQ(runtime.stateHash(), fresh.stateHash());
+}
+
+TEST(ParticleSeek, SeekRunsInBudgetedChunks){
+    const auto effect = compileOrFail(seekEffect());
+    EmitterInput input;
+    EmitterRuntime runtime;
+    runtime.bind(effect);
+    ParticlePreview preview;
+    preview.seek(runtime, input, 10.0);
+    int calls = 0;
+    while (!preview.update(runtime, input, 0.5)) calls++;
+    EXPECT_GT(calls, 1);
+}
+
+TEST(ParticleSeek, PrewarmShowsTheStateAtTheDuration){
+    ParticleEffectDocument d = seekEffect();
+    d.prewarm = true;
+    d.duration = 2.0f;
+    const auto effect = compileOrFail(d);
+    EmitterInput input;
+    input.seed = 5;
+    EmitterRuntime prewarmed;
+    prewarmed.bind(effect);
+    prewarmed.reset(5);
+    prewarmed.play();
+    double worstMs = 0.0;
+    int frames = 0;
+    while (true){
+        const auto start = std::chrono::steady_clock::now();
+        prewarmed.advance(input, 1.0 / 60.0);
+        worstMs = std::max(worstMs, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+        frames++;
+        if (!prewarmed.isPrewarming())
+            break;
+        ASSERT_LT(frames, 10000);
+    }
+    EXPECT_GT(frames, 1);
+    // the first visible frame: the state at the duration (60 ticks)
+    EmitterRuntime reference;
+    reference.bind(effect);
+    reference.reset(5);
+    reference.seek(input, 2.0);
+    EXPECT_EQ(prewarmed.tickCount(), reference.tickCount());
+    EXPECT_EQ(prewarmed.stateHash(), reference.stateHash());
+    std::printf("[bench] ParticleSeek prewarm: %d frames, worst %.3f ms (budget 1 ms + one tick)\n", frames, worstMs);
+}
+
+TEST(ParticleSeek, PrewarmAtPlayRunsAtOnce){
+    ParticleEffectDocument d = seekEffect();
+    d.prewarm = true;
+    d.prewarmSync = true;
+    d.duration = 2.0f;
+    const auto effect = compileOrFail(d);
+    EmitterInput input;
+    EmitterRuntime runtime;
+    runtime.bind(effect);
+    runtime.play();
+    runtime.advance(input, 1.0 / 60.0);
+    EXPECT_FALSE(runtime.isPrewarming());
+    EXPECT_EQ(runtime.tickCount(), 60u);
+}

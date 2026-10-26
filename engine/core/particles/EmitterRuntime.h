@@ -22,6 +22,7 @@
 #include "particles/ParticleTrails.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <span>
 #include <string_view>
@@ -125,6 +126,10 @@ namespace jasperengine { namespace particles {
         // the sub-emitter children (one per entry, in the effect's order): bound by the caller
         // (ParticleWorld resolves the effects), owned here
         void setChildren(std::vector<std::unique_ptr<EmitterRuntime>> children);
+        // binds a child per sub-emitter entry, through the children's children (at most 3
+        // levels): `resolve` compiles an entry's effect (null when it cannot be read)
+        using SubEmitterResolver = std::function<std::shared_ptr<const CompiledEffect>(const SubEmitterEntry& entry)>;
+        void bindSubEmitters(const SubEmitterResolver& resolve, int depth = 1);
         EmitterRuntime* child(size_t index) const { return index < children.size() ? children[index].get() : nullptr; }
         size_t childCount() const { return children.size(); }
         const CompiledEffect* effect() const { return compiled.get(); }
@@ -159,6 +164,10 @@ namespace jasperengine { namespace particles {
         // runs seek ticks for at most budgetMs; true when done
         bool continueSeek(const EmitterInput& input, SeekState& seek, double budgetMs);
         void seek(const EmitterInput& input, double time);
+        // one tick of `tick` seconds the way a seek runs it (no gameplay events)
+        void seekStep(const EmitterInput& input, double tick);
+        // after seek steps: the time left over below a tick drives the interpolation
+        void settleSeek(double remainder, double tick);
         // queued for the next tick
         void emit(uint32_t count, const EmitOverrides* overrides = nullptr);
         void sendTrigger(uint32_t nameHash);
@@ -188,7 +197,8 @@ namespace jasperengine { namespace particles {
         // the length of the last tick (the time between the previous and the current channels)
         float lastTickSeconds() const { return lastTick; }
         double time() const { return elapsed; }
-        double emitterTime() const { return emitTime; }
+        // the time within the current cycle (negative during the start delay)
+        double emitterTime() const { return cycleTime; }
         double droppedTime() const { return dropped; }
         uint32_t ticksLastFrame() const { return ticksThisFrame; }
         uint64_t tickCount() const { return ticks; }
@@ -213,12 +223,16 @@ namespace jasperengine { namespace particles {
         struct Checkpoint {
             ParticleChannels::Snapshot channels;
             ParticleTrails trails;
-            double elapsed = 0.0, emitTime = 0.0, rateAccumulator = 0.0, distanceAccumulator = 0.0;
+            double elapsed = 0.0, cycleTime = 0.0, burstCheckedTo = -1.0, rateAccumulator = 0.0, distanceAccumulator = 0.0;
             uint64_t ticks = 0;
             uint32_t spawnCounter = 0;
             uint32_t loopIndex = 0;
             bool emitting = false;
-            float prevTransform[16] = {};
+            float lastTick = 0.0f;
+            bool boundsValid = false;
+            float boundsLo[3] = {0, 0, 0}, boundsHi[3] = {0, 0, 0};
+            float tickTransform[16] = {};
+            float lastTickTransform[16] = {};
             CachedPlane planeGrid[kPlaneGridSize];
             std::vector<Checkpoint> children;
             size_t bytes() const;
@@ -264,7 +278,8 @@ namespace jasperengine { namespace particles {
         uint32_t spawnCounter = 0;
         uint64_t ticks = 0;
         double elapsed = 0.0;           // seconds simulated since play
-        double emitTime = 0.0;          // seconds since the start delay, within the effect's run
+        double cycleTime = 0.0;         // time in the current cycle at the tick's start (from -startDelay)
+        double burstCheckedTo = -1.0;   // the bursts of this cycle up to this time have fired
         uint32_t loopIndex = 0;
         double accumulator = 0.0;
         double dropped = 0.0;
@@ -306,8 +321,10 @@ namespace jasperengine { namespace particles {
             CollisionHit h;
         };
         std::vector<RayResult> rayResults;
+        std::vector<RayRequest*> chosen;
         CachedPlane planeGrid[kPlaneGridSize];
         float planeCellInv = 1.0f;
+        bool collisionContacts = false;   // the collision op records its contacts
         CollisionProvider simCollision;
         const CollisionProvider* worldCollision = nullptr;
         float planesSim[kMaxCollisionPlanes][4] = {};

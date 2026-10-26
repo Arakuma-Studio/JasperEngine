@@ -169,6 +169,14 @@ namespace jasperengine { namespace particles {
         };
         static Resolved resolve(ParticleEffectDocument& document, std::string_view path);
 
+        // An exposed parameter's value (Lua setFloat / setVector3 / setColor, the component's
+        // exposed values): Float in x, Vector3 in xyz, Color in rgba (sRGB). A MinMaxCurve without
+        // a member takes it as its constant (both constants in Constant mode) or, as a curve, as
+        // its multiplier; a MinMaxGradient without a member as its colour. False when the
+        // document has no such parameter or its field does not take the value.
+        static bool setExposed(ParticleEffectDocument& document, std::string_view name, const Vector4& value);
+        static bool getExposed(const ParticleEffectDocument& document, std::string_view name, Vector4& value);
+
         // Enum tables shared with the editor (names in JSON and in the UI)
         static const std::vector<EnumOption>& curveModes();
         static const std::vector<EnumOption>& gradientModes();

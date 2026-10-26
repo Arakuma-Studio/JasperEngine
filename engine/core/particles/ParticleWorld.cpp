@@ -28,6 +28,35 @@ uint32_t particles::defaultWorldBudget(){
 ParticleWorld::ParticleWorld(): worldBudget(defaultWorldBudget()){
 }
 
+double particles::cullingStep(CullingMode mode, bool looping, bool visible, double dt, int tickRate, CullState& state, uint32_t& maxTicks){
+    maxTicks = kMaxTicksPerFrame;
+    if (mode == CullingMode::Automatic)
+        mode = looping ? CullingMode::PauseAndCatchUp : CullingMode::AlwaysSimulate;
+    switch (mode){
+        case CullingMode::AlwaysSimulate:
+            state.missed = 0.0;
+            return dt;
+        case CullingMode::Pause:
+            state.missed = 0.0;
+            return visible ? dt : 0.0;
+        case CullingMode::PauseAndCatchUp:
+        default: {
+            if (!visible){
+                state.missed += dt;
+                return 0.0;
+            }
+            const double catchUp = std::min(state.missed, kMaxCatchUpSeconds);
+            state.missed = 0.0;
+            if (catchUp > 0.0){
+                // the catch-up's ticks on top of the frame's
+                const double rate = tickRate > 0 ? tickRate : 1.0 / kMaxVariableStep;
+                maxTicks += (uint32_t)std::ceil(catchUp * rate);
+            }
+            return dt + catchUp;
+        }
+    }
+}
+
 void ParticleWorld::shareBudget(std::vector<EmitterTask>& tasks) const{
     // what each wants: its steady-state population (or what it holds now)
     uint64_t want = 0;

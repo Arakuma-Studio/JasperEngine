@@ -863,3 +863,111 @@ const std::vector<EnumOption>& ParticleModules::gradientBlendModes(){
     static const std::vector<EnumOption> v = {{"blend", "Blend", 0}, {"fixed", "Fixed", 1}};
     return v;
 }
+
+namespace {
+
+    const ExposedParameter* findExposed(const ParticleEffectDocument& document, std::string_view name){
+        for (const ExposedParameter& e : document.exposed){
+            if (e.name == name)
+                return &e;
+        }
+        return nullptr;
+    }
+
+    float* componentOf(Vector4& v, const std::string& member){
+        if (member == "x") return &v.x;
+        if (member == "y") return &v.y;
+        if (member == "z") return &v.z;
+        if (member == "w") return &v.w;
+        return nullptr;
+    }
+
+    float* componentOf(Vector3& v, const std::string& member){
+        if (member == "x") return &v.x;
+        if (member == "y") return &v.y;
+        if (member == "z") return &v.z;
+        return nullptr;
+    }
+
+    // the exposed value's storage: reads (write false) or writes it
+    bool accessExposed(ParticleEffectDocument& document, std::string_view name, Vector4& value, bool write){
+        const ExposedParameter* e = findExposed(document, name);
+        if (!e)
+            return false;
+        const ParticleModules::Resolved r = ParticleModules::resolve(document, e->path);
+        if (!r.field || !r.storage)
+            return false;
+        const std::string& m = r.member;
+        switch (r.field->type){
+            case FieldType::Float: {
+                if (!m.empty()) return false;
+                float& f = *static_cast<float*>(r.storage);
+                if (write) f = value.x; else value = Vector4(f, 0, 0, 0);
+                return true;
+            }
+            case FieldType::Vector3: {
+                Vector3& v = *static_cast<Vector3*>(r.storage);
+                if (m.empty()){
+                    if (write) v = Vector3(value.x, value.y, value.z); else value = Vector4(v.x, v.y, v.z, 0);
+                    return true;
+                }
+                float* c = componentOf(v, m);
+                if (!c) return false;
+                if (write) *c = value.x; else value = Vector4(*c, 0, 0, 0);
+                return true;
+            }
+            case FieldType::Vector4:
+            case FieldType::Color: {
+                Vector4& v = *static_cast<Vector4*>(r.storage);
+                if (m.empty()){
+                    if (write) v = value; else value = v;
+                    return true;
+                }
+                float* c = componentOf(v, m);
+                if (!c) return false;
+                if (write) *c = value.x; else value = Vector4(*c, 0, 0, 0);
+                return true;
+            }
+            case FieldType::MinMaxCurve: {
+                MinMaxCurve& c = *static_cast<MinMaxCurve*>(r.storage);
+                float* target = nullptr;
+                if (m == "constant") target = &c.constant;
+                else if (m == "constantMax") target = &c.constantMax;
+                else if (m == "multiplier" || (m.empty() && c.usesCurve())) target = &c.multiplier;
+                else if (m.empty()) target = &c.constant;
+                if (!target) return false;
+                if (write){
+                    *target = value.x;
+                    if (m.empty() && c.mode == CurveMode::Constant) c.constantMax = value.x;
+                }else{
+                    value = Vector4(*target, 0, 0, 0);
+                }
+                return true;
+            }
+            case FieldType::MinMaxGradient: {
+                MinMaxGradient& g = *static_cast<MinMaxGradient*>(r.storage);
+                Vector4* target = m == "colorMax" ? &g.colorMax : ((m.empty() || m == "color") ? &g.color : nullptr);
+                if (!target) return false;
+                if (write){
+                    *target = value;
+                    if (m.empty() && g.mode == GradientValueMode::Color) g.colorMax = value;
+                }else{
+                    value = *target;
+                }
+                return true;
+            }
+            default:
+                return false;
+        }
+    }
+
+}
+
+bool ParticleModules::setExposed(ParticleEffectDocument& document, std::string_view name, const Vector4& value){
+    Vector4 v = value;
+    return accessExposed(document, name, v, true);
+}
+
+bool ParticleModules::getExposed(const ParticleEffectDocument& document, std::string_view name, Vector4& value){
+    return accessExposed(const_cast<ParticleEffectDocument&>(document), name, value, false);
+}

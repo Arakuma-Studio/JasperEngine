@@ -67,7 +67,9 @@ namespace jasperengine { namespace particles {
         uint32_t tick = 0;
         uint32_t key = 0;
     };
-    inline constexpr uint32_t kPlaneGridSize = 1024;
+    inline constexpr uint32_t kPlaneGridSize = 4096;
+    // a particle's cached plane after a probe found its path clear: never hit (dot(n, p) + d > 0)
+    inline constexpr float kEmptyPlaneD = 1.0e30f;
 
     struct RayRequest {
         uint32_t particle = 0;

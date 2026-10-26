@@ -86,21 +86,40 @@ Curve LegacyParticleConverter::sampleEase(const Ease& ease){
     if (ease.getType() == EaseType::LINEAR)
         return Curve::linear(0.0f, 1.0f);
     constexpr int kKeys = 16;
-    constexpr float h = 1.0e-3f;
-    Curve curve;
+    constexpr int kSamples = 2048;
+    constexpr float h = 1.0e-4f;
     auto f = [&](float t){ return const_cast<Ease&>(ease).call(std::clamp(t, 0.0f, 1.0f)); };
-    for (int k = 0; k < kKeys; k++){
-        const float t = (float)k / (float)(kKeys - 1);
+    auto keyAt = [&](float t){
         CurveKey key;
         key.time = t;
         key.value = f(t);
-        // the slopes on each side, from the function
-        key.inTangent = k > 0 ? (key.value - f(t - h)) / h : (f(t + h) - key.value) / h;
-        key.outTangent = k + 1 < kKeys ? (f(t + h) - key.value) / h : key.inTangent;
-        curve.keys.push_back(key);
+        // the slopes on each side, from the function (a kink keeps both)
+        key.inTangent = t > 0.0f ? (key.value - f(t - h)) / h : (f(t + h) - key.value) / h;
+        key.outTangent = t < 1.0f ? (f(t + h) - key.value) / h : key.inTangent;
+        return key;
+    };
+    // the ends, then a key where the curve is worst, until there are 16 (kinks and the steep
+    // parts get the keys)
+    Curve curve;
+    curve.keys = {keyAt(0.0f), keyAt(1.0f)};
+    while ((int)curve.keys.size() < kKeys){
+        float worst = 0.0f, worstT = -1.0f;
+        for (int i = 1; i < kSamples; i++){
+            const float t = (float)i / (float)kSamples;
+            const float error = std::fabs(curve.evaluate(t) - f(t));
+            if (error > worst){
+                worst = error;
+                worstT = t;
+            }
+        }
+        if (worstT < 0.0f || worst < 1.0e-7f)
+            break;
+        const CurveKey key = keyAt(worstT);
+        curve.keys.insert(std::upper_bound(curve.keys.begin(), curve.keys.end(), key,
+                                           [](const CurveKey& a, const CurveKey& b){ return a.time < b.time; }), key);
     }
     // a jump inside a segment (STEP): hold the left value
-    for (int k = 0; k + 1 < kKeys; k++){
+    for (size_t k = 0; k + 1 < curve.keys.size(); k++){
         CurveKey& a = curve.keys[k];
         const CurveKey& b = curve.keys[k + 1];
         const float mid = f(0.5f * (a.time + b.time));
@@ -304,12 +323,15 @@ void LegacyParticleConverter::apply(const LegacyParticleSystem& p, ParticleEffec
         d.colorOverLifetime.color.gradient = out;
     }
 
-    // sprite frames: the start frame from the old list
+    // sprite frames: the start frame from the old list, over the frame rects the module holds
+    // (the old target's); without rects the old frames showed nothing: kept, the module off
     TextureSheetAnimationModule& ts = d.textureSheetAnimation;
     ts.startFrameList = p.spriteInitializer.frames;
     if (!p.spriteInitializer.frames.empty()){
         ts.present = true;
-        ts.enabled = true;
+        ts.enabled = !ts.sprites.empty();
+        if (!ts.enabled)
+            note("sprite frames without frame rects (the target had none): kept, unused");
         ts.mode = TextureSheetMode::Sprites;
         ts.timeMode = TextureSheetTimeMode::Lifetime;
         ts.frameOverTime = MinMaxCurve(0.0f);
@@ -322,6 +344,17 @@ void LegacyParticleConverter::apply(const LegacyParticleSystem& p, ParticleEffec
 ParticleEffectDocument LegacyParticleConverter::convert(const LegacyParticleSystem& p, const LegacyTarget& target, std::vector<std::string>* notes){
     auto note = [&](const std::string& line){ if (notes) notes->push_back(line); };
     ParticleEffectDocument d;
+    // the target's frame rects: the frames the old sprite initializer and modifier pick
+    if (!target.frames.empty()){
+        TextureSheetAnimationModule& ts = d.textureSheetAnimation;
+        ts.sprites.assign(target.frames.begin(), target.frames.begin() + std::min(target.frames.size(), kMaxSpriteFrames));
+        if (target.frames.size() > kMaxSpriteFrames)
+            note("more than 64 sprite frames: the first 64 are kept");
+        // the frames only Set over Age picks: the module holds their rects, its animation off
+        ts.present = true;
+        ts.enabled = false;
+        ts.mode = TextureSheetMode::Sprites;
+    }
     apply(p, d, notes);
     RendererModule& r = d.renderer;
     if (target.kind == LegacyTarget::Kind::Mesh){
@@ -369,17 +402,6 @@ ParticleEffectDocument LegacyParticleConverter::convert(const LegacyParticleSyst
     r.depthWrite = target.depthWrite == 1 || (target.depthWrite < 0 && target.shader.empty() && target.kind == LegacyTarget::Kind::Points);
     r.sortMode = (target.transparent && target.kind == LegacyTarget::Kind::Points &&
                   (r.blend == ParticleBlend::Alpha || r.blend == ParticleBlend::Premultiplied)) ? SortMode::ByDistance : SortMode::None;
-    if (!target.frames.empty() && (d.textureSheetAnimation.present || (d.setOverAge.present && findEntry(d, SetProperty::Frame)))){
-        d.textureSheetAnimation.sprites.assign(target.frames.begin(), target.frames.begin() + std::min(target.frames.size(), kMaxSpriteFrames));
-        if (target.frames.size() > kMaxSpriteFrames)
-            note("more than 64 sprite frames: the first 64 are kept");
-        if (!d.textureSheetAnimation.present){
-            // the frames only Set over Age picks: the module holds their rects, its animation off
-            d.textureSheetAnimation.present = true;
-            d.textureSheetAnimation.enabled = false;
-            d.textureSheetAnimation.mode = TextureSheetMode::Sprites;
-        }
-    }
     return d;
 }
 

@@ -663,8 +663,22 @@ namespace jasperengine { namespace particles {
                     st(ctx.ch[ChAccelY], i, sy);
                     st(ctx.ch[ChAccelZ], i, sz);
                 }
-                if (p.initFrame)
-                    st(ctx.ch[ChFrame], i, B::zero());
+                if (p.initFrame){
+                    f4 frame = B::floor(B::add(curve(p.startFrame, L), k(0.5f)));
+                    if (p.startFrameListCount > 0){
+                        // the pick the renderer makes too (same key)
+                        const uint32_t* list = reinterpret_cast<const uint32_t*>(ctx.pool + p.startFrameList);
+                        alignas(16) float r[4], picked[4];
+                        B::storeu(r, rand01(ctx.seed ^ randomSalt((uint32_t)ModuleId::TextureSheetAnimation, 4), L.spawn));
+                        for (int l = 0; l < 4; l++){
+                            uint32_t idx = (uint32_t)(r[l] * (float)p.startFrameListCount);
+                            if (idx >= p.startFrameListCount) idx = p.startFrameListCount - 1;
+                            picked[l] = (float)list[idx];
+                        }
+                        frame = B::add(frame, B::loadu(picked));
+                    }
+                    st(ctx.ch[ChFrame], i, frame);
+                }
                 if (ctx.ch[ChNoiseSize])
                     st(ctx.ch[ChNoiseSize], i, k(1.0f));
                 if (ctx.ch[ChPlaneTick])
@@ -1404,14 +1418,17 @@ namespace jasperengine { namespace particles {
                     req.radius = r[l];
                 }
             }
-            // planeless particles take their grid cell's plane
+            // planeless particles, and those whose probe found a clear path, take the plane of the
+            // cell they were in last tick (in front of any surface they cross now: the hits store
+            // their plane on the front side)
             f4 nx = ld(ctx.ch[ChPlaneNX], i), ny = ld(ctx.ch[ChPlaneNY], i), nz = ld(ctx.ch[ChPlaneNZ], i), d = ld(ctx.ch[ChPlaneD], i);
             u4 hasPlane = B::iandnot(noPlane, alive);
-            const uint32_t noPlaneBits = B::movemask(B::iand(noPlane, alive));
+            const u4 emptyPlane = B::cmpge(d, k(kEmptyPlaneD));
+            const uint32_t noPlaneBits = B::movemask(B::iand(B::ior(noPlane, emptyPlane), alive));
             if (noPlaneBits && ctx.planeGrid){
                 alignas(16) float x[4], y[4], z[4], g[4][4];
                 alignas(16) uint32_t found[4] = {0, 0, 0, 0};
-                B::storeu(x, px); B::storeu(y, py); B::storeu(z, pz);
+                B::storeu(x, qx); B::storeu(y, qy); B::storeu(z, qz);
                 B::storeu(g[0], nx); B::storeu(g[1], ny); B::storeu(g[2], nz); B::storeu(g[3], d);
                 for (int l = 0; l < 4; l++){
                     if (!(noPlaneBits & (1u << l)))

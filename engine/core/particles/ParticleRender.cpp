@@ -113,6 +113,9 @@ namespace {
             const uint32_t rowKey = ctx.seed ^ randomSalt((uint32_t)ModuleId::TextureSheetAnimation, 3);
             const uint32_t listKey = ctx.seed ^ randomSalt((uint32_t)ModuleId::TextureSheetAnimation, 4);
             const uint32_t meshKey = ctx.seed ^ randomSalt((uint32_t)ModuleId::Renderer, 1);
+            const uint32_t flipXKey = ctx.seed ^ randomSalt((uint32_t)ModuleId::Renderer, 2);
+            const uint32_t flipYKey = ctx.seed ^ randomSalt((uint32_t)ModuleId::Renderer, 3);
+            const bool flipX = rp.flip[0] > 0.0f && !rp.mesh, flipY = rp.flip[1] > 0.0f && !rp.mesh;
             for (uint32_t i = begin; i < end; i += 4){
                 typename K::Lane L(ctx, i);
                 const uint32_t valid = end - i >= 4 ? 0xfu : ((1u << (end - i)) - 1u);
@@ -163,6 +166,12 @@ namespace {
                     const f4 n = K::ld(ctx.ch[ChNoiseSize], i);
                     sx = B::mul(sx, n); sy = B::mul(sy, n); sz = B::mul(sz, n);
                 }
+                // the Renderer's Flip (the share of the particles mirrored on each axis): a
+                // negative size, which mirrors the quad and its texture
+                if (flipX)
+                    sx = B::select(B::cmplt(K::rand01(flipXKey, L.spawn), K::k(rp.flip[0])), B::neg(sx), sx);
+                if (flipY)
+                    sy = B::select(B::cmplt(K::rand01(flipYKey, L.spawn), K::k(rp.flip[1])), B::neg(sy), sy);
 
                 // colour
                 u4 color;
@@ -412,10 +421,13 @@ namespace {
                     mx = std::max(mx, m);
                 }
                 if (rp.sort == SortMode::ByDistance){
-                    // the camera may sit inside the bounds
-                    const bool inside = view.position[0] >= lo[0] && view.position[0] <= hi[0] && view.position[1] >= lo[1] &&
-                                        view.position[1] <= hi[1] && view.position[2] >= lo[2] && view.position[2] <= hi[2];
-                    if (inside) mn = 0.0f;
+                    // the nearest: the distance to the box (0 inside it), not to a corner
+                    float d2 = 0.0f;
+                    for (int k = 0; k < 3; k++){
+                        const float d = std::max({lo[k] - view.position[k], 0.0f, view.position[k] - hi[k]});
+                        d2 += d * d;
+                    }
+                    mn = std::sqrt(d2);
                 }
                 job.sortLo = mn;
                 job.sortScale = mx > mn ? 1.0f / (mx - mn) : 0.0f;
@@ -431,7 +443,7 @@ namespace {
         ctx.program = prog;
         ctx.pool = reinterpret_cast<const unsigned char*>(prog->pool.data());
         ctx.seed = emitter.seedValue();
-        ctx.emitterTime = prog->duration > 0.0f ? (float)std::clamp(std::fmod(emitter.emitterTime(), (double)prog->duration) / prog->duration, 0.0, 1.0) : 0.0f;
+        ctx.emitterTime = prog->duration > 0.0f ? (float)std::clamp(emitter.emitterTime() / prog->duration, 0.0, 1.0) : 0.0f;
 
         const uint32_t chunk = kChunkSize;
         const uint32_t chunks = (count + chunk - 1) / chunk;

@@ -182,9 +182,14 @@ void EmitterRuntime::bind(std::shared_ptr<const CompiledEffect> effect, uint32_t
     collisions.reserve(prog->maxCollisionEvents);
     deaths.reserve(kMaxDeathEvents);
     subEmits.reserve(64);
-    // the shared planes' grid cells: a few ticks of motion of the fastest start speed
+    collisionContacts = false;
+    for (const Op& op : prog->updateOps){
+        if (op.code == OpCode::Collision && prog->param<CollisionParams>(op.params).events)
+            collisionContacts = true;
+    }
+    // the shared planes' grid cells: 2 m, or more for fast effects (a few ticks of the fastest start)
     const float tick = prog->tickRate > 0 ? 1.0f / prog->tickRate : (float)kMaxVariableStep;
-    planeCellInv = 1.0f / std::clamp(prog->maxSpeedHint * tick * 4.0f, 0.5f, 4.0f);
+    planeCellInv = 1.0f / std::clamp(prog->maxSpeedHint * tick * 4.0f, 2.0f, 16.0f);
     reset(seed);
 }
 
@@ -207,6 +212,25 @@ void EmitterRuntime::setChildren(std::vector<std::unique_ptr<EmitterRuntime>> li
     }
 }
 
+void EmitterRuntime::bindSubEmitters(const SubEmitterResolver& resolve, int depth){
+    std::vector<std::unique_ptr<EmitterRuntime>> list;
+    // three levels at most: the effect, its children and theirs
+    if (prog && prog->subEmitters && depth < kMaxSubEmitterDepth){
+        for (const SubEmitterEntry& entry : compiled->document.subEmitters){
+            std::shared_ptr<const CompiledEffect> effect = resolve(entry);
+            if (!effect || !effect->valid){
+                list.push_back(nullptr);
+                continue;
+            }
+            auto child = std::make_unique<EmitterRuntime>();
+            child->bind(std::move(effect));
+            child->bindSubEmitters(resolve, depth + 1);
+            list.push_back(std::move(child));
+        }
+    }
+    setChildren(std::move(list));
+}
+
 void EmitterRuntime::unbind(){
     channels.release(0.0);
     trailStore.configure(0, 2);
@@ -219,10 +243,12 @@ void EmitterRuntime::configureStorage(uint32_t newCapacity){
     channels.configure(prog->channels, newCapacity, StoragePool::shared(), 0.0);
     deadStorage.assign(newCapacity + 8, 0u);
     deadList.reserve(newCapacity + 8);
-    if (prog->hasCollision && (prog->collisionKind == CollisionKind::World || prog->collisionKind == CollisionKind::World2D))
+    if (prog->hasCollision && (prog->collisionKind == CollisionKind::World || prog->collisionKind == CollisionKind::World2D)){
         rayStorage.assign(newCapacity + 8, RayRequest());
-    else
+        chosen.reserve(newCapacity + 8);
+    }else{
         rayStorage.clear();
+    }
 }
 
 void EmitterRuntime::growTo(uint32_t needed){
@@ -249,7 +275,8 @@ void EmitterRuntime::reset(uint32_t newSeed){
     spawnCounter = 0;
     ticks = 0;
     elapsed = 0.0;
-    emitTime = 0.0;
+    cycleTime = prog ? -(double)prog->startDelay : 0.0;
+    burstCheckedTo = -1.0;
     loopIndex = 0;
     accumulator = 0.0;
     dropped = 0.0;
@@ -547,7 +574,9 @@ void EmitterRuntime::beginTick(const EmitterInput& input, uint32_t index){
     const uint32_t chunks = chunkCount();
     if (chunkOut.size() < chunks)
         chunkOut.resize(chunks);
-    const uint32_t maxEvents = prog->hasCollision ? std::max(prog->maxCollisionEvents, 64u) : 0u;
+    // a chunk holds every contact of its particles (one each a tick), so what is kept never
+    // depends on the chunking: the caps apply afterwards, in particle order
+    const uint32_t maxEvents = collisionContacts ? activeChunkSize : 0u;
     if (maxEvents && eventStorage.size() < (size_t)chunks * maxEvents)
         eventStorage.resize((size_t)chunks * maxEvents);
     for (uint32_t c = 0; c < chunks; c++){
@@ -571,8 +600,7 @@ void EmitterRuntime::fillContext(KernelContext& ctx, const EmitterInput* input) 
     ctx.seed = seed;
     ctx.tick = (uint32_t)ticks;
     ctx.dt = tickDt;
-    ctx.emitterTime = prog->duration > 0.0f ? (float)std::clamp(std::fmod(emitTime, (double)prog->duration) / prog->duration, 0.0, 1.0) : 0.0f;
-    if (!prog->looping && emitTime >= prog->duration) ctx.emitterTime = 1.0f;
+    ctx.emitterTime = prog->duration > 0.0f ? (float)std::clamp(cycleTime / prog->duration, 0.0, 1.0) : 0.0f;
     ctx.time = (float)elapsed;
     float worldToSimRot[9];
     if (prog->space == SimulationSpace::World){
@@ -679,14 +707,18 @@ void EmitterRuntime::finishTick(const EmitterInput& input){
     lastTick = tickDt;
     elapsed += tickDt;
     if (emitting){
-        emitTime += tickDt;
+        // the cycle wraps after the tick that starts at or past its end (the old system's
+        // order: its bursts at the start come on the next tick), then the clock moves
         if (prog->looping && prog->duration > 0.0f){
-            const double run = emitTime - prog->startDelay;
-            if (run >= (double)(loopIndex + 1) * prog->duration)
-                loopIndex = (uint32_t)std::floor(run / prog->duration);
-        }else if (!prog->looping && emitTime >= (double)prog->duration + prog->startDelay){
-            emitting = false;
+            while (cycleTime >= prog->duration){
+                cycleTime -= prog->duration;
+                loopIndex++;
+                burstCheckedTo = -1.0;
+            }
         }
+        cycleTime += tickDt;
+        if (!prog->looping && cycleTime >= prog->duration)
+            emitting = false;
     }
     ticks++;
     childrenStage(input);
@@ -705,37 +737,61 @@ void EmitterRuntime::worldCollisionStage(const EmitterInput& input){
     }
     if (!cp)
         return;
-    // the requests in particle order, capped: a turning start so every particle gets its turn
+    // the requests capped per tick: the most overdue first (the particles without a plane,
+    // newborns among them, then the oldest planes), so every particle gets its turn within
+    // about total / cap ticks; ties by slot, so the choice is the same whatever the chunking
     const uint32_t chunks = chunkCount();
     uint32_t total = 0;
     for (uint32_t c = 0; c < chunks; c++) total += chunkOut[c].rayCount;
     if (total == 0)
         return;
     const uint32_t served = std::min(total, cp->maxQueries);
-    const uint32_t start = served < total ? (uint32_t)(((uint64_t)ticks * served) % total) : 0u;
-    // look ahead along the motion so the plane found serves the ticks until the next query
-    const float lookaheadTicks = (float)std::max<uint32_t>(cp->planeCacheTicks, (total + served - 1) / std::max(served, 1u)) * 2.0f;
-    auto requestAt = [&](uint32_t k) -> RayRequest& {
-        uint32_t idx = (start + k) % total;
+    if (chosen.size() < total) chosen.resize(total);
+    {
+        uint32_t n = 0;
         for (uint32_t c = 0; c < chunks; c++){
-            if (idx < chunkOut[c].rayCount) return chunkOut[c].rays[idx];
-            idx -= chunkOut[c].rayCount;
+            for (uint32_t r = 0; r < chunkOut[c].rayCount; r++) chosen[n++] = &chunkOut[c].rays[r];
         }
-        return chunkOut[0].rays[0];
-    };
+        const uint32_t* planeTicks = channels.getU(ChPlaneTick);
+        auto overdue = [planeTicks](const RayRequest* a, const RayRequest* b){
+            const uint32_t ta = planeTicks[a->particle], tb = planeTicks[b->particle];
+            return ta != tb ? ta < tb : a->particle < b->particle;
+        };
+        if (served < total)
+            std::nth_element(chosen.begin(), chosen.begin() + served, chosen.begin() + total, overdue);
+        // in slot order: the results are applied in the same order every run
+        std::sort(chosen.begin(), chosen.begin() + served, [](const RayRequest* a, const RayRequest* b){ return a->particle < b->particle; });
+    }
+    // the probes look ahead along the motion, so the plane found (or the clear path) serves until
+    // the particle's next turn: from where it was last tick to where its velocity and its
+    // acceleration of the last tick (gravity, forces, drag) take it. Under a constant
+    // acceleration the path is a parabola whose lowest point along the acceleration is an end,
+    // so a surface it crosses is crossed by the chord as well.
+    // a particle waits at most about total / served ticks past its plane's age for its next turn
+    const uint32_t period = (total + served - 1) / std::max(served, 1u);
+    const float lookaheadTicks = (float)(period + cp->planeCacheTicks) * 1.5f;
+    const float dt = tickDt > 0.0f ? tickDt : 1.0f;
+    const float horizon = lookaheadTicks * dt;
+    float* px = channels.get(ChPosX); float* py = channels.get(ChPosY); float* pz = channels.get(ChPosZ);
+    float* vx = channels.get(ChVelX); float* vy = channels.get(ChVelY); float* vz = channels.get(ChVelZ);
+    auto requestAt = [&](uint32_t k) -> RayRequest& { return *chosen[k]; };
     // the rays (physics reads are thread-safe outside its step: in parallel, results by index)
     if (rayResults.size() < served) rayResults.resize(served);
     jobsOf(input).parallelFor(served, [&](size_t k){
         RayRequest& r = requestAt((uint32_t)k);
+        const uint32_t i = r.particle;
+        const float v[3] = {vx[i], vy[i], vz[i]};
         float to[3];
-        const float move[3] = {r.to[0] - r.from[0], r.to[1] - r.from[1], r.to[2] - r.from[2]};
-        for (int c = 0; c < 3; c++) to[c] = r.to[c] + move[c] * lookaheadTicks;
+        for (int c = 0; c < 3; c++){
+            // velocity-Verlet moved it by the mean of the two velocities: twice the difference
+            // to the current one is the acceleration
+            const float accel = 2.0f * (v[c] - (r.to[c] - r.from[c]) / dt) / dt;
+            to[c] = r.to[c] + v[c] * horizon + 0.5f * accel * horizon * horizon;
+        }
         RayResult& out = rayResults[k];
         out.hit = simRay(this, r.from, to, r.radius, cp->layerMask, out.h);
     }, jobs::ParallelForOptions{.grain = 16});
     lastRays = served;
-    float* px = channels.get(ChPosX); float* py = channels.get(ChPosY); float* pz = channels.get(ChPosZ);
-    float* vx = channels.get(ChVelX); float* vy = channels.get(ChVelY); float* vz = channels.get(ChVelZ);
     float* age = channels.get(ChAge);
     const float* invLife = channels.get(ChInvLife);
     const uint32_t* spawn = channels.getU(ChSpawnIndex);
@@ -745,8 +801,18 @@ void EmitterRuntime::worldCollisionStage(const EmitterInput& input){
         const RayRequest& r = requestAt(k);
         const RayResult& res = rayResults[k];
         const uint32_t i = r.particle;
-        if (!res.hit)
+        if (!res.hit){
+            // a clear path: until the particle's next turn it keeps the surface it found before
+            // (resting on it), or else an empty plane (never hit)
+            channels.getU(ChPlaneTick)[i] = (uint32_t)ticks + 1;
+            if (channels.get(ChPlaneD)[i] < kEmptyPlaneD && (channels.get(ChPlaneNX)[i] != 0.0f || channels.get(ChPlaneNY)[i] != 0.0f || channels.get(ChPlaneNZ)[i] != 0.0f))
+                continue;
+            channels.get(ChPlaneNX)[i] = 0.0f;
+            channels.get(ChPlaneNY)[i] = 0.0f;
+            channels.get(ChPlaneNZ)[i] = 0.0f;
+            channels.get(ChPlaneD)[i] = kEmptyPlaneD;
             continue;
+        }
         const float* n = res.h.normal;
         const float dPlane = -(n[0] * res.h.position[0] + n[1] * res.h.position[1] + n[2] * res.h.position[2]);
         // the particle's own plane and its cell's
@@ -755,11 +821,21 @@ void EmitterRuntime::worldCollisionStage(const EmitterInput& input){
         channels.get(ChPlaneNZ)[i] = n[2];
         channels.get(ChPlaneD)[i] = dPlane;
         channels.getU(ChPlaneTick)[i] = (uint32_t)ticks + 1;
-        const uint32_t key = Kernels<simd::Scalar>::planeCell(r.from[0], r.from[1], r.from[2], planeCellInv);
-        CachedPlane& cell = planeGrid[key & (kPlaneGridSize - 1)];
-        cell.key = key;
-        cell.tick = (uint32_t)ticks + 1;
-        cell.plane[0] = n[0]; cell.plane[1] = n[1]; cell.plane[2] = n[2]; cell.plane[3] = dPlane;
+        // the cells in front of the hit (just off the surface and a quarter cell out: a particle
+        // moves less than that a tick, so where it was the tick it crosses is one of them) and
+        // the particle's own: the particles that pass through any of them take the plane
+        const float cellSize = 1.0f / planeCellInv;
+        const float* h = res.h.position;
+        const float nearOff = cellSize * 1.0e-3f, farOff = cellSize * 0.25f;
+        const uint32_t keys[3] = {Kernels<simd::Scalar>::planeCell(h[0] + n[0] * nearOff, h[1] + n[1] * nearOff, h[2] + n[2] * nearOff, planeCellInv),
+                                  Kernels<simd::Scalar>::planeCell(h[0] + n[0] * farOff, h[1] + n[1] * farOff, h[2] + n[2] * farOff, planeCellInv),
+                                  Kernels<simd::Scalar>::planeCell(r.from[0], r.from[1], r.from[2], planeCellInv)};
+        for (uint32_t key : keys){
+            CachedPlane& cell = planeGrid[key & (kPlaneGridSize - 1)];
+            cell.key = key;
+            cell.tick = (uint32_t)ticks + 1;
+            cell.plane[0] = n[0]; cell.plane[1] = n[1]; cell.plane[2] = n[2]; cell.plane[3] = dPlane;
+        }
         // inside the surface now (the planes may have answered already): the response
         const float radius = r.radius;
         const float p[3] = {px[i], py[i], pz[i]};
@@ -879,37 +955,27 @@ void EmitterRuntime::emissionStage(const EmitterInput& input){
         triggers.clear();
     }
 
-    const double run = emitTime - prog->startDelay;
-    const bool emitsNow = emitting && run >= 0.0 && (prog->looping || run < prog->duration) && prog->emission.enabled;
+    const bool emitsNow = emitting && cycleTime >= 0.0 && (prog->looping || cycleTime < prog->duration) && prog->emission.enabled;
     if (emitsNow && budget > 0){
-        const double tickStart = prog->looping && prog->duration > 0.0f ? std::fmod(run, (double)prog->duration) : run;
         ScalarDriver d;
         d.seed = seed;
-        d.emitterTime = prog->duration > 0.0f ? (float)std::clamp(tickStart / prog->duration, 0.0, 1.0) : 0.0f;
+        d.emitterTime = prog->duration > 0.0f ? (float)std::clamp(cycleTime / prog->duration, 0.0, 1.0) : 0.0f;
         const EmissionParams& em = prog->emission;
-        // bursts: each fires at the first tick that starts at or after its time
+        // bursts: each firing at the first tick that starts at or after its time (its time in
+        // (checked, cycle time]), a burst at the very end of a looping cycle included; a cycle
+        // that wraps fires its early bursts on the next tick
         uint32_t burstCount = 0;
         for (size_t b = 0; b < em.bursts.size(); b++){
             const BurstParam& bp = em.bursts[b];
             const uint32_t cycles = bp.cycles <= 0 ? 0xffffffffu : (uint32_t)bp.cycles;
             for (uint32_t c = 0; c < cycles; c++){
                 const double t = bp.time + (double)c * bp.interval;
-                if (prog->looping && t >= prog->duration) break;
-                // the cycle the burst belongs to: this one, or the one before when the tick
-                // starts right after a wrap
-                double local = tickStart;
-                uint32_t loop = loopIndex;
-                bool fires = t > local - tickDt + 1e-9 && t <= local + 1e-9;
-                if (!fires && prog->looping && local - tickDt < 0.0 && loop > 0){
-                    fires = t > local - tickDt + prog->duration + 1e-9 && t <= prog->duration;
-                    loop--;
-                }
-                if (!fires){
-                    if (t > local) break;
+                if ((prog->looping && t > prog->duration + 1e-9) || t > cycleTime + 1e-9)
+                    break;
+                if (t <= burstCheckedTo + 1e-9)
                     continue;
-                }
                 const uint32_t key = seed ^ randomSalt((uint32_t)ModuleId::Emission, 100u + (uint32_t)b);
-                const uint32_t draw = loop * 65536u + c;
+                const uint32_t draw = loopIndex * 65536u + c;
                 if (bp.probability < 1.0f && random01(key, draw) >= bp.probability)
                     continue;
                 uint32_t n;
@@ -960,6 +1026,9 @@ void EmitterRuntime::emissionStage(const EmitterInput& input){
             budget -= n;
         }
     }
+
+    if (emitsNow)
+        burstCheckedTo = cycleTime;
 
     // emit() calls
     for (const PendingEmit& e : pendingEmits){
@@ -1156,12 +1225,7 @@ void EmitterRuntime::spawnBatch(const EmitterInput& input, uint32_t n, const flo
                 life *= channels.get(ChStartSize)[i];
             trailStore.setLifetime(slots[i], std::max(life, 1.0e-3f));
             trailStore.setStyle(slots[i], channels.getU(ChStartColor)[i], channels.get(ChStartSize)[i]);
-            float p[3] = {px[i], py[i], pz[i]};
-            if (prog->trails.worldSpace && prog->space == SimulationSpace::Local){
-                const float sim[3] = {p[0], p[1], p[2]};
-                simToWorldPoint(sim, p);
-            }
-            trailStore.record(slots[i], p[0], p[1], p[2], (float)elapsed + tickDt, prog->trails.minVertexDistance);
+            // its first point comes with the tick's trail stage
         }
     }
     if (prog->subEmitters){
@@ -1329,10 +1393,9 @@ void EmitterRuntime::advance(const EmitterInput& input, double dt){
 }
 
 void EmitterRuntime::step(const EmitterInput& input){
-    if (!prog)
+    // a paused system steps too (the editor's step); a stopped one has nothing to run
+    if (!prog || playState == PlayState::Stopped)
         return;
-    if (playState == PlayState::Stopped)
-        play();
     std::memcpy(curFrame, input.transform ? input.transform : kIdentity, sizeof(curFrame));
     if (!started){
         std::memcpy(prevFrame, curFrame, sizeof(prevFrame));
@@ -1404,6 +1467,39 @@ void EmitterRuntime::continueSeekTicks(const EmitterInput& input, SeekState& s, 
     }
 }
 
+void EmitterRuntime::seekStep(const EmitterInput& input, double tick){
+    if (!prog)
+        return;
+    if (playState == PlayState::Stopped){
+        playState = PlayState::Playing;
+        emitting = true;
+    }
+    std::memcpy(curFrame, input.transform ? input.transform : kIdentity, sizeof(curFrame));
+    if (!started){
+        std::memcpy(prevFrame, curFrame, sizeof(prevFrame));
+        std::memcpy(tickTransform, curFrame, sizeof(tickTransform));
+        std::memcpy(lastTickTransform, curFrame, sizeof(lastTickTransform));
+        started = true;
+    }
+    const bool record = recordEffects;
+    recordEffects = false;
+    frameTick = tick;
+    frameScaled = 0.0;
+    ticksThisFrame = 1;
+    beginTick(input, 0);
+    runTickSerial(input);
+    recordEffects = record;
+    collisions.clear();
+    deaths.clear();
+    subEmits.clear();
+    std::memcpy(prevFrame, curFrame, sizeof(prevFrame));
+}
+
+void EmitterRuntime::settleSeek(double remainder, double tick){
+    accumulator = std::max(0.0, remainder);
+    alpha = (prog && prog->interpolate && tick > 0.0) ? (float)std::clamp(accumulator / tick, 0.0, 1.0) : 1.0f;
+}
+
 void EmitterRuntime::seek(const EmitterInput& input, double time){
     SeekState s;
     beginSeek(input, time, s);
@@ -1438,14 +1534,20 @@ void EmitterRuntime::saveCheckpoint(Checkpoint& out) const{
     channels.save(out.channels);
     out.trails = trailStore;
     out.elapsed = elapsed;
-    out.emitTime = emitTime;
+    out.cycleTime = cycleTime;
+    out.burstCheckedTo = burstCheckedTo;
     out.rateAccumulator = rateAccumulator;
     out.distanceAccumulator = distanceAccumulator;
     out.ticks = ticks;
     out.spawnCounter = spawnCounter;
     out.loopIndex = loopIndex;
     out.emitting = emitting;
-    std::memcpy(out.prevTransform, tickTransform, sizeof(tickTransform));
+    out.lastTick = lastTick;
+    out.boundsValid = boundsValid;
+    std::memcpy(out.boundsLo, boundsLo, sizeof(boundsLo));
+    std::memcpy(out.boundsHi, boundsHi, sizeof(boundsHi));
+    std::memcpy(out.tickTransform, tickTransform, sizeof(tickTransform));
+    std::memcpy(out.lastTickTransform, lastTickTransform, sizeof(lastTickTransform));
     std::memcpy(out.planeGrid, planeGrid, sizeof(planeGrid));
     out.children.resize(children.size());
     for (size_t c = 0; c < children.size(); c++){
@@ -1460,15 +1562,20 @@ void EmitterRuntime::restoreCheckpoint(const Checkpoint& in){
     channels.restore(in.channels);
     trailStore = in.trails;
     elapsed = in.elapsed;
-    emitTime = in.emitTime;
+    cycleTime = in.cycleTime;
+    burstCheckedTo = in.burstCheckedTo;
     rateAccumulator = in.rateAccumulator;
     distanceAccumulator = in.distanceAccumulator;
     ticks = in.ticks;
     spawnCounter = in.spawnCounter;
     loopIndex = in.loopIndex;
     emitting = in.emitting;
-    std::memcpy(tickTransform, in.prevTransform, sizeof(tickTransform));
-    std::memcpy(lastTickTransform, in.prevTransform, sizeof(tickTransform));
+    lastTick = in.lastTick;
+    boundsValid = in.boundsValid;
+    std::memcpy(boundsLo, in.boundsLo, sizeof(boundsLo));
+    std::memcpy(boundsHi, in.boundsHi, sizeof(boundsHi));
+    std::memcpy(tickTransform, in.tickTransform, sizeof(tickTransform));
+    std::memcpy(lastTickTransform, in.lastTickTransform, sizeof(lastTickTransform));
     std::memcpy(planeGrid, in.planeGrid, sizeof(planeGrid));
     playState = PlayState::Playing;
     started = true;

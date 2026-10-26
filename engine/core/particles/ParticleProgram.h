@@ -188,6 +188,9 @@ namespace jasperengine { namespace particles {
         CurveParam accelX, accelY, accelZ;
         uint8_t accelWorld = 0;
         uint8_t pad2[3] = {0, 0, 0};
+        // initFrame: the start frame (Texture Sheet's start frame, or a pick of its list)
+        CurveParam startFrame;
+        uint32_t startFrameList = 0, startFrameListCount = 0;
     };
 
     // Set over Age, one entry

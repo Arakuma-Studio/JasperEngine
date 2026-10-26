@@ -649,6 +649,16 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
         st.initSize = stored.size ? 1 : 0;
         st.initColor = stored.color ? 1 : 0;
         st.initFrame = stored.frame ? 1 : 0;
+        if (stored.frame){
+            const TextureSheetAnimationModule& ts = d.textureSheetAnimation;
+            st.startFrame = cx.curve(ts.present ? ts.startFrame : MinMaxCurve(0.0f), ModuleId::TextureSheetAnimation, 2);
+            if (ts.present && !ts.startFrameList.empty()){
+                std::vector<uint32_t> frames;
+                for (int f : ts.startFrameList) frames.push_back((uint32_t)std::max(f, 0));
+                st.startFrameList = cx.pool.addUints(frames.data(), frames.size());
+                st.startFrameListCount = (uint32_t)frames.size();
+            }
+        }
         if (stored.angularVelocity3D){
             st.initAngularVelocity = 1;
             const RotationOverLifetimeModule& r = d.rotationOverLifetime;
@@ -862,7 +872,13 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
         }
         cp.quality = c.quality;
         cp.kill = c.killOnCollide ? 1 : 0;
-        cp.events = c.sendEvents ? 1 : 0;
+        // contacts are recorded for Lua (Send Collision Messages) and for Collision sub-emitters
+        bool collisionSubEmitters = false;
+        if (on(d.subEmittersModule.present, d.subEmittersModule.enabled)){
+            for (const SubEmitterEntry& e : d.subEmitters)
+                collisionSubEmitters = collisionSubEmitters || e.trigger == SubEmitterTrigger::Collision;
+        }
+        cp.events = (c.sendEvents || collisionSubEmitters) ? 1 : 0;
         cp.planeCount = (uint32_t)std::min(c.planes.size(), kMaxCollisionPlanes);
         for (uint32_t i = 0; i < cp.planeCount; i++){
             Vector3 n = c.planes[i].normal;
@@ -882,7 +898,7 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
         cp.maxEvents = (uint32_t)std::max(c.maxCollisionEvents, 1);
         prog.hasCollision = true;
         prog.collisionKind = cp.kind;
-        prog.collisionEvents = cp.events != 0;
+        prog.collisionEvents = c.sendEvents;
         prog.maxCollisionEvents = cp.maxEvents;
         prog.updateOps.push_back({OpCode::Collision, cx.pool.add(cp)});
     }
