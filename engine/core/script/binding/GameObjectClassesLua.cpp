@@ -48,6 +48,8 @@
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "Rigidbody2D.h"
 #include "CharacterController2D.h"
+#include "CharacterController.h"
+#include "ControllerColliderHit.h"
 #include "Joint2D.h"
 #include "Contact2D.h"
 #include "Manifold2D.h"
@@ -553,6 +555,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 #ifdef JASPERENGINE_PHYSICS_3D
         .addFunction("getRigidbody", &GameObject::getRigidbody)
         .addFunction("removeRigidbody", &GameObject::removeRigidbody)
+        .addFunction("getCharacterController", &GameObject::getCharacterController)
+        .addFunction("removeCharacterController", &GameObject::removeCharacterController)
 #endif
         .addFunction("getRay", &GameObject::getRay)
         .endClass();
@@ -1608,6 +1612,60 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addVariable("BELOW", (int)CharacterCollision_Below)
         .endNamespace();
 
+#ifdef JASPERENGINE_PHYSICS_3D
+    luabridge::getGlobalNamespace(L)
+        .beginClass<FunctionSubscribe<void(Entity, ControllerColliderHit)>>("FunctionSubscribe_V_UCCH")
+        .addFunction("__call", &FunctionSubscribe<void(Entity, ControllerColliderHit)>::call)
+        .addFunction("call", &FunctionSubscribe<void(Entity, ControllerColliderHit)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<void(Entity, ControllerColliderHit)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(Entity, ControllerColliderHit)>::add)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ControllerColliderHit>("ControllerColliderHit")
+        .addProperty("controller", &ControllerColliderHit::getController)
+        .addProperty("entity", &ControllerColliderHit::getEntity)
+        .addProperty("point", &ControllerColliderHit::getPoint)
+        .addProperty("normal", &ControllerColliderHit::getNormal)
+        .addProperty("moveDirection", &ControllerColliderHit::getMoveDirection)
+        .addProperty("moveLength", &ControllerColliderHit::getMoveLength)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<CharacterController, EntityHandle>("CharacterController")
+        .addConstructor <void (Scene*, Entity)> ()
+        .addProperty("valid", &CharacterController::isValid)
+        .addProperty("enabled", &CharacterController::isEnabled, &CharacterController::setEnabled)
+        .addFunction("move", &CharacterController::move)
+        .addFunction("simpleMove", &CharacterController::simpleMove)
+        .addFunction("trySetSize", &CharacterController::trySetSize)
+        .addProperty("center", &CharacterController::getCenter, &CharacterController::setCenter)
+        .addProperty("height", &CharacterController::getHeight, &CharacterController::setHeight)
+        .addProperty("radius", &CharacterController::getRadius, &CharacterController::setRadius)
+        .addProperty("slopeLimit", &CharacterController::getSlopeLimit, &CharacterController::setSlopeLimit)
+        .addProperty("stepOffset", &CharacterController::getStepOffset, &CharacterController::setStepOffset)
+        .addProperty("skinWidth", &CharacterController::getSkinWidth, &CharacterController::setSkinWidth)
+        .addProperty("minMoveDistance", &CharacterController::getMinMoveDistance, &CharacterController::setMinMoveDistance)
+        .addProperty("mass", &CharacterController::getMass, &CharacterController::setMass)
+        .addProperty("pushStrength", &CharacterController::getPushStrength, &CharacterController::setPushStrength)
+        .addProperty("pushBodies", &CharacterController::isPushBodies, &CharacterController::setPushBodies)
+        .addProperty("movingPlatforms", &CharacterController::isMovingPlatforms, &CharacterController::setMovingPlatforms)
+        .addProperty("inheritPlatformYaw", &CharacterController::isInheritPlatformYaw, &CharacterController::setInheritPlatformYaw)
+        .addProperty("detectCollisions", &CharacterController::isDetectCollisions, &CharacterController::setDetectCollisions)
+        .addProperty("characterCollisions", &CharacterController::isCharacterCollisions, &CharacterController::setCharacterCollisions)
+        .addProperty("enhancedEdgeRemoval", &CharacterController::isEnhancedEdgeRemoval, &CharacterController::setEnhancedEdgeRemoval)
+        .addFunction("setBitsFilter", &CharacterController::setBitsFilter)
+        .addProperty("categoryBits", &CharacterController::getCategoryBits)
+        .addProperty("maskBits", &CharacterController::getMaskBits)
+        .addProperty("isGrounded", &CharacterController::isGrounded)
+        .addProperty("isOnSteepSlope", &CharacterController::isOnSteepSlope)
+        .addProperty("collisionFlags", &CharacterController::getCollisionFlags)
+        .addProperty("velocity", &CharacterController::getVelocity)
+        .addProperty("groundNormal", &CharacterController::getGroundNormal)
+        .addProperty("groundEntity", &CharacterController::getGroundEntity)
+        .addProperty("groundVelocity", &CharacterController::getGroundVelocity)
+        .endClass();
+#endif
+
 #ifdef JASPERENGINE_PHYSICS_2D
     luabridge::getGlobalNamespace(L)
         .deriveClass<CharacterController2D, EntityHandle>("CharacterController2D")
@@ -1810,6 +1868,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .deriveClass<Rigidbody, EntityHandle>("Rigidbody")
         .addConstructor <void (Scene*, Entity)> ()
+        .addProperty("valid", &Rigidbody::isValid)
         .addProperty("enabled", &Rigidbody::isEnabled, &Rigidbody::setEnabled)
         .addFunction("getAttachedObject", &Rigidbody::getAttachedObject)
         .addFunction("load", &Rigidbody::load)

@@ -60,6 +60,10 @@ Rigidbody& Rigidbody::operator=(const Rigidbody& rhs) = default;
 Rigidbody::Rigidbody(Rigidbody&& rhs) noexcept = default;
 Rigidbody& Rigidbody::operator=(Rigidbody&& rhs) noexcept = default;
 
+bool Rigidbody::isValid() const{
+    return scene && scene->findComponent<RigidbodyComponent>(entity) != nullptr;
+}
+
 void Rigidbody::checkBody(const RigidbodyComponent& body) const{
     // Scripts start (Lua init(), C++ constructors) before their scene enters the Engine,
     // which is what loads the physics bodies: make this one now rather than fail

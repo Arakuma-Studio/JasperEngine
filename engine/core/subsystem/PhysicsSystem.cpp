@@ -11,6 +11,7 @@
 #include "subsystem/CharacterController2DSystem.h"
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
+#include "subsystem/CharacterControllerSystem.h"
 #include "util/JoltPhysicsAux.h"
 #include "util/JoltJobAdapter.h"
 #include "memory/MemoryStats.h"
@@ -318,6 +319,7 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
 #ifdef JASPERENGINE_PHYSICS_3D
 	declareHookType(scene->getComponentId<RigidbodyComponent>());
 	declareHookType(scene->getComponentId<Joint3DComponent>());
+	declareHookType(scene->getComponentId<CharacterControllerComponent>());
 #endif
 
 	this->scene = scene;
@@ -375,6 +377,8 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
     world3D.SetContactListener(contactListener3D);
 
     lock3DBodies = true;
+
+    characters3D = std::make_unique<CharacterControllerSystem>(scene, this);
 #endif
 }
 
@@ -404,6 +408,8 @@ void PhysicsSystem::ensureWorld2D(){
 
 PhysicsSystem::~PhysicsSystem(){
 #ifdef JASPERENGINE_PHYSICS_3D
+    // the characters release their object layers and inner bodies while both still exist
+    characters3D.reset();
     flushPendingDestroys3D();
 #endif
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -1562,6 +1568,8 @@ bool PhysicsSystem::createGenericJoltBody(Entity entity, RigidbodyComponent& bod
     JPH::BodyCreationSettings settings(shape, JPH::Vec3(0.0, 0.0, 0.0), JPH::Quat::sIdentity(), joltType, layer);
     settings.mMotionQuality = getRigidbodyMotionQualityToJolt(body.motionQuality);
     settings.mIsSensor = body.sensor;
+    // a trigger sees the kinematic inner bodies of CharacterControllers (and other kinematics)
+    settings.mCollideKinematicVsNonDynamic = body.sensor;
     settings.mGravityFactor = body.gravityFactor;
     settings.mFriction = body.friction;
     settings.mRestitution = body.restitution;
@@ -3180,7 +3188,12 @@ void PhysicsSystem::fixedUpdate(double dt){
 
     syncLayerCollisionMatrix3D();
 
-    if (bodies3d->size() > 0){
+    // characters made and removed as their components and GameObjects come and go, and moved
+    // where their Transforms were put
+    characters3D->preStep();
+
+    // the world steps for the characters too (their platforms, root motion, inner bodies)
+    if (bodies3d->size() > 0 || characters3D->count() > 0){
 		const int cCollisionSteps = 1;
 
 		// Clears the flag and drains the teardown queue from the destructor, so a C++
@@ -3242,6 +3255,9 @@ void PhysicsSystem::fixedUpdate(double dt){
             }
         }
     }
+
+    // the characters ride what moved, see what is under them now and take their root motion
+    characters3D->postStep(fixedStep);
 #endif
 }
 
@@ -3259,6 +3275,7 @@ void PhysicsSystem::onEntityLayerChanged(Entity entity) {
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
     refreshRigidbodyFilter3D(entity);
+    characters3D->refreshLayer(entity);
 #endif
 }
 
@@ -3283,6 +3300,30 @@ void PhysicsSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
 	} else if (componentId == scene->getComponentId<Joint3DComponent>()) {
 		Joint3DComponent& joint3d = scene->getComponent<Joint3DComponent>(entity);
 		destroyJoint3D(joint3d);
+	} else if (componentId == scene->getComponentId<CharacterControllerComponent>()) {
+		characters3D->remove(entity);
 	}
 #endif
 }
+
+#ifdef JASPERENGINE_PHYSICS_3D
+int PhysicsSystem::moveCharacter(Entity entity, const Vector3& motion){
+    return characters3D->move(entity, motion);
+}
+
+bool PhysicsSystem::simpleMoveCharacter(Entity entity, const Vector3& speed){
+    return characters3D->simpleMove(entity, speed);
+}
+
+bool PhysicsSystem::trySetCharacterSize(Entity entity, float height, float radius, const Vector3& center){
+    return characters3D->trySetSize(entity, height, radius, center);
+}
+
+void PhysicsSystem::setRootMotion(Entity entity, const Vector3& worldVelocity, float yawRate){
+    characters3D->setRootMotion(entity, worldVelocity, yawRate);
+}
+
+bool PhysicsSystem::isCharacterInnerBody(const JPH::BodyID& body) const{
+    return characters3D && characters3D->isInnerBody(body);
+}
+#endif

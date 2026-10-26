@@ -37,6 +37,12 @@ FILES = [
     ("subsystem/CharacterController2DSystem.h", "subsystem/PhysicsSystem.h"),
     ("object/physics/CharacterController2D.cpp", "object/physics/Joint2D.cpp"),
     ("object/physics/CharacterController2D.h", "object/physics/Joint2D.h"),
+    ("component/CharacterControllerComponent.h", "component/Joint3DComponent.h"),
+    ("object/physics/ControllerColliderHit.h", "object/physics/Joint3D.h"),
+    ("object/physics/CharacterController.cpp", "object/physics/Joint3D.cpp"),
+    ("object/physics/CharacterController.h", "object/physics/Joint3D.h"),
+    ("subsystem/CharacterControllerSystem.cpp", "subsystem/PhysicsSystem.cpp"),
+    ("subsystem/CharacterControllerSystem.h", "subsystem/PhysicsSystem.h"),
 ]
 
 

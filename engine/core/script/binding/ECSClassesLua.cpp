@@ -241,6 +241,8 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("onContactPersisted3D", [] (PhysicsSystem* self, lua_State* L) { return &self->onContactPersisted3D; }, [] (PhysicsSystem* self, lua_State* L) { self->onContactPersisted3D = L; })
         .addProperty("onContactRemoved3D", [] (PhysicsSystem* self, lua_State* L) { return &self->onContactRemoved3D; }, [] (PhysicsSystem* self, lua_State* L) { self->onContactRemoved3D = L; })
         .addProperty("shouldCollide3D", [] (PhysicsSystem* self, lua_State* L) { return &self->shouldCollide3D; }, [] (PhysicsSystem* self, lua_State* L) { self->shouldCollide3D = L; })
+        .addProperty("onControllerColliderHit", [] (PhysicsSystem* self, lua_State* L) { return &self->onControllerColliderHit; }, [] (PhysicsSystem* self, lua_State* L) { self->onControllerColliderHit = L; })
+        .addFunction("setRootMotion", &PhysicsSystem::setRootMotion)
 #endif
 #ifdef JASPERENGINE_PHYSICS_2D
         .addFunction("createRigidbody2D", &PhysicsSystem::createRigidbody2D)

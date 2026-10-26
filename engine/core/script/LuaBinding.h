@@ -21,6 +21,7 @@ namespace jasperengine {
     class Vector3;
     class Vector4;
     struct ScriptEntry;
+    struct ControllerColliderHit;
     struct ScriptProperty;
 
     class JASPERENGINE_API LuaBinding {
@@ -89,6 +90,12 @@ namespace jasperengine {
         // The engine's one Lua state. It belongs to the thread that made it (Engine::systemInit,
         // the main thread): Lua states are not thread-safe, so only that thread may use it.
         static lua_State* getLuaState();
+
+#ifdef JASPERENGINE_PHYSICS_3D
+        // Calls `function(self, hit)` on each enabled Lua script of the entity that defines it
+        // (onControllerColliderHit after a CharacterController's move)
+        static void callScriptHook(Scene* scene, Entity entity, const char* function, const ControllerColliderHit& hit);
+#endif
 
         // The check of that rule: every allocation of the state (any Lua work that allocates,
         // and every collection step) compares the thread with the owner's. A use from another

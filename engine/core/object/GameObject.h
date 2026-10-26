@@ -11,6 +11,7 @@
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "Rigidbody.h"
+#include "CharacterController.h"
 #endif
 #include "math/Ray.h"
 #include "manager/PrefabAsset.h"
@@ -118,6 +119,9 @@ namespace jasperengine{
 #ifdef JASPERENGINE_PHYSICS_3D
         Rigidbody getRigidbody();
         void removeRigidbody();
+        // the GameObject's CharacterController, added with its defaults when it has none
+        CharacterController getCharacterController();
+        void removeCharacterController();
 #endif
 
         Ray getRay(Vector3 direction);

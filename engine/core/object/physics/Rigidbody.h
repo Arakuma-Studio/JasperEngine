@@ -37,6 +37,10 @@ namespace jasperengine{
         Rigidbody(Scene* scene, Entity entity);
         virtual ~Rigidbody();
 
+        // the entity has a RigidbodyComponent (a contact's other side may be a
+        // CharacterController's inner body, which has none)
+        bool isValid() const;
+
         Rigidbody(const Rigidbody& rhs);
         Rigidbody& operator=(const Rigidbody& rhs);
         Rigidbody(Rigidbody&& rhs) noexcept;

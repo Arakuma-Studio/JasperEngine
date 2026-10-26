@@ -16,6 +16,7 @@
 #include "object/physics/Rigidbody.h"
 #include "object/physics/Contact3D.h"
 #include "object/physics/CollideShapeResult3D.h"
+#include "object/physics/ControllerColliderHit.h"
 #endif
 #include "LuaBinding.h"
 #include "input/InputActions.h"
@@ -168,6 +169,11 @@ void LuaFunctionBase::push_value(lua_State *vm, Contact2D o){
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
+void LuaFunctionBase::push_value(lua_State *vm, ControllerColliderHit o){
+    if (!luabridge::push<ControllerColliderHit>(vm, o))
+        throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
+}
+
 void LuaFunctionBase::push_value(lua_State *vm, Rigidbody o){
     if (!luabridge::push<Rigidbody>(vm, o))
         throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);

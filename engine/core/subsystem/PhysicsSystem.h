@@ -21,6 +21,8 @@
 #include "object/physics/Rigidbody.h"
 #include "object/physics/CollideShapeResult3D.h"
 #include "object/physics/Contact3D.h"
+#include "object/physics/ControllerColliderHit.h"
+#include "component/CharacterControllerComponent.h"
 #include "Jolt/Jolt.h"
 #include "Jolt/Core/JobSystemThreadPool.h"
 #include "Jolt/Physics/Body/MotionQuality.h"
@@ -47,11 +49,13 @@ namespace jasperengine{
 	class JoltObjectVsBroadPhaseLayerFilter;
 	class JoltObjectLayerPairFilter;
 	class CharacterController2DSystem;
+	class CharacterControllerSystem;
 	
 
 	class JASPERENGINE_API PhysicsSystem : public SubSystem {
 
 		friend class CharacterController2DSystem;
+		friend class CharacterControllerSystem;
 
 	private:
 		Vector2 gravity2D;
@@ -92,6 +96,10 @@ namespace jasperengine{
 		// destroyed first, releasing while the world they belong to is still alive.
 		std::vector<JPH::BodyID> pendingBodyDestroy3D;
 		std::vector<JPH::Ref<JPH::TwoBodyConstraint>> pendingJointDestroy3D;
+
+		// the CharacterControllers (S22 P2): Jolt CharacterVirtuals in world3D, so after it
+		// (destroyed first, while the world their inner bodies are in still exists)
+		std::unique_ptr<CharacterControllerSystem> characters3D;
 
 		// ObjectLayers index this table (GameObject layer, category and mask bits)
 		JoltObjectLayerTable* objectLayerTable3D;
@@ -231,6 +239,20 @@ namespace jasperengine{
 		FunctionSubscribe<void(Rigidbody, Rigidbody, unsigned long, unsigned long)> onContactRemoved3D;
 
 		FunctionSubscribe<bool(Rigidbody, Rigidbody, Vector3, CollideShapeResult3D)> shouldCollide3D;
+		// what a CharacterController's move ran into, after the move (and Lua onControllerColliderHit)
+		FunctionSubscribe<void(Entity, ControllerColliderHit)> onControllerColliderHit;
+
+		// A CharacterController's move (world units, no gravity) at once: its CollisionFlags
+		int moveCharacter(Entity entity, const Vector3& motion);
+		// Moves at speed (y ignored) with its own gravity: whether it is grounded
+		bool simpleMoveCharacter(Entity entity, const Vector3& speed);
+		// A new capsule, refused (false, the old one kept) when it does not fit there
+		bool trySetCharacterSize(Entity entity, float height, float radius, const Vector3& center);
+		// S21's Animator: a velocity (world units/s) and a yaw rate (rad/s) the controller moves
+		// and turns by in every fixed step until the next call
+		void setRootMotion(Entity entity, const Vector3& worldVelocity, float yawRate);
+		// the kinematic body a CharacterController with detectCollisions puts in the world
+		bool isCharacterInnerBody(const JPH::BodyID& body) const;
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_2D

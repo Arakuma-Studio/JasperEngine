@@ -1232,6 +1232,8 @@ if(JASPERENGINE_PHYSICS_3D)
         core/object/physics/CollideShapeResult3D.cpp
         core/object/physics/Contact3D.cpp
         core/object/physics/Joint3D.cpp
+        core/object/physics/CharacterController.cpp
+        core/subsystem/CharacterControllerSystem.cpp
     )
 endif()
 

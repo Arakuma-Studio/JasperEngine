@@ -350,6 +350,17 @@ Rigidbody GameObject::getRigidbody(){
 void GameObject::removeRigidbody(){
     scene->getSystem<PhysicsSystem>()->removeRigidbody(entity);
 }
+
+CharacterController GameObject::getCharacterController(){
+    if (!scene->findComponent<CharacterControllerComponent>(entity))
+        scene->addComponent<CharacterControllerComponent>(entity, {});
+    return CharacterController(scene, entity);
+}
+
+void GameObject::removeCharacterController(){
+    if (scene->findComponent<CharacterControllerComponent>(entity))
+        scene->removeComponent<CharacterControllerComponent>(entity);
+}
 #endif
 
 Ray GameObject::getRay(Vector3 direction){

@@ -487,6 +487,22 @@ void prepare<CharacterController2DComponent>(CharacterController2DComponent& con
 
 #ifdef JASPERENGINE_PHYSICS_3D
 template<>
+void prepare<CharacterControllerComponent>(CharacterControllerComponent& controller, Entity, CloneContext&) {
+    // the copy gets a character of its own (preStep makes it); the original's last move and step
+    // are not its own
+    const CharacterControllerComponent defaults;
+    controller.handle = defaults.handle;
+    controller.isGrounded = defaults.isGrounded;
+    controller.isOnSteepSlope = defaults.isOnSteepSlope;
+    controller.collisionFlags = defaults.collisionFlags;
+    controller.velocity = defaults.velocity;
+    controller.groundNormal = defaults.groundNormal;
+    controller.groundEntity = defaults.groundEntity;
+    controller.groundVelocity = defaults.groundVelocity;
+    controller.refusedWithRigidbody = defaults.refusedWithRigidbody;
+}
+
+template<>
 void prepare<RigidbodyComponent>(RigidbodyComponent& body, Entity, CloneContext& ctx) {
     body.body = JPH::BodyID();
     for (size_t i = 0; i < body.numColliders && i < body.colliders.size(); i++) {
@@ -603,6 +619,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
 #ifdef JASPERENGINE_PHYSICS_3D
     copyComponent<RigidbodyComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<Joint3DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<CharacterControllerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
 #endif
     copyComponent<InstancedMeshComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<PrefabComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
