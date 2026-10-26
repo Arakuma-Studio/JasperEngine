@@ -21,8 +21,22 @@
 // under engine/platform, which owns the window, the event loop and the
 // graphics device.
 
+// the GPU timer's query entry points for sokol's own Win32 GL loader (sokol_gpu_timer_impl.h)
+#define SG_GL_FUNCS_EXT \
+    _SG_XMACRO(glGenQueries,          void, (GLsizei n, GLuint* ids)) \
+    _SG_XMACRO(glDeleteQueries,       void, (GLsizei n, const GLuint* ids)) \
+    _SG_XMACRO(glBeginQuery,          void, (GLenum target, GLuint id)) \
+    _SG_XMACRO(glEndQuery,            void, (GLenum target)) \
+    _SG_XMACRO(glGetQueryiv,          void, (GLenum target, GLenum pname, GLint* params)) \
+    _SG_XMACRO(glGetQueryObjectuiv,   void, (GLuint id, GLenum pname, GLuint* params)) \
+    _SG_XMACRO(glGetQueryObjectui64v, void, (GLuint id, GLenum pname, GLuint64* params))
+
+// the GPU timer's hook table, which sokol_gfx.h calls (marked "JasperEngine: gpu timer hook")
+#include "sokol_gpu_timer.h"
 #include "sokol_gfx.h"
 #include "sokol_time.h"
+// its backends, where sokol's state is visible
+#include "sokol_gpu_timer_impl.h"
 //#include "sokol_audio.h"
 //#include "sokol_log.h"
 

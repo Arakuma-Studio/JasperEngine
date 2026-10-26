@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "util/NumericExpression.h"
+
 #include "Project.h"
 #include "render/Render.h"
 #include "shader/ShaderManifest.h"
@@ -102,6 +104,8 @@ namespace jasperengine::editor{
         // Entities hidden from the LocalEntity picker and rejected on drag-drop
         // (e.g. to prevent self-references)
         std::vector<Entity> excludeEntities;
+        // What a number typed into the row's fields is in (25cm on a Meters field), S23 R25
+        NumericUnit unit = NumericUnit::None;
     };
 
     class InspectorWindow{

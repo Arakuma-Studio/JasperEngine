@@ -30,7 +30,7 @@ scripts. Each tool edit is an undoable command, live to a human watching. Build 
 with tools, write code with your own file tools, verify by playing, screenshots and the Console.
 tools/list is authoritative for tool names and arguments; read a tool's description before
 first use. Deeper reference: jasper://docs/... (Lua scripting and API, C++ scripting, physics,
-shaders, prefabs, assets, HTML/CSS UI, data safety, undo, ECS, Unity glossary).
+shaders, prefabs, assets, HTML/CSS UI, data safety, undo, profiling, ECS, Unity glossary).
 
 ## Unity names -> engine names
 Tools, component names and script APIs use the engine names.
@@ -88,7 +88,9 @@ The project is a normal folder (`editor_status`: project.path). Work in it and r
 grep and git its scripts, shaders and .material files with your own tools. Engine API to grep: .jasperengine/engine-api/ (C++ headers) and its lua/
 folder (Lua API stubs). Your file edits are reloaded before your next call, whose result
 carries `external_changes` {changed, reloaded, problems: [{path, line, message}]}: fix those
-problems first. During play scripts wait until play stops. Open scenes and prefabs are not
+problems first. During play a saved Lua script reloads in place, keeping its instances
+(external_changes.script_reload; a file that fails keeps its old code running); C++ waits for
+Stop unless set_script_settings reload_cpp_during_play. Open scenes and prefabs are not
 reloaded from disk: edit them with the tools.
 Validate without playing: check_script (Lua syntax, properties), check_shader, compile_scripts
 (C++), or `jasperengine-editor check` from a shell. Through tools: create_script (engine
@@ -215,6 +217,12 @@ A light's shadows, softShadows, shadowStrength, shadowBias/shadowNormalBias (in 
 1 is right almost always), mapResolution (0: the tier's); the scene's shadows_quality (auto:
 the platform's tier), shadow_distance; meshes that never move: staticShadowCaster true (cached).
 Verify with get_shadow_stats and the shadows_debug_view setting (jasper://docs/shadows).
+
+## Profiling
+The profiling group: get_frame_times (the always-on history), capture_profile then
+get_cpu_profile (capture_id, frame worst), get_gpu_passes (each pass's GPU ms; with capture_id
+per-label medians), capture_pass_output, get_vram_report, get_render_stats. Compare medians,
+not single frames; GPU time semantics differ per backend (jasper://docs/profiling).
 
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectWindow.h"
+#include "util/EditorScripts.h"
 #include "asset/AssetTypes.h"
 #include "window/AssetPanels.h"
 #include "util/PngWriter.h"
@@ -47,6 +48,7 @@
 #include "Generator.h"
 #include "Log.h"
 #include "subsystem/MeshSystem.h"
+#include "render/SystemRender.h"
 #include "util/FileDialogs.h"
 #include "util/FileUtils.h"
 #include "util/FbxImporter.h"
@@ -202,11 +204,25 @@ editor::ProjectWindow::ProjectWindow(Project* project, CodeEditor* codeEditor, I
 }
 
 editor::ProjectWindow::~ProjectWindow() {
-    cancelThumbnailWork();
-    stopThumbnailThread = true;
     // the steps capture this window
+    stopThumbnailWork();
+}
+
+void editor::ProjectWindow::stopThumbnailWork(){
+    stopThumbnailThread = true;
     thumbnails.cancelPending();
-    thumbnails.waitIdle();
+    // A running step can wait in Engine::endAsyncThread for the main thread to execute the
+    // batch committed before its own, so the main thread keeps executing the render queue
+    // until the step ends; its own batch is executed last. A batch nobody executes would
+    // block SokolSystem::shutdown's flush for good.
+    while (thumbnails.pendingCount() > 0) {
+        if (Engine::isViewLoaded())
+            SystemRender::executeQueue();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    if (Engine::isViewLoaded())
+        SystemRender::executeQueue();
+    cancelThumbnailWork();
 }
 
 bool editor::ProjectWindow::isFocused() const{
@@ -1846,6 +1862,19 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
 
                 if (ImGui::MenuItem(ICON_FA_ARROW_UP_RIGHT_FROM_SQUARE " Open in File Manager")){
                     openInFileManager(file.isDirectory ? currentPath / file.name : currentPath);
+                }
+
+                // the project's editor scripts: Assets/... items (S23)
+                {
+                    EditorMenuRunContext scriptContext;
+                    scriptContext.sceneId = project->getSelectedSceneId();
+                    for (const fs::path& selected : getSelectedFiles()) {
+                        scriptContext.assets.push_back(selected.lexically_relative(project->getProjectPath()).generic_string());
+                    }
+                    if (scriptContext.assets.empty()) {
+                        scriptContext.assets.push_back((currentPath / file.name).lexically_relative(project->getProjectPath()).generic_string());
+                    }
+                    EditorScripts::get().drawContextItems("assets", {}, scriptContext);
                 }
 
                 ImGui::EndPopup();
@@ -3863,6 +3892,14 @@ void editor::ProjectWindow::assetsShowInFileManager() {
     if (!target.empty()) {
         openInFileManager(target);
     }
+}
+
+std::vector<fs::path> editor::ProjectWindow::getSelectedFiles() const {
+    std::vector<fs::path> files;
+    // the names of the current folder's selected entries
+    for (const std::string& file : selectedFiles) files.push_back(currentPath / file);
+    std::sort(files.begin(), files.end());
+    return files;
 }
 
 void editor::ProjectWindow::assetsOpenSelected() {

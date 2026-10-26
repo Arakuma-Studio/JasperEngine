@@ -24,6 +24,11 @@ jasperengine_add_test_target(jasperengine-core-tests
     INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/support
 )
 
+# a unit of its own: it redefines JASPERENGINE_PROFILER to 0 before the profiling macros
+jasperengine_skip_unity_build(
+    REASON "ProfilerCompileOutTest compiles the profiling macros with the profiler off"
+    SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/profiler/ProfilerCompileOutTest.cpp)
+
 # the logger's backtraces name the test functions (LoggerTest.ErrorCarriesBacktrace): dladdr
 # sees the executable's symbols
 set_target_properties(jasperengine-core-tests PROPERTIES ENABLE_EXPORTS ON)

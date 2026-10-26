@@ -89,6 +89,71 @@ namespace {
         return trimmed(value);
     }
 
+    // Where the document's own content starts on `line`, npos for a line before it: blank, a
+    // comment, a directive or a bare document start marker ("--- {...}" starts at the brace)
+    size_t documentContentStart(const std::string& line) {
+        size_t start = 0;
+        if (line.compare(0, 3, "---") == 0) {
+            start = 3;
+        } else if (!line.empty() && line[0] == '%') {
+            return std::string::npos;
+        }
+        start = line.find_first_not_of(" \t\r", start);
+        if (start == std::string::npos || line[start] == '#') {
+            return std::string::npos;
+        }
+        return start;
+    }
+
+    // A document whose content starts as a flow style map (written by another tool): its keys
+    // are not lines, so it is parsed. Its top-level `guid` and `formerGuids`; false when the
+    // file is not such a document.
+    bool flowIdentity(const fs::path& path, std::string& guid, std::vector<std::string>& formerGuids) {
+        std::string text;
+        if (!editor::assetio::readFile(path, text)) {
+            return false;
+        }
+        bool flow = false;
+        for (size_t begin = 0; begin < text.size();) {
+            size_t end = text.find('\n', begin);
+            end = end == std::string::npos ? text.size() : end;
+            const std::string line = text.substr(begin, end - begin);
+            const size_t content = documentContentStart(line);
+            if (content != std::string::npos) {
+                flow = line[content] == '{';
+                break;
+            }
+            begin = end + 1;
+        }
+        if (!flow) {
+            return false;
+        }
+        try {
+            const YAML::Node node = YAML::Load(text);
+            if (node.IsMap() && node["guid"] && node["guid"].IsScalar()) {
+                guid = node["guid"].Scalar();
+            }
+            if (node.IsMap() && node["formerGuids"] && node["formerGuids"].IsSequence()) {
+                for (const YAML::Node& former : node["formerGuids"]) {
+                    if (former.IsScalar()) formerGuids.push_back(former.Scalar());
+                }
+            }
+        } catch (const std::exception&) {
+        }
+        return true;
+    }
+
+    // The line before the document's content starts (blank lines, comments, directives, a
+    // bare document start marker); the content's first line reports whether it is a flow map
+    bool startsFlowMap(const std::string& line, bool& decided) {
+        const size_t content = documentContentStart(line);
+        if (content == std::string::npos) {
+            return false;
+        }
+        decided = true;
+        return line[content] == '{';
+    }
+
     // "[a, b]" or a block of "  - a" lines -> GUIDs
     void parseGuidList(const std::string& flow, std::vector<Guid>& out) {
         std::string inner = flow;
@@ -218,9 +283,17 @@ std::string editor::AssetDatabase::readGuid(const fs::path& fullPath) {
     // GUIDs normally precede the entity data. Stop reading at that line instead of
     // loading and copying every prefab in full when the asset database opens.
     std::string line;
+    bool decided = false;
     while (std::getline(file, line)) {
         if (isKeyLine(line, 0, "guid")) {
             return lineValue(line, 4);
+        }
+        if (!decided && startsFlowMap(line, decided)) {
+            file.close();
+            std::string guid;
+            std::vector<std::string> formerGuids;
+            flowIdentity(fullPath, guid, formerGuids);
+            return guid;
         }
     }
     return {};
@@ -237,6 +310,7 @@ bool editor::AssetDatabase::readInFileIdentity(const fs::path& fullPath, Guid& g
     std::string line;
     bool afterGuid = false;
     bool inBlock = false;
+    bool decided = false;
     while (std::getline(file, line)) {
         if (!line.empty() && line.back() == '\r') {
             line.pop_back();
@@ -245,6 +319,17 @@ bool editor::AssetDatabase::readInFileIdentity(const fs::path& fullPath, Guid& g
             if (isKeyLine(line, 0, "guid")) {
                 guid = Guid::parse(lineValue(line, 4));
                 afterGuid = true;
+            } else if (!decided && startsFlowMap(line, decided)) {
+                file.close();
+                std::string flowGuid;
+                std::vector<std::string> flowFormer;
+                flowIdentity(fullPath, flowGuid, flowFormer);
+                guid = Guid::parse(flowGuid);
+                for (const std::string& former : flowFormer) {
+                    const Guid parsed = Guid::parse(former);
+                    if (!parsed.isNull()) formerGuids.push_back(parsed);
+                }
+                return !guid.isNull();
             }
             continue;
         }
@@ -346,20 +431,29 @@ bool editor::AssetDatabase::writeInFileIdentity(const fs::path& fullPath, const 
     }
     if (!verified) {
         try {
-            YAML::Node node = YAML::Load(text);
+            const YAML::Node node = YAML::Load(text);
             if (!node.IsMap()) {
                 return false;
             }
-            node["guid"] = guid.str();
+            // block style at the top, the identity first: the lines readGuid and
+            // readInFileIdentity look for, and the line edits above work on the next write
+            // (nested values keep their style)
+            YAML::Node rewritten(YAML::NodeType::Map);
+            rewritten.SetStyle(YAML::EmitterStyle::Block);
+            rewritten.force_insert("guid", guid.str());
             if (!formerGuids.empty()) {
                 YAML::Node list(YAML::NodeType::Sequence);
                 list.SetStyle(YAML::EmitterStyle::Flow);
                 for (const Guid& former : formerGuids) list.push_back(former.str());
-                node["formerGuids"] = list;
-            } else {
-                node.remove("formerGuids");
+                rewritten.force_insert("formerGuids", list);
             }
-            updated = YAML::Dump(node) + "\n";
+            for (const auto& entry : node) {
+                if (entry.first.IsScalar() && (entry.first.Scalar() == "guid" || entry.first.Scalar() == "formerGuids")) {
+                    continue;
+                }
+                rewritten.force_insert(entry.first, entry.second);
+            }
+            updated = YAML::Dump(rewritten) + "\n";
         } catch (const std::exception& e) {
             Out::warning("Could not write the GUID of %s: %s", fullPath.string().c_str(), e.what());
             return false;

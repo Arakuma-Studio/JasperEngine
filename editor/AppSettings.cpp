@@ -157,6 +157,7 @@ float AppSettings::uiScale = 1.0f;
 PanelVisibilitySettings AppSettings::panelVisibility;
 GameViewSettings AppSettings::gameViewSettings;
 LatticeViewSettings AppSettings::latticeViewSettings;
+ProfilerSettings AppSettings::profilerSettings;
 bool AppSettings::mcpHttpEnabled = false;
 int AppSettings::mcpHttpPort = 47615;
 std::string AppSettings::mcpHttpToken;
@@ -167,6 +168,10 @@ bool AppSettings::assetAutoRefresh = true;
 std::string AppSettings::assetWatcher = "auto";
 float AppSettings::assetPollingInterval = 1.0f;
 bool AppSettings::assetLogReloads = true;
+std::string AppSettings::scriptChangesWhilePlaying = "reload";
+bool AppSettings::reloadCppDuringPlay = false;
+std::string AppSettings::externalScriptEditor = "builtin";
+std::string AppSettings::externalScriptEditorCommand;
 int AppSettings::undoMaxSteps = AppSettings::defaultUndoMaxSteps;
 int AppSettings::undoMemoryLimitMB = AppSettings::defaultUndoMemoryLimitMB;
 bool AppSettings::undoRecordSelection = true;
@@ -457,6 +462,27 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 if (gameNode["stats"]) gameViewSettings.showStats = gameNode["stats"].as<bool>();
                 if (gameNode["atmosphere_quality"]) gameViewSettings.atmosphereQuality = std::clamp(gameNode["atmosphere_quality"].as<int>(), -1, 3);
             }
+            if (editorNode["profiler"]) {
+                auto profilerNode = editorNode["profiler"];
+                ProfilerSettings& p = profilerSettings;
+                if (profilerNode["budget_fps"]) p.budgetFps = std::clamp(profilerNode["budget_fps"].as<int>(), 0, 1000);
+                if (profilerNode["cpu"]) p.showCpu = profilerNode["cpu"].as<bool>();
+                if (profilerNode["gpu"]) p.showGpu = profilerNode["gpu"].as<bool>();
+                if (profilerNode["rendering"]) p.showRendering = profilerNode["rendering"].as<bool>();
+                if (profilerNode["memory"]) p.showMemory = profilerNode["memory"].as<bool>();
+                if (profilerNode["monitors_module"]) p.showMonitors = profilerNode["monitors_module"].as<bool>();
+                if (profilerNode["cpu_view"]) p.cpuView = std::clamp(profilerNode["cpu_view"].as<int>(), 0, 1);
+                if (profilerNode["sort_column"]) p.sortColumn = std::clamp(profilerNode["sort_column"].as<int>(), 0, 4);
+                if (profilerNode["sort_ascending"]) p.sortAscending = profilerNode["sort_ascending"].as<bool>();
+                if (profilerNode["pause_on_spike"]) p.pauseOnSpike = profilerNode["pause_on_spike"].as<bool>();
+                if (profilerNode["pause_over_ms"]) p.pauseOverMs = std::clamp(profilerNode["pause_over_ms"].as<float>(), 1.0f, 10000.0f);
+                if (profilerNode["memory_group"]) p.memoryGroup = std::clamp(profilerNode["memory_group"].as<int>(), 0, 1);
+                if (profilerNode["monitors"] && profilerNode["monitors"].IsSequence()) {
+                    p.monitors.clear();
+                    for (const auto& item : profilerNode["monitors"]) p.monitors.push_back(item.as<std::string>());
+                }
+                if (profilerNode["debugger_mode"]) p.debuggerMode = std::clamp(profilerNode["debugger_mode"].as<int>(), 0, 5);
+            }
         }
 
         // The former AI assistant's "ai_assistant" section is ignored (and dropped on save)
@@ -501,6 +527,14 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             if (assetNode["watcher"]) setFileWatcher(assetNode["watcher"].as<std::string>());
             if (assetNode["polling_interval"]) setPollingInterval(assetNode["polling_interval"].as<float>());
             if (assetNode["log_reloads"]) assetLogReloads = assetNode["log_reloads"].as<bool>();
+        }
+
+        if (settingsData["scripting"]) {
+            auto scriptingNode = settingsData["scripting"];
+            if (scriptingNode["changes_while_playing"]) setScriptChangesWhilePlaying(scriptingNode["changes_while_playing"].as<std::string>());
+            if (scriptingNode["reload_cpp_during_play"]) reloadCppDuringPlay = scriptingNode["reload_cpp_during_play"].as<bool>();
+            if (scriptingNode["external_script_editor"]) setExternalScriptEditor(scriptingNode["external_script_editor"].as<std::string>());
+            if (scriptingNode["external_script_editor_command"]) externalScriptEditorCommand = scriptingNode["external_script_editor_command"].as<std::string>();
         }
 
         if (settingsData["html_ui"]) {
@@ -666,6 +700,22 @@ bool AppSettings::saveSettings() {
         gameNode["stats"] = gameViewSettings.showStats;
         gameNode["atmosphere_quality"] = gameViewSettings.atmosphereQuality;
         editorNode["game_view"] = gameNode;
+        YAML::Node profilerNode;
+        profilerNode["budget_fps"] = profilerSettings.budgetFps;
+        profilerNode["cpu"] = profilerSettings.showCpu;
+        profilerNode["gpu"] = profilerSettings.showGpu;
+        profilerNode["rendering"] = profilerSettings.showRendering;
+        profilerNode["memory"] = profilerSettings.showMemory;
+        profilerNode["monitors_module"] = profilerSettings.showMonitors;
+        profilerNode["cpu_view"] = profilerSettings.cpuView;
+        profilerNode["sort_column"] = profilerSettings.sortColumn;
+        profilerNode["sort_ascending"] = profilerSettings.sortAscending;
+        profilerNode["pause_on_spike"] = profilerSettings.pauseOnSpike;
+        profilerNode["pause_over_ms"] = profilerSettings.pauseOverMs;
+        profilerNode["memory_group"] = profilerSettings.memoryGroup;
+        for (const std::string& monitor : profilerSettings.monitors) profilerNode["monitors"].push_back(monitor);
+        profilerNode["debugger_mode"] = profilerSettings.debuggerMode;
+        editorNode["profiler"] = profilerNode;
         settingsData["editor"] = editorNode;
 
         // MCP server
@@ -697,6 +747,13 @@ bool AppSettings::saveSettings() {
         assetNode["polling_interval"] = assetPollingInterval;
         assetNode["log_reloads"] = assetLogReloads;
         settingsData["asset_pipeline"] = assetNode;
+
+        YAML::Node scriptingNode;
+        scriptingNode["changes_while_playing"] = scriptChangesWhilePlaying;
+        scriptingNode["reload_cpp_during_play"] = reloadCppDuringPlay;
+        scriptingNode["external_script_editor"] = externalScriptEditor;
+        if (!externalScriptEditorCommand.empty()) scriptingNode["external_script_editor_command"] = externalScriptEditorCommand;
+        settingsData["scripting"] = scriptingNode;
 
         YAML::Node htmlUiNode;
         htmlUiNode["auto_import"] = htmlUiAutoImport;
@@ -1018,6 +1075,41 @@ void AppSettings::setLogReloads(bool enabled) {
     assetLogReloads = enabled;
 }
 
+std::string AppSettings::getScriptChangesWhilePlaying() {
+    return scriptChangesWhilePlaying;
+}
+
+void AppSettings::setScriptChangesWhilePlaying(const std::string& policy) {
+    if (policy == "reload" || policy == "after_stop" || policy == "stop_and_reload") scriptChangesWhilePlaying = policy;
+}
+
+bool AppSettings::getReloadCppDuringPlay() {
+    return reloadCppDuringPlay;
+}
+
+void AppSettings::setReloadCppDuringPlay(bool enabled) {
+    reloadCppDuringPlay = enabled;
+}
+
+std::string AppSettings::getExternalScriptEditor() {
+    return externalScriptEditor;
+}
+
+void AppSettings::setExternalScriptEditor(const std::string& id) {
+    static const char* const known[] = {"builtin", "vscode", "visualstudio", "rider", "clion", "xcode", "sublime", "zed", "system", "custom"};
+    for (const char* name : known) {
+        if (id == name) externalScriptEditor = id;
+    }
+}
+
+std::string AppSettings::getExternalScriptEditorCommand() {
+    return externalScriptEditorCommand;
+}
+
+void AppSettings::setExternalScriptEditorCommand(const std::string& command) {
+    externalScriptEditorCommand = command;
+}
+
 int AppSettings::getUndoMaxSteps() {
     return undoMaxSteps;
 }
@@ -1160,6 +1252,16 @@ void AppSettings::setLatticeViewSettings(const LatticeViewSettings& settings) {
     value.falloffCurve = std::clamp(value.falloffCurve, 0, 3);
     value.falloffRadius = std::clamp(finiteOr(value.falloffRadius, defaults.falloffRadius), 0.01f, 10.0f);
     latticeViewSettings = value;
+}
+
+ProfilerSettings AppSettings::getProfilerSettings() {
+    return profilerSettings;
+}
+
+void AppSettings::setProfilerSettings(const ProfilerSettings& settings) {
+    if (settings == profilerSettings) return;
+    profilerSettings = settings;
+    saveSettings();
 }
 
 bool AppSettings::getMcpHttpEnabled() {

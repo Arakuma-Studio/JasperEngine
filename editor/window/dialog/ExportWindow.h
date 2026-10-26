@@ -136,6 +136,7 @@ namespace jasperengine::editor {
         void drawPlatformList();
         bool drawPlatformSettings(bool& targetNotEmpty);
         void drawBuildTypeRow();
+        void drawDevelopmentBuildRow();
         void drawSourceBackendsRow();
         fs::path builtPlayerPath() const;
         void launchBuiltPlayer();

@@ -58,5 +58,8 @@ namespace jasperengine::editor::mcp {
     std::string synthesisAssetText(const Json& info);
     void registerEcsTools(McpRegistry& registry);
     void registerAtmosphereTools(McpRegistry& registry);
+    void registerProfilerTools(McpRegistry& registry);
+    void registerScriptingTools(McpRegistry& registry);
+    void registerGraphTools(McpRegistry& registry);
 
 }

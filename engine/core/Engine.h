@@ -328,6 +328,8 @@ namespace jasperengine {
         // logs once that every scene is loaded and no shader build is pending
         // (JASPERENGINE_READY_SIGNAL set: tools/smoke-test.sh waits for it)
         static void signalReadyOnce();
+        // every scene drawn is loaded (its HTML UI documents too) and no shader build is pending
+        static bool areScenesLoaded();
         static void includeScene(Scene* scene);
         // Copy for iteration outside sceneListMutex: callbacks invoked while iterating are
         // free to add or remove scenes without invalidating the caller's traversal.

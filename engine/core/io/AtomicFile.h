@@ -39,6 +39,8 @@ namespace jasperengine::io {
         // skipIfUnchanged and the target already held the bytes: nothing was touched
         Unchanged,
         CreateDirectory,
+        // createDirectories is false and the target's folder does not exist: nothing was touched
+        MissingDirectory,
         OpenTemp,
         WriteTemp,
         SyncTemp,
@@ -54,6 +56,10 @@ namespace jasperengine::io {
         // Compare first; when the target already holds the bytes, return Unchanged without
         // touching the file or its modification time
         bool skipIfUnchanged = false;
+        // Create the target's missing parent directories (the default). False for a write that
+        // must land in an existing folder (a file created into a folder the user picked): a
+        // missing one fails with MissingDirectory instead of being created
+        bool createDirectories = true;
         // The publish rename is retried while another process holds the target open
         // (antivirus, indexers, an editor on Windows); attempts * retryDelay bounds the wait
         int attempts = 5;
@@ -74,7 +80,8 @@ namespace jasperengine::io {
         bool written() const { return error == WriteError::None; }
     };
 
-    // Writes `bytes` to `target` atomically. Parent directories are created. On success the
+    // Writes `bytes` to `target` atomically. Parent directories are created (unless
+    // options.createDirectories is false). On success the
     // target holds exactly the new bytes; on any failure it holds exactly its previous bytes
     // (or is still absent) and the temporary sibling is removed. An existing target keeps its
     // permission bits, and a symbolic link keeps pointing at the (rewritten) file it named.

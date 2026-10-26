@@ -17,10 +17,9 @@ JoltJobAdapter::JoltJobAdapter(JPH::uint maxJobs, JPH::uint maxBarriers): JPH::J
 }
 
 JoltJobAdapter::~JoltJobAdapter(){
-    // (the engine's adapter is never destroyed; a test's or a tool's goes out of scope)
-    while (queuedEnvelopes.load(std::memory_order_acquire) > 0){
-        std::this_thread::sleep_for(std::chrono::microseconds(100));
-    }
+    // a barrier's waiter may have run a job before its envelope reached a worker: the
+    // envelope still holds the job's last reference, and its Release() calls FreeJob here
+    envelopes.wait();
 }
 
 int JoltJobAdapter::GetMaxConcurrency() const{
@@ -52,13 +51,11 @@ void JoltJobAdapter::QueueJob(Job* job){
         return;
     }
     // the envelope keeps the job alive until it ran; a barrier waiter may run it first
-    // (Execute runs a job once)
+    // (Execute runs a job once). Counted: the adapter outlives every envelope
     job->AddRef();
-    queuedEnvelopes.fetch_add(1, std::memory_order_relaxed);
-    system.enqueueDetached([this, job](){
+    envelopes.run([job](){
         job->Execute();
         job->Release();
-        queuedEnvelopes.fetch_sub(1, std::memory_order_release);
     }, jobs::Lane::High, "jolt");
 }
 

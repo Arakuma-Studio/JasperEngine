@@ -6,11 +6,11 @@
 
 #ifdef JASPERENGINE_PHYSICS_3D
 
+#include "jobs/JobCounter.h"
+
 #include "Jolt/Jolt.h"
 #include "Jolt/Core/FixedSizeFreeList.h"
 #include "Jolt/Core/JobSystemWithBarrier.h"
-
-#include <atomic>
 
 namespace jasperengine {
 
@@ -21,8 +21,8 @@ namespace jasperengine {
     class JoltJobAdapter final : public JPH::JobSystemWithBarrier {
     public:
         JoltJobAdapter(JPH::uint maxJobs, JPH::uint maxBarriers);
-        // Waits for the queued envelopes still holding a job: a barrier waiter may have run a job
-        // already, but its envelope releases it later, into this adapter's pool
+        // Waits for the envelopes still queued (running the ones no worker took): each holds a
+        // job of this adapter and frees it through FreeJob
         ~JoltJobAdapter() override;
 
         int GetMaxConcurrency() const override;
@@ -36,8 +36,8 @@ namespace jasperengine {
     private:
         using AvailableJobs = JPH::FixedSizeFreeList<Job>;
         AvailableJobs jobPool;
-        // envelopes queued on the job system and not finished yet
-        std::atomic<int> queuedEnvelopes{0};
+        // the queued envelopes, joined by the destructor
+        jobs::JobCounter envelopes;
     };
 
 }

@@ -6,7 +6,10 @@
 
 #ifdef JASPERENGINE_PHYSICS_3D
 
+#include "jobs/JobSystem.h"
 #include "util/JoltJobAdapter.h"
+
+#include "JobsTestUtil.h"
 
 #include "Jolt/Jolt.h"
 #include "Jolt/Core/Factory.h"
@@ -21,7 +24,9 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
+#include <memory>
 #include <vector>
 
 namespace{
@@ -137,6 +142,55 @@ TEST(JobsJolt, AdapterMatchesJoltsOwnPool){
 
     // and our pool repeats itself
     EXPECT_LE(largestDifference(ours, simulate(adapter, againMoved)), 1e-4);
+}
+
+// The adapter queues each Jolt job in an envelope that releases the job's reference after
+// running it, and the last release frees the job through the adapter (JobSystem::FreeJob). A
+// barrier waiter may run the job first, so the envelope can still be queued when the step is
+// over and the adapter goes: the adapter waits for its envelopes (helping them) when it is
+// destroyed, and none of them touches it afterwards.
+TEST(JobsJolt, DestroyingTheAdapterWaitsForItsQueuedJobs){
+    using namespace jasperengine;
+    ensureJolt();
+    jobs::JobSystem& system = jobs::system();
+    const int workers = system.getWorkerCount();
+    ASSERT_GT(workers, 0);
+
+    // every worker busy: the envelope stays queued while the barrier's waiter runs the job
+    std::atomic<int> started{0};
+    jobs::Event release;
+    std::vector<jobs::Task<void>> blockers;
+    for (int i = 0; i < workers; i++){
+        blockers.push_back(system.submit([&]{
+            started++;
+            release.wait();
+        }, {jobs::Lane::High, jobs::GateClass::Default, "blocker"}));
+    }
+    ASSERT_TRUE(testsupport::spinUntil([&]{ return started.load() == workers; }, 10000.0));
+
+    std::atomic<int> ran{0};
+    auto adapter = std::make_unique<JoltJobAdapter>(64, 8);
+    JPH::JobSystem::Barrier* barrier = adapter->CreateBarrier();
+    {
+        JPH::JobHandle handle = adapter->CreateJob("test", JPH::Color::sRed, [&]{ ran++; });
+        barrier->AddJob(handle);
+    }
+    adapter->WaitForJobs(barrier);
+    adapter->DestroyBarrier(barrier);
+    EXPECT_EQ(ran.load(), 1);
+    adapter.reset();
+
+    release.set();
+    for (auto& blocker : blockers)
+        blocker.wait();
+    // the pool takes its High lane in order: once a job queued now has run, so has the
+    // envelope (were it still there), and a worker freeing a job of the destroyed adapter
+    // would have crashed by the time the next one finished too
+    for (int i = 0; i < 2 * workers; i++){
+        jobs::Task<void> after = system.submit([]{}, {jobs::Lane::High, jobs::GateClass::Default, "after"});
+        ASSERT_TRUE(testsupport::spinUntil([&]{ return after.isReady(); }, 10000.0));
+    }
+    EXPECT_EQ(ran.load(), 1);
 }
 
 #endif // JASPERENGINE_PHYSICS_3D

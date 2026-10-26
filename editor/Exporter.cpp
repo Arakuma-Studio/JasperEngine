@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Exporter.h"
+#include "util/EditorScripts.h"
 #include "asset/AssetFileWrite.h"
 #include "asset/AssetMap.h"
 #include "asset/AssetTypes.h"
@@ -747,6 +748,9 @@ void editor::Exporter::runExport() {
     const bool shaderGenerationOnly = (project == nullptr);
     if (project && config.mode == ExportMode::Web)
         config.webMultithreaded = config.webMultithreaded || project->getThreadingSettings().webMultithreaded;
+    // Build Settings > Development Build, whichever front end exports
+    if (project)
+        config.developmentBuild = config.developmentBuild || project->isDevelopmentBuild();
     const bool buildMode = !shaderGenerationOnly && config.mode != ExportMode::SourceCode;
 
     // The scene sources describe the FBX imports that ship, so none may change mid-export
@@ -1051,7 +1055,8 @@ bool editor::Exporter::configureBuild() {
         }
         emcmake = emsdk.emcmake;
         Out::info("Using Emscripten %s", emsdk.description.c_str());
-        kitId = "web\n" + emcmake + "\n" + config.buildType + "\n" + config.graphicBackend + "\n" + extraCMakeArgs;
+        kitId = "web\n" + emcmake + "\n" + config.buildType + "\n" + config.graphicBackend + "\n" + extraCMakeArgs +
+                (config.developmentBuild ? "\ndevelopment" : "");
     } else {
         std::string effectiveGenerator = getEffectiveGenerator();
         // The Xcode generator builds a macOS .app bundle (MACOSX_BUNDLE in the
@@ -1066,7 +1071,8 @@ bool editor::Exporter::configureBuild() {
             }
             return false;
         }
-        kitId = "desktop\n" + effectiveGenerator + "\n" + config.cmakeCCompiler + "\n" + config.cmakeCxxCompiler + "\n" + config.buildType + "\n" + config.graphicBackend;
+        kitId = "desktop\n" + effectiveGenerator + "\n" + config.cmakeCCompiler + "\n" + config.cmakeCxxCompiler + "\n" + config.buildType + "\n" + config.graphicBackend +
+                (config.developmentBuild ? "\ndevelopment" : "");
         if (!platform.empty()) kitId += "\n" + platform;
     }
 
@@ -1127,6 +1133,9 @@ bool editor::Exporter::configureBuild() {
         }
     }
     cmd += "-DCMAKE_BUILD_TYPE=" + config.buildType + " ";
+    if (config.developmentBuild) {
+        cmd += "-DJASPERENGINE_DEVELOPMENT_BUILD=ON ";
+    }
     if (!config.graphicBackend.empty()) {
         cmd += "-DGRAPHIC_BACKEND=" + config.graphicBackend + " ";
     }
@@ -2277,8 +2286,9 @@ bool editor::Exporter::copyAssets() {
             continue;
         }
 
-        // Skip Lua sources already shipped in the lua tree
+        // Skip Lua sources already shipped in the lua tree, and editor scripts
         if (isLuaSourceFile(entry.path()) && luaCopiedSources.count(entry.path().lexically_normal())) continue;
+        if (isLuaSourceFile(entry.path()) && EditorScripts::isEditorOnlyScript(entry.path(), project->getProjectPath())) continue;
 
         // A different file at a path the lua tree already has: Android merges both trees
         // into one assets root and fails on the duplicate, so only one of them can ship.
@@ -2436,6 +2446,8 @@ bool editor::Exporter::copyLua() {
 
         if (luaRootIsAssetsRoot && !isLuaSourceFile(entry.path())) continue;
         if (luaRootIsProjectRoot && !isLuaExportFile(entry.path())) continue;
+        // editor scripts (Editor/ with ---@menu annotations) never ship
+        if (EditorScripts::isEditorOnlyScript(entry.path(), project->getProjectPath())) continue;
 
         fs::path destPath = luaDst / relPath;
         fs::create_directories(destPath.parent_path(), ec);
@@ -2566,6 +2578,8 @@ bool editor::Exporter::copyCppScripts() {
                     continue;
                 }
                 if (!it->is_regular_file() || !isCppSourceFile(it->path())) continue;
+                // the C++ editor scripts are the editor's, never a game's
+                if (EditorScripts::isEditorOnlyScript(it->path(), projectRoot)) continue;
 
                 const fs::path relPath = projectRelativePath(it->path());
                 if (relPath.empty() || !copiedPaths.insert(it->path().string()).second) continue;
@@ -2863,6 +2877,10 @@ bool editor::Exporter::copyEngine() {
         projectSettings += indent + std::string("set(JASPERENGINE_PHYSICS_2D ") + (project->isPhysics2DEnabled() ? "ON" : "OFF") + ")";
         projectSettings += indent + std::string("set(JASPERENGINE_PHYSICS_3D ") + (project->isPhysics3DEnabled() ? "ON" : "OFF") + ")";
         projectSettings += indent + std::string("set(JASPERENGINE_RUNTIME_SHADERS ") + (project->isRuntimeShadersEnabled() ? "ON" : "OFF") + ")";
+        // Development Build: the profiler in a Release game (a source export builds it as one)
+        if (config.developmentBuild) {
+            projectSettings += indent + "set(JASPERENGINE_DEVELOPMENT_BUILD ON)";
+        }
         // Player > Logging
         const PlayerLoggingSettings& logging = project->getPlayerLogging();
         projectSettings += indent + "set(JASPERENGINE_LOG_LEVEL \"" + logging.level + "\")";

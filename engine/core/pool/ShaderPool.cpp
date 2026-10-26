@@ -171,6 +171,10 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::VOLUMETRIC_COMPOSITE;
         return true;
     }
+    if (typeToken == "passpreview") {
+        shaderType = ShaderType::PASS_PREVIEW;
+        return true;
+    }
 
     return false;
 }
@@ -535,6 +539,7 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::VOLUMETRIC_CLOUDS: return lowerCase ? "volumetricclouds" : "Volumetric Clouds";
         case ShaderType::SKY_COMPOSITE: return lowerCase ? "skycomposite" : "Sky Composite";
         case ShaderType::VOLUMETRIC_COMPOSITE: return lowerCase ? "volumetriccomposite" : "Volumetric Composite";
+        case ShaderType::PASS_PREVIEW: return lowerCase ? "passpreview" : "Pass Preview";
         default:                 return lowerCase ? "unknown": "Unknown";
     }
 }
@@ -583,6 +588,8 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         // Lok (the look program), Mfl (the solver with manual filtering)
         case ShaderType::FLUID:  return 2;
         case ShaderType::SHADOW_CACHE: return 1;
+        // the source's texture type: 2D (none), array, cube or 3D
+        case ShaderType::PASS_PREVIEW: return 3;
         default:                 return 0;
     }
 }
@@ -702,6 +709,12 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
     } else if (shaderType == ShaderType::SHADOW_CACHE) {
         switch (bit) {
             case 0: return shortName ? "Vis" : "Atlas View";
+        }
+    } else if (shaderType == ShaderType::PASS_PREVIEW) {
+        switch (bit) {
+            case 0: return shortName ? "Arr" : "Array Source";
+            case 1: return shortName ? "Cub" : "Cube Source";
+            case 2: return shortName ? "Tx3" : "3D Source";
         }
     } else if (shaderType == ShaderType::UI_EFFECT) {
         switch (bit) {

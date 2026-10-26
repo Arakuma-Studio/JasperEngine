@@ -69,6 +69,9 @@ namespace jasperengine{
         // depths of a shadow atlas (sampled as unfilterable_float). It does not own the image,
         // which must outlive it.
         bool createAliasView(const SokolTexture& source, const char* label);
+        // a view of any image (by id) at one mip level, every slice, with a nearest sampler:
+        // the Frame Debugger's preview of a pass attachment. It does not own the image.
+        bool createImageAliasView(uint32_t imageId, int mipLevel, const char* label);
         // RGBA8, linear filtering, clamped, rewritten whole by updateTexture at most once a frame
         // (the post-processing colour LUTs)
         bool createDynamicColorTexture(const std::string& label, int width, int height);

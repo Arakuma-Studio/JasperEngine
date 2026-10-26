@@ -38,6 +38,11 @@
 #include "io/AssetIOService.h"
 #include "jobs/JobSystem.h"
 #include "memory/Arena.h"
+#include "profiler/FrameTimes.h"
+#include "profiler/Profile.h"
+#if JASPERENGINE_PROFILER
+#include "profiler/EngineProfiling.h"
+#endif
 
 #include "sokol_time.h"
 #if defined(__APPLE__)
@@ -879,7 +884,10 @@ bool Engine::ensureCompositeFramebuffer(){
     compositeFramebuffer.setHeight(height);
     compositeFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
     compositeFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
-    compositeFramebuffer.create();
+    {
+        JE_GPU_ALLOC_SCOPE(RenderTargets, "Scene stack composite");
+        compositeFramebuffer.create();
+    }
 
     return compositeFramebuffer.isCreated();
 }
@@ -1232,6 +1240,11 @@ void Engine::systemInit(int argc, char* argv[], System* system){
     std::vector<std::string> args(argv, argv + argc);
     System::instance().args = args;
 
+#if JASPERENGINE_PROFILER
+    // the job hooks (a scope per job), and --profile / --profile-capture
+    profiler::engineInit(args);
+#endif
+
     LuaBinding::createLuaState();
 
     #ifndef NO_LUA_INIT
@@ -1328,6 +1341,19 @@ namespace{
     }
 }
 
+bool Engine::areScenesLoaded(){
+    bool ready = ShaderPool::getPendingShaderCount() == 0 && !scenes.empty();
+    for (size_t i = 0; ready && i < scenes.size(); i++){
+        ready = scenes[i]->getSystem<RenderSystem>()->isAllLoaded();
+        // and its HTML UI documents loaded (or failed) and drawn once
+        if (ready){
+            const auto documents = scenes[i]->getSystem<UIDocumentSystem>();
+            ready = !documents || documents->isAllLoaded();
+        }
+    }
+    return ready;
+}
+
 void Engine::signalReadyOnce(){
     static const bool enabled = [](){
         const char* value = std::getenv("JASPERENGINE_READY_SIGNAL");
@@ -1358,16 +1384,7 @@ void Engine::signalReadyOnce(){
     frames++;
     if (frameStatsAll && frames > 1)
         SystemRender::logFrameStats(frames - 1);
-    bool ready = ShaderPool::getPendingShaderCount() == 0 && !scenes.empty();
-    for (size_t i = 0; ready && i < scenes.size(); i++){
-        ready = scenes[i]->getSystem<RenderSystem>()->isAllLoaded();
-        // and its HTML UI documents loaded (or failed) and drawn once
-        if (ready){
-            const auto documents = scenes[i]->getSystem<UIDocumentSystem>();
-            ready = !documents || documents->isAllLoaded();
-        }
-    }
-    readyFrames = ready ? readyFrames + 1 : 0;
+    readyFrames = areScenesLoaded() ? readyFrames + 1 : 0;
     if (readyFrames >= 10){
         signalled = true;
         signalledFrame = frames;
@@ -1388,6 +1405,15 @@ void Engine::systemUpdate(){
 
 void Engine::runFrame(bool draw){
     const int MAX_UPDATES_PER_FRAME = 100;
+
+    // a game's frame starts here; the editor marks its own (FrameTimes::setExternalFrames)
+    const bool ownFrame = !FrameTimes::hasExternalFrames();
+    if (ownFrame){
+        FrameTimes::beginFrame();
+        JE_PROFILE_FRAME();
+    }
+    JE_PROFILE_SCOPE("Frame");
+    SystemRender::setViewTag(SystemRender::FRAME_STATS_FRAME);
 
     Logger::setFrame(++drawnFrames);
 
@@ -1421,10 +1447,13 @@ void Engine::runFrame(bool draw){
     scheduler.advance(TimeDomain::Real, rawDelta);
     scheduler.process(TimeDomain::Real);
 
-    // the input of this frame is over: no low surrogate will follow a pending high one
-    flushCharInput();
-    // held gamepad directions repeat on the UI clock
-    updateGamepadNavigation();
+    {
+        JE_PROFILE_SCOPE("Input");
+        // the input of this frame is over: no low surrogate will follow a pending high one
+        flushCharInput();
+        // held gamepad directions repeat on the UI clock
+        updateGamepadNavigation();
+    }
 
     drawSemaphore.acquire();
 
@@ -1440,12 +1469,18 @@ void Engine::runFrame(bool draw){
         jobSystem.sampleFrame();
     }
 
-    // async uploads of the last frame, while the scenes that queued them still exist
-    SystemRender::executeQueue();
+    {
+        JE_PROFILE_SCOPE("SokolCmdQueue execute");
+        // async uploads of the last frame, while the scenes that queued them still exist
+        SystemRender::executeQueue();
+    }
 
-    // the main-thread share of runtime shader compilation (one variant a frame when
-    // compiling without a worker thread)
-    RuntimeShaderCompiler::beginFrame();
+    {
+        JE_PROFILE_SCOPE("Shader compile");
+        // the main-thread share of runtime shader compilation (one variant a frame when
+        // compiling without a worker thread)
+        RuntimeShaderCompiler::beginFrame();
+    }
 
     frameRunning = true;
 
@@ -1467,6 +1502,7 @@ void Engine::runFrame(bool draw){
         // 1) Fixed-timestep phase (deterministic). Runs zero or more times per frame.
         //    Used for physics, networking, and any subsystem overriding fixedUpdate().
         if (updateTime > 0.0) {
+            JE_PROFILE_SCOPE("FixedUpdate");
             updateTimeCount += frameDelta;
 
             int fixedLoops = 0;
@@ -1506,6 +1542,7 @@ void Engine::runFrame(bool draw){
 
         // 2) Variable-timestep phase. Runs exactly once per frame with the real frame delta.
         //    Used for animation, input, UI, and any subsystem overriding update().
+        JE_PROFILE_SCOPE("Update");
         Engine::onUpdate.call();
         for (int i = 0; i < scenes.size(); i++) {
             scenes[i]->update(frameDelta);
@@ -1529,15 +1566,22 @@ void Engine::runFrame(bool draw){
         beginCompositeFramebuffer();
 
         beginFrameStats();
-        for (int i = 0; i < scenes.size(); i++){
-            scenes[i]->draw();
-        }
+        {
+            JE_PROFILE_SCOPE("Draw");
+            for (int i = 0; i < scenes.size(); i++){
+                scenes[i]->draw();
+            }
 
-        endCompositeFramebuffer();
+            endCompositeFramebuffer();
+        }
     }
 
-    SystemRender::commit();
+    {
+        JE_PROFILE_SCOPE("Commit");
+        SystemRender::commit();
+    }
     frameCpuTime = stm_sec(stm_since(frameStart));
+    FrameTimes::setDrawCalls(currentFrameStats.drawCalls);
 
     // a one-shot stays until a frame draws it
     if (draw){
@@ -1571,7 +1615,15 @@ void Engine::runFrame(bool draw){
     if (draw)
         signalReadyOnce();
 
+#if JASPERENGINE_PROFILER
+    // the built-in monitors, and the command line's capture once the scenes are loaded
+    profiler::engineFrameEnd(areScenesLoaded());
+#endif
+
     frameRunning = false;
+
+    if (ownFrame)
+        FrameTimes::endFrameWork();
 
     drawSemaphore.release();
 }
@@ -1583,8 +1635,11 @@ void Engine::drawView(uint32_t viewId, Framebuffer* target, const std::vector<Vi
 
     drawSemaphore.acquire();
 
+    JE_PROFILE_SCOPE("Draw View");
     // the frame statistics are the game's: a second view of it adds nothing to them
     const FrameStats gameFrameStats = currentFrameStats;
+    // its passes and GPU time are the view's
+    SystemRender::setViewTag(viewId);
 
     bool baseLayer = true;
     for (const ViewLayer& layer : layers){
@@ -1613,6 +1668,7 @@ void Engine::drawView(uint32_t viewId, Framebuffer* target, const std::vector<Vi
     currentFrameStats = gameFrameStats;
 
     SystemRender::commit();
+    SystemRender::setViewTag(SystemRender::FRAME_STATS_FRAME);
     // JASPERENGINE_FRAME_STATS=all: this view's passes too (each view commits on its own)
     if (frameStatsEveryFrame())
         SystemRender::logFrameStats(frameStatsFrames, viewId);
@@ -1662,6 +1718,9 @@ void Engine::systemShutdown(){
     // the readers submit decode jobs, so they stop first; queued submit() jobs end
     // Cancelled, enqueueDetached() jobs run, every thread joins
     AssetIOService::instance().stop();
+#if JASPERENGINE_PROFILER
+    profiler::engineShutdown();
+#endif
     jobs::shutdown();
 
     // what the game logged (the workers' last lines too) reaches its sinks before the process goes

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ThreadUtil.h"
+#include "profiler/Profile.h"
 
 #include <algorithm>
 #include <atomic>
@@ -131,6 +132,8 @@ int resolveWorkerCount(int configured){
 void setCurrentName(const char* name){
     if (!name)
         return;
+    // the profiler's timelines name the engine's threads the same way (S15 R17)
+    JE_PROFILE_THREAD(name);
 #if defined(_WIN32)
     // SetThreadDescription exists from Windows 10 1607; looked up so older systems still run
     typedef HRESULT (WINAPI *SetThreadDescriptionFn)(HANDLE, PCWSTR);

@@ -7,6 +7,8 @@
 #include "command/CommandGroup.h"
 #include "command/CommandNames.h"
 #include "command/EntityEdit.h"
+#include "command/CommandHandle.h"
+#include "Project.h"
 
 #include <algorithm>
 #include <chrono>
@@ -59,6 +61,62 @@ std::string McpUndo::clientName(const std::string& raw) {
         name = name.substr(0, start);
     }
     return name.empty() ? std::string("Agent") : name;
+}
+
+McpUndo::Group::Group() = default;
+McpUndo::Group::~Group() = default;
+McpUndo::Group::Group(Group&&) noexcept = default;
+McpUndo::Group& McpUndo::Group::operator=(Group&&) noexcept = default;
+
+void McpUndo::beginGroup(Group& group, Project* project) {
+    for (SceneProject* scene : project->getScenesAndPrefabStages()) {
+        CommandHistory* history = CommandHandle::get(scene->id);
+        group.sceneMarks[scene->id] = history->mark();
+        group.trimHolds.push_back(std::make_unique<UndoGroupScope>(history));
+    }
+    group.projectMark = project->getProjectCommandHistory()->mark();
+    group.trimHolds.push_back(std::make_unique<UndoGroupScope>(project->getProjectCommandHistory()));
+}
+
+// One undo step per history changed, linked so one Ctrl+Z undoes them all. Scenes made in
+// between start at 0.
+Json McpUndo::endGroup(Group& group, Project* project, const std::string& label) {
+    Json grouped = Json::array();
+    bool complete = true;
+    std::vector<CommandHistory*> histories;
+    for (SceneProject* scene : project->getScenesAndPrefabStages()) {
+        auto it = group.sceneMarks.find(scene->id);
+        const size_t mark = it != group.sceneMarks.end() ? it->second : 0;
+        CommandHistory* history = CommandHandle::get(scene->id);
+        if (history->position() <= mark) continue;
+        if (history->groupSince(mark, label)) {
+            grouped.push_back(scene->id);
+            histories.push_back(history);
+        } else {
+            complete = false;
+        }
+    }
+    CommandHistory* projectHistory = project->getProjectCommandHistory();
+    if (projectHistory->position() > group.projectMark) {
+        if (projectHistory->groupSince(group.projectMark, label)) histories.push_back(projectHistory);
+        else complete = false;
+    } else if (!projectHistory->groupSince(group.projectMark)) {
+        complete = false;
+    }
+    group.trimHolds.clear();
+    Json data = {{"scene_ids", grouped}, {"complete", complete}};
+    if (histories.size() > 1) {
+        data["link_id"] = UndoTimeline::link(histories);
+    }
+    const UndoEntry* newest = nullptr;
+    for (CommandHistory* history : histories) {
+        const UndoEntry* top = history->top();
+        if (top && (!newest || top->info.id > newest->info.id)) newest = top;
+    }
+    if (newest) {
+        data["undo"] = {{"id", newest->info.id}, {"name", newest->name()}};
+    }
+    return data;
 }
 
 Json McpUndo::foldCall(const McpCall& call, const std::string& toolTitle) {

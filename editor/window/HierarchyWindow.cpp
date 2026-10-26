@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "HierarchyWindow.h"
+#include "util/EditorScripts.h"
 #include "window/dialog/DataSafetyDialogs.h"
 #include "StreamPreserved.h"
 
@@ -2239,6 +2240,12 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
                     }
                 }
             }
+
+            // the project's editor scripts: GameObject/... items (S23)
+            EditorMenuRunContext scriptContext;
+            scriptContext.sceneId = sceneId;
+            for (Entity selected : project->getSelectedEntities(sceneId)) scriptContext.selection.push_back(selected);
+            EditorScripts::get().drawContextItems("gameobject", {}, scriptContext);
 
             ImGui::EndPopup();
         }

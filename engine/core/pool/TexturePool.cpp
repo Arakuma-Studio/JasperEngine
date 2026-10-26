@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TexturePool.h"
+#include "profiler/Profile.h"
 
 #include "Engine.h"
 #include "Log.h"
@@ -86,6 +87,7 @@ std::shared_ptr<TextureRender> TexturePool::get(const std::string& id, TextureTy
 		shared->destroyTexture();
 	}
 
+	JE_GPU_ALLOC_SCOPE(Textures, id);
 	if (!shared->createTexture(id, data->at(0).getWidth(), data->at(0).getHeight(), data->at(0).getColorFormat(), type, numFaces, data_array, size_array, minFilter, magFilter, wrapU, wrapV)){
 		shared->destroyTexture();
 		if (it != map.end()){

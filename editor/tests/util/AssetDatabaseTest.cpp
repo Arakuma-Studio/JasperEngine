@@ -131,6 +131,67 @@ TEST(AssetDatabaseGuid, WriteGuidRewritesAFlowStyleMap){
     EXPECT_EQ(node["name"].as<std::string>(), "A");
 }
 
+TEST(AssetDatabaseGuid, ReadGuidReadsAFlowStyleMap){
+    TempDir dir;
+    dir.write("a.prefab", "{name: A, guid: " + guidA + ", entities: []}\n");
+    dir.write("b.prefab", "# another tool's prefab\n{name: B, child: {guid: " + guidB + "}}\n");
+    dir.write("c.prefab", "--- {guid: '" + guidB + "', name: C}\n");
+    // block style with a flow value spread over lines: still read line by line
+    dir.write("d.prefab", "name: D\nentities: [\n  {name: child}\n]\nguid: " + guidA + "\n");
+    EXPECT_EQ(AssetDatabase::readGuid(dir.file("a.prefab")), guidA);
+    EXPECT_EQ(AssetDatabase::readGuid(dir.file("b.prefab")), "");
+    EXPECT_EQ(AssetDatabase::readGuid(dir.file("c.prefab")), guidB);
+    EXPECT_EQ(AssetDatabase::readGuid(dir.file("d.prefab")), guidA);
+}
+
+TEST(AssetDatabaseGuid, WriteGuidOutputReadsBackInBothStyles){
+    TempDir dir;
+    const std::map<std::string, std::string> files = {
+        {"block-new.prefab", "name: A\nentities: []\n"},
+        {"block-old.prefab", prefab(guidB, "A")},
+        {"flow-new.prefab", "{name: A, entities: [{name: child}]}\n"},
+        {"flow-old.prefab", "{name: A, guid: " + guidB + "}\n"},
+        {"flow-multiline.prefab", "{\n  name: A,\n  guid: x\n}\n"},
+    };
+    for (const auto& [name, text] : files){
+        dir.write(name, text);
+        ASSERT_TRUE(AssetDatabase::writeGuid(dir.file(name), guidA)) << name;
+        EXPECT_EQ(AssetDatabase::readGuid(dir.file(name)), guidA) << name << ":\n" << dir.read(name);
+        const YAML::Node node = YAML::LoadFile(dir.file(name).string());
+        EXPECT_EQ(node["name"].as<std::string>(), "A") << name;
+        // and again: a GUID written once is replaced in place
+        ASSERT_TRUE(AssetDatabase::writeGuid(dir.file(name), guidB)) << name;
+        EXPECT_EQ(AssetDatabase::readGuid(dir.file(name)), guidB) << name << ":\n" << dir.read(name);
+    }
+    const YAML::Node nested = YAML::LoadFile(dir.file("flow-new.prefab").string());
+    EXPECT_EQ(nested["entities"][0]["name"].as<std::string>(), "child");
+}
+
+TEST(AssetDatabaseGuid, InFileIdentityRoundTripsInBothStyles){
+    // S04's identity: the former GUIDs travel with the GUID through a flow style rewrite too
+    TempDir dir;
+    const Guid current = Guid::parse(guidA);
+    const std::vector<Guid> former = {Guid::parse(guidB)};
+    for (const std::string& text : {std::string("name: A\n"), std::string("{name: A, entities: [{name: child}]}\n"),
+                                   "{name: A, guid: " + guidB + ", formerGuids: [" + guidB + "]}\n"}){
+        dir.write("x.prefab", text);
+        Guid read;
+        std::vector<Guid> readFormer;
+        ASSERT_TRUE(AssetDatabase::writeInFileIdentity(dir.file("x.prefab"), current, former)) << text;
+        ASSERT_TRUE(AssetDatabase::readInFileIdentity(dir.file("x.prefab"), read, readFormer)) << text << dir.read("x.prefab");
+        EXPECT_EQ(read, current) << dir.read("x.prefab");
+        EXPECT_EQ(readFormer, former) << dir.read("x.prefab");
+        EXPECT_EQ(YAML::LoadFile(dir.file("x.prefab").string())["name"].as<std::string>(), "A");
+    }
+    // a flow style document another tool wrote reads as it is
+    dir.write("y.prefab", "{name: Y, guid: " + guidA + ", formerGuids: [" + guidB + "]}\n");
+    Guid read;
+    std::vector<Guid> readFormer;
+    ASSERT_TRUE(AssetDatabase::readInFileIdentity(dir.file("y.prefab"), read, readFormer));
+    EXPECT_EQ(read, current);
+    EXPECT_EQ(readFormer, former);
+}
+
 TEST(AssetDatabaseGuid, WriteGuidFailsWithoutAFile){
     TempDir dir;
     EXPECT_FALSE(AssetDatabase::writeGuid(dir.file("none.prefab"), guidA));

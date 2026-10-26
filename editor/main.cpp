@@ -185,6 +185,12 @@ int main(int argc, char* argv[]) {
         editor::Out::stopLogging();
         return 2;
     }
+    // the profiler's options go to the engine, whatever the mode; benchmark parses its own
+    const bool benchmark = args.size() >= 2 && std::strcmp(args[1], "benchmark") == 0;
+    if (!benchmark && !editor::CommandLine::takeProfilerFlags(args)) {
+        editor::Out::stopLogging();
+        return 2;
+    }
     args.push_back(nullptr);
     const int result = runEditor(static_cast<int>(args.size()) - 1, args.data());
     editor::Out::stopLogging();

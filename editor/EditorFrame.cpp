@@ -8,6 +8,8 @@
 #include "Log.h"
 
 #include "imgui.h"
+#include "profiler/FrameTimes.h"
+#include "profiler/Profile.h"
 
 #include <chrono>
 #include <cmath>
@@ -69,7 +71,7 @@ std::string EditorFrame::formatWindowTitle(const std::string& projectName){
 }
 
 bool EditorFrame::isIdle() const{
-    if (app && app->isBenchmarkMode())
+    if (app && (app->isBenchmarkMode() || app->wantsContinuousFrames()))
         return false;
     return frameMonotonicSeconds() - lastActivityTime > IDLE_ENTER_DELAY;
 }
@@ -146,11 +148,18 @@ bool EditorFrame::run(EditorFrameState& state){
                                  textFocused;
     const bool frameReady = !state.minimized && renderRequested && renderer->beginFrame();
 
+    // a profiler frame is one rendered loop of the editor (S15 §6.5); idle loops are not frames
+    if (frameReady){
+        FrameTimes::beginFrame();
+        JE_PROFILE_FRAME();
+    }
+
     renderer->newFrame();
     platformNewFrame();
     ImGui::NewFrame();
 
     if (frameReady){
+        JE_PROFILE_SCOPE("Scene Views");
         app->engineRender();
     }else{
         // engineRender() is what normally drains main-thread tasks. Keep draining
@@ -158,24 +167,35 @@ bool EditorFrame::run(EditorFrameState& state){
         app->processMainThreadTasks();
     }
 
-    app->show();
+    {
+        JE_PROFILE_SCOPE("Editor UI");
+        app->show();
+    }
 
     const bool activity = detectActivity(state.redrawRequested);
     if (activity){
         lastActivityTime = frameMonotonicSeconds();
     }
 
-    ImGui::Render();
     bool frameSubmitted = false;
+    {
+        // the editor's own rendering: CPU time only (its renderer is not sokol's)
+        JE_PROFILE_SCOPE("Editor Render");
+        ImGui::Render();
+        if (frameReady){
+            frameSubmitted = renderer->endFrame(ImGui::GetDrawData(), state.width, state.height);
+        }
+
+        if (!frameReady || frameSubmitted){
+            renderer->renderViewports(renderRequested || activity);
+        }
+    }
+
     if (frameReady){
-        frameSubmitted = renderer->endFrame(ImGui::GetDrawData(), state.width, state.height);
+        FrameTimes::endFrameWork();
     }
-
-    if (!frameReady || frameSubmitted){
-        renderer->renderViewports(renderRequested || activity);
-    }
-
     if (frameSubmitted){
+        JE_PROFILE_SCOPE("Present/Wait");
         renderer->present();
     }
     renderer->purgeTextures();
@@ -185,8 +205,9 @@ bool EditorFrame::run(EditorFrameState& state){
     }
 
     // Unfocused and minimized frames have no vsync to pace them. A benchmark measures
-    // uncapped frames, focused or not.
-    if (state.minimized || (!state.focused && !app->isBenchmarkMode())){
+    // the frames as fast as they go, focused or not (a headless X server gives no window the
+    // focus)
+    if ((!state.focused || state.minimized) && !app->isBenchmarkMode()){
         // Paced by deadline, so a late wake-up is made up on the next frame
         const double now = frameMonotonicSeconds();
         frameDeadline += state.framePeriod;

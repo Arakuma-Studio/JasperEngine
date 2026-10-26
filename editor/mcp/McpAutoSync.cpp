@@ -10,6 +10,7 @@
 #include "Project.h"
 #include "util/FileUtils.h"
 #include "util/Util.h"
+#include "util/ScriptReloadService.h"
 #include "reload/HotReloadService.h"
 #include "util/FileUtils.h"
 
@@ -646,7 +647,9 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
         }
         // HTML UI files are not deferred: the documents (the running ones and the edit-time
         // ones) reload now. Images go to the documents now and to the scene textures after Play.
-        std::vector<fs::path> uiPaths, imagePaths;
+        std::vector<fs::path> uiPaths, imagePaths, scriptPaths;
+        std::vector<std::string> scriptRels;
+        const uint64_t scriptSerial = ScriptReloadService::get().lastSerial();
         w4::SyncOptions uiSync;
         bool otherDeferred = false;
         for (const auto& [rel, pending] : merged) {
@@ -660,6 +663,13 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
                 continue;
             }
             if (Util::isImageFile(rel)) imagePaths.push_back(path);
+            // a script reloaded during Play (S23): not deferred (Reload After Stopping Play,
+            // C++ with its reload off: deferred as before)
+            if (pending.kind != 'r' && Util::isScriptFile(rel) && ScriptReloadService::get().notifyChanged(path)) {
+                scriptPaths.push_back(path);
+                scriptRels.push_back(rel);
+                continue;
+            }
             merge(deferred, rel, pending.kind, pending.report);
             if (pending.report) otherDeferred = true;
         }
@@ -716,7 +726,16 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
                 : "A scene is playing: script properties, shaders, materials and textures are picked up when play stops"
                   " (HTML UI documents reloaded now).";
         }
-        run(report);
+        if (scriptPaths.empty()) {
+            run(report);
+            return;
+        }
+        // the scripts reload into the running game (S23 R45): the call waits for them (at most 5 s)
+        call->waitUntil([scriptPaths]() { return ScriptReloadService::get().idleFor(scriptPaths); }, 5000,
+                        [run, report, scriptSerial, scriptRels](bool) mutable {
+            report["script_reload"] = ScriptReloadService::reportJson(ScriptReloadService::get().recordsSince(scriptSerial), scriptRels);
+            run(report);
+        });
         return;
     }
 

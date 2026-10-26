@@ -691,6 +691,21 @@ Recorded by the implementer (branch `feat/s06-jobs-memory`).
   base was already at 100.6 K, over the ~100 K target, so the total is 101.5 K. The overage
   predates S06. `focus_window` also gains `jobs_memory`.
 
+- **R2: the 1 ms backstop grows while idle** (fix/bf1-bugs). With a fixed 1 ms backstop
+  every worker woke 1000 times a second, and each wake-up spun another 50 µs: 8 idle workers
+  used 45 % of a core (61 % was seen in the core test process). A worker now spins only when it
+  runs out of work, parks again without spinning when a wake-up finds nothing, and doubles its
+  backstop on each such wake-up, from 1 ms up to 128 ms; running a job resets both. Producers
+  wake parked workers (the propagation read of the sleeper count and the gate release are
+  sequentially consistent with a sleeper's count), so the backstop only bounds a missed wake.
+  `JobsIdle.IdleWorkersUseUnderOnePercentOfACore` measures the workers' own CPU clocks;
+  `JobsIdle.AParkedPoolWakesForNewWorkAtOnce` checks that a long-parked pool still starts new
+  work at once.
+- **R22: `JoltJobAdapter` joins its envelopes** (fix/bf1-bugs). Jolt jobs go through a
+  `JobCounter` of the adapter instead of `enqueueDetached`, and the adapter's destructor waits
+  on it, because an envelope still queued after a barrier's waiter ran its job frees that job
+  through the adapter. A `JobCounter` built for the process system resolves it at each call.
+
 ### Acceptance evidence (server C, 8 vCPU VM, after merging oe-port with S01, S02 and S03)
 
 - **AC1-AC10, AC22.**

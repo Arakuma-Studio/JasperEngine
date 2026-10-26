@@ -600,6 +600,17 @@ void ExportWindow::drawBuildTypeRow() {
     }
 }
 
+// Unity's Development Build: a Release game that keeps the profiler (and its --profile options)
+void ExportWindow::drawDevelopmentBuildRow() {
+    exportBeginSettingsRow("Development Build");
+    bool development = m_project->isDevelopmentBuild();
+    if (ImGui::Checkbox("##DevelopmentBuild", &development)) {
+        m_project->setDevelopmentBuild(development);
+        m_projectSettingsDirty = true;
+    }
+    ImGui::SetItemTooltip("Keeps the profiler in a Release build: --profile and --profile-capture=<file> record it (docs/profiling.md). Debug builds always have it.");
+}
+
 void ExportWindow::drawSourceBackendsRow() {
     exportBeginSettingsRow("Graphics APIs");
     std::string names;
@@ -946,6 +957,7 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
         ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
         if (!isCustom) drawBuildTypeRow();
+        drawDevelopmentBuildRow();
         drawOutputDirRow("Output Directory");
         if (m_mode == ExportMode::Desktop) {
             drawGraphicBackendRow();

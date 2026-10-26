@@ -32,10 +32,13 @@
 #include "window/ConsoleWindow.h"
 #include "window/GameWindow.h"
 #include "window/JobsMemoryWindow.h"
+#include "window/profiler/FrameDebuggerWindow.h"
+#include "window/profiler/ProfilerWindow.h"
 #include "window/PlayModeChangesWindow.h"
 #include "window/SceneWindow.h"
 #include "window/SystemsWindow.h"
 #include "window/UndoHistoryWindow.h"
+#include "util/UiItemLocator.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -1007,6 +1010,31 @@ Json consoleStateJson(ConsoleWindow& console) {
     return json;
 }
 
+// Where an editor control is drawn now, for tests that click it with real input: the items of
+// the next frames drawn with the label (UiItemLocator)
+void locateUiItemTool(const CallPtr& call) {
+    const Json& args = call->args();
+    const std::string label = args.value("label", std::string());
+    if (label.empty()) {
+        call->fail("label: the item's label (its text, or the whole label with its ## id).");
+        return;
+    }
+    UiItemLocator::start(label, args.value("window", std::string()));
+    call->afterFrames(2, [call, label]() {
+        Json items = Json::array();
+        for (const UiItemLocator::Item& item : UiItemLocator::stop()) {
+            items.push_back({{"label", item.label}, {"window", item.window}, {"visible", item.visible},
+                             {"rect", {{"x", std::round(item.x)}, {"y", std::round(item.y)},
+                                       {"width", std::round(item.width)}, {"height", std::round(item.height)}}},
+                             {"window_rect", {{"x", std::round(item.windowX)}, {"y", std::round(item.windowY)},
+                                              {"width", std::round(item.windowWidth)}, {"height", std::round(item.windowHeight)}}}});
+        }
+        const std::string text = items.empty() ? "No item \"" + label + "\" is drawn (scrolled away, closed or another label)."
+                                               : std::to_string(items.size()) + " item(s) \"" + label + "\".";
+        call->ok(text, Json{{"items", items}});
+    });
+}
+
 void focusWindowTool(const CallPtr& call) {
     const Json& args = call->args();
     McpContext& ctx = call->ctx();
@@ -1083,6 +1111,22 @@ void focusWindowTool(const CallPtr& call) {
     } else if (window == "jobs_memory") {
         app.getJobsMemoryWindow()->setOpen(true);
         imguiName = JobsMemoryWindow::WINDOW_NAME;
+    } else if (window == "profiler") {
+        ProfilerWindow* profiler = app.getProfilerWindow();
+        profiler->setOpen(true);
+        imguiName = ProfilerWindow::WINDOW_NAME;
+        // what Load does, without the file dialog
+        const Json options = args.value("profiler", Json::object());
+        if (options.contains("load") && options["load"].is_string()) {
+            std::string error;
+            if (!profiler->loadCapture(options["load"].get<std::string>(), error)) {
+                call->fail("profiler.load: " + error);
+                return;
+            }
+        }
+    } else if (window == "frame_debugger") {
+        app.getFrameDebuggerWindow()->setOpen(true);
+        imguiName = FrameDebuggerWindow::WINDOW_NAME;
     } else if (window == "undo_history") {
         app.getUndoHistoryWindow()->setOpen(true);
         imguiName = UndoHistoryWindow::WINDOW_NAME;
@@ -1094,7 +1138,7 @@ void focusWindowTool(const CallPtr& call) {
         imguiName = TextureSynthesisWindow::WINDOW_NAME;
     } else {
         call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, terrain, mcp, "
-                   "systems, jobs_memory, preferences, undo_history, play_mode_changes, texture_synthesis.");
+                   "systems, jobs_memory, profiler, frame_debugger, preferences, undo_history, play_mode_changes, texture_synthesis.");
         return;
     }
     // A window opened just now exists after its next draw
@@ -1113,6 +1157,11 @@ void focusWindowTool(const CallPtr& call) {
             }
             if (window == "console") data["console"] = consoleStateJson(*call->ctx().consoleWindow());
             if (window == "preferences") data["page"] = call->ctx().app().getEditorSettingsWindow().pageName();
+            if (window == "profiler") {
+                const ProfilerWindow* profiler = call->ctx().app().getProfilerWindow();
+                data["profiler"] = {{"target", profiler->getTarget()}, {"frames", profiler->targetFrameCount()},
+                                    {"recording", profiler->isRecording()}};
+            }
             if (window == "systems") {
                 // each row's Enabled checkbox, as the OS pointer sees it; visible: inside the table's scroll view
                 const ImVec2 origin = ImGui::GetMainViewport()->Pos;
@@ -1298,7 +1347,7 @@ void registerViewTools(McpRegistry& registry) {
             "systems: returns each row's Enabled checkbox rect.";
         tool.inputSchema = object({
             {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "terrain", "mcp",
-                                       "systems", "jobs_memory", "preferences", "undo_history", "play_mode_changes", "texture_synthesis"})},
+                                       "systems", "jobs_memory", "profiler", "frame_debugger", "preferences", "undo_history", "play_mode_changes", "texture_synthesis"})},
             {"scene", sceneRef("window scene: whose tab.")},
             {"console", object({
                 {"hidden_categories", array(string(""), "The Category filter: categories not shown.")},
@@ -1306,10 +1355,29 @@ void registerViewTools(McpRegistry& registry) {
                 {"select", integer("Select the row of this message id (as a click).")}
             })},
             {"page", string("preferences: General, Code Editor, Undo, External Tools, Logging, Shader Cache.")},
-            {"close", boolean("preferences: close it.")}
+            {"close", boolean("preferences: close it.")},
+            {"profiler", object({{"load", string("A .jetrace.json to load (as Load).")}})}
         }, {"window"});
         tool.annotations.idempotent = true;
         tool.handler = focusWindowTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "find_ui_item";
+        tool.group = "editor_ux";  // S31 tool groups: listed once enabled, callable always
+        tool.title = "Find UI Item";
+        tool.description =
+            "Where editor controls with this label are drawn now (window coords, as focus_window's rect), to click "
+            "them with send_input or real input. Only drawn items: scroll or open their panel first.";
+        tool.inputSchema = object({
+            {"label", string("Text, or the whole label with its ## id.")},
+            {"window", string("Only in windows whose name contains this.")}
+        }, {"label"});
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = locateUiItemTool;
         registry.addTool(std::move(tool));
     }
 

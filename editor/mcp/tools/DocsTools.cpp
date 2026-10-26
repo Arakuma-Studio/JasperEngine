@@ -18,6 +18,7 @@
 #include "util/FileUtils.h"
 
 #include "mcp_docs.h"
+#include "util/LuaApiData.h"
 
 #include <algorithm>
 #include <cctype>
@@ -141,6 +142,15 @@ const std::vector<Doc>& docs() {
                 }
             }
             if (doc.title.empty()) doc.title = name;
+            splitDoc(doc);
+            out.push_back(std::move(doc));
+        }
+        // the Lua API reference, generated from lua-api.json (S23 R46)
+        {
+            Doc doc;
+            doc.name = "lua-api-reference";
+            doc.text = LuaApiData::markdown();
+            doc.title = "Lua API reference";
             splitDoc(doc);
             out.push_back(std::move(doc));
         }
@@ -454,6 +464,32 @@ void registerDocsTools(McpRegistry& registry) {
             };
             registry.addResource(std::move(part));
         }
+    }
+    {
+        // the Lua API as data (lua-api.json, S23 R46)
+        ResourceDef api;
+        api.uri = "jasper://lua-api";
+        api.name = "lua-api";
+        api.title = "Lua API (JSON)";
+        api.description = "The engine's Lua API from its one parser: classes (constructors, methods with overloads, properties, "
+                          "C++-only methods), enums, globals, engine events. jasper://lua-api?class=<Name>: one class.";
+        api.mimeType = "application/json";
+        api.read = [](const std::string& uri) { return textResource(uri, "application/json", LuaApiData::jsonText()); };
+        registry.addResource(std::move(api));
+
+        ResourceTemplateDef tmpl;
+        tmpl.uriTemplate = "jasper://lua-api?class={class}";
+        tmpl.name = "lua-api-class";
+        tmpl.title = "Lua API class";
+        tmpl.description = "One class of jasper://lua-api by its Lua name.";
+        tmpl.mimeType = "application/json";
+        tmpl.read = [](const std::string& uri, const std::map<std::string, std::string>& vars) {
+            const std::string name = vars.count("class") ? vars.at("class") : "";
+            const Json cls = LuaApiData::findClass(name);
+            if (cls.is_null()) return notFound("No Lua class \"" + name + "\" (jasper://lua-api lists them).");
+            return textResource(uri, "application/json", cls.dump(1));
+        };
+        registry.addResourceTemplate(std::move(tmpl));
     }
     {
         // Any other jasper://docs/<name> gets a helpful error listing the documents

@@ -80,3 +80,7 @@ __pycache__/
 # Claude Code: the contributor rules are tracked (AGENTS.md), personal settings are not
 .claude/*
 !.claude/rules/
+
+# the core tests write their resource pack (TestPack.h) into the working directory, the checkout
+/resources.pak
+/resources.pak.tmp*
