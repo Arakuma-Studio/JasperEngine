@@ -683,7 +683,7 @@ void ConsoleWindow::showList(float height) {
     const ImGuiStyle& style = ImGui::GetStyle();
     const float rowHeight = std::floor(ImGui::GetTextLineHeight() + Theme::dpi(6.0f));
     const float textOffsetY = (rowHeight - ImGui::GetTextLineHeight()) * 0.5f;
-    const bool listFocused = ImGui::IsWindowFocused();
+    listFocused = ImGui::IsWindowFocused();
     ImDrawList* dl = ImGui::GetWindowDrawList();
 
     int selectedRow = -1;
@@ -693,7 +693,7 @@ void ConsoleWindow::showList(float height) {
         }
     }
 
-    // Keyboard: arrows move the selection, Ctrl+C copies it.
+    // Keyboard: arrows move the selection (Ctrl+C copying it is the catalog's console.copy)
     if (listFocused && !rows.empty()) {
         int move = 0;
         if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) move = -1;
@@ -706,9 +706,6 @@ void ConsoleWindow::showList(float height) {
             hasSelection = true;
             scrollToSelection = true;
             autoScroll = false;
-        }
-        if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C, false)) {
-            if (const LogData* log = selectedLog()) ImGui::SetClipboardText(log->message.c_str());
         }
     }
 
@@ -914,6 +911,7 @@ void ConsoleWindow::showDetails() {
 }
 
 void ConsoleWindow::show() {
+    listFocused = false;
     pullLogs();
     updatePlayState();
 
@@ -984,4 +982,12 @@ void ConsoleWindow::show() {
     if (wasOpen && !windowOpen) {
         setOpen(false);
     }
+}
+
+bool ConsoleWindow::hasSelectedMessage() const {
+    return selectedLog() != nullptr;
+}
+
+void ConsoleWindow::copySelectedMessage() {
+    if (const LogData* log = selectedLog()) ImGui::SetClipboardText(log->message.c_str());
 }

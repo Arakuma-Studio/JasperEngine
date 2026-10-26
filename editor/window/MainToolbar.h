@@ -11,8 +11,8 @@ namespace jasperengine::editor {
 
     // Unity-style main toolbar: a full-width bar between the menu and the dock space
     // with the transform tools (left), Play/Pause/Step and the script status (centre), Layout
-    // and the editor scripts' Tools strip (right).
-    // It also owns their keyboard shortcuts.
+    // and the editor scripts' Tools strip (right). Their keys are command catalog entries
+    // (shortcuts/DefaultCommands.cpp) that call the functions below.
     class MainToolbar {
     public:
         enum class Tool {
@@ -42,9 +42,6 @@ namespace jasperengine::editor {
 
         // Draws the bar; call after the menu bar and before the dock space.
         void show();
-        // Play shortcuts, and tool shortcuts when toolShortcuts (no text editor has
-        // the keyboard); call once per frame when no popup is open.
-        void handleShortcuts(bool toolShortcuts);
 
         // Play mode commands (also for the menu): Play toggles play mode on/off,
         // Pause toggles pause while in play mode, Step advances one paused frame.
@@ -56,6 +53,12 @@ namespace jasperengine::editor {
         void togglePlay();
         void togglePause();
         void step();
+        // F5 plays, or resumes a paused game; F6 pauses; F7 stops (a loading game too)
+        void playOrResume();
+        bool canPlayOrResume() const;
+        void pauseOnly();
+        bool canStopSession() const;
+        void stopSession();
 
         // Transform tools act on every open Scene view that supports them
         Tool getTool() const;

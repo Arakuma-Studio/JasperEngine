@@ -3,6 +3,15 @@
 
 #pragma once
 
+#include "mcp/McpJson.h"
+
+#include <cstddef>
+#include <string>
+
+namespace jasperengine::editor {
+    class Project;
+}
+
 namespace jasperengine::editor::mcp {
 
     class McpRegistry;
@@ -37,5 +46,10 @@ namespace jasperengine::editor::mcp {
     void registerProfilerTools(McpRegistry& registry);
     void registerScriptingTools(McpRegistry& registry);
     void registerGraphTools(McpRegistry& registry);
+    void registerOrganisationTools(McpRegistry& registry);
+
+    // list_assets search and saved searches (OrganisationTools.cpp): an R20 search over the asset
+    // index, as {entries: [{path, type, guid?, labels?}], total, truncated, query}; *error for a bad re:
+    Json searchAssetsJson(Project* project, const std::string& query, const std::string& folder, size_t limit, std::string& error);
 
 }

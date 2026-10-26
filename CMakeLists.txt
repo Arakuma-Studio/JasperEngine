@@ -590,6 +590,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/cli/McpClient.cpp
     ${EDITOR_DIR}/cli/CallCommand.cpp
     ${EDITOR_DIR}/App.cpp
+    ${EDITOR_DIR}/AppCommands.cpp
     ${EDITOR_DIR}/AppSettings.cpp
     ${EDITOR_DIR}/Theme.cpp
     ${EDITOR_DIR}/Factory.cpp
@@ -674,6 +675,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/HtmlUiTools.cpp
     ${EDITOR_DIR}/mcp/tools/UIEffectTools.cpp
     ${EDITOR_DIR}/mcp/tools/EcsTools.cpp
+    ${EDITOR_DIR}/mcp/tools/OrganisationTools.cpp
 
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp
     ${EDITOR_DIR}/util/BidiText.cpp
@@ -733,6 +735,31 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/CommandRunner.cpp
     ${EDITOR_DIR}/util/ShellEnv.cpp
     ${EDITOR_DIR}/material/MaterialChange.cpp
+    ${EDITOR_DIR}/util/UserFiles.cpp
+
+    ${EDITOR_DIR}/search/SearchScorer.cpp
+    ${EDITOR_DIR}/search/SearchEngine.cpp
+    ${EDITOR_DIR}/search/SearchPalette.cpp
+    ${EDITOR_DIR}/search/AssetQuery.cpp
+    ${EDITOR_DIR}/search/AssetSearchIndex.cpp
+    ${EDITOR_DIR}/search/HierarchyFilter.cpp
+    ${EDITOR_DIR}/shortcuts/Chord.cpp
+    ${EDITOR_DIR}/shortcuts/CommandCatalog.cpp
+    ${EDITOR_DIR}/shortcuts/DefaultCommands.cpp
+    ${EDITOR_DIR}/shortcuts/ShortcutDispatcher.cpp
+    ${EDITOR_DIR}/shortcuts/ShortcutOverrides.cpp
+    ${EDITOR_DIR}/shortcuts/ShortcutsWindow.cpp
+    ${EDITOR_DIR}/layout/LayoutPresets.cpp
+    ${EDITOR_DIR}/layout/LayoutManager.cpp
+    ${EDITOR_DIR}/organisation/AssetLabels.cpp
+    ${EDITOR_DIR}/organisation/Organisation.cpp
+    ${EDITOR_DIR}/organisation/OrganisationCommands.cpp
+    ${EDITOR_DIR}/organisation/Bookmarks.cpp
+    ${EDITOR_DIR}/organisation/SavedSearchRows.cpp
+    ${EDITOR_DIR}/organisation/LabelOperations.cpp
+    ${EDITOR_DIR}/settings/SettingsRegistry.cpp
+    ${EDITOR_DIR}/settings/SettingsRows.cpp
+    ${EDITOR_DIR}/settings/SettingsSearch.cpp
 
     ${EDITOR_DIR}/htmlui/ContentSniffer.cpp
     ${EDITOR_DIR}/htmlui/GoogleFontsImporter.cpp
@@ -768,6 +795,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/ScriptStatusBadge.cpp
     ${EDITOR_DIR}/window/PlayModeChangesWindow.cpp
     ${EDITOR_DIR}/window/UndoHistoryWindow.cpp
+    ${EDITOR_DIR}/window/BookmarksWindow.cpp
     ${EDITOR_DIR}/window/SceneWindow.cpp
     ${EDITOR_DIR}/window/PrefabStageBar.cpp
     ${EDITOR_DIR}/window/ExternalChangeBar.cpp
@@ -777,6 +805,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/HierarchyWindow.cpp
     ${EDITOR_DIR}/window/HierarchyPrefabMode.cpp
     ${EDITOR_DIR}/window/ProjectWindow.cpp
+    ${EDITOR_DIR}/window/ProjectWindowSearch.cpp
     ${EDITOR_DIR}/window/AssetPanels.cpp
     ${EDITOR_DIR}/window/ImageViewerWindow.cpp
     ${EDITOR_DIR}/window/CodeEditor.cpp

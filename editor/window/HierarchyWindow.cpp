@@ -3,6 +3,10 @@
 
 #include "HierarchyWindow.h"
 #include "util/EditorScripts.h"
+#include "shortcuts/CommandCatalog.h"
+#include "search/HierarchyFilter.h"
+#include "organisation/Bookmarks.h"
+#include "window/BookmarksWindow.h"
 #include "window/dialog/DataSafetyDialogs.h"
 #include "StreamPreserved.h"
 
@@ -49,6 +53,15 @@
 #include <unordered_set>
 
 using namespace jasperengine;
+
+namespace {
+    // A context menu item's shortcut text, from the command catalog (nullptr when unbound)
+    const char* shortcutText(const char* commandId) {
+        static std::string text;
+        text = editor::CommandCatalog::editor().menuShortcutText(commandId);
+        return text.empty() ? nullptr : text.c_str();
+    }
+}
 
 // Unity's prefab-instance blue, for rows that belong to a prefab
 static const ImVec4 PREFAB_TEXT_COLOR = ImVec4(0.48f, 0.68f, 0.98f, 1.0f); // Theme::Colors::PrefabText, #7BAEFA
@@ -463,9 +476,9 @@ bool editor::HierarchyWindow::isOpen() const{
 
 const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMenuEntries(){
     using T = EntityCreationType;
-    // submenu, label, icon, type, new GameObject name, scenes, separatorBefore, rootOnly, shortcut
+    // submenu, label, icon, type, new GameObject name, scenes, separatorBefore, rootOnly, command id
     static const std::vector<CreateMenuEntry> entries = {
-        {nullptr, "Create Empty", ICON_FA_CUBE, T::GAMEOBJECT, "GameObject", CREATE_IN_ALL, false, false, "Ctrl+Shift+N"},
+        {nullptr, "Create Empty", ICON_FA_CUBE, T::GAMEOBJECT, "GameObject", CREATE_IN_ALL, false, false, "gameobject.createEmpty"},
         {nullptr, "Create Empty (No Transform)", ICON_FA_CIRCLE_DOT, T::EMPTY, "GameObject", CREATE_IN_ALL, false, true},
 
         {"3D Object", "Cube", ICON_FA_CUBE, T::BOX, "Cube", CREATE_IN_3D},
@@ -660,7 +673,7 @@ void editor::HierarchyWindow::showToolbar(){
 
     ImGui::SameLine();
 
-    UIUtils::searchInput("##structure_search", "Search", searchBuffer, sizeof(searchBuffer), false, &matchCase);
+    UIUtils::searchInput("##structure_search", "Search  (t:Camera)", searchBuffer, sizeof(searchBuffer), false, &matchCase);
 
     if (ImGui::BeginPopup("HierarchyCreateMenu")) {
         showCreateMenuItems(true, NULL_ENTITY, false);
@@ -1221,28 +1234,6 @@ void editor::HierarchyWindow::showAddChildSceneMenu() {
     }
 }
 
-bool editor::HierarchyWindow::nodeMatchesSearch(const TreeNode& node, const std::string& searchLower) {
-    std::string nodeName = node.name;
-
-    if (!matchCase) {
-        std::transform(nodeName.begin(), nodeName.end(), nodeName.begin(), ::tolower);
-    }
-
-    return nodeName.find(searchLower) != std::string::npos;
-}
-
-void editor::HierarchyWindow::markMatchingNodes(TreeNode& node, const std::string& searchLower) {
-    node.matchesSearch = nodeMatchesSearch(node, searchLower);
-    node.hasMatchingDescendant = false;
-
-    for (auto& child : node.children) {
-        markMatchingNodes(child, searchLower);
-        if (child.matchesSearch || child.hasMatchingDescendant) {
-            node.hasMatchingDescendant = true;
-        }
-    }
-}
-
 void editor::HierarchyWindow::updateSearchAndSelectionOrder(TreeNode& root, bool treeRebuilt) {
     // Names and ordering belong to the cached tree. Reuse their derived search flags
     // and range-selection order until that tree or the toolbar's search settings change.
@@ -1254,11 +1245,18 @@ void editor::HierarchyWindow::updateSearchAndSelectionOrder(TreeNode& root, bool
 
     const bool hasSearch = !cachedSearch.empty();
     if (hasSearch) {
-        std::string searchStr = cachedSearch;
-        if (!matchCase) {
-            std::transform(searchStr.begin(), searchStr.end(), searchStr.begin(), ::tolower);
-        }
-        markMatchingNodes(root, searchStr);
+        // the editor's one scorer in Filter mode, t:<Component> by display name (S25 R14)
+        const HierarchyFilter filter(cachedSearch, matchCase);
+        filter.markTree(root, [this](const TreeNode& node) {
+            std::vector<std::string> names;
+            if (node.isScene || node.isChildScene) return names;
+            SceneProject* scene = project->getScene(getNodeSceneId(node));
+            if (!scene || !scene->scene || !scene->scene->isEntityCreated(node.id)) return names;
+            for (ComponentType type : Catalog::findComponents(scene->scene, node.id)) {
+                names.push_back(Catalog::getComponentDisplayName(type));
+            }
+            return names;
+        });
     }
 
     visibleEntitySelectionOrder.clear();
@@ -1937,33 +1935,42 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
                 return project->isSelectedEntity(sceneId, node.id) ?
                     EntityClipboard::getCopyableSelection(project, sceneId) : std::vector<Entity>{node.id};
             };
-            if (ImGui::MenuItem(ICON_FA_SCISSORS "  Cut", "Ctrl+X", false, !node.isLocked)) {
+            if (ImGui::MenuItem(ICON_FA_SCISSORS "  Cut", shortcutText("edit.cut"), false, !node.isLocked)) {
                 EntityClipboard::cutGameObjects(project, sceneId, copyTargets());
                 entityDeleted = true;
             }
-            if (ImGui::MenuItem(ICON_FA_CLONE "  Copy", "Ctrl+C", false, !node.isLocked)) {
+            if (ImGui::MenuItem(ICON_FA_CLONE "  Copy", shortcutText("edit.copy"), false, !node.isLocked)) {
                 EntityClipboard::copyGameObjects(project, sceneId, copyTargets());
             }
-            if (ImGui::MenuItem(ICON_FA_PASTE "  Paste", "Ctrl+V", false, canPaste && !entityDeleted)) {
+            if (ImGui::MenuItem(ICON_FA_PASTE "  Paste", shortcutText("edit.paste"), false, canPaste && !entityDeleted)) {
                 EntityClipboard::pasteGameObjects(project, sceneId, EntityClipboard::Placement::After, node.id);
             }
-            if (ImGui::MenuItem(ICON_FA_PASTE "  Paste As Child", "Ctrl+Shift+V", false, canPaste && node.hasTransform && !entityDeleted)) {
+            if (ImGui::MenuItem(ICON_FA_PASTE "  Paste As Child", shortcutText("edit.pasteAsChild"), false, canPaste && node.hasTransform && !entityDeleted)) {
                 EntityClipboard::pasteGameObjects(project, sceneId, EntityClipboard::Placement::Into, node.id);
             }
             ImGui::Separator();
 
-            if (!entityDeleted && ImGui::MenuItem(ICON_FA_I_CURSOR "  Rename", "F2", false, !node.isPlayCreated)) {
+            if (!entityDeleted && ImGui::MenuItem(ICON_FA_I_CURSOR "  Rename", shortcutText("edit.rename"), false, !node.isPlayCreated)) {
                 beginRename(RenameTarget::Entity, sceneId, node.id, node.name);
             }
-            if (!entityDeleted && ImGui::MenuItem(ICON_FA_COPY "  Duplicate", "Ctrl+D", false, !node.isLocked)) {
+            if (!entityDeleted && ImGui::MenuItem(ICON_FA_COPY "  Duplicate", shortcutText("edit.duplicate"), false, !node.isLocked)) {
                 CommandHandle::get(sceneId)->addCommandNoMerge(new DuplicateEntityCmd(project, sceneId, targets));
             }
-            if (!entityDeleted && ImGui::MenuItem(ICON_FA_TRASH "  Delete", "Delete", false, !node.isLocked)) {
+            if (!entityDeleted && ImGui::MenuItem(ICON_FA_TRASH "  Delete", shortcutText("edit.delete"), false, !node.isLocked)) {
                 // One command for all of them: one snapshot pass and one undo step
                 if (!targets.empty()) {
                     CommandHandle::get(sceneId)->addCommandNoMerge(new DeleteEntityCmd(project, sceneId, targets));
                 }
                 entityDeleted = true;
+            }
+            // Window > General > Bookmarks (S25 R28): the GameObjects, by id and path
+            if (!entityDeleted && !node.isPlayCreated && ImGui::MenuItem(ICON_FA_BOOKMARK "  Add to Bookmarks")) {
+                for (Entity target : targets) {
+                    std::string error;
+                    if (!Backend::getApp().getBookmarksWindow()->add(Bookmarks::forGameObject(project, sceneId, target), &error)) {
+                        Out::warning("Bookmarks: %s", error.c_str());
+                    }
+                }
             }
 
             // Play Mode Changes: what scripts change here is offered at Stop too
@@ -2913,7 +2920,7 @@ void editor::HierarchyWindow::show(){
         if (ImGui::IsWindowAppearing()) {
             EntityClipboard::refresh();
         }
-        if (ImGui::MenuItem(ICON_FA_PASTE "  Paste", "Ctrl+V", false, EntityClipboard::hasGameObjects(project))) {
+        if (ImGui::MenuItem(ICON_FA_PASTE "  Paste", shortcutText("edit.paste"), false, EntityClipboard::hasGameObjects(project))) {
             EntityClipboard::pasteGameObjects(project, sceneProject->id, EntityClipboard::Placement::Root, NULL_ENTITY);
         }
         ImGui::Separator();

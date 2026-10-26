@@ -78,7 +78,7 @@ namespace jasperengine::editor{
         uint8_t scenes;                 // CreateSceneMask
         bool separatorBefore = false;   // Within its menu level
         bool rootOnly = false;          // Only offered when creating at the scene root
-        const char* shortcut = nullptr; // Shown in the main menu bar
+        const char* command = nullptr;  // its command catalog id when it has its own (a shortcut)
     };
 
     struct EntitySelectionEntry {
@@ -231,8 +231,6 @@ namespace jasperengine::editor{
         bool isPrefabVariantAsset(const std::filesystem::path& path) const;
 
         // Search-related methods
-        bool nodeMatchesSearch(const TreeNode& node, const std::string& searchLower);
-        void markMatchingNodes(TreeNode& node, const std::string& searchLower);
         void updateSearchAndSelectionOrder(TreeNode& root, bool treeRebuilt);
 
     public:

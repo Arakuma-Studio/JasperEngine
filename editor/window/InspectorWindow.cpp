@@ -1901,6 +1901,41 @@ void editor::InspectorWindow::handleComponentMenu(const char* popupId, SceneProj
     }
 }
 
+void editor::InspectorWindow::addComponents(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType cpType) {
+    // Add component to all selected entities
+    Command* last = nullptr;
+    for (const Entity& entity : entities) {
+        cmd = new AddComponentCmd(project, sceneProject->id, entity, cpType);
+        last = cmd;
+        CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+    }
+    if (last) last->setNoMerge();
+
+    // Mark scene as modified
+    sceneProject->isModified = true;
+}
+
+bool editor::InspectorWindow::canAddComponentToSelection(ComponentType type) {
+    SceneProject* sceneProject = project->getSelectedScene();
+    if (!sceneProject || !sceneProject->scene || project->isAnyScenePlaying()) return false;
+    const std::vector<Entity>& entities = project->getSelectedEntities(sceneProject->id);
+    if (entities.empty()) return false;
+    for (Entity entity : entities) {
+        if (!canAddComponent(sceneProject, entity, type)) return false;
+    }
+    return true;
+}
+
+bool editor::InspectorWindow::addComponentToSelection(ComponentType type, std::string* why) {
+    if (!canAddComponentToSelection(type)) {
+        if (why) *why = "Select GameObjects that do not have a " + Catalog::getComponentDisplayName(type) + " yet (not while playing).";
+        return false;
+    }
+    SceneProject* sceneProject = project->getSelectedScene();
+    addComponents(sceneProject, project->getSelectedEntities(sceneProject->id), type);
+    return true;
+}
+
 bool editor::InspectorWindow::canAddComponent(SceneProject* sceneProject, Entity entity, ComponentType cpType) {
     // Check if entity already has this component
     std::vector<ComponentType> existingComponents = Catalog::findComponents(sceneProject->scene, entity);
@@ -2369,15 +2404,7 @@ void editor::InspectorWindow::drawAddComponentButton(SceneProject* sceneProject,
     if (ImGui::Button("Add Component", ImVec2(width, ImGui::GetFrameHeight() + Theme::dpi(4.0f))) || (forceOpen && !readOnly)) {
         componentAddDialog.open(
             [this, sceneProject, entities](ComponentType cpType) {
-                // Add component to all selected entities
-                for (const Entity& entity : entities) {
-                    cmd = new AddComponentCmd(project, sceneProject->id, entity, cpType);
-                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
-                }
-                cmd->setNoMerge();
-
-                // Mark scene as modified
-                sceneProject->isModified = true;
+                addComponents(sceneProject, entities, cpType);
             },
             [this, sceneProject, entities](ComponentType cpType) {
                 // Check if component can be added to all selected entities

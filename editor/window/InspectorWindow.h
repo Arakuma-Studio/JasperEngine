@@ -333,6 +333,7 @@ namespace jasperengine::editor{
         int pendingLayer = 0;
 
         bool canAddComponent(SceneProject* sceneProject, Entity entity, ComponentType cpType);
+        void addComponents(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType cpType);
 
         // meshShader: what the material draws with when it names no shader (the mesh's or the scene's)
         Texture getMaterialPreview(const Material& material, const std::string id, bool receiveIBL = true,
@@ -569,6 +570,10 @@ namespace jasperengine::editor{
         void focusNameInput();
         // Component > Add... (main menu): opens the Add Component dialog for the selection
         void requestAddComponent();
+        // Add Component's own path (the Search palette's components): one undo step per
+        // GameObject of the selection; false with *why when it cannot be added to all of them
+        bool canAddComponentToSelection(ComponentType type);
+        bool addComponentToSelection(ComponentType type, std::string* why = nullptr);
         // true once after Add Tag... or Add Layer...: the App opens Project Settings on Tags and Layers
         bool consumeTagsAndLayersRequest();
     private:

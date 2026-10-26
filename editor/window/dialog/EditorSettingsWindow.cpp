@@ -57,27 +57,18 @@ namespace {
         Count
     };
 
-    // Order matches PreferencesCategory. Keywords are the page's labels, for the search field.
-    const settingsui::Category preferencesCategories[] = {
-        {"General", "", "editor vsync default build directory output auto save autosave backup interval"},
-        {"Code Editor", "", "font size"},
-        {"Asset Pipeline", "", "auto refresh watcher reload polling interval hot reload log reloads file changes"},
-        {"Scripting", "", "script changes while playing reload continue stop lua c++ cpp hot reload during play"},
-        {"Undo", "", "undo redo history max steps memory limit record selection review play mode changes keep values"},
-        {"External Tools", "", "cmake compiler kit emscripten sdk emsdk web desktop ffmpeg video import av1 external script editor ide visual studio code vscode rider clion xcode sublime zed"},
-        {"Logging", "", "log level category console file backtrace errors source location debug trace"},
-        {"Shader Cache", "", "clear shader cache"},
-    };
-    constexpr int preferencesCategoryCount = static_cast<int>(PreferencesCategory::Count);
-    static_assert(std::size(preferencesCategories) == static_cast<size_t>(PreferencesCategory::Count));
+    // PreferencesCategory follows the order of the Preferences pages in the settings registry
+    // (settings/SettingsRows.cpp), which lists them and their rows for the search
 
-    // Sub-heading row inside a settings table.
-    void sectionRow(const char* title) {
+    // Sub-heading row inside a settings table (hidden while the search matches none of its rows)
+    bool sectionRow(const char* title) {
+        if (!settingsui::sectionVisible(title)) return false;
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
         ImGui::Spacing();
         settingsui::boldText(title);
         ImGui::TableNextColumn();
+        return true;
     }
     static constexpr float prefsSettingsLabelWidth = 190.0f;
     static constexpr float prefsSettingsPanelPadding = 12.0f;
@@ -107,7 +98,8 @@ namespace {
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
         ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted(label);
+        // the search's matches highlighted, a row the Search palette opened flashing
+        settingsui::rowLabel(label);
         if (tooltip) ImGui::SetItemTooltip("%s", tooltip);
 
         bool reset = false;
@@ -238,17 +230,15 @@ void EditorSettingsWindow::open(Project* project) {
 }
 
 bool EditorSettingsWindow::showPage(const std::string& name) {
-    for (int i = 0; i < preferencesCategoryCount; i++) {
-        if (name == preferencesCategories[i].name) {
-            m_category = i;
-            return true;
-        }
-    }
-    return false;
+    const int index = settingsui::pageIndex(SettingsScope::Preference, name);
+    if (index < 0) return false;
+    m_category = index;
+    return true;
 }
 
 const char* EditorSettingsWindow::pageName() const {
-    return preferencesCategories[m_category].name;
+    const SettingsPage* page = settingsui::pageAt(SettingsScope::Preference, m_category);
+    return page ? page->displayName().c_str() : "";
 }
 
 LocalBuildSettings EditorSettingsWindow::projectBuildSettings() const {
@@ -322,12 +312,19 @@ void EditorSettingsWindow::drawSettings() {
     ImGui::BeginChild("##PreferencesRegion", ImVec2(0, regionHeight), ImGuiChildFlags_None, prefsNoScrollFlags);
 
     const float listWidth = std::min(Theme::dpi(prefsCategoryListWidth), ImGui::GetContentRegionAvail().x * 0.3f);
-    settingsui::categoryList("##PreferencesCategories", preferencesCategories, preferencesCategoryCount, m_category,
-                             m_categorySearch, sizeof(m_categorySearch), ImVec2(listWidth, ImGui::GetContentRegionAvail().y));
+    // the Search palette opened a row: its page
+    if (const std::string revealPage = settingsui::pendingRevealPage(); !revealPage.empty()) {
+        const int index = settingsui::pageIndex(SettingsScope::Preference, revealPage);
+        if (index >= 0) m_category = index;
+    }
+    settingsui::pageList("##PreferencesCategories", SettingsScope::Preference, m_category,
+                         m_categorySearch, sizeof(m_categorySearch), ImVec2(listWidth, ImGui::GetContentRegionAvail().y));
     ImGui::SameLine();
 
     ImGui::BeginGroup();
-    settingsui::categoryTitle(preferencesCategories[m_category].name);
+    const SettingsPage* page = settingsui::pageAt(SettingsScope::Preference, m_category);
+    settingsui::categoryTitle(page ? page->displayName().c_str() : "");
+    settingsui::beginPage(page ? page->name : std::string(), m_categorySearch);
     switch (static_cast<PreferencesCategory>(m_category)) {
         case PreferencesCategory::General: drawGeneralSettings(); break;
         case PreferencesCategory::CodeEditor: drawCodeEditorSettings(); break;
@@ -339,6 +336,7 @@ void EditorSettingsWindow::drawSettings() {
         case PreferencesCategory::ShaderCache: drawAdvancedSettings(); break;
         default: break;
     }
+    settingsui::endPage();
     ImGui::EndGroup();
 
     ImGui::EndChild();
@@ -390,108 +388,128 @@ void EditorSettingsWindow::openInFileManager(const fs::path& folder) {
 
 void EditorSettingsWindow::drawGeneralSettings() {
     prefsDrawSettingsPanel("##EditorGeneralSettingsPanel", [this]() {
-        if (prefsBeginSettingsRow("Default Build Directory",
-                             "Used by Build Settings when the current project has no saved output directory.",
-                             !m_defaultExportDirectory.empty())) {
-            m_defaultExportDirectory.clear();
-        }
-        fs::path exportDisplay = m_defaultExportDirectory.empty()
-            ? fs::path("<Not set>")
-            : m_defaultExportDirectory;
-        drawPathPicker(
-            "##EditorDefaultExportDirectory", "Browse##editor_default_export_dir", "Clear##editor_default_export_dir",
-            exportDisplay, !m_defaultExportDirectory.empty(), true,
-            [this](const std::string& selectedPath) {
-                m_defaultExportDirectory = selectedPath;
-            },
-            [this]() {
+        if (settingsui::beginRow("preferences.default_export_dir")) {
+            if (prefsBeginSettingsRow("Default Build Directory",
+                                 "Used by Build Settings when the current project has no saved output directory.",
+                                 !m_defaultExportDirectory.empty())) {
                 m_defaultExportDirectory.clear();
             }
-        );
-
-        if (prefsBeginSettingsRow("Editor VSync",
-                             "VSync for the editor UI. Play mode and exported builds use the project VSync setting.",
-                             m_editorVSyncEnabled != true)) {
-            m_editorVSyncEnabled = true;
+            fs::path exportDisplay = m_defaultExportDirectory.empty()
+                ? fs::path("<Not set>")
+                : m_defaultExportDirectory;
+            drawPathPicker(
+                "##EditorDefaultExportDirectory", "Browse##editor_default_export_dir", "Clear##editor_default_export_dir",
+                exportDisplay, !m_defaultExportDirectory.empty(), true,
+                [this](const std::string& selectedPath) {
+                    m_defaultExportDirectory = selectedPath;
+                },
+                [this]() {
+                    m_defaultExportDirectory.clear();
+                }
+            );
         }
-        ImGui::Checkbox("##EditorVSync", &m_editorVSyncEnabled);
+
+        if (settingsui::beginRow("preferences.editor_vsync")) {
+            if (prefsBeginSettingsRow("Editor VSync",
+                                 "VSync for the editor UI. Play mode and exported builds use the project VSync setting.",
+                                 m_editorVSyncEnabled != true)) {
+                m_editorVSyncEnabled = true;
+            }
+            ImGui::Checkbox("##EditorVSync", &m_editorVSyncEnabled);
+        }
 
         sectionRow("Auto Save");
-        if (prefsBeginSettingsRow("Auto Save Scenes",
-                             "Keep a backup of each modified scene in .jasperengine/backup (the scene file itself is only written "
-                             "by Save). After a crash, opening the scene offers to restore it.",
-                             m_autosaveEnabled != true)) {
-            m_autosaveEnabled = true;
+        if (settingsui::beginRow("preferences.auto_save")) {
+            if (prefsBeginSettingsRow("Auto Save Scenes",
+                                 "Keep a backup of each modified scene in .jasperengine/backup (the scene file itself is only written "
+                                 "by Save). After a crash, opening the scene offers to restore it.",
+                                 m_autosaveEnabled != true)) {
+                m_autosaveEnabled = true;
+            }
+            ImGui::Checkbox("##AutosaveEnabled", &m_autosaveEnabled);
         }
-        ImGui::Checkbox("##AutosaveEnabled", &m_autosaveEnabled);
-        if (prefsBeginSettingsRow("Auto Save Interval (s)", "Seconds between the backups of a modified scene (30 to 300).",
-                             m_autosaveInterval != AppSettings::defaultAutosaveInterval)) {
-            m_autosaveInterval = AppSettings::defaultAutosaveInterval;
+        if (settingsui::beginRow("preferences.auto_save_interval")) {
+            if (prefsBeginSettingsRow("Auto Save Interval (s)", "Seconds between the backups of a modified scene (30 to 300).",
+                                 m_autosaveInterval != AppSettings::defaultAutosaveInterval)) {
+                m_autosaveInterval = AppSettings::defaultAutosaveInterval;
+            }
+            ImGui::BeginDisabled(!m_autosaveEnabled);
+            ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+            ImGui::DragInt("##AutosaveInterval", &m_autosaveInterval, 1.0f, AppSettings::minAutosaveInterval,
+                           AppSettings::maxAutosaveInterval, "%d", ImGuiSliderFlags_AlwaysClamp);
+            ImGui::EndDisabled();
         }
-        ImGui::BeginDisabled(!m_autosaveEnabled);
-        ImGui::SetNextItemWidth(Theme::dpi(120.0f));
-        ImGui::DragInt("##AutosaveInterval", &m_autosaveInterval, 1.0f, AppSettings::minAutosaveInterval,
-                       AppSettings::maxAutosaveInterval, "%d", ImGuiSliderFlags_AlwaysClamp);
-        ImGui::EndDisabled();
-        prefsBeginSettingsRow("Backups", "The project's auto-saved backups, and what a crash left half-written (orphans).");
-        ImGui::BeginDisabled(!m_project || m_project->getProjectPath().empty());
-        if (ImGui::Button("Open Backup Folder")) {
-            const fs::path folder = SceneBackups::root(m_project->getProjectPath());
-            std::error_code ec;
-            fs::create_directories(folder, ec);
-            openInFileManager(folder);
+        if (settingsui::beginRow("preferences.backups")) {
+            prefsBeginSettingsRow("Backups", "The project's auto-saved backups, and what a crash left half-written (orphans).");
+            ImGui::BeginDisabled(!m_project || m_project->getProjectPath().empty());
+            if (ImGui::Button("Open Backup Folder")) {
+                const fs::path folder = SceneBackups::root(m_project->getProjectPath());
+                std::error_code ec;
+                fs::create_directories(folder, ec);
+                openInFileManager(folder);
+            }
+            ImGui::EndDisabled();
         }
-        ImGui::EndDisabled();
 
         sectionRow("HTML UI");
-        if (prefsBeginSettingsRow("Import Remote Resources",
-                             "When a document loads, download the Google Fonts, stylesheets, images and Lottie animations it "
-                             "references by URL into assets/htmlui-imports (the game never uses the network).",
-                             m_htmlUiAutoImport != true)) {
-            m_htmlUiAutoImport = true;
+        if (settingsui::beginRow("preferences.html_ui_import_remote")) {
+            if (prefsBeginSettingsRow("Import Remote Resources",
+                                 "When a document loads, download the Google Fonts, stylesheets, images and Lottie animations it "
+                                 "references by URL into assets/htmlui-imports (the game never uses the network).",
+                                 m_htmlUiAutoImport != true)) {
+                m_htmlUiAutoImport = true;
+            }
+            ImGui::Checkbox("##HtmlUiAutoImport", &m_htmlUiAutoImport);
         }
-        ImGui::Checkbox("##HtmlUiAutoImport", &m_htmlUiAutoImport);
-        if (prefsBeginSettingsRow("Verbose Diagnostics",
-                             "Log every note of the HTML/CSS compatibility layer (rewrites, approximations) to the Console, "
-                             "not only errors, warnings and the per-document summary.",
-                             m_htmlUiVerboseDiagnostics != false)) {
-            m_htmlUiVerboseDiagnostics = false;
+        if (settingsui::beginRow("preferences.html_ui_verbose_diagnostics")) {
+            if (prefsBeginSettingsRow("Verbose Diagnostics",
+                                 "Log every note of the HTML/CSS compatibility layer (rewrites, approximations) to the Console, "
+                                 "not only errors, warnings and the per-document summary.",
+                                 m_htmlUiVerboseDiagnostics != false)) {
+                m_htmlUiVerboseDiagnostics = false;
+            }
+            ImGui::Checkbox("##HtmlUiVerboseDiagnostics", &m_htmlUiVerboseDiagnostics);
         }
-        ImGui::Checkbox("##HtmlUiVerboseDiagnostics", &m_htmlUiVerboseDiagnostics);
     });
 }
 
 void EditorSettingsWindow::drawCodeEditorSettings() {
     prefsDrawSettingsPanel("##EditorCodeEditorSettingsPanel", [this]() {
         const bool fontChanged = std::fabs(m_codeEditorFontSize - AppSettings::defaultCodeEditorFontSize) > 1e-4f;
-        if (prefsBeginSettingsRow("Font Size", "Font size of the code editor. Ctrl + mouse wheel zooms it too.", fontChanged)) {
-            m_codeEditorFontSize = AppSettings::defaultCodeEditorFontSize;
+        if (settingsui::beginRow("preferences.code_editor_font_size")) {
+            if (prefsBeginSettingsRow("Font Size", "Font size of the code editor. Ctrl + mouse wheel zooms it too.", fontChanged)) {
+                m_codeEditorFontSize = AppSettings::defaultCodeEditorFontSize;
+            }
+            ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+            ImGui::DragFloat("##CodeEditorFontSize", &m_codeEditorFontSize, 0.2f, AppSettings::minCodeEditorFontSize,
+                             AppSettings::maxCodeEditorFontSize, "%.0f", ImGuiSliderFlags_AlwaysClamp);
         }
-        ImGui::SetNextItemWidth(Theme::dpi(120.0f));
-        ImGui::DragFloat("##CodeEditorFontSize", &m_codeEditorFontSize, 0.2f, AppSettings::minCodeEditorFontSize,
-                         AppSettings::maxCodeEditorFontSize, "%.0f", ImGuiSliderFlags_AlwaysClamp);
     });
 }
 
 void EditorSettingsWindow::drawAssetPipelineSettings() {
     prefsDrawSettingsPanel("##EditorAssetPipelinePanel", [this]() {
-        if (prefsBeginSettingsRow("Auto Refresh",
-                             "Reload textures, models, materials, shaders, audio, fonts, scripts and HTML UI when they change on "
-                             "disk. Off: the status bar counts the changes and Assets > Refresh (Ctrl+R) applies them.",
-                             m_autoRefresh != true)) {
-            m_autoRefresh = true;
-        }
-        ImGui::Checkbox("##AssetAutoRefresh", &m_autoRefresh);
+        if (settingsui::beginRow("preferences.auto_refresh")) {
+            if (prefsBeginSettingsRow("Auto Refresh",
+                                 "Reload textures, models, materials, shaders, audio, fonts, scripts and HTML UI when they change on "
+                                 "disk. Off: the status bar counts the changes and Assets > Refresh (Ctrl+R) applies them.",
+                                 m_autoRefresh != true)) {
+                m_autoRefresh = true;
+            }
+            ImGui::Checkbox("##AssetAutoRefresh", &m_autoRefresh);
 
-        WatchBackendKind forced;
-        const bool overridden = HotReloadService::getWatcherOverride(forced);
-        if (prefsBeginSettingsRow("Watcher",
-                             overridden ? "How the editor finds changed files. --file-watcher (or JASPER_FILE_WATCHER) decides it for "
-                                          "this run."
-                                        : "How the editor finds changed files. Auto: the system's file notifications, and polling where "
-                                          "they do not arrive (network drives, WSL, containers).",
-                             m_fileWatcher != 0)) {
-            m_fileWatcher = 0;
+            WatchBackendKind forced;
+            const bool overridden = HotReloadService::getWatcherOverride(forced);
+        }
+        if (settingsui::beginRow("preferences.file_watcher")) {
+            if (prefsBeginSettingsRow("Watcher",
+                                 overridden ? "How the editor finds changed files. --file-watcher (or JASPER_FILE_WATCHER) decides it for "
+                                              "this run."
+                                            : "How the editor finds changed files. Auto: the system's file notifications, and polling where "
+                                              "they do not arrive (network drives, WSL, containers).",
+                                 m_fileWatcher != 0)) {
+                m_fileWatcher = 0;
+            }
         }
         static const char* const watchers[] = {"Auto", "Native", "Polling"};
         ImGui::SetNextItemWidth(Theme::dpi(160.0f));
@@ -501,68 +519,78 @@ void EditorSettingsWindow::drawAssetPipelineSettings() {
 
         // only polling has an interval
         if (m_fileWatcher == 2) {
-            if (prefsBeginSettingsRow("Polling Interval", "Seconds between two looks at the project's files.",
-                                 std::fabs(m_pollingInterval - 1.0f) > 1e-4f)) {
-                m_pollingInterval = 1.0f;
+            if (settingsui::beginRow("preferences.polling_interval")) {
+                if (prefsBeginSettingsRow("Polling Interval", "Seconds between two looks at the project's files.",
+                                     std::fabs(m_pollingInterval - 1.0f) > 1e-4f)) {
+                    m_pollingInterval = 1.0f;
+                }
+                ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+                ImGui::DragFloat("##AssetPollingInterval", &m_pollingInterval, 0.05f, 0.25f, 10.0f, "%.2f s", ImGuiSliderFlags_AlwaysClamp);
             }
-            ImGui::SetNextItemWidth(Theme::dpi(120.0f));
-            ImGui::DragFloat("##AssetPollingInterval", &m_pollingInterval, 0.05f, 0.25f, 10.0f, "%.2f s", ImGuiSliderFlags_AlwaysClamp);
         }
 
-        if (prefsBeginSettingsRow("Log Reloads", "Write a [Hot Reload] line to the Console for what reloaded (failures always are).",
-                             m_logReloads != true)) {
-            m_logReloads = true;
+        if (settingsui::beginRow("preferences.log_reloads")) {
+            if (prefsBeginSettingsRow("Log Reloads", "Write a [Hot Reload] line to the Console for what reloaded (failures always are).",
+                                 m_logReloads != true)) {
+                m_logReloads = true;
+            }
+            ImGui::Checkbox("##AssetLogReloads", &m_logReloads);
         }
-        ImGui::Checkbox("##AssetLogReloads", &m_logReloads);
     });
 }
 
 void EditorSettingsWindow::drawScriptingSettings() {
     prefsDrawSettingsPanel("##EditorScriptingPanel", [this]() {
-        if (prefsBeginSettingsRow("Script Changes While Playing",
-                             "What saving a script does while a scene plays. Reload And Continue Playing swaps the new code into "
-                             "the running scripts: their fields keep their values, init() does not run again, onReload(info) does. "
-                             "A script with an error keeps running its old code.",
-                             m_scriptChangesWhilePlaying != 0)) {
-            m_scriptChangesWhilePlaying = 0;
+        if (settingsui::beginRow("preferences.script_changes_while_playing")) {
+            if (prefsBeginSettingsRow("Script Changes While Playing",
+                                 "What saving a script does while a scene plays. Reload And Continue Playing swaps the new code into "
+                                 "the running scripts: their fields keep their values, init() does not run again, onReload(info) does. "
+                                 "A script with an error keeps running its old code.",
+                                 m_scriptChangesWhilePlaying != 0)) {
+                m_scriptChangesWhilePlaying = 0;
+            }
         }
         static const char* const policies[] = {"Reload And Continue Playing", "Reload After Stopping Play", "Stop Playing And Reload"};
         ImGui::SetNextItemWidth(Theme::dpi(240.0f));
         ImGui::Combo("##ScriptChangesWhilePlaying", &m_scriptChangesWhilePlaying, policies, IM_ARRAYSIZE(policies));
 
-        if (prefsBeginSettingsRow("Reload C++ Scripts During Play",
-                             "Experimental. A saved .cpp or .h rebuilds the scripts in the background while the scene keeps "
-                             "playing, then swaps the new library in: DPROPERTY values carry over, other members only through "
-                             "saveReloadState/loadReloadState. A failed build keeps the last good one.",
-                             m_reloadCppDuringPlay)) {
-            m_reloadCppDuringPlay = false;
+        if (settingsui::beginRow("preferences.reload_cpp_during_play")) {
+            if (prefsBeginSettingsRow("Reload C++ Scripts During Play",
+                                 "Experimental. A saved .cpp or .h rebuilds the scripts in the background while the scene keeps "
+                                 "playing, then swaps the new library in: DPROPERTY values carry over, other members only through "
+                                 "saveReloadState/loadReloadState. A failed build keeps the last good one.",
+                                 m_reloadCppDuringPlay)) {
+                m_reloadCppDuringPlay = false;
+            }
+            ImGui::Checkbox("##ReloadCppDuringPlay", &m_reloadCppDuringPlay);
         }
-        ImGui::Checkbox("##ReloadCppDuringPlay", &m_reloadCppDuringPlay);
     });
 }
 
 void EditorSettingsWindow::drawExternalScriptEditorSettings() {
     const auto& choices = ExternalCodeEditor::choices();
-    if (prefsBeginSettingsRow("External Script Editor",
-                         "Where Console locations and Open in External Editor open a script. Built-in: the Code Editor.",
-                         m_externalScriptEditor != 0)) {
-        m_externalScriptEditor = 0;
-    }
-    ImGui::SetNextItemWidth(Theme::dpi(220.0f));
-    if (ImGui::BeginCombo("##ExternalScriptEditor", choices[static_cast<size_t>(m_externalScriptEditor)].name)) {
-        for (size_t i = 0; i < choices.size(); i++) {
-            if (ImGui::Selectable(choices[i].name, static_cast<int>(i) == m_externalScriptEditor)) m_externalScriptEditor = static_cast<int>(i);
+    if (settingsui::beginRow("preferences.external_script_editor")) {
+        if (prefsBeginSettingsRow("External Script Editor",
+                             "Where Console locations and Open in External Editor open a script. Built-in: the Code Editor.",
+                             m_externalScriptEditor != 0)) {
+            m_externalScriptEditor = 0;
         }
-        ImGui::EndCombo();
-    }
-    if (std::string(choices[static_cast<size_t>(m_externalScriptEditor)].id) == "custom") {
-        prefsBeginSettingsRow("Command", "The program and its arguments: {file} {line} {column} {project} are filled in. "
-                                         "Quote arguments that contain spaces. Runs without a shell.");
-        ImGui::SetNextItemWidth(-FLT_MIN);
-        char buffer[512];
-        std::snprintf(buffer, sizeof(buffer), "%s", m_externalScriptEditorCommand.c_str());
-        if (ImGui::InputTextWithHint("##ExternalScriptEditorCommand", "myeditor --goto \"{file}:{line}\"", buffer, sizeof(buffer))) {
-            m_externalScriptEditorCommand = buffer;
+        ImGui::SetNextItemWidth(Theme::dpi(220.0f));
+        if (ImGui::BeginCombo("##ExternalScriptEditor", choices[static_cast<size_t>(m_externalScriptEditor)].name)) {
+            for (size_t i = 0; i < choices.size(); i++) {
+                if (ImGui::Selectable(choices[i].name, static_cast<int>(i) == m_externalScriptEditor)) m_externalScriptEditor = static_cast<int>(i);
+            }
+            ImGui::EndCombo();
+        }
+        if (std::string(choices[static_cast<size_t>(m_externalScriptEditor)].id) == "custom") {
+            prefsBeginSettingsRow("Command", "The program and its arguments: {file} {line} {column} {project} are filled in. "
+                                             "Quote arguments that contain spaces. Runs without a shell.");
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            char buffer[512];
+            std::snprintf(buffer, sizeof(buffer), "%s", m_externalScriptEditorCommand.c_str());
+            if (ImGui::InputTextWithHint("##ExternalScriptEditorCommand", "myeditor --goto \"{file}:{line}\"", buffer, sizeof(buffer))) {
+                m_externalScriptEditorCommand = buffer;
+            }
         }
     }
 }
@@ -582,95 +610,99 @@ void EditorSettingsWindow::drawExternalToolsSettings() {
 
 void EditorSettingsWindow::drawCMakeSettings() {
     {
-        prefsBeginSettingsRow("CMake", "Path to cmake executable. Empty means auto-detect from PATH.", !m_cmakeOverride.empty());
-        fs::path cmakeDisplay = m_cmakeOverride.empty()
-            ? fs::path(m_cmakeInfo.found ? m_cmakeInfo.path : "<Not found on PATH>")
-            : fs::path(m_cmakeOverride);
-        drawPathPicker(
-            "##EditorCMakePath", "Browse##editor_cmake", "Auto##editor_cmake",
-            cmakeDisplay, !m_cmakeOverride.empty(), false,
-            [this](const std::string& selectedPath) {
-                const std::string resolved = Generator::resolveCMakePath(selectedPath);
-                const std::string version = resolved.empty() ? std::string() : Generator::probeCMakeVersion(resolved);
+        if (settingsui::beginRow("preferences.cmake_path")) {
+            prefsBeginSettingsRow("CMake", "Path to cmake executable. Empty means auto-detect from PATH.", !m_cmakeOverride.empty());
+            fs::path cmakeDisplay = m_cmakeOverride.empty()
+                ? fs::path(m_cmakeInfo.found ? m_cmakeInfo.path : "<Not found on PATH>")
+                : fs::path(m_cmakeOverride);
+            drawPathPicker(
+                "##EditorCMakePath", "Browse##editor_cmake", "Auto##editor_cmake",
+                cmakeDisplay, !m_cmakeOverride.empty(), false,
+                [this](const std::string& selectedPath) {
+                    const std::string resolved = Generator::resolveCMakePath(selectedPath);
+                    const std::string version = resolved.empty() ? std::string() : Generator::probeCMakeVersion(resolved);
 
-                if (version.empty()) {
-                    m_cmakePickError = resolved.empty()
-                        ? "No CMake executable in: " + selectedPath
-                        : "Not a working CMake: " + resolved;
-                } else {
-                    m_cmakeOverride = resolved;
+                    if (version.empty()) {
+                        m_cmakePickError = resolved.empty()
+                            ? "No CMake executable in: " + selectedPath
+                            : "Not a working CMake: " + resolved;
+                    } else {
+                        m_cmakeOverride = resolved;
+                        m_cmakePickError.clear();
+                    }
+                    refreshCMakeStatus();
+                },
+                [this]() {
+                    m_cmakeOverride.clear();
                     m_cmakePickError.clear();
+                    refreshCMakeStatus();
                 }
-                refreshCMakeStatus();
-            },
-            [this]() {
-                m_cmakeOverride.clear();
-                m_cmakePickError.clear();
-                refreshCMakeStatus();
+            );
+
+            if (m_cmakeInfo.found) {
+                ImGui::TextDisabled("Detected: %s", m_cmakeInfo.version.empty() ? m_cmakeInfo.path.c_str() : m_cmakeInfo.version.c_str());
             }
-        );
-
-        if (m_cmakeInfo.found) {
-            ImGui::TextDisabled("Detected: %s", m_cmakeInfo.version.empty() ? m_cmakeInfo.path.c_str() : m_cmakeInfo.version.c_str());
-        }
-        if (!m_cmakePickError.empty()) {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.5f, 0.0f, 1.0f));
-            ImGui::TextWrapped("%s", m_cmakePickError.c_str());
-            ImGui::PopStyleColor();
-        }
-
-        if (prefsBeginSettingsRow("Compiler", "Compiler kit used to build C++ scripts, both when playing a scene and when exporting. "
-                "Set the language standard in Project Settings > Scripting > C++ Standard.", m_cmakeKitIndex != 0)) {
-            m_cmakeKitIndex = 0;
-        }
-        if (m_cmakeKitIndex < 0 || m_cmakeKitIndex > static_cast<int>(m_availableKits.size())) {
-            m_cmakeKitIndex = 0;
-        }
-
-        const char* currentLabel = m_cmakeKitIndex == 0
-            ? "Default"
-            : m_availableKits[m_cmakeKitIndex - 1].displayName.c_str();
-
-        ImGui::SetNextItemWidth(-1);
-        if (ImGui::BeginCombo("##EditorCMakeKit", currentLabel)) {
-            bool selected = m_cmakeKitIndex == 0;
-            if (ImGui::Selectable("Default", selected)) m_cmakeKitIndex = 0;
-            if (selected) ImGui::SetItemDefaultFocus();
-
-            for (size_t i = 0; i < m_availableKits.size(); i++) {
-                const auto& kit = m_availableKits[i];
-                if (!kit.available) {
-                    ImGui::BeginDisabled();
-                    ImGui::Selectable((kit.displayName + "  (unavailable)").c_str(), false);
-                    ImGui::EndDisabled();
-                    showDisabledItemTooltip(kit.unavailableReason);
-                    continue;
-                }
-
-                selected = m_cmakeKitIndex == static_cast<int>(i + 1);
-                if (ImGui::Selectable(kit.displayName.c_str(), selected)) {
-                    m_cmakeKitIndex = static_cast<int>(i + 1);
-                }
-                if (selected) ImGui::SetItemDefaultFocus();
-            }
-            ImGui::EndCombo();
-        }
-
-        if (m_cmakeKitIndex > 0) {
-            const auto& kit = m_availableKits[m_cmakeKitIndex - 1];
-            if (!kit.cCompiler.empty() || !kit.cxxCompiler.empty()) {
-                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-                ImGui::TextWrapped("C: %s\nCXX: %s", kit.cCompiler.c_str(), kit.cxxCompiler.c_str());
-                ImGui::PopStyleColor();
-            }
-        } else {
-            // The combo fell back to "Default" because the stored kit was not detected
-            const LocalBuildSettings stored = projectBuildSettings();
-            if (!stored.cxxCompiler.empty() || !stored.generator.empty()) {
+            if (!m_cmakePickError.empty()) {
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.5f, 0.0f, 1.0f));
-                ImGui::TextWrapped(ICON_FA_TRIANGLE_EXCLAMATION " Builds still use \"%s\", which is no longer detected. Apply to switch to the default toolchain.",
-                    stored.cxxCompiler.empty() ? stored.generator.c_str() : stored.cxxCompiler.c_str());
+                ImGui::TextWrapped("%s", m_cmakePickError.c_str());
                 ImGui::PopStyleColor();
+            }
+        }
+
+        if (settingsui::beginRow({"preferences.build_c_compiler", "preferences.build_cxx_compiler", "preferences.build_generator", "preferences.build_jobs"})) {
+            if (prefsBeginSettingsRow("Compiler", "Compiler kit used to build C++ scripts, both when playing a scene and when exporting. "
+                    "Set the language standard in Project Settings > Scripting > C++ Standard.", m_cmakeKitIndex != 0)) {
+                m_cmakeKitIndex = 0;
+            }
+            if (m_cmakeKitIndex < 0 || m_cmakeKitIndex > static_cast<int>(m_availableKits.size())) {
+                m_cmakeKitIndex = 0;
+            }
+
+            const char* currentLabel = m_cmakeKitIndex == 0
+                ? "Default"
+                : m_availableKits[m_cmakeKitIndex - 1].displayName.c_str();
+
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::BeginCombo("##EditorCMakeKit", currentLabel)) {
+                bool selected = m_cmakeKitIndex == 0;
+                if (ImGui::Selectable("Default", selected)) m_cmakeKitIndex = 0;
+                if (selected) ImGui::SetItemDefaultFocus();
+
+                for (size_t i = 0; i < m_availableKits.size(); i++) {
+                    const auto& kit = m_availableKits[i];
+                    if (!kit.available) {
+                        ImGui::BeginDisabled();
+                        ImGui::Selectable((kit.displayName + "  (unavailable)").c_str(), false);
+                        ImGui::EndDisabled();
+                        showDisabledItemTooltip(kit.unavailableReason);
+                        continue;
+                    }
+
+                    selected = m_cmakeKitIndex == static_cast<int>(i + 1);
+                    if (ImGui::Selectable(kit.displayName.c_str(), selected)) {
+                        m_cmakeKitIndex = static_cast<int>(i + 1);
+                    }
+                    if (selected) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+
+            if (m_cmakeKitIndex > 0) {
+                const auto& kit = m_availableKits[m_cmakeKitIndex - 1];
+                if (!kit.cCompiler.empty() || !kit.cxxCompiler.empty()) {
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+                    ImGui::TextWrapped("C: %s\nCXX: %s", kit.cCompiler.c_str(), kit.cxxCompiler.c_str());
+                    ImGui::PopStyleColor();
+                }
+            } else {
+                // The combo fell back to "Default" because the stored kit was not detected
+                const LocalBuildSettings stored = projectBuildSettings();
+                if (!stored.cxxCompiler.empty() || !stored.generator.empty()) {
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.5f, 0.0f, 1.0f));
+                    ImGui::TextWrapped(ICON_FA_TRIANGLE_EXCLAMATION " Builds still use \"%s\", which is no longer detected. Apply to switch to the default toolchain.",
+                        stored.cxxCompiler.empty() ? stored.generator.c_str() : stored.cxxCompiler.c_str());
+                    ImGui::PopStyleColor();
+                }
             }
         }
     }
@@ -678,21 +710,54 @@ void EditorSettingsWindow::drawCMakeSettings() {
 
 void EditorSettingsWindow::drawWebSettings() {
     {
-        prefsBeginSettingsRow("Emscripten SDK", "Path to emsdk root. Empty means EMSDK/PATH auto-detect.", !m_emsdkOverride.empty());
+        if (settingsui::beginRow("preferences.emsdk_path")) {
+            prefsBeginSettingsRow("Emscripten SDK", "Path to emsdk root. Empty means EMSDK/PATH auto-detect.", !m_emsdkOverride.empty());
 
-        fs::path emsdkDisplay = m_emsdkOverride.empty()
-            ? fs::path("<Auto-detect>")
-            : fs::path(m_emsdkOverride);
+            fs::path emsdkDisplay = m_emsdkOverride.empty()
+                ? fs::path("<Auto-detect>")
+                : fs::path(m_emsdkOverride);
+            drawPathPicker(
+                "##EditorEmsdkPath", "Browse##editor_emsdk", "Auto##editor_emsdk",
+                emsdkDisplay, !m_emsdkOverride.empty(), true,
+                [this](const std::string& selectedPath) {
+                    m_emsdkOverride = selectedPath;
+                    refreshEmsdkStatus();
+                },
+                [this]() {
+                    m_emsdkOverride.clear();
+                    refreshEmsdkStatus();
+                }
+            );
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted("Status");
+            ImGui::TableNextColumn();
+            if (m_emsdkInfo.found) {
+                ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), ICON_FA_CIRCLE_CHECK " Found %s", m_emsdkInfo.description.c_str());
+            } else {
+                ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " Not found");
+            }
+        }
+    }
+}
+
+void EditorSettingsWindow::drawVideoImportSettings() {
+    if (settingsui::beginRow("preferences.ffmpeg_path")) {
+        prefsBeginSettingsRow("FFmpeg", "ffmpeg executable that converts imported videos to AV1 + Opus WebM (the format <video> plays). "
+            "Empty means JASPER_FFMPEG, then PATH. It runs as a separate program; it is never shipped.", !m_ffmpegOverride.empty());
+        const fs::path display = m_ffmpegOverride.empty() ? fs::path("<Auto-detect>") : fs::path(m_ffmpegOverride);
         drawPathPicker(
-            "##EditorEmsdkPath", "Browse##editor_emsdk", "Auto##editor_emsdk",
-            emsdkDisplay, !m_emsdkOverride.empty(), true,
+            "##EditorFfmpegPath", "Browse##editor_ffmpeg", "Auto##editor_ffmpeg",
+            display, !m_ffmpegOverride.empty(), false,
             [this](const std::string& selectedPath) {
-                m_emsdkOverride = selectedPath;
-                refreshEmsdkStatus();
+                m_ffmpegOverride = selectedPath;
+                refreshFfmpegStatus();
             },
             [this]() {
-                m_emsdkOverride.clear();
-                refreshEmsdkStatus();
+                m_ffmpegOverride.clear();
+                refreshFfmpegStatus();
             }
         );
 
@@ -701,81 +766,60 @@ void EditorSettingsWindow::drawWebSettings() {
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted("Status");
         ImGui::TableNextColumn();
-        if (m_emsdkInfo.found) {
-            ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), ICON_FA_CIRCLE_CHECK " Found %s", m_emsdkInfo.description.c_str());
+        if (m_ffmpegUsable) {
+            ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), ICON_FA_CIRCLE_CHECK " %s", m_ffmpegStatus.c_str());
         } else {
-            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " Not found");
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.5f, 0.0f, 1.0f));
+            ImGui::TextWrapped(ICON_FA_TRIANGLE_EXCLAMATION " %s", m_ffmpegStatus.c_str());
+            ImGui::PopStyleColor();
         }
-    }
-}
-
-void EditorSettingsWindow::drawVideoImportSettings() {
-    prefsBeginSettingsRow("FFmpeg", "ffmpeg executable that converts imported videos to AV1 + Opus WebM (the format <video> plays). "
-        "Empty means JASPER_FFMPEG, then PATH. It runs as a separate program; it is never shipped.", !m_ffmpegOverride.empty());
-    const fs::path display = m_ffmpegOverride.empty() ? fs::path("<Auto-detect>") : fs::path(m_ffmpegOverride);
-    drawPathPicker(
-        "##EditorFfmpegPath", "Browse##editor_ffmpeg", "Auto##editor_ffmpeg",
-        display, !m_ffmpegOverride.empty(), false,
-        [this](const std::string& selectedPath) {
-            m_ffmpegOverride = selectedPath;
-            refreshFfmpegStatus();
-        },
-        [this]() {
-            m_ffmpegOverride.clear();
-            refreshFfmpegStatus();
-        }
-    );
-
-    ImGui::TableNextRow();
-    ImGui::TableNextColumn();
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted("Status");
-    ImGui::TableNextColumn();
-    if (m_ffmpegUsable) {
-        ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), ICON_FA_CIRCLE_CHECK " %s", m_ffmpegStatus.c_str());
-    } else {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.5f, 0.0f, 1.0f));
-        ImGui::TextWrapped(ICON_FA_TRIANGLE_EXCLAMATION " %s", m_ffmpegStatus.c_str());
-        ImGui::PopStyleColor();
     }
 }
 
 void EditorSettingsWindow::drawUndoSettings() {
     prefsDrawSettingsPanel("##EditorUndoSettingsPanel", [this]() {
-        if (prefsBeginSettingsRow("Max Undo Steps",
-                             "Steps each scene (and the project's asset history) keeps; the oldest go first.",
-                             m_undoMaxSteps != AppSettings::defaultUndoMaxSteps)) {
-            m_undoMaxSteps = AppSettings::defaultUndoMaxSteps;
+        if (settingsui::beginRow("preferences.undo_max_steps")) {
+            if (prefsBeginSettingsRow("Max Undo Steps",
+                                 "Steps each scene (and the project's asset history) keeps; the oldest go first.",
+                                 m_undoMaxSteps != AppSettings::defaultUndoMaxSteps)) {
+                m_undoMaxSteps = AppSettings::defaultUndoMaxSteps;
+            }
+            ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+            ImGui::DragInt("##UndoMaxSteps", &m_undoMaxSteps, 10.0f, AppSettings::minUndoMaxSteps, AppSettings::maxUndoMaxSteps,
+                           "%d", ImGuiSliderFlags_AlwaysClamp);
         }
-        ImGui::SetNextItemWidth(Theme::dpi(120.0f));
-        ImGui::DragInt("##UndoMaxSteps", &m_undoMaxSteps, 10.0f, AppSettings::minUndoMaxSteps, AppSettings::maxUndoMaxSteps,
-                       "%d", ImGuiSliderFlags_AlwaysClamp);
 
-        if (prefsBeginSettingsRow("Undo Memory Limit (MB)",
-                             "Memory every undo history together may keep (an estimate); the oldest steps of any scene go "
-                             "first. 0 = unlimited.",
-                             m_undoMemoryLimitMB != AppSettings::defaultUndoMemoryLimitMB)) {
-            m_undoMemoryLimitMB = AppSettings::defaultUndoMemoryLimitMB;
+        if (settingsui::beginRow("preferences.undo_memory_limit")) {
+            if (prefsBeginSettingsRow("Undo Memory Limit (MB)",
+                                 "Memory every undo history together may keep (an estimate); the oldest steps of any scene go "
+                                 "first. 0 = unlimited.",
+                                 m_undoMemoryLimitMB != AppSettings::defaultUndoMemoryLimitMB)) {
+                m_undoMemoryLimitMB = AppSettings::defaultUndoMemoryLimitMB;
+            }
+            ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+            ImGui::DragInt("##UndoMemoryLimit", &m_undoMemoryLimitMB, 8.0f, 0, AppSettings::maxUndoMemoryLimitMB, "%d",
+                           ImGuiSliderFlags_AlwaysClamp);
         }
-        ImGui::SetNextItemWidth(Theme::dpi(120.0f));
-        ImGui::DragInt("##UndoMemoryLimit", &m_undoMemoryLimitMB, 8.0f, 0, AppSettings::maxUndoMemoryLimitMB, "%d",
-                       ImGuiSliderFlags_AlwaysClamp);
 
-        if (prefsBeginSettingsRow("Record Selection in Undo",
-                             "Selecting GameObjects is a step of its own (Ctrl+Z gives the previous selection back). "
-                             "Undoing an edit always restores the selection it had.",
-                             m_undoRecordSelection != true)) {
-            m_undoRecordSelection = true;
+        if (settingsui::beginRow("preferences.undo_record_selection")) {
+            if (prefsBeginSettingsRow("Record Selection in Undo",
+                                 "Selecting GameObjects is a step of its own (Ctrl+Z gives the previous selection back). "
+                                 "Undoing an edit always restores the selection it had.",
+                                 m_undoRecordSelection != true)) {
+                m_undoRecordSelection = true;
+            }
+            ImGui::Checkbox("##UndoRecordSelection", &m_undoRecordSelection);
         }
-        ImGui::Checkbox("##UndoRecordSelection", &m_undoRecordSelection);
 
-        if (prefsBeginSettingsRow("Review Play Mode Changes",
-                             "On Stop, list the edits made while playing so chosen ones can be kept "
-                             "(Window > General > Play Mode Changes).",
-                             m_undoReviewPlayChanges != true)) {
-            m_undoReviewPlayChanges = true;
+        if (settingsui::beginRow("preferences.undo_review_play_changes")) {
+            if (prefsBeginSettingsRow("Review Play Mode Changes",
+                                 "On Stop, list the edits made while playing so chosen ones can be kept "
+                                 "(Window > General > Play Mode Changes).",
+                                 m_undoReviewPlayChanges != true)) {
+                m_undoReviewPlayChanges = true;
+            }
+            ImGui::Checkbox("##UndoReviewPlayChanges", &m_undoReviewPlayChanges);
         }
-        ImGui::Checkbox("##UndoReviewPlayChanges", &m_undoReviewPlayChanges);
     });
 }
 
@@ -799,34 +843,43 @@ namespace {
 void EditorSettingsWindow::drawLoggingSettings() {
     prefsDrawSettingsPanel("##EditorLoggingSettingsPanel", [this]() {
         const LoggingSettings defaults;
-        if (prefsBeginSettingsRow("Log File Level", "The lowest level written to editor.log (next to settings.yaml).",
-                             m_logging.fileLevel != defaults.fileLevel)) {
-            m_logging.fileLevel = defaults.fileLevel;
+        if (settingsui::beginRow("preferences.logging.file_level")) {
+            if (prefsBeginSettingsRow("Log File Level", "The lowest level written to editor.log (next to settings.yaml).",
+                                 m_logging.fileLevel != defaults.fileLevel)) {
+                m_logging.fileLevel = defaults.fileLevel;
+            }
+            prefsLogLevelCombo("##LogFileLevel", m_logging.fileLevel);
         }
-        prefsLogLevelCombo("##LogFileLevel", m_logging.fileLevel);
 
-        if (prefsBeginSettingsRow("Capture Backtrace on Errors",
-                             "Errors logged by the engine and editor record their call stack; editor.log shows it.",
-                             m_logging.backtraceOnError != defaults.backtraceOnError)) {
-            m_logging.backtraceOnError = defaults.backtraceOnError;
+        if (settingsui::beginRow("preferences.logging.backtrace_on_error")) {
+            if (prefsBeginSettingsRow("Capture Backtrace on Errors",
+                                 "Errors logged by the engine and editor record their call stack; editor.log shows it.",
+                                 m_logging.backtraceOnError != defaults.backtraceOnError)) {
+                m_logging.backtraceOnError = defaults.backtraceOnError;
+            }
+            ImGui::Checkbox("##LogBacktraces", &m_logging.backtraceOnError);
         }
-        ImGui::Checkbox("##LogBacktraces", &m_logging.backtraceOnError);
 
-        if (prefsBeginSettingsRow("Show Source Location",
-                             "The file and line a message was logged from, in the Console's details and editor.log.",
-                             m_logging.showSource != defaults.showSource)) {
-            m_logging.showSource = defaults.showSource;
+        if (settingsui::beginRow("preferences.logging.show_source")) {
+            if (prefsBeginSettingsRow("Show Source Location",
+                                 "The file and line a message was logged from, in the Console's details and editor.log.",
+                                 m_logging.showSource != defaults.showSource)) {
+                m_logging.showSource = defaults.showSource;
+            }
+            ImGui::Checkbox("##LogShowSource", &m_logging.showSource);
         }
-        ImGui::Checkbox("##LogShowSource", &m_logging.showSource);
 
         sectionRow("Category Levels");
-        prefsBeginSettingsRow("Reset", "Every category back to Info.");
-        ImGui::BeginDisabled(m_logging.categoryLevels.empty());
-        if (ImGui::Button("Reset All##LogLevels")) {
-            m_logging.categoryLevels.clear();
+        if (settingsui::beginRow("preferences.logging.reset")) {
+            prefsBeginSettingsRow("Reset", "Every category back to Info.");
+            ImGui::BeginDisabled(m_logging.categoryLevels.empty());
+            if (ImGui::Button("Reset All##LogLevels")) {
+                m_logging.categoryLevels.clear();
+            }
+            ImGui::EndDisabled();
         }
-        ImGui::EndDisabled();
         for (size_t i = 0; i < Logger::categoryCount(); i++) {
+            if (!settingsui::beginRow("preferences.logging.levels")) break;
             const std::string name = Logger::categoryAt(i).name;
             auto it = m_logging.categoryLevels.find(name);
             std::string level = it != m_logging.categoryLevels.end() ? it->second : std::string("info");
@@ -846,16 +899,18 @@ void EditorSettingsWindow::drawLoggingSettings() {
 
 void EditorSettingsWindow::drawAdvancedSettings() {
     prefsDrawSettingsPanel("##EditorAdvancedSettingsPanel", [this]() {
-        prefsBeginSettingsRow("Shader Cache", "Shared by projects for this editor version. Shaders are rebuilt when needed.");
-        ImGui::BeginDisabled(m_project && m_project->isAnyScenePlaying());
-        if (ImGui::Button("Clear Shader Cache")) {
-            std::error_code ec;
-            std::filesystem::remove_all(App::getUserShaderCacheDir(), ec);
-            m_cacheStatus = ec ? "Could not clear the shader cache: " + ec.message() : "Shader cache cleared.";
-        }
-        ImGui::EndDisabled();
-        if (!m_cacheStatus.empty()) {
-            ImGui::TextWrapped("%s", m_cacheStatus.c_str());
+        if (settingsui::beginRow("preferences.shader_cache")) {
+            prefsBeginSettingsRow("Shader Cache", "Shared by projects for this editor version. Shaders are rebuilt when needed.");
+            ImGui::BeginDisabled(m_project && m_project->isAnyScenePlaying());
+            if (ImGui::Button("Clear Shader Cache")) {
+                std::error_code ec;
+                std::filesystem::remove_all(App::getUserShaderCacheDir(), ec);
+                m_cacheStatus = ec ? "Could not clear the shader cache: " + ec.message() : "Shader cache cleared.";
+            }
+            ImGui::EndDisabled();
+            if (!m_cacheStatus.empty()) {
+                ImGui::TextWrapped("%s", m_cacheStatus.c_str());
+            }
         }
     });
 }

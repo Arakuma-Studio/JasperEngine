@@ -65,6 +65,17 @@ public:
 
     // The popup offers this component type: what Add Component, and so Paste Component As New, can add
     static bool isListed(ComponentType type);
+    // Its categories and components (the Search palette's + scope lists the same)
+    static const std::vector<ComponentCategory>& listing();
+
+    // The search (S25 R14): the components ranked by the one scorer, the display name as the
+    // label and the category and description as more text; best first
+    struct Ranked {
+        ComponentType type;
+        int category = 0;
+        int score = 0;
+    };
+    static std::vector<Ranked> rank(const std::string& query);
     void close() { m_isOpen = false; }
 };
 

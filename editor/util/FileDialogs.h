@@ -108,6 +108,48 @@ namespace jasperengine::editor{
             return retPath;
         }
 
+        // One file of a type of our own ("Layouts", "yaml"); "" when cancelled
+        inline static std::string openFileDialogFiltered(const std::string& defaultPath, const char* filterName, const char* filterSpec) {
+            std::string retPath;
+            nfdu8char_t* path;
+            nfdopendialogu8args_t args = {0};
+            const nfdu8filteritem_t filter = {filterName, filterSpec};
+            args.filterList = &filter;
+            args.filterCount = 1;
+            args.defaultPath = defaultPath.empty() ? nullptr : defaultPath.c_str();
+            args.parentWindow = *static_cast<nfdwindowhandle_t*>(Backend::getNFDWindowHandle());
+            const nfdresult_t res = NFD_OpenDialogU8_With(&path, &args);
+            if (res == NFD_OKAY) {
+                retPath = path;
+                NFD_FreePathU8(path);
+            } else if (res == NFD_ERROR) {
+                printf("Error: %s\n", NFD_GetError());
+            }
+            return retPath;
+        }
+
+        // Where to write a file ("Save Layout to File..."); "" when cancelled
+        inline static std::string saveFileDialog(const std::string& defaultPath, const std::string& defaultName,
+                                                 const char* filterName, const char* filterSpec) {
+            std::string retPath;
+            nfdu8char_t* path;
+            nfdsavedialogu8args_t args = {0};
+            const nfdu8filteritem_t filter = {filterName, filterSpec};
+            args.filterList = &filter;
+            args.filterCount = 1;
+            args.defaultPath = defaultPath.empty() ? nullptr : defaultPath.c_str();
+            args.defaultName = defaultName.empty() ? nullptr : defaultName.c_str();
+            args.parentWindow = *static_cast<nfdwindowhandle_t*>(Backend::getNFDWindowHandle());
+            const nfdresult_t res = NFD_SaveDialogU8_With(&path, &args);
+            if (res == NFD_OKAY) {
+                retPath = path;
+                NFD_FreePathU8(path);
+            } else if (res == NFD_ERROR) {
+                printf("Error: %s\n", NFD_GetError());
+            }
+            return retPath;
+        }
+
         inline static std::vector<std::string> openFileDialogMultiple(){
             std::vector<std::string> filePaths;
             const nfdpathset_t* pathSet;

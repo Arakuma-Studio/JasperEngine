@@ -23,6 +23,9 @@
 #include "asset/AssetMap.h"
 #include "asset/AssetRefSchema.h"
 #include "asset/MissingAssetTracker.h"
+#include "organisation/AssetLabels.h"
+#include "organisation/Organisation.h"
+#include "search/AssetSearchIndex.h"
 #include "util/ScriptParser.h"
 #include "util/ScopedDefaultEntityPool.h"
 #include "util/CxxStandards.h"
@@ -876,6 +879,11 @@ namespace jasperengine::editor{
         // Who references what (S04): closed files from disk, documents with unsaved edits from memory
         AssetIndex assetIndex;
         MissingAssetTracker missingAssets;
+        // S25: asset labels (in metas and in-file keys), this user's bookmarks, saved searches
+        // and palette recents, and the index the asset search evaluates
+        AssetLabels assetLabels;
+        Organisation organisation;
+        AssetSearchIndex assetSearchIndex;
         // Lua's Asset module (AssetMap) in the editor and its Play: answered by the database
         class EditorAssetResolver : public AssetMap::Resolver {
         public:
@@ -1649,6 +1657,13 @@ namespace jasperengine::editor{
 
         AssetIndex& getAssetIndex() { return assetIndex; }
         const AssetIndex& getAssetIndex() const { return assetIndex; }
+        // S25 (editor/organisation, editor/search)
+        AssetLabels& getAssetLabels() { return assetLabels; }
+        const AssetLabels& getAssetLabels() const { return assetLabels; }
+        Organisation& getOrganisation() { return organisation; }
+        const Organisation& getOrganisation() const { return organisation; }
+        // Brought up to date first (the database and the labels may have changed)
+        AssetSearchIndex& getAssetSearchIndex();
         // The Missing Assets lists, brought up to date with the database and the index
         MissingAssetTracker& getMissingAssets();
         // The roots reference hints are relative to (assets and Lua directories), project-relative

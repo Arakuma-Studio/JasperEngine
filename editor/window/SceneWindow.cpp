@@ -1653,88 +1653,28 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
     }
 
-    if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()){
-        if (project->getSelectedSceneId() == sceneId){
-            if (!walkingMode){
+    // Its keys (F, Home, the numpad views, the terrain brush's [ and ]) are command catalog
+    // entries (shortcuts/DefaultCommands.cpp): frameSelection, frameAll, viewFrom below.
+    if (isMouseInWindow) viewHovered = true;
 
-                // Brush shortcuts while terrain editing: [ / ] resize the brush,
-                // Shift+[ / Shift+] adjust its strength.
-                if (TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow()){
-                    if (terrainEditWindow->isEditingScene(sceneProject->scene)){
-                        const bool shiftHeld = ImGui::IsKeyDown(ImGuiMod_Shift);
-                        if (ImGui::IsKeyPressed(ImGuiKey_LeftBracket)){
-                            if (shiftHeld){
-                                terrainEditWindow->adjustBrushStrength(1.0f / 1.15f);
-                            }else{
-                                terrainEditWindow->adjustBrushSize(1.0f / 1.15f);
-                            }
-                        }
-                        if (ImGui::IsKeyPressed(ImGuiKey_RightBracket)){
-                            if (shiftHeld){
-                                terrainEditWindow->adjustBrushStrength(1.15f);
-                            }else{
-                                terrainEditWindow->adjustBrushSize(1.15f);
-                            }
-                        }
-                    }
-                }
+}
 
-                // Tool shortcuts (Q/W/E/R/T, X) live in the main toolbar.
-
-                // F key: Focus camera on selected entities
-                if (ImGui::IsKeyPressed(ImGuiKey_F)) {
-                    frameSelection(sceneId);
-                }
-
-                // Home key: Frame all objects in the scene
-                if (sceneProject->sceneType == SceneType::SCENE_3D && ImGui::IsKeyPressed(ImGuiKey_Home)) {
-                    focusOnEntities(sceneProject, sceneProject->entities);
-                }
-
-                // Numpad preset views (3D only)
-                if (sceneProject->sceneType == SceneType::SCENE_3D) {
-                    Camera* cam = sceneProject->sceneRender->getCamera();
-                    if (!ImGui::IsKeyDown(ImGuiMod_Ctrl)) {
-                        if (ImGui::IsKeyPressed(ImGuiKey_Keypad1)) {
-                            // Numpad 1: Front view (-Z looking toward +Z)
-                            snapCameraToDirection(cam, Vector3(0, 0, 1));
-                        }
-                        if (ImGui::IsKeyPressed(ImGuiKey_Keypad3)) {
-                            // Numpad 3: Right view (+X looking toward -X)
-                            snapCameraToDirection(cam, Vector3(-1, 0, 0));
-                        }
-                        if (ImGui::IsKeyPressed(ImGuiKey_Keypad7)) {
-                            // Numpad 7: Top view (+Y looking down)
-                            snapCameraToDirection(cam, Vector3(0, -1, 0));
-                        }
-                        if (ImGui::IsKeyPressed(ImGuiKey_Keypad9)) {
-                            // Numpad 9: Bottom view (-Y looking up)
-                            snapCameraToDirection(cam, Vector3(0, 1, 0));
-                        }
-                    } else {
-                        // Ctrl+Numpad for opposite directions
-                        if (ImGui::IsKeyPressed(ImGuiKey_Keypad1)) {
-                            // Ctrl+Numpad 1: Back view (+Z looking toward -Z)
-                            snapCameraToDirection(cam, Vector3(0, 0, -1));
-                        }
-                        if (ImGui::IsKeyPressed(ImGuiKey_Keypad3)) {
-                            // Ctrl+Numpad 3: Left view (-X looking toward +X)
-                            snapCameraToDirection(cam, Vector3(1, 0, 0));
-                        }
-                        if (ImGui::IsKeyPressed(ImGuiKey_Keypad7)) {
-                            // Ctrl+Numpad 7: Bottom view (-Y looking up)
-                            snapCameraToDirection(cam, Vector3(0, 1, 0));
-                        }
-                        if (ImGui::IsKeyPressed(ImGuiKey_Keypad9)) {
-                            // Ctrl+Numpad 9: Top view (+Y looking down)
-                            snapCameraToDirection(cam, Vector3(0, -1, 0));
-                        }
-                    }
-                }
-            }
-        }
+void editor::SceneWindow::frameAll(uint32_t sceneId) {
+    SceneProject* sceneProject = project->getScene(sceneId);
+    if (sceneProject && sceneProject->sceneType == SceneType::SCENE_3D) {
+        focusOnEntities(sceneProject, sceneProject->entities);
     }
+}
 
+void editor::SceneWindow::viewFrom(uint32_t sceneId, const Vector3& direction) {
+    SceneProject* sceneProject = project->getScene(sceneId);
+    if (sceneProject && sceneProject->sceneType == SceneType::SCENE_3D && sceneProject->sceneRender) {
+        snapCameraToDirection(sceneProject->sceneRender->getCamera(), direction);
+    }
+}
+
+bool editor::SceneWindow::isHovered() const {
+    return viewHovered;
 }
 
 bool editor::SceneWindow::hasFrameableSelection(uint32_t sceneId) {
@@ -2107,6 +2047,7 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
 }
 
 void editor::SceneWindow::show() {
+    viewHovered = false;
     for (uint32_t sceneId: closeSceneQueue){
         project->closeScene(sceneId);
     }
