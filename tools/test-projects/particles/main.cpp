@@ -10,21 +10,23 @@
 // On Android (ANDROID_PROJECT=particles tools/build.sh android) the emulator test checks the same
 // lines (android-expect.txt) with the SSE2 or NEON kernels and the GLES3 particles shader.
 //
-// With ?particles_bench=1 (a Release build on the benchmark server: GATE_ARGS=
-// '--query=particles_bench=1 --expect=particles_web_budgets=pass') it first measures the web rows
-// of R21, R22 and R24 on one thread: the reference stack at 30 000 live particles with and
-// without Noise, its render prep, and the SIMD kernels against the scalar ones; a budget missed
-// is an error line (docs/perf/particles.md).
+// With ?particles_bench=1 (Release builds on the benchmark server, docs/perf/particles.md) it
+// first measures the web rows of R21 and R22 on one thread: the reference stack at 30 000 live
+// particles with and without Noise and its render prep. The simd128 build gates them (a budget
+// missed is an error line; GATE_ARGS='--query=particles_bench=1
+// --expect=particles_web_budgets=pass'); tools/perf/check_web_particles.py compares its figures
+// with the scalar build's for R24 (in one build, the scalar kernels are auto-vectorized for
+// simd128 and would not measure what a browser without simd128 runs).
 
 #include "JasperEngine.h"
 #include "math/noise/CurlNoiseBatch.h"
+#include "math/simd/SimdFloat4.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "subsystem/ParticleSystemState.h"
 #include "jobs/JobSystem.h"
 #include "memory/Arena.h"
 #include "particles/EmitterRuntime.h"
 #include "particles/ParticleCompiler.h"
-#include "particles/ParticleKernelContext.h"
 #include "particles/ParticleRender.h"
 #include "particles/ParticleWorld.h"
 
@@ -135,35 +137,38 @@ namespace webbench {
         }
     };
 
-    bool withinBudget(const char* metric, double value, double budget, bool atLeast){
-        const bool pass = atLeast ? value >= budget : value <= budget;
-        Log::print("[bench] particles web %s %.3f (budget %s %.3f)", metric, value, atLeast ? ">=" : "<=", budget);
-        if (!pass)
-            Log::error("[bench] particles web %s %.3f misses its budget (%s %.3f)", metric, value, atLeast ? ">=" : "<=", budget);
-        return pass;
+    void report(const char* metric, double value){
+        Log::print("[bench] particles web %s %.3f", metric, value);
     }
 
-    // the web rows of R21 (30 k, one thread), R22 (prep) and R24 (SIMD against scalar)
+    bool withinBudget(const char* metric, double value, double budget){
+        if (value <= budget)
+            return true;
+        Log::error("[bench] particles web %s %.3f misses its budget (<= %.3f)", metric, value, budget);
+        return false;
+    }
+
+    // the web rows of R21 (30 k, one thread) and R22 (prep), gated in the simd128 build; R24's
+    // SIMD speedups compare it with the scalar build's figures (tools/perf/check_web_particles.py)
     void run(){
         Emitter ref(referencestack::referenceStack(true, 15000.0f));
         const double sim = ref.tickMs(40);
         const double prep = ref.prepMs(40);
-        setForceScalarKernels(true);
-        const double simScalar = ref.tickMs(10);
-        setForceScalarKernels(false);
-
         Emitter quiet(referencestack::referenceStack(false, 15000.0f));
         const double quietSim = quiet.tickMs(40);
-        setForceScalarKernels(true);
-        const double quietScalar = quiet.tickMs(10);
-        setForceScalarKernels(false);
 
         Log::print("[bench] particles web: %u live, kernels %s", ref.runtime->count(), noise::curlNativeBackend());
-        bool pass = withinBudget("ref_30k_sim_ms", sim, 3.0, false);
-        pass = withinBudget("ref_30k_nonoise_sim_ms", quietSim, 1.5, false) && pass;
-        pass = withinBudget("ref_30k_prep_ms", prep, 1.2, false) && pass;
-        pass = withinBudget("ref_30k_simd_speedup", simScalar / std::max(sim, 1e-9), 2.0, true) && pass;
-        pass = withinBudget("noise_simd_speedup", std::max(simScalar - quietScalar, 0.0) / std::max(sim - quietSim, 1e-9), 2.5, true) && pass;
+        report("ref_30k_live", (double)ref.runtime->count());
+        report("ref_30k_sim_ms", sim);
+        report("ref_30k_nonoise_sim_ms", quietSim);
+        report("ref_30k_prep_ms", prep);
+        if (!simd::kNativeIsSimd){
+            Log::print("[bench] particles_web_budgets=scalar (the fallback build: no budget)");
+            return;
+        }
+        bool pass = withinBudget("ref_30k_sim_ms", sim, 3.0);
+        pass = withinBudget("ref_30k_nonoise_sim_ms", quietSim, 1.5) && pass;
+        pass = withinBudget("ref_30k_prep_ms", prep, 1.2) && pass;
         Log::print("[bench] particles_web_budgets=%s", pass ? "pass" : "fail");
     }
 
