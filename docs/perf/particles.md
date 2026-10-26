@@ -1,0 +1,108 @@
+# Particle system performance
+
+The budgets of [S20](../specs/S20-particles.md) (R20-R26, AC10-AC12), how they are measured and
+what the benchmark server measured. The benchmark is `je-bench-particles` (built next to the core
+tests); `tools/perf/check_bench.py` gates its JSON with `tools/perf/bench-thresholds.json`.
+
+```sh
+cmake --build build/linux/core-tests --target je-bench-particles
+build/linux/core-tests/tests/core/je-bench-particles --count-allocs --json particles.json [--workers N]
+python3 tools/perf/check_bench.py particles.json
+```
+
+## What it measures
+
+- **Scenarios** (AC11): `ref_100k` (the spec's reference stack at 100 000 live particles: Rate +
+  Cone, start ranges, gravity, Limit Velocity drag, Noise High one octave, Color and Size over
+  Lifetime curves, an 8 x 8 sheet with frame blending, additive billboards), `ref_100k_nonoise`,
+  `ref_100k_sorted` (the same alpha-blended and sorted by distance), `ref_10k`, `trails_10k`
+  (per-particle trails, 16 points), `collision_world_10k` (World collision at Medium quality
+  against a floor answered by a ray provider) and `many_small_1000x100` (1 000 emitters of 100).
+- **Simulation**: the wall time of one tick of every live particle through `ParticleWorld`
+  (spawn, the update kernels, collisions, deaths and compaction, trails), median of 40 ticks
+  at the steady state; with all workers, on one thread, and on one thread with the scalar
+  kernels forced (`setForceScalarKernels`).
+- **Render prep**: cull, interpolation, the appearance curves, sort keys, thinning, packing
+  into the 32-byte records (and trail strips), for one view.
+- **Memory**: channel bytes per particle and trail bytes per point.
+- **Frame costs without work**: the particle scheduler of a scene without systems, and what
+  each out-of-sight Automatic looping emitter adds (100 of them).
+- **Allocations** (`--count-allocs`): heap allocations of 600 steady-state frames of
+  `ref_100k` + `trails_10k` + an emitter with a death sub-emitter, simulation and render prep.
+
+### Machines with fewer cores than the reference
+
+R21 and R22 give their desktop budgets for the CI reference machine, 8 workers. A machine with
+fewer cores runs the bench with its own worker count (one per physical core but the main
+thread's: `--workers 1` on a 2-core server) and gates:
+
+- the single-thread figures against R21's single-thread budgets,
+- the parallel efficiency `speedup / (workers + 1)` against R24's floor of 0.6, as measured,
+- the 8-worker budgets against `single thread / (9 x 0.6)`: the time 9 threads would take at
+  the least parallel efficiency R24 allows (`*_8w_projected_ms`).
+
+The measured all-worker times stay in the JSON as information.
+
+## Results
+
+Benchmark server **E**: AMD EPYC-Milan, 2 cores / 4 threads (KVM), Linux x64, the core-tests
+build (RelWithDebInfo, GCC, SSE2 baseline; the curl noise takes its AVX2 path), `--workers 1`,
+2026-10-26.
+
+| Metric | Measured | Budget |
+|---|---|---|
+| Reference stack, 100 k, one tick, 1 thread | 3.91 ms | ≤ 4.0 ms (R21) |
+| the same, 8 workers (projected) | 0.72 ms | ≤ 1.0 ms (R21) |
+| Without Noise, 1 thread | 1.19 ms | ≤ 1.5 ms (R21) |
+| Without Noise, 8 workers (projected) | 0.22 ms | ≤ 0.5 ms (R21) |
+| Parallel efficiency at 100 k (1 worker + main) | 0.84 | ≥ 0.6 (R24) |
+| SIMD against scalar, the reference tick | 60 x | ≥ 2 x (R24) |
+| SIMD against scalar, the Noise kernel | 79 x | ≥ 2.5 x (R24) |
+| Render prep, 100 k, 1 thread | 2.54 ms | |
+| Render prep, 8 workers (projected) | 0.47 ms | ≤ 0.6 ms (R22) |
+| Back-to-front sort, 100 k, 1 thread (extra) | 0.43 ms | ≤ 0.5 ms (R22) |
+| Channel storage per particle | 56 B | ≤ 64 B (R20) |
+| Trail storage per point | 17.3 B | ≤ 24 B (R20) |
+| World collision, Medium, 10 k: ray casts per tick | 256 | ≤ 256 (AC5) |
+| Off-screen Automatic emitter | 0.035 µs | ≤ 2 µs (AC10) |
+| Scheduler, scene without systems | 0.03 µs | ≤ 5 µs (R26) |
+| Heap allocations, 600 steady-state frames | 0 | 0 (R25) |
+
+Information (not budgeted): `ref_10k` 0.25 ms per tick and 0.15 ms prep (2 threads),
+`trails_10k` 0.48 ms per tick and 2.07 ms for its 10 041 strips of 17 points,
+`collision_world_10k` 0.23 ms per tick, `many_small_1000x100` 1.57 ms per tick and 2.73 ms prep
+(the per-emitter overhead dominates: 1.6 µs simulation, 2.7 µs prep per emitter).
+
+The scalar kernels are the correctness reference (and the build without SIMD on the web): they
+emulate four lanes element by element, which is why they are so far behind.
+
+### Not measured here
+
+- **Mobile (R21-R23)** and **GPU (R23)** rows: manual sign-off on the named reference devices
+  with the `particles_perf` sample scene (Android GPU timings through the S15 pass timers). The
+  CPU paths are the NEON instantiation of the same kernels.
+- **Web**: the kernels build with `-msimd128` (`JASPERENGINE_WASM_SIMD=ON`, default) or scalar;
+  the web gate runs the engine in headless Chrome.
+
+## Comparison
+
+- **OpenEngine** (`Engine/Modules/Particles`, the design S20 follows): its processors run one
+  emitter at a time on one thread with scalar loops over the channels; its curl noise is the
+  scalar `GradientCurl3D` our golden test matches. The same noise field here runs 4 or 8
+  samples at a time with the lattice work shared by the three potentials, and the emitters'
+  chunks run on the job system. OpenEngine was not built or run for this comparison (its code
+  is reference only), so there are no side-by-side timings.
+- **Unity** (Shuriken): the module stack and names are Unity's, and Unity also simulates on
+  its job system. Unity is not available on the build and benchmark servers, so there are no
+  Unity timings; the comparison stays at the design level.
+
+## Where the time goes
+
+- The Noise module is two thirds of the reference tick: 24 lattice corners per particle (three
+  potentials of eight), each a hash, a gradient pick and its weights. AVX2 halves it; the
+  lattice cell setup is shared by the potentials.
+- Render prep is bound by the appearance curves (LUT gathers per lane), the colour encoding and
+  the 32-byte stores; the sort adds the key computation, a two-pass 8-bit radix sort and a
+  gather of the records.
+- Trails: their strips are 2 x points vertices of 28 bytes; 10 k trails of 17 points are 9.5 MB
+  a frame to upload, which is what the GPU side pays.
