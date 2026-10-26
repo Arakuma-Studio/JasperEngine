@@ -1014,6 +1014,15 @@ const editor::PlayerLoggingSettings& editor::Project::getPlayerLogging() const{
     return playerLogging;
 }
 
+void editor::Project::setPlayerCrash(const PlayerCrashSettings& settings){
+    playerCrash = settings;
+    playerCrash.hangSeconds = std::clamp(settings.hangSeconds, PlayerCrashSettings::minHangSeconds, PlayerCrashSettings::maxHangSeconds);
+}
+
+const editor::PlayerCrashSettings& editor::Project::getPlayerCrash() const{
+    return playerCrash;
+}
+
 bool editor::Project::isValidHtmlUiMsaaSamples(int samples){
     return samples == 1 || samples == 2 || samples == 4 || samples == 8;
 }
@@ -3993,6 +4002,7 @@ void editor::Project::resetConfigs() {
     vsyncEnabled = defaultVSyncEnabled;
     setAtmosphereQuality(defaultAtmosphereQuality);
     playerLogging = PlayerLoggingSettings();
+    playerCrash = PlayerCrashSettings();
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
         setShadowTier(platform, ShadowTiers::defaultTier(platform));

@@ -2633,6 +2633,14 @@ bool editor::Exporter::copyEngine() {
         projectSettings += indent + "set(JASPERENGINE_LOG_LEVEL \"" + logging.level + "\")";
         projectSettings += indent + std::string("set(JASPERENGINE_LOG_FILE ") + (logging.fileLog ? "ON" : "OFF") + ")";
         projectSettings += indent + std::string("set(JASPERENGINE_LOG_BACKTRACE ") + (logging.backtrace ? "ON" : "OFF") + ")";
+        // Player > Crash Handling
+        const PlayerCrashSettings& crash = project->getPlayerCrash();
+        projectSettings += indent + std::string("set(JASPERENGINE_CRASH_HANDLER ") + (crash.enabled ? "ON" : "OFF") + ")";
+        projectSettings += indent + std::string("set(JASPERENGINE_CRASH_LOG_TAIL ") + (crash.includeLogTail ? "ON" : "OFF") + ")";
+        projectSettings += indent + std::string("set(JASPERENGINE_CRASH_DUMP_WITH_HEAP ") + (crash.dumpWithHeap ? "ON" : "OFF") + ")";
+        projectSettings += indent + std::string("set(JASPERENGINE_CRASH_HANG_WATCHDOG ") + (crash.hangWatchdog ? "ON" : "OFF") + ")";
+        projectSettings += indent + "set(JASPERENGINE_CRASH_HANG_MS " + std::to_string(crash.hangSeconds * 1000) + ")";
+        projectSettings += indent + std::string("set(JASPERENGINE_CRASH_WEB_OVERLAY ") + (crash.webCrashOverlay ? "ON" : "OFF") + ")";
         cmakeContent.replace(projectSettingsPos, projectSettingsMarker.size(), projectSettings);
     } else {
         Out::warning("Exported CMakeLists.txt is missing the project settings marker; using platform defaults");

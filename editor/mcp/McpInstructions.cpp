@@ -220,6 +220,10 @@ get_cpu_profile (capture_id, frame worst), get_gpu_passes (each pass's GPU ms; w
 per-label medians), capture_pass_output, get_vram_report, get_render_stats. Compare medians,
 not single frames; GPU time semantics differ per backend (jasper://docs/profiling).
 
+## Hangs and crashes
+When calls time out, get_editor_health (diagnostics group; it answers even while the editor hangs)
+tells hung from slow; get_crash_reports lists crash and hang reports (jasper://docs/crash-diagnostics).
+
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export
 (Build Settings, build_project) makes a CMake project or players per platform (a long job).

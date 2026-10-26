@@ -639,6 +639,27 @@ local s = Profiler.frameStats()              -- {drawCalls, instances, triangles
 - In a release game (no profiler) the functions do nothing, `enabled` stays false, and
   `frameStats()` still works.
 
+### 2.15 Crash (static): reports of earlier sessions, the report hook, tags
+
+```lua
+if Crash.lastSessionEndedAbnormally() then Log.warn("the last session did not end cleanly") end
+Crash.setTag("level", "forest-2")                -- a line of this session's crash.txt (16 tags)
+for _, report in ipairs(Crash.getPendingReports()) do
+    Log.print(report.kind .. " " .. report.id .. ": " .. report.reason)
+end
+Crash.setReportHook(function(report)             -- once per pending report, now
+    -- {id, kind = "crash"|"hang"|"abnormal_exit", reason, time, version, product, handled, files}
+    return true                                  -- true marks it handled: not offered again
+end)
+Crash.markHandled("20261026T143200Z-4242")       -- the same by id (false: unknown)
+```
+
+- The engine never sends a report anywhere: the hook decides. Reports hold file paths and log
+  lines; ask the player before sending one. `files` are paths to read with the file API.
+- Pending means from an earlier session and not handled yet; the current session's reports
+  appear at the next start.
+- Editor Play reads the editor's own reports (docs/crash-diagnostics.md).
+
 ---
 
 ## 3. Math

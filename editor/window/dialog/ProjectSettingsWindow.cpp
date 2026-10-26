@@ -887,6 +887,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     for (int i = 0; i < 3; i++)
         m_atmosphereQuality[i] = (int)project->getAtmosphereQuality()[i];
     m_playerLogging = project->getPlayerLogging();
+    m_playerCrash = project->getPlayerCrash();
     m_htmlUiMsaaIndex = findHtmlUiMsaaIndex(project->getHtmlUiMsaaSamples());
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) {
         m_shadowTiers[platform] = static_cast<int>(project->getShadowTier(platform));
@@ -1340,6 +1341,62 @@ void ProjectSettingsWindow::drawPlayerSettings() {
             }
             ImGui::Checkbox("##PlayerLogBacktrace", &m_playerLogging.backtrace);
             endSettingsRow("Errors record their call stack (written to the log file). Debug builds always do.");
+
+            ImGui::EndTable();
+        }
+
+        if (Theme::foldoutHeader("Crash Handling") && beginSettingsTable("##PlayerCrashTable")) {
+            const PlayerCrashSettings defaults;
+            if (projectBeginSettingsRow("Enabled", m_playerCrash.enabled != defaults.enabled)) {
+                m_playerCrash.enabled = defaults.enabled;
+            }
+            ImGui::Checkbox("##PlayerCrashEnabled", &m_playerCrash.enabled);
+            endSettingsRow("A crash writes a report folder in the game's user data (crash/reports). Nothing is sent "
+                "anywhere: Lua Crash.setReportHook gets the pending reports at the next start.");
+
+            ImGui::BeginDisabled(!m_playerCrash.enabled);
+            if (projectBeginSettingsRow("Include Log Tail", m_playerCrash.includeLogTail != defaults.includeLogTail)) {
+                m_playerCrash.includeLogTail = defaults.includeLogTail;
+            }
+            ImGui::Checkbox("##PlayerCrashLogTail", &m_playerCrash.includeLogTail);
+            endSettingsRow("The report keeps the last log lines (log-tail.txt). They may hold player data.");
+
+            if (projectBeginSettingsRow("Windows Dump Type", m_playerCrash.dumpWithHeap != defaults.dumpWithHeap)) {
+                m_playerCrash.dumpWithHeap = defaults.dumpWithHeap;
+            }
+            static const char* const dumpLabels[] = {"Small", "With Heap"};
+            int dumpIndex = m_playerCrash.dumpWithHeap ? 1 : 0;
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            if (ImGui::Combo("##PlayerCrashDump", &dumpIndex, dumpLabels, IM_ARRAYSIZE(dumpLabels))) {
+                m_playerCrash.dumpWithHeap = dumpIndex == 1;
+            }
+            endSettingsRow("What a Windows minidump holds: threads, stacks and modules (Small), or also the memory the "
+                "stacks point to (With Heap, larger, more player data).");
+            ImGui::EndDisabled();
+
+            if (projectBeginSettingsRow("Hang Watchdog In Development Builds", m_playerCrash.hangWatchdog != defaults.hangWatchdog)) {
+                m_playerCrash.hangWatchdog = defaults.hangWatchdog;
+            }
+            ImGui::Checkbox("##PlayerHangWatchdog", &m_playerCrash.hangWatchdog);
+            endSettingsRow("A Development Build reports when its main thread stops responding (hang-NNN.txt). "
+                "Release builds never run it.");
+
+            ImGui::BeginDisabled(!m_playerCrash.hangWatchdog);
+            if (projectBeginSettingsRow("Hang Threshold (s)", m_playerCrash.hangSeconds != defaults.hangSeconds)) {
+                m_playerCrash.hangSeconds = defaults.hangSeconds;
+            }
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            ImGui::DragInt("##PlayerHangSeconds", &m_playerCrash.hangSeconds, 0.2f, PlayerCrashSettings::minHangSeconds,
+                           PlayerCrashSettings::maxHangSeconds, "%d", ImGuiSliderFlags_AlwaysClamp);
+            endSettingsRow("How long the main thread may not respond before a report.");
+            ImGui::EndDisabled();
+
+            if (projectBeginSettingsRow("Web > Show Crash Overlay", m_playerCrash.webCrashOverlay != defaults.webCrashOverlay)) {
+                m_playerCrash.webCrashOverlay = defaults.webCrashOverlay;
+            }
+            ImGui::Checkbox("##PlayerCrashWebOverlay", &m_playerCrash.webCrashOverlay);
+            endSettingsRow("A web game that crashes shows \"The game stopped working. [Reload]\" over the page "
+                "(window.jasperengine.onCrash gets the report either way).");
 
             ImGui::EndTable();
         }
@@ -2115,6 +2172,7 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setAtmosphereQuality({(AtmosphereQuality)m_atmosphereQuality[0], (AtmosphereQuality)m_atmosphereQuality[1],
                                      (AtmosphereQuality)m_atmosphereQuality[2]});
     m_project->setPlayerLogging(m_playerLogging);
+    m_project->setPlayerCrash(m_playerCrash);
     m_project->setHtmlUiMsaaSamples(htmlUiMsaaValues[m_htmlUiMsaaIndex]);
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) {
         m_project->setShadowTier(platform, static_cast<ShadowTier>(m_shadowTiers[platform]));

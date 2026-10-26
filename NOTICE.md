@@ -85,6 +85,7 @@ Code from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, 
 
 | Code | Location | Used for |
 |---|---|---|
+| `Apps/Editor/Source/Diagnostics/MainThreadHangWatchdog.{h,cpp}` (the heartbeat armed by the first beat, the poll, the re-report interval, the "recovered after" line, the shutdown window, the job-occupancy section; adapted) and `Tests/Editor/MainThreadHangWatchdogTests.cpp` (ported cases) | `engine/core/diag/HangWatchdog.*`, `engine/tests/core/diag/HangWatchdogTest.cpp` | the main-thread hang watchdog (S28) |
 | `Engine/Modules/Types/Include/Types/NearestName.h` (copied, namespace changed) | `editor/util/NearestName.h` | "did you mean" suggestions of the scene load report (S03) |
 | `Engine/Modules/NativeScripting/Include/NativeScripting/NativeScriptingABI.h` (the `GE_ToolchainFingerprint` fill, adapted and extended) | `engine/core/script/ToolchainFingerprint.h` | the toolchain fingerprint of C++ script libraries (S23) |
 | `Apps/Editor/Source/ScriptEditor/SourceLocation.cpp` (the path-start scan and the `:L:C` / `(L,C)` readers, adapted and extended) | `editor/util/SourceLocation.*` | the Console's source-location parser (S23) |

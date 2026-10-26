@@ -1375,6 +1375,39 @@ const std::vector<Setting>& settingsTable() {
                         [](Project& p) { return p.getPlayerLogging().backtrace; },
                         [](Project& p, bool v) { PlayerLoggingSettings l = p.getPlayerLogging(); l.backtrace = v; p.setPlayerLogging(l); }));
 
+        // ---- player crash handling (docs/crash-diagnostics.md)
+        auto crashBool = [&add](const std::string& key, const std::string& description, bool PlayerCrashSettings::* member) {
+            add(boolSetting(key, description, [member](Project& p) { return p.getPlayerCrash().*member; },
+                            [member](Project& p, bool v) { PlayerCrashSettings c = p.getPlayerCrash(); c.*member = v; p.setPlayerCrash(c); }));
+        };
+        crashBool("player.crash.enabled", "The built game writes crash reports (<user data>/crash/reports); none are sent.",
+                  &PlayerCrashSettings::enabled);
+        crashBool("player.crash.log_tail", "Crash reports keep the last log lines (log-tail.txt).", &PlayerCrashSettings::includeLogTail);
+        crashBool("player.crash.dump_with_heap", "Windows minidumps also hold the memory the stacks point to (else Small).",
+                  &PlayerCrashSettings::dumpWithHeap);
+        crashBool("player.crash.hang_watchdog", "Development Builds report a main thread that stops responding.",
+                  &PlayerCrashSettings::hangWatchdog);
+        crashBool("player.crash.web_overlay", "Web: show \"The game stopped working. [Reload]\" after a crash.",
+                  &PlayerCrashSettings::webCrashOverlay);
+        {
+            Setting s;
+            s.key = "player.crash.hang_seconds";
+            s.type = "int";
+            s.description = "The development build's hang threshold, seconds.";
+            s.get = [](McpContext& ctx) { return Json(ctx.project()->getPlayerCrash().hangSeconds); };
+            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                long long v;
+                if (!readInt(value, PlayerCrashSettings::minHangSeconds, PlayerCrashSettings::maxHangSeconds, v, error)) return false;
+                if (apply) {
+                    PlayerCrashSettings crash = ctx.project()->getPlayerCrash();
+                    crash.hangSeconds = static_cast<int>(v);
+                    ctx.project()->setPlayerCrash(crash);
+                }
+                return true;
+            };
+            add(std::move(s));
+        }
+
         // ---- physics
         add(boolSetting("physics.enabled", "3D physics (Jolt). Off leaves Rigidbodies and joints out of builds.",
                         [](Project& p) { return p.isPhysics3DEnabled(); }, [](Project& p, bool v) { p.setPhysics3DEnabled(v); }));
