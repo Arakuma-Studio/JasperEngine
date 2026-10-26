@@ -58,8 +58,9 @@ ENGINE_TARGET=jasperengine-project
 # AC7 of docs/specs/S02-build-ci-tests.md: what an unfiltered run must at least execute
 CORE_MIN_TESTS=300
 EDITOR_MIN_TESTS=150
-# jasperengine-htmlui-tests skips these on purpose (docs/html-ui/phase-6-acceptance.md §4.2)
-HTMLUI_MAX_SKIPPED=74
+# jasperengine-htmlui-tests skips these on purpose (docs/html-ui/phase-6-acceptance.md §4.2), and
+# upstream's opt-in EffectFluidProfile.LiveCost (JASPER_EFFECT_FLUID_PROFILE=1)
+HTMLUI_MAX_SKIPPED=75
 
 usage() {
     sed -n '2,51p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
