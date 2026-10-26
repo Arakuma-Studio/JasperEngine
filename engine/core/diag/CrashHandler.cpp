@@ -471,10 +471,19 @@ namespace je_crash_common {
     }
 
     void deliverPending(Common& c) {
-        if (!c.hook) return;
-        crash::ReportHook hook = c.hook;
+        crash::ReportHook hook;
+        {
+            std::lock_guard<std::mutex> lock(c.mutex);
+            hook = c.hook;
+        }
+        if (!hook) return;
+        // The public report APIs lock Common too, and a hook can itself call those APIs.
+        // Keep the lock only around the once-per-session delivery bookkeeping.
         for (const ReportInfo& report : crash::pendingReports()) {
-            if (!c.delivered.insert(report.id).second) continue;
+            {
+                std::lock_guard<std::mutex> lock(c.mutex);
+                if (!c.delivered.insert(report.id).second) continue;
+            }
             bool handled = false;
             try {
                 handled = hook(report);
@@ -664,6 +673,7 @@ namespace jasperengine::diag::crash {
         if (!c.ringSinkAdded && s.ring) {
             c.ringSinkAdded = Logger::addSink(std::make_unique<CrashRingSink>()) != 0;
         }
+        lock.unlock();
         deliverPending(c);
         return armed;
     }
@@ -881,9 +891,13 @@ namespace jasperengine::diag::crash {
 
     void setReportHook(ReportHook hook) {
         Common& c = common();
-        std::lock_guard<std::mutex> lock(c.mutex);
-        c.hook = std::move(hook);
-        if (c.installed) deliverPending(c);
+        bool installed;
+        {
+            std::lock_guard<std::mutex> lock(c.mutex);
+            c.hook = std::move(hook);
+            installed = c.installed;
+        }
+        if (installed) deliverPending(c);
     }
 
     bool isDebugCrashMode(std::string_view mode) {
