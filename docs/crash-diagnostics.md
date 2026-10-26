@@ -152,6 +152,17 @@ logTail, buildHash, product, userAgent, time}`), and shows "The game stopped wor
 python3 -I tools/crash/symbolicate.py <report folder or crash.txt> --binary-dir <the build> [--symbols <symbols dir>]
 ```
 
+POSIX fatal handlers keep raw module offsets and the saved fault PC. They skip the reporting
+handler and signal trampoline by locating the interrupted PC in the captured unwind. If that
+boundary cannot be found, only the saved PC is retained. Symbol names are resolved **after the
+crash**, so the fatal path never calls `dladdr` or a symbol loader. The raw maps copy also places
+frames from libraries loaded after installation.
+
+Another faulting thread waits up to eight seconds for the first report to finish before chaining
+to its previous handler. A recursive fault on the reporting thread (or Windows writer) terminates
+immediately; a damaged reporter cannot wait for itself. Windows obtains the faulting thread's
+name with dynamically resolved `GetThreadDescription`, or writes `unknown` when unavailable.
+
 It names each frame with `llvm-symbolizer` (else `addr2line`, `atos` on macOS) against the
 module (from `--binary-dir`, the S30 layout `symbols/<platform>/<build_id>/`, or the path the
 report lists), maps web frames with the emscripten symbol map (`--symbol-map`), and for a Windows

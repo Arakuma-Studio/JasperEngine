@@ -32,7 +32,10 @@ CONTEXT faultContext{};
 EXCEPTION_POINTERS faultPointers{&faultRecord, &faultContext};
 DWORD faultThread = 0;
 HANDLE faultThreadHandle = nullptr;
-std::atomic<bool> submitted{false};
+std::atomic<DWORD> faultOwner{0};
+DWORD writerThread = 0;
+using GetThreadDescriptionFn = HRESULT (WINAPI*)(HANDLE, PWSTR*);
+GetThreadDescriptionFn getThreadDescription = nullptr;
 
 void raw(HANDLE file, const char* text, size_t size) {
     if (!file || file == INVALID_HANDLE_VALUE) return;
@@ -126,6 +129,20 @@ MINIDUMP_TYPE dumpType() {
     }
     return static_cast<MINIDUMP_TYPE>(flags);
 }
+void writeThreadName(HANDLE report) {
+    char name[256] = "unknown";
+    PWSTR wide = nullptr;
+    if (getThreadDescription && faultThreadHandle && SUCCEEDED(getThreadDescription(faultThreadHandle, &wide)) && wide) {
+        if (*wide && !WideCharToMultiByte(CP_UTF8, 0, wide, -1, name, sizeof(name), nullptr, nullptr)) {
+            appendText(name, sizeof(name), 0, "unknown");
+        }
+        LocalFree(wide);
+    }
+    char lineText[288];
+    const size_t n = appendText(lineText, sizeof(lineText), 0, "thread_name: ");
+    appendText(lineText, sizeof(lineText), n, name);
+    line(report, lineText);
+}
 DWORD WINAPI writer(void*) {
     if (WaitForSingleObject(request, INFINITE) != WAIT_OBJECT_0) return 0;
     auto& s = state();
@@ -156,6 +173,7 @@ DWORD WINAPI writer(void*) {
     number(report, "fault_address: ", faultRecord.ExceptionCode == EXCEPTION_ACCESS_VIOLATION && faultRecord.NumberParameters >= 2
         ? faultRecord.ExceptionInformation[1] : reinterpret_cast<uintptr_t>(faultRecord.ExceptionAddress), true);
     number(report, "thread: ", faultThread);
+    writeThreadName(report);
     CONTEXT context = faultContext;
     STACKFRAME64 frame{};
     const DWORD machine = frameContext(context, frame);
@@ -221,8 +239,24 @@ DWORD WINAPI writer(void*) {
     return 0;
 }
 void submit(EXCEPTION_POINTERS* info) {
-    if (submitted.exchange(true, std::memory_order_acq_rel)) return;
-    faultThread = GetCurrentThreadId();
+    const DWORD current = GetCurrentThreadId();
+    // A recursive exception on either the submitting thread or the writer must reach the
+    // OS immediately. Other faulting threads wait for the complete report before chaining.
+    if (current == writerThread) {
+        line(GetStdHandle(STD_ERROR_HANDLE), "JASPERENGINE CRASH: recursive fault while reporting");
+        return;
+    }
+    DWORD expected = 0;
+    if (!faultOwner.compare_exchange_strong(expected, current, std::memory_order_acq_rel)) {
+        if (expected == current) {
+            line(GetStdHandle(STD_ERROR_HANDLE), "JASPERENGINE CRASH: recursive fault while reporting");
+            return;
+        }
+        WaitForSingleObject(completed, 8000);
+        number(GetStdHandle(STD_ERROR_HANDLE), "JASPERENGINE CRASH: concurrent fault on thread ", current);
+        return;
+    }
+    faultThread = current;
     faultRecord = *info->ExceptionRecord;
     faultRecord.ExceptionRecord = nullptr;
     faultContext = *info->ContextRecord;
@@ -232,6 +266,11 @@ void submit(EXCEPTION_POINTERS* info) {
     WaitForSingleObject(completed, 8000);
 }
 LONG WINAPI filter(EXCEPTION_POINTERS* info) {
+    const DWORD current = GetCurrentThreadId();
+    if (current == writerThread || faultOwner.load(std::memory_order_acquire) == current) {
+        line(GetStdHandle(STD_ERROR_HANDLE), "JASPERENGINE CRASH: recursive fault while reporting");
+        return EXCEPTION_CONTINUE_SEARCH;
+    }
     if (info && info->ExceptionRecord && info->ContextRecord) submit(info);
     if (previousFilter && previousFilter != filter) return previousFilter(info);
     return EXCEPTION_CONTINUE_SEARCH; // WER/debuggers still receive the original exception
@@ -276,7 +315,9 @@ bool installPlatform(const Config&) {
         std::lock_guard<std::timed_mutex> lock(Backtrace::dbgHelpMutex());
         Backtrace::initializeSymbolsLocked();
     }
-    HANDLE worker = CreateThread(nullptr, 0, writer, nullptr, 0, nullptr);
+    getThreadDescription = reinterpret_cast<GetThreadDescriptionFn>(
+        GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "GetThreadDescription"));
+    HANDLE worker = CreateThread(nullptr, 0, writer, nullptr, 0, &writerThread);
     if (!worker) return false;
     CloseHandle(worker);
     previousFilter = SetUnhandledExceptionFilter(filter);

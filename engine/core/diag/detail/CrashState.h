@@ -60,8 +60,8 @@ namespace jasperengine::diag::crash::detail {
 
         Tag tags[kTagCount];
 
-        // the bounded re-entry: the first entry reports, a fault while reporting reports one
-        // line and chains, anything after the report chains at once
+        // The first entry reports. Other threads wait up to eight seconds for reportDone
+        // before chaining; recursive faults on the reporting thread terminate immediately.
         std::atomic<int> entries{0};
         std::atomic<int64_t> reportingThread{0};
         std::atomic<bool> reportDone{false};

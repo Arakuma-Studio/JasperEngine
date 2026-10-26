@@ -49,6 +49,7 @@ Module modules[128]{};
 size_t moduleCount = 0;
 char moduleList[16384]{};
 size_t moduleListBytes = 0;
+thread_local volatile sig_atomic_t reportingHere = 0;
 
 struct AlternateStack {
     void* memory = MAP_FAILED;
@@ -188,6 +189,18 @@ void ring(int fd) {
     raw(fd, s.ring + first, n);
     raw(fd, s.ring, count - n);
 }
+[[noreturn]] void defaultAction(int sig) {
+    struct sigaction def{};
+    def.sa_handler = SIG_DFL;
+    sigemptyset(&def.sa_mask);
+    sigaction(sig, &def, nullptr);
+    sigset_t unblock;
+    sigemptyset(&unblock);
+    sigaddset(&unblock, sig);
+    sigprocmask(SIG_UNBLOCK, &unblock, nullptr);
+    raise(sig);
+    _exit(128 + sig);
+}
 void chain(int sig, siginfo_t* info, void* context) {
     struct sigaction old{};
     old.sa_handler = SIG_DFL;
@@ -204,24 +217,31 @@ void chain(int sig, siginfo_t* info, void* context) {
         // may already have queued its own re-delivery). Do not replace that decision.
         return;
     }
-    // Default/ignored fatal signals still need the OS's original terminating action.
-    struct sigaction def{};
-    def.sa_handler = SIG_DFL;
-    sigemptyset(&def.sa_mask);
-    sigaction(sig, &def, nullptr);
-    sigset_t unblock;
-    sigemptyset(&unblock);
-    sigaddset(&unblock, sig);
-    sigprocmask(SIG_UNBLOCK, &unblock, nullptr);
-    raise(sig);
-    _exit(128 + sig);
+    defaultAction(sig);
 }
 void fatal(int sig, siginfo_t* info, void* context) {
     auto& s = state();
+    // Test the calling thread before touching shared state: a fault in the handler itself
+    // cannot wait for its own report (or enter a possibly broken previous handler).
+    if (reportingHere) {
+        line(STDERR_FILENO, "JASPERENGINE CRASH: recursive fault while reporting");
+        defaultAction(sig);
+    }
+    reportingHere = 1;
     const int entry = s.entries.fetch_add(1, std::memory_order_relaxed);
     if (entry != 0) {
-        if (entry == 1) line(STDERR_FILENO, "JASPERENGINE CRASH: another fatal signal while reporting");
+        const uint64_t deadline = monotonicNs() + 8000000000ULL;
+        for (unsigned attempts = 0; attempts < 8000 && !s.reportDone.load(std::memory_order_acquire)
+                && monotonicNs() < deadline; ++attempts) {
+            const timespec pause{0, 1000000};
+            nanosleep(&pause, nullptr);
+        }
+        char note[128];
+        const size_t n = appendText(note, sizeof(note), 0, "JASPERENGINE CRASH: concurrent fault on thread ");
+        appendSigned(note, sizeof(note), n, threadId());
+        line(STDERR_FILENO, note);
         chain(sig, info, context);
+        reportingHere = 0;
         return;
     }
     s.reportingThread.store(threadId(), std::memory_order_relaxed);
@@ -279,9 +299,23 @@ void fatal(int sig, siginfo_t* info, void* context) {
     }
     void* frames[64];
     const size_t count = capture(frames, 64);
+    // The unwinder starts inside this handler. Locate the saved interrupted PC, discard
+    // everything through it (handler, libc trampoline and duplicate PC), then emit callers.
+    // If the unwinder cannot cross the signal frame, only the saved PC is trustworthy.
+    size_t callers = count;
+    for (size_t i = 0; i < count; ++i) {
+        uintptr_t address = reinterpret_cast<uintptr_t>(frames[i]);
+#if defined(__arm__)
+        address &= ~uintptr_t{1};
+        const uintptr_t interrupted = pc & ~uintptr_t{1};
+#else
+        const uintptr_t interrupted = pc;
+#endif
+        if (pc && address == interrupted) { callers = i + 1; break; }
+    }
     line(report, "backtrace:");
     if (pc) frame(report, 0, pc);
-    for (size_t i = 0; i < count; i++) frame(report, i + (pc ? 1 : 0), reinterpret_cast<uintptr_t>(frames[i]));
+    for (size_t i = callers; i < count; i++) frame(report, i - callers + (pc ? 1 : 0), reinterpret_cast<uintptr_t>(frames[i]));
     line(report, "modules:");
 #if defined(__APPLE__)
     raw(report, moduleList, moduleListBytes);
@@ -313,7 +347,8 @@ void fatal(int sig, siginfo_t* info, void* context) {
     line(log, text);
     line(log, s.banner);
     line(log, "backtrace:");
-    for (size_t i = 0; i < count; i++) frame(log, i, reinterpret_cast<uintptr_t>(frames[i]));
+    if (pc) frame(log, 0, pc);
+    for (size_t i = callers; i < count; i++) frame(log, i - callers + (pc ? 1 : 0), reinterpret_cast<uintptr_t>(frames[i]));
     if (log >= 0) close(log);
     n = appendText(text, sizeof(text), 0, "JASPERENGINE CRASH: ");
     n = appendText(text, sizeof(text), n, why);
@@ -322,6 +357,7 @@ void fatal(int sig, siginfo_t* info, void* context) {
     line(STDERR_FILENO, text);
     s.reportDone.store(true, std::memory_order_release);
     chain(sig, info, context);
+    reportingHere = 0;
 }
 void addModule(uintptr_t begin, uintptr_t end, uintptr_t base, const char* name) {
     // One entry per image, rather than copying its path for every load segment. Keep

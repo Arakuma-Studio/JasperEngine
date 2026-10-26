@@ -32,7 +32,7 @@ def main():
             # Let ASan's previous handler print, then die with the original fatal signal.
             env["ASAN_OPTIONS"] = env.get("ASAN_OPTIONS", "") + ":abort_on_error=0:exitcode=77:disable_coredump=1"
             result = subprocess.run([str(args.binary.resolve()), "--mode", mode, "--out", root],
-                                    capture_output=True, text=True, timeout=12, env=env)
+                                    capture_output=True, text=True, timeout=3 if mode == "recursive" else 12, env=env)
             files = list(Path(root).glob("reports/*/" + ("hang-001.txt" if mode == "hang" else "crash.txt")))
             if mode == "recursive":
                 assert result.returncode != 0, result
@@ -52,7 +52,7 @@ def main():
                 if mode == "concurrent":
                     assert "modules:" in report and "core:" in report, report
                     assert (files[0].parent / "log-tail.txt").is_file(), report
-                    assert "thread_name: First fault" in report, report
+                    assert "thread_name: First fault" in report or (os.name == "nt" and "thread_name: unknown" in report), report
                 if os.name != "nt":
                     assert result.returncode in (-expected[mode], 77), (mode, result.returncode, result.stderr)
                 for key in ("product", "version", "build_id", "platform", "backend", "reason", "fault_address",
@@ -73,6 +73,10 @@ def main():
                                             "--binary-dir", str(args.binary.resolve().parent)],
                                            capture_output=True, text=True, timeout=30)
                     assert named.returncode == 0, (mode, named.stdout, named.stderr)
+                    assert "je_crash_posix::" not in named.stdout, named.stdout
+                    assert "handleFatalSignal(" not in named.stdout, named.stdout
+                    if mode in ("segv", "worker_segv", "guard_worker", "concurrent"):
+                        assert sum("=>" in line and "debugSegv(" in line for line in named.stdout.splitlines()) == 1, named.stdout
                     assert "debugSegv" in named.stdout or mode not in ("segv", "worker_segv", "guard_worker"), named.stdout
             print(f"PASS native crash: {mode}")
     return 0
