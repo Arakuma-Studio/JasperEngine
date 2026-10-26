@@ -104,20 +104,26 @@ namespace {
             return scene->getComponent<CharacterController2DComponent>(entity);
         }
 
-        // one engine fixed step: what the scripts do in onFixedUpdate, then the physics; then
-        // the Transforms the bodies moved are resolved, as the frame's render pass does
-        void step(const std::function<void()>& scripts = nullptr){
-            Input::beginFixedStep();
-            if (scripts)
-                scripts();
-            scene->fixedUpdate(DT);
-            Input::endFixedStep();
+        // the Transforms written since the last frame resolved (world poses), as the frame's
+        // render pass does between the engine's fixed steps
+        void resolveTransforms(){
             auto transforms = scene->getComponentArray<Transform>();
             for (size_t i = 0; i < transforms->size(); i++){
                 Transform& transform = transforms->getComponentFromIndex(i);
                 if (transform.needUpdate)
                     scene->getSystem<RenderSystem>()->updateTransform(transform, transforms->getEntity(i));
             }
+        }
+
+        // one engine fixed step: what the scripts do in onFixedUpdate, then the physics
+        void step(const std::function<void()>& scripts = nullptr){
+            resolveTransforms();
+            Input::beginFixedStep();
+            if (scripts)
+                scripts();
+            scene->fixedUpdate(DT);
+            Input::endFixedStep();
+            resolveTransforms();
         }
 
         void steps(int count, const std::function<void()>& scripts = nullptr){
