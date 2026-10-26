@@ -617,3 +617,9 @@ passes, smoke PASS. `tools/crash/test_symbolicate.py` passes on B against a fres
 - Final source `a1555b8d1` omits optional secondary-fault stderr notes, so a full pipe cannot
   add an engine write after the bounded wait. Server D revalidation passes again: WERROR
   editor/install and standalone game, 3/3 crash CTests (15.66 s), and all 13 ASan+UBSan modes.
+- Server D final Android fixture build (`ANDROID_PROJECT=crash-diagnostics tools/build.sh
+  android`) passes all four ABIs: arm64-v8a, armeabi-v7a, x86 and x86_64 (40m 6s).
+  The 107,656,922-byte APK SHA-256 is
+  `93c668ff351fb0da56ed8267e261ba27d369b9fbbba6860c665fbdd53008a6b0`; it matches after transfer
+  to A for the emulator-only gate. The initial A build attempt failed from disk exhaustion
+  before compilation; the integration owner freed space and directed APK builds to B/D.
