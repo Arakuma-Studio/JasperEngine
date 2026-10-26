@@ -345,10 +345,37 @@ std::string EffectSyntax::toRcss(const EffectCall& call, const EffectManifest& m
         given[arg.name] = &arg;
     }
 
+    // @preset: the chosen preset (written literally) fills the slots of the parameters the call
+    // does not write; written ones keep their values
+    const EffectPresetDef* preset = nullptr;
+    if (!m.presets.empty()){
+        auto chosen = given.find("preset");
+        const EffectParamDef* presetDef = m.findParam("preset");
+        EffectValue value;
+        std::string reason;
+        if (chosen != given.end() && presetDef && EffectValueParser::parse(*presetDef, chosen->second->value, value, reason) && !value.isVar)
+            preset = m.findPreset(EffectValueParser::canonical(*presetDef, value));
+    }
+    auto presetText = [&](const EffectParamDef& def) -> std::string {
+        if (preset){
+            for (const auto& entry : preset->values){
+                if (entry.first != def.name)
+                    continue;
+                EffectValue value;
+                std::string reason;
+                if (EffectValueParser::parse(def, entry.second, value, reason) && !value.isVar){
+                    EffectValueParser::clamp(def, value);
+                    return EffectValueParser::canonical(def, value);
+                }
+            }
+        }
+        return defaultCanonical(def);
+    };
+
     auto slotText = [&](const EffectParamDef& def) -> std::string {
         auto it = given.find(def.name);
         if (it == given.end())
-            return defaultCanonical(def);
+            return presetText(def);
         const EffectArg& arg = *it->second;
         if (arg.value.empty()){
             diags.push_back(makeEffectDiagnostic(hc::codes::EffectBadValue, "'" + def.name + "' has no value; the default is used",

@@ -21,7 +21,9 @@ namespace {
 constexpr uint32_t SDAT_MAGIC = 0x54414453; // 'S''D''A''T' little-endian
 // Serialization format version of the .sdat blob. Bump only when the on-disk
 // layout changes; shader source changes are covered by the library hash.
-constexpr uint32_t SDAT_VERSION = 1;
+//   1: the key as one packed u64 (customId << 48 | type << 32 | 32 property bits)
+//   2: the key as u64 properties, u32 type, u32 customId (64 property bits)
+constexpr uint32_t SDAT_VERSION = 2;
 
 // Sanity limits to guard against malformed files
 constexpr uint32_t kMaxString = 32u * 1024u * 1024u; // 32MB
@@ -87,10 +89,16 @@ void writeString(std::vector<unsigned char>& out, const std::string& s) {
     }
 }
 
-void writeShaderData(std::vector<unsigned char>& out, uint64_t shaderKey, const ShaderData& shaderData) {
+void writeShaderKey(std::vector<unsigned char>& out, ShaderKey shaderKey) {
+    writeU64(out, shaderKey.properties);
+    writeU32(out, shaderKey.type);
+    writeU32(out, shaderKey.customId);
+}
+
+void writeShaderData(std::vector<unsigned char>& out, ShaderKey shaderKey, const ShaderData& shaderData) {
     writeU32(out, SDAT_MAGIC);
     writeU32(out, SDAT_VERSION);
-    writeU64(out, shaderKey);
+    writeShaderKey(out, shaderKey);
 
     writeU32(out, static_cast<uint32_t>(shaderData.lang));
     writeU32(out, static_cast<uint32_t>(shaderData.version));
@@ -198,11 +206,15 @@ const char* shaderStageName(ShaderStageType type) {
     }
 }
 
-nlohmann::json shaderDataToJson(uint64_t shaderKey, const ShaderData& shaderData) {
+nlohmann::json shaderDataToJson(ShaderKey shaderKey, const ShaderData& shaderData) {
     nlohmann::json root;
     root["magic"] = "SDAT";
     root["version"] = SDAT_VERSION;
-    root["shaderKey"] = shaderKey;
+    root["shaderKey"] = {
+        {"type", shaderKey.type},
+        {"properties", shaderKey.properties},
+        {"customId", shaderKey.customId}
+    };
     root["lang"] = shaderLangName(shaderData.lang);
     root["langValue"] = static_cast<uint32_t>(shaderData.lang);
     root["shaderVersion"] = shaderData.version;
@@ -368,7 +380,18 @@ bool readString(FileData& in, std::string& s) {
     return in.read((unsigned char*)&s[0], len) == len;
 }
 
-bool readShaderData(FileData& in, const std::string& filepath, uint64_t expectedShaderKey, ShaderData& outShaderData, std::string* err) {
+bool readShaderKey(FileData& in, ShaderKey& key) {
+    uint64_t properties = 0;
+    uint32_t type = 0;
+    uint32_t customId = 0;
+    if (!readU64(in, properties) || !readU32(in, type) || !readU32(in, customId) || type > 0xFFFF || customId > 0xFFFF) {
+        return false;
+    }
+    key = ShaderKey(static_cast<uint16_t>(type), properties, static_cast<uint16_t>(customId));
+    return true;
+}
+
+bool readShaderData(FileData& in, const std::string& filepath, ShaderKey expectedShaderKey, ShaderData& outShaderData, std::string* err) {
     uint32_t magic = 0;
     uint32_t version = 0;
     if (!readU32(in, magic) || !readU32(in, version)) {
@@ -380,11 +403,11 @@ bool readShaderData(FileData& in, const std::string& filepath, uint64_t expected
     }
 
     if (version != SDAT_VERSION) {
-        return setErr(err, "Unsupported SDAT version: " + filepath);
+        return setErr(err, "Unsupported SDAT version " + std::to_string(version) + " (expected " + std::to_string(SDAT_VERSION) + "): " + filepath);
     }
 
-    uint64_t fileShaderKey = 0;
-    if (!readU64(in, fileShaderKey)) {
+    ShaderKey fileShaderKey;
+    if (!readShaderKey(in, fileShaderKey)) {
         return setErr(err, "Failed to read shader key: " + filepath);
     }
 
@@ -647,7 +670,7 @@ bool readShaderData(FileData& in, const std::string& filepath, uint64_t expected
 
 } // namespace
 
-bool ShaderDataSerializer::writeToFile(const std::string& filepath, uint64_t shaderKey, const ShaderData& shaderData, std::string* err) {
+bool ShaderDataSerializer::writeToFile(const std::string& filepath, ShaderKey shaderKey, const ShaderData& shaderData, std::string* err) {
     std::vector<unsigned char> bytes;
     if (!writeToBytes(bytes, shaderKey, shaderData, err)) {
         return false;
@@ -667,14 +690,14 @@ bool ShaderDataSerializer::writeToFile(const std::string& filepath, uint64_t sha
     return true;
 }
 
-bool ShaderDataSerializer::writeToBytes(std::vector<unsigned char>& outBytes, uint64_t shaderKey, const ShaderData& shaderData, std::string* err) {
+bool ShaderDataSerializer::writeToBytes(std::vector<unsigned char>& outBytes, ShaderKey shaderKey, const ShaderData& shaderData, std::string* err) {
     (void)err;
     outBytes.clear();
     writeShaderData(outBytes, shaderKey, shaderData);
     return true;
 }
 
-bool ShaderDataSerializer::writeJsonToFile(const std::string& filepath, uint64_t shaderKey, const ShaderData& shaderData, std::string* err) {
+bool ShaderDataSerializer::writeJsonToFile(const std::string& filepath, ShaderKey shaderKey, const ShaderData& shaderData, std::string* err) {
     const std::string json = shaderDataToJson(shaderKey, shaderData).dump(4) + "\n";
 
     File out;
@@ -697,7 +720,7 @@ bool ShaderDataSerializer::writeJsonToFile(const std::string& filepath, uint64_t
     return true;
 }
 
-bool ShaderDataSerializer::readFromFile(const std::string& filepath, uint64_t expectedShaderKey, ShaderData& outShaderData, std::string* err) {
+bool ShaderDataSerializer::readFromFile(const std::string& filepath, ShaderKey expectedShaderKey, ShaderData& outShaderData, std::string* err) {
     File in;
     if (in.open(filepath.c_str()) != FileErrors::FILEDATA_OK) {
         return setErr(err, "Cannot open file for reading: " + filepath);
@@ -706,7 +729,7 @@ bool ShaderDataSerializer::readFromFile(const std::string& filepath, uint64_t ex
     return readShaderData(in, filepath, expectedShaderKey, outShaderData, err);
 }
 
-bool ShaderDataSerializer::readFromBytes(const std::vector<unsigned char>& bytes, uint64_t expectedShaderKey, ShaderData& outShaderData, std::string* err) {
+bool ShaderDataSerializer::readFromBytes(const std::vector<unsigned char>& bytes, ShaderKey expectedShaderKey, ShaderData& outShaderData, std::string* err) {
     if (bytes.empty()) {
         return setErr(err, "Cannot read empty SDAT data");
     }
@@ -717,6 +740,10 @@ bool ShaderDataSerializer::readFromBytes(const std::vector<unsigned char>& bytes
     }
 
     return readShaderData(in, "<memory>", expectedShaderKey, outShaderData, err);
+}
+
+uint32_t ShaderDataSerializer::getFormatVersion() {
+    return SDAT_VERSION;
 }
 
 } // namespace jasperengine

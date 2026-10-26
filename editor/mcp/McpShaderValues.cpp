@@ -66,6 +66,8 @@ const char* textureDefaultName(ShaderTextureDefault value) {
         case ShaderTextureDefault::BLACK: return "black";
         case ShaderTextureDefault::GRAY: return "gray";
         case ShaderTextureDefault::NORMAL: return "normal";
+        case ShaderTextureDefault::RIPPLES: return "ripples";
+        case ShaderTextureDefault::NOISE: return "noise";
     }
     return "white";
 }
@@ -313,6 +315,9 @@ Json McpValues::manifestToJson(const std::string& reference, const ShaderManifes
         Json entry = {{"uniform", texture.uniform}, {"default", textureDefaultName(texture.defaultTexture)}, {"label", texture.label}};
         if (texture.cube) entry["cube"] = true;
         if (!texture.feature.empty()) entry["feature"] = texture.feature;
+        // the default an unset slot binds instead while that define is on
+        if (!texture.featureDefaultDefine.empty())
+            entry["default_with"] = {{"feature", texture.featureDefaultDefine}, {"default", textureDefaultName(texture.featureDefaultTexture)}};
         textures.push_back(entry);
     }
     out["textures"] = textures;
@@ -467,7 +472,7 @@ bool McpValues::shaderTexturesFromJson(Project* project, SceneProject* scene, co
         }
         if (texture.empty()) continue; // null: the manifest default
         if (declared && declared->cube != texture.isCubeMap()) {
-            error = uniform + (declared->cube ? " is a cube map: {\"cube\": \"image\" | [6 face paths]}."
+            error = uniform + (declared->cube ? " is a cube map: {\"cube\": \"image\" | [front, back, left, right, up, down]}."
                                               : " is a 2D texture: an image path, not a cube map.");
             return false;
         }

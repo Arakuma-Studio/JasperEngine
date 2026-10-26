@@ -8,12 +8,11 @@
 
 using namespace jasperengine;
 
-MorphTracks::MorphTracks(Scene* scene): Action(scene){
-    addComponent<KeyframeTracksComponent>();
+MorphTracks::MorphTracks(Scene* scene): KeyframeTracks(scene){
     addComponent<MorphTracksComponent>();
 }
 
-MorphTracks::MorphTracks(Scene* scene, Entity entity): Action(scene, entity){
+MorphTracks::MorphTracks(Scene* scene, Entity entity): KeyframeTracks(scene, entity){
 
 }
 
@@ -25,10 +24,6 @@ MorphTracks::MorphTracks(Scene* scene, std::vector<float> times, std::vector<std
     MorphTracksComponent& morphtracks = getComponent<MorphTracksComponent>();
 
     morphtracks.values = values;
-}
-
-void MorphTracks::setTimes(std::vector<float> times){
-    getComponent<KeyframeTracksComponent>().setTimes(times);
 }
 
 void MorphTracks::setValues(std::vector<std::vector<float>> values){
@@ -44,12 +39,4 @@ void MorphTracks::setValues(std::vector<std::vector<float>> values){
     if (!morphtracks.outTangents.empty()){
         morphtracks.outTangents.resize(values.size(), zeroTangent);
     }
-}
-
-void MorphTracks::setEasings(std::vector<EaseType> easings){
-    getComponent<KeyframeTracksComponent>().setEasings(easings);
-}
-
-void MorphTracks::setEasing(unsigned int segment, EaseType ease){
-    getComponent<KeyframeTracksComponent>().setEasing(segment, ease);
 }

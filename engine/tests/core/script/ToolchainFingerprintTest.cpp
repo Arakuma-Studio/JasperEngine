@@ -83,7 +83,7 @@ TEST(ToolchainFingerprint, EqualHasNoMismatch) {
 TEST(ToolchainFingerprint, CompareNamesEachDifferingField) {
     ToolchainFingerprint library = gccEditor();
     library.iteratorDebugLevel = 2;
-    library.ndebug = 0;
+    library.ndebug = library.ndebug ? 0 : 1;   // the other one: a Debug (sanitizer) build has 0
     library.compilerMinor = 3;
     const std::vector<FingerprintMismatch> mismatches = compare(gccEditor(), library);
     ASSERT_EQ(mismatches.size(), 3u);

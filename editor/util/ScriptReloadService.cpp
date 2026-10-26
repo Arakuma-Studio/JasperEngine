@@ -94,10 +94,10 @@ bool ScriptReloadService::cppReloadEnabled(){
 }
 
 std::string ScriptReloadService::relative(const fs::path& path) const {
-    if (!project) return FileUtils::genericPathToUtf8(path);
+    if (!project) return FileUtils::pathToGenericUtf8(path);
     const fs::path rel = path.lexically_normal().lexically_relative(project->getProjectPath().lexically_normal());
-    if (rel.empty() || *rel.begin() == "..") return FileUtils::genericPathToUtf8(path);
-    return FileUtils::genericPathToUtf8(rel);
+    if (rel.empty() || *rel.begin() == "..") return FileUtils::pathToGenericUtf8(path);
+    return FileUtils::pathToGenericUtf8(rel);
 }
 
 bool ScriptReloadService::isCppScriptFile(const fs::path& path) const {
@@ -359,7 +359,7 @@ void ScriptReloadService::applyLua(Checked& checked){
     // a require()d module of the same file: patched in place
     const fs::path luaRelative = checked.path.lexically_relative(project->getLuaPath().lexically_normal());
     if (!keptOld && !luaRelative.empty() && *luaRelative.begin() != "..") {
-        const std::string luaRel = FileUtils::genericPathToUtf8(luaRelative);
+        const std::string luaRel = FileUtils::pathToGenericUtf8(luaRelative);
         for (const std::string& name : moduleNames(luaRel)) {
             if (!lua_reload::isModuleLoaded(L, name)) continue;
             lua_reload::Report report = lua_reload::reloadModule(L, name, luaRel, checked.code);

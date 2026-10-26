@@ -14,12 +14,37 @@
 #include "htmlui/VideoImporter.h"
 #include <fstream>
 #include <algorithm>
+#include <cerrno>
+#include <cmath>
 #include <cstdlib>
 #include <ctime>
+
+#ifndef _WIN32
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 namespace jasperengine::editor {
 
 namespace {
+
+// a colour as [r, g, b, a] (0..1)
+void readColor(const YAML::Node& node, std::array<float, 4>& color) {
+    if (!node || !node.IsSequence() || node.size() != 4) return;
+    for (size_t i = 0; i < 4; i++) {
+        color[i] = node[i].as<float>();
+    }
+}
+
+YAML::Node colorNode(const std::array<float, 4>& color) {
+    YAML::Node node(YAML::NodeType::Sequence);
+    for (float channel : color) {
+        node.push_back(channel);
+    }
+    node.SetStyle(YAML::EmitterStyle::Flow);
+    return node;
+}
 
 std::filesystem::path userConfigDirectory() {
 #if defined(_WIN32)
@@ -128,13 +153,16 @@ float AppSettings::resourcesLeftPanelWidth = 200.0f;
 float AppSettings::codeEditorFontSize = AppSettings::defaultCodeEditorFontSize;
 bool AppSettings::multiViewportEnabled = false;
 bool AppSettings::editorVSyncEnabled = true;
+float AppSettings::uiScale = 1.0f;
 PanelVisibilitySettings AppSettings::panelVisibility;
 GameViewSettings AppSettings::gameViewSettings;
 SceneViewSettings AppSettings::sceneViewSettings;
+LatticeViewSettings AppSettings::latticeViewSettings;
 ProfilerSettings AppSettings::profilerSettings;
 bool AppSettings::mcpHttpEnabled = false;
 int AppSettings::mcpHttpPort = 47615;
 std::string AppSettings::mcpHttpToken;
+bool AppSettings::mcpHttpAllowChanges = true;
 std::string AppSettings::mcpToolGroups;
 bool AppSettings::htmlUiAutoImport = true;
 bool AppSettings::assetAutoRefresh = true;
@@ -179,7 +207,79 @@ bool AppSettings::initialize(bool preferUserDirectory) {
     }
 
     ensureConfigDirectory();
-    return loadSettings();
+    const bool loaded = loadSettings();
+    loadMcpHttpToken();
+    return loaded;
+}
+
+std::filesystem::path AppSettings::getMcpHttpTokenPath() {
+    return getConfigDirectory() / "mcp_http_token";
+}
+
+void AppSettings::loadMcpHttpToken() {
+    const std::filesystem::path path = getMcpHttpTokenPath();
+    std::error_code ec;
+    if (std::filesystem::exists(path, ec)) {
+        std::ifstream in(path, std::ios::binary);
+        std::string token;
+        std::getline(in, token);
+        while (!token.empty() && (token.back() == '\r' || token.back() == ' ' || token.back() == '\t')) token.pop_back();
+        if (!token.empty()) mcpHttpToken = token;
+#ifndef _WIN32
+        // One others could read (made by hand, or copied): owner-only from now on
+        struct stat st;
+        if (::stat(path.c_str(), &st) == 0 && (st.st_mode & (S_IRWXG | S_IRWXO)) != 0) {
+            ::chmod(path.c_str(), S_IRUSR | S_IWUSR);
+        }
+#endif
+        return;
+    }
+    // Older settings kept it in settings.yaml (mcp.http_token): it moves to its own file
+    if (!mcpHttpToken.empty() && writeMcpHttpTokenFile(mcpHttpToken)) saveSettings();
+}
+
+bool AppSettings::writeMcpHttpTokenFile(const std::string& token) {
+    const std::filesystem::path path = getMcpHttpTokenPath();
+    const std::string content = token + "\n";
+    io::WriteResult result;
+#ifdef _WIN32
+    // (the user's profile directory keeps it from other users)
+    result = io::writeFileAtomic(path, content);
+#else
+    // Owner-only: the token gives full control of the editor to whoever reads it. The
+    // temporary file is owner-only before the token is written into it, and a file already
+    // there is made so first (the publish keeps the mode of the file it replaces).
+    std::error_code ec;
+    if (std::filesystem::exists(path, ec)) {
+        ::chmod(path.c_str(), S_IRUSR | S_IWUSR);
+    }
+    const std::filesystem::path temp = io::makeTemporarySiblingPath(path);
+    std::filesystem::create_directories(path.parent_path(), ec);
+    bool written = false;
+    const int fd = ::open(temp.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, S_IRUSR | S_IWUSR);
+    if (fd >= 0) {
+        written = ::fchmod(fd, S_IRUSR | S_IWUSR) == 0;
+        size_t done = 0;
+        while (written && done < content.size()) {
+            const ssize_t n = ::write(fd, content.data() + done, content.size() - done);
+            if (n < 0 && errno == EINTR) continue;
+            if (n <= 0) written = false;
+            else done += static_cast<size_t>(n);
+        }
+        if (::close(fd) != 0) written = false;
+    }
+    if (!written) {
+        std::filesystem::remove(temp, ec);
+        Out::error("Failed to write the MCP HTTP token to %s", path.string().c_str());
+        return false;
+    }
+    // synced and renamed over the old token: a crash leaves the old one or the new one
+    result = io::publishFile(temp, path);
+#endif
+    if (!result.ok()) {
+        Out::error("Failed to write the MCP HTTP token to %s: %s", path.string().c_str(), io::describeWriteError(result).c_str());
+    }
+    return result.ok();
 }
 
 bool AppSettings::initializeWithFile(const std::filesystem::path& file) {
@@ -339,6 +439,9 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 if (autosaveNode["enabled"]) autosaveEnabled = autosaveNode["enabled"].as<bool>();
                 if (autosaveNode["interval_seconds"]) setAutosaveIntervalSeconds(autosaveNode["interval_seconds"].as<int>());
             }
+            if (editorNode["ui_scale"]) {
+                setUiScale(editorNode["ui_scale"].as<float>());
+            }
             if (editorNode["panels"]) {
                 auto panelsNode = editorNode["panels"];
                 if (panelsNode["hierarchy"]) panelVisibility.hierarchy = panelsNode["hierarchy"].as<bool>();
@@ -347,6 +450,8 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 if (panelsNode["console"]) panelVisibility.console = panelsNode["console"].as<bool>();
                 if (panelsNode["animation"]) panelVisibility.animation = panelsNode["animation"].as<bool>();
                 if (panelsNode["terrain"]) panelVisibility.terrain = panelsNode["terrain"].as<bool>();
+                if (panelsNode["textureSynthesis"]) panelVisibility.textureSynthesis = panelsNode["textureSynthesis"].as<bool>();
+                if (panelsNode["physicsPlacement"]) panelVisibility.physicsPlacement = panelsNode["physicsPlacement"].as<bool>();
                 if (panelsNode["mcp"]) panelVisibility.mcp = panelsNode["mcp"].as<bool>();
                 if (panelsNode["game"]) panelVisibility.game = panelsNode["game"].as<bool>();
                 if (panelsNode["undo_history"]) panelVisibility.undoHistory = panelsNode["undo_history"].as<bool>();
@@ -394,6 +499,7 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             if (mcpNode["http_enabled"]) mcpHttpEnabled = mcpNode["http_enabled"].as<bool>();
             if (mcpNode["http_port"]) mcpHttpPort = mcpNode["http_port"].as<int>();
             if (mcpNode["http_token"]) mcpHttpToken = mcpNode["http_token"].as<std::string>();
+            if (mcpNode["allow_changes"]) mcpHttpAllowChanges = mcpNode["allow_changes"].as<bool>();
             // "a,b", "all" or a list of group names
             if (mcpNode["tool_groups"]) {
                 const YAML::Node groups = mcpNode["tool_groups"];
@@ -404,6 +510,23 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                     mcpToolGroups = groups.as<std::string>();
                 }
             }
+        }
+
+        if (settingsData["lattice"]) {
+            auto latticeNode = settingsData["lattice"];
+            LatticeViewSettings lattice = latticeViewSettings;
+            readColor(latticeNode["line_color"], lattice.lineColor);
+            if (latticeNode["line_thickness"]) lattice.lineThickness = latticeNode["line_thickness"].as<float>();
+            if (latticeNode["behind_opacity"]) lattice.behindOpacity = latticeNode["behind_opacity"].as<float>();
+            if (latticeNode["point_size"]) lattice.pointSize = latticeNode["point_size"].as<float>();
+            readColor(latticeNode["point_color"], lattice.pointColor);
+            readColor(latticeNode["selected_point_color"], lattice.selectedPointColor);
+            if (latticeNode["stretch_coloring"]) lattice.stretchColoring = latticeNode["stretch_coloring"].as<bool>();
+            readColor(latticeNode["squash_color"], lattice.squashColor);
+            readColor(latticeNode["stretch_color"], lattice.stretchColor);
+            if (latticeNode["falloff_curve"]) lattice.falloffCurve = latticeNode["falloff_curve"].as<int>();
+            if (latticeNode["falloff_radius"]) lattice.falloffRadius = latticeNode["falloff_radius"].as<float>();
+            setLatticeViewSettings(lattice);
         }
 
         if (settingsData["asset_pipeline"]) {
@@ -566,6 +689,7 @@ bool AppSettings::saveSettings() {
         autosaveNode["enabled"] = autosaveEnabled;
         autosaveNode["interval_seconds"] = autosaveIntervalSeconds;
         editorNode["autosave"] = autosaveNode;
+        editorNode["ui_scale"] = uiScale;
         YAML::Node panelsNode;
         panelsNode["hierarchy"] = panelVisibility.hierarchy;
         panelsNode["inspector"] = panelVisibility.inspector;
@@ -573,6 +697,8 @@ bool AppSettings::saveSettings() {
         panelsNode["console"] = panelVisibility.console;
         panelsNode["animation"] = panelVisibility.animation;
         panelsNode["terrain"] = panelVisibility.terrain;
+        panelsNode["textureSynthesis"] = panelVisibility.textureSynthesis;
+        panelsNode["physicsPlacement"] = panelVisibility.physicsPlacement;
         panelsNode["mcp"] = panelVisibility.mcp;
         panelsNode["game"] = panelVisibility.game;
         panelsNode["undo_history"] = panelVisibility.undoHistory;
@@ -611,9 +737,24 @@ bool AppSettings::saveSettings() {
         YAML::Node mcpNode;
         mcpNode["http_enabled"] = mcpHttpEnabled;
         mcpNode["http_port"] = mcpHttpPort;
-        if (!mcpHttpToken.empty()) mcpNode["http_token"] = mcpHttpToken;
+        // The token lives in its own owner-only file (getMcpHttpTokenPath), not here
+        mcpNode["allow_changes"] = mcpHttpAllowChanges;
         if (!mcpToolGroups.empty()) mcpNode["tool_groups"] = mcpToolGroups;
         settingsData["mcp"] = mcpNode;
+
+        YAML::Node latticeNode;
+        latticeNode["line_color"] = colorNode(latticeViewSettings.lineColor);
+        latticeNode["line_thickness"] = latticeViewSettings.lineThickness;
+        latticeNode["behind_opacity"] = latticeViewSettings.behindOpacity;
+        latticeNode["point_size"] = latticeViewSettings.pointSize;
+        latticeNode["point_color"] = colorNode(latticeViewSettings.pointColor);
+        latticeNode["selected_point_color"] = colorNode(latticeViewSettings.selectedPointColor);
+        latticeNode["stretch_coloring"] = latticeViewSettings.stretchColoring;
+        latticeNode["squash_color"] = colorNode(latticeViewSettings.squashColor);
+        latticeNode["stretch_color"] = colorNode(latticeViewSettings.stretchColor);
+        latticeNode["falloff_curve"] = latticeViewSettings.falloffCurve;
+        latticeNode["falloff_radius"] = latticeViewSettings.falloffRadius;
+        settingsData["lattice"] = latticeNode;
 
         YAML::Node assetNode;
         assetNode["auto_refresh"] = assetAutoRefresh;
@@ -1083,6 +1224,15 @@ void AppSettings::setEditorVSyncEnabled(bool enabled) {
     editorVSyncEnabled = enabled;
 }
 
+float AppSettings::getUiScale() {
+    return uiScale;
+}
+
+void AppSettings::setUiScale(float scale) {
+    // clamp lets NaN through
+    uiScale = std::isnan(scale) ? 1.0f : std::clamp(scale, 0.5f, 3.0f);
+}
+
 PanelVisibilitySettings AppSettings::getPanelVisibility() {
     return panelVisibility;
 }
@@ -1109,6 +1259,34 @@ void AppSettings::setSceneViewSettings(const SceneViewSettings& settings) {
     if (settings == sceneViewSettings) return;
     sceneViewSettings = settings;
     saveSettings();
+}
+
+LatticeViewSettings AppSettings::getLatticeViewSettings() {
+    return latticeViewSettings;
+}
+
+// Not saved here: Preferences saves once it applies all its pages
+void AppSettings::setLatticeViewSettings(const LatticeViewSettings& settings) {
+    auto finiteOr = [](float value, float fallback) { return std::isfinite(value) ? value : fallback; };
+    auto clampColor = [](std::array<float, 4> color, const std::array<float, 4>& fallback) {
+        for (size_t i = 0; i < 4; i++) {
+            color[i] = std::isfinite(color[i]) ? std::clamp(color[i], 0.0f, 1.0f) : fallback[i];
+        }
+        return color;
+    };
+    const LatticeViewSettings defaults;
+    LatticeViewSettings value = settings;
+    value.lineColor = clampColor(value.lineColor, defaults.lineColor);
+    value.lineThickness = std::clamp(finiteOr(value.lineThickness, defaults.lineThickness), 1.0f, 4.0f);
+    value.behindOpacity = std::clamp(finiteOr(value.behindOpacity, defaults.behindOpacity), 0.0f, 1.0f);
+    value.pointSize = std::clamp(finiteOr(value.pointSize, defaults.pointSize), 3.0f, 20.0f);
+    value.pointColor = clampColor(value.pointColor, defaults.pointColor);
+    value.selectedPointColor = clampColor(value.selectedPointColor, defaults.selectedPointColor);
+    value.squashColor = clampColor(value.squashColor, defaults.squashColor);
+    value.stretchColor = clampColor(value.stretchColor, defaults.stretchColor);
+    value.falloffCurve = std::clamp(value.falloffCurve, 0, 3);
+    value.falloffRadius = std::clamp(finiteOr(value.falloffRadius, defaults.falloffRadius), 0.01f, 10.0f);
+    latticeViewSettings = value;
 }
 
 ProfilerSettings AppSettings::getProfilerSettings() {
@@ -1144,6 +1322,20 @@ std::filesystem::path AppSettings::getUserConfigDirectory() {
 void AppSettings::setMcpHttp(bool enabled, int port) {
     mcpHttpEnabled = enabled;
     mcpHttpPort = port;
+    saveSettings();
+}
+
+void AppSettings::setMcpHttpToken(const std::string& token) {
+    mcpHttpToken = token;
+    writeMcpHttpTokenFile(token);
+}
+
+bool AppSettings::getMcpHttpAllowChanges() {
+    return mcpHttpAllowChanges;
+}
+
+void AppSettings::setMcpHttpAllowChanges(bool allow) {
+    mcpHttpAllowChanges = allow;
     saveSettings();
 }
 

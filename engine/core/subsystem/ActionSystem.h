@@ -31,6 +31,8 @@
 #include "component/RotateTracksComponent.h"
 #include "component/ScaleTracksComponent.h"
 #include "component/MorphTracksComponent.h"
+#include "component/LatticeTracksComponent.h"
+#include "component/LatticeComponent.h"
 
 namespace jasperengine{
 
@@ -39,7 +41,7 @@ namespace jasperengine{
     private:
 
 		// Per-target weighted pose accumulator used to blend keyframe-track
-		// animations (translate/rotate/scale/morph) that target the same bone.
+		// animations (translate/rotate/scale/morph/lattice) that target the same bone.
 		// Each contributing animation adds its sampled value scaled by its blend
 		// weight; flushPoseBlend() then writes the normalized (weighted-average)
 		// result once per target. This makes blending order-independent and lets
@@ -58,13 +60,24 @@ namespace jasperengine{
 			float sums[MAX_MORPHTARGETS] = {0};
 			float weights[MAX_MORPHTARGETS] = {0};
 		};
+		// Per lattice point of the target (sized to its point count when first touched in a
+		// frame). Entries survive clearPoseBlend() with active = false so the vectors keep
+		// their capacity; entries of destroyed entities are dropped there.
+		struct LatticeBlendAccum {
+			std::vector<Vector3> sums;
+			std::vector<float> weights;
+			bool active = false;
+		};
 		std::unordered_map<Entity, TransformBlendAccum> transformBlend;
 		std::unordered_map<Entity, MorphBlendAccum> morphBlend;
+		std::unordered_map<Entity, LatticeBlendAccum> latticeBlend;
 
 		void clearPoseBlend();
 		void flushPoseBlend();
 
-		void actionStateChange(Entity entity, ActionComponent& action);
+		// Applies the stop, start and pause triggers. Returns the entity's ActionComponent after
+		// their callbacks (which can move it), or nullptr when one removed it or the entity
+		ActionComponent* actionStateChange(Entity entity, ActionComponent& action);
 
 		void actionComponentStart(ActionComponent& action);
 		void actionComponentStop(ActionComponent& action);
@@ -75,6 +88,7 @@ namespace jasperengine{
 		std::vector<Entity> animationChildEntities(const AnimationComponent& animcomp);
 		void animationStopChildren(const std::vector<Entity>& children);
 		void animationPauseChildren(const std::vector<Entity>& children);
+		void animationApplyEnd(ActionComponent& action, AnimationComponent& animcomp, bool durationPassed);
 
 		// Sprite action functions
 		void setSpriteTextureRect(MeshComponent& mesh, SpriteComponent& sprite, SpriteAnimationComponent& spriteanim);
@@ -83,7 +97,8 @@ namespace jasperengine{
 		void spriteActionUpdate(double dt, Entity entity, ActionComponent& action, MeshComponent& mesh, SpriteComponent& sprite, SpriteAnimationComponent& spriteanim);
 
 		void tweenStop(TweenComponent& tween);
-		void tweenUpdate(double dt, Entity entity, ActionComponent& action, TweenComponent& tween);
+		// true when a non-looping tween reached its end
+		bool tweenUpdate(double dt, Entity entity, ActionComponent& action, TweenComponent& tween);
 
 		void positionTweenUpdate(TweenComponent& tween, PositionTweenComponent& posaction, Transform& transform);
 		void rotationTweenUpdate(TweenComponent& tween, RotationTweenComponent& rotaction, Transform& transform);
@@ -146,6 +161,7 @@ namespace jasperengine{
 		void scaleTracksUpdate(KeyframeTracksComponent& keyframe, ScaleTracksComponent& scaletracks, Entity target, float weight);
 		void rotateTracksUpdate(KeyframeTracksComponent& keyframe, RotateTracksComponent& rotatetracks, Entity target, float weight);
 		void morphTracksUpdate(KeyframeTracksComponent& keyframe, MorphTracksComponent& morpthtracks, Entity target, float weight);
+		void latticeTracksUpdate(KeyframeTracksComponent& keyframe, LatticeTracksComponent& latticetracks, Entity target, LatticeComponent& latticecomp, float weight);
 
 		void processRunningAction(double dt, Entity entity, ActionComponent& action);
 
@@ -155,7 +171,8 @@ namespace jasperengine{
 	public:
 		ActionSystem(Scene* scene);
 
-		void actionStart(Entity entity);
+		// newRun false: a restart inside the same run of its animation (keeps a relative track's base)
+		void actionStart(Entity entity, bool newRun = true);
 		void actionStop(Entity entity);
 		void actionPause(Entity entity);
 		void particleActionReset(Entity entity);
@@ -166,6 +183,10 @@ namespace jasperengine{
 
 		float getDuration(Entity entity);
 		float getFrameDuration(const ActionFrame& frame);
+		// The pose relative tracks add to, where an anchored UI element moves by its layout offset
+		bool getRelativeTrackPose(Entity target, Vector3& position, Quaternion& rotation, Vector3& scale);
+		// Maps relative translate values from base to the target's parent space
+		Matrix4 getRelativeTrackMatrix(Entity target, const Vector3& base);
 		// True if target is reachable from `from` through action frames (from == target counts),
 		// i.e. adding `from` as an action of target's animation would create a cycle.
 		bool isAnimationReachable(Entity from, Entity target);

@@ -11,8 +11,11 @@
 #include "math/Vector3.h"
 #include "math/Quaternion.h"
 #include "math/Matrix4.h"
+#include "component/FluidSimulationComponent.h"
 
 #include <filesystem>
+#include <set>
+#include <vector>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -67,6 +70,25 @@ namespace jasperengine::editor {
 
         static std::string uiDocumentRenderModeToString(UIDocumentRenderMode mode);
         static UIDocumentRenderMode stringToUIDocumentRenderMode(const std::string& str);
+
+        static std::string fluidOutputToString(FluidOutput output);
+        static FluidOutput stringToFluidOutput(const std::string& str);
+        // lattice enums: the lowercase enumerator names (spec §2.0)
+        static std::string latticeInterpolationToString(LatticeInterpolation interpolation);
+        static LatticeInterpolation stringToLatticeInterpolation(const std::string& str);
+        static std::string latticeOutsideToString(LatticeOutside outside);
+        static LatticeOutside stringToLatticeOutside(const std::string& str);
+        static std::string latticeJiggleAnchorToString(LatticeJiggleAnchor anchor);
+        static LatticeJiggleAnchor stringToLatticeJiggleAnchor(const std::string& str);
+        static std::string latticeStageToString(LatticeStage stage);
+        static LatticeStage stringToLatticeStage(const std::string& str);
+        static std::string latticeMaskChannelToString(LatticeMaskChannel mask);
+        static LatticeMaskChannel stringToLatticeMaskChannel(const std::string& str);
+        // a list of Vector3 (lattice offsets, a pose, a lattice track key) and a list of them
+        static YAML::Node encodeLatticeOffsets(const std::vector<Vector3>& offsets);
+        static std::vector<Vector3> decodeLatticeOffsets(const YAML::Node& node);
+        static YAML::Node encodeLatticeTrackKeys(const std::vector<std::vector<Vector3>>& keys);
+        static std::vector<std::vector<Vector3>> decodeLatticeTrackKeys(const YAML::Node& node);
 
         static std::string audioSourceAttenuationToString(AudioSourceAttenuation attenuation);
         static AudioSourceAttenuation stringToAudioSourceAttenuation(const std::string& str);
@@ -257,6 +279,19 @@ namespace jasperengine::editor {
         static ScriptProperty decodeScriptProperty(const YAML::Node& node);
 
     public:
+        // A shader variant key (scene shaderKeys, project shaderAdditions/shaderExclusions):
+        // a map of type, properties (a plain integer of up to 64 bits, left out when 0) and
+        // customShader (a fork's project-relative path: the session-local id is not written;
+        // a null node for an id without a name), and keyVersion 2 on a MESH key with bit 5 (Stochastic
+        // Tiling): decodeShaderKey clears that bit of a key without it, a stale 'Pcf' (retired
+        // July 2026) of a file written before. decodeShaderKey also reads the legacy packed integer
+        // (32 property bits, customId dropped; bit 5 cleared). Neither normalizes.
+        static YAML::Node encodeShaderKey(ShaderKey key);
+        static bool decodeShaderKey(const YAML::Node& keyNode, ShaderKey& key);
+        // A list of them, normalized both ways (ShaderPool::normalizeKey) so a since-retired
+        // property bit stays out of the file
+        static YAML::Node encodeShaderKeys(const std::set<ShaderKey>& shaderKeys);
+        static std::vector<ShaderKey> decodeShaderKeys(const YAML::Node& node);
         // Asset references (S04 §6.5): a scalar path keeps its key and gains a sibling
         // "<key>Guid"; a shader reference's sibling holds "<vertGuid>|<fragGuid>"
         static void encodeAssetRef(YAML::Node& node, const std::string& key, const AssetRef& ref);
@@ -323,6 +358,9 @@ namespace jasperengine::editor {
         // that produces the workspace file share one schema.
         static YAML::Node encodeTerrainEditorSettings(const TerrainEditorSettings& settings);
         static TerrainEditorSettings decodeTerrainEditorSettings(const YAML::Node& node);
+        // Every field by name; a missing, unknown or unreadable value keeps its default
+        static YAML::Node encodePhysicsPlacementSettings(const PhysicsPlacementSettings& settings);
+        static PhysicsPlacementSettings decodePhysicsPlacementSettings(const YAML::Node& node);
 
         static YAML::Node encodeSceneDisplaySettings(const SceneDisplaySettings& settings);
         static void decodeSceneDisplaySettings(const YAML::Node& node, SceneDisplaySettings& settings);
@@ -442,6 +480,12 @@ namespace jasperengine::editor {
         static YAML::Node encodeUIDocumentComponent(const UIDocumentComponent& document);
         static UIDocumentComponent decodeUIDocumentComponent(const YAML::Node& node, const UIDocumentComponent* oldDocument = nullptr);
 
+        // only what differs from the defaults is written; a missing key is the default. Over an
+        // old component its runtime state (the simulator) stays; a new seed or start burst
+        // restarts it (needReset)
+        static YAML::Node encodeFluidSimulationComponent(const FluidSimulationComponent& fluid);
+        static FluidSimulationComponent decodeFluidSimulationComponent(const YAML::Node& node, const FluidSimulationComponent* oldFluid = nullptr);
+
         static YAML::Node encodeCameraComponent(const CameraComponent& camera);
         static CameraComponent decodeCameraComponent(const YAML::Node& node, const CameraComponent* oldCamera = nullptr);
 
@@ -537,6 +581,20 @@ namespace jasperengine::editor {
 
         static YAML::Node encodeMorphTracksComponent(const MorphTracksComponent& tracks);
         static MorphTracksComponent decodeMorphTracksComponent(const YAML::Node& node, const MorphTracksComponent* oldTracks = nullptr);
+
+        // Offsets are kept as many as the resolution has points: a list of another size is cut
+        // or padded with zeros. Runtime state (jiggle, tweens, revision) is not written.
+        static YAML::Node encodeLatticeComponent(const LatticeComponent& lattice);
+        static LatticeComponent decodeLatticeComponent(const YAML::Node& node, const LatticeComponent* oldLattice = nullptr);
+
+        static YAML::Node encodeLatticeModifierComponent(const LatticeModifierComponent& modifier);
+        static LatticeModifierComponent decodeLatticeModifierComponent(const YAML::Node& node, const LatticeModifierComponent* oldModifier = nullptr);
+
+        static YAML::Node encodeLatticeFollowerComponent(const LatticeFollowerComponent& follower);
+        static LatticeFollowerComponent decodeLatticeFollowerComponent(const YAML::Node& node, const LatticeFollowerComponent* oldFollower = nullptr);
+
+        static YAML::Node encodeLatticeTracksComponent(const LatticeTracksComponent& tracks);
+        static LatticeTracksComponent decodeLatticeTracksComponent(const YAML::Node& node, const LatticeTracksComponent* oldTracks = nullptr);
 
         static YAML::Node encodeParticleSystemComponent(const ParticleSystemComponent& particles);
         static ParticleSystemComponent decodeParticleSystemComponent(const YAML::Node& node, const ParticleSystemComponent* oldParticles = nullptr);

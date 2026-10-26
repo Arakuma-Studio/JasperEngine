@@ -49,7 +49,8 @@ static bool remapEntityRef(EntityRegistry* registry, const editor::PropertyData&
     }
     if (property.type == editor::PropertyType::Texture) {
         Texture* texture = static_cast<Texture*>(property.ref);
-        const Entity camera = editor::CameraTextureLink::parse(texture->getId());
+        // a camera's render texture, or a fluid's output ("fluid|<e>")
+        const Entity camera = editor::CameraTextureLink::parseLink(texture->getId());
         if (camera == NULL_ENTITY || (!clearUnmapped && !entityMap.count(camera))) {
             return false;
         }
@@ -57,8 +58,8 @@ static bool remapEntityRef(EntityRegistry* registry, const editor::PropertyData&
         remapLocalEntity(target, entityMap, clearUnmapped);
         // Bound even when the id stays: a texture copied from another registry still shows
         // the framebuffer of that registry's camera
-        CameraComponent* targetCamera = (target != NULL_ENTITY && registry) ? registry->findComponent<CameraComponent>(target) : nullptr;
-        if (target == camera && texture->getFramebuffer() == (targetCamera ? targetCamera->framebuffer : nullptr)) {
+        Framebuffer* targetFramebuffer = editor::CameraTextureLink::linkFramebuffer(registry, texture->getId(), target);
+        if (target == camera && texture->getFramebuffer() == targetFramebuffer) {
             return false;
         }
         editor::CameraTextureLink::retarget(registry, *texture, target);
@@ -125,7 +126,7 @@ bool componentHasExternalEntityRef(EntityRegistry* registry, Entity entity, edit
             target = *static_cast<Entity*>(property.ref);
         } else if (property.type == editor::PropertyType::Texture) {
             // Render to texture: the texture names its camera
-            target = editor::CameraTextureLink::parse(static_cast<Texture*>(property.ref)->getId());
+            target = editor::CameraTextureLink::parseLink(static_cast<Texture*>(property.ref)->getId());
         } else {
             continue;
         }
@@ -249,7 +250,7 @@ namespace {
             return *static_cast<const Entity*>(property.ref);
         }
         if (property.type == editor::PropertyType::Texture) {
-            return editor::CameraTextureLink::parse(static_cast<const Texture*>(property.ref)->getId());
+            return editor::CameraTextureLink::parseLink(static_cast<const Texture*>(property.ref)->getId());
         }
         return NULL_ENTITY;
     }

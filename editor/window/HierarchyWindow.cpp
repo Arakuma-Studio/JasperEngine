@@ -18,6 +18,7 @@
 #include "command/type/RemoveChildSceneCmd.h"
 #include "command/type/SetChildSceneStartActiveCmd.h"
 #include "command/type/CreateEntityCmd.h"
+#include "lattice/LatticeEditorOps.h"
 #include "command/type/EntityNameCmd.h"
 #include "command/type/SceneNameCmd.h"
 #include "command/type/DeleteEntityCmd.h"
@@ -478,15 +479,20 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"3D Object", "Model", ICON_FA_PERSON_RUNNING, T::MODEL, "Model", CREATE_IN_3D, true},
         {"3D Object", "Terrain", ICON_FA_MOUNTAIN, T::TERRAIN, "Terrain", CREATE_IN_3D},
         {"3D Object", "Mirror", ICON_FA_CLONE, T::MIRROR, "Mirror", CREATE_IN_3D},
+        {"3D Object", "Water", ICON_FA_WATER, T::WATER, "Water", CREATE_IN_3D},
+        // around the selection (or its row's GameObject) when there is one, see createGameObject
+        {"3D Object", "Lattice", ICON_FA_BORDER_NONE, T::LATTICE, "Lattice", CREATE_IN_3D, true},
 
         {"2D Object", "Sprite", ICON_FA_IMAGE, T::SPRITE, "Sprite", CREATE_IN_WORLD},
         {"2D Object", "Tilemap", ICON_FA_BORDER_ALL, T::TILEMAP, "Tilemap", CREATE_IN_WORLD},
         {"2D Object", "Mesh Polygon", ICON_FA_VECTOR_SQUARE, T::MESH_POLYGON, "Mesh Polygon", CREATE_IN_WORLD},
         {"2D Object", "Shadow Caster 2D", ICON_FA_CIRCLE_HALF_STROKE, T::SHADOW_CASTER_2D, "Shadow Caster 2D", CREATE_IN_2D, true},
+        {"2D Object", "Lattice", ICON_FA_BORDER_NONE, T::LATTICE, "Lattice", CREATE_IN_2D, true},
 
         {"Effects", "Particle System", ICON_FA_FIRE, T::PARTICLE_SYSTEM, "Particle System", CREATE_IN_WORLD},
         {"Effects", "Line Renderer", ICON_FA_GRIP_LINES, T::LINE_RENDERER, "Line", CREATE_IN_WORLD},
         {"Effects", "Point Renderer", ICON_FA_CIRCLE, T::POINTS, "Points", CREATE_IN_WORLD},
+        {"Effects", "Fluid Simulation", ICON_FA_DROPLET, T::FLUID_SIMULATION, "Fluid Simulation", CREATE_IN_WORLD},
         {"Effects", "Fog", ICON_FA_SMOG, T::FOG, "Fog", CREATE_IN_3D, true},
         {"Effects", "Local Volumetric Fog", ICON_FA_SMOG, T::LOCAL_VOLUMETRIC_FOG, "Local Volumetric Fog", CREATE_IN_3D},
         {"Effects", "Volumetric Clouds", ICON_FA_CLOUD, T::VOLUMETRIC_CLOUDS, "Volumetric Clouds", CREATE_IN_3D},
@@ -530,6 +536,7 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"Animation", "Rotation Track", ICON_FA_ARROWS_SPIN, T::ROTATE_TRACKS, "Rotation Track", CREATE_IN_ALL},
         {"Animation", "Scale Track", ICON_FA_MAXIMIZE, T::SCALE_TRACKS, "Scale Track", CREATE_IN_ALL},
         {"Animation", "Morph Track", ICON_FA_SHAPES, T::MORPH_TRACKS, "Morph Track", CREATE_IN_ALL},
+        {"Animation", "Lattice Track", ICON_FA_CUBES_STACKED, T::LATTICE_TRACKS, "Lattice Track", CREATE_IN_ALL},
 
         {nullptr, "Camera", ICON_FA_VIDEO, T::CAMERA, "Camera", CREATE_IN_ALL},
     };
@@ -550,6 +557,16 @@ void editor::HierarchyWindow::createGameObject(const CreateMenuEntry& entry, Ent
     if (!sceneProject || !sceneProject->scene) {
         return;
     }
+    if (entry.type == EntityCreationType::LATTICE) {
+        // a lattice wraps GameObjects instead of being made under one: the row it was asked
+        // from (unless that row is in the selection), else the selection
+        std::vector<Entity> targets = project->getSelectedEntities(sceneProject->id);
+        if (parent != NULL_ENTITY && std::find(targets.begin(), targets.end(), parent) == targets.end()) {
+            targets = {parent};
+        }
+        createLatticeAround(targets);
+        return;
+    }
     if (entry.rootOnly) {
         parent = NULL_ENTITY;
     }
@@ -561,6 +578,38 @@ void editor::HierarchyWindow::createGameObject(const CreateMenuEntry& entry, Ent
     if (selected.size() == 1) {
         revealEntity(sceneProject->id, selected[0]);
     }
+}
+
+void editor::HierarchyWindow::createLatticeAround(const std::vector<Entity>& targets){
+    SceneProject* sceneProject = project->getSelectedScene();
+    if (!sceneProject || !sceneProject->scene) {
+        return;
+    }
+    // only authored GameObjects with a Transform can be bound and measured
+    std::vector<Entity> bound;
+    for (Entity entity : targets) {
+        if (cachedPlayCreatedEntities.count(entity) == 0 && sceneProject->scene->isEntityCreated(entity) &&
+            sceneProject->scene->findComponent<Transform>(entity)) {
+            bound.push_back(entity);
+        }
+    }
+    Vector3 focus = Vector3::ZERO;
+    if (sceneProject->sceneRender) {
+        if (Camera* camera = sceneProject->sceneRender->getCamera()) {
+            camera->updateTransform();
+            focus = camera->getWorldTarget();
+            if (!focus.isValid()) {
+                focus = Vector3::ZERO;
+            }
+        }
+    }
+    std::string error;
+    Entity lattice = LatticeEditorOps::createLattice(project, sceneProject->id, bound, focus, "Lattice", &error);
+    if (lattice == NULL_ENTITY) {
+        Out::error("Could not create the lattice: %s", error.c_str());
+        return;
+    }
+    revealEntity(sceneProject->id, lattice);
 }
 
 Entity editor::HierarchyWindow::getSelectedParentForCreate() const{
@@ -949,6 +998,9 @@ std::string editor::HierarchyWindow::getObjectIcon(Signature signature, Scene* s
         return ICON_FA_PERSON_RUNNING;
     }else if (signature.test(scene->getComponentId<BoneComponent>())){
         return ICON_FA_BONE;
+    }else if (signature.test(scene->getComponentId<FluidSimulationComponent>())){
+        // before the Sprite or Mesh it is drawn on: the fluid is what the object is
+        return ICON_FA_DROPLET;
     }else if (signature.test(scene->getComponentId<TilemapComponent>())){
         return ICON_FA_BORDER_ALL;
     }else if (signature.test(scene->getComponentId<SpriteComponent>())){
@@ -961,6 +1013,8 @@ std::string editor::HierarchyWindow::getObjectIcon(Signature signature, Scene* s
         return ICON_FA_CLONE;
     }else if (signature.test(scene->getComponentId<MeshComponent>())){
         return ICON_FA_DICE_D20;
+    }else if (signature.test(scene->getComponentId<LatticeComponent>())){
+        return ICON_FA_BORDER_NONE;
     }else if (signature.test(scene->getComponentId<SkyboxComponent>())){
         return ICON_FA_CLOUD;
     }else if (signature.test(scene->getComponentId<FogComponent>())){
@@ -1021,6 +1075,8 @@ std::string editor::HierarchyWindow::getObjectIcon(Signature signature, Scene* s
         return ICON_FA_MAXIMIZE;
     }else if (signature.test(scene->getComponentId<MorphTracksComponent>())){
         return ICON_FA_SHAPES;
+    }else if (signature.test(scene->getComponentId<LatticeTracksComponent>())){
+        return ICON_FA_CUBES_STACKED;
     }else if (signature.test(scene->getComponentId<ParticleSystemComponent>())){
         return ICON_FA_FIRE;
     }else if (signature.test(scene->getComponentId<LineRendererComponent>())){
@@ -1115,9 +1171,32 @@ void editor::HierarchyWindow::moveDraggedEntitiesToRootLevel(const std::vector<E
     moveDraggedEntitiesToTarget(draggedEntities, lastRootEntity, InsertionType::AFTER);
 }
 
+bool editor::HierarchyWindow::acceptsModelDrop(const std::string& filePath) const {
+    // As in the Scene window: a model file of the assets makes a Model GameObject of a 3D scene
+    const SceneProject* sceneProject = project->getSelectedScene();
+    return Util::isModelFile(filePath) && sceneProject && sceneProject->sceneType == SceneType::SCENE_3D &&
+        sceneProject->playState == ScenePlayState::STOPPED;
+}
+
 void editor::HierarchyWindow::handleEntityFilesDrop(const std::vector<std::string>& filePaths, Entity parent) {
     for (const std::string& filePath : filePaths) {
         std::filesystem::path path(filePath);
+
+        if (acceptsModelDrop(filePath)) {
+            if (!project->isInsideAssetsPath(path)) {
+                Backend::getApp().registerOutsideAssetsAlert(filePath);
+                continue;
+            }
+            const std::string modelPath = project->normalizeToAssetsRelative(path).generic_string();
+            std::string entityName = path.stem().string();
+            if (entityName.empty()) {
+                entityName = "Model";
+            }
+            const uint32_t sceneId = project->getSelectedSceneId();
+            CommandHandle::get(sceneId)->addCommandNoMerge(
+                new ModelLoadCmd(project, sceneId, entityName, parent, Vector3(0, 0, 0), Quaternion(), Vector3(1, 1, 1), modelPath));
+            continue;
+        }
 
         if (path.extension() == ".prefab") {
             // Import the prefab into the current scene using command
@@ -1198,11 +1277,14 @@ void editor::HierarchyWindow::showAddChildSceneMenu() {
 
         bool hasAvailableScenes = false;
         for (const auto& scene : scenes) {
-            // Skip current scene and already added child scenes
+            // Skip current scene, already added child scenes and scenes that contain it
             if (scene.id == currentSceneId) {
                 continue;
             }
             if (project->hasChildScene(currentSceneId, scene.id)) {
+                continue;
+            }
+            if (project->wouldCreateChildSceneCycle(currentSceneId, scene.id)) {
                 continue;
             }
 
@@ -1740,12 +1822,13 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
                     std::string path(data + offset);
                     if (!path.empty()) {
                         if (node.isScene) {
-                            if (Util::isSceneFile(path) || Util::isPrefabFile(path)) {
+                            if (Util::isSceneFile(path) || Util::isPrefabFile(path) || acceptsModelDrop(path)) {
                                 allowResourceDragDrop = true;
                                 break;
                             }
                         } else {
-                            if (Util::isPrefabFile(path)) {
+                            // a model goes under a GameObject of the selected scene, not of a child scene
+                            if (Util::isPrefabFile(path) || (acceptsModelDrop(path) && getNodeSceneId(node) == project->getSelectedSceneId())) {
                                 allowResourceDragDrop = true;
                                 break;
                             }
@@ -2029,6 +2112,28 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
                             || signature.test(scene->getComponentId<TilemapComponent>()));
                     if (!is3D && ImGui::MenuItem(ICON_FA_CIRCLE_HALF_STROKE "  Add Shadow Caster 2D", nullptr, false, !node.isLocked && canAddShadowCaster)) {
                         CommandHandle::get(sceneId)->addCommandNoMerge(new AddComponentCmd(project, sceneId, node.id, ComponentType::ShadowCaster2DComponent));
+                    }
+
+                    // a mesh on a target or below it: what the lattice is fitted to and deforms
+                    bool targetsHaveMesh = false;
+                    if (!node.isLocked) {
+                        const std::unordered_set<Entity> targetSet(targets.begin(), targets.end());
+                        auto meshes = scene->getComponentArray<MeshComponent>();
+                        for (size_t m = 0; m < meshes->size() && !targetsHaveMesh; m++) {
+                            // the mesh or one of its Transform parents is a target
+                            Entity current = meshes->getEntity(m);
+                            while (current != NULL_ENTITY && !targetsHaveMesh) {
+                                targetsHaveMesh = targetSet.count(current) > 0;
+                                const Transform* transform = scene->findComponent<Transform>(current);
+                                current = transform ? transform->parent : NULL_ENTITY;
+                            }
+                        }
+                    }
+                    if (ImGui::MenuItem(ICON_FA_BORDER_NONE "  Add Lattice to Selection", nullptr, false, targetsHaveMesh)) {
+                        createLatticeAround(targets);
+                    }
+                    if (!targetsHaveMesh && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                        ImGui::SetTooltip(node.isLocked ? "GameObject is locked" : "No mesh, sprite or model on the selection or below it");
                     }
 
                     bool hasMesh = signature.test(scene->getComponentId<MeshComponent>());
@@ -2964,7 +3069,7 @@ void editor::HierarchyWindow::show(){
                 while (offset < dataSize) {
                     std::string path(data + offset);
                     if (!path.empty()) {
-                        if (Util::isSceneFile(path) || Util::isPrefabFile(path)) {
+                        if (Util::isSceneFile(path) || Util::isPrefabFile(path) || acceptsModelDrop(path)) {
                             allowResourceDragDrop = true;
                             break;
                         }

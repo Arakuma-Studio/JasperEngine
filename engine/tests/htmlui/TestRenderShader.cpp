@@ -111,7 +111,7 @@ TEST(HtmlUIShaderTest, ShaderPoolNames){
     // the .sdat basenames and their way back to the key (editor CLI, missing-shader lists)
     EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::HTMLUI, 0), "htmlui");
     EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::HTMLUI, 1), "htmlui_Tex");
-    ShaderKey key = 0;
+    ShaderKey key;
     ASSERT_TRUE(ShaderPool::parseShaderStr("htmlui_Tex", key));
     EXPECT_EQ(key, ShaderPool::getShaderKey(ShaderType::HTMLUI, 1));
     ASSERT_TRUE(ShaderPool::parseShaderSpec("htmlui:Tex", key));

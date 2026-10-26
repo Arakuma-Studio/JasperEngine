@@ -8,10 +8,10 @@
 #include "command/type/LinkMaterialCmd.h"
 #include "command/type/PropertyCmd.h"
 #include "Stream.h"
+#include "util/FileUtils.h"
 
 #include "yaml-cpp/yaml.h"
 
-#include <fstream>
 #include <system_error>
 
 using namespace jasperengine;

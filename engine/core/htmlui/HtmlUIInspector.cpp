@@ -1247,6 +1247,11 @@ InspectElement inspect::describe(const Doc& doc, Refs& refs, Rml::Element* eleme
             effect.steps = sim.steps;
             effect.simTime = sim.time;
             effect.paused = sim.paused;
+            effect.stateImages = sim.images;
+            effect.replays = sim.replays;
+            effect.replaying = sim.replaying;
+            effect.splats = sim.splats;
+            effect.pathSamples = sim.pathSamples;
         }
         out.effects.push_back(std::move(effect));
     }

@@ -115,7 +115,9 @@ namespace jasperengine::htmlui {
         void runWarmStep(EffectInstance& instance, EffectSimulation& simulation, Program& drawProgram, RmlFilterContext* filter, double resetTime,
                          int w);
         struct StepInput;
-        void runStep(EffectInstance& instance, EffectSimulation& simulation, Program& drawProgram, RmlFilterContext* filter, const StepInput& input,
+        // the @frame passes, once after a frame's steps (the state changed since they last ran)
+        void runFramePasses(EffectInstance& instance, EffectSimulation& simulation, Program& drawProgram, RmlFilterContext* filter);
+        bool runStep(EffectInstance& instance, EffectSimulation& simulation, Program& drawProgram, RmlFilterContext* filter, const StepInput& input,
                      bool initPasses);
         bool runPass(EffectInstance& instance, EffectSimulation& simulation, Program& drawProgram, RmlFilterContext* filter,
                      const EffectPassDef& pass, int passIndex, int iteration, const StepInput& input);

@@ -32,6 +32,8 @@ namespace jasperengine{
         static std::shared_ptr<ObjModelData> addObj(const std::string& id, std::shared_ptr<ObjModelData> model);
         static void removeGLTF(const std::string& id);
         static void removeObj(const std::string& id);
+        // Drops the entry even while others hold it, so the next load parses the file again
+        static void invalidate(const std::string& id);
 
         // Hot reload (S05 R13): the entry becomes the new parse and the id's generation goes
         // up (one counter for both formats). Main thread.

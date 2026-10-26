@@ -166,6 +166,10 @@ std::string System::getShaderPath(){
     return getAssetPath() + "/" + "shaders";
 }
 
+std::string System::getImportPath(){
+    return "";
+}
+
 FILE* System::platformFopen(const char* fname, const char* mode){
     return fopen(fname, mode);
 }

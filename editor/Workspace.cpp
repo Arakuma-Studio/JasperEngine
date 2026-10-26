@@ -131,6 +131,7 @@ void Workspace::clear() {
     selectedSceneDefined = false;
     terrainEditorSettings = TerrainEditorSettings();
     terrainDefined = false;
+    physicsPlacementSettings = PhysicsPlacementSettings();
     simulateTouch = false;
     sceneStates.clear();
     adoptedLegacy = false;
@@ -186,6 +187,11 @@ void Workspace::load(const fs::path& projectPath) {
         if (!root["terrainEditor"] || !root["terrainEditor"].IsMap()) return;
         terrainEditorSettings = Stream::decodeTerrainEditorSettings(root["terrainEditor"]);
         terrainDefined = true;
+    });
+
+    readSection("the Physics Placement settings", source, [&]() {
+        if (!root["physicsPlacement"] || !root["physicsPlacement"].IsMap()) return;
+        physicsPlacementSettings = Stream::decodePhysicsPlacementSettings(root["physicsPlacement"]);
     });
 
     readSection("touch simulation", source, [&]() {
@@ -309,6 +315,7 @@ bool Workspace::save(const Project* project) {
     root["tabs"] = tabsNode;
 
     root["terrainEditor"] = Stream::encodeTerrainEditorSettings(project->getTerrainEditorSettings());
+    root["physicsPlacement"] = Stream::encodePhysicsPlacementSettings(project->getPhysicsPlacementSettings());
     root["simulateTouch"] = project->isSimulateTouch();
 
     YAML::Node scenesNode(YAML::NodeType::Map);

@@ -15,9 +15,10 @@
 namespace jasperengine::editor {
 
 // One developer's view of a project: open tabs and their order, each scene's viewport
-// camera and guides, and the terrain brush. None of it describes the game, so keeping
-// it in project.yaml means a diff every time anyone opens the editor and a conflict
-// every time two people do. It lives in .jasperengine/user/ instead, which is not committed.
+// camera and guides, the terrain brush and the Physics Placement settings. None of it
+// describes the game, so keeping it in project.yaml means a diff every time anyone opens
+// the editor and a conflict every time two people do. It lives in .jasperengine/user/
+// instead, which is not committed.
 //
 // Projects written before that split still carry these keys in project.yaml;
 // adoptLegacyProjectState() takes over whatever the workspace does not already define.
@@ -59,6 +60,9 @@ public:
     bool hasTerrainEditorSettings() const { return terrainDefined; }
     const TerrainEditorSettings& getTerrainEditorSettings() const { return terrainEditorSettings; }
 
+    // Defaults when the file has none (it never was in project.yaml)
+    const PhysicsPlacementSettings& getPhysicsPlacementSettings() const { return physicsPlacementSettings; }
+
     bool isSimulateTouch() const { return simulateTouch; }
 
     // Keyed by project-relative path, so reordering scenes never rewrites this file
@@ -82,6 +86,8 @@ private:
 
     TerrainEditorSettings terrainEditorSettings;
     bool terrainDefined = false;
+
+    PhysicsPlacementSettings physicsPlacementSettings;
 
     bool simulateTouch = false;
 
