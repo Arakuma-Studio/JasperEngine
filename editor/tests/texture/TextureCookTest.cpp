@@ -447,6 +447,48 @@ TEST(TextureEncodeQuality, FoliageTransparentTexelsStayTransparentAfterBc7){
     }
 }
 
+// The colour under fully transparent texels is kept by every family's alpha format: bilinear
+// sampling at a cutout's edge blends it in (non-premultiplied alpha), so an encoder that treats it
+// as free (astcenc's alpha weighting) draws fringes, and the report's RGB PSNR drops to ~13 dB.
+TEST(TextureEncodeQuality, ColourUnderTransparentTexelsIsKept){
+    CookBench bench("cook-under-alpha");
+    const fs::path file = bench.source("foliage");
+    for (TextureFamily family : {TextureFamily::Desktop, TextureFamily::Mobile, TextureFamily::AndroidEtc2, TextureFamily::Web}){
+        SCOPED_TRACE(textureFamilyName(family));
+        const TextureImportSettings settings = cookSettings(TextureImportType::Default, TextureCookQuality::Normal);
+        const TextureCookResult result = bench.cook(file, settings, family);
+        ASSERT_TRUE(result.ok) << result.error;
+        const std::vector<uint8_t> bytes = bench.artifact(result.record.key);
+        GpuTextureFormat format;
+        int width = 0, height = 0, faces = 1;
+        std::vector<uint8_t> decoded;
+        std::string error;
+        ASSERT_TRUE(decodeKtx2ForPreview(bytes, 0, format, width, height, faces, decoded, error)) << error;
+        ASSERT_EQ(format, GpuTextureFormat::RGBA8);
+        const PreparedTexture reference = cookReference(file, settings, family);
+        ASSERT_EQ(reference.faces[0][0].width, width);
+        double squared = 0.0;
+        size_t samples = 0;
+        for (size_t i = 0; i < (size_t)width * height; i++){
+            const uint8_t* source = &reference.faces[0][0].pixels[i * 4];
+            if (source[3] != 0)
+                continue;
+            for (int c = 0; c < 3; c++){
+                const double d = (double)decoded[i * 4 + c] - source[c];
+                squared += d * d;
+            }
+            samples += 3;
+        }
+        ASSERT_GT(samples, 0u);
+        const double mse = squared / (double)samples;
+        const double psnr = mse <= 0.0 ? 100.0 : 10.0 * std::log10(255.0 * 255.0 / mse);
+        std::printf("[ quality ] %-12s %-10s RGB under alpha 0: %.2f dB, whole texture %.2f dB\n", textureFamilyName(family),
+                    result.record.format.c_str(), psnr, result.record.psnr);
+        EXPECT_GE(psnr, 30.0) << result.record.format;
+        EXPECT_GE(result.record.psnr, 34.0) << result.record.format;
+    }
+}
+
 // ---- AC5: R18 (disk) and R17 (VRAM), bits per mip-0 texel with the mips
 
 TEST(TextureEncodeSize, CorpusAveragesMeetTheBudgets){

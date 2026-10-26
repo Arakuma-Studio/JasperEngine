@@ -53,7 +53,7 @@ namespace {
     class AstcEncoder final : public ITextureEncoder {
     public:
         const char* name() const override { return "astcenc"; }
-        std::string version() const override { return "astcenc 5.7.0 invariant"; }
+        std::string version() const override { return "astcenc 5.7.0 invariant rgb-weighted"; }
         bool isaInvariant() const override { return true; }
 
         bool encode(const TextureEncodeRequest& request, std::vector<uint8_t>& ktx2, std::string& error) const override{
@@ -68,9 +68,9 @@ namespace {
             const bool normal = prepared.layout == PreparedTexture::Layout::RG8;
             const bool single = prepared.layout == PreparedTexture::Layout::R8;
 
-            unsigned int flags = 0;
-            if (prepared.layout == PreparedTexture::Layout::RGBA8 && prepared.hasAlpha)
-                flags |= ASTCENC_FLG_USE_ALPHA_WEIGHT;
+            // no ASTCENC_FLG_USE_ALPHA_WEIGHT: it lets the colour of fully transparent blocks go,
+            // and bilinear sampling at a cutout's edge blends that colour in (straight alpha)
+            const unsigned int flags = 0;
             astcenc_config config;
             // the linear LDR profile even for sRGB colour: the engine samples UNORM and decodes sRGB
             // in the shader (D7), and ASTC's sRGB decode mode expands endpoints differently
