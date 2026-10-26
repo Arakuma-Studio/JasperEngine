@@ -121,6 +121,7 @@ TEST(TexturePackBench, TwoMaps2048OnOneWorker){
     }
     std::printf("[bench] TexturePack 2 x %dx%d: %.2f ms (budget 40 ms)\n", size, size, best);
     const double slack = testsupport::perfSlack();
-    if (slack > 0.0)
+    if (slack > 0.0) {
         EXPECT_LE(best, 40.0 * slack);
+    }
 }
