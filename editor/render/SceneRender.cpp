@@ -47,6 +47,31 @@ namespace {
 
 }
 
+bool editor::SceneRender::isGizmoGone(const EntityHandle* gizmo, const RenderSystem& render) const{
+    if (!gizmo){
+        return false;
+    }
+    Scene* gizmoScene = gizmo->getScene();
+    const Entity entity = gizmo->getEntity();
+    if (!gizmoScene->isEntityCreated(entity) || !gizmoScene->findComponent<Transform>(entity)){
+        return true;
+    }
+    // the tools layers' gizmos carry no mark
+    return gizmoScene == scene && !render.isEditorOverlay(entity);
+}
+
+void editor::SceneRender::deleteGizmo(EntityHandle* gizmo, const RenderSystem& render) const{
+    if (gizmo && isGizmoGone(gizmo, render)){
+        gizmo->setEntityOwned(false);
+    }
+    delete gizmo;
+}
+
+void editor::SceneRender::dropGoneGizmos(){
+    const RenderSystem& render = *scene->getSystem<RenderSystem>();
+    dropGoneGizmos(latticeCages, render, &LatticeCageLines::overlay, &LatticeCageLines::depth);
+}
+
 void editor::SceneRender::ensureOverlayLines(std::map<Entity, LineRenderer*>& lines, Entity entity){
     if (lines.find(entity) == lines.end()){
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
@@ -521,6 +546,9 @@ OBB editor::SceneRender::getFamilyVisualOBB(Scene* target, Entity entity, float 
 }
 
 void editor::SceneRender::hideAllGizmos(){
+    // (also the subclasses' gizmos: they hide theirs after calling this)
+    dropGoneGizmos();
+
     selLines->setVisible(false);
     terrainBrushLines->setVisible(false);
     physicsLines->setVisible(false);
@@ -775,6 +803,9 @@ void editor::SceneRender::updateRenderSystem(){
 }
 
 void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<Entity> entities, Entity mainCamera, const SceneDisplaySettings& settings){
+    // (also the subclasses' gizmos: their update runs after this one)
+    dropGoneGizmos();
+
     displaySettings = settings;
 
     // The tools work on this scene's selection, or on the edit layer's while one is set.

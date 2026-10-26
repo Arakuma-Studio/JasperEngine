@@ -1305,12 +1305,20 @@ void deleteAssetTool(const CallPtr& call) {
         files.push_back(file.lexically_normal());
         deleted.push_back(rel);
     }
+    // a scene leaving the project while a scene plays: the reason, without an editor alert
+    std::string refusal;
+    if (project->refuseDeletionWhilePlaying(files, &refusal, false)) {
+        call->fail(refusal);
+        return;
+    }
     // the Animation Players using a deleted clip keep the reference (Missing; undo relinks it)
     size_t clipUsers = 0;
     for (const Json& rel : deleted) {
         if (Util::isAnimationClipFile(rel.get<std::string>())) clipUsers += findClipUsers(project, rel.get<std::string>()).size();
     }
-    if (!addProjectCommand(call->ctx(), new DeleteFileCmd(project, files, project->getProjectPath()))) {
+    auto* deleteCmd = new DeleteFileCmd(project, files, project->getProjectPath());
+    deleteCmd->setAlertOnRefusal(false);
+    if (!addProjectCommand(call->ctx(), deleteCmd)) {
         call->fail("Couldn't delete the files.");
         return;
     }

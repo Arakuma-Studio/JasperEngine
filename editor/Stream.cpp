@@ -3376,6 +3376,49 @@ YAML::Node editor::Stream::encodeSceneProject(const Project* project, const Scen
     return root;
 }
 
+// The C++ scripts a scene file's header lists (what the scene had when saved)
+void editor::Stream::decodeSceneCppScripts(SceneProject* sceneProject, const YAML::Node& node) {
+    sceneProject->cppScripts.clear();
+    if (node["cppScripts"]) {
+        for (const auto& scriptNode : node["cppScripts"]) {
+            SceneScriptSource script;
+
+            if (scriptNode["path"]) {
+                script.path = fs::path(scriptNode["path"].as<std::string>());
+            }
+            if (scriptNode["headerPath"]) {
+                script.headerPath = fs::path(scriptNode["headerPath"].as<std::string>());
+            }
+            if (scriptNode["className"]) {
+                script.className = scriptNode["className"].as<std::string>();
+            }
+            if (scriptNode["properties"]) {
+                for (const auto& propNode : scriptNode["properties"]) {
+                    ScriptPropertyInfo prop;
+                    if (propNode["name"]) {
+                        prop.name = propNode["name"].as<std::string>();
+                    }
+                    if (propNode["isPtr"]) {
+                        prop.isPtr = YamlNumbers::as<bool>(propNode["isPtr"]);
+                    }
+                    if (propNode["ptrTypeName"]) {
+                        prop.ptrTypeName = propNode["ptrTypeName"].as<std::string>();
+                    }
+                    script.properties.push_back(prop);
+                }
+            }
+
+            sceneProject->cppScripts.push_back(script);
+        }
+    } else if (node["cppScriptPaths"]) {
+        for (const auto& pathNode : node["cppScriptPaths"]) {
+            SceneScriptSource script;
+            script.path = fs::path(pathNode.as<std::string>());
+            sceneProject->cppScripts.push_back(script);
+        }
+    }
+}
+
 void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::Node& node, bool loadScene) {
     if (node["id"]) sceneProject->id = YamlNumbers::as<uint32_t>(node["id"]);
     if (node["name"]) sceneProject->name = node["name"].as<std::string>();
@@ -3422,45 +3465,7 @@ void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::
         }
     }
 
-    sceneProject->cppScripts.clear();
-    if (node["cppScripts"]) {
-        for (const auto& scriptNode : node["cppScripts"]) {
-            SceneScriptSource script;
-
-            if (scriptNode["path"]) {
-                script.path = fs::path(scriptNode["path"].as<std::string>());
-            }
-            if (scriptNode["headerPath"]) {
-                script.headerPath = fs::path(scriptNode["headerPath"].as<std::string>());
-            }
-            if (scriptNode["className"]) {
-                script.className = scriptNode["className"].as<std::string>();
-            }
-            if (scriptNode["properties"]) {
-                for (const auto& propNode : scriptNode["properties"]) {
-                    ScriptPropertyInfo prop;
-                    if (propNode["name"]) {
-                        prop.name = propNode["name"].as<std::string>();
-                    }
-                    if (propNode["isPtr"]) {
-                        prop.isPtr = YamlNumbers::as<bool>(propNode["isPtr"]);
-                    }
-                    if (propNode["ptrTypeName"]) {
-                        prop.ptrTypeName = propNode["ptrTypeName"].as<std::string>();
-                    }
-                    script.properties.push_back(prop);
-                }
-            }
-
-            sceneProject->cppScripts.push_back(script);
-        }
-    } else if (node["cppScriptPaths"]) {
-        for (const auto& pathNode : node["cppScriptPaths"]) {
-            SceneScriptSource script;
-            script.path = fs::path(pathNode.as<std::string>());
-            sceneProject->cppScripts.push_back(script);
-        }
-    }
+    decodeSceneCppScripts(sceneProject, node);
 
     sceneProject->prefabs.clear();
     if (node["prefabs"]) {

@@ -38,6 +38,18 @@ fs::path editor::DeleteFileCmd::generateUniqueTrashPath(const fs::path& trashDir
 }
 
 bool editor::DeleteFileCmd::execute(){
+    // a closed scene whose file goes leaves the project (Project::cleanupSceneFilePath)
+    refusal.clear();
+    if (project) {
+        std::vector<fs::path> paths;
+        for (const DeleteFilesData& file : files) {
+            paths.push_back(file.originalFile);
+        }
+        if (project->refuseDeletionWhilePlaying(paths, &refusal, alertOnRefusal)) {
+            return false;
+        }
+    }
+
     if (!fs::exists(trash)) {
         fs::create_directory(trash);
     }
