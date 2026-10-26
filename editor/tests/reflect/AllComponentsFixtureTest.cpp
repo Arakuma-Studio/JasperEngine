@@ -80,7 +80,8 @@ namespace all_components_fixture_test {
 
     std::string generate() {
         std::mt19937 rng(2026);
-        std::string text = "formatVersion: 2\nid: 2026080800\nname: AllComponents\nsceneType: scene_3d\nentities:\n";
+        std::string text = "formatVersion: 1\nid: 2026080800\nname: AllComponents\nscene:\n  backgroundColor: [0, 0, 0, 1]\nsceneType: scene_3d\n"
+                           "mainCamera: 0\nentities:\n";
         for (int t = 0; t <= static_cast<int>(LAST_COMPONENT_TYPE); t++) {
             text += "  - type: Entity\n    entity: " + std::to_string(1001 + t) + "\n    name: " + Catalog::getComponentName(static_cast<ComponentType>(t)) +
                     "\n    components:\n      transform:\n        position: [" + std::to_string(t) + ", 0, 0]\n";

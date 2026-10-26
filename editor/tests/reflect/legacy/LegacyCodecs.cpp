@@ -1525,8 +1525,6 @@ YAML::Node LegacyCodecs::encodeKeyframeTracksComponent(const KeyframeTracksCompo
     return node;
 }
 
-
-
 KeyframeTracksComponent LegacyCodecs::decodeKeyframeTracksComponent(const YAML::Node& node, const KeyframeTracksComponent* oldTracks) {
     KeyframeTracksComponent tracks;
 
@@ -1554,7 +1552,6 @@ KeyframeTracksComponent LegacyCodecs::decodeKeyframeTracksComponent(const YAML::
     return tracks;
 }
 
-
 // Value/tangent list plumbing shared by the keyframe track components below
 template<typename T, typename EncodeFn>
 static YAML::Node encodeList(const std::vector<T>& values, EncodeFn encodeValue) {
@@ -1565,8 +1562,6 @@ static YAML::Node encodeList(const std::vector<T>& values, EncodeFn encodeValue)
     return node;
 }
 
-
-}
 template<typename T, typename DecodeFn>
 static void decodeListInto(const YAML::Node& node, std::vector<T>& values, DecodeFn decodeValue) {
     values.clear();
@@ -1574,7 +1569,6 @@ static void decodeListInto(const YAML::Node& node, std::vector<T>& values, Decod
         values.push_back(decodeValue(v));
     }
 }
-
 
 // Encodes values plus the optional Hermite tangents (GLTF CUBICSPLINE clips);
 // decode clears tangents that are absent from the file
@@ -1591,8 +1585,6 @@ static YAML::Node encodeTrackLists(const Tracks& tracks, EncodeFn encodeValue) {
     return node;
 }
 
-
-
 template<typename Tracks, typename DecodeFn>
 static void decodeTrackLists(const YAML::Node& node, Tracks& tracks, DecodeFn decodeValue) {
     if (node["values"]) {
@@ -1608,14 +1600,10 @@ static void decodeTrackLists(const YAML::Node& node, Tracks& tracks, DecodeFn de
     }
 }
 
-
-}
 YAML::Node LegacyCodecs::encodeTranslateTracksComponent(const TranslateTracksComponent& tracks) {
     return encodeTrackLists(tracks, encodeVector3);
 }
 
-
-    return values;
 TranslateTracksComponent LegacyCodecs::decodeTranslateTracksComponent(const YAML::Node& node, const TranslateTracksComponent* oldTracks) {
     TranslateTracksComponent tracks;
 
@@ -1628,14 +1616,10 @@ TranslateTracksComponent LegacyCodecs::decodeTranslateTracksComponent(const YAML
     return tracks;
 }
 
-
-    }
 YAML::Node LegacyCodecs::encodeRotateTracksComponent(const RotateTracksComponent& tracks) {
     return encodeTrackLists(tracks, encodeQuaternion);
 }
 
-
-        values.push_back(editor::YamlNumbers::as<float>(f));
 RotateTracksComponent LegacyCodecs::decodeRotateTracksComponent(const YAML::Node& node, const RotateTracksComponent* oldTracks) {
     RotateTracksComponent tracks;
 
@@ -1648,14 +1632,10 @@ RotateTracksComponent LegacyCodecs::decodeRotateTracksComponent(const YAML::Node
     return tracks;
 }
 
-
-    for (const YAML::Node& f : node) {
 YAML::Node LegacyCodecs::encodeScaleTracksComponent(const ScaleTracksComponent& tracks) {
     return encodeTrackLists(tracks, encodeVector3);
 }
 
-
-    std::vector<float> values;
 ScaleTracksComponent LegacyCodecs::decodeScaleTracksComponent(const YAML::Node& node, const ScaleTracksComponent* oldTracks) {
     ScaleTracksComponent tracks;
 

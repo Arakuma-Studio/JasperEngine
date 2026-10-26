@@ -6,6 +6,7 @@
 // and changes a few fields, so a value that is written but not read back shows up.
 
 #include "Stream.h"
+#include "reflect/Reflect.h"
 
 #include "LogCapture.h"
 
@@ -43,13 +44,14 @@ namespace {
 
 }
 
-// STABLE(<component type>, <encode/decode suffix>, <statements changing `component`>)
+// STABLE(<component type>, <its ComponentType>, <statements changing `component`>): through its
+// reflection table, the generic codec or the component's own (editor/reflect/components)
 #define STABLE(Type, Name, ...) \
     TEST(StreamComponent, Name##ReEncodesIdentically){ \
         Type component{}; \
         __VA_ARGS__; \
-        expectStable<Type>(component, [](const Type& c){ return Stream::encode##Name(c); }, \
-                           [](const YAML::Node& node){ return Stream::decode##Name(node); }); \
+        expectStable<Type>(component, [](const Type& c){ return reflect::encodeValue(ComponentType::Name, &c); }, \
+                           [](const YAML::Node& node){ return reflect::decodeValue<Type>(ComponentType::Name, node); }); \
         EXPECT_NO_ENGINE_ERRORS(); \
     }
 

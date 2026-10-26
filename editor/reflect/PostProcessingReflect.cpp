@@ -8,6 +8,7 @@
 // reflected here without an edit.
 
 #include "reflect/Reflect.h"
+#include "reflect/Field.h"
 #include "reflect/TypeOps.h"
 
 #include "SceneSettings.h"

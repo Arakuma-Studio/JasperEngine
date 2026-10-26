@@ -7,6 +7,7 @@
 // it to 150 ns.
 
 #include "reflect/Reflect.h"
+#include "reflect/ReflectIndex.h"
 
 #include "component/LightComponent.h"
 #include "component/MeshComponent.h"
