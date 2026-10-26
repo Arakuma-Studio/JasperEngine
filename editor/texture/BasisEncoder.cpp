@@ -36,11 +36,23 @@ namespace {
         });
     }
 
+    // R20: a cold 2048² UASTC λ1 cook within 12 s at normal effort. Measured on the corpus (spec
+    // deviations), basisu's "faster" pack level with RDO over a 2 KB window takes under half of
+    // "default" with a 4 KB one, for 0.4 dB less and smaller files after zstd
     uint32_t uastcLevel(TextureEffort effort){
         switch (effort){
-            case TextureEffort::Fast: return basisu::cPackUASTCLevelFaster;
+            case TextureEffort::Fast: return basisu::cPackUASTCLevelFastest;
             case TextureEffort::Best: return basisu::cPackUASTCLevelSlower;
-            case TextureEffort::Normal: default: return basisu::cPackUASTCLevelDefault;
+            case TextureEffort::Normal: default: return basisu::cPackUASTCLevelFaster;
+        }
+    }
+
+    // the LZ window the RDO pass simulates: larger finds more matches, and costs time in step
+    uint32_t uastcRdoDictionary(TextureEffort effort){
+        switch (effort){
+            case TextureEffort::Fast: return 1024;
+            case TextureEffort::Best: return 4096;
+            case TextureEffort::Normal: default: return 2048;
         }
     }
 
@@ -53,7 +65,8 @@ namespace {
     }
 
     // one face of a level, UASTC blocks of fixed bands, RDO within each band
-    bool encodeUastcImage(const MipLevel& image, int channels, uint32_t flags, float lambda, const std::function<bool()>& cancelled,
+    bool encodeUastcImage(const MipLevel& image, int channels, uint32_t flags, float lambda, uint32_t dictionary,
+                          const std::function<bool()>& cancelled,
                           std::vector<uint8_t>& out){
         const int blocksX = (image.width + 3) / 4;
         const int blocksY = (image.height + 3) / 4;
@@ -86,6 +99,7 @@ namespace {
             if (lambda > 0.0f){
                 basisu::uastc_rdo_params params;
                 params.m_lambda = lambda;
+                params.m_lz_dict_size = dictionary;
                 basisu::uastc_rdo((uint32_t)count, blocks, pixels.data(), params, flags, nullptr, 0);
             }
             return true;
@@ -104,7 +118,7 @@ namespace {
         for (int level = 0; level < prepared.levelCount(); level++){
             for (const std::vector<MipLevel>& face : prepared.faces){
                 std::vector<uint8_t> blocks;
-                if (!encodeUastcImage(face[level], channels, flags, lambda, request.cancelled, blocks))
+                if (!encodeUastcImage(face[level], channels, flags, lambda, uastcRdoDictionary(request.effort), request.cancelled, blocks))
                     return false;
                 levels[level].insert(levels[level].end(), blocks.begin(), blocks.end());
             }
@@ -226,7 +240,7 @@ namespace {
     class BasisEncoder final : public ITextureEncoder {
     public:
         const char* name() const override { return "basisu"; }
-        std::string version() const override { return std::string("basisu ") + BASISU_LIB_VERSION_STRING + " bands16 rg-alpha"; }
+        std::string version() const override { return std::string("basisu ") + BASISU_LIB_VERSION_STRING + " bands16 rg-alpha faster-d2k"; }
         // SSE off, but not proven identical across CPUs (D11)
         bool isaInvariant() const override { return false; }
 
