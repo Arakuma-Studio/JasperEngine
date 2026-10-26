@@ -546,10 +546,12 @@ alternative, recorded here).
    `streamable` defaults to on, except for sprite/ui (R12) and textures without mips.
 3. **Progressive tail (R12).** KTX2 stores levels smallest first, so the ≤ 64 px tail sits right after
    the metadata: the first read is of the file's first bytes, not its end. Same effect, one read.
-4. **Sources read from their file (R9).** HTML UI images, terrain surface layers and a glTF's
-   external images are read from the source file by their consumers (RmlUi, the terrain detail
-   array, tinygltf). A texture whose every reference is one of those is not cooked and ships as
-   it is; a texture with one such reference and others is cooked and its source ships too
+4. **Sources read from their file (R9).** HTML UI images and terrain surface layers are read from
+   the source file by their consumers (RmlUi, the terrain detail array). A glTF's external images
+   are cooked like any texture, typed by the slots of the glTF materials that sample them: the
+   model loader takes the cook by path when there is one (`MeshSystem::loadGLTFTexture`), so they
+   ship cooked only; embedded images stay inside the model. A texture whose every reference reads
+   its file is not cooked and ships as it is; a texture with one such reference and others is cooked and its source ships too
    (`readsSource`, like an implicit `shipSource`). `.svg` (rasterised at load at the requested
    scale) and `.ktx2` sources load as they are. `.pic`/`.pnm` (stb formats the asset table knows)
    cook like the R1 list.

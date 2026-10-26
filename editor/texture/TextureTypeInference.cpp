@@ -155,12 +155,14 @@ std::vector<TextureSlot> TextureTypeInference::classify(const DepEdge& edge, con
         return slots;
     }
     if (edge.kind == DepEdgeKind::ModelUri){
-        // a glTF's external image: the model loader reads the file's pixels itself
+        // a glTF's external image, by the slots of the materials that sample it: the model loader
+        // takes its cook by path (MeshSystem), so the source need not ship
         if (context.modelSlots){
             const std::vector<TextureSlot> model = context.modelSlots(edge);
             slots.insert(slots.end(), model.begin(), model.end());
         }
-        slots.push_back(TextureSlot::SourceFile);
+        if (slots.empty())
+            slots.push_back(TextureSlot::Color);
         return slots;
     }
 

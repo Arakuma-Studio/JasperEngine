@@ -57,7 +57,7 @@ TEST(TextureTypeInference, ComponentSlots){
     const std::vector<TextureSlot> layer = inferenceSlots("entity:2/TerrainComponent.surfaceLayers[0].normalTexture");
     EXPECT_TRUE(inferenceHas(layer, TextureSlot::Normal));
     EXPECT_TRUE(inferenceHas(layer, TextureSlot::SourceFile));
-    // HTML images, a glTF's external images
+    // HTML images are read from their file; a glTF's external images load cooked (MeshSystem)
     const std::vector<TextureSlot> html = inferenceSlots("text:12", {}, DepEdgeKind::UIImage);
     EXPECT_TRUE(inferenceHas(html, TextureSlot::UI));
     EXPECT_TRUE(inferenceHas(html, TextureSlot::SourceFile));
@@ -65,7 +65,10 @@ TEST(TextureTypeInference, ComponentSlots){
     model.modelSlots = [](const DepEdge&){ return std::vector<TextureSlot>{TextureSlot::Normal}; };
     const std::vector<TextureSlot> gltf = inferenceSlots("text:3", model, DepEdgeKind::ModelUri);
     EXPECT_TRUE(inferenceHas(gltf, TextureSlot::Normal));
-    EXPECT_TRUE(inferenceHas(gltf, TextureSlot::SourceFile));
+    EXPECT_FALSE(inferenceHas(gltf, TextureSlot::SourceFile));
+    // no material samples it: colour
+    const std::vector<TextureSlot> unused = inferenceSlots("text:3", {}, DepEdgeKind::ModelUri);
+    EXPECT_EQ(unused, std::vector<TextureSlot>{TextureSlot::Color});
 }
 
 TEST(TextureTypeInference, SpritesFromTheirEntity){
