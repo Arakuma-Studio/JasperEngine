@@ -136,6 +136,7 @@
   "checks": [{"type": "visible", "selector": ".messages"},
              {"type": "within_viewport", "selector": ".chat"},
              {"type": "virtual_window", "selector": ".messages"},
+             {"type": "text_fits", "selector": ".titlebar h2"},
              {"type": "min_size", "selector": ".send"},
              {"type": "contrast", "selector": ".author"}]},
  {"name": "quest_log", "title": "Quest log", "example": true,
