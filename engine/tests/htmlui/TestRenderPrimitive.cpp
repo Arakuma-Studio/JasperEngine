@@ -10,6 +10,7 @@
 #include "TestRenderCommon.h"
 
 #include "HtmlUIPrimitive.h"
+#include "render/SystemRender.h"
 
 #include <RmlUi/Core/MeshUtilities.h>
 
@@ -148,6 +149,11 @@ TEST(RenderPrimitive, MatchesTheMeshPath){
             const ::testing::AssertionResult result = similar(primitives.screen, meshes.screen, label);
             EXPECT_TRUE(result);
             if (!result){
+                // (the render state an earlier test may have left: GPU timing, pipelines)
+                const GpuTimingState timing = SystemRender::getGpuTimingState();
+                std::printf("[ diagnose ] %s: gpu timing available %d enabled %d (%s), pipeline cache %zu, instances %u\n", label.c_str(),
+                            timing.available ? 1 : 0, timing.enabled ? 1 : 0, timing.reason.c_str(), (size_t)SystemRender::getPipelineCacheSize(),
+                            primitives.stats.instancesDrawn);
                 const std::string base = getOutputDirectory() + "/primitives-" + test.name + "-" + std::to_string(samples);
                 writePng(base + ".sdf.png", primitives.screen, width, height);
                 writePng(base + ".mesh.png", meshes.screen, width, height);
