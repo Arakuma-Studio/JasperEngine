@@ -1266,7 +1266,15 @@ void deleteAssetTool(const CallPtr& call) {
         files.push_back(file.lexically_normal());
         deleted.push_back(rel);
     }
-    if (!addProjectCommand(call->ctx(), new DeleteFileCmd(project, files, project->getProjectPath()))) {
+    // a scene leaving the project while a scene plays: the reason, without an editor alert
+    std::string refusal;
+    if (project->refuseDeletionWhilePlaying(files, &refusal, false)) {
+        call->fail(refusal);
+        return;
+    }
+    auto* deleteCmd = new DeleteFileCmd(project, files, project->getProjectPath());
+    deleteCmd->setAlertOnRefusal(false);
+    if (!addProjectCommand(call->ctx(), deleteCmd)) {
         call->fail("Couldn't delete the files.");
         return;
     }
