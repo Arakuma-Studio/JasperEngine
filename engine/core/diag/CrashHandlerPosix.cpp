@@ -229,7 +229,7 @@ void fatal(int sig, siginfo_t* info, void* context) {
     const pthread_t current = pthread_self();
     pthread_t expected{};
     if (!reportOwner.compare_exchange_strong(expected, current, std::memory_order_acq_rel)) {
-        if (expected == current) {
+        if (expected == current && !s.reportDone.load(std::memory_order_acquire)) {
             defaultAction(sig);
         }
         const uint64_t deadline = monotonicNs() + 8000000000ULL;

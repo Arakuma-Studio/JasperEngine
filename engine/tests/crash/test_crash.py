@@ -21,11 +21,11 @@ def main():
     if os.name == "nt":
         modes.append("pure_call")
     else:
-        modes.append("chain")
+        modes.extend(["chain", "chain_after_return"])
     expected = {"segv": signal.SIGSEGV, "abort": signal.SIGABRT, "terminate": signal.SIGABRT,
                 "stack_overflow": signal.SIGSEGV, "worker_segv": signal.SIGSEGV,
                 "worker_stack_overflow": signal.SIGSEGV, "fpe": signal.SIGFPE,
-                "guard_worker": signal.SIGSEGV, "concurrent": signal.SIGSEGV, "recursive": signal.SIGSEGV, "chain": signal.SIGSEGV}
+                "guard_worker": signal.SIGSEGV, "concurrent": signal.SIGSEGV, "recursive": signal.SIGSEGV, "chain": signal.SIGSEGV, "chain_after_return": signal.SIGSEGV}
     for mode in args.mode or modes + ["hang"]:
         with tempfile.TemporaryDirectory(prefix="je-native-crash-") as root:
             env = dict(os.environ, JASPERENGINE_CRASH_REPORT_DIR=root)
@@ -66,8 +66,8 @@ def main():
                 if args.expect_asan and mode == "segv":
                     assert "AddressSanitizer" in result.stderr, "the previous sanitizer handler did not run"
                     assert result.stderr.index("JASPERENGINE CRASH:") < result.stderr.index("AddressSanitizer"), result.stderr
-                if mode == "chain":
-                    assert (Path(root) / "sentinel").exists(), result.stderr
+                if mode in ("chain", "chain_after_return"):
+                    assert (Path(root) / "sentinel").read_text() == "chained\n", result.stderr
                 if os.name == "nt":
                     assert (files[0].parent / "crash.dmp").stat().st_size > 0
                 else:

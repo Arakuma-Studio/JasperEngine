@@ -67,7 +67,10 @@ namespace je_crash_test {
     char sentinelPath[1024]{};
     void previousHandler(int sig, siginfo_t*, void*) {
         int fd = open(sentinelPath, O_CREAT | O_WRONLY, 0600);
-        if (fd >= 0) { const ssize_t ignored = write(fd, "chained\n", 8); (void)ignored; close(fd); }
+        if (fd >= 0) {
+            const ssize_t ignored = write(fd, sig == SIGTRAP ? "trap\n" : "chained\n", sig == SIGTRAP ? 5 : 8);
+            (void)ignored; close(fd);
+        }
         if (sig != SIGTRAP) {
             struct sigaction action{};
             sigemptyset(&action.sa_mask);
@@ -134,14 +137,16 @@ int main(int argc, char** argv) {
     config.version = "test";
     config.backend = "none";
 #if !defined(_WIN32)
-    if (std::strcmp(mode, "chain") == 0 || std::strcmp(mode, "chain_return") == 0) {
+    if (std::strcmp(mode, "chain") == 0 || std::strcmp(mode, "chain_return") == 0 ||
+            std::strcmp(mode, "chain_after_return") == 0) {
         const std::string file = (root / "sentinel").string();
         std::memcpy(sentinelPath, file.c_str(), file.size() + 1);
         struct sigaction sentinel{};
         sigemptyset(&sentinel.sa_mask);
         sentinel.sa_sigaction = previousHandler;
         sentinel.sa_flags = SA_SIGINFO;
-        sigaction(std::strcmp(mode, "chain_return") == 0 ? SIGTRAP : SIGSEGV, &sentinel, nullptr);
+        sigaction(std::strcmp(mode, "chain") == 0 ? SIGSEGV : SIGTRAP, &sentinel, nullptr);
+        if (std::strcmp(mode, "chain_after_return") == 0) sigaction(SIGSEGV, &sentinel, nullptr);
     }
 #endif
     diag::crash::install(config);
@@ -149,6 +154,12 @@ int main(int argc, char** argv) {
 
     const std::string name = mode;
 #if !defined(_WIN32)
+    if (name == "chain_after_return") {
+        log("last line before the crash");
+        raise(SIGTRAP); // The saved handler returns after a complete engine report.
+        raise(SIGSEGV); // A later fault must still reach its own saved handler.
+        return 1;
+    }
     if (name == "chain_return") {
         raise(SIGTRAP);
         diag::crash::shutdown();
