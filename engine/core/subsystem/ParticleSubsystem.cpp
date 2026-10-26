@@ -20,6 +20,7 @@
 #include "render/SystemRender.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/PhysicsSystem.h"
+#include "subsystem/RenderSystem.h"
 
 #include <algorithm>
 #include <chrono>
@@ -32,6 +33,20 @@ using namespace jasperengine::particles;
 namespace {
 
     constexpr float kTwoPi = 6.28318530718f;
+
+    // an immediate simulation (seek, step, the editor's preview) sees the Transform as it was set,
+    // not as the last frame left it: a moved GameObject (or parent) has its matrices worked out
+    // now, as the frame's transform pass will; true when they changed
+    bool refreshTransform(Scene* scene, Entity entity){
+        Transform* transform = scene->findComponent<Transform>(entity);
+        if (!transform)
+            return false;
+        const bool parentChanged = transform->parent != NULL_ENTITY && refreshTransform(scene, transform->parent);
+        if (!transform->needUpdate && !parentChanged)
+            return false;
+        scene->getSystem<RenderSystem>()->updateTransform(*transform, entity);
+        return true;
+    }
 
     void copyMatrix(const Matrix4& m, float out[16]){
         for (int c = 0; c < 4; c++)
@@ -270,6 +285,7 @@ void ParticleSubsystem::seek(Entity entity, double time){
         return;
     ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
     EmitterInput input;
+    refreshTransform(scene, entity);
     prepareInput(particles, scene->getComponent<Transform>(entity), input);
     state->runtime.seek(input, time);
     state->started = true;
@@ -281,6 +297,7 @@ void ParticleSubsystem::step(Entity entity, uint32_t ticks){
         return;
     ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
     EmitterInput input;
+    refreshTransform(scene, entity);
     prepareInput(particles, scene->getComponent<Transform>(entity), input);
     if (state->runtime.state() != PlayState::Playing)
         state->runtime.play();
@@ -329,6 +346,7 @@ void ParticleSubsystem::previewSeek(Entity entity, double time){
         state->preview = std::make_unique<ParticlePreview>();
     ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
     EmitterInput input;
+    refreshTransform(scene, entity);
     prepareInput(particles, scene->getComponent<Transform>(entity), input);
     state->preview->seek(state->runtime, input, std::max(0.0, time));
     state->started = true;
@@ -340,6 +358,7 @@ bool ParticleSubsystem::previewUpdate(Entity entity, double budgetMs){
         return true;
     ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
     EmitterInput input;
+    refreshTransform(scene, entity);
     prepareInput(particles, scene->getComponent<Transform>(entity), input);
     const bool done = state->preview->update(state->runtime, input, budgetMs);
     updateBounds(*state);
@@ -356,6 +375,7 @@ void ParticleSubsystem::previewAdvance(Entity entity, double dt){
         state->started = true;
     }
     EmitterInput input;
+    refreshTransform(scene, entity);
     prepareInput(particles, scene->getComponent<Transform>(entity), input);
     const auto start = std::chrono::steady_clock::now();
     state->runtime.advance(input, dt);

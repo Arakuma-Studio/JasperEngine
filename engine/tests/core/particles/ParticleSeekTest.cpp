@@ -7,7 +7,10 @@
 #include "ParticleTestEffects.h"
 #include "ParticleTestUtil.h"
 
+#include "Scene.h"
+#include "object/ParticleSystem.h"
 #include "particles/ParticlePreview.h"
+#include "subsystem/ParticleSubsystem.h"
 
 #include <gtest/gtest.h>
 
@@ -157,4 +160,27 @@ TEST(ParticleSeek, PrewarmAtPlayRunsAtOnce){
     runtime.advance(input, 1.0 / 60.0);
     EXPECT_FALSE(runtime.isPrewarming());
     EXPECT_EQ(runtime.tickCount(), 60u);
+}
+
+TEST(ParticleSeek, BeforeTheFirstFrameUsesTheTransformAsSet){
+    // a seek right after a move (before any frame updated the world matrices) emits where the
+    // system now is: world-space particles at rest sit at its position
+    Scene scene;
+    ParticleSystem system(&scene);
+    system.setPosition(2.5f, 0.5f, -1.0f);
+    system.setPlayOnAwake(false);
+    ASSERT_TRUE(system.setInlineEffect(R"({"version": 1, "duration": 5, "seed": 4, "maxParticles": 100, "simulationSpace": "world",
+        "modules": [{"type": "main", "startLifetime": 10, "startSpeed": 0},
+                    {"type": "emission", "rateOverTime": 20},
+                    {"type": "shape", "enabled": false}]})"));
+    system.seek(1.0f);
+    const particles::ParticleSystemState* state = scene.getSystem<ParticleSubsystem>()->getState(system.getEntity());
+    ASSERT_NE(state, nullptr);
+    const ParticleChannels& ch = state->runtime.particleChannels();
+    ASSERT_GT(ch.count, 0u);
+    for (uint32_t i = 0; i < ch.count; i++){
+        EXPECT_NEAR(ch.get(ChPosX)[i], 2.5f, 1e-4f) << i;
+        EXPECT_NEAR(ch.get(ChPosY)[i], 0.5f, 1e-4f) << i;
+        EXPECT_NEAR(ch.get(ChPosZ)[i], -1.0f, 1e-4f) << i;
+    }
 }
