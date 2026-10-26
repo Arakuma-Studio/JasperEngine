@@ -646,3 +646,10 @@ one line pointing here.
   take `FramebufferRender::getMaxMsaaSamples` (the device's highest count up to the asked one, as
   the scene MSAA already did), so an editor preference of 8 on such a device is 4, not undefined;
   the comparison skips counts the device lacks; `RenderP1Test.SampleCountChoice` checks the clamp.
+- B1 gradients: S16-F5 as first written covered RCSS `decorator:` gradients only; the examples'
+  CSS `background` gradients are background-image layers (`ElementBackgroundLayers`), drawn as a
+  shader mesh and, under a rounded clip box, a mask layer each. Those are primitives now (one per
+  grid of tiles, the clip radii their own). The gradient instances also lacked their translation
+  (`translateInstance`), unseen while no CSS gradient took the path.
+- B2: S16-F6 keeps each offset parent's clipping region for the render pass (500 cards: 2000
+  elements walked their ancestors and built a mask list each).
