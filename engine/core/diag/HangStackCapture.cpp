@@ -66,6 +66,7 @@ DWORD machineFrame(CONTEXT& context, STACKFRAME64& frame) {
 // block on a loader lock. The watchdog's deadline must include symbol formatting.
 void formatCapturedFrames(bool symbols) {
     capturedTextBytes = 0;
+    capturedText[0] = '\0';
     for (size_t i = 0; i < frameCount; i++) {
         const DWORD64 pc = reinterpret_cast<uintptr_t>(frames[i]);
         MEMORY_BASIC_INFORMATION memory{};
@@ -125,6 +126,7 @@ DWORD WINAPI walkMain(void*) {
             formatCapturedFrames(true);
         } else {
             capturedTextBytes = 0;
+            capturedText[0] = '\0';
         }
         SetEvent(readyEvent);
     }
