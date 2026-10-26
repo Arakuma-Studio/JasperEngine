@@ -494,6 +494,18 @@ All execution uses `je-remote/rb.sh`; no local builds or tests.
   standalone build, game and editor runs all pass; screenshots are saved and neither log has
   a crash, error or `JASPERENGINE HANG:` line. The brief's `--img` invocation cannot launch
   Docker inside the build image, so the same script runs from the remote host instead.
+- Server A, final Android build: `ANDROID_PROJECT=crash-diagnostics tools/build.sh android`
+  passes for all four ABIs. The final API 34 x86_64 emulator run with
+  `tools/android-emulator-test.sh build/android-crash-diagnostics/app-debug.apk
+  --expect-native-crash --expect 'JASPERENGINE CRASH:' --out build/android-native-module-green`
+  exits zero. Artifacts include the engine report, fatal logcat marker and preserved debuggerd
+  tombstone. Both reports identify fault thread 1959 (`je-main`), build ID
+  `ca276c8e0a5b57b07ad161629e5a81ead4421d9f`, and the same first game frame
+  (`libjasperengine-android.so+0x1fc4b4e`, `debugSegv()+14` in the tombstone).
+  The strengthened game-module assertion first failed against the saved old APK, then passed
+  after the bounded module cache retained our image. Final artifacts remain on A in
+  `build/android-native-module-green`; the final APK SHA-256 is
+  `51bafb346db8457f3f9696c7e17d306789001e7687885a76e475da4a3fb995de`.
 
 #### Baseline gate failures owned by other streams
 
