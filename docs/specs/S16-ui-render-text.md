@@ -562,19 +562,22 @@ one line pointing here.
   blurred `text-shadow` drawn through a layer.
 - **S15's render-stats tool** (`get_render_stats`, merged after S16's work) carries the selected
   scene's `HtmlUIRenderStats` as `html_ui` (`forEachField`), the same fields as `inspect_ui`'s.
-- **R21 B1 draws (reported, not gated).** The examples do not reach "<= 30 % of the baseline and
-  <= 40": measured on the benchmark host (`docs/html-ui/render-benchmark.md`) most of their draws
-  are not runs but their effects' passes (backdrop blurs, filters, gradients, layer composites),
-  which S16 leaves as they are, and the runs left are mostly split by textures (icons, images,
-  effect variants: one texture per instanced draw, D3). `HtmlUIRenderPerf.B1Examples` prints the
-  target per example and why each run started (`RmlRenderer::getLastRunBreaks`), and gates "no
-  more draws than the baseline" and the engine time. Follow-up: a few texture slots per
-  `HTMLUI_PRIM` draw (a per-instance slot and kind) would merge the texture splits.
-- **R22 B2 (the replay gated).** "<= 50 % of the baseline" holds for the replay (0.404 -> 0.117 ms
-  on the benchmark host), the part S16 changes; the whole engine time is mostly RmlUi's update and
-  paint traversal (`Context::Render`, 2.5 ms for 500 cards, the same both ways). The test gates the
-  replay at 50 % and the engine time at the baseline + 5 %. Follow-up: culling elements outside the
-  clip in the paint traversal (fork).
+- **R21 B1 draws (reported, not gated).** After round 2's measured attempts (four texture slots
+  per `HTMLUI_PRIM` draw; CSS background gradients as primitives without their mask layers,
+  S16-F5) blank, inventory, pause_menu, settings and shop meet "<= 30 % of the baseline and <= 40";
+  dialogue (14 for 12), hud (80 for 40), loading (34 for 17), main_menu (36 for 31), toasts (40
+  for 24) and video_menu (14 for 9) do not. Their remaining draws, measured per example on the
+  benchmark host (`docs/html-ui/render-benchmark.md`, `RmlRenderer::getLastEffectCounts` and
+  `getLastRunBreaks`), are effect passes S16 does not change: backdrop-filter and filter blurs
+  (several passes each), `text-shadow` blurs beyond the distance glyphs' reach (a layer and a
+  blur), opacity groups and their composites, and stencil masks under those layers (an analytic
+  clip does not clip a composite); runs split by textures are gone (1 or 0 per example). Merging
+  them would change what the browser draws (a blur of a group is not the group of blurs).
+  `HtmlUIRenderPerf.B1Examples` prints the target per example, and gates "no more draws than the
+  baseline" and the engine time (baseline + 5 %).
+- **R22 B2 met.** "<= 50 % of the baseline" for the engine time: 2.477 -> 1.084 ms (44 %), B6 43 %,
+  gated by `B2List500` and `B6TextureList500` (round 2: the paint traversal's shortcuts S16-F6,
+  culling S16-F4, the benchmark's frames started with the GPU idle).
 - **R22 gathering** counts an instance as the 4 vertices it replaces, on warm frames with the run
   cache dropped (`RmlRenderer::clearRunCacheForTesting`).
 - **Wall frame times on a software rasterizer** (llvmpipe, the CI and benchmark hosts) are higher
