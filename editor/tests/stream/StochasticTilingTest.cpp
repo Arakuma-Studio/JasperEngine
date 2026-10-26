@@ -498,11 +498,11 @@ TEST(StochasticTilingMaterial, CatalogPathsAndOverrides) {
         EXPECT_EQ(data.type, field.type) << path;
         EXPECT_EQ(data.updateFlags, field.flags) << path;
         // a model reload keeps the edit: the one override bit of the five
-        uint32_t overrideFields = 0;
-        uint32_t* mask = editor::Catalog::getSubmeshOverrideMask(&registry, entity, ComponentType::MeshComponent, path, overrideFields);
+        uint64_t overrideFields = 0;   // (64 bits since S11)
+        uint64_t* mask = editor::Catalog::getSubmeshOverrideMask(&registry, entity, ComponentType::MeshComponent, path, overrideFields);
         ASSERT_NE(mask, nullptr) << path;
         EXPECT_EQ(mask, &stored.submeshes[1].overrideFields) << path;
-        EXPECT_EQ(overrideFields, (uint32_t)SubmeshOverride_StochasticTiling) << path;
+        EXPECT_EQ(overrideFields, (uint64_t)SubmeshOverride_StochasticTiling) << path;
     }
     EXPECT_EQ(editor::Catalog::findProperty(&registry, entity, ComponentType::MeshComponent, "submeshes[1].material.stochasticTilings").ref, nullptr);
     EXPECT_NE(SubmeshOverride_Material & SubmeshOverride_StochasticTiling, 0u);
