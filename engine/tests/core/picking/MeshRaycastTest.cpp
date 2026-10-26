@@ -24,7 +24,9 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cmath>
+#include <thread>
 #include <vector>
 
 using namespace jasperengine;
@@ -149,7 +151,7 @@ TEST(MeshRaycast, Kinds){
 
     // a tilemap with two tiles and a hole between them
     Tilemap tilemap(&scene);
-    tilemap.addRect(0, 0, 16, 16);
+    tilemap.addRect(0, "tile", "picking/tiles.png", Rect(0, 0, 16, 16));
     tilemap.addTile(0, Vector2(0, 0), 4, 4);
     tilemap.addTile(0, Vector2(8, 0), 4, 4);
     tilemap.setPosition(30, 0, 0);
@@ -169,6 +171,11 @@ TEST(MeshRaycast, Kinds){
     points.setPosition(0, 0, 40);
 
     settleScene(scene);
+    // the tilemap builds once its texture's size is known (an asynchronous load)
+    for (int frame = 0; frame < 500 && scene.getComponent<MeshComponent>(tilemap.getEntity()).buffer.getCount() == 0; frame++){
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        settleScene(scene);
+    }
     {
         InstancedMeshComponent& instmesh = scene.getComponent<InstancedMeshComponent>(instanced.getEntity());
         for (int i = 0; i < 10; i++){
@@ -289,7 +296,20 @@ TEST(MeshRaycast, SkinnedArmRaised){
     settleScene(scene);
     // raised: hit where it is drawn now (the outer half of the arm through its bone), missed
     // where it was
-    const Vector3 middle = scene.getComponent<MeshComponent>(character).bonesMatrix[1] * Vector3(2.5f, 0, 0);
+    const Matrix4 bone = scene.getComponent<MeshComponent>(character).bonesMatrix[1];
+    const Vector3 middle = bone * Vector3(2.5f, 0, 0);
+    // the bounds follow the bones (RenderSystem's skinnedAABB), the posed copy the vertices
+    const AABB& bounds = scene.getComponent<MeshComponent>(character).worldAABB;
+    ASSERT_TRUE(bounds.contains(middle)) << middle.toString() << " outside " << bounds.getMinimum().toString() << " "
+                                         << bounds.getMaximum().toString();
+    {
+        const PickCache::EntryPtr entry = scene.getPickBvh().meshEntry(character, false);
+        ASSERT_TRUE(entry);
+        const MeshBvh* posed = scene.getPickBvh().posedTree(character, *PickCache::ready(entry), entry->hash);
+        ASSERT_NE(posed, nullptr);
+        ASSERT_TRUE(posed->getBounds().contains(middle)) << posed->getBounds().getMinimum().toString() << " "
+                                                         << posed->getBounds().getMaximum().toString();
+    }
     const Ray atRaisedArm(middle + Vector3(0, 0, 10), Vector3(0, 0, -20));
     MeshRaycastHit hit = MeshRaycast::raycast(&scene, atRaisedArm);
     ASSERT_TRUE(hit.hit);
