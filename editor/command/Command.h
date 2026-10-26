@@ -20,6 +20,11 @@ namespace jasperengine::editor{
         virtual bool execute() = 0;
         virtual void undo() = 0;
 
+        // False when undoing or redoing it now would break the project (a child scene
+        // cycle), so the history stays where it is
+        virtual bool canUndo() const { return true; }
+        virtual bool canRedo() const { return true; }
+
         virtual bool mergeWith(Command*) { return false; }
 
         // True if this can change what the Hierarchy tree shows. Defaults to true so a

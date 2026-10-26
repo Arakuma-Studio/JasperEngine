@@ -16,9 +16,18 @@ layout(location = 2) out vec4 frag_albedo;
 in vec2 v_projZW;
 in vec3 v_normal;
 
+// Stochastic Tiling (USE_STOCHASTIC_TILING): base colour and metallic-roughness read through
+// the same lattice, taps and weights as Lit's colour pass (includes/pbr.glsl, UV set 1)
+#if defined(USE_STOCHASTIC_TILING) && (defined(HAS_BASECOLOR_TEXTURE) || defined(HAS_METALLICROUGHNESS_TEXTURE))
+    #define GBUFFER_STOCHASTIC
+#endif
+
 uniform u_fs_gbufferMaterial {
     vec4 params;        // x = roughness, y = metallic, z = IBL source, w = alpha cutoff (-1 = disabled)
     vec4 baseColorFactor;
+    #ifdef GBUFFER_STOCHASTIC
+        vec4 stochastic; // the material's cell size, blend sharpness, contrast, rotation
+    #endif
 } gbufferMaterial;
 
 #if defined(HAS_BASECOLOR_TEXTURE) || defined(HAS_METALLICROUGHNESS_TEXTURE)
@@ -39,10 +48,22 @@ uniform u_fs_gbufferMaterial {
 #ifdef HAS_TERRAIN_PBR
     #include "includes/terrain_fs.glsl"
 #endif
+#ifdef GBUFFER_STOCHASTIC
+    #include "includes/stochastic.glsl"
+#endif
 
 void main() {
+    #ifdef GBUFFER_STOCHASTIC
+        // the base colour's luminance weights, then the metallic-roughness taps with them (as
+        // geometric without a base colour texture)
+        StochasticTiling stochastic = stochasticSetup(v_uv1, stochasticParams(gbufferMaterial.stochastic.x,
+            gbufferMaterial.stochastic.y, gbufferMaterial.stochastic.z, gbufferMaterial.stochastic.w), 0u);
+    #endif
+
     vec4 baseColor = gbufferMaterial.baseColorFactor;
-    #if defined(HAS_BASECOLOR_TEXTURE)
+    #if defined(HAS_BASECOLOR_TEXTURE) && defined(GBUFFER_STOCHASTIC)
+        baseColor *= sRGBToLinear(stochasticTextureLuminance(u_baseColorTexture, u_baseColor_smp, stochastic));
+    #elif defined(HAS_BASECOLOR_TEXTURE)
         vec4 texColor = texture(sampler2D(u_baseColorTexture, u_baseColor_smp), v_uv1);
         baseColor *= sRGBToLinear(texColor);
     #endif
@@ -54,7 +75,11 @@ void main() {
     float metallic  = gbufferMaterial.params.y;
     #if defined(HAS_METALLICROUGHNESS_TEXTURE)
         // glTF convention: green = roughness, blue = metallic
-        vec4 mr = texture(sampler2D(u_metallicRoughnessTexture, u_metallicRoughness_smp), v_uv1);
+        #ifdef GBUFFER_STOCHASTIC
+            vec4 mr = stochasticTexture(u_metallicRoughnessTexture, u_metallicRoughness_smp, stochastic);
+        #else
+            vec4 mr = texture(sampler2D(u_metallicRoughnessTexture, u_metallicRoughness_smp), v_uv1);
+        #endif
         roughness *= mr.g;
         metallic  *= mr.b;
     #endif

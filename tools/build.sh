@@ -37,6 +37,7 @@
 # HTMLUI_TEST_ARGS goes to the test binary (e.g. --gtest_filter=Golden*),
 # JASPER_HTMLUI_UPDATE_GOLDEN=1 rewrites the golden images (glcore only).
 # JASPER_HTMLUI_WRITE_ACTUAL=1 keeps every compared image in the test output directory (both backends).
+# JASPER_ZERO_COST_UPDATE=1 rewrites the built-in Lit's zero-cost hash list (ShaderZeroCostTest, unit-tests).
 # htmlui-editor-tests: HTMLUI_TEST_ARGS goes to the test binary, RUN=0 builds only,
 # HTMLUI_LIVE_NETWORK=1 adds the live Google Fonts test.
 # mcp-tests: MCP_SUITE=ci (default; the CI = True files) or all (needs JASPER_FIXTURE, the
@@ -58,11 +59,12 @@ ENGINE_TARGET=jasperengine-project
 # AC7 of docs/specs/S02-build-ci-tests.md: what an unfiltered run must at least execute
 CORE_MIN_TESTS=300
 EDITOR_MIN_TESTS=150
-# jasperengine-htmlui-tests skips these on purpose (docs/html-ui/phase-6-acceptance.md §4.2)
-HTMLUI_MAX_SKIPPED=74
+# jasperengine-htmlui-tests skips these on purpose (docs/html-ui/phase-6-acceptance.md §4.2), and
+# upstream's opt-in EffectFluidProfile.LiveCost (JASPER_EFFECT_FLUID_PROFILE=1)
+HTMLUI_MAX_SKIPPED=75
 
 usage() {
-    sed -n '2,46p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,51p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 1
 }
 
@@ -181,7 +183,7 @@ CPUS="${CPUS:-${DOCKER_CPUS:-${JOBS:-}}}"
 [[ -n "$CPUS" ]] && CPU_FLAGS=(--cpus "$CPUS")
 ENV_FLAGS=()
 for name in JASPER_HTMLUI_UPDATE_GOLDEN JASPER_HTMLUI_WRITE_ACTUAL JASPER_TEST_UPDATE_GOLDEN JASPER_TEST_WRITE_ACTUAL \
-            JASPER_TEST_KEEP_TEMP JASPER_HTMLUI_PERF_SLACK JASPER_TEST_PERF_SLACK HTMLUI_LIVE_NETWORK JASPER_CHROME; do
+            JASPER_TEST_KEEP_TEMP JASPER_HTMLUI_PERF_SLACK JASPER_TEST_PERF_SLACK HTMLUI_LIVE_NETWORK JASPER_CHROME JASPER_ZERO_COST_UPDATE; do
     # (JASPER_HTMLUI_PERF_SLACK: the HTML UI performance tests' tolerance on a loaded host, compat_perf_test.cpp;
     # JASPER_TEST_PERF_SLACK: the core tests' wall-clock budgets are enforced only when it is set)
     [[ -n "${!name:-}" ]] && ENV_FLAGS+=(-e "$name=${!name}")
@@ -199,6 +201,9 @@ MOUNT_FLAGS=()
 if [[ "$TARGET" == mcp-tests && -n "${JASPER_FIXTURE:-}" ]]; then
     MOUNT_FLAGS+=(-v "$JASPER_FIXTURE:/fixture:ro" -e JASPER_FIXTURE=/fixture)
 fi
+# the UI effects' measuring switches (EffectPerfTest: JASPER_EFFECT_COST_ONLY, JASPER_EFFECT_PERF_*;
+# EffectFluidTest: JASPER_EFFECT_FLUID_PROFILE)
+for name in $(compgen -e | grep '^JASPER_EFFECT_' || true); do ENV_FLAGS+=(-e "$name=${!name}"); done
 
 run() {
     # (the ${a[@]+...} form: an empty array under set -u fails on bash before 4.4, e.g. macOS)

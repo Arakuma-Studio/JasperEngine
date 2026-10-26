@@ -27,6 +27,8 @@ namespace jasperengine::editor{
             App* app = nullptr;
             void (*platformNewFrame)() = nullptr;
             double lastActivityTime = 0.0;
+            // when the next unfocused or minimized frame is due
+            double frameDeadline = 0.0;
 
             bool detectActivity(bool& redrawRequested);
 

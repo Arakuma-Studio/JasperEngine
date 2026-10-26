@@ -233,6 +233,13 @@ namespace jasperengine{
         void setMaxLightsPerObject(int maxLightsPerObject);
         int getMaxLightsPerObject() const;
 
+        // the built-in Lit's shading quality (a variant of every lit mesh: they reload)
+        void setLitQuality(LitQuality litQuality);
+        LitQuality getLitQuality() const;
+        // the exposure (EV100, -6..24) lights in physical units are drawn at
+        void setPhysicalLightEV100(float ev100);
+        float getPhysicalLightEV100() const;
+
         void setAmbientLight2D(float intensity, Vector3 color);
         void setAmbientLight2D(float intensity);
         void setAmbientLight2D(Vector3 color);
@@ -252,6 +259,11 @@ namespace jasperengine{
         Vector3 getGravity3D() const;
         void setGravity3D(Vector3 gravity);
         void setGravity3D(float x, float y, float z);
+
+        // forwarder to PhysicsSystem::setInterpolation: bodies drawn between their last two
+        // fixed steps, so they move smoothly at any frame rate
+        void setPhysicsInterpolation(bool interpolation);
+        bool isPhysicsInterpolation() const;
 
         void setDefaultMeshShader(const std::string& path);
         const std::string& getDefaultMeshShader() const;
@@ -333,6 +345,16 @@ namespace jasperengine{
             }
             scheduleSubSystem(descriptor.name, system.get(), descriptor);
             return system;
+        }
+
+        // the registered system of that type, or nullptr (getSystem asserts it exists)
+        template<typename T>
+        std::shared_ptr<T> findSystem(){
+            const char* typeName = typeid(T).name();
+
+            auto it = std::find_if(systems.begin(), systems.end(), [&](const auto& pair) { return pair.first == typeName; });
+
+            return it != systems.end() ? std::dynamic_pointer_cast<T>(it->second) : nullptr;
         }
 
         // A system function run in the descriptor's phase (see SystemScheduler)

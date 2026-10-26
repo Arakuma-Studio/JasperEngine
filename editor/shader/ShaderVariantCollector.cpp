@@ -9,6 +9,7 @@
 #include "io/FileData.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
+#include "component/FluidSimulationComponent.h"
 #include "component/FogComponent.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/Light2DComponent.h"
@@ -18,6 +19,7 @@
 #include "component/MeshPolygonComponent.h"
 #include "component/MirrorComponent.h"
 #include "component/ModelComponent.h"
+#include "util/FbxImporter.h"
 #include "component/ParticleSystemComponent.h"
 #include "component/PointsComponent.h"
 #include "component/ReflectionProbeComponent.h"
@@ -32,6 +34,7 @@
 #include "htmlui/compat/CompatApi.h"
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/effects/EffectRegistry.h"
+#include "lattice/LatticeRender.h"
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
 
@@ -184,6 +187,7 @@ namespace {
             readsSceneDepth(scene->getDefaultCustomShader(ShaderType::MESH), {}) ||
             readsSceneDepth(scene->getDefaultCustomShader(ShaderType::POINTS), {}) ||
             postProcessReadsDepth(scene);
+        environment.litQualityHigh = scene->getLitQuality() == LitQuality::HIGH;
         return environment;
     }
 
@@ -191,7 +195,8 @@ namespace {
         return (e.lights ? 1u : 0u) | (e.shadows ? 2u : 0u) | (e.ibl ? 4u : 0u) | (e.reflectionProbes ? 8u : 0u) |
             (e.fog ? 16u : 0u) | (e.lights2D ? 32u : 0u) | (e.shadows2D ? 64u : 0u) | (e.ssao ? 128u : 0u) |
             (e.ssr ? 256u : 0u) | (e.depthPrepass ? 512u : 0u) | ((uint32_t)e.lightCapacity << 10) | (e.sceneDepth ? (1u << 20) : 0u) |
-            (e.postColor ? (1u << 21) : 0u) | (e.shadowsHQ ? (1u << 22) : 0u) | (e.atmosphereDepth ? (1u << 23) : 0u);
+            (e.postColor ? (1u << 21) : 0u) | (e.shadowsHQ ? (1u << 22) : 0u) | (e.atmosphereDepth ? (1u << 23) : 0u) |
+            (e.litQualityHigh ? (1u << 24) : 0u) | (e.pbrTier == PbrTier::REDUCED ? (1u << 25) : 0u);
     }
 
     // the states of the High shadow filters' variant bit ('Shq', RenderSystem::updateShadowTier)
@@ -229,7 +234,8 @@ namespace {
     // the setups without them are reachable too (an asynchronous load draws before that).
     std::vector<MeshShaderEnvironment> reachableEnvironments(Scene* scene, uint32_t sceneFacts, const std::vector<uint32_t>& prefabFacts,
                                                              bool allLightCapacities, const std::vector<bool>& postColor,
-                                                             const std::vector<bool>& shadowHQ){
+                                                             const std::vector<bool>& shadowHQ, bool allLitQualities,
+                                                             PbrTier mobilePbrTier){
         std::set<uint32_t> reached{sceneFacts};
         std::vector<uint32_t> pending{sceneFacts};
         while (!pending.empty()){
@@ -270,6 +276,28 @@ namespace {
                             }
                         }
                     }
+                }
+            }
+        }
+        // the other Lit Quality, when a script sets it (scene.litQuality), and the lobes the
+        // mobile and web exports draw (MaterialPbr::resolveTier: the same rule as their runtime)
+        const size_t own = environments.size();
+        for (size_t e = 0; e < own; e++){
+            if (allLitQualities){
+                MeshShaderEnvironment other = environments[e];
+                other.litQualityHigh = !other.litQualityHigh;
+                if (distinct.insert(environmentBits(other)).second){
+                    environments.push_back(other);
+                }
+            }
+        }
+        if (mobilePbrTier != PbrTier::FULL){
+            const size_t full = environments.size();
+            for (size_t e = 0; e < full; e++){
+                MeshShaderEnvironment mobile = environments[e];
+                mobile.pbrTier = MaterialPbr::resolveTier(true, mobilePbrTier);
+                if (distinct.insert(environmentBits(mobile)).second){
+                    environments.push_back(mobile);
                 }
             }
         }
@@ -333,8 +361,10 @@ namespace {
     }
 
     const ModelProbe& probeModel(const std::string& filename, bool mergeStaticMeshes){
-        // The file as the engine opens it, for its modification time
-        const std::filesystem::path path(FileData::getSystemPath(filename));
+        // The file as the engine opens it, for its modification time: an FBX's import, which
+        // also changes when only its textures do
+        const std::filesystem::path path(editor::FbxImporter::isFbxFile(filename) ? MeshSystem::getImportedModelPath(filename)
+            : FileData::getSystemPath(filename));
         std::error_code timeError;
         std::error_code sizeError;
         const std::filesystem::file_time_type writeTime = std::filesystem::last_write_time(path, timeError);
@@ -428,7 +458,13 @@ namespace {
                 }
                 if (!modelMeshes.count(entity)){
                     if (const MeshComponent* mesh = registry->findComponent<MeshComponent>(entity)){
+                        // a FluidSimulation shown on it (MATERIAL) lends submesh 0 a base colour
+                        // texture at draw time (FluidSystem::getMaterialTexture)
+                        const FluidSimulationComponent* fluid = registry->isComponentRegistered<FluidSimulationComponent>()
+                                                                ? registry->findComponent<FluidSimulationComponent>(entity) : nullptr;
+                        lentBaseColor = fluid && fluid->output == FluidOutput::MATERIAL;
                         collectMesh(registry, entity, *mesh);
+                        lentBaseColor = false;
                     }
                 }
                 if (const TerrainComponent* terrain = registry->findComponent<TerrainComponent>(entity)){
@@ -459,6 +495,7 @@ namespace {
 
     private:
         Scene* scene;
+        bool lentBaseColor = false;     // the mesh being collected shows a fluid's output
         const std::vector<MeshShaderEnvironment>& environments;
         // the post colour bit's states, for the points, lines and sky (meshes: environments)
         const std::vector<bool>& postColor;
@@ -473,11 +510,11 @@ namespace {
         }
 
         // A custom shader that fails to build falls back to the built-in variant at runtime
-        void insertKeys(ShaderType type, uint32_t properties, uint16_t customId){
+        void insertKeys(ShaderType type, uint64_t properties, uint16_t customId){
             // a mesh's post colour bit comes with its environment; the others take it here
-            const uint32_t postColorBit = type == ShaderType::MESH ? 0 : ShaderPool::getPostColorProperty(type);
+            const uint64_t postColorBit = type == ShaderType::MESH ? 0 : ShaderPool::getPostColorProperty(type);
             for (bool postColorOn : postColor){
-                const uint32_t variant = properties | (postColorOn ? postColorBit : 0u);
+                const uint64_t variant = properties | (postColorOn ? postColorBit : uint64_t(0));
                 keys.insert(ShaderPool::getShaderKey(type, variant, customId));
                 if (customId != 0){
                     keys.insert(ShaderPool::getShaderKey(type, variant, 0));
@@ -487,8 +524,11 @@ namespace {
             }
         }
 
+        // lattice: the mesh is bound to a lattice (LatticeRender::isLatticeTarget), so it also
+        // draws with the lattice variants (the bindings can be switched off at runtime: both)
         void collectSubmesh(const MeshComponent& mesh, Submesh submesh, const std::vector<const Buffer*>* buffers,
-                            const TerrainComponent* terrain, const InstancedMeshComponent* instmesh, bool mirror){
+                            const TerrainComponent* terrain, const InstancedMeshComponent* instmesh, bool mirror,
+                            bool lattice = false){
             // MeshSystem::update turns the texture rect path on before the mesh loads
             if (MeshSystem::usesTextureRect(submesh)){
                 submesh.hasTextureRect = true;
@@ -499,28 +539,36 @@ namespace {
             // the submesh's shader as RenderSystem::loadMesh picks it: its material's, the
             // mesh's or the scene's, with its features; the depth pass's library program
             const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
-            const SubmeshShaderInputs inputs = RenderSystem::getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, mirror, sceneMeshShader);
+            SubmeshShaderInputs inputs = RenderSystem::getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, mirror, sceneMeshShader);
 
-            const uint16_t meshShaderId = ShaderPool::registerCustomShader(RenderSystem::getSubmeshShaderReference(mesh, submesh, sceneMeshShader));
             const uint16_t depthShaderId = ShaderPool::registerCustomShader(RenderSystem::getSubmeshDepthShaderReference(mesh, submesh, sceneMeshShader));
-            for (const MeshShaderEnvironment& environment : environments){
-                const SubmeshShaderVariant variant = RenderSystem::getSubmeshShaderVariant(environment, inputs);
-                insertKeys(ShaderType::MESH, variant.properties, meshShaderId);
-                if (variant.depth){
-                    insertKeys(ShaderType::DEPTH, variant.depthProperties, depthShaderId);
-                }
-                if (variant.gbuffer){
-                    keys.insert(ShaderPool::getShaderKey(ShaderType::GBUFFER, variant.gbufferProperties));
-                }
-            }
-
-            // its material's extra pass, as RenderSystem::loadSubmeshExtraPass picks it (a pass
-            // that fails is not drawn: no built-in fallback)
-            if (RenderSystem::hasExtraPass(submesh, terrain != nullptr)){
-                const SubmeshShaderInputs passInputs = RenderSystem::getExtraPassShaderInputs(inputs, submesh.material.extraPass);
-                const uint16_t passShaderId = ShaderPool::registerCustomShader(RenderSystem::getSubmeshExtraPassReference(submesh));
+            const bool hasPass = RenderSystem::hasExtraPass(submesh, terrain != nullptr);
+            const uint16_t passShaderId = hasPass ? ShaderPool::registerCustomShader(RenderSystem::getSubmeshExtraPassReference(submesh)) : 0;
+            // (a terrain is never deformed)
+            const bool latticeVariants = lattice && !terrain;
+            for (int latticeVariant = 0; latticeVariant <= (latticeVariants ? 1 : 0); latticeVariant++){
+                inputs.lattice = latticeVariant != 0;
                 for (const MeshShaderEnvironment& environment : environments){
-                    keys.insert(ShaderPool::getShaderKey(ShaderType::MESH, RenderSystem::getSubmeshShaderVariant(environment, passInputs).properties, passShaderId));
+                    const SubmeshShaderVariant variant = RenderSystem::getSubmeshShaderVariant(environment, inputs);
+                    // the reference takes the variant's built-in Lit defines (lobes, Lit Quality)
+                    const uint16_t meshShaderId = ShaderPool::registerCustomShader(
+                        RenderSystem::getSubmeshShaderReference(mesh, submesh, sceneMeshShader, variant.litDefines));
+                    insertKeys(ShaderType::MESH, variant.properties, meshShaderId);
+                    if (variant.depth){
+                        insertKeys(ShaderType::DEPTH, variant.depthProperties, depthShaderId);
+                    }
+                    if (variant.gbuffer){
+                        keys.insert(ShaderPool::getShaderKey(ShaderType::GBUFFER, variant.gbufferProperties));
+                    }
+                }
+
+                // its material's extra pass, as RenderSystem::loadSubmeshExtraPass picks it (a pass
+                // that fails is not drawn: no built-in fallback)
+                if (hasPass){
+                    const SubmeshShaderInputs passInputs = RenderSystem::getExtraPassShaderInputs(inputs, submesh.material.extraPass);
+                    for (const MeshShaderEnvironment& environment : environments){
+                        keys.insert(ShaderPool::getShaderKey(ShaderType::MESH, RenderSystem::getSubmeshShaderVariant(environment, passInputs).properties, passShaderId));
+                    }
                 }
             }
         }
@@ -528,6 +576,7 @@ namespace {
         void collectMesh(EntityRegistry* registry, Entity entity, const MeshComponent& mesh){
             const InstancedMeshComponent* instmesh = registry->findComponent<InstancedMeshComponent>(entity);
             const bool mirror = registry->findComponent<MirrorComponent>(entity) != nullptr;
+            const bool lattice = LatticeRender::isLatticeTarget(registry, entity);
 
             // Generated meshes: the layout their generator gives them, whatever is saved
             const TerrainComponent* terrain = registry->findComponent<TerrainComponent>(entity);
@@ -555,7 +604,9 @@ namespace {
                 // material (RenderSystem::loadMesh), so they draw with the same variant
                 const unsigned int submeshes = terrain ? 1 : generated->numSubmeshes;
                 for (unsigned int s = 0; s < submeshes; s++){
-                    collectSubmesh(*generated, generated->submeshes[s], &buffers, terrain, instmesh, mirror);
+                    collectSubmesh(*generated, generated->submeshes[s], &buffers, terrain, instmesh, mirror, lattice);
+                    if (s == 0 && lentBaseColor)
+                        collectSubmesh(*generated, lent(generated->submeshes[s]), &buffers, terrain, instmesh, mirror, lattice);
                 }
                 return;
             }
@@ -566,8 +617,18 @@ namespace {
                 return;
             }
             for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
-                collectSubmesh(mesh, mesh.submeshes[s], &buffers, nullptr, instmesh, mirror);
+                collectSubmesh(mesh, mesh.submeshes[s], &buffers, nullptr, instmesh, mirror, lattice);
+                if (s == 0 && lentBaseColor)
+                    collectSubmesh(mesh, lent(mesh.submeshes[s]), &buffers, nullptr, instmesh, mirror, lattice);
             }
+        }
+
+        // the submesh as it draws with a texture lent to its base colour
+        static Submesh lent(Submesh submesh){
+            static Framebuffer lentOutput;   // never made: it only makes the texture non-empty
+            if (submesh.material.baseColorTexture.empty())
+                submesh.material.baseColorTexture.setFramebuffer(&lentOutput);
+            return submesh;
         }
 
         // A model mesh: the file's submeshes, with the fields saved over them (overrideFields)
@@ -575,12 +636,13 @@ namespace {
         void collectModelSubmeshes(EntityRegistry* registry, Entity entity, const MeshComponent& mesh, const std::vector<Submesh>& probed){
             const InstancedMeshComponent* instmesh = registry ? registry->findComponent<InstancedMeshComponent>(entity) : nullptr;
             const bool mirror = registry && registry->findComponent<MirrorComponent>(entity) != nullptr;
+            const bool lattice = registry && LatticeRender::isLatticeTarget(registry, entity);
             for (size_t s = 0; s < probed.size(); s++){
                 Submesh submesh = probed[s];
                 if (s < mesh.numSubmeshes && mesh.submeshes[s].overrideFields != 0){
                     MeshSystem::applySubmeshOverride(mesh.submeshes[s], submesh);
                 }
-                collectSubmesh(mesh, submesh, nullptr, nullptr, instmesh, mirror);
+                collectSubmesh(mesh, submesh, nullptr, nullptr, instmesh, mirror, lattice);
             }
         }
 
@@ -804,7 +866,7 @@ void editor::ShaderVariantCollector::addUiEffectKeys(const UiEffectUses& uses, s
             if (!m->stateful())
                 return;
             const ShaderType type = ShaderPool::getShaderTypeFromKey(key);
-            const uint32_t properties = ShaderPool::getPropertiesFromKey(key);
+            const uint64_t properties = ShaderPool::getPropertiesFromKey(key);
             const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
             keys.insert(ShaderPool::normalizeKey(ShaderPool::getShaderKey(type, properties | 2u, customId)));
             if (m->hasScatter())
@@ -953,12 +1015,22 @@ std::set<uint32_t> editor::ShaderVariantCollector::plausibleUberFeatures(const P
     return features;
 }
 
+void editor::ShaderVariantCollector::addFluidKeys(std::set<ShaderKey>& keys){
+    // ShaderType::FLUID bits: 'Lok' 1, 'Mfl' 2 (the solver and the look, each with and
+    // without linear filtering: the device decides at run time)
+    keys.insert(ShaderPool::getShaderKey(ShaderType::FLUID, 0));
+    keys.insert(ShaderPool::getShaderKey(ShaderType::FLUID, 1u));
+    keys.insert(ShaderPool::getShaderKey(ShaderType::FLUID, 2u));
+    keys.insert(ShaderPool::getShaderKey(ShaderType::FLUID, 3u));
+}
+
 void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVariantContent& sceneContent,
                                                   const std::vector<ShaderVariantContent>& prefabContents,
                                                   std::set<ShaderKey>& keys, const fs::path& projectRoot,
                                                   bool allLightCapacities, bool scriptsSetPostProcessing,
                                                   const std::vector<std::string>& scriptPostProcessingFields,
-                                                  bool scriptsSetShadowQuality){
+                                                  bool scriptsSetShadowQuality, bool scriptsSetLitQuality,
+                                                  PbrTier mobilePbrTier){
     if (!scene || !sceneContent.registry){
         return;
     }
@@ -979,7 +1051,8 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
     }
 
     const std::vector<MeshShaderEnvironment> environments = reachableEnvironments(scene, sceneFacts, prefabFacts, allLightCapacities, postColor,
-                                                                                  shadowHQStates(scene, scriptsSetShadowQuality));
+                                                                                  shadowHQStates(scene, scriptsSetShadowQuality),
+                                                                                  scriptsSetLitQuality, mobilePbrTier);
 
     Collector collector(scene, environments, postColor, keys);
     collector.collect(sceneContent);
@@ -998,6 +1071,11 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
         keys.insert(ShaderPool::getShaderKey(ShaderType::SSR, 0));
         keys.insert(ShaderPool::getShaderKey(ShaderType::SSR_BLUR, 0));
         keys.insert(ShaderPool::getShaderKey(ShaderType::COMPOSITE, 0));
+    }
+    // a reflection probe's runtime capture is prefiltered into roughness mips
+    // (RenderSystem::filterReflectionProbes)
+    if (allFacts & FACT_PROBES){
+        keys.insert(ShaderPool::getShaderKey(ShaderType::PROBE_FILTER, 0));
     }
     // disabled passes ship too: the generated scene carries the whole chain
     for (const PostProcessPass& pass : scene->getPostProcessPasses()){
@@ -1051,6 +1129,22 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
     if (allFacts & FACT_SHADOW_LIGHTS_2D){
         keys.insert(ShaderPool::getShaderKey(ShaderType::SHADOW2D, 0));
     }
+    // the fluid simulations' programs (FluidSimulator, ShaderType::FLUID bits 'Lok' 1, 'Mfl' 2):
+    // the solver, the look, and the solver of devices that cannot filter half floats
+    auto hasFluid = [](const ShaderVariantContent& content){
+        if (!content.registry || !content.registry->isComponentRegistered<FluidSimulationComponent>())
+            return false;
+        for (Entity entity : content.entities){
+            if (content.registry->isEntityCreated(entity) && content.registry->findComponent<FluidSimulationComponent>(entity))
+                return true;
+        }
+        return false;
+    };
+    bool fluid = hasFluid(sceneContent);
+    for (const ShaderVariantContent& prefab : prefabContents)
+        fluid = fluid || hasFluid(prefab);
+    if (fluid)
+        addFluidKeys(keys);
 
     // the UI effects the scene's (and its prefabs') HTML UI documents use
     if (!projectRoot.empty()){

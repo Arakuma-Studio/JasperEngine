@@ -20,6 +20,22 @@ namespace {
     // The project-relative path a "[Hot Reload] Reloaded <path> (<kind>, <ms> ms)" or a
     // "[Hot Reload] <path>: <error> (kept the previous version)" line names ("" for others)
     std::string hotReloadAsset(const std::string& message) {
+        // "[HTML UI] Patched ui/menu.html: ..." / "[HTML UI] Rebuilt ui/menu.html (2.0 ms)..." (S17 R37)
+        static const std::string htmlPrefix = "[HTML UI] ";
+        if (message.rfind(htmlPrefix, 0) == 0) {
+            std::string rest = message.substr(htmlPrefix.size(), message.find('\n') - htmlPrefix.size());
+            if (rest.rfind("Patched ", 0) == 0) {
+                rest = rest.substr(8);
+                const size_t colon = rest.find(": ");
+                return colon == std::string::npos ? std::string() : rest.substr(0, colon);
+            }
+            if (rest.rfind("Rebuilt ", 0) == 0) {
+                rest = rest.substr(8);
+                const size_t paren = rest.find(" (");
+                return paren == std::string::npos ? std::string() : rest.substr(0, paren);
+            }
+            return {};
+        }
         static const std::string prefix = "[Hot Reload] ";
         if (message.rfind(prefix, 0) != 0) return {};
         std::string rest = message.substr(prefix.size());

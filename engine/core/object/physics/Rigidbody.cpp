@@ -382,6 +382,9 @@ float Rigidbody::getColliderDensity(size_t index) const{
 void Rigidbody::setType(BodyType type){
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
+    // the script takes over a body that was following its Transform
+    scene->getSystem<PhysicsSystem>()->stopFollowing3D(body, true, true);
+
     body.type = type;
 
     if (!body.body.IsInvalid()){
@@ -638,6 +641,30 @@ void Rigidbody::setRestitution(float restitution){
     }
 }
 
+float Rigidbody::getBuoyancy() const{
+    return getComponent<RigidbodyComponent>().buoyancy;
+}
+
+void Rigidbody::setBuoyancy(float buoyancy){
+    getComponent<RigidbodyComponent>().buoyancy = buoyancy;
+}
+
+float Rigidbody::getWaterDrag() const{
+    return getComponent<RigidbodyComponent>().waterDrag;
+}
+
+void Rigidbody::setWaterDrag(float waterDrag){
+    getComponent<RigidbodyComponent>().waterDrag = waterDrag;
+}
+
+float Rigidbody::getWaterAngularDrag() const{
+    return getComponent<RigidbodyComponent>().waterAngularDrag;
+}
+
+void Rigidbody::setWaterAngularDrag(float waterAngularDrag){
+    getComponent<RigidbodyComponent>().waterAngularDrag = waterAngularDrag;
+}
+
 Vector3 Rigidbody::getPosition() const{
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
@@ -651,9 +678,13 @@ void Rigidbody::setPosition(Vector3 position){
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
+    // the script takes the position over from the Transform a kinematic body was following
+    scene->getSystem<PhysicsSystem>()->stopFollowing3D(body, true, false);
     getBodyInterface().SetPosition(body.body, JPH::Vec3(position.x, position.y, position.z), JPH::EActivation::Activate);
+    // jumps, not interpolated
+    body.previousPosition = getPosition();
 
-    scene->getSystem<PhysicsSystem>()->updateTransformFromRigidbody(entity, position, getRotation());
+    scene->getSystem<PhysicsSystem>()->updateTransformFromRigidbody(entity, body, (float)Engine::getInterpolationAlpha());
 }
 
 Quaternion Rigidbody::getRotation() const{
@@ -670,9 +701,11 @@ void Rigidbody::setRotation(Quaternion rotation){
     std::shared_ptr<PhysicsSystem> physicsSystem = scene->getSystem<PhysicsSystem>();
 
     checkBody(body);
+    physicsSystem->stopFollowing3D(body, false, true);
     getBodyInterface().SetRotation(body.body, physicsSystem->toValidatedJoltRotation(rotation, entity, -1), JPH::EActivation::Activate);
+    body.previousRotation = getRotation();
 
-    physicsSystem->updateTransformFromRigidbody(entity, getPosition(), getRotation());
+    physicsSystem->updateTransformFromRigidbody(entity, body, (float)Engine::getInterpolationAlpha());
 }
 
 Vector3 Rigidbody::getLinearVelocity() const{
@@ -688,10 +721,12 @@ void Rigidbody::setLinearVelocity(Vector3 linearVelocity){
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
+    scene->getSystem<PhysicsSystem>()->stopFollowing3D(body, true, false);
     getBodyInterface().SetLinearVelocity(body.body, JPH::Vec3(linearVelocity.x, linearVelocity.y, linearVelocity.z));
 }
 
 void Rigidbody::setLinearVelocityClamped(Vector3 linearVelocity){
+    scene->getSystem<PhysicsSystem>()->stopFollowing3D(getComponent<RigidbodyComponent>(), true, false);
     getJoltBodyWrite().SetLinearVelocityClamped(JPH::Vec3(linearVelocity.x, linearVelocity.y, linearVelocity.z));
 }
 
@@ -708,10 +743,12 @@ void Rigidbody::setAngularVelocity(Vector3 angularVelocity){
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
+    scene->getSystem<PhysicsSystem>()->stopFollowing3D(body, false, true);
     getBodyInterface().SetAngularVelocity(body.body, JPH::Vec3(angularVelocity.x, angularVelocity.y, angularVelocity.z));
 }
 
 void Rigidbody::setAngularVelocityClamped(Vector3 angularVelocity){
+    scene->getSystem<PhysicsSystem>()->stopFollowing3D(getComponent<RigidbodyComponent>(), false, true);
     getJoltBodyWrite().SetAngularVelocityClamped(JPH::Vec3(angularVelocity.x, angularVelocity.y, angularVelocity.z));
 }
 

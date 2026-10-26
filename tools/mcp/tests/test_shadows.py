@@ -43,6 +43,8 @@ DISPLAY = {"show_grid_3d": False, "hide_light_icons": True, "hide_selection_outl
 
 async def make_scene(ed: Editor, name: str) -> int:
     made = await ed.call("create_scene", name=name, type="3D")
+    # the goldens were drawn before S11's Lit Quality (a new scene is High): Standard is that shader
+    await ed.call("set_scene_settings", scene=made["scene"]["id"], settings={"lit_quality": "standard"})
     return made["scene"]["id"]
 
 

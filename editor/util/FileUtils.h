@@ -27,6 +27,9 @@
     #include <sys/types.h>
     #include <sys/sysctl.h>
 #endif
+#ifndef _WIN32
+    #include <unistd.h>
+#endif
 
 namespace jasperengine::editor {
 
@@ -185,6 +188,66 @@ public:
         return published.ok();
     }
 
+    // How a document write treats the line endings of the content
+    enum class LineEndings {
+        AsGiven,        // the bytes as they are (binary files, content that is already final)
+        KeepExisting    // text the editor makes with \n: a file there already written with
+                        // \r\n (an existing Windows checkout) gets \r\n again, a new one \n
+    };
+
+    // True when the first line of the file ends with \r\n
+    static bool fileUsesCrlf(const std::filesystem::path& filePath) {
+        std::ifstream ifs(filePath, std::ios::in | std::ios::binary);
+        char previous = 0;
+        char c = 0;
+        while (ifs.get(c)) {
+            if (c == '\n') {
+                return previous == '\r';
+            }
+            previous = c;
+        }
+        return false;
+    }
+
+    // Every line ending as \r\n (an \r\n already there stays one)
+    static std::string toCrlf(const std::string& text) {
+        std::string out;
+        out.reserve(text.size() + text.size() / 16);
+        for (size_t i = 0; i < text.size(); i++) {
+            if (text[i] == '\n' && (i == 0 || text[i - 1] != '\r')) {
+                out += '\r';
+            }
+            out += text[i];
+        }
+        return out;
+    }
+
+    // The bytes a document's text is written as: with \r\n when the file it replaces (through
+    // a symlink too) has them and lineEndings is KeepExisting, else the text as it is. Hash
+    // what this returns (SceneProject::diskSha1): it is what lands on disk.
+    static std::string withLineEndings(const std::filesystem::path& filePath, const std::string& text,
+                                       LineEndings lineEndings = LineEndings::KeepExisting) {
+        if (lineEndings != LineEndings::KeepExisting) {
+            return text;
+        }
+        std::error_code ec;
+        if (!std::filesystem::is_regular_file(filePath, ec) || !fileUsesCrlf(filePath)) {
+            return text;
+        }
+        return toCrlf(text);
+    }
+
+    // A document written the atomic way (io::writeFileAtomic, Document durability: fsync, mode
+    // and symlink kept, a read-only file refused, retried publish), with its line endings
+    // (withLineEndings). A failed write leaves the old file whole. DocumentFiles::write is the
+    // same with the reason of a failure.
+    static bool writeFileReplacing(const std::filesystem::path& filePath, const std::string& content,
+                                   LineEndings lineEndings = LineEndings::AsGiven) {
+        io::AtomicWriteOptions options;
+        options.durability = io::Durability::Document;
+        return io::writeFileAtomic(filePath, withLineEndings(filePath, content, lineEndings), options).ok();
+    }
+
     // True when the file holds newContent afterwards, written or already up to date.
     // Use writeFile() when a no-op has to be told apart from a failure.
     static bool writeIfChanged(const std::filesystem::path& filePath, const std::string& newContent) {
@@ -202,8 +265,8 @@ public:
         return std::string(utf8.begin(), utf8.end());
     }
 
-    // with '/' separators on every platform
-    static std::string genericPathToUtf8(const std::filesystem::path& path) {
+    // generic_string() in UTF-8: '/' separators on every platform
+    static std::string pathToGenericUtf8(const std::filesystem::path& path) {
         const std::u8string utf8 = path.generic_u8string();
         return std::string(utf8.begin(), utf8.end());
     }

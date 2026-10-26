@@ -74,6 +74,11 @@ Unchanged: `Entity`, `Scene`, `Transform`, `Camera`, `Light`, `Light2D`, `Mesh`,
 `SpriteAnimation`, the keyframe tracks, `Joint2D`/`Joint3D`, `Contact2D`/`Contact3D`
 and `CollideShapeResult3D`.
 
+New, with no Unity counterpart: `FluidSimulation` / `FluidSimulationComponent`
+(GameObject > Effects > Fluid Simulation, Pavel Dobryakov's WebGL fluid). Unity has no
+built-in fluid component; there it takes a Custom Render Texture or compute-shader
+solver of your own, or a package.
+
 ## Layers and physics
 
 Each physics backend has its Layer Collision Matrix (Project Settings > Physics for

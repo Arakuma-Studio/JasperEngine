@@ -63,6 +63,11 @@ bool editor::addMaterialChangeCommands(MultiPropertyCmd& multi, Project* project
     field("foliageTransmission", from.foliageTransmission, to.foliageTransmission);
     field("emissiveFactor", from.emissiveFactor, to.emissiveFactor);
     field("alphaMode", from.alphaMode, to.alphaMode);
+    field("stochasticTiling", from.stochasticTiling, to.stochasticTiling);
+    field("stochasticCellSize", from.stochasticCellSize, to.stochasticCellSize);
+    field("stochasticBlendSharpness", from.stochasticBlendSharpness, to.stochasticBlendSharpness);
+    field("stochasticContrast", from.stochasticContrast, to.stochasticContrast);
+    field("stochasticRotation", from.stochasticRotation, to.stochasticRotation);
     field("baseColorTexture", from.baseColorTexture, to.baseColorTexture);
     field("emissiveTexture", from.emissiveTexture, to.emissiveTexture);
     field("metallicRoughnessTexture", from.metallicRoughnessTexture, to.metallicRoughnessTexture);
@@ -79,5 +84,25 @@ bool editor::addMaterialChangeCommands(MultiPropertyCmd& multi, Project* project
     field("stencil", from.stencil, to.stencil);
     field("colorWrite", from.colorWrite, to.colorWrite);
     field("extraPass", *from.extraPass, *to.extraPass);
+    field("emissiveStrength", from.emissiveStrength, to.emissiveStrength);
+    // the extended lobes field by field (pbr.<lobe>.<field>), each enabled flag before the
+    // values of its lobe
+    const MaterialPbrExtensions& fromPbr = from.pbr;
+    const MaterialPbrExtensions& toPbr = to.pbr;
+    if (fromPbr != toPbr) {
+        MaterialPbrExtensions& before = const_cast<MaterialPbrExtensions&>(fromPbr);
+        MaterialPbrExtensions& after = const_cast<MaterialPbrExtensions&>(toPbr);
+        for (const PbrField& pbrField : MaterialPbr::getFields()) {
+            const std::string path = "pbr." + MaterialPbr::getFieldPath(pbrField);
+            switch (pbrField.type) {
+                case PbrFieldType::Bool: field(path.c_str(), *(bool*)pbrField.ref(before), *(bool*)pbrField.ref(after)); break;
+                case PbrFieldType::Float: field(path.c_str(), *(float*)pbrField.ref(before), *(float*)pbrField.ref(after)); break;
+                case PbrFieldType::Vector2: field(path.c_str(), *(Vector2*)pbrField.ref(before), *(Vector2*)pbrField.ref(after)); break;
+                case PbrFieldType::Color: field(path.c_str(), *(Vector3*)pbrField.ref(before), *(Vector3*)pbrField.ref(after)); break;
+                case PbrFieldType::Texture: field(path.c_str(), *(Texture*)pbrField.ref(before), *(Texture*)pbrField.ref(after)); break;
+                case PbrFieldType::TexCoord: field(path.c_str(), *(int*)pbrField.ref(before), *(int*)pbrField.ref(after)); break;
+            }
+        }
+    }
     return true;
 }

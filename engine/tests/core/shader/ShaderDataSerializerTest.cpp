@@ -18,7 +18,8 @@ using namespace jasperengine::test;
 
 namespace {
 
-    const uint64_t key = 0x0002000000000041ull;
+    // type 2 with property bits 0x41, built in (ShaderKey is a struct since the 64-bit keys)
+    const ShaderKey key(2, 0x41, 0);
 
     ShaderData shaderDataSample(){
         ShaderData data;
@@ -152,7 +153,7 @@ TEST(ShaderDataSerializer, RefusesAnotherShadersKey){
     ASSERT_TRUE(ShaderDataSerializer::writeToBytes(bytes, key, shaderDataSample()));
     ShaderData read;
     std::string error;
-    EXPECT_FALSE(ShaderDataSerializer::readFromBytes(bytes, key + 1, read, &error));
+    EXPECT_FALSE(ShaderDataSerializer::readFromBytes(bytes, ShaderKey(2, 0x42, 0), read, &error));
     EXPECT_FALSE(error.empty());
 }
 

@@ -59,6 +59,7 @@ namespace jasperengine::editor {
         bool m_physics2DEnabled = true;
         bool m_physics3DEnabled = true;
         bool m_runtimeShadersEnabled = true;
+        int m_mobilePbrTierIndex = 1;
         bool m_packNativeResources = false;
         bool m_versionControlMetadata = true;
         char m_webApplicationNameBuffer[256] = {0};
@@ -88,6 +89,8 @@ namespace jasperengine::editor {
         bool m_iosHideStatusBar = true;
         bool m_iosHideHomeIndicator = true;
         bool m_iosSupportsHighRefreshRate = true;
+        bool m_iosAdmobEnabled = false;
+        char m_iosAdmobAppIdBuffer[128] = {0};
         char m_androidApplicationNameBuffer[256] = {0};
         char m_androidPackageNameBuffer[256] = {0};
         char m_androidVersionNameBuffer[64] = {0};
@@ -106,6 +109,8 @@ namespace jasperengine::editor {
         bool m_androidAllowBackup = true;
         bool m_androidFullscreen = true;
         bool m_androidKeepScreenOn = false;
+        bool m_androidAdmobEnabled = false;
+        char m_androidAdmobAppIdBuffer[128] = {0};
 
         // Tags and Layers being edited: user tags, and user layer names indexed by layer
         // (MAX_LAYERS entries, built-in ones empty)

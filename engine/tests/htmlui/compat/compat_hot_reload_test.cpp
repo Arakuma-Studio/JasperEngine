@@ -342,6 +342,9 @@ TEST_F(CompatHotReloadTest, DocumentScriptListenersAreAttachedOncePerReload){
     UIDocument document = fixture.addDocument("ui/hot.html");
     ASSERT_TRUE(fixture.waitUntilLoaded());
     UIDocumentSystem& system = documentSystem(scene);
+    // the rebuild's behaviour (S17: a patch reload runs only the scripts that changed,
+    // TestDocumentReload.Patch*)
+    system.setReloadMode(UIReloadMode::REBUILD);
     system.startDocumentScripts();
     GpuEnvironment::drawFrames(2);
     ASSERT_EQ(luaNumber("hotRuns"), 1);

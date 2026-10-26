@@ -961,6 +961,11 @@ void DocumentLoader::restyleSheets(Rml::ElementDocument* document, const CompatD
 
 void DocumentLoader::restyle(Rml::ElementDocument* document, const std::shared_ptr<const CompatDocument>& compiled,
                              const CompatOptions& options){
+    rebind(document, compiled, options, true);
+}
+
+void DocumentLoader::rebind(Rml::ElementDocument* document, const std::shared_ptr<const CompatDocument>& compiled,
+                            const CompatOptions& options, bool sheets){
     if (!document || !compiled)
         return;
     auto it = bindings().find(document);
@@ -988,7 +993,8 @@ void DocumentLoader::restyle(Rml::ElementDocument* document, const std::shared_p
         setRegistrationDiagnostics(*binding, registration);
         if (!registration.empty())
             logDiagnostics(compiled->sourcePath, registration, options.verboseDiagnostics);
-        restyleSheets(document, *compiled);
+        if (sheets)
+            restyleSheets(document, *compiled);
         return;
     }
     restyle(document, *compiled, options);

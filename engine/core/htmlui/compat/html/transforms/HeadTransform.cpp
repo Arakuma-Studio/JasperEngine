@@ -403,6 +403,8 @@ namespace {
                 if (!source.content)
                     source.content = HtmlNode::makeElement("#content");
                 source.content->parent = nullptr;
+                for (const HtmlNode* ancestor = &node; ancestor && !source.inModel; ancestor = ancestor->parent)
+                    source.inModel = ancestor->kind == HtmlNode::Kind::Element && ancestor->hasAttr("data-model");
                 collectScripts(context, *source.content, true);
                 dropInertResources(context, *source.content);
                 // nested templates become their own entries

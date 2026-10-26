@@ -27,6 +27,7 @@
 #include "subsystem/UISystem.h"
 #include "object/ui/UIDocument.h"
 #include "util/Base64.h"
+#include "util/FileUtils.h"
 #include "util/GraphicUtils.h"
 #include "window/ConsoleWindow.h"
 #include "window/GameWindow.h"
@@ -205,9 +206,8 @@ using CaptureJobPtr = std::shared_ptr<CaptureJob>;
 void captureGame(const CaptureJobPtr& job);
 void captureScene(const CaptureJobPtr& job);
 
-#if defined(SOKOL_GLCORE) || defined(SOKOL_GLES3)
-// RGB(A) rows → PNG, scaled down to maxWidth (the whole-editor capture's: GL only)
-bool encodePixels(const uint8_t* pixels, int width, int height, int channels, int maxWidth,
+// RGB(A) rows → PNG, scaled down to maxWidth; analyses flatness on the way
+[[maybe_unused]] bool encodePixels(const uint8_t* pixels, int width, int height, int channels, int maxWidth,
                   std::vector<uint8_t>& png, int& outWidth, int& outHeight) {
     std::vector<uint8_t> rgb(static_cast<size_t>(width) * height * 3);
     for (int i = 0; i < width * height; i++) {
@@ -234,7 +234,6 @@ bool encodePixels(const uint8_t* pixels, int width, int height, int channels, in
     };
     return stbi_write_png_to_func(append, &png, outWidth, outHeight, 3, rgb.data(), outWidth * 3) != 0;
 }
-#endif
 
 // True when every pixel of the PNG is the same colour (a blank render)
 bool isFlatPng(const std::vector<uint8_t>& png, std::string& colour) {
@@ -282,10 +281,8 @@ void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width
         Project* project = job->call->ctx().project();
         fs::path target;
         std::string error;
-        const fs::path requested(job->req.savePath);
-        if (requested.is_absolute()) {
-            target = requested;
-        } else if (!McpRefs::resolveProjectPath(project, job->req.savePath, target, error)) {
+        // Inside the project only, like every file a tool writes
+        if (!McpRefs::resolveProjectPath(project, job->req.savePath, target, error)) {
             job->fail("save_path: " + error);
             return;
         }
@@ -296,10 +293,10 @@ void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width
         const io::WriteResult written = io::writeFileAtomic(target,
                 std::string_view(reinterpret_cast<const char*>(png.data()), png.size()), options);
         if (!written.ok()) {
-            job->fail("Could not write the PNG to " + target.generic_string() + ": " + io::describeWriteError(written) + ".");
+            job->fail("Could not write the PNG to " + FileUtils::pathToGenericUtf8(target) + ": " + io::describeWriteError(written) + ".");
             return;
         }
-        info["saved_to"] = target.generic_string();
+        info["saved_to"] = FileUtils::pathToGenericUtf8(target);
     }
 
     result.image.data = Base64::encode(png.data(), png.size());
@@ -786,6 +783,7 @@ const std::map<std::string, bool SceneDisplaySettings::*>& displayFlags() {
         {"show_all_bodies", &SceneDisplaySettings::showAllBodies},
         {"show_all_joints", &SceneDisplaySettings::showAllJoints},
         {"show_all_bones", &SceneDisplaySettings::showAllBones},
+        {"show_all_lattices", &SceneDisplaySettings::showAllLattices},
         {"hide_camera_view", &SceneDisplaySettings::hideCameraView},
         {"hide_light_icons", &SceneDisplaySettings::hideLightIcons},
         {"hide_sound_icons", &SceneDisplaySettings::hideSoundIcons},
@@ -1140,9 +1138,12 @@ void focusWindowTool(const CallPtr& call) {
     } else if (window == "play_mode_changes") {
         app.getPlayModeChangesWindow()->setOpen(true);
         imguiName = PlayModeChangesWindow::WINDOW_NAME;
+    } else if (window == "texture_synthesis") {
+        app.getTextureSynthesisWindow()->open();
+        imguiName = TextureSynthesisWindow::WINDOW_NAME;
     } else {
         call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, terrain, mcp, "
-                   "systems, jobs_memory, profiler, frame_debugger, preferences, undo_history, play_mode_changes.");
+                   "systems, jobs_memory, profiler, frame_debugger, preferences, undo_history, play_mode_changes, texture_synthesis.");
         return;
     }
     // A window opened just now exists after its next draw
@@ -1285,11 +1286,14 @@ void registerViewTools(McpRegistry& registry) {
             {"view", withDefault(stringEnum("", {"game", "scene", "editor"}), "game")},
             {"scene", sceneRef("scene view: whose tab; stopped game view: preview it (selects it).")},
             {"max_width", w3::maxWidthArgSchema(8192, 1024)},
-            {"save_path", string("Also write the PNG (project-relative or absolute).")},
+            {"save_path", string("Also write the PNG to this project-relative path.")},
             {"focus", withDefault(boolean("Front the view's tab if needed."), true)},
             {"timeout_seconds", withDefault(number("", 1, 600), 30)}
         });
         tool.annotations.readOnly = true;
+        tool.writesFiles = [](const Json& args) {
+            return args.contains("save_path") && !(args["save_path"].is_string() && args["save_path"].get<std::string>().empty());
+        };
         tool.handler = screenshotTool;
         registry.addTool(std::move(tool));
     }
@@ -1348,7 +1352,7 @@ void registerViewTools(McpRegistry& registry) {
             "systems: returns each row's Enabled checkbox rect.";
         tool.inputSchema = object({
             {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "terrain", "mcp",
-                                       "systems", "jobs_memory", "profiler", "frame_debugger", "preferences", "undo_history", "play_mode_changes"})},
+                                       "systems", "jobs_memory", "profiler", "frame_debugger", "preferences", "undo_history", "play_mode_changes", "texture_synthesis"})},
             {"scene", sceneRef("window scene: whose tab.")},
             {"console", object({
                 {"hidden_categories", array(string(""), "The Category filter: categories not shown.")},

@@ -8,12 +8,11 @@
 
 using namespace jasperengine;
 
-TranslateTracks::TranslateTracks(Scene* scene): Action(scene){
-    addComponent<KeyframeTracksComponent>();
+TranslateTracks::TranslateTracks(Scene* scene): KeyframeTracks(scene){
     addComponent<TranslateTracksComponent>();
 }
 
-TranslateTracks::TranslateTracks(Scene* scene, Entity entity): Action(scene, entity){
+TranslateTracks::TranslateTracks(Scene* scene, Entity entity): KeyframeTracks(scene, entity){
 
 }
 
@@ -25,10 +24,6 @@ TranslateTracks::TranslateTracks(Scene* scene, std::vector<float> times, std::ve
     TranslateTracksComponent& translatetracks = getComponent<TranslateTracksComponent>();
 
     translatetracks.values = values;
-}
-
-void TranslateTracks::setTimes(std::vector<float> times){
-    getComponent<KeyframeTracksComponent>().setTimes(times);
 }
 
 void TranslateTracks::setValues(std::vector<Vector3> values){
@@ -43,12 +38,4 @@ void TranslateTracks::setValues(std::vector<Vector3> values){
     if (!translatetracks.outTangents.empty()){
         translatetracks.outTangents.resize(values.size(), Vector3::ZERO);
     }
-}
-
-void TranslateTracks::setEasings(std::vector<EaseType> easings){
-    getComponent<KeyframeTracksComponent>().setEasings(easings);
-}
-
-void TranslateTracks::setEasing(unsigned int segment, EaseType ease){
-    getComponent<KeyframeTracksComponent>().setEasing(segment, ease);
 }

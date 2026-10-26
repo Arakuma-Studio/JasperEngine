@@ -21,17 +21,19 @@
 #include "buffer/ExternalBuffer.h"
 #include "pool/MeshLodPool.h"
 #include "math/Rect.h"
+#include "lattice/LatticeTypes.h"
 #include <deque>
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace jasperengine{
 
     // Submesh fields a model load rewrites from its source file, so an edit to one only survives
-    // the load while it is flagged in Submesh::overrideFields.
-    enum SubmeshOverrideFlags : uint32_t {
+    // the load while it is flagged in Submesh::overrideFields (64 bits, saved as a number).
+    enum SubmeshOverrideFlags : uint64_t {
         SubmeshOverride_BaseColorFactor          = 1 << 0,
         SubmeshOverride_MetallicFactor           = 1 << 1,
         SubmeshOverride_RoughnessFactor          = 1 << 2,
@@ -65,6 +67,13 @@ namespace jasperengine{
         SubmeshOverride_Stencil                  = 1 << 27,
         SubmeshOverride_ColorWrite               = 1 << 28,
         SubmeshOverride_ExtraPass                = 1 << 29,
+        // Stochastic Tiling: material.stochasticTiling and its four values under one bit
+        // (upstream's, in released files)
+        SubmeshOverride_StochasticTiling         = 1ull << 30,
+        // the extended lobes and hex tiling (Material::pbr, all of it) and the emissive strength,
+        // which a glTF model sets (KHR_materials_*; S11's, after Stochastic Tiling's bit)
+        SubmeshOverride_PbrExtensions            = 1ull << 31,
+        SubmeshOverride_EmissiveStrength         = 1ull << 32,
 
         SubmeshOverride_ShaderLibrary = SubmeshOverride_Shader | SubmeshOverride_ShaderParams |
                                         SubmeshOverride_ShaderTextures | SubmeshOverride_ShaderFeatures |
@@ -80,7 +89,9 @@ namespace jasperengine{
                                    SubmeshOverride_MaterialName | SubmeshOverride_BaseColorTexture |
                                    SubmeshOverride_EmissiveTexture | SubmeshOverride_MetallicRoughnessTexture |
                                    SubmeshOverride_OcclusionTexture | SubmeshOverride_NormalTexture |
-                                   SubmeshOverride_FoliageTransmission | SubmeshOverride_ShaderLibrary
+                                   SubmeshOverride_FoliageTransmission | SubmeshOverride_ShaderLibrary |
+                                   SubmeshOverride_StochasticTiling | SubmeshOverride_PbrExtensions |
+                                   SubmeshOverride_EmissiveStrength
     };
 
     // The lights reaching a mesh (an instanced batch counts as one mesh), picked by
@@ -110,7 +121,7 @@ namespace jasperengine{
     struct JASPERENGINE_API SubmeshExtraPass{
         ObjectRender render;
         std::shared_ptr<ShaderRender> shader;
-        uint32_t shaderProperties = 0; // ShaderType::MESH
+        uint64_t shaderProperties = 0; // ShaderType::MESH
         uint16_t customShaderId = 0;   // the pass's shader reference, registered
         MaterialPassOrder order = MaterialPassOrder::AFTER;
 
@@ -126,6 +137,7 @@ namespace jasperengine{
 
         int slotVSParams = -1;
         int slotFSParams = -1;
+        unsigned int sizeFSParams = 0; // reflected, read by the Stochastic Tiling ('Sto') variants
         int slotFSTexCoordSets = -1;
         int slotVSFade = -1;
         int slotFSFog = -1;
@@ -140,6 +152,8 @@ namespace jasperengine{
         int slotVSSprite = -1;
         int slotVSSkinning = -1;
         int slotVSMorphTarget = -1;
+        int slotVSLattice = -1;
+        std::pair<int, int> slotVSLatticeTexture = {-1, -1};
 
         bool loaded = false;
         // its shader failed to build: the submesh draws without it
@@ -175,17 +189,25 @@ namespace jasperengine{
         std::shared_ptr<ShaderRender> depthShader;
         std::shared_ptr<ShaderRender> gbufferShader;
 
-        uint32_t shaderProperties = 0;
-        uint32_t depthShaderProperties = 0;
-        uint32_t gbufferShaderProperties = 0;
+        uint64_t shaderProperties = 0;
+        uint64_t depthShaderProperties = 0;
+        uint64_t gbufferShaderProperties = 0;
 
         // resolved ids of MeshComponent::customShader/customDepthShader (0 = built-in);
         // cached here so the matching ShaderPool::remove uses the same key
         uint16_t customShaderId = 0;
         uint16_t customDepthShaderId = 0;
+        // the built-in Lit's defines its colour variant was loaded with (the "builtin:lit#..."
+        // reference, SubmeshShaderVariant::litDefines, as MaterialPbr::getDefineBits) and the
+        // extension maps that variant binds, in slot order (u_pbrExtTexture0..2; COUNT: none)
+        uint32_t litDefineBits = 0;
+        PbrMap pbrMaps[MaterialPbr::MAX_EXTENSION_MAPS] = {PbrMap::COUNT, PbrMap::COUNT, PbrMap::COUNT};
 
         int slotVSParams = -1;
         int slotFSParams = -1;
+        // reflected, read by the Stochastic Tiling ('Sto') variants: the material prefix with
+        // its stochastic vec4 (16 floats), or less from a fork made before it
+        unsigned int sizeFSParams = 0;
         int slotFSTexCoordSets = -1;
         int slotVSFade = -1;
         int slotFSLighting = -1;        // legacy u_fs_lighting of an older fork
@@ -207,22 +229,36 @@ namespace jasperengine{
         int slotFSPointShadowData = -1;   // u_fs_point_shadow_data
         int slotVSSkinning = -1;
         int slotVSMorphTarget = -1;
+        // u_vs_lattice and u_latticeTexture (includes/lattice.glsl), loaded with a lattice variant
+        int slotVSLattice = -1;
+        std::pair<int, int> slotVSLatticeTexture = {-1, -1};
         int slotVSTerrain = -1;
         int slotFSTerrainLayers = -1;
+        // u_fs_pbrParams of a built-in Lit lobe variant ends with the lobes' values (and the UV
+        // sets with a second set): its size, their offsets (bytes; size 0: no lobes)
+        uint16_t pbrParamsSize = 0;
+        uint16_t pbrExtOffset = 0;
+        int16_t pbrSetsOffset = -1;
 
         int slotVSDepthParams = -1;
         unsigned int sizeVSDepthParams = 0; // reflected: an older fork declares the block without mvpMatrix
         int slotFSDepthMaterial = -1;
+        unsigned int sizeFSDepthMaterial = 0; // reflected: 2 vec4 with Stochastic Tiling, else 1
         int slotVSDepthFade = -1;
         int slotVSDepthSkinning = -1;
         int slotVSDepthMorphTarget = -1;
+        int slotVSDepthLattice = -1;
+        std::pair<int, int> slotVSDepthLatticeTexture = {-1, -1};
         int slotVSDepthTerrain = -1;
         int slotVSDepthSprite = -1;
 
         int slotVSGBufferParams = -1;
         int slotFSGBufferMaterial = -1;
+        unsigned int sizeFSGBufferMaterial = 0; // reflected: 3 vec4 with Stochastic Tiling, else 2
         int slotVSGBufferSkinning = -1;
         int slotVSGBufferMorphTarget = -1;
+        int slotVSGBufferLattice = -1;
+        std::pair<int, int> slotVSGBufferLatticeTexture = {-1, -1};
         int slotVSGBufferTerrain = -1;
         int slotFSGBufferTerrainLayers = -1;
 
@@ -253,7 +289,7 @@ namespace jasperengine{
         PrimitiveType primitiveType = PrimitiveType::TRIANGLES;
         unsigned int vertexCount = 0;
 
-        uint32_t overrideFields = 0; // SubmeshOverrideFlags edited after import, kept across loads
+        uint64_t overrideFields = 0; // SubmeshOverrideFlags edited after import, kept across loads
 
         // material.lighting the shader variant was picked for
         MaterialLighting loadedLighting = MaterialLighting::AUTO;
@@ -340,6 +376,10 @@ namespace jasperengine{
         Matrix4 mirrorViewProjection;
 
         float morphWeights[MAX_MORPHTARGETS] = {};
+
+        // lattice deformation (spec 2026-10-23-lattice-deformer-design.md §5): filled by
+        // LatticeRender::prepare, uploaded and bound by RenderSystem
+        LatticeMeshState lattice;
 
         AABB aabb = AABB::ZERO;
         AABB verticesAABB = AABB::ZERO; // is not influenced by instances

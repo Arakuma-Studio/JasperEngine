@@ -99,6 +99,10 @@ namespace jasperengine::editor::mcp {
         // A call run inside another (batch): cancelling the parent cancels it too, and its
         // session and client notifications are the parent's
         void setParent(const std::shared_ptr<McpCall>& parent) { parentCall = parent; }
+        // From a client the MCP window's "Allow changes" switch applies to (HTTP): with
+        // changes off, only read-only tools run. Nested calls inherit it.
+        void setChangesGated(bool gated) { gatedChanges = gated; }
+        bool changesGated() const { return gatedChanges; }
         void setSession(SessionPtr clientSession) { callSession = std::move(clientSession); }
         void setNotifier(std::function<bool(const Json&)> fn);
 
@@ -127,6 +131,7 @@ namespace jasperengine::editor::mcp {
         std::atomic<bool> isCompleted{false};
         std::atomic<bool> isCancelled{false};
         bool isDetached = false;
+        bool gatedChanges = false;
         std::weak_ptr<McpCall> parentCall;
         std::chrono::steady_clock::time_point startTime;
         uint64_t callSerial = 0;

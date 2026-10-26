@@ -30,7 +30,7 @@ scripts. Each tool edit is an undoable command, live to a human watching. Build 
 with tools, write code with your own file tools, verify by playing, screenshots and the Console.
 tools/list is authoritative for tool names and arguments; read a tool's description before
 first use. Deeper reference: jasper://docs/... (Lua scripting and API, C++ scripting, physics,
-shaders, prefabs, assets, HTML/CSS UI, data safety, undo, profiling, ECS, Unity glossary).
+shaders, materials, prefabs, assets, HTML/CSS UI, data safety, undo, profiling, ECS, Unity glossary).
 
 ## Unity names -> engine names
 Tools, component names and script APIs use the engine names.
@@ -57,14 +57,14 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
 - values: vectors [x,y,z] (or {x,y,z}); quaternions [x,y,z,w] or {"euler":[x,y,z]} degrees;
   colors as vectors (0..1); enums by name; textures/fonts/materials by asset path;
   entity references by entity ref, or {"scene": <scene>, "id": <id>} for a GameObject of
-  another scene (cross-scene references); Prefab script properties by .prefab path.
+  another scene; Prefab script properties by .prefab path.
 - assets: project-relative paths ("assets/sprites/ship.png") or GUIDs. A move rewrites no
   referrer; see find_references, list_missing_assets, retarget_asset_references.
 
 ## The loop
 1. Inspect: `editor_status`, the scenes, the hierarchy, the GameObjects you will touch.
 2. Edit scenes, prefabs and settings with tools, never by hand-editing .scene/.prefab/
-   project.yaml (the editor would overwrite you). Group many edits in one `batch` call
+   project.yaml. Group many edits in one `batch` call
    (undo_group: one undo step, see Undo). Edit code with your own tools (see Code).
 3. Save the scenes you changed.
 4. Play the start scene; a C++ project builds first (seconds to minutes).
@@ -98,8 +98,7 @@ template, optional attach), attach_script / detach_script, set_script_properties
 read_file / search_files are for clients without file access; sync_files forces a full rescan.
 
 ## Project layout
-project.yaml (name, canvas size, scenes, start scene, script dirs, C++ standard, standalone
-prefabs), *.scene, *.prefab, assets/ (assetsDir), Lua scripts (luaDir), ProjectBuild.cmake.
+project.yaml (settings, scenes, start scene), *.scene, *.prefab, assets/ (assetsDir), Lua scripts (luaDir), ProjectBuild.cmake.
 A .scene belongs to the project only while project.yaml lists it (Scenes in Build): add a
 scene created outside the editor before opening, playing or building it.
 .jasperengine/ and the root CMakeLists.txt are generated on every play/build: never edit them.
@@ -133,20 +132,19 @@ attached); build settings go in ProjectBuild.cmake, never the generated CMakeLis
 compile_scripts reports errors without playing. More: jasper://docs/cpp-scripting.
 
 ## Play and time
-- play: start, stop, pause, resume, step (frames), restart. Clock options with any action, or
-  alone with action "set": time_scale (slow motion / fast forward), fixed_fps (every frame
-  advances exactly 1/fixed_fps s: reproducible runs), auto_pause (the game is frozen between
-  your calls and runs only inside wait, send_input or step).
+- play: start, stop, pause, resume, step (frames), restart; clock options with any action (or
+  action "set"): time_scale, fixed_fps (each frame exactly 1/fixed_fps s: reproducible runs),
+  auto_pause (frozen between your calls; runs only inside wait, send_input or step).
 - wait: run for seconds, game_seconds or frames, or until a Lua condition is truthy; input
   sends send_input events while it waits (hold a key for 2 game seconds, then check).
-- run_build runs an exported desktop player: input events, screenshots_at (seconds since
-  launch); returns its errors (Lua ones too) and the log tail.
+- run_build runs an exported desktop player with input events and screenshots_at (seconds
+  since launch); returns its errors (Lua too) and the log tail.
 
 ## 2D and 3D
 - 2D: sprites, tilemaps, UI; units are points (pixels of the canvas, project canvasWidth x
   canvasHeight, y up). Box2D converts with pointsToMeterScale (64 points per meter). Light 2D
-  adds to the scene's 2D ambient (lower ambient_light_2d_intensity to see lights); Shadow Caster 2D casts
-  when the light's shadows are on.
+  adds to the 2D ambient (lower ambient_light_2d_intensity to see it); Shadow Caster 2D needs the
+  light's shadows on.
 - 3D: meshes (box, sphere, plane, model files), lights, skybox, fog, terrain. Cameras look at
   their target by default (useTarget): the GameObject's rotation is ignored until you call
   disableTarget() (orbiting: jasper://docs/lua-api, Camera).
@@ -177,6 +175,8 @@ quality.atmosphere_quality_*). More: jasper://docs/atmosphere.
 - Never move a body by writing its GameObject's transform from onFixedUpdate (silently
   overwritten). Teleport with body.position (and body.rotation / body.angle), velocity with
   body.linearVelocity.
+- Layer Collision Matrix (project settings) gates contacts; raycasts take a layer mask. Drop
+  or settle objects: place_with_physics (group editor_ux).
 
 ## Prefabs
 - An edit on a prefab instance is an override of that instance only. Push it to the asset
@@ -201,6 +201,12 @@ pass or colour copy per camera and must draw transparent; avoid on low-end mobil
 when nothing fits: fork_shader copies the built-in shader and sets customShader. Read a fork
 before editing (its rules: jasper://docs/shaders); its parameters are the u_fs_customParams
 block (set_shader_uniform). A failing shader draws as the built-in one (error in the Console).
+Built-in Lit lobes (a material's pbr: clear coat, sheen, transmission...), Lit Quality and light
+units: jasper://docs/materials.
+
+Textures from examples: synthesize_texture (group assets_pipeline,
+jasper://docs/texture-synthesis). GPU fluid: create_entity type fluid_simulation
+(jasper://docs/fluid). Bend/squash: edit_lattice (group animation, jasper://docs/lattice).
 
 ## Post-processing
 Main camera only: apply_post_processing_preset (film, vhs, mobile_adaptive...), then

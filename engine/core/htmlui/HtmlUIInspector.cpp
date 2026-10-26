@@ -5,6 +5,9 @@
 #include "HtmlUIInspectorInternal.h"
 #include "media/UIVideoControls.h"
 #include "media/UIVideoElement.h"
+#include "widgets/DragDropSession.h"
+#include "widgets/ItemsViewElement.h"
+#include "widgets/TooltipManager.h"
 
 #include "Scene.h"
 #include "component/UIDocumentComponent.h"
@@ -1244,6 +1247,11 @@ InspectElement inspect::describe(const Doc& doc, Refs& refs, Rml::Element* eleme
             effect.steps = sim.steps;
             effect.simTime = sim.time;
             effect.paused = sim.paused;
+            effect.stateImages = sim.images;
+            effect.replays = sim.replays;
+            effect.replaying = sim.replaying;
+            effect.splats = sim.splats;
+            effect.pathSamples = sim.pathSamples;
         }
         out.effects.push_back(std::move(effect));
     }
@@ -1289,6 +1297,32 @@ InspectElement inspect::describe(const Doc& doc, Refs& refs, Rml::Element* eleme
             media->muteButton = toRect(rects.mute);
         }
         out.media = std::move(media);
+    }
+    if (const ItemsViewElement* view = rmlui_dynamic_cast<const ItemsViewElement*>(element)){
+        const ItemsViewElement::State state = view->getState();
+        auto widget = std::make_shared<InspectWidget>();
+        static const char* const kinds[] = {"list", "grid", "tree", "table"};
+        static const char* const selections[] = {"none", "single", "multiple"};
+        widget->kind = kinds[(int)state.kind];
+        widget->count = state.count;
+        widget->first = state.first;
+        widget->last = state.last;
+        widget->pool = state.pool;
+        widget->poolBound = state.poolBound;
+        widget->overscan = state.overscan;
+        widget->lanes = state.lanes;
+        widget->selection = selections[(int)state.selection];
+        widget->selected = state.selected;
+        widget->selectedKeys = state.selectedKeys;
+        widget->active = state.active;
+        widget->scrollTop = state.scrollTop;
+        widget->totalHeight = state.totalHeight;
+        widget->source = state.source;
+        widget->layoutBoundary = state.layoutBoundary;
+        widget->rowAliases = state.rowAliases;
+        widget->sortKey = view->getSortKey();
+        widget->sortDirection = view->getSortDirection();
+        out.widget = std::move(widget);
     }
     return out;
 }
@@ -1400,6 +1434,43 @@ bool HtmlUIInspector::documentInfo(Scene* scene, Entity entity, DocumentInfo& ou
     out.diagnostics = system->getDiagnostics(entity);
     out.dependencies = system->getDocumentFiles(entity);
     out.dataModels = system->getDataModelNames(entity);
+
+    // S17: the tooltip, the drag in progress, the last reload
+    const UIReloadReport& report = system->getLastReloadReport(entity);
+    out.reload.mode = report.mode;
+    out.reload.kept = report.kept;
+    out.reload.updated = report.updated;
+    out.reload.inserted = report.inserted;
+    out.reload.removed = report.removed;
+    out.reload.replaced = report.replaced;
+    out.reload.runtimeKept = report.runtimeKept;
+    out.reload.scriptsRerun = report.scriptsRerun;
+    out.reload.fallbackReason = report.fallbackReason;
+    out.reload.ms = report.ms;
+    out.reload.causes = report.causes;
+    inspect::Doc doc;
+    std::string unopened;
+    if (out.loaded && inspect::open(scene, entity, doc, unopened)){
+        inspect::Refs refs(doc);
+        auto elementRef = [&refs](Rml::Element* element){ return refs.of(element); };
+        Rml::ElementDocument* document = doc.document;
+        const TooltipState tooltip = TooltipManager::stateOf(document);
+        out.tooltip.visible = tooltip.visible;
+        out.tooltip.source = tooltip.source ? elementRef(tooltip.source) : std::string();
+        out.tooltip.text = tooltip.text;
+        out.tooltip.rect = InspectRect{tooltip.x, tooltip.y, tooltip.width, tooltip.height};
+        out.tooltip.side = tooltip.side;
+        const DragState drag = DragDropSession::stateOf(document->GetContext());
+        if (drag.active && drag.source && drag.source->GetOwnerDocument() == document){
+            out.drag.active = true;
+            out.drag.source = elementRef(drag.source);
+            out.drag.target = drag.target ? elementRef(drag.target) : std::string();
+            out.drag.types = drag.types;
+            out.drag.allowed = drag.allowed;
+            out.drag.effect = drag.effect;
+            out.drag.programmatic = drag.programmatic;
+        }
+    }
     return true;
 }
 

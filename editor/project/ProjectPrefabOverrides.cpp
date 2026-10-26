@@ -652,10 +652,10 @@ editor::PrefabBranchRecovery editor::Project::removePrefabBranch(uint32_t sceneI
 
     // Out of the scene: what the branch owns elsewhere stays (a delete takes those along
     // itself), and so do the nested instances' records until their roots are gone
-    bool hadCamera = false;
+    bool hadLinkSource = false;
     for (Entity branchEntity : branch) {
-        if (scene->findComponent<CameraComponent>(branchEntity)) {
-            hadCamera = true;
+        if (CameraTextureLink::isLinkSource(scene, branchEntity)) {
+            hadLinkSource = true;
         }
         if (ActionComponent* action = scene->findComponent<ActionComponent>(branchEntity)) {
             action->ownedTarget = false;
@@ -668,7 +668,7 @@ editor::PrefabBranchRecovery editor::Project::removePrefabBranch(uint32_t sceneI
         removePrefabInstanceTracking(sceneId, nested.rootEntity);
     }
     DeleteEntityCmd::destroyEntities(scene, branch, sceneProject->entities, this, sceneId);
-    if (hadCamera) {
+    if (hadLinkSource) {
         CameraTextureLink::resolve(scene);
     }
 

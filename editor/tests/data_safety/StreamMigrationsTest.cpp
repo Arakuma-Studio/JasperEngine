@@ -133,15 +133,16 @@ TEST(StreamMigrations, PrefabV3ToV4ShadowBiasInTexels){
 }
 
 TEST(StreamMigrations, SceneV1ToV2ClearsTheRetiredMeshBit){
-    // mesh bit 5 was the PCF filter ('Pcf') before it was retired, the High shadow filters
-    // ('Shq') since S10: an old key loses it, other types' bit 5 and the other bits stay
-    const uint32_t old = (1u << 3) | (1u << 4) | (1u << 5);
-    const ShaderKey packed = ShaderPool::getShaderKey(ShaderType::MESH, old);
+    // mesh bit 5 was the PCF filter ('Pcf') before it was retired, upstream's Stochastic Tiling
+    // ('Sto') in a keyVersion 2 key: an old key loses it, a version 2 key and other types' bit 5
+    // keep theirs (S10's 'Shq' is bit 33)
+    const uint64_t old = (1u << 3) | (1u << 4) | (1u << 5);
     YAML::Node root = YAML::Load(
         "{formatVersion: 1, scene: {shadowQuality: high}, entities: [], shaderKeys: ["
-        "{type: mesh, properties: " + std::to_string(old) + "}, {type: blit, properties: 32}, " + std::to_string(packed) + "]}");
+        "{type: mesh, properties: " + std::to_string(old) + "}, {type: blit, properties: 32}, "
+        "{type: mesh, properties: " + std::to_string(old) + ", keyVersion: 2}]}");
     StreamMigrations::migrate(DocumentKind::Scene, root);
-    EXPECT_EQ(root["shaderKeys"][0]["properties"].as<uint32_t>(), (1u << 3) | (1u << 4));
+    EXPECT_EQ(root["shaderKeys"][0]["properties"].as<uint64_t>(), uint64_t((1u << 3) | (1u << 4)));
     EXPECT_EQ(root["shaderKeys"][1]["properties"].as<uint32_t>(), 32u);
-    EXPECT_EQ(root["shaderKeys"][2].as<uint64_t>(), ShaderPool::getShaderKey(ShaderType::MESH, (1u << 3) | (1u << 4)));
+    EXPECT_EQ(root["shaderKeys"][2]["properties"].as<uint64_t>(), old);
 }

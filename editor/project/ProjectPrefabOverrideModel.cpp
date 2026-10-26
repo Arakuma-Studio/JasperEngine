@@ -560,7 +560,7 @@ bool editor::Project::revertPropertyOverride(uint32_t sceneId, Entity entity, Co
     }
     Catalog::updateEntity(scene, entity, Catalog::getComponentStructuralUpdateFlags(type));
     clearPropertyOverride(sceneId, entity, type, whole ? std::vector<std::string>{} : properties);
-    if (type == ComponentType::CameraComponent) {
+    if (CameraTextureLink::isLinkSourceType(type)) {
         CameraTextureLink::resolve(scene);
     }
     sceneProject->isModified = true;
@@ -1070,7 +1070,7 @@ bool editor::Project::revertAddedComponent(uint32_t sceneId, Entity entity, Comp
         ProjectUtils::removeEntityComponent(sceneProject->scene, entity, type, sceneProject->entities);
         ProjectUtils::reconcileTrackedEntities(sceneProject->scene, sceneProject->entities, this, sceneId);
     }
-    if (type == ComponentType::CameraComponent) {
+    if (CameraTextureLink::isLinkSourceType(type)) {
         CameraTextureLink::resolve(sceneProject->scene);
     }
     sceneProject->isModified = true;
@@ -1177,7 +1177,7 @@ bool editor::Project::revertRemovedComponent(uint32_t sceneId, Entity entity, Co
     if (source && !hasComponent(sceneProject->scene, entity, type)) {
         ProjectUtils::addEntityComponent(sceneProject->scene, entity, type, sceneProject->entities, YAML::Clone(source));
     }
-    if (type == ComponentType::CameraComponent) {
+    if (CameraTextureLink::isLinkSourceType(type)) {
         CameraTextureLink::resolve(sceneProject->scene);
     }
     sceneProject->isModified = true;

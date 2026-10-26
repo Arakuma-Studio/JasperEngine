@@ -15,6 +15,10 @@ public:
 	/// @param[in] element The element to lay out.
 	/// @param[in] containing_block The size of the containing block.
 	static void FormatElement(Element* element, Vector2f containing_block);
+
+	/// Fork (P7-L): formats a layout boundary (Element::SetLayoutBoundary) and its descendants again in the box it has,
+	/// in place: its size and offset are its parent's, which did not change.
+	static void FormatLayoutBoundary(Element* element);
 };
 
 /**

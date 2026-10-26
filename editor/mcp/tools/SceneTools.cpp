@@ -27,6 +27,7 @@
 #include "command/type/SetMainCameraCmd.h"
 #include "pool/ShaderPool.h"
 #include "subsystem/RenderSystem.h"
+#include "util/FileUtils.h"
 #include "util/CubeLut.h"
 #include "util/Util.h"
 #include "shader/ShaderManifest.h"
@@ -84,10 +85,10 @@ Json nullableEntityRef(const std::string& description = {}) {
 
 // A project-relative .scene path for a new file (".scene" added when missing)
 bool scenePathArg(Project* project, const std::string& given, fs::path& relative, std::string& error) {
-    fs::path rel = fs::path(given).lexically_normal();
+    fs::path rel = FileUtils::pathFromUtf8(given).lexically_normal();
     if (rel.extension() != ".scene") rel += ".scene";
     fs::path absolute;
-    if (!McpRefs::resolveProjectPath(project, rel.generic_string(), absolute, error)) return false;
+    if (!McpRefs::resolveProjectPath(project, FileUtils::pathToGenericUtf8(rel), absolute, error)) return false;
     relative = rel;
     return true;
 }
@@ -140,7 +141,7 @@ void listScenesTool(const CallPtr& call) {
         scenes.push_back(item);
     }
     Json unresolved = Json::array();
-    for (const auto& entry : project->getUnresolvedScenes()) unresolved.push_back(entry.second.generic_string());
+    for (const auto& entry : project->getUnresolvedScenes()) unresolved.push_back(FileUtils::pathToGenericUtf8(entry.second));
     Json data = {{"scenes", scenes}, {"selected_scene_id", project->getSelectedSceneId()}};
     if (!unresolved.empty()) data["unresolved_scene_files"] = unresolved;
     call->ok(std::to_string(scenes.size()) + " scene(s):" + text, data);
@@ -164,7 +165,7 @@ void createSceneTool(const CallPtr& call) {
             return;
         }
         if (fs::exists(project->getProjectPath() / path)) {
-            call->fail("\"" + path.generic_string() + "\" exists already; open it with open_scene, or pick another path.");
+            call->fail("\"" + FileUtils::pathToGenericUtf8(path) + "\" exists already; open it with open_scene, or pick another path.");
             return;
         }
     }
@@ -255,7 +256,7 @@ void openSceneTool(const CallPtr& call) {
                 call->fail("Scene \"" + known->name + "\" has no file.");
                 return;
             }
-            given = known->filepath.generic_string();
+            given = FileUtils::pathToGenericUtf8(known->filepath);
         } else if (given.empty() || !Util::isSceneFile(given)) {
             call->fail(error + " To open a file, pass its project-relative .scene path.");
             return;
@@ -399,18 +400,18 @@ void saveSceneTool(const CallPtr& call) {
             }
             const uint32_t owner = project->findSceneByPath(relative);
             if (owner != NULL_PROJECT_SCENE && owner != id) {
-                call->fail("Scene " + std::to_string(owner) + " of the project is saved at " + relative.generic_string() + ".");
+                call->fail("Scene " + std::to_string(owner) + " of the project is saved at " + FileUtils::pathToGenericUtf8(relative) + ".");
                 return;
             }
             std::error_code ec;
             fs::create_directories((project->getProjectPath() / relative).parent_path(), ec);
             if (!project->saveSceneToPath(id, relative)) {
-                call->fail("Failed to save the scene to " + relative.generic_string() + " (see the console).");
+                call->fail("Failed to save the scene to " + FileUtils::pathToGenericUtf8(relative) + " (see the console).");
                 return;
             }
             if (ProjectWindow* window = call->ctx().projectWindow()) window->refreshCurrentDirectory();
             SceneProject* saved = project->getScene(id);
-            call->ok("Saved scene " + std::to_string(id) + " as " + relative.generic_string() + ".",
+            call->ok("Saved scene " + std::to_string(id) + " as " + FileUtils::pathToGenericUtf8(relative) + ".",
                      Json{{"scene", sceneInfo(project, *saved)}, {"degraded", degradedJson(*saved)}});
             return;
         }
@@ -447,7 +448,7 @@ void saveSceneTool(const CallPtr& call) {
         return;
     }
     call->ok("Saved scene " + std::to_string(id) + " \"" + saved->name + "\"" +
-             (saved->filepath.empty() ? "." : " to " + project->normalizeToProjectRelative(saved->filepath).generic_string() + "."),
+             (saved->filepath.empty() ? "." : " to " + FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(saved->filepath)) + "."),
              Json{{"scene", sceneInfo(project, *saved)}, {"degraded", degradedJson(*saved)}});
 }
 
@@ -639,9 +640,9 @@ void deleteSceneTool(const CallPtr& call) {
         if (ProjectWindow* window = call->ctx().projectWindow()) window->refreshCurrentDirectory();
     }
     call->ok("Removed scene " + std::to_string(id) + " \"" + name + "\" from the project" +
-             (deleteFile ? " and moved " + relative.generic_string() + " to the project's .trash" : " (file kept)") +
+             (deleteFile ? " and moved " + FileUtils::pathToGenericUtf8(relative) + " to the project's .trash" : " (file kept)") +
              ". Undo with undo scope=project.",
-             Json{{"removed_scene_id", id}, {"path", relative.generic_string()}, {"file_deleted", deleteFile},
+             Json{{"removed_scene_id", id}, {"path", FileUtils::pathToGenericUtf8(relative)}, {"file_deleted", deleteFile},
                   {"selected_scene_id", project->getSelectedSceneId()}});
 }
 
@@ -670,6 +671,11 @@ void setChildSceneTool(const CallPtr& call) {
     }
     const bool attachedNow = project->hasChildScene(parentId, childId);
     const bool attach = args.contains("attached") ? args["attached"].get<bool>() : true;
+    if (attach && !attachedNow && project->wouldCreateChildSceneCycle(parentId, childId)) {
+        call->fail("\"" + child->name + "\" already contains \"" + parent->name + "\" as a child scene (directly or "
+                   "deeper), so adding it would make a cycle.");
+        return;
+    }
     auto* multi = new MultiPropertyCmd();
     bool any = false;
     if (attach && !attachedNow) {
@@ -753,7 +759,7 @@ void setMainCameraTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ scene settings
 
-enum class SettingKind { Bool, Int, Float, Vector2, Vector3, Vector4, String, ShadowQuality, SceneColorScale, LightState, Filter, PostProcess,
+enum class SettingKind { Bool, Int, Float, Vector2, Vector3, Vector4, String, ShadowQuality, SceneColorScale, LightState, LitQuality, Filter, PostProcess,
                          PostProcessing, PostProcessingField, ShadowDebugView };
 
 struct SceneSetting {
@@ -773,6 +779,8 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"global_illumination_color", SettingKind::Vector3, "ambient light color [r,g,b] (sRGB)"},
         {"global_illumination_intensity", SettingKind::Float, "ambient light intensity"},
         {"max_lights_per_object", SettingKind::Int, "lights each object is lit by, 1-16 (the rest reaching it fold into its ambient)"},
+        {"lit_quality", SettingKind::LitQuality, "the built-in Lit's quality: standard (as before), high (specular anti-aliasing, direct-light energy compensation; new scenes)"},
+        {"physical_light_ev100", SettingKind::Float, "Physical Light Exposure, EV100 -6..24 (Sunny 15, Overcast 12, Interior 7, Night 2): only lights in lux, candela or lumen"},
         {"shadows_quality", SettingKind::ShadowQuality,
          "3D shadow quality tier: auto (the project's tier of the platform), none (that tier, every light hard), low, medium, high, ultra (PCSS)"},
         {"shadow_distance", SettingKind::Float, "metres of directional shadows from the camera (0: the quality tier's; a light's own overrides it)"},
@@ -785,6 +793,7 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"shadows_2d_quality", SettingKind::ShadowQuality, "2D shadow edge filtering: none, low, medium, high (auto reads as low, ultra as high)"},
         {"physics_gravity_2d", SettingKind::Vector2, "2D gravity [x,y]"},
         {"physics_gravity_3d", SettingKind::Vector3, "3D gravity [x,y,z]"},
+        {"physics_interpolation", SettingKind::Bool, "draw bodies between their last two fixed steps (smooth at any frame rate)"},
         {"mesh_lod_enabled", SettingKind::Bool, "build and use mesh detail levels"},
         {"mesh_lod_threshold", SettingKind::Float, "pixels of error a detail level may show"},
         {"depth_prepass_enabled", SettingKind::Bool, "depth-only pass before opaque draws"},
@@ -980,6 +989,7 @@ const char* kindName(SettingKind kind) {
         case SettingKind::ShadowQuality:
         case SettingKind::SceneColorScale:
         case SettingKind::LightState:
+        case SettingKind::LitQuality:
         case SettingKind::ShadowDebugView:
         case SettingKind::Filter: return "enum";
         case SettingKind::PostProcess: return "post_process";
@@ -995,6 +1005,7 @@ const McpValues::EnumOptions* settingOptions(SettingKind kind) {
         case SettingKind::ShadowDebugView: return McpValues::enumTable("shadow_debug_view");
         case SettingKind::SceneColorScale: return McpValues::enumTable("scene_color_scale");
         case SettingKind::LightState: return McpValues::enumTable("light_state");
+        case SettingKind::LitQuality: return McpValues::enumTable("lit_quality");
         case SettingKind::Filter: return McpValues::enumTable("framebuffer_filter");
         default: return nullptr;
     }
@@ -1064,6 +1075,10 @@ Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults = fal
             return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<LightState>(setting.name)
                                                         : Catalog::getSceneProperty<LightState>(scene, setting.name)),
                                          *settingOptions(setting.kind));
+        case SettingKind::LitQuality:
+            return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<LitQuality>(setting.name)
+                                                        : Catalog::getSceneProperty<LitQuality>(scene, setting.name)),
+                                         *settingOptions(setting.kind));
         case SettingKind::Filter:
             return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<TextureFilter>(setting.name)
                                                         : Catalog::getSceneProperty<TextureFilter>(scene, setting.name)),
@@ -1128,6 +1143,7 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
             return new ScenePropertyCmd<int>(project, id, name, value.get<int>());
         case SettingKind::Float:
             if (!value.is_number()) return expect("a number");
+            if (name == "physical_light_ev100" && (value.get<float>() < -6.0f || value.get<float>() > 24.0f)) return expect("-6 to 24");
             return new ScenePropertyCmd<float>(project, id, name, value.get<float>());
         case SettingKind::String: {
             if (!value.is_string()) return expect("a string (\"\" for the built-in shader)");
@@ -1166,6 +1182,7 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
         case SettingKind::ShadowQuality:
         case SettingKind::SceneColorScale:
         case SettingKind::LightState:
+        case SettingKind::LitQuality:
         case SettingKind::Filter: {
             int parsed = 0;
             std::string why;
@@ -1176,6 +1193,7 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
             if (setting.kind == SettingKind::ShadowQuality) return new ScenePropertyCmd<ShadowQuality>(project, id, name, (ShadowQuality)parsed);
             if (setting.kind == SettingKind::SceneColorScale) return new ScenePropertyCmd<SceneColorScale>(project, id, name, (SceneColorScale)parsed);
             if (setting.kind == SettingKind::LightState) return new ScenePropertyCmd<LightState>(project, id, name, (LightState)parsed);
+            if (setting.kind == SettingKind::LitQuality) return new ScenePropertyCmd<LitQuality>(project, id, name, (LitQuality)parsed);
             return new ScenePropertyCmd<TextureFilter>(project, id, name, (TextureFilter)parsed);
         }
         case SettingKind::PostProcessing:
@@ -1893,10 +1911,10 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "get_scene_settings";
         tool.title = "Get Scene Settings";
         tool.description =
-            "Scene settings (Inspector > Scene: lighting, shadows, gravity, LOD, SSAO, SSR, fixed resolution, "
-            "default shaders, post_process, post_processing): the fields away from their defaults; detail adds type, "
-            "default, options, help. Without names also scene_inputs_in_use (what the last frame made for "
-            "scene-reading shaders).";
+            "Scene settings (Inspector > Scene: lighting, shadows, gravity, LOD, SSAO, SSR, default shaders, "
+            "post_process, post_processing...): the fields away from their defaults; detail adds type, default, "
+            "options, help. Without names also scene_inputs_in_use (made by the last frame for scene-reading "
+            "shaders).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"names", array(string(""), "Default: all.")},

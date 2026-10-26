@@ -17,6 +17,7 @@
 #include "component/TilemapComponent.h"
 #include "component/Transform.h"
 #include "math/Ray.h"
+#include "texture/TexturePack.h"
 
 #include "jobs/JobSystem.h"
 
@@ -29,7 +30,9 @@
 namespace tinygltf {
     struct Accessor;
     struct Image;
+    struct Material;
     class Model;
+    class TinyGLTF;
 }
 
 namespace jasperengine{
@@ -75,6 +78,9 @@ namespace jasperengine{
         static std::shared_ptr<std::array<TextureData,6>> buildGLTFTextureFaces(tinygltf::Model& model, int textureIndex);
 
         bool createSprite(SpriteComponent& sprite, MeshComponent& mesh, CameraComponent& camera);
+        // the sprite as grid x grid cells while a lattice deforms it (spec lattice §6.4)
+        void createSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, unsigned int texWidth, unsigned int texHeight,
+                              Vector2 pivotPos, int grid);
         bool createMeshPolygon(MeshPolygonComponent& polygon, MeshComponent& mesh);
         bool createTilemap(TilemapComponent& tilemap, MeshComponent& mesh);
 
@@ -90,6 +96,8 @@ namespace jasperengine{
         static bool fileExists(const std::string &abs_filename, void *);
         static bool readWholeFile(std::vector<unsigned char> *out, std::string *err, const std::string &filepath, void *);
         static bool getFileSizeInBytes(size_t *filesize_out, std::string *err, const std::string &filepath, void *userdata);
+        // An FBX is read from its imported .glb, with texture URIs still relative to the FBX
+        static bool loadGLTFFile(tinygltf::TinyGLTF& loader, tinygltf::Model* model, std::string* err, std::string* warn, const std::string& filename);
         static std::string getAsyncModelLoadScenePrefix(const Scene* scene);
         static std::string getAsyncModelLoadKey(const Scene* scene, const std::string& filename);
         std::string getAsyncModelLoadKey(const std::string& filename) const;
@@ -112,8 +120,27 @@ namespace jasperengine{
         int materializeGLTFSparseAccessor(tinygltf::Accessor& accessor, ModelComponent& model);
         int bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor, const Matrix4& matrix, const Matrix3& normalMatrix, bool isNormal, ModelComponent& model);
         int bakeGLTFTransformedTangent(const tinygltf::Accessor& accessor, const Matrix3& tangentMatrix, ModelComponent& model);
+        // The bake helpers need float positions, normals and tangents, and no morph targets
+        bool canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std::string* reason = nullptr) const;
         int convertGLTFColorToVec4(const tinygltf::Accessor& accessor, ModelComponent& model);
         bool loadGLTFTexture(int textureIndex, ModelComponent& model, Texture& texture, const std::string& textureName);
+        // glTF material extensions (MeshSystemGltfPbr.cpp): the KHR_materials_* lobes into
+        // Material::pbr and emissiveStrength, KHR_materials_unlit as the library Unlit shader
+        // (vertexColor: the primitive has COLOR_0). False only when a texture cannot be made.
+        bool loadGLTFMaterialExtensions(const tinygltf::Material& gltfMaterial, ModelComponent& model, Material& material, bool vertexColor);
+        // a lobe's map from its glTF textures: one as it is, two (or one in another channel
+        // than the lobe's layout puts it) packed into the layout on a job
+        struct GltfLobeMap{
+            int first = -1;
+            int second = -1;
+            int firstTexCoord = 0;
+            int secondTexCoord = 0;
+            const TexturePack::Layout* layout = nullptr; // null: a lobe with one texture
+            const char* name = "";
+        };
+        bool loadGLTFLobeMap(ModelComponent& model, const GltfLobeMap& lobeMap, Texture& map, int& texCoord);
+        // one warning per extension a model uses and the engine does not read (an error when required)
+        static void reportGLTFExtensions(const tinygltf::Model& gltf, const std::string& filename);
         std::string getBufferName(int bufferViewIndex, ModelComponent& model);
         Matrix4 getGLTFNodeMatrix(int nodeIndex, ModelComponent& model);
         Matrix4 getGLTFMeshGlobalMatrix(int nodeIndex, ModelComponent& model, std::map<int, int>& nodesParent);
@@ -164,6 +191,10 @@ namespace jasperengine{
         static bool usesTextureRect(const Submesh& submesh);
         // Puts the fields a model load must keep (Submesh::overrideFields) on a loaded submesh
         static void applySubmeshOverride(const Submesh& saved, Submesh& submesh);
+        // The edited lobes over the ones a load made: all of them (one override bit), but a map
+        // that is still the file's keeps the loaded texture, which knows how to make its pixels
+        // (a map packed from two of the file's images, TexturePack)
+        static void restorePbrExtensions(const MaterialPbrExtensions& saved, OutOfLineValue<MaterialPbrExtensions>& loaded);
         // true when a frame of another size needs the sprite rebuilt for its texture scale factor
         static bool changesSpriteInset(const SpriteComponent& sprite, const Rect& oldRect, const Rect& newRect);
 
@@ -173,8 +204,15 @@ namespace jasperengine{
         // Foliage ownership, for editor shader collection and selection.
         std::vector<Entity> getFoliageEntities(Entity terrainEntity) const;
         Entity getFoliageOwner(Entity foliageEntity) const;
+        // Reloads the foliage chunks drawn from a model file that changed on disk
+        void reloadFoliageMesh(const std::string& filename);
+        // Retries the failed loads of a file that appeared or changed on disk
+        void retryFailedModelLoads(const std::string& filename);
 
         void createPlane(MeshComponent& mesh, float width=1, float depth=1, unsigned int tiles=1);
+        // createPlane split into segments x segments quads (1..255), for a surface the vertex
+        // stage displaces (library:water's WAVES); no vertex colour
+        void createGrid(MeshComponent& mesh, float width=1, float depth=1, unsigned int segments=64, unsigned int tiles=1);
         void createWall(MeshComponent& mesh, float width=1, float height=1, unsigned int tiles=1);
         void createBox(MeshComponent& mesh, float width=1, float height=1, float depth=1, unsigned int tiles=1);
         void createSphere(MeshComponent& mesh, float radius=1, unsigned int slices=36, unsigned int stacks=18);
@@ -201,6 +239,9 @@ namespace jasperengine{
         // relative; from a project since moved, the longest tail of it that names a file in
         // assetsRoot. Any other id is returned unchanged.
         static std::string migrateModelTextureId(const std::string& id, const std::string& assetsRoot);
+        // The .glb an FBX is imported into: in the editor's import cache (System::getImportPath),
+        // next to the FBX in an exported game (<name>.fbx.glb)
+        static std::string getImportedModelPath(const std::string& filename);
 
         // Submesh edits (Submesh::overrideFields) carried across a load, keyed by the ordinal of
         // the primitive that built each one. The loaders do this themselves; it is public for the
@@ -209,7 +250,9 @@ namespace jasperengine{
         SubmeshOverrides collectSubmeshOverrides(Entity entity, const ModelComponent& model) const;
         void applySubmeshOverrides(const SubmeshOverrides& overrides, Entity entity, const ModelComponent& model) const;
 
-        bool loadGLTF(Entity entity, const std::string filename, bool asyncLoad=false, bool skipEntities=false, bool changeRootTransform=true);
+        // bakeSceneRoot: the entity does not carry the file's scene root transform (a foliage
+        // chunk), so a lone mesh node bakes its whole global transform into the vertices
+        bool loadGLTF(Entity entity, const std::string filename, bool asyncLoad=false, bool skipEntities=false, bool changeRootTransform=true, bool bakeSceneRoot=false);
         bool loadOBJ(Entity entity, const std::string filename, bool asyncLoad=false);
 
         // Parses a model file into ModelPool without a scene, for SceneManager::preloadScene().
@@ -218,6 +261,8 @@ namespace jasperengine{
         static void cancelPreloadModel(const std::string& filename);
         // Drops a preloaded model and its images from the pools, unless a scene uses them
         static void releasePreloadedModel(const std::string& filename);
+        // Drops the cached parse and images of a file that changed on disk, even while in use
+        static void invalidateModelFile(const std::string& filename);
 
         // Caps the resolution glTF images are decoded to on the CALLING thread (0 = full resolution).
         // Used by the thumbnail worker so previews don't decode/upload full-size 4K maps.
@@ -237,6 +282,16 @@ namespace jasperengine{
         bool raycastTerrainSurface(const Ray& ray, TerrainComponent& terrain, Transform& transform, Vector3& worldPoint);
         // Height and normal in terrain-local space, the surface the foliage scatter uses
         void sampleTerrainSurface(TerrainComponent& terrain, float localX, float localZ, float& height, Vector3& normal);
+
+        // Heightmap lookups as the terrain vertex shader does them (so collider, ray casts,
+        // height queries and brushes meet the rendered surface): linear filtering with texel
+        // centres at (i + 0.5) / size, clamped to the edge texels.
+        // Texel coordinate of a terrain-local position along one axis of a size-texel map
+        static float terrainTexelCoord(float local, float terrainSize, int size);
+        // Normalized [0,1] height of the R channel (8 or 16-bit) at a texel coordinate
+        static float sampleTerrainHeightTexels(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float texelX, float texelY);
+        // Normalized [0,1] height at a terrain-local position; 0 without pixels
+        static float sampleTerrainHeight(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float terrainSize, float localX, float localZ);
 
         bool hasPendingAsyncModelLoads() const;
         void cancelAsyncModelLoads();

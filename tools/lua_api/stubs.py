@@ -267,7 +267,39 @@ def html_ui_types_file(api):
           '---@field dy number?',
           '---@field color string? # a CSS colour, default "#ffffff"',
           '---@field strength number? # default 1',
-          '---@field effect string? # one effect\'s name; default every stateful effect of the element']
+          '---@field effect string? # one effect\'s name; default every stateful effect of the element',
+          '',
+          '---The table of UIItemsView:setProvider (indices 1-based)',
+          '---@class UIItemsProvider',
+          '---@field count integer # the items (a tree-view: unused, the roots come from children)',
+          '---@field bind fun(row: UIElement, i: integer)? # fills a row element for item i',
+          '---@field unbind fun(row: UIElement, i: integer)? # clears it before it shows another item',
+          '---@field key fun(i: integer): string|integer? # the item\'s identity (default: its index)',
+          '---@field height fun(i: integer): number? # a known height, px (item-height="auto" measures the others)',
+          '---@field children fun(key: string|nil): (string|integer)[]? # tree-view: the keys of a node\'s children (nil: the roots)',
+          '---@field hasChildren fun(key: string): boolean? # tree-view: whether a node has children',
+          '',
+          '---The options of UIElement:setTooltip',
+          '---@class UITooltipOptions',
+          '---@field placement "top"|"bottom"|"left"|"right"|"auto"|nil # default "top"; flipped and clamped to the view',
+          '---@field delay number? # seconds before it shows (the document\'s, 0.5 by default)',
+          '---@field arrow boolean? # an arrow pointing at the element (.htmlui-tooltip-arrow)',
+          '---@field interactive boolean? # the pointer may move onto it without hiding it',
+          '',
+          '---What a hot reload of an .html document did (doc.onReload, doc.lastReloadReport)',
+          '---@class UIReloadReport',
+          '---@field mode "patch"|"rebuild"',
+          '---@field file string',
+          '---@field kept integer # elements as they were',
+          '---@field updated integer # elements with an attribute, class, inline style or text the author changed',
+          '---@field inserted integer',
+          '---@field removed integer',
+          '---@field replaced integer # subtrees made anew (a changed element type or data binding)',
+          '---@field runtimeKept integer # nodes scripts added that stayed',
+          '---@field scriptsRerun integer # <script type="text/lua"> that changed and ran again',
+          '---@field fallbackReason string|nil # why a patch was not possible',
+          '---@field ms number # the reload, the compile excluded',
+          '---@field causes string[] # each replaced element and why']
     return FILE_HEADER + '\n'.join(L) + '\n'
 
 
@@ -345,6 +377,8 @@ class Emitter:
                 doc = doc + ['(static: call with a dot, `' + c['name'] + '.' + m['name'] + '(...)`)']
             doc += m['conditions']
             L += doc_lines(doc)
+            if any(d.lower().startswith('deprecated') for d in doc):
+                L.append('---@deprecated')   # a binding commented "deprecated: ..." (an old alias)
             for u in m['unresolved']:
                 L.append(f'-- unresolved: {c["name"]}.{m["name"]}: {u}')
             if not sigs:

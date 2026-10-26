@@ -29,10 +29,10 @@ namespace {
         for (ShaderType type : ATMOSPHERE_TYPES)
             keys.push_back(ShaderPool::getShaderKey(type, 0));
         // a lit PBR mesh (punctual, shadows, normals, fog, IBL) and an unlit one: the fog carries the height fog
-        const uint32_t lit = ShaderPool::getMeshProperties(false, true, false, true, true, true, false, false, false, false, false,
+        const uint64_t lit = ShaderPool::getMeshProperties(false, true, false, true, true, true, false, false, false, false, false,
                                                            true, false, false, false, false, false, false, true, false, false, false, false,
                                                            false, false, false, false, false, 8);
-        const uint32_t unlit = ShaderPool::getMeshProperties(true, true, false, false, false, false, false, false, false, false, false,
+        const uint64_t unlit = ShaderPool::getMeshProperties(true, true, false, false, false, false, false, false, false, false, false,
                                                              true, false, false, false, false, false, false, false, false, false, false, false,
                                                              false, false, false, false, false, 8);
         keys.push_back(ShaderPool::getShaderKey(ShaderType::MESH, lit));

@@ -58,6 +58,7 @@ namespace {
 
 std::function<void(size_t, bool)> editor::CommandHistory::onSceneModified = nullptr;
 std::function<bool(std::string&)> editor::CommandHistory::beforeMutation = nullptr;
+std::function<bool(size_t, editor::CommandHistory::Change)> editor::CommandHistory::beforeChange = nullptr;
 editor::CommandHistory::SelectionHooks editor::CommandHistory::selectionHooks;
 std::function<void(std::unique_ptr<editor::Command>)> editor::CommandHistory::offThreadRelease = nullptr;
 std::function<void(editor::CommandHistory&)> editor::CommandHistory::beforeRecord = nullptr;
@@ -329,6 +330,11 @@ bool editor::CommandHistory::addCommand(Command* raw){
         releaseCommand(std::move(cmd), 0);
         return false;
     }
+    // before execute(), which reads the values the command replaces: a running Physics
+    // Placement gesture settles (and commits its own step) first
+    if (beforeChange){
+        beforeChange(sceneId, Change::Add);
+    }
 
     if (beforeRecord && !interactive.open){
         beforeRecord(*this);
@@ -439,7 +445,75 @@ bool editor::CommandHistory::addCommandNoMerge(Command* cmd){
     return addCommand(cmd);
 }
 
+bool editor::CommandHistory::insertCommand(Command* raw){
+    std::unique_ptr<Command> cmd(raw);
+    if (!cmd){
+        return false;
+    }
+    if (!beforeMutating()){
+        releaseCommand(std::move(cmd), 0);
+        return false;
+    }
+    // before execute(), as in addCommand: a running Physics Placement gesture settles first
+    if (beforeChange){
+        beforeChange(sceneId, Change::Add);
+    }
+
+    bool executed;
+    {
+        Applying applying;
+        executed = cmd->execute();
+    }
+    if (!executed){
+        const size_t bytes = cmd->memoryBytes();
+        releaseCommand(std::move(cmd), bytes);
+        return false;
+    }
+    cmd->setNoMerge();
+
+    // The scene Stop restores was captured with this step applied, so in Play it is an
+    // edit-time step: below the floor. An open drag keeps collecting above it.
+    size_t position = this->position();
+    if (inPlaySession){
+        position = playFloor;
+    }else if (interactive.open){
+        position = interactive.start;
+    }
+    const size_t local = position - trimmedCount;
+
+    UndoEntry entry;
+    entry.info.id = nextEntryId++;
+    entry.info.origin = UndoOriginScope::current();
+    entry.info.time = std::chrono::system_clock::now();
+    entry.info.bytes = cmd->memoryBytes();
+    const bool structural = cmd->affectsStructure();
+    entry.cmd = std::move(cmd);
+    captureName(entry);
+    const uint64_t id = entry.info.id;
+    list.insert(list.begin() + local, std::move(entry));
+    index++;
+    if (inPlaySession){
+        playFloor++;
+    }
+    if (interactive.open && interactive.start >= position){
+        interactive.start++;
+    }
+    for (TrimHold& hold : trimHolds){
+        if (hold.position >= position) hold.position++;
+    }
+    recount();
+
+    notifyModified(structural);
+    trim(id);
+    notifyChanged();
+    return true;
+}
+
 bool editor::CommandHistory::undo(){
+    // a Physics Placement gesture still running is cancelled instead
+    if (beforeChange && !beforeChange(sceneId, Change::Undo)){
+        return false;
+    }
     // Ctrl+Z in a drag puts the values back and undoes nothing more
     if (interactive.open){
         return cancelInteractive();
@@ -448,6 +522,10 @@ bool editor::CommandHistory::undo(){
         return false;
     }
     UndoEntry& entry = list[index - 1];
+    // undoing it now would break the project (a child scene cycle): the history stays
+    if (!entry.cmd->canUndo()){
+        return false;
+    }
     const bool structural = entry.cmd->affectsStructure();
     {
         Applying applying;
@@ -465,6 +543,9 @@ bool editor::CommandHistory::undo(){
 }
 
 bool editor::CommandHistory::redo(){
+    if (beforeChange && !beforeChange(sceneId, Change::Redo)){
+        return false;
+    }
     if (interactive.open){
         commitInteractive();
     }
@@ -472,6 +553,9 @@ bool editor::CommandHistory::redo(){
         return false;
     }
     UndoEntry& entry = list[index];
+    if (!entry.cmd->canRedo()){
+        return false;
+    }
     {
         Applying applying;
         entry.cmd->execute();
@@ -573,14 +657,21 @@ std::vector<const editor::UndoEntry*> editor::CommandHistory::entries() const{
 }
 
 const editor::UndoEntry* editor::CommandHistory::find(uint64_t id) const{
-    // ids increase along the list
-    auto it = std::lower_bound(list.begin(), list.end(), id, [](const UndoEntry& entry, uint64_t value){
-        return entry.info.id < value;
-    });
-    if (it != list.end() && it->info.id == id){
-        return &*it;
+    // (not a binary search: an inserted step's id is newer than the steps after it)
+    for (const UndoEntry& entry : list){
+        if (entry.info.id == id) return &entry;
     }
     return nullptr;
+}
+
+bool editor::CommandHistory::isPlayStep(uint64_t id) const{
+    if (!inPlaySession){
+        return false;
+    }
+    for (size_t i = playFloor - trimmedCount; i < list.size(); i++){
+        if (list[i].info.id == id) return true;
+    }
+    return false;
 }
 
 bool editor::CommandHistory::isApplied(uint64_t id) const{

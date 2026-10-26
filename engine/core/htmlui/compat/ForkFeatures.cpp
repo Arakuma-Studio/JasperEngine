@@ -6,6 +6,7 @@
 #include "RmlLogTranslator.h"
 #include "htmlui/effects/EffectRuntime.h"
 
+#include "../../../libs/rmlui/Source/Core/DataModel.h"
 #include <RmlUi/Core.h>
 
 #include <cmath>
@@ -54,6 +55,8 @@ namespace {
         true,    // Justify (phase 6, p6-justify: justified lines, text-align-last, text-justify; FORK.md P6-J1)
         true,    // TextIndent (phase 6, p6-justify: text-indent with hanging and each-line; FORK.md P6-J2)
         true,    // LineClamp (phase 6, p6-line-clamp: Chromium 153's legacy -webkit-line-clamp with its ellipsis; FORK.md P6-L1)
+        true,    // RowAliases (S17: a virtual view's pooled rows re-point their data-model aliases; FORK.md P7-D)
+        true,    // LayoutBoundary (S17: a virtual view of a definite size is laid out alone; FORK.md P7-L)
     };
 
     constexpr const char* kNames[(size_t)ForkFeature::Count] = {
@@ -71,6 +74,8 @@ namespace {
         "Justify",
         "TextIndent",
         "LineClamp",
+        "RowAliases",
+        "LayoutBoundary",
     };
 
     constexpr uint64_t bitOf(ForkFeature feature){
@@ -304,6 +309,77 @@ span { display: inline-block; width: 10px; height: 7px; }</style></head>
         return result;
     }
 
+    // RowAliases: a row alias re-pointed from rows[0] to rows[1] changes the text of the view under it
+    std::optional<bool> probeRowAliases(){
+        const Rml::String contextName = "htmlui-compat-fork-probe-row-aliases";
+        Rml::Context* context = Rml::CreateContext(contextName, Rml::Vector2i(64, 64), &nullRenderInterface());
+        if (!context)
+            return std::nullopt;
+        std::optional<bool> result;
+        {
+            Rml::DataModelConstructor constructor = context->CreateDataModel("probe");
+            Rml::Vector<int> values = {7, 9};
+            if (constructor && constructor.RegisterArray<Rml::Vector<int>>() && constructor.Bind("values", &values)){
+                const char* rml = R"(<rml><head></head><body data-model="probe"><div id="row"/></body></rml>)";
+                if (Rml::ElementDocument* document = context->LoadDocumentFromMemory(rml, "[htmlui-compat-fork-probe-row-aliases]")){
+                    document->Show();
+                    context->Update();
+                    Rml::Element* row = document->GetElementById("row");
+                    Rml::DataModel* model = row ? row->GetDataModel() : nullptr;
+                    if (model){
+                        Rml::DataAddress first;
+                        first.emplace_back("values");
+                        first.emplace_back(0);
+                        const int handle = model->InsertRowAlias(row, "item", first);
+                        row->SetInnerRML("<span>{{ item }}</span>");
+                        context->Update();
+                        const bool before = row->GetNumChildren() == 1 && row->GetChild(0)->GetInnerRML() == "7";
+                        Rml::DataAddress second = first;
+                        second.back() = Rml::DataAddressEntry(1);
+                        model->SetRowAlias(handle, second);
+                        context->Update();
+                        result = before && row->GetChild(0)->GetInnerRML() == "9";
+                    }
+                    document->Close();
+                }
+            }
+            context->Update();
+        }
+        Rml::RemoveContext(contextName);
+        return result;
+    }
+
+    // LayoutBoundary: a text change inside a boundary is laid out without the document
+    std::optional<bool> probeLayoutBoundary(){
+        const Rml::String contextName = "htmlui-compat-fork-probe-layout-boundary";
+        Rml::Context* context = Rml::CreateContext(contextName, Rml::Vector2i(64, 64), &nullRenderInterface());
+        if (!context)
+            return std::nullopt;
+        std::optional<bool> result;
+        const char* rml = R"(<rml><head><style>body { display: block; width: 64px; }
+#v { display: block; position: relative; overflow: auto; width: 40px; height: 20px; }
+#t { display: block; width: 10px; height: 3px; }</style></head>
+<body><div id="v"><div id="t"/></div></body></rml>)";
+        if (Rml::ElementDocument* document = context->LoadDocumentFromMemory(rml, "[htmlui-compat-fork-probe-layout-boundary]")){
+            document->Show();
+            context->Update();
+            Rml::Element* view = document->GetElementById("v");
+            Rml::Element* inner = document->GetElementById("t");
+            if (view && inner){
+                view->SetLayoutBoundary(true);
+                context->Update();
+                const int before = Rml::ElementDocument::GetBoundaryLayoutCount();
+                inner->SetProperty("height", "5px");
+                context->Update();
+                result = Rml::ElementDocument::GetBoundaryLayoutCount() > before && std::fabs(inner->GetClientHeight() - 5.0f) < 0.5f;
+                view->SetLayoutBoundary(false);
+            }
+            document->Close();
+        }
+        Rml::RemoveContext(contextName);
+        return result;
+    }
+
     bool isRmlInitialised(){
         // the system interface is set before Rml::Initialise and cleared by Rml::Shutdown
         // (HtmlUI::acquire/release)
@@ -452,6 +528,10 @@ std::optional<bool> ForkFeatures::probe(ForkFeature feature){
                    !parses("text-align", "justify-all");
         case ForkFeature::LineClamp:
             return probeLineClamp();
+        case ForkFeature::RowAliases:
+            return probeRowAliases();
+        case ForkFeature::LayoutBoundary:
+            return probeLayoutBoundary();
         case ForkFeature::SelectorsLevel4:
             return loadsCleanly("input:enabled, [lang=\"en\" i], li:nth-child(2 of .x), :read-write, :default, :target { color: #f00; }", capture);
         case ForkFeature::None:

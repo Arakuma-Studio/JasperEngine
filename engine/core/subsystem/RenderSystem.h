@@ -36,6 +36,7 @@
 #include "shader/ShaderBuildTypes.h"
 #include "shader/ShaderManifest.h"
 #include "util/PostColorLut.h"
+#include "lattice/LatticeRender.h"
 #include "render/DynamicResolutionController.h"
 #include "Engine.h"
 #include <map>
@@ -150,6 +151,7 @@ namespace jasperengine{
 		Vector4 uvTransform[MAX_TERRAIN_LAYERS]; // xy = detail tiling scale, zw = offset
 		Vector4 surface[MAX_TERRAIN_LAYERS];     // roughness, metallic, normal strength, occlusion strength
 		Vector4 slices[MAX_TERRAIN_LAYERS];      // color, normal and packed surface slice (-1 = none)
+		Vector4 stochastic[MAX_TERRAIN_LAYERS];  // Stochastic Tiling: cell size (0 = off), blend sharpness, contrast, rotation
 	} fs_terrain_layers_t;
 
 	// includes/environment.glsl (u_fs_environment)
@@ -163,6 +165,12 @@ namespace jasperengine{
 		Vector4 boxMin_intensity; // xyz = influence AABB min, w = intensity
 		Vector4 boxMax_lod;       // xyz = influence AABB max, w = max available mip LOD
 	} fs_reflection_probe_t;
+
+	// probe_filter.frag
+	typedef struct fs_probe_filter_t {
+		Vector4 params; // x = roughness, y = cube face, z = samples (taps per side when downsampling), w = 1 to downsample
+		Vector4 source; // x = destination level size, y = source base size, z = source mip count, w = source level when downsampling
+	} fs_probe_filter_t;
 
 	typedef struct vs_shadow2d_t {
 		Vector4 lightPos_range; // xy = light world pos, w = range
@@ -237,6 +245,7 @@ namespace jasperengine{
 	typedef struct fs_gbuffer_material_t {
 		Vector4 params;             // x = roughness, y = metallic, z = IBL source, w = alpha cutout
 		Vector4 baseColorFactor;
+		Vector4 stochastic;         // Stochastic Tiling ('Sto' variants only): cell size, blend sharpness, contrast, rotation
 	} fs_gbuffer_material_t;
 
 	typedef struct fs_ssao_t {
@@ -330,6 +339,7 @@ namespace jasperengine{
 		Vector4 screenParams;          // screen UV (y up) = fragment coordinate * xy + zw
 		Vector4 colorParams;           // colour copy v = uv.y * x + y, zw = 1 / copy size
 		Vector4 depthParams;           // depth texture uv = screen uv * xy + zw
+		Matrix4 viewProjection;        // world -> clip, unflipped (SCENE_VIEW_PROJECTION: the built-in Lit's transmission)
 	} scene_inputs_t;
 
 	typedef struct vs_points_params_t {
@@ -365,6 +375,11 @@ namespace jasperengine{
 		// the post-processing colour (phase 4, USE_POST_COLOR): one global bit, see
 		// RenderSystem::getPostProcessingTiers
 		bool postColor = false;
+		// the scene's Lit Quality is High (SceneSettings::litQuality): every lit variant of the
+		// built-in Lit, and of forks of it, takes USE_LIT_QUALITY (in its builtin:lit reference)
+		bool litQualityHigh = false;
+		// the lobes the build draws (MaterialPbr::getRuntimeTier; the exporter: the target's)
+		PbrTier pbrTier = PbrTier::FULL;
 		// the atmosphere's depth pre-pass needs every opaque mesh's depth program (volumetric
 		// fog, volumetric clouds)
 		bool atmosphereDepth = false;
@@ -462,6 +477,12 @@ namespace jasperengine{
 		// as the material asks; the variant resolves it against the shader (resolveLighting)
 		MaterialLighting lighting = MaterialLighting::AUTO;
 		bool textureShadow = false;
+		// Material::stochasticTiling, as the material asks; the variant decides where it applies
+		bool stochasticTiling = false;
+		// the colour shader samples Lit's Stochastic Tiling (RenderSystem::supportsStochasticTiling:
+		// the built-in Lit, a fork of it defining LIT_STOCHASTIC_PARAMS); a fork made before it
+		// samples plainly, so its depth and G-buffer passes must too
+		bool stochasticShader = true;
 		// mesh
 		bool receiveLights = true;
 		bool receiveIBL = true;
@@ -475,6 +496,9 @@ namespace jasperengine{
 		bool instanced = false;
 		bool instanceFade = false;
 		bool mirror = false;
+		// bound to lattices (LatticeMeshState::count > 0, never a terrain): the 'Ltc' variants,
+		// with the vertex colour a mask channel reads
+		bool lattice = false;
 		// shader library: the manifest of the shader the submesh draws with (null for the
 		// built-in shader and forks without one) and whether its depth pass draws with the
 		// library shader's own depth program (@depth)
@@ -483,19 +507,41 @@ namespace jasperengine{
 		// the manifest's defines the material enables (ShaderReference::getEnabledFeatures),
 		// which decide its feature= @require inputs; empty: the unconditional ones only
 		std::vector<std::string> features;
+		// the built-in Lit's extended lobes and hex tiling (MaterialPbr::getPbrVariant): the
+		// submesh's material while the inputs are used, null for none (an extra pass, a shader
+		// with a manifest)
+		const Material* material = nullptr;
+		// the material's transmission lobe on a shader without a manifest: drawn in the
+		// transparent queue after the scene colour copy it refracts (no SSAO there)
+		bool pbrTransmission = false;
+		// a painted layer of the Terrain hex tiles (TERRAIN_HEX_TILING)
+		bool terrainHex = false;
 	};
 
 	// The shaders one submesh draws with
 	struct SubmeshShaderVariant {
-		uint32_t properties = 0;        // ShaderType::MESH
+		uint64_t properties = 0;        // ShaderType::MESH
 		bool depthPass = false;         // drawn into shadow maps and depth pre-passes
 		bool depth = false;             // has a depth shader: a depth pass, or a forked depth shader
-		uint32_t depthProperties = 0;   // ShaderType::DEPTH
+		uint64_t depthProperties = 0;   // ShaderType::DEPTH
 		bool gbuffer = false;           // drawn into the SSR G-buffer
-		uint32_t gbufferProperties = 0; // ShaderType::GBUFFER
+		uint64_t gbufferProperties = 0; // ShaderType::GBUFFER
+		// The built-in Lit's defines beyond the property bits, sorted: the material's lobes,
+		// maps and hex tiling (pbr), TERRAIN_HEX_TILING and USE_LIT_QUALITY. They travel in the
+		// "builtin:lit#..." reference (a fork's "<fork>#..."), getSubmeshShaderReference; none:
+		// the variant it always was (customId 0)
+		std::vector<std::string> litDefines;
+		PbrVariant pbr;
 	};
 
+	class FluidSystem;
+
 	class JASPERENGINE_API RenderSystem : public SubSystem {
+		// the scene's fluids, whose MATERIAL outputs the draws show (set by drawFramePasses;
+		// null until then or without one)
+		FluidSystem* frameFluids = nullptr;
+
+
 		friend class AtmosphereRenderer;
 	private:
 		enum class TransparentRenderType{
@@ -617,6 +663,8 @@ namespace jasperengine{
 		static TextureRender emptyWhite;
 		static TextureRender emptyArrayWhite;
 		static TextureRender emptyBlack;
+		static TextureRender emptyTransparent;
+		static uint32_t pixelsTransparent[64];
 		static TextureRender emptyCubeBlack;
 		static TextureRender emptyCubeWhite;
 		static TextureRender emptyNormal;
@@ -626,15 +674,31 @@ namespace jasperengine{
 		static uint32_t pixelsFlatNormal[64];
 		static TextureRender emptyGray;
 		static TextureRender emptyFlatNormal;
+		// shader library @texture defaults "ripples" and "noise" (Water::makeRipplesTexture,
+		// makeNoiseTexture)
+		static constexpr int DEFAULT_PATTERN_SIZE = 128;
+		static uint32_t pixelsRipples[DEFAULT_PATTERN_SIZE * DEFAULT_PATTERN_SIZE];
+		static uint32_t pixelsNoise[DEFAULT_PATTERN_SIZE * DEFAULT_PATTERN_SIZE];
+		static TextureRender defaultRipples;
+		static TextureRender defaultNoise;
 		static TextureRender emptyCubeGray;
 
 		static bool emptyTexturesCreated;
+		// the RenderSystems drawing with the static textures above (their bindings hold the
+		// handles), and whether this one is one of them: the last to go destroys them
+		static int emptyTextureUsers;
+		bool usesEmptyTextures = false;
 		
-		bool hasLights;
-		bool hasShadows;
-		bool hasFog;
-		bool hasIBL;
-		bool hasReflectionProbes;
+		// what LatticeRender::prepare keeps between frames
+		LatticeRenderState latticeState;
+
+		// (false until load() or the first light check: updateTransform reads hasLights, also
+		// for a scene whose systems never loaded, as the physics tests resolve their transforms)
+		bool hasLights = false;
+		bool hasShadows = false;
+		bool hasFog = false;
+		bool hasIBL = false;
+		bool hasReflectionProbes = false;
 		bool hasMultipleCameras;
 		// extra cameras the last frame drew, to catch the switch back to main only
 		bool lastMultiCameraDraw;
@@ -670,9 +734,24 @@ namespace jasperengine{
 			unsigned int observedCaptureRevision = 0;
 			Vector3 capturePosition;
 			Vector3 capturedPosition;
+			// the capture prefiltered into one GGX roughness per mip level (filterReflectionProbes),
+			// sampled instead of the capture once made
+			TextureRender filteredMap;
+			bool needFilter = false;
 		};
 
 		std::unordered_map<Entity, std::unique_ptr<ReflectionProbeRuntime>> reflectionProbeRuntimes;
+
+		// the prefilter of finished runtime captures (probe_filter.frag), shared by the probes
+		bool probeFilterLoaded = false;
+		TextureRender probeSourceMap;  // box-filtered mip chain of the capture
+		TextureRender probeReduceMap;  // scratch target while building that chain
+		int probeSourceSize = 0;
+		CameraRender probeFilterPassRender;
+		ObjectRender probeFilterRender;
+		std::shared_ptr<ShaderRender> probeFilterShader;
+		fs_probe_filter_t fs_probe_filter;
+		int probeFilterSlotParams = -1;
 		// Each mirror's reflection camera. Kept here so the authored component stays copiable.
 		std::unordered_map<Entity, Entity> mirrorCameras;
 		// Main camera position for the instance distance fade: the colour and depth passes must
@@ -1170,9 +1249,9 @@ namespace jasperengine{
 		// 2D light path (Light2DComponent). Deliberately independent of
 		// scene->getLightState(): the editor forces LightState::OFF in 2D scenes
 		// to keep 3D lights out, but 2D lights must still work there.
-		bool hasLights2D;
-		bool hasShadows2D;
-		int numLights2D;
+		bool hasLights2D = false;
+		bool hasShadows2D = false;
+		int numLights2D = 0;
 
 		// Shadows (RenderSystemShadows.cpp, docs/rendering/shadows.md). The projective atlas
 		// (directional cascades and spot lights) and the point atlas (cube faces) are depth-only
@@ -1360,6 +1439,9 @@ namespace jasperengine{
 		int lightListCap;
 		// capacity tier the meshes loaded their variants with
 		int lightCapacityTier;
+		// the Lit Quality and the lobe tier the meshes loaded their variants with
+		LitQuality loadedLitQuality;
+		PbrTier loadedPbrTier;
 		// per-draw scratch of drawMesh
 		object_lights_t objectLightsBlock;
 		fs_lighting_t legacyLightingBlock;
@@ -1660,6 +1742,7 @@ namespace jasperengine{
 		void updateMVP(size_t index, Transform& transform, CameraComponent& camera, Transform& cameraTransform);
 
 		void createEmptyTextures();
+		static void destroyEmptyTextures();
 		int checkLightsAndShadow();
 		bool loadLights(int numLights);
 		// the camera part of the lighting (frame block, legacy block) and the shadow uniforms of target for camera
@@ -1671,12 +1754,12 @@ namespace jasperengine{
 		void selectMeshLights(Entity entity, MeshComponent& mesh, const Transform& transform);
 		// the object's lights a submesh variant (its lighting mode and capacity) takes, pixel
 		// lights then vertex lights, as scene light indices
-		void orderObjectLights(const MeshComponent& mesh, uint32_t properties, int order[MAX_LIGHTS_PER_OBJECT], int& pixelCount, int& vertexCount) const;
+		void orderObjectLights(const MeshComponent& mesh, uint64_t properties, int order[MAX_LIGHTS_PER_OBJECT], int& pixelCount, int& vertexCount) const;
 		// the per-object lights block of a submesh variant for the camera pass being drawn
-		void buildObjectLights(const MeshComponent& mesh, uint32_t properties, object_lights_t& block) const;
+		void buildObjectLights(const MeshComponent& mesh, uint64_t properties, object_lights_t& block) const;
 		int passLightCascades(const SceneLight& light) const;
 		// the legacy u_fs_lighting of an older fork: the object's first pixel lights
-		void buildLegacyLighting(const MeshComponent& mesh, uint32_t properties, fs_lighting_t& block) const;
+		void buildLegacyLighting(const MeshComponent& mesh, uint64_t properties, fs_lighting_t& block) const;
 		// the engine-internal members of the frame block (lighting, environment, viewport, fog),
 		// filled by updatePassFrame after the contract members (fillFrameBlock)
 		void fillFrameLighting(frame_t& frame, lit_frame_t& litFrame, const CameraComponent& camera) const;
@@ -1700,6 +1783,9 @@ namespace jasperengine{
 		void updateSkyEnvironment(SkyboxComponent& sky);
 		void updateReflectionProbes(double dt);
 		void renderReflectionProbeCapture();
+		void loadProbeFilter();
+		void destroyProbeFilter();
+		void filterReflectionProbes();
 		void releaseReflectionProbeMaps(ReflectionProbeRuntime& runtime);
 		void destroyReflectionProbe(Entity entity, ReflectionProbeComponent& probe);
 		bool selectReflectionProbe(const Vector3& worldPosition, fs_reflection_probe_t& params, TextureRender*& texture);
@@ -1801,7 +1887,7 @@ namespace jasperengine{
 		void renderUber(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight,
 		                FramebufferRender* destination, const Rect& viewport, bool nearestSource);
 		// the post colour bit of a shader type's variants while the scene's objects load with it
-		uint32_t postColorProperty(ShaderType type) const;
+		uint64_t postColorProperty(ShaderType type) const;
 		// the size of the target a camera's colour pass renders into
 		Vector2 passFrameResolution(const CameraComponent& camera) const;
 		void applyFrameBlock(ObjectRender& render, const ShaderLibraryBindings& bindings);
@@ -1812,9 +1898,11 @@ namespace jasperengine{
 		// (includes/environment.glsl): its reflection probe, else the sky's prefiltered map
 		void applyEnvironment(ObjectRender& render, const ShaderLibraryBindings& bindings, const MeshComponent& mesh, const Transform& transform);
 		// resolves the frame block slots and the custom textures of a loaded shader, then
-		// binds the textures (false while one is still loading)
+		// binds the textures (false while one is still loading); enabledFeatures (the variant's,
+		// ShaderReference::getEnabledFeatures) pick a @texture's default[<DEFINE>]= default
 		bool loadShaderLibraryBindings(ShaderLibraryBindings& bindings, ShaderData& shaderData, ObjectRender& render,
-		                               std::vector<std::pair<std::string, Texture>>& textures, const ShaderManifest* manifest);
+		                               std::vector<std::pair<std::string, Texture>>& textures, const ShaderManifest* manifest,
+		                               const std::vector<std::string>& enabledFeatures = {});
 		// binds the resolved custom textures again (they changed or a render target was redrawn)
 		bool bindShaderTextures(const ShaderLibraryBindings& bindings, ObjectRender& render, std::vector<std::pair<std::string, Texture>>& textures);
 		static bool shaderTexturesOutdated(const ShaderLibraryBindings& bindings, const std::vector<std::pair<std::string, Texture>>& textures);
@@ -1823,6 +1911,16 @@ namespace jasperengine{
 		bool checkPBRFrabebufferUpdate(Material& material);
 		bool checkPBRTextures(Material& material, bool receiveLights);
 		bool loadPBRTextures(Material& material, ShaderData& shaderData, ObjectRender& render, bool receiveLights);
+		// whether the loaded variant has the lobes, maps and hex tiling the material asks for now
+		bool pbrVariantMatches(const Submesh& submesh) const;
+		// LightComponent::resolvedColor and resolvedIntensity of every light (photometric units,
+		// colour temperature, the scene's EV100), where they changed
+		void resolveLights();
+		// the extension maps the submesh's variant binds (Submesh::pbrMaps), false while one loads
+		bool loadPbrExtTextures(Submesh& submesh, ShaderData& shaderData, ObjectRender& render);
+		// u_fs_pbrParams of a lit variant: the material's prefix, the emissive factor times
+		// Material::emissiveStrength
+		static void applyLitMaterialBlock(ObjectRender& render, int slot, const Material& material, unsigned int size);
 		void loadShadowTextures(ShaderData& shaderData, ObjectRender& render, bool receiveLights, bool receiveShadow);
 		void updateShadowBindings();
 		bool loadDepthTexture(Material& material, ShaderData& shaderData, ObjectRender& render);
@@ -2100,7 +2198,11 @@ namespace jasperengine{
 		// a copy of a chain target into a destination framebuffer (the last pass below full size)
 		void renderPostProcessCopy(TextureRender* source, FramebufferRender* destination);
 
-		bool drawUI(UIComponent& ui, Transform& transform, PipelineType pipType);
+		// submesh 0 shows a transparent FluidSimulation output (straight alpha) under the legacy
+		// blending: drawn in the transparent queue, as with a transparent texture
+		bool lendsTransparentFluid(Entity entity, const Submesh& submesh) const;
+		// textureOverride: shown instead of the UI's texture (a FluidSimulation's MATERIAL output)
+		bool drawUI(UIComponent& ui, Transform& transform, PipelineType pipType, TextureRender* textureOverride = nullptr);
 		void destroyUI(Entity entity, UIComponent& ui);
 
 		bool drawPoints(Entity entity, PointsComponent& points, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType);
@@ -2128,7 +2230,7 @@ namespace jasperengine{
 		                         Vector3& fitPosition, Vector3& fitForward);
 		void updatePoints(PointsComponent& points, Transform& transform, CameraComponent& camera, Transform& camTransform);
 		void updateTerrain(TerrainComponent& terrain, const Transform& transform, CameraComponent& camera, const Transform& cameraTransform, TerrainView& view);
-		void updateCameraFrustumPlanes(const Matrix4 viewProjectionMatrix, Plane* frustumPlanes);
+		static void updateCameraFrustumPlanes(const Matrix4 viewProjectionMatrix, Plane* frustumPlanes);
 		void updateInstancedMesh(InstancedMeshComponent& instmesh, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform);
 
 		void sortPoints(PointsComponent& points, Transform& transform, CameraComponent& camera, Transform& camTransform);
@@ -2189,6 +2291,25 @@ namespace jasperengine{
 		// the depth pass alpha-tests the submesh (MASK, or the legacy AUTO + textureShadow);
 		// the editor derives export keys from it, so the rule lives in one place
 		static bool usesAlphaMask(const Material& material, bool textureShadow);
+		// a material drawn by the built-in Lit (or a fork of it) with the transmission lobe: in
+		// the transparent queue, opaque over the scene colour copy it refracts
+		static bool usesPbrTransmission(const Material& material);
+		// The extended lobes, maps and hex tiling the submesh's material asks for with the
+		// lighting of its loaded variant (unlit: hex tiling only), for a tier: what the
+		// inspector and get_material_variant report (the maps it binds, the dropped ones)
+		static PbrVariant getLoadedPbrVariant(const Submesh& submesh, PbrTier tier);
+
+		// the lattice bindings packed into the meshes (LatticeRender::prepare, once a frame)
+		LatticeRenderState& getLatticeState();
+
+		// Planes around the casters that can shadow the surfaces reading a directional cascade:
+		// its receiver slice (the camera's projection cut to the cascade's depths) extruded toward the light
+		// (lightDirection, the way the light travels), widened by the normal offset and the PCF
+		// reach of a shadow atlas slot of slotResolution texels through lightProjection. At most
+		// 18 planes, a box wholly behind one casts nothing there; 0 culls nothing. (Upstream's
+		// receiver culling of the old cascades: S10's shadow passes do not call it yet.)
+		static int getShadowReceiverPlanes(const Matrix4& receiverViewProjection, const Matrix4& lightProjection,
+		                                   unsigned int slotResolution, float normalBias, const Vector3& lightDirection, Plane* planes);
 
 		// Shader variants, derived the same way by loadMesh and by the editor collecting the
 		// variants a build needs (from content, without loading anything on the GPU).
@@ -2208,6 +2329,14 @@ namespace jasperengine{
 		static bool supportsLighting(MaterialLighting mode, const ShaderManifest* manifest);
 		// Whether the lit or unlit shader samples the material's textures
 		static bool checkPBRTextures(const MeshShaderEnvironment& environment, const SubmeshShaderInputs& inputs);
+		// Whether a mesh colour shader ("" built-in, a fork, a library reference) samples the
+		// material's Stochastic Tiling (Material::stochasticTiling): the built-in Lit does; a fork
+		// without manifest lines does when its .frag defines LIT_STOCHASTIC_PARAMS
+		// (ShaderManifest::litStochasticParams; a fork made before the feature does not, nor one
+		// whose files cannot be read); a shader with a manifest never does (a library shader has
+		// its own STOCHASTIC feature). Read from the fork's entry point at runtime and by the
+		// editor alike, so a build ships the variants the game asks for.
+		static bool supportsStochasticTiling(const std::string& shader);
 		MeshShaderEnvironment getMeshShaderEnvironment() const;
 		// capacity tier (4, 8 or 16 lights) of the per-object lights blocks for a scene's
 		// maxLightsPerObject: the light-capacity bits of every lit mesh variant
@@ -2222,7 +2351,12 @@ namespace jasperengine{
 		// pass draws with the library shader's @depth program, else the mesh's depth fork.
 		// A colour variant of a shader with a manifest also carries its resolved blend
 		// mode's BLEND_* define (ShaderReference::getColorVariantReference).
+		// The colour variant's reference takes the built-in Lit's own defines too (litDefines, a
+		// SubmeshShaderVariant's): "builtin:lit#..." for the built-in shader, "<fork>#..." for a
+		// fork of it. Without them: the reference of the shader the material names.
 		static std::string getSubmeshShaderReference(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader);
+		static std::string getSubmeshShaderReference(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader,
+		                                             const std::vector<std::string>& litDefines);
 		static std::string getSubmeshDepthShaderReference(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader);
 		// ---- shader library phase 2 (docs/superpowers/specs/2026-10-10-shader-library-phase2-design.md)
 		// Whether the submesh draws an extra pass: its material names one (a non-empty

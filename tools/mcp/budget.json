@@ -38,9 +38,21 @@
         }
     },
     "exceptions": {
+        "place_with_physics": {
+            "limit": 3609,
+            "reason": "upstream (Physics Placement), predates its merge into oe-port: 3493 chars measured on the upstream sync, 3609 with S31's schema conventions (nested objects say additionalProperties)"
+        },
+        "synthesize_texture": {
+            "limit": 3519,
+            "reason": "upstream (Texture Synthesis), predates its merge into oe-port: 3400 chars measured on the upstream sync, 3519 with S31's schema conventions (nested objects say additionalProperties)"
+        },
+        "edit_lattice": {
+            "limit": 2058,
+            "reason": "upstream (lattice deformer), predates its merge into oe-port: 2030 chars measured on the upstream sync, 2058 with S31's schema conventions (nested objects say additionalProperties)"
+        },
         "edit_animation": {
-            "limit": 2833,
-            "reason": "grandfathered by S31: 2699 chars when the limits were set, +5%"
+            "limit": 3340,
+            "reason": "grandfathered by S31: 2699 chars when the limits were set, +5%; 3340 measured on the upstream sync (upstream's keyframe loop/relative/ping-pong/spin, lattice tracks)"
         },
         "sculpt_terrain": {
             "limit": 2699,
@@ -55,8 +67,8 @@
             "reason": "grandfathered by S31: 2067 chars when the limits were set, +5% (tighter than its HTML UI cap 2400)"
         },
         "create_entity": {
-            "limit": 2083,
-            "reason": "grandfathered by S31: 1984 chars when the limits were set, +5%"
+            "limit": 2196,
+            "reason": "grandfathered by S31: 1984 chars when the limits were set, +5%; 2196 measured on the upstream sync (upstream's types water, fluid_simulation, lattice)"
         },
         "set_sprite_frames": {
             "limit": 2075,
@@ -75,8 +87,8 @@
             "reason": "grandfathered by S31: 1799 chars when the limits were set, +5%"
         },
         "set_terrain_maps": {
-            "limit": 1882,
-            "reason": "grandfathered by S31: 1793 chars when the limits were set, +5%"
+            "limit": 2369,
+            "reason": "grandfathered by S31: 1793 chars when the limits were set, +5%; 2280 measured on the upstream sync (upstream's Stochastic Tiling layers); 2369 with S11's hex_tiling and hex_rotation beside them"
         },
         "inspect_ui": {
             "limit": 1792,
@@ -103,8 +115,8 @@
             "reason": "HTML UI cap (phase 4 §3.6.7 / phase 5 §3.13), tighter than the default; 535 when S31 set the limits"
         },
         "set_ui_effect_time": {
-            "limit": 500,
-            "reason": "HTML UI cap (phase 4 §3.6.7 / phase 5 §3.13), tighter than the default; 269 when S31 set the limits"
+            "limit": 694,
+            "reason": "HTML UI cap (phase 4 §3.6.7 / phase 5 §3.13), tighter than the default; 269 when S31 set the limits; 694 measured on the upstream sync (upstream's fluid pointer_path and splats; its own cap was 750)"
         }
     },
     "core_trades": []

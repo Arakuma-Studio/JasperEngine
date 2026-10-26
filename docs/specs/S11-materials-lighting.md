@@ -640,3 +640,76 @@ The unit tests use S02's gtest framework, in `engine/tests/core/`. The MCP tests
    assumes it.
 9. **CC-BY asset attribution** must ship in `NOTICE.md`. The assets are test-only and never
    packaged into exports; the `.gitattributes` / export filter excludes `engine/tests/`.
+
+## Deviations (implementation record)
+
+Decisions taken while implementing, where the spec was silent, wrong in a detail or in conflict
+with other streams:
+
+1. **Lit Quality is a define, not mesh property bit 5.** S10 (`USE_SHADOWS_HQ`) and S12
+   (`HAS_HEIGHT_FOG`) both claim bit 5, and S12 asks S11 not to. High adds `USE_LIT_QUALITY` to the
+   `builtin:lit#<defines>` reference instead (basename code `Lq`), so a Standard scene, and every
+   variant without it, keeps its key and its preprocessed source (`ShaderZeroCost` hash list
+   unchanged).
+2. **16 textures and 8 uniform blocks.** The scene-colour copy needs a texture slot and the
+   scene-inputs block: transmission variants drop SSAO (they draw in the transparent queue, which
+   has none) and 2D lighting, and a variant in a scene with 2D light shadows reserves one of the 3
+   map slots (`getPbrVariant(..., reservedMaps)`, shown in the Inspector footer and
+   `get_material_variant`). No `u_fs_pbrExt` block: after S12 added `u_fs_heightFog` a lobe
+   variant had no uniform block to spare, so the lobes' values (and, with a second UV set, the
+   UV sets instead of `u_fs_texCoordSets`) are the last members of `u_fs_pbrParams` under
+   `#ifdef PBR_EXT`. The `builtin_lit` matrix checks both limits on six backends.
+3. **13 Khronos models** (§6.7 as verified), goldens written by the MCP test's own scenes
+   (`test_khronos_models`), not by a `tools/fixtures/pbr-extended` scene per model: the fixture
+   keeps the benchmark scenes and the export check. `JASPER_TEST_UPDATE_GOLDEN=1` (S02's name) and
+   `JASPER_RENDER_UPDATE_GOLDEN=1` both write them.
+4. **AC8 furnace on direct light.** The environment split sum is already multiscatter
+   compensated (Standard and High alike), so a uniform-ambient furnace cannot separate them.
+   `test_furnace` lights a rough white metal with the sun only: High is >= 1.15x Standard at
+   roughness 1, within 8% at roughness 0.2.
+5. **`KHR_materials_unlit`** loads as `library:unlit` (Lighting None) rather than a lobe.
+6. **Packed glTF maps** are keyed by model file and image indices (`pack|<layout>|a|b`); S04
+   asset identity was not landed. They are regenerated on load (exports repack at runtime).
+7. **Transmission thickness** is in world units (the glTF value times the node scale is not
+   applied); refraction reads the LDR opaque copy (Risk 4).
+8. **Variant collection** collects the mobile tier's variants too (Android, iOS, HTML5 exports),
+   and both Lit Qualities when a script mentions `litQuality`.
+9. **Lua** exposes flat Material properties (S23's JSON material API had not landed).
+10. **`KHR_xmp`, `KHR_xmp_json_ld`** are read as known (metadata only) and give no warning.
+11. **MCP** `set_terrain_maps` layers take `hexTiling`/`hexRotation`; project setting
+    `graphics.mobile_pbr_tier`.
+12. **AC2 re-save.** The checked-in fixtures were saved by older editors: today's build (with or
+    without S11) rewrites them on a first save (scene keys other streams added, the S03 version
+    line, `maxValues` of what a headless load sees). `test_legacy_resave_identical` therefore
+    checks that a save adds no S11 key to a file that had none and that a second save is
+    identical (shader keys as a set); `Compat.CorpusRoundTrip` covers byte stability of
+    editor-written scenes.
+13. **AC1 golden.** `RenderGpu.LitCube` pins its scene to Standard (its pre-S11 golden matches
+    unchanged); `RenderGpu.LitCubeHigh` has a golden of its own.
+14. **Benchmark fixture** scenes are generated into `build/pbr-extended`
+    (`tools/fixtures/pbr-extended/generate.py`), not checked in (200 spheres are 12 MB of scene
+    file each); `tools/fixtures/pbr-extended-export` is checked in. Its terrain uses an 8-bit
+    height map: a generated 16-bit one is `R16`, which GLES3/WebGL2 cannot sample (a terrain
+    limitation outside S11).
+15. **No mesh property bit, no cache version bump.** S10 took bit 5 (`Shq`) and S12 claims it too;
+    S11 needs none: the lobes, hex tiling and Lit Quality travel as `builtin:lit#<defines>`
+    custom-shader references (`lit_<codes>` basenames), so no existing shader key or cached
+    program changes (the zero-cost hash list proves the defaults preprocess as before). The
+    collector's environment bits for Lit Quality and the mobile tier are 23 and 24 (S10's
+    `shadowsHQ` is 22). The hash list was regenerated once, from oe-port's shader library after
+    S10 had changed the built-in Lit.
+16. **Compat corpus and model images.** A scene holding a model with textures stores them as ids
+    carrying the model file's absolute path (engine behaviour before S11), which a bare decode
+    cannot load; `Compat.CorpusRoundTrip` leaves such scenes out of its byte check (the
+    `pbr-extended-export` Lobes scene holds ClearCoatTest). Maps packed from a model's images
+    (`pack|...`) are never written: the model packs them again when it loads.
+17. **Other streams' goldens.** S10's and S12's render goldens (GPU unit tests, `test_shadows.py`,
+    `test_atmosphere.py`) were drawn before Lit Quality; their scenes now set Standard (the same
+    shader), since a new scene is High.
+18. **AC12 frame stall: deferred to S32.** S11's side is done: a lobe variant compiles on a job
+    (S06), the plain variant draws meanwhile, and the stand-in reloads once the new one is built
+    (a bug left it in place until the next texture change; fixed). What remains is engine-wide:
+    the GL link of a new program on the GL thread (1.2-1.3 s on llvmpipe, the same for variants
+    without S11) and the driver's compile at its first draw; S32 "asynchronous shader/pipeline
+    creation" (KHR_parallel_shader_compile on GL/WebGL2, off-thread Vulkan pipelines, async
+    Metal/D3D11, prewarm) takes it. Measurements: `tools/fixtures/pbr-extended/README.md`.

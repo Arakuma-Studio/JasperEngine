@@ -3,6 +3,8 @@
 
 #include "CommandNames.h"
 
+#include "texture/MaterialPbr.h"
+
 #include "Project.h"
 
 #include <cctype>
@@ -73,6 +75,12 @@ std::string editor::CommandNames::count(size_t count, const std::string& one, co
 }
 
 std::string editor::CommandNames::property(const std::string& propertyName){
+    // a field of a material's extended lobes is named with its lobe ("Clear Coat Roughness")
+    const size_t pbr = propertyName.find(".pbr.");
+    if (pbr != std::string::npos){
+        if (const PbrField* field = MaterialPbr::findField(propertyName.substr(pbr + 5)))
+            return MaterialPbr::getFieldLabel(*field);
+    }
     // the last path segment, without its [index]
     std::string segment = propertyName;
     const size_t dot = segment.rfind('.');

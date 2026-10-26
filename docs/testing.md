@@ -10,7 +10,7 @@ The design and acceptance record is `docs/specs/S02-build-ci-tests.md`.
 | Suite | What it covers | Run it | Results |
 |---|---|---|---|
 | `jasperengine-core-tests` | engine code (`engine/core`, `engine/renders`) against the static engine: ECS, math, registry, shaders, render state, utilities, the job system, allocators and asset I/O; `*Gpu` suites render into a headless device | `tools/build.sh unit-tests` | `build/test-results/core.xml` |
-| `jasperengine-editor-tests` | editor logic (`editor/`): scene serialization (`Stream`), undo (`CommandHistory`, the S24 suites `CommandHistoryTests`, `UndoTimelineTests`, `PrefabUndoTests`, `PlayChangeReviewTests`, `CommandHistoryBench`), the asset database | `tools/build.sh unit-tests` | `build/test-results/editor.xml` |
+| `jasperengine-editor-tests` | editor logic (`editor/`): scene serialization (`Stream`), undo (`CommandHistory`, the S24 suites `CommandHistoryTests`, `UndoTimelineTests`, `PrefabUndoTests`, `PlayChangeReviewTests`, `CommandHistoryBench`), the asset database, Physics Placement, FBX import, texture synthesis; and in `editor/tests/engine/` engine code driven through the editor's shared engine (physics sync and shapes, placement worlds, convex decomposition, actions, shader and texture keys, water, terrain) | `tools/build.sh unit-tests` | `build/test-results/editor.xml` |
 | `jasperengine-htmlui-tests` | the HTML/CSS UI, with its golden images | `tools/build.sh htmlui-tests` (`HTMLUI_BACKEND=vulkan`) | `build/test-results/htmlui-<backend>.xml` |
 | `jasperengine-htmlui-editor-tests` | the HTML UI importers against a local HTTP fixture server | `tools/build.sh htmlui-editor-tests` | `build/test-results/htmlui-editor.xml` |
 | MCP tests | the editor's MCP server, driven like an agent (`tools/mcp/tests/test_*.py`) | `tools/build.sh linux`, then `tools/build.sh mcp-tests -j 2` | `build/test-results/mcp.json` |
@@ -127,6 +127,7 @@ tools/android-emulator-test.sh build/android/app-debug.apk --seconds 30 --forbid
 | `engine/renders/...` | `engine/tests/core/render/...Test.cpp` | `jasperengine-core-tests` |
 | `editor/<area>/X.cpp` | `editor/tests/<area>/XTest.cpp` | `jasperengine-editor-tests` |
 | the HTML UI | `engine/tests/htmlui/` | `jasperengine-htmlui-tests` |
+| `engine/core/<area>/X.cpp` that a test drives through editor scenes (the editor's static `App`, physics worlds, model loads) | `editor/tests/engine/<area>/XTest.cpp` | `jasperengine-editor-tests` |
 | an MCP tool or agent-facing behaviour | `tools/mcp/tests/test_<area>.py`, with `CI = True` | MCP suite |
 
 Both unit-test targets glob `*Test.cpp` under their directory, so a new file needs no CMake

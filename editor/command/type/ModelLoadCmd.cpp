@@ -402,6 +402,11 @@ void editor::ModelLoadCmd::completePendingLoad(uint32_t sceneId, Entity entity){
 }
 
 bool editor::ModelLoadCmd::execute(){
+    // An FBX loads from its import, created here the first time
+    if (!project->prepareModelFile(modelPath)) {
+        return false;
+    }
+
     if (createEntityCmd) {
         if (!createEntityCmd->execute()) {
             return false;
@@ -536,7 +541,7 @@ bool editor::ModelLoadCmd::execute(){
     }
 
     // Synchronous failure — restore old state
-    scene->getComponent<Transform>(entity) = Stream::decodeTransform(oldTransform);
+    restoreTransform(scene);
     scene->getComponent<MeshComponent>(entity) = Stream::decodeMeshComponent(oldMesh);
     scene->getComponent<ModelComponent>(entity) = Stream::decodeModelComponent(oldModel);
     if (oldSubEntitiesDeleteCmd) {
@@ -549,6 +554,13 @@ bool editor::ModelLoadCmd::execute(){
         createEntityCmd->undo();
     }
     return false;
+}
+
+// The parent is not encoded, so the entity stays where it is in the hierarchy
+void editor::ModelLoadCmd::restoreTransform(Scene* scene){
+    Transform& transform = scene->getComponent<Transform>(entity);
+    transform = Stream::decodeTransform(oldTransform, &transform);
+    transform.needUpdate = true;
 }
 
 void editor::ModelLoadCmd::undo(){
@@ -580,7 +592,7 @@ void editor::ModelLoadCmd::undo(){
     }
 
     // Restore old components
-    scene->getComponent<Transform>(entity) = Stream::decodeTransform(oldTransform);
+    restoreTransform(scene);
     scene->getComponent<MeshComponent>(entity) = Stream::decodeMeshComponent(oldMesh);
     scene->getComponent<ModelComponent>(entity) = Stream::decodeModelComponent(oldModel);
 

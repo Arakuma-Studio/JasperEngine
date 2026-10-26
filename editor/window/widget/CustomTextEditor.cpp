@@ -11,6 +11,8 @@
 #include "App.h"
 #include "Backend.h"
 #include "Theme.h"
+#include "htmlui/compat/SupportTables.h"
+#include <set>
 
 #include <algorithm>
 #include <cctype>
@@ -226,9 +228,8 @@ void CustomTextEditor::initializeLanguage() {
             // Add engine builtins (static classes + enums) from auto-generated header
             for (const auto& b : getEngineBuiltinNames()) languageDef.builtinFunctions.insert(b);
             for (const auto& e : getEngineEnumNames()) languageDef.builtinFunctions.insert(e);
+            // --[[ ]] block comments are long brackets after the line comment (multiLineTokenAt)
             languageDef.singleLineComment = "--";
-            languageDef.multiLineCommentStart = "--[[";
-            languageDef.multiLineCommentEnd = "]]";
             break;
 
         case SyntaxLanguage::CMake:
@@ -273,9 +274,8 @@ void CustomTextEditor::initializeLanguage() {
                 "CMAKE_SHARED_LINKER_FLAGS", "CMAKE_STATIC_LINKER_FLAGS",
                 "WIN32", "UNIX", "APPLE", "MSVC", "MINGW", "LINUX"
             };
+            // #[[ ]] block comments are long brackets after the line comment (multiLineTokenAt)
             languageDef.singleLineComment = "#";
-            languageDef.multiLineCommentStart = "#[[";
-            languageDef.multiLineCommentEnd = "]]";
             break;
 
         // HtmlCssLexer tokenizes these, the delimiters only document the language
@@ -376,6 +376,24 @@ void CustomTextEditor::initializeSuggestions() {
     if (isHtmlOrCss()) {
         for (size_t i = 0; i < kRcssPropertyCount; ++i) {
             suggestions->AddSymbol(kRcssProperties[i], SuggestionKind::Property, "RCSS property");
+        }
+    }
+    // HTML element and attribute names from the compat layer's support tables, so new elements
+    // (<list-view>, <markdown>, ...) and attributes (dropzone, tooltip, ...) come with them (S17 R38).
+    // Offered only where a tag or an attribute name goes, see updateSuggestions
+    if (language == SyntaxLanguage::Html) {
+        using ::jasperengine::htmlui::compat::Support;
+        for (const ::jasperengine::htmlui::compat::ElementSupport& row : ::jasperengine::htmlui::compat::elementTable()) {
+            if (row.support == Support::Unsupported || row.support == Support::Ignored) continue;
+            suggestions->AddSymbol(row.name, SuggestionKind::Class, "HTML element");
+        }
+        std::set<std::string> attributes;
+        for (const ::jasperengine::htmlui::compat::AttributeSupport& row : ::jasperengine::htmlui::compat::attributeTable()) {
+            const std::string name = row.name;
+            if (row.support == Support::Unsupported || row.support == Support::Ignored) continue;
+            if (name.find('*') != std::string::npos || !attributes.insert(name).second) continue;
+            const std::string element = row.element;
+            suggestions->AddSymbol(name, SuggestionKind::Field, element == "*" ? "HTML attribute" : "<" + element + "> attribute");
         }
     }
 }
@@ -562,24 +580,12 @@ void CustomTextEditor::ClearExtraCursors() {
     }
 }
 
-void CustomTextEditor::tokenizeLine(int lineIndex) {
-    if (lineIndex < 0 || lineIndex >= static_cast<int>(lines.size())) return;
-
-    while (static_cast<int>(lineTokens.size()) <= lineIndex) {
-        lineTokens.push_back({});
-    }
-
-    lineTokens[lineIndex].clear();
-    const std::string& line = lines[lineIndex];
+void CustomTextEditor::tokenizeText(const std::string& line, OpenToken& open, std::vector<Token>& tokens) const {
+    tokens.clear();
 
     if (isHtmlOrCss()) {
-        // tokenizeAll goes top to bottom, so the previous line's end state is current. An empty
-        // line passes it on unchanged
-        if (static_cast<int>(lineEndStates.size()) < static_cast<int>(lines.size())) {
-            lineEndStates.resize(lines.size());
-        }
-        HtmlCssLexer::State state = lineIndex > 0 ? lineEndStates[lineIndex - 1] : HtmlCssLexer::State();
-        for (const auto& token : HtmlCssLexer::lexLine(htmlCssLanguage(), line, state)) {
+        // The lexer carries its own state; an empty line passes it on unchanged
+        for (const auto& token : HtmlCssLexer::lexLine(htmlCssLanguage(), line, open.html)) {
             TokenType type = TokenType::Default;
             switch (token.kind) {
                 case HtmlCssLexer::Kind::Comment: type = TokenType::Comment; break;
@@ -590,9 +596,17 @@ void CustomTextEditor::tokenizeLine(int lineIndex) {
                 case HtmlCssLexer::Kind::Builtin: type = TokenType::Function; break;
                 case HtmlCssLexer::Kind::Preprocessor: type = TokenType::Preprocessor; break;
             }
-            lineTokens[lineIndex].push_back({token.start, token.length, type});
+            tokens.push_back({token.start, token.length, type});
         }
-        lineEndStates[lineIndex] = state;
+        // What runs on to the next line, so auto-indent leaves the inside of comments and quoted values alone
+        const HtmlCssLexer::State& state = open.html;
+        if (state.inHtmlComment || state.inCssComment || state.styleAttributeInComment) {
+            open.type = TokenType::MultiLineComment;
+        } else if (state.attributeQuote != 0) {
+            open.type = TokenType::String;
+        } else {
+            open.type = TokenType::Default;
+        }
         return;
     }
 
@@ -600,29 +614,6 @@ void CustomTextEditor::tokenizeLine(int lineIndex) {
 
     int i = 0;
     int len = static_cast<int>(line.size());
-    bool inMultiLineComment = false;
-
-    // Check if previous line ends in multi-line comment
-    if (lineIndex > 0) {
-        const auto& prevTokens = lineTokens[lineIndex - 1];
-        for (const auto& token : prevTokens) {
-            if (token.type == TokenType::MultiLineComment) {
-                int tokenEnd = token.start + token.length;
-                if (tokenEnd >= static_cast<int>(lines[lineIndex - 1].size())) {
-                    // Check if multi-line comment was closed
-                    const std::string& prevLine = lines[lineIndex - 1];
-                    std::string tokenText = prevLine.substr(token.start, token.length);
-                    if (!languageDef.multiLineCommentEnd.empty()) {
-                        if (tokenText.find(languageDef.multiLineCommentEnd) == std::string::npos ||
-                            tokenText.rfind(languageDef.multiLineCommentEnd) < 
-                            tokenText.rfind(languageDef.multiLineCommentStart)) {
-                            inMultiLineComment = true;
-                        }
-                    }
-                }
-            }
-        }
-    }
 
     while (i < len) {
         if (std::isspace(static_cast<unsigned char>(line[i]))) {
@@ -630,80 +621,32 @@ void CustomTextEditor::tokenizeLine(int lineIndex) {
             continue;
         }
 
-        // Multi-line comment continuation
-        if (inMultiLineComment) {
+        // A comment or string that can span lines, from the line before or starting here.
+        // It goes before line comments, as Lua's --[[ also starts one
+        int openLength = 0;
+        if (open.type == TokenType::Default) openLength = multiLineTokenAt(line, i, open);
+        if (open.type != TokenType::Default) {
             int start = i;
-            size_t endPos = line.find(languageDef.multiLineCommentEnd, i);
-            if (endPos != std::string::npos) {
-                i = static_cast<int>(endPos + languageDef.multiLineCommentEnd.size());
-                inMultiLineComment = false;
-            } else {
-                i = len;
-            }
-            lineTokens[lineIndex].push_back({start, i - start, TokenType::MultiLineComment});
+            TokenType type = open.type;
+            i = scanOpenToken(line, i + openLength, open);
+            tokens.push_back({start, i - start, type});
             continue;
         }
 
         // Preprocessor (C/C++)
-        if (!languageDef.preprocessorPrefix.empty() && 
+        if (!languageDef.preprocessorPrefix.empty() &&
             line.compare(i, languageDef.preprocessorPrefix.size(), languageDef.preprocessorPrefix) == 0) {
             int start = i;
             i = len;
-            lineTokens[lineIndex].push_back({start, i - start, TokenType::Preprocessor});
+            tokens.push_back({start, i - start, TokenType::Preprocessor});
             continue;
         }
 
         // Single-line comment
         if (!languageDef.singleLineComment.empty() &&
             line.compare(i, languageDef.singleLineComment.size(), languageDef.singleLineComment) == 0) {
-            lineTokens[lineIndex].push_back({i, len - i, TokenType::Comment});
+            tokens.push_back({i, len - i, TokenType::Comment});
             break;
-        }
-
-        // Multi-line comment start
-        if (!languageDef.multiLineCommentStart.empty() &&
-            line.compare(i, languageDef.multiLineCommentStart.size(), languageDef.multiLineCommentStart) == 0) {
-            int start = i;
-            i += static_cast<int>(languageDef.multiLineCommentStart.size());
-            size_t endPos = line.find(languageDef.multiLineCommentEnd, i);
-            if (endPos != std::string::npos) {
-                i = static_cast<int>(endPos + languageDef.multiLineCommentEnd.size());
-            } else {
-                i = len;
-                inMultiLineComment = true;
-            }
-            lineTokens[lineIndex].push_back({start, i - start, TokenType::MultiLineComment});
-            continue;
-        }
-
-        // String literals
-        if (line[i] == '"' || line[i] == '\'') {
-            char quote = line[i];
-            int start = i++;
-            while (i < len && line[i] != quote) {
-                if (line[i] == '\\' && i + 1 < len) {
-                    i += 2;
-                } else {
-                    ++i;
-                }
-            }
-            if (i < len) ++i;
-            lineTokens[lineIndex].push_back({start, i - start, TokenType::String});
-            continue;
-        }
-
-        // Lua long strings [[ ]]
-        if (language == SyntaxLanguage::Lua && line[i] == '[' && i + 1 < len && line[i + 1] == '[') {
-            int start = i;
-            i += 2;
-            size_t endPos = line.find("]]", i);
-            if (endPos != std::string::npos) {
-                i = static_cast<int>(endPos + 2);
-            } else {
-                i = len;
-            }
-            lineTokens[lineIndex].push_back({start, i - start, TokenType::String});
-            continue;
         }
 
         // Numbers
@@ -735,7 +678,7 @@ void CustomTextEditor::tokenizeLine(int lineIndex) {
                     }
                 }
             }
-            lineTokens[lineIndex].push_back({start, i - start, TokenType::Number});
+            tokens.push_back({start, i - start, TokenType::Number});
             continue;
         }
 
@@ -754,7 +697,7 @@ void CustomTextEditor::tokenizeLine(int lineIndex) {
                 type = TokenType::Function;
             }
 
-            lineTokens[lineIndex].push_back({start, i - start, type});
+            tokens.push_back({start, i - start, type});
             continue;
         }
 
@@ -765,12 +708,12 @@ void CustomTextEditor::tokenizeLine(int lineIndex) {
         if (std::strchr(operators, line[i])) {
             int start = i++;
             while (i < len && std::strchr(operators, line[i])) ++i;
-            lineTokens[lineIndex].push_back({start, i - start, TokenType::Operator});
+            tokens.push_back({start, i - start, TokenType::Operator});
             continue;
         }
 
         if (std::strchr(punctuation, line[i])) {
-            lineTokens[lineIndex].push_back({i, 1, TokenType::Punctuation});
+            tokens.push_back({i, 1, TokenType::Punctuation});
             ++i;
             continue;
         }
@@ -779,13 +722,90 @@ void CustomTextEditor::tokenizeLine(int lineIndex) {
         if (static_cast<unsigned char>(line[i]) >= 0x80) {
             int start = i;
             while (i < len && static_cast<unsigned char>(line[i]) >= 0x80) ++i;
-            lineTokens[lineIndex].push_back({start, i - start, TokenType::Default});
+            tokens.push_back({start, i - start, TokenType::Default});
             continue;
         }
 
-        lineTokens[lineIndex].push_back({i, 1, TokenType::Default});
+        tokens.push_back({i, 1, TokenType::Default});
         ++i;
     }
+}
+
+int CustomTextEditor::multiLineTokenAt(const std::string& line, int i, OpenToken& token) const {
+    const std::string& commentStart = languageDef.multiLineCommentStart;
+    if (!commentStart.empty() && line.compare(i, commentStart.size(), commentStart) == 0) {
+        token.type = TokenType::MultiLineComment;
+        token.end = languageDef.multiLineCommentEnd;
+        return static_cast<int>(commentStart.size());
+    }
+
+    // Quoted strings; CMake only quotes with "
+    if (line[i] == '"' || (line[i] == '\'' && language != SyntaxLanguage::CMake)) {
+        token.type = TokenType::String;
+        token.end = std::string(1, line[i]);
+        return 1;
+    }
+
+    if (language == SyntaxLanguage::Cpp) {
+        // Raw strings, R"delim(...)delim", maybe with a u8, u, U or L prefix
+        size_t r = i;
+        if (line.compare(r, 2, "u8") == 0) {
+            r += 2;
+        } else if (line[r] == 'u' || line[r] == 'U' || line[r] == 'L') {
+            ++r;
+        }
+        if (line.compare(r, 2, "R\"") != 0) return 0;
+        size_t paren = line.find('(', r + 2);
+        if (paren == std::string::npos || paren - r - 2 > 16) return 0;
+        std::string delimiter = line.substr(r + 2, paren - r - 2);
+        if (delimiter.find_first_of(" )\\\t\v\f") != std::string::npos) return 0;
+        token.type = TokenType::String;
+        token.end = ")" + delimiter + "\"";
+        return static_cast<int>(paren) + 1 - i;
+    }
+
+    if (language == SyntaxLanguage::Lua || language == SyntaxLanguage::CMake) {
+        // Long brackets, [[ ]], [=[ ]=] and so on, make strings, or comments after the comment marker
+        const std::string& marker = languageDef.singleLineComment;
+        size_t first = (line.compare(i, marker.size(), marker) == 0) ? i + marker.size() : i;
+        size_t second = first + 1;
+        while (second < line.size() && line[second] == '=') ++second;
+        if (first >= line.size() || line[first] != '[' || second >= line.size() || line[second] != '[') return 0;
+        token.type = (first > static_cast<size_t>(i)) ? TokenType::MultiLineComment : TokenType::String;
+        token.end = "]" + std::string(second - first - 1, '=') + "]";
+        return static_cast<int>(second) + 1 - i;
+    }
+    return 0;
+}
+
+int CustomTextEditor::scanOpenToken(const std::string& line, int i, OpenToken& open) const {
+    int len = static_cast<int>(line.size());
+    if (open.end != "\"" && open.end != "'") {
+        size_t endPos = line.find(open.end, i);
+        if (endPos == std::string::npos) return len;
+        i = static_cast<int>(endPos + open.end.size());
+        open = OpenToken();
+        return i;
+    }
+
+    // Quoted strings skip escapes, and run on past the line end after a backslash, Lua's \z, or in CMake
+    bool skipping = false;
+    while (i < len) {
+        if (line[i] == open.end[0]) {
+            open = OpenToken();
+            return i + 1;
+        }
+        if (line[i] == '\\') {
+            if (i + 1 == len) return len;
+            skipping = (language == SyntaxLanguage::Lua && line[i + 1] == 'z');
+            i += 2;
+        } else {
+            if (!std::isspace(static_cast<unsigned char>(line[i]))) skipping = false;
+            ++i;
+        }
+    }
+    if (!skipping && language != SyntaxLanguage::CMake) open = OpenToken();
+    return len;
 }
 
 void CustomTextEditor::tokenizeAll() {
@@ -796,8 +816,10 @@ void CustomTextEditor::tokenizeAll() {
     // Every line is retokenized after an edit, so a changed end state reaches the lines below
     lineEndStates.clear();
     if (isHtmlOrCss()) lineEndStates.resize(lines.size());
+    OpenToken open;
     for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
-        tokenizeLine(i);
+        tokenizeText(lines[i], open, lineTokens[i]);
+        if (isHtmlOrCss()) lineEndStates[i] = open.html;
     }
 }
 
@@ -815,6 +837,17 @@ bool CustomTextEditor::atCssPropertyName(const TextPosition& wordStart) const {
     // The state right before the word tells where it is
     HtmlCssLexer::lexLine(htmlCssLanguage(), lines[wordStart.line].substr(0, wordStart.column), state);
     return HtmlCssLexer::expectsCssProperty(htmlCssLanguage(), state);
+}
+
+HtmlCssLexer::NamePosition CustomTextEditor::htmlNamePosition(const TextPosition& wordStart) const {
+    if (language != SyntaxLanguage::Html || wordStart.line < 0 || wordStart.line >= static_cast<int>(lines.size())) {
+        return HtmlCssLexer::NamePosition::None;
+    }
+    HtmlCssLexer::State state;
+    if (wordStart.line > 0 && wordStart.line - 1 < static_cast<int>(lineEndStates.size())) {
+        state = lineEndStates[wordStart.line - 1];
+    }
+    return HtmlCssLexer::htmlNamePosition(lines[wordStart.line], wordStart.column, state);
 }
 
 TokenType CustomTextEditor::classifyWord(const std::string& word) const {
@@ -835,14 +868,12 @@ static TextPosition adjustPosAfterDelete(const TextPosition& pos, const TextPosi
     return TextPosition(pos.line - (delEnd.line - delStart.line), pos.column);
 }
 
-static TextPosition adjustPosAfterInsert(const TextPosition& pos, const TextPosition& insertPos, const TextPosition& afterPos) {
+static TextPosition adjustPosAfterInsert(const TextPosition& pos, const TextPosition& insertPos, const TextPosition& afterPos, int removed = 0) {
     if (pos < insertPos) return pos;
     int deltaLines = afterPos.line - insertPos.line;
     if (pos.line == insertPos.line) {
-        if (deltaLines > 0) {
-            return TextPosition(pos.line + deltaLines, pos.column - insertPos.column + afterPos.column);
-        }
-        return TextPosition(pos.line, pos.column + (afterPos.column - insertPos.column));
+        // Positions in the whitespace that auto-indent removed after insertPos collapse onto afterPos
+        return TextPosition(pos.line + deltaLines, afterPos.column + std::max(0, pos.column - insertPos.column - removed));
     }
     return TextPosition(pos.line + deltaLines, pos.column);
 }
@@ -853,10 +884,10 @@ static void adjustCursorAfterDelete(Cursor& cursor, const TextPosition& delStart
     cursor.selection.end = adjustPosAfterDelete(cursor.selection.end, delStart, delEnd);
 }
 
-static void adjustCursorAfterInsert(Cursor& cursor, const TextPosition& insertPos, const TextPosition& afterPos) {
-    cursor.position = adjustPosAfterInsert(cursor.position, insertPos, afterPos);
-    cursor.selection.start = adjustPosAfterInsert(cursor.selection.start, insertPos, afterPos);
-    cursor.selection.end = adjustPosAfterInsert(cursor.selection.end, insertPos, afterPos);
+static void adjustCursorAfterInsert(Cursor& cursor, const TextPosition& insertPos, const TextPosition& afterPos, int removed = 0) {
+    cursor.position = adjustPosAfterInsert(cursor.position, insertPos, afterPos, removed);
+    cursor.selection.start = adjustPosAfterInsert(cursor.selection.start, insertPos, afterPos, removed);
+    cursor.selection.end = adjustPosAfterInsert(cursor.selection.end, insertPos, afterPos, removed);
 }
 
 void CustomTextEditor::InsertText(const std::string& text, bool allowAutoIndent) {
@@ -884,15 +915,15 @@ void CustomTextEditor::InsertText(const std::string& text, bool allowAutoIndent)
         }
 
         TextPosition insertPos = cursor.position;
-        insertTextAtCursor(cursor, text, allowAutoIndent);
-        TextPosition afterPos = cursor.position;
+        int removed = 0;
+        TextPosition afterPos = insertTextAtCursor(cursor, text, allowAutoIndent, &removed);
 
         // Adjust all subsequent cursors for the insertion
         for (size_t j = idx + 1; j < order.size(); ++j) {
-            adjustCursorAfterInsert(cursors[order[j]], insertPos, afterPos);
+            adjustCursorAfterInsert(cursors[order[j]], insertPos, afterPos, removed);
         }
         if (showParamHint) {
-            paramHintAnchor = adjustPosAfterInsert(paramHintAnchor, insertPos, afterPos);
+            paramHintAnchor = adjustPosAfterInsert(paramHintAnchor, insertPos, afterPos, removed);
         }
     }
 
@@ -912,9 +943,12 @@ void CustomTextEditor::SetTextUndoable(const std::string& text) {
     finalizeUndoRecord();
 }
 
-void CustomTextEditor::insertTextAtCursor(Cursor& cursor, const std::string& text, bool allowAutoIndent) {
+TextPosition CustomTextEditor::insertTextAtCursor(Cursor& cursor, const std::string& text, bool allowAutoIndent, int* removed) {
     int line = cursor.position.line;
     int col = cursor.position.column;
+    // Set when a block is broken open and the text after the cursor goes to the next line
+    int tailColumn = -1;
+    int stripped = 0;
 
     for (char c : text) {
         if (c == '\n') {
@@ -928,18 +962,37 @@ void CustomTextEditor::insertTextAtCursor(Cursor& cursor, const std::string& tex
             ++line;
             col = 0;
 
-            if (autoIndent && allowAutoIndent && line > 0) {
+            if (autoIndent && allowAutoIndent) {
                 int indent = getLineIndent(line - 1);
-                // Increase indent after { or :
-                if (!before.empty()) {
-                    char lastChar = before.back();
-                    if (lastChar == '{' || lastChar == ':') {
+                OpenToken state = lineStartState(line - 1);
+                std::vector<Token> tokens;
+                tokenizeText(before, state, tokens);
+
+                // Only code gets block indents. With just whitespace before the cursor, or inside
+                // a comment or string that spans lines, the line moves down as it is
+                if (before.find_first_not_of(" \t") != std::string::npos && state.type == TokenType::Default) {
+                    int blanks = static_cast<int>(std::min(after.find_first_not_of(" \t"), after.size()));
+                    after.erase(0, blanks);
+                    stripped += blanks;
+
+                    bool opens = opensBlock(before, tokens);
+                    bool closes = closesBlock(after);
+                    if (opens && closes) {
+                        // Break the block open: an indented line for the content and one for the closer
+                        lines.insert(lines.begin() + line + 1, std::string(indent, ' ') + after);
+                        after.clear();
+                        tailColumn = indent;
+                    }
+
+                    if (opens) {
                         indent += tabSize;
+                    } else if (closes) {
+                        indent = std::max(0, indent - tabSize);
                     }
                 }
-                std::string indentStr(indent, ' ');
-                lines[line] = indentStr + lines[line];
-                col = static_cast<int>(indentStr.size());
+
+                lines[line] = std::string(indent, ' ') + after;
+                col = indent;
             }
         } else if (c == '\t') {
             int visualCol = byteOffsetToVisualColumn(line, col);
@@ -958,6 +1011,9 @@ void CustomTextEditor::insertTextAtCursor(Cursor& cursor, const std::string& tex
     cursor.selection.start = cursor.position;
     cursor.selection.end = cursor.position;
     cursor.preferredColumn = byteOffsetToVisualColumn(line, col);
+
+    if (removed) *removed = stripped;
+    return (tailColumn >= 0) ? TextPosition(line + 1, tailColumn) : cursor.position;
 }
 
 void CustomTextEditor::DeleteSelection() {
@@ -1508,6 +1564,160 @@ int CustomTextEditor::getLineIndent(int lineIndex) const {
         }
     }
     return indent;
+}
+
+OpenToken CustomTextEditor::lineStartState(int lineIndex) const {
+    // Scans from the top, since lineTokens can be behind in the middle of an edit
+    OpenToken state;
+    std::vector<Token> tokens;
+    for (int i = 0; i < lineIndex && i < static_cast<int>(lines.size()); ++i) {
+        tokenizeText(lines[i], state, tokens);
+    }
+    return state;
+}
+
+bool CustomTextEditor::opensBlock(const std::string& text, const std::vector<Token>& tokens) const {
+    std::string last;
+    int blocks = 0;
+    for (const Token& token : tokens) {
+        if (token.type == TokenType::Comment || token.type == TokenType::MultiLineComment) continue;
+        last = text.substr(token.start, token.length);
+
+        // Lua blocks are counted, so "if x then return end" opens none
+        if (language == SyntaxLanguage::Lua && token.type == TokenType::Keyword) {
+            if (last == "function" || last == "then" || last == "do" || last == "repeat") {
+                ++blocks;
+            } else if (last == "else") {
+                blocks = std::max(blocks, 1);
+            } else if (last == "elseif" || last == "end" || last == "until") {
+                blocks = std::max(blocks - 1, 0);
+            }
+        }
+    }
+
+    if (isHtmlOrCss()) {
+        // HtmlCssLexer leaves punctuation between its tokens: the last character outside a comment counts
+        last.clear();
+        for (int i = static_cast<int>(text.size()) - 1; i >= 0; --i) {
+            if (std::isspace(static_cast<unsigned char>(text[i]))) continue;
+            const Token* in = nullptr;
+            for (const Token& token : tokens) {
+                if (i >= token.start && i < token.start + token.length) {
+                    in = &token;
+                    break;
+                }
+            }
+            if (!in) {
+                last = std::string(1, text[i]);
+            } else if (in->type == TokenType::Comment || in->type == TokenType::MultiLineComment) {
+                i = in->start;
+                continue;
+            } else {
+                last = text.substr(in->start, in->length);
+            }
+            break;
+        }
+    }
+
+    if (last == "{" || last == "(" || last == "[") return true;
+    // Labels, access specifiers and case
+    if (last == ":" && language != SyntaxLanguage::Lua) return true;
+    return blocks > 0;
+}
+
+bool CustomTextEditor::closesBlock(const std::string& text) const {
+    size_t start = text.find_first_not_of(" \t");
+    if (start == std::string::npos) return false;
+    if (text[start] == '}' || text[start] == ')' || text[start] == ']') return true;
+    if (language != SyntaxLanguage::Lua) return false;
+
+    size_t end = start;
+    while (end < text.size() && isWordChar(text[end])) ++end;
+    std::string word = text.substr(start, end - start);
+    return word == "end" || word == "else" || word == "elseif" || word == "until";
+}
+
+int CustomTextEditor::openingBracketLine(const TextPosition& closer) const {
+    char closeChar = lines[closer.line][closer.column];
+    char openChar = getMatchingBracket(closeChar);
+    int depth = 0;
+    for (int i = closer.line; i >= 0; --i) {
+        const std::string& text = lines[i];
+        const std::vector<Token>& tokens = lineTokens[i];
+        int end = (i == closer.line) ? closer.column : static_cast<int>(text.size());
+        for (int c = end - 1; c >= 0; --c) {
+            if (text[c] != closeChar && text[c] != openChar) continue;
+            // Brackets in strings and comments aren't punctuation tokens. HtmlCssLexer
+            // leaves punctuation out of its tokens, so there a bracket outside one is code too
+            bool code = true;
+            for (const Token& token : tokens) {
+                if (c >= token.start && c < token.start + token.length) {
+                    code = token.type == TokenType::Punctuation;
+                    break;
+                }
+            }
+            if (!code) continue;
+            if (text[c] == closeChar) {
+                ++depth;
+            } else {
+                if (depth == 0) return i;
+                --depth;
+            }
+        }
+    }
+    return -1;
+}
+
+void CustomTextEditor::reindentAfterTyping(int typedLength) {
+    if (!autoIndent) return;
+
+    bool changed = false;
+    for (size_t i = 0; i < cursors.size(); ++i) {
+        int lineIndex = cursors[i].position.line;
+        int typedColumn = cursors[i].position.column - typedLength;
+        if (typedColumn < 0) continue;
+
+        // Only when the typed text makes the line start with a closer, or stop doing so
+        std::string& line = lines[lineIndex];
+        std::string before = line;
+        before.erase(typedColumn, typedLength);
+        bool closes = closesBlock(line);
+        if (closes == closesBlock(before)) continue;
+
+        int indentEnd = static_cast<int>(std::min(line.find_first_not_of(" \t"), line.size()));
+        // A closer gets its indent back only by growing into a longer word, as "end" into "endpoint"
+        if (!closes && typedColumn <= indentEnd) continue;
+        // Keep "else" outdented while it becomes "elseif"
+        if (!closes && line.compare(indentEnd, 5, "elsei") == 0) continue;
+        // The inside of a comment or string that spans lines is text, not code
+        if (lineStartState(lineIndex).type != TokenType::Default) continue;
+
+        // The line above sets the indent, one level deeper if it opens a block
+        int indent = 0;
+        for (int prev = lineIndex - 1; prev >= 0; --prev) {
+            if (lines[prev].find_first_not_of(" \t") == std::string::npos) continue;
+            indent = getLineIndent(prev) + (opensBlock(lines[prev], lineTokens[prev]) ? tabSize : 0);
+            break;
+        }
+        if (closes) {
+            // A bracket lines up with the line that opened it
+            int opener = isCloseBracket(line[indentEnd]) ? openingBracketLine(TextPosition(lineIndex, indentEnd)) : -1;
+            indent = (opener >= 0) ? getLineIndent(opener) : std::max(0, indent - tabSize);
+        }
+        if (indent == getLineIndent(lineIndex)) continue;
+
+        line = std::string(indent, ' ') + line.substr(indentEnd);
+        for (auto& cursor : cursors) {
+            adjustCursorAfterDelete(cursor, TextPosition(lineIndex, 0), TextPosition(lineIndex, indentEnd));
+            adjustCursorAfterInsert(cursor, TextPosition(lineIndex, 0), TextPosition(lineIndex, indent));
+            if (cursor.position.line == lineIndex) cursor.preferredColumn = -1;
+        }
+        // Later cursors read the tokens
+        tokenizeAll();
+        changed = true;
+    }
+
+    if (changed) finalizeUndoRecord();
 }
 
 void CustomTextEditor::ensureValidCursors() {
@@ -2638,6 +2848,17 @@ void CustomTextEditor::updateSuggestions(bool manualInvoke) {
                                                 [](const SuggestionItem& item) { return item.kind == SuggestionKind::Property; }),
                                  currentSuggestions.end());
     }
+    // HTML element names right after "<" or "</", attribute names inside a tag
+    if (language == SyntaxLanguage::Html) {
+        const HtmlCssLexer::NamePosition where = htmlNamePosition(autoCompleteAnchor);
+        currentSuggestions.erase(std::remove_if(currentSuggestions.begin(), currentSuggestions.end(),
+                                                [where](const SuggestionItem& item) {
+                                                    if (item.kind == SuggestionKind::Class) return where != HtmlCssLexer::NamePosition::Tag;
+                                                    if (item.kind == SuggestionKind::Field) return where != HtmlCssLexer::NamePosition::Attribute;
+                                                    return false;
+                                                }),
+                                 currentSuggestions.end());
+    }
 
     // Close the popup if filtering (e.g. backspace) left nothing to show
     if (showAutoComplete && currentSuggestions.empty()) {
@@ -3044,44 +3265,9 @@ void CustomTextEditor::handleKeyboardInput() {
 
     if (ImGui::IsKeyPressed(ImGuiKey_Enter)) {
         if (!showAutoComplete) {
-            bool handled = false;
-
-            // Smart Enter for brackets
-            if (cursors.size() == 1) {
-                const auto& cursor = cursors[0];
-                if (cursor.selection.isEmpty() && cursor.position.column > 0) {
-                    char prevChar = getCharAt(TextPosition(cursor.position.line, cursor.position.column - 1));
-                    char nextChar = getCharAt(cursor.position);
-
-                    if ((prevChar == '{' && nextChar == '}') ||
-                        (prevChar == '[' && nextChar == ']') ||
-                        (prevChar == '(' && nextChar == ')')) {
-
-                        // Break the brackets open: an indented line for the content
-                        // and one for the closing bracket
-                        InsertText("\n", true);
-                        InsertText("\n", false);
-
-                        int closingBracketLine = cursors[0].position.line;
-                        int parentLine = closingBracketLine - 2;
-
-                        if (parentLine >= 0) {
-                            SetCursorPosition(closingBracketLine, 0);
-                            InsertText(std::string(getLineIndent(parentLine), ' '), false);
-
-                            int contentLine = closingBracketLine - 1;
-                            SetCursorPosition(contentLine, static_cast<int>(lines[contentLine].size()));
-                        }
-
-                        handled = true;
-                    }
-                }
-            }
-
-            if (!handled) {
-                InsertText("\n");
-                scrollToCursor();
-            }
+            // Auto-indent breaks a block open, as between brackets or "then" and "end"
+            InsertText("\n");
+            scrollToCursor();
         }
     }
 
@@ -3418,6 +3604,7 @@ void CustomTextEditor::handleTextInput() {
                 }
 
                 InsertText(utf8);
+                reindentAfterTyping(static_cast<int>(std::strlen(utf8)));
 
                 // Auto-close brackets
                 if (c == '(' || c == '[' || c == '{') {

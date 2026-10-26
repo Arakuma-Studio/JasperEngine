@@ -15,6 +15,8 @@
 #include <mutex>
 #include <unordered_map>
 
+#include "meshoptimizer.h"
+
 // Sokol never sets TRANSFER_SRC, needed to copy render targets out for editor
 // thumbnails (GraphicUtils). Wrapping the call keeps sokol itself unpatched
 // (re-check when sokol_gfx is updated)
@@ -108,68 +110,6 @@ namespace {
             case SG_PIXELFORMAT_RGBA32F: return 16;
             default: return 4;
         }
-    }
-
-    // A 16-bit single-channel image (ColorFormat::RED16: terrain heightmaps) as the GPU can
-    // sample and filter it. GLES3 and WebGL2 have no 16-bit unorm textures (R16), so there it
-    // goes up as R32F where floats filter (exact), else as R16F, which filters everywhere
-    // (11 significant bits: steps of 1/2048 of the height range at the top)
-    sg_pixel_format red16PixelFormat(){
-        const sg_pixelformat_info r16 = sg_query_pixelformat(SG_PIXELFORMAT_R16);
-        if (r16.sample && r16.filter)
-            return SG_PIXELFORMAT_R16;
-        const sg_pixelformat_info r32f = sg_query_pixelformat(SG_PIXELFORMAT_R32F);
-        if (r32f.sample && r32f.filter)
-            return SG_PIXELFORMAT_R32F;
-        return SG_PIXELFORMAT_R16F;
-    }
-
-    // IEEE half of a float in 0..1 (round to nearest even, subnormals kept)
-    uint16_t halfFromFloat(float value){
-        uint32_t bits;
-        std::memcpy(&bits, &value, sizeof(bits));
-        const uint32_t sign = (bits >> 16) & 0x8000u;
-        const int32_t exponent = (int32_t)((bits >> 23) & 0xffu) - 127 + 15;
-        uint32_t mantissa = bits & 0x7fffffu;
-        if (exponent >= 31)
-            return (uint16_t)(sign | 0x7c00u);
-        uint32_t half;
-        uint32_t rest;
-        uint32_t halfway;
-        if (exponent <= 0){
-            if (exponent < -10)
-                return (uint16_t)sign;
-            mantissa |= 0x800000u;
-            const uint32_t shift = (uint32_t)(14 - exponent);
-            half = mantissa >> shift;
-            rest = mantissa & ((1u << shift) - 1u);
-            halfway = 1u << (shift - 1u);
-        }else{
-            half = ((uint32_t)exponent << 10) | (mantissa >> 13);
-            rest = mantissa & 0x1fffu;
-            halfway = 0x1000u;
-        }
-        if (rest > halfway || (rest == halfway && (half & 1u)))
-            half++;
-        return (uint16_t)(sign | half);
-    }
-
-    // RED16 texels (uint16) as `format`'s (R32F or R16F); malloc'd, the caller frees it
-    void* convertRed16(const void* data, size_t size, sg_pixel_format format, size_t& convertedSize){
-        const size_t count = size / sizeof(uint16_t);
-        const uint16_t* source = static_cast<const uint16_t*>(data);
-        if (format == SG_PIXELFORMAT_R32F){
-            convertedSize = count * sizeof(float);
-            float* out = static_cast<float*>(std::malloc(convertedSize));
-            for (size_t i = 0; i < count; i++)
-                out[i] = (float)source[i] / 65535.0f;
-            return out;
-        }
-        convertedSize = count * sizeof(uint16_t);
-        uint16_t* out = static_cast<uint16_t*>(std::malloc(convertedSize));
-        for (size_t i = 0; i < count; i++)
-            out[i] = halfFromFloat((float)source[i] / 65535.0f);
-        return out;
     }
 
     // a full mip chain is ~4/3 of the base level
@@ -395,6 +335,34 @@ sg_image SokolTexture::generateMipmaps(const sg_image_desc* desc_){
     return img;
 }
 
+// GLES3 and WebGL2 have no unorm16 textures (sokol reports R16 unsupported there),
+// so 16-bit heightmaps go up as R32F where float textures filter, else as R16F,
+// which always does. Returns the converted pixels, freed once the image is made.
+static void* unorm16ToFloat(sg_image_desc* desc){
+    const uint16_t* source = (const uint16_t*)desc->data.mip_levels[0].ptr;
+    const size_t count = desc->data.mip_levels[0].size / sizeof(uint16_t);
+
+    if (sg_query_pixelformat(SG_PIXELFORMAT_R32F).filter){
+        float* target = (float*)malloc(count * sizeof(float));
+        for (size_t i = 0; i < count; i++){
+            target[i] = source[i] / 65535.0f;
+        }
+        desc->pixel_format = SG_PIXELFORMAT_R32F;
+        desc->data.mip_levels[0].ptr = target;
+        desc->data.mip_levels[0].size = count * sizeof(float);
+        return target;
+    }
+
+    uint16_t* target = (uint16_t*)malloc(count * sizeof(uint16_t));
+    for (size_t i = 0; i < count; i++){
+        target[i] = meshopt_quantizeHalf(source[i] / 65535.0f);
+    }
+    desc->pixel_format = SG_PIXELFORMAT_R16F;
+    desc->data.mip_levels[0].ptr = target;
+    desc->data.mip_levels[0].size = count * sizeof(uint16_t);
+    return target;
+}
+
 bool SokolTexture::createTexture(
             const std::string& label, int width, int height,
             ColorFormat colorFormat, TextureType type, int numFaces, void* data[], size_t size[], 
@@ -406,7 +374,7 @@ bool SokolTexture::createTexture(
     }else if (colorFormat == ColorFormat::RED){
         pixelFormat = SG_PIXELFORMAT_R8;
     }else if (colorFormat == ColorFormat::RED16){
-        pixelFormat = red16PixelFormat();
+        pixelFormat = SG_PIXELFORMAT_R16;
     }else{
         Log::error("Renders only support 8bpp, 16bpp and 32bpp textures");
     }
@@ -425,17 +393,6 @@ bool SokolTexture::createTexture(
     sampler_desc.mipmap_filter = getFilterMipmap(minFilter);
     sampler_desc.wrap_u = getWrap(wrapU);
     sampler_desc.wrap_v = getWrap(wrapV);
-
-    // a heightmap where R16 cannot be sampled: its texels as floats (freed with the upload)
-    void* convertedData[6] = {};
-    size_t convertedSize[6] = {};
-    if (colorFormat == ColorFormat::RED16 && pixelFormat != SG_PIXELFORMAT_R16 && numFaces <= 6){
-        for (int f = 0; f < numFaces; f++){
-            convertedData[f] = convertRed16(data[f], size[f], pixelFormat, convertedSize[f]);
-        }
-        data = convertedData;
-        size = convertedSize;
-    }
 
     // all faces of a mip level must be in one contiguous memory block
     unsigned char* combined = NULL;
@@ -457,6 +414,11 @@ bool SokolTexture::createTexture(
         image_desc.data.mip_levels[0].size = size[0];
     }
 
+    void* converted = NULL;
+    if (pixelFormat == SG_PIXELFORMAT_R16 && !sg_query_pixelformat(SG_PIXELFORMAT_R16).filter){
+        converted = unorm16ToFloat(&image_desc);
+    }
+
     if (sampler_desc.mipmap_filter == SG_FILTER_LINEAR || sampler_desc.mipmap_filter == SG_FILTER_NEAREST){
         image = generateMipmaps(&image_desc);
     }else{
@@ -472,10 +434,8 @@ bool SokolTexture::createTexture(
     if (combined){
         SystemRender::scheduleCleanup(std::free, combined);
     }
-    for (void* converted : convertedData){
-        if (converted){
-            SystemRender::scheduleCleanup(std::free, converted);
-        }
+    if (converted){
+        SystemRender::scheduleCleanup(std::free, converted);
     }
     if (Engine::isAsyncThread()){
         sampler = SokolCmdQueue::add_command_make_sampler(sampler_desc);
@@ -728,7 +688,7 @@ void SokolTexture::createTextureView(const char* label){
 bool SokolTexture::createFramebufferTexture(
             TextureType type, bool depth, bool shadowMap, int width, int height,
             TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV,
-            ColorFormat colorFormat, int sampleCount, bool depthStencil, bool resolve){
+            ColorFormat colorFormat, int sampleCount, bool depthStencil, bool resolve, int numMipmaps){
     sg_image_desc img_desc = {0};
     if (depth){
         img_desc.usage.depth_stencil_attachment = true;
@@ -758,6 +718,8 @@ bool SokolTexture::createFramebufferTexture(
 
     //if not set Sokol gets default from sg_desc.context.sample_count
     img_desc.sample_count = (sampleCount > 1 && !resolve) ? sampleCount : 1;
+    // levels a pass each renders into (multisampled images have one)
+    img_desc.num_mipmaps = (!depth && img_desc.sample_count == 1 && numMipmaps > 1) ? numMipmaps : 1;
 
     if (depth){
         // DEPTH_STENCIL: GL/GLES3 DEPTH24_STENCIL8, D3D11 R24G8_TYPELESS (D24S8 to draw, depth
@@ -776,6 +738,10 @@ bool SokolTexture::createFramebufferTexture(
             img_desc.pixel_format = SG_PIXELFORMAT_RGBA32F;
         }else if (colorFormat == ColorFormat::R32F){
             img_desc.pixel_format = SG_PIXELFORMAT_R32F;
+        }else if (colorFormat == ColorFormat::RG16F){
+            img_desc.pixel_format = SG_PIXELFORMAT_RG16F;
+        }else if (colorFormat == ColorFormat::R16F){
+            img_desc.pixel_format = SG_PIXELFORMAT_R16F;
         }else{
             img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
         }

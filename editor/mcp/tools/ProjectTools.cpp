@@ -34,6 +34,7 @@
 #include "Project.h"
 #include "registry/TagManager.h"
 #include "util/CxxStandards.h"
+#include "util/FileUtils.h"
 #include "window/CodeEditor.h"
 #include "window/ConsoleWindow.h"
 #include "window/ProjectWindow.h"
@@ -70,7 +71,7 @@ std::string lowerText(std::string text) {
 
 std::string relText(Project* project, const fs::path& path) {
     if (path.empty()) return {};
-    return project->normalizeToProjectRelative(path).generic_string();
+    return FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(path));
 }
 
 // ------------------------------------------------------------------ scenes in build
@@ -132,7 +133,7 @@ Json projectSummary(McpContext& ctx) {
     Project* project = ctx.project();
     Json data;
     data["name"] = project->getName();
-    data["path"] = project->getProjectPath().generic_string();
+    data["path"] = FileUtils::pathToGenericUtf8(project->getProjectPath());
     data["temporary"] = project->isTempProject();
     data["unsaved"] = {
         {"scenes", Json::array()},
@@ -147,13 +148,13 @@ Json projectSummary(McpContext& ctx) {
     const uint32_t start = effectiveStartScene(project);
     data["start_scene_id"] = start == NULL_PROJECT_SCENE ? Json(nullptr) : Json(start);
     data["selected_scene_id"] = project->getSelectedSceneId();
-    data["assets_dir"] = project->getAssetsDir().generic_string();
-    data["lua_dir"] = project->getLuaDir().generic_string();
+    data["assets_dir"] = FileUtils::pathToGenericUtf8(project->getAssetsDir());
+    data["lua_dir"] = FileUtils::pathToGenericUtf8(project->getLuaDir());
     data["script_dirs"] = Json::array();
-    for (const fs::path& dir : project->getScriptDirs()) data["script_dirs"].push_back(dir.generic_string());
+    for (const fs::path& dir : project->getScriptDirs()) data["script_dirs"].push_back(FileUtils::pathToGenericUtf8(dir));
     data["cxx_standard"] = project->getCxxStandard();
     data["standalone_prefabs"] = Json::array();
-    for (const fs::path& prefab : project->getStandalonePrefabs()) data["standalone_prefabs"].push_back(prefab.generic_string());
+    for (const fs::path& prefab : project->getStandalonePrefabs()) data["standalone_prefabs"].push_back(FileUtils::pathToGenericUtf8(prefab));
     std::error_code ec;
     data["has_project_build_file"] = fs::exists(project->getProjectPath() / "ProjectBuild.cmake", ec);
     data["physics"] = {{"enabled_2d", project->isPhysics2DEnabled()}, {"enabled_3d", project->isPhysics3DEnabled()}};
@@ -307,7 +308,7 @@ void switchProjectTool(const CallPtr& call, bool create) {
                           : "path is required: the project directory or its project.yaml (absolute).");
         return;
     }
-    fs::path path(pathText);
+    fs::path path = FileUtils::pathFromUtf8(pathText);
     if (!path.is_absolute()) {
         call->fail("path must be absolute: \"" + pathText + "\".");
         return;
@@ -317,17 +318,17 @@ void switchProjectTool(const CallPtr& call, bool create) {
     std::error_code ec;
     if (create) {
         if (fs::exists(path / "project.yaml", ec)) {
-            call->fail("A project already exists in " + path.generic_string() + ": use open_project.");
+            call->fail("A project already exists in " + FileUtils::pathToGenericUtf8(path) + ": use open_project.");
             return;
         }
         if (fs::exists(path, ec) && !fs::is_directory(path, ec)) {
-            call->fail(path.generic_string() + " is a file, not a directory.");
+            call->fail(FileUtils::pathToGenericUtf8(path) + " is a file, not a directory.");
             return;
         }
     } else {
         if (path.filename() == "project.yaml") path = path.parent_path();
         if (!fs::exists(path / "project.yaml", ec)) {
-            call->fail("No project.yaml in " + path.generic_string() + ". Use create_project to make a new project there.");
+            call->fail("No project.yaml in " + FileUtils::pathToGenericUtf8(path) + ". Use create_project to make a new project there.");
             return;
         }
         std::error_code eq;
@@ -436,12 +437,12 @@ void saveProjectTool(const CallPtr& call) {
             call->fail("untitled_scene_dir: " + error);
             return;
         }
-        sceneDir = fs::path(sceneDirText).lexically_normal();
+        sceneDir = FileUtils::pathFromUtf8(sceneDirText).lexically_normal();
     }
 
     fs::path target;
     if (!pathText.empty()) {
-        target = fs::path(pathText);
+        target = FileUtils::pathFromUtf8(pathText);
         if (!target.is_absolute()) {
             call->fail("path must be absolute.");
             return;
@@ -452,18 +453,18 @@ void saveProjectTool(const CallPtr& call) {
             std::error_code eq;
             if (!fs::equivalent(target, project->getProjectPath(), eq)) {
                 call->fail("path (Save As) only applies to a temporary project. This project lives in " +
-                           project->getProjectPath().generic_string() + "; omit path.");
+                           FileUtils::pathToGenericUtf8(project->getProjectPath()) + "; omit path.");
                 return;
             }
             target.clear();
         } else {
             std::error_code ec;
             if (fs::exists(target / "project.yaml", ec)) {
-                call->fail("A project already exists in " + target.generic_string() + ".");
+                call->fail("A project already exists in " + FileUtils::pathToGenericUtf8(target) + ".");
                 return;
             }
             if (fs::exists(target, ec) && (!fs::is_directory(target, ec) || !fs::is_empty(target, ec))) {
-                call->fail(target.generic_string() + " must be a new or empty directory.");
+                call->fail(FileUtils::pathToGenericUtf8(target) + " must be a new or empty directory.");
                 return;
             }
         }
@@ -542,6 +543,7 @@ const EnumMap<Scaling> scalingModes[] = {
     {"crop", Scaling::CROP}, {"stretch", Scaling::STRETCH}, {"native", Scaling::NATIVE}};
 const EnumMap<TextureStrategy> textureStrategies[] = {
     {"fit", TextureStrategy::FIT}, {"resize", TextureStrategy::RESIZE}, {"none", TextureStrategy::NONE}};
+const EnumMap<PbrTier> pbrTiers[] = {{"full", PbrTier::FULL}, {"reduced", PbrTier::REDUCED}};
 const EnumMap<AtmosphereQuality> atmosphereQualities[] = {
     {"off", AtmosphereQuality::OFF}, {"low", AtmosphereQuality::LOW}, {"medium", AtmosphereQuality::MEDIUM}, {"high", AtmosphereQuality::HIGH}};
 const EnumMap<ShadowTier> shadowTiers[] = {
@@ -644,7 +646,7 @@ bool readProjectFile(McpContext& ctx, const Json& value, fs::path& out, std::str
     }
     fs::path absolute;
     if (!McpRefs::resolveProjectPath(ctx.project(), text, absolute, error, true)) return false;
-    out = fs::path(text).lexically_normal();
+    out = FileUtils::pathFromUtf8(text).lexically_normal();
     return true;
 }
 
@@ -749,7 +751,7 @@ Setting pathSetting(const std::string& key, const std::string& description, std:
     s.key = key;
     s.type = "path";
     s.description = description + " Project-relative file path; \"\" clears it.";
-    s.get = [field](McpContext& ctx) { return Json(field(*ctx.project()).generic_string()); };
+    s.get = [field](McpContext& ctx) { return Json(FileUtils::pathToGenericUtf8(field(*ctx.project()))); };
     s.set = [field](McpContext& ctx, const Json& value, bool apply, std::string& error) {
         fs::path path;
         if (!readProjectFile(ctx, value, path, error)) return false;
@@ -944,7 +946,7 @@ const std::vector<Setting>& settingsTable() {
             s.key = "player.window_icon";
             s.type = "path";
             s.description = "Default icon (desktop window and platforms without their own), a project-relative image; \"\" clears it.";
-            s.get = [](McpContext& ctx) { return Json(ctx.project()->getWindowIcon().generic_string()); };
+            s.get = [](McpContext& ctx) { return Json(FileUtils::pathToGenericUtf8(ctx.project()->getWindowIcon())); };
             s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
                 fs::path path;
                 if (!readProjectFile(ctx, value, path, error)) return false;
@@ -1110,6 +1112,11 @@ const std::vector<Setting>& settingsTable() {
         add(boolField("ios.hide_status_bar", "Hide the iOS status bar.", [](Project& p) -> bool& { return p.getIOSProjectSettings().hideStatusBar; }));
         add(boolField("ios.hide_home_indicator", "Hide the iOS home indicator.", [](Project& p) -> bool& { return p.getIOSProjectSettings().hideHomeIndicator; }));
         add(boolField("ios.supports_high_refresh_rate", "Allow 120 Hz on ProMotion devices.", [](Project& p) -> bool& { return p.getIOSProjectSettings().supportsHighRefreshRate; }));
+        add(boolField("ios.admob_enabled", "Link Google Mobile Ads into the iOS export (System.initializeAdMob and the interstitial calls); needs ios.admob_app_id.",
+                      [](Project& p) -> bool& { return p.getIOSProjectSettings().admobEnabled; }));
+        add(stringSetting("ios.admob_app_id", "iOS AdMob App ID (GADApplicationIdentifier) from the AdMob console; without it the export leaves AdMob out.",
+                          [](Project& p) -> std::string& { return p.getIOSProjectSettings().admobAppId; },
+                          isAdMobAppIdValid, "an AdMob app ID like ca-app-pub-0000000000000000~0000000000 (not an ad unit ID)"));
         add(stringSetting("android.application_name", "Android label override.", [](Project& p) -> std::string& { return p.getAndroidProjectSettings().applicationName; }));
         add(stringSetting("android.package_name", "Android package name override.", [](Project& p) -> std::string& { return p.getAndroidProjectSettings().packageName; },
                           [](const std::string& v) { return isDottedIdentifier(v, javaIdPart); }, "a Java package name (dot-separated identifiers)"));
@@ -1227,6 +1234,11 @@ const std::vector<Setting>& settingsTable() {
         add(boolField("android.allow_backup", "Android allowBackup.", [](Project& p) -> bool& { return p.getAndroidProjectSettings().allowBackup; }));
         add(boolField("android.fullscreen", "Android fullscreen theme.", [](Project& p) -> bool& { return p.getAndroidProjectSettings().fullscreen; }));
         add(boolField("android.keep_screen_on", "Keep the Android screen on.", [](Project& p) -> bool& { return p.getAndroidProjectSettings().keepScreenOn; }));
+        add(boolField("android.admob_enabled", "Compile Google Mobile Ads into the Android export (System.initializeAdMob and the interstitial calls); needs android.admob_app_id.",
+                      [](Project& p) -> bool& { return p.getAndroidProjectSettings().admobEnabled; }));
+        add(stringSetting("android.admob_app_id", "Android AdMob App ID (com.google.android.gms.ads.APPLICATION_ID) from the AdMob console; without it the export leaves AdMob out.",
+                          [](Project& p) -> std::string& { return p.getAndroidProjectSettings().admobAppId; },
+                          isAdMobAppIdValid, "an AdMob app ID like ca-app-pub-0000000000000000~0000000000 (not an ad unit ID)"));
 
         // ---- graphics / quality
         for (const bool width : {true, false}) {
@@ -1276,6 +1288,21 @@ const std::vector<Setting>& settingsTable() {
                 TextureStrategy v;
                 if (!parseEnum(textureStrategies, value, v, error)) return false;
                 if (apply) ctx.project()->setTextureStrategy(v);
+                return true;
+            };
+            add(s);
+        }
+        {
+            Setting s;
+            s.key = "graphics.mobile_pbr_tier";
+            s.type = "enum";
+            s.values = enumNames(pbrTiers);
+            s.description = "Built-in Lit extended lobes on Android, iOS and HTML5 exports: reduced leaves out iridescence, anisotropy direction maps and clear coat normal maps.";
+            s.get = [](McpContext& ctx) { return Json(enumName(pbrTiers, ctx.project()->getMobilePbrTier())); };
+            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                PbrTier v;
+                if (!parseEnum(pbrTiers, value, v, error)) return false;
+                if (apply) ctx.project()->setMobilePbrTier(v);
                 return true;
             };
             add(s);
@@ -1417,7 +1444,7 @@ const std::vector<Setting>& settingsTable() {
                             "here can be passed back verbatim; a NEW entry must be an existing project-relative directory.";
             s.get = [](McpContext& ctx) {
                 Json list = Json::array();
-                for (const fs::path& dir : ctx.project()->getScriptDirs()) list.push_back(dir.generic_string());
+                for (const fs::path& dir : ctx.project()->getScriptDirs()) list.push_back(FileUtils::pathToGenericUtf8(dir));
                 return list;
             };
             s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
@@ -1433,7 +1460,7 @@ const std::vector<Setting>& settingsTable() {
                         error = "entries must be strings";
                         return false;
                     }
-                    const fs::path dir = fs::path(item.get<std::string>()).lexically_normal();
+                    const fs::path dir = FileUtils::pathFromUtf8(item.get<std::string>()).lexically_normal();
                     const bool known = std::any_of(configured.begin(), configured.end(),
                                                    [&dir](const fs::path& c) { return c.lexically_normal() == dir; });
                     if (!known) {
@@ -1460,13 +1487,13 @@ const std::vector<Setting>& settingsTable() {
                 ? "Root of Lua script references (lua://), project-relative directory (\".\" = project root). Changing it MOVES referenced files and rewrites references."
                 : "Root of asset references (textures, models, sounds, fonts), project-relative directory (\".\" = project root). Changing it MOVES referenced files and rewrites references.";
             s.get = [lua](McpContext& ctx) {
-                return Json((lua ? ctx.project()->getLuaDir() : ctx.project()->getAssetsDir()).generic_string());
+                return Json(FileUtils::pathToGenericUtf8(lua ? ctx.project()->getLuaDir() : ctx.project()->getAssetsDir()));
             };
             s.set = [lua](McpContext& ctx, const Json& value, bool apply, std::string& error) {
                 Project* p = ctx.project();
                 std::string text;
                 if (!readString(value, text, error)) return false;
-                fs::path dir = text.empty() ? fs::path(".") : fs::path(text).lexically_normal();
+                fs::path dir = text.empty() ? fs::path(".") : FileUtils::pathFromUtf8(text).lexically_normal();
                 if (dir != ".") {
                     fs::path absolute;
                     if (!McpRefs::resolveProjectPath(p, text, absolute, error)) return false;
@@ -1738,8 +1765,8 @@ const std::vector<Setting>& settingsTable() {
         stringPreference("preferences.ffmpeg_path", "External Tools: ffmpeg for video imports (\"\" = JASPER_FFMPEG / PATH).",
                          [] { return AppSettings::getFfmpegPath(); }, [](const std::string& v) { AppSettings::setFfmpegPath(v); });
         stringPreference("preferences.default_export_dir", "Default output directory for builds of projects that have none yet.",
-                         [] { return AppSettings::getDefaultExportDirectory().generic_string(); },
-                         [](const std::string& v) { AppSettings::setDefaultExportDirectory(v); });
+                         [] { return FileUtils::pathToGenericUtf8(AppSettings::getDefaultExportDirectory()); },
+                         [](const std::string& v) { AppSettings::setDefaultExportDirectory(FileUtils::pathFromUtf8(v)); });
         // Compiler kit and jobs, per project (.jasperengine/user/build.yaml)
         struct KitField {
             const char* key;
@@ -2045,7 +2072,7 @@ void editBuildScenesTool(const CallPtr& call) {
     if (action == "add") {
         // A .scene file in the project folder that is not listed yet
         const std::string pathText = args["scene"].is_string() ? args["scene"].get<std::string>() : std::string();
-        if (!pathText.empty() && fs::path(pathText).extension() == ".scene") {
+        if (!pathText.empty() && FileUtils::pathFromUtf8(pathText).extension() == ".scene") {
             fs::path absolute;
             if (!McpRefs::resolveProjectPath(project, pathText, absolute, error, true)) {
                 std::string files;
@@ -2055,7 +2082,7 @@ void editBuildScenesTool(const CallPtr& call) {
                 call->fail(error + (files.empty() ? " Every .scene file is listed already." : " Unlisted .scene files:" + files + "."));
                 return;
             }
-            const fs::path relative = fs::path(pathText).lexically_normal();
+            const fs::path relative = FileUtils::pathFromUtf8(pathText).lexically_normal();
             if (project->findSceneByPath(relative) == NULL_PROJECT_SCENE) {
                 project->loadScene(relative, false, true, false);
                 if (project->findSceneByPath(relative) == NULL_PROJECT_SCENE) {

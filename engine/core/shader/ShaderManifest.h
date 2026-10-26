@@ -54,7 +54,9 @@ namespace jasperengine{
         WHITE,
         BLACK,
         GRAY,
-        NORMAL // flat tangent-space normal (0.5, 0.5, 1)
+        NORMAL, // flat tangent-space normal (0.5, 0.5, 1)
+        RIPPLES, // a seamless ripple normal map (library:water's, Water::makeRipplesTexture)
+        NOISE    // seamless grey value noise (Water::makeNoiseTexture)
     };
 
     // vertex inputs of @require: forced on when the mesh has them, and the varyings
@@ -102,7 +104,15 @@ namespace jasperengine{
         bool cube = false;
         std::string label;
         std::string feature; // as ShaderManifestProperty::feature
+        // default[<DEFINE>]=<default>: what an unset slot binds instead while that @feature (or
+        // @keywords value) is on, so a material opts into a built-in texture without a file
+        // (library:water's BUILTIN_TEXTURES); empty: none
+        std::string featureDefaultDefine;
+        ShaderTextureDefault featureDefaultTexture = ShaderTextureDefault::WHITE;
         int line = 0;
+
+        // the default an unset slot binds with these defines on (ShaderReference::getEnabledFeatures)
+        ShaderTextureDefault getDefault(const std::vector<std::string>& enabledFeatures) const;
     };
 
     struct JASPERENGINE_API ShaderManifestFeature{
@@ -212,6 +222,12 @@ namespace jasperengine{
         std::vector<ShaderManifestFeature> features;
         std::vector<ShaderManifestKeywords> keywords;
         bool depth = false;      // has its own depth program
+        // A fork's .frag defines LIT_STOCHASTIC_PARAMS (definesLitStochasticParams): a fork of
+        // the built-in Lit that samples the material's Stochastic Tiling (includes/pbr.glsl).
+        // Set by ShaderManifests::get for forks, from the entry point an export ships, so the
+        // editor collecting variants and the game loading meshes decide alike
+        // (RenderSystem::supportsStochasticTiling).
+        bool litStochasticParams = false;
         std::vector<ShaderManifestDiagnostic> diagnostics;
 
         // Adds the directives at the top of one source (up to its first line of code)
@@ -268,6 +284,9 @@ namespace jasperengine{
 
         // the source declares manifest lines (a fork the runtime needs the file of)
         static bool hasManifestLines(const std::string& source);
+        // a line "#define LIT_STOCHASTIC_PARAMS ..." outside comments: the source names the
+        // material's Stochastic Tiling values for includes/pbr.glsl
+        static bool definesLitStochasticParams(const std::string& source);
         static std::string getLightingModeName(ShaderLightingMode mode);
         static std::string getShaderTypeToken(ShaderType type);
 
@@ -290,11 +309,18 @@ namespace jasperengine{
     // A shader reference string (section 3.1): "" built-in, "library:<name>" an engine
     // library shader, anything else a project fork. A variant's reference may end in
     // "#A,B" (its enabled feature defines, sorted), which compiles them as #defines.
+    // "builtin:lit#A,B" is a variant of the built-in Lit with defines its property bits have
+    // no room for (the extended lobes, hex tiling, the High Lit Quality: MaterialPbr); it is
+    // only made by the renderer, never set on a material.
     class JASPERENGINE_API ShaderReference{
     public:
         static const char* const LIBRARY_PREFIX; // "library:"
+        static const char* const BUILTIN_PREFIX; // "builtin:"
+        static const char* const BUILTIN_LIT;    // "builtin:lit"
 
         static bool isLibrary(const std::string& reference);
+        // "builtin:..." (the built-in shader with defines)
+        static bool isBuiltin(const std::string& reference);
         // "library:toon#RIM" -> "toon"
         static std::string getLibraryName(const std::string& reference);
         // without the "#..." feature suffix
