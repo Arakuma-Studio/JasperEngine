@@ -732,6 +732,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/BackgroundRelease.cpp
     ${EDITOR_DIR}/reload/HotReloadService.cpp
     ${EDITOR_DIR}/window/StatusBar.cpp
+    ${EDITOR_DIR}/reload/handlers/Animations.cpp
     ${EDITOR_DIR}/reload/handlers/Assets.cpp
     ${EDITOR_DIR}/reload/handlers/Audio.cpp
     ${EDITOR_DIR}/reload/handlers/Common.cpp

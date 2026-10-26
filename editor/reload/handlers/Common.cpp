@@ -29,6 +29,8 @@ std::string reload::kindOf(const fs::path& path) {
     if (Util::isFontFile(text)) return "font";
     if (Util::isScriptFile(text) || ext == ".c" || ext == ".inl") return "script";
     if (Util::isHtmlFile(text) || Util::isCssFile(text) || ext == ".json" || ext == ".lottie") return "ui";
+    // pose animations, the models' humanoid maps and animation clips: their documents and players
+    if (Util::isPoseAnimationFile(text) || Util::isAnimationClipFile(text) || ext == ".humanoid") return "animation";
     if (Util::isSceneFile(text)) return "scene";
     if (Util::isPrefabFile(text)) return "prefab";
     if (ext == ".txt" || ext == ".md" || ext == ".yaml" || ext == ".yml" || ext == ".xml" || ext == ".csv" || ext == ".ini" || ext == ".cfg" ||

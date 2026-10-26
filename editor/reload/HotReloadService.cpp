@@ -390,6 +390,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
     reload::reloadModels(ctx, files(external, "model"));
     reload::reloadAudio(ctx, files(external, "audio"));
     reload::reloadFonts(ctx, files(external, "font"));
+    reload::reloadAnimations(ctx, files(external, "animation"), files(external, "model"), options.full);
     // another program's changes not reloaded yet (the dedupe above): the documents' own stamps
     // cannot tell a save in the same timestamp tick from the one they read
     reload::reloadHtmlUi(ctx, both("ui"), files(external, "ui"));

@@ -34,8 +34,6 @@
 #include "component/ScriptComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "htmlui/HtmlUIDependencies.h"
-#include "animation/AnimationClipDocument.h"
-#include "pose/PoseAnimationDocument.h"
 #include "pool/TextureDataPool.h"
 #include "pool/TexturePool.h"
 #include "script/LuaBinding.h"
