@@ -16,6 +16,7 @@
 #include "mcp/McpServer.h"
 #include "mcp/McpToolGroups.h"
 #include "mcp/McpUndo.h"
+#include "util/ScriptStatus.h"
 
 #include "App.h"
 #include "EditorVersion.h"
@@ -58,64 +59,9 @@ struct BatchState {
     bool stopped = false;
     std::vector<ToolImage> images;
     // undo_group: each history's position when the batch started, kept from trimming
-    std::map<uint32_t, size_t> sceneMarks;
-    size_t projectMark = 0;
-    std::vector<std::unique_ptr<UndoGroupScope>> trimHolds;
+    McpUndo::Group undo;
     std::string undoName;
 };
-
-void beginUndoGroup(BatchState& state, Project* project) {
-    for (SceneProject* scene : project->getScenesAndPrefabStages()) {
-        CommandHistory* history = CommandHandle::get(scene->id);
-        state.sceneMarks[scene->id] = history->mark();
-        state.trimHolds.push_back(std::make_unique<UndoGroupScope>(history));
-    }
-    state.projectMark = project->getProjectCommandHistory()->mark();
-    state.trimHolds.push_back(std::make_unique<UndoGroupScope>(project->getProjectCommandHistory()));
-}
-
-// One undo step per history the batch changed, linked so one Ctrl+Z undoes the whole batch
-// (S24 R25). Scenes the batch created start at 0.
-Json endUndoGroup(BatchState& state, Project* project) {
-    Json grouped = Json::array();
-    bool complete = true;
-    const std::string label = !state.undoName.empty() ? state.undoName
-        : "Batch (" + std::to_string(state.calls.size()) + " calls)";
-    std::vector<CommandHistory*> histories;
-    for (SceneProject* scene : project->getScenesAndPrefabStages()) {
-        auto it = state.sceneMarks.find(scene->id);
-        const size_t mark = it != state.sceneMarks.end() ? it->second : 0;
-        CommandHistory* history = CommandHandle::get(scene->id);
-        if (history->position() <= mark) continue;
-        if (history->groupSince(mark, label)) {
-            grouped.push_back(scene->id);
-            histories.push_back(history);
-        } else {
-            complete = false;
-        }
-    }
-    CommandHistory* projectHistory = project->getProjectCommandHistory();
-    if (projectHistory->position() > state.projectMark) {
-        if (projectHistory->groupSince(state.projectMark, label)) histories.push_back(projectHistory);
-        else complete = false;
-    } else if (!projectHistory->groupSince(state.projectMark)) {
-        complete = false;
-    }
-    state.trimHolds.clear();
-    Json data = {{"scene_ids", grouped}, {"complete", complete}};
-    if (histories.size() > 1) {
-        data["link_id"] = UndoTimeline::link(histories);
-    }
-    const UndoEntry* newest = nullptr;
-    for (CommandHistory* history : histories) {
-        const UndoEntry* top = history->top();
-        if (top && (!newest || top->info.id > newest->info.id)) newest = top;
-    }
-    if (newest) {
-        data["undo"] = {{"id", newest->info.id}, {"name", newest->name()}};
-    }
-    return data;
-}
 
 void finishBatch(const std::shared_ptr<BatchState>& state) {
     Project* project = state->call->ctx().project();
@@ -126,7 +72,9 @@ void finishBatch(const std::shared_ptr<BatchState>& state) {
         {"stopped_early", state->stopped}
     };
     if (state->undoGroup) {
-        data["undo_group"] = endUndoGroup(*state, project);
+        const std::string label = !state->undoName.empty() ? state->undoName
+            : "Batch (" + std::to_string(state->calls.size()) + " calls)";
+        data["undo_group"] = McpUndo::endGroup(state->undo, project, label);
     }
 
     std::string text = "batch: " + std::to_string(state->succeeded) + " ok, " + std::to_string(state->failed) + " failed";
@@ -216,7 +164,7 @@ void batchTool(const CallPtr& call) {
     state->stopOnError = args.value("stop_on_error", true);
     state->undoGroup = args.value("undo_group", false);
     state->undoName = args.value("undo_name", std::string());
-    if (state->undoGroup) beginUndoGroup(*state, call->ctx().project());
+    if (state->undoGroup) McpUndo::beginGroup(state->undo, call->ctx().project());
     call->detach();
     runBatchStep(state);
 }
@@ -674,6 +622,7 @@ void editorStatusTool(const CallPtr& call) {
         {"waiting_calls", status.pendingCalls},
         {"auto_sync", McpAutoSync::get().stats()},
         {"file_watcher", fileWatcherJson()},
+        {"scripts", ScriptStatus::get().toJson()},
         {"frame_ms", app.takeFrameStats()},
         {"dialog", dialog},
         {"ui", ui},

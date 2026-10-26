@@ -609,6 +609,18 @@ namespace jasperengine::editor{
 
         Conector conector;
         Generator generator;
+        // how Play built the C++ scripts: a reload during Play builds the same way
+        CMakeKit playBuildKit;
+        unsigned int playBuildJobs = 0;
+        struct CppReload {
+            bool running = false;
+            std::chrono::steady_clock::time_point firstSeen;
+            std::chrono::steady_clock::time_point started;
+            std::vector<std::filesystem::path> changed;
+            // the new DPROPERTYs by class (header parsed when the reload started)
+            std::map<std::string, std::vector<ScriptProperty>> properties;
+        } cppReload;
+        void applyCppReload();
         // Play's startup and stop jobs (process channel): waited for when the project goes
         jobs::Task<void> playStartupTask;
         jobs::Task<void> playStopTask;
@@ -1098,6 +1110,8 @@ namespace jasperengine::editor{
         void collectRequiredShaderKeys(const SceneProject* sceneProject, std::set<ShaderKey>& shaderKeys) const;
 
         std::string getName() const;
+        // The C++ scripts library's name (the project name as an identifier)
+        const std::string& getLibName() const { return libName; }
         void setName(std::string name);
 
         void setCanvasSize(unsigned int width, unsigned int height);
@@ -2222,8 +2236,23 @@ namespace jasperengine::editor{
         YAML::Node clearEntitiesNode(YAML::Node node);
         YAML::Node changeEntitiesNode(Entity& firstEntity, YAML::Node node);
 
+        // ---- C++ scripts reloaded during Play (S23 R10-R13; ScriptReloadService drives it)
+        // Play loaded a C++ script library
+        bool hasCppPlayLibrary() const { return conector.isLibraryConnected(); }
+        // Starts the rebuild of the scripts (the old library keeps running); false and why
+        // when it cannot (no library, the generation cap, a build already running)
+        bool startCppReload(const std::vector<std::filesystem::path>& changed, std::chrono::steady_clock::time_point firstSeen, std::string& error);
+        // Every frame while it builds, at the frame boundary: the new library is checked,
+        // loaded next to the old one and swapped in once the build ends
+        void updateCppReload();
+        // Cancel Build: the reload's build stops (the old library keeps running)
+        void cancelCppReload() { if (cppReload.running) generator.cancelBuild(); }
+
         bool isAnyScenePlaying() const;
         bool isPlaySessionActive() const;
+        // The Scenes the active Play session runs (its main scene and the copies of the scenes
+        // it plays with), once started; empty without one. Main thread.
+        std::vector<Scene*> getPlayingScenes() const;
         // True only while the active play session's main scene is actually running
         // (PLAYING) — false when paused, loading, or no session is active.
         bool isMainScenePlaying() const;

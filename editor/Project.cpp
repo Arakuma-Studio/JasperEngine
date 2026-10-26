@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "Project.h"
+#include "util/ScriptReloadService.h"
+#include "util/ScriptStatus.h"
+#include "util/EditorScripts.h"
+#include "script/ScriptBase.h"
 #include "reload/HotReloadService.h"
 #include "asset/AssetRefSchema.h"
 #include "asset/AssetFileWrite.h"
@@ -4608,6 +4612,8 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
             modelLoaded = true;
             openAssetDatabase();
             if (watchFiles) HotReloadService::get().startWatching(*this);
+        // the project's editor menus (a text scan of its Editor folders: no project code runs)
+        EditorScripts::get().scan(this);
             saveProject();
             createNewScene("New Scene", SceneType::SCENE_3D);
             copyEngineApiToProject();
@@ -4896,6 +4902,8 @@ bool editor::Project::saveProjectToPath(const std::filesystem::path& path) {
     if (oldPath != path) {
         openAssetDatabase();
         if (watchFiles) HotReloadService::get().startWatching(*this);
+        // the project's editor menus (a text scan of its Editor folders: no project code runs)
+        EditorScripts::get().scan(this);
     }
 
     // the temporary project saved somewhere of its own is locked there (R10)
@@ -4985,6 +4993,8 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
         openAssetDatabase();
         // what changes on disk from now on reloads (S05)
         if (watchFiles) HotReloadService::get().startWatching(*this);
+        // the project's editor menus (a text scan of its Editor folders: no project code runs)
+        EditorScripts::get().scan(this);
         // the temps of saves a crash interrupted, found by that walk (R12)
         sweepOrphanedTemporaryFiles();
 
@@ -6256,6 +6266,259 @@ std::vector<editor::SceneProject*> editor::Project::getPlayRuntimeScenesOf(uint3
     return runtimes;
 }
 
+
+// ------------------------------------------------------------------ C++ reload during Play (S23)
+
+namespace {
+
+    // what a script's generated binding depends on: its class and DPROPERTYs
+    std::string scriptSourceSignature(const std::vector<editor::SceneScriptSource>& scripts) {
+        std::vector<std::string> lines;
+        for (const editor::SceneScriptSource& script : scripts) {
+            std::string line = script.className + "|" + script.headerPath.generic_string();
+            for (const editor::ScriptPropertyInfo& property : script.properties) {
+                line += "|" + property.name + (property.isPtr ? "*" + property.ptrTypeName : std::string());
+            }
+            lines.push_back(line);
+        }
+        std::sort(lines.begin(), lines.end());
+        std::string signature;
+        for (const std::string& line : lines) signature += line + "\n";
+        return signature;
+    }
+
+}
+
+bool editor::Project::startCppReload(const std::vector<fs::path>& changed, std::chrono::steady_clock::time_point firstSeen, std::string& error) {
+    if (!conector.isLibraryConnected()) {
+        error = "this Play loaded no C++ script library (no C++ script is attached): the change is built at the next Play";
+        return false;
+    }
+    if (cppReload.running || generator.isBuildInProgress()) {
+        error = "a C++ build is running";
+        return false;
+    }
+    if (conector.generationCount() >= Conector::MAX_GENERATIONS) {
+        error = "this Play has reloaded the C++ scripts " + std::to_string(Conector::MAX_GENERATIONS - 1) + " times: stop Play to reload again";
+        getEditorHost().registerConfirmAlert("Stop Play?", "The C++ scripts were reloaded " + std::to_string(Conector::MAX_GENERATIONS - 1) +
+            " times in this Play, the most one Play keeps loaded. Stop Play now to load the latest code?", [this]() { stopActivePlay(); });
+        return false;
+    }
+
+    // the DPROPERTYs as the headers declare them now; the generated binding is written again
+    // only when a class or a property changed (Play reuses the edit-time scene: the scene
+    // factories are never regenerated mid-Play)
+    std::vector<SceneScriptSource> scripts = generator.lastScriptSources();
+    cppReload.properties.clear();
+    for (SceneScriptSource& script : scripts) {
+        if (script.headerPath.empty()) continue;
+        fs::path header = script.headerPath;
+        if (header.is_relative()) header = getProjectPath() / header;
+        std::error_code ec;
+        if (!fs::is_regular_file(header, ec)) continue;
+        std::vector<ScriptProperty> parsed = ScriptParser::parseScriptProperties(header);
+        script.properties = toScriptPropertyInfos(parsed);
+        cppReload.properties[script.className] = std::move(parsed);
+    }
+    if (scriptSourceSignature(scripts) != scriptSourceSignature(generator.lastScriptSources())) {
+        if (!generator.rewriteScriptSources(scripts)) {
+            error = "the script sources of this Play are not known";
+            return false;
+        }
+        Out::info("C++ reload: the script bindings changed (a class or DPROPERTY), their sources are written again");
+    }
+
+    cppReload.running = true;
+    cppReload.firstSeen = firstSeen;
+    cppReload.started = std::chrono::steady_clock::now();
+    cppReload.changed = changed;
+    const fs::path buildPath = getProjectInternalPath() / "build";
+    FileUtils::writeIfChanged(getProjectInternalPath() / "PluginGeneration.cmake", Generator::pluginGenerationCMake(conector.generationCount()));
+    generator.build(getProjectPath(), buildPath, playBuildKit.cCompiler, playBuildKit.cxxCompiler, playBuildKit.generator, playBuildJobs);
+    Out::info("C++ reload: building the scripts (the running code stays until the build is done)");
+    return true;
+}
+
+void editor::Project::updateCppReload() {
+    if (!cppReload.running || generator.isBuildInProgress()) return;
+    cppReload.running = false;
+    // the build's own events (diagnostics) first
+    ScriptStatus::get().update();
+
+    ScriptReloadService::Record record;
+    record.language = "cpp";
+    if (!cppReload.changed.empty()) {
+        const fs::path rel = cppReload.changed.front().lexically_normal().lexically_relative(getProjectPath().lexically_normal());
+        record.path = rel.empty() || *rel.begin() == ".." ? cppReload.changed.front().generic_string() : rel.generic_string();
+    }
+    if (!isAnyScenePlaying()) return;
+
+    if (!generator.didLastBuildSucceed()) {
+        record.ok = false;
+        record.findings = ScriptStatus::get().state().cppRow.findings;
+        record.cppState = "failed";
+        Out::error("C++ reload: the build failed \xE2\x80\x94 the last good build keeps running");
+        ScriptReloadService::get().cppReloadFinished(record);
+        return;
+    }
+
+    const fs::path buildPath = getProjectInternalPath() / "build";
+    if (!conector.connectNext(buildPath, libName)) {
+        record.ok = false;
+        const Conector::LoadCheck& check = conector.lastLoadCheck();
+        record.findings.push_back({record.path, 0, 0, check.message});
+        if (check.refused) {
+            ScriptStatus::get().setCpp(CppScriptState::Refused, {}, check.message);
+            record.cppState = "refused";
+        } else {
+            ScriptStatus::get().setCpp(CppScriptState::Failed, record.findings, "C++ library not loaded \xE2\x80\x94 using last good build");
+            record.cppState = "failed";
+        }
+        ScriptReloadService::get().cppReloadFinished(record);
+        return;
+    }
+    applyCppReload();
+}
+
+void editor::Project::applyCppReload() {
+    const auto swapStart = std::chrono::steady_clock::now();
+    ScriptReloadService::Record record;
+    record.language = "cpp";
+    if (!cppReload.changed.empty()) {
+        const fs::path rel = cppReload.changed.front().lexically_normal().lexically_relative(getProjectPath().lexically_normal());
+        record.path = rel.empty() || *rel.begin() == ".." ? cppReload.changed.front().generic_string() : rel.generic_string();
+    }
+
+    using ScriptBaseFn = ScriptBase* (*)(const char*, void*);
+    const size_t oldGeneration = conector.currentGeneration();
+    const size_t newGeneration = conector.generationCount() - 1;
+    auto oldBase = reinterpret_cast<ScriptBaseFn>(conector.symbol(oldGeneration, "jasper_scriptBase"));
+    auto newBase = reinterpret_cast<ScriptBaseFn>(conector.symbol(newGeneration, "jasper_scriptBase"));
+    auto oldCleanup = reinterpret_cast<ObjectManager::ScriptHook>(conector.symbol(oldGeneration, "cleanupEntityScripts"));
+    auto newInit = reinterpret_cast<ObjectManager::ScriptHook>(conector.symbol(newGeneration, "initEntityScripts"));
+    if (!oldCleanup || !newInit) {
+        record.ok = false;
+        record.findings.push_back({record.path, 0, 0, "the script library has no initEntityScripts/cleanupEntityScripts"});
+        record.cppState = "failed";
+        ScriptStatus::get().setCpp(CppScriptState::Failed, record.findings, "C++ reload failed \xE2\x80\x94 using last good build");
+        ScriptReloadService::get().cppReloadFinished(record);
+        return;
+    }
+
+    int instances = 0;
+    for (Scene* scene : getPlayingScenes()) {
+        // 1. the C++ instances' state: their DPROPERTYs, then their own hook
+        struct Saved {
+            Entity entity;
+            size_t index;
+            ScriptReloadState state;
+        };
+        std::vector<Saved> saved;
+        std::vector<Entity> entities;
+        auto scripts = scene->getComponentArray<ScriptComponent>();
+        for (size_t i = 0; i < scripts->size(); i++) {
+            const Entity entity = scripts->getEntity(i);
+            ScriptComponent& component = scripts->getComponentFromIndex(i);
+            bool any = false;
+            for (size_t s = 0; s < component.scripts.size(); s++) {
+                ScriptEntry& entry = component.scripts[s];
+                if (entry.type != ScriptType::CPP || !entry.instance) continue;
+                any = true;
+                Saved item{entity, s, {}};
+                for (ScriptProperty& property : entry.properties) {
+                    property.syncFromMember();
+                    item.state.values[property.name] = property.value;
+                }
+                if (ScriptBase* base = oldBase ? oldBase(entry.className.c_str(), entry.instance) : nullptr) {
+                    try {
+                        base->saveReloadState(item.state);
+                    } catch (const std::exception& e) {
+                        Out::error("%s::saveReloadState threw: %s", entry.className.c_str(), e.what());
+                    }
+                }
+                saved.push_back(std::move(item));
+            }
+            if (any) entities.push_back(entity);
+        }
+        if (entities.empty()) continue;
+
+        // 2. the old library's destructors (and the owner release of their subscriptions)
+        oldCleanup(scene, entities.data(), entities.size());
+
+        // the members the properties pointed at are gone; the new DPROPERTYs by name
+        for (Entity entity : entities) {
+            ScriptComponent* component = scene->findComponent<ScriptComponent>(entity);
+            if (!component) continue;
+            for (ScriptEntry& entry : component->scripts) {
+                if (entry.type != ScriptType::CPP) continue;
+                for (ScriptProperty& property : entry.properties) {
+                    property.memberPtr = nullptr;
+                    property.ownedInstance = nullptr;
+                }
+                auto parsed = cppReload.properties.find(entry.className);
+                if (parsed != cppReload.properties.end()) mergeScriptProperties(entry.properties, parsed->second);
+            }
+        }
+
+        // 3. the new library's constructors (isReloading), bound to the carried-over values
+        ScriptBase::setReloading(true);
+        try {
+            newInit(scene, entities.data(), entities.size());
+        } catch (const std::exception& e) {
+            Out::error("A C++ script constructor threw during the reload: %s", e.what());
+        } catch (...) {
+            Out::error("A C++ script constructor threw during the reload");
+        }
+        ScriptBase::setReloading(false);
+
+        // 4. their own state back
+        for (Saved& item : saved) {
+            ScriptComponent* component = scene->findComponent<ScriptComponent>(item.entity);
+            if (!component || item.index >= component->scripts.size()) continue;
+            ScriptEntry& entry = component->scripts[item.index];
+            if (!entry.instance) continue;
+            instances++;
+            if (ScriptBase* base = newBase ? newBase(entry.className.c_str(), entry.instance) : nullptr) {
+                try {
+                    base->loadReloadState(item.state);
+                } catch (const std::exception& e) {
+                    Out::error("%s::loadReloadState threw: %s", entry.className.c_str(), e.what());
+                }
+            }
+        }
+    }
+
+    // 5. what instantiates or destroys from now on uses the new library
+    conector.makeLatestCurrent();
+
+    record.ok = true;
+    record.instances = instances;
+    record.ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - swapStart).count();
+    record.sinceSaveMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - cppReload.firstSeen).count();
+    record.cppState = "up_to_date";
+    for (const SceneScriptSource& script : generator.lastScriptSources()) record.classes.push_back(script.className);
+    ScriptStatus::get().setCpp(CppScriptState::UpToDate);
+    Out::success("[Script Reload] Reloaded the C++ scripts (%d instance%s, library generation %zu of this Play; %.1f ms, %.0f ms after the save)",
+                 instances, instances == 1 ? "" : "s", conector.generationCount(), record.ms, record.sinceSaveMs);
+    ScriptReloadService::get().cppReloadFinished(record);
+}
+
+std::vector<Scene*> editor::Project::getPlayingScenes() const {
+    std::vector<Scene*> scenes;
+    std::scoped_lock lock(playSessionMutex);
+    if (!activePlaySession || activePlaySession->cancelled.load(std::memory_order_acquire) ||
+        !activePlaySession->startupSucceeded.load(std::memory_order_acquire)) {
+        return scenes;
+    }
+    for (const PlayRuntimeScene& entry : activePlaySession->runtimeScenes) {
+        if (entry.runtime && entry.runtime->scene && entry.initialized &&
+            std::find(scenes.begin(), scenes.end(), entry.runtime->scene) == scenes.end()) {
+            scenes.push_back(entry.runtime->scene);
+        }
+    }
+    return scenes;
+}
+
 uint32_t editor::Project::getPlayRuntimeSceneId(uint32_t sourceSceneId) const {
     std::scoped_lock lock(playSessionMutex);
     if (!activePlaySession || activePlaySession->cancelled.load(std::memory_order_acquire) ||
@@ -7238,6 +7501,9 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
             }
 
             fs::path buildPath = getProjectInternalPath() / "build";
+            // a C++ reload during this Play builds the same way
+            playBuildKit = playKit;
+            playBuildJobs = buildSettings.buildJobs;
             generator.build(getProjectPath(), buildPath, playKit.cCompiler, playKit.cxxCompiler, playKit.generator, buildSettings.buildJobs);
             generator.waitForBuildToComplete();
 

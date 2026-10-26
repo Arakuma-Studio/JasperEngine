@@ -45,6 +45,11 @@ namespace jasperengine::editor {
         int m_fileWatcher = 0;            // 0 Auto, 1 Native, 2 Polling
         float m_pollingInterval = 1.0f;   // seconds
         bool m_logReloads = true;
+        // Scripting (S23 R8, R10) and External Tools > External Script Editor (R28)
+        int m_scriptChangesWhilePlaying = 0;   // 0 reload, 1 after_stop, 2 stop_and_reload
+        bool m_reloadCppDuringPlay = false;
+        int m_externalScriptEditor = 0;        // ExternalCodeEditor::choices() index
+        std::string m_externalScriptEditorCommand;
         bool m_htmlUiVerboseDiagnostics = false;
         float m_codeEditorFontSize = 0.0f;
         int m_undoMaxSteps = AppSettings::defaultUndoMaxSteps;
@@ -66,6 +71,8 @@ namespace jasperengine::editor {
         void drawGeneralSettings();
         void drawCodeEditorSettings();
         void drawAssetPipelineSettings();
+        void drawScriptingSettings();
+        void drawExternalScriptEditorSettings();
         void drawUndoSettings();
         void drawExternalToolsSettings();
         // Row drawers for the External Tools table.

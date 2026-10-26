@@ -21,6 +21,7 @@ namespace jasperengine {
     class Vector3;
     class Vector4;
     struct ScriptEntry;
+    struct ScriptProperty;
 
     class JASPERENGINE_API LuaBinding {
         
@@ -135,6 +136,23 @@ namespace jasperengine {
         static void logLuaError(const char* format, ...) JE_PRINTF_FORMAT(1, 2);
         // Logs text with the calling Lua function's chunk and line as its source
         static void logFromLua(lua_State* L, LogLevel level, const LogCategory& category, std::string_view text);
+
+        // The math classes (Vector2/3/4, Quaternion, Matrix..., Color) in another state: the
+        // editor's sandboxed editor-script state
+        static void registerMathClassesIn(lua_State* L);
+
+        // ---- for the hot reload during Play (LuaReload.cpp)
+
+        // The compiled chunk of a script path becomes the function at `index`: instances made
+        // from now on run it
+        static void setScriptChunk(lua_State* L, const std::string& path, int index);
+        // Pushes a script property's value as an instance field gets it at creation (an unset
+        // prefab or asset is nil; an EntityReference is resolved in `scene` like init's pass 2)
+        static void pushScriptPropertyValue(lua_State* L, Scene* scene, const ScriptProperty& property);
+        // RegisterEvent's work for `self` (index) on the event at eventIndex, in a protected
+        // call: false and the error when it failed
+        static bool replayScriptEvent(lua_State* L, int eventIndex, int selfIndex, const std::string& method,
+                                      const std::string& tag, bool guarded, std::string& error);
         
     };
     

@@ -390,6 +390,8 @@ namespace jasperengine::editor {
         // Assets > Create > HTML Document: NewDocument.html + NewDocument.css (HtmlUITemplates)
         void assetsCreateHtmlDocument();
         void assetsShowInFileManager();
+        // The files selected in the folder view (absolute), for editor-script menu items
+        std::vector<fs::path> getSelectedFiles() const;
         void assetsOpenSelected();
         void assetsRenameSelected();
         void assetsDeleteSelected();
