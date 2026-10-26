@@ -71,8 +71,9 @@ TEST(TextureCookBench, ColdCooksOf2048){
         EXPECT_FALSE(result.cacheHit);
         std::printf("[bench] cook %d %-16s %6.2f s (budget %.0f s) %s, %.2f dB\n", size, c.what, seconds, c.budget,
                     result.record.label.c_str(), result.record.psnr);
-        if (slack > 0.0)
+        if (slack > 0.0){
             EXPECT_LE(seconds, c.budget * slack) << c.what;
+        }
         cache.close();
     }
 }
@@ -115,8 +116,9 @@ TEST(TextureCookBench, WarmCookOf200Textures){
         hits += item.result.ok && item.result.cacheHit ? 1 : 0;
     EXPECT_EQ(hits, 200);
     std::printf("[bench] warm cook of 200 textures %.2f s (budget 10 s)\n", seconds);
-    if (perfSlack() > 0.0)
+    if (perfSlack() > 0.0){
         EXPECT_LE(seconds, 10.0 * perfSlack());
+    }
 }
 
 TEST(TextureCookBench, CorpusBitsPerTexelAndQuality){
