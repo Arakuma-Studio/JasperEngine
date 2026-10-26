@@ -226,7 +226,7 @@ Stop (or Pause) releases the scale and the GPU time.
 
 `post_process` (a scene setting, a list) runs fullscreen passes on the scene image before the
 uber pass, in order. A pass is a library post shader (`library:crt`, `pixelate`, `posterize`,
-`edge_neon`, `gameboy`, `blur`: `list_shaders type=postprocess`) or a fork
+`edge_neon`, `gameboy`, `blur`, `underwater`: `list_shaders type=postprocess`) or a fork
 (`fork_shader target=post_process`). Each item: `shader`, `enabled`, `uniforms` (the
 manifest's `@property` names; unset ones take its defaults), `textures` ({uniform: path}),
 `scale` (0.1-1: the pass's output resolution). A shader may also declare
@@ -250,6 +250,15 @@ scene.postProcessPasses = { pass }
 `pass:setTexture(uniform, path)` / `getTexture(uniform)` set a texture the pass's shader
 declares; `scene:setPostProcessUniform(index, name, value)` and
 `setPostProcessPassEnabled(index, on)` change a pass of the running chain.
+
+`library:underwater` is switched by the engine: in a running scene (Play, an exported game) it
+is on while the main camera is under a `library:water` surface and off above it (written into
+the chain, so `enabled` reads the state), with `waterLevel` set to the surface over the camera
+and, with `followWater` (default on), the water's `shallowColor` and `deepColor`. Keep it in the
+chain switched off (the GameObject menu's 3D Object > Water adds it); while it is off it costs
+nothing, on it is one fullscreen pass and a depth pre-pass (none extra with SSAO or SSR). Each
+switch rebuilds the chain once (its shader compiles the first time in the editor). The
+shaders guide, "Water", has the rest.
 
 ## Lua
 

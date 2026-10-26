@@ -131,6 +131,18 @@ namespace jasperengine{
         float getRestitution() const;
         void setRestitution(float restitution);
 
+        // Floating in a water (a mesh drawn with library:water, Water.h): the buoyancy factor
+        // (1 neutral, more floats, less sinks, 0 ignores the water) and the drags in it,
+        // applied at each fixed step to a dynamic body
+        float getBuoyancy() const;
+        void setBuoyancy(float buoyancy);
+
+        float getWaterDrag() const;
+        void setWaterDrag(float waterDrag);
+
+        float getWaterAngularDrag() const;
+        void setWaterAngularDrag(float waterAngularDrag);
+
         // Body pose in world space. The transform only reaches the body between fixed
         // steps, so place a body from onFixedUpdate with these instead of GameObject.
         Vector3 getPosition() const;

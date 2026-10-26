@@ -467,7 +467,7 @@ void CharacterController2DSystem::writeTransform(Entity entity, const CharacterC
     const float s = physics->pointsToMeterScale2D;
     const Vector2 scale(std::fabs(transform->worldScale.x), std::fabs(transform->worldScale.y));
     const Vector2 position = Vector2(center.x * s, center.y * s) - controller.center * scale;
-    physics->setTransformWorldPose(entity, Vector3(position.x, position.y, transform->worldPosition.z), transform->worldRotation);
+    physics->writeTransformWorldPose(entity, Vector3(position.x, position.y, transform->worldPosition.z), transform->worldRotation);
 }
 
 bool CharacterController2DSystem::refused(Entity entity, CharacterController2DComponent& controller){

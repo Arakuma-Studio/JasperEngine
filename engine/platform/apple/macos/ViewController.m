@@ -12,15 +12,10 @@
     Renderer *_renderer;
 }
 
-- (void)viewDidDisappear
-{
-    [_renderer destroyView];
-}
-
 - (void)viewDidLoad
 {
     [super viewDidLoad];
-    
+
     NSArray *args = [[NSProcessInfo processInfo] arguments];
 
     _view = (EngineView *)self.view;
@@ -39,6 +34,35 @@
     [_renderer mtkView:_view drawableSizeWillChange:_view.drawableSize];
 
     _view.delegate = _renderer;
+
+    // Not on viewDidDisappear, which minimizing or hiding the app also sends
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(destroyView)
+                                                 name:NSApplicationWillTerminateNotification
+                                               object:nil];
+
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(updateFrameRate)
+                                                 name:NSWindowDidChangeScreenNotification
+                                               object:nil];
+}
+
+- (void)viewDidAppear
+{
+    [super viewDidAppear];
+    [self updateFrameRate];
+}
+
+- (void)destroyView
+{
+    [_renderer destroyView];
+}
+
+// MTKView's default of 60 runs a 75 Hz display at 37.5
+- (void)updateFrameRate
+{
+    NSScreen *screen = self.view.window.screen ?: NSScreen.mainScreen;
+    _view.preferredFramesPerSecond = screen.maximumFramesPerSecond;
 }
 
 @end

@@ -20,11 +20,16 @@
 // @property rimPower range(0.5, 16) 4 "Rim power" feature=RIM
 // @property rimSmoothness range(0, 1) 0.1 "Rim edge width" feature=RIM
 // @property rimLitOnly toggle 1 "Rim on the lit side only" feature=RIM
+// @property stochasticCellSize range(0.25, 4) 1 "Cell Size" feature=STOCHASTIC
+// @property stochasticBlendSharpness range(0, 1) 0.4 "Blend Sharpness" feature=STOCHASTIC
+// @property stochasticContrast range(0, 1) 0.45 "Contrast" feature=STOCHASTIC
+// @property stochasticRotation range(0, 1) 0 "Rotation" feature=STOCHASTIC
 // @texture u_baseTexture white "Base map"
 // @texture u_rampTexture white "Ramp (left unlit, right lit)" feature=RAMP
 // @feature RAMP "Ramp texture"
 // @feature SPECULAR "Specular highlight"
 // @feature RIM "Rim light"
+// @feature STOCHASTIC "Stochastic Tiling"
 
 // Per pixel light (pixel, mixed), with x = max(n.l, 0) * shadow:
 //     light += radiance / PI * band(x)
@@ -55,7 +60,17 @@ uniform u_fs_customParams {
     float rimPower;
     float rimSmoothness;
     float rimLitOnly;
+    #ifdef STOCHASTIC
+        float stochasticCellSize;
+        float stochasticBlendSharpness;
+        float stochasticContrast;
+        float stochasticRotation;
+    #endif
 } customParams;
+
+#ifdef STOCHASTIC
+    #include "library/stochastic_surface.glsl"
+#endif
 
 uniform texture2D u_baseTexture;
 uniform sampler u_base_smp;
@@ -140,7 +155,13 @@ float toonReach(int i, float attenuation){
 
 void main() {
     vec2 uv = v_uv1 * customParams.tiling.xy + customParams.tiling.zw;
-    vec4 base = customParams.baseColor * sRGBToLinear(texture(sampler2D(u_baseTexture, u_base_smp), uv)) * v_color;
+    #ifdef STOCHASTIC
+        // the base map's taps set the weights the material's other maps reuse
+        StochasticTiling stochastic = stochasticSetup(uv, stochasticCustomParams(), 0u);
+        vec4 base = customParams.baseColor * sRGBToLinear(stochasticTextureLuminance(u_baseTexture, u_base_smp, stochastic)) * v_color;
+    #else
+        vec4 base = customParams.baseColor * sRGBToLinear(texture(sampler2D(u_baseTexture, u_base_smp), uv)) * v_color;
+    #endif
 
     #ifdef TOON_SURFACE
         vec3 n = normalize(v_normal);

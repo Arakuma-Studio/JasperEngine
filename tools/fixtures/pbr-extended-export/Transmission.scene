@@ -52,9 +52,9 @@ shaderKeys:
   - type: mesh
     properties: 1114
   - type: mesh
-    properties: 1144
+    properties: 8589935704
   - type: mesh
-    properties: 1146
+    properties: 8589935706
   - type: sky
   - type: depth
   - type: blit
@@ -63,13 +63,13 @@ shaderKeys:
     properties: 1114
     customShader: builtin:lit#USE_LIT_QUALITY
   - type: mesh
-    properties: 1146
+    properties: 8589935706
     customShader: builtin:lit#USE_LIT_QUALITY
   - type: mesh
     properties: 1112
     customShader: builtin:lit#PBR_SPECULAR,PBR_TRANSMISSION,PBR_VOLUME,USE_LIT_QUALITY
   - type: mesh
-    properties: 1144
+    properties: 8589935704
     customShader: builtin:lit#PBR_SPECULAR,PBR_TRANSMISSION,PBR_VOLUME,USE_LIT_QUALITY
 entities:
   - type: Entity
@@ -394,7 +394,7 @@ entities:
             vertexCount: 3672
             faceCulling: true
             textureShadow: false
-            overrideFields: 1073741830
+            overrideFields: 2147483654
             hasTexCoord1: true
             hasTexCoord2: false
             hasNormalMap: false

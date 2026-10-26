@@ -227,7 +227,7 @@ std::string projectFileFor(const fs::path& projectPath, const std::string& file)
         if (*suffix.begin() == ".jasperengine") continue;
         if (parts.size() - start >= 1 && fs::is_regular_file(projectPath / suffix, ec)) {
             if (parts.size() - start == 1 && start != parts.size() - 1) continue;
-            return suffix.generic_string();
+            return FileUtils::pathToGenericUtf8(suffix);
         }
     }
     return {};

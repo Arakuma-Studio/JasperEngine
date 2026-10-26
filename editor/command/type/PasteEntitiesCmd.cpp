@@ -90,9 +90,9 @@ editor::PasteEntitiesCmd::~PasteEntitiesCmd(){
     BackgroundRelease::release(std::move(clip));
 }
 
-bool editor::PasteEntitiesCmd::hasCamera(Scene* scene) const{
+bool editor::PasteEntitiesCmd::hasLinkSource(Scene* scene) const{
     for (Entity entity : createdEntities) {
-        if (scene->isEntityCreated(entity) && scene->findComponent<CameraComponent>(entity)) {
+        if (CameraTextureLink::isLinkSource(scene, entity)) {
             return true;
         }
     }
@@ -393,9 +393,9 @@ bool editor::PasteEntitiesCmd::execute(){
         Catalog::updateEntity(scene, entity, ~UpdateFlags_SceneWide);
     }
 
-    // The pasted textures were bound with their references. A pasted camera may also be
-    // what textures elsewhere name (it got back the id it had before a Cut): rebind all.
-    if (hasCamera(scene)) {
+    // The pasted textures were bound with their references. A pasted camera or fluid may also
+    // be what textures elsewhere name (it got back the id it had before a Cut): rebind all.
+    if (hasLinkSource(scene)) {
         CameraTextureLink::resolve(scene);
     }
 
@@ -418,8 +418,8 @@ void editor::PasteEntitiesCmd::undo(){
         return;
     }
 
-    // Textures elsewhere may name a camera about to go
-    const bool camera = hasCamera(sceneProject->scene);
+    // Textures elsewhere may name a camera or a fluid about to go
+    const bool camera = hasLinkSource(sceneProject->scene);
     destroyCreated(sceneProject);
     createdEntities.clear();
     createdRoots.clear();

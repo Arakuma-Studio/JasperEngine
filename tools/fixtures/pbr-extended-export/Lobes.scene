@@ -50,27 +50,27 @@ shaderKeys:
   - type: mesh
     properties: 346
   - type: mesh
-    properties: 378
+    properties: 8589934938
   - type: mesh
     properties: 1112
   - type: mesh
     properties: 1114
   - type: mesh
-    properties: 1144
+    properties: 8589935704
   - type: mesh
-    properties: 1146
+    properties: 8589935706
   - type: mesh
     properties: 33554776
   - type: mesh
     properties: 33554778
   - type: mesh
-    properties: 33554808
+    properties: 8623489368
   - type: mesh
-    properties: 33554810
+    properties: 8623489370
   - type: mesh
     properties: 33554906
   - type: mesh
-    properties: 33554938
+    properties: 8623489498
   - type: sky
   - type: depth
   - type: blit
@@ -79,13 +79,13 @@ shaderKeys:
     properties: 346
     customShader: builtin:lit#USE_LIT_QUALITY
   - type: mesh
-    properties: 378
+    properties: 8589934938
     customShader: builtin:lit#USE_LIT_QUALITY
   - type: mesh
     properties: 1112
     customShader: builtin:lit#USE_LIT_QUALITY
   - type: mesh
-    properties: 1144
+    properties: 8589935704
     customShader: builtin:lit#USE_LIT_QUALITY
   - type: mesh
     properties: 33554776
@@ -94,94 +94,94 @@ shaderKeys:
     properties: 33554778
     customShader: builtin:lit#USE_LIT_QUALITY
   - type: mesh
-    properties: 33554808
+    properties: 8623489368
     customShader: builtin:lit#USE_LIT_QUALITY
   - type: mesh
-    properties: 33554810
+    properties: 8623489370
     customShader: builtin:lit#USE_LIT_QUALITY
   - type: mesh
     properties: 33554906
     customShader: builtin:lit#USE_LIT_QUALITY
   - type: mesh
-    properties: 33554938
+    properties: 8623489498
     customShader: builtin:lit#USE_LIT_QUALITY
   - type: mesh
     properties: 1112
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
   - type: mesh
-    properties: 1144
+    properties: 8589935704
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
   - type: mesh
     properties: 1112
     customShader: builtin:lit#PBR_SHEEN,USE_LIT_QUALITY
   - type: mesh
-    properties: 1144
+    properties: 8589935704
     customShader: builtin:lit#PBR_SHEEN,USE_LIT_QUALITY
   - type: mesh
     properties: 1112
     customShader: builtin:lit#PBR_ANISOTROPY,USE_LIT_QUALITY
   - type: mesh
-    properties: 1144
+    properties: 8589935704
     customShader: builtin:lit#PBR_ANISOTROPY,USE_LIT_QUALITY
   - type: mesh
     properties: 1112
     customShader: builtin:lit#PBR_IRIDESCENCE,USE_LIT_QUALITY
   - type: mesh
-    properties: 1144
+    properties: 8589935704
     customShader: builtin:lit#PBR_IRIDESCENCE,USE_LIT_QUALITY
   - type: mesh
     properties: 1112
     customShader: builtin:lit#PBR_SPECULAR,PBR_TRANSMISSION,PBR_VOLUME,USE_LIT_QUALITY
   - type: mesh
-    properties: 1144
+    properties: 8589935704
     customShader: builtin:lit#PBR_SPECULAR,PBR_TRANSMISSION,PBR_VOLUME,USE_LIT_QUALITY
   - type: mesh
     properties: 1112
     customShader: builtin:lit#PBR_SPECULAR,USE_LIT_QUALITY
   - type: mesh
-    properties: 1144
+    properties: 8589935704
     customShader: builtin:lit#PBR_SPECULAR,USE_LIT_QUALITY
   - type: mesh
     properties: 1114
     customShader: builtin:lit#PBR_HEX_TILING,USE_LIT_QUALITY
   - type: mesh
-    properties: 1146
+    properties: 8589935706
     customShader: builtin:lit#PBR_HEX_TILING,USE_LIT_QUALITY
   - type: mesh
     properties: 33554776
     customShader: builtin:lit#PBR_CLEARCOAT,USE_LIT_QUALITY
   - type: mesh
-    properties: 33554808
+    properties: 8623489368
     customShader: builtin:lit#PBR_CLEARCOAT,USE_LIT_QUALITY
   - type: mesh
     properties: 33554906
     customShader: builtin:lit#PBR_CLEARCOAT,USE_LIT_QUALITY
   - type: mesh
-    properties: 33554938
+    properties: 8623489498
     customShader: builtin:lit#PBR_CLEARCOAT,USE_LIT_QUALITY
   - type: mesh
     properties: 1112
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
   - type: mesh
-    properties: 1144
+    properties: 8589935704
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
   - type: mesh
     properties: 33554776
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
   - type: mesh
-    properties: 33554808
+    properties: 8623489368
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
   - type: mesh
     properties: 33554776
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
   - type: mesh
-    properties: 33554808
+    properties: 8623489368
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
   - type: mesh
     properties: 33554906
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
   - type: mesh
-    properties: 33554938
+    properties: 8623489498
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
 entities:
   - type: Entity
@@ -413,7 +413,7 @@ entities:
             vertexCount: 3672
             faceCulling: true
             textureShadow: false
-            overrideFields: 1073741831
+            overrideFields: 2147483655
             hasTexCoord1: true
             hasTexCoord2: false
             hasNormalMap: false
@@ -559,7 +559,7 @@ entities:
             vertexCount: 3672
             faceCulling: true
             textureShadow: false
-            overrideFields: 1073741831
+            overrideFields: 2147483655
             hasTexCoord1: true
             hasTexCoord2: false
             hasNormalMap: false
@@ -705,7 +705,7 @@ entities:
             vertexCount: 3672
             faceCulling: true
             textureShadow: false
-            overrideFields: 1073741831
+            overrideFields: 2147483655
             hasTexCoord1: true
             hasTexCoord2: false
             hasNormalMap: false
@@ -850,7 +850,7 @@ entities:
             vertexCount: 3672
             faceCulling: true
             textureShadow: false
-            overrideFields: 1073741831
+            overrideFields: 2147483655
             hasTexCoord1: true
             hasTexCoord2: false
             hasNormalMap: false
@@ -1000,7 +1000,7 @@ entities:
             vertexCount: 3672
             faceCulling: true
             textureShadow: false
-            overrideFields: 1073741831
+            overrideFields: 2147483655
             hasTexCoord1: true
             hasTexCoord2: false
             hasNormalMap: false
@@ -1146,7 +1146,7 @@ entities:
             vertexCount: 3672
             faceCulling: true
             textureShadow: false
-            overrideFields: 1073741831
+            overrideFields: 2147483655
             hasTexCoord1: true
             hasTexCoord2: false
             hasNormalMap: false
@@ -1300,7 +1300,7 @@ entities:
             vertexCount: 3672
             faceCulling: true
             textureShadow: false
-            overrideFields: 1073741958
+            overrideFields: 2147483782
             hasTexCoord1: true
             hasTexCoord2: false
             hasNormalMap: false

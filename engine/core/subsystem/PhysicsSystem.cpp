@@ -3,7 +3,10 @@
 
 #include "PhysicsSystem.h"
 #include "Scene.h"
+#include "physics/JoltShapeBuilder.h"
+#include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
+#include "object/environment/Water.h"
 #include "util/Angle.h"
 
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -13,15 +16,10 @@
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "subsystem/CharacterControllerSystem.h"
 #include "util/JoltPhysicsAux.h"
-#include "util/JoltJobAdapter.h"
-#include "memory/MemoryStats.h"
 #endif
 
 #include <algorithm>
 #include <cmath>
-#include <map>
-#include <set>
-#include <tuple>
 
 
 using namespace jasperengine;
@@ -32,8 +30,7 @@ namespace {
     // RenderSystem::updateTransform. Identity when there is no Transform, matching an
     // unscaled body.
     Vector3 entityWorldScale(Scene* scene, Entity entity){
-        Transform* transform = scene->findComponent<Transform>(entity);
-        return transform ? transform->worldScale : Vector3::UNIT_SCALE;
+        return JoltShapeBuilder::entityWorldScale(scene, entity);
     }
 
     Vector2 entityWorldScale2D(Scene* scene, Entity entity){
@@ -59,159 +56,60 @@ namespace {
         }
     }
 
-#ifdef JASPERENGINE_PHYSICS_3D
-    // Jolt's global allocator/factory/type registration is process-wide; run once
-    // (the old per-constructor path re-created and leaked a Factory per scene).
-    void ensureJoltGlobalInit(){
-        static const bool done = [](){
-            JPH::RegisterDefaultAllocator();
-            JPH::Factory::sInstance = new JPH::Factory();
-            JPH::RegisterTypes();
-            return true;
-        }();
-        (void)done;
+    // still the pose physics and the Transform last agreed on: not moved by a script, an
+    // animation or the editor since
+    template<typename T>
+    bool isSynced(const Transform& transform, const T& body){
+        return body.hasSyncedPose && transform.worldPosition == body.syncedPosition && transform.worldRotation == body.syncedRotation;
     }
 
-    // One temp allocator + job pool shared by every scene's 3D world. Updates run
-    // sequentially on the main thread, so a single pool avoids a per-scene thread pool
-    // and 10 MiB buffer.
-    // Intentionally leaked, like Jolt's Factory: the editor keeps its App (and every
-    // Scene) in a static, so ~PhysicsSystem runs during static destruction and must not
-    // find these already gone.
-    JPH::TempAllocatorImpl& sharedPhysicsTempAllocator(){
-        constexpr unsigned int bytes = 10 * 1024 * 1024;
-        static JPH::TempAllocatorImpl* instance = [](){
-            // its block, reserved for the process, in the memory stats
-            static memory::TrackedBytes* tracked = new memory::TrackedBytes("Physics.JoltTempAllocator", memory::Residency::Cpu);
-            tracked->add(bytes);
-            tracked->setCapacity(bytes);
-            return new JPH::TempAllocatorImpl(bytes);
-        }();
-        return *instance;
-    }
-    // Physics jobs run on the engine's job system (one CPU budget for the engine and Jolt);
-    // JE_JOLT_OWN_POOL keeps Jolt's own pool for one release as a fallback.
-    JPH::JobSystem& sharedPhysicsJobSystem(){
-    #ifdef JE_JOLT_OWN_POOL
-        // hardware_concurrency() is unsigned and reports 0 when unknown, so clamp
-        // instead of subtracting into a huge worker count on a single-core machine.
-        const unsigned int cores = JPH::thread::hardware_concurrency();
-        const int workers = (cores > 1) ? (int)(cores - 1) : 1;
-        static JPH::JobSystemThreadPool* instance =
-            new JPH::JobSystemThreadPool(JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers, workers);
-    #else
-        static JoltJobAdapter* instance = new JoltJobAdapter(JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers);
-    #endif
-        return *instance;
-    }
-#endif
-
-    // POSITION/INDEX buffers one submesh reads: component-level first, overridden by
-    // any per-submesh attribute.
-    struct MeshSourceView{
-        Buffer* vertexBuffer = NULL;
-        Attribute vertexAttr;
-        Buffer* indexBuffer = NULL;
-        Attribute indexAttr;
-    };
-
-    // Submeshes commonly share one POSITION buffer and differ only in their indices,
-    // so a range is added once and its vertices reused.
-    typedef std::tuple<const void*, size_t, size_t> VertexRange;
-
-    VertexRange vertexRange(const MeshSourceView& view){
-        return VertexRange(view.vertexBuffer->getData(), view.vertexAttr.getOffset(), view.vertexAttr.getCount());
+    template<typename T>
+    void setSynced(T& body, const Vector3& position, const Quaternion& rotation){
+        body.hasSyncedPose = true;
+        body.syncedPosition = position;
+        body.syncedRotation = rotation;
     }
 
-    std::vector<MeshSourceView> collectMeshSourceViews(MeshComponent* mesh){
-        std::vector<MeshSourceView> views;
-        if (!mesh) return views;
+    // A kinematic body moved by its Transform further than its own size in a frame, or turned
+    // more than this, is teleported there (a respawn, a reset) instead of swept through
+    // everything in between at that speed
+    const float maxFollowedTurn = (float)M_PI / 2.0f;
 
-        std::map<std::string, Buffer*> buffers;
-        if (mesh->buffer.getSize() > 0) buffers["vertices"] = &mesh->buffer;
-        if (mesh->indices.getSize() > 0) buffers["indices"] = &mesh->indices;
-        for (int i = 0; i < mesh->numExternalBuffers; i++) buffers[mesh->eBuffers[i].getName()] = &mesh->eBuffers[i];
+    // Writes a world pose as the local one, and the world one too as RenderSystem derives it
+    // back from it (also returned in position and rotation): the next fixed step of the
+    // frame, before any transform update, syncs the body from the world pose. A part the
+    // Transform drives (a kinematic body following it) is left as it is and returned.
+    void setTransformWorldPose(Scene* scene, Transform& transform, Vector3& position, Quaternion& rotation,
+                               bool keepPosition = false, bool keepRotation = false){
+        Vector3 localPosition = position;
+        Quaternion localRotation = rotation;
 
-        MeshSourceView view;
-        for (auto const& buf : buffers){
-            if (buf.second->getAttribute(AttributeType::POSITION)){
-                view.vertexBuffer = buf.second;
-                view.vertexAttr = *buf.second->getAttribute(AttributeType::POSITION);
-            }
-            if (buf.second->getAttribute(AttributeType::INDEX)){
-                view.indexBuffer = buf.second;
-                view.indexAttr = *buf.second->getAttribute(AttributeType::INDEX);
-            }
+        Transform* parent = (transform.parent != NULL_ENTITY) ? scene->findComponent<Transform>(transform.parent) : NULL;
+        if (parent){
+            localPosition = parent->modelMatrix.inverse() * position;
+            localRotation = parent->worldRotation.inverse() * rotation;
+            position = parent->modelMatrix * localPosition;
+            rotation = parent->worldRotation * localRotation;
         }
 
-        // An empty name keeps the buffer already in view; an unknown one drops the
-        // attribute, whose offset only means anything against its own buffer.
-        auto resolveNamedBuffer = [&buffers](const std::string& bufferName, Buffer* current) -> Buffer* {
-            if (bufferName.empty()) return current;
-            auto named = buffers.find(bufferName);
-            return named != buffers.end() ? named->second : NULL;
-        };
-
-        for (size_t i = 0; i < mesh->numSubmeshes; i++){
-            for (auto const& attr : mesh->submeshes[i].attributes){
-                if (attr.first == AttributeType::POSITION){
-                    if (Buffer* resolved = resolveNamedBuffer(attr.second.getBufferName(), view.vertexBuffer)){
-                        view.vertexBuffer = resolved;
-                        view.vertexAttr = attr.second;
-                    }
-                }
-                if (attr.first == AttributeType::INDEX){
-                    if (Buffer* resolved = resolveNamedBuffer(attr.second.getBufferName(), view.indexBuffer)){
-                        view.indexBuffer = resolved;
-                        view.indexAttr = attr.second;
-                    }
-                }
-            }
-
-            if (view.vertexBuffer) views.push_back(view);
+        if (keepPosition){
+            localPosition = transform.position;
+            position = transform.worldPosition;
+        }
+        if (keepRotation){
+            localRotation = transform.rotation;
+            rotation = transform.worldRotation;
         }
 
-        return views;
+        if (transform.position != localPosition || transform.rotation != localRotation ||
+                transform.worldPosition != position || transform.worldRotation != rotation){
+            transform.position = localPosition;
+            transform.rotation = localRotation;
+            transform.worldPosition = position;
+            transform.worldRotation = rotation;
+            transform.needUpdate = true;
+        }
     }
-
-    // A multi-node glTF root is only a hierarchy container, with the geometry living in
-    // its mesh-node children, so a shape sourced from it falls back to those nodes.
-    std::vector<Entity> meshSourceEntities(Scene* scene, Entity meshEntity){
-        std::vector<Entity> sources;
-
-        MeshComponent* mesh = scene->findComponent<MeshComponent>(meshEntity);
-        if (mesh && mesh->numSubmeshes > 0){
-            sources.push_back(meshEntity);
-            return sources;
-        }
-
-        if (ModelComponent* model = scene->findComponent<ModelComponent>(meshEntity)){
-            for (auto const& node : model->meshNodesMapping){
-                MeshComponent* nodeMesh = scene->findComponent<MeshComponent>(node.second);
-                if (nodeMesh && nodeMesh->numSubmeshes > 0){
-                    sources.push_back(node.second);
-                }
-            }
-        }
-
-        return sources;
-    }
-
-    // Source vertices are in their own entity's space, which is the body's only when one
-    // entity owns both. Brings them into body-local (rotation-free, world-scaled) space.
-    Matrix4 meshToBodyMatrix(Scene* scene, Entity bodyEntity, Entity meshEntity){
-        Transform* meshTransform = scene->findComponent<Transform>(meshEntity);
-        Transform* bodyTransform = scene->findComponent<Transform>(bodyEntity);
-
-        if (meshEntity == bodyEntity || !meshTransform || !bodyTransform){
-            return Matrix4::scaleMatrix(entityWorldScale(scene, meshEntity));
-        }
-
-        return bodyTransform->worldRotation.inverse().getRotationMatrix() *
-               Matrix4::translateMatrix(-bodyTransform->worldPosition) *
-               meshTransform->modelMatrix;
-    }
-
 }
 
 #ifdef JASPERENGINE_PHYSICS_3D
@@ -330,6 +228,7 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
     SceneSettings settingsDefaults;
     this->gravity2D = settingsDefaults.gravity2D;
     this->gravity3D = settingsDefaults.gravity3D;
+    this->interpolation = settingsDefaults.physicsInterpolation;
 #ifdef JASPERENGINE_PHYSICS_2D
     this->pointsToMeterScale2D = 64.0;
     characters2D = std::make_unique<CharacterController2DSystem>(scene, this);
@@ -346,7 +245,7 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
 #ifdef JASPERENGINE_PHYSICS_3D
     // https://github.com/jrouwe/JoltPhysics/issues/244
     // Jolt globals are initialized once per process (see helper).
-    ensureJoltGlobalInit();
+    JoltShapeBuilder::ensureJoltGlobalInit();
 
     const unsigned int cMaxBodies = 1024;
     const unsigned int cNumBodyMutexes = 0;
@@ -367,8 +266,8 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
     world3D.SetGravity(JPH::Vec3(this->gravity3D.x, this->gravity3D.y, this->gravity3D.z));
 
     // Shared across all scenes (created once); physics updates are sequential on the main thread.
-    temp_allocator = &sharedPhysicsTempAllocator();
-    job_system = &sharedPhysicsJobSystem();
+    temp_allocator = &JoltShapeBuilder::sharedPhysicsTempAllocator();
+    job_system = &JoltShapeBuilder::sharedPhysicsJobSystem();
 
     activationListener3D = new JoltActivationListener(scene, this);
     world3D.SetBodyActivationListener(activationListener3D);
@@ -484,6 +383,34 @@ void PhysicsSystem::setGravity(float x, float y){
 
 void PhysicsSystem::setGravity(float x, float y, float z){
     setGravity(Vector3(x, y, z));
+}
+
+void PhysicsSystem::setInterpolation(bool interpolation){
+    this->interpolation = interpolation;
+}
+
+bool PhysicsSystem::isInterpolation() const{
+    return interpolation;
+}
+
+void PhysicsSystem::clearSubscriptions(){
+#ifdef JASPERENGINE_PHYSICS_2D
+    beginContact2D.clear();
+    endContact2D.clear();
+    beginSensorContact2D.clear();
+    endSensorContact2D.clear();
+    hitContact2D.clear();
+    preSolve2D.clear();
+    shouldCollide2D.clear();
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
+    onBodyActivated3D.clear();
+    onBodyDeactivated3D.clear();
+    onContactAdded3D.clear();
+    onContactPersisted3D.clear();
+    onContactRemoved3D.clear();
+    shouldCollide3D.clear();
+#endif
 }
 
 void PhysicsSystem::removeSubscriptionsByTag(const std::string& substring){
@@ -764,16 +691,29 @@ void PhysicsSystem::syncLayerCollisionMatrix3D(){
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_2D
-void PhysicsSystem::updateTransformFromRigidbody2D(Entity entity, Vector2 position, float angle){
+void PhysicsSystem::updateTransformFromRigidbody2D(Entity entity, Rigidbody2DComponent& body, float alpha){
     Transform* transform = scene->findComponent<Transform>(entity);
-    if (!transform){
+    if (!transform || !b2Body_IsValid(body.body)){
         return;
     }
 
-    // Box2D does not own Z, it is kept from the current world position
-    Vector3 worldPosition = Vector3(position.x, position.y, transform->worldPosition.z);
+    // a body that never stepped has no pose before the step to draw from
+    b2Transform bTransform = b2Body_GetTransform(body.body);
+    if (interpolation && alpha < 1.0f && !body.newBody){
+        const b2Transform& previous = body.previousTransform;
+        bTransform.p = previous.p + (bTransform.p - previous.p) * alpha;
+        if (previous.q.c != bTransform.q.c || previous.q.s != bTransform.q.s){
+            bTransform.q = b2NLerp(previous.q, bTransform.q, alpha);
+        }
+    }
 
-    updateTransformFromRigidbody(entity, worldPosition, Quaternion(angle, Vector3(0, 0, 1)));
+    // Box2D does not own Z, it is kept from the current world position
+    Vector3 position(bTransform.p.x * pointsToMeterScale2D, bTransform.p.y * pointsToMeterScale2D, transform->worldPosition.z);
+    Quaternion rotation(Angle::radToDefault(b2Rot_GetAngle(bTransform.q)), Vector3(0, 0, 1));
+
+    // the parts a following body is on its way to stay as the Transform has them
+    setTransformWorldPose(scene, *transform, position, rotation, body.followingPosition, body.followingRotation);
+    setSynced(body, position, rotation);
 }
 #endif
 
@@ -781,37 +721,71 @@ void PhysicsSystem::resolveTransformWorldPose(Entity entity){
     resolveWorldPose(scene, entity);
 }
 
-void PhysicsSystem::setTransformWorldPose(Entity entity, const Vector3& position, const Quaternion& rotation){
-    updateTransformFromRigidbody(entity, position, rotation);
-}
-
-void PhysicsSystem::updateTransformFromRigidbody(Entity entity, Vector3 position, Quaternion rotation){
+void PhysicsSystem::writeTransformWorldPose(Entity entity, const Vector3& position, const Quaternion& rotation){
     Transform* transform = scene->findComponent<Transform>(entity);
     if (!transform){
         return;
     }
-
-    transform->worldPosition = position;
-    transform->worldRotation = rotation;
-
-    Transform* transformParent = NULL;
-    if (transform->parent != NULL_ENTITY){
-        transformParent = scene->findComponent<Transform>(transform->parent);
-    }
-
-    if (transformParent){
-        transform->position = transformParent->modelMatrix.inverse() * position;
-        transform->rotation = transformParent->worldRotation.inverse() * rotation;
-    }else{
-        transform->position = position;
-        transform->rotation = rotation;
-    }
-
-    transform->needUpdate = true;
+    Vector3 worldPosition = position;
+    Quaternion worldRotation = rotation;
+    setTransformWorldPose(scene, *transform, worldPosition, worldRotation);
 }
 
+#ifdef JASPERENGINE_PHYSICS_3D
+void PhysicsSystem::updateTransformFromRigidbody(Entity entity, RigidbodyComponent& body, float alpha){
+    Transform* transform = scene->findComponent<Transform>(entity);
+    if (!transform || body.body.IsInvalid()){
+        return;
+    }
+
+    JPH::RVec3 jPosition;
+    JPH::Quat jRotation;
+    getBodyInterface3D().GetPositionAndRotation(body.body, jPosition, jRotation);
+    if (std::isnan(jPosition.GetX()) || std::isnan(jPosition.GetY()) || std::isnan(jPosition.GetZ())){
+        return;
+    }
+
+    Vector3 position(jPosition.GetX(), jPosition.GetY(), jPosition.GetZ());
+    Quaternion rotation(jRotation.GetW(), jRotation.GetX(), jRotation.GetY(), jRotation.GetZ());
+    // a body that never stepped has no pose before the step to draw from
+    if (interpolation && alpha < 1.0f && !body.newBody){
+        position = body.previousPosition.lerp(position, alpha);
+        if (body.previousRotation != rotation){
+            rotation = Quaternion::slerp(alpha, body.previousRotation, rotation);
+        }
+    }
+
+    // the parts a following body is on its way to stay as the Transform has them
+    setTransformWorldPose(scene, *transform, position, rotation, body.followingPosition, body.followingRotation);
+    setSynced(body, position, rotation);
+}
+#endif
+
 #ifdef JASPERENGINE_PHYSICS_2D
-void PhysicsSystem::updateRigidbody2DPosition(Signature signature, Entity entity, Rigidbody2DComponent& body){
+void PhysicsSystem::stopFollowing2D(Rigidbody2DComponent& body, bool position, bool rotation){
+    position = position && body.followingPosition;
+    rotation = rotation && body.followingRotation;
+    if (!position && !rotation){
+        return;
+    }
+
+    if (b2Body_IsValid(body.body)){
+        if (position && b2Body_GetLinearVelocity(body.body) == body.followedLinearVelocity){
+            b2Body_SetLinearVelocity(body.body, b2Vec2_zero);
+        }
+        if (rotation && b2Body_GetAngularVelocity(body.body) == body.followedAngularVelocity){
+            b2Body_SetAngularVelocity(body.body, 0.0f);
+        }
+    }
+    if (position){
+        body.followingPosition = false;
+    }
+    if (rotation){
+        body.followingRotation = false;
+    }
+}
+
+void PhysicsSystem::updateRigidbody2DPosition(Signature signature, Entity entity, Rigidbody2DComponent& body, float stepTime){
     if (signature.test(scene->getComponentId<Transform>())){
         Transform& transform = scene->getComponent<Transform>(entity);
         if (b2Body_IsValid(body.body)){
@@ -820,22 +794,141 @@ void PhysicsSystem::updateRigidbody2DPosition(Signature signature, Entity entity
                 resolveWorldPose(scene, entity);
             }
 
-            b2Vec2 bNewPosition = {transform.worldPosition.x / pointsToMeterScale2D, transform.worldPosition.y / pointsToMeterScale2D};
-            float bNewAngle = Angle::defaultToRad(transform.worldRotation.getRoll());
-
             b2Transform bTransform = b2Body_GetTransform(body.body);
+            float bAngle = b2Rot_GetAngle(bTransform.q);
 
-            if (bTransform.p != bNewPosition || b2Rot_GetAngle(bTransform.q) != bNewAngle){
-                b2Body_SetTransform(body.body, bNewPosition, b2MakeRot(bNewAngle));
+            const b2Vec2 bWorldPosition = {transform.worldPosition.x / pointsToMeterScale2D, transform.worldPosition.y / pointsToMeterScale2D};
+            const float bWorldAngle = Angle::defaultToRad(transform.worldRotation.getRoll());
+
+            // Each part (position, angle) the Transform moved since physics and it last agreed
+            // moves the body by as much, from where the body really is: a drawn interpolated
+            // pose is behind it. A new body goes where the Transform is, and so does a part a
+            // following body is on its way to: until the last step of the frame put it there,
+            // then while the Transform moves on. A part nobody moved stays as physics has it.
+            const bool absolute = body.newBody || !body.hasSyncedPose;
+            const bool positionMovedOn = transform.worldPosition != body.syncedPosition;
+            const bool rotationMovedOn = transform.worldRotation != body.syncedRotation;
+            b2Vec2 bNewPosition = bTransform.p;
+            float bNewAngle = bAngle;
+            if (absolute || (body.followingPosition && (!body.followReached || positionMovedOn))){
+                bNewPosition = bWorldPosition;
+            }else if (positionMovedOn){
+                const b2Vec2 bSyncedPosition = {body.syncedPosition.x / pointsToMeterScale2D, body.syncedPosition.y / pointsToMeterScale2D};
+                bNewPosition = bTransform.p + (bWorldPosition - bSyncedPosition);
+            }
+            if (absolute || (body.followingRotation && (!body.followReached || rotationMovedOn))){
+                bNewAngle = bWorldAngle;
+            }else if (rotationMovedOn){
+                bNewAngle = bAngle + b2UnwindAngle(bWorldAngle - Angle::defaultToRad(body.syncedRotation.getRoll()));
+            }
+
+            const bool positionMoved = bNewPosition != bTransform.p;
+            const bool rotationMoved = bNewAngle != bAngle;
+
+            // inside a step a kinematic body is moved there with a velocity, which carries and
+            // pushes other bodies, spread over the steps left in the frame
+            const int steps = Engine::getFixedStepsLeft();
+            bool followPosition = false;
+            bool followRotation = false;
+            if ((positionMoved || rotationMoved) && stepTime > 0.0f && body.type == BodyType::KINEMATIC && !body.newBody){
+                // a body without colliders (a joint anchor) has no size to go through
+                const b2AABB bounds = b2Body_ComputeAABB(body.body);
+                const float size = std::max(bounds.upperBound.x - bounds.lowerBound.x, bounds.upperBound.y - bounds.lowerBound.y);
+                followPosition = positionMoved && (size <= 0.0f || b2Length(bNewPosition - bTransform.p) / steps <= size);
+                followRotation = rotationMoved && std::fabs(b2UnwindAngle(bNewAngle - bAngle)) / steps <= maxFollowedTurn;
+            }
+
+            // the parts no longer followed stop
+            stopFollowing2D(body, !followPosition, !followRotation);
+
+            const float duration = stepTime * steps;
+            if (followPosition){
+                b2Body_SetLinearVelocity(body.body, (bNewPosition - bTransform.p) * (1.0f / duration));
+                body.followedLinearVelocity = b2Body_GetLinearVelocity(body.body);
+            }
+            if (followRotation){
+                b2Body_SetAngularVelocity(body.body, b2UnwindAngle(bNewAngle - bAngle) / duration);
+                body.followedAngularVelocity = b2Body_GetAngularVelocity(body.body);
+            }
+
+            // and the parts moved but not followed jump there
+            const bool jumpPosition = positionMoved && !followPosition;
+            const bool jumpRotation = rotationMoved && !followRotation;
+            if (jumpPosition || jumpRotation){
+                b2Body_SetTransform(body.body, jumpPosition ? bNewPosition : bTransform.p, jumpRotation ? b2MakeRot(bNewAngle) : bTransform.q);
+            }
+            if (positionMoved || rotationMoved){
                 b2Body_SetAwake(body.body, true);
             }
+
+            if (followPosition || followRotation){
+                body.followReached = false;
+            }
+            body.followingPosition = followPosition;
+            body.followingRotation = followRotation;
+            setSynced(body, transform.worldPosition, transform.worldRotation);
+
+            // drawn from here towards where the step ends
+            body.previousTransform = b2Body_GetTransform(body.body);
         }
     }
+}
+
+void PhysicsSystem::finishFollowing2D(Entity entity, Rigidbody2DComponent& body){
+    Transform* transform = scene->findComponent<Transform>(entity);
+    if (!transform || !b2Body_IsValid(body.body) || (!body.followingPosition && !body.followingRotation)){
+        return;
+    }
+
+    // the last step of the frame ends where the Transform is; the velocity stays until the
+    // next step, which finds whether the Transform moves on
+    b2Transform bTransform = b2Body_GetTransform(body.body);
+    if (body.followingPosition){
+        bTransform.p = {transform->worldPosition.x / pointsToMeterScale2D, transform->worldPosition.y / pointsToMeterScale2D};
+    }
+    if (body.followingRotation){
+        bTransform.q = b2MakeRot(Angle::defaultToRad(transform->worldRotation.getRoll()));
+    }
+    b2Body_SetTransform(body.body, bTransform.p, bTransform.q);
+    body.followReached = true;
 }
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
-void PhysicsSystem::updateRigidbodyPosition(Signature signature, Entity entity, RigidbodyComponent& body){
+void PhysicsSystem::stopFollowing3D(RigidbodyComponent& body, bool position, bool rotation){
+    position = position && body.followingPosition;
+    rotation = rotation && body.followingRotation;
+    if (!position && !rotation){
+        return;
+    }
+
+    if (!body.body.IsInvalid()){
+        JPH::BodyInterface& body_interface = getBodyInterface3D();
+        JPH::Vec3 linearVelocity;
+        JPH::Vec3 angularVelocity;
+        body_interface.GetLinearAndAngularVelocity(body.body, linearVelocity, angularVelocity);
+        bool stopped = false;
+        if (position && Vector3(linearVelocity.GetX(), linearVelocity.GetY(), linearVelocity.GetZ()) == body.followedLinearVelocity){
+            linearVelocity = JPH::Vec3::sZero();
+            stopped = true;
+        }
+        if (rotation && Vector3(angularVelocity.GetX(), angularVelocity.GetY(), angularVelocity.GetZ()) == body.followedAngularVelocity){
+            angularVelocity = JPH::Vec3::sZero();
+            stopped = true;
+        }
+        if (stopped){
+            body_interface.SetLinearAndAngularVelocity(body.body, linearVelocity, angularVelocity);
+        }
+    }
+    if (position){
+        body.followingPosition = false;
+    }
+    if (rotation){
+        body.followingRotation = false;
+    }
+}
+
+void PhysicsSystem::updateRigidbodyPosition(Signature signature, Entity entity, RigidbodyComponent& body, float stepTime){
     if (signature.test(scene->getComponentId<Transform>())){
         Transform& transform = scene->getComponent<Transform>(entity);
         if (!body.body.IsInvalid()){
@@ -843,21 +936,122 @@ void PhysicsSystem::updateRigidbodyPosition(Signature signature, Entity entity, 
                 resolveWorldPose(scene, entity);
             }
 
-            JPH::Vec3 jNewPosition(transform.worldPosition.x, transform.worldPosition.y, transform.worldPosition.z);
-            const Quaternion* newRotation = &transform.worldRotation;
-
-            JPH::Quat jNewQuat = toValidatedJoltRotation(*newRotation, entity, -1);
-
             JPH::BodyInterface &body_interface = world3D.GetBodyInterfaceNoLock();
             JPH::Vec3 jPosition;
             JPH::Quat jQuat;
             body_interface.GetPositionAndRotation(body.body, jPosition, jQuat);
 
-            if (jPosition != jNewPosition || jQuat != jNewQuat){
-                body_interface.SetPositionAndRotation(body.body, jNewPosition, jNewQuat, JPH::EActivation::Activate);
+            // Each part (position, rotation) the Transform moved since physics and it last
+            // agreed moves the body by as much, from where the body really is: a drawn
+            // interpolated pose is behind it. A new body goes where the Transform is, and so
+            // does a part a following body is on its way to: until the last step of the frame
+            // put it there, then while the Transform moves on (not the pose read back, which a
+            // centre of mass off the origin rounds). A part nobody moved stays as physics has it.
+            const bool absolute = body.newBody || !body.hasSyncedPose;
+            const bool positionMovedOn = transform.worldPosition != body.syncedPosition;
+            const bool rotationMovedOn = transform.worldRotation != body.syncedRotation;
+            JPH::Vec3 jNewPosition = jPosition;
+            JPH::Quat jNewQuat = jQuat;
+            if (absolute || (body.followingPosition && (!body.followReached || positionMovedOn))){
+                jNewPosition = JPH::Vec3(transform.worldPosition.x, transform.worldPosition.y, transform.worldPosition.z);
+            }else if (positionMovedOn){
+                const Vector3 delta = transform.worldPosition - body.syncedPosition;
+                jNewPosition = jPosition + JPH::Vec3(delta.x, delta.y, delta.z);
             }
+            if (absolute || (body.followingRotation && (!body.followReached || rotationMovedOn))){
+                jNewQuat = toValidatedJoltRotation(transform.worldRotation, entity, -1);
+            }else if (rotationMovedOn){
+                const Quaternion bodyRotation(jQuat.GetW(), jQuat.GetX(), jQuat.GetY(), jQuat.GetZ());
+                jNewQuat = toValidatedJoltRotation((bodyRotation * body.syncedRotation.inverse() * transform.worldRotation).normalized(), entity, -1);
+            }
+
+            const bool positionMoved = jNewPosition != jPosition;
+            const bool rotationMoved = jNewQuat != jQuat;
+
+            // inside a step a kinematic body is moved there with a velocity, which carries and
+            // pushes other bodies, spread over the steps left in the frame
+            const int steps = Engine::getFixedStepsLeft();
+            bool followPosition = false;
+            bool followRotation = false;
+            if ((positionMoved || rotationMoved) && stepTime > 0.0f && body.type == BodyType::KINEMATIC && !body.newBody){
+                const float size = body_interface.GetShape(body.body)->GetLocalBounds().GetSize().ReduceMax();
+                followPosition = positionMoved && (size <= 0.0f || (jNewPosition - jPosition).Length() / steps <= size);
+                JPH::Vec3 axis;
+                float turn;
+                (jNewQuat * jQuat.Conjugated()).Normalized().GetAxisAngle(axis, turn);
+                followRotation = rotationMoved && std::fabs(turn) / steps <= maxFollowedTurn;
+            }
+
+            // the parts no longer followed stop
+            stopFollowing3D(body, !followPosition, !followRotation);
+
+            if (followPosition || followRotation){
+                // a part not followed keeps its velocity
+                JPH::Vec3 linearVelocity;
+                JPH::Vec3 angularVelocity;
+                body_interface.GetLinearAndAngularVelocity(body.body, linearVelocity, angularVelocity);
+
+                float fraction = 1.0f / steps;
+                JPH::Vec3 stepPosition = followPosition ? jPosition + (jNewPosition - jPosition) * fraction : jPosition;
+                JPH::Quat stepRotation = followRotation ? jQuat.SLERP(jNewQuat, fraction).Normalized() : jQuat;
+                body_interface.MoveKinematic(body.body, stepPosition, stepRotation, stepTime);
+
+                if (!followPosition){
+                    body_interface.SetLinearVelocity(body.body, linearVelocity);
+                }
+                if (!followRotation){
+                    body_interface.SetAngularVelocity(body.body, angularVelocity);
+                }
+
+                body_interface.GetLinearAndAngularVelocity(body.body, linearVelocity, angularVelocity);
+                if (followPosition){
+                    body.followedLinearVelocity = Vector3(linearVelocity.GetX(), linearVelocity.GetY(), linearVelocity.GetZ());
+                }
+                if (followRotation){
+                    body.followedAngularVelocity = Vector3(angularVelocity.GetX(), angularVelocity.GetY(), angularVelocity.GetZ());
+                }
+                body.followReached = false;
+            }
+
+            // and the parts moved but not followed jump there
+            const bool jumpPosition = positionMoved && !followPosition;
+            const bool jumpRotation = rotationMoved && !followRotation;
+            if (jumpPosition || jumpRotation){
+                body_interface.SetPositionAndRotation(body.body, jumpPosition ? jNewPosition : jPosition, jumpRotation ? jNewQuat : jQuat, JPH::EActivation::Activate);
+            }
+
+            body.followingPosition = followPosition;
+            body.followingRotation = followRotation;
+            setSynced(body, transform.worldPosition, transform.worldRotation);
+
+            // drawn from here towards where the step ends
+            body_interface.GetPositionAndRotation(body.body, jPosition, jQuat);
+            body.previousPosition = Vector3(jPosition.GetX(), jPosition.GetY(), jPosition.GetZ());
+            body.previousRotation = Quaternion(jQuat.GetW(), jQuat.GetX(), jQuat.GetY(), jQuat.GetZ());
         }
     }
+}
+
+void PhysicsSystem::finishFollowing3D(Entity entity, RigidbodyComponent& body){
+    Transform* transform = scene->findComponent<Transform>(entity);
+    if (!transform || body.body.IsInvalid() || (!body.followingPosition && !body.followingRotation)){
+        return;
+    }
+
+    // the last step of the frame ends where the Transform is; the velocity stays until the
+    // next step, which finds whether the Transform moves on
+    JPH::BodyInterface &body_interface = world3D.GetBodyInterfaceNoLock();
+    JPH::Vec3 jPosition;
+    JPH::Quat jQuat;
+    body_interface.GetPositionAndRotation(body.body, jPosition, jQuat);
+    if (body.followingPosition){
+        jPosition = JPH::Vec3(transform->worldPosition.x, transform->worldPosition.y, transform->worldPosition.z);
+    }
+    if (body.followingRotation){
+        jQuat = toValidatedJoltRotation(transform->worldRotation, entity, -1);
+    }
+    body_interface.SetPositionAndRotation(body.body, jPosition, jQuat, JPH::EActivation::DontActivate);
+    body.followReached = true;
 }
 #endif
 
@@ -1200,231 +1394,33 @@ bool PhysicsSystem::syncRigidbody2DColliders(Entity entity, Rigidbody2DComponent
 bool PhysicsSystem::createCollider3DForIndex(Entity entity, RigidbodyComponent& body, size_t index){
     Collider3D& shapeData = body.colliders[index];
     shapeData.shape = NULL;
-    const Vector3 entityScale = entityWorldScale(scene, entity);
-    const Vector3 absEntityScale = absScale(entityScale);
 
-    if (shapeData.type == Collider3DType::BOX){
-        JPH::BoxShapeSettings shape_settings(JPH::Vec3(shapeData.width * absEntityScale.x / 2.0f, shapeData.height * absEntityScale.y / 2.0f, shapeData.depth * absEntityScale.z / 2.0f));
-        JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
-        if (!shape_result.IsValid()) return false;
-        shapeData.shape = shape_result.Get();
-    }else if (shapeData.type == Collider3DType::SPHERE){
-        JPH::SphereShapeSettings shape_settings(shapeData.radius * maxScaleXYZ(absEntityScale));
-        JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
-        if (!shape_result.IsValid()) return false;
-        shapeData.shape = shape_result.Get();
-    }else if (shapeData.type == Collider3DType::CAPSULE){
-        JPH::CapsuleShapeSettings shape_settings(shapeData.halfHeight * absEntityScale.y, shapeData.radius * maxScaleXZ(absEntityScale));
-        JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
-        if (!shape_result.IsValid()) return false;
-        shapeData.shape = shape_result.Get();
-    }else if (shapeData.type == Collider3DType::TAPERED_CAPSULE){
-        const float radiusScale = maxScaleXZ(absEntityScale);
-        JPH::TaperedCapsuleShapeSettings shape_settings(shapeData.halfHeight * absEntityScale.y, shapeData.topRadius * radiusScale, shapeData.bottomRadius * radiusScale);
-        JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
-        if (!shape_result.IsValid()) return false;
-        shapeData.shape = shape_result.Get();
-    }else if (shapeData.type == Collider3DType::CYLINDER){
-        JPH::CylinderShapeSettings shape_settings(shapeData.halfHeight * absEntityScale.y, shapeData.radius * maxScaleXZ(absEntityScale));
-        JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
-        if (!shape_result.IsValid()) return false;
-        shapeData.shape = shape_result.Get();
-    }else if (shapeData.type == Collider3DType::CONVEX_HULL){
-        if (shapeData.source == Collider3DSource::NONE){
+    if (shapeData.source == Collider3DSource::NONE){
+        if (shapeData.type == Collider3DType::CONVEX_HULL){
             shapeData.source = Collider3DSource::ENTITY_MESH;
             if (shapeData.sourceEntity == NULL_ENTITY){
                 shapeData.sourceEntity = entity;
             }
             Log::warn("Rigidbody entity %u has CONVEX_HULL with Source=None. Falling back to Entity Mesh source.", entity);
-        }
-
-        JPH::Array<JPH::Vec3> jvertices;
-
-        if (shapeData.source == Collider3DSource::RAW_VERTICES){
-            jvertices.resize(shapeData.numVertices);
-            for (size_t i = 0; i < shapeData.numVertices; i++){
-                Vector3 vertex = shapeData.vertices[i] * entityScale;
-                jvertices[i] = JPH::Vec3(vertex.x, vertex.y, vertex.z);
-            }
-        }else if (shapeData.source == Collider3DSource::ENTITY_MESH){
-            Entity meshEntity = shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity;
-            std::vector<Entity> sourceEntities = meshSourceEntities(scene, meshEntity);
-            if (sourceEntities.empty()){
-                Log::error("Cannot create convex hull shape: no mesh geometry found for entity %u", meshEntity);
-                return false;
-            }
-
-            for (Entity sourceEntity : sourceEntities){
-                const Matrix4 toBody = meshToBodyMatrix(scene, entity, sourceEntity);
-                std::set<VertexRange> addedRanges;
-
-                for (MeshSourceView& view : collectMeshSourceViews(scene->findComponent<MeshComponent>(sourceEntity))){
-                    if (!addedRanges.insert(vertexRange(view)).second) continue;
-
-                    int verticesize = int(view.vertexAttr.getCount());
-                    for (int i = 0; i < verticesize; i++){
-                        Vector3 vertice = toBody * view.vertexBuffer->getVector3(&view.vertexAttr, i);
-                        jvertices.push_back(JPH::Vec3(vertice.x, vertice.y, vertice.z));
-                    }
-                }
-            }
-        }
-
-        if (jvertices.empty()){
-            Log::error("Cannot create convex hull shape without vertices for 3D Body entity: %u", entity);
-            return false;
-        }
-
-        JPH::ConvexHullShapeSettings shape_settings(jvertices);
-        JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
-        if (!shape_result.IsValid()) return false;
-        shapeData.shape = shape_result.Get();
-    }else if (shapeData.type == Collider3DType::MESH){
-        if (shapeData.source == Collider3DSource::NONE){
+        }else if (shapeData.type == Collider3DType::MESH){
             shapeData.source = Collider3DSource::ENTITY_MESH;
             if (shapeData.sourceEntity == NULL_ENTITY){
                 shapeData.sourceEntity = entity;
             }
             Log::warn("Rigidbody entity %u has MESH with Source=None. Falling back to Entity Mesh source.", entity);
-        }
-
-        JPH::VertexList jvertices;
-        JPH::IndexedTriangleList jindices;
-
-        if (shapeData.source == Collider3DSource::RAW_MESH){
-            jvertices.resize(shapeData.numVertices);
-            for (size_t i = 0; i < shapeData.numVertices; i++){
-                Vector3 vertex = shapeData.vertices[i] * entityScale;
-                jvertices[i] = JPH::Float3(vertex.x, vertex.y, vertex.z);
-            }
-
-            int indicesize = int(shapeData.numIndices / 3);
-            jindices.resize(indicesize);
-            for (int i = 0; i < indicesize; i++){
-                for (int j = 0; j < 3; j++){
-                    jindices[i].mIdx[j] = shapeData.indices[(3 * i) + j];
-                }
-            }
-        }else if (shapeData.source == Collider3DSource::ENTITY_MESH){
-            Entity meshEntity = shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity;
-            std::vector<Entity> sourceEntities = meshSourceEntities(scene, meshEntity);
-            if (sourceEntities.empty()){
-                Log::error("Cannot create mesh shape: no mesh geometry found for entity %u", meshEntity);
-                return false;
-            }
-
-            for (Entity sourceEntity : sourceEntities){
-                const Matrix4 toBody = meshToBodyMatrix(scene, entity, sourceEntity);
-                std::map<VertexRange, JPH::uint32> vertexBases;
-
-                for (MeshSourceView& view : collectMeshSourceViews(scene->findComponent<MeshComponent>(sourceEntity))){
-                    const VertexRange range = vertexRange(view);
-                    const int verticesize = int(view.vertexAttr.getCount());
-
-                    auto base = vertexBases.find(range);
-                    if (base == vertexBases.end()){
-                        base = vertexBases.emplace(range, (JPH::uint32)jvertices.size()).first;
-                        for (int i = 0; i < verticesize; i++){
-                            Vector3 vertice = toBody * view.vertexBuffer->getVector3(&view.vertexAttr, i);
-                            jvertices.push_back(JPH::Float3(vertice.x, vertice.y, vertice.z));
-                        }
-                    }
-
-                    // Indices are local to their submesh, rebase onto its vertices
-                    const JPH::uint32 vertexBase = base->second;
-
-                    if (!view.indexBuffer){
-                        // No index buffer means a plain triangle list
-                        for (int i = 0; i + 2 < verticesize; i += 3){
-                            jindices.push_back(JPH::IndexedTriangle(vertexBase + i, vertexBase + i + 1, vertexBase + i + 2));
-                        }
-                        continue;
-                    }
-
-                    int numIdxTriangles = int(view.indexAttr.getCount() / 3);
-                    for (int i = 0; i < numIdxTriangles; i++){
-                        JPH::uint32 it[3];
-                        for (int j = 0; j < 3; j++){
-                            uint32_t indice = 0;
-                            if (view.indexAttr.getDataType() == AttributeDataType::UNSIGNED_INT){
-                                indice = view.indexBuffer->getUInt32(&view.indexAttr, (3 * i) + j);
-                            }else if (view.indexAttr.getDataType() == AttributeDataType::UNSIGNED_SHORT){
-                                indice = view.indexBuffer->getUInt16(&view.indexAttr, (3 * i) + j);
-                            }
-                            it[j] = vertexBase + indice;
-                        }
-                        jindices.push_back(JPH::IndexedTriangle(it[0], it[1], it[2]));
-                    }
-                }
-            }
-        }
-
-        if (jvertices.empty() || jindices.empty()){
-            Log::error("Cannot create mesh shape without vertices and indices for 3D Body entity: %u", entity);
-            return false;
-        }
-
-        JPH::MeshShapeSettings shape_settings(jvertices, jindices);
-        JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
-        if (!shape_result.IsValid()) return false;
-        shapeData.shape = shape_result.Get();
-    }else if (shapeData.type == Collider3DType::HEIGHTFIELD){
-        if (shapeData.source == Collider3DSource::NONE){
+        }else if (shapeData.type == Collider3DType::HEIGHTFIELD){
             shapeData.source = Collider3DSource::ENTITY_HEIGHTFIELD;
             if (shapeData.sourceEntity == NULL_ENTITY){
                 shapeData.sourceEntity = entity;
             }
             Log::warn("Rigidbody entity %u has HEIGHTFIELD with Source=None. Falling back to Entity Heightfield source.", entity);
         }
+    }
 
-        Entity terrainEntity = shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity;
-        TerrainComponent* terrain = scene->findComponent<TerrainComponent>(terrainEntity);
-        if (!terrain || !terrain->heightMapLoaded){
-            Log::error("Cannot create heightfield shape without loaded terrain heightmap");
-            return false;
-        }
-
-        TextureData& textureData = terrain->heightMap.getData();
-        unsigned int samplesSize = shapeData.samplesSize;
-        if (samplesSize == 0){
-            samplesSize = textureData.getMinNearestPowerOfTwo();
-            if (samplesSize > std::min(textureData.getOriginalWidth(), textureData.getOriginalHeight())){
-                samplesSize = samplesSize / 2;
-            }
-        }
-
-        JPH::Vec3 terrainOffset = JPH::Vec3(-terrain->terrainSize / 2.0, 0.0f, -terrain->terrainSize / 2.0);
-        JPH::Vec3 terrainScale = JPH::Vec3(terrain->terrainSize / samplesSize, terrain->maxHeight, terrain->terrainSize / samplesSize);
-
-        const unsigned char* heightPixels = static_cast<const unsigned char*>(textureData.getData());
-        const int heightChannels = textureData.getChannels();
-        const int heightBytesPerChannel = TextureData::getBytesPerChannel(textureData.getColorFormat());
-
-        float* samples = new float[samplesSize * samplesSize];
-        for (unsigned int x = 0; x < samplesSize; x++){
-            for (unsigned int y = 0; y < samplesSize; y++){
-                int posX = floor(textureData.getWidth() * x / samplesSize);
-                int posY = floor(textureData.getHeight() * y / samplesSize);
-                const size_t texelIndex = (static_cast<size_t>(posY) * textureData.getWidth() + posX);
-                const size_t index = texelIndex * static_cast<size_t>(heightChannels) * static_cast<size_t>(heightBytesPerChannel);
-                float val;
-                if (heightBytesPerChannel >= 2){
-                    const unsigned int raw = static_cast<unsigned int>(heightPixels[index]) |
-                                             (static_cast<unsigned int>(heightPixels[index + 1]) << 8);
-                    val = static_cast<float>(raw) / 65535.0f;
-                }else{
-                    val = heightPixels[index] / 255.0f;
-                }
-                samples[x + (y * samplesSize)] = val;
-            }
-        }
-
-        JPH::HeightFieldShapeSettings shape_settings(samples, terrainOffset, terrainScale, samplesSize);
-        JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
-        delete[] samples;
-
-        if (!shape_result.IsValid()) return false;
-        shapeData.shape = shape_result.Get();
+    std::string error;
+    shapeData.shape = JoltShapeBuilder::buildColliderShape(scene, entity, shapeData, &error);
+    if (!error.empty()){
+        Log::error("%s", error.c_str());
     }
 
     if (!shapeData.shape){
@@ -1454,24 +1450,7 @@ bool PhysicsSystem::isShapeSourceLoading(Entity entity, const Collider3D& shapeD
         return false;
     }
 
-    Entity current = shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity;
-
-    while (current != NULL_ENTITY){
-        ModelComponent* model = scene->findComponent<ModelComponent>(current);
-        if (model && !model->filename.empty() && model->needUpdateModel){
-            return true;
-        }
-
-        TerrainComponent* terrain = scene->findComponent<TerrainComponent>(current);
-        if (terrain && !terrain->heightMap.empty() && terrain->needUpdateTerrain){
-            return true;
-        }
-
-        Transform* transform = scene->findComponent<Transform>(current);
-        current = transform ? transform->parent : NULL_ENTITY;
-    }
-
-    return false;
+    return JoltShapeBuilder::isGeometryLoading(scene, shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity);
 }
 
 bool PhysicsSystem::syncRigidbodyColliders(Entity entity, RigidbodyComponent& body){
@@ -1565,7 +1544,15 @@ bool PhysicsSystem::createGenericJoltBody(Entity entity, RigidbodyComponent& bod
 
     const JPH::ObjectLayer layer = objectLayerTable3D->acquire(scene->getEntityLayer(entity), body.categoryBits, body.maskBits);
 
-    JPH::BodyCreationSettings settings(shape, JPH::Vec3(0.0, 0.0, 0.0), JPH::Quat::sIdentity(), joltType, layer);
+    // made where its GameObject is, so a script reaching it before the first sync (Lua init())
+    // finds it there
+    JPH::Vec3 createPosition(0.0, 0.0, 0.0);
+    JPH::Quat createRotation = JPH::Quat::sIdentity();
+    if (Transform* transform = scene->findComponent<Transform>(entity)){
+        createPosition = JPH::Vec3(transform->worldPosition.x, transform->worldPosition.y, transform->worldPosition.z);
+        createRotation = toValidatedJoltRotation(transform->worldRotation, entity, -1);
+    }
+    JPH::BodyCreationSettings settings(shape, createPosition, createRotation, joltType, layer);
     settings.mMotionQuality = getRigidbodyMotionQualityToJolt(body.motionQuality);
     settings.mIsSensor = body.sensor;
     // a trigger sees the kinematic inner bodies of CharacterControllers (and other kinematics)
@@ -1591,6 +1578,14 @@ bool PhysicsSystem::createGenericJoltBody(Entity entity, RigidbodyComponent& bod
     jbody->SetUserData(entity);
 
     body.body = jbody->GetID();
+    // drawn from where it is made until it steps
+    JPH::RVec3 createdPosition = jbody->GetPosition();
+    JPH::Quat createdRotation = jbody->GetRotation();
+    body.previousPosition = Vector3(createdPosition.GetX(), createdPosition.GetY(), createdPosition.GetZ());
+    body.previousRotation = Quaternion(createdRotation.GetW(), createdRotation.GetX(), createdRotation.GetY(), createdRotation.GetZ());
+    body.followingPosition = false;
+    body.followingRotation = false;
+    body.followReached = false;
 
     body_interface.AddBody(body.body, activation);
 
@@ -1686,8 +1681,19 @@ bool PhysicsSystem::loadRigidbody2D(Entity entity){
             bodyDef.type = b2_dynamicBody;
         }
         bodyDef.userData = reinterpret_cast<void*>((uint64_t)entity);
+        // made where its GameObject is, so a script reaching it before the first sync (Lua
+        // init()) finds it there
+        if (Transform* transform = scene->findComponent<Transform>(entity)){
+            bodyDef.position = {transform->worldPosition.x / pointsToMeterScale2D, transform->worldPosition.y / pointsToMeterScale2D};
+            bodyDef.rotation = b2MakeRot(Angle::defaultToRad(transform->worldRotation.getRoll()));
+        }
 
         body.body = b2CreateBody(world2D, &bodyDef);
+        // drawn from where it is made until it steps
+        body.previousTransform = b2Body_GetTransform(body.body);
+        body.followingPosition = false;
+        body.followingRotation = false;
+        body.followReached = false;
         body.newBody = true;
         body.needReloadBody = false;
         body.needUpdateColliders = true;
@@ -3036,7 +3042,7 @@ void PhysicsSystem::fixedUpdate(double dt){
             }
 
             if (simulate){
-                updateRigidbody2DPosition(signature, entity, body);
+                updateRigidbody2DPosition(signature, entity, body, fixedStep);
 
                 body.newBody = false;
             }
@@ -3092,33 +3098,17 @@ void PhysicsSystem::fixedUpdate(double dt){
             const b2BodyMoveEvent* event = events.moveEvents + i;
 
             Entity entity = reinterpret_cast<uintptr_t>(event->userData);
-            Signature signature = scene->getSignature(entity);
-
-            b2Transform bTransform = event->transform;
-            if (signature.test(scene->getComponentId<Transform>())){
-                Transform& transform = scene->getComponent<Transform>(entity);
-
-                Vector3 nPosition = Vector3(bTransform.p.x * pointsToMeterScale2D, bTransform.p.y * pointsToMeterScale2D, transform.worldPosition.z);
-                Quaternion nRotation = Quaternion(Angle::radToDefault(b2Rot_GetAngle(bTransform.q)), Vector3(0, 0, 1));
-
-                if (transform.parent != NULL_ENTITY){
-                    Transform* transformParent = scene->findComponent<Transform>(transform.parent);
-                    if (transformParent){
-                        nPosition = transformParent->modelMatrix.inverse() * nPosition;
-                        nRotation = transformParent->worldRotation.inverse() * nRotation;
-                    }
-                }
-
-                if (transform.position != nPosition){
-                    transform.position = nPosition;
-                    transform.needUpdate = true;
-                }
-
-                if (transform.rotation != nRotation){
-                    transform.rotation = nRotation;
-                    transform.needUpdate = true;
-                }
+            Rigidbody2DComponent* body = scene->findComponent<Rigidbody2DComponent>(entity);
+            if (!body){
+                continue;
             }
+
+            // a following body is on its way to its Transform, the last step of the frame puts it there
+            if (Engine::getFixedStepsLeft() == 1){
+                finishFollowing2D(entity, *body);
+            }
+
+            updateTransformFromRigidbody2D(entity, *body, 1.0f);
         }
 
         {
@@ -3158,7 +3148,7 @@ void PhysicsSystem::fixedUpdate(double dt){
             }
 
             if (simulate){
-                updateRigidbodyPosition(signature, entity, body);
+                updateRigidbodyPosition(signature, entity, body, fixedStep);
 
                 body.newBody = false;
             }
@@ -3204,6 +3194,9 @@ void PhysicsSystem::fixedUpdate(double dt){
 			~StepScope() { system->steppingWorld3D = false; system->flushPendingDestroys3D(); }
 		};
 
+		// the bodies floating in a library:water (Water.h)
+		Water::applyBuoyancy(scene, fixedStep);
+
 		StepScope stepScope(this);
 		// the contact listener runs on Jolt's threads, serialized by getCallbackMutex3D, while
 		// this one waits: what its callbacks destroy goes after the step
@@ -3220,44 +3213,58 @@ void PhysicsSystem::fixedUpdate(double dt){
 	for (int i = 0; i < bodies3d->size(); i++){
 		RigidbodyComponent& body = bodies3d->getComponentFromIndex(i);
 		Entity entity = bodies3d->getEntity(i);
-		Signature signature = scene->getSignature(entity);
 
-        if (!body.body.IsInvalid()){
-            JPH::BodyInterface &body_interface = world3D.GetBodyInterfaceNoLock();
-            JPH::RVec3 position = body_interface.GetPosition(body.body);
-            JPH::Quat rotation = body_interface.GetRotation(body.body);
-            if (signature.test(scene->getComponentId<Transform>())){
-                Transform& transform = scene->getComponent<Transform>(entity);
-
-                if (!std::isnan(position.GetX()) && !std::isnan(position.GetY()) && !std::isnan(position.GetZ())){
-                    Vector3 nPosition = Vector3(position.GetX(), position.GetY(), position.GetZ());
-                    Quaternion nRotation = Quaternion(rotation.GetW(), rotation.GetX(), rotation.GetY(), rotation.GetZ());
-
-                    if (transform.parent != NULL_ENTITY){
-                        Transform* transformParent = scene->findComponent<Transform>(transform.parent);
-                        if (transformParent){
-                            nPosition = transformParent->modelMatrix.inverse() * nPosition;
-                            nRotation = transformParent->worldRotation.inverse() * nRotation;
-                        }
-                    }
-
-                    if (transform.position != nPosition){
-                        transform.position = nPosition;
-                        transform.needUpdate = true;
-                    }
-
-                    if (transform.rotation != nRotation){
-                        transform.rotation = nRotation;
-                        transform.needUpdate = true;
-                    }
-                }
-
-            }
+        // out of the world (disabled, inactive) it did not step and leaves its Transform alone
+        if (body.body.IsInvalid() || !getBodyInterface3D().IsAdded(body.body)){
+            continue;
         }
+
+        // a following body is on its way to its Transform, the last step of the frame puts it there
+        if (Engine::getFixedStepsLeft() == 1){
+            finishFollowing3D(entity, body);
+        }
+
+        updateTransformFromRigidbody(entity, body, 1.0f);
     }
 
     // the characters ride what moved, see what is under them now and take their root motion
     characters3D->postStep(fixedStep);
+#endif
+}
+
+void PhysicsSystem::interpolate(double alpha){
+    if (paused || !interpolation){
+        return;
+    }
+
+    // only bodies whose Transform is still where physics left it: one a script, an animation
+    // or the editor moved since keeps that pose, the next step puts the body there
+#ifdef JASPERENGINE_PHYSICS_2D
+    auto bodies2d = scene->getComponentArray<Rigidbody2DComponent>();
+    for (size_t i = 0; i < bodies2d->size(); i++){
+        Rigidbody2DComponent& body = bodies2d->getComponentFromIndex(i);
+        Entity entity = bodies2d->getEntity(i);
+        Transform* transform = scene->findComponent<Transform>(entity);
+
+        if (body.type != BodyType::STATIC && b2Body_IsValid(body.body) && b2Body_IsEnabled(body.body) &&
+                transform && isSynced(*transform, body)){
+            updateTransformFromRigidbody2D(entity, body, (float)alpha);
+        }
+    }
+#endif
+
+#ifdef JASPERENGINE_PHYSICS_3D
+    auto bodies3d = scene->getComponentArray<RigidbodyComponent>();
+    for (size_t i = 0; i < bodies3d->size(); i++){
+        RigidbodyComponent& body = bodies3d->getComponentFromIndex(i);
+        Entity entity = bodies3d->getEntity(i);
+        Transform* transform = scene->findComponent<Transform>(entity);
+
+        if (body.type != BodyType::STATIC && !body.body.IsInvalid() && getBodyInterface3D().IsAdded(body.body) &&
+                transform && isSynced(*transform, body)){
+            updateTransformFromRigidbody(entity, body, (float)alpha);
+        }
+    }
 #endif
 }
 

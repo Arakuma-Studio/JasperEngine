@@ -24,6 +24,26 @@ using Json = nlohmann::json;
 
 namespace {
 
+    // A cache's text. A file name in another encoding than UTF-8 can't be JSON: its entries are
+    // left out (read from disk again next time) instead of the dump throwing, which failed the
+    // project's load
+    std::string cacheText(Json& root, const char* listKey) {
+        try {
+            return root.dump() + "\n";
+        } catch (const Json::type_error&) {
+            Json kept = Json::array();
+            for (Json& item : root[listKey]) {
+                try {
+                    (void)item.dump();
+                    kept.push_back(std::move(item));
+                } catch (const Json::type_error&) {
+                }
+            }
+            root[listKey] = std::move(kept);
+            return root.dump(-1, ' ', false, Json::error_handler_t::replace) + "\n";
+        }
+    }
+
     constexpr int indexCacheVersion = 1;
 
     std::string indexExtension(const std::string& path) {
@@ -383,7 +403,7 @@ void AssetIndex::saveCache() const {
     Json root;
     root["version"] = indexCacheVersion;
     root["referrers"] = list;
-    assetio::writeFile(cacheFile(), root.dump() + "\n", assetio::Durability::Cache);
+    assetio::writeFile(cacheFile(), cacheText(root, "referrers"), assetio::Durability::Cache);
 }
 
 bool AssetIndex::readReferrer(const AssetDatabase::AssetInfo& info, Referrer& referrer) const {

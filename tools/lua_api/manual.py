@@ -78,4 +78,17 @@ MANUAL_SYMBOLS = [
     ('UIDataModel', 'set', 'Method', 'UIDataModel:set("items[0].name", value)'),
     ('UIDataModel', 'getName', 'Method', 'UIDataModel:getName() -> string'),
     ('UIDataModel', 'isValid', 'Method', 'UIDataModel:isValid() -> bool'),
+    # Lattice (GameObjectClassesLua.cpp): overloads taking a GameObject or an entity, bound
+    # through lambdas for the optional arguments
+    ('Lattice', 'bind', 'Method',
+     'Lattice:bind(gameObjectOrEntity, weight = 1) -> bool (adds a LatticeModifierComponent binding, '
+     'the component when missing)'),
+    ('Lattice', 'unbind', 'Method', 'Lattice:unbind(gameObjectOrEntity) -> bool'),
+    ('Lattice', 'addFollower', 'Method',
+     'Lattice:addFollower(follower, rest, applyPosition = true, applyRotation = true, applyScale = false, '
+     'weight = 1) -> bool (GameObjects or entities)'),
+    ('Lattice', 'removeFollower', 'Method', 'Lattice:removeFollower(gameObjectOrEntity) -> bool'),
+    ('Lattice', 'applyPreset', 'Method',
+     'Lattice:applyPreset(name, axis, amount, toward = "") -> bool; name squash|stretch|taper|twist|bend|'
+     'bulge|shear|noise, axis/toward "x"|"y"|"z"'),
 ]

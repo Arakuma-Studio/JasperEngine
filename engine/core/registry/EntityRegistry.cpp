@@ -77,6 +77,11 @@ EntityRegistry::EntityRegistry() {
     registerComponent<PrefabComponent>(ComponentOrder::Insertion, "PrefabComponent");
     registerComponent<ReflectionProbeComponent>(ComponentOrder::Insertion, "ReflectionProbeComponent");
     registerComponent<UIDocumentComponent>(ComponentOrder::Insertion, "UIDocumentComponent");
+    registerComponent<FluidSimulationComponent>(ComponentOrder::Insertion, "FluidSimulationComponent");
+    registerComponent<LatticeComponent>(ComponentOrder::Insertion, "LatticeComponent");
+    registerComponent<LatticeModifierComponent>(ComponentOrder::Insertion, "LatticeModifierComponent");
+    registerComponent<LatticeFollowerComponent>(ComponentOrder::Insertion, "LatticeFollowerComponent");
+    registerComponent<LatticeTracksComponent>(ComponentOrder::Insertion, "LatticeTracksComponent");
     registerComponent<LocalVolumetricFogComponent>(ComponentOrder::Insertion, "LocalVolumetricFogComponent");
     registerComponent<VolumetricCloudsComponent>(ComponentOrder::Insertion, "VolumetricCloudsComponent");
 #ifdef JASPERENGINE_PHYSICS_2D

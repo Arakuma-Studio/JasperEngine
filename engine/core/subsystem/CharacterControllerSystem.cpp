@@ -303,7 +303,7 @@ void CharacterControllerSystem::writeTransform(Runtime& runtime, const Vector3& 
     Quaternion worldRotation = transform->worldRotation;
     if (yawDelta != 0.0f)
         worldRotation = Quaternion(Angle::radToDefault(yawDelta), Vector3(0.0f, 1.0f, 0.0f)) * worldRotation;
-    physics->setTransformWorldPose(runtime.entity, worldPosition, worldRotation);
+    physics->writeTransformWorldPose(runtime.entity, worldPosition, worldRotation);
     runtime.syncedPosition = transform->worldPosition;
 }
 

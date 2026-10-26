@@ -20,6 +20,10 @@ TIMEOUT = 900
 EVIDENCE = Path(__file__).resolve().parents[3] / "build" / "evidence"
 
 SYSTEMS = ["ActionSystem", "MeshSystem", "UISystem", "UIDocumentSystem", "RenderSystem", "PhysicsSystem", "AudioSystem"]
+# every scene system in schedule order: upstream's lattice deformer and fluid simulation systems
+# too (the timing checks stay on SYSTEMS: those two have nothing to do in these scenes)
+ALL_SYSTEMS = ["ActionSystem", "MeshSystem", "LatticeSystem", "UISystem", "UIDocumentSystem", "FluidSystem", "RenderSystem",
+               "PhysicsSystem", "AudioSystem"]
 
 
 def type_count(stats, name):
@@ -188,7 +192,7 @@ async def test_system_schedule_and_options(ed: Editor):
     edit = await ed.call("get_system_schedule")
     for name in ("FixedUpdate", "Update", "Draw"):
         waves = phase(edit, name)
-        ed.check_eq([[s["name"] for s in wave] for wave in waves], [[s] for s in SYSTEMS], f"{name}: one wave each, in order")
+        ed.check_eq([[s["name"] for s in wave] for wave in waves], [[s] for s in ALL_SYSTEMS], f"{name}: one wave each, in order")
     ed.check_eq(phase(edit, "PostUpdate"), [], "no PostUpdate systems")
     action = system_entry(edit, "Update", "ActionSystem")
     ed.check_in("exclusive", action["resources"])
@@ -235,6 +239,16 @@ async def test_system_schedule_and_options(ed: Editor):
         await ed.call("play", action="stop")
 
 
+async def evidence_shot(ed: Editor, name: str):
+    """an editor screenshot into build/evidence: save_path is project-relative (the screenshot
+    tool writes inside the project only), the file is copied out"""
+    relative = f"screenshots/ecs/{name}"
+    shot = await ed.call_raw("screenshot", {"view": "editor", "save_path": relative})
+    if not shot.is_error and (ed.project / relative).is_file():
+        shutil.copyfile(ed.project / relative, EVIDENCE / name)
+    return shot
+
+
 async def test_systems_window(ed: Editor):
     """AC17 scripted: Window > Analysis > Systems in Play: its rows, a real click on AudioSystem's Enabled
     checkbox, screenshots, and what it shows checked through the tools."""
@@ -245,9 +259,9 @@ async def test_systems_window(ed: Editor):
         await ed.call("wait", seconds=1)
         shown = await ed.call("focus_window", window="systems")
         ed.check(shown["shown"], f"the Systems window is shown: {shown}")
-        ed.check_eq(sorted(row["system"] for row in shown["rows"] if row["phase"] == "Update"), sorted(SYSTEMS),
+        ed.check_eq(sorted(row["system"] for row in shown["rows"] if row["phase"] == "Update"), sorted(ALL_SYSTEMS),
                     "the table's Update rows")
-        shot = await ed.call_raw("screenshot", {"view": "editor", "save_path": str(EVIDENCE / "systems-window.png")})
+        shot = await evidence_shot(ed, "systems-window.png")
         ed.check(not shot.is_error and shot.images, f"editor screenshot: {shot.text[:300]}")
 
         # the table: the seven systems with their timings
@@ -274,7 +288,7 @@ async def test_systems_window(ed: Editor):
         ed.check(not after["enabled"] and after["timing"]["calls"] == calls, f"AudioSystem disabled: {after}")
         others = [system_entry(await ed.call("get_system_schedule", runtime=True), "Update", name) for name in SYSTEMS if name != "AudioSystem"]
         ed.check(all(entry["enabled"] for entry in others), f"only AudioSystem was unchecked: {others}")
-        await ed.call_raw("screenshot", {"view": "editor", "save_path": str(EVIDENCE / "systems-window-audio-off.png")})
+        await evidence_shot(ed, "systems-window-audio-off.png")
     finally:
         await ed.call("play", action="stop")
     await ed.call("play", action="start")

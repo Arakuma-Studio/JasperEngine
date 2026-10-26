@@ -54,10 +54,13 @@ ComponentAddDialog::ComponentAddDialog() {
     m_categories = {
         {"Mesh", ICON_FA_SHAPES, {
             {ComponentType::MeshComponent, "Draws a mesh with its materials"},
-            {ComponentType::ModelComponent, "Loads a glTF or OBJ model"},
+            {ComponentType::ModelComponent, "Loads a glTF, OBJ or FBX model"},
             {ComponentType::InstancedMeshComponent, "Draws many copies of the mesh in one call"},
             {ComponentType::MeshPolygonComponent, "Builds a flat mesh from polygon points"},
             {ComponentType::TerrainComponent, "Heightmap terrain with texture layers"},
+            {ComponentType::LatticeComponent, "Cage of control points that bends the meshes bound to it"},
+            {ComponentType::LatticeModifierComponent, "Deforms this mesh (and children) with lattices"},
+            {ComponentType::LatticeFollowerComponent, "Moves with a point of a lattice's deformation"},
         }},
         {"Rendering", ICON_FA_CAMERA, {
             {ComponentType::CameraComponent, "Renders the scene to the screen or a texture"},
@@ -75,6 +78,7 @@ ComponentAddDialog::ComponentAddDialog() {
         }},
         {"Effects", ICON_FA_FIRE, {
             {ComponentType::ParticleSystemComponent, "Emits and animates particles"},
+            {ComponentType::FluidSimulationComponent, "GPU fluid with dye, bloom and sunrays, drawn on the sprite or mesh"},
             {ComponentType::LocalVolumetricFogComponent, "A box or sphere of extra volumetric fog"},
             {ComponentType::VolumetricCloudsComponent, "Raymarched clouds lit by the sun and the sky"},
         }},
@@ -120,6 +124,7 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::RotateTracksComponent, "Rotation keyframes"},
             {ComponentType::ScaleTracksComponent, "Scale keyframes"},
             {ComponentType::MorphTracksComponent, "Blend shape keyframes"},
+            {ComponentType::LatticeTracksComponent, "Lattice point keyframes"},
             {ComponentType::BoneComponent, "Skeleton bone of a model"},
         }},
         {"Scripts", ICON_FA_CODE, {

@@ -16,6 +16,11 @@
 #include "System.h"
 #include "Log.h"
 
+// Prefix of the saved keys, set per project by the export
+#ifndef JASPERENGINE_STORAGE_ID
+#define JASPERENGINE_STORAGE_ID "JasperEngine"
+#endif
+
 #ifdef __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmissing-field-initializers"
@@ -1189,10 +1194,13 @@ int JasperEngineWeb::jasperengine_legacy_input(int code){
     return 0;
 }
 
+// Pages of one site share localStorage, so each game prefixes its keys. The bare keys
+// of older builds are still read, so their saves carry over.
 std::string JasperEngineWeb::getStringForKey(const char *key, const std::string& defaultValue){
     char* value = (char*)EM_ASM_INT({
         var key = UTF8ToString($0);
-        var val = localStorage.getItem(key);
+        var val = localStorage.getItem(UTF8ToString($1) + '/' + key);
+        if (val === null) val = localStorage.getItem(key);
         if (val) {
             var len = lengthBytesUTF8(val)+1;
             var buf = _malloc(len);
@@ -1200,7 +1208,7 @@ std::string JasperEngineWeb::getStringForKey(const char *key, const std::string&
             return buf;
         }
         return null;
-    }, key);
+    }, key, JASPERENGINE_STORAGE_ID);
 
     if (value){
         std::string strValue = value;
@@ -1215,15 +1223,18 @@ void JasperEngineWeb::setStringForKey(const char* key, const std::string& value)
     EM_ASM_ARGS({
         var key = UTF8ToString($0);
         var value = UTF8ToString($1);
-        localStorage.setItem(key, value);
-    }, key, value.c_str());
+        localStorage.setItem(UTF8ToString($2) + '/' + key, value);
+    }, key, value.c_str(), JASPERENGINE_STORAGE_ID);
 }
 
 void JasperEngineWeb::removeKey(const char *key){
+    // A bare key may be another game's, so an empty value hides it instead
     EM_ASM_ARGS({
         var key = UTF8ToString($0);
-        localStorage.removeItem(key);
-    }, key);
+        var own = UTF8ToString($1) + '/' + key;
+        if (localStorage.getItem(key) === null) localStorage.removeItem(own);
+        else localStorage.setItem(own, "");
+    }, key, JASPERENGINE_STORAGE_ID);
 }
 
 void JasperEngineWeb::initializeCrazyGamesSDK(){

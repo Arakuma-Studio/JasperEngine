@@ -61,6 +61,8 @@ namespace jasperengine{
 		Vector2 gravity2D;
 		Vector3 gravity3D;
 
+		bool interpolation;
+
 #ifdef JASPERENGINE_PHYSICS_2D
 		b2WorldId world2D;
 		float pointsToMeterScale2D;
@@ -123,7 +125,15 @@ namespace jasperengine{
 
 #ifdef JASPERENGINE_PHYSICS_2D
 		void ensureWorld2D();
-		void updateRigidbody2DPosition(Signature signature, Entity entity, Rigidbody2DComponent& body);
+		// Moves the body by what something other than physics moved its Transform, position
+		// and rotation each on its own. Inside a step (stepTime > 0) a kinematic body is moved
+		// there with a velocity instead, spread over the fixed steps left in the frame, so it
+		// carries and pushes other bodies (teleported when a step would take it further than
+		// its own size or more than a quarter turn).
+		void updateRigidbody2DPosition(Signature signature, Entity entity, Rigidbody2DComponent& body, float stepTime = 0.0f);
+		// Puts the parts a following kinematic body is on its way to where its Transform has
+		// them, after the last step of the frame
+		void finishFollowing2D(Entity entity, Rigidbody2DComponent& body);
 		bool loadJoint2D(Entity entity, Joint2DComponent& joint);
 		bool syncRigidbody2DColliders(Entity entity, Rigidbody2DComponent& body);
 		static Vector2 absScale2D(const Vector2& scale);
@@ -134,7 +144,9 @@ namespace jasperengine{
 		void refilterShapes2D(b2BodyId bodyId, bool toggleRefilterBit, int layer);
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
-		void updateRigidbodyPosition(Signature signature, Entity entity, RigidbodyComponent& body);
+		// The 3D counterpart of updateRigidbody2DPosition()
+		void updateRigidbodyPosition(Signature signature, Entity entity, RigidbodyComponent& body, float stepTime = 0.0f);
+		void finishFollowing3D(Entity entity, RigidbodyComponent& body);
 		bool loadJoint3D(Entity entity, Joint3DComponent& joint);
 		bool syncRigidbodyColliders(Entity entity, RigidbodyComponent& body);
 		bool isShapeSourceLoading(Entity entity, const Collider3D& shapeData) const;
@@ -171,6 +183,22 @@ namespace jasperengine{
 		void setGravity(float x, float y);
 		void setGravity(float x, float y, float z);
 
+		// Removes every event callback, as before the code behind them goes away
+		void clearSubscriptions();
+
+		// Ends the following of a kinematic body's position and/or rotation (the script took
+		// over that part): the velocity the following set stops, one a script set since stays
+#ifdef JASPERENGINE_PHYSICS_2D
+		void stopFollowing2D(Rigidbody2DComponent& body, bool position, bool rotation);
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
+		void stopFollowing3D(RigidbodyComponent& body, bool position, bool rotation);
+#endif
+
+		// Draws bodies between their last two fixed steps, so they move smoothly at any frame
+		// rate (on by default; the scene setting physics_interpolation)
+		void setInterpolation(bool interpolation);
+		bool isInterpolation() const;
 		// Removes the event callbacks with the substring in their tag
 		void removeSubscriptionsByTag(const std::string& substring);
 
@@ -193,7 +221,7 @@ namespace jasperengine{
 		// resolved its Transform yet
 		void resolveTransformWorldPose(Entity entity);
 		// Puts the entity at a world pose (written parent-local)
-		void setTransformWorldPose(Entity entity, const Vector3& position, const Quaternion& rotation);
+		void writeTransformWorldPose(Entity entity, const Vector3& position, const Quaternion& rotation);
 
 #ifdef JASPERENGINE_PHYSICS_3D
         void setLock3DBodies(bool lock3DBodies);
@@ -285,12 +313,15 @@ namespace jasperengine{
 		bool ensureRigidbodyLoaded(Entity entity);
 #endif
 
-		// Writes a body pose back into its entity, so the transform sync of the next
-		// step does not undo a pose written straight to the body.
+		// Writes the body pose into its entity, alpha of the way from its pose before the last
+		// step (1: the pose itself), so the transform sync of the next step does not undo a
+		// pose written straight to the body.
 #ifdef JASPERENGINE_PHYSICS_2D
-		void updateTransformFromRigidbody2D(Entity entity, Vector2 position, float angle);
+		void updateTransformFromRigidbody2D(Entity entity, Rigidbody2DComponent& body, float alpha);
 #endif
-		void updateTransformFromRigidbody(Entity entity, Vector3 position, Quaternion rotation);
+#ifdef JASPERENGINE_PHYSICS_3D
+		void updateTransformFromRigidbody(Entity entity, RigidbodyComponent& body, float alpha);
+#endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
 		JPH::Quat toValidatedJoltRotation(const Quaternion& rotation, Entity entity, int colliderIndex);
@@ -341,6 +372,10 @@ namespace jasperengine{
 		void destroy() override;
 		void update(double dt) override;
 		void fixedUpdate(double dt) override;
+		// Once a frame after its fixed steps: the bodies physics still owns the Transform of
+		// are drawn alpha (Engine::getInterpolationAlpha) of the way from their pose before
+		// the last step
+		void interpolate(double alpha);
 
 		void onComponentAdded(Entity entity, ComponentId componentId) override;
 		void onComponentRemoved(Entity entity, ComponentId componentId) override;

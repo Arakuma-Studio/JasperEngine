@@ -50,6 +50,20 @@ void editor::CommandGroup::undo(){
     }
 }
 
+bool editor::CommandGroup::canUndo() const{
+    for (const std::unique_ptr<Command>& cmd : commands){
+        if (!cmd->canUndo()) return false;
+    }
+    return true;
+}
+
+bool editor::CommandGroup::canRedo() const{
+    for (const std::unique_ptr<Command>& cmd : commands){
+        if (!cmd->canRedo()) return false;
+    }
+    return true;
+}
+
 bool editor::CommandGroup::affectsStructure() const{
     for (const std::unique_ptr<Command>& cmd : commands){
         if (cmd->affectsStructure()) return true;

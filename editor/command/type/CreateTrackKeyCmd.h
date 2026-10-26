@@ -39,6 +39,10 @@ namespace jasperengine::editor {
         CreateTrackKeyCmd(Project* project, uint32_t sceneId, Entity animEntity, Entity target,
                           EntityCreationType creationType, std::string name, float localTime,
                           Quaternion value);
+        // a lattice track (LATTICE_TRACKS): its first key holds `values`, the offsets of `points`
+        CreateTrackKeyCmd(Project* project, uint32_t sceneId, Entity animEntity, Entity target,
+                          std::string name, float localTime, std::vector<int> points,
+                          std::vector<Vector3> values);
 
         bool execute() override;
         void undo() override;

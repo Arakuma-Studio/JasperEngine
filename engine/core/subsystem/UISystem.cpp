@@ -1536,6 +1536,26 @@ Vector3 UISystem::mapParentLocalPointToLayoutSpace(float posX, float posY, Entit
     return layoutToWorld * worldPoint;
 }
 
+Vector2 UISystem::parentToLayoutSpace(Entity entity, const Vector2& point) const{
+    float x = point.x;
+    float y = point.y;
+    Transform* transform = scene->findComponent<Transform>(entity);
+    if (transform && transform->parent != NULL_ENTITY){
+        convertLocalParentSpaceToLayoutSpace(transform->parent, findNearestLayoutParent(transform->parent), x, y);
+    }
+    return Vector2(x, y);
+}
+
+Vector2 UISystem::layoutToParentSpace(Entity entity, const Vector2& point) const{
+    float x = point.x;
+    float y = point.y;
+    Transform* transform = scene->findComponent<Transform>(entity);
+    if (transform && transform->parent != NULL_ENTITY){
+        convertLayoutSpaceToLocalParentSpace(transform->parent, findNearestLayoutParent(transform->parent), x, y);
+    }
+    return Vector2(x, y);
+}
+
 void UISystem::convertLayoutSpaceToLocalParentSpace(Entity transformParent, Entity layoutParent, float& posX, float& posY) const{
     Vector3 localPoint = mapLayoutPointToParentLocalSpace(posX, posY, layoutParent, transformParent);
     posX = localPoint.x;

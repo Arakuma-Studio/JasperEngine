@@ -59,11 +59,12 @@ ENGINE_TARGET=jasperengine-project
 # AC7 of docs/specs/S02-build-ci-tests.md: what an unfiltered run must at least execute
 CORE_MIN_TESTS=300
 EDITOR_MIN_TESTS=150
-# jasperengine-htmlui-tests skips these on purpose (docs/html-ui/phase-6-acceptance.md §4.2)
-HTMLUI_MAX_SKIPPED=74
+# jasperengine-htmlui-tests skips these on purpose (docs/html-ui/phase-6-acceptance.md §4.2), and
+# upstream's opt-in EffectFluidProfile.LiveCost (JASPER_EFFECT_FLUID_PROFILE=1)
+HTMLUI_MAX_SKIPPED=75
 
 usage() {
-    sed -n '2,46p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,51p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 1
 }
 
@@ -200,6 +201,9 @@ MOUNT_FLAGS=()
 if [[ "$TARGET" == mcp-tests && -n "${JASPER_FIXTURE:-}" ]]; then
     MOUNT_FLAGS+=(-v "$JASPER_FIXTURE:/fixture:ro" -e JASPER_FIXTURE=/fixture)
 fi
+# the UI effects' measuring switches (EffectPerfTest: JASPER_EFFECT_COST_ONLY, JASPER_EFFECT_PERF_*;
+# EffectFluidTest: JASPER_EFFECT_FLUID_PROFILE)
+for name in $(compgen -e | grep '^JASPER_EFFECT_' || true); do ENV_FLAGS+=(-e "$name=${!name}"); done
 
 run() {
     # (the ${a[@]+...} form: an empty array under set -u fails on bash before 4.4, e.g. macOS)

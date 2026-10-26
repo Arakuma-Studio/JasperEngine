@@ -24,6 +24,7 @@
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -327,6 +328,16 @@ UrlParts parseUrl(const std::string& url) {
 
 std::string settingsToken(const std::string& settingsPath) {
     if (settingsPath.empty()) return {};
+    // the editor keeps its token in an owner-only file next to settings.yaml
+    // (AppSettings::getMcpHttpTokenPath); older settings held it as mcp.http_token
+    {
+        std::ifstream in(fs::path(settingsPath).parent_path() / "mcp_http_token", std::ios::binary);
+        std::string token;
+        if (in && std::getline(in, token)) {
+            while (!token.empty() && (token.back() == '\r' || token.back() == ' ' || token.back() == '\t')) token.pop_back();
+            if (!token.empty()) return token;
+        }
+    }
     try {
         const YAML::Node root = YAML::LoadFile(settingsPath);
         if (root["mcp"] && root["mcp"]["http_token"]) return root["mcp"]["http_token"].as<std::string>();
@@ -335,7 +346,7 @@ std::string settingsToken(const std::string& settingsPath) {
     return {};
 }
 
-// --token, else JASPER_MCP_TOKEN, else mcp.http_token of the editor's settings.yaml
+// --token, else JASPER_MCP_TOKEN, else the editor's token file (or the older mcp.http_token)
 std::string chooseToken(const Options& o, const InstanceInfo* instance) {
     if (o.tokenSet) return o.token;
     if (const char* env = std::getenv("JASPER_MCP_TOKEN"); env && *env) return env;
@@ -744,7 +755,7 @@ void printUsage(const std::string& exe, const Catalog& catalog) {
         << "Options (before the tool name):\n"
         << "  --url U          http://127.0.0.1:<port>/mcp of a running editor\n"
         << "  --port N         a running editor's MCP port (editor started with --mcp-port N)\n"
-        << "  --token T        bearer token (else JASPER_MCP_TOKEN, else the editor's mcp.http_token)\n"
+        << "  --token T        bearer token (else JASPER_MCP_TOKEN, else the editor's mcp_http_token file)\n"
         << "  --project DIR    the editor that has DIR open, else a one-shot headless editor on it\n"
         << "                   (it closes after the command and does not save on its own)\n"
         << "  --timeout S      seconds per call (default " << DEFAULT_TIMEOUT_SECONDS << "); then exit 3\n"

@@ -10,6 +10,7 @@
 #include "render/CameraRender.h"
 #include "render/TextureRender.h"
 #include "texture/Framebuffer.h"
+#include "fluid/FluidSimulator.h"
 
 #include <unordered_set>
 
@@ -21,8 +22,16 @@ struct CloneContext {
     const std::unordered_map<Entity, Entity>& map;
     bool sameRegistry;
     Entity sourceRoot;
-    // a copied camera's framebuffer -> the copy's, for textures that show it
-    std::unordered_map<const Framebuffer*, Framebuffer*> framebuffers;
+    // a copied camera's framebuffer (a copied fluid's output) -> the copy's, for textures
+    // that show it, with the entities they belong to (the link ids name them)
+    struct FramebufferCopy {
+        Framebuffer* framebuffer = nullptr;
+        Entity source = NULL_ENTITY;
+        Entity copy = NULL_ENTITY;
+    };
+    std::unordered_map<const Framebuffer*, FramebufferCopy> framebuffers;
+    // a copied fluid with a simulator -> the copy's own (made first: its output is mapped)
+    std::unordered_map<Entity, std::shared_ptr<FluidSimulator>> fluidSimulators;
     // meshes whose external buffers point into the file data of a model copied with them
     std::unordered_set<Entity> modelMeshes;
 
@@ -53,14 +62,47 @@ void detachExternalBuffer(ExternalBuffer& buffer) {
     }
 }
 
+// A texture showing a copied camera's or fluid's framebuffer shows the copy's. A link id
+// naming the original ("camera|<e>", "fluid|<e>": the editor's, kept in scene files) names
+// the copy (setFramebuffer clears the id)
 void remapFramebufferTexture(Texture& texture, const CloneContext& ctx) {
     Framebuffer* framebuffer = texture.getFramebuffer();
     if (!framebuffer) {
         return;
     }
     auto it = ctx.framebuffers.find(framebuffer);
-    if (it != ctx.framebuffers.end()) {
-        texture.setFramebuffer(it->second);
+    if (it == ctx.framebuffers.end()) {
+        return;
+    }
+    const std::string id = texture.getId();
+    texture.setFramebuffer(it->second.framebuffer);
+    const size_t bar = id.rfind('|');
+    if (bar != std::string::npos && it->second.source != NULL_ENTITY && id.compare(bar + 1, std::string::npos, std::to_string(it->second.source)) == 0) {
+        texture.setId(id.substr(0, bar + 1) + std::to_string(it->second.copy));
+    }
+}
+
+void remapFramebufferTextures(std::vector<std::pair<std::string, Texture>>& textures, const CloneContext& ctx) {
+    for (auto& entry : textures) {
+        remapFramebufferTexture(entry.second, ctx);
+    }
+}
+
+// every texture slot of a material: its PBR maps, its shader's textures and its extra pass's
+void remapMaterialTextures(Material& material, const CloneContext& ctx) {
+    for (Texture* texture : {&material.baseColorTexture, &material.emissiveTexture,
+            &material.metallicRoughnessTexture, &material.occlusionTexture, &material.normalTexture}) {
+        remapFramebufferTexture(*texture, ctx);
+    }
+    remapFramebufferTextures(material.shaderTextures, ctx);
+    if (MaterialPass* pass = material.extraPass.editIfSet()) {
+        remapFramebufferTextures(pass->shaderTextures, ctx);
+    }
+    // S11's extension maps
+    if (MaterialPbrExtensions* pbr = material.pbr.editIfSet()) {
+        for (int m = 0; m < (int)PbrMap::COUNT; m++) {
+            remapFramebufferTexture(MaterialPbr::getMap(*pbr, (PbrMap)m), ctx);
+        }
     }
 }
 
@@ -115,15 +157,7 @@ void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneConte
         submesh.needUpdateTexture = false;
         submesh.needUpdateDepthTexture = false;
         submesh.needUpdateGBufferTexture = false;
-        for (Texture* texture : {&submesh.material.baseColorTexture, &submesh.material.emissiveTexture,
-                &submesh.material.metallicRoughnessTexture, &submesh.material.occlusionTexture, &submesh.material.normalTexture}) {
-            remapFramebufferTexture(*texture, ctx);
-        }
-        if (MaterialPbrExtensions* pbr = submesh.material.pbr.editIfSet()) {
-            for (int m = 0; m < (int)PbrMap::COUNT; m++) {
-                remapFramebufferTexture(MaterialPbr::getMap(*pbr, (PbrMap)m), ctx);
-            }
-        }
+        remapMaterialTextures(submesh.material, ctx);
     }
     mesh.bonesBuffer = BufferRender();
     mesh.bonesTexture = TextureRender();
@@ -131,6 +165,15 @@ void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneConte
     mesh.needUpdateBuffer = false;
     mesh.needUpdateShaderUniforms = false;
     mesh.needUpdateAABB = true;
+    // the lattice records and their texture are the original's: the copy packs and uploads
+    // its own (LatticeRender::prepare). The sprite grid request stays, the copied vertices
+    // are built for it (reset first, the copy would rebuild them as a quad, draw that quad
+    // for a frame, then rebuild and reload the grid)
+    const bool wantsTessellation = mesh.lattice.wantsTessellation;
+    const int tessellation = mesh.lattice.tessellation;
+    mesh.lattice = LatticeMeshState();
+    mesh.lattice.wantsTessellation = wantsTessellation;
+    mesh.lattice.tessellation = tessellation;
 }
 
 template<>
@@ -151,6 +194,7 @@ void prepare<UIComponent>(UIComponent& ui, Entity, CloneContext& ctx) {
     ui.focused = false;
     ui.pointerMoved = false;
     remapFramebufferTexture(ui.texture, ctx);
+    remapFramebufferTextures(ui.shaderTextures, ctx);
     ui.onGetFocus.clear();
     ui.onLostFocus.clear();
     ui.onPointerEnter.clear();
@@ -166,7 +210,9 @@ void prepare<UIComponent>(UIComponent& ui, Entity, CloneContext& ctx) {
 }
 
 template<>
-void prepare<PointsComponent>(PointsComponent& points, Entity, CloneContext&) {
+void prepare<PointsComponent>(PointsComponent& points, Entity, CloneContext& ctx) {
+    remapFramebufferTexture(points.texture, ctx);
+    remapFramebufferTextures(points.shaderTextures, ctx);
     points.loaded = false;
     points.loadCalled = false;
     points.needReload = false;
@@ -184,7 +230,8 @@ void prepare<PointsComponent>(PointsComponent& points, Entity, CloneContext&) {
 }
 
 template<>
-void prepare<LineRendererComponent>(LineRendererComponent& lines, Entity, CloneContext&) {
+void prepare<LineRendererComponent>(LineRendererComponent& lines, Entity, CloneContext& ctx) {
+    remapFramebufferTextures(lines.shaderTextures, ctx);
     lines.loaded = false;
     lines.loadCalled = false;
     lines.needReload = false;
@@ -198,7 +245,9 @@ void prepare<LineRendererComponent>(LineRendererComponent& lines, Entity, CloneC
 }
 
 template<>
-void prepare<SkyboxComponent>(SkyboxComponent& sky, Entity, CloneContext&) {
+void prepare<SkyboxComponent>(SkyboxComponent& sky, Entity, CloneContext& ctx) {
+    remapFramebufferTexture(sky.texture, ctx);
+    remapFramebufferTextures(sky.shaderTextures, ctx);
     sky.loaded = false;
     sky.loadCalled = false;
     sky.needReload = false;
@@ -230,7 +279,19 @@ void prepare<InstancedMeshComponent>(InstancedMeshComponent& instmesh, Entity, C
 }
 
 template<>
-void prepare<TerrainComponent>(TerrainComponent& terrain, Entity, CloneContext&) {
+void prepare<TerrainComponent>(TerrainComponent& terrain, Entity, CloneContext& ctx) {
+    remapFramebufferTexture(terrain.heightMap, ctx);
+    for (Texture& blendMap : terrain.blendMaps) {
+        remapFramebufferTexture(blendMap, ctx);
+    }
+    for (TerrainSurfaceLayer& layer : terrain.surfaceLayers) {
+        for (Texture* texture : {&layer.colorTexture, &layer.normalTexture, &layer.roughnessTexture, &layer.metallicTexture}) {
+            remapFramebufferTexture(*texture, ctx);
+        }
+    }
+    for (TerrainFoliageLayer& layer : terrain.foliageLayers) {
+        remapFramebufferTexture(layer.densityMap, ctx);
+    }
     for (TerrainView& view : terrain.views) {
         resetBuffer(view.nodesbuffer[0]);
         resetBuffer(view.nodesbuffer[1]);
@@ -256,13 +317,14 @@ void prepare<CameraComponent>(CameraComponent& camera, Entity, CloneContext& ctx
     // its own render target (clone() made it, so the textures showing the original's can
     // be pointed at it whatever the order); the RenderSystem deletes it with the entity
     auto it = camera.framebuffer ? ctx.framebuffers.find(camera.framebuffer) : ctx.framebuffers.end();
-    camera.framebuffer = it != ctx.framebuffers.end() ? it->second : new Framebuffer();
+    camera.framebuffer = it != ctx.framebuffers.end() ? it->second.framebuffer : new Framebuffer();
     camera.render = CameraRender();
     camera.needUpdate = true;
 }
 
 template<>
-void prepare<LightComponent>(LightComponent& light, Entity, CloneContext&) {
+void prepare<LightComponent>(LightComponent& light, Entity, CloneContext& ctx) {
+    remapFramebufferTexture(light.spotMask, ctx);
     for (LightCamera& lightCamera : light.cameras) {
         lightCamera.render = CameraRender();
     }
@@ -292,6 +354,20 @@ void prepare<UIDocumentComponent>(UIDocumentComponent& document, Entity, CloneCo
     document.loadFailed = false;
     document.appliedSortOrder = 0;
     document.appliedVisible = false;
+}
+
+template<>
+void prepare<FluidSimulationComponent>(FluidSimulationComponent& fluid, Entity sourceEntity, CloneContext& ctx) {
+    // the copy runs its own simulation (its own targets and output), restarted from its
+    // settings: the simulator clone() made for it when the original had one (the copied
+    // textures showing the original's output show its output), else one made when it runs
+    auto it = ctx.fluidSimulators.find(sourceEntity);
+    fluid.simulator = it != ctx.fluidSimulators.end() ? it->second : nullptr;
+    fluid.pendingSplats.clear();
+    fluid.pendingBursts.clear();
+    fluid.pendingSteps = 0;
+    fluid.needReset = true;
+    fluid.revision = 0;
 }
 
 template<>
@@ -367,6 +443,9 @@ void prepare<ParticleSystemComponent>(ParticleSystemComponent& particles, Entity
 
 template<>
 void prepare<ButtonComponent>(ButtonComponent& button, Entity, CloneContext& ctx) {
+    for (Texture* texture : {&button.textureNormal, &button.textureHovered, &button.texturePressed, &button.textureDisabled}) {
+        remapFramebufferTexture(*texture, ctx);
+    }
     button.label = ctx.remap(button.label);
     button.pressed = false;
     button.hovered = false;
@@ -422,6 +501,34 @@ template<>
 void prepare<RectTransformComponent>(RectTransformComponent& layout, Entity, CloneContext& ctx) {
     layout.panel = ctx.remap(layout.panel);
     layout.needUpdateSizes = true;
+}
+
+template<>
+void prepare<LatticeComponent>(LatticeComponent& lattice, Entity, CloneContext&) {
+    // the copy starts still: its jiggle warms up again where it is placed; a running tween
+    // goes on from where the original is
+    lattice.dynamicOffsets.clear();
+    lattice.jiggleVelocities.clear();
+    lattice.jiggleLastPosition = Vector3(0, 0, 0);
+    lattice.jiggleLastVelocity = Vector3(0, 0, 0);
+    lattice.jiggleWarmup = 0;
+    lattice.jiggleSleeping = true;
+}
+
+template<>
+void prepare<LatticeModifierComponent>(LatticeModifierComponent& modifier, Entity, CloneContext& ctx) {
+    // a copied lattice deforms the copies; one not copied stays bound in the same registry,
+    // and is none in another (the binding stays, skipped like one to a deleted lattice)
+    for (LatticeBinding& binding : modifier.bindings) {
+        binding.lattice = ctx.remap(binding.lattice);
+    }
+    modifier.warnedOverflow = false;
+}
+
+template<>
+void prepare<LatticeFollowerComponent>(LatticeFollowerComponent& follower, Entity, CloneContext& ctx) {
+    follower.lattice = ctx.remap(follower.lattice);
+    follower.rest = ctx.remap(follower.rest);
 }
 
 template<>
@@ -625,6 +732,11 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<PrefabComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ReflectionProbeComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<UIDocumentComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<FluidSimulationComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<LatticeComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<LatticeModifierComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<LatticeFollowerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<LatticeTracksComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ScriptComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
 }
 
@@ -733,7 +845,7 @@ std::vector<Entity> EntityCloner::clone(EntityRegistry* source, const std::vecto
         copies.push_back(copy);
     }
 
-    CloneContext ctx{map, source == static_cast<EntityRegistry*>(target), sources[0], {}, {}};
+    CloneContext ctx{map, source == static_cast<EntityRegistry*>(target), sources[0], {}, {}, {}};
     for (Entity entity : sources) {
         if (ModelComponent* model = source->findComponent<ModelComponent>(entity)) {
             ctx.modelMeshes.insert(entity);
@@ -742,12 +854,19 @@ std::vector<Entity> EntityCloner::clone(EntityRegistry* source, const std::vecto
             }
         }
     }
-    // cameras first: textures showing what one renders follow it to the copy
+    // cameras and fluids first: textures showing what one renders follow it to the copy
+    const bool fluidsRegistered = source->isComponentRegistered<FluidSimulationComponent>();
     for (Entity entity : sources) {
         if (CameraComponent* camera = source->findComponent<CameraComponent>(entity)) {
             if (camera->framebuffer && !ctx.framebuffers.count(camera->framebuffer)) {
-                ctx.framebuffers[camera->framebuffer] = new Framebuffer();
+                ctx.framebuffers[camera->framebuffer] = {new Framebuffer(), entity, map[entity]};
             }
+        }
+        FluidSimulationComponent* fluid = fluidsRegistered ? source->findComponent<FluidSimulationComponent>(entity) : nullptr;
+        if (fluid && fluid->simulator) {
+            std::shared_ptr<FluidSimulator> copy = std::make_shared<FluidSimulator>();
+            ctx.framebuffers[fluid->simulator->getOutputFramebuffer()] = {copy->getOutputFramebuffer(), entity, map[entity]};
+            ctx.fluidSimulators[entity] = copy;
         }
     }
 

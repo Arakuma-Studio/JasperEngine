@@ -41,6 +41,10 @@ namespace jasperengine::editor{
 
         std::vector<AABB> createHalfTorus(Entity entity, float radius, float ringRadius, unsigned int sides, unsigned int rings);
 
+        // Physics (G) is on: colours from physicsGizmoColor
+        bool physicsTint = false;
+        Vector4 paint(const Vector3& color, float alpha) const { return physicsGizmoColor(color, alpha, physicsTint); }
+
     public:
         RotateGizmo(Scene* scene, bool use2DGizmo);
         virtual ~RotateGizmo();
@@ -50,6 +54,9 @@ namespace jasperengine::editor{
         void removeLine();
 
         GizmoSideSelected checkHover(const Ray& ray);
+
+        // Takes effect with the next checkHover, which repaints every handle
+        void setPhysicsTint(bool tint) { physicsTint = tint; }
     };
 
 }

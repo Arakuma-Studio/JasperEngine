@@ -59,6 +59,9 @@ namespace jasperengine::editor {
 
         virtual void addNewSceneToDock(uint32_t sceneId);
         virtual void clearSceneWindowState(uint32_t sceneId);
+        // The scene's Scene and SceneRender are about to be deleted (closed, reloaded, its
+        // Prefab Mode stage exited): tools holding on to them let go while they still exist
+        virtual void sceneDeleting(uint32_t sceneId);
         virtual void prepareForProjectSwitch();
         // Runs a project switch (Project::openProjectNow, createProjectAt, loadProject) where
         // the editor can tear its windows down: between frames, with the loading screen.
@@ -111,6 +114,9 @@ namespace jasperengine::editor {
         // Window > Input Actions with an .inputactions asset (absolute path)
         virtual void openInputActions(const std::filesystem::path& path);
         virtual void registerProjectSaveDialog(std::function<void()> callback = nullptr);
+        // Window > Texture Synthesis with an image: as the example ("Synthesize Texture..."), or
+        // its synthesis recipe restored (editRecipe, "Edit Synthesis...")
+        virtual void openTextureSynthesis(const std::filesystem::path& image, bool editRecipe);
 
         virtual InspectorWindow* getInspectorWindow() const;
         virtual CodeEditor* getCodeEditor() const;
