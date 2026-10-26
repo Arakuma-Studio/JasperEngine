@@ -349,6 +349,7 @@ void prepareThreadPlatform() {
 }
 bool installPlatform(const Config&) {
     using namespace je_crash_posix;
+    state().startMonotonicNs = monotonicNs();
     prepareThreadPlatform();
     void* warm[16];
     capture(warm, 16);

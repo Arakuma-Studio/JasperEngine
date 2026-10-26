@@ -220,6 +220,14 @@ size_t captureMainThreadStack(char* out, size_t capacity, const char** why) {
     for (size_t i = 0; i < frameCount; i++) {
         std::string description;
         Backtrace::describe(frames[i], description); // main thread has already resumed
+        // The logger uses module(+offset) symbol; report readers use module+offset [symbol].
+        const size_t offsetAt = description.find("(+0x");
+        const size_t offsetEnd = offsetAt == std::string::npos ? std::string::npos : description.find(')', offsetAt);
+        if (offsetEnd != std::string::npos) {
+            std::string formatted = description.substr(0, offsetAt) + description.substr(offsetAt + 1, offsetEnd - offsetAt - 1);
+            if (offsetEnd + 2 < description.size()) formatted += " [" + description.substr(offsetEnd + 2) + "]";
+            description = std::move(formatted);
+        }
         length = appendText(out, capacity, length, "#");
         length = appendDecimal(out, capacity, length, i);
         length = appendText(out, capacity, length, " ");
