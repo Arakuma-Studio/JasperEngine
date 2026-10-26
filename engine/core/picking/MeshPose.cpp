@@ -144,8 +144,46 @@ namespace {
         return 0.0f;
     }
 
+    // elements 0..count-1 of vertex `v`, as readElement reads each: the type switch and the
+    // bounds test once for the vertex when all of them are in the buffer (the posing loop, R30)
+    template<uint32_t COUNT>
+    inline void readElements(const AttributeSource& source, uint32_t v, float* out){
+        const size_t size = source.elementSize;
+        const size_t position = (size_t)v * source.stride + source.offset;
+        if (source.elements < COUNT || position + COUNT * size > source.bufferSize){
+            for (uint32_t e = 0; e < COUNT; e++){
+                out[e] = readElement(source, v, e);
+            }
+            return;
+        }
+        const unsigned char* data = source.data + position;
+        switch (source.type){
+            case AttributeDataType::FLOAT:
+                std::memcpy(out, data, COUNT * sizeof(float));
+                return;
+            case AttributeDataType::UNSIGNED_BYTE:
+                for (uint32_t e = 0; e < COUNT; e++){
+                    out[e] = source.normalized ? (float)data[e] / 255.0f : (float)data[e];
+                }
+                return;
+            case AttributeDataType::UNSIGNED_SHORT:
+                for (uint32_t e = 0; e < COUNT; e++){
+                    uint16_t value; std::memcpy(&value, data + e * 2, 2);
+                    out[e] = source.normalized ? (float)value / 65535.0f : (float)value;
+                }
+                return;
+            default:
+                for (uint32_t e = 0; e < COUNT; e++){
+                    out[e] = readElement(source, v, e);
+                }
+                return;
+        }
+    }
+
     Vector3 readVector3(const AttributeSource& source, uint32_t v){
-        return Vector3(readElement(source, v, 0), readElement(source, v, 1), readElement(source, v, 2));
+        float value[3];
+        readElements<3>(source, v, value);
+        return Vector3(value[0], value[1], value[2]);
     }
 
     // the morph targets a submesh's shader variant declares (morphtarget.glsl): 8 position
@@ -193,10 +231,8 @@ namespace {
     void fillInput(const SubmeshPoseSources& sources, uint32_t v, VertexPoseInput& input){
         input.skinned = sources.skinned;
         if (sources.skinned){
-            for (uint32_t i = 0; i < 4; i++){
-                input.boneIds[i] = readElement(sources.boneIds, v, i);
-                input.boneWeights[i] = readElement(sources.boneWeights, v, i);
-            }
+            readElements<4>(sources.boneIds, v, input.boneIds);
+            readElements<4>(sources.boneWeights, v, input.boneWeights);
         }
         input.morphCount = sources.morphCount;
         for (uint32_t k = 0; k < sources.morphCount; k++){

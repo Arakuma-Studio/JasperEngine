@@ -181,7 +181,9 @@ namespace jasperengine {
         AABB bounds;
 
         bool raycastBrute(const MeshBvhRay& ray, MeshBvhHit& hit) const;
-        void refitNodes();
+        // every node's boxes from its triangles; with `corners` (leafCorners order) the triangles
+        // take their corners from `positions` first
+        void refitNodes(std::span<const Vector3> positions = {}, std::span<const uint32_t> corners = {});
     };
 
 }

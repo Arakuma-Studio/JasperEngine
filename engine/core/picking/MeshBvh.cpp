@@ -675,17 +675,36 @@ MeshBvh MeshBvh::build(const PickGeometry& geometry){
     return bvh;
 }
 
-void MeshBvh::refitNodes(){
+namespace {
+    // a triangle's corners from `positions` (leafCorners order); one out of range keeps the
+    // triangle as it was
+    inline void loadCorners(MeshBvh::Triangle& triangle, std::span<const Vector3> positions, const uint32_t* corner){
+        const uint32_t a = corner[0], b = corner[1], c = corner[2];
+        if (a >= positions.size() || b >= positions.size() || c >= positions.size()){
+            return;
+        }
+        triangle.v0 = positions[a];
+        triangle.v1 = positions[b];
+        triangle.v2 = positions[c];
+    }
+}
+
+void MeshBvh::refitNodes(std::span<const Vector3> positions, std::span<const uint32_t> corners){
     // the leaf slots' boxes first, the bulk of the work: each node's on its own, so a large
-    // mesh's (a posed copy, R30) on the workers
-    auto leafBoxes = [this](size_t index, Box* slotBoxes){
+    // mesh's (a posed copy, R30) on the workers, its triangles' new corners read on the way
+    const size_t cornerCount = std::min(triangles.size(), corners.size() / 3);
+    auto leafBoxes = [&](size_t index, Box* slotBoxes){
         const Node& node = nodes[index];
         for (int s = 0; s < 8; s++){
             if (!(node.valid & (1u << s)) || node.count[s] == 0){
                 continue;
             }
             for (uint32_t t = node.first[s]; t < node.first[s] + node.count[s]; t++){
-                slotBoxes[s].expand(triangleBox(triangles[t]));
+                Triangle& triangle = triangles[t];
+                if (t < cornerCount){
+                    loadCorners(triangle, positions, corners.data() + (size_t)t * 3);
+                }
+                slotBoxes[s].expand(triangleBox(triangle));
             }
             widen(slotBoxes[s]);
         }
@@ -775,37 +794,19 @@ void MeshBvh::refit(std::span<const Vector3> positions, std::span<const uint32_t
 }
 
 void MeshBvh::refitCorners(std::span<const Vector3> positions, std::span<const uint32_t> corners){
-    const size_t count = std::min(triangles.size(), corners.size() / 3);
-    auto update = [&](size_t begin, size_t end){
-        for (size_t t = begin; t < end; t++){
-            const uint32_t a = corners[t * 3], b = corners[t * 3 + 1], c = corners[t * 3 + 2];
-            if (a >= positions.size() || b >= positions.size() || c >= positions.size()){
-                continue;
-            }
-            Triangle& triangle = triangles[t];
-            triangle.v0 = positions[a];
-            triangle.v1 = positions[b];
-            triangle.v2 = positions[c];
-        }
-    };
-    // the corners of a large mesh in chunks on the workers (a posed copy, R30)
-    constexpr size_t CHUNK = 8192;
-    if (count > CHUNK * 2){
-        jobs::parallelFor((count + CHUNK - 1) / CHUNK, [&](size_t chunk){
-            update(chunk * CHUNK, std::min(count, (chunk + 1) * CHUNK));
-        });
-    }else{
-        update(0, count);
-    }
     if (nodes.empty()){
+        const size_t count = std::min(triangles.size(), corners.size() / 3);
         Box box;
-        for (const Triangle& triangle : triangles){
-            box.expand(triangleBox(triangle));
+        for (size_t t = 0; t < triangles.size(); t++){
+            if (t < count){
+                loadCorners(triangles[t], positions, corners.data() + t * 3);
+            }
+            box.expand(triangleBox(triangles[t]));
         }
         bounds = box.empty() ? AABB() : AABB(box.mn[0], box.mn[1], box.mn[2], box.mx[0], box.mx[1], box.mx[2]);
         return;
     }
-    refitNodes();
+    refitNodes(positions, corners);
 }
 
 // ---- queries
