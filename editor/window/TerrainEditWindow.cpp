@@ -2791,6 +2791,19 @@ void editor::TerrainEditWindow::drawLayerSurface(TerrainComponent& terrain, int 
     if (ImGui::DragFloat2("##uv_offset", &uvOffset.x, 0.01f, 0.0f, 0.0f, "%.2f")){
         edit([&](TerrainSurfaceLayer& target){ target.uvOffset = uvOffset; }, true);
     }
+
+    terrainPropertyRow("Hex Tiling", "Samples the flat projection on three randomly rotated copies on a hex grid: no visible tiling from a distance (three taps per map)", false);
+    bool hexTiling = layer.hexTiling;
+    if (ImGui::Checkbox("##hex_tiling", &hexTiling)){
+        edit([&](TerrainSurfaceLayer& target){ target.hexTiling = hexTiling; }, false);
+    }
+    if (layer.hexTiling){
+        terrainPropertyRow("Rotation", "How far a hex tile may turn: 1 a full turn, 0 none", true);
+        float hexRotation = layer.hexRotation;
+        if (ImGui::SliderFloat("##hex_rotation", &hexRotation, 0.0f, 1.0f, "%.2f")){
+            edit([&](TerrainSurfaceLayer& target){ target.hexRotation = hexRotation; }, true);
+        }
+    }
 }
 
 void editor::TerrainEditWindow::drawFoliageMesh(const TerrainFoliageLayer& layer){

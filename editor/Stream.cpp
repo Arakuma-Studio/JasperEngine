@@ -20,6 +20,8 @@
 #include "util/CameraTextureLink.h"
 #include "util/ProjectUtils.h"
 #include "util/StringUtils.h"
+#include "util/LightPhotometry.h"
+#include "texture/TexturePack.h"
 #include "ecs/EntityManager.h"
 #include "render/SceneRender2D.h"
 #include "render/SceneRender3D.h"
@@ -824,6 +826,14 @@ static std::string shadowQualityToString(ShadowQuality quality) {
     return editor::StreamSchema::shadowQuality().toString(quality);
 }
 
+static std::string pbrTierToString(PbrTier tier) {
+    return editor::StreamSchema::pbrTier().toString(tier);
+}
+
+static PbrTier stringToPbrTier(const std::string& name) {
+    return editor::StreamSchema::pbrTier().fromString(name);
+}
+
 static std::string sceneColorScaleToString(SceneColorScale scale) {
     return editor::StreamSchema::sceneColorScale().toString(scale);
 }
@@ -1418,7 +1428,7 @@ Submesh editor::Stream::decodeSubmesh(const YAML::Node& node, const Submesh* old
     if (node["textureShadow"]) submesh.textureShadow = YamlNumbers::as<bool>(node["textureShadow"]);
 
     // Omitted at its default, so an absent key is a value, not a reason to keep the old one.
-    submesh.overrideFields = node["overrideFields"] ? YamlNumbers::as<uint32_t>(node["overrideFields"]) : 0;
+    submesh.overrideFields = node["overrideFields"] ? YamlNumbers::as<uint64_t>(node["overrideFields"]) : 0;
 
     // Flags
     if (node["hasTexCoord1"]) submesh.hasTexCoord1 = YamlNumbers::as<bool>(node["hasTexCoord1"]);
@@ -1738,6 +1748,9 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     }
     if (project->isRuntimeShadersEnabled() != Project::defaultRuntimeShadersEnabled) {
         root["runtimeShaders"] = project->isRuntimeShadersEnabled();
+    }
+    if (project->getMobilePbrTier() != Project::defaultMobilePbrTier) {
+        root["mobilePbrTier"] = pbrTierToString(project->getMobilePbrTier());
     }
     if (project->shouldPackNativeResources() != Project::defaultPackNativeResources) {
         root["packNativeResources"] = project->shouldPackNativeResources();
@@ -2191,6 +2204,9 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     }
     if (node["runtimeShaders"]) {
         project->setRuntimeShadersEnabled(YamlNumbers::as<bool>(node["runtimeShaders"]));
+    }
+    if (node["mobilePbrTier"]) {
+        project->setMobilePbrTier(stringToPbrTier(node["mobilePbrTier"].as<std::string>()));
     }
 
     // Backward compatibility: the compiler and job count used to live here before
@@ -2963,6 +2979,12 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
     sceneNode["globalIlluminationColor"] = encodeVector3(scene->getGlobalIlluminationColor());
     if (scene->getMaxLightsPerObject() != SceneSettings().maxLightsPerObject)
         sceneNode["maxLightsPerObject"] = scene->getMaxLightsPerObject();
+    // a scene without the key is Standard (it was drawn so before Lit Quality existed); new
+    // scenes are High, which is written
+    if (scene->getLitQuality() != LitQuality::STANDARD)
+        sceneNode["litQuality"] = StreamSchema::litQuality().toString(scene->getLitQuality());
+    if (scene->getPhysicalLightEV100() != SceneSettings().physicalLightEV100)
+        sceneNode["physicalLightEV100"] = YamlNumbers::text(scene->getPhysicalLightEV100());
     sceneNode["ambientLight2DIntensity"] = scene->getAmbientLight2DIntensity();
     sceneNode["ambientLight2DColor"] = encodeVector3(scene->getAmbientLight2DColor());
     sceneNode["shadow2DQuality"] = shadowQualityToString(scene->getShadow2DQuality());
@@ -3128,6 +3150,8 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
 
     // absent key restores the engine default so decoding into a reused scene (play restore) is exact
     scene->setMaxLightsPerObject(node["maxLightsPerObject"] ? YamlNumbers::as<int>(node["maxLightsPerObject"]) : SceneSettings().maxLightsPerObject);
+    scene->setLitQuality(node["litQuality"] ? decodeEnum(node, "litQuality", StreamSchema::litQuality()) : LitQuality::STANDARD);
+    scene->setPhysicalLightEV100(decodeFinite(node["physicalLightEV100"], SceneSettings().physicalLightEV100));
 
     if (node["ambientLight2DIntensity"] && node["ambientLight2DColor"]) {
         scene->setAmbientLight2D(
@@ -3765,7 +3789,84 @@ YAML::Node editor::Stream::encodeMaterial(const Material& material, bool embedTe
     encodeStencilAndColorWrite(node, material.stencil, material.colorWrite);
     if (material.extraPass != MaterialPass()) node["extraPass"] = encodeMaterialPass(material.extraPass, embedTextureData);
 
+    // the extended lobes and the emission intensity, the same way (a material without them is
+    // stored as it was before they existed)
+    if (material.emissiveStrength != 1.0f) node["emissiveStrength"] = YamlNumbers::text(finiteOr(material.emissiveStrength, 1.0f));
+    if (material.pbr != MaterialPbrExtensions()) {
+        YAML::Node pbr = encodeMaterialPbr(material.pbr, embedTextureData);
+        if (pbr.size() > 0) node["pbr"] = pbr;
+    }
+
     return node;
+}
+
+YAML::Node editor::Stream::encodeMaterialPbr(const MaterialPbrExtensions& pbr, bool embedTextureData) {
+    static const MaterialPbrExtensions defaults;
+    MaterialPbrExtensions& values = const_cast<MaterialPbrExtensions&>(pbr);
+    MaterialPbrExtensions& defaultValues = const_cast<MaterialPbrExtensions&>(defaults);
+    YAML::Node node;
+    for (const PbrLobeInfo& lobe : MaterialPbr::getLobes()) {
+        YAML::Node lobeNode;
+        for (const PbrField& field : MaterialPbr::getFields()) {
+            if (field.lobe != lobe.lobe) continue;
+            const void* value = field.ref(values);
+            const void* def = field.ref(defaultValues);
+            switch (field.type) {
+                case PbrFieldType::Bool:
+                    if (*(const bool*)value != *(const bool*)def) lobeNode[field.name] = *(const bool*)value;
+                    break;
+                case PbrFieldType::Float:
+                    // an infinity (the attenuation distance's default) is only ever the default
+                    if (*(const float*)value != *(const float*)def && std::isfinite(*(const float*)value))
+                        lobeNode[field.name] = YamlNumbers::text(*(const float*)value);
+                    break;
+                case PbrFieldType::Vector2:
+                    if (*(const Vector2*)value != *(const Vector2*)def) lobeNode[field.name] = encodeVector2(*(const Vector2*)value);
+                    break;
+                case PbrFieldType::Color:
+                    if (*(const Vector3*)value != *(const Vector3*)def) lobeNode[field.name] = encodeVector3(*(const Vector3*)value);
+                    break;
+                case PbrFieldType::Texture:
+                    // a map packed from a model's images (TexturePack) is made again when the
+                    // model loads: not written
+                    if (!((const Texture*)value)->empty() && !TexturePack::isPackedId(((const Texture*)value)->getId()))
+                        lobeNode[field.name] = encodeTexture(*(const Texture*)value, embedTextureData);
+                    break;
+                case PbrFieldType::TexCoord:
+                    if (*(const int*)value != *(const int*)def) lobeNode[field.name] = YamlNumbers::integerText(*(const int*)value);
+                    break;
+            }
+        }
+        if (lobeNode.size() > 0) node[lobe.name] = lobeNode;
+    }
+    return node;
+}
+
+MaterialPbrExtensions editor::Stream::decodeMaterialPbr(const YAML::Node& node) {
+    MaterialPbrExtensions pbr;
+    if (!node || !node.IsMap()) return pbr;
+    for (const PbrLobeInfo& lobe : MaterialPbr::getLobes()) {
+        const YAML::Node lobeNode = node[lobe.name];
+        if (!lobeNode || !lobeNode.IsMap()) continue;
+        for (const PbrField& field : MaterialPbr::getFields()) {
+            if (field.lobe != lobe.lobe) continue;
+            const YAML::Node value = lobeNode[field.name];
+            if (!value) continue;
+            void* target = field.ref(pbr);
+            switch (field.type) {
+                case PbrFieldType::Bool: *(bool*)target = YamlNumbers::as<bool>(value); break;
+                case PbrFieldType::Float: *(float*)target = decodeFinite(value, *(float*)target); break;
+                case PbrFieldType::Vector2: *(Vector2*)target = decodeVector2(value); break;
+                case PbrFieldType::Color: *(Vector3*)target = decodeVector3(value); break;
+                case PbrFieldType::Texture: *(Texture*)target = decodeTexture(value); break;
+                case PbrFieldType::TexCoord: *(int*)target = YamlNumbers::as<int>(value); break;
+            }
+        }
+    }
+    // out of range from a hand edit or a newer writer: into range (the glTF loader warns, a
+    // file does not)
+    MaterialPbr::clamp(pbr);
+    return pbr;
 }
 
 Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* oldMaterial) {
@@ -3819,6 +3920,8 @@ Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* 
     material.lighting = node["lighting"] ? decodeEnum(node, "lighting", StreamSchema::materialLighting()) : MaterialLighting::AUTO;
     decodeStencilAndColorWrite(node, material.stencil, material.colorWrite);
     material.extraPass = decodeMaterialPass(node["extraPass"]);
+    material.emissiveStrength = std::max(decodeFinite(node["emissiveStrength"], 1.0f), 0.0f);
+    material.pbr = decodeMaterialPbr(node["pbr"]);
 
     return material;
 }
@@ -5711,6 +5814,9 @@ YAML::Node editor::Stream::encodeTerrainSurfaceLayer(const TerrainSurfaceLayer& 
     node["occlusionStrength"] = layer.occlusionStrength;
     node["uvScale"] = encodeVector2(layer.uvScale);
     node["uvOffset"] = encodeVector2(layer.uvOffset);
+    // hex tiling: written only when on, or with a rotation of its own
+    if (layer.hexTiling) node["hexTiling"] = true;
+    if (layer.hexRotation != TerrainSurfaceLayer().hexRotation) node["hexRotation"] = YamlNumbers::text(finiteOr(layer.hexRotation, 1.0f));
     return node;
 }
 
@@ -5730,6 +5836,8 @@ TerrainSurfaceLayer editor::Stream::decodeTerrainSurfaceLayer(const YAML::Node& 
     layer.roughnessFactor = decodeFinite(node["roughnessFactor"], layer.roughnessFactor);
     layer.metallicFactor = decodeFinite(node["metallicFactor"], layer.metallicFactor);
     layer.occlusionStrength = decodeFinite(node["occlusionStrength"], layer.occlusionStrength);
+    if (node["hexTiling"]) layer.hexTiling = YamlNumbers::as<bool>(node["hexTiling"]);
+    layer.hexRotation = std::clamp(decodeFinite(node["hexRotation"], layer.hexRotation), 0.0f, 1.0f);
     return layer;
 }
 
@@ -6085,6 +6193,13 @@ YAML::Node editor::Stream::encodeLightComponent(const LightComponent& light) {
     // the volumetric fog's share of the light (omitted at its default)
     if (light.volumetricIntensity != LightComponent().volumetricIntensity)
         node["volumetricIntensity"] = light.volumetricIntensity;
+    // photometric units and colour temperature: written only away from their defaults
+    if (light.intensityUnit != LightUnit::ENGINE)
+        node["intensityUnit"] = StreamSchema::lightUnit().toString(light.intensityUnit);
+    if (light.useColorTemperature)
+        node["useColorTemperature"] = true;
+    if (light.colorTemperature != LightComponent().colorTemperature)
+        node["colorTemperature"] = YamlNumbers::text(finiteOr(light.colorTemperature, LightComponent().colorTemperature));
 
     return node;
 }
@@ -6127,6 +6242,10 @@ LightComponent editor::Stream::decodeLightComponent(const YAML::Node& node, cons
     light.shadowSourceRadius = node["shadowSourceRadius"] ? YamlNumbers::as<float>(node["shadowSourceRadius"]) : defaults.shadowSourceRadius;
     light.shadowUpdateMode = node["shadowUpdateMode"] ? decodeEnum(node, "shadowUpdateMode", StreamSchema::shadowUpdateMode()) : defaults.shadowUpdateMode;
     light.volumetricIntensity = node["volumetricIntensity"] ? YamlNumbers::as<float>(node["volumetricIntensity"]) : LightComponent().volumetricIntensity;
+    light.intensityUnit = node["intensityUnit"] ? decodeEnum(node, "intensityUnit", StreamSchema::lightUnit()) : LightUnit::ENGINE;
+    light.useColorTemperature = node["useColorTemperature"] ? YamlNumbers::as<bool>(node["useColorTemperature"]) : false;
+    light.colorTemperature = std::clamp(decodeFinite(node["colorTemperature"], LightComponent().colorTemperature),
+                                        LightPhotometry::MIN_TEMPERATURE, LightPhotometry::MAX_TEMPERATURE);
 
     if (node["enabled"]) light.enabled = YamlNumbers::as<bool>(node["enabled"]);
 

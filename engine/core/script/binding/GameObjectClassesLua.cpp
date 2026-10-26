@@ -298,6 +298,15 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addVariable("SPOT", LightType::SPOT)
         .endNamespace();
 
+    // what a Light's intensity is in (util/LightPhotometry.h)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("LightUnit")
+        .addVariable("ENGINE", LightUnit::ENGINE)
+        .addVariable("LUX", LightUnit::LUX)
+        .addVariable("CANDELA", LightUnit::CANDELA)
+        .addVariable("LUMEN", LightUnit::LUMEN)
+        .endNamespace();
+
     luabridge::getGlobalNamespace(L)
         .beginNamespace("LightShading")
         .addVariable("BOTH", LightShading::BOTH)
@@ -618,6 +627,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setRange", &Light::setRange)
         .addProperty("intensity", &Light::getIntensity, &Light::setIntensity)
         .addFunction("setIntensity", &Light::setIntensity)
+        // photometric units and colour temperature; the property sets the unit alone,
+        // light:setIntensityUnit(unit, true) keeps the light as bright
+        .addProperty("intensityUnit", &Light::getIntensityUnit, (void(Light::*)(LightUnit))&Light::setIntensityUnit)
+        .addFunction("setIntensityUnit",
+            luabridge::overload<LightUnit>((void(Light::*)(LightUnit))&Light::setIntensityUnit),
+            luabridge::overload<LightUnit, bool>((void(Light::*)(LightUnit, bool))&Light::setIntensityUnit))
+        .addProperty("useColorTemperature", &Light::isUseColorTemperature, &Light::setUseColorTemperature)
+        .addProperty("colorTemperature", &Light::getColorTemperature, &Light::setColorTemperature)
         .addFunction("setConeAngle", &Light::setConeAngle)
         .addProperty("innerConeAngle", &Light::getInnerConeAngle, &Light::setInnerConeAngle)
         .addFunction("setInnerConeAngle", &Light::setInnerConeAngle)
@@ -914,6 +931,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("occlusionStrength", &TerrainSurfaceLayer::occlusionStrength, &TerrainSurfaceLayer::occlusionStrength)
         .addProperty("uvScale", &TerrainSurfaceLayer::uvScale, &TerrainSurfaceLayer::uvScale)
         .addProperty("uvOffset", &TerrainSurfaceLayer::uvOffset, &TerrainSurfaceLayer::uvOffset)
+        // hex tiling of the flat projection (anti-repetition), and how far a tile may turn (0..1)
+        .addProperty("hexTiling", &TerrainSurfaceLayer::hexTiling, &TerrainSurfaceLayer::hexTiling)
+        .addProperty("hexRotation", &TerrainSurfaceLayer::hexRotation, &TerrainSurfaceLayer::hexRotation)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

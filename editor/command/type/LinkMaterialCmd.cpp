@@ -42,8 +42,8 @@ bool editor::LinkMaterialCmd::execute(){
         Catalog::updateEntity(sceneProject->scene, entity, prop.updateFlags);
 
         // The linked material is the user's now, not the model file's.
-        uint32_t propertyFields = 0;
-        if (uint32_t* overrideMask = Catalog::getSubmeshOverrideMask(sceneProject->scene, entity, componentType, propertyName, propertyFields)) {
+        uint64_t propertyFields = 0;
+        if (uint64_t* overrideMask = Catalog::getSubmeshOverrideMask(sceneProject->scene, entity, componentType, propertyName, propertyFields)) {
             oldOverrideFields = *overrideMask;
             *overrideMask |= propertyFields;
         }
@@ -82,8 +82,8 @@ void editor::LinkMaterialCmd::undo(){
         *matRef = oldMaterial;
         Catalog::updateEntity(sceneProject->scene, entity, prop.updateFlags);
 
-        uint32_t propertyFields = 0;
-        if (uint32_t* overrideMask = Catalog::getSubmeshOverrideMask(sceneProject->scene, entity, componentType, propertyName, propertyFields)) {
+        uint64_t propertyFields = 0;
+        if (uint64_t* overrideMask = Catalog::getSubmeshOverrideMask(sceneProject->scene, entity, componentType, propertyName, propertyFields)) {
             *overrideMask = oldOverrideFields;
         }
     }

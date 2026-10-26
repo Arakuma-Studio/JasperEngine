@@ -120,6 +120,8 @@ namespace luabridge
     template<> struct Stack<CascadeSplitMode> : EnumWrapper<CascadeSplitMode>{};
     template<> struct Stack<ShadowTier> : EnumWrapper<ShadowTier>{};
     template<> struct Stack<SceneColorScale> : EnumWrapper<SceneColorScale>{};
+    template<> struct Stack<LitQuality> : EnumWrapper<LitQuality>{};
+    template<> struct Stack<LightUnit> : EnumWrapper<LightUnit>{};
     template<> struct Stack<TonemapMode> : EnumWrapper<TonemapMode>{};
     template<> struct Stack<MonochromeMode> : EnumWrapper<MonochromeMode>{};
     template<> struct Stack<FilmGrainType> : EnumWrapper<FilmGrainType>{};
