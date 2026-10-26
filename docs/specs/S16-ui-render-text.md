@@ -618,3 +618,16 @@ one line pointing here.
   document's stencil-clipped disc edge and its outlined label (the same test passes on the oe-port
   base). Not traced to a single change yet; follow-up. The other S16-off failures are S16's own
   tests needing S16 on (they now turn it on, `S16On`) and the new goldens.
+
+## Acceptance round 2 (working notes)
+
+- S17 merged (348362026): FORK.md keeps both sections; `inspect_ui` keeps `reload` and
+  `render_stats`; TOOLS.md to be regenerated.
+- B2 profile (perf on the benchmark host, `HtmlUIRenderPerf.ProfileTarget`): the main thread's
+  time is spread over RmlUi's per-element paint (`Element::Update` 7 %, `Element::Render` 5 %,
+  `GetClippingRegion` 5 %, `SetTransform`, `GetRenderBox`, `ElementText::OnRender`,
+  `RenderPrimitives`/`toInstance`, `ElementBackgroundBorder::Render` about 3 % each; clip shapes'
+  `ComputeBorderMetrics`/`ScaleRadiiToFit` per clipped element). 450 of the 500 cards are outside
+  the list's scissor. Changes: S16-F4 culling, clip shapes cached.
+- B1: four texture slots per `HTMLUI_PRIM` draw; the benchmark prints the effect draws (shaders,
+  composites, filters, clip masks).
