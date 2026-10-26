@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AnimationClipDocument.h"
+#include "command/CommandNames.h"
 
 #include "Out.h"
 #include "Project.h"
@@ -784,6 +785,8 @@ bool AnimationClipDocument::writeUndoable(const std::string& newText, const std:
     auto* command = new WriteFilesCmd({{filePath, newText}}, [owner](const std::vector<fs::path>& changed){
         documentFilesWritten(owner, changed);
     });
+    // the step's name in the undo history (S24)
+    command->setName("Edit Animation Clip " + CommandNames::file(filePath));
     if (mergeKey.empty()){
         command->setNoMerge();
     }else{

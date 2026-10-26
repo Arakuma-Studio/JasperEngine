@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "CreateClipCmd.h"
+#include "command/CommandNames.h"
 
 #include "Out.h"
 #include "Project.h"
@@ -237,4 +238,11 @@ bool CreateClipCmd::affectsStructure() const{
         if (command->affectsStructure()) return true;
     }
     return false;
+}
+
+std::string editor::CreateClipCmd::describe() const{
+    std::vector<std::filesystem::path> paths;
+    for (const File& file : files) paths.push_back(file.path);
+    return files.size() == 1 ? "Create Animation Clip " + CommandNames::file(paths.front())
+                             : "Create " + std::to_string(files.size()) + " Animation Clips";
 }

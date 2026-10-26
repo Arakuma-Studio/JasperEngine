@@ -119,7 +119,6 @@ std::shared_ptr<editor::PoseAnimationDocument> editor::PoseAnimationDocument::op
 std::shared_ptr<editor::PoseAnimationDocument> editor::PoseAnimationDocument::create(Project* project, const std::string& path,
         const pose::PoseAnimationData& initial, const std::string& undoName, std::vector<pose::ClampReport>* clamped,
         std::string* error, const std::vector<ExtraFile>& extraFiles){
-    (void)undoName;   // the command history has no step names
     fs::path absolute;
     std::string relative;
     if (!resolvePath(project, path, absolute, relative, error)){
@@ -149,7 +148,7 @@ std::shared_ptr<editor::PoseAnimationDocument> editor::PoseAnimationDocument::cr
     pose::PoseAnimationData copy = initial;
     std::vector<pose::ClampReport> reports;
     pose::clampData(copy, reports);
-    if (!document->writeUndoable(pose::writePoseAnimation(copy), "", extraFiles, error)){
+    if (!document->writeUndoable(pose::writePoseAnimation(copy), "", undoName, extraFiles, error)){
         if (!document->onDisk){
             reg.documents.erase(key);
         }
@@ -250,7 +249,8 @@ void editor::PoseAnimationDocument::reloadFromDisk(){
 }
 
 bool editor::PoseAnimationDocument::writeUndoable(const std::string& newText, const std::string& mergeKey,
-                                                  const std::vector<ExtraFile>& extraFiles, std::string* error){
+                                                  const std::string& undoName, const std::vector<ExtraFile>& extraFiles,
+                                                  std::string* error){
     std::vector<WriteFilesCmd::Item> items;
     if (!onDisk || newText != text){
         items.push_back({filePath, newText});
@@ -275,6 +275,10 @@ bool editor::PoseAnimationDocument::writeUndoable(const std::string& newText, co
             registry().filesWrittenHook(changed);
         }
     });
+    // the step's name in the undo history (S24): the edit's own ("Edit Pose Contact R")
+    if (!undoName.empty()){
+        command->setName(undoName);
+    }
     if (mergeKey.empty()){
         command->setNoMerge();
     }else{
@@ -293,7 +297,6 @@ bool editor::PoseAnimationDocument::writeUndoable(const std::string& newText, co
 bool editor::PoseAnimationDocument::commit(const pose::PoseAnimationData& newData, const std::string& undoName,
                                            const std::string& mergeKey, std::vector<pose::ClampReport>* clamped,
                                            std::string* error, const std::vector<ExtraFile>& extraFiles){
-    (void)undoName;   // the command history has no step names
     if (!onDisk){
         return fail(error, "'" + relativePath + "' does not exist any more");
     }
@@ -306,7 +309,7 @@ bool editor::PoseAnimationDocument::commit(const pose::PoseAnimationData& newDat
     pose::PoseAnimationData copy = newData;
     std::vector<pose::ClampReport> reports;
     pose::clampData(copy, reports);
-    if (!writeUndoable(pose::writePoseAnimation(copy), mergeKey, extraFiles, error)){
+    if (!writeUndoable(pose::writePoseAnimation(copy), mergeKey, undoName, extraFiles, error)){
         return false;
     }
     if (clamped){

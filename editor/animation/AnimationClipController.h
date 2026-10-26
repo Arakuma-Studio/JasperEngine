@@ -221,16 +221,16 @@ namespace jasperengine::editor{
         bool takesKeys() const;
 
         // ---- undo routing (spec 9.R5b / R5c) ----
-        // Ctrl+Z / Ctrl+Y and Edit > Undo / Redo go to the project history when the newest
-        // undoable (for redo: the one undone last) step across the project history and the
-        // selected scene's is a clip commit made through the editor UI, whatever window has
-        // focus (AnimationClipAppHooks::ownsUndo / ownsRedo); Record never steals a scene undo.
+        // Ctrl+Z / Ctrl+Y and Edit > Undo / Redo take S24's timeline step: the newest undoable
+        // (for redo: the one undone last) step across the project history and the selected
+        // scene's, a clip commit included, whatever window has focus. These say whether that step
+        // is a clip commit made through the editor UI (AnimationClipAppHooks::ownsUndo: the
+        // Animation window keeps its keys then); Record never steals a scene undo.
         // Clip commits: this controller's edits (the window, Record, Retarget) and the ones the
         // UI marks with markClipCommit (the Inspector's .anim asset section, Extract / Create
         // file writes). MCP tools never mark theirs.
 
         bool ownsUndo() const;
-        bool ownsRedo() const;
         bool newestStepIsClipEdit() const;
         bool newestRedoIsClipEdit() const;
         // the same for `project` (null: the timeline's), with or without a controller

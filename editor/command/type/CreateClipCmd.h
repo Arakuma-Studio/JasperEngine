@@ -62,6 +62,9 @@ namespace jasperengine::editor{
         bool execute() override;
         void undo() override;
         bool affectsStructure() const override;
+        // "Create Animation Clip walk.anim", "Create 2 Animation Clips" (S24)
+        std::string describe() const override;
+        const char* typeName() const override { return "CreateClipCmd"; }
 
         // why the last execute failed ("can't write <path>: <reason>", a scene command's)
         const std::string& getFailure() const { return failure; }

@@ -124,7 +124,8 @@ namespace jasperengine::editor{
         void notify(Change change);
         void takeStamp();
         bool stampChanged() const;
-        bool writeUndoable(const std::string& newText, const std::string& mergeKey,
+        // undoName: the undo step's name (empty: WriteFilesCmd's "Write File walk.poseanim")
+        bool writeUndoable(const std::string& newText, const std::string& mergeKey, const std::string& undoName,
                            const std::vector<ExtraFile>& extraFiles, std::string* error);
     };
 

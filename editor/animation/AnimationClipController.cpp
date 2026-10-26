@@ -96,9 +96,6 @@ namespace{
             hooks.ownsUndo = [](){
                 return AnimationClipController::newestUndoIsClipCommit(nullptr);
             };
-            hooks.ownsRedo = [](){
-                return AnimationClipController::newestRedoIsClipCommit(nullptr);
-            };
             hooks.takesKeys = [](){
                 for (auto& entry : controllers()){
                     if (entry.second->takesKeys()) return true;
@@ -1943,10 +1940,6 @@ bool AnimationClipController::newestStepIsClipEdit() const{
 
 bool AnimationClipController::newestRedoIsClipEdit() const{
     return project && newestRedoIsClipCommit(project);
-}
-
-bool AnimationClipController::ownsRedo() const{
-    return newestRedoIsClipEdit();
 }
 
 const std::vector<ClipWarning>& AnimationClipController::getLastWarnings() const{

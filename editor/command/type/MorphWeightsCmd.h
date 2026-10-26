@@ -4,6 +4,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
 #include "command/PrefabEditUndo.h"
 #include "Project.h"
 #include "Catalog.h"
@@ -130,6 +131,14 @@ namespace jasperengine::editor{
         }
 
         bool affectsStructure() const override{ return false; }
+
+        // "Set Blend Shapes (Hero)" (S24)
+        std::string describe() const override{
+            std::vector<Entity> entities;
+            for (const Target& target : targets) entities.push_back(target.entity);
+            return "Set Blend Shapes (" + CommandNames::entities(project, sceneId, entities) + ")";
+        }
+        const char* typeName() const override{ return "MorphWeightsCmd"; }
 
         const std::vector<Target>& getTargets() const{ return targets; }
 
