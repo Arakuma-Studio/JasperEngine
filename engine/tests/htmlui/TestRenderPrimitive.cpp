@@ -209,6 +209,27 @@ TEST(RenderPrimitive, GradientBackgroundsNeedNoMaskLayer){
     EXPECT_TRUE(similar(primitives.screen, meshes.screen, "rounded gradient"));
 }
 
+// a gradient alone (no background colour under it), as RCSS decorator and as CSS image: its ends
+// in their colours where they are (the MCP gallery's probes)
+TEST(RenderPrimitive, GradientsDrawWhereTheyAre){
+    JASPER_REQUIRE_GPU();
+    for (const char* paint : {"decorator: linear-gradient(90deg, #ff0000, #0000ff);", "background-image: linear-gradient(90deg, #ff0000, #0000ff);"}){
+        const std::string rml = documentOf(std::string("#g { position: absolute; left: 40px; top: 40px; width: 300px; height: 100px; ") + paint + " }",
+                                           "<div id=\"g\"/>");
+        for (bool on : {false, true}){
+            Frame frame;
+            ASSERT_TRUE(drawDocument(rml, 4, on, frame)) << paint;
+            auto at = [&](int x, int y){ return frame.screen.data() + ((size_t)y * width + (size_t)x) * 4; };
+            const uint8_t* start = at(44, 90);
+            const uint8_t* end = at(336, 90);
+            EXPECT_GT(start[0], 230) << paint << (on ? " primitives" : " mesh") << ": " << int(start[0]) << " " << int(start[1]) << " " << int(start[2]);
+            EXPECT_LT(start[2], 30) << paint << (on ? " primitives" : " mesh");
+            EXPECT_GT(end[2], 230) << paint << (on ? " primitives" : " mesh") << ": " << int(end[0]) << " " << int(end[1]) << " " << int(end[2]);
+            EXPECT_LT(end[0], 30) << paint << (on ? " primitives" : " mesh");
+        }
+    }
+}
+
 TEST(RenderPrimitive, NonQualifyingBoxesKeepTheMeshPath){
     JASPER_REQUIRE_GPU();
     Primitives on(true);
