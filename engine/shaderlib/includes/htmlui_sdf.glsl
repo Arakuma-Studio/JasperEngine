@@ -193,26 +193,31 @@ float htmluiMedian(float r, float g, float b){
 // a glow, a font-effect blur or a blurred text-shadow), at the fragment. texel is the sample, uvTexels
 // its position in atlas texels, docPos the document position: their derivatives give the screen
 // size of a texel and of a document px
-float htmluiDistanceText(vec4 texel, vec2 uvTexels, vec2 docPos){
+float htmluiDistanceTextOf(vec4 texel, vec2 uvTexels, vec2 docPos, vec4 text){
     // a texel's value v is the distance (v - 0.5) * 2 * range, in texels
-    float range = 2.0 * clip.text.w;
+    float range = 2.0 * text.w;
     vec2 texelsX = dFdx(uvTexels);
     vec2 texelsY = dFdy(uvTexels);
     // atlas texels per screen pixel, and document px per atlas texel
     float texelsPerPixel = max(0.5 * (length(texelsX) + length(texelsY)), 1e-5);
     float docPerTexel = (length(dFdx(docPos)) + length(dFdy(docPos))) / max(length(texelsX) + length(texelsY), 1e-5);
-    float effect = clip.text.x;
+    float effect = text.x;
     if (effect < 0.5){
         // the glyph: the median's distance, in screen pixels
         float sd = (htmluiMedian(texel.r, texel.g, texel.b) - 0.5) * range / texelsPerPixel;
         return clamp(sd + 0.5, 0.0, 1.0);
     }
     // effects from the true distance (alpha), in document px, footprint of a screen pixel
-    float sd = (texel.a - 0.5) * range * docPerTexel + clip.text.y;
+    float sd = (texel.a - 0.5) * range * docPerTexel + text.y;
     float pixel = texelsPerPixel * docPerTexel;
     if (effect < 1.5)
         return sdfCoverage(sd, pixel);
-    return gaussianEdge(sd, clip.text.z, 0.5 * pixel);
+    return gaussianEdge(sd, text.z, 0.5 * pixel);
+}
+
+// the same with the draw's texture's parameters (u_fs_htmluiClip.text)
+float htmluiDistanceText(vec4 texel, vec2 uvTexels, vec2 docPos){
+    return htmluiDistanceTextOf(texel, uvTexels, docPos, clip.text);
 }
 
 #endif

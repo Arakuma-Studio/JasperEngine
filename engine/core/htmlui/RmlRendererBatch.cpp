@@ -463,15 +463,41 @@ void RmlRenderer::drawPrimitivesNow(const HtmlUIPrimitive* primitives, size_t co
         return;
     applyPassViewport(Rml::Rectanglei::FromSize(Rml::Vector2i(std::max(targetSize.x, 1), std::max(targetSize.y, 1))));
     applyPassScissor(scissor);
-    drawInstances(*buffer, offset, (uint32_t)count, nullptr, transform, currentClipParams(nullptr), getGeometryState(BlendMode::PREMULTIPLIED), scissor);
+    static const std::array<HtmlUITexture*, 4> none{};
+    drawInstances(*buffer, offset, (uint32_t)count, none, transform, currentClipParams(nullptr), getGeometryState(BlendMode::PREMULTIPLIED), scissor);
 }
 
-bool RmlRenderer::drawInstances(BufferRender& buffer, size_t byteOffset, uint32_t count, HtmlUITexture* texture, const Rml::Matrix4f& matrix,
-                                const ClipParams& clipParams, const PipelineState& state, Rml::Rectanglei scissor){
+bool RmlRenderer::drawInstances(BufferRender& buffer, size_t byteOffset, uint32_t count, const std::array<HtmlUITexture*, 4>& slots,
+                                const Rml::Matrix4f& matrix, const ClipParams& clipParams, const PipelineState& state, Rml::Rectanglei scissor){
     primObject.replaceVertexBuffer(&primInstanceTemplate, &buffer, byteOffset);
-    primObject.addTexture(primTextureSlot, ShaderStageType::FRAGMENT, texture ? texture->render : &placeholderWhite);
-    stats.textureBinds++;
-    noteDrawn(texture);
+    // u_fs_htmluiSlots: each slot's kind and MTSDF parameters
+    struct SlotParams {
+        float kind[4];
+        float text[4][4];
+    } slotParams;
+    std::memset(&slotParams, 0, sizeof(slotParams));
+    for (size_t i = 0; i < slots.size(); i++){
+        HtmlUITexture* texture = slots[i];
+        if (primTextureSlots[i].first >= 0)
+            primObject.addTexture(primTextureSlots[i], ShaderStageType::FRAGMENT, texture ? texture->render : &placeholderWhite);
+        if (!texture)
+            continue;
+        stats.textureBinds++;
+        noteDrawn(texture);
+        switch (texture->sample){
+        case HtmlUITexture::Sample::RGBA:
+            break;
+        case HtmlUITexture::Sample::COVERAGE:
+            slotParams.kind[i] = 1.0f;
+            break;
+        case HtmlUITexture::Sample::MSDF:
+            slotParams.kind[i] = 2.0f;
+            for (int k = 0; k < 3; k++)
+                slotParams.text[i][k] = texture->textEffect[k];
+            slotParams.text[i][3] = texture->distanceRange;
+            break;
+        }
+    }
     if (!primObject.beginDraw(state))
         return false;
     HtmlUIPrimParams params;
@@ -493,6 +519,8 @@ bool RmlRenderer::drawInstances(BufferRender& buffer, size_t byteOffset, uint32_
     }
     primObject.applyUniformBlock(primParamsSlot, sizeof(HtmlUIPrimParams), &params);
     primObject.applyUniformBlock(primClipSlot, sizeof(ClipParams), const_cast<ClipParams*>(&clipParams));
+    if (primSlotsSlot >= 0)
+        primObject.applyUniformBlock(primSlotsSlot, sizeof(SlotParams), &slotParams);
     primObject.draw(0, 6, count);
     stats.drawCalls++;
     stats.instancesDrawn += count;
@@ -774,6 +802,8 @@ void RmlRenderer::planRuns(){
         for (uint32_t c = run->firstChunk; c < run->firstChunk + run->chunkCount; c++){
             BatchChunk& chunk = batchChunks[c];
             uint64_t hash = mix(mix(0x51ed270b27ull, (uint64_t)run->kind), (uint64_t)(uintptr_t)run->texture);
+            for (HtmlUITexture* slot : run->slots)
+                hash = mix(hash, (uint64_t)(uintptr_t)slot);
             for (uint32_t m = chunk.first; m < chunk.first + chunk.members; m++){
                 const BatchMember& member = batchMembers[m];
                 hash = mix(hash, (uint64_t)(uintptr_t)member.geometry);
@@ -784,7 +814,7 @@ void RmlRenderer::planRuns(){
             }
             chunk.hash = hash;
             auto matches = [&](const CachedChunk& cached){
-                if (cached.kind != run->kind || cached.runTexture != run->texture || cached.members.size() != chunk.members)
+                if (cached.kind != run->kind || cached.runTexture != run->texture || cached.runSlots != run->slots || cached.members.size() != chunk.members)
                     return false;
                 return std::equal(cached.members.begin(), cached.members.end(), batchMembers.begin() + chunk.first);
             };
@@ -863,12 +893,14 @@ void RmlRenderer::planRuns(){
                 return RunBreak::CLIP;
             if (run->transformId != runTransformId)
                 return RunBreak::TRANSFORM;
-            if (texture != run->texture){
-                if (kind == RunKind::INSTANCES){
-                    // an untextured instance draws with any texture bound; a textured one takes the run's
-                    if (texture && (run->texture || !run->allUntextured))
-                        return RunBreak::TEXTURE;
-                }else if (!texture){
+            if (kind == RunKind::INSTANCES){
+                // an untextured instance draws with any textures bound; a textured one takes a slot
+                // of the run's four (its own texture's, or a free one)
+                if (texture && run->slotCount == run->slots.size() &&
+                    std::find(run->slots.begin(), run->slots.end(), texture) == run->slots.end())
+                    return RunBreak::TEXTURE;
+            }else if (texture != run->texture){
+                if (!texture){
                     // untextured vertices read the run texture's white texels
                     if (!run->texture->hasWhiteTexel)
                         return RunBreak::TEXTURE;
@@ -907,8 +939,13 @@ void RmlRenderer::planRuns(){
             replayOps.push_back(ReplayOp{ReplayOp::Kind::RUN, (uint32_t)(batchRuns.size() - 1), -1});
         }
         if (texture){
-            run->texture = texture;
             run->allUntextured = false;
+            if (kind == RunKind::INSTANCES){
+                if (std::find(run->slots.begin(), run->slots.begin() + run->slotCount, texture) == run->slots.begin() + run->slotCount)
+                    run->slots[run->slotCount++] = texture;
+            }else{
+                run->texture = texture;
+            }
         }
         if (free){
             const Rml::Rectanglef b = Rml::Rectanglef::FromCorners(Rml::Vector2f(bounds.x0, bounds.y0), Rml::Vector2f(bounds.x1, bounds.y1));
@@ -1183,7 +1220,11 @@ void RmlRenderer::uploadGathered(){
             for (uint32_t m = chunk.first; m < chunk.first + chunk.members; m++){
                 const BatchMember& member = batchMembers[m];
                 const HtmlUIPrimitive* in = member.geometry ? member.geometry->instances.data() : commandPrimitives.data() + member.first;
-                const float textured = member.texture ? 1.0f : 0.0f;
+                float textured = 0.0f;
+                for (size_t k = 0; k < run->slots.size(); k++){
+                    if (member.texture && run->slots[k] == member.texture)
+                        textured = (float)(k + 1);
+                }
                 for (uint32_t i = 0; i < member.count; i++){
                     *out = in[i];
                     translateInstance(*out, member.translation);
@@ -1227,6 +1268,7 @@ void RmlRenderer::uploadGathered(){
         CachedChunk& cached = nextRunCache[chunk.hash];
         cached.kind = run->kind;
         cached.runTexture = run->texture;
+        cached.runSlots = run->slots;
         cached.page = chunk.page;
         cached.first = chunk.firstIndex;
         cached.count = chunk.count;
@@ -1335,7 +1377,7 @@ void RmlRenderer::drawRun(const BatchRun& run){
         applyPassViewport(full);
         applyPassScissor(scissor);
         if (instances){
-            if (!drawInstances(page.data, (size_t)first.dataFirst * sizeof(HtmlUIPrimitive), count, run.texture, run.transform, clipParams, state, scissor))
+            if (!drawInstances(page.data, (size_t)first.dataFirst * sizeof(HtmlUIPrimitive), count, run.slots, run.transform, clipParams, state, scissor))
                 return;
         }else{
             geometryObject.replaceVertexBuffer(&compositeVertexBuffer, &page.data, 0);

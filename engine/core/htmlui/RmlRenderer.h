@@ -589,8 +589,11 @@ namespace jasperengine {
             int scope = -1;                  // its ANALYTIC clip scope, -1: none
             uint32_t transformId = 0;
             Rml::Matrix4f transform;         // projection x the element transform
-            HtmlUITexture* texture = nullptr;
+            HtmlUITexture* texture = nullptr;   // VERTICES
             bool allUntextured = true;
+            // INSTANCES: the textures of its textured members, a slot each (HTMLUI_PRIM binds four)
+            std::array<HtmlUITexture*, 4> slots{};
+            uint8_t slotCount = 0;
             bool scissorSet = false;         // a member's scissor clips it: the run draws with it
             Rml::Rectanglei scissor;
             Rml::Rectanglef freeBounds;      // target px: the members drawn without their scissor
@@ -614,6 +617,7 @@ namespace jasperengine {
         struct CachedChunk {
             RunKind kind = RunKind::VERTICES;
             HtmlUITexture* runTexture = nullptr;
+            std::array<HtmlUITexture*, 4> runSlots{};   // INSTANCES: the slots its instances name
             uint32_t page = 0, first = 0, count = 0, vertexFirst = 0, vertexCount = 0;
             std::vector<BatchMember> members;
         };
@@ -661,8 +665,9 @@ namespace jasperengine {
         // primitives of the unbatched replay and of immediate drawing
         void drawPrimitivesNow(const HtmlUIPrimitive* primitives, size_t count, Rml::Vector2f translation);
         // draws count instances from buffer at byteOffset with the current state
-        bool drawInstances(BufferRender& buffer, size_t byteOffset, uint32_t count, HtmlUITexture* texture, const Rml::Matrix4f& transform,
-                           const ClipParams& clipParams, const PipelineState& state, Rml::Rectanglei scissor);
+        // (slots: the run's textures, nullptr where unused)
+        bool drawInstances(BufferRender& buffer, size_t byteOffset, uint32_t count, const std::array<HtmlUITexture*, 4>& slots,
+                           const Rml::Matrix4f& transform, const ClipParams& clipParams, const PipelineState& state, Rml::Rectanglei scissor);
 
         std::vector<ClipShapeRecord> commandClipShapes;   // RenderToClipMaskShape's (CLIP_MASK i[0] - 1)
         std::vector<HtmlUIPrimitive> commandPrimitives;   // RenderPrimitives' (PRIMITIVES), without their translation
@@ -768,7 +773,8 @@ namespace jasperengine {
         BufferRender primInstanceTemplate;
         int primParamsSlot = -1;
         int primClipSlot = -1;
-        std::pair<int, int> primTextureSlot{-1, -1};
+        int primSlotsSlot = -1;                           // u_fs_htmluiSlots
+        std::array<std::pair<int, int>, 4> primTextureSlots{{{-1, -1}, {-1, -1}, {-1, -1}, {-1, -1}}};
         int geometryParamsSlot = -1;
         int geometryClipSlot = -1;
         std::pair<int, int> geometryTextureSlot{-1, -1};

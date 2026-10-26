@@ -19,7 +19,7 @@ namespace jasperengine {
         float d[4];             // QUAD: uv rect; BOX: border widths (top, right, bottom, left); shadows: the clip box
         float e[4];             // BOX: the fill's insets (top, right, bottom, left); shadows: the clip box's radii (x)
         float f[4];             // shadows: the clip box's radii (y)
-        float params[4];        // x: mode, y: sigma (shadows), z: 1 = textured (QUAD), w: 0
+        float params[4];        // x: mode, y: sigma (shadows), z: QUAD: the texture slot + 1 (0: untextured), w: 0
         uint8_t color[4];       // premultiplied: the quad's colour, the fill, the shadow's colour
         uint8_t border[4][4];   // BOX: top, right, bottom, left
     };

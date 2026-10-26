@@ -7,7 +7,7 @@
 //
 // Instance fields (HtmlUIPrimitive, RmlRendererInternal.h), by mode (i_params.x):
 //   0 QUAD:      i_a = corners 0 and 1, i_b = corners 2 and 3 (top-left, top-right, bottom-right,
-//                bottom-left), i_d = uv rect; i_params.z = 1 when textured
+//                bottom-left), i_d = uv rect; i_params.z = the texture slot + 1 (0: untextured)
 //   1 BOX:       i_a = border box (x, y, w, h), i_b/i_c = its radii x/y, i_d = border widths
 //                (top, right, bottom, left), i_e = the fill's insets, i_color = fill,
 //                i_border0..3 = border colours

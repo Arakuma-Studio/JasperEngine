@@ -2420,7 +2420,9 @@ bool RmlRenderer::loadPrimObject(){
     ShaderData& data = primShader->shaderData;
     primParamsSlot = data.getUniformBlockIndexByName("u_vs_htmluiPrim");
     primClipSlot = data.getUniformBlockIndexByName("u_fs_htmluiClip");
-    primTextureSlot = data.getTextureIndexByName("u_htmluiTexture");
+    primSlotsSlot = data.getUniformBlockIndexByName("u_fs_htmluiSlots");
+    for (int i = 0; i < 4; i++)
+        primTextureSlots[(size_t)i] = data.getTextureIndexByName(("u_htmluiTexture" + std::to_string(i)).c_str());
     primObject.beginLoad(PrimitiveType::TRIANGLES);
     primObject.setShader(primShader.get());
     primObject.addAttribute(data.getAttrIndex(AttributeType::POSITION), &primQuadBuffer, 2, AttributeDataType::FLOAT, sizeof(float) * 2, 0, false, false);
@@ -2454,8 +2456,10 @@ bool RmlRenderer::loadPrimObject(){
                                            sizeof(HtmlUIPrimitive), attribute.offset, attribute.color, true);
     }
     primObject.setIndex(&primQuadIndexBuffer, AttributeDataType::UNSIGNED_INT, 0);
-    if (primTextureSlot.first >= 0)
-        primObject.addTexture(primTextureSlot, ShaderStageType::FRAGMENT, &placeholderWhite);
+    for (const std::pair<int, int>& slot : primTextureSlots){
+        if (slot.first >= 0)
+            primObject.addTexture(slot, ShaderStageType::FRAGMENT, &placeholderWhite);
+    }
     return primObject.endLoadDynamic(PrimitiveType::TRIANGLES, IndexType::UINT32);
 }
 
@@ -2992,7 +2996,8 @@ void RmlRenderer::destroyPipelineObjects(){
     }
     primParamsSlot = -1;
     primClipSlot = -1;
-    primTextureSlot = {-1, -1};
+    primSlotsSlot = -1;
+    primTextureSlots.fill({-1, -1});
     for (int i = 0; i < HTMLUI_POST_VARIANT_COUNT; i++){
         PostProgram& program = postPrograms[i];
         if (program.shader){

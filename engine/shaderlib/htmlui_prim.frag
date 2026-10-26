@@ -6,10 +6,22 @@
 // shadows are evaluated from rounded-rectangle distances at the fragment's document position,
 // antialiased by the box filter of its screen footprint (at any sample count); boxes return their
 // fill without any distance inside the inner rectangle (R24). Quads sample the run's texture by
-// its kind (u_fs_htmluiClip.params.y: RGBA, R8 coverage, MTSDF glyphs) when textured.
+// its slot's kind (u_fs_htmluiSlots: RGBA, R8 coverage, MTSDF glyphs) when textured.
 
-uniform texture2D u_htmluiTexture;
-uniform sampler u_htmlui_smp;
+// up to four textures a draw (S16 B1): an instance's slot is v_params.z (0: untextured, 1-4), each
+// slot's kind (0 RGBA, 1 R8 coverage, 2 MTSDF) and MTSDF parameters (effect, dilation, sigma, range)
+uniform texture2D u_htmluiTexture0;
+uniform sampler u_htmlui_smp0;
+uniform texture2D u_htmluiTexture1;
+uniform sampler u_htmlui_smp1;
+uniform texture2D u_htmluiTexture2;
+uniform sampler u_htmlui_smp2;
+uniform texture2D u_htmluiTexture3;
+uniform sampler u_htmlui_smp3;
+uniform u_fs_htmluiSlots {
+    vec4 kind;
+    vec4 text[4];
+} slots;
 
 in vec4 v_local;
 flat in vec4 v_a;
@@ -141,15 +153,30 @@ void main() {
         float alpha = (mode == 2) ? shape * (1.0 - cut) : (1.0 - shape) * box;
         color = v_color * alpha;
     }else{
-        // a quad: the colour, times its texture by kind
+        // a quad: the colour, times its slot's texture by kind
         color = v_color;
-        if (v_params.z > 0.5){
-            // the UI's textures have one level
-            vec4 texel = textureLod(sampler2D(u_htmluiTexture, u_htmlui_smp), v_local.zw, 0.0);
-            vec2 uvTexels = v_local.zw * vec2(textureSize(sampler2D(u_htmluiTexture, u_htmlui_smp), 0));
-            if (clip.params.y > 1.5)
-                color *= htmluiDistanceText(texel, uvTexels, p);
-            else if (clip.params.y > 0.5)
+        int slot = int(v_params.z + 0.5) - 1;
+        if (slot >= 0){
+            // the UI's textures have one level (explicit level: the slot's branch is not uniform)
+            vec4 texel;
+            vec2 size;
+            if (slot == 0){
+                texel = textureLod(sampler2D(u_htmluiTexture0, u_htmlui_smp0), v_local.zw, 0.0);
+                size = vec2(textureSize(sampler2D(u_htmluiTexture0, u_htmlui_smp0), 0));
+            }else if (slot == 1){
+                texel = textureLod(sampler2D(u_htmluiTexture1, u_htmlui_smp1), v_local.zw, 0.0);
+                size = vec2(textureSize(sampler2D(u_htmluiTexture1, u_htmlui_smp1), 0));
+            }else if (slot == 2){
+                texel = textureLod(sampler2D(u_htmluiTexture2, u_htmlui_smp2), v_local.zw, 0.0);
+                size = vec2(textureSize(sampler2D(u_htmluiTexture2, u_htmlui_smp2), 0));
+            }else{
+                texel = textureLod(sampler2D(u_htmluiTexture3, u_htmlui_smp3), v_local.zw, 0.0);
+                size = vec2(textureSize(sampler2D(u_htmluiTexture3, u_htmlui_smp3), 0));
+            }
+            float kind = (slot == 0) ? slots.kind.x : ((slot == 1) ? slots.kind.y : ((slot == 2) ? slots.kind.z : slots.kind.w));
+            if (kind > 1.5)
+                color *= htmluiDistanceTextOf(texel, v_local.zw * size, p, slots.text[slot]);
+            else if (kind > 0.5)
                 color *= texel.r;
             else
                 color *= texel;
