@@ -23,6 +23,7 @@
 #include "Generator.h"
 #include "Out.h"
 #include "Project.h"
+#include "util/ExternalCodeEditor.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
 #include "command/CommandNames.h"
@@ -1435,9 +1436,21 @@ void codeEditorTool(const CallPtr& call) {
             call->fail(rel + " is not a text file the code editor opens.");
             return;
         }
-        editor->openFileAt(file.string(), args.value("line", 0), args.value("column", 0));
+        // target preferred: Preferences > External Tools > External Script Editor (S23 R28)
+        const std::string target = args.value("target", std::string("builtin"));
+        if (target != "builtin" && target != "preferred") {
+            call->fail("target is builtin or preferred.");
+            return;
+        }
+        std::string openError;
+        const bool external = target == "preferred" && ExternalCodeEditor::hasExternalPreference();
+        if (!ExternalCodeEditor::open(file, args.value("line", 0), args.value("column", 0), target == "preferred", &openError)) {
+            call->fail("Couldn't open " + rel + ": " + openError);
+            return;
+        }
         call->ok("Opened " + rel + (args.value("line", 0) > 0 ? " at line " + std::to_string(args.value("line", 0)) : std::string()) +
-                 " in the code editor.", Json{{"buffers", status()}});
+                 (external ? " in the external editor (" + AppSettings::getExternalScriptEditor() + ")." : " in the code editor."),
+                 Json{{"buffers", status()}, {"opened_in", external ? AppSettings::getExternalScriptEditor() : std::string("builtin")}});
         return;
     }
     if (!editor->isFileOpen(file.string())) {
@@ -1664,6 +1677,7 @@ void registerScriptTools(McpRegistry& registry) {
             {"path", assetPath("All actions but status.")},
             {"line", integer("open: 1-based.")},
             {"column", integer("open: 1-based.")},
+            {"target", withDefault(stringEnum("open: preferred = the External Script Editor of the preferences.", {"builtin", "preferred"}), "builtin")},
             {"discard_unsaved", withDefault(boolean("close: drop unsaved edits."), false)}
         });
         tool.annotations.destructive = true;

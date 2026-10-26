@@ -1796,6 +1796,10 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
             exportNode["sourceCode"] = sourceCodeNode;
         }
 
+        if (project->isDevelopmentBuild()) {
+            exportNode["developmentBuild"] = true;
+        }
+
         const DesktopExportSettings& desktop = project->getDesktopExportSettings();
         if (desktop.graphicBackendConfigured) {
             YAML::Node desktopNode;
@@ -2263,6 +2267,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
                 sourceCode.graphicBackendsConfigured = true;
             }
         }
+
+        project->setDevelopmentBuild(exportNode["developmentBuild"] && exportNode["developmentBuild"].as<bool>());
 
         if (exportNode["desktop"] && exportNode["desktop"].IsMap()) {
             const YAML::Node& desktopNode = exportNode["desktop"];
@@ -4159,6 +4165,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::Transform, existing, &transform);
             registry->addEntityChild(transform.parent, entity, false);
             registry->getComponent<Transform>(entity) = std::move(transform);
+            registry->markChanged<Transform>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4171,6 +4178,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::MeshComponent, existing, &mesh);
             registry->getComponent<MeshComponent>(entity) = std::move(mesh);
+            registry->markChanged<MeshComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4183,6 +4191,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::UIComponent, existing, &ui);
             registry->getComponent<UIComponent>(entity) = std::move(ui);
+            registry->markChanged<UIComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4195,6 +4204,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::ButtonComponent, existing, &button);
             registry->getComponent<ButtonComponent>(entity) = std::move(button);
+            registry->markChanged<ButtonComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4207,6 +4217,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::ScrollbarComponent, existing, &scrollbar);
             registry->getComponent<ScrollbarComponent>(entity) = std::move(scrollbar);
+            registry->markChanged<ScrollbarComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4219,6 +4230,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::ProgressbarComponent, existing, &progressbar);
             registry->getComponent<ProgressbarComponent>(entity) = std::move(progressbar);
+            registry->markChanged<ProgressbarComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4231,6 +4243,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::InputFieldComponent, existing, &inputfield);
             registry->getComponent<InputFieldComponent>(entity) = std::move(inputfield);
+            registry->markChanged<InputFieldComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4243,6 +4256,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::PanelComponent, existing, &panel);
             registry->getComponent<PanelComponent>(entity) = std::move(panel);
+            registry->markChanged<PanelComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4255,6 +4269,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::RectTransformComponent, existing, &layout);
             registry->getComponent<RectTransformComponent>(entity) = std::move(layout);
+            registry->markChanged<RectTransformComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4267,6 +4282,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::LayoutGroupComponent, existing, &container);
             registry->getComponent<LayoutGroupComponent>(entity) = std::move(container);
+            registry->markChanged<LayoutGroupComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4279,6 +4295,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::TextComponent, existing, &text);
             registry->getComponent<TextComponent>(entity) = std::move(text);
+            registry->markChanged<TextComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4291,6 +4308,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::ImageComponent, existing, &image);
             registry->getComponent<ImageComponent>(entity) = std::move(image);
+            registry->markChanged<ImageComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4303,6 +4321,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::SpriteComponent, existing, &sprite);
             registry->getComponent<SpriteComponent>(entity) = std::move(sprite);
+            registry->markChanged<SpriteComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4315,6 +4334,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::TilemapComponent, existing, &tilemap);
             registry->getComponent<TilemapComponent>(entity) = std::move(tilemap);
+            registry->markChanged<TilemapComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4327,6 +4347,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::TerrainComponent, existing, &terrain);
             registry->getComponent<TerrainComponent>(entity) = std::move(terrain);
+            registry->markChanged<TerrainComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4340,6 +4361,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::LightComponent, existing, &light);
             registry->getComponent<LightComponent>(entity) = std::move(light);
+            registry->markChanged<LightComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4353,6 +4375,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::Light2DComponent, existing, &light2d);
             registry->getComponent<Light2DComponent>(entity) = std::move(light2d);
+            registry->markChanged<Light2DComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4366,6 +4389,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::ShadowCaster2DComponent, existing, &shadowcaster2d);
             registry->getComponent<ShadowCaster2DComponent>(entity) = std::move(shadowcaster2d);
+            registry->markChanged<ShadowCaster2DComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4379,6 +4403,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::FogComponent, existing, &fog);
             registry->getComponent<FogComponent>(entity) = std::move(fog);
+            registry->markChanged<FogComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4418,6 +4443,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::MirrorComponent, existing, &mirror);
             registry->getComponent<MirrorComponent>(entity) = std::move(mirror);
+            registry->markChanged<MirrorComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4431,6 +4457,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::ReflectionProbeComponent, existing, &probe);
             registry->getComponent<ReflectionProbeComponent>(entity) = std::move(probe);
+            registry->markChanged<ReflectionProbeComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4443,6 +4470,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::UIDocumentComponent, existing, &document);
             registry->getComponent<UIDocumentComponent>(entity) = std::move(document);
+            registry->markChanged<UIDocumentComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4455,6 +4483,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::CameraComponent, existing, &camera);
             registry->getComponent<CameraComponent>(entity) = std::move(camera);
+            registry->markChanged<CameraComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4467,6 +4496,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::AudioSourceComponent, existing, &audio);
             registry->getComponent<AudioSourceComponent>(entity) = std::move(audio);
+            registry->markChanged<AudioSourceComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4479,6 +4509,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::ScriptComponent, existing, &script);
             registry->getComponent<ScriptComponent>(entity) = std::move(script);
+            registry->markChanged<ScriptComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4491,6 +4522,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::SkyboxComponent, existing, &sky);
             registry->getComponent<SkyboxComponent>(entity) = std::move(sky);
+            registry->markChanged<SkyboxComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4503,6 +4535,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::ModelComponent, existing, &model);
             registry->getComponent<ModelComponent>(entity) = std::move(model);
+            registry->markChanged<ModelComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4515,6 +4548,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::Rigidbody2DComponent, existing, &body);
             registry->getComponent<Rigidbody2DComponent>(entity) = std::move(body);
+            registry->markChanged<Rigidbody2DComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4529,6 +4563,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::RigidbodyComponent, existing, &body);
             registry->getComponent<RigidbodyComponent>(entity) = std::move(body);
+            registry->markChanged<RigidbodyComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4541,6 +4576,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::Joint2DComponent, existing, &joint);
             registry->getComponent<Joint2DComponent>(entity) = std::move(joint);
+            registry->markChanged<Joint2DComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4553,6 +4589,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::Joint3DComponent, existing, &joint);
             registry->getComponent<Joint3DComponent>(entity) = std::move(joint);
+            registry->markChanged<Joint3DComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4565,6 +4602,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::ActionComponent, existing, &action);
             registry->getComponent<ActionComponent>(entity) = std::move(action);
+            registry->markChanged<ActionComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4577,6 +4615,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::TweenComponent, existing, &timed);
             registry->getComponent<TweenComponent>(entity) = std::move(timed);
+            registry->markChanged<TweenComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4589,6 +4628,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::PositionTweenComponent, existing, &posAction);
             registry->getComponent<PositionTweenComponent>(entity) = std::move(posAction);
+            registry->markChanged<PositionTweenComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4601,6 +4641,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::RotationTweenComponent, existing, &rotAction);
             registry->getComponent<RotationTweenComponent>(entity) = std::move(rotAction);
+            registry->markChanged<RotationTweenComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4613,6 +4654,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::ScaleTweenComponent, existing, &scaleTween);
             registry->getComponent<ScaleTweenComponent>(entity) = std::move(scaleTween);
+            registry->markChanged<ScaleTweenComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4625,6 +4667,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::ColorTweenComponent, existing, &colorTween);
             registry->getComponent<ColorTweenComponent>(entity) = std::move(colorTween);
+            registry->markChanged<ColorTweenComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4637,6 +4680,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::AlphaTweenComponent, existing, &alphaTween);
             registry->getComponent<AlphaTweenComponent>(entity) = std::move(alphaTween);
+            registry->markChanged<AlphaTweenComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4649,6 +4693,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::SpriteAnimationComponent, existing, &spriteanim);
             registry->getComponent<SpriteAnimationComponent>(entity) = std::move(spriteanim);
+            registry->markChanged<SpriteAnimationComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4661,6 +4706,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::AnimationComponent, existing, &animation);
             registry->getComponent<AnimationComponent>(entity) = std::move(animation);
+            registry->markChanged<AnimationComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4672,6 +4718,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->addComponent<BoneComponent>(entity, std::move(bone));
         }else{
             registry->getComponent<BoneComponent>(entity) = std::move(bone);
+            registry->markChanged<BoneComponent>(entity);
         }
     });
 
@@ -4682,6 +4729,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->addComponent<KeyframeTracksComponent>(entity, std::move(tracks));
         }else{
             registry->getComponent<KeyframeTracksComponent>(entity) = std::move(tracks);
+            registry->markChanged<KeyframeTracksComponent>(entity);
         }
     });
 
@@ -4692,6 +4740,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->addComponent<TranslateTracksComponent>(entity, std::move(tracks));
         }else{
             registry->getComponent<TranslateTracksComponent>(entity) = std::move(tracks);
+            registry->markChanged<TranslateTracksComponent>(entity);
         }
     });
 
@@ -4702,6 +4751,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->addComponent<RotateTracksComponent>(entity, std::move(tracks));
         }else{
             registry->getComponent<RotateTracksComponent>(entity) = std::move(tracks);
+            registry->markChanged<RotateTracksComponent>(entity);
         }
     });
 
@@ -4712,6 +4762,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->addComponent<ScaleTracksComponent>(entity, std::move(tracks));
         }else{
             registry->getComponent<ScaleTracksComponent>(entity) = std::move(tracks);
+            registry->markChanged<ScaleTracksComponent>(entity);
         }
     });
 
@@ -4722,6 +4773,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->addComponent<MorphTracksComponent>(entity, std::move(tracks));
         }else{
             registry->getComponent<MorphTracksComponent>(entity) = std::move(tracks);
+            registry->markChanged<MorphTracksComponent>(entity);
         }
     });
 
@@ -4732,6 +4784,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->addComponent<ParticleSystemComponent>(entity, std::move(particles));
         }else{
             registry->getComponent<ParticleSystemComponent>(entity) = std::move(particles);
+            registry->markChanged<ParticleSystemComponent>(entity);
         }
     });
 
@@ -4742,6 +4795,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->addComponent<PointsComponent>(entity, std::move(pts));
         } else {
             registry->getComponent<PointsComponent>(entity) = std::move(pts);
+            registry->markChanged<PointsComponent>(entity);
         }
     });
 
@@ -4752,6 +4806,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->addComponent<LineRendererComponent>(entity, std::move(lines));
         } else {
             registry->getComponent<LineRendererComponent>(entity) = std::move(lines);
+            registry->markChanged<LineRendererComponent>(entity);
         }
     });
 
@@ -4762,6 +4817,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->addComponent<PolygonComponent>(entity, std::move(polygon));
         } else {
             registry->getComponent<PolygonComponent>(entity) = std::move(polygon);
+            registry->markChanged<PolygonComponent>(entity);
         }
     });
 
@@ -4772,6 +4828,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->addComponent<MeshPolygonComponent>(entity, std::move(polygon));
         } else {
             registry->getComponent<MeshPolygonComponent>(entity) = std::move(polygon);
+            registry->markChanged<MeshPolygonComponent>(entity);
         }
     });
 
@@ -4783,6 +4840,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::InstancedMeshComponent, existing, &instmesh);
             registry->getComponent<InstancedMeshComponent>(entity) = std::move(instmesh);
+            registry->markChanged<InstancedMeshComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4794,6 +4852,7 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->addComponent<PrefabComponent>(entity, std::move(prefab));
         }else{
             registry->getComponent<PrefabComponent>(entity) = std::move(prefab);
+            registry->markChanged<PrefabComponent>(entity);
         }
     });
 

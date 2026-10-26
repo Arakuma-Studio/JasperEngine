@@ -18,6 +18,7 @@ namespace jasperengine::editor {
 
     class SceneWindow {
     private:
+        bool sceneScriptMenuPending = false;   // a short right click opens the editor scripts' Scene view menu
         Project* project;
         bool windowFocused;
 

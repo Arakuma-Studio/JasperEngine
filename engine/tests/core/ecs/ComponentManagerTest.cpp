@@ -84,11 +84,14 @@ TEST(ComponentManager, TypeIndicesAreStableAcrossManagers){
     EXPECT_EQ(second.getComponentId<Health>(), 1);
 }
 
-// The current contract (S07 lifts it): a signature has one bit per component type, 64 in all
-TEST(Signature, HoldsSixtyFourComponentTypes){
+// A signature has one bit per component type: 256 since S07 (it was a std::bitset<64>); a
+// position past the end is ignored, never undefined behaviour
+TEST(Signature, HoldsTwoHundredFiftySixComponentTypes){
     Signature signature;
-    EXPECT_EQ(signature.size(), 64u);
-    signature.set(63);
-    EXPECT_TRUE(signature.test(63));
-    EXPECT_THROW(signature.set(64), std::out_of_range);
+    EXPECT_EQ(signature.size(), 256u);
+    signature.set(255);
+    EXPECT_TRUE(signature.test(255));
+    signature.set(256);
+    EXPECT_FALSE(signature.test(256));
+    EXPECT_EQ(signature.count(), 1u);
 }

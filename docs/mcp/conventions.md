@@ -108,6 +108,7 @@ misses `notifications/tools/list_changed` can still call a group tool by name.
 | `editor_tools` | S27 |
 | `vcs` | S29 |
 | `html_ui` | S17 (`edit_ui_view`) |
+| `scripting` | S23 (`reload_scripts`, `get_script_status`, `set_script_settings`, `list_editor_menus`, `run_editor_menu`, `eval_expression`, the graph tools) |
 
 A spec may add a group: one row in `McpToolGroups.cpp` (name, one-line description), and a
 `budget.json` `groups` entry only if it needs other limits than the defaults. Registering a tool

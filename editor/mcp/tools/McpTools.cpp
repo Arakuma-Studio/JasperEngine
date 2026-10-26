@@ -42,7 +42,11 @@ const ToolModule TOOL_MODULES[] = {
     {registerWorldTools, "World: terrain, tilemaps, sprites, animation, particles, physics, UI, models", ""},
     {registerHtmlUiTools, "HTML/CSS UI", ""},
     {registerUiEffectTools, "HTML/CSS UI", ""},
+    {registerEcsTools, "ECS: statistics, system schedule and queries", "diagnostics"},   // S07
     {registerAtmosphereTools, "Atmosphere: fog and clouds", "rendering_fx"},   // S12
+    {registerProfilerTools, "Profiling and render diagnostics", "profiling"},   // S15
+    {registerScriptingTools, "Scripting: hot reload, script status, editor menus, expressions", "scripting"},   // S23
+    {registerGraphTools, "Graphs", "scripting"},   // S23
 };
 
 // JASPER_MCP_SELFTEST_GROUP: one tool in the test-only group "selftest", for the tests of

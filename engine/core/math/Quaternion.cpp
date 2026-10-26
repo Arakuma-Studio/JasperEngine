@@ -17,19 +17,6 @@ using namespace jasperengine;
 
 const Quaternion Quaternion::IDENTITY( 1, 0, 0, 0 );
 
-Quaternion::Quaternion()
-    : w(1), x(0), y(0), z(0){
-}
-
-Quaternion::Quaternion( const Quaternion& rhs ) 
-    : w(rhs.w), x(rhs.x), y(rhs.y), z(rhs.z){
-
-}
-
-Quaternion::Quaternion( const float fW, const float fX, const float fY, const float fZ)
-    : w( fW), x( fX ), y( fY ), z( fZ ){
-}
-
 Quaternion::Quaternion( float* const r )
     : w( r[0] ), x( r[1] ), y( r[2] ), z( r[3] ){
 }
@@ -86,15 +73,6 @@ float* Quaternion::ptr(){
 
 const float* Quaternion::ptr() const{
     return &w;
-}
-
-Quaternion& Quaternion::operator = ( const Quaternion& rkQ ){
-    w = rkQ.w;
-    x = rkQ.x;
-    y = rkQ.y;
-    z = rkQ.z;
-
-    return *this;
 }
 
 bool Quaternion::operator == ( const Quaternion& rhs ) const{

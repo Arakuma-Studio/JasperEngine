@@ -7,8 +7,9 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string>
+#include <vector>
 
-struct sg_pass;
+#include "render/RenderStats.h"
 
 namespace jasperengine{
     struct RenderFeatures;
@@ -27,11 +28,28 @@ namespace jasperengine{
         static size_t getPipelineCacheSize();
 
         // the GPU work of the last committed frame and the live resources, on one line (empty
-        // unless JASPERENGINE_FRAME_STATS turned sokol's statistics on at setup)
+        // unless JASPERENGINE_FRAME_STATS turned sokol's statistics on at setup); its pass list
+        // ("pass list: ...") is the label and target size of each pass SokolCamera began
         static std::string getFrameStatsLine();
-        // a render pass begun (with JASPERENGINE_FRAME_STATS on): its label and target size go
-        // in the frame's pass list, which getFrameStatsLine appends ("pass list: ...")
-        static void recordPass(const sg_pass& pass);
+
+        // the view the commits from now draw (the game frame, or an editor view id)
+        static void setViewTag(uint32_t tag);
+        static uint32_t getViewTag();
+        static RenderStats getRenderStats(uint32_t viewTag);
+        static PassList getPassList(uint32_t viewTag, bool resolvedOnly);
+        static std::vector<uint32_t> getRecordedViewTags();
+        static BackendFrameCounters getBackendFrameCounters();
+        static const char* getBackendName();
+        static std::string getDeviceName();
+        static void setDrawListEnabled(bool enabled);
+
+        // GPU timing runs while a consumer holds it (the profiler recording, dynamic resolution)
+        // or a lease has not run out (an agent asking for pass times); off, no query is issued
+        static void acquireGpuTiming();
+        static void releaseGpuTiming();
+        static void leaseGpuTiming(double seconds);
+        static GpuTimingState getGpuTimingState();
+        static void setVulkanHostQueryReset(bool enabled);
 
         static void scheduleCleanup(void (*cleanupFunc)(void* cleanupData), void* cleanupData, int32_t numFramesToDefer = 0);
         static void addQueueCommand(void (*custom_cb)(void* custom_data), void* custom_data);

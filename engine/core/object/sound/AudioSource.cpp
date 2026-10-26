@@ -141,6 +141,7 @@ void AudioSource::setSound3D(bool sound3D){
 
     AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
     audio.needUpdate = true;
+    markChanged<AudioSourceComponent>();
 }
 
 bool AudioSource::isSound3D() const{
@@ -165,6 +166,7 @@ void AudioSource::setVolume(double volume){
     if (audio.volume != volume){
         audio.volume = volume;
         audio.needUpdate = true;
+        markChanged<AudioSourceComponent>();
     }
 }
 
@@ -180,6 +182,7 @@ void AudioSource::setSpeed(float speed){
     if (audio.speed != speed){
         audio.speed = speed;
         audio.needUpdate = true;
+        markChanged<AudioSourceComponent>();
     }
 }
 
@@ -195,6 +198,7 @@ void AudioSource::setPan(float pan){
     if (audio.pan != pan){
         audio.pan = pan;
         audio.needUpdate = true;
+        markChanged<AudioSourceComponent>();
     }
 }
 
@@ -210,6 +214,7 @@ void AudioSource::setLooping(bool looping){
     if (audio.looping != looping){
         audio.looping = looping;
         audio.needUpdate = true;
+        markChanged<AudioSourceComponent>();
     }
 }
 
@@ -225,6 +230,7 @@ void AudioSource::setLoopingPoint(double loopingPoint){
     if (audio.loopingPoint != loopingPoint){
         audio.loopingPoint = loopingPoint;
         audio.needUpdate = true;
+        markChanged<AudioSourceComponent>();
     }
 }
 
@@ -240,6 +246,7 @@ void AudioSource::setProtectVoice(bool protectVoice){
     if (audio.protectVoice != protectVoice){
         audio.protectVoice = protectVoice;
         audio.needUpdate = true;
+        markChanged<AudioSourceComponent>();
     }
 }
 
@@ -256,6 +263,7 @@ void AudioSource::setInaudibleBehavior(bool mustTick, bool kill){
         audio.inaudibleBehaviorMustTick = mustTick;
         audio.inaudibleBehaviorKill = kill;
         audio.needUpdate = true;
+        markChanged<AudioSourceComponent>();
     }
 }
 
@@ -266,6 +274,7 @@ void AudioSource::setMinMaxDistance(float minDistance, float maxDistance){
         audio.minDistance = minDistance;
         audio.maxDistance = maxDistance;
         audio.needUpdate = true;
+        markChanged<AudioSourceComponent>();
     }
 }
 
@@ -275,6 +284,7 @@ void AudioSource::setMinDistance(float minDistance){
     if (audio.minDistance != minDistance){
         audio.minDistance = minDistance;
         audio.needUpdate = true;
+        markChanged<AudioSourceComponent>();
     }
 }
 
@@ -290,6 +300,7 @@ void AudioSource::setMaxDistance(float maxDistance){
     if (audio.maxDistance != maxDistance){
         audio.maxDistance = maxDistance;
         audio.needUpdate = true;
+        markChanged<AudioSourceComponent>();
     }
 }
 
@@ -305,6 +316,7 @@ void AudioSource::setAttenuationModel(AudioSourceAttenuation attenuationModel){
     if (audio.attenuationModel != attenuationModel){
         audio.attenuationModel = attenuationModel;
         audio.needUpdate = true;
+        markChanged<AudioSourceComponent>();
     }
 }
 
@@ -320,6 +332,7 @@ void AudioSource::setAttenuationRolloffFactor(float attenuationRolloffFactor){
     if (audio.attenuationRolloffFactor != attenuationRolloffFactor){
         audio.attenuationRolloffFactor = attenuationRolloffFactor;
         audio.needUpdate = true;
+        markChanged<AudioSourceComponent>();
     }
 }
 
@@ -335,6 +348,7 @@ void AudioSource::setDopplerFactor(float dopplerFactor){
     if (audio.dopplerFactor != dopplerFactor){
         audio.dopplerFactor = dopplerFactor;
         audio.needUpdate = true;
+        markChanged<AudioSourceComponent>();
     }
 }
 

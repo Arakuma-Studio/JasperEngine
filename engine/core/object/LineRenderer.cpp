@@ -56,6 +56,7 @@ void LineRenderer::addLine(LineData line){
         linescomp.needReload = true;
     }else{
         linescomp.needUpdateBuffer = true;
+        markChanged<LineRendererComponent>();
     }
 }
 
@@ -114,6 +115,7 @@ void LineRenderer::updateLine(size_t index, LineData line){
         linescomp.lines.at(index) = line;
 
         linescomp.needUpdateBuffer = true;
+        markChanged<LineRendererComponent>();
     }
 }
 
@@ -192,12 +194,14 @@ void LineRenderer::removeLine(size_t index){
     linescomp.lines.erase(linescomp.lines.begin() + index);
 
     linescomp.needUpdateBuffer = true;
+    markChanged<LineRendererComponent>();
 }
 
 void LineRenderer::updateLines(){
     LineRendererComponent& linescomp = getComponent<LineRendererComponent>();
 
     linescomp.needUpdateBuffer = true;
+    markChanged<LineRendererComponent>();
 }
 
 size_t LineRenderer::getNumLines(){
@@ -235,8 +239,10 @@ std::string LineRenderer::getCustomShader() const{
 void LineRenderer::setShaderUniform(const std::string& name, const Vector4& value){
     LineRendererComponent& lines = getComponent<LineRendererComponent>();
 
-    if (ShaderUniforms::set(lines.shaderUniforms, name, value))
+    if (ShaderUniforms::set(lines.shaderUniforms, name, value)){
         lines.needUpdateShaderUniforms = true;
+        markChanged<LineRendererComponent>();
+    }
 }
 
 void LineRenderer::setShaderUniform(const std::string& name, const Vector3& value){
@@ -264,6 +270,7 @@ bool LineRenderer::removeShaderUniform(const std::string& name){
         return false;
 
     lines.needUpdateShaderUniforms = true;
+    markChanged<LineRendererComponent>();
     return true;
 }
 

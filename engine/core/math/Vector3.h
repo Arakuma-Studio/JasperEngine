@@ -28,9 +28,11 @@ namespace jasperengine {
         static const Vector3 UNIT_Z;
         static const Vector3 UNIT_SCALE;
 
-        Vector3();
-        Vector3( const float nx, const float ny, const float nz );
-        Vector3( const Vector3& v );
+        // inline and trivially copyable: Transform (and the component arrays holding it)
+        // construct, move and copy with plain stores (S07 R25)
+        Vector3(): x(0), y(0), z(0) {}
+        Vector3( const float nx, const float ny, const float nz ): x(nx), y(ny), z(nz) {}
+        Vector3( const Vector3& v ) = default;
         explicit Vector3( const float v[3] );
         explicit Vector3( const int v[3] );
         explicit Vector3( float* const v );
@@ -42,7 +44,7 @@ namespace jasperengine {
 
         float operator [] ( unsigned i ) const;
         float& operator [] ( unsigned i );
-        Vector3& operator = ( const Vector3& v );
+        Vector3& operator = ( const Vector3& v ) = default;
         bool operator == ( const Vector3& v ) const;
         bool operator != ( const Vector3& v ) const;
 

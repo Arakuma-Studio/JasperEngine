@@ -517,3 +517,113 @@ Unit tests live in `engine/tests/core/ecs/` (S02 gtest target `jasperengine_core
   later spec (for example S20 particle emitters) decides for its own new types.
 - **Open question: per-root parallel transform propagation.** *Default:* out of scope for S07. A
   follow-up can build on `Changed<Transform>` and the settled-order guarantee.
+
+## Deviations (implementation)
+
+- **Per-slot ticks are 32-bit offsets from a 64-bit per-array base** (`ecs::TickColumn`). The
+  API ticks are `uint64`. When a tick passes base + 2^32 - 1 the column rebases; offsets older
+  than the new base become the base, so a change billions of ticks old may be reported again,
+  never missed. This keeps R27 (index page 4 B + slot owner 4 B + two ticks 8 B, with room
+  for partly filled pages and sparse types) where two 64-bit ticks alone would exceed 24 B.
+- **R1: removal destroys the component in place** (`std::destroy_at`) and leaves raw storage,
+  instead of moving it out first: the resources go at once whatever the type's move does
+  (a copy-only type would otherwise keep them); compaction move-constructs into the holes.
+- **Equal sort keys keep their order.** The re-sort (Hierarchy arrays, `sortByComponent`,
+  `sortByEntityOrder`) is stable: runs are merged pairwise (a moved branch leaves two or three),
+  `std::stable_sort` past 64 runs. `std::sort` left entities without a Transform (equal keys) in
+  an unspecified order; the AC1 reference copy uses `std::stable_sort` for that sort only.
+- **`moveChildToIndex` re-sorts the types of the whole moved branch**, not only the root's
+  (otherwise a child's Mesh stayed out of order: R5/AC3).
+- **The change tick is sampled.** `changeTick()` (MCP `change_tick`, Lua `getChangeTick`)
+  returns the current tick and makes the next stamp advance first, so "changed since a tick
+  read before an edit" always holds. The gate of a scheduled system is the tick it ran at
+  (its own writes of that run are not new to it next run; what it records into its command
+  buffer is, being stamped at playback); the clock is sampled after each wave.
+- **`changedSince`/`addedSince` on a view** pass a row when any of its Read/Write components
+  is newer than the gate; MCP `query_entities changed_since_tick` and Lua
+  `findChangedEntities` do the same for the listed types.
+- **`Structural` systems run alone in their wave** (like `Exclusive`): structural changes are
+  refused during a wave of declared systems. A `dependsOn` naming a later-registered system
+  moves the dependent after it; a dependency cycle is logged and the cycle runs in
+  registration order.
+- **Waves run on S06's job system.** A wave of two or more declared systems runs through
+  `jobs::parallelFor` (the calling thread takes systems too); when the wave has `MainThread`
+  systems, the others are submitted as High-lane tasks and the `MainThread` ones run on the
+  calling thread meanwhile. `SystemScheduler::workerCount()` is the process job system's
+  worker count (0 before the engine starts it and in single-thread mode, where waves run
+  serially as with `JE_ECS_SERIAL=1`). Timings and trace entries are recorded per system on
+  the thread that ran it; the trace keeps the wave's order. A system that throws: every
+  started system of the wave finishes, then the first exception reaches the caller (a system
+  not yet started may be skipped, as in a serial run). The S15 profiler hooks are called on
+  the thread that runs the system. `SchedulerTest.WaveRunsOnWorkers` checks that a wave uses
+  more than one thread and that `MainThread` systems stay on the caller;
+  `SchedulerTestSlow.ParallelEqualsSerial` compares a parallel run with a serial one.
+- **Removed<T> logs are capped** at 65536 entries (the older half dropped) for registries that
+  never end a frame (prefab and scratch registries); scenes trim them at each frame end.
+- **Lua component-field setters** (`addProperty(&T::m, &T::m)` on component classes) stamp
+  through `setTrackedMember`, which finds the owning registry and entity by searching the pages
+  of the live registries' arrays of that type (`EntityRegistry::markChangedComponent`).
+- **Physics defer scopes**: the Jolt contact listener runs on Jolt's threads, serialized by its
+  callback mutex, while the main thread waits in `PhysicsSystem::Update`; its scope is opened
+  with `anyThread` so those callbacks' structural calls are deferred too.
+- **AC14 round trip runs through the editor binaries** (`tools/mcp/tests/test_ecs_roundtrip.py`:
+  `scene-dump --save` for every scene, Prefab Mode save for every prefab of `tools/fixtures/*`
+  and the MCP fixture). The fixtures are hand-written, so "byte-identical" is checked against
+  an editor built from the revision before S07 (`JASPER_BASELINE_EDITOR`: identical for all 20
+  scenes and 3 prefabs, first and second save) and, without it, as stability across a second
+  save (a prefab's `nextEntity` counter, which every Prefab Mode session raises before S07 as
+  after it, left out). The repository has no other example or template scene files.
+- **Unit tests** are in `engine/tests/core/ecs`, in S03's `jasperengine-core-tests` target
+  (`tools/build.sh unit-tests`); `engine/tests/core/support/TestEngine` initialises the engine
+  once for the process (a gtest environment, with a log-capturing `CoreTestSystem` that
+  S03's `UserSettingsTest` also uses for its user data directory). `SchedulerTest.AccessCheckFires`
+  is compiled only where `JASPERENGINE_ECS_ACCESS_CHECKS` is on (builds without `NDEBUG`), so a
+  Release run has no skipped test; the Debug ASan/UBSan run covers it.
+- **The Systems window** is not part of the saved panel visibility (it opens closed). It docks
+  in the bottom panel with Project and Console: in the Inspector's column its eight-column table
+  cut off the system names and the Enabled checkboxes.
+- **AC17 is scripted** (`tools/mcp/tests/test_ecs.py::test_systems_window`, the default fixture
+  in the harness's Xvfb): Play, `focus_window("systems")` (which returns each row's Enabled
+  checkbox rect), the seven systems' Update rows and non-zero averages, the footer's type count
+  against `list_component_types`, a real xdotool click on AudioSystem's checkbox (the system
+  stops; the others keep running), and AudioSystem enabled again in the next Play. The
+  screenshots are `docs/specs/evidence/S07/systems-window*.png`. Audio silence itself is not
+  observable from the harness (no audio device); disabling pauses AudioSystem's voices.
+- **`move_branch` benchmark**: the 100-entity branch moves under a top-level GameObject about a
+  thousand entities before it (a typical reparent); a move across the whole array is bounded by
+  the Transform rotation itself, the same before and after S07.
+- **R25 and R26 are measured on the benchmark-only server E** (4 dedicated EPYC-Milan vCPUs,
+  nothing else running; the shared build servers ran at load 20-90 and gave 1.5-2x the times).
+  `run-ecs-bench.py --baseline-archive <git archive oe-port engine>` (7 runs each), three times,
+  on the final merge with oe-port (0df172c92: S04, S05, S10, S12, S13); every R25, R26 and R27
+  budget is met in each of the three runs. Medians (ms; ns/op for lookup), 10k / 100k: create
+  1.45 / 14.7, destroy one by one 1.11 / 23.0, remove 10% 0.17 / 3.62, add 0.24 / 2.43, index
+  loop 0.024 / 0.41, view 0.034 / 0.61, lookup 6.3 / 10.0, move_branch 0.25 / 0.33. R26: destroy
+  10k 494-535x, metadata at 100k 14.6-14.8x, index loop 1.23-1.27x / 1.08-1.39x faster than
+  before, view 1.83-1.88x / 1.95-2.52x the baseline index loop. R27: 17.3 B per component and
+  76 B per entity at 100k. The tight ones are destroy at 100k (run medians 23.0, 22.8, 23.8;
+  earlier sets on the same ECS code reached 26.0 in one run, and within one run its seven samples
+  spread 21-30 ms, as the machine's own floor_destroy does, 2.4-5.6 ms) and move_branch at 10k
+  (0.25; one earlier run 0.308). Destroy is bound
+  by cache misses on randomly ordered entities. What got it there: Vector3, Quaternion and
+  Matrix4 construct and copy inline and trivially (a Transform move is a plain copy); a destroy
+  allocates nothing (an intrusive entity free list, arena chunks reserving their page lists,
+  operator-new pages kept until an array empties), because any malloc or large free in the
+  middle of a mass destroy made glibc consolidate every small block the destroy had freed;
+  a destroy or removal prefetches the metadata record, the arrays' slots and the heap blocks
+  the components own (pointer-like words of a non-trivially destructible component's first
+  line) before it frees anything; the index accessors have no call on their hot path, so a
+  caller's loop keeps its sums in registers (R26's index loop).
+- **AC10's ASan check** runs as an MCP test against a sample project,
+  `tools/fixtures/ecs-collision` (`tools/mcp/tests/test_ecs_collision.py`): boxes fall on a floor
+  every third frame, and each `beginContact2D` destroys the other body with
+  `GameObject.destroyImmediate` and adds or removes a `Rigidbody2D` on the script's own
+  GameObject. Run with an ASan/UBSan editor (`SANITIZE=address,undefined tools/build.sh
+  linux`, `JASPER_EDITOR=build/linux/editor-address-undefined/jasperengine-editor`,
+  and S02's runtime options as `tools/build.sh` passes them, leak detection included, plus
+  `alloc_dealloc_mismatch=0`: ThorVG replaces `operator new` with `malloc` in the static
+  engine) it plays 1000 frames with no console error and no sanitizer report, and the editor's
+  stderr holds no report after it exits either (run on the S24 merge, server B). The first run stopped in UBSan on an unrelated read: `ShaderData` copied an
+  indeterminate `es` flag; its scalar fields are now initialized. AC10 is an MCP test rather
+  than a manual step, so it is repeatable; it is in the default suite (with a normal editor it
+  checks the same behaviour without the sanitizers).

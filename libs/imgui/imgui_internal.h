@@ -3993,6 +3993,9 @@ namespace ImGui
     IMGUI_API int           DataTypeFormatString(char* buf, int buf_size, ImGuiDataType data_type, const void* p_data, const char* format);
     IMGUI_API void          DataTypeApplyOp(ImGuiDataType data_type, int op, void* output, const void* arg_1, const void* arg_2);
     IMGUI_API bool          DataTypeApplyFromText(const char* buf, ImGuiDataType data_type, void* p_data, const char* format, void* p_data_when_empty = NULL);
+    // [JasperEngine patch, libs/imgui/JASPER_PATCHES.md] consulted first by DataTypeApplyFromText: >= 0 handled (1 = changed), < 0 = parse as usual
+    typedef int (*DataTypeApplyFromTextHook)(const char* buf, ImGuiDataType data_type, void* p_data, const char* format, void* user_data);
+    IMGUI_API void          SetDataTypeApplyFromTextHook(DataTypeApplyFromTextHook hook, void* user_data);
     IMGUI_API int           DataTypeCompare(ImGuiDataType data_type, const void* arg_1, const void* arg_2);
     IMGUI_API bool          DataTypeClamp(ImGuiDataType data_type, void* p_data, const void* p_min, const void* p_max);
     IMGUI_API bool          DataTypeIsZero(ImGuiDataType data_type, const void* p_data);
