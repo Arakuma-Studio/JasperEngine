@@ -36,11 +36,14 @@ const ToolModule TOOL_MODULES[] = {
     {registerConsoleTools, "Console", ""},
     {registerScriptTools, "Scripts", ""},
     {registerAssetTools, "Assets, materials and shaders", ""},
+    {registerSynthesisTools, "Texture synthesis", "assets_pipeline"},   // upstream (texture synthesis)
     {registerMaterialsLightingTools, "Assets, materials and shaders", "rendering_fx"},   // S11
     {registerAssetIdentityTools, "Asset identity: GUIDs, references, missing assets", "assets_pipeline"},   // S04
     {registerDocsTools, "Docs", ""},
     {registerBuildTools, "Build and export", ""},
     {registerWorldTools, "World: terrain, tilemaps, sprites, animation, particles, physics, UI, models", ""},
+    {registerLatticeTools, "Lattices (free-form deformation)", "animation"},   // upstream (lattice deformer)
+    {registerPlacementTools, "Physics placement", "editor_ux"},   // upstream (Physics Placement)
     {registerHtmlUiTools, "HTML/CSS UI", ""},
     {registerUiEffectTools, "HTML/CSS UI", ""},
     {registerEcsTools, "ECS: statistics, system schedule and queries", "diagnostics"},   // S07

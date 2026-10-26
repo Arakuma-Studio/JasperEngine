@@ -4,6 +4,7 @@
 #include "JasperEngineApple.h"
 
 #include "Engine.h"
+#include "Log.h"
 
 #import "Renderer.h"
 #import <Foundation/Foundation.h>
@@ -20,10 +21,15 @@
 #import <UIKit/UIKit.h>
 #import <MetalKit/MetalKit.h>
 
-#import "ios/AdMobAdapter.h"
 #import "ios/EngineView.h"
 
+// Google Mobile Ads is linked only when the project enables AdMob
+#ifdef JASPERENGINE_ADMOB
+#import "ios/AdMobAdapter.h"
+
 static AdMobAdapter* admob = nil;
+#define JASPERENGINE_IOS_ADMOB 1
+#endif
 
 // The text input lives on the view, which owns the hidden text field
 static EngineView* appleEngineView(){
@@ -55,8 +61,18 @@ static void setAppleCursorHidden(bool hidden){
 }
 #endif
 
+#if TARGET_OS_IPHONE && !defined(JASPERENGINE_IOS_ADMOB)
+static void warnNoAdMob(){
+    static bool warned = false;
+    if (!warned){
+        warned = true;
+        jasperengine::Log::warn("AdMob is not in this build: enable Google AdMob in Project Settings > Player > iOS");
+    }
+}
+#endif
+
 JasperEngineApple::JasperEngineApple(){
-#if TARGET_OS_IPHONE
+#if defined(JASPERENGINE_IOS_ADMOB)
     if (!admob)
         admob = [[AdMobAdapter alloc]init];
 #endif
@@ -68,7 +84,7 @@ JasperEngineApple::~JasperEngineApple(){
     appleMouseLocked = false;
     setAppleCursorHidden(false);
 #endif
-#if TARGET_OS_IPHONE
+#if defined(JASPERENGINE_IOS_ADMOB)
     admob = nil;
 #endif
 }
@@ -404,8 +420,10 @@ void JasperEngineApple::removeKey(const char *key){
 }
 
 void JasperEngineApple::initializeAdMob(bool tagForChildDirectedTreatment, bool tagForUnderAgeOfConsent){
-#if TARGET_OS_IPHONE
+#if defined(JASPERENGINE_IOS_ADMOB)
     [admob initializeAdMob: tagForChildDirectedTreatment and:tagForUnderAgeOfConsent];
+#elif TARGET_OS_IPHONE
+    warnNoAdMob();
 #endif
 }
 
@@ -420,19 +438,23 @@ void JasperEngineApple::setMaxAdContentRating(jasperengine::AdMobRating rating){
     }else if (rating == jasperengine::AdMobRating::MatureAudience){
         irating = 4;
     }
-#if TARGET_OS_IPHONE
+#if defined(JASPERENGINE_IOS_ADMOB)
     [admob setMaxAdContentRating: irating];
+#elif TARGET_OS_IPHONE
+    warnNoAdMob();
 #endif
 }
 
 void JasperEngineApple::loadInterstitialAd(const std::string& adUnitID){
-#if TARGET_OS_IPHONE
+#if defined(JASPERENGINE_IOS_ADMOB)
     [admob loadInterstitial:[NSString stringWithUTF8String:adUnitID.c_str()]];
+#elif TARGET_OS_IPHONE
+    warnNoAdMob();
 #endif
 }
 
 bool JasperEngineApple::isInterstitialAdLoaded(){
-#if TARGET_OS_IPHONE
+#if defined(JASPERENGINE_IOS_ADMOB)
     return [admob isInterstitialAdLoaded];
 #else
     return false;
@@ -440,7 +462,9 @@ bool JasperEngineApple::isInterstitialAdLoaded(){
 }
 
 void JasperEngineApple::showInterstitialAd(){
-#if TARGET_OS_IPHONE
+#if defined(JASPERENGINE_IOS_ADMOB)
     [admob showInterstitial];
+#elif TARGET_OS_IPHONE
+    warnNoAdMob();
 #endif
 }

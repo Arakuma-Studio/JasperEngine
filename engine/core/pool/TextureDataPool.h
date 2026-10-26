@@ -98,6 +98,8 @@ namespace jasperengine{
         static void cancelShutdown();
 
         static void remove(const std::string& id);
+        // Drops the entry even while others hold it, so the next load decodes again
+        static void invalidate(const std::string& id);
 
         // Hot reload (S05 R13): the entry becomes `data` and its generation goes up; every
         // Texture of the id sees the new pixels on its next use, without a destroy(). Main thread.

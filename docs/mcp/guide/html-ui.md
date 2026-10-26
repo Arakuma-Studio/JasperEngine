@@ -2053,7 +2053,7 @@ pixel: use them on panels, not full screen.
 ### Stateful effects (simulations)
 
 Effects of cost class `stateful` keep state from frame to frame: smoke and ink that the pointer
-stirs (`fluid-smoke`, `smoke-flow`, `smoke-fill`, `fog`, `ink-flow`, `fluid-cursor-trail`,
+stirs (`fluid`, `fluid-smoke`, `smoke-flow`, `smoke-fill`, `fog`, `ink-flow`, `fluid-cursor-trail`,
 `chroma-flow`), particles and flocks (`boids`, `particles`, `particle-flow`, `magnetic-filings`,
 `particle-field`), pattern growth (`reaction-diffusion`) and feedback on the content
 (`time-trail`, `data-mosh`, `pixel-sort`, `pixel-throw`, `shatter`). They are used like any other
@@ -2068,7 +2068,23 @@ effect:
 .loading { background-image: effect(reaction-diffusion, preset coral); }
 /* whatever moves in the panel leaves a ghost trail */
 .feed { filter: effect(time-trail, trail-length 0.8s); }
+/* Pavel Dobryakov's WebGL fluid: drag to paint glowing dye (transparent: the background shows) */
+.splash { background: #000; background-image: effect(fluid, preset calm-water, splat-radius 0.4); }
 ```
+
+- **`fluid`** is Pavel Dobryakov's WebGL-Fluid-Simulation with his parameters and defaults
+  (`density-dissipation`, `velocity-dissipation`, `pressure`, `pressure-iterations`, `curl`,
+  `splat-radius`, `splat-force`, `shading`, `colorful`, `color-speed`, `bloom*`, `sunrays*`) on the
+  same kernels as the native Fluid Simulation component (`jasper://docs/fluid`). It starts with a
+  seeded burst (`splats-on-start`, `splat-count`, `seed`), paints while the pointer drags over it
+  (`hover on`: on any movement), and is transparent where there is no dye (alpha = brightness):
+  the element's `background` is Pavel's background colour. `preset` (`mobile`, `smoke`, `ink`,
+  `calm-water`, `psychedelic`: the native presets) gives every parameter you do not write the
+  preset's value; a parameter you write keeps yours, even at its default (`preset ink, bloom on`
+  has bloom), as on the native component. Write `preset` literally (a `var()` preset is not
+  expanded). Its grids keep Pavel's sizes whatever the element's: 128 cells on the short side for the
+  velocity, the element's px for the dye (at most 1024), 256 for the bloom; `bloom off` and
+  `sunrays off` skip their passes (`preset mobile` turns both off with the shading).
 
 - **Each element has its own simulation**, kept in GPU images (`inspect_ui` and `getEffects`
   report their size). It starts when the element is first drawn and steps at a fixed 60 Hz,
@@ -2173,10 +2189,17 @@ vec4 jfx_paint(JfxContext c){
   `effects/lib/jfx_hash.glsl`, `effects/lib/jfx_sdf.glsl` (shapes), `effects/lib/jfx_geom.glsl`,
   `effects/lib/jfx_blend.glsl`, `effects/lib/jfx_tone.glsl`.
 - **Stateful effects** declare their images and passes in the manifest (`@cost stateful`):
-  `// @state <name> rgba8|rgba16f|rgba32f|r32f <w>x<h>|box[*scale] [max <px>] [linear|nearest]`,
-  `// @init <pass> <state>` (run once at the start), `// @step <pass> <state> [x<count>]
-  [add] [scatter <placement>]` (each step, in order), optional `@warmup <steps> <dt>`,
-  `@rate <hz> max <substeps>`, `@replay <s>` and `@reseed <param>`. Declare each image with
+  `// @state <name> rgba8|rgba16f|rg16f|r16f|rgba32f|r32f <w>x<h>|box[*scale] [max <px>]|aspect <short> [max <px>] [linear|nearest]`
+  (`rg16f`/`r16f`: half-float two- and one-channel fields, sampled as (r, g, 0, 1) and (r, 0, 0, 1);
+  the 32-bit formats must be `nearest`; `aspect 128`: the element's aspect with a 128-texel short
+  side at any size, square cells),
+  `// @init <pass> <state>` (run once at the start), `// @step <pass> <state> [x<count>|x<param>]
+  [add] [scatter <placement>] [if <param>]` (each step, in order; `if`: only while that boolean or
+  number parameter is not 0), `// @frame <pass> <state> ...` (same options: once a drawn frame
+  after the steps, when they changed the state: a bloom chain or light shafts only the draw
+  reads), optional `@warmup <steps> <dt>`, `@rate <hz> max <substeps>`, `@replay <s>`,
+  `@reseed <param>` and `@preset <option> <param> <value>, ...` (the options of an enum parameter
+  named `preset`; the values its parameters left at their defaults take, as `fluid`'s). Declare each image with
   `JFX_STATE(<name>)` (from `effects/lib/jfx_state.glsl`: `<name>_fetch(ivec2)`,
   `<name>_sample(uv)`, `<name>_size()`), define `vec4 jfx_step(JfxStep s)` (it writes texel
   `s.cell` of pass `s.pass`, compared with `JFX_PASS_<NAME>`, inside `#ifdef JFX_STEP_FORM`),
@@ -2198,13 +2221,28 @@ vec4 jfx_paint(JfxContext c){
 - **What an element draws**: `inspect_ui` lists each element's effects under `effects` (the
   property, the layer index, the form and every parameter's value as the engine reads it,
   universal ones included; a stateful effect adds `state`: its images' bytes, its steps, its
-  simulation time and whether it is paused) and marks them `fx:<name>` in the outline. `inspect_ui {file}` and
+  simulation time, whether it is paused, its image count, the pinned-clock replays run (`replaying`
+  while one spans frames), the splats queued or logged and the scripted path's samples) and marks
+  them `fx:<name>` in the outline. `inspect_ui {file}` and
   `jasperengine-editor check --ui` report the codes of "Effect diagnostics" with `line:col`.
 - **Stable images**: effects animate with time, so two screenshots differ. `set_ui_effect_time
   {time: 1.5}` pins the effect clock in the edit and play views (renders are then identical, the
   pointer aside; a stateful effect's state is recomputed for the pinned time); `{time: null}`
   makes it live again. In play, `eval_lua` drives a simulation with `el:effectSplat{...}`. Scripts do the same with
   `UIDocument.setEffectTime(1.5)` and `UIDocument.setEffectTime(nil)`.
+- **Scripted input, exactly replayed** (stateful effects, edit or play, no Lua): with a pinned
+  `time`, `set_ui_effect_time {time: 1, selector: ".canvas", pointer_path: [[40, 120, 0.2],
+  [200, 140, 0.5], [360, 90, 0.8]]}` drags the pointer along the path (x, y in the element's CSS
+  px, t in effect seconds: down from the first point's time to the last's) in every replay of the
+  element's simulations, and `splats: [{x, y, dx, dy, radius, color, strength, t}]` (the area's
+  px, px/s; `t` defaults to the pinned time) are applied at the step their time falls in (at most
+  8 in one step: more are refused; a splat later than the pinned time waits until the time
+  reaches it). Both stay until replaced (`[]` clears them; new splats replace the earlier ones),
+  so the same call twice gives the same screenshot, and other times show the same input's
+  evolution (`entity` names the document). The replay reaches back to the earliest scripted input
+  (at most 30 s before the pinned time; older input is reported and ignored). Velocities are
+  clamped to 100000 px/s, strengths to 100. A simulation starts at its element's first draw: take
+  a screenshot first if the call says there is none.
 - **Project effects**: `write_file` on an effect's `.frag` compiles it in each of its forms and
   returns the errors at their `.frag` line (`HTMLUI-FX-0015`; a manifest error is
   `HTMLUI-FX-0014` at its line). An edit on disk comes back the same way in `external_changes`,

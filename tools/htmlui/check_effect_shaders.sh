@@ -60,7 +60,7 @@ for frag in "$EFFECTS"/*.frag; do
         expected+=("${base}${suffix}")
         if grep -q '^// @state' "$frag"; then
             expected+=("${base}_${form}Stp")
-            if grep -qE '^// @step .* scatter ' "$frag"; then
+            if grep -qE '^// @(step|frame) .* scatter ' "$frag"; then
                 expected+=("${base}_${form}Sct")
             fi
         fi

@@ -235,7 +235,7 @@ Json HttpClient::exchange(const Json& message, bool isRequest, double timeoutSec
     if (status == 401 || status == 403) {
         readBody();
         throw ClientError(Connection, url() + " refused the request (HTTP " + std::to_string(status) + "): " +
-                          (status == 401 ? "missing or wrong token (--token, JASPER_MCP_TOKEN, or mcp.http_token of its settings.yaml)"
+                          (status == 401 ? "missing or wrong token (--token, JASPER_MCP_TOKEN, or the mcp_http_token file next to its settings.yaml)"
                                          : data.substr(0, 200)));
     }
     if (status == 404) throw ClientError(Connection, url() + ": session or endpoint not found (HTTP 404); did the editor restart?");

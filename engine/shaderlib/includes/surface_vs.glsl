@@ -63,6 +63,14 @@
 //   #define SURFACE_DISPLACE_NORMAL
 //   vec3 surfaceDisplaceNormal(vec3 objectPosition, vec3 objectNormal, vec4 color, vec2 uv){ ... }
 //
+// Lattices (HAS_LATTICE, includes/lattice.glsl): the vertex goes through the lattices bound
+// to the mesh with its normal, smoothed normal and tangent, the before-skinning ones on the
+// bind pose, the others after the instance matrix and the instance fade, so the hooks above
+// see the deformed object-space position and normals. A shader that reads the volume ratio
+// in its fragment stage (latticeStretch(), library/lattice_stretch) defines LATTICE_STRETCH
+// before including, and in its .frag LATTICE_FS and LATTICE_STRETCH before including
+// includes/lattice.glsl.
+//
 // Lighting (includes/lights.glsl, which documents the units):
 //   - USE_PUNCTUAL (pixel, mixed): the compiler adds SURFACE_POSITION and SURFACE_NORMALS,
 //     so v_position and v_normal are written whatever @require says; the fragment stage
@@ -127,13 +135,19 @@ in vec3 a_position;
     in vec2 a_texcoord2;
 #endif
 // the vertex colour attribute is declared only where something reads it (a GL driver drops
-// an unread attribute)
+// an unread attribute): the surface, or a lattice's vertex colour mask
 #if !defined(SURFACE_NO_VERTEX_COLOR) || defined(SURFACE_RAW_COLOR) || defined(SURFACE_DISPLACE_COLOR)
     #if defined(HAS_VERTEX_COLOR_VEC3)
         #define SURFACE_VERTEX_COLOR_INPUT
         in vec3 a_color;
     #elif defined(HAS_VERTEX_COLOR_VEC4)
         #define SURFACE_VERTEX_COLOR_INPUT
+        in vec4 a_color;
+    #endif
+#elif defined(HAS_LATTICE)
+    #if defined(HAS_VERTEX_COLOR_VEC3)
+        in vec3 a_color;
+    #elif defined(HAS_VERTEX_COLOR_VEC4)
         in vec4 a_color;
     #endif
 #endif
@@ -190,6 +204,7 @@ in vec3 a_position;
 #include "includes/skinning.glsl"
 #include "includes/instance_normal.glsl"
 #include "includes/morphtarget.glsl"
+#include "includes/lattice.glsl"
 
 // the object-space smoothed normal the hooks may read (SURFACE_SMOOTH_NORMALS)
 vec3 surfaceSmoothNormal;
@@ -265,6 +280,28 @@ void main() {
     mat4 boneTransform = getBoneTransform();
 
     vec3 position = getMorphPosition(a_position);
+    #ifdef HAS_LATTICE
+        // the before-skinning lattices deform the bind pose: position, normals and tangent
+        // together, then skinned as without a lattice
+        float latticeStretchValue = 1.0;
+        vec3 latticeNormal = vec3(0.0, 1.0, 0.0);
+        #ifdef HAS_NORMALS
+            latticeNormal = getMorphNormal(a_normal);
+        #endif
+        #ifdef SURFACE_SMOOTH_NORMAL_INPUT
+            vec3 latticeSmoothNormal = a_smoothNormal;
+        #else
+            vec3 latticeSmoothNormal = latticeNormal;
+        #endif
+        #if defined(SURFACE_TANGENTS) && defined(HAS_TANGENTS)
+            vec3 latticeTangent = getMorphTangent(a_tangent.xyz);
+        #else
+            vec3 latticeTangent = vec3(1.0, 0.0, 0.0);
+        #endif
+        #ifdef HAS_SKINNING
+            latticeDeformSmooth(0, position, latticeNormal, latticeSmoothNormal, latticeTangent, latticeStretchValue);
+        #endif
+    #endif
     position = getSkinPosition(position, boneTransform);
     #ifdef HAS_TERRAIN
         position = getTerrainPosition(position, pbrParams.modelMatrix);
@@ -273,7 +310,11 @@ void main() {
     // the model's +Y when the mesh has no normals
     vec3 objectNormal = vec3(0.0, 1.0, 0.0);
     #ifdef HAS_NORMALS
-        objectNormal = getSkinNormal(getMorphNormal(a_normal), boneTransform);
+        #ifdef HAS_LATTICE
+            objectNormal = getSkinNormal(latticeNormal, boneTransform);
+        #else
+            objectNormal = getSkinNormal(getMorphNormal(a_normal), boneTransform);
+        #endif
         #ifdef HAS_TERRAIN
             objectNormal = getTerrainNormal(objectNormal, position);
         #endif
@@ -282,7 +323,19 @@ void main() {
 
     #ifdef SURFACE_SMOOTH_NORMAL_INPUT
         // skinned like the normal; morph targets leave it at the base pose
-        vec3 smoothNormal = normalize(getSkinNormal(a_smoothNormal, boneTransform));
+        #ifdef HAS_LATTICE
+            vec3 smoothNormal = normalize(getSkinNormal(latticeSmoothNormal, boneTransform));
+        #else
+            vec3 smoothNormal = normalize(getSkinNormal(a_smoothNormal, boneTransform));
+        #endif
+    #endif
+
+    #if defined(SURFACE_TANGENTS) && defined(HAS_TANGENTS)
+        #ifdef HAS_LATTICE
+            vec3 objectTangent = normalize(getSkinTangent(latticeTangent, boneTransform));
+        #else
+            vec3 objectTangent = normalize(getSkinTangent(getMorphTangent(a_tangent.xyz), boneTransform));
+        #endif
     #endif
 
     #ifdef HAS_INSTANCING
@@ -291,6 +344,9 @@ void main() {
         objectNormal = normalize(instanceNormal(mat3(instanceMatrix), objectNormal));
         #ifdef SURFACE_SMOOTH_NORMAL_INPUT
             smoothNormal = normalize(instanceNormal(mat3(instanceMatrix), smoothNormal));
+        #endif
+        #if defined(SURFACE_TANGENTS) && defined(HAS_TANGENTS)
+            objectTangent = mat3(instanceMatrix) * objectTangent;
         #endif
     #else
         vec4 pos = vec4(position, 1.0);
@@ -314,6 +370,26 @@ void main() {
         }
         pos.xyz = mix(fadeOrigin, pos.xyz, fadeVisible);
         surfaceFadeVisible = fadeVisible;
+    #endif
+
+    #ifdef HAS_LATTICE
+        // the after-skinning lattices, before the hooks and the varyings
+        #ifdef SURFACE_SMOOTH_NORMAL_INPUT
+            vec3 latticeHookNormal = smoothNormal;
+        #else
+            vec3 latticeHookNormal = objectNormal;
+        #endif
+        #if defined(SURFACE_TANGENTS) && defined(HAS_TANGENTS)
+            latticeDeformSmooth(1, pos.xyz, objectNormal, latticeHookNormal, objectTangent, latticeStretchValue);
+        #else
+            latticeDeformSmooth(1, pos.xyz, objectNormal, latticeHookNormal, latticeTangent, latticeStretchValue);
+        #endif
+        #ifdef SURFACE_SMOOTH_NORMAL_INPUT
+            surfaceSmoothNormal = latticeHookNormal;
+        #else
+            surfaceSmoothNormal = objectNormal;
+        #endif
+        latticeWriteStretch(latticeStretchValue);
     #endif
 
     vec4 rawColor = surfaceRawVertexColor();
@@ -342,15 +418,15 @@ void main() {
     #endif
     #ifdef SURFACE_TANGENTS
         #ifdef HAS_TANGENTS
-            vec3 objectTangent = normalize(getSkinTangent(getMorphTangent(a_tangent.xyz), boneTransform));
+            // skinned and instanced above (with the normal)
             float tangentSign = a_tangent.w;
         #else
             // any direction across the normal when the mesh has no tangents
             vec3 objectTangent = abs(objectNormal.y) < 0.999 ? cross(vec3(0.0, 1.0, 0.0), objectNormal) : vec3(1.0, 0.0, 0.0);
             float tangentSign = 1.0;
-        #endif
-        #ifdef HAS_INSTANCING
-            objectTangent = mat3(instanceMatrix) * objectTangent;
+            #ifdef HAS_INSTANCING
+                objectTangent = mat3(instanceMatrix) * objectTangent;
+            #endif
         #endif
         vec3 worldTangent = normalize(vec3(pbrParams.modelMatrix * vec4(objectTangent, 0.0)));
         // re-orthogonalised against the (possibly fallback) normal

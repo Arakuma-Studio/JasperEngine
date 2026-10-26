@@ -21,11 +21,15 @@ namespace jasperengine{
         bool originTopLeft = false;     // framebuffer and texture row 0 at the top (all but GL)
         bool msaaRGBA8 = false;         // RGBA8 colour attachments can be multisampled
         bool msaaDepthStencil = false;  // DEPTH_STENCIL attachments can be multisampled
-        // float colour attachments (ColorFormat RGBA16F, RGBA32F, R32F): can be rendered to,
+        // float colour attachments (ColorFormat RGBA16F, RGBA32F, R32F, RG16F, R16F): can be rendered to,
         // blended into (additive passes) and sampled with a linear filter
         bool renderRGBA16F = false, blendRGBA16F = false, filterRGBA16F = false;
         bool renderRGBA32F = false, blendRGBA32F = false, filterRGBA32F = false;
         bool renderR32F = false, blendR32F = false, filterR32F = false;
+        bool renderRG16F = false, blendRG16F = false, filterRG16F = false;
+        bool renderR16F = false, blendR16F = false, filterR16F = false;
+        // the largest side of a 2D texture (0: unknown)
+        int maxTextureSize2D = 0;
     };
 
     class JASPERENGINE_API SystemRender{

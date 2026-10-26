@@ -195,6 +195,12 @@ bool editor::UndoTimeline::canRedo(uint32_t sceneId){
 }
 
 bool editor::UndoTimeline::undo(uint32_t sceneId, std::string* why, std::vector<Step>* steps){
+    // A Physics Placement gesture running in the scene is cancelled instead, whichever history
+    // holds the next step (CommandHistory::beforeChange)
+    if (CommandHistory::beforeChange && !CommandHistory::beforeChange(sceneId, CommandHistory::Change::Undo)){
+        if (why) *why = "Cancelled the running Physics Placement gesture instead of undoing.";
+        return false;
+    }
     // Ctrl+Z in a drag puts the values back and undoes nothing more
     CommandHistory* scene = sceneHistory(sceneId);
     if (scene && scene->hasOpenInteractive()){
@@ -223,6 +229,11 @@ bool editor::UndoTimeline::undo(uint32_t sceneId, std::string* why, std::vector<
 }
 
 bool editor::UndoTimeline::redo(uint32_t sceneId, std::string* why, std::vector<Step>* steps){
+    // ... and a redo waits for it
+    if (CommandHistory::beforeChange && !CommandHistory::beforeChange(sceneId, CommandHistory::Change::Redo)){
+        if (why) *why = "A Physics Placement gesture is running: redo waits until it ends.";
+        return false;
+    }
     EntryView next = nextRedo(sceneId);
     if (!next){
         if (why) *why = "Nothing to redo.";
@@ -318,7 +329,7 @@ editor::UndoTimeline::EntryView editor::UndoTimeline::find(uint32_t sceneId, uin
             if (history == project){
                 editable = entryId >= projectFloorId(scene);
             }else if (history->isInPlaySession()){
-                editable = history->getPlayStartId() <= entryId;
+                editable = history->isPlayStep(entryId);
             }
             return view(entry, history, history->isApplied(entryId), editable);
         }

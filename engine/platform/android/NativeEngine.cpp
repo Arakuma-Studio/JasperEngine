@@ -13,6 +13,7 @@
 #include <linux/input-event-codes.h>
 #include <swappy/swappyGL.h>
 #include <algorithm>
+#include <atomic>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -244,10 +245,16 @@ static bool all_motion_filter(const GameActivityMotionEvent* event) {
   return true;
 }
 
-static bool all_key_filter(const GameActivityKeyEvent* event) {
-  // Process all key events (the default filter drops gamepad buttons
-  // whose source lacks the keyboard class)
-  return true;
+// Keys the engine has no use for go back to the system, so volume, media and
+// other device keys keep working. Back reaches MainActivity's back callback
+// (delivered as Escape), except the IME backspaces some keyboards send as Back.
+// (the default filter would also drop gamepad buttons whose source lacks the
+// keyboard class)
+static bool key_filter(const GameActivityKeyEvent* event) {
+  if (event->keyCode == AKEYCODE_BACK)
+    return (event->flags & AKEY_EVENT_FLAG_SOFT_KEYBOARD) != 0;
+  return getJasperEngineKey(event->keyCode, event->scanCode) != D_KEY_UNKNOWN ||
+         getJasperEngineGamepadButton(event->keyCode) >= 0;
 }
 
 static void _handle_cmd_proxy(struct android_app *app, int32_t cmd) {
@@ -284,6 +291,16 @@ static NativeEngine *_singleton = NULL;
 static NativeEngineSavedState appState = {false};
 
 static std::wstring textInputBuffer;
+
+// Set on the UI thread by MainActivity's back callback; Android 16 no longer sends Back as a key
+static std::atomic<bool> backPressed(false);
+// the Escape press a Back made, released on the next frame
+static bool backEscapeDown = false;
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_jaspergameengine_jasperengine_MainActivity_onBackPressedNative(JNIEnv* env, jobject obj) {
+    backPressed = true;
+}
 
 // HTML UI document text fields (Engine::wantsTextComposition), in code points: imeText is the
 // field's text as the engine has it, composition included; imeCaret is where the engine's
@@ -593,7 +610,7 @@ NativeEngine::NativeEngine(struct android_app *app) {
     mInternalDataPath = mApp->activity->internalDataPath;
 
     app->motionEventFilter = all_motion_filter;
-    app->keyEventFilter = all_key_filter;
+    app->keyEventFilter = key_filter;
 
     // only X and Y are copied into motion events unless an axis is enabled
     GameActivityPointerAxes_enableAxis(AMOTION_EVENT_AXIS_VSCROLL);
@@ -804,13 +821,14 @@ void NativeEngine::setupJNI(){
     mJniData.gameActivityClsRef = env->GetObjectClass(mJniData.gameActivityObjRef);
 
     mJniData.getUserSettingsRef = env->GetMethodID(mJniData.gameActivityClsRef, "getUserSettings", "()Lcom/jaspergameengine/jasperengine/UserSettings;");
-    mJniData.getAdMobWrapperRef = env->GetMethodID(mJniData.gameActivityClsRef, "getAdMobWrapper", "()Lcom/jaspergameengine/jasperengine/AdMobWrapper;");
+    mJniData.getAdMobWrapperRef = env->GetMethodID(mJniData.gameActivityClsRef, "getAdMobWrapper", "()Ljava/lang/Object;");
 
     mJniData.userSettingsObjRef = env->CallObjectMethod(mJniData.gameActivityObjRef, mJniData.getUserSettingsRef);
     mJniData.userSettingsClsRef = env->GetObjectClass(mJniData.userSettingsObjRef);
 
+    // null when the export leaves AdMob out
     mJniData.adMobWrapperObjRef = env->CallObjectMethod(mJniData.gameActivityObjRef, mJniData.getAdMobWrapperRef);
-    mJniData.adMobWrapperClsRef = env->GetObjectClass(mJniData.adMobWrapperObjRef);
+    mJniData.adMobWrapperClsRef = mJniData.adMobWrapperObjRef ? env->GetObjectClass(mJniData.adMobWrapperObjRef) : NULL;
 
     mJniData.getBoolForKeyRef = env->GetMethodID(mJniData.userSettingsClsRef, "getBoolForKey", "(Ljava/lang/String;Z)Z");
     mJniData.getIntegerForKeyRef = env->GetMethodID(mJniData.userSettingsClsRef, "getIntegerForKey", "(Ljava/lang/String;I)I");
@@ -828,11 +846,19 @@ void NativeEngine::setupJNI(){
 
     mJniData.removeKeyRef = env->GetMethodID(mJniData.userSettingsClsRef, "removeKey", "(Ljava/lang/String;)V");
 
-    mJniData.initializeAdMob = env->GetMethodID(mJniData.adMobWrapperClsRef, "initialize","(ZZ)V");
-    mJniData.setMaxAdContentRating = env->GetMethodID(mJniData.adMobWrapperClsRef, "setMaxAdContentRating","(I)V");
-    mJniData.loadInterstitialAd = env->GetMethodID(mJniData.adMobWrapperClsRef, "loadInterstitialAd","(Ljava/lang/String;)V");
-    mJniData.isInterstitialAdLoaded = env->GetMethodID(mJniData.adMobWrapperClsRef, "isInterstitialAdLoaded","()Z");
-    mJniData.showInterstitialAd = env->GetMethodID(mJniData.adMobWrapperClsRef, "showInterstitialAd","()V");
+    if (mJniData.adMobWrapperClsRef) {
+        mJniData.initializeAdMob = env->GetMethodID(mJniData.adMobWrapperClsRef, "initialize","(ZZ)V");
+        mJniData.setMaxAdContentRating = env->GetMethodID(mJniData.adMobWrapperClsRef, "setMaxAdContentRating","(I)V");
+        mJniData.loadInterstitialAd = env->GetMethodID(mJniData.adMobWrapperClsRef, "loadInterstitialAd","(Ljava/lang/String;)V");
+        mJniData.isInterstitialAdLoaded = env->GetMethodID(mJniData.adMobWrapperClsRef, "isInterstitialAdLoaded","()Z");
+        mJniData.showInterstitialAd = env->GetMethodID(mJniData.adMobWrapperClsRef, "showInterstitialAd","()V");
+    } else {
+        mJniData.initializeAdMob = NULL;
+        mJniData.setMaxAdContentRating = NULL;
+        mJniData.loadInterstitialAd = NULL;
+        mJniData.isInterstitialAdLoaded = NULL;
+        mJniData.showInterstitialAd = NULL;
+    }
 
     // an activity without them (an older MainActivity) keeps the base in-process clipboard
     mJniData.setClipboardText = env->GetMethodID(mJniData.gameActivityClsRef, "setClipboardText", "(Ljava/lang/String;)V");
@@ -1180,6 +1206,17 @@ void NativeEngine::handleGamepadMotion(GameActivityMotionEvent* motionEvent){
 }
 
 void NativeEngine::handleGameActivityInput(){
+    // Back plays as an Escape press, released on the next frame
+    if (backEscapeDown) {
+        jasperengine::Engine::systemKeyUp(D_KEY_ESCAPE, false, jasperengine::Input::getModifiers());
+        backEscapeDown = false;
+    }
+    if (backPressed.exchange(false)) {
+        jasperengine::Engine::systemCharInput('\x1b');
+        jasperengine::Engine::systemKeyDown(D_KEY_ESCAPE, false, jasperengine::Input::getModifiers());
+        backEscapeDown = true;
+    }
+
     android_input_buffer* inputBuffer = android_app_swap_input_buffers(mApp);
 
     if (inputBuffer == nullptr) return;
@@ -1223,8 +1260,8 @@ void NativeEngine::handleGameActivityInput(){
                 if (keyEvent->keyCode == AKEYCODE_BACK && (keyEvent->flags & AKEY_EVENT_FLAG_SOFT_KEYBOARD))
                     jasperengine::Engine::systemCharInput('\b');
 
-                // volume, back, camera and other device keys have no engine
-                // equivalent; don't spam listeners with D_KEY_UNKNOWN
+                // the soft-keyboard Back above has no engine key; don't spam
+                // listeners with D_KEY_UNKNOWN
                 if (keyCode != D_KEY_UNKNOWN)
                     jasperengine::Engine::systemKeyDown(keyCode, repeat, modifiers);
             } else if (keyEvent->action == AKEY_EVENT_ACTION_UP) {

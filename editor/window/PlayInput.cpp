@@ -185,6 +185,10 @@ void editor::PlayInput::forwardCharacters(ImGuiIO& io){
             if (event.Type != ImGuiInputEventType_Text)
                 continue;
             const unsigned int codepoint = event.Text.Char;
+            // Other control characters (Ctrl+letter, Delete's 0x7f) would show up as boxes
+            if ((codepoint < 32 || codepoint == 0x7f) && codepoint != '\t' && codepoint != '\b' &&
+                codepoint != '\r' && codepoint != '\n' && codepoint != 0x1b)
+                continue;
             if (sizeof(wchar_t) == 2 && codepoint > 0xFFFF){
                 const unsigned int value = codepoint - 0x10000;
                 Engine::systemCharInput(static_cast<wchar_t>(0xD800 + (value >> 10)));
@@ -201,6 +205,11 @@ void editor::PlayInput::forwardKeyboard(ImGuiIO& io, int mods){
     forwardCharacters(io);
 
     auto forwardKey = [&](ImGuiKey imguiKey, int engineKey, wchar_t charInput = 0, bool allowRepeat = true){
+#ifndef __APPLE__
+        // The backends queue these keys' control characters with the text (forwardCharacters),
+        // repeats included; only imgui_impl_osx leaves them out
+        charInput = 0;
+#endif
         if (ImGui::IsKeyPressed(imguiKey, false)){
             if (charInput != 0){
                 Engine::systemCharInput(charInput);

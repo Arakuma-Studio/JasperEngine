@@ -42,7 +42,7 @@ namespace jasperengine{
         size_t loadIndexOffset;
 
         // the pipeline types (PipelineType), by bit index
-        static constexpr int PIPELINE_TYPES = 15;
+        static constexpr int PIPELINE_TYPES = 16;
         sg_pipeline pipelines[PIPELINE_TYPES];
 
         sg_pipeline_desc pipeline_desc;
