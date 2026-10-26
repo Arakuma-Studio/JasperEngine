@@ -196,11 +196,13 @@ namespace {
     std::string decodeBase64(const std::string& text){
         static const std::string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
         std::string out;
-        int value = 0, bits = -8;
+        // (unsigned, the bits not yet emitted only: a signed accumulator overflowed)
+        uint32_t value = 0;
+        int bits = -8;
         for (char c : text){
             const size_t digit = alphabet.find(c);
             if (digit == std::string::npos) break;
-            value = (value << 6) + (int)digit;
+            value = ((value << 6) | (uint32_t)digit) & 0xFFFFFFu;
             bits += 6;
             if (bits >= 0){
                 out.push_back((char)((value >> bits) & 0xFF));

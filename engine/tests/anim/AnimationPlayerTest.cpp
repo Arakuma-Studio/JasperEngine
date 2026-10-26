@@ -1237,8 +1237,9 @@ TEST_F(Player, PerformanceBudget){
     });
     std::printf("[ perf ] 100 players x 60 bones (6100 tracks): %.3f ms a frame, %.3f ms with a spawn per frame, %.3f ms with one "
                 "under a bone (medians, normalised to an idle host: reference %.3f ms)\n", still, spawning, underBone, REFERENCE_IDLE_MS);
-#ifdef NDEBUG
-    // the median thread CPU time of a frame, normalised to an idle host
+#if defined(NDEBUG) && !defined(__SANITIZE_ADDRESS__)
+    // the median thread CPU time of a frame, normalised to an idle host (Release builds: the
+    // budget means nothing under the sanitizers, which slow everything several times)
     EXPECT_LT(spawning, BUDGET_MS);
     EXPECT_LT(underBone, BUDGET_MS);
 #endif

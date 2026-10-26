@@ -68,12 +68,15 @@ namespace {
                 if (!componentTypeOf(it->first.as<std::string>(), type)) {
                     continue;
                 }
-                if (it->second.IsSequence()) {
-                    for (const YAML::Node& name : it->second) {
+                // (a copy: `it->second` is a member of the iterator's temporary proxy, which a
+                // range-for over it would outlive)
+                const YAML::Node names = it->second;
+                if (names.IsSequence()) {
+                    for (const YAML::Node& name : names) {
                         object.overrides.addProperty(type, name.as<std::string>());
                     }
-                } else if (it->second.IsScalar()) {
-                    object.overrides.addProperty(type, it->second.as<std::string>());
+                } else if (names.IsScalar()) {
+                    object.overrides.addProperty(type, names.as<std::string>());
                 }
                 if (object.overrides.properties[type].empty()) {
                     object.overrides.properties.erase(type);
