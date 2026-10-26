@@ -11,6 +11,7 @@
 
 #include "json.hpp"
 #include "yaml-cpp/yaml.h"
+#include "stb_image.h"
 
 #include <algorithm>
 #include <cctype>
@@ -350,6 +351,16 @@ TextureInference TextureTypeInference::fromEdges(const Project& project, const s
             if (faces <= 1)
                 uses.push_back({TextureSlot::Cube, describe(edge, project)});
         }
+    }
+    // a cube slot's file is a cross (4:3 or 3:4); anything else is a face of six files (an edit
+    // the index has not seen yet, an unsaved scene): a 2D texture
+    const bool cube = std::any_of(uses.begin(), uses.end(), [](const TextureReferenceUse& use){ return use.slot == TextureSlot::Cube; });
+    int width = 0, height = 0, channels = 0;
+    // (the ratio test of TextureData::splitCubeMapCross)
+    if (cube && stbi_info((project.getProjectPath() / projectRelative).string().c_str(), &width, &height, &channels) && height > 0 &&
+            (uint64_t)width * 100 / (uint64_t)height != 133 && (uint64_t)width * 100 / (uint64_t)height != 75){
+        uses.erase(std::remove_if(uses.begin(), uses.end(), [](const TextureReferenceUse& use){ return use.slot == TextureSlot::Cube; }),
+                   uses.end());
     }
     return fromUses(uses, projectRelative);
 }
