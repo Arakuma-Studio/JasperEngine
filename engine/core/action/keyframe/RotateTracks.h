@@ -4,21 +4,17 @@
 #ifndef ROTATETRACKS_H
 #define ROTATETRACKS_H
 
-#include "action/Action.h"
-#include "action/Ease.h"
+#include "KeyframeTracks.h"
 
 namespace jasperengine{
-    class JASPERENGINE_API RotateTracks: public Action{
+    class JASPERENGINE_API RotateTracks: public KeyframeTracks{
 
     public:
         RotateTracks(Scene* scene);
         RotateTracks(Scene* scene, Entity entity);
         RotateTracks(Scene* scene, std::vector<float> times, std::vector<Quaternion> values);
 
-        void setTimes(std::vector<float> times);
         void setValues(std::vector<Quaternion> values);
-        void setEasings(std::vector<EaseType> easings);
-        void setEasing(unsigned int segment, EaseType ease);
     };
 }
 

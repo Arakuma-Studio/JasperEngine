@@ -13,6 +13,7 @@
 #include "Factory.h"
 #include "Out.h"
 #include "Stream.h"
+#include "util/FileUtils.h"
 #include "util/Util.h"
 #include "util/YamlNumbers.h"
 
@@ -129,7 +130,7 @@ void editor::Project::invalidateClosedSceneSources(const std::function<bool(cons
             continue;
         }
         if (std::any_of(sceneProject.prefabs.begin(), sceneProject.prefabs.end(), affected)) {
-            generator.clearSceneSource(sceneProject.name, getProjectInternalPath());
+            generator.clearSceneSource(sceneProject.id, sceneProject.name, getProjectInternalPath());
             invalidated = true;
         }
     }
@@ -480,7 +481,8 @@ editor::SaveResult editor::Project::savePrefabToDisk(const std::filesystem::path
     std::filesystem::path fullPrefabPath = getProjectPath() / filepath;
     // the prefab's GUID and the former GUIDs the database keeps for it
     const Guid guid = prepareDocumentIdentity(encodedNode, filepath);
-    const std::string text = YAML::Dump(encodedNode);
+    // a file of a Windows checkout keeps its \r\n
+    const std::string text = FileUtils::withLineEndings(fullPrefabPath, YAML::Dump(encodedNode));
     const io::WriteResult written = DocumentFiles::write(fullPrefabPath, text);
     if (!written.ok()) {
         const std::string message = DocumentFiles::saveFailureMessage(filepath, written);

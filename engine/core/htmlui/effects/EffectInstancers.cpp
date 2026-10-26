@@ -28,6 +28,7 @@
 #include <RmlUi/Core/StyleSheetTypes.h>
 
 #include <algorithm>
+#include <set>
 #include <cmath>
 #include <functional>
 #include <map>
@@ -441,6 +442,31 @@ bool EffectPropertyParser::ParseValue(Rml::Property& property, const Rml::String
 
 // ---- snapshots
 
+void jasperengine::htmlui::applyEffectPreset(const EffectManifest& m, std::vector<EffectValue>& values, const std::set<std::string>& written){
+    if (m.presets.empty())
+        return;
+    const int presetIndex = m.paramIndex("preset");
+    if (presetIndex < 0 || (size_t)presetIndex >= values.size() || values[(size_t)presetIndex].isVar)
+        return;
+    const EffectParamDef& presetDef = m.params[(size_t)presetIndex];
+    const EffectPresetDef* preset = m.findPreset(EffectValueParser::canonical(presetDef, values[(size_t)presetIndex]));
+    if (!preset)
+        return;
+    // a parameter the author did not write takes the preset's value
+    for (const auto& entry : preset->values){
+        const int index = m.paramIndex(entry.first);
+        if (index < 0 || (size_t)index >= values.size() || written.count(entry.first))
+            continue;
+        const EffectParamDef& def = m.params[(size_t)index];
+        EffectValue value;
+        std::string reason;
+        if (!EffectValueParser::parse(def, entry.second, value, reason) || value.isVar)
+            continue;
+        EffectValueParser::clamp(def, value);
+        values[(size_t)index] = value;
+    }
+}
+
 void jasperengine::htmlui::finishSnapshot(EffectParamsSnapshot& snapshot){
     snapshot.canonical.clear();
     if (!snapshot.manifest)
@@ -504,6 +530,12 @@ EffectSnapshotResult jasperengine::htmlui::snapshotFromCall(const std::string& a
         EffectValueParser::clamp(def, value);
         snapshot->values.push_back(value);
     }
+    // @preset: the parameters the call does not write take the preset's values
+    std::set<std::string> written;
+    for (const auto& entry : given)
+        if (!entry.second.empty())
+            written.insert(entry.first);
+    applyEffectPreset(*manifest, snapshot->values, written);
     auto universal = [&](const char* name, float fallback, float lo, float hi){
         auto it = given.find(name);
         if (it == given.end())

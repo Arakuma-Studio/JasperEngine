@@ -8,6 +8,7 @@
 #include "math/Vector4.h"
 #include "render/FramebufferRender.h"
 #include "render/PipelineState.h"
+#include "render/TextureRender.h"
 
 #include "sokol_gfx.h"
 
@@ -21,6 +22,8 @@ namespace jasperengine{
 
         // the attachments of a pass into framebuffer (through the multisampled target if set)
         sg_attachments attachmentsOf(FramebufferRender* framebuffer, size_t face);
+        // the colour attachment view of a pass into a texture, released when the pass ends
+        sg_view textureView;
 
     public:
         SokolCamera();
@@ -42,6 +45,9 @@ namespace jasperengine{
         void setLabel(const char* label);
 
         void startRenderPass(FramebufferRender* framebuffer, size_t face);
+        // into one face (or slice) and mip level of a colour attachment texture
+        // (TextureRender::createFramebufferTexture), with no depth: PIP_RTT_COLORONLY pipelines
+        void startRenderPass(TextureRender* texture, size_t face, int mip);
         void startRenderPass(int width, int height);
         void startRenderPass();
         // the same, keeping depth and stencil past the pass's end (a pass split in two:

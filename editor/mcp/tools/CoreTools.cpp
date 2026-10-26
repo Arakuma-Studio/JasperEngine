@@ -28,6 +28,8 @@
 #include "io/AssetIOService.h"
 #include "jobs/JobSystem.h"
 #include "memory/MemoryStats.h"
+#include "physics/PlacementSession.h"
+#include "util/FileUtils.h"
 #include "window/CodeEditor.h"
 #include "window/ProjectWindow.h"
 #include "window/AssetPanels.h"
@@ -242,6 +244,28 @@ void undoRedo(const CallPtr& call, bool undo) {
         sceneId = scene->id;
         if (scope == "scene") history = CommandHandle::get(scene->id);
         data["scene"] = McpRefs::sceneJson(project, *scene);
+        // a Scene view Physics Placement gesture or settle holds preview poses in the scene: an
+        // undo cancels it instead (CommandHistory::beforeChange), a redo is refused
+        if (placementSceneBusy(project, scene->id)) {
+            if (!undo) {
+                data["steps"] = 0;
+                call->fail("Redo refused: a Physics Placement gesture is running in the Scene view of \"" + scene->name +
+                           "\" (its preview poses are in the scene). Let it finish, or undo to cancel it, then redo.", data);
+                return;
+            }
+            // the history's undo asks the gesture first (CommandHistory::beforeChange) and moves nothing
+            CommandHistory* sceneHistory = CommandHandle::get(scene->id);
+            sceneHistory->undo();
+            data["steps"] = 0;
+            data["undone"] = Json::array();
+            data["redone"] = Json::array();
+            data["cancelled_gesture"] = true;
+            data["can_undo"] = history ? history->canUndo() : UndoTimeline::canUndo(sceneId);
+            data["can_redo"] = history ? history->canRedo() : UndoTimeline::canRedo(sceneId);
+            call->ok("Cancelled the running Physics Placement gesture instead of undoing (nothing was undone): its objects "
+                     "are back where they were before it.", data);
+            return;
+        }
     } else {
         call->fail("scope must be \"timeline\" (the scene's and the asset steps in order, like Ctrl+Z), \"scene\" "
                    "(GameObject and component edits) or \"project\" (asset file operations).");
@@ -283,6 +307,7 @@ void undoRedo(const CallPtr& call, bool undo) {
 
     std::vector<UndoTimeline::Step> done;
     std::string why;
+    bool stopped = false;   // a step did not move: refused (busy, or by the command) or nothing left
     if (args.contains("to_id") && !args["to_id"].is_null()) {
         const uint64_t target = args["to_id"].get<uint64_t>();
         if (!inScope(target)) {
@@ -296,20 +321,36 @@ void undoRedo(const CallPtr& call, bool undo) {
         if (history) {
             // undo until it is the newest applied step, or redo until it is applied
             while (undo ? (history->top() && history->top()->info.id != target) : !history->isApplied(target)) {
-                if (!historyStep(history, undo, done, scope == "project", sceneId)) break;
+                if (!historyStep(history, undo, done, scope == "project", sceneId)) {
+                    stopped = true;
+                    break;
+                }
             }
         } else {
-            UndoTimeline::jumpTo(sceneId, target, &why, &done);
+            stopped = !UndoTimeline::jumpTo(sceneId, target, &why, &done);
         }
     } else {
         for (int i = 0; i < steps; i++) {
             if (history) {
-                if (!historyStep(history, undo, done, scope == "project", sceneId)) break;
+                if (!historyStep(history, undo, done, scope == "project", sceneId)) {
+                    stopped = true;
+                    break;
+                }
             } else if (!(undo ? UndoTimeline::undo(sceneId, &why, &done) : UndoTimeline::redo(sceneId, &why, &done))) {
+                stopped = true;
                 break;
             }
         }
     }
+    if (history && why.empty() && !CommandHistory::lastRefusal().empty()) {
+        why = "Busy: " + CommandHistory::lastRefusal();
+    }
+    const bool busy = why.rfind("Busy", 0) == 0;
+    // the next step is there but did not move: the command refused (it would make a child scene cycle)
+    const bool refused = stopped && !busy && nextId() != 0;
+    const std::string refusal = std::string("The next step cannot be ") + (undo ? "undone" : "redone") +
+        " now: it would make a child scene cycle (read_console has the scenes).";
+    if (refused) data["refused"] = true;
     bool touchedProject = false;
     Json list = Json::array();
     for (const UndoTimeline::Step& step : done) {
@@ -331,7 +372,7 @@ void undoRedo(const CallPtr& call, bool undo) {
         data["can_redo"] = UndoTimeline::canRedo(sceneId);
     }
     if (done.empty()) {
-        call->fail(why.rfind("Busy", 0) == 0 ? why : std::string("Nothing to ") + verb + " in the " + scope + " history.", data);
+        call->fail(busy ? why : refused ? refusal : std::string("Nothing to ") + verb + " in the " + scope + " history.", data);
         return;
     }
     std::string names;
@@ -340,7 +381,7 @@ void undoRedo(const CallPtr& call, bool undo) {
         names += "\"" + step.name + "\"";
     }
     call->ok(std::string(undo ? "Undid " : "Redid ") + std::to_string(done.size()) + " step(s) in the " + scope +
-             " history: " + names + ".", data);
+             " history: " + names + "." + (refused ? " Stopped there: " + refusal : std::string()), data);
 }
 
 // ------------------------------------------------------------------ get_undo_history
@@ -606,7 +647,7 @@ void editorStatusTool(const CallPtr& call) {
         {"editor", {{"version", JASPERENGINE_EDITOR_VERSION}}},
         {"project", {
             {"name", project->getName()},
-            {"path", project->getProjectPath().generic_string()},
+            {"path", FileUtils::pathToGenericUtf8(project->getProjectPath())},
             {"temporary", project->isTempProject()},
             {"selected_scene_id", project->getSelectedSceneId()},
             {"start_scene_id", project->getStartSceneId()}
@@ -634,7 +675,7 @@ void editorStatusTool(const CallPtr& call) {
         }}
     };
 
-    std::string text = "Project \"" + project->getName() + "\" at " + project->getProjectPath().generic_string() +
+    std::string text = "Project \"" + project->getName() + "\" at " + FileUtils::pathToGenericUtf8(project->getProjectPath()) +
                        (project->isTempProject() ? " (temporary, never saved)" : "") + ". " +
                        std::to_string(scenes.size()) + " scene(s)";
     if (selected) text += ", selected: " + std::to_string(selected->id) + " \"" + selected->name + "\"";

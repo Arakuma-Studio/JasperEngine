@@ -93,9 +93,6 @@ namespace jasperengine::editor::mcp {
             return writingCalls > 0 && std::chrono::steady_clock::now() - lastCallStart < std::chrono::minutes(10);
         }
 
-        // Whether a call may write project files, so it needs afterCall: read-only tools don't,
-        // except where they save a file on request (screenshot save_path)
-        static bool mayWriteFiles(bool readOnly, const Json& args);
 
         // syncFiles handled these absolute paths (a tool wrote them, or sync_files ran): they
         // are current. `full`: the whole project was rescanned and picked up.

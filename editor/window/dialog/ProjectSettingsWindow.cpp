@@ -154,7 +154,8 @@ static const settingsui::Category projectCategories[] = {
     {"Player", "", "project product name application identifier version build default icon resolution presentation "
                    "fullscreen mode screen width height resizable window title start scene splash loading async publishing "
                    "threading worker threads reserved frame workers asset io threads web pump budget multithreaded "
-                   "native resource pack windows macos linux ios android web company bundle identifier package favicon"},
+                   "native resource pack windows macos linux ios android web company bundle identifier package favicon "
+                   "google admob ads app id"},
     {"Graphics", "", "canvas width height scaling mode texture strategy reference resolution runtime shader compilation variants shadows shadow tier quality "
                      "mobile pbr tier clear coat iridescence anisotropy "
                      "html ui msaa anti-aliasing antialiasing"},
@@ -953,6 +954,8 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_iosHideStatusBar = ios.hideStatusBar;
     m_iosHideHomeIndicator = ios.hideHomeIndicator;
     m_iosSupportsHighRefreshRate = ios.supportsHighRefreshRate;
+    m_iosAdmobEnabled = ios.admobEnabled;
+    snprintf(m_iosAdmobAppIdBuffer, sizeof(m_iosAdmobAppIdBuffer), "%s", ios.admobAppId.c_str());
 
     const AndroidProjectSettings& android = project->getAndroidProjectSettings();
     snprintf(m_androidApplicationNameBuffer, sizeof(m_androidApplicationNameBuffer), "%s", android.applicationName.c_str());
@@ -977,6 +980,8 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_androidAllowBackup = android.allowBackup;
     m_androidFullscreen = android.fullscreen;
     m_androidKeepScreenOn = android.keepScreenOn;
+    m_androidAdmobEnabled = android.admobEnabled;
+    snprintf(m_androidAdmobAppIdBuffer, sizeof(m_androidAdmobAppIdBuffer), "%s", android.admobAppId.c_str());
 
     m_startSceneId = project->getStartSceneId();
     const SceneProject* startScene = project->getScene(m_startSceneId);
@@ -2002,6 +2007,25 @@ void ProjectSettingsWindow::drawIOSSettings() {
     }
     ImGui::Checkbox("##IOSHighRefreshRate", &m_iosSupportsHighRefreshRate);
     endSettingsRow("Allow 120 Hz displays when supported.");
+
+    if (projectBeginSettingsRow("Google AdMob", m_iosAdmobEnabled)) {
+        m_iosAdmobEnabled = false;
+    }
+    ImGui::Checkbox("##IOSAdMob", &m_iosAdmobEnabled);
+    endSettingsRow("Links Google Mobile Ads for System.initializeAdMob and the interstitial ad calls. Without it the export leaves the SDK out and those calls do nothing.");
+
+    ImGui::BeginDisabled(!m_iosAdmobEnabled);
+    projectBeginSettingsRow("AdMob App ID");
+    ImGui::SetNextItemWidth(-helpMarkerWidth());
+    ImGui::InputTextWithHint("##IOSAdMobAppId", "ca-app-pub-0000000000000000~0000000000", m_iosAdmobAppIdBuffer, sizeof(m_iosAdmobAppIdBuffer));
+    endSettingsRow((std::string("GADApplicationIdentifier from the AdMob console, required with AdMob. Google's sample app ") +
+        iosSampleAdMobAppId + " only serves test ads.").c_str());
+    drawOverrideWarning(m_iosAdmobAppIdBuffer, isAdMobAppIdValid,
+        "Use the app ID (with ~), not an ad unit ID (with /).");
+    if (m_iosAdmobEnabled && m_iosAdmobAppIdBuffer[0] == '\0') {
+        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Exports need the AdMob App ID.");
+    }
+    ImGui::EndDisabled();
 }
 
 void ProjectSettingsWindow::drawAndroidSettings() {
@@ -2101,6 +2125,25 @@ void ProjectSettingsWindow::drawAndroidSettings() {
     ImGui::Checkbox("Fullscreen", &m_androidFullscreen);
     ImGui::SetItemTooltip("Uses the fullscreen Android theme and hides system bars in MainActivity.");
     endSettingsRow("Android screen/window behavior.");
+
+    if (projectBeginSettingsRow("Google AdMob", m_androidAdmobEnabled != defaults.admobEnabled)) {
+        m_androidAdmobEnabled = defaults.admobEnabled;
+    }
+    ImGui::Checkbox("##AndroidAdMob", &m_androidAdmobEnabled);
+    endSettingsRow("Compiles in Google Mobile Ads for System.initializeAdMob and the interstitial ad calls. Without it the export leaves the SDK out and those calls do nothing. Declare ads and Ad ID use in the Play Console.");
+
+    ImGui::BeginDisabled(!m_androidAdmobEnabled);
+    projectBeginSettingsRow("AdMob App ID");
+    ImGui::SetNextItemWidth(-helpMarkerWidth());
+    ImGui::InputTextWithHint("##AndroidAdMobAppId", "ca-app-pub-0000000000000000~0000000000", m_androidAdmobAppIdBuffer, sizeof(m_androidAdmobAppIdBuffer));
+    endSettingsRow((std::string("APPLICATION_ID from the AdMob console, required with AdMob. Google's sample app ") +
+        androidSampleAdMobAppId + " only serves test ads.").c_str());
+    drawOverrideWarning(m_androidAdmobAppIdBuffer, isAdMobAppIdValid,
+        "Use the app ID (with ~), not an ad unit ID (with /).");
+    if (m_androidAdmobEnabled && m_androidAdmobAppIdBuffer[0] == '\0') {
+        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Exports need the AdMob App ID.");
+    }
+    ImGui::EndDisabled();
 }
 
 bool ProjectSettingsWindow::applySettings() {
@@ -2220,6 +2263,8 @@ bool ProjectSettingsWindow::applySettings() {
     ios.hideStatusBar = m_iosHideStatusBar;
     ios.hideHomeIndicator = m_iosHideHomeIndicator;
     ios.supportsHighRefreshRate = m_iosSupportsHighRefreshRate;
+    ios.admobEnabled = m_iosAdmobEnabled;
+    applyTextBuffer(ios.admobAppId, m_iosAdmobAppIdBuffer);
 
     AndroidProjectSettings& android = m_project->getAndroidProjectSettings();
     applyOverride(android.applicationName, m_androidApplicationNameBuffer, inheritedName);
@@ -2245,6 +2290,8 @@ bool ProjectSettingsWindow::applySettings() {
     android.allowBackup = m_androidAllowBackup;
     android.fullscreen = m_androidFullscreen;
     android.keepScreenOn = m_androidKeepScreenOn;
+    android.admobEnabled = m_androidAdmobEnabled;
+    applyTextBuffer(android.admobAppId, m_androidAdmobAppIdBuffer);
 
     const SceneProject* startScene = m_project->getScene(m_startSceneId);
     if (startScene && !startScene->filepath.empty()) {

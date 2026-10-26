@@ -10,10 +10,15 @@
 // @property baseColor color (1, 1, 1, 1) "Base colour"
 // @property tiling vector4 (1, 1, 0, 0) "Tiling (xy) and offset (zw)"
 // @property emissionColor hdrcolor (1, 1, 1, 1) "Emission colour" feature=EMISSION
+// @property stochasticCellSize range(0.25, 4) 1 "Cell Size" feature=STOCHASTIC
+// @property stochasticBlendSharpness range(0, 1) 0.4 "Blend Sharpness" feature=STOCHASTIC
+// @property stochasticContrast range(0, 1) 0.45 "Contrast" feature=STOCHASTIC
+// @property stochasticRotation range(0, 1) 0 "Rotation" feature=STOCHASTIC
 // @texture u_baseTexture white "Base map"
 // @texture u_emissionTexture white "Emission map" feature=EMISSION
 // @feature VERTEX_COLOR "Vertex colour"
 // @feature EMISSION "Emission"
+// @feature STOCHASTIC "Stochastic Tiling"
 
 // Every light of the object is evaluated per vertex (Lambert diffuse with its range and
 // cone, no specular, shadows or spot masks); the lights over the cap and the scene ambient
@@ -24,7 +29,17 @@ uniform u_fs_customParams {
     vec4 baseColor;
     vec4 tiling;
     vec4 emissionColor;
+    #ifdef STOCHASTIC
+        float stochasticCellSize;
+        float stochasticBlendSharpness;
+        float stochasticContrast;
+        float stochasticRotation;
+    #endif
 } customParams;
+
+#ifdef STOCHASTIC
+    #include "library/stochastic_surface.glsl"
+#endif
 
 uniform texture2D u_baseTexture;
 uniform sampler u_base_smp;
@@ -49,7 +64,13 @@ out vec4 g_finalColor;
 
 void main() {
     vec2 uv = v_uv1 * customParams.tiling.xy + customParams.tiling.zw;
-    vec4 base = customParams.baseColor * sRGBToLinear(texture(sampler2D(u_baseTexture, u_base_smp), uv)) * v_color;
+    #ifdef STOCHASTIC
+        // the base map's taps set the weights the material's other maps reuse
+        StochasticTiling stochastic = stochasticSetup(uv, stochasticCustomParams(), 0u);
+        vec4 base = customParams.baseColor * sRGBToLinear(stochasticTextureLuminance(u_baseTexture, u_base_smp, stochastic)) * v_color;
+    #else
+        vec4 base = customParams.baseColor * sRGBToLinear(texture(sampler2D(u_baseTexture, u_base_smp), uv)) * v_color;
+    #endif
     vec3 color = base.rgb;
 
     #ifdef USE_VERTEX_LIGHTS
@@ -57,7 +78,11 @@ void main() {
     #endif
 
     #ifdef EMISSION
-        color += customParams.emissionColor.rgb * sRGBToLinear(texture(sampler2D(u_emissionTexture, u_emission_smp), uv).rgb);
+        #ifdef STOCHASTIC
+            color += customParams.emissionColor.rgb * sRGBToLinear(stochasticTexture(u_emissionTexture, u_emission_smp, stochastic).rgb);
+        #else
+            color += customParams.emissionColor.rgb * sRGBToLinear(texture(sampler2D(u_emissionTexture, u_emission_smp), uv).rgb);
+        #endif
     #endif
 
     g_finalColor = finalizeColor(vec4(color, base.a));

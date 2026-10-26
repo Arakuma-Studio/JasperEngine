@@ -144,12 +144,12 @@ std::string ImportTarget::toProjectRelative(const std::string& assetPath) const{
     const fs::path absolute = assetPath.empty() ? assetsDir : assetsDir / editor::FileUtils::pathFromUtf8(assetPath);
     const fs::path relative = absolute.lexically_relative(projectRoot);
     if (relative.empty())
-        return editor::FileUtils::genericPathToUtf8(absolute);
+        return editor::FileUtils::pathToGenericUtf8(absolute);
     if (relative == ".")
         return ".";
     if (*relative.begin() == "..")
-        return editor::FileUtils::genericPathToUtf8(absolute);
-    return editor::FileUtils::genericPathToUtf8(relative);
+        return editor::FileUtils::pathToGenericUtf8(absolute);
+    return editor::FileUtils::pathToGenericUtf8(relative);
 }
 
 fs::path ImportTarget::toAbsolute(const std::string& assetPath) const{
@@ -162,7 +162,7 @@ std::string ImportTarget::toAssetPath(const fs::path& path) const{
     const fs::path relative = absolute.lexically_relative(assetsDir);
     if (relative.empty() || relative == "." || *relative.begin() == "..")
         return "";
-    std::string text = editor::FileUtils::genericPathToUtf8(relative);
+    std::string text = editor::FileUtils::pathToGenericUtf8(relative);
     while (!text.empty() && text.back() == '/')
         text.pop_back();
     return text;
@@ -313,7 +313,7 @@ std::string jasperengine::editor::htmlui::relativeAssetPath(const std::string& f
     const fs::path relative = editor::FileUtils::pathFromUtf8(target).lexically_relative(fromDir);
     if (relative.empty())
         return target;
-    return editor::FileUtils::genericPathToUtf8(relative);
+    return editor::FileUtils::pathToGenericUtf8(relative);
 }
 
 std::string jasperengine::editor::htmlui::urlHash(const std::string& url, size_t digits){

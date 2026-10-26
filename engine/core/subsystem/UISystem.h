@@ -131,6 +131,11 @@ namespace jasperengine{
         bool isEntityChild(Entity child, Entity parent) const;
 
     public:
+        // An anchored element's offset is measured in its nearest layout parent's space,
+        // its position in its own parent's space
+        Vector2 parentToLayoutSpace(Entity entity, const Vector2& point) const;
+        Vector2 layoutToParentSpace(Entity entity, const Vector2& point) const;
+
         UISystem(Scene* scene);
         virtual ~UISystem();
 

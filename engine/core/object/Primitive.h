@@ -22,6 +22,11 @@ namespace jasperengine{
         void createPlane(float width, float depth);
         void createPlane(float width, float depth, unsigned int tiles);
 
+        // the plane split into segments x segments quads (1..255), for a surface the vertex
+        // stage displaces (library:water's WAVES)
+        void createGrid(float width, float depth, unsigned int segments);
+        void createGrid(float width, float depth, unsigned int segments, unsigned int tiles);
+
         void createWall(float width, float height);
         void createWall(float width, float height, unsigned int tiles);
 

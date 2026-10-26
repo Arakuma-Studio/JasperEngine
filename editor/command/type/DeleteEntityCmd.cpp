@@ -8,6 +8,7 @@
 #include "Stream.h"
 #include "Out.h"
 #include "util/CameraTextureLink.h"
+#include "component/FluidSimulationComponent.h"
 #include "util/ProjectUtils.h"
 #include "util/BackgroundRelease.h"
 #include "util/EntityClipboard.h"
@@ -596,11 +597,17 @@ bool editor::DeleteEntityCmd::execute(){
     recordTransformOrder();
 
     Scene* scene = sceneProject->scene;
-    // Only a deleted camera changes what render-to-texture links resolve to
-    std::vector<Entity> cameras;
+    // Only a deleted camera or fluid changes what texture links resolve to
+    std::vector<Entity> linkSources;
     auto cameraArray = scene->getComponentArray<CameraComponent>();
     for (size_t i = 0; i < cameraArray->size(); i++) {
-        cameras.push_back(cameraArray->getEntity(i));
+        linkSources.push_back(cameraArray->getEntity(i));
+    }
+    if (scene->isComponentRegistered<FluidSimulationComponent>()) {
+        auto fluidArray = scene->getComponentArray<FluidSimulationComponent>();
+        for (size_t i = 0; i < fluidArray->size(); i++) {
+            linkSources.push_back(fluidArray->getEntity(i));
+        }
     }
 
     // The tracked list is reconciled once after a run of destroyed GameObjects and instances,
@@ -682,8 +689,8 @@ bool editor::DeleteEntityCmd::execute(){
     }
     reconcile();
 
-    // unbind framebuffers of textures linked to deleted render-to-texture cameras
-    if (std::any_of(cameras.begin(), cameras.end(), [scene](Entity camera) { return !scene->isEntityCreated(camera); })) {
+    // unbind textures linked to deleted render-to-texture cameras and fluids
+    if (std::any_of(linkSources.begin(), linkSources.end(), [scene](Entity source) { return !scene->isEntityCreated(source); })) {
         CameraTextureLink::resolve(scene);
     }
     survivingEntities = sceneProject->entities;

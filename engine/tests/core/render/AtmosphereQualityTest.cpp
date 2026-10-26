@@ -165,9 +165,9 @@ TEST(Atmosphere, LegacyFogKeysUnchanged){
     inputs.normalTexture = true;
     const SubmeshShaderVariant distance = RenderSystem::getSubmeshShaderVariant(environment, inputs);
     // the fog's bit; a height fog adds no bit (the fogged variants evaluate it: u_fs_heightFog)
-    EXPECT_NE(distance.properties & (1u << 12), 0u);
-    // bit 5 is S10's 'Shq'
-    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 5), "Shq");
+    EXPECT_NE(distance.properties & (uint64_t(1) << 12), 0u);
+    // S10's 'Shq' is bit 33 (bit 5 is upstream's 'Sto')
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 33), "Shq");
 
     // the atmosphere's environment fields at their defaults change nothing
     MeshShaderEnvironment same = environment;

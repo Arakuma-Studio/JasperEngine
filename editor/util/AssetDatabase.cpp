@@ -5,6 +5,7 @@
 #include "io/AtomicFile.h"
 
 #include "Out.h"
+#include "util/FileUtils.h"
 #include "asset/AssetFileWrite.h"
 #include "asset/AssetMeta.h"
 #include "asset/AssetTypes.h"
@@ -35,6 +36,26 @@ namespace fs = std::filesystem;
 using Json = nlohmann::json;
 
 namespace {
+
+    // A cache's text. A file name in another encoding than UTF-8 can't be JSON: its entries are
+    // left out (read from disk again next time) instead of the dump throwing, which failed the
+    // project's load
+    std::string cacheText(Json& root, const char* listKey) {
+        try {
+            return root.dump() + "\n";
+        } catch (const Json::type_error&) {
+            Json kept = Json::array();
+            for (Json& item : root[listKey]) {
+                try {
+                    (void)item.dump();
+                    kept.push_back(std::move(item));
+                } catch (const Json::type_error&) {
+                }
+            }
+            root[listKey] = std::move(kept);
+            return root.dump(-1, ' ', false, Json::error_handler_t::replace) + "\n";
+        }
+    }
 
     constexpr int databaseCacheVersion = 1;
 
@@ -1157,7 +1178,7 @@ void editor::AssetDatabase::writeCache(const CacheSnapshot& snapshot) {
     root["caseInsensitive"] = snapshot.caseInsensitive;
     root["assets"] = assets;
     std::string error;
-    if (!assetio::writeFile(snapshot.file, root.dump() + "\n", assetio::Durability::Cache, &error)) {
+    if (!assetio::writeFile(snapshot.file, cacheText(root, "assets"), assetio::Durability::Cache, &error)) {
         Out::warning("Could not write the asset database cache: %s", error.c_str());
     }
     std::error_code ec;
