@@ -148,7 +148,7 @@ TEST(MeshPose, MatchesGpuSkinning){
             moved = std::max(moved, (cpu - modelMatrix * geometry.positions[layout.submeshes[0].base + vertex]).length());
             if (!(error <= 1e-4f)){
                 // what the CPU posed the vertex from
-                VertexPoseInput input;
+                picking::VertexPoseInput input;
                 std::string detail;
                 if (picking::readPoseInput(mesh, layout, 0, vertex, input)){
                     detail = " skinned " + std::to_string(input.skinned) + " morphs " + std::to_string(input.morphCount);
@@ -161,7 +161,7 @@ TEST(MeshPose, MatchesGpuSkinning){
         }
     }
     if (worst > 1e-4f){
-        const PoseParameters parameters = picking::poseParameters(mesh, 0);
+        const picking::PoseParameters parameters = picking::poseParameters(mesh, 0);
         std::string bones = "normAdjust " + std::to_string(parameters.normAdjustJoint) + " " + std::to_string(parameters.normAdjustWeight);
         for (size_t b = 0; b < parameters.bones.size(); b++){
             bones += "\nbone " + std::to_string(b) + " " + parameters.bones[b].toString();
