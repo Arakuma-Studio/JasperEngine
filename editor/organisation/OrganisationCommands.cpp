@@ -21,7 +21,7 @@ namespace {
 
     // project.yaml, for the shared data (label colours, project saved searches)
     bool saveProjectFile(Project* project, std::vector<std::string>& written) {
-        if (project->getProjectPath().empty() || project->isTempProject()) return true;
+        if (project->getProjectPath().empty() || project->isEditorTempProject()) return true;
         if (!project->saveProjectFile()) return false;
         written.push_back("project.yaml");
         return true;

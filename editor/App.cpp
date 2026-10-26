@@ -4301,7 +4301,7 @@ void editor::App::setupLayouts(){
     };
     host.currentUiScale = [this]() { return layoutScaleApplied ? layoutUiScale : mainViewportScale(); };
     host.projectPath = [this]() {
-        return (project.isTempProject() || project.getProjectPath().empty()) ? std::filesystem::path() : project.getProjectPath();
+        return (project.isEditorTempProject() || project.getProjectPath().empty()) ? std::filesystem::path() : project.getProjectPath();
     };
     host.promptUnsaved = [this](const std::string& title, const std::string& message, std::function<void()> onSave,
                                 std::function<void()> onDontSave) {
