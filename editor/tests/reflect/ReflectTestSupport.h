@@ -18,6 +18,7 @@
 #include <limits>
 #include <random>
 #include <set>
+#include <type_traits>
 #include <string>
 #include <vector>
 
@@ -212,10 +213,10 @@ namespace jasperengine::editor::test {
     // RenderSystem frees): freed once each
     class OwnedFramebuffers {
     public:
-        void keep(const void* comp, ComponentType type) {
-            if (type == ComponentType::CameraComponent) {
-                Framebuffer* framebuffer = static_cast<const CameraComponent*>(comp)->framebuffer;
-                if (framebuffer) framebuffers.insert(framebuffer);
+        template<typename T>
+        void keep(const T* comp) {
+            if constexpr (std::is_same_v<T, CameraComponent>) {
+                if (comp->framebuffer) framebuffers.insert(comp->framebuffer);
             }
         }
         ~OwnedFramebuffers() {

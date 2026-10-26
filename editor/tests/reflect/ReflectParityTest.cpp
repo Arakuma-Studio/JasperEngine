@@ -71,7 +71,7 @@ namespace reflect_parity_test {
         for (int i = 0; i < kSamples; i++) {
             RandomValues random(seed + static_cast<uint32_t>(i));
             T comp{};
-            owned.keep(&comp, type);
+            owned.keep(&comp);
             random.fillStruct(desc.body, &comp);
             const std::string expected = YAML::Dump(legacy(comp));
             const std::string actual = YAML::Dump(reflect::encode(desc, &comp, reflect::EncodeContext{}));
@@ -87,8 +87,8 @@ namespace reflect_parity_test {
             RandomValues random(seed + static_cast<uint32_t>(i));
             T authored{};
             T base{};
-            owned.keep(&authored, type);
-            owned.keep(&base, type);
+            owned.keep(&authored);
+            owned.keep(&base);
             random.fillStruct(desc.body, &authored);
             random.fillStruct(desc.body, &base);
             YAML::Node node = YAML::Load(YAML::Dump(legacyEncode(authored)));
@@ -100,8 +100,8 @@ namespace reflect_parity_test {
             reflect::DecodeContext ctx;
             ctx.old = &base;
             reflect::decode(desc, node, &actual, ctx, report);
-            owned.keep(&expected, type);
-            owned.keep(&actual, type);
+            owned.keep(&expected);
+            owned.keep(&actual);
 
             std::string difference;
             ASSERT_TRUE(sameSavedValues(desc.body, &expected, &actual, difference))
