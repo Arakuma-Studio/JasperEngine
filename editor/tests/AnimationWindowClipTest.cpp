@@ -34,7 +34,10 @@
 #include "animation/PreviewOwner.h"
 #include "command/CommandHistory.h"
 #include "command/type/CreateEntityCmd.h"
+#include "command/type/ModelClearCmd.h"
 #include "command/type/ModelLoadCmd.h"
+#include "component/ActionComponent.h"
+#include "component/AnimationComponent.h"
 #include "component/LatticeComponent.h"
 #include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
@@ -343,12 +346,12 @@ namespace {
             for (int i = 0; i < count; i++) frame(focused, dt);
         }
 
-        // the window's actions (AnimationWindow::testDrive); the state right after them, then a few
+        // the window's actions (AnimationWindowTestAccess::drive); the state right after them, then a few
         // editor frames (the window and the controller go on as between two user actions)
         Json act(const Json& actions) {
             Json out;
             std::string error;
-            EXPECT_TRUE(window->testDrive(actions, out, error)) << actions.dump() << ": " << error;
+            EXPECT_TRUE(AnimationWindowTestAccess::drive(*window, actions, out, error)) << actions.dump() << ": " << error;
             frames(3);
             return out;
         }
@@ -357,7 +360,7 @@ namespace {
         std::string refused(const Json& actions) {
             Json out;
             std::string error;
-            EXPECT_FALSE(window->testDrive(actions, out, error)) << actions.dump() << " was accepted";
+            EXPECT_FALSE(AnimationWindowTestAccess::drive(*window, actions, out, error)) << actions.dump() << " was accepted";
             frames(3);
             return error;
         }
@@ -1024,7 +1027,7 @@ TEST_F(AnimationWindowClipTest, RecordSources) {
         if (p.get<std::string>().rfind("Jelly", 0) != 0 || !hit.empty()) continue;
         Json out;
         std::string error;
-        if (window->testDrive({{"morph", {{"entities", {"Hero/" + p.get<std::string>()}}, {"index", 0}, {"value", 0.8}}}}, out, error)) {
+        if (AnimationWindowTestAccess::drive(*window, {{"morph", {{"entities", {"Hero/" + p.get<std::string>()}}, {"index", 0}, {"value", 0.8}}}}, out, error)) {
             hit = p;
             st = out;
         }
@@ -1152,4 +1155,133 @@ TEST_F(AnimationWindowClipTest, CurvesView) {
     st = act({{"record", false}, {"preview", false}, {"view", "dopesheet"}});
     EXPECT_TRUE(!st["recording"].get<bool>() && st["view"] == "dopesheet");
     EXPECT_TRUE(close(position("Hero"), rest)) << "restored";
+}
+
+// ---------------------------------------------------------------------------- final review fixes
+
+namespace {
+
+    // a GameObject under `parent`, tracked by the scene (as a Hierarchy drop puts it there)
+    Entity addTracked(SceneProject* sceneProject, Entity parent, const std::string& name, const Vector3& position) {
+        Scene* s = sceneProject->scene;
+        const Entity entity = s->createEntity();
+        s->setEntityName(entity, name);
+        Transform transform;
+        transform.position = position;
+        s->addComponent<Transform>(entity, transform);
+        if (parent != NULL_ENTITY) s->addEntityChild(parent, entity, false);
+        sceneProject->entities.push_back(entity);
+        return entity;
+    }
+
+    // an entity Animation of `target`: frames starting together (duration 1 s each), all stored on track 0
+    Entity addEntityAnimation(SceneProject* sceneProject, Entity target, const std::string& name, size_t frames) {
+        Scene* s = sceneProject->scene;
+        const Entity animation = s->createEntity();
+        s->setEntityName(animation, name);
+        ActionComponent action;
+        action.target = target;
+        s->addComponent<ActionComponent>(animation, action);
+        AnimationComponent component;
+        for (size_t i = 0; i < frames; i++) {
+            const Entity tween = s->createEntity();
+            s->setEntityName(tween, name + " tween " + std::to_string(i));
+            ActionComponent tweenAction;
+            tweenAction.target = target;
+            s->addComponent<ActionComponent>(tween, tweenAction);
+            sceneProject->entities.push_back(tween);
+            ActionFrame frame;
+            frame.startTime = 0.0f;
+            frame.duration = 1.0f;
+            frame.action = tween;
+            frame.track = 0;
+            component.actions.push_back(frame);
+        }
+        s->addComponent<AnimationComponent>(animation, component);
+        sceneProject->entities.push_back(animation);
+        return animation;
+    }
+
+}
+
+// Final review I1: Clear Model during a clip preview saves the rest. What hangs on a model node keeps
+// its rest world (not the previewed spine's), and undoing the clear brings back the rest values
+TEST_F(AnimationWindowClipTest, ClearModelDuringAPreviewKeepsTheRest) {
+    heroClip();
+    const Entity spine = entity(std::string("Hero/") + SPINE);   // the scene path: the model GameObject first
+    ASSERT_NE(spine, NULL_ENTITY);
+    const Entity held = addTracked(scene(), spine, "Held", Vector3(0, 0, 1));
+    frames(2);
+    Scene* s = scene()->scene;
+
+    // the reference: a clear without a preview, undone
+    ASSERT_TRUE(sceneHistory()->addCommand(new ModelClearCmd(project(), sceneId, entity("Hero"))));
+    frames(2);
+    const Vector3 restLocal = s->getComponent<Transform>(held).position;
+    const Quaternion restRotation = s->getComponent<Transform>(held).rotation;
+    ASSERT_TRUE(undoScene());
+    frames(3);
+    const Vector3 restWorld = s->getComponent<Transform>(held).worldPosition;
+
+    // the spine previewed at 30 degrees (1 s), then Clear Model
+    Json st = act({{"entity", "Hero"}, {"time", 1.0}, {"preview", true}});
+    ASSERT_TRUE(st["preview"].get<bool>());
+    frames(2);
+    ASSERT_FALSE(close(s->getComponent<Transform>(held).worldPosition, restWorld)) << "the preview moves the held prop";
+    ASSERT_TRUE(sceneHistory()->addCommand(new ModelClearCmd(project(), sceneId, entity("Hero"))));
+    frames(3);
+    EXPECT_FALSE(state()["preview"].get<bool>()) << "the clear stopped the preview first";
+    EXPECT_TRUE(close(s->getComponent<Transform>(held).position, restLocal))
+        << "the held prop keeps its rest world: " << s->getComponent<Transform>(held).position.toString();
+    EXPECT_TRUE(s->getComponent<Transform>(held).rotation == restRotation) << "no previewed rotation";
+
+    // undo during another preview: the restored model is the rest, and the preview stops before it
+    ASSERT_TRUE(undoScene());
+    frames(3);
+    EXPECT_TRUE(close(s->getComponent<Transform>(held).worldPosition, restWorld)) << "back under the spine at its rest";
+    st = act({{"entity", "Hero"}, {"time", 1.0}, {"preview", true}});
+    ASSERT_TRUE(st["preview"].get<bool>());
+    ASSERT_TRUE(redoScene());
+    frames(2);
+    ASSERT_TRUE(undoScene());
+    frames(3);
+    act({{"preview", false}});
+    EXPECT_TRUE(close(s->getComponent<Transform>(held).worldPosition, restWorld)) << "the rest after redo + undo under a preview";
+}
+
+// Final review M6: the entity mode's dropdown entries (R31) and the explicit frame move, both cases:
+// an entity Animation of Robot (no Animation Player: Create New Clip... only), and one of a Hero bone
+// shown while the bone is selected (the Hero's player's states, then Create New Clip...)
+TEST_F(AnimationWindowClipTest, EntityModeEntriesAndFrameMove) {
+    heroClip();
+    addEntityAnimation(scene(), entity("Robot"), "RobotTweens", 2);
+    frames(2);
+    const bool wasModified = modified();
+    Json st = act({{"entity", "Robot"}, {"entity_mode_entries", true}});
+    EXPECT_EQ(st["mode"], "entity") << st.dump();
+    EXPECT_EQ(st["entity_animation"], "RobotTweens");
+    EXPECT_EQ(st["entity_mode_entries"], Json::array({"Create New Clip..."}));
+    EXPECT_EQ(st["entity_lanes"], Json::array({0, 1})) << "laid on two lanes for display";
+    EXPECT_EQ(st["entity_tracks"], Json::array({0, 0})) << "stored tracks unchanged";
+    EXPECT_EQ(modified(), wasModified) << "the lanes are view only";
+
+    // the second frame released on lane 2: one scene step
+    st = act({{"entity_move_frame", {{"index", 1}, {"lane", 2}}}});
+    EXPECT_EQ(st["entity_tracks"], Json::array({0, 2}));
+    EXPECT_TRUE(modified());
+    ASSERT_TRUE(undoScene());
+    st = state();
+    EXPECT_EQ(st["entity_tracks"], Json::array({0, 0})) << "one undo step";
+    EXPECT_NE(refused({{"entity_move_frame", {{"index", 5}, {"lane", 1}}}}).find("no such frame"), std::string::npos);
+
+    // a Hero bone's entity Animation shown with the bone selected: the bone's player is the Hero's
+    const std::string spinePath = std::string("Hero/") + SPINE;
+    addEntityAnimation(scene(), entity(spinePath), "SpineTweens", 1);
+    frames(2);
+    st = act({{"entity", spinePath}});
+    EXPECT_EQ(st["mode"], "clip") << "a GameObject under a player opens clip mode";
+    st = act({{"entity_animation", "SpineTweens"}, {"entity_mode_entries", true}});
+    EXPECT_EQ(st["mode"], "entity");
+    EXPECT_EQ(st["entity_animation"], "SpineTweens");
+    EXPECT_EQ(st["entity_mode_entries"], Json::array({"hero_clip (clip)", "Create New Clip..."}));
 }

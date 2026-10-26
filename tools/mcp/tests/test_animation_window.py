@@ -10,10 +10,12 @@ Covered here, where the App's key routing, focus and real mouse input matter:
 - R5b: real Ctrl+Z / Ctrl+Y go to the project history while the newest step is a clip commit the window
   made (K, Delete, Ctrl+D), to the scene's when a scene step is newer;
 - the window's keys act only while it is focused (K with the Scene view focused keys nothing);
+- a real Ctrl+Z during a Physics Placement gesture cancels the gesture even when a clip key is the
+  newest step (the key stays);
 - the playhead shortcuts (. , Alt+. Alt+, Space) on the focused window;
 - I2: a real right-click on a track row's label opens the row menu, whose Retarget... opens its popup;
 - R31: the entity mode's lanes are view only (showing them writes nothing) and a real frame drag to
-  another lane is one scene step writing that frame's track;
+  another lane is one scene step writing that frame's track; its dropdown lists the clip entries;
 - R6 / R7: a save during the entity preview writes the unpreviewed scene and stops it; a clip preview
   of a hierarchy the entity preview writes (also through a nested Animation, I9) stops it.
 """
@@ -44,7 +46,10 @@ S: dict = {}
 
 def xdo(ed: Editor, *args: str) -> str:
     if not shutil.which("xdotool"):
-        harness.skip("xdotool is not installed")
+        # agents review M5: these tests carry the window's real-input coverage (no editor test hook):
+        # a host without xdotool fails them instead of skipping quietly
+        raise harness.TestFailure("xdotool is not installed: the Animation window's real-input tests need it with the "
+                                  "harness' Xvfb (install xdotool, e.g. apt install xdotool)")
     if not getattr(ed, "_xvfb", None) or not ed._xvfb.display:
         harness.skip("needs the harness' Xvfb (xvfb='harness')")
     env = dict(os.environ, DISPLAY=ed._xvfb.display)
@@ -243,6 +248,53 @@ async def test_keys_only_while_focused(ed: Editor):
     ed.check_eq(clip_keys(ed), before, "K in the Scene view keyed nothing")
 
 
+async def test_undo_cancels_a_physics_gesture_before_a_clip_key(ed: Editor):
+    """Final review M3: with a clip commit the newest step (K in the window), a real Ctrl+Z during a
+    Physics Placement gesture of the Scene view cancels the gesture (its rule since before clips:
+    the scene history's undo cancels it) and leaves the clip's key."""
+    await ed.call("create_entity", name="Dropper", type="cube", position=[3, 4, 3])
+    start = await position(ed, "Dropper")
+    await ed.call("select_entities", entities=["Hero"])
+    await focus_x(ed)
+    await ed.call("preview_animation", animation="Hero", action="seek", time=0.5)
+    await ed.call("preview_animation", animation="Hero", action="stop")
+    await focus_x(ed)
+    await key(ed, "k")
+    keyed = clip_keys(ed)
+    ed.check_eq(keyed, [0.0, 0.1, 0.5, 1.0], "K keyed the root at 0.5: a clip commit is the newest step")
+    await ed.call("frame_entity", entity="Dropper")
+    await ed.call("select_entities", entities=["Dropper"])
+    await focus_x(ed, "scene")
+    # the pointer over the Scene view, G: Physics on; holding Space drops the selection
+    xdo(ed, "mousemove", "800", "300")
+    await asyncio.sleep(0.3)
+    xdo(ed, "key", "g")
+    await asyncio.sleep(0.3)
+    xdo(ed, "keydown", "space")
+    try:
+        moved = False
+        for _ in range(100):
+            if not close(await position(ed, "Dropper"), start):
+                moved = True
+                break
+            await asyncio.sleep(0.05)
+        ed.check(moved, "holding Space drops the selection (a running Physics Placement gesture)")
+        await key(ed, "ctrl+z")
+        ed.check(close(await position(ed, "Dropper"), start, 1e-4), "Ctrl+Z cancelled the gesture: Dropper back where it was")
+        ed.check_eq(clip_keys(ed), keyed, "the clip's key is still there (the undo went to the gesture)")
+    finally:
+        xdo(ed, "keyup", "space")
+    await ed.call("wait", frames=20)
+    ed.check(close(await position(ed, "Dropper"), start, 1e-4), "nothing committed after the release")
+    xdo(ed, "key", "g")
+    await ed.call("wait", frames=4)
+    # the key goes (project undo), and Dropper with it
+    await ed.call("undo", scope="project")
+    ed.check_eq(clip_keys(ed), [0.0, 0.1, 1.0], "the key undone")
+    await ed.call("delete_entities", entities=["Dropper"])
+    await saved_scene(ed)   # (the next tests check the scene stays unmodified)
+
+
 async def test_playhead_shortcuts_while_focused(ed: Editor):
     await ed.call("preview_animation", animation="Hero", action="seek", time=0.0)
     await focus_x(ed)
@@ -319,6 +371,24 @@ async def test_entity_mode_lanes_are_view_only_and_a_frame_drag_moves_one(ed: Ed
     ed.check_eq(saved_tracks(await saved_scene(ed), "RobotTweens"), [0, 2], "moved where dropped")
     await ed.call("undo", scope="scene")
     ed.check_eq(saved_tracks(await saved_scene(ed), "RobotTweens"), [0, 0], "one undo step")
+
+
+async def test_entity_mode_dropdown_lists_the_clip_entries(ed: Editor):
+    """R31 (final review M6): with a GameObject selected that an entity Animation animates (Robot, no
+    Animation Player), a real click on the entity mode's dropdown shows the clip entries above the
+    entity Animations: Create New Clip... only (a second click closes it, nothing changes)."""
+    await ed.call("select_entities", entities=["Robot"])
+    await saved_scene(ed)
+    await focus_x(ed)
+    combo = await ed.ui_rect("entity.animationCombo")
+    ed.check(combo, f"entity mode shows its dropdown: {sorted(k for k in ed.ui_items() if k.startswith('entity.'))}")
+    await click(ed, combo)
+    entry = await ed.ui_rect("entity.clipEntry.0")
+    ed.check(entry and center(entry)[1] > center(combo)[1], f"the dropdown's first entry is below it: {entry} {combo}")
+    ed.check(not await ed.ui_rect("entity.clipEntry.1", timeout=1.0), "one clip entry (Create New Clip...): Robot has no player")
+    await click(ed, combo)
+    ed.check(not await ed.ui_rect("entity.clipEntry.0", timeout=1.0), "a second click closes the dropdown")
+    ed.check(not await modified(ed), "opening the dropdown changes nothing")
 
 
 async def test_save_during_the_entity_preview_writes_the_unpreviewed_scene(ed: Editor):

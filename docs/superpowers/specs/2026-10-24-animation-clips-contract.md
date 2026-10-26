@@ -40,13 +40,13 @@ Namespaces: types in public signatures live in `jasperengine` (`AnimationClip`, 
 | `animation/PreviewOwner.h` | one pose owner per root; token 0 is never valid | stub grants valid tokens | T3a (registry), T2c (Inspector action preview acquires) |
 | `animation/AnimationClipInspectorHooks.h` | Inspector buttons; Project window double-click uses `openClip(project, 0, NULL_ENTITY, path)` | — | T2c calls; T2d/T3 set |
 | `animation/AnimationClipController.h` | clip mode without UI; drag API (`beginKeyDrag/updateKeyDrag/endKeyDrag`), refs returned by edits, `findKey`, `release` | `findKey`, `shared` / `release` | T3a |
-| `animation/AnimationClipAppHooks.h` | App/ViewTools wiring hooks + `ClipUndoFocus` | — (every call site wired) | setters per the table below |
+| `animation/AnimationClipAppHooks.h` | App/ViewTools wiring hooks + the undo routing helpers (`clipUndoGoesToProject`; `ClipUndoFocus` removed in F2: the routing never used focus) | — (every call site wired) | setters per the table below |
 
 ## Ownership (who does what; one owner each)
 
 | Item | Where | Owner |
 |---|---|---|
-| App call sites: stopTransientPreviews (entity + clip mode), undo routing (`LastFocusedWindow::AnimationClip`, `ClipUndoFocus`), toolbar/scene keys (`takesKeys`; Record keeps scene keys but undo), scene close, project close and shutdown (`projectClosed`), Assets > Create > Animation Clip (hidden until `createClipAsset`), `App::dispatchClipDrop` | `editor/App.{h,cpp}` | T0 (done) |
+| App call sites: stopTransientPreviews (entity + clip mode), undo routing (`LastFocusedWindow::AnimationClip`, `clipUndoGoesToProject`: a Physics Placement gesture's undo first), toolbar/scene keys (`takesKeys`; Record keeps scene keys but undo), scene close, project close and shutdown (`projectClosed`), Assets > Create > Animation Clip (hidden until `createClipAsset`), `App::dispatchClipDrop` | `editor/App.{h,cpp}` | T0 (done) |
 | `AnimationWindow::stopTransientPreviews` (entity mode) | AnimationWindow | T3b (stub by T0) |
 | hook setters `stopTransientPreviews`, `ownsUndo`, `takesKeys`, `sceneClosed`, `projectClosed` | AnimationClipController | T3a |
 | `createClipAsset`, Project window double-click → `openClip`, `Project::setInspectedAsset` on click, `ProjectWindow::getSelectedPaths` users, `findClipUsers` | ProjectWindow, document | T2b |

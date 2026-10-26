@@ -30,7 +30,6 @@
 #include "animation/ClipValidation.h"
 #include "ecs/Entity.h"
 #include "imgui.h"
-#include "json.hpp"
 #include "math/Vector3.h"
 
 #include <cstdint>
@@ -51,7 +50,12 @@ namespace jasperengine::editor{
     class Project;
     struct SceneProject;
 
+    // editor/tests/AnimationWindowClipDriver.h: the editor tests' driver of the clip mode (its
+    // actions by name, its state as JSON)
+    struct AnimationWindowClipTestAccess;
+
     class AnimationWindowClip{
+        friend struct AnimationWindowClipTestAccess;
     public:
         // the key rows or the curves (AnimationWindowClipCurves.cpp)
         enum class View{ Dopesheet, Curves };
@@ -117,16 +121,7 @@ namespace jasperengine::editor{
         // the App registers it right after creating the ImGui context (AnimationWindowClipRecord.cpp)
         static void registerSettingsHandler();
 
-        // The editor tests' driver (editor/tests/AnimationWindowClipDriver.h, defined in the test
-        // binary only: the editor never calls these and has no test hook): `actions` run by name
-        // the functions the window's buttons, menus and shortcuts run; the state as JSON
-        bool testDrive(SceneProject* sceneProject, const nlohmann::json& actions, nlohmann::json& out, std::string& error);
-        nlohmann::json testState(SceneProject* sceneProject, bool brief = false);
-
     private:
-        // the curves list of testState: {track, component, label, visible, key_values, selected}
-        nlohmann::json testCurves() const;
-
         struct Row{
             enum class Kind{ Summary, Track, Component };
             Kind kind = Kind::Track;

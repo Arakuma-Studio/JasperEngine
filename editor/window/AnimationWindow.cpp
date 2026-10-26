@@ -1777,7 +1777,9 @@ void editor::AnimationWindow::drawToolbar(float width, AnimationComponent& anim,
     float desiredWidth = textWidth + arrowWidth + padding + 10.0f;
 
     ImGui::SetNextItemWidth(std::max(minWidth, desiredWidth));
-    if (ImGui::BeginCombo("##anim_entity_combo", currentLabel.c_str())) {
+    const bool comboOpen = ImGui::BeginCombo("##anim_entity_combo", currentLabel.c_str());
+    if (!comboOpen) UIProbe::item("entity.animationCombo");   // (open: the popup is the current window)
+    if (comboOpen) {
         // the selected GameObject's clips (its Animation Player's states) and Create New Clip...
         const std::vector<Entity> sceneSelection = project->getSelectedEntities(sceneProject->id);
         if (!sceneSelection.empty() && clipMode->drawEntityModeEntries(sceneProject, sceneSelection.front())) {

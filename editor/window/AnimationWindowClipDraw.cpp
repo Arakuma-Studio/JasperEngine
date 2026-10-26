@@ -356,6 +356,7 @@ bool AnimationWindowClip::drawEntityModeEntries(SceneProject* sceneProject, Enti
             entityModeState = states[i];
             picked = true;
         }
+        UIProbe::item("entity.clipEntry." + std::to_string(i));
         ImGui::PopID();
     }
     const bool canCreate = sceneProject->playState == ScenePlayState::STOPPED;
@@ -363,6 +364,7 @@ bool AnimationWindowClip::drawEntityModeEntries(SceneProject* sceneProject, Enti
         entityModeRequest = EntityModeRequest::Create;
         picked = true;
     }
+    UIProbe::item("entity.clipEntry." + std::to_string(states.size()));
     ImGui::Separator();
     return picked;
 }

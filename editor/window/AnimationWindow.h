@@ -7,8 +7,6 @@
 #include "imgui.h"
 #include "yaml-cpp/yaml.h"
 
-#include "json.hpp"
-
 #include <memory>
 #include <unordered_set>
 
@@ -16,7 +14,12 @@ namespace jasperengine::editor{
 
     class AnimationWindowClip;
 
+    // editor/tests/AnimationWindowClipDriver.h: the editor tests' driver of the window (the
+    // selection, entity Animation, clip, drop and entity preview actions, the explicit lane move)
+    struct AnimationWindowTestAccess;
+
     class AnimationWindow{
+        friend struct AnimationWindowTestAccess;
     private:
 
         Project* project;
@@ -198,16 +201,8 @@ namespace jasperengine::editor{
         void acceptClipDrop(SceneProject* sceneProject);
         void installClipHooks();
 
-        // the explicit lane move of the editor tests' driver (a frame drag released on `lane`)
-        bool testMoveFrameToLane(SceneProject* sceneProject, size_t frameIndex, uint32_t lane, std::string* error);
-
     public:
         static constexpr const char* WINDOW_NAME = "Animation";
-
-        // The editor tests' driver (editor/tests/AnimationWindowClipDriver.h, defined in the test
-        // binary only: the editor never calls it): the selection / entity Animation / clip / drop /
-        // entity preview of the window, then the clip mode's actions (AnimationWindowClip::testDrive)
-        bool testDrive(const nlohmann::json& actions, nlohmann::json& out, std::string& error);
 
         AnimationWindow(Project* project);
         ~AnimationWindow();
