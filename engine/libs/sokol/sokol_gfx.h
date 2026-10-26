@@ -9982,8 +9982,11 @@ _SOKOL_PRIVATE void _sg_gl_init_pixelformats(bool has_bgra) {
     _sg_pixelformat_srm(&_sg.formats[SG_PIXELFORMAT_RGBA32SI]);
     _sg_pixelformat_srmd(&_sg.formats[SG_PIXELFORMAT_DEPTH]);
     _sg_pixelformat_srmd(&_sg.formats[SG_PIXELFORMAT_DEPTH_STENCIL]);
-    // JasperEngine: core 16-bit packed formats of GL 3.3, GLES 3.0 and WebGL2 (PATCHES.md)
+    // JasperEngine: core 16-bit packed formats of GL 3.3, GLES 3.0 and WebGL2 (PATCHES.md); GL 3.3
+    // core stores RGB565 as GL_RGB5 (5-bit green, lossy), so only GLES / WebGL2 report it
+    #if !defined(SOKOL_GLCORE)
     _sg_pixelformat_sf(&_sg.formats[SG_PIXELFORMAT_RGB565]);
+    #endif
     _sg_pixelformat_sf(&_sg.formats[SG_PIXELFORMAT_RGBA4]);
 }
 

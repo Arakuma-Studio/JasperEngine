@@ -17,6 +17,8 @@
 
 #include <array>
 #include <cstring>
+#include <map>
+#include <utility>
 #include <vector>
 
 using namespace jasperengine;
@@ -221,5 +223,37 @@ TEST(TextureFallback, UnavailableFormatsFailWithTheReason){
     if (!TextureDecode::canDecode(GpuTextureFormat::ASTC_4x4)){
         EXPECT_FALSE(data.loadKtx2(file.data(), (unsigned int)file.size(), 0, &none, false, &error));
         EXPECT_NE(error.find("ASTC_4x4 is not supported by this GPU"), std::string::npos) << error;
+    }
+}
+
+TEST(TextureFallback, PackedFormatsTheDeviceCannotSampleWidenToRgba8){
+    // desktop GL 3.3 core does not report RGB565 (sokol PATCHES.md): a file cooked to it still
+    // loads, widened to RGBA8 with each channel's bits replicated
+    using F = GpuTextureFormat;
+    const TextureFormatSupport noPacked = everythingBut({F::RGB565, F::RGBA4});
+    const uint16_t red565 = (uint16_t)((31 << 11) | (32 << 5) | 1);
+    const uint16_t half4444 = (uint16_t)((15 << 12) | (8 << 8) | (1 << 4) | 7);
+    for (const auto& [format, packed] : {std::pair<F, uint16_t>{F::RGB565, red565}, std::pair<F, uint16_t>{F::RGBA4, half4444}}){
+        SCOPED_TRACE(gpuFormatName(format));
+        std::vector<uint8_t> level(4 * 4 * 2);
+        for (size_t i = 0; i < 16; i++)
+            std::memcpy(level.data() + i * 2, &packed, 2);
+        const std::vector<uint8_t> file = writeFile(format, 4, 4, {level});
+        TextureData data;
+        std::string error;
+        ASSERT_TRUE(data.loadKtx2(file.data(), (unsigned int)file.size(), 0, &noPacked, false, &error)) << error;
+        EXPECT_EQ(data.getGpuFormat(), F::RGBA8);
+        ASSERT_EQ(data.getLevels()[0].size, (size_t)4 * 4 * 4);
+        const uint8_t* t = data.getLevels()[0].data;
+        if (format == F::RGB565){
+            EXPECT_EQ(t[0], 255); EXPECT_EQ(t[1], (32 << 2) | (32 >> 4)); EXPECT_EQ(t[2], (1 << 3) | (1 >> 2)); EXPECT_EQ(t[3], 255);
+        }else{
+            EXPECT_EQ(t[0], 255); EXPECT_EQ(t[1], 0x88); EXPECT_EQ(t[2], 0x11); EXPECT_EQ(t[3], 0x77);
+        }
+        // a device that samples it keeps the 16-bit texels
+        TextureData native;
+        const TextureFormatSupport all = everythingBut({});
+        ASSERT_TRUE(native.loadKtx2(file.data(), (unsigned int)file.size(), 0, &all, false, &error)) << error;
+        EXPECT_EQ(native.getGpuFormat(), format);
     }
 }

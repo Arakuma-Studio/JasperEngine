@@ -38,7 +38,7 @@ namespace jasperengine {
         static void registerDecoder(GpuTextureFormat format, Decoder decoder);
 
         // RGBA8 -> RGB565 / RGBA4 / RGBA8, R8/RG8 -> themselves; RGBA16F -> RGBA8 (display-encoded
-        // values clamped): the last-resort conversions
+        // values clamped); RGB565 / RGBA4 -> RGBA8 (bits replicated): the last-resort conversions
         static bool convert(GpuTextureFormat from, GpuTextureFormat to, int width, int height, const uint8_t* data, size_t size,
                             std::vector<uint8_t>& out);
     };

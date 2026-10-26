@@ -183,6 +183,28 @@ bool TextureDecode::convert(GpuTextureFormat from, GpuTextureFormat to, int widt
             return true;
         }
     }
+    if ((from == GpuTextureFormat::RGB565 || from == GpuTextureFormat::RGBA4) && to == GpuTextureFormat::RGBA8){
+        // each channel's bits replicated into the low bits: 0 and the maximum stay exact
+        out.resize(n * 4);
+        for (size_t i = 0; i < n; i++){
+            uint16_t v;
+            std::memcpy(&v, data + i * 2, 2);
+            uint8_t* t = out.data() + i * 4;
+            if (from == GpuTextureFormat::RGB565){
+                const int r = (v >> 11) & 31, g = (v >> 5) & 63, b = v & 31;
+                t[0] = (uint8_t)((r << 3) | (r >> 2));
+                t[1] = (uint8_t)((g << 2) | (g >> 4));
+                t[2] = (uint8_t)((b << 3) | (b >> 2));
+                t[3] = 255;
+            }else{
+                for (int c = 0; c < 4; c++){
+                    const int q = (v >> (12 - 4 * c)) & 15;
+                    t[c] = (uint8_t)((q << 4) | q);
+                }
+            }
+        }
+        return true;
+    }
     if (from != GpuTextureFormat::RGBA8 || (to != GpuTextureFormat::RGB565 && to != GpuTextureFormat::RGBA4))
         return false;
     out.resize(n * 2);

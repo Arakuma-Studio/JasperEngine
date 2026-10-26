@@ -23,7 +23,9 @@ Cooked textures (`docs/textures.md`) need ASTC block sizes beyond 4x4 on mobile 
   `WEBGL_compressed_texture_astc` (`_sg_gl_init_pixelformats_astc`). RGB565 uploads as
   `GL_RGB` / `GL_UNSIGNED_SHORT_5_6_5` into `GL_RGB565` (`GL_RGB5` on GL 3.3 core, which has no
   `GL_RGB565` before 4.1), RGBA4 as `GL_RGBA` / `GL_UNSIGNED_SHORT_4_4_4_4` into `GL_RGBA4`;
-  both are core formats, sampled and filtered everywhere.
+  both are core formats, sampled and filtered. GL 3.3 core does not report RGB565 as supported:
+  a driver may keep `GL_RGB5` at 5 bits of green, which no longer matches the data (the engine's
+  texture format test samples it), so desktop GL takes RGBA8 where GLES and WebGL2 take RGB565.
 - Metal: the `MTLPixelFormatASTC_NxN_{LDR,sRGB}` mappings, enabled on iOS with ASTC 4x4.
 - Vulkan: the `VK_FORMAT_ASTC_NxN_{UNORM,SRGB}_BLOCK` mappings; support is queried per format with
   `vkGetPhysicalDeviceFormatProperties` like every other format.

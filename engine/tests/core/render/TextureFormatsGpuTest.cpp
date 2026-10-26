@@ -6,7 +6,8 @@
 // loaded as the runtime loads it: natively when the device samples the format, else through the
 // R11 fallback. Each level is drawn one texel per pixel with nearest sampling, read back, and
 // compared with the CPU decode: within 1/255 per channel (the shader's sRGB decode and encode
-// round trip is the only change). Runs on the headless device (glcore, and Vulkan on lavapipe).
+// round trip is the only change; 2/255 for a native S3TC decode, whose interpolation is the
+// implementation's). Runs on the headless device (glcore, and Vulkan on lavapipe).
 
 #include "Engine.h"
 #include "Scene.h"
@@ -17,6 +18,7 @@
 #include "texture/TextureData.h"
 #include "texture/TextureDecode.h"
 #include "texture/TexturePrepare.h"
+#include "render/SystemRender.h"
 
 #include "GpuEnvironment.h"
 #include "LogCapture.h"
@@ -96,7 +98,9 @@ namespace {
                 const double linear = std::pow(formatChannel(decoded, level + i * stride, c), 2.2);
                 out[i * 4 + c] = (uint8_t)std::lround(std::clamp(std::pow(linear, 1.0 / 2.2), 0.0, 1.0) * 255.0);
             }
-            out[i * 4 + 3] = 255;
+            // the texel's alpha: a translucent one blends with the background (not compared)
+            const bool hasAlpha = decoded == GpuTextureFormat::RGBA8 || decoded == GpuTextureFormat::RGBA4 || decoded == GpuTextureFormat::RGBA16F;
+            out[i * 4 + 3] = hasAlpha ? (uint8_t)std::lround(std::clamp(formatChannel(decoded, level + i * stride, 3), 0.0, 1.0) * 255.0) : 255;
         }
         return out;
     }
@@ -111,6 +115,8 @@ namespace {
                 for (int x = 0; x < width; x++){
                     const int sx = (flip & 1) ? width - 1 - x : x;
                     const int sy = (flip & 2) ? height - 1 - y : y;
+                    if (expected[((size_t)sy * width + sx) * 4 + 3] != 255)
+                        continue;
                     for (int c = 0; c < 3; c++){
                         const int d = std::abs((int)actual[((size_t)y * width + x) * 4 + c] - (int)expected[((size_t)sy * width + sx) * 4 + c]);
                         worst = std::max(worst, d);
@@ -154,10 +160,17 @@ TEST_F(TextureFormatsGpu, CookedFixturesSampleLikeTheirCpuDecode){
     std::sort(fixtures.begin(), fixtures.end());
     ASSERT_GE(fixtures.size(), (size_t)kGpuTextureFormatCount) << "fixtures/texture_formats is incomplete";
 
+    // the device's own formats, then a device that samples no compressed format (R11's fallback)
+    const TextureFormatSupport device = SystemRender::getTextureFormatSupport();
+    TextureFormatSupport uncompressed;
+    for (GpuTextureFormat f : {GpuTextureFormat::R8, GpuTextureFormat::RG8, GpuTextureFormat::RGBA8, GpuTextureFormat::R16,
+                               GpuTextureFormat::RGBA16F})
+        uncompressed.set(f, SystemRender::isTextureFormatSupported(f));
     int native = 0, fallback = 0;
+    for (int pass = 0; pass < 2; pass++)
     for (const fs::path& path : fixtures){
         const std::string name = path.stem().string();
-        SCOPED_TRACE(name);
+        SCOPED_TRACE(name + (pass == 0 ? " (device formats)" : " (no compressed format)"));
         const std::vector<uint8_t> bytes = formatRead(path);
         const std::vector<uint8_t> decoded = formatRead(fs::path(path).replace_extension(".decoded"));
         Ktx2Info info;
@@ -182,7 +195,7 @@ TEST_F(TextureFormatsGpu, CookedFixturesSampleLikeTheirCpuDecode){
             TextureDecode::registerDecoder(info.format, formatFixtureDecoder);
 
         TextureData data;
-        ASSERT_TRUE(data.loadKtx2(bytes.data(), (unsigned int)bytes.size(), 0, nullptr, false, &error)) << error;
+        ASSERT_TRUE(data.loadKtx2(bytes.data(), (unsigned int)bytes.size(), 0, pass == 0 ? &device : &uncompressed, false, &error)) << error;
         const bool isNative = data.getGpuFormat() == info.format;
         (isNative ? native : fallback)++;
         std::printf("[ formats ] %-10s %s\n", name.c_str(), isNative ? "native" : (std::string("fallback ") + gpuFormatName(data.getGpuFormat())).c_str());
@@ -191,7 +204,7 @@ TEST_F(TextureFormatsGpu, CookedFixturesSampleLikeTheirCpuDecode){
         plane.createPlane(2.0f, 2.0f);
         plane.setReceiveLights(false);
         Material material = plane.getMaterial();
-        material.baseColorTexture = Texture("texture-formats-" + name, data);
+        material.baseColorTexture = Texture("texture-formats-" + name + "-" + std::to_string(pass), data);
         material.baseColorTexture.setMinFilter(TextureFilter::NEAREST_MIPMAP_NEAREST);
         material.baseColorTexture.setMagFilter(TextureFilter::NEAREST);
         plane.setMaterial(material);
@@ -210,7 +223,10 @@ TEST_F(TextureFormatsGpu, CookedFixturesSampleLikeTheirCpuDecode){
             std::vector<uint8_t> actual;
             ASSERT_TRUE(readTexture(target.getRender().getColorTexture(), w, h, actual));
             const std::vector<uint8_t> expected = formatExpected(decodedFormat, decoded.data() + offsets[level], w, h);
-            EXPECT_LE(formatDifference(actual, expected, w, h), 1);
+            // S3TC leaves the palette's interpolation to the implementation (the D3D spec allows
+            // ~3% of the endpoint range): a native BC1 / BC3 decode may round differently by 1
+            const bool s3tc = isNative && (info.format == GpuTextureFormat::BC1 || info.format == GpuTextureFormat::BC3);
+            EXPECT_LE(formatDifference(actual, expected, w, h), s3tc ? 2 : 1);
         }
         material.baseColorTexture.destroy();
     }

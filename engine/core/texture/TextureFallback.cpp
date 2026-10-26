@@ -117,6 +117,9 @@ TextureUploadPlan TextureFallback::planRaw(GpuTextureFormat stored, TextureConte
     plan.path = TextureUploadPlan::Path::CpuDecode;
     plan.decoded = TextureDecode::decodedFormat(stored);
     plan.upload = plan.decoded;
+    // the 16-bit packed formats (not reported by desktop GL 3.3 core) widen to RGBA8
+    if (plan.decoded == GpuTextureFormat::RGB565 || plan.decoded == GpuTextureFormat::RGBA4)
+        plan.upload = GpuTextureFormat::RGBA8;
     if (plan.decoded == GpuTextureFormat::RGBA16F && !support(GpuTextureFormat::RGBA16F))
         plan.upload = GpuTextureFormat::RGBA8;
     if (plan.upload == GpuTextureFormat::RGBA8 && lowMemoryFallback &&

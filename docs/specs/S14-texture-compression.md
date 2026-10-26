@@ -575,8 +575,9 @@ alternative, recorded here).
 12. **Basis build.** The v2.50 transcoder does not compile with XUASTC off (its BC7 decoder needs it),
     so the transcoder keeps it; the other unused targets are compiled out. `.exr` sources are read
     through basisu's bundled tinyexr (editor only).
-13. **Web normal maps** are UASTC with the RG channel layout and transcoded from channels 0 and 1
-    (basisu's BC5/EAC defaults read R and A).
+13. **Web normal maps** are UASTC with X in red and Y in both green and alpha: basisu's UASTC →
+    BC5 / EAC RG11 transcodes read channels 0 and 3, the ASTC / BC7 / RG8 ones red and green, so
+    every device gets the same two channels.
 14. **Game view simulation (R26).** The family the editor renders cooked textures with is one
     setting for every view (the texture pool is shared), set from the Game view's toolbar.
 15. **Reports.** MCP and the CLI report project-relative paths and add each cook's cache `key` (the
@@ -586,3 +587,11 @@ alternative, recorded here).
     `--jobs`, the same working-memory budget); the editor's background cooks, which MCP's
     `reimport_textures` waits on, stay on S06's Background lane (`TextureCookQueue`). Encoders always
     fork their bands on the job system.
+17. **RGB565 on desktop GL (R11).** GL 3.3 core has no `GL_RGB565` (it arrived in 4.1) and drivers
+    may store `GL_RGB5` with 5 bits of green, so sokol does not report RGB565 there; a file cooked
+    to RGB565 or RGBA4 on a device that does not sample it (desktop GL, D3D11, Metal, Vulkan) is
+    widened to RGBA8 on the loader. GLES 3 and WebGL2 keep RGB565 / RGBA4 as the low-memory last
+    resort, which is where R11 asks for it.
+18. **Terrain detail normals (R13).** The terrain detail arrays are built from the source files
+    (deviation 4), so their normal taps keep the RGB decode; every other normal sample goes
+    through `decodeNormalMap()`.
