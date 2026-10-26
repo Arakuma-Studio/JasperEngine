@@ -471,3 +471,56 @@ in `tools/mcp/tests/test_reflection.py`.
 - **`visibleIf` on mixed selections** uses the first entity, matching today's hand drawers.
 - **Lua generation stays out of scope.** If LuaBridge parity becomes painful, S23 decides on
   binding generation from these tables.
+
+## Deviations
+
+Recorded by the implementation (branch `feat/s08-reflection`).
+
+- **Hand codecs kept (P3 → P4).** 37 components use the generic codec. 19 keep a whole-component
+  codec called through `ComponentDesc::codec`, with their table driving the Catalog, Inspector,
+  MCP, locators and codegen: the P4 set (Mesh, UI, Model, Prefab, Script, Terrain) plus Sprite,
+  Tilemap, Polygon, MeshPolygon, Points, LineRenderer, InstancedMesh, MorphTracks,
+  Rigidbody2D/3D, ParticleSystem, Skybox and SpriteAnimation. Their YAML has quirks that one flag
+  cannot express (count-limited lists, keys read from other components, legacy branches), so
+  §9's default applies. The codecs are in `editor/StreamComponents.cpp`. `Stream.cpp` is 3,898
+  lines and `StreamComponents.cpp` 2,065 lines, so the codec code that remains is about 5,960
+  lines in total. AC15's `Stream.cpp` ≤ 5,000 is met by that split, not by deleting those codecs.
+  `ComponentDesc::extraKeys` lists each codec's known keys for `StreamSchema` and
+  `tools/check_stream_keys.py`.
+- **Legacy oracle kept.** `editor/tests/reflect/legacy/` (the deleted hand codecs, test-only)
+  stays so the parity fuzzers can keep running. D5 deletes it once S08 completes. Deleting it is
+  a follow-up for the integrator after merge, and the goldens do not depend on it.
+- **R15.** The engine keeps `PostProcessingSettings::getFields()` as the single field table,
+  because the runtime clamp and the Inspector post-processing panel read it. The editor builds
+  the `StructDesc` from that table (`editor/reflect/PostProcessingReflect.cpp`), so the scene
+  codec and `jasper://reflection` use reflection, and a field added to the engine table is
+  reflected without an edit. The façade is not deleted.
+- **Default Inspector (R8/R10).** It is in `editor/window/InspectorDefault.cpp`, not
+  `inspector/DefaultInspector.cpp`. The drawer registry is a static `componentDrawer(type)`
+  lookup, not the three-hook `InspectorDrawers` API. 12 components moved to the default drawer
+  (Button, Scrollbar, Progressbar, Panel, Text, RectTransform, Light2D, Mirror,
+  LocalVolumetricFog, Tween, Bone, Prefab). The others keep their hand drawers, which were moved
+  into `InspectorPhysics.cpp`, `InspectorAnimation.cpp` and `InspectorRenderers.cpp` and use the
+  `EnumDesc` entries. These named drawers exist: `label`, `multiline`, `direction`, `halfCone`,
+  `po2Slider`, `textureCube` and `modelEntity`. `InspectorWindow.cpp` is 10,870 lines.
+- **Extra table vocabulary** beyond R3/R4: flags `NoDefault`, `NonStructural`, `CodegenIfChanged`,
+  `CodegenRuntime`, `Transient`, `EmptyIsDefault`, `NullIfEmpty`, `NotListed`, `ListWhole`,
+  `ListElements`, `ListEachElement`, `ListTemplate` and `ComponentOnly`. These keep the Catalog
+  property listing and codegen identical to before. Fields `enabledIf`, `enumMask`, `cppPath`,
+  `count` (`JE_COUNT`) and `elementOps` were also added. `ComponentDesc` gained
+  `remove`/`extraProperty`/`extraProperties` (Script properties, Model maps) and `extraKeys`.
+- **Decode differences** (R7/R32, accepted per §9):
+  - UIDocument no longer clamps `textureWidth`/`textureHeight` to 1..8192 or `pixelRatio` to
+    ≥ 0 on load. The hard ranges apply to edits.
+  - An unknown ReflectionProbe `mode`/`updateMode` token now keeps the base value and is
+    reported. Before, it silently became `static`/`on_load`.
+  - LocalVolumetricFog and VolumetricClouds are now also `markChanged` when decoded over an
+    existing component, like every other generic component.
+  - The Animation `actionFrameCount` pseudo-property is no longer listed. Through MCP it read a
+    dangling pointer.
+- **MCP.** `set_properties` refuses `Derived` fields as well as `ReadOnly`/`NoMcpWrite` ones. MCP
+  ease options leave out `custom`, as before. Camera keeps both tokens (R5 default).
+- **Benchmarks.** `ReflectCodecBench` (R17) and `ReflectResolve` (R18) always log their numbers
+  and always check for zero allocations. The time budgets are asserted only with
+  `JASPER_BENCH_ASSERT=1`, on the benchmark server.
+- **R29** (optional Lua field report) is not implemented.
