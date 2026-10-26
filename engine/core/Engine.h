@@ -551,6 +551,8 @@ namespace jasperengine {
             bool disableClouds = false;
             // the atmosphere quality the view previews (the Game view's; -1 the project's)
             int atmosphereQuality = -1;
+            // casts and receives the scene's shadows (off: an inactive Scene view pane, S26 R20)
+            bool shadows = true;
         };
 
         // Draws a secondary view: the editor's Scene view while the game plays, or its

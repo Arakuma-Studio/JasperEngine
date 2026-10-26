@@ -651,17 +651,19 @@ namespace jasperengine{
 
 		static bool emptyTexturesCreated;
 		
-		bool hasLights;
-		bool hasShadows;
-		bool hasFog;
-		bool hasIBL;
-		bool hasReflectionProbes;
-		bool hasMultipleCameras;
+		// as load() sets them: an update() before the first load (a scene never shown, the
+		// unit tests) reads them too
+		bool hasLights = false;
+		bool hasShadows = false;
+		bool hasFog = false;
+		bool hasIBL = false;
+		bool hasReflectionProbes = false;
+		bool hasMultipleCameras = false;
 		// extra cameras the last frame drew, to catch the switch back to main only
-		bool lastMultiCameraDraw;
-		bool capturingReflectionProbe;
+		bool lastMultiCameraDraw = false;
+		bool capturingReflectionProbe = false;
 		// batch order currently baked into the shared points/instance arrays
-		bool lastBatchSort;
+		bool lastBatchSort = true;
 		// scene mesh LOD switch the levels were built (or freed) for
 		bool lastMeshLodEnabled = false;
 		// pipelines the objects were loaded with, to catch a destination change
@@ -2453,6 +2455,8 @@ namespace jasperengine{
 			// canvas an auto-resize camera covers in this view (0: as the camera is)
 			float canvasWidth = 0.0f;
 			float canvasHeight = 0.0f;
+			// off: no shadow maps are drawn for the view and its fragments read no shadow
+			bool shadows = true;
 		};
 		void drawView(uint32_t viewId, const ViewDesc& desc);
 		// frees what a view created

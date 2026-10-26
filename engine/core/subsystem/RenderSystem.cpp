@@ -14667,6 +14667,16 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
             view.instancesBuilt = false;
         }
         view.mirrors.clear();
+    }else if (!desc.shadows){
+        // its lighting without shadow maps: none is planned or drawn for it
+        const bool sceneShadows = hasShadows;
+        hasShadows = false;
+        prepareCameraShadows(viewShadows, camera, cameraTransform, TERRAIN_PASS_VIEW, false);
+        hasShadows = sceneShadows;
+        buildViewInstances(view, camera, cameraTransform);
+        selectPassTerrain(view.objects, camera, cameraTransform);
+        updatePassFrame(camera, cameraTransform);
+        renderViewMirrors(view, camera);
     }else{
         // the view's shadow passes draw its terrain cut and cull its instance lists
         prepareCameraShadows(viewShadows, camera, cameraTransform, TERRAIN_PASS_VIEW, false);
@@ -14675,6 +14685,15 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
         updatePassFrame(camera, cameraTransform);
         renderCameraShadows(viewShadows);
         renderViewMirrors(view, camera);
+    }
+    if (!desc.shadows){
+        // every slot at strength 0 (shadow_data.glsl): the fragments read their lights unshadowed
+        for (int s = 0; s < MAX_SHADOW_ATLAS_SLOTS; s++){
+            viewShadows.fs_shadow_data.filtering[s].w = 0.0f;
+        }
+        for (int p = 0; p < MAX_POINT_SHADOW_LIGHTS; p++){
+            viewShadows.fs_point_shadow_data.filtering[p].w = 0.0f;
+        }
     }
 
     if (!view.target->isCreated()){

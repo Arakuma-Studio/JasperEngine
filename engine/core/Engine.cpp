@@ -1630,6 +1630,7 @@ void Engine::drawView(uint32_t viewId, Framebuffer* target, const std::vector<Vi
         desc.postProcessing = layer.postProcessing;
         desc.disableClouds = layer.disableClouds;
         desc.atmosphereQuality = layer.atmosphereQuality;
+        desc.shadows = layer.shadows;
         desc.canvasWidth = layer.canvasWidth;
         desc.canvasHeight = layer.canvasHeight;
         layer.scene->getSystem<RenderSystem>()->drawView(viewId, desc);
