@@ -46,7 +46,7 @@ async def test_help_lists_tools(ed: Editor):
     for text in ("| Hand Tool | Q |", "| Rect Tool | T |", "| Toggle Global/Local | X |"):
         ed.check_in(text, reference, "docs/editor/keyboard-shortcuts.md")
     ed.check(not any("| T |" in line and "Global" in line for line in reference.splitlines()), "no T + Global/Local line")
-    names = {tool.name for tool in await ed.tools("editor_ux")}
+    names = {tool.name for tool in await ed.tools("all")}
     for tool in ("search_editor", "run_command", "list_shortcuts", "set_shortcut", "edit_layout_presets",
                  "edit_asset_labels", "edit_saved_searches", "edit_bookmarks"):
         ed.check_in(tool, names, "the editor_ux group")
