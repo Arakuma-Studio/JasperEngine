@@ -574,6 +574,8 @@ TEST_F(HtmlUIWidgets, ServerBrowserExampleFlow){
     const fs::path library = fs::path(JASPER_HTMLUI_TEST_SOURCE_DIR) / ".." / ".." / ".." / "docs" / "mcp" / "guide" / "html-ui-examples";
     TestSystem::get().setAssetPath(library.lexically_normal().string());
     struct Restore { ~Restore(){ TestSystem::get().setAssetPath(""); } } restore;
+    // the example's size (the Ping column is past 640 px; the next test's SetUp sets 640 x 360 again)
+    GpuEnvironment::setView(1280, 720, 1280, 720, Scaling::FITWIDTH);
     HtmlUIClock::setFixedTime(100.0);
     ASSERT_EQ(lua(R"(
         all = {}
