@@ -6,8 +6,9 @@ paths:
 
 # Lua scripting
 
-- After changing a binding, regenerate the Lua stubs (`generate_lua_stubs.py`) and the editor's
-  completion data (`generate_api_suggestions.py`); commit their output with the change.
+- The Lua stubs, the editor's completion data and lua-api.json are build outputs of one parser
+  (`tools/lua_api`, run by CMake when a binding changes); nothing generated is committed. After
+  changing a binding, run its tests (`tools/lua_api/tests/test_lua_api.py`, the docs' Lua blocks).
 - Bound getters are properties in Lua, not methods; keep names consistent with the existing
   bindings and with `docs/mcp/guide/lua-api.md`, which agents read.
 - The Lua state belongs to the main thread: `JASPER_LUA_THREAD_CHECK=abort` (set by the MCP

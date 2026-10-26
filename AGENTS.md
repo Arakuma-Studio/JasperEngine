@@ -68,7 +68,8 @@ person's checkout, and never rewrite branches you do not own.
 2. Regenerate what your change touched:
    - `tools/mcp/gen_tool_docs.py` (MCP tools changed; `--check` says if `docs/mcp/TOOLS.md` is stale);
    - `tools/mcp/tool_budget.py --check tools/mcp/budget.json` (tool definitions changed);
-   - `generate_lua_stubs.py` and `generate_api_suggestions.py` (Lua bindings changed);
+   - nothing for Lua bindings: the build regenerates lua-api.json, the stubs and the completion
+     data from `tools/lua_api`; its doc test checks the Lua blocks of the docs;
    - `tools/check_agent_docs.py` (this file, `CLAUDE.md` or `.claude/rules/` changed).
 3. Commit with `<area>: <what and why>` messages.
 
