@@ -47,6 +47,7 @@
 #include <array>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -401,6 +402,40 @@ TEST(HtmlUIRenderPerf, OneSampleReport){
                     run.maxLayers, run.engineMs);
         results()[std::string("1 sample ") + asset] = toJson(run);
     }
+}
+
+
+// A profiling target, not a benchmark (JASPER_HTMLUI_PROFILE=<asset>[,seconds]): the document drawn
+// with S16's defaults for that long, for a sampling profiler attached from outside (perf record).
+// Skipped without the variable.
+TEST(HtmlUIRenderPerf, ProfileTarget){
+    const char* value = std::getenv("JASPER_HTMLUI_PROFILE");
+    if (!value || !value[0])
+        GTEST_SKIP() << "JASPER_HTMLUI_PROFILE not set";
+    JASPER_REQUIRE_GPU();
+    std::string asset = value;
+    double seconds = 20.0;
+    const size_t comma = asset.find(',');
+    if (comma != std::string::npos){
+        seconds = std::atof(asset.c_str() + comma + 1);
+        asset = asset.substr(0, comma);
+    }
+    const bool example = asset.find('/') == std::string::npos;
+    S16Mode on(true);
+    FixtureRunner runner(1280, 720, 4);
+    ASSERT_TRUE(runner.valid());
+    ASSERT_TRUE(example ? load(runner, asset + "/" + asset + ".html", examplesRoot().string()) : load(runner, asset));
+    std::printf("[ profile  ] %s for %.0f s\n", asset.c_str(), seconds);
+    std::fflush(stdout);
+    double clock = runner.time();
+    const auto start = std::chrono::steady_clock::now();
+    int frames = 0;
+    while (std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() < seconds){
+        clock += 1.0 / 60.0;
+        runner.frameAt(clock, true);
+        frames++;
+    }
+    std::printf("[ profile  ] %d frames\n", frames);
 }
 
 #endif
