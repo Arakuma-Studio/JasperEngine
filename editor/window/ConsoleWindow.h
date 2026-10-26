@@ -10,6 +10,7 @@
 #include <vector>
 #include <string>
 #include "imgui.h"
+#include "util/SourceLocation.h"
 
 namespace jasperengine::editor {
     enum class LogType {
@@ -32,6 +33,9 @@ namespace jasperengine::editor {
         uint32_t line = 0;
         uint64_t frame = 0;
         std::string threadName;
+        // the file locations in the message (tracebacks: all of them), parsed once when it
+        // arrives; the logger's source (file, line) is not among them
+        std::vector<SourceLocation> locations;
     };
 
     // The Console. Unity-style: a toolbar (Clear, Collapse, Clear on Play,
@@ -105,6 +109,13 @@ namespace jasperengine::editor {
         void showList(float height);
         void showDetails();
         void copyAllToClipboard() const;
+        // Where a message's links go: the logger's source first, then its locations
+        static std::vector<SourceLocation> linkTargets(const LogData& log);
+        // Opens the first target in the project (any, when none is), preferred: Preferences >
+        // External Tools > External Script Editor, else the built-in Code Editor. False when
+        // the message names no file.
+        static bool openFirstLocation(const LogData& log, bool external);
+        static void openLocation(const SourceLocation& location, bool external);
 
     public:
         static constexpr const char* WINDOW_NAME = "Console";

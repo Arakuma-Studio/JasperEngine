@@ -5,11 +5,13 @@
 
 #include "imgui.h"
 #include "Project.h"
+#include "window/ScriptStatusBadge.h"
 
 namespace jasperengine::editor {
 
     // Unity-style main toolbar: a full-width bar between the menu and the dock space
-    // with the transform tools (left), Play/Pause/Step (centre) and Layout (right).
+    // with the transform tools (left), Play/Pause/Step and the script status (centre), Layout
+    // and the editor scripts' Tools strip (right).
     // It also owns their keyboard shortcuts.
     class MainToolbar {
     public:
@@ -23,6 +25,7 @@ namespace jasperengine::editor {
 
     private:
         Project* project;
+        ScriptStatusBadge scriptBadge;
 
         bool toolSupported(const SceneProject& sceneProject, Tool tool) const;
         void applyTool(SceneProject& sceneProject, Tool tool) const;
@@ -30,6 +33,9 @@ namespace jasperengine::editor {
         void drawTools(float rowHeight);
         void drawPlayControls(float rowHeight);
         void drawLayoutMenu(float rowHeight);
+        // The "Tools" strip: toolbar buttons project editor scripts declare (---@toolbar)
+        float toolsStripWidth(float rowHeight) const;
+        void drawToolsStrip(float rowHeight);
 
     public:
         MainToolbar(Project* project);

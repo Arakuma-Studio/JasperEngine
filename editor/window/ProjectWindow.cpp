@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectWindow.h"
+#include "util/EditorScripts.h"
 #include "asset/AssetTypes.h"
 #include "window/AssetPanels.h"
 #include "util/PngWriter.h"
@@ -1822,6 +1823,19 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
 
                 if (ImGui::MenuItem(ICON_FA_ARROW_UP_RIGHT_FROM_SQUARE " Open in File Manager")){
                     openInFileManager(file.isDirectory ? currentPath / file.name : currentPath);
+                }
+
+                // the project's editor scripts: Assets/... items (S23)
+                {
+                    EditorMenuRunContext scriptContext;
+                    scriptContext.sceneId = project->getSelectedSceneId();
+                    for (const fs::path& selected : getSelectedFiles()) {
+                        scriptContext.assets.push_back(selected.lexically_relative(project->getProjectPath()).generic_string());
+                    }
+                    if (scriptContext.assets.empty()) {
+                        scriptContext.assets.push_back((currentPath / file.name).lexically_relative(project->getProjectPath()).generic_string());
+                    }
+                    EditorScripts::get().drawContextItems("assets", {}, scriptContext);
                 }
 
                 ImGui::EndPopup();
@@ -3836,6 +3850,14 @@ void editor::ProjectWindow::assetsShowInFileManager() {
     if (!target.empty()) {
         openInFileManager(target);
     }
+}
+
+std::vector<fs::path> editor::ProjectWindow::getSelectedFiles() const {
+    std::vector<fs::path> files;
+    // the names of the current folder's selected entries
+    for (const std::string& file : selectedFiles) files.push_back(currentPath / file);
+    std::sort(files.begin(), files.end());
+    return files;
 }
 
 void editor::ProjectWindow::assetsOpenSelected() {

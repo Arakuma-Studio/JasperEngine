@@ -29,6 +29,7 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"gameplay", "Character controller, buoyancy and input action maps."},
         {"editor_tools", "Colour picker, curve editor, project templates and movie recording."},
         {"vcs", "Version control: status, locks, commits and scene diffs."},
+        {"scripting", "Script hot reload and status, editor-script menus, numeric expressions, graph files."},
     };
     if (selftestGroupMode() > 0) {
         groups.push_back({"selftest", "Test-only group of the MCP tests (JASPER_MCP_SELFTEST_GROUP)."});

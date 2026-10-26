@@ -8,6 +8,7 @@
 #include "Backend.h"
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
+#include "util/EditorScripts.h"
 
 #include <algorithm>
 
@@ -38,7 +39,39 @@ namespace {
 
 }
 
-editor::MainToolbar::MainToolbar(Project* project): project(project) {
+editor::MainToolbar::MainToolbar(Project* project): project(project), scriptBadge(project) {
+}
+
+float editor::MainToolbar::toolsStripWidth(float rowHeight) const {
+    const auto items = EditorScripts::get().itemsFor("toolbar");
+    if (items.empty()) return 0.0f;
+    const ImGuiStyle& style = ImGui::GetStyle();
+    float width = 0.0f;
+    for (const EditorMenuItem* item : items) {
+        width += (item->iconGlyph ? rowHeight : ImGui::CalcTextSize(item->path.c_str()).x + style.FramePadding.x * 2.0f) + style.ItemSpacing.x;
+    }
+    return width + style.ItemSpacing.x;
+}
+
+void editor::MainToolbar::drawToolsStrip(float rowHeight) {
+    const auto items = EditorScripts::get().itemsFor("toolbar");
+    if (items.empty()) return;
+    for (const EditorMenuItem* item : items) {
+        ImGui::SameLine();
+        ImGui::PushID(item->id.c_str());
+        // a Font Awesome icon by name (icon=magnet), else the label
+        const char* glyph = item->iconGlyph;
+        const bool pressed = glyph ? ImGui::Button(glyph, ImVec2(rowHeight, rowHeight)) : ImGui::Button(item->path.c_str(), ImVec2(0.0f, rowHeight));
+        const std::string tooltip = item->tooltip.empty() ? item->path : item->tooltip;
+        ImGui::SetItemTooltip("%s", tooltip.c_str());
+        if (pressed) {
+            EditorMenuRunContext context;
+            context.sceneId = project->getSelectedSceneId();
+            for (Entity entity : project->getSelectedEntities(context.sceneId)) context.selection.push_back(entity);
+            EditorScripts::get().runFromMenu(item->id, context);
+        }
+        ImGui::PopID();
+    }
 }
 
 //=== Play mode ===
@@ -363,12 +396,18 @@ void editor::MainToolbar::show() {
         ImGui::SetCursorPos(ImVec2(std::max(centreX, ImGui::GetCursorPosX() + style.ItemSpacing.x), startY));
         drawPlayControls(rowHeight);
 
-        // Right: Layout
+        // the scripts' compile and reload state, right of the play controls (S23 R40)
+        ImGui::SameLine(0.0f, Theme::dpi(12.0f));
+        ImGui::SetCursorPosY(startY);
+        scriptBadge.draw(rowHeight);
+
+        // Right: Layout, then the editor scripts' Tools strip
         const float layoutWidth = ImGui::CalcTextSize(LAYOUT_BUTTON_LABEL, nullptr, true).x + style.FramePadding.x * 2.0f;
-        const float rightX = ImGui::GetWindowContentRegionMax().x - layoutWidth;
+        const float rightX = ImGui::GetWindowContentRegionMax().x - layoutWidth - toolsStripWidth(rowHeight);
         ImGui::SameLine();
         ImGui::SetCursorPos(ImVec2(std::max(rightX, ImGui::GetCursorPosX() + style.ItemSpacing.x), startY));
         drawLayoutMenu(rowHeight);
+        drawToolsStrip(rowHeight);
 
         ImGui::PopStyleVar();
     }

@@ -12,6 +12,7 @@
 #include "util/Color.h"
 #include "util/CrashHook.h"
 #include "util/Scheduler.h"
+#include "LuaReload.h"
 #include "util/SubscriptionOwnerIndex.h"
 
 #include <cstring>
@@ -120,10 +121,16 @@ namespace je_lua_timer {
     struct TimerCall {
         LuaRef function;
         const char* name;
+        // the chunk generation of the function: a hot reload of its script ends the timer
+        std::shared_ptr<lua_reload::CallbackRecord> record;
 
         void operator()() {
             lua_State* L = LuaBinding::getLuaState();
             if (!L) return;
+            if (record && record->dropped()) {
+                Scheduler::game().current().cancel();
+                return;
+            }
             lua_rawgeti(L, LUA_REGISTRYINDEX, function.ref);
             if (LuaBinding::pcallWithTraceback(L, 0, 0) != LUA_OK) {
                 const std::string error = LuaBinding::getLuaStackErrorString(L, -1);
@@ -149,6 +156,13 @@ namespace je_lua_timer {
         return TimerHandle{&Scheduler::game(), data->id};
     }
 
+    std::shared_ptr<lua_reload::CallbackRecord> functionRecord(lua_State* L, int index) {
+        lua_pushvalue(L, index);
+        std::shared_ptr<lua_reload::CallbackRecord> record = lua_reload::callbackRecordForFunction(L);
+        lua_pop(L, 1);
+        return record;
+    }
+
     int functionRef(lua_State* L, int index) {
         luaL_checktype(L, index, LUA_TFUNCTION);
         lua_pushvalue(L, index);
@@ -159,7 +173,8 @@ namespace je_lua_timer {
         const double delay = luaL_checknumber(L, 1);
         const TimerOptions options = readOptions(L, 3);
         const int ref = functionRef(L, 2);
-        pushHandle(L, Scheduler::game().after(delay, TimerCall{LuaRef(ref), "Timer.after"}, options.clock,
+        auto record = functionRecord(L, 2);
+        pushHandle(L, Scheduler::game().after(delay, TimerCall{LuaRef(ref), "Timer.after", record}, options.clock,
                                               schedulerOptions(options, "Timer.after")));
         return 1;
     }
@@ -169,7 +184,8 @@ namespace je_lua_timer {
         if (!(period > 0.0)) return luaL_error(L, "Timer.every: the period must be more than 0");
         const TimerOptions options = readOptions(L, 3);
         const int ref = functionRef(L, 2);
-        pushHandle(L, Scheduler::game().every(period, TimerCall{LuaRef(ref), "Timer.every"}, options.clock,
+        auto record = functionRecord(L, 2);
+        pushHandle(L, Scheduler::game().every(period, TimerCall{LuaRef(ref), "Timer.every", record}, options.clock,
                                               schedulerOptions(options, "Timer.every")));
         return 1;
     }
@@ -177,7 +193,8 @@ namespace je_lua_timer {
     int luaTimerNextFrame(lua_State* L) {
         const TimerOptions options = readOptions(L, 2);
         const int ref = functionRef(L, 1);
-        pushHandle(L, Scheduler::game().nextFrame(TimerCall{LuaRef(ref), "Timer.nextFrame"}, schedulerOptions(options, "Timer.nextFrame")));
+        auto record = functionRecord(L, 1);
+        pushHandle(L, Scheduler::game().nextFrame(TimerCall{LuaRef(ref), "Timer.nextFrame", record}, schedulerOptions(options, "Timer.nextFrame")));
         return 1;
     }
 
@@ -186,7 +203,8 @@ namespace je_lua_timer {
         if (frames < 1) return luaL_error(L, "Timer.afterFrames: frames must be 1 or more");
         const TimerOptions options = readOptions(L, 3);
         const int ref = functionRef(L, 2);
-        pushHandle(L, Scheduler::game().afterFrames(static_cast<uint32_t>(frames), TimerCall{LuaRef(ref), "Timer.afterFrames"},
+        auto record = functionRecord(L, 2);
+        pushHandle(L, Scheduler::game().afterFrames(static_cast<uint32_t>(frames), TimerCall{LuaRef(ref), "Timer.afterFrames", record},
                                                     schedulerOptions(options, "Timer.afterFrames")));
         return 1;
     }
@@ -196,7 +214,8 @@ namespace je_lua_timer {
         if (steps < 1) return luaL_error(L, "Timer.afterFixedSteps: steps must be 1 or more");
         const TimerOptions options = readOptions(L, 3);
         const int ref = functionRef(L, 2);
-        pushHandle(L, Scheduler::game().afterFixedSteps(static_cast<uint32_t>(steps), TimerCall{LuaRef(ref), "Timer.afterFixedSteps"},
+        auto record = functionRecord(L, 2);
+        pushHandle(L, Scheduler::game().afterFixedSteps(static_cast<uint32_t>(steps), TimerCall{LuaRef(ref), "Timer.afterFixedSteps", record},
                                                         schedulerOptions(options, "Timer.afterFixedSteps")));
         return 1;
     }
@@ -234,6 +253,7 @@ namespace je_lua_timer {
         TimerHandle pending;
         bool cancelled = false;
         bool finished = false;
+        std::shared_ptr<lua_reload::CallbackRecord> record;
     };
     using CoroutinePtr = std::shared_ptr<Coroutine>;
 
@@ -296,6 +316,11 @@ namespace je_lua_timer {
     void resume(const CoroutinePtr& coroutine) {
         lua_State* L = LuaBinding::getLuaState();
         if (!L || coroutine->cancelled || coroutine->finished) return;
+        if (coroutine->record && coroutine->record->dropped()) {
+            // its script was hot reloaded: the old code's coroutine ends
+            finish(coroutine);
+            return;
+        }
         coroutine->wait = WaitKind::None;
         int results = 0;
         const int status = lua_resume(coroutine->co, L, 0, &results);
@@ -336,6 +361,7 @@ namespace je_lua_timer {
         auto coroutine = std::make_shared<Coroutine>();
         coroutine->options = options;
         coroutine->id = nextCoroutineId++;
+        coroutine->record = functionRecord(L, 1);
         coroutine->co = lua_newthread(L);
         lua_pushvalue(L, 1);
         lua_xmove(L, coroutine->co, 1);

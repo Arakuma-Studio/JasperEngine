@@ -2362,6 +2362,11 @@ void ImGui::DataTypeApplyOp(ImGuiDataType data_type, int op, void* output, const
 
 // User can input math operators (e.g. +100) to edit a numerical values.
 // NB: This is _not_ a full expression evaluator. We should probably add one and replace this dumb mess..
+// [JasperEngine patch] expressions in numeric fields (editor/util/NumericExpression)
+static ImGui::DataTypeApplyFromTextHook GDataTypeApplyFromTextHook = NULL;
+static void* GDataTypeApplyFromTextHookUserData = NULL;
+void ImGui::SetDataTypeApplyFromTextHook(DataTypeApplyFromTextHook hook, void* user_data) { GDataTypeApplyFromTextHook = hook; GDataTypeApplyFromTextHookUserData = user_data; }
+
 bool ImGui::DataTypeApplyFromText(const char* buf, ImGuiDataType data_type, void* p_data, const char* format, void* p_data_when_empty)
 {
     // Copy the value in an opaque buffer so we can compare at the end of the function if it changed at all.
@@ -2380,6 +2385,9 @@ bool ImGui::DataTypeApplyFromText(const char* buf, ImGuiDataType data_type, void
         }
         return false;
     }
+    if (GDataTypeApplyFromTextHook) // [JasperEngine patch]
+        if (int handled = GDataTypeApplyFromTextHook(buf, data_type, p_data, format, GDataTypeApplyFromTextHookUserData); handled >= 0)
+            return handled != 0;
 
     // Sanitize format
     // - For float/double we have to ignore format with precision (e.g. "%.2f") because sscanf doesn't take them in, so force them into %f and %lf
@@ -3758,7 +3766,7 @@ bool ImGui::TempInputScalar(const ImRect& bb, ImGuiID id, const char* label, ImG
     ImGuiContext& g = *GImGui;
     const ImGuiDataTypeInfo* type_info = DataTypeGetInfo(data_type);
     char fmt_buf[32];
-    char data_buf[32];
+    char data_buf[256]; // [JasperEngine patch] was 32: room for expressions
     format = ImParseFormatTrimDecorations(format, fmt_buf, IM_COUNTOF(fmt_buf));
     if (format[0] == 0)
         format = type_info->PrintFmt;
@@ -3816,7 +3824,7 @@ bool ImGui::InputScalar(const char* label, ImGuiDataType data_type, void* p_data
 
     void* p_data_default = (g.NextItemData.HasFlags & ImGuiNextItemDataFlags_HasRefVal) ? &g.NextItemData.RefVal : &g.DataTypeZeroValue;
 
-    char buf[64];
+    char buf[256]; // [JasperEngine patch] was 64: room for expressions
     if ((flags & ImGuiInputTextFlags_DisplayEmptyRefVal) && DataTypeCompare(data_type, p_data, p_data_default) == 0)
         buf[0] = 0;
     else
@@ -4492,7 +4500,7 @@ static bool InputTextFilterCharacter(ImGuiContext* ctx, ImGuiInputTextState* sta
         ImGuiContext& g = *ctx;
         const unsigned c_decimal_point = (unsigned int)g.PlatformIO.Platform_LocaleDecimalPoint;
         if (flags & (ImGuiInputTextFlags_CharsDecimal | ImGuiInputTextFlags_CharsScientific | (ImGuiInputTextFlags)ImGuiInputTextFlags_LocalizeDecimalPoint))
-            if (c == '.' || c == ',')
+            if (c == '.' || (c == ',' && !GDataTypeApplyFromTextHook)) // [JasperEngine patch] ',' separates expression arguments
                 c = c_decimal_point;
 
         // Full-width -> half-width conversion for numeric fields: https://en.wikipedia.org/wiki/Halfwidth_and_Fullwidth_Forms_(Unicode_block)

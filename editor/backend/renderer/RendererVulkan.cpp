@@ -208,8 +208,11 @@ bool Renderer::State::createVulkanDevice(){
         return false;
     }
 
+    VkPhysicalDeviceVulkan12Features supported12{};
+    supported12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
     VkPhysicalDeviceFeatures2 supported{};
     supported.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    supported.pNext = &supported12;
     vkGetPhysicalDeviceFeatures2(physicalDevice, &supported);
 
     VkPhysicalDeviceDescriptorBufferFeaturesEXT descriptorBuffer{};
@@ -225,6 +228,9 @@ bool Renderer::State::createVulkanDevice(){
     vulkan12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
     vulkan12.pNext = &extendedDynamicState;
     vulkan12.bufferDeviceAddress = VK_TRUE;
+    // the GPU timer resets its timestamp pools from the host (the Profiler's GPU module)
+    vulkan12.hostQueryReset = supported12.hostQueryReset;
+    SystemRender::setVulkanHostQueryReset(supported12.hostQueryReset == VK_TRUE);
     VkPhysicalDeviceVulkan13Features vulkan13{};
     vulkan13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
     vulkan13.pNext = &vulkan12;
