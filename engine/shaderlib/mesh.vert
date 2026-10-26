@@ -9,6 +9,11 @@
 // The fork drives the color pass only: to keep shadows (and SSAO, when SSR is off) in
 // step with positions displaced here, fork the depth shader too (Depth Shader in Properties).
 //
+// A mesh deformed by lattices compiles with HAS_LATTICE: main() runs the vertex through
+// latticeDeform (includes/lattice.glsl). A fork without that call draws the mesh undeformed;
+// to follow the lattices it includes the file and calls it as main() does, before the model
+// matrix (the depth fork too).
+//
 //   uniform u_vs_customParams {
 //       float time;
 //       vec4 tint;
@@ -120,6 +125,8 @@ in vec3 a_position;
 #ifdef HAS_TERRAIN
     #include "includes/terrain_vs.glsl"
 #endif
+// the lattices deforming the mesh (HAS_LATTICE): latticeDeform, after a_color is declared
+#include "includes/lattice.glsl"
 
 vec4 getPosition(mat4 boneTransform){
     vec3 pos = a_position;
@@ -161,7 +168,35 @@ vec3 getTangent(mat4 boneTransform){
 void main() {
     mat4 boneTransform = getBoneTransform();
 
-    #ifdef HAS_INSTANCING
+    #ifdef HAS_LATTICE
+        // position, normal and tangent go through each lattice together (one Jacobian):
+        // morph targets, the before-skinning lattices, skinning, the instance matrix, then
+        // (below, after the instance fade) the after-skinning ones
+        vec3 latticePosition = getMorphPosition(a_position);
+        vec3 latticeNormal = vec3(0.0, 1.0, 0.0);
+        vec3 latticeTangent = vec3(1.0, 0.0, 0.0);
+        #ifdef HAS_NORMALS
+            latticeNormal = getMorphNormal(a_normal);
+        #endif
+        #ifdef HAS_TANGENTS
+            latticeTangent = getMorphTangent(a_tangent.xyz);
+        #endif
+        float latticeStretchValue = 1.0;
+        #ifdef HAS_SKINNING
+            latticeDeform(0, latticePosition, latticeNormal, latticeTangent, latticeStretchValue);
+        #endif
+        // normalised where getNormal and getTangent normalise, so a lattice at rest draws
+        // exactly what the variant without one does
+        vec4 pos = vec4(getSkinPosition(latticePosition, boneTransform), 1.0);
+        latticeNormal = normalize(getSkinNormal(latticeNormal, boneTransform));
+        latticeTangent = normalize(getSkinTangent(latticeTangent, boneTransform));
+        #ifdef HAS_INSTANCING
+            mat4 instanceMatrix = mat4(i_matrix_col1, i_matrix_col2, i_matrix_col3, i_matrix_col4);
+            pos = instanceMatrix * pos;
+            latticeNormal = instanceNormal(mat3(instanceMatrix), latticeNormal);
+            latticeTangent = mat3(instanceMatrix) * latticeTangent;
+        #endif
+    #elif defined(HAS_INSTANCING)
         mat4 instanceMatrix = mat4(i_matrix_col1, i_matrix_col2, i_matrix_col3, i_matrix_col4);
         vec4 pos = instanceMatrix * getPosition(boneTransform);
     #else
@@ -181,6 +216,11 @@ void main() {
         pos.xyz = mix(fadeOrigin, pos.xyz, fadeVisible);
     #endif
 
+    #ifdef HAS_LATTICE
+        latticeDeform(1, pos.xyz, latticeNormal, latticeTangent, latticeStretchValue);
+        latticeWriteStretch(latticeStretchValue);
+    #endif
+
     vec4 worldPos = pbrParams.modelMatrix * pos;
 
     #if !defined(MATERIAL_UNLIT) || defined(USE_MIRROR) || defined(USE_LIGHT2D)
@@ -188,15 +228,23 @@ void main() {
     #endif
 
     #ifdef HAS_NORMALS
-        vec3 objectNormal = getNormal(boneTransform, pos);
-        #ifdef HAS_INSTANCING
-            objectNormal = instanceNormal(mat3(instanceMatrix), objectNormal);
+        #ifdef HAS_LATTICE
+            vec3 objectNormal = latticeNormal;
+        #else
+            vec3 objectNormal = getNormal(boneTransform, pos);
+            #ifdef HAS_INSTANCING
+                objectNormal = instanceNormal(mat3(instanceMatrix), objectNormal);
+            #endif
         #endif
         vec3 worldNormal = normalize(vec3(pbrParams.normalMatrix * vec4(objectNormal, 0.0)));
     #ifdef HAS_TANGENTS
-        vec3 tangent = getTangent(boneTransform);
-        #ifdef HAS_INSTANCING
-            tangent = mat3(instanceMatrix) * tangent;
+        #ifdef HAS_LATTICE
+            vec3 tangent = latticeTangent;
+        #else
+            vec3 tangent = getTangent(boneTransform);
+            #ifdef HAS_INSTANCING
+                tangent = mat3(instanceMatrix) * tangent;
+            #endif
         #endif
         vec3 tangentW = normalize(vec3(pbrParams.modelMatrix * vec4(tangent, 0.0)));
         vec3 bitangentW = cross(worldNormal, tangentW) * a_tangent.w;

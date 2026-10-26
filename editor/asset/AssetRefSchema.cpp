@@ -192,7 +192,7 @@ namespace {
     void applyTextureChange(Texture& texture, Texture updated) {
         // Renders keep drawing the old GPU texture until the new one exists, so the new path
         // loads before the old texture is released
-        if (TexturePool::get(texture.getId())) {
+        if (TexturePool::get(texture.getRenderId())) {
             const bool asyncLoading = Engine::isAsyncLoading();
             Engine::setAsyncLoading(false);
             updated.getRender();

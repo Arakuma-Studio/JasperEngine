@@ -65,26 +65,25 @@ namespace {
         }
     }
 
-    // The scene's mesh variant keys without bit 5: written before the bit was retired it was
-    // the PCF filter ('Pcf'), and it means the High shadow filters ('Shq') now
+    // The scene's mesh variant keys without bit 5 when they were written before the bit meant
+    // anything: it was the PCF filter ('Pcf') until July 2026. Since the 64-bit keys (keyVersion
+    // 2) it is upstream's Stochastic Tiling ('Sto'), kept; S10's High shadow filters ('Shq') are
+    // MESH bit 33. (editor::Stream::decodeShaderKey strips it from version 1 keys as well.)
     void clearRetiredMeshBit(YAML::Node keys){
         if (!keys || !keys.IsSequence())
             return;
-        const uint32_t bit = ShaderPool::getShadowsHQProperty();
+        const uint64_t bit = uint64_t(1) << 5;
         for (YAML::Node entry : keys){
             try {
                 if (entry.IsMap() && entry["type"] && entry["type"].IsScalar() && entry["type"].Scalar() == "mesh" && entry["properties"]){
-                    const uint32_t properties = entry["properties"].as<uint32_t>();
+                    if (entry["keyVersion"] && entry["keyVersion"].as<int>() >= 2)
+                        continue;
+                    const uint64_t properties = entry["properties"].as<uint64_t>();
                     if (properties & bit)
                         entry["properties"] = properties & ~bit;
-                }else if (entry.IsScalar()){
-                    // a packed key (scenes saved before forks were named by path)
-                    const ShaderKey key = entry.as<uint64_t>();
-                    if (ShaderPool::getShaderTypeFromKey(key) == ShaderType::MESH && (ShaderPool::getPropertiesFromKey(key) & bit)){
-                        entry = (uint64_t)ShaderPool::getShaderKey(ShaderType::MESH, ShaderPool::getPropertiesFromKey(key) & ~bit,
-                                                                   ShaderPool::getCustomIdFromKey(key));
-                    }
                 }
+                // a packed key (scenes saved before forks were named by path): the decoder
+                // reads it as a version 1 key, without bit 5
             } catch (const YAML::Exception&) {
                 // not a number: left for the decoder to report
             }

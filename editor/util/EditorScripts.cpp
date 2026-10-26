@@ -983,7 +983,7 @@ void EditorScripts::scan(Project* projectIn){
     for (const fs::path& file : ProjectChecks::findProjectFiles(project->getProjectPath(), {".lua", ".cpp", ".cc", ".cxx"})) {
         const fs::path rel = file.lexically_relative(project->getProjectPath());
         if (!isEditorFolderPath(rel)) continue;
-        scanFile(file, FileUtils::genericPathToUtf8(rel), menuItems);
+        scanFile(file, FileUtils::pathToGenericUtf8(rel), menuItems);
     }
     sortItems();
 }
@@ -992,7 +992,7 @@ void EditorScripts::rescanFile(const fs::path& absolute){
     if (!project) return;
     const fs::path rel = absolute.lexically_normal().lexically_relative(project->getProjectPath().lexically_normal());
     if (rel.empty() || *rel.begin() == ".." || !isEditorFolderPath(rel)) return;
-    const std::string relative = FileUtils::genericPathToUtf8(rel);
+    const std::string relative = FileUtils::pathToGenericUtf8(rel);
     const size_t before = menuItems.size();
     menuItems.erase(std::remove_if(menuItems.begin(), menuItems.end(), [&](const EditorMenuItem& item) { return item.file == relative; }),
                     menuItems.end());

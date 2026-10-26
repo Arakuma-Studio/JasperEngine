@@ -629,6 +629,18 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType) const{
         desc.depth.write_enabled = false;
         desc.face_winding = getFaceWinding(rttWinding);
         break;
+
+    // a fullscreen pass into a face and level of an RGBA8 texture (a pass with only a colour
+    // attachment view, SokolCamera), written whole
+    case PipelineType::PIP_RTT_COLORONLY:
+        desc.sample_count = 1;
+        desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
+        desc.colors[0].blend.enabled = false;
+        desc.depth.pixel_format = SG_PIXELFORMAT_NONE;
+        desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
+        desc.depth.write_enabled = false;
+        desc.face_winding = getFaceWinding(rttWinding);
+        break;
     }
 
     // a blend state set at load replaces the color pipelines' blending (the render state's
@@ -678,7 +690,8 @@ bool SokolObject::endLoad(uint16_t types, const RenderState& state, int samples)
         PipelineType::PIP_DEFAULT, PipelineType::PIP_DEFAULT_NODEPTH,
         PipelineType::PIP_RTT, PipelineType::PIP_RTT_NODEPTH, PipelineType::PIP_RTT_INVERT,
         PipelineType::PIP_EFFECT, PipelineType::PIP_POST,
-        PipelineType::PIP_ZPREPASS_MSAA, PipelineType::PIP_MSAA, PipelineType::PIP_MSAA_NODEPTH
+        PipelineType::PIP_ZPREPASS_MSAA, PipelineType::PIP_MSAA, PipelineType::PIP_MSAA_NODEPTH,
+        PipelineType::PIP_RTT_COLORONLY
     };
 
     for (PipelineType type : order){

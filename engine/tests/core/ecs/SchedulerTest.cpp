@@ -203,11 +203,12 @@ TEST(SchedulerTest, EveryNFramesAccumulatesDt){
     }
 }
 
-TEST(SchedulerTest, EightSystemsOneWaveEachInOrder){
+// (the ten SubSystems: upstream's LatticeSystem and FluidSystem and S20's ParticleSubsystem joined the seven)
+TEST(SchedulerTest, SubSystemsOneWaveEachInOrder){
     Scene scene;
     for (SystemPhase phase : {SystemPhase::FixedUpdate, SystemPhase::Update, SystemPhase::Draw}){
         const auto waves = waveNames(scene.getScheduler(), phase);
-        ASSERT_EQ(waves.size(), 8u) << systemPhaseName(phase);
+        ASSERT_EQ(waves.size(), subSystemNames().size()) << systemPhaseName(phase);
         for (size_t i = 0; i < waves.size(); i++){
             EXPECT_EQ(waves[i], std::vector<std::string>{subSystemNames()[i]}) << systemPhaseName(phase);
         }

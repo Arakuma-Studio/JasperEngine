@@ -168,6 +168,9 @@ namespace jasperengine::editor{
         static std::string prefabToFunctionName(const std::filesystem::path& prefabPath);
         static std::string prefabToBuildFunctionName(const std::filesystem::path& prefabPath);
         static std::string prefabToFileName(const std::filesystem::path& prefabPath);
+        // File and symbol name of a scene's generated source: never the name of main.cpp,
+        // scene_scripts.cpp, a prefab or another scene, even ignoring case
+        static std::string sceneToFileName(uint32_t sceneId, const std::string& sceneName);
 
         static std::string createComponent(int indentSpaces, EntityRegistry* scene, Entity entity, ComponentType componentType, const fs::path& projectPath, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createAllComponents(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName = "", std::string entityName = "", const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
@@ -175,15 +178,16 @@ namespace jasperengine::editor{
         // older source counts as missing and is written again.
         static const char* const sceneSourceHeader;
 
-        static std::string createScene(int indentSpaces, Scene* scene, std::string name, std::vector<Entity> entities, Entity camera, const fs::path& projectPath, const fs::path& generatedPath, const std::vector<PrefabInstanceInfo>& prefabInstances = {}, const SceneResources& resources = {});
+        static std::string createScene(int indentSpaces, Scene* scene, uint32_t sceneId, std::string name, std::vector<Entity> entities, Entity camera, const fs::path& projectPath, const fs::path& generatedPath, const std::vector<PrefabInstanceInfo>& prefabInstances = {}, const SceneResources& resources = {});
 
         // The source of a prefab's build_prefab_* / create_prefab_* functions from its baked
         // instance. prefabGuid: the asset GUID of a prefab path (written on the bare root)
         static std::string createPrefab(const std::filesystem::path& prefabPath, const BakedPrefab& baked, const fs::path& projectPath, const fs::path& generatedPath,
             const std::function<std::string(const std::filesystem::path&)>& prefabGuid = nullptr);
         static std::string createPrefabHeader(const std::filesystem::path& prefabPath);
-        // Binds each camera-linked texture of the entities to its camera's framebuffer; with
-        // namedCamerasOnly, only links to cameras that have a variable in entityVarNames
+        // Binds each camera-linked texture of the entities to its camera's framebuffer, and each
+        // fluid-linked one ("fluid|<e>") to its FluidSimulation's output; with namedCamerasOnly,
+        // only links to cameras (fluids) that have a variable in entityVarNames
         static std::string createCameraTextureLinks(int indentSpaces, EntityRegistry* registry, const std::vector<Entity>& entities, const std::unordered_map<Entity, std::string>* entityVarNames, bool namedCamerasOnly);
 
 
@@ -212,6 +216,7 @@ namespace jasperengine::editor{
         static std::string createLocalVolumetricFogComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createVolumetricCloudsComponent(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createUIDocumentComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
+        static std::string createFluidSimulationComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createReflectionProbeComponent(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createCameraComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createAudioSourceComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
@@ -237,6 +242,10 @@ namespace jasperengine::editor{
         static std::string createRotateTracksComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createScaleTracksComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createMorphTracksComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
+        static std::string createLatticeComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
+        static std::string createLatticeModifierComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
+        static std::string createLatticeFollowerComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
+        static std::string createLatticeTracksComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createParticleSystemComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createForceFieldComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false);
         static std::string createLineRendererComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);

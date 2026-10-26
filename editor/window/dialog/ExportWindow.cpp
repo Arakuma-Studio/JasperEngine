@@ -800,7 +800,7 @@ void ExportWindow::drawShaderSection() {
             const bool isExcluded = m_shaderExclusions.count(entry.key) > 0;
             const char* icon = isExcluded ? ICON_FA_TRASH : isOverride ? ICON_FA_CIRCLE_PLUS : ICON_FA_CUBES;
             const std::string label = std::string(icon) + "  " + entry.displayName +
-                                      (isExcluded ? " (Excluded)" : "") + "###shader_" + std::to_string(entry.key);
+                                      (isExcluded ? " (Excluded)" : "") + "###shader_" + ShaderPool::getShaderKeyText(entry.key);
 
             // Excluded shaders remain selectable for Restore, but use disabled text.
             if (isExcluded) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
@@ -1260,6 +1260,7 @@ void ExportWindow::drawAddShaderDialog() {
             ShaderType::SSR, ShaderType::SSR_BLUR, ShaderType::COMPOSITE,
             ShaderType::SHADOW2D, ShaderType::BLIT, ShaderType::POSTPROCESS, ShaderType::BLOOM,
             ShaderType::HTMLUI, ShaderType::HTMLUI_GRADIENT, ShaderType::HTMLUI_POST, ShaderType::UI_EFFECT,
+            ShaderType::PROBE_FILTER,
             ShaderType::ATMOSPHERE_DEPTH, ShaderType::VOLUMETRIC_FOG, ShaderType::ATMOSPHERE_DENOISE,
             ShaderType::VOLUMETRIC_CLOUDS, ShaderType::SKY_COMPOSITE, ShaderType::VOLUMETRIC_COMPOSITE
         };
@@ -1284,7 +1285,7 @@ void ExportWindow::drawAddShaderDialog() {
 
         // Property checkboxes
         ShaderType selectedType = typeValues[m_addShaderTypeIndex];
-        int propCount = ShaderPool::getShaderPropertyCount(selectedType);
+        int propCount = std::min(ShaderPool::getShaderPropertyCount(selectedType), SHADER_PROPERTY_BITS);
 
         // A UI effect (phase 5) is one of the effects: the engine's and the project's the
         // documents declared (@effect); its identity rides in the custom shader id
@@ -1337,13 +1338,13 @@ void ExportWindow::drawAddShaderDialog() {
         ImGui::Spacing();
 
         // Preview
-        uint32_t props = 0;
+        uint64_t props = 0;
         for (int i = 0; i < propCount; i++) {
-            if (m_addShaderProps[i]) props |= (1u << i);
+            if (m_addShaderProps[i]) props |= shaderPropertyBit(i);
         }
         ShaderKey newKey = ShaderPool::getShaderKey(selectedType, props);
         if (selectedType == ShaderType::UI_EFFECT) {
-            newKey = effect ? ShaderPool::normalizeKey(fx::EffectRegistry::get().shaderKey(*effect, (props & 1u) != 0)) : 0;
+            newKey = effect ? ShaderPool::normalizeKey(fx::EffectRegistry::get().shaderKey(*effect, (props & 1u) != 0)) : ShaderKey();
         }
         std::string preview = Exporter::getShaderDisplayName(selectedType, props, ShaderPool::getCustomIdFromKey(newKey));
         ImGui::Text("Preview: %s", preview.c_str());

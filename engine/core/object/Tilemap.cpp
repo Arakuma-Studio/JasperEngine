@@ -115,6 +115,8 @@ void Tilemap::addRect(int id, const std::string& name, const std::string& textur
     if ((unsigned int)(id + 1) > tilemap.numTilesRect){
         tilemap.numTilesRect = id + 1;
     }
+    // tiles already placed on this id draw the new rect
+    tilemap.needUpdateTilemap = true;
 }
 
 void Tilemap::addRect(int id, const std::string& name, const std::string& texture, Rect rect){
@@ -159,6 +161,7 @@ void Tilemap::removeRect(int id){
                 tilemap.tiles[i].rectId--;
             }
         }
+        tilemap.needUpdateTilemap = true;
     }else{
         Log::error("Error removing rect with id %i", id);
     }
@@ -177,6 +180,7 @@ void Tilemap::clearRects(){
         tilemap.tilesRect[i] = TileRectData{};
     }
     tilemap.numTilesRect = 0;
+    tilemap.needUpdateTilemap = true;
 }
 
 TileRectData& Tilemap::getRect(int id){
@@ -266,6 +270,7 @@ void Tilemap::clearTiles(){
         tilemap.tiles[i] = TileData{};
     }
     tilemap.numTiles = 0;
+    tilemap.needUpdateTilemap = true;
 }
 
 TileData& Tilemap::getTile(int id){
@@ -289,7 +294,10 @@ TileData& Tilemap::getTile(const std::string& name){
 void Tilemap::setReserveTiles(unsigned int reserveTiles){
     TilemapComponent& tilemap = getComponent<TilemapComponent>();
 
-    tilemap.reserveTiles = reserveTiles;
+    if (tilemap.reserveTiles != reserveTiles){
+        tilemap.reserveTiles = reserveTiles;
+        tilemap.needUpdateTilemap = true;
+    }
 }
 
 unsigned int Tilemap::getReserveTiles() const{

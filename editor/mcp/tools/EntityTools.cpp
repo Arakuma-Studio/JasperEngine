@@ -4,6 +4,7 @@
 // W1: hierarchy and GameObjects: tree, find, create, delete, duplicate, rename, move,
 // active/tag/layer, selection, copy/cut/paste
 #include "McpTools.h"
+#include "LatticeShared.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -26,6 +27,9 @@
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/ObjectTransformCmd.h"
 #include "command/type/PasteEntitiesCmd.h"
+#include "command/CommandHandle.h"
+#include "command/CommandHistory.h"
+#include "lattice/LatticeEditorOps.h"
 #include "registry/TagManager.h"
 #include "util/EntityClipboard.h"
 #include "util/Util.h"
@@ -187,6 +191,7 @@ const std::vector<EntityKind>& entityKinds() {
         {"torus", EntityCreationType::TORUS, "Torus"},
         {"model", EntityCreationType::MODEL, "Model"},
         {"terrain", EntityCreationType::TERRAIN, "Terrain"},
+        {"water", EntityCreationType::WATER, "Water"},
         {"camera", EntityCreationType::CAMERA, "Camera"},
         {"directional_light", EntityCreationType::DIRECTIONAL_LIGHT, "Directional Light"},
         {"point_light", EntityCreationType::POINT_LIGHT, "Point Light"},
@@ -198,6 +203,7 @@ const std::vector<EntityKind>& entityKinds() {
         {"reflection_probe", EntityCreationType::REFLECTION_PROBE, "Reflection Probe"},
         {"particle_system", EntityCreationType::PARTICLE_SYSTEM, "Particle System"},
         {"force_field", EntityCreationType::FORCE_FIELD, "Force Field"},
+        {"fluid_simulation", EntityCreationType::FLUID_SIMULATION, "Fluid Simulation"},
         {"points", EntityCreationType::POINTS, "Points"},
         {"line_renderer", EntityCreationType::LINE_RENDERER, "Line Renderer"},
         {"mesh_polygon", EntityCreationType::MESH_POLYGON, "Mesh Polygon"},
@@ -231,7 +237,9 @@ const std::vector<EntityKind>& entityKinds() {
         {"translate_tracks", EntityCreationType::TRANSLATE_TRACKS, "Translate Tracks"},
         {"rotate_tracks", EntityCreationType::ROTATE_TRACKS, "Rotate Tracks"},
         {"scale_tracks", EntityCreationType::SCALE_TRACKS, "Scale Tracks"},
-        {"morph_tracks", EntityCreationType::MORPH_TRACKS, "Morph Tracks"}
+        {"morph_tracks", EntityCreationType::MORPH_TRACKS, "Morph Tracks"},
+        {"lattice_tracks", EntityCreationType::LATTICE_TRACKS, "Lattice Tracks"},
+        {"lattice", EntityCreationType::LATTICE, "Lattice"}
     };
     return kinds;
 }
@@ -246,7 +254,8 @@ const EntityKind* findKind(const std::string& given) {
         {"light2d", "light_2d"}, {"point_light_2d", "light_2d"}, {"rigidbody_2d", "rigidbody2d"},
         {"rigidbody3d", "rigidbody"}, {"joint", "joint3d"}, {"joint_2d", "joint2d"}, {"progress_bar", "progressbar"},
         {"sun", "directional_light"}, {"audio", "audio_source"}, {"ui_image", "image"}, {"ui_text", "text"},
-        {"label", "text"}, {"quad", "plane"}, {"uidocument", "ui_document"}, {"html", "ui_document"}
+        {"label", "text"}, {"quad", "plane"}, {"uidocument", "ui_document"}, {"html", "ui_document"},
+        {"fluid", "fluid_simulation"}
     };
     auto alias = aliases.find(key);
     if (alias != aliases.end()) key = alias->second;
@@ -494,7 +503,13 @@ void findEntitiesTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ create_entity
 
+void createEntityRun(const CallPtr& call, bool waited);
+
 void createEntityTool(const CallPtr& call) {
+    createEntityRun(call, false);
+}
+
+void createEntityRun(const CallPtr& call, bool waited) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
     SceneProject* scene = sceneArg(call);
@@ -537,11 +552,35 @@ void createEntityTool(const CallPtr& call) {
             return;
         }
         if (!Util::isModelFile(absolute.string())) {
-            call->fail("model must be a .gltf, .glb or .obj file.");
+            call->fail("model must be a .gltf, .glb, .obj or .fbx file.");
             return;
         }
         if (!McpValues::assetPathFromJson(project, model, modelStored, error)) {
             call->fail("model: " + error);
+            return;
+        }
+    }
+    // type lattice: the editor's creation around targets (fitted to their bounds, bound to them)
+    std::vector<Entity> targets;
+    if (args.contains("targets") && !args["targets"].is_null()) {
+        if (kind->type != EntityCreationType::LATTICE) {
+            call->fail("targets is only for type \"lattice\" (the GameObjects it is fitted around and deforms).");
+            return;
+        }
+        if (!McpRefs::resolveEntities(scene, args["targets"], targets, error)) {
+            call->fail("targets: " + error);
+            return;
+        }
+        for (Entity target : targets) {
+            if (!scene->scene->findComponent<Transform>(target)) {
+                call->fail("targets: \"" + scene->scene->getEntityName(target) + "\" has no Transform, so it cannot be deformed.");
+                return;
+            }
+        }
+        // geometry made or changed by the previous calls is built in the next frame: fit to it then
+        if (!waited && lattice_mcp::targetsPending(project, sceneId, targets)) {
+            call->waitUntil([project, sceneId, targets]() { return !lattice_mcp::targetsPending(project, sceneId, targets); },
+                            lattice_mcp::TARGETS_WAIT_MS, [call](bool) { createEntityRun(call, true); });
             return;
         }
     }
@@ -583,31 +622,70 @@ void createEntityTool(const CallPtr& call) {
     auto created = std::make_shared<Entity>(NULL_ENTITY);
     auto* steps = new McpStepsCmd();
     const bool select = args.value("select", true);
-    steps->addStep([project, sceneId, name, kind, parent, created, select](std::string& why) -> Command* {
-        auto* cmd = parent != NULL_ENTITY ? new CreateEntityCmd(project, sceneId, name, kind->type, parent)
-                                          : new CreateEntityCmd(project, sceneId, name, kind->type);
-        cmd->setQuiet(!select);
-        // the id is known once it ran: the next steps read it through `created`
-        struct Capture : public Command {
-            CreateEntityCmd* inner;
-            std::shared_ptr<Entity> out;
-            Capture(CreateEntityCmd* inner, std::shared_ptr<Entity> out): inner(inner), out(std::move(out)) {}
-            ~Capture() override { delete inner; }
-            bool execute() override {
-                if (!inner->execute()) return false;
-                *out = inner->getEntity();
-                return true;
+    size_t stepCount = 0;
+    // a lattice is made by LatticeEditorOps::createLattice (its own grouped commands, as the
+    // Hierarchy's create menu does); the steps below then run on it and everything is one undo step
+    CommandHistory* history = CommandHandle::get(sceneId);
+    const size_t start = history->mark();
+    const std::vector<Entity> selectedBefore = project->getSelectedEntities(sceneId);
+    Json bound = Json::array(), notes = Json::array();
+    if (kind->type == EntityCreationType::LATTICE) {
+        McpValues::refreshTransforms(scene);  // targets made or moved this frame measure where they are now
+        *created = LatticeEditorOps::createLattice(project, sceneId, targets, Vector3::ZERO, name, &error);
+        if (*created == NULL_ENTITY) {
+            delete steps;
+            call->fail("Nothing was created: " + error);
+            return;
+        }
+        for (Entity target : targets) {
+            bool isBound = false;
+            if (LatticeModifierComponent* modifier = scene->scene->findComponent<LatticeModifierComponent>(target)) {
+                for (const LatticeBinding& binding : modifier->bindings) isBound = isBound || binding.lattice == *created;
             }
-            void undo() override { inner->undo(); }
-            std::string describe() const override { return inner->describe(); }
-            const char* typeName() const override { return inner->typeName(); }
-            size_t memoryBytes() const override { return sizeof(*this) + inner->memoryBytes(); }
-            void collectKeepCommands(KeepContext& context) const override { inner->collectKeepCommands(context); }
-        };
-        why = "The GameObject could not be created.";
-        return new Capture(cmd, created);
-    });
+            if (isBound) {
+                bound.push_back(McpRefs::entityJson(scene, target));
+            } else {
+                notes.push_back("\"" + scene->scene->getEntityName(target) + "\" has no mesh (nor do its children): not bound.");
+            }
+        }
+        if (parent != NULL_ENTITY) {
+            const Entity lattice = *created;
+            steps->refreshTransforms(project, sceneId);
+            steps->addStep([project, sceneId, lattice, parent](std::string& why) -> Command* {
+                why = "The lattice could not be put under the parent (see the console).";
+                return new MoveEntityOrderCmd(project, sceneId, lattice, parent, InsertionType::INTO);
+            });
+            stepCount++;
+        }
+    } else {
+        stepCount++;
+        steps->addStep([project, sceneId, name, kind, parent, created, select](std::string& why) -> Command* {
+            auto* cmd = parent != NULL_ENTITY ? new CreateEntityCmd(project, sceneId, name, kind->type, parent)
+                                              : new CreateEntityCmd(project, sceneId, name, kind->type);
+            cmd->setQuiet(!select);
+            // the id is known once it ran: the next steps read it through `created`
+            struct Capture : public Command {
+                CreateEntityCmd* inner;
+                std::shared_ptr<Entity> out;
+                Capture(CreateEntityCmd* inner, std::shared_ptr<Entity> out): inner(inner), out(std::move(out)) {}
+                ~Capture() override { delete inner; }
+                bool execute() override {
+                    if (!inner->execute()) return false;
+                    *out = inner->getEntity();
+                    return true;
+                }
+                void undo() override { inner->undo(); }
+                std::string describe() const override { return inner->describe(); }
+                const char* typeName() const override { return inner->typeName(); }
+                size_t memoryBytes() const override { return sizeof(*this) + inner->memoryBytes(); }
+                void collectKeepCommands(KeepContext& context) const override { inner->collectKeepCommands(context); }
+            };
+            why = "The GameObject could not be created.";
+            return new Capture(cmd, created);
+        });
+    }
     for (ComponentType type : extraComponents) {
+        stepCount++;
         steps->addStep([project, sceneId, created, type](std::string& why) -> Command* {
             SceneProject* current = project->getScene(sceneId);
             if (McpRefs::hasComponent(current, *created, type)) return new MultiPropertyCmd();  // the type made it
@@ -616,11 +694,13 @@ void createEntityTool(const CallPtr& call) {
         });
     }
     if (!modelStored.empty()) {
+        stepCount++;
         steps->addStep([project, sceneId, created, modelStored](std::string&) -> Command* {
             return new ModelLoadCmd(project, sceneId, *created, modelStored);
         });
     }
     if (!changes.empty()) {
+        stepCount++;
         steps->addStep([project, sceneId, created, changes](std::string& why) -> Command* {
             auto* multi = new MultiPropertyCmd();
             if (!McpValues::appendChangeCommands(project, project->getScene(sceneId), {*created}, changes, *multi, why)) {
@@ -630,7 +710,16 @@ void createEntityTool(const CallPtr& call) {
             return multi;
         });
     }
-    if (!runSceneCommand(sceneId, steps, error)) {
+    const bool stepsOk = stepCount == 0 ? (delete steps, true) : runSceneCommand(sceneId, steps, error);
+    if (kind->type == EntityCreationType::LATTICE) {
+        if (!stepsOk) {
+            while (history->position() > start && history->canUndo()) history->undo();
+        } else {
+            history->groupSince(start);
+            if (!select) project->replaceSelectedEntities(sceneId, selectedBefore);
+        }
+    }
+    if (!stepsOk) {
         // every step was undone: the GameObject the first step made (and its id) is gone
         if (*created != NULL_ENTITY) {
             const std::string label = "GameObject " + std::to_string(*created) + " \"";
@@ -642,7 +731,7 @@ void createEntityTool(const CallPtr& call) {
         return;
     }
     const Entity entity = *created;
-    auto reply = [call, project, sceneId, entity, kind]() {
+    auto reply = [call, project, sceneId, entity, kind, bound, notes]() {
         SceneProject* current = project->getScene(sceneId);
         Json data = {
             {"entity_id", entity},
@@ -662,8 +751,15 @@ void createEntityTool(const CallPtr& call) {
             for (Entity child : children) list.push_back(McpRefs::entityJson(current, child));
             data["children"] = list;
         }
+        std::string extra;
+        if (kind->type == EntityCreationType::LATTICE) {
+            data["bound"] = bound;
+            if (!notes.empty()) data["notes"] = notes;
+            extra = " Bound to " + std::to_string(bound.size()) + " target(s); edit it with edit_lattice.";
+            for (const Json& note : notes) extra += " " + note.get<std::string>();
+        }
         call->ok("Created " + std::string(kind->label) + " \"" + current->scene->getEntityName(entity) + "\" [" +
-                 std::to_string(entity) + "] at " + data["entity"]["path"].get<std::string>() + " (one undo step).", data);
+                 std::to_string(entity) + "] at " + data["entity"]["path"].get<std::string>() + " (one undo step)." + extra, data);
     };
     if (!modelStored.empty() && ModelLoadCmd::isLoadPending(sceneId, entity)) {
         call->waitUntil([sceneId, entity]() { return !ModelLoadCmd::isLoadPending(sceneId, entity); }, 120000,
@@ -1099,8 +1195,8 @@ void registerEntityTools(McpRegistry& registry) {
             "Find GameObjects matching all given filters (globs: * ?, case-insensitive).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
-            {"name", string("Name glob.")},
-            {"path", string("Path glob.")},
+            {"name", string("")},
+            {"path", string("")},
             {"component", {{"type", {"string", "array"}}, {"items", {{"type", "string"}}}, {"description", "Required component(s)."}}},
             {"tag", string("")},
             {"layer", {{"type", {"integer", "string"}}, {"description", "0-31 or name."}}},
@@ -1134,7 +1230,8 @@ void registerEntityTools(McpRegistry& registry) {
             {"position", vec3("")},
             {"rotation", quat()},
             {"scale", vec3("")},
-            {"model", assetPath("type model: .gltf/.glb/.obj.")},
+            {"model", assetPath("type model: .gltf/.glb/.obj/.fbx.")},
+            {"targets", entities("type lattice: fitted, bound.")},
             {"components", {{"type", {"string", "array"}}, {"items", {{"type", "string"}}}, {"description", "Extra components."}}},
             {"values", anyObject("")},
             {"changes", array(anyObject(""), "")},

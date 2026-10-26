@@ -18,14 +18,33 @@ extern unsigned int bulb_icon_png_len;
 #include "command/type/ObjectTransformCmd.h"
 #include "command/type/PropertyCmd.h"
 #include "command/type/MultiPropertyCmd.h"
+#include "lattice/LatticeEditorOps.h"
 #include "util/GraphicUtils.h"
+#include "window/PhysicsPlacementWindow.h"
 #include "window/TerrainEditWindow.h"
+#include "render/LineDrawUtils.h"
+#include "util/Angle.h"
+#include "util/FluidEditorTools.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cfloat>
 
 using namespace jasperengine;
+
+namespace {
+
+    // The twelve edges of a box, by OBB corner
+    const OBB::CornerEnum BOX_EDGES[12][2] = {
+        {OBB::NEAR_LEFT_BOTTOM, OBB::NEAR_LEFT_TOP}, {OBB::NEAR_LEFT_TOP, OBB::NEAR_RIGHT_TOP},
+        {OBB::NEAR_RIGHT_TOP, OBB::NEAR_RIGHT_BOTTOM}, {OBB::NEAR_RIGHT_BOTTOM, OBB::NEAR_LEFT_BOTTOM},
+        {OBB::FAR_LEFT_BOTTOM, OBB::FAR_LEFT_TOP}, {OBB::FAR_LEFT_TOP, OBB::FAR_RIGHT_TOP},
+        {OBB::FAR_RIGHT_TOP, OBB::FAR_RIGHT_BOTTOM}, {OBB::FAR_RIGHT_BOTTOM, OBB::FAR_LEFT_BOTTOM},
+        {OBB::FAR_LEFT_BOTTOM, OBB::NEAR_LEFT_BOTTOM}, {OBB::FAR_LEFT_TOP, OBB::NEAR_LEFT_TOP},
+        {OBB::FAR_RIGHT_TOP, OBB::NEAR_RIGHT_TOP}, {OBB::FAR_RIGHT_BOTTOM, OBB::NEAR_RIGHT_BOTTOM}
+    };
+
+}
 
 void editor::SceneRender::ensureOverlayLines(std::map<Entity, LineRenderer*>& lines, Entity entity){
     if (lines.find(entity) == lines.end()){
@@ -59,6 +78,11 @@ editor::SceneRender::SceneRender(Scene* scene, bool use2DGizmos, bool enable3DOv
     terrainBrushLines->addLine(Vector3::ZERO, Vector3::ZERO, Vector4::ZERO);
     terrainBrushLines->setVisible(false);
 
+    physicsLines = overlay(new LineRenderer(scene));
+    physicsLines->setMaxLines(1024);
+    physicsLines->addLine(Vector3::ZERO, Vector3::ZERO, Vector4::ZERO);
+    physicsLines->setVisible(false);
+
     scene->setCamera(camera);
 
     cursorSelected = CursorSelected::POINTER;
@@ -78,7 +102,9 @@ editor::SceneRender::~SceneRender(){
         layerSelLines[i] = nullptr;
     }
 
+    destroyLatticeCages();
     delete terrainBrushLines;
+    delete physicsLines;
     delete camera;
 }
 
@@ -495,6 +521,7 @@ OBB editor::SceneRender::getFamilyVisualOBB(Scene* target, Entity entity, float 
 void editor::SceneRender::hideAllGizmos(){
     selLines->setVisible(false);
     terrainBrushLines->setVisible(false);
+    physicsLines->setVisible(false);
     toolslayer.setGizmoVisible(false);
     for (int i = 0; i < 2; i++){
         if (layerTools[i]){
@@ -505,6 +532,7 @@ void editor::SceneRender::hideAllGizmos(){
     uilayer.setViewGizmoImageVisible(false);
     uilayer.setSelectionBoxVisible(false);
     uilayer.setCameraGaugeVisible(false);
+    hideLatticeCages();
 }
 
 void editor::SceneRender::setPlayMode(bool isPlaying){
@@ -759,6 +787,11 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
         tools.setGizmoSelected(toolslayer.getGizmoSelected());
     }
 
+    // Physics (G) shows in orange gizmos; it never works through an edit layer's tools
+    PhysicsPlacementWindow* physics = Backend::getApp().getPhysicsPlacementWindow();
+    const uint32_t physicsSceneId = physics ? physics->findSceneId(scene) : NULL_PROJECT_SCENE;
+    toolslayer.setPhysicsTint(physics && physics->isShownInScene(physicsSceneId));
+
     // while playing, what the running scene created is read-only: no gizmo moves it
     if (editLayer.active ? editLayer.running : isPlaying){
         toolEntities.erase(std::remove_if(toolEntities.begin(), toolEntities.end(), [&authoredEntities](Entity entity){
@@ -811,6 +844,12 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
     OBB totalSelBB;
 
     multipleEntitiesSelected = toolEntities.size() > 1;
+
+    // the selected points of the lattice the tools edit, which the gizmo then acts on
+    const Entity editedLattice = getPointEditLattice(toolEntities);
+    const uint32_t latticeScene = getLatticeSceneId();
+    const bool latticePointsSelected = editedLattice != NULL_ENTITY && latticeScene != NULL_PROJECT_SCENE &&
+        !LatticeEditorOps::getSelectedPoints(latticeScene, editedLattice).empty();
 
     bool showAnchorGizmo = false;
     Vector4 anchorData = Vector4::ZERO; // x: left, y: top, z: right, w: bottom
@@ -885,6 +924,9 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
             if (selectedTrackPointIndex >= 0 && toolEntities[0] == selectedTrackPointEntity){
                 showCross = true;
             }
+            if (latticePointsSelected){
+                showCross = true;
+            }
 
             showRects = canResize2D && !isCamera && !isInstancedMesh && !showCross;
         }
@@ -895,7 +937,9 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
 
     syncObject2DGizmoMode();
 
+    // the terrain and Paint Dye brushes take the left button: no gizmo to grab
     bool terrainEditing = isTerrainEditing();
+    bool fluidPainting = isFluidPainting();
 
     totalSelBB.setHalfExtents(totalSelBB.getHalfExtents() + Vector3(selectionOffset));
 
@@ -911,6 +955,13 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
     bool selectionVisibility = false;
     if (numTEntities > 0){
         gizmoPosition /= numTEntities;
+
+        // a physics gesture's handle sits on the objects as they move, wherever the mouse is
+        if (physicsGestureStarted && !editLayer.active){
+            if (PlacementSession* session = physics->heldGesture(physicsSceneId, PhysicsPlacementWindow::GestureInput::Gizmo)){
+                gizmoPosition = session->getMoversCenter() + physicsGizmoOffset;
+            }
+        }
 
         selectionVisibility = true;
 
@@ -985,6 +1036,16 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
             }
         }
 
+        // Override gizmo for the selected lattice points (W/E/R, or the 2D gizmo's move)
+        if (latticePointsSelected){
+            Vector3 pivot;
+            Quaternion pivotRotation;
+            OBB pointsOBB;
+            if (getLatticePointsPivot(editedLattice, LatticeEditorOps::getSelectedPoints(latticeScene, editedLattice), pivot, pivotRotation, pointsOBB)){
+                tools.updateGizmo(camera, pivot, pivotRotation, computeGizmoScale(pivot), pointsOBB, mouseRay, mouseClicked, anchorData, anchorArea);
+            }
+        }
+
         if (selBB.size() > 0) {
             if (editLayer.active){
                 fillSelectionLines(layerSelLines[layerToolsIndex()], selBB, !editLayer.view.isOrthographic());
@@ -1036,7 +1097,7 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
         }
     }
 
-    if (terrainEditing){
+    if (terrainEditing || fluidPainting){
         tools.setGizmoVisible(false);
     }else if (tools.getGizmoSelected() == GizmoSelected::OBJECT2D && !sameRotation){
         tools.setGizmoVisible(false);
@@ -1049,6 +1110,9 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
     }
 
     syncObject2DGizmoMode();
+
+    updateLatticeCages(selEntities, entities, editedLattice);
+    updatePhysicsOverlay(physics, physicsSceneId);
 
     uilayer.setViewGizmoImageVisible(true);
 }
@@ -1070,12 +1134,31 @@ void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> 
         }
     }
 
+    // Paint Dye: a press on the fluid's Sprite starts a stroke; elsewhere it does nothing
+    // (the brush holds the left button until Esc or its toggle)
+    if (FluidEditorTools::isPainting(scene)){
+        physicsClick = false;
+        FluidEditorTools::beginStroke(scene, ownerMouseRay);
+        return;
+    }
+
+    // a drag from this click is physics' when Physics works here (sub-selected points,
+    // instances, tiles and lattice points keep their own drags)
+    physicsDragBegun = false;
+    physicsGestureStarted = false;
+    {
+        PhysicsPlacementWindow* physics = Backend::getApp().getPhysicsPlacementWindow();
+        physicsClick = physics && !editLayer.active && physics->isActiveInScene(physics->findSceneId(scene)) && !hasToolSubSelection(selEntities);
+    }
+
     // the tools work on the edit layer's selection while one is set
     Scene* const target = gizmoScene();
     ToolsLayer& tools = gizmoTools();
     if (editLayer.active){
         selEntities = editLayer.selection;
     }
+    // a driven Lattice Follower: the gizmo moves its rest (LatticeSceneRender.cpp)
+    redirectDrivenFollowers(target, selEntities);
 
     Vector3 viewDir = gizmoViewDirection();
 
@@ -1238,6 +1321,17 @@ void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> 
                 }
             }
         }
+
+        // a gizmo handle grabbed on selected lattice points: their drag begins
+        latticeDrag = LatticeDrag();
+        Entity latticeEntity = getPointEditLattice(selEntities);
+        const bool handleGrabbed = tools.getGizmoSelected() == GizmoSelected::OBJECT2D
+            ? tools.getGizmo2DSideSelected() == Gizmo2DSideSelected::CENTER
+            : tools.getGizmoSideSelected() != GizmoSideSelected::NONE;
+        if (latticeEntity != NULL_ENTITY && handleGrabbed && getLatticeSceneId() != NULL_PROJECT_SCENE &&
+            !LatticeEditorOps::getSelectedPoints(getLatticeSceneId(), latticeEntity).empty()){
+            beginLatticeDrag(latticeEntity, gizmoPosition, gizmoRotation);
+        }
     }
 
 }
@@ -1248,6 +1342,17 @@ void editor::SceneRender::mouseReleaseEvent(float x, float y){
     if (TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow()){
         terrainEditWindow->endStroke();
     }
+    FluidEditorTools::endStroke();
+
+    // a physics drag ends its gesture (commit, or settle then commit)
+    if (physicsGestureStarted){
+        if (PhysicsPlacementWindow* physics = Backend::getApp().getPhysicsPlacementWindow()){
+            physics->endGesture(physics->findSceneId(scene), PhysicsPlacementWindow::GestureInput::Gizmo);
+        }
+    }
+    physicsClick = false;
+    physicsDragBegun = false;
+    physicsGestureStarted = false;
 
     mouseClicked = false;
 
@@ -1258,6 +1363,8 @@ void editor::SceneRender::mouseReleaseEvent(float x, float y){
         }
     }
 
+    // one drag of lattice points, one undo step
+    endLatticeDrag();
     dragEdit.commit();
     dragEditStarted = false;
 }
@@ -1328,10 +1435,23 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
         }
     }
 
+    if (FluidEditorTools::isPainting(scene)){
+        FluidEditorTools::paintStroke(scene, ownerMouseRay);
+        return;
+    }
+
     // the box selects while playing too, as on release (Project::selectObjectsByRect)
     if (!disableSelection){
         uilayer.setSelectionBoxVisible(true);
         uilayer.updateRect(Vector2(origX, origY), Vector2(x, y) - Vector2(origX, origY));
+    }
+
+    // Physics on: the handle drives the simulation, the gizmo applies no transform of its own
+    if (physicsClick){
+        if (PhysicsPlacementWindow* physics = Backend::getApp().getPhysicsPlacementWindow()){
+            physicsGizmoDrag(physics, (uint32_t)sceneId, invertRotationSnap);
+        }
+        return;
     }
 
     // the tools work on the edit layer's selection while one is set, and its commands
@@ -1342,9 +1462,16 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
     if (editLayer.active){
         selEntities = editLayer.selection;
     }
+    redirectDrivenFollowers(target, selEntities);
 
     Vector3 gizmoPosition = tools.getGizmoPosition();
     Matrix4 gizmoRMatrix = tools.getGizmoRotation().getRotationMatrix();
+
+    // Lattice point drag: the gizmo's change goes to the points, not to the lattice entity
+    if (latticeDrag.active){
+        dragLatticeGizmo(project, commandSceneId, invertRotationSnap);
+        return;
+    }
 
     // TranslateTracks keyframe point drag: the tracks entity has no Transform,
     // so it is handled outside the per-entity transform loop below.
@@ -2084,11 +2211,236 @@ bool editor::SceneRender::isAnyGizmoSideSelected() const{
     return (tools.getGizmoSideSelected() != editor::GizmoSideSelected::NONE || tools.getGizmo2DSideSelected() != Gizmo2DSideSelected::NONE);
 }
 
+bool editor::SceneRender::isFluidPainting() const{
+    return FluidEditorTools::isPainting(scene);
+}
+
 bool editor::SceneRender::isTerrainEditing() const{
     if (TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow()){
         return terrainEditWindow->isEditingScene(scene);
     }
     return false;
+}
+
+bool editor::SceneRender::hasToolSubSelection(const std::vector<Entity>& selEntities){
+    if (selEntities.size() != 1){
+        return false;
+    }
+    const Entity entity = selEntities[0];
+    return (selectedTileIndex >= 0 && entity == selectedTileEntity)
+        || (selectedInstanceIndex >= 0 && entity == selectedInstanceEntity)
+        || (selectedOccluderPointIndex >= 0 && entity == selectedOccluderPointEntity)
+        || (selectedLinePointIndex >= 0 && entity == selectedLinePointEntity)
+        || (selectedPolygonPointIndex >= 0 && entity == selectedPolygonPointEntity)
+        || (selectedTrackPointIndex >= 0 && entity == selectedTrackPointEntity)
+        || (getPointEditLattice(selEntities) == entity && getLatticeSceneId() != NULL_PROJECT_SCENE &&
+            !LatticeEditorOps::getSelectedPoints(getLatticeSceneId(), entity).empty());
+}
+
+void editor::SceneRender::physicsGizmoDrag(PhysicsPlacementWindow* physics, uint32_t sceneId, bool invertRotationSnap){
+    using GestureInput = PhysicsPlacementWindow::GestureInput;
+    ToolsLayer& tools = toolslayer;
+    const GizmoSideSelected side = tools.getGizmoSideSelected();
+
+    if (!physicsDragBegun){
+        physicsDragBegun = true;
+        // off the handles the drag is a box select (drawn by the caller)
+        if (side == GizmoSideSelected::NONE){
+            return;
+        }
+        PlacementGesture gesture = PlacementGesture::Move;
+        if (tools.getGizmoSelected() == GizmoSelected::ROTATE){
+            gesture = PlacementGesture::Rotate;
+        }else if (tools.getGizmoSelected() == GizmoSelected::SCALE){
+            gesture = PlacementGesture::GatherSpread;
+        }
+        physicsGestureStarted = physics->beginGesture(sceneId, gesture, GestureInput::Gizmo);
+        if (PlacementSession* session = physicsGestureStarted ? physics->heldGesture(sceneId, GestureInput::Gizmo) : nullptr){
+            physicsMoversStart = session->getMoversCenter();
+            physicsGizmoOffset = gizmoStartPosition - physicsMoversStart;
+        }
+    }
+
+    // nothing moves after a refusal, or once Esc or Ctrl+Z cancelled the gesture
+    PlacementSession* session = physicsGestureStarted ? physics->heldGesture(sceneId, GestureInput::Gizmo) : nullptr;
+    RayReturn hit = mouseRay.intersects(cursorPlane);
+    if (!session || side == GizmoSideSelected::NONE || !hit){
+        return;
+    }
+    tools.mouseDrag(hit.point);
+
+    // the handle's frame from the click: the gizmo turns with the objects in Local mode
+    const Matrix4 handleRotation = rotationStartOffset.getRotationMatrix();
+
+    if (tools.getGizmoSelected() == GizmoSelected::TRANSLATE){
+        Vector3 deltaPos = handleRotation.inverse() * ((hit.point + cursorStartOffset) - gizmoStartPosition);
+        if (displaySettings.snapToGrid && displaySettings.gridSpacing3D > 0.0f){
+            const float spacing = displaySettings.gridSpacing3D;
+            deltaPos.x = std::round(deltaPos.x / spacing) * spacing;
+            deltaPos.y = std::round(deltaPos.y / spacing) * spacing;
+            deltaPos.z = std::round(deltaPos.z / spacing) * spacing;
+        }
+        Vector3 axes(1.0f, 1.0f, 1.0f);
+        switch (side){
+            case GizmoSideSelected::X: axes = Vector3(1, 0, 0); break;
+            case GizmoSideSelected::Y: axes = Vector3(0, 1, 0); break;
+            case GizmoSideSelected::Z: axes = Vector3(0, 0, 1); break;
+            case GizmoSideSelected::XY: axes = Vector3(1, 1, 0); break;
+            case GizmoSideSelected::XZ: axes = Vector3(1, 0, 1); break;
+            case GizmoSideSelected::YZ: axes = Vector3(0, 1, 1); break;
+            default: break;
+        }
+        const Vector3 handleDelta = handleRotation * Vector3(deltaPos.x * axes.x, deltaPos.y * axes.y, deltaPos.z * axes.z);
+        // the movers' centre goes where the handle went
+        session->setMoveTarget(physicsMoversStart + handleDelta);
+    }else if (tools.getGizmoSelected() == GizmoSelected::ROTATE){
+        // measured about where the gizmo was clicked, not where the objects have got to
+        const Vector3 lastPoint = gizmoStartPosition - hit.point;
+        const float dot = cursorStartOffset.dotProduct(lastPoint);
+        const float lengths = cursorStartOffset.length() * lastPoint.length();
+        const float cosine = std::fmax(-1.0f, std::fmin(1.0f, lengths != 0.0f ? dot / lengths : 0.0f));
+        const float sign = cursorStartOffset.crossProduct(lastPoint).dotProduct(cursorPlane.normal);
+        const float angle = snapRotationAngle(sign < 0.0f ? -std::acos(cosine) : std::acos(cosine), invertRotationSnap);
+        session->setRotateDelta(Quaternion(Angle::radToDefault(angle), rotationAxis));
+    }else if (tools.getGizmoSelected() == GizmoSelected::SCALE){
+        const Vector3 lastPoint = gizmoStartPosition - hit.point;
+        const Vector3 startLocal = handleRotation.inverse() * cursorStartOffset;
+        const Vector3 lastLocal = handleRotation.inverse() * lastPoint;
+        const float ratioX = startLocal.x != 0.0f ? lastLocal.x / startLocal.x : 1.0f;
+        const float ratioY = startLocal.y != 0.0f ? lastLocal.y / startLocal.y : 1.0f;
+        const float ratioZ = startLocal.z != 0.0f ? lastLocal.z / startLocal.z : 1.0f;
+        Vector3 scale(1.0f, 1.0f, 1.0f);
+        switch (side){
+            case GizmoSideSelected::XYZ:
+                scale = Vector3(cursorStartOffset.length() != 0.0f ? lastPoint.length() / cursorStartOffset.length() : 1.0f);
+                break;
+            case GizmoSideSelected::X: scale = Vector3(ratioX, 1, 1); break;
+            case GizmoSideSelected::Y: scale = Vector3(1, ratioY, 1); break;
+            case GizmoSideSelected::Z: scale = Vector3(1, 1, ratioZ); break;
+            case GizmoSideSelected::XY: scale = Vector3(ratioX, ratioY, 1); break;
+            case GizmoSideSelected::XZ: scale = Vector3(ratioX, 1, ratioZ); break;
+            case GizmoSideSelected::YZ: scale = Vector3(1, ratioY, ratioZ); break;
+            default: break;
+        }
+        // < 1 gathers, > 1 spreads; past twice the spread or through the centre means nothing more
+        auto clampScale = [](float value){
+            return std::isfinite(value) ? std::clamp(std::fabs(value), 0.0f, 2.0f) : 1.0f;
+        };
+        session->setGatherScale(Vector3(clampScale(scale.x), clampScale(scale.y), clampScale(scale.z)));
+    }
+}
+
+void editor::SceneRender::updatePhysicsOverlay(PhysicsPlacementWindow* physics, uint32_t sceneId){
+    PlacementOverlay overlay;
+    if (editLayer.active || !physics || !physics->collectOverlay(sceneId, overlay)){
+        physicsLines->setVisible(false);
+        return;
+    }
+
+    const Vector4 regionColor(0.85f, 0.88f, 0.95f, 0.30f);
+    const Vector4 slowingColor(1.00f, 0.42f, 0.15f, 1.0f);
+    const Vector4 freeColor(0.35f, 0.90f, 0.45f, 1.0f);
+    const Vector4 ringColor(1.00f, 0.72f, 0.25f, 0.9f);
+    const Vector4 ringExceededColor(1.00f, 0.22f, 0.18f, 1.0f);
+    const Vector4 ghostColor(0.78f, 0.82f, 0.92f, 0.55f);
+    const Vector4 proxyColor(0.35f, 0.80f, 1.00f, 0.85f);
+    const Vector4 axisColors[3] = {Vector4(0.92f, 0.32f, 0.30f, 1.0f), Vector4(0.40f, 0.88f, 0.35f, 1.0f), Vector4(0.38f, 0.55f, 1.00f, 1.0f)};
+
+    physicsLines->clearLines();
+    const Vector3 cameraPosition = camera->getWorldPosition();
+    auto towardCamera = [&cameraPosition](const Vector3& point){
+        const Vector3 direction = point - cameraPosition;
+        return direction.length() > 1e-6f ? direction : Vector3(0.0f, 0.0f, 1.0f);
+    };
+    auto addBox = [&](const OBB& box, const Matrix4* transform, const Vector4& color){
+        for (const auto& edge : BOX_EDGES){
+            Vector3 a = box.getCorner(edge[0]);
+            Vector3 b = box.getCorner(edge[1]);
+            if (transform){
+                a = *transform * a;
+                b = *transform * b;
+            }
+            physicsLines->addLine(a, b, color);
+        }
+    };
+
+    // the context region, while a gesture or a settle runs
+    if (overlay.active && !overlay.region.isNull() && !overlay.region.isInfinite()){
+        addBox(OBB(overlay.region), nullptr, regionColor);
+    }
+
+    // contacts: a dot a few pixels across, coloured by whether the mover is slowed there
+    for (size_t i = 0; i < overlay.contactPoints.size(); i++){
+        const Vector3& point = overlay.contactPoints[i];
+        const bool slowing = i < overlay.contactSlowing.size() && overlay.contactSlowing[i];
+        const float radius = billboardScreenScale(point, 3.0f);
+        LineDrawUtils::addRing3D(physicsLines, point, towardCamera(point), radius, slowing ? slowingColor : freeColor, 8);
+        LineDrawUtils::addRing3D(physicsLines, point, towardCamera(point), radius * 0.45f, slowing ? slowingColor : freeColor, 6);
+    }
+
+    // the teleport ring: dashed, facing the view, red once the handle is past it
+    if (overlay.showTeleportRing && overlay.teleportRadius > 0.0f){
+        const Vector4 color = overlay.teleportExceeded ? ringExceededColor : ringColor;
+        auto [axis, right, forward] = LineDrawUtils::makeBasis(towardCamera(overlay.teleportCenter));
+        (void)axis;
+        const int segments = 64;
+        for (int i = 0; i < segments; i += 2){
+            const float a0 = (2.0f * (float)M_PI * (float)i) / (float)segments;
+            const float a1 = (2.0f * (float)M_PI * (float)(i + 1)) / (float)segments;
+            physicsLines->addLine(overlay.teleportCenter + (right * std::cos(a0) + forward * std::sin(a0)) * overlay.teleportRadius,
+                                  overlay.teleportCenter + (right * std::cos(a1) + forward * std::sin(a1)) * overlay.teleportRadius, color);
+        }
+    }
+
+    // ghosts: each mover's outline where it was before the gesture (where a cancel puts it)
+    for (const PlacementOverlay::Ghost& ghost : overlay.ghosts){
+        const Transform* transform = scene->findComponent<Transform>(ghost.entity);
+        if (!transform){
+            continue;
+        }
+        const OBB box = getFamilyVisualOBB(scene, ghost.entity, 0.0f);
+        if (box.isNull()){
+            continue;
+        }
+        const Matrix4 current = Matrix4::translateMatrix(transform->worldPosition) * transform->worldRotation.getRotationMatrix();
+        const Matrix4 before = Matrix4::translateMatrix(ghost.position) * ghost.rotation.getRotationMatrix();
+        const Matrix4 toBefore = before * current.inverse();
+        addBox(box, &toBefore, ghostColor);
+    }
+
+    // the generated colliders (Gizmos > Physics proxies)
+    for (size_t i = 0; i + 1 < overlay.proxySegments.size(); i += 2){
+        physicsLines->addLine(overlay.proxySegments[i], overlay.proxySegments[i + 1], proxyColor);
+    }
+
+    // distance rays from the idle selection to its surroundings, with a tick at the hit;
+    // their labels are the Scene view's (ImGui)
+    for (const PlacementOverlay::Distance& distance : overlay.distances){
+        const Vector4& color = axisColors[std::clamp(distance.axis, 0, 2)];
+        physicsLines->addLine(distance.from, distance.to, color);
+        LineDrawUtils::addRing3D(physicsLines, distance.to, towardCamera(distance.to), billboardScreenScale(distance.to, 2.5f), color, 6);
+    }
+
+    physicsLines->setVisible(physicsLines->getNumLines() > 0);
+}
+
+bool editor::SceneRender::worldToScreen(const Vector3& world, Vector2& screen) const{
+    const CameraComponent& cameraComponent = scene->getComponent<CameraComponent>(camera->getEntity());
+    const Vector4 clip = cameraComponent.viewProjectionMatrix * Vector4(world.x, world.y, world.z, 1.0f);
+    if (clip.w <= 1e-6f){
+        return false;
+    }
+    const float width = (viewWidth > 0) ? (float)viewWidth : (float)Engine::getCanvasWidth();
+    const float height = (viewHeight > 0) ? (float)viewHeight : (float)Engine::getCanvasHeight();
+    // the inverse of screenToRayFromMatrix
+    screen.x = (clip.x / clip.w + 1.0f) * 0.5f * width;
+    screen.y = (1.0f - clip.y / clip.w) * 0.5f * height;
+    return std::isfinite(screen.x) && std::isfinite(screen.y);
+}
+
+bool editor::SceneRender::hasHoverFeedback() const{
+    // the Paint Dye brush's circle follows the pointer like the terrain brush's
+    return gizmoTools().isGizmoVisible() || isTerrainEditing() || isFluidPainting();
 }
 
 float editor::SceneRender::snapRotationAngle(float angle, bool invertRotationSnap) const{
@@ -2133,6 +2485,38 @@ void editor::SceneRender::updateTerrainBrushCursor(){
     addLoop(cursor.innerPoints, Vector4(0.75f, 0.58f, 0.16f, 1.0f));
 
     terrainBrushLines->setVisible(true);
+}
+
+bool editor::SceneRender::getFluidBrushCircle(std::vector<Vector2>& points){
+    points.clear();
+    std::vector<Vector3> world;
+    if (!FluidEditorTools::cursorCircle(scene, ownerMouseRay, world) || world.size() < 2){
+        return false;
+    }
+
+    points.reserve(world.size());
+    for (const Vector3& point : world){
+        Vector2 projected;
+        if (!projectToView(point, projected)){
+            points.clear();
+            return false;
+        }
+        points.push_back(projected);
+    }
+    return true;
+}
+
+bool editor::SceneRender::projectToView(const Vector3& world, Vector2& point){
+    // through the editor camera the pointer's ray comes from (screenToRay), into its pixels
+    const float width = (viewWidth > 0) ? (float)viewWidth : (float)Engine::getCanvasWidth();
+    const float height = (viewHeight > 0) ? (float)viewHeight : (float)Engine::getCanvasHeight();
+    const CameraComponent& cameraComponent = scene->getComponent<CameraComponent>(camera->getEntity());
+    const Vector4 clip = cameraComponent.viewProjectionMatrix * Vector4(world.x, world.y, world.z, 1.0f);
+    if (clip.w <= 0.0f){
+        return false;
+    }
+    point = Vector2((clip.x / clip.w + 1.0f) * 0.5f * width, (1.0f - clip.y / clip.w) * 0.5f * height);
+    return true;
 }
 
 TextureRender& editor::SceneRender::getTexture(){
@@ -2309,14 +2693,7 @@ float editor::SceneRender::targetBillboardScale(Scene* target, const Vector3& wo
 
 // The outline of each box: its near face (2D views), or all twelve edges
 void editor::SceneRender::fillSelectionLines(LineRenderer* lines, const std::vector<OBB>& obbs, bool boxes){
-    static const OBB::CornerEnum edges[12][2] = {
-        {OBB::NEAR_LEFT_BOTTOM, OBB::NEAR_LEFT_TOP}, {OBB::NEAR_LEFT_TOP, OBB::NEAR_RIGHT_TOP},
-        {OBB::NEAR_RIGHT_TOP, OBB::NEAR_RIGHT_BOTTOM}, {OBB::NEAR_RIGHT_BOTTOM, OBB::NEAR_LEFT_BOTTOM},
-        {OBB::FAR_LEFT_BOTTOM, OBB::FAR_LEFT_TOP}, {OBB::FAR_LEFT_TOP, OBB::FAR_RIGHT_TOP},
-        {OBB::FAR_RIGHT_TOP, OBB::FAR_RIGHT_BOTTOM}, {OBB::FAR_RIGHT_BOTTOM, OBB::FAR_LEFT_BOTTOM},
-        {OBB::FAR_LEFT_BOTTOM, OBB::NEAR_LEFT_BOTTOM}, {OBB::FAR_LEFT_TOP, OBB::NEAR_LEFT_TOP},
-        {OBB::FAR_RIGHT_TOP, OBB::NEAR_RIGHT_TOP}, {OBB::FAR_RIGHT_BOTTOM, OBB::NEAR_RIGHT_BOTTOM}
-    };
+    const auto& edges = BOX_EDGES;
     const Vector4 color = Vector4(1.0, 0.6, 0.0, 1.0);
     const size_t edgesPerBox = boxes ? 12 : 4;
 
@@ -2709,18 +3086,36 @@ void editor::SceneRender::clearTrackPointSelection(){
 Matrix4 editor::SceneRender::getTrackPointsWorldMatrix(Entity entity){
     // values[] drive the action target's Transform::position, which is local to
     // the target's parent: that parent's model matrix maps them to world space
-    if (ActionComponent* action = scene->findComponent<ActionComponent>(entity)){
-        if (action->target != NULL_ENTITY && scene->isEntityCreated(action->target)){
-            if (Transform* targetTransform = scene->findComponent<Transform>(action->target)){
-                if (targetTransform->parent != NULL_ENTITY){
-                    if (Transform* parentTransform = scene->findComponent<Transform>(targetTransform->parent)){
-                        return parentTransform->modelMatrix;
-                    }
-                }
-            }
+    ActionComponent* action = scene->findComponent<ActionComponent>(entity);
+    if (!action || action->target == NULL_ENTITY || !scene->isEntityCreated(action->target)){
+        return Matrix4();
+    }
+    Transform* targetTransform = scene->findComponent<Transform>(action->target);
+    if (!targetTransform){
+        return Matrix4();
+    }
+
+    Matrix4 matrix;
+    if (targetTransform->parent != NULL_ENTITY){
+        if (Transform* parentTransform = scene->findComponent<Transform>(targetTransform->parent)){
+            matrix = parentTransform->modelMatrix;
         }
     }
-    return Matrix4();
+
+    // relative values are offsets from where the track started, or from the target before it starts
+    KeyframeTracksComponent* keyframe = scene->findComponent<KeyframeTracksComponent>(entity);
+    if (keyframe && keyframe->relative){
+        ActionSystem* actions = scene->getSystem<ActionSystem>().get();
+        Vector3 base = keyframe->basePosition;
+        if (!keyframe->hasBase){
+            Vector3 scale;
+            Quaternion rotation;
+            actions->getRelativeTrackPose(action->target, base, rotation, scale);
+        }
+        matrix = matrix * actions->getRelativeTrackMatrix(action->target, base);
+    }
+
+    return matrix;
 }
 
 bool editor::SceneRender::getTrackPointWorld(Entity entity, int pointIndex, Vector3& worldPoint){

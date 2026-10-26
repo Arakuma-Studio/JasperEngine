@@ -21,6 +21,7 @@
  */
 
 #include "tvgCommon.h"
+#include <new>
 #include "tvgTaskScheduler.h"
 #include "tvgLoaderMgr.h"
 
@@ -136,10 +137,24 @@ uint16_t THORVG_VERSION_NUMBER()
 // JasperEngine local change: an AddressSanitizer build keeps the sanitizer's operator new/delete. ThorVG
 // replaces only the unsized forms, and ASan's own sized operator delete then frees ThorVG's malloc
 // blocks (alloc-dealloc-mismatch at the first static initializer of every binary).
+// JasperEngine local change: these replace the global operators of the whole process (the
+// editor and every binary linking the engine), so they keep the standard contract: std::bad_alloc
+// when the memory runs out, never a null pointer the caller writes through (a texture synthesis
+// out of memory was a SIGSEGV instead of its failed status), and a unique pointer for 0 bytes.
 #ifndef JASPERENGINE_SANITIZE_ADDRESS
+namespace {
+    void* tvgOperatorNew(std::size_t size)
+    {
+        void* ptr = tvg::malloc(size ? size : 1);
+        if (!ptr) throw std::bad_alloc();
+        return ptr;
+    }
+}
+
+
 void* operator new(std::size_t size)
 {
-    return tvg::malloc(size);
+    return tvgOperatorNew(size);
 }
 
 
@@ -151,7 +166,7 @@ void operator delete(void* ptr) noexcept
 
 void* operator new[](std::size_t size)
 {
-    return tvg::malloc(size);
+    return tvgOperatorNew(size);
 }
 
 

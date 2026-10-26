@@ -218,6 +218,12 @@ int ShaderData::getUniformBlockIndex(UniformBlockType type){
         ustr = "u_vs_morphtarget";
     }else if (type == UniformBlockType::DEPTH_VS_MORPHTARGET){
         ustr = "u_vs_morphtarget";
+    }else if (type == UniformBlockType::VS_LATTICE){
+        ustr = "u_vs_lattice";
+    }else if (type == UniformBlockType::DEPTH_VS_LATTICE){
+        ustr = "u_vs_lattice";
+    }else if (type == UniformBlockType::GBUFFER_VS_LATTICE){
+        ustr = "u_vs_lattice";
     }else if (type == UniformBlockType::TERRAIN_VS_PARAMS){
         ustr = "u_vs_terrainParams";
     }else if (type == UniformBlockType::DEPTH_TERRAIN_VS_PARAMS){
@@ -240,6 +246,8 @@ int ShaderData::getUniformBlockIndex(UniformBlockType type){
         ustr = "u_vs_shadow2dParams";
     }else if (type == UniformBlockType::BLIT_FS_PARAMS){
         ustr = "u_fs_blitParams";
+    }else if (type == UniformBlockType::PROBE_FILTER_FS_PARAMS){
+        ustr = "u_fs_probeFilterParams";
     }
 
     if (ustr.empty()){
@@ -345,6 +353,8 @@ std::pair<int, int> ShaderData::getTextureIndex(TextureShaderType type){
         texstr = "u_particleEmission";
     }else if (type == TextureShaderType::BONES){
         texstr = "u_bonesTexture";
+    }else if (type == TextureShaderType::LATTICE){
+        texstr = "u_latticeTexture";
     }else if (type == TextureShaderType::HEIGHTMAP){
         texstr = "u_heightMap";
     }else if (type == TextureShaderType::BLENDMAP){
@@ -373,6 +383,8 @@ std::pair<int, int> ShaderData::getTextureIndex(TextureShaderType type){
         texstr = "u_shadow2DAtlas";
     }else if (type == TextureShaderType::SPOTMASKATLAS){
         texstr = "u_spotMaskAtlas";
+    }else if (type == TextureShaderType::PROBESOURCE){
+        texstr = "u_probeSourceTexture";
     }else if (type == TextureShaderType::SHADOWATLASRAW){
         texstr = "u_shadowAtlasRaw";
     }

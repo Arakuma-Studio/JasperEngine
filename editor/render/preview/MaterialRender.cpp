@@ -102,7 +102,7 @@ bool editor::MaterialRender::isPending() const{
     auto texturePending = [](const Texture& texture) {
         if (texture.isFramebuffer() || texture.empty() || CameraTextureLink::isCameraTexture(texture))
             return false; // framebuffer textures never enter the pool
-        const std::string id = texture.getId();
+        const std::string id = texture.getRenderId();
         return !id.empty() && !TexturePool::get(id);
     };
     const Material& material = mesh.submeshes[0].material;

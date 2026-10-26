@@ -94,6 +94,20 @@ namespace jasperengine::editor {
 
         const char* typeName() const override { return "MultiPropertyCmd"; }
 
+        bool canUndo() const override {
+            for (const auto& cmd : commands) {
+                if (!cmd->canUndo()) return false;
+            }
+            return true;
+        }
+
+        bool canRedo() const override {
+            for (const auto& cmd : commands) {
+                if (!cmd->canRedo()) return false;
+            }
+            return true;
+        }
+
         void collectKeepCommands(KeepContext& context) const override {
             for (const auto& cmd : commands) {
                 context.collect(*cmd, context.source);

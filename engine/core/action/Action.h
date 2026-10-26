@@ -22,6 +22,8 @@ namespace jasperengine{
         void start();
         void pause();
         void stop();
+        // stops a running or paused action and starts it again from the beginning
+        void restart();
 
         void setOwnedTarget(bool ownedTarget);
         bool getOwnedTarget() const;

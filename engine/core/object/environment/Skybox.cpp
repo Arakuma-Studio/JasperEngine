@@ -36,7 +36,8 @@ void Skybox::setTextures(const std::string& id,
 
     SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
-    sky.texture.setCubeDatas(id, texturePositiveX, textureNegativeX, texturePositiveY, textureNegativeY, texturePositiveZ, textureNegativeZ);
+    // front, back, left, right, up, down
+    sky.texture.setCubeDatas(id, texturePositiveZ, textureNegativeZ, textureNegativeX, texturePositiveX, texturePositiveY, textureNegativeY);
 
     sky.needUpdateTexture = true;
     markChanged<SkyboxComponent>();
@@ -48,7 +49,8 @@ void Skybox::setTextures(const std::string& texturePositiveX, const std::string&
     
     SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
-    sky.texture.setCubePaths(texturePositiveX, textureNegativeX, texturePositiveY, textureNegativeY, texturePositiveZ, textureNegativeZ);
+    // front, back, left, right, up, down
+    sky.texture.setCubePaths(texturePositiveZ, textureNegativeZ, textureNegativeX, texturePositiveX, texturePositiveY, textureNegativeY);
 
     sky.needUpdateTexture = true;
     markChanged<SkyboxComponent>();

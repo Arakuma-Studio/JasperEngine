@@ -395,6 +395,8 @@ namespace jasperengine{
         // to the Box2D/Jolt worlds on change); this is the default it initializes from.
         Vector2 gravity2D = Vector2(0.0f, -9.81f);
         Vector3 gravity3D = Vector3(0.0f, -9.81f, 0.0f);
+        // bodies drawn between their last two fixed steps (owned by PhysicsSystem as gravity)
+        bool physicsInterpolation = true;
 
         // fixed game resolution: when enabled and this scene is the Engine main scene, the main
         // camera renders into an offscreen framebuffer of this size, upscaled to the view rect

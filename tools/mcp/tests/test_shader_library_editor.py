@@ -63,7 +63,7 @@ async def test_list_shaders(ed: Editor):
     ed.check_eq(props["alphaCutoff"]["feature"], "ALPHA_CLIP")
     ed.check_eq([t["uniform"] for t in detail["textures"]], ["u_baseTexture"])
     ed.check_eq(detail["textures"][0]["default"], "white")
-    ed.check_eq(sorted(f["define"] for f in detail["features"]), ["ALPHA_CLIP", "NEAR_FADE", "SOFT", "VERTEX_COLOR"])
+    ed.check_eq(sorted(f["define"] for f in detail["features"]), ["ALPHA_CLIP", "NEAR_FADE", "SOFT", "STOCHASTIC", "VERTEX_COLOR"])
     ed.check_eq(detail["state"].get("blendMode"), "opaque", "@state blend=opaque")
     ed.check(detail["depth_program"], "unlit has @depth")
 

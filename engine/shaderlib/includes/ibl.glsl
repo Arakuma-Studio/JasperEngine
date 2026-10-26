@@ -56,9 +56,10 @@ vec2 envBRDFApprox(float NdotV, float roughness){
             return sRGBToLinear(textureLod(samplerCube(u_reflectionProbeTexture, u_reflectionProbe_smp), direction, min(lod, maxLod))).rgb;
         }
 
-        // Runtime captures have only their base level. Approximate rough
-        // reflections with a small angular filter so dynamic probes do not stay
-        // mirror-sharp on rough materials.
+        // A runtime capture not prefiltered yet (RenderSystem::filterReflectionProbes,
+        // its shader still building) has only its base level. Approximate rough
+        // reflections with a small angular filter so it does not stay mirror-sharp
+        // on rough materials.
         float roughness = clamp(lod / ENV_GGX_LODS, 0.0, 1.0);
         vec3 helper = abs(direction.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
         vec3 tangent = normalize(cross(helper, direction));

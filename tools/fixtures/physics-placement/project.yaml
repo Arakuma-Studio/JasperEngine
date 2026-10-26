@@ -1,0 +1,20 @@
+name: PhysicsPlacement
+canvasWidth: 1280
+canvasHeight: 720
+scalingMode: fitwidth
+textureStrategy: none
+vsync: true
+htmlUiMsaaSamples: 4
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+luaDir: .
+scenes:
+  - filepath: TableCrate.scene
+  - filepath: RingPeg.scene
+  - filepath: Stack.scene
+  - filepath: Plates.scene
+  - filepath: Pebbles.scene
+  - filepath: Ramp.scene
+  - filepath: Room.scene

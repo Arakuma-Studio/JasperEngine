@@ -14,6 +14,7 @@ namespace jasperengine{
         
         float duration = 0;
         bool loop = false;
+        bool pingPong = false; // plays forward and then back, in twice the duration
 
         Ease function;
     };

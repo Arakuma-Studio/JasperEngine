@@ -6,6 +6,7 @@ to build/test-results/logging-ui/ as evidence.
 
 import contextlib
 import re
+import shutil
 
 import yaml
 
@@ -27,9 +28,13 @@ async def console(ed: Editor, **options) -> dict:
 async def shot(ed: Editor, name: str) -> None:
     out = harness.REPO / "build" / "test-results" / "logging-ui"
     out.mkdir(parents=True, exist_ok=True)
-    r = await ed.call_raw("screenshot", {"view": "editor", "max_width": 1280, "save_path": str(out / f"{name}.png")})
+    # save_path is project-relative (the screenshot tool writes inside the project only);
+    # the evidence is copied out to build/test-results
+    relative = f"screenshots/logging-ui/{name}.png"
+    r = await ed.call_raw("screenshot", {"view": "editor", "max_width": 1280, "save_path": relative})
     ed.check(not r.is_error and r.images, f"screenshot {name}: {r.text[:300]}")
     ed.check(not (r.structured or {}).get("flat_colour"), f"screenshot {name} is a flat image")
+    shutil.copyfile(ed.project / relative, out / f"{name}.png")
 
 
 async def test_preferences_logging_page(ed: Editor):

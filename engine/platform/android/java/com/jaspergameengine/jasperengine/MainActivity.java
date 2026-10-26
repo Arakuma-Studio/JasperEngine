@@ -1,5 +1,6 @@
 package com.jaspergameengine.jasperengine;
 
+import android.app.Activity;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -9,6 +10,7 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.view.WindowManager.LayoutParams;
+import androidx.activity.OnBackPressedCallback;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
@@ -23,8 +25,11 @@ public class MainActivity extends GameActivity {
 	}
 
 	private UserSettings userSettings;
-	private AdMobWrapper admobWrapper;
+	// Null when the export leaves AdMob out (its wrapper source is compiled only with it)
+	private Object admobWrapper;
 	private ClipboardManager clipboard;
+
+	private native void onBackPressedNative();
 
 	private void hideSystemUI() {
 		// This will put the game behind any cutouts and waterfalls on devices which have
@@ -44,6 +49,15 @@ public class MainActivity extends GameActivity {
 				WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
 	}
 
+	// The wrapper sources are compiled only when the export enables their service
+	private Object createOptionalWrapper(String className) {
+		try {
+			return Class.forName(className).getConstructor(Activity.class).newInstance(this);
+		} catch (ReflectiveOperationException | LinkageError e) {
+			return null;
+		}
+	}
+
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		// When true, the app will fit inside any system UI windows.
@@ -52,8 +66,16 @@ public class MainActivity extends GameActivity {
 		hideSystemUI();
 
 		userSettings = new UserSettings(this);
-		admobWrapper = new AdMobWrapper(this);
+		admobWrapper = createOptionalWrapper("com.jaspergameengine.jasperengine.AdMobWrapper");
 		clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+
+		// Games get Back as Escape. A callback, since Android 16 no longer sends it as a key
+		getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+			@Override
+			public void handleOnBackPressed() {
+				onBackPressedNative();
+			}
+		});
 
 		super.onCreate(savedInstanceState);
 	}
@@ -68,7 +90,7 @@ public class MainActivity extends GameActivity {
 		return userSettings;
 	}
 
-	public AdMobWrapper getAdMobWrapper() {
+	public Object getAdMobWrapper() {
 		return admobWrapper;
 	}
 

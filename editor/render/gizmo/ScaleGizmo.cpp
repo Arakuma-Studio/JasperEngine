@@ -40,34 +40,34 @@ editor::ScaleGizmo::ScaleGizmo(Scene* scene, bool use2DGizmo): GameObject(scene)
     }
     
     centerbox->createBox(centerSize, centerSize, centerSize);
-    centerbox->setColor(Vector4(centerColor, 1.0));
+    centerbox->setColor(paint(centerColor, 1.0));
 
     xaxis->createCylinder(cylinderRadius, cylinderHeight);
-    xaxis->setColor(Vector4(xaxisColor, 1.0));
+    xaxis->setColor(paint(xaxisColor, 1.0));
     xaxis->setPosition(cylinderHeight/2.0, 0, 0);
     xaxis->setRotation(0,0,90);
 
     yaxis->createCylinder(cylinderRadius, cylinderHeight);
-    yaxis->setColor(Vector4(yaxisColor, 1.0));
+    yaxis->setColor(paint(yaxisColor, 1.0));
     yaxis->setPosition(0, cylinderHeight/2.0, 0);
 
     xbox->createBox(cubeSize, cubeSize, cubeSize);
     xbox->setPosition(cylinderHeight, 0, 0);
-    xbox->setColor(Vector4(xaxisColor, 1.0));
+    xbox->setColor(paint(xaxisColor, 1.0));
 
     ybox->createBox(cubeSize, cubeSize, cubeSize);
     ybox->setPosition(0, cylinderHeight, 0);
-    ybox->setColor(Vector4(yaxisColor, 1.0));
+    ybox->setColor(paint(yaxisColor, 1.0));
 
     if (!use2DGizmo) {
         zaxis->createCylinder(cylinderRadius, cylinderHeight);
-        zaxis->setColor(Vector4(zaxisColor, 1.0));
+        zaxis->setColor(paint(zaxisColor, 1.0));
         zaxis->setPosition(0, 0, cylinderHeight/2.0);
         zaxis->setRotation(90,0,0);
 
         zbox->createBox(cubeSize, cubeSize, cubeSize);
         zbox->setPosition(0, 0, cylinderHeight);
-        zbox->setColor(Vector4(zaxisColor, 1.0));
+        zbox->setColor(paint(zaxisColor, 1.0));
 
         xyrect->createBox(cylinderHeight/4.0, cylinderHeight/4.0, cylinderRadius);
         xzrect->createBox(cylinderHeight/4.0, cylinderRadius, cylinderHeight/4.0);
@@ -77,9 +77,9 @@ editor::ScaleGizmo::ScaleGizmo(Scene* scene, bool use2DGizmo): GameObject(scene)
         xzrect->setPosition(cylinderHeight/3.0, 0, cylinderHeight/3.0);
         yzrect->setPosition(0, cylinderHeight/3.0, cylinderHeight/3.0);
 
-        xyrect->setColor(Vector4(zaxisColor, rectAlpha));
-        xzrect->setColor(Vector4(yaxisColor, rectAlpha));
-        yzrect->setColor(Vector4(xaxisColor, rectAlpha));
+        xyrect->setColor(paint(zaxisColor, rectAlpha));
+        xzrect->setColor(paint(yaxisColor, rectAlpha));
+        yzrect->setColor(paint(xaxisColor, rectAlpha));
     }
 
     this->addChild(centerbox);
@@ -163,60 +163,60 @@ editor::GizmoSideSelected editor::ScaleGizmo::checkHover(const Ray& ray){
     }
 
     if (axis == 0){
-        xaxis->setColor(Vector4(xaxisColorHightlight, 1.0));
-        xbox->setColor(Vector4(xaxisColorHightlight, 1.0));
+        xaxis->setColor(paint(xaxisColorHightlight, 1.0));
+        xbox->setColor(paint(xaxisColorHightlight, 1.0));
         gizmoSideSelected = GizmoSideSelected::X;
     }else{
-        xaxis->setColor(Vector4(xaxisColor, 1.0));
-        xbox->setColor(Vector4(xaxisColor, 1.0));
+        xaxis->setColor(paint(xaxisColor, 1.0));
+        xbox->setColor(paint(xaxisColor, 1.0));
     }
 
     if (axis == 1){
-        yaxis->setColor(Vector4(yaxisColorHightlight, 1.0));
-        ybox->setColor(Vector4(yaxisColorHightlight, 1.0));
+        yaxis->setColor(paint(yaxisColorHightlight, 1.0));
+        ybox->setColor(paint(yaxisColorHightlight, 1.0));
         gizmoSideSelected = GizmoSideSelected::Y;
     }else{
-        yaxis->setColor(Vector4(yaxisColor, 1.0));
-        ybox->setColor(Vector4(yaxisColor, 1.0));
+        yaxis->setColor(paint(yaxisColor, 1.0));
+        ybox->setColor(paint(yaxisColor, 1.0));
     }
 
     if (!use2DGizmo) {
         if (axis == 2){
-            zaxis->setColor(Vector4(zaxisColorHightlight, 1.0));
-            zbox->setColor(Vector4(zaxisColorHightlight, 1.0));
+            zaxis->setColor(paint(zaxisColorHightlight, 1.0));
+            zbox->setColor(paint(zaxisColorHightlight, 1.0));
             gizmoSideSelected = GizmoSideSelected::Z;
         }else{
-            zaxis->setColor(Vector4(zaxisColor, 1.0));
-            zbox->setColor(Vector4(zaxisColor, 1.0));
+            zaxis->setColor(paint(zaxisColor, 1.0));
+            zbox->setColor(paint(zaxisColor, 1.0));
         }
 
         if (axis == 3){
-            xyrect->setColor(Vector4(zaxisColorHightlight, rectAlpha));
+            xyrect->setColor(paint(zaxisColorHightlight, rectAlpha));
             gizmoSideSelected = GizmoSideSelected::XY;
         }else{
-            xyrect->setColor(Vector4(zaxisColor, rectAlpha));
+            xyrect->setColor(paint(zaxisColor, rectAlpha));
         }
 
         if (axis == 4){
-            xzrect->setColor(Vector4(yaxisColorHightlight, rectAlpha));
+            xzrect->setColor(paint(yaxisColorHightlight, rectAlpha));
             gizmoSideSelected = GizmoSideSelected::XZ;
         }else{
-            xzrect->setColor(Vector4(yaxisColor, rectAlpha));
+            xzrect->setColor(paint(yaxisColor, rectAlpha));
         }
 
         if (axis == 5){
-            yzrect->setColor(Vector4(xaxisColorHightlight, rectAlpha));
+            yzrect->setColor(paint(xaxisColorHightlight, rectAlpha));
             gizmoSideSelected = GizmoSideSelected::YZ;
         }else{
-            yzrect->setColor(Vector4(xaxisColor, rectAlpha));
+            yzrect->setColor(paint(xaxisColor, rectAlpha));
         }
     }
 
     if (axis == 6){
-        centerbox->setColor(Vector4(centerColorHightlight, 1.0));
+        centerbox->setColor(paint(centerColorHightlight, 1.0));
         gizmoSideSelected = use2DGizmo ? GizmoSideSelected::XY : GizmoSideSelected::XYZ;
     }else{
-        centerbox->setColor(Vector4(centerColor, 1.0));
+        centerbox->setColor(paint(centerColor, 1.0));
     }
 
     return gizmoSideSelected;

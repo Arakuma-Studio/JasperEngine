@@ -28,6 +28,7 @@
 #include "component/BoneComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/UIDocumentComponent.h"
+#include "component/FluidSimulationComponent.h"
 #include "component/ModelComponent.h"
 #include "component/Transform.h"
 #include "component/MeshComponent.h"
@@ -1081,6 +1082,41 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<UIDocumentComponent>(entity, Stream::decodeUIDocumentComponent(componentNode));
             }
             break;
+        case ComponentType::FluidSimulationComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<FluidSimulationComponent>(entity, {});
+            }else{
+                registry->addComponent<FluidSimulationComponent>(entity, Stream::decodeFluidSimulationComponent(componentNode));
+            }
+            break;
+        case ComponentType::LatticeComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<LatticeComponent>(entity, {});
+            }else{
+                registry->addComponent<LatticeComponent>(entity, Stream::decodeLatticeComponent(componentNode));
+            }
+            break;
+        case ComponentType::LatticeModifierComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<LatticeModifierComponent>(entity, {});
+            }else{
+                registry->addComponent<LatticeModifierComponent>(entity, Stream::decodeLatticeModifierComponent(componentNode));
+            }
+            break;
+        case ComponentType::LatticeFollowerComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<LatticeFollowerComponent>(entity, {});
+            }else{
+                registry->addComponent<LatticeFollowerComponent>(entity, Stream::decodeLatticeFollowerComponent(componentNode));
+            }
+            break;
+        case ComponentType::LatticeTracksComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<LatticeTracksComponent>(entity, {});
+            }else{
+                registry->addComponent<LatticeTracksComponent>(entity, Stream::decodeLatticeTracksComponent(componentNode));
+            }
+            break;
         case ComponentType::Light2DComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
                 registry->addComponent<Light2DComponent>(entity, {});
@@ -1554,6 +1590,36 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
                 oldComponent = Stream::encodeUIDocumentComponent(registry->getComponent<UIDocumentComponent>(entity));
             }
             registry->removeComponent<UIDocumentComponent>(entity);
+            break;
+        case ComponentType::FluidSimulationComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeFluidSimulationComponent(registry->getComponent<FluidSimulationComponent>(entity));
+            }
+            registry->removeComponent<FluidSimulationComponent>(entity);
+            break;
+        case ComponentType::LatticeComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeLatticeComponent(registry->getComponent<LatticeComponent>(entity));
+            }
+            registry->removeComponent<LatticeComponent>(entity);
+            break;
+        case ComponentType::LatticeModifierComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeLatticeModifierComponent(registry->getComponent<LatticeModifierComponent>(entity));
+            }
+            registry->removeComponent<LatticeModifierComponent>(entity);
+            break;
+        case ComponentType::LatticeFollowerComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeLatticeFollowerComponent(registry->getComponent<LatticeFollowerComponent>(entity));
+            }
+            registry->removeComponent<LatticeFollowerComponent>(entity);
+            break;
+        case ComponentType::LatticeTracksComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeLatticeTracksComponent(registry->getComponent<LatticeTracksComponent>(entity));
+            }
+            registry->removeComponent<LatticeTracksComponent>(entity);
             break;
         case ComponentType::Light2DComponent:
             if (encodeComponent){
@@ -2231,11 +2297,15 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     if (signature.test(scene->getComponentId<LayoutGroupComponent>())) return objectClass("LayoutGroup");
     if (signature.test(scene->getComponentId<UIDocumentComponent>()))  return objectClass("UIDocument");
     if (signature.test(scene->getComponentId<UIComponent>()))          return objectClass("RectTransform");
+    // after the renderers: a fluid shown on a Sprite or a Mesh is that object first (its
+    // FluidSimulation is FluidSimulation(scene, entity) there)
+    if (signature.test(scene->getComponentId<FluidSimulationComponent>())) return objectClass("FluidSimulation");
     if (signature.test(scene->getComponentId<Light2DComponent>()))     return objectClass("Light2D");
     if (signature.test(scene->getComponentId<ShadowCaster2DComponent>()))  return objectClass("ShadowCaster2D");
     if (signature.test(scene->getComponentId<LightComponent>()))       return objectClass("Light");
     if (signature.test(scene->getComponentId<CameraComponent>()))      return objectClass("Camera");
     if (signature.test(scene->getComponentId<ReflectionProbeComponent>())) return objectClass("ReflectionProbe");
+    if (signature.test(scene->getComponentId<LatticeComponent>()))     return objectClass("Lattice");
     if (signature.test(scene->getComponentId<Rigidbody2DComponent>()))      return handleClass("Rigidbody2D");
     if (signature.test(scene->getComponentId<RigidbodyComponent>()))      return handleClass("Rigidbody");
     if (signature.test(scene->getComponentId<Joint2DComponent>()))     return handleClass("Joint2D");
@@ -2249,9 +2319,11 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     if (signature.test(scene->getComponentId<AnimationComponent>()))   return handleClass("Animation");
     if (signature.test(scene->getComponentId<SpriteAnimationComponent>())) return handleClass("SpriteAnimation");
     if (signature.test(scene->getComponentId<MorphTracksComponent>())) return handleClass("MorphTracks");
+    if (signature.test(scene->getComponentId<LatticeTracksComponent>())) return handleClass("LatticeTracks");
     if (signature.test(scene->getComponentId<RotateTracksComponent>())) return handleClass("RotateTracks");
     if (signature.test(scene->getComponentId<ScaleTracksComponent>())) return handleClass("ScaleTracks");
     if (signature.test(scene->getComponentId<TranslateTracksComponent>())) return handleClass("TranslateTracks");
+    if (signature.test(scene->getComponentId<KeyframeTracksComponent>())) return handleClass("KeyframeTracks");
     if (signature.test(scene->getComponentId<ParticleSystemComponent>()))   return objectClass("ParticleSystem");
     if (signature.test(scene->getComponentId<ActionComponent>()))      return handleClass("Action");
     if (signature.test(scene->getComponentId<Transform>()))            return objectClass("GameObject");
