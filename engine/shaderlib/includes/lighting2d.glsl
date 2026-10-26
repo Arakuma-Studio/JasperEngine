@@ -12,6 +12,8 @@
 #ifndef LIGHTING2D_GLSL
 #define LIGHTING2D_GLSL
 
+#include "includes/normal_map.glsl"
+
 uniform u_fs_lighting2d {
     vec4 position_range[MAX_LIGHTS_2D];  //position.xy, height.z, range.w
     vec4 color_intensity[MAX_LIGHTS_2D]; //color.rgb (linear) and intensity.w
@@ -33,7 +35,7 @@ vec3 getNormal2D(){
 #ifdef HAS_NORMALS
     #ifdef HAS_TANGENTS
         #if defined(HAS_NORMAL_MAP) && (defined(HAS_UV_SET1) || defined(HAS_UV_SET2))
-            vec3 ntex = texture(sampler2D(u_normalTexture, u_normal_smp), getNormalUV()).rgb * 2.0 - vec3(1.0);
+            vec3 ntex = decodeNormalMap(texture(sampler2D(u_normalTexture, u_normal_smp), getNormalUV()));
             return normalize(v_tbn * ntex);
         #else
             return normalize(v_tbn[2]);

@@ -78,6 +78,7 @@ uniform u_fs_customParams {
 
 #define FRAME_FS
 #include "includes/frame.glsl"
+#include "includes/normal_map.glsl"
 
 #ifdef NORMAL_MAP
     uniform texture2D u_normalTexture;
@@ -110,7 +111,7 @@ out vec4 g_finalColor;
 // the normal map's normal in world space, the tangent frame from the screen-space
 // derivatives of the position and UV (as simple_lit)
 vec3 perturbNormal(vec3 normal, vec2 uv){
-    vec3 mapped = texture(sampler2D(u_normalTexture, u_normal_smp), uv).rgb * 2.0 - vec3(1.0);
+    vec3 mapped = decodeNormalMap(texture(sampler2D(u_normalTexture, u_normal_smp), uv));
     mapped.xy *= customParams.normalStrength;
 
     vec3 dpx = dFdx(v_position);
