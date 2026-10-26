@@ -85,7 +85,11 @@
 #ifndef STOCHASTIC_GLSL
 #define STOCHASTIC_GLSL
 
-#include "includes/normal_map.glsl"
+// how stochasticNormal reads a tap: includes/normal_map.glsl, included before this file where a
+// normal map is sampled, makes it decodeNormalMap (a two-channel cook decodes like its source)
+#ifndef STOCHASTIC_DECODE_NORMAL
+    #define STOCHASTIC_DECODE_NORMAL(texel) texel.rgb * 2.0 - 1.0
+#endif
 
 // Below this a tap's weight is dropped and the others renormalised: at most a 1/255 change
 // of the blend, and most pixels then fetch one or two taps instead of three
@@ -305,9 +309,9 @@ vec3 stochasticNormal(texture2D tex, sampler smp, StochasticTiling st, float str
     vec3 n0 = vec3(0.0, 0.0, 1.0);
     vec3 n1 = vec3(0.0, 0.0, 1.0);
     vec3 n2 = vec3(0.0, 0.0, 1.0);
-    if (st.weights.x > 0.0) n0 = decodeNormalMap(stochasticGrad(tex, smp, st, 0));
-    if (st.weights.y > 0.0) n1 = decodeNormalMap(stochasticGrad(tex, smp, st, 1));
-    if (st.weights.z > 0.0) n2 = decodeNormalMap(stochasticGrad(tex, smp, st, 2));
+    if (st.weights.x > 0.0) n0 = STOCHASTIC_DECODE_NORMAL(stochasticGrad(tex, smp, st, 0));
+    if (st.weights.y > 0.0) n1 = STOCHASTIC_DECODE_NORMAL(stochasticGrad(tex, smp, st, 1));
+    if (st.weights.z > 0.0) n2 = STOCHASTIC_DECODE_NORMAL(stochasticGrad(tex, smp, st, 2));
     return stochasticBlendNormals(st, n0, n1, n2, strength, greenSign);
 }
 

@@ -13,4 +13,11 @@ vec3 decodeNormalMap(vec4 texel){
     return vec3(xy, sqrt(clamp(1.0 - dot(xy, xy), 0.0, 1.0)));
 }
 
+// Stochastic Tiling's normal taps (includes/stochastic.glsl, included after this file; one
+// included before keeps its own reading, as the terrain's array taps do)
+#ifdef STOCHASTIC_DECODE_NORMAL
+    #undef STOCHASTIC_DECODE_NORMAL
+#endif
+#define STOCHASTIC_DECODE_NORMAL(texel) decodeNormalMap(texel)
+
 #endif

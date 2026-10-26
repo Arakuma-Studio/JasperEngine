@@ -45,6 +45,8 @@ uniform u_fs_customParams {
     #endif
 } customParams;
 
+// (before Stochastic Tiling: its normal taps decode through it)
+#include "includes/normal_map.glsl"
 #ifdef STOCHASTIC
     #include "library/stochastic_surface.glsl"
 #endif
@@ -53,7 +55,6 @@ uniform texture2D u_baseTexture;
 uniform sampler u_base_smp;
 
 #include "includes/surface_uv.glsl"
-#include "includes/normal_map.glsl"
 SURFACE_UV_IN vec2 v_uv1;
 in vec4 v_color; // the instance colour, times the vertex colour with VERTEX_COLOR
 
