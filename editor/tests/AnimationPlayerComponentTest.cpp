@@ -560,6 +560,22 @@ TEST(AnimationPlayerComponent, SavedMorphWeightsAreKeptByTheModelLoad) {
     YAML::Node older = Stream::encodeMeshComponent(oldSaved, false, false, false);
     older.remove("morphTargetCount");
     EXPECT_EQ(Stream::decodeMeshComponent(older).morphTargetCount, 3);
+    // and such a mesh re-saves as it was (no count: the weights say it), so an old scene re-saves
+    // byte for byte (test_stochastic_tiling's old scene: zero weights, no count); a count beyond the
+    // last non-zero weight is written
+    EXPECT_FALSE(Stream::encodeMeshComponent(Stream::decodeMeshComponent(older), false, false, false)["morphTargetCount"]);
+    MeshComponent oldZeros;
+    oldZeros.morphWeightsSet = true;
+    YAML::Node zerosNode = Stream::encodeMeshComponent(oldZeros, false, false, false);
+    EXPECT_FALSE(zerosNode["morphTargetCount"]) << "zero weights covering no target: no count";
+    EXPECT_FALSE(Stream::encodeMeshComponent(Stream::decodeMeshComponent(zerosNode), false, false, false)["morphTargetCount"]);
+    EXPECT_FALSE(Stream::encodeMeshComponent(covered, false, false, false)["morphTargetCount"]) << "2 targets, the last weight at index 1";
+    MeshComponent wider = covered;
+    wider.morphTargetCount = 4;
+    const YAML::Node widerNode = Stream::encodeMeshComponent(wider, false, false, false);
+    ASSERT_TRUE(widerNode["morphTargetCount"]) << "4 targets, zeros after the last non-zero weight";
+    EXPECT_EQ(widerNode["morphTargetCount"].as<int>(), 4);
+    EXPECT_EQ(Stream::decodeMeshComponent(widerNode).morphTargetCount, 4);
     // a non-zero weight set before any load: Stream and the exporter both keep it, with that count
     MeshComponent edited;
     edited.morphWeights[0] = 0.5f;

@@ -5715,7 +5715,11 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
             morphWeightsNode[i] = YamlNumbers::text(mesh.morphWeights[i]);
         }
         node["morphWeights"] = morphWeightsNode;
-        node["morphTargetCount"] = mesh.morphWeightsSet ? mesh.morphTargetCount : morphWeightsPresentCount(mesh.morphWeights);
+        // the count only when it says more than the weights: without it, decode takes the count up
+        // to the last non-zero weight (as older versions saved them), so a scene saved before the
+        // count existed re-saves byte for byte
+        const int count = mesh.morphWeightsSet ? mesh.morphTargetCount : morphWeightsPresentCount(mesh.morphWeights);
+        if (count != morphWeightsPresentCount(mesh.morphWeights)) node["morphTargetCount"] = count;
     }
 
     // Encode AABBs
