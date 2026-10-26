@@ -9,12 +9,14 @@
 
 #include "picking/SceneBvh.h"
 #include "picking/MeshRaycast.h"
+#include "picking/PickCache.h"
 #include "object/Primitive.h"
 #include "picking/PickingTestUtil.h"
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <memory>
 #include <cmath>
 #include <random>
 #include <set>
@@ -327,4 +329,26 @@ TEST(SceneBvh, EditorFlags){
     std::vector<Entity> inside;
     scene.getPickBvh().frustum(planes, filter, inside);
     EXPECT_EQ(inside, std::vector<Entity>{front.getEntity()});
+}
+
+// R31: a scene nobody queries has no pick BVH and its frames bind no mesh tree
+TEST(SceneBvh, ZeroWhenUnused){
+    const size_t entriesBefore = PickCache::get().stats().entries;
+    Scene scene;
+    std::vector<std::unique_ptr<Primitive>> spheres;
+    for (int i = 0; i < 20; i++){
+        auto sphere = std::make_unique<Primitive>(&scene);
+        sphere->createSphere(1.0f, 32, 16);
+        sphere->setPosition((float)i * 3.0f, 0.0f, 0.0f);
+        spheres.push_back(std::move(sphere));
+    }
+    for (int frame = 0; frame < 5; frame++){
+        spheres[0]->setPosition(0.0f, (float)frame, 0.0f);
+        settleScene(scene);
+    }
+    EXPECT_EQ(scene.findPickBvh(), nullptr) << "no pick BVH without a query";
+    EXPECT_EQ(PickCache::get().stats().entries, entriesBefore) << "no mesh tree was built or queued";
+    // the first query builds it
+    MeshRaycast::raycast(&scene, Vector3(3, 0, 10), Vector3(0, 0, -1), 100.0f);
+    EXPECT_NE(scene.findPickBvh(), nullptr);
 }

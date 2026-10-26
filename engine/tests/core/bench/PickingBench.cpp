@@ -250,6 +250,13 @@ int main(int argc, char** argv){
         const double buildSeconds = bench::secondsSince(buildStart);
         results.add("bvh_build_tris_per_s", triangles / buildSeconds, "tris/s");
         results.add("bvh_bytes_per_triangle", (double)bvh.memoryBytes() / triangles, "B");
+        results.add("bvh_nodes_per_1k_triangles", (double)bvh.getNodeCount() * 1000.0 / triangles, "nodes");
+        {
+            PickGeometryLayout layout;
+            const auto resolveStart = bench::Clock::now();
+            picking::resolveSources(groundMesh, layout);
+            results.add("resolve_sources_ms", millisecondsSince(resolveStart), "ms");
+        }
 
         // the disk cache's load: the file read back and deserialized against the geometry
         std::vector<uint8_t> bytes;
@@ -265,8 +272,12 @@ int main(int argc, char** argv){
             std::ifstream in(file, std::ios::binary);
             in.read(reinterpret_cast<char*>(read.data()), (std::streamsize)read.size());
         }
+        const double readMs = millisecondsSince(loadStart);
         MeshBvh loaded;
+        const auto deserializeStart = bench::Clock::now();
         const bool ok = loaded.deserialize(read, geometry);
+        results.add("disk_read_ms_1m", readMs * 1.0e6 / triangles, "ms");
+        results.add("deserialize_ms_1m", millisecondsSince(deserializeStart) * 1.0e6 / triangles, "ms");
         results.add("disk_load_ms_1m", ok ? millisecondsSince(loadStart) * 1.0e6 / triangles : 1.0e9, "ms");
         std::filesystem::remove(file);
 

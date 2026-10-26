@@ -100,8 +100,15 @@ namespace {
         if (scale <= 0.0f){
             scale = std::numeric_limits<float>::denorm_min();
         }
-        for (int i = 0; i < 4096 && decode(boxMin, 255, scale) < boxMax; i++){
-            scale = std::nextafter(scale, FLOAT_MAX);
+        // boxMin + 255 * scale rounds (at boxMin's magnitude) below boxMax by at most a few
+        // ulps of the larger of the two: grow by that much at once, then relatively
+        if (decode(boxMin, 255, scale) < boxMax){
+            const float magnitude = std::max(std::fabs(boxMin), std::fabs(boxMax));
+            const float ulp = std::nextafter(magnitude, FLOAT_MAX) - magnitude;
+            scale += 2.0f * ulp / 255.0f;
+            for (int i = 0; i < 64 && decode(boxMin, 255, scale) < boxMax; i++){
+                scale *= 1.0f + 1.0f / 65536.0f;
+            }
         }
         if (decode(boxMin, 255, scale) < boxMax){
             scale = boxMax - boxMin; // degenerate tiny extent: one step covers it

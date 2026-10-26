@@ -41,7 +41,7 @@ namespace jasperengine {
     inline constexpr uint8_t EDITOR_HIDDEN      = 1u << 0;  // Scene view visibility off (the Hierarchy's eye)
     inline constexpr uint8_t EDITOR_PICK_LOCKED = 1u << 1;  // Scene view picking off (the Hierarchy's hand)
 
-    const char* pickKindName(PickKind kind);
+    JASPERENGINE_API const char* pickKindName(PickKind kind);
 
     struct PickFilter {
         // layers (0..31) the query sees

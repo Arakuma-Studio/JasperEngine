@@ -16,10 +16,43 @@ using namespace jasperengine::picking;
 
 namespace {
 
+    size_t typeSize(AttributeDataType type){
+        switch (type){
+            case AttributeDataType::BYTE:
+            case AttributeDataType::UNSIGNED_BYTE: return 1;
+            case AttributeDataType::SHORT:
+            case AttributeDataType::UNSIGNED_SHORT: return 2;
+            default: return 4;
+        }
+    }
+
+    // an attribute's layout, read once: the per-vertex reads of a pose are plain arithmetic
     struct AttributeSource {
         const Buffer* buffer = nullptr;
         Attribute attribute;
         bool valid = false;
+        const unsigned char* data = nullptr;
+        size_t bufferSize = 0;
+        size_t stride = 0;
+        size_t offset = 0;
+        size_t elementSize = 4;
+        uint32_t elements = 0;
+        AttributeDataType type = AttributeDataType::FLOAT;
+        bool normalized = false;
+
+        void cache(){
+            if (!valid){
+                return;
+            }
+            data = buffer->getData();
+            bufferSize = buffer->getSize();
+            type = attribute.getDataType();
+            elementSize = typeSize(type);
+            elements = attribute.getElements();
+            stride = buffer->getStride() > 0 ? buffer->getStride() : elementSize * elements;
+            offset = attribute.getOffset();
+            normalized = attribute.getNormalized();
+        }
     };
 
     // the buffer and attribute a submesh draws `type` from: its own attribute, else the
@@ -42,6 +75,7 @@ namespace {
                 found.attribute = own->second;
                 found.valid = buffer->getData() != nullptr;
             }
+            found.cache();
             return found;
         }
 
@@ -62,32 +96,21 @@ namespace {
                 found.valid = entry.second->getData() != nullptr;
             }
         }
+        found.cache();
         return found;
-    }
-
-    size_t typeSize(AttributeDataType type){
-        switch (type){
-            case AttributeDataType::BYTE:
-            case AttributeDataType::UNSIGNED_BYTE: return 1;
-            case AttributeDataType::SHORT:
-            case AttributeDataType::UNSIGNED_SHORT: return 2;
-            default: return 4;
-        }
     }
 
     // element `e` of vertex `v` as the vertex shader reads it (normalized integers scaled to
     // [0, 1] or [-1, 1]); 0 past the buffer
-    float readElement(const AttributeSource& source, uint32_t v, uint32_t e){
-        const AttributeDataType type = source.attribute.getDataType();
-        const size_t size = typeSize(type);
-        const size_t stride = source.buffer->getStride() > 0 ? source.buffer->getStride() : size * source.attribute.getElements();
-        const size_t position = (size_t)v * stride + source.attribute.getOffset() + (size_t)e * size;
-        if (e >= source.attribute.getElements() || position + size > source.buffer->getSize()){
+    inline float readElement(const AttributeSource& source, uint32_t v, uint32_t e){
+        const size_t size = source.elementSize;
+        const size_t position = (size_t)v * source.stride + source.offset + (size_t)e * size;
+        if (e >= source.elements || position + size > source.bufferSize){
             return 0.0f;
         }
-        const unsigned char* data = source.buffer->getData() + position;
-        const bool normalized = source.attribute.getNormalized();
-        switch (type){
+        const unsigned char* data = source.data + position;
+        const bool normalized = source.normalized;
+        switch (source.type){
             case AttributeDataType::BYTE:{
                 int8_t value; std::memcpy(&value, data, 1);
                 return normalized ? std::max((float)value / 127.0f, -1.0f) : (float)value;
@@ -211,10 +234,11 @@ Vector3 picking::poseVertex(const VertexPoseInput& input, const PoseParameters& 
         if (bone < 0 || (size_t)bone >= parameters.bones.size()){
             continue;
         }
-        const Matrix4& b = parameters.bones[(size_t)bone];
+        // column-major, as Matrix4::get(column, row) reads it
+        const float* b = static_cast<const float*>(parameters.bones[(size_t)bone]);
         for (int c = 0; c < 4; c++){
             for (int r = 0; r < 4; r++){
-                m[c][r] += b.get(c, r) * weight;
+                m[c][r] += b[c * 4 + r] * weight;
             }
         }
     }

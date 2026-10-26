@@ -1,10 +1,10 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 //
-// Copied from OpenEngine's binned-SAH split kernel (Engine/Modules/SceneBvh/Include/SceneBvh/
+// Adapted from OpenEngine's binned-SAH split kernel (Engine/Modules/SceneBvh/Include/SceneBvh/
 // BinnedSahSplit.h, Source/BinnedSahSplit.cpp), Copyright (c) 2026 Gamecrafters Guild Limited
-// and contributors, MIT License (NOTICE.md). Our math types; one centroid array per range
-// instead of an id-indexed span of floats.
+// and contributors, MIT License (NOTICE.md). Our math types; the three axes binned in one pass
+// over the range.
 
 #ifndef BINNEDSAH_H
 #define BINNEDSAH_H

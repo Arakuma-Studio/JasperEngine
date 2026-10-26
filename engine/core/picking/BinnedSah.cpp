@@ -44,23 +44,42 @@ BinnedSahCandidate picking::findBestBinnedSahSplit(const BinnedSahRange& range){
     BinnedSahCandidate best;
     best.cost = std::numeric_limits<float>::max();
 
+    // one pass over the range bins every axis (each primitive's centroid and bounds are read
+    // once, not once per axis: the reads dominate on large ranges)
+    float axisMin[3];
+    float scale[3];
+    bool usable[3];
     for (uint32_t axis = 0; axis < 3u; axis++){
-        const float axisMin = range.centroidMin[axis];
-        const float extent = range.centroidMax[axis] - axisMin;
-        if (!(extent > 0.0f)){
+        axisMin[axis] = range.centroidMin[axis];
+        const float extent = range.centroidMax[axis] - axisMin[axis];
+        usable[axis] = extent > 0.0f;
+        scale[axis] = usable[axis] ? static_cast<float>(BINNED_SAH_BINS) / extent : 0.0f;
+    }
+    if (!usable[0] && !usable[1] && !usable[2]){
+        return best;
+    }
+
+    std::array<std::array<BinBox, BINNED_SAH_BINS>, 3> binBounds;
+    std::array<std::array<uint32_t, BINNED_SAH_BINS>, 3> binCounts{};
+    for (const uint32_t id : range.order){
+        const float* centroid = &range.centroids[(size_t)id * 3u];
+        const float* box = &range.bounds[(size_t)id * 6u];
+        for (uint32_t axis = 0; axis < 3u; axis++){
+            if (!usable[axis]){
+                continue;
+            }
+            const uint32_t bin = binnedSahBinOf(centroid[axis], axisMin[axis], scale[axis]);
+            binCounts[axis][bin]++;
+            binBounds[axis][bin].expand(box);
+        }
+    }
+
+    for (uint32_t axis = 0; axis < 3u; axis++){
+        if (!usable[axis]){
             continue;
         }
-
-        const float scale = static_cast<float>(BINNED_SAH_BINS) / extent;
-
-        std::array<BinBox, BINNED_SAH_BINS> binBounds;
-        std::array<uint32_t, BINNED_SAH_BINS> binCounts{};
-
-        for (const uint32_t id : range.order){
-            const uint32_t bin = binnedSahBinOf(range.centroids[(size_t)id * 3u + axis], axisMin, scale);
-            binCounts[bin]++;
-            binBounds[bin].expand(&range.bounds[(size_t)id * 6u]);
-        }
+        const std::array<BinBox, BINNED_SAH_BINS>& bounds = binBounds[axis];
+        const std::array<uint32_t, BINNED_SAH_BINS>& counts = binCounts[axis];
 
         // suffix sweep first: rightArea[b] / rightCount[b] describe bins (b, BINS)
         std::array<float, BINNED_SAH_BINS - 1u> rightArea{};
@@ -68,10 +87,10 @@ BinnedSahCandidate picking::findBestBinnedSahSplit(const BinnedSahRange& range){
         BinBox accumulated;
         uint32_t accumulatedCount = 0;
         for (uint32_t bin = BINNED_SAH_BINS - 1u; bin >= 1u; bin--){
-            if (binCounts[bin] > 0){
-                accumulated.expand(binBounds[bin]);
+            if (counts[bin] > 0){
+                accumulated.expand(bounds[bin]);
             }
-            accumulatedCount += binCounts[bin];
+            accumulatedCount += counts[bin];
             rightArea[bin - 1u] = accumulatedCount > 0 ? accumulated.area() : 0.0f;
             rightCount[bin - 1u] = accumulatedCount;
         }
@@ -80,10 +99,10 @@ BinnedSahCandidate picking::findBestBinnedSahSplit(const BinnedSahRange& range){
         accumulated = BinBox();
         accumulatedCount = 0;
         for (uint32_t bin = 0; bin + 1u < BINNED_SAH_BINS; bin++){
-            if (binCounts[bin] > 0){
-                accumulated.expand(binBounds[bin]);
+            if (counts[bin] > 0){
+                accumulated.expand(bounds[bin]);
             }
-            accumulatedCount += binCounts[bin];
+            accumulatedCount += counts[bin];
             if (accumulatedCount == 0 || rightCount[bin] == 0){
                 continue;
             }
@@ -94,8 +113,8 @@ BinnedSahCandidate picking::findBestBinnedSahSplit(const BinnedSahRange& range){
                 best.found = true;
                 best.axis = axis;
                 best.bin = bin;
-                best.axisMin = axisMin;
-                best.scale = scale;
+                best.axisMin = axisMin[axis];
+                best.scale = scale[axis];
                 best.cost = cost;
             }
         }

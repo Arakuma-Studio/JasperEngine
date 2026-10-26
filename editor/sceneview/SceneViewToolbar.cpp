@@ -340,7 +340,16 @@ void SceneViewController::drawToolbar(SceneProject& sceneProject, float rightLim
             ImGui::EndPopup();
         }
         ImGui::SameLine();
-        if (toggleButton(measureLabel.c_str(), rt.measuring, measureTooltip.c_str())) setMeasuring(sceneProject, !rt.measuring);
+        if (toggleButton(measureLabel.c_str(), rt.measuring, (measureTooltip + "; right-click: Clear Measures").c_str())){
+            setMeasuring(sceneProject, !rt.measuring);
+        }
+        const std::string measureMenu = "MeasureMenu" + sid;
+        if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) ImGui::OpenPopup(measureMenu.c_str());
+        if (ImGui::BeginPopup(measureMenu.c_str())){
+            if (ImGui::MenuItem("Measure", measureShortcut, rt.measuring)) setMeasuring(sceneProject, !rt.measuring);
+            if (ImGui::MenuItem("Clear Measures", nullptr, false, !state.measures.empty())) clearMeasures(sceneProject);
+            ImGui::EndPopup();
+        }
         ImGui::SameLine();
         if (toggleButton(rulersLabel.c_str(), appSettings.rulers, "Rulers (2D, UI and orthographic axis views)")){
             appSettings.rulers = !appSettings.rulers;

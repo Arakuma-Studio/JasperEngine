@@ -581,3 +581,59 @@ are in `tools/mcp/tests/test_scene_view.py` and `test_mesh_raycast.py`. Benches 
   count and the content hash all have to match. Any mismatch rebuilds.
 - **Pick latency on WebAssembly without SIMD.** *Default:* the scalar path with the 4 ms budget.
   WASM SIMD128 is a follow-up behind the same dispatch.
+
+## 10. Deviations (implementation)
+
+Where the implementation differs from the text above, and why.
+
+- **Pose epoch (R6).** `bonesMatrix` and `morphWeights` are plain arrays written from many places
+  (animation, Lua, the editor), with no write hook to bump a counter. The posed copy is keyed by a
+  content hash of the bone matrices and morph weights the pose reads (`picking::poseHash`), which
+  changes exactly when the pose does; a static pose is posed once.
+- **`pickGeometryHash` (R9).** Computed on the first pick that needs it (`picking::hashSources`
+  over the same sources the gather reads) and reset by `calculateMeshAABB` and buffer uploads,
+  instead of inside `calculateMeshAABB`'s loop: a game that never picks never hashes (R31).
+- **BOUNDS hits (R4).** A bounds-only object is not hit from inside its box (no distance-0 hit as
+  `Ray::intersects` gives), so a large bounds-only object around the camera cannot take every
+  click either. Hit normals and face normals face the ray.
+- **`PickFilter::accept`.** Besides D2's fields, a predicate: the editor passes the pickable
+  GameObjects of each view layer (authored ones, plus the game's while it runs).
+- **Ruler step (R25).** 1-2-5 alone cannot keep the 64-130 px band (2 to 5 is a 2.5 ratio, wider
+  than the band's 2.03), so 2.5 times a power of ten is used where neither 2 nor 5 lands in it.
+- **S25 not landed (R19, R23).** The shortcuts are in an S25-shaped table
+  (`editor::sceneViewCommands()`, ids `sceneView.frameAll`, `sceneView.hideSelection`,
+  `sceneView.storeBookmark`, ...) read with ImGui keys while the Scene view is focused; they move
+  into S25's `CommandCatalog` (context "Scene view") when it lands. The measure tool also has M.
+- **MCP names (R34).** S31's conventions require `verb_noun` names: `scene_view_bookmark` is
+  `edit_scene_view_bookmarks`, `scene_view_measure` is `measure_scene_view`, `mesh_raycast` is
+  `raycast_meshes` ("raycast" added to the verbs). An agent's camera changes (`set_scene_camera`,
+  `frame_entity`, bookmark recall) land at once; Camera Easing animates the user's moves only.
+  `pick_at` waits for a building BVH (the click R33 describes for the user defers instead);
+  `apply` takes `shift` and `ctrl` too; `set_scene_view_layout` takes `capture` (one image per
+  pane) and returns each pane's draw count. `editor_status` reports the status bar's message.
+- **AC7's model.** The test imports a 140k-triangle generated lattice and holds background builds
+  pending with `JASPER_PICK_BUILD_DELAY_MS` (a test knob read once by `PickCache`), instead of
+  importing a 2M-triangle model: what the test checks is the pending state, which the knob makes
+  deterministic, and a 2M-triangle import costs minutes in the MCP harness.
+- **Panes (R20, D8).** The active pane is the Scene view as before (the editor camera, the
+  Engine's frame, gizmos and tools layer); the others draw after it through cameras of their own
+  with `SceneRender::drawPaneView` (D8's `beginPaneViewPass`, built on `Engine::drawView`). The
+  pane under the pointer becomes the active one at the next frame (the editor camera takes that
+  pane's pose). An inactive pane redraws when the view redraws for anything else than the active
+  camera moving, when the selection, the layout or its own camera changes, and every frame while
+  the scene plays. Without shadows a view plans and draws no shadow map and its fragments read
+  their lights at shadow strength 0 (`Engine::ViewLayer::shadows`). Icons in inactive panes keep
+  the size the active view gives them. AC13's "frame-pass counter unchanged" is measured per pane
+  (`draws`), since S15's counter also counts the active view.
+- **Hidden GameObjects and shadows (R23).** The Scene view's camera passes skip hidden
+  GameObjects; their shadows are still drawn (the shadow passes are the scene's, shared by every
+  view).
+- **Rulers (R25, R36).** The Rulers toggle is a per-user preference like Exact Pick and Align to
+  Surface (`AppSettings`, `editor.scene_view.rulers`).
+- **Hierarchy gutter (R23).** Alt+click applies to the GameObject alone; H toggles (shows the
+  selection again when all of it is hidden), as Unity's H does.
+- **Drops (R16).** The bottom rests on the surface as the deepest corner of the object's local
+  bounds along the normal (with Align to Surface, its bottom face); a model rests once loaded
+  (`ModelLoadCmd`, so redo lands the same), a prefab in `ImportPrefabCmd`.
+- **Workspace (R36).** `view.panes` lists all four panes (the free one too: while another pane is
+  active the editor camera holds that one's pose).

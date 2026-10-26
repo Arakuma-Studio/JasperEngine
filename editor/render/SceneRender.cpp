@@ -692,6 +692,11 @@ void editor::SceneRender::drawPaneView(uint32_t viewId, Entity paneCamera, Frame
         target->create();
     }
 
+    // the pane's camera as just placed (this frame's update ran before it moved)
+    if (Transform* cameraTransform = scene->findComponent<Transform>(paneCamera); cameraTransform && cameraTransform->needUpdate){
+        scene->getSystem<RenderSystem>()->updateTransform(*cameraTransform, paneCamera);
+    }
+
     // the grid in the pane's axis plane for this draw only
     const int gridPlane = getGridPlane();
     setGridPlane(flags.gridPlane);
