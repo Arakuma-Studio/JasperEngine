@@ -1,9 +1,9 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// LoggerBench: the logging hot path against the budgets of S09 (R28), on the Linux build server
-// in RelWithDebInfo. JASPER_TEST_PERF_SLACK scales the budgets; under a sanitizer they are only
-// reported.
+// LoggerBench: the logging hot path against the budgets of S09 (R28). They are enforced in the
+// benchmark run (JASPER_TEST_PERF_SLACK=1 on the benchmark server, docs/testing.md); a plain unit
+// test run, and a sanitizer run, only report them.
 
 #include "log/LogTestSupport.h"
 #include "support/AllocationCounter.h"
