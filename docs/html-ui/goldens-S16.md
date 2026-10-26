@@ -37,6 +37,8 @@ that every changed golden has its row. More than 60 updates need a separate revi
 | `compat/engine/hud` | fuzzy-bad 0.237 % (2188 px) | 0 / 0.000 / 0 | `gpu-text-effect` | the bars' text shadows from distance glyphs, the portrait ring's glow an analytic shadow, rounded bars SDF-antialiased | n/a (engine scene) |
 | `compat/engine/toggles` | fuzzy-bad 0.044 % (402 px) | 0 / 0.000 / 0 | `sdf-aa` | the toggles' rounded tracks and knobs antialiased by the SDF | n/a (engine scene) |
 | `s17/views_scrolled` | 39 / 0.058 / 207 | 0 / 0.000 / 0 | `sdf-aa` | S17's scrolled grid view: its tiles' backgrounds are primitives cut to the scissor, so the row above the pane no longer shows llvmpipe's 4-sample leak across the scissor's top (the glyphs, exact quads, still do) | n/a (engine scene) |
+| `examples/inventory` | 231 / 1.582 / 12721 | 0 / 0.000 / 0 | `exact-scale-text` | S17's play golden (`test_html_ui_examples.py`, at most 1 % of the pixels apart; 1.09 % against S16) predates S16: the labels drawn at their on-screen scale, the gradients and boxes as primitives, and the hovered slot's tooltip placed 18 px higher from its laid-out size (deterministic over two runs, the same with S16's paint shortcuts off) | n/a (engine scene) |
+| `examples/server_browser` | 169 / 1.880 / 20429 | 0 / 0.000 / 0 | `exact-scale-text` | S17's play golden predates S16 (1.58 % against S16): the table's labels sit on whole target pixels at the game view's scale (moved by under a pixel) | n/a (engine scene) |
 
 ## New goldens
 
