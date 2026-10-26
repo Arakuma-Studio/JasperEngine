@@ -190,6 +190,14 @@ namespace {
         return nullptr;
     }
 
+    // the clip mode's draw budget for a large clip (I1 / I3); the sanitizers slow everything several
+    // times, where only the rest of the test means something
+#if defined(__SANITIZE_ADDRESS__)
+    const double DRAW_BUDGET_MS = 1e9;
+#else
+    const double DRAW_BUDGET_MS = 30.0;
+#endif
+
     bool onGrid(float time, float fps) {
         return std::fabs(time * fps - std::round(time * fps)) < 1e-3f;
     }
@@ -806,7 +814,7 @@ TEST_F(AnimationWindowClipTest, LargeClipStaysResponsive) {
     EXPECT_EQ(st["selection_count"], 36000) << "every key selected";
     frames(30);
     st = act({{"brief", true}});
-    EXPECT_LT(st["draw_ms"].get<double>(), 30.0) << "the clip mode draws in " << st["draw_ms"] << " ms (moving average)";
+    EXPECT_LT(st["draw_ms"].get<double>(), DRAW_BUDGET_MS) << "the clip mode draws in " << st["draw_ms"] << " ms (moving average)";
     // a drag of every key by one frame is one undo step
     act({{"drag", 1.0 / 60.0}, {"brief", true}});
     EXPECT_NEAR(clipFile("assets/anim/big.anim")["tracks"][0]["keys"][0][0].get<float>(), 1.0f / 60.0f, 1e-4f) << "moved by a frame";
@@ -817,7 +825,7 @@ TEST_F(AnimationWindowClipTest, LargeClipStaysResponsive) {
     frames(30);
     st = act({{"brief", true}});
     EXPECT_EQ(st["view"], "curves");
-    EXPECT_LT(st["draw_ms"].get<double>(), 30.0) << "the curves view draws in " << st["draw_ms"] << " ms (moving average)";
+    EXPECT_LT(st["draw_ms"].get<double>(), DRAW_BUDGET_MS) << "the curves view draws in " << st["draw_ms"] << " ms (moving average)";
     act({{"view", "dopesheet"}, {"state", "hero_clip"}});
 }
 
