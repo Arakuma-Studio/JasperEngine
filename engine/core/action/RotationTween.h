@@ -14,6 +14,8 @@ namespace jasperengine{
         RotationTween(Scene* scene, Entity entity);
 
         void setAction(Quaternion startRotation, Quaternion endRotation, float duration, bool loop=false);
+        // turns startRotation by angle around axis, past half a turn too (a slerp to an end rotation never is)
+        void setSpinAction(Quaternion startRotation, Vector3 axis, float angle, float duration, bool loop=false);
     };
 }
 

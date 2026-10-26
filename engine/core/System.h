@@ -136,6 +136,9 @@ namespace jasperengine {
         virtual std::string getCrashReportPath();
         virtual std::string getLuaPath();
         virtual std::string getShaderPath();
+        // Where the editor keeps the models it imports (FBX converted to .glb); empty when
+        // each import sits next to its source, as in an exported game
+        virtual std::string getImportPath();
 
         // *******
         // Used only for engine

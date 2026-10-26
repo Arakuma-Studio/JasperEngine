@@ -32,7 +32,11 @@ uniform u_fs_lighting2d {
 vec3 getNormal2D(){
 #ifdef HAS_NORMALS
     #ifdef HAS_TANGENTS
-        #if defined(HAS_NORMAL_MAP) && (defined(HAS_UV_SET1) || defined(HAS_UV_SET2))
+        #if defined(HAS_NORMAL_MAP) && defined(LIT_STOCHASTIC)
+            // the built-in Lit's Stochastic Tiling (includes/pbr.glsl): the same taps and weights
+            vec3 ntex = stochasticNormal(u_normalTexture, u_normal_smp, getNormalStochastic(), 1.0, STOCHASTIC_NORMAL_GL);
+            return normalize(v_tbn * ntex);
+        #elif defined(HAS_NORMAL_MAP) && (defined(HAS_UV_SET1) || defined(HAS_UV_SET2))
             vec3 ntex = texture(sampler2D(u_normalTexture, u_normal_smp), getNormalUV()).rgb * 2.0 - vec3(1.0);
             return normalize(v_tbn * ntex);
         #else

@@ -190,6 +190,30 @@ async def test_shader_fork_and_errors(ed: Editor):
     await ed.call("fork_shader", target="scene_default", expect_error=True)  # needs shader_type
 
 
+async def test_skybox_cube_faces(ed: Editor):
+    """A six-face cube map reads back in the order it is written (front, back, left, right, up, down)."""
+    faces = ["front", "back", "left", "right", "up", "down"]
+    folder = ed.project / "assets/cubefaces"
+    folder.mkdir(parents=True, exist_ok=True)
+    rock = (ed.project / "assets/sprites/rock.png").read_bytes()
+    for face in faces:
+        (folder / f"{face}.png").write_bytes(rock)
+    paths = [f"assets/cubefaces/{face}.png" for face in faces]
+
+    sky = await make_entity(ed, "FacesSky", "skybox")
+    await ed.call("set_properties", entity=sky, values={"skybox": {"texture": {"cube": paths}}})
+    got = await ed.call("get_entity", entity=sky, components=["skybox"])
+    texture = got["components"]["skybox"]["texture"]
+    ed.check(isinstance(texture, dict), f"a cube map value: {texture!r}")
+    ed.check_eq(texture.get("cube"), paths, "faces read back in the written order")
+
+    # a write of what was read keeps the faces
+    await ed.call("set_properties", entity=sky, values={"skybox": {"texture": texture}})
+    again = await ed.call("get_entity", entity=sky, components=["skybox"])
+    ed.check_eq(again["components"]["skybox"]["texture"].get("cube"), paths, "the read value round-trips")
+    await ed.check_alive()
+
+
 async def test_external_image_reload(ed: Editor):
     """An image replaced on disk is reloaded by the GameObjects using it after sync_files."""
     ed.require_tools("sync_files")

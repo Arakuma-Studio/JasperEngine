@@ -20,6 +20,7 @@
 
 #include "EditorHost.h"
 #include "util/FileUtils.h"
+#include "util/FbxImporter.h"
 #include "window/CodeEditor.h"
 #include "window/ImageViewerWindow.h"
 #include "window/TerrainEditWindow.h"
@@ -37,6 +38,8 @@
 #include <limits>
 #include <random>
 #include <thread>
+#include <mutex>
+#include <set>
 
 #include "render/SceneRender2D.h"
 #include "render/SceneRender3D.h"
@@ -48,8 +51,11 @@
 #include "AppSettings.h"
 #include "Out.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/LatticeSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "subsystem/FluidSystem.h"
+#include "fluid/FluidSimulator.h"
 #include "htmlui/anim/AnimEngine.h"
 #include "command/CommandHandle.h"
 #include "command/PlayChangeReview.h"
@@ -57,6 +63,7 @@
 #include "command/type/SelectionCmd.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/MoveEntityOrderCmd.h"
+#include "command/type/ModelLoadCmd.h"
 #include "Stream.h"
 #include "StreamPreserved.h"
 #include "DocumentFile.h"
@@ -67,6 +74,7 @@
 #include "util/CameraTextureLink.h"
 #include "util/ProjectUtils.h"
 #include "util/Util.h"
+#include "json.hpp"
 
 #include "texture/Texture.h"
 #include "component/UIDocumentComponent.h"
@@ -252,6 +260,7 @@ editor::Project::Project(){
 
 editor::Project::~Project(){
     // the jobs capture the project (the asset walk its database)
+    fbxImportScan.wait();
     waitForAssetScan();
     playStartupTask.wait();
     playStopTask.wait();
@@ -447,8 +456,8 @@ SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* regis
             file.setAlphaBorderAuto(true);
         }
 
-        auto sameId = [&file](const Texture& other) { return other.getId() == file.getId(); };
-        if (std::none_of(resources.textures.begin(), resources.textures.end(), sameId)) {
+        auto sameRender = [&file](const Texture& other) { return other.getRenderId() == file.getRenderId(); };
+        if (std::none_of(resources.textures.begin(), resources.textures.end(), sameRender)) {
             resources.textures.push_back(file);
         }
     };
@@ -854,6 +863,386 @@ void editor::Project::applyLinkedMaterialFile(const std::string& relativePath, c
         }
         ++it;
     }
+}
+
+// Imports an FBX when its .glb is missing or stale, or always when forced; without canReplace only
+// a missing one is created. False when there is no .glb to load.
+static bool importFbx(const fs::path& fbxPath, const fs::path& glbPath, const fs::path& assetsRoot, bool force, bool canReplace, bool& written) {
+    written = false;
+    const std::string fbxName = editor::FileUtils::pathToUtf8(fbxPath.filename());
+
+    const editor::FbxImporter::State state = editor::FbxImporter::getState(fbxPath, glbPath, assetsRoot);
+    if (state == editor::FbxImporter::State::UpToDate && !force) {
+        return true;
+    }
+    if (!canReplace && state != editor::FbxImporter::State::Missing) {
+        if (force) {
+            editor::Out::warning("Cannot reimport %s while a project export is running", fbxName.c_str());
+        }
+        return true;
+    }
+
+    editor::Out::info("Importing %s", fbxName.c_str());
+    const editor::FbxImporter::Result result = editor::FbxImporter::import(fbxPath, glbPath, assetsRoot, force);
+    for (const std::string& warning : result.warnings) {
+        editor::Out::warning("%s: %s", fbxName.c_str(), warning.c_str());
+    }
+    if (!result.success) {
+        editor::Out::error("Cannot import %s: %s", fbxName.c_str(), result.error.c_str());
+        // A stale import still loads
+        return state != editor::FbxImporter::State::Missing;
+    }
+    written = true;
+    return true;
+}
+
+fs::path editor::Project::getImportedModelPath(const fs::path& fbxPath) const {
+    return FileUtils::pathFromUtf8(MeshSystem::getImportedModelPath(FileUtils::pathToUtf8(fbxPath)));
+}
+
+bool editor::Project::importFbxModel(const fs::path& fbxPath, bool force) {
+    // The import mirrors the assets directory
+    if (!isInsideAssetsPath(fbxPath)) {
+        Out::error("Cannot import %s: it is outside the project assets", FileUtils::pathToUtf8(fbxPath.filename()).c_str());
+        return false;
+    }
+    std::lock_guard<std::mutex> callLock(fbxImportCallMutex);
+    bool exported;
+    {
+        std::lock_guard<std::mutex> lock(fbxImportMutex);
+        exported = exportedImports.count(fbxPath.lexically_normal()) > 0;
+    }
+    bool written = false;
+    const bool loadable = importFbx(fbxPath, getImportedModelPath(fbxPath), getAssetsPath(), force, !exported, written);
+    if (written) {
+        queueModelReload(fbxPath);
+    }
+    return loadable;
+}
+
+bool editor::Project::prepareModelFile(const std::string& modelPath) {
+    return !FbxImporter::isFbxFile(modelPath) || importFbxModel(resolveAssetPath(FileUtils::pathFromUtf8(modelPath)));
+}
+
+void editor::Project::queueModelReload(const fs::path& fbxPath) {
+    std::lock_guard<std::mutex> lock(fbxImportMutex);
+    modelReloads.insert(fbxPath.lexically_normal());
+}
+
+bool editor::Project::reloadModelFile(const fs::path& fbxPath, bool synchronous) {
+    const std::string filename = FileUtils::pathToUtf8(fbxPath);
+    const std::string key = MeshSystem::getModelFilenameKey(filename);
+    const fs::path glbPath = getImportedModelPath(fbxPath);
+
+    // A parsed model of another import reloads to keep its part arrangement, unloaded ones read the
+    // new file anyway. A load in flight would put the old file back in the pool, so the reload waits.
+    std::vector<std::pair<SceneProject*, std::vector<Entity>>> reloads;
+    for (SceneProject& sceneProject : scenes) {
+        if (!sceneProject.scene) {
+            continue;
+        }
+        std::shared_ptr<MeshSystem> meshSystem = sceneProject.scene->getSystem<MeshSystem>();
+        const std::unordered_set<Entity> sceneEntities(sceneProject.entities.begin(), sceneProject.entities.end());
+        std::vector<Entity> users;
+        auto models = sceneProject.scene->getComponentArray<ModelComponent>();
+        for (size_t i = 0; i < models->size(); i++) {
+            const ModelComponent& model = models->getComponentFromIndex(i);
+            const Entity entity = models->getEntity(i);
+            if (model.filename.empty() || MeshSystem::getModelFilenameKey(model.filename) != key) {
+                continue;
+            }
+            if (meshSystem->isAsyncModelLoadPending(entity, model.filename)) {
+                return false;
+            }
+            if (model.gltfModel && sceneEntities.count(entity) && !FbxImporter::isCurrentImport(*model.gltfModel, glbPath)) {
+                users.push_back(entity);
+            }
+        }
+        reloads.emplace_back(&sceneProject, users);
+    }
+
+    MeshSystem::invalidateModelFile(filename);
+    const bool wasAsync = Engine::isAsyncLoading();
+    if (synchronous) {
+        Engine::setAsyncLoading(false);
+    }
+    for (const auto& [sceneProject, users] : reloads) {
+        std::shared_ptr<MeshSystem> meshSystem = sceneProject->scene->getSystem<MeshSystem>();
+        meshSystem->reloadFoliageMesh(filename);
+        meshSystem->retryFailedModelLoads(filename);
+        sceneProject->needUpdateRender = true;
+
+        for (Entity entity : users) {
+            const ModelComponent& model = sceneProject->scene->getComponent<ModelComponent>(entity);
+            // Not a user edit: the redo steps stay (undoing it puts the parts of the old import back)
+            CommandHandle::get(sceneProject->id)->insertCommand(
+                new ModelLoadCmd(this, sceneProject->id, entity, model.filename, model.mergeStaticMeshes));
+        }
+    }
+    Engine::setAsyncLoading(wasAsync);
+    return true;
+}
+
+fs::path editor::Project::applyModelReloads(bool synchronous) {
+    std::set<fs::path> reloads;
+    {
+        std::lock_guard<std::mutex> lock(fbxImportMutex);
+        reloads.swap(modelReloads);
+    }
+    fs::path waiting;
+    for (const fs::path& fbxPath : reloads) {
+        if (!reloadModelFile(fbxPath, synchronous)) {
+            queueModelReload(fbxPath);
+            waiting = fbxPath;
+        }
+    }
+    return waiting;
+}
+
+void editor::Project::importFbxModels() {
+    std::error_code ec;
+    for (fs::recursive_directory_iterator it(getAssetsPath(), fs::directory_options::skip_permission_denied, ec), end;
+         !ec && it != end; it.increment(ec)) {
+        // Hidden and build directories hold no assets
+        const std::string name = FileUtils::pathToUtf8(it->path().filename());
+        if (it->is_directory(ec) && (name.empty() || name[0] == '.' || name == "build")) {
+            it.disable_recursion_pending();
+            continue;
+        }
+        if (FbxImporter::isFbxFile(it->path()) && it->is_regular_file(ec)) {
+            importFbxModel(it->path());
+        }
+    }
+}
+
+void editor::Project::setFbxImportsPaused(bool paused) {
+    fbxImportsPaused = paused;
+    if (!paused) {
+        std::lock_guard<std::mutex> lock(fbxImportMutex);
+        exportedImports.clear();
+    }
+}
+
+bool editor::Project::flushFbxReloads(std::string& error) {
+    if (fbxImportScan.isValid()) {
+        for (const auto& [fbxPath, failure] : fbxImportScan.get()) {
+            failedFbxImports[fbxPath] = failure;
+        }
+        fbxImportScan.reset();
+    }
+    // An import started before the pause queues its reload when it returns
+    {
+        std::lock_guard<std::mutex> callLock(fbxImportCallMutex);
+    }
+
+    const fs::path waiting = applyModelReloads(true);
+    if (!waiting.empty()) {
+        error = "Cannot export: " + FileUtils::pathToUtf8(waiting.filename()) + " is still loading. Export again once it finishes.";
+        return false;
+    }
+    return true;
+}
+
+std::map<fs::path, std::vector<const editor::SceneProject*>> editor::Project::collectSceneModelFiles() const {
+    auto fbxPathOf = [this](const std::string& filename) -> fs::path {
+        return FbxImporter::isFbxFile(filename) ? resolveAssetPath(FileUtils::pathFromUtf8(filename)).lexically_normal() : fs::path();
+    };
+
+    std::map<fs::path, std::vector<const SceneProject*>> files;
+    for (const SceneProject& sceneProject : scenes) {
+        if (!sceneProject.scene) {
+            continue;
+        }
+        const std::unordered_set<Entity> sceneEntities(sceneProject.entities.begin(), sceneProject.entities.end());
+        auto models = sceneProject.scene->getComponentArray<ModelComponent>();
+        for (size_t i = 0; i < models->size(); i++) {
+            const ModelComponent& model = models->getComponentFromIndex(i);
+            const fs::path fbxPath = fbxPathOf(model.filename);
+            if (fbxPath.empty() || !sceneEntities.count(models->getEntity(i))) {
+                continue;
+            }
+            std::vector<const SceneProject*>& unloadedScenes = files[fbxPath];
+            if (!model.gltfModel && (unloadedScenes.empty() || unloadedScenes.back() != &sceneProject)) {
+                unloadedScenes.push_back(&sceneProject);
+            }
+        }
+        // Foliage saves no model parts, so it never needs a reload
+        auto terrains = sceneProject.scene->getComponentArray<TerrainComponent>();
+        for (size_t i = 0; i < terrains->size(); i++) {
+            for (const TerrainFoliageLayer& layer : terrains->getComponentFromIndex(i).foliageLayers) {
+                const fs::path fbxPath = fbxPathOf(layer.meshPath);
+                if (!fbxPath.empty()) {
+                    files[fbxPath];
+                }
+            }
+        }
+    }
+    return files;
+}
+
+// Records which import the saved parts of each FBX model come from, so an export can check
+// a scene it cannot reload against the current FBX
+void editor::Project::updateSceneImports(SceneProject* sceneProject) {
+    if (!sceneProject->scene) {
+        return;
+    }
+    const std::unordered_set<Entity> sceneEntities(sceneProject->entities.begin(), sceneProject->entities.end());
+    // FBX -> the import its models were loaded from, empty when one is not loaded or they differ
+    std::map<std::string, std::string> loaded;
+    auto models = sceneProject->scene->getComponentArray<ModelComponent>();
+    for (size_t i = 0; i < models->size(); i++) {
+        const ModelComponent& model = models->getComponentFromIndex(i);
+        if (!FbxImporter::isFbxFile(model.filename) || !sceneEntities.count(models->getEntity(i))) {
+            continue;
+        }
+        const std::string key = normalizeToAssetsRelative(resolveAssetPath(FileUtils::pathFromUtf8(model.filename.path))).generic_string();
+        const std::string id = model.gltfModel ? FbxImporter::getImportId(*model.gltfModel) : std::string();
+        auto it = loaded.emplace(key, id).first;
+        if (it->second != id) {
+            it->second.clear();
+        }
+    }
+
+    std::map<std::string, std::string> imports;
+    for (const auto& [key, id] : loaded) {
+        auto saved = sceneProject->imports.find(key);
+        if (!id.empty()) {
+            imports[key] = id;
+        } else if (saved != sceneProject->imports.end()) {
+            imports[key] = saved->second;
+        }
+    }
+    sceneProject->imports = std::move(imports);
+}
+
+bool editor::Project::prepareFbxModelsForExport(std::string& error) {
+    const fs::path assetsRoot = getAssetsPath();
+    const auto files = collectSceneModelFiles();
+    {
+        std::lock_guard<std::mutex> lock(fbxImportMutex);
+        for (const auto& entry : files) {
+            exportedImports.insert(entry.first);
+        }
+    }
+
+    for (const auto& [fbxPath, unloadedScenes] : files) {
+        const std::string key = normalizeToAssetsRelative(fbxPath).generic_string();
+        const std::string fbxName = FileUtils::pathToUtf8(fbxPath.filename());
+        std::error_code ec;
+        if (!fs::is_regular_file(fbxPath, ec)) {
+            error = "Cannot export: " + key + " is missing";
+            return false;
+        }
+
+        // A scene that cannot reload keeps the model parts saved with it, which must come from this FBX
+        const std::string sourceId = FbxImporter::getSourceId(fbxPath);
+        std::string outdatedScenes;
+        for (const SceneProject* sceneProject : unloadedScenes) {
+            auto saved = sceneProject->imports.find(key);
+            if (saved == sceneProject->imports.end() || saved->second != sourceId) {
+                outdatedScenes += (outdatedScenes.empty() ? "" : ", ") + sceneProject->name;
+            }
+        }
+        if (!outdatedScenes.empty()) {
+            error = "Cannot export: " + fbxName + " changed after these scenes were saved: " + outdatedScenes +
+                ". Open them in the editor so their models reload, save them, then export again.";
+            return false;
+        }
+
+        const fs::path glbPath = getImportedModelPath(fbxPath);
+        if (FbxImporter::getState(fbxPath, glbPath, assetsRoot) != FbxImporter::State::UpToDate) {
+            bool written = false;
+            importFbx(fbxPath, glbPath, assetsRoot, false, true, written);
+            if (!written) {
+                error = "Cannot export: " + fbxName + " could not be imported";
+                return false;
+            }
+            if (!reloadModelFile(fbxPath, true)) {
+                queueModelReload(fbxPath);
+                error = "Cannot export: " + fbxName + " is still loading. Export again once it finishes.";
+                return false;
+            }
+        }
+        for (const fs::path& missing : FbxImporter::findMissingLinkedFiles(fbxPath, glbPath)) {
+            Out::warning("%s uses %s, which is missing, so it is exported without that texture",
+                fbxName.c_str(), FileUtils::pathToUtf8(missing.filename()).c_str());
+        }
+    }
+    return true;
+}
+
+void editor::Project::refreshFbxImports() {
+    if (fbxImportScan.isReady()) {
+        for (const auto& [fbxPath, failure] : fbxImportScan.get()) {
+            failedFbxImports[fbxPath] = failure;
+        }
+        fbxImportScan.reset();
+    }
+
+    // A playing scene would restore its snapshot over the reload on Stop
+    if (fbxImportsPaused || isAnyScenePlaying()) {
+        return;
+    }
+
+    applyModelReloads(false);
+
+    const auto now = std::chrono::steady_clock::now();
+    if (fbxImportScan.isValid() || projectPath.empty() ||
+        std::chrono::duration<double>(now - lastFbxImportCheck).count() < fbxImportCheckIntervalSec) {
+        return;
+    }
+    lastFbxImportCheck = now;
+
+    // FBX -> its .glb
+    std::map<fs::path, fs::path> files;
+    for (const auto& entry : collectSceneModelFiles()) {
+        files[entry.first] = getImportedModelPath(entry.first);
+    }
+    if (files.empty()) {
+        return;
+    }
+
+    // Hashing and converting can take seconds, so the check runs off the main thread: a
+    // Background job (S06), Heavy (a conversion parses the whole model)
+    jobs::SubmitOptions options;
+    options.lane = jobs::Lane::Background;
+    options.gate = jobs::GateClass::Heavy;
+    options.name = "fbx-import-scan";
+    fbxImportScan = jobs::submit(
+        [this, files, assetsRoot = getAssetsPath(), known = failedFbxImports]() {
+            std::map<fs::path, FbxImportFailure> failures;
+            for (const auto& [fbxPath, glbPath] : files) {
+                std::error_code ec;
+                FbxImportFailure stamp;
+                stamp.size = fs::file_size(fbxPath, ec);
+                if (ec) {
+                    continue;
+                }
+                stamp.time = fs::last_write_time(fbxPath, ec);
+                // A failed file is retried once it changes again
+                auto failed = known.find(fbxPath);
+                if (failed != known.end() && failed->second.size == stamp.size && failed->second.time == stamp.time) {
+                    continue;
+                }
+                // A missing .glb (a fresh clone, or a cleared cache) is built like a changed one
+                const FbxImporter::State state = FbxImporter::getState(fbxPath, glbPath, assetsRoot);
+                if (state == FbxImporter::State::UpToDate) {
+                    continue;
+                }
+                bool written = false;
+                {
+                    // One import of a file at a time, with importFbxModel (Play startup, a drop...)
+                    std::lock_guard<std::mutex> callLock(fbxImportCallMutex);
+                    importFbx(fbxPath, glbPath, assetsRoot, false, true, written);
+                }
+                if (written) {
+                    queueModelReload(fbxPath);
+                } else if (FbxImporter::getState(fbxPath, glbPath, assetsRoot) != FbxImporter::State::UpToDate) {
+                    failures[fbxPath] = stamp;
+                }
+            }
+            return failures;
+        }, options);
 }
 
 editor::SceneRender* editor::Project::createSceneRender(SceneType type, Scene* scene) const {
@@ -1954,6 +2343,19 @@ std::string editor::Project::toFourPartVersion(const std::string& source){
     return result;
 }
 
+bool editor::isAdMobAppIdValid(const std::string& value){
+    const std::string prefix = "ca-app-pub-";
+    if (value.compare(0, prefix.size(), prefix) != 0) return false;
+
+    const size_t tilde = value.find('~', prefix.size());
+    if (tilde == std::string::npos || tilde == prefix.size() || tilde + 1 == value.size()) return false;
+
+    for (size_t i = prefix.size(); i < value.size(); i++) {
+        if (i != tilde && !std::isdigit(static_cast<unsigned char>(value[i]))) return false;
+    }
+    return true;
+}
+
 editor::WebProjectSettings& editor::Project::getWebProjectSettings(){
     return webProjectSettings;
 }
@@ -2047,6 +2449,14 @@ editor::TerrainEditorSettings& editor::Project::getTerrainEditorSettings(){
 
 const editor::TerrainEditorSettings& editor::Project::getTerrainEditorSettings() const{
     return terrainEditorSettings;
+}
+
+editor::PhysicsPlacementSettings& editor::Project::getPhysicsPlacementSettings(){
+    return physicsPlacementSettings;
+}
+
+const editor::PhysicsPlacementSettings& editor::Project::getPhysicsPlacementSettings() const{
+    return physicsPlacementSettings;
 }
 
 bool editor::Project::isSimulateTouch() const{
@@ -2175,6 +2585,8 @@ editor::SceneProject* editor::Project::createRuntimeCloneFromSource(const SceneP
 
     YAML::Node sceneNode = DocumentFiles::read(fullPath, DocumentKind::Scene).root;
     Stream::decodeSceneProject(runtime.get(), sceneNode, true);
+    // the file's id differs if loading replaced a duplicate
+    runtime->id = source->id;
     runtime->defaultCamera = createDefaultCamera(runtime->sceneType, runtime->scene);
     Stream::decodeSceneProjectEntities(this, runtime.get(), sceneNode);
     pauseEngineScene(runtime->scene, true);
@@ -2228,6 +2640,141 @@ void editor::Project::updateSceneCppScripts(SceneProject* sceneProject) {
     }
 }
 
+// The JSON of a .gltf, or the JSON chunk of a .glb
+static nlohmann::json readGltfJson(const fs::path& path, uintmax_t size) {
+    std::ifstream file(path, std::ios::binary);
+    // magic, version, length, then the first chunk's length and type
+    uint32_t header[5];
+    if (!file.read(reinterpret_cast<char*>(header), sizeof(header)) || header[0] != 0x46546C67u) {
+        file.clear();
+        file.seekg(0);
+        return nlohmann::json::parse(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>(), nullptr, false);
+    }
+    if (header[4] != 0x4E4F534Au || sizeof(header) + header[3] > size) {
+        return {};
+    }
+    std::string text(header[3], '\0');
+    file.read(text.data(), static_cast<std::streamsize>(text.size()));
+    return nlohmann::json::parse(text, nullptr, false);
+}
+
+// Each distinct buffer view a mesh component reads, plus a synthetic view per primitive for byte
+// indices, integer VEC3 colors, sparse morphs and baked transforms
+unsigned int editor::Project::countGltfExternalBuffers(const fs::path& path, bool merged) {
+    // glTF componentType values
+    constexpr int UNSIGNED_BYTE = 5121;
+    constexpr int UNSIGNED_SHORT = 5123;
+    constexpr int FLOAT = 5126;
+
+    struct Count {
+        uintmax_t size = 0;
+        fs::file_time_type time;
+        unsigned int separate = 0;
+        unsigned int merged = 0;
+    };
+    static std::mutex mutex;
+    static std::unordered_map<std::string, Count> cache;
+
+    std::error_code ec;
+    const uintmax_t size = fs::file_size(path, ec);
+    if (ec) {
+        return 0;
+    }
+    const fs::file_time_type time = fs::last_write_time(path, ec);
+    if (ec) {
+        return 0;
+    }
+
+    std::lock_guard<std::mutex> lock(mutex);
+    Count& count = cache[editor::FileUtils::pathToUtf8(path.lexically_normal())];
+    if (count.size == size && count.time == time) {
+        return merged ? count.merged : count.separate;
+    }
+    count = {size, time};
+
+    const nlohmann::json gltf = readGltfJson(path, size);
+    try {
+        const nlohmann::json& nodes = gltf.at("nodes");
+        const nlohmann::json& meshes = gltf.at("meshes");
+        const nlohmann::json& accessors = gltf.at("accessors");
+
+        // buffers of the given mesh nodes put on one MeshComponent
+        auto countBuffers = [&](const std::vector<size_t>& meshNodes, bool baked) {
+            std::set<size_t> views;
+            unsigned int generated = 0;
+            auto add = [&](const nlohmann::json& accessor, bool copied) {
+                if (copied) {
+                    generated++;
+                } else if (accessor.contains("bufferView")) {
+                    views.insert(accessor["bufferView"].get<size_t>());
+                }
+            };
+            for (size_t node : meshNodes) {
+                for (const nlohmann::json& primitive : meshes.at(nodes.at(node).at("mesh").get<size_t>()).at("primitives")) {
+                    // skipped by the loader
+                    if (!primitive.contains("indices")) {
+                        continue;
+                    }
+                    const nlohmann::json& indices = accessors.at(primitive["indices"].get<size_t>());
+                    add(indices, indices.value("componentType", 0) == UNSIGNED_BYTE);
+
+                    for (const auto& attribute : primitive.at("attributes").items()) {
+                        const nlohmann::json& accessor = accessors.at(attribute.value().get<size_t>());
+                        const std::string& name = attribute.key();
+                        const int component = accessor.value("componentType", 0);
+                        const std::string type = accessor.value("type", "");
+                        const bool color = name == "COLOR_0" && type == "VEC3" &&
+                            (component == UNSIGNED_BYTE || component == UNSIGNED_SHORT);
+                        const bool bake = baked && component == FLOAT &&
+                            (((name == "POSITION" || name == "NORMAL") && type == "VEC3") || (name == "TANGENT" && type == "VEC4"));
+                        add(accessor, color || bake);
+                    }
+
+                    for (const nlohmann::json& target : primitive.value("targets", nlohmann::json::array())) {
+                        for (const nlohmann::json& index : target) {
+                            const nlohmann::json& accessor = accessors.at(index.get<size_t>());
+                            add(accessor, accessor.contains("sparse"));
+                        }
+                    }
+                }
+            }
+            return static_cast<unsigned int>(views.size()) + generated;
+        };
+
+        std::vector<size_t> meshNodes;
+        for (size_t i = 0; i < nodes.size(); i++) {
+            if (nodes[i].contains("mesh") && nodes[i]["mesh"].get<size_t>() < meshes.size()) {
+                meshNodes.push_back(i);
+            }
+        }
+
+        if (meshNodes.size() == 1) {
+            // the transform from the scene root down to a lone mesh node is baked
+            size_t root = meshNodes[0];
+            const size_t scene = gltf.value("scene", size_t(0));
+            if (gltf.contains("scenes") && scene < gltf["scenes"].size()) {
+                const nlohmann::json roots = gltf["scenes"][scene].value("nodes", nlohmann::json::array());
+                if (!roots.empty()) {
+                    root = roots[0].get<size_t>();
+                }
+            }
+            count.separate = countBuffers(meshNodes, meshNodes[0] != root);
+            // a foliage layer (counted as merged) bakes the node's whole global transform
+            count.merged = countBuffers(meshNodes, true);
+        } else {
+            // a child mesh per node, or all of them baked onto the root when merged
+            for (size_t node : meshNodes) {
+                count.separate = std::max(count.separate, countBuffers({node}, false));
+            }
+            count.merged = countBuffers(meshNodes, true);
+        }
+    } catch (const nlohmann::json::exception&) {
+        count.separate = 0;
+        count.merged = 0;
+    }
+    return merged ? count.merged : count.separate;
+}
+
 void editor::Project::calculateSceneMaxValues(const SceneProject* sceneProject, SceneMaxValues& maxValues) const {
     if (!sceneProject || !sceneProject->scene) {
         return;
@@ -2240,6 +2787,36 @@ void editor::Project::calculateSceneMaxValues(const SceneProject* sceneProject, 
         maxValues.maxExternalBuffers = std::max(maxValues.maxExternalBuffers, mesh.numExternalBuffers);
         maxValues.maxBones = std::max(maxValues.maxBones,
             static_cast<unsigned int>(mesh.bonesMatrix.size()));
+    }
+
+    // numExternalBuffers is filled by a load, and a command line export loads no model
+    auto addModelFile = [&](const std::string& filename, bool merged) {
+        if (filename.empty()) {
+            return;
+        }
+        const fs::path path = resolveAssetPath(FileUtils::pathFromUtf8(filename));
+        std::string extension = path.extension().string();
+        std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (extension == ".glb" || extension == ".gltf") {
+            maxValues.maxExternalBuffers = std::max(maxValues.maxExternalBuffers, countGltfExternalBuffers(path, merged));
+        } else if (FbxImporter::isFbxFile(path)) {
+            // an FBX loads from its imported .glb
+            maxValues.maxExternalBuffers = std::max(maxValues.maxExternalBuffers, countGltfExternalBuffers(getImportedModelPath(path), merged));
+        }
+    };
+
+    auto models = sceneProject->scene->getComponentArray<ModelComponent>();
+    for (size_t i = 0; i < models->size(); ++i) {
+        const ModelComponent& model = models->getComponentFromIndex(i);
+        addModelFile(model.filename, model.mergeStaticMeshes);
+    }
+
+    // foliage chunks are merged models
+    auto terrains = sceneProject->scene->getComponentArray<TerrainComponent>();
+    for (size_t i = 0; i < terrains->size(); ++i) {
+        for (const TerrainFoliageLayer& layer : terrains->getComponentFromIndex(i).foliageLayers) {
+            addModelFile(layer.meshPath, true);
+        }
     }
 
     auto sprites = sceneProject->scene->getComponentArray<SpriteComponent>();
@@ -2309,9 +2886,37 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
             customShader.empty() ? scene->getDefaultCustomShader(type) : customShader, features, blendMode));
     };
 
+    // The colour variant of a submesh with the scene's reflection probes: the selection
+    // RenderSystem::loadMesh makes (getSubmeshShaderInputs, getSubmeshShaderVariant), in the
+    // render system's environment with the probes in it and its lights as its next update
+    // counts them (RenderSystem::checkLightsAndShadow: a light added with the probe), from the
+    // submesh's attributes of its last load
+    MeshShaderEnvironment probeEnvironment;
+    if (hasReflectionProbes) {
+        if (std::shared_ptr<RenderSystem> renderSystem = scene->getSystem<RenderSystem>())
+            probeEnvironment = renderSystem->getMeshShaderEnvironment();
+        probeEnvironment.reflectionProbes = true;
+        auto lights = scene->getComponentArray<LightComponent>();
+        const LightState lightState = scene->getLightState();
+        if (lightState == LightState::ON || (lightState == LightState::AUTO && lights->size() > 0))
+            probeEnvironment.lights = true;
+        for (size_t i = 0; i < lights->size(); ++i) {
+            if (lights->getComponentFromIndex(i).shadows)
+                probeEnvironment.shadows = true;
+        }
+    }
+    auto probeMeshProperties = [&](Entity entity, const MeshComponent& mesh, const Submesh& submesh,
+                                   const std::string& sceneMeshShader) -> uint64_t {
+        const TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
+        const InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
+        const bool mirror = scene->findComponent<MirrorComponent>(entity) != nullptr;
+        const SubmeshShaderInputs inputs = RenderSystem::getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, mirror, sceneMeshShader);
+        return RenderSystem::getSubmeshShaderVariant(probeEnvironment, inputs).properties;
+    };
+
     // the runtime falls back to the built-in variant when a custom shader fails to build,
     // so always collect the customId-0 key alongside a custom one
-    auto insertKeys = [&](ShaderType type, uint32_t properties, uint16_t customShaderId) {
+    auto insertKeys = [&](ShaderType type, uint64_t properties, uint16_t customShaderId) {
         keys.insert(ShaderPool::getShaderKey(type, properties, customShaderId));
         if (customShaderId != 0) {
             keys.insert(ShaderPool::getShaderKey(type, properties, 0));
@@ -2343,26 +2948,15 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
                                                                 MaterialPbr::getDefinesFromBits(mesh.submeshes[s].litDefineBits)));
                     uint16_t customDepthShaderId = ShaderPool::registerCustomShader(
                         RenderSystem::getSubmeshDepthShaderReference(mesh, mesh.submeshes[s], sceneMeshShader));
-                    uint32_t meshProperties = mesh.submeshes[s].shaderProperties;
+                    uint64_t meshProperties = mesh.submeshes[s].shaderProperties;
                     // Saving/exporting can happen before RenderSystem has reloaded
-                    // meshes after a probe was added. Derive the required IBL
-                    // variant here so the exported shader set is still complete.
+                    // meshes after a probe was added. Derive the variant the reload will
+                    // pick (the stored one may still be unlit) with the same selection as
+                    // RenderSystem::loadMesh (IBL, normals, the normal map and tangents, SSAO,
+                    // the UV sets and Stochastic Tiling of maps only a lit variant samples), so
+                    // the exported shader set is still complete.
                     if (hasReflectionProbes && mesh.receiveLights && mesh.receiveIBL) {
-                        meshProperties &= ~(1u << 0); // no longer MATERIAL_UNLIT
-                        meshProperties |= (1u << 6);  // HAS_NORMALS
-                        meshProperties |= (1u << 19); // USE_IBL
-                        // the unlit->lit transition also pulls in the submesh's
-                        // normal-map/tangent attributes and SSAO, mirroring
-                        // RenderSystem::loadMesh
-                        if (mesh.submeshes[s].hasNormalMap) {
-                            meshProperties |= (1u << 7); // HAS_NORMAL_MAP
-                        }
-                        if (mesh.submeshes[s].hasTangent) {
-                            meshProperties |= (1u << 8); // HAS_TANGENTS
-                        }
-                        if (scene->isSSAOEnabled()) {
-                            meshProperties |= (1u << 21); // USE_SSAO
-                        }
+                        meshProperties = probeMeshProperties(entity, mesh, mesh.submeshes[s], sceneMeshShader);
                     }
                     insertKeys(ShaderType::MESH, meshProperties, customShaderId);
                     // The runtime only computes depthShaderProperties while
@@ -2378,11 +2972,17 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
                     const Material& material = mesh.submeshes[s].material;
                     bool depthAlphaMask = RenderSystem::usesAlphaMask(material, mesh.submeshes[s].textureShadow);
                     bool depthTexture = depthAlphaMask && mesh.submeshes[s].hasTexCoord1 && !material.baseColorTexture.empty();
-                    uint32_t depthProperties = ShaderPool::getDepthMeshProperties(
+                    // its alpha clip samples as the colour pass's Stochastic Tiling ('Sto', which
+                    // the colour variant has when the material's maps take it); a mesh loaded with
+                    // its lattice variant: its depth one too, with the vertex colour a lattice mask reads
+                    bool depthStochastic = depthTexture && (meshProperties & shaderPropertyBit(5)) != 0;
+                    bool lattice = mesh.lattice.variantActive && !isTerrain;
+                    uint64_t depthProperties = ShaderPool::getDepthMeshProperties(
                         depthTexture, mesh.submeshes[s].hasSkinning,
                         mesh.submeshes[s].hasMorphTarget, mesh.submeshes[s].hasMorphNormal,
                         mesh.submeshes[s].hasMorphTangent, isTerrain, isInstanced, depthAlphaMask,
-                        instancedFade);
+                        instancedFade, false, lattice && mesh.submeshes[s].hasVertexColor3,
+                        lattice && mesh.submeshes[s].hasVertexColor4, false, false, depthStochastic, lattice);
                     insertKeys(ShaderType::DEPTH, depthProperties, customDepthShaderId);
                     insertKeys(ShaderType::DEPTH, mesh.submeshes[s].depthShaderProperties, customDepthShaderId);
                     if (mesh.submeshes[s].gbufferShader) {
@@ -2438,6 +3038,11 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
         keys.insert(ShaderPool::getShaderKey(ShaderType::SSR, 0));
         keys.insert(ShaderPool::getShaderKey(ShaderType::SSR_BLUR, 0));
         keys.insert(ShaderPool::getShaderKey(ShaderType::COMPOSITE, 0));
+    }
+
+    // a reflection probe's runtime capture is prefiltered into roughness mips
+    if (hasReflectionProbes) {
+        keys.insert(ShaderPool::getShaderKey(ShaderType::PROBE_FILTER, 0));
     }
 
     // disabled passes ship too: the generated scene carries the whole chain
@@ -2552,6 +3157,9 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
     ShaderVariantCollector::collectScene(sceneProject->scene, sceneContent, prefabContents, keys, getProjectPath(), scriptsSetLightCapacity(),
                                          scriptsPost, scriptsPost ? scriptsPostProcessingFields() : std::vector<std::string>(),
                                          scriptsSetShadowQuality(), scriptsMention("litQuality"), getMobilePbrTier());
+    // a fluid a script makes (FluidSimulation in Lua or C++) needs its programs too
+    if (scriptsMention("FluidSimulation"))
+        ShaderVariantCollector::addFluidKeys(keys);
 }
 
 bool editor::Project::scriptsMention(const char* text) const {
@@ -2696,6 +3304,25 @@ Entity editor::Project::getSceneCamera(const SceneProject* sceneProject) const {
     }
 }
 
+namespace {
+    // Play reuses the edit-time Scene and Stop decodes the snapshot over it, both keeping each
+    // fluid's simulator: restart them, so the game starts its fluids as an export does (the
+    // seed, the start burst; seed 0 a new one each start), not from what an edit-mode preview
+    // or eval_lua step() left, and Stop brings back the edit-mode start, not the game's last frame
+    void restartFluids(Scene* scene) {
+        if (!scene || !scene->isComponentRegistered<FluidSimulationComponent>()) return;
+        auto fluids = scene->getComponentArray<FluidSimulationComponent>();
+        for (size_t i = 0; i < fluids->size(); ++i) {
+            FluidSimulationComponent& fluid = fluids->getComponentFromIndex(i);
+            fluid.needReset = true;
+            fluid.pendingSplats.clear();
+            fluid.pendingBursts.clear();
+            fluid.pendingSteps = 0;
+            if (fluid.simulator) fluid.simulator->pointerCancelAll();
+        }
+    }
+}
+
 void editor::Project::prepareRuntimeScene(PlayRuntimeScene& entry) {
     if (!entry.runtime || !entry.runtime->scene) return;
 
@@ -2713,6 +3340,8 @@ void editor::Project::prepareRuntimeScene(PlayRuntimeScene& entry) {
         probe.needUpdate = true;
         probe.captureRevision++;
     }
+
+    restartFluids(entry.runtime->scene);
 
     entry.runtime->scene->getSystem<ActionSystem>()->resetRunningActions();
 
@@ -3255,7 +3884,7 @@ void editor::Project::removeScene(uint32_t sceneId) {
     deleteSceneProject(&(*it));
 
     // Remove C++ source file
-    generator.clearSceneSource(it->name, getProjectInternalPath());
+    generator.clearSceneSource(it->id, it->name, getProjectInternalPath());
 
     // Cleanup Prefabs
     cleanupPrefabsForScene(sceneId);
@@ -3815,36 +4444,43 @@ void editor::Project::unloadChildSceneInline(uint32_t childSceneId) {
     Out::info("Unloaded child scene '%s' from inline", childScene->name.c_str());
 }
 
-void editor::Project::addChildScene(uint32_t sceneId, uint32_t childSceneId, bool startActive) {
+bool editor::Project::addChildScene(uint32_t sceneId, uint32_t childSceneId, bool startActive) {
     SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject) {
         Out::error("Scene with ID %u not found", sceneId);
-        return;
+        return false;
     }
 
     // Prevent adding self as child
     if (sceneId == childSceneId) {
         Out::error("Cannot add a scene as its own child");
-        return;
+        return false;
     }
 
     // Check if child scene exists
     const SceneProject* childScene = getScene(childSceneId);
     if (!childScene) {
         Out::error("Child scene with ID %u not found", childSceneId);
-        return;
+        return false;
+    }
+
+    // A cycle would have every walk down the child scenes recurse forever
+    if (wouldCreateChildSceneCycle(sceneId, childSceneId)) {
+        Out::error("Cannot add '%s' to '%s': '%s' already contains '%s'", childScene->name.c_str(), sceneProject->name.c_str(), childScene->name.c_str(), sceneProject->name.c_str());
+        return false;
     }
 
     // Check if already added
     auto& childScenes = sceneProject->childScenes;
     if (findChildScene(childScenes, childSceneId) != childScenes.end()) {
         Out::warning("Child scene '%s' already exists in scene '%s'", childScene->name.c_str(), sceneProject->name.c_str());
-        return;
+        return false;
     }
 
     childScenes.push_back({childSceneId, startActive});
     sceneProject->isModified = true;
     Out::info("Added child scene '%s' to scene '%s'", childScene->name.c_str(), sceneProject->name.c_str());
+    return true;
 }
 
 void editor::Project::removeChildScene(uint32_t sceneId, uint32_t childSceneId) {
@@ -3878,6 +4514,27 @@ bool editor::Project::hasChildScene(uint32_t sceneId, uint32_t childSceneId) con
 
     const auto& childScenes = sceneProject->childScenes;
     return findChildScene(childScenes, childSceneId) != childScenes.end();
+}
+
+bool editor::Project::wouldCreateChildSceneCycle(uint32_t sceneId, uint32_t childSceneId) const {
+    std::unordered_set<uint32_t> visited;
+    std::vector<uint32_t> pending = {childSceneId};
+    while (!pending.empty()) {
+        const uint32_t id = pending.back();
+        pending.pop_back();
+        if (id == sceneId) {
+            return true;
+        }
+        if (!visited.insert(id).second) {
+            continue;
+        }
+        if (const SceneProject* scene = getScene(id)) {
+            for (const ChildSceneRef& childSceneRef : scene->childScenes) {
+                pending.push_back(childSceneRef.id);
+            }
+        }
+    }
+    return false;
 }
 
 bool editor::Project::isChildSceneStartActive(uint32_t sceneId, uint32_t childSceneId) const {
@@ -3925,6 +4582,10 @@ std::vector<uint32_t> editor::Project::getChildScenes(uint32_t sceneId) const {
 }
 
 void editor::Project::deleteSceneProject(SceneProject* sceneProject){
+    if (sceneProject->scene) {
+        editor::getEditorHost().sceneDeleting(sceneProject->id);
+    }
+
     if (sceneProject->sceneRender) {
         Camera* editorCam = sceneProject->sceneRender->getCamera();
         if (editorCam) {
@@ -4054,6 +4715,7 @@ void editor::Project::resetConfigs() {
     startSceneId = NULL_PROJECT_SCENE;
     loadingSettings = {};
     terrainEditorSettings = {};
+    physicsPlacementSettings = {};
     simulateTouch = false;
     // nothing reloads into a project that is going (S05)
     HotReloadService::get().stopWatching();
@@ -4120,6 +4782,10 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     scene->getSystem<PhysicsSystem>()->setPaused(pause);
     scene->getSystem<ActionSystem>()->setPaused(pause);
     scene->getSystem<AudioSystem>()->setPaused(pause);
+    // the fluids hold still in edit mode (the Inspector's preview steps one: FluidSystem::setPreview)
+    if (auto fluids = scene->findSystem<FluidSystem>()) fluids->setPaused(pause);
+    // lattice tweens and jiggle (followers and offsets still show in edit mode)
+    scene->getSystem<LatticeSystem>()->setPaused(pause);
 }
 
 void editor::Project::copyEngineApiToProject() {
@@ -4273,6 +4939,16 @@ static std::set<Entity> getPlayKeptEntities(const editor::SceneProject* scenePro
     for (size_t i = 0; i < terrains->size(); i++) {
         const std::vector<Entity> foliage = meshSystem->getFoliageEntities(terrains->getEntity(i));
         keep.insert(foliage.begin(), foliage.end());
+    }
+
+    // The Scene view's own gizmos and icons (SceneRender::overlay) are made when first needed,
+    // also while the game plays or between the play snapshot and the first frame; they are the
+    // editor's, which keeps pointers to them
+    auto renderSystem = scene->getSystem<RenderSystem>();
+    for (Entity entity : scene->getEntityList()) {
+        if (renderSystem->isEditorOverlay(entity)) {
+            keep.insert(entity);
+        }
     }
 
     return keep;
@@ -4493,6 +5169,8 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
 
         // Restore snapshot if present
         const bool restoredFromSnapshot = restorePlaySnapshot(sceneProject);
+        // the fluids too: back to the edit-mode start, not the game's last frame
+        restartFluids(sceneProject->scene);
 
         sceneProject->playState = ScenePlayState::STOPPED;
         if (!entry.ownedRuntime) {
@@ -4710,7 +5388,8 @@ bool editor::Project::saveProjectFile(DegradedSavePolicy policy, SaveResult* out
         YAML::Node root = Stream::encodeProject(this);
         // the keys of the file this editor does not know stay (R28)
         DocumentFiles::overlayUnknownRootKeys(root, projectFile, RootKind::Project);
-        const io::WriteResult written = DocumentFiles::write(projectFile, DocumentFiles::text(root));
+        // a file of a Windows checkout keeps its \r\n
+        const io::WriteResult written = DocumentFiles::write(projectFile, FileUtils::withLineEndings(projectFile, DocumentFiles::text(root)));
         if (!written.ok()) {
             const std::string message = DocumentFiles::saveFailureMessage("project.yaml", written);
             Out::error(message);
@@ -5104,24 +5783,77 @@ bool editor::Project::saveLoadedSceneOnStop(SceneProject* loadedSceneProject, Sc
     bool success = false;
     if (loadedSceneProject == editorScene) {
         success = saveSceneFile(editorScene, editorScene->filepath, false);
-        if (success) {
-            editorScene->isModified = keepModified;
-        }
     } else {
-        loadedSceneProject->shaderKeys = editorScene->shaderKeys;
-        success = saveSceneFile(loadedSceneProject, editorScene->filepath, false);
-        if (success) {
-            editorScene->filepath = loadedSceneProject->filepath;
-            editorScene->shaderKeys = loadedSceneProject->shaderKeys;
-            editorScene->isModified = keepModified;
-        }
+        // A Play copy has no snapshot to go back to and holds the played state, so only the
+        // shader keys it found reach the file
+        success = saveSceneShaderKeys(editorScene);
     }
 
     if (success) {
+        editorScene->isModified = keepModified;
         Out::info("Auto-saved scene '%s' on stop", editorScene->name.c_str());
     }
 
     return success;
+}
+
+// The scene's shaderKeys written into its file as it is on disk, the rest of the file untouched
+bool editor::Project::saveSceneShaderKeys(SceneProject* sceneProject) {
+    fs::path fullPath = sceneProject->filepath;
+    if (fullPath.is_relative()) {
+        fullPath = getProjectPath() / fullPath;
+    }
+
+    try {
+        YAML::Node root = YAML::LoadFile(fullPath.string());
+        if (!root.IsMap()) {
+            Out::error("Failed to save shader keys of scene '%s': %s is not a scene file", sceneProject->name.c_str(), fullPath.string().c_str());
+            return false;
+        }
+
+        const YAML::Node& onDisk = root;
+
+        // The file's keys stay, as a full save keeps the ones saved before
+        for (ShaderKey key : Stream::decodeShaderKeys(onDisk["shaderKeys"])) {
+            sceneProject->shaderKeys.insert(key);
+        }
+        const YAML::Node shaderKeysNode = Stream::encodeShaderKeys(sceneProject->shaderKeys);
+
+        std::string content;
+        if (!shaderKeysNode.size()) {
+            root.remove("shaderKeys");
+            content = YAML::Dump(root);
+        } else if (onDisk["shaderKeys"] || !onDisk["maxValues"]) {
+            root["shaderKeys"] = shaderKeysNode;
+            content = YAML::Dump(root);
+        } else {
+            // After maxValues, where encodeSceneProject() puts them, so the next full save moves nothing
+            YAML::Node ordered(YAML::NodeType::Map);
+            for (const auto& item : onDisk) {
+                const std::string key = item.first.as<std::string>();
+                ordered[key] = item.second;
+                if (key == "maxValues") {
+                    ordered["shaderKeys"] = shaderKeysNode;
+                }
+            }
+            content = YAML::Dump(ordered);
+        }
+
+        // a Document write with the file's line endings; the hash the crash backups compare
+        // against follows the bytes on disk (S03 R13)
+        const std::string text = FileUtils::withLineEndings(fullPath, content + "\n");
+        const io::WriteResult written = DocumentFiles::write(fullPath, text);
+        if (!written.ok()) {
+            Out::error(DocumentFiles::saveFailureMessage(fullPath, written));
+            return false;
+        }
+        sceneProject->diskSha1 = DocumentFiles::sha1(text);
+    } catch (const std::exception& e) {
+        Out::error("Failed to save shader keys of scene '%s': %s", sceneProject->name.c_str(), e.what());
+        return false;
+    }
+
+    return true;
 }
 
 void editor::Project::saveScene(uint32_t sceneId, std::function<void(bool)> callback) {
@@ -5308,6 +6040,7 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
 
     updateSceneCppScripts(sceneProject);
     updateScenePrefabs(sceneProject);
+    updateSceneImports(sceneProject);
 
     // What the content needs, the variants the scene drew since its last save (a script's
     // runtime meshes in Play), and the keys saved before
@@ -5326,7 +6059,8 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
     try {
         YAML::Node root = Stream::encodeSceneProject(this, sceneProject);
         const Guid guid = prepareDocumentIdentity(root, relPath);
-        const std::string text = DocumentFiles::text(root);
+        // a file of a Windows checkout keeps its \r\n (what is hashed is what is on disk)
+        const std::string text = FileUtils::withLineEndings(fullPath, DocumentFiles::text(root));
         const io::WriteResult written = DocumentFiles::write(fullPath, text);
         if (!written.ok()) {
             const std::string message = DocumentFiles::saveFailureMessage(relPath, written);
@@ -5447,19 +6181,19 @@ void editor::Project::writeSceneSource(const SceneProject* sceneProject) {
     const auto baked = bakePrefabsForExport();
     std::vector<PrefabInstanceInfo> prefabInstances = generator.writePrefabSources(prefabAssets, sceneProject->id, getProjectPath(), getProjectInternalPath(),
         [this](const fs::path& path) { return getPrefabGuid(path); }, baked);
-    generator.writeSceneSource(sceneProject->scene, sceneProject->name, sceneProject->entities, getSceneCamera(sceneProject), getProjectPath(), getProjectInternalPath(), prefabInstances, collectResourcesInRegistry(sceneProject->scene));
+    generator.writeSceneSource(sceneProject->scene, sceneProject->id, sceneProject->name, sceneProject->entities, getSceneCamera(sceneProject), getProjectPath(), getProjectInternalPath(), prefabInstances, collectResourcesInRegistry(sceneProject->scene));
 }
 
 bool editor::Project::hasMissingSceneSources() const {
     return std::any_of(scenes.begin(), scenes.end(), [&](const SceneProject& sceneProject){
-        return !generator.hasSceneSource(sceneProject.name, getProjectInternalPath());
+        return !generator.hasSceneSource(sceneProject.id, sceneProject.name, getProjectInternalPath());
     });
 }
 
 // Scenes the editor never saved or played, like one created outside it
 void editor::Project::writeMissingSceneSources() {
     for (const SceneProject& sceneProject : scenes) {
-        if (generator.hasSceneSource(sceneProject.name, getProjectInternalPath())) {
+        if (generator.hasSceneSource(sceneProject.id, sceneProject.name, getProjectInternalPath())) {
             continue;
         }
 
@@ -5594,6 +6328,9 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
 }
 
 void editor::Project::saveAllScenes(std::function<void(bool)> callback) {
+    // first: a physics gesture that settles now commits, and its scene counts as changed below
+    editor::getEditorHost().stopTransientPreviews();
+
     std::vector<uint32_t> sceneIds;
     // the prefab stages first: the scenes saved after them hold their assets' new state
     for (const auto& stage : prefabStages) {
@@ -6673,15 +7410,18 @@ uint32_t editor::Project::getSelectedSceneForProperties() const{
 }
 
 bool editor::Project::isTempProject() const{
+    // The menu asks every frame, and relative() opens both paths
+    if (projectPath == tempCheckPath) {
+        return tempCheckResult;
+    }
+    tempCheckPath = projectPath;
+
     std::error_code ec;
     auto relPath = std::filesystem::relative(projectPath, std::filesystem::temp_directory_path(), ec);
 
     // relative() returns empty across different roots, like a project on D: while temp is on C:
-    if (ec || relPath.empty()) {
-        return false;
-    }
-
-    return *relPath.begin() != "..";
+    tempCheckResult = !ec && !relPath.empty() && *relPath.begin() != "..";
+    return tempCheckResult;
 }
 
 bool editor::Project::isTempUnsavedProject() const{
@@ -6704,6 +7444,10 @@ std::filesystem::path editor::Project::getProjectPath() const{
 
 std::filesystem::path editor::Project::getProjectInternalPath() const{
     return projectPath / ".jasperengine";
+}
+
+std::filesystem::path editor::Project::getImportPath() const{
+    return getProjectInternalPath() / "imported";
 }
 
 fs::path editor::Project::getUserDataPath() const{
@@ -7246,9 +7990,11 @@ void editor::Project::collectStartActiveScenes(uint32_t sceneId, std::vector<uin
     SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject) return;
 
-    if (std::find(activeSceneIds.begin(), activeSceneIds.end(), sceneId) == activeSceneIds.end()) {
-        activeSceneIds.push_back(sceneId);
+    // Skip if already visited - also guards against cycles in the child-scene graph
+    if (std::find(activeSceneIds.begin(), activeSceneIds.end(), sceneId) != activeSceneIds.end()) {
+        return;
     }
+    activeSceneIds.push_back(sceneId);
 
     for (const ChildSceneRef& childSceneRef : sceneProject->childScenes) {
         if (childSceneRef.startActive) {
@@ -7365,6 +8111,31 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
             return;
         }
 
+        // Scripts can load any FBX by path. Its reloads land before the scenes are captured for Play,
+        // once the loads in flight end, since those would bring the old file back.
+        importFbxModels();
+        const auto reloadDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        fs::path stillLoading;
+        do {
+            auto reloaded = std::make_shared<std::promise<fs::path>>();
+            std::future<fs::path> reloadedFuture = reloaded->get_future();
+            editor::getEditorHost().enqueueMainThreadTask([this, reloaded]() {
+                reloaded->set_value(applyModelReloads(true));
+            });
+            while (reloadedFuture.wait_for(std::chrono::milliseconds(10)) != std::future_status::ready) {
+                if (isCancelled()) {
+                    markStartupDone();
+                    return;
+                }
+            }
+            stillLoading = reloadedFuture.get();
+        } while (!stillLoading.empty() && std::chrono::steady_clock::now() < reloadDeadline);
+        if (!stillLoading.empty()) {
+            failPlayStartup(session, sceneId, "Cannot play: " + FileUtils::pathToUtf8(stillLoading.filename()) +
+                " is still loading. Play again once it finishes.");
+            return;
+        }
+
         std::vector<uint32_t> involvedMainSceneIds;
         collectInvolvedScenes(sceneId, involvedMainSceneIds);
 
@@ -7455,7 +8226,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 const auto baked = bakePrefabsForExport();
                 std::vector<PrefabInstanceInfo> prefabInstances = generator.writePrefabSources(prefabAssets, currentSceneProject.id, getProjectPath(), getProjectInternalPath(),
                     [this](const fs::path& path) { return getPrefabGuid(path); }, baked);
-                generator.writeSceneSource(entry.runtime->scene, entry.runtime->name, entry.runtime->entities, getSceneCamera(entry.runtime), getProjectPath(), getProjectInternalPath(), prefabInstances, collectResourcesInRegistry(entry.runtime->scene));
+                generator.writeSceneSource(entry.runtime->scene, entry.runtime->id, entry.runtime->name, entry.runtime->entities, getSceneCamera(entry.runtime), getProjectPath(), getProjectInternalPath(), prefabInstances, collectResourcesInRegistry(entry.runtime->scene));
 
                 {
                     std::scoped_lock lock(playSessionMutex);

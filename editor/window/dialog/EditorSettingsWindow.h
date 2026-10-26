@@ -36,6 +36,7 @@ namespace jasperengine::editor {
         std::string m_ffmpegStatus;
         bool m_ffmpegUsable = false;
         bool m_editorVSyncEnabled = true;
+        int m_uiScalePercent = 100;
         bool m_autosaveEnabled = true;
         int m_autosaveInterval = 60;
         bool m_htmlUiAutoImport = true;
@@ -58,6 +59,7 @@ namespace jasperengine::editor {
         bool m_undoReviewPlayChanges = true;
         LoggingSettings m_logging;
         DiagnosticsSettings m_diagnostics;
+        LatticeViewSettings m_lattice;
         // Unity-style category list; indexes PreferencesCategory in the .cpp.
         int m_category = 0;
         char m_categorySearch[64] = {0};
@@ -75,6 +77,7 @@ namespace jasperengine::editor {
         void drawScriptingSettings();
         void drawExternalScriptEditorSettings();
         void drawUndoSettings();
+        void drawLatticeSettings();
         void drawExternalToolsSettings();
         // Row drawers for the External Tools table.
         void drawCMakeSettings();
@@ -93,6 +96,8 @@ namespace jasperengine::editor {
         bool showPage(const std::string& name);
         const char* pageName() const;
         void close() { m_isOpen = false; }
+        // on the page named `category` (as the category list shows it; unknown: the first)
+        void open(Project* project, const std::string& category);
         void show();
         bool isOpen() const { return m_isOpen; }
     };

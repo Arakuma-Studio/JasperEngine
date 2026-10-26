@@ -378,8 +378,8 @@ namespace {
                     }
                     target = reference->entity;
                 } else if (property.type == editor::PropertyType::Texture) {
-                    // Render to texture: the texture names its camera
-                    target = editor::CameraTextureLink::parse(static_cast<Texture*>(property.ref)->getId());
+                    // Render to texture: the texture names its camera (or its fluid)
+                    target = editor::CameraTextureLink::parseLink(static_cast<Texture*>(property.ref)->getId());
                 } else {
                     continue;
                 }
@@ -944,21 +944,19 @@ uint64_t editor::EntityClipboard::remapReferences(Scene* scene, Entity entity, C
             }
             // Any other scene id names a third scene, which the paste does not change
         } else if (property.type == PropertyType::Texture) {
-            // A render-to-texture link names its camera like any other reference
+            // A render-to-texture link names its camera (or its fluid) like any other reference
             Texture& texture = *static_cast<Texture*>(property.ref);
-            Entity camera = CameraTextureLink::parse(texture.getId());
-            if (camera != NULL_ENTITY) {
-                Entity resolved = resolveLocal(camera);
+            Entity linked = CameraTextureLink::parseLink(texture.getId());
+            if (linked != NULL_ENTITY) {
+                Entity resolved = resolveLocal(linked);
                 if (resolved == NULL_ENTITY) {
                     texture = Texture();
                     changed = true;
                 } else {
-                    // Bound to the framebuffer of the camera it names now
-                    CameraComponent* cameraComponent = scene->findComponent<CameraComponent>(resolved);
-                    Framebuffer* framebuffer = cameraComponent ? cameraComponent->framebuffer : nullptr;
-                    if (resolved != camera || texture.getFramebuffer() != framebuffer) {
-                        texture.setFramebuffer(framebuffer); // clears the id
-                        texture.setId(CameraTextureLink::makeId(resolved));
+                    // Bound to the framebuffer of the camera (or fluid output) it names now
+                    Framebuffer* framebuffer = CameraTextureLink::linkFramebuffer(scene, texture.getId(), resolved);
+                    if (resolved != linked || texture.getFramebuffer() != framebuffer) {
+                        CameraTextureLink::retarget(scene, texture, resolved); // keeps the kind of link
                         changed = true;
                     }
                 }
@@ -982,12 +980,12 @@ uint64_t editor::EntityClipboard::bindCameraTextures(EntityRegistry* registry, E
             continue;
         }
         Texture* texture = static_cast<Texture*>(property.ref);
-        Entity camera = CameraTextureLink::parse(texture->getId());
-        if (camera == NULL_ENTITY) {
+        Entity linked = CameraTextureLink::parseLink(texture->getId());
+        if (linked == NULL_ENTITY) {
             continue;
         }
-        CameraComponent* cameraComponent = registry->findComponent<CameraComponent>(camera);
-        Framebuffer* framebuffer = cameraComponent ? cameraComponent->framebuffer : nullptr;
+        // a camera's framebuffer, or a fluid's output
+        Framebuffer* framebuffer = CameraTextureLink::linkFramebuffer(registry, texture->getId(), linked);
         if (texture->getFramebuffer() != framebuffer) {
             const std::string id = texture->getId();
             texture->setFramebuffer(framebuffer); // clears the id

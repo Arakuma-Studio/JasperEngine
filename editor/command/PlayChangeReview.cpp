@@ -290,10 +290,11 @@ void editor::PlayChangeReview::capture(Project* project, SceneProject* sceneProj
 
     // the applied play-time steps, oldest first; selection steps are not edits
     const std::vector<const UndoEntry*> entries = history->entries();
-    const uint64_t floorId = history->getPlayStartId();
-    for (size_t i = 0; i < history->appliedCount(); i++){
+    // (by position: a step the editor inserted below the floor is edit-time, newer id or not)
+    const size_t floor = history->getPlayFloor() - history->getTrimmedCount();
+    for (size_t i = floor; i < history->appliedCount(); i++){
         const UndoEntry* entry = entries[i];
-        if (entry->info.id < floorId || entry->info.selectionOnly){
+        if (entry->info.selectionOnly){
             continue;
         }
         context.collect(*entry->cmd, entry->name());

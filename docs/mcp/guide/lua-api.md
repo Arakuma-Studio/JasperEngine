@@ -115,10 +115,10 @@ Wrapper class names accepted as `type` (case-insensitive): `GameObject`, `Camera
 `Light2D`, `ShadowCaster2D`, `Mesh`, `Primitive`, `Mirror`, `Terrain`, `Tilemap`, `Model`,
 `MeshPolygon`, `Points`, `LineRenderer`, `Sprite`, `AudioSource`, `RectTransform`,
 `LayoutGroup`, `Polygon`, `Text`, `Image`, `Button`, `Panel`, `Scrollbar`, `Progressbar`,
-`InputField`, `Bone`, `Fog`, `LocalVolumetricFog`, `VolumetricClouds`, `Skybox`, `ReflectionProbe`, `Rigidbody2D`, `Joint2D`,
+`InputField`, `Bone`, `Fog`, `LocalVolumetricFog`, `VolumetricClouds`, `Skybox`, `ReflectionProbe`, `FluidSimulation`, `Rigidbody2D`, `Joint2D`,
 `Rigidbody`, `Joint3D`, `Action`, `Tween`, `AlphaTween`, `ColorTween`, `PositionTween`,
 `RotationTween`, `ScaleTween`, `Animation`, `ParticleSystem`, `SpriteAnimation`,
-`MorphTracks`, `RotateTracks`, `ScaleTracks`, `TranslateTracks`, `EntityHandle`.
+`KeyframeTracks`, `MorphTracks`, `LatticeTracks`, `RotateTracks`, `ScaleTracks`, `TranslateTracks`, `EntityHandle`.
 An unknown name falls back to `EntityHandle` (with a warning in the log).
 
 The wrapper only wraps the entity; it does not check the entity really has that component.
@@ -312,7 +312,7 @@ Mass: `self.body:getMass()` (method, kg). To get a target acceleration `a` in po
 | `fixedDeltatime` | rw | when > 0, every frame advances exactly this many seconds (before `timeScale`) whatever the wall clock measured: reproducible runs. 0 (default) = measured frame time |
 | `gameTime` | ro | scaled seconds the update loop has run since start (not while paused or held) |
 | `frameCount` | ro | frames the update loop has run since start (not while paused or held) |
-| `interpolationAlpha` | ro | fixed-step interpolation factor |
+| `interpolationAlpha` | ro | fixed-step interpolation factor: how far the frame is between the last fixed step and the next (bodies are drawn this far from their pose before the last step) |
 | `framerate` | ro | fps |
 | `systemTime` | ro | |
 | `canvasWidth`, `canvasHeight` | ro | current canvas; can be 0 in `init()` of exported builds |
@@ -374,6 +374,8 @@ Constants (static properties, integers, no parentheses):
   `KEY_APOSTROPHE`, `KEY_COMMA`, `KEY_MINUS`, `KEY_PERIOD`, `KEY_SLASH`, `KEY_SEMICOLON`,
   `KEY_EQUAL`, `KEY_LEFT_BRACKET`, `KEY_BACKSLASH`, `KEY_RIGHT_BRACKET`, `KEY_GRAVE_ACCENT`,
   `KEY_WORLD_1`, `KEY_WORLD_2`, `KEY_UNKNOWN`, `KEY_LAST`.
+  On Android the system Back button or gesture arrives as a `KEY_ESCAPE` press (released on
+  the next frame); volume and other device keys stay with the system.
 - Mouse: `Input.MOUSE_BUTTON_LEFT`, `MOUSE_BUTTON_RIGHT`, `MOUSE_BUTTON_MIDDLE`,
   `MOUSE_BUTTON_1` .. `MOUSE_BUTTON_8`, `MOUSE_BUTTON_LAST`.
 - Modifiers: `Input.MODIFIER_SHIFT`, `MODIFIER_CONTROL`, `MODIFIER_ALT`, `MODIFIER_SUPER`,
@@ -438,7 +440,9 @@ Setters: `UserSettings.setBoolForKey(k, v)`, `setIntegerForKey`, `setLongForKey`
 `setClipboardText(s)`, `getClipboardText()` (the system clipboard, UTF-8; on Web the text of
 the last copy or paste), `getDirSeparator()`, `getAssetPath()`, `getUserDataPath()`, `getLuaPath()`,
 `getShaderPath()`; ads/web: `initializeAdMob()`, `setMaxAdContentRating(AdMobRating.*)`,
-`loadInterstitialAd(id)`, `isInterstitialAdLoaded()`, `showInterstitialAd()`,
+`loadInterstitialAd(id)`, `isInterstitialAdLoaded()`, `showInterstitialAd()` (Android/iOS; the
+export compiles Google Mobile Ads in only with the project settings `android.admob_enabled` /
+`ios.admob_enabled` and their `admob_app_id`, otherwise these do nothing),
 `initializeCrazyGamesSDK()`, `showCrazyGamesAd(type)`, `happytimeCrazyGames()`,
 `gameplayStartCrazyGames()`, `gameplayStopCrazyGames()`, `loadingStartCrazyGames()`,
 `loadingStopCrazyGames()`.
@@ -538,6 +542,7 @@ Entities are plain integers (`0` = none).
 | `backgroundColor` (Vector4, rw); `setBackgroundColor(r,g,b[,a])` | |
 | `gravity2D` (Vector2, rw); `setGravity2D(x, y)` | |
 | `gravity3D` (Vector3, rw); `setGravity3D(x, y, z)` | |
+| `physicsInterpolation` (bool, rw) | bodies drawn between their last two fixed steps (default true); the scene setting `physics_interpolation` |
 | `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `litQuality` (`LitQuality.STANDARD` / `HIGH`: the built-in Lit's specular anti-aliasing and direct-light energy compensation; new scenes are High, scenes saved before it Standard), `physicalLightEV100` (the exposure, -6..24, lights in lux, candela or lumen are drawn at: Sunny 15, Overcast 12, Interior 7, Night 2), `shadowQuality` (`ShadowQuality` AUTO/NONE (hard only)/LOW/MEDIUM/HIGH/ULTRA, the shadow quality tier), `shadowDistance` (metres, 0: the tier's), `shadowFadeFraction`, `shadowCascadeBlend`, `effectiveShadowTier` (read-only `ShadowTier` LOW/MEDIUM/HIGH/ULTRA; `jasper://docs/shadows`), `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA; fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
 | `getPhysicsSystem()`, `getAudioSystem()`, `getActionSystem()`, `getMeshSystem()`, `getRenderSystem()`, `getUISystem()` | subsystem objects |
 | `findEntitiesWith({"Transform", "MeshComponent"}[, {"UIComponent"}])` | -> table of Entity with every listed component and none of the excluded ones, in the order of the first one's array (parents before children for `Transform`); names are the component class names |
@@ -547,7 +552,7 @@ Entities are plain integers (`0` = none).
 | `getSignature(e)` | -> 256-character string of `0`/`1`, MSB first (bit 0 is the last character); `EntityManager:setSignature` also takes the 64-character strings of older scripts |
 
 `PhysicsSystem` (from `self.scene:getPhysicsSystem()`): `gravity` / `gravity2D` /
-`gravity3D` (rw), `pointsToMeterScale2D` (rw), event objects (section 1.3),
+`gravity3D` (rw), `interpolation` (rw, as `scene.physicsInterpolation`), `pointsToMeterScale2D` (rw), event objects (section 1.3),
 `createRigidbody2D(e)`, `removeRigidbody2D(e)`, `createRigidbody(e)`, `removeRigidbody(e)`
 (partial).
 
@@ -574,6 +579,33 @@ Entities are plain integers (`0` = none).
 local hit = Physics2D.raycast(self.scene, Vector2(x, y), Vector2(0, -1), 100)
 if hit.hit then local e = hit.body end
 ```
+
+### 2.10.1 Water (static)
+
+The water surfaces of a scene are its meshes drawn with `library:water` (enabled, active), each
+resting at the top of its world bounds and covering their XZ extent; with `WAVES` the heights
+follow the same waves the shader draws, on its clock (`Water.getTime()`, `frame.time.x`:
+seconds since the engine started, wall-clock, running in the editor and while the game is
+paused or time-scaled), so a script and the screen agree. Where waters overlap the one whose
+bottom (the material's `buoyancyDepth` below its surface; none at 0) is highest wins. Each call
+looks through the scene's meshes: for many points a frame, keep the results.
+
+| Name | Notes |
+|---|---|
+| `Water.getHeight(scene, x, z)` | surface height (world Y, waves included) of the topmost water over (x, z); `nil` where none covers it |
+| `Water.getNormal(scene, x, z)` | its normal (`Vector3`; up without `WAVES`); `nil` where none |
+| `Water.isUnderwater(scene, point)` | `point` (`Vector3`) is under the surface of the water it is in |
+| `Water.getTime()` | the shader library's clock, seconds |
+
+```lua
+local y = Water.getHeight(self.scene, pos.x, pos.z)
+if y and pos.y < y then -- swimming
+end
+```
+
+Buoyancy needs no script: a dynamic `Rigidbody` with `buoyancy > 0` floats (4.14). The
+`library:underwater` post-process pass switches itself on under a surface (shaders guide,
+"Water").
 
 ### 2.11 Angle (static)
 
@@ -717,7 +749,8 @@ Class hierarchy (methods/properties are inherited):
 ```
 EntityHandle
  |- GameObject
- |   |- Camera, Light, Light2D, ShadowCaster2D, ReflectionProbe, LocalVolumetricFog, Bone, Points, LineRenderer
+ |   |- Camera, Light, Light2D, ShadowCaster2D, ReflectionProbe, LocalVolumetricFog, Bone, Points, LineRenderer, Lattice,
+ |   |  FluidSimulation
  |   |- Mesh
  |   |   |- Primitive -> Mirror
  |   |   |- Sprite, Tilemap, Model, MeshPolygon, Terrain
@@ -726,8 +759,8 @@ EntityHandle
  |       |- Image -> Button, Panel, Scrollbar, Progressbar, InputField
  |- AudioSource, Rigidbody2D, Rigidbody, Fog, VolumetricClouds, Skybox
  |- Action -> Tween (AlphaTween, ColorTween, PositionTween, RotationTween, ScaleTween),
-             ParticleSystem, SpriteAnimation, Animation, MorphTracks, RotateTracks,
-             ScaleTracks, TranslateTracks
+             ParticleSystem, SpriteAnimation, Animation,
+             KeyframeTracks (MorphTracks, LatticeTracks, RotateTracks, ScaleTracks, TranslateTracks)
 Joint2D, Joint3D (standalone classes)
 ```
 
@@ -808,7 +841,9 @@ sprites) sorted by their distance to the camera position, not by Z.
 `alphaCutoff`, `emissiveFactor`, `baseColorTexture`, `emissiveTexture`,
 `metallicRoughnessTexture`, `occlusionTexture`, `normalTexture`, `lighting`
 (`MaterialLighting.*`: the stages evaluating the object's lights; set it on the copy
-`getMaterial(i)` returns, then `setMaterial(i, m)`). Shader library (same copy-then-set rule):
+`getMaterial(i)` returns, then `setMaterial(i, m)`), `stochasticTiling` (Stochastic Tiling of
+the built-in Lit's maps) with `stochasticCellSize`, `stochasticBlendSharpness`, `stochasticContrast`
+and `stochasticRotation` (see the shaders guide). Shader library (same copy-then-set rule):
 `shader` (`""` built-in Lit, `"library:<name>"`, or a fork), `blendMode`
 (`MaterialBlendMode.*`), `cullMode`, `depthWrite`, `depthTest`, `depthOffsetFactor`,
 `depthOffsetUnits`, `sortPriority` (draw order within its queue, opaque or transparent, lower
@@ -856,7 +891,8 @@ against its own shader; e.g.
 
 ### 4.4 Primitive (Mesh)
 
-`createPlane(w, d [, tiles])`, `createWall(w, h [, tiles])`, `createBox(w, h, d [, tiles])`,
+`createPlane(w, d [, tiles])`, `createGrid(w, d, segments [, tiles])` (the plane as segments x
+segments quads, 1..255, for `library:water` WAVES), `createWall(w, h [, tiles])`, `createBox(w, h, d [, tiles])`,
 `createSphere(r)` / `createSphere(r, slices, stacks)`, `createCylinder(r, h)` /
 `(baseR, topR, h)` / `(r, h, slices, stacks)` / `(baseR, topR, h, slices, stacks)`,
 `createCapsule(...)` (same overload shapes as cylinder), `createTorus(r, ringR [, sides, rings])`.
@@ -898,6 +934,10 @@ intervalMs, loop)`, plus Action: `start()`, `pause()`, `stop()`, `isRunning()`,
 `findAnimation(name)`, `playAnimation(indexOrName [, fadeTime])`, `stopAnimations()`,
 `getBone(indexOrName)`, `getMorphWeight(indexOrName)`, `setMorphWeight(indexOrName, w)`,
 `resetToBindPose()`, `enabled` (rw).
+
+`loadModel` / `loadGLTF` also take an `.fbx` path: it loads the glTF the editor converted the FBX
+into (`.jasperengine/imported/<path>.fbx.glb` in the editor, `<path>.fbx.glb` next to it in an
+exported game, which ships only that). Every FBX of the assets is converted before Play and export.
 
 ### 4.9 Camera (GameObject) - partial
 
@@ -1023,6 +1063,7 @@ Restart a one-shot: `snd:stop(); snd:play()`.
 | `type` | rw `BodyType.*` | |
 | `motionQuality` | rw | `RigidbodyMotionQuality.DISCRETE` / `LINEAR_CAST` |
 | `friction`, `restitution`, `gravityFactor`, `sensor`, `allowSleeping`, `enabled`, `shapeDensity`, `collisionGroupID`, `categoryBitsFilter`, `maskBitsFilter`, `collideKinematicVsNonDynamic` | rw | |
+| `buoyancy`, `waterDrag`, `waterAngularDrag` | rw numbers | floating in a `library:water` (2.10.1): Jolt's buoyancy at the centre of mass each fixed step of a dynamic body, 1 neutral, more floats, less sinks, 0 (default) ignores water; drags default 0.5 and 0.01 |
 | `applyForce(f)`, `applyForce(f, point)` | method | f in Vector3; single-arg = at center (no `applyForceToCenter` in 3D) |
 | `applyImpulse(i)`, `applyImpulse(i, point)`, `applyTorque(t)`, `applyAngularImpulse(a)` | methods | |
 | `activate()`, `deactivate()` | methods | |
@@ -1040,17 +1081,21 @@ Restart a one-shot: `snd:stop(); snd:play()`.
 
 ### 4.15 Actions and Tweens
 
-Action (EntityHandle): `start()`, `pause()`, `stop()`, `isRunning()`, `isPaused()`,
+Action (EntityHandle): `start()`, `pause()`, `stop()`, `restart()` (stops a running or paused
+action and starts it from the beginning, in the same update), `isRunning()`, `isPaused()`,
 `isStopped()`, `getTimeCount()`, `getActionComponent()`; rw `target` (Entity),
-`ownedTarget`, `speed`, `weight`; `setTarget(gameObjectOrEntity)`.
+`ownedTarget`, `speed` (scales the action's own time: 2 plays twice as fast, a negative speed
+plays back to the start and holds there), `weight`; `setTarget(gameObjectOrEntity)`.
+`stop()` also cancels a `start()` asked for earlier in the same frame.
 
-Tween (Action): rw `duration`, `loop`; `setFunctionType(EaseType.*)`, `getTime()`,
-`getValue()`, `getTweenComponent()`.
+Tween (Action): rw `duration`, `loop`, `pingPong` (forward and then back, in twice the
+duration); `setFunctionType(EaseType.*)`, `getTime()`, `getValue()`, `getTweenComponent()`.
+A non-looping tween stops on the update it reaches its end, after applying the end value.
 
 | Tween | `setAction(...)` (pass every argument; C++ defaults do not apply) |
 |---|---|
 | `PositionTween` | `(startV3, endV3, duration, loop)` |
-| `RotationTween` | `(startQuat, endQuat, duration, loop)` |
+| `RotationTween` | `(startQuat, endQuat, duration, loop)`; `setSpinAction(startQuat, axisV3, angle, duration, loop)` turns by `angle` (any size, so full turns) around `axis` |
 | `ScaleTween` | `(startV3, endV3, duration, loop)` |
 | `ColorTween` | `(startV3, endV3, duration, loop)` or `(startV4, endV4, duration, loop)` |
 | `AlphaTween` | `(startAlpha, endAlpha, duration, loop)` |
@@ -1066,7 +1111,15 @@ tw:start()
 Animation (Action): rw `loop`, `ownedActions`, `blendWeight`, `defaultFadeTime`;
 `fadeIn(t)`, `fadeOut(t)`, `addActionFrame(...)`, `getActionFrameSize()`,
 `getActionFrame(i)` (partial). Keyframe tracks: `TranslateTracks`, `RotateTracks`,
-`ScaleTracks`, `MorphTracks` with `setTimes`, `setValues`, `setEasings`, `setEasing`.
+`ScaleTracks`, `MorphTracks` (all `KeyframeTracks`) with `setTimes`, `setValues`, `setEasings`,
+`setEasing`; rw `loop` (starts over after the last key) and `relative` (position, rotation
+and scale tracks: values are offsets from the target's pose when the track starts: position
+plus value, rotation times value, scale times value; an anchored UI element moves by its
+RectTransform position offset).
+`LatticeTracks(scene, times, points, values)` (a `KeyframeTracks` too) keys lattice offsets:
+`points` are flat indices (`i + rx*(j + ry*k)`), `values[key][n]` the offset of `points[n]`;
+also `setPoints`. Its target needs a LatticeComponent; points it does not animate keep their
+offsets (`relative` does not apply to it).
 
 `Ease(EaseType.X)` / `Ease.linear(t)`, `Ease.easeInQuad(t)`, `Ease.easeOutQuad(t)`,
 `Ease.easeInOutQuad(t)`, ... `Ease.easeOutBounce(t)` (static helpers, t in 0..1).
@@ -1082,9 +1135,61 @@ rw: `enabled`, `rate`, `maxPerUpdate`, `emitter`, `loop`, `localSpace`, `emitter
 `setSizeInitializer(...)`, `setRotationInitializer(...)`, `setScaleInitializer(...)`, and
 `set*Modifier(fromTime, toTime, from, to [, EaseType])` for Position/Velocity/Acceleration/
 Color/Alpha/Size/Rotation/Scale/Sprite. Plus Action `start()`, `stop()`, `pause()`.
-(Component getter is misspelled in the binding: `getParticlesomponent()`.)
+Component: `getParticleSystemComponent()` (the old misspelt `getParticlesomponent()` still works, deprecated).
 
-### 4.17 Other wrappers (partial)
+### 4.17 FluidSimulation (GameObject)
+
+Pavel Dobryakov's WebGL fluid (GameObject > Effects > Fluid Simulation): a GPU stable-fluids
+solve with his look (shading, bloom, sunrays) drawn into a texture. `FluidSimulation(scene)`
+makes one; `output` (`FluidOutput.*`) says where it goes: `SCREEN` (over the main camera),
+`MATERIAL` (the entity's Sprite/Image/Mesh texture), `TEXTURE` (only the `fluid|<entity>`
+texture link and `getTexture()`). Positions are fluid coordinates: (0,0) bottom-left, (1,1)
+top-right. Full guide (presets, costs, deterministic runs, MCP): `jasper://docs/fluid`.
+
+rw (the component's fields, Pavel's defaults): `enabled`, `output`, `interactive` (pointer drags
+splat), `aspectRatio` (0 auto); solver `simResolution` (128), `dyeResolution` (1024),
+`densityDissipation` (1), `velocityDissipation` (0.2), `pressure` (0.8), `pressureIterations`
+(20), `curl` (30), `gradientScale` (1); clock `simulationRate` (60 steps/s), `maxSubsteps` (4),
+`timeScale`, `paused`; splats `splatRadius` (0.25), `splatForce` (6000), `colorful`,
+`colorUpdateSpeed`, `splatsOnStart`, `randomSplatCount` (0: random 5-24), `seed` (0: new each
+start; set one for repeatable runs); look `shading`, `backColor` (Vector3, or
+`setBackColor(r, g, b)`), `transparent` (alpha = max(r, g, b)), `bloom`, `bloomIterations`,
+`bloomResolution`, `bloomIntensity`, `bloomThreshold`, `bloomSoftKnee`, `sunrays`,
+`sunraysResolution`, `sunraysWeight`. ro `preset` (the matching preset id, `""` when custom).
+Setters log an error and keep the old value for NaN/infinite or negative numbers (and 0 for
+resolutions, `simulationRate`, `maxSubsteps`, `splatRadius`).
+
+| Method | Meaning |
+|---|---|
+| `splat(x, y, dx, dy, r, g, b)` | a splat at the next step (also while paused): velocity in Pavel's force units (a pointer delta x `splatForce`), HDR colour (his pointer colours ~0.15) |
+| `splat(posV2, velV2, colorV3 [, radius])` | the same with vectors; `radius` in `splatRadius` units (0: the component's) |
+| `randomSplats([count])` | a seeded random burst (none/0: 5-24 splats) |
+| `step([n])` | queues `n` (1) fixed steps for the next frame, also while paused (deterministic stepping) |
+| `reset()` | restarts at the next frame: zero fields, the seed, the start burst |
+| `applyPreset(id)` / `getPreset()` | `"default"`, `"mobile"`, `"smoke"`, `"ink"`, `"calm-water"`, `"psychedelic"`; sets the solver and look fields only (false: unknown id) |
+| `FluidSimulation.getPresetIds()` | static: the preset ids, in order |
+| `getStats()` | `FluidStats`: `steps`, `time`, `splats`, `simWidth`, `simHeight`, `dyeWidth`, `dyeHeight`, `gpuBytes`, `passesLastFrame`, `seed`, `shadingActive`, `bloomActive`, `sunraysActive`, `manualFiltering`, `compactFormats` (the device fallbacks in use), `outputWidth`, `outputHeight`, `targetFailures` (bloom or sunrays targets the device could not make: that feature is off, `getError()` says why), `drawn` (the last frame drew the output) |
+| `getTexture()` | the output `Texture` (RGBA8) |
+| `getFluidSimulationComponent()` | the raw component (no validation) |
+
+```lua
+function Fluid:init()
+    self.fluid = FluidSimulation(self.scene)   -- keep it: the wrapper owns the entity
+    self.fluid.output = FluidOutput.SCREEN
+    self.fluid.transparent = true
+    self.fluid:applyPreset("ink")
+    self.fluid.seed = 42
+    RegisterEngineEvent(self, "onUpdate")
+end
+
+function Fluid:onUpdate()
+    if Input.isKeyPressed(Input.KEY_SPACE) then
+        self.fluid:splat(0.5, 0.2, 0, 800, 0.1, 0.4, 1.0)   -- while held: an upward blue jet
+    end
+end
+```
+
+### 4.18 Other wrappers (partial)
 
 - `Points`: `addPoint(...)`, `updatePoint(i, ...)`, `removePoint(i)`, `clearPoints()`,
   `getNumPoints()`, `setTexture(path)`, rw `maxPoints`, `enabled`.
@@ -1117,13 +1222,15 @@ Color/Alpha/Size/Rotation/Scale/Sprite. Plus Action `start()`, `stop()`, `pause(
   for the built-in map), `weatherMapScale`, `sunLightDimmer`, `ambientLightDimmer`,
   `maxDistance`, `qualityOverride`.
 - `Light`: also rw `volumetricIntensity` (point and spot lights in High quality volumetric fog).
-- `Skybox`: `setTextures(...)`, `setTexture(...)`, rw `color`, `alpha`, `rotation`.
+- `Skybox`: `setTextures(positiveX, negativeX, positiveY, negativeY, positiveZ, negativeZ)` (six
+  images; `+Z` is the front), `setTexture(path)` (one image holding the six faces),
+  `setTexturePositiveX(path)` ... `setTextureNegativeZ(path)` (one face), rw `color`, `alpha`, `rotation`.
 - `Terrain`, `ReflectionProbe`, `Mirror`, `Bone`: editor-configured; see bindings. A Terrain's painted layers (`TerrainSurfaceLayer`) also have `hexTiling` (anti-repetition of the flat projection) and `hexRotation` (0..1).
 - `ObjectRender.getLivePipelineCount()` (static, diagnostics): the render pipelines objects
   made and did not destroy yet (a leak check: the count before creating objects and after
   destroying them, once their loads settled).
 
-### 4.18 HTML/CSS documents: UIDocument, UIElement, UIEvent, data models
+### 4.19 HTML/CSS documents: UIDocument, UIElement, UIEvent, data models
 
 Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
 
@@ -1215,6 +1322,47 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
 
 ---
 
+### 4.19 Lattice (GameObject) - free-form deformation
+
+A box cage of control points that bends, squashes or wobbles the meshes bound to it
+(meshes, models, sprites, polygons, tilemaps). Local space is the unit cube -0.5..0.5,
+sized and placed by the Transform (`scale` = size). Point `(i, j, k)` counts from 0 per axis,
+flat index `i + rx * (j + ry * k)`; offsets are local units from the rest positions, 0 at
+rest. Concepts, selectors, presets and recipes: `jasper://docs/lattice`.
+
+```lua
+local cage = Lattice(self.scene)           -- entity + Transform + LatticeComponent
+cage.entityOwned = false                   -- or keep the wrapper alive in self
+cage.position = Vector3(0, 1, 0); cage.scale = Vector3(2, 2, 2)
+cage:bind(self.entity)                     -- this mesh follows the cage (weight 1)
+cage:setOffset(1, 2, 1, Vector3(0, 0.3, 0)) -- pull the top centre up
+cage:savePose("tall"); cage:resetOffsets()
+cage:tweenToPose("tall", 0.4, EaseType.BACK_OUT)
+```
+
+| Member | Notes |
+|---|---|
+| `enabled`, `interpolation` (`LatticeInterpolation`), `outside` (`LatticeOutside`), `fadeDistance` | rw; `setInterpolation`, `setOutside`, `setFadeDistance` too |
+| `setResolution(x, y, z)` | each 2..16 (default 3); resamples offsets, poses and a running tween |
+| `getResolution()` (Vector3), `getResolutionX/Y/Z()`, `getPointCount()`, `getPointIndex(i, j, k)` | |
+| `getOffset(i, j, k)`, `setOffset(i, j, k, v)`, `getOffsetAt(index)`, `setOffsetAt(index, v)` | local units; out of range: logged, ignored |
+| `getRestPosition(i, j, k)`, `getPointPosition` / `setPointPosition(i, j, k, v)` | local space (rest + offset) |
+| `getPointWorldPosition` / `setPointWorldPosition(i, j, k, v)` | world space (last frame's Transform) |
+| `resetOffsets()` | all zero |
+| `applyPreset(name, axis, amount [, toward])` | `"squash"`, `"stretch"`, `"taper"`, `"twist"`, `"bend"`, `"bulge"`, `"shear"`, `"noise"`; axis `"x"`/`"y"`/`"z"`, toward also `"-x"`...; added to the offsets; bend/twist angles are true in the world (the cage's proportions) |
+| `savePose(name)`, `hasPose(name)`, `removePose(name)`, `applyPose(name [, weight])` | `applyPose`: offsets = pose * weight |
+| `tweenToPose(name, seconds [, EaseType])`, `tweenToRest(seconds [, EaseType])`, `isTweening()`, `stopTween()` | runs while playing; ends exactly on the target |
+| `jiggle` (`setJiggle(b)`), `jiggleStiffness`, `jiggleDamping`, `jiggleInertia`, `jiggleAnchor` (`LatticeJiggleAnchor`), `jiggleMaxOffset` | rw; springs driven by the cage's acceleration, while playing |
+| `poke(i, j, k, impulseV3)` (local units/s), `pokeAt(worldPoint, worldImpulse, radius)` | wake the jiggle; `isJiggleSleeping()`, `getJiggleOffset(i, j, k)`, `resetJiggle()` (after a teleport) |
+| `deformPoint(worldPoint)` | world in, world out |
+| `bind(goOrEntity [, weight])`, `unbind(goOrEntity)` | binding in the target's `LatticeModifierComponent` (added when missing, with `includeChildren` when the target has no mesh); weight 0..2; a child's own binding replaces the one it inherits (weight 0 excludes it) |
+| `addFollower(follower, rest [, applyPosition, applyRotation, applyScale, weight])`, `removeFollower(follower)` | the follower is placed where `rest` ends up through the cage each frame (a prop on a squashed surface); refused when the follower is the rest or an ancestor of it |
+| `getLatticeComponent()`, `getModifierComponent(entity)`, `getFollowerComponent(entity)` | raw components (nil when missing); their `std::vector` fields read as copies |
+
+Writing offsets stops a running tween. Tweens and jiggle do not run in the editor's edit mode;
+offsets, poses and followers show there too. Scripts must not edit `comp.offsets[i]` (a copy):
+use the methods. Physics colliders keep the rest shape.
+
 ## 5. Enums (exact Lua spelling; values are integers)
 
 | Namespace | Values |
@@ -1277,10 +1425,16 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
 | `ShadowCaster2DShape` | `AUTO_QUAD`, `POLYGON` |
 | `ReflectionProbeMode` | `STATIC`, `DYNAMIC` |
 | `ReflectionProbeUpdateMode` | `ON_LOAD`, `ON_MOVE`, `INTERVAL`, `MANUAL` |
+| `FluidOutput` | `SCREEN`, `MATERIAL`, `TEXTURE` (`FluidSimulation.output`) |
 | `FrustumPlane` | `FRUSTUM_PLANE_NEAR`, `_FAR`, `_LEFT`, `_RIGHT`, `_TOP`, `_BOTTOM` |
 | `GraphicBackend` | `GLCORE`, `GLES3`, `D3D11`, `METAL`, `WGPU` |
 | `AdMobRating` | `General`, `ParentalGuidance`, `Teen`, `MatureAudience` |
 | `ResourceLoadState` | `NotStarted`, `Loading`, `Finished`, `Failed` |
+| `LatticeInterpolation` | `SHARP`, `SMOOTH`, `CUBIC` |
+| `LatticeOutside` | `EXTEND`, `FADE` |
+| `LatticeJiggleAnchor` | `NONE`, `NEGATIVE_X`, `POSITIVE_X`, `NEGATIVE_Y`, `POSITIVE_Y`, `NEGATIVE_Z`, `POSITIVE_Z` |
+| `LatticeStage` | `BEFORE_SKINNING`, `AFTER_SKINNING` |
+| `LatticeMaskChannel` | `NONE`, `RED`, `GREEN`, `BLUE`, `ALPHA`, `INVERTED_RED`, `INVERTED_GREEN`, `INVERTED_BLUE`, `INVERTED_ALPHA` |
 
 There is no separate Rigidbody2D type enum: both Rigidbody2D and Rigidbody use `BodyType`.
 There is no `Collider2D`/`Collider3D` class: colliders are created/queried through the

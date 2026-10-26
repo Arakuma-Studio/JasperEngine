@@ -15,15 +15,23 @@
 #include "util/Util.h"
 #include "util/UIUtils.h"
 #include "util/FileDialogs.h"
+#include "util/FileUtils.h"
 #include "window/CodeEditor.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/HtmlUiImportPanel.h"
 #include "util/EntityPayload.h"
 #include "util/CameraTextureLink.h"
+#include "util/FluidTextureLink.h"
+#include "util/FluidEditorTools.h"
+#include "util/UIProbe.h"
+#include "component/FluidSimulationComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "command/CommandHandle.h"
 #include "command/type/PropertyCmd.h"
 #include "command/type/MultiPropertyCmd.h"
+#include "command/type/CreateEntityCmd.h"
+#include "lattice/LatticeEditorOps.h"
+#include "lattice/LatticeSolver.h"
 #include "command/type/UnlinkMaterialCmd.h"
 #include "command/type/LinkMaterialCmd.h"
 #include "command/type/EntityNameCmd.h"
@@ -76,6 +84,7 @@
 #include "component/PanelComponent.h"
 #include "util/SHA1.h"
 #include "util/ProjectUtils.h"
+#include "util/NormalMapTilt.h"
 #include "Stream.h"
 #include "Out.h"
 #include "subsystem/ActionSystem.h"
@@ -477,6 +486,8 @@ void editor::InspectorWindow::writeDirtyMaterial(const DirtyMaterialEntry& entry
             if (ProjectWindow* projectWindow = Backend::getApp().getProjectWindow()) {
                 projectWindow->notifyResourceFileChanged(absolutePath);
             }
+        } else {
+            Out::error("Failed to write linked material file '%s'", absolutePath.string().c_str());
         }
     } catch (const std::exception& e) {
         Out::error("Error saving linked material file '%s': %s", absolutePath.string().c_str(), e.what());
@@ -962,9 +973,13 @@ void editor::InspectorWindow::requestAddComponent(){
 void editor::InspectorWindow::stopTransientPreviews() {
     stopSoundPreview();
     stopActionPreviewIfActive();
+    // the fluid previews and the Paint Dye brush (play starts, a save, the window closes)
+    FluidEditorTools::stopAll(project);
 }
 
 void editor::InspectorWindow::clearSceneState(uint32_t sceneId) {
+    FluidEditorTools::forgetScene(sceneId);
+
     if (actionPreviewing && actionPreviewSceneId == sceneId) {
         // The scene is already deleted, drop the snapshots instead of restoring them
         actionPreviewStates.clear();
@@ -1437,27 +1452,11 @@ void editor::InspectorWindow::applyCameraTexture(Entity cameraEntity, ComponentT
 // property. Laid out with the project's standard "<label> | <input>" property table,
 // including the rotate-left reset button when a row differs from the Catalog default. Each
 // change commits a PropertyCmd that copies the current per-entity Texture and mutates only
-// the chosen field, then invalidates the cached GPU texture so the new sampler is rebuilt on
-// the next getRender().
+// the chosen field (the sampler is part of the TexturePool key, so a new one is its own texture).
 void editor::InspectorWindow::drawTextureSettingsPopup(const char* popupId, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged){
     ImGui::SetNextWindowSizeConstraints(ImVec2(19 * ImGui::GetFontSize(), 0), ImVec2(FLT_MAX, FLT_MAX));
     if (!ImGui::BeginPopup(popupId))
         return;
-
-    // Sampler settings (filter/wrap) are baked into the GPU texture at creation and the
-    // TexturePool caches by id, so simply changing the value is not enough: we must drop
-    // the cached render to force a rebuild. Routing this through the command's
-    // onValueChanged makes it fire on both execute and undo, keeping the two directions
-    // consistent (and it also chains any caller-provided callback).
-    auto invalidateAndNotify = [sceneProject, entities, cpType, id, onValueChanged](){
-        for (const Entity& entity : entities){
-            Texture* ref = Catalog::getPropertyRef<Texture>(sceneProject->scene, entity, cpType, id);
-            if (ref)
-                ref->invalidateRender();
-        }
-        if (onValueChanged)
-            onValueChanged();
-    };
 
     // Applies mutator to a copy of each selected entity's texture and commits a PropertyCmd
     // per entity whose texture actually changed. The mutator returns false to skip an entity.
@@ -1471,7 +1470,7 @@ void editor::InspectorWindow::drawTextureSettingsPopup(const char* popupId, Comp
             if (!mutator(modified) || modified == *valueRef)
                 continue;
 
-            cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, modified, invalidateAndNotify);
+            cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, modified, onValueChanged);
             CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
         }
         finishProperty = true;
@@ -2849,13 +2848,17 @@ editor::InspectorWindow::EntityPickerResult editor::InspectorWindow::drawEntityP
     return result;
 }
 
-bool editor::InspectorWindow::propertyHeader(std::string label, float secondColSize, bool defChanged, bool child){
+bool editor::InspectorWindow::propertyHeader(std::string label, float secondColSize, bool defChanged, bool child, bool indent){
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(2, ImGui::GetStyle().ItemSpacing.y));
     ImGui::TableNextRow();
     if (child){
         ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_PopupBg]));
     }
     ImGui::TableNextColumn();
+    const float indentWidth = ImGui::GetFontSize();
+    if (indent){
+        ImGui::Indent(indentWidth);
+    }
     drawPrefabPropertyLabel(label);
     ImGui::SameLine();
 
@@ -2870,6 +2873,10 @@ bool editor::InspectorWindow::propertyHeader(std::string label, float secondColS
 
     ImGui::PopStyleColor(2);
     ImGui::PopStyleVar(3);
+
+    if (indent){
+        ImGui::Unindent(indentWidth);
+    }
 
     ImGui::TableNextColumn();
     ImGui::SetNextItemWidth(secondColSize);
@@ -2964,7 +2971,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             }
         }
 
-        propertyHeader(label, settings.secondColSize, false, settings.child);
+        propertyHeader(label, settings.secondColSize, false, settings.child, settings.indent);
         if (different) {
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
             ImGui::TextUnformatted("---");
@@ -3002,7 +3009,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = compareVectorFloat((float*)&newValue, defArr, 2, compThreshold);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Vector2>(project, sceneProject->id, entity, cpType, id, static_cast<Vector2>(defArr), settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -3132,7 +3139,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = compareVectorFloat((float*)&newValue, defArr, 3, compThreshold);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, static_cast<Vector3>(defArr), settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -3338,7 +3345,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = compareVectorFloat((float*)&newValue, defArr, 4, compThreshold);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Vector4>(project, sceneProject->id, entity, cpType, id, static_cast<Vector4>(defArr), settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -3534,7 +3541,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = compareVectorFloat((float*)&qValue, defArr, 4, compThreshold);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Quaternion>(project, sceneProject->id, entity, cpType, id, static_cast<Quaternion>(defArr), settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -3768,7 +3775,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = (newValue != *defArr);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -3817,7 +3824,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = (newValue != *defArr);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<bool>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -3870,7 +3877,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 defChanged = (newValue != *defArr);
             }
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<float>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -3896,7 +3903,13 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (dif)
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
         const NumericUnit floatUnit = type == RowPropertyType::HalfCone ? NumericUnit::Degrees : settings.unit;
+        // a property with a range is a slider (logarithmic when it says so)
+        const bool slider = type != RowPropertyType::HalfCone && settings.floatMin < settings.floatMax;
         const bool editedFloat = numericField(floatUnit, entities.size(), false, [&]() {
+            if (slider){
+                ImGuiSliderFlags flags = ImGuiSliderFlags_AlwaysClamp | (settings.logarithmic ? ImGuiSliderFlags_Logarithmic : 0);
+                return ImGui::SliderFloat(("##input_float_"+id).c_str(), &newValue, settings.floatMin, settings.floatMax, newFormat.c_str(), flags);
+            }
             return ImGui::DragFloat(("##input_float_"+id).c_str(), &newValue, settings.stepSize, v_min, v_max, newFormat.c_str());
         });
         const std::vector<double> perObjectFloat = perObjectValues(editedFloat, entities, [&](Entity e) { return eValue[e]; }, floatUnit);
@@ -3941,7 +3954,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = (newValue != *defArr);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<double>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -3987,7 +4000,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         const unsigned int value = eValue[entities[0]];
 
         bool defChanged = defArr && (dif || value != *defArr);
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<unsigned int>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -4073,7 +4086,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = (newValue != *defArr);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<unsigned int>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -4114,7 +4127,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = (newValue != *defArr);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<int>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -4170,7 +4183,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = compareVectorFloat((float*)value, defArr, 3, compThreshold);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, static_cast<Vector3>(defArr), settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -4212,7 +4225,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = compareVectorFloat((float*)value, defArr, 4, compThreshold);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Vector4>(project, sceneProject->id, entity, cpType, id, static_cast<Vector4>(defArr), settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -4263,7 +4276,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 defChanged = (newValue != *static_cast<unsigned int*>(defArr));
             }
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 if (type == RowPropertyType::IntSlider) {
                     cmd = new PropertyCmd<int>(project, sceneProject->id, entity, cpType, id, *static_cast<int*>(defArr), settings.onValueChanged);
@@ -4346,7 +4359,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             }
             defChanged = (item_current != item_default);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 int defValue = (*enumEntries)[item_default].value;
                 cmd = new PropertyCmd<int>(project, sceneProject->id, entity, cpType, id, defValue, settings.onValueChanged);
@@ -4413,7 +4426,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             defChanged = (currentType != defaultType);
         }
 
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 Ease defaultEase(static_cast<EaseType>((*enumEntries)[item_default].value));
                 cmd = new PropertyCmd<Ease>(project, sceneProject->id, entity, cpType, id, defaultEase, settings.onValueChanged);
@@ -4464,7 +4477,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = (newValue != *defArr);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<FontArray>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -4524,7 +4537,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = (newValue != *defArr);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -4538,6 +4551,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         ImGui::PushStyleColor(ImGuiCol_ChildBg, Theme::Colors::filenameLabel);
 
         bool isCameraTexture = CameraTextureLink::isCameraTexture(newValue);
+        bool isFluidTexture = FluidTextureLink::isFluidTexture(newValue);
 
         float thumbSize = ImGui::GetFrameHeight() * 3;
         Texture* thumbTexture = findThumbnail(newValue.getPath());
@@ -4552,8 +4566,8 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 Widgets::image(Backend::getImGuiTexture(thumbTexture->getRender()), ImVec2(thumbTexture->getWidth(), thumbTexture->getHeight()));
                 ImGui::EndTooltip();
             }
-        } else if (isCameraTexture && newValue.isFramebuffer() && newValue.getFramebuffer()->isCreated()) {
-            // live preview of the linked camera framebuffer
+        } else if ((isCameraTexture || isFluidTexture) && newValue.isFramebuffer() && newValue.getFramebuffer()->isCreated()) {
+            // live preview of the linked camera framebuffer or fluid output
             ImU32 border_col = ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_FrameBg]);
             if (dif){
                 border_col = ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
@@ -4563,12 +4577,12 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
 
         // sampler settings (min/mag filter, wrap) only apply to an actual image texture,
         // not to a camera/framebuffer link or an empty slot
-        bool showTexSettings = settings.allowTextureSettings && !isCameraTexture && !newValue.empty();
+        bool showTexSettings = settings.allowTextureSettings && !isCameraTexture && !isFluidTexture && !newValue.empty();
 
         ImVec2 texButtonSize = ImGui::CalcItemSize(ImVec2(0, 0), ImGui::GetFrameHeight(), ImGui::GetFrameHeight());
-        // reserve room for the action buttons (file + camera, plus a settings button when
-        // applicable), with one gap between each item and a trailing gap on the right
-        int texButtonCount = settings.allowCameraTexture ? 2 : 1;
+        // reserve room for the action buttons (file + camera + fluid, plus a settings button
+        // when applicable), with one gap between each item and a trailing gap on the right
+        int texButtonCount = settings.allowCameraTexture ? 3 : 1;
         if (showTexSettings) texButtonCount++;
         float texButtonsReserve = texButtonSize.x * texButtonCount + ImGui::GetStyle().ItemSpacing.x * (texButtonCount + 1);
         ImGui::BeginChild("textureframe", ImVec2(-texButtonsReserve, ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y * 2),
@@ -4577,6 +4591,8 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         std::string texName = newValue.getId();
         if (isCameraTexture) {
             texName = std::string(ICON_FA_VIDEO) + " " + CameraTextureLink::cameraName(sceneProject->scene, newValue);
+        } else if (isFluidTexture) {
+            texName = std::string(ICON_FA_DROPLET) + " " + FluidTextureLink::fluidName(sceneProject->scene, newValue);
         } else {
             // Never show the "?svgScale=" suffix in the slot; display the clean path/name.
             texName = TextureData::parseSvgScalePath(texName);
@@ -4653,6 +4669,13 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 ImGui::OpenPopup("cameratexturepopup");
             }
             ImGui::SetItemTooltip("Camera as source (render to texture)");
+
+            ImGui::SameLine();
+            if (ImGui::Button(ICON_FA_DROPLET, texButtonSize)) {
+                ImGui::OpenPopup("fluidtexturepopup");
+            }
+            UIProbe::item("texture.fluid." + id);
+            ImGui::SetItemTooltip("Fluid Simulation as source (its output, live)");
         }
 
         if (showTexSettings) {
@@ -4686,6 +4709,37 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             }
             if (!hasCamera) {
                 ImGui::TextDisabled("No camera in scene");
+            }
+            ImGui::EndPopup();
+        }
+
+        if (settings.allowCameraTexture && ImGui::BeginPopup("fluidtexturepopup")) {
+            Scene* scene = sceneProject->scene;
+            auto fluidsArray = scene->getComponentArray<FluidSimulationComponent>();
+            bool hasFluid = false;
+            for (size_t f = 0; f < fluidsArray->size(); f++) {
+                Entity fluidEntity = fluidsArray->getEntity(f);
+                // only user scene entities
+                if (std::find(sceneProject->entities.begin(), sceneProject->entities.end(), fluidEntity) == sceneProject->entities.end())
+                    continue;
+
+                hasFluid = true;
+                const FluidSimulationComponent& fluid = fluidsArray->getComponentFromIndex(f);
+                std::string fluidLabel = std::string(ICON_FA_DROPLET) + " " + scene->getEntityName(fluidEntity) + "##fluid_" + std::to_string(fluidEntity);
+                const bool linked = FluidTextureLink::parse(newValue.getId()) == fluidEntity && !dif;
+                if (ImGui::MenuItem(fluidLabel.c_str(), nullptr, linked)) {
+                    applyFluidTexture(fluidEntity, cpType, id, sceneProject, entities, settings.onValueChanged);
+                    finishProperty = true;
+                }
+                UIProbe::item("texture.fluid.item." + std::to_string(fluidEntity));
+                if (fluid.output != FluidOutput::TEXTURE) {
+                    ImGui::SetItemTooltip("Its output; it is also drawn %s. Output Texture draws it only here.",
+                                          fluid.output == FluidOutput::SCREEN ? "over the screen" : "on its own GameObject");
+                }
+            }
+            if (!hasFluid) {
+                ImGui::TextDisabled("No Fluid Simulation in scene");
+                ImGui::SetItemTooltip("GameObject > Effects > Fluid Simulation");
             }
             ImGui::EndPopup();
         }
@@ -4731,7 +4785,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = (newValue != *defArr);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -5022,7 +5076,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = (newValue != *defArr);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Material>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -5383,7 +5437,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         Entity newValue = value ? *value : NULL_ENTITY;
         bool defChanged = (defVal && newValue != *defVal);
 
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<unsigned int>(project, sceneProject->id, entity, cpType, id, *defVal, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -5538,7 +5592,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         uint32_t currentSceneId = !entities.empty() ? eSceneId[entities[0]] : 0;
         bool defChanged = (defVal && newValue != *defVal);
 
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 // Write entity and sceneId as one command so prefab propagation sees the
                 // complete reference (a split write would propagate a stale sceneId).
@@ -5891,12 +5945,34 @@ void editor::InspectorWindow::drawTransform(ComponentType cpType, SceneProject* 
         }
     }
 
+    // a Lattice Follower's driven channels: LatticeSystem puts them back every frame, so they
+    // are shown read-only (Unity's driven properties); the Scene view's tools move the rest
+    bool drivenChannel[3] = {false, false, false};
+    Entity drivingRest = NULL_ENTITY;
+    if (sceneProject && sceneProject->scene) {
+        for (Entity entity : entities) {
+            for (int channel = 0; channel < 3; channel++) {
+                Entity rest = LatticeEditorOps::getFollowerDrivingRest(sceneProject->scene, entity, channel == 0, channel == 1, channel == 2);
+                if (rest != NULL_ENTITY) {
+                    drivenChannel[channel] = true;
+                    drivingRest = rest;
+                }
+            }
+        }
+    }
+
     beginTable(cpType, getLabelSize("billboard"));
 
     settingsPos.unit = NumericUnit::Meters;
+    ImGui::BeginDisabled(drivenChannel[0]);
     propertyRow(RowPropertyType::Vector3, cpType, "position", "Position", sceneProject, entities, settingsPos);
+    ImGui::EndDisabled();
+    ImGui::BeginDisabled(drivenChannel[1]);
     propertyRow(RowPropertyType::Quat, cpType, "rotation", "Rotation", sceneProject, entities);
+    ImGui::EndDisabled();
+    ImGui::BeginDisabled(drivenChannel[2]);
     propertyRow(RowPropertyType::Vector3, cpType, "scale", "Scale", sceneProject, entities);
+    ImGui::EndDisabled();
     propertyRow(RowPropertyType::Bool, cpType, "visible", "Visible", sceneProject, entities);
     propertyRow(RowPropertyType::Bool, cpType, "billboard", "Billboard", sceneProject, entities);
 
@@ -5922,6 +5998,23 @@ void editor::InspectorWindow::drawTransform(ComponentType cpType, SceneProject* 
     }
 
     endTable();
+
+    if (drivenChannel[0] || drivenChannel[1] || drivenChannel[2]) {
+        std::string channels;
+        const char* const names[3] = {"Position", "Rotation", "Scale"};
+        for (int channel = 0; channel < 3; channel++) {
+            if (drivenChannel[channel]) {
+                channels += std::string(channels.empty() ? "" : ", ") + names[channel];
+            }
+        }
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        ImGui::TextWrapped(ICON_FA_CIRCLE_INFO " %s driven by the Lattice Follower: move its Rest (the Scene view's tools do).", channels.c_str());
+        ImGui::PopStyleColor();
+        if (entities.size() == 1 && drivingRest != NULL_ENTITY && ImGui::Button(ICON_FA_LOCATION_CROSSHAIRS " Select Rest")) {
+            project->clearSelectedEntities(sceneProject->id);
+            project->addSelectedEntity(sceneProject->id, drivingRest);
+        }
+    }
 }
 
 void editor::InspectorWindow::commitShaderFork(uint32_t sceneId, std::unique_ptr<ForkShaderCmd> forkCmd){
@@ -6083,6 +6176,34 @@ editor::InspectorWindow::ShaderUniformRows editor::InspectorWindow::resolveShade
     rows.buildFailed = Catalog::isCustomShaderBuildFailed(scene, entity, cpType);
 
     return rows;
+}
+
+void editor::InspectorWindow::drawStochasticRotationWarning(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                                           const std::string& rotationProperty, float rotation, const Texture& normalTexture,
+                                                           const std::function<void()>& onValueChanged){
+    if (!(rotation > 0.0f) || normalTexture.empty() || normalTexture.isFramebuffer())
+        return;
+    const std::string path = normalTexture.getPath(0);
+    if (path.empty())
+        return;
+    const std::filesystem::path file = project->resolveAssetPath(std::filesystem::u8path(path));
+    // measured once per file (and modification), off this thread
+    const NormalMapTiltResult tilt = NormalMapTilt::request(file);
+    if (!tilt.ready || !tilt.valid || tilt.degrees < NormalMapTilt::WARNING_DEGREES)
+        return;
+
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(1);
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0.2f, 1.0f));
+    ImGui::TextWrapped("%s: rotated tiles will look tilted. Keep Rotation at 0.", NormalMapTilt::describe(file, tilt.degrees).c_str());
+    ImGui::PopStyleColor();
+    if (ImGui::SmallButton(("Set Rotation to 0##" + rotationProperty).c_str())){
+        MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
+        for (const Entity& entity : entities){
+            multiCmd->addPropertyCmd<float>(project, sceneProject->id, entity, cpType, rotationProperty, 0.0f, onValueChanged);
+        }
+        CommandHandle::get(sceneProject->id)->addCommand(multiCmd);
+    }
 }
 
 void editor::InspectorWindow::drawShaderUniformWarnings(const std::vector<std::string>& warnings){
@@ -7168,6 +7289,38 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
             propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.emissiveTexture", "Emissive Texture", sceneProject, entities, settingsMaterial);
             propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.occlusionTexture", "Occlusion Texture", sceneProject, entities, settingsMaterial);
             propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.normalTexture", "Normal Texture", sceneProject, entities, settingsMaterial);
+
+            // Stochastic Tiling of these maps (includes/pbr.glsl), its values while it is on
+            const std::string materialPrefix = "submeshes[" + std::to_string(s) + "].material.";
+            RowSettings settingsStochastic = settingsMaterial;
+            settingsStochastic.help = "Hides the repetition of the material's tiled maps: hexagonal cells each read them at a random offset "
+                                      "and blend at their borders, every map alike (shadows and reflections too). Up to three reads per "
+                                      "map where cells meet. Suits organic textures (grass, rock, sand); bricks and tiles lose their grid. "
+                                      "The textures must repeat. Not on sprites, tilemaps or terrains (their layers have their own).";
+            propertyRow(RowPropertyType::Bool, cpType, materialPrefix + "stochasticTiling", "Stochastic Tiling", sceneProject, entities, settingsStochastic);
+            const Material& firstMaterial = sceneProject->scene->getComponent<MeshComponent>(entities[0]).submeshes[s].material;
+            if (firstMaterial.stochasticTiling){
+                RowSettings settingsParam = settingsFactor;
+                settingsParam.indent = true;
+                settingsParam.help = "Width of one cell in texture repeats (0.25-4). Smaller cells hide the repetition better but cut up large features of the texture.";
+                // the ranges MCP takes: 0.25-4, the others 0-1
+                settingsParam.floatMin = 0.25f;
+                settingsParam.floatMax = 4.0f;
+                settingsParam.logarithmic = true;
+                propertyRow(RowPropertyType::FloatPositive, cpType, materialPrefix + "stochasticCellSize", "Cell Size", sceneProject, entities, settingsParam);
+                settingsParam.floatMin = 0.0f;
+                settingsParam.floatMax = 1.0f;
+                settingsParam.logarithmic = false;
+                settingsParam.help = "How narrow the blend between neighbouring cells is: low blends wide and soft, high keeps more of each cell whole.";
+                propertyRow(RowPropertyType::Float_0_1, cpType, materialPrefix + "stochasticBlendSharpness", "Blend Sharpness", sceneProject, entities, settingsParam);
+                settingsParam.help = "Keeps the texture's contrast where cells blend, which a plain blend washes out. Too high shows the cell borders. 0 blends linearly.";
+                propertyRow(RowPropertyType::Float_0_1, cpType, materialPrefix + "stochasticContrast", "Contrast", sceneProject, entities, settingsParam);
+                settingsParam.help = "Turns each cell by a random angle, up to +-180 degrees at 1. Leave at 0 for textures with a direction (planks, stripes, light baked in) "
+                                     "and for normal maps whose average normal leans.";
+                propertyRow(RowPropertyType::Float_0_1, cpType, materialPrefix + "stochasticRotation", "Rotation", sceneProject, entities, settingsParam);
+                drawStochasticRotationWarning(cpType, sceneProject, entities, materialPrefix + "stochasticRotation", firstMaterial.stochasticRotation,
+                                              firstMaterial.normalTexture, settingsMaterial.onValueChanged);
+            }
             endTable();
             drawMaterialAdvancedSurfaceRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
             }
@@ -9100,6 +9253,34 @@ void editor::InspectorWindow::drawTerrainComponent(ComponentType cpType, ScenePr
             // Tiling rides on every layer, PBR or not
             propertyRow(RowPropertyType::Vector2, cpType, property + ".uvScale", "UV Scale", sceneProject, entities, settingsLayerFloat);
             propertyRow(RowPropertyType::Vector2, cpType, property + ".uvOffset", "UV Offset", sceneProject, entities, settingsLayerFloat);
+            RowSettings settingsStochastic = textureSettings;
+            settingsStochastic.help = "Hides the repetition of this layer's tiled maps: hexagonal cells each read them at a random offset "
+                                      "and blend at their borders, every map of the layer alike. Up to three reads per map where cells "
+                                      "meet. Suits organic textures (grass, rock, sand); bricks and tiles lose their grid.";
+            propertyRow(RowPropertyType::Bool, cpType, property + ".stochasticTiling", "Stochastic Tiling", sceneProject, entities, settingsStochastic);
+            if (terrain.surfaceLayers[i].stochasticTiling){
+                RowSettings settingsParam = settingsLayerFloat;
+                settingsParam.indent = true;
+                settingsParam.stepSize = 0.01f;
+                settingsParam.help = "Width of one cell in texture repeats (0.25-4). Smaller cells hide the repetition better but cut up large features of the texture.";
+                // the ranges of the Terrain window and set_terrain_maps: 0.25-4, the others 0-1
+                settingsParam.floatMin = 0.25f;
+                settingsParam.floatMax = 4.0f;
+                settingsParam.logarithmic = true;
+                propertyRow(RowPropertyType::FloatPositive, cpType, property + ".stochasticCellSize", "Cell Size", sceneProject, entities, settingsParam);
+                settingsParam.floatMin = 0.0f;
+                settingsParam.floatMax = 1.0f;
+                settingsParam.logarithmic = false;
+                settingsParam.help = "How narrow the blend between neighbouring cells is: low blends wide and soft, high keeps more of each cell whole.";
+                propertyRow(RowPropertyType::Float_0_1, cpType, property + ".stochasticBlendSharpness", "Blend Sharpness", sceneProject, entities, settingsParam);
+                settingsParam.help = "Keeps the texture's contrast where cells blend, which a plain blend washes out. Too high shows the cell borders. 0 blends linearly.";
+                propertyRow(RowPropertyType::Float_0_1, cpType, property + ".stochasticContrast", "Contrast", sceneProject, entities, settingsParam);
+                settingsParam.help = "Turns each cell by a random angle, up to +-180 degrees at 1. Leave at 0 for textures with a direction (planks, stripes, light baked in).";
+                propertyRow(RowPropertyType::Float_0_1, cpType, property + ".stochasticRotation", "Rotation", sceneProject, entities, settingsParam);
+                // (a layer's normal map is read by its PBR surface only)
+                drawStochasticRotationWarning(cpType, sceneProject, entities, property + ".stochasticRotation", terrain.surfaceLayers[i].stochasticRotation,
+                                              terrain.surfaceLayers[i].pbr ? terrain.surfaceLayers[i].normalTexture : Texture(), nullptr);
+            }
             // anti-repetition of the flat projection (the side planes stay planar)
             RowSettings settingsHex = settingsLayerFloat;
             settingsHex.help = "Samples the layer's flat projection on three randomly rotated copies on a hex grid, which hides the tiling "
@@ -12493,13 +12674,19 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
 
     RowSettings settingsBodyValue;
 
-    beginTable(cpType, getLabelSize("Motion Quality"));
+    beginTable(cpType, getLabelSize("Water Angular Drag"));
     propertyRow(RowPropertyType::Enum, cpType, "type", "Body Type", sceneProject, entities, settingsBodyType);
     propertyRow(RowPropertyType::Enum, cpType, "motionQuality", "Motion Quality", sceneProject, entities, settingsMotionQuality);
     propertyRow(RowPropertyType::Bool, cpType, "sensor", "Sensor", sceneProject, entities, settingsBodyValue);
     propertyRow(RowPropertyType::Float, cpType, "gravityFactor", "Gravity Factor", sceneProject, entities, settingsBodyValue);
     propertyRow(RowPropertyType::Float, cpType, "friction", "Friction", sceneProject, entities, settingsBodyValue);
     propertyRow(RowPropertyType::Float, cpType, "restitution", "Restitution", sceneProject, entities, settingsBodyValue);
+    // floating in a library:water (Water.h): 0 ignores the water
+    propertyRow(RowPropertyType::Float, cpType, "buoyancy", "Buoyancy", sceneProject, entities, settingsBodyValue);
+    if (body.buoyancy > 0.0f) {
+        propertyRow(RowPropertyType::Float, cpType, "waterDrag", "Water Drag", sceneProject, entities, settingsBodyValue);
+        propertyRow(RowPropertyType::Float, cpType, "waterAngularDrag", "Water Angular Drag", sceneProject, entities, settingsBodyValue);
+    }
     propertyRow(RowPropertyType::Bool, cpType, "overrideMassProperties", "Override Mass", sceneProject, entities, settingsBodyValue);
 
     if (body.overrideMassProperties) {
@@ -13411,6 +13598,21 @@ void editor::InspectorWindow::stopActionPreview(Scene* scene, SceneProject* scen
         if (auto* comp = scene->findComponent<ParticleSystemComponent>(state.entity)) {
             updateParticlePreviewSnapshot(state.components, *comp);
         }
+        if (auto* comp = scene->findComponent<KeyframeTracksComponent>(state.entity)) {
+            // the keys and their settings (loop, relative) edited during the preview are kept,
+            // the playhead the preview moved (index, interpolation) goes back
+            const std::string componentName = Catalog::getComponentName(ComponentType::KeyframeTracksComponent, true);
+            YAML::Node encoded = Stream::encodeKeyframeTracksComponent(*comp);
+            const YAML::Node originalNode = state.components[componentName];
+            if (originalNode && !originalNode.IsNull()) {
+                for (const char* key : {"index", "interpolation"}) {
+                    if (originalNode[key]) {
+                        encoded[key] = originalNode[key];
+                    }
+                }
+            }
+            state.components[componentName] = encoded;
+        }
     }
 
     for (const ActionPreviewState& state : actionPreviewStates) {
@@ -13646,9 +13848,13 @@ void editor::InspectorWindow::drawActionComponent(ComponentType cpType, ScenePro
 }
 
 void editor::InspectorWindow::drawTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    beginTable(cpType, getLabelSize("Duration"));
+    RowSettings settingsPingPong;
+    settingsPingPong.help = "Plays forward and then back, in twice the duration";
+
+    beginTable(cpType, getLabelSize("Ping-pong"));
     propertyRow(RowPropertyType::FloatPositive, cpType, "duration", "Duration", sceneProject, entities);
     propertyRow(RowPropertyType::Bool, cpType, "loop", "Loop", sceneProject, entities);
+    propertyRow(RowPropertyType::Bool, cpType, "pingPong", "Ping-pong", sceneProject, entities, settingsPingPong);
     propertyRow(RowPropertyType::Ease, cpType, "function", "Ease", sceneProject, entities);
     endTable();
 }
@@ -13724,6 +13930,21 @@ void editor::InspectorWindow::drawPositionTweenComponent(ComponentType cpType, S
 void editor::InspectorWindow::drawRotationTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     Scene* scene = sceneProject->scene;
 
+    // a spin turns by an angle around an axis instead of reaching an end rotation
+    bool spin = true;
+    for (Entity entity : entities){
+        RotationTweenComponent* rotation = scene->findComponent<RotationTweenComponent>(entity);
+        spin = spin && rotation && rotation->spin;
+    }
+
+    RowSettings settingsSpin;
+    settingsSpin.help = "Turns the start rotation by an angle around an axis, past half a turn too (a tween to an end rotation never turns more than 180°)";
+
+    RowSettings settingsAngle;
+    settingsAngle.secondColSize = 6 * ImGui::GetFontSize();
+    settingsAngle.format = "%.1f°";
+    settingsAngle.help = "More than 360° turns more than once";
+
     beginTable(cpType, getLabelSize("Start rotation"));
 
     float buttonSize = ImGui::GetFrameHeight();
@@ -13755,6 +13976,15 @@ void editor::InspectorWindow::drawRotationTweenComponent(ComponentType cpType, S
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
             ImGui::SetTooltip("Get current rotation from target");
         }
+    }
+
+    propertyRow(RowPropertyType::Bool, cpType, "spin", "Spin", sceneProject, entities, settingsSpin);
+
+    if (spin) {
+        propertyRow(RowPropertyType::Vector3, cpType, "axis", "Axis", sceneProject, entities);
+        propertyRow(RowPropertyType::Float, cpType, "angle", "Angle", sceneProject, entities, settingsAngle);
+        endTable();
+        return;
     }
 
     propertyRow(RowPropertyType::Quat, cpType, "endRotation", "End rotation", sceneProject, entities, quatSettings);
@@ -14523,7 +14753,25 @@ void editor::InspectorWindow::drawBoneComponent(ComponentType cpType, SceneProje
 void editor::InspectorWindow::drawKeyframeTracksComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     KeyframeTracksComponent& comp = sceneProject->scene->getComponent<KeyframeTracksComponent>(entities[0]);
 
+    // relative only applies to the transform tracks
+    bool transformTracks = true;
+    for (Entity entity : entities){
+        Signature signature = sceneProject->scene->getSignature(entity);
+        transformTracks = transformTracks && (signature.test(sceneProject->scene->getComponentId<TranslateTracksComponent>()) ||
+            signature.test(sceneProject->scene->getComponentId<RotateTracksComponent>()) ||
+            signature.test(sceneProject->scene->getComponentId<ScaleTracksComponent>()));
+    }
+
+    RowSettings settingsLoop;
+    settingsLoop.help = "Starts over after the last key";
+    RowSettings settingsRelative;
+    settingsRelative.help = "Keys are offsets from the pose the target has when the track starts";
+
     beginTable(cpType, getLabelSize("Interpolation"));
+    propertyRow(RowPropertyType::Bool, cpType, "loop", "Loop", sceneProject, entities, settingsLoop);
+    if (transformTracks){
+        propertyRow(RowPropertyType::Bool, cpType, "relative", "Relative", sceneProject, entities, settingsRelative);
+    }
     propertyRow(RowPropertyType::Int, cpType, "index", "Index", sceneProject, entities);
     propertyRow(RowPropertyType::Float, cpType, "interpolation", "Interpolation", sceneProject, entities);
     endTable();
@@ -15031,9 +15279,1025 @@ void editor::InspectorWindow::drawMorphTracksComponent(ComponentType cpType, Sce
     endTable();
 }
 
+// ---------------------------------------------------------------- Lattice (spec §9.1)
+
+static std::vector<editor::EnumEntry> entriesLatticeInterpolation = {
+    { (int)LatticeInterpolation::SHARP, "Sharp" },
+    { (int)LatticeInterpolation::SMOOTH, "Smooth" },
+    { (int)LatticeInterpolation::CUBIC, "Cubic" }
+};
+
+static std::vector<editor::EnumEntry> entriesLatticeOutside = {
+    { (int)LatticeOutside::EXTEND, "Extend" },
+    { (int)LatticeOutside::FADE, "Fade" }
+};
+
+static std::vector<editor::EnumEntry> entriesLatticeJiggleAnchor = {
+    { (int)LatticeJiggleAnchor::NONE, "None" },
+    { (int)LatticeJiggleAnchor::NEGATIVE_X, "-X" },
+    { (int)LatticeJiggleAnchor::POSITIVE_X, "+X" },
+    { (int)LatticeJiggleAnchor::NEGATIVE_Y, "-Y" },
+    { (int)LatticeJiggleAnchor::POSITIVE_Y, "+Y" },
+    { (int)LatticeJiggleAnchor::NEGATIVE_Z, "-Z" },
+    { (int)LatticeJiggleAnchor::POSITIVE_Z, "+Z" }
+};
+
+static std::vector<editor::EnumEntry> entriesLatticeStage = {
+    { (int)LatticeStage::BEFORE_SKINNING, "Before Skinning" },
+    { (int)LatticeStage::AFTER_SKINNING, "After Skinning" }
+};
+
+static std::vector<editor::EnumEntry> entriesLatticeMask = {
+    { (int)LatticeMaskChannel::NONE, "None" },
+    { (int)LatticeMaskChannel::RED, "Red" },
+    { (int)LatticeMaskChannel::GREEN, "Green" },
+    { (int)LatticeMaskChannel::BLUE, "Blue" },
+    { (int)LatticeMaskChannel::ALPHA, "Alpha" },
+    { (int)LatticeMaskChannel::INVERTED_RED, "Inverted Red" },
+    { (int)LatticeMaskChannel::INVERTED_GREEN, "Inverted Green" },
+    { (int)LatticeMaskChannel::INVERTED_BLUE, "Inverted Blue" },
+    { (int)LatticeMaskChannel::INVERTED_ALPHA, "Inverted Alpha" }
+};
+
+// display names of the presets, in LatticePreset order (the names MCP and Lua read are
+// lattice::presetName's)
+static const char* const latticePresetLabels[] = {"Squash", "Stretch", "Taper", "Twist", "Bend", "Bulge", "Shear", "Noise"};
+static const char* const latticeAxisLabels[] = {"X", "Y", "Z"};
+
+// a LatticeEditorOps edit that failed says why in the Console
+static void reportLatticeEdit(bool done, const std::string& error){
+    if (!done){
+        editor::Out::error("Lattice: %s", error.c_str());
+    }
+}
+
+static void drawLatticeWarning(const std::string& text){
+    ImGui::PushStyleColor(ImGuiCol_Text, editor::Theme::Colors::WarningText);
+    ImGui::TextWrapped(ICON_FA_TRIANGLE_EXCLAMATION " %s", text.c_str());
+    ImGui::PopStyleColor();
+}
+
+// the folded-cell scan depends on these only: a 64-bit FNV-1a of the points and settings
+static uint64_t latticeFoldKey(const LatticeComponent& lattice){
+    uint64_t hash = 1469598103934665603ull;
+    auto mix = [&hash](const void* data, size_t size){
+        const unsigned char* bytes = static_cast<const unsigned char*>(data);
+        for (size_t i = 0; i < size; i++){
+            hash = (hash ^ bytes[i]) * 1099511628211ull;
+        }
+    };
+    const int header[5] = {lattice.resolutionX, lattice.resolutionY, lattice.resolutionZ, (int)lattice.interpolation, (int)lattice.outside};
+    mix(header, sizeof(header));
+    mix(&lattice.fadeDistance, sizeof(lattice.fadeDistance));
+    if (!lattice.offsets.empty()){
+        mix(lattice.offsets.data(), lattice.offsets.size() * sizeof(Vector3));
+    }
+    if (!lattice.dynamicOffsets.empty()){
+        mix(lattice.dynamicOffsets.data(), lattice.dynamicOffsets.size() * sizeof(Vector3));
+    }
+    return hash;
+}
+
+void editor::InspectorWindow::drawLatticeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    Scene* scene = sceneProject->scene;
+    const uint32_t sceneId = sceneProject->id;
+    const Entity entity = entities[0];
+    LatticeComponent& lattice = scene->getComponent<LatticeComponent>(entity);
+    const bool single = entities.size() == 1;
+    const int resolution[3] = {lattice.resolutionX, lattice.resolutionY, lattice.resolutionZ};
+    const int pointCount = lattice.resolutionX * lattice.resolutionY * lattice.resolutionZ;
+
+    RowSettings settingsInterpolation;
+    settingsInterpolation.enumEntries = &entriesLatticeInterpolation;
+    settingsInterpolation.help = "Cubic: smoothest, the mesh follows the cage without touching its inner points. Smooth: through the points, no seams. Sharp: through the points, seams between cells.";
+    RowSettings settingsOutside;
+    settingsOutside.enumEntries = &entriesLatticeOutside;
+    settingsOutside.help = "What happens to vertices outside the cage: Fade eases the deformation out over Fade Distance, Extend carries the border's deformation on.";
+    RowSettings settingsFade;
+    settingsFade.secondColSize = 6 * ImGui::GetFontSize();
+    settingsFade.help = "Distance outside the cage, in lattice units (the cage is 1 across), over which the deformation fades to nothing. 0 cuts it at the border.";
+
+    beginTable(cpType, getLabelSize("Interpolation"), "lattice_main");
+
+    // Resolution: resampled by LatticeEditorOps::setResolution when a field is let go, so the
+    // deformation keeps its shape; one undo step for the whole selection
+    prefabRowProperty = "resolutionX";
+    for (const char* axisProperty : {"resolutionX", "resolutionY", "resolutionZ"}){
+        if (prefabRow.active && isPrefabPropertyOverridden(sceneProject, entities, cpType, axisProperty)){
+            prefabRowProperty = axisProperty;
+            break;
+        }
+    }
+    propertyHeader("Resolution", -1, false, false);
+    {
+        const float spacing = ImGui::GetStyle().ItemInnerSpacing.x;
+        const float fieldWidth = std::max(1.0f, (ImGui::GetContentRegionAvail().x - spacing * 2.0f) / 3.0f);
+        static const char* const axisIds[] = {"##lattice_resolution_x", "##lattice_resolution_y", "##lattice_resolution_z"};
+        static const char* const axisFormats[] = {"X %d", "Y %d", "Z %d"};
+        for (int axis = 0; axis < 3; axis++){
+            if (axis > 0) ImGui::SameLine(0.0f, spacing);
+            ImGui::SetNextItemWidth(fieldWidth);
+            int value = latticeResolutionAxis == axis ? latticeResolutionPending[axis] : resolution[axis];
+            if (ImGui::DragInt(axisIds[axis], &value, 0.05f, LATTICE_MIN_RESOLUTION, LATTICE_MAX_RESOLUTION, axisFormats[axis], ImGuiSliderFlags_AlwaysClamp)){
+                latticeResolutionPending[axis] = value;
+            }
+            if (ImGui::IsItemActivated()){
+                latticeResolutionAxis = axis;
+                latticeResolutionPending[axis] = value;
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()){
+                const int newValue = latticeResolutionPending[axis];
+                CommandHistory* history = CommandHandle::get(sceneId);
+                const size_t mark = history->mark();
+                for (Entity target : entities){
+                    LatticeComponent* other = scene->findComponent<LatticeComponent>(target);
+                    if (!other) continue;
+                    int res[3] = {other->resolutionX, other->resolutionY, other->resolutionZ};
+                    if (res[axis] == newValue) continue;
+                    res[axis] = newValue;
+                    std::string error;
+                    reportLatticeEdit(LatticeEditorOps::setResolution(project, sceneId, target, res[0], res[1], res[2], &error), error);
+                }
+                history->groupSince(mark);
+            }
+            if (ImGui::IsItemDeactivated()){
+                latticeResolutionAxis = -1;
+            }
+        }
+        ImGui::SetItemTooltip("Points per axis (2 to 16). Changing it resamples the offsets, so the shape stays.");
+    }
+
+    propertyRow(RowPropertyType::Enum, cpType, "interpolation", "Interpolation", sceneProject, entities, settingsInterpolation);
+    propertyRow(RowPropertyType::Enum, cpType, "outside", "Outside", sceneProject, entities, settingsOutside);
+    if (lattice.outside == LatticeOutside::FADE){
+        propertyRow(RowPropertyType::Float, cpType, "fadeDistance", "Fade Distance", sceneProject, entities, settingsFade);
+    }
+    endTable();
+
+    if (!single){
+        ImGui::SeparatorText("Points");
+        ImGui::TextDisabled("Select a single lattice to edit its points, presets and poses");
+        return;
+    }
+
+    // ---- Points: the Scene view's point selection of this lattice
+    const std::vector<int> selected = LatticeEditorOps::getSelectedPoints(sceneId, entity);
+    ImGui::SeparatorText("Points");
+    beginTable(cpType, getLabelSize("Selected"), "lattice_points");
+    propertyHeader("Selected", -1, false, false);
+    ImGui::Text("%zu of %d", selected.size(), pointCount);
+
+    if (selected.size() == 1 && selected[0] >= 0 && selected[0] < pointCount){
+        const int index = selected[0];
+        const int i = index % lattice.resolutionX;
+        const int j = (index / lattice.resolutionX) % lattice.resolutionY;
+        const int k = index / (lattice.resolutionX * lattice.resolutionY);
+        propertyHeader("Point", -1, false, false);
+        ImGui::Text("(%d, %d, %d)  index %d", i, j, k, index);
+
+        prefabRowProperty = "offsets[" + std::to_string(index) + "]";
+        const Vector3 current = (size_t)index < lattice.offsets.size() ? lattice.offsets[index] : Vector3::ZERO;
+        propertyHeader("Offset", -1, false, false);
+        float value[3] = {current.x, current.y, current.z};
+        if (latticeOffsetEditing){
+            value[0] = latticeOffsetPending.x;
+            value[1] = latticeOffsetPending.y;
+            value[2] = latticeOffsetPending.z;
+        }
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::DragFloat3("##lattice_point_offset", value, 0.005f, 0.0f, 0.0f, "%.3f")){
+            latticeOffsetPending = Vector3(value[0], value[1], value[2]);
+        }
+        if (ImGui::IsItemActivated()){
+            latticeOffsetEditing = true;
+            latticeOffsetPending = Vector3(value[0], value[1], value[2]);
+        }
+        if (ImGui::IsItemDeactivatedAfterEdit() && latticeOffsetPending.isValid()){
+            std::string error;
+            reportLatticeEdit(LatticeEditorOps::setOffsets(project, sceneId, entity, {index}, {latticeOffsetPending}, &error), error);
+        }
+        if (ImGui::IsItemDeactivated()){
+            latticeOffsetEditing = false;
+        }
+        ImGui::SetItemTooltip("Offset from the rest position, in lattice local units (the cage is 1 across)");
+    }
+    endTable();
+
+    {
+        const float spacing = ImGui::GetStyle().ItemSpacing.x;
+        const float buttonWidth = std::max(1.0f, (ImGui::GetContentRegionAvail().x - spacing) / 2.0f);
+        ImGui::BeginDisabled(selected.empty());
+        if (ImGui::Button(ICON_FA_ROTATE_LEFT " Reset Selected", ImVec2(buttonWidth, 0))){
+            std::string error;
+            reportLatticeEdit(LatticeEditorOps::resetPoints(project, sceneId, entity, selected, &error), error);
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        if (ImGui::Button(ICON_FA_ROTATE_LEFT " Reset All", ImVec2(buttonWidth, 0))){
+            std::string error;
+            reportLatticeEdit(LatticeEditorOps::resetPoints(project, sceneId, entity, {}, &error), error);
+        }
+        if (ImGui::Button(ICON_FA_OBJECT_GROUP " Select All", ImVec2(buttonWidth, 0))){
+            LatticeEditorOps::setSelectedPoints(sceneId, entity, lattice::selectAll(lattice.resolutionX, lattice.resolutionY, lattice.resolutionZ));
+            // the Scene view draws only when asked: show the selected points now
+            sceneProject->needUpdateRender = true;
+        }
+        ImGui::SameLine();
+        ImGui::BeginDisabled(selected.empty());
+        if (ImGui::Button(ICON_FA_XMARK " Select None", ImVec2(buttonWidth, 0))){
+            LatticeEditorOps::setSelectedPoints(sceneId, entity, {});
+            sceneProject->needUpdateRender = true;
+        }
+        ImGui::EndDisabled();
+    }
+    // proportional falloff of the Scene-view point drags (spec §9.2: context menu, inspector, O)
+    {
+        LatticeFalloff& falloff = LatticeEditorOps::falloff();
+        beginTable(cpType, getLabelSize("Falloff Radius"), "lattice_falloff");
+        propertyHeader("Falloff", -1, false, false);
+        if (ImGui::Checkbox("##lattice_falloff_enabled", &falloff.enabled)){
+            sceneProject->needUpdateRender = true;
+        }
+        ImGui::SetItemTooltip("Proportional falloff (O in the Scene view): dragging points also moves the points around them, less with distance");
+        if (falloff.enabled){
+            static const char* const curves[] = {"Smooth", "Linear", "Sharp", "Constant"};
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(-1);
+            int curve = (int)falloff.curve;
+            if (ImGui::Combo("##lattice_falloff_curve", &curve, curves, IM_ARRAYSIZE(curves))){
+                falloff.curve = (LatticeFalloffCurve)curve;
+            }
+            propertyHeader("Falloff Radius", -1, false, false);
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::DragFloat("##lattice_falloff_radius", &falloff.radius, 0.01f, 0.01f, 10.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp)){
+                sceneProject->needUpdateRender = true;
+            }
+            ImGui::SetItemTooltip("In lattice local units (the cage is 1 across); the mouse wheel changes it during a drag");
+        }
+        endTable();
+    }
+
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+    ImGui::TextWrapped(ICON_FA_CIRCLE_INFO " Edit Points: drag the cage's points in the Scene view with the Move, Rotate and Scale tools; right-click there for more.");
+    ImGui::PopStyleColor();
+
+    // folded cells: the deformation turns the mesh inside out there
+    if (latticeFoldCache.sceneId != sceneId || latticeFoldCache.entity != entity || latticeFoldCache.key != latticeFoldKey(lattice)){
+        latticeFoldCache.sceneId = sceneId;
+        latticeFoldCache.entity = entity;
+        latticeFoldCache.key = latticeFoldKey(lattice);
+        latticeFoldCache.cells = lattice::findFoldedCells(lattice);
+    }
+    if (!latticeFoldCache.cells.empty()){
+        const std::array<int, 3>& first = latticeFoldCache.cells[0];
+        drawLatticeWarning(std::to_string(latticeFoldCache.cells.size()) + (latticeFoldCache.cells.size() == 1 ? " cell is" : " cells are") +
+            " folded inside out (first at cell " + std::to_string(first[0]) + ", " + std::to_string(first[1]) + ", " +
+            std::to_string(first[2]) + "): move its points back past each other or lower the preset amount.");
+    }
+
+    // ---- Presets: on the selected points, all of them when none is selected
+    ImGui::SeparatorText("Presets");
+    beginTable(cpType, getLabelSize("Toward"), "lattice_presets");
+    propertyHeader("Preset", -1, false, false);
+    ImGui::SetNextItemWidth(-1);
+    int presetIndex = (int)latticePreset.preset;
+    if (ImGui::Combo("##lattice_preset", &presetIndex, latticePresetLabels, IM_ARRAYSIZE(latticePresetLabels))){
+        latticePreset.preset = (lattice::LatticePreset)presetIndex;
+    }
+    propertyHeader("Axis", -1, false, false);
+    ImGui::SetNextItemWidth(-1);
+    int axisIndex = (int)latticePreset.axis;
+    if (ImGui::Combo("##lattice_preset_axis", &axisIndex, latticeAxisLabels, IM_ARRAYSIZE(latticeAxisLabels))){
+        latticePreset.axis = (lattice::LatticeAxis)axisIndex;
+        // toward defaults to the next axis
+        if (latticePreset.toward == latticePreset.axis){
+            latticePreset.toward = (lattice::LatticeAxis)((axisIndex + 1) % 3);
+        }
+    }
+    const bool hasToward = latticePreset.preset == lattice::LatticePreset::BEND || latticePreset.preset == lattice::LatticePreset::SHEAR;
+    if (hasToward){
+        propertyHeader("Toward", -1, false, false);
+        ImGui::SetNextItemWidth(-1);
+        int towardIndex = (int)latticePreset.toward;
+        if (ImGui::Combo("##lattice_preset_toward", &towardIndex, latticeAxisLabels, IM_ARRAYSIZE(latticeAxisLabels))){
+            latticePreset.toward = (lattice::LatticeAxis)towardIndex;
+        }
+    }
+    const bool degrees = latticePreset.preset == lattice::LatticePreset::TWIST || latticePreset.preset == lattice::LatticePreset::BEND;
+    propertyHeader("Amount", -1, false, false);
+    ImGui::SetNextItemWidth(-1);
+    ImGui::DragFloat("##lattice_preset_amount", &latticePreset.amount, degrees ? 0.5f : 0.005f, 0.0f, 0.0f, degrees ? "%.1f deg" : "%.3f");
+    if (!std::isfinite(latticePreset.amount)) latticePreset.amount = 0.0f;
+    if (latticePreset.preset == lattice::LatticePreset::NOISE){
+        propertyHeader("Seed", -1, false, false);
+        ImGui::SetNextItemWidth(-1);
+        int seed = (int)latticePreset.seed;
+        if (ImGui::DragInt("##lattice_preset_seed", &seed, 1.0f, 0, INT32_MAX)){
+            latticePreset.seed = (unsigned int)std::max(0, seed);
+        }
+    }
+    propertyHeader("Replace", -1, false, false);
+    ImGui::Checkbox("##lattice_preset_replace", &latticePreset.replace);
+    ImGui::SetItemTooltip("On: the preset replaces the offsets of the points. Off: it adds to them.");
+    endTable();
+    {
+        const std::string applyLabel = selected.empty() ? ICON_FA_WAND_MAGIC_SPARKLES " Apply to All Points"
+                                                        : ICON_FA_WAND_MAGIC_SPARKLES " Apply to " + std::to_string(selected.size()) + " Selected";
+        if (ImGui::Button(applyLabel.c_str(), ImVec2(ImGui::GetContentRegionAvail().x, 0))){
+            if (!hasToward && latticePreset.toward == latticePreset.axis){
+                latticePreset.toward = (lattice::LatticeAxis)(((int)latticePreset.axis + 1) % 3);
+            }
+            std::string error;
+            reportLatticeEdit(LatticeEditorOps::applyPreset(project, sceneId, entity, latticePreset, selected, &error), error);
+        }
+    }
+
+    // ---- Poses
+    ImGui::SeparatorText("Poses");
+    beginTable(cpType, getLabelSize("Poses"), "lattice_poses_header");
+    prefabRowProperty = "poses";
+    propertyHeader("Poses", -1, false, false);
+    ImGui::Text("%zu", lattice.poses.size());
+    const float posesArrowWidth = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x;
+    if (drawSummaryAddButton(ICON_FA_PLUS " Save Current As...##lattice_pose_save", posesArrowWidth)){
+        std::string name = "Pose " + std::to_string(lattice.poses.size() + 1);
+        for (int n = (int)lattice.poses.size() + 1; std::any_of(lattice.poses.begin(), lattice.poses.end(), [&name](const LatticePose& pose){ return pose.name == name; }); n++){
+            name = "Pose " + std::to_string(n + 1);
+        }
+        std::snprintf(latticePoseName, sizeof(latticePoseName), "%s", name.c_str());
+        latticePoseRenaming.clear();
+        ImGui::OpenPopup("lattice_pose_name");
+    }
+    ImGui::SameLine();
+    if (ImGui::ArrowButton("##toggle_lattice_poses", latticePosesExpanded ? ImGuiDir_Up : ImGuiDir_Down)){
+        latticePosesExpanded = !latticePosesExpanded;
+    }
+
+    // one popup for Save Current As (latticePoseRenaming empty) and Rename
+    if (ImGui::BeginPopup("lattice_pose_name")){
+        ImGui::TextUnformatted(latticePoseRenaming.empty() ? "Save the current offsets as" : "Rename pose to");
+        if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+        ImGui::SetNextItemWidth(14 * ImGui::GetFontSize());
+        const bool entered = ImGui::InputText("##lattice_pose_name_input", latticePoseName, sizeof(latticePoseName), ImGuiInputTextFlags_EnterReturnsTrue);
+        const std::string name = latticePoseName;
+        const bool exists = std::any_of(lattice.poses.begin(), lattice.poses.end(), [&name](const LatticePose& pose){ return pose.name == name; });
+        if (latticePoseRenaming.empty() && exists){
+            ImGui::TextDisabled("Overwrites the pose of that name");
+        }
+        ImGui::BeginDisabled(name.empty() || (!latticePoseRenaming.empty() && exists && name != latticePoseRenaming));
+        if (ImGui::Button("OK", ImVec2(6 * ImGui::GetFontSize(), 0)) || (entered && !name.empty())){
+            std::string error;
+            if (latticePoseRenaming.empty()){
+                reportLatticeEdit(LatticeEditorOps::savePose(project, sceneId, entity, name, &error), error);
+            }else if (name != latticePoseRenaming){
+                reportLatticeEdit(LatticeEditorOps::renamePose(project, sceneId, entity, latticePoseRenaming, name, &error), error);
+            }
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(6 * ImGui::GetFontSize(), 0))){
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+    endTable();
+
+    if (latticePosesExpanded){
+        if (lattice.poses.empty()){
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+            ImGui::TextWrapped("No poses: Save Current As... keeps the current offsets under a name.");
+            ImGui::PopStyleColor();
+        }
+        for (size_t p = 0; p < lattice.poses.size(); p++){
+            const std::string name = lattice.poses[p].name;
+            ImGui::PushID((int)p);
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted(name.empty() ? "(unnamed)" : name.c_str());
+            if ((int)lattice.poses[p].offsets.size() != pointCount){
+                ImGui::SameLine();
+                ImGui::TextDisabled("(%zu points, resampled)", lattice.poses[p].offsets.size());
+            }
+            const ImGuiStyle& style = ImGui::GetStyle();
+            const float iconWidth = ImGui::GetFrameHeight();
+            const float applyWidth = ImGui::CalcTextSize("Apply").x + style.FramePadding.x * 2.0f;
+            const float trailing = applyWidth + iconWidth * 3.0f + style.ItemSpacing.x * 3.0f;
+            ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - trailing));
+            std::string error;
+            if (ImGui::Button("Apply")){
+                reportLatticeEdit(LatticeEditorOps::applyPose(project, sceneId, entity, name, 1.0f, &error), error);
+            }
+            ImGui::SetItemTooltip("Sets the offsets to this pose");
+            ImGui::SameLine();
+            if (ImGui::Button(ICON_FA_FLOPPY_DISK, ImVec2(iconWidth, 0))){
+                reportLatticeEdit(LatticeEditorOps::savePose(project, sceneId, entity, name, &error), error);
+            }
+            ImGui::SetItemTooltip("Overwrite with the current offsets");
+            ImGui::SameLine();
+            if (ImGui::Button(ICON_FA_PEN, ImVec2(iconWidth, 0))){
+                std::snprintf(latticePoseName, sizeof(latticePoseName), "%s", name.c_str());
+                latticePoseRenaming = name;
+                ImGui::OpenPopup("lattice_pose_rename");
+            }
+            ImGui::SetItemTooltip("Rename");
+            ImGui::SameLine();
+            if (ImGui::Button(ICON_FA_TRASH_CAN, ImVec2(iconWidth, 0))){
+                reportLatticeEdit(LatticeEditorOps::deletePose(project, sceneId, entity, name, &error), error);
+            }
+            ImGui::SetItemTooltip("Delete");
+            if (ImGui::BeginPopup("lattice_pose_rename")){
+                ImGui::TextUnformatted("Rename pose to");
+                if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+                ImGui::SetNextItemWidth(14 * ImGui::GetFontSize());
+                const bool entered = ImGui::InputText("##lattice_pose_rename_input", latticePoseName, sizeof(latticePoseName), ImGuiInputTextFlags_EnterReturnsTrue);
+                const std::string newName = latticePoseName;
+                const bool taken = newName != name && std::any_of(lattice.poses.begin(), lattice.poses.end(), [&newName](const LatticePose& pose){ return pose.name == newName; });
+                if (taken) ImGui::TextDisabled("Another pose has that name");
+                ImGui::BeginDisabled(newName.empty() || taken);
+                if (ImGui::Button("OK", ImVec2(6 * ImGui::GetFontSize(), 0)) || (entered && !newName.empty() && !taken)){
+                    if (newName != name){
+                        std::string renameError;
+                        reportLatticeEdit(LatticeEditorOps::renamePose(project, sceneId, entity, name, newName, &renameError), renameError);
+                    }
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndDisabled();
+                ImGui::SameLine();
+                if (ImGui::Button("Cancel", ImVec2(6 * ImGui::GetFontSize(), 0))){
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndPopup();
+            }
+            ImGui::PopID();
+        }
+    }
+
+    // ---- Jiggle (play mode only)
+    const float subsectionIndent = 10.0f;
+    ImGui::Spacing();
+    ImGui::Indent(subsectionIndent);
+    ImGui::PushStyleColor(ImGuiCol_Header, Theme::Colors::NestedHeader);
+    ImGui::PushStyleColor(ImGuiCol_HeaderHovered, Theme::Colors::NestedHeaderHovered);
+    ImGui::PushStyleColor(ImGuiCol_HeaderActive, Theme::Colors::NestedHeaderActive);
+    const bool jiggleOpen = ImGui::CollapsingHeader("Jiggle##lattice_jiggle");
+    ImGui::PopStyleColor(3);
+    ImGui::Unindent(subsectionIndent);
+    if (jiggleOpen){
+        RowSettings settingsJiggle;
+        settingsJiggle.help = "Springs on every point that wobble when the lattice moves or is poked (play mode only).";
+        RowSettings settingsFloat;
+        settingsFloat.secondColSize = 6 * ImGui::GetFontSize();
+        RowSettings settingsAnchor;
+        settingsAnchor.enumEntries = &entriesLatticeJiggleAnchor;
+        settingsAnchor.help = "Face that stays still (the base of a jelly); the opposite face moves the most.";
+        RowSettings settingsMax = settingsFloat;
+        settingsMax.help = "Largest distance a point springs away, in lattice units.";
+        beginTable(cpType, getLabelSize("Max Offset"), "lattice_jiggle");
+        propertyRow(RowPropertyType::Bool, cpType, "jiggle", "Enabled", sceneProject, entities, settingsJiggle);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "jiggleStiffness", "Stiffness", sceneProject, entities, settingsFloat);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "jiggleDamping", "Damping", sceneProject, entities, settingsFloat);
+        propertyRow(RowPropertyType::Float, cpType, "jiggleInertia", "Inertia", sceneProject, entities, settingsFloat);
+        propertyRow(RowPropertyType::Enum, cpType, "jiggleAnchor", "Anchor", sceneProject, entities, settingsAnchor);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "jiggleMaxOffset", "Max Offset", sceneProject, entities, settingsMax);
+        endTable();
+    }
+
+    // ---- what this lattice deforms (click selects)
+    const std::vector<Entity> targets = LatticeEditorOps::findTargets(scene, entity);
+    ImGui::SeparatorText(("Deforming (" + std::to_string(targets.size()) + ")").c_str());
+    if (targets.empty()){
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        ImGui::TextWrapped("Nothing yet: add a Lattice Modifier to a mesh and pick this lattice, or create a lattice with the meshes selected.");
+        ImGui::PopStyleColor();
+    }
+    for (Entity target : targets){
+        if (!scene->isEntityCreated(target)) continue;
+        std::string targetName = scene->getEntityName(target);
+        if (targetName.empty()) targetName = "GameObject " + std::to_string(target);
+        ImGui::PushID((int)target);
+        if (ImGui::Selectable((std::string(ICON_FA_CIRCLE_DOT " ") + targetName).c_str())){
+            project->clearSelectedEntities(sceneId);
+            project->addSelectedEntity(sceneId, target);
+        }
+        ImGui::PopID();
+    }
+}
+
+// up the Transform parents of `entity`: whether `ancestor` is one of them
+static bool isLatticeDescendant(Scene* scene, Entity ancestor, Entity entity){
+    const Transform* transform = scene->findComponent<Transform>(entity);
+    while (transform && transform->parent != NULL_ENTITY){
+        if (transform->parent == ancestor) return true;
+        transform = scene->findComponent<Transform>(transform->parent);
+    }
+    return false;
+}
+
+// meshes a modifier on `entity` deforms: its own and, with includeChildren, its descendants'
+static std::vector<Entity> latticeModifierMeshes(Scene* scene, Entity entity, bool includeChildren){
+    std::vector<Entity> meshes;
+    auto array = scene->getComponentArray<MeshComponent>();
+    for (size_t m = 0; m < array->size(); m++){
+        Entity meshEntity = array->getEntity(m);
+        if (meshEntity == entity || (includeChildren && isLatticeDescendant(scene, entity, meshEntity))){
+            meshes.push_back(meshEntity);
+        }
+    }
+    return meshes;
+}
+
+// bindings that reach a mesh (spec §2.1 stacking): its own, then those of the ancestors with
+// includeChildren, counting only the ones naming a lattice; a lattice a nearer modifier already
+// binds is not applied again (LatticeRender)
+static size_t latticeBindingCount(Scene* scene, Entity mesh){
+    std::vector<Entity> nearer;
+    auto valid = [scene, &nearer](const LatticeModifierComponent& modifier){
+        size_t count = 0;
+        std::vector<Entity> level;
+        for (const LatticeBinding& binding : modifier.bindings){
+            if (binding.lattice != NULL_ENTITY && scene->isEntityCreated(binding.lattice) && scene->findComponent<LatticeComponent>(binding.lattice) &&
+                    std::find(nearer.begin(), nearer.end(), binding.lattice) == nearer.end()){
+                count++;
+                level.push_back(binding.lattice);
+            }
+        }
+        if (!modifier.enabled) return size_t(0);
+        nearer.insert(nearer.end(), level.begin(), level.end());
+        return count;
+    };
+    size_t count = 0;
+    if (const LatticeModifierComponent* own = scene->findComponent<LatticeModifierComponent>(mesh)){
+        count += valid(*own);
+    }
+    const Transform* transform = scene->findComponent<Transform>(mesh);
+    Entity ancestor = transform ? transform->parent : NULL_ENTITY;
+    while (ancestor != NULL_ENTITY){
+        if (const LatticeModifierComponent* inherited = scene->findComponent<LatticeModifierComponent>(ancestor)){
+            if (inherited->includeChildren) count += valid(*inherited);
+        }
+        const Transform* ancestorTransform = scene->findComponent<Transform>(ancestor);
+        ancestor = ancestorTransform ? ancestorTransform->parent : NULL_ENTITY;
+    }
+    return count;
+}
+
+// the Bake Deformation row of the Lattice Modifier (spec §9.4): disabled with the reason when
+// nothing can be baked; the bake reports what it wrote and kept in the Console
+static void drawLatticeBakeRow(editor::Project* project, editor::SceneProject* sceneProject, Entity entity){
+    ImGui::SeparatorText("Bake");
+    std::string reason;
+    const bool stopped = sceneProject->playState == editor::ScenePlayState::STOPPED;
+    const bool canBake = stopped && editor::LatticeEditorOps::canBake(sceneProject->scene, entity, &reason);
+    if (!stopped){
+        reason = "Stop the scene to bake: it writes a model file and edits the scene.";
+    }
+    bool clicked = false;
+    ImGui::BeginDisabled(!canBake);
+    clicked = ImGui::Button(ICON_FA_FILE_EXPORT " Bake Deformation##lattice_bake", ImVec2(-FLT_MIN, 0));
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)){
+        ImGui::SetTooltip("%s", canBake ? "Writes the current deformation into a new model file next to the original (<name>_lattice.glb), "
+                                          "switches the Model to it and removes the baked bindings (one undo step; the file stays)."
+                                        : reason.c_str());
+    }
+    if (clicked){
+        std::string path;
+        std::string note;
+        std::string error;
+        if (editor::LatticeEditorOps::bake(project, sceneProject->id, entity, &path, &note, &error)){
+            Log::print("Lattice: baked the deformation into %s", path.c_str());
+            size_t start = 0;
+            while (start < note.size()){
+                size_t end = note.find('\n', start);
+                if (end == std::string::npos) end = note.size();
+                Log::warn("Lattice bake: %s", note.substr(start, end - start).c_str());
+                start = end + 1;
+            }
+        }else{
+            Log::error("Lattice bake: %s", error.c_str());
+        }
+    }
+}
+
+void editor::InspectorWindow::drawLatticeModifierComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    Scene* scene = sceneProject->scene;
+    const uint32_t sceneId = sceneProject->id;
+    const Entity entity = entities[0];
+    LatticeModifierComponent& modifier = scene->getComponent<LatticeModifierComponent>(entity);
+
+    const std::vector<Entity> meshes = latticeModifierMeshes(scene, entity, modifier.includeChildren);
+    bool hasSprite = false;
+    bool hasSkinning = false;
+    for (Entity mesh : meshes){
+        if (scene->findComponent<SpriteComponent>(mesh)) hasSprite = true;
+        const MeshComponent& meshComponent = scene->getComponent<MeshComponent>(mesh);
+        for (unsigned int s = 0; s < meshComponent.numSubmeshes; s++){
+            if (meshComponent.submeshes[s].hasSkinning) hasSkinning = true;
+        }
+    }
+
+    RowSettings settingsChildren;
+    settingsChildren.help = "Also deforms every mesh below this GameObject (a car, a character with its props).";
+    RowSettings settingsSubdivisions;
+    settingsSubdivisions.intMin = 1;
+    settingsSubdivisions.intMax = 64;
+    settingsSubdivisions.secondColSize = 6 * ImGui::GetFontSize();
+    settingsSubdivisions.help = "A sprite's quad becomes an n x n grid while a lattice deforms it, so it can bend smoothly.";
+
+    beginTable(cpType, getLabelSize("Include Children"), "lattice_modifier_main");
+    propertyRow(RowPropertyType::Bool, cpType, "includeChildren", "Include Children", sceneProject, entities, settingsChildren);
+    if (hasSprite){
+        propertyRow(RowPropertyType::Int, cpType, "subdivisions", "Subdivisions", sceneProject, entities, settingsSubdivisions);
+    }
+    endTable();
+
+    if (entities.size() != 1){
+        ImGui::SeparatorText("Bindings");
+        ImGui::TextDisabled("Select a single GameObject to edit its bindings");
+        return;
+    }
+
+    if (meshes.empty()){
+        drawLatticeWarning(modifier.includeChildren ? "Nothing to deform: no mesh, sprite or model on this GameObject or below it."
+                                                    : "Nothing to deform: no mesh on this GameObject (turn Include Children on for the meshes below it).");
+    }
+
+    // ---- bindings, in the order they deform
+    ImGui::SeparatorText("Bindings");
+    beginTable(cpType, getLabelSize("Bindings"), "lattice_bindings_header");
+    prefabRowProperty = "bindings";
+    propertyHeader("Bindings", -1, false, false);
+    ImGui::Text("%zu", modifier.bindings.size());
+    const float bindingsArrowWidth = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x;
+    if (drawSummaryAddButton(ICON_FA_PLUS " Add Binding##lattice_binding_add", bindingsArrowWidth)){
+        std::vector<LatticeBinding> bindings = modifier.bindings;
+        bindings.push_back(LatticeBinding());
+        auto* bindingCmd = new PropertyCmd<std::vector<LatticeBinding>>(project, sceneId, entity, cpType, "bindings", bindings);
+        bindingCmd->setNoMerge();
+        CommandHandle::get(sceneId)->addCommand(bindingCmd);
+        latticeBindingsExpanded = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::ArrowButton("##toggle_lattice_bindings", latticeBindingsExpanded ? ImGuiDir_Up : ImGuiDir_Down)){
+        latticeBindingsExpanded = !latticeBindingsExpanded;
+    }
+    endTable();
+
+    std::vector<std::string> warnings;
+    for (size_t b = 0; b < modifier.bindings.size(); b++){
+        const Entity latticeEntity = modifier.bindings[b].lattice;
+        const std::string label = "Binding " + std::to_string(b + 1);
+        if (latticeEntity == NULL_ENTITY){
+            warnings.push_back(label + ": no lattice picked.");
+        }else if (!scene->isEntityCreated(latticeEntity)){
+            warnings.push_back(label + ": its lattice was deleted.");
+        }else if (!scene->findComponent<LatticeComponent>(latticeEntity)){
+            warnings.push_back(label + ": \"" + scene->getEntityName(latticeEntity) + "\" has no Lattice component.");
+        }
+    }
+    // the same lattice bound here and inherited: this binding overrides the inherited one here
+    {
+        auto bindsLattice = [](const LatticeModifierComponent& other, Entity latticeEntity){
+            if (!other.enabled) return false;
+            for (const LatticeBinding& binding : other.bindings){
+                if (binding.lattice == latticeEntity) return true;
+            }
+            return false;
+        };
+        for (const LatticeBinding& binding : modifier.bindings){
+            if (binding.lattice == NULL_ENTITY) continue;
+            const Transform* transform = scene->findComponent<Transform>(entity);
+            Entity ancestor = transform ? transform->parent : NULL_ENTITY;
+            for (int hops = 0; ancestor != NULL_ENTITY && hops < 4096; hops++){
+                const LatticeModifierComponent* inherited = scene->findComponent<LatticeModifierComponent>(ancestor);
+                if (inherited && inherited->includeChildren && bindsLattice(*inherited, binding.lattice)){
+                    warnings.push_back("\"" + scene->getEntityName(binding.lattice) + "\" also reaches this GameObject through \"" +
+                                       scene->getEntityName(ancestor) + "\" (Include Children): this binding replaces that one here "
+                                       "(weight 0 excludes this GameObject). Remove it to inherit again.");
+                    break;
+                }
+                const Transform* ancestorTransform = scene->findComponent<Transform>(ancestor);
+                ancestor = ancestorTransform ? ancestorTransform->parent : NULL_ENTITY;
+            }
+        }
+    }
+    for (Entity mesh : meshes){
+        const size_t count = latticeBindingCount(scene, mesh);
+        if (count > LATTICE_MAX_PER_MESH){
+            warnings.push_back("\"" + scene->getEntityName(mesh) + "\" is reached by " + std::to_string(count) + " lattices: only the first " +
+                               std::to_string(LATTICE_MAX_PER_MESH) + " deform it (its own bindings first, then inherited ones).");
+        }
+    }
+    for (const std::string& warning : warnings){
+        drawLatticeWarning(warning);
+    }
+
+    if (!latticeBindingsExpanded){
+        drawLatticeBakeRow(project, sceneProject, entity);
+        return;
+    }
+
+    Signature latticeFilter;
+    latticeFilter.set(scene->getComponentId<LatticeComponent>());
+
+    for (size_t b = 0; b < modifier.bindings.size(); b++){
+        ImGui::PushID((int)b);
+        const std::string prefix = "bindings[" + std::to_string(b) + "]";
+
+        // header: name, then move up / down and remove at the right
+        ImGui::SeparatorText(("Binding " + std::to_string(b + 1)).c_str());
+        const ImGuiStyle& style = ImGui::GetStyle();
+        const float iconWidth = ImGui::GetFrameHeight();
+        ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - iconWidth * 3.0f - style.ItemSpacing.x * 2.0f));
+        auto reorder = [&](std::vector<LatticeBinding> bindings){
+            auto* bindingCmd = new PropertyCmd<std::vector<LatticeBinding>>(project, sceneId, entity, cpType, "bindings", bindings);
+            bindingCmd->setNoMerge();
+            CommandHandle::get(sceneId)->addCommand(bindingCmd);
+        };
+        bool changedList = false;
+        ImGui::BeginDisabled(b == 0);
+        if (ImGui::ArrowButton("##binding_up", ImGuiDir_Up)){
+            std::vector<LatticeBinding> bindings = modifier.bindings;
+            std::swap(bindings[b], bindings[b - 1]);
+            reorder(bindings);
+            changedList = true;
+        }
+        ImGui::EndDisabled();
+        ImGui::SetItemTooltip("Deform earlier");
+        ImGui::SameLine();
+        ImGui::BeginDisabled(b + 1 >= modifier.bindings.size());
+        if (!changedList && ImGui::ArrowButton("##binding_down", ImGuiDir_Down)){
+            std::vector<LatticeBinding> bindings = modifier.bindings;
+            std::swap(bindings[b], bindings[b + 1]);
+            reorder(bindings);
+            changedList = true;
+        }
+        ImGui::EndDisabled();
+        ImGui::SetItemTooltip("Deform later");
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_Text, style.Colors[ImGuiCol_TextDisabled]);
+        if (!changedList && ImGui::Button(ICON_FA_TRASH_CAN "##binding_remove", ImVec2(iconWidth, 0))){
+            std::vector<LatticeBinding> bindings = modifier.bindings;
+            bindings.erase(bindings.begin() + (long)b);
+            reorder(bindings);
+            changedList = true;
+        }
+        ImGui::PopStyleColor(2);
+        ImGui::SetItemTooltip("Remove binding");
+        if (changedList){
+            ImGui::PopID();
+            break;
+        }
+
+        RowSettings settingsLattice;
+        settingsLattice.entityFilter = latticeFilter;
+        settingsLattice.excludeEntities = {entity};
+        settingsLattice.help = "The lattice GameObject; drag one from the Hierarchy or pick it.";
+        RowSettings settingsWeight;
+        settingsWeight.secondColSize = 6 * ImGui::GetFontSize();
+        settingsWeight.help = "Scales this lattice's deformation, 0 to 2.";
+        RowSettings settingsStage;
+        settingsStage.enumEntries = &entriesLatticeStage;
+        settingsStage.help = "Before Skinning deforms the bind pose (a big head in every animation); After Skinning deforms the posed mesh.";
+        RowSettings settingsSubmesh;
+        settingsSubmesh.intMin = -1;
+        settingsSubmesh.intMax = 255;
+        settingsSubmesh.secondColSize = 6 * ImGui::GetFontSize();
+        settingsSubmesh.help = "Only this submesh (material slot); -1 deforms all of them.";
+        RowSettings settingsMask;
+        settingsMask.enumEntries = &entriesLatticeMask;
+        settingsMask.help = "A vertex colour channel scaling the deformation per vertex (inverted: 1 - channel).";
+
+        beginTable(cpType, getLabelSize("Submesh"), "lattice_binding");
+        propertyRow(RowPropertyType::LocalEntity, cpType, prefix + ".lattice", "Lattice", sceneProject, entities, settingsLattice);
+        propertyRow(RowPropertyType::Float, cpType, prefix + ".weight", "Weight", sceneProject, entities, settingsWeight);
+        if (hasSkinning){
+            propertyRow(RowPropertyType::Enum, cpType, prefix + ".stage", "Stage", sceneProject, entities, settingsStage);
+        }
+        propertyRow(RowPropertyType::Int, cpType, prefix + ".submesh", "Submesh", sceneProject, entities, settingsSubmesh);
+        propertyRow(RowPropertyType::Enum, cpType, prefix + ".mask", "Mask", sceneProject, entities, settingsMask);
+        endTable();
+        ImGui::PopID();
+    }
+
+    drawLatticeBakeRow(project, sceneProject, entity);
+}
+
+void editor::InspectorWindow::drawLatticeFollowerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    Scene* scene = sceneProject->scene;
+    const uint32_t sceneId = sceneProject->id;
+    const Entity entity = entities[0];
+    LatticeFollowerComponent& follower = scene->getComponent<LatticeFollowerComponent>(entity);
+
+    // the follower moves its own subtree: neither field may name it or anything below it
+    std::vector<Entity> subtree;
+    for (Entity selected : entities){
+        subtree.push_back(selected);
+    }
+    auto transforms = scene->getComponentArray<Transform>();
+    for (size_t t = 0; t < transforms->size(); t++){
+        Entity other = transforms->getEntity(t);
+        for (Entity selected : entities){
+            if (isLatticeDescendant(scene, selected, other)){
+                subtree.push_back(other);
+                break;
+            }
+        }
+    }
+
+    RowSettings settingsLattice;
+    settingsLattice.entityFilter.set(scene->getComponentId<LatticeComponent>());
+    settingsLattice.excludeEntities = subtree;
+    settingsLattice.help = "The lattice whose deformation this GameObject follows.";
+    RowSettings settingsRest;
+    settingsRest.excludeEntities = subtree;
+    settingsRest.help = "Where this GameObject stands undeformed: it is placed where the lattice moves that spot. Not this GameObject or one below it.";
+    RowSettings settingsWeight;
+    settingsWeight.secondColSize = 6 * ImGui::GetFontSize();
+
+    beginTable(cpType, getLabelSize("Apply Rotation"), "lattice_follower");
+    propertyRow(RowPropertyType::LocalEntity, cpType, "lattice", "Lattice", sceneProject, entities, settingsLattice);
+    propertyRow(RowPropertyType::LocalEntity, cpType, "rest", "Rest", sceneProject, entities, settingsRest);
+    propertyRow(RowPropertyType::Bool, cpType, "applyPosition", "Apply Position", sceneProject, entities);
+    propertyRow(RowPropertyType::Bool, cpType, "applyRotation", "Apply Rotation", sceneProject, entities);
+    propertyRow(RowPropertyType::Bool, cpType, "applyScale", "Apply Scale", sceneProject, entities);
+    propertyRow(RowPropertyType::Float, cpType, "weight", "Weight", sceneProject, entities, settingsWeight);
+    endTable();
+
+    if (entities.size() != 1){
+        return;
+    }
+
+    if (follower.lattice != NULL_ENTITY && (!scene->isEntityCreated(follower.lattice) || !scene->findComponent<LatticeComponent>(follower.lattice))){
+        drawLatticeWarning("The lattice is missing or has no Lattice component: the follower stays where it is.");
+    }else if (follower.lattice == NULL_ENTITY){
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        ImGui::TextWrapped("Pick a lattice and a rest GameObject to follow the deformation.");
+        ImGui::PopStyleColor();
+    }
+    if (follower.rest != NULL_ENTITY && std::find(subtree.begin(), subtree.end(), follower.rest) != subtree.end()){
+        drawLatticeWarning("The rest is this GameObject or one below it: the follower is left alone. Use Create Rest Here.");
+    }else if (follower.rest != NULL_ENTITY && !scene->isEntityCreated(follower.rest)){
+        drawLatticeWarning("The rest GameObject was deleted: the follower stays where it is.");
+    }
+
+    // an empty sibling where the follower stands, assigned as its rest: one undo step
+    const Transform* transform = scene->findComponent<Transform>(entity);
+    ImGui::BeginDisabled(!transform);
+    if (ImGui::Button(ICON_FA_LOCATION_CROSSHAIRS " Create Rest Here", ImVec2(ImGui::GetContentRegionAvail().x, 0)) && transform){
+        CommandHistory* history = CommandHandle::get(sceneId);
+        const size_t mark = history->mark();
+        const Vector3 position = transform->position;
+        const Quaternion rotation = transform->rotation;
+        const Vector3 scale = transform->scale;
+        auto* create = new CreateEntityCmd(project, sceneId, scene->getEntityName(entity) + " Rest", EntityCreationType::GAMEOBJECT, transform->parent);
+        create->setQuiet(true);
+        create->setNoMerge();
+        if (history->addCommand(create)){
+            const Entity rest = create->getEntity();
+            auto* multi = new MultiPropertyCmd();
+            multi->addPropertyCmd<Vector3>(project, sceneId, rest, ComponentType::Transform, "position", position);
+            multi->addPropertyCmd<Quaternion>(project, sceneId, rest, ComponentType::Transform, "rotation", rotation);
+            multi->addPropertyCmd<Vector3>(project, sceneId, rest, ComponentType::Transform, "scale", scale);
+            multi->addPropertyCmd<Entity>(project, sceneId, entity, cpType, "rest", rest);
+            multi->setNoMerge();
+            history->addCommand(multi);
+            history->groupSince(mark);
+        }else{
+            Out::error("Lattice Follower: could not create the rest GameObject");
+        }
+    }
+    ImGui::EndDisabled();
+    ImGui::SetItemTooltip("Adds an empty GameObject next to this one, where it stands now, and makes it the rest");
+}
+
+void editor::InspectorWindow::drawLatticeTracksComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    LatticeTracksComponent& comp = sceneProject->scene->getComponent<LatticeTracksComponent>(entities[0]);
+
+    float firstColSize = getLabelSize("Key 000");
+    beginTable(cpType, firstColSize, "lattice_tracks_header");
+
+    prefabRowProperty = "points";
+    propertyHeader("Points", -1, false, false);
+    if (comp.points.empty()){
+        ImGui::TextDisabled("none");
+    }else{
+        std::string list;
+        for (size_t p = 0; p < comp.points.size() && list.size() < 64; p++){
+            list += (p ? ", " : "") + std::to_string(comp.points[p]);
+        }
+        if (list.size() >= 64) list += ", ...";
+        ImGui::Text("%zu", comp.points.size());
+        ImGui::SameLine();
+        ImGui::TextDisabled("(%s)", list.c_str());
+    }
+
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::TextUnformatted("Keys");
+    ImGui::TableSetColumnIndex(1);
+
+    ImGui::Text("%zu", comp.values.size());
+    float keysArrowWidth = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x;
+    if (drawSummaryAddButton("Add Key##lattice_values_add", keysArrowWidth)) {
+        MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
+        for (Entity entity : entities){
+            if (LatticeTracksComponent* trackComp = sceneProject->scene->findComponent<LatticeTracksComponent>(entity)){
+                auto newValues = trackComp->values;
+                std::vector<Vector3> newValue(trackComp->points.size(), Vector3::ZERO);
+                if (!newValues.empty()){
+                    newValue = newValues.back();
+                }
+                newValues.push_back(newValue);
+                multiCmd->addPropertyCmd<std::vector<std::vector<Vector3>>>(project, sceneProject->id, entity, cpType, "values", newValues);
+                std::vector<Vector3> zeroTangent(newValue.size(), Vector3::ZERO);
+                addTangentAlignCmds<LatticeTracksComponent, std::vector<Vector3>>(project, sceneProject->id, cpType, entity, trackComp, multiCmd, zeroTangent, -1);
+            }
+        }
+
+        multiCmd->setNoMerge();
+        CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
+    }
+
+    ImGui::SameLine();
+    if (ImGui::ArrowButton("##toggle_lattice_values", trackValuesExpanded["lattice"] ? ImGuiDir_Up : ImGuiDir_Down)){
+        trackValuesExpanded["lattice"] = !trackValuesExpanded["lattice"];
+    }
+
+    if (trackValuesExpanded["lattice"]){
+        float clearButtonFramePadding = ImGui::GetStyle().FramePadding.x / 4.0f;
+
+        for (size_t i = 0; i < comp.values.size(); i++){
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("Key %zu", i);
+            ImGui::TableSetColumnIndex(1);
+
+            size_t moved = 0;
+            for (const Vector3& offset : comp.values[i]){
+                if (offset != Vector3::ZERO) moved++;
+            }
+            ImGui::Text("%zu offsets, %zu moved", comp.values[i].size(), moved);
+
+            ImGui::SameLine();
+
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(clearButtonFramePadding, ImGui::GetStyle().FramePadding.y));
+            std::string removeId = std::string(ICON_FA_TRASH_CAN) + "##remove_lattice_value_" + std::to_string(i);
+            bool removed = false;
+            if (ImGui::Button(removeId.c_str())){
+                MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
+                for (Entity entity : entities){
+                    if (LatticeTracksComponent* trackComp = sceneProject->scene->findComponent<LatticeTracksComponent>(entity)){
+                        if (i < trackComp->values.size()){
+                            auto newValues = trackComp->values;
+                            newValues.erase(newValues.begin() + (long int)i);
+                            multiCmd->addPropertyCmd<std::vector<std::vector<Vector3>>>(project, sceneProject->id, entity, cpType, "values", newValues);
+                            std::vector<Vector3> zeroTangent(trackComp->points.size(), Vector3::ZERO);
+                            addTangentAlignCmds<LatticeTracksComponent, std::vector<Vector3>>(project, sceneProject->id, cpType, entity, trackComp, multiCmd, zeroTangent, (long)i);
+                        }
+                    }
+                }
+
+                multiCmd->setNoMerge();
+                CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
+                removed = true;
+            }
+            ImGui::PopStyleVar();
+            ImGui::PopStyleColor(2);
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Remove key");
+            }
+            if (removed){
+                break;
+            }
+        }
+    }
+
+    endTable();
+
+    if (entities.size() == 1 && !comp.values.empty()){
+        for (const std::vector<Vector3>& key : comp.values){
+            if (key.size() != comp.points.size()){
+                drawLatticeWarning("A key has " + std::to_string(key.size()) + " offsets for " + std::to_string(comp.points.size()) +
+                                   " points: the extra ones are ignored, the missing ones stay at rest.");
+                break;
+            }
+        }
+    }
+}
+
 void editor::InspectorWindow::show(){
     // Flush any debounced material file writes
     flushDirtyMaterials(ImGui::GetIO().DeltaTime);
+
+    // fluid previews keep their Scene view redrawing; they and the Paint Dye brush end with
+    // what they work on (FluidEditorTools)
+    FluidEditorTools::update(project);
+    // UI tests: what the last frame named (UIProbe, JASPER_UI_PROBE only)
+    UIProbe::flush();
 
     if (!windowOpen) {
         return;
@@ -15054,6 +16318,11 @@ void editor::InspectorWindow::show(){
         return;
     }
     if (nameFocusFrames > 0) nameFocusFrames--;
+    if (UIProbe::enabled()) {
+        // what shows of the window, wherever it is scrolled
+        const ImRect inner = ImGui::GetCurrentWindow()->InnerClipRect;
+        UIProbe::rect("inspector", inner.Min.x, inner.Min.y, inner.Max.x, inner.Max.y);
+    }
     const bool openAddComponent = std::exchange(addComponentRequested, false);
 
     uint32_t propertiesSceneId = project->getSelectedSceneForProperties();
@@ -15248,6 +16517,14 @@ void editor::InspectorWindow::show(){
                     drawScaleTracksComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::MorphTracksComponent){
                     drawMorphTracksComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::LatticeComponent){
+                    drawLatticeComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::LatticeModifierComponent){
+                    drawLatticeModifierComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::LatticeFollowerComponent){
+                    drawLatticeFollowerComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::LatticeTracksComponent){
+                    drawLatticeTracksComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::ParticleSystemComponent){
                     drawParticleSystemComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::LineRendererComponent){
@@ -15256,6 +16533,11 @@ void editor::InspectorWindow::show(){
                     drawPointsComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::InstancedMeshComponent){
                     drawInstancedMeshComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::FluidSimulationComponent){
+                    // its preview bar is no edit: it works on a read-only (play-created) fluid too
+                    if (compReadOnly) ImGui::EndDisabled();
+                    drawFluidSimulationComponent(cpType, sceneProject, entities, compReadOnly);
+                    if (compReadOnly) ImGui::BeginDisabled(true);
                 }
 
                 if (compReadOnly) ImGui::EndDisabled();
@@ -15517,7 +16799,7 @@ void editor::InspectorWindow::show(){
                 ImGui::SeparatorText("Physics");
 
                 if (ImGui::BeginTable("scene_physics_table", 2, tableFlags)) {
-                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Gravity"));
+                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Interpolate"));
                     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
                     if (sceneProject->sceneType == SceneType::SCENE_3D) {
@@ -15527,6 +16809,8 @@ void editor::InspectorWindow::show(){
                         drawScenePropertyRow<Vector2>(sceneProject, "physics_gravity_2d", "Gravity", ScenePropertyInputType::DragFloat, -1.0f, 0.0f, 1.0f,
                             "Gravity applied to 2D physics bodies (meters/s^2).");
                     }
+                    drawScenePropertyRow<bool>(sceneProject, "physics_interpolation", "Interpolate", ScenePropertyInputType::Checkbox, -1.0f, 0.0f, 1.0f,
+                        "Draws bodies between their last two fixed steps, so they move smoothly at any frame rate (a frame behind the simulation by up to one step). Bodies moved by a script or an animation keep the pose they were given.");
 
                     ImGui::EndTable();
                 }

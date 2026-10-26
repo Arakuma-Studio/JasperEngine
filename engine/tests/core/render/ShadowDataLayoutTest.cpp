@@ -21,7 +21,7 @@ namespace {
 
     // Lit receiving shadows: Puc, Shw, Nor (and Shq)
     ShaderKey litKey(bool highFilters){
-        uint32_t properties = (1u << 3) | (1u << 4) | (1u << 6);
+        uint64_t properties = (1u << 3) | (1u << 4) | (1u << 6);
         if (highFilters)
             properties |= ShaderPool::getShadowsHQProperty();
         return ShaderPool::getShaderKey(ShaderType::MESH, properties);

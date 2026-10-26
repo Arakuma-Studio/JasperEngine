@@ -5,8 +5,11 @@
 // undeclared.
 #undef HAS_NORMALS
 #undef HAS_UV_SET1
-#undef HAS_VERTEX_COLOR_VEC3
-#undef HAS_VERTEX_COLOR_VEC4
+// (a lattice's vertex colour mask still reads the colour, includes/lattice.glsl)
+#ifndef HAS_LATTICE
+    #undef HAS_VERTEX_COLOR_VEC3
+    #undef HAS_VERTEX_COLOR_VEC4
+#endif
 #undef SURFACE_COLOR
 
 #ifdef WAVES

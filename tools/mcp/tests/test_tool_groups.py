@@ -120,9 +120,9 @@ async def test_enable_over_http_sse():
     async with RawEditor(create=True, env=SELFTEST_ENV, extra_args=["--http-port", str(port)]) as raw:
         await raw.initialize()
         await wait_for_port(port)
-        http = HttpSession(port)
+        http = HttpSession(port, token=harness.HTTP_TOKEN)
         await asyncio.to_thread(http.initialize)
-        other = HttpSession(port)
+        other = HttpSession(port, token=harness.HTTP_TOKEN)
         await asyncio.to_thread(other.initialize)
 
         a = await asyncio.to_thread(http.request, "tools/list")

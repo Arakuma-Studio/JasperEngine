@@ -196,6 +196,18 @@ namespace jasperengine::editor{
         static constexpr size_t DEFAULT_MAX_ENTRIES = 1000;
         static constexpr size_t DEFAULT_MEMORY_LIMIT = size_t(512) * 1024 * 1024;
 
+        // Asked before the scene's history changes, so a tool previewing edits live (the
+        // Physics Placement tool's running gesture) can settle them first: the command then
+        // records the true values. Returning false drops an undo or a redo; a command is always
+        // added (unless beforeMutation refuses it). Re-entrant: the tool's own commit comes
+        // through here too.
+        enum class Change{
+            Add,
+            Undo,
+            Redo
+        };
+        static std::function<bool(size_t, Change)> beforeChange;
+
         explicit CommandHistory(size_t sceneId = 0);
         ~CommandHistory();
 
@@ -209,8 +221,14 @@ namespace jasperengine::editor{
         // A command that changed nothing (isNoOp) is undone and freed: true, but no step.
         bool addCommand(Command* cmd);
         bool addCommandNoMerge(Command* cmd);
+        // A step the editor takes by itself (a model reloaded because its file changed on disk):
+        // undone like any other, but placed at the current position without ending the redo tail
+        // that a user edit would drop. In Play it goes below the play floor, so Stop keeps it.
+        // Its id is the newest, so a history's ids increase along it except around such steps.
+        bool insertCommand(Command* cmd);
 
-        // Undo/redo one step. Undo with an interactive edit open cancels it instead.
+        // Undo/redo one step. Undo with an interactive edit open cancels it instead. False when
+        // the history did not move, also when the command refused (Command::canUndo/canRedo).
         bool undo();
         bool redo();
         // Undo until `id` is the newest applied step (0: everything undoable), or redo until
@@ -240,6 +258,9 @@ namespace jasperengine::editor{
         size_t bytes() const { return heldBytes; }
         // The first id of the play session (0 outside Play): older steps are edit-time
         uint64_t getPlayStartId() const { return inPlaySession ? playStartId : 0; }
+        // True for a step of the running play session (above the play floor: an inserted
+        // edit-time step below it has a newer id than the session's first)
+        bool isPlayStep(uint64_t id) const;
         bool isInPlaySession() const { return inPlaySession; }
         size_t getPlayFloor() const { return playFloor; }
 

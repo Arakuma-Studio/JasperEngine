@@ -13,7 +13,21 @@
 #include "profiler/Profile.h"
 
 #include <chrono>
+#include <cmath>
 #include <thread>
+
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
+#define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
+#endif
+#endif
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -26,6 +40,20 @@ constexpr double IDLE_ENTER_DELAY = 0.5;
 double frameMonotonicSeconds(){
     using Clock = std::chrono::steady_clock;
     return std::chrono::duration<double>(Clock::now().time_since_epoch()).count();
+}
+
+// On Windows sleep_for wakes on the 15.6 ms system tick, too coarse to pace frames
+void sleepSeconds(double seconds){
+#if defined(_WIN32)
+    static HANDLE timer = CreateWaitableTimerExW(nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+    LARGE_INTEGER due;
+    due.QuadPart = -static_cast<LONGLONG>(seconds * 1e7); // relative, in 100 ns units
+    if (timer && SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE)){
+        WaitForSingleObject(timer, INFINITE);
+        return;
+    }
+#endif
+    std::this_thread::sleep_for(std::chrono::duration<double>(seconds));
 }
 
 }
@@ -64,11 +92,14 @@ bool EditorFrame::detectActivity(bool& redrawRequested){
     // Consumed apart from the test below, which short-circuits
     const bool appRedraw = app->consumeRedrawRequest();
 
+    // A text field stays active while it has the caret, which blinks at the idle rate
+    const bool activeWidget = ImGui::IsAnyItemActive() && !io.WantTextInput;
+
     const bool activity =
         io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f ||
         io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f ||
-        ImGui::IsAnyMouseDown() || typing || io.WantTextInput ||
-        ImGui::IsAnyItemActive() || app->didRenderScene() ||
+        ImGui::IsAnyMouseDown() || typing ||
+        activeWidget || app->didRenderScene() ||
         app->hasPendingMainThreadTasks() || redrawRequested || appRedraw;
     redrawRequested = false;
 
@@ -111,9 +142,13 @@ bool EditorFrame::run(EditorFrameState& state){
     // Consumed apart from the test below, which short-circuits
     const bool frameRequest = app->consumeFrameRequest();
 
+    // Keeps the caret of a focused text field blinking
+    const bool textFocused = ImGui::GetIO().WantTextInput;
+
     const bool renderRequested = state.forceRedraw || playSessionActive ||
                                  !idleFrame || state.redrawRequested ||
-                                 app->hasPendingMainThreadTasks() || frameRequest;
+                                 app->hasPendingMainThreadTasks() || frameRequest ||
+                                 textFocused;
     const bool frameReady = !state.minimized && renderRequested && renderer->beginFrame();
 
     // a profiler frame is one rendered loop of the editor (S15 §6.5); idle loops are not frames
@@ -172,13 +207,18 @@ bool EditorFrame::run(EditorFrameState& state){
         app->recordFrameTime((frameMonotonicSeconds() - frameStart) * 1000.0);
     }
 
-    // a benchmark measures the frames as fast as they go, focused or not (a headless X server
-    // gives no window the focus)
+    // Unfocused and minimized frames have no vsync to pace them. A benchmark measures
+    // the frames as fast as they go, focused or not (a headless X server gives no window the
+    // focus)
     if ((!state.focused || state.minimized) && !app->isBenchmarkMode()){
-        const int sleepMs = static_cast<int>(
-            (state.framePeriod - (frameMonotonicSeconds() - frameStart)) * 1000.0);
-        if (sleepMs > 0){
-            std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs));
+        // Paced by deadline, so a late wake-up is made up on the next frame
+        const double now = frameMonotonicSeconds();
+        frameDeadline += state.framePeriod;
+        if (std::abs(frameDeadline - now) > state.framePeriod){
+            frameDeadline = now;
+        }
+        if (frameDeadline > now){
+            sleepSeconds(frameDeadline - now);
         }
     }
 
