@@ -532,8 +532,10 @@ async def test_hot_reload_play_mode(ed: Editor):
         ed.check(abs(values[1] - 40) < 1, f"scrollTop after the font reload: {values[1]}")
         ed.check_eq(values[2], True, "the focus survived the font reload")
         runs = (await lua(ed, "return hotRuns"))[0]
+        # the font change rebuilt the document (a non-HTML dependency): the handle is taken again
+        await lua(ed, f"hotBox = {doc}:getElementById('box')")
 
-        # the document: state kept, the script runs again, its listener fires once per click
+        # the document: state kept, its listener fires once per click
         await ed.call("write_file", path=HOT, content=HOT_HTML.replace(
             '<button id="go">Go</button>',
             '<button id="go">Go</button>\n  <div id="added" style="position: absolute; left: 700px; top: 300px; width: 100px; '
@@ -544,8 +546,10 @@ async def test_hot_reload_play_mode(ed: Editor):
         ed.check_eq(values[0], "kept", "the input's value survived the document reload")
         ed.check(abs(values[1] - 40) < 1, f"scrollTop after the document reload: {values[1]}")
         ed.check_eq(values[2], True, "the focus survived the document reload")
-        ed.check_eq(values[3], runs + 1, "the document script ran again, once")
-        ed.check_eq(values[4], False, "a document reload replaces the elements")
+        # an HTML-only change is a patch (S17 R30, AC12): a script whose text did not change does not
+        # run again, and the handles of the elements it did not touch stay valid
+        ed.check_eq(values[3], runs, "the unchanged document script did not run again")
+        ed.check_eq(values[4], True, "a patch keeps the elements it did not change")
         await lua(ed, "hotClicks = 0")
         await ed.call("send_input", events=[{"type": "mouse", "action": "click", "x": 460, "y": 320}], space="canvas", frames_after=2)
         ed.check_eq(await lua(ed, "return hotClicks"), [1], "one listener on #go after the reload: one count per click")
