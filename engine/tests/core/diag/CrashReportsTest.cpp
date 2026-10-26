@@ -200,6 +200,19 @@ TEST(CrashSession, AbandonedSessionIsAbnormalExit) {
     EXPECT_FALSE(dir.exists("sessions/" + id.substr(id.find('-') + 1) + ".json")) << "the stale marker is consumed";
 }
 
+TEST(CrashSession, RelativeRootBecomesAbsolute) {
+    TempDir dir;
+    // the child runs in this process's working directory: name the root relative to it
+    const fs::path relative = fs::relative(dir.path(), fs::current_path());
+    ASSERT_TRUE(relative.is_relative());
+    ASSERT_EQ(runCrashTest({"--mode", "where", "--out", relative.string()}), 0);
+    std::string where = dir.read("where.txt");
+    while (!where.empty() && (where.back() == '\n' || where.back() == '\r')) where.pop_back();
+    const fs::path reports(where);
+    EXPECT_TRUE(reports.is_absolute()) << where << ": crash.txt and the stderr line name the folder absolutely";
+    EXPECT_TRUE(fs::equivalent(reports, dir.path() / "reports")) << where;
+}
+
 TEST(CrashRing, LogTailKeepsTheLastLines) {
     TempDir dir;
     ASSERT_EQ(runCrashTest({"--mode", "ring", "--out", dir.str()}), 0);

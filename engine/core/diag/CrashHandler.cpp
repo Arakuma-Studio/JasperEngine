@@ -608,6 +608,14 @@ namespace jasperengine::diag::crash {
         if (const char* override = std::getenv("JASPERENGINE_CRASH_REPORT_DIR"); override && override[0] != '\0') {
             config.root = fs::path(override);
         }
+        // absolute: the report path in crash.txt and the stderr line must mean the same thing to
+        // whoever reads them, whatever their working directory (a game's user data path can be
+        // relative to its own)
+        if (!config.root.empty() && config.root.is_relative()) {
+            std::error_code absoluteError;
+            const fs::path absolute = fs::absolute(config.root, absoluteError);
+            if (!absoluteError) config.root = absolute.lexically_normal();
+        }
 
         const std::time_t started = std::time(nullptr);
         c.session = compactUtc(started) + "-" + std::to_string(io::currentProcessId());

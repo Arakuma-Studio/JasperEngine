@@ -11,6 +11,7 @@
 //            it (--decline: leaves it pending)
 //   session  exits cleanly (--abandon: exits without the clean shutdown, as a killed process)
 //   list     writes DIR/reports.txt: "abnormal <0|1>", "last <id|->", then "<id> <kind> <handled>"
+//   where    writes the reports directory install resolved to DIR/where.txt (DIR may be relative)
 //   ring     logs 300 lines, writes the crash ring to DIR/ring.txt
 //   hang     starts the watchdog (200 ms) and stalls the main thread for 700 ms in a phase
 
@@ -180,6 +181,8 @@ int main(int argc, char** argv) {
         for (const diag::crash::ReportInfo& report : diag::crash::listReports()) {
             file << report.id << " " << report.kind << " " << (report.handled ? 1 : 0) << "\n";
         }
+    } else if (name == "where") {
+        std::ofstream(root / "where.txt") << diag::crash::reportsDirectory().string() << "\n";
     } else if (name == "ring") {
         for (int i = 1; i <= 300; i++) log("ring line " + std::to_string(i));
         std::ofstream(root / "ring.txt", std::ios::binary) << diag::crash::ringContents();

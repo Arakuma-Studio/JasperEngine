@@ -1509,7 +1509,12 @@ void finishPlayerRun(const CallPtr& call, const std::shared_ptr<PlayerRun>& run)
         {"fatal_lines", fatal},
         {"log_file", run->logPath.generic_string()}
     };
-    if (!crashReport.empty()) data["crash_report"] = crashReport;
+    if (!crashReport.empty()) {
+        // an older engine printed the folder relative to the player's working directory (its own)
+        fs::path report(crashReport);
+        if (report.is_relative()) report = (run->exe.parent_path() / report).lexically_normal();
+        data["crash_report"] = report.generic_string();
+    }
     bool crashed = !fatal.empty();
     std::string how;
     if (run->killedByUs) {
