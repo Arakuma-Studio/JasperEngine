@@ -1,11 +1,11 @@
 {
-  "description": "tools/test-projects/terrain (WEB_PROJECT=terrain tools/build.sh web): a terrain displaced by a 16-bit heightmap (a 40 m Gaussian dome) in WebGL2, which has no 16-bit unorm textures: the heightmap reaches the vertex shader as R32F or R16F. The camera looks level at 5 m, so the canvas centre is the dome's lit flank (grey, no texture layers) only when the heights are sampled; without them it is the sky (107 148 209) and sokol logs GL_TEXTURE_FORMAT_NOT_SUPPORTED every frame.",
+  "description": "tools/test-projects/terrain (WEB_PROJECT=terrain tools/build.sh web): a terrain displaced by a 16-bit heightmap (a 40 m Gaussian dome) in WebGL2, which has no 16-bit unorm textures: the heightmap reaches the vertex shader as R32F or R16F. The camera looks level at 5 m, so the canvas centre is the dome's lit flank (a neutral grey, no texture layers: 154 before the post-sync lighting, 204 after; the tolerance takes any lit grey and no sky) only when the heights are sampled; without them it is the sky (107 148 209) and sokol logs GL_TEXTURE_FORMAT_NOT_SUPPORTED every frame.",
   "rgb": [
-    154,
-    154,
-    154
+    180,
+    180,
+    180
   ],
-  "tolerance": 8,
+  "tolerance": 40,
   "isolated": true,
   "console": [
     {
