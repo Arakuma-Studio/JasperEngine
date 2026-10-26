@@ -800,7 +800,9 @@ void TextureCookQueue::writeInferredSettings(){
         std::error_code ec;
         if (!fs::exists(SetAssetMetaCmd::metaPathOf(absolute), ec))
             continue;
-        if (SetAssetMetaCmd::read(absolute, TextureImportSettings::metaKey))
+        // (an absent key reads as a null node, which yaml-cpp counts as defined)
+        const YAML::Node stored = SetAssetMetaCmd::read(absolute, TextureImportSettings::metaKey);
+        if (stored && !stored.IsNull())
             continue;
         TextureImportSettings settings;
         if (!TextureImportSettings::parse(YAML::Load(yaml), settings))

@@ -3666,7 +3666,7 @@ void getTextureImportSettingsTool(const CallPtr& call) {
         Json data = {{"path", projectPath}, {"stored", textureYamlToJson(stored)}, {"inferred", inferred},
                      {"resolved", resolved}, {"warnings", warnings}};
         call->ok(projectPath + ": " + textureImportTypeName(inputs.settings.resolvedType()) +
-                 (stored ? "" : " (inferred: " + inputs.inference.reason + ")"), data);
+                 (stored && !stored.IsNull() ? "" : " (inferred: " + inputs.inference.reason + ")"), data);
     });
 }
 
@@ -3732,18 +3732,23 @@ void setTextureImportSettingsTool(const CallPtr& call) {
             if (!node["version"]) node["version"] = TextureImportSettings::currentVersion;
             // an explicit choice ends the inference's say on it
             if (!perPlatform) node.remove("inferredFrom");
-            YAML::Node target = node;
+            auto apply = [&edits](YAML::Node target) {
+                for (const auto& [key, value] : edits) {
+                    if (value) target[key] = value;
+                    else target.remove(key);
+                }
+            };
             if (perPlatform) {
                 if (!node["platforms"] || !node["platforms"].IsMap()) node["platforms"] = YAML::Node(YAML::NodeType::Map);
                 YAML::Node platforms = node["platforms"];
                 const std::string name = textureFamilyName(family);
                 if (!platforms[name] || !platforms[name].IsMap()) platforms[name] = YAML::Node(YAML::NodeType::Map);
-                target = platforms[name];
-                if (!settings.contains("override")) target["override"] = true;
-            }
-            for (const auto& [key, value] : edits) {
-                if (value) target[key] = value;
-                else target.remove(key);
+                // (a node bound once: yaml-cpp's assignment to a bound node overwrites what it holds)
+                YAML::Node platform = platforms[name];
+                if (!settings.contains("override")) platform["override"] = true;
+                apply(platform);
+            } else {
+                apply(node);
             }
             TextureImportSettings parsed;
             std::string error;
