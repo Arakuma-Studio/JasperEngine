@@ -470,7 +470,7 @@ YAML::Node editor::encodeTextureProjectSettings(const TextureProjectSettings& se
         node["cacheSizeMB"] = settings.cacheSizeMB;
     if (settings.globalCacheDir != defaults.globalCacheDir)
         node["globalCacheDir"] = settings.globalCacheDir;
-    return node.size() ? node : YAML::Node();
+    return node;
 }
 
 void editor::decodeTextureProjectSettings(const YAML::Node& node, TextureProjectSettings& settings){

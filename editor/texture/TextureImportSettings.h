@@ -166,7 +166,7 @@ namespace jasperengine::editor {
     // Range and enum checks of a partial update (MCP set_texture_import_settings): the error
     // names the field and its allowed values
     // project.yaml's `texture:` (Project Settings > Texture): only what differs from the
-    // defaults is written (a null node when nothing does); decoding clamps out-of-range values
+    // defaults is written (an empty map when nothing does); decoding clamps out-of-range values
     YAML::Node encodeTextureProjectSettings(const TextureProjectSettings& settings);
     void decodeTextureProjectSettings(const YAML::Node& node, TextureProjectSettings& settings);
     // the runtime platform groups of quality, budget and the low-memory fallback

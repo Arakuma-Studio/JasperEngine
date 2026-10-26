@@ -161,7 +161,7 @@ TEST(TextureImportSettings, CanonicalFormChangesWithEveryField){
 
 TEST(TextureImportSettings, ProjectSettingsWriteOnlyWhatDiffers){
     TextureProjectSettings settings;
-    EXPECT_FALSE(encodeTextureProjectSettings(settings));
+    EXPECT_EQ(encodeTextureProjectSettings(settings).size(), 0u);
     settings.androidEtc2Fallback = true;
     settings.defaultQuality[(size_t)TextureFamily::Mobile] = TextureCookQuality::High;
     settings.memoryBudgetMB[2] = 256;
@@ -170,7 +170,7 @@ TEST(TextureImportSettings, ProjectSettingsWriteOnlyWhatDiffers){
     settings.cacheSizeMB = 1024;
     settings.globalCacheDir = "/tmp/cache";
     const YAML::Node node = encodeTextureProjectSettings(settings);
-    ASSERT_TRUE(node);
+    ASSERT_GT(node.size(), 0u);
     EXPECT_EQ(node["defaults"]["mobile"]["quality"].as<std::string>(), "high");
     EXPECT_FALSE(node["defaults"]["desktop"]);
     EXPECT_EQ(node["platforms"]["web"]["memoryBudgetMB"].as<int>(), 256);

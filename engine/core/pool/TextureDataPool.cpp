@@ -160,13 +160,17 @@ bool TextureDataPool::loadCookedBytes(const std::string& id, const CookedTexture
                          (TextureFallback::hasFlag(image.info, "normalRG") ? TEXTURE_FLAG_NORMAL_RG : 0) |
                          (TextureFallback::hasFlag(image.info, "streamable") ? TEXTURE_FLAG_STREAMABLE : 0) |
                          (TextureFallback::hasFlag(image.info, "cpu") ? TEXTURE_FLAG_CPU_READABLE : 0) |
-                         (image.info.faces == 6 ? TEXTURE_FLAG_CUBE : 0);
+                         (image.info.faces == 6 ? TEXTURE_FLAG_CUBE : 0) | entry.flags;
             out.basis = job;
             out.complete = false;
             return true;
         }
         out.complete = true;
-        return out.data.loadKtx2Image(image, false, &support, lowMemory, error);
+        if (!out.data.loadKtx2Image(image, false, &support, lowMemory, error))
+            return false;
+        // the index's flags (streamable...) are the export's word for the file
+        out.data.setFlags(out.data.getFlags() | entry.flags);
+        return true;
     }
     if (!allowTail){
         error = "short read of a cooked texture";
@@ -180,6 +184,7 @@ bool TextureDataPool::loadCookedBytes(const std::string& id, const CookedTexture
             index.byteOffset + index.byteLength <= bytes.size()){
             if (!Ktx2::read(source, level, image, error) || !out.data.loadKtx2Image(image, false, &support, lowMemory, error))
                 return false;
+            out.data.setFlags(out.data.getFlags() | entry.flags);
             out.hasTail = true;
             break;
         }

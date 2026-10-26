@@ -75,12 +75,19 @@ namespace {
                     const size_t index = (size_t)(by - firstRow) * blocksX + bx;
                     uint8_t* rgba = reinterpret_cast<uint8_t*>(&pixels[index * 16]);
                     gatherBlockRgba(image, channels, bx, by, rgba);
+                    // a normal map's Y also in alpha: the transcodes to BC5 and EAC RG11 read R and A
+                    // (basisu's UASTC layout for two channels), the others R and G as the shaders do
+                    if (channels == 2)
+                        for (int t = 0; t < 16; t++)
+                            rgba[t * 4 + 3] = rgba[t * 4 + 1];
                     basisu::encode_uastc(rgba, blocks[index], flags);
                 }
             }
             if (lambda > 0.0f){
                 basisu::uastc_rdo_params params;
                 params.m_lambda = lambda;
+                // twice basisu's default window: more matches for zstd within a band
+                params.m_lz_dict_size = 8192;
                 basisu::uastc_rdo((uint32_t)count, blocks, pixels.data(), params, flags, nullptr, 0);
             }
             return true;
@@ -221,7 +228,7 @@ namespace {
     class BasisEncoder final : public ITextureEncoder {
     public:
         const char* name() const override { return "basisu"; }
-        std::string version() const override { return std::string("basisu ") + BASISU_LIB_VERSION_STRING + " bands16"; }
+        std::string version() const override { return std::string("basisu ") + BASISU_LIB_VERSION_STRING + " bands16 rg-alpha dict8k"; }
         // SSE off, but not proven identical across CPUs (D11)
         bool isaInvariant() const override { return false; }
 

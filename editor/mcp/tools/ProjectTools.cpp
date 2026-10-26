@@ -1344,6 +1344,104 @@ const std::vector<Setting>& settingsTable() {
             add(s);
         }
 
+        // ---- texture (Project Settings > Texture, S14 R24)
+        {
+            auto textureSetting = [&](const std::string& key, const std::string& type, const std::string& description,
+                                      std::function<Json(const TextureProjectSettings&)> get,
+                                      std::function<bool(TextureProjectSettings&, const Json&, std::string&)> set,
+                                      std::vector<std::string> values = {}) {
+                Setting s;
+                s.key = key;
+                s.type = type;
+                s.description = description;
+                s.values = std::move(values);
+                s.get = [get](McpContext& ctx) { return get(ctx.project()->getTextureSettings()); };
+                s.set = [set](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                    TextureProjectSettings next = ctx.project()->getTextureSettings();
+                    if (!set(next, value, error)) return false;
+                    if (apply) ctx.project()->setTextureSettings(next);
+                    return true;
+                };
+                add(s);
+            };
+            textureSetting("texture.android_etc2_fallback", "bool",
+                           "Android exports also carry ETC2/EAC cooks for devices without ASTC (and the manifest stops asking for ASTC).",
+                           [](const TextureProjectSettings& t) { return Json(t.androidEtc2Fallback); },
+                           [](TextureProjectSettings& t, const Json& v, std::string& e) { return readBool(v, t.androidEtc2Fallback, e); });
+            for (size_t f = 0; f < kTextureFamilyCount; f++) {
+                const std::string family = textureFamilyName((TextureFamily)f);
+                textureSetting("texture.default_quality." + family, "enum",
+                               "Compression of " + family + " cooks without an override (none keeps them uncompressed).",
+                               [f](const TextureProjectSettings& t) { return Json(textureQualityName(t.defaultQuality[f])); },
+                               [f](TextureProjectSettings& t, const Json& v, std::string& e) {
+                                   std::string name;
+                                   if (!readString(v, name, e)) return false;
+                                   for (TextureCookQuality q : {TextureCookQuality::None, TextureCookQuality::Low, TextureCookQuality::Normal, TextureCookQuality::High}) {
+                                       if (name == textureQualityName(q)) {
+                                           t.defaultQuality[f] = q;
+                                           return true;
+                                       }
+                                   }
+                                   e = "\"" + name + "\" is not one of none, low, normal, high";
+                                   return false;
+                               }, {"none", "low", "normal", "high"});
+                textureSetting("texture.default_max_size." + family, "int",
+                               "Default Max Size of " + family + " cooks (a power of two, 32-16384).",
+                               [f](const TextureProjectSettings& t) { return Json(t.defaultMaxSize[f]); },
+                               [f](TextureProjectSettings& t, const Json& v, std::string& e) {
+                                   long long size;
+                                   if (!readInt(v, 32, 16384, size, e)) return false;
+                                   if (size & (size - 1)) {
+                                       e = "must be a power of two";
+                                       return false;
+                                   }
+                                   t.defaultMaxSize[f] = (int)size;
+                                   return true;
+                               });
+            }
+            for (size_t g = 0; g < 3; g++) {
+                const std::string group = texturePlatformGroupName(g);
+                textureSetting("texture.texture_quality." + group, "int",
+                               "Top mips " + group + " games drop from streamable textures: 0 full, 1 half, 2 quarter, 3 eighth.",
+                               [g](const TextureProjectSettings& t) { return Json(t.textureQuality[g]); },
+                               [g](TextureProjectSettings& t, const Json& v, std::string& e) {
+                                   long long q;
+                                   if (!readInt(v, 0, 3, q, e)) return false;
+                                   t.textureQuality[g] = (int)q;
+                                   return true;
+                               });
+                textureSetting("texture.memory_budget_mb." + group, "int",
+                               "Resident texture MB of " + group + " games (0 = unlimited); over it the largest streamable textures drop mips.",
+                               [g](const TextureProjectSettings& t) { return Json(t.memoryBudgetMB[g]); },
+                               [g](TextureProjectSettings& t, const Json& v, std::string& e) {
+                                   long long mb;
+                                   if (!readInt(v, 0, 1 << 20, mb, e)) return false;
+                                   t.memoryBudgetMB[g] = (int)mb;
+                                   return true;
+                               });
+                textureSetting("texture.low_memory_fallback." + group, "bool",
+                               "RGB565 / RGBA4444 instead of RGBA8 when a " + group + " GL device samples none of a texture's formats.",
+                               [g](const TextureProjectSettings& t) { return Json((bool)t.lowMemoryFallback[g]); },
+                               [g](TextureProjectSettings& t, const Json& v, std::string& e) {
+                                   bool b;
+                                   if (!readBool(v, b, e)) return false;
+                                   t.lowMemoryFallback[g] = b;
+                                   return true;
+                               });
+            }
+            textureSetting("texture.cache_size_mb", "int", "MB the cooked texture cache keeps (least recently used first).",
+                           [](const TextureProjectSettings& t) { return Json(t.cacheSizeMB); },
+                           [](TextureProjectSettings& t, const Json& v, std::string& e) {
+                               long long mb;
+                               if (!readInt(v, 64, 1 << 20, mb, e)) return false;
+                               t.cacheSizeMB = (int)mb;
+                               return true;
+                           });
+            textureSetting("texture.global_cache_dir", "string", "A cooked texture cache every project shares (\"\" = the project's own).",
+                           [](const TextureProjectSettings& t) { return Json(t.globalCacheDir); },
+                           [](TextureProjectSettings& t, const Json& v, std::string& e) { return readString(v, t.globalCacheDir, e); });
+        }
+
         // ---- player logging
         {
             Setting s;

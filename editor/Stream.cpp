@@ -1959,7 +1959,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     {
         // Project Settings > Texture (S14 R24): only what differs from the defaults
         const YAML::Node textureNode = encodeTextureProjectSettings(project->getTextureSettings());
-        if (textureNode) root["texture"] = textureNode;
+        if (textureNode.size() > 0) root["texture"] = textureNode;
     }
 
     if (!project->getStandalonePrefabs().empty()) {

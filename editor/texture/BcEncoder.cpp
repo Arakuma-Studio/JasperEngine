@@ -56,7 +56,7 @@ namespace {
     class BcEncoder final : public ITextureEncoder {
     public:
         const char* name() const override { return "bc7enc_rdo"; }
-        std::string version() const override { return "bc7enc_rdo b9438627 bands16"; }
+        std::string version() const override { return "bc7enc_rdo b9438627 bands16 alpha-check"; }
         // scalar floating point, not proven identical across CPUs (D11)
         bool isaInvariant() const override { return false; }
 
@@ -176,8 +176,33 @@ namespace {
                 return false;
             }
             // transparent texels stay at alpha 0 (OpenEngine's p-bit repair)
-            if (format == GpuTextureFormat::BC7 && channels == 4 && !opaque)
+            if (format == GpuTextureFormat::BC7 && channels == 4 && !opaque){
                 RepairBC7TransparentEndpoints(image.pixels.data(), (uint32_t)image.width, (uint32_t)image.height, out);
+                // the RDO pass may have taken a block of another mode whose alpha the repair cannot
+                // reach: such a block is encoded again without RDO, then repaired
+                bool reencoded = false;
+                for (int by = 0; by < blocksY; by++){
+                    for (int bx = 0; bx < blocksX; bx++){
+                        uint8_t* dst = &out[((size_t)by * blocksX + bx) * blockBytes];
+                        uint8_t rgba[64];
+                        gatherBlockRgba(image, channels, bx, by, rgba);
+                        bc7decomp::color_rgba decoded[16];
+                        if (!bc7decomp::unpack_bc7(dst, decoded))
+                            continue;
+                        bool leaks = false;
+                        for (int t = 0; t < 16 && !leaks; t++){
+                            const int x = bx * 4 + (t % 4), y = by * 4 + (t / 4);
+                            leaks = x < image.width && y < image.height && rgba[t * 4 + 3] == 0 && decoded[t].a != 0;
+                        }
+                        if (leaks){
+                            bc7enc_compress_block(dst, rgba, &bc7);
+                            reencoded = true;
+                        }
+                    }
+                }
+                if (reencoded)
+                    RepairBC7TransparentEndpoints(image.pixels.data(), (uint32_t)image.width, (uint32_t)image.height, out);
+            }
             return true;
         }
     };

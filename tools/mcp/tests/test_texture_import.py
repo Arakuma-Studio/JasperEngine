@@ -11,6 +11,7 @@ it has no metas, so the editor infers every texture's settings when it opens it 
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import struct
 import time
@@ -70,6 +71,10 @@ async def test_tools_hidden_until_enabled(ed: Editor):
     ed.check(set(TOOLS) <= listed, "texture tools listed once assets_pipeline is on")
     for name in TOOLS:
         ed.check_eq(tool_meta(ed.tool(name)).get("jasper/group"), "assets_pipeline", f"{name} group")
+    # what they add to a session that enables the group (tools/mcp/tool_budget.py's measure): <= 2,400 characters
+    size = sum(len(t.name) + len(t.description or "") + len(json.dumps(t.input_schema or {}, separators=(",", ":"), ensure_ascii=False))
+               for t in (ed.tool(name) for name in TOOLS))
+    ed.check(size <= 2400, f"the texture tools take {size} characters (budget 2,400)")
 
 
 async def test_inference_on_first_open(ed: Editor):

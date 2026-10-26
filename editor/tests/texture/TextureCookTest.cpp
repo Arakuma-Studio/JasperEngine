@@ -472,7 +472,9 @@ TEST(TextureEncodeSize, CorpusAveragesMeetTheBudgets){
         vram /= (double)colourCorpus().size();
         std::printf("[ size ] %-26s disk %.2f bpt (<= %.2f), VRAM %.2f bpt (<= %.2f)\n", b.what, disk, b.disk, vram, b.vram);
         EXPECT_LE(disk, b.disk) << b.what;
-        EXPECT_LE(vram, b.vram + 0.01) << b.what;
+        // R17's figures are the block rates; 512 px is no multiple of 6, so the 6x6 levels round
+        // up a column and a row of blocks (2048 px: within 0.5%, TextureCookBench)
+        EXPECT_LE(vram, b.vram * 1.025) << b.what;
     }
     // normal maps on the web: UASTC λ1
     const TextureCookResult normal = bench.cook(bench.source("normal"), cookSettings(TextureImportType::Normal, TextureCookQuality::Normal), TextureFamily::Web);

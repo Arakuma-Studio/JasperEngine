@@ -512,8 +512,10 @@ void TextureImporterView::updatePreviewJobs(const TextureCookState* state){
     const fs::path absolute = project->getAssetsPath() / assetPaths[0];
     const bool cube = workingSettings().shape.value_or(TextureShape::Tex2D) == TextureShape::Cube;
     // the source at the shown mip
+    std::error_code ec;
+    const auto written = fs::last_write_time(absolute, ec);
     const std::string sKey = assetPaths[0] + "|" + std::to_string(mip) + "|" + (cube ? "c" : "2") + "|" +
-                             std::to_string(fs::exists(absolute) ? fs::last_write_time(absolute).time_since_epoch().count() : 0);
+                             std::to_string(ec ? 0 : (long long)written.time_since_epoch().count());
     if (sKey != sourceKey){
         sourceKey = sKey;
         auto job = std::make_shared<PreviewJob>();
