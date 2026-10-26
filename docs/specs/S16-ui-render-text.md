@@ -669,3 +669,9 @@ one line pointing here.
   82->40, video_menu 32->14; engine time below the baseline in 9 of 11. Met: blank, inventory,
   pause_menu, settings, shop. The rest are effect passes (backdrop/filter blurs, text-shadow
   blurs beyond the MSDF reach, opacity layers and their composites, stencil masks under layers).
+- AC1 `p1/texture_effects` (S16 off, against oe-port's golden of 2026-10-11): oe-port 50c7afd3d
+  alone already renders 30 pixels over the threshold on the circle's clip edge (it passes: the
+  budget is 32), and S16 off adds 18 on the outlined text in the rotated, filtered panel (the
+  glyphs' top rows): 48. Experiments that changed nothing: clip shapes off (X1), the primitive
+  program not awaited (X2), the render request (X4). Bisect of oe-port's first-parent merges for
+  the 30 running in a scratch worktree; S16's 18 under investigation (glyph placement in the atlas).
