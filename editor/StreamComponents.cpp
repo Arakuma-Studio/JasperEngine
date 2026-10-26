@@ -758,10 +758,6 @@ ModelComponent editor::Stream::decodeModelComponent(const YAML::Node& node, cons
     return model;
 }
 
-static std::string shadowCaster2DShapeToString(ShadowCaster2DShape shape) {
-    return editor::StreamSchema::shadowCaster2DShape().toString(shape);
-}
-
 YAML::Node editor::Stream::encodeScriptComponent(const ScriptComponent& script) {
     YAML::Node node;
 

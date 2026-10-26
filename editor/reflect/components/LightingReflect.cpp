@@ -136,8 +136,6 @@ namespace {
 
     // ---------------------------------------------------------------- Fog
 
-    bool fogHeight(const void* fog) { return static_cast<const FogComponent*>(fog)->type == FogType::HEIGHT; }
-
     constexpr FieldDesc kFogFields[] = {
         JE_FIELD(FogComponent, type, .enumDesc = &enums::kFogType,
                  .tooltip = "Linear, Exponential, Exponential Squared: fog by distance. Height: physically based fog, dense up to the Base "

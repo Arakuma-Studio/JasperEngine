@@ -147,21 +147,6 @@ bool isSafeRelative(const fs::path& path) {
     return true;
 }
 
-// "colliders[12].type" → "colliders[].type"
-std::string stripIndices(const std::string& name) {
-    std::string out;
-    out.reserve(name.size());
-    for (size_t i = 0; i < name.size(); i++) {
-        out.push_back(name[i]);
-        if (name[i] == '[') {
-            size_t j = i + 1;
-            while (j < name.size() && std::isdigit(static_cast<unsigned char>(name[j]))) j++;
-            i = j - 1;
-        }
-    }
-    return out;
-}
-
 // "submeshes[3].material" → 3 (true), anything else false
 bool submeshMaterialIndex(const std::string& name, unsigned int& index) {
     const std::string prefix = "submeshes[";
