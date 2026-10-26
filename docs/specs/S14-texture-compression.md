@@ -595,3 +595,7 @@ alternative, recorded here).
 18. **Terrain detail normals (R13).** The terrain detail arrays are built from the source files
     (deviation 4), so their normal taps keep the RGB decode; every other normal sample goes
     through `decodeNormalMap()`.
+19. **R17 ASTC 6x6.** 4.74 bpt is 128 bits per 36 texels × 4/3; real mip chains round every level
+    up to whole 6×6 blocks (a 512² level is 86² blocks, the small levels one block each), so a
+    512² chain measures 4.83 bpt. `TextureEncodeSize` holds non-dividing block sizes to R17
+    × 1.025, the padding of a power-of-two chain, and every other format to R17 exactly.
