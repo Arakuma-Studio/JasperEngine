@@ -10,7 +10,9 @@
 #   --ordered           the expected lines must arrive in the order given
 #   --forbid TEXT       fail if a line contains TEXT (repeatable; default: none)
 #   --timeout SECONDS   how long to wait for the expected lines after the launch (default 120)
-#   --seconds SECONDS   with no --expect: how long the app runs before the checks (default 20)
+#   --no-ready          do not require the engine's ready line (below)
+#   --seconds SECONDS   with --no-ready and no --expect: how long the app runs before the checks
+#                       (default 20)
 #   --out DIR           results (default build/android-emulator): logcat.txt (-v tag, the run),
 #                       logcat-full.txt (-v threadtime, everything), screen.png, emulator.log,
 #                       result.txt
@@ -21,6 +23,12 @@
 # with SwiftShader (GLES 3), starts from a wiped userdata each run and stops at the end. The APK
 # needs the x86_64 ABI (tools/build.sh android builds every ABI). The app is launched with its
 # LAUNCHER intent; the package comes from the APK (aapt2).
+#
+# Unless --no-ready, the run also expects the engine's own line 'I/JasperEngine: Engine ready:'
+# (the property debug.jasperengine.ready_signal, which the runner sets, turns it on as
+# JASPERENGINE_READY_SIGNAL does on the desktop): the native library loaded, the engine started
+# and drew its scenes. An app that never gets there fails, and the native stacks of its threads
+# (debuggerd -b) are written to stacks.txt.
 #
 # Exit 0: every expectation met (and the app did not crash). 1: an expectation missed, a forbidden
 # line, or the app crashed (a FATAL EXCEPTION or a native crash of the package). 2: the test could
@@ -40,7 +48,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
-    sed -n '2,41p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,45p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 2
 }
 
@@ -50,6 +58,7 @@ APK="$1"; shift
 EXPECTS=()
 FORBIDS=()
 ORDERED=0
+READY=1
 TIMEOUT=120
 SECONDS_TO_RUN=20
 OUT="build/android-emulator"
@@ -63,6 +72,7 @@ while [[ $# -gt 0 ]]; do
             done < "$2"
             shift 2 ;;
         --ordered) ORDERED=1; shift ;;
+        --no-ready) READY=0; shift ;;
         --forbid) FORBIDS+=("$2"); shift 2 ;;
         --timeout) TIMEOUT="$2"; shift 2 ;;
         --seconds) SECONDS_TO_RUN="$2"; shift 2 ;;
@@ -82,7 +92,7 @@ case "$APK_ABS" in
     *) mkdir -p "$ROOT/$OUT"; cp "$APK_ABS" "$ROOT/$OUT/app.apk"; APK_IN="/src/$OUT/app.apk" ;;
 esac
 mkdir -p "$ROOT/$OUT" "$ROOT/build/.cache/home"
-rm -f "$ROOT/$OUT"/{logcat.txt,logcat-full.txt,screen.png,emulator.log,result.txt}
+rm -f "$ROOT/$OUT"/{logcat.txt,logcat-full.txt,screen.png,emulator.log,result.txt,stacks.txt}
 
 if [[ -n "${JASPER_DOCKER_IMAGE:-}" ]]; then
     IMAGE_ID="$JASPER_DOCKER_IMAGE"
@@ -93,7 +103,9 @@ else
         -f "$ROOT/docker/android-emulator.Dockerfile" "$ROOT/docker")"
 fi
 
-# the expectations go in through a file: any character survives
+# the expectations go in through a file: any character survives (the ready line last: it comes
+# after what the scenes log as they start)
+(( READY )) && EXPECTS+=("I/JasperEngine: Engine ready:")
 printf '%s\n' ${EXPECTS[@]+"${EXPECTS[@]}"} > "$ROOT/$OUT/expect.txt"
 printf '%s\n' ${FORBIDS[@]+"${FORBIDS[@]}"} > "$ROOT/$OUT/forbid.txt"
 
@@ -152,6 +164,7 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
         adb install -r -g "$APK" > "$OUT/install.log" 2>&1 || { log "install failed"; cat "$OUT/install.log"; exit 2; }
 
         adb logcat -c
+        adb shell setprop debug.jasperengine.ready_signal 1
         log "launching $PACKAGE"
         adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
 
@@ -197,11 +210,26 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
             echo "$crashes" | sed "s/^/CRASH        /" >> "$OUT/result.txt"
             result=1
         fi
-        if (( result )); then echo FAIL >> "$OUT/result.txt"; else echo PASS >> "$OUT/result.txt"; fi
+        if (( result )); then
+            # where the app is: the native stack of every thread (a hang loading the library, in
+            # JNI_OnLoad, in a static constructor...)
+            pid="$(adb shell pidof "$PACKAGE" 2>/dev/null | tr -d "\r")"
+            if [[ -n "$pid" ]]; then
+                # (debuggerd wants root: the emulator images are userdebug builds)
+                adb root >/dev/null 2>&1 && adb wait-for-device || true
+                adb shell debuggerd -b "$pid" > "$OUT/stacks.txt" 2>&1 || true
+                echo "STACKS       the app (pid $pid) is still running: its threads are in stacks.txt" >> "$OUT/result.txt"
+            else
+                echo "NO PROCESS   $PACKAGE is not running" >> "$OUT/result.txt"
+            fi
+            echo FAIL >> "$OUT/result.txt"
+        else
+            echo PASS >> "$OUT/result.txt"
+        fi
         sed "s/^/android-emulator-test: /" "$OUT/result.txt"
         adb exec-out screencap -p > "$OUT/screen.png" 2>/dev/null || true
         exit $result
     ' || status=$?
 
-echo "android-emulator-test: results in $OUT (logcat.txt, logcat-full.txt, screen.png, emulator.log, result.txt)"
+echo "android-emulator-test: results in $OUT (logcat.txt, logcat-full.txt, screen.png, emulator.log, result.txt, stacks.txt on a failure)"
 exit $status
