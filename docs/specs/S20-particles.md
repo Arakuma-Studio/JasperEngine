@@ -577,3 +577,63 @@ Unit tests use S02 gtest in `engine/tests/core/particles/`. Benchmarks are the
 - **Analysis report recommended extending the old model instead** (`03-world-building.md:231`).
   This is overridden by the user's explicit request for the module stack and high performance.
   The migration (D9) is what keeps that safe.
+
+## 10. Deviations
+
+What the implementation does differently from the text above, and why.
+
+- **Up is +Y.** Shapes emit along the engine's up axis (+Y), not Unity's +Z; the Cone, Circle,
+  Donut and Rectangle lie in the XZ plane. The Cone's Volume mode spawns uniformly over the
+  frustum's volume.
+- **The legacy struct lives in the engine** (`engine/core/particles/LegacyParticleSystem.h`, not
+  `editor/migration/`): the deprecated Lua/C++ setters (D9) edit it at run time in exported
+  games too.
+- **ParticleSystem is a GameObject** (`engine/core/object/ParticleSystem.*`, moved from
+  `action/`): the system is on its own GameObject (D1). `ParticleSystem(scene, actionEntity)`
+  resolves the old action's target and warns once.
+- **LUT sizes** are adaptive (65 entries doubling up to 1025 until linear interpolation is within
+  tolerance) rather than a fixed 64 (D5), so steep eases keep their shape.
+- **Speed-driven modules** (Color/Size/Rotation by Speed) are evaluated at render time from the
+  stored velocity, like the age-driven ones, instead of being stored per tick (D2).
+- **Sub-emitter children** spawn only what their parents ask for (their own Emission module is
+  ignored); trails inherit the particle's start colour and size at birth.
+- **Extra fields** the migration needs: Main `startSizeLinked` (one random pick for XYZ, the old
+  scale initializer), Renderer `untexturedShape` (a billboard without a texture draws Unity's
+  soft disc; migrated systems keep the old points' square), the Set over Age module (the old
+  from-to modifiers, D9). A burst at exactly the cycle's end fires, as the old system did.
+- **Noise qualities**: High is the three-potential curl noise (OpenEngine's field, golden-tested),
+  Medium two potentials, Low a periodic grid baked at compile time and sampled trilinearly.
+  On x86-64 processors with AVX2 the High/Medium field runs 8 samples at a time
+  (`CurlNoiseAvx2.cpp`, picked at run time); SSE2 stays the baseline and the results are
+  bit-identical.
+- **Shader variants**: FRAME_BLEND, LIT, SIXWAY, RECEIVE_SHADOWS, CUSTOM_DATA, MESH and TRAIL are
+  engine property bits of the `particles` shader type picked from the Renderer settings, not
+  user-facing features of `library:particles` (which keeps GLOW, EROSION, SOFT, NEAR_FADE).
+  Receive Shadows is one per-pixel tap of the main directional light's shadow. Mesh particles
+  cull back faces (both sides with Flip).
+- **Data**: an inline effect is stored in the scene YAML as its canonical JSON string
+  (`inlineEffect`); effect and texture paths are assets-relative with their GUIDs. Scene format
+  2 → 3 and prefab format 4 → 5 run the migration; an old system without a target gets a
+  Transform at the origin.
+- **Mesh source "GameObject"** is the GameObject's own MeshComponent; a migrated Mesh target keeps
+  its MeshComponent disabled as that source.
+- **Editor**: S27's curve widget has not landed, so curves and gradients show previews with key
+  tables (the spec's fallback, §9). The editor had no Inspector preview pane for assets: a
+  `.particles` file picked in the Project window takes the Inspector (a live preview and its
+  modules) until the GameObject selection changes. In Edit mode the particle subsystem is paused
+  and the Scene view's Particle Effect panel simulates the selected systems (and the ones a tool
+  controls).
+- **MCP**: the particles_* tools are the `particles` group (S31); `particles_capture` captures
+  the Scene or Game view after the seek (`camera: scene | game`) rather than taking a camera
+  GameObject. `create_particles` keeps its arguments; `emitter_entity` puts the system on that
+  GameObject (a Mesh one emits its mesh).
+- **Goldens**: the seven `particles_*` goldens are drawn on glcore and matched on Vulkan
+  (lavapipe); GLES3/WebGL2, Metal and D3D11 have no headless device on the build servers. The
+  soft/near-fade golden is the new renderer's: the old points were pixel-sized squares, so the
+  "equals today's `library:particle` output" image cannot match pixel for pixel; the migration
+  keeps the same shader features and parameters instead.
+- **Benchmarks**: the benchmark server has 2 cores, so the 8-worker budgets of R21/R22 are
+  checked as `single thread / (9 x 0.6)` with the parallel efficiency gated as measured
+  (docs/perf/particles.md). The sorted-view budget is checked on one thread. Mobile, GPU (R23)
+  and web rows are manual sign-offs on the named devices. OpenEngine and Unity are compared at
+  the design level only (neither is runnable on the servers).
