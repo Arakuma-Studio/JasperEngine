@@ -469,3 +469,33 @@ All execution uses `je-remote/rb.sh`; no local builds or tests.
   build/linux/core-tests-address-undefined/tests/core/jasperengine-crash-test
   --symbolicate tools/crash/symbolicate.py --expect-asan`: all 10 modes pass, explicitly checking
   that ASan's prior fatal handler prints after the engine report.
+- Server D, refreshed focused gtest run: `Crash*:HangWatchdog.*` runs 29/29 successfully
+  in both normal and ASan+UBSan trees, including the saved handler returning, recovered guard,
+  pending hook and main-thread frame assertions. No new diagnostic allocation leak or UB is
+  reported. The sanitizer process exits with the existing 56-byte `jobs::setProfilerHooks`
+  leak from `GpuEnvironment::initEngine` (the common test harness), after all assertions pass.
+
+#### Baseline gate failures owned by other streams
+
+Per the integration owner's instruction, this branch does not change texture, scene or profiler
+ownership and does not suppress their engine/editor leaks. BF2 (`fix/bf2-green-oe-port`) owns
+those fixes. The full ASan+UBSan run identified:
+
+- `Profiler.CommandLineCaptureWritesItsFile`, `JobsHooks.JobsReportBeginAndEnd` and
+  `JobsParallelForLanes.*`: profiler-hook snapshots allocated by `jobs::setProfilerHooks` are
+  retained; the full core run reports 280 bytes in five allocations. Even a focused CPU run
+  inherits one 56-byte snapshot from common engine initialization.
+- `Compat.CorpusRoundTrip` and `HotReloadServiceTests.*`: texture image buffers (default sky
+  and hot reload) and `Project::createSceneRender`/scene restoration ownership leak; the full
+  editor run reports 273,768,644 bytes in 24,640 allocations.
+- `ToolchainFingerprint.CompareNamesEachDifferingField`: the Debug sanitizer fixture already
+  has `ndebug=0`, so assigning zero does not create the third expected mismatch (two vs three).
+  The test fixture remains unchanged on this branch.
+- `NumericExpression.EvaluationWithinBudget` (ASan) and
+  `LoadReportOverheadBench.DecodeWithReport` (normal): wall-clock limits exceeded on shared D.
+  Timing acceptance is authoritative only on E; these unrelated D results are informational.
+
+The initial full normal run's two `CrashHook.*` failures were a real report-hook mutex
+reentrancy deadlock; this branch fixes it, and both refreshed normal and sanitizer focused
+runs pass them. Fatal helper processes deliberately print sanitizer signal diagnostics after
+our report; those are expected evidence that the saved sanitizer handler is still chained.
