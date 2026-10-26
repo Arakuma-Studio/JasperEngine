@@ -43,13 +43,15 @@ namespace {
     }
 
     YAML::Node importerGet(const YAML::Node& root, const std::string& key){
-        YAML::Node node = YAML::Clone(root);
+        // (reset rebinds: yaml-cpp's assignment to a bound node overwrites what it holds)
+        YAML::Node node;
+        node.reset(root);
         for (const std::string& part : importerSplitKey(key)){
             if (!node || !node.IsMap() || !node[part])
                 return YAML::Node();
-            node = node[part];
+            node.reset(node[part]);
         }
-        return node;
+        return YAML::Clone(node);
     }
 
     void importerSet(YAML::Node& root, const std::string& key, const YAML::Node& value){
@@ -60,7 +62,7 @@ namespace {
         for (size_t i = 0; i + 1 < parts.size(); i++){
             if (!node[parts[i]] || !node[parts[i]].IsMap())
                 node[parts[i]] = YAML::Node(YAML::NodeType::Map);
-            node = node[parts[i]];
+            node.reset(node[parts[i]]);
         }
         if (value)
             node[parts.back()] = YAML::Clone(value);
@@ -234,7 +236,7 @@ void TextureImporterView::select(const std::vector<fs::path>& selection){
         const fs::path absolute = project->getAssetsPath() / assetPaths[i];
         const YAML::Node section = SetAssetMetaCmd::read(absolute, TextureImportSettings::metaKey);
         TextureCookInputs inputs;
-        if (section){
+        if (section && section.IsMap()){
             TextureImportSettings::parse(section, inputs.settings);
         }else{
             gatherTextureInputs(*project, assetPaths[i], inputs);
@@ -667,8 +669,10 @@ void TextureImporterView::composite(){
     }
     previewTexture.destroy();
     TextureData data(w, h, (unsigned int)bytes, ColorFormat::RGBA, 4, out);
-    data.setDataOwned(true);
+    // the copies the constructor makes must not free the pixels: the texture's own data owns them
+    data.setDataOwned(false);
     previewTexture = Texture("editor-texture-importer-preview-" + std::to_string(++previewSerial), data);
+    previewTexture.getData().setDataOwned(true);
     previewTexture.setMinFilter(TextureFilter::LINEAR);
     previewTexture.setMagFilter(TextureFilter::NEAREST);
     previewTexture.load();
