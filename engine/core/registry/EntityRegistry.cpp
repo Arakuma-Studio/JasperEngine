@@ -251,7 +251,7 @@ bool EntityRegistry::recreateEntity(Entity entity) {
 void EntityRegistry::destroyEntity(Entity entity) {
     if (isInHierarchy(entity)) {
         hierarchyRev++;
-            logHierarchyChange(destroyedLog, entity);
+        logHierarchyChange(destroyedLog, entity);
     }
     onEntityDestroyed(entity, entityManager.getSignature(entity));
 
@@ -269,7 +269,7 @@ void EntityRegistry::destroyEntities(const std::vector<Entity>& entities) {
     for (Entity entity : entities) {
         if (isInHierarchy(entity)) {
             hierarchyRev++;
-                    logHierarchyChange(destroyedLog, entity);
+            logHierarchyChange(destroyedLog, entity);
         }
     }
     for (Entity entity : entities) {
