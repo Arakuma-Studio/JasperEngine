@@ -411,6 +411,19 @@ namespace jasperengine::editor{
         // apply (built-in Lit or a fork)
         bool drawMaterialShaderRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
                                     unsigned int submesh, const RowSettings& settingsMaterial);
+        // A Light's Intensity row with its unit (Engine, Lux, Candela, Lumen by type; a change
+        // converts the value so the light stays as bright), and its colour temperature rows (Use
+        // Color Temperature, Temperature with the black body gradient and Unity's presets)
+        void drawLightIntensityRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                    const RowSettings& settingsFloat);
+        void drawLightTemperatureRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+        // The scene's Physical Light Exposure (EV100) row and its presets (Lighting settings)
+        void drawPhysicalLightExposureRow(SceneProject* sceneProject);
+        // A built-in Lit material's Advanced Surface rows (InspectorMaterialPbr.cpp): a header per
+        // extended lobe with its checkbox, its values and maps, and the variant footer (its
+        // codes, Compiling/Ready, extension maps n / 3, the maps left out)
+        void drawMaterialAdvancedSurfaceRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                             unsigned int submesh, const RowSettings& settingsMaterial);
         // A submesh material's Surface (blend, cull, depth write and test, depth offset, sort
         // priority) and Lighting rows; Auto shows what it resolves to
         void drawMaterialSurfaceRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,

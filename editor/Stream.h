@@ -133,6 +133,10 @@ namespace jasperengine::editor {
         // a material's extra pass; only the fields away from their defaults
         static YAML::Node encodeMaterialPass(const MaterialPass& pass, bool embedTextureData);
         static MaterialPass decodeMaterialPass(const YAML::Node& node);
+        // Material::pbr, the built-in Lit's extended lobes and hex tiling: a map of the lobes
+        // with a value away from its default, each with only those values (empty: all default)
+        static YAML::Node encodeMaterialPbr(const MaterialPbrExtensions& pbr, bool embedTextureData);
+        static MaterialPbrExtensions decodeMaterialPbr(const YAML::Node& node);
 
         static std::string scriptPropertyTypeToString(ScriptPropertyType type);
         static ScriptPropertyType stringToScriptPropertyType(const std::string& str);

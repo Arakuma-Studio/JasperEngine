@@ -30,7 +30,7 @@ scripts. Each tool edit is an undoable command, live to a human watching. Build 
 with tools, write code with your own file tools, verify by playing, screenshots and the Console.
 tools/list is authoritative for tool names and arguments; read a tool's description before
 first use. Deeper reference: jasper://docs/... (Lua scripting and API, C++ scripting, physics,
-shaders, prefabs, assets, HTML/CSS UI, data safety, undo, profiling, ECS, Unity glossary).
+shaders, materials, prefabs, assets, HTML/CSS UI, data safety, undo, profiling, ECS, Unity glossary).
 
 ## Unity names -> engine names
 Tools, component names and script APIs use the engine names.
@@ -206,6 +206,8 @@ pass or colour copy per camera and must draw transparent; avoid on low-end mobil
 when nothing fits: fork_shader copies the built-in shader and sets customShader. Read a fork
 before editing (its rules: jasper://docs/shaders); its parameters are the u_fs_customParams
 block (set_shader_uniform). A failing shader draws as the built-in one (error in the Console).
+Built-in Lit lobes (a material's pbr: clear coat, sheen, transmission...), Lit Quality and light
+units: jasper://docs/materials.
 
 ## Post-processing
 Main camera only: apply_post_processing_preset (film, vhs, mobile_adaptive...), then

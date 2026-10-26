@@ -217,7 +217,7 @@ namespace jasperengine::editor{
         // Submesh::overrideFields of a "submeshes[N].<field>" property, null for anything else,
         // with propertyFields set to the bits that property occupies. A command ORs them in after
         // writing the value, and puts the whole mask back on undo.
-        static uint32_t* getSubmeshOverrideMask(EntityRegistry* registry, Entity entity, ComponentType component, const std::string& propertyName, uint32_t& propertyFields);
+        static uint64_t* getSubmeshOverrideMask(EntityRegistry* registry, Entity entity, ComponentType component, const std::string& propertyName, uint64_t& propertyFields);
 
         // custom uniform blocks of a Mesh/UI/Points/Lines/Sky component's loaded shader, vertex first
         static std::vector<const CustomUniformBlock*> getShaderUniformBlocks(EntityRegistry* registry, Entity entity, ComponentType component);
@@ -366,6 +366,7 @@ namespace jasperengine::editor{
                 if constexpr (std::is_same_v<T, LightState>) return LightState::AUTO;
             if constexpr (std::is_same_v<T, ShadowQuality>) return ShadowQuality::LOW;
                 if constexpr (std::is_same_v<T, SceneColorScale>) return SceneColorScale::HALF;
+                if constexpr (std::is_same_v<T, LitQuality>) return LitQuality::HIGH;
                 if constexpr (std::is_same_v<T, TextureFilter>) return TextureFilter::NEAREST;
                 if constexpr (std::is_same_v<T, std::string>) return std::string();
                 if constexpr (std::is_same_v<T, PostProcessingSettings>) return PostProcessingSettings();
@@ -427,6 +428,16 @@ namespace jasperengine::editor{
             else if (propertyName == "max_lights_per_object") {
                 if constexpr (std::is_same_v<T, int>) {
                     return scene->getMaxLightsPerObject();
+                }
+            }
+            else if (propertyName == "lit_quality") {
+                if constexpr (std::is_same_v<T, LitQuality>) {
+                    return scene->getLitQuality();
+                }
+            }
+            else if (propertyName == "physical_light_ev100") {
+                if constexpr (std::is_same_v<T, float>) {
+                    return scene->getPhysicalLightEV100();
                 }
             }
             else if (propertyName == "ambient_light_2d_color") {
@@ -600,6 +611,7 @@ namespace jasperengine::editor{
             if constexpr (std::is_same_v<T, LightState>) return LightState::AUTO;
             if constexpr (std::is_same_v<T, ShadowQuality>) return ShadowQuality::LOW;
             if constexpr (std::is_same_v<T, SceneColorScale>) return SceneColorScale::HALF;
+            if constexpr (std::is_same_v<T, LitQuality>) return LitQuality::HIGH;
             if constexpr (std::is_same_v<T, TextureFilter>) return TextureFilter::NEAREST;
             if constexpr (std::is_same_v<T, std::string>) return std::string();
             if constexpr (std::is_same_v<T, std::vector<PostProcessPass>>) return std::vector<PostProcessPass>();
@@ -654,6 +666,12 @@ namespace jasperengine::editor{
             }
             else if (propertyName == "max_lights_per_object") {
                 if constexpr (std::is_same_v<T, int>) return d.maxLightsPerObject;
+            }
+            else if (propertyName == "lit_quality") {
+                if constexpr (std::is_same_v<T, LitQuality>) return d.litQuality;
+            }
+            else if (propertyName == "physical_light_ev100") {
+                if constexpr (std::is_same_v<T, float>) return d.physicalLightEV100;
             }
             else if (propertyName == "ambient_light_2d_color") {
                 if constexpr (std::is_same_v<T, Vector3>) return Color::linearTosRGB(d.ambientLight2DColor);
@@ -818,6 +836,16 @@ namespace jasperengine::editor{
             else if (propertyName == "max_lights_per_object") {
                 if constexpr (std::is_same_v<T, int>) {
                     scene->setMaxLightsPerObject(value);
+                }
+            }
+            else if (propertyName == "lit_quality") {
+                if constexpr (std::is_same_v<T, LitQuality>) {
+                    scene->setLitQuality(value);
+                }
+            }
+            else if (propertyName == "physical_light_ev100") {
+                if constexpr (std::is_same_v<T, float>) {
+                    scene->setPhysicalLightEV100(value);
                 }
             }
             else if (propertyName == "ambient_light_2d_color") {

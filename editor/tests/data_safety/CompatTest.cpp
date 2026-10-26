@@ -106,6 +106,8 @@ namespace {
         std::string line, out;
         while (std::getline(in, line)) {
             if (line.rfind("formatVersion:", 0) == 0) continue;
+            // the scene's asset identity (S04): the project's, which a bare decode does not carry
+            if (line.rfind("guid:", 0) == 0 || line.rfind("formerGuids:", 0) == 0) continue;
             out += line + "\n";
         }
         return out;
@@ -134,7 +136,10 @@ TEST(Compat, CorpusRoundTrip) {
         // Hand-written fixtures and scenes holding prefab instances (their members come from the
         // prefab files, which this test does not load) are normalised by their first save.
         const bool editorWritten = original.find("\nmaxValues:") != std::string::npos &&
-                                   original.find("prefabInstance") == std::string::npos && original.find("\n      prefab:") == std::string::npos;
+                                   original.find("prefabInstance") == std::string::npos && original.find("\n      prefab:") == std::string::npos &&
+                                   // a model's images are textures by id (the model file's path on the
+                                   // machine that saved it), which a bare decode cannot load
+                                   original.find("|gltf-image|") == std::string::npos;
         if (editorWritten) {
             const std::string difference = firstDifference(withoutShadowMigration(withoutShaderKeys(withoutVersionLine(first))),
                                                            withoutShadowMigration(withoutShaderKeys(withoutVersionLine(original))));

@@ -44,6 +44,11 @@ uniform u_fs_sceneInputs {
     vec4 screenParams;          // screenUV() = gl_FragCoord.xy * xy + zw
     vec4 colorParams;           // colour copy v = uv.y * x + y; zw = 1 / copy size in texels
     vec4 depthParams;           // depth texture uv = screen uv * xy + zw
+    #ifdef SCENE_VIEW_PROJECTION
+        // world -> clip space, the camera's unflipped matrices (the built-in Lit's transmission
+        // refracts into the colour copy with it; a block without it is uploaded without it)
+        mat4 viewProjection;
+    #endif
 } sceneInputs;
 
 #ifdef SURFACE_SCENE_DEPTH

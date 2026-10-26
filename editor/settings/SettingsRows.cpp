@@ -61,6 +61,7 @@ const EnumMap<Scaling> scalingModes[] = {
     {"crop", Scaling::CROP}, {"stretch", Scaling::STRETCH}, {"native", Scaling::NATIVE}};
 const EnumMap<TextureStrategy> textureStrategies[] = {
     {"fit", TextureStrategy::FIT}, {"resize", TextureStrategy::RESIZE}, {"none", TextureStrategy::NONE}};
+const EnumMap<PbrTier> pbrTiers[] = {{"full", PbrTier::FULL}, {"reduced", PbrTier::REDUCED}};
 const EnumMap<AtmosphereQuality> atmosphereQualities[] = {
     {"off", AtmosphereQuality::OFF}, {"low", AtmosphereQuality::LOW}, {"medium", AtmosphereQuality::MEDIUM}, {"high", AtmosphereQuality::HIGH}};
 const EnumMap<ShadowTier> shadowTiers[] = {
@@ -801,6 +802,21 @@ std::vector<Setting> mcpSettingsTable() {
         }
         {
             Setting s;
+            s.key = "graphics.mobile_pbr_tier";
+            s.type = "enum";
+            s.values = enumNames(pbrTiers);
+            s.description = "Built-in Lit extended lobes on Android, iOS and HTML5 exports: reduced leaves out iridescence, anisotropy direction maps and clear coat normal maps.";
+            s.get = [](SettingsContext& ctx) { return Json(enumName(pbrTiers, ctx.project()->getMobilePbrTier())); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                PbrTier v;
+                if (!parseEnum(pbrTiers, value, v, error)) return false;
+                if (apply) ctx.project()->setMobilePbrTier(v);
+                return true;
+            };
+            add(s);
+        }
+        {
+            Setting s;
             s.key = "graphics.html_ui_msaa_samples";
             s.type = "int";
             s.description = "MSAA samples of the HTML/CSS UI documents' targets (1, 2, 4 or 8; default 4). Smoother "
@@ -1406,6 +1422,7 @@ const Placement placements[] = {
     {"graphics.canvas_height", "Graphics", "", "Canvas Height", "reference resolution"},
     {"graphics.scaling_mode", "Graphics", "", "Scaling Mode", "letterbox fit crop stretch"},
     {"graphics.texture_strategy", "Graphics", "", "Texture Strategy", "power of two"},
+    {"graphics.mobile_pbr_tier", "Graphics", "", "Mobile PBR Tier", "clear coat iridescence anisotropy lit android ios web"},
     {"graphics.html_ui_msaa_samples", "Graphics", "", "HTML UI MSAA", "anti-aliasing antialiasing multisampling"},
     {"graphics.shadow_tier.windows", "Graphics", "Shadows", "Windows Shadow Tier", "shadow quality"},
     {"graphics.shadow_tier.linux", "Graphics", "Shadows", "Linux Shadow Tier", "shadow quality"},

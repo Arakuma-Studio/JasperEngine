@@ -290,11 +290,18 @@ namespace jasperengine{
     // A shader reference string (section 3.1): "" built-in, "library:<name>" an engine
     // library shader, anything else a project fork. A variant's reference may end in
     // "#A,B" (its enabled feature defines, sorted), which compiles them as #defines.
+    // "builtin:lit#A,B" is a variant of the built-in Lit with defines its property bits have
+    // no room for (the extended lobes, hex tiling, the High Lit Quality: MaterialPbr); it is
+    // only made by the renderer, never set on a material.
     class JASPERENGINE_API ShaderReference{
     public:
         static const char* const LIBRARY_PREFIX; // "library:"
+        static const char* const BUILTIN_PREFIX; // "builtin:"
+        static const char* const BUILTIN_LIT;    // "builtin:lit"
 
         static bool isLibrary(const std::string& reference);
+        // "builtin:..." (the built-in shader with defines)
+        static bool isBuiltin(const std::string& reference);
         // "library:toon#RIM" -> "toon"
         static std::string getLibraryName(const std::string& reference);
         // without the "#..." feature suffix

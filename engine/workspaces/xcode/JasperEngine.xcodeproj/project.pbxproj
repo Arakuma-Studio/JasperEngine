@@ -151,8 +151,14 @@
 		71C005E2D2E7A0100C91BA00 /* MeshLodPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C005B2D2E7A0100C91BA00 /* MeshLodPool.cpp */; };
 		17FB42732FDDA6E3002F919C /* MirrorComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 17FB42722FDDA6E3002F919C /* MirrorComponent.h */; };
 		17FB42762FDDA782002F919C /* IBLEnvironment.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 17FB42752FDDA782002F919C /* IBLEnvironment.cpp */; };
+		511A00070000000000000000 /* TexturePack.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 511A00060000000000000000 /* TexturePack.cpp */; };
+		511A00020000000000000000 /* MaterialPbr.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 511A00010000000000000000 /* MaterialPbr.cpp */; };
 		17FB42772FDDA782002F919C /* IBLEnvironment.h in Headers */ = {isa = PBXBuildFile; fileRef = 17FB42742FDDA782002F919C /* IBLEnvironment.h */; };
+		511A000A0000000000000000 /* TexturePack.h in Headers */ = {isa = PBXBuildFile; fileRef = 511A00090000000000000000 /* TexturePack.h */; };
+		511A00050000000000000000 /* MaterialPbr.h in Headers */ = {isa = PBXBuildFile; fileRef = 511A00040000000000000000 /* MaterialPbr.h */; };
 		17FB42782FDDA782002F919C /* IBLEnvironment.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 17FB42752FDDA782002F919C /* IBLEnvironment.cpp */; };
+		511A00080000000000000000 /* TexturePack.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 511A00060000000000000000 /* TexturePack.cpp */; };
+		511A00030000000000000000 /* MaterialPbr.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 511A00010000000000000000 /* MaterialPbr.cpp */; };
 		71033D662BD1A7D200D81FB5 /* ScrollbarComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 71033D652BD1A7D200D81FB5 /* ScrollbarComponent.h */; };
 		71033D692BD1A7F100D81FB5 /* Scrollbar.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71033D672BD1A7F000D81FB5 /* Scrollbar.cpp */; };
 		71033D6A2BD1A7F100D81FB5 /* Scrollbar.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71033D672BD1A7F000D81FB5 /* Scrollbar.cpp */; };
@@ -163,6 +169,8 @@
 		7105A55828B305910092EA05 /* Color.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105A55628B305910092EA05 /* Color.cpp */; };
 		7105A55928B305910092EA05 /* Color.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105A55628B305910092EA05 /* Color.cpp */; };
 		7105A55A28B305910092EA05 /* Color.h in Headers */ = {isa = PBXBuildFile; fileRef = 7105A55728B305910092EA05 /* Color.h */; };
+		511A00110000000000000000 /* OutOfLineValue.h in Headers */ = {isa = PBXBuildFile; fileRef = 511A00100000000000000000 /* OutOfLineValue.h */; };
+		511A000F0000000000000000 /* LightPhotometry.h in Headers */ = {isa = PBXBuildFile; fileRef = 511A000E0000000000000000 /* LightPhotometry.h */; };
 		7105A56228B305B20092EA05 /* GameObjectClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105A55C28B305B20092EA05 /* GameObjectClassesLua.cpp */; };
 		7105A56328B305B20092EA05 /* GameObjectClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105A55C28B305B20092EA05 /* GameObjectClassesLua.cpp */; };
 		7105A56428B305B20092EA05 /* CoreClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105A55D28B305B20092EA05 /* CoreClassesLua.cpp */; };
@@ -1002,7 +1010,9 @@
 		71ABBD4527A879D4001CE3AF /* Button.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71ABBD4227A879D4001CE3AF /* Button.cpp */; };
 		71ABBD4627A879D4001CE3AF /* Button.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ABBD4327A879D4001CE3AF /* Button.h */; };
 		71ABBD4927A87A2E001CE3AF /* MeshSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71ABBD4727A87A2E001CE3AF /* MeshSystem.cpp */; };
+		511A000C0000000000000000 /* MeshSystemGltfPbr.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 511A000B0000000000000000 /* MeshSystemGltfPbr.cpp */; };
 		71ABBD4A27A87A2E001CE3AF /* MeshSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71ABBD4727A87A2E001CE3AF /* MeshSystem.cpp */; };
+		511A000D0000000000000000 /* MeshSystemGltfPbr.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 511A000B0000000000000000 /* MeshSystemGltfPbr.cpp */; };
 		71ABBD4B27A87A2E001CE3AF /* MeshSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ABBD4827A87A2E001CE3AF /* MeshSystem.h */; };
 		71AD5E702E9F2B86004951AB /* ScriptBase.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71AD5E6E2E9F2B86004951AB /* ScriptBase.cpp */; };
 		71AD5E712E9F2B86004951AB /* ScriptProperty.h in Headers */ = {isa = PBXBuildFile; fileRef = 71AD5E6F2E9F2B86004951AB /* ScriptProperty.h */; };
@@ -3849,7 +3859,11 @@
 		71C005B2D2E7A0100C91BA00 /* MeshLodPool.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = MeshLodPool.cpp; sourceTree = "<group>"; };
 		17FB42722FDDA6E3002F919C /* MirrorComponent.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MirrorComponent.h; sourceTree = "<group>"; };
 		17FB42742FDDA782002F919C /* IBLEnvironment.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IBLEnvironment.h; sourceTree = "<group>"; };
+		511A00090000000000000000 /* TexturePack.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TexturePack.h; sourceTree = "<group>"; };
+		511A00040000000000000000 /* MaterialPbr.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MaterialPbr.h; sourceTree = "<group>"; };
 		17FB42752FDDA782002F919C /* IBLEnvironment.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = IBLEnvironment.cpp; sourceTree = "<group>"; };
+		511A00060000000000000000 /* TexturePack.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = TexturePack.cpp; sourceTree = "<group>"; };
+		511A00010000000000000000 /* MaterialPbr.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = MaterialPbr.cpp; sourceTree = "<group>"; };
 		71033D652BD1A7D200D81FB5 /* ScrollbarComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScrollbarComponent.h; sourceTree = "<group>"; };
 		71033D672BD1A7F000D81FB5 /* Scrollbar.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Scrollbar.cpp; sourceTree = "<group>"; };
 		71033D682BD1A7F000D81FB5 /* Scrollbar.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Scrollbar.h; sourceTree = "<group>"; };
@@ -3857,6 +3871,8 @@
 		710506AD297F4483002DD23C /* Primitive.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Primitive.h; sourceTree = "<group>"; };
 		7105A55628B305910092EA05 /* Color.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Color.cpp; sourceTree = "<group>"; };
 		7105A55728B305910092EA05 /* Color.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Color.h; sourceTree = "<group>"; };
+		511A00100000000000000000 /* OutOfLineValue.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = OutOfLineValue.h; sourceTree = "<group>"; };
+		511A000E0000000000000000 /* LightPhotometry.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LightPhotometry.h; sourceTree = "<group>"; };
 		7105A55C28B305B20092EA05 /* GameObjectClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GameObjectClassesLua.cpp; sourceTree = "<group>"; };
 		7105A55D28B305B20092EA05 /* CoreClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CoreClassesLua.cpp; sourceTree = "<group>"; };
 		7105A55E28B305B20092EA05 /* MathClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MathClassesLua.cpp; sourceTree = "<group>"; };
@@ -5145,6 +5161,7 @@
 		71ABBD4227A879D4001CE3AF /* Button.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Button.cpp; sourceTree = "<group>"; };
 		71ABBD4327A879D4001CE3AF /* Button.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Button.h; sourceTree = "<group>"; };
 		71ABBD4727A87A2E001CE3AF /* MeshSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MeshSystem.cpp; sourceTree = "<group>"; };
+		511A000B0000000000000000 /* MeshSystemGltfPbr.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = MeshSystemGltfPbr.cpp; sourceTree = "<group>"; };
 		71ABBD4827A87A2E001CE3AF /* MeshSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MeshSystem.h; sourceTree = "<group>"; };
 		71AD5E6D2E9F2B86004951AB /* ScriptBase.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ScriptBase.h; sourceTree = "<group>"; };
 		71AD5E6E2E9F2B86004951AB /* ScriptBase.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ScriptBase.cpp; sourceTree = "<group>"; };
@@ -8068,6 +8085,8 @@
 				7105CAA72AD61BD5007C91BA /* Box2DAux.h */,
 				175DCE6930255343008C19EC /* CharExtent.h */,
 				7105A55728B305910092EA05 /* Color.h */,
+				511A00100000000000000000 /* OutOfLineValue.h */,
+				511A000E0000000000000000 /* LightPhotometry.h */,
 				7105A55628B305910092EA05 /* Color.cpp */,
 				71AD5E742EAECC69004951AB /* CrashGuard.h */,
 				53303921627928F8915EEBF7 /* CrashHook.h */,
@@ -8308,7 +8327,11 @@
 				717AD990292FC30A007D7DB5 /* Framebuffer.h */,
 				717AD991292FC30A007D7DB5 /* Framebuffer.cpp */,
 				17FB42742FDDA782002F919C /* IBLEnvironment.h */,
+				511A00090000000000000000 /* TexturePack.h */,
+				511A00040000000000000000 /* MaterialPbr.h */,
 				17FB42752FDDA782002F919C /* IBLEnvironment.cpp */,
+				511A00060000000000000000 /* TexturePack.cpp */,
+				511A00010000000000000000 /* MaterialPbr.cpp */,
 				715CB11A288CD5790049344B /* Material.h */,
 				7162FC6D25962A0E0075B97D /* Texture.h */,
 				7162FC6C25962A0E0075B97D /* Texture.cpp */,
@@ -8328,6 +8351,7 @@
 				717AD96B290B661A007D7DB5 /* AudioSystem.cpp */,
 				717AD96C290B661A007D7DB5 /* AudioSystem.h */,
 				71ABBD4727A87A2E001CE3AF /* MeshSystem.cpp */,
+				511A000B0000000000000000 /* MeshSystemGltfPbr.cpp */,
 				71ABBD4827A87A2E001CE3AF /* MeshSystem.h */,
 				71E824922A9C242B00C8E6F2 /* PhysicsSystem.cpp */,
 				71E824932A9C242B00C8E6F2 /* PhysicsSystem.h */,
@@ -11811,6 +11835,8 @@
 				1776226C3058741F00F220CC /* ShaderUniforms.h in Headers */,
 				17A1C0A33058741F00F220CC /* ShaderManifest.h in Headers */,
 				7105A55A28B305910092EA05 /* Color.h in Headers */,
+				511A00110000000000000000 /* OutOfLineValue.h in Headers */,
+				511A000F0000000000000000 /* LightPhotometry.h in Headers */,
 				71ABBD342783C8BB001CE3AF /* Image.h in Headers */,
 				71ABBD13277A3166001CE3AF /* TextComponent.h in Headers */,
 				71E5450C284D5BB700C68FAB /* ScaleTracks.h in Headers */,
@@ -11820,6 +11846,8 @@
 				71451BF4270CA3EA00712643 /* SpriteFrameData.h in Headers */,
 				7170A3CC2818A87E0003E965 /* ModelComponent.h in Headers */,
 				17FB42772FDDA782002F919C /* IBLEnvironment.h in Headers */,
+				511A000A0000000000000000 /* TexturePack.h in Headers */,
+				511A00050000000000000000 /* MaterialPbr.h in Headers */,
 				713E580827BA9CB700376680 /* MeshPolygon.h in Headers */,
 				175DCCB6300FA1F2008C19EC /* ReflectionProbe.h in Headers */,
 				71ABBD23277A31E6001CE3AF /* UISystem.h in Headers */,
@@ -13829,6 +13857,8 @@
 				71BE622125B1DB83006D6E02 /* TextureData.cpp in Sources */,
 				713D82A8259D307F00567F9F /* Camera.cpp in Sources */,
 				17FB42782FDDA782002F919C /* IBLEnvironment.cpp in Sources */,
+				511A00080000000000000000 /* TexturePack.cpp in Sources */,
+				511A00030000000000000000 /* MaterialPbr.cpp in Sources */,
 				71EA6DA82AE20B8C00CA9A75 /* CollideShapeResult3D.cpp in Sources */,
 				713D82A9259D307F00567F9F /* GameObject.cpp in Sources */,
 				7170A3DC2818A8A30003E965 /* Fog.cpp in Sources */,
@@ -13849,6 +13879,7 @@
 				713D82AE259D307F00567F9F /* Engine.cpp in Sources */,
 				71ABBD1D277A31BA001CE3AF /* Text.cpp in Sources */,
 				71ABBD4A27A87A2E001CE3AF /* MeshSystem.cpp in Sources */,
+				511A000D0000000000000000 /* MeshSystemGltfPbr.cpp in Sources */,
 				71ABBD25277A31E6001CE3AF /* UISystem.cpp in Sources */,
 				71125F1A2E41845E006D11A1 /* EntityRegistry.cpp in Sources */,
 				A6E1909131064483572D2D7E /* EntityCloner.cpp in Sources */,
@@ -14298,6 +14329,8 @@
 				71BE624325B1DB9E006D6E02 /* ShaderPool.cpp in Sources */,
 				71BE622025B1DB83006D6E02 /* TextureData.cpp in Sources */,
 				17FB42762FDDA782002F919C /* IBLEnvironment.cpp in Sources */,
+				511A00070000000000000000 /* TexturePack.cpp in Sources */,
+				511A00020000000000000000 /* MaterialPbr.cpp in Sources */,
 				71EA6DA72AE20B8C00CA9A75 /* CollideShapeResult3D.cpp in Sources */,
 				7162FD3925963AE00075B97D /* Quaternion.cpp in Sources */,
 				7162FD3B25963AE00075B97D /* AABB.cpp in Sources */,
@@ -14317,6 +14350,7 @@
 				7162FD4325963AE00075B97D /* Camera.cpp in Sources */,
 				71ABBD1C277A31BA001CE3AF /* Text.cpp in Sources */,
 				71ABBD4927A87A2E001CE3AF /* MeshSystem.cpp in Sources */,
+				511A000C0000000000000000 /* MeshSystemGltfPbr.cpp in Sources */,
 				71ABBD24277A31E6001CE3AF /* UISystem.cpp in Sources */,
 				71125F1B2E41845E006D11A1 /* EntityRegistry.cpp in Sources */,
 				A6E1411B44856780E2563E4B /* EntityCloner.cpp in Sources */,
