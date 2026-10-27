@@ -437,7 +437,7 @@ namespace jasperengine::editor::spritenormals {
                     }
                 } else if (spec.frames.mode == FramesSpec::Mode::Grid) {
                     if (animated) {
-                        add(problems, "frames_mismatch", "frames", fromFile, "Leave frames auto (or none).");
+                        add(problems, "frames_mismatch", "frames", fromFile, "Leave frames auto.");
                     } else {
                         std::vector<Cell> cells;
                         std::string error;
@@ -447,7 +447,7 @@ namespace jasperengine::editor::spritenormals {
                     }
                 } else if (spec.frames.mode == FramesSpec::Mode::Cells) {
                     if (animated) {
-                        add(problems, "frames_mismatch", "frames", fromFile, "Leave frames auto (or none).");
+                        add(problems, "frames_mismatch", "frames", fromFile, "Leave frames auto.");
                     } else if (spec.frames.cells.empty()) {
                         add(problems, "frames_mismatch", "frames.cells", "No frame rectangles were given.", "Give [x, y, w, h] pixel rects, or leave frames auto.");
                     } else if (static_cast<int>(spec.frames.cells.size()) > kMaxCells) {
