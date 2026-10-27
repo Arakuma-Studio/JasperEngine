@@ -117,19 +117,20 @@ Json color(const std::string& description) {
     }, description);
 }
 
-// Refs advertise "string": McpRefs reads a numeric string like an integer id ("12" = 12) and also
+// Refs advertise [integer, string] (the CLI's `call` tells an id from a name by it: --entity 42 is
+// the id, --entity '"42"' the name); McpRefs also reads a numeric string like an integer id and
 // accepts the {"id"|"name"|"path"} objects results return. The server instructions (Addressing)
 // explain the conventions, so the default descriptions are empty.
 Json sceneRef(const std::string& description) {
-    return described({{"type", "string"}}, description);
+    return described({{"type", {"integer", "string"}}}, description);
 }
 
 Json entityRef(const std::string& description) {
-    return described({{"type", "string"}}, description);
+    return described({{"type", {"integer", "string"}}}, description);
 }
 
 Json entities(const std::string& description) {
-    return described({{"type", "array"}, {"items", {{"type", "string"}}}}, description);
+    return described({{"type", "array"}, {"items", {{"type", {"integer", "string"}}}}}, description);
 }
 
 Json componentName(const std::string& description) {

@@ -1839,6 +1839,8 @@ static std::map<std::string, std::set<std::string>>& getDroppedParseTextures(){
 
 void MeshSystem::invalidateModelFile(const std::string& filename){
     const std::string poolKey = getModelFilenameKey(filename);
+    // the pooled images are keyed by the model's texture key (asset-relative), as loads key them
+    const std::string textureKey = getModelTextureKey(filename);
     std::set<std::string> textureIds;
     {
         std::lock_guard<std::mutex> lock(getDroppedParseTexturesMutex());
@@ -1852,7 +1854,7 @@ void MeshSystem::invalidateModelFile(const std::string& filename){
     if (model){
         for (size_t i = 0; i < model->textures.size(); i++){
             if (model->textures[i].source >= 0){
-                textureIds.insert(gltfTextureDedupKey(poolKey, *model, static_cast<int>(i)));
+                textureIds.insert(gltfTextureDedupKey(textureKey, *model, static_cast<int>(i)));
             }
         }
     }
@@ -1867,11 +1869,13 @@ void MeshSystem::invalidateModelFile(const std::string& filename){
 
 void MeshSystem::invalidateModelParse(const std::string& filename){
     const std::string poolKey = getModelFilenameKey(filename);
+    // the pooled images are keyed by the model's texture key (asset-relative), as loads key them
+    const std::string textureKey = getModelTextureKey(filename);
     if (std::shared_ptr<tinygltf::Model> model = ModelPool::getGLTF(poolKey)){
         std::lock_guard<std::mutex> lock(getDroppedParseTexturesMutex());
         for (size_t i = 0; i < model->textures.size(); i++){
             if (model->textures[i].source >= 0){
-                getDroppedParseTextures()[poolKey].insert(gltfTextureDedupKey(poolKey, *model, static_cast<int>(i)));
+                getDroppedParseTextures()[poolKey].insert(gltfTextureDedupKey(textureKey, *model, static_cast<int>(i)));
             }
         }
     }
@@ -1881,6 +1885,8 @@ void MeshSystem::invalidateModelParse(const std::string& filename){
 
 void MeshSystem::releasePreloadedModel(const std::string& filename){
     const std::string poolKey = getModelFilenameKey(filename);
+    // the pooled images are keyed by the model's texture key (asset-relative), as loads key them
+    const std::string textureKey = getModelTextureKey(filename);
     if (FileData::getFilePathExtension(filename) == "obj"){
         ModelPool::removeObj(poolKey);
         return;
@@ -1894,7 +1900,7 @@ void MeshSystem::releasePreloadedModel(const std::string& filename){
     std::vector<std::string> textureIds;
     for (size_t i = 0; i < model->textures.size(); i++){
         if (model->textures[i].source >= 0){
-            textureIds.push_back(gltfTextureDedupKey(poolKey, *model, static_cast<int>(i)));
+            textureIds.push_back(gltfTextureDedupKey(textureKey, *model, static_cast<int>(i)));
         }
     }
 

@@ -671,6 +671,9 @@ TEST_F(AnimationClipAssets, AMoveIntoAnotherFolderKeepsTheGuid) {
 TEST_F(AnimationClipAssets, AModelRenameRemapsSubClipsAndClipHints) {
     const std::string dir = folder("model");
     writeAll(root() / dir / "hero.gltf", "{\"asset\": {\"version\": \"2.0\"}}\n");
+    // an asset of the database (S04: a rename moves what it tracks; the watcher or a refresh
+    // imports a file written outside the editor)
+    project()->importPrefabFiles(root() / dir / "hero.gltf");
     ClipData data = positionClip();
     data.previewModel = dir + "/hero.gltf";
     data.source.kind = "model";

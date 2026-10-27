@@ -1445,7 +1445,7 @@ TEST_F(AnimationClipControllerTest, RedoGoesWhereTheStepUndoneLastWas) {
     EXPECT_EQ(routing.undo(), "project");        // (0, 5, 0)
     move(Vector3(4, 0, 0));
     EXPECT_FALSE(c.newestRedoIsClipEdit());
-    EXPECT_EQ(routing.redo(), "scene (nothing)");
+    EXPECT_EQ(routing.redo(), "nothing") << "the timeline (S24): the new edit ended the redo";
     EXPECT_EQ(armKeyAtOne(), (std::vector<float>{0, 7, 0}));
     EXPECT_EQ(routing.undo(), "scene");
     expectNear(s.transform(s.prop).position, Vector3(3, 0, 0), "the move to 4 undone");

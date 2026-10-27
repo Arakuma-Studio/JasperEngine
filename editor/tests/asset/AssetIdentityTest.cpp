@@ -24,6 +24,7 @@
 #include "component/LineRendererComponent.h"
 #include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
+#include "component/PoseAnimatorComponent.h"
 #include "component/PointsComponent.h"
 #include "component/PrefabComponent.h"
 #include "component/ReflectionProbeComponent.h"
@@ -618,6 +619,8 @@ TEST(AssetRefSchema, CoversAllFields) {
         {C::ModelComponent, "filename"}, {C::AudioSourceComponent, "filename"}, {C::UIDocumentComponent, "filename"},
         {C::ScriptComponent, "scripts[].path"}, {C::ScriptComponent, "scripts[].headerPath"}, {C::ScriptComponent, "scripts[].properties[]"},
         {C::PrefabComponent, ""},
+        // upstream's Pose Animator: its .poseanim (an AssetRef since the sync)
+        {C::PoseAnimatorComponent, "animation"},
     };
     std::set<std::pair<C, std::string>> rows;
     for (const AssetRefField& field : AssetRefSchema::fields()) {
