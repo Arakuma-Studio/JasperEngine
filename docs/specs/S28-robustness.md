@@ -378,6 +378,36 @@ gtest targets.
 - **AC20 (iOS, manual)** Simulator run with `JASPERENGINE_DEBUG_CRASH=segv@10`: `crash.txt` in
   `Library/Caches/crash/reports/*`, its `build_id` equals `dwarfdump --uuid` of the dSYM.
 
+### Acceptance status by platform
+
+As of the landing merge. Pass = executed with recorded evidence; Pending = not executed;
+n/a = the criterion does not apply there. Linux evidence: the merged-branch gate records below.
+Apple evidence: "Apple native execution (2026-10-27)" below, and the archive
+`/var/lib/orquester/workspaces/jaspersito/je-evidence/s28-apple-20261027.tar.gz` (SHA-256
+`e80dd23740a4cc34baea0c275dbe5692e222c16bdef2b931233d7730508c9089`). Windows: no Windows
+host was available, so every Windows-specific check is still pending.
+
+| AC | Linux | macOS (ARM64) | iOS simulator | Android | Web | Windows |
+|----|-------|---------------|---------------|---------|-----|---------|
+| AC1 crash modes, report keys, symbolication | Pass | Pass (16 modes, Release + ASan/UBSan) | n/a | n/a | n/a | Pending |
+| AC2 stack overflow on main and worker | Pass | Pass (SIGBUS guard page accepted) | n/a | n/a | n/a | Pending |
+| AC3 minidump, `cdb` stack, 10 s exit | n/a | n/a | n/a | n/a | n/a | Pending |
+| AC4 previous handler chained, ASan after ours | Pass | Pass | n/a | n/a | n/a | Pending |
+| AC5 guarded worker crash reaches the handler | Pass | Pass | n/a | n/a | n/a | Pending |
+| AC6 signal-safety symbol scan | Pass | n/a (Linux CI check) | n/a | n/a | n/a | n/a |
+| AC7-AC9 hang watchdog unit tests | Pass | Pass (diagnostics unit tests) | n/a | n/a | n/a | Pending |
+| AC10 walker deadline resumes the main thread | n/a | n/a | n/a | n/a | n/a | Pending |
+| AC11-AC13 MCP runaway Lua, health off main, notice | Pass | Pending (MCP suite not run on macOS) | n/a | n/a | n/a | Pending |
+| AC14 retention, AC17 report hook | Pass | Pass (unit) | n/a | n/a | n/a | Pending |
+| AC15 Android report + tombstone | n/a | n/a | n/a | Pass (API 34 emulator) | n/a | n/a |
+| AC16 web crash gate, `onCrash` | n/a | n/a | n/a | n/a | Pass | n/a |
+| AC18 bench budgets, smoke without hang lines | Pass (bench on E before E was retired; smoke) | n/a | n/a | n/a | n/a | n/a |
+| AC19 `run_game` crash report | Pass | n/a | n/a | n/a | n/a | n/a |
+| AC20 iOS report, build id = dSYM UUID | n/a | n/a | Pass (iOS 26.5) | n/a | n/a | n/a |
+
+The landing merge's bench rerun is PENDING (server E was retired); the last E numbers are recorded
+below. No physical iOS device was run.
+
 ## 8. Dependencies & conflicts
 
 - Depends on: S01 (C++20), S02 (gtest targets, CTest, presets, browser gate, CI legs), S06
