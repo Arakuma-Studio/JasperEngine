@@ -139,6 +139,49 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Brush Weaker | Shift+[ | Scene View |
 | Brush Stronger | Shift+] | Scene View |
 
+## Animation
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Play / Pause Preview | Space | Animation |
+| Add Key | K | Animation |
+| Key Modified Properties | Shift+K | Animation |
+| Previous Frame | , | Animation |
+| Next Frame | . | Animation |
+| Previous Key | Alt+, | Animation |
+| Next Key | Alt+. | Animation |
+| Delete Keys | Delete / Backspace | Animation |
+| Copy Keys | Ctrl+C | Animation |
+| Paste Keys | Ctrl+V | Animation |
+| Duplicate Keys | Ctrl+D | Animation |
+| Frame Selected Keys | F | Animation |
+| Frame All Keys | A | Animation |
+| Record | R | Animation |
+
+## Pose Animation
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Play / Pause Preview | Space | Pose Animation |
+| Select Previous Pose | Left | Pose Animation |
+| Select Next Pose | Right | Pose Animation |
+| Move Poses Left | Shift+Left | Pose Animation |
+| Move Poses Right | Shift+Right | Pose Animation |
+| Select First Pose | Home | Pose Animation |
+| Select Last Pose | End | Pose Animation |
+| Previous Frame | , | Pose Animation |
+| Next Frame | . | Pose Animation |
+| Rename Pose | F2 | Pose Animation |
+| Duplicate Poses | Ctrl+D | Pose Animation |
+| Duplicate Poses Mirrored | Ctrl+Shift+D | Pose Animation |
+| Mirror Poses | M | Pose Animation |
+| Delete Poses | Delete / Backspace | Pose Animation |
+| Ground Pose | G | Pose Animation |
+| Copy Pose | Ctrl+C | Pose Animation |
+| Paste Pose | Ctrl+V | Pose Animation |
+| Add Pose | N | Pose Animation |
+| Global Edit | E | Pose Animation |
+
 ## Project
 
 | Command | Shortcut | Context |
