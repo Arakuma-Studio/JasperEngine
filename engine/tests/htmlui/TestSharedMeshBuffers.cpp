@@ -259,13 +259,15 @@ namespace {
         }
     };
 
-    // loads copies [first, last) of `path`, placed in their cells
-    void addCopies(GridScene& s, const std::string& path, int first, int last, std::vector<Model*>& models){
+    // Loads copies [first, last) of `path`, placed in their cells. `models` is declared before the
+    // scene, so the scene goes first, all at once: destroying 150,000 entities one by one (the
+    // heroes' node hierarchies) erases from every component array in turn and takes hours
+    void addCopies(GridScene& s, const std::string& path, int first, int last, std::vector<std::unique_ptr<Model>>& models){
         for (int i = first; i < last; i++){
-            Model& model = s.fixture.add<Model>();
+            models.emplace_back(new Model(&s.scene()));
+            Model& model = *models.back();
             ASSERT_TRUE(model.loadModel(path)) << path;
             model.setPosition(s.position(i));
-            models.push_back(&model);
         }
     }
 
@@ -286,8 +288,8 @@ namespace {
 TEST_F(SharedMeshBuffersTest, ThousandsOfSkinnedModelCopiesAllDrawFromOneSetOfBuffers){
     const int firstBatch = 300;
     const int count = 3300;
+    std::vector<std::unique_ptr<Model>> models; // (outlive the scene: see addCopies)
     GridScene s(count, 2.0f, 2.4f);
-    std::vector<Model*> models;
     const uint64_t exhaustionsBefore = SystemRender::getResourcePoolExhaustions();
 
     MeshBufferAllocations first;
@@ -333,8 +335,8 @@ TEST_F(SharedMeshBuffersTest, ThousandsOfStaticGltfAndObjCopiesAllDrawFromOneSet
     writeQuadGltf(gltf, 0.6f, 1.6f);
     writeQuadObj(obj, 0.6f, 1.6f);
 
+    std::vector<std::unique_ptr<Model>> models; // (outlive the scene: see addCopies)
     GridScene s(perFile * 2, 1.6f, 2.0f);
-    std::vector<Model*> models;
     MeshBufferAllocations allocations;
     addCopies(s, gltf, 0, 10, models);
     addCopies(s, obj, perFile, perFile + 10, models);
@@ -369,15 +371,15 @@ TEST_F(SharedMeshBuffersTest, ReloadedModelFileReleasesAndRecreatesTheSharedBuff
     const std::string path = (tempDir() / "reloaded_quad.gltf").string();
     writeQuadGltf(path, 0.2f, 1.6f); // narrow
     const int count = 40;
+    std::vector<std::unique_ptr<Model>> models; // (outlive the scene: see addCopies)
     GridScene s(count, 2.0f, 2.0f);
-    std::vector<Model*> models;
     const size_t poolBefore = MeshBufferPool::getBufferCount();
     addCopies(s, path, 0, count, models);
     ASSERT_TRUE(s.settle());
     EXPECT_EQ(MeshBufferPool::getBufferCount(), poolBefore + 3);
     const std::set<uint32_t> oldIds = meshBufferIds(models[0]->getComponent<MeshComponent>());
     ASSERT_EQ(oldIds.size(), 3u);
-    for (Model* model : models)
+    for (auto& model : models)
         EXPECT_EQ(meshBufferIds(model->getComponent<MeshComponent>()), oldIds) << "every copy draws the same buffers";
 
     Screen before;
@@ -403,7 +405,7 @@ TEST_F(SharedMeshBuffersTest, ReloadedModelFileReleasesAndRecreatesTheSharedBuff
     EXPECT_EQ(MeshBufferPool::getBufferCount(), poolBefore + 3) << "the old buffers went with their last user";
     for (uint32_t id : oldIds)
         EXPECT_NE(sg_query_buffer_state(sg_buffer{id}), SG_RESOURCESTATE_VALID) << "old buffer " << id << " destroyed";
-    for (Model* model : models)
+    for (auto& model : models)
         EXPECT_EQ(meshBufferIds(model->getComponent<MeshComponent>()), newIds);
 
     Screen after;
@@ -414,7 +416,7 @@ TEST_F(SharedMeshBuffersTest, ReloadedModelFileReleasesAndRecreatesTheSharedBuff
     }
 
     // all copies gone: so are the buffers
-    for (Model* model : models)
+    for (auto& model : models)
         GameObject::destroyImmediate(*model);
     ASSERT_TRUE(s.settle());
     EXPECT_EQ(MeshBufferPool::getBufferCount(), poolBefore);
@@ -426,6 +428,7 @@ TEST_F(SharedMeshBuffersTest, ReloadedModelFileReleasesAndRecreatesTheSharedBuff
 // bytes are written gets a buffer of its own (copy on write) while the other copies keep the
 // shared one and draw unchanged
 TEST_F(SharedMeshBuffersTest, EditingOneMeshDoesNotAffectAnother){
+    std::vector<std::unique_ptr<Model>> models; // (outlive the scene: see addCopies)
     GridScene s(4, 3.0f, 3.0f);
 
     Primitive& a = s.fixture.add<Primitive>();
@@ -445,7 +448,6 @@ TEST_F(SharedMeshBuffersTest, EditingOneMeshDoesNotAffectAnother){
     a.createWall(2.5f, 2.5f); // edited
     const std::string path = (tempDir() / "edited_quad.gltf").string();
     writeQuadGltf(path, 0.6f, 1.6f);
-    std::vector<Model*> models;
     addCopies(s, path, 2, 4, models);
     ASSERT_TRUE(s.settle());
     Screen edited;
@@ -505,6 +507,7 @@ TEST_F(SharedMeshBuffersTest, EditingOneMeshDoesNotAffectAnother){
 TEST_F(SharedMeshBuffersTest, FullPoolIsReportedOnceAndItsMeshFailsUntilThereIsRoom){
     const std::string path = (tempDir() / "pool_full_quad.gltf").string();
     writeQuadGltf(path, 0.6f, 1.6f);
+    std::vector<std::unique_ptr<Model>> models; // (outlive the scene: see addCopies)
     GridScene s(1, 2.0f, 2.0f);
     ASSERT_TRUE(s.settle());
 
@@ -522,7 +525,6 @@ TEST_F(SharedMeshBuffersTest, FullPoolIsReportedOnceAndItsMeshFailsUntilThereIsR
     }
     EXPECT_EQ(SystemRender::getResourcesInUse(GpuResourceKind::BUFFER), limit);
 
-    std::vector<Model*> models;
     addCopies(s, path, 0, 1, models);
     ASSERT_TRUE(s.settle()) << "a mesh that cannot get its buffers does not keep the scene loading";
     MeshComponent& mesh = models[0]->getComponent<MeshComponent>();
