@@ -7,7 +7,7 @@
 #include <algorithm>
 
 #include "SokolCmdQueue.h"
-#include "SokolPipelineCache.h"
+#include "SokolSystem.h"
 
 using namespace jasperengine;
 
@@ -104,11 +104,10 @@ void SokolCmdQueue::execute_commands()
 				sg_update_image(command.update_image.image, command.update_image.data);
 				break;
 			case SokolRenderCommand::TYPE::BEGIN_PASS:
-				sg_begin_pass(command.begin_pass.pass);
-				SokolPipelineCache::invalidateApplied();
+				SokolSystem::beginPass(command.begin_pass.pass);
 				break;
 			case SokolRenderCommand::TYPE::END_PASS:
-				sg_end_pass();
+				SokolSystem::endPass();
 				break;
 			case SokolRenderCommand::TYPE::CUSTOM:
 				command.custom.custom_cb(command.custom.custom_data);
