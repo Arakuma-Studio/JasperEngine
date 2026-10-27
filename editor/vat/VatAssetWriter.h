@@ -36,7 +36,7 @@ namespace jasperengine::editor::vat{
         std::string alphaMode = "OPAQUE";   // "OPAQUE" | "MASK" | "BLEND"
         float alphaCutoff = 0.5f;
         bool doubleSided = false;
-        bool unlit = false;                 // KHR_materials_unlit (the source drew it with Lighting None)
+        bool unlit = false;                 // KHR_materials_unlit (the source drew it with Lighting None; loads back as it)
         float foliageTransmission = 0.0f;   // extras.jasperengine_foliage_transmission when over 0
         // absolute file paths ("" = none), written as URIs relative to the .vat.glb directory; or
         // VAT_EMBEDDED_TEXTURE + n: VatMeshData::images[n], stored inside the glb

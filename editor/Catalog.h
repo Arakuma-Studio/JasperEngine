@@ -261,7 +261,7 @@ namespace jasperengine::editor{
         static std::string getShaderReferenceForProperty(Scene* scene, Entity entity, ComponentType component, const std::string& propertyName);
         // The lighting modes a material may ask of a shader, its default first: a manifest's
         // @lighting list (none without the directive), else the built-in Lit's (and a fork's
-        // without a manifest) pixel, vertex, mixed. AUTO is always allowed and draws the
+        // without a manifest) pixel, vertex, mixed, none. AUTO is always allowed and draws the
         // default. Asks RenderSystem::resolveLighting / supportsLighting (the runtime's rules).
         static std::vector<MaterialLighting> getShaderLightingModes(const ShaderManifest* manifest);
         static bool supportsLighting(MaterialLighting mode, const ShaderManifest* manifest);

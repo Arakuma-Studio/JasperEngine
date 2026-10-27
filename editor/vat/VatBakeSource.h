@@ -31,7 +31,8 @@
 //     with submeshes on an active entity at or under the root (Instanced Mesh copies are not
 //     baked: a warning). Materials: each submesh's engine Material as VatMaterialData (named as
 //     the source glTF material when it came from a model; PBR factors, alphaMode, doubleSided,
-//     unlit, foliage transmission; textures that are files as absolute paths; images a model
+//     unlit when it draws with Lighting None (resolved against its shader; MeshSystem loads the
+//     KHR_materials_unlit back as Lighting None), foliage transmission; textures that are files as absolute paths; images a model
 //     holds inside (a glb buffer view, a data: URI) become VatEmbeddedImage, stored inside the
 //     .vat.glb). Every setting a glTF material has no slot for (a library or project shader,
 //     stochastic tiling, blend / cull front / depth / stencil / colour write state, sort priority,

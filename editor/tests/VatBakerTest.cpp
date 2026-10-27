@@ -2232,9 +2232,12 @@ TEST_F(VatBaker_, MaterialsKeepWhatGltfCarriesAndReportTheRest) {
     for (const VatIssue& issue : session->result()->report.warnings) {
         if (issue.kind == "material_simplified") notes += issue.message + "\n";
     }
-    for (const char* lost : {"unlit", "sort priority (3)", "blend mode", "stencil", "extra pass (library:outline)"}) {
+    for (const char* lost : {"sort priority (3)", "blend mode", "stencil", "extra pass (library:outline)"}) {
         EXPECT_NE(notes.find(lost), std::string::npos) << lost << " in:\n" << notes;
     }
+    // unlit is carried (KHR_materials_unlit loads as Lighting None): no advice to set it by hand
+    EXPECT_EQ(notes.find("unlit"), std::string::npos) << notes;
+    EXPECT_EQ(notes.find("Lighting"), std::string::npos) << notes;
     EXPECT_NE(notes.find("'Red'"), std::string::npos) << notes;
     EXPECT_EQ(notes.find("'Blue'"), std::string::npos) << "nothing lost on Blue:\n" << notes;
     VatWriteResult written;
@@ -2247,8 +2250,65 @@ TEST_F(VatBaker_, MaterialsKeepWhatGltfCarriesAndReportTheRest) {
     const uint32_t loadScene = newScene();
     const Entity loaded = loadModel(loadScene, "models/materials.vat.glb", "Loaded");
     bool foliage = false;
-    for (const Material* material : materialsOf(sceneOf(loadScene), loaded)) foliage |= std::fabs(material->foliageTransmission - 0.4f) < 1e-6f;
+    int unlit = 0, lit = 0;
+    for (const Material* material : materialsOf(sceneOf(loadScene), loaded)) {
+        foliage |= std::fabs(material->foliageTransmission - 0.4f) < 1e-6f;
+        // and draws Red unlit, Blue as before
+        if (material->baseColorFactor.x > 0.5f) {
+            EXPECT_EQ(material->lighting, MaterialLighting::NONE);
+            unlit++;
+        } else {
+            EXPECT_EQ(material->lighting, MaterialLighting::AUTO);
+            lit++;
+        }
+    }
     EXPECT_TRUE(foliage);
+    EXPECT_EQ(unlit, 1);
+    EXPECT_EQ(lit, 1);
+}
+
+// unlit is the lighting the source draws with, resolved against its shader: library:unlit on
+// Auto is unlit, a None that library:toon does not list draws toon's per pixel default
+TEST_F(VatBaker_, UnlitIsTheLightingTheSourceDrawsWith) {
+    const uint32_t sceneId = newScene();
+    const Entity arm = armWithPlayer(sceneId);
+    Scene* scene = sceneOf(sceneId);
+    std::vector<Material*> parts;
+    for (const auto& node : scene->getComponent<ModelComponent>(arm).meshNodesMapping) {
+        MeshComponent* mesh = scene->findComponent<MeshComponent>(node.second);
+        if (mesh && mesh->numSubmeshes > 0) parts.push_back(&mesh->submeshes[0].material);
+    }
+    ASSERT_EQ(parts.size(), 2u);
+    Material& red = parts[0]->baseColorFactor.x > 0.5f ? *parts[0] : *parts[1];
+    Material& blue = parts[0]->baseColorFactor.x > 0.5f ? *parts[1] : *parts[0];
+    red.shader = "library:unlit";
+    red.lighting = MaterialLighting::AUTO;
+    blue.shader = "library:toon";
+    blue.lighting = MaterialLighting::NONE;
+    VatBakeSpec spec = entitySpec(sceneId, arm);
+    spec.output = "assets/models/unlit_source.vat";
+    std::unique_ptr<VatBakeSession> session = bake(spec);
+    ASSERT_TRUE(session->result());
+    const VatMeshData& mesh = session->result()->mesh;
+    ASSERT_EQ(mesh.materials.size(), 2u);
+    for (const VatMaterialData& baked : mesh.materials) {
+        EXPECT_EQ(baked.unlit, baked.name == "Red") << baked.name;
+    }
+    for (const VatIssue& issue : session->result()->report.warnings) {
+        EXPECT_EQ(issue.message.find("Lighting to None"), std::string::npos) << issue.message;
+    }
+    VatWriteResult written;
+    std::string error;
+    ASSERT_TRUE(session->write(written, error)) << error;
+    const uint32_t loadScene = newScene();
+    const Entity loaded = loadModel(loadScene, "models/unlit_source.vat.glb", "Loaded");
+    int unlit = 0;
+    for (const Material* material : materialsOf(sceneOf(loadScene), loaded)) {
+        const bool isRed = material->baseColorFactor.x > 0.5f;
+        EXPECT_EQ(material->lighting, isRed ? MaterialLighting::NONE : MaterialLighting::AUTO) << (isRed ? "Red" : "Blue");
+        unlit += material->lighting == MaterialLighting::NONE;
+    }
+    EXPECT_EQ(unlit, 1);
 }
 
 // review 10: a source outside the assets folder bakes under it by default (the same folder

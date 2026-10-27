@@ -699,6 +699,7 @@ namespace {
         std::string animations = "dict";    // "dict" | "list" | "none"
         bool png = false;                   // 8-bit PNG textures (else EXR)
         int frames = 4;
+        bool unlitMaterial = false;         // glTF: a material with KHR_materials_unlit and foliage transmission 0.3
     };
 
     struct OpenVatTruth {
@@ -847,6 +848,18 @@ namespace {
                                                      TINYGLTF_COMPONENT_TYPE_FLOAT, TINYGLTF_TYPE_VEC2, V, false, nullptr);
             prim.indices = accessor(view(indices.data(), indices.size() * 4, TINYGLTF_TARGET_ELEMENT_ARRAY_BUFFER),
                                     TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT, TINYGLTF_TYPE_SCALAR, indices.size(), false, nullptr);
+            if (opt.unlitMaterial) {
+                tinygltf::Material material;
+                material.name = "Glow";
+                material.pbrMetallicRoughness.baseColorFactor = {0.2, 0.6, 0.9, 1.0};
+                material.extensions["KHR_materials_unlit"] = tinygltf::Value(tinygltf::Value::Object());
+                tinygltf::Value::Object extras;
+                extras["jasperengine_foliage_transmission"] = tinygltf::Value(0.3);
+                material.extras = tinygltf::Value(std::move(extras));
+                model.materials.push_back(material);
+                model.extensionsUsed.push_back("KHR_materials_unlit");
+                prim.material = 0;
+            }
             tinygltf::Mesh mesh;
             mesh.primitives.push_back(prim);
             model.meshes.push_back(mesh);
@@ -922,6 +935,22 @@ TEST(VatImport, OpenVatPackedSingleRowGltf) {
         EXPECT_EQ(d.frames, 4) << p;
         EXPECT_EQ(d.clips.size(), 2u) << p;
     }
+}
+
+// the source glTF's unlit (KHR_materials_unlit) and foliage transmission (the extra) reach the
+// .vat.glb's material as MeshSystem reads them
+TEST(VatImport, OpenVatGltfKeepsUnlitAndFoliageTransmission) {
+    const fs::path dir = freshDir("openvat-unlit");
+    OpenVatOptions opt;
+    opt.unlitMaterial = true;
+    const OpenVatTruth truth = writeOpenVat(dir, "Glow", opt);
+    const ev::VatImportResult r = ev::importVat(specFor(dir / "Glow-remap_info.json"));
+    expectOpenVat(r, truth, 1e-5, true, "unlit material");
+    ASSERT_EQ(r.mesh.materials.size(), 1u);
+    EXPECT_EQ(r.mesh.materials[0].name, "Glow");
+    EXPECT_TRUE(r.mesh.materials[0].unlit);
+    EXPECT_FLOAT_EQ(r.mesh.materials[0].foliageTransmission, 0.3f);
+    EXPECT_FLOAT_EQ(r.mesh.materials[0].baseColor[2], 0.9f);
 }
 
 TEST(VatImport, OpenVatSeparateNormalsPowerOfTwo) {

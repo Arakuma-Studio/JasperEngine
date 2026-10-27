@@ -27,8 +27,10 @@
 #include "object/Model.h"
 #include "pool/AnimationClipPool.h"
 #include "render/CpuSkin.h"
+#include "shader/ShaderManifest.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/RenderSystem.h"
 
 #include "json.hpp"
 #include "tiny_gltf.h"
@@ -748,7 +750,11 @@ namespace{
                 default: out.alphaMode = material.baseColorFactor.w < 1.0f ? "BLEND" : "OPAQUE"; break;
             }
             out.doubleSided = material.cullMode == MaterialCullMode::OFF || !submesh.faceCulling;
-            out.unlit = material.lighting == MaterialLighting::NONE;
+            // the mode the source draws with: the material's when its shader lists it, else the
+            // shader's default (library:unlit draws unlit on Auto); the .vat.glb's Lit takes all
+            const std::shared_ptr<const ShaderManifest> manifest = material.shader.empty() ? nullptr : ShaderManifests::get(material.shader);
+            const MaterialLighting lighting = RenderSystem::resolveLighting(material.lighting, manifest && manifest->present ? manifest.get() : nullptr);
+            out.unlit = lighting == MaterialLighting::NONE;
             out.foliageTransmission = material.foliageTransmission;
             out.baseColorTexture = texture(material.baseColorTexture, out.name, "base colour");
             out.normalTexture = texture(material.normalTexture, out.name, "normal");
@@ -764,14 +770,11 @@ namespace{
                                     "', which the .vat.glb can't carry: the VAT mesh draws with the built-in Lit material");
                 }
             }
-            if (out.unlit){
-                notes.push_back("'" + out.name + "' draws unlit (Lighting None): the .vat.glb marks it KHR_materials_unlit, which the "
-                                "engine loads lit: set Lighting to None on the placed object's material");
-            }
-            // what a glTF material has no slot for
+            // what a glTF material has no slot for (unlit has one: KHR_materials_unlit, which
+            // loads as Lighting None)
             std::vector<std::string> lost;
-            if (material.lighting == MaterialLighting::VERTEX) lost.push_back("Lighting Vertex");
-            if (material.lighting == MaterialLighting::MIXED) lost.push_back("Lighting Mixed");
+            if (lighting == MaterialLighting::VERTEX) lost.push_back("Lighting Vertex");
+            if (lighting == MaterialLighting::MIXED) lost.push_back("Lighting Mixed");
             if (material.stochasticTiling) lost.push_back("Stochastic Tiling");
             if (material.blendMode != MaterialBlendMode::AUTO) lost.push_back("its blend mode");
             if (material.cullMode == MaterialCullMode::FRONT) lost.push_back("front-face culling");

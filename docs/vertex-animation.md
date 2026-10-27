@@ -677,11 +677,11 @@ every option.
   using it **draws at rest**. Fork it again, or switch to the library shader.
 - **`material_simplified`.** The `.vat.glb` keeps what a glTF material holds: the source
   material's name, PBR colours and textures, alpha mode, double-sided, foliage transmission, and
-  unlit (as `KHR_materials_unlit`, which the engine loads lit: set Lighting to None on the placed
-  object). Everything else is dropped and listed per material: a library shader's features,
-  Stochastic Tiling, blend, front-face culling, depth, stencil and colour-write state, sort
-  priority, an extra pass, Vertex or Mixed lighting, second-UV textures. Set up the material again
-  on the placed GameObject.
+  unlit (a material drawn with Lighting None, `library:unlit` included, is written as
+  `KHR_materials_unlit` and loads back as Lighting None). Everything else is dropped and listed
+  per material: a library shader's features, Stochastic Tiling, blend, front-face culling, depth,
+  stencil and colour-write state, sort priority, an extra pass, Vertex or Mixed lighting,
+  second-UV textures. Set up the material again on the placed GameObject.
 - **"generated field ... changed: rebake".** `layout`, `mode`, `mesh` or a clip's
   `start`/`frames`/`fps` was edited, or the `.vat` and `.vat.glb` come from different bakes.
   Rebake (Inspector, or `bake-vat --rebake`).

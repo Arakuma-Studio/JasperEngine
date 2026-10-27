@@ -3589,8 +3589,9 @@ bool RenderSystem::supportsLighting(MaterialLighting mode, const ShaderManifest*
     if (mode == MaterialLighting::AUTO)
         return true;
     if (!manifest){
-        // the built-in Lit, and forks of it without a manifest
-        return mode != MaterialLighting::NONE;
+        // the built-in Lit, and forks of it without a manifest: every mode, NONE drawing its
+        // MATERIAL_UNLIT variant (base colour only, as glTF's KHR_materials_unlit asks)
+        return true;
     }
     if (manifest->lighting.empty())
         return mode == MaterialLighting::NONE;
@@ -3654,7 +3655,7 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         }else{
             p_unlit = true;
         }
-    }else if ((environment.lights || useIBL) && inputs.receiveLights){
+    }else if ((environment.lights || useIBL) && inputs.receiveLights && lighting != MaterialLighting::NONE){
         p_punctual = environment.lights && lighting != MaterialLighting::VERTEX;
         p_vertexLights = environment.lights && (lighting == MaterialLighting::VERTEX || lighting == MaterialLighting::MIXED);
         p_ibl = useIBL;

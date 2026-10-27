@@ -12,8 +12,10 @@
 // interpolation, loop seam, once clamp, ping-pong, stepped, absolute positions), crossfades and
 // phase-synced blends, turns normals by the tangent frame; Bones mode skins rigid pieces (a fast
 // spin keeps its size); instances play their own state after sorting; shadows and the depth
-// pre-pass follow; animatedBounds keeps a moved mesh from being culled; and the shader's frame
-// math matches vat::vatSample / vat::vatWeightB over a grid of times.
+// pre-pass follow; animatedBounds keeps a moved mesh from being culled; a KHR_materials_unlit
+// material (what the baker writes for an unlit source) draws its base colour whatever the
+// lights, played or not; and the shader's frame math matches vat::vatSample / vat::vatWeightB
+// over a grid of times.
 
 #include "TestGoldenCommon.h"
 
@@ -68,6 +70,7 @@ namespace {
         std::vector<uint16_t> indices;
         float color[3] = {0.9f, 0.4f, 0.2f};
         bool extension = true;          // JASPER_vertex_animation
+        bool unlit = false;             // the material has KHR_materials_unlit
 
         int vertexCount() const{ return int(positions.size() / 3); }
 
@@ -193,7 +196,7 @@ namespace {
         json << "\"scene\":0,\"scenes\":[{\"nodes\":[0]}],\"nodes\":[{\"mesh\":0,\"name\":\"" << name << "\"}],"
              << "\"meshes\":[{\"primitives\":[{\"attributes\":{" << attributes.str() << "},\"indices\":" << indexAccessor << ",\"material\":0}]}],"
              << "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorFactor\":[" << mesh.color[0] << "," << mesh.color[1] << "," << mesh.color[2]
-             << ",1],\"metallicFactor\":0,\"roughnessFactor\":1}}],"
+             << ",1],\"metallicFactor\":0,\"roughnessFactor\":1}" << (mesh.unlit ? ",\"extensions\":{\"KHR_materials_unlit\":{}}" : "") << "}],"
              << "\"buffers\":[{\"byteLength\":" << data.size() << ",\"uri\":\"data:application/octet-stream;base64," << base64(data) << "\"}],"
              << "\"bufferViews\":[" << views.str() << "],\"accessors\":[" << accessors.str() << "]}";
         std::filesystem::create_directories(testDirectory() / name);
@@ -694,6 +697,66 @@ TEST_F(VatRenderTest, TangentFrameNormalsLightLikeATurnedSurface){
             EXPECT_NEAR(int(a[c]), int(b[c]), 2) << "channel " << c;
         }
         EXPECT_GT(std::abs(int(f[0]) - int(a[0])), 2) << "the turned frame changes the shading";
+    }
+}
+
+TEST_F(VatRenderTest, UnlitGltfDrawsItsBaseColourWhateverTheLights){
+    // a glTF material with KHR_materials_unlit loads as Lighting None: the built-in Lit draws it
+    // in its base colour, lit by nothing (a strong light and ambient leave it as a scene without
+    // lights draws it), while the same material without the extension is lit; a plain glTF and
+    // a .vat.glb playing its animation alike (the VAT variant with MATERIAL_UNLIT)
+    VatGltf box;
+    box.color[0] = 0.6f; box.color[1] = 0.3f; box.color[2] = 0.15f;
+    box.addBox(Vector3(0.0f, 0.0f, 0.0f), Vector3(1.0f, 1.0f, 1.0f));
+    const auto asset = makeMoveAsset(box);
+    ASSERT_TRUE(asset);
+
+    // the colour at the box's centre (moved up 1 when animated: the Up clip)
+    auto render = [&](bool unlit, bool lights, bool vat, const char* name){
+        VatGltf mesh = box;
+        mesh.unlit = unlit;
+        mesh.extension = vat;
+        VatScene s;
+        if (lights){
+            s.scene().setGlobalIllumination(0.6f);
+            Light& light = s.fixture.add<Light>();
+            light.setType(LightType::DIRECTIONAL);
+            light.setDirection(0.3f, -0.2f, -1.0f);
+            light.setIntensity(4.0f);
+        }
+        Model& model = s.addModel(writeGltf(mesh, name));
+        if (vat)
+            s.animate(model.getEntity(), asset, track(2), 0.0f);
+        EXPECT_TRUE(s.settle());
+        const MeshComponent& component = model.getComponent<MeshComponent>();
+        EXPECT_EQ(component.submeshes[0].material.lighting, unlit ? MaterialLighting::NONE : MaterialLighting::AUTO) << name;
+        Screen screen;
+        EXPECT_TRUE(screen.read());
+        const uint8_t* p = screen.at(int(toScreenX(0.0f)), toScreenRow(vat ? 1.0f : 0.0f));
+        if (vat){
+            // the animation moved it: its old bottom edge (y -1) is background now
+            EXPECT_TRUE(screen.isBackground(int(toScreenX(0.0f)), toScreenRow(-0.8f))) << name;
+        }
+        return std::vector<int>{p[0], p[1], p[2]};
+    };
+
+    for (bool vat : {false, true}){
+        SCOPED_TRACE(vat ? ".vat.glb playing" : "plain glTF");
+        const std::string tag = vat ? "unlit_vat" : "unlit_plain";
+        const std::vector<int> reference = render(false, false, vat, (tag + "_reference").c_str());  // no lights: Lit draws unlit
+        const std::vector<int> unlitLit = render(true, true, vat, (tag + "_lights").c_str());
+        const std::vector<int> unlitDark = render(true, false, vat, (tag + "_dark").c_str());
+        const std::vector<int> lit = render(false, true, vat, (tag + "_lit").c_str());
+        int litDifference = 0;
+        for (int c = 0; c < 3; c++){
+            EXPECT_NEAR(unlitLit[c], reference[c], 2) << "channel " << c << ": the lights leave it as the base colour";
+            EXPECT_NEAR(unlitDark[c], reference[c], 2) << "channel " << c;
+            litDifference = std::max(litDifference, std::abs(lit[c] - reference[c]));
+        }
+        EXPECT_GT(litDifference, 20) << "without the extension the same lights light it";
+        // the base colour, red over green over blue
+        EXPECT_GT(unlitLit[0], unlitLit[1]);
+        EXPECT_GT(unlitLit[1], unlitLit[2]);
     }
 }
 
