@@ -39,16 +39,19 @@ namespace{
         return *pool;
     }
 
-    // the model key rule (FileData::getSystemPath, lexically normal, generic separators); the
-    // generated "<stem>.vat.glb" names its .vat
+    // the generated "<stem>.vat.glb" stands for its "<stem>.vat"
+    std::string vatPathOf(const std::string& path){
+        const std::string suffix = vat::VAT_MESH_SUFFIX;
+        if (path.size() > suffix.size() && path.compare(path.size() - suffix.size(), suffix.size(), suffix) == 0){
+            return path.substr(0, path.size() - 4);     // drop ".glb"
+        }
+        return path;
+    }
+
+    // the model key rule (FileData::getSystemPath, lexically normal, generic separators)
     std::string pathKey(const std::string& path){
         if (path.empty()) return std::string();
-        std::string vatPath = path;
-        const std::string suffix = vat::VAT_MESH_SUFFIX;
-        if (vatPath.size() > suffix.size() && vatPath.compare(vatPath.size() - suffix.size(), suffix.size(), suffix) == 0){
-            vatPath.resize(vatPath.size() - 4);     // drop ".glb"
-        }
-        return MeshSystem::getModelFilenameKey(vatPath);
+        return MeshSystem::getModelFilenameKey(vatPathOf(path));
     }
 
     uint64_t epochLocked(PoolState& pool, const std::string& key){
@@ -161,7 +164,7 @@ std::shared_ptr<const vat::VertexAnimation> VertexAnimationPool::getOrLoad(const
 
     // read and build without the lock
     std::vector<ClipWarning> loadWarnings;
-    std::shared_ptr<const vat::VertexAnimation> asset = loadFiles(path, error, loadWarnings);
+    std::shared_ptr<const vat::VertexAnimation> asset = loadFiles(vatPathOf(path), error, loadWarnings);
     if (warnings) *warnings = loadWarnings;
     if (!asset) return nullptr;
     // the key, before anyone else sees the asset (made non-const by create: the pool is its friend)

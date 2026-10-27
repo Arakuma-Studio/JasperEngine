@@ -17,6 +17,7 @@
 #include "texture/Texture.h"
 
 #include <filesystem>
+#include <thread>
 
 using namespace jasperengine;
 using namespace jasperengine::vat;
@@ -262,4 +263,39 @@ TEST_F(VatPool, AssetsWithATextureAreReleasedByThePool){
     asset.reset();
     VertexAnimationPool::clearUnused();
     EXPECT_EQ(TextureDataPool::get(id), nullptr);
+}
+
+TEST_F(VatPool, TheGeneratedMeshPathLoadsItsVat){
+    VatData data = vattest::sampleData();
+    data.mesh = "pair.vat.glb";
+    std::string vat = writePair("pair", data);
+    std::string error;
+    std::shared_ptr<const VertexAnimation> asset = VertexAnimationPool::getOrLoad(p("pair.vat.glb"), &error);
+    ASSERT_TRUE(asset) << error;
+    EXPECT_EQ(VertexAnimationPool::get(vat), asset);
+    EXPECT_EQ(asset->getPath(), vattest::assetDir() + "/" + vat);
+    // a mesh whose .vat is missing reports the .vat
+    EXPECT_FALSE(VertexAnimationPool::getOrLoad(p("lonely.vat.glb"), &error));
+    EXPECT_EQ(error, "cannot read " + p("lonely.vat"));
+}
+
+TEST_F(VatPool, ConcurrentLoadsShareOneAsset){
+    std::string vat = writePair("busy", vattest::sampleData());
+    std::vector<std::shared_ptr<const VertexAnimation>> results(8);
+    std::vector<std::thread> threads;
+    for (size_t i = 0; i < results.size(); i++){
+        threads.emplace_back([&, i](){
+            for (int k = 0; k < 20; k++){
+                results[i] = VertexAnimationPool::getOrLoad(vat);
+                if (k % 7 == 3) VertexAnimationPool::invalidate(vat);
+            }
+            results[i] = VertexAnimationPool::getOrLoad(vat);
+        });
+    }
+    for (std::thread& thread : threads) thread.join();
+    for (const auto& result : results) EXPECT_TRUE(result);
+    std::shared_ptr<const VertexAnimation> cached = VertexAnimationPool::getOrLoad(vat);
+    ASSERT_TRUE(cached);
+    EXPECT_EQ(VertexAnimationPool::get(vat), cached);
+    EXPECT_EQ(VertexAnimationPool::size(), 1u);
 }
