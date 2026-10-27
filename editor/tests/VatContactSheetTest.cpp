@@ -3,15 +3,14 @@
 
 // The pure parts of the agent front end (vertex animation spec 6): the contact sheet's sample
 // times, the CPU decode of a payload with the shader's frame math (vatMeshAt, both modes and
-// both precisions, rest "none" clips), the cell rasterizer and the sheet composition, and the hand
-// edits a rebake keeps (keepVatEdits). The source row (VatPoser) and the routing need a project:
-// tools/mcp/tests/test_bake_vertex_animation.py covers them.
+// both precisions, rest "none" clips), the cell rasterizer and the sheet composition. The source
+// row (VatPoser) and the routing need a project: tools/mcp/tests/test_bake_vertex_animation.py
+// covers them.
 
 #include <gtest/gtest.h>
 
 #include "vat/VatBakeCompute.h"
 #include "vat/VatContactSheet.h"
-#include "vat/VatFrontEnd.h"
 
 #include <cmath>
 #include <cstring>
@@ -195,51 +194,4 @@ TEST(VatContactSheet, CellsDrawTheMeshAndTheSheetComposes) {
     const PoseImage sheet = composeVatSheet({row, row}, {vatSheetTimes(1.0f, ClipWrapMode::Loop)}, "title", 32);
     EXPECT_EQ(sheet.getWidth(), 4 * 32 + 3);
     EXPECT_EQ(sheet.getHeight(), (14 + 1) + 2 * (32 + 14) + 1);
-}
-
-TEST(VatFrontEnd, RebakesKeepHandEditsByClip) {
-    VatData old;
-    VatClip walk;
-    walk.name = "Stroll";
-    walk.frames = 30;
-    walk.fps = 30.0f;
-    walk.speed = 1.5f;
-    walk.wrap = ClipWrapMode::PingPong;
-    walk.interpolate = false;
-    ClipEventData step;
-    step.time = 0.25f;
-    step.function = "onStep";
-    walk.events.push_back(step);
-    old.clips.push_back(walk);
-    old.sockets.push_back({"Sword", "Armature/Hand"});
-    old.unknownKeys.push_back({"notes", "\"keep\""});
-
-    VatData fresh;
-    VatClip again = walk;
-    again.name = "Walk";
-    again.speed = 1.0f;
-    again.wrap = ClipWrapMode::Loop;
-    again.interpolate = true;
-    again.events.clear();
-    fresh.clips.push_back(again);
-    VatClip idle;
-    idle.name = "Idle";
-    idle.frames = 60;
-    idle.fps = 30.0f;
-    fresh.clips.push_back(idle);
-    fresh.sockets.push_back({"RightHand", "Armature/Hand"});
-
-    keepVatEdits(fresh, old);
-    // matched in order by length: the rename, speed, events, interpolate and the ping-pong wrap
-    // (a non-loop wrap is kept only when the new clip loops the same way: here loop vs ping-pong
-    // differ in looping, so the bake's loop stays)
-    EXPECT_EQ(fresh.clips[0].name, "Stroll");
-    EXPECT_FLOAT_EQ(fresh.clips[0].speed, 1.5f);
-    EXPECT_FALSE(fresh.clips[0].interpolate);
-    ASSERT_EQ(fresh.clips[0].events.size(), 1u);
-    EXPECT_EQ(fresh.clips[0].events[0].function, "onStep");
-    EXPECT_EQ(fresh.clips[0].wrap, ClipWrapMode::Loop);
-    EXPECT_EQ(fresh.clips[1].name, "Idle");
-    EXPECT_EQ(fresh.sockets[0].name, "Sword");
-    ASSERT_EQ(fresh.unknownKeys.size(), 1u);
 }

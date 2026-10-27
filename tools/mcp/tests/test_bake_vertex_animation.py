@@ -709,3 +709,53 @@ async def test_play_instances_move_out_of_step(ed: Editor):
     check(len({round(t, 3) for t in times}) == 6, f"randomStart: every instance at its own time: {times}")
     later_times = list(later[1].values()) if isinstance(later[1], dict) else later[1]
     check(any(abs(a - b) > 1e-3 for a, b in zip(times, later_times)), f"they move: {times} then {later_times}")
+
+
+async def test_place_crowd_bake_and_import(ed: Editor):
+    sid = await scene(ed)
+    r = await bake(ed, source=ARM, clips=["Swing"], output="assets/vat/crowd.vat", scene=sid,
+                   place={"crowd": {"count": 12, "area": 8, "seed": 3}})
+    v = r.structured
+    check(v["undo"]["scope"] == "scene" and v.get("entity"), f"a crowd is a scene step with its GameObject: {v}")
+    entity = v["entity"]["id"]
+    got = await ed.call("get_entity", scene=sid, entity=entity, components=["instancedmesh", "vertexanimator", "model"])
+    comps = got["components"]
+    check("instancedmesh" in comps and "vertexanimator" in comps, f"Model + Instanced Mesh + Vertex Animator: {sorted(comps)}")
+    count = (await ed.call("eval_lua", code=f"return object({entity}, 'Model'):getNumInstances()",
+                           allow_edit_mode=True))["values"]
+    check(count == [12], f"12 instances: {count}")
+    # one undo removes the crowd and its files
+    await ed.call("undo", scope="scene", scene=sid)
+    check(not (ed.project / "assets/vat/crowd.vat").exists(), "undo removes the files")
+    await ed.call("redo", scope="scene", scene=sid)
+    check((ed.project / "assets/vat/crowd.vat").exists(), "redo")
+    # play: every instance at its own time, and they move
+    await ed.call("save_scene", scene=sid)
+    await ed.call("play", action="start")
+    code = f"""local a = object({entity}, 'Model'):getVertexAnimator()
+        if not a:isLoaded() then return false end
+        local t = {{}}
+        for i = 0, a:getInstanceCount() - 1 do t[#t + 1] = a:getInstanceNormalizedTime(i) end
+        return t"""
+    first = None
+    for _ in range(80):
+        got = (await ed.call("eval_lua", code=code))["values"]
+        if got and got[0] is not False:
+            first = got[0]
+            break
+        await asyncio.sleep(0.25)
+    await asyncio.sleep(0.4)
+    later = (await ed.call("eval_lua", code=code))["values"][0]
+    await ed.call("play", action="stop")
+    check(first is not None, "the crowd loads in play")
+    first = list(first.values()) if isinstance(first, dict) else first
+    later = list(later.values()) if isinstance(later, dict) else later
+    check(len(first) == 12 and len({round(t, 3) for t in first}) >= 10, f"out of step: {first}")
+    check(any(abs(a - b) > 1e-3 for a, b in zip(first, later)), f"they move: {first} then {later}")
+    # an import placed as a crowd in the scene given
+    r = await bake(ed, **{"source": "assets/exports/flag", "output": "assets/vat/flag_crowd.vat", "scene": sid,
+                          "place": {"crowd": {"count": 5, "area": 4}}})
+    check(r.structured.get("entity") and r.structured["undo"]["scope"] == "scene", f"an imported crowd: {r.structured}")
+    msg = await ed.call("bake_vertex_animation", {"source": "assets/exports/flag", "output": "assets/vat/flag_r.vat", "place": "replace"},
+                        expect_error=True)
+    check("replace" in msg and "GameObject" in msg, msg)

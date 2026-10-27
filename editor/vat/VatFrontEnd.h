@@ -9,15 +9,11 @@
 //     path. GameObjects are the caller's (its own addressing): the route then only tells what the
 //     files are, and `on` names what .anim / .poseanim files play on (a model or prefab file;
 //     empty: the caller gives a GameObject, or a .poseanim's preview model is used).
-//   * imports written like bakes (spec 4.4): planVatImport (default "<export folder>/<asset>.vat"
-//     when that folder is inside the assets, else "<assets>/<asset>.vat"; the existing-file rule:
-//     a .vat imported from the same export is rewritten keeping its GUID and hand edits, another
-//     file makes the import take a free name, an explicit path that exists needs `overwrite`),
-//     writeImportedVat (one undo step: WriteFilesCmd on the project history, or CreateVatCmd on the
-//     scene's history for place beside / crowd), reimportVat (Rebake of an import recipe).
-//   * keepVatEdits: the hand edits a rebake keeps (clip names, events, speeds, wraps,
-//     interpolate by clip match, socket names by path, unknown keys), shared with the importer
-//     path (VatBakeSession::write applies the same rule to bakes).
+//   * imports written as the baker window writes them (vat/VatImportWrite.h: the default output
+//     next to the export, the existing-file rule, one undo step): planVatImport / writeImportedVat
+//     add what a front end gives besides, the scene to place in and the crowd (crowdPlacement);
+//     reimportVat is the Rebake of an import recipe (written over the .vat: GUID and hand edits
+//     kept by the existing-file rule).
 // - Thread-safety: main thread (reads the project, runs commands); importVat itself may run on
 //   any thread before writeImportedVat.
 // - Paths: project-relative with '/' in and out; absolute paths for import sources outside the
@@ -28,6 +24,7 @@
 
 #include "vat/VatBakeSession.h"
 #include "vat/VatBakeTypes.h"
+#include "vat/VatImportWrite.h"
 #include "vat/import/VatImport.h"
 
 #include <cstdint>
@@ -67,17 +64,12 @@ namespace jasperengine::editor::vat{
     bool readVatAsset(Project* project, const std::string& vatPath, jasperengine::vat::VatData& out, std::string* error);
     bool isImportRecipe(const jasperengine::vat::VatRecipe& recipe);
 
-    // copies onto `fresh` the hand edits of `old` (spec 4.5): clips matched by name, then in order
-    // preferring equal lengths (matchClips); sockets by path; unknown top-level keys
-    void keepVatEdits(jasperengine::vat::VatData& fresh, const jasperengine::vat::VatData& old);
-
     struct VatImportPlan{
         std::string output;                 // project-relative .vat; empty: the default (see the contract)
         bool overwrite = false;
         VatPlace place = VatPlace::None;    // replace needs a GameObject: refused for imports
         VatCrowd crowd;
         uint32_t sceneId = 0;               // the scene to place in (0: the selected scene)
-        bool keepGuidOf = false;            // rewrite: keep the existing file's GUID and edits (rebake)
     };
 
     // where writeImportedVat would write (project-relative) and whether it rewrites an existing file

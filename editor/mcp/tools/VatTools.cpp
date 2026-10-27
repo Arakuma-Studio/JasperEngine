@@ -305,7 +305,6 @@ bool requestFromArgs(Project* project, const Json& args, VatRequest& request, st
             request.detection = detectVatImport(request.importSpec.path);
             request.importWrite.output = request.rebakePath;
             request.importWrite.overwrite = true;
-            request.importWrite.keepGuidOf = true;
         }
         return true;
     }

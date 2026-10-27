@@ -19,7 +19,6 @@
 
 #include <algorithm>
 #include <filesystem>
-#include <set>
 
 namespace fs = std::filesystem;
 using namespace jasperengine;
@@ -285,168 +284,44 @@ bool isImportRecipe(const VatRecipe& recipe){
     return !recipe.sources.empty() && (recipe.sources[0].kind == "houdini_vat3" || recipe.sources[0].kind == "openvat");
 }
 
-void keepVatEdits(VatData& fresh, const VatData& old){
-    std::vector<std::string> names;
-    std::vector<float> lengths;
-    for (const VatClip& clip : fresh.clips){
-        names.push_back(clip.name);
-        lengths.push_back(clip.length());
+namespace{
+
+    // the baker window's import options (vat/VatImportWrite.h) for a front end's plan
+    VatImportWriteOptions writeOptions(const VatImportPlan& plan){
+        VatImportWriteOptions options;
+        options.output = plan.output;
+        options.overwrite = plan.overwrite;
+        options.place = plan.place;
+        if (plan.place == VatPlace::Crowd) options.crowd = crowdPlacement(plan.crowd);
+        return options;
     }
-    const std::vector<int> match = matchClips(old.clips, names, lengths);
-    std::set<std::string> used;
-    for (size_t i = 0; i < fresh.clips.size(); i++){
-        VatClip& clip = fresh.clips[i];
-        if (i >= match.size() || match[i] < 0 || (size_t)match[i] >= old.clips.size()){
-            used.insert(clip.name);
-            continue;
-        }
-        const VatClip& previous = old.clips[(size_t)match[i]];
-        if (!used.count(previous.name)) clip.name = previous.name;
-        clip.events = previous.events;
-        clip.speed = previous.speed;
-        clip.interpolate = previous.interpolate;
-        if ((previous.wrap == ClipWrapMode::Loop) == (clip.wrap == ClipWrapMode::Loop)) clip.wrap = previous.wrap;
-        used.insert(clip.name);
-    }
-    for (VatSocket& socket : fresh.sockets){
-        for (const VatSocket& previous : old.sockets){
-            if (previous.path == socket.path) socket.name = previous.name;
-        }
-    }
-    fresh.unknownKeys = old.unknownKeys;
+
 }
 
-bool planVatImport(Project* project, const VatImportResult& result, const VatImportDetection& detection,
-                      const VatImportPlan& options, std::string& vatPath, bool& rewrite, std::string& error){
-    rewrite = false;
-    if (!result.ok() || result.data.recipe.sources.empty()){
-        error = "the import failed";
-        return false;
-    }
-    const VatRecipeSource& ours = result.data.recipe.sources[0];
-    if (!options.output.empty()){
-        std::string relative;
-        if (!projectRelativeFile(project, options.output, false, relative, error)) return false;
-        const fs::path absolute = (project->getProjectPath() / FileUtils::pathFromUtf8(relative)).lexically_normal();
-        if (lower(relative).size() < 4 || lower(relative).rfind(".vat") != lower(relative).size() - 4 || !project->isInsideAssetsPath(absolute)){
-            error = "'" + relative + "' is not a .vat path inside the assets folder";
-            return false;
-        }
-        vatPath = relative;
-        if (fileThere(absolute) || fileThere(FileUtils::pathFromUtf8(meshPathFor(FileUtils::pathToUtf8(absolute))))){
-            if (!options.overwrite){
-                error = "'" + relative + "' exists: pass overwrite, or choose another output";
-                return false;
-            }
-            rewrite = true;
-        }
-        return true;
-    }
-    // next to the export when it is inside the assets, else in the assets folder
-    std::string directory;
-    if (!detection.folder.empty()){
-        const fs::path folder = FileUtils::pathFromUtf8(detection.folder).lexically_normal();
-        if (project->isInsideAssetsPath(folder)) directory = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(folder));
-    }
-    if (directory.empty()) directory = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(project->getAssetsPath()));
-    const std::string stem = fileSafe(detection.assetName.empty() ? std::string("vertex animation") : detection.assetName);
-    for (int n = 1;; n++){
-        const std::string relative = (directory.empty() ? std::string() : directory + "/") + stem + (n > 1 ? " " + std::to_string(n) : std::string()) +
-                                     VAT_EXTENSION;
-        const fs::path absolute = (project->getProjectPath() / FileUtils::pathFromUtf8(relative)).lexically_normal();
-        const bool vatThere = fileThere(absolute);
-        const bool meshThere = fileThere(FileUtils::pathFromUtf8(meshPathFor(FileUtils::pathToUtf8(absolute))));
-        if (!vatThere && !meshThere){
-            vatPath = relative;
-            return true;
-        }
-        VatData old;
-        if (vatThere && readVatAsset(project, relative, old, nullptr) && old.recipe.sources.size() == 1 && sameRecipeSource(old.recipe.sources[0], ours)){
-            vatPath = relative;
-            rewrite = true;
-            return true;
-        }
-    }
+bool planVatImport(Project* project, const VatImportResult& result, const VatImportDetection& detection, const VatImportPlan& options,
+                   std::string& vatPath, bool& rewrite, std::string& error){
+    return plannedImportOutput(project, result, detection, writeOptions(options), vatPath, rewrite, error);
 }
 
 bool writeImportedVat(Project* project, VatImportResult& result, const VatImportDetection& detection, const VatImportPlan& options,
-                    VatWriteResult& out, std::string& error){
+                      VatWriteResult& out, std::string& error){
     out = VatWriteResult();
-    std::string relative;
-    bool rewrite = false;
-    if (!planVatImport(project, result, detection, options, relative, rewrite, error)) return false;
     if (options.place == VatPlace::Replace){
         error = "place replace needs a GameObject source (an import has none): use beside or crowd";
         return false;
     }
-    const fs::path absolute = (project->getProjectPath() / FileUtils::pathFromUtf8(relative)).lexically_normal();
-    VatData& data = result.data;
-    VatData old;
-    const bool hasOld = rewrite && readVatAsset(project, relative, old, nullptr);
-    if (hasOld && !old.guid.empty()) data.guid = old.guid;
-    if (data.guid.empty()) data.guid = AssetDatabase::generateGuid();
-    const bool sameSource = hasOld && old.recipe.sources.size() == 1 && !data.recipe.sources.empty() &&
-                            sameRecipeSource(old.recipe.sources[0], data.recipe.sources[0]);
-    if (hasOld && (sameSource || options.keepGuidOf)) keepVatEdits(data, old);
-
-    VatEncodedFiles encoded;
-    if (!encodeVatImport(result, FileUtils::pathToUtf8(absolute), encoded, &error)) return false;
-    std::vector<CreateVatCmd::File> files;
-    files.push_back({absolute, encoded.vatText});
-    files.push_back({FileUtils::pathFromUtf8(encoded.meshPath), std::string(encoded.glbBytes.begin(), encoded.glbBytes.end())});
-    out.vat = relative;
-    out.mesh = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(FileUtils::pathFromUtf8(encoded.meshPath)));
-    for (const CreateVatCmd::File& file : files) out.files.push_back(FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(file.path)));
-    out.rewritten = rewrite;
-    out.guid = data.guid;
-    out.undoName = "Import Vertex Animation '" + relative + "'";
-
-    if (options.place == VatPlace::None){
-        std::vector<WriteFilesCmd::Item> items;
-        for (CreateVatCmd::File& file : files) items.push_back({file.path, std::move(file.content)});
-        Project* owner = project;
-        auto failureText = std::make_shared<std::string>();
-        auto* command = new WriteFilesCmd(std::move(items), [owner](const std::vector<fs::path>& paths){
-            CreateVatCmd::notifyFiles(owner, paths);
-        });
-        command->reportFailureTo(failureText);
-        if (!project->getProjectCommandHistory()->addCommand(command)){
-            error = failureText->empty() ? std::string("the files could not be written") : *failureText;
+    if (options.place == VatPlace::Crowd){
+        const std::string problem = crowdPlacementProblem(options.crowd);
+        if (!problem.empty()){
+            error = problem;
             return false;
         }
-        return true;
     }
-
-    VatPlacement placement;
-    placement.mode = options.place == VatPlace::Crowd ? VatPlacement::Mode::Crowd : VatPlacement::Mode::Beside;
-    if (placement.mode == VatPlacement::Mode::Crowd){
-        error = "crowd placement is not available yet: import with place beside, then make it a crowd";
-        return false;
+    // writeVatImport places into the selected scene
+    if (options.place != VatPlace::None && options.sceneId != 0 && project->getScene(options.sceneId)){
+        project->setSelectedSceneId(options.sceneId);
     }
-    const uint32_t sceneId = options.sceneId != 0 ? options.sceneId : project->getSelectedSceneId();
-    SceneProject* sceneProject = project->getScene(sceneId);
-    if (!sceneProject || !sceneProject->scene){
-        error = "no open scene to place the result in";
-        return false;
-    }
-    if (sceneProject->playState != ScenePlayState::STOPPED){
-        error = "the scene is playing: stop play mode to place the result";
-        return false;
-    }
-    placement.name = (detection.assetName.empty() ? FileUtils::pathToUtf8(absolute.stem()) : detection.assetName) + " (VAT)";
-    placement.model = ClipConverters::assetRelative(project, FileUtils::pathFromUtf8(encoded.meshPath));
-    placement.animation = ClipConverters::assetRelative(project, absolute);
-    placement.guid = data.guid;
-    auto* command = new CreateVatCmd(project, sceneId, files, placement);
-    auto failureText = std::make_shared<std::string>();
-    command->reportFailureTo(failureText);
-    if (!CommandHandle::get(sceneId)->addCommand(command)){
-        error = failureText->empty() ? std::string("the import could not be placed") : *failureText;
-        return false;
-    }
-    out.sceneId = sceneId;
-    out.entity = command->getEntity();
-    return true;
+    return writeVatImport(project, result, detection, writeOptions(options), out, error);
 }
 
 bool reimportVat(Project* project, const std::string& vatPath, VatWriteResult& out, std::string& error, VatImportReport* report){
@@ -462,11 +337,9 @@ bool reimportVat(Project* project, const std::string& vatPath, VatWriteResult& o
     }
     const VatImportDetection detection = detectVatImport(spec.path);
     VatImportPlan options;
-    std::string relative;
-    if (!projectRelativeFile(project, vatPath, true, relative, error)) return false;
-    options.output = relative;
+    if (!projectRelativeFile(project, vatPath, true, options.output, error)) return false;
+    // the same export: rewritten in place, GUID and hand edits kept (the existing-file rule)
     options.overwrite = true;
-    options.keepGuidOf = true;
     return writeImportedVat(project, result, detection, options, out, error);
 }
 

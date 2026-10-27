@@ -641,7 +641,6 @@ namespace{
             VatImportPlan options;
             options.output = relative;
             options.overwrite = true;
-            options.keepGuidOf = true;
             return importAndWrite(project, run, spec, detectVatImport(spec.path), options, "re-imported " + relative);
         }
         VatBakeSession session(&project);
