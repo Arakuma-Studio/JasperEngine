@@ -47,14 +47,16 @@ write). The guide is [docs/mcp/guide/vertex-animation.md](mcp/guide/vertex-anima
      choose **Bake Vertex Animation...**.
    - In the Inspector, use **Bake ▾ › Vertex Animation...** in the Animation Player, Pose Animator
      or Lattice Modifier section, or on a clip row of a model asset. The window opens filled in
-     with that source. Shift-click bakes straight away with the last settings.
+     with that source. Shift-click bakes straight away with the last settings and places the
+     result **Beside** the source, in one undo step.
    - For a Houdini or OpenVAT export, right-click it in the Project window and choose **Import as
      Vertex Animation...** (see [Importing](#importing-houdini-and-openvat)).
    - Double-click a `.vat` (or use **Open in Baker** in its Inspector view). The window opens with
      the recipe the file was baked from, and **Rebake** replaces **Bake**.
-2. **Source.** Drop a model, a prefab, a GameObject from the Hierarchy, an `.anim` or an export on
-   the drop zone. The window says what it found, for example "hero.gltf: 1 skinned mesh, 41
-   bones, 5,120 vertices, 6 clips". What each source bakes:
+2. **Source.** Drop a model, a prefab, a GameObject from the Hierarchy, an `.anim`, a `.poseanim`,
+   a `.vat` (its recipe) or an export on the source field, or select a GameObject and click
+   **Selection**. The window says what it found, for example "hero.gltf: 1 mesh, 41 bones, 5,120
+   vertices, 6 clips". What each source bakes:
 
    | Source | What is baked |
    |---|---|
@@ -67,8 +69,9 @@ write). The guide is [docs/mcp/guide/vertex-animation.md](mcp/guide/vertex-anima
 
    Every mesh under the source is merged into **one mesh**, with one submesh per material. A
    character made of ten parts is still one draw per material.
-3. **Clips.** Tick the clips to bake (**All** / **None**). Each row shows the clip's frames, length
-   and wrap, and has its own sample-rate override.
+3. **Clips.** Tick the clips to bake (**All** / **None**). Each row shows the clip's **Frames** and
+   **Length**, a **Wrap** you can change for the bake, and an **FPS** that overrides the Sample
+   rate for that clip.
 4. **Settings.**
    - **Mode**: Auto, Vertices or Bones (see [Choosing a mode](#choosing-a-mode)). With Auto, the
      window shows what Auto picked and why.
@@ -103,10 +106,10 @@ write). The guide is [docs/mcp/guide/vertex-animation.md](mcp/guide/vertex-anima
 
    | Place | Result |
    |---|---|
-   | **Files only** (default in the window and the Project window) | the two files, nothing in the scene |
-   | **Beside** (default from the Inspector) | a new GameObject "*Name* (VAT)" with the source's transform, a Model (`hero.vat.glb`) and a Vertex Animator (`hero.vat`), selected |
+   | **Files only** (default) | the two files, nothing in the scene |
+   | **Beside** (what Shift-click on an Inspector **Bake ▾** entry uses) | a new GameObject "*Name* (VAT)" with the source's transform, a Model (`hero.vat.glb`) and a Vertex Animator (`hero.vat`), selected |
    | **Replace** | the same, and the source GameObject is disabled (only for a GameObject source) |
-   | **Crowd...** | a crowd made with the [Create Crowd](#create-crowd) settings |
+   | **Crowd...** | the new GameObject becomes a crowd: **Count** instances in a square of side **Area (m)**, with random yaw and random start times, from **Seed**. For clip weights, spacing, a surface or speed ranges, use [Create Crowd](#create-crowd) on the `.vat` instead |
 
    The bake is **one undo step**. Undoing it deletes the files, but only if they are unchanged
    since the bake. With Files only, the step is on the project history; otherwise it is on the
@@ -168,19 +171,23 @@ when the face or clothes use blend shapes or lattices.
 
 ### Create Crowd
 
-**Create Crowd...** in a `.vat`'s Inspector view (or **Place: Crowd...** in the baker) creates
-one GameObject with a Model, an Instanced Mesh and a Vertex Animator, in one scene undo step. Its
+**Create Crowd...** in a `.vat`'s Inspector view opens a dialog. **Create** makes one GameObject
+with a Model, an Instanced Mesh and a Vertex Animator in the open scene, in one scene undo step.
+(The baker's **Place: Crowd...** is the quick version: count, area and seed only.) The dialog's
 settings:
 
 - **Count**: the number of instances.
-- **Area**: a box (**Size**, X and Z) or a disc (**Diameter**), around a **Center**. Instances
-  stand on the **Selected surface** (a raycast down onto its mesh, or its heights for a terrain) or
-  on the **Ground plane** through the center.
+- **Area**: a box (**Size (X, Z)**) or a disc (**Diameter**), around a **Center**. Instances
+  stand on the **Ground plane** through the center, or on a GameObject selected in the scene
+  (**On** *Name*: a ray down onto its mesh, or its heights for a terrain; where the ray misses,
+  the plane).
 - **Min Spacing**: the smallest distance between instances. When the area is too small, fewer
   are placed, and the message says how many.
 - **Random Yaw**, and a **Scale** range.
-- **Clips (weights)**: which clip each instance plays, for example 70 Walk and 30 Idle (only the
-  ratios count). With no weights, every instance plays the default clip.
+- **Clips (weights)**: which clip each instance starts with, for example 70 Walk and 30 Idle
+  (only the ratios count). With no weights, every instance plays the default clip. The picks are
+  saved with the Vertex Animator (`instanceClips`, `instanceSpeeds` in the scene file) and played
+  when it starts.
 - **Speed**: a range each instance picks its own speed from.
 - **Random Start**: each instance starts at a random time of its clip, so the crowd never marches
   in step.
@@ -195,7 +202,7 @@ settings:
 | Field | Meaning |
 |---|---|
 | **Animation** | the `.vat` |
-| **Clip** | the clip **Play Automatically** starts (empty: the first). **▶ Preview** next to it plays the GameObject and its instances in the Scene view in edit mode, with a time scrubber. It is off by default, so screenshots of the scene stay the same. It stops on Play, a save or another selection, and the scene is not changed |
+| **Clip** | the clip **Play Automatically** starts (empty: the first). The **▶** (Preview) button next to it plays the GameObject and its instances in the Scene view in edit mode, with a time scrubber. It is off by default, so screenshots of the scene stay the same. It stops on Play, a save or another selection, and the scene is not changed |
 | **Speed** | multiplies every clip's speed. Negative plays backwards |
 | **Random Start** | on by default: the GameObject, and each instance, starts at a random time of its first clip (seeded by the entity and the instance index) |
 | **Play Automatically** | plays the clip when the game starts. Off: a script calls `play(name)` |
@@ -226,6 +233,9 @@ vertexanimator:
     - {socket: RightHand, entity: 12}
 ```
 
+A crowd made by Create Crowd also has `instanceClips: [Walk, Idle, ...]` and `instanceSpeeds: [1.1,
+0.93, ...]`: each instance's starting clip and speed.
+
 Selecting a `.vat` in the Project window shows its **asset view**:
 
 - a header with the mode, the vertices or bones, the texture size and format, the memory and the
@@ -233,7 +243,8 @@ Selecting a `.vat` in the Project window shows its **asset view**:
 - the clips table. Name, wrap, speed and interpolation are editable there. The events column
   opens the clip's events (**+ Add Event**: time, function, args);
 - the sockets, which you can rename;
-- the staleness banner with **Rebake**, **Open in Baker** and **Create Crowd...**.
+- the staleness warning ("Source changed since baking: ..."), then **Rebake**, **Open in Baker**
+  and **Create Crowd...**.
 
 These edits change the `.vat` file, so they are **project** undo steps. Every Vertex Animator
 playing the file reloads, in edit preview and in play mode.
@@ -433,18 +444,24 @@ it on the baker's Source. You can give any part of the export: its folder, the m
 Houdini's `.mat` or data JSON, or OpenVAT's `-remap_info.json`. The importer finds the rest and
 lists every missing piece with its fix. The textures are decoded on the CPU and re-packed into the
 `.vat` layout, so nothing of Houdini's or Blender's encoding reaches the game. The `.vat` records
-the export as its source: Rebake imports it again.
+the export as its source: Rebake (**Re-import** in the baker) imports it again.
+
+The baker's **Import options** replace the bake settings for an export: **FPS** (0: the
+export's own), **Axis** (From the export, Unity, Unreal, Houdini, Z-up), for rigid pieces
+**Upsample** and **Mode** (Auto, Bones, Vertices), then **Colours**, **Normals**, **Precision**
+and **Preset**. **Import** writes the files; the result plays in the Preview section (imports
+have no heatmap).
 
 ### Houdini (SideFX Labs VAT 3)
 
 Export with the Labs **Vertex Animation Textures** ROP, version 3:
 
 - **Target Engine: Unity**. Unreal-target exports are converted too, from the data JSON's axis
-  system. When the target can't be told, the import stops with "re-export with Target Engine =
-  Unity, or pass axis".
+  system. When the target can't be told, the import stops (`unknown_target`): re-export with
+  Target Engine = Unity, or set **Axis**.
 - Keep the whole export folder (`geo/<asset>_mesh.fbx`, `tex/<asset>_pos.exr`...,
   `unity/<asset>_mat.mat` or `data/<asset>_data.json`). The frame rate comes from that metadata.
-  When it has none, the importer asks for it (`fps_unknown`).
+  When it has none, the import stops with `fps_unknown`: set **FPS**.
 - EXR (HDR) and PNG/TGA (LDR) textures both work, and so do **Two Position Textures**.
 
 | Houdini mode | Imported as | Notes |
@@ -460,7 +477,8 @@ A colour texture becomes the mesh's vertex colour in Vertices mode.
 
 Export with OpenVAT and keep the files together: `<name>_vat.exr` (or `.png`), the optional
 `<name>_vnrm.*` normals, `<name>-remap_info.json`, and the mesh (glTF or FBX) with its `VAT_UV`
-layer. The animations listed in `remap_info` become clips. Without them, every frame is one clip.
+layer. The animations listed in `remap_info` become clips. Without them, every frame is one clip,
+at the **FPS** you set (`fps_unknown` until you do).
 Blender's Z-up becomes Y-up. Only OpenVAT's files are read: none of its Blender add-on (GPL) is
 used.
 
@@ -595,8 +613,12 @@ jasperengine-editor bake-vat --project . --source assets/models/hero.gltf --clip
 jasperengine-editor bake-vat --project . --rebake assets/vat/hero.vat
 ```
 
-`--dry-run` prints the report without writing (`--format json` for scripts). The exit code is 0
-on success, 1 when the bake is refused or fails, and 2 for bad arguments.
+`--dry-run` prints the report without writing (`--format json` for scripts). The CLI writes files
+only: it places nothing in a scene. `--source` also takes a Houdini or OpenVAT export (with `--fps`
+and `--axis` when its metadata lacks them). The exit code is 0 on success (warnings allowed), 1
+when the bake, import or write fails (`too_large`, `output_exists`...), and 2 for a usage error
+(a bad option or value, a source that can't be baked, an unknown scene or GameObject). See
+`jasperengine-editor bake-vat --help` for every option.
 
 ## Troubleshooting
 
@@ -609,7 +631,7 @@ on success, 1 when the bake is refused or fails, and 2 for bad arguments.
 - **"Vertex Animation '...' needs a WxH texture, over this device's limit of N: drawing at
   rest".** The payload is taller than this GPU allows: usually a Desktop-preset bake on a phone or
   in a browser. Rebake with the Mobile & Web preset, fewer frames (a lower sample rate) or fewer
-  clips.
+  clips. `check --vat` reports it before you ship (`vat-device-limit`).
 - **`too_large`.** The bake doesn't fit the preset. Apply the fixes in their order: lower the
   sample rate, turn Normals off, use Bones mode, leave out a clip, or switch to Desktop.
   `memory_high` is the same warning before the limit.
