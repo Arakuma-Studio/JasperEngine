@@ -704,3 +704,14 @@ one line pointing here.
   Unicode line breaking and text-transform") and 31c67f7de ("rmlui: native text-shadow") (10
   commits, two of which did not build in the bisect), merged into oe-port by 08ec10485 before any
   S stream. It stays within oe-port's budget (30 <= 32); S16's own share was the 18 text pixels.
+- Merged oe-port 05eb8d3b4 (BF2 fixes, S25, c67bbdc8a): S16's three HTML UI project settings are
+  rows of S25's settings registry (`SettingsRows.cpp`, search entries; the Project Settings rows
+  behind `settingsui::beginRow`; `mcp-keys-before-s25.txt` lists them). S16 adds no editor
+  shortcut or menu.
+- On the tree with oe-port e1ca0c71a and the white-block fix (server A): glcore 3478 ran, the only
+  failure S17's `MarkdownHtml.Perf20KB` timing on the loaded host; AC1 (S16 off, pre-S16
+  goldens) 3478 ran, the same single timing failure: `p1/texture_effects` passes. Gate on B
+  (e1ca0c71a): `WERROR=1 linux`, TOOLS.md (198 tools), htmlui-editor-tests, unit tests, RmlUi
+  tests (463), web + web-gate pass; MCP failures there were the ones BF2 fixed (merged since).
+- Benchmark host E is gone: the last E runs (p12 on S16 alone, p13 on e1ca0c71a) are recorded;
+  later timing runs are PENDING until a benchmark host exists.
