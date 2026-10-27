@@ -676,3 +676,36 @@ async def test_move_and_delete_keep_the_pair(ed: Editor):
     check(not (ed.project / "assets/vat2/pair.vat.glb").exists(), "deleted")
     await ed.call("undo", scope="project")
     check((ed.project / "assets/vat2/pair.vat").is_file() and (ed.project / "assets/vat2/pair.vat.glb").is_file(), "undo restores both")
+
+
+async def test_play_instances_move_out_of_step(ed: Editor):
+    sid = await scene(ed)
+    r = await bake(ed, source=ARM, clips=["Swing"], output="assets/vat/herd.vat", place="beside", scene=sid)
+    entity = r.structured["entity"]["id"]
+    await ed.call("add_component", scene=sid, entity=entity, component="instancedmesh")
+    instances = [{"position": [x * 1.5, 0, z * 1.5]} for x in range(3) for z in range(2)]
+    await ed.call("set_properties", scene=sid, entity=entity, values={"instancedmesh": {"instances": instances}})
+    await ed.call("save_scene", scene=sid)
+    await ed.call("play", action="start")
+    code = f"""local a = object({entity}, 'Model'):getVertexAnimator()
+        if not a:isLoaded() then return false end
+        local t = {{}}
+        for i = 0, a:getInstanceCount() - 1 do t[#t + 1] = a:getInstanceNormalizedTime(i) end
+        return a:getInstanceCount(), t, a:getInstanceClip(0)"""
+    first = None
+    for _ in range(80):
+        v = (await ed.call("eval_lua", code=code))["values"]
+        if v and v[0] is not False:
+            first = v
+            break
+        await asyncio.sleep(0.25)
+    await asyncio.sleep(0.4)
+    later = (await ed.call("eval_lua", code=code))["values"]
+    await ed.call("play", action="stop")
+    check(first is not None, "the Vertex Animator loads in play")
+    count, times, clip = first
+    check(count == 6 and clip == "Swing", f"6 instances playing Swing: {first}")
+    times = list(times.values()) if isinstance(times, dict) else times
+    check(len({round(t, 3) for t in times}) == 6, f"randomStart: every instance at its own time: {times}")
+    later_times = list(later[1].values()) if isinstance(later[1], dict) else later[1]
+    check(any(abs(a - b) > 1e-3 for a, b in zip(times, later_times)), f"they move: {times} then {later_times}")
