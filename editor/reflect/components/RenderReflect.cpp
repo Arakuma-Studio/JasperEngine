@@ -108,6 +108,15 @@ namespace {
         JE_FIELD(TerrainSurfaceLayer, occlusionStrength, .updateFlags = kTerrainTexture, .min = 0.0f, .max = 1.0f),
         JE_FIELD(TerrainSurfaceLayer, uvScale, .updateFlags = kTerrainTexture),
         JE_FIELD(TerrainSurfaceLayer, uvOffset, .updateFlags = kTerrainTexture),
+        // Stochastic Tiling: every map read on a lattice of random hexagonal cells
+        JE_FIELD(TerrainSurfaceLayer, stochasticTiling, .updateFlags = kTerrainTexture),
+        JE_FIELD(TerrainSurfaceLayer, stochasticCellSize, .updateFlags = kTerrainTexture, .uiMin = 0.25f, .uiMax = 4.0f),
+        JE_FIELD(TerrainSurfaceLayer, stochasticBlendSharpness, .updateFlags = kTerrainTexture, .uiMin = 0.0f, .uiMax = 1.0f),
+        JE_FIELD(TerrainSurfaceLayer, stochasticContrast, .updateFlags = kTerrainTexture, .uiMin = 0.0f, .uiMax = 1.0f),
+        JE_FIELD(TerrainSurfaceLayer, stochasticRotation, .updateFlags = kTerrainTexture, .uiMin = 0.0f, .uiMax = 1.0f),
+        // hex tiling: a variant define and a uniform, which RenderSystem follows on its own
+        JE_FIELD(TerrainSurfaceLayer, hexTiling),
+        JE_FIELD(TerrainSurfaceLayer, hexRotation, .uiMin = 0.0f, .uiMax = 1.0f),
     };
 
     constexpr uint64_t kFoliage = UpdateFlags_Terrain_Foliage;

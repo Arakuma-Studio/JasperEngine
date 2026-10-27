@@ -86,6 +86,13 @@ namespace {
                  .tooltip = "How much of this light the volumetric fog scatters (High atmosphere quality, up to 4 point or spot lights, no "
                             "shadows). 0: none.",
                  .visibleIf = &lightNotDirectional),
+        // photometric units and colour temperature (util/LightPhotometry.h), resolved on the CPU
+        JE_FIELD(LightComponent, intensityUnit, .enumDesc = &enums::kLightUnit, .flags = OmitIfDefault | CodegenIfChanged, .label = "Unit",
+                 .tooltip = "What Intensity is in: Engine (unitless), Lux (a directional light), Candela or Lumen (a point or spot light), "
+                            "converted through the scene's Physical Light Exposure."),
+        JE_FIELD(LightComponent, useColorTemperature, .flags = OmitIfDefault | CodegenIfChanged, .label = "Use Temperature"),
+        JE_FIELD(LightComponent, colorTemperature, .ops = &ops::Kelvin, .flags = OmitIfDefault | CodegenIfChanged, .unit = Unit::Kelvin,
+                 .uiMin = 1000.0f, .uiMax = 20000.0f, .label = "Temperature"),
         JE_PROXY(LightComponent, "shadowCameraNear", shadowCameraNearFar.x, .flags = NoDefault, .updateFlags = kShadowCamera, .min = 0.0f,
                  .label = "Near Plane", .group = "Shadows"),
         JE_PROXY(LightComponent, "shadowCameraFar", shadowCameraNearFar.y, .flags = NoDefault, .updateFlags = kShadowCamera, .min = 0.0f,
@@ -96,7 +103,8 @@ namespace {
         "type", "direction", "shadows", "cullingMask", "intensity", "range", "color", "innerConeCos", "outerConeCos", "spotMask",
         "shadowBias", "mapResolution", "automaticShadowCamera", "shadowCameraNear", "shadowCameraFar", "numShadowCascades", "softShadows",
         "shadowStrength", "shadowNormalBias", "cascadeSplitMode", "cascadeSplits", "shadowDistance", "shadowAngularDiameter",
-        "shadowSourceRadius", "shadowUpdateMode", "volumetricIntensity", "shading", "enabled"
+        "shadowSourceRadius", "shadowUpdateMode", "volumetricIntensity", "shading", "intensityUnit", "useColorTemperature", "colorTemperature",
+        "enabled"
     };
 
     // ---------------------------------------------------------------- Light 2D

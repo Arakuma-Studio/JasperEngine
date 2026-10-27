@@ -204,6 +204,8 @@ namespace jasperengine::editor::reflect {
         bool uintFromIntYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
         bool intClampedFromYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
         bool nonNegativeFiniteFloatFromYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
+        YAML::Node kelvinToYaml(const FieldDesc&, const void*, const EncodeContext&);
+        bool kelvinFromYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
 
         void fontEncodeKey(const FieldDesc&, const void*, YAML::Node&, const std::string&, const EncodeContext&);
         bool fontDecodeKey(const FieldDesc&, const YAML::Node&, const std::string&, void*, const DecodeContext&, std::string&);
@@ -347,6 +349,12 @@ namespace jasperengine::editor::reflect {
         inline constexpr TypeOps NonNegativeFiniteFloat = detail::withScalar(TypeOps{"float", Kind::Float, PropertyType::Float, sizeof(float),
             &detail::construct<float>, &detail::destroy<float>, &detail::copy<float>, &detail::equalFloat,
             &detail::floatToYaml, &detail::nonNegativeFiniteFloatFromYaml, nullptr, nullptr, nullptr, false, &detail::floatLiteral,
+            &detail::numberSchema, &detail::finiteFloat}, &detail::floatScalar);
+        // a colour temperature in Kelvin (LightPhotometry): written finite (a non-finite one as 6500,
+        // white), read finite (else 6500) and clamped to 1000..20000
+        inline constexpr TypeOps Kelvin = detail::withScalar(TypeOps{"float", Kind::Float, PropertyType::Float, sizeof(float),
+            &detail::construct<float>, &detail::destroy<float>, &detail::copy<float>, &detail::equalFloat,
+            &detail::kelvinToYaml, &detail::kelvinFromYaml, nullptr, nullptr, nullptr, false, &detail::floatLiteral,
             &detail::numberSchema, &detail::finiteFloat}, &detail::floatScalar);
         // one character written as a one-character string (an empty one reads as '*')
         inline constexpr TypeOps Char = detail::withScalar(TypeOps{"char", Kind::String, PropertyType::Custom, sizeof(char),

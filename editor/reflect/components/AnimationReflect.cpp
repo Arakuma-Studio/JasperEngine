@@ -67,6 +67,7 @@ namespace {
     constexpr FieldDesc kTweenFields[] = {
         JE_FIELD(TweenComponent, duration, .unit = Unit::Seconds, .min = 0.0f),
         JE_FIELD(TweenComponent, loop),
+        JE_FIELD(TweenComponent, pingPong, .label = "Ping-pong", .tooltip = "Plays forward and then back, in twice the duration"),
         JE_FIELD(TweenComponent, function, .label = "Ease"),
     };
 
@@ -85,6 +86,10 @@ namespace {
         JE_FIELD(RotationTweenComponent, endRotation, .flags = NoDefault),
         JE_FIELD(RotationTweenComponent, startRotation, .flags = NoDefault),
         JE_FIELD(RotationTweenComponent, shortestPath),
+        // turns startRotation by angle around axis instead of reaching endRotation
+        JE_FIELD(RotationTweenComponent, spin),
+        JE_FIELD(RotationTweenComponent, axis),
+        JE_FIELD(RotationTweenComponent, angle, .unit = Unit::Degrees),
     };
 
     constexpr FieldDesc kScaleTweenFields[] = {
@@ -189,9 +194,17 @@ namespace {
     constexpr FieldDesc kKeyframeTracksFields[] = {
         JE_FIELD(KeyframeTracksComponent, index, .flags = NoDefault),
         JE_FIELD(KeyframeTracksComponent, interpolation),
+        JE_FIELD(KeyframeTracksComponent, loop, .tooltip = "Starts over after the last key"),
+        // transform tracks only: values add to the target's pose when the track starts
+        JE_FIELD(KeyframeTracksComponent, relative, .tooltip = "Keys are offsets from the pose the target has when the track starts"),
         JE_FIELD(KeyframeTracksComponent, times, .flags = kTrackList | NullIfEmpty, .unit = Unit::Seconds),
         JE_FIELD(KeyframeTracksComponent, easings, .enumDesc = &enums::kEaseType, .flags = kTrackList | OmitIfDefault),
     };
+
+    // a decoded track takes its base again when it starts
+    void keyframeTracksPostDecode(void* comp, const DecodeContext&) {
+        static_cast<KeyframeTracksComponent*>(comp)->hasBase = false;
+    }
 
     // values ("~" when empty), and the Hermite tangents of a GLTF CUBICSPLINE clip (kept beside
     // them by key edits): written only when set, read as empty when absent
@@ -306,6 +319,7 @@ const ComponentDesc kKeyframeTracksDesc{
     .displayName = "Keyframe Tracks", .icon = ICON_FA_KEY,
     .body = JE_STRUCT_DESC(KeyframeTracksComponent, "KeyframeTracksComponent", kKeyframeTracksFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(KeyframeTracksComponent),
+    .postDecode = &keyframeTracksPostDecode,
     .decodeApply = DecodeApply::MarkOnly,
     .codegen = JE_FACTORY_CODEGEN(createKeyframeTracksComponent),
 };

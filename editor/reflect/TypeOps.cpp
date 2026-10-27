@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "reflect/TypeOps.h"
+#include "util/LightPhotometry.h"
 
 #include "Factory.h"
 #include "Stream.h"
@@ -613,6 +614,16 @@ bool reflect::detail::intClampedFromYaml(const FieldDesc& field, const YAML::Nod
     const int low = std::isfinite(field.min) ? static_cast<int>(field.min) : std::numeric_limits<int>::min();
     const int high = std::isfinite(field.max) ? static_cast<int>(field.max) : std::numeric_limits<int>::max();
     *static_cast<int*>(value) = std::clamp(read, low, high);
+    return true;
+}
+
+YAML::Node reflect::detail::kelvinToYaml(const FieldDesc&, const void* value, const EncodeContext&) {
+    return YAML::Node(YamlNumbers::text(Stream::finiteOr(*static_cast<const float*>(value), LightPhotometry::WHITE_TEMPERATURE)));
+}
+
+bool reflect::detail::kelvinFromYaml(const FieldDesc&, const YAML::Node& node, void* value, const DecodeContext&, std::string&) {
+    *static_cast<float*>(value) = std::clamp(Stream::decodeFinite(node, LightPhotometry::WHITE_TEMPERATURE), LightPhotometry::MIN_TEMPERATURE,
+                                             LightPhotometry::MAX_TEMPERATURE);
     return true;
 }
 

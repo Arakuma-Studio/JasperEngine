@@ -193,6 +193,10 @@ namespace {
         JE_FIELD(RigidbodyComponent, gravityFactor, .updateFlags = kBody3D),
         JE_FIELD(RigidbodyComponent, friction, .updateFlags = kBody3D, .min = 0.0f),
         JE_FIELD(RigidbodyComponent, restitution, .updateFlags = kBody3D, .min = 0.0f),
+        // read by each fixed step in a water (Water::applyBuoyancy): the body stays as it is
+        JE_FIELD(RigidbodyComponent, buoyancy),
+        JE_FIELD(RigidbodyComponent, waterDrag),
+        JE_FIELD(RigidbodyComponent, waterAngularDrag),
         JE_FIELD(RigidbodyComponent, overrideMassProperties, .updateFlags = kBody3D),
         JE_FIELD(RigidbodyComponent, solidBoxSize, .updateFlags = kBody3D),
         JE_FIELD(RigidbodyComponent, solidBoxDensity, .updateFlags = kBody3D, .min = 0.0f),
@@ -273,7 +277,7 @@ const ComponentDesc kRigidbody2DDesc{
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kRigidbodyKnownKeys[] = {"allowedDOFs", "colliders", "enabled", "friction", "gravityFactor", "motionQuality", "numColliders", "restitution", "sensor", "type"};
+    constexpr const char* kRigidbodyKnownKeys[] = {"allowedDOFs", "buoyancy", "colliders", "enabled", "friction", "gravityFactor", "motionQuality", "numColliders", "restitution", "sensor", "type", "waterAngularDrag", "waterDrag"};
 
 }
 
