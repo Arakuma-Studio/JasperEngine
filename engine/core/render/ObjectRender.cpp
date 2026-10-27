@@ -103,6 +103,10 @@ void ObjectRender::destroy(){
 
 }
 
+size_t ObjectRender::getSharedVariantCount(){
+    return SokolObject::getSharedVariantCount();
+}
+
 int ObjectRender::getLivePipelineCount(){
     return SokolObject::getLivePipelineCount();
 }

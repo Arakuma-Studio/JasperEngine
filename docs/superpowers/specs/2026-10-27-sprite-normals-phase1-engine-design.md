@@ -497,3 +497,20 @@ Not touched: `editor/mcp/McpInstructions.cpp` (Phase 3 owns the agent guide line
 - Section 4, mirroring row: imported glTF with mirrored nodes (a mirror placed on the entity transform) now also shade
   normal maps correctly (wrong before); and meshes mirrored at runtime keep their front faces (single-sided ones no
   longer cull their fronts; double-sided Lit ones shade the visible side as the front, lit by 3D lights and Light 2Ds).
+
+## Amendments (2026-10-27, fix round 2)
+
+- The reversed-winding (and the editor's no-cull) pipeline variants are shared through `SokolPipelineCache`
+  (`acquireVariant`/`retainVariant`/`releaseVariant`, keyed by the whole pipeline description, reference counted):
+  any number of mirrored sprites with one material make one variant per pass type. A `SokolObject` holds a reference
+  of its own to each variant it uses (a copy takes its own, so a component copy that draws before its own load cannot
+  leak one), released on reload (`beginLoad`), `destroy()` and destruction.
+- Migration notes, added to section 4's mirroring rows:
+  - Projects that worked around the old behaviour by setting `windingOrder = CW` on a mesh they mirror at runtime are
+    now reversed twice (culled or back-shaded again): remove the workaround (leave `windingOrder` at CCW).
+  - Shaders branching on `gl_FrontFacing` now see the front face on runtime-mirrored meshes.
+  - Mirror sources the per-draw reversal does not cover (they shade and cull as before): an instance matrix of an
+    instanced mesh, a mirror made only by skinning joints, a lattice that turns the mesh inside out, and a Vertex
+    Animation baked with mirrored geometry.
+- 5.2: also a mirrored single-sided shadow caster (its shadow present and at the unmirrored one's place) and the
+  sharing and release of the variants (`ObjectRender::getSharedVariantCount`).

@@ -30,6 +30,8 @@
 #include "object/Primitive.h"
 #include "object/Sprite.h"
 #include "object/Tilemap.h"
+#include "registry/EntityCloner.h"
+#include "render/ObjectRender.h"
 #include "subsystem/RenderSystem.h"
 #include "texture/TextureData.h"
 
@@ -648,6 +650,98 @@ TEST_F(Light2DNormalMapTest, MirroredSingleSidedBoxKeepsItsFront){
     }
     EXPECT_GT(meanLuminance(plain, 300, 160, 340, 200), 60.0f) << "the box's front face is lit";
     EXPECT_TRUE(sameImage(plain, mirrored, 1)) << "the mirrored box shows its front face, lit the same";
+}
+
+// The reversed-winding pipelines of mirrored draws are shared: many mirrored sprites with one
+// material make one variant per pass type, a copy holds its own reference (also before its own
+// load), and destroying or reloading the sprites lets go of them
+TEST_F(Light2DNormalMapTest, MirroredVariantsAreShared){
+    const size_t baseline = ObjectRender::getSharedVariantCount();
+    NormalScene s;
+    s.addLight(LightSide::LEFT);
+    std::vector<Sprite*> sprites;
+    Sprite& first = s.addSprite();
+    first.setScale(Vector3(-1.0f, 1.0f, 1.0f));
+    sprites.push_back(&first);
+    ASSERT_TRUE(s.settle());
+    const size_t one = ObjectRender::getSharedVariantCount();
+    ASSERT_GT(one, baseline) << "a mirrored draw uses a variant";
+
+    for (int i = 1; i < 8; i++){
+        Sprite& sprite = s.addSprite();
+        sprite.setPosition(-256.0f + 64.0f * i, 100.0f, 0.0f);
+        sprite.setScale(Vector3(-1.0f, 1.0f, 1.0f));
+        sprites.push_back(&sprite);
+    }
+    ASSERT_TRUE(s.settle());
+    EXPECT_EQ(ObjectRender::getSharedVariantCount(), one) << "8 mirrored sprites, one material: the same variants";
+
+    // a copy shares the variants (its component copy holds references until its own load)
+    const std::vector<Entity> copies = EntityCloner::clone(&s.scene(), {first.getEntity()}, &s.scene());
+    ASSERT_EQ(copies.size(), size_t(1));
+    EXPECT_EQ(ObjectRender::getSharedVariantCount(), one) << "the copy right after cloning";
+    ASSERT_TRUE(s.settle());
+    EXPECT_EQ(ObjectRender::getSharedVariantCount(), one) << "the copy loaded and drawn";
+
+    // reloads release and take them again
+    for (Sprite* sprite : sprites)
+        sprite->getComponent<MeshComponent>().needReload = true;
+    ASSERT_TRUE(s.settle());
+    EXPECT_EQ(ObjectRender::getSharedVariantCount(), one) << "after reloading every sprite";
+
+    // unmirrored, they draw with their own pipelines; the variants go with the last reference
+    for (Sprite* sprite : sprites)
+        sprite->setScale(Vector3(1.0f, 1.0f, 1.0f));
+    s.scene().destroyEntity(copies[0]);
+    ASSERT_TRUE(s.settle());
+    EXPECT_EQ(ObjectRender::getSharedVariantCount(), one) << "unmirrored sprites keep what they hold until they reload";
+    for (Sprite* sprite : sprites)
+        sprite->getComponent<MeshComponent>().needReload = true;
+    ASSERT_TRUE(s.settle());
+    EXPECT_EQ(ObjectRender::getSharedVariantCount(), baseline) << "nothing left after the reloads";
+
+    // destroyed while mirrored: released too
+    first.setScale(Vector3(-1.0f, 1.0f, 1.0f));
+    ASSERT_TRUE(s.settle());
+    EXPECT_EQ(ObjectRender::getSharedVariantCount(), one);
+    s.scene().destroyEntity(first.getEntity());
+    ASSERT_TRUE(s.settle());
+    EXPECT_EQ(ObjectRender::getSharedVariantCount(), baseline) << "the destroyed sprite let go of its variant";
+}
+
+// A mirrored single-sided shadow caster (a box, scale (-1, 1, 1)) casts the shadow the
+// unmirrored one does, at the same place: the shadow pass reverses its winding too
+TEST_F(Light2DNormalMapTest, MirroredShadowCaster){
+    Screen plain, mirrored;
+    for (float scaleX : {1.0f, -1.0f}){
+        NormalScene s;
+        // a wall behind the caster, which receives the shadow
+        Primitive& wall = s.fixture.add<Primitive>();
+        wall.createBox(600.0f, 340.0f, 10.0f);
+        wall.setPosition(0.0f, 0.0f, -60.0f);
+        wall.setColor(0.9f, 0.9f, 0.9f, 1.0f);
+        Primitive& box = s.fixture.add<Primitive>();
+        box.createBox(64.0f, 64.0f, 64.0f);
+        box.setPosition(-60.0f, 0.0f, 0.0f);
+        box.setColor(0.2f, 0.3f, 0.8f, 1.0f);
+        box.setScale(Vector3(scaleX, 1.0f, 1.0f));
+        s.scene().setGlobalIllumination(0.2f);
+        Light& sun = s.fixture.add<Light>();
+        sun.setType(LightType::DIRECTIONAL);
+        sun.setIntensity(3.0f);
+        sun.setDirection(1.0f, 0.0f, -1.0f);
+        sun.setShadows(true);
+        ASSERT_TRUE(s.settle());
+        ASSERT_TRUE((scaleX < 0.0f ? mirrored : plain).read());
+    }
+    // the shadow falls on the wall right of the box (light from the left, 60 units behind it)
+    const float shadowed = meanLuminance(plain, 320, 168, 340, 192);
+    const float lit = meanLuminance(plain, 420, 168, 440, 192);
+    EXPECT_LT(shadowed, lit * 0.7f) << "a shadow right of the box: " << shadowed << " vs lit wall " << lit;
+    const float mirroredShadowed = meanLuminance(mirrored, 320, 168, 340, 192);
+    EXPECT_LT(mirroredShadowed, meanLuminance(mirrored, 420, 168, 440, 192) * 0.7f) << "the mirrored box's shadow";
+    EXPECT_NEAR(mirroredShadowed, shadowed, 2.0f) << "at the same place";
+    EXPECT_TRUE(sameImage(plain, mirrored, 2)) << "the mirrored box casts the same shadow";
 }
 
 // R18: a normal map that fails to load shades flat, as no normal map does (Lit path)
