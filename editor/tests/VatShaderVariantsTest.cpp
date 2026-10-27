@@ -17,6 +17,8 @@
 #include "component/Transform.h"
 #include "component/VertexAnimatorComponent.h"
 #include "pool/ShaderPool.h"
+#include "Engine.h"
+#include "System.h"
 
 #include <gtest/gtest.h>
 
@@ -32,6 +34,24 @@ using namespace jasperengine;
 using namespace jasperengine::editor;
 
 namespace {
+
+    // the model probe reads files through System::instance(): a bare one, set once
+    class FileSystemOnly : public System {
+    public:
+        int getScreenWidth() override { return 1000; }
+        int getScreenHeight() override { return 480; }
+    };
+
+    class VatShaderVariants : public ::testing::Test {
+    protected:
+        static void SetUpTestSuite() {
+            static FileSystemOnly* system = nullptr;
+            if (!system) {
+                system = new FileSystemOnly();
+                Engine::systemInit(0, nullptr, system);
+            }
+        }
+    };
 
     std::string base64(const std::vector<uint8_t>& bytes){
         static const char* table = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -180,7 +200,7 @@ namespace {
 
 }
 
-TEST(VatShaderVariants, VerticesModeShipsVatNextToRest){
+TEST_F(VatShaderVariants, VerticesModeShipsVatNextToRest){
     auto scene = std::make_unique<Scene>();
     const Entity entity = addModel(*scene, writeVatGltf("vertices", false));
     addAnimator(*scene, entity, makeAsset(vat::VatMode::Vertices));
@@ -192,7 +212,7 @@ TEST(VatShaderVariants, VerticesModeShipsVatNextToRest){
     EXPECT_FALSE(keys.depthBones);
 }
 
-TEST(VatShaderVariants, BonesModeShipsVabWithoutSkinning){
+TEST_F(VatShaderVariants, BonesModeShipsVabWithoutSkinning){
     auto scene = std::make_unique<Scene>();
     const Entity entity = addModel(*scene, writeVatGltf("bones", true));
     addAnimator(*scene, entity, makeAsset(vat::VatMode::Bones));
@@ -204,7 +224,7 @@ TEST(VatShaderVariants, BonesModeShipsVabWithoutSkinning){
     EXPECT_FALSE(keys.skinning) << "a .vat.glb's JOINTS_0 have no skin: no 'Ski' at rest either";
 }
 
-TEST(VatShaderVariants, UnreadableAssetShipsBothModes){
+TEST_F(VatShaderVariants, UnreadableAssetShipsBothModes){
     auto scene = std::make_unique<Scene>();
     const Entity entity = addModel(*scene, writeVatGltf("unreadable", false));
     addAnimator(*scene, entity, nullptr, "assets/vat/missing.vat");
@@ -214,7 +234,7 @@ TEST(VatShaderVariants, UnreadableAssetShipsBothModes){
     EXPECT_TRUE(keys.rest);
 }
 
-TEST(VatShaderVariants, NoAnimatorShipsNone){
+TEST_F(VatShaderVariants, NoAnimatorShipsNone){
     auto scene = std::make_unique<Scene>();
     addModel(*scene, writeVatGltf("plain", true));
     const Keys keys = collect(*scene);
