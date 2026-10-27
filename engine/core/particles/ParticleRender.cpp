@@ -303,7 +303,7 @@ namespace {
                 alignas(16) uint32_t ax[4], ay[4], az[4], ac[4], as[4], ar[4], av[4], aw[4];
                 B::storeu4(ax, xb); B::storeu4(ay, yb); B::storeu4(az, zb); B::storeu4(ac, color);
                 B::storeu4(as, sizeXY); B::storeu4(ar, rotationFrame); B::storeu4(av, velXY); B::storeu4(aw, velZW);
-                alignas(16) uint32_t qa[4], qb[4];
+                alignas(16) uint32_t qa[4] = {0, 0, 0, 0}, qb[4] = {0, 0, 0, 0};
                 if (job.mesh){
                     f4 qx, qy, qz, qw;
                     if (ctx.ch[ChQuatX]){
@@ -317,7 +317,7 @@ namespace {
                     B::storeu4(qa, pair(snorm16(qx), snorm16(qy)));
                     B::storeu4(qb, pair(snorm16(qz), snorm16(qw)));
                 }
-                alignas(16) uint32_t ca[4], cb[4];
+                alignas(16) uint32_t ca[4] = {0, 0, 0, 0}, cb[4] = {0, 0, 0, 0};
                 if (job.custom){
                     B::storeu4(ca, pair(half(K::curve(rp.custom[0], L)), half(K::curve(rp.custom[1], L))));
                     B::storeu4(cb, pair(half(K::curve(rp.custom[2], L)), half(K::curve(rp.custom[3], L))));
