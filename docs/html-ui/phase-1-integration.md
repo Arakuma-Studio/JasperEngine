@@ -606,7 +606,7 @@ The pass state machine is new compared with GL3, which rebinds framebuffers free
     CPU copy, 16-byte aligned, uploaded whole at most once a frame, started over once all
     their geometries are released; a page freed in frame N is reused from N+1); a larger
     geometry gets a **dedicated buffer** of a power-of-two size class (minimum 4 KiB);
-  - one buffer per geometry would exhaust sokol's fixed buffer pool (8192, shared with the
+  - one buffer per geometry would exhaust sokol's fixed buffer pool (16,384 by default, `Engine::GpuResourceLimits`, shared with the
     whole engine) with a few thousand elements; pages keep it to a few dozen buffers;
   - every geometry buffer is `STREAM`: sokol's Vulkan backend waits for the queue to idle on
     every `dynamic_update` update, while stream updates go through the per-frame staging

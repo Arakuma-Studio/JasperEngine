@@ -288,8 +288,21 @@ namespace {
 TEST_F(SharedMeshBuffersTest, ThousandsOfSkinnedModelCopiesAllDrawFromOneSetOfBuffers){
     const int firstBatch = 300;
     const int count = 3300;
-    std::vector<std::unique_ptr<Model>> models; // (outlive the scene: see addCopies)
-    GridScene s(count, 2.0f, 2.4f);
+    // Left alive, out of the engine, at the end: the heroes' ~150,000 node entities take hours
+    // to destroy (each one is erased from every component array in turn, the scene's teardown
+    // too), an engine limit of its own
+    struct Crowd {
+        std::vector<std::unique_ptr<Model>> models;
+        GridScene scene;
+        Crowd(int count): scene(count, 2.0f, 2.4f){}
+    };
+    Crowd* crowd = new Crowd(count);
+    struct Abandon {
+        Crowd* crowd;
+        ~Abandon(){ Engine::removeScene(&crowd->scene.scene()); }
+    } abandon{crowd};
+    std::vector<std::unique_ptr<Model>>& models = crowd->models;
+    GridScene& s = crowd->scene;
     const uint64_t exhaustionsBefore = SystemRender::getResourcePoolExhaustions();
 
     MeshBufferAllocations first;
