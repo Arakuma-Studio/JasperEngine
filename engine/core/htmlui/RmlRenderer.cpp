@@ -636,7 +636,9 @@ void RmlRenderer::persistGeometry(){
     for (std::unique_ptr<RmlGeometryPage>& page : pages){
         if (page->dedicated || page->uploadedTop >= page->top || page->updateFrame == frame)
             continue;
-        page->buffer.updateBuffer((unsigned int)page->top, page->shadow.data());
+        // past the frame's stream staging buffer: uploaded next frame
+        if (!page->buffer.updateBuffer((unsigned int)page->top, page->shadow.data()))
+            continue;
         page->updateFrame = frame;
         page->uploadedTop = page->top;
     }

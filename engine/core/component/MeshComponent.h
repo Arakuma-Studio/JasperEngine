@@ -360,6 +360,10 @@ namespace jasperengine{
 
         bool loaded = false;
         bool loadCalled = false;
+        // its load could not make a GPU object because that pool was full (SokolSystem logs
+        // which, once): not drawn and counted as settled (RenderSystem::isAllLoaded), not as
+        // loading; loaded again when the pools have room (SystemRender::hasResourcePoolRoom)
+        bool loadFailed = false;
 
         InterleavedBuffer buffer;
         IndexBuffer indices;

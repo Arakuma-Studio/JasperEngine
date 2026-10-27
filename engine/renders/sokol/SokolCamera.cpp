@@ -5,7 +5,6 @@
 #include "SokolCamera.h"
 
 #include "System.h"
-#include "SokolPipelineCache.h"
 #include "SokolSystem.h"
 #include "render/SystemRender.h"
 
@@ -56,11 +55,10 @@ void SokolCamera::setLabel(const char* label){
     pass.label = label;
 }
 
-// sg_begin_pass, and the pass's place in the frame stats' pass list; a new pass has no
-// pipeline applied (the dynamic path's "applied last", SokolPipelineCache)
+// the pass (SokolSystem::beginPass: no pipeline applied, never nested), and its place in the
+// frame stats' pass list
 static void beginPass(const sg_pass& pass){
-    sg_begin_pass(pass);
-    SokolPipelineCache::invalidateApplied();
+    SokolSystem::beginPass(pass);
     SokolSystem::recordPass(pass);
 }
 
@@ -222,7 +220,7 @@ void SokolCamera::applyScissorTopLeft(int x, int y, int width, int height){
 
 void SokolCamera::endRenderPass(){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
-    sg_end_pass();
+    SokolSystem::endPass();
 
     if (textureView.id != SG_INVALID_ID){
         sg_destroy_view(textureView);

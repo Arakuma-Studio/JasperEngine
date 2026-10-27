@@ -14,6 +14,7 @@
 #include "sokol_gfx.h"
 
 #include <map>
+#include <memory>
 
 
 namespace jasperengine{
@@ -42,6 +43,10 @@ namespace jasperengine{
         // the pipeline types (PipelineType), by bit index
         static constexpr int PIPELINE_TYPES = 16;
         sg_pipeline pipelines[PIPELINE_TYPES];
+        // Pipelines are shared by every object loaded with the same description (thousands of
+        // meshes of one model and material draw with one): held here, copies hold them too,
+        // destroyed with their last holder
+        std::shared_ptr<void> pipelineRefs[PIPELINE_TYPES];
 
         sg_pipeline_desc pipeline_desc;
 
@@ -65,6 +70,7 @@ namespace jasperengine{
         // Editor-only variants of the pipelines that cull no face, one per pipeline type,
         // created on the first draw that asks for one and destroyed with the others
         sg_pipeline noCullPipelines[PIPELINE_TYPES];
+        std::shared_ptr<void> noCullRefs[PIPELINE_TYPES];
         // types whose pipeline already culls nothing, by bit index
         uint16_t noCullSame;
 #endif
@@ -135,7 +141,9 @@ namespace jasperengine{
         // applied last in this pass
         bool beginDraw(const PipelineState& state);
         void applyUniformBlock(int slot, unsigned int count, void* data);
-        void draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount);
+        // false: skipped, its uniforms did not fit the frame's uniform buffer (SokolSystem::reserveUniformBytes)
+        // or its descriptor sets the descriptor buffer (SokolSystem::reserveDescriptorBytes)
+        bool draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount);
 
         void destroy();
 
