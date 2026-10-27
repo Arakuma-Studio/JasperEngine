@@ -103,11 +103,13 @@ namespace {
         &detail::construct<Poses>, &detail::destroy<Poses>, &detail::copy<Poses>, &equalPoses,
         nullptr, nullptr, nullptr, nullptr, nullptr, false, nullptr, &detail::customSchema};
 
+    // resolution, subdivisions and binding weight: an edit outside the range is clamped (Catalog::updateEntity),
+    // as before reflection, not refused
     constexpr FieldDesc kLatticeFields[] = {
         JE_FIELD(LatticeComponent, enabled),
-        JE_FIELD(LatticeComponent, resolutionX, .updateFlags = kLattice, .min = 2.0f, .max = 16.0f),
-        JE_FIELD(LatticeComponent, resolutionY, .updateFlags = kLattice, .min = 2.0f, .max = 16.0f),
-        JE_FIELD(LatticeComponent, resolutionZ, .updateFlags = kLattice, .min = 2.0f, .max = 16.0f),
+        JE_FIELD(LatticeComponent, resolutionX, .flags = Clamped, .updateFlags = kLattice, .min = 2.0f, .max = 16.0f),
+        JE_FIELD(LatticeComponent, resolutionY, .flags = Clamped, .updateFlags = kLattice, .min = 2.0f, .max = 16.0f),
+        JE_FIELD(LatticeComponent, resolutionZ, .flags = Clamped, .updateFlags = kLattice, .min = 2.0f, .max = 16.0f),
         // the whole list, and each point (a prefab instance overrides points one by one)
         JE_FIELD(LatticeComponent, offsets, .flags = ListWhole | ListElements | ListTemplate, .updateFlags = kLattice),
         JE_FIELD(LatticeComponent, interpolation, .enumDesc = &enums::kLatticeInterpolation, .updateFlags = kLattice),
@@ -127,7 +129,7 @@ namespace {
 
     constexpr FieldDesc kLatticeBindingFields[] = {
         JE_FIELD(LatticeBinding, lattice, .ops = &ops::Entity, .updateFlags = kLattice),
-        JE_FIELD(LatticeBinding, weight, .updateFlags = kLattice, .min = 0.0f, .max = 2.0f),
+        JE_FIELD(LatticeBinding, weight, .flags = Clamped, .updateFlags = kLattice, .min = 0.0f, .max = 2.0f),
         JE_FIELD(LatticeBinding, stage, .enumDesc = &enums::kLatticeStage, .updateFlags = kLattice),
         JE_FIELD(LatticeBinding, submesh, .updateFlags = kLattice, .min = -1.0f, .tooltip = "Only this submesh (material slot); -1: all."),
         JE_FIELD(LatticeBinding, mask, .enumDesc = &enums::kLatticeMaskChannel, .updateFlags = kLattice),
@@ -143,7 +145,7 @@ namespace {
         JE_FIELD(LatticeModifierComponent, enabled),
         JE_FIELD(LatticeModifierComponent, bindings, .flags = ListWhole | ListTemplate, .updateFlags = kLattice),
         JE_FIELD(LatticeModifierComponent, includeChildren, .updateFlags = kLattice),
-        JE_FIELD(LatticeModifierComponent, subdivisions, .updateFlags = kLattice, .min = 1.0f, .max = 64.0f),
+        JE_FIELD(LatticeModifierComponent, subdivisions, .flags = Clamped, .updateFlags = kLattice, .min = 1.0f, .max = 64.0f),
     };
 
     const ComponentCodec kLatticeModifierCodec = JE_STREAM_CODEC(LatticeModifierComponent, encodeLatticeModifierComponent,

@@ -523,8 +523,9 @@ Recorded by the implementation (branch `feat/s08-reflection`).
   - The Animation `actionFrameCount` pseudo-property is no longer listed. Through MCP it read a
     dangling pointer.
 - **MCP.** `set_properties` refuses `Derived` fields as well as `ReadOnly`/`NoMcpWrite` ones. A
-  field flagged `Clamped` (UIDocument `textureWidth`/`textureHeight`) is clamped rather than
-  refused outside its range: its load clamps too, and the existing suite relies on that. MCP
+  field flagged `Clamped` (UIDocument `textureWidth`/`textureHeight`, Lattice `resolutionX/Y/Z`,
+  Lattice Modifier `subdivisions` and binding `weight`) is clamped rather than refused outside
+  its range: its load and `Catalog::updateEntity` clamp too, and the existing suite relies on that. MCP
   ease options leave out `custom`, as before. Camera keeps both tokens (R5 default).
 - **Benchmarks.** `ReflectCodecBench` (R17) and `ReflectResolveBench` (R18) always log their numbers
   and always check for zero allocations. The time budgets are asserted only with
