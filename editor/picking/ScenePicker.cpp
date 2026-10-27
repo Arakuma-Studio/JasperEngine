@@ -406,6 +406,9 @@ Entity ScenePicker::bestOnRay(const std::vector<Entity>& entities, Scene* scene,
     PickFilter filter;
     filter.kinds = PICK_ALL & ~PICK_ICON;
     filter.accept = [accepted](Entity entity){ return accepted->count(entity) > 0; };
+    // the editor's incidental queries (what a press lands on, the physics snap's arming) never
+    // build a mesh's tree on the main thread: one still building answers with its bounds
+    filter.waitForBvh = false;
     std::vector<PickHit> hits;
     scene->getPickBvh().raycast(ray, filter, hits, true);
 
