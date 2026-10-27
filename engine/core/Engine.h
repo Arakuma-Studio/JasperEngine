@@ -296,13 +296,15 @@ namespace jasperengine {
             int uniformBytes = defaultUniformBytes();
             // bytes a frame can upload into STREAM buffers and textures on Vulkan (sokol's
             // per-frame stream staging buffer, each upload rounded up to 16 bytes): the bone
-            // matrices of every skinned mesh (STREAM_BONES_BYTES_PER_HERO_DOC), HTML UI geometry,
-            // video and Lottie textures, instance data, terrain nodes. Past it an upload is
-            // skipped (its mesh draws the data it had) and the first such frame logged
-            // (SokolSystem::reserveStreamBytes); counted, not limited, on the other backends (they
-            // write into the resource). Allocated once per frame in flight (2) in host-visible
-            // memory: 48 MB on desktop (96 MB allocated), 16 MB on Android, iOS and the web
-            // (sokol's default; 32 MB allocated). sokol's default held ~2,300 skinned heroes.
+            // matrices of every skinned mesh whose pose changed (an animated hero of
+            // hero_animated.gltf: 8,192 bytes a frame, measured by SharedMeshBuffersTest; a still
+            // one uploads once), HTML UI geometry, video and Lottie textures, instance data,
+            // terrain nodes. Past it an upload is skipped and tried again next frame by its
+            // owner (bones, instances, terrain nodes, HTML UI pages), and the first such frame
+            // is logged (SokolSystem::reserveStreamBytes); counted, not limited, on the other
+            // backends (they write into the resource). Allocated once per frame in flight (2) in
+            // host-visible memory: 48 MB on desktop (~6,000 animated heroes; 96 MB allocated),
+            // 16 MB on Android, iOS and the web (sokol's default, ~2,000; 32 MB allocated).
             int streamStagingBytes = defaultStreamStagingBytes();
             // bytes of descriptors a frame can bind on Vulkan (sokol's per-frame descriptor
             // buffer, VK_EXT_descriptor_buffer): each draw writes its textures', samplers' and
