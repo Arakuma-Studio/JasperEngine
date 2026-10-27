@@ -594,4 +594,85 @@ Unit tests are gtest in `engine/tests/core/input/`, `engine/tests/core/physics/`
   duplicating maps. Full device pairing is a later stream.
 - **2D controller quality** comes from our own solver. Default: P5 ships only if AC19 passes.
   Otherwise it slips without blocking P1–P4.
-- **Mobile benchmark numbers** are not yet measured. Record them here (AC17) when P2/P3 land.
+- **Benchmark numbers (AC17).** On the benchmark runner (server E, 4 dedicated vCPU,
+  `JASPER_TEST_PERF_SLACK=1`, all within budget; the replacement E of 2026-10-27, after the
+  oe-port 05eb8d3b4 merge):
+
+  | Scenario | Measured | Budget |
+  |---|---|---|
+  | Input latch, no events (R35) | 0.100 µs | 2 µs |
+  | Input latch + 100 actions / 300 bindings (R35) | 13.1 µs | 50 µs |
+  | One `CharacterController.move` in 1k static bodies (R36) | 0.0032 ms | 0.1 ms desktop / 0.3 ms mobile |
+  | 10 controllers + the physics step (R36) | 0.312 ms (moves 0.059 ms) | 1 ms mobile |
+  | 10 controllers without inner bodies + the step | 0.186 ms | — |
+  | The step of the 1k static bodies alone (reference) | 0.128 ms | — |
+  | Buoyancy, 100 bodies × 4 columns (R37) | 0.044 ms | 0.1 ms desktop / 0.3 ms mobile |
+
+  The mobile numbers must be measured by hand on the reference Android device, once per release.
+  They are still open: no reference device can be reached from the build servers, and the x86_64
+  emulator does not give representative timings. Record them in this table when measured.
+
+## 10. Deviations
+
+Recorded during implementation (branch `feat/s22-gameplay`).
+
+- **P4 modifiers.** A press counts with the modifiers held when it was made (`pressMods`), so a
+  same-window Ctrl+S tap is still Ctrl+S. A control held across windows counts with the modifiers
+  held now: releasing Shift while W stays down makes a `forbiddenMods: [shift]` binding of W
+  actuate on the next window, and releasing Ctrl ends a held Ctrl+S.
+- **P4 send_input.** The `input_action` event's line in the tool description lists its own keys
+  only; `hold_frames`, `down`/`up` and `release_all` work as for the other events. The
+  description was shortened elsewhere to stay inside the `send_input` budget (1923 characters).
+- **P5 2D controller.**
+  - It has no Box2D body (D2 lists none). Rays, `Physics2D` queries, sensors and other 2D
+    controllers do not see it. There is no `onControllerColliderHit` in 2D, and it stays upright
+    on a rotating platform, carried by the velocity where it stands.
+  - Walkability is the contact normal's, as in Jolt. A riser counts as a step when it is no higher
+    than `stepOffset`, measured by the contact that stopped the walk lying below the bottom it lands
+    with. A riser taller than `stepOffset` is not climbed by perching the round bottom on its edge.
+  - A step climbed onto a corner lands up to `radius + skinWidth` further on, as Jolt's
+    `mWalkStairsStepForwardTest`. That one frame moves further than the requested motion.
+  - Stick-to-floor casts down `stepOffset`. It slides down a nosing that is too steep to stand on,
+    and keeps the result only on walkable ground.
+  - Pushing skips what it stands on.
+  - `GameObject:getCharacterController2D()` adds the component when it is missing, as
+    `getRigidbody2D()` does.
+  - Add Component, `add_component`, `create_entity`, `edit_colliders` and the add command itself
+    refuse a Character Controller 2D next to a Rigidbody 2D.
+- **P2 3D controller.**
+  - R26 "disables the controller": the controller gives way at runtime and logs once
+    (`refusedWithRigidbody`). Its saved `enabled` checkbox is left alone, so removing the Rigidbody
+    brings it back.
+  - R20 `ExtendedUpdate` is run as its steps (Update, StickToFloor, WalkStairs) with two additions:
+    - A stair walk is kept only when what stopped the walk is no higher than `stepOffset` over the
+      ground it left and ends below the feet. Without this, Jolt climbs a riser taller than
+      `stepOffset` by sliding the round bottom up its edge, or perches on it.
+    - When Jolt's StickToFloor lands on a nosing too steep to stand on, a sweep down along it is
+      kept only on walkable ground.
+    - Stick-to-floor also counts a move that ended supported. The post-step refresh at rest drops
+      contacts beyond Jolt's 1 mm tolerance, and a character walking off an edge is past that.
+  - The OE stair settings stand (min step forward `max(0.02, r)`, forward test
+    `max(0.15, r + 0.05)`), so a climbed step can land up to a radius further on in that frame.
+  - Moves skip every inner body (their own and other controllers'); controllers meet only through
+    `CharacterVsCharacterCollisionSimple`, so `characterCollisions` off lets two pass through.
+  - The post-step pass refreshes contacts only when the ground is not static or has left the world.
+  - `GameObject:getCharacterController()` adds the component when it is missing, as `getRigidbody()`.
+  - R36 on C (not enforced): one move 0.005 ms; ten controllers + the step 0.60 ms, of which the step
+    of the 1k static bodies alone is 0.23 ms and the ten inner bodies 0.27 ms.
+- **P3 water on upstream's Water.** Upstream (synced into oe-port) already has water surfaces made
+  from `library:water` meshes, `Water::getWaves`/`getTime` and a Rigidbody `buoyancy` factor
+  (Jolt `ApplyBuoyancyImpulse`). S22 builds on them rather than adding a second water model.
+  - There is one wave twin, `util/WaterWaves.h`, pinned to the GLSL. `Water::getWaves` calls it,
+    and `Water::getTime` is `Engine::getShaderTime`.
+  - `WaterVolumeComponent` (R30) and `BuoyancyComponent` (R32) come on top. A body with an enabled
+    Buoyancy floats by its columns and ignores the Rigidbody `buoyancy` factor.
+  - `Water.sample` and `sampleHeight` read Water Volumes first, then the mesh surfaces.
+  - Upstream's `Water.getHeight` / `isUnderwater` and the underwater post pass still see only the
+    mesh surfaces.
+  - AUTO columns sit on the face of the colliders' bounds that faces down now, along that axis
+    (not always the local −Y face). Without this, a rolling body sank, because its columns ended
+    up on its side.
+  - CUSTOM columns stand along the body's local up. At most 9 columns are used.
+  - upstream's `test_water.py` waited inside one Lua call for `Water.getTime()` to move. The
+    clock is now latched once a frame (R29), so it waits frames instead.
+  - R37 on C (not enforced): 100 bodies × 4 columns take 0.075 ms a step.

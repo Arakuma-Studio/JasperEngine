@@ -9,6 +9,9 @@
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include "SettingsCategoryList.h"
+#include "asset/AssetMap.h"
+#include "input/InputActions.h"
+#include "io/UserSettings.h"
 #include "organisation/LabelOperations.h"
 #include "Out.h"
 #include "command/CommandHistory.h"
@@ -147,6 +150,7 @@ enum class ProjectCategory {
     Texture,
     Physics,
     Physics2D,
+    Input,
     Scripting,
     TagsAndLayers,
     Editor,
@@ -906,6 +910,20 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_cxxStandardIndex = findCxxStandardIndex(project->getCxxStandard());
     m_physics2DEnabled = project->isPhysics2DEnabled();
     m_physics3DEnabled = project->isPhysics3DEnabled();
+    m_inputActionsAsset = project->getInputActionsAsset();
+    m_inputDeadzone = project->getInputDeadzone();
+    m_inputStatus.clear();
+    m_inputActionsFiles.clear();
+    {
+        std::error_code ec;
+        const fs::path assets = project->getAssetsPath();
+        for (auto it = fs::recursive_directory_iterator(assets, fs::directory_options::skip_permission_denied, ec);
+             !ec && it != fs::recursive_directory_iterator(); it.increment(ec)){
+            if (it->is_regular_file(ec) && it->path().extension() == ".inputactions")
+                m_inputActionsFiles.push_back(fs::relative(it->path(), project->getProjectPath(), ec));
+        }
+        std::sort(m_inputActionsFiles.begin(), m_inputActionsFiles.end());
+    }
     m_runtimeShadersEnabled = project->isRuntimeShadersEnabled();
     m_mobilePbrTierIndex = findMobilePbrTierIndex(project->getMobilePbrTier());
 
@@ -1066,6 +1084,7 @@ void ProjectSettingsWindow::drawSettings() {
         case ProjectCategory::Texture: drawTextureSettings(); break;
         case ProjectCategory::Physics: drawPhysicsSettings(); break;
         case ProjectCategory::Physics2D: drawPhysics2DSettings(); break;
+        case ProjectCategory::Input: drawInputSettings(); break;
         case ProjectCategory::Scripting: drawScriptingSettings(); break;
         case ProjectCategory::TagsAndLayers: drawTagsAndLayersSettings(); break;
         case ProjectCategory::Editor: drawEditorSettings(); break;
@@ -1792,6 +1811,61 @@ static void addVerticalText(ImDrawList* drawList, const ImVec2& bottomLeft, ImU3
         const float dy = vertex.pos.y - bottomLeft.y;
         vertex.pos = ImVec2(bottomLeft.x + dy, bottomLeft.y - dx);
     }
+}
+
+void ProjectSettingsWindow::drawInputSettings() {
+    if (beginSettingsPanel("##InputSettingsPanel")) {
+        if (beginSettingsTable("##SettingsTable")) {
+            if (settingsui::beginRow("input.actions")) {
+                if (projectBeginSettingsRow("Default Actions Asset", !m_inputActionsAsset.empty())) {
+                    m_inputActionsAsset.clear();
+                }
+                const std::string current = m_inputActionsAsset.empty() ? std::string("None") : m_inputActionsAsset.generic_string();
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                if (ImGui::BeginCombo("##InputActionsAsset", current.c_str())) {
+                    if (ImGui::Selectable("None", m_inputActionsAsset.empty())) m_inputActionsAsset.clear();
+                    for (const fs::path& file : m_inputActionsFiles) {
+                        if (ImGui::Selectable(file.generic_string().c_str(), file == m_inputActionsAsset)) m_inputActionsAsset = file;
+                    }
+                    ImGui::EndCombo();
+                }
+                endSettingsRow("The Input Actions asset Play and the built game load at start (InputActions.loadDefault). "
+                    "Window > Input Actions makes and edits one.");
+            }
+
+            if (settingsui::beginRow("input.deadzone")) {
+                if (projectBeginSettingsRow("Default Deadzone", m_inputDeadzone != Project::defaultInputDeadzone)) {
+                    m_inputDeadzone = Project::defaultInputDeadzone;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::SliderFloat("##InputDeadzone", &m_inputDeadzone, 0.0f, 0.95f, "%.2f");
+                endSettingsRow("The radial deadzone of stick and axis bindings of AXIS and VECTOR2 actions that set none of their own.");
+            }
+
+            if (settingsui::beginRow("input.rebinding_overrides")) {
+                projectBeginSettingsRow("Rebinding Overrides");
+                ImGui::BeginDisabled(m_inputActionsAsset.empty());
+                if (ImGui::Button("Reset rebinding overrides")) {
+                    // the key the game keeps them under (InputActions::getOverridesKey), in the editor's settings
+                    std::error_code ec;
+                    const fs::path relative = fs::relative(m_project->getProjectPath() / m_inputActionsAsset, m_project->getAssetsPath(), ec);
+                    const std::string path = relative.generic_string();
+                    const Guid guid = AssetMap::findGuid(path);
+                    const std::string key = "jasperengine.input." + (guid.isNull() ? path : guid.str());
+                    UserSettings::removeKey(key.c_str());
+                    if (InputActions::isLoaded() && InputActions::getAssetPath() == path)
+                        InputActions::resetOverrides();
+                    m_inputStatus = "The rebinding saved for " + m_inputActionsAsset.generic_string() + " in this editor is cleared.";
+                }
+                ImGui::EndDisabled();
+                endSettingsRow("Players' rebinding (InputActions.saveOverrides) is kept per asset in the user settings; "
+                    "this clears the editor's copy, which Play uses.");
+            }
+            ImGui::EndTable();
+        }
+        if (!m_inputStatus.empty()) drawSectionNote(m_inputStatus.c_str());
+    }
+    endSettingsPanel();
 }
 
 void ProjectSettingsWindow::drawLayerCollisionMatrix(const char* id, LayerCollisionRows& rows) {
@@ -2643,6 +2717,8 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setCxxStandard(cxxStandards[m_cxxStandardIndex]);
     m_project->setPhysics2DEnabled(m_physics2DEnabled);
     m_project->setPhysics3DEnabled(m_physics3DEnabled);
+    m_project->setInputActionsAsset(m_inputActionsAsset);
+    m_project->setInputDeadzone(m_inputDeadzone);
     m_project->setRuntimeShadersEnabled(m_runtimeShadersEnabled);
     m_project->setMobilePbrTier(mobilePbrTierValues[m_mobilePbrTierIndex]);
 

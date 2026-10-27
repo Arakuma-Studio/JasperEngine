@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "Water.h"
+#include "util/WaterWaves.h"
+#include "component/BuoyancyComponent.h"
 
 #include "Engine.h"
 #include "Scene.h"
@@ -10,9 +12,9 @@
 #include "shader/ShaderManifest.h"
 #include "shader/ShaderUniforms.h"
 #include "texture/Material.h"
+#include "subsystem/PhysicsSystem.h"
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "component/RigidbodyComponent.h"
-#include "subsystem/PhysicsSystem.h"
 #endif
 
 #include <algorithm>
@@ -28,11 +30,6 @@ const char* const Water::UNDERWATER_SHADER = "library:underwater";
 namespace{
 
     const float WATER_TWO_PI = 6.28318530718f;
-
-    // GLSL's fract
-    float fractf(float x){
-        return x - std::floor(x);
-    }
 
     // the camera is under the surface below it, and back above this much over it (the waves
     // would switch the pass on and off every frame at the surface; the pass fades only the
@@ -81,28 +78,14 @@ Vector3 WaterSurface::getNormal(float x, float z, float time) const{
 }
 
 float Water::getTime(){
-    // RenderSystem::drawFramePasses writes the same into frame.time.x
-    return (float)Engine::getSystemTime();
+    // the frame's shader clock (Engine::latchShaderTime), which RenderSystem writes into frame.time.x
+    return Engine::getShaderTime();
 }
 
 Vector3 Water::getWaves(float x, float z, float time, const Vector2& direction, float height, float waveLength, float speed){
-    // library/water.glsl's waterWaves, in the same float steps
-    const float directionLength = std::sqrt(direction.x * direction.x + direction.y * direction.y);
-    const Vector2 first = direction / std::max(directionLength, 1e-4f);
-    // turned 50 degrees
-    const Vector2 second(first.x * 0.6428f - first.y * 0.7660f, first.x * 0.7660f + first.y * 0.6428f);
-    const float length1 = std::max(waveLength, 1e-3f);
-    const float length2 = length1 * 0.6f;
-
-    const float phase1 = ((first.x * x + first.y * z) / length1 - fractf(time * speed / length1)) * WATER_TWO_PI;
-    const float phase2 = ((second.x * x + second.y * z) / length2 - fractf(time * speed / length2) + 0.37f) * WATER_TWO_PI;
-
-    const float h = height * (std::sin(phase1) + 0.5f * std::sin(phase2));
-    const float c1 = std::cos(phase1) / length1;
-    const float c2 = 0.5f * std::cos(phase2) / length2;
-    const float slopeX = height * WATER_TWO_PI * (first.x * c1 + second.x * c2);
-    const float slopeZ = height * WATER_TWO_PI * (first.y * c1 + second.y * c2);
-    return Vector3(h, slopeX, slopeZ);
+    // library/water.glsl's waterWaves: its one C++ twin, pinned to the GLSL (WaterWavesTest)
+    const WaterWaveSample wave = waterWaves(Vector2(x, z), time, direction, height, waveLength, speed);
+    return Vector3(wave.height, wave.slope.x, wave.slope.y);
 }
 
 bool Water::readMaterial(const Material& material, WaterSurface& surface){
@@ -201,6 +184,21 @@ bool Water::isUnderwater(Scene* scene, const Vector3& point){
     return surface && point.y < surface->getHeight(point.x, point.z, getTime());
 }
 
+WaterSample Water::sample(Scene* scene, const Vector3& point){
+    if (!scene)
+        return WaterSample();
+    return scene->getSystem<PhysicsSystem>()->sampleWater(point);
+}
+
+std::optional<float> Water::sampleHeight(Scene* scene, float x, float z){
+    if (!scene)
+        return std::nullopt;
+    const float height = scene->getSystem<PhysicsSystem>()->sampleWaterHeight(x, z);
+    if (std::isnan(height))
+        return std::nullopt;
+    return height;
+}
+
 void Water::applyBuoyancy(Scene* scene, float deltaTime){
 #ifdef JASPERENGINE_PHYSICS_3D
     auto bodies = scene->getComponentArray<RigidbodyComponent>();
@@ -213,6 +211,9 @@ void Water::applyBuoyancy(Scene* scene, float deltaTime){
     for (int i = 0; i < (int)bodies->size(); i++){
         const RigidbodyComponent& body = bodies->getComponentFromIndex(i);
         if (!body.enabled || body.buoyancy <= 0.0f || body.type != BodyType::DYNAMIC || body.body.IsInvalid())
+            continue;
+        // a Buoyancy floats it by its columns in the Water Volumes instead (WaterSystem)
+        if (const BuoyancyComponent* columns = scene->findComponent<BuoyancyComponent>(bodies->getEntity(i)); columns && columns->enabled)
             continue;
         // Jolt has no submerged volume for a mesh or heightfield (it asserts and leaves it unset)
         bool solid = true;

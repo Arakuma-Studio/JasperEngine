@@ -997,6 +997,11 @@ endif()
 set(JASPERENGINE_SRCS
     core/Engine.cpp
     core/Input.cpp
+    core/input/InputControlPath.cpp
+    core/input/InputActionAsset.cpp
+    core/input/InputActions.cpp
+    core/input/InputRebind.cpp
+    core/input/InputVirtualControls.cpp
     core/Log.cpp
     core/diag/CrashHandler.cpp
     core/diag/CrashHandlerPosix.cpp
@@ -1165,6 +1170,8 @@ set(JASPERENGINE_SRCS
     core/object/environment/ReflectionProbe.cpp
     core/object/environment/Skybox.cpp
     core/object/environment/Water.cpp
+    core/object/environment/WaterVolume.cpp
+    core/object/physics/Buoyancy.cpp
     core/object/environment/VolumetricClouds.cpp
     core/object/ui/Button.cpp
     core/object/ui/LayoutGroup.cpp
@@ -1231,6 +1238,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/MathClassesLua.cpp
     core/script/binding/GameObjectClassesLua.cpp
     core/script/binding/ProfilerClassesLua.cpp
+    core/script/binding/GameplayClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/HtmlUIVectorLua.cpp
     core/script/binding/HtmlUIMediaLua.cpp
@@ -1257,6 +1265,7 @@ set(JASPERENGINE_SRCS
     core/lattice/LatticeRender.cpp
     core/subsystem/MeshSystemGltfPbr.cpp
     core/subsystem/PhysicsSystem.cpp
+    core/subsystem/WaterSystem.cpp
     core/subsystem/AtmosphereRenderer.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/RenderSystemShadows.cpp
@@ -1340,6 +1349,8 @@ if(JASPERENGINE_PHYSICS_2D)
         core/object/physics/Contact2D.cpp
         core/object/physics/Joint2D.cpp
         core/object/physics/Manifold2D.cpp
+        core/object/physics/CharacterController2D.cpp
+        core/subsystem/CharacterController2DSystem.cpp
     )
 endif()
 
@@ -1349,6 +1360,8 @@ if(JASPERENGINE_PHYSICS_3D)
         core/object/physics/CollideShapeResult3D.cpp
         core/object/physics/Contact3D.cpp
         core/object/physics/Joint3D.cpp
+        core/object/physics/CharacterController.cpp
+        core/subsystem/CharacterControllerSystem.cpp
     )
 endif()
 

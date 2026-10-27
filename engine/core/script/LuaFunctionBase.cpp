@@ -17,8 +17,10 @@
 #include "object/physics/Rigidbody.h"
 #include "object/physics/Contact3D.h"
 #include "object/physics/CollideShapeResult3D.h"
+#include "object/physics/ControllerColliderHit.h"
 #endif
 #include "LuaBinding.h"
+#include "input/InputActions.h"
 #include "LuaReload.h"
 #include "LuaWatchdog.h"
 #include "Log.h"
@@ -144,6 +146,11 @@ void LuaFunctionBase::push_value(lua_State *vm, Vector2 o){
         throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
 }
 
+void LuaFunctionBase::push_value(lua_State *vm, const InputActionEvent& o){
+    if (!luabridge::push<InputActionEvent*>(vm, const_cast<InputActionEvent*>(&o)))
+        throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
+}
+
 void LuaFunctionBase::push_value(lua_State *vm, Vector3 o){
     if (!luabridge::push<Vector3>(vm, o))
         throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
@@ -220,6 +227,11 @@ void LuaFunctionBase::push_value(lua_State *vm, Contact2D o){
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
+void LuaFunctionBase::push_value(lua_State *vm, ControllerColliderHit o){
+    if (!luabridge::push<ControllerColliderHit>(vm, o))
+        throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
+}
+
 void LuaFunctionBase::push_value(lua_State *vm, Rigidbody o){
     if (!luabridge::push<Rigidbody>(vm, o))
         throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
