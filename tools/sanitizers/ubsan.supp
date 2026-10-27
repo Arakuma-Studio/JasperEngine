@@ -2,3 +2,8 @@
 # Only third-party code may be listed: Mesa (llvmpipe, lavapipe), X11, fontconfig and the vendored
 # libraries under libs/ and engine/libs/. Engine and editor code is never suppressed: fix it.
 # Every entry has a comment line above it giving the reason.
+
+# stb_image_resize2 v2.12 (engine/libs/stb, the mip chains of S14's texture prepare): its
+# coefficient packer stores pairs of floats as one 64-bit word at float alignment
+# (STBIR_MOVE_2 in stbir__pack_coefficients); x86 and ARM take unaligned stores.
+alignment:stbir__pack_coefficients

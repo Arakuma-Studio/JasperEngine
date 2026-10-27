@@ -584,7 +584,8 @@ alternative, recorded here).
     setting for every view (the texture pool is shared), set from the Game view's toolbar.
 15. **Reports.** MCP and the CLI report project-relative paths and add each cook's cache `key` (the
     file under `.jasperengine/cache/textures/v1`) and a `source` status for files that are not
-    cooked; `check` gains a `--textures` category, on by default.
+    cooked; `check --textures` (on by default; upstream's synthesis-recipe check shares the flag)
+    reports the import problems under the `texture_imports` count of its summary.
 16. **Batch cooks.** The export and `cook-textures` share `TextureBatchCook` (plain threads up to
     `--jobs`, the same working-memory budget); the editor's background cooks, which MCP's
     `reimport_textures` waits on, stay on S06's Background lane (`TextureCookQueue`). Encoders always
