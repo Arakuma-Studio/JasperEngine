@@ -565,6 +565,22 @@ set(JASPERENGINE_TEXSYNTH_SOURCES
     ${EDITOR_DIR}/texsynth/TextureSynthesis.cpp
 )
 
+# The sprite normal generator core (editor/spritenormals: spritefusion-sprite-normals ported, NOTICE.md),
+# also built alone into jasperengine-spritenormals-tests (-DJASPERENGINE_SPRITENORMALS_TESTS=ON)
+set(JASPERENGINE_SPRITENORMALS_SOURCES
+    ${EDITOR_DIR}/spritenormals/SpriteNormals.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsField.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteMedia.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsRecipe.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsPreview.cpp
+)
+# Upstream parity: Rust never contracts a*b+c into an FMA (the generator calls std::fma itself
+# exactly where upstream calls mul_add)
+if(NOT MSVC)
+    set_source_files_properties(${EDITOR_DIR}/spritenormals/SpriteNormals.cpp ${EDITOR_DIR}/spritenormals/SpriteNormalsField.cpp
+        PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+endif()
+
 set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/main.cpp
     ${EDITOR_DIR}/cli/CommandLine.cpp
@@ -666,6 +682,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${JASPERENGINE_TEXSYNTH_SOURCES}
     ${EDITOR_DIR}/texsynth/SynthesisCli.cpp
     ${EDITOR_DIR}/texsynth/SynthesisSession.cpp
+    ${JASPERENGINE_SPRITENORMALS_SOURCES}
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsSession.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsApply.cpp
     ${EDITOR_DIR}/physics/PlacementSettings.cpp
     ${EDITOR_DIR}/physics/PlacementSession.cpp
     ${EDITOR_DIR}/physics/PlacementCli.cpp
@@ -1070,6 +1089,14 @@ endif()
 option(JASPERENGINE_TEXSYNTH_TESTS "Build jasperengine-texsynth-tests (texture synthesis tests)" OFF)
 if(JASPERENGINE_TEXSYNTH_TESTS)
     include(${EDITOR_DIR}/texsynth/tests/TexSynthTests.cmake)
+endif()
+
+# jasperengine-spritenormals-tests: the sprite normal generator core (editor/spritenormals): upstream
+# parity on golden fixtures, the options, GIF/APNG decoding, recipes, the lit preview (tools/build.sh
+# spritenormals-tests, or -DJASPERENGINE_SPRITENORMALS_TESTS=ON and the target)
+option(JASPERENGINE_SPRITENORMALS_TESTS "Build jasperengine-spritenormals-tests (sprite normal generator tests)" OFF)
+if(JASPERENGINE_SPRITENORMALS_TESTS)
+    include(${EDITOR_DIR}/spritenormals/tests/SpriteNormalsTests.cmake)
 endif()
 
 # jasperengine-editor-tests: unit tests of the editor and the engine core it drives (shader
