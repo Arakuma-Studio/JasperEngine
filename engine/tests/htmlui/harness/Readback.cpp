@@ -165,6 +165,48 @@ bool jasperengine::test::readTexture(TextureRender& texture, int width, int heig
     return readTexturePixels(texture, width, height, 4, rgba);
 }
 
+bool jasperengine::test::readTextureRaw(TextureRender& texture, int width, int height, ColorFormat format, std::vector<uint8_t>& bytes){
+    bytes.clear();
+    sg_pixel_format pixelFormat;
+    size_t bytesPerTexel = 0;
+    if (width <= 0 || height <= 0 || !SokolTexture::getDataPixelFormat(format, pixelFormat, bytesPerTexel))
+        return false;
+
+#if defined(SOKOL_VULKAN)
+    // the copy keeps the image's own layout
+    return readVulkanImage(texture, width, height, static_cast<int>(bytesPerTexel), bytes);
+#else
+    GLenum glFormat = GL_RGBA;
+    GLenum glType = GL_UNSIGNED_BYTE;
+    switch (format){
+        case ColorFormat::RGBA:    glFormat = GL_RGBA; glType = GL_UNSIGNED_BYTE; break;
+        case ColorFormat::RED:     glFormat = GL_RED;  glType = GL_UNSIGNED_BYTE; break;
+        case ColorFormat::RED16:   glFormat = GL_RED;  glType = GL_UNSIGNED_SHORT; break;
+        case ColorFormat::RGBA16F: glFormat = GL_RGBA; glType = GL_HALF_FLOAT; break;
+        case ColorFormat::RGBA32F: glFormat = GL_RGBA; glType = GL_FLOAT; break;
+        case ColorFormat::R32F:    glFormat = GL_RED;  glType = GL_FLOAT; break;
+        case ColorFormat::RG16F:   glFormat = GL_RG;   glType = GL_HALF_FLOAT; break;
+        case ColorFormat::R16F:    glFormat = GL_RED;  glType = GL_HALF_FLOAT; break;
+        default: return false;
+    }
+    const GLuint handle = texture.getGLHandler();
+    if (handle == 0)
+        return false;
+
+    while (glGetError() != GL_NO_ERROR) {}
+    glFinish();
+    bytes.resize(static_cast<size_t>(width) * height * bytesPerTexel);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glBindTexture(GL_TEXTURE_2D, handle);
+    glGetTexImage(GL_TEXTURE_2D, 0, glFormat, glType, bytes.data());
+    glBindTexture(GL_TEXTURE_2D, 0);
+    const bool ok = glGetError() == GL_NO_ERROR;
+    glPixelStorei(GL_PACK_ALIGNMENT, 4);
+    sg_reset_state_cache();
+    return ok;
+#endif
+}
+
 bool jasperengine::test::readTexturePixels(TextureRender& texture, int width, int height, int bytesPerPixel, std::vector<uint8_t>& pixels){
     pixels.clear();
     if (width <= 0 || height <= 0 || (bytesPerPixel != 4 && bytesPerPixel != 1))
