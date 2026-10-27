@@ -37,7 +37,7 @@ with the backend: on llvmpipe it is the software rasterizer's cost and no GPU me
 | B6 list-500, 1024² texture | 1097 -> 3 | 10 -> 0 | 2 -> 0 | 2 -> 0 | 2.485 -> 1.073 (43 %) | 0.400 / 0.606 / 0.040 (baseline 0.398 / 1.670 / 0.396) | 57.2 -> 192.9 |
 | B7 virtual-list scroll | 122 -> 3 | 4 -> 0 | 0 -> 0 | 0 -> 0 | 1.174 -> 1.003 (85 %) | 0.581 / 0.345 / 0.045 (baseline 0.573 / 0.503 / 0.076) | 37.6 -> 128.1 |
 
-- B2 (R22, <= 50 %): 44 % (B6: 43 %); on the tree merged with oe-port e1ca0c71a: 2.364 -> 1.039 ms (44 %), B6 45 %, the nine benchmarks pass. The replay is batched (0.40 -> 0.04 ms) and the paint
+- B2 (R22, <= 50 %): 44 % (B6: 43 %); on the tree merged with oe-port e1ca0c71a: 2.364 -> 1.039 ms (44 %), B6 45 %; on the replacement benchmark host with oe-port 05eb8d3b4 merged: 2.547 -> 1.144 ms (45 %), B6 46 %, the nine benchmarks pass. The replay is batched (0.40 -> 0.04 ms) and the paint
   traversal passes over the 450 cards outside the list's scissor (S16-F4, S16-F6: 1.65 -> 0.62 ms).
 - B7 is S17's `<list-view>` of 10,000 rows (a C++ provider) scrolled 100 px a frame: only the
   visible rows exist, so there is nothing to cull; 122 -> 3 draws, the engine time at 85 %.
