@@ -475,7 +475,8 @@ namespace jasperengine::editor::spritenormals {
     bool sliceGrid(const Grid& grid, int imageWidth, int imageHeight, std::vector<Cell>& cells, std::string& error) {
         cells.clear();
         // everything in int64 / double: tile sizes, paddings and offsets may be any int
-        const auto toCount = [](double v) { return v >= 1e9 ? static_cast<int64_t>(1000000000) : (v <= 0.0 ? int64_t(0) : static_cast<int64_t>(v)); };
+        // (NaN, from 0 / 0 with a negative padding refused below, and negatives count as 0)
+        const auto toCount = [](double v) { return !(v > 0.0) ? int64_t(0) : (v >= 1e9 ? static_cast<int64_t>(1000000000) : static_cast<int64_t>(v)); };
         const double availW = static_cast<double>(imageWidth) - grid.offsetX;
         const double availH = static_cast<double>(imageHeight) - grid.offsetY;
         const double padX = grid.paddingX, padY = grid.paddingY;

@@ -728,6 +728,14 @@ TEST(SpriteNormalsGrid, SliceGridLikeSetSpriteFrames) {
     manyRows.count = 2;
     ASSERT_TRUE(sliceGrid(manyRows, 2000000000, 2000000000, cells, error)) << error;   // count caps before anything is made
     EXPECT_EQ(cells.size(), 2u);
+    // 0 / 0 (tile 4, padding -4 on a 4 px image): no NaN cast, the negative padding is refused
+    Grid nan;
+    nan.tileWidth = 4;
+    nan.tileHeight = 4;
+    nan.paddingX = -4;
+    nan.paddingY = -4;
+    EXPECT_FALSE(sliceGrid(nan, 4, 4, cells, error));
+    EXPECT_EQ(error, "The grid is empty: the image is 4x4 pixels.");
     // count caps
     g = Grid();
     g.tileWidth = 16;

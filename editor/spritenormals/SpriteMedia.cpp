@@ -433,6 +433,30 @@ namespace jasperengine::editor::spritenormals {
             return true;
         }
 
+        // The LZW work of a frame is its descriptor's area, whatever the canvas clips: one frame
+        // may not exceed kMaxPixels and all of them together kMaxGifDescriptorArea (frames inside
+        // their canvas total at most kMaxPixels, the decoded-pixels limit), so a tiny canvas with
+        // huge descriptors cannot make the decoder spin
+        constexpr int64_t kMaxGifDescriptorArea = 2 * kMaxPixels;
+
+        bool checkDescriptorArea(const Errors& e, const GifFrameInfo& f, int index, int64_t& total) {
+            const int64_t area = static_cast<int64_t>(f.width) * f.height;
+            if (area > kMaxPixels) {
+                return e.fail("too_large",
+                              "frame " + std::to_string(index + 1) + " is " + sizeText(f.width, f.height) + " (" + std::to_string(area) +
+                                  " pixels); at most " + std::to_string(kMaxPixels) + " pixels are allowed",
+                              "Re-export the GIF with frames no larger than its canvas.");
+            }
+            total += area;
+            if (total > kMaxGifDescriptorArea) {
+                return e.fail("too_large",
+                              "the image descriptors of frames 1-" + std::to_string(index + 1) + " cover " + std::to_string(total) +
+                                  " pixels; at most " + std::to_string(kMaxGifDescriptorArea) + " are decoded",
+                              "Re-export the GIF with frames no larger than its canvas.");
+            }
+            return true;
+        }
+
         bool loadGif(const uint8_t* b, size_t n, const Errors& e, Source& out) {
             GifWalker walker{b, n, e};
             if (!walker.header()) return false;
@@ -442,17 +466,12 @@ namespace jasperengine::editor::spritenormals {
             std::vector<Image> frames;
             std::vector<Delay> delays;
             int count = 0;
+            int64_t descriptorArea = 0;
             const bool ok = walker.walk(
                 [&](const GifFrameInfo& f, size_t lzw, int index) {
                     if (!checkFrameLimits(e, index, canvasPixels)) return false;
                     // the descriptor's own size bounds the decoding work: refused before anything is allocated
-                    const int64_t area = static_cast<int64_t>(f.width) * f.height;
-                    if (area > kMaxPixels) {
-                        return e.fail("too_large",
-                                      "frame " + std::to_string(index + 1) + " is " + sizeText(f.width, f.height) + " (" + std::to_string(area) +
-                                          " pixels); at most " + std::to_string(kMaxPixels) + " pixels are allowed",
-                                      "Re-export the GIF with frames no larger than its canvas.");
-                    }
+                    if (!checkDescriptorArea(e, f, index, descriptorArea)) return false;
                     // the visible part of the frame (clipped to the canvas) and where each row of the
                     // file goes: interlaced rows come in passes of 8/8/4/2 rows starting at 0/4/2/1
                     const int visibleWidth = std::max(0, std::min(f.width, w - f.left));
@@ -563,16 +582,18 @@ namespace jasperengine::editor::spritenormals {
             return total;
         }
 
-        // A deflate bomb guard: the zlib data must inflate to exactly `expected` bytes, decoded
-        // into a buffer of that size (stb's PNG loader would grow its buffer up to 4 GiB)
+        // A deflate bomb guard: the zlib data must inflate to at least the `expected` bytes its size
+        // needs (extra bytes are ignored, as stb does) and at most expected + 1 MiB + expected / 8,
+        // decoded into a buffer of that cap (stb's PNG loader would grow its buffer up to 4 GiB)
         bool checkInflatedSize(const uint8_t* data, size_t size, int64_t expected, const Errors& e, const std::string& what) {
             if (expected < 0) return e.invalid(what + " has an invalid colour type or bit depth");
-            if (expected > 0x7FFFFFFF || size > 0x7FFFFFFF) return e.fail("too_large", what + " is too large to decode", "Scale it down.");
-            std::vector<char> buffer(static_cast<size_t>(std::max<int64_t>(expected, 1)));
-            const int got = stbi_zlib_decode_buffer(buffer.data(), static_cast<int>(expected), reinterpret_cast<const char*>(data), static_cast<int>(size));
-            if (got != expected) {
-                return e.invalid(what + "'s image data is corrupt or does not inflate to the " + std::to_string(expected) +
-                                 " bytes its size needs");
+            const int64_t cap = expected + (1 << 20) + expected / 8;
+            if (cap > 0x7FFFFFFF || size > 0x7FFFFFFF) return e.fail("too_large", what + " is too large to decode", "Scale it down.");
+            std::vector<char> buffer(static_cast<size_t>(cap));
+            const int got = stbi_zlib_decode_buffer(buffer.data(), static_cast<int>(cap), reinterpret_cast<const char*>(data), static_cast<int>(size));
+            if (got < expected) {
+                return e.invalid(what + "'s image data is corrupt, ends before the " + std::to_string(expected) +
+                                 " bytes its size needs or inflates past " + std::to_string(cap) + " bytes");
             }
             return true;
         }
@@ -866,7 +887,14 @@ namespace jasperengine::editor::spritenormals {
                 info.height = walker.height;
                 const int64_t canvasPixels = static_cast<int64_t>(walker.width) * walker.height;
                 int frames = 0;
-                if (!walker.walk([&](const GifFrameInfo&, size_t, int index) { return checkFrameLimits(e, index, canvasPixels); }, frames)) return false;
+                int64_t descriptorArea = 0;
+                if (!walker.walk(
+                        [&](const GifFrameInfo& f, size_t, int index) {
+                            return checkFrameLimits(e, index, canvasPixels) && checkDescriptorArea(e, f, index, descriptorArea);
+                        },
+                        frames)) {
+                    return false;
+                }
                 info.frameCount = frames;
                 return true;
             }

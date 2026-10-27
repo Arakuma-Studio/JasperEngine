@@ -16,7 +16,8 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
-#include <map>
+#include <chrono>
+#include <unordered_map>
 #include <random>
 
 using namespace jasperengine::editor::spritenormals;
@@ -48,21 +49,21 @@ namespace {
             }
         };
         const int clear = 1 << minCodeSize, end = clear + 1;
-        std::map<std::pair<int, int>, int> table;
+        std::unordered_map<uint32_t, int> table;   // (prefix code << 8 | index) -> code
         int next = end + 1;
         emit(clear);
         if (!indices.empty()) {
             int prefix = indices[0];
             for (size_t i = 1; i < indices.size(); i++) {
                 const int c = indices[i];
-                const auto found = table.find({prefix, c});
+                const auto found = table.find(static_cast<uint32_t>(prefix) << 8 | static_cast<uint32_t>(c));
                 if (found != table.end()) {
                     prefix = found->second;
                     continue;
                 }
                 emit(prefix);
                 if (next < 4096) {
-                    table[{prefix, c}] = next++;
+                    table[static_cast<uint32_t>(prefix) << 8 | static_cast<uint32_t>(c)] = next++;
                     if (next > (1 << codeSize) && codeSize < 12) codeSize++;
                 } else if (!deferClear) {
                     emit(clear);
@@ -101,6 +102,7 @@ namespace {
         bool interlaced = false;
         std::vector<std::array<uint8_t, 3>> localPalette;
         bool deferClear = false;
+        Bytes lzwData;                         // when set: the frame's LZW data as is
     };
 
     std::vector<std::array<uint8_t, 3>> basePalette() {
@@ -164,7 +166,7 @@ namespace {
             }
             b.push_back(packed);
             if (!local.empty()) palette(b, local);
-            const Bytes data = lzw(f.indices, 8, f.deferClear);
+            const Bytes data = f.lzwData.empty() ? lzw(f.indices, 8, f.deferClear) : f.lzwData;
             b.insert(b.end(), data.begin(), data.end());
         }
         if (trailer) b.push_back(0x3B);
@@ -913,10 +915,12 @@ TEST(SpriteNormalsHostile, ApngFrameCountAndDeflateBombs) {
     EXPECT_NE(p.message.find("more fcTL chunks than the 1 frames"), std::string::npos) << p.message;
     // a 1x1 frame whose data inflates to 100000 bytes (5 are needed)
     ApngFrame bomb = rect(0, 0, 1, 1, kGreen);
-    bomb.zlibData = zlibStored(Bytes(100000, 0));
+    bomb.zlibData = zlibStored(Bytes(4 << 20, 0));
     p = refused(apng(1, 1, {rect(0, 0, 1, 1, kRed), bomb}));
     EXPECT_EQ(p.kind, "invalid_source");
-    EXPECT_NE(p.message.find("frame 2 of the APNG's image data is corrupt or does not inflate to the 5 bytes"), std::string::npos) << p.message;
+    EXPECT_NE(p.message.find("frame 2 of the APNG's image data is corrupt, ends before the 5 bytes its size needs or inflates past 1048581 bytes"),
+              std::string::npos)
+        << p.message;
     // the same in a still PNG (and in the default image of an APNG frame 0)
     Bytes still = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
     Bytes ihdr;
@@ -924,7 +928,7 @@ TEST(SpriteNormalsHostile, ApngFrameCountAndDeflateBombs) {
     be32(ihdr, 1);
     ihdr.insert(ihdr.end(), {8, 6, 0, 0, 0});
     chunk(still, "IHDR", ihdr);
-    chunk(still, "IDAT", zlibStored(Bytes(100000, 0)));
+    chunk(still, "IDAT", zlibStored(Bytes(4 << 20, 0)));
     chunk(still, "IEND", {});
     p = refused(still);
     EXPECT_EQ(p.kind, "invalid_source");
@@ -951,4 +955,63 @@ TEST(SpriteNormalsHostile, ChunkCountIsBounded) {
     const Problem p = refused(b);
     EXPECT_EQ(p.kind, "too_large");
     EXPECT_NE(p.message.find("1048576 chunks"), std::string::npos) << p.message;
+}
+
+TEST(SpriteNormalsHostile, InflatedBytesBeyondTheNeededAreIgnored) {
+    // a 1x1 RGBA PNG whose IDAT inflates to its 5 bytes plus 300 trailing ones: stb accepts it, so do we
+    Bytes raw = {0, 10, 20, 30, 40};
+    raw.resize(305, 7);
+    Bytes still = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+    Bytes ihdr;
+    be32(ihdr, 1);
+    be32(ihdr, 1);
+    ihdr.insert(ihdr.end(), {8, 6, 0, 0, 0});
+    chunk(still, "IHDR", ihdr);
+    chunk(still, "IDAT", zlibStored(raw));
+    chunk(still, "IEND", {});
+    EXPECT_EQ(px(load(still).color, 0, 0), (C{10, 20, 30, 40}));
+    // the same in an APNG frame
+    ApngFrame extra = rect(0, 0, 1, 1, kGreen);
+    extra.zlibData = zlibStored(raw);
+    EXPECT_EQ(px(load(apng(1, 1, {rect(0, 0, 1, 1, kRed), extra})).color, 1, 0), (C{10, 20, 30, 40}));
+    // too short is still an error
+    ApngFrame shortFrame = rect(0, 0, 1, 1, kGreen);
+    shortFrame.zlibData = zlibStored({0, 1, 2});
+    EXPECT_EQ(refused(apng(1, 1, {rect(0, 0, 1, 1, kRed), shortFrame})).kind, "invalid_source");
+}
+
+TEST(SpriteNormalsHostile, HugeDescriptorsOnATinyCanvasAreBounded) {
+    // a 1x1 canvas, frames with 4096x4096 descriptors (16.7 M pixels of LZW work each, clipped to
+    // one pixel): the first two decode, the third passes the cumulative descriptor limit and is
+    // refused before its data is looked at
+    GifFrame big = fill(0, 0, 4096, 4096, 1, 1, 1);
+    big.lzwData = lzw(big.indices, 8);
+    big.indices.clear();
+    GifFrame garbage = fill(0, 0, 4096, 4096, 1, 1, 1);
+    garbage.lzwData = {0, 0};   // a code size of 0: refused if it were decoded
+    garbage.indices.clear();
+    std::vector<GifFrame> frames = {big, big};
+    for (int i = 0; i < 254; i++) frames.push_back(garbage);
+    const Bytes bytes = gif(1, 1, frames);
+    const auto start = std::chrono::steady_clock::now();
+    const Problem p = refused(bytes);
+    const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    EXPECT_EQ(p.kind, "too_large");
+    EXPECT_NE(p.message.find("the image descriptors of frames 1-3 cover 50331648 pixels; at most 33554432 are decoded"), std::string::npos)
+        << p.message;
+#ifdef NDEBUG
+    EXPECT_LT(seconds, 1.0);
+#endif
+    // probing applies the same limit without decoding
+    const fs::path dir = tempDir();
+    writeFile(dir / "tiny.gif", bytes);
+    SourceInfo info;
+    std::vector<Problem> problems;
+    EXPECT_FALSE(probeSource(dir / "tiny.gif", info, problems));
+    EXPECT_EQ(problems.at(0).kind, "too_large");
+    fs::remove_all(dir);
+    // frames slightly past their canvas keep decoding: 3 frames of 10x10 on an 8x8 canvas
+    const Source ok = load(gif(8, 8, {fill(0, 0, 10, 10, 1, 1, 1), fill(0, 0, 10, 10, 2, 1, 1), fill(0, 0, 10, 10, 3, 1, 1)}));
+    EXPECT_EQ(ok.frameCount, 3);
+    EXPECT_EQ(px(ok.color, 8 + 7, 7), kGreen);
 }
