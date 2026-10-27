@@ -623,9 +623,12 @@ What the implementation does differently from the text above, and why.
   modules) until the GameObject selection changes. In Edit mode the particle subsystem is paused
   and the Scene view's Particle Effect panel simulates the selected systems (and the ones a tool
   controls).
-- **MCP**: the particles_* tools are the `particles` group (S31); `particles_capture` captures
-  the Scene or Game view after the seek (`camera: scene | game`) rather than taking a camera
-  GameObject. `create_particles` keeps its arguments; `emitter_entity` puts the system on that
+- **MCP**: the tools are the `particles` group (S31) and follow S31's verb_noun rule (gated by
+  test_tool_conventions): `create_particle_effect`, `get_particle_effect`,
+  `edit_particle_effect`, `add_particle_module`, `remove_particle_module`,
+  `set_particle_effect` (particles_assign), `control_particles`, `get_particle_stats`,
+  `capture_particles`, `get_particle_migration_report`. `capture_particles` captures the Scene
+  or Game view after the seek (`camera: scene | game`) rather than taking a camera GameObject. `create_particles` keeps its arguments; `emitter_entity` puts the system on that
   GameObject (a Mesh one emits its mesh).
 - **Goldens**: the seven `particles_*` goldens are drawn on glcore and matched on Vulkan
   (lavapipe); GLES3/WebGL2, Metal and D3D11 have no headless device on the build servers. The
@@ -643,5 +646,10 @@ What the implementation does differently from the text above, and why.
 - **Ribbons** with several strips use a fixed stride per strip (the effect's Max Particles over
   its ribbon count), so their triangles are made once at load; a single ribbon packs only its
   live particles.
+- **File keys**: the Collision module's type is `collisionType` (a module entry's `type` names
+  the module).
+- **emit(n)** queues the particles: they are born at the system's next tick (deterministic, off
+  the main thread's call); on a stopped system only they play. Collision, death and sub-emit
+  events gather over a frame's ticks, the caps per frame.
 - **Immediate calls** (seek, step, the editor's preview) work out a moved GameObject's matrices
   before they simulate, instead of using the last frame's.
