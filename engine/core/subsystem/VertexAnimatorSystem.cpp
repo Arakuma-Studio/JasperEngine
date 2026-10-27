@@ -641,20 +641,23 @@ namespace {
         return a0 == b0 && a1 == b1;
     }
 
-    void writeGpu(const Animating& a, InstancedMeshComponent* instanced){
+    // true when the entity's state changed on the GPU (also when it was written directly, by the
+    // editor or a test, without a request)
+    bool writeGpu(const Animating& a, InstancedMeshComponent* instanced){
         VertexAnimatorComponent& animator = *a.animator;
         VertexAnimatorRuntime& runtime = *a.runtime;
         Vector4 v0, v1;
         vatPackInstance(animator.state, v0, v1);
-        if (!samePacked(v0, v1, animator.gpuState0, animator.gpuState1)){
+        const bool entityChanged = !samePacked(v0, v1, animator.gpuState0, animator.gpuState1);
+        if (entityChanged){
             animator.gpuState0 = v0;
             animator.gpuState1 = v1;
         }
         runtime.entity.dirty = false;
 
-        if (!runtime.anyDirty) return;
+        if (!runtime.anyDirty) return entityChanged;
         runtime.anyDirty = false;
-        if (!instanced) return;
+        if (!instanced) return entityChanged;
         bool changed = false;
         const size_t count = std::min(instanced->instances.size(), animator.instanceStates.size());
         for (size_t i = 0; i < count; i++){
@@ -672,6 +675,7 @@ namespace {
         if (changed){
             instanced->needUpdateInstances = true;
         }
+        return entityChanged;
     }
 
     // the clips in use (bit per clip) and whether a drawn state is at rest (A without a clip):
@@ -1164,8 +1168,8 @@ void VertexAnimatorSystem::updateAnimator(Entity entity, VertexAnimatorComponent
         }
     }
 
-    const bool changed = runtime.anyDirty || runtime.entity.dirty;
-    writeGpu(a, instanced);
+    bool changed = runtime.anyDirty || runtime.entity.dirty;
+    if (writeGpu(a, instanced)) changed = true;
     runtime.lastNow = now;
     animator.lastNow = (float)now;
     animator.gpuNow = (float)now;
