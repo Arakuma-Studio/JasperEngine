@@ -443,7 +443,12 @@ faces (about 7 MB) every time a scene with `useDefaultTexture` was decoded after
 (`ProjectUtils::setDefaultSkyTexture` now reuses the pooled faces). A `CameraComponent` value owns
 a `Framebuffer` that only `RenderSystem` frees, when its entity is destroyed; the tests free the
 ones they make. The headless GL context stays open until exit under ASan, or Mesa's driver
-allocations show up as `<unknown module>` leaks.
+allocations show up as `<unknown module>` leaks. Later (BF5), about 1 MB of V-HACD hulls leaked
+whenever Physics Placement's convex decomposition was cancelled while V-HACD handed its merged
+hulls over: its finalize loop stopped and cleared the map that owned the rest. The vendored
+header now frees them (`engine/libs/vhacd/README.jasper.md`);
+`ConvexDecomposition.CancelWhileFinalizingFreesTheHulls` cancels at that point and measures the
+heap. With it the editor tree under ASan + UBSan ran 871 tests with no leak report.
 
 ### Unity build (R25)
 
