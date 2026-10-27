@@ -75,7 +75,7 @@ namespace jasperengine::editor::vat{
         jasperengine::vat::VatData data;
         VatMeshData mesh;
         jasperengine::vat::VatSocketTracks sockets;
-        VatBakeReport report;
+        VatReport report;
         std::vector<VatEmbeddedImage> embeddedImages;
         std::vector<std::string> boneNames;
         // the preview asset (owns the payload), registered as VertexAnimationPool::put(previewKey)

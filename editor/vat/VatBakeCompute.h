@@ -20,7 +20,7 @@
 //   * Vertices: offsets from rest and the tangent-frame quaternion (columns tangent, normal x
 //     tangent, normal; hemisphere-continuous per vertex along a clip); a vertex without a source
 //     tangent takes a rest tangent made from its rest normal, projected per frame;
-//   * the decisions: Auto = Bones when <= 128 bones reproduce every vertex within the tolerance
+//   * the decisions: Auto = Bones when <= VAT_MAX_BONES bones reproduce every vertex within the tolerance
 //     (max(toleranceMm, 0.05% of the bounds diagonal)), else Vertices, with `modeReason`;
 //     precision Auto = half unless its quantization error exceeds the tolerance (then float and
 //     a precision_switched warning); Bones payloads are always float;
@@ -124,7 +124,7 @@ namespace jasperengine::editor::vat{
         VatMeshData mesh;
         jasperengine::vat::VatPayload payload;
         jasperengine::vat::VatSocketTracks socketTracks;
-        VatBakeReport report;
+        VatReport report;
         // Bones: per baked bone, the candidates it merged ("<renderer>/joint <j>", "<renderer> (rigid)")
         std::vector<std::string> boneNames;
         // what the decision measured: the bones error before and after decomposition, the

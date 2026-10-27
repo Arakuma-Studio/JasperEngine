@@ -17,6 +17,7 @@
 #define VAT_BAKE_TYPES_H
 
 #include "animation/VertexAnimation.h"
+#include "vat/VatReport.h"
 
 #include "json.hpp"
 
@@ -108,15 +109,6 @@ namespace jasperengine::editor::vat{
 
     // ---- problems (spec 4.7) ----
 
-    // One action that resolves (part of) an issue: a button in the window, a hint in MCP.
-    // `setting` names the spec field ("fps", "normals", "mode", "clips", "preset", "precision",
-    // "interpolate", "output", "overwrite", "source"), `value` the value to set (JSON text).
-    struct VatFix{
-        std::string label;                  // "Lower to 20 fps"
-        std::string setting;
-        std::string value;
-    };
-
     // kinds:
     //   errors (the bake is refused): too_large, no_animation, vertex_limit, bone_limit,
     //     no_mesh, invalid_source, invalid_settings, output_exists, socket_not_found,
@@ -124,16 +116,7 @@ namespace jasperengine::editor::vat{
     //   warnings: unbound_tracks, large_interpolation_error, precision_switched, memory_high,
     //     mixed_rest, materials_not_vat_ready, material_simplified, events_dropped,
     //     not_converted
-    struct VatIssue{
-        std::string kind;
-        std::string message;                // one sentence, names the clip/file/node concerned
-        std::string fix;                    // one sentence (the fixes' labels for too_large)
-        bool error = false;
-        std::vector<VatFix> fixes;          // ordered by effect (too_large), may be empty
-    };
-    bool hasErrors(const std::vector<VatIssue>& issues);
-    // "kind: message (fix)" lines
-    std::string issuesText(const std::vector<VatIssue>& issues, bool errorsOnly = false);
+    // (VatIssue, VatFix: VatReport.h, shared with the importers)
 
     // ---- sizes ----
 
@@ -202,42 +185,9 @@ namespace jasperengine::editor::vat{
         std::vector<VatIssue> issues;
     };
 
-    // ---- the result of a bake (spec 6 report) ----
+    // ---- JSON (the report of a bake is a VatReport, VatReport.h) ----
 
-    struct VatClipReport{
-        std::string name;
-        int frames = 0;
-        float fps = 0.0f;
-        uint64_t bytes = 0;
-        float maxErrorMm = 0.0f;            // at its frames and mid-frames
-        float interpolationErrorMm = 0.0f;  // at its mid-frames
-    };
-
-    struct VatBakeReport{
-        jasperengine::vat::VatMode mode = jasperengine::vat::VatMode::Vertices;
-        std::string modeReason;
-        int vertices = 0;
-        int bones = 0;
-        std::vector<VatClipReport> clips;
-        int width = 0;
-        int height = 0;
-        jasperengine::vat::VatPrecision precision = jasperengine::vat::VatPrecision::Half;
-        uint64_t bytes = 0;
-        float maxErrorMm = 0.0f;
-        float meanErrorMm = 0.0f;
-        float quantizationErrorMm = 0.0f;   // Vertices: half vs exact at the frames (0 for float)
-        float toleranceMm = 0.0f;           // the tolerance used (scaled by the bounds)
-        int fetchesPerVertex = 0;
-        std::vector<VatIssue> warnings;
-    };
-
-    // the JSON forms MCP and the CLI print
-    nlohmann::json issueJson(const VatIssue& issue);
-    nlohmann::json issuesJson(const std::vector<VatIssue>& issues);
     nlohmann::json estimateJson(const VatEstimate& estimate);
-    // {mode, mode_reason, vertices, bones, clips[{name, frames, fps, bytes}], texture{width,
-    //  height, format}, bytes, max_error_mm, mean_error_mm, fetches_per_vertex, warnings[]}
-    nlohmann::json reportJson(const VatBakeReport& report);
 
     // ---- recipe <-> spec ----
 

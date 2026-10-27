@@ -34,14 +34,15 @@
     {
      "attributes": {
       "POSITION": 2,
-      "NORMAL": 3
+      "NORMAL": 3,
+      "TEXCOORD_0": 4
      },
      "targets": [
       {
-       "POSITION": 4
+       "POSITION": 5
       }
      ],
-     "indices": 5,
+     "indices": 6,
      "material": 0
     }
    ]
@@ -57,8 +58,23 @@
      0.3,
      1.0
     ],
-    "metallicFactor": 0.0
+    "metallicFactor": 0.0,
+    "baseColorTexture": {
+     "index": 0
+    }
    }
+  }
+ ],
+ "textures": [
+  {
+   "source": 0
+  }
+ ],
+ "images": [
+  {
+   "name": "Checker",
+   "mimeType": "image/png",
+   "bufferView": 7
   }
  ],
  "animations": [
@@ -127,6 +143,12 @@
    "bufferView": 4,
    "componentType": 5126,
    "count": 9,
+   "type": "VEC2"
+  },
+  {
+   "bufferView": 5,
+   "componentType": 5126,
+   "count": 9,
    "type": "VEC3",
    "min": [
     0.0,
@@ -140,7 +162,7 @@
    ]
   },
   {
-   "bufferView": 5,
+   "bufferView": 6,
    "componentType": 5123,
    "count": 24,
    "type": "SCALAR"
@@ -172,20 +194,31 @@
   {
    "buffer": 0,
    "byteOffset": 240,
+   "byteLength": 72,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 312,
    "byteLength": 108,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteOffset": 348,
+   "byteOffset": 420,
    "byteLength": 48,
    "target": 34963
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 468,
+   "byteLength": 76
   }
  ],
  "buffers": [
   {
-   "byteLength": 396,
-   "uri": "data:application/octet-stream;base64,AAAAAAAAAD8AAIA/AAAAAAAAgD8AAAAAAAAAvwAAAAAAAAC/AAAAAAAAAAAAAAC/AAAAPwAAAAAAAAC/AAAAvwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPwAAAAAAAAAAAAAAvwAAAAAAAAA/AAAAAAAAAAAAAAA/AAAAPwAAAAAAAAA/AAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM3MzD4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAEAAQADAAQAAQAEAAIAAgAEAAUAAwAGAAQABAAGAAcABAAHAAUABQAHAAgA"
+   "byteLength": 544,
+   "uri": "data:application/octet-stream;base64,AAAAAAAAAD8AAIA/AAAAAAAAgD8AAAAAAAAAvwAAAAAAAAC/AAAAAAAAAAAAAAC/AAAAPwAAAAAAAAC/AAAAvwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPwAAAAAAAAAAAAAAvwAAAAAAAAA/AAAAAAAAAAAAAAA/AAAAPwAAAAAAAAA/AAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAAA/AAAAAAAAgD8AAAAAAAAAAAAAAD8AAAA/AAAAPwAAgD8AAAA/AAAAAAAAgD8AAAA/AACAPwAAgD8AAIA/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM3MzD4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAEAAQADAAQAAQAEAAIAAgAEAAUAAwAGAAQABAAGAAcABAAHAAUABQAHAAgAiVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAE0lEQVR42mMQ2WLzHwQYQASIAwBptwv/vIuLJQAAAABJRU5ErkJggg=="
   }
  ]
 }

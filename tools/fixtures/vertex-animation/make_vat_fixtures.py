@@ -7,7 +7,8 @@
                                  "Swing" (Base slides, Arm turns about Z: a rigid hierarchy)
                                  "Stretch" (Arm scales along X only: non-uniform bone scale)
   assets/models/morph_blob.gltf  a 3 x 3 grid plane with one morph target lifting its centre:
-                                 "Pulse" (the weight 0 -> 1 -> 0)
+                                 "Pulse" (the weight 0 -> 1 -> 0); its base colour texture is a
+                                 2 x 2 PNG embedded in the buffer (the baker writes it out)
 
 Run from anywhere: python3 make_vat_fixtures.py (writes next to itself). Deterministic output.
 """
@@ -17,6 +18,7 @@ import json
 import math
 import os
 import struct
+import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -73,6 +75,16 @@ def box(sx, sy, sz, oy):
         # counter-clockwise seen from outside: u x v = n
         indices += [base, base + 1, base + 2, base, base + 2, base + 3]
     return positions, normals, indices
+
+
+def png_2x2():
+    """a 2 x 2 RGBA PNG (green / white checker)"""
+    rows = b"".join(b"\x00" + bytes(px) for px in ([20, 180, 60, 255, 255, 255, 255, 255], [255, 255, 255, 255, 20, 180, 60, 255]))
+
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xffffffff)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 2, 2, 8, 6, 0, 0, 0)) +
+            chunk(b"IDAT", zlib.compress(rows, 9)) + chunk(b"IEND", b""))
 
 
 def quat_z(degrees):
@@ -133,11 +145,12 @@ def rigid_arm():
 
 def morph_blob():
     b = Builder()
-    positions, normals, deltas, indices = [], [], [], []
+    positions, normals, uvs, deltas, indices = [], [], [], [], []
     for z in range(3):
         for x in range(3):
             positions.append([x * 0.5 - 0.5, 0.0, z * 0.5 - 0.5])
             normals.append([0.0, 1.0, 0.0])
+            uvs.append([x * 0.5, z * 0.5])
             deltas.append([0.0, 0.4 if (x, z) == (1, 1) else 0.0, 0.0])
     for z in range(2):
         for x in range(2):
@@ -151,10 +164,14 @@ def morph_blob():
         "scenes": [{"name": "Blob", "nodes": [0]}],
         "nodes": [{"name": "Blob", "children": [1]}, {"name": "Surface", "mesh": 0}],
         "meshes": [{"name": "Surface", "weights": [0.0], "primitives": [{
-            "attributes": {"POSITION": b.floats(positions, "VEC3", True), "NORMAL": b.floats(normals, "VEC3")},
+            "attributes": {"POSITION": b.floats(positions, "VEC3", True), "NORMAL": b.floats(normals, "VEC3"),
+                           "TEXCOORD_0": b.floats(uvs, "VEC2")},
             "targets": [{"POSITION": b.floats(deltas, "VEC3", True)}],
             "indices": b.indices(indices), "material": 0}]}],
-        "materials": [{"name": "Green", "pbrMetallicRoughness": {"baseColorFactor": [0.2, 0.7, 0.3, 1.0], "metallicFactor": 0.0}}],
+        "materials": [{"name": "Green", "pbrMetallicRoughness": {"baseColorFactor": [0.2, 0.7, 0.3, 1.0], "metallicFactor": 0.0,
+                                                                 "baseColorTexture": {"index": 0}}}],
+        "textures": [{"source": 0}],
+        "images": [{"name": "Checker", "mimeType": "image/png", "bufferView": b._view(png_2x2())}],
         "animations": [{"name": "Pulse",
                         "samplers": [{"input": times, "output": weights, "interpolation": "LINEAR"}],
                         "channels": [{"sampler": 0, "target": {"node": 1, "path": "weights"}}]}],

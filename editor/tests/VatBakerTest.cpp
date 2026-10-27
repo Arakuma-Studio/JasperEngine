@@ -564,21 +564,66 @@ TEST(VatBakerCompute, ValidationKindsOfTheBake) {
         EXPECT_FALSE(computeVatBake(input, out, error));
         EXPECT_TRUE(hasKind(out.report.warnings, "clip_limit"));
     }
-    // bone_limit: Bones forced with 129 parts moving apart
+    // bone_limit: Bones forced on a skin of 65536 joints moving apart
     {
+        const int joints = jasperengine::vat::VAT_MAX_BONES + 1;
         VatBakeInput input;
-        for (int i = 0; i < 129; i++) input.renderers.push_back(quadRenderer("P" + std::to_string(i)));
+        VatBakeRenderer renderer = quadRenderer("Swarm");
+        cpuskin::CpuSkinSource& source = renderer.source;
+        // one triangle per three vertices, each vertex on its own joint
+        const size_t vertices = (size_t)joints * 3;
+        source.positions.assign(vertices, Vector3(0, 0, 0));
+        for (size_t v = 0; v < vertices; v++) source.positions[v] = Vector3((float)(v % 3), (float)(v % 2), 0.0f);
+        source.normals.assign(vertices, Vector3(0, 0, 1));
+        source.tangents.assign(vertices, Vector4(0, 0, 0, 0));
+        source.uv0.assign(vertices, Vector2(0, 0));
+        source.uv1.assign(vertices, Vector2(0, 0));
+        source.colors.assign(vertices, Vector4(1, 1, 1, 1));
+        source.boneIds.resize(vertices);
+        source.boneWeights.assign(vertices, Vector4(1, 0, 0, 0));
+        source.vertexSubmesh.assign(vertices, 0);
+        source.vertexIndex.resize(vertices);
+        source.canonical.resize(vertices);
+        source.submeshes[0].indices.resize(vertices);
+        source.submeshes[0].vertexCount = (uint32_t)vertices;
+        source.submeshes[0].hasSkinning = true;
+        for (size_t v = 0; v < vertices; v++){
+            source.boneIds[v] = {(int)(v / 3), 0, 0, 0};
+            source.vertexIndex[v] = (uint32_t)v;
+            source.canonical[v] = (uint32_t)v;
+            source.submeshes[0].indices[v] = (uint32_t)v;
+        }
+        input.renderers.push_back(renderer);
         input.mode = VatModeChoice::Bones;
-        input.clips.push_back(movingClip("Scatter", 129, 0.2f, 10.0f, ClipWrapMode::Loop, [](size_t r, float t) {
-            return Matrix4::translateMatrix(Vector3((float)r * t, 0.0f, 0.0f));
-        }));
+        VatBakeClipInput clip;
+        clip.name = "Scatter";
+        clip.wrap = ClipWrapMode::Once;
+        clip.frames = 1;
+        clip.fps = 10.0f;
+        VatSampleState sample;
+        VatRendererState state;
+        for (int j = 0; j < joints; j++) state.skin.push_back(Matrix4::translateMatrix(Vector3((float)j, 0, 0)));
+        sample.renderers.push_back(state);
+        clip.samples.push_back(sample);
+        input.clips.push_back(clip);
         EXPECT_FALSE(computeVatBake(input, out, error));
         EXPECT_TRUE(hasKind(out.report.warnings, "bone_limit")) << kinds(out.report.warnings);
         // Auto takes Vertices and says why
         input.mode = VatModeChoice::Auto;
         ASSERT_TRUE(computeVatBake(input, out, error)) << error;
         EXPECT_EQ(out.data.mode, VatMode::Vertices);
-        EXPECT_NE(out.report.modeReason.find("129 bones"), std::string::npos) << out.report.modeReason;
+        EXPECT_NE(out.report.modeReason.find(std::to_string(joints) + " bones"), std::string::npos) << out.report.modeReason;
+    }
+    // many rigid parts stay Bones
+    {
+        VatBakeInput input;
+        for (int i = 0; i < 300; i++) input.renderers.push_back(quadRenderer("P" + std::to_string(i)));
+        input.clips.push_back(movingClip("Scatter", 300, 0.2f, 10.0f, ClipWrapMode::Loop, [](size_t r, float t) {
+            return Matrix4::translateMatrix(Vector3((float)r * t, 0.0f, 0.0f));
+        }));
+        ASSERT_TRUE(computeVatBake(input, out, error)) << error;
+        EXPECT_EQ(out.data.mode, VatMode::Bones) << out.report.modeReason;
+        EXPECT_EQ(out.data.layout.bones, 300);
     }
     // too_large: Vertices over the preset's texels
     {
@@ -789,7 +834,7 @@ TEST_F(VatBaker_, EstimateAgreesWithTheBake) {
         EXPECT_FALSE(hasErrors(session.check())) << kinds(session.check());
         const VatEstimate estimate = session.estimate();
         ASSERT_TRUE(session.run()) << session.error();
-        const VatBakeReport& report = session.result()->report;
+        const VatReport& report = session.result()->report;
         EXPECT_EQ(estimate.vertices, report.vertices);
         if (mode == VatModeChoice::Bones) EXPECT_EQ(estimate.bones, report.bones);
         EXPECT_EQ(estimate.width, report.width);
@@ -1254,4 +1299,148 @@ TEST_F(VatBaker_, LatticeTracksBakeAsVertices) {
     EXPECT_GT(moved, 0.05f);
     // the scene is back at rest
     EXPECT_EQ(scene->getComponent<LatticeComponent>(cage).offsets[26], Vector3(0, 0, 0));
+}
+
+TEST_F(VatBaker_, EmbeddedTexturesAreWrittenNextToTheVat) {
+    std::unique_ptr<VatBakeSession> session = bake(modelSpec("morph_blob.gltf"));
+    const VatBakeResult* result = session->result();
+    ASSERT_TRUE(result);
+    ASSERT_EQ(result->embeddedImages.size(), 1u);
+    EXPECT_EQ(result->embeddedImages[0].extension, ".png");
+    ASSERT_EQ(result->mesh.materials.size(), 1u);
+    EXPECT_EQ(result->mesh.materials[0].baseColorTexture.compare(0, 9, "embedded:"), 0);
+    EXPECT_FALSE(result->mesh.uv0.empty());
+    VatWriteResult written;
+    std::string error;
+    ASSERT_TRUE(session->write(written, error)) << error;
+    const fs::path png = root() / "assets/models/morph_blob_Checker.png";
+    ASSERT_TRUE(fs::exists(png));
+    EXPECT_EQ(readAll(png).compare(0, 4, "\x89PNG"), 0);
+    EXPECT_NE(std::find(written.files.begin(), written.files.end(), "assets/models/morph_blob_Checker.png"), written.files.end());
+    EXPECT_NE(readAll(root() / written.mesh).find("\"morph_blob_Checker.png\""), std::string::npos) << "the glb names it by URI";
+    ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
+    EXPECT_FALSE(fs::exists(png));
+}
+
+TEST_F(VatBaker_, SceneSourcesConvertTheirAnimationsAndReportMaterials) {
+    const uint32_t sceneId = newScene();
+    const Entity arm = loadModel(sceneId, "models/rigid_arm.gltf", "Arm");
+    Scene* scene = sceneOf(sceneId);
+    // the model's entity Animations (Swing, Stretch) are the GameObject's clips
+    VatBakeSpec spec;
+    spec.source.kind = VatSourceKind::Entity;
+    spec.source.sceneId = sceneId;
+    spec.source.path = EntityPath::of(*project()->getScene(sceneId), arm);
+    spec.clips = {"Swing"};
+    // one part draws with a library shader, the other with a project fork
+    int part = 0;
+    for (const auto& node : scene->getComponent<ModelComponent>(arm).meshNodesMapping) {
+        MeshComponent* mesh = scene->findComponent<MeshComponent>(node.second);
+        if (!mesh || mesh->numSubmeshes == 0) continue;
+        mesh->submeshes[0].material.shader = part++ == 0 ? "library:toon" : "shaders/old_fork.shader";
+    }
+    ASSERT_EQ(part, 2);
+    {
+        VatBakeSession session(project());
+        session.setSpec(spec);
+        const std::vector<VatIssue> issues = session.check();
+        EXPECT_FALSE(hasErrors(issues)) << kinds(issues);
+        EXPECT_TRUE(hasKind(issues, "material_simplified")) << kinds(issues);
+        EXPECT_TRUE(hasKind(issues, "materials_not_vat_ready")) << kinds(issues);
+        bool swing = false, stretch = false;
+        for (const VatSourceClip& clip : session.sourceClips()) {
+            swing |= clip.name == "Swing";
+            stretch |= clip.name == "Stretch";
+        }
+        EXPECT_TRUE(swing && stretch) << "entity Animations become clips";
+        ASSERT_TRUE(session.run()) << session.error();
+        EXPECT_EQ(session.result()->data.mode, VatMode::Bones) << session.result()->report.modeReason;
+        EXPECT_TRUE(hasKind(session.result()->report.warnings, "materials_not_vat_ready"));
+        EXPECT_EQ(session.result()->data.recipe.sources[0].kind, "entity");
+        EXPECT_EQ(session.result()->data.recipe.sources[0].clips, std::vector<std::string>{"Swing"});
+    }
+    // a playing scene refuses
+    project()->getScene(sceneId)->playState = ScenePlayState::PLAYING;
+    {
+        VatBakeSession session(project());
+        session.setSpec(spec);
+        bool error = false;
+        EXPECT_TRUE(hasKind(session.check(), "scene_playing", &error));
+        EXPECT_TRUE(error);
+    }
+    project()->getScene(sceneId)->playState = ScenePlayState::STOPPED;
+
+    // a GameObject that moves but draws nothing
+    ClipData move;
+    move.guid = "00112233445566778899aabbccddeeff";
+    move.wrap = ClipWrapMode::Loop;
+    ClipTrackData track;
+    track.path = "";
+    track.channel = ClipChannel::Position;
+    for (int i = 0; i < 2; i++) {
+        ClipKey key;
+        key.time = (float)i;
+        key.value = {(float)i, 0, 0};
+        track.keys.push_back(key);
+    }
+    move.tracks.push_back(track);
+    anim::normalize(move);
+    writeAll(root() / "assets/anim/move.anim", anim::writeClip(move));
+    CreateEntityCmd* create = new CreateEntityCmd(project(), sceneId, "Mover", EntityCreationType::GAMEOBJECT);
+    create->setQuiet(true);
+    history(sceneId)->addCommandNoMerge(create);
+    VatBakeSpec mover;
+    mover.source.kind = VatSourceKind::Anim;
+    mover.source.sceneId = sceneId;
+    mover.source.path = EntityPath::of(*project()->getScene(sceneId), create->getEntity());
+    mover.source.anims = {"assets/anim/move.anim"};
+    VatBakeSession nothing(project());
+    nothing.setSpec(mover);
+    bool error = false;
+    EXPECT_TRUE(hasKind(nothing.check(), "no_mesh", &error)) << kinds(nothing.check());
+    EXPECT_TRUE(error);
+}
+
+TEST_F(VatBaker_, PoseAnimationsBakeThroughTheirClip) {
+    auto pose = [](const std::string& name, float raise) {
+        return "{\"name\": \"" + name + "\", \"hold\": 0.3, \"grounded\": true, \"lift\": 0, \"transition\": null, "
+               "\"offset\": {\"left\": 0, \"forward\": 0}, \"angles\": {\"left_upper_arm.raise\": " + std::to_string(raise) + "}}";
+    };
+    writeAll(root() / "assets/anim/raise.poseanim",
+             "{\"format\": \"jasperengine.poseanim\", \"version\": 1, \"preview_model\": \"models/hero.gltf\", "
+             "\"frame_rate\": 30, \"loop\": true, "
+             "\"feel\": {\"transition\": {\"curve\": \"spring\", \"duration\": 0.2, \"overshoot\": 0.25, \"anticipation\": 0.06}, "
+             "\"step_rate\": 0, \"overlap\": 0.05, \"looseness\": 0.2, \"weights\": {\"spine\": 1, \"head\": 1, \"arms\": 1, \"legs\": 1}}, "
+             "\"humanize\": {\"enabled\": false, \"joint_limits\": true, \"moving_holds\": 0.08, \"inbetweens\": 0.4, "
+             "\"life\": 0.6, \"seed\": 1, \"head_follow\": 0.5, \"torso_follow\": 0.4, \"springiness\": 0.5}, "
+             "\"poses\": [" + pose("Rest", 0) + ", " + pose("Raise", 70) + "]}\n");
+    VatBakeSpec spec;
+    spec.source.kind = VatSourceKind::Pose;
+    spec.source.path = "assets/models/hero.gltf";
+    spec.source.anims = {"assets/anim/raise.poseanim"};
+    std::unique_ptr<VatBakeSession> session = bake(spec);
+    const VatBakeResult* result = session->result();
+    ASSERT_TRUE(result);
+    ASSERT_EQ(result->data.clips.size(), 1u);
+    EXPECT_EQ(result->data.clips[0].name, "raise");
+    EXPECT_EQ(result->data.clips[0].wrap, ClipWrapMode::Loop);
+    EXPECT_EQ(result->data.recipe.sources[0].kind, "pose");
+    bool hashed = false;
+    for (const auto& hash : result->data.recipe.sources[0].hashes) hashed |= hash.first == "assets/anim/raise.poseanim";
+    EXPECT_TRUE(hashed);
+    // the arm rises: the frames differ
+    const std::vector<Vector3> first = decodeFrame(*result, 0);
+    float moved = 0.0f;
+    for (int frame = 1; frame < result->data.clips[0].frames; frame++) {
+        const std::vector<Vector3> later = decodeFrame(*result, frame);
+        for (size_t v = 0; v < first.size(); v++) moved = std::max(moved, distance(first[v], later[v]));
+    }
+    EXPECT_GT(moved, 0.2f) << "the left arm raised 70 degrees";
+    // its default output is next to the pose animation
+    std::string vatPath;
+    bool rewrite = true;
+    std::string error;
+    ASSERT_TRUE(session->plannedOutput(vatPath, rewrite, error)) << error;
+    EXPECT_EQ(vatPath, "assets/anim/raise.vat");
+    EXPECT_FALSE(rewrite);
 }

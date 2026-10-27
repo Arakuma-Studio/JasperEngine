@@ -749,6 +749,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/lattice/LatticeSceneRender.cpp
     ${EDITOR_DIR}/lattice/LatticeSceneTools.cpp
     ${EDITOR_DIR}/vat/VatAssetWriter.cpp
+    ${EDITOR_DIR}/vat/VatReport.cpp
     ${EDITOR_DIR}/vat/VatBakeTypes.cpp
     ${EDITOR_DIR}/vat/VatBakeCompute.cpp
     ${EDITOR_DIR}/vat/VatBakeSource.cpp

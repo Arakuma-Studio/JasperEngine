@@ -9,6 +9,7 @@
 #include <cstring>
 #include <limits>
 #include <map>
+#include <unordered_map>
 
 using namespace jasperengine;
 using namespace jasperengine::vat;
@@ -437,6 +438,10 @@ namespace{
         std::vector<int> rigidCandidate;                   // per renderer, -1 until used
         bool rigidOnly = true;
 
+        // merged bones: candidate -> bone, and each bone's first candidate
+        std::vector<int> boneOf;
+        std::vector<int> representative;
+
         // decisions
         bool doVertices = true;
         bool doBones = true;
@@ -476,6 +481,8 @@ namespace{
         bool deformSample(const VatSampleState& sample, const char* what, std::string& error);
         Affine candidateMatrix(int candidate, const VatSampleState& sample) const;
         bool framesPass(std::string& error);
+        // candidates with equal matrices at every frame share one bone (hashed, then compared)
+        void mergeCandidates();
         bool decide(std::string& error);
         bool midsPass(std::string& error);
         bool build(std::string& error);
@@ -958,6 +965,59 @@ namespace{
         return true;
     }
 
+    void Baker::mergeCandidates(){
+        // candidates sorted by the sum of their matrices over every frame: two that are equal
+        // (within 1e-6 per value) have sums within 12 x samples x 1e-6, so each one is compared
+        // only to the representatives just before it in that order
+        const size_t count = candidates.size();
+        const double tolerance = 1e-6;
+        std::vector<double> signature(count, 0.0);
+        for (size_t b = 0; b < count; b++){
+            for (int s = 0; s < samples; s++){
+                const Affine& m = candidateMatrices[(size_t)s * count + b];
+                for (int r = 0; r < 3; r++){
+                    for (int c = 0; c < 4; c++) signature[b] += m.m[r][c];
+                }
+            }
+        }
+        std::vector<size_t> order(count);
+        for (size_t b = 0; b < count; b++) order[b] = b;
+        std::stable_sort(order.begin(), order.end(), [&](size_t x, size_t y){ return signature[x] < signature[y]; });
+        const double window = 12.0 * (double)std::max(samples, 1) * tolerance;
+        std::vector<int> group(count, -1);
+        std::vector<size_t> heads;           // representatives in signature order
+        for (size_t b : order){
+            for (size_t h = heads.size(); h-- > 0;){
+                const size_t other = heads[h];
+                if (signature[b] - signature[other] > window) break;
+                bool same = true;
+                for (int s = 0; s < samples && same; s++){
+                    same = candidateMatrices[(size_t)s * count + b].nearlyEqual(candidateMatrices[(size_t)s * count + other], tolerance);
+                }
+                if (same){
+                    group[b] = (int)other;
+                    break;
+                }
+            }
+            if (group[b] < 0){
+                group[b] = (int)b;
+                heads.push_back(b);
+            }
+        }
+        // bones numbered by their first candidate
+        boneOf.assign(count, -1);
+        representative.clear();
+        std::vector<int> boneOfHead(count, -1);
+        for (size_t b = 0; b < count; b++){
+            const size_t head = (size_t)group[b];
+            if (boneOfHead[head] < 0){
+                boneOfHead[head] = (int)representative.size();
+                representative.push_back((int)head);
+            }
+            boneOf[b] = boneOfHead[head];
+        }
+    }
+
     bool Baker::decide(std::string& error){
         const double diagonalMm = boundsDiagonal(totalBounds) * 1000.0;
         tolerance = std::max((double)in.toleranceMm, 0.0005 * diagonalMm);
@@ -987,26 +1047,8 @@ namespace{
         }
 
         // unique bones: candidates equal at every frame merge
-        const int bones = [&]{
-            if (!doBones) return 0;
-            std::vector<int> representative;
-            for (size_t b = 0; b < candidates.size(); b++){
-                bool found = false;
-                for (int other : representative){
-                    bool same = true;
-                    for (int s = 0; s < samples && same; s++){
-                        same = candidateMatrices[(size_t)s * candidates.size() + b].nearlyEqual(
-                            candidateMatrices[(size_t)s * candidates.size() + (size_t)other], 1e-6);
-                    }
-                    if (same){
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) representative.push_back((int)b);
-            }
-            return (int)representative.size();
-        }();
+        if (doBones) mergeCandidates();
+        const int bones = (int)representative.size();
 
         VatMode mode = VatMode::Vertices;
         std::string reason;
@@ -1204,26 +1246,12 @@ namespace{
         layout.colors = false;
         layout.vertices = bones ? 0 : (int)vertexCount;
 
-        // bones: the merged bone list (representatives), candidate -> bone
-        std::vector<int> boneOf(candidates.size(), -1);
-        std::vector<int> representative;
+        // bones: the merged bone list (mergeCandidates)
         if (bones){
-            for (size_t b = 0; b < candidates.size(); b++){
-                for (size_t r = 0; r < representative.size() && boneOf[b] < 0; r++){
-                    bool same = true;
-                    for (int s = 0; s < samples && same; s++){
-                        same = candidateMatrices[(size_t)s * candidates.size() + b].nearlyEqual(
-                            candidateMatrices[(size_t)s * candidates.size() + (size_t)representative[r]], 1e-6);
-                    }
-                    if (same) boneOf[b] = (int)r;
-                }
-                if (boneOf[b] < 0){
-                    boneOf[b] = (int)representative.size();
-                    representative.push_back((int)b);
-                    const Candidate& candidate = candidates[b];
-                    out.boneNames.push_back(in.renderers[(size_t)candidate.renderer].name +
-                                            (candidate.joint < 0 ? std::string(" (rigid)") : "/joint " + std::to_string(candidate.joint)));
-                }
+            for (int b : representative){
+                const Candidate& candidate = candidates[(size_t)b];
+                out.boneNames.push_back(in.renderers[(size_t)candidate.renderer].name +
+                                        (candidate.joint < 0 ? std::string(" (rigid)") : "/joint " + std::to_string(candidate.joint)));
             }
             layout.bones = (int)representative.size();
         }

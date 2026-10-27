@@ -237,27 +237,12 @@ bool encodeVatImport(VatImportResult& result, const std::string& vatPath, VatEnc
     return encodeVatFiles(vatPath, result.data, result.mesh, result.payload, result.sockets, out, error);
 }
 
-namespace{
-
-    Json issuesJson(const std::vector<VatImportIssue>& issues){
-        Json list = Json::array();
-        for (const VatImportIssue& issue : issues){
-            list.push_back({{"kind", issue.kind}, {"message", issue.message}, {"fix", issue.fix}});
-        }
-        return list;
-    }
-
-}
-
 std::string vatImportReportJson(const VatImportReport& report){
-    Json j = Json::object();
+    // the shared report, then what an import adds
+    Json j = reportJson(report);
     j["kind"] = importKindName(report.kind);
     j["houdini_mode"] = houdiniModeName(report.houdiniMode);
-    j["mode"] = modeName(report.mode);
-    j["mode_reason"] = report.modeReason;
-    j["vertices"] = report.vertices;
     j["mesh_vertices"] = report.meshVertices;
-    j["bones"] = report.bones;
     j["source_points"] = report.sourcePoints;
     j["pieces"] = report.pieces;
     j["source_frames"] = report.sourceFrames;
@@ -265,21 +250,7 @@ std::string vatImportReportJson(const VatImportReport& report){
     j["upsample"] = report.upsample;
     j["fps"] = report.fps;
     j["target"] = report.target;
-    Json clips = Json::array();
-    for (const VatImportClipReport& clip : report.clips){
-        clips.push_back({{"name", clip.name}, {"frames", clip.frames}, {"fps", clip.fps}, {"bytes", clip.bytes}});
-    }
-    j["clips"] = clips;
-    j["texture"] = {{"width", report.width}, {"height", report.height},
-                    {"format", report.precision == VatPrecision::Float ? "rgba32f" : "rgba16f"}};
-    j["bytes"] = report.bytes;
-    j["max_error_mm"] = report.maxErrorMm;
-    j["mean_error_mm"] = report.meanErrorMm;
-    j["quantization_error_mm"] = report.quantizationErrorMm;
-    j["tolerance_mm"] = report.toleranceMm;
     j["interpolation_error_mm"] = report.interpolationErrorMm;
-    j["fetches_per_vertex"] = report.fetchesPerVertex;
-    j["warnings"] = issuesJson(report.warnings);
     return j.dump();
 }
 
@@ -315,12 +286,7 @@ std::string vatImportDetectionJson(const VatImportDetection& detection){
 }
 
 std::string vatImportIssuesText(const std::vector<VatImportIssue>& issues){
-    std::string text;
-    for (const VatImportIssue& issue : issues){
-        if (!text.empty()) text += "\n";
-        text += issue.kind + ": " + issue.message + (issue.fix.empty() ? "" : " (" + issue.fix + ")");
-    }
-    return text;
+    return issuesText(issues);
 }
 
 }

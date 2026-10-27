@@ -99,24 +99,6 @@ bool sourceKindFromName(const std::string& name, VatSourceKind& out){
     return false;
 }
 
-bool hasErrors(const std::vector<VatIssue>& issues){
-    for (const VatIssue& issue : issues){
-        if (issue.error) return true;
-    }
-    return false;
-}
-
-std::string issuesText(const std::vector<VatIssue>& issues, bool errorsOnly){
-    std::string text;
-    for (const VatIssue& issue : issues){
-        if (errorsOnly && !issue.error) continue;
-        if (!text.empty()) text += "\n";
-        text += issue.kind + ": " + issue.message;
-        if (!issue.fix.empty()) text += " (" + issue.fix + ")";
-    }
-    return text;
-}
-
 void clipFrames(float length, ClipWrapMode wrap, float fps, int& frames, float& sampleFps){
     const double l = std::max(0.0, (double)length);
     const double f = fps > 0.0f ? (double)fps : 30.0;
@@ -284,25 +266,6 @@ namespace{
 
 }
 
-Json issueJson(const VatIssue& issue){
-    Json out = {{"kind", issue.kind}, {"message", issue.message}, {"fix", issue.fix}};
-    if (issue.error) out["error"] = true;
-    if (!issue.fixes.empty()){
-        Json fixes = Json::array();
-        for (const VatFix& fix : issue.fixes){
-            fixes.push_back({{"label", fix.label}, {"setting", fix.setting}, {"value", fix.value}});
-        }
-        out["fixes"] = fixes;
-    }
-    return out;
-}
-
-Json issuesJson(const std::vector<VatIssue>& issues){
-    Json out = Json::array();
-    for (const VatIssue& issue : issues) out.push_back(issueJson(issue));
-    return out;
-}
-
 Json estimateJson(const VatEstimate& estimate){
     Json clips = Json::array();
     for (const VatClipEstimate& clip : estimate.clips){
@@ -315,32 +278,12 @@ Json estimateJson(const VatEstimate& estimate){
         {"vertices", estimate.vertices},
         {"bones", estimate.bones},
         {"clips", clips},
-        {"texture", {{"width", estimate.width}, {"height", estimate.height}, {"format", precisionName(estimate.precision)}}},
+        {"texture", {{"width", estimate.width}, {"height", estimate.height}, {"format", textureFormatName(estimate.precision)}}},
         {"texels", estimate.texels},
         {"max_texels", estimate.maxTexels},
         {"bytes", estimate.bytes},
         {"fetches_per_vertex", estimate.fetchesPerVertex},
         {"issues", issuesJson(estimate.issues)},
-    };
-}
-
-Json reportJson(const VatBakeReport& report){
-    Json clips = Json::array();
-    for (const VatClipReport& clip : report.clips){
-        clips.push_back({{"name", clip.name}, {"frames", clip.frames}, {"fps", rounded(clip.fps)}, {"bytes", clip.bytes}});
-    }
-    return {
-        {"mode", modeName(report.mode)},
-        {"mode_reason", report.modeReason},
-        {"vertices", report.vertices},
-        {"bones", report.bones},
-        {"clips", clips},
-        {"texture", {{"width", report.width}, {"height", report.height}, {"format", precisionName(report.precision)}}},
-        {"bytes", report.bytes},
-        {"max_error_mm", rounded(report.maxErrorMm)},
-        {"mean_error_mm", rounded(report.meanErrorMm)},
-        {"fetches_per_vertex", report.fetchesPerVertex},
-        {"warnings", issuesJson(report.warnings)},
     };
 }
 
