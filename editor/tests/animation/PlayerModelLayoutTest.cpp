@@ -13,7 +13,7 @@
 #include <gtest/gtest.h>
 
 #include "AppSettings.h"
-#include "PhysicsTestScene.h"
+#include "engine/physics/PhysicsTestScene.h"
 #include "Project.h"
 #include "Stream.h"
 #include "animation/PlayerModelLayout.h"

@@ -174,6 +174,8 @@ TEST(PreviewOwnerRegistry, AcquiringStopsTheOwnersOfOverlappingRootsFirst){
         stops.push_back("whole");
     });
     EXPECT_EQ(stops, (std::vector<std::string>{"side", "clip"}));
+    EXPECT_FALSE(PreviewOwner::owns(side));
+    EXPECT_TRUE(PreviewOwner::owns(whole));
     EXPECT_TRUE(PreviewOwner::owns(otherScene));
 
     // keyed by an owner object: acquiring the same root again keeps it and stops nobody

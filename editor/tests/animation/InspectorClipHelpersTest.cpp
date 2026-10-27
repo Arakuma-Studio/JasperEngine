@@ -87,7 +87,9 @@ TEST(InspectorClipHelpers, LabelsElideKeepingTheFileNameEnd) {
     // never splits a UTF-8 sequence
     const std::string utf8 = inspectorclips::elideMiddle("\xc3\xa9\xc3\xa9\xc3\xa9\xc3\xa9\xc3\xa9\xc3\xa9.anim", 12, chars);
     for (size_t i = 0; i + 1 < utf8.size(); i++) {
-        if ((unsigned char)utf8[i] == 0xc3) EXPECT_EQ((unsigned char)utf8[i + 1], 0xa9) << utf8;
+        if ((unsigned char)utf8[i] == 0xc3) {
+            EXPECT_EQ((unsigned char)utf8[i + 1], 0xa9) << utf8;
+        }
     }
     EXPECT_EQ(inspectorclips::elideMiddle("abcdef", 2, chars), "...");
 }

@@ -171,7 +171,7 @@ namespace {
         const ModelComponent& model = sceneOf(sceneId)->getComponent<ModelComponent>(entity);
         std::string log;
         for (const LogEntry& entry : Out::getLogsSince(logs)) log += entry.message + "\n";
-        EXPECT_FALSE(model.loadedFilename.empty()) << "loaded " << path << " ('" << model.filename << "'): " << log;
+        EXPECT_FALSE(model.loadedFilename.empty()) << "loaded " << path << " ('" << model.filename.path << "'): " << log;
         return entity;
     }
 
@@ -1205,6 +1205,8 @@ namespace {
     public:
         bool execute() override { return false; }
         void undo() override {}
+        std::string describe() const override { return "Refuse"; }
+        const char* typeName() const override { return "RefusingCmd"; }
     };
 
 }
