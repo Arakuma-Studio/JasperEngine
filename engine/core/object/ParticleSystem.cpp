@@ -221,12 +221,12 @@ std::string ParticleSystem::getInlineEffect() const{
 
 namespace {
 
-    void setExposedValue(ParticleSystemComponent& particles, const std::string& name, const Vector4& value){
+    bool setExposedValue(ParticleSystemComponent& particles, const std::string& name, const Vector4& value){
         const ParticleEffectDocument* document = ParticleSubsystem::getDocument(particles);
         Vector4 current;
         if (!document || !ParticleModules::getExposed(*document, name, current)){
             Log::warn("[Particles] the effect has no exposed parameter '%s'", name.c_str());
-            return;
+            return false;
         }
         for (ParticleExposedValue& v : particles.exposedValues){
             if (v.name == name){
@@ -234,11 +234,12 @@ namespace {
                     v.value = value;
                     particles.needReload = true;
                 }
-                return;
+                return true;
             }
         }
         particles.exposedValues.push_back({name, value});
         particles.needReload = true;
+        return true;
     }
 
     Vector4 getExposedValue(const ParticleSystemComponent& particles, const std::string& name){
@@ -254,16 +255,16 @@ namespace {
 
 }
 
-void ParticleSystem::setFloat(const std::string& name, float value){
-    setExposedValue(system(), name, Vector4(value, 0.0f, 0.0f, 0.0f));
+bool ParticleSystem::setFloat(const std::string& name, float value){
+    return setExposedValue(system(), name, Vector4(value, 0.0f, 0.0f, 0.0f));
 }
 
-void ParticleSystem::setVector3(const std::string& name, Vector3 value){
-    setExposedValue(system(), name, Vector4(value.x, value.y, value.z, 0.0f));
+bool ParticleSystem::setVector3(const std::string& name, Vector3 value){
+    return setExposedValue(system(), name, Vector4(value.x, value.y, value.z, 0.0f));
 }
 
-void ParticleSystem::setColor(const std::string& name, Vector4 value){
-    setExposedValue(system(), name, value);
+bool ParticleSystem::setColor(const std::string& name, Vector4 value){
+    return setExposedValue(system(), name, value);
 }
 
 float ParticleSystem::getFloat(const std::string& name) const{

@@ -184,3 +184,21 @@ TEST(ParticleSeek, BeforeTheFirstFrameUsesTheTransformAsSet){
         EXPECT_NEAR(ch.get(ChPosZ)[i], -1.0f, 1e-4f) << i;
     }
 }
+
+TEST(ParticleSeek, EmitOnAStoppedSystemEmitsOnlyThat){
+    // stop(clear) then emit(5): five particles at the next tick, and the effect's own emission
+    // stays off (it once restarted the system)
+    Scene scene;
+    ParticleSystem system(&scene);
+    system.setPlayOnAwake(false);
+    ASSERT_TRUE(system.setInlineEffect(R"({"version": 1, "duration": 5, "seed": 4, "maxParticles": 100,
+        "modules": [{"type": "main", "startLifetime": 10, "startSpeed": 0}, {"type": "emission", "rateOverTime": 600}]})"));
+    system.play();
+    system.step(10);
+    ASSERT_GT(system.getParticleCount(), 50u);
+    system.stop(true);
+    system.emit(5);
+    system.step(10);
+    EXPECT_EQ(system.getParticleCount(), 5u);
+    EXPECT_FALSE(system.isEmitting());
+}

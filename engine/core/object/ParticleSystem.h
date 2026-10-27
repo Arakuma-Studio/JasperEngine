@@ -77,10 +77,10 @@ namespace jasperengine{
         bool setInlineEffect(const std::string& json);
         std::string getInlineEffect() const;
 
-        // ---- exposed parameters (the effect's `exposed` list)
-        void setFloat(const std::string& name, float value);
-        void setVector3(const std::string& name, Vector3 value);
-        void setColor(const std::string& name, Vector4 value);
+        // ---- exposed parameters (the effect's `exposed` list): false for a name it does not expose
+        bool setFloat(const std::string& name, float value);
+        bool setVector3(const std::string& name, Vector3 value);
+        bool setColor(const std::string& name, Vector4 value);
         float getFloat(const std::string& name) const;
         Vector3 getVector3(const std::string& name) const;
         Vector4 getColor(const std::string& name) const;

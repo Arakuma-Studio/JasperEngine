@@ -1111,7 +1111,7 @@ type ParticleSystem, or `object(ref, 'ParticleSystem')` in eval_lua). Methods: `
 `emit(count [, {position, velocity, size, color, lifetime}])` (born at the system's next tick), `seek(t)` (restart and simulate to
 t seconds), `step(ticks)`, `sendTrigger(name)` (the effect's Trigger sub-emitters named so),
 `setFloat(name, v)` / `setVector3(name, v)` / `setColor(name, v)` and `getFloat` / `getVector3` /
-`getColor` for the effect's exposed parameters (false / nil for an unknown name),
+`getColor` for the effect's exposed parameters (a set returns false for a name it does not expose),
 `setInlineEffect(json)` / `getInlineEffect()`, `addCollisionPlane(gameObject)` /
 `clearCollisionPlanes()`. rw: `enabled`, `playOnAwake`, `playbackSpeed`, `seed` (0: a new seed
 at every play), `effect` (a .particles path; "" plays the inline effect). ro: `isPlaying`,

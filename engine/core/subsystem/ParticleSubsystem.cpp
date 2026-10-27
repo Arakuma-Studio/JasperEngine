@@ -272,8 +272,7 @@ void ParticleSubsystem::restart(Entity entity){
 
 void ParticleSubsystem::emit(Entity entity, uint32_t count, const EmitOverrides* overrides){
     if (ParticleSystemState* state = getState(entity)){
-        if (state->runtime.state() == PlayState::Stopped)
-            state->runtime.play();
+        // a stopped system plays only what is emitted (EmitterRuntime::emit), not its own emission
         state->runtime.emit(count, overrides);
         state->started = true;
     }

@@ -238,7 +238,10 @@ void createEffectTool(const CallPtr& call) {
     ParticleEffectDocument document;
     std::vector<Diagnostic> diagnostics;
     if (args.contains("effect") && !args["effect"].is_null()) {
-        if (!ParticleEffectCodec::fromJson(toOrdered(args["effect"]), document, diagnostics)) {
+        auto effect = toOrdered(args["effect"]);
+        // an agent's effect may leave the schema version out: this editor's
+        if (effect.is_object() && !effect.contains("version")) effect["version"] = document.version;
+        if (!ParticleEffectCodec::fromJson(effect, document, diagnostics)) {
             call->fail("effect is not a valid effect (" + firstError(diagnostics) + ").", Json{{"diagnostics", diagnosticsJson(diagnostics)}});
             return;
         }

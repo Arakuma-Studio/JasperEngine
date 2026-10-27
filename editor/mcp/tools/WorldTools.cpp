@@ -4879,7 +4879,7 @@ void registerWorldTools(McpRegistry& registry) {
     // ---------------------------------------------------------------- particles
     add("create_particles", "Create / Configure Particles",
         "Create a Particle System GameObject (an inline effect) from a preset, or reconfigure one (entity: its "
-        "effect, the asset when it has one). 3D presets in meters; 2D ones scaled by scale (px per unit). emitter {shape: "
+        "effect or asset). 3D presets in meters; 2D ones scaled by scale (px per unit). emitter {shape: "
         "box|sphere|hemisphere|circle|cone, min, max, radius, inner_radius, cone_angle, cone_height}; "
         "velocity/acceleration/color: value or {min, max}; gradient = color over life; bursts [{time, count}]. "
         "Plays in play (autoplay = Play On Awake). emitter_entity: put it on that GameObject (a Mesh one emits its mesh). "
