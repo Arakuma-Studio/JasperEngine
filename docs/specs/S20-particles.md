@@ -630,6 +630,11 @@ What the implementation does differently from the text above, and why.
   `capture_particles`, `get_particle_migration_report`. `capture_particles` captures the Scene
   or Game view after the seek (`camera: scene | game`) rather than taking a camera GameObject. `create_particles` keeps its arguments; `emitter_entity` puts the system on that
   GameObject (a Mesh one emits its mesh).
+- **AC16's HTML5 run** has no script of its own (as S04's): the smoke test's export of
+  `tools/fixtures/particles-export` (an asset effect and a migrated inline one, its
+  `ParticlesProbe.lua` logging what they simulate) is built with `emcmake cmake` in the web
+  image and opened with `tools/web/browser_gate.py`; the Android run is the particles test
+  project on the emulator (`android-expect.txt`).
 - **Goldens**: the seven `particles_*` goldens are drawn on glcore and matched on Vulkan
   (lavapipe); GLES3/WebGL2, Metal and D3D11 have no headless device on the build servers. The
   soft/near-fade golden is the new renderer's: the old points were pixel-sized squares, so the
