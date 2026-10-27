@@ -52,6 +52,7 @@
 #include "component/ColorTweenComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/ParticleSystemComponent.h"
+#include "component/ForceFieldComponent.h"
 #include "component/PointsComponent.h"
 #include "component/LineRendererComponent.h"
 #include "component/TextComponent.h"

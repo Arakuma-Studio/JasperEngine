@@ -36,11 +36,13 @@
 #include "component/SkyboxComponent.h"
 #include "component/FogComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
+#include "component/ForceFieldComponent.h"
 #include "component/VolumetricCloudsComponent.h"
 #include "component/LightComponent.h"
 #include "component/CameraComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/PointsComponent.h"
+#include "component/ParticleSystemComponent.h"
 #include "component/LineRendererComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/AudioSourceComponent.h"
@@ -57,6 +59,7 @@
 #include "component/Rigidbody2DComponent.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/ParticleSubsystem.h"
 #include "component/RigidbodyComponent.h"
 #include "component/Joint2DComponent.h"
 #include "component/Joint3DComponent.h"
@@ -1033,6 +1036,13 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<FogComponent>(entity, Stream::decodeFogComponent(componentNode));
             }
             break;
+        case ComponentType::ForceFieldComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<ForceFieldComponent>(entity, {});
+            }else{
+                registry->addComponent<ForceFieldComponent>(entity, Stream::decodeForceFieldComponent(componentNode));
+            }
+            break;
         case ComponentType::LocalVolumetricFogComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
                 registry->addComponent<LocalVolumetricFogComponent>(entity, {});
@@ -1574,6 +1584,12 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
                 oldComponent = Stream::encodeLocalVolumetricFogComponent(registry->getComponent<LocalVolumetricFogComponent>(entity));
             }
             registry->removeComponent<LocalVolumetricFogComponent>(entity);
+            break;
+        case ComponentType::ForceFieldComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeForceFieldComponent(registry->getComponent<ForceFieldComponent>(entity));
+            }
+            registry->removeComponent<ForceFieldComponent>(entity);
             break;
         case ComponentType::VolumetricCloudsComponent:
             if (encodeComponent){
@@ -2287,15 +2303,6 @@ editor::Command* editor::ProjectUtils::buildDuplicateInstanceCmd(Project* projec
     return cmd;
 }
 
-void editor::ProjectUtils::removeDynamicInstmesh(Entity entity, const YAML::Node& savedComponents, EntityRegistry* registry) {
-    if (!savedComponents || savedComponents.IsNull()) return;
-    if (savedComponents[Catalog::getComponentName(ComponentType::InstancedMeshComponent, true)]) return;
-    if (entity == NULL_ENTITY || !registry->isEntityCreated(entity)) return;
-    if (registry->getSignature(entity).test(registry->getComponentId<InstancedMeshComponent>())) {
-        registry->removeComponent<InstancedMeshComponent>(entity);
-    }
-}
-
 namespace {
 
 using EntityClassInfo = editor::ProjectUtils::EntityClassInfo;
@@ -2365,13 +2372,19 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     if (signature.test(scene->getComponentId<ScaleTracksComponent>())) return handleClass("ScaleTracks");
     if (signature.test(scene->getComponentId<TranslateTracksComponent>())) return handleClass("TranslateTracks");
     if (signature.test(scene->getComponentId<KeyframeTracksComponent>())) return handleClass("KeyframeTracks");
-    if (signature.test(scene->getComponentId<ParticleSystemComponent>()))   return handleClass("ParticleSystem");
+    if (signature.test(scene->getComponentId<ParticleSystemComponent>()))   return objectClass("ParticleSystem");
     if (signature.test(scene->getComponentId<ActionComponent>()))      return handleClass("Action");
     if (signature.test(scene->getComponentId<Transform>()))            return objectClass("GameObject");
 
     // generic engine type for entities with no recognized component: valid as a
     // C++ pointer type (jasperengine::EntityHandle*) and known to the Lua dispatcher
     return handleClass("EntityHandle");
+}
+
+void editor::ProjectUtils::clearPreviewParticles(Scene* scene, Entity entity) {
+    if (scene->findComponent<ParticleSystemComponent>(entity)) {
+        scene->getSystem<ParticleSubsystem>()->stop(entity, true);
+    }
 }
 
 std::string editor::ProjectUtils::getEntityTypeName(Scene* scene, Entity entity) {

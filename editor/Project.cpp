@@ -51,6 +51,7 @@
 #include "AppSettings.h"
 #include "Out.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/ParticleSubsystem.h"
 #include "subsystem/LatticeSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
@@ -4870,6 +4871,8 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     scene->getSystem<PhysicsSystem>()->setPaused(pause);
     scene->getSystem<ActionSystem>()->setPaused(pause);
     scene->getSystem<AudioSystem>()->setPaused(pause);
+    // Edit mode: only the previewed (selected) Particle Systems simulate, driven by the editor
+    scene->getSystem<ParticleSubsystem>()->setPaused(pause);
     // the fluids hold still in edit mode (the Inspector's preview steps one: FluidSystem::setPreview)
     if (auto fluids = scene->findSystem<FluidSystem>()) fluids->setPaused(pause);
     // lattice tweens and jiggle (followers and offsets still show in edit mode)

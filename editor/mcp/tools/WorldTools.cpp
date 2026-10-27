@@ -48,6 +48,9 @@
 #include "component/MorphTracksComponent.h"
 #include "component/PanelComponent.h"
 #include "component/ParticleSystemComponent.h"
+#include "particles/LegacyParticleConverter.h"
+#include "util/ParticleEffectEdit.h"
+#include "mcp/tools/ParticleShared.h"
 #include "component/PointsComponent.h"
 #include "component/PolygonComponent.h"
 #include "component/ProgressbarComponent.h"
@@ -4018,43 +4021,81 @@ bool applyParticleOverrides(const Json& args, ParticleSettings& s, std::string& 
     return true;
 }
 
-void addParticleWrites(MultiPropertyCmd& m, const Target& target, Entity e, const ParticleSettings& s) {
-    const ComponentType p = ComponentType::ParticleSystemComponent;
-    addProp<unsigned int>(m, target, e, p, "maxParticles", s.maxParticles);
-    addProp<int>(m, target, e, p, "rate", s.rate);
-    addProp<bool>(m, target, e, p, "loop", s.loop);
-    addProp<std::vector<ParticleBurst>>(m, target, e, p, "bursts", s.bursts);
-    addProp<float>(m, target, e, p, "lifeInitializer.minLife", s.life.x);
-    addProp<float>(m, target, e, p, "lifeInitializer.maxLife", s.life.y);
-    addProp<ParticleEmitterShape>(m, target, e, p, "positionInitializer.shape", s.shape);
-    addProp<Vector3>(m, target, e, p, "positionInitializer.minPosition", s.minPosition);
-    addProp<Vector3>(m, target, e, p, "positionInitializer.maxPosition", s.maxPosition);
-    addProp<float>(m, target, e, p, "positionInitializer.radius", s.radius);
-    addProp<float>(m, target, e, p, "positionInitializer.innerRadius", s.innerRadius);
-    addProp<float>(m, target, e, p, "positionInitializer.coneAngle", s.coneAngle);
-    addProp<float>(m, target, e, p, "positionInitializer.coneHeight", s.coneHeight);
-    addProp<Vector3>(m, target, e, p, "velocityInitializer.minVelocity", s.minVelocity);
-    addProp<Vector3>(m, target, e, p, "velocityInitializer.maxVelocity", s.maxVelocity);
-    addProp<Vector3>(m, target, e, p, "accelerationInitializer.minAcceleration", s.minAcceleration);
-    addProp<Vector3>(m, target, e, p, "accelerationInitializer.maxAcceleration", s.maxAcceleration);
-    addProp<float>(m, target, e, p, "sizeInitializer.minSize", s.size.x);
-    addProp<float>(m, target, e, p, "sizeInitializer.maxSize", s.size.y);
-    addProp<Vector3>(m, target, e, p, "colorInitializer.minColor", s.minColor);
-    addProp<Vector3>(m, target, e, p, "colorInitializer.maxColor", s.maxColor);
-    ParticleColorGradient gradient;
-    gradient.stops = s.gradient;
-    gradient.normalize();
-    addProp<ParticleColorGradient>(m, target, e, p, "colorGradient", gradient);
+// the old system's view of the settings: the converter (LegacyParticleConverter) turns it into
+// an effect exactly as a migrated scene's old system
+void toLegacy(const ParticleSettings& s, LegacyParticleSystem& l) {
+    l.maxParticles = s.maxParticles;
+    l.rate = s.rate;
+    l.loop = s.loop;
+    l.bursts = s.bursts;
+    l.lifeInitializer.minLife = s.life.x;
+    l.lifeInitializer.maxLife = s.life.y;
+    l.positionInitializer.shape = s.shape;
+    l.positionInitializer.minPosition = s.minPosition;
+    l.positionInitializer.maxPosition = s.maxPosition;
+    l.positionInitializer.radius = s.radius;
+    l.positionInitializer.innerRadius = s.innerRadius;
+    l.positionInitializer.coneAngle = s.coneAngle;
+    l.positionInitializer.coneHeight = s.coneHeight;
+    l.velocityInitializer.minVelocity = s.minVelocity;
+    l.velocityInitializer.maxVelocity = s.maxVelocity;
+    l.accelerationInitializer.minAcceleration = s.minAcceleration;
+    l.accelerationInitializer.maxAcceleration = s.maxAcceleration;
+    l.sizeInitializer.minSize = s.size.x;
+    l.sizeInitializer.maxSize = s.size.y;
+    l.colorInitializer.minColor = s.minColor;
+    l.colorInitializer.maxColor = s.maxColor;
+    l.colorGradient.stops = s.gradient;
+    l.colorGradient.normalize();
     // Over-life modifiers run from spawn to the longest life
     const bool sizeOn = s.sizeOverLife.x >= 0.0f, alphaOn = s.alphaOverLife.x >= 0.0f;
-    addProp<float>(m, target, e, p, "sizeModifier.fromTime", 0.0f);
-    addProp<float>(m, target, e, p, "sizeModifier.toTime", sizeOn ? s.life.y : 0.0f);
-    addProp<float>(m, target, e, p, "sizeModifier.fromSize", sizeOn ? s.sizeOverLife.x : 0.0f);
-    addProp<float>(m, target, e, p, "sizeModifier.toSize", sizeOn ? s.sizeOverLife.y : 0.0f);
-    addProp<float>(m, target, e, p, "alphaModifier.fromTime", 0.0f);
-    addProp<float>(m, target, e, p, "alphaModifier.toTime", alphaOn ? s.life.y : 0.0f);
-    addProp<float>(m, target, e, p, "alphaModifier.fromAlpha", alphaOn ? s.alphaOverLife.x : 0.0f);
-    addProp<float>(m, target, e, p, "alphaModifier.toAlpha", alphaOn ? s.alphaOverLife.y : 0.0f);
+    l.sizeModifier.fromTime = 0.0f;
+    l.sizeModifier.toTime = sizeOn ? s.life.y : 0.0f;
+    l.sizeModifier.fromSize = sizeOn ? s.sizeOverLife.x : 0.0f;
+    l.sizeModifier.toSize = sizeOn ? s.sizeOverLife.y : 0.0f;
+    l.alphaModifier.fromTime = 0.0f;
+    l.alphaModifier.toTime = alphaOn ? s.life.y : 0.0f;
+    l.alphaModifier.fromAlpha = alphaOn ? s.alphaOverLife.x : 0.0f;
+    l.alphaModifier.toAlpha = alphaOn ? s.alphaOverLife.y : 0.0f;
+}
+
+// the settings an effect has (its old view): what overrides without a preset start from
+ParticleSettings fromLegacy(const LegacyParticleSystem& c) {
+    ParticleSettings s;
+    s.maxParticles = c.maxParticles; s.rate = c.rate; s.loop = c.loop;
+    s.life = Vector2(c.lifeInitializer.minLife, c.lifeInitializer.maxLife);
+    s.shape = c.positionInitializer.shape; s.minPosition = c.positionInitializer.minPosition;
+    s.maxPosition = c.positionInitializer.maxPosition; s.radius = c.positionInitializer.radius;
+    s.innerRadius = c.positionInitializer.innerRadius; s.coneAngle = c.positionInitializer.coneAngle;
+    s.coneHeight = c.positionInitializer.coneHeight;
+    s.minVelocity = c.velocityInitializer.minVelocity; s.maxVelocity = c.velocityInitializer.maxVelocity;
+    s.minAcceleration = c.accelerationInitializer.minAcceleration; s.maxAcceleration = c.accelerationInitializer.maxAcceleration;
+    s.size = Vector2(c.sizeInitializer.minSize, c.sizeInitializer.maxSize);
+    s.minColor = c.colorInitializer.minColor; s.maxColor = c.colorInitializer.maxColor;
+    s.gradient = c.colorGradient.stops; s.bursts = c.bursts;
+    if (c.sizeModifier.toTime > c.sizeModifier.fromTime) s.sizeOverLife = Vector2(c.sizeModifier.fromSize, c.sizeModifier.toSize);
+    if (c.alphaModifier.toTime > c.alphaModifier.fromTime) s.alphaOverLife = Vector2(c.alphaModifier.fromAlpha, c.alphaModifier.toAlpha);
+    return s;
+}
+
+bool hasParticleSettings(const Json& args, const std::string& preset) {
+    return !preset.empty() || has(args, "max_particles") || has(args, "rate") || has(args, "life") || has(args, "size") ||
+           has(args, "velocity") || has(args, "acceleration") || has(args, "color") || has(args, "gradient") || has(args, "bursts") ||
+           has(args, "emitter") || has(args, "loop") || has(args, "size_over_life") || has(args, "alpha_over_life");
+}
+
+// The settings of a preset (scaled for 2D) with the call's overrides
+bool presetSettings(const Json& args, const std::string& preset, bool is2D, ParticleSettings& settings, std::string& error) {
+    if (!particlePreset(preset, settings)) {
+        error = "preset must be fire, smoke, sparks, explosion, snow, rain, magic or none.";
+        return false;
+    }
+    scaleParticleSettings(settings, numberOr(args, "scale", is2D ? 40.0f : 1.0f), is2D);
+    if (is2D) {
+        // y is up in 2D too; flat emitters keep z at 0
+        settings.minPosition.z = settings.maxPosition.z = 0.0f;
+    }
+    return applyParticleOverrides(args, settings, error);
 }
 
 void createParticlesTool(const CallPtr& call) {
@@ -4067,106 +4108,123 @@ void createParticlesTool(const CallPtr& call) {
     auto failWith = [&](const std::string& message) {
         step.fail(call, message);
     };
+    const bool is2D = target.scene->sceneType != SceneType::SCENE_3D;
+
+    // the effect's texture (the Renderer's), by path and GUID
+    std::string texture;
+    if (has(args, "texture")) {
+        texture = stringOr(args, "texture", "");
+        if (!texture.empty() && target.project->isInsideAssetsPath(texture)) texture = target.project->normalizeToAssetsRelative(texture).generic_string();
+    }
 
     Entity system = NULL_ENTITY;
-    Entity emitter = NULL_ENTITY;
     bool created = false;
+    std::string preset;
+    auto* multi = new MultiPropertyCmd();
+    std::unique_ptr<MultiPropertyCmd> guard(multi);
     if (has(args, "entity")) {
         system = resolveRef(target.scene, args["entity"], error);
         if (system == NULL_ENTITY || !scene->findComponent<ParticleSystemComponent>(system)) {
             call->fail(system == NULL_ENTITY ? error : "\"" + scene->getEntityName(system) + "\" has no Particle System component.");
             return;
         }
-        emitter = scene->getComponent<ActionComponent>(system).target;
+        preset = lowerText(stringOr(args, "preset", ""));
+        if (hasParticleSettings(args, preset) || has(args, "texture")) {
+            ParticleSettings settings;
+            const ParticleSystemComponent& current = scene->getComponent<ParticleSystemComponent>(system);
+            particles::ParticleEffectDocument document;
+            if (!ParticleEffectEdit::read(current, document)) { failWith("The system's effect asset cannot be read."); return; }
+            LegacyParticleSystem legacy = particles::LegacyParticleConverter::extract(document);
+            if (preset.empty()) {
+                // overrides start from the system's current values
+                settings = fromLegacy(legacy);
+                if (!applyParticleOverrides(args, settings, error)) { failWith(error); return; }
+            } else if (!presetSettings(args, preset, is2D, settings, error)) {
+                failWith(error);
+                return;
+            }
+            toLegacy(settings, legacy);
+            const bool setTexture = has(args, "texture");
+            Command* edit = ParticleEffectEdit::build(target.project, target.sceneId(), {system}, [&](particles::ParticleEffectDocument& doc) {
+                particles::LegacyParticleConverter::apply(legacy, doc);
+                if (setTexture) {
+                    doc.renderer.texture = texture;
+                    doc.renderer.textureGuid = texture.empty() ? std::string() : target.project->makeAssetRef(texture, AssetPathBase::Assets).guid.str();
+                }
+                return true;
+            });
+            if (edit) multi->addCommand(std::unique_ptr<Command>(edit));
+        }
     } else {
-        // The emitter: an existing GameObject with Points or a Mesh, else a new Points GameObject
+        // a new GameObject emitting it, or the Particle System added to emitter_entity
+        preset = lowerText(stringOr(args, "preset", "fire"));
+        ParticleSettings settings;
+        if (!presetSettings(args, preset, is2D, settings, error)) { failWith(error); return; }
+        LegacyParticleSystem legacy;
+        toLegacy(settings, legacy);
+        particles::LegacyTarget legacyTarget;
+        legacyTarget.texture = texture;
+        legacyTarget.textureGuid = texture.empty() ? std::string() : target.project->makeAssetRef(texture, AssetPathBase::Assets).guid.str();
+
         if (has(args, "emitter_entity")) {
-            emitter = resolveRef(target.scene, args["emitter_entity"], error);
-            if (emitter == NULL_ENTITY) { failWith("emitter_entity: " + error); return; }
-            if (!scene->findComponent<PointsComponent>(emitter) && !scene->findComponent<MeshComponent>(emitter)) {
-                failWith("emitter_entity needs a Points or Mesh component (particles are drawn as its points or mesh instances).");
+            system = resolveRef(target.scene, args["emitter_entity"], error);
+            if (system == NULL_ENTITY) { failWith("emitter_entity: " + error); return; }
+            if (scene->findComponent<ParticleSystemComponent>(system)) {
+                failWith("\"" + scene->getEntityName(system) + "\" has a Particle System already: pass it as entity to reconfigure it.");
+                return;
+            }
+            // a Mesh GameObject emits its mesh, as a migrated system that drew mesh instances
+            if (MeshComponent* mesh = scene->findComponent<MeshComponent>(system)) {
+                legacyTarget.kind = particles::LegacyTarget::Kind::Mesh;
+                addProp<bool>(*multi, target, system, ComponentType::MeshComponent, "enabled", false);
+                (void)mesh;
+            }
+            if (!step.add(new AddComponentCmd(target.project, target.sceneId(), system, ComponentType::ParticleSystemComponent))) {
+                failWith("Could not add the Particle System.");
                 return;
             }
         } else {
             Entity parent = NULL_ENTITY;
             if (has(args, "parent") && (parent = resolveRef(target.scene, args["parent"], error)) == NULL_ENTITY) { failWith("parent: " + error); return; }
-            auto* points = parent != NULL_ENTITY
-                ? new CreateEntityCmd(target.project, target.sceneId(), stringOr(args, "name", "Particles"), EntityCreationType::POINTS, parent)
-                : new CreateEntityCmd(target.project, target.sceneId(), stringOr(args, "name", "Particles"), EntityCreationType::POINTS);
+            const std::string name = stringOr(args, "name", "Particle System");
+            auto* create = parent != NULL_ENTITY
+                ? new CreateEntityCmd(target.project, target.sceneId(), name, EntityCreationType::PARTICLE_SYSTEM, parent)
+                : new CreateEntityCmd(target.project, target.sceneId(), name, EntityCreationType::PARTICLE_SYSTEM);
             Vector3 position;
-            if (!readVec3(args, "position", position, error)) { delete points; failWith(error); return; }
-            if (has(args, "position")) points->addProperty<Vector3>(ComponentType::Transform, "position", position);
-            if (!step.add(points)) { failWith("Could not create the Points GameObject."); return; }
-            emitter = points->getEntity();
+            if (!readVec3(args, "position", position, error)) { delete create; failWith(error); return; }
+            if (has(args, "position")) create->addProperty<Vector3>(ComponentType::Transform, "position", position);
+            if (!step.add(create)) { failWith("Could not create the Particle System."); return; }
+            system = create->getEntity();
         }
-        auto* create = new CreateEntityCmd(target.project, target.sceneId(), "Particle System", EntityCreationType::PARTICLE_SYSTEM, emitter);
-        if (!step.add(create)) { failWith("Could not create the Particle System."); return; }
-        system = create->getEntity();
         created = true;
+        particles::ParticleEffectDocument document = particles::LegacyParticleConverter::convert(legacy, legacyTarget);
+        // a new effect draws Unity's soft particle without a texture (the converter keeps the old squares)
+        document.renderer.untexturedShape = particles::UntexturedShape::Disc;
+        addProp<particles::ParticleEffectDocument>(*multi, target, system, ComponentType::ParticleSystemComponent, "inlineEffect", document);
     }
 
-    ParticleSettings settings;
-    const std::string preset = lowerText(stringOr(args, "preset", created ? "fire" : ""));
-    auto* multi = new MultiPropertyCmd();
-    std::unique_ptr<MultiPropertyCmd> guard(multi);
-    if (!preset.empty() || has(args, "max_particles") || has(args, "rate") || has(args, "life") || has(args, "size") ||
-        has(args, "velocity") || has(args, "acceleration") || has(args, "color") || has(args, "gradient") || has(args, "bursts") ||
-        has(args, "emitter") || has(args, "loop") || has(args, "size_over_life") || has(args, "alpha_over_life")) {
-        if (preset.empty()) {
-            // Start from the system's current values
-            ParticleSystemComponent& c = scene->getComponent<ParticleSystemComponent>(system);
-            settings.maxParticles = c.maxParticles; settings.rate = c.rate; settings.loop = c.loop;
-            settings.life = Vector2(c.lifeInitializer.minLife, c.lifeInitializer.maxLife);
-            settings.shape = c.positionInitializer.shape; settings.minPosition = c.positionInitializer.minPosition;
-            settings.maxPosition = c.positionInitializer.maxPosition; settings.radius = c.positionInitializer.radius;
-            settings.innerRadius = c.positionInitializer.innerRadius; settings.coneAngle = c.positionInitializer.coneAngle;
-            settings.coneHeight = c.positionInitializer.coneHeight;
-            settings.minVelocity = c.velocityInitializer.minVelocity; settings.maxVelocity = c.velocityInitializer.maxVelocity;
-            settings.minAcceleration = c.accelerationInitializer.minAcceleration; settings.maxAcceleration = c.accelerationInitializer.maxAcceleration;
-            settings.size = Vector2(c.sizeInitializer.minSize, c.sizeInitializer.maxSize);
-            settings.minColor = c.colorInitializer.minColor; settings.maxColor = c.colorInitializer.maxColor;
-            settings.gradient = c.colorGradient.stops; settings.bursts = c.bursts;
-            if (c.sizeModifier.toTime > c.sizeModifier.fromTime) settings.sizeOverLife = Vector2(c.sizeModifier.fromSize, c.sizeModifier.toSize);
-            if (c.alphaModifier.toTime > c.alphaModifier.fromTime) settings.alphaOverLife = Vector2(c.alphaModifier.fromAlpha, c.alphaModifier.toAlpha);
-        } else if (!particlePreset(preset, settings)) {
-            failWith("preset must be fire, smoke, sparks, explosion, snow, rain, magic or none.");
-            return;
-        } else {
-            const bool is2D = target.scene->sceneType != SceneType::SCENE_3D;
-            scaleParticleSettings(settings, numberOr(args, "scale", is2D ? 40.0f : 1.0f), is2D);
-            if (is2D) {
-                // y is up in 2D too; flat emitters keep z at 0
-                settings.minPosition.z = settings.maxPosition.z = 0.0f;
-            }
-        }
-        if (!applyParticleOverrides(args, settings, error)) { failWith(error); return; }
-        addParticleWrites(*multi, target, system, settings);
-    }
-    if (has(args, "texture") && emitter != NULL_ENTITY && scene->findComponent<PointsComponent>(emitter) &&
-        !addCatalogProperties(target.project, target.scene, emitter, ComponentType::PointsComponent, Json{{"texture", args["texture"]}}, *multi, error)) {
-        failWith("texture: " + error);
-        return;
-    }
     if (has(args, "properties") && !addCatalogProperties(target.project, target.scene, system, ComponentType::ParticleSystemComponent, args["properties"], *multi, error)) {
         failWith("properties: " + error);
         return;
     }
-    if (has(args, "autoplay") || created) {
-        addProp<ActionState>(*multi, target, system, ComponentType::ActionComponent, "state",
-                             boolOr(args, "autoplay", true) ? ActionState::Running : ActionState::Stopped);
+    if (has(args, "autoplay")) {
+        addProp<bool>(*multi, target, system, ComponentType::ParticleSystemComponent, "playOnAwake", boolOr(args, "autoplay", true));
     }
-    if (!step.add(guard.release())) { failWith("The editor rejected the particle settings."); return; }
+    if (!multi->empty() && !step.add(guard.release())) { failWith("The editor rejected the particle settings."); return; }
     step.commit();
 
-    ParticleSystemComponent& c = scene->getComponent<ParticleSystemComponent>(system);
+    const ParticleSystemComponent& c = scene->getComponent<ParticleSystemComponent>(system);
+    particles::ParticleEffectDocument document;
+    ParticleEffectEdit::read(c, document);
+    const LegacyParticleSystem view = particles::LegacyParticleConverter::extract(document);
     call->ok(std::string(created ? "Created" : "Updated") + " particle system \"" + scene->getEntityName(system) + "\"" +
-             (preset.empty() ? std::string() : " (" + preset + ")") + ". It emits when the scene plays (autoplay) or when a script starts it.",
-             Json{{"particle_system", entityJson(target, system)},
-                  {"emitter", emitter != NULL_ENTITY ? entityJson(target, emitter) : Json(nullptr)}, {"created", created},
-                  {"max_particles", c.maxParticles}, {"rate", c.rate}, {"loop", c.loop},
-                  {"life", {c.lifeInitializer.minLife, c.lifeInitializer.maxLife}}, {"bursts", c.bursts.size()},
-                  {"gradient_stops", c.colorGradient.stops.size()},
-                  {"autoplay", scene->getComponent<ActionComponent>(system).state == ActionState::Running}});
+             (preset.empty() ? std::string() : " (" + preset + ")") + ". It plays when the scene plays (autoplay: Play On Awake) or when a "
+             "script calls play(); edit_particle_effect edits any module of its effect.",
+             Json{{"particle_system", entityJson(target, system)}, {"emitter", entityJson(target, system)}, {"created", created},
+                  {"effect", c.effect.empty() ? Json(nullptr) : Json(c.effect.path)},
+                  {"max_particles", view.maxParticles}, {"rate", view.rate}, {"loop", view.loop},
+                  {"life", {view.lifeInitializer.minLife, view.lifeInitializer.maxLife}}, {"bursts", view.bursts.size()},
+                  {"gradient_stops", view.colorGradient.stops.size()}, {"autoplay", c.playOnAwake}});
 }
 
 // ================================================================== models
@@ -4458,6 +4516,21 @@ void setShapePointsTool(const CallPtr& call) {
 }
 
 } // namespace
+
+bool particlePresetEffect(const Json& args, const std::string& preset, bool is2D, particles::ParticleEffectDocument& out, std::string& error) {
+    ParticleSettings settings;
+    if (!presetSettings(args, preset, is2D, settings, error)) return false;
+    LegacyParticleSystem legacy;
+    toLegacy(settings, legacy);
+    out = particles::LegacyParticleConverter::convert(legacy, particles::LegacyTarget());
+    out.renderer.untexturedShape = particles::UntexturedShape::Disc;
+    return true;
+}
+
+const std::vector<std::string>& particlePresetNames() {
+    static const std::vector<std::string> names = {"fire", "smoke", "sparks", "explosion", "snow", "rain", "magic", "none"};
+    return names;
+}
 
 void registerWorldTools(McpRegistry& registry) {
     using namespace schema;
@@ -4818,11 +4891,12 @@ void registerWorldTools(McpRegistry& registry) {
 
     // ---------------------------------------------------------------- particles
     add("create_particles", "Create / Configure Particles",
-        "Create a particle effect (Points GameObject + Particle System child) from a preset, or reconfigure one "
-        "(entity). 3D presets in meters; 2D ones scaled by scale (px per unit). emitter {shape: "
+        "Create a Particle System GameObject (an inline effect) from a preset, or reconfigure one (entity: its "
+        "effect or asset). 3D presets in meters; 2D ones scaled by scale (px per unit). emitter {shape: "
         "box|sphere|hemisphere|circle|cone, min, max, radius, inner_radius, cone_angle, cone_height}; "
         "velocity/acceleration/color: value or {min, max}; gradient = color over life; bursts [{time, count}]. "
-        "Runs in play (autoplay). emitter_entity: draw with an existing Points/Mesh.",
+        "Plays in play (autoplay = Play On Awake). emitter_entity: put it on that GameObject (a Mesh one emits its mesh). "
+        "edit_particle_effect edits every module.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef("Effect to reconfigure.")},

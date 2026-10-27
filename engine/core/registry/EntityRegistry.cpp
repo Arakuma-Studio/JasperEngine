@@ -84,6 +84,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<LatticeTracksComponent>(ComponentOrder::Insertion, "LatticeTracksComponent");
     registerComponent<LocalVolumetricFogComponent>(ComponentOrder::Insertion, "LocalVolumetricFogComponent");
     registerComponent<VolumetricCloudsComponent>(ComponentOrder::Insertion, "VolumetricCloudsComponent");
+    registerComponent<ForceFieldComponent>(ComponentOrder::Insertion, "ForceFieldComponent");
 #ifdef JASPERENGINE_PHYSICS_2D
     registerComponent<CharacterController2DComponent>(ComponentOrder::Insertion, "CharacterController2DComponent");
 #endif

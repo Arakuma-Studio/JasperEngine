@@ -7,6 +7,7 @@
 #include "util/FunctionSubscribe.h"
 #include "util/CrashHook.h"
 #include "util/StringUtils.h"
+#include "component/ParticleSystemComponent.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "object/physics/Rigidbody2D.h"
 #include "object/physics/Contact2D.h"
@@ -153,6 +154,59 @@ void LuaFunctionBase::push_value(lua_State *vm, const InputActionEvent& o){
 void LuaFunctionBase::push_value(lua_State *vm, Vector3 o){
     if (!luabridge::push<Vector3>(vm, o))
         throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
+}
+
+// {position = Vector3, normal = Vector3, velocity = Vector3, particleId = n, killed = b}, ...
+void LuaFunctionBase::push_value(lua_State *vm, const std::vector<ParticleCollisionInfo>& events){
+    lua_createtable(vm, (int)events.size(), 0);
+    for (size_t i = 0; i < events.size(); i++){
+        const ParticleCollisionInfo& e = events[i];
+        lua_createtable(vm, 0, 5);
+        push_value(vm, e.position);
+        lua_setfield(vm, -2, "position");
+        push_value(vm, e.normal);
+        lua_setfield(vm, -2, "normal");
+        push_value(vm, e.velocity);
+        lua_setfield(vm, -2, "velocity");
+        lua_pushinteger(vm, (lua_Integer)e.particleId);
+        lua_setfield(vm, -2, "particleId");
+        lua_pushboolean(vm, e.killed);
+        lua_setfield(vm, -2, "killed");
+        lua_rawseti(vm, -2, (lua_Integer)i + 1);
+    }
+}
+
+void LuaFunctionBase::push_value(lua_State *vm, const std::vector<ParticleDeathInfo>& events){
+    lua_createtable(vm, (int)events.size(), 0);
+    for (size_t i = 0; i < events.size(); i++){
+        const ParticleDeathInfo& e = events[i];
+        lua_createtable(vm, 0, 3);
+        push_value(vm, e.position);
+        lua_setfield(vm, -2, "position");
+        push_value(vm, e.velocity);
+        lua_setfield(vm, -2, "velocity");
+        lua_pushinteger(vm, (lua_Integer)e.particleId);
+        lua_setfield(vm, -2, "particleId");
+        lua_rawseti(vm, -2, (lua_Integer)i + 1);
+    }
+}
+
+void LuaFunctionBase::push_value(lua_State *vm, const std::vector<ParticleSubEmitInfo>& events){
+    lua_createtable(vm, (int)events.size(), 0);
+    for (size_t i = 0; i < events.size(); i++){
+        const ParticleSubEmitInfo& e = events[i];
+        lua_createtable(vm, 0, 4);
+        push_value(vm, e.position);
+        lua_setfield(vm, -2, "position");
+        // the entry counted from 1, as Lua lists are
+        lua_pushinteger(vm, (lua_Integer)e.entry + 1);
+        lua_setfield(vm, -2, "entry");
+        lua_pushinteger(vm, (lua_Integer)e.count);
+        lua_setfield(vm, -2, "count");
+        lua_pushstring(vm, e.trigger.c_str());
+        lua_setfield(vm, -2, "trigger");
+        lua_rawseti(vm, -2, (lua_Integer)i + 1);
+    }
 }
 
 #ifdef JASPERENGINE_PHYSICS_2D

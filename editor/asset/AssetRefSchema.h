@@ -41,7 +41,9 @@ namespace jasperengine::editor {
         Texture,     // Texture: a texture node {path, guid} (cube faces: {paths, guids})
         AssetList,   // an array of AssetRef: "<key>: [..]" + "<key>Guid: [..]"
         PrefabRef,   // a map {path, guid} (PrefabComponent, the scene prefab list)
-        ScriptProperty // a script property value {guid, path} (Prefab and Asset types)
+        ScriptProperty, // a script property value {guid, path} (Prefab and Asset types)
+        ParticleEffect  // an inline particle effect (its .particles JSON in a string): the textures,
+                        // models and child effects its modules name ("<key>.renderer.texture")
     };
 
     // Where a row's field lives

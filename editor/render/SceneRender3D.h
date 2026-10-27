@@ -68,6 +68,10 @@ namespace jasperengine::editor{
         std::map<Entity, LineRenderer*> controllerLines;
         std::map<Entity, LineRenderer*> waterVolumeLines;
         std::map<Entity, LineRenderer*> buoyancyLines;
+        // a selected Particle System's emitter shape, bounds and collision planes; a Force
+        // Field's shape (S20 R28: the Particle Effect panel's gizmo toggles)
+        std::map<Entity, LineRenderer*> particleLines;
+        std::map<Entity, LineRenderer*> forceFieldLines;
 
         ViewportGizmo viewgizmo;
 
@@ -102,6 +106,8 @@ namespace jasperengine::editor{
         void createOrUpdateWaterVolumeLines(Entity entity, const Transform& transform, const WaterVolumeComponent& volume, bool visible, bool highlighted);
         void createOrUpdateBuoyancyLines(Entity entity, const Transform& transform, const BuoyancyComponent& buoyancy, bool visible, bool highlighted);
         void createOrUpdateControllerLines(Entity entity, const Transform& transform, const CharacterControllerComponent& controller, bool visible, bool highlighted);
+        void createOrUpdateParticleLines(Entity entity, const Transform& transform, const ParticleSystemComponent& particles, bool visible);
+        void createOrUpdateForceFieldLines(Entity entity, const Transform& transform, const ForceFieldComponent& field, bool visible);
         void createCameraFrustum(Entity entity, const Transform& transform, const CameraComponent& cameraComponent, bool fixedSizeFrustum, bool isMainCamera);
         void createDirectionalLightArrow(Entity entity, const Transform& transform, const LightComponent& light, bool isSelected);
         void createPointLightSphere(Entity entity, const Transform& transform, const LightComponent& light, bool isSelected);

@@ -120,7 +120,9 @@ public:
     // Returns entity type name (e.g. "Mesh", "Camera", "Light") based on its components
     static std::string getEntityTypeName(Scene* scene, Entity entity);
 
-    static void removeDynamicInstmesh(Entity entity, const YAML::Node& savedComponents, EntityRegistry* registry);
+    // An editor preview (an action's, an animation's) restored the GameObject: its particles go
+    // with it (a re-decoded Particle System keeps its runtime)
+    static void clearPreviewParticles(Scene* scene, Entity entity);
 
     // Fills a Texture with the editor built-in default skybox cubemap.
     static void setDefaultSkyTexture(Texture& outTexture);
