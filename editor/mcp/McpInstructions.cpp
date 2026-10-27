@@ -235,8 +235,6 @@ not single frames; GPU time semantics differ per backend (jasper://docs/profilin
 Scenes in Build order and the start scene live in project.yaml (project tools). Export
 (Build Settings, build_project) makes a CMake project or players per platform (a long job).
 Before exporting: every scene saved, Console clean in play, the start scene correct.
-Textures cook per platform (BC, ASTC, Basis) and ship cooked: import settings and cook
-reports are in assets_pipeline (jasper://docs/textures).
 )JE"
 R"JE(
 ## HTML/CSS UI
