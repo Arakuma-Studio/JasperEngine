@@ -156,6 +156,14 @@ namespace jasperengine {
 				}
 			}
 		}
+
+		void compactAll() {
+			for (auto const& entry : entries) {
+				if (entry.array){
+					entry.array->compact();
+				}
+			}
+		}
 	};
 
 }
