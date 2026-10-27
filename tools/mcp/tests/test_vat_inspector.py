@@ -7,8 +7,8 @@ harness's Xvfb on a new project holding the quad bake of editor/tests/fixtures/v
 - the Vertex Animator section: Preview (the clock runs in edit mode, stops on another selection), the time
   scrubber, the clip dropdown, a mesh_mismatch with its one-click fix (undoable);
 - the .vat asset view after a Project window click: the header, an Interpolate click and a clip rename write the
-  file through the project history, the events list adds an event, Rebake / Open in Baker are disabled until the
-  baker is there, Create Crowd makes one GameObject with its instances in one scene step;
+  file through the project history, the events list adds an event, Rebake / Open in Baker open the Vertex
+  Animation Baker on the recipe (a Rebake whose source is missing writes nothing), Create Crowd makes one GameObject with its instances in one scene step;
 - the pair through move_asset / delete_asset (the mesh field follows), and an outside edit of a .vat reported in
   external_changes.problems.
 
@@ -327,11 +327,21 @@ async def test_vat_asset_view(ed: Editor):
     await ui.frames(5)
     ed.check_eq(vat_text(ed)["clips"][1]["name"], "Idle", "both undone")
 
-    # no baker in this build: Rebake and Open in Baker are disabled (clicking does nothing)
+    # Rebake runs the recipe in the Vertex Animation Baker: quad.vat's source (models/quad.gltf) is not in
+    # this project, so the baker opens on the recipe and writes nothing (it says why)
     before = (ed.project / "assets" / "vat" / "quad.vat").read_text()
     rect = await ui.reveal("vatAsset.rebake")
     await ui.click(*center(rect))
-    ed.check_eq((ed.project / "assets" / "vat" / "quad.vat").read_text(), before, "a disabled Rebake writes nothing")
+    await ui.frames(10)
+    ed.check(await ed.ui_rect("vatbaker.source"), f"Rebake opened the baker: {sorted(ed.ui_items())[:60]}")
+    ed.check_eq((ed.project / "assets" / "vat" / "quad.vat").read_text(), before, "a Rebake whose source is missing writes nothing")
+    # Open in Baker opens it too (the recipe loaded)
+    rect = await ui.project_file("quad.vat")
+    await ui.click(*center(rect))
+    rect = await ui.reveal("vatAsset.openBaker")
+    await ui.click(*center(rect))
+    await ui.frames(10)
+    ed.check(await ed.ui_rect("vatbaker.source"), f"Open in Baker opened the baker: {sorted(ed.ui_items())[:60]}")
 
 
 async def test_create_crowd(ed: Editor):

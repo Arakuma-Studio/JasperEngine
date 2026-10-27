@@ -30,7 +30,8 @@ namespace jasperengine::editor::vat{
     // ---- the source (spec 4.1) ----
 
     enum class VatSourceKind{
-        Model,      // a model file (.gltf/.glb/.fbx) and its animations (`clips`: names, empty = all)
+        Model,      // a model file (.gltf/.glb/.fbx) and its animations (`clips`: names, empty = all),
+                    // or a .prefab and its root's animations (as an Entity source lists them)
         Anim,       // .anim files (`anims`) played on a model or prefab file (`path`), or on a
                     // GameObject (`path` an EntityPath of the open scene `scene`)
         Entity,     // a GameObject (`path` in `scene`): its Animation Player states, its entity
@@ -88,6 +89,8 @@ namespace jasperengine::editor::vat{
         std::string name;                   // the clip's name in the source listing
         ClipWrapMode wrap = ClipWrapMode::Default;  // Default: the source's (model clips: Loop)
         float fps = 0.0f;                   // 0: the spec's fps
+        bool interpolate = true;            // false: the clip plays its nearest lower sample (the
+                                            // large_interpolation_error fix "Interpolation off")
     };
 
     struct VatBakeSpec{

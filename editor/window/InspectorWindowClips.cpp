@@ -13,6 +13,8 @@
 
 #include "InspectorWindow.h"
 #include "InspectorWindowClips.h"
+#include "InspectorVatBake.h"
+#include "util/FileUtils.h"
 
 #include "animation/AnimationClipController.h"
 #include "animation/AnimationClipDocument.h"
@@ -876,6 +878,15 @@ void editor::InspectorWindow::drawAnimationPlayerClips(ComponentType cpType, Sce
         ImGui::EndDisabled();
         ImGui::SetItemTooltip("Create an .anim file and add it to this Animation Player (one undo step)");
     }
+    // Bake ▾ › Vertex Animation… (the baker window prefilled with this GameObject)
+    if (vatbakeentry::available()){
+        propertyHeader("");
+        VatBakeEntry entry;
+        entry.kind = VatBakeEntry::Kind::AnimationPlayer;
+        entry.sceneId = sceneProject->id;
+        entry.entity = entity;
+        vatbakeentry::bakeButton(project, entry, stopped, "player_bake", "player.bake");
+    }
     endTable();
 
     if (!clips.empty()){
@@ -1436,9 +1447,14 @@ void editor::InspectorWindow::drawModelClipsAsset(const fs::path& asset, const s
     if (std::none_of(clips.begin(), clips.end(), [&](const anim::ModelClipInfo& info){ return info.name == state.modelAssetClip; })){
         state.modelAssetClip = clips.empty() ? std::string() : clips[0].name;
     }
-    if (ImGui::BeginTable("model_asset_clips", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV)){
+    const bool bakeColumn = vatbakeentry::available();
+    if (ImGui::BeginTable("model_asset_clips", bakeColumn ? 3 : 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV)){
         ImGui::TableSetupColumn("Clip");
         ImGui::TableSetupColumn("Length", ImGuiTableColumnFlags_WidthFixed, textWidth("000.00 s") + ImGui::GetStyle().CellPadding.x * 2);
+        if (bakeColumn){
+            ImGui::TableSetupColumn("Bake", ImGuiTableColumnFlags_WidthFixed, textWidth(ICON_FA_FILM " Bake " ICON_FA_CARET_DOWN) +
+                                    ImGui::GetStyle().CellPadding.x * 2 + ImGui::GetStyle().FramePadding.x * 2);
+        }
         for (const anim::ModelClipInfo& info : clips){
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
@@ -1448,6 +1464,18 @@ void editor::InspectorWindow::drawModelClipsAsset(const fs::path& asset, const s
             }
             ImGui::TableNextColumn();
             ImGui::TextDisabled("%s", inspectorclips::formatSeconds(info.duration).c_str());
+            if (bakeColumn){
+                // Bake ▾ › Vertex Animation… of this clip (no scene: the model file is the source)
+                ImGui::TableNextColumn();
+                ImGui::PushID(info.index);
+                VatBakeEntry entry;
+                entry.kind = VatBakeEntry::Kind::ModelClip;
+                entry.asset = FileUtils::pathToUtf8(asset);
+                entry.clip = info.name;
+                vatbakeentry::bakeButton(project, entry, !project->isAnyScenePlaying(), "model_clip_bake",
+                                         "modelAsset.bake." + std::to_string(info.index), true);
+                ImGui::PopID();
+            }
         }
         ImGui::EndTable();
     }

@@ -1178,7 +1178,7 @@ Show a panel (not needed for screenshot). pose_animation: pose {entity, path, in
 |---|---|---|---|
 | `pose` | object |  |  |
 | `scene` | string |  | window scene: whose tab. |
-| `window` | `"scene"` \| `"game"` \| `"console"` \| `"hierarchy"` \| `"inspector"` \| `"project"` \| `"animation"` \| `"pose_animation"` \| `"terrain"` \| `"mcp"` \| `"texture_synthesis"` | yes |  |
+| `window` | `"scene"` \| `"game"` \| `"console"` \| `"hierarchy"` \| `"inspector"` \| `"project"` \| `"animation"` \| `"pose_animation"` \| `"terrain"` \| `"mcp"` \| `"texture_synthesis"` \| `"vertex_animation_baker"` | yes |  |
 
 
 ### `frame_entity`
