@@ -15305,6 +15305,120 @@ namespace basist
 
 	const uint32_t g_uastc_mode_astc_block_mode[TOTAL_UASTC_MODES] = { 0x242, 0x42, 0x53, 0x42, 0x42, 0x53, 0x442, 0x42, 0, 0x42, 0x242, 0x442, 0x53, 0x441, 0x42, 0x242, 0x42, 0x442, 0x253 };
 
+#if JASPER_BASISD_FAST_TRANSCODE
+	// JasperEngine (README.jasper.md): the ASTC block of a UASTC one gathered in two words, the same
+	// bits as the byte-wise packer below (which the editor's copy keeps): bits past 128 of a
+	// partial BISE group are dropped as its 4-word OR drops them
+	struct astc_block_bits
+	{
+		uint64_t m_w[2] = { 0, 0 };
+
+		inline void put(uint32_t ofs, uint64_t val, uint32_t n)
+		{
+			if (ofs >= 128)
+				return;
+			if (ofs >= 64)
+				m_w[1] |= val << (ofs - 64);
+			else
+			{
+				m_w[0] |= val << ofs;
+				if (ofs + n > 64)
+					m_w[1] |= val >> (64 - ofs);
+			}
+		}
+	};
+
+	bool pack_astc_block(uint32_t* pDst, const astc_block_desc* pBlock, uint32_t uastc_mode)
+	{
+		assert(uastc_mode < TOTAL_UASTC_MODES);
+		astc_block_bits out;
+
+		const int total_weights = pBlock->m_dual_plane ? 32 : 16;
+		out.put(0, g_uastc_mode_astc_block_mode[uastc_mode] & 0xFFFF, 16);
+		uint32_t bit_pos = ASTC_BLOCK_MODE_BITS;
+
+		const uint32_t bits_per_weight = g_astc_bise_range_table[pBlock->m_weight_range][0];
+		out.put(bit_pos, pBlock->m_subsets - 1, ASTC_PART_BITS);
+		bit_pos += ASTC_PART_BITS;
+		if (pBlock->m_subsets == 1)
+		{
+			out.put(bit_pos, pBlock->m_cem, ASTC_CEM_BITS);
+			bit_pos += ASTC_CEM_BITS;
+		}
+		else
+		{
+			out.put(bit_pos, pBlock->m_partition_seed, ASTC_PARTITION_INDEX_BITS);
+			bit_pos += ASTC_PARTITION_INDEX_BITS;
+			out.put(bit_pos, (pBlock->m_cem << 2) & 63, ASTC_CEM_BITS + 2);
+			bit_pos += ASTC_CEM_BITS + 2;
+		}
+
+		if (pBlock->m_dual_plane)
+			out.put(128 - total_weights * bits_per_weight - ASTC_CCS_BITS, pBlock->m_ccs, ASTC_CCS_BITS);
+
+		// the endpoints' BISE (astc_pack_bise, astc_encode_trits / _quints)
+		const int num_vals = (1 + (pBlock->m_cem >> 2)) * pBlock->m_subsets * 2;
+		const int range = g_uastc_mode_endpoint_ranges[uastc_mode];
+		const uint32_t n = g_astc_bise_range_table[range][0];
+		const uint8_t* pVals = pBlock->m_endpoints;
+		if (g_astc_bise_range_table[range][1])
+		{
+			for (int group = 0; group < (num_vals + 4) / 5; group++)
+			{
+				uint32_t v[5] = { 0, 0, 0, 0, 0 };
+				for (int i = 0; i < 5 && group * 5 + i < num_vals; i++)
+					v[i] = pVals[group * 5 + i];
+				const uint32_t trits = (v[0] >> n) + (v[1] >> n) * 3 + (v[2] >> n) * 9 + (v[3] >> n) * 27 + (v[4] >> n) * 81;
+				const uint32_t T = g_astc_trit_encode[trits], m = (1U << n) - 1;
+				out.put(bit_pos, (v[0] & m) | (astc_extract_bits(T, 0, 1) << n) | ((v[1] & m) << (2 + n)), n * 2 + 2);
+				bit_pos += n * 2 + 2;
+				out.put(bit_pos, astc_extract_bits(T, 2, 3) | ((v[2] & m) << 2) | (astc_extract_bits(T, 4, 4) << (2 + n)) | ((v[3] & m) << (3 + n)) |
+					(astc_extract_bits(T, 5, 6) << (3 + n * 2)) | ((v[4] & m) << (5 + n * 2)) | (astc_extract_bits(T, 7, 7) << (5 + n * 3)), n * 3 + 6);
+				bit_pos += n * 3 + 6;
+			}
+		}
+		else if (g_astc_bise_range_table[range][2])
+		{
+			for (int group = 0; group < (num_vals + 2) / 3; group++)
+			{
+				uint32_t v[3] = { 0, 0, 0 };
+				for (int i = 0; i < 3 && group * 3 + i < num_vals; i++)
+					v[i] = pVals[group * 3 + i];
+				const uint32_t quints = (v[0] >> n) + (v[1] >> n) * 5 + (v[2] >> n) * 25;
+				const uint32_t T = g_astc_quint_encode[quints], m = (1U << n) - 1;
+				out.put(bit_pos, (v[0] & m) | (astc_extract_bits(T, 0, 2) << n) | ((v[1] & m) << (3 + n)) | (astc_extract_bits(T, 3, 4) << (3 + n * 2)) |
+					((v[2] & m) << (5 + n * 2)) | (astc_extract_bits(T, 5, 6) << (5 + n * 3)), 7 + n * 3);
+				bit_pos += 7 + n * 3;
+			}
+		}
+		else
+		{
+			for (int i = 0; i < num_vals; i++)
+			{
+				out.put(bit_pos, pVals[i], n);
+				bit_pos += n;
+			}
+		}
+
+		// the weights in reverse bit order from the top: an N-bit weight reversed is the 5-bit
+		// reversal shifted down
+		static const uint8_t s_reverse_bits5[32] = { 0, 16, 8, 24, 4, 20, 12, 28, 2, 18, 10, 26, 6, 22, 14, 30, 1, 17, 9, 25, 5, 21, 13, 29, 3, 19, 11, 27, 7, 23, 15, 31 };
+		assert((bits_per_weight >= 1) && (bits_per_weight <= 5));
+		for (int i = 0; i < total_weights; i++)
+		{
+			const uint32_t rev = (uint32_t)s_reverse_bits5[pBlock->m_weights[i] & 31] >> (5 - bits_per_weight);
+			out.put(128 - bits_per_weight - i * bits_per_weight, rev, bits_per_weight);
+		}
+
+		uint8_t* pDst_bytes = reinterpret_cast<uint8_t*>(pDst);
+		for (uint32_t i = 0; i < 8; i++)
+		{
+			pDst_bytes[i] = (uint8_t)(out.m_w[0] >> (i * 8));
+			pDst_bytes[8 + i] = (uint8_t)(out.m_w[1] >> (i * 8));
+		}
+		return true;
+	}
+#else
 	bool pack_astc_block(uint32_t* pDst, const astc_block_desc* pBlock, uint32_t uastc_mode)
 	{
 		assert(uastc_mode < TOTAL_UASTC_MODES);
@@ -15356,36 +15470,6 @@ namespace basist
 
 		astc_pack_bise(pDst, pBlock->m_endpoints, bit_pos, num_cem_pairs * 2, g_uastc_mode_endpoint_ranges[uastc_mode]);
 
-#if JASPER_BASISD_FAST_TRANSCODE
-		// JasperEngine: the weights gathered in two words from the block's top, then OR-ed in
-		// (README.jasper.md); the same bits as the byte-wise cases below
-		if ((bits_per_weight >= 1) && (bits_per_weight <= 5))
-		{
-			// an N-bit weight reversed: the 5-bit reversal shifted down
-			static const uint8_t s_reverse_bits5[32] = { 0, 16, 8, 24, 4, 20, 12, 28, 2, 18, 10, 26, 6, 22, 14, 30, 1, 17, 9, 25, 5, 21, 13, 29, 3, 19, 11, 27, 7, 23, 15, 31 };
-			const uint32_t N = bits_per_weight;
-			uint64_t weight_bits[2] = { 0, 0 };
-			for (int i = 0; i < total_weights; i++)
-			{
-				const uint32_t rev = (uint32_t)s_reverse_bits5[pBlock->m_weights[i] & 31] >> (5 - N);
-				const uint32_t ofs = 128 - N - i * N;
-				if (ofs >= 64)
-					weight_bits[1] |= (uint64_t)rev << (ofs - 64);
-				else
-				{
-					weight_bits[0] |= (uint64_t)rev << ofs;
-					if (ofs + N > 64)
-						weight_bits[1] |= (uint64_t)rev >> (64 - ofs);
-				}
-			}
-			for (uint32_t i = 0; i < 8; i++)
-			{
-				pDst_bytes[i] |= (uint8_t)(weight_bits[0] >> (i * 8));
-				pDst_bytes[8 + i] |= (uint8_t)(weight_bits[1] >> (i * 8));
-			}
-			return true;
-		}
-#endif
 
 		// Write the weight bits in reverse bit order.
 		switch (bits_per_weight)
@@ -15469,6 +15553,7 @@ namespace basist
 
 		return true;
 	}
+#endif // JASPER_BASISD_FAST_TRANSCODE
 
 	const uint8_t* get_anchor_indices(uint32_t subsets, uint32_t mode, uint32_t common_pattern, const uint8_t*& pPartition_pattern)
 	{
@@ -16047,6 +16132,15 @@ namespace basist
 			{
 				const uint32_t weight_mask = (1 << weight_bits) - 1;
 
+#if JASPER_BASISD_FAST_TRANSCODE
+				// JasperEngine: one subset inverts every weight (README.jasper.md)
+				if (subsets == 1)
+				{
+					for (uint32_t i = 0; i < 16 * total_planes; i++)
+						unpacked.m_astc.m_weights[i] = (uint8_t)(weight_mask - unpacked.m_astc.m_weights[i]);
+				}
+				else
+#endif
 				for (uint32_t i = 0; i < 16; i++)
 				{
 					uint32_t subset = pPartition_pattern[i];
