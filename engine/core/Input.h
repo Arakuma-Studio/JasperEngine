@@ -184,16 +184,46 @@
 #define D_GAMEPAD_AXIS_RIGHT_TRIGGER    5
 #define D_GAMEPAD_AXIS_LAST              D_GAMEPAD_AXIS_RIGHT_TRIGGER
 
+#include <cstddef>
+#include <cstdint>
 #include <map>
 #include <vector>
 #include <string>
+#include "Export.h"
 #include "math/Vector2.h"
 
+// Gamepads with their own edge and level state at once (more connect and are ignored)
+#define D_INPUT_MAX_GAMEPADS             16
+// Fingers down at once (more are ignored)
+#define D_INPUT_MAX_TOUCHES              32
+
 namespace jasperengine {
+
+    // A finger's phase in the frame's window (Input::getTouch)
+    enum class TouchPhase : int {
+        BEGAN = 0,      // touched the screen in the window (and is still down)
+        MOVED,          // was down at the window's start and moved in it
+        STATIONARY,     // was down at the window's start and did not move
+        ENDED,          // lifted in the window
+        CANCELED        // interrupted in the window (systemTouchCancel): no release, no click
+    };
+
+    // Whether the pointer is locked to the window (MouseMode::CAPTURED, Input::getPointerLockState)
+    enum class PointerLockState : int {
+        UNLOCKED = 0,   // not requested
+        PENDING,        // requested, not active yet: the browser waits for a gesture, the
+                        // window or the editor's Game view does not have the focus
+        LOCKED          // active: the mouse delta is raw relative motion
+    };
 
     typedef struct Touch{
         int pointer;
         Vector2 position;
+        TouchPhase phase = TouchPhase::STATIONARY;
+        Vector2 delta;              // canvas pixels moved in the window
+        Vector2 startPosition;      // where it touched the screen
+        float time = 0.0f;          // seconds since it touched the screen
+        bool began = false;         // it touched the screen in the window (also when it ENDED in it)
     } Touch;
 
     typedef struct Gamepad{
@@ -203,32 +233,62 @@ namespace jasperengine {
         std::map<int,float> axisValue;
     } Gamepad;
 
+    // The edges of one control in one window (Input::getControlEdges)
+    struct InputControlEdges {
+        bool level = false;         // held now
+        bool uiHeld = false;        // the press that holds it went to the UI (a document or the component UI)
+        uint16_t presses = 0;       // presses in the window
+        uint16_t releases = 0;      // releases in the window
+        uint16_t uiPresses = 0;     // of those presses, the ones the UI consumed
+        int pressMods = 0;          // D_MODIFIER_* held at its last press (its event's and the modifier keys')
+    };
+
+    // Input state: levels, and edges per frame (docs/mcp/guide/input.md).
+    //
+    // Platform events (Engine::system*) add to a pending window between frames. A frame that
+    // runs its update (not paused, the simulation not held) starts with beginFrame(), which
+    // makes the pending window the frame's: getKeyDown/getKeyUp, the mouse and gamepad
+    // button edges, the touch phases and the deltas read it until the next running frame. A
+    // press and its release in one window are both seen (Down and Up true, the level false).
+    // Inside the fixed steps (onFixedUpdate, Scene::fixedUpdate) the edges are those of a fixed
+    // window instead: each beginFrame() adds to it and each fixed step that ran clears it, so
+    // one fixed step sees an edge exactly once, also after frames that ran no fixed step.
     class JASPERENGINE_API Input {
 
         friend class Engine;
 
+    public:
+        // controls by index, for InputActions and the editor's input views: keys
+        // 0..D_KEY_LAST, then the mouse buttons, then each gamepad slot's buttons
+        static constexpr int KEY_CONTROLS = D_KEY_LAST + 1;
+        static constexpr int MOUSE_CONTROLS = D_MOUSE_BUTTON_LAST + 1;
+        static constexpr int GAMEPAD_BUTTONS = D_GAMEPAD_BUTTON_LAST + 1;
+        static constexpr int GAMEPAD_AXES = D_GAMEPAD_AXIS_LAST + 1;
+        static constexpr int MOUSE_CONTROL_BASE = KEY_CONTROLS;
+        static constexpr int GAMEPAD_CONTROL_BASE = MOUSE_CONTROL_BASE + MOUSE_CONTROLS;
+        static constexpr int CONTROL_COUNT = GAMEPAD_CONTROL_BASE + D_INPUT_MAX_GAMEPADS * GAMEPAD_BUTTONS;
+
     private:
 
-        static std::map<int,bool> keyPressed;
-        static std::map<int,bool> mousePressed;
-        static Vector2 mousePosition;
-        static Vector2 mouseScroll;
-        static std::vector<Touch> touches;
-        static std::vector<Gamepad> gamepads;
-        static bool mousedEntered;
-        static int modifiers;
-
-        static void addKeyPressed(int key);
+        static void addKeyPressed(int key, bool repeat = false, int mods = 0);
         static void releaseKeyPressed(int key);
 
-        static void addMousePressed(int button);
+        static void addMousePressed(int button, int mods = 0);
         static void releaseMousePressed(int button);
         static void setMousePosition(float x, float y);
+        // a systemMouseMove: the position, and the delta from the previous move
+        static void moveMouse(float x, float y);
+        // the pointer put somewhere else (Engine::setMousePosition, a finger as the mouse): no delta
+        static void warpMouse(float x, float y);
+        // a wheel event: the deprecated sticky value and the window's sum
         static void setMouseScroll(float xoffset, float yoffset);
+        // the part of it the UI did not consume
+        static void addMouseScrollForGame(float xoffset, float yoffset);
 
         static void addTouch(int pointer, float x, float y);
         static void setTouchPosition(int pointer, float x, float y);
         static void removeTouch(int pointer);
+        static void cancelTouch(int pointer);
         static void clearTouches();
 
         static void addGamepad(int id, const std::string& name);
@@ -242,24 +302,80 @@ namespace jasperengine {
 
         static void setModifiers(int mods);
 
+        static void setPointerLockState(PointerLockState state);
+
     public:
 
+        // ---- Engine and editor only
+        // the press just recorded went to the UI (a document or the component UI consumed it):
+        // InputActions maps with ignoreWhenUIConsumes skip it
+        static void setPressConsumedByUI(int control);
+        static void setTouchConsumedByUI(int pointer);
+        // the documents took the axis (the game sees its rest value)
+        static void setGamepadAxisConsumedByUI(int id, int axis, bool consumed);
+        // the pending window becomes the frame's (and is added to the fixed window)
+        static void beginFrame();
+        // around each fixed step: edge queries read the fixed window between them, which
+        // endFixedStep() clears
+        static void beginFixedStep();
+        static void endFixedStep();
+        // clears levels, windows, deltas and touches (the editor's Play start and stop)
+        static void resetFrameState();
+        // the deltas of the pending window (the window lost the focus)
+        static void clearPendingDeltas();
+        // inside a fixed step (beginFixedStep .. endFixedStep)
+        static bool isFixedPhase();
+
+        // ---- levels (as the device is now)
+        static bool getKey(int key);
+        static bool getMouseButton(int button);
         static bool isKeyPressed(int key);
         static bool isMousePressed(int button);
         static bool isTouch();
         static bool isMouseEntered();
 
+        // ---- edges of the window (fixed window inside a fixed step)
+        static bool getKeyDown(int key);
+        static bool getKeyUp(int key);
+        static bool getMouseButtonDown(int button);
+        static bool getMouseButtonUp(int button);
+        static bool getGamepadButtonDown(int id, int button);
+        static bool getGamepadButtonUp(int id, int button);
+        // a key, a mouse button or a gamepad button was pressed in the window
+        static bool anyKeyDown();
+
         static Vector2 getMousePosition();
+        // canvas pixels the pointer moved in the frame's window (raw relative motion while
+        // the pointer is locked), not counting a warp or the first move after entering
+        static Vector2 getMouseDelta();
+        // the wheel offsets of the frame's window
+        static Vector2 getMouseScrollDelta();
+        // Deprecated: the last wheel event's offsets, kept until the next (getMouseScrollDelta)
         static Vector2 getMouseScroll();
+        // what of the window's wheel offsets the UI did not consume
+        static Vector2 getMouseScrollDeltaForGame();
         static Vector2 getTouchPosition(int pointer);
 
+        // the fingers down now
         static std::vector<Touch> getTouches();
         static size_t numTouches();
+        // the frame's touches: the fingers down at the latch and the ones lifted or
+        // cancelled in the window, each with its phase
+        static size_t getTouchCount();
+        static Touch getTouch(size_t index);
+        static bool getTouchDown(int pointer);
+        static bool getTouchUp(int pointer);
+        // the edges of a finger's presses in the window (InputActions' touch/primary)
+        static InputControlEdges getTouchEdges(int pointer);
+
+        static PointerLockState getPointerLockState();
 
         static bool isGamepadConnected(int id);
         static std::string getGamepadName(int id);
         static bool isGamepadButtonPressed(int id, int button);
         static float getGamepadAxis(int id, int axis);
+        // the axis as the game sees it: its rest value while the UI took it
+        static float getGamepadAxisForGame(int id, int axis);
 
         static std::vector<Gamepad> getGamepads();
         static size_t numGamepads();
@@ -268,9 +384,24 @@ namespace jasperengine {
         static int getGamepadId(size_t index);
 
         static int getModifiers();
+        // D_MODIFIER_SHIFT/CONTROL/ALT/SUPER of the modifier keys held now
+        static int getHeldModifierKeys();
 
         static size_t findTouchIndex(int pointer);
         static size_t findGamepadIndex(int id);
+
+        // ---- controls by index (CONTROL_COUNT), for InputActions and the editor
+        static int keyControl(int key);                   // -1 outside 0..D_KEY_LAST
+        static int mouseControl(int button);              // -1 outside 0..D_MOUSE_BUTTON_LAST
+        // a connected (or just disconnected) pad's slot, -1 for none
+        static int getGamepadSlot(int id);
+        static int getGamepadSlotId(int slot);            // -1 for a free slot
+        static bool isGamepadSlotConnected(int slot);
+        static int gamepadControl(int slot, int button);  // -1 outside the slots or buttons
+        static float getGamepadSlotAxis(int slot, int axis, bool forGame);
+        // the window's edges of a control (the fixed window inside a fixed step)
+        static InputControlEdges getControlEdges(int control);
+        static InputControlEdges getControlEdges(int control, bool fixedWindow);
     };
 }
 

@@ -85,6 +85,14 @@ EntityRegistry::EntityRegistry() {
     registerComponent<LocalVolumetricFogComponent>(ComponentOrder::Insertion, "LocalVolumetricFogComponent");
     registerComponent<VolumetricCloudsComponent>(ComponentOrder::Insertion, "VolumetricCloudsComponent");
     registerComponent<ForceFieldComponent>(ComponentOrder::Insertion, "ForceFieldComponent");
+#ifdef JASPERENGINE_PHYSICS_2D
+    registerComponent<CharacterController2DComponent>(ComponentOrder::Insertion, "CharacterController2DComponent");
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
+    registerComponent<CharacterControllerComponent>(ComponentOrder::Insertion, "CharacterControllerComponent");
+#endif
+    registerComponent<WaterVolumeComponent>(ComponentOrder::Insertion, "WaterVolumeComponent");
+    registerComponent<BuoyancyComponent>(ComponentOrder::Insertion, "BuoyancyComponent");
 
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());

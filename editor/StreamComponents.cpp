@@ -1732,6 +1732,167 @@ ForceFieldComponent editor::Stream::decodeForceFieldComponent(const YAML::Node& 
     return field;
 }
 
+YAML::Node editor::Stream::encodeCharacterController2DComponent(const CharacterController2DComponent& controller) {
+    YAML::Node node;
+    node["enabled"] = controller.enabled;
+    node["center"] = encodeVector2(controller.center);
+    node["height"] = controller.height;
+    node["radius"] = controller.radius;
+    node["slopeLimit"] = controller.slopeLimit;
+    node["stepOffset"] = controller.stepOffset;
+    node["skinWidth"] = controller.skinWidth;
+    node["minMoveDistance"] = controller.minMoveDistance;
+    node["pushStrength"] = controller.pushStrength;
+    node["pushBodies"] = controller.pushBodies;
+    node["movingPlatforms"] = controller.movingPlatforms;
+    node["categoryBits"] = controller.categoryBits;
+    node["maskBits"] = controller.maskBits;
+    return node;
+}
+
+CharacterController2DComponent editor::Stream::decodeCharacterController2DComponent(const YAML::Node& node, const CharacterController2DComponent* oldController) {
+    // the runtime state (the last move and step) stays the live component's
+    CharacterController2DComponent controller;
+    if (oldController) {
+        controller = *oldController;
+    }
+    if (node["enabled"]) controller.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    if (node["center"]) controller.center = decodeVector2(node["center"]);
+    if (node["height"]) controller.height = YamlNumbers::as<float>(node["height"]);
+    if (node["radius"]) controller.radius = YamlNumbers::as<float>(node["radius"]);
+    if (node["slopeLimit"]) controller.slopeLimit = YamlNumbers::as<float>(node["slopeLimit"]);
+    if (node["stepOffset"]) controller.stepOffset = YamlNumbers::as<float>(node["stepOffset"]);
+    if (node["skinWidth"]) controller.skinWidth = YamlNumbers::as<float>(node["skinWidth"]);
+    if (node["minMoveDistance"]) controller.minMoveDistance = YamlNumbers::as<float>(node["minMoveDistance"]);
+    if (node["pushStrength"]) controller.pushStrength = YamlNumbers::as<float>(node["pushStrength"]);
+    if (node["pushBodies"]) controller.pushBodies = YamlNumbers::as<bool>(node["pushBodies"]);
+    if (node["movingPlatforms"]) controller.movingPlatforms = YamlNumbers::as<bool>(node["movingPlatforms"]);
+    if (node["categoryBits"]) controller.categoryBits = YamlNumbers::as<uint16_t>(node["categoryBits"]);
+    if (node["maskBits"]) controller.maskBits = YamlNumbers::as<uint16_t>(node["maskBits"]);
+    return controller;
+}
+
+// =====================================================
+// WaterVolumeComponent and BuoyancyComponent encode/decode
+// =====================================================
+
+YAML::Node editor::Stream::encodeWaterVolumeComponent(const WaterVolumeComponent& volume) {
+    YAML::Node node;
+    node["enabled"] = volume.enabled;
+    node["size"] = encodeVector3(volume.size);
+    node["surfaceOffset"] = volume.surfaceOffset;
+    node["infinite"] = volume.infinite;
+    node["density"] = volume.density;
+    node["flow"] = encodeVector3(volume.flow);
+    node["linearDrag"] = volume.linearDrag;
+    node["angularDrag"] = volume.angularDrag;
+    node["waves"] = StreamSchema::waterVolumeWaves().toString(volume.waves);
+    return node;
+}
+
+WaterVolumeComponent editor::Stream::decodeWaterVolumeComponent(const YAML::Node& node, const WaterVolumeComponent* oldVolume) {
+    WaterVolumeComponent volume;
+    if (oldVolume) {
+        volume = *oldVolume;
+    }
+    if (node["enabled"]) volume.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    if (node["size"]) volume.size = decodeVector3(node["size"]);
+    if (node["surfaceOffset"]) volume.surfaceOffset = YamlNumbers::as<float>(node["surfaceOffset"]);
+    if (node["infinite"]) volume.infinite = YamlNumbers::as<bool>(node["infinite"]);
+    if (node["density"]) volume.density = YamlNumbers::as<float>(node["density"]);
+    if (node["flow"]) volume.flow = decodeVector3(node["flow"]);
+    if (node["linearDrag"]) volume.linearDrag = YamlNumbers::as<float>(node["linearDrag"]);
+    if (node["angularDrag"]) volume.angularDrag = YamlNumbers::as<float>(node["angularDrag"]);
+    if (node["waves"]) volume.waves = decodeEnum(node, "waves", StreamSchema::waterVolumeWaves());
+    return volume;
+}
+
+YAML::Node editor::Stream::encodeBuoyancyComponent(const BuoyancyComponent& buoyancy) {
+    YAML::Node node;
+    node["enabled"] = buoyancy.enabled;
+    node["columns"] = StreamSchema::buoyancyColumns().toString(buoyancy.columns);
+    YAML::Node points(YAML::NodeType::Sequence);
+    for (const Vector3& point : buoyancy.customPoints) {
+        points.push_back(encodeVector3(point));
+    }
+    node["customPoints"] = points;
+    node["volumeScale"] = buoyancy.volumeScale;
+    node["dragScale"] = buoyancy.dragScale;
+    return node;
+}
+
+BuoyancyComponent editor::Stream::decodeBuoyancyComponent(const YAML::Node& node, const BuoyancyComponent* oldBuoyancy) {
+    BuoyancyComponent buoyancy;
+    if (oldBuoyancy) {
+        buoyancy = *oldBuoyancy;
+    }
+    if (node["enabled"]) buoyancy.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    if (node["columns"]) buoyancy.columns = decodeEnum(node, "columns", StreamSchema::buoyancyColumns());
+    if (node["customPoints"] && node["customPoints"].IsSequence()) {
+        buoyancy.customPoints.clear();
+        for (const YAML::Node& point : node["customPoints"]) {
+            buoyancy.customPoints.push_back(decodeVector3(point));
+        }
+    }
+    if (node["volumeScale"]) buoyancy.volumeScale = YamlNumbers::as<float>(node["volumeScale"]);
+    if (node["dragScale"]) buoyancy.dragScale = YamlNumbers::as<float>(node["dragScale"]);
+    return buoyancy;
+}
+
+// =========================================
+// CharacterControllerComponent encode/decode
+// =========================================
+
+YAML::Node editor::Stream::encodeCharacterControllerComponent(const CharacterControllerComponent& controller) {
+    YAML::Node node;
+    node["enabled"] = controller.enabled;
+    node["center"] = encodeVector3(controller.center);
+    node["height"] = controller.height;
+    node["radius"] = controller.radius;
+    node["slopeLimit"] = controller.slopeLimit;
+    node["stepOffset"] = controller.stepOffset;
+    node["skinWidth"] = controller.skinWidth;
+    node["minMoveDistance"] = controller.minMoveDistance;
+    node["mass"] = controller.mass;
+    node["pushStrength"] = controller.pushStrength;
+    node["pushBodies"] = controller.pushBodies;
+    node["movingPlatforms"] = controller.movingPlatforms;
+    node["inheritPlatformYaw"] = controller.inheritPlatformYaw;
+    node["detectCollisions"] = controller.detectCollisions;
+    node["characterCollisions"] = controller.characterCollisions;
+    node["enhancedEdgeRemoval"] = controller.enhancedEdgeRemoval;
+    node["categoryBits"] = controller.categoryBits;
+    node["maskBits"] = controller.maskBits;
+    return node;
+}
+
+CharacterControllerComponent editor::Stream::decodeCharacterControllerComponent(const YAML::Node& node, const CharacterControllerComponent* oldController) {
+    // the runtime state (the last move and step, the character's handle) stays the live component's
+    CharacterControllerComponent controller;
+    if (oldController) {
+        controller = *oldController;
+    }
+    if (node["enabled"]) controller.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    if (node["center"]) controller.center = decodeVector3(node["center"]);
+    if (node["height"]) controller.height = YamlNumbers::as<float>(node["height"]);
+    if (node["radius"]) controller.radius = YamlNumbers::as<float>(node["radius"]);
+    if (node["slopeLimit"]) controller.slopeLimit = YamlNumbers::as<float>(node["slopeLimit"]);
+    if (node["stepOffset"]) controller.stepOffset = YamlNumbers::as<float>(node["stepOffset"]);
+    if (node["skinWidth"]) controller.skinWidth = YamlNumbers::as<float>(node["skinWidth"]);
+    if (node["minMoveDistance"]) controller.minMoveDistance = YamlNumbers::as<float>(node["minMoveDistance"]);
+    if (node["mass"]) controller.mass = YamlNumbers::as<float>(node["mass"]);
+    if (node["pushStrength"]) controller.pushStrength = YamlNumbers::as<float>(node["pushStrength"]);
+    if (node["pushBodies"]) controller.pushBodies = YamlNumbers::as<bool>(node["pushBodies"]);
+    if (node["movingPlatforms"]) controller.movingPlatforms = YamlNumbers::as<bool>(node["movingPlatforms"]);
+    if (node["inheritPlatformYaw"]) controller.inheritPlatformYaw = YamlNumbers::as<bool>(node["inheritPlatformYaw"]);
+    if (node["detectCollisions"]) controller.detectCollisions = YamlNumbers::as<bool>(node["detectCollisions"]);
+    if (node["characterCollisions"]) controller.characterCollisions = YamlNumbers::as<bool>(node["characterCollisions"]);
+    if (node["enhancedEdgeRemoval"]) controller.enhancedEdgeRemoval = YamlNumbers::as<bool>(node["enhancedEdgeRemoval"]);
+    if (node["categoryBits"]) controller.categoryBits = YamlNumbers::as<uint16_t>(node["categoryBits"]);
+    if (node["maskBits"]) controller.maskBits = YamlNumbers::as<uint16_t>(node["maskBits"]);
+    return controller;
+}
+
 YAML::Node editor::Stream::encodeInstancedMeshComponent(const InstancedMeshComponent& instmesh) {
     YAML::Node node;
     node["enabled"] = instmesh.enabled;

@@ -186,6 +186,27 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
     return desc ? desc->icon : ICON_FA_PUZZLE_PIECE;
 }
 
+ComponentType editor::Catalog::getConflictingComponent(ComponentType type){
+    switch (type){
+        case ComponentType::CharacterController2DComponent: return ComponentType::Rigidbody2DComponent;
+        case ComponentType::Rigidbody2DComponent: return ComponentType::CharacterController2DComponent;
+        case ComponentType::CharacterControllerComponent: return ComponentType::RigidbodyComponent;
+        case ComponentType::RigidbodyComponent: return ComponentType::CharacterControllerComponent;
+        default: return ComponentType::Transform;
+    }
+}
+
+std::string editor::Catalog::getComponentConflict(EntityRegistry* registry, Entity entity, ComponentType type){
+    const ComponentType other = getConflictingComponent(type);
+    if (other == ComponentType::Transform || !registry || !registry->isEntityCreated(entity))
+        return "";
+    const std::vector<ComponentType> existing = findComponents(registry, entity);
+    if (std::find(existing.begin(), existing.end(), other) == existing.end())
+        return "";
+    return "A " + getComponentDisplayName(type) + " cannot share its GameObject with a " + getComponentDisplayName(other) +
+           " (remove the " + getComponentDisplayName(other) + " first).";
+}
+
 bool editor::Catalog::hasEnabledProperty(ComponentType component){
     const reflect::ComponentDesc* desc = reflect::find(component);
     return desc && desc->hasEnabled;
@@ -1307,6 +1328,14 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
                 auto* source = Catalog::getPropertyRef<Curve>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<Curve>(targetRegistry, targetEntity, compType, property);
                 if (source && target) *target = *source;
+            } else if (const reflect::ComponentDesc* desc = reflect::find(compType)) {
+                // any other value its table describes (Buoyancy customPoints...): copied by its
+                // type's ops, so a new field needs no branch here for prefab Apply/Revert
+                void* sourceComp = desc->find(sourceRegistry, sourceEntity);
+                void* targetComp = desc->find(targetRegistry, targetEntity);
+                const reflect::FieldRef source = sourceComp ? reflect::resolve(*desc, sourceComp, property) : reflect::FieldRef{};
+                const reflect::FieldRef target = targetComp ? reflect::resolve(*desc, targetComp, property) : reflect::FieldRef{};
+                if (source && target && source.ops && source.ops == target.ops && source.ops->copy) source.ops->copy(target.ref, source.ref);
             }
             break;
         default:

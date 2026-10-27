@@ -1925,6 +1925,15 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         quality["web"] = StreamSchema::atmosphereQuality().toString(project->getAtmosphereQuality()[2]);
         root["atmosphereQuality"] = quality;
     }
+    // Project Settings > Input, omitted at its defaults
+    if (!project->getInputActionsAsset().empty() || project->getInputDeadzone() != Project::defaultInputDeadzone) {
+        YAML::Node input;
+        if (!project->getInputActionsAsset().empty())
+            input["actions"] = project->getInputActionsAsset().generic_string();
+        if (project->getInputDeadzone() != Project::defaultInputDeadzone)
+            input["deadzone"] = project->getInputDeadzone();
+        root["input"] = input;
+    }
     if (!(project->getPlayerLogging() == PlayerLoggingSettings())) {
         const PlayerLoggingSettings& logging = project->getPlayerLogging();
         YAML::Node loggingNode;
@@ -2371,6 +2380,13 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             }
         }
         project->setAtmosphereQuality(quality);
+    }
+
+    {
+        const YAML::Node input = node["input"];
+        const bool map = input.IsDefined() && input.IsMap();
+        project->setInputActionsAsset(map && input["actions"].IsDefined() ? fs::path(input["actions"].as<std::string>()) : fs::path());
+        project->setInputDeadzone(map && input["deadzone"].IsDefined() ? YamlNumbers::as<float>(input["deadzone"]) : Project::defaultInputDeadzone);
     }
 
     {

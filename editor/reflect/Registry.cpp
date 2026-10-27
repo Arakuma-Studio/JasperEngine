@@ -81,6 +81,10 @@ namespace {
         &kLocalVolumetricFogDesc,
         &kVolumetricCloudsDesc,
         &kForceFieldDesc,
+        &kCharacterController2DDesc,
+        &kCharacterControllerDesc,
+        &kWaterVolumeDesc,
+        &kBuoyancyDesc,
     };
     static_assert(std::size(kAll) == static_cast<size_t>(LAST_COMPONENT_TYPE) + 1, "a ComponentType without a description");
 
@@ -124,6 +128,10 @@ namespace {
         &kRigidbody2DDesc,
         &kRigidbodyDesc,
         &kJoint2DDesc,
+        &kCharacterController2DDesc,
+        &kWaterVolumeDesc,
+        &kBuoyancyDesc,
+        &kCharacterControllerDesc,
         &kJoint3DDesc,
         &kActionDesc,
         &kTweenDesc,
@@ -179,6 +187,10 @@ namespace {
         &kImageDesc,
         &kInstancedMeshDesc,
         &kJoint2DDesc,
+        &kCharacterController2DDesc,
+        &kCharacterControllerDesc,
+        &kWaterVolumeDesc,
+        &kBuoyancyDesc,
         &kJoint3DDesc,
         &kKeyframeTracksDesc,
         &kLightDesc,
@@ -216,10 +228,10 @@ namespace {
 
     constexpr const EnumDesc* kEnums[] = {
         &enums::kActionState, &enums::kAnchorPreset, &enums::kAtmosphereQualityOverride, &enums::kAudioSourceAttenuation,
-        &enums::kAudioSourceState, &enums::kBodyType, &enums::kCameraType, &enums::kCascadeSplitMode, &enums::kCloudsPreset,
+        &enums::kAudioSourceState, &enums::kBodyType, &enums::kBuoyancyColumns, &enums::kCameraType, &enums::kCascadeSplitMode, &enums::kCloudsPreset,
         &enums::kCloudsRendering, &enums::kCollider2DType, &enums::kCollider3DSource, &enums::kCollider3DType, &enums::kCullingMode,
         &enums::kEaseType, &enums::kFogColorMode, &enums::kFogType, &enums::kFogVolumeFalloff, &enums::kFogVolumeShape,
-        &enums::kFluidOutput, &enums::kForceFieldKind, &enums::kForceFieldShape, &enums::kJoint2DType, &enums::kJoint3DType, &enums::kLatticeInterpolation, &enums::kLatticeJiggleAnchor,
+        &enums::kFluidOutput, &enums::kForceFieldKind, &enums::kForceFieldShape, &enums::kWaterVolumeWaves, &enums::kJoint2DType, &enums::kJoint3DType, &enums::kLatticeInterpolation, &enums::kLatticeJiggleAnchor,
         &enums::kLatticeMaskChannel, &enums::kLatticeOutside, &enums::kLatticeStage, &enums::kLayoutGroupType, &enums::kLightShading,
         &enums::kLightType, &enums::kLightUnit,
         &enums::kMaterialAlphaMode, &enums::kMaterialBlendMode, &enums::kMaterialCullMode, &enums::kMaterialDepthTest,

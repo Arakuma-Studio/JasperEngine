@@ -37,6 +37,8 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kFluidOutput;
     extern const EnumDesc kForceFieldShape;
     extern const EnumDesc kForceFieldKind;
+    extern const EnumDesc kWaterVolumeWaves;
+    extern const EnumDesc kBuoyancyColumns;
     extern const EnumDesc kLatticeInterpolation;
     extern const EnumDesc kLatticeOutside;
     extern const EnumDesc kLatticeJiggleAnchor;

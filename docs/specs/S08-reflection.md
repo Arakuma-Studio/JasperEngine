@@ -476,14 +476,14 @@ in `tools/mcp/tests/test_reflection.py`.
 
 Recorded by the implementation (branch `feat/s08-reflection`).
 
-- **Hand codecs kept (P3 → P4).** 38 of the 61 components use the generic codec. 23 keep a whole-component
+- **Hand codecs kept (P3 → P4).** 38 of the 65 components use the generic codec. 27 keep a whole-component
   codec called through `ComponentDesc::codec`, with their table driving the Catalog, Inspector,
   MCP, locators and codegen: the P4 set (Mesh, UI, Model, Prefab, Script, Terrain) plus Sprite,
   Tilemap, Polygon, MeshPolygon, Points, LineRenderer, InstancedMesh, MorphTracks,
-  Rigidbody2D/3D, Skybox, SpriteAnimation and the lattice, particle and force field codecs below. Their YAML has quirks that one flag
+  Rigidbody2D/3D, Skybox, SpriteAnimation and the lattice, particle, force field and S22 gameplay codecs below. Their YAML has quirks that one flag
   cannot express (count-limited lists, keys read from other components, legacy branches), so
-  §9's default applies. The codecs are in `editor/StreamComponents.cpp`. `Stream.cpp` is 4,358
-  lines and `StreamComponents.cpp` 2,313 lines, so the codec code that remains is about 6,670
+  §9's default applies. The codecs are in `editor/StreamComponents.cpp`. `Stream.cpp` is 4,374
+  lines and `StreamComponents.cpp` 2,423 lines, so the codec code that remains is about 6,790
   lines in total. AC15's `Stream.cpp` ≤ 5,000 is met by that split, not by deleting those codecs.
   `ComponentDesc::extraKeys` lists each codec's known keys for `StreamSchema` and
   `tools/check_stream_keys.py`.
@@ -502,6 +502,13 @@ Recorded by the implementation (branch `feat/s08-reflection`).
   and prefab 4→5 migrations (`StreamMigrations`) are the only format bumps: S08 adds no
   migration, so the sequence stays S20's. The old particle model's table, drawer and emitter-shape
   rows are gone; its `EnumDesc` stays for the legacy decode the migration uses.
+- **S22 (oe-port 4e4ba3964).** The Character Controller 2D and 3D, the Water Volume and the
+  Buoyancy keep S22's codecs (every key written) in `StreamComponents.cpp`, with tables in
+  `GameplayReflect.cpp` and S22's drawers moved to `InspectorPhysics.cpp` (enum rows from their
+  `EnumDesc`s). The controllers' `categoryBits`/`maskBits` are saved and reached by path but not
+  listed (`NotListed`), as S22's Catalog had them. `Catalog::copyPropertyValue` (prefab
+  Apply/Revert of one property) copies a Custom value no type branch names through its table's
+  `TypeOps::copy`, so Buoyancy `customPoints` and later table fields need no branch of their own.
 - **Legacy oracle kept.** `editor/tests/reflect/legacy/` (the deleted hand codecs, test-only)
   stays so the parity fuzzers can keep running. D5 deletes it once S08 completes. Deleting it is
   a follow-up for the integrator after merge, and the goldens do not depend on it.
@@ -517,7 +524,7 @@ Recorded by the implementation (branch `feat/s08-reflection`).
   LocalVolumetricFog, Tween, Bone, Prefab). The others keep their hand drawers, which were moved
   into `InspectorPhysics.cpp`, `InspectorAnimation.cpp` and `InspectorRenderers.cpp` and use the
   `EnumDesc` entries. These named drawers exist: `label`, `multiline`, `direction`, `halfCone`,
-  `po2Slider`, `textureCube` and `modelEntity`. `InspectorWindow.cpp` is 11,438 lines.
+  `po2Slider`, `textureCube` and `modelEntity`. `InspectorWindow.cpp` is 11,410 lines.
 - **Extra table vocabulary** beyond R3/R4: flags `NoDefault`, `NonStructural`, `CodegenIfChanged`,
   `CodegenRuntime`, `Transient`, `EmptyIsDefault`, `NullIfEmpty`, `NotListed`, `ListWhole`,
   `ListElements`, `ListEachElement`, `ListTemplate`, `ComponentOnly` and `Clamped`. These keep the Catalog

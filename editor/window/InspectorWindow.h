@@ -672,6 +672,10 @@ namespace jasperengine::editor{
         void drawRigidbody2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawRigidbodyComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawJoint2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawCharacterController2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawCharacterControllerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawWaterVolumeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawBuoyancyComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawJoint3DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawActionComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawPositionTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

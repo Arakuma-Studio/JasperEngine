@@ -646,6 +646,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/components/CameraAudioReflect.cpp
     ${EDITOR_DIR}/reflect/components/LightingReflect.cpp
     ${EDITOR_DIR}/reflect/components/MaterialReflect.cpp
+    ${EDITOR_DIR}/reflect/components/GameplayReflect.cpp
     ${EDITOR_DIR}/reflect/components/ParticlesReflect.cpp
     ${EDITOR_DIR}/reflect/components/RenderReflect.cpp
     ${EDITOR_DIR}/reflect/components/TransformPhysicsReflect.cpp
@@ -721,6 +722,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/SynthesisTools.cpp
     ${EDITOR_DIR}/mcp/tools/PlacementTools.cpp
     ${EDITOR_DIR}/mcp/tools/EcsTools.cpp
+    ${EDITOR_DIR}/mcp/tools/GameplayTools.cpp
     ${EDITOR_DIR}/mcp/tools/DiagnosticsTools.cpp
     ${EDITOR_DIR}/mcp/tools/OrganisationTools.cpp
 
@@ -766,6 +768,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/asset/TextReferences.cpp
     ${EDITOR_DIR}/util/Prefab.cpp
     ${EDITOR_DIR}/util/ProjectUtils.cpp
+    ${EDITOR_DIR}/util/WaterEditorUtils.cpp
     ${EDITOR_DIR}/util/ParticleEffectEdit.cpp
     ${EDITOR_DIR}/util/ParticleMigrationReport.cpp
     ${EDITOR_DIR}/util/LatticeTrackKeys.cpp
@@ -866,6 +869,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/PostProcessingPresets.cpp
 
     ${EDITOR_DIR}/window/InspectorWindow.cpp
+    ${EDITOR_DIR}/window/InputActionsWindow.cpp
     ${EDITOR_DIR}/window/InspectorShaderLibrary.cpp
     ${EDITOR_DIR}/window/InspectorMaterialPbr.cpp
     ${EDITOR_DIR}/window/InspectorParticles.cpp
@@ -1003,6 +1007,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/LatticeBindingsCmd.cpp
     ${EDITOR_DIR}/command/type/LatticeBakeCmd.cpp
     ${EDITOR_DIR}/command/type/GraphEditCmd.cpp
+    ${EDITOR_DIR}/command/type/InputActionsEditCmd.cpp
     ${EDITOR_DIR}/command/type/ParticleEffectAssetCmd.cpp
 
     ${IMGUI_SOURCES}

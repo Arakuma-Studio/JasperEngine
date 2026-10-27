@@ -86,6 +86,24 @@ if(NOT HEX_LATTICE_OLD STREQUAL HEX_LATTICE_BLOCK)
     file(WRITE ${HEX_LATTICE_INL} "${HEX_LATTICE_BLOCK}")
 endif()
 target_include_directories(jasperengine-core-tests PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
+
+# WaterWavesTest.GlslTwinPinned: the SHA-256 of waterWaves in library/water.glsl (from its
+# signature to its closing brace, line ends as \n), whose C++ twin is engine/core/util/WaterWaves.h
+set(WATER_GLSL ${CMAKE_CURRENT_SOURCE_DIR}/../../shaderlib/library/water.glsl)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${WATER_GLSL})
+file(READ ${WATER_GLSL} WATER_GLSL_SOURCE)
+string(REPLACE "\r" "" WATER_GLSL_SOURCE "${WATER_GLSL_SOURCE}")
+string(FIND "${WATER_GLSL_SOURCE}" "vec3 waterWaves(" WATER_WAVES_BEGIN)
+if(WATER_WAVES_BEGIN EQUAL -1)
+    message(FATAL_ERROR "library/water.glsl has no waterWaves (WaterWavesTest, engine/core/util/WaterWaves.h)")
+endif()
+string(SUBSTRING "${WATER_GLSL_SOURCE}" ${WATER_WAVES_BEGIN} -1 WATER_WAVES_REST)
+string(FIND "${WATER_WAVES_REST}" "\n}\n" WATER_WAVES_END)
+math(EXPR WATER_WAVES_LENGTH "${WATER_WAVES_END} + 2")
+string(SUBSTRING "${WATER_WAVES_REST}" 0 ${WATER_WAVES_LENGTH} WATER_WAVES_FUNCTION)
+string(SHA256 WATER_WAVES_GLSL_SHA256 "${WATER_WAVES_FUNCTION}")
+set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/util/WaterWavesTest.cpp PROPERTIES
+    COMPILE_DEFINITIONS "WATER_WAVES_GLSL_SHA256=\"${WATER_WAVES_GLSL_SHA256}\"")
 # a unit of its own: it redefines JASPERENGINE_PROFILER to 0 before the profiling macros
 jasperengine_skip_unity_build(
     REASON "ProfilerCompileOutTest compiles the profiling macros with the profiler off"

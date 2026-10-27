@@ -168,8 +168,8 @@ quality.atmosphere_quality_*). More: jasper://docs/atmosphere.
 - Add a body and its collider to the SAME GameObject in one step (edit_colliders with
   body_type + add). A Rigidbody without a Collider does not collide. Dynamic for
   actors, static for floors and level geometry, kinematic for scripted movers.
-- Collider sizes are local to the mesh and scaled by the GameObject's scale: never pre-divide
-  or pre-multiply by scale. Never guess sizes: omit them to fit the mesh bounds.
+- Collider sizes are local, scaled by the GameObject's scale: never pre-scale them. Never
+  guess sizes: omit them to fit the mesh bounds.
 - Mass comes from collider volume/area x density (3D default 1000, water; 2D 1 per square
   meter), never set directly. Size forces as mass x acceleration; if they get huge, lower the
   density.
@@ -177,9 +177,8 @@ quality.atmosphere_quality_*). More: jasper://docs/atmosphere.
   deltatime. Rigidbody (3D): applyForce(f), applyForce(f, point), applyTorque(t), applyImpulse;
   mass is the property body.mass. Rigidbody2D: applyForceToCenter(f, true), applyForce(f, point,
   true), applyLinearImpulseToCenter(i, true); mass is body:getMass().
-- Never move a body by writing its GameObject's transform from onFixedUpdate (silently
-  overwritten). Teleport with body.position (and body.rotation / body.angle), velocity with
-  body.linearVelocity.
+- Never move a body by writing its transform in onFixedUpdate (overwritten). Teleport with
+  body.position (body.rotation / body.angle), velocity with body.linearVelocity.
 - Layer Collision Matrix (project settings) gates contacts; raycasts take a layer mask. Drop
   or settle objects: place_with_physics (group editor_ux).
 

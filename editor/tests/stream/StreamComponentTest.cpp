@@ -6,12 +6,18 @@
 // and changes a few fields, so a value that is written but not read back shows up.
 
 #include "Stream.h"
+#include "Scene.h"
+#include "Catalog.h"
+#include "component/BuoyancyComponent.h"
+#include "component/CharacterController2DComponent.h"
+#include "component/CharacterControllerComponent.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/ForceFieldComponent.h"
 #include "component/LatticeComponent.h"
 #include "component/LatticeFollowerComponent.h"
 #include "component/LatticeModifierComponent.h"
 #include "component/LatticeTracksComponent.h"
+#include "component/WaterVolumeComponent.h"
 #include "particles/ParticleEffectCodec.h"
 #include "reflect/Reflect.h"
 
@@ -138,6 +144,14 @@ STABLE(LatticeModifierComponent, LatticeModifierComponent, component.bindings.pu
 STABLE(LatticeFollowerComponent, LatticeFollowerComponent, component.lattice = 3; component.applyScale = true; component.weight = 0.75f)
 STABLE(LatticeTracksComponent, LatticeTracksComponent, component.points = {0, 4}; component.values = {{Vector3(1, 0, 0), Vector3(0, 1, 0)}})
 
+STABLE(CharacterController2DComponent, CharacterController2DComponent, component.center = Vector2(4.0f, 8.0f); component.height = 96.0f;
+    component.pushBodies = false; component.maskBits = 0x00F0)
+STABLE(CharacterControllerComponent, CharacterControllerComponent, component.radius = 0.4f; component.mass = 80.0f;
+    component.enhancedEdgeRemoval = true; component.categoryBits = 4)
+STABLE(WaterVolumeComponent, WaterVolumeComponent, component.infinite = true; component.flow = Vector3(1.0f, 0.0f, 0.5f);
+    component.waves = WaterVolumeWaves::NONE)
+STABLE(BuoyancyComponent, BuoyancyComponent, component.columns = BuoyancyColumns::CUSTOM;
+    component.customPoints = {Vector3(-1.0f, 0.0f, -1.0f), Vector3(1.0f, 0.0f, 1.0f)}; component.volumeScale = 0.8f)
 #undef STABLE
 
 // The fields added after the S08 base (S11's photometric light, terrain hex tiling, the 64-bit
@@ -290,5 +304,128 @@ TEST(StreamComponent, ForceFieldFieldsRoundTrip){
     EXPECT_FLOAT_EQ(decoded.frequency, 2.0f);
     EXPECT_EQ(decoded.falloff, field.falloff);
     EXPECT_EQ(decoded.layers, 0x5u);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// S22's components through their tables: every field read back with its value
+TEST(StreamComponent, CharacterControllersRoundTrip){
+    CharacterControllerComponent controller{};
+    controller.enabled = false;
+    controller.center = Vector3(0.0f, 1.0f, 0.0f);
+    controller.height = 1.8f;
+    controller.radius = 0.4f;
+    controller.slopeLimit = 50.0f;
+    controller.stepOffset = 0.25f;
+    controller.skinWidth = 0.03f;
+    controller.minMoveDistance = 0.002f;
+    controller.mass = 90.0f;
+    controller.pushStrength = 50.0f;
+    controller.pushBodies = false;
+    controller.movingPlatforms = false;
+    controller.inheritPlatformYaw = false;
+    controller.detectCollisions = false;
+    controller.characterCollisions = false;
+    controller.enhancedEdgeRemoval = true;
+    controller.categoryBits = 2;
+    controller.maskBits = 0x00FF;
+    const CharacterControllerComponent decoded = roundTrip(ComponentType::CharacterControllerComponent, controller);
+    EXPECT_FALSE(decoded.enabled);
+    EXPECT_EQ(decoded.center, Vector3(0.0f, 1.0f, 0.0f));
+    EXPECT_FLOAT_EQ(decoded.height, 1.8f);
+    EXPECT_FLOAT_EQ(decoded.radius, 0.4f);
+    EXPECT_FLOAT_EQ(decoded.slopeLimit, 50.0f);
+    EXPECT_FLOAT_EQ(decoded.stepOffset, 0.25f);
+    EXPECT_FLOAT_EQ(decoded.skinWidth, 0.03f);
+    EXPECT_FLOAT_EQ(decoded.minMoveDistance, 0.002f);
+    EXPECT_FLOAT_EQ(decoded.mass, 90.0f);
+    EXPECT_FLOAT_EQ(decoded.pushStrength, 50.0f);
+    EXPECT_FALSE(decoded.pushBodies);
+    EXPECT_FALSE(decoded.movingPlatforms);
+    EXPECT_FALSE(decoded.inheritPlatformYaw);
+    EXPECT_FALSE(decoded.detectCollisions);
+    EXPECT_FALSE(decoded.characterCollisions);
+    EXPECT_TRUE(decoded.enhancedEdgeRemoval);
+    EXPECT_EQ(decoded.categoryBits, 2);
+    EXPECT_EQ(decoded.maskBits, 0x00FF);
+
+    CharacterController2DComponent controller2d{};
+    controller2d.center = Vector2(3.0f, -2.0f);
+    controller2d.height = 100.0f;
+    controller2d.radius = 20.0f;
+    controller2d.slopeLimit = 30.0f;
+    controller2d.stepOffset = 10.0f;
+    controller2d.skinWidth = 2.0f;
+    controller2d.minMoveDistance = 0.1f;
+    controller2d.pushStrength = 20.0f;
+    controller2d.pushBodies = false;
+    controller2d.movingPlatforms = false;
+    controller2d.categoryBits = 8;
+    controller2d.maskBits = 0x0F0F;
+    const CharacterController2DComponent decoded2d = roundTrip(ComponentType::CharacterController2DComponent, controller2d);
+    EXPECT_EQ(decoded2d.center, Vector2(3.0f, -2.0f));
+    EXPECT_FLOAT_EQ(decoded2d.height, 100.0f);
+    EXPECT_FLOAT_EQ(decoded2d.radius, 20.0f);
+    EXPECT_FLOAT_EQ(decoded2d.slopeLimit, 30.0f);
+    EXPECT_FLOAT_EQ(decoded2d.stepOffset, 10.0f);
+    EXPECT_FLOAT_EQ(decoded2d.skinWidth, 2.0f);
+    EXPECT_FLOAT_EQ(decoded2d.minMoveDistance, 0.1f);
+    EXPECT_FLOAT_EQ(decoded2d.pushStrength, 20.0f);
+    EXPECT_FALSE(decoded2d.pushBodies);
+    EXPECT_FALSE(decoded2d.movingPlatforms);
+    EXPECT_EQ(decoded2d.categoryBits, 8);
+    EXPECT_EQ(decoded2d.maskBits, 0x0F0F);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST(StreamComponent, WaterVolumeAndBuoyancyRoundTrip){
+    WaterVolumeComponent volume{};
+    volume.enabled = false;
+    volume.size = Vector3(20.0f, 3.0f, 8.0f);
+    volume.surfaceOffset = 0.5f;
+    volume.infinite = true;
+    volume.density = 1025.0f;
+    volume.flow = Vector3(0.5f, 0.0f, -1.0f);
+    volume.linearDrag = 2.0f;
+    volume.angularDrag = 0.25f;
+    volume.waves = WaterVolumeWaves::NONE;
+    const WaterVolumeComponent decodedVolume = roundTrip(ComponentType::WaterVolumeComponent, volume);
+    EXPECT_FALSE(decodedVolume.enabled);
+    EXPECT_EQ(decodedVolume.size, Vector3(20.0f, 3.0f, 8.0f));
+    EXPECT_FLOAT_EQ(decodedVolume.surfaceOffset, 0.5f);
+    EXPECT_TRUE(decodedVolume.infinite);
+    EXPECT_FLOAT_EQ(decodedVolume.density, 1025.0f);
+    EXPECT_EQ(decodedVolume.flow, Vector3(0.5f, 0.0f, -1.0f));
+    EXPECT_FLOAT_EQ(decodedVolume.linearDrag, 2.0f);
+    EXPECT_FLOAT_EQ(decodedVolume.angularDrag, 0.25f);
+    EXPECT_EQ(decodedVolume.waves, WaterVolumeWaves::NONE);
+
+    BuoyancyComponent buoyancy{};
+    buoyancy.enabled = false;
+    buoyancy.columns = BuoyancyColumns::CUSTOM;
+    buoyancy.customPoints = {Vector3(-0.5f, -0.5f, 0.0f), Vector3(0.5f, -0.5f, 0.0f), Vector3(0.0f, -0.5f, 1.0f)};
+    buoyancy.volumeScale = 1.2f;
+    buoyancy.dragScale = 0.5f;
+    const BuoyancyComponent decodedBuoyancy = roundTrip(ComponentType::BuoyancyComponent, buoyancy);
+    EXPECT_FALSE(decodedBuoyancy.enabled);
+    EXPECT_EQ(decodedBuoyancy.columns, BuoyancyColumns::CUSTOM);
+    EXPECT_EQ(decodedBuoyancy.customPoints, buoyancy.customPoints);
+    EXPECT_FLOAT_EQ(decodedBuoyancy.volumeScale, 1.2f);
+    EXPECT_FLOAT_EQ(decodedBuoyancy.dragScale, 0.5f);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// prefab Apply/Revert copy one property between instances: a value no type branch names (the
+// Buoyancy's customPoints) is copied by its table's ops
+TEST(StreamComponent, CopyPropertyValueCopiesTableValues){
+    Scene source;
+    Scene target;
+    const Entity from = source.createEntity();
+    const Entity to = target.createEntity();
+    BuoyancyComponent buoyancy{};
+    buoyancy.customPoints = {Vector3(1.0f, 2.0f, 3.0f), Vector3(4.0f, 5.0f, 6.0f)};
+    source.addComponent<BuoyancyComponent>(from, buoyancy);
+    target.addComponent<BuoyancyComponent>(to, BuoyancyComponent{});
+    Catalog::copyPropertyValue(&source, from, &target, to, ComponentType::BuoyancyComponent, "customPoints");
+    EXPECT_EQ(target.getComponent<BuoyancyComponent>(to).customPoints, buoyancy.customPoints);
     EXPECT_NO_ENGINE_ERRORS();
 }

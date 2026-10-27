@@ -15,6 +15,9 @@
 #                       (default 20)
 #   --expect-native-crash require our report and the OS tombstone; a deliberate crash passes
 #                       (implies --no-ready: the fixture may crash before its ready line)
+#   --two-finger-tap    TAP_AFTER seconds (--tap-after, default 10) after the launch, two fingers
+#                       touch the screen together and lift (tools/android-two-finger-tap.sh)
+#   --tap-after SECONDS when --two-finger-tap taps
 #   --out DIR           results (default build/android-emulator): logcat.txt (-v tag, the run),
 #                       logcat-full.txt (-v threadtime, everything), screen.png, emulator.log,
 #                       result.txt
@@ -50,7 +53,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
-    sed -n '2,47p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,50p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 2
 }
 
@@ -64,6 +67,8 @@ EXPECT_NATIVE_CRASH=0
 READY=1
 TIMEOUT=120
 SECONDS_TO_RUN=20
+TWO_FINGER_TAP=0
+TAP_AFTER=10
 OUT="build/android-emulator"
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -80,6 +85,8 @@ while [[ $# -gt 0 ]]; do
         --forbid) FORBIDS+=("$2"); shift 2 ;;
         --timeout) TIMEOUT="$2"; shift 2 ;;
         --seconds) SECONDS_TO_RUN="$2"; shift 2 ;;
+        --two-finger-tap) TWO_FINGER_TAP=1; shift ;;
+        --tap-after) TAP_AFTER="$2"; shift 2 ;;
         --out) OUT="$2"; shift 2 ;;
         *) usage ;;
     esac
@@ -122,6 +129,7 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
     -v "$ROOT:/src" -w /src \
     -e HOME=/src/build/.cache/home \
     -e APK="$APK_IN" -e OUT="/src/$OUT" -e ORDERED="$ORDERED" -e TIMEOUT="$TIMEOUT" -e SECONDS_TO_RUN="$SECONDS_TO_RUN" \
+    -e TWO_FINGER_TAP="$TWO_FINGER_TAP" -e TAP_AFTER="$TAP_AFTER" \
     -e EXPECT_NATIVE_CRASH="$EXPECT_NATIVE_CRASH" \
     -e BOOT_TIMEOUT="${EMULATOR_BOOT_TIMEOUT:-600}" -e MEMORY="${EMULATOR_MEMORY:-3072}" -e CORES="${EMULATOR_CORES:-4}" \
     --tmpfs "/avd:rw,exec,size=${EMULATOR_TMPFS_GB:-10}g,mode=1777" \
@@ -176,6 +184,9 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
         adb shell setprop debug.jasperengine.ready_signal 1
         log "launching $PACKAGE"
         adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
+        if [[ "$TWO_FINGER_TAP" == 1 ]]; then
+            ( sleep "$TAP_AFTER"; bash /src/tools/android-two-finger-tap.sh > "$OUT/tap.log" 2>&1 ) &
+        fi
 
         # every expected line (in order with ORDERED=1) in the logcat; a crash ends the wait
         # check: one line per expectation (found / OUT OF ORDER / MISSING), exit 1 if one is missing

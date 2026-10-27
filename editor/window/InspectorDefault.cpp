@@ -397,6 +397,10 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::Rigidbody2DComponent: return &InspectorWindow::drawRigidbody2DComponent;
         case ComponentType::RigidbodyComponent: return &InspectorWindow::drawRigidbodyComponent;
         case ComponentType::Joint2DComponent: return &InspectorWindow::drawJoint2DComponent;
+        case ComponentType::CharacterController2DComponent: return &InspectorWindow::drawCharacterController2DComponent;
+        case ComponentType::CharacterControllerComponent: return &InspectorWindow::drawCharacterControllerComponent;
+        case ComponentType::WaterVolumeComponent: return &InspectorWindow::drawWaterVolumeComponent;
+        case ComponentType::BuoyancyComponent: return &InspectorWindow::drawBuoyancyComponent;
         case ComponentType::Joint3DComponent: return &InspectorWindow::drawJoint3DComponent;
         case ComponentType::ActionComponent: return &InspectorWindow::drawActionComponent;
         case ComponentType::PositionTweenComponent: return &InspectorWindow::drawPositionTweenComponent;

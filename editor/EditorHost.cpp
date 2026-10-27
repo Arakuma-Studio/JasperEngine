@@ -97,6 +97,10 @@ void EditorHost::registerSaveDiscardAlert(std::string, std::string, std::functio
     }
 }
 
+void EditorHost::openInputActions(const std::filesystem::path& path) {
+    Out::warning("The Input Actions window needs the editor window: %s not opened", path.string().c_str());
+}
+
 void EditorHost::openPrefabAsset(const std::filesystem::path& path, uint32_t, uint32_t, bool) {
     Out::warning("Prefab Mode needs the editor window: %s not opened", path.string().c_str());
 }

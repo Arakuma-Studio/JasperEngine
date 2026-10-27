@@ -280,11 +280,14 @@ void processEvents() {
                 // the window loses focus so it can never be trapped.
                 WindowLinux::releasePointerGrab();
                 inputRouter.setFocus(false);
+                // held keys and buttons come up, so none stays pressed
+                Engine::systemFocusChanged(false);
                 break;
             case FocusIn:
                 if (WindowLinux::isRelativeMouse())
                     WindowLinux::setMouseMode(MouseMode::CAPTURED);
                 inputRouter.setFocus(true);
+                Engine::systemFocusChanged(true);
                 break;
             default:
                 break;

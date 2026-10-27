@@ -1703,7 +1703,10 @@ bool editor::InspectorWindow::addComponentToSelection(ComponentType type, std::s
 bool editor::InspectorWindow::canAddComponent(SceneProject* sceneProject, Entity entity, ComponentType cpType) {
     // Check if entity already has this component
     std::vector<ComponentType> existingComponents = Catalog::findComponents(sceneProject->scene, entity);
-    return std::find(existingComponents.begin(), existingComponents.end(), cpType) == existingComponents.end();
+    if (std::find(existingComponents.begin(), existingComponents.end(), cpType) != existingComponents.end())
+        return false;
+    // a character controller and a rigidbody of its dimension never share a GameObject
+    return Catalog::getComponentConflict(sceneProject->scene, entity, cpType).empty();
 }
 
 // Prefab (prefab) text color, as in the Hierarchy

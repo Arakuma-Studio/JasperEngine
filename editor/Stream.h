@@ -505,6 +505,15 @@ namespace jasperengine::editor {
         static YAML::Node encodeForceFieldComponent(const ForceFieldComponent& field);
         static ForceFieldComponent decodeForceFieldComponent(const YAML::Node& node, const ForceFieldComponent* oldField = nullptr);
 
+        static YAML::Node encodeCharacterController2DComponent(const CharacterController2DComponent& controller);
+        static CharacterController2DComponent decodeCharacterController2DComponent(const YAML::Node& node, const CharacterController2DComponent* oldController = nullptr);
+        static YAML::Node encodeCharacterControllerComponent(const CharacterControllerComponent& controller);
+        static CharacterControllerComponent decodeCharacterControllerComponent(const YAML::Node& node, const CharacterControllerComponent* oldController = nullptr);
+        static YAML::Node encodeWaterVolumeComponent(const WaterVolumeComponent& volume);
+        static WaterVolumeComponent decodeWaterVolumeComponent(const YAML::Node& node, const WaterVolumeComponent* oldVolume = nullptr);
+        static YAML::Node encodeBuoyancyComponent(const BuoyancyComponent& buoyancy);
+        static BuoyancyComponent decodeBuoyancyComponent(const YAML::Node& node, const BuoyancyComponent* oldBuoyancy = nullptr);
+
         static YAML::Node encodeInstancedMeshComponent(const InstancedMeshComponent& instmesh);
         static InstancedMeshComponent decodeInstancedMeshComponent(const YAML::Node& node, const InstancedMeshComponent* oldInstmesh = nullptr);
 

@@ -5,9 +5,11 @@
 
 #include "Project.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/BuoyancyComponent.h"
 #include "component/ForceFieldComponent.h"
 #include "component/LatticeComponent.h"
 #include "component/LatticeModifierComponent.h"
+#include "component/WaterVolumeComponent.h"
 
 #include <cctype>
 
@@ -267,6 +269,17 @@ namespace {
         {v(ForceFieldKind::Vortex), "vortex", "Vortex", "ForceFieldKind::Vortex"},
         {v(ForceFieldKind::Turbulence), "turbulence", "Turbulence", "ForceFieldKind::Turbulence"},
         {v(ForceFieldKind::Drag), "drag", "Drag", "ForceFieldKind::Drag"},
+    };
+
+    constexpr EnumItem kWaterVolumeWavesItems[] = {
+        {v(WaterVolumeWaves::FROM_MATERIAL), "from_material", "From Material", "WaterVolumeWaves::FROM_MATERIAL"},
+        {v(WaterVolumeWaves::NONE), "none", "None", "WaterVolumeWaves::NONE"},
+    };
+
+    constexpr EnumItem kBuoyancyColumnsItems[] = {
+        {v(BuoyancyColumns::AUTO_2x2), "auto_2x2", "Auto 2x2", "BuoyancyColumns::AUTO_2x2"},
+        {v(BuoyancyColumns::AUTO_3x3), "auto_3x3", "Auto 3x3", "BuoyancyColumns::AUTO_3x3"},
+        {v(BuoyancyColumns::CUSTOM), "custom", "Custom", "BuoyancyColumns::CUSTOM"},
     };
 
     constexpr EnumItem kLatticeInterpolationItems[] = {
@@ -550,6 +563,8 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kLayoutGroupType{"LayoutGroupType", kLayoutGroupTypeItems, v(LayoutGroupType::VERTICAL)};
     const EnumDesc kForceFieldShape{"ForceFieldShapeType", kForceFieldShapeItems, v(ForceFieldShapeType::Sphere)};
     const EnumDesc kForceFieldKind{"ForceFieldKind", kForceFieldKindItems, v(ForceFieldKind::Directional)};
+    const EnumDesc kWaterVolumeWaves{"WaterVolumeWaves", kWaterVolumeWavesItems, v(WaterVolumeWaves::FROM_MATERIAL)};
+    const EnumDesc kBuoyancyColumns{"BuoyancyColumns", kBuoyancyColumnsItems, v(BuoyancyColumns::AUTO_2x2)};
     const EnumDesc kFluidOutput{"FluidOutput", kFluidOutputItems, v(FluidOutput::MATERIAL), nullptr, kFluidOutputOrder};
     const EnumDesc kLatticeInterpolation{"LatticeInterpolation", kLatticeInterpolationItems, v(LatticeInterpolation::CUBIC)};
     const EnumDesc kLatticeOutside{"LatticeOutside", kLatticeOutsideItems, v(LatticeOutside::FADE)};

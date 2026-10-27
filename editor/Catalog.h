@@ -139,12 +139,16 @@ namespace jasperengine::editor{
         LatticeTracksComponent,
         LocalVolumetricFogComponent,
         VolumetricCloudsComponent,
-        ForceFieldComponent
+        ForceFieldComponent,
+        CharacterController2DComponent,
+        CharacterControllerComponent,
+        WaterVolumeComponent,
+        BuoyancyComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::ForceFieldComponent;
+    constexpr ComponentType LastComponentType = ComponentType::BuoyancyComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;
@@ -191,6 +195,11 @@ namespace jasperengine::editor{
         static const char* getComponentIcon(ComponentType component);
         // The component has the Unity enable checkbox (an "enabled" property)
         static bool hasEnabledProperty(ComponentType component);
+        // The component type that cannot share a GameObject with `type` (a character
+        // controller and a rigidbody of its dimension), ComponentType::Transform for none
+        static ComponentType getConflictingComponent(ComponentType type);
+        // Why `type` cannot be added to the entity ("" when it can): a conflicting component is there
+        static std::string getComponentConflict(EntityRegistry* registry, Entity entity, ComponentType type);
         static ComponentId getComponentId(const EntityRegistry* registry, ComponentType compType);
         // A value of the entity's component was written (property edits, undo, decode): its
         // Changed<T> tick (EntityRegistry::markChanged). Nothing when it has no such component.
