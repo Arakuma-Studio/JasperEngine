@@ -207,8 +207,11 @@ TEST(CompatDiagnostics, LogLinesCarryThePrefix){
 
     system.clearLogs();
     logDiagnostics("ui/menu.html", list, true);
-    EXPECT_EQ(system.countLogs(D_LOG_VERBOSE, "[HTML UI] ui/menu.css:2:1: info: '-webkit-transition' mapped to 'transition' [HTMLUI-CSS-0009]"), 1u);
-    EXPECT_EQ(system.countLogs(D_LOG_VERBOSE, "[HTMLUI-AT-0005]"), 1u);
+    // asked for (Verbose Diagnostics): Info lines like the summary (Log::verbose is Trace since S09,
+    // which no sink shows by default)
+    EXPECT_EQ(system.countLogs(0, "[HTML UI] ui/menu.css:2:1: info: '-webkit-transition' mapped to 'transition' [HTMLUI-CSS-0009]"), 1u);
+    EXPECT_EQ(system.countLogs(0, "[HTMLUI-AT-0005]"), 1u);
+    EXPECT_EQ(system.countLogs(D_LOG_VERBOSE, "[HTMLUI-AT-0005]"), 0u);
 
     system.clearLogs();
     logDiagnostics("ui/empty.html", {}, false);

@@ -2,7 +2,7 @@
 edits, values kept from a previous shader do not block edits, the shader a set_properties call
 sets is what its other values follow (a mesh's customShader too), a shader change puts an
 unsupported lighting mode back to auto, shader textures are images (no camera render texture),
-an image move updates .material files, list_shaders refuses unknown types, and Lua colour
+an image move takes .material files along (by GUID), list_shaders refuses unknown types, and Lua colour
 parameters, defaults and features follow the shader the submesh draws with."""
 
 from __future__ import annotations
@@ -187,12 +187,17 @@ async def test_move_image_updates_material_files(ed: Editor):
     await ed.call("create_material", path=material, values={
         "shader": "library:unlit", "shaderTextures": {"u_baseTexture": "assets/sprites/rock_shader.png"}})
     path = ed.project / (material + ".material")
-    data = yaml.safe_load(path.read_text())
+    text = path.read_text()
+    data = yaml.safe_load(text)
     ed.check_eq(data["shaderTextures"]["u_baseTexture"]["path"], "sprites/rock_shader.png")
+    ed.check(data["shaderTextures"]["u_baseTexture"].get("guid"), f"the texture is written with its GUID: {data!r}")
 
+    # S04 R13: the move rewrites no referrer; the .material file's reference follows by GUID
     await ed.call("move_asset", path="assets/sprites/rock_shader.png", to="assets/sprites/rock_moved.png")
-    data = yaml.safe_load(path.read_text())
-    ed.check_eq(data["shaderTextures"]["u_baseTexture"]["path"], "sprites/rock_moved.png", "the .material follows the move")
+    ed.check_eq(path.read_text(), text, "the move rewrites no referrer file")
+    deps = await ed.call("get_asset_dependencies", asset=material + ".material")
+    targets = [d["target"]["path"] for d in deps["dependencies"]]
+    ed.check(any(t.endswith("sprites/rock_moved.png") for t in targets), f"the .material follows the move: {targets}")
 
 
 # ---------------------------------------------------------------------------- Lua

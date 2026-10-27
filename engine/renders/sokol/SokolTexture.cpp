@@ -105,6 +105,7 @@ namespace {
         switch (format){
             case SG_PIXELFORMAT_R8: return 1;
             case SG_PIXELFORMAT_R16: return 2;
+            case SG_PIXELFORMAT_R16F: return 2;
             case SG_PIXELFORMAT_RGBA16F: return 8;
             case SG_PIXELFORMAT_RGBA32F: return 16;
             default: return 4;

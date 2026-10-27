@@ -266,6 +266,9 @@ jobs:
       - name: Smoke test (export, build, run; OpenGL)
         run: tools/smoke-test.sh tools/fixtures/post-processing
 
+      - name: Smoke test of the ECS collision fixture (an exported game changing its ECS in contact callbacks)
+        run: SMOKE_DIR=build/smoke-ecs-collision tools/smoke-test.sh tools/fixtures/ecs-collision
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
