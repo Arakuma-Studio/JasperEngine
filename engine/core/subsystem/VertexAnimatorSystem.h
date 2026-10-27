@@ -13,12 +13,20 @@
 // - Writes only on change: the entity's gpuState0/1 and each instance's InstanceData::vat0/vat1
 //   (then InstancedMeshComponent::needUpdateInstances) are written when a state changes, so a
 //   crowd of looping characters costs no per-instance work per frame. gpuNow is written every
-//   update. Held states (speed 0, stopped) are re-pinned every update (vat::VatTrackHold).
+//   update. Held states (speed 0, stopped) are packed with speed 0 and their local time as the
+//   start (vat::vatLocalTime): written once, a paused crowd costs nothing per frame either.
+//   Instances written elsewhere (needUpdateInstances seen at the update, or set by user code in
+//   the callbacks) are compared and written again. Disabled: the rest state is written once (the
+//   entity's and every instance's), gpuActive false; enabled again, every state is written back.
+// - Events cross (previous update's now, now] on a double clock (VertexAnimatorRuntime::lastNow):
+//   each fires exactly once at any frame rate and clock value.
 // - Registered after the Lattice system, before Render. The editor pauses it in edit mode
 //   (Project::pauseEngineScene): then only previewing animators advance and no callback fires.
 // - User code (onEvent, onFinish, onInstanceEvent, onInstanceFinish, the scripts' event methods)
-//   runs at the end of the update, in time order per GameObject; requests made from it apply
-//   at the next update.
+//   runs at the end of the update, in time order per GameObject. Requests made from it apply
+//   right away, at this update's clock (applyRequests, as from any script), and are drawn this
+//   frame; the callbacks this update already collected still run. An instance removed by a
+//   callback drops its own callbacks still to come, the later instances' are re-indexed.
 
 #ifndef VERTEXANIMATORSYSTEM_H
 #define VERTEXANIMATORSYSTEM_H
@@ -37,11 +45,16 @@ namespace jasperengine{
 
     private:
         bool updating = false;
+        bool dispatching = false;
         std::vector<Entity> withCallbacks;
         std::set<std::string> warnedEventHandlers;
 
         void updateAnimator(Entity entity, VertexAnimatorComponent& animator, double dt);
-        void dispatchCallbacks();
+        // true when a callback was called
+        bool dispatchCallbacks();
+        // after the callbacks: instanced meshes they marked (needUpdateInstances) get their
+        // instances' states compared and written again (and new instances started)
+        void refreshInstances();
 
     public:
         VertexAnimatorSystem(Scene* scene);

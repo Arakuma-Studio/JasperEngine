@@ -247,6 +247,28 @@ TEST(VatFrameMath, NormalizedFormFollowsAPhase){
     EXPECT_EQ(vatSampleNormalized(loop, std::numeric_limits<float>::quiet_NaN()).frame0, 0);
 }
 
+// a track's local time: (now - start) * speed, or the start itself when held (speed 0)
+TEST(VatLocalTime, PlayingAndHeld){
+    VatTrack track;
+    track.clip = 0;
+    track.start = 2.0f;
+    track.speed = 1.5f;
+    EXPECT_FLOAT_EQ(vatLocalTime(track, 3.0f), 1.5f);
+    track.speed = -1.0f;
+    EXPECT_FLOAT_EQ(vatLocalTime(track, 3.0f), -1.0f);
+    track.speed = 0.0f;
+    track.start = 0.375f;
+    EXPECT_FLOAT_EQ(vatLocalTime(track, 3.0f), 0.375f);
+    EXPECT_FLOAT_EQ(vatLocalTime(track, -100.0f), 0.375f) << "the clock doesn't move a held track";
+    EXPECT_FLOAT_EQ(vatLocalTime(track, 2047.9f), 0.375f);
+    // packed and unpacked unchanged (the shader reads the same)
+    VatTrackPair pair;
+    pair.a = track;
+    Vector4 v0, v1;
+    vatPackInstance(pair, v0, v1);
+    EXPECT_FLOAT_EQ(vatLocalTime(vatUnpackInstance(v0, v1).a, 9.0f), 0.375f);
+}
+
 TEST(VatWeightB, FadeBlendAndNoB){
     VatTrackPair pair;
     pair.a.clip = 0;

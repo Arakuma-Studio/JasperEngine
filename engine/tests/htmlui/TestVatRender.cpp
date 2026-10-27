@@ -332,10 +332,13 @@ namespace {
             scene().getSystem<VertexAnimatorSystem>()->setPaused(true);
         }
 
-        // a track pair at time `now` of a clock at 0: its times moved by -now
+        // a track pair at time `now` of a clock at 0: its times moved by -now (a held track's
+        // start is its local time: it stays)
         static vat::VatTrackPair at(vat::VatTrackPair pair, float now){
-            pair.a.start -= now;
-            pair.b.start -= now;
+            if (pair.a.speed != 0.0f)
+                pair.a.start -= now;
+            if (pair.b.speed != 0.0f)
+                pair.b.start -= now;
             pair.fadeStart -= now;
             pair.fadeEnd -= now;
             return pair;
@@ -991,9 +994,9 @@ TEST_F(VatRenderTest, AnimatedBoundsKeepAMovedMeshFromBeingCulled){
     }
 }
 
-// The shader's frame math against the C++ one (vat::vatSample, vatSampleNormalized,
-// vatWeightB): rows of small instanced quads, each at its own time, clip, wrap and speed (and
-// crossfades and blends of two clips), drawn where the payload's offsets of the frames the C++
+// The shader's frame math against the C++ one (vat::vatLocalTime, vatSample, vatSampleNormalized,
+// vatWeightB): rows of small instanced quads, each at its own time, clip, wrap and speed (held
+// tracks at speed 0 too, and crossfades and blends of two clips), drawn where the payload's offsets of the frames the C++
 // picks, mixed by its alpha and B weight, put them. The offsets differ from frame to frame by
 // at least 25 pixels, so a wrong frame or a wrong weight shows.
 TEST_F(VatRenderTest, ShaderFrameMathMatchesTheCpp){
@@ -1031,7 +1034,7 @@ TEST_F(VatRenderTest, ShaderFrameMathMatchesTheCpp){
         vat::VatFrameSample sampleA;
         if (pair.a.clip >= 0){
             const vat::VatClip& clip = data.clips[pair.a.clip];
-            sampleA = vat::vatSample(clip, (now - pair.a.start) * pair.a.speed);
+            sampleA = vat::vatSample(clip, vat::vatLocalTime(pair.a, now));
             a = value(sampleA);
         }
         const float w = vat::vatWeightB(pair, now);
@@ -1039,7 +1042,7 @@ TEST_F(VatRenderTest, ShaderFrameMathMatchesTheCpp){
             return a;
         const vat::VatClip& clipB = data.clips[pair.b.clip];
         const vat::VatFrameSample sampleB = (pair.blend >= 0.0f) ? vat::vatSampleNormalized(clipB, sampleA.normalized)
-                                                                 : vat::vatSample(clipB, (now - pair.b.start) * pair.b.speed);
+                                                                 : vat::vatSample(clipB, vat::vatLocalTime(pair.b, now));
         return a * (1.0f - w) + value(sampleB) * w;
     };
 
@@ -1051,6 +1054,30 @@ TEST_F(VatRenderTest, ShaderFrameMathMatchesTheCpp){
             for (float now = -3.1f; now < 6.0f; now += 0.83f)
                 cases.push_back({track(clip, 0.2f, speed), now});
         }
+    }
+    // held (speed 0): the start is the local time, whatever the clock
+    for (int clip = 0; clip < 5; clip++){
+        for (float held : {-0.7f, 0.0f, 0.35f, 1.3f, 2.9f}){
+            for (float now : {-2.0f, 1.7f})
+                cases.push_back({track(clip, held, 0.0f), now});
+        }
+    }
+    for (float now : {0.4f, 1.5f, 2.2f, 3.5f}){
+        // a crossfade into a held clip, and out of one
+        vat::VatTrackPair into = track(0, 0.0f, 1.0f);
+        into.b.clip = 2;
+        into.b.start = 0.6f;
+        into.b.speed = 0.0f;
+        into.fadeStart = 1.0f;
+        into.fadeEnd = 3.0f;
+        cases.push_back({into, now});
+        vat::VatTrackPair from = track(2, 0.85f, 0.0f);
+        from.b.clip = 0;
+        from.b.start = 0.5f;
+        from.b.speed = 1.0f;
+        from.fadeStart = 1.0f;
+        from.fadeEnd = 3.0f;
+        cases.push_back({from, now});
     }
     for (float now : {-1.0f, 0.0f, 0.4f, 1.0f, 1.5f, 2.2f, 2.9f, 3.0f, 4.0f}){
         vat::VatTrackPair fade = track(5);
