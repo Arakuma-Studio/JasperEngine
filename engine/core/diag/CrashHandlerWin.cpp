@@ -137,15 +137,19 @@ void cacheThreadName() {
     // never on the faulting path or writer, where the process heap may be locked.
     auto getThreadDescription = reinterpret_cast<GetThreadDescriptionFn>(
         GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "GetThreadDescription"));
+    char name[256] = "unknown";
     PWSTR wide = nullptr;
-    appendText(preparedThreadName, sizeof(preparedThreadName), 0, "unknown");
     if (getThreadDescription && SUCCEEDED(getThreadDescription(GetCurrentThread(), &wide)) && wide) {
-        if (*wide && !WideCharToMultiByte(CP_UTF8, 0, wide, -1, preparedThreadName,
-                                        sizeof(preparedThreadName), nullptr, nullptr)) {
-            appendText(preparedThreadName, sizeof(preparedThreadName), 0, "unknown");
+        if (*wide && !WideCharToMultiByte(CP_UTF8, 0, wide, -1, name,
+                                        sizeof(name), nullptr, nullptr)) {
+            appendText(name, sizeof(name), 0, "unknown");
         }
         LocalFree(wide);
     }
+    // Keep the old snapshot valid if conversion/free itself faults. A bounded publish
+    // copies at most 255 characters, preserving the TLS buffer's final NUL even if a
+    // fault interrupts this copy. No allocating API writes into the published buffer.
+    appendText(preparedThreadName, sizeof(preparedThreadName), 0, name);
 }
 void writeThreadName(HANDLE report) {
     char lineText[288];
