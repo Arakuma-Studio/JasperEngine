@@ -2676,7 +2676,10 @@ void editor::SceneWindow::show() {
                     Widgets::image(previewTex, canvasAvail, IM_COL32(0, 0, 0, 255));
                     const ImVec2 afterImage = ImGui::GetCursorScreenPos();
                     particleOverlay.draw(project, &sceneProject, canvasMin, canvasAvail);
+                    // back after the image: an empty item ends the line there (moving the cursor
+                    // alone may not extend the window, ImGui's boundary check)
                     ImGui::SetCursorScreenPos(afterImage);
+                    ImGui::Dummy(ImVec2(0.0f, 0.0f));
 
                     // Physics: the HUD, and the labels at their objects
                     if (PhysicsPlacementWindow* physics = Backend::getApp().getPhysicsPlacementWindow()) {

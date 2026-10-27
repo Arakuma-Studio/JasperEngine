@@ -684,8 +684,8 @@ async def test_custom_roundtrip(ed: Editor):
 
     ps = await create(ed, "particle_system", name="CustomParticles")
     await set_props(ed, ps, {"particlesystem": {"exposedValues": [{"name": "Rate", "value": [3, 0, 0, 0]}]}})
-    values = await value(ed, ps, "particlesystem", "exposedValues")
-    ed.check(len(values) == 1 and values[0]["name"] == "Rate", f"exposedValues: {values}")
+    exposed = await value(ed, ps, "particlesystem", "exposedValues")
+    ed.check(len(exposed) == 1 and exposed[0]["name"] == "Rate", f"exposedValues: {exposed}")
     await set_props(ed, ps, {"particlesystem": {"playOnAwake": False, "seed": 9}})
     ed.check_eq(await value(ed, ps, "particlesystem", "seed"), 9)
     await ed.check_error("set_properties", entity=ps, changes=[{"component": "particlesystem", "property": "exposedValues", "remove": 5}],
