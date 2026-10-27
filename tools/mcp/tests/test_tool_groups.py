@@ -207,7 +207,9 @@ SPEC_GROUPS = {
     "data_safety": ["get_load_report", "list_scene_backups", "discard_scene_backup"],      # S03
     "terrain": ["sculpt_terrain", "set_terrain_maps", "sample_terrain"],                   # S31 (budget)
     "editor_ux": ["get_undo_history", "get_play_changes", "apply_play_changes", "discard_play_changes",  # S24
-                  "find_ui_item"],                                                   # BF1 (UI tests)
+                  "find_ui_item",                                                   # BF1 (UI tests)
+                  "search_editor", "run_command", "list_shortcuts", "set_shortcut", "edit_layout_presets",  # S25
+                  "edit_asset_labels", "edit_saved_searches", "edit_bookmarks"],
     "rendering_fx": ["get_shadow_stats", "set_shadow_debug",                               # S10
                      "list_atmosphere_presets", "apply_atmosphere_preset", "get_atmosphere_info",  # S12
                      "inspect_color_lut", "get_post_processing_status", "set_post_processing_debug"],  # S13

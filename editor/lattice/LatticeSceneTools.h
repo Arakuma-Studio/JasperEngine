@@ -23,10 +23,16 @@ namespace jasperengine::editor{
         // the menu's items, between BeginPopup and EndPopup
         static void drawContextMenu(Project* project, uint32_t sceneId, Entity lattice);
 
-        // the shortcuts while the Scene view has the keyboard: Esc clears the points, O
-        // toggles the falloff, Alt+A selects none, Ctrl+I inverts, Ctrl+= / Ctrl+- expand and
-        // shrink. True when one of them ran (Esc only when there were points to clear).
+        // Esc while the Scene view has the keyboard clears the points (true when there were
+        // points to clear). The other point keys are command catalog entries (S25: lattice.*,
+        // shortcuts/DefaultCommands.cpp) that run the actions below.
         static bool handleShortcuts(Project* project, uint32_t sceneId);
+
+        enum class PointAction { SelectNone, Invert, Expand, Shrink, ToggleFalloff };
+        // a lattice's points are edited in the scene (the catalog's keyGate)
+        static bool isEditingPoints(Project* project, uint32_t sceneId);
+        // runs it on the edited lattice; false when none is edited
+        static bool runPointAction(Project* project, uint32_t sceneId, PointAction action);
 
         // Ctrl+A (Edit > Select All) in the Scene view: every point of the edited lattice;
         // false when no lattice is edited

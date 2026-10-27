@@ -11,6 +11,7 @@
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include "util/BidiText.h"
+#include "shortcuts/CommandCatalog.h"
 
 using namespace jasperengine;
 
@@ -91,7 +92,7 @@ void editor::HierarchyWindow::showPrefabStageMenu(SceneProject* sceneProject) {
     const uint32_t sceneId = sceneProject->id;
     const size_t depth = project->getPrefabStageDepth(sceneId);
 
-    if (ImGui::MenuItem(ICON_FA_FLOPPY_DISK "  Save Prefab", "Ctrl+S", false, project->hasUnsavedPrefabStage(sceneId))) {
+    if (ImGui::MenuItem(ICON_FA_FLOPPY_DISK "  Save Prefab", CommandCatalog::editor().menuShortcutText("file.save").c_str(), false, project->hasUnsavedPrefabStage(sceneId))) {
         project->savePrefabStage(sceneId);
     }
     bool autoSave = project->isPrefabAutoSave();

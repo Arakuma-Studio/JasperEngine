@@ -242,6 +242,14 @@ Guid editor::Project::prepareDocumentIdentity(YAML::Node& root, const fs::path& 
     // the rest in its order: readInFileIdentity finds formerGuids right after guid
     YAML::Node ordered(YAML::NodeType::Map);
     bool placed = false;
+    // S25 R22: the asset's labels, from the label store (the file's own until the store has
+    // read them), so a save keeps them and a label edit needs no save
+    std::vector<std::string> labels;
+    if (assetLabels.isReady()) {
+        labels = assetLabels.labelsOf(guid);
+    } else {
+        AssetLabels::readFileLabels(projectPath / relative, true, labels);
+    }
     auto place = [&]() {
         ordered["guid"] = guid.str();
         if (!formerGuids.empty()) {
@@ -250,11 +258,17 @@ Guid editor::Project::prepareDocumentIdentity(YAML::Node& root, const fs::path& 
             for (const Guid& former : formerGuids) list.push_back(former.str());
             ordered["formerGuids"] = list;
         }
+        if (!labels.empty()) {
+            YAML::Node list(YAML::NodeType::Sequence);
+            list.SetStyle(YAML::EmitterStyle::Flow);
+            for (const std::string& label : labels) list.push_back(label);
+            ordered["labels"] = list;
+        }
         placed = true;
     };
     for (const auto& entry : root) {
         const std::string key = entry.first.as<std::string>();
-        if (key == "guid" || key == "formerGuids") {
+        if (key == "guid" || key == "formerGuids" || key == "labels") {
             if (!placed && key == "guid") place();
             continue;
         }
@@ -385,6 +399,12 @@ void editor::Project::onAssetFilesChanged(const std::vector<AssetDatabase::Chang
     // instances, added ones relink them (PREFABS.md §3)
     applyAssetChanges(changes);
     assetIndex.update(changes);
+    // S25: an asset edited, put back or arriving outside the editor brings its labels
+    for (const AssetDatabase::Change& change : changes) {
+        if (change.type != AssetDatabase::Change::Type::Removed && Guid::isValidText(change.guid)) {
+            assetLabels.refreshAsset(Guid::parse(change.guid));
+        }
+    }
     if (std::any_of(changes.begin(), changes.end(), [](const AssetDatabase::Change& change) {
             return change.type != AssetDatabase::Change::Type::Modified; })) {
         // references follow their assets' GUIDs: moved ones get the new hints, a file put

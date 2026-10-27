@@ -997,7 +997,7 @@ int editor::Backend::init(int argc, char* argv[]) {
                 processEvents(deadline);
                 diag::heartbeat();
                 if (backend->shouldClose) break;
-                app.processProjectChange();
+                app.beforeFrame();
                 if (backend->shouldClose) break;
 
                 const bool minimized = backend->window.miniaturized;
@@ -1194,6 +1194,14 @@ float editor::Backend::setMainMenu(const PlatformMenuModel& model,
 
     // The macOS menu bar is global and consumes no window client area.
     return -1.0f;
+#endif
+}
+
+bool editor::Backend::nativeMenuHandlesKeyEquivalents() {
+#if defined(JASPERENGINE_NATIVE_MENU)
+    return backend && !backend->menu.model.menus.empty();
+#else
+    return false;
 #endif
 }
 

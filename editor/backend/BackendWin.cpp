@@ -967,7 +967,7 @@ int editor::Backend::init(int argc, char* argv[]) {
         processMessages(backend->editorFrame.isIdle() ? app.idleWaitSeconds(0.1) : 0.0);
         diag::heartbeat();
         if (backend->shouldClose) break;
-        app.processProjectChange();
+        app.beforeFrame();
         if (backend->shouldClose) break;
         renderFrame(false);
         if (app.consumeBenchmarkExit())
@@ -1093,6 +1093,11 @@ float editor::Backend::setMainMenu(const PlatformMenuModel& model,
     // reserving an in-client side bar.
     return -1.0f;
 #endif
+}
+
+bool editor::Backend::nativeMenuHandlesKeyEquivalents() {
+    // the native menus here show their shortcuts as text; the keys reach ImGui
+    return false;
 }
 
 ImTextureID editor::Backend::getImGuiTexture(TextureRender* texture) {

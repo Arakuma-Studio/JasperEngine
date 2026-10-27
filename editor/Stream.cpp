@@ -2296,6 +2296,24 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     }
     root["scenes"] = scenesNode;
 
+    // S25: label colours and the saved searches shared with the project
+    if (!project->getAssetLabels().entries().empty()) {
+        YAML::Node labels(YAML::NodeType::Sequence);
+        for (const LabelColor& entry : project->getAssetLabels().entries()) {
+            YAML::Node label(YAML::NodeType::Map);
+            label.SetStyle(YAML::EmitterStyle::Flow);
+            label["name"] = entry.name;
+            label["color"] = entry.color;
+            labels.push_back(label);
+        }
+        root["assetLabels"] = labels;
+    }
+    if (!project->getOrganisation().projectSearches().empty()) {
+        YAML::Node searches;
+        Organisation::encodeSearches(project->getOrganisation().projectSearches(), searches);
+        root["savedSearches"] = searches;
+    }
+
     return root;
 }
 
@@ -2484,6 +2502,19 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
 
     if (node["versionControlMetadata"].IsDefined()) {
         project->setVersionControlMetadata(YamlNumbers::as<bool>(node["versionControlMetadata"]));
+    }
+
+    // S25: label colours, saved searches of scope project
+    {
+        std::vector<LabelColor> entries;
+        if (node["assetLabels"] && node["assetLabels"].IsSequence()) {
+            for (const auto& label : node["assetLabels"]) {
+                if (!label.IsMap() || !label["name"]) continue;
+                entries.push_back({label["name"].as<std::string>(""), label["color"] ? label["color"].as<std::string>("") : std::string()});
+            }
+        }
+        project->getAssetLabels().setEntries(std::move(entries));
+        project->getOrganisation().setProjectSearches(Organisation::decodeSearches(node["savedSearches"], true));
     }
 
     {
