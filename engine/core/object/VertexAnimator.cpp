@@ -36,8 +36,7 @@ namespace {
     float normalizedOf(const vat::VertexAnimation& asset, const vat::VatTrackPair& pair, float now){
         const vat::VatTrack& track = currentTrackOf(pair);
         if (track.clip < 0 || track.clip >= (int)asset.getData().clips.size()) return 0.0f;
-        const float tau = (now - track.start) * track.speed;
-        return vat::vatSample(asset.getData().clips[(size_t)track.clip], tau).normalized;
+        return vat::vatSample(asset.getData().clips[(size_t)track.clip], vat::vatLocalTime(track, now)).normalized;
     }
 
 }
@@ -136,7 +135,7 @@ bool VertexAnimator::isPlaying() const{
     const std::vector<vat::VatClip>& clips = animator.asset->getData().clips;
     if (clip < 0 || clip >= (int)clips.size()) return false;
     const vat::VatTrack& track = currentTrackOf(pair);
-    return !vat::vatSample(clips[(size_t)clip], (animator.lastNow - track.start) * track.speed).finished;
+    return !vat::vatSample(clips[(size_t)clip], vat::vatLocalTime(track, animator.lastNow)).finished;
 }
 
 bool VertexAnimator::isPlaying(const std::string& name) const{

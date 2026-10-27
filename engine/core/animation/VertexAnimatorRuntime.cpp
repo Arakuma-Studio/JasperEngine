@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <limits>
 #include <memory>
 
@@ -78,14 +79,21 @@ void vat::eraseInstanceState(VertexAnimatorComponent& animator, size_t index){
         if (index < runtime.instances.size()){
             runtime.instances.erase(runtime.instances.begin() + (std::ptrdiff_t)index);
         }
-        // callbacks of the removed one go; the later ones move down with their instances
-        std::vector<VatPendingCallback> kept;
-        for (VatPendingCallback& callback : runtime.pending){
-            if (callback.instance == (int)index) continue;
-            if (callback.instance > (int)index) callback.instance--;
-            kept.push_back(std::move(callback));
-        }
-        runtime.pending.swap(kept);
+        // callbacks of the removed one go; the later ones move down with their instances (those
+        // waiting, and those not yet called of the list being dispatched)
+        auto reindex = [index](std::vector<VatPendingCallback>& callbacks, size_t from){
+            std::vector<VatPendingCallback> kept(std::make_move_iterator(callbacks.begin()),
+                                                 std::make_move_iterator(callbacks.begin() + (std::ptrdiff_t)from));
+            for (size_t i = from; i < callbacks.size(); i++){
+                VatPendingCallback& callback = callbacks[i];
+                if (callback.instance == (int)index) continue;
+                if (callback.instance > (int)index) callback.instance--;
+                kept.push_back(std::move(callback));
+            }
+            callbacks.swap(kept);
+        };
+        reindex(runtime.pending, 0);
+        reindex(runtime.dispatching, std::min(runtime.dispatchNext, runtime.dispatching.size()));
         runtime.watchDirty = true;
         runtime.anyDirty = true;
     }
@@ -96,9 +104,12 @@ void vat::clearInstanceStates(VertexAnimatorComponent& animator){
     if (animator.runtime){
         VertexAnimatorRuntime& runtime = *animator.runtime;
         runtime.instances.clear();
-        runtime.pending.erase(std::remove_if(runtime.pending.begin(), runtime.pending.end(),
-                                             [](const VatPendingCallback& callback){ return callback.instance >= 0; }),
+        auto isInstance = [](const VatPendingCallback& callback){ return callback.instance >= 0; };
+        runtime.pending.erase(std::remove_if(runtime.pending.begin(), runtime.pending.end(), isInstance),
                               runtime.pending.end());
+        const size_t next = std::min(runtime.dispatchNext, runtime.dispatching.size());
+        runtime.dispatching.erase(std::remove_if(runtime.dispatching.begin() + (std::ptrdiff_t)next, runtime.dispatching.end(), isInstance),
+                                  runtime.dispatching.end());
         runtime.watched.clear();
         runtime.watchDirty = true;
         runtime.anyDirty = true;
@@ -107,6 +118,7 @@ void vat::clearInstanceStates(VertexAnimatorComponent& animator){
 
 double vat::vatTrackTau(const VatTrack& track, const VatTrackHold& hold, double now){
     if (hold.held) return hold.tau;
+    if (track.speed == 0.0f) return (double)track.start;
     return (now - (double)track.start) * (double)track.speed;
 }
 

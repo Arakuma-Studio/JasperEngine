@@ -1,6 +1,6 @@
 // Vertex Animation (VAT): a mesh played from a baked animation texture by its Vertex Animator,
 // docs/superpowers/specs/2026-10-27-vertex-animation-design.md sections 2.2, 3.4 and 3.5. The
-// frame math is the C++ one of engine/core/animation/VertexAnimation.h (vatSample,
+// frame math is the C++ one of engine/core/animation/VertexAnimation.h (vatLocalTime, vatSample,
 // vatSampleNormalized, vatWeightB, vatUnpackInstance): a change to one is a change to both
 // (a GPU readback test compares them).
 //
@@ -36,6 +36,8 @@
 // HAS_INSTANCING, else the entity's (vatState0, vatState1); both are vat::vatPackInstance:
 //   v0 = (a.clip, a.start, a.speed, b.clip)
 //   v1 = (b.start, b.speed, fadeStart, blend >= 0 ? -(1 + blend) : fadeEnd)
+// and a track's local time is (now - start) * speed, or `start` itself when its speed is 0 (a
+// held track: paused or stopped, written once).
 //
 // The payload is one RGBA16F/RGBA32F texture read with texelFetch (never filtered), texel t at
 // (t % width, t / width): Vertices t = (frame * vertices + vertex) * texelsPerSample + k (k 0
@@ -142,7 +144,12 @@ VatFrames vatFramesAt(vec4 clip, float x){
     return f;
 }
 
-// vat::vatSample: the clip at local time tau (seconds, (now - start) * speed)
+// vat::vatLocalTime: a track's local time (seconds); speed 0 holds it at `start`
+float vatLocalTime(float start, float speed, float now){
+    return (speed == 0.0) ? start : (now - start) * speed;
+}
+
+// vat::vatSample: the clip at local time tau (seconds, vatLocalTime)
 VatFrames vatSample(vec4 clip, float tau){
     return vatFramesAt(clip, tau * clip.z);
 }
@@ -226,14 +233,14 @@ void vatEvaluateTracks(){
     vatTrackA = vatValidClip(t.clipA) && vatWeight < 1.0;
     vatTrackB = vatWeight > 0.0;
     if (vatValidClip(t.clipA))
-        vatFramesA = vatSample(vatClips[t.clipA], (now - t.startA) * t.speedA);
+        vatFramesA = vatSample(vatClips[t.clipA], vatLocalTime(t.startA, t.speedA, now));
     else
         vatFramesA = VatFrames(0, 0, 0.0, 0.0);
     if (vatTrackB){
         if (t.blend >= 0.0)
             vatFramesB = vatSampleNormalized(vatClips[t.clipB], vatFramesA.normalized);
         else
-            vatFramesB = vatSample(vatClips[t.clipB], (now - t.startB) * t.speedB);
+            vatFramesB = vatSample(vatClips[t.clipB], vatLocalTime(t.startB, t.speedB, now));
     }else{
         vatFramesB = VatFrames(0, 0, 0.0, 0.0);
     }

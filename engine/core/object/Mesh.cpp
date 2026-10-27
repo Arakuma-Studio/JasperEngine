@@ -781,7 +781,12 @@ void Mesh::updateInstance(size_t index, InstanceData instance){
     MeshComponent& mesh = getComponent<MeshComponent>();
     InstancedMeshComponent& instmesh = getComponent<InstancedMeshComponent>();
 
-    instmesh.instances.at(index) = instance;
+    InstanceData& current = instmesh.instances.at(index);
+    // the Vertex Animator's state of the instance is runtime state, not user data: it stays (a
+    // new InstanceData() from a script would draw the instance at rest)
+    instance.vat0 = current.vat0;
+    instance.vat1 = current.vat1;
+    current = instance;
 
     instmesh.needUpdateInstances = true;
 }

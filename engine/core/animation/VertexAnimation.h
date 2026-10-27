@@ -4,7 +4,7 @@
 // Contract (vertex animation spec 2, 3.1, 3.4)
 // - Purpose: the Vertex Animation asset (".vat" JSON + "<name>.vat.glb" mesh and payload) as data,
 //   its one parser and canonical writer, the immutable runtime object the pool hands out, and the
-//   playback math. The GLSL in shaderlib/includes/vat.glsl mirrors vatSample / vatWeightB /
+//   playback math. The GLSL in shaderlib/includes/vat.glsl mirrors vatLocalTime / vatSample / vatWeightB /
 //   vatPackInstance exactly: change both or neither (the parity test compares them).
 // - Thread-safety: everything here is pure (no engine state) except VertexAnimation::getTexture,
 //   which is used from the main thread only.
@@ -219,10 +219,12 @@ namespace jasperengine::vat{
 
     // ---- playback (mirrored by vat.glsl) ----
 
-    // one track: clip index (-1 = rest), when it started and its speed (negative plays backwards)
+    // one track: clip index (-1 = rest), when it started and its speed (negative plays backwards).
+    // Speed 0 holds the track: `start` is then the local time it is held at (vatLocalTime), so a
+    // paused or stopped track is written once and costs nothing per frame
     struct JASPERENGINE_API VatTrack{
         int clip = -1;
-        float start = 0.0f;
+        float start = 0.0f;     // clock time it started at; the held local time when speed == 0
         float speed = 1.0f;
     };
 
@@ -244,7 +246,12 @@ namespace jasperengine::vat{
         bool finished = false;  // Once / ClampForever and past the end (forward) or before 0 (backward)
     };
 
-    // Frame math for one clip at local time tau = (now - start) * speed (seconds):
+    // a track's local time at `now` (seconds, unwrapped): speed == 0 ? start (held there)
+    // : (now - start) * speed. Every caller of vatSample with a track uses it (vat.glsl's
+    // vatLocalTime is the same expression)
+    JASPERENGINE_API float vatLocalTime(const VatTrack& track, float now);
+
+    // Frame math for one clip at local time tau = vatLocalTime(track, now) (seconds):
     //   x = tau * fps (in samples)
     //   Loop:        x = x - frames * floor(x / frames); f0 = floor(x); f1 = f0 + 1 == frames ? 0 : f0 + 1
     //   Once/Clamp:  x = clamp(x, 0, frames - 1); f0 = floor(x); f1 = min(f0 + 1, frames - 1)
@@ -262,6 +269,7 @@ namespace jasperengine::vat{
     //   v0 = (a.clip, a.start, a.speed, b.clip)
     //   v1 = (b.start, b.speed, fadeStart, blend >= 0 ? -(1 + blend) : fadeEnd)
     // so v1.w < 0 means blend mode with weight -v1.w - 1. Clip indices are exact small floats.
+    // A speed of 0 is a held track whose start is its local time (vatLocalTime).
     JASPERENGINE_API void vatPackInstance(const VatTrackPair& pair, Vector4& v0, Vector4& v1);
     JASPERENGINE_API VatTrackPair vatUnpackInstance(const Vector4& v0, const Vector4& v1);
 
