@@ -18,6 +18,10 @@ namespace jasperengine{
         Vector4 color = Vector4(1.0, 1.0, 1.0, 1.0);  //linear color;
         Rect textureRect = Rect(0.0, 0.0, 1.0, 1.0);
         bool visible = true;
+        // Vertex Animator state of this instance (vat::vatPackInstance), written by
+        // VertexAnimatorSystem, not serialized; the default packs "no clip" (rest pose)
+        Vector4 vat0 = Vector4(-1.0, 0.0, 1.0, -1.0);
+        Vector4 vat1 = Vector4(0.0, 1.0, 0.0, 0.0);
     };
 
     struct InstanceRenderData{

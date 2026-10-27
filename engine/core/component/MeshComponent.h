@@ -384,6 +384,9 @@ namespace jasperengine{
 
         std::vector<AABB> bonesAABB; // bind-pose bounds per bone index, empty when not skinned
         AABB skinnedAABB; // local bounds of the posed mesh, null when not skinned
+        // Vertex Animator: local bounds over every frame of the clips in use (null = none); used
+        // instead of verticesAABB for culling, the world AABB and instance spheres (vertex animation spec 3.2)
+        AABB animatedBounds;
 
         // the lights it is drawn with, see MeshLights
         MeshLights lights;
