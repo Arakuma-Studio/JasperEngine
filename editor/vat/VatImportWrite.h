@@ -15,7 +15,7 @@
 //   * place none: WriteFilesCmd on the project history; beside: CreateVatCmd on the selected scene's
 //     history (a new GameObject "<asset> (VAT)" at the origin, selected); crowd: the same with
 //     `crowd` building the crowd commands (VatPlacement::crowd); replace is refused (an import has
-//     no GameObject to replace).
+//     no GameObject to replace), and so is a placement into a 2D scene (before anything is written).
 // - Thread-safety: main thread (writes files, runs commands).
 
 #pragma once

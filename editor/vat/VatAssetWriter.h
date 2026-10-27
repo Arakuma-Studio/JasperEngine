@@ -9,7 +9,10 @@
 // - The glb: one node (identity), one mesh with one primitive per submesh, attributes POSITION,
 //   NORMAL, TANGENT (when given), TEXCOORD_0/1 (when given), COLOR_0 (when given),
 //   JOINTS_0/WEIGHTS_0 (Bones mode), _VAT_INDEX (float); 32-bit indices; materials from
-//   VatMaterialData (PBR metallic-roughness, textures by URI relative to the glb); the
+//   VatMaterialData (PBR metallic-roughness, alphaMode, doubleSided, KHR_materials_unlit for
+//   unlit ones, foliage transmission as the extra MeshSystem reads; textures that are files by
+//   URI relative to the glb, images that came embedded in the source (VatMeshData::images,
+//   "embedded:<n>" texture fields) stored inside the glb as bufferView images); the
 //   JASPER_vertex_animation extension (+ extensionsUsed) with payload and socket buffer views;
 //   no skin, no animations, no morph targets. Bounds of POSITION = the given rest positions.
 
@@ -33,12 +36,26 @@ namespace jasperengine::editor::vat{
         std::string alphaMode = "OPAQUE";   // "OPAQUE" | "MASK" | "BLEND"
         float alphaCutoff = 0.5f;
         bool doubleSided = false;
-        // absolute file paths ("" = none); written as URIs relative to the .vat.glb directory
+        bool unlit = false;                 // KHR_materials_unlit (the source drew it with Lighting None)
+        float foliageTransmission = 0.0f;   // extras.jasperengine_foliage_transmission when over 0
+        // absolute file paths ("" = none), written as URIs relative to the .vat.glb directory; or
+        // VAT_EMBEDDED_TEXTURE + n: VatMeshData::images[n], stored inside the glb
         std::string baseColorTexture;
         std::string normalTexture;
         std::string metallicRoughnessTexture;
         std::string occlusionTexture;
         std::string emissiveTexture;
+    };
+
+    // VatMaterialData texture fields holding this prefix + an index name VatMeshData::images[index]
+    constexpr const char* VAT_EMBEDDED_TEXTURE = "embedded:";
+
+    // an image stored inside the .vat.glb (a bufferView image): one a source model held inside
+    // (a glb's buffer view, a data: URI)
+    struct VatImageData{
+        std::string name;                   // the glTF image name ("Checker")
+        std::string mimeType;               // "image/png" | "image/jpeg" | ...
+        std::string bytes;                  // the encoded file
     };
 
     struct VatSubmesh{
@@ -59,6 +76,7 @@ namespace jasperengine::editor::vat{
         std::vector<float> vatIndex;    // 1 per vertex (always)
         std::vector<VatSubmesh> submeshes;
         std::vector<VatMaterialData> materials;
+        std::vector<VatImageData> images;   // embedded images the materials name ("embedded:<n>")
 
         size_t vertexCount() const { return positions.size() / 3; }
     };

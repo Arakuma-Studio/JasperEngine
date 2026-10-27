@@ -4,7 +4,7 @@
 // Contract (vertex animation spec 4.4)
 // - Purpose: the one scene-history step of a Vertex Animation bake that writes its files AND
 //   places the result in a scene (place beside / replace / crowd). The CreateClipCmd pattern:
-//   it writes the files itself (.vat, .vat.glb, extracted textures), then runs the scene
+//   it writes the files itself (.vat, .vat.glb), then runs the scene
 //   commands it builds on its first execute (the new GameObject's id is only known then; redo
 //   recreates the same id): ModelLoadCmd of a new GameObject "<name> (VAT)" with Model = the
 //   .vat.glb at the source's transform, AddComponentCmd + PropertyCmds of its Vertex Animator
@@ -15,7 +15,9 @@
 // - Invariants:
 //   * execute/redo writes every file (all or nothing: a failure puts back the ones written and
 //     runs no scene command), then the scene commands in order; one failing undoes the ones
-//     before it and the files, and execute returns false (getFailure says why).
+//     before it and the files, and execute returns false (getFailure says why). The command owns
+//     every scene command it runs, a failed one included (deleted once, by it); crowd commands
+//     that never ran are deleted too.
 //   * undo undoes the scene commands in reverse order, then each file is deleted (it did not
 //     exist) or given its previous bytes back, only when its bytes are still the ones written;
 //     a changed file is kept (getKeptFiles, logged) and a redo leaves it as it is too.

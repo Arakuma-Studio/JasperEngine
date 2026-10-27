@@ -6,7 +6,9 @@
 //   shows or edits it (the Inspector's .vat asset view, the Vertex Animator section, the baker
 //   window, MCP). The AnimationClipDocument design:
 //   * every edit goes through commit(): checked (only the editable fields may change: clip name,
-//     wrap, speed, interpolate, events, socket names, removing whole clips), normalized, written
+//     wrap among once / clamp forever / ping-pong (loop <-> another wrap is refused: a loop clip's
+//     rows have no duplicate end frame), speed, interpolate, events, socket names and order,
+//     removing whole clips), normalized, written
 //     as the canonical text (vat::writeVat) through the project command history (WriteFilesCmd:
 //     one undo step; a non-empty merge key merges slider drags) and read back, so data() is what
 //     the file holds. No dirty state.
@@ -72,8 +74,11 @@ namespace jasperengine::editor{
         static std::string fileText(const jasperengine::vat::VatData& data);
         // What a commit of `edited` over `current` changes that only a rebake may change ("" when
         // nothing): "mode", "mesh", "layout", "bounds", "stats", "recipe", "clips[2].frames",
-        // "clips[3] (a new clip)", "sockets (order or count)"...
+        // "clips[3] (a new clip)", "clips[1].wrap (<LOOP_WRAP_REFUSAL>)" (loop <-> another wrap),
+        // "sockets (count)", "sockets[1].path" (a path changed or added; a reorder is allowed)...
         static std::string generatedChange(const jasperengine::vat::VatData& current, const jasperengine::vat::VatData& edited);
+        // why a loop <-> non-loop wrap change is refused (commit's error: "clips[1].wrap: " + this)
+        static const char* const LOOP_WRAP_REFUSAL;
         // Sorts each clip's events by (time, function), clamps nothing else; the problems that
         // refuse a commit (empty or duplicate clip / socket names, a non-finite speed or event
         // time) in `error`. False when refused

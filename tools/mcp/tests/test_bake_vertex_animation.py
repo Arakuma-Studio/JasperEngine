@@ -9,8 +9,9 @@ hero_animated.gltf "Walk"/"Idle"/"Wave") and synthetic Houdini VAT 3 / OpenVAT e
   rows vs VAT rows at 4 times per clip); the source and VAT rows of a rigid bake match;
 - the same arguments + output write exactly that bake (the .vat's layout equals the preview's), one
   undo step (scope project; undo deletes both files, redo writes them back);
-- output true takes the default name; the same source again rewrites it (same GUID); another
-  source with that default name takes a free name ("rigid_arm 2.vat"); an explicit existing output is
+- output true takes the default name; the same source and clips again rewrite it (same GUID);
+  other clips of it, or another source with that default name, take a free name ("rigid_arm 2.vat");
+  an explicit existing output is
   refused without overwrite;
 - rebake keeps hand edits (clip rename, speed, events) and the GUID;
 - a long bake is a job (timeout_seconds) that get_job follows; cancel_job cancels one, nothing written;
@@ -222,16 +223,20 @@ async def test_write_exactly_the_preview_one_undo_step(ed: Editor):
 
 async def test_default_name_rule_and_overwrite(ed: Editor):
     vat = "assets/models/rigid_arm.vat"
-    # the same source again: the default file is rewritten, GUID kept
-    r = await bake(ed, source=ARM, output=True, fps=20)
+    # the same source and clips again: the default file is rewritten, GUID kept
+    r = await bake(ed, source=ARM, clips=["Swing"], output=True, fps=20)
     v = r.structured
     check(v["vat"] == vat and v["rewritten"] is True and v["guid"] == S["guid"], f"same source: rewritten in place: {v}")
-    check({c["name"] for c in read_vat(ed.project, vat)["clips"]} == {"Swing", "Stretch"}, "now with both clips")
+    # other clips of the same model: another asset, the first one untouched
+    r = await bake(ed, source=ARM, output=True, fps=20)
+    check(r.structured["vat"] == "assets/models/rigid_arm 2.vat" and r.structured["rewritten"] is False,
+          f"another clip set takes a free name: {r.structured['vat']}")
+    check([c["name"] for c in read_vat(ed.project, vat)["clips"]] == ["Swing"], "the first bake is untouched")
     # another source whose default name is the same: a free name
     made = await ed.call("edit_animation", clip="assets/models/rigid_arm.anim", create={"from": f"{ARM}#Swing"})
     check(made.get("created"), f"the .anim: {made}")
     r = await bake(ed, source=["assets/models/rigid_arm.anim"], on=ARM, output=True)
-    check(r.structured["vat"] == "assets/models/rigid_arm 2.vat" and r.structured["rewritten"] is False,
+    check(r.structured["vat"] == "assets/models/rigid_arm 3.vat" and r.structured["rewritten"] is False,
           f"another source takes a free name: {r.structured['vat']}")
     # an explicit path that exists: refused without overwrite, replaced with it (one undo puts it back)
     before = (ed.project / vat).read_bytes()
@@ -330,7 +335,7 @@ async def test_asset_tools_on_vat(ed: Editor):
     info = await ed.call("get_asset_info", path=vat)
     check(info["type"] == "vertex_animation", f"type: {info['type']}")
     va = info["vertex_animation"]
-    check({c["name"] for c in va["clips"]} >= {"Sway", "Stretch"} and va["layout"]["width"] > 0, f"clips and layout: {va}")
+    check({c["name"] for c in va["clips"]} == {"Sway"} and va["layout"]["width"] > 0, f"clips and layout: {va}")
     check(va["stale"] is False and va["staleness"] == [], f"fresh: {va['staleness']}")
     check(va["recipe"]["sources"][0]["path"] == ARM, f"recipe: {va['recipe']}")
     placed = await ed.call("get_asset_info", path="assets/vat/arm.vat")

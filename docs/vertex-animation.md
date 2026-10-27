@@ -101,26 +101,34 @@ write). The guide is [docs/mcp/guide/vertex-animation.md](mcp/guide/vertex-anima
    in the Project window and the Console gets a line with what was written and a Lua call to play
    it. Nothing can be baked while a scene plays.
 7. **Output.** The file goes to the **Output** path. By default that is the source's folder and
-   name: `models/hero.gltf` gives `models/hero.vat` and `models/hero.vat.glb`. **Place** says what
-   else happens:
+   name: `assets/models/hero.gltf` gives `assets/models/hero.vat` and `assets/models/hero.vat.glb`.
+   A source outside the assets folder bakes to the same folder under it (`anim/walk.anim` gives
+   `assets/anim/walk.vat`). **Place** says what else happens:
 
    | Place | Result |
    |---|---|
    | **Files only** (default) | the two files, nothing in the scene |
    | **Beside** (what Shift-click on an Inspector **Bake ▾** entry uses) | a new GameObject "*Name* (VAT)" with the source's transform, a Model (`hero.vat.glb`) and a Vertex Animator (`hero.vat`), selected |
    | **Replace** | the same, and the source GameObject is disabled (only for a GameObject source) |
-   | **Crowd...** | the new GameObject becomes a crowd: **Count** instances in a square of side **Area (m)**, with random yaw and random start times, from **Seed**. For clip weights, spacing, a surface or speed ranges, use [Create Crowd](#create-crowd) on the `.vat` instead |
+   | **Crowd...** | the new GameObject becomes a crowd: **Count** instances in a square of side **Area (m)**, with random yaw and random start times, from **Seed**. The crowd GameObject sits at the source's position, unrotated and unscaled, and each instance carries the source's rotation and scale, so the area is in metres even for a 0.01-scale FBX. For clip weights, spacing, a surface or speed ranges, use [Create Crowd](#create-crowd) on the `.vat` instead |
+
+   Placing needs a 3D scene: a 2D scene refuses it (bake with Files only there).
 
    The bake is **one undo step**. Undoing it deletes the files, but only if they are unchanged
    since the bake. With Files only, the step is on the project history; otherwise it is on the
    scene's. The rules for existing files:
-   - A `.vat` at the default path that was baked from the same source is **rebaked**. It keeps its
-     GUID and your edits (clip names, events, speeds, wraps).
+   - A `.vat` at the default path that was baked from the same source and the same clips is
+     **rebaked**. It keeps its GUID and your edits (events, speeds, wraps and interpolation of the
+     clips it finds by name, socket names).
    - Any other existing file at the default path makes the bake take a free name (`hero 2.vat`).
+     Baking another clip of the same model is another asset: Walk then Run give `hero.vat` and
+     `hero 2.vat`.
    - An Output path you typed that exists is refused (a problem row) until you click its
      **Overwrite it** button; undo then puts the old files back.
 
-   Textures embedded in a glTF are written next to the `.vat` as `<stem>_<image>.png`.
+   Textures embedded in the source (a `.glb`'s images, `data:` URIs in a `.gltf`) are stored
+   inside the `.vat.glb`; nothing is written next to the `.vat`. Textures that are files of the
+   project stay where they are and the `.vat.glb` refers to them.
 
 Dragging a `.vat` from the Project window into the Scene view or the Hierarchy creates a
 GameObject that plays it, in one undo step. It gets a Model set to the `.vat.glb` and a Vertex
@@ -574,9 +582,9 @@ copy and delete:
 |---|---|---|
 | `format`, `version` | required | `"jasperengine.vat"`, `1` |
 | `guid` | the baker | the asset's identity, kept by Rebake |
-| `clips[].name`, `wrap`, `speed`, `interpolate`, `events` | **editable** | `wrap`: `loop`, `once`, `ping_pong`, `clamp_forever`. `speed` multiplies the player's speed. `events`: `time`, `function`, `args`, as in an `.anim` |
+| `clips[].name`, `wrap`, `speed`, `interpolate`, `events` | **editable** | `wrap`: `loop`, `once`, `ping_pong`, `clamp_forever`; a `loop` clip stays `loop` and the others change only among themselves (a loop clip is sampled without a duplicate end frame: change it in the baker and rebake). `speed` multiplies the player's speed. `events`: `time`, `function`, `args`, as in an `.anim` |
 | removing a whole clip | **editable** | its frames stay in the texture until the next Rebake (the Inspector says so) |
-| `sockets[].name` and their order | **editable** | names must be unique |
+| `sockets[].name` and their order | **editable** | names must be unique; each `path` stays (a socket finds its track by path) |
 | `mode`, `mesh`, `layout`, `bounds`, `stats` | generated | `mode`: `vertices` or `bones`. `layout.layout_hash` must match the one in the `.vat.glb` |
 | `clips[].start`, `frames`, `fps`, `bounds`, `rest` | generated | where the clip's frames are in the texture. `"rest": "none"` marks absolute positions (imported fluids) |
 | `recipe` | the baker or importer | the sources (`kind`: `model`, `anim`, `entity`, `pose`, `houdini_vat3`, `openvat`) and settings for Rebake |
@@ -590,14 +598,17 @@ pick up the change.
 
 ## Staleness and Rebake
 
-The recipe stores a content hash of every file the bake read. When one of them changes (a model
-re-exported, an `.anim` edited), the `.vat` asset view shows "Source changed since baking", names
-the file, and offers **Rebake**. Rebake runs the recipe again into the same files, as one undo
+The recipe stores a content hash of every file the bake read: the model or prefab, the models of
+a GameObject and its children, the `.anim` and `.poseanim` files, the texture files. The scene file
+itself is not one, so saving the scene doesn't make a GameObject's bake stale. When one of them
+changes (a model re-exported, an `.anim` edited), the `.vat` asset view shows "Source changed
+since baking", names the file, and offers **Rebake**. Rebake runs the recipe again into the same files, as one undo
 step. It keeps:
 
 - the GUID, so every scene keeps working;
 - the clip names, events, speeds, wraps and interpolation, and the socket names. Clips are matched
-  by name first, then in order.
+  by name first, then in order;
+- each clip's rate: the recipe's FPS, or the rate the clip was baked at when it had its own.
 
 Clips you removed stay removed. For imports, Rebake reads the export again.
 
@@ -650,9 +661,13 @@ when the bake, import or write fails (`too_large`, `output_exists`...), and 2 fo
   the library (library shaders are VAT-ready) and assign it to the VAT GameObject's material. A
   project shader forked before this version doesn't include the vertex animation code, so a mesh
   using it **draws at rest**. Fork it again, or switch to the library shader.
-- **`material_simplified`.** The `.vat.glb` keeps PBR colours and textures only. A library shader's
-  features, Stochastic Tiling and second-UV textures are dropped. Set up the material again on the
-  placed GameObject.
+- **`material_simplified`.** The `.vat.glb` keeps what a glTF material holds: the source
+  material's name, PBR colours and textures, alpha mode, double-sided, foliage transmission, and
+  unlit (as `KHR_materials_unlit`, which the engine loads lit: set Lighting to None on the placed
+  object). Everything else is dropped and listed per material: a library shader's features,
+  Stochastic Tiling, blend, front-face culling, depth, stencil and colour-write state, sort
+  priority, an extra pass, Vertex or Mixed lighting, second-UV textures. Set up the material again
+  on the placed GameObject.
 - **"generated field ... changed: rebake".** `layout`, `mode`, `mesh` or a clip's
   `start`/`frames`/`fps` was edited, or the `.vat` and `.vat.glb` come from different bakes.
   Rebake (Inspector, or `bake-vat --rebake`).

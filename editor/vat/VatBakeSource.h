@@ -6,6 +6,13 @@
 //   scene change that outlives a call:
 //   * resolveVatSource: a VatSourceSpec -> VatBakeTarget (the scene and root entity to pose, the
 //     clips as runtime AnimationClips, the files read with their sha1, the default output name).
+//     The files hashed are exactly the ones the bake reads: the model/prefab file, the model file
+//     of every Model at or under the root (GameObject and prefab sources), the .anim files of the
+//     root's Animation Player, .anim / .poseanim sources, and (VatPoser::begin) the texture files
+//     the materials reference; never the scene file (saving the scene changes nothing baked).
+//     The default output folder is the source's folder (the model's for a GameObject with one,
+//     else its scene's, else assets/); a folder outside the assets folder maps to the same
+//     relative folder under it ("models/hero.gltf" -> "assets/models").
 //     Model files, prefabs and .poseanim targets that are files are instantiated in a private
 //     scratch Scene (EntityPool::System, never seen by the Engine, as PoseRigProvider and the
 //     prefab previews do), with an Animation Player on the root so models load in the node
@@ -22,10 +29,14 @@
 //     is baked) and the sockets' root-space matrices. restore() puts the scene back
 //     (restorePlayerPreview, then the matrices again). Renderers: every enabled MeshComponent
 //     with submeshes on an active entity at or under the root (Instanced Mesh copies are not
-//     baked: a warning). Materials: each submesh's engine Material as VatMaterialData (PBR
-//     factors, textures as absolute files; images embedded in a glTF become VatEmbeddedImage
-//     files written next to the .vat; a library or project shader, stochastic tiling or other
-//     non-PBR settings are lost: material_simplified / materials_not_vat_ready).
+//     baked: a warning). Materials: each submesh's engine Material as VatMaterialData (named as
+//     the source glTF material when it came from a model; PBR factors, alphaMode, doubleSided,
+//     unlit, foliage transmission; textures that are files as absolute paths; images a model
+//     holds inside (a glb buffer view, a data: URI) become VatEmbeddedImage, stored inside the
+//     .vat.glb). Every setting a glTF material has no slot for (a library or project shader,
+//     stochastic tiling, blend / cull front / depth / stencil / colour write state, sort priority,
+//     an extra pass, vertex or mixed lighting, a second UV set) is reported: material_simplified
+//     (one note per material listing them) / materials_not_vat_ready.
 // - Thread-safety: main thread (reads and poses scenes). The VatBakeRenderer/VatSampleState values
 //   it produces are plain data for computeVatBake on any thread.
 
@@ -69,14 +80,9 @@ namespace jasperengine::editor::vat{
         std::vector<std::string> unbound;       // their paths that resolve to nothing under the root
     };
 
-    // an image a glTF holds inside (buffer view or data URI): written next to the .vat
-    struct VatEmbeddedImage{
-        std::string name;                       // file name suffix ("Body_baseColor")
-        std::string extension;                  // ".png" | ".jpg" | ...
-        std::string bytes;
-    };
-    // VatMaterialData texture fields holding this prefix + an index name an embedded image
-    constexpr const char* VAT_EMBEDDED_TEXTURE = "embedded:";
+    // an image a source model holds inside (a glb buffer view, a data: URI): stored inside the
+    // .vat.glb (VatMeshData::images; material fields VAT_EMBEDDED_TEXTURE + its index)
+    using VatEmbeddedImage = VatImageData;
 
     class VatBakeTarget{
     public:

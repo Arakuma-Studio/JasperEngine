@@ -378,7 +378,8 @@ namespace{
     bool sameMaterial(const VatMaterialData& a, const VatMaterialData& b){
         return a.name == b.name && std::equal(a.baseColor, a.baseColor + 4, b.baseColor) && a.metallic == b.metallic &&
                a.roughness == b.roughness && std::equal(a.emissive, a.emissive + 3, b.emissive) && a.alphaMode == b.alphaMode &&
-               a.alphaCutoff == b.alphaCutoff && a.doubleSided == b.doubleSided && a.baseColorTexture == b.baseColorTexture &&
+               a.alphaCutoff == b.alphaCutoff && a.doubleSided == b.doubleSided && a.unlit == b.unlit &&
+               a.foliageTransmission == b.foliageTransmission && a.baseColorTexture == b.baseColorTexture &&
                a.normalTexture == b.normalTexture && a.metallicRoughnessTexture == b.metallicRoughnessTexture &&
                a.occlusionTexture == b.occlusionTexture && a.emissiveTexture == b.emissiveTexture;
     }
