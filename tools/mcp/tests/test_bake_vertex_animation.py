@@ -576,3 +576,38 @@ async def test_import_houdini_soft(ed: Editor):
     data = read_vat(ed.project, "assets/vat/wave.vat")
     check(data["recipe"]["sources"][0]["kind"] == "houdini_vat3" and data["recipe"]["import"]["axis"] == "unity",
           f"the recipe keeps the import options: {data['recipe']}")
+
+
+STEPPER = """local Stepper = { properties = {} }
+function Stepper:onStep(side)
+    print("vat step " .. tostring(side))
+end
+return Stepper
+"""
+
+
+async def test_events_reach_a_lua_script(ed: Editor):
+    sid = await scene(ed)
+    anim = "assets/models/rigid_arm.anim"
+    await ed.call("edit_animation", clip=anim, events=[{"time": 0.25, "function": "onStep", "args": ["left"]}])
+    r = await bake(ed, source=[anim], on="Arm", scene=sid, output="assets/vat/arm_events.vat", place="beside")
+    data = read_vat(ed.project, "assets/vat/arm_events.vat")
+    check(data["clips"][0]["events"] == [{"time": 0.25, "function": "onStep", "args": ["left"]}], f"the clip's events are baked: {data['clips']}")
+    entity = r.structured["entity"]["id"]
+    script = await ed.call("create_script", kind="lua", name="Stepper", content=STEPPER)
+    await ed.call("attach_script", scene=sid, entity=entity, path=script["path"])
+    await ed.call("save_scene", scene=sid)
+    await ed.call("clear_console")
+    started = await ed.call("play", action="start")
+    check(started["state"] == "playing", f"play: {started}")
+    found = []
+    for _ in range(60):
+        await asyncio.sleep(0.25)
+        logs = await ed.call("read_console", contains="vat step")
+        found = [m for m in json.dumps(logs).split("vat step")[1:]]
+        if found:
+            break
+    moving = (await ed.call("eval_lua", code=f"local a = object({entity}, 'Model'):getVertexAnimator(); return a:isLoaded(), a:isPlaying(), a.currentClip"))["values"]
+    await ed.call("play", action="stop")
+    check(moving[0] is True and moving[1] is True, f"the Vertex Animator plays: {moving}")
+    check(found and found[0].startswith(" left"), f"the onStep event reached the script with its argument: {found[:3]}")
