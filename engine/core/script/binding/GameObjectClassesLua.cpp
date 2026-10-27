@@ -824,7 +824,6 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getNormalTexture",
             luabridge::overload<>(&Mesh::getNormalTexture),
             luabridge::overload<unsigned int>(&Mesh::getNormalTexture))
-        // submesh 0's normal map path ("" for none)
         .addProperty("normalTexture", (std::string(Mesh::*)()const)&Mesh::getNormalTexture,
                      (void(Mesh::*)(const std::string&))&Mesh::setNormalTexture)
         .addProperty("color", &Mesh::getColor, (void(Mesh::*)(Vector4))&Mesh::setColor)

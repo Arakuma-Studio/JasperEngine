@@ -868,15 +868,14 @@ void ShaderManifest::checkComplete(const std::string& file, bool library){
         report(environmentLine, "@require environment needs @shader mesh");
     // the material's normal map is bound to mesh draws, by the name the 2D light path reads
     if (possibleRequire & ShaderRequire_NormalMap){
+        // the first feature= line asking for it (1 when every variant does)
         int normalMapLine = 1;
         for (const ShaderManifestRequireRule& rule : requireRules){
-            if (rule.require & ShaderRequire_NormalMap){
+            if (!(require & ShaderRequire_NormalMap) && (rule.require & ShaderRequire_NormalMap)){
                 normalMapLine = rule.line;
                 break;
             }
         }
-        if (require & ShaderRequire_NormalMap)
-            normalMapLine = 1;
         if (hasType && type != ShaderType::MESH)
             report(normalMapLine, "@require normalmap needs @shader mesh");
         for (const ShaderManifestTexture& texture : textures){
