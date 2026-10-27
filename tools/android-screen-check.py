@@ -81,8 +81,10 @@ def main(argv: list[str]) -> int:
     if not args.golden:
         return 1 if failed else 0
 
-    scaled_height = max(1, round(height * args.width / width))
-    scaled = pngdiff.downscale(screen, args.width, scaled_height)
+    # (a screen narrower than --width is compared as it is)
+    scaled_width = min(args.width, width)
+    scaled_height = max(1, round(height * scaled_width / width))
+    scaled = pngdiff.downscale(screen, scaled_width, scaled_height) if scaled_width < width else screen
     stem = screen_path.with_suffix("")
     scaled_path = stem.with_name(stem.name + ".scaled.png")
     scaled_path.write_bytes(pngdiff.encode(scaled))
@@ -94,7 +96,7 @@ def main(argv: list[str]) -> int:
             return 1
         golden_path.parent.mkdir(parents=True, exist_ok=True)
         golden_path.write_bytes(pngdiff.encode(scaled))
-        print(f"GOLDEN   updated {golden_path} ({args.width}x{scaled_height})")
+        print(f"GOLDEN   updated {golden_path} ({scaled_width}x{scaled_height})")
         return 0
 
     if not golden_path.is_file():
