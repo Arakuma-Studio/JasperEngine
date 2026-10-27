@@ -49,6 +49,16 @@ namespace jasperengine{
         // was): what a load that failed for want of one waits for before it is tried again
         static bool hasResourcePoolRoom();
 
+        // the frame's uniform blocks against Engine::GpuResourceLimits::uniformBytes (counted on
+        // every backend, each block rounded up to 256 bytes): the last committed frame's bytes,
+        // the most a frame needed, the limit, whether this backend skips the draws past it
+        // (Vulkan, Metal, WebGPU) and how many it skipped since setup
+        static uint64_t getUniformBytesLastFrame();
+        static uint64_t getUniformBytesPeak();
+        static uint64_t getUniformBytesLimit();
+        static bool hasUniformBufferLimit();
+        static uint64_t getUniformSkippedDraws();
+
         static void commitQueue();
         static void executeQueue();
         static void commit();

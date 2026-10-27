@@ -4,6 +4,7 @@
 #include "render/RenderBackendTime.h"
 #include "SokolSystem.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
@@ -44,6 +45,24 @@ namespace {
     std::atomic<uint64_t> poolExhaustions[GPU_RESOURCE_KINDS];
     std::atomic<bool> poolExhaustionLogged[GPU_RESOURCE_KINDS];
     std::atomic<uint32_t> poolsFull{0};
+
+    // the frame's uniform blocks (reserveUniformBytes; draws happen on the main thread)
+    uint64_t uniformLimit = 0;
+    uint64_t uniformFrameBytes = 0;   // applied this frame
+    uint64_t uniformFrameNeeded = 0;  // asked for this frame, refused ones too
+    uint64_t uniformLastFrame = 0;
+    uint64_t uniformPeak = 0;
+    uint64_t uniformFrameSkipped = 0;
+    uint64_t uniformSkippedDraws = 0;
+    bool uniformOverflowLogged = false;
+
+    // the backends whose uniform blocks go in sg_desc.uniform_buffer_size per frame (GL sets
+    // them with glUniform, D3D11 updates a constant buffer per block)
+#if defined(SOKOL_VULKAN) || defined(SOKOL_METAL) || defined(SOKOL_WGPU)
+    constexpr bool uniformBufferLimited = true;
+#else
+    constexpr bool uniformBufferLimited = false;
+#endif
 
     int poolOfLogItem(uint32_t item){
         switch (item){
@@ -122,6 +141,7 @@ void SokolSystem::setup(){
     desc.view_pool_size = limits.views; // texture, storage-buffer and attachment views
     desc.pipeline_pool_size = limits.pipelines;
     desc.shader_pool_size = limits.shaders; // one per ShaderType+properties variant
+    desc.uniform_buffer_size = limits.uniformBytes; // per frame (Vulkan, Metal, WebGPU): reserveUniformBytes
     desc.environment = System::instance().getSokolEnvironment();
     desc.logger.func = sokol_log;
 
@@ -132,6 +152,14 @@ void SokolSystem::setup(){
         poolExhaustionLogged[kind] = false;
     }
     poolsFull = 0;
+    uniformLimit = (uint64_t)limits.uniformBytes;
+    uniformFrameBytes = 0;
+    uniformFrameNeeded = 0;
+    uniformLastFrame = 0;
+    uniformPeak = 0;
+    uniformFrameSkipped = 0;
+    uniformSkippedDraws = 0;
+    uniformOverflowLogged = false;
 
     sg_setup(&desc);
 
@@ -374,6 +402,61 @@ void SokolSystem::commit(){
         lastFramePasses.swap(framePasses);
         framePasses.clear();
     }
+
+    // the frame's uniform blocks: the first frame needing more than the buffer is logged
+    if (uniformFrameNeeded > uniformLimit && !uniformOverflowLogged){
+        uniformOverflowLogged = true;
+        if (uniformBufferLimited){
+            Log::error("GPU uniform buffer full: a frame needed %llu bytes of uniform blocks, the per-frame buffer holds %llu; "
+                       "%llu draws past it were skipped (this frame; later ones are counted, not logged). Raise "
+                       "Engine::GpuResourceLimits::uniformBytes (Engine::setGpuResourceLimits before the engine starts)\n",
+                       (unsigned long long)uniformFrameNeeded, (unsigned long long)uniformLimit, (unsigned long long)uniformFrameSkipped);
+        }else{
+            Log::warn("A frame needed %llu bytes of uniform blocks, more than Engine::GpuResourceLimits::uniformBytes (%llu): "
+                      "drawn here (this backend has no per-frame uniform buffer), dropped on Vulkan, Metal and WebGPU\n",
+                      (unsigned long long)uniformFrameNeeded, (unsigned long long)uniformLimit);
+        }
+    }
+    uniformLastFrame = uniformFrameNeeded;
+    uniformPeak = std::max(uniformPeak, uniformFrameNeeded);
+    uniformFrameBytes = 0;
+    uniformFrameNeeded = 0;
+    uniformFrameSkipped = 0;
+}
+
+bool SokolSystem::reserveUniformBytes(unsigned int size){
+    // sokol rounds every block up to the worst-case alignment (256 bytes) of these backends
+    const uint64_t rounded = ((uint64_t)size + 255u) & ~(uint64_t)255u;
+    uniformFrameNeeded += rounded;
+    if (uniformBufferLimited && uniformFrameBytes + rounded > uniformLimit)
+        return false;
+    uniformFrameBytes += rounded;
+    return true;
+}
+
+void SokolSystem::countSkippedDraw(){
+    uniformFrameSkipped++;
+    uniformSkippedDraws++;
+}
+
+uint64_t SokolSystem::getUniformBytesLastFrame(){
+    return uniformLastFrame;
+}
+
+uint64_t SokolSystem::getUniformBytesPeak(){
+    return uniformPeak;
+}
+
+uint64_t SokolSystem::getUniformBytesLimit(){
+    return uniformLimit;
+}
+
+bool SokolSystem::hasUniformBufferLimit(){
+    return uniformBufferLimited;
+}
+
+uint64_t SokolSystem::getUniformSkippedDraws(){
+    return uniformSkippedDraws;
 }
 
 void SokolSystem::shutdown(){

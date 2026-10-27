@@ -26,6 +26,22 @@ namespace jasperengine{
         static const char* getResourceKindName(int kind);
         static uint64_t getResourcePoolExhaustions(int kind);
         static bool hasResourcePoolRoom();
+
+        // The uniform blocks of a frame (sg_apply_uniforms) go in a per-frame buffer of
+        // Engine::GpuResourceLimits::uniformBytes on Vulkan, Metal and WebGPU (each block rounded
+        // up to 256 bytes); past it sokol drops the draw (Vulkan) or overruns it (Metal). Every
+        // block is counted here on every backend: one that does not fit is refused (false) where
+        // the buffer exists, and its draw skipped (countSkippedDraw); the first frame that needed
+        // more is logged as an error with its size and the limit.
+        static bool reserveUniformBytes(unsigned int size);
+        static void countSkippedDraw();
+        // bytes of the last committed frame (rounded per block), the most any frame needed, the
+        // limit, whether the backend has the buffer, draws skipped since setup
+        static uint64_t getUniformBytesLastFrame();
+        static uint64_t getUniformBytesPeak();
+        static uint64_t getUniformBytesLimit();
+        static bool hasUniformBufferLimit();
+        static uint64_t getUniformSkippedDraws();
         static void commitQueue();
         static void executeQueue();
         static void commit();

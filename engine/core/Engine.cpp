@@ -768,6 +768,21 @@ size_t Engine::getQueuedResourceCount() {
     #endif
 }
 
+int Engine::defaultUniformBytes(){
+#if defined(JASPERENGINE_ANDROID) || defined(JASPERENGINE_WEB) || defined(__EMSCRIPTEN__)
+    return 16 * 1024 * 1024;
+#elif defined(__APPLE__)
+    #include <TargetConditionals.h>
+    #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+    return 16 * 1024 * 1024;
+    #else
+    return 64 * 1024 * 1024;
+    #endif
+#else
+    return 64 * 1024 * 1024;
+#endif
+}
+
 namespace{
     Engine::GpuResourceLimits& gpuResourceLimits(){
         static Engine::GpuResourceLimits limits;
@@ -786,6 +801,7 @@ void Engine::setGpuResourceLimits(const GpuResourceLimits& limits){
     set.views = valid(limits.views, defaults.views);
     set.pipelines = valid(limits.pipelines, defaults.pipelines);
     set.shaders = valid(limits.shaders, defaults.shaders);
+    set.uniformBytes = (limits.uniformBytes >= 65536 && limits.uniformBytes <= (1 << 30)) ? limits.uniformBytes : defaults.uniformBytes;
 }
 
 const Engine::GpuResourceLimits& Engine::getGpuResourceLimits(){
