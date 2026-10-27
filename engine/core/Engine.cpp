@@ -1378,6 +1378,13 @@ namespace{
     // the frames signalReadyOnce counted (frame stats: Engine::drawView names its view's line by it)
     uint64_t frameStatsFrames = 0;
 
+    // the ready line was logged; the frames presented since (Engine::systemFramePresented)
+    bool readySignalled = false;
+    uint64_t presentedSinceReady = 0;
+    // presented frames after the ready line before "Engine presented:" is logged: the screen
+    // then shows the loaded scenes, whatever the swap chain's depth
+    constexpr uint64_t PRESENTED_FRAMES_SIGNAL = 30;
+
     bool frameStatsEveryFrame(){
         static const bool all = [](){
             const char* value = std::getenv("JASPERENGINE_FRAME_STATS");
@@ -1441,6 +1448,7 @@ void Engine::signalReadyOnce(){
     readyFrames = areScenesLoaded() ? readyFrames + 1 : 0;
     if (readyFrames >= 10){
         signalled = true;
+        readySignalled = true;
         signalledFrame = frames;
         Log::print("Engine ready: every scene loaded and no shader build pending (frame %llu)", (unsigned long long)frames);
         for (Scene* scene : scenes){
@@ -1451,6 +1459,13 @@ void Engine::signalReadyOnce(){
 
 void Engine::systemDraw(){
     runFrame(true);
+}
+
+void Engine::systemFramePresented(){
+    if (!readySignalled || presentedSinceReady >= PRESENTED_FRAMES_SIGNAL)
+        return;
+    if (++presentedSinceReady == PRESENTED_FRAMES_SIGNAL)
+        Log::print("Engine presented: %llu frames since ready", (unsigned long long)presentedSinceReady);
 }
 
 void Engine::systemUpdate(){
