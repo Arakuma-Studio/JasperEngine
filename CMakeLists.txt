@@ -514,8 +514,9 @@ endif()
 add_subdirectory(libs/nfd)
 add_subdirectory(libs/yaml-cpp)
 add_subdirectory(libs/ufbx)
+add_subdirectory(libs/tinyexr)
 
-foreach(lib IN ITEMS nfd yaml-cpp ufbx)
+foreach(lib IN ITEMS nfd yaml-cpp ufbx tinyexr)
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
     # Reaches the headers they export to the editor, which ImGui gets below
     get_target_property(lib_includes ${lib} INTERFACE_INCLUDE_DIRECTORIES)
@@ -658,6 +659,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/HtmlUIWatcher.cpp
     ${EDITOR_DIR}/util/HtmlUITemplates.cpp
     ${EDITOR_DIR}/util/PngWriter.cpp
+    ${EDITOR_DIR}/util/FloatImage.cpp
     ${EDITOR_DIR}/util/FbxImporter.cpp
     ${EDITOR_DIR}/util/GlbBuilder.cpp
     ${JASPERENGINE_TEXSYNTH_SOURCES}
@@ -878,6 +880,7 @@ function(configure_jasperengine_editor_target target_name)
         nfd
         yaml-cpp
         ufbx
+        tinyexr
     )
 
     if(WIN32)
