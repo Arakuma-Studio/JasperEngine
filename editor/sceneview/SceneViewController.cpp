@@ -455,9 +455,11 @@ void SceneViewController::processPendingClick(SceneProject& sceneProject, Runtim
         sceneProject.needUpdateRender = true;
         return;
     }
-    if (!rt.pending.announced && now() - rt.pending.started >= PENDING_STATUS_SECONDS){
+    // said once the click waited PENDING_STATUS_SECONDS, then kept on the bar while it waits
+    // (a 1M-triangle build can take longer than a transient message lasts)
+    if (rt.pending.announced || now() - rt.pending.started >= PENDING_STATUS_SECONDS){
         rt.pending.announced = true;
-        notifyStatus("Preparing picking for " + rt.pending.meshName + "\xE2\x80\xA6");
+        notifyStatus("Preparing picking for " + rt.pending.meshName + "\xE2\x80\xA6", 1.0);
     }
 }
 
@@ -1641,6 +1643,6 @@ SceneSurfaceHit SceneViewController::surfaceAt(SceneProject& sceneProject, float
     return result;
 }
 
-void SceneViewController::notifyStatus(const std::string& text){
-    StatusBar::setTransientMessage(text, 3.0);
+void SceneViewController::notifyStatus(const std::string& text, double seconds){
+    StatusBar::setTransientMessage(text, seconds);
 }

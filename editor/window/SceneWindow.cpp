@@ -500,7 +500,7 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                             const SceneSurfaceHit surface = getDropSurface(sceneProject, x, y, {});
                             if (surface.pending) {
                                 // never onto a surface it cannot see yet (R16)
-                                viewController->notifyStatus("Preparing surface\xE2\x80\xA6");
+                                viewController->notifyStatus("Preparing surface\xE2\x80\xA6", 6.0);
                             } else {
                                 ModelLoadCmd* loadCmd = new ModelLoadCmd(project, sceneProject->id, modelEntityName, surface.point, droppedAssetPath);
                                 loadCmd->setDropSurface(surface.normal, AppSettings::getSceneViewSettings().alignToSurface || ImGui::GetIO().KeyAlt);
@@ -899,7 +899,7 @@ void editor::SceneWindow::updatePrefabDrag(SceneProject* sceneProject, const std
     if (onSurface && surface.pending) {
         // never onto a surface it cannot see yet (R16): the preview showed it, the drop waits
         cancelPrefabDrag();
-        viewController->notifyStatus("Preparing surface\xE2\x80\xA6");
+        viewController->notifyStatus("Preparing surface\xE2\x80\xA6", 6.0);
         return;
     }
 

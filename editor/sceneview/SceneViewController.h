@@ -221,7 +221,8 @@ namespace jasperengine::editor {
         // the Scene Camera rows (the camera popup; the Gizmos popup links here)
         void drawCameraSettings(SceneProject& sceneProject);
         void openCameraSettings(uint32_t sceneId);
-        void notifyStatus(const std::string& text);
+        // the status bar's short message on the left, for `seconds`
+        void notifyStatus(const std::string& text, double seconds = 3.0);
 
         // ---- resource jasper://scene-view (MCP)
         SceneLayerFilter getLayerFilter(const SceneProject& sceneProject) const { return sceneProject.viewState.layerFilter; }

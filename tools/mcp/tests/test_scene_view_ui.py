@@ -351,7 +351,7 @@ async def scene_view_state(ed: Editor, sid: int) -> dict:
     return json.loads(result.contents[0].text)
 
 
-async def status_message(ed: Editor, text: str, seconds: float = 2.0) -> str:
+async def status_message(ed: Editor, text: str, seconds: float = 6.0) -> str:
     """The status bar's message once it says `text` (it is set a frame or two after the cause)"""
     message = ""
     for _ in range(int(seconds / 0.1)):
