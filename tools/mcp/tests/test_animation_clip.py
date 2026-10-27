@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import math
 import re
 import shutil
@@ -624,7 +625,11 @@ async def test_write_file_validation(ed: Editor):
     await ed.call("sync_files")
     ed.check(len(file_json(ed, rel).get("guid", "")) == 32, "a GUID was inserted")
     # an outside edit: auto-sync reports the problem with its line
-    (ed.project / rel).write_text('{"format": "jasperengine.anim",\n "version": 1,\n "tracks": [}\n')
+    outside = ed.project / rel
+    outside.write_text('{"format": "jasperengine.anim",\n "version": 1,\n "tracks": [}\n')
+    # outside the last writing call's timestamp window (S05: what a call writes is its own)
+    stamp = outside.stat()
+    os.utime(outside, ns=(stamp.st_atime_ns, stamp.st_mtime_ns + 2_000_000_000))
     r = await ed.call_raw("get_animation", {"clip": BOB})
     problems = harness.find_key(r.structured, "problems") or []
     ed.check(any(p.get("path") == rel and p.get("line") == 3 for p in problems), f"external_changes problems: {problems}")
