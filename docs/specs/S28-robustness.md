@@ -687,3 +687,8 @@ commits are records only), all through `je-remote/rb.sh`:
   in the signal path. Synthetic tests cover PC match, missing/zero PC, dispatch prefix,
   short/empty traces and ARM Thumb address normalization. Apple execution awaits its SDK
   host; the portable trim tests execute on Linux.
+- Server D red control at `7e62b9d4f`: the synthetic
+  `CrashFrames.MissingPcKeepsCallersAfterKnownHandlerFrames` test fails for both absent
+  and zero interrupted PCs (returns 4 rather than the required caller start 2). The
+  `recursive_chain` subprocess also fails because its saved-handler sentinel is absent.
+  The fixed-source gate uses `1933cfa6b`; no temporary red-source edits are left in git.
