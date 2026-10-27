@@ -26,9 +26,29 @@ namespace jasperengine{
         int maxTextureSize2D = 0;
     };
 
+    // the kinds of GPU objects, each in a pool of its own (Engine::GpuResourceLimits)
+    enum class GpuResourceKind { BUFFER, IMAGE, SAMPLER, VIEW, PIPELINE, SHADER };
+    constexpr int GPU_RESOURCE_KINDS = 6;
+
     class JASPERENGINE_API SystemRender{
     public:
+        // with the pool sizes of Engine::getGpuResourceLimits
         static void setup();
+        // a new id each setup: a GPU handle made before means nothing after it
+        static uint64_t getContextId();
+
+        // GPU objects of a kind alive now, and the most there can be
+        static int getResourcesInUse(GpuResourceKind kind);
+        static int getResourceLimit(GpuResourceKind kind);
+        static const char* getResourceKindName(GpuResourceKind kind);
+        // objects not made because their pool was full, since setup (the first of each kind
+        // is logged as an error, naming the pool and its limit)
+        static uint64_t getResourcePoolExhaustions();
+        static uint64_t getResourcePoolExhaustions(GpuResourceKind kind);
+        // every pool that was full since the last call has a free slot again (true when none
+        // was): what a load that failed for want of one waits for before it is tried again
+        static bool hasResourcePoolRoom();
+
         static void commitQueue();
         static void executeQueue();
         static void commit();

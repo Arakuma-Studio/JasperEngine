@@ -1032,6 +1032,7 @@ set(JASPERENGINE_SRCS
     core/pool/TexturePool.cpp
     core/pool/ModelPool.cpp
     core/pool/MeshLodPool.cpp
+    core/pool/MeshBufferPool.cpp
     core/pool/AnimationClipPool.cpp
     core/pool/VertexAnimationPool.cpp
     core/registry/EntityCloner.cpp

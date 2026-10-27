@@ -107,9 +107,17 @@ void SokolBuffer::destroyBuffer(){
     view.id = SG_INVALID_ID;
 }
 
-bool SokolBuffer::isCreated(){
+bool SokolBuffer::isCreated() const{
     if (buffer.id != SG_INVALID_ID && sg_isvalid()) {
         return sg_query_buffer_state(buffer) == SG_RESOURCESTATE_VALID;
+    }
+
+    return false;
+}
+
+bool SokolBuffer::isPending() const{
+    if (buffer.id != SG_INVALID_ID && sg_isvalid()) {
+        return sg_query_buffer_state(buffer) == SG_RESOURCESTATE_ALLOC;
     }
 
     return false;
@@ -119,10 +127,10 @@ BufferUsage SokolBuffer::getCreatedUsage() const{
     return createdUsage;
 }
 
-sg_buffer SokolBuffer::get(){
+sg_buffer SokolBuffer::get() const{
     return buffer;
 }
 
-sg_view SokolBuffer::getView(){
+sg_view SokolBuffer::getView() const{
     return view;
 }

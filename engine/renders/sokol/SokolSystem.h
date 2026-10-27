@@ -18,6 +18,14 @@ namespace jasperengine{
 
     public:
         static void setup();
+
+        // the resource pools, by SystemRender's GpuResourceKind (buffer, image, sampler, view,
+        // pipeline, shader): objects alive, pool size, name; full-pool events since setup
+        static int getResourcesInUse(int kind);
+        static int getResourceLimit(int kind);
+        static const char* getResourceKindName(int kind);
+        static uint64_t getResourcePoolExhaustions(int kind);
+        static bool hasResourcePoolRoom();
         static void commitQueue();
         static void executeQueue();
         static void commit();

@@ -19,6 +19,9 @@ Buffer::Buffer(){
 
     renderAttributes = true;
     instanceBuffer = false;
+
+    shareId = 0;
+    shareSource = false;
 }
 
 Buffer::~Buffer(){
@@ -29,6 +32,7 @@ Buffer::Buffer(const Buffer& rhs) = default;
 Buffer& Buffer::operator=(const Buffer& rhs) = default;
 
 bool Buffer::increase(size_t newSize){
+    clearShareSource();
     if (newSize >= size) {
         size = newSize;
 
@@ -39,6 +43,7 @@ bool Buffer::increase(size_t newSize){
 }
 
 void Buffer::clearAll(){
+    clearShareSource();
     stride = 0;
     attributes.clear();
     data = nullptr; // Reset data pointer
@@ -47,6 +52,7 @@ void Buffer::clearAll(){
 }
 
 void Buffer::clear(){
+    clearShareSource();
     size = 0;
     for (auto &x : attributes) {
         x.second.setCount(0);
@@ -60,6 +66,7 @@ void Buffer::importData(void* data, size_t size){
 }
 
 void Buffer::importData(const void* data, size_t size){
+    clearShareSource();
     increase(size);
     memcpy(this->data, data, size);
 }
@@ -178,6 +185,7 @@ void Buffer::setVector4(unsigned int index, Attribute* attribute, Vector4 vector
 }
 
 void Buffer::setValues(unsigned int index, Attribute* attribute, unsigned int numValues, char* vector, size_t typesize){
+    clearShareSource();
     if (attribute){
         unsigned int newCount = index + (numValues / attribute->elements);
         if (newCount > attribute->count)
@@ -381,4 +389,30 @@ bool Buffer::isInstanceBuffer() const{
 
 void Buffer::setInstanceBuffer(bool instanceBuffer){
     Buffer::instanceBuffer = instanceBuffer;
+}
+
+void Buffer::setShareSource(const std::shared_ptr<const void>& owner, uint64_t id){
+    shareOwner = owner;
+    shareId = id;
+    shareSource = (owner != nullptr);
+}
+
+void Buffer::clearShareSource(){
+    if (shareSource){
+        shareOwner.reset();
+        shareId = 0;
+        shareSource = false;
+    }
+}
+
+bool Buffer::hasShareSource() const{
+    return shareSource && !shareOwner.expired();
+}
+
+const std::weak_ptr<const void>& Buffer::getShareOwner() const{
+    return shareOwner;
+}
+
+uint64_t Buffer::getShareId() const{
+    return shareId;
 }

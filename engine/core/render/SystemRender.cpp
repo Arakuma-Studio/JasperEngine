@@ -11,8 +11,44 @@
 
 using namespace jasperengine;
 
+namespace {
+    uint64_t contextId = 0;
+}
+
 void SystemRender::setup(){
+    contextId++;
     SokolSystem::setup();
+}
+
+uint64_t SystemRender::getContextId(){
+    return contextId;
+}
+
+int SystemRender::getResourcesInUse(GpuResourceKind kind){
+    return SokolSystem::getResourcesInUse((int)kind);
+}
+
+int SystemRender::getResourceLimit(GpuResourceKind kind){
+    return SokolSystem::getResourceLimit((int)kind);
+}
+
+const char* SystemRender::getResourceKindName(GpuResourceKind kind){
+    return SokolSystem::getResourceKindName((int)kind);
+}
+
+uint64_t SystemRender::getResourcePoolExhaustions(){
+    uint64_t total = 0;
+    for (int kind = 0; kind < GPU_RESOURCE_KINDS; kind++)
+        total += SokolSystem::getResourcePoolExhaustions(kind);
+    return total;
+}
+
+uint64_t SystemRender::getResourcePoolExhaustions(GpuResourceKind kind){
+    return SokolSystem::getResourcePoolExhaustions((int)kind);
+}
+
+bool SystemRender::hasResourcePoolRoom(){
+    return SokolSystem::hasResourcePoolRoom();
 }
 
 void SystemRender::commitQueue(){

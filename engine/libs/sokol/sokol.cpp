@@ -63,3 +63,18 @@ extern "C" int jasperengine_sg_max_msaa_samples(int requested){
     // Metal: every Apple GPU renders 2 and 4 samples
     return supported;
 }
+
+// Slots in use and free of a resource pool (by SystemRender's GpuResourceKind: buffer, image,
+// sampler, view, pipeline, shader), for SokolSystem's pool limits and their tests. A pool of
+// size N has N + 1 slots, slot 0 never used.
+extern "C" void jasperengine_sg_pool_usage(int kind, int* used, int* free){
+    const _sg_pool_t* pools[6] = {&_sg.pools.buffer_pool, &_sg.pools.image_pool, &_sg.pools.sampler_pool,
+                                  &_sg.pools.view_pool, &_sg.pools.pipeline_pool, &_sg.pools.shader_pool};
+    *used = 0;
+    *free = 0;
+    if (kind < 0 || kind >= 6 || !_sg.valid)
+        return;
+    const _sg_pool_t* pool = pools[kind];
+    *free = pool->queue_top;
+    *used = (pool->size - 1) - pool->queue_top;
+}

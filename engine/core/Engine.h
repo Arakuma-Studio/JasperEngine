@@ -229,6 +229,26 @@ namespace jasperengine {
             uint64_t triangles = 0;
         };
 
+        // How many GPU objects of each kind can be alive at once (sokol's resource pools, each
+        // allocated up front at its size; sokol's own limit is 65,535). An object made past a
+        // limit fails: SokolSystem logs which pool is full once, and a mesh that cannot get one
+        // is counted as failed (not drawn, not loading). Per skinned mesh: one image, view and
+        // texture view on OpenGL (bones texture), one storage buffer and view elsewhere; vertex
+        // and index buffers of a model file are shared (MeshBufferPool). The defaults hold
+        // ~10,000 skinned meshes besides the editor's own objects. Pool slots cost (measured,
+        // sizeof sokol's slot structs + 8 bytes) 88 / 96 / 400 / 424 bytes per buffer / image /
+        // sampler / view on Vulkan, 68 / 84 / 72 / 104 on OpenGL, 1-5 KB per pipeline and
+        // shader: these defaults take ~23 MB on Vulkan and ~21 MB on OpenGL, 10.7 MB and 3.9 MB
+        // more than the earlier 8,192 buffers, 2,048 images and 4,096 views.
+        struct GpuResourceLimits{
+            int buffers = 16384;   // vertex, index, storage (bones on Vulkan, Metal, D3D11), instances
+            int images = 16384;    // textures and render targets (bones textures on OpenGL)
+            int samplers = 2048;   // one per texture; the data textures (bones, lattice) share one
+            int views = 24576;     // one per texture and storage buffer, and per render target attachment
+            int pipelines = 8192;  // shared by meshes with the same shader variant and state
+            int shaders = 1024;    // one per shader variant
+        };
+
     private:
         //-----JasperEngine config-----
         static std::vector<Scene*> scenes;
@@ -453,6 +473,11 @@ namespace jasperengine {
 
         static void setMaxResourceLoadingThreads(size_t maxThreads);
         static size_t getQueuedResourceCount();
+
+        // GpuResourceLimits: set before the engine starts (the render system is set up with
+        // them; later calls apply at the next setup). A value outside 1 - 65,535 keeps the default.
+        static void setGpuResourceLimits(const GpuResourceLimits& limits);
+        static const GpuResourceLimits& getGpuResourceLimits();
 
         static void setFramebuffer(Framebuffer* framebuffer);
         static Framebuffer* getFramebuffer();

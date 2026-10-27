@@ -11,8 +11,13 @@
 #include "SokolPipelineCache.h"
 #include "SokolShader.h"
 #include "Engine.h"
+#include "render/SystemRender.h"
 
 #include <atomic>
+#include <cstring>
+#include <memory>
+#include <mutex>
+#include <unordered_map>
 
 using namespace jasperengine;
 
@@ -31,23 +36,98 @@ namespace {
         return index;
     }
 
-    sg_pipeline makePipeline(const sg_pipeline_desc& desc){
-        const sg_pipeline pipeline = Engine::isAsyncThread() ? SokolCmdQueue::add_command_make_pipeline(desc) : sg_make_pipeline(desc);
-        // an invalid handle (pool full) is never destroyed, so it is not counted
-        if (pipeline.id != SG_INVALID_ID)
-            livePipelines++;
-        return pipeline;
+    // A pipeline of the fixed path, shared by every object loaded with the same description
+    // (each mesh made its own before: 2 per submesh, 6 per hero of 3 materials, and sokol's
+    // pipeline pool of 8,192 stopped a crowd at ~1,365 heroes). Destroyed with its last holder.
+    struct SharedPipeline {
+        sg_pipeline pipeline = {SG_INVALID_ID};
+        sg_pipeline_desc key = {};  // the description, its label left out
+        uint64_t hash = 0;
+        uint64_t context = 0;       // SystemRender::getContextId it was made in
+
+        ~SharedPipeline();
+    };
+
+    std::recursive_mutex& sharedPipelinesMutex(){
+        static std::recursive_mutex* mutex = new std::recursive_mutex();
+        return *mutex;
     }
 
-    void destroyPipeline(sg_pipeline pipeline){
+    std::unordered_multimap<uint64_t, std::weak_ptr<SharedPipeline>>& sharedPipelines(){
+        static auto* map = new std::unordered_multimap<uint64_t, std::weak_ptr<SharedPipeline>>();
+        return *map;
+    }
+
+    SharedPipeline::~SharedPipeline(){
+        std::lock_guard<std::recursive_mutex> lock(sharedPipelinesMutex());
+        auto range = sharedPipelines().equal_range(hash);
+        for (auto it = range.first; it != range.second; ++it){
+            if (it->second.expired()){
+                sharedPipelines().erase(it);
+                break;
+            }
+        }
         if (pipeline.id == SG_INVALID_ID)
             return;
         livePipelines--;
+        if (context != SystemRender::getContextId() || !sg_isvalid())
+            return;
         if (Engine::isAsyncThread()){
             SokolCmdQueue::add_command_destroy_pipeline(pipeline);
         }else{
             sg_destroy_pipeline(pipeline);
         }
+    }
+
+    uint64_t descHash(const sg_pipeline_desc& key){
+        const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&key);
+        uint64_t h = 14695981039346656037ull;
+        for (size_t i = 0; i < sizeof(key); i++){
+            h ^= bytes[i];
+            h *= 1099511628211ull;
+        }
+        return h;
+    }
+
+    // the pipeline of `desc`, held by `ref`: the one already made from the same description
+    // (byte for byte but its label: a description's padding is copied with it, so equal ones
+    // match; one that differs only in padding is merely made again), else a new one
+    sg_pipeline makePipeline(const sg_pipeline_desc& desc, std::shared_ptr<void>& ref){
+        sg_pipeline_desc key;
+        std::memset(&key, 0, sizeof(key));
+        key = desc;
+        key.label = nullptr;
+        const uint64_t hash = descHash(key);
+        const uint64_t context = SystemRender::getContextId();
+
+        std::lock_guard<std::recursive_mutex> lock(sharedPipelinesMutex());
+        auto range = sharedPipelines().equal_range(hash);
+        for (auto it = range.first; it != range.second; ++it){
+            std::shared_ptr<SharedPipeline> shared = it->second.lock();
+            if (!shared || shared->context != context || std::memcmp(&shared->key, &key, sizeof(key)) != 0)
+                continue;
+            const sg_resource_state state = sg_query_pipeline_state(shared->pipeline);
+            // one the loading thread made is drawn by the main thread once the queue has run
+            if (state == SG_RESOURCESTATE_VALID || (state == SG_RESOURCESTATE_ALLOC && Engine::isAsyncThread())){
+                ref = shared;
+                return shared->pipeline;
+            }
+        }
+
+        std::shared_ptr<SharedPipeline> shared = std::make_shared<SharedPipeline>();
+        shared->key = key;
+        shared->hash = hash;
+        shared->context = context;
+        shared->pipeline = Engine::isAsyncThread() ? SokolCmdQueue::add_command_make_pipeline(desc) : sg_make_pipeline(desc);
+        // an invalid handle (pool full) is never destroyed, so it is not counted
+        if (shared->pipeline.id == SG_INVALID_ID){
+            ref.reset();
+            return shared->pipeline;
+        }
+        livePipelines++;
+        sharedPipelines().emplace(hash, shared);
+        ref = shared;
+        return shared->pipeline;
     }
 }
 
@@ -73,12 +153,15 @@ SokolObject::SokolObject(){
     resetPipelines();
 }
 
-// Forgets the variants without destroying them: a copy of this object shares the
-// handles, as it shares the pipelines, and destroy() releases them once
+// Lets go of the editor's variants (a copy of this object holds them too: each is destroyed
+// with its last holder)
 void SokolObject::resetPipelines(){
 #ifdef JASPERENGINE_EDITOR
     for (sg_pipeline& variant : noCullPipelines){
         variant.id = SG_INVALID_ID;
+    }
+    for (std::shared_ptr<void>& ref : noCullRefs){
+        ref.reset();
     }
     noCullSame = 0;
 #endif
@@ -717,7 +800,7 @@ bool SokolObject::endLoad(uint16_t types, const RenderState& state, int samples)
             continue;
         }
         sg_pipeline& pipeline = pipelineOf(type);
-        pipeline = makePipeline(makePipelineDesc(type));
+        pipeline = makePipeline(makePipelineDesc(type), pipelineRefs[pipelineIndex(type) < PIPELINE_TYPES ? pipelineIndex(type) : 0]);
         if (pipeline.id == SG_INVALID_ID){
             return false;
         }
@@ -786,7 +869,7 @@ bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling){
                 sg_pipeline_desc desc = makePipelineDesc(pipType);
                 if (desc.cull_mode == SG_CULLMODE_BACK || desc.cull_mode == SG_CULLMODE_FRONT){
                     desc.cull_mode = SG_CULLMODE_NONE;
-                    variant = makePipeline(desc);
+                    variant = makePipeline(desc, noCullRefs[index]);
                 }else{
                     // already culls nothing: the pipeline is its own variant
                     noCullSame |= (uint16_t)(1u << index);
@@ -822,19 +905,13 @@ void SokolObject::draw(unsigned int baseElement, unsigned int vertexCount, unsig
 }
 
 void SokolObject::destroy(){
-    if (sg_isvalid()){
-        for (sg_pipeline& pipeline : pipelines){
-            destroyPipeline(pipeline);
-        }
-#ifdef JASPERENGINE_EDITOR
-        for (sg_pipeline& variant : noCullPipelines){
-            destroyPipeline(variant);
-        }
-#endif
-    }
-
+    // let go of its pipelines (and the editor's variants, resetPipelines): each is destroyed
+    // with its last holder
     for (sg_pipeline& pipeline : pipelines){
         pipeline.id = SG_INVALID_ID;
+    }
+    for (std::shared_ptr<void>& ref : pipelineRefs){
+        ref.reset();
     }
     resetPipelines();
     bind = {};
