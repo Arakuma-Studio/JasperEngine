@@ -8,6 +8,7 @@
 #include "Engine.h"
 #include "Input.h"
 #include "TestSystem.h"
+#include "input/InputActionAssetJson.h"
 #include "input/InputActions.h"
 
 #include <gtest/gtest.h>

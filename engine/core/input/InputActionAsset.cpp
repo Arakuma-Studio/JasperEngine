@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "InputActionAsset.h"
+#include "InputActionAssetJson.h"
 
 #include "Input.h"
 #include "input/InputControlPath.h"
@@ -24,17 +24,22 @@ namespace {
                                         "composite", "normalize", "parts"};
 
     template<size_t N>
-    InputJson passthroughOf(const InputJson& json, const char* const (&known)[N]){
+    std::string passthroughOf(const InputJson& json, const char* const (&known)[N]){
         InputJson rest = InputJson::object();
         for (auto it = json.begin(); it != json.end(); ++it){
             if (std::find_if(std::begin(known), std::end(known), [&](const char* key){ return it.key() == key; }) == std::end(known))
                 rest[it.key()] = it.value();
         }
-        return rest;
+        return rest.empty() ? std::string() : rest.dump();
     }
 
-    void appendPassthrough(InputJson& out, const InputJson& passthrough){
-        for (auto it = passthrough.begin(); it != passthrough.end(); ++it)
+    void appendPassthrough(InputJson& out, const std::string& passthrough){
+        if (passthrough.empty())
+            return;
+        const InputJson rest = InputJson::parse(passthrough, nullptr, false);
+        if (!rest.is_object())
+            return;
+        for (auto it = rest.begin(); it != rest.end(); ++it)
             out[it.key()] = it.value();
     }
 
@@ -278,18 +283,18 @@ bool InputActionAssetDesc::parse(const std::string& text, InputActionAssetDesc& 
         error = "not valid JSON";
         return false;
     }
-    return fromJson(json, out, error);
+    return inputActionAssetFromJson(json, out, error);
 }
 
-bool InputActionAssetDesc::fromJson(const InputJson& json, InputActionAssetDesc& out, std::string& error){
+bool jasperengine::inputActionAssetFromJson(const InputJson& json, InputActionAssetDesc& out, std::string& error){
     if (!json.is_object()){
         error = "an .inputactions file is a JSON object";
         return false;
     }
     InputActionAssetDesc asset;
-    asset.version = json.value("version", FORMAT_VERSION);
-    if (asset.version > FORMAT_VERSION){
-        error = "version " + std::to_string(asset.version) + " is newer than this engine reads (" + std::to_string(FORMAT_VERSION) + ")";
+    asset.version = json.value("version", InputActionAssetDesc::FORMAT_VERSION);
+    if (asset.version > InputActionAssetDesc::FORMAT_VERSION){
+        error = "version " + std::to_string(asset.version) + " is newer than this engine reads (" + std::to_string(InputActionAssetDesc::FORMAT_VERSION) + ")";
         return false;
     }
     const InputJson maps = json.value("maps", InputJson::array());
@@ -378,11 +383,11 @@ bool InputActionAssetDesc::fromJson(const InputJson& json, InputActionAssetDesc&
     return true;
 }
 
-InputJson InputActionAssetDesc::toJson() const{
+InputJson jasperengine::inputActionAssetToJson(const InputActionAssetDesc& asset){
     InputJson json = InputJson::object();
-    json["version"] = version;
+    json["version"] = asset.version;
     InputJson maps = InputJson::array();
-    for (const InputActionMapDesc& map : this->maps){
+    for (const InputActionMapDesc& map : asset.maps){
         InputJson mapJson = InputJson::object();
         mapJson["name"] = map.name;
         if (map.priority != 0) mapJson["priority"] = map.priority;
@@ -410,12 +415,12 @@ InputJson InputActionAssetDesc::toJson() const{
         maps.push_back(mapJson);
     }
     json["maps"] = maps;
-    appendPassthrough(json, passthrough);
+    appendPassthrough(json, asset.passthrough);
     return json;
 }
 
 std::string InputActionAssetDesc::save() const{
-    return toJson().dump(2) + "\n";
+    return inputActionAssetToJson(*this).dump(2) + "\n";
 }
 
 InputActionMapDesc* InputActionAssetDesc::findMap(const std::string& name){

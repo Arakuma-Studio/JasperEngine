@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "input/InputActionAsset.h"
+#include "input/InputActionAssetJson.h"
 
 #include <cstdint>
 #include <filesystem>

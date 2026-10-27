@@ -6,6 +6,7 @@
 #include "Input.h"
 #include "Log.h"
 #include "asset/AssetMap.h"
+#include "input/InputActionAssetJson.h"
 #include "input/InputControlPath.h"
 #include "input/InputRebind.h"
 #include "io/Data.h"

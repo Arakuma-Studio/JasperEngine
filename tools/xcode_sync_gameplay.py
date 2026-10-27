@@ -24,6 +24,7 @@ FILES = [
     ("input/InputControlPath.h", "Input.h"),
     ("input/InputActionAsset.cpp", "Input.cpp"),
     ("input/InputActionAsset.h", "Input.h"),
+    ("input/InputActionAssetJson.h", "Input.h"),
     ("input/InputActions.cpp", "Input.cpp"),
     ("input/InputActions.h", "Input.h"),
     ("input/InputRebind.cpp", "Input.cpp"),

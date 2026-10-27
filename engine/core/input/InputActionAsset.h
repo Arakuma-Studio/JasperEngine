@@ -8,17 +8,16 @@
 // action maps -> actions -> bindings. The data model, its JSON form and the edit operations of
 // the Input Actions window and the MCP edit_input_actions tool. Unknown keys at every level are
 // written back as they were, and the output is deterministic (the same model, the same bytes).
+// No JSON library in this header: it is part of the scripts' engine API (JasperEngine.h). The JSON
+// form and the edit operations are in input/InputActionAssetJson.h.
 
 #include "Export.h"
-#include "json.hpp"
 
 #include <optional>
 #include <string>
 #include <vector>
 
 namespace jasperengine {
-
-    using InputJson = nlohmann::ordered_json;
 
     enum class InputActionType : int {
         BUTTON = 0,     // pressed at value >= pressPoint
@@ -45,7 +44,7 @@ namespace jasperengine {
         bool normalize = true;              // DPAD_2D: the vector's length is at most 1
         // a composite's parts, in their order (negative/positive, up/down/left/right)
         std::vector<std::pair<std::string, InputBindingDesc>> parts;
-        InputJson passthrough = InputJson::object();
+        std::string passthrough;            // the unknown keys: a compact JSON object, empty for none
 
         bool isComposite() const { return composite != InputCompositeType::NONE; }
         bool inGroup(const std::string& group) const;
@@ -58,7 +57,7 @@ namespace jasperengine {
         float holdTime = 0.0f;              // 0: a plain press; else performed after holding this long (s)
         std::optional<float> deadzone;      // AXIS, VECTOR2; else Project Settings > Input's
         std::vector<InputBindingDesc> bindings;
-        InputJson passthrough = InputJson::object();
+        std::string passthrough;            // the unknown keys: a compact JSON object, empty for none
     };
 
     struct JASPERENGINE_API InputActionMapDesc {
@@ -69,7 +68,7 @@ namespace jasperengine {
         bool exclusive = false;             // enabled, it blocks every lower map
         bool ignoreWhenUIConsumes = true;   // a press the UI took does not count
         std::vector<InputActionDesc> actions;
-        InputJson passthrough = InputJson::object();
+        std::string passthrough;            // the unknown keys: a compact JSON object, empty for none
     };
 
     struct JASPERENGINE_API InputActionAssetDesc {
@@ -77,12 +76,10 @@ namespace jasperengine {
 
         int version = FORMAT_VERSION;
         std::vector<InputActionMapDesc> maps;
-        InputJson passthrough = InputJson::object();
+        std::string passthrough;            // the unknown keys: a compact JSON object, empty for none
 
         // false + error for text that is not an asset; a binding without an id gets one
         static bool parse(const std::string& text, InputActionAssetDesc& out, std::string& error);
-        static bool fromJson(const InputJson& json, InputActionAssetDesc& out, std::string& error);
-        InputJson toJson() const;
         // the file's text (2-space indent, a final newline)
         std::string save() const;
 
@@ -111,22 +108,6 @@ namespace jasperengine {
     // the part names of a composite, in order
     JASPERENGINE_API std::vector<std::string> inputCompositeParts(InputCompositeType type);
 
-    // ---- edit operations (the editor's commands and edit_input_actions)
-    //
-    // An op is JSON: {op, ...}; apply throws std::invalid_argument with the reason when it
-    // cannot apply (nothing is changed then). Addresses: map "Map", action "Map/Action",
-    // binding by id.
-    //   add_map {name, priority?, enabled?, consume?, exclusive?, ignore_when_ui_consumes?, index?}
-    //   add_action {map, name, type?, press_point?, hold_time?, deadzone?, index?}
-    //   add_binding {action, path, scale?, invert?, deadzone?, required_mods?, forbidden_mods?, groups?, index?}
-    //   add_composite {action, composite: axis1d|dpad2d, parts: {part: path | {path, ...}}, groups?, normalize?, index?}
-    //   set {map | action | binding, values: {key: value}}   (the asset's JSON keys)
-    //   remove {map | action | binding}
-    //   rename {map | action, name}
-    //   move {map | action | binding, index}                 (within its parent)
-    //   duplicate {map | action | binding}                   (fresh ids)
-    // Returns a human name for the undo step ("Add Action Gameplay/Jump").
-    JASPERENGINE_API std::string applyInputActionsOp(InputActionAssetDesc& asset, const InputJson& op);
 
 }
 

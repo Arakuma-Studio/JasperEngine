@@ -4466,6 +4466,7 @@
 		7128CFAB25BA717500965B51 /* Main.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; path = Main.storyboard; sourceTree = "<group>"; };
 		7128D00425BA74A000965B51 /* JasperEngine_macOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = JasperEngine_macOS.entitlements; sourceTree = "<group>"; };
 		7128D05D25BB02F800965B51 /* Input.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Input.h; sourceTree = "<group>"; };
+		434F4D50C0F0357454135C12 /* InputActionAssetJson.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = input/InputActionAssetJson.h; sourceTree = "<group>"; };
 		434F4D505A481C39BEF7784E /* InputVirtualControls.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = input/InputVirtualControls.h; sourceTree = "<group>"; };
 		434F4D5060482BAA961FF957 /* InputRebind.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = input/InputRebind.h; sourceTree = "<group>"; };
 		434F4D50B88700EBF5817AFC /* InputActions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = input/InputActions.h; sourceTree = "<group>"; };
@@ -8222,6 +8223,7 @@
 				175DCCB9300FA22F008C19EC /* Export.h */,
 				F10B0B1E0000000000000005 /* fluid */,
 				7128D05D25BB02F800965B51 /* Input.h */,
+				434F4D50C0F0357454135C12 /* InputActionAssetJson.h */,
 				434F4D505A481C39BEF7784E /* InputVirtualControls.h */,
 				434F4D5060482BAA961FF957 /* InputRebind.h */,
 				434F4D50B88700EBF5817AFC /* InputActions.h */,

@@ -17,6 +17,7 @@
 #include "Project.h"
 #include "command/CommandHistory.h"
 #include "command/type/InputActionsEditCmd.h"
+#include "input/InputActionAssetJson.h"
 #include "input/InputActions.h"
 #include "input/InputControlPath.h"
 #include "object/environment/Water.h"
@@ -226,7 +227,7 @@ bool readInputActions(const CallPtr& call, fs::path& file, bool create, std::str
 
 // the asset as an agent reads it: the file's JSON plus each binding's display name
 Json assetJson(const InputActionAssetDesc& asset) {
-    Json out = toJson(asset.toJson());
+    Json out = toJson(inputActionAssetToJson(asset));
     Json names = Json::object();
     for (const InputActionMapDesc& map : asset.maps) {
         for (const InputActionDesc& action : map.actions) {
