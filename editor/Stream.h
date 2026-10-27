@@ -345,6 +345,11 @@ namespace jasperengine::editor {
         // Every field by name; a missing, unknown or unreadable value keeps its default
         static YAML::Node encodePhysicsPlacementSettings(const PhysicsPlacementSettings& settings);
         static PhysicsPlacementSettings decodePhysicsPlacementSettings(const YAML::Node& node);
+        // The Sprite Normal Map window's: the settings as the recipe writes them (snake_case),
+        // the view, light, toggles. A missing or unreadable value keeps its default; settings
+        // out of their ranges throw (the workspace reader warns and keeps the defaults)
+        static YAML::Node encodeSpriteNormalsSettings(const SpriteNormalsWindowSettings& settings);
+        static SpriteNormalsWindowSettings decodeSpriteNormalsSettings(const YAML::Node& node);
 
         static YAML::Node encodeSceneDisplaySettings(const SceneDisplaySettings& settings);
         static void decodeSceneDisplaySettings(const YAML::Node& node, SceneDisplaySettings& settings);

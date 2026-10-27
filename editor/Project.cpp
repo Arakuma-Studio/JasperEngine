@@ -3305,6 +3305,14 @@ const editor::PhysicsPlacementSettings& editor::Project::getPhysicsPlacementSett
     return physicsPlacementSettings;
 }
 
+editor::SpriteNormalsWindowSettings& editor::Project::getSpriteNormalsSettings(){
+    return spriteNormalsSettings;
+}
+
+const editor::SpriteNormalsWindowSettings& editor::Project::getSpriteNormalsSettings() const{
+    return spriteNormalsSettings;
+}
+
 bool editor::Project::isSimulateTouch() const{
     return simulateTouch;
 }
@@ -5436,6 +5444,7 @@ void editor::Project::resetConfigs() {
     loadingSettings = {};
     terrainEditorSettings = {};
     physicsPlacementSettings = {};
+    spriteNormalsSettings = {};
     simulateTouch = false;
     projectPath.clear();
     assetDatabase.close();

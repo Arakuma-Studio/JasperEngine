@@ -19,6 +19,7 @@
 #include "util/HtmlUIWatcher.h"
 #include "util/Util.h"
 #include "physics/PlacementSettings.h"
+#include "window/SpriteNormalsWindowSettings.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -643,6 +644,7 @@ namespace jasperengine::editor{
         LoadingSettings loadingSettings;
         TerrainEditorSettings terrainEditorSettings;
         PhysicsPlacementSettings physicsPlacementSettings;
+        SpriteNormalsWindowSettings spriteNormalsSettings;
         bool simulateTouch;
 
         // True while project.yaml holds the only copy of this user's editor state
@@ -1277,6 +1279,11 @@ namespace jasperengine::editor{
         // The Physics Placement panel's settings, per user (workspace.yaml)
         PhysicsPlacementSettings& getPhysicsPlacementSettings();
         const PhysicsPlacementSettings& getPhysicsPlacementSettings() const;
+
+        // The Sprite Normal Map window's last settings, view and light, and the auto-regenerate
+        // opt-in, per user (workspace.yaml)
+        SpriteNormalsWindowSettings& getSpriteNormalsSettings();
+        const SpriteNormalsWindowSettings& getSpriteNormalsSettings() const;
 
         // Play acts as a touch device: the mouse is one finger and isTouchDevice() is true
         bool isSimulateTouch() const;

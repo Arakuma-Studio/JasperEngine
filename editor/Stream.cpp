@@ -25,6 +25,7 @@
 #include "render/SceneRender3D.h"
 #include "window/TerrainEditWindow.h"
 #include "physics/PlacementSettingsLimits.h"
+#include "spritenormals/SpriteNormalsRecipe.h"
 
 #include <algorithm>
 #include <cctype>
@@ -2427,6 +2428,109 @@ editor::PhysicsPlacementSettings editor::Stream::decodePhysicsPlacementSettings(
 
 namespace {
 
+// The window's settings are stored as the recipe writes them (settingsToJson), JSON <-> YAML
+YAML::Node jsonToYaml(const nlohmann::json& j) {
+    YAML::Node node;
+    if (j.is_object()) {
+        node = YAML::Node(YAML::NodeType::Map);
+        for (auto it = j.begin(); it != j.end(); ++it) node[it.key()] = jsonToYaml(it.value());
+    } else if (j.is_array()) {
+        node = YAML::Node(YAML::NodeType::Sequence);
+        for (const nlohmann::json& v : j) node.push_back(jsonToYaml(v));
+    } else if (j.is_boolean()) {
+        node = j.get<bool>();
+    } else if (j.is_number_integer()) {
+        node = j.get<int64_t>();
+    } else if (j.is_number()) {
+        node = j.get<double>();
+    } else if (j.is_string()) {
+        node = j.get<std::string>();
+    }
+    return node;
+}
+
+nlohmann::json yamlToJson(const YAML::Node& node) {
+    if (node.IsMap()) {
+        nlohmann::json j = nlohmann::json::object();
+        for (const auto& entry : node) j[entry.first.as<std::string>()] = yamlToJson(entry.second);
+        return j;
+    }
+    if (node.IsSequence()) {
+        nlohmann::json j = nlohmann::json::array();
+        for (const auto& entry : node) j.push_back(yamlToJson(entry));
+        return j;
+    }
+    if (!node.IsScalar()) return nlohmann::json();
+    const std::string text = node.Scalar();
+    if (node.Tag() == "!" || node.Tag() == "tag:yaml.org,2002:str") return text;   // quoted
+    if (text == "true") return true;
+    if (text == "false") return false;
+    char* end = nullptr;
+    const long long integer = std::strtoll(text.c_str(), &end, 10);
+    if (!text.empty() && end && *end == '\0') return integer;
+    const double number = std::strtod(text.c_str(), &end);
+    if (!text.empty() && end && *end == '\0') return number;
+    return text;
+}
+
+const char* spriteNormalsViewName(int view) {
+    switch (view) {
+        case 0: return "color";
+        case 1: return "normal";
+        case 3: return "split";
+        default: return "lit";
+    }
+}
+
+} // namespace
+
+YAML::Node editor::Stream::encodeSpriteNormalsSettings(const SpriteNormalsWindowSettings& s) {
+    YAML::Node node;
+    node["settings"] = jsonToYaml(spritenormals::settingsToJson(s.settings));
+    node["view"] = spriteNormalsViewName(s.view);
+    encodeFinite(node, "lightHeight", s.lightHeight);
+    encodeFiniteVector3(node, "lightColour", s.lightColour);
+    encodeFinite(node, "ambient", s.ambient);
+    node["orbit"] = s.orbit;
+    node["grid"] = s.grid;
+    node["advancedOpen"] = s.advancedOpen;
+    node["autoRegenerate"] = s.autoRegenerate;
+    return node;
+}
+
+editor::SpriteNormalsWindowSettings editor::Stream::decodeSpriteNormalsSettings(const YAML::Node& node) {
+    SpriteNormalsWindowSettings s;
+    if (!node.IsMap()) return s;
+    decodeSettingKey(node, "view", [&s](const YAML::Node& n) {
+        const std::string view = n.as<std::string>();
+        s.view = view == "color" ? 0 : view == "normal" ? 1 : view == "split" ? 3 : 2;
+    });
+    decodeSettingKey(node, "lightHeight", [&s](const YAML::Node& n) { s.lightHeight = std::clamp(decodeFinite(n, s.lightHeight), 0.0f, 4096.0f); });
+    decodeSettingKey(node, "lightColour", [&s](const YAML::Node& n) { s.lightColour = decodeFiniteVector3(n, s.lightColour); });
+    decodeSettingKey(node, "ambient", [&s](const YAML::Node& n) { s.ambient = std::clamp(decodeFinite(n, s.ambient), 0.0f, 1.0f); });
+    decodeSettingKey(node, "orbit", [&s](const YAML::Node& n) { s.orbit = YamlNumbers::as<bool>(n); });
+    decodeSettingKey(node, "grid", [&s](const YAML::Node& n) { s.grid = YamlNumbers::as<bool>(n); });
+    decodeSettingKey(node, "advancedOpen", [&s](const YAML::Node& n) { s.advancedOpen = YamlNumbers::as<bool>(n); });
+    decodeSettingKey(node, "autoRegenerate", [&s](const YAML::Node& n) { s.autoRegenerate = YamlNumbers::as<bool>(n); });
+    if (node["settings"] && node["settings"].IsMap()) {
+        // the preset first, then every value over it (the recipe's resolution order)
+        const nlohmann::json j = yamlToJson(node["settings"]);
+        spritenormals::Preset preset = spritenormals::Preset::Default;
+        if (j.contains("preset") && j["preset"].is_string()) spritenormals::parsePreset(j["preset"].get<std::string>(), preset);
+        spritenormals::Settings settings = spritenormals::presetSettings(preset);
+        std::string error;
+        if (!spritenormals::settingsFromJson(j, settings, error)) throw std::runtime_error(error);
+        settings.preset = preset;
+        const std::vector<spritenormals::Problem> problems = spritenormals::validateSettings(settings);
+        if (!problems.empty()) throw std::runtime_error(problems.front().message);
+        s.settings = settings;
+    }
+    return s;
+}
+
+
+namespace {
+
 // The per-scene view keys an older project.yaml carried
 const char* const sceneDisplayKeys[] = {
     "showAllJoints", "showAllBones", "showAllBodies", "hideCameraView",
@@ -3164,6 +3268,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         project->getTerrainEditorSettings() = workspace.getTerrainEditorSettings();
     }
     project->getPhysicsPlacementSettings() = workspace.getPhysicsPlacementSettings();
+    project->getSpriteNormalsSettings() = workspace.getSpriteNormalsSettings();
 
     project->setSimulateTouch(workspace.isSimulateTouch());
 

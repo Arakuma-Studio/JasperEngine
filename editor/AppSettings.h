@@ -22,6 +22,7 @@ struct PanelVisibilitySettings {
     bool textureSynthesis = false;
     bool vertexAnimationBaker = false;
     bool physicsPlacement = false;
+    bool spriteNormals = false;
     bool mcp = false;
     bool game = true;
 
@@ -36,6 +37,7 @@ struct PanelVisibilitySettings {
             && textureSynthesis == other.textureSynthesis
             && vertexAnimationBaker == other.vertexAnimationBaker
             && physicsPlacement == other.physicsPlacement
+            && spriteNormals == other.spriteNormals
             && mcp == other.mcp
             && game == other.game;
     }
