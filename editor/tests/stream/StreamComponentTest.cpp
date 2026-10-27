@@ -76,9 +76,12 @@ STABLE(TextComponent, TextComponent, component.text = "Hello, YAML: [1, 2]"; com
 STABLE(ImageComponent, ImageComponent, component.textureScaleFactor = 2.0f)
 STABLE(SpriteComponent, SpriteComponent, component.flipY = true; component.textureScaleFactor = 0.5f)
 STABLE(TilemapComponent, TilemapComponent, )
-STABLE(TerrainComponent, TerrainComponent, )
+STABLE(TerrainComponent, TerrainComponent, component.surfaceLayers.resize(1); component.surfaceLayers[0].hexTiling = true;
+    component.surfaceLayers[0].hexRotation = 0.5f; component.surfaceLayers[0].stochasticTiling = true;
+    component.surfaceLayers[0].stochasticCellSize = 2.0f)
 STABLE(LightComponent, LightComponent,
-    component.type = LightType::SPOT; component.color = Vector3(1, 0.5f, 0.25f); component.direction = Vector3(0, -1, 0))
+    component.type = LightType::SPOT; component.color = Vector3(1, 0.5f, 0.25f); component.direction = Vector3(0, -1, 0);
+    component.intensityUnit = LightUnit::LUMEN; component.useColorTemperature = true; component.colorTemperature = 3200.0f)
 STABLE(Light2DComponent, Light2DComponent, )
 STABLE(ShadowCaster2DComponent, ShadowCaster2DComponent, )
 STABLE(FogComponent, FogComponent, component.type = FogType::EXPONENTIAL; component.density = 0.05f)
@@ -93,20 +96,20 @@ STABLE(SkyboxComponent, SkyboxComponent, )
 STABLE(ModelComponent, ModelComponent, )
 STABLE(PrefabComponent, PrefabComponent, )
 STABLE(Rigidbody2DComponent, Rigidbody2DComponent, )
-STABLE(RigidbodyComponent, RigidbodyComponent, )
+STABLE(RigidbodyComponent, RigidbodyComponent, component.buoyancy = 1.5f; component.waterDrag = 0.25f; component.waterAngularDrag = 0.1f)
 STABLE(Joint2DComponent, Joint2DComponent, )
 STABLE(Joint3DComponent, Joint3DComponent, )
 STABLE(ActionComponent, ActionComponent, component.state = ActionState::Paused)
-STABLE(TweenComponent, TweenComponent, )
+STABLE(TweenComponent, TweenComponent, component.pingPong = true)
 STABLE(PositionTweenComponent, PositionTweenComponent, )
-STABLE(RotationTweenComponent, RotationTweenComponent, )
+STABLE(RotationTweenComponent, RotationTweenComponent, component.spin = true)
 STABLE(ScaleTweenComponent, ScaleTweenComponent, )
 STABLE(ColorTweenComponent, ColorTweenComponent, )
 STABLE(AlphaTweenComponent, AlphaTweenComponent, )
 STABLE(SpriteAnimationComponent, SpriteAnimationComponent, )
 STABLE(AnimationComponent, AnimationComponent, )
 STABLE(BoneComponent, BoneComponent, )
-STABLE(KeyframeTracksComponent, KeyframeTracksComponent, )
+STABLE(KeyframeTracksComponent, KeyframeTracksComponent, component.loop = true; component.relative = true)
 STABLE(TranslateTracksComponent, TranslateTracksComponent, )
 STABLE(RotateTracksComponent, RotateTracksComponent, )
 STABLE(ScaleTracksComponent, ScaleTracksComponent, )
@@ -127,3 +130,87 @@ STABLE(LatticeFollowerComponent, LatticeFollowerComponent, component.lattice = 3
 STABLE(LatticeTracksComponent, LatticeTracksComponent, component.points = {0, 4}; component.values = {{Vector3(1, 0, 0), Vector3(0, 1, 0)}})
 
 #undef STABLE
+
+// The fields added after the S08 base (S11's photometric light, terrain hex tiling, the 64-bit
+// submesh override mask and the material emissive strength, upstream's water, tween and keyframe
+// switches) are read back with their values, not only re-encoded the same.
+namespace {
+
+    template<typename T>
+    T roundTrip(ComponentType type, const T& component){
+        return reflect::decodeValue<T>(type, YAML::Load(YAML::Dump(reflect::encodeValue(type, &component))));
+    }
+
+}
+
+TEST(StreamComponent, LightPhotometricFieldsRoundTrip){
+    LightComponent light{};
+    light.intensityUnit = LightUnit::CANDELA;
+    light.useColorTemperature = true;
+    light.colorTemperature = 2700.0f;
+    const LightComponent decoded = roundTrip(ComponentType::LightComponent, light);
+    EXPECT_EQ(decoded.intensityUnit, LightUnit::CANDELA);
+    EXPECT_TRUE(decoded.useColorTemperature);
+    EXPECT_FLOAT_EQ(decoded.colorTemperature, 2700.0f);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST(StreamComponent, RigidbodyWaterFieldsRoundTrip){
+    RigidbodyComponent body{};
+    body.buoyancy = 1.25f;
+    body.waterDrag = 0.75f;
+    body.waterAngularDrag = 0.2f;
+    const RigidbodyComponent decoded = roundTrip(ComponentType::RigidbodyComponent, body);
+    EXPECT_FLOAT_EQ(decoded.buoyancy, 1.25f);
+    EXPECT_FLOAT_EQ(decoded.waterDrag, 0.75f);
+    EXPECT_FLOAT_EQ(decoded.waterAngularDrag, 0.2f);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST(StreamComponent, TerrainLayerTilingFieldsRoundTrip){
+    TerrainComponent terrain{};
+    terrain.surfaceLayers.resize(2);
+    terrain.surfaceLayers[1].hexTiling = true;
+    terrain.surfaceLayers[1].hexRotation = 0.25f;
+    terrain.surfaceLayers[1].stochasticTiling = true;
+    terrain.surfaceLayers[1].stochasticCellSize = 3.0f;
+    terrain.surfaceLayers[1].stochasticContrast = 0.6f;
+    const TerrainComponent decoded = roundTrip(ComponentType::TerrainComponent, terrain);
+    ASSERT_GE(decoded.surfaceLayers.size(), 2u);
+    EXPECT_FALSE(decoded.surfaceLayers[0].hexTiling);
+    EXPECT_TRUE(decoded.surfaceLayers[1].hexTiling);
+    EXPECT_FLOAT_EQ(decoded.surfaceLayers[1].hexRotation, 0.25f);
+    EXPECT_TRUE(decoded.surfaceLayers[1].stochasticTiling);
+    EXPECT_FLOAT_EQ(decoded.surfaceLayers[1].stochasticCellSize, 3.0f);
+    EXPECT_FLOAT_EQ(decoded.surfaceLayers[1].stochasticContrast, 0.6f);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST(StreamComponent, TweenAndKeyframeSwitchesRoundTrip){
+    TweenComponent tween{};
+    tween.pingPong = true;
+    EXPECT_TRUE(roundTrip(ComponentType::TweenComponent, tween).pingPong);
+    RotationTweenComponent rotation{};
+    rotation.spin = true;
+    EXPECT_TRUE(roundTrip(ComponentType::RotationTweenComponent, rotation).spin);
+    KeyframeTracksComponent tracks{};
+    tracks.loop = true;
+    tracks.relative = true;
+    const KeyframeTracksComponent decoded = roundTrip(ComponentType::KeyframeTracksComponent, tracks);
+    EXPECT_TRUE(decoded.loop);
+    EXPECT_TRUE(decoded.relative);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST(StreamComponent, SubmeshOverrideMaskKeepsItsHighBits){
+    MeshComponent mesh{};
+    mesh.numSubmeshes = 1;
+    mesh.submeshes[0].overrideFields = SubmeshOverride_EmissiveStrength | SubmeshOverride_StochasticTiling;
+    mesh.submeshes[0].material.emissiveStrength = 4.0f;
+    const MeshComponent decoded = roundTrip(ComponentType::MeshComponent, mesh);
+    ASSERT_EQ(decoded.numSubmeshes, 1u);
+    EXPECT_EQ(decoded.submeshes[0].overrideFields, (uint64_t)(SubmeshOverride_EmissiveStrength | SubmeshOverride_StochasticTiling))
+        << "bit 32 and up survive the save";
+    EXPECT_FLOAT_EQ(decoded.submeshes[0].material.emissiveStrength, 4.0f);
+    EXPECT_NO_ENGINE_ERRORS();
+}
