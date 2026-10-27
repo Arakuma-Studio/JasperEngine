@@ -119,6 +119,7 @@ template<>
 void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneContext& ctx) {
     mesh.loaded = false;
     mesh.loadCalled = false;
+    mesh.loadFailed = false;
     mesh.needReload = false;
     resetBuffer(mesh.buffer);
     resetBuffer(mesh.indices);

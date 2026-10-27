@@ -6,6 +6,7 @@
 
 #include "render/Render.h"
 #include "sokol_gfx.h"
+#include <memory>
 #include <string>
 
 namespace jasperengine{
@@ -17,6 +18,8 @@ namespace jasperengine{
         sg_image image;
         sg_sampler sampler;
         sg_view view;
+        // held while `sampler` is the one every float data texture shares (createDynamicTexture)
+        std::shared_ptr<void> sharedSampler;
         size_t streamBytes;   // RGBA8/R8 dynamic textures: the size every update must have (0 = not checked)
 
         sg_image_type getTextureType(TextureType textureType);

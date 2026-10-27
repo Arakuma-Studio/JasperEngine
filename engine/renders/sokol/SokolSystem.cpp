@@ -4,12 +4,14 @@
 #include "render/RenderBackendTime.h"
 #include "SokolSystem.h"
 
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <vector>
 
 #include "System.h"
+#include "Engine.h"
 #include "sokol_gfx.h"
 #include "SokolCmdQueue.h"
 #include "SokolPipelineCache.h"
@@ -28,6 +30,34 @@ namespace {
 static const char* sokolLogItems[] = { _SG_LOG_ITEMS };
 #undef _SG_LOGITEM_XMACRO
 
+// (sokol.cpp, where sokol's state is visible) slots of a resource pool in use and free
+extern "C" void jasperengine_sg_pool_usage(int kind, int* used, int* free);
+
+namespace {
+    // the pools, in GpuResourceKind order
+    const char* const poolNames[GPU_RESOURCE_KINDS] = {"buffer", "image", "sampler", "view", "pipeline", "shader"};
+    const char* const poolPlurals[GPU_RESOURCE_KINDS] = {"buffers", "images", "samplers", "views", "pipelines", "shaders"};
+    int poolSizes[GPU_RESOURCE_KINDS] = {};
+
+    // full-pool events since setup, the first of each logged; the pools full since the last
+    // hasResourcePoolRoom (any thread makes resources: the loading thread too)
+    std::atomic<uint64_t> poolExhaustions[GPU_RESOURCE_KINDS];
+    std::atomic<bool> poolExhaustionLogged[GPU_RESOURCE_KINDS];
+    std::atomic<uint32_t> poolsFull{0};
+
+    int poolOfLogItem(uint32_t item){
+        switch (item){
+        case SG_LOGITEM_BUFFER_POOL_EXHAUSTED: return (int)GpuResourceKind::BUFFER;
+        case SG_LOGITEM_IMAGE_POOL_EXHAUSTED: return (int)GpuResourceKind::IMAGE;
+        case SG_LOGITEM_SAMPLER_POOL_EXHAUSTED: return (int)GpuResourceKind::SAMPLER;
+        case SG_LOGITEM_VIEW_POOL_EXHAUSTED: return (int)GpuResourceKind::VIEW;
+        case SG_LOGITEM_PIPELINE_POOL_EXHAUSTED: return (int)GpuResourceKind::PIPELINE;
+        case SG_LOGITEM_SHADER_POOL_EXHAUSTED: return (int)GpuResourceKind::SHADER;
+        default: return -1;
+        }
+    }
+}
+
 void sokol_log(const char* tag,                // e.g. 'sg'
                     uint32_t log_level,             // 0=panic, 1=error, 2=warn, 3=info
                     uint32_t log_item_id,           // SG_LOGITEM_*
@@ -41,6 +71,21 @@ void sokol_log(const char* tag,                // e.g. 'sg'
     if (log_item_id == SG_LOGITEM_GL_UNIFORMBLOCK_NAME_NOT_FOUND_IN_SHADER ||
         log_item_id == SG_LOGITEM_GL_IMAGE_SAMPLER_NAME_NOT_FOUND_IN_SHADER){
         Log::debug("%s\n", message_or_null);
+        return;
+    }
+    // A full pool: one clear error per pool (each failed object would log one, every frame
+    // its load is tried); the failures are counted, and their loads give up until there is
+    // room (SystemRender::hasResourcePoolRoom)
+    const int pool = poolOfLogItem(log_item_id);
+    if (pool >= 0){
+        poolExhaustions[pool]++;
+        poolsFull |= (1u << pool);
+        if (!poolExhaustionLogged[pool].exchange(true)){
+            Log::error("GPU %s pool full: all %d %s are in use. Objects that need one are not made "
+                       "(meshes are not drawn) until some are released; raise Engine::GpuResourceLimits::%s "
+                       "(Engine::setGpuResourceLimits before the engine starts) for more\n",
+                       poolNames[pool], poolSizes[pool], poolPlurals[pool], poolPlurals[pool]);
+        }
         return;
     }
     // release builds of sokol carry no message: name the log item and its line instead
@@ -67,15 +112,26 @@ void sokol_log(const char* tag,                // e.g. 'sg'
 
 void SokolSystem::setup(){
     /* setup sokol_gfx */
+    // the pool sizes (sokol's defaults: 128 buffers and images, 64 samplers, 256 views, 64
+    // pipelines and shaders): Engine::GpuResourceLimits says what they hold and cost
+    const Engine::GpuResourceLimits& limits = Engine::getGpuResourceLimits();
     sg_desc desc = {0};
-    desc.buffer_pool_size = 8192; //default: 128
-    desc.image_pool_size = 2048; //default: 128
-    desc.sampler_pool_size = 2048; //default: 64
-    desc.view_pool_size = 4096; //default: 256 (texture, storage-buffer and attachment views)
-    desc.pipeline_pool_size = 8192; //default: 64
-    desc.shader_pool_size = 1024; //default: 64 (one per ShaderType+properties variant)
+    desc.buffer_pool_size = limits.buffers;
+    desc.image_pool_size = limits.images;
+    desc.sampler_pool_size = limits.samplers;
+    desc.view_pool_size = limits.views; // texture, storage-buffer and attachment views
+    desc.pipeline_pool_size = limits.pipelines;
+    desc.shader_pool_size = limits.shaders; // one per ShaderType+properties variant
     desc.environment = System::instance().getSokolEnvironment();
     desc.logger.func = sokol_log;
+
+    const int sizes[GPU_RESOURCE_KINDS] = {limits.buffers, limits.images, limits.samplers, limits.views, limits.pipelines, limits.shaders};
+    for (int kind = 0; kind < GPU_RESOURCE_KINDS; kind++){
+        poolSizes[kind] = sizes[kind];
+        poolExhaustions[kind] = 0;
+        poolExhaustionLogged[kind] = false;
+    }
+    poolsFull = 0;
 
     sg_setup(&desc);
 
@@ -86,6 +142,46 @@ void SokolSystem::setup(){
     }
 
     SokolCmdQueue::start();
+}
+
+int SokolSystem::getResourcesInUse(int kind){
+    if (kind < 0 || kind >= GPU_RESOURCE_KINDS || !sg_isvalid())
+        return 0;
+    int used = 0;
+    int free = 0;
+    jasperengine_sg_pool_usage(kind, &used, &free);
+    return used;
+}
+
+int SokolSystem::getResourceLimit(int kind){
+    return (kind >= 0 && kind < GPU_RESOURCE_KINDS) ? poolSizes[kind] : 0;
+}
+
+const char* SokolSystem::getResourceKindName(int kind){
+    return (kind >= 0 && kind < GPU_RESOURCE_KINDS) ? poolNames[kind] : "";
+}
+
+uint64_t SokolSystem::getResourcePoolExhaustions(int kind){
+    return (kind >= 0 && kind < GPU_RESOURCE_KINDS) ? poolExhaustions[kind].load() : 0;
+}
+
+bool SokolSystem::hasResourcePoolRoom(){
+    const uint32_t full = poolsFull.load();
+    if (full == 0)
+        return true;
+    if (!sg_isvalid())
+        return false;
+    for (int kind = 0; kind < GPU_RESOURCE_KINDS; kind++){
+        if (!(full & (1u << kind)))
+            continue;
+        int used = 0;
+        int free = 0;
+        jasperengine_sg_pool_usage(kind, &used, &free);
+        if (free == 0)
+            return false;
+    }
+    poolsFull &= ~full;
+    return true;
 }
 
 namespace{

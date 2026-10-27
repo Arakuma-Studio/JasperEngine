@@ -35,6 +35,7 @@
 #include "pool/FontPool.h"
 #include "pool/ModelPool.h"
 #include "pool/MeshLodPool.h"
+#include "pool/MeshBufferPool.h"
 #include "pool/AnimationClipPool.h"
 #include "pool/VertexAnimationPool.h"
 #include "shader/RuntimeShaderCompiler.h"
@@ -767,6 +768,30 @@ size_t Engine::getQueuedResourceCount() {
     #endif
 }
 
+namespace{
+    Engine::GpuResourceLimits& gpuResourceLimits(){
+        static Engine::GpuResourceLimits limits;
+        return limits;
+    }
+}
+
+void Engine::setGpuResourceLimits(const GpuResourceLimits& limits){
+    const GpuResourceLimits defaults;
+    // sokol's pools take 1 to 65,535 slots
+    auto valid = [](int value, int fallback){ return (value > 0 && value < 65536) ? value : fallback; };
+    GpuResourceLimits& set = gpuResourceLimits();
+    set.buffers = valid(limits.buffers, defaults.buffers);
+    set.images = valid(limits.images, defaults.images);
+    set.samplers = valid(limits.samplers, defaults.samplers);
+    set.views = valid(limits.views, defaults.views);
+    set.pipelines = valid(limits.pipelines, defaults.pipelines);
+    set.shaders = valid(limits.shaders, defaults.shaders);
+}
+
+const Engine::GpuResourceLimits& Engine::getGpuResourceLimits(){
+    return gpuResourceLimits();
+}
+
 void Engine::setFramebuffer(Framebuffer* framebuffer){
     Engine::framebuffer = framebuffer;
 }
@@ -828,6 +853,7 @@ void Engine::clearPools(){
     FontPool::clear();
     ModelPool::clear();
     MeshLodPool::clear();
+    MeshBufferPool::clear();
     AnimationClipPool::clear();
 }
 
@@ -840,6 +866,7 @@ void Engine::clearUnusedPools(){
     FontPool::clearUnused();
     ModelPool::clearUnused();
     MeshLodPool::clearUnused();
+    MeshBufferPool::clearUnused();
     AnimationClipPool::clearUnused();
 }
 
