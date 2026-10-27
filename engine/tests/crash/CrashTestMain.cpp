@@ -168,6 +168,11 @@ int main(int argc, char** argv) {
 
     const std::string name = mode;
 #if !defined(_WIN32)
+    if (name == "bus") {
+        log("last line before the crash");
+        raise(SIGBUS);
+        return 1;
+    }
     if (name == "chain_after_return") {
         log("last line before the crash");
         raise(SIGTRAP); // The saved handler returns after a complete engine report.

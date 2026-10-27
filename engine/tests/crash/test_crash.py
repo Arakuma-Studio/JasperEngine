@@ -21,11 +21,13 @@ def main():
     if os.name == "nt":
         modes.extend(["pure_call", "recursive_abort", "cached_thread_name"])
     else:
-        modes.extend(["chain", "chain_after_return", "recursive_chain", "recursive_chain_return"])
+        modes.extend(["bus", "chain", "chain_after_return", "recursive_chain", "recursive_chain_return"])
     expected = {"segv": signal.SIGSEGV, "abort": signal.SIGABRT, "terminate": signal.SIGABRT,
                 "stack_overflow": signal.SIGSEGV, "worker_segv": signal.SIGSEGV,
                 "worker_stack_overflow": signal.SIGSEGV, "fpe": signal.SIGFPE,
                 "guard_worker": signal.SIGSEGV, "concurrent": signal.SIGSEGV, "recursive": signal.SIGSEGV, "chain": signal.SIGSEGV, "chain_after_return": signal.SIGSEGV}
+    if os.name != "nt":
+        expected["bus"] = signal.SIGBUS
     for mode in args.mode or modes + ["hang"]:
         with tempfile.TemporaryDirectory(prefix="je-native-crash-") as root:
             env = dict(os.environ, JASPERENGINE_CRASH_REPORT_DIR=root)
@@ -56,6 +58,10 @@ def main():
                 assert "recovered after" in result.stderr, result.stderr
             else:
                 assert result.returncode != 0, mode
+                if sys.platform == "darwin" and mode == "bus":
+                    # raise(SIGBUS) interrupts __pthread_kill in this image. Shared
+                    # cache data segments must not make another image claim its PC.
+                    assert re.search(r"^#0 libsystem_kernel\.dylib\+", report, re.M), (mode, report)
                 if mode == "cached_thread_name":
                     assert "thread_name: Cached fault" in report or "thread_name: unknown" in report, report
                 if mode == "concurrent":
@@ -63,7 +69,20 @@ def main():
                     assert (files[0].parent / "log-tail.txt").is_file(), report
                     assert "thread_name: First fault" in report or (os.name == "nt" and "thread_name: unknown" in report), report
                 if os.name != "nt":
-                    assert result.returncode in (-expected[mode], 77), (mode, result.returncode, result.stderr)
+                    fatal_signals = {expected[mode]}
+                    # Darwin can deliver SIGBUS for a pthread stack guard fault.
+                    if sys.platform == "darwin" and mode in ("stack_overflow", "worker_stack_overflow"):
+                        fatal_signals.add(signal.SIGBUS)
+                    reported_signal = int(re.search(r"^signal: (\d+)$", report, re.M)[1])
+                    if mode == "chain_after_return":
+                        # The first report is the handled SIGTRAP; the later SIGSEGV
+                        # must still chain even though the session already reported.
+                        assert reported_signal == signal.SIGTRAP, (mode, report)
+                        exit_signal = expected[mode]
+                    else:
+                        assert reported_signal in fatal_signals, (mode, report)
+                        exit_signal = reported_signal
+                    assert result.returncode in (-exit_signal, 77), (mode, result.returncode, result.stderr)
                 for key in ("product", "version", "build_id", "platform", "backend", "reason", "fault_address",
                             "thread", "pc", "sp", "time_since_start_ms", "session"):
                     assert re.search(r"^" + key + ": .+", report, re.M), (mode, key, report)
