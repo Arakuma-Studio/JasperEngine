@@ -499,12 +499,17 @@ namespace{
     };
 
     // Polled by V-HACD between stages and while it splits: the cancel flag stops it even when it
-    // was raised before V-HACD reset its own (Compute() clears it on entry)
+    // was raised before V-HACD reset its own (Compute() clears it on entry). The caller's progress
+    // callback runs first, so it can raise the flag at a given stage.
     class CancelPoll: public VHACD::IVHACD::IUserCallback {
     public:
-        CancelPoll(const std::atomic<bool>* cancelFlag, VHACD::IVHACD* instance): cancel(cancelFlag), vhacd(instance) {}
+        CancelPoll(const std::atomic<bool>* cancelFlag, VHACD::IVHACD* instance, const DecompositionProgress* progressCallback):
+            cancel(cancelFlag), vhacd(instance), progress(progressCallback) {}
 
-        void Update(const double, const double, const char* const, const char*) override{
+        void Update(const double, const double stageProgress, const char* const stage, const char*) override{
+            if (progress && *progress){
+                (*progress)(stage, stageProgress);
+            }
             if (cancel && cancel->load()){
                 vhacd->Cancel();
             }
@@ -513,13 +518,15 @@ namespace{
     private:
         const std::atomic<bool>* cancel;
         VHACD::IVHACD* vhacd;
+        const DecompositionProgress* progress;
     };
 #else
     struct ActiveSlot {};
 #endif
 
     bool decomposeWelded(const WeldedMesh& mesh, const DecompositionParams& params, std::vector<ConvexHullPoints>& out,
-                         const std::atomic<bool>* cancel, std::string* error, const ActiveSlot& slot){
+                         const std::atomic<bool>* cancel, std::string* error, const ActiveSlot& slot,
+                         const DecompositionProgress* progress = nullptr){
         out.clear();
         auto fail = [error](const std::string& message){
             if (error){
@@ -533,6 +540,7 @@ namespace{
         (void)params;
         (void)cancel;
         (void)slot;
+        (void)progress;
         return fail(NOT_AVAILABLE);
 #else
         if (!validParams(params, error)){
@@ -576,7 +584,7 @@ namespace{
         if (!vhacd){
             return fail("V-HACD could not be created");
         }
-        CancelPoll poll(cancel, vhacd);
+        CancelPoll poll(cancel, vhacd, progress);
 
         VHACD::IVHACD::Parameters vparams;
         vparams.m_callback = &poll;
@@ -1185,7 +1193,8 @@ size_t ConvexDecompositionCache::bytesOnDisk() const{
 
 bool ConvexDecompositionCache::decompose(const std::vector<Vector3>& positions, const std::vector<uint32_t>& indices,
                                          const DecompositionParams& params, std::vector<ConvexHullPoints>& out,
-                                         const std::atomic<bool>* cancel, std::string* error){
+                                         const std::atomic<bool>* cancel, std::string* error,
+                                         const DecompositionProgress& progress){
     out.clear();
     if (!available()){
         if (error){
@@ -1196,7 +1205,7 @@ bool ConvexDecompositionCache::decompose(const std::vector<Vector3>& positions, 
     if (!validInput(positions, indices, error)){
         return false;
     }
-    return decomposeWelded(weld(positions, indices), params, out, cancel, error, ActiveSlot());
+    return decomposeWelded(weld(positions, indices), params, out, cancel, error, ActiveSlot(), &progress);
 }
 
 bool ConvexDecompositionCache::available(){
