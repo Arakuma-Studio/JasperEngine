@@ -269,9 +269,9 @@ namespace jasperengine {
         //   resource pools (all)               128 .. 256     the object not made              buffers .. shaders above
         //
         // So Metal has one such buffer (uniforms), D3D11 and GL none, WebGPU uniforms and the bind
-        // group cache, Vulkan uniforms, stream staging and descriptors. sokol's per-frame buffers are
-        // allocated once per frame in flight (2) in host-visible memory,
-        // so their defaults depend on the platform (desktop / Android, iOS and the web). The
+        // group cache, Vulkan uniforms, stream staging and descriptors. sokol's per-frame buffers
+        // are allocated once per frame in flight (2) in host-visible memory, so their defaults
+        // depend on the platform (desktop / Android, iOS and the web). The
         // budgets: SystemRender::getUniformBytes*, getStreamBytes*, getDescriptorBytes*.
 
         // GpuResourceLimits' per-frame buffer defaults for this platform: uniformBytes 64 MB
