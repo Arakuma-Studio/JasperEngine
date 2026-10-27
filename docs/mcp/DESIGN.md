@@ -133,6 +133,10 @@ editor/mcp/
                           distribute in edit mode), sharing physics/PlacementSession with the Scene
                           view's Physics tool and the place-physics CLI
     HtmlUiTools.cpp       HTML/CSS UI: inspect_ui, assert_ui, create_ui_document, the example resources
+    VatTools.cpp          bake_vertex_animation (vat/VatBakeSession and the vat/import importers, sharing
+                          vat/VatFrontEnd with the bake-vat CLI; the contact sheet: vat/VatContactSheet)
+                          and the .vat parts of get_asset_info, write_file, view_asset, move/delete_asset
+                          and the file sync
 ```
 
 Every `tools/*.cpp` defines one function, e.g. `void registerSceneTools(McpRegistry&)`;
