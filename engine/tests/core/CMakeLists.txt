@@ -23,7 +23,9 @@ endif()
 # the process the crash-diagnostics tests start (engine/tests/crash/CrashTestMain.cpp): it
 # installs the crash handler on a report root of the test's own, then crashes, hangs or reports
 find_package(Threads REQUIRED)
-add_executable(jasperengine-crash-test ${CMAKE_CURRENT_SOURCE_DIR}/../crash/CrashTestMain.cpp)
+add_executable(jasperengine-crash-test
+    ${CMAKE_CURRENT_SOURCE_DIR}/../crash/CrashTestMain.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../crash/SystemSignalHeader.c)
 target_link_libraries(jasperengine-crash-test PRIVATE jasperengine Threads::Threads)
 jasperengine_apply_cxx_standard(jasperengine-crash-test)
 jasperengine_target_warnings(jasperengine-crash-test)

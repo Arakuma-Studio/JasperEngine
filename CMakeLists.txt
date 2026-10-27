@@ -489,7 +489,7 @@ include_directories (${JASPERENGINE_ROOT}/core/script)
 include_directories (${JASPERENGINE_ROOT}/core/shader)
 include_directories (${JASPERENGINE_ROOT}/core/subsystem)
 include_directories (${JASPERENGINE_ROOT}/core/texture)
-include_directories (${JASPERENGINE_ROOT}/core/util)
+# Keep util/ namespaced: Signal.h shadows <signal.h> on case-insensitive hosts.
 # GamepadMappings.h, shared by GamepadDB (editor) and GamepadLinux (games)
 include_directories (${JASPERENGINE_ROOT}/platform/common)
 # renderer/Renderer.h, which EditorFrame.h includes from one directory up

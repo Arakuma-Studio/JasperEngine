@@ -797,7 +797,7 @@ include_directories(core/script)
 include_directories(core/shader)
 include_directories(core/subsystem)
 include_directories(core/texture)
-include_directories(core/util)
+# Keep util/ namespaced: Signal.h shadows <signal.h> on case-insensitive hosts.
 include_directories(core/htmlui)
 
 include_directories(renders)

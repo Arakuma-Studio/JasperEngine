@@ -6,7 +6,7 @@
 
 #include "harness/TestSystem.h"
 
-#include "DefaultFont.h"
+#include "util/DefaultFont.h"
 #include "io/Data.h"
 #include "util/FontFace.h"
 #include "util/FontRegistry.h"
