@@ -60,7 +60,7 @@ namespace {
         JE_FIELD(FluidSimulationComponent, seed, .flags = kFluid, .updateFlags = kReset),
         JE_FIELD(FluidSimulationComponent, shading, .flags = kFluid),
         // display-space values like the dye (no linear conversion)
-        JE_FIELD(FluidSimulationComponent, backColor, .ops = &ops::FiniteVector3Always, .flags = kFluid),
+        JE_FIELD(FluidSimulationComponent, backColor, .ops = &ops::FiniteVector3Always, .flags = kFluidFloat),
         JE_FIELD(FluidSimulationComponent, transparent, .flags = kFluid),
         JE_FIELD(FluidSimulationComponent, bloom, .flags = kFluid),
         JE_FIELD(FluidSimulationComponent, bloomIterations, .flags = kFluid),
