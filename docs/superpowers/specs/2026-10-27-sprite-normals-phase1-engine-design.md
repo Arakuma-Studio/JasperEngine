@@ -321,7 +321,8 @@ image, a framebuffer that is gone) now shade as flat instead of tilted 55 degree
 | Change | Who sees it | Note |
 |---|---|---|
 | 2D reads OpenGL green | 2D normal maps authored for the old behaviour light upside-down | Flip green (generator DirectX toggle, or an image editor) |
-| Mirroring correct | Mirrored normal-mapped objects (2D and 3D) | None: they were wrong |
+| Mirroring correct | Mirrored normal-mapped objects (2D and 3D), imported glTF models with mirrored nodes included | None: they were wrong |
+| Mirrored meshes keep their front faces (fix round 1) | Meshes mirrored at runtime (a negative scale the import did not compensate): single-sided ones no longer cull their fronts, double-sided Lit ones shade the visible side as the front; shaders branching on `gl_FrontFacing` see the front | Remove `windingOrder = CW` workarounds on such meshes (they are now reversed twice). Not covered: a mirror made only by an instance matrix, by skinning joints, by a lattice turning the mesh inside out, or baked into a Vertex Animation |
 | Height shapes only normal-mapped unlit objects | Plain sprites under a Light 2D with height > 0 get brighter | Lower Intensity if the dimming was wanted |
 | New editor Light 2Ds: height 64 | New lights only | Lua/C++/loaded lights keep their value |
 | `library:sprite` reads Normal Texture | Sprites on `library:sprite` with a normal texture set under 2D lights | None: it was ignored |
@@ -494,7 +495,7 @@ Not touched: `editor/mcp/McpInstructions.cpp` (Phase 3 owns the agent guide line
   `u_normalTexture`; a manifest submesh reloads when its normal texture appears or disappears; the guard macro is
   `LIGHT2D_NORMAL_TEXTURE_DECLARED` (defined by a shader that declares the texture itself, or by lighting2d.glsl when
   it declares it).
-- Section 4, mirroring row: imported glTF with mirrored nodes (a mirror placed on the entity transform) now also shade
+- Section 4, mirroring rows (edited in the table): imported glTF with mirrored nodes (a mirror placed on the entity transform) now also shade
   normal maps correctly (wrong before); and meshes mirrored at runtime keep their front faces (single-sided ones no
   longer cull their fronts; double-sided Lit ones shade the visible side as the front, lit by 3D lights and Light 2Ds).
 
@@ -505,7 +506,7 @@ Not touched: `editor/mcp/McpInstructions.cpp` (Phase 3 owns the agent guide line
   any number of mirrored sprites with one material make one variant per pass type. A `SokolObject` holds a reference
   of its own to each variant it uses (a copy takes its own, so a component copy that draws before its own load cannot
   leak one), released on reload (`beginLoad`), `destroy()` and destruction.
-- Migration notes, added to section 4's mirroring rows:
+- Migration notes, also in section 4's table (the "Mirroring correct" and "Mirrored meshes keep their front faces" rows):
   - Projects that worked around the old behaviour by setting `windingOrder = CW` on a mesh they mirror at runtime are
     now reversed twice (culled or back-shaded again): remove the workaround (leave `windingOrder` at CCW).
   - Shaders branching on `gl_FrontFacing` now see the front face on runtime-mirrored meshes.
