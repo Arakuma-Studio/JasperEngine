@@ -31,6 +31,9 @@
 #include "htmlui/compat/ua/UserAgentStyle.h"
 #include "htmlui/compat/runtime/LucideIcons.h"
 #include "component/UIDocumentComponent.h"
+#include "texture/CookedTextures.h"
+#include "texture/TextureExport.h"
+#include "util/StringUtils.h"
 
 #include "stb_image.h"
 #include "stb_image_resize2.h"
@@ -800,6 +803,8 @@ void editor::Exporter::runExport() {
     if (!copyLua()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!checkHtmlUIReferences()) return;
+    if (isCancelled()) { setError("Build cancelled"); return; }
+    if (!cookTextures()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyAssets()) return;
     if (!writeAssetMap()) return;
@@ -2217,6 +2222,56 @@ bool editor::Exporter::writeAssetMap() {
     return true;
 }
 
+bool editor::Exporter::cookTextures() {
+    setProgress("Cooking textures...", 0.33f);
+    cookedTextureSources.clear();
+
+    // Windows/Linux/macOS -> desktop, iOS and Android -> mobile (+ android_etc2), Web -> web;
+    // a source export builds for every platform, so it carries every family (R9)
+    std::vector<std::string> platforms;
+    if (config.mode == ExportMode::Desktop) platforms = {"linux"};
+    else if (config.mode == ExportMode::Web) platforms = {"web"};
+    else platforms = {"windows", "linux", "macos", "ios", "android", "web"};
+    const std::vector<TextureFamily> families =
+        TextureCookQueue::familiesForExport(platforms, project->getTextureSettings().androidEtc2Fallback);
+
+    // the settings and references of every texture source come from the main thread
+    std::map<std::string, TextureCookInputs> inputs;
+    std::string gatherError;
+    std::promise<bool> gathered;
+    auto gatheredFuture = gathered.get_future();
+    editor::getEditorHost().enqueueMainThreadTask([this, &inputs, &gatherError, &gathered]() {
+        project->getAssetIndex().waitUntilReady();
+        gathered.set_value(TextureExport::gather(*project, inputs, gatherError));
+    });
+    if (!gatheredFuture.get()) {
+        setError("Texture import settings: " + gatherError);
+        return false;
+    }
+    if (inputs.empty()) {
+        std::error_code ec;
+        fs::remove_all(getExportProjectRoot() / "assets" / CookedTextures::kCookedDir, ec);
+        return true;
+    }
+
+    const TextureExportResult result = TextureExport::cookForExport(*project, inputs, families, getExportProjectRoot() / "assets",
+        (int)config.buildJobs, [this](int done, int total, const std::string& path) {
+            setDetail("Cooking textures " + std::to_string(done) + "/" + std::to_string(total) + ": " + path);
+        }, [this]() { return isCancelled(); });
+    if (!result.ok) {
+        if (result.error != "cancelled") setError("Texture cook failed: " + result.error);
+        else setError("Build cancelled");
+        return false;
+    }
+    // the export log keeps the report
+    for (const std::string& line : StringUtils::split(TextureCookReport::toText(result.rows), '\n')) {
+        if (!line.empty()) Out::info("%s", line.c_str());
+    }
+    Out::info("Textures: %d cooked, %d from the cache", result.cooked, result.cacheHits);
+    cookedTextureSources = result.cookedSources;
+    return true;
+}
+
 bool editor::Exporter::copyAssets() {
     setProgress("Copying assets...", 0.35f);
 
@@ -2254,6 +2309,12 @@ bool editor::Exporter::copyAssets() {
             return false;
         }
 
+        // The cooked textures' directory (S14)
+        if (firstComponent == CookedTextures::kCookedDir) {
+            setError("\"" + firstComponent + "\" is reserved for the cooked textures. Rename " + entry.path().string());
+            return false;
+        }
+
         // The exporter writes the asset map there (S04)
         if (relPath == AssetMap::fileName) {
             setError("\"" + std::string(AssetMap::fileName) + "\" is reserved for the asset map. Rename " + entry.path().string());
@@ -2262,6 +2323,12 @@ bool editor::Exporter::copyAssets() {
 
         // Skip project support files that should not ship as assets, and the assets' metas
         if (shouldSkipExportSupportFile(relPath) || AssetTypes::isMetaFile(relPath)) continue;
+
+        // A texture source the cooks replace ships as assets/je-cooked/<family>/ only
+        if (cookedTextureSources.count(relPath.generic_string())) {
+            fs::remove(assetsDst / relPath, ec);
+            continue;
+        }
 
         // Skip C++ source/header files; registered scripts ship via copyCppScripts
         if (!entry.is_regular_file() || isCppSourceFile(entry.path())) continue;
@@ -3301,7 +3368,13 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     manifest += "            </intent-filter>\n";
     manifest += "        </activity>\n";
     manifest += "    </application>\n\n";
-    manifest += "    <uses-feature android:glEsVersion=\"0x00030000\" android:required=\"true\" />\n\n";
+    manifest += "    <uses-feature android:glEsVersion=\"0x00030000\" android:required=\"true\" />\n";
+    // the mobile family's ASTC (S14 R11); with the ETC2 fallback devices without it load
+    // android_etc2 instead, so the store filters none out
+    if (!project->getTextureSettings().androidEtc2Fallback) {
+        manifest += "    <supports-gl-texture android:name=\"GL_KHR_texture_compression_astc_ldr\" />\n";
+    }
+    manifest += "\n";
     manifest += "</manifest>";
     FileUtils::writeIfChanged(manifestPath, manifest);
 

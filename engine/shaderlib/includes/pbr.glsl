@@ -1,6 +1,10 @@
 // Based on https://github.com/KhronosGroup/glTF-Sample-Viewer shaders
 
 #include "includes/srgb.glsl"
+// (only where a normal map is sampled: the other variants stay the program they were)
+#ifdef HAS_NORMAL_MAP
+    #include "includes/normal_map.glsl"
+#endif
 
 float clampedDot(vec3 x, vec3 y){
     return clamp(dot(x, y), 0.0, 1.0);
@@ -242,7 +246,7 @@ NormalInfo getNormalInfo(){
         #ifdef PBR_HEX_ACTIVE
             n = PBR_HEX_NORMAL(u_normalTexture, u_normal_smp, getNormalUV(), PBR_HEX_NORMALMAP);
         #else
-            n = texture(sampler2D(u_normalTexture, u_normal_smp), getNormalUV()).rgb * 2.0 - vec3(1.0);
+            n = decodeNormalMap(texture(sampler2D(u_normalTexture, u_normal_smp), getNormalUV()));
         #endif
         n *= vec3(normalScale, normalScale, 1.0);
         n = mat3(t, b, ng) * normalize(n);
