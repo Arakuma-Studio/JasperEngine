@@ -16,7 +16,7 @@
 
 #include <string>
 
-namespace jasperengine::editor::inspectorvat {
+namespace jasperengine::editor::vatbakeentry {
 
     inline bool available() {
         return (bool)vatBakerHooks().bake;

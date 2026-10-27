@@ -25,8 +25,8 @@
 //   glTF embeds are written next to the .vat ("<stem>_<image>.png"). place none: WriteFilesCmd
 //   on the project history; beside / replace / crowd: CreateVatCmd on the scene's history (a
 //   new GameObject "<name> (VAT)" at the source's transform with Model = the .vat.glb and a
-//   Vertex Animator = the .vat, selected; replace also disables the source; crowd needs the
-//   VatCrowd placement and is refused until it is available).
+//   Vertex Animator = the .vat, selected; replace also disables the source; crowd also makes it
+//   a crowd: crowdPlacement below, VatCrowd's layout).
 // - Rebake (spec 4.5): loadRebake(vatPath) runs the .vat's recipe again; clip names, events,
 //   speeds, wraps, interpolate and socket names are kept: clips are matched to the source's by
 //   name, then the rest in order (preferring equal lengths); clips removed by hand stay removed.
@@ -44,6 +44,7 @@
 #include "ecs/Entity.h"
 
 #include <atomic>
+#include <functional>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -57,6 +58,7 @@ namespace jasperengine::vat{
 
 namespace jasperengine::editor{
     class Project;
+    class Command;
 }
 
 namespace jasperengine::editor::vat{
@@ -205,6 +207,15 @@ namespace jasperengine::editor::vat{
     // Rebake straight through (CLI, MCP rebake, the Inspector button): loadRebake, run, write
     bool rebakeVat(Project* project, const std::string& vatPath, VatWriteResult& out, std::string& error,
                    std::vector<VatIssue>* warnings = nullptr);
+
+    // Place: Crowd (spec 4.4, 5.4): the problem with these crowd settings ("" when none), and
+    // the VatPlacement::crowd that makes the placed GameObject a crowd in the same undo step: an
+    // Instanced Mesh with `count` instances laid out by VatCrowd's layoutCrowd (a square of side
+    // `area` on its ground plane, random yaw, seeded, no minimum spacing) and the Vertex Animator
+    // out of step (randomStart). Also used for imports (VatImportWrite).
+    std::string crowdPlacementProblem(const VatCrowd& crowd);
+    std::function<bool(Project* project, uint32_t sceneId, Entity entity, std::vector<Command*>& commands, std::string& error)>
+        crowdPlacement(const VatCrowd& crowd);
 
     // which old clips (a .vat's) are which new clips: name first, then in order preferring equal
     // lengths; result[i] = the old clip index of new clip i, or -1

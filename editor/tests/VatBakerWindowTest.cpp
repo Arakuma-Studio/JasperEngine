@@ -31,12 +31,14 @@
 #include "render/preview/VatPreviewRender.h"
 #include "util/EntityPath.h"
 #include "util/FileUtils.h"
+#include "vat/VatAppHooks.h"
 #include "vat/VatBakerHooks.h"
 #include "window/VertexAnimationBakerWindow.h"
 
 #include "Scene.h"
 #include "animation/AnimationClipIO.h"
 #include "component/AnimationPlayerComponent.h"
+#include "component/InstancedMeshComponent.h"
 #include "component/LatticeModifierComponent.h"
 #include "component/ModelComponent.h"
 #include "component/PoseAnimatorComponent.h"
@@ -80,6 +82,12 @@ namespace jasperengine::editor {
         static const std::string& sourceLabel(VertexAnimationBakerWindow& w) { return w.sourceLabel; }
         static const VatImportDetection& detection(VertexAnimationBakerWindow& w) { return w.detection; }
         static bool noneChecked(VertexAnimationBakerWindow& w) { return w.noneChecked; }
+        // the Place: Crowd... fields
+        static void crowd(VertexAnimationBakerWindow& w, int count, float area, int seed) {
+            w.crowdCount = count;
+            w.crowdArea = area;
+            w.crowdSeed = seed;
+        }
     };
 
 }
@@ -590,6 +598,36 @@ TEST_F(VatBakerWindow_, RebakeFromAVatKeepsItsGuidAndEdits) {
     EXPECT_EQ(Access::rebakePath(*window), first.vat);
 }
 
+TEST_F(VatBakerWindow_, PlaceCrowdBakesACrowd) {
+    const uint32_t sceneId = newScene();
+    std::string error;
+    ASSERT_TRUE(window->setSourcePath("assets/models/rigid_arm.gltf", error)) << error;
+    VatBakeSpec spec = window->getSpec();
+    spec.place = VatPlace::Crowd;
+    spec.crowd.count = 40;
+    spec.crowd.area = 8.0f;
+    spec.crowd.seed = 2;
+    window->setSpec(spec);
+    window->refreshEstimate();
+    EXPECT_FALSE(hasErrors(window->getIssues())) << kinds(window->getIssues());
+    ASSERT_TRUE(window->bake(true, error)) << error;
+    runToEnd(*window);
+    ASSERT_FALSE(window->statusIsError()) << window->getStatus();
+    const VatWriteResult& written = window->lastWrite();
+    ASSERT_NE(written.entity, NULL_ENTITY);
+    EXPECT_EQ(written.sceneId, sceneId);
+    const InstancedMeshComponent* instanced = sceneOf(sceneId)->findComponent<InstancedMeshComponent>(written.entity);
+    ASSERT_TRUE(instanced);
+    EXPECT_EQ(instanced->instances.size(), 40u);
+    EXPECT_NE(window->getStatus().find("placed in the scene"), std::string::npos) << window->getStatus();
+    // a count the crowd can't hold is a validation row
+    spec = window->getSpec();
+    spec.crowd.count = 0;
+    window->setSpec(spec);
+    window->refreshEstimate();
+    EXPECT_TRUE(hasKind(window->getIssues(), "invalid_settings")) << kinds(window->getIssues());
+}
+
 TEST_F(VatBakerWindow_, PlayingSceneRefusesTheBake) {
     std::string error;
     ASSERT_TRUE(window->setSourcePath("assets/models/rigid_arm.gltf", error)) << error;
@@ -690,6 +728,51 @@ TEST_F(VatBakerWindow_, BakeEntriesPrefillTheWindow) {
     EXPECT_FALSE(fs::exists(root() / written.vat));
 }
 
+TEST_F(VatBakerWindow_, AppHooksOpenTheBakerAndRebake) {
+    ASSERT_TRUE(vatAppHooks().openBaker && vatAppHooks().rebake) << "the window installs the .vat view's and Project window's hooks";
+    // "Bake Vertex Animation..." on a model
+    vatAppHooks().openBaker(project(), root() / "assets/models/rigid_arm.gltf", VatBakerSource::Bake);
+    EXPECT_TRUE(window->isOpen());
+    EXPECT_EQ(window->getSpec().source.path, "assets/models/rigid_arm.gltf");
+    std::string error;
+    ASSERT_TRUE(window->bake(true, error)) << error;
+    runToEnd(*window);
+    const VatWriteResult first = window->lastWrite();
+    ASSERT_FALSE(first.vat.empty()) << window->getStatus();
+
+    // "Open in Baker" / double-click on the .vat: its recipe, Rebake
+    window->setOpen(false);
+    vatAppHooks().openBaker(project(), root() / first.vat, VatBakerSource::VatAsset);
+    EXPECT_TRUE(window->isOpen());
+    EXPECT_EQ(Access::rebakePath(*window), first.vat);
+
+    // the .vat view's Rebake: runs in the window (progress), rewrites the pair keeping its GUID
+    vatAppHooks().rebake(project(), root() / first.vat);
+    EXPECT_TRUE(window->isRunning());
+    runToEnd(*window);
+    ASSERT_FALSE(window->statusIsError()) << window->getStatus();
+    EXPECT_EQ(window->lastWrite().vat, first.vat);
+    EXPECT_TRUE(window->lastWrite().rewritten);
+    EXPECT_EQ(window->lastWrite().guid, first.guid);
+
+    // "Import as Vertex Animation..." on an export
+    const fs::path exportDir = vatimportfixtures::freshDir("window-hook");
+    vatimportfixtures::writeSoft(exportDir, "Flag", vatimportfixtures::SoftOptions());
+    vatAppHooks().openBaker(project(), exportDir / "geo" / "Flag_mesh.fbx", VatBakerSource::Import);
+    EXPECT_EQ(window->getMode(), VertexAnimationBakerWindow::Mode::Import);
+    EXPECT_EQ(Access::detection(*window).assetName, "Flag");
+
+    // a second window (a test's) answers the hooks while it lives, then the first one again
+    {
+        VertexAnimationBakerWindow other(project());
+        vatAppHooks().openBaker(project(), root() / "assets/models/morph_blob.gltf", VatBakerSource::Bake);
+        EXPECT_EQ(other.getSpec().source.path, "assets/models/morph_blob.gltf");
+    }
+    ASSERT_TRUE(vatAppHooks().openBaker);
+    vatAppHooks().openBaker(project(), root() / "assets/models/morph_blob.gltf", VatBakerSource::Bake);
+    EXPECT_EQ(window->getSpec().source.path, "assets/models/morph_blob.gltf");
+}
+
 // ==================================================================== import
 
 TEST_F(VatBakerWindow_, ImportsAHoudiniExport) {
@@ -749,6 +832,25 @@ TEST_F(VatBakerWindow_, ImportsAHoudiniExport) {
     EXPECT_TRUE(fs::exists(root() / written.vat));
     ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
     EXPECT_FALSE(fs::exists(root() / written.vat));
+
+    // placed as a crowd (the window's Place: Crowd... count, area, seed) in the selected scene
+    const uint32_t sceneId = newScene();
+    window->importOutput().place = VatPlace::Crowd;
+    window->importOutput().output = "assets/WaveCrowd.vat";
+    VatBakerWindowTestAccess::crowd(*window, 12, 4.0f, 5);
+    ASSERT_TRUE(window->bake(true, error)) << error;
+    window->tick(0.0);
+    ASSERT_FALSE(window->statusIsError()) << window->getStatus();
+    ASSERT_NE(window->lastWrite().entity, NULL_ENTITY);
+    EXPECT_EQ(window->lastWrite().sceneId, sceneId);
+    const InstancedMeshComponent* instanced = sceneOf(sceneId)->findComponent<InstancedMeshComponent>(window->lastWrite().entity);
+    ASSERT_TRUE(instanced);
+    EXPECT_EQ(instanced->instances.size(), 12u);
+    EXPECT_EQ(sceneOf(sceneId)->getEntityName(window->lastWrite().entity), "Wave (VAT)");
+    ASSERT_TRUE(history(sceneId)->undo());
+    EXPECT_FALSE(fs::exists(root() / "assets/WaveCrowd.vat"));
+    window->importOutput().place = VatPlace::None;
+    window->importOutput().output.clear();
 
     // a cancelled import writes nothing
     ASSERT_TRUE(window->bake(true, error)) << error;

@@ -24,11 +24,13 @@
 #include "util/EntityPath.h"
 #include "util/FileUtils.h"
 #include "vat/VatBakeSession.h"
+#include "vat/VatCrowd.h"
 
 #include "Scene.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/ModelSubClips.h"
 #include "component/AnimationPlayerComponent.h"
+#include "component/InstancedMeshComponent.h"
 #include "component/LatticeComponent.h"
 #include "component/LatticeModifierComponent.h"
 #include "component/MeshComponent.h"
@@ -893,10 +895,19 @@ TEST_F(VatBaker_, CheckFindsEveryProblemBeforeSampling) {
     EXPECT_TRUE(error);
     taken.overwrite = true;
     EXPECT_FALSE(hasKind(check(taken), "output_exists"));
-    // replace needs a GameObject; crowd waits on the crowd placement
+    // replace needs a GameObject; a crowd needs a count and an area
     VatBakeSpec replace = modelSpec("hero.gltf", {"Walk"});
     replace.place = VatPlace::Replace;
     EXPECT_TRUE(hasErrors(check(replace)));
+    VatBakeSpec crowd = modelSpec("hero.gltf", {"Walk"});
+    crowd.place = VatPlace::Crowd;
+    EXPECT_FALSE(hasErrors(check(crowd))) << kinds(check(crowd));
+    crowd.crowd.count = 0;
+    EXPECT_TRUE(hasKind(check(crowd), "invalid_settings", &error)) << kinds(check(crowd));
+    EXPECT_TRUE(error);
+    crowd.crowd.count = 10;
+    crowd.crowd.area = 0.0f;
+    EXPECT_TRUE(hasKind(check(crowd), "invalid_settings")) << kinds(check(crowd));
 }
 
 TEST_F(VatBaker_, AnimFilesTheirEventsUnboundTracksAndNoMesh) {
@@ -1100,6 +1111,93 @@ TEST_F(VatBaker_, PlaceBesideAndReplaceAreOneUndoStep) {
         EXPECT_FALSE(fs::exists(root() / written.mesh));
         fs::remove(root() / written.vat);
     }
+}
+
+TEST_F(VatBaker_, PlaceCrowdMakesTheGameObjectACrowdInOneUndoStep) {
+    const uint32_t sceneId = newScene();
+    const Entity arm = loadModel(sceneId, "models/rigid_arm.gltf", "Arm");
+    Scene* scene = sceneOf(sceneId);
+    scene->getComponent<Transform>(arm).position = Vector3(4.0f, 1.0f, 0.0f);
+    AnimationPlayerComponent player;
+    AnimationPlayerClip entry;
+    entry.clip = "models/rigid_arm.gltf#Swing";
+    player.clips.push_back(entry);
+    scene->addComponent<AnimationPlayerComponent>(arm, player);
+    cpuskin::updateTransforms(scene);
+
+    VatBakeSpec spec;
+    spec.source.kind = VatSourceKind::Entity;
+    spec.source.sceneId = sceneId;
+    spec.source.path = EntityPath::of(*project()->getScene(sceneId), arm);
+    spec.place = VatPlace::Crowd;
+    spec.crowd.count = 150;
+    spec.crowd.area = 6.0f;
+    spec.crowd.seed = 7;
+    spec.output = "assets/models/crowd.vat";
+    std::unique_ptr<VatBakeSession> session = bake(spec);
+    ASSERT_TRUE(session->result());
+    VatWriteResult written;
+    std::string error;
+    ASSERT_TRUE(session->write(written, error)) << error;
+    const Entity placed = written.entity;
+    ASSERT_NE(placed, NULL_ENTITY);
+    EXPECT_EQ(scene->getEntityName(placed), "Arm (VAT)");
+    EXPECT_EQ(scene->getComponent<Transform>(placed).position, Vector3(4.0f, 1.0f, 0.0f));
+    const InstancedMeshComponent* instanced = scene->findComponent<InstancedMeshComponent>(placed);
+    ASSERT_TRUE(instanced);
+    ASSERT_EQ(instanced->instances.size(), 150u) << "every instance placed (no minimum spacing)";
+    EXPECT_GE(instanced->maxInstances, 150u);
+    std::vector<Vector3> positions;
+    for (const InstanceData& instance : instanced->instances) {
+        EXPECT_LE(std::fabs(instance.position.x), 3.0f + 1e-4f);
+        EXPECT_LE(std::fabs(instance.position.z), 3.0f + 1e-4f);
+        EXPECT_NEAR(instance.position.y, 0.0f, 1e-5f) << "on the GameObject's ground plane";
+        positions.push_back(instance.position);
+    }
+    // the same layout as VatCrowd's for these settings (seeded, deterministic)
+    CrowdSettings settings;
+    settings.count = 150;
+    settings.width = settings.depth = 6.0f;
+    settings.minSpacing = 0.0f;
+    settings.seed = 7;
+    const CrowdLayout layout = layoutCrowd(settings, nullptr);
+    ASSERT_EQ(layout.instances.size(), positions.size());
+    for (size_t i = 0; i < positions.size(); i++) EXPECT_EQ(layout.instances[i].position, positions[i]);
+    const VertexAnimatorComponent* animator = scene->findComponent<VertexAnimatorComponent>(placed);
+    ASSERT_TRUE(animator);
+    EXPECT_EQ(animator->animation, "models/crowd.vat");
+    EXPECT_TRUE(animator->randomStart) << "out of step";
+    EXPECT_EQ(project()->getScene(sceneId)->selectedEntities, std::vector<Entity>{placed});
+
+    // one undo step: the crowd GameObject and the files
+    ASSERT_TRUE(history(sceneId)->undo());
+    EXPECT_FALSE(scene->isEntityCreated(placed) && scene->findComponent<InstancedMeshComponent>(placed));
+    EXPECT_FALSE(fs::exists(root() / written.vat));
+    ASSERT_TRUE(history(sceneId)->redo());
+    ASSERT_TRUE(scene->findComponent<InstancedMeshComponent>(placed));
+    EXPECT_EQ(scene->getComponent<InstancedMeshComponent>(placed).instances.size(), 150u);
+    EXPECT_TRUE(fs::exists(root() / written.vat));
+    ASSERT_TRUE(history(sceneId)->undo());
+
+    // a crowd from a file source goes to the selected scene, at its origin
+    VatBakeSpec fileSpec = modelSpec("rigid_arm.gltf", {"Swing"});
+    fileSpec.place = VatPlace::Crowd;
+    fileSpec.crowd.count = 3;
+    fileSpec.output = "assets/models/crowd2.vat";
+    std::unique_ptr<VatBakeSession> fileSession = bake(fileSpec);
+    VatWriteResult fileWritten;
+    ASSERT_TRUE(fileSession->write(fileWritten, error)) << error;
+    ASSERT_NE(fileWritten.entity, NULL_ENTITY);
+    EXPECT_EQ(fileWritten.sceneId, project()->getSelectedSceneId());
+    ASSERT_TRUE(scene->findComponent<InstancedMeshComponent>(fileWritten.entity));
+    EXPECT_EQ(scene->getComponent<InstancedMeshComponent>(fileWritten.entity).instances.size(), 3u);
+    // the crowd builder refuses settings it can't use (the check refuses them first)
+    std::vector<Command*> commands;
+    VatCrowd bad;
+    bad.count = MAX_CROWD + 1;
+    EXPECT_FALSE(crowdPlacement(bad)(project(), sceneId, fileWritten.entity, commands, error));
+    EXPECT_TRUE(commands.empty());
+    EXPECT_NE(error.find("crowd count"), std::string::npos) << error;
 }
 
 TEST_F(VatBaker_, StalenessAndRebakeKeepEdits) {

@@ -1488,8 +1488,6 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(mcp::McpActivityWindow::WINDOW_NAME, dock_id_right);
     ImGui::DockBuilderDockWindow(TerrainEditWindow::WINDOW_NAME, dock_id_right);
     ImGui::DockBuilderDockWindow(PhysicsPlacementWindow::WINDOW_NAME, dock_id_right);
-    // the baker is one column of settings with its preview: a tab beside the Inspector
-    ImGui::DockBuilderDockWindow(VertexAnimationBakerWindow::WINDOW_NAME, dock_id_right);
 
     // Project, Console and Animation across the bottom, under Hierarchy + Scene.
     ImGui::DockBuilderSplitNode(dock_id_middle, ImGuiDir_Down, 0.0f, &dock_id_middle_bottom, &dock_id_left);
@@ -1508,6 +1506,8 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow("Game", dock_id_middle_top);
     // Texture Synthesis is mostly a preview: a tab next to the Scene and Game views
     ImGui::DockBuilderDockWindow(TextureSynthesisWindow::WINDOW_NAME, dock_id_middle_top);
+    // the baker too (its preview), so the Inspector entries that open it stay in view
+    ImGui::DockBuilderDockWindow(VertexAnimationBakerWindow::WINDOW_NAME, dock_id_middle_top);
 
     // Tab order inside the shared nodes (first one is the visible tab).
     auto stampPanelDockOrder = [](const char* windowName, short order) {

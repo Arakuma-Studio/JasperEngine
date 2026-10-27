@@ -9891,7 +9891,7 @@ void editor::InspectorWindow::drawPoseAnimatorComponent(ComponentType cpType, Sc
                 vatEntry.sceneId = sceneProject->id;
                 vatEntry.entity = entity;
                 vatEntry.asset = animator.animation;
-                inspectorvat::menuItem(project, vatEntry, stopped, "poseanimator.bakeMenu.vat");
+                vatbakeentry::menuItem(project, vatEntry, stopped, "poseanimator.bakeMenu.vat");
                 ImGui::EndPopup();
             }
             ImGui::EndDisabled();
@@ -15489,12 +15489,12 @@ static void drawLatticeBakeRow(editor::Project* project, editor::SceneProject* s
         }
     }
     // Bake ▾ › Vertex Animation…: the lattice tracks of the clips that move it, baked per vertex
-    if (editor::inspectorvat::available()){
+    if (editor::vatbakeentry::available()){
         editor::VatBakeEntry entry;
         entry.kind = editor::VatBakeEntry::Kind::LatticeModifier;
         entry.sceneId = sceneProject->id;
         entry.entity = entity;
-        editor::inspectorvat::bakeButton(project, entry, stopped, "lattice_bake_vat", "lattice.bake");
+        editor::vatbakeentry::bakeButton(project, entry, stopped, "lattice_bake_vat", "lattice.bake");
     }
 }
 

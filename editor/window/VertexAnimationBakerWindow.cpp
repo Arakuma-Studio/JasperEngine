@@ -17,6 +17,7 @@
 #include "util/EntityPayload.h"
 #include "util/FileUtils.h"
 #include "util/UIProbe.h"
+#include "vat/VatAppHooks.h"
 #include "window/ProjectWindow.h"
 
 #include "Scene.h"
@@ -50,7 +51,12 @@ using Json = nlohmann::json;
 
 namespace {
 
-    // the window whose hooks are installed (the App's; a test's own window replaces it while it lives)
+    // the live windows: the newest one answers the hooks (the App's; a test's own window takes
+    // over while it lives, then the App's again)
+    std::vector<VertexAnimationBakerWindow*>& liveWindows() {
+        static std::vector<VertexAnimationBakerWindow*> windows;
+        return windows;
+    }
     VertexAnimationBakerWindow* hooksOwner = nullptr;
 
     double now() {
@@ -198,6 +204,7 @@ namespace {
 VertexAnimationBakerWindow::VertexAnimationBakerWindow(Project* project)
     : project(project) {
     importSpec.mode = "auto";
+    liveWindows().push_back(this);
     hooksOwner = this;
     vatBakerHooks().bake = [](Project*, const VatBakeEntry& entry, bool bakeNow) {
         if (!hooksOwner) return;
@@ -206,12 +213,35 @@ VertexAnimationBakerWindow::VertexAnimationBakerWindow(Project* project)
             Out::error("Vertex Animation: %s", error.c_str());
         }
     };
+    // the .vat asset view (Open in Baker, Rebake) and the Project window (double-click, Bake
+    // Vertex Animation..., Import as Vertex Animation...)
+    vatAppHooks().openBaker = [](Project*, const fs::path& path, VatBakerSource) {
+        if (!hooksOwner) return;
+        std::string error;
+        // the source kind follows from the file (a .vat opens its recipe, an export imports)
+        if (!hooksOwner->setSourcePath(FileUtils::pathToUtf8(path), error)) {
+            Out::error("Vertex Animation Baker: can't open %s: %s", FileUtils::pathToUtf8(path.filename()).c_str(), error.c_str());
+            return;
+        }
+        hooksOwner->open();
+    };
+    vatAppHooks().rebake = [](Project*, const fs::path& vatPath) {
+        if (!hooksOwner) return;
+        std::string error;
+        if (!hooksOwner->openVat(FileUtils::pathToUtf8(vatPath), error) || !hooksOwner->bake(true, error)) {
+            Out::error("Vertex Animation: the rebake of %s can't start: %s", FileUtils::pathToUtf8(vatPath.filename()).c_str(), error.c_str());
+        }
+    };
 }
 
 VertexAnimationBakerWindow::~VertexAnimationBakerWindow() {
-    if (hooksOwner == this) {
-        hooksOwner = nullptr;
+    auto& windows = liveWindows();
+    windows.erase(std::remove(windows.begin(), windows.end(), this), windows.end());
+    hooksOwner = windows.empty() ? nullptr : windows.back();
+    if (!hooksOwner) {
         vatBakerHooks().bake = nullptr;
+        vatAppHooks().openBaker = nullptr;
+        vatAppHooks().rebake = nullptr;
     }
     if (run) run->cancel();
     if (importJob && importJob->thread.joinable()) importJob->thread.join();
@@ -1189,7 +1219,20 @@ void VertexAnimationBakerWindow::finishImport() {
         return;
     }
     std::string error;
-    if (!writeVatImport(project, *importResult, detection, importOut, written, error)) {
+    VatImportWriteOptions options = importOut;
+    if (options.place == VatPlace::Crowd) {
+        VatCrowd crowd;
+        crowd.count = crowdCount;
+        crowd.area = crowdArea;
+        crowd.seed = (uint32_t)crowdSeed;
+        const std::string problem = crowdPlacementProblem(crowd);
+        if (!problem.empty()) {
+            setStatus("The import can't be placed: " + problem, true);
+            return;
+        }
+        options.crowd = crowdPlacement(crowd);
+    }
+    if (!writeVatImport(project, *importResult, detection, options, written, error)) {
         setStatus("The import can't be written: " + error, true);
         Out::error("Vertex Animation: the import can't be written: %s", error.c_str());
         return;

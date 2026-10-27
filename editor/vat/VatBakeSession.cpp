@@ -8,14 +8,18 @@
 #include "animation/ClipEditorUtil.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
+#include "command/type/AddComponentCmd.h"
 #include "command/type/CreateVatCmd.h"
+#include "command/type/PropertyCmd.h"
 #include "command/type/WriteFilesCmd.h"
 #include "physics/PlacementSession.h"
 #include "pose/PoseEditSession.h"
 #include "util/AssetDatabase.h"
 #include "util/FileUtils.h"
+#include "vat/VatCrowd.h"
 
 #include "Scene.h"
+#include "component/InstancedMeshComponent.h"
 #include "component/Transform.h"
 #include "pool/VertexAnimationPool.h"
 
@@ -322,8 +326,9 @@ const std::vector<VatIssue>& VatBakeSession::check(){
         }
     }
     if (spec.place == VatPlace::Crowd){
-        checkIssues.push_back(makeIssue("invalid_settings", true, "crowd placement is not available yet",
-                                        "bake with place beside, then turn the GameObject into a crowd"));
+        const std::string problem = crowdPlacementProblem(spec.crowd);
+        if (!problem.empty()) checkIssues.push_back(makeIssue("invalid_settings", true, problem, "give a crowd count of 1 to " +
+                                                              std::to_string(MAX_CROWD) + " and an area over 0 m"));
     }
     if (spec.place == VatPlace::Replace && !isGameObjectSource(spec.source)){
         checkIssues.push_back(makeIssue("invalid_settings", true, "place replace needs a GameObject source (a file has nothing to replace)",
@@ -981,8 +986,12 @@ bool VatBakeSession::write(VatWriteResult& out, std::string& error){
     placement.mode = bakeSpec.place == VatPlace::Replace ? VatPlacement::Mode::Replace
                    : bakeSpec.place == VatPlace::Crowd ? VatPlacement::Mode::Crowd : VatPlacement::Mode::Beside;
     if (placement.mode == VatPlacement::Mode::Crowd){
-        error = "crowd placement is not available yet: bake with place beside, then make it a crowd";
-        return false;
+        const std::string problem = crowdPlacementProblem(bakeSpec.crowd);
+        if (!problem.empty()){
+            error = problem;
+            return false;
+        }
+        placement.crowd = crowdPlacement(bakeSpec.crowd);
     }
     uint32_t sceneId = 0;
     if (!target->scratch()){
@@ -1026,6 +1035,51 @@ bool VatBakeSession::write(VatWriteResult& out, std::string& error){
     out.sceneId = sceneId;
     out.entity = command->getEntity();
     return true;
+}
+
+// ---- crowd placement ----
+
+std::string crowdPlacementProblem(const VatCrowd& crowd){
+    if (crowd.count < 1 || crowd.count > MAX_CROWD){
+        return "the crowd count must be 1 to " + std::to_string(MAX_CROWD) + " (" + std::to_string(crowd.count) + " given)";
+    }
+    if (!(crowd.area > 0.0f) || !std::isfinite(crowd.area)) return "the crowd area must be over 0 m";
+    return "";
+}
+
+std::function<bool(Project*, uint32_t, Entity, std::vector<Command*>&, std::string&)> crowdPlacement(const VatCrowd& crowd){
+    return [crowd](Project* project, uint32_t sceneId, Entity entity, std::vector<Command*>& commands, std::string& error){
+        const std::string problem = crowdPlacementProblem(crowd);
+        if (!problem.empty()){
+            error = problem;
+            return false;
+        }
+        // Create Crowd's layout: a square of side `area` on the placed GameObject's ground plane,
+        // random yaw, out of step; no minimum spacing (every instance placed)
+        CrowdSettings settings;
+        settings.count = crowd.count;
+        settings.area = CrowdArea::Box;
+        settings.width = crowd.area;
+        settings.depth = crowd.area;
+        settings.minSpacing = 0.0f;
+        settings.seed = crowd.seed;
+        const CrowdLayout layout = layoutCrowd(settings, nullptr);
+        std::vector<InstanceData> instances;
+        for (const CrowdInstanceSpec& spec : layout.instances){
+            InstanceData data;
+            data.position = spec.position;
+            data.rotation = spec.rotation;
+            data.scale = spec.scale;
+            instances.push_back(data);
+        }
+        commands.push_back(new AddComponentCmd(project, sceneId, entity, ComponentType::InstancedMeshComponent));
+        const unsigned int capacity = std::max<unsigned int>(InstancedMeshComponent().maxInstances, (unsigned int)instances.size());
+        commands.push_back(new PropertyCmd<unsigned int>(project, sceneId, entity, ComponentType::InstancedMeshComponent, "maxInstances", capacity));
+        commands.push_back(new PropertyCmd<std::vector<InstanceData>>(project, sceneId, entity, ComponentType::InstancedMeshComponent, "instances",
+                                                                       instances));
+        commands.push_back(new PropertyCmd<bool>(project, sceneId, entity, ComponentType::VertexAnimatorComponent, "randomStart", true));
+        return true;
+    };
 }
 
 // ---- staleness and rebake ----

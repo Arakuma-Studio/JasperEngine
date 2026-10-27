@@ -879,13 +879,13 @@ void editor::InspectorWindow::drawAnimationPlayerClips(ComponentType cpType, Sce
         ImGui::SetItemTooltip("Create an .anim file and add it to this Animation Player (one undo step)");
     }
     // Bake ▾ › Vertex Animation… (the baker window prefilled with this GameObject)
-    if (inspectorvat::available()){
+    if (vatbakeentry::available()){
         propertyHeader("");
         VatBakeEntry entry;
         entry.kind = VatBakeEntry::Kind::AnimationPlayer;
         entry.sceneId = sceneProject->id;
         entry.entity = entity;
-        inspectorvat::bakeButton(project, entry, stopped, "player_bake", "player.bake");
+        vatbakeentry::bakeButton(project, entry, stopped, "player_bake", "player.bake");
     }
     endTable();
 
@@ -1447,7 +1447,7 @@ void editor::InspectorWindow::drawModelClipsAsset(const fs::path& asset, const s
     if (std::none_of(clips.begin(), clips.end(), [&](const anim::ModelClipInfo& info){ return info.name == state.modelAssetClip; })){
         state.modelAssetClip = clips.empty() ? std::string() : clips[0].name;
     }
-    const bool bakeColumn = inspectorvat::available();
+    const bool bakeColumn = vatbakeentry::available();
     if (ImGui::BeginTable("model_asset_clips", bakeColumn ? 3 : 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV)){
         ImGui::TableSetupColumn("Clip");
         ImGui::TableSetupColumn("Length", ImGuiTableColumnFlags_WidthFixed, textWidth("000.00 s") + ImGui::GetStyle().CellPadding.x * 2);
@@ -1472,7 +1472,7 @@ void editor::InspectorWindow::drawModelClipsAsset(const fs::path& asset, const s
                 entry.kind = VatBakeEntry::Kind::ModelClip;
                 entry.asset = FileUtils::pathToUtf8(asset);
                 entry.clip = info.name;
-                inspectorvat::bakeButton(project, entry, !project->isAnyScenePlaying(), "model_clip_bake",
+                vatbakeentry::bakeButton(project, entry, !project->isAnyScenePlaying(), "model_clip_bake",
                                          "modelAsset.bake." + std::to_string(info.index), true);
                 ImGui::PopID();
             }
