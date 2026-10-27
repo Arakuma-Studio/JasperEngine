@@ -79,8 +79,8 @@ bool ObjectRender::beginDraw(const PipelineState& state){
     return backend.beginDraw(state);
 }
 
-bool ObjectRender::beginDraw(PipelineType pipType, bool disableFaceCulling){
-    return backend.beginDraw(pipType, disableFaceCulling);
+bool ObjectRender::beginDraw(PipelineType pipType, bool disableFaceCulling, bool mirrored){
+    return backend.beginDraw(pipType, disableFaceCulling, mirrored);
 }
 
 void ObjectRender::applyUniformBlock(int slot, unsigned int count, void* data){

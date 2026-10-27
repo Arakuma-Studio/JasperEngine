@@ -1779,6 +1779,15 @@ namespace jasperengine{
 		const Matrix4* objectMatrices(Transform& transform, Matrix4 (&scratch)[3]);
 		const Matrix4& objectMVP(Transform& transform) const;
 		const Matrix4& objectModel(Transform& transform) const;
+	public:
+		// Whether a draw of the mesh with this model matrix reverses the face winding of its
+		// pipelines (ObjectRender::beginDraw mirrored): a negative determinant turns its triangles
+		// over on screen, so its front faces would cull and shade (gl_FrontFacing) as backs,
+		// unless the mesh's winding order already compensates that mirror
+		// (MeshComponent::mirroredWinding). Per draw, so a mirrored instance of an instanced mesh
+		// is not covered (its instance matrix is the GPU's)
+		static bool isMirroredDraw(const MeshComponent& mesh, const Matrix4& modelMatrix);
+	private:
 		float objectDistance(Transform& transform) const;
 		PassScissor passScissor(Transform& transform, RectTransformComponent& layout);
 		const Matrix4& passSkyViewProjection(const SkyboxComponent& sky) const;

@@ -76,12 +76,12 @@ SokolObject::SokolObject(){
 // Forgets the variants without destroying them: a copy of this object shares the
 // handles, as it shares the pipelines, and destroy() releases them once
 void SokolObject::resetPipelines(){
-#ifdef JASPERENGINE_EDITOR
-    for (sg_pipeline& variant : noCullPipelines){
-        variant.id = SG_INVALID_ID;
+    for (auto& variants : variantPipelines){
+        for (sg_pipeline& variant : variants){
+            variant.id = SG_INVALID_ID;
+        }
     }
     noCullSame = 0;
-#endif
 }
 
 int SokolObject::getLivePipelineCount(){
@@ -765,7 +765,7 @@ bool SokolObject::beginDraw(const PipelineState& state){
     return true;
 }
 
-bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling){
+bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling, bool mirrored){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     sg_pipeline selectedPipeline = pipelineOf(pipType);
 
@@ -777,30 +777,38 @@ bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling){
         return false;
     }
 
-#ifdef JASPERENGINE_EDITOR
-    if (disableFaceCulling){
-        const int index = pipelineIndex(pipType);
-        if (index < PIPELINE_TYPES){
-            sg_pipeline& variant = noCullPipelines[index];
-            if (variant.id == SG_INVALID_ID && !(noCullSame & (1u << index))){
-                sg_pipeline_desc desc = makePipelineDesc(pipType);
-                if (desc.cull_mode == SG_CULLMODE_BACK || desc.cull_mode == SG_CULLMODE_FRONT){
-                    desc.cull_mode = SG_CULLMODE_NONE;
-                    variant = makePipeline(desc);
-                }else{
-                    // already culls nothing: the pipeline is its own variant
-                    noCullSame |= (uint16_t)(1u << index);
-                }
+#ifndef JASPERENGINE_EDITOR
+    disableFaceCulling = false;
+#endif
+
+    const int index = pipelineIndex(pipType);
+    if ((disableFaceCulling || mirrored) && index < PIPELINE_TYPES){
+        const int kind = mirrored ? (disableFaceCulling ? VARIANT_MIRRORED_NO_CULL : VARIANT_MIRRORED) : VARIANT_NO_CULL;
+        const bool sameAsPipeline = (kind == VARIANT_NO_CULL) && (noCullSame & (1u << index));
+        sg_pipeline& variant = variantPipelines[kind][index];
+        if (variant.id == SG_INVALID_ID && !sameAsPipeline){
+            sg_pipeline_desc desc = makePipelineDesc(pipType);
+            const bool culls = desc.cull_mode == SG_CULLMODE_BACK || desc.cull_mode == SG_CULLMODE_FRONT;
+            if (disableFaceCulling){
+                desc.cull_mode = SG_CULLMODE_NONE;
             }
-            // a variant that failed to build leaves the pipeline as it is
-            if (variant.id != SG_INVALID_ID && sg_query_pipeline_state(variant) == SG_RESOURCESTATE_VALID){
-                selectedPipeline = variant;
+            if (mirrored){
+                // the winding of the front faces on screen turns with the mirror (sokol's
+                // default winding is CW)
+                desc.face_winding = (desc.face_winding == SG_FACEWINDING_CCW) ? SG_FACEWINDING_CW : SG_FACEWINDING_CCW;
+            }
+            if (kind == VARIANT_NO_CULL && !culls){
+                // already culls nothing: the pipeline is its own variant
+                noCullSame |= (uint16_t)(1u << index);
+            }else{
+                variant = makePipeline(desc);
             }
         }
+        // a variant that failed to build leaves the pipeline as it is
+        if (variant.id != SG_INVALID_ID && sg_query_pipeline_state(variant) == SG_RESOURCESTATE_VALID){
+            selectedPipeline = variant;
+        }
     }
-#else
-    (void)disableFaceCulling;
-#endif
 
     sg_apply_pipeline(selectedPipeline);
     // the dynamic path's "applied last" no longer holds
@@ -826,11 +834,11 @@ void SokolObject::destroy(){
         for (sg_pipeline& pipeline : pipelines){
             destroyPipeline(pipeline);
         }
-#ifdef JASPERENGINE_EDITOR
-        for (sg_pipeline& variant : noCullPipelines){
-            destroyPipeline(variant);
+        for (auto& variants : variantPipelines){
+            for (sg_pipeline& variant : variants){
+                destroyPipeline(variant);
+            }
         }
-#endif
     }
 
     for (sg_pipeline& pipeline : pipelines){

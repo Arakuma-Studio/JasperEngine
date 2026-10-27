@@ -7403,7 +7403,7 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
 
     // the editor's "no face culling" view keeps the pass's culling: it is part of the technique
     // (an inverted hull drawn unculled covers its object)
-    if (!render.beginDraw(pipType, false)){
+    if (!render.beginDraw(pipType, false, isMirroredDraw(mesh, objectModel(transform)))){
         mesh.needReload = true;
         return;
     }
@@ -8000,6 +8000,8 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
         // model, normal and mvp matrices of this pass (one uniform block)
         Matrix4 objectScratch[3];
         const Matrix4* objectBlock = objectMatrices(transform, objectScratch);
+        // a mirroring model matrix draws with the face winding reversed (front faces stay front)
+        const bool mirroredDraw = isMirroredDraw(mesh, objectBlock[0]);
         // Transform::normalMatrix is kept only while the scene has lights (and is saved with
         // the scene), but library shaders read it whatever the lighting (outline widths,
         // fresnel, matcap, rim): without lights theirs is made here
@@ -8121,7 +8123,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                     render.addTexture(mesh.submeshes[i].shader.get()->shaderData.getTextureIndex(TextureShaderType::BASECOLOR), ShaderStageType::FRAGMENT, fluidTexture);
             }
 
-            if (!render.beginDraw(pipType, passNoFaceCulling())){
+            if (!render.beginDraw(pipType, passNoFaceCulling(), mirroredDraw)){
                 mesh.needReload = true;
                 return false;
             }
@@ -8327,6 +8329,10 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
         updateMeshBuffers(mesh);
         writeCustomUniforms(mesh);
 
+        // a mirroring model matrix draws with the face winding reversed (the shadow and depth
+        // passes cull as the colour pass)
+        const bool mirroredDraw = isMirroredDraw(mesh, objectModel(transform));
+
         // the depth pass renders the view camera's selection (view 0 in draw())
         TerrainView* terrainNodes = nullptr;
         if (terrain){
@@ -8373,7 +8379,7 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
                 bindShaderTextures(depthBindings, depthRender, mesh.submeshes[i].material.shaderTextures);
             }
 
-            if (!depthRender.beginDraw(pipelineType, passNoFaceCulling())){
+            if (!depthRender.beginDraw(pipelineType, passNoFaceCulling(), mirroredDraw)){
                 // a submesh without this depth program is left out of a pre-pass (its scene
                 // gives every mesh one when a pass needs them all: updateSceneInputPrograms);
                 // reloading would not give it one and would leave the mesh out of its colour
@@ -9112,6 +9118,9 @@ bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, Transform
 
     updateMeshBuffers(mesh);
 
+    // a mirroring model matrix draws with the face winding reversed (as the colour pass)
+    const bool mirroredDraw = isMirroredDraw(mesh, objectModel(transform));
+
     // the G-buffer pass renders the view camera's selection (view 0 in draw())
     TerrainView* terrainNodes = nullptr;
     if (terrain){
@@ -9146,7 +9155,7 @@ bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, Transform
             }
         }
 
-        if (!gbufferRender.beginDraw(PIP_GBUFFER, passNoFaceCulling())){
+        if (!gbufferRender.beginDraw(PIP_GBUFFER, passNoFaceCulling(), mirroredDraw)){
             mesh.needReload = true;
             return false;
         }
@@ -12672,6 +12681,12 @@ const Matrix4& RenderSystem::objectMVP(Transform& transform) const{
         return passObjects->mvp[index];
 #endif
     return transform.modelViewProjectionMatrix;
+}
+
+bool RenderSystem::isMirroredDraw(const MeshComponent& mesh, const Matrix4& modelMatrix){
+    // the transform mirrors the mesh (its triangles turn over on screen) unless its winding
+    // order already compensates that mirror (MeshComponent::mirroredWinding, glTF import)
+    return (modelMatrix.determinant() < 0.0f) != mesh.mirroredWinding;
 }
 
 const Matrix4& RenderSystem::objectModel(Transform& transform) const{

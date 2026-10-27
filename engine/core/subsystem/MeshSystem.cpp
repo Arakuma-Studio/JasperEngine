@@ -4936,6 +4936,10 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     // entity the root does not place has only the offset (none when the mesh cannot be baked)
     const Matrix4 placedMatrix = (bakeSceneRoot && !bakingFlatten) ? meshOffset : matrix * meshOffset;
     mesh.windingOrder = (placedMatrix.determinant() < 0.0) ? WindingOrder::CW : WindingOrder::CCW;
+    // the part of that compensation that is the entity's (the scene root on the transform: the
+    // baked offset and a flattened or baked root are in the vertices), which the draw then must
+    // not compensate again (RenderSystem::isMirroredDraw)
+    mesh.mirroredWinding = !bakeSceneRoot && !bakingFlatten && matrix.determinant() < 0.0;
 
     if (asyncLoad) {
         ResourceProgress::updateProgress(buildId, 0.4f); // Transform processing done
@@ -5132,6 +5136,8 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 ? matrix.determinant()
                 : getGLTFMeshGlobalMatrix(nodeIdx, model, nodesParent).determinant();
             mesh.windingOrder = (windingDet < 0.0) ? WindingOrder::CW : WindingOrder::CCW;
+            // all of it on the entity transforms (the node's global, or the root's above a skinned child)
+            mesh.mirroredWinding = windingDet < 0.0;
 
             // Reserve one synthetic byte-index view, one for a VEC3 COLOR_0, plus up to eight supported
             // sparse morph views per primitive so appends never invalidate non-owning buffer pointers.

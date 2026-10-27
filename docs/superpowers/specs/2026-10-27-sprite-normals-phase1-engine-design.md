@@ -467,3 +467,33 @@ Not touched: `editor/mcp/McpInstructions.cpp` (Phase 3 owns the agent guide line
   height 64 [24]. No behaviour change.
 - `Catalog::shaderReadsMaterialNormalMap` is now also called by Phase 2's `sceneWarnings` (`shader_ignores_normals`)
   [4]. Signature unchanged.
+
+## Amendments (2026-10-27, Phase 1 implementation and fix round 1)
+
+- Section 3.8 / F7 (controller ruling, fix round 1): the facing of mirrored draws is fixed rather than left as is. A
+  draw whose model matrix has a negative determinant reverses its pipelines' face winding
+  (`RenderSystem::isMirroredDraw`, `ObjectRender::beginDraw(..., mirrored)`: a lazily built pipeline variant, as
+  Unity flips culling), in the colour, extra, depth/shadow and G-buffer passes, so front faces stay front (culling
+  and `gl_FrontFacing`) for every shader. Meshes whose winding already compensates a mirror on the entity transform
+  (glTF import, `MeshSystem::loadGLTF`) carry `MeshComponent::mirroredWinding` and are not reversed again (the import's
+  winding code is unchanged; it only records the flag). A mirror made by an instance matrix alone is per instance on
+  the GPU and stays as before. Non-mirrored draws use the same pipelines as before (bit-identical).
+- R17: written with a directional light from the left and from above (left alone cannot tell a wrong green from a
+  right one under an x mirror), at scales (1,1,1) and (-1,1,1), the sprites wound CCW (no workaround after the fix
+  above). Added with it: a mirrored Lit sprite in a mixed scene lit by a Light 2D at height 64 (with and without a
+  normal map), a compensated mirrored mesh drawn as before, and a mirrored single-sided box keeping its front.
+- R13: also library:sprite with every feature on, under a negative scale and a mirrored rect (surface_vs.glsl), and
+  gaining then losing its Normal Texture after it loaded (the manifest submesh's reload).
+- R1/R2, R6-R8 and R9's two rects are single tests that check the left light then the light above. R3 gets its grid
+  from a lattice at rest (`LatticeModifierComponent.subdivisions = 4`). R5's tileset textures are made in code, so the
+  test sets `numSubmeshes = 1` itself (`Tilemap::addRect` makes a submesh only for a texture file). R16: the renderer
+  does evaluate 2D lights on a UI camera, so R16 asserts the lit side.
+- 5.3: the Lua script uses `Sprite(self.scene, self.entity)` (scripts have no `self.gameObject`); `get_entity` with
+  `detail: "values"` stands for `get_properties`; the sprite sits at the canvas centre the screenshot reports.
+- 3.4: the variant also requires uv1 and excludes terrains; `@require normalmap` needs `@shader mesh` and reserves
+  `u_normalTexture`; a manifest submesh reloads when its normal texture appears or disappears; the guard macro is
+  `LIGHT2D_NORMAL_TEXTURE_DECLARED` (defined by a shader that declares the texture itself, or by lighting2d.glsl when
+  it declares it).
+- Section 4, mirroring row: imported glTF with mirrored nodes (a mirror placed on the entity transform) now also shade
+  normal maps correctly (wrong before); and meshes mirrored at runtime keep their front faces (single-sided ones no
+  longer cull their fronts; double-sided Lit ones shade the visible side as the front, lit by 3D lights and Light 2Ds).
