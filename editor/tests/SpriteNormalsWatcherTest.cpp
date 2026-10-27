@@ -53,6 +53,7 @@ namespace jasperengine::editor {
             w.tick();
         }
         static bool scanning(W& w) { return w.scan != nullptr; }
+        static std::shared_ptr<W::ScanJob> job(W& w) { return w.scan; }
         static void startScan(W& w) {
             w.lastScan = -1.0;
             w.tick();
@@ -339,7 +340,23 @@ TEST(SpriteNormalsWatcher, ResetDoesNotWaitAndIdleProjectsBackOff) {
     Access::startScan(watcher);
     EXPECT_TRUE(Access::scanning(watcher));
     const auto start = std::chrono::steady_clock::now();
+    const auto job = Access::job(watcher);
     watcher.reset();
     EXPECT_LT(std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count(), 0.05);
+    EXPECT_FALSE(Access::scanning(watcher));
+    // its thread ends on its own (waited here so no thread is left for the death tests)
+    std::unique_lock<std::mutex> lock(job->mutex);
+    job->finished.wait(lock, [&job]() { return job->done.load(); });
+}
+
+TEST(SpriteNormalsWatcher, ShutdownStopsTheScanThread) {
+    fresh("shutdown");
+    for (int i = 0; i < 400; i++) writePng("assets/shutdown/f" + std::to_string(i) + ".png", disk(8, 10));
+    SpriteNormalsWatcher watcher(project());
+    Access::startScan(watcher);
+    const auto job = Access::job(watcher);
+    ASSERT_NE(job, nullptr);
+    watcher.shutdown(2.0);
+    EXPECT_TRUE(job->done) << "cancelled at its next file and finished before shutdown returned";
     EXPECT_FALSE(Access::scanning(watcher));
 }

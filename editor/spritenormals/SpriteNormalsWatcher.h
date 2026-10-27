@@ -46,8 +46,10 @@ namespace jasperengine::editor {
         // Main thread, once a frame: collects a finished scan, starts the next one when due,
         // runs auto-regeneration
         void tick();
-        // A project switch: a running regeneration is cancelled, the index forgotten
+        // A project switch: a running regeneration is cancelled, the index forgotten (never waits)
         void reset();
+        // Editor shutdown: reset, then a running scan waited for at most `timeoutSeconds`
+        void shutdown(double timeoutSeconds);
 
         // a generated output (absolute path) whose source changed since it was made
         bool isStale(const std::filesystem::path& output) const;

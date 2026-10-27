@@ -3632,7 +3632,9 @@ void editor::App::shutdownBackgroundWork() {
     if (!editor::texsynth::SynthesisRun::cancelAll()) {
         Out::warning("A texture synthesis did not stop in time; it is left to finish without effect.");
     }
-    if (spriteNormalsWatcher) spriteNormalsWatcher->reset();
+    if (spriteNormalsWatcher) spriteNormalsWatcher->shutdown(1.0);
+    // Shift-click generations and Regenerates: cancelled, waited for a moment
+    if (spriteNormalsWindow) spriteNormalsWindow->shutdownJobs(2.0);
     if (!editor::spritenormals::SpriteNormalsRun::cancelAll()) {
         Out::warning("A sprite normal map generation did not stop in time; it is left to finish without effect.");
     }

@@ -5,7 +5,14 @@
 
 namespace jasperengine::editor{
 
+    class CommandHistory;
+
     class Command{
+        friend class CommandHistory;
+        // a history step's identity, unique for the editor's run (CommandHistory sets it when the
+        // command becomes a step): a freed command's address can come back, its serial can't
+        unsigned long long historySerial = 0;
+
     protected:
         bool mergeable = true;
 
@@ -27,6 +34,7 @@ namespace jasperengine::editor{
         virtual bool affectsStructure() const { return true; }
 
         void setNoMerge() { mergeable = false; }
+        unsigned long long serial() const { return historySerial; }
         bool canMerge() const { return mergeable; }
     };
 
