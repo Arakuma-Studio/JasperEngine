@@ -18,6 +18,7 @@
 #include "command/type/LinkMaterialCmd.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/ModelLoadCmd.h"
+#include "vat/VatSceneActions.h"
 #include "command/type/DuplicateEntityCmd.h"
 #include "command/type/ImportPrefabCmd.h"
 #include "lattice/LatticeEditorOps.h"
@@ -526,6 +527,24 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                     if (sceneProject->playState == ScenePlayState::STOPPED && !project->isAnyScenePlaying()) {
                         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
                             updatePrefabDrag(sceneProject, receivedStrings, x, y, payload->IsDelivery());
+                        }
+                    }
+                } else if (Util::isVertexAnimationFile(droppedRelativePath) && sceneProject->sceneType == SceneType::SCENE_3D) {
+                    // a Vertex Animation: a GameObject with Model = its .vat.glb and Vertex Animator =
+                    // the .vat, one step (vertex animation spec 3.3)
+                    if (sceneProject->playState == ScenePlayState::STOPPED && !project->isAnyScenePlaying()) {
+                        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
+                            if (payload->IsDelivery() && !insideAssets) {
+                                Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
+                                focusSceneWindow(*sceneProject);
+                            } else if (payload->IsDelivery()) {
+                                const Vector3 dropPosition = getModelDropPosition(sceneProject, x, y, selEntity);
+                                std::string error;
+                                if (createVatObject(project, sceneProject->id, receivedStrings[0], dropPosition, NULL_ENTITY, &error) == NULL_ENTITY) {
+                                    Out::error("%s", error.c_str());
+                                }
+                                focusSceneWindow(*sceneProject);
+                            }
                         }
                     }
                 } else if (isModel && sceneProject->sceneType == SceneType::SCENE_3D) {

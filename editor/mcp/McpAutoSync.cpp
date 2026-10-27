@@ -10,6 +10,7 @@
 
 #include "Project.h"
 #include "animation/AnimationClipDocument.h"
+#include "vat/VatDocument.h"
 #include "util/FileUtils.h"
 #include "util/Util.h"
 #include "window/CodeEditor.h"
@@ -165,7 +166,7 @@ bool McpAutoSync::isTrackedFile(const std::string& path) {
     // pose animations and humanoid sidecars: their open documents reload (editor/pose); clips:
     // their documents reload, AnimationClipPool drops them and their players reload
     if (ext == ".c" || ext == ".inl" || ext == ".poseanim" || ext == ".humanoid" || Util::isAnimationClipFile(path)) return true;
-    // Vertex Animations: VertexAnimationPool drops them and their animators reload (problems reported)
+    // Vertex Animations: their documents reload, VertexAnimationPool drops them, animators reload
     if (Util::isVertexAnimationFile(path)) return true;
     // models and glTF buffers: the clips made from their animations reload (picked up, not reported)
     return isModelSourceFile(path);
@@ -330,6 +331,10 @@ void McpAutoSync::prepare(McpContext& ctx) {
         clipHookContext = &ctx;
         McpContext* target = &ctx;
         AnimationClipDocument::setFilesWrittenHook([target](const std::vector<fs::path>& changed) {
+            w4::syncFiles(*target, changed, false);
+        });
+        // and .vat documents' (Inspector edits of a Vertex Animation)
+        VatDocument::setFilesWrittenHook([target](const std::vector<fs::path>& changed) {
             w4::syncFiles(*target, changed, false);
         });
     }

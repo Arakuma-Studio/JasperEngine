@@ -4,8 +4,33 @@
 #include "CopyFileCmd.h"
 
 #include "util/Util.h"
+#include "vat/VatAssetFiles.h"
+
+#include <algorithm>
 
 using namespace jasperengine;
+
+// A Vertex Animation moves and copies as a pair (vertex animation spec 2.1): the .vat or the
+// .vat.glb brings the other file of its directory along (same name: the copied .vat still names
+// its mesh, and gets a GUID of its own)
+void editor::CopyFileCmd::addVatPairs(){
+    const size_t count = files.size();
+    for (size_t i = 0; i < count; i++) {
+        const FileCopyData fdata = files[i];
+        const fs::path pair = vat::existingPairOf(fdata.sourceDirectory / fdata.filename);
+        if (pair.empty()) {
+            continue;
+        }
+        const bool listed = std::any_of(files.begin(), files.end(), [&](const FileCopyData& other) {
+            return (other.sourceDirectory / other.filename).lexically_normal() == pair.lexically_normal();
+        });
+        if (!listed) {
+            FileCopyData added = fdata;
+            added.filename = pair.filename();
+            files.push_back(added);
+        }
+    }
+}
 
 editor::CopyFileCmd::CopyFileCmd(Project* project, std::vector<std::string> sourceFiles, std::string currentDirectory, std::string targetDirectory, bool copy){
     this->project = project;
@@ -18,6 +43,7 @@ editor::CopyFileCmd::CopyFileCmd(Project* project, std::vector<std::string> sour
         this->files.push_back(fdata);
     }
     this->copy = copy;
+    addVatPairs();
 }
 
 editor::CopyFileCmd::CopyFileCmd(Project* project, std::vector<std::string> sourcePaths, std::string targetDirectory, bool copy){
@@ -31,6 +57,7 @@ editor::CopyFileCmd::CopyFileCmd(Project* project, std::vector<std::string> sour
         this->files.push_back(fdata);
     }
     this->copy = copy;
+    addVatPairs();
 }
 
 void editor::CopyFileCmd::moveFile(const fs::path& source, const fs::path& destination, bool isDirectory){
@@ -56,7 +83,7 @@ void editor::CopyFileCmd::moveFile(const fs::path& source, const fs::path& desti
     }
     // clips: their GUIDs follow, documents and players learn the new path
     // clips (their GUIDs follow) and models (their sub-clips): open documents follow, players reload
-    if (isDirectory || Util::isAnimationClipFile(extension) || Util::isModelFile(extension)) {
+    if (isDirectory || Util::isAnimationClipFile(extension) || Util::isVertexAnimationFile(extension) || Util::isModelFile(extension)) {
         project->remapClipFilePath(source, destination);
     }
     project->remapInspectedAsset(source, destination);
@@ -144,7 +171,7 @@ void editor::CopyFileCmd::undo(){
                         project->cleanupPrefabFilePath(sourceFs);
                     }
                     // references to the copied clips stay (Missing until a redo)
-                    if (project && (isDir || Util::isAnimationClipFile(extension))) {
+                    if (project && (isDir || Util::isAnimationClipFile(extension) || Util::isVertexAnimationFile(extension))) {
                         project->cleanupClipFilePath(sourceFs);
                     }
                     if (project) {
