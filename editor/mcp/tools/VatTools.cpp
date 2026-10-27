@@ -1285,9 +1285,9 @@ void registerVatTools(McpRegistry& registry) {
     tool.name = "bake_vertex_animation";
     tool.title = "Bake Vertex Animation";
     tool.description =
-        "Bake animation into a Vertex Animation (.vat + .vat.glb: crowds animated on the GPU, Vertex Animator component), or import a "
+        "Bake animation into a Vertex Animation (.vat + .vat.glb: GPU crowds, Vertex Animator), or import a "
         "Houdini VAT 3 / OpenVAT export. Without output (or rebake) nothing is written: the report (mode, sizes, errors, warnings with "
-        "fixes) and a contact sheet (source vs VAT, 4 times per clip). The same arguments + output write exactly that (one undo step). "
+        "fixes) and a contact sheet (source vs VAT). The same arguments + output write exactly that (one undo step). "
         "Guide: jasper://docs/vertex-animation.";
     auto loose = [](Json o) {
         o.erase("additionalProperties");
@@ -1310,12 +1310,8 @@ void registerVatTools(McpRegistry& registry) {
         {"source", source},
         {"scene", sceneRef()},
         {"on", on},
-        {"clips", array(Json{{"anyOf", Json::array({Json{{"type", "string"}},
-                                                     object({{"name", string("")},
-                                                             {"wrap", stringEnum("", {"once", "loop", "ping_pong", "clamp_forever"})},
-                                                             {"interpolate", boolean("")},
-                                                             {"fps", number("")}}, {"name"})})}},
-                        "Names, or objects setting a clip (guide). Default all.")},
+        // (an object's keys and values are checked by clipsArg; the guide lists them)
+        {"clips", array(Json{{"type", Json::array({"string", "object"})}}, "Names or {name, wrap, interpolate, fps}. Default all.")},
         {"mode", withDefault(stringEnum("", {"auto", "vertices", "bones"}), "auto")},
         {"fps", number("Default 30.")},
         {"normals", withDefault(boolean(""), true)},

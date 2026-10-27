@@ -44,7 +44,7 @@ Not allowed while playing.
 | `source` | what to bake: a GameObject (id or path in `scene`: its Animation Player states, entity Animations and Pose Animator), a model file (`assets/models/hero.gltf`: its clips), `model#Clip` (one clip; a list of them for several), a list of `.anim` files (with `on`), a `.poseanim` (on its preview model, or `on`), or a Houdini VAT 3 / OpenVAT export (its folder, mesh with the textures next to it, `.mat`, data JSON or `-remap_info.json`): exports are imported, not baked |
 | `scene` | the scene of GameObject references (`source`, `on`) and where `place` puts the result; default the selected scene |
 | `on` | what `.anim` / `.poseanim` sources play on: a model or prefab file, or a GameObject |
-| `clips` | the clip names to bake, in this order (default all; errors list the source's clips) |
+| `clips` | the clip names to bake, in this order (default all; errors list the source's clips). An entry may be an object `{name, wrap, interpolate, fps}` setting that clip at bake time (the baker window's clip row): `wrap` `once` / `loop` / `ping_pong` / `clamp_forever` (default the source's), `interpolate: false` (the clip plays its nearest lower sample: the fix of a loop seam or a sharp hit no sample rate cures), `fps` (0..240, 0 = the bake's): `clips: [{name: "Die", wrap: "once"}, "Walk"]` |
 | `mode` | `auto` (default), `vertices`, `bones` (see "Which mode") |
 | `fps` | samples per second, (0, 240], default 30; for an import, the export's frame rate when its metadata has none |
 | `normals` | Vertices: a tangent-frame texel per sample (default true; false halves the texture and the fetches, the rest normals stay) |
@@ -53,9 +53,9 @@ Not allowed while playing.
 | `tolerance_mm` | the error allowed (default 1 mm, scaled up to 0.05% of the model's size); drives Auto mode and `precision: auto` |
 | `sockets` | node paths below the source's root to bake as sockets (`Armature/Hips/Spine/RightHand`), read in Lua with `getSocketPose` |
 | `output` | `.vat` path (the mesh goes to `<name>.vat.glb` next to it), or `true` for the default; omitted = preview |
-| `overwrite` | replace an existing `output` (its GUID and, from the same source, its hand edits are kept) |
+| `overwrite` | replace an existing `output` path (its GUID and, from the same source, its hand edits are kept); refused with `output: true` (the default name never replaces another file) |
 | `rebake` | a `.vat`: run its recipe again and write over it, keeping its GUID, clip names, events, speeds, wraps and socket names; it takes no other bake settings (bake again with `output` + `overwrite` to change them) |
-| `place` | on write: `none` (default: files only), `beside` (a new GameObject "<name> (VAT)" at the source's transform, selected), `replace` (the same, and the source GameObject disabled; GameObject sources only), `{crowd: {count, area, seed}}` (an Instanced Mesh crowd: `count` instances in a square of side `area` metres, random yaw, seeded) |
+| `place` | on write: `none` (default: files only), `beside` (a new GameObject "<name> (VAT)" at the source's transform, selected), `replace` (the same, and the source GameObject disabled; GameObject sources only), `{crowd: {count, area, seed}}` (an Instanced Mesh crowd: `count` instances (1..100000) in a square of side `area` metres, random yaw, seeded by `seed`, an integer 0..4294967295) |
 | `import` | importer options for exports: `axis` (`unity`, `unreal`, `houdini`, `zup`: the export's target engine when its metadata doesn't tell), `axis_scale` (units per metre of the target), `upsample` (rigid exports: 0 automatic, 1..1024 exact), `clip` (the clip's name), `colors` (false drops the colour texel), file overrides `mesh`, `position`, `position2`, `rotation`, `color`, `lookup`, `vat`, `normals_texture` |
 | `wait`, `timeout_seconds` | the job pattern above |
 
@@ -124,7 +124,7 @@ lines and its result holds `errors: [{kind, message, fix}]`.
 | `socket_not_found` | a `sockets` path isn't under the root | give node paths below the source's root |
 | `scene_playing` | the source's scene plays | stop play mode |
 | `clip_limit` | more than 64 clips | bake two assets |
-| `large_interpolation_error` (warning) | motion between samples is lost (fast spins, sharp hits) | raise `fps` to the value given, or set the clip's `interpolate: false` in the `.vat` |
+| `large_interpolation_error` (warning) | motion between samples is lost (fast spins, sharp hits) | raise `fps` to the value given, or bake that clip with `clips: [{name, interpolate: false}]` (a loop seam: or `wrap: "once"`), or set `interpolate: false` in the `.vat` |
 | `precision_switched` (warning) | half floats were not precise enough: the payload is float (twice the memory) | accept, or `tolerance_mm` higher / `mode: "bones"` |
 | `memory_high` (warning) | over the preset's memory warning | as `too_large` |
 | `mixed_rest` (warning) | no usable bind pose: the first frame is the rest | none needed; offsets are relative to it |
@@ -167,7 +167,9 @@ source model also checks the `.vat` files baked from it.
 - `focus_window {window: "vertex_animation_baker"}` shows the Vertex Animation Baker window to a
   human.
 - Shell: `jasperengine-editor bake-vat --project . --source <path> [--clips Walk,Run] [--output
-  ...] [--dry-run] [--format json]` (the same bake, `--dry-run` = the preview report) and
+  ...] [--dry-run] [--format json]` (the same bake, `--dry-run` = the preview report; the tool's
+  settings as flags: `--tolerance <mm>`, `--clip-wrap NAME=WRAP`, `--clip-interpolate NAME=on|off`,
+  for imports `--axis`, `--axis-scale`, `--upsample`, `--clip-name`, `--colors on|off`) and
   `jasperengine-editor check --vat` (staleness, mesh/layout mismatches, device limits per preset;
   `docs/mcp/checks.md`).
 
