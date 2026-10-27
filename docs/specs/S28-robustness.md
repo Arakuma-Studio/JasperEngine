@@ -692,3 +692,11 @@ commits are records only), all through `je-remote/rb.sh`:
   and zero interrupted PCs (returns 4 rather than the required caller start 2). The
   `recursive_chain` subprocess also fails because its saved-handler sentinel is absent.
   The fixed-source gate uses `1933cfa6b`; no temporary red-source edits are left in git.
+- Server D fixed-source gate: full `WERROR=1 tools/build.sh linux` passes (editor/install
+  and standalone game); `Crash*.*` passes 19/19, including all five synthetic frame tests.
+  The three crash CTests pass in 18.05 s; all 15 normal and all 15 ASan+UBSan subprocess
+  modes pass, including concurrent faults and recursive sanitizer/returning-handler chains.
+  No unexpected sanitizer failure occurs. `test_crash.py` plus `test_protocol.py` passes
+  22/22, zero skipped, in 63.8 s using `rb.sh D --img` (its `/fixture` mount is required
+  by the four newer protocol tests). An initial `tools/build.sh exec linux` invocation
+  omitted that mount and failed those four cases with `No fixture project`.
