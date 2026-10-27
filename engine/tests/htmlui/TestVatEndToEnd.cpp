@@ -57,6 +57,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <map>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -197,13 +198,13 @@ namespace {
         return c;
     }
 
-    // the smallest C that matches within `radius` (printed next to each comparison: the measured
-    // margin under the tolerance used)
-    int neededTolerance(const Image& a, const Image& b, int radius){
+    // the smallest C that leaves at most `allowed` pixels unmatched within `radius` (printed next to
+    // each comparison: the measured margin under the tolerance used)
+    int neededTolerance(const Image& a, const Image& b, int radius, size_t allowed){
         int lo = 0, hi = 255;
         while (lo < hi){
             const int mid = (lo + hi) / 2;
-            if (compareImages(a, b, radius, mid).unmatched == 0)
+            if (compareImages(a, b, radius, mid).unmatched <= allowed)
                 hi = mid;
             else
                 lo = mid + 1;
@@ -478,7 +479,7 @@ namespace {
             const Comparison result = check.compare(reference, baked);
             std::printf("[ parity   ] %s %s %.4f view %zu (%.3f mm, %.3f deg: %s): %s (needs C %d)\n", meta["vat"].get<std::string>().c_str(),
                         c.clip.c_str(), c.time, v, c.errorMm, c.normalDegrees, check.text().c_str(), result.text().c_str(),
-                        neededTolerance(reference, baked, check.radius));
+                        neededTolerance(reference, baked, check.radius, kSliverPixels));
             EXPECT_GT(result.inkA, 2000u) << "the model is on the screen";
             EXPECT_LE(result.unmatched, kSliverPixels) << check.text() << ": " << result.text();
             EXPECT_LT(double(result.silhouetteXor), (check.colour ? 0.04 : 0.06) * double(result.inkA)) << result.text();
@@ -501,23 +502,26 @@ namespace {
     void heroParity(const char* name){
         REQUIRE_BUNDLE(meta, name);
         Stage s;
+        const std::vector<ParityCase> cases = casesOf(meta);
+        ASSERT_GE(cases.size(), 8u);
         // one source per clip: a player keeps what a stopped clip animated and the next one
         // doesn't (Unity's legacy rule), while each baked clip starts from the rest pose
-        Model& walk = s.addSource(meta["source"], {"Walk"});
-        Model& idle = s.addSource(meta["source"], {"Idle"});
+        std::map<std::string, Model*> sources;
+        for (const ParityCase& c : cases){
+            if (!sources.count(c.clip))
+                sources[c.clip] = &s.addSource(meta["source"], {c.clip});
+        }
         Model& vat = s.addVat(meta);
         ASSERT_TRUE(s.settle());
         const MeshComponent& mesh = vat.getComponent<MeshComponent>();
         EXPECT_EQ(mesh.vat.variantActive, meta["mode"] == "bones" ? VatVariant::BONES : VatVariant::VERTICES);
-        const std::vector<ParityCase> cases = casesOf(meta);
-        ASSERT_GE(cases.size(), 8u);
         // the nearest parts of the hero to the cameras are ~0.5 m in front of its middle
         const Vector3 nearest(0.25f, 0.9f, 0.45f);
         for (const ParityCase& c : cases){
-            const bool isWalk = c.clip == "Walk";
-            (isWalk ? idle : walk).setVisible(false);
+            for (auto& entry : sources)
+                entry.second->setVisible(false);
             // a quarter of Walk's cycle later: the legs elsewhere
-            expectParity(s, isWalk ? walk : idle, vat, meta, c, {heroFront, heroSide}, nearest, isWalk ? 0.25f : 0.0f);
+            expectParity(s, *sources[c.clip], vat, meta, c, {heroFront, heroSide}, nearest, c.clip == "Walk" ? 0.25f : 0.0f);
         }
     }
 
@@ -588,7 +592,7 @@ namespace {
             const Image b = crop(baked, columns[i][0], columns[i][1]);
             const Comparison result = checks.back().compare(a, b);
             std::printf("[ crowd    ] %s instance %d (%s %.4f, %s): %s (needs C %d)\n", name, i, c.clip.c_str(), c.time, checks.back().text().c_str(),
-                        result.text().c_str(), neededTolerance(a, b, checks.back().radius));
+                        result.text().c_str(), neededTolerance(a, b, checks.back().radius, kSliverPixels));
             EXPECT_GT(result.inkA, 1000u) << "the instance is on the screen";
             EXPECT_LE(result.unmatched, kSliverPixels) << checks.back().text() << ": " << result.text();
             EXPECT_LT(double(result.silhouetteXor), (checks.back().colour ? 0.04 : 0.06) * double(result.inkA)) << result.text();

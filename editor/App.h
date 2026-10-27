@@ -146,6 +146,9 @@ namespace jasperengine::editor{
         // scene setting overrides: -1 keeps the scene's value
         int benchmarkMeshLod = -1;
         int benchmarkDepthPrepass = -1;
+        // --play: the scene is measured playing (scripts, animation, physics), not in edit mode
+        bool benchmarkPlay = false;
+        bool benchmarkPlayStarted = false;
         int benchmarkPhase = 0;
         int benchmarkPhaseFrames = 0;
         std::vector<float> benchmarkFps;

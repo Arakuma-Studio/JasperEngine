@@ -11,9 +11,12 @@
 // hand-over; tools/vat_e2e.sh runs both halves in order.
 // Bundle: $JASPER_VAT_E2E_DIR, else <temp>/jasperengine-vat-e2e-<FNV-1a of the repository root>
 // (both halves derive the same name). Each asset comes with <name>.json: what the GPU half needs
-// to know (mode, clips, the bake's measured errors, the source model) and, for imports, the
-// ground truth triangles at the times it renders.
-//   hero_vertices / hero_bones   tools/fixtures/pose-animation hero_animated.gltf, Walk + Idle
+// to know (mode, clips, the report, the source model) and the times it renders: for bakes each
+// with the error measured here (the bake decoded as vat.glsl does against the source posed by its
+// clip and skinned by CpuSkin: the largest vertex distance and normal angle), for imports with the
+// ground truth triangles.
+//   hero_vertices / hero_bones   tools/fixtures/pose-animation hero_animated.gltf, Walk, Idle and Wave
+//                                (also the baked hero of tools/performance/vat_crowd.py)
 //   rigid_arm                    tools/fixtures/vertex-animation rigid_arm.gltf Swing, Auto (Bones)
 //   morph_blob                   morph_blob.gltf Pulse, Auto (Vertices: morph targets)
 //   houdini_soft / houdini_rigid the synthetic Houdini VAT 3 exports of VatHoudiniFixtures.h
@@ -510,10 +513,13 @@ TEST(VatEndToEnd, BakesTheRenderParityBundle) {
         {"Idle", 30.0, "a sample"},
         {"Idle", 30.5, "between samples"},
         {"Idle", 59.5, "across the loop seam", true},
+        {"Wave", 10.0, "a sample"},
+        {"Wave", 10.5, "between samples"},
     };
-    bakeIntoBundle("hero_vertices", modelSpec("hero.gltf", {"Walk", "Idle"}, VatModeChoice::Vertices), "hero.gltf", hero, VatMode::Vertices,
-                   heroCases);
-    bakeIntoBundle("hero_bones", modelSpec("hero.gltf", {"Walk", "Idle"}, VatModeChoice::Bones), "hero.gltf", hero, VatMode::Bones, heroCases);
+    bakeIntoBundle("hero_vertices", modelSpec("hero.gltf", {"Walk", "Idle", "Wave"}, VatModeChoice::Vertices), "hero.gltf", hero,
+                   VatMode::Vertices, heroCases);
+    bakeIntoBundle("hero_bones", modelSpec("hero.gltf", {"Walk", "Idle", "Wave"}, VatModeChoice::Bones), "hero.gltf", hero,
+                   VatMode::Bones, heroCases);
     // Auto: a rigid hierarchy bakes as bones, morph targets as vertices
     bakeIntoBundle("rigid_arm", modelSpec("rigid_arm.gltf", {"Swing"}, VatModeChoice::Auto), "rigid_arm.gltf",
                    "tools/fixtures/vertex-animation/assets/models/rigid_arm.gltf", VatMode::Bones,
