@@ -413,6 +413,9 @@ namespace jasperengine{
 		// bound to lattices (LatticeMeshState::count > 0, never a terrain): the 'Ltc' variants,
 		// with the vertex colour a mask channel reads
 		bool lattice = false;
+		// played by a Vertex Animator (VatMeshState::variant, never a terrain): the 'Vat' / 'Vab'
+		// variants, without skinning or morph targets
+		VatVariant vat = VatVariant::NONE;
 		// shader library: the manifest of the shader the submesh draws with (null for the
 		// built-in shader and forks without one) and whether its depth pass draws with the
 		// library shader's own depth program (@depth)
@@ -590,6 +593,8 @@ namespace jasperengine{
 		
 		// what LatticeRender::prepare keeps between frames
 		LatticeRenderState latticeState;
+		// the meshes updateVertexAnimations set a Vertex Animation variant on last frame
+		std::vector<Entity> vatMeshes;
 
 		bool hasLights;
 		bool hasShadows;
@@ -660,6 +665,11 @@ namespace jasperengine{
 			std::vector<InstanceRenderData> data;
 			ExternalBuffer buffer;
 			size_t capacity = 0; // bytes of the GPU buffer
+			// the Vertex Animation state of the instances of VAT batches (InstanceViewRange::
+			// vatOffset), in a buffer of their own
+			std::vector<InstanceVatRenderData> vatData;
+			ExternalBuffer vatBuffer;
+			size_t vatCapacity = 0;
 			bool needUpload = false;
 		};
 		bool instanceViewsDirty;
@@ -844,6 +854,7 @@ namespace jasperengine{
 		struct ViewInstanceSource{
 			std::vector<InstanceRenderData> instances;
 			std::vector<InstanceBounds> bounds;
+			std::vector<InstanceVatRenderData> vat; // parallel to instances for a VAT batch
 			AABB worldAABB;
 			bool own = false;
 			Vector3 fadeEyeLocal;
@@ -1106,6 +1117,7 @@ namespace jasperengine{
 		struct MeshDraw{
 			unsigned int instanceCount = 1;
 			unsigned int instanceFirst = 0;
+			unsigned int vatFirst = 0;     // the first instance's Vertex Animation state
 			unsigned int lod = 0;
 		};
 		Entity activeReflectionProbe = NULL_ENTITY;
@@ -1701,10 +1713,15 @@ namespace jasperengine{
 		// instance views
 		void buildInstanceViews(CameraComponent& mainCamera, Transform& mainCameraTransform);
 		// limitDistance drops instances past the batch's cull distance from eye
-		void buildInstanceView(InstanceView& view, InstanceViewRange& range, const InstanceRenderData* instances, const InstanceBounds* instanceBounds, unsigned int count, const InstancedMeshComponent& instmesh, const MeshComponent& mesh, const Transform& transform, const float cameraFar, const Plane frustumPlanes[6], const LodView& lodView, const Vector3& eye, const Vector3& origin, const Vector3& direction, InstanceOrder order, bool limitDistance = true);
+		// vat: the instances' Vertex Animation state (parallel to instances), null unless the
+		// batch draws with a VAT variant
+		void buildInstanceView(InstanceView& view, InstanceViewRange& range, const InstanceRenderData* instances, const InstanceVatRenderData* vat, const InstanceBounds* instanceBounds, unsigned int count, const InstancedMeshComponent& instmesh, const MeshComponent& mesh, const Transform& transform, const float cameraFar, const Plane frustumPlanes[6], const LodView& lodView, const Vector3& eye, const Vector3& origin, const Vector3& direction, InstanceOrder order, bool limitDistance = true);
 		void uploadInstanceViews(InstanceView* views, size_t count);
 		bool selectMeshDraw(Entity entity, MeshComponent& mesh, Transform& transform, InstancedMeshComponent* instmesh, bool ownLod, int instanceView, const LodView* lodView, MeshDraw& draw);
-		void bindInstances(ObjectRender& render, InstancedMeshComponent& instmesh, int instanceView, unsigned int first);
+		void bindInstances(ObjectRender& render, InstancedMeshComponent& instmesh, int instanceView, unsigned int first, unsigned int vatFirst);
+		BufferRender* instanceVatBuffer(int instanceView);
+		// the Vertex Animator of every mesh: its variant, payload, u_vs_vat and bounds (once a frame)
+		void updateVertexAnimations();
 		void drawSubmeshGeometry(ObjectRender& render, Entity entity, MeshComponent& mesh, unsigned int submeshIndex, InstancedMeshComponent* instmesh, int instanceView, unsigned int lod, unsigned int instanceCount);
 
 		// terrain
@@ -1923,6 +1940,10 @@ namespace jasperengine{
 
 		// the lattice bindings packed into the meshes (LatticeRender::prepare, once a frame)
 		LatticeRenderState& getLatticeState();
+
+		// the bounds culling and the world AABB take for a mesh's vertices: a Vertex Animator's
+		// animatedBounds when set, else verticesAABB
+		static const AABB& getMeshLocalBounds(const MeshComponent& mesh);
 
 		// Planes around the casters that can shadow the surfaces reading a directional cascade:
 		// its receiver slice (LightCamera::receiverViewProjection) extruded toward the light

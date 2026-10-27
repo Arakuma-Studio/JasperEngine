@@ -810,6 +810,9 @@ std::string editor::Factory::formatAttributeType(AttributeType type) {
         case AttributeType::TERRAINNODERANGE: return "AttributeType::TERRAINNODERANGE";
         case AttributeType::TERRAINNODERESOLUTION: return "AttributeType::TERRAINNODERESOLUTION";
         case AttributeType::SMOOTHNORMAL: return "AttributeType::SMOOTHNORMAL";
+        case AttributeType::VAT_INDEX: return "AttributeType::VAT_INDEX";
+        case AttributeType::INSTANCEVAT0: return "AttributeType::INSTANCEVAT0";
+        case AttributeType::INSTANCEVAT1: return "AttributeType::INSTANCEVAT1";
         default: return "AttributeType::POSITION";
     }
 }

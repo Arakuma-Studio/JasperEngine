@@ -3957,7 +3957,10 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      and the surface includes (MESH bit 32 'Ltc', DEPTH bit 15, GBUFFER bits 11-13), the
     //      tangent of includes/surface_vs.glsl transformed before the hooks. (Builds of the lattice
     //      branch used v34/v35 with 'Ltc' at MESH bit 5, then v37 before this v37 of main.)
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v38";
+    // v39: vertex animation (includes/vat.glsl): vatEvaluate() and the vatPosition/vatNormal/...
+    //      wrappers in every vertex entry point, HAS_VAT / HAS_VAT_BONES (MESH bits 33/34, DEPTH 16/17,
+    //      GBUFFER 14/15).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v39";
 }
 
 void editor::App::pushTabNotificationStyle(){

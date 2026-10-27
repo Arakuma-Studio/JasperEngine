@@ -71,6 +71,10 @@
 // before including, and in its .frag LATTICE_FS and LATTICE_STRETCH before including
 // includes/lattice.glsl.
 //
+// Vertex Animation (HAS_VAT, includes/vat.glsl): a Vertex Animator's baked animation moves the
+// rest position, normal, tangent and smoothed normal first, in place of the morph targets and
+// the skinning the variant has not got, so lattices and the hooks above see the animated vertex.
+//
 // Lighting (includes/lights.glsl, which documents the units):
 //   - USE_PUNCTUAL (pixel, mixed): the compiler adds SURFACE_POSITION and SURFACE_NORMALS,
 //     so v_position and v_normal are written whatever @require says; the fragment stage
@@ -214,6 +218,15 @@ in vec3 a_position;
 #include "includes/instance_normal.glsl"
 #include "includes/morphtarget.glsl"
 #include "includes/lattice.glsl"
+#include "includes/vat.glsl"
+
+// the rest normal vatSmoothNormal turns the smoothed normal from (the smoothed one itself on a
+// mesh without normals)
+#ifdef HAS_NORMALS
+    #define SURFACE_REST_NORMAL a_normal
+#else
+    #define SURFACE_REST_NORMAL a_smoothNormal
+#endif
 
 // the object-space smoothed normal the hooks may read (SURFACE_SMOOTH_NORMALS)
 vec3 surfaceSmoothNormal;
@@ -286,24 +299,26 @@ vec2 surfaceUV2(){
 }
 
 void main() {
+    // the baked vertex animation first (HAS_VAT): it takes the place of morph targets and skinning
+    vatEvaluate();
     mat4 boneTransform = getBoneTransform();
 
-    vec3 position = getMorphPosition(a_position);
+    vec3 position = getMorphPosition(vatPosition(a_position));
     #ifdef HAS_LATTICE
         // the before-skinning lattices deform the bind pose: position, normals and tangent
         // together, then skinned as without a lattice
         float latticeStretchValue = 1.0;
         vec3 latticeNormal = vec3(0.0, 1.0, 0.0);
         #ifdef HAS_NORMALS
-            latticeNormal = getMorphNormal(a_normal);
+            latticeNormal = getMorphNormal(vatNormal(a_normal));
         #endif
         #ifdef SURFACE_SMOOTH_NORMAL_INPUT
-            vec3 latticeSmoothNormal = a_smoothNormal;
+            vec3 latticeSmoothNormal = vatSmoothNormal(a_smoothNormal, SURFACE_REST_NORMAL);
         #else
             vec3 latticeSmoothNormal = latticeNormal;
         #endif
         #if defined(SURFACE_TANGENTS) && defined(HAS_TANGENTS)
-            vec3 latticeTangent = getMorphTangent(a_tangent.xyz);
+            vec3 latticeTangent = getMorphTangent(vatTangent(a_tangent.xyz));
         #else
             vec3 latticeTangent = vec3(1.0, 0.0, 0.0);
         #endif
@@ -322,7 +337,7 @@ void main() {
         #ifdef HAS_LATTICE
             objectNormal = getSkinNormal(latticeNormal, boneTransform);
         #else
-            objectNormal = getSkinNormal(getMorphNormal(a_normal), boneTransform);
+            objectNormal = getSkinNormal(getMorphNormal(vatNormal(a_normal)), boneTransform);
         #endif
         #ifdef HAS_TERRAIN
             objectNormal = getTerrainNormal(objectNormal, position);
@@ -335,7 +350,7 @@ void main() {
         #ifdef HAS_LATTICE
             vec3 smoothNormal = normalize(getSkinNormal(latticeSmoothNormal, boneTransform));
         #else
-            vec3 smoothNormal = normalize(getSkinNormal(a_smoothNormal, boneTransform));
+            vec3 smoothNormal = normalize(getSkinNormal(vatSmoothNormal(a_smoothNormal, SURFACE_REST_NORMAL), boneTransform));
         #endif
     #endif
 
@@ -343,7 +358,7 @@ void main() {
         #ifdef HAS_LATTICE
             vec3 objectTangent = normalize(getSkinTangent(latticeTangent, boneTransform));
         #else
-            vec3 objectTangent = normalize(getSkinTangent(getMorphTangent(a_tangent.xyz), boneTransform));
+            vec3 objectTangent = normalize(getSkinTangent(getMorphTangent(vatTangent(a_tangent.xyz)), boneTransform));
         #endif
     #endif
 
