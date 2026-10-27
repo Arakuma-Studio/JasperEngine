@@ -617,3 +617,18 @@ passes, smoke PASS. `tools/crash/test_symbolicate.py` passes on B against a fres
 - Final source `a1555b8d1` omits optional secondary-fault stderr notes, so a full pipe cannot
   add an engine write after the bounded wait. Server D revalidation passes again: WERROR
   editor/install and standalone game, 3/3 crash CTests (15.66 s), and all 13 ASan+UBSan modes.
+- Server D final Android fixture build (`ANDROID_PROJECT=crash-diagnostics tools/build.sh
+  android`) passes all four ABIs: arm64-v8a, armeabi-v7a, x86 and x86_64 (40m 6s).
+  The 107,656,922-byte APK SHA-256 is
+  `93c668ff351fb0da56ed8267e261ba27d369b9fbbba6860c665fbdd53008a6b0`; it matches after transfer
+  to A for the emulator-only gate. The initial A build attempt failed from disk exhaustion
+  before compilation; the integration owner freed space and directed APK builds to B/D.
+- Server A final API 34 x86_64 emulator gate exits zero: boot in 55 s, engine report,
+  `F/JasperEngine: JASPERENGINE CRASH: SIGSEGV` and preserved debuggerd tombstone all found.
+  The engine stack contains the game callers without reporter/trampoline duplication. Its
+  first frame `libjasperengine-android.so+0x2099e4e` matches debuggerd's `debugSegv()+14`; both
+  record thread 1967 (`je-main`), PC `0x7aa31bcbae4e`, SP `0x7aa3259f5368`, and build ID
+  `bc4d40fddcd6771488eedfbc73fdf9361207c3b2`. The crash report is complete and parseable.
+  Evidence remains on A in `build/android-native-review-green` (1.2 MB) and was fetched for
+  inspection. Per the integration owner's instruction, the APK, Gradle cache and Android
+  native/Java build outputs in this worktree on A were deleted after the passing run.
