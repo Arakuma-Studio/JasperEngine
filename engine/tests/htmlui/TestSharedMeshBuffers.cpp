@@ -271,6 +271,28 @@ namespace {
         }
     }
 
+    // A grid scene of thousands of copies, left alive (out of the engine: not drawn nor updated)
+    // when the test ends: destroying its entities takes minutes to hours (each one is erased
+    // from every component array in turn, by the scene's teardown too: an engine limit of its own)
+    class AbandonedCrowd {
+    public:
+        AbandonedCrowd(int count, float cellWidth, float cellHeight): crowd(new Crowd(count, cellWidth, cellHeight)){}
+        ~AbandonedCrowd(){ Engine::removeScene(&crowd->scene.scene()); }
+        AbandonedCrowd(const AbandonedCrowd&) = delete;
+        AbandonedCrowd& operator=(const AbandonedCrowd&) = delete;
+
+        std::vector<std::unique_ptr<Model>>& models(){ return crowd->models; }
+        GridScene& scene(){ return crowd->scene; }
+
+    private:
+        struct Crowd {
+            std::vector<std::unique_ptr<Model>> models;
+            GridScene scene;
+            Crowd(int count, float cellWidth, float cellHeight): scene(count, cellWidth, cellHeight){}
+        };
+        Crowd* crowd;
+    };
+
     // the sokol id of every GPU buffer a mesh draws from (vertex, index, external)
     std::set<uint32_t> meshBufferIds(MeshComponent& mesh){
         std::set<uint32_t> ids;
@@ -288,21 +310,10 @@ namespace {
 TEST_F(SharedMeshBuffersTest, ThousandsOfSkinnedModelCopiesAllDrawFromOneSetOfBuffers){
     const int firstBatch = 300;
     const int count = 3300;
-    // Left alive, out of the engine, at the end: the heroes' ~150,000 node entities take hours
-    // to destroy (each one is erased from every component array in turn, the scene's teardown
-    // too), an engine limit of its own
-    struct Crowd {
-        std::vector<std::unique_ptr<Model>> models;
-        GridScene scene;
-        Crowd(int count): scene(count, 2.0f, 2.4f){}
-    };
-    Crowd* crowd = new Crowd(count);
-    struct Abandon {
-        Crowd* crowd;
-        ~Abandon(){ Engine::removeScene(&crowd->scene.scene()); }
-    } abandon{crowd};
-    std::vector<std::unique_ptr<Model>>& models = crowd->models;
-    GridScene& s = crowd->scene;
+    AbandonedCrowd crowd(count, 2.0f, 2.4f);
+    std::vector<std::unique_ptr<Model>>& models = crowd.models();
+    GridScene& s = crowd.scene();
+    const size_t poolBefore = MeshBufferPool::getBufferCount();
     const uint64_t exhaustionsBefore = SystemRender::getResourcePoolExhaustions();
 
     MeshBufferAllocations first;
@@ -311,6 +322,7 @@ TEST_F(SharedMeshBuffersTest, ThousandsOfSkinnedModelCopiesAllDrawFromOneSetOfBu
     const size_t madeByFirst = first.made();
     EXPECT_GE(madeByFirst, 7u) << "the hero's 7 buffer views";
     EXPECT_LE(madeByFirst, 12u) << "one set for every copy, not one per copy";
+    EXPECT_EQ(MeshBufferPool::getBufferCount(), poolBefore + 7);
     const int buffersInUse = SystemRender::getResourcesInUse(GpuResourceKind::BUFFER);
 
     size_t madeByRest = 0;
@@ -321,6 +333,7 @@ TEST_F(SharedMeshBuffersTest, ThousandsOfSkinnedModelCopiesAllDrawFromOneSetOfBu
         madeByRest = rest.made();
     }
     EXPECT_EQ(madeByRest, 0u) << "3,000 more copies made no vertex or index buffer";
+    EXPECT_EQ(MeshBufferPool::getBufferCount(), poolBefore + 7);
     // at most a buffer of its own per copy: the bones storage buffer where the backend has one
     EXPECT_LE(SystemRender::getResourcesInUse(GpuResourceKind::BUFFER) - buffersInUse, count - firstBatch);
 
@@ -348,21 +361,23 @@ TEST_F(SharedMeshBuffersTest, ThousandsOfStaticGltfAndObjCopiesAllDrawFromOneSet
     writeQuadGltf(gltf, 0.6f, 1.6f);
     writeQuadObj(obj, 0.6f, 1.6f);
 
-    std::vector<std::unique_ptr<Model>> models; // (outlive the scene: see addCopies)
-    GridScene s(perFile * 2, 1.6f, 2.0f);
+    AbandonedCrowd crowd(perFile * 2, 1.6f, 2.0f);
+    std::vector<std::unique_ptr<Model>>& models = crowd.models();
+    GridScene& s = crowd.scene();
+    const size_t poolBefore = MeshBufferPool::getBufferCount();
     MeshBufferAllocations allocations;
     addCopies(s, gltf, 0, 10, models);
     addCopies(s, obj, perFile, perFile + 10, models);
     ASSERT_TRUE(s.settle());
     const size_t madeByFirst = allocations.made();
     EXPECT_EQ(madeByFirst, 5u) << "the glTF's 3 buffer views, the OBJ's vertices and indices";
-    EXPECT_EQ(MeshBufferPool::getBufferCount(), 5u);
+    EXPECT_EQ(MeshBufferPool::getBufferCount(), poolBefore + 5);
 
     addCopies(s, gltf, 10, perFile, models);
     addCopies(s, obj, perFile + 10, perFile * 2, models);
     ASSERT_TRUE(s.settle(200));
     EXPECT_EQ(allocations.made(), madeByFirst) << "5,980 more copies made no vertex or index buffer";
-    EXPECT_EQ(MeshBufferPool::getBufferCount(), 5u);
+    EXPECT_EQ(MeshBufferPool::getBufferCount(), poolBefore + 5);
 
     size_t loaded = 0, failed = 0;
     s.countMeshes(loaded, failed);
