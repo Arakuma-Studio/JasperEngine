@@ -14,6 +14,8 @@
 #include "pool/AnimationClipPool.h"
 #include "animation/AnimationClip.h"
 #include "animation/ModelSubClips.h"
+#include "animation/VertexAnimation.h"
+#include "pool/VertexAnimationPool.h"
 #include "thread/ResourceProgress.h"
 
 #include <algorithm>
@@ -391,7 +393,7 @@ float SceneManager::getPreloadProgress(uint32_t id) {
     if (preload->total == 0) return 1.0f;
 
     const SceneResources& pending = preload->pending;
-    size_t remaining = pending.textures.size() + pending.sounds.size() + pending.models.size() + pending.clips.size();
+    size_t remaining = pending.textures.size() + pending.sounds.size() + pending.models.size() + pending.clips.size() + pending.vats.size();
     return (float)(preload->total - remaining) / (float)preload->total;
 }
 
@@ -410,6 +412,7 @@ void SceneManager::cancelPreload(uint32_t id) {
         preload->pending.textures.clear();
         preload->pending.sounds.clear();
         preload->pending.clips.clear();
+        preload->pending.vats.clear();
     }
 }
 
@@ -452,13 +455,16 @@ void SceneManager::startPreload(uint32_t id) {
         for (const std::string& clip : resources.clips) {
             addFile(pending.clips, clip);
         }
+        for (const std::string& vat : resources.vats) {
+            addFile(pending.vats, vat);
+        }
     }
 
     preload = findPreload(id);
     if (!preload) return;
 
     preload->started = true;
-    preload->total = pending.textures.size() + pending.sounds.size() + pending.models.size() + pending.clips.size();
+    preload->total = pending.textures.size() + pending.sounds.size() + pending.models.size() + pending.clips.size() + pending.vats.size();
     preload->pending = std::move(pending);
 }
 
@@ -563,7 +569,22 @@ void SceneManager::updatePreloads() {
             if (oneFile) return;
         }
 
-        const bool inFlight = !pending.textures.empty() || !pending.sounds.empty() || !pending.models.empty() || !pending.clips.empty();
+        // Vertex Animations: the JSON and the payload of the .vat.glb read on this thread (the
+        // GPU texture is made when it first draws)
+        for (auto it = pending.vats.begin(); it != pending.vats.end();) {
+            const std::string vat = *it;
+            std::string error;
+            std::shared_ptr<const vat::VertexAnimation> loaded = VertexAnimationPool::getOrLoad(vat, &error);
+            if (!loaded) {
+                Log::warn("Preload of vertex animation %s failed: %s", vat.c_str(), error.c_str());
+            }
+            keep(std::const_pointer_cast<vat::VertexAnimation>(loaded), []() { VertexAnimationPool::clearUnused(); });
+            it = pending.vats.erase(it);
+            if (oneFile) return;
+        }
+
+        const bool inFlight = !pending.textures.empty() || !pending.sounds.empty() || !pending.models.empty() || !pending.clips.empty() ||
+                              !pending.vats.empty();
         if (preload.cancelled && !inFlight) {
             releasePreload(preload);
             preloads.erase(preloads.begin() + i);

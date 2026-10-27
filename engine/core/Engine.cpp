@@ -27,6 +27,7 @@
 #include "component/ActionComponent.h"
 #include "component/PoseAnimatorComponent.h"
 #include "component/AnimationPlayerComponent.h"
+#include "component/VertexAnimatorComponent.h"
 #include "pool/TexturePool.h"
 #include "pool/SoundPool.h"
 #include "pool/TextureDataPool.h"
@@ -1005,6 +1006,15 @@ void Engine::clearComponentSubscriptions(Scene* scene) {
         AnimationPlayerComponent& player = players->getComponentFromIndex(i);
         player.onEvent.clear();
         player.onFinish.clear();
+    }
+
+    auto vertexAnimators = scene->getComponentArray<VertexAnimatorComponent>();
+    for (size_t i = 0; i < vertexAnimators->size(); i++) {
+        VertexAnimatorComponent& animator = vertexAnimators->getComponentFromIndex(i);
+        animator.onEvent.clear();
+        animator.onFinish.clear();
+        animator.onInstanceEvent.clear();
+        animator.onInstanceFinish.clear();
     }
 }
 
