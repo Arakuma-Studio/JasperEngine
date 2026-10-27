@@ -688,6 +688,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/spritenormals/SpriteNormalsApply.cpp
     ${EDITOR_DIR}/spritenormals/SpriteNormalsCli.cpp
     ${EDITOR_DIR}/spritenormals/SpriteNormalsCheck.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsWatcher.cpp
     ${EDITOR_DIR}/physics/PlacementSettings.cpp
     ${EDITOR_DIR}/physics/PlacementSession.cpp
     ${EDITOR_DIR}/physics/PlacementCli.cpp
@@ -741,6 +742,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorWindow.cpp
     ${EDITOR_DIR}/window/InspectorWindowClips.cpp
     ${EDITOR_DIR}/window/InspectorWindowVat.cpp
+    ${EDITOR_DIR}/window/InspectorWindowSpriteNormals.cpp
     ${EDITOR_DIR}/window/InspectorShaderLibrary.cpp
     ${EDITOR_DIR}/window/InspectorPostProcessing.cpp
     ${EDITOR_DIR}/window/InspectorFluid.cpp
@@ -793,6 +795,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/vat/VatImportWrite.cpp
     ${EDITOR_DIR}/window/VertexAnimationBakerWindow.cpp
     ${EDITOR_DIR}/window/TextureSynthesisWindow.cpp
+    ${EDITOR_DIR}/window/SpriteNormalsWindow.cpp
     ${EDITOR_DIR}/window/PhysicsPlacementWindow.cpp
     ${EDITOR_DIR}/window/LoadingWindow.cpp
     ${EDITOR_DIR}/window/dialog/SceneSaveDialog.cpp

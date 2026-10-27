@@ -1384,6 +1384,8 @@ bool editor::InspectorWindow::drawInspectedAsset(){
         drawVatAsset(asset);
         return true;
     }
+    // a generated normal map or its source image: their own view; any other image keeps the scene selection
+    if (Util::isImageFile(file)) return drawSpriteNormalsAsset(asset);
     const bool clip = Util::isAnimationClipFile(file);
     if (!clip && !Util::isModelFile(file)) return false;
     if (state.relativeOf != asset){

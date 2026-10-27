@@ -123,10 +123,19 @@ namespace jasperengine::editor::spritenormals {
         std::string spriteEntityPath;        // hierarchy path when from a Sprite
         Request request;
         std::vector<PlannedOutput> outputs;
+        std::vector<Cell> plannedSpriteCells;   // preparePlan: the Sprite's frames for prepareLoad
     };
     // checkSpec, then the source decoded and the Request built; false with the problems
     bool prepare(const std::filesystem::path& projectDir, const Spec& spec, const Scene* scene, Prepared& out,
                  std::vector<Problem>& problems);
+    // prepare() in two halves, for a worker thread: preparePlan is checkSpec's whole work (main
+    // thread: it reads the project, the Platform's asset path and the scene) and fills everything
+    // but the decoded source and the Request; prepareLoad then needs nothing but `planned`'s plain
+    // data (any thread: it never touches System, Project or a scene): the source decoded, the
+    // Request built. prepare() == preparePlan() + prepareLoad().
+    bool preparePlan(const std::filesystem::path& projectDir, const Spec& spec, const Scene* scene, Prepared& out,
+                     std::vector<Problem>& problems);
+    bool prepareLoad(Prepared& planned, std::vector<Problem>& problems);
 
     // ---- outputs
 

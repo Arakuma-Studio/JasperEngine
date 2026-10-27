@@ -62,6 +62,11 @@ std::function<bool(size_t, editor::CommandHistory::Change)> editor::CommandHisto
 editor::CommandHistory::CommandHistory(size_t sceneId): sceneId(sceneId){
 }
 
+void editor::CommandHistory::stamp(Command* cmd){
+    static unsigned long long next = 0;
+    cmd->historySerial = ++next;
+}
+
 editor::CommandHistory::~CommandHistory(){
     clear();
 }
@@ -87,6 +92,7 @@ bool editor::CommandHistory::addCommand(editor::Command* cmd){
             }
         }
 
+        stamp(cmd);
         list.push_back(cmd);
         index = list.size();
 
@@ -118,6 +124,7 @@ bool editor::CommandHistory::insertCommand(Command* cmd){
 
     // The scene Stop restores was captured with this step applied, so it is an edit-time step
     const size_t position = inPlaySession ? playFloor : index;
+    stamp(cmd);
     list.insert(list.begin() + position, cmd);
     if (inPlaySession){
         playFloor++;
@@ -223,7 +230,9 @@ bool editor::CommandHistory::groupSince(size_t mark){
     }
     std::vector<Command*> commands(list.begin() + mark, list.end());
     list.erase(list.begin() + mark, list.end());
-    list.push_back(new CommandGroup(std::move(commands)));
+    Command* group = new CommandGroup(std::move(commands));
+    stamp(group);
+    list.push_back(group);
     index = list.size();
     return true;
 }
