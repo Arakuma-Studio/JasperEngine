@@ -110,6 +110,8 @@ std::string assetType(const fs::path& path) {
     if (Util::isShaderFile(p)) return "shader";
     // clips (.anim) and pose animations (.poseanim), spec 9.R47
     if (Util::isAnimationClipFile(p) || Util::isPoseAnimationFile(p)) return "animation";
+    // Vertex Animations (.vat; the generated .vat.glb is a model)
+    if (Util::isVertexAnimationFile(p)) return "vertex_animation";
     return "other";
 }
 
@@ -118,7 +120,7 @@ bool isTextFile(const fs::path& path) {
         ".lua", ".cpp", ".cc", ".cxx", ".c", ".h", ".hh", ".hpp", ".hxx", ".inl",
         ".material", ".scene", ".prefab", ".yaml", ".yml", ".json", ".txt", ".md", ".csv", ".ini", ".cfg",
         ".glsl", ".vert", ".frag", ".hlsl", ".cmake", ".xml", ".gltf", ".obj", ".mtl", ".svg", ".tsx", ".tmx",
-        ".html", ".htm", ".css", ".rml", ".rcss", ".anim", ".poseanim"
+        ".html", ".htm", ".css", ".rml", ".rcss", ".anim", ".poseanim", ".vat"
     };
     if (path.filename() == "CMakeLists.txt" || path.filename() == "AGENTS.md") return true;
     return text.count(extensionOf(path)) > 0;
@@ -652,6 +654,8 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
     VatDocument::filesChanged(changedPaths, project);
     if (full) VatDocument::checkDiskChanges(project);
     for (const fs::path& path : changed) addAnimationFileProblems(project, path, problems);
+    // and a .vat that doesn't match its .vat.glb (it doesn't load: vat-layout-mismatch / vat-mesh-mismatch)
+    for (const fs::path& path : changed) vatFileChanged(project, path, problems);
 
     // Code editor buffers
     Json codeEditor = {{"reloaded", Json::array()}, {"conflicts", Json::array()}};

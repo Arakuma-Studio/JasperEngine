@@ -1137,40 +1137,39 @@ void registerPlacementTools(McpRegistry& registry) {
         o.erase("additionalProperties");
         return o;
     };
+    // what each argument does: docs/mcp/guide/physics.md (Placing objects with physics)
     Json context;
-    context["description"] = "auto: what is around the movers.";
     context["default"] = "auto";
     context["anyOf"] = Json::array({stringEnum("", {"auto", "none"}), entities()});
     Json screenshot;
-    screenshot["description"] = "Scene view image framed on the movers.";
     screenshot["anyOf"] = Json::array({Json{{"type", "boolean"}},
                                        loose(object({{"max_width", integer("", 0, 4096)}, {"frame", boolean("")}}))});
     tool.inputSchema = object({
         {"scene", sceneRef()},
         {"entities", entities("The movers.")},
-        {"use_selection", withDefault(boolean("Instead of entities."), false)},
+        {"use_selection", withDefault(boolean(""), false)},
         {"mode", withDefault(stringEnum("", {"drop", "separate", "move", "snap", "gather", "distribute"}), "drop")},
-        {"target", loose(object({{"position", vec3("Group centre goal.")}, {"delta", vec3("Or an offset.")}, {"rotation", any("[x,y,z,w] or {\"euler\":[x,y,z]}, about the centre.")},
-                                 {"space", withDefault(stringEnum("local: the first mover's parent.", {"world", "local"}), "world")}}))},
-        {"ray", loose(object({{"origin", vec3("")}, {"direction", vec3("")}, {"screen", vec2("Or a Scene view pixel.")}}))},
-        {"axis", stringEnum("distribute.", {"x", "y", "z"})},
-        {"amount", withDefault(number("gather: 1 = to the centre.", 0, 1), 1)},
+        {"target", loose(object({{"position", vec3("")}, {"delta", vec3("")}, {"rotation", any("")},
+                                 {"space", withDefault(stringEnum("", {"world", "local"}), "world")}}))},
+        {"ray", loose(object({{"origin", vec3("")}, {"direction", vec3("")}, {"screen", vec2("")}}))},
+        {"axis", stringEnum("", {"x", "y", "z"})},
+        {"amount", withDefault(number("", 0, 1), 1)},
         {"gravity", withDefault(vec3(""), Json::array({0, -9.81, 0}))},
-        {"settle", withDefault(boolean("Run until resting."), true)},
+        {"settle", withDefault(boolean(""), true)},
         {"context", context},
-        {"context_margin", withDefault(number("m around the movers.", 0, 1000), 2)},
+        {"context_margin", withDefault(number("", 0, 1000), 2)},
         {"ignore_layers", array(Json{{"type", {"integer", "string"}}}, "")},
-        {"push_neighbours", withDefault(boolean("Loose objects in the way move too."), false)},
+        {"push_neighbours", withDefault(boolean(""), false)},
         {"colliders", withDefault(stringEnum("", {"auto", "authored", "generated", "both"}), "auto")},
-        {"decompose", withDefault(stringEnum("always: waits for them.", {"never", "cached", "always"}), "cached")},
-        {"jitter", loose(object({{"position", number("m.")}, {"rotation_deg", number("")}}))},
+        {"decompose", withDefault(stringEnum("", {"never", "cached", "always"}), "cached")},
+        {"jitter", loose(object({{"position", number("")}, {"rotation_deg", number("")}}))},
         {"seed", withDefault(integer("", 0, 4294967295LL), 1)},
-        {"max_seconds", withDefault(number("Simulated.", 0.01, 120), 10)},
+        {"max_seconds", withDefault(number("", 0.01, 120), 10)},
         {"feel", withDefault(stringEnum("", {"precise", "balanced", "fast"}), "balanced")},
-        {"apply", withDefault(boolean("false: preview only."), false)},
+        {"apply", withDefault(boolean(""), false)},
         {"screenshot", screenshot},
         {"wait", withDefault(boolean(""), true)},
-        {"timeout_seconds", withDefault(number("Then a job_id (get_job).", 1, 3600), 120)}
+        {"timeout_seconds", withDefault(number("", 1, 3600), 120)}
     });
     tool.allowedWhilePlaying = false;
     tool.activity = ToolActivity::Edit;

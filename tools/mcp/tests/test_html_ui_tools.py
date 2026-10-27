@@ -83,7 +83,18 @@ LIMITS.update({"get_pose_animation": 1100, "edit_pose_animation": 3000, "render_
 # 3494 (6 under its cap: a wording change there needs an equal trim), get_animation 670,
 # preview_animation 654
 LIMITS.update({"edit_animation": 3500, "get_animation": 750, "preview_animation": 700})
-TOTAL_LIMIT = 108102
+# vertex animation (room for bake_vertex_animation): edit_pose_animation's op fields, get_pose_animation's
+# pose fields, edit_lattice's op/select/result texts, edit_colliders' per-shape fields and the per-argument
+# texts of synthesize_texture and place_with_physics moved to their guides (tool_budget.py: 107841 ->
+# 103998; edit_pose_animation 2809 -> 1192, get_pose_animation 813 -> 672, synthesize_texture 2992 -> 2197,
+# place_with_physics 3457 -> 2738, edit_lattice 1737 -> 1369, edit_colliders 1210 -> 1007); the pose caps
+# lowered to those + 28
+LIMITS.update({"get_pose_animation": 700, "edit_pose_animation": 1220})
+# vertex animation (spec 6): bake_vertex_animation 1969 (its detail in jasper://docs/vertex-animation),
+# list_assets +19 (type vertex_animation), get_asset_info +30 (.vat); measured total 106016 with the trims
+# above (106041 with focus_window's vertex_animation_baker, W6). TOTAL_LIMIT lowered from 108102
+LIMITS.update({"bake_vertex_animation": 2000})
+TOTAL_LIMIT = 106100
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

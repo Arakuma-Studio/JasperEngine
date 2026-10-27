@@ -25,6 +25,21 @@ reasoning.
   position by half the added height to keep the bottom in place.
 - 2D primitives and polygon/chain points are in GameObject-local 2D units (points).
 
+### `edit_colliders`
+
+One call edits the colliders of a Rigidbody 2D or Rigidbody, creating the body when it is missing
+(`body_type`, other body properties in `body`); without edits it lists them. `dimension` (`2d` /
+`3d`) defaults to the existing body's, else the scene's. The edits run in this order: `clear`,
+`remove` (indices into the list as it was), `update` (`[{index, ...fields}]`), `add`
+(`[{shape, ...fields}]`, default shape `box`). The result returns the colliders. A new shape is
+fitted to what the GameObject draws (sprite, mesh or RectTransform in 2D; primitives to the
+mesh bounds in 3D) unless `fit: false`; sizes you pass win.
+
+| | shapes and their fields | also |
+|---|---|---|
+| 2D | `box` (`size`, `center`), `circle` (`radius`), `capsule` (`radius`, `point_a`, `point_b`), `segment` (`point_a`, `point_b`), `polygon` (`points`, 3-16), `chain` (`points`, 4-16, `loop`); sizes in points before the GameObject's scale | `density`, `friction`, `restitution`, `sensor`, `hit_events`, `contact_events`, `pre_solve_events`, `sensor_events`, `category_bits`, `mask_bits`, `group_index`, `center`, `offset` |
+| 3D | `box` (`size`), `sphere` (`radius`), `capsule` / `cylinder` (`radius`, `half_height`), `tapered_capsule` (`top_radius`, `bottom_radius`, `half_height`), `convex_hull` / `mesh` (from the GameObject's mesh, or `source`), `heightfield` (a terrain's, `samples_size`) | `density`, `center`, `rotation`; `friction` and `restitution` are per body (they go to the Rigidbody, for all its colliders) |
+
 ## Mass
 
 Mass is never authored directly; it comes from the collider's size and density.
@@ -144,7 +159,7 @@ against a wall, or rest it on the surface a ray hits. 3D scenes only, not during
   movers (`refused`, they stay context).
 - **Context**: everything else within `context_margin` (default 2 m) of the movers' path is
   static: meshes as triangle meshes, terrains as height fields, authored colliders as authored.
-  `context: none` drops everything onto nothing; `context: [...]` uses only those GameObjects;
+  `context: auto` (default) takes what is around the movers; `context: none` drops everything onto nothing; `context: [...]` uses only those GameObjects;
   `ignore_layers` leaves layers out. `push_neighbours: true` lets small loose objects in the way
   be knocked aside (they are committed too).
 - Each call is **a preview** (nothing changes) unless `apply: true`. `apply: true` with the
@@ -156,15 +171,15 @@ against a wall, or rest it on the surface a ray hits. 3D scenes only, not during
 |---|---|---|
 | `drop` (default) | | gravity (`gravity`, default `[0, -9.81, 0]`) until every mover rests |
 | `separate` | | no gravity: overlapping movers are pushed apart until no pair overlaps more than 1 mm |
-| `move` | `target` | the group slides rigidly toward `target.position` (where its centre goes) or by `target.delta`, turned by `target.rotation` about its centre; it stops at what it hits, then settles. `space: local` reads them in the first mover's parent space |
+| `move` | `target` | the group slides rigidly toward `target.position` (where its centre goes) or by `target.delta`, turned by `target.rotation` (`[x,y,z,w]` or `{"euler": [x,y,z]}`) about its centre; it stops at what it hits, then settles. `space: local` reads them in the first mover's parent space |
 | `snap` | `ray` | the movers land where `ray` hits (`{origin, direction}` in world space, up to 1 km, or `{screen: [x, y]}`, a Scene view pixel, y down), placed on that surface (aligned to its normal) directly, so nothing between them and the hit stops them, then settled; a ray that hits nothing is an error |
 | `gather` | | pulled toward their common centre (`amount`, 1 = all the way), stopping on contact, then settle |
 | `distribute` | `axis` | spaced evenly along `x`, `y` or `z` between the outermost two, keeping their order, then settle |
 
 `settle: false` stops after the gesture instead of running until resting. `max_seconds`
 (default 10, at most 120) caps the simulated time. `feel` (`precise`, `balanced`, `fast`) trades accuracy for
-speed when moving. `jitter: {position, rotation_deg}` offsets and turns every mover by a random
-amount (from `seed`, default 1) before the first step.
+speed when moving. `jitter: {position, rotation_deg}` offsets (up to `position` m) and turns (up to `rotation_deg` degrees)
+every mover by a random amount (from `seed`, default 1) before the first step.
 
 **Drop a crate onto the table under it, check, then commit:**
 

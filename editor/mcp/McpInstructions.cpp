@@ -177,6 +177,8 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   (jasper://docs/pose-animation).
 - Clips (.anim, shared): edit_animation {clip, create, tracks [{path}]}; play with an Animation
   Player (jasper://docs/animation).
+- Crowds: bake_vertex_animation (preview, then output) makes a .vat played on the GPU by a
+  Vertex Animator (jasper://docs/vertex-animation).
 - UI (text, image, button, panel, scrollbar, progressbar, input field, layout group; HTML/CSS
   UI: below): create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes
   and UI scenes alike, but in a 2D scene layout groups stack bottom-up and pointer input needs a
@@ -191,9 +193,8 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 - Mass = collider volume/area x density (default 1000 in 3D, 1 in 2D), never set directly.
   Size forces as mass x acceleration; if they get huge, lower the density.
 - Continuous forces and torques go in onFixedUpdate, never onUpdate, and are NOT multiplied by
-  deltatime. Rigidbody (3D): applyForce(f), applyForce(f, point), applyTorque(t), applyImpulse;
-  mass is the property body.mass. Rigidbody2D: applyForceToCenter(f, true), applyForce(f, point,
-  true), applyLinearImpulseToCenter(i, true); mass is body:getMass().
+  deltatime. The 3D and 2D APIs differ (2D calls take a wake flag; mass: body.mass vs
+  body:getMass()): table in jasper://docs/physics.
 - Never move a body by writing its GameObject's transform from onFixedUpdate (silently
   overwritten). Teleport with body.position (and body.rotation / body.angle), velocity with
   body.linearVelocity. One-shot impulses fire once per press, not every held frame.
@@ -206,11 +207,9 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   with Apply, or edit the asset in Prefab Mode. Instances cannot be restructured (reparent,
   reorder, move out): open the prefab instead. Variants are prefabs based on another prefab.
 - Runtime: GameObject.instantiate(prefabAsset [, scene] [, position, rotation] [, parent])
-  returns the new root named "<name>(Clone)", scripts already initialized (without scene or
-  parent it goes to the active scene); GameObject.destroy(go [, delay]).
-  Get the PrefabAsset from a script property of type Prefab (preferred) or
-  PrefabAsset.load("path/Name"). A prefab that is only loaded by path, never placed or
-  referenced, must be marked standalone or the build will not contain it.
+  returns "<name>(Clone)", scripts initialized; GameObject.destroy(go [, delay]). Get the
+  PrefabAsset from a Prefab script property (preferred); one only loaded by path
+  (PrefabAsset.load) must be marked standalone to be in the build (jasper://docs/prefabs).
 
 ## Shaders and materials
 Library first: list_shaders, the engine's shaders ("library:<name>"; with name: parameters,

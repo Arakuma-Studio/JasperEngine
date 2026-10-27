@@ -580,6 +580,8 @@ Json McpAutoSync::process(McpContext& ctx, const std::vector<Change>& changes, s
     }
     if (!models.empty()) {
         AnimationClipDocument::filesChanged(models, ctx.project());
+        // a regenerated .vat.glb stands for its .vat: the pool drops it, its animators reload
+        VatDocument::filesChanged(models, ctx.project());
         filesSynced(ctx, models, false);
     }
     Json result = paths.empty() ? Json{{"problems", Json::array()}} : w4::syncFiles(ctx, paths, false);

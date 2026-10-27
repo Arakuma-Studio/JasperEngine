@@ -32,6 +32,7 @@
 #include "command/type/RenameFileCmd.h"
 #include "command/type/ScenePropertyCmd.h"
 #include "command/type/UnlinkMaterialCmd.h"
+#include "vat/VatAssetFiles.h"
 #include "component/MeshComponent.h"
 #include "htmlui/HtmlUiImporters.h"
 #include "htmlui/VideoImporter.h"
@@ -877,6 +878,15 @@ void getAssetInfoTool(const CallPtr& call) {
     } else if (kind == "animation" && Util::isAnimationClipFile(rel)) {
         // an .anim clip: settings, tracks, events, load warnings and the Animation Players using it
         clip_tools::clipAssetInfo(project, file, data, text);
+    } else if (kind == "vertex_animation") {
+        // a .vat: mode, clips, layout, stats, staleness against its recipe, the Vertex Animators using it
+        vatAssetInfo(project, file, data, text);
+    }
+    if (kind == "model" && rel.size() > 8 && Util::isVertexAnimationFile(rel.substr(0, rel.size() - 4))) {
+        // "<stem>.vat.glb": the baked mesh and payload of the .vat next to it
+        const std::string owner = rel.substr(0, rel.size() - 4);
+        data["generated_by"] = owner;
+        text += "; generated with " + owner + " (do not edit: rebake with bake_vertex_animation {rebake: \"" + owner + "\"})";
     }
     if (CodeEditor* editor = call->ctx().codeEditor()) {
         if (editor->isFileOpen(file.string())) data["open_in_code_editor"] = {{"unsaved", editor->isFileModified(file.string())}};
@@ -919,6 +929,11 @@ void viewAssetTool(const CallPtr& call) {
     const int maxSize = std::clamp(call->args().value("max_size", 512), 16, 2048);
     if (Util::isImageFile(rel) && extensionOf(file) != ".svg") {
         replyImage(call, file, rel, maxSize, extensionOf(file) == ".png" ? synthesisAssetInfo(project, file, false) : Json());
+        return;
+    }
+    if (Util::isVertexAnimationFile(rel)) {
+        call->fail(rel + " is a Vertex Animation (no image): bake_vertex_animation with its source and no output returns a contact sheet "
+                   "(source vs VAT, nothing written); in a scene, play it and take a screenshot. get_asset_info lists its clips.");
         return;
     }
     if (Util::isAnimationClipFile(rel)) {
@@ -1113,6 +1128,15 @@ void writeFileTool(const CallPtr& call) {
             return;
         }
     }
+    // Vertex Animations must stay loadable: generated fields are the baker's (rebake), the rest are warnings
+    std::vector<std::string> vatWarnings;
+    if (Util::isVertexAnimationFile(rel)) {
+        std::string why;
+        if (!checkVatText(project, file, content, vatWarnings, why)) {
+            call->fail("Not a valid Vertex Animation: " + why + " (jasper://docs/vertex-animation).");
+            return;
+        }
+    }
     std::string error;
     if (!writeFilesUndoable(call->ctx(), {{file, content}}, error)) {
         call->fail(error);
@@ -1132,6 +1156,11 @@ void writeFileTool(const CallPtr& call) {
         }
     } else if (Util::isScriptFile(rel)) {
         text += " C++: run compile_scripts to check it.";
+    } else if (Util::isVertexAnimationFile(rel)) {
+        data["warnings"] = vatWarnings;
+        text += vatWarnings.empty() ? std::string(" Valid Vertex Animation (its animators reload).")
+                                    : " Vertex Animation loads with " + std::to_string(vatWarnings.size()) + " warning(s) (the bad parts are dropped):";
+        for (size_t i = 0; i < vatWarnings.size() && i < 8; i++) text += "\n" + vatWarnings[i];
     } else if (Util::isAnimationClipFile(rel)) {
         data["warnings"] = clipWarnings;
         text += clipWarnings.empty() ? std::string(" Valid clip.") : " Clip loads with " + std::to_string(clipWarnings.size()) + " warning(s) (the bad parts are dropped):";
@@ -1203,13 +1232,32 @@ public:
         if (fs::is_directory(from, ec)) fs::copy(from, to, fs::copy_options::recursive, ec);
         else fs::copy_file(from, to, ec);
         if (ec) return false;
-        // copied prefabs and clips are new assets: new GUIDs, the same ones on a redo
+        // a Vertex Animation is copied with its generated mesh (vat/VatAssetFiles.h), the copied
+        // .vat naming the copied mesh
+        fs::path vatCopy;
+        if (vat::renamedPair(from, to, pairFrom, pairTo)) {
+            fs::copy_file(pairFrom, pairTo, ec);
+            if (ec) {
+                fs::remove(to, ec);
+                pairTo.clear();
+                return false;
+            }
+            vatCopy = Util::isVertexAnimationFile(FileUtils::pathToUtf8(to)) ? to : pairTo;
+            std::string text;
+            if (ProjectChecks::readFile(vatCopy, text) &&
+                vat::setMeshField(text, FileUtils::pathToUtf8(vat::pairPathOf(vatCopy).filename()))) {
+                writeFile(vatCopy, text);
+            }
+        }
+        // copied prefabs, clips and Vertex Animations are new assets: new GUIDs, the same ones on a redo
         if (fs::is_directory(to, ec) || AssetDatabase::isTrackedFile(to)) project->importPrefabFiles(to, true, &copyGuids);
+        if (!vatCopy.empty() && vatCopy != to) project->importPrefabFiles(vatCopy, true, &copyGuids);
         return true;
     }
     void undo() override {
         std::error_code ec;
         const bool isDir = fs::is_directory(to, ec);
+        if (!pairTo.empty()) fs::remove(pairTo, ec);
         fs::remove_all(to, ec);
         project->cleanupPrefabFilePath(to);
         // references to the copied clips stay (Missing until a redo)
@@ -1222,6 +1270,7 @@ private:
     Project* project;
     fs::path from;
     fs::path to;
+    fs::path pairFrom, pairTo;      // the other file of a Vertex Animation and its copy
     std::map<std::string, std::string> copyGuids;
 };
 
@@ -1250,6 +1299,19 @@ void moveAssetTool(const CallPtr& call) {
         return;
     }
     const bool copy = call->args().value("copy", false);
+    // a Vertex Animation's other file goes along (RenameFileCmd / CopyFileCmd / CopyAsCmd take the
+    // pair: vat/VatAssetFiles.h); a destination that would break the pair is refused here
+    fs::path pairFrom, pairTo;
+    const bool pair = vat::renamedPair(from, to, pairFrom, pairTo);
+    if (!pair && !vat::existingPairOf(from).empty()) {
+        call->fail(fromRel + (Util::isVertexAnimationFile(fromRel) ? " is a Vertex Animation: its new name must end in .vat (its mesh follows as <name>.vat.glb)."
+                                                                  : " is the mesh of a Vertex Animation: its new name must end in .vat.glb (its .vat follows)."));
+        return;
+    }
+    if (pair && fs::exists(pairTo, ec)) {
+        call->fail(projectRelative(project, pairTo) + " already exists (the other file of the Vertex Animation goes there): delete it first or pick another name.");
+        return;
+    }
     Command* cmd = nullptr;
     if (copy) {
         cmd = new CopyAsCmd(project, from, to);
@@ -1268,11 +1330,21 @@ void moveAssetTool(const CallPtr& call) {
         return;
     }
     if (CodeEditor* editor = call->ctx().codeEditor(); editor && !copy) editor->handleFileRename(from, to);
-    syncFiles(call->ctx(), {from, to}, false);
+    std::vector<fs::path> synced = {from, to};
+    if (pair) synced.insert(synced.end(), {pairFrom, pairTo});
+    syncFiles(call->ctx(), synced, false);
+    Json data = {{"from", fromRel}, {"to", toRel}, {"copy", copy}};
+    std::string pairText;
+    if (pair) {
+        data["pair"] = {{"from", projectRelative(project, pairFrom)}, {"to", projectRelative(project, pairTo)}};
+        pairText = " With it, " + projectRelative(project, pairFrom) + " -> " + projectRelative(project, pairTo) +
+                   " (a Vertex Animation and its mesh stay together; the .vat's mesh follows).";
+    }
     call->ok(std::string(copy ? "Copied " : "Moved ") + fromRel + " to " + toRel +
-             (copy ? (Util::isAnimationClipFile(toRel) ? " (a new clip with its own GUID; Animation Players keep the original)." : ".")
-                   : "; references in scenes, prefabs, materials and Animation Players follow it. Undo with scope project."),
-             Json{{"from", fromRel}, {"to", toRel}, {"copy", copy}});
+             (copy ? (Util::isAnimationClipFile(toRel) ? " (a new clip with its own GUID; Animation Players keep the original)."
+                      : pair ? " (a new Vertex Animation with its own GUID)." : ".")
+                   : "; references in scenes, prefabs, materials and Animation Players follow it. Undo with scope project.") + pairText,
+             data);
 }
 
 void deleteAssetTool(const CallPtr& call) {
@@ -1305,6 +1377,15 @@ void deleteAssetTool(const CallPtr& call) {
         files.push_back(file.lexically_normal());
         deleted.push_back(rel);
     }
+    // a Vertex Animation goes with its generated mesh, and the reverse (DeleteFileCmd takes the
+    // pair: vat/VatAssetFiles.h): reported, and synced with the rest
+    Json pairs = Json::array();
+    const std::vector<fs::path> listed = files;
+    for (const fs::path& file : vat::withPairs(listed)) {
+        if (std::find(listed.begin(), listed.end(), file) != listed.end()) continue;
+        pairs.push_back(projectRelative(project, file));
+        deleted.push_back(projectRelative(project, file));
+    }
     // a scene leaving the project while a scene plays: the reason, without an editor alert
     std::string refusal;
     if (project->refuseDeletionWhilePlaying(files, &refusal, false)) {
@@ -1322,9 +1403,15 @@ void deleteAssetTool(const CallPtr& call) {
         call->fail("Couldn't delete the files.");
         return;
     }
-    syncFiles(call->ctx(), files, false);
+    syncFiles(call->ctx(), vat::withPairs(listed), false);
     Json data = {{"deleted", deleted}};
-    std::string text = "Moved " + std::to_string(files.size()) + " item(s) to the project trash (undo with scope project restores them).";
+    std::string text = "Moved " + std::to_string(deleted.size()) + " item(s) to the project trash (undo with scope project restores them).";
+    if (!pairs.empty()) {
+        data["with_pair"] = pairs;
+        text += " With them, the other half of each Vertex Animation (.vat / .vat.glb):";
+        for (const Json& p : pairs) text += " " + p.get<std::string>();
+        text += ".";
+    }
     if (clipUsers > 0) {
         data["clip_users"] = clipUsers;
         text += " " + std::to_string(clipUsers) + " Animation Player clip entr" + (clipUsers == 1 ? "y keeps" : "ies keep") +
@@ -3007,7 +3094,7 @@ void searchFilesTool(const CallPtr& call) {
 void registerAssetTools(McpRegistry& registry) {
     using namespace schema;
 
-    const std::vector<std::string> types = {"any", "texture", "model", "audio", "font", "html", "css", "script", "scene", "prefab", "material", "shader", "animation", "folder", "other"};
+    const std::vector<std::string> types = {"any", "texture", "model", "audio", "font", "html", "css", "script", "scene", "prefab", "material", "shader", "animation", "vertex_animation", "folder", "other"};
 
     {
         ToolDef tool;
@@ -3040,7 +3127,7 @@ void registerAssetTools(McpRegistry& registry) {
             "One project file's details by type: image size/channels (synthesized PNG: its recipe, changed sources, "
             "regenerate arguments); model meshes, materials, animations, nodes (an FBX: of its glTF conversion, fbx_import.state); "
             "WAV format/duration; .material fields, "
-            ".anim clip settings, tracks, events, users; "
+            ".anim clip settings, tracks, events, users; .vat clips, staleness, users; "
             "linked submeshes; shader includes, forks using it; Lua syntax; scene status; unsaved code editor edits.";
         tool.inputSchema = object({{"path", assetPath("")}}, {"path"});
         tool.annotations.readOnly = true;
@@ -3089,7 +3176,7 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "Write File";
         tool.description =
             "Create or change a project text file (undo scope project; for clients without file access) and "
-            "validate it: Lua syntax, forks using it recompiled (errors with lines), materials and .anim clips parsed. content = "
+            "validate it: Lua syntax, forks using it recompiled (errors with lines), materials, .anim and .vat parsed. content = "
             "whole file, or edits [{old_text, new_text}] (old_text must match once unless replace_all). Refuses "
             "project.yaml, .scene, .prefab and files with unsaved code editor edits.";
         tool.inputSchema = object({
