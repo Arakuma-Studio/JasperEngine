@@ -10721,7 +10721,7 @@ void editor::InspectorWindow::stopActionPreview(Scene* scene, SceneProject* scen
             // the keys and their settings (loop, relative) edited during the preview are kept,
             // the playhead the preview moved (index, interpolation) goes back
             const std::string componentName = Catalog::getComponentName(ComponentType::KeyframeTracksComponent, true);
-            YAML::Node encoded = Stream::encodeKeyframeTracksComponent(*comp);
+            YAML::Node encoded = reflect::encodeValue(ComponentType::KeyframeTracksComponent, comp);
             const YAML::Node originalNode = state.components[componentName];
             if (originalNode && !originalNode.IsNull()) {
                 for (const char* key : {"index", "interpolation"}) {
