@@ -352,10 +352,11 @@ namespace jasperengine::editor::reflect {
             &detail::numberSchema, &detail::finiteFloat}, &detail::floatScalar);
         // a colour temperature in Kelvin (LightPhotometry): written finite (a non-finite one as 6500,
         // white), read finite (else 6500) and clamped to 1000..20000
-        inline constexpr TypeOps Kelvin = detail::withScalar(TypeOps{"float", Kind::Float, PropertyType::Float, sizeof(float),
+        // (no scalar fast path: the text is not the value's own)
+        inline constexpr TypeOps Kelvin{"float", Kind::Float, PropertyType::Float, sizeof(float),
             &detail::construct<float>, &detail::destroy<float>, &detail::copy<float>, &detail::equalFloat,
             &detail::kelvinToYaml, &detail::kelvinFromYaml, nullptr, nullptr, nullptr, false, &detail::floatLiteral,
-            &detail::numberSchema, &detail::finiteFloat}, &detail::floatScalar);
+            &detail::numberSchema, &detail::finiteFloat};
         // one character written as a one-character string (an empty one reads as '*')
         inline constexpr TypeOps Char = detail::withScalar(TypeOps{"char", Kind::String, PropertyType::Custom, sizeof(char),
             &detail::construct<char>, &detail::destroy<char>, &detail::copy<char>, &detail::equalByOperator<char>,

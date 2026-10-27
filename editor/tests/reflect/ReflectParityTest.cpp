@@ -133,6 +133,15 @@ PARITY_COMPONENT(ReflectionProbe)
 PARITY_COMPONENT(UIDocument)
 PARITY_COMPONENT(FluidSimulation)
 PARITY_COMPONENT(LatticeFollower)
+
+// the fluid's back colour, written by the codec it replaced only away from its default
+TEST(ReflectParity, FluidBackColorAwayFromItsDefault) {
+    FluidSimulationComponent fluid;
+    fluid.backColor = Vector3(0.0f, 9845.456f, 7931.2134f);
+    const YAML::Node legacy = LegacyCodecs::encodeFluidSimulationComponent(fluid);
+    EXPECT_TRUE(legacy["backColor"].IsDefined()) << YAML::Dump(legacy);
+    EXPECT_EQ(YAML::Dump(reflect::encodeValue(ComponentType::FluidSimulationComponent, &fluid)), YAML::Dump(legacy));
+}
 PARITY_COMPONENT(Camera)
 PARITY_COMPONENT(AudioSource)
 PARITY_COMPONENT(Button)
