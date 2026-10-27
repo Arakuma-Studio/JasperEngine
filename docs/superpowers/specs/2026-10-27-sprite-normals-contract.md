@@ -47,7 +47,7 @@ Values outside the range are errors that name the setting, the range and the val
 
 | Setting | Type, range | Default | Meaning |
 |---|---|---|---|
-| `preset` | `soft` `default` `crisp` `detailed` `chunky` | `default` | Starting values for the six "main" settings below; explicit values override the preset |
+| `preset` | `soft` `default` `crisp` `detailed` `chunky` | `default` | Starting values for strength, detail, smoothing, volume, softness and radius; explicit values override the preset |
 | `strength` "Strength" | 0..8 | preset | Multiplies every slope (upstream `normal_strength`) |
 | `detail` "Detail" | 0..8 | preset | Relief from painted shading (upstream `detail_strength`) |
 | `smoothing` "Smoothing" | 0..8 px | preset | Sigma of the fine shading blur; the broad blur is 2x (upstream `detail_scale`) |
@@ -61,7 +61,7 @@ Values outside the range are errors that name the setting, the range and the val
 | `regions` "Regions" | array, at most 16 of `{colors: ["#rrggbb", ...] (1..16), tolerance: 0..0.5 (Oklab distance, default 0.03), detail: 0..8 multiplier (default 1), lift: -16..16 px of height (default 0), flat: bool (default false)}` | `[]` | Per-colour overrides; a pixel takes the first matching region. `detail: 0` excludes painted highlights or outlines from relief; `lift` raises/sinks a material; `flat` forces the pixels' normals to +Z |
 | `directx` "Green: DirectX" | bool | false | Green points down the image (Unreal). False = OpenGL, which the engine reads after Phase 1 |
 | `height` "Height map" | bool | false | Also write a 16-bit grey height map |
-| `frames` "Frames" | `"auto"`, `"none"`, or `{tile_size: N or [w,h], columns, rows, count, offset: [x,y], padding: [x,y]}` | `"auto"` | Cells processed independently. Auto = the Sprite's frames (when the source is a Sprite GameObject), the animation's frames (GIF/APNG), else the whole image. Object keys mirror `set_sprite_frames.slice` |
+| `frames` "Frames" | `"auto"`, `"none"`, `{tile_size: N or [w,h], columns, rows, count, offset: [x,y], padding: [x,y]}`, or `{cells: [[x,y,w,h],...]}` (exclusive with the grid keys) | `"auto"` | Cells processed independently. Auto = the Sprite's frames (when the source is a Sprite GameObject), the animation's frames (GIF/APNG), else the whole image. Object keys mirror `set_sprite_frames.slice` (`names`, `prefix`, `sheet_size` are not accepted) |
 
 Presets (the six main settings; `softness` 1.15 and `radius` auto in all):
 
@@ -70,7 +70,7 @@ Presets (the six main settings; `softness` 1.15 and `radius` auto in all):
 | `soft` | 1.0 | 2 | 1.0 | 1.15 | gentle, painterly art |
 | `default` | 1.5 | 3 | 1.0 | 1.15 | best measured accuracy on 16-64 px sprites, half the upstream flicker |
 | `crisp` | 1.5 | 3 | 0.6 | 1.15 | small characters, keeps 1 px features |
-| `detailed` | 1.5 | 6 | 0.6 | 1.15 | the upstream defaults (most painted detail, highlights become bumps) |
+| `detailed` | 1.5 | 6 | 0.6 | 1.15 | the upstream defaults except radius (upstream: 4 px; pass radius 4 for an exact match) (most painted detail, highlights become bumps) |
 | `chunky` | 2.5 | 4 | 0.6 | 2.0 | stylised, strong volume |
 
 ## 4. Algorithm contract
@@ -82,9 +82,9 @@ Presets (the six main settings; `softness` 1.15 and `radius` auto in all):
 - 8-connected islands, exact Euclidean distance transform, Oklab lightness, alpha-weighted normalized convolution,
   normalized Sobel, slope -> normal exactly as upstream. Islands and cells are independent; output is deterministic
   regardless of thread count.
-- Auto radius: one value per source. For a sequence of frames (GIF/APNG or a frame grid), R = clamp(0.15 x m, 4, 512)
-  where m is the median over frames of the shorter bounding-box side of each frame's largest island; for a single
-  image, each island gets R = clamp(0.15 x its shorter bbox side, 4, 512). The resolved value(s) are reported.
+- Auto radius: one value per source. For a sequence of frames (GIF/APNG, a frame grid, or a Sprite's frames),
+  R = clamp(0.15 x m, 4, 512) where m is the median over frames of the shorter bounding-box side of each frame's
+  largest island; for a single image, each island gets R = clamp(0.15 x its shorter bbox side, 4, 512). The resolved value(s) are reported.
 - Output: RGBA8; alpha = source alpha byte; RGB = (128,128,255) where alpha/255 <= `alpha_threshold`; PNG without
   gAMA/sRGB/iCCP chunks; recipe chunk after IHDR.
 - Limits: input file <= 64 MiB; image <= 16,777,216 pixels (4096 x 4096); <= 256 animation frames and <= 16,777,216
@@ -98,20 +98,24 @@ Presets (the six main settings; `softness` 1.15 and `radius` auto in all):
 | Colour atlas | `<stem>_sheet.png` | GIF/APNG source |
 | Normal atlas | `<stem>_sheet_normal.png` | GIF/APNG source (replaces `<stem>_normal.png`) |
 | Height map | `<stem>_height.png` (or `<stem>_sheet_height.png`) | `height: true` |
-| Frames JSON | `<stem>_sheet.frames.json` (upstream schema + `version`, `rows`, `loop`, `frame_ms` floats, `source`, `settings`) | CLI `--frames-json` / MCP `output.frames: true` only |
+| Frames JSON | `<stem>_sheet.frames.json` (animations) / `<normal stem>.frames.json` (stills with cells) (upstream schema + `version`, `rows`, `loop`, `frame_ms` floats, `source`, `settings`) | CLI `--frames-json` / MCP `output.frames: true` only |
 
 Animated sources are packed row-major with `columns = ceil(sqrt(n))`, like upstream. Outputs are written all-or-nothing;
 inputs are never overwritten; an existing output needs `overwrite`; in the editor a write is one Project undo step
-(`WriteFilesCmd`), and assigning to a Sprite is one Scene undo step.
+(`WriteFilesCmd`), except the opt-in auto-regenerate (no undo step, logged), and assigning to a Sprite is one Scene
+undo step.
 
 ## 6. Recipe
 
 Every PNG the generator writes carries iTXt `jasper.spritenormals` with canonical JSON:
 `{"format":"jasperengine.spritenormals","version":1,"generator":"JasperEngine <version>","role":"normal|atlas|height",
-"source":{"path":<project-relative or as given>,"sha1":...,"kind":"image|gif|apng|sprite","entity":<path, optional>},
-"frames":{"from":"sprite|gif|apng|given|single","cells":[[x,y,w,h],...],"columns":..,"rows":..,"delays_ms":[...]},
-"settings":{<every setting of section 3, resolved, preset included>},"radius_resolved":<number or "per-island">,
-"outputs":{"normal":..,"atlas":..,"height":..}}`. Texture Synthesis' recipe chunk code is generalized to take the
+"source":{"path":<project-relative with '/' inside a project, else relative to the directory of the PNG carrying the
+recipe (the normal map's directory for the normal map)>,"sha1":...,"kind":"image|gif|apng|sprite","entity":<path,
+optional>,"submesh":<n, only when not 0>},
+"frames":{"from":"sprite|gif|apng|given|single","cells":[[x,y,w,h],...],"columns":..,"rows":..,
+"delays_ms":[[num,den],...]},
+"settings":{<every setting of section 3 except `frames` (recorded in `frames`), resolved, preset included>},
+"radius_resolved":<number or "per-island">,"outputs":{"normal":..,"atlas":..,"height":..}}`. Texture Synthesis' recipe chunk code is generalized to take the
 keyword (no behaviour change for `jasper.synthesis`). Staleness = the source's SHA-1 differs or the source is gone.
 
 ## 7. Engine conventions after Phase 1 (what the generator and tools may assume)
@@ -120,25 +124,30 @@ keyword (no behaviour change for `jasper.synthesis`). Staleness = the source's S
   OpenGL style: green = up the image, red = right, same as 3D Lit, Unity and Godot. Mirroring (negative scale,
   mirrored frame rects, flipY) keeps lighting correct.
 - A Light 2D's `height` drives N.L only on fragments that sample a normal map; sprites without a normal map are lit
-  exactly as before regardless of height. New Light 2Ds made by the editor (menu, Hierarchy, MCP `create_entity`) get
-  `height = 64`. The struct default stays 0 (scenes and scripts unchanged).
+  as a height-0 light lights them, at any height (a deliberate change: plain sprites under a Light 2D with height > 0
+  are no longer dimmed). New Light 2Ds made by the editor (menu, Hierarchy, MCP `create_entity`, and
+  `add_component`/Inspector Add Component) get `height = 64`. The struct default stays 0 (scenes and scripts unchanged).
 - The normal map is assigned at `submeshes[0].material.normalTexture` (every submesh for tilemaps); it must have the
   colour texture's pixel size and frame layout; the tools copy the colour texture's min/mag filter and wrap onto it.
 - Lua can assign a sprite's normal map (Phase 1 defines the exact API).
 
 ## 8. Shared engine-free APIs (Phase 2 defines exact headers; Phases 3-5 call only these)
 
-- Core: `generate(const Request&, const Control&) -> Result` (blocking, never throws, `Problem{field,message}` list,
-  cancel flag, progress callback), `presetSettings(Preset)`, `resolveSettings`, `validateSettings`.
-- Media: `loadSource(path|bytes) -> Source` (frames, delays, loop, cells), `packAtlas`, `encodePng(image, recipe)`.
-- Preview: `renderLit(normal, color, LightSetup) -> Image` using exactly the engine's `getLight2DIntensity` formula;
-  `contactSheet(...)` (per frame: colour | normal | lit from 4 directions; nearest integer upscale; <= 1024 px wide;
-  <= 8 frames); `metrics(...)` and `assess(...)` (plain-language lines + one hint).
-- Session (editor side, project-aware): `Spec` (+ `fingerprint()`), `checkSpec`, `plannedOutputs`, `buildRequest`,
-  `encodeOutputs`, `writeOutputsUndoable`, `specFromRecipe`, `checkStaleness`, `framesFromSprite(entity)`,
-  `lightsRespondToNormals(scene)`, `SpriteNormalsRun` (worker: start/cancel/finished/latest result).
-- Apply: one Scene-undoable command that assigns the normal map (and, for animated sources, the atlas, frames and
-  Sprite Animation) to a Sprite GameObject and copies the colour texture's filter and wrap.
+The names are Phase 2's header names; Phases 3-5 use exactly these:
+
+- Core: `generate(const Request&, const Control&)`, `presetSettings(Preset)`, `validateSettings`,
+  `parsePreset/parseProfile/parseEdges/parseColor`, `sliceGrid`.
+- Media: `probeSource`, `loadSource`, `loadSourceFromMemory`, `packAtlas`, `encodePng`.
+- Recipe: `settingsToJson`, `settingsFromJson`, `makeRecipe`, `encodeWithRecipe`, `readRecipe`, `readRecipeHead`,
+  `validateRecipe`.
+- Preview: `renderLit`, `orbitLight`, `contactSheet`, `sheetFrames`, `measure`, `assess`.
+- Session: `Spec` (+`fingerprint()`), `checkSpec`, `defaultOutputs`, `plannedOutputs`, `prepare`, `encodeOutputs`,
+  `writeOutputsUndoable`, `writeOutputsDirect`, `framesJson`, `checkStaleness`, `specFromRecipe`, `framesFromSprite`,
+  `lightCheck`, `sceneWarnings`, `SpriteNormalsRun`.
+- Apply: `applyToSprite` (`applyToSprites`: several GameObjects of one scene in one step), one Scene-undoable command
+  that assigns the normal map (and, for animated sources, the atlas, frames and Sprite Animation) to a Sprite
+  GameObject and copies the colour texture's filter and wrap.
+- `Problem{kind, field, message, fix}`.
 
 ## 9. Quality bar (every phase)
 
@@ -150,3 +159,18 @@ keyword (no behaviour change for `jasper.synthesis`). Staleness = the source's S
   definitions stay lean (`tools/mcp/tool_budget.py`).
 - Build: `cmake -G Ninja -DCMAKE_BUILD_TYPE=Release` with ccache (`source /root/.ccache-env`); `-Wall -Wextra` clean
   in new code.
+
+## Amendments (2026-10-27, consistency review)
+
+- Section 3: `preset` sets strength, detail, smoothing, volume, softness and radius [22]; `frames` accepts
+  `{cells: [[x,y,w,h],...]}` (exclusive with the grid keys) and refuses `names`, `prefix`, `sheet_size` [11, 27];
+  `detailed` = the upstream defaults except radius (pass radius 4 for an exact match) [23].
+- Section 4: a Sprite's frames count as a sequence for auto radius [28].
+- Section 5: frames JSON is `<stem>_sheet.frames.json` (animations) / `<normal stem>.frames.json` (stills with cells)
+  [15]; the opt-in auto-regenerate writes without an undo step (logged) [25].
+- Section 6: `source.path` outside a project is relative to the directory of the PNG carrying the recipe [8];
+  `source.submesh` when not 0 [5]; `delays_ms` are `[num, den]` ratios [16]; `settings` excludes `frames` [42].
+- Section 7: sprites without a normal map are lit as by a height-0 light at any height (deliberate change); editor
+  lights made through `add_component`/Add Component also get height 64 [24].
+- Section 8: the API list uses Phase 2's header names (`prepare`, `measure`, `lightCheck`/`sceneWarnings`,
+  `encodeWithRecipe`, `applyToSprite`/`applyToSprites`, ...); `Problem{kind, field, message, fix}` [1, 4, 6].

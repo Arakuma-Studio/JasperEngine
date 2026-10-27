@@ -120,7 +120,9 @@ namespace jasperengine::editor::spritenormals {
     };
 
     // The preset's values (contract section 3 table); softness 1.15, radius auto, alpha 0.03,
-    // Rounded, Transparent, no outline handling, no regions, OpenGL, no height map
+    // Rounded, Transparent, no outline handling, no regions, OpenGL, no height map.
+    // Resolving a preset with overrides (every surface does exactly this):
+    //   Settings s = presetSettings(p); settingsFromJson(overrides, s, error); s.preset = p; validateSettings(s)
     Settings presetSettings(Preset preset);
     // "soft", "default", "crisp", "detailed", "chunky" (and back; false for an unknown name)
     const char* toString(Preset preset);
@@ -160,7 +162,8 @@ namespace jasperengine::editor::spritenormals {
     // The Texture Slicer / set_sprite_frames grid: tile size, or columns and rows; offset,
     // padding, count. Same math as the MCP sliceSheet (WorldTools.cpp): tile_size given ->
     // columns/rows = floor((avail + padding) / (tile + padding)); columns and rows given ->
-    // tile = floor((avail - padding * (n - 1)) / n); cells row-major, the last ones clipped to
+    // tile = floor((avail - padding * (n - 1)) / n); both given: the tile size is used and
+    // columns/rows > 0 cap the counts (sliceSheet); cells row-major, the last ones clipped to
     // the image; count (0 = all) caps them.
     struct Grid {
         int tileWidth = 0;
@@ -645,11 +648,13 @@ namespace jasperengine::editor::spritenormals {
 
     struct RecipeInput {
         std::string role;                    // "normal", "atlas", "height"
-        std::string sourcePath;              // project-relative ('/') when inside the project, else absolute
+        std::string sourcePath;              // project-relative ('/') inside the project, else relative to the
+                                             // directory of the PNG carrying the recipe ('/')
         std::string sourceSha1;
         SourceKind sourceKind = SourceKind::Image;
         bool fromSprite = false;             // the source was a Sprite GameObject's texture
         std::string spriteEntity;            // its hierarchy path (fromSprite)
+        unsigned spriteSubmesh = 0;          // its submesh (fromSprite; source.submesh when not 0)
         FramesFrom framesFrom = FramesFrom::Single;
         std::vector<Cell> cells;
         int columns = 0;                     // animations (0 otherwise)
@@ -699,25 +704,28 @@ and reads each back.
   "version": 1,
   "generator": "JasperEngine 0.9.0",
   "role": "normal",
-  "source": {"path": "assets/hero.gif", "sha1": "…", "kind": "gif", "entity": "Player/Hero"},
-  "frames": {"from": "gif", "cells": [[0,0,32,32],[32,0,32,32]], "columns": 2, "rows": 1,
-             "delays_ms": [[80,1],[80,1]], "loop": 0},
+  "source": {"path": "assets/hero.png", "sha1": "…", "kind": "sprite", "entity": "Player/Hero"},
+  "frames": {"from": "sprite", "cells": [[0,0,32,32],[32,0,32,32]]},
   "settings": {"preset": "default", "strength": 1.5, "detail": 3, "smoothing": 1, "volume": 1.15,
                "radius": "auto", "softness": 1.15, "alpha_threshold": 0.03, "profile": "rounded",
                "edges": "transparent", "ignore_outline": false, "regions": [], "directx": false, "height": false},
   "radius_resolved": 4.8,
   "outline": "#1a1c2c",
   "height_range_px": [0, 7.25],
-  "outputs": {"normal": "assets/hero_sheet_normal.png", "atlas": "assets/hero_sheet.png", "height": null}
+  "outputs": {"normal": "assets/hero_normal.png", "atlas": null, "height": null}
 }
 ```
 
-`generator` is `"JasperEngine " JASPERENGINE_EDITOR_VERSION` (EditorVersion.h, as texsynth does). Rules: keys sorted (nlohmann's default `std::map` ordering), compact dump; `entity` only when the source was a
-Sprite; `frames.columns/rows/delays_ms/loop` only for animations; `cells` empty for a single image; `radius_resolved`
-a number, or `"per-island"` with `radius_range` `[min, max]`; `outline` only when ignore_outline found one;
-`height_range_px` only when a height map was made; `outputs` lists every file of the set (null for those not
-written). Regions are `{"colors": ["#rrggbb"], "tolerance": …, "detail": …, "lift": …, "flat": …}`. Paths: project
-relative with `/` when inside the project, else absolute; refuse non-UTF-8 paths (recipeText error).
+`generator` is `"JasperEngine " JASPERENGINE_EDITOR_VERSION` (EditorVersion.h, as texsynth does). Rules: keys sorted
+(nlohmann's default `std::map` ordering), compact dump; `source.kind` is `"sprite"` when `fromSprite`, else
+`toString(sourceKind)`; `entity` is present exactly when kind is `"sprite"`; `source.submesh` only when kind is
+`"sprite"` and `spriteSubmesh != 0`; `frames.columns/rows/delays_ms/loop` only for animations (`delays_ms` as exact
+`[num, den]` ratios); `cells` empty for a single image; `radius_resolved` a number, or `"per-island"` with
+`radius_range` `[min, max]`; `outline` only when ignore_outline found one; `height_range_px` only when a height map was
+made; `outputs` lists every file of the set (null for those not written). Regions are `{"colors": ["#rrggbb"],
+"tolerance": …, "detail": …, "lift": …, "flat": …}`. Paths: project relative with `/` inside the project, else relative
+to the directory of the PNG carrying the recipe (with `/`; for the normal map, the normal output's directory); refuse
+non-UTF-8 paths (recipeText error).
 
 ## 7. Preview header: `SpriteNormalsPreview.h` (2B, verbatim)
 
@@ -898,6 +906,7 @@ namespace jasperengine::editor::spritenormals {
         Mode mode = Mode::Auto;
         Grid grid;                   // Mode::Grid
         std::vector<Cell> cells;     // Mode::Cells (a Sprite's frames, or given rects)
+        FramesFrom from = FramesFrom::Given;   // Mode::Cells: what the cells are (Sprite or Given), recorded
     };
 
     // Output paths, project-relative ('/'); "" = the default name (contract section 5)
@@ -913,13 +922,14 @@ namespace jasperengine::editor::spritenormals {
         std::string source;          // project-relative image path; "" when sprite is set (its texture)
         uint32_t sceneId = 0;        // with entity: a Sprite (or any mesh) GameObject as the source
         Entity entity = NULL_ENTITY;
+        unsigned submesh = 0;        // with entity: the submesh whose base colour texture is the source
         Settings settings;
         FramesSpec frames;
         OutputSpec output;
         bool overwrite = false;
 
         bool hasSprite() const { return entity != NULL_ENTITY; }
-        // Everything that changes the result, as text (the window's "stale" test)
+        // Everything that changes the result, as text (the window's "stale" test; submesh included)
         std::string fingerprint() const;
     };
 
@@ -944,17 +954,19 @@ namespace jasperengine::editor::spritenormals {
 
     // ---- frames
 
-    // The Sprite's frames (SpriteComponent framesRect, pixels) and its colour texture (submesh 0
-    // base colour, project-relative); false with `error` (kind not_a_sprite / invalid_source)
-    bool framesFromSprite(const Scene* scene, Entity entity, std::string& texturePath, std::vector<Cell>& cells,
-                          std::string& error);
+    // The Sprite's frames (SpriteComponent framesRect, pixels; only when submesh is 0, else no
+    // cells) and the colour texture of `submesh` (its base colour, project-relative); false with
+    // `error` (kind not_a_sprite / invalid_source)
+    bool framesFromSprite(const Scene* scene, Entity entity, unsigned submesh, std::string& texturePath,
+                          std::vector<Cell>& cells, std::string& error);
 
     // ---- check and prepare
 
     // Every problem visible without decoding pixels: settings, source missing / outside the
-    // project / unsupported (probeSource), frames (a grid on a GIF/APNG: frames_mismatch; grid
-    // empty or too many cells), outputs (not .png, outside the project, colliding with the source
-    // or each other, existing without overwrite: output_exists, not valid UTF-8)
+    // project / unsupported (probeSource), frames (a grid or none on a GIF/APNG: frames_mismatch;
+    // grid empty or too many cells; overlapping Sprite frames: frames_mismatch), outputs (not
+    // .png, outside the project's assets directory, colliding with the source or each other,
+    // existing without overwrite: output_exists, not valid UTF-8)
     std::vector<Problem> checkSpec(const std::filesystem::path& projectDir, const Spec& spec, const Scene* scene = nullptr);
 
     // A spec resolved and loaded: what generate() runs and encodeOutputs() writes
@@ -984,11 +996,17 @@ namespace jasperengine::editor::spritenormals {
     bool encodeOutputs(const Prepared& prepared, const Result& result, std::vector<OutputFile>& files, std::string& error);
     // One step of the project command history (WriteFilesCmd through w4::writeFilesUndoable),
     // then the editor notices them (textures reloaded, thumbnails, Project window). Main thread.
+    // The step is named "Generate Normal Map <file name of the first normal output>" ("Generate
+    // Normal Maps (N)" for N normal outputs).
     bool writeOutputsUndoable(const std::vector<OutputFile>& files, std::string& error);
     // All or nothing without history (the CLI): texsynth::writeFilesAllOrNothing
     bool writeOutputsDirect(const std::vector<OutputFile>& files, std::string& failedPath, std::string& error);
 
-    // The frames JSON (contract section 5): upstream schema + version, rows, loop, frame_ms, source, settings
+    // The frames JSON (contract section 5): {"version":1, "source":<recipe path>, "width":W,
+    // "height":H, "animation":{"frame_width", "frame_height", "columns", "rows", "frame_count",
+    // "delays_ms":[[num,den],...], "frame_ms":[float,...], "loop":<loopCount>},
+    // "settings":settingsToJson}; a still with cells has "animation" with frame_count = cells,
+    // delays_ms/frame_ms/loop omitted
     nlohmann::json framesJson(const Prepared& prepared);
 
     // ---- recipes and staleness
@@ -1001,6 +1019,7 @@ namespace jasperengine::editor::spritenormals {
         std::string message;                 // "hero.png changed since this map was made"
     };
     const char* toString(Staleness::State state);   // "fresh", "changed", "missing", "no_recipe", "invalid"
+    // projectDir empty: a recipe source.path is resolved against the PNG's own directory
     Staleness checkStaleness(const std::filesystem::path& projectDir, const std::filesystem::path& png);
 
     // A written map's recipe back into a spec (same settings, frames, outputs = that set,
@@ -1017,12 +1036,18 @@ namespace jasperengine::editor::spritenormals {
         float ambientIntensity = 0.0f;       // scene ambient 2D intensity
     };
     LightCheck lightCheck(const Scene* scene);
-    // no_light_height (lights > 0 but none with height, or no light at all), ambient_high
+    // The scene-aware warnings of section 8.2, the only ones every surface shows: no_light (no
+    // enabled Light 2D), no_light_height (lights > 0 but none with height), ambient_high
     // (ambientIntensity >= 0.8), and for an entity: size_mismatch (its base texture size !=
-    // normal size), filter_linear (base texture Nearest and the result would not be applied),
-    // material_linked (submesh material from a .material file), too_many_frames (> 128)
-    std::vector<Problem> sceneWarnings(const Scene* scene, Entity entity, int normalWidth, int normalHeight, int frameCount,
-                                       bool willApply);
+    // normal size), filter_mismatch (a normal texture set, or the result will be applied, and its min/mag
+    // filter or wrap differ from the base texture's; apply copies them, so a willApply result is
+    // compared after that copy), material_linked (submesh material from a .material file),
+    // too_many_frames (delays.size() > 128), directx_in_engine (settings.directx),
+    // shader_ignores_normals (a manifest shader for which !Catalog::shaderReadsMaterialNormalMap);
+    // and zero_delay (some delay's playbackMs replaced a delay under 10 ms by 100). Scene null:
+    // only zero_delay.
+    std::vector<Problem> sceneWarnings(const Scene* scene, Entity entity, const Settings& settings, int normalWidth,
+                                       int normalHeight, const std::vector<Delay>& delays, bool willApply);
 
     // ---- worker
 
@@ -1061,23 +1086,31 @@ namespace jasperengine::editor::spritenormals {
 
 ### 8.1 Session semantics
 
-- **Sources**: `spec.source` (project-relative) or a Sprite (`sceneId` + `entity`): its submesh 0 base colour
-  texture's path is the source; `frames` `Auto` then uses the Sprite's `framesRect` (pixel rects) when it has any
-  (`FramesFrom::Sprite`), else the whole image. Outside a project (the CLI without `--project`) `projectDir` is empty
-  and paths are used as given (relative to the working directory, absolute allowed).
-- **Frames**: `Auto` -> GIF/APNG frames, the Sprite's frames, else none. `None` -> whole image (a GIF/APNG still
-  uses its frames: the atlas only exists with them). `Grid` -> `sliceGrid` (refused with `frames_mismatch` on a
-  GIF/APNG: "The frames come from the GIF; leave frames auto."). `Cells` -> as given. `request.sequence` = true for
-  GIF/APNG and for a Grid or Sprite frames with 2 or more cells.
-- **Outputs**: `.png` (case-insensitive) for images, `.json` for the frames JSON; inside the project and not in a
-  hidden directory; distinct from the source and each other (`output_invalid`); existing files need `overwrite`
+- **Sources**: `spec.source` (project-relative) or a Sprite (`sceneId` + `entity` + `submesh`): its submesh
+  `spec.submesh` base colour texture's path is the source (frames from the Sprite only when submesh is 0); `frames`
+  `Auto` then uses the Sprite's `framesRect` (pixel rects) when it has any (`FramesFrom::Sprite`), else the whole
+  image. The recipe records `source.submesh` when it is not 0. Outside a project (the CLI without `--project`)
+  `projectDir` is empty and paths are used as given (relative to the working directory, absolute allowed); the
+  recipe's `source.path` is then relative to the directory of the PNG carrying it (6.2), and `checkStaleness`
+  resolves it against the PNG's own directory.
+- **Frames**: `Auto` -> GIF/APNG frames, the Sprite's frames, else none. `None` -> whole image; on a GIF/APNG
+  refused with `frames_mismatch` ("An animation's frames come from the file; leave frames auto."). `Grid` ->
+  `sliceGrid` (refused with `frames_mismatch` on a GIF/APNG: "The frames come from the GIF; leave frames auto.").
+  `Cells` -> as given, recorded as `frames.from` = `FramesSpec::from` (`Sprite` or `Given`). Sprite frames that
+  overlap: `checkSpec` reports `frames_mismatch` with the fix "Use frames none, or reslice the sprite without
+  overlap". `request.sequence` = true for GIF/APNG and for a Grid or Sprite frames with 2 or more cells, and for
+  `Cells` with 2 or more cells.
+- **Outputs**: `.png` (case-insensitive) for images, `.json` for the frames JSON; inside the project's assets
+  directory (`Project::isInsideAssetsPath`, or below `projectDir` when only a path is known) and not in a hidden
+  directory; distinct from the source and each other (`output_invalid`); existing files need `overwrite`
   (`output_exists`, fix "Pass overwrite, or another output path."); a non-UTF-8 path is refused with a message saying
   to rename it.
 - **Writing**: editor -> `writeOutputsUndoable` (one Project undo step for the whole set); CLI ->
   `writeOutputsDirect`. Every PNG gets its recipe (`role` normal/atlas/height); the atlas is written only for
   animated sources. The colour atlas never overwrites the source.
 - **Project switches**: a run records `texsynth::projectGeneration()` at start; whoever writes its result compares it
-  with the current one and refuses (`write_failed`: "Another project was opened while generating.") when it changed.
+  with the current one and refuses (`project_changed`: "Another project was opened while generating.") when it
+  changed.
 - **Staleness**: recipe found -> the source's SHA-1 now vs recorded (`changed`), missing file (`missing`); no recipe
   (`no_recipe`); garbled (`invalid`, message from validateRecipe).
 
@@ -1085,12 +1118,16 @@ namespace jasperengine::editor::spritenormals {
 
 | kind | message | fix |
 |---|---|---|
-| `no_light_height` | "No Light 2D in this scene has a height above 0, so normal maps don't change the lighting." (or "This scene has no Light 2D.") | "Set a Light 2D's Height (64 is a good start)." |
+| `no_light` | "This scene has no Light 2D." | "Create a Light 2D (new lights get Height 64)." |
+| `no_light_height` | "No Light 2D in this scene has a height above 0, so normal maps don't change the lighting." | "Set a Light 2D's Height (64 is a good start)." |
 | `ambient_high` | "The scene's 2D ambient intensity is N, which washes out normal maps." | "Lower Ambient Light 2D intensity to 0.2-0.4." |
 | `size_mismatch` | "The sprite's texture is WxH but the normal map is WxH; they must match pixel for pixel." | "Generate from the sprite's own texture (source: the GameObject)." |
-| `filter_linear` | "The sprite's texture is sampled Nearest; a normal map left Linear blurs its pixels." | "Apply the map (it copies the filter), or set the Normal Texture's filter to Nearest." |
+| `filter_mismatch` | "The Normal Texture is filtered differently from the Base Texture (pixels will smear at edges)." | "Apply the map (it copies the filter and wrap), or give the Normal Texture the Base Texture's filter and wrap." |
 | `material_linked` | "The sprite's material comes from M; the scene's copy changed, the file did not." | "Save the material from the Inspector to keep the map in M." |
 | `too_many_frames` | "The animation has N frames; a Sprite holds at most 128." | "Trim the animation, or use the atlas with your own frames." |
+| `directx_in_engine` | "The map uses DirectX green (down); this engine reads OpenGL (green up), so lights look upside down." | "Turn directx off for this engine's sprites." |
+| `shader_ignores_normals` | "The sprite's material shader S does not sample a normal map." | "Use the built-in sprite material or library:sprite." |
+| `zero_delay` | "N frames have a delay under 10 ms; they play at 100 ms, as browsers do." | "Set the Sprite Animation's frame times if another rate is meant." |
 
 ## 9. Apply header: `SpriteNormalsApply.h` (2B, verbatim)
 
@@ -1106,8 +1143,8 @@ namespace jasperengine::editor::spritenormals {
 // copied onto it. For an animated source (GIF/APNG atlas) the Sprite also gets the colour atlas
 // as its base texture (filter and wrap kept), the frames (frame_0..), its size set to one frame,
 // frame 0 shown, and a Sprite Animation child (new, or the existing one targeting it) cycling
-// the frames with the file's delays (playbackMs) and loop (loopCount 1 -> no loop).
-// Refused while the scene plays. Main thread.
+// the frames with the file's delays (playbackMs) and loop (loopCount 1 -> no loop), autoplay
+// true when created. Refused while the scene plays. Main thread.
 
 #include "SpriteNormals.h"
 #include "SpriteMedia.h"
@@ -1129,6 +1166,12 @@ namespace jasperengine::editor::spritenormals {
         Entity entity = NULL_ENTITY;
         std::string normalPath;              // project-relative, written already
         std::string colorSourcePath;         // the texture the map was made from (matches submeshes by it)
+        struct Map {
+            std::string normalPath;
+            std::string colorSourcePath;
+        };
+        std::vector<Map> maps;               // stills: every (normal, colour) pair, all applied in one step
+                                             // (normalPath/colorSourcePath are maps[0] when maps is empty)
         // Animated sources: the colour atlas becomes the base texture and these the Sprite's frames
         std::string atlasPath;               // "" for stills
         std::vector<Cell> frames;
@@ -1148,18 +1191,25 @@ namespace jasperengine::editor::spritenormals {
     };
 
     ApplyResult applyToSprite(Project* project, const ApplyRequest& request);
+    // One Scene undo step for all (one scene); all or nothing: the first refusal undoes what was
+    // added and is the result's error
+    ApplyResult applyToSprites(Project* project, const std::vector<ApplyRequest>& requests);
 }
 ```
 
-Apply semantics: entity must have a `MeshComponent` (`not_a_sprite` otherwise); still sources need at least one
-submesh whose base colour path equals `colorSourcePath` (normalized, project-relative), else `not_a_sprite` ("Its
-texture is X, not Y."); the normal map's size must equal that texture's pixel size (`size_mismatch`). Animated: the
-entity must have a `SpriteComponent`; > 128 frames -> `too_many_frames`. Commands: `PropertyCmd`/`MultiPropertyCmd`
-on Catalog property names (`submeshes[N].material.normalTexture`, `...baseColorTexture`, `framesRect[i].rect`,
+Apply semantics: entity must have a `MeshComponent` (`not_a_sprite` otherwise); still sources need at least one submesh
+whose base colour path equals `colorSourcePath` (normalized, project-relative), else `not_a_sprite` ("Its texture is X,
+not Y."); with `maps`, every pair is matched this way (each against its own colour path) and all of them are applied in
+the same step; the normal map's size must equal that texture's pixel size (`size_mismatch`). Animated: the entity must
+have a `SpriteComponent`; > 128 frames -> `too_many_frames`. Commands: `PropertyCmd`/`MultiPropertyCmd` on Catalog
+property names (`submeshes[N].material.normalTexture`, `...baseColorTexture`, `framesRect[i].rect`,
 `framesRect[i].name`, `numFramesRect`, `width`, `height`, SpriteAnimation `frames[i]`, `framesTime[i]`, `framesSize`,
-`framesTimeSize`, `loop`, ActionComponent `target`, `state`), `CreateEntityCmd(SPRITE_ANIMATION)` parented to the
-sprite, all added with `setNoMerge()` and grouped with `CommandHistory::mark()`/`groupSince()` into one step; a failure
-undoes what was added (the WorldTools `UndoStep` pattern) and returns the error. The scene is marked modified.
+`framesTimeSize`, `loop`, `autoplay` (true when created), ActionComponent `target`, `state`),
+`CreateEntityCmd(SPRITE_ANIMATION)` parented to the sprite, all added with `setNoMerge()` and grouped with
+`CommandHistory::mark()`/`groupSince()` into one step; a failure undoes what was added (the WorldTools `UndoStep`
+pattern) and returns the error. The scene is marked modified. `applyToSprites` runs every request inside one
+`mark()`/`groupSince()` group of their (single) scene; requests for different scenes are refused (`not_a_sprite` naming
+the scene).
 
 ## 10. Build wiring (2A, Task 0)
 
@@ -1194,10 +1244,11 @@ undoes what was added (the WorldTools `UndoStep` pattern) and returns the error.
 ## 11. Problem kinds (shared with Phases 3-5)
 
 Errors: `invalid_source`, `invalid_settings`, `frames_mismatch`, `too_large`, `output_exists`, `output_invalid`,
-`scene_playing`, `not_a_sprite`, `size_mismatch` (apply), `too_many_frames` (apply), `write_failed`, `cancelled`,
-`failed`. Warnings: `no_alpha`, `mostly_flat`, `too_steep`, `noisy`, `leaning`, `frames_touch_edges`, `soft_edges`,
-`outline_not_found`, `region_unmatched`, `no_light_height`, `ambient_high`, `size_mismatch`, `filter_linear`,
-`material_linked`, `too_many_frames`. Every message names the value and limit; every fix is an action.
+`scene_playing`, `not_a_sprite`, `size_mismatch` (apply), `too_many_frames` (apply), `write_failed`,
+`project_changed`, `cancelled`, `failed`. Warnings: `no_alpha`, `mostly_flat`, `too_steep`, `noisy`, `leaning`,
+`frames_touch_edges`, `soft_edges`, `outline_not_found`, `region_unmatched`, `no_light`, `no_light_height`,
+`ambient_high`, `size_mismatch`, `filter_mismatch`, `material_linked`, `too_many_frames`, `directx_in_engine`,
+`shader_ignores_normals`, `zero_delay`. Every message names the value and limit; every fix is an action.
 
 ## 12. Tests and fixtures
 
@@ -1245,9 +1296,10 @@ Errors: `invalid_source`, `invalid_settings`, `frames_mismatch`, `too_large`, `o
   lowers `leanDeg`-style asymmetry (mean |red - 128| over the highlight pixels drops), lift raises (the slope at a lifted
   region's border points outward), flat gives exact (128,128,255); region_unmatched warning; height map range and
   monotonicity on the disk (centre highest); validation messages for every setting's range.
-- **Grid**: `sliceGrid` against `set_sprite_frames` semantics (tile size, columns/rows, offset, padding, count,
-  clipping, empty grid error); overlapping cells refused with `frames_mismatch`; identical duplicates processed once.
-- **Performance** (Release only): 512x512 under 250 ms single-threaded.
+- **Grid**: `sliceGrid` against `set_sprite_frames` semantics (tile size, columns/rows, both given: tile size used and
+  columns/rows capping the counts, offset, padding, count, clipping, empty grid error); overlapping cells refused with
+  `frames_mismatch`; identical duplicates processed once. - **Performance** (Release only): 512x512 under 250 ms
+  single-threaded.
 
 ### 12.2 2A: `tests/SpriteNormalsMediaTest.cpp`
 
@@ -1265,7 +1317,9 @@ without decoding (checked by timing-free means: a GIF whose later frames are gar
 
 ### 12.3 2B: `tests/SpriteNormalsRecipeTest.cpp`, `tests/SpriteNormalsPreviewTest.cpp`
 
-Recipe: makeRecipe canonical bytes for a fixed input (golden string in the test); settings round-trip through JSON
+Recipe: makeRecipe canonical bytes for a fixed input (golden string in the test); `source.kind` `"sprite"` with
+`entity` when `fromSprite` (and `submesh` only when not 0), the decoded kind and no `entity` otherwise; `delays_ms`
+as `[num, den]` pairs; settings round-trip through JSON
 for random settings (all enums, regions, radius auto/number); validateRecipe errors; encode -> readRecipe and
 readRecipeHead; both keywords in one PNG (6.1); a texsynth recipe untouched by the new keyword.
 Preview: renderLit against hand-computed values for a flat normal and a tilted normal under one light (exact bytes),
@@ -1277,17 +1331,26 @@ every warning's threshold edge (just below / above).
 ### 12.4 2B: `editor/tests/SpriteNormalsSessionTest.cpp`, `editor/tests/SpriteNormalsApplyTest.cpp`
 
 Session (temporary project directory, generated PNG/GIF files): defaultOutputs for png/gif/apng with and without
-height/frames JSON; checkSpec kinds (missing source, outside project, hidden dir, grid on a GIF, existing output,
-collision with source, non-.png output); prepare + generate + encodeOutputs: the normal PNG has the recipe, the atlas
-too, the frames JSON schema; writeOutputsDirect all-or-nothing (a read-only target dir); writeOutputsUndoable +
-undo removes the set (the editor test harness's MCP context, like TextureSynthesisTest); staleness fresh -> changed
--> missing; specFromRecipe round trip (same fingerprint); project generation refusal; SpriteNormalsRun finishes,
-cancel, cancelAll. Scene: a scene with a Sprite (CreateEntityCmd), framesFromSprite after setting frames, lightCheck
-with no light / a light at height 0 / height 64 / ambient 1.0, sceneWarnings each kind.
+height/frames JSON; checkSpec kinds (missing source, outside project, hidden dir, grid on a GIF, none on a GIF,
+overlapping Sprite frames, existing output, output outside the assets directory, collision with source, non-.png
+output); prepare + generate + encodeOutputs: the normal PNG has the recipe, the atlas too, the frames JSON schema (the
+exact keys of `framesJson`'s comment, for an animation and for a still with cells); `Cells` frames with `from = Sprite`
+recorded as `frames.from` `"sprite"` and run as a sequence; outside a project the recipe's `source.path` is relative to
+the output's directory and `checkStaleness` with an empty `projectDir` resolves it; writeOutputsDirect all-or-nothing (a
+read-only target dir); writeOutputsUndoable + undo removes the set (the editor test harness's MCP context, like
+TextureSynthesisTest); staleness fresh -> changed -> missing; specFromRecipe round trip (same fingerprint); a Sprite
+source with `submesh` 1 (a Tilemap with two tilesets): its texture is the source, no Sprite frames, recipe
+`source.submesh` 1, specFromRecipe restores it; project generation refusal (`project_changed`); the undo step name;
+SpriteNormalsRun finishes, cancel, cancelAll. Scene: a scene with a Sprite (CreateEntityCmd), framesFromSprite after
+setting frames, lightCheck with no light / a light at height 0 / height 64 / ambient 1.0, sceneWarnings each kind
+(`no_light` and `no_light_height` separately, `filter_mismatch` not reported with willApply, `zero_delay` with a null
+scene).
 Apply: still map onto a Sprite (normalTexture path and copied filters; one undo step restores everything), a tilemap
-with two tilesets (only the matching submesh), size_mismatch, not_a_sprite, scene_playing, animated GIF (atlas base
-texture, frames, size, animation child with framesTime from delays, loop), an existing Sprite Animation updated
-instead of a new one, 129 frames -> too_many_frames, undo/redo of the whole step.
+with two tilesets (only the matching submesh; with `maps` holding both pairs, both submeshes in one undo step),
+`applyToSprites` on two Sprites (one undo step; a refusal of the second leaves the first unchanged), size_mismatch,
+not_a_sprite, scene_playing, animated GIF (atlas base texture, frames, size, animation child with framesTime from
+delays, loop, autoplay), an existing Sprite Animation updated instead of a new one, 129 frames -> too_many_frames,
+undo/redo of the whole step.
 
 ## 13. Acceptance criteria
 
@@ -1301,7 +1364,7 @@ instead of a new one, 129 frames -> too_many_frames, undo/redo of the whole step
 
 ## 14. Task breakdown
 
-**2A (core + media)** — branch `sn-2a`, worktree of `sprite-normals`.
+**2A (core + media)** — branch `sn/p2a`, worktree of `sprite-normals`.
 1. Task 0 skeleton (section 1), committed first.
 2. `SpriteNormalsField` (Oklab, EDT with three borders, Gaussian, masked, Sobel, components, encode) + its tests.
 3. `SpriteNormals` (settings, presets, parse/print, validation, sliceGrid, generate: transparent pipeline first,
@@ -1311,7 +1374,7 @@ instead of a new one, 129 frames -> too_many_frames, undo/redo of the whole step
    editor/spritenormals/ (C++ port of the normal-map generator) | https://github.com/Hugo-Dz/spritefusion-sprite-normals |`,
    matching the table's existing columns).
 
-**2B (recipe, preview, session, apply)** — branch `sn-2b`, merges 2A's skeleton commit first; may merge 2A's branch
+**2B (recipe, preview, session, apply)** — branch `sn/p2b`, merges 2A's skeleton commit first; may merge 2A's branch
 again later to run its tests against the real generator (until then it tests against images built in the test).
 1. texsynth keyword generalisation (6.1) + test.
 2. `SpriteNormalsRecipe` + tests.
@@ -1321,3 +1384,83 @@ again later to run its tests against the real generator (until then it tests aga
 
 Shared files: only 2A edits `CMakeLists.txt`, `tools/build.sh`, `NOTICE.md`; only 2B edits
 `editor/texsynth/SynthesisRecipe.{h,cpp}`.
+
+## Amendments (2026-10-27, consistency review)
+
+Rulings applied from the cross-spec consistency review (`.superpowers/sdd/2026-10-27-sprite-normals-contract/reports/spec-consistency.md`,
+items in brackets). The sections above already carry them; this is the checklist.
+
+### Affects 2A (SpriteNormals.h, SpriteNormalsField.h, SpriteMedia.h, core/media .cpp, tests)
+
+- [ ] `SpriteNormals.h`, comment only above `presetSettings` (no declaration change) [1]:
+  `// Resolving a preset with overrides (every surface does exactly this):`
+  `//   Settings s = presetSettings(p); settingsFromJson(overrides, s, error); s.preset = p; validateSettings(s)`
+- [ ] `SpriteNormals.h` `Grid` comment + `sliceGrid` behaviour (`SpriteNormals.cpp`) [27]: when both a tile size and
+  columns/rows are given, the tile size is used and columns/rows > 0 cap the counts (as `sliceSheet`). Test: 12.1
+  **Grid** gains the "both given" case.
+- [ ] `SpriteNormalsField.h`, `SpriteMedia.h`, `kMaxCells` (stays 4096) [7]: no change.
+- [ ] Branch name `sn/p2a` (was `sn-2a`) [45].
+
+### Affects 2B (recipe, preview, session, apply)
+
+Recipe (`SpriteNormalsRecipe.h/.cpp`, 6.2):
+- [ ] `RecipeInput::sourcePath` comment: `// project-relative ('/') inside the project, else relative to the directory of
+  the PNG carrying the recipe ('/')`; recipe paths outside a project follow it (was: absolute) [8].
+- [ ] New member after `spriteEntity`: `unsigned spriteSubmesh = 0;          // its submesh (fromSprite; source.submesh when not 0)` [5].
+- [ ] Rules: `source.kind` is `"sprite"` when `fromSprite`, else `toString(sourceKind)`; `entity` present exactly when
+  kind is `"sprite"`; `source.submesh` only when kind is `"sprite"` and not 0; `delays_ms` are `[num, den]` pairs.
+  The schema example is now a Sprite source (`"kind": "sprite"`, `"frames": {"from": "sprite", ...}`) [9, 16, 5].
+- [ ] `validateRecipe`/`specFromRecipe` accept and restore `source.submesh` [5].
+
+Session (`SpriteNormalsSession.h/.cpp`, 8, 8.1, 8.2):
+- [ ] `FramesSpec` new member: `FramesFrom from = FramesFrom::Given;   // Mode::Cells: what the cells are (Sprite or Given), recorded` [28].
+- [ ] `Spec` new member after `entity`: `unsigned submesh = 0;        // with entity: the submesh whose base colour texture is the source`;
+  `fingerprint()` includes it [5].
+- [ ] `framesFromSprite` signature: `bool framesFromSprite(const Scene* scene, Entity entity, unsigned submesh,
+  std::string& texturePath, std::vector<Cell>& cells, std::string& error);` (cells only when submesh is 0) [5].
+- [ ] `sceneWarnings` signature: `std::vector<Problem> sceneWarnings(const Scene* scene, Entity entity, const Settings&
+  settings, int normalWidth, int normalHeight, const std::vector<Delay>& delays, bool willApply);` (`frameCount`
+  removed: `too_many_frames` uses `delays.size()`) [4].
+- [ ] `sceneWarnings` kinds (8.2 table, exact messages): new `no_light` (split from `no_light_height`, whose "(or
+  This scene has no Light 2D.)" alternative is gone); `filter_linear` renamed `filter_mismatch` (normal texture set,
+  or the result will be applied, and min/mag filter or wrap differ from the base texture's; not reported for a
+  willApply result, apply copies them); new `directx_in_engine` (`settings.directx` with an entity), new
+  `shader_ignores_normals` (`!Catalog::shaderReadsMaterialNormalMap` for a manifest shader, Phase 1), new
+  `zero_delay` (a delay whose `playbackMs` replaced a delay under 10 ms by 100; the only kind with a null scene) [4].
+- [ ] Comment-only header changes: `checkSpec` (none on a GIF/APNG, overlapping Sprite frames, outputs inside the
+  assets directory), `writeOutputsUndoable` (step name), `framesJson` (exact schema), `checkStaleness` (empty
+  `projectDir`) [13, 29, 14, 21, 10, 8].
+- [ ] Behaviour: the source of a GameObject is submesh `spec.submesh`'s base colour texture; recipe `source.submesh`
+  when not 0 [5].
+- [ ] Behaviour: `frames` `None` on a GIF/APNG is refused with `frames_mismatch` ("An animation's frames come from the
+  file; leave frames auto.") (was: accepted, frames kept) [13].
+- [ ] Behaviour: `Cells` records `frames.from` = `FramesSpec::from`; `request.sequence` also true for `Cells` with 2 or
+  more cells [28].
+- [ ] Behaviour: overlapping Sprite frames -> `checkSpec` `frames_mismatch`, fix "Use frames none, or reslice the
+  sprite without overlap" [29].
+- [ ] Behaviour: outputs must be inside the project's assets directory (`Project::isInsideAssetsPath`, or below
+  `projectDir` when only a path is known) (was: inside the project) [14].
+- [ ] Behaviour: the Project undo step is "Generate Normal Map <file name of the first normal output>" ("Generate
+  Normal Maps (N)" for N normal outputs) [21].
+- [ ] Behaviour: `framesJson` writes `{"version":1, "source", "width", "height", "animation":{"frame_width",
+  "frame_height", "columns", "rows", "frame_count", "delays_ms":[[num,den],...], "frame_ms":[float,...], "loop"},
+  "settings"}`; a still with cells: `animation` with `frame_count` = cells, no `delays_ms`/`frame_ms`/`loop` [10].
+- [ ] Behaviour: `checkStaleness` with an empty `projectDir` resolves `source.path` against the PNG's directory [8].
+- [ ] Kind rename: a project switch refuses with `project_changed` (was `write_failed`) [2].
+
+Apply (`SpriteNormalsApply.h/.cpp`, 9):
+- [ ] `ApplyRequest` new members after `colorSourcePath`:
+  `struct Map { std::string normalPath; std::string colorSourcePath; };`
+  `std::vector<Map> maps;               // stills: every (normal, colour) pair, all applied in one step (normalPath/colorSourcePath are maps[0] when maps is empty)` [6].
+- [ ] New function: `ApplyResult applyToSprites(Project* project, const std::vector<ApplyRequest>& requests);` (one
+  Scene undo step for all, one scene; all or nothing; requests for different scenes refused with `not_a_sprite`) [6].
+- [ ] Behaviour: a created Sprite Animation gets `autoplay` true [20].
+
+Shared:
+- [ ] Section 11 kinds: errors gain `project_changed`; warnings `filter_linear` -> `filter_mismatch`, new `no_light`,
+  `directx_in_engine`, `shader_ignores_normals`, `zero_delay` [2, 4].
+- [ ] Tests 12.3/12.4 gain: recipe sprite kind/entity/submesh and `delays_ms` pairs; checkSpec none on GIF,
+  overlapping Sprite frames, output outside assets; exact `framesJson` keys; `Cells` from Sprite; recipe path and
+  staleness outside a project; submesh 1 source; `project_changed`; undo step name; `no_light`/`no_light_height`,
+  `filter_mismatch` with willApply, `zero_delay` with a null scene; apply `maps`, `applyToSprites`, `autoplay`.
+- [ ] Branch name `sn/p2b` (was `sn-2b`) [45].
