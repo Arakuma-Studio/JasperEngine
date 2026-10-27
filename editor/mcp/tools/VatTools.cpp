@@ -113,7 +113,7 @@ struct VatRequest {
     VatBakeSpec spec;                   // bake (output only when writing)
     VatImportSpec importSpec;
     VatImportDetection detection;
-    VatImportWriteOptions importWrite;
+    VatImportPlan importWrite;
     bool write = false;                 // output given, or rebake
     bool defaultOutput = false;         // output: true
     std::string sceneName;              // for messages: the scene placed in / posed
@@ -756,7 +756,7 @@ void finishImport(const VatCallPtr& state) {
     if (!request.write) {
         std::string planned, why;
         bool rewrite = false;
-        if (planImportOutput(project, result, request.detection, request.importWrite, planned, rewrite, why)) {
+        if (planVatImport(project, result, request.detection, request.importWrite, planned, rewrite, why)) {
             data["default_output"] = planned;
             data["default_output_rewrites"] = rewrite;
         }
@@ -779,9 +779,9 @@ void finishImport(const VatCallPtr& state) {
     }
     VatWriteResult out;
     std::string error;
-    VatImportWriteOptions options = request.importWrite;
+    VatImportPlan options = request.importWrite;
     if (request.defaultOutput) options.output.clear();
-    if (!writeVatImport(project, result, request.detection, options, out, error)) {
+    if (!writeImportedVat(project, result, request.detection, options, out, error)) {
         data["errors"] = Json::array({Json{{"kind", "write_failed"}, {"message", error}, {"fix", "pass overwrite: true, or choose another output"}}});
         job->fail("The import finished but nothing was written: " + error + ".", data);
         return;

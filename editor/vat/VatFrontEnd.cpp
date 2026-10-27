@@ -316,8 +316,8 @@ void keepVatEdits(VatData& fresh, const VatData& old){
     fresh.unknownKeys = old.unknownKeys;
 }
 
-bool planImportOutput(Project* project, const VatImportResult& result, const VatImportDetection& detection,
-                      const VatImportWriteOptions& options, std::string& vatPath, bool& rewrite, std::string& error){
+bool planVatImport(Project* project, const VatImportResult& result, const VatImportDetection& detection,
+                      const VatImportPlan& options, std::string& vatPath, bool& rewrite, std::string& error){
     rewrite = false;
     if (!result.ok() || result.data.recipe.sources.empty()){
         error = "the import failed";
@@ -369,12 +369,12 @@ bool planImportOutput(Project* project, const VatImportResult& result, const Vat
     }
 }
 
-bool writeVatImport(Project* project, VatImportResult& result, const VatImportDetection& detection, const VatImportWriteOptions& options,
+bool writeImportedVat(Project* project, VatImportResult& result, const VatImportDetection& detection, const VatImportPlan& options,
                     VatWriteResult& out, std::string& error){
     out = VatWriteResult();
     std::string relative;
     bool rewrite = false;
-    if (!planImportOutput(project, result, detection, options, relative, rewrite, error)) return false;
+    if (!planVatImport(project, result, detection, options, relative, rewrite, error)) return false;
     if (options.place == VatPlace::Replace){
         error = "place replace needs a GameObject source (an import has none): use beside or crowd";
         return false;
@@ -461,13 +461,13 @@ bool reimportVat(Project* project, const std::string& vatPath, VatWriteResult& o
         return false;
     }
     const VatImportDetection detection = detectVatImport(spec.path);
-    VatImportWriteOptions options;
+    VatImportPlan options;
     std::string relative;
     if (!projectRelativeFile(project, vatPath, true, relative, error)) return false;
     options.output = relative;
     options.overwrite = true;
     options.keepGuidOf = true;
-    return writeVatImport(project, result, detection, options, out, error);
+    return writeImportedVat(project, result, detection, options, out, error);
 }
 
 }

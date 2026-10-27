@@ -573,7 +573,7 @@ namespace{
     }
 
     int importAndWrite(Project& project, Run& run, VatImportSpec spec, const VatImportDetection& detection,
-                       const VatImportWriteOptions& options, const std::string& title){
+                       const VatImportPlan& options, const std::string& title){
         const Options& o = *run.options;
         std::vector<VatIssue> detected;
         for (const VatIssue& issue : detection.issues){
@@ -592,7 +592,7 @@ namespace{
         if (o.dryRun){
             std::string planned, error;
             bool rewrite = false;
-            if (!planImportOutput(&project, result, detection, options, planned, rewrite, error)){
+            if (!planVatImport(&project, result, detection, options, planned, rewrite, error)){
                 return run.fail(1, error.find("exists") != std::string::npos ? "output_exists" : "invalid_output", error,
                                 "pass --overwrite, or choose another --output");
             }
@@ -601,7 +601,7 @@ namespace{
         }
         VatWriteResult out;
         std::string error;
-        if (!writeVatImport(&project, result, detection, options, out, error)){
+        if (!writeImportedVat(&project, result, detection, options, out, error)){
             const bool taken = error.find("exists") != std::string::npos;
             return run.fail(1, taken ? "output_exists" : "write_failed", "nothing was written: " + error,
                             taken ? "pass --overwrite, or choose another --output" : "check that the output folder is writable");
@@ -638,7 +638,7 @@ namespace{
             if (!importSpecFromRecipe(data.recipe, FileUtils::pathToUtf8(project.getProjectPath()), spec, error)){
                 return run.fail(1, "invalid_source", error, "bake it again from its source");
             }
-            VatImportWriteOptions options;
+            VatImportPlan options;
             options.output = relative;
             options.overwrite = true;
             options.keepGuidOf = true;
@@ -748,7 +748,7 @@ namespace{
             importSpec.precision = precisionChoiceName(o.precision);
             importSpec.preset = presetName(o.preset);
             importSpec.normals = o.normals;
-            VatImportWriteOptions options;
+            VatImportPlan options;
             options.output = output;
             options.overwrite = o.overwrite;
             return importAndWrite(project, run, importSpec, route.detection, options,
