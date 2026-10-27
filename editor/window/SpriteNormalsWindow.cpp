@@ -2603,7 +2603,7 @@ void SpriteNormalsWindow::drawSettings() {
     drawNotices();
     if (items.empty()) {
         drawSource();
-        subtle("Pick a source image (or right-click an image in the Project window > Generate Normal Map...).");
+        subtle("Drop an image or a Sprite GameObject here, pick one with ..., or select a Sprite and use the arrow.");
         return;
     }
     if (isBatch()) drawBatch();
@@ -2724,6 +2724,8 @@ void SpriteNormalsWindow::drawToolbar() {
         if (v) next(radioWidth(views[v]));
         if (ImGui::RadioButton(views[v], static_cast<int>(view) == v)) setView(static_cast<View>(v));
         UIProbe::item(std::string("spriteNormals.view.") + views[v]);
+        // UI tests: which view is selected
+        if (static_cast<int>(view) == v) UIProbe::item(std::string("spriteNormals.viewSelected.") + views[v]);
         tooltip(viewTips[v]);
     }
     const std::vector<sn::Cell> cells = shownCells();
@@ -2756,6 +2758,9 @@ void SpriteNormalsWindow::drawToolbar() {
         UIProbe::item("spriteNormals.play");
         tooltip(playing ? "Pause (Space)" : "Play the frames with their delays (Space)");
     }
+    // nothing to show yet: the views only
+    const std::shared_ptr<sn::SpriteNormalsRun> result = shown();
+    if (!result && colorRgba.empty()) return;
     next(buttonWidth("Orbit") + style.ItemSpacing.x);
     const bool wasOrbit = orbit;
     if (wasOrbit) ImGui::PushStyleColor(ImGuiCol_Button, Theme::Colors::ButtonActivated);
@@ -2779,8 +2784,8 @@ void SpriteNormalsWindow::drawToolbar() {
     ImGui::AlignTextToFramePadding();
     ImGui::TextDisabled("%s", zoomText);
 
-    // the light (Lit and Split)
-    if (view == View::Lit || view == View::Split) {
+    // the light (Lit and Split, once there is a result to light)
+    if ((view == View::Lit || view == View::Split) && result) {
         ensureLight();
         const float field = ImGui::GetFontSize() * 5.0f;
         ImGui::AlignTextToFramePadding();

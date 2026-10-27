@@ -112,6 +112,9 @@ namespace jasperengine::editor{
         // Entities hidden from the LocalEntity picker and rejected on drag-drop
         // (e.g. to prevent self-references)
         std::vector<Entity> excludeEntities;
+        // Texture rows: one more square button after the row's own (the Normal Texture's
+        // Sprite Normal Map wand), drawn with the rows' button size
+        std::function<void(const ImVec2&)> extraButton = nullptr;
     };
 
     class InspectorWindow{
@@ -303,6 +306,12 @@ namespace jasperengine::editor{
         // the inspected .vat (Project window click)
         void drawVatAsset(const std::filesystem::path& asset);
         void drawCreateCrowdDialog();
+        // Sprite normals (InspectorWindowSpriteNormals.cpp): a generated normal map (or its source
+        // image) clicked in the Project window; false for any other image (the scene selection
+        // stays). The Normal Texture rows' settings with the Sprite Normal Map wand added when the
+        // submesh's Base Texture is an image file.
+        bool drawSpriteNormalsAsset(const std::filesystem::path& asset);
+        RowSettings normalTextureRowSettings(const RowSettings& base, SceneProject* sceneProject, const std::vector<Entity>& entities, unsigned int submesh);
         void updateParticlePreviewSnapshot(YAML::Node& components, const ParticleSystemComponent& particles);
 
         // Dirty material helpers

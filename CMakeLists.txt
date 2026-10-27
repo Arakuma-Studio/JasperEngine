@@ -739,6 +739,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorWindow.cpp
     ${EDITOR_DIR}/window/InspectorWindowClips.cpp
     ${EDITOR_DIR}/window/InspectorWindowVat.cpp
+    ${EDITOR_DIR}/window/InspectorWindowSpriteNormals.cpp
     ${EDITOR_DIR}/window/InspectorShaderLibrary.cpp
     ${EDITOR_DIR}/window/InspectorPostProcessing.cpp
     ${EDITOR_DIR}/window/InspectorFluid.cpp
