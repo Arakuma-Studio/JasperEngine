@@ -505,7 +505,14 @@ namespace jasperengine::editor::texsynth {
         return true;
     }
 
-    std::optional<std::string> readRecipeTextFromPng(const uint8_t* bytes, size_t size, std::string* error, const char* keyword) {
+    std::optional<std::string> readRecipeTextFromPng(const uint8_t* bytes, size_t size, std::string* error, const char* keyword,
+                                                     RecipeReadError* origin) {
+        if (origin) *origin = RecipeReadError::None;
+        auto chunkError = [&](const std::string& message) {
+            if (error) *error = message;
+            if (origin) *origin = RecipeReadError::Chunk;
+            return std::nullopt;
+        };
         std::string problem;
         std::vector<Chunk> chunks;
         const bool whole = listChunks(bytes, size, chunks, problem);
@@ -515,10 +522,7 @@ namespace jasperengine::editor::texsynth {
             if (!isRecipeChunk(bytes, c, keyword)) continue;
             const uint8_t* data = bytes + c.offset + 8;
             const uint32_t stored = readU32(data + c.length);
-            if (crc32(bytes + c.offset + 4, 4 + static_cast<size_t>(c.length)) != stored) {
-                if (error) *error = "garbled " + name + " chunk (CRC mismatch)";
-                return std::nullopt;
-            }
+            if (crc32(bytes + c.offset + 4, 4 + static_cast<size_t>(c.length)) != stored) return chunkError("garbled " + name + " chunk (CRC mismatch)");
             const size_t keyLength = std::strlen(keyword);
             size_t pos = keyLength + 1;
             if (std::strcmp(c.type, "tEXt") == 0) {
@@ -527,55 +531,57 @@ namespace jasperengine::editor::texsynth {
             // iTXt: compression flag, method, language tag\0, translated keyword\0, text
             if (c.length < pos + 2) break;
             if (data[pos] != 0) {
-                if (error) *error = "compressed " + name + " chunk (" + (name == kRecipeKeyword ? "not written by the synthesis" : "not written by the editor") + ")";
-                return std::nullopt;
+                return chunkError("compressed " + name + " chunk (" + (name == kRecipeKeyword ? "not written by the synthesis" : "not written by the editor") + ")");
             }
             pos += 2;
             for (int field = 0; field < 2; field++) {
                 while (pos < c.length && data[pos] != 0) pos++;
-                if (pos >= c.length) {
-                    if (error) *error = "malformed " + name + " chunk";
-                    return std::nullopt;
-                }
+                if (pos >= c.length) return chunkError("malformed " + name + " chunk");
                 pos++;
             }
             return std::string(reinterpret_cast<const char*>(data + pos), c.length - pos);
         }
         if (error) *error = whole ? std::string() : problem;
+        if (origin && !whole) *origin = RecipeReadError::File;
         return std::nullopt;
     }
 
-    std::optional<std::string> readRecipeText(const fs::path& path, std::string* error, const char* keyword) {
+    std::optional<std::string> readRecipeText(const fs::path& path, std::string* error, const char* keyword, RecipeReadError* origin) {
         std::ifstream file(path, std::ios::binary);
         if (!file) {
             if (error) *error = "cannot open " + path.string();
+            if (origin) *origin = RecipeReadError::File;
             return std::nullopt;
         }
         const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-        return readRecipeTextFromPng(bytes.data(), bytes.size(), error, keyword);
+        return readRecipeTextFromPng(bytes.data(), bytes.size(), error, keyword, origin);
     }
 
-    std::optional<json> readRecipe(const fs::path& path, std::string* error) {
-        const std::optional<std::string> text = readRecipeText(path, error);
+    std::optional<json> readRecipe(const fs::path& path, std::string* error, RecipeReadError* origin) {
+        const std::optional<std::string> text = readRecipeText(path, error, kRecipeKeyword, origin);
         if (!text) return std::nullopt;
         json parsed = json::parse(*text, nullptr, false);
         if (parsed.is_discarded() || !parsed.is_object()) {
             if (error) *error = "the jasper.synthesis chunk is not a JSON object";
+            if (origin) *origin = RecipeReadError::Chunk;
             return std::nullopt;
         }
         return parsed;
     }
 
-    std::optional<std::string> readRecipeTextHead(const fs::path& path, std::string* error, const char* keyword) {
+    std::optional<std::string> readRecipeTextHead(const fs::path& path, std::string* error, const char* keyword, RecipeReadError* origin) {
+        if (origin) *origin = RecipeReadError::None;
         std::ifstream file(path, std::ios::binary);
         if (!file) {
             if (error) *error = "cannot open " + path.string();
+            if (origin) *origin = RecipeReadError::File;
             return std::nullopt;
         }
         static const uint8_t signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'};
         std::vector<uint8_t> head(8);
         if (!file.read(reinterpret_cast<char*>(head.data()), 8) || std::memcmp(head.data(), signature, 8) != 0) {
             if (error) *error = "not a PNG";
+            if (origin) *origin = RecipeReadError::File;
             return std::nullopt;
         }
         // the text chunks before IDAT, after the signature: the others are seeked over
@@ -598,7 +604,7 @@ namespace jasperengine::editor::texsynth {
                 if (!file) break;
             }
         }
-        return readRecipeTextFromPng(head.data(), head.size(), error, keyword);
+        return readRecipeTextFromPng(head.data(), head.size(), error, keyword, origin);
     }
 
     std::vector<SourceState> checkRecipeSources(const json& recipe, const fs::path& recipeFile, const fs::path& projectDir,

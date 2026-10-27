@@ -13,6 +13,7 @@
 #include "SpriteNormals.h"
 
 #include "json.hpp"
+#include "texsynth/SynthesisRecipe.h"
 
 #include <filesystem>
 #include <optional>
@@ -73,7 +74,11 @@ namespace jasperengine::editor::spritenormals {
     bool encodeWithRecipe(const Image& image, const nlohmann::json& recipe, std::vector<uint8_t>& png, std::string& error);
     // The jasper.spritenormals recipe of PNG bytes / a file; nullopt when there is none (error
     // empty) or it is garbled (error says why). readRecipeHead reads only the chunks before IDAT.
-    std::optional<nlohmann::json> readRecipe(const uint8_t* bytes, size_t size, std::string* error = nullptr);
-    std::optional<nlohmann::json> readRecipe(const std::filesystem::path& png, std::string* error = nullptr);
-    std::optional<nlohmann::json> readRecipeHead(const std::filesystem::path& png, std::string* error = nullptr);
+    // `origin` tells a garbled recipe (Chunk: the chunk's CRC, compression, layout or JSON) from a
+    // file that has no recipe to speak of (File: can't be opened, not a PNG, damaged chunk list);
+    // decide on it, never on the message (which may hold a path).
+    using RecipeReadError = texsynth::RecipeReadError;
+    std::optional<nlohmann::json> readRecipe(const uint8_t* bytes, size_t size, std::string* error = nullptr, RecipeReadError* origin = nullptr);
+    std::optional<nlohmann::json> readRecipe(const std::filesystem::path& png, std::string* error = nullptr, RecipeReadError* origin = nullptr);
+    std::optional<nlohmann::json> readRecipeHead(const std::filesystem::path& png, std::string* error = nullptr, RecipeReadError* origin = nullptr);
 }

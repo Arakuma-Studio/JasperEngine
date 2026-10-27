@@ -670,6 +670,73 @@ Json applyArgs(Project* project, const NormalsCall& state, const std::vector<std
     return calls;
 }
 
+// save_path's contact sheet, written before the project files (a sheet that can't be written
+// fails the call before anything else is). Until commit(), a later failure (or an exception
+// unwinding the finish) puts the path back as it was: its old bytes, or no file and none of the
+// folders made for it.
+class SheetWrite {
+public:
+    SheetWrite() = default;
+    SheetWrite(const SheetWrite&) = delete;
+    SheetWrite& operator=(const SheetWrite&) = delete;
+    ~SheetWrite() {
+        if (!committed) rollback();
+    }
+
+    bool write(const fs::path& path, const std::vector<uint8_t>& bytes, std::string& error) {
+        std::error_code ec;
+        target = path;
+        existed = fs::is_regular_file(path, ec);
+        if (existed) {
+            std::ifstream in(path, std::ios::binary);
+            previous.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+        }
+        // the folders create_directories makes, deepest first (removed again on rollback)
+        for (fs::path dir = path.parent_path(); !dir.empty() && !fs::exists(dir, ec); dir = dir.parent_path()) {
+            created.push_back(dir);
+            if (dir == dir.parent_path()) break;
+        }
+        active = true;
+        if (path.has_parent_path()) fs::create_directories(path.parent_path(), ec);
+        std::ofstream file(path, std::ios::binary | std::ios::trunc);
+        if (!file || !file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size())) || !(file.close(), file)) {
+            error = ec ? ec.message() : std::string("the file could not be written");
+            rollback();
+            return false;
+        }
+        return true;
+    }
+
+    void commit() { committed = true; }
+
+    // false (with `warning`) when the previous bytes could not be written back
+    bool rollback(std::string* warning = nullptr) {
+        if (!active) return true;
+        active = false;
+        std::error_code ec;
+        bool ok = true;
+        if (existed) {
+            std::ofstream back(target, std::ios::binary | std::ios::trunc);
+            ok = back && back.write(previous.data(), static_cast<std::streamsize>(previous.size())) && (back.close(), back);
+            if (!ok && warning) *warning = "the sheet replaced " + target.generic_u8string() + " and its previous version could not be written back";
+        } else {
+            fs::remove(target, ec);
+        }
+        for (const fs::path& dir : created) fs::remove(dir, ec);   // only empty folders go
+        return ok;
+    }
+
+    const fs::path& path() const { return target; }
+
+private:
+    fs::path target;
+    bool existed = false;
+    std::string previous;
+    std::vector<fs::path> created;
+    bool active = false;
+    bool committed = false;
+};
+
 // Builds the job's result once every run finished (main thread): writes and applies when asked
 void finishNormals(const NormalsCallPtr& state) {
     McpContext& ctx = *state->ctx;
@@ -717,11 +784,7 @@ void finishNormals(const NormalsCallPtr& state) {
     // save_path first: the contact sheet (inside the project, any folder; replaced without
     // overwrite, like screenshot). A sheet that can't be written fails the call before anything
     // else is; a write that fails afterwards puts the sheet path back as it was
-    struct SheetBackup {
-        fs::path path;
-        bool existed = false;
-        std::string bytes;
-    } sheetBackup;
+    SheetWrite sheet;
     if (!state->savePath.empty() && !reports.empty() && !reports[0].sheet.empty()) {
         fs::path target;
         std::string error;
@@ -729,32 +792,18 @@ void finishNormals(const NormalsCallPtr& state) {
             failJob(job, "Nothing was written:", {problem("output_invalid", "save_path", error, "a project-relative .png path")});
             return;
         }
-        std::error_code ec;
-        sheetBackup.path = target;
-        sheetBackup.existed = fs::is_regular_file(target, ec);
-        if (sheetBackup.existed) {
-            std::ifstream old(target, std::ios::binary);
-            sheetBackup.bytes.assign(std::istreambuf_iterator<char>(old), std::istreambuf_iterator<char>());
-        }
-        if (target.has_parent_path()) fs::create_directories(target.parent_path(), ec);
-        std::ofstream file(target, std::ios::binary | std::ios::trunc);
-        if (!file || !file.write(reinterpret_cast<const char*>(reports[0].sheet.data()), static_cast<std::streamsize>(reports[0].sheet.size()))) {
-            failJob(job, "Nothing was written:", {problem("write_failed", "save_path", "could not write the sheet to " + state->savePath,
+        if (!sheet.write(target, reports[0].sheet, error)) {
+            failJob(job, "Nothing was written:", {problem("write_failed", "save_path", "could not write the sheet to " + state->savePath + " (" + error + ")",
                                                           "save_path must name a writable file whose folders are folders (not files), then call again")});
             return;
         }
-        file.close();
         data["saved_to"] = relativeOf(project, target);
     }
-    auto failWrite = [&](const std::string& headline, const std::vector<sn::Problem>& problems) {
-        if (!sheetBackup.path.empty()) {
-            std::error_code ec;
-            if (sheetBackup.existed) {
-                std::ofstream back(sheetBackup.path, std::ios::binary | std::ios::trunc);
-                back << sheetBackup.bytes;
-            } else {
-                fs::remove(sheetBackup.path, ec);
-            }
+    // a later failure puts the sheet's path back as it was (and says so when it could not)
+    auto failWrite = [&](const std::string& headline, std::vector<sn::Problem> problems) {
+        std::string warning;
+        if (!sheet.rollback(&warning)) {
+            problems.push_back(problem("write_failed", "save_path", warning, "restore that file yourself (its previous version could not be written back)"));
         }
         failJob(job, headline, problems);
     };
@@ -899,7 +948,7 @@ void finishNormals(const NormalsCallPtr& state) {
         }
     }
 
-    if (!sheetBackup.path.empty()) w4::syncFiles(ctx, {sheetBackup.path}, false);
+    if (!sheet.path().empty()) w4::syncFiles(ctx, {sheet.path()}, false);
 
     // the result: one object for one source, `results` for a Tilemap's tilesets
     data["written"] = state->write;
@@ -936,6 +985,7 @@ void finishNormals(const NormalsCallPtr& state) {
                 " (per frame: colour, normal, lit from the top-left, top-right, bottom-right, bottom-left).";
     }
     state->text = text;
+    sheet.commit();
     job->succeed(text, data);
 }
 
@@ -1359,10 +1409,11 @@ Json spriteNormalsAssetInfo(Project* project, const fs::path& file, bool full) {
     if (!Util::isImageFile(rel) || lowerExtension(rel) == ".svg") return Json();
     if (lowerExtension(rel) == ".png") {
         std::string readError;
-        const std::optional<Json> recipe = sn::readRecipeHead(file, &readError);
+        sn::RecipeReadError origin = sn::RecipeReadError::None;
+        const std::optional<Json> recipe = sn::readRecipeHead(file, &readError, &origin);
         // only a damaged jasper.spritenormals chunk is a garbled recipe; a file that is not a PNG,
-        // can't be opened or has a broken chunk list simply has none
-        if (recipe || readError.find(sn::kRecipeKeyword) != std::string::npos) {
+        // can't be opened or has a broken chunk list simply has none (decided on the origin)
+        if (recipe || origin == sn::RecipeReadError::Chunk) {
             std::string invalid;
             if (!recipe) return Json{{"sprite_normals", {{"error", readError}}}};
             if (!sn::validateRecipe(*recipe, invalid)) return Json{{"sprite_normals", {{"error", "garbled jasper.spritenormals recipe: " + invalid}}}};
@@ -1399,7 +1450,8 @@ Json spriteNormalsAssetInfo(Project* project, const fs::path& file, bool full) {
         std::error_code ec;
         if (!fs::is_regular_file(candidate, ec)) continue;
         const sn::Staleness staleness = sn::checkStaleness(root, candidate);
-        if (staleness.state == sn::Staleness::State::NoRecipe || staleness.state == sn::Staleness::State::Invalid) continue;
+        if (staleness.state == sn::Staleness::State::NoRecipe || staleness.state == sn::Staleness::State::Invalid ||
+            staleness.state == sn::Staleness::State::Unreadable) continue;
         if (!sameFile(staleness.sourceAbsolute, file)) continue;
         return Json{{"normal_map", {{"path", relativeOf(project, candidate)}, {"stale", staleness.state != sn::Staleness::State::Fresh}}}};
     }

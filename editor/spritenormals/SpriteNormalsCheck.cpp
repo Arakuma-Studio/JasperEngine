@@ -95,11 +95,6 @@ namespace jasperengine::editor::spritenormals {
             return ext;
         }
 
-        // readRecipeHead's errors that concern the recipe chunk itself (they name its keyword)
-        bool recipeChunkError(const std::string& error) {
-            return error.find(kRecipeKeyword) != std::string::npos;
-        }
-
         std::string name(const fs::path& path) {
             return path.filename().u8string();
         }
@@ -132,13 +127,15 @@ namespace jasperengine::editor::spritenormals {
                 if (sameStamp(*entry, time, size)) return entry;
                 json fresh = {{"mtime", time}, {"size", size}, {"recipe", nullptr}};
                 std::string error;
-                const std::optional<json> recipe = readRecipeHead(png, &error);
+                RecipeReadError origin = RecipeReadError::None;
+                const std::optional<json> recipe = readRecipeHead(png, &error, &origin);
                 std::string invalid;
                 if (recipe && validateRecipe(*recipe, invalid)) fresh["recipe"] = *recipe;
                 else if (recipe) fresh["recipe_error"] = invalid;
                 // only a damaged jasper.spritenormals chunk is a garbled recipe; a file that is not a
-                // PNG, can't be opened or has a broken chunk list has no recipe to report
-                else if (recipeChunkError(error)) fresh["recipe_error"] = error;
+                // PNG, can't be opened or has a broken chunk list has no recipe to report (decided on
+                // the error's origin, never its text: a path may hold the keyword)
+                else if (origin == RecipeReadError::Chunk) fresh["recipe_error"] = error;
                 int w = 0, h = 0;
                 texsynth::probeImage(png, w, h);
                 fresh["width"] = w;

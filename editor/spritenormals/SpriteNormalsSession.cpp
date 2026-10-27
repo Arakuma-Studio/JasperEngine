@@ -764,6 +764,7 @@ namespace jasperengine::editor::spritenormals {
             case Staleness::State::Missing: return "missing";
             case Staleness::State::NoRecipe: return "no_recipe";
             case Staleness::State::Invalid: return "invalid";
+            case Staleness::State::Unreadable: return "unreadable";
         }
         return "invalid";
     }
@@ -795,10 +796,16 @@ namespace jasperengine::editor::spritenormals {
         Staleness s;
         const std::string pngName = png.filename().u8string();
         std::string error;
-        const std::optional<json> recipe = readRecipeHead(png, &error);
+        RecipeReadError origin = RecipeReadError::None;
+        const std::optional<json> recipe = readRecipeHead(png, &error, &origin);
         if (!recipe) {
-            s.state = error.empty() ? Staleness::State::NoRecipe : Staleness::State::Invalid;
-            s.message = error.empty() ? pngName + " was not made by the sprite normal generator (no recipe)." : pngName + ": " + error;
+            // the error's origin decides: a damaged recipe chunk is a garbled recipe; a file that
+            // can't be read as a PNG has none
+            s.state = origin == RecipeReadError::Chunk ? Staleness::State::Invalid
+                      : origin == RecipeReadError::File ? Staleness::State::Unreadable
+                                                        : Staleness::State::NoRecipe;
+            s.message = s.state == Staleness::State::NoRecipe ? pngName + " was not made by the sprite normal generator (no recipe)."
+                                                              : pngName + ": " + error;
             return s;
         }
         if (!validateRecipe(*recipe, error)) {
