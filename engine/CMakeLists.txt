@@ -1596,22 +1596,6 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         )
     endif()
 
-    # emcc packs project/assets and project/lua into the .data file at link time
-    # (--preload-file), which ninja does not see: list them as link inputs so an
-    # edited script or asset relinks instead of shipping the previous bundle.
-    if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-        set(EM_PRELOAD_DEPENDS)
-        foreach(preloadDir assets lua)
-            if(EXISTS "${PROJECT_ROOT}/${preloadDir}")
-                file(GLOB_RECURSE preloadFiles CONFIGURE_DEPENDS "${PROJECT_ROOT}/${preloadDir}/*")
-                list(APPEND EM_PRELOAD_DEPENDS ${preloadFiles})
-            endif()
-        endforeach()
-        if(EM_PRELOAD_DEPENDS)
-            set_property(TARGET ${APP_NAME} APPEND PROPERTY LINK_DEPENDS ${EM_PRELOAD_DEPENDS})
-        endif()
-    endif()
-
     if(WIN32)
         include(${JASPERENGINE_ROOT}/platform/win/WindowsManifest.cmake)
         jasperengine_add_windows_manifest(${APP_NAME})
@@ -1683,6 +1667,23 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         OBJCXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
         OBJCXX_STANDARD_REQUIRED ON
     )
+
+    # emcc packs project/assets and project/lua into the .data file at link time
+    # (--preload-file), which ninja does not see: list them as link inputs so an
+    # edited script or asset relinks instead of shipping the previous bundle (appended after
+    # PLATFORM_PROPERTIES, whose LINK_DEPENDS of the crash pre-js would replace them)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+        set(EM_PRELOAD_DEPENDS)
+        foreach(preloadDir assets lua)
+            if(EXISTS "${PROJECT_ROOT}/${preloadDir}")
+                file(GLOB_RECURSE preloadFiles CONFIGURE_DEPENDS "${PROJECT_ROOT}/${preloadDir}/*")
+                list(APPEND EM_PRELOAD_DEPENDS ${preloadFiles})
+            endif()
+        endforeach()
+        if(EM_PRELOAD_DEPENDS)
+            set_property(TARGET ${APP_NAME} APPEND PROPERTY LINK_DEPENDS ${EM_PRELOAD_DEPENDS})
+        endif()
+    endif()
 
     # Generated sources embed UTF-8 literals and carry no BOM, so MSVC would
     # otherwise decode them in the active code page.
