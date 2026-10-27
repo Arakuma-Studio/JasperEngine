@@ -753,6 +753,11 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/vat/VatBakeCompute.cpp
     ${EDITOR_DIR}/vat/VatBakeSource.cpp
     ${EDITOR_DIR}/vat/VatBakeSession.cpp
+    ${EDITOR_DIR}/vat/import/VatImport.cpp
+    ${EDITOR_DIR}/vat/import/VatImportCommon.cpp
+    ${EDITOR_DIR}/vat/import/VatSourceMesh.cpp
+    ${EDITOR_DIR}/vat/import/HoudiniVat3.cpp
+    ${EDITOR_DIR}/vat/import/OpenVat.cpp
     ${EDITOR_DIR}/window/TextureSynthesisWindow.cpp
     ${EDITOR_DIR}/window/PhysicsPlacementWindow.cpp
     ${EDITOR_DIR}/window/LoadingWindow.cpp
