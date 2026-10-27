@@ -219,12 +219,19 @@ async def test_save_path(ed: Editor):
 async def test_scene_untouched_and_deterministic(ed: Editor):
     await make_animation(ed)
     camera = await ed.call("set_scene_camera")
-    tree = await ed.call("get_scene_tree")
+
+    async def scene_tree():
+        # the scene alone: a result also carries the file changes found since the last call
+        # (external_changes, S05), e.g. the PNG an earlier test saved
+        tree = dict(await ed.call("get_scene_tree"))
+        tree.pop("external_changes", None)
+        return tree
+    tree = await scene_tree()
     _, first = await render(ed, path=ANIM, poses=[0, 1], views=["front", "three_quarter"])
     _, second = await render(ed, path=ANIM, poses=[0, 1], views=["front", "three_quarter"])
     ed.check(first == second, "the same request gives the same PNG bytes")
     ed.check_eq(await ed.call("set_scene_camera"), camera, "the Scene view camera is unchanged")
-    ed.check_eq(await ed.call("get_scene_tree"), tree, "the open scene is unchanged")
+    ed.check_eq(await scene_tree(), tree, "the open scene is unchanged")
 
 
 # -- errors ----------------------------------------------------------------------
