@@ -279,14 +279,6 @@ static std::vector<editor::EnumEntry> entriesTextureAlphaBorder = {
     { (int)TextureAlphaBorder::KEEP, "Keep" }
 };
 
-static std::vector<editor::EnumEntry> entriesEmitterShape = {
-    { (int)ParticleEmitterShape::Box, "Box" },
-    { (int)ParticleEmitterShape::Sphere, "Sphere" },
-    { (int)ParticleEmitterShape::Hemisphere, "Hemisphere" },
-    { (int)ParticleEmitterShape::Circle, "Circle" },
-    { (int)ParticleEmitterShape::Cone, "Cone" }
-};
-
 static std::vector<editor::EnumEntry> entriesAudioAttenuation = {
     { (int)AudioSourceAttenuation::NO_ATTENUATION, "No Attenuation" },
     { (int)AudioSourceAttenuation::INVERSE_DISTANCE, "Inverse Distance" },
@@ -5864,97 +5856,6 @@ bool editor::InspectorWindow::propertyRowWithAutoButton(RowPropertyType propType
     return rowChanged;
 }
 
-void editor::InspectorWindow::setParticleFrames(ComponentType cpType, const std::string& propertyId, SceneProject* sceneProject, Entity entity, const std::vector<int>& frames) {
-    editor::PropertyCmd<std::vector<int>>* frameCmd = new editor::PropertyCmd<std::vector<int>>(project, sceneProject->id, entity, cpType, propertyId, frames);
-    frameCmd->setNoMerge();
-    CommandHandle::get(project->getSelectedSceneId())->addCommand(frameCmd);
-}
-
-void editor::InspectorWindow::setParticleBursts(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::vector<ParticleBurst>& bursts) {
-    editor::PropertyCmd<std::vector<ParticleBurst>>* burstCmd = new editor::PropertyCmd<std::vector<ParticleBurst>>(project, sceneProject->id, entity, cpType, "bursts", bursts);
-    burstCmd->setNoMerge();
-    CommandHandle::get(project->getSelectedSceneId())->addCommand(burstCmd);
-}
-
-void editor::InspectorWindow::setParticleColorGradient(ComponentType cpType, SceneProject* sceneProject, Entity entity, const ParticleColorGradient& gradient) {
-    ParticleColorGradient normalizedGradient = gradient;
-    normalizedGradient.normalize();
-    editor::PropertyCmd<ParticleColorGradient>* gradCmd = new editor::PropertyCmd<ParticleColorGradient>(project, sceneProject->id, entity, cpType, "colorGradient", normalizedGradient);
-    gradCmd->setNoMerge();
-    CommandHandle::get(project->getSelectedSceneId())->addCommand(gradCmd);
-}
-
-void editor::InspectorWindow::drawParticleFrameList(ComponentType cpType, const std::string& propertyId, const std::string& tableId, SceneProject* sceneProject, const std::vector<Entity>& entities) {
-    if (entities.size() != 1) {
-        ImGui::TextDisabled("Select a single GameObject to edit sprite frames");
-        return;
-    }
-
-    Entity entity = entities[0];
-    PropertyData prop = Catalog::getProperty(sceneProject->scene, entity, cpType, propertyId);
-    std::vector<int>* frames = static_cast<std::vector<int>*>(prop.ref);
-    std::vector<int>* defFrames = static_cast<std::vector<int>*>(prop.def);
-    if (!frames) {
-        return;
-    }
-
-    bool defChanged = defFrames && *frames != *defFrames;
-    beginTable(cpType, getLabelSize("Frames"), tableId + "_header");
-    prefabRowProperty = propertyId;
-    if (propertyHeader("Frames", -1, defChanged, false) && defFrames) {
-        setParticleFrames(cpType, propertyId, sceneProject, entity, *defFrames);
-        finishProperty = true;
-    }
-    ImGui::Text("%zu", frames->size());
-    std::string addFrameLabel = ICON_FA_PLUS " Add Frame##" + tableId;
-    ImGui::SameLine();
-    float addFrameButtonWidth = std::max(0.0f, ImGui::GetContentRegionAvail().x);
-    if (ImGui::Button(addFrameLabel.c_str(), ImVec2(addFrameButtonWidth, 0))) {
-        std::vector<int> newFrames = *frames;
-        newFrames.push_back(newFrames.empty() ? 0 : newFrames.back() + 1);
-        setParticleFrames(cpType, propertyId, sceneProject, entity, newFrames);
-    }
-    endTable();
-
-    if (frames->empty()) {
-        return;
-    }
-
-    const float frameInputWidth = 6.0f * ImGui::GetFontSize();
-
-    beginTable(cpType, getLabelSize("Frame 000"), tableId + "_values");
-    for (size_t i = 0; i < frames->size(); i++) {
-        ImGui::PushID(static_cast<int>(i));
-        propertyHeader("Frame " + std::to_string(i), -1, false, false);
-
-        float deleteButtonWidth = ImGui::CalcTextSize(ICON_FA_TRASH_CAN).x + ImGui::GetStyle().FramePadding.x * 2.0f;
-        ImGui::SetNextItemWidth(frameInputWidth);
-        int newValue = (*frames)[i];
-        if (ImGui::InputInt(("##particle_frame_value_" + tableId).c_str(), &newValue)) {
-            std::vector<int> newFrames = *frames;
-            newFrames[i] = newValue;
-            setParticleFrames(cpType, propertyId, sceneProject, entity, newFrames);
-        }
-
-        ImGui::SameLine();
-        float targetX = ImGui::GetCursorPosX() + std::max(0.0f, ImGui::GetContentRegionAvail().x - deleteButtonWidth);
-        ImGui::SetCursorPosX(targetX);
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-        if (ImGui::Button((ICON_FA_TRASH_CAN "##particle_frame_delete_" + tableId).c_str())) {
-            std::vector<int> newFrames = *frames;
-            newFrames.erase(newFrames.begin() + static_cast<std::ptrdiff_t>(i));
-            setParticleFrames(cpType, propertyId, sceneProject, entity, newFrames);
-            ImGui::PopStyleColor(2);
-            ImGui::PopID();
-            break;
-        }
-        ImGui::PopStyleColor(2);
-        ImGui::PopID();
-    }
-    endTable();
-}
-
 void editor::InspectorWindow::drawTransform(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     // Add this code to calculate appropriate step size based on selected scene
     RowSettings settingsPos;
@@ -11284,389 +11185,6 @@ void editor::InspectorWindow::drawInstancedMeshComponent(ComponentType cpType, S
     }
 }
 
-void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    RowSettings settingsFloat;
-    settingsFloat.secondColSize = 6 * ImGui::GetFontSize();
-
-    RowSettings settingsInt;
-    settingsInt.secondColSize = 6 * ImGui::GetFontSize();
-
-    beginTable(cpType, getLabelSize("Max Per Update"));
-    propertyRow(RowPropertyType::UInt, cpType, "maxParticles", "Max Particles", sceneProject, entities, settingsInt);
-    propertyRow(RowPropertyType::Bool, cpType, "emitter", "Emitter", sceneProject, entities);
-    propertyRow(RowPropertyType::Bool, cpType, "loop", "Loop", sceneProject, entities);
-    propertyRow(RowPropertyType::Bool, cpType, "localSpace", "Local Space", sceneProject, entities);
-    propertyRow(RowPropertyType::Int, cpType, "rate", "Rate", sceneProject, entities, settingsInt);
-    propertyRow(RowPropertyType::Int, cpType, "maxPerUpdate", "Max Per Update", sceneProject, entities, settingsInt);
-    endTable();
-
-    // Bursts (single-entity editor; vector edits are not multi-entity safe)
-    if (entities.size() == 1) {
-        Scene* burstScene = sceneProject->scene;
-        ParticleSystemComponent* bp = burstScene ? burstScene->findComponent<ParticleSystemComponent>(entities[0]) : nullptr;
-        if (bp) {
-            Entity entity = entities[0];
-            PropertyData burstProp = Catalog::getProperty(sceneProject->scene, entity, cpType, "bursts");
-            std::vector<ParticleBurst>* bursts = static_cast<std::vector<ParticleBurst>*>(burstProp.ref);
-            std::vector<ParticleBurst>* defBursts = static_cast<std::vector<ParticleBurst>*>(burstProp.def);
-
-            ImGui::SeparatorText("Bursts");
-            if (bursts) {
-                bool defChanged = defBursts && *bursts != *defBursts;
-                beginTable(cpType, getLabelSize("Bursts"), "particle_burst_header");
-                if (propertyHeader("Bursts", -1, defChanged, false) && defBursts) {
-                    setParticleBursts(cpType, sceneProject, entity, *defBursts);
-                    finishProperty = true;
-                }
-                ImGui::Text("%zu", bursts->size());
-                std::string addBurstLabel = ICON_FA_PLUS " Add Burst##particle_burst_add";
-                ImGui::SameLine();
-                float addBurstButtonWidth = std::max(0.0f, ImGui::GetContentRegionAvail().x);
-                if (ImGui::Button(addBurstLabel.c_str(), ImVec2(addBurstButtonWidth, 0))) {
-                    std::vector<ParticleBurst> newBursts = *bursts;
-                    newBursts.push_back(ParticleBurst());
-                    setParticleBursts(cpType, sceneProject, entity, newBursts);
-                }
-                endTable();
-            }
-            if (bursts && !bursts->empty()) {
-                beginTable(cpType, getLabelSize("Max Count"), "particle_burst_table");
-                for (size_t i = 0; i < bursts->size(); i++) {
-                    ImGui::PushID((int)(1000 + i));
-                    ParticleBurst burst = (*bursts)[i];
-
-                    propertyHeader("Time " + std::to_string(i), -1, false, false);
-                    ImGui::SetNextItemWidth(settingsFloat.secondColSize);
-                    if (ImGui::DragFloat("##particle_burst_time", &burst.time, settingsFloat.stepSize, 0.0f, 0.0f, settingsFloat.format)) {
-                        std::vector<ParticleBurst> newBursts = *bursts;
-                        newBursts[i] = burst;
-                        setParticleBursts(cpType, sceneProject, entity, newBursts);
-                    }
-                    float deleteButtonWidth = ImGui::CalcTextSize(ICON_FA_TRASH_CAN).x + ImGui::GetStyle().FramePadding.x * 2.0f;
-                    ImGui::SameLine();
-                    float targetX = ImGui::GetCursorPosX() + std::max(0.0f, ImGui::GetContentRegionAvail().x - deleteButtonWidth);
-                    ImGui::SetCursorPosX(targetX);
-                    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-                    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-                    bool removed = ImGui::Button(ICON_FA_TRASH_CAN "##particle_burst_delete");
-                    ImGui::PopStyleColor(2);
-
-                    propertyHeader("Min Count", -1, false, false);
-                    ImGui::SetNextItemWidth(-FLT_MIN);
-                    if (ImGui::InputInt("##particle_burst_min", &burst.minCount)) {
-                        std::vector<ParticleBurst> newBursts = *bursts;
-                        newBursts[i] = burst;
-                        setParticleBursts(cpType, sceneProject, entity, newBursts);
-                    }
-
-                    propertyHeader("Max Count", -1, false, false);
-                    ImGui::SetNextItemWidth(-FLT_MIN);
-                    if (ImGui::InputInt("##particle_burst_max", &burst.maxCount)) {
-                        std::vector<ParticleBurst> newBursts = *bursts;
-                        newBursts[i] = burst;
-                        setParticleBursts(cpType, sceneProject, entity, newBursts);
-                    }
-
-                    ImGui::PopID();
-
-                    if (removed) {
-                        std::vector<ParticleBurst> newBursts = *bursts;
-                        newBursts.erase(newBursts.begin() + (std::ptrdiff_t)i);
-                        setParticleBursts(cpType, sceneProject, entity, newBursts);
-                        break;
-                    }
-                }
-                endTable();
-            }
-        }
-    } else {
-        ImGui::SeparatorText("Bursts");
-        ImGui::TextDisabled("Select a single GameObject to edit bursts");
-    }
-
-    const float subsectionIndent = 10.0f;
-
-    ImGui::Indent(subsectionIndent);
-    ImGui::PushStyleColor(ImGuiCol_Header, Theme::Colors::NestedHeader);
-    ImGui::PushStyleColor(ImGuiCol_HeaderHovered, Theme::Colors::NestedHeaderHovered);
-    ImGui::PushStyleColor(ImGuiCol_HeaderActive, Theme::Colors::NestedHeaderActive);
-    bool initializersOpen = ImGui::CollapsingHeader("Initializers");
-    ImGui::PopStyleColor(3);
-    if (initializersOpen) {
-        ImGui::Unindent(subsectionIndent);
-
-        ImGui::SeparatorText("Life");
-        beginTable(cpType, getLabelSize("Max Life"), "life_table");
-        propertyRow(RowPropertyType::Float, cpType, "lifeInitializer.minLife", "Min Life", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Float, cpType, "lifeInitializer.maxLife", "Max Life", sceneProject, entities, settingsFloat);
-        endTable();
-
-        ImGui::SeparatorText("Position");
-        RowSettings settingsShape;
-        settingsShape.enumEntries = &entriesEmitterShape;
-        beginTable(cpType, getLabelSize("Cone Height"), "position_initializer_table");
-        propertyRow(RowPropertyType::Enum, cpType, "positionInitializer.shape", "Emitter Shape", sceneProject, entities, settingsShape);
-
-        ParticleEmitterShape shownShape = ParticleEmitterShape::Box;
-        if (!entities.empty()) {
-            ParticleSystemComponent* sp = sceneProject->scene->findComponent<ParticleSystemComponent>(entities[0]);
-            if (sp) shownShape = sp->positionInitializer.shape;
-        }
-
-        if (shownShape == ParticleEmitterShape::Box) {
-            propertyRow(RowPropertyType::Vector3, cpType, "positionInitializer.minPosition", "Min Position", sceneProject, entities);
-            propertyRow(RowPropertyType::Vector3, cpType, "positionInitializer.maxPosition", "Max Position", sceneProject, entities);
-        } else if (shownShape == ParticleEmitterShape::Sphere ||
-                   shownShape == ParticleEmitterShape::Hemisphere ||
-                   shownShape == ParticleEmitterShape::Circle) {
-            propertyRow(RowPropertyType::Float, cpType, "positionInitializer.radius", "Radius", sceneProject, entities, settingsFloat);
-            propertyRow(RowPropertyType::Float, cpType, "positionInitializer.innerRadius", "Inner Radius", sceneProject, entities, settingsFloat);
-        } else if (shownShape == ParticleEmitterShape::Cone) {
-            propertyRow(RowPropertyType::Float, cpType, "positionInitializer.coneAngle", "Cone Angle", sceneProject, entities, settingsFloat);
-            propertyRow(RowPropertyType::Float, cpType, "positionInitializer.coneHeight", "Cone Height", sceneProject, entities, settingsFloat);
-        }
-        endTable();
-
-        ImGui::SeparatorText("Velocity");
-        beginTable(cpType, getLabelSize("Max Velocity"), "velocity_initializer_table");
-        propertyRow(RowPropertyType::Vector3, cpType, "velocityInitializer.minVelocity", "Min Velocity", sceneProject, entities);
-        propertyRow(RowPropertyType::Vector3, cpType, "velocityInitializer.maxVelocity", "Max Velocity", sceneProject, entities);
-        endTable();
-
-        ImGui::SeparatorText("Acceleration");
-        beginTable(cpType, getLabelSize("Max Acceleration"), "acceleration_initializer_table");
-        propertyRow(RowPropertyType::Vector3, cpType, "accelerationInitializer.minAcceleration", "Min Acceleration", sceneProject, entities);
-        propertyRow(RowPropertyType::Vector3, cpType, "accelerationInitializer.maxAcceleration", "Max Acceleration", sceneProject, entities);
-        endTable();
-
-        ImGui::SeparatorText("Color");
-        beginTable(cpType, getLabelSize("Use sRGB"), "color_initializer_table");
-        propertyRow(RowPropertyType::Color3L, cpType, "colorInitializer.minColor", "Min Color", sceneProject, entities);
-        propertyRow(RowPropertyType::Color3L, cpType, "colorInitializer.maxColor", "Max Color", sceneProject, entities);
-        propertyRow(RowPropertyType::Bool, cpType, "colorInitializer.useSRGB", "Use sRGB", sceneProject, entities);
-        endTable();
-
-        ImGui::SeparatorText("Alpha");
-        beginTable(cpType, getLabelSize("Max Alpha"), "alpha_initializer_table");
-        propertyRow(RowPropertyType::Float, cpType, "alphaInitializer.minAlpha", "Min Alpha", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Float, cpType, "alphaInitializer.maxAlpha", "Max Alpha", sceneProject, entities, settingsFloat);
-        endTable();
-
-        ImGui::SeparatorText("Size");
-        beginTable(cpType, getLabelSize("Max Size"), "size_initializer_table");
-        propertyRow(RowPropertyType::Float, cpType, "sizeInitializer.minSize", "Min Size", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Float, cpType, "sizeInitializer.maxSize", "Max Size", sceneProject, entities, settingsFloat);
-        endTable();
-
-        ImGui::SeparatorText("Sprite");
-        drawParticleFrameList(cpType, "spriteInitializer.frames", "sprite_initializer_frames", sceneProject, entities);
-
-        ImGui::SeparatorText("Rotation");
-        beginTable(cpType, getLabelSize("Shortest Path"), "rotation_initializer_table");
-        propertyRow(RowPropertyType::Quat, cpType, "rotationInitializer.minRotation", "Min Rotation", sceneProject, entities);
-        propertyRow(RowPropertyType::Quat, cpType, "rotationInitializer.maxRotation", "Max Rotation", sceneProject, entities);
-        propertyRow(RowPropertyType::Bool, cpType, "rotationInitializer.shortestPath", "Shortest Path", sceneProject, entities);
-        endTable();
-
-        ImGui::SeparatorText("Scale");
-        beginTable(cpType, getLabelSize("Max Scale"), "scale_initializer_table");
-        propertyRow(RowPropertyType::Vector3, cpType, "scaleInitializer.minScale", "Min Scale", sceneProject, entities);
-        propertyRow(RowPropertyType::Vector3, cpType, "scaleInitializer.maxScale", "Max Scale", sceneProject, entities);
-        propertyRow(RowPropertyType::Bool, cpType, "scaleInitializer.linearSort", "Linear Sort", sceneProject, entities);
-        endTable();
-
-        ImGui::Indent(subsectionIndent);
-    }
-    ImGui::Unindent(subsectionIndent);
-
-    ImGui::Indent(subsectionIndent);
-    ImGui::PushStyleColor(ImGuiCol_Header, Theme::Colors::NestedHeader);
-    ImGui::PushStyleColor(ImGuiCol_HeaderHovered, Theme::Colors::NestedHeaderHovered);
-    ImGui::PushStyleColor(ImGuiCol_HeaderActive, Theme::Colors::NestedHeaderActive);
-    bool modifiersOpen = ImGui::CollapsingHeader("Modifiers");
-    ImGui::PopStyleColor(3);
-    if (modifiersOpen) {
-        ImGui::Unindent(subsectionIndent);
-
-        ImGui::SeparatorText("Position");
-        beginTable(cpType, getLabelSize("From Position"), "position_modifier_table");
-        propertyRow(RowPropertyType::Float, cpType, "positionModifier.fromTime", "From Time", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Float, cpType, "positionModifier.toTime", "To Time", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Ease, cpType, "positionModifier.function", "Ease", sceneProject, entities);
-        propertyRow(RowPropertyType::Vector3, cpType, "positionModifier.fromPosition", "From Position", sceneProject, entities);
-        propertyRow(RowPropertyType::Vector3, cpType, "positionModifier.toPosition", "To Position", sceneProject, entities);
-        endTable();
-
-        ImGui::SeparatorText("Velocity");
-        beginTable(cpType, getLabelSize("From Velocity"), "velocity_modifier_table");
-        propertyRow(RowPropertyType::Float, cpType, "velocityModifier.fromTime", "From Time", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Float, cpType, "velocityModifier.toTime", "To Time", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Ease, cpType, "velocityModifier.function", "Ease", sceneProject, entities);
-        propertyRow(RowPropertyType::Vector3, cpType, "velocityModifier.fromVelocity", "From Velocity", sceneProject, entities);
-        propertyRow(RowPropertyType::Vector3, cpType, "velocityModifier.toVelocity", "To Velocity", sceneProject, entities);
-        endTable();
-
-        ImGui::SeparatorText("Acceleration");
-        beginTable(cpType, getLabelSize("From Acceleration"), "acceleration_modifier_table");
-        propertyRow(RowPropertyType::Float, cpType, "accelerationModifier.fromTime", "From Time", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Float, cpType, "accelerationModifier.toTime", "To Time", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Ease, cpType, "accelerationModifier.function", "Ease", sceneProject, entities);
-        propertyRow(RowPropertyType::Vector3, cpType, "accelerationModifier.fromAcceleration", "From Acceleration", sceneProject, entities);
-        propertyRow(RowPropertyType::Vector3, cpType, "accelerationModifier.toAcceleration", "To Acceleration", sceneProject, entities);
-        endTable();
-
-        ImGui::SeparatorText("Color");
-        beginTable(cpType, getLabelSize("Mod sRGB"), "color_modifier_table");
-        propertyRow(RowPropertyType::Float, cpType, "colorModifier.fromTime", "From Time", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Float, cpType, "colorModifier.toTime", "To Time", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Ease, cpType, "colorModifier.function", "Ease", sceneProject, entities);
-        propertyRow(RowPropertyType::Color3L, cpType, "colorModifier.fromColor", "From Color", sceneProject, entities);
-        propertyRow(RowPropertyType::Color3L, cpType, "colorModifier.toColor", "To Color", sceneProject, entities);
-        propertyRow(RowPropertyType::Bool, cpType, "colorModifier.useSRGB", "Mod sRGB", sceneProject, entities);
-        endTable();
-
-        if (entities.size() == 1) {
-            Scene* gradScene = sceneProject->scene;
-            ParticleSystemComponent* gp = gradScene ? gradScene->findComponent<ParticleSystemComponent>(entities[0]) : nullptr;
-            if (gp) {
-                Entity entity = entities[0];
-                PropertyData gradProp = Catalog::getProperty(sceneProject->scene, entity, cpType, "colorGradient");
-                ParticleColorGradient* gradient = static_cast<ParticleColorGradient*>(gradProp.ref);
-                ParticleColorGradient* defGradient = static_cast<ParticleColorGradient*>(gradProp.def);
-
-                ImGui::SeparatorText("Color Gradient");
-                if (gradient) {
-                    bool defChanged = defGradient && !(*gradient == *defGradient);
-                    beginTable(cpType, getLabelSize("Stops"), "particle_gradient_header");
-                    if (propertyHeader("Stops", -1, defChanged, false) && defGradient) {
-                        setParticleColorGradient(cpType, sceneProject, entity, *defGradient);
-                        finishProperty = true;
-                    }
-                    ImGui::Text("%zu", gradient->stops.size());
-                    std::string addStopLabel = ICON_FA_PLUS " Add Stop##particle_grad_add";
-                    ImGui::SameLine();
-                    float addStopButtonWidth = std::max(0.0f, ImGui::GetContentRegionAvail().x);
-                    if (ImGui::Button(addStopLabel.c_str(), ImVec2(addStopButtonWidth, 0))) {
-                        ParticleColorGradient newGrad = *gradient;
-                        ParticleColorGradientStop stop;
-                        if (!newGrad.stops.empty()) {
-                            float last = newGrad.stops.back().time;
-                            stop.time = std::min(1.0f, last + 0.25f);
-                            stop.color = newGrad.stops.back().color;
-                        }
-                        newGrad.stops.push_back(stop);
-                        setParticleColorGradient(cpType, sceneProject, entity, newGrad);
-                    }
-                    endTable();
-                }
-                if (gradient && !gradient->stops.empty()) {
-                    beginTable(cpType, getLabelSize("Color N"), "particle_gradient_table");
-                    for (size_t i = 0; i < gradient->stops.size(); i++) {
-                        ImGui::PushID((int)(2000 + i));
-                        ParticleColorGradientStop stop = gradient->stops[i];
-
-                        propertyHeader("Time " + std::to_string(i), -1, false, false);
-                        float deleteButtonWidth = ImGui::CalcTextSize(ICON_FA_TRASH_CAN).x + ImGui::GetStyle().FramePadding.x * 2.0f;
-                        ImGui::SetNextItemWidth(-deleteButtonWidth - ImGui::GetStyle().ItemSpacing.x);
-                        if (ImGui::SliderFloat("##particle_grad_time", &stop.time, 0.0f, 1.0f)) {
-                            ParticleColorGradient newGrad = *gradient;
-                            newGrad.stops[i] = stop;
-                            setParticleColorGradient(cpType, sceneProject, entity, newGrad);
-                        }
-                        ImGui::SameLine();
-                        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-                        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-                        bool removed = ImGui::Button(ICON_FA_TRASH_CAN "##particle_grad_delete");
-                        ImGui::PopStyleColor(2);
-
-                        propertyHeader("Color " + std::to_string(i), -1, false, false);
-                        ImGui::SetNextItemWidth(-FLT_MIN);
-                        float col[3] = { stop.color.x, stop.color.y, stop.color.z };
-                        if (ImGui::ColorEdit3("##particle_grad_color", col, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel | ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf)) {
-                            stop.color = Vector3(col[0], col[1], col[2]);
-                            ParticleColorGradient newGrad = *gradient;
-                            newGrad.stops[i] = stop;
-                            setParticleColorGradient(cpType, sceneProject, entity, newGrad);
-                        }
-
-                        ImGui::PopID();
-
-                        if (removed) {
-                            ParticleColorGradient newGrad = *gradient;
-                            newGrad.stops.erase(newGrad.stops.begin() + (std::ptrdiff_t)i);
-                            setParticleColorGradient(cpType, sceneProject, entity, newGrad);
-                            break;
-                        }
-                    }
-                    endTable();
-                }
-
-                beginTable(cpType, getLabelSize("Grad sRGB"), "particle_gradient_options_table");
-                propertyHeader("Grad sRGB", -1, false, false);
-                bool useSRGB = gradient ? gradient->useSRGB : gp->colorGradient.useSRGB;
-                ImGui::SetNextItemWidth(-FLT_MIN);
-                if (ImGui::Checkbox("##particle_grad_srgb", &useSRGB)) {
-                    ParticleColorGradient newGrad = gradient ? *gradient : gp->colorGradient;
-                    newGrad.useSRGB = useSRGB;
-                    setParticleColorGradient(cpType, sceneProject, entity, newGrad);
-                }
-                endTable();
-            }
-        } else {
-            ImGui::SeparatorText("Color Gradient");
-            ImGui::TextDisabled("Select a single GameObject to edit color gradient");
-        }
-
-        ImGui::SeparatorText("Alpha");
-        beginTable(cpType, getLabelSize("From Alpha"), "alpha_modifier_table");
-        propertyRow(RowPropertyType::Float, cpType, "alphaModifier.fromTime", "From Time", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Float, cpType, "alphaModifier.toTime", "To Time", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Ease, cpType, "alphaModifier.function", "Ease", sceneProject, entities);
-        propertyRow(RowPropertyType::Float, cpType, "alphaModifier.fromAlpha", "From Alpha", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Float, cpType, "alphaModifier.toAlpha", "To Alpha", sceneProject, entities, settingsFloat);
-        endTable();
-
-        ImGui::SeparatorText("Size");
-        beginTable(cpType, getLabelSize("From Size"), "size_modifier_table");
-        propertyRow(RowPropertyType::Float, cpType, "sizeModifier.fromTime", "From Time", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Float, cpType, "sizeModifier.toTime", "To Time", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Ease, cpType, "sizeModifier.function", "Ease", sceneProject, entities);
-        propertyRow(RowPropertyType::Float, cpType, "sizeModifier.fromSize", "From Size", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Float, cpType, "sizeModifier.toSize", "To Size", sceneProject, entities, settingsFloat);
-        endTable();
-
-        ImGui::SeparatorText("Sprite");
-        beginTable(cpType, getLabelSize("From Time"), "sprite_modifier_table");
-        propertyRow(RowPropertyType::Float, cpType, "spriteModifier.fromTime", "From Time", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Float, cpType, "spriteModifier.toTime", "To Time", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Ease, cpType, "spriteModifier.function", "Ease", sceneProject, entities);
-        endTable();
-        drawParticleFrameList(cpType, "spriteModifier.frames", "sprite_modifier_frames", sceneProject, entities);
-
-        ImGui::SeparatorText("Rotation");
-        beginTable(cpType, getLabelSize("Mod Shortest"), "rotation_modifier_table");
-        propertyRow(RowPropertyType::Float, cpType, "rotationModifier.fromTime", "From Time", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Float, cpType, "rotationModifier.toTime", "To Time", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Ease, cpType, "rotationModifier.function", "Ease", sceneProject, entities);
-        propertyRow(RowPropertyType::Quat, cpType, "rotationModifier.fromRotation", "From Rotation", sceneProject, entities);
-        propertyRow(RowPropertyType::Quat, cpType, "rotationModifier.toRotation", "To Rotation", sceneProject, entities);
-        propertyRow(RowPropertyType::Bool, cpType, "rotationModifier.shortestPath", "Mod Shortest", sceneProject, entities);
-        endTable();
-
-        ImGui::SeparatorText("Scale");
-        beginTable(cpType, getLabelSize("From Scale"), "scale_modifier_table");
-        propertyRow(RowPropertyType::Float, cpType, "scaleModifier.fromTime", "From Time", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Float, cpType, "scaleModifier.toTime", "To Time", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Ease, cpType, "scaleModifier.function", "Ease", sceneProject, entities);
-        propertyRow(RowPropertyType::Vector3, cpType, "scaleModifier.fromScale", "From Scale", sceneProject, entities);
-        propertyRow(RowPropertyType::Vector3, cpType, "scaleModifier.toScale", "To Scale", sceneProject, entities);
-        endTable();
-
-        ImGui::Indent(subsectionIndent);
-    }
-    ImGui::Unindent(subsectionIndent);
-}
-
 void editor::InspectorWindow::drawPointsComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings settingsInt;
     settingsInt.secondColSize = 6 * ImGui::GetFontSize();
@@ -13579,23 +13097,6 @@ void editor::InspectorWindow::stopActionPreviewIfActive() {
     actionPreviewSceneId = 0;
 }
 
-void editor::InspectorWindow::updateParticlePreviewSnapshot(YAML::Node& components, const ParticleSystemComponent& particles) {
-    const std::string componentName = Catalog::getComponentName(ComponentType::ParticleSystemComponent, true);
-
-    // Full re-encode so any future fields are automatically preserved.
-    YAML::Node encoded = Stream::encodeParticleSystemComponent(particles);
-
-    // "emitter" is mutated by the runtime (forced true on actionStart, forced false when a
-    // non-looping system runs out). Restoring the live runtime value would silently switch
-    // off an authored emitter. Keep the pre-preview authored value from the original snapshot.
-    const YAML::Node& originalNode = components[componentName];
-    if (originalNode && !originalNode.IsNull() && originalNode["emitter"]) {
-        encoded["emitter"] = originalNode["emitter"];
-    }
-
-    components[componentName] = encoded;
-}
-
 void editor::InspectorWindow::stopActionPreview(Scene* scene, SceneProject* sceneProject) {
     if (!actionPreviewing) return;
 
@@ -13623,7 +13124,7 @@ void editor::InspectorWindow::stopActionPreview(Scene* scene, SceneProject* scen
             state.components[Catalog::getComponentName(ComponentType::AlphaTweenComponent, true)] = Stream::encodeAlphaTweenComponent(*comp);
         }
         if (auto* comp = scene->findComponent<ParticleSystemComponent>(state.entity)) {
-            updateParticlePreviewSnapshot(state.components, *comp);
+            state.components[Catalog::getComponentName(ComponentType::ParticleSystemComponent, true)] = Stream::encodeParticleSystemComponent(*comp);
         }
         if (auto* comp = scene->findComponent<KeyframeTracksComponent>(state.entity)) {
             // the keys and their settings (loop, relative) edited during the preview are kept,
@@ -13647,11 +13148,7 @@ void editor::InspectorWindow::stopActionPreview(Scene* scene, SceneProject* scen
             continue;
         }
         Stream::decodeComponents(state.entity, state.parent, scene, state.components);
-    }
-
-    // Remove InstancedMeshComponent dynamically added during preview (e.g. particle targets).
-    for (const ActionPreviewState& state : actionPreviewStates) {
-        ProjectUtils::removeDynamicInstmesh(state.entity, state.components, scene);
+        ProjectUtils::clearPreviewParticles(scene, state.entity);
     }
 
     actionPreviewStates.clear();
@@ -13825,6 +13322,7 @@ void editor::InspectorWindow::drawActionComponent(ComponentType cpType, ScenePro
                         continue;
                     }
                     Stream::decodeComponents(state.entity, state.parent, scene, state.components);
+                    ProjectUtils::clearPreviewParticles(scene, state.entity);
                 }
 
                 actionComp = scene->findComponent<ActionComponent>(entity);
@@ -16374,6 +15872,16 @@ void editor::InspectorWindow::show(){
 
     std::vector<Entity> entities = project->getSelectedEntities(sceneProject->id);
 
+    if (updateInspectedParticleAsset(sceneProject, entities)) {
+        stopTransientPreviews();
+        drawParticleAssetInspector();
+        ImGui::End();
+        if (wasOpen && !windowOpen) {
+            setOpen(false);
+        }
+        return;
+    }
+
     const bool previewSelectionMatches = actionPreviewing
             && sceneProject->id == actionPreviewSceneId
             && sceneProject->playState == ScenePlayState::STOPPED
@@ -16563,6 +16071,8 @@ void editor::InspectorWindow::show(){
                     drawLatticeTracksComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::ParticleSystemComponent){
                     drawParticleSystemComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::ForceFieldComponent){
+                    drawForceFieldComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::LineRendererComponent){
                     drawLineRendererComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::PointsComponent){

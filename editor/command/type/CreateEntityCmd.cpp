@@ -639,11 +639,14 @@ bool editor::CreateEntityCmd::execute(){
 
     }else if (type == EntityCreationType::PARTICLE_SYSTEM){
 
-        scene->addComponent<ActionComponent>(entity, {});
+        // it renders itself (an inline effect: Unity's default system)
+        scene->addComponent<Transform>(entity, {});
         scene->addComponent<ParticleSystemComponent>(entity, {});
-        if (parent != NULL_ENTITY){
-            scene->getComponent<ActionComponent>(entity).target = parent;
-        }
+
+    }else if (type == EntityCreationType::FORCE_FIELD){
+
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<ForceFieldComponent>(entity, {});
 
     }else if (type == EntityCreationType::POINTS){
 

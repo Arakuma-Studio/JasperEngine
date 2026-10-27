@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "DocumentFile.h"
+#include "util/ParticleMigrationReport.h"
 
 #include "Stream.h"
 #include "StreamSchema.h"
@@ -50,6 +51,7 @@ DocumentFile DocumentFiles::fromBytes(std::string bytes, const std::string& disp
     document.sha1 = sha1(document.bytes);
     document.migration = StreamMigrations::migrate(kind, document.root);
     recordVersionIssues(kind, document.migration);
+    ParticleMigrationReport::record(displayPath, document.migration.log.lines);
     return document;
 }
 

@@ -32,6 +32,8 @@
 #include "lattice/LatticeRender.h"
 #include "object/environment/Water.h"
 #include "subsystem/FluidSystem.h"
+#include "particles/ParticleRender.h"
+#include "subsystem/ParticleSystemState.h"
 #include <memory>
 #include <algorithm>
 #include <chrono>
@@ -476,6 +478,7 @@ RenderSystem::RenderSystem(Scene* scene): SubSystem(scene), atmosphere(this){
     declareHookType(scene->getComponentId<MeshComponent>());
     declareHookType(scene->getComponentId<MirrorComponent>());
     declareHookType(scene->getComponentId<PointsComponent>());
+    declareHookType(scene->getComponentId<ParticleSystemComponent>());
     declareHookType(scene->getComponentId<ReflectionProbeComponent>());
     declareHookType(scene->getComponentId<SkyboxComponent>());
     declareHookType(scene->getComponentId<UIComponent>());
@@ -742,6 +745,14 @@ void RenderSystem::destroy(){
             destroyCamera(camera, false);
         }
     }
+
+    // particle systems: their objects (loaded again with the view) and the shared streams
+    auto particleSystems = scene->getComponentArray<ParticleSystemComponent>();
+    for (size_t i = 0; i < particleSystems->size(); i++){
+        destroyParticles(particleSystems->getComponentFromIndex(i));
+    }
+    sceneInputParticles.clear();
+    destroyParticleBuffers();
 
     // Cached GPU arrays cannot survive renderer shutdown, even when CPU assets are retained.
     while (!terrainDetailArrays.empty()){
@@ -6622,7 +6633,7 @@ namespace {
         size_t component = 4;
         switch (attribute->getDataType()){
             case AttributeDataType::BYTE: case AttributeDataType::UNSIGNED_BYTE: component = 1; break;
-            case AttributeDataType::SHORT: case AttributeDataType::UNSIGNED_SHORT: component = 2; break;
+            case AttributeDataType::SHORT: case AttributeDataType::UNSIGNED_SHORT: case AttributeDataType::HALF: component = 2; break;
             default: component = 4; break;
         }
         const size_t pos = (size_t)index * buffer->getStride() + attribute->getOffset();
@@ -6641,6 +6652,7 @@ namespace {
                 case AttributeDataType::INT:{ int32_t v; memcpy(&v, at, 4); value[e] = (float)v; break; }
                 case AttributeDataType::UNSIGNED_INT:{ uint32_t v; memcpy(&v, at, 4); value[e] = (float)v; break; }
                 case AttributeDataType::FLOAT:{ memcpy(&value[e], at, 4); break; }
+                case AttributeDataType::HALF:{ uint16_t v; memcpy(&v, at, 2); value[e] = particles::ParticleRenderPrep::fromHalf(v); break; }
             }
         }
         out = Vector3(value[0], value[1], value[2]);
@@ -8496,6 +8508,8 @@ void RenderSystem::setSceneInputUser(Entity entity, bool points, uint32_t inputs
         usage |= user.second;
     for (const auto& user : sceneInputPoints)
         usage |= user.second;
+    for (const auto& user : sceneInputParticles)
+        usage |= user.second;
     sceneInputUsage = usage;
 }
 
@@ -8541,6 +8555,20 @@ void RenderSystem::predictSceneInputUsers(){
             auto found = sceneInputPoints.find(entity);
             setSceneInputUser(entity, true, inputs | (found != sceneInputPoints.end() ? found->second : 0));
         }
+    }
+    // the particle systems about to load (their effect bound, the render not yet)
+    auto particleArray = scene->getComponentArray<ParticleSystemComponent>();
+    for (size_t i = 0; i < particleArray->size(); i++){
+        const ParticleSystemComponent& particles = particleArray->getComponentFromIndex(i);
+        if (!particles.state || !particles.state->effect || particles.state->render.loaded)
+            continue;
+        const particles::RendererModule& renderer = particles.state->effect->document.renderer;
+        std::shared_ptr<const ShaderManifest> manifest = findManifest(renderer.shader);
+        if (!manifest)
+            continue;
+        const uint32_t inputs = manifest->resolveRequire(ShaderReference::getEnabledFeatures(renderer.shader, renderer.shaderFeatures)) & ShaderRequire_SceneInputs;
+        if (inputs)
+            setParticleSceneInputUser(particleArray->getEntity(i), inputs);
     }
 }
 
@@ -8603,7 +8631,7 @@ bool RenderSystem::hasVisibleGBufferDepthMismatch(CameraComponent& camera, int i
 RenderSystem::SceneInputDetails RenderSystem::getSceneInputDetails(){
     SceneInputDetails usage;
     usage.reads = sceneInputUsage;
-    usage.readers = (uint32_t)(sceneInputMeshes.size() + sceneInputPoints.size());
+    usage.readers = (uint32_t)(sceneInputMeshes.size() + sceneInputPoints.size() + sceneInputParticles.size());
     usage.passes = lastSceneInputStats.passes;
     usage.depthPrePasses = lastSceneInputStats.depthPrePasses;
     usage.sharedDepth = lastSceneInputStats.sharedDepth;
@@ -8647,6 +8675,17 @@ uint32_t RenderSystem::findPassSceneInputs(CameraComponent& camera, int instance
             continue;
         inputs |= user.second;
     }
+    for (const auto& user : sceneInputParticles){
+        if ((inputs | user.second) == inputs || !scene->isEntityCreated(user.first))
+            continue;
+        ParticleSystemComponent* particles = scene->findComponent<ParticleSystemComponent>(user.first);
+        Transform* transform = scene->findComponent<Transform>(user.first);
+        if (!particles || !transform || !particles->enabled || !particles->state || !particles->state->render.loaded || !transform->visible)
+            continue;
+        if (!isParticleRenderActive(user.first, camera.cullingMask) || !particleBoundsVisible(*particles->state, camera))
+            continue;
+        inputs |= user.second;
+    }
     return inputs;
 }
 
@@ -8665,6 +8704,13 @@ bool RenderSystem::drawsSceneColorReader(Entity entity, Signature signature, Tra
         if (!(points.sceneInputs & ShaderRequire_SceneColor) || !points.loaded || points.numVisible == 0 || !transform.visible)
             return false;
         return isRenderActive(entity, signature) && isLayerVisible(entity, camera.cullingMask) && !samplesCameraTarget(camera, points.texture);
+    }
+    if (signature.test(scene->getComponentId<ParticleSystemComponent>())){
+        ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
+        if (!particles.enabled || !particles.state || !particles.state->render.loaded ||
+                !(particles.state->render.sceneInputs & ShaderRequire_SceneColor) || !transform.visible)
+            return false;
+        return isParticleRenderActive(entity, camera.cullingMask) && particleBoundsVisible(*particles.state, camera);
     }
     return false;
 }
@@ -11532,6 +11578,14 @@ void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
         count(points.loaded || (!points.loadCalled && isShaderUnavailable(points.shader, ShaderType::POINTS, points.shaderProperties, points.customShaderId)));
     }
 
+    // particle systems with an effect (one that cannot be read never loads)
+    auto particleArray = scene->getComponentArray<ParticleSystemComponent>();
+    for (size_t i = 0; i < particleArray->size(); i++) {
+        const ParticleSystemComponent& particles = particleArray->getComponentFromIndex(i);
+        if (particles.enabled && particles.state && particles.state->effect)
+            count(particles.state->render.loaded);
+    }
+
     // Check LineRendererComponents
     auto linesArray = scene->getComponentArray<LineRendererComponent>();
     for (int i = 0; i < linesArray->size(); i++) {
@@ -11893,7 +11947,6 @@ bool RenderSystem::isRenderActive(Entity entity, Signature signature) const{
            !isComponentDisabled<TilemapComponent>(scene, entity, signature) &&
            !isComponentDisabled<TerrainComponent>(scene, entity, signature) &&
            !isComponentDisabled<InstancedMeshComponent>(scene, entity, signature) &&
-           !isComponentDisabled<ParticleSystemComponent>(scene, entity, signature) &&
            !isComponentDisabled<PointsComponent>(scene, entity, signature) &&
            !isComponentDisabled<LineRendererComponent>(scene, entity, signature) &&
            !isComponentDisabled<UIComponent>(scene, entity, signature);
@@ -12546,6 +12599,7 @@ void RenderSystem::update(double dt){
         }
     }
     uint16_t pipelines = getScenePipelines();
+    updateParticleRenders(pipelines);
 
     hasMultipleCameras = false;
     for (int i = 0; i < cameras->size(); i++){
@@ -14286,6 +14340,21 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
 
         }
 
+        // particle systems draw in the transparent queue (by their bounds' distance)
+        if (signature.test(scene->getComponentId<ParticleSystemComponent>())){
+            ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
+            if (particles.enabled && particles.state && particles.state->render.loaded && transform.visible && isParticleRenderActive(entity, cullingMask)){
+                const particles::ParticleSystemState& state = *particles.state;
+                const Vector3 center = state.hasBounds ? Vector3((state.boundsMin[0] + state.boundsMax[0]) * 0.5f, (state.boundsMin[1] + state.boundsMax[1]) * 0.5f,
+                                                                 (state.boundsMin[2] + state.boundsMax[2]) * 0.5f)
+                                                       : transform.worldPosition;
+                TransparentRenderData data{TransparentRenderType::PARTICLES, entity, nullptr, nullptr, nullptr, nullptr, nullptr, &transform,
+                                           (center - cameraTransform.worldPosition).length(), state.render.sortPriority, transparentOrder++};
+                data.particles = &particles;
+                transparentRenders.push_back(data);
+            }
+        }
+
         if (hasActiveScissor){
             // screen pixels would overflow an offscreen SSR / post-process attachment
             camera.render.applyScissor(colorPassViewport);
@@ -14304,6 +14373,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             passSubmeshQueue = SubmeshQueue::ALL;
         }else if (renderData.type == TransparentRenderType::POINTS){
             drawPoints(renderData.entity, *renderData.points, *renderData.transform, camera, cameraTransform, colorPip);
+        }else if (renderData.type == TransparentRenderType::PARTICLES){
+            drawParticles(renderData.entity, *renderData.particles, *renderData.transform, camera, cameraTransform, colorPip);
         }
     }
 
@@ -14443,6 +14514,9 @@ void RenderSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
     } else if (componentId == scene->getComponentId<PointsComponent>()) {
         PointsComponent& points = scene->getComponent<PointsComponent>(entity);
         destroyPoints(entity, points);
+    } else if (componentId == scene->getComponentId<ParticleSystemComponent>()) {
+        destroyParticles(scene->getComponent<ParticleSystemComponent>(entity));
+        setParticleSceneInputUser(entity, 0);
         setSceneInputUser(entity, true, 0);
     } else if (componentId == scene->getComponentId<LineRendererComponent>()) {
         LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
