@@ -24,6 +24,7 @@
 #include "Project.h"
 #include "animation/ClipConverters.h"
 #include "animation/ClipEditorUtil.h"
+#include "animation/AnimationClipIO.h"
 #include "pose/PoseEditSession.h"
 #include "texsynth/SynthesisSession.h"
 #include "command/type/CreateVatCmd.h"
@@ -241,6 +242,60 @@ bool stringList(const Json& value, const char* field, std::vector<std::string>& 
         out.push_back(item.get<std::string>());
     }
     return true;
+}
+
+// `clips`: a name, or a list of names and {name, wrap, interpolate, fps} objects (the baker
+// window's clip rows: a clip's wrap / interpolation / sample rate at bake time)
+bool clipsArg(const Json& value, std::vector<std::string>& names, std::vector<VatClipOverride>& overrides, std::string& error) {
+    const Json items = value.is_array() ? value : Json::array({value});
+    const std::string shape = "clips holds clip names or {name, wrap (once|loop|ping_pong|clamp_forever), interpolate (bool), fps (0..240)}";
+    for (const Json& item : items) {
+        if (item.is_string() && !item.get<std::string>().empty()) {
+            names.push_back(item.get<std::string>());
+            continue;
+        }
+        if (!item.is_object() || !item.contains("name") || !item["name"].is_string() || item["name"].get<std::string>().empty()) {
+            error = shape + " (got " + item.dump() + ").";
+            return false;
+        }
+        VatClipOverride override;
+        override.name = item["name"].get<std::string>();
+        for (auto it = item.begin(); it != item.end(); ++it) {
+            const std::string key = it.key();
+            const Json& v = it.value();
+            if (key == "name") continue;
+            if (key == "wrap" && v.is_string() && anim::wrapFromName(v.get<std::string>(), override.wrap) && override.wrap != ClipWrapMode::Default) {
+                continue;
+            }
+            if (key == "interpolate" && v.is_boolean()) {
+                override.interpolate = v.get<bool>();
+                continue;
+            }
+            if (key == "fps" && v.is_number() && v.get<double>() >= 0.0 && v.get<double>() <= 240.0) {
+                override.fps = v.get<float>();
+                continue;
+            }
+            error = "clips[\"" + override.name + "\"]." + key + ": " + shape + " (got " + v.dump() + ").";
+            return false;
+        }
+        names.push_back(override.name);
+        auto same = std::find_if(overrides.begin(), overrides.end(), [&](const VatClipOverride& o) { return o.name == override.name; });
+        if (same != overrides.end()) *same = override;
+        else overrides.push_back(override);
+    }
+    return true;
+}
+
+// a clip override naming a clip the source doesn't have: invalid_settings (the choices listed)
+std::vector<VatIssue> unknownOverrides(const VatBakeSpec& spec, const std::vector<VatSourceClip>& clips) {
+    std::vector<VatIssue> issues;
+    std::string available;
+    for (const VatSourceClip& clip : clips) available += (available.empty() ? "" : ", ") + clip.name;
+    for (const VatClipOverride& override : spec.clipOverrides) {
+        const bool known = std::any_of(clips.begin(), clips.end(), [&](const VatSourceClip& clip) { return clip.name == override.name; });
+        if (!known) issues.push_back(argIssue("the source has no clip '" + override.name + "' (clips object)", "choose from: " + available));
+    }
+    return issues;
 }
 
 bool numberArg(const Json& args, const char* key, double minimum, double maximum, bool exclusiveMinimum, double& out, std::string& error) {
@@ -481,7 +536,7 @@ bool requestFromArgs(Project* project, const Json& args, VatRequest& request, st
     std::string name;
     if (args.contains("clips")) {
         std::vector<std::string> clips;
-        if (!stringList(args["clips"], "clips", clips, error)) return false;
+        if (!clipsArg(args["clips"], clips, spec.clipOverrides, error)) return false;
         for (const std::string& clip : clips) {
             if (std::find(spec.clips.begin(), spec.clips.end(), clip) == spec.clips.end()) spec.clips.push_back(clip);
         }
@@ -535,6 +590,12 @@ bool requestFromArgs(Project* project, const Json& args, VatRequest& request, st
     }
     if (!request.write && args.contains("overwrite") && spec.overwrite) {
         error = "overwrite needs output (a preview writes nothing).";
+        return false;
+    }
+    if (request.defaultOutput && spec.overwrite) {
+        error = "output: true and overwrite: true contradict: the default name never replaces another file (the same source's bake "
+                "there is rebaked, keeping its GUID; any other file makes it take a free name). To replace a file, give its .vat path "
+                "as output with overwrite: true; else leave overwrite out.";
         return false;
     }
 
@@ -1034,7 +1095,10 @@ void bakeVertexAnimationTool(const CallPtr& call) {
         } else {
             state->session->setSpec(request.spec);
         }
-        const std::vector<VatIssue>& issues = state->session->check();
+        std::vector<VatIssue> issues = state->session->check();
+        if (!hasErrors(issues)) {
+            for (const VatIssue& issue : unknownOverrides(state->session->spec(), state->session->sourceClips())) issues.push_back(issue);
+        }
         if (hasErrors(issues)) {
             Json clips = Json::array();
             for (const VatSourceClip& clip : state->session->sourceClips()) clips.push_back(clip.name);
@@ -1246,7 +1310,12 @@ void registerVatTools(McpRegistry& registry) {
         {"source", source},
         {"scene", sceneRef()},
         {"on", on},
-        {"clips", array(Json{{"type", "string"}}, "Default all.")},
+        {"clips", array(Json{{"anyOf", Json::array({Json{{"type", "string"}},
+                                                     object({{"name", string("")},
+                                                             {"wrap", stringEnum("", {"once", "loop", "ping_pong", "clamp_forever"})},
+                                                             {"interpolate", boolean("")},
+                                                             {"fps", number("")}}, {"name"})})}},
+                        "Names, or objects setting a clip (guide). Default all.")},
         {"mode", withDefault(stringEnum("", {"auto", "vertices", "bones"}), "auto")},
         {"fps", number("Default 30.")},
         {"normals", withDefault(boolean(""), true)},

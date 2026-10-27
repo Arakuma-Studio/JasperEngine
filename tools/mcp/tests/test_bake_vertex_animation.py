@@ -940,3 +940,67 @@ async def test_job_errors_when_the_source_vanishes(ed: Editor):
     # the GameObject gone before the call: refused at once with the fix
     msg = await ed.call("bake_vertex_animation", {**big, "source": "Hero", "scene": "Other"}, expect_error=True)
     check("GameObject" in msg and "Give" in msg, msg)
+
+
+async def test_vertex_animator_preview_in_edit_mode(ed: Editor):
+    """The guide's route to animate a Vertex Animator in edit mode: `preview` is a runtime flag (not a
+    saved property: set_properties refuses it and says how), set through eval_lua with allow_edit_mode;
+    the clock then moves without play, and the scene file never holds it."""
+    copy_fixtures(ed.project)
+    await ed.call("sync_files")
+    sid = await scene(ed)
+    out = "assets/vat/preview_arm.vat"
+    r = await bake(ed, source=ARM, clips=["Swing"], output=out, scene=sid, place="beside")
+    entity = r.structured["entity"]["id"]
+    msg = await ed.call("set_properties", {"scene": sid, "entity": entity, "values": {"vertexanimator": {"preview": True}}},
+                        expect_error=True)
+    check("eval_lua" in msg and "preview = true" in msg, f"set_properties says how to preview: {msg}")
+    code = f"local a = object({entity}, 'Model'):getVertexAnimator()"
+    loaded = False
+    for _ in range(80):
+        got = (await ed.call("eval_lua", code=code + " return a:isLoaded()", allow_edit_mode=True))["values"]
+        if got == [True]:
+            loaded = True
+            break
+        await asyncio.sleep(0.25)
+    check(loaded, "the Vertex Animator loads in edit mode")
+    first = (await ed.call("eval_lua", code=code + " a.preview = true return a.time", allow_edit_mode=True))["values"][0]
+    later = first
+    for _ in range(40):
+        await asyncio.sleep(0.25)
+        later = (await ed.call("eval_lua", code=code + " return a.time", allow_edit_mode=True))["values"][0]
+        if abs(later - first) > 1e-3:
+            break
+    check(abs(later - first) > 1e-3, f"with preview on, time moves in edit mode: {first} then {later}")
+    await ed.call("eval_lua", code=code + " a.preview = false", allow_edit_mode=True)
+    await ed.call("save_scene", scene=sid)
+    scene_files = list((ed.project / "scenes").glob("*.scene")) + list((ed.project / "assets").rglob("*.scene"))
+    check(scene_files and all("preview" not in f.read_text() for f in scene_files), "preview is never saved")
+
+
+async def test_clip_objects_and_contradictions(ed: Editor):
+    """clips entries may be {name, wrap, interpolate, fps} objects (the baker's clip rows): the written .vat
+    has that wrap and interpolation; bad objects and unknown clips are refused with the choices; output: true
+    with overwrite: true contradict (refused with the fix); a negative crowd seed is refused."""
+    copy_fixtures(ed.project)
+    await ed.call("sync_files")
+    out = "assets/vat/clip_objects.vat"
+    r = await bake(ed, source=ARM, clips=[{"name": "Swing", "wrap": "once", "interpolate": False, "fps": 12}, "Stretch"], output=out)
+    vat = read_vat(ed.project, out)
+    clips = {c["name"]: c for c in vat["clips"]}
+    check(list(clips) == ["Swing", "Stretch"], f"the clips in order: {list(clips)}")
+    check(clips["Swing"].get("wrap") == "once" and clips["Swing"].get("interpolate") is False, f"Swing's settings: {clips['Swing']}")
+    check(clips["Stretch"].get("interpolate", True) is True, f"Stretch keeps interpolation: {clips['Stretch']}")
+    check(abs(clips["Swing"]["fps"] - 12) < 1.5 and abs(clips["Stretch"]["fps"] - 30) < 3, f"per-clip fps: {vat['clips']}")
+    cases = [
+        ({"source": ARM, "clips": [{"name": "Swing", "wrap": "sideways"}]}, "clamp_forever"),
+        ({"source": ARM, "clips": [{"wrap": "once"}]}, "clips holds clip names or {name"),
+        ({"source": ARM, "clips": [{"name": "Swing", "speed": 2}]}, "clips[\"Swing\"].speed"),
+        ({"source": ARM, "clips": [{"name": "Swing", "fps": 500}]}, "fps (0..240)"),
+        ({"source": ARM, "clips": [{"name": "Fly", "wrap": "once"}]}, "Swing"),
+        ({"source": ARM, "output": True, "overwrite": True}, "contradict"),
+        ({"source": ARM, "output": "assets/vat/x.vat", "place": {"crowd": {"seed": -1}}}, "seed an integer >= 0"),
+    ]
+    for args, needle in cases:
+        msg = await ed.call("bake_vertex_animation", args, expect_error=True)
+        check(needle in msg, f"{args}: the error says {needle!r}: {msg}")

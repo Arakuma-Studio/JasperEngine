@@ -3280,6 +3280,14 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                             error = "Unknown property \"" + edit.property + "\" of " + componentLabel + " on " + label +
                                     ". Properties: " + propertyNamesText(scene, entity, component) +
                                     " (custom ones also by their scene-file keys, see get_entity detail=\"yaml\").";
+                            // the Vertex Animator's edit-mode Preview is a runtime flag, never saved
+                            // (no undo step, no scene change): its route is Lua
+                            if (component == ComponentType::VertexAnimatorComponent && edit.property == "preview") {
+                                error = "vertexanimator.preview is not a saved property (the Inspector's Preview toggle, a runtime flag). "
+                                        "To animate it in edit mode: eval_lua {allow_edit_mode: true, code: \"object(" +
+                                        std::to_string(entity) + ", 'Model'):getVertexAnimator().preview = true\"} (false to stop; "
+                                        "play mode always animates).";
+                            }
                         } else {
                             error = componentLabel + "." + edit.property + " on " + label + ": " + why;
                         }

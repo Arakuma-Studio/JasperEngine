@@ -19,6 +19,7 @@
 #include "vat/VatBakeSession.h"
 #include "vat/VatFrontEnd.h"
 
+#include "animation/AnimationClipIO.h"
 #include "animation/VertexAnimation.h"
 
 #include "json.hpp"
@@ -75,8 +76,13 @@ namespace{
         std::string rebake;
         bool dryRun = false;
         std::string format = "text";
+        float toleranceMm = 1.0f;           // the error budget (bakes and imports), > 0
+        std::vector<VatClipOverride> clipOverrides;     // --clip-wrap / --clip-interpolate (bakes)
         std::string axis;                   // imports
+        float axisScale = 0.0f;             // imports: engine units per metre of the target (0: the importer's)
         int upsample = 0;                   // imports: 0 = automatic
+        std::string clipName;               // imports: the clip's name (Houdini; default the asset name)
+        bool colors = true;                 // imports: the colour texel when the export has colours
         bool quiet = false;
         bool help = false;
         // the flags given (rebake refuses settings; imports and bakes refuse each other's)
@@ -93,6 +99,33 @@ namespace{
             start = comma + 1;
         }
         return out;
+    }
+
+    // a positive number (over `minimum` when exclusive), at most `maximum`
+    bool positiveNumber(const std::string& value, double maximum, double& out){
+        char* end = nullptr;
+        out = std::strtod(value.c_str(), &end);
+        return !value.empty() && *end == 0 && std::isfinite(out) && out > 0.0 && out <= maximum;
+    }
+
+    // the override of clip `name` (made when missing)
+    VatClipOverride& clipOverride(Options& o, const std::string& name){
+        for (VatClipOverride& override : o.clipOverrides){
+            if (override.name == name) return override;
+        }
+        VatClipOverride override;
+        override.name = name;
+        o.clipOverrides.push_back(override);
+        return o.clipOverrides.back();
+    }
+
+    // "NAME=VALUE" (the last '=' splits: clip names may hold one)
+    bool clipSetting(const std::string& text, std::string& name, std::string& value){
+        const size_t eq = text.rfind('=');
+        if (eq == std::string::npos || eq == 0 || eq + 1 >= text.size()) return false;
+        name = text.substr(0, eq);
+        value = text.substr(eq + 1);
+        return true;
     }
 
     bool parseArgs(int argc, char** argv, Options& o, std::string& error){
@@ -218,6 +251,53 @@ namespace{
                     return false;
                 }
                 o.axis = value;
+            }else if (arg == "--tolerance"){
+                if (!need()) return false;
+                double v = 0.0;
+                if (!positiveNumber(value, 1000.0, v)){
+                    error = "invalid --tolerance '" + value + "' (the error budget in mm, over 0 and at most 1000)";
+                    return false;
+                }
+                o.toleranceMm = static_cast<float>(v);
+            }else if (arg == "--clip-wrap"){
+                if (!need()) return false;
+                std::string name, wrapText;
+                ClipWrapMode wrap = ClipWrapMode::Default;
+                if (!clipSetting(value, name, wrapText) || !::jasperengine::anim::wrapFromName(wrapText, wrap) || wrap == ClipWrapMode::Default){
+                    error = "invalid --clip-wrap '" + value + "' (NAME=WRAP, WRAP once, loop, ping_pong or clamp_forever)";
+                    return false;
+                }
+                clipOverride(o, name).wrap = wrap;
+            }else if (arg == "--clip-interpolate"){
+                if (!need()) return false;
+                std::string name, onOff;
+                if (!clipSetting(value, name, onOff) || (onOff != "on" && onOff != "off")){
+                    error = "invalid --clip-interpolate '" + value + "' (NAME=on or NAME=off)";
+                    return false;
+                }
+                clipOverride(o, name).interpolate = onOff == "on";
+            }else if (arg == "--axis-scale"){
+                if (!need()) return false;
+                double v = 0.0;
+                if (!positiveNumber(value, 1e6, v)){
+                    error = "invalid --axis-scale '" + value + "' (engine units per metre of the export's target, over 0)";
+                    return false;
+                }
+                o.axisScale = static_cast<float>(v);
+            }else if (arg == "--clip-name"){
+                if (!need()) return false;
+                if (value.empty()){
+                    error = "invalid --clip-name '' (the imported clip's name)";
+                    return false;
+                }
+                o.clipName = value;
+            }else if (arg == "--colors"){
+                if (!need()) return false;
+                if (value != "on" && value != "off"){
+                    error = "invalid --colors '" + value + "' (on or off)";
+                    return false;
+                }
+                o.colors = value == "on";
             }else if (arg == "--upsample"){
                 if (!need()) return false;
                 char* end = nullptr;
@@ -242,7 +322,8 @@ namespace{
         }
         if (!o.rebake.empty()){
             for (const char* flag : {"--source", "--on", "--scene", "--clips", "--sockets", "--mode", "--fps", "--normals", "--precision",
-                                     "--preset", "--output", "--overwrite", "--axis", "--upsample"}){
+                                     "--preset", "--output", "--overwrite", "--axis", "--upsample", "--tolerance", "--clip-wrap",
+                                     "--clip-interpolate", "--axis-scale", "--clip-name", "--colors"}){
                 if (o.given.count(flag) || (std::strcmp(flag, "--source") == 0 && o.given.count("-s")) ||
                     (std::strcmp(flag, "--output") == 0 && o.given.count("-o"))){
                     error = std::string("--rebake re-runs the .vat's recipe and writes over it (GUID and hand edits kept): leave out ") + flag +
@@ -344,6 +425,10 @@ namespace{
         if ((fix.setting == "mode" || fix.setting == "preset" || fix.setting == "precision") && value.is_string()) return "--" + fix.setting + " " + text();
         if (fix.setting == "output" && value.is_string()) return "--output " + text();
         if (fix.setting == "overwrite" && value.is_boolean() && value.get<bool>()) return "--overwrite";
+        if (fix.setting == "interpolate" && value.is_object() && value.contains("clip") && value["clip"].is_string() && value.contains("value") &&
+            value["value"].is_boolean()){
+            return "--clip-interpolate \"" + value["clip"].get<std::string>() + "=" + (value["value"].get<bool>() ? "on" : "off") + "\"";
+        }
         if (fix.setting == "clips" && value.is_array()){
             std::string names;
             for (const Json& name : value){
@@ -543,6 +628,17 @@ namespace{
             if (!clips.empty()) run.result["source_clips"] = clips;
             return run.failIssues(1, issues);
         }
+        // --clip-wrap / --clip-interpolate of a clip the source doesn't have
+        std::string available;
+        for (const VatSourceClip& clip : session.sourceClips()) available += (available.empty() ? "" : ", ") + clip.name;
+        for (const VatClipOverride& override : session.spec().clipOverrides){
+            bool known = false;
+            for (const VatSourceClip& clip : session.sourceClips()) known = known || clip.name == override.name;
+            if (!known){
+                return run.fail(1, "invalid_settings", "the source has no clip '" + override.name + "' (--clip-wrap / --clip-interpolate)",
+                                "choose from: " + available);
+            }
+        }
         const VatEstimate estimate = session.estimate();
         run.progress("baking " + std::to_string(estimate.clips.size()) + " clip(s), about " + std::to_string(estimate.width) + "x" +
                      std::to_string(estimate.height) + " texels");
@@ -701,14 +797,14 @@ namespace{
 
         // what each kind of source takes
         if (route.import){
-            for (const char* flag : {"--clips", "--sockets", "--on", "--scene"}){
+            for (const char* flag : {"--clips", "--sockets", "--on", "--scene", "--clip-wrap", "--clip-interpolate"}){
                 if (o.given.count(flag)){
                     return run.fail(2, "usage", std::string(flag) + " is for baked sources; an import (" + importKindName(route.detection.kind) +
                                                 ") takes the export's clips as they are", std::string("leave ") + flag + " out");
                 }
             }
         }else{
-            for (const char* flag : {"--axis", "--upsample"}){
+            for (const char* flag : {"--axis", "--upsample", "--axis-scale", "--clip-name", "--colors"}){
                 if (o.given.count(flag)){
                     return run.fail(2, "usage", std::string(flag) + " is an importer option (Houdini VAT 3 / OpenVAT exports); this source is baked",
                                     std::string("leave ") + flag + " out");
@@ -747,6 +843,10 @@ namespace{
             importSpec.precision = precisionChoiceName(o.precision);
             importSpec.preset = presetName(o.preset);
             importSpec.normals = o.normals;
+            importSpec.toleranceMm = o.toleranceMm;
+            importSpec.axisScale = o.axisScale;
+            importSpec.clipName = o.clipName;
+            importSpec.colors = o.colors;
             VatImportPlan options;
             options.output = output;
             options.overwrite = o.overwrite;
@@ -763,6 +863,8 @@ namespace{
         spec.precision = o.precision;
         spec.preset = o.preset;
         spec.sockets = o.sockets;
+        spec.toleranceMm = o.toleranceMm;
+        spec.clipOverrides = o.clipOverrides;
         spec.output = output;
         spec.overwrite = o.overwrite;
         spec.place = VatPlace::None;
@@ -830,6 +932,12 @@ void printBakeVatUsage(const std::string& commandName, std::ostream& out){
         << "      --preset <preset>     mobile_web (default: 2048-wide payload, at most 2048 rows: WebGL2/GLES3) or desktop\n"
         << "                            (4096 wide, 8192 rows).\n"
         << "      --sockets <a,b>       Node paths below the source's root to bake as sockets.\n"
+        << "      --clip-wrap <NAME=WRAP>  A clip's wrap in the .vat: once, loop, ping_pong or clamp_forever (default: the\n"
+        << "                            source's; a loop is sampled for its seam). Repeat for several clips.\n"
+        << "      --clip-interpolate <NAME=on|off>  off: the clip plays its nearest lower sample (the fix of a\n"
+        << "                            large_interpolation_error the sample rate can't cure). Repeat for several clips.\n"
+        << "      --tolerance <mm>      The error budget (default 1 mm; scaled up to 0.05% of the bounds' diagonal): half\n"
+        << "                            precision is kept within it, larger interpolation errors are warned about.\n"
         << "  -o, --output <file.vat>   Where to write (inside the assets folder; the mesh goes to <file>.vat.glb). An\n"
         << "                            existing file is refused without --overwrite. Default: <source dir>/<source name>.vat:\n"
         << "                            the bake of the same source there is rewritten (GUID and hand edits kept), another\n"
@@ -839,7 +947,10 @@ void printBakeVatUsage(const std::string& commandName, std::ostream& out){
         << "                            keeping its GUID, clip names, events, speeds and wraps. Takes no other settings.\n"
         << "      --axis <axis>         Import: the Houdini export's target engine when its metadata doesn't say (unity,\n"
         << "                            unreal, houdini, zup).\n"
+        << "      --axis-scale <n>      Import: engine units per metre of the export's target (default 1; Unreal 100).\n"
         << "      --upsample <n>        Import: Houdini rigid pieces' frame upsampling (0 = automatic, 1..1024).\n"
+        << "      --clip-name <name>    Import: the clip's name (a Houdini export has one clip; default the asset name).\n"
+        << "      --colors <on|off>     Import: keep the export's vertex colours (default on).\n"
         << "      --dry-run             Bake (or import) and print the report and where it would write; write nothing.\n"
         << "      --format <format>     text (default): a summary, warnings and their fixes; json: one object on stdout\n"
         << "                            {ok, dry_run, source, report, output: {vat, rewrite}, written: {vat, mesh, files, guid,\n"

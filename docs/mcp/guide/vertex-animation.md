@@ -26,8 +26,10 @@ only its baked clips and its colliders use the rest pose.
 4. **Use** it: `place: "beside"` makes the GameObject for you; otherwise
    `create_entity {type: "model", model: "<x>.vat.glb"}` then
    `add_component {component: "vertexanimator"}` and `set_properties {values: {vertexanimator:
-   {animation: "<x>.vat"}}}`. Check it with a screenshot during play (edit mode stands still unless
-   the Vertex Animator's `preview` is on).
+   {animation: "<x>.vat"}}}`. Check it with a screenshot during play. Edit mode stands still unless
+   the Vertex Animator's Preview is on: a runtime flag, not a saved property (`set_properties`
+   refuses it), set with `eval_lua {allow_edit_mode: true, code: "object(<id>,
+   'Model'):getVertexAnimator().preview = true"}` (no undo step, never saved; `false` stops it).
 
 A bake is a job: `wait` (default true) and `timeout_seconds` (default 120); past the timeout the
 call returns `{job_id, status: "running"}`, follow it with `get_job`, stop it with `cancel_job`
@@ -231,7 +233,8 @@ made since are kept; one undo step puts the previous files back. `check --vat` f
 
 - A Model that isn't the `.vat`'s `.vat.glb` with a Vertex Animator: `getLoadError()` says
   `mesh_mismatch` and the mesh draws at rest. Use the `.vat.glb` next to the `.vat`.
-- Expecting motion in edit-mode screenshots: time stands still in edit mode; play, or set the
-  Vertex Animator's `preview: true`.
+- Expecting motion in edit-mode screenshots: time stands still in edit mode; play, or turn the
+  Vertex Animator's Preview on through `eval_lua` (`...:getVertexAnimator().preview = true`,
+  `allow_edit_mode: true`; it is not a `set_properties` property).
 - Editing `.vat.glb` or generated fields: rebake instead.
 - Baking a whole scene root: bake the character (its root GameObject or model), not the level.
