@@ -8633,6 +8633,8 @@
 				4A534E47EBF307C4032AEC37 /* ClipTypes.h */,
 			);
 			path = animation;
+			sourceTree = "<group>";
+		};
 		50525443F2555146A1CC118F /* particles */ = {
 			isa = PBXGroup;
 			children = (
