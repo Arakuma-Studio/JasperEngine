@@ -36,6 +36,10 @@ namespace jasperengine{
         static std::shared_ptr<const vat::VertexAnimation> getOrLoad(const std::string& path, std::string* error = nullptr,
                                                                      std::vector<ClipWarning>* warnings = nullptr);
 
+        // registers an in-memory asset under `path` (baker preview, tests): replaces any cached one,
+        // bumps the generation; the asset's getPath() becomes the key
+        static void put(const std::string& path, std::shared_ptr<const vat::VertexAnimation> asset);
+
         static uint64_t getGeneration(const std::string& path);
         static void invalidate(const std::string& path);
 
