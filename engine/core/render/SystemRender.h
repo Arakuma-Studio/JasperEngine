@@ -61,6 +61,9 @@ namespace jasperengine{
         static uint64_t getPipelineCacheMisses();
         static uint64_t getPipelineApplies();
         static size_t getPipelineCacheSize();
+        // render passes begun while another was open, since start: an engine bug, logged as an
+        // error (passes do not nest; see SokolSystem::beginPass)
+        static uint64_t getNestedPassCount();
         static void shutdown();
 
         // logs "Frame stats (frame N): ..." with the GPU work of the last committed frame and
