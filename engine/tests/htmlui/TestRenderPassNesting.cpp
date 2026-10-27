@@ -23,15 +23,24 @@ using namespace jasperengine::test;
 
 namespace {
 
-    // a rounded overflow clip (a stencil clip mask in layer 0's depth-stencil) around blurred
-    // and shadowed content (a layer and post-process targets, created by the first drawn frame)
+    // a rounded overflow clip (a stencil clip mask in layer 0's depth-stencil) around a strip,
+    // a blurred strip (a layer and post-process targets, created by the first drawn frame in
+    // the middle of layer 0's pass) and a strip drawn after it through the same clip mask
     const char* const kDocument = R"(<rml><head><style>
 body { width: 96px; height: 64px; margin: 0; padding: 0; }
 div { display: block; }
-#clip { position: absolute; left: 8px; top: 8px; width: 60px; height: 40px; border-radius: 16px; overflow: hidden; }
-#content { width: 80px; height: 50px; margin-left: -6px; background-color: #e04020; filter: blur(2px) drop-shadow(#0000ff 3px 3px 2px); }
-#plain { position: absolute; left: 76px; top: 8px; width: 12px; height: 40px; background-color: #20c040; }
-</style></head><body><div id="clip"><div id="content"/></div><div id="plain"/></body></rml>)";
+#clip { position: absolute; left: 8px; top: 8px; width: 60px; height: 48px; border-radius: 16px; overflow: hidden; }
+.strip { width: 80px; height: 16px; background-color: #e04020; }
+.blurred { width: 80px; height: 16px; background-color: #2040e0; filter: blur(2px); }
+</style></head><body><div id="clip"><div class="strip"/><div class="blurred"/><div class="strip"/></div></body></rml>)";
+
+    // pixels whose red channel is over half (the two strips)
+    size_t redPixels(const std::vector<uint8_t>& rgba){
+        size_t count = 0;
+        for (size_t i = 0; i + 3 < rgba.size(); i += 4)
+            count += rgba[i] > 128;
+        return count;
+    }
 
     size_t differingPixels(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b){
         if (a.size() != b.size())
@@ -71,13 +80,15 @@ TEST(RenderPassNesting, TargetsCreatedWhileDrawing){
         ASSERT_TRUE(render.readLayer(second));
         EXPECT_EQ(differingPixels(first, second), 0u) << "the frame that created the targets drew differently";
 
-        // something was drawn, and the clip held: the rounded corner outside it stays empty
-        size_t covered = 0;
-        for (size_t i = 3; i < second.size(); i += 4)
-            covered += second[i] != 0;
-        EXPECT_GT(covered, 1000u);
-        const size_t corner = (size_t(8) * 96 + 8) * 4;
-        EXPECT_EQ(int(second[corner + 3]), 0) << "the top-left corner of the rounded clip";
+        // both strips drawn, rounded by the clip: the corners outside it stay empty (the second
+        // strip is drawn after the layer was created, through the clip mask it shares)
+        const size_t red = redPixels(second);
+        EXPECT_GT(red, size_t(2 * 60 * 16 - 2 * 200)) << "a strip is missing";
+        EXPECT_LT(red, size_t(2 * 60 * 16)) << "the strips are not rounded";
+        const auto alphaAt = [&second](int x, int y){ return int(second[(size_t(y) * 96 + x) * 4 + 3]); };
+        EXPECT_EQ(alphaAt(8, 8), 0) << "the top-left corner of the rounded clip";
+        EXPECT_EQ(alphaAt(8, 55), 0) << "the bottom-left corner of the rounded clip";
+        EXPECT_GT(alphaAt(30, 50), 0) << "the second strip";
         EXPECT_EQ(SystemRender::getNestedPassCount(), nestedBefore);
     }
 }
