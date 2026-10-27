@@ -65,6 +65,11 @@ namespace jasperengine{
         float defaultFadeTime = 0.2f;
         bool instanceEvents = false;    // fire events/finishes for every instance (cost O(instances))
         std::vector<VertexAnimatorAttachment> attachments;
+        // per instance (parallel to InstancedMeshComponent::instances, may be shorter): the clip
+        // an instance starts with when playAutomatically (empty or unknown = the default clip)
+        // and its own speed multiplier (setInstanceSpeed; missing = 1). Create Crowd writes them
+        std::vector<std::string> instanceClips;
+        std::vector<float> instanceSpeeds;
 
         // runtime (not serialized)
         bool preview = false;           // editor: animate in edit mode (Inspector "Preview")

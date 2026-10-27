@@ -755,6 +755,9 @@ namespace {
         makeFastProperty<VertexAnimatorComponent, float, &VertexAnimatorComponent::defaultFadeTime>("defaultFadeTime", PropertyType::Float, UpdateFlags_VertexAnimator_Reload),
         makeFastProperty<VertexAnimatorComponent, bool, &VertexAnimatorComponent::instanceEvents>("instanceEvents", PropertyType::Bool, UpdateFlags_None),
         makeFastProperty<VertexAnimatorComponent, std::vector<VertexAnimatorAttachment>, &VertexAnimatorComponent::attachments>("attachments", PropertyType::Custom, UpdateFlags_None),
+        // per-instance starts (Create Crowd), read when the animator starts
+        makeFastProperty<VertexAnimatorComponent, std::vector<std::string>, &VertexAnimatorComponent::instanceClips>("instanceClips", PropertyType::Custom, UpdateFlags_VertexAnimator_Reload),
+        makeFastProperty<VertexAnimatorComponent, std::vector<float>, &VertexAnimatorComponent::instanceSpeeds>("instanceSpeeds", PropertyType::Custom, UpdateFlags_VertexAnimator_Reload),
     };
 
     static const FastPropertyDescriptor kCameraProperties[] = {
@@ -6022,6 +6025,14 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
             } else if (compType == ComponentType::VertexAnimatorComponent && property == "attachments") {
                 auto* source = Catalog::getPropertyRef<std::vector<VertexAnimatorAttachment>>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<std::vector<VertexAnimatorAttachment>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::VertexAnimatorComponent && property == "instanceClips") {
+                auto* source = Catalog::getPropertyRef<std::vector<std::string>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<std::string>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::VertexAnimatorComponent && property == "instanceSpeeds") {
+                auto* source = Catalog::getPropertyRef<std::vector<float>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<float>>(targetRegistry, targetEntity, compType, property);
                 if (source && target) *target = *source;
             } else if (compType == ComponentType::AnimationPlayerComponent && property == "clips") {
                 auto* source = Catalog::getPropertyRef<std::vector<AnimationPlayerClip>>(sourceRegistry, sourceEntity, compType, property);

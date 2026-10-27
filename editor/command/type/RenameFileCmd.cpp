@@ -3,7 +3,13 @@
 
 #include "RenameFileCmd.h"
 
+#include "util/FileUtils.h"
 #include "util/Util.h"
+#include "vat/VatAssetFiles.h"
+#include "vat/VatDocument.h"
+
+#include <fstream>
+#include <iterator>
 
 using namespace jasperengine;
 
@@ -62,8 +68,10 @@ bool editor::RenameFileCmd::renameFile(const fs::path& sourceFs, const fs::path&
             if (isDir || Util::isAssetFile(extension)) {
                 project->remapAssetFilePath(sourceFs, destFs);
             }
-            // clips (their GUIDs follow) and models (their sub-clips): open documents follow, players reload
+            // clips and Vertex Animations (their GUIDs follow) and models (their sub-clips): open
+            // documents follow, players and animators reload
             if (isDir || Util::isAnimationClipFile(extension) || Util::isAnimationClipFile(destFs.extension().string()) ||
+                Util::isVertexAnimationFile(extension) || Util::isVertexAnimationFile(destFs.extension().string()) ||
                 Util::isModelFile(extension)) {
                 project->remapClipFilePath(sourceFs, destFs);
             }
@@ -80,13 +88,56 @@ bool editor::RenameFileCmd::renameFile(const fs::path& sourceFs, const fs::path&
 bool editor::RenameFileCmd::execute(){
     fs::path sourceFs = directory / oldFilename;
     fs::path destFs = directory / newFilename;
+
+    // a Vertex Animation's other file goes too; its new name must be free
+    if (!pairDecided) {
+        pairDecided = true;
+        fs::path pairOld, pairNew;
+        if (vat::renamedPair(sourceFs, destFs, pairOld, pairNew)) {
+            pairOldName = pairOld.filename();
+            pairNewName = pairNew.filename();
+        }
+    }
+    const bool withPair = !pairOldName.empty();
+    std::error_code ec;
+    if (withPair && fs::exists(directory / pairNewName, ec) && fs::exists(directory / pairOldName, ec)) {
+        printf("Error: Renaming %s: %s already exists (a Vertex Animation's .vat and .vat.glb are renamed together)\n",
+               sourceFs.string().c_str(), (directory / pairNewName).string().c_str());
+        return false;
+    }
+
     bool renamed = false;
     try {
         renamed = renameFile(sourceFs, destFs);
+        if (renamed && withPair) {
+            renameFile(directory / pairOldName, directory / pairNewName);
+        }
     } catch (const fs::filesystem_error& e) {
         printf("Error: Renaming %s: %s\n", sourceFs.string().c_str(), e.what());
         return false;
     }
+
+    // the renamed .vat names its renamed mesh (the payload is the same: no rebake)
+    meshFieldFile.clear();
+    if (renamed && withPair) {
+        const fs::path vatFile = Util::isVertexAnimationFile(destFs.string()) ? destFs : directory / pairNewName;
+        std::ifstream file(vatFile, std::ios::binary);
+        std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        file.close();
+        std::string updated = text;
+        if (vat::setMeshField(updated, vat::pairPathOf(vatFile).filename().generic_string()) &&
+            FileUtils::writeFileReplacing(vatFile, updated)) {
+            meshFieldFile = vatFile;
+            meshFieldBefore = text;
+            meshFieldAfter = updated;
+            if (project) {
+                // the database learns the new size and time (same GUID), the documents reload
+                project->importPrefabFiles(vatFile);
+                VatDocument::filesChanged({vatFile}, project);
+            }
+        }
+    }
+
     // clips previewing the renamed model (or taken from it) name it again, in this step
     clipHintEdits.clear();
     if (renamed) {
@@ -101,9 +152,27 @@ void editor::RenameFileCmd::undo(){
     fs::path destFs = directory / oldFilename;
     restoreClipHints(project, clipHintEdits);
     clipHintEdits.clear();
+    if (!meshFieldFile.empty()) {
+        std::ifstream file(meshFieldFile, std::ios::binary);
+        const std::string now((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        file.close();
+        // edited since (an Inspector edit undone separately keeps its own text)
+        if (now == meshFieldAfter) {
+            FileUtils::writeFileReplacing(meshFieldFile, meshFieldBefore);
+        }
+        meshFieldFile.clear();
+    }
     try {
         renameFile(sourceFs, destFs);
+        if (!pairOldName.empty()) {
+            renameFile(directory / pairNewName, directory / pairOldName);
+        }
     } catch (const fs::filesystem_error& e) {
         printf("Error: Undo renaming %s: %s\n", sourceFs.string().c_str(), e.what());
+    }
+    if (project && !pairOldName.empty()) {
+        const fs::path vatFile = Util::isVertexAnimationFile(destFs.string()) ? destFs : directory / pairOldName;
+        project->importPrefabFiles(vatFile);
+        VatDocument::filesChanged({vatFile}, project);
     }
 }

@@ -30,6 +30,8 @@
 #include "component/UIDocumentComponent.h"
 #include "htmlui/HtmlUIDependencies.h"
 #include "animation/AnimationClipDocument.h"
+#include "animation/VertexAnimation.h"
+#include "vat/VatDocument.h"
 #include "pose/PoseAnimationDocument.h"
 #include "pool/TextureDataPool.h"
 #include "pool/TexturePool.h"
@@ -523,14 +525,28 @@ int jsonErrorLine(const std::string& text) {
 void addAnimationFileProblems(Project* project, const fs::path& path, Json& problems) {
     const std::string pathText = path.string();
     const bool clip = Util::isAnimationClipFile(pathText);
-    if (!clip && !Util::isPoseAnimationFile(pathText)) return;
+    const bool vertexAnimation = Util::isVertexAnimationFile(pathText);
+    if (!clip && !vertexAnimation && !Util::isPoseAnimationFile(pathText)) return;
     std::error_code ec;
     std::string text;
     if (!fs::is_regular_file(path, ec) || !ProjectChecks::readFile(path, text)) return;
     const std::string rel = projectRelative(project, path);
 
     std::vector<std::string> warnings;
-    if (clip) {
+    if (vertexAnimation) {
+        // a .vat (vertex animation spec 2.1): the parser's error ("line:col: message" for JSON)
+        const jasperengine::vat::VatParseResult parsed = jasperengine::vat::parseVat(text);
+        if (!parsed.ok()) {
+            Json problem = {{"path", rel}, {"message", "Not a valid Vertex Animation: " + parsed.error +
+                                                       " (its Vertex Animators keep the last valid one)."}};
+            if (const int line = jsonErrorLine(text)) problem["line"] = line;
+            problems.push_back(problem);
+            return;
+        }
+        for (const ClipWarning& warning : parsed.warnings) {
+            warnings.push_back(warning.path.empty() ? warning.message : warning.path + ": " + warning.message);
+        }
+    } else if (clip) {
         const anim::ClipParseResult parsed = anim::parseClip(text);
         if (!parsed.ok()) {
             Json problem = {{"path", rel}, {"message", "Not a valid animation clip: " + parsed.error.message +
@@ -631,6 +647,10 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
     if (full) PoseAnimationDocument::checkDiskChanges();
     AnimationClipDocument::filesChanged(changedPaths, project);
     if (full) AnimationClipDocument::checkDiskChanges(project);
+    // .vat documents reload too, VertexAnimationPool drops the changed ones and their Vertex
+    // Animators reload (a broken file keeps the last valid asset; its problem is reported below)
+    VatDocument::filesChanged(changedPaths, project);
+    if (full) VatDocument::checkDiskChanges(project);
     for (const fs::path& path : changed) addAnimationFileProblems(project, path, problems);
 
     // Code editor buffers
