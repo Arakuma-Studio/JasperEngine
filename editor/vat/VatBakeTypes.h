@@ -42,8 +42,11 @@ namespace jasperengine::editor::vat{
         VatSourceKind kind = VatSourceKind::Model;
         std::string path;
         std::string scene;                  // GameObject sources: the scene file (must be open)
+        uint32_t sceneId = 0;               // or the open scene by id (the window, Inspector: unsaved scenes too)
         std::vector<std::string> anims;     // Anim: .anim files; Pose: the .poseanim
     };
+    // `path` names a GameObject of an open scene (scene or sceneId given), not a file
+    inline bool isGameObjectSource(const VatSourceSpec& source){ return !source.scene.empty() || source.sceneId != 0; }
 
     // ---- settings ----
 

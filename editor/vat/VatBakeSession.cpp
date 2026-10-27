@@ -324,7 +324,7 @@ const std::vector<VatIssue>& VatBakeSession::check(){
         checkIssues.push_back(makeIssue("invalid_settings", true, "crowd placement is not available yet",
                                         "bake with place beside, then turn the GameObject into a crowd"));
     }
-    if (spec.place == VatPlace::Replace && spec.source.scene.empty()){
+    if (spec.place == VatPlace::Replace && !isGameObjectSource(spec.source)){
         checkIssues.push_back(makeIssue("invalid_settings", true, "place replace needs a GameObject source (a file has nothing to replace)",
                                         "use place beside"));
     }
@@ -724,6 +724,7 @@ void VatBakeSession::finalize(){
         }
     }
     source.hashes = target->hashes;
+    if (isGameObjectSource(bakeSpec.source)) source.scene = target->sceneFile;
     result.mesh = std::move(output.mesh);
     result.sockets = output.socketTracks;
     result.report = output.report;

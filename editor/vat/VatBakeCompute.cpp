@@ -429,6 +429,7 @@ namespace{
         std::vector<double> bindTangents;          // 4 (w = sign)
         std::vector<double> restTangentDir;        // 3: the frame's tangent for vertices without one
         std::vector<double> vertexRest;            // 3: the Vertices rest (bind, or the first frame)
+        bool mixedRest = false;
 
         // candidates
         std::vector<Candidate> candidates;
@@ -1009,7 +1010,6 @@ namespace{
 
         VatMode mode = VatMode::Vertices;
         std::string reason;
-        const VatPresetLimits limits = presetLimits(in.preset);
         if (in.mode == VatModeChoice::Vertices){
             reason = "Vertices mode was chosen";
         }else if (in.mode == VatModeChoice::Bones){
@@ -1070,7 +1070,6 @@ namespace{
                 return false;
             }
         }
-        (void)limits;
         out.data.mode = mode;
         out.report.mode = mode;
         out.report.modeReason = reason;
@@ -1096,6 +1095,13 @@ namespace{
             out.data.layout.precision = VatPrecision::Half;
         }
         out.report.precision = out.data.layout.precision;
+        if (mixedRest && mode == VatMode::Vertices){
+            VatIssue issue;
+            issue.kind = "mixed_rest";
+            issue.message = "the source has no usable bind pose: the rest mesh is the first frame of '" + in.clips[0].name + "'";
+            issue.fix = "give the model a bind pose to rest in its own shape (only the rest mesh, drawn without the animation, changes)";
+            out.report.warnings.push_back(issue);
+        }
         out.report.quantizationErrorMm = mode == VatMode::Vertices && out.data.layout.precision == VatPrecision::Half ? (float)halfMax : 0.0f;
         return true;
     }
@@ -1194,7 +1200,7 @@ namespace{
         const VatPresetLimits limits = presetLimits(in.preset);
         layout.width = limits.width;
         layout.samples = samples;
-        layout.normals = bones ? in.normals : in.normals;
+        layout.normals = in.normals;
         layout.colors = false;
         layout.vertices = bones ? 0 : (int)vertexCount;
 
@@ -1490,12 +1496,7 @@ namespace{
             if (useFirstFrame){
                 if (!deformSample(in.clips[0].samples[0], "the first frame", error)) return false;
                 vertexRest = exactPositions;
-                VatIssue issue;
-                issue.kind = "mixed_rest";
-                issue.message = "the source has no usable bind pose: the rest mesh is the first frame of '" + in.clips[0].name + "'";
-                issue.fix = "give the model a bind pose to rest in its own shape (only the rest mesh, drawn without the animation, changes)";
-                out.report.warnings.push_back(issue);
-                out.data.clips.clear();
+                mixedRest = true;
             }
         }
 

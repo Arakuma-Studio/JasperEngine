@@ -91,6 +91,7 @@ namespace jasperengine::editor::vat{
         std::vector<VatSourceClip> clips;       // every clip the source offers, in source order
         // the files the source read: project-relative path -> "sha1:<hex>"
         std::vector<std::pair<std::string, std::string>> hashes;
+        std::string sceneFile;                  // GameObject sources: the scene's project-relative file ("" unsaved)
         std::string stem;                       // the default output's file stem
         std::string directory;                  // its project-relative directory ("assets/models")
 
@@ -144,6 +145,7 @@ namespace jasperengine::editor::vat{
         jasperengine::Matrix4 rootInverse;      // inverse of the root's rest model matrix
         anim::ClipPreviewSession session;
         bool posed = false;
+        const AnimationClip* lastClip = nullptr;   // what the scene is posed by
     };
 
 }

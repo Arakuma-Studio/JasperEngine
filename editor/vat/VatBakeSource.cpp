@@ -218,31 +218,48 @@ namespace{
     }
 
     bool resolveGameObject(Project* project, const VatSourceSpec& spec, VatBakeTarget& target, std::vector<VatIssue>& issues){
-        if (spec.scene.empty()){
+        SceneProject* sceneProject = nullptr;
+        std::string sceneName = spec.scene;
+        if (spec.sceneId != 0){
+            sceneProject = project->getScene(spec.sceneId);
+            if (sceneProject && !sceneProject->filepath.empty()){
+                const fs::path file = sceneProject->filepath.is_absolute() ? sceneProject->filepath
+                                                                           : project->getProjectPath() / sceneProject->filepath;
+                sceneName = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(file.lexically_normal()));
+            }else if (sceneProject){
+                sceneName.clear();
+            }
+        }else if (!spec.scene.empty()){
+            sceneProject = openScene(project, spec.scene);
+        }else{
             issues.push_back(makeIssue("invalid_source", true, "a GameObject source needs its scene file", "pass the scene (e.g. assets/scenes/main.scene)"));
             return false;
         }
-        SceneProject* sceneProject = openScene(project, spec.scene);
-        if (!sceneProject){
-            issues.push_back(makeIssue("invalid_source", true, "the scene '" + spec.scene + "' is not open", "open the scene to bake its GameObjects"));
+        const std::string sceneLabel = sceneName.empty() ? (sceneProject ? sceneProject->name : std::string("the scene")) : sceneName;
+        if (!sceneProject || !sceneProject->scene){
+            issues.push_back(makeIssue("invalid_source", true, "the scene '" + sceneLabel + "' is not open", "open the scene to bake its GameObjects"));
             return false;
         }
         if (sceneProject->playState != ScenePlayState::STOPPED){
-            issues.push_back(makeIssue("scene_playing", true, "the scene '" + spec.scene + "' is playing", "stop play mode before baking"));
+            issues.push_back(makeIssue("scene_playing", true, "the scene '" + sceneLabel + "' is playing", "stop play mode before baking"));
             return false;
         }
         const Entity entity = EntityPath::find(*sceneProject, spec.path);
         if (entity == NULL_ENTITY){
-            issues.push_back(makeIssue("invalid_source", true, "no GameObject '" + spec.path + "' in '" + spec.scene + "'",
+            issues.push_back(makeIssue("invalid_source", true, "no GameObject '" + spec.path + "' in '" + sceneLabel + "'",
                                        "give the GameObject's hierarchy path (e.g. Crowd/Hero)"));
             return false;
         }
         target.sceneId = sceneProject->id;
         target.scene = sceneProject->scene;
         target.root = entity;
-        const fs::path sceneFile = (project->getProjectPath() / FileUtils::pathFromUtf8(spec.scene)).lexically_normal();
-        std::error_code ec;
-        if (fs::is_regular_file(sceneFile, ec)) addHash(target, spec.scene, sceneFile);
+        target.sceneFile = sceneName;
+        fs::path sceneFile;
+        if (!sceneName.empty()){
+            sceneFile = (project->getProjectPath() / FileUtils::pathFromUtf8(sceneName)).lexically_normal();
+            std::error_code ec;
+            if (fs::is_regular_file(sceneFile, ec)) addHash(target, sceneName, sceneFile);
+        }
         target.stem = target.scene->getEntityName(entity);
         // next to its model when it has one, else next to the scene (inside assets), else assets/
         target.directory.clear();
@@ -253,7 +270,7 @@ namespace{
                 addModelHashes(target, project, FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(file)), file);
             }
         }
-        if (target.directory.empty() && project->isInsideAssetsPath(sceneFile)) target.directory = parentOf(spec.scene);
+        if (target.directory.empty() && !sceneName.empty() && project->isInsideAssetsPath(sceneFile)) target.directory = parentOf(sceneName);
         if (target.directory.empty()) target.directory = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(project->getAssetsPath()));
         return true;
     }
@@ -433,7 +450,7 @@ bool resolveVatSource(Project* project, const VatSourceSpec& spec, VatBakeTarget
         }
         return false;
     };
-    const bool gameObject = !spec.scene.empty();
+    const bool gameObject = isGameObjectSource(spec);
 
     switch (spec.kind){
         case VatSourceKind::Model:{
@@ -832,12 +849,16 @@ bool VatPoser::capture(const VatSourceClip& clip, float time, VatSampleState& ou
     state.time = time;
     state.wrap = ClipWrapMode::ClampForever;
     preview.states.push_back(state);
+    // another clip starts from the rest: what the previous one wrote and this one doesn't
+    // animate would stay posed
+    if (posed && lastClip != clip.clip.get()) restore();
     if (session.root != target->root){
         session.reset();
         session.root = target->root;
     }
     actions->previewPlayer(target->root, preview, session);
     posed = true;
+    lastClip = clip.clip.get();
     cpuskin::updateTransforms(scene);
     LatticeRender::prepare(scene);
 
