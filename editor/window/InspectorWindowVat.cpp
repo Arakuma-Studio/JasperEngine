@@ -154,6 +154,15 @@ float inspectorvat::clipTimeAt(const jv::VatClip& clip, double tau){
     return std::clamp(sample.normalized, 0.0f, 1.0f) * clip.length();
 }
 
+double inspectorvat::scrubTarget(const jv::VatClip& clip, double tau, float time){
+    if (clip.wrap == ClipWrapMode::Loop || clip.wrap == ClipWrapMode::PingPong){
+        const double period = jv::vatClipPeriod(clip);
+        const double base = period > 0.0 && std::isfinite(tau) ? std::floor(tau / period) * period : 0.0;
+        return base + (double)time;
+    }
+    return (double)time;
+}
+
 std::vector<double> inspectorvat::shiftedTimes(const std::vector<double>& instanceTaus, double from, double to){
     std::vector<double> out;
     out.reserve(instanceTaus.size());
@@ -729,19 +738,21 @@ void editor::InspectorWindow::drawVertexAnimatorComponent(ComponentType cpType, 
             const jv::VatClip& clip = data.clips[(size_t)clipIndex];
             const double tau = jv::vatTrackTau(live->state.a, live->runtime->entity.holdA, live->gpuNow);
             float time = inspectorvat::clipTimeAt(clip, tau);
-            const float length = std::max(clip.length(), 0.0001f);
+            // a loop's end is its start: the slider stops just before it
+            const float length = std::max(clip.wrap == ClipWrapMode::Loop ? clip.length() * 0.999f : clip.length(), 0.0001f);
             ImGui::SetNextItemWidth(-FLT_MIN);
             // the clip's name in the slider's format ('%' doubled)
             std::string format;
             for (char c : clip.name) format += c == '%' ? std::string("%%") : std::string(1, c);
             format += "  %.2f s";
-            if (ImGui::SliderFloat("##vertexanimator_scrub", &time, 0.0f, length, format.c_str())){
+            const bool scrubbed = ImGui::SliderFloat("##vertexanimator_scrub", &time, 0.0f, length, format.c_str());
+            if (scrubbed){
                 // every state moves by the same step: instances keep their offsets
                 std::vector<double> taus;
                 for (size_t i = 0; i < live->instanceStates.size() && i < live->runtime->instances.size(); i++){
                     taus.push_back(jv::vatTrackTau(live->instanceStates[i].a, live->runtime->instances[i].holdA, live->gpuNow));
                 }
-                const double target = tau - inspectorvat::clipTimeAt(clip, tau) + time;
+                const double target = inspectorvat::scrubTarget(clip, tau, time);
                 const std::vector<double> shifted = inspectorvat::shiftedTimes(taus, tau, target);
                 VertexAnimatorRequest request;
                 request.kind = VertexAnimatorRequest::Kind::SetTime;

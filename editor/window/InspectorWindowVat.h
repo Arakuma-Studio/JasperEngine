@@ -43,6 +43,10 @@ namespace jasperengine::editor::inspectorvat{
     // A clip's time to show and set (seconds within the clip, 0..length) for a local time `tau`
     // (unwrapped, as vatTrackTau gives it): the clip's wrap applied
     float clipTimeAt(const jasperengine::vat::VatClip& clip, double tau);
+    // The local time (unwrapped) the scrubber sets for clip time `time` while the clip is at `tau`:
+    // in the same cycle for loop and ping-pong clips (a ping-pong's forward leg), `time` itself
+    // for once / clamp-forever clips
+    double scrubTarget(const jasperengine::vat::VatClip& clip, double tau, float time);
     // The local times the instances get when the scrubber moves the entity's clip from `from` to
     // `to` (each keeps its offset, so a crowd stays out of step)
     std::vector<double> shiftedTimes(const std::vector<double>& instanceTaus, double from, double to);

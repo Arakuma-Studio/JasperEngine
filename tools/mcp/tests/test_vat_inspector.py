@@ -218,13 +218,13 @@ async def test_animator_section_preview_and_scrub(ed: Editor):
     # nearly still (speed 0.001), a drag to the scrubber's right end then its left end sets the time
     await lua(ed, 'object("quad"):getVertexAnimator().speed = 0.001; return true')
     mid = (scrub[1] + scrub[3]) / 2
-    await ui.drag(((scrub[0] + scrub[2]) / 2, mid), (scrub[2] - 4, mid), steps=6)
+    await ui.drag(((scrub[0] + scrub[2]) / 2, mid), (scrub[0] + (scrub[2] - scrub[0]) * 0.9, mid), steps=6)
     await shot(ed, "04b-scrub-late")
     late = await lua(ed, 'local va = object("quad"):getVertexAnimator(); return va.time, va.preview, va.currentClip, va.speed')
-    ed.check(late[0] > 0.8, f"the scrubber set a late time: {late} (scrubber {scrub}, items {ed.ui_items().get('vat.scrub')})")
-    await ui.drag(((scrub[0] + scrub[2]) / 2, mid), (scrub[0] + 4, mid), steps=6)
+    ed.check(0.8 < late[0] < 0.97, f"the scrubber set a late time: {late} (scrubber {scrub}, items {ed.ui_items().get('vat.scrub')})")
+    await ui.drag(((scrub[0] + scrub[2]) / 2, mid), (scrub[0] + (scrub[2] - scrub[0]) * 0.1, mid), steps=6)
     early = await lua(ed, 'return object("quad"):getVertexAnimator().time')
-    ed.check(early[0] < 0.2, f"the scrubber set an early time: {early}")
+    ed.check(0.03 < early[0] < 0.2, f"the scrubber set an early time: {early}")
     await lua(ed, 'object("quad"):getVertexAnimator().speed = 1; return true')
 
     # another selection stops it (the Scene view goes back to where it started)

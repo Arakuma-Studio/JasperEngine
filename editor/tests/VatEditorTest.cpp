@@ -965,6 +965,16 @@ TEST(VatInspectorHelpers, TextsFixesAndLimits) {
     jv::VatClip loop = data.clips[0];   // 2 frames at 2 fps, loop: 1 s
     EXPECT_NEAR(inspectorvat::clipTimeAt(loop, 0.25), 0.25f, 1e-5f);
     EXPECT_NEAR(inspectorvat::clipTimeAt(loop, 2.25), 0.25f, 1e-5f);
+    // the scrubber's target stays in the clip's current cycle (a loop's end is never its start)
+    EXPECT_NEAR(inspectorvat::scrubTarget(loop, 8.54, 0.9f), 8.9, 1e-6);
+    EXPECT_NEAR(inspectorvat::clipTimeAt(loop, inspectorvat::scrubTarget(loop, 8.54, 0.999f)), 0.999f, 1e-3f);
+    jv::VatClip pingPong = loop;
+    pingPong.wrap = ClipWrapMode::PingPong;
+    pingPong.frames = 3;    // 1 s each way
+    EXPECT_NEAR(inspectorvat::scrubTarget(pingPong, 5.5, 0.25f), 4.25, 1e-6);
+    jv::VatClip once = pingPong;
+    once.wrap = ClipWrapMode::Once;
+    EXPECT_NEAR(inspectorvat::scrubTarget(once, 5.5, 0.25f), 0.25, 1e-6);
     const std::vector<double> shifted = inspectorvat::shiftedTimes({0.1, 0.7, 3.0}, 0.5, 0.75);
     EXPECT_NEAR(shifted[0], 0.35, 1e-9);
     EXPECT_NEAR(shifted[2], 3.25, 1e-9);
