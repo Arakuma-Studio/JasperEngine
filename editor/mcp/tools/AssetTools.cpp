@@ -1249,6 +1249,11 @@ public:
                 writeFile(vatCopy, text);
             }
         }
+        // a copied .vat.glb in another directory names the same texture files (the copies of a
+        // copied folder's own textures)
+        std::vector<std::pair<fs::path, fs::path>> went = {{from, to}};
+        if (!pairTo.empty()) went.emplace_back(pairFrom, pairTo);
+        vat::rebaseMovedVatMeshes(went);
         // copied prefabs, clips and Vertex Animations are new assets: new GUIDs, the same ones on a redo
         if (fs::is_directory(to, ec) || AssetDatabase::isTrackedFile(to)) project->importPrefabFiles(to, true, &copyGuids);
         if (!vatCopy.empty() && vatCopy != to) project->importPrefabFiles(vatCopy, true, &copyGuids);
@@ -1259,10 +1264,16 @@ public:
         const bool isDir = fs::is_directory(to, ec);
         if (!pairTo.empty()) fs::remove(pairTo, ec);
         fs::remove_all(to, ec);
-        project->cleanupPrefabFilePath(to);
+        // the copies' GUIDs leave the database (the copied .vat of a copied .vat.glb too);
         // references to the copied clips stay (Missing until a redo)
-        if (isDir || Util::isAnimationClipFile(to.string())) project->cleanupClipFilePath(to);
-        project->cleanupInspectedAsset(to);
+        for (const fs::path& copied : {to, pairTo}) {
+            if (copied.empty()) continue;
+            project->cleanupPrefabFilePath(copied);
+            if (isDir || Util::isAnimationClipFile(copied.string()) || Util::isVertexAnimationFile(copied.string())) {
+                project->cleanupClipFilePath(copied);
+            }
+            project->cleanupInspectedAsset(copied);
+        }
     }
     bool affectsStructure() const override { return false; }
 
@@ -1303,9 +1314,8 @@ void moveAssetTool(const CallPtr& call) {
     // pair: vat/VatAssetFiles.h); a destination that would break the pair is refused here
     fs::path pairFrom, pairTo;
     const bool pair = vat::renamedPair(from, to, pairFrom, pairTo);
-    if (!pair && !vat::existingPairOf(from).empty()) {
-        call->fail(fromRel + (Util::isVertexAnimationFile(fromRel) ? " is a Vertex Animation: its new name must end in .vat (its mesh follows as <name>.vat.glb)."
-                                                                  : " is the mesh of a Vertex Animation: its new name must end in .vat.glb (its .vat follows)."));
+    if (const std::string refusal = vat::pairRenameRefusal(from, to, fromRel); !refusal.empty()) {
+        call->fail(refusal);
         return;
     }
     if (pair && fs::exists(pairTo, ec)) {

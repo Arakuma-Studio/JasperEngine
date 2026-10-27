@@ -167,6 +167,8 @@ namespace jasperengine::editor {
         bool isRenaming;
         bool renameSelectPending;
         std::string fileBeingRenamed;
+        // why the last rename was refused (the "Rename Error" popup; empty: a filesystem error)
+        std::string renameErrorText;
 
         // The Lua script Create > Lua Script just wrote (file name in currentPath, its text):
         // renamed while still untouched, its module takes the new name (renameNewLuaScript)

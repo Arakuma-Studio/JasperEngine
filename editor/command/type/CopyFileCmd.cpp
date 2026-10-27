@@ -97,6 +97,8 @@ bool editor::CopyFileCmd::execute(){
     // moves: every file first, then the clips' hints (a clip moved in the same step is at its
     // final place when its hint is rewritten, whatever the order of the files)
     std::vector<std::pair<fs::path, fs::path>> moved;
+    // what went (moved or copied): the Vertex Animation meshes among it name their textures again
+    std::vector<std::pair<fs::path, fs::path>> went;
 
     for (const auto& fdata : files) {
         fs::path sourceFs = fdata.sourceDirectory / fdata.filename;
@@ -113,6 +115,7 @@ bool editor::CopyFileCmd::execute(){
                     const auto options = fs::copy_options::overwrite_existing |
                         (isDir ? fs::copy_options::recursive : fs::copy_options::none);
                     fs::copy(sourceFs, destFs, options);
+                    went.emplace_back(sourceFs, destFs);
                     // copied prefabs and clips are new assets: new GUIDs, the same ones on a redo
                     if (project && (isDir || AssetDatabase::isTrackedFile(destFs))) {
                         project->importPrefabFiles(destFs, true, &copyGuids);
@@ -120,10 +123,14 @@ bool editor::CopyFileCmd::execute(){
                 }else{
                     moveFile(sourceFs, destFs, isDir);
                     moved.emplace_back(sourceFs, destFs);
+                    went.emplace_back(sourceFs, destFs);
                 }
             }
         } catch (const fs::filesystem_error& e) {
             printf("Error: Moving/Copying %s: %s\n", sourceFs.string().c_str(), e.what());
+            // what went before the failure stays usable (its meshes still name their textures)
+            vatUriMoves = moved;
+            vatUriEdits = vat::rebaseMovedVatMeshes(went);
             if (project && touchedShaderSource)
                 project->invalidateCustomShaders();
             return false;
@@ -132,6 +139,10 @@ bool editor::CopyFileCmd::execute(){
 
     if (project && touchedShaderSource)
         project->invalidateCustomShaders();
+
+    // a .vat.glb in another directory names the same texture files (or the copies made with it)
+    vatUriMoves = moved;
+    vatUriEdits = vat::rebaseMovedVatMeshes(went);
 
     // clips previewing a moved model (or taken from it) name it again, in this step
     if (project) {
@@ -185,6 +196,13 @@ void editor::CopyFileCmd::undo(){
             printf("Error: Undo moving/Copying %s: %s\n", sourceFs.string().c_str(), e.what());
         }
     }
+
+    // the moved meshes back where they were name their textures as before (copies are gone)
+    if (!copy) {
+        vat::restoreVatMeshUris(vatUriEdits, vatUriMoves);
+    }
+    vatUriEdits.clear();
+    vatUriMoves.clear();
 
     if (project && touchedShaderSource)
         project->invalidateCustomShaders();

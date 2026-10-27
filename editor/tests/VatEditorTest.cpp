@@ -38,6 +38,10 @@
 #include "vat/VatSceneActions.h"
 #include "window/InspectorWindowVat.h"
 
+#include "json.hpp"
+#include "stb_image_write.h"
+#include "tiny_gltf.h"
+
 #include <unistd.h>
 
 #include <chrono>
@@ -180,15 +184,22 @@ namespace {
         return data;
     }
 
-    // the files of the quad bake at `vatPath`
-    ev::VatEncodedFiles encodeQuad(const fs::path& vatPath, const std::string& guid) {
+    // the files of the quad bake at `vatPath` (with a material whose base colour is `texture`, an
+    // absolute path, when given)
+    ev::VatEncodedFiles encodeQuad(const fs::path& vatPath, const std::string& guid, const fs::path& texture = fs::path()) {
         jv::VatData data = quadData(guid);
         ev::VatMeshData mesh;
         mesh.positions = {0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0};
         mesh.normals = {0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1};
         mesh.uv0 = {0, 0, 1, 0, 1, 1, 0, 1};
         mesh.vatIndex = {0, 1, 2, 3};
-        mesh.submeshes.push_back({{0, 1, 2, 0, 2, 3}, -1});
+        mesh.submeshes.push_back({{0, 1, 2, 0, 2, 3}, texture.empty() ? -1 : 0});
+        if (!texture.empty()) {
+            ev::VatMaterialData material;
+            material.name = "Skin";
+            material.baseColorTexture = texture.generic_string();
+            mesh.materials.push_back(material);
+        }
         jv::VatPayload payload;
         payload.precision = jv::VatPrecision::Half;
         payload.width = 8;
@@ -207,14 +218,14 @@ namespace {
         return files;
     }
 
-    Pair writePair(const std::string& dir, const std::string& stem, const std::string& guid = "") {
+    Pair writePair(const std::string& dir, const std::string& stem, const std::string& guid = "", const fs::path& texture = fs::path()) {
         Pair pair;
         pair.vat = (root() / dir / (stem + ".vat")).lexically_normal();
         pair.mesh = (root() / dir / (stem + ".vat.glb")).lexically_normal();
         pair.relative = dir + "/" + stem + ".vat";
         pair.meshRelative = dir + "/" + stem + ".vat.glb";
         pair.guid = guid.empty() ? AssetDatabase::generateGuid() : guid;
-        const ev::VatEncodedFiles files = encodeQuad(pair.vat, pair.guid);
+        const ev::VatEncodedFiles files = encodeQuad(pair.vat, pair.guid, texture);
         writeAll(pair.vat, files.vatText);
         writeBytes(pair.mesh, files.glbBytes);
         project()->importPrefabFiles(pair.vat);
@@ -665,6 +676,191 @@ TEST_F(VatEditor, DeleteTakesThePairAndUndoRelinks) {
     EXPECT_EQ(scene.animator().animation, pair.relative) << "relinked by GUID";
     EXPECT_EQ(scene.model().filename, pair.meshRelative) << "and the Model plays its mesh again";
     EXPECT_EQ(project()->getAssetDatabase().getPath(pair.guid), fs::path(pair.relative));
+}
+
+// ---- the pair's texture URIs through move, copy, delete; refused and failed renames ----------
+
+namespace {
+
+    // a 2 x 2 RGBA PNG
+    void writeTexture(const fs::path& path) {
+        fs::create_directories(path.parent_path());
+        const uint8_t pixels[16] = {255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255};
+        ASSERT_TRUE(stbi_write_png(path.string().c_str(), 2, 2, 4, pixels, 8) != 0);
+    }
+
+    nlohmann::json glbJson(const fs::path& glb) {
+        std::string text;
+        EXPECT_TRUE(ev::readGlbJson(glb, text)) << glb;
+        return nlohmann::json::parse(text, nullptr, false);
+    }
+
+    std::string imageUri(const fs::path& glb) {
+        const nlohmann::json json = glbJson(glb);
+        if (!json.is_object() || !json.contains("images") || json["images"].empty()) return "";
+        return json["images"][0].value("uri", "");
+    }
+
+    // the bytes after the JSON chunk (the BIN chunk)
+    std::string binChunk(const fs::path& glb) {
+        const std::string bytes = readAll(glb);
+        if (bytes.size() < 20) return "";
+        const uint32_t json = (uint8_t)bytes[12] | ((uint8_t)bytes[13] << 8) | ((uint8_t)bytes[14] << 16) | ((uint32_t)(uint8_t)bytes[15] << 24);
+        return bytes.substr(20 + json);
+    }
+
+    // the glb loads as a model with its texture decoded from `expected` (the engine's glTF loader:
+    // tinygltf resolving the URI against the glb's directory)
+    void expectTextureLoads(const fs::path& glb, const fs::path& expected) {
+        const std::string uri = imageUri(glb);
+        ASSERT_FALSE(uri.empty()) << glb;
+        std::string decoded;
+        ASSERT_TRUE(tinygltf::URIDecode(uri, &decoded, nullptr));
+        EXPECT_EQ(fs::weakly_canonical(glb.parent_path() / decoded), fs::weakly_canonical(expected)) << glb << " names " << uri;
+        tinygltf::TinyGLTF loader;
+        tinygltf::Model model;
+        std::string err, warn;
+        ASSERT_TRUE(loader.LoadBinaryFromFile(&model, &err, &warn, glb.string())) << err;
+        ASSERT_EQ(model.images.size(), 1u);
+        EXPECT_EQ(model.images[0].width, 2) << glb << ": the texture didn't resolve (" << err << warn << ")";
+        EXPECT_EQ(model.images[0].height, 2);
+        const std::string bytes = readAll(glb);
+        EXPECT_EQ(bytes.size() % 4, 0u) << "GLB alignment";
+        EXPECT_EQ((uint8_t)bytes[8] | ((uint8_t)bytes[9] << 8) | ((uint8_t)bytes[10] << 16) | ((uint32_t)(uint8_t)bytes[11] << 24), bytes.size())
+            << "GLB length";
+    }
+
+}
+
+TEST_F(VatEditor, MoveAndCopyKeepTheTextures) {
+    const std::string dir = folder("textured");
+    const fs::path texture = root() / dir / "Textures" / "hero skin.png";
+    writeTexture(texture);
+    const Pair pair = writePair(dir, "hero", "", texture);
+    ASSERT_EQ(imageUri(pair.mesh), "Textures/hero%20skin.png");
+    expectTextureLoads(pair.mesh, texture);
+    const std::string original = readAll(pair.mesh);
+    const std::string bin = binChunk(pair.mesh);
+    fs::create_directories(root() / dir / "sub");
+    const fs::path moved = root() / dir / "sub" / "hero.vat.glb";
+
+    // moved to a subfolder: the URI climbs out of it, the BIN chunk is the same bytes
+    ASSERT_TRUE(history()->addCommand(new CopyFileCmd(project(), {pair.vat.string()}, (root() / dir / "sub").string(), false)));
+    EXPECT_EQ(imageUri(moved), "../Textures/hero%20skin.png");
+    EXPECT_EQ(binChunk(moved), bin);
+    expectTextureLoads(moved, texture);
+    std::string error;
+    EXPECT_TRUE(VertexAnimationPool::getOrLoad((root() / dir / "sub" / "hero.vat").generic_string(), &error)) << error;
+
+    // and back: the URI it had
+    ASSERT_TRUE(history()->addCommand(new CopyFileCmd(project(), {moved.string()}, (root() / dir).string(), false)));
+    EXPECT_EQ(imageUri(pair.mesh), "Textures/hero%20skin.png");
+    expectTextureLoads(pair.mesh, texture);
+
+    // undo / redo of both moves
+    ASSERT_TRUE(history()->undo());
+    EXPECT_EQ(imageUri(moved), "../Textures/hero%20skin.png");
+    expectTextureLoads(moved, texture);
+    ASSERT_TRUE(history()->undo());
+    EXPECT_EQ(readAll(pair.mesh), original) << "the undo puts the very bytes back";
+    ASSERT_TRUE(history()->redo());
+    EXPECT_EQ(imageUri(moved), "../Textures/hero%20skin.png");
+    expectTextureLoads(moved, texture);
+    ASSERT_TRUE(history()->undo());
+    EXPECT_EQ(readAll(pair.mesh), original);
+
+    // a copy names the same texture; the original is untouched; undo removes the copy
+    ASSERT_TRUE(history()->addCommand(new CopyFileCmd(project(), {pair.mesh.string()}, (root() / dir / "sub").string(), true)));
+    EXPECT_EQ(imageUri(moved), "../Textures/hero%20skin.png");
+    expectTextureLoads(moved, texture);
+    EXPECT_EQ(readAll(pair.mesh), original);
+    ASSERT_TRUE(history()->undo());
+    EXPECT_FALSE(fs::exists(moved));
+    ASSERT_TRUE(history()->redo());
+    expectTextureLoads(moved, texture);
+    ASSERT_TRUE(history()->undo());
+
+    // a folder holding the pair and its own texture: the copy names the copied texture (the
+    // URI stays), a moved folder whose mesh names a texture outside it climbs out further
+    const std::string pack = dir + "/pack";
+    const fs::path packTexture = root() / pack / "skin.png";
+    writeTexture(packTexture);
+    const Pair packed = writePair(pack, "crate", "", packTexture);
+    fs::create_directories(root() / dir / "copies");
+    ASSERT_TRUE(history()->addCommand(new CopyFileCmd(project(), {(root() / pack).string()}, (root() / dir / "copies").string(), true)));
+    EXPECT_EQ(imageUri(root() / dir / "copies" / "pack" / "crate.vat.glb"), "skin.png");
+    expectTextureLoads(root() / dir / "copies" / "pack" / "crate.vat.glb", root() / dir / "copies" / "pack" / "skin.png");
+    ASSERT_TRUE(history()->undo());
+    const Pair outside = writePair(pack, "barrel", "", texture);
+    ASSERT_EQ(imageUri(outside.mesh), "../Textures/hero%20skin.png");
+    ASSERT_TRUE(history()->addCommand(new CopyFileCmd(project(), {(root() / pack).string()}, (root() / dir / "sub").string(), false)));
+    EXPECT_EQ(imageUri(root() / dir / "sub" / "pack" / "barrel.vat.glb"), "../../Textures/hero%20skin.png");
+    expectTextureLoads(root() / dir / "sub" / "pack" / "barrel.vat.glb", texture);
+    EXPECT_EQ(imageUri(root() / dir / "sub" / "pack" / "crate.vat.glb"), "skin.png") << "moved with its texture";
+    ASSERT_TRUE(history()->undo());
+    EXPECT_EQ(imageUri(outside.mesh), "../Textures/hero%20skin.png");
+    EXPECT_EQ(imageUri(packed.mesh), "skin.png");
+
+    // an embedded image (a data: URI) is left alone
+    nlohmann::json json = glbJson(outside.mesh);
+    json["images"][0]["uri"] = "data:image/png;base64,iVBORw0KGgo=";
+    ASSERT_TRUE(ev::writeGlbJson(outside.mesh, json.dump()));
+    ASSERT_TRUE(history()->addCommand(new CopyFileCmd(project(), {outside.vat.string()}, (root() / dir / "sub").string(), false)));
+    EXPECT_EQ(imageUri(root() / dir / "sub" / "barrel.vat.glb"), "data:image/png;base64,iVBORw0KGgo=");
+    ASSERT_TRUE(history()->undo());
+}
+
+TEST_F(VatEditor, DeleteKeepsTheTextures) {
+    const std::string dir = folder("textured-delete");
+    const fs::path texture = root() / dir / "skin.png";
+    writeTexture(texture);
+    const Pair first = writePair(dir, "hero", "", texture);
+    const Pair second = writePair(dir, "knight", "", texture);
+    const std::string bytes = readAll(texture);
+    ASSERT_TRUE(history()->addCommand(new DeleteFileCmd(project(), {first.vat, first.mesh}, project()->getProjectPath())));
+    EXPECT_FALSE(fs::exists(first.vat));
+    EXPECT_FALSE(fs::exists(first.mesh));
+    EXPECT_TRUE(fs::exists(texture)) << "a texture is never deleted with the pair";
+    EXPECT_EQ(readAll(texture), bytes);
+    expectTextureLoads(second.mesh, texture);
+    ASSERT_TRUE(history()->undo());
+    expectTextureLoads(first.mesh, texture);
+}
+
+TEST_F(VatEditor, RenameToAnotherExtensionIsRefused) {
+    const std::string dir = folder("rename-ext");
+    const Pair pair = writePair(dir, "hero");
+    const std::string vatRefusal = ev::pairRenameRefusal(pair.vat, root() / dir / "hero.json", "hero.vat");
+    EXPECT_EQ(vatRefusal, "hero.vat is a Vertex Animation: its new name must end in .vat (its mesh follows as <name>.vat.glb).");
+    EXPECT_EQ(ev::pairRenameRefusal(pair.mesh, root() / dir / "hero.glb", "hero.vat.glb"),
+              "hero.vat.glb is the mesh of a Vertex Animation: its new name must end in .vat.glb (its .vat follows).");
+    EXPECT_TRUE(ev::pairRenameRefusal(pair.vat, root() / dir / "knight.vat", "hero.vat").empty());
+    EXPECT_TRUE(ev::pairRenameRefusal(root() / dir / "lonely.vat", root() / dir / "lonely.json", "lonely.vat").empty()) << "no pair";
+
+    const size_t steps = history()->position();
+    EXPECT_FALSE(history()->addCommand(new RenameFileCmd(project(), "hero.vat", "hero.json", (root() / dir).string())));
+    EXPECT_FALSE(history()->addCommand(new RenameFileCmd(project(), "hero.vat.glb", "hero.glb", (root() / dir).string())));
+    EXPECT_EQ(history()->position(), steps) << "no undo step";
+    EXPECT_TRUE(fs::exists(pair.vat));
+    EXPECT_TRUE(fs::exists(pair.mesh));
+    EXPECT_FALSE(fs::exists(root() / dir / "hero.json"));
+    EXPECT_FALSE(fs::exists(root() / dir / "hero.glb"));
+}
+
+TEST_F(VatEditor, PairRenameIsAllOrNothing) {
+    const std::string dir = folder("rename-fail");
+    const Pair pair = writePair(dir, "hero");
+    // the new .vat name fits the file system's 255 bytes, its mesh's (4 more) doesn't: the
+    // partner's rename fails after the first one succeeded
+    const std::string longName = std::string(251, 'a') + ".vat";
+    const size_t steps = history()->position();
+    EXPECT_FALSE(history()->addCommand(new RenameFileCmd(project(), "hero.vat", longName, (root() / dir).string())));
+    EXPECT_EQ(history()->position(), steps) << "no undo step";
+    EXPECT_TRUE(fs::exists(pair.vat)) << "the first rename was put back";
+    EXPECT_TRUE(fs::exists(pair.mesh));
+    EXPECT_FALSE(fs::exists(root() / dir / longName));
+    EXPECT_EQ(project()->getAssetDatabase().getPath(pair.guid), fs::path(pair.relative)) << "the GUID kept its path";
+    EXPECT_EQ(jv::parseVat(readAll(pair.vat)).data->mesh, "hero.vat.glb");
 }
 
 TEST_F(VatEditor, ProjectWindowFileHelpers) {

@@ -19,7 +19,9 @@ hero_animated.gltf "Walk"/"Idle"/"Wave") and synthetic Houdini VAT 3 / OpenVAT e
 - get_asset_info on a .vat (clips, layout, staleness, users) and on its .vat.glb (generated_by);
   list_assets type vertex_animation; view_asset refuses; write_file validates (generated fields refused
   with the rebake message, editable ones accepted with warnings); auto-sync reports a broken .vat;
-- move_asset / delete_asset keep the .vat / .vat.glb pair;
+- move_asset / delete_asset keep the .vat / .vat.glb pair; a move or copy to another folder rewrites the
+  .vat.glb's texture URIs (its JSON chunk only) so they name the same files, undo puts them back; undoing
+  the copy of a .vat.glb drops the copied .vat's GUID from the asset database;
 - play: the instances of a crowd move differently (randomStart), and a clip event reaches a Lua script.
 """
 
@@ -676,6 +678,94 @@ async def test_move_and_delete_keep_the_pair(ed: Editor):
     check(not (ed.project / "assets/vat2/pair.vat.glb").exists(), "deleted")
     await ed.call("undo", scope="project")
     check((ed.project / "assets/vat2/pair.vat").is_file() and (ed.project / "assets/vat2/pair.vat.glb").is_file(), "undo restores both")
+
+
+def glb_chunks(path: Path) -> tuple[dict, bytes]:
+    """The JSON chunk (parsed) and the bytes after it (the BIN chunk) of a GLB."""
+    data = path.read_bytes()
+    magic, version, length = struct.unpack_from("<4sII", data, 0)
+    check(magic == b"glTF" and version == 2 and length == len(data), f"{path.name} is a GLB 2.0 of its length")
+    json_length, kind = struct.unpack_from("<II", data, 12)
+    check(kind == 0x4E4F534A and json_length % 4 == 0, f"{path.name}: a 4-byte aligned JSON chunk first")
+    return json.loads(data[20:20 + json_length]), data[20 + json_length:]
+
+
+def set_glb_json(path: Path, gltf: dict) -> None:
+    _, rest = glb_chunks(path)
+    text = json.dumps(gltf).encode()
+    text += b" " * (-len(text) % 4)
+    path.write_bytes(struct.pack("<4sII", b"glTF", 2, 20 + len(text) + len(rest)) + struct.pack("<II", len(text), 0x4E4F534A) + text + rest)
+
+
+def png_2x2() -> bytes:
+    def chunk(kind: bytes, payload: bytes) -> bytes:
+        return struct.pack(">I", len(payload)) + kind + payload + struct.pack(">I", zlib.crc32(kind + payload) & 0xFFFFFFFF)
+    raw = b"".join(b"\0" + b"\x80\x40\x20\xff" * 2 for _ in range(2))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 2, 2, 8, 6, 0, 0, 0)) +
+            chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+
+
+def image_uri(project: Path, glb: str) -> str:
+    return glb_chunks(project / glb)[0]["images"][0]["uri"]
+
+
+def asset_db(project: Path) -> str:
+    db = project / ".jasperengine" / "assetdb.yaml"
+    return db.read_text() if db.exists() else ""
+
+
+async def test_move_and_copy_keep_the_textures(ed: Editor):
+    await scene(ed)
+    await bake(ed, source=ARM, clips=["Swing"], output="assets/vat/skin.vat")
+    texture = ed.project / "assets/textures/skin.png"
+    texture.parent.mkdir(parents=True, exist_ok=True)
+    texture.write_bytes(png_2x2())
+    # the mesh names a project texture (as a bake of a textured model does)
+    glb = ed.project / "assets/vat/skin.vat.glb"
+    gltf, bin_chunk = glb_chunks(glb)
+    gltf["images"] = [{"uri": "../textures/skin.png"}]
+    gltf["textures"] = [{"source": 0}]
+    set_glb_json(glb, gltf)
+    original = glb.read_bytes()
+    (ed.project / "assets/vat/deep/er").mkdir(parents=True, exist_ok=True)
+    await ed.call("sync_files")
+
+    await ed.call("move_asset", path="assets/vat/skin.vat", to="assets/vat/deep/er/skin.vat")
+    moved = "assets/vat/deep/er/skin.vat.glb"
+    check(image_uri(ed.project, moved) == "../../../textures/skin.png", f"the moved mesh names the same texture: {image_uri(ed.project, moved)}")
+    check(glb_chunks(ed.project / moved)[1] == bin_chunk, "the BIN chunk is the same bytes")
+    check(((ed.project / moved).parent / image_uri(ed.project, moved)).resolve() == texture.resolve(), "it resolves to the texture")
+    info = (await ed.call("get_asset_info", path="assets/vat/deep/er/skin.vat"))["vertex_animation"]
+    check(not [s for s in info["staleness"] if "mismatch" in s["kind"]], f"the moved pair still matches: {info['staleness']}")
+    await ed.call("undo", scope="project")
+    check(glb.read_bytes() == original, "undo moves it back with the URI it had")
+    await ed.call("redo", scope="project")
+    check(image_uri(ed.project, moved) == "../../../textures/skin.png", "redo rewrites it again")
+    await ed.call("undo", scope="project")
+
+    # a copy of the mesh (with its .vat) to another folder: the copy names the same texture; undo
+    # removes both and the copied .vat's GUID leaves the asset database
+    await ed.call("move_asset", path="assets/vat/skin.vat.glb", to="assets/vat/deep/copy.vat.glb", copy=True)
+    copy_vat = read_vat(ed.project, "assets/vat/deep/copy.vat")
+    copy_guid = copy_vat["guid"]
+    check(copy_guid != read_vat(ed.project, "assets/vat/skin.vat")["guid"], "the copy has a GUID of its own")
+    check(image_uri(ed.project, "assets/vat/deep/copy.vat.glb") == "../../textures/skin.png",
+          f"the copy names the same texture: {image_uri(ed.project, 'assets/vat/deep/copy.vat.glb')}")
+    check(glb.read_bytes() == original, "the original is untouched")
+    check(copy_guid in asset_db(ed.project), "the copied .vat is in the asset database")
+    await ed.call("undo", scope="project")
+    check(not (ed.project / "assets/vat/deep/copy.vat").exists() and not (ed.project / "assets/vat/deep/copy.vat.glb").exists(), "undo removes both")
+    check(copy_guid not in asset_db(ed.project), f"the copied .vat's GUID left the asset database: {asset_db(ed.project)}")
+    await ed.call("redo", scope="project")
+    check(read_vat(ed.project, "assets/vat/deep/copy.vat")["guid"] == copy_guid, "redo gives the copy its GUID again")
+    check(image_uri(ed.project, "assets/vat/deep/copy.vat.glb") == "../../textures/skin.png", "and the URI")
+    await ed.call("undo", scope="project")
+
+    # deleting the pair leaves the texture
+    await ed.call("delete_asset", paths=["assets/vat/skin.vat"])
+    check(texture.is_file(), "a texture is never deleted with the pair")
+    await ed.call("undo", scope="project")
+    check(glb.read_bytes() == original, "undo restores the mesh as it was")
 
 
 async def test_play_instances_move_out_of_step(ed: Editor):

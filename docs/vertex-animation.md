@@ -497,6 +497,13 @@ copy and delete:
   texture, the same for every LOD. The payload is in the glTF extension
   `JASPER_vertex_animation`, and the mesh bounds cover every frame, so culling is right.
 
+The `.vat.glb` names the project's texture files by paths relative to itself. When you move or
+copy the pair to another folder, the editor rewrites those paths, so the mesh still uses the same
+textures. A copied folder uses its own copies of any textures inside it. Undo puts the old paths
+back. Deleting the pair never deletes its textures. A `.vat` or `.vat.glb` can't be renamed to
+another extension, because its other file couldn't follow. If the other file can't be renamed,
+neither file is renamed.
+
 ```json
 {
   "format": "jasperengine.vat",

@@ -2638,7 +2638,11 @@ void editor::ProjectWindow::handleRename(){
                     // the .vat and its .vat.glb are renamed together)
                     fs::path pairOld, pairNew;
                     const bool pairTaken = vat::renamedPair(oldPath, newPath, pairOld, pairNew) && fs::exists(pairNew);
-                    if (fs::exists(newPath) || pairTaken) {
+                    // a Vertex Animation's file keeps its extension (as move_asset refuses)
+                    renameErrorText = vat::pairRenameRefusal(oldPath, newPath, fileBeingRenamed);
+                    if (!renameErrorText.empty()) {
+                        ImGui::OpenPopup("Rename Error");
+                    } else if (fs::exists(newPath) || pairTaken) {
                         ImGui::OpenPopup("File Already Exists");
                     } else {
                         const bool newLuaScript = !newLuaScriptFile.empty() && fileBeingRenamed == newLuaScriptFile;
@@ -2657,6 +2661,7 @@ void editor::ProjectWindow::handleRename(){
                         ImGui::CloseCurrentPopup();
                     }
                 } catch (const fs::filesystem_error& e) {
+                    renameErrorText.clear();
                     ImGui::OpenPopup("Rename Error");
                 }
             }
@@ -2695,7 +2700,7 @@ void editor::ProjectWindow::handleRename(){
 
         // Error popup for rename failure
         if (ImGui::BeginPopupModal("Rename Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text("Failed to rename the file.");
+            ImGui::TextUnformatted(renameErrorText.empty() ? "Failed to rename the file." : renameErrorText.c_str());
             ImGui::Separator();
 
             float popupWidth = ImGui::GetWindowSize().x;
