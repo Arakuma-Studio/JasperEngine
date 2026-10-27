@@ -52,6 +52,8 @@ sg_swapchain TestSystem::getSokolSwapchain(){
 #endif
 
 std::string TestSystem::getAssetPath(){
+    if (pathProvider.assets)
+        return pathProvider.assets();
     if (!assetPathOverride.empty())
         return assetPathOverride;
     return testPaths().assetDir;
@@ -62,6 +64,8 @@ void TestSystem::setAssetPath(const std::string& path){
 }
 
 std::string TestSystem::getUserDataPath(){
+    if (pathProvider.userData)
+        return pathProvider.userData();
     if (!userDataPathOverride.empty())
         return userDataPathOverride;
     return testPaths().binaryDir + "/userdata";
@@ -69,6 +73,14 @@ std::string TestSystem::getUserDataPath(){
 
 void TestSystem::setUserDataPath(const std::string& path){
     userDataPathOverride = path;
+}
+
+void TestSystem::setPathProvider(PathProvider provider){
+    pathProvider = std::move(provider);
+}
+
+void TestSystem::clearPathProvider(){
+    pathProvider = PathProvider();
 }
 
 bool TestSystem::syncFileSystem(){
@@ -81,6 +93,8 @@ std::string TestSystem::getCachePath(){
 }
 
 std::string TestSystem::getLuaPath(){
+    if (pathProvider.lua)
+        return pathProvider.lua();
     return getAssetPath();
 }
 

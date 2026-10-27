@@ -15,10 +15,20 @@
 #include <memory>
 #include <string>
 
+namespace jasperengine::editor {
+    class Project;
+}
+
 namespace jasperengine::editor::test {
 
     // the engine is running (TestMain started it with the support library's TestSystem)
     void ensureEngine();
+
+    // The engine's asset, Lua and user data paths are this headless Project's folders (what the
+    // editor's Platform gives), read live, until the test ends: a test on a project of its own
+    // calls it (the engine keeps TestMain's TestSystem; a second Engine::systemInit would leave
+    // its log capture reading another object). Before the project loads, so the load sees them.
+    void useProjectPaths(Project* project);
 
     // editor/tests/fixtures/<relative>
     std::filesystem::path fixture(const std::string& relative);

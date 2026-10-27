@@ -12,6 +12,8 @@
 
 #include <gtest/gtest.h>
 
+#include "support/EditorTestSupport.h"
+
 #include "AppSettings.h"
 #include "Engine.h"
 #include "Factory.h"
@@ -47,7 +49,6 @@ namespace {
         bool ready = false;
         fs::path dir;
         std::unique_ptr<Project> project;
-        std::unique_ptr<editor::Platform> platform;
     };
 
     Headless& headless() {
@@ -68,15 +69,15 @@ namespace {
             out.project.reset(new Project());
             // the model clip names are read through the ModelPool (File needs the System), as
             // PlacementSessionTest and the clip assets tests start it
-            out.platform.reset(new editor::Platform(out.project.get()));
-            static char arg0[] = "jasperengine-editor-tests";
-            static char* argv[] = {arg0, nullptr};
-            Engine::systemInit(1, argv, out.platform.get());
+            // the engine runs already (TestMain, its TestSystem): this project's folders are its paths
+            editor::test::useProjectPaths(out.project.get());
             Engine::pauseGameEvents(true);
             Engine::setAsyncLoading(false);
             out.ready = out.project->loadProject(out.dir, false);
             return out;
         }();
+        // every test of the project (the paths end with each test)
+        if (h.project) editor::test::useProjectPaths(h.project.get());
         return h;
     }
 
