@@ -476,14 +476,14 @@ in `tools/mcp/tests/test_reflection.py`.
 
 Recorded by the implementation (branch `feat/s08-reflection`).
 
-- **Hand codecs kept (P3 → P4).** 37 components use the generic codec. 19 keep a whole-component
+- **Hand codecs kept (P3 → P4).** 38 of the 60 components use the generic codec. 22 keep a whole-component
   codec called through `ComponentDesc::codec`, with their table driving the Catalog, Inspector,
   MCP, locators and codegen: the P4 set (Mesh, UI, Model, Prefab, Script, Terrain) plus Sprite,
   Tilemap, Polygon, MeshPolygon, Points, LineRenderer, InstancedMesh, MorphTracks,
-  Rigidbody2D/3D, ParticleSystem, Skybox and SpriteAnimation. Their YAML has quirks that one flag
+  Rigidbody2D/3D, ParticleSystem, Skybox, SpriteAnimation and the three lattice codecs below. Their YAML has quirks that one flag
   cannot express (count-limited lists, keys read from other components, legacy branches), so
-  §9's default applies. The codecs are in `editor/StreamComponents.cpp`. `Stream.cpp` is 3,898
-  lines and `StreamComponents.cpp` 2,065 lines, so the codec code that remains is about 5,960
+  §9's default applies. The codecs are in `editor/StreamComponents.cpp`. `Stream.cpp` is 4,319
+  lines and `StreamComponents.cpp` 2,313 lines, so the codec code that remains is about 6,630
   lines in total. AC15's `Stream.cpp` ≤ 5,000 is met by that split, not by deleting those codecs.
   `ComponentDesc::extraKeys` lists each codec's known keys for `StreamSchema` and
   `tools/check_stream_keys.py`.
@@ -508,7 +508,7 @@ Recorded by the implementation (branch `feat/s08-reflection`).
   LocalVolumetricFog, Tween, Bone, Prefab). The others keep their hand drawers, which were moved
   into `InspectorPhysics.cpp`, `InspectorAnimation.cpp` and `InspectorRenderers.cpp` and use the
   `EnumDesc` entries. These named drawers exist: `label`, `multiline`, `direction`, `halfCone`,
-  `po2Slider`, `textureCube` and `modelEntity`. `InspectorWindow.cpp` is 10,870 lines.
+  `po2Slider`, `textureCube` and `modelEntity`. `InspectorWindow.cpp` is 11,430 lines.
 - **Extra table vocabulary** beyond R3/R4: flags `NoDefault`, `NonStructural`, `CodegenIfChanged`,
   `CodegenRuntime`, `Transient`, `EmptyIsDefault`, `NullIfEmpty`, `NotListed`, `ListWhole`,
   `ListElements`, `ListEachElement`, `ListTemplate`, `ComponentOnly` and `Clamped`. These keep the Catalog
