@@ -46,6 +46,31 @@ one draw per hero and material), which VAT removes entirely.
   VAT's 0.53 ms. The VAT crowd is one mesh whatever the count. (A pre-existing engine limit, not a
   Vertex Animation one: noted here, not changed.)
 
+## Results on a GPU (27 October 2026)
+
+NVIDIA GeForce GTX 1080 Ti (driver 580.173.02), Vulkan editor build (`-DGRAPHIC_BACKEND=vulkan`),
+Release, Ubuntu 24.04, 20 cores; the editor's window on an Xvfb display (viewport 752 x 383).
+`python3 tools/performance/vat_crowd.py --count 1000,2000,5000` with the default 60 frames after a
+30 frame warmup. The hero is 1,608 triangles x 3 materials.
+
+| case | heroes | drawn | avg frame | fps | draws | triangles |
+|---|---|---|---|---|---|---|
+| skinned (Animation Players) | 1,000 | 1,000 | 346.38 ms | 2.9 | 3,000 | 4,824,000 |
+| VAT Vertices | 1,000 | 1,000 | 7.22 ms | 138.6 | 3 | 4,824,000 |
+| VAT Bones | 1,000 | 1,000 | 7.78 ms | 128.5 | 3 | 4,824,000 |
+| skinned | 2,000 | 820 | 281.37 ms | 3.6 | 2,460 | 3,955,680 |
+| VAT Vertices | 2,000 | 2,000 | 8.17 ms | 122.5 | 3 | 9,648,000 |
+| VAT Bones | 2,000 | 2,000 | 9.48 ms | 105.5 | 3 | 9,648,000 |
+| skinned | 5,000 | 1,023 | 927.50 ms | 1.1 | 3,069 | 4,934,952 |
+| VAT Vertices | 5,000 | 5,000 | 13.75 ms | 72.7 | 3 | 24,120,000 |
+| VAT Bones | 5,000 | 5,000 | 16.19 ms | 61.8 | 3 | 24,120,000 |
+
+At 1,000 heroes a Vertex Animation crowd is ~48x faster per frame than the same heroes with Animation
+Players (the skinned frame is CPU-bound: posing and uploading 1,000 skeletons, 3,000 draws), and it
+keeps drawing every hero where the skinned crowd stops at the buffer-pool limit described above.
+Vertices mode is ~10-15% faster than Bones here (2 texel fetches per vertex vs 16 for 4 influences);
+Bones mode trades that for a payload a hundred times smaller.
+
 ## Running it
 
 ```
