@@ -62,8 +62,8 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
 
 ## The loop
 1. Inspect: `editor_status`, the scenes, the hierarchy, the GameObjects you will touch.
-   A component's fields, ranges, enums: list_component_types, jasper://reflection; the
-   Inspector's rows: get_inspector_layout.
+   Fields, ranges, enums: list_component_types, jasper://reflection; Inspector rows:
+   get_inspector_layout.
 2. Edit scenes, prefabs and settings with tools, never by hand-editing .scene/.prefab/
    project.yaml. Group many edits in one `batch` call
    (undo_group: one undo step, see Undo). Edit code with your own tools (see Code).
