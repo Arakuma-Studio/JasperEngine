@@ -105,13 +105,16 @@ window badges queued, cooking and failed textures.
 
 - **Loads** read the KTX2's metadata and its mip tail (the levels of at most 64 px, at the start
   of the file) first and upload those, then read the rest: one ranged read each, levels above the
-  mip limit never read. Basis files transcode on a worker (on the main thread, one level a frame,
-  in single-threaded web builds).
+  mip limit never read. Basis files transcode on a worker (the job system's, `web-threads` builds
+  included); single-threaded web builds transcode on the main thread, everything while the scenes
+  load, then in 4 ms slices of each frame (UASTC in bands of 32 block rows, ETC1S a level at a
+  time).
 - **Fallbacks**: a desktop GPU without a cooked BC format gets it decoded on the CPU (bcdec);
-  the web transcodes to the first format its browser samples: ETC1S colour to ETC2 > BC1/BC3 >
-  ASTC 4x4 > BC7, UASTC colour to ASTC 4x4 > BC7 > ETC2 > BC3/BC1, normal maps to BC5 > EAC RG11 >
-  ASTC 4x4 > RG8, single channel to BC4 > EAC R11 > ASTC 4x4 > R8, HDR to BC6H > RGB9E5 > RGBA16F,
-  then uncompressed; Android without ASTC loads `android_etc2` when the export carries it. With the
+  the web transcodes to the first format its browser samples: ETC1S colour to ETC2 > BC1/BC3,
+  UASTC colour to ASTC 4x4 > BC7 > ETC2 > BC3/BC1, normal maps to BC5 > EAC RG11 > ASTC 4x4
+  (UASTC) > RG8, single channel to BC4 > EAC R11 > ASTC 4x4 (UASTC) > R8, HDR to BC6H > RGB9E5 >
+  RGBA16F, then uncompressed (every WebGL2 device with ASTC or BPTC has ETC2 or S3TC too, so ETC1S
+  has no ASTC or BC7 entry and the web transcoder carries no tables for them); Android without ASTC loads `android_etc2` when the export carries it. With the
   low-memory fallback on (web by default) the last resort is RGB565 / RGBA4444. The first
   fallback of each format logs once.
 - **Quality and budget**: `Engine.setTextureQuality(0..3)` drops the top mips of streamable

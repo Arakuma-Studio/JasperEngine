@@ -20,7 +20,9 @@
 
 #define BASISU_ASTC_HELPERS_IMPLEMENTATION
 #include "basisu_astc_helpers.h"
+#if BASISD_SUPPORT_XUASTC // JasperEngine: the XBC7 decoder is built on XUASTC's BC7 code (README.jasper.md)
 #include "basisu_xbc7_decoder.h"
+#endif
 
 #include <limits.h>
 
@@ -78,6 +80,11 @@
 
 #ifndef BASISD_SUPPORT_DXT5A
 	#define BASISD_SUPPORT_DXT5A 1
+#endif
+
+// JasperEngine: compute the ETC1S -> BC1 tables at init instead of compiling them in (README.jasper.md)
+#ifndef JASPER_BASISD_COMPUTE_DXT1_TABLES
+	#define JASPER_BASISD_COMPUTE_DXT1_TABLES 0
 #endif
 
 // Disable all BC7 transcoders if necessary (useful when cross compiling to Javascript)
@@ -249,6 +256,7 @@ namespace basist
 #endif
 	}
 	
+#if BASISD_SUPPORT_XUASTC // JasperEngine: declared with XUASTC (README.jasper.md)
 	// Used by arith encoder/decoder
 	namespace arith_fastbits_f32
 	{
@@ -256,6 +264,7 @@ namespace basist
 		float g_lut_edge[TABLE_SIZE + 1]; // samples at m = 1 + i/TABLE_SIZE (for linear)
 
 	} // namespace arith_fastbits_f32
+#endif
 
 	inline uint16_t byteswap_uint16(uint16_t v)
 	{
@@ -1207,6 +1216,12 @@ namespace basist
 	static uint8_t g_etc1_to_dxt1_selector_mappings_raw_dxt1_256[NUM_ETC1_TO_DXT1_SELECTOR_MAPPINGS][256];
 	static uint8_t g_etc1_to_dxt1_selector_mappings_raw_dxt1_inv_256[NUM_ETC1_TO_DXT1_SELECTOR_MAPPINGS][256];
 
+#if JASPER_BASISD_COMPUTE_DXT1_TABLES
+	// JasperEngine: computed by basisu_transcoder_init() (jasper_etc1s_to_bc1_tables.inl)
+	static etc1_to_dxt1_56_solution g_etc1_to_dxt_6[32 * 8 * NUM_ETC1_TO_DXT1_SELECTOR_MAPPINGS * NUM_ETC1_TO_DXT1_SELECTOR_RANGES];
+	static etc1_to_dxt1_56_solution g_etc1_to_dxt_5[32 * 8 * NUM_ETC1_TO_DXT1_SELECTOR_MAPPINGS * NUM_ETC1_TO_DXT1_SELECTOR_RANGES];
+#include "jasper_etc1s_to_bc1_tables.inl"
+#else
 	static const etc1_to_dxt1_56_solution g_etc1_to_dxt_6[32 * 8 * NUM_ETC1_TO_DXT1_SELECTOR_MAPPINGS * NUM_ETC1_TO_DXT1_SELECTOR_RANGES] = {
 #include "basisu_transcoder_tables_dxt1_6.inc"
 	};
@@ -1214,6 +1229,7 @@ namespace basist
 	static const etc1_to_dxt1_56_solution g_etc1_to_dxt_5[32 * 8 * NUM_ETC1_TO_DXT1_SELECTOR_MAPPINGS * NUM_ETC1_TO_DXT1_SELECTOR_RANGES] = {
 #include "basisu_transcoder_tables_dxt1_5.inc"
 	};
+#endif
 #endif // BASISD_SUPPORT_DXT1
 
 #if BASISD_SUPPORT_DXT1 || BASISD_SUPPORT_UASTC
@@ -2192,6 +2208,9 @@ namespace basist
 #endif
 
 #if BASISD_SUPPORT_DXT1
+#if JASPER_BASISD_COMPUTE_DXT1_TABLES
+		jasper_compute_etc1_to_dxt1_tables();
+#endif
 		for (uint32_t i = 0; i < NUM_ETC1_TO_DXT1_SELECTOR_RANGES; i++)
 		{
 			uint32_t l = g_etc1_to_dxt1_selector_ranges[i].m_low;
@@ -10128,10 +10147,15 @@ namespace basist
 		bool status = false;
 		if ((fmt == block_format::cPVRTC1_4_RGB) || (fmt == block_format::cPVRTC1_4_RGBA))
 		{
+#if BASISD_SUPPORT_PVRTC1 // JasperEngine: UASTC -> PVRTC1 compiled out with ETC1S's (README.jasper.md)
 			if (fmt == block_format::cPVRTC1_4_RGBA)
 				transcode_uastc_to_pvrtc1_4_rgba((const uastc_block*)pImage_data, pDst_blocks, num_blocks_x, num_blocks_y, high_quality);
 			else
 				transcode_uastc_to_pvrtc1_4_rgb((const uastc_block *)pImage_data, pDst_blocks, num_blocks_x, num_blocks_y, high_quality, from_alpha);
+#else
+			BASISU_NOTE_UNUSED(from_alpha);
+			return false;
+#endif
 		}
 		else
 		{
@@ -42950,6 +42974,7 @@ void encode_pvrtc1(
 
 #endif // BASISD_SUPPORT_XUASTC
 
+#if BASISD_SUPPORT_XUASTC // JasperEngine: the XUASTC transcoders' helpers, with them (README.jasper.md)
 static inline bool blocks_same_solid_colors(const astc_helpers::log_astc_block& a, const astc_helpers::log_astc_block& b, uint32_t tol)
 {
 	if ((!a.m_solid_color_flag_ldr) || (!b.m_solid_color_flag_ldr))
@@ -43069,6 +43094,7 @@ static void astc_upsample_grid_weights(const astc_helpers::log_astc_block& log_b
 		memcpy(pDst_weights, dequantized_weights, block_width * block_height);
 	}
 }
+#endif // JasperEngine: BASISD_SUPPORT_XUASTC
 
 bool basisu_lowlevel_xuastc_ldr_transcoder::transcode_slice(
 	basis_tex_format src_format, bool use_astc_srgb_decode_profile,
@@ -45956,7 +45982,9 @@ bool basisu_lowlevel_xubc7_transcoder::transcode_image(
 } // namespace basist
 
 // XUBC7/XBC7 decoder source code
+#if BASISD_SUPPORT_XUASTC // JasperEngine: with its header (README.jasper.md)
 #include "basisu_xbc7_decoder.inl"
+#endif
 
 // Plain BC1/3/4/5 block unpackers (basist::bcu) and the DDS reader/transcoder (basist::dds_transcoder).
 #include "basisu_dds_transcoder.inl"

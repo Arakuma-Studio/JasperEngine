@@ -1463,6 +1463,13 @@ if(NOT MSVC)
     set_source_files_properties(core/texture/MipChain.cpp core/texture/TexturePrepare.cpp
         PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
 endif()
+# the cooked-texture runtime the web downloads, optimised for size there like the Basis
+# transcoder (spec S14 R21): its hot loops are the transcoder's and Zstandard's
+if(EMSCRIPTEN)
+    set_source_files_properties(core/texture/Ktx2.cpp core/texture/TextureDecode.cpp core/texture/TextureFallback.cpp
+        core/texture/TextureFormat.cpp core/texture/CookedTextures.cpp core/texture/BasisTranscode.cpp
+        PROPERTIES COMPILE_OPTIONS "-Os")
+endif()
 
 # The manifests of the library shaders (shaderlib/library/), embedded in every build: a
 # game reads their properties, textures and render state even without the runtime

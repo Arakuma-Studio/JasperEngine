@@ -2,9 +2,10 @@
 # (LICENSE, NOTICE; the encoder's third-party parts in LICENSES/). What is vendored and changed:
 # README.jasper.md. Spec S14.
 #
-# basisu_transcoder: the KTX2 transcoder alone, built with only the source modes the cook writes
-# (ETC1S, UASTC LDR 4x4, UASTC HDR 4x4) and the target formats of the web transcode list
-# (engine/core/texture/BasisTranscode.cpp): the web runtime and the editor's previews.
+# basisu_transcoder: the transcoder of the engine (the web runtime, the editor's previews, the
+# tests), trimmed to what the web transcode lists need (engine/core/texture/BasisTranscode.cpp,
+# TextureFallback.cpp; spec S14 R21, D5, deviation 23): the source formats the cook writes
+# (ETC1S, UASTC LDR 4x4, UASTC HDR 4x4) through Basis's container-independent transcoders.
 # basisu_encoder: the ETC1S / UASTC / UASTC HDR encoders (with their own transcoder copy), for
 # the editor's cook. Both use engine/libs/zstd (zstd/zstd.h forwards there), SSE and OpenCL off.
 
@@ -19,19 +20,25 @@ set(BASISU_GNU_FE $<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COM
 add_library(basisu_transcoder STATIC ${CMAKE_CURRENT_SOURCE_DIR}/transcoder/basisu_transcoder.cpp)
 target_include_directories(basisu_transcoder SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/transcoder)
 target_compile_definitions(basisu_transcoder PUBLIC ${BASISU_COMMON_DEFINITIONS})
-# the D5 targets only: no PVRTC1/2, ATC, FXT1 (v2.50's XBC7 decoder needs the XUASTC code, so
-# BASISD_SUPPORT_XUASTC stays on). Private: only the .cpp reads them, and the editor's own copy
-# (the encoder's) keeps every target
+# The D5 targets only (private: only the .cpp reads them; the encoder's own copy keeps every
+# target): no XUASTC, ASTC LDR or XUBC7 sources (their decoders and BC7/ASTC packers), no PVRTC1/2,
+# ATC or FXT1, and ETC1S to ETC2, BC1/3/4/5, EAC and uncompressed only (no ETC1S -> ASTC or BC7
+# tables, TextureFallback leaves them out); the ETC1S -> BC1 tables are computed at init
+# (jasper_etc1s_to_bc1_tables.inl). README.jasper.md lists the source changes these need.
 # Byte reads of the UASTC bit fields on x86 too, as on ARM and wasm: the default's unaligned
 # uint16 loads are undefined behaviour (UBSan stops the sanitizer runs on them). Only the
 # transcoder's .cpp reads it (both copies)
 target_compile_definitions(basisu_transcoder PRIVATE
     BASISD_USE_UNALIGNED_WORD_READS=0
+    BASISD_SUPPORT_XUASTC=0
     BASISD_SUPPORT_PVRTC1=0
     BASISD_SUPPORT_PVRTC2=0
     BASISD_SUPPORT_ATC=0
     BASISD_SUPPORT_FXT1=0
-    BASISD_SUPPORT_ASTC_HIGHER_OPAQUE_QUALITY=0)
+    BASISD_SUPPORT_ASTC=0
+    BASISD_SUPPORT_BC7_MODE5=0
+    BASISD_SUPPORT_ASTC_HIGHER_OPAQUE_QUALITY=0
+    JASPER_BASISD_COMPUTE_DXT1_TABLES=1)
 target_link_libraries(basisu_transcoder PRIVATE zstd_decompress)
 target_compile_options(basisu_transcoder PRIVATE $<${BASISU_GNU_FE}:-fno-strict-aliasing>)
 # the web downloads the transcoder: optimised for size there (spec S14 R21)

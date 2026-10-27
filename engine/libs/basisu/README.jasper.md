@@ -7,7 +7,9 @@
   domain).
 - Used by (spec S14):
   - the transcoder (`basisu_transcoder`): Basis KTX2 textures of the web family, transcoded at
-    load (`engine/core/texture/BasisTranscode.cpp`), and the editor's previews of them;
+    load (`engine/core/texture/BasisTranscode.cpp`, through the container-independent
+    `basisu_lowlevel_*_transcoder` classes: `ktx2_transcoder` is not linked), and the editor's
+    previews of them;
   - the encoder (`basisu_encoder`, editor only): ETC1S, UASTC LDR 4x4 and UASTC HDR 4x4 for the
     web family, UASTC transcodes to ETC2/EAC for `android_etc2`, and the `.exr` reader.
 
@@ -23,9 +25,25 @@ shader-deblocking samples, the build files.
 - `zstd/zstd.h`: a one-line forward to `engine/libs/zstd/lib/zstd.h`, so basisu's
   `#include "../zstd/zstd.h"` uses the engine's single Zstandard copy.
 - `CMakeLists.txt`: replaces the upstream build. SSE and OpenCL off (`BASISU_SUPPORT_SSE=0`,
-  `BASISU_SUPPORT_OPENCL=0`), `-ffp-contract=off`, hidden visibility. The transcoder is built
-  without PVRTC1/2, ATC and FXT1 (`BASISD_SUPPORT_*=0`), which the engine never asks for; XUASTC
-  stays on because v2.50's XBC7 decoder does not compile without it. UASTC bit fields are read
+  `BASISU_SUPPORT_OPENCL=0`), `-ffp-contract=off`, hidden visibility. UASTC bit fields are read
   byte by byte on x86 too (`BASISD_USE_UNALIGNED_WORD_READS=0`, as upstream does on ARM and wasm):
   the unaligned `uint16_t` loads are undefined behaviour under UBSan.
-- No source file is changed.
+- The engine's transcoder (`basisu_transcoder`, the web runtime: spec S14 R21, deviation 23) is
+  built with only the web transcode lists' paths: `BASISD_SUPPORT_XUASTC=0` (no XUASTC, ASTC LDR
+  or XUBC7 sources, with their BC7/ASTC/ETC1 packers and decoders), `BASISD_SUPPORT_PVRTC1/PVRTC2/
+  ATC/FXT1=0`, `BASISD_SUPPORT_ASTC=0` and `BASISD_SUPPORT_BC7_MODE5=0` (no ETC1S -> ASTC or BC7:
+  TextureFallback's ETC1S lists leave them out) and `JASPER_BASISD_COMPUTE_DXT1_TABLES=1`. The
+  encoder's copy (`basisu_encoder`) keeps every path.
+- Source changes, each marked `JasperEngine` in the file, all compiled out unless a macro asks:
+  - `transcoder/basisu_transcoder.cpp`: `JASPER_BASISD_COMPUTE_DXT1_TABLES` (default 0) declares
+    the ETC1S -> BC1 tables `g_etc1_to_dxt_5/6` uninitialised and has `basisu_transcoder_init()`
+    compute them (`transcoder/jasper_etc1s_to_bc1_tables.inl`, ours) instead of compiling in
+    `basisu_transcoder_tables_dxt1_{5,6}.inc` (120 KB); the computed tables are upstream's entry
+    for entry (`TextureBasisTranscode.Etc1sToBc1TablesMatchUpstream`), `jasper_etc1_to_dxt1_table()`
+    (`transcoder/jasper_transcoder_tables.h`, ours) hands them to that test. The UASTC -> PVRTC1 calls
+    of `basisu_lowlevel_uastc_ldr_4x4_transcoder::transcode_slice` are under `BASISD_SUPPORT_PVRTC1`
+    like ETC1S's. `BASISD_SUPPORT_XUASTC` also guards the XBC7 decoder (`basisu_xbc7_decoder.h`
+    and `.inl`), the arithmetic decoder's lookup table (`arith_fastbits_f32`) and the XUASTC
+    transcoders' block helpers, which v2.50 leaves outside it (it does not compile without XUASTC
+    otherwise: spec S14 deviation 12).
+- Otherwise no source file is changed; `encoder/*` is byte for byte the tag's.
