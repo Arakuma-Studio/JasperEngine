@@ -185,6 +185,8 @@ void SpriteNormalsWindow::setOpen(bool openIt) {
     retire(colorGpu);
     retire(normalGpu);
     retire(litGpu);
+    retire(hemisphereGpu);
+    endStroke();
 }
 
 bool SpriteNormalsWindow::isOpen() const {
@@ -240,6 +242,18 @@ void SpriteNormalsWindow::resetForProjectSwitch() {
     retire(colorGpu);
     retire(normalGpu);
     retire(litGpu);
+    retire(hemisphereGpu);
+    paint = sn::PaintOverlay();
+    paintSaved = sn::PaintOverlay();
+    paintTarget.clear();
+    paintProblem.clear();
+    paintUndo.clear();
+    paintRedo.clear();
+    paintUndoBytes = 0;
+    paintTool = sn::PaintTool::Navigate;
+    stroking = false;
+    paintOpenSet = false;
+    paintChanged();
 }
 
 void SpriteNormalsWindow::loadStored() {
@@ -315,6 +329,13 @@ sn::Spec SpriteNormalsWindow::specOf(const Item& item) const {
     // left out of the run instead of refusing it
     auto& regions = spec.settings.regions;
     regions.erase(std::remove_if(regions.begin(), regions.end(), [](const sn::Region& r) { return r.colors.empty(); }), regions.end());
+    // single mode: the window keeps the paint layer itself (loaded from the target, composited
+    // over every result, written by Save), so the runs make the plain generation; a batch keeps
+    // each map's own paint (the session composites it into the result it writes)
+    if (!isBatch()) {
+        spec.paintMode = sn::PaintMode::Replace;
+        spec.paint.clear();
+    }
     return spec;
 }
 
@@ -447,6 +468,7 @@ bool SpriteNormalsWindow::openSources(const std::vector<fs::path>& images, std::
     }
     if (items.size() == 1) autoTargetFor(items[0].texturePath);
     resetPreviewFor(false);
+    loadPaintForTarget();
     markChanged();
     open();
     return true;
@@ -509,6 +531,7 @@ bool SpriteNormalsWindow::openRecipe(const fs::path& generatedPng, std::string& 
     assign = false;
     autoTargetFor(items[0].texturePath);
     resetPreviewFor(false);
+    loadPaintForTarget();
     markChanged();
     storeSettings();
     open();
@@ -667,6 +690,7 @@ bool SpriteNormalsWindow::openForEntity(uint32_t sceneId, Entity entity, unsigne
     setAssignTarget(sceneId, entity, submesh);
     assign = true;
     resetPreviewFor(false);
+    loadPaintForTarget();
     markChanged();
     open();
     return true;
@@ -716,7 +740,8 @@ bool SpriteNormalsWindow::regenerateFromRecipe(Project* project, const fs::path&
         error = problems.empty() ? "the recipe can't be used" : problems.front().message;
         return false;
     }
-    const sn::Result result = sn::generate(prepared.request);
+    // the map's paint (kept from it) composited again
+    const sn::Result result = sn::generatePrepared(prepared);
     if (result.status != sn::Status::Ok) {
         error = result.errors.empty() ? std::string("the generation failed") : result.errors.front().message;
         return false;
@@ -760,10 +785,13 @@ void SpriteNormalsWindow::setFrames(const sn::FramesSpec& f) {
 
 void SpriteNormalsWindow::setOutput(const std::string& projectRelative) {
     if (current >= items.size()) return;
+    const bool changed = items[current].spec.output.normal != projectRelative;
     items[current].spec.output.normal = projectRelative;
     // where it goes is not part of the result: no regeneration, only the checks
     refreshProblems(items[current]);
     warningsDirty = true;
+    // another target file: its paint layer
+    if (changed) loadPaintForTarget();
 }
 
 void SpriteNormalsWindow::setHeightMap(bool on) {
@@ -961,7 +989,17 @@ bool SpriteNormalsWindow::writeResults(const std::vector<size_t>& itemIndices, b
         planning.source = prepared.sourcePath;
         prepared.outputs = sn::plannedOutputs(root, planning, prepared.source.kind);
         std::vector<sn::OutputFile> files;
-        if (!sn::encodeOutputs(prepared, item.result->result(), files, error)) return false;
+        // single mode: the window's paint layer goes into the map, over the generation shown
+        sn::Result result = item.result->result();
+        if (!isBatch() && i == current) {
+            prepared.paint = sn::PaintLayer();
+            if (paint.sized(result.normal.width, result.normal.height)) {
+                prepared.paint.overlay = paint;
+                result.normal = composedNormal();
+            }
+        }
+        sn::Problem problem;
+        if (!sn::encodeOutputs(prepared, result, files, error, &problem)) return false;
         for (sn::OutputFile& f : files) {
             if (f.role == "normal") normals++;
             all.push_back(std::move(f));
@@ -975,6 +1013,14 @@ bool SpriteNormalsWindow::writeResults(const std::vector<size_t>& itemIndices, b
     recordWrite();
     for (const sn::OutputFile& f : all) written.push_back(f.path);
     lastWritten = written;
+    // what is saved now (the stroke stack stays: Ctrl+Z still undoes strokes)
+    if (!isBatch()) {
+        for (const sn::OutputFile& f : all) {
+            if (f.role == "normal") paintTarget = f.absolute.lexically_normal().generic_u8string();
+        }
+        paintSaved = paint;
+        paintProblem.clear();
+    }
     // batch: the decoded sources and results of the items not shown are not kept once written
     if (isBatch()) {
         for (size_t i = 0; i < items.size(); i++) {
@@ -1044,6 +1090,10 @@ bool SpriteNormalsWindow::save(bool overwrite, std::vector<std::string>& written
     }
     if (isStale() || (isRunning() && runItem == current)) {
         error = "Updating: wait for the preview";
+        return false;
+    }
+    if (paintSizeMismatch()) {
+        error = paintDisabledReason();
         return false;
     }
     Item& item = items[current];
@@ -1463,7 +1513,7 @@ void SpriteNormalsWindow::renderLit() {
     ensureLight();
     int x, y, w, h;
     cellRect(frame, x, y, w, h);
-    const sn::Image& normal = r->result().normal;
+    const sn::Image& normal = displayNormal();
     const sn::Image& color = r->prepared().source.color;
     sn::LightSetup setup = lightSetup();
     // All view of a large image: only what is on screen (the light moves with the crop)
@@ -1637,6 +1687,19 @@ void SpriteNormalsWindow::refreshWarnings(bool force) {
         }
     }
 
+    // the paint layer loaded from the target
+    if (paintSizeMismatch()) {
+        const std::shared_ptr<sn::SpriteNormalsRun> shownRun = shown();
+        const sn::Image& n = shownRun->result().normal;
+        warnings.push_back({"paint_size_mismatch",
+                            fileName(paintTarget) + " has " + std::to_string(paint.paintedCount()) + " painted pixels for a " + std::to_string(paint.width) +
+                                "x" + std::to_string(paint.height) + " image; the map is " + std::to_string(n.width) + "x" + std::to_string(n.height) +
+                                " now. Clear the paint to save (or restore the source size).",
+                            true,
+                            {"Clear Paint"}});
+    }
+    if (!paintProblem.empty()) warnings.push_back({"paint_unreadable", paintProblem, false, {}});
+
     // what the target's scene says (Phase 2's sceneWarnings, verbatim)
     const std::shared_ptr<sn::SpriteNormalsRun> r = shown();
     int width = r ? r->result().normal.width : item.info.width;
@@ -1773,7 +1836,11 @@ bool SpriteNormalsWindow::applyFix(const std::string& kind, const std::string& f
         item.result.reset();
         probe(item, true);
         resetPreviewFor(false);
+        loadPaintForTarget();
         markChanged();
+        done = true;
+    } else if (kind == "paint_size_mismatch" && fix == "Clear Paint") {
+        clearPaint();
         done = true;
     } else if (kind == "directx_in_engine" && fix == "Switch to OpenGL") {
         settings.directx = false;
@@ -1875,15 +1942,20 @@ void SpriteNormalsWindow::updatePreviewImages() {
         colorRgba = sn::Image();
         retire(colorGpu);
         retire(normalGpu);
+        normalGpuFor = 0;
         if (r) {
             colorRgba = r->prepared().source.color;
-            updateGpuImage(normalGpu, r->result().normal, resultSerial);
         } else if (!key.empty() && current < items.size() && items[current].probeOk && liveAllowed(items[current])) {
             sn::Source source;
             std::vector<sn::Problem> problems;
             if (sn::loadSource(absoluteOf(project, items[current].texturePath), source, problems)) colorRgba = source.color;
         }
         updateGpuImage(colorGpu, colorRgba, resultSerial);
+    }
+    // the Normal view: the generation with the paint (a stroke changes it)
+    if (r && (normalGpuFor != paintSerial * 2 + (showPaint ? 1 : 0) || (editorUi() && !normalGpu.valid()))) {
+        updateGpuImage(normalGpu, displayNormal(), resultSerial);
+        normalGpuFor = paintSerial * 2 + (showPaint ? 1 : 0);
     }
     if (litDirty && (litRenderedAt < 0.0 || now() - litRenderedAt >= 1.0 / 30.0 || now() < litRenderedAt)) renderLit();
 }
@@ -1918,6 +1990,7 @@ bool SpriteNormalsWindow::setSourcePath(const std::string& text, std::string& er
     keepTargetFor(items[current]);
     if (!hasAssignTarget()) autoTargetFor(items[current].texturePath);
     resetPreviewFor(false);
+    loadPaintForTarget();
     markChanged();
     return true;
 }
@@ -2834,6 +2907,7 @@ void SpriteNormalsWindow::drawSettings() {
     drawFrames();
     drawPresetAndSliders();
     drawAdvanced();
+    drawPaint();
     drawOutput();
     drawWarnings();
 }
@@ -2855,6 +2929,7 @@ std::string SpriteNormalsWindow::primaryDisabledReason() const {
     if (getAssign() && project->isAnyScenePlaying()) return "Stop the scene to assign the normal map";
     if (!hasResult()) return "Wait for the preview";
     if (isStale() || (isRunning() && runItem == current)) return "Updating: wait for the preview";
+    if (paintSizeMismatch()) return paintDisabledReason();
     return std::string();
 }
 
@@ -3196,7 +3271,13 @@ void SpriteNormalsWindow::drawCanvas(const ImVec2& size) {
 
     ImGuiIO& io = ImGui::GetIO();
     const bool lit = view == View::Lit || view == View::Split;
-    const bool picking = pickingRegion >= 0 || io.KeyAlt;
+    // a paint tool owns left-drag, Alt+click and Shift+wheel (Navigate keeps the light and the eyedropper)
+    const bool paintInput = painting() && r;
+    const bool picking = !paintInput && (pickingRegion >= 0 || io.KeyAlt);
+    const ImVec2 pixel((io.MousePos.x - imgMin.x) / zoom, (io.MousePos.y - imgMin.y) / zoom);
+    const int imagePx = cx + static_cast<int>(std::floor(pixel.x)), imagePy = cy + static_cast<int>(std::floor(pixel.y));
+    const bool overImage = pixel.x >= 0 && pixel.y >= 0 && pixel.x < cw && pixel.y < ch;
+    drawPaintOverlays(draw, imgMin, zoom, cx, cy, cw, ch, pixel, hovered);
     // the light: a disc with a soft halo
     if (lit && r) {
         ensureLight();
@@ -3222,11 +3303,15 @@ void SpriteNormalsWindow::drawCanvas(const ImVec2& size) {
     }
 
     // ---- input
-    const ImVec2 pixel((io.MousePos.x - imgMin.x) / zoom, (io.MousePos.y - imgMin.y) / zoom);
     float wheel = io.MouseWheel;
     if (wheel == 0.0f && io.KeyShift) wheel = io.MouseWheelH;
     if (hovered && wheel != 0.0f) {
-        if (io.KeyShift && lit) {
+        if (io.KeyShift && paintInput) {
+            // the brush size: 1 px a notch, 4 with Ctrl
+            sn::PaintBrush b = brush;
+            b.size += (wheel > 0 ? 1 : -1) * (io.KeyCtrl ? 4 : 1);
+            setPaintBrush(b);
+        } else if (io.KeyShift && lit) {
             light.height = std::clamp(light.height * (wheel > 0 ? 1.1f : 1.0f / 1.1f), 1.0f, 4096.0f);
             light.userHeight = true;
             litDirty = true;
@@ -3264,10 +3349,26 @@ void SpriteNormalsWindow::drawCanvas(const ImVec2& size) {
         pan.x += io.MouseDelta.x;
         pan.y += io.MouseDelta.y;
     }
-    if (hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && !picking) {
+    if (hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && !picking && !paintInput) {
         fitRequested = true;
     } else if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-        if (picking) {
+        if (paintInput && !overDivider) {
+            if (!overImage) {
+                // outside the image: nothing to paint (a stroke may still start there and enter it)
+                if (!io.KeyAlt && brush.fill == sn::PaintBrush::Fill::Brush) {
+                    beginStroke();
+                    strokeTo(imagePx, imagePy);
+                }
+            } else if (io.KeyAlt) {
+                // sample the composited normal into the direction (a transparent pixel: nothing)
+                if (samplePaintDirection(imagePx, imagePy)) setStatus("Direction sampled from the pixel " + std::to_string(imagePx) + ", " + std::to_string(imagePy) + ".", false);
+            } else if (brush.fill == sn::PaintBrush::Fill::Wand) {
+                wandFill(imagePx, imagePy);
+            } else {
+                beginStroke();
+                strokeTo(imagePx, imagePy);
+            }
+        } else if (picking) {
             // the eyedropper: the clicked source pixel (the shown cell's offset added)
             const int px = cx + static_cast<int>(std::floor(pixel.x)), py = cy + static_cast<int>(std::floor(pixel.y));
             std::string error;
@@ -3282,7 +3383,7 @@ void SpriteNormalsWindow::drawCanvas(const ImVec2& size) {
             }
         } else if (overDivider) {
             draggingSplit = true;
-        } else if (lit && r) {
+        } else if (lit && r && !paintInput) {
             draggingLight = true;
             orbit = false;
         }
@@ -3290,6 +3391,9 @@ void SpriteNormalsWindow::drawCanvas(const ImVec2& size) {
     if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
         draggingLight = false;
         draggingSplit = false;
+        endStroke();
+    } else if (stroking) {
+        strokeTo(imagePx, imagePy);
     }
     if (draggingSplit) {
         splitPosition = std::clamp((io.MousePos.x - origin.x) / area.x, 0.02f, 0.98f);
@@ -3298,7 +3402,7 @@ void SpriteNormalsWindow::drawCanvas(const ImVec2& size) {
         light.y = pixel.y;
         light.placed = true;
         litDirty = true;
-    } else if (active && !picking && !lit && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+    } else if (active && !picking && !paintInput && !lit && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
         pan.x += io.MouseDelta.x;
         pan.y += io.MouseDelta.y;
     }
@@ -3311,7 +3415,13 @@ void SpriteNormalsWindow::drawCanvas(const ImVec2& size) {
         draw->AddLine(ImVec2(m.x, m.y - arm), ImVec2(m.x, m.y + arm), IM_COL32(0, 0, 0, 255), 3.0f);
         draw->AddLine(ImVec2(m.x - arm, m.y), ImVec2(m.x + arm, m.y), IM_COL32(255, 255, 255, 255), 1.0f);
         draw->AddLine(ImVec2(m.x, m.y - arm), ImVec2(m.x, m.y + arm), IM_COL32(255, 255, 255, 255), 1.0f);
-    } else if (hovered && lit && r && !overDivider && !draggingSplit) {
+    } else if (hovered && paintInput && overImage) {
+        // the tool and its size beside the cursor
+        static const char* names[] = {"", "Angle", "Flatten", "Smooth", "Erase"};
+        const std::string hint = std::string(names[static_cast<int>(paintTool)]) +
+                                 (brush.fill == sn::PaintBrush::Fill::Wand ? " wand" : " " + std::to_string(brush.size) + " px") + (brush.mirrorX ? ", mirror X" : "");
+        draw->AddText(ImVec2(io.MousePos.x + Theme::dpi(14.0f), io.MousePos.y + Theme::dpi(14.0f)), IM_COL32(230, 230, 230, stroking ? 120 : 200), hint.c_str());
+    } else if (hovered && lit && r && !overDivider && !draggingSplit && !paintInput) {
         const char* hint = ICON_FA_LIGHTBULB " Drag: move the light";
         draw->AddText(ImVec2(io.MousePos.x + Theme::dpi(14.0f), io.MousePos.y + Theme::dpi(14.0f)), IM_COL32(230, 230, 230, draggingLight ? 120 : 190), hint);
     }
@@ -3352,13 +3462,16 @@ void SpriteNormalsWindow::drawMetrics() {
         if (!items.empty()) subtle("Nothing is written until Save.");
         return;
     }
-    if (metricsSerial != resultSerial || metricsRun != r.get()) {
+    if (metricsSerial != resultSerial || metricsRun != r.get() || metricsPaintSerial != paintSerial * 2 + (showPaint ? 1 : 0)) {
         metricsSerial = resultSerial;
         metricsRun = r.get();
+        metricsPaintSerial = paintSerial * 2 + (showPaint ? 1 : 0);
         const sn::Result& res = r->result();
         const sn::Settings& used = r->prepared().request.settings;
         const std::vector<sn::Cell>& cells = r->prepared().request.cells;
-        const sn::Metrics m = sn::measure(res.normal, cells, used.directx, used.alphaThreshold);
+        // the metrics of what is shown (with the paint unless Show paint is off)
+        const bool painted = showPaint && paint.sized(res.normal.width, res.normal.height);
+        const sn::Metrics m = sn::measure(displayNormal(), cells, used.directx, used.alphaThreshold, painted ? &paint : nullptr);
         metricsAssessment = sn::assess(used, m, static_cast<int>(std::max<size_t>(1, cells.size())));
         std::string radius = res.radiusPerIsland && res.radiusMax > res.radiusMin + 1e-3f
                                  ? "radius " + trimmed(res.radiusMin, 1) + "-" + trimmed(res.radiusMax, 1) + " px"
@@ -3382,6 +3495,669 @@ void SpriteNormalsWindow::drawPreview() {
     avail.y = std::max(avail.y - metricsHeight, Theme::dpi(80.0f));
     drawCanvas(avail);
     drawMetrics();
+}
+
+// ====================================================================== paint
+
+namespace {
+
+    constexpr size_t PAINT_UNDO_STEPS = 256;
+    constexpr size_t PAINT_UNDO_BYTES = 64u * 1024u * 1024u;
+
+    sn::PaintOpKind kindOf(sn::PaintTool tool) {
+        switch (tool) {
+            case sn::PaintTool::Angle: return sn::PaintOpKind::Angle;
+            case sn::PaintTool::Smooth: return sn::PaintOpKind::Smooth;
+            case sn::PaintTool::Erase: return sn::PaintOpKind::Erase;
+            default: return sn::PaintOpKind::Flatten;
+        }
+    }
+
+    std::array<uint8_t, 4> overlayPixel(const sn::PaintOverlay& o, int i) {
+        const uint8_t* p = &o.rgba[static_cast<size_t>(i) * 4];
+        return {p[0], p[1], p[2], p[3]};
+    }
+
+}
+
+void SpriteNormalsWindow::paintChanged() {
+    paintSerial++;
+    litDirty = true;
+    warningsDirty = true;
+}
+
+void SpriteNormalsWindow::loadPaintForTarget() {
+    endStroke();
+    paintUndo.clear();
+    paintRedo.clear();
+    paintUndoBytes = 0;
+    paint = sn::PaintOverlay();
+    paintSaved = sn::PaintOverlay();
+    paintTarget.clear();
+    paintProblem.clear();
+    paintOpenSet = false;
+    if (!isBatch() && current < items.size()) {
+        for (const sn::PlannedOutput& out : plannedOutputs()) {
+            if (out.role != "normal" || out.path.empty()) continue;
+            const fs::path abs = absoluteOf(project, out.path);
+            paintTarget = abs.generic_u8string();
+            std::error_code ec;
+            if (!fs::is_regular_file(abs, ec)) break;
+            std::string why;
+            if (std::optional<sn::PaintOverlay> loaded = sn::readPaint(abs, &why)) {
+                paint = std::move(*loaded);
+            } else if (!why.empty()) {
+                paintProblem = fileName(out.path) + "'s paint layer can't be read (" + why + "); Save writes the map without it.";
+            }
+            break;
+        }
+    }
+    paintSaved = paint;
+    if (!paint.empty()) {
+        paintOpen = true;
+        paintOpenSet = true;
+    }
+    paintChanged();
+}
+
+bool SpriteNormalsWindow::paintSizeMismatch() const {
+    const std::shared_ptr<sn::SpriteNormalsRun> r = shown();
+    if (!r || isBatch() || paint.empty()) return false;
+    return !paint.sized(r->result().normal.width, r->result().normal.height);
+}
+
+std::string SpriteNormalsWindow::paintDisabledReason() const {
+    if (items.empty()) return "Pick a source first";
+    if (isBatch()) return "Paint one image at a time (batch mode generates only)";
+    if (!shown()) return "Generate first";
+    if (paintSizeMismatch()) {
+        const sn::Image& n = shown()->result().normal;
+        return "The loaded paint is " + std::to_string(paint.width) + "x" + std::to_string(paint.height) + " but the map is " + std::to_string(n.width) +
+               "x" + std::to_string(n.height) + ": Clear Paint first";
+    }
+    return std::string();
+}
+
+bool SpriteNormalsWindow::hasUnsavedPaint() const {
+    if (paint.empty() && paintSaved.empty()) return false;
+    return paint != paintSaved;
+}
+
+void SpriteNormalsWindow::discardPaint() {
+    endStroke();
+    paint = paintSaved;
+    paintUndo.clear();
+    paintRedo.clear();
+    paintUndoBytes = 0;
+    paintChanged();
+}
+
+const sn::Image& SpriteNormalsWindow::generatedGL() {
+    static const sn::Image none;
+    const std::shared_ptr<sn::SpriteNormalsRun> r = shown();
+    if (!r) return none;
+    if (generatedGLRun != r.get()) {
+        generatedGLRun = r.get();
+        generatedGLImage = r->result().normal;
+        const sn::Settings& used = r->prepared().request.settings;
+        // a DirectX generation in OpenGL green (the paint is OpenGL whatever the setting)
+        if (used.directx) sn::flipGreen(generatedGLImage, r->prepared().request.color, used.alphaThreshold);
+    }
+    return generatedGLImage;
+}
+
+sn::Image SpriteNormalsWindow::composedNormal() {
+    const std::shared_ptr<sn::SpriteNormalsRun> r = shown();
+    if (!r) return sn::Image();
+    const sn::Image& normal = r->result().normal;
+    if (paint.empty() || !paint.sized(normal.width, normal.height)) return normal;
+    const sn::Settings& used = r->prepared().request.settings;
+    return sn::composite(generatedGL(), paint, r->prepared().request.color, used.alphaThreshold, used.directx);
+}
+
+const sn::Image& SpriteNormalsWindow::displayNormal() {
+    static const sn::Image none;
+    const std::shared_ptr<sn::SpriteNormalsRun> r = shown();
+    if (!r) return none;
+    const sn::Image& normal = r->result().normal;
+    // Show paint off previews the generation alone (Save still writes the paint)
+    if (!showPaint || paint.empty() || !paint.sized(normal.width, normal.height)) return normal;
+    if (displayedRun != r.get() || displayedFor != paintSerial) {
+        displayedRun = r.get();
+        displayedFor = paintSerial;
+        displayed = composedNormal();
+    }
+    return displayed;
+}
+
+void SpriteNormalsWindow::setPaintTool(sn::PaintTool tool) {
+    endStroke();
+    paintTool = tool;
+    // a brush and the eyedropper don't share the left button
+    if (tool != sn::PaintTool::Navigate) pickingRegion = -1;
+    draggingLight = false;
+}
+
+void SpriteNormalsWindow::setPaintBrush(const sn::PaintBrush& b) {
+    brush = b;
+    brush.size = std::clamp(brush.size, 1, 64);
+    brush.strength = std::clamp(std::isfinite(brush.strength) ? brush.strength : 1.0f, 0.0f, 1.0f);
+    brush.smoothRadius = std::clamp(brush.smoothRadius, 1, 4);
+    brush.wandTolerance = std::clamp(std::isfinite(brush.wandTolerance) ? brush.wandTolerance : 0.0f, 0.0f, 0.5f);
+    std::string error;
+    std::array<float, 3> d;
+    brush.direction = sn::normaliseDirection(brush.direction, d, error) ? d : std::array<float, 3>{0.0f, 0.0f, 1.0f};
+    // at most 85 degrees from the viewer (what the direction picker allows)
+    float az = 0, tilt = 0;
+    sn::anglesOf(brush.direction, az, tilt);
+    if (tilt > sn::kMaxPaintTilt) brush.direction = sn::directionFromAngles(az, sn::kMaxPaintTilt);
+}
+
+void SpriteNormalsWindow::setShowPaint(bool on) {
+    showPaint = on;
+    litDirty = true;
+}
+
+void SpriteNormalsWindow::pushPaintPatch(PaintPatch patch) {
+    if (patch.pixels.empty()) return;
+    paintUndoBytes += patch.bytes();
+    paintUndo.push_back(std::move(patch));
+    paintRedo.clear();
+    // the cap: 256 steps or 64 MiB, the oldest dropped first
+    while (!paintUndo.empty() && (paintUndo.size() > PAINT_UNDO_STEPS || paintUndoBytes > PAINT_UNDO_BYTES)) {
+        paintUndoBytes -= paintUndo.front().bytes();
+        paintUndo.erase(paintUndo.begin());
+    }
+}
+
+void SpriteNormalsWindow::recordPaint(const std::function<void()>& change) {
+    const sn::PaintOverlay before = paint;
+    change();
+    PaintPatch patch;
+    patch.width = paint.width;
+    patch.height = paint.height;
+    const bool sized = before.sized(paint.width, paint.height);
+    for (int i = 0; i < paint.width * paint.height; i++) {
+        const std::array<uint8_t, 4> was = sized ? overlayPixel(before, i) : std::array<uint8_t, 4>{128, 128, 255, 0};
+        const std::array<uint8_t, 4> now = overlayPixel(paint, i);
+        if (was == now) continue;
+        patch.pixels.push_back(i);
+        patch.before.push_back(was);
+        patch.after.push_back(now);
+    }
+    if (!patch.pixels.empty()) {
+        pushPaintPatch(std::move(patch));
+        paintChanged();
+    }
+}
+
+void SpriteNormalsWindow::beginStroke() {
+    endStroke();
+    const std::shared_ptr<sn::SpriteNormalsRun> r = shown();
+    if (!r || !painting()) return;
+    const sn::Image& normal = r->result().normal;
+    if (!paint.sized(normal.width, normal.height)) paint = sn::PaintOverlay::blank(normal.width, normal.height);
+    stroking = true;
+    strokeStarted = false;
+    strokeMask.assign(static_cast<size_t>(normal.width) * normal.height, 0);
+    strokePatch = PaintPatch();
+    strokePatch.width = paint.width;
+    strokePatch.height = paint.height;
+}
+
+void SpriteNormalsWindow::strokeTo(int x, int y) {
+    const std::shared_ptr<sn::SpriteNormalsRun> r = shown();
+    if (!stroking || !r) return;
+    const sn::Image& color = r->prepared().request.color;
+    const std::vector<sn::Cell>& cells = r->prepared().request.cells;
+    const int width = color.width, height = color.height;
+    // what the canvas shows (one frame, or all): a stroke stays in it
+    int clipX, clipY, clipW, clipH;
+    cellRect(frame, clipX, clipY, clipW, clipH);
+    const std::vector<std::array<int, 2>> line = strokeStarted ? sn::linePixels(strokeLast, {x, y}) : std::vector<std::array<int, 2>>{{x, y}};
+    strokeStarted = true;
+    strokeLast = {x, y};
+    std::vector<int> pixels;
+    std::vector<std::array<float, 3>> directions;
+    const std::array<float, 3> mirrored = {-brush.direction[0], brush.direction[1], brush.direction[2]};
+    auto add = [&](int px, int py, const std::array<float, 3>& d) {
+        if (px < clipX || py < clipY || px >= clipX + clipW || py >= clipY + clipH || px < 0 || py < 0 || px >= width || py >= height) return;
+        const size_t i = static_cast<size_t>(py) * width + px;
+        if (strokeMask[i]) return;   // each pixel once per stroke: strength never accumulates
+        strokeMask[i] = 1;
+        pixels.push_back(static_cast<int>(i));
+        directions.push_back(d);
+    };
+    for (const std::array<int, 2>& p : line) {
+        // Mirror X: within the cursor's frame cell (the whole image without cells)
+        const int cell = sn::cellAt(cells, width, height, p[0], p[1]);
+        int cellX = 0, cellW = width;
+        if (cell >= 0 && !cells.empty()) {
+            cellX = cells[static_cast<size_t>(cell)].x;
+            cellW = cells[static_cast<size_t>(cell)].width;
+        }
+        for (const std::array<int, 2>& f : sn::brushFootprint(brush.shape == sn::PaintBrush::Shape::Square ? sn::PaintBrush::Shape::Square : sn::PaintBrush::Shape::Round,
+                                                              brush.size, p[0], p[1])) {
+            add(f[0], f[1], brush.direction);
+            if (brush.mirrorX) add(cellX + cellW - 1 - (f[0] - cellX), f[1], mirrored);
+        }
+    }
+    if (pixels.empty()) return;
+    std::vector<std::array<uint8_t, 4>> before;
+    for (int i : pixels) before.push_back(overlayPixel(paint, i));
+    const sn::PaintContext ctx{color, generatedGL(), cells, r->prepared().request.settings.alphaThreshold};
+    sn::applyToPixels(paint, kindOf(paintTool), pixels, brush.direction, brush.strength, brush.smoothRadius, ctx, &directions);
+    bool changed = false;
+    for (size_t k = 0; k < pixels.size(); k++) {
+        const std::array<uint8_t, 4> now = overlayPixel(paint, pixels[k]);
+        if (now == before[k]) continue;
+        strokePatch.pixels.push_back(pixels[k]);
+        strokePatch.before.push_back(before[k]);
+        strokePatch.after.push_back(now);
+        changed = true;
+    }
+    if (changed) paintChanged();
+}
+
+void SpriteNormalsWindow::endStroke() {
+    if (!stroking) return;
+    stroking = false;
+    strokeMask.clear();
+    pushPaintPatch(std::move(strokePatch));
+    strokePatch = PaintPatch();
+}
+
+bool SpriteNormalsWindow::paintStroke(const std::vector<std::array<int, 2>>& path) {
+    if (!painting() || path.empty()) return false;
+    beginStroke();
+    if (!stroking) return false;
+    for (const std::array<int, 2>& p : path) strokeTo(p[0], p[1]);
+    endStroke();
+    return true;
+}
+
+bool SpriteNormalsWindow::wandFill(int x, int y) {
+    const std::shared_ptr<sn::SpriteNormalsRun> r = shown();
+    if (!painting() || !r) return false;
+    endStroke();
+    const sn::Image& color = r->prepared().request.color;
+    const sn::PaintContext ctx{color, generatedGL(), r->prepared().request.cells, r->prepared().request.settings.alphaThreshold};
+    const std::vector<int> pixels = sn::wandSelect(ctx, x, y, brush.wandTolerance, brush.wandContiguous, brush.wandAllFrames);
+    if (pixels.empty()) {
+        setStatus("The wand found nothing to paint there (an empty pixel).", false);
+        return false;
+    }
+    recordPaint([&]() { sn::applyToPixels(paint, kindOf(paintTool), pixels, brush.direction, brush.strength, brush.smoothRadius, ctx); });
+    return true;
+}
+
+bool SpriteNormalsWindow::applyPaintOps(const std::vector<sn::PaintOp>& ops, std::vector<sn::Problem>* problems) {
+    const std::shared_ptr<sn::SpriteNormalsRun> r = shown();
+    if (problems) problems->clear();
+    const std::string reason = paintDisabledReason();
+    if (!reason.empty() || !r) {
+        if (problems) problems->push_back({"invalid_paint", "paint", reason, ""});
+        return false;
+    }
+    endStroke();
+    const sn::PaintContext ctx{r->prepared().request.color, generatedGL(), r->prepared().request.cells, r->prepared().request.settings.alphaThreshold};
+    std::vector<sn::Problem> found = sn::validatePaintOps(ops, static_cast<int>(ctx.cells.size()));
+    if (found.empty()) recordPaint([&]() { found = sn::applyPaintOps(paint, ops, ctx); });
+    bool ok = true;
+    for (const sn::Problem& p : found) ok = ok && p.kind != "invalid_paint" && p.kind != "paint_size_mismatch";
+    if (problems) *problems = found;
+    return ok;
+}
+
+bool SpriteNormalsWindow::undoPaint() {
+    endStroke();
+    if (paintUndo.empty()) return false;
+    PaintPatch patch = std::move(paintUndo.back());
+    paintUndo.pop_back();
+    paintUndoBytes -= patch.bytes();
+    if (!paint.sized(patch.width, patch.height)) paint = sn::PaintOverlay::blank(patch.width, patch.height);
+    for (size_t k = 0; k < patch.pixels.size(); k++) {
+        if (static_cast<size_t>(patch.pixels[k]) * 4 < paint.rgba.size()) std::memcpy(&paint.rgba[static_cast<size_t>(patch.pixels[k]) * 4], patch.before[k].data(), 4);
+    }
+    paintRedo.push_back(std::move(patch));
+    paintChanged();
+    return true;
+}
+
+bool SpriteNormalsWindow::redoPaint() {
+    endStroke();
+    if (paintRedo.empty()) return false;
+    PaintPatch patch = std::move(paintRedo.back());
+    paintRedo.pop_back();
+    if (!paint.sized(patch.width, patch.height)) paint = sn::PaintOverlay::blank(patch.width, patch.height);
+    for (size_t k = 0; k < patch.pixels.size(); k++) {
+        if (static_cast<size_t>(patch.pixels[k]) * 4 < paint.rgba.size()) std::memcpy(&paint.rgba[static_cast<size_t>(patch.pixels[k]) * 4], patch.after[k].data(), 4);
+    }
+    paintUndoBytes += patch.bytes();
+    paintUndo.push_back(std::move(patch));
+    paintChanged();
+    return true;
+}
+
+void SpriteNormalsWindow::clearPaint() {
+    endStroke();
+    // one undo step; an overlay of another size than the map (paint_size_mismatch) is empty after
+    // it, so Save works again (undo brings the old one back)
+    recordPaint([&]() {
+        for (size_t i = 0; i + 3 < paint.rgba.size(); i += 4) {
+            paint.rgba[i] = 128;
+            paint.rgba[i + 1] = 128;
+            paint.rgba[i + 2] = 255;
+            paint.rgba[i + 3] = 0;
+        }
+    });
+    paintChanged();
+}
+
+bool SpriteNormalsWindow::samplePaintDirection(int x, int y) {
+    const std::shared_ptr<sn::SpriteNormalsRun> r = shown();
+    if (!r) return false;
+    const sn::Image& color = r->prepared().request.color;
+    const sn::Settings& used = r->prepared().request.settings;
+    if (x < 0 || y < 0 || x >= color.width || y >= color.height || color.pixel(x, y)[3] / 255.0f <= used.alphaThreshold) return false;
+    // the composite (with the paint, as Save writes it), back in OpenGL green
+    const sn::Image composed = composedNormal();
+    std::array<float, 3> n = sn::decodeDirection(composed.pixel(x, y));
+    if (used.directx) n[1] = -n[1];
+    std::string error;
+    std::array<float, 3> d;
+    if (!sn::normaliseDirection(n, d, error)) return false;
+    sn::PaintBrush b = brush;
+    b.direction = d;
+    setPaintBrush(b);
+    setPaintTool(sn::PaintTool::Angle);
+    return true;
+}
+
+// ---------------------------------------------------------------------- paint UI
+
+bool SpriteNormalsWindow::directionDisk(const char* id, float size) {
+    // the colour wheel: each point drawn with the colour of the normal it stands for (CPU, once)
+    if (!hemisphereGpu.valid() && editorUi()) {
+        const int n = 96;
+        sn::Image wheel = sn::Image::make(n, n, 4, 8);
+        for (int y = 0; y < n; y++) {
+            for (int x = 0; x < n; x++) {
+                const float u = (x + 0.5f) / n * 2.0f - 1.0f, v = 1.0f - (y + 0.5f) / n * 2.0f;
+                const float rr = std::sqrt(u * u + v * v);
+                uint8_t* p = wheel.pixel(x, y);
+                if (rr > 1.0f) {
+                    p[3] = 0;
+                    continue;
+                }
+                const std::array<uint8_t, 3> c =
+                    sn::encodeDirection(sn::directionFromAngles(static_cast<float>(std::atan2(v, u) * 180.0 / M_PI), rr * sn::kMaxPaintTilt));
+                p[0] = c[0];
+                p[1] = c[1];
+                p[2] = c[2];
+                p[3] = 255;
+            }
+        }
+        updateGpuImage(hemisphereGpu, wheel, 1);
+    }
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    ImGui::InvisibleButton(id, ImVec2(size, size));
+    const ImVec2 centre(origin.x + size * 0.5f, origin.y + size * 0.5f);
+    const float radius = size * 0.5f;
+    if (hemisphereGpu.valid()) draw->AddImage(Backend::getImGuiTexture(hemisphereGpu.texture.getRender()), origin, ImVec2(origin.x + size, origin.y + size));
+    else draw->AddCircleFilled(centre, radius, IM_COL32(128, 128, 255, 255), 48);
+    draw->AddCircle(centre, radius, IM_COL32(20, 20, 20, 255), 48, 1.0f);
+    draw->AddCircle(centre, radius * 0.5f, IM_COL32(0, 0, 0, 60), 32, 1.0f);
+    bool changed = false;
+    if (ImGui::IsItemActive()) {
+        const ImVec2 m = ImGui::GetIO().MousePos;
+        float u = (m.x - centre.x) / radius, v = (centre.y - m.y) / radius;
+        const float rr = std::min(1.0f, std::sqrt(u * u + v * v));
+        float az = static_cast<float>(std::atan2(v, u) * 180.0 / M_PI), tilt = rr * sn::kMaxPaintTilt;
+        if (az < 0.0f) az += 360.0f;
+        if (ImGui::GetIO().KeyShift) {
+            az = std::fmod(std::round(az / 45.0f) * 45.0f, 360.0f);
+            tilt = std::min(sn::kMaxPaintTilt, std::round(tilt / 15.0f) * 15.0f);
+        }
+        brush.direction = sn::directionFromAngles(az, tilt);
+        changed = true;
+    }
+    // the dot at the current direction
+    float az = 0, tilt = 0;
+    sn::anglesOf(brush.direction, az, tilt);
+    const float rr = std::min(1.0f, tilt / sn::kMaxPaintTilt) * radius;
+    const ImVec2 dot(centre.x + rr * std::cos(az * static_cast<float>(M_PI) / 180.0f), centre.y - rr * std::sin(az * static_cast<float>(M_PI) / 180.0f));
+    draw->AddCircleFilled(dot, Theme::dpi(3.5f), IM_COL32(255, 255, 255, 255), 16);
+    draw->AddCircle(dot, Theme::dpi(3.5f), IM_COL32(0, 0, 0, 255), 16, 1.5f);
+    return changed;
+}
+
+void SpriteNormalsWindow::drawPaint() {
+    if (!paintOpenSet && !paint.empty()) {
+        paintOpen = true;
+        paintOpenSet = true;
+    }
+    ImGui::SetNextItemOpen(paintOpen, ImGuiCond_Always);
+    const bool openNow = Theme::foldoutHeader("Paint##paintFoldout", ImGuiTreeNodeFlags_AllowOverlap);
+    UIProbe::item("spriteNormals.paint");
+    paintOpen = openNow;
+    // on the header's line: what is painted, and Clear
+    {
+        const size_t painted = paint.paintedCount();
+        const std::string count = "Painted: " + std::to_string(painted) + " px" + (hasUnsavedPaint() ? "*" : "");
+        const float clearWidth = ImGui::CalcTextSize("Clear").x + ImGui::GetStyle().FramePadding.x * 2.0f;
+        const float textWidth = ImGui::CalcTextSize(count.c_str()).x;
+        const float right = ImGui::GetItemRectMax().x - ImGui::GetStyle().FramePadding.x;
+        ImGui::SameLine();
+        ImGui::SetCursorScreenPos(ImVec2(right - clearWidth - textWidth - ImGui::GetStyle().ItemSpacing.x, ImGui::GetItemRectMin().y));
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextDisabled("%s", count.c_str());
+        if (hasUnsavedPaint()) tooltip("Unsaved paint: Save writes it into the normal map");
+        ImGui::SameLine();
+        ImGui::BeginDisabled(painted == 0);
+        if (ImGui::SmallButton("Clear##clearPaint")) {
+            if (painted > 0) confirm("Clear Paint?", "Remove all " + std::to_string(painted) + " painted pixels? (Ctrl+Z puts them back.)", [this]() { clearPaint(); });
+        }
+        ImGui::EndDisabled();
+        UIProbe::item("spriteNormals.clearPaint");
+        reasonTooltip(painted == 0 ? "Nothing is painted" : "Remove all the paint (one undo step)");
+    }
+    if (!paintOpen) return;
+
+    const std::string reason = paintDisabledReason();
+    ImGui::BeginDisabled(!reason.empty());
+    // the tools
+    {
+        const char* labels[] = {ICON_FA_HAND "##paintNavigate", ICON_FA_LOCATION_ARROW "##paintAngle", ICON_FA_SQUARE "##paintFlatten",
+                                ICON_FA_DROPLET "##paintSmooth", ICON_FA_ERASER "##paintErase"};
+        const char* tips[] = {"Navigate: no brush; drag moves the light, Alt+click picks region colours (V)",
+                              "Angle: paint a direction (the disk below) (B)", "Flatten: face the viewer, no relief (N)",
+                              "Smooth: blur the result under the brush. Smooth paints the current result; re-smooth after big setting changes (M)",
+                              "Erase: remove paint, back to the generation (E)"};
+        int tool = static_cast<int>(paintTool);
+        if (segmentedButtons("##paintTool", tool, labels, tips, 5)) setPaintTool(static_cast<sn::PaintTool>(tool));
+        UIProbe::item("spriteNormals.paintTool");
+    }
+    ImGui::EndDisabled();
+    if (!reason.empty()) {
+        reasonTooltip(reason);
+        subtle(reason + ".");
+    }
+    sn::PaintBrush b = brush;
+    bool changed = false;
+    rowLabel("Fill", "Brush: paint where you drag. Wand: a click paints every pixel of the clicked colour");
+    {
+        int fill = b.fill == sn::PaintBrush::Fill::Wand ? 1 : 0;
+        if (ImGui::RadioButton("Brush##fillBrush", fill == 0)) fill = 0;
+        tooltip("Paint where you drag (W toggles)");
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Wand##fillWand", fill == 1)) fill = 1;
+        tooltip("A click paints every pixel of the clicked colour (W toggles)");
+        if ((fill == 1) != (b.fill == sn::PaintBrush::Fill::Wand)) {
+            b.fill = fill == 1 ? sn::PaintBrush::Fill::Wand : sn::PaintBrush::Fill::Brush;
+            changed = true;
+        }
+    }
+    if (b.fill == sn::PaintBrush::Fill::Brush) {
+        rowLabel("Shape", nullptr);
+        int shape = b.shape == sn::PaintBrush::Shape::Square ? 1 : 0;
+        if (ImGui::RadioButton("Round##shapeRound", shape == 0)) shape = 0;
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Square##shapeSquare", shape == 1)) shape = 1;
+        if ((shape == 1) != (b.shape == sn::PaintBrush::Shape::Square)) {
+            b.shape = shape == 1 ? sn::PaintBrush::Shape::Square : sn::PaintBrush::Shape::Round;
+            changed = true;
+        }
+        rowLabel("Size", "Brush size in pixels (1 = pencil). Shift+wheel over the canvas, or - and =");
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        float size = static_cast<float>(b.size);
+        if (UIUtils::sliderFloatInput("##brushSize", &size, 1.0f, 64.0f, size <= 1.0f ? "1 px (pencil)" : "%.0f px")) {
+            b.size = static_cast<int>(std::lround(size));
+            changed = true;
+        }
+        tooltip("Brush size in pixels (1 = pencil). Shift+wheel over the canvas, or - and =");
+    }
+    rowLabel("Strength", "How much of the brush's normal replaces the result (coverage); a stroke never adds up over itself");
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    if (UIUtils::sliderFloatInput("##brushStrength", &b.strength, 0.0f, 1.0f, "%.2f")) changed = true;
+    tooltip("How much of the brush's normal replaces the result (coverage); a stroke never adds up over itself");
+    if (paintTool == sn::PaintTool::Smooth) {
+        rowLabel("Radius", "Smooth: the box averaged around each pixel (1 = 3x3, 4 = 9x9), within its island and frame");
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        float radius = static_cast<float>(b.smoothRadius);
+        if (UIUtils::sliderFloatInput("##smoothRadius", &radius, 1.0f, 4.0f, "%.0f")) {
+            b.smoothRadius = static_cast<int>(std::lround(radius));
+            changed = true;
+        }
+        tooltip("Smooth paints the current result; re-smooth after big setting changes");
+    }
+    if (b.fill == sn::PaintBrush::Fill::Wand) {
+        rowLabel("Tolerance", "0 = the exact colour; higher takes similar colours too (Oklab distance)");
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        if (UIUtils::sliderFloatInput("##wandTolerance", &b.wandTolerance, 0.0f, 0.5f, b.wandTolerance <= 0.0f ? "0 (exact)" : "%.3f")) changed = true;
+        tooltip("0 = the exact colour; higher takes similar colours too (Oklab distance)");
+        rowLabel("Wand", nullptr);
+        if (ImGui::Checkbox("Contiguous##wandContiguous", &b.wandContiguous)) changed = true;
+        tooltip("Only the pixels connected to the clicked one");
+        ImGui::SameLine();
+        bool all = b.wandAllFrames;
+        if (ImGui::Checkbox("All frames##wandAllFrames", &all)) {
+            b.wandAllFrames = all;
+            changed = true;
+        }
+        tooltip("Every frame of the sheet, not only the clicked pixel's");
+    }
+    rowLabel("View", nullptr);
+    if (ImGui::Checkbox("Mirror X##mirrorX", &b.mirrorX)) changed = true;
+    tooltip("Paint the mirrored pixels too, across the middle of the frame; Angle mirrors its direction (X)");
+    ImGui::SameLine();
+    bool show = showPaint;
+    if (ImGui::Checkbox("Show##showPaint", &show)) setShowPaint(show);
+    tooltip("Off: preview the generation alone (Save still writes the paint) (P)");
+    ImGui::SameLine();
+    ImGui::Checkbox("Highlight##highlightPainted", &highlightPainted);
+    UIProbe::item("spriteNormals.highlightPainted");
+    tooltip("Outline the painted pixels in magenta in every view (H)");
+    if (paintTool == sn::PaintTool::Angle) {
+        rowLabel("Direction", "Where the painted pixels face: the centre faces you, the rim is 85 degrees; Shift snaps. Alt+click on the canvas samples one");
+        const float disk = ImGui::GetFrameHeight() * 4.0f;
+        if (directionDisk("##direction", disk)) changed = true;
+        UIProbe::item("spriteNormals.direction");
+        tooltip("Where the painted pixels face: the centre faces you, the rim is 85 degrees; Shift snaps. Alt+click on the canvas samples one");
+        ImGui::SameLine();
+        ImGui::BeginGroup();
+        float az = 0, tilt = 0;
+        sn::anglesOf(b.direction, az, tilt);
+        const float field = std::max(ImGui::GetContentRegionAvail().x, ImGui::GetFontSize() * 4.0f);
+        ImGui::TextDisabled("Azimuth");
+        ImGui::SetNextItemWidth(field);
+        bool angles = UIUtils::sliderFloatInput("##azimuth", &az, 0.0f, 360.0f, "%.0f deg");
+        tooltip("0 = right, 90 = up, 180 = left, 270 = down");
+        ImGui::TextDisabled("Tilt");
+        ImGui::SetNextItemWidth(field);
+        angles = UIUtils::sliderFloatInput("##tilt", &tilt, 0.0f, sn::kMaxPaintTilt, "%.0f deg") || angles;
+        tooltip("0 = facing you, 85 = nearly sideways");
+        ImGui::EndGroup();
+        if (angles) {
+            b.direction = sn::directionFromAngles(az, tilt);
+            changed = true;
+        } else if (changed) {
+            b.direction = brush.direction;   // the disk set it
+        }
+    }
+    if (changed) setPaintBrush(b);
+}
+
+void SpriteNormalsWindow::drawPaintOverlays(ImDrawList* draw, const ImVec2& imgMin, float z, int cx, int cy, int cw, int ch, const ImVec2& pixel, bool hovered) {
+    const std::shared_ptr<sn::SpriteNormalsRun> r = shown();
+    if (!r) return;
+    const sn::Image& color = r->prepared().request.color;
+    const float threshold = r->prepared().request.settings.alphaThreshold;
+    const int width = color.width, height = color.height;
+    // the outline of a pixel set: an edge wherever a member's neighbour is not one
+    auto outline = [&](const std::function<bool(int, int)>& in, int x0, int y0, int x1, int y1, ImU32 colour) {
+        for (int y = std::max(y0, cy); y < std::min(y1, cy + ch); y++) {
+            for (int x = std::max(x0, cx); x < std::min(x1, cx + cw); x++) {
+                if (!in(x, y)) continue;
+                const ImVec2 a(imgMin.x + (x - cx) * z, imgMin.y + (y - cy) * z);
+                const ImVec2 b(a.x + z, a.y + z);
+                if (!in(x, y - 1)) draw->AddLine(ImVec2(a.x, a.y), ImVec2(b.x, a.y), colour);
+                if (!in(x, y + 1)) draw->AddLine(ImVec2(a.x, b.y - 1.0f), ImVec2(b.x, b.y - 1.0f), colour);
+                if (!in(x - 1, y)) draw->AddLine(ImVec2(a.x, a.y), ImVec2(a.x, b.y), colour);
+                if (!in(x + 1, y)) draw->AddLine(ImVec2(b.x - 1.0f, a.y), ImVec2(b.x - 1.0f, b.y), colour);
+            }
+        }
+    };
+    // Highlight painted: the painted visible pixels, magenta (reads on every view)
+    if (highlightPainted && paint.sized(width, height) && !paint.empty()) {
+        auto painted = [&](int x, int y) {
+            if (x < 0 || y < 0 || x >= width || y >= height) return false;
+            const size_t i = static_cast<size_t>(y) * width + x;
+            return paint.rgba[i * 4 + 3] > 0 && color.data[i * 4 + 3] / 255.0f > threshold;
+        };
+        outline(painted, visibleX0, visibleY0, visibleX1, visibleY1, IM_COL32(255, 0, 255, 255));
+    }
+    if (!hovered || !painting()) return;
+    const int px = cx + static_cast<int>(std::floor(pixel.x)), py = cy + static_cast<int>(std::floor(pixel.y));
+    if (pixel.x < 0 || pixel.y < 0 || pixel.x >= cw || pixel.y >= ch) return;
+    if (brush.fill == sn::PaintBrush::Fill::Wand) {
+        // the would-be selection, cyan, before the click
+        if (wandHoverX != px || wandHoverY != py || wandHoverSerial != paintSerial) {
+            wandHoverX = px;
+            wandHoverY = py;
+            wandHoverSerial = paintSerial;
+            const sn::PaintContext ctx{color, generatedGL(), r->prepared().request.cells, threshold};
+            wandHover = sn::wandSelect(ctx, px, py, brush.wandTolerance, brush.wandContiguous, brush.wandAllFrames);
+            std::sort(wandHover.begin(), wandHover.end());
+        }
+        auto selected = [&](int x, int y) {
+            if (x < 0 || y < 0 || x >= width || y >= height) return false;
+            return std::binary_search(wandHover.begin(), wandHover.end(), y * width + x);
+        };
+        outline(selected, visibleX0, visibleY0, visibleX1, visibleY1, IM_COL32(0, 255, 255, 255));
+        return;
+    }
+    // the brush's footprint snapped to the pixel grid (and its mirror)
+    std::vector<std::array<int, 2>> footprint = sn::brushFootprint(brush.shape, brush.size, px, py);
+    if (brush.mirrorX) {
+        const std::vector<sn::Cell>& cells = r->prepared().request.cells;
+        const int cell = sn::cellAt(cells, width, height, px, py);
+        const int cellX = cell >= 0 && !cells.empty() ? cells[static_cast<size_t>(cell)].x : 0;
+        const int cellW = cell >= 0 && !cells.empty() ? cells[static_cast<size_t>(cell)].width : width;
+        const size_t n = footprint.size();
+        for (size_t k = 0; k < n; k++) footprint.push_back({cellX + cellW - 1 - (footprint[k][0] - cellX), footprint[k][1]});
+    }
+    std::sort(footprint.begin(), footprint.end());
+    int x0 = px, y0 = py, x1 = px + 1, y1 = py + 1;
+    for (const std::array<int, 2>& f : footprint) {
+        x0 = std::min(x0, f[0]);
+        y0 = std::min(y0, f[1]);
+        x1 = std::max(x1, f[0] + 1);
+        y1 = std::max(y1, f[1] + 1);
+    }
+    auto inBrush = [&](int x, int y) { return std::binary_search(footprint.begin(), footprint.end(), std::array<int, 2>{x, y}); };
+    outline(inBrush, x0, y0, x1, y1, IM_COL32(255, 255, 255, 230));
 }
 
 // ====================================================================== shortcuts
@@ -3414,6 +4190,33 @@ void SpriteNormalsWindow::handleShortcuts() {
         pan = ImVec2(0, 0);
     }
     if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) pickingRegion = -1;
+    // paint: the tools, the fill, mirror, highlight, show, the brush size
+    if (ImGui::IsKeyPressed(ImGuiKey_V, false)) setPaintTool(sn::PaintTool::Navigate);
+    if (ImGui::IsKeyPressed(ImGuiKey_B, false)) setPaintTool(sn::PaintTool::Angle);
+    if (ImGui::IsKeyPressed(ImGuiKey_N, false)) setPaintTool(sn::PaintTool::Flatten);
+    if (ImGui::IsKeyPressed(ImGuiKey_M, false)) setPaintTool(sn::PaintTool::Smooth);
+    if (ImGui::IsKeyPressed(ImGuiKey_E, false)) setPaintTool(sn::PaintTool::Erase);
+    sn::PaintBrush b = brush;
+    bool brushChanged = false;
+    if (ImGui::IsKeyPressed(ImGuiKey_W, false)) {
+        b.fill = b.fill == sn::PaintBrush::Fill::Wand ? sn::PaintBrush::Fill::Brush : sn::PaintBrush::Fill::Wand;
+        brushChanged = true;
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_X, false)) {
+        b.mirrorX = !b.mirrorX;
+        brushChanged = true;
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_Minus, true)) {
+        b.size--;
+        brushChanged = true;
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_Equal, true)) {
+        b.size++;
+        brushChanged = true;
+    }
+    if (brushChanged) setPaintBrush(b);
+    if (ImGui::IsKeyPressed(ImGuiKey_H, false)) highlightPainted = !highlightPainted;
+    if (ImGui::IsKeyPressed(ImGuiKey_P, false)) setShowPaint(!showPaint);
 }
 
 // ====================================================================== show
@@ -3430,6 +4233,14 @@ void SpriteNormalsWindow::show() {
     }
     const bool visible = ImGui::Begin(WINDOW_NAME, &windowOpen);
     focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+    // closing with unsaved paint asks first (the strokes would be lost)
+    if (!windowOpen && hasUnsavedPaint()) {
+        windowOpen = true;
+        confirm("Discard Paint Changes?", "The paint strokes made since the last Save are not in the normal map yet.\n\nClose and discard them?", [this]() {
+            discardPaint();
+            setOpen(false);
+        });
+    }
     if (!visible) {
         ImGui::End();
         if (!windowOpen) setOpen(false);

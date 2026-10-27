@@ -14,6 +14,11 @@
 // Map...", "Regenerate Normal Map"), the Inspector (the Normal Texture row's wand, the Sprite's
 // "Normal Map..." button) and MCP focus_window "sprite_normals". Every entry, button and
 // shortcut calls the scripted API below; the non-UI logic is spritenormals/SpriteNormalsSession.
+//
+// Paint (Phase 5): brushes (Angle, Flatten, Smooth, Erase; a colour wand) correct the generated
+// normals on a paint layer the window keeps (single mode). Strokes are window-local undo steps
+// until Save writes the layer into the normal map (its jasper.spritenormals.paint chunk); every
+// later generation composites it again. Opening a map (or changing the output) loads its layer.
 
 #include "spritenormals/SpriteNormalsApply.h"
 #include "spritenormals/SpriteNormalsSession.h"
@@ -25,6 +30,7 @@
 
 #include "imgui.h"
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -39,6 +45,7 @@ namespace jasperengine::editor {
 
     class SpriteNormalsWindow {
         friend struct SpriteNormalsWindowTestAccess;
+        friend struct SpriteNormalsPaintWindowTestAccess;
 
     public:
         static constexpr const char* WINDOW_NAME = "Sprite Normal Map";
@@ -167,9 +174,50 @@ namespace jasperengine::editor {
         // redoable one), else the Project history
         bool undoGoesToScene(uint32_t& sceneId) const;
         bool redoGoesToScene(uint32_t& sceneId) const;
-        // the window's keys (views, frames, play, orbit, grid, fit, Esc, Ctrl+Enter); the App
-        // keeps the main toolbar's letters away while the window is focused
+        // the window's keys (views, frames, play, orbit, grid, fit, Esc, Ctrl+Enter; the paint
+        // tools V B N M E, W X H P, - =); the App keeps the main toolbar's letters away while the
+        // window is focused
         void handleShortcuts();
+
+        // ---- paint (Phase 5 spec 5.5; scripted for tests: no confirm alerts). Pixels are of the
+        // output image (the atlas for animations). Painting needs a result in single mode.
+
+        void setPaintTool(spritenormals::PaintTool tool);
+        spritenormals::PaintTool getPaintTool() const { return paintTool; }
+        // shape, size, strength, smoothRadius, fill, wandTolerance, wandContiguous, wandAllFrames,
+        // mirrorX, direction (clamped to their ranges)
+        void setPaintBrush(const spritenormals::PaintBrush& brush);
+        const spritenormals::PaintBrush& getPaintBrush() const { return brush; }
+        // one stroke of the current tool along `path` (mouse samples joined by lines, the brush
+        // stamped at every pixel, each pixel changed once); one undo step. False when painting is
+        // off (Navigate, no result, batch, a paint size mismatch)
+        bool paintStroke(const std::vector<std::array<int, 2>>& path);
+        // the wand at (x, y): the current tool on the matching pixels, one undo step
+        bool wandFill(int x, int y);
+        // MCP-shaped operations on the window's overlay, one undo step; false on invalid_paint
+        bool applyPaintOps(const std::vector<spritenormals::PaintOp>& ops, std::vector<spritenormals::Problem>* problems);
+        bool undoPaint();
+        bool redoPaint();
+        bool canUndoPaint() const { return !paintUndo.empty(); }
+        bool canRedoPaint() const { return !paintRedo.empty(); }
+        void clearPaint();                            // one undo step, no confirm alert
+        const spritenormals::PaintOverlay& paintOverlay() const { return paint; }
+        size_t paintedPixelCount() const { return paint.paintedCount(); }
+        // the overlay differs from the one last loaded or saved
+        bool hasUnsavedPaint() const;
+        // the strokes since the last load or save dropped (project switch, closing: Discard)
+        void discardPaint();
+        // Alt+click: the composited normal at (x, y) becomes the direction, the tool Angle
+        // (false on a transparent pixel)
+        bool samplePaintDirection(int x, int y);
+        void setShowPaint(bool on);
+        bool getShowPaint() const { return showPaint; }
+        void setHighlightPainted(bool on) { highlightPainted = on; }
+        bool getHighlightPainted() const { return highlightPainted; }
+        // why the brushes are off ("" when painting is possible)
+        std::string paintDisabledReason() const;
+        // the loaded paint has another size than the result (Save waits for Clear Paint)
+        bool paintSizeMismatch() const;
 
     private:
         // A GPU copy of an RGBA8 image for ImGui (the Texture Synthesis pattern)
@@ -229,6 +277,15 @@ namespace jasperengine::editor {
             bool overwrite = false;
             std::vector<size_t> queue;
             size_t done = 0;
+        };
+
+        // A paint undo step: the pixels a stroke (wand fill, Clear) changed, before and after
+        struct PaintPatch {
+            int width = 0, height = 0;           // the overlay's size (a cleared mismatched one comes back)
+            std::vector<int> pixels;
+            std::vector<std::array<uint8_t, 4>> before;
+            std::vector<std::array<uint8_t, 4>> after;
+            size_t bytes() const { return pixels.size() * (sizeof(int) + 8); }
         };
 
         // An Inspector Shift-click: generate, save and assign with the window closed
@@ -334,6 +391,41 @@ namespace jasperengine::editor {
         const void* metricsRun = nullptr;
         spritenormals::Assessment metricsAssessment;
         std::string metricsLine;
+        uint64_t metricsPaintSerial = 0;
+
+        // paint (single mode): the overlay, what was last loaded / saved, the stroke stack
+        spritenormals::PaintOverlay paint;
+        spritenormals::PaintOverlay paintSaved;
+        std::string paintTarget;                 // the normal map the overlay was loaded for (absolute)
+        std::string paintProblem;                // its paint chunk could not be read (dropped on Save)
+        std::vector<PaintPatch> paintUndo;
+        std::vector<PaintPatch> paintRedo;
+        size_t paintUndoBytes = 0;
+        spritenormals::PaintTool paintTool = spritenormals::PaintTool::Navigate;
+        spritenormals::PaintBrush brush;
+        bool showPaint = true;
+        bool highlightPainted = false;
+        bool paintOpen = false;                  // the Paint foldout
+        bool paintOpenSet = false;               // ... opened once for a non-empty overlay
+        uint64_t paintSerial = 1;                // the overlay changed
+        // a stroke in progress (mouse or paintStroke)
+        bool stroking = false;
+        std::vector<uint8_t> strokeMask;
+        PaintPatch strokePatch;
+        std::array<int, 2> strokeLast{0, 0};
+        bool strokeStarted = false;
+        // the composited normal shown (the generation + the overlay) and the generation in OpenGL green
+        spritenormals::Image displayed;
+        uint64_t displayedFor = 0;
+        const void* displayedRun = nullptr;
+        spritenormals::Image generatedGLImage;
+        const void* generatedGLRun = nullptr;
+        uint64_t normalGpuFor = 0;               // the displayed serial the Normal view's GPU copy shows
+        GpuImage hemisphereGpu;                  // the direction disk's colour wheel
+        // the wand's hover outline (cached for the hovered pixel)
+        int wandHoverX = -1, wandHoverY = -1;
+        uint64_t wandHoverSerial = 0;
+        std::vector<int> wandHover;
 
         // ---- model
         double now() const;
@@ -381,6 +473,25 @@ namespace jasperengine::editor {
         void renderLit();
         spritenormals::LightSetup lightSetup() const;
         static bool writeAndNotify(Project* project, const std::vector<spritenormals::OutputFile>& files, std::string& error);
+
+        // ---- paint
+        void loadPaintForTarget();
+        void paintChanged();
+        bool painting() const { return paintTool != spritenormals::PaintTool::Navigate && paintDisabledReason().empty(); }
+        // the shown result's generation in OpenGL green, the colour (atlas) and cells
+        const spritenormals::Image& generatedGL();
+        const spritenormals::Image& displayNormal();
+        // the composite Save writes (whatever Show paint says)
+        spritenormals::Image composedNormal();
+        void beginStroke();
+        void strokeTo(int x, int y);
+        void endStroke();
+        void pushPaintPatch(PaintPatch patch);
+        // a patch of what `change` does to the overlay (the pixels it changed)
+        void recordPaint(const std::function<void()>& change);
+        void drawPaint();
+        bool directionDisk(const char* id, float size);
+        void drawPaintOverlays(ImDrawList* draw, const ImVec2& imgMin, float zoom, int cx, int cy, int cw, int ch, const ImVec2& pixel, bool hovered);
 
         // ---- GPU images
         void updateGpuImage(GpuImage& gpu, const spritenormals::Image& rgba, uint64_t serial);
