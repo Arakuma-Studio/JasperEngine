@@ -984,11 +984,11 @@ A panel of frosted glass: the blurred scene behind it, tinted. Needs the scene b
 <a id="librarysprite"></a>
 ### Sprite (`library:sprite`)
 
-Sprite, tilemap and polygon effects on the sprite's own texture and colour: outline, hue shift, hit flash, grayscale, colour replace, overlay and glow; lit by 2D lights. Alpha blended, both faces, no shadows; with the Premultiplied blend mode the texture is read as premultiplied.
+Sprite, tilemap and polygon effects on the sprite's own texture and colour: outline, hue shift, hit flash, grayscale, colour replace, overlay and glow; lit by 2D lights, with the material's Normal Texture as the normal map. Alpha blended, both faces, no shadows; with the Premultiplied blend mode the texture is read as premultiplied.
 
 - **Type**: mesh (a material's shader); category 2D.
 - **Lighting**: none.
-- **Inputs**: `uv1`, `color`.
+- **Inputs**: `uv1`, `color`, `normalmap`.
 - **Default state**: blend alpha, cull off (both faces), depth write off, shadows off.
 - **Depth program**: no (the built-in one).
 

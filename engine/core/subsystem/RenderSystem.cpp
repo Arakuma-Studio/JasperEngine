@@ -576,7 +576,6 @@ namespace {
 uint32_t RenderSystem::pixelsWhite[64];
 uint32_t RenderSystem::pixelsBlack[64];
 uint32_t RenderSystem::pixelsTransparent[64];
-uint32_t RenderSystem::pixelsNormal[64];
 
 TextureRender RenderSystem::emptyWhite;
 TextureRender RenderSystem::emptyArrayWhite;
@@ -898,12 +897,15 @@ void RenderSystem::createEmptyTextures(){
         void* data_array[6];
         size_t size_array[6];
 
+        // (128, 128, 255): the flat tangent-space normal, bytes in memory order R, G, B, A on
+        // little-endian. What a normal map that fails to load (a missing file, a bad image) draws
+        // with, and the shader library's "normal" @texture default (emptyFlatNormal)
         for (int i = 0; i < 64; i++) {
-            pixelsNormal[i] = 0xFF808080;
+            pixelsFlatNormal[i] = 0xFFFF8080;
         }
 
         for (int i = 0; i < 6; i++){
-            data_array[i]  = (void*)pixelsNormal;
+            data_array[i]  = (void*)pixelsFlatNormal;
             size_array[i] = 8 * 8 * 4;
         }
 
@@ -961,10 +963,10 @@ void RenderSystem::createEmptyTextures(){
                 "empty|cube|black", 8, 8, ColorFormat::RGBA, TextureType::TEXTURE_CUBE, 6, data_array, size_array, 
                 TextureFilter::NEAREST, TextureFilter::NEAREST, TextureWrap::REPEAT, TextureWrap::REPEAT);
 
-        // shader library @texture defaults: mid gray, and a flat tangent-space normal (0.5, 0.5, 1)
+        // shader library @texture defaults: mid gray, and the flat tangent-space normal (0.5, 0.5, 1)
+        // filled above
         for (int i = 0; i < 64; i++) {
             pixelsGray[i] = 0xFF808080;
-            pixelsFlatNormal[i] = 0xFFFF8080;
         }
 
         for (int i = 0; i < 6; i++){
@@ -3762,6 +3764,14 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         p_hasNormal = (requiresNormals || p_punctual || p_vertexLights) && inputs.normal;
         p_hasTangent = p_hasNormal && (require & ShaderRequire_Tangents) && inputs.tangent;
         p_hasNormalMap = false;
+        // @require normalmap: the material's normal map on the 2D light path (tangent frame
+        // from the mesh, read at uv1: includes/lighting2d.glsl, surface_vs.glsl)
+        if ((require & ShaderRequire_NormalMap) && useLight2D && inputs.normalTexture && inputs.normal && inputs.tangent &&
+                p_hasTexture1 && !inputs.terrain){
+            p_hasNormal = true;
+            p_hasTangent = true;
+            p_hasNormalMap = true;
+        }
     }
     if (p_lattice){
         p_vertexColorVec3 = p_vertexColorVec3 || inputs.vertexColor3;
@@ -13497,7 +13507,13 @@ void RenderSystem::update(double dt){
                         }
                     }
                     if (mesh.submeshes[s].manifest){
-                        // no normal map variant: its lighting comes from the manifest
+                        // a normal map variant only with @require normalmap (its 2D lights): one
+                        // gained or lost since the load picks it again
+                        if (mesh.submeshes[s].manifest->getPossibleRequire() & ShaderRequire_NormalMap){
+                            if (mesh.submeshes[s].hasNormalMap != !mesh.submeshes[s].material.normalTexture.empty()){
+                                mesh.needReload = true;
+                            }
+                        }
                     }else if (!mesh.submeshes[s].material.normalTexture.empty()){
                         if (!(mesh.submeshes[s].shaderProperties & (1 << 7))){ // not 'Nmp'
                             mesh.needReload = true;
