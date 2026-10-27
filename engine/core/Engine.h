@@ -240,6 +240,9 @@ namespace jasperengine {
         // sampler / view on Vulkan, 68 / 84 / 72 / 104 on OpenGL, 1-5 KB per pipeline and
         // shader: these defaults take ~23 MB on Vulkan and ~21 MB on OpenGL, 10.7 MB and 3.9 MB
         // more than the earlier 8,192 buffers, 2,048 images and 4,096 views.
+        // GpuResourceLimits::uniformBytes' default for this platform (64 MB desktop, 16 MB mobile/web)
+        static int defaultUniformBytes();
+
         struct GpuResourceLimits{
             int buffers = 16384;   // vertex, index, storage (bones on Vulkan, Metal, D3D11), instances
             int images = 16384;    // textures and render targets (bones textures on OpenGL)
@@ -251,10 +254,12 @@ namespace jasperengine {
             // rounded up to 256 bytes): past it a draw is skipped and the first such frame logged
             // (SokolSystem::reserveUniformBytes); GL and D3D11 have no such buffer. A skinned hero
             // of 3 materials in shadow-casting light takes 13,056 bytes a frame (51 blocks: colour
-            // pass and shadow cascades, measured by SharedMeshBuffersTest): 140 MB hold 10,000 of
-            // them and the rest of a frame. sokol allocates it once per frame in flight (2): 280 MB
-            // of host-visible memory on Vulkan and Metal (sokol's default, 4 MB, held ~300 heroes)
-            int uniformBytes = 140 * 1024 * 1024;
+            // pass and shadow cascades, measured by SharedMeshBuffersTest). sokol allocates the
+            // buffer once per frame in flight (2) in host-visible memory, so the default depends on
+            // the platform: 64 MB on desktop (~5,000 such heroes; 128 MB allocated), 16 MB on
+            // Android, iOS and the web (~1,200; 32 MB allocated). sokol's own default, 4 MB, held
+            // ~300. Crowds beyond that should be one instanced Vertex Animation (one draw for all).
+            int uniformBytes = defaultUniformBytes();
         };
 
     private:

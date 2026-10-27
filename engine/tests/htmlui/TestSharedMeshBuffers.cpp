@@ -362,9 +362,10 @@ TEST_F(SharedMeshBuffersTest, ThousandsOfSkinnedModelCopiesAllDrawFromOneSetOfBu
 
 // The frame's uniform blocks (each rounded up to 256 bytes, as sokol's per-frame uniform buffer
 // takes them on Vulkan, Metal and WebGPU) of skinned heroes in shadow-casting light: what one
-// hero costs a frame, and that Engine::GpuResourceLimits::uniformBytes holds 10,000 of them. A
-// frame of 3,300 shadowed heroes overflowed sokol's default 4 MB on Vulkan and dropped draws.
-TEST_F(SharedMeshBuffersTest, UniformBufferHoldsTenThousandShadowedSkinnedHeroes){
+// hero costs a frame, and that Engine::GpuResourceLimits::uniformBytes' desktop default (64 MB)
+// holds 4,000 of them. A frame of 3,300 shadowed heroes overflowed sokol's default 4 MB on
+// Vulkan and dropped draws.
+TEST_F(SharedMeshBuffersTest, UniformBufferHoldsFourThousandShadowedSkinnedHeroes){
     const int count = 500;
     AbandonedCrowd crowd(count, 2.0f, 2.4f);
     GridScene& s = crowd.scene();
@@ -382,7 +383,7 @@ TEST_F(SharedMeshBuffersTest, UniformBufferHoldsTenThousandShadowedSkinnedHeroes
                 (unsigned long long)frame, perHero, (unsigned long long)empty, (unsigned long long)SystemRender::getUniformBytesLimit());
     // a hero draws 3 submeshes in the colour pass and the shadow cascades
     EXPECT_GT(perHero, 3 * 256.0);
-    EXPECT_LE(empty + perHero * 10000.0, double(SystemRender::getUniformBytesLimit())) << "10,000 shadowed heroes fit";
+    EXPECT_LE(empty + perHero * 4000.0, double(SystemRender::getUniformBytesLimit())) << "4,000 shadowed heroes fit";
     EXPECT_EQ(SystemRender::getUniformSkippedDraws(), skippedBefore);
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR), 0u) << errorLines();
 }
