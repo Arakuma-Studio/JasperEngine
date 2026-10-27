@@ -5,10 +5,36 @@
 // section 5.1): the tangent frame the 2D mesh generators (MeshSystem: sprite quad, sprite grid,
 // MeshPolygon, Tilemap) write reads normal maps OpenGL style, the tangent where u grows and the
 // bitangent (cross(N, T) * w, as mesh.vert and surface_vs.glsl build it) where v shrinks, up the
-// image, with flipY on (world cameras) and off (UI cameras), mirrored tiles included.
+// image, with flipY on (world cameras) and off (UI cameras), mirrored tiles included (U1, U2).
+// Library shaders read the material's normal map with @require normalmap (U3, U4); editor-made
+// Light 2Ds start at height 64, loaded and script-made ones keep 0 (U5); Mesh::setNormalTexture
+// (U6).
 
 #include <gtest/gtest.h>
 
+#include "AppSettings.h"
+#include "Catalog.h"
+#include "PhysicsTestScene.h"
+#include "Project.h"
+#include "Stream.h"
+#include "command/CommandHandle.h"
+#include "command/type/AddComponentCmd.h"
+#include "command/type/CreateEntityCmd.h"
+#include "component/Light2DComponent.h"
+#include "object/Light2D.h"
+#include "object/Mesh.h"
+#include "shader/ShaderManifest.h"
+#include "subsystem/RenderSystem.h"
+#include "util/ProjectUtils.h"
+#include "yaml-cpp/yaml.h"
+
+#include <unistd.h>
+
+#include <algorithm>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <memory>
 #include "Scene.h"
 #include "component/MeshComponent.h"
 #include "component/SpriteComponent.h"
@@ -27,6 +53,8 @@
 #include <vector>
 
 using namespace jasperengine;
+using namespace jasperengine::editor;
+namespace fs = std::filesystem;
 
 namespace {
 
@@ -177,4 +205,287 @@ TEST(Sprite2DTangentFrame, TilemapWithMirroredTile) {
 TEST(Sprite2DTangentFrame, Handedness) {
     EXPECT_EQ(MeshSystem::flatTangentHandedness(true), 1.0f);
     EXPECT_EQ(MeshSystem::flatTangentHandedness(false), -1.0f);
+}
+
+
+// ---- U3: @require normalmap
+
+namespace {
+
+    bool hasDefine(const std::vector<std::string>& defines, const std::string& define) {
+        return std::find(defines.begin(), defines.end(), define) != defines.end();
+    }
+
+    bool reported(const ShaderManifest& manifest, const std::string& text) {
+        for (const ShaderManifestDiagnostic& d : manifest.diagnostics) {
+            if (d.message.find(text) != std::string::npos)
+                return true;
+        }
+        return false;
+    }
+
+}
+
+TEST(Sprite2DNormalMapManifest, RequireNormalMapParses) {
+    ShaderManifest manifest;
+    manifest.parse("// @shader mesh\n// @name \"T\"\n// @require uv1 color normalmap\n", "t.frag");
+    manifest.checkComplete("t.frag", false);
+    for (const ShaderManifestDiagnostic& d : manifest.diagnostics)
+        EXPECT_FALSE(d.error) << d.line << ": " << d.message;
+    const uint32_t require = manifest.resolveRequire({});
+    EXPECT_EQ(require, uint32_t(ShaderRequire_UV1 | ShaderRequire_Color | ShaderRequire_NormalMap));
+    EXPECT_TRUE(hasDefine(manifest.getRequireDefines(std::vector<std::string>()), "SURFACE_NORMAL_MAP"));
+    const std::vector<std::string> names = ShaderManifest::getRequireNames(ShaderRequire_NormalMap);
+    ASSERT_EQ(names.size(), 1u);
+    EXPECT_EQ(names[0], "normalmap");
+    EXPECT_NE(manifest.getPossibleRequire() & ShaderRequire_NormalMap, 0u);
+}
+
+TEST(Sprite2DNormalMapManifest, FeatureGatesIt) {
+    ShaderManifest manifest;
+    manifest.parse("// @shader mesh\n// @name \"T\"\n// @feature LIT \"Lit\"\n// @require uv1\n"
+                   "// @require normalmap feature=LIT\n", "t.frag");
+    manifest.checkComplete("t.frag", false);
+    EXPECT_FALSE(manifest.hasErrors());
+    EXPECT_EQ(manifest.resolveRequire({}) & ShaderRequire_NormalMap, 0u);
+    EXPECT_NE(manifest.resolveRequire({"LIT"}) & ShaderRequire_NormalMap, 0u);
+    EXPECT_FALSE(hasDefine(manifest.getRequireDefines(std::vector<std::string>()), "SURFACE_NORMAL_MAP"));
+    EXPECT_TRUE(hasDefine(manifest.getRequireDefines(std::vector<std::string>{"LIT"}), "SURFACE_NORMAL_MAP"));
+    EXPECT_NE(manifest.getPossibleRequire() & ShaderRequire_NormalMap, 0u);
+}
+
+TEST(Sprite2DNormalMapManifest, Errors) {
+    ShaderManifest unknown;
+    unknown.parse("// @shader mesh\n// @name \"T\"\n// @require normalmaps\n", "t.frag");
+    EXPECT_TRUE(reported(unknown, "environment, normalmap)")) << "the unknown-input error lists normalmap";
+
+    ShaderManifest notMesh;
+    notMesh.parse("// @shader ui\n// @name \"T\"\n// @require uv1 normalmap\n", "t.frag");
+    notMesh.checkComplete("t.frag", false);
+    EXPECT_TRUE(reported(notMesh, "@require normalmap needs @shader mesh"));
+
+    ShaderManifest reserved;
+    reserved.parse("// @shader mesh\n// @name \"T\"\n// @require uv1 normalmap\n// @texture u_normalTexture normal \"N\"\n", "t.frag");
+    reserved.checkComplete("t.frag", false);
+    EXPECT_TRUE(reported(reserved, "'u_normalTexture' is reserved with @require normalmap"));
+}
+
+TEST(Sprite2DNormalMapManifest, LibrarySpriteRequiresIt) {
+    const std::shared_ptr<const ShaderManifest> sprite = ShaderManifests::get("library:sprite");
+    ASSERT_TRUE(sprite);
+    EXPECT_NE(sprite->resolveRequire({}) & ShaderRequire_NormalMap, 0u);
+    EXPECT_NE(sprite->resolveRequire({"OUTLINE"}) & ShaderRequire_NormalMap, 0u);
+}
+
+// the variant samples the material's normal map exactly under 2D lights, with a normal texture,
+// on a mesh with normals, tangents and uv1 (RenderSystem::getSubmeshShaderVariant)
+TEST(Sprite2DNormalMapManifest, VariantSamplesTheMaterialNormalMap) {
+    const uint64_t nmp = shaderPropertyBit(7);
+    SubmeshShaderInputs inputs;
+    inputs.texCoord1 = true;
+    inputs.normal = true;
+    inputs.tangent = true;
+    inputs.vertexColor4 = true;
+    inputs.textureRect = true;
+    inputs.baseColorTexture = true;
+    inputs.normalTexture = true;
+    inputs.manifest = ShaderManifests::get("library:sprite");
+    ASSERT_TRUE(inputs.manifest);
+    MeshShaderEnvironment lights2D;
+    lights2D.lights2D = true;
+
+    const SubmeshShaderVariant lit = RenderSystem::getSubmeshShaderVariant(lights2D, inputs);
+    EXPECT_NE(lit.properties & nmp, 0u) << "under 2D lights with a normal texture";
+
+    EXPECT_EQ(RenderSystem::getSubmeshShaderVariant(MeshShaderEnvironment(), inputs).properties & nmp, 0u) << "no 2D lights";
+    SubmeshShaderInputs without = inputs;
+    without.normalTexture = false;
+    const SubmeshShaderVariant plain = RenderSystem::getSubmeshShaderVariant(lights2D, without);
+    EXPECT_EQ(plain.properties & nmp, 0u) << "no normal texture";
+    without = inputs;
+    without.tangent = false;
+    EXPECT_EQ(RenderSystem::getSubmeshShaderVariant(lights2D, without).properties & nmp, 0u) << "no tangents";
+    without = inputs;
+    without.receiveLights = false;
+    EXPECT_EQ(RenderSystem::getSubmeshShaderVariant(lights2D, without).properties & nmp, 0u) << "not receiving lights";
+
+    // a library shader without @require normalmap: as before
+    SubmeshShaderInputs simpleLit = inputs;
+    simpleLit.manifest = ShaderManifests::get("library:simple_lit");
+    ASSERT_TRUE(simpleLit.manifest);
+    EXPECT_EQ(RenderSystem::getSubmeshShaderVariant(lights2D, simpleLit).properties & nmp, 0u) << "library:simple_lit";
+}
+
+// ---- U4: Catalog::shaderReadsMaterialNormalMap
+
+TEST(Sprite2DNormalMapManifest, CatalogShaderReadsMaterialNormalMap) {
+    EXPECT_TRUE(Catalog::shaderReadsMaterialNormalMap(ShaderManifests::get("library:sprite").get(), {}));
+    EXPECT_TRUE(Catalog::shaderReadsMaterialNormalMap(ShaderManifests::get("library:sprite").get(), {"OUTLINE"}));
+    EXPECT_FALSE(Catalog::shaderReadsMaterialNormalMap(ShaderManifests::get("library:simple_lit").get(), {}));
+    EXPECT_FALSE(Catalog::shaderReadsMaterialNormalMap(nullptr, {})) << "the built-in shader";
+
+    ShaderManifest gated;
+    gated.parse("// @shader mesh\n// @name \"T\"\n// @feature LIT \"Lit\"\n// @require uv1\n"
+                "// @require normalmap feature=LIT\n", "t.frag");
+    EXPECT_FALSE(Catalog::shaderReadsMaterialNormalMap(&gated, {}));
+    EXPECT_TRUE(Catalog::shaderReadsMaterialNormalMap(&gated, {"LIT"}));
+}
+
+// ---- U5: the height of new Light 2Ds
+
+namespace {
+
+    struct Headless {
+        bool ready = false;
+        std::unique_ptr<Project> project;
+    };
+
+    Headless& headless() {
+        static Headless h = []() {
+            Headless out;
+            physicstest::installTestSystem();
+            Engine::setAsyncLoading(false);
+            const fs::path root = fs::temp_directory_path() / ("jasper-light2d-height-test-" + std::to_string(::getpid()));
+            fs::remove_all(root);
+            fs::create_directories(root / "config");
+            setenv("XDG_CONFIG_HOME", (root / "config").c_str(), 1);
+            const fs::path dir = root / "project";
+            fs::create_directories(dir / ".jasperengine");
+            fs::create_directories(dir / "assets");
+            std::ofstream(dir / "project.yaml") << "name: light2dheight\nassetsDir: assets\n";
+            AppSettings::initialize();
+            out.project.reset(new Project());
+            out.ready = out.project->loadProject(dir, false);
+            return out;
+        }();
+        return h;
+    }
+
+    uint32_t newScene2D() {
+        Project* p = headless().project.get();
+        if (SceneProject* current = p->getSelectedScene()) current->isModified = false;
+        p->createNewScene("Lights", SceneType::SCENE_2D);
+        return p->getSelectedSceneId();
+    }
+
+    Scene* sceneOf(uint32_t sceneId) { return headless().project->getScene(sceneId)->scene; }
+
+}
+
+TEST(Sprite2DLightHeight, CreatedLight2DIsAt64) {
+    ASSERT_TRUE(headless().ready);
+    const uint32_t sceneId = newScene2D();
+    CreateEntityCmd* create = new CreateEntityCmd(headless().project.get(), sceneId, "Light 2D", EntityCreationType::POINT_LIGHT_2D);
+    create->setQuiet(true);
+    CommandHandle::get(sceneId)->addCommandNoMerge(create);
+    const Entity entity = create->getEntity();
+    ASSERT_TRUE(sceneOf(sceneId)->findComponent<Light2DComponent>(entity));
+    EXPECT_EQ(sceneOf(sceneId)->getComponent<Light2DComponent>(entity).height, 64.0f);
+    EXPECT_EQ(sceneOf(sceneId)->getComponent<Light2DComponent>(entity).range, 200.0f);
+
+    ASSERT_TRUE(CommandHandle::get(sceneId)->undo());
+    EXPECT_FALSE(sceneOf(sceneId)->isEntityCreated(entity)) << "undo removes the light";
+    ASSERT_TRUE(CommandHandle::get(sceneId)->redo());
+    const Entity redone = create->getEntity();
+    ASSERT_TRUE(sceneOf(sceneId)->findComponent<Light2DComponent>(redone));
+    EXPECT_EQ(sceneOf(sceneId)->getComponent<Light2DComponent>(redone).height, 64.0f) << "redo";
+}
+
+TEST(Sprite2DLightHeight, AddedLight2DIsAt64) {
+    ASSERT_TRUE(headless().ready);
+    const uint32_t sceneId = newScene2D();
+    CreateEntityCmd* create = new CreateEntityCmd(headless().project.get(), sceneId, "Empty", EntityCreationType::GAMEOBJECT);
+    create->setQuiet(true);
+    CommandHandle::get(sceneId)->addCommandNoMerge(create);
+    const Entity entity = create->getEntity();
+
+    CommandHandle::get(sceneId)->addCommandNoMerge(new AddComponentCmd(headless().project.get(), sceneId, entity, ComponentType::Light2DComponent));
+    ASSERT_TRUE(sceneOf(sceneId)->findComponent<Light2DComponent>(entity));
+    EXPECT_EQ(sceneOf(sceneId)->getComponent<Light2DComponent>(entity).height, 64.0f);
+
+    ASSERT_TRUE(CommandHandle::get(sceneId)->undo());
+    EXPECT_FALSE(sceneOf(sceneId)->findComponent<Light2DComponent>(entity)) << "undo removes the component";
+    ASSERT_TRUE(CommandHandle::get(sceneId)->redo());
+    ASSERT_TRUE(sceneOf(sceneId)->findComponent<Light2DComponent>(entity));
+    EXPECT_EQ(sceneOf(sceneId)->getComponent<Light2DComponent>(entity).height, 64.0f) << "redo";
+}
+
+TEST(Sprite2DLightHeight, LoadedAndScriptLightsKeepTheirHeight) {
+    // a scene's Light2D without height: the struct default
+    YAML::Node node = YAML::Load("intensity: 2\nrange: 300\n");
+    const Light2DComponent loaded = Stream::decodeLight2DComponent(node);
+    EXPECT_EQ(loaded.height, 0.0f);
+    EXPECT_EQ(loaded.intensity, 2.0f);
+    // with one, its value
+    EXPECT_EQ(Stream::decodeLight2DComponent(YAML::Load("height: 12\n")).height, 12.0f);
+
+    // the loader's path (ProjectUtils::addEntityComponent), and the C++ / Lua constructor
+    Scene scene;
+    const Entity entity = scene.createEntity();
+    std::vector<Entity> entities{entity};
+    ProjectUtils::addEntityComponent(&scene, entity, ComponentType::Light2DComponent, entities);
+    ASSERT_TRUE(scene.findComponent<Light2DComponent>(entity));
+    EXPECT_EQ(scene.getComponent<Light2DComponent>(entity).height, 0.0f);
+    Light2D light(&scene);
+    EXPECT_EQ(light.getHeight(), 0.0f);
+}
+
+// ---- U6: Mesh::setNormalTexture
+
+TEST(Sprite2DNormalTexture, SetAndGet) {
+    Scene scene;
+    Mesh mesh(&scene);
+    MeshComponent& component = mesh.getComponent<MeshComponent>();
+    component.numSubmeshes = 2;
+    component.loaded = true;
+
+    EXPECT_EQ(mesh.getNormalTexture(), "");
+    mesh.setNormalTexture("hero_normal.png");
+    EXPECT_EQ(mesh.getNormalTexture(), "hero_normal.png");
+    EXPECT_EQ(mesh.getNormalTexture(0), "hero_normal.png");
+    EXPECT_FALSE(component.submeshes[0].material.normalTexture.empty());
+    EXPECT_TRUE(component.submeshes[0].needUpdateTexture);
+    EXPECT_TRUE(component.needReload) << "gaining a normal map changes the variant";
+
+    // another path: only the texture
+    component.needReload = false;
+    component.submeshes[0].needUpdateTexture = false;
+    mesh.setNormalTexture("hero_normal_b.png");
+    EXPECT_EQ(mesh.getNormalTexture(), "hero_normal_b.png");
+    EXPECT_TRUE(component.submeshes[0].needUpdateTexture);
+    EXPECT_FALSE(component.needReload) << "another path keeps the variant";
+
+    // submesh 1
+    mesh.setNormalTexture(1, "tiles_normal.png");
+    EXPECT_EQ(mesh.getNormalTexture(1), "tiles_normal.png");
+    EXPECT_EQ(mesh.getNormalTexture(), "hero_normal_b.png");
+    EXPECT_TRUE(component.needReload);
+
+    // "" clears it
+    component.needReload = false;
+    mesh.setNormalTexture("");
+    EXPECT_EQ(mesh.getNormalTexture(), "");
+    EXPECT_TRUE(component.submeshes[0].material.normalTexture.empty());
+    EXPECT_TRUE(component.needReload) << "losing it changes the variant";
+    component.needReload = false;
+    mesh.setNormalTexture("");
+    EXPECT_FALSE(component.needReload) << "clearing nothing changes nothing";
+
+    // out of range: an error, nothing changes
+    component.needReload = false;
+    mesh.setNormalTexture(2, "x.png");
+    EXPECT_FALSE(component.needReload);
+    EXPECT_EQ(mesh.getNormalTexture(2), "");
+}
+
+TEST(Sprite2DNormalTexture, FreshSpriteAndData) {
+    Scene scene;
+    Sprite sprite(&scene);
+    // submesh 0 before the sprite is built
+    sprite.setNormalTexture("dome.png");
+    EXPECT_EQ(sprite.getNormalTexture(), "dome.png");
+
+    static unsigned char pixels[4] = {128, 128, 255, 255};
+    sprite.setNormalTexture("flat|normal", TextureData(1, 1, 4, ColorFormat::RGBA, 4, pixels));
+    EXPECT_EQ(sprite.getNormalTexture(), "flat|normal") << "a normal map from data reads its id";
 }

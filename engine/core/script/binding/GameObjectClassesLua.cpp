@@ -815,6 +815,18 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&>(&Mesh::setTexture),
             luabridge::overload<const std::string&,TextureData>(&Mesh::setTexture),
             luabridge::overload<Framebuffer*>(&Mesh::setTexture))
+        // the normal map (tangent-space, OpenGL green up; answers Light 2Ds with height > 0) of
+        // submesh 0 or of a submesh; "" removes it
+        .addFunction("setNormalTexture",
+            luabridge::overload<const std::string&>(&Mesh::setNormalTexture),
+            luabridge::overload<unsigned int, const std::string&>(&Mesh::setNormalTexture),
+            luabridge::overload<const std::string&, TextureData>(&Mesh::setNormalTexture))
+        .addFunction("getNormalTexture",
+            luabridge::overload<>(&Mesh::getNormalTexture),
+            luabridge::overload<unsigned int>(&Mesh::getNormalTexture))
+        // submesh 0's normal map path ("" for none)
+        .addProperty("normalTexture", (std::string(Mesh::*)()const)&Mesh::getNormalTexture,
+                     (void(Mesh::*)(const std::string&))&Mesh::setNormalTexture)
         .addProperty("color", &Mesh::getColor, (void(Mesh::*)(Vector4))&Mesh::setColor)
         .addFunction("setColor", 
             luabridge::overload<const float, const float, const float>(&Mesh::setColor),
