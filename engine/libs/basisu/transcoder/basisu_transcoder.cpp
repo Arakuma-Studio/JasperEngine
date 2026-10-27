@@ -5460,6 +5460,16 @@ namespace basist
 	{
 		uint8_t* pBytes = reinterpret_cast<uint8_t*>(pOutput);
 
+#if JASPER_BASISD_FAST_TRANSCODE
+		// JasperEngine: the bytes the field covers OR-ed from one shifted word (README.jasper.md)
+		const uint32_t shift = bit_pos & 7;
+		const uint64_t v = (uint64_t)value << shift;
+		uint8_t* p = pBytes + (bit_pos >> 3);
+		const uint32_t total_bytes = (shift + total_bits + 7) >> 3;
+		for (uint32_t i = 0; i < total_bytes; i++)
+			p[i] |= static_cast<uint8_t>(v >> (8 * i));
+		bit_pos += total_bits;
+#else
 		while (total_bits)
 		{
 			const uint32_t bits_to_write = basisu::minimum<int>(total_bits, 8 - (bit_pos & 7));
@@ -5470,6 +5480,7 @@ namespace basist
 			total_bits -= bits_to_write;
 			value >>= bits_to_write;
 		}
+#endif
 	}
 
 	// Encodes 5 values to output, usable for any range that uses trits and bits
@@ -15344,6 +15355,37 @@ namespace basist
 		assert(num_cem_pairs <= 9);
 
 		astc_pack_bise(pDst, pBlock->m_endpoints, bit_pos, num_cem_pairs * 2, g_uastc_mode_endpoint_ranges[uastc_mode]);
+
+#if JASPER_BASISD_FAST_TRANSCODE
+		// JasperEngine: the weights gathered in two words from the block's top, then OR-ed in
+		// (README.jasper.md); the same bits as the byte-wise cases below
+		if ((bits_per_weight >= 1) && (bits_per_weight <= 5))
+		{
+			// an N-bit weight reversed: the 5-bit reversal shifted down
+			static const uint8_t s_reverse_bits5[32] = { 0, 16, 8, 24, 4, 20, 12, 28, 2, 18, 10, 26, 6, 22, 14, 30, 1, 17, 9, 25, 5, 21, 13, 29, 3, 19, 11, 27, 7, 23, 15, 31 };
+			const uint32_t N = bits_per_weight;
+			uint64_t weight_bits[2] = { 0, 0 };
+			for (int i = 0; i < total_weights; i++)
+			{
+				const uint32_t rev = (uint32_t)s_reverse_bits5[pBlock->m_weights[i] & 31] >> (5 - N);
+				const uint32_t ofs = 128 - N - i * N;
+				if (ofs >= 64)
+					weight_bits[1] |= (uint64_t)rev << (ofs - 64);
+				else
+				{
+					weight_bits[0] |= (uint64_t)rev << ofs;
+					if (ofs + N > 64)
+						weight_bits[1] |= (uint64_t)rev >> (64 - ofs);
+				}
+			}
+			for (uint32_t i = 0; i < 8; i++)
+			{
+				pDst_bytes[i] |= (uint8_t)(weight_bits[0] >> (i * 8));
+				pDst_bytes[8 + i] |= (uint8_t)(weight_bits[1] >> (i * 8));
+			}
+			return true;
+		}
+#endif
 
 		// Write the weight bits in reverse bit order.
 		switch (bits_per_weight)
