@@ -625,8 +625,11 @@ one line pointing here.
   than that rendering; (2) S16 added 18 on the outlined label in the rotated, filtered panel: the
   white texel block S16 reserves at the start of every glyph page (batching: untextured geometry
   joins a glyph page's run) moved the glyphs in the atlas, and a transformed glyph samples its
-  atlas neighbours. The block is now reserved only while batching (fix), and the S16-off render is
-  pixel-identical to oe-port's (0 pixels over the threshold between them). The other S16-off
+  atlas neighbours. The block now sits in the page's last rows, outside the shelf packing
+  (`GlyphAtlas::reserveBottom`), so glyphs are packed where they were before S16 whether the frame
+  batches or not (first fix, the block only while batching, made batched and unbatched differ on
+  transformed text: `RenderBatch.EquivalenceAllGoldenScenes`, p3 `integration/sample-dialog`); the
+  S16-off render was pixel-identical to oe-port's (0 pixels over the threshold between them). The other S16-off
   failures were S16's own tests needing S16 on (`S16On`), S16's new goldens, and goldens S16
   updated (the AC1 run uses the pre-S16 files).
 
