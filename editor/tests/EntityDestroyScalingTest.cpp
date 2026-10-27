@@ -275,19 +275,39 @@ TEST(ComponentArrayHoles, RemovingTheLastPopsItAndTheHolesBeforeIt) {
 
 TEST(ComponentArrayHoles, ForEachAfterSkipsRunsOfHolesAndStopsWhenAsked) {
     ComponentArray<int> array;
-    for (Entity e = 1; e <= 100; e++) array.insert(e, int(e));
-    // the ones after 10 removed last first: a growing run of holes after it each time
-    for (Entity e = 90; e > 10; e--) array.remove(e);
+    for (Entity e = 1; e <= 1000; e++) array.insert(e, int(e));
+    // the ones after 10 removed last first: a growing run of holes after the one before each
+    for (Entity e = 90; e > 10; e--) {
+        array.remove(e);
+        Entity next = NULL_ENTITY;
+        array.forEachAfter(e - 1, [&next](Entity entity, int&) { next = entity; return false; });
+        ASSERT_EQ(next, 91u) << "after " << e - 1;
+    }
     std::vector<Entity> after;
     array.forEachAfter(10, [&after](Entity entity, int&) { after.push_back(entity); return after.size() < 3; });
     EXPECT_EQ(after, (std::vector<Entity>{91, 92, 93}));
     after.clear();
-    array.forEachAfter(100, [&after](Entity entity, int&) { after.push_back(entity); return true; });
+    array.forEachAfter(1000, [&after](Entity entity, int&) { after.push_back(entity); return true; });
     EXPECT_TRUE(after.empty());
     array.forEachAfter(50, [&after](Entity entity, int&) { after.push_back(entity); return true; });
     EXPECT_TRUE(after.empty()) << "a removed entity has nothing after it";
-    EXPECT_EQ(array.size(), 20u);
+    EXPECT_EQ(array.size(), 920u);
     EXPECT_EQ(array.getEntity(10), 91u);
+}
+
+// An array nothing reads by index (no size(), no loop over it) is closed once half holes
+TEST(ComponentArrayHoles, ArrayHalfHolesIsClosedWithoutAnIndexAccess) {
+    ComponentArray<int> array;
+    for (Entity e = 1; e <= 200; e++) array.insert(e, int(e));
+    int* const firstSlot = array.findComponent(1);
+    int* const last = array.findComponent(200);
+    for (Entity e = 1; e <= 99; e++) array.remove(e);
+    EXPECT_EQ(array.findComponent(200), last) << "99 holes of 200: left open";
+    array.remove(100);
+    EXPECT_EQ(array.findComponent(101), firstSlot) << "100 of 200: closed";
+    EXPECT_EQ(*array.findComponent(200), 200);
+    EXPECT_EQ(array.getIndex(200), 99u);
+    EXPECT_EQ(array.size(), 100u);
 }
 
 TEST(ComponentArrayHoles, MovesSortsAndBatchesSeeThePackedArray) {

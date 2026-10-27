@@ -40,8 +40,9 @@ namespace jasperengine {
     // and a run of removals (destroying entities one by one, a scene's teardown) costs O(1)
     // each instead of O(size) each. Access by entity (findComponent, getComponent,
     // hasEntity), forEach() and forEachAfter() never compact: a component found so stays where
-    // it is until the next access by index (shifting moved it at once before).
-    // Removing the last slot pops it, with the holes before it.
+    // it is until the next access by index (shifting moved it at once before), or a removal
+    // that leaves the array half holes (closed then, so an array nothing reads by index does
+    // not grow). Removing the last slot pops it, with the holes before it.
 
 
     template<typename T>
@@ -102,6 +103,11 @@ namespace jasperengine {
             holeNext[slot] = slot + 1;
             firstHole = (holes == 0) ? slot : std::min(firstHole, slot);
             holes++;
+            // an array nothing reads by index does not keep growing: closed once half holes
+            // (O(size) after size/2 removals, still O(1) each)
+            if (holes >= 64 && holes * 2 >= componentArray.size()){
+                closeHoles();
+            }
         }
 
         // Grows by moving the components: a component type without a noexcept move
@@ -185,9 +191,18 @@ namespace jasperengine {
         // of them. Index access does it first; call it before handing the array to another
         // thread that reads it by index while this one may too.
         void compact() override {
-            if (holes == 0){
-                return;
+            closeHoles();
+        }
+
+        // what compact() does, without a virtual call (in every access by index)
+        void closeHoles(){
+            if (holes != 0){
+                closeHolesNow();
             }
+        }
+
+    private:
+        void closeHolesNow(){
             size_t write = firstHole;
             for (size_t read = firstHole; read < componentArray.size(); read++){
                 const Entity entity = indexToEntity[read];
@@ -205,9 +220,11 @@ namespace jasperengine {
             holeNext.clear();
         }
 
+    public:
         // Calls fn(entity, component) for the components after `entity`'s, in order, while it
         // returns true, without compacting (destroying entities one by one asks what follows
-        // each in the Transform order). Nothing when the entity has none.
+        // each in the Transform order). Nothing when the entity has none. fn must not add or
+        // remove components of this array.
         template<typename Fn>
         void forEachAfter(Entity entity, Fn&& fn) {
             auto it = entityToIndexMap.find(entity);
@@ -232,7 +249,7 @@ namespace jasperengine {
         }
 
         void moveEntityRangeToIndex(Entity start, Entity end, size_t newIndex){
-            compact();
+            closeHoles();
 
             size_t startIndex = entityToIndexMap[start];
             size_t endIndex = entityToIndexMap[end];
@@ -247,7 +264,7 @@ namespace jasperengine {
         }
 
         void moveEntityToIndex(Entity entity, size_t newIndex){
-            compact();
+            closeHoles();
 
             size_t oldIndex = entityToIndexMap[entity];
 
@@ -256,8 +273,8 @@ namespace jasperengine {
 
         template<typename C>
         void sortByComponent(ComponentArray<C>* otherComponent) {
-            compact();
-            otherComponent->compact();
+            closeHoles();
+            otherComponent->closeHoles();
             // Key: index in the other array; entities without it go last
             const size_t count = componentArray.size();
             const size_t missing = std::numeric_limits<size_t>::max();
@@ -277,7 +294,7 @@ namespace jasperengine {
         // For components without a Transform whose order is a list's, e.g. the editor's
         // scene entity list for skyboxes (the first one is the scene's sky).
         void sortByEntityOrder(const std::vector<Entity>& order) {
-            compact();
+            closeHoles();
             const size_t count = componentArray.size();
             if (count < 2){
                 return;
@@ -359,7 +376,7 @@ namespace jasperengine {
         }
 
         T* findComponentFromIndex(size_t index) {
-            compact();
+            closeHoles();
             if (index >= componentArray.size()){
                 return NULL;
             }
@@ -368,7 +385,7 @@ namespace jasperengine {
         }
 
         T& getComponentFromIndex(size_t index) {
-            compact();
+            closeHoles();
             try{
 
                 return componentArray.at(index);
@@ -380,7 +397,7 @@ namespace jasperengine {
         }
 
         size_t getIndex(Entity entity){
-            compact();
+            closeHoles();
             try{
 
                 return entityToIndexMap.at(entity);
@@ -392,7 +409,7 @@ namespace jasperengine {
         }
 
         Entity getEntity(size_t index){
-            compact();
+            closeHoles();
             if (index >= indexToEntity.size()){
                 Log::error("Entity not found");
                 return NULL_ENTITY;
@@ -402,7 +419,7 @@ namespace jasperengine {
         }
 
         size_t size(){
-            compact();
+            closeHoles();
             return componentArray.size();
         }
 
