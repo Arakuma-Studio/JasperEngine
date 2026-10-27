@@ -39,10 +39,31 @@ private:
     std::unordered_map<std::string, std::pair<size_t, size_t>> takenRuns; // base -> [first, last] all taken
 };
 
+// ProjectUtils::getLockedEntityParent for many entities of one scene (a delete of many): the
+// models' and panels' references indexed once instead of scanned for each entity (O(1) an
+// entity instead of O(the scene's model nodes)). The same answers while the scene is unchanged.
+class LockedParentIndex {
+public:
+    explicit LockedParentIndex(Scene* scene);
+    Entity get(Entity entity) const;
+
+private:
+    struct ModelReference {
+        Entity owner;
+        bool byTransformParent; // a bone or node: its Transform parent when it has one
+    };
+    Scene* scene;
+    std::unordered_map<Entity, ModelReference> modelReferences;
+    std::unordered_map<Entity, Entity> panelParts;
+};
+
 class ProjectUtils {
 public:
 
     static Entity getLockedEntityParent(Scene* scene, Entity entity);
+    // getLockedEntityParent's UI part (a control's label, bar, ... below it); `checkPanels`
+    // when the panels' header parts are still to look at
+    static Entity lockedByParentUI(Scene* scene, Entity entity, Signature signature, bool& checkPanels);
     static bool isEntityLocked(Scene* scene, Entity entity);
     static Entity getParentModel(Scene* scene, Entity entity);
     // Model owning the imported parts an entity is or contains, never a model itself

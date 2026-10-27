@@ -553,9 +553,11 @@ bool editor::DeleteEntityCmd::execute(){
         return requestedSet.count(entity) != 0;
     };
 
+    // indexed once: a scan of the scene's models for each entity made deleting many quadratic
+    const editor::LockedParentIndex lockedParents(sceneProject->scene);
     auto it = entities.begin();
     while (it != entities.end()) {
-        Entity lockedParent = ProjectUtils::getLockedEntityParent(sceneProject->scene, it->entity);
+        Entity lockedParent = lockedParents.get(it->entity);
         bool canDelete = true;
         if (lockedParent != NULL_ENTITY){
             canDelete = (allowLockedRoots && isRequestedEntity(it->entity))

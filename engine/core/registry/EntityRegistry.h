@@ -118,10 +118,16 @@ namespace jasperengine {
 
         bool isEntityCreated(Entity entity) const;
 
+        // O(1) amortized whatever the number of entities (a component removed from the middle
+        // of its array leaves a hole the next access by index closes, see ComponentArray), so
+        // destroying all of a scene's, one by one or by its teardown, is O(n)
         void destroyEntity(Entity entity);
-        // Several entities: every component removal callback first, then each component
-        // array compacted once (destroying many one by one shifts the arrays each time)
+        // Several entities: every component removal callback first, then their components
         void destroyEntities(const std::vector<Entity>& entities);
+        // Closes the holes destroyed entities left in every component array now (an access by
+        // index does it for its array). Before another thread reads the arrays by index while
+        // this one may too, e.g. a scene saved in the background.
+        void compactComponents();
 
         void addEntityChild(Entity parent, Entity child, bool changeTransform);
 
