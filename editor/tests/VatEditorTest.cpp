@@ -969,6 +969,10 @@ TEST(VatInspectorHelpers, TextsFixesAndLimits) {
     EXPECT_NEAR(shifted[0], 0.35, 1e-9);
     EXPECT_NEAR(shifted[2], 3.25, 1e-9);
     EXPECT_STREQ(inspectorvat::wrapLabel(ClipWrapMode::PingPong), "Ping Pong");
+    EXPECT_EQ(inspectorvat::stalenessText("vat-source-changed", "'m/hero.gltf' changed since 'v/hero.vat' was baked", "rebake it"),
+              "Source changed since baking: 'm/hero.gltf' changed since 'v/hero.vat' was baked. Rebake it.");
+    EXPECT_EQ(inspectorvat::stalenessText("vat-mesh-mismatch", "the mesh 'hero.vat.glb' is missing", ""),
+              "the mesh 'hero.vat.glb' is missing.");
     EXPECT_EQ(inspectorvat::removedClipsNote(quadData("")), "");
 }
 

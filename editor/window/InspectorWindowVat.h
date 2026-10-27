@@ -57,6 +57,11 @@ namespace jasperengine::editor::inspectorvat{
     // a Lua identifier (an event's function)
     bool isLuaName(const std::string& name);
 
+    // The staleness banner's line for one checkVatStaleness issue: "Source changed since baking:
+    // 'models/hero.gltf' changed since 'vat/hero.vat' was baked. Rebake ..." for the source kinds,
+    // "<message>. <fix>" for the others
+    std::string stalenessText(const std::string& kind, const std::string& message, const std::string& fix);
+
     // "Removed clips keep their rows until the next Rebake (37 unused frames, 812 KB)"; "" when the
     // clips use every frame
     std::string removedClipsNote(const jasperengine::vat::VatData& data);

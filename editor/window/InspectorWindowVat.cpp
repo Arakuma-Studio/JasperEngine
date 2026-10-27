@@ -35,6 +35,7 @@
 #include "util/Util.h"
 #include "vat/VatAppHooks.h"
 #include "vat/VatAssetFiles.h"
+#include "vat/VatBakeSession.h"
 #include "vat/VatCrowd.h"
 #include "vat/VatDocument.h"
 #include "Out.h"
@@ -265,6 +266,17 @@ bool inspectorvat::isLuaName(const std::string& name){
     return std::all_of(name.begin(), name.end(), [](unsigned char c){ return std::isalnum(c) || c == '_'; });
 }
 
+std::string inspectorvat::stalenessText(const std::string& kind, const std::string& message, const std::string& fix){
+    std::string text = kind == "vat-source-changed" || kind == "vat-source-missing" ? "Source changed since baking: " + message : message;
+    if (!fix.empty()){
+        std::string sentence = fix;
+        sentence[0] = (char)std::toupper((unsigned char)sentence[0]);
+        text += ". " + sentence;
+    }
+    if (!text.empty() && text.back() != '.') text += '.';
+    return text;
+}
+
 std::string inspectorvat::removedClipsNote(const jv::VatData& data){
     const int unused = VatDocument::unusedSamples(data);
     if (unused <= 0) return std::string();
@@ -288,7 +300,7 @@ namespace jasperengine::editor{
         struct StalenessEntry{
             uint64_t revision = 0;
             double checkedAt = -1.0;
-            VatStalenessInfo info;
+            std::vector<ev::VatIssue> issues;
         };
 
         fs::path project;
@@ -350,7 +362,7 @@ InspectorVatState& editor::InspectorWindow::vatState(){
 namespace{
 
     constexpr double DOCUMENT_RETRY_SECONDS = 1.0;
-    constexpr double STALENESS_SECONDS = 1.0;
+    constexpr double STALENESS_SECONDS = 5.0;
     constexpr size_t MAX_ROWS = 64;
 
     float textWidth(const std::string& text){
@@ -890,28 +902,19 @@ void editor::InspectorWindow::drawVatAsset(const fs::path& asset){
                                                                document->path());
     if (!limit.empty()) warningText(limit);
 
-    // staleness (the baker's checkVatStaleness), once per revision and second
-    if (hooks.checkStaleness){
+    // staleness (the baker's checkVatStaleness: source hashes, the .vat.glb), on every new
+    // revision and every few seconds (it hashes the sources)
+    {
         InspectorVatState::StalenessEntry& entry = state.staleness[document->path()];
         const double now = ImGui::GetTime();
         if (entry.checkedAt < 0.0 || entry.revision != document->revision() || now - entry.checkedAt >= STALENESS_SECONDS){
-            entry.info = hooks.checkStaleness(project, document->absolutePath());
+            entry.issues = ev::checkVatStaleness(project, document->absolutePath().generic_string());
             entry.revision = document->revision();
             entry.checkedAt = now;
         }
-        if (entry.info.stale){
-            std::string message = entry.info.message;
-            if (message.empty()){
-                std::vector<std::string> names = entry.info.changed;
-                for (const std::string& missing : entry.info.missing) names.push_back(missing + " (missing)");
-                std::string list;
-                for (const std::string& name : names) list += (list.empty() ? "" : ", ") + name;
-                message = "Source changed since baking: " + list + ". Rebake to update it.";
-            }
-            warningText(message);
+        for (const ev::VatIssue& issue : entry.issues){
+            warningText(inspectorvat::stalenessText(issue.kind, issue.message, issue.fix));
             UIProbe::item("vatAsset.stale");
-        }else if (!entry.info.checked && !entry.info.message.empty()){
-            ImGui::TextDisabled("%s", entry.info.message.c_str());
         }
     }
 
