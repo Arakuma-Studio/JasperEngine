@@ -54,7 +54,7 @@ jasperengine_add_test_target(jasperengine-core-tests
 add_dependencies(jasperengine-core-tests jasperengine-crash-test)
 # tools/crash/symbolicate.py names the crash-test binary's frames (ctest; docs/testing.md)
 find_package(Python3 COMPONENTS Interpreter)
-if(Python3_Interpreter_FOUND AND NOT WIN32 AND NOT APPLE)
+if(Python3_Interpreter_FOUND AND NOT WIN32)
     add_test(NAME crash.symbolicate
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/crash/test_symbolicate.py
                      $<TARGET_FILE:jasperengine-crash-test>)

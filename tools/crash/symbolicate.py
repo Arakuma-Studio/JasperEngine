@@ -144,7 +144,11 @@ def symbolize(module: Path, addresses: list[int]) -> list[str]:
         if len(names) == len(addresses):
             return names
     if sys.platform == "darwin" and shutil.which("atos"):
-        out = run(["atos", "-o", str(module), "-l", "0x0", *hexes]).splitlines()
+        # atos treats a zero load address as unspecified. Give it a synthetic
+        # nonzero load address and shift each image-relative offset by the same
+        # amount; this works for both executable and dylib preferred addresses.
+        out = run(["atos", "-o", str(module), "-l", "0x1",
+                   *(hex(a + 1) for a in addresses)]).splitlines()
         if len(out) == len(addresses):
             return ["" if line.startswith("0x") else line for line in out]
     return [""] * len(addresses)
