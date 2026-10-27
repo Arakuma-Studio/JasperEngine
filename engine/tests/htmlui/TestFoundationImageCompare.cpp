@@ -121,6 +121,87 @@ TEST_F(ImageCompareTest, WithinTolerance){
     EXPECT_TRUE(result.passed) << result.message;
 }
 
+TEST_F(ImageCompareTest, BlockComparison){
+    // a 1-pixel dot moved by 2 pixels inside a 10x10 block: two bad pixels, the same block mean
+    std::vector<uint8_t> golden = makeImage(0, 0, 0);
+    setPixel(golden, 3, 3, 250, 250, 250);
+    ASSERT_TRUE(writePng(this->golden("blocks"), golden, width, height));
+    std::vector<uint8_t> moved = makeImage(0, 0, 0);
+    setPixel(moved, 5, 3, 250, 250, 250);
+    EXPECT_FALSE(compare("blocks", moved).passed);
+    CompareOptions blocks;
+    blocks.blockSize = 10;
+    CompareResult result = compare("blocks", moved, blocks);
+    EXPECT_TRUE(result.passed) << result.message;
+    EXPECT_EQ(result.maxDiff, 0);
+    EXPECT_NE(result.message.find("10x10 blocks (4x2)"), std::string::npos) << result.message;
+
+    // moved into the next block: both blocks' means change by 250 / 100, under the threshold;
+    // a threshold of 2 counts the two blocks of 8
+    setPixel(moved, 5, 3, 0, 0, 0);
+    setPixel(moved, 13, 3, 250, 250, 250);
+    result = compare("blocks", moved, blocks);
+    EXPECT_EQ(result.maxDiff, 3) << result.message;
+    blocks.pixelThreshold = 2;
+    result = compare("blocks", moved, blocks);
+    EXPECT_FALSE(result.passed);
+    EXPECT_EQ(result.badPixels, 2u);
+    EXPECT_DOUBLE_EQ(result.badFraction, 2.0 / 8.0);
+
+    // a block size of at least the image's: the mean colours (40x20 = 800 pixels, partial blocks
+    // average the pixels they have)
+    CompareOptions mean;
+    mean.blockSize = 4096;
+    mean.pixelThreshold = 0;
+    result = compare("blocks", moved, mean);
+    EXPECT_TRUE(result.passed) << result.message;
+    ASSERT_TRUE(writePng(this->golden("mean"), makeImage(100, 100, 100), width, height));
+    std::vector<uint8_t> brighter = makeImage(100, 100, 100);
+    for (int x = 0; x < width; x++)
+        setPixel(brighter, x, 0, 140, 100, 100);   // a row of 40 of 800 pixels: +2 on the mean red
+    result = compare("mean", brighter, mean);
+    EXPECT_FALSE(result.passed);
+    EXPECT_EQ(result.maxDiff, 2);
+    EXPECT_EQ(result.badPixels, 1u);
+}
+
+TEST_F(ImageCompareTest, HistogramDistance){
+    // half the image black, half white; the actual has the halves swapped: the same distribution
+    std::vector<uint8_t> golden = makeImage(0, 0, 0);
+    std::vector<uint8_t> swapped = makeImage(0, 0, 0);
+    for (int y = 0; y < height; y++){
+        for (int x = 0; x < width; x++){
+            if (x < width / 2)
+                setPixel(golden, x, y, 255, 255, 255);
+            else
+                setPixel(swapped, x, y, 255, 255, 255);
+        }
+    }
+    ASSERT_TRUE(writePng(this->golden("histogram"), golden, width, height));
+    CompareOptions options;
+    options.blockSize = 4096;
+    options.maxHistogramDistance = 0.0;
+    CompareResult result = compare("histogram", swapped, options);
+    EXPECT_TRUE(result.passed) << result.message;
+    EXPECT_DOUBLE_EQ(result.histogramDistance, 0.0);
+
+    // half the white pixels gray: 25 % of the pixels change bins on R, G and B
+    for (int y = 0; y < height / 2; y++)
+        for (int x = width / 2; x < width; x++)
+            setPixel(swapped, x, y, 128, 128, 128);
+    options.blockSize = 1;
+    options.pixelThreshold = 255;
+    options.maxBadFraction = 1.0;
+    options.maxMeanDiff = 255.0;
+    options.maxHistogramDistance = 12.0;
+    result = compare("histogram", swapped, options);
+    EXPECT_FALSE(result.passed);
+    EXPECT_DOUBLE_EQ(result.histogramDistance, 25.0);
+    EXPECT_NE(result.message.find("histogram distance 25 % (limit 12 %)"), std::string::npos) << result.message;
+    options.maxHistogramDistance = 25.0;
+    EXPECT_TRUE(compare("histogram", swapped, options).passed);
+}
+
 TEST_F(ImageCompareTest, FailureWritesActualAndDiff){
     ASSERT_TRUE(writePng(golden("failure"), makeImage(0, 0, 0), width, height));
 

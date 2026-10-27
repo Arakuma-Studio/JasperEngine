@@ -1,5 +1,5 @@
 {
- "comment": "A paused video seeked to 1.4 s (frame 42), object-fit cover with object-position, rounded content. Boxes exact (box 0). The frames are the same AV1 decode on both sides; the image difference is the 4:2:0 chroma upsampling of the YUV->RGB conversion, measured on glcore and Vulkan (identical): every pixel over the channel threshold 24 lies within 2 px of a colour edge (the colour bars, the moving square, the frame-index blocks), where Chromium's reference (the headless shell without GPU: the software compositor converts with libyuv, one chroma sample per 2x2 pixels, point-sampled) changes colour in one pixel and the engine's Yuv pass filters the chroma planes bilinearly (as Chromium's GPU compositor does), blending the edge over 1-2 pixels. Away from edges the difference is at most 19 per channel (the engine reproduces the clip's source colours exactly, e.g. bar (191, 191, 0); Chromium gives (191, 191, 9)). The override is the measured bad share and cluster, the channel threshold is the default.",
+ "comment": "A paused video seeked to 1.4 s (frame 42), object-fit cover with object-position, rounded content. Boxes exact (box 0). The frames are the same AV1 decode on both sides; the image difference is the 4:2:0 chroma upsampling of the YUV->RGB conversion, measured on glcore and Vulkan (identical): every pixel over the channel threshold 24 lies within 2 px of a colour edge (the colour bars, the moving square, the frame-index blocks), where Chromium's reference (the headless shell without GPU: the software compositor converts with libyuv, one chroma sample per 2x2 pixels, point-sampled) changes colour in one pixel and the engine's Yuv pass filters the chroma planes bilinearly (as Chromium's GPU compositor does), blending the edge over 1-2 pixels. Away from edges the difference is at most 19 per channel (the engine reproduces the clip's source colours exactly, e.g. bar (191, 191, 0); Chromium gives (191, 191, 9)). The override is the measured bad share and cluster, the channel threshold is the default: 0.925 % and 301 pixels on glcore and Vulkan on the test host; an NVIDIA GTX 1080 (Vulkan, driver 580) filters the chroma planes with its own weights, 0.967 % and 300 pixels: the bad share is that plus about 10 %.",
  "viewport": [
   360,
   260
@@ -14,7 +14,7 @@
  ],
  "tolerance": {
   "box": 0,
-  "badPercent": 0.925,
+  "badPercent": 1.07,
   "cluster": 301
  }
 }
