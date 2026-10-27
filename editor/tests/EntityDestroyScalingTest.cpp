@@ -83,12 +83,13 @@ namespace {
         size_t entities() const { return models.size() * ENTITIES_PER_COPY; }
     };
 
-    enum class Teardown { DestroyEach, DestroyEachBackwards, ModelHandles, DestroyImmediate, DeleteScene, Clear };
+    enum class Teardown { DestroyEach, DestroyEachBackwards, DestroyEachReadingByIndex, ModelHandles, DestroyImmediate, DeleteScene, Clear };
 
     const char* name(Teardown teardown) {
         switch (teardown) {
             case Teardown::DestroyEach: return "destroyEntity one by one";
             case Teardown::DestroyEachBackwards: return "destroyEntity, last first";
+            case Teardown::DestroyEachReadingByIndex: return "destroyEntity + index reads";
             case Teardown::ModelHandles: return "Model handles deleted";
             case Teardown::DestroyImmediate: return "destroyImmediate each";
             case Teardown::DeleteScene: return "scene deleted";
@@ -123,6 +124,21 @@ namespace {
                 for (auto it = list.rbegin(); it != list.rend(); ++it) {
                     if (*it != last) crowd.scene->destroyEntity(*it);
                 }
+                break;
+            }
+            case Teardown::DestroyEachReadingByIndex: {
+                // reads by index between the destroys (a script or a system looking up indexes):
+                // answered over the holes, never closing them each time
+                auto transforms = crowd.scene->getComponentArray<Transform>();
+                auto meshes = crowd.scene->getComponentArray<MeshComponent>();
+                size_t sum = 0;
+                for (Entity entity : crowd.scene->getEntityList()) {
+                    if (entity == last) continue;
+                    crowd.scene->destroyEntity(entity);
+                    sum += transforms->getIndex(last) + transforms->size() + meshes->size();
+                    if (transforms->size() > 1) sum += transforms->getEntity(transforms->size() / 2);
+                }
+                EXPECT_GT(sum, 0u);
                 break;
             }
             case Teardown::ModelHandles:
@@ -170,8 +186,8 @@ namespace {
 TEST(EntityDestroyScaling, PerEntityCostDoesNotGrowWithTheScene) {
     const int small = 10000 / ENTITIES_PER_COPY + 1;
     const int large = 100000 / ENTITIES_PER_COPY + 1;
-    for (Teardown teardown : {Teardown::DestroyEach, Teardown::DestroyEachBackwards, Teardown::ModelHandles, Teardown::DestroyImmediate,
-                              Teardown::DeleteScene, Teardown::Clear}) {
+    for (Teardown teardown : {Teardown::DestroyEach, Teardown::DestroyEachBackwards, Teardown::DestroyEachReadingByIndex,
+                              Teardown::ModelHandles, Teardown::DestroyImmediate, Teardown::DeleteScene, Teardown::Clear}) {
         const double smallCost = bestSecondsPerEntity(small, teardown, 3);
         const double largeCost = bestSecondsPerEntity(large, teardown, 2);
         // the cache misses of 10 times the memory grow it a little; quadratic would be 10 times
@@ -184,8 +200,8 @@ TEST(EntityDestroyScaling, PerEntityCostDoesNotGrowWithTheScene) {
 TEST(EntityDestroyScaling, Profile) {
     const char* copies = std::getenv("JASPER_DESTROY_PROFILE");
     if (!copies) GTEST_SKIP() << "set JASPER_DESTROY_PROFILE=<model copies>";
-    for (Teardown teardown : {Teardown::DestroyEach, Teardown::DestroyEachBackwards, Teardown::ModelHandles, Teardown::DestroyImmediate,
-                              Teardown::DeleteScene, Teardown::Clear}) {
+    for (Teardown teardown : {Teardown::DestroyEach, Teardown::DestroyEachBackwards, Teardown::DestroyEachReadingByIndex,
+                              Teardown::ModelHandles, Teardown::DestroyImmediate, Teardown::DeleteScene, Teardown::Clear}) {
         teardownSecondsPerEntity(std::atoi(copies), teardown);
     }
 }
