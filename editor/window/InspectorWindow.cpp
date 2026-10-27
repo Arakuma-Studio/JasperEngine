@@ -907,10 +907,14 @@ void editor::InspectorWindow::stopTransientPreviews() {
     stopActionPreviewIfActive();
     // the fluid previews and the Paint Dye brush (play starts, a save, the window closes)
     FluidEditorTools::stopAll(project);
+    // the Vertex Animator preview (InspectorWindowVat.cpp)
+    stopVertexAnimatorPreview();
 }
 
 void editor::InspectorWindow::clearSceneState(uint32_t sceneId) {
     FluidEditorTools::forgetScene(sceneId);
+    // a Vertex Animator previewing in the closed scene: nothing to put back (its scene is gone)
+    clearVertexAnimatorPreviewScene(sceneId);
 
     if (actionPreviewing && actionPreviewSceneId == sceneId) {
         // The scene is already deleted, drop the snapshots instead of restoring them
@@ -15938,6 +15942,7 @@ void editor::InspectorWindow::show(){
     if (drawInspectedAsset()) {
         stopSoundPreview();
         stopActionPreviewIfActive();
+        stopVertexAnimatorPreview();
         ImGui::End();
         return;
     }
@@ -15960,6 +15965,8 @@ void editor::InspectorWindow::show(){
             && sceneProject->playState == ScenePlayState::STOPPED
             && entities.size() == 1
             && entities[0] == actionPreviewEntity;
+    // the Vertex Animator preview belongs to the shown GameObject too
+    syncVertexAnimatorPreview(sceneProject, entities);
     if (actionPreviewing && !previewSelectionMatches) {
         stopActionPreviewIfActive();
     }
@@ -16086,6 +16093,8 @@ void editor::InspectorWindow::show(){
                     drawPoseAnimatorComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::AnimationPlayerComponent){
                     drawAnimationPlayerComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::VertexAnimatorComponent){
+                    drawVertexAnimatorComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::CameraComponent){
                     drawCameraComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::AudioSourceComponent){

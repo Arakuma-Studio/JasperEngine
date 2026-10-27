@@ -316,7 +316,20 @@ namespace {
         pair = VatTrackPair();
         extra = VatStateExtra();
         queue.clear();
-        const int clip = a.animator->playAutomatically ? defaultClip(a) : -1;
+        int clip = a.animator->playAutomatically ? defaultClip(a) : -1;
+        // an instance's own start (Create Crowd): its clip and its speed
+        if (index > 0){
+            const size_t instance = (size_t)(index - 1);
+            const std::vector<std::string>& clips = a.animator->instanceClips;
+            if (clip >= 0 && instance < clips.size() && !clips[instance].empty()){
+                const int own = findClip(a, clips[instance]);
+                if (own >= 0) clip = own;
+            }
+            const std::vector<float>& speeds = a.animator->instanceSpeeds;
+            if (instance < speeds.size() && std::isfinite(speeds[instance])){
+                extra.speed = speeds[instance];
+            }
+        }
         if (clip >= 0){
             playNow(a, pair, extra, queue, clip, now);
             if (a.animator->randomStart){

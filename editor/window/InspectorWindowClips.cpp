@@ -1366,6 +1366,13 @@ bool editor::InspectorWindow::drawInspectedAsset(){
     const fs::path asset = project->getInspectedAsset();
     if (asset.empty()) return false;
     const std::string file = asset.string();
+    // a .vat: its own view (InspectorWindowVat.cpp); gone: the scene selection again
+    if (Util::isVertexAnimationFile(file)){
+        std::error_code ec;
+        if (!fs::is_regular_file(asset, ec)) return false;
+        drawVatAsset(asset);
+        return true;
+    }
     const bool clip = Util::isAnimationClipFile(file);
     if (!clip && !Util::isModelFile(file)) return false;
     if (state.relativeOf != asset){

@@ -345,6 +345,49 @@ TEST(VertexAnimatorComponent, StreamRoundTripKeepsOnlyTheAuthoredFields) {
     EXPECT_EQ(shapes.attachments[0].entity, NULL_ENTITY);
 }
 
+// Create Crowd's per-instance starts: written only when set, read back, copied by value, emitted
+TEST(VertexAnimatorComponent, InstanceClipsAndSpeedsRoundTrip) {
+    VertexAnimatorComponent plain;
+    const YAML::Node plainNode = Stream::encodeVertexAnimatorComponent(plain);
+    EXPECT_FALSE(plainNode["instanceClips"]) << "other animators' YAML is unchanged";
+    EXPECT_FALSE(plainNode["instanceSpeeds"]);
+
+    VertexAnimatorComponent crowd = authoredAnimator();
+    crowd.instanceClips = {"Walk", "", "Run"};
+    crowd.instanceSpeeds = {1.25f, 0.5f};
+    const YAML::Node node = Stream::encodeVertexAnimatorComponent(crowd);
+    ASSERT_TRUE(node["instanceClips"]);
+    ASSERT_TRUE(node["instanceSpeeds"]);
+    const VertexAnimatorComponent decoded = Stream::decodeVertexAnimatorComponent(node);
+    EXPECT_EQ(decoded.instanceClips, crowd.instanceClips);
+    EXPECT_EQ(decoded.instanceSpeeds, crowd.instanceSpeeds);
+    EXPECT_EQ(YAML::Dump(Stream::encodeVertexAnimatorComponent(decoded)), YAML::Dump(node));
+    // decoding over an animator without them clears them (a prefab revert)
+    EXPECT_TRUE(Stream::decodeVertexAnimatorComponent(plainNode, &crowd).instanceClips.empty());
+
+    Scene scene;
+    const Entity entity = scene.createUserEntity();
+    scene.addComponent<Transform>(entity, {});
+    scene.addComponent<VertexAnimatorComponent>(entity, crowd);
+    const ComponentType type = ComponentType::VertexAnimatorComponent;
+    VertexAnimatorComponent& animator = scene.getComponent<VertexAnimatorComponent>(entity);
+    const PropertyData clips = Catalog::findProperty(&scene, entity, type, "instanceClips");
+    EXPECT_EQ(clips.type, PropertyType::Custom);
+    EXPECT_EQ(clips.ref, &animator.instanceClips);
+    EXPECT_EQ(Catalog::findProperty(&scene, entity, type, "instanceSpeeds").ref, &animator.instanceSpeeds);
+    const Entity other = scene.createUserEntity();
+    scene.addComponent<Transform>(other, {});
+    scene.addComponent<VertexAnimatorComponent>(other, {});
+    Catalog::copyPropertyValue(&scene, entity, &scene, other, type, "instanceClips");
+    Catalog::copyPropertyValue(&scene, entity, &scene, other, type, "instanceSpeeds");
+    EXPECT_EQ(scene.getComponent<VertexAnimatorComponent>(other).instanceClips, crowd.instanceClips);
+    EXPECT_EQ(scene.getComponent<VertexAnimatorComponent>(other).instanceSpeeds, crowd.instanceSpeeds);
+
+    const std::string code = Factory::createComponent(0, &scene, entity, type, "", "scene", "entity");
+    EXPECT_NE(code.find("vertexanimator.instanceClips = {\"Walk\", \"\", \"Run\"};"), std::string::npos) << code;
+    EXPECT_NE(code.find("vertexanimator.instanceSpeeds = {1.250000f, 0.500000f};"), std::string::npos) << code;
+}
+
 TEST(VertexAnimatorComponent, DecodingOverAnAnimatorResetsItsRunAndClearsCallbacks) {
     VertexAnimatorComponent old = authoredAnimator();
     old.preview = true;
@@ -995,6 +1038,36 @@ TEST_F(VertexAnimatorSystemTest, InstanceRequestsAndGpuWritesOnlyOnChange) {
     EXPECT_NEAR(object.getInstanceNormalizedTime(2), held, 1e-4f);
 }
 
+// instanceClips / instanceSpeeds (Create Crowd): each instance starts with its own clip and speed;
+// a missing or empty entry is the default clip at speed 1, an unknown clip is the default (warned)
+TEST_F(VertexAnimatorSystemTest, InstancesStartWithTheirOwnClipAndSpeed) {
+    hero = makeHero(4);
+    VertexAnimatorComponent& a = animator(hero);
+    a.instanceClips = {"Run", "", "Nope"};
+    a.instanceSpeeds = {2.0f, 0.5f};
+    step(0.0);
+    ASSERT_EQ(a.instanceStates.size(), 4u);
+    EXPECT_EQ(a.instanceStates[0].a.clip, RUN);
+    EXPECT_EQ(a.instanceStates[1].a.clip, WALK);
+    EXPECT_EQ(a.instanceStates[2].a.clip, WALK) << "unknown: the default clip";
+    EXPECT_EQ(a.instanceStates[3].a.clip, WALK) << "past the list: the default clip";
+    EXPECT_EQ(a.state.a.clip, WALK) << "the GameObject's own state keeps the default";
+    EXPECT_FLOAT_EQ(a.instanceStates[0].a.speed, 2.0f);
+    EXPECT_FLOAT_EQ(a.instanceStates[1].a.speed, 0.5f);
+    EXPECT_FLOAT_EQ(a.instanceStates[2].a.speed, 1.0f);
+    EXPECT_FLOAT_EQ(a.instanceStates[3].a.speed, 1.0f);
+    // the speed stays the instance's own after a play (setInstanceSpeed semantics)
+    VertexAnimator object(&scene, hero);
+    object.playInstance(1, "Run");
+    EXPECT_FLOAT_EQ(a.instanceStates[1].a.speed, 0.5f);
+    // with playAutomatically off nothing plays, whatever the list says
+    Entity still = makeHero(2);
+    animator(still).playAutomatically = false;
+    animator(still).instanceClips = {"Run", "Run"};
+    step(0.0);
+    EXPECT_EQ(animator(still).instanceStates[0].a.clip, -1);
+}
+
 TEST_F(VertexAnimatorSystemTest, RandomStartIsSeededByEntityAndInstance) {
     hero = makeHero(3, true);
     step(0.0);
@@ -1103,6 +1176,31 @@ TEST_F(VertexAnimatorSystemTest, EpochRebaseKeepsPhasesContinuous) {
     Vector4 v0, v1;
     vatPackInstance(a.instanceStates[0], v0, v1);
     EXPECT_EQ(scene.getComponent<InstancedMeshComponent>(hero).instances[0].vat0, v0);
+}
+
+// The Inspector's preview scrubber: a SetTime request applied at once in edit mode (applyRequests)
+TEST_F(VertexAnimatorSystemTest, PreviewScrubSetsTheTimeAtOnce) {
+    hero = makeHero(2);
+    system()->setPaused(true);
+    VertexAnimatorComponent& a = animator(hero);
+    a.preview = true;
+    step(0.1);
+    step(0.1);
+    a.speed = 0.001f;
+    step(0.1);
+    VertexAnimatorRequest request;
+    request.kind = VertexAnimatorRequest::Kind::SetTime;
+    request.value = 0.9f;
+    a.requests.push_back(request);
+    request.instance = 1;
+    request.value = 0.4f;
+    a.requests.push_back(request);
+    system()->applyRequests(hero);
+    VertexAnimator object(&scene, hero);
+    EXPECT_NEAR(object.getTime(), 0.9f, 1e-3f);
+    EXPECT_NEAR(object.getInstanceNormalizedTime(1), 0.4f, 1e-3f);
+    step(0.1);
+    EXPECT_NEAR(object.getTime(), 0.9f, 1e-3f) << "nearly still at speed 0.001";
 }
 
 TEST_F(VertexAnimatorSystemTest, EditModeClockMovesOnlyWithPreview) {
