@@ -1310,6 +1310,14 @@ TEST_F(VatBaker_, EmbeddedTexturesAreWrittenNextToTheVat) {
     ASSERT_EQ(result->mesh.materials.size(), 1u);
     EXPECT_EQ(result->mesh.materials[0].baseColorTexture.compare(0, 9, "embedded:"), 0);
     EXPECT_FALSE(result->mesh.uv0.empty());
+    // the preview as files outside the assets (a Model can load it), gone with the session
+    std::string previewVat, previewMesh, previewError;
+    ASSERT_TRUE(session->writePreviewFiles(previewVat, previewMesh, previewError)) << previewError;
+    EXPECT_EQ(previewVat, result->previewKey);
+    EXPECT_TRUE(fs::exists(previewMesh));
+    EXPECT_TRUE(fs::exists(fs::path(previewMesh).parent_path() / "morph_blob_Checker.png"));
+    EXPECT_TRUE(jasperengine::vat::parseVat(readAll(previewVat)).ok());
+    EXPECT_EQ(fs::path(previewVat).lexically_relative(root()).generic_string().compare(0, 13, ".jasperengine"), 0);
     VatWriteResult written;
     std::string error;
     ASSERT_TRUE(session->write(written, error)) << error;
@@ -1320,6 +1328,8 @@ TEST_F(VatBaker_, EmbeddedTexturesAreWrittenNextToTheVat) {
     EXPECT_NE(readAll(root() / written.mesh).find("\"morph_blob_Checker.png\""), std::string::npos) << "the glb names it by URI";
     ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
     EXPECT_FALSE(fs::exists(png));
+    session.reset();
+    EXPECT_FALSE(fs::exists(previewMesh)) << "the preview files go with the session";
 }
 
 TEST_F(VatBaker_, SceneSourcesConvertTheirAnimationsAndReportMaterials) {
