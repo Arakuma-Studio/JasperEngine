@@ -34,10 +34,9 @@
 # x86_64 system image, EMULATOR_API / EMULATOR_TAG, default 34 / aosp_atd), with --device /dev/kvm:
 # the host needs KVM (Linux, /dev/kvm) and Docker; the golden check runs on the host (python3).
 # The emulator is headless (-no-window) and renders on the CPU: EMULATOR_GPU (default
-# swangle_indirect: ANGLE on SwiftShader Vulkan, GLES 3.1) is passed to -gpu. Its legacy
-# swiftshader_indirect translator draws no texture an app uploads from a pixel buffer object
-# (see docs/testing.md), so it cannot check rendering. The AVD starts from a wiped userdata
-# each run and stops at the end. The APK needs the x86_64 ABI (tools/build.sh android builds
+# swangle_indirect: ANGLE on SwiftShader Vulkan, GLES 3.1, the goldens' renderer) is passed to
+# -gpu; swiftshader_indirect is the older GLES 3.0 translator (docs/testing.md, "The emulator's
+# GPU"). The AVD starts from a wiped userdata each run and stops at the end. The APK needs the x86_64 ABI (tools/build.sh android builds
 # every ABI; ANDROID_ABIS=x86_64 only that one). The app is launched with its LAUNCHER intent;
 # the package comes from the APK (aapt2).
 #
@@ -76,7 +75,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
-    sed -n '2,73p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,72p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 2
 }
 

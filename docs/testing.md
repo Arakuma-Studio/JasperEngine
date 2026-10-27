@@ -103,7 +103,8 @@ tools/android-emulator-test.sh build/android/app-debug.apk --seconds 30 --forbid
   an x86_64 Automated Test Device system image (`EMULATOR_API` 34, `EMULATOR_TAG` aosp_atd, build
   arguments). The first run builds it (about 2 GB). The APK needs the x86_64 ABI, which
   `tools/build.sh android` builds with the others.
-- Each run boots from wiped user data (`-no-window -no-snapshot -wipe-data`, SwiftShader GLES 3),
+- Each run boots from wiped user data (`-no-window -no-snapshot -wipe-data`, `-gpu
+  $EMULATOR_GPU`: see "The emulator's GPU" below),
   installs the APK with every permission granted, clears logcat, launches the app and polls
   logcat until every `--expect` line is there, the app crashes, or `--timeout` (120 s) passes.
 - `--expect` matches a `logcat -v tag` line: `W/JasperEngine: [render] text` checks the priority,
@@ -118,7 +119,67 @@ tools/android-emulator-test.sh build/android/app-debug.apk --seconds 30 --forbid
   the run writes use memory), so a run leaves nothing on the host disk but `--out`. A boot takes
   about 40 s on servers A and C; a whole run about 70 s.
 - `EMULATOR_BOOT_TIMEOUT`, `EMULATOR_MEMORY`, `EMULATOR_CORES` and `JASPER_DOCKER_IMAGE` (a
-  prebuilt emulator image) tune it.
+  prebuilt emulator image) tune it. `EMULATOR_GPU` is passed to `-gpu` (below).
+- Every run also fails on what the GLES path logs when it goes wrong, expected or not: an
+  `OpenGL error` (NativeEngine reads `glGetError` after every frame; a debug build's sokol also
+  asserts on one after each GL call, which the crash check catches), a shader that did not compile
+  or link (sokol's GL backend, the runtime shader compiler), an incomplete framebuffer, an EGL
+  error or a failed swap, a sokol panic, and libEGL's "call to OpenGL ES API with no current
+  context".
+
+#### Rendering gate: `--scene` and `--golden`
+
+The logcat says the engine started; only the screen says it drew. `--golden DIR` makes each run
+wait for `I/JasperEngine: Engine presented: 30 frames since ready` (NativeEngine reports every
+successful swap, `Engine::systemFramePresented`, and the engine counts them from its ready line),
+then screenshots the device (`adb exec-out screencap`) and checks it with
+`tools/android-screen-check.py`:
+
+- **content**: a screen where one colour (within 8 per channel) covers all but 2 % of the pixels
+  fails as BLANK: a black screen, or a frame that is only the clear colour;
+- **golden**: the screenshot, box-filtered to 270 pixels wide (270 x 600 for the emulator's
+  Pixel 6, 1080 x 2400), is compared with `DIR/<scene>.png` by `tools/mcp/pngdiff.py`: at most 3 %
+  of the pixels may differ by more than 24 in a channel. `<scene>.scaled.png` and
+  `<scene>.diff.png` (differing pixels in red) are written next to the screenshot.
+  `JASPER_UPDATE_GOLDEN=1` writes the goldens instead (the content check still applies); look at
+  them before committing.
+
+`--scene NAME` (repeatable) launches the app once per scene with the property
+`debug.jasperengine.scene` set to it (a test project reads it, `JASPERENGINE_SCENE` elsewhere),
+each run checked on its own in `--out/<scene>/`; `{scene}` in an expectation is the run's scene.
+The gate's project is `tools/test-projects/render-gate`: a lit 3D scene (`lit3d`), 2D and UI
+(`ui2d`: a textured Image, Polygons, a Text) and an HTML UI document (`htmlui`), goldens in its
+`golden/`:
+
+```sh
+ANDROID_PROJECT=render-gate ANDROID_ABIS=x86_64 tools/build.sh android      # server B or D
+tools/android-emulator-test.sh build/android-render-gate/app-debug.apk \
+    --expect-file tools/test-projects/render-gate/android-expect.txt \
+    --scene lit3d --scene ui2d --scene htmlui --golden tools/test-projects/render-gate/golden
+```
+
+`ANDROID_ABIS=x86_64` builds only the emulator's ABI (a quarter of the build).
+
+#### The emulator's GPU
+
+The emulator renders on the CPU. `EMULATOR_GPU` defaults to `swangle_indirect`: ANGLE on
+SwiftShader's Vulkan, GLES 3.1, the path Google maintains; the goldens are made there.
+`EMULATOR_GPU=swiftshader_indirect` runs the emulator's older GLES 3.0 translator on legacy
+SwiftShader (the runner's only mode before BF3); the render gate passes there too.
+
+That translator is why Android "never rendered" in the emulator (BF3). It decides texture
+completeness without `GL_TEXTURE_IMMUTABLE_LEVELS`: a texture made with `glTexStorage2D(levels =
+1)` and sampled with a mipmapped min filter (sokol's samplers always use one) counts as
+incomplete unless its `GL_TEXTURE_MAX_LEVEL` is 0, and samples (0, 0, 0, 0). Mip-chained textures
+(an Image's) drew; every one-level texture did not: the text font atlas, every HTML UI layer and
+post-processing input, so a scene showed its clear colour (or black) with untextured geometry
+and Images over it. No GL error, no shader log: per-draw readbacks found the font atlas full and
+the draw writing alpha 0. sokol now states the levels as the max level
+(`_sg_gl_texstorage`, `SokolGlTextureLevels` in the core tests), which conformant GL ignores. A
+real device is affected only if its driver has the same completeness bug; the emulator gate
+checks both modes. Neither mode can show what depends on a real GPU: driver shader compilers and
+precision, tiler bandwidth, ASTC/ETC2 hardware decode (the emulator decodes in software), and
+frame timing (SwiftShader draws a frame in tens to hundreds of milliseconds).
 
 ### Native crash diagnostics
 
