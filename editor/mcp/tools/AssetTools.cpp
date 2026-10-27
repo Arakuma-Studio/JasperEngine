@@ -717,6 +717,19 @@ void listAssetsTool(const CallPtr& call) {
         call->fail(error);
         return;
     }
+    // search: the Project window's grammar over the asset index (S25 R20), by score then name
+    if (args.contains("search") && args["search"].is_string()) {
+        const size_t limit = static_cast<size_t>(std::clamp(args.value("limit", 200), 1, 2000));
+        Json data = searchAssetsJson(project, args["search"].get<std::string>(), dirArg, limit, error);
+        if (!error.empty()) {
+            call->fail(error);
+            return;
+        }
+        std::string text = std::to_string(data["total"].get<size_t>()) + " match(es) of " + data["query"].get<std::string>() + ":";
+        for (const Json& item : data["entries"]) text += "\n" + item["path"].get<std::string>();
+        call->ok(text, data);
+        return;
+    }
     if (!fs::is_directory(root)) {
         call->fail(dirArg + " is not a directory.");
         return;
@@ -3110,6 +3123,7 @@ void registerAssetTools(McpRegistry& registry) {
             {"type", stringEnum("", types)},
             {"pattern", string("")},
             {"query", string("Name substring.")},
+            {"search", string("Project search: t:texture l:Hero ext: path: re: ref: missing: (asset labels too).")},
             {"recursive", withDefault(boolean(""), true)},
             {"details", withDefault(boolean("Add sizes and image dimensions."), false)},
             {"limit", withDefault(integer("", 1, 2000), 200)}

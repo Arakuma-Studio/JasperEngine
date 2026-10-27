@@ -600,10 +600,16 @@ Where the implementation differs from the text above, and why.
   GameObjects of each view layer (authored ones, plus the game's while it runs).
 - **Ruler step (R25).** 1-2-5 alone cannot keep the 64-130 px band (2 to 5 is a 2.5 ratio, wider
   than the band's 2.03), so 2.5 times a power of ten is used where neither 2 nor 5 lands in it.
-- **S25 not landed (R19, R23).** The shortcuts are in an S25-shaped table
-  (`editor::sceneViewCommands()`, ids `sceneView.frameAll`, `sceneView.hideSelection`,
-  `sceneView.storeBookmark`, ...) read with ImGui keys while the Scene view is focused; they move
-  into S25's `CommandCatalog` (context "Scene view") when it lands. The measure tool also has M.
+- **Shortcuts in S25's catalog (R19, R23).** The Scene view's keys are command catalog entries
+  (`editor/shortcuts/DefaultCommands.cpp`, group and context Scene View, rebindable in Edit >
+  Shortcuts): `sceneView.frameAll` (Alt+F, Home kept), `sceneView.hideSelection` (H),
+  `sceneView.showAll` (Alt+H), `sceneView.togglePickLock` (L), `sceneView.measure` (M, the
+  measure tool's own key), `sceneView.deleteMeasure` (Delete while a measure is selected, else
+  Delete deletes the selection), `sceneView.recallBookmark1..9` (Shift+1..9) and
+  `sceneView.storeBookmark1..9` (Ctrl+Shift+1..9); Ctrl+wheel cycling and V while measuring are
+  its read-only gesture rows. Esc stays a local key (it ends the measure tool). The toolbar's
+  Exact Pick, Align to Surface and Rulers are also Preferences > Scene View rows (S25's settings
+  registry).
 - **MCP names (R34).** S31's conventions require `verb_noun` names: `scene_view_bookmark` is
   `edit_scene_view_bookmarks`, `scene_view_measure` is `measure_scene_view`, `mesh_raycast` is
   `raycast_meshes` ("raycast" added to the verbs). An agent's camera changes (`set_scene_camera`,

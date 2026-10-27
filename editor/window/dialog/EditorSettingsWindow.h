@@ -60,6 +60,7 @@ namespace jasperengine::editor {
         bool m_undoReviewPlayChanges = true;
         LoggingSettings m_logging;
         LatticeViewSettings m_lattice;
+        SceneViewSettings m_sceneView;
         // Unity-style category list; indexes PreferencesCategory in the .cpp.
         int m_category = 0;
         char m_categorySearch[64] = {0};
@@ -78,6 +79,7 @@ namespace jasperengine::editor {
         void drawExternalScriptEditorSettings();
         void drawUndoSettings();
         void drawLatticeSettings();
+        void drawSceneViewSettings();
         void drawExternalToolsSettings();
         // Row drawers for the External Tools table.
         void drawCMakeSettings();

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "ConsoleWindow.h"
+
+#include "shortcuts/CommandCatalog.h"
 #include <cstdio>
 #include "external/IconsFontAwesome6.h"
 #include "util/UIUtils.h"
@@ -699,7 +701,7 @@ void ConsoleWindow::showList(float height) {
     const ImGuiStyle& style = ImGui::GetStyle();
     const float rowHeight = std::floor(ImGui::GetTextLineHeight() + Theme::dpi(6.0f));
     const float textOffsetY = (rowHeight - ImGui::GetTextLineHeight()) * 0.5f;
-    const bool listFocused = ImGui::IsWindowFocused();
+    listFocused = ImGui::IsWindowFocused();
     ImDrawList* dl = ImGui::GetWindowDrawList();
 
     int selectedRow = -1;
@@ -709,7 +711,7 @@ void ConsoleWindow::showList(float height) {
         }
     }
 
-    // Keyboard: arrows move the selection, Ctrl+C copies it.
+    // Keyboard: arrows move the selection (Ctrl+C copying it is the catalog's console.copy)
     if (listFocused && !rows.empty()) {
         int move = 0;
         if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) move = -1;
@@ -722,9 +724,6 @@ void ConsoleWindow::showList(float height) {
             hasSelection = true;
             scrollToSelection = true;
             autoScroll = false;
-        }
-        if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C, false)) {
-            if (const LogData* log = selectedLog()) ImGui::SetClipboardText(log->message.c_str());
         }
     }
 
@@ -824,7 +823,7 @@ void ConsoleWindow::showList(float height) {
 
     if (ImGui::BeginPopup("##ConsoleRowMenu")) {
         const LogData* log = selectedLog();
-        if (ImGui::MenuItem(ICON_FA_COPY " Copy", "Ctrl+C", false, log != nullptr)) {
+        if (ImGui::MenuItem(ICON_FA_COPY " Copy", CommandCatalog::editor().menuShortcutText("console.copy").c_str(), false, log != nullptr)) {
             ImGui::SetClipboardText(log->message.c_str());
         }
         if (ImGui::MenuItem(ICON_FA_CLIPBOARD_LIST " Copy All", nullptr, false, !rows.empty())) {
@@ -930,6 +929,7 @@ void ConsoleWindow::showDetails() {
 }
 
 void ConsoleWindow::show() {
+    listFocused = false;
     pullLogs();
     updatePlayState();
 
@@ -1000,4 +1000,12 @@ void ConsoleWindow::show() {
     if (wasOpen && !windowOpen) {
         setOpen(false);
     }
+}
+
+bool ConsoleWindow::hasSelectedMessage() const {
+    return selectedLog() != nullptr;
+}
+
+void ConsoleWindow::copySelectedMessage() {
+    if (const LogData* log = selectedLog()) ImGui::SetClipboardText(log->message.c_str());
 }

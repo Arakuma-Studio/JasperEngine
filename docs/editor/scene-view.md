@@ -31,7 +31,9 @@ are picked first.
 
 After the scene kind and Parent: the camera bookmarks (Home, the stored slots 1-9, `+`), Layout,
 Persp/Iso, Layers, Measure, Rulers, Exact Pick, Align to Surface, the Scene Camera, post FX and
-Gizmos. A narrow view gathers the middle items in a `...` menu.
+Gizmos. A narrow view gathers the middle items in a `...` menu. The shortcuts below are the
+defaults: every one is a Scene View command of **Edit > Shortcuts...** (see
+[keyboard shortcuts](keyboard-shortcuts.md)), and works while the view has focus or the pointer.
 
 | Item | Does | Shortcut |
 |---|---|---|
@@ -86,5 +88,5 @@ drop onto a mesh still preparing its picking data is refused ("Preparing surface
 Everything above is yours: the project's `.jasperengine/user/workspace.yaml` per scene (camera
 settings, layout and panes, bookmarks, measures, the Layers filter, hidden and locked GameObjects)
 and `.jasperengine/user/bookmarks/<scene>/<slot>.png`. Exact Pick, Align to Surface and Rulers are
-editor preferences. Scene files never change. Large meshes keep their picking data in
+editor preferences (also in **Preferences > Scene View**). Scene files never change. Large meshes keep their picking data in
 `.jasperengine/cache/meshbvh/` (rebuilt when stale; at most 512 MB).

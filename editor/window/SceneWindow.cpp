@@ -85,10 +85,6 @@ void editor::SceneWindow::renderInactivePanes(SceneProject& sceneProject) {
     viewController->renderInactivePanes(sceneProject);
 }
 
-bool editor::SceneWindow::handlesDeleteKey() const {
-    return windowFocused && viewController->hasSelectedMeasure(project->getSelectedSceneId());
-}
-
 void editor::SceneWindow::handleCloseScene(uint32_t sceneId) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (sceneProject) {
@@ -1874,6 +1870,12 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
     }
 
+    // Its keys (F, Home, the numpad views, the terrain and Paint Dye brushes' [ and ], G, the
+    // lattice point keys) are command catalog entries (shortcuts/DefaultCommands.cpp): frameSelection,
+    // frameAll, viewFrom below. What stays here: Esc (it cancels what runs in the view) and the
+    // physics drop, a key held (a gesture row of the catalog).
+    if (isMouseInWindow) viewHovered = true;
+
     // The Scene view has the keyboard: hovered, or focused (it or its canvas)
     const bool sceneViewInput = isMouseInWindow || ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 
@@ -1887,117 +1889,55 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         escapeTaken = physics->cancelGesture((uint32_t)sceneId);
     }
 
-    // Paint Dye: [ / ] scale the fluid's splatRadius (one undo step a run of presses), Esc puts
-    // the brush down, while the view is focused or under the pointer and nothing is being typed
-    // (a keyboard key shows ImGui's nav cursor, which IsAnyItemFocused below would count)
+    // Paint Dye: Esc puts the brush down ([ / ] scale it: sceneView.brushSmaller/Larger), while the
+    // view is focused or under the pointer and nothing is being typed
     if (sceneProject->sceneRender->isFluidPainting() && !ImGui::IsAnyItemActive() && !io.WantTextInput &&
         (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows) || isMouseInWindow)){
-        if (ImGui::IsKeyPressed(ImGuiKey_LeftBracket)){
-            FluidEditorTools::adjustRadius(1.0f / 1.15f);
-        }
-        if (ImGui::IsKeyPressed(ImGuiKey_RightBracket)){
-            FluidEditorTools::adjustRadius(1.15f);
-        }
         if (!escapeTaken && ImGui::IsKeyPressed(ImGuiKey_Escape, false)){
             FluidEditorTools::disarm();
         }
     }
 
-    if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()){
-        if (project->getSelectedSceneId() == sceneId){
-            if (!walkingMode){
-
-                // Brush shortcuts while terrain editing: [ / ] resize the brush,
-                // Shift+[ / Shift+] adjust its strength.
-                if (TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow()){
-                    if (terrainEditWindow->isEditingScene(sceneProject->scene)){
-                        const bool shiftHeld = ImGui::IsKeyDown(ImGuiMod_Shift);
-                        if (ImGui::IsKeyPressed(ImGuiKey_LeftBracket)){
-                            if (shiftHeld){
-                                terrainEditWindow->adjustBrushStrength(1.0f / 1.15f);
-                            }else{
-                                terrainEditWindow->adjustBrushSize(1.0f / 1.15f);
-                            }
-                        }
-                        if (ImGui::IsKeyPressed(ImGuiKey_RightBracket)){
-                            if (shiftHeld){
-                                terrainEditWindow->adjustBrushStrength(1.15f);
-                            }else{
-                                terrainEditWindow->adjustBrushSize(1.15f);
-                            }
-                        }
-                    }
-                }
-
-                // Tool shortcuts (Q/W/E/R/T, X, G) live in the main toolbar.
-
-                // Physics: hold Space to drop (its release is seen anywhere, see
-                // PhysicsPlacementWindow)
-                if (physicsActive && sceneViewInput) {
-                    if (ImGui::IsKeyPressed(ImGuiKey_Space, false) && !io.WantTextInput && !io.KeyCtrl && !io.KeyAlt && !io.KeySuper) {
-                        physics->beginGesture((uint32_t)sceneId, PlacementGesture::Drop, PhysicsInput::Space);
-                    }
-                }
-
-                // Lattice point shortcuts (Esc, O, Alt+A, Ctrl+I, Ctrl+=/-) while this view has the keyboard
-                if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
-                    LatticeSceneTools::handleShortcuts(project, sceneId);
-                }
-
-                // F key: Focus camera on selected entities (the selected lattice points first;
-                // Alt+F frames all, SceneViewController)
-                if (ImGui::IsKeyPressed(ImGuiKey_F) && !io.KeyAlt) {
-                    frameSelection(sceneId);
-                }
-
-                // Home key: Frame All in 3D (Alt+F frames all in every scene type, R18)
-                if (sceneProject->sceneType == SceneType::SCENE_3D && ImGui::IsKeyPressed(ImGuiKey_Home)) {
-                    viewController->frameAll(*sceneProject);
-                }
-
-                // Numpad preset views (3D only)
-                if (sceneProject->sceneType == SceneType::SCENE_3D) {
-                    if (!ImGui::IsKeyDown(ImGuiMod_Ctrl)) {
-                        if (ImGui::IsKeyPressed(ImGuiKey_Keypad1)) {
-                            // Numpad 1: Front view (-Z looking toward +Z)
-                            viewController->setAxisView(*sceneProject, SceneViewAxis::FRONT);
-                        }
-                        if (ImGui::IsKeyPressed(ImGuiKey_Keypad3)) {
-                            // Numpad 3: Right view (+X looking toward -X)
-                            viewController->setAxisView(*sceneProject, SceneViewAxis::RIGHT);
-                        }
-                        if (ImGui::IsKeyPressed(ImGuiKey_Keypad7)) {
-                            // Numpad 7: Top view (+Y looking down)
-                            viewController->setAxisView(*sceneProject, SceneViewAxis::TOP);
-                        }
-                        if (ImGui::IsKeyPressed(ImGuiKey_Keypad9)) {
-                            // Numpad 9: Bottom view (-Y looking up)
-                            viewController->setAxisView(*sceneProject, SceneViewAxis::BOTTOM);
-                        }
-                    } else {
-                        // Ctrl+Numpad for opposite directions
-                        if (ImGui::IsKeyPressed(ImGuiKey_Keypad1)) {
-                            // Ctrl+Numpad 1: Back view (+Z looking toward -Z)
-                            viewController->setAxisView(*sceneProject, SceneViewAxis::BACK);
-                        }
-                        if (ImGui::IsKeyPressed(ImGuiKey_Keypad3)) {
-                            // Ctrl+Numpad 3: Left view (-X looking toward +X)
-                            viewController->setAxisView(*sceneProject, SceneViewAxis::LEFT);
-                        }
-                        if (ImGui::IsKeyPressed(ImGuiKey_Keypad7)) {
-                            // Ctrl+Numpad 7: Bottom view (-Y looking up)
-                            viewController->setAxisView(*sceneProject, SceneViewAxis::BOTTOM);
-                        }
-                        if (ImGui::IsKeyPressed(ImGuiKey_Keypad9)) {
-                            // Ctrl+Numpad 9: Top view (+Y looking down)
-                            viewController->setAxisView(*sceneProject, SceneViewAxis::TOP);
-                        }
-                    }
-                }
+    if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused() && project->getSelectedSceneId() == sceneId && !walkingMode){
+        // Physics: hold Space to drop (its release is seen anywhere, see PhysicsPlacementWindow);
+        // a held key, listed in the catalog as the gesture row sceneView.physicsDrop
+        if (physicsActive && sceneViewInput) {
+            if (ImGui::IsKeyPressed(ImGuiKey_Space, false) && !io.WantTextInput && !io.KeyCtrl && !io.KeyAlt && !io.KeySuper) {  // shortcut-lint: allow a held gesture key
+                physics->beginGesture((uint32_t)sceneId, PlacementGesture::Drop, PhysicsInput::Space);
             }
+        }
+        // Esc clears the edited lattice's points while this view has the keyboard
+        if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
+            LatticeSceneTools::handleShortcuts(project, sceneId);
         }
     }
 
+}
+
+void editor::SceneWindow::frameAll(uint32_t sceneId) {
+    // every scene type (S26 R18): what is visible and pickable, the camera's tween
+    if (SceneProject* sceneProject = project->getScene(sceneId); sceneProject && sceneProject->sceneRender) {
+        viewController->frameAll(*sceneProject);
+    }
+}
+
+void editor::SceneWindow::viewFrom(uint32_t sceneId, const Vector3& direction) {
+    SceneProject* sceneProject = project->getScene(sceneId);
+    if (!sceneProject || sceneProject->sceneType != SceneType::SCENE_3D || !sceneProject->sceneRender) {
+        return;
+    }
+    // the direction the camera looks along: its axis view (orthographic, as the view gizmo's)
+    SceneViewAxis axis = SceneViewAxis::FRONT;
+    if (direction.z < -0.5f) axis = SceneViewAxis::BACK;
+    else if (direction.x < -0.5f) axis = SceneViewAxis::RIGHT;
+    else if (direction.x > 0.5f) axis = SceneViewAxis::LEFT;
+    else if (direction.y < -0.5f) axis = SceneViewAxis::TOP;
+    else if (direction.y > 0.5f) axis = SceneViewAxis::BOTTOM;
+    viewController->setAxisView(*sceneProject, axis);
+}
+
+bool editor::SceneWindow::isHovered() const {
+    return viewHovered;
 }
 
 bool editor::SceneWindow::hasFrameableSelection(uint32_t sceneId) {
@@ -2357,6 +2297,7 @@ void editor::SceneWindow::drawLatticeContextMenu(SceneProject& sceneProject) {
 }
 
 void editor::SceneWindow::show() {
+    viewHovered = false;
     for (uint32_t sceneId: closeSceneQueue){
         project->closeScene(sceneId);
     }

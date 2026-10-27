@@ -7,6 +7,7 @@
 // and contributors, MIT License (NOTICE.md). Physics is never consulted for a drop (D9).
 
 #include "SceneViewController.h"
+#include "shortcuts/CommandCatalog.h"
 
 #include "App.h"
 #include "AppSettings.h"
@@ -130,34 +131,10 @@ namespace {
 
 }
 
-// ---- commands (S25-shaped: when S25's CommandCatalog lands these register there, context
-// "Scene view"; until then SceneWindow reads the keys below)
+// ---- commands: the catalog's Scene View group (S25)
 
-const std::vector<SceneViewCommand>& editor::sceneViewCommands(){
-    static const std::vector<SceneViewCommand> commands = {
-        {"sceneView.frameSelected", "Frame Selected", "F"},
-        {"sceneView.frameAll", "Frame All", "Alt+F"},
-        {"sceneView.frameAllHome", "Frame All (3D)", "Home"},
-        {"sceneView.toggleProjection", "Persp / Iso", "Click the view gizmo's cube"},
-        {"sceneView.hideSelection", "Hide Selection", "H"},
-        {"sceneView.showAll", "Show All", "Alt+H"},
-        {"sceneView.togglePickLock", "Toggle Pick Lock", "L"},
-        {"sceneView.recallBookmark", "Recall Camera Bookmark 1-9", "Shift+1..9"},
-        {"sceneView.storeBookmark", "Store Camera Bookmark 1-9", "Ctrl+Shift+1..9"},
-        {"sceneView.measure", "Measure", "M (Esc ends it)"},
-        {"sceneView.cycleCandidates", "Cycle Overlapping Objects", "Ctrl+Wheel"},
-        {"sceneView.vertexSnap", "Measure: Snap to Vertex", "V (held)"},
-    };
-    return commands;
-}
-
-const char* editor::sceneViewShortcut(const char* id){
-    for (const SceneViewCommand& command : sceneViewCommands()){
-        if (std::strcmp(command.id, id) == 0){
-            return command.shortcut;
-        }
-    }
-    return "";
+std::string editor::sceneViewShortcut(const char* id){
+    return CommandCatalog::editor().bindingsText(id);
 }
 
 // ---- lifecycle
@@ -1469,6 +1446,11 @@ void SceneViewController::clearMeasures(SceneProject& sceneProject){
 bool SceneViewController::isMeasuring(uint32_t sceneId) const{
     const Runtime* rt = findRuntime(sceneId);
     return rt && rt->measuring;
+}
+
+uint32_t SceneViewController::selectedMeasure(uint32_t sceneId) const{
+    const Runtime* rt = findRuntime(sceneId);
+    return rt ? rt->selectedMeasure : 0;
 }
 
 bool SceneViewController::hasSelectedMeasure(uint32_t sceneId) const{

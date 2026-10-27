@@ -104,6 +104,8 @@ namespace jasperengine::editor {
         void drawFluidBrushCursor(SceneProject* sceneProject);
         // UI tests (UIProbe): the view's rectangle and the selected fluid's Sprite on it
         void probeSceneView(SceneProject* sceneProject);
+        // the pointer was over a Scene view's canvas this frame (the SceneView shortcut context)
+        bool viewHovered = false;
         void focusSceneWindow(const SceneProject& sceneProject) const;
         void requestOpenParentScene(uint32_t childSceneId, uint32_t parentSceneId);
         void drawParentSceneButton(const SceneProject& sceneProject);
@@ -131,8 +133,6 @@ namespace jasperengine::editor {
         SceneViewController& getViewController() { return *viewController; }
         // after the frame's draw of a scene: its inactive Split/Quad panes that need it
         void renderInactivePanes(SceneProject& sceneProject);
-        // a measure is selected in the focused view: Delete removes it, not the selection
-        bool handlesDeleteKey() const;
 
         void show();
         bool isFocused() const;
@@ -152,6 +152,12 @@ namespace jasperengine::editor {
         void frameEntities(uint32_t viewSceneId, uint32_t entitySceneId, const std::vector<Entity>& entities);
         // The selection Frame Selected works on in the Scene view of sceneId
         bool hasFrameableSelection(uint32_t sceneId);
+        // Frame All (Alt+F, Home): what the view shows and can pick, in any scene type (S26 R18)
+        void frameAll(uint32_t sceneId);
+        // The numpad views (3D): the camera looks along direction (Front: +Z)
+        void viewFrom(uint32_t sceneId, const Vector3& direction);
+        // A Scene view's canvas was under the pointer last frame
+        bool isHovered() const;
         bool viewThroughCamera(uint32_t sceneId, Entity cameraEntity);
         void stopViewingCamera(uint32_t sceneId);
 

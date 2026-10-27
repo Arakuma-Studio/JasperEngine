@@ -12,11 +12,15 @@
 
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
+#include "sceneview/SceneViewController.h"
 #include "sceneview/SceneViewVisibility.h"
 
 #include "imgui_internal.h"
 
 #include <algorithm>
+#include <initializer_list>
+#include <string>
+#include <utility>
 
 using namespace jasperengine;
 
@@ -47,16 +51,28 @@ void editor::HierarchyWindow::drawVisibilityGutter(const TreeNode& node, float r
         bool set;
         const char* onIcon;
         const char* offIcon;
-        const char* tooltipOn;
-        const char* tooltipOff;
+        std::string tooltipOn;
+        std::string tooltipOff;
+    };
+    // the keys from the command catalog (Scene View: H, Alt+H, L)
+    auto keys = [](std::initializer_list<std::pair<const char*, const char*>> commands) {
+        std::string text;
+        for (const auto& [id, what] : commands) {
+            const std::string binding = sceneViewShortcut(id);
+            if (binding.empty()) continue;
+            text += (text.empty() ? ". " : ", ") + binding + what;
+        }
+        return text;
     };
     const Toggle toggles[2] = {
         {"##SceneVisibility", hidden, ICON_FA_EYE_SLASH, ICON_FA_EYE,
          "Hidden in the Scene view (click: show; Alt+click: this GameObject only)",
-         "Hide in the Scene view (click: with children; Alt+click: this GameObject only). Shortcuts: H, Alt+H shows all"},
+         "Hide in the Scene view (click: with children; Alt+click: this GameObject only)" +
+             keys({{"sceneView.hideSelection", " hides the selection"}, {"sceneView.showAll", " shows all"}})},
         {"##ScenePickLock", locked, ICON_FA_HAND, ICON_FA_HAND_POINTER,
          "Not pickable in the Scene view (click: pickable again; Alt+click: this GameObject only)",
-         "Lock against picking in the Scene view (click: with children; Alt+click: this GameObject only). Shortcut: L"},
+         "Lock against picking in the Scene view (click: with children; Alt+click: this GameObject only)" +
+             keys({{"sceneView.togglePickLock", " locks the selection"}})},
     };
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     for (int i = 0; i < 2; i++) {
@@ -75,7 +91,7 @@ void editor::HierarchyWindow::drawVisibilityGutter(const TreeNode& node, float r
             drawList->AddText(ImVec2(bb.Min.x + (size - textSize.x) * 0.5f, bb.Min.y + (size - textSize.y) * 0.5f), color, icon);
         }
         if (hovered) {
-            ImGui::SetTooltip("%s", toggle.set ? toggle.tooltipOn : toggle.tooltipOff);
+            ImGui::SetTooltip("%s", (toggle.set ? toggle.tooltipOn : toggle.tooltipOff).c_str());
         }
         if (pressed) {
             if (i == 0) {

@@ -84,6 +84,11 @@ named by undo_name). undo/redo scope "timeline" = the human's Ctrl+Z/Ctrl+Y; exp
 undoes only your own last step. Play-time edits roll back at play stop and are offered back
 (get_play_changes). More: jasper://docs/undo.
 
+## Editor search
+editor_ux group: search_editor is the Ctrl+K palette (prefixes > / : @ + asset:), run_command runs
+a list_shortcuts id or a result's key, set_shortcut rebinds. list_assets search: t: l: ext: path:
+re: ref: missing:. Layouts, labels, saved searches, bookmarks: edit_* (jasper://docs/editor-integration).
+
 ## Code (Lua, C++, shaders, materials)
 The project is a normal folder (`editor_status`: project.path). Work in it and read, edit,
 grep and git its scripts, shaders and .material files with your own tools. Engine API to grep: .jasperengine/engine-api/ (C++ headers) and its lua/

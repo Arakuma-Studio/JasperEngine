@@ -55,11 +55,6 @@ namespace {
         return ImGui::CalcTextSize(label, nullptr, true).x + ImGui::GetStyle().FramePadding.x * 2.0f;
     }
 
-    bool keyChord(ImGuiKey key, bool ctrl, bool shift, bool alt){
-        const ImGuiIO& io = ImGui::GetIO();
-        return ImGui::IsKeyPressed(key, false) && io.KeyCtrl == ctrl && io.KeyShift == shift && io.KeyAlt == alt;
-    }
-
     ImU32 measureColor(bool selected){
         return selected ? IM_COL32(255, 200, 40, 255) : IM_COL32(80, 200, 255, 255);
     }
@@ -198,7 +193,16 @@ void SceneViewController::drawToolbar(SceneProject& sceneProject, float rightLim
             }else{
                 ImGui::TextDisabled("Default view");
             }
-            ImGui::TextDisabled("Click: go there. Ctrl+click: store the view here.%s", slot > 0 ? " Shift+N recalls, Ctrl+Shift+N stores." : "");
+            ImGui::TextDisabled("Click: go there. Ctrl+click: store the view here.");
+            if (slot > 0){
+                const std::string number = std::to_string(slot);
+                const std::string recall = sceneViewShortcut(("sceneView.recallBookmark" + number).c_str());
+                const std::string store = sceneViewShortcut(("sceneView.storeBookmark" + number).c_str());
+                if (!recall.empty() || !store.empty()){
+                    ImGui::TextDisabled("%s%s%s", recall.empty() ? "" : (recall + " recalls").c_str(), !recall.empty() && !store.empty() ? ", " : "",
+                                        store.empty() ? "" : (store + " stores").c_str());
+                }
+            }
             ImGui::EndTooltip();
         }
         const std::string menuId = "BookmarkMenu" + std::to_string(slot) + "_" + sid;
@@ -239,7 +243,8 @@ void SceneViewController::drawToolbar(SceneProject& sceneProject, float rightLim
             storeBookmark(sceneProject, freeSlot, error);
         }
         ImGui::EndDisabled();
-        ImGui::SetItemTooltip("Store this view as a camera bookmark (Ctrl+Shift+1..9)");
+        const std::string storeKey = freeSlot > 0 ? sceneViewShortcut(("sceneView.storeBookmark" + std::to_string(freeSlot)).c_str()) : std::string();
+        ImGui::SetItemTooltip("Store this view as a camera bookmark%s", storeKey.empty() ? "" : (" (" + storeKey + ")").c_str());
     }
 
     // ---- the middle items, or a ... menu when they do not fit
@@ -315,8 +320,9 @@ void SceneViewController::drawToolbar(SceneProject& sceneProject, float rightLim
             }
         }
     };
-    const char* measureShortcut = sceneViewShortcut("sceneView.measure");
-    auto measureTooltip = std::string("Measure: drag from A to B (") + measureShortcut + "; V snaps to vertices, Shift shows the deltas)";
+    const std::string measureShortcut = sceneViewShortcut("sceneView.measure");
+    auto measureTooltip = std::string("Measure: drag from A to B (") + (measureShortcut.empty() ? "" : measureShortcut + "; ") +
+                          "V snaps to vertices, Shift shows the deltas)";
 
     if (!overflow){
         if (is3D){
@@ -694,38 +700,11 @@ bool SceneViewController::handleInput(SceneProject& sceneProject, float x, float
     Runtime& rt = runtime(sceneProject.id);
     ImGuiIO& io = ImGui::GetIO();
     bool used = false;
-    const bool keys = focused && !io.WantTextInput && !ImGui::IsAnyItemActive();
-    if (keys){
-        if (keyChord(ImGuiKey_F, false, false, true)){
-            frameAll(sceneProject);
-        }
-        if (keyChord(ImGuiKey_H, false, false, false)){
-            hideSelection(sceneProject);
-        }
-        if (keyChord(ImGuiKey_H, false, false, true)){
-            showAll(sceneProject);
-        }
-        if (keyChord(ImGuiKey_L, false, false, false)){
-            togglePickLockSelection(sceneProject);
-        }
-        if (keyChord(ImGuiKey_M, false, false, false)){
-            setMeasuring(sceneProject, !rt.measuring);
-        }
-        if (rt.measuring && ImGui::IsKeyPressed(ImGuiKey_Escape, false)){
-            setMeasuring(sceneProject, false);
-        }
-        if (rt.selectedMeasure != 0 && (ImGui::IsKeyPressed(ImGuiKey_Delete, false) || ImGui::IsKeyPressed(ImGuiKey_Backspace, false))){
-            deleteMeasure(sceneProject, rt.selectedMeasure);
-        }
-        for (int slot = 1; slot <= 9; slot++){
-            const ImGuiKey key = (ImGuiKey)(ImGuiKey_1 + (slot - 1));
-            std::string error;
-            if (keyChord(key, true, true, false)){
-                storeBookmark(sceneProject, slot, error);
-            }else if (keyChord(key, false, true, false)){
-                recallBookmark(sceneProject, slot, error);
-            }
-        }
+    // its keys are command catalog entries (shortcuts/DefaultCommands.cpp, Scene View: Alt+F, H,
+    // Alt+H, L, M, Delete, Shift/Ctrl+Shift+1..9, run by AppCommands.cpp); Esc stays here, it
+    // ends what runs in the view
+    if (focused && rt.measuring && !io.WantTextInput && !ImGui::IsAnyItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape, false)){
+        setMeasuring(sceneProject, false);
     }
 
     // Ctrl/Cmd+wheel: step through what overlaps under the pointer (the zoom ignores it)
@@ -737,6 +716,7 @@ bool SceneViewController::handleInput(SceneProject& sceneProject, float x, float
 
     // the measure tool takes the left button
     if (rt.measuring && hovered && !io.KeyAlt){
+        // held V: the catalog's gesture row sceneView.measureVertexSnap
         const MeasureSnap snap = ImGui::IsKeyDown(ImGuiKey_V) ? MeasureSnap::VERTEX
                                : (sceneProject.displaySettings.snapToGrid ? MeasureSnap::GRID : MeasureSnap::SURFACE);
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)){

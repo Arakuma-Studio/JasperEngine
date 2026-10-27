@@ -41,15 +41,9 @@ namespace jasperengine {
 
 namespace jasperengine::editor {
 
-    // the keys of the Scene view's own commands (S25-shaped ids; SceneViewCommands.cpp)
-    struct SceneViewCommand {
-        const char* id;           // "sceneView.frameAll"
-        const char* label;        // "Frame All"
-        const char* shortcut;     // "Alt+F", shown in tooltips
-    };
-    const std::vector<SceneViewCommand>& sceneViewCommands();
-    // the shortcut of a command id, "" when it has none
-    const char* sceneViewShortcut(const char* id);
+    // the bindings of a Scene view command of the catalog as tooltips show them ("M", "Alt+H";
+    // shortcuts/DefaultCommands.cpp), "" when unbound
+    std::string sceneViewShortcut(const char* id);
 
     struct SceneClickInput {
         float x = 0.0f;               // engine pixels of the view (the active pane)
@@ -200,6 +194,8 @@ namespace jasperengine::editor {
         void clearMeasures(SceneProject& sceneProject);
         bool isMeasuring(uint32_t sceneId) const;
         bool hasSelectedMeasure(uint32_t sceneId) const;
+        // the selected measure's id, 0 when none
+        uint32_t selectedMeasure(uint32_t sceneId) const;
         void setMeasuring(SceneProject& sceneProject, bool measuring);
         // a measure end at (x, y): the surface (R16 order), the hit triangle's nearest corner
         // within 12 px (vertex), the grid (snap-to-grid)
