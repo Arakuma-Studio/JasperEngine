@@ -576,7 +576,6 @@ namespace {
 uint32_t RenderSystem::pixelsWhite[64];
 uint32_t RenderSystem::pixelsBlack[64];
 uint32_t RenderSystem::pixelsTransparent[64];
-uint32_t RenderSystem::pixelsNormal[64];
 
 TextureRender RenderSystem::emptyWhite;
 TextureRender RenderSystem::emptyArrayWhite;
@@ -898,12 +897,15 @@ void RenderSystem::createEmptyTextures(){
         void* data_array[6];
         size_t size_array[6];
 
+        // (128, 128, 255): the flat tangent-space normal, bytes in memory order R, G, B, A on
+        // little-endian. What a normal map that fails to load (a missing file, a bad image) draws
+        // with, and the shader library's "normal" @texture default (emptyFlatNormal)
         for (int i = 0; i < 64; i++) {
-            pixelsNormal[i] = 0xFF808080;
+            pixelsFlatNormal[i] = 0xFFFF8080;
         }
 
         for (int i = 0; i < 6; i++){
-            data_array[i]  = (void*)pixelsNormal;
+            data_array[i]  = (void*)pixelsFlatNormal;
             size_array[i] = 8 * 8 * 4;
         }
 
@@ -961,10 +963,10 @@ void RenderSystem::createEmptyTextures(){
                 "empty|cube|black", 8, 8, ColorFormat::RGBA, TextureType::TEXTURE_CUBE, 6, data_array, size_array, 
                 TextureFilter::NEAREST, TextureFilter::NEAREST, TextureWrap::REPEAT, TextureWrap::REPEAT);
 
-        // shader library @texture defaults: mid gray, and a flat tangent-space normal (0.5, 0.5, 1)
+        // shader library @texture defaults: mid gray, and the flat tangent-space normal (0.5, 0.5, 1)
+        // filled above
         for (int i = 0; i < 64; i++) {
             pixelsGray[i] = 0xFF808080;
-            pixelsFlatNormal[i] = 0xFFFF8080;
         }
 
         for (int i = 0; i < 6; i++){
