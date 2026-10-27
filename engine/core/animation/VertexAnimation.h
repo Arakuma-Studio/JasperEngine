@@ -32,6 +32,7 @@
 namespace jasperengine{
 
     class Texture;
+    class VertexAnimationPool;
 
 }
 
@@ -173,7 +174,8 @@ namespace jasperengine::vat{
     // bake_vertex_animation {rebake})". Editable fields are repaired with warnings.
     JASPERENGINE_API VatParseResult parseVat(const std::string& text);
     // canonical text: 2-space indent, fixed key order (format, version, guid, mode, mesh, layout,
-    // bounds, clips, sockets, recipe, stats, unknown keys), floats %.6g, deterministic bytes
+    // bounds, clips, sockets, recipe, stats, unknown keys), floats shortest round-trip (%.6g when
+    // that reads back exactly, so parse(write(d)) keeps every float), deterministic bytes
     JASPERENGINE_API std::string writeVat(const VatData& data);
     // hash (hex) of mode, layout (minus layoutHash) and every clip's start/frames/fps/restNone
     JASPERENGINE_API std::string computeLayoutHash(const VatData& data);
@@ -287,7 +289,7 @@ namespace jasperengine::vat{
         Texture* getTexture() const;
 
     private:
-        friend class VertexAnimationPool;
+        friend class jasperengine::VertexAnimationPool;
         VertexAnimation() = default;
 
         VatData data;
