@@ -25,7 +25,8 @@ list(REMOVE_ITEM EDITOR_TEST_EDITOR_SOURCES ${EDITOR_DIR}/main.cpp)
 # The tests themselves see googletest; the editor sources keep the editor's command lines
 file(GLOB EDITOR_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/*Test.cpp)
 add_library(jasperengine-editor-tests-objects OBJECT ${EDITOR_TEST_SOURCES})
-target_link_libraries(jasperengine-editor-tests-objects PRIVATE gtest jasperengine yaml-cpp)
+# tinyexr: FloatImageTest writes EXRs with custom channel names through it
+target_link_libraries(jasperengine-editor-tests-objects PRIVATE gtest jasperengine yaml-cpp tinyexr)
 target_include_directories(jasperengine-editor-tests-objects PRIVATE ${CMAKE_SOURCE_DIR}/${EDITOR_DIR} ${GENERATED_DIR})
 target_include_directories(jasperengine-editor-tests-objects SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/${IMGUI_DIR} ${CMAKE_SOURCE_DIR}/${IMGUI_DIR}/backends)
 # Test models and other inputs read from the source tree (fixtures/rigged_cube.fbx ...)

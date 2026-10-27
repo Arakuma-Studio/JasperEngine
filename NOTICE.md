@@ -71,6 +71,12 @@ FBX import of the editor (editor-only: an exported game ships the converted `.gl
 |---|---|---|---|---|
 | [ufbx](https://github.com/ufbx/ufbx) | 0.23.1 (as vendored by Doriax `8e8dde5d6`) | `libs/ufbx/` (`LICENSE`) | MIT OR Unlicense (public domain), used under MIT | reading `.fbx` files, converted to `.glb` by `editor/util/FbxImporter` and `GlbBuilder` |
 
+EXR reading of the editor (editor-only: the Vertex Animation importers re-pack EXR textures into `.vat.glb` payloads, exported games never read EXR):
+
+| Library | Version | Location | License | Used for |
+|---|---|---|---|---|
+| [tinyexr](https://github.com/syoyo/tinyexr) (v1: `tinyexr.h` with the two headers it includes, `exr_reader.hh` and `streamreader.hh`; it contains OpenEXR-derived code under the same BSD-3-Clause terms, noted in its header) | v3.2.0 release (`6f470c9ab24b`), unmodified | `libs/tinyexr/` (`LICENSE`; configured in `CMakeLists.txt`: deflate through the engine's stb_image/stb_image_write zlib, so neither miniz nor zlib is vendored) | BSD-3-Clause | reading and writing `.exr` images (`editor/util/FloatImage`) |
+
 Convex decomposition of Physics Placement (edit-time placement in the Scene view and for agents):
 
 | Library | Version | Location | License | Used for |

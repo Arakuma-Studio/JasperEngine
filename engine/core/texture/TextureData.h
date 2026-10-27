@@ -34,6 +34,10 @@ namespace jasperengine {
         float svgScale;
 
         int getNearestPowerOfTwo(int size);
+        // bytes per pixel of the data for an operation that walks it (crop, resize, flip...),
+        // 0 with an error naming the operation when it can't be walked: no data, or a float
+        // format whose channel count isn't the format's
+        int getWalkablePixelSize(const char* operation) const;
         static bool looksLikeSvg(Data* filedata);
         bool loadSvgTexture(Data* filedata);
 
@@ -85,6 +89,7 @@ namespace jasperengine {
         // which linear filtering would otherwise blend in as a dark outline
         void fixAlphaBorder();
 
+        // 8-bit formats only (RGBA, RED): any other logs an error and gives 0
         unsigned char getColorComponent(int x, int y, int color);
         
         void setDataOwned(bool dataOwned);
@@ -108,8 +113,19 @@ namespace jasperengine {
 
         int getMinNearestPowerOfTwo();
 
-        // number of bytes per channel for a given color format (2 for RED16, 1 otherwise)
+        // number of bytes per channel for a given color format: 1 for RGBA, RED and SRGB8A8,
+        // 2 for RED16 and the half-float formats (RGBA16F, RG16F, R16F), 4 for RGBA32F and R32F.
+        // The data of a texture is width * height * channels * getBytesPerChannel bytes
         static int getBytesPerChannel(ColorFormat format);
+        // RGBA16F, RGBA32F, R32F, RG16F, R16F: data made in code (TextureData(width, height,
+        // size, format, channels, data) with channels 4, 4, 1, 2, 1), never loaded from a file.
+        // crop/resize/fitSize/flipVertical copy their texels whole; hasAlpha reads alpha != 1;
+        // fixAlphaBorder and getColorComponent are 8-bit only
+        static bool isFloatFormat(ColorFormat format);
+        // the channel count a float format's data has (0 for the others, whose data says it)
+        static int getFloatFormatChannels(ColorFormat format);
+        // "RGBA", "RED", "RED16", "SRGB8A8", "RGBA16F", "RGBA32F", "R32F", "RG16F", "R16F" (messages)
+        static const char* getColorFormatName(ColorFormat format);
 
         // render callback clean function
         static void cleanupTexture(void* data);
