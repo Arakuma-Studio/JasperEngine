@@ -56,8 +56,8 @@
             "reason": "upstream (lattice deformer), predates its merge into oe-port: 2030 chars measured on the upstream sync, 2058 with S31's schema conventions (nested objects say additionalProperties)"
         },
         "edit_animation": {
-            "limit": 3494,
-            "reason": "grandfathered by S31: 2699 chars when the limits were set, +5%; 3340 measured on the round-1 upstream sync, 3494 on round 2 (upstream's .anim clip mode on the same tool: clip, create, tracks by path, keys, events, cheaper than a second tool)"
+            "limit": 3578,
+            "reason": "grandfathered by S31: 2699 chars when the limits were set, +5%; 3340 measured on the round-1 upstream sync, 3494 on round 2 (upstream's .anim clip mode on the same tool: clip, create, tracks by path, keys, events, cheaper than a second tool); 3578 with refs typed integer|string again (the CLI tells ids from names by it)"
         },
         "sculpt_terrain": {
             "limit": 2699,
@@ -124,8 +124,8 @@
             "reason": "HTML UI cap (phase 4 §3.6.7 / phase 5 §3.13), tighter than the default; 269 when S31 set the limits; 694 measured on the upstream sync (upstream's fluid pointer_path and splats; its own cap was 750)"
         },
         "edit_pose_animation": {
-            "limit": 2809,
-            "reason": "upstream (Pose Animation), predates its merge into oe-port: one op-list tool for every pose edit (upstream already tightened its schema, A5); 2809 chars measured on the round-2 upstream sync, its group 'animation' stays within the group default"
+            "limit": 3119,
+            "reason": "upstream (Pose Animation), predates its merge into oe-port: one op-list tool for every pose edit (upstream already tightened its schema, A5); 2809 chars measured on the round-2 upstream sync, 3119 once its nested objects say additionalProperties (S31 conventions) and its refs are typed integer|string; its group 'animation' stays within the group default"
         }
     },
     "core_trades": []
