@@ -73,9 +73,8 @@ SokolObject::SokolObject(){
     resetPipelines();
 }
 
-// Forgets the variants without destroying them: a copy of this object shares the
-// handles, as it shares the pipelines, and destroy() releases them once
-// (the pipeline variants are references of this object's own to the shared ones: released)
+// Releases this object's references to the shared pipeline variants (SokolPipelineCache
+// destroys a variant with its last reference) and forgets which pipelines already cull nothing
 void SokolObject::resetPipelines(){
     variants.clear();
     noCullSame = 0;

@@ -32,6 +32,7 @@
 #include "object/Tilemap.h"
 #include "registry/EntityCloner.h"
 #include "render/ObjectRender.h"
+#include "render/SystemRender.h"
 #include "subsystem/RenderSystem.h"
 #include "texture/TextureData.h"
 
@@ -657,6 +658,7 @@ TEST_F(Light2DNormalMapTest, MirroredSingleSidedBoxKeepsItsFront){
 // load), and destroying or reloading the sprites lets go of them
 TEST_F(Light2DNormalMapTest, MirroredVariantsAreShared){
     const size_t baseline = ObjectRender::getSharedVariantCount();
+    const uint64_t uiMisses = SystemRender::getPipelineCacheMisses();
     NormalScene s;
     s.addLight(LightSide::LEFT);
     std::vector<Sprite*> sprites;
@@ -666,6 +668,7 @@ TEST_F(Light2DNormalMapTest, MirroredVariantsAreShared){
     ASSERT_TRUE(s.settle());
     const size_t one = ObjectRender::getSharedVariantCount();
     ASSERT_GT(one, baseline) << "a mirrored draw uses a variant";
+    EXPECT_EQ(SystemRender::getPipelineCacheMisses(), uiMisses) << "variants are not the dynamic path's misses (HTML UI frame stats)";
 
     for (int i = 1; i < 8; i++){
         Sprite& sprite = s.addSprite();
@@ -709,8 +712,9 @@ TEST_F(Light2DNormalMapTest, MirroredVariantsAreShared){
     EXPECT_EQ(ObjectRender::getSharedVariantCount(), baseline) << "the destroyed sprite let go of its variant";
 }
 
-// A mirrored single-sided shadow caster (a box, scale (-1, 1, 1)) casts the shadow the
-// unmirrored one does, at the same place: the shadow pass reverses its winding too
+// A mirrored single-sided shadow caster casts its shadow: a back-culled quad (Primitive wall,
+// facing +Z) faces the light with its front, so only a shadow pass that reverses the mirrored
+// draw's winding keeps it (one that does not culls it as a back face: no shadow)
 TEST_F(Light2DNormalMapTest, MirroredShadowCaster){
     Screen plain, mirrored;
     for (float scaleX : {1.0f, -1.0f}){
@@ -720,11 +724,11 @@ TEST_F(Light2DNormalMapTest, MirroredShadowCaster){
         wall.createBox(600.0f, 340.0f, 10.0f);
         wall.setPosition(0.0f, 0.0f, -60.0f);
         wall.setColor(0.9f, 0.9f, 0.9f, 1.0f);
-        Primitive& box = s.fixture.add<Primitive>();
-        box.createBox(64.0f, 64.0f, 64.0f);
-        box.setPosition(-60.0f, 0.0f, 0.0f);
-        box.setColor(0.2f, 0.3f, 0.8f, 1.0f);
-        box.setScale(Vector3(scaleX, 1.0f, 1.0f));
+        Primitive& quad = s.fixture.add<Primitive>();
+        quad.createWall(64.0f, 64.0f);
+        quad.setPosition(-60.0f, 0.0f, 0.0f);
+        quad.setColor(0.2f, 0.3f, 0.8f, 1.0f);
+        quad.setScale(Vector3(scaleX, 1.0f, 1.0f));
         s.scene().setGlobalIllumination(0.2f);
         Light& sun = s.fixture.add<Light>();
         sun.setType(LightType::DIRECTIONAL);
@@ -732,16 +736,17 @@ TEST_F(Light2DNormalMapTest, MirroredShadowCaster){
         sun.setDirection(1.0f, 0.0f, -1.0f);
         sun.setShadows(true);
         ASSERT_TRUE(s.settle());
+        EXPECT_TRUE(quad.isFaceCulling()) << "the quad culls its back face";
         ASSERT_TRUE((scaleX < 0.0f ? mirrored : plain).read());
     }
-    // the shadow falls on the wall right of the box (light from the left, 60 units behind it)
-    const float shadowed = meanLuminance(plain, 320, 168, 340, 192);
+    // the shadow falls on the wall 60 units right of the quad (light from the front left)
+    const float shadowed = meanLuminance(plain, 310, 168, 330, 192);
     const float lit = meanLuminance(plain, 420, 168, 440, 192);
-    EXPECT_LT(shadowed, lit * 0.7f) << "a shadow right of the box: " << shadowed << " vs lit wall " << lit;
-    const float mirroredShadowed = meanLuminance(mirrored, 320, 168, 340, 192);
-    EXPECT_LT(mirroredShadowed, meanLuminance(mirrored, 420, 168, 440, 192) * 0.7f) << "the mirrored box's shadow";
+    EXPECT_LT(shadowed, lit * 0.7f) << "the quad's shadow: " << shadowed << " vs lit wall " << lit;
+    const float mirroredShadowed = meanLuminance(mirrored, 310, 168, 330, 192);
+    EXPECT_LT(mirroredShadowed, meanLuminance(mirrored, 420, 168, 440, 192) * 0.7f) << "the mirrored quad's shadow: " << mirroredShadowed;
     EXPECT_NEAR(mirroredShadowed, shadowed, 2.0f) << "at the same place";
-    EXPECT_TRUE(sameImage(plain, mirrored, 2)) << "the mirrored box casts the same shadow";
+    EXPECT_TRUE(sameImage(plain, mirrored, 2)) << "the mirrored quad looks and shadows the same";
 }
 
 // R18: a normal map that fails to load shades flat, as no normal map does (Lit path)
