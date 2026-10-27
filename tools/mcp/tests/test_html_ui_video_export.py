@@ -125,7 +125,9 @@ async def test_resource_pack_ships_the_video(ed: Editor):
         data = pack.read_bytes()
         cooked = cooked_sources(out / "project" / "assets")
         for rel in SHIPPED:
-            ed.check(rel.encode() in data or rel in cooked, f"{rel} not in the resource pack (nor cooked: {sorted(cooked)})")
+            # an image may be packed as its S14 cooks (the pack holds je-cooked/<family>/...)
+            packed_cooked = rel.endswith(".png") and b"je-cooked/" in data
+            ed.check(rel.encode() in data or rel in cooked or packed_cooked, f"{rel} not in the resource pack (nor cooked: {sorted(cooked)})")
         for rel in SHIPPED:
             ed.check(not (out / "project" / "assets" / rel).exists(), f"{rel} also left loose next to the pack")
     finally:
