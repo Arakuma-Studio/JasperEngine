@@ -849,3 +849,94 @@ async def test_place_crowd_bake_and_import(ed: Editor):
     msg = await ed.call("bake_vertex_animation", {"source": "assets/exports/flag", "output": "assets/vat/flag_r.vat", "place": "replace"},
                         expect_error=True)
     check("replace" in msg and "GameObject" in msg, msg)
+
+
+async def wait_job(ed: Editor, job: str, limit: float = 600.0, until_message: str = "") -> dict:
+    """get_job until the job ends (or, with until_message, until its message starts with it)"""
+    state = {}
+    for _ in range(int(limit / 0.05)):
+        state = await ed.call("get_job", job_id=job)
+        if state["status"] != "running" or (until_message and state.get("message", "").startswith(until_message)):
+            break
+        await asyncio.sleep(0.05)
+    return state
+
+
+def job_errors(state: dict) -> list:
+    return (state.get("result") or {}).get("errors") or []
+
+
+def check_job_error(state: dict, kinds: tuple, out: Path, what: str) -> None:
+    check(state["status"] == "failed", f"{what}: the job fails: {state}")
+    errors = job_errors(state)
+    check(errors and all(e.get("kind") and e.get("message") and e.get("fix") for e in errors), f"{what}: errors with kind and fix: {state}")
+    check(errors[0]["kind"] in kinds, f"{what}: kind {kinds}: {errors}")
+    check("Fix: " in state["message"], f"{what}: the message says how to fix it: {state['message']}")
+    check(not out.exists(), f"{what}: nothing written")
+
+
+async def vanish_scene(ed: Editor, name: str, entities: tuple) -> int:
+    """A saved scene with GameObjects of the hero model, its model loaded (a small preview of Probe bakes)"""
+    made = await ed.call("create_scene", name=name, type="3D", path=f"scenes/{name}")
+    sid = made["scene"]["id"]
+    await ed.call("select_scene", scene=sid)
+    for entity in (*entities, "Probe"):
+        await ed.call("create_entity", type="model", name=entity, model=HERO, scene=sid)
+    await ed.call("save_scene", scene=sid)
+    r = None
+    for _ in range(120):
+        r = await ed.call_raw("bake_vertex_animation", {"source": "Probe", "scene": sid, "fps": 5}, timeout=600)
+        if not r.is_error:
+            break
+        await asyncio.sleep(0.25)
+    check(r is not None and not r.is_error, f"the GameObject bakes: {r.text if r else ''}")
+    return sid
+
+
+async def test_job_errors_when_the_source_vanishes(ed: Editor):
+    """A bake job whose GameObject source goes away (its scene closed, the GameObject deleted) while it
+    poses or while it encodes fails as an error with a kind and a fix, nothing written (DESIGN.md:
+    errors say how to fix them). (A GameObject baked once fails its next bake with "no POSITION": not
+    this test's subject, so every case bakes a GameObject of its own.)"""
+    copy_fixtures(ed.project)
+    await ed.call("sync_files")
+    sid = await vanish_scene(ed, "Vanish", ("Hero", "Hero2", "Hero3"))
+    big = {"scene": sid, "mode": "vertices", "fps": 240, "preset": "desktop", "wait": False}
+
+    # deleted while it poses
+    out = "assets/vat/vanish_posing.vat"
+    r = await ed.call_raw("bake_vertex_animation", {**big, "source": "Hero", "output": out})
+    check(not r.is_error and r.structured.get("job_id"), f"a job: {r.text}")
+    await ed.call("delete_entities", scene=sid, entity="Hero")
+    check_job_error(await wait_job(ed, r.structured["job_id"]), ("invalid_source",), ed.project / out, "deleted while posing")
+
+    # deleted while it encodes (posing is over: the write finds it gone)
+    out = "assets/vat/vanish_encoding.vat"
+    r = await ed.call_raw("bake_vertex_animation", {**big, "source": "Hero2", "output": out})
+    state = await wait_job(ed, r.structured["job_id"], until_message="Encoding")
+    check(state["status"] == "running", f"the job reaches its encoding: {state}")
+    await ed.call("delete_entities", scene=sid, entity="Hero2")
+    check_job_error(await wait_job(ed, r.structured["job_id"]), ("invalid_source",), ed.project / out, "deleted while encoding")
+    # brought back by undo: the next bake of it writes
+    await ed.call("undo", scope="scene", scene=sid)
+
+    # the scene closed while it poses
+    out = "assets/vat/vanish_closed.vat"
+    r = await ed.call_raw("bake_vertex_animation", {**big, "source": "Hero3", "output": out})
+    check(not r.is_error and r.structured.get("job_id"), f"a job: {r.text}")
+    await ed.call("create_scene", name="Other", type="3D")
+    await ed.call("close_scene", scene=sid, unsaved="discard")
+    check_job_error(await wait_job(ed, r.structured["job_id"]), ("invalid_source", "scene_playing"), ed.project / out, "closed while posing")
+
+    # the scene closed while it encodes
+    sid2 = await vanish_scene(ed, "Vanish2", ("Hero",))
+    out = "assets/vat/vanish_closed_encoding.vat"
+    r = await ed.call_raw("bake_vertex_animation", {**big, "scene": sid2, "source": "Hero", "output": out})
+    state = await wait_job(ed, r.structured["job_id"], until_message="Encoding")
+    check(state["status"] == "running", f"the job reaches its encoding: {state}")
+    await ed.call("close_scene", scene=sid2, unsaved="discard")
+    check_job_error(await wait_job(ed, r.structured["job_id"]), ("invalid_source",), ed.project / out, "closed while encoding")
+
+    # the GameObject gone before the call: refused at once with the fix
+    msg = await ed.call("bake_vertex_animation", {**big, "source": "Hero", "scene": "Other"}, expect_error=True)
+    check("GameObject" in msg and "Give" in msg, msg)

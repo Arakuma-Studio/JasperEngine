@@ -104,7 +104,9 @@ asset. At most 64 clips per asset; vertices up to 2^24.
 
 ## Problems and fixes
 
-Errors refuse the bake (nothing written); warnings come with a written bake too.
+Errors refuse the bake (nothing written); warnings come with a written bake too. A failed job
+(`get_job` status `failed`) has the same shape: its message ends with `- kind: message. Fix: fix`
+lines and its result holds `errors: [{kind, message, fix}]`.
 
 | kind | means | fix |
 |---|---|---|
@@ -114,7 +116,7 @@ Errors refuse the bake (nothing written); warnings come with a written bake too.
 | `vertex_limit` | more than 2^24 vertices | bake fewer meshes, decimate |
 | `bone_limit` | Bones mode with more than 65,535 bones | `mode: "vertices"` |
 | `no_mesh` | no renderer under the source | bake a GameObject or model with meshes |
-| `invalid_source` | the source can't be resolved (missing file, closed scene, unknown GameObject, a model that doesn't load) | the message names it; GameObject paths are hierarchy paths in `scene` |
+| `invalid_source` | the source can't be resolved (missing file, closed scene, unknown GameObject, a model that doesn't load), also when a job's GameObject is deleted or its scene closed while the job runs | the message names it; GameObject paths are hierarchy paths in `scene`; for a vanished source, undo the deletion or reopen the scene and call again |
 | `invalid_settings` | a setting out of range, an unknown clip, `place` that can't apply | the fix names the valid values |
 | `output_exists` | an explicit `output` exists | `overwrite: true` (one undo step puts it back), another path, or `output: true` |
 | `socket_not_found` | a `sockets` path isn't under the root | give node paths below the source's root |
@@ -128,6 +130,7 @@ Errors refuse the bake (nothing written); warnings come with a written bake too.
 | `material_simplified` (warning) | a material setting the `.vat.glb` can't carry (stochastic tiling, a custom shader) was dropped | set it again on the baked GameObject's material |
 | `events_dropped` (warning) | clip events that can't be kept | re-add them in the `.vat` (`write_file`, Inspector) |
 | `not_converted` (warning) | a part of the source (instanced copies, an unsupported Animation) is not baked | bake it separately |
+| `write_failed`, `bake_failed`, `project_changed` | a job's write failed, an unexpected failure, another project opened during the job | as the fix says (call again; `read_console` for the cause) |
 | importer errors | `not_found`, `missing_file` (a texture or the mesh: export with that option, or pass it in `import`), `unsupported` (particle sprites), `read_failed`, `metadata_mismatch`, `unknown_target` (pass `import: {axis}`), `fps_unknown` (pass `fps`), `bad_mesh` | as the fix says |
 | importer warnings | `topology_changes` (fluid: absolute positions, no interpolation), `color_animation_ignored`, `stretch_by_velocity_ignored`, `fluid_uv_from_color_ignored`, `animations_list_form`, `clip_out_of_range`, `embedded_textures_dropped`, `node_transform_baked` | informative |
 

@@ -623,9 +623,12 @@ jasperengine-editor bake-vat --project . --rebake assets/vat/hero.vat
 `--dry-run` prints the report without writing (`--format json` for scripts). The CLI writes files
 only: it places nothing in a scene. `--source` also takes a Houdini or OpenVAT export (with `--fps`
 and `--axis` when its metadata lacks them). The exit code is 0 on success (warnings allowed), 1
-when the bake, import or write fails (`too_large`, `output_exists`...), and 2 for a usage error
-(a bad option or value, a source that can't be baked, an unknown scene or GameObject). See
-`jasperengine-editor bake-vat --help` for every option.
+when the bake, import or write fails (`too_large`, `no_animation`, `output_exists`, a rebake whose
+recipe source is gone...), and 2 for a usage error: a bad option or value, a missing `--project` or
+`--source`, a source that is not something to bake (not a model, `.anim`, `.poseanim`, GameObject
+or export: the routing refusals, `invalid_source`), an unknown
+scene or GameObject, or a project that doesn't load. See `jasperengine-editor bake-vat --help` for
+every option.
 
 ## Troubleshooting
 

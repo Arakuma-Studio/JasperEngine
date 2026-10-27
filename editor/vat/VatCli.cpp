@@ -949,8 +949,11 @@ VatCheck checkVatAssets(Project* project, const std::vector<fs::path>& files){
         for (const ClipWarning& warning : parsed.warnings){
             add("warning", "vat-format", (warning.path.empty() ? "" : warning.path + ": ") + warning.message, "fix the value (it was repaired on load)");
         }
+        // the staleness fixes name the Inspector and the MCP tool (where the window and agents read
+        // them); on the command line the rebake is bake-vat's
+        const std::string cliRebake = "rebake it: bake-vat --rebake " + rel + " (or Inspector > Rebake)";
         for (const VatIssue& issue : checkVatStaleness(project, rel)){
-            add(issue.error ? "error" : "warning", issue.kind, issue.message, issue.fix);
+            add(issue.error ? "error" : "warning", issue.kind, issue.message, issue.fix.rfind("Rebake (", 0) == 0 ? cliRebake : issue.fix);
         }
         // the device limit of the recipe's preset (spec 2.4): a payload texture over it doesn't
         // upload on the devices the preset is for (the mesh draws at rest)
