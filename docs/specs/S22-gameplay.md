@@ -595,17 +595,18 @@ Unit tests are gtest in `engine/tests/core/input/`, `engine/tests/core/physics/`
 - **2D controller quality** comes from our own solver. Default: P5 ships only if AC19 passes.
   Otherwise it slips without blocking P1–P4.
 - **Benchmark numbers (AC17).** On the benchmark runner (server E, 4 dedicated vCPU,
-  `JASPER_TEST_PERF_SLACK=1`, all within budget):
+  `JASPER_TEST_PERF_SLACK=1`, all within budget; the replacement E of 2026-10-27, after the
+  oe-port 05eb8d3b4 merge):
 
   | Scenario | Measured | Budget |
   |---|---|---|
-  | Input latch, no events (R35) | 0.093 µs | 2 µs |
-  | Input latch + 100 actions / 300 bindings (R35) | 11.4 µs | 50 µs |
-  | One `CharacterController.move` in 1k static bodies (R36) | 0.0029 ms | 0.1 ms desktop / 0.3 ms mobile |
-  | 10 controllers + the physics step (R36) | 0.287 ms (moves 0.054 ms) | 1 ms mobile |
-  | 10 controllers without inner bodies + the step | 0.173 ms | — |
-  | The step of the 1k static bodies alone (reference) | 0.120 ms | — |
-  | Buoyancy, 100 bodies × 4 columns (R37) | 0.053 ms | 0.1 ms desktop / 0.3 ms mobile |
+  | Input latch, no events (R35) | 0.100 µs | 2 µs |
+  | Input latch + 100 actions / 300 bindings (R35) | 13.1 µs | 50 µs |
+  | One `CharacterController.move` in 1k static bodies (R36) | 0.0032 ms | 0.1 ms desktop / 0.3 ms mobile |
+  | 10 controllers + the physics step (R36) | 0.312 ms (moves 0.059 ms) | 1 ms mobile |
+  | 10 controllers without inner bodies + the step | 0.186 ms | — |
+  | The step of the 1k static bodies alone (reference) | 0.128 ms | — |
+  | Buoyancy, 100 bodies × 4 columns (R37) | 0.044 ms | 0.1 ms desktop / 0.3 ms mobile |
 
   The mobile numbers must be measured by hand on the reference Android device, once per release.
   They are still open: no reference device can be reached from the build servers, and the x86_64
