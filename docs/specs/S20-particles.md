@@ -635,7 +635,8 @@ What the implementation does differently from the text above, and why.
   soft/near-fade golden is the new renderer's: the old points were pixel-sized squares, so the
   "equals today's `library:particle` output" image cannot match pixel for pixel; the migration
   keeps the same shader features and parameters instead.
-- **Benchmarks**: the benchmark server has 2 cores, so the 8-worker budgets of R21/R22 are
+- **Benchmarks** (PENDING: the measurements predate the 2026-10-27 merges and the benchmark
+  server was decommissioned; a re-run on the next one is owed): the benchmark server has 2 cores, so the 8-worker budgets of R21/R22 are
   checked as `single thread / (9 x 0.6)` with the parallel efficiency gated as measured
   (docs/perf/particles.md). The sorted-view budget is checked on one thread. The web rows run
   in the particles test project's page (`?particles_bench=1`) rather than a wasm build of

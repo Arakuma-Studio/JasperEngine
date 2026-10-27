@@ -45,6 +45,12 @@ The measured all-worker times stay in the JSON as information.
 
 ## Results
 
+**Status: PENDING re-run.** The figures below were measured on the benchmark server E at
+commits before the oe-port merges of 2026-10-27 (the web rows at bf06f347b); E has since been
+decommissioned. The gate (`je-bench-particles --workers 1 --count-allocs` + check_bench.py, and
+the web bench) has to run again on the next dedicated benchmark machine before the budgets
+count as met for the merged tree. Timing runs on shared build servers are not acceptance.
+
 Benchmark server **E**: AMD EPYC-Milan, 2 cores / 4 threads (KVM), Linux x64, the core-tests
 build (RelWithDebInfo, GCC, SSE2 baseline; the curl noise takes its AVX2 path), `--workers 1`,
 2026-10-26.
