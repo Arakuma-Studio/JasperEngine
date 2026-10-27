@@ -338,6 +338,7 @@ bool AppSettings::loadSettings() {
                 if (panelsNode["textureSynthesis"]) panelVisibility.textureSynthesis = panelsNode["textureSynthesis"].as<bool>();
                 if (panelsNode["vertexAnimationBaker"]) panelVisibility.vertexAnimationBaker = panelsNode["vertexAnimationBaker"].as<bool>();
                 if (panelsNode["physicsPlacement"]) panelVisibility.physicsPlacement = panelsNode["physicsPlacement"].as<bool>();
+                if (panelsNode["spriteNormals"]) panelVisibility.spriteNormals = panelsNode["spriteNormals"].as<bool>();
                 if (panelsNode["mcp"]) panelVisibility.mcp = panelsNode["mcp"].as<bool>();
                 if (panelsNode["game"]) panelVisibility.game = panelsNode["game"].as<bool>();
             }
@@ -497,6 +498,7 @@ bool AppSettings::saveSettings() {
         panelsNode["textureSynthesis"] = panelVisibility.textureSynthesis;
         panelsNode["vertexAnimationBaker"] = panelVisibility.vertexAnimationBaker;
         panelsNode["physicsPlacement"] = panelVisibility.physicsPlacement;
+        panelsNode["spriteNormals"] = panelVisibility.spriteNormals;
         panelsNode["mcp"] = panelVisibility.mcp;
         panelsNode["game"] = panelVisibility.game;
         editorNode["panels"] = panelsNode;

@@ -59,6 +59,7 @@ public:
 
     // Defaults when the file has none (it never was in project.yaml)
     const PhysicsPlacementSettings& getPhysicsPlacementSettings() const { return physicsPlacementSettings; }
+    const SpriteNormalsWindowSettings& getSpriteNormalsSettings() const { return spriteNormalsSettings; }
 
     bool isSimulateTouch() const { return simulateTouch; }
 
@@ -81,6 +82,7 @@ private:
     bool terrainDefined = false;
 
     PhysicsPlacementSettings physicsPlacementSettings;
+    SpriteNormalsWindowSettings spriteNormalsSettings;
 
     bool simulateTouch = false;
 

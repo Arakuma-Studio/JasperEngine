@@ -86,6 +86,7 @@ void Workspace::clear() {
     terrainEditorSettings = TerrainEditorSettings();
     terrainDefined = false;
     physicsPlacementSettings = PhysicsPlacementSettings();
+    spriteNormalsSettings = SpriteNormalsWindowSettings();
     simulateTouch = false;
     sceneStates.clear();
     adoptedLegacy = false;
@@ -146,6 +147,11 @@ void Workspace::load(const fs::path& projectPath) {
     readSection("the Physics Placement settings", source, [&]() {
         if (!root["physicsPlacement"] || !root["physicsPlacement"].IsMap()) return;
         physicsPlacementSettings = Stream::decodePhysicsPlacementSettings(root["physicsPlacement"]);
+    });
+
+    readSection("the Sprite Normal Map settings", source, [&]() {
+        if (!root["spriteNormals"] || !root["spriteNormals"].IsMap()) return;
+        spriteNormalsSettings = Stream::decodeSpriteNormalsSettings(root["spriteNormals"]);
     });
 
     readSection("touch simulation", source, [&]() {
@@ -269,6 +275,7 @@ bool Workspace::save(const Project* project) {
 
     root["terrainEditor"] = Stream::encodeTerrainEditorSettings(project->getTerrainEditorSettings());
     root["physicsPlacement"] = Stream::encodePhysicsPlacementSettings(project->getPhysicsPlacementSettings());
+    root["spriteNormals"] = Stream::encodeSpriteNormalsSettings(project->getSpriteNormalsSettings());
     root["simulateTouch"] = project->isSimulateTouch();
 
     YAML::Node scenesNode(YAML::NodeType::Map);
