@@ -18,9 +18,9 @@
 //     }
 //     color = albedo * light;
 //
-// Units, the one convention for every shader: ambientLight, vertexDiffuse, lambert and
-// blinnPhong return light to multiply directly by the surface colour (albedo for diffuse,
-// the specular colour for blinnPhong). Lambert's 1/PI is inside them, as in the built-in
+// Units, the one convention for every shader: ambientLight, vertexDiffuse, lambert,
+// blinnPhong and ggxSpecular return light to multiply directly by the surface colour (albedo
+// for diffuse, the specular colour for blinnPhong and ggxSpecular). Lambert's 1/PI is inside them, as in the built-in
 // Lit's BRDF_lambertian, so one light looks equally bright in Lit and in a library shader,
 // per pixel and per vertex. Only LightSample.radiance (colour * intensity * attenuation)
 // is the raw light, for a shader with its own BRDF: divide its diffuse by PI to match.
@@ -231,6 +231,28 @@ vec3 blinnPhong(LightSample lightSample, vec3 worldNormal, vec3 viewDirection, f
     vec3 halfway = normalize(lightSample.direction + viewDirection);
     float NdotH = max(dot(worldNormal, halfway), 0.0);
     return lightSample.radiance * (NdotL * (shininess + 8.0) * (0.125 * LIGHT_INV_PI) * pow(NdotH, shininess));
+}
+
+// GGX (Trowbridge-Reitz) specular of one light with Schlick's fresnel and the Smith joint
+// visibility, as the built-in Lit's BRDF_specularGGX, light to multiply by the specular
+// colour: radiance * n.l * D * Vis * F. roughness is perceptual (0 mirror .. 1), squared
+// inside (at least 0.045, so a sun's glint stays finite); f0 the reflectance at normal
+// incidence (0.02 water, 0.04 most dielectrics). viewDirection as blinnPhong.
+vec3 ggxSpecular(LightSample lightSample, vec3 worldNormal, vec3 viewDirection, float roughness, float f0){
+    float NdotL = max(dot(worldNormal, lightSample.direction), 0.0);
+    float NdotV = max(dot(worldNormal, viewDirection), 1e-4);
+    vec3 halfway = normalize(lightSample.direction + viewDirection);
+    float NdotH = max(dot(worldNormal, halfway), 0.0);
+    float VdotH = max(dot(viewDirection, halfway), 0.0);
+    float alpha = max(roughness, 0.045);
+    alpha *= alpha;
+    float alpha2 = alpha * alpha;
+    float f = NdotH * NdotH * (alpha2 - 1.0) + 1.0;
+    float distribution = alpha2 * LIGHT_INV_PI / (f * f);
+    float visibility = 0.5 / max(NdotL * sqrt(NdotV * NdotV * (1.0 - alpha2) + alpha2) +
+                                 NdotV * sqrt(NdotL * NdotL * (1.0 - alpha2) + alpha2), 1e-5);
+    float fresnel = f0 + (1.0 - f0) * pow(1.0 - VdotH, 5.0);
+    return lightSample.radiance * (NdotL * distribution * visibility * fresnel);
 }
 
 // sum of the Lambert diffuse of the vertex lights, light to multiply by albedo (as lambert)

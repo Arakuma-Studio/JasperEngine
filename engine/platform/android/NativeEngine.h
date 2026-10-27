@@ -25,6 +25,7 @@ struct JniData{
     jobject userSettingsObjRef;
     jclass userSettingsClsRef;
 
+    // null when the export leaves AdMob out
     jobject adMobWrapperObjRef;
     jclass adMobWrapperClsRef;
 

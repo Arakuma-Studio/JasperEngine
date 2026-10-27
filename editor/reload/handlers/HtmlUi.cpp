@@ -50,7 +50,7 @@ Json reload::syncHtmlUi(Project* project, const std::vector<fs::path>& changed, 
     for (const fs::path& path : changed) {
         const fs::path rel = path.lexically_normal().lexically_relative(assets);
         if (rel.empty() || rel == "." || *rel.begin() == ".." || rel.is_absolute()) continue;
-        const std::string assetPath = jasperengine::normalizeHtmlUIPath(FileUtils::genericPathToUtf8(rel));
+        const std::string assetPath = jasperengine::normalizeHtmlUIPath(FileUtils::pathToGenericUtf8(rel));
         if (!assetPath.empty() && changedAssets.insert(assetPath).second) assetPaths.push_back(assetPath);
     }
     if (assetPaths.empty()) return {{"reloaded", reloadedOut}, {"current", current}, {"problems", problems}};
@@ -58,7 +58,7 @@ Json reload::syncHtmlUi(Project* project, const std::vector<fs::path>& changed, 
     for (const fs::path& path : changedSince) {
         const fs::path rel = path.lexically_normal().lexically_relative(assets);
         if (rel.empty() || rel == "." || *rel.begin() == ".." || rel.is_absolute()) continue;
-        forgotten.push_back(jasperengine::normalizeHtmlUIPath(FileUtils::genericPathToUtf8(rel)));
+        forgotten.push_back(jasperengine::normalizeHtmlUIPath(FileUtils::pathToGenericUtf8(rel)));
     }
 
     std::set<std::string> problemKeys;

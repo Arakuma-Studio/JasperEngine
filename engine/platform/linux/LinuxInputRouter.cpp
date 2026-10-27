@@ -73,10 +73,10 @@ void LinuxInputRouter::handleKey(XKeyEvent& event, bool pressed) {
         }
     }
 
-    // other control characters (Ctrl+letter) are no text
+    // other control characters (Ctrl+letter, Delete's 0x7f) are no text
     std::string filtered;
     for (unsigned char c : text) {
-        if (c >= 32 || c == '\t' || c == '\b' || c == '\r' || c == 0x1b)
+        if ((c >= 32 && c != 0x7f) || c == '\t' || c == '\b' || c == '\r' || c == 0x1b)
             filtered += static_cast<char>(c);
     }
     if (!filtered.empty()) Engine::systemTextInput(filtered);

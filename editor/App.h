@@ -23,6 +23,8 @@
 #include "window/CodeEditor.h"
 #include "window/AnimationWindow.h"
 #include "window/TerrainEditWindow.h"
+#include "window/TextureSynthesisWindow.h"
+#include "window/PhysicsPlacementWindow.h"
 #include "window/SystemsWindow.h"
 #include "window/AssetPanels.h"
 #include "window/GameWindow.h"
@@ -55,6 +57,8 @@
 #include <thread>
 #include <unordered_map>
 #include <vector>
+
+struct ImGuiDockNode;
 
 namespace jasperengine::editor::mcp {
     class McpActivityWindow;
@@ -211,6 +215,8 @@ namespace jasperengine::editor{
         ImageViewerWindow* imageViewerWindow;
         AnimationWindow* animationWindow;
         TerrainEditWindow* terrainEditWindow;
+        TextureSynthesisWindow* textureSynthesisWindow;
+        PhysicsPlacementWindow* physicsPlacementWindow;
         mcp::McpActivityWindow* mcpActivityWindow;
         SystemsWindow* systemsWindow;
         MissingAssetsWindow* missingAssetsWindow;
@@ -250,6 +256,13 @@ namespace jasperengine::editor{
         // restored layout has been matched to the current one.
         float layoutUiScale = 0.0f;
         bool layoutScaleApplied = false;
+
+        // Sizes scaleDockChildren() capped, so scaling back down restores them.
+        struct CappedDockSize {
+            float capped;
+            float uncapped;
+        };
+        std::map<ImGuiID, CappedDockSize> cappedDockSizes;
 
         AlertData alert;
         // Bumped by every registered alert, so MCP can tell a tool raised one
@@ -347,6 +360,11 @@ namespace jasperengine::editor{
         void buildDefaultLayout();
         // Matches a layout restored from the ini to the current UI scale.
         void rescaleRestoredLayout();
+        void scaleDockChildren(ImGuiDockNode* node, float ratio);
+        // The layout scale and capped panel sizes, in their own section of the layout ini
+        void registerLayoutSettings();
+        // Follows Editor Settings > UI Scale, resizing the docked panels with it
+        void applyUiScale();
         void dockProjectTabs();
         void dockTabWindow(const std::string& windowName, bool force = false);
         void captureTabOrder();
@@ -423,6 +441,7 @@ namespace jasperengine::editor{
         void addNewCodeWindowToDock(fs::path path, bool force = false);
         void addImageViewerWindowToDock(fs::path path, bool force = false);
         void clearSceneWindowState(uint32_t sceneId) override;
+        void sceneDeleting(uint32_t sceneId) override;
         void prepareForProjectSwitch() override;
         // Runs a project switch between frames, with the loading screen (EditorHost)
         void requestProjectChange(std::function<void()> change) override;
@@ -517,6 +536,10 @@ namespace jasperengine::editor{
         FrameDebuggerWindow* getFrameDebuggerWindow() const { return frameDebuggerWindow; }
         UndoHistoryWindow* getUndoHistoryWindow() const { return undoHistoryWindow; }
         PlayModeChangesWindow* getPlayModeChangesWindow() const { return playModeChangesWindow; }
+        TextureSynthesisWindow* getTextureSynthesisWindow() const;
+        PhysicsPlacementWindow* getPhysicsPlacementWindow() const;
+        MainToolbar* getMainToolbar() const;
+        void openTextureSynthesis(const std::filesystem::path& image, bool editRecipe) override;
         // Game view: setOpen()/isOpen() toggle it (Window menu), requestFocus() shows it
         GameWindow* getGameWindow() const;
         SceneWindow* getSceneWindow() const;
@@ -528,6 +551,8 @@ namespace jasperengine::editor{
         EditorSettingsWindow& getEditorSettingsWindow() { return editorSettingsWindow; }
         // Project Settings (the Search palette's settings rows open it at their page)
         ProjectSettingsWindow& getProjectSettingsWindow() { return projectSettingsWindow; }
+        // Preferences on one of its pages ("Lattice" from the Scene view's lattice menu)
+        void openPreferences(const std::string& category);
         PlayInput* getPlayInput() const;
         void resetLayout();
 

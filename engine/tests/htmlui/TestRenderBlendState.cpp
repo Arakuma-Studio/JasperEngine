@@ -19,7 +19,7 @@ namespace {
     const PipelineType allTypes[] = {
         PIP_DEFAULT, PIP_RTT, PIP_DEPTH, PIP_RTT_INVERT, PIP_GBUFFER, PIP_SHADOW_DEPTH,
         PIP_DEFAULT_NODEPTH, PIP_RTT_NODEPTH, PIP_ZPREPASS, PIP_ZPREPASS_RTT,
-        PIP_EFFECT, PIP_POST, PIP_MSAA, PIP_MSAA_NODEPTH, PIP_ZPREPASS_MSAA
+        PIP_EFFECT, PIP_POST, PIP_MSAA, PIP_MSAA_NODEPTH, PIP_ZPREPASS_MSAA, PIP_RTT_COLORONLY
     };
 
     // the types a BlendState applies to (PIP_POST, the bloom chain's, is never blended)
@@ -74,6 +74,8 @@ namespace {
             return {true, SG_BLENDFACTOR_SRC_ALPHA, SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SG_BLENDFACTOR_ONE, SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, _SG_COLORMASK_DEFAULT, SG_COMPAREFUNC_ALWAYS, false, SG_PIXELFORMAT_DEPTH, SG_PIXELFORMAT_RGBA8, 1, 0};
         case PIP_POST:
             return {false, none, none, none, none, _SG_COLORMASK_DEFAULT, SG_COMPAREFUNC_ALWAYS, false, SG_PIXELFORMAT_NONE, SG_PIXELFORMAT_SRGB8A8, 1, 0};
+        case PIP_RTT_COLORONLY:
+            return {false, none, none, none, none, _SG_COLORMASK_DEFAULT, SG_COMPAREFUNC_ALWAYS, false, SG_PIXELFORMAT_NONE, SG_PIXELFORMAT_RGBA8, 1, 0};
         }
         return {};
     }
@@ -101,7 +103,7 @@ namespace {
         sg_face_winding winding = SG_FACEWINDING_CCW;
         switch (type){
         case PIP_ZPREPASS_RTT: case PIP_ZPREPASS_MSAA: case PIP_RTT: case PIP_RTT_NODEPTH: case PIP_MSAA: case PIP_MSAA_NODEPTH:
-        case PIP_EFFECT: case PIP_POST:
+        case PIP_EFFECT: case PIP_POST: case PIP_RTT_COLORONLY:
             winding = offscreen;
             break;
         case PIP_RTT_INVERT:
@@ -242,7 +244,7 @@ TEST(BlendStateTest, TargetFormatsMatchPipelines){
     ObjectRender object;
     object.beginLoad(PrimitiveType::TRIANGLES);
     for (PipelineType type : {PIP_RTT, PIP_RTT_NODEPTH, PIP_RTT_INVERT, PIP_ZPREPASS_RTT, PIP_EFFECT, PIP_POST,
-                              PIP_MSAA, PIP_MSAA_NODEPTH, PIP_ZPREPASS_MSAA}){
+                              PIP_MSAA, PIP_MSAA_NODEPTH, PIP_ZPREPASS_MSAA, PIP_RTT_COLORONLY}){
         const sg_pipeline_desc desc = object.backend.describePipeline(type);
         const RenderTargetFormat format = targetFormatFor(type);
         EXPECT_FALSE(format.swapchain) << int(type);

@@ -62,13 +62,18 @@ const std::vector<std::string>& StreamSchema::knownFieldKeys(ComponentType type)
         {ComponentType::ButtonComponent, {"colorDisabled", "colorHovered", "colorNormal", "colorPressed", "disabled", "label", "textureDisabled", "textureHovered", "textureNormal", "texturePressed"}},
         {ComponentType::CameraComponent, {"aspect", "autoResize", "bottomClip", "cullingMask", "depthTest", "enabled", "farClip", "framebufferFilter", "framebufferHeight", "framebufferWidth", "leftClip", "nearClip", "renderToTexture", "rightClip", "target", "topClip", "transparentSort", "type", "up", "useTarget", "yfov"}},
         {ComponentType::ColorTweenComponent, {"endColor", "startColor", "useSRGB"}},
+        {ComponentType::FluidSimulationComponent, {"aspectRatio", "backColor", "bloom", "bloomIntensity", "bloomIterations", "bloomResolution", "bloomSoftKnee", "bloomThreshold", "colorUpdateSpeed", "colorful", "curl", "densityDissipation", "dyeResolution", "enabled", "gradientScale", "interactive", "maxSubsteps", "output", "paused", "pressure", "pressureIterations", "randomSplatCount", "seed", "shading", "simResolution", "simulationRate", "splatForce", "splatRadius", "splatsOnStart", "sunrays", "sunraysResolution", "sunraysWeight", "timeScale", "transparent", "velocityDissipation"}},
         {ComponentType::FogComponent, {"anisotropy", "attenuationDistance", "baseHeight", "color", "colorMode", "density", "directionalInscattering", "lightShafts", "linearEnd", "linearStart", "maxFogDistance", "maxOpacity", "maximumHeight", "noiseIntensity", "noiseScale", "qualityOverride", "skyFill", "skyFillAngle", "startDistance", "type", "volumetric", "volumetricDistance", "wind"}},
         {ComponentType::ImageComponent, {"patchMarginBottom", "patchMarginLeft", "patchMarginRight", "patchMarginTop", "textureScaleFactor"}},
         {ComponentType::InputFieldComponent, {"cursor", "cursorBlink", "cursorColor", "cursorIndex", "cursorWidth", "disabled", "password", "passwordChar", "placeholder", "placeholderColor", "selection", "selectionAnchor", "selectionColor", "text"}},
         {ComponentType::InstancedMeshComponent, {"cullDistance", "cullInstances", "distanceFade", "enabled", "fadeEnd", "fadeStart", "instancedBillboard", "instancedCylindricalBillboard", "instances", "maxInstances"}},
         {ComponentType::Joint2DComponent, {"anchorA", "anchorB", "autoAnchors", "axis", "bodyA", "bodyB", "enabled", "rope", "target", "type"}},
         {ComponentType::Joint3DComponent, {"anchor", "anchorA", "anchorB", "autoAnchors", "axis", "axisX", "axisY", "bodyA", "bodyB", "enabled", "fixedPointA", "fixedPointB", "hinge", "hingeA", "hingeB", "isLooping", "limitsMax", "limitsMin", "normal", "normalHalfConeAngle", "numTeethGear", "numTeethGearA", "numTeethGearB", "numTeethRack", "pathPoints", "pathPosition", "planeAxis", "planeHalfConeAngle", "rackLength", "slider", "twistAxis", "twistMaxAngle", "twistMinAngle", "type"}},
-        {ComponentType::KeyframeTracksComponent, {"easings", "index", "interpolation", "times"}},
+        {ComponentType::KeyframeTracksComponent, {"easings", "index", "interpolation", "loop", "relative", "times"}},
+        {ComponentType::LatticeComponent, {"enabled", "fadeDistance", "interpolation", "jiggle", "jiggleAnchor", "jiggleDamping", "jiggleInertia", "jiggleMaxOffset", "jiggleStiffness", "offsets", "outside", "poses", "resolutionX", "resolutionY", "resolutionZ"}},
+        {ComponentType::LatticeFollowerComponent, {"applyPosition", "applyRotation", "applyScale", "enabled", "lattice", "rest", "weight"}},
+        {ComponentType::LatticeModifierComponent, {"bindings", "enabled", "includeChildren", "subdivisions"}},
+        {ComponentType::LatticeTracksComponent, {"inTangents", "outTangents", "points", "values"}},
         {ComponentType::LayoutGroupComponent, {"fillAvailableSpace", "type", "useAllWrapSpace", "wrapCellHeight", "wrapCellWidth"}},
         {ComponentType::Light2DComponent, {"color", "enabled", "falloff", "height", "intensity", "mapResolution", "range", "shadowBias", "shadowSoftness", "shadows"}},
         {ComponentType::LightComponent, {"automaticShadowCamera", "cascadeSplitMode", "cascadeSplits", "color", "colorTemperature", "cullingMask", "direction", "enabled", "innerConeCos", "intensity", "intensityUnit", "mapResolution", "numShadowCascades", "outerConeCos", "range", "shading", "shadowAngularDiameter", "shadowBias", "shadowCameraNearFar", "shadowDistance", "shadowNormalBias", "shadowSourceRadius", "shadowStrength", "shadowUpdateMode", "shadows", "softShadows", "spotMask", "type", "useColorTemperature", "volumetricIntensity", "worldDirection"}},
@@ -88,9 +93,9 @@ const std::vector<std::string>& StreamSchema::knownFieldKeys(ComponentType type)
         {ComponentType::RectTransformComponent, {"anchorOffsetBottom", "anchorOffsetLeft", "anchorOffsetRight", "anchorOffsetTop", "anchorPointBottom", "anchorPointLeft", "anchorPointRight", "anchorPointTop", "anchorPreset", "containerBoxIndex", "height", "ignoreEvents", "ignoreScissor", "panel", "pivot", "positionOffset", "scissor", "usingAnchors", "width"}},
         {ComponentType::ReflectionProbeComponent, {"blendDistance", "boxOffset", "boxSize", "cullingMask", "farClip", "includeSky", "intensity", "mode", "nearClip", "priority", "resolution", "texture", "updateInterval", "updateMode"}},
         {ComponentType::Rigidbody2DComponent, {"colliders", "enabled", "numColliders", "type"}},
-        {ComponentType::RigidbodyComponent, {"allowedDOFs", "colliders", "enabled", "friction", "gravityFactor", "motionQuality", "numColliders", "restitution", "sensor", "type"}},
+        {ComponentType::RigidbodyComponent, {"allowedDOFs", "buoyancy", "colliders", "enabled", "friction", "gravityFactor", "motionQuality", "numColliders", "restitution", "sensor", "type", "waterAngularDrag", "waterDrag"}},
         {ComponentType::RotateTracksComponent, {"inTangents", "outTangents", "values"}},
-        {ComponentType::RotationTweenComponent, {"endRotation", "shortestPath", "startRotation"}},
+        {ComponentType::RotationTweenComponent, {"angle", "axis", "endRotation", "shortestPath", "spin", "startRotation"}},
         {ComponentType::ScaleTracksComponent, {"inTangents", "outTangents", "values"}},
         {ComponentType::ScaleTweenComponent, {"endScale", "startScale"}},
         {ComponentType::ScriptComponent, {"scripts"}},
@@ -104,7 +109,7 @@ const std::vector<std::string>& StreamSchema::knownFieldKeys(ComponentType type)
         {ComponentType::TilemapComponent, {"automaticFlipY", "enabled", "flipY", "height", "reserveTiles", "textureScaleFactor", "tiles", "tilesRect", "width"}},
         {ComponentType::Transform, {"billboard", "billboardRotation", "cylindricalBillboard", "fakeBillboard", "localMatrix", "modelMatrix", "normalMatrix", "position", "rotation", "scale", "visible", "worldPosition", "worldRotation", "worldScale"}},
         {ComponentType::TranslateTracksComponent, {"inTangents", "outTangents", "values"}},
-        {ComponentType::TweenComponent, {"duration", "function", "loop"}},
+        {ComponentType::TweenComponent, {"duration", "function", "loop", "pingPong"}},
         {ComponentType::UIComponent, {"aabb", "automaticFlipY", "blendMode", "buffer", "color", "colorWrite", "customShader", "depthWrite", "enabled", "flipY", "focused", "indices", "minBufferCount", "minIndicesCount", "pointerMoved", "primitiveType", "shaderFeatures", "shaderTextures", "shaderUniforms", "stencil", "texture", "vertexCount", "worldAABB"}},
         {ComponentType::UIDocumentComponent, {"enabled", "filename", "inputSurface", "interactive", "pixelRatio", "renderMode", "sortOrder", "textureHeight", "textureWidth"}},
         {ComponentType::LocalVolumetricFogComponent, {"albedo", "attenuationDistance", "blendDistance", "falloff", "noiseIntensity", "noiseScale", "scrollSpeed", "shape", "size"}},
@@ -115,11 +120,11 @@ const std::vector<std::string>& StreamSchema::knownFieldKeys(ComponentType type)
 
 const std::vector<std::string>& StreamSchema::knownNestedKeys(NestedKind kind) {
     static const std::map<NestedKind, std::vector<std::string>> tables = {
-        {NestedKind::Material, {"alphaCutoff", "alphaMode", "baseColorFactor", "baseColorTexCoord", "baseColorTexture", "blendMode", "colorWrite", "cullMode", "depthOffsetFactor", "depthOffsetUnits", "depthTest", "depthWrite", "emissiveFactor", "emissiveStrength", "emissiveTexCoord", "emissiveTexture", "extraPass", "foliageTransmission", "lighting", "metallicFactor", "metallicRoughnessTexCoord", "metallicRoughnessTexture", "name", "normalTexCoord", "normalTexture", "occlusionTexCoord", "occlusionTexture", "pbr", "roughnessFactor", "shader", "shaderFeatures", "shaderParams", "shaderTextures", "sortPriority", "stencil"}},
+        {NestedKind::Material, {"alphaCutoff", "alphaMode", "baseColorFactor", "baseColorTexCoord", "baseColorTexture", "blendMode", "colorWrite", "cullMode", "depthOffsetFactor", "depthOffsetUnits", "depthTest", "depthWrite", "emissiveFactor", "emissiveStrength", "emissiveTexCoord", "emissiveTexture", "extraPass", "foliageTransmission", "lighting", "metallicFactor", "metallicRoughnessTexCoord", "metallicRoughnessTexture", "name", "normalTexCoord", "normalTexture", "occlusionTexCoord", "occlusionTexture", "pbr", "roughnessFactor", "shader", "shaderFeatures", "shaderParams", "shaderTextures", "sortPriority", "stencil", "stochasticBlendSharpness", "stochasticCellSize", "stochasticContrast", "stochasticRotation", "stochasticTiling"}},
         {NestedKind::MaterialPass, {"blendMode", "colorWrite", "cullMode", "depthOffsetFactor", "depthOffsetUnits", "depthTest", "depthWrite", "order", "shader", "shaderFeatures", "shaderParams", "shaderTextures", "stencil"}},
         {NestedKind::Stencil, {"compare", "depthFail", "fail", "pass", "readMask", "ref", "writeMask"}},
         {NestedKind::Submesh, {"faceCulling", "hasMorphNormal", "hasMorphTangent", "hasMorphTarget", "hasNormalMap", "hasSkinning", "hasTangent", "hasTexCoord1", "hasTexCoord2", "hasTextureRect", "hasVertexColor3", "hasVertexColor4", "material", "normAdjustJoint", "normAdjustWeight", "overrideFields", "primitiveType", "textureRect", "textureShadow", "vertexCount"}},
-        {NestedKind::Texture, {"alphaBorder", "camera", "channels", "colorFormat", "cubeMode", "data", "guid", "guids", "height", "id", "magFilter", "minFilter", "path", "paths", "releaseDataAfterLoad", "size", "source", "svgScale", "textureType", "width", "wrapU", "wrapV"}},
+        {NestedKind::Texture, {"alphaBorder", "camera", "channels", "colorFormat", "cubeMode", "data", "fluid", "guid", "guids", "height", "id", "magFilter", "minFilter", "path", "paths", "releaseDataAfterLoad", "size", "source", "svgScale", "textureType", "width", "wrapU", "wrapV"}},
     };
     return lookup(tables, kind);
 }
@@ -127,8 +132,8 @@ const std::vector<std::string>& StreamSchema::knownNestedKeys(NestedKind kind) {
 const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
     static const std::map<RootKind, std::vector<std::string>> tables = {
         {RootKind::Scene, {"formatVersion", "guid", "formerGuids", "labels", "id", "name", "scene", "sceneType", "mainCamera", "maxValues", "shaderKeys",
-            "childScenes", "cppScripts", "cppScriptPaths", "prefabs", "entities"}},
-        {RootKind::SceneSettings, {"ambientLight2DColor", "ambientLight2DIntensity", "backgroundColor", "defaultLinesShader", "defaultMeshShader", "defaultPointsShader", "defaultSkyShader", "defaultUIShader", "depthPrepassEnabled", "enableUIEvents", "fixedResolutionEnabled", "fixedResolutionFilter", "fixedResolutionHeight", "fixedResolutionWidth", "globalIlluminationColor", "globalIlluminationIntensity", "gravity2D", "gravity3D", "lightState", "litQuality", "maxLightsPerObject", "meshLodEnabled", "meshLodThreshold", "physicalLightEV100", "postProcess", "postProcessing", "sceneColorScale", "shadow2DQuality", "shadowCascadeBlend", "shadowDistance", "shadowFadeFraction", "shadowQuality", "ssaoBias", "ssaoEnabled", "ssaoIntensity", "ssaoRadius", "ssrBlur", "ssrEnabled", "ssrIntensity", "ssrMaxDistance", "ssrMaxSteps", "ssrThickness"}},
+            "childScenes", "cppScripts", "cppScriptPaths", "prefabs", "imports", "entities"}},
+        {RootKind::SceneSettings, {"ambientLight2DColor", "ambientLight2DIntensity", "backgroundColor", "defaultLinesShader", "defaultMeshShader", "defaultPointsShader", "defaultSkyShader", "defaultUIShader", "depthPrepassEnabled", "enableUIEvents", "fixedResolutionEnabled", "fixedResolutionFilter", "fixedResolutionHeight", "fixedResolutionWidth", "globalIlluminationColor", "globalIlluminationIntensity", "gravity2D", "gravity3D", "lightState", "litQuality", "maxLightsPerObject", "meshLodEnabled", "meshLodThreshold", "physicalLightEV100", "physicsInterpolation", "postProcess", "postProcessing", "sceneColorScale", "shadow2DQuality", "shadowCascadeBlend", "shadowDistance", "shadowFadeFraction", "shadowQuality", "ssaoBias", "ssaoEnabled", "ssaoIntensity", "ssaoRadius", "ssrBlur", "ssrEnabled", "ssrIntensity", "ssrMaxDistance", "ssrMaxSteps", "ssrThickness"}},
         // prefabInstance and the keys written before it (prefabOverrides...), and the keys of
         // the GameObjects a prefab adds to an instance (addedTo, childIndex...)
         {RootKind::Entity, {"type", "entity", "name", "active", "tag", "layer", "components", "children",
@@ -136,7 +141,7 @@ const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
             "addedTo", "childIndex", "parentRegistryEntity", "prefabRootRegistryEntity", "prefabPath"}},
         // the editor state an older project.yaml held (Workspace::adoptLegacyProjectState) and
         // its build settings (AppSettings, build.yaml) are read too
-        {RootKind::Project, {"formatVersion", "android", "application", "assetLabels", "assetsDir", "atmosphereQuality", "canvasHeight", "canvasWidth", "cxxStandard", "export", "graphics", "htmlUiMsaaSamples", "ignoredLayerCollisions", "ios", "layers", "linux", "loading", "luaDir", "macos", "mobilePbrTier", "name", "packNativeResources", "physics2D", "physics3D", "runtimeShaders", "savedSearches", "scalingMode", "scenes", "scriptDirs", "standalonePrefabs", "startSceneId", "tags", "textureStrategy", "versionControlMetadata", "vsync", "web", "windowHeight", "windowIcon", "windowMode", "windowResizable", "windowTitle", "windowWidth", "windows",
+        {RootKind::Project, {"formatVersion", "android", "application", "assetLabels", "assetsDir", "atmosphereQuality", "canvasHeight", "canvasWidth", "cxxStandard", "export", "graphics", "htmlUiMsaaSamples", "ignoredLayerCollisions", "ios", "layers", "linux", "loading", "luaDir", "macos", "mobilePbrTier", "name", "packNativeResources", "physics2D", "physics3D", "playerLogging", "runtimeShaders", "savedSearches", "scalingMode", "scenes", "scriptDirs", "standalonePrefabs", "startSceneId", "tags", "textureStrategy", "threading", "versionControlMetadata", "vsync", "web", "windowHeight", "windowIcon", "windowMode", "windowResizable", "windowTitle", "windowWidth", "windows",
             "cmakeBuildJobs", "cmakeCCompiler", "cmakeCxxCompiler", "cmakeGenerator", "selectedScene", "tabs", "terrainEditor"}},
         {RootKind::Material, {}},
         {RootKind::PrefabHeader, {"type", "version", "guid", "formerGuids", "labels", "nextEntity", "root", "members", "stripped"}},
@@ -443,6 +448,15 @@ const EnumTable<EaseType>& StreamSchema::easeType() {
     return table;
 }
 
+const EnumTable<FluidOutput>& StreamSchema::fluidOutput() {
+    static const EnumTable<FluidOutput> table("FluidOutput", {
+        {FluidOutput::SCREEN, "screen"},
+        {FluidOutput::TEXTURE, "texture"},
+        {FluidOutput::MATERIAL, "material"},
+    }, FluidOutput::MATERIAL);
+    return table;
+}
+
 const EnumTable<FogType>& StreamSchema::fogType() {
     static const EnumTable<FogType> table("FogType", {
         {FogType::LINEAR, "linear"},
@@ -547,6 +561,59 @@ const EnumTable<Joint3DType>& StreamSchema::joint3DType() {
         {Joint3DType::RACKANDPINON, "rackandpinion"},
         {Joint3DType::PULLEY, "pulley"},
     }, Joint3DType::FIXED);
+    return table;
+}
+
+const EnumTable<LatticeInterpolation>& StreamSchema::latticeInterpolation() {
+    static const EnumTable<LatticeInterpolation> table("LatticeInterpolation", {
+        {LatticeInterpolation::SHARP, "sharp"},
+        {LatticeInterpolation::SMOOTH, "smooth"},
+        {LatticeInterpolation::CUBIC, "cubic"},
+    }, LatticeInterpolation::CUBIC);
+    return table;
+}
+
+const EnumTable<LatticeJiggleAnchor>& StreamSchema::latticeJiggleAnchor() {
+    static const EnumTable<LatticeJiggleAnchor> table("LatticeJiggleAnchor", {
+        {LatticeJiggleAnchor::NEGATIVE_X, "negative_x"},
+        {LatticeJiggleAnchor::POSITIVE_X, "positive_x"},
+        {LatticeJiggleAnchor::NEGATIVE_Y, "negative_y"},
+        {LatticeJiggleAnchor::POSITIVE_Y, "positive_y"},
+        {LatticeJiggleAnchor::NEGATIVE_Z, "negative_z"},
+        {LatticeJiggleAnchor::POSITIVE_Z, "positive_z"},
+        {LatticeJiggleAnchor::NONE, "none"},
+    }, LatticeJiggleAnchor::NONE);
+    return table;
+}
+
+const EnumTable<LatticeMaskChannel>& StreamSchema::latticeMaskChannel() {
+    static const EnumTable<LatticeMaskChannel> table("LatticeMaskChannel", {
+        {LatticeMaskChannel::RED, "red"},
+        {LatticeMaskChannel::GREEN, "green"},
+        {LatticeMaskChannel::BLUE, "blue"},
+        {LatticeMaskChannel::ALPHA, "alpha"},
+        {LatticeMaskChannel::INVERTED_RED, "inverted_red"},
+        {LatticeMaskChannel::INVERTED_GREEN, "inverted_green"},
+        {LatticeMaskChannel::INVERTED_BLUE, "inverted_blue"},
+        {LatticeMaskChannel::INVERTED_ALPHA, "inverted_alpha"},
+        {LatticeMaskChannel::NONE, "none"},
+    }, LatticeMaskChannel::NONE);
+    return table;
+}
+
+const EnumTable<LatticeOutside>& StreamSchema::latticeOutside() {
+    static const EnumTable<LatticeOutside> table("LatticeOutside", {
+        {LatticeOutside::EXTEND, "extend"},
+        {LatticeOutside::FADE, "fade"},
+    }, LatticeOutside::FADE);
+    return table;
+}
+
+const EnumTable<LatticeStage>& StreamSchema::latticeStage() {
+    static const EnumTable<LatticeStage> table("LatticeStage", {
+        {LatticeStage::BEFORE_SKINNING, "before_skinning"},
+        {LatticeStage::AFTER_SKINNING, "after_skinning"},
+    }, LatticeStage::AFTER_SKINNING);
     return table;
 }
 

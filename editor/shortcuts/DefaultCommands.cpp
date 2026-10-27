@@ -186,6 +186,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.undoHistory", "Undo History", AppMenuCommand::ToggleUndoHistory);
     b.menu("window.playModeChanges", "Play Mode Changes", AppMenuCommand::TogglePlayModeChanges);
     b.menu("window.terrain", "Terrain", AppMenuCommand::ToggleTerrain);
+    b.menu("window.textureSynthesis", "Texture Synthesis", AppMenuCommand::ToggleTextureSynthesis);
+    b.menu("window.physicsPlacement", "Physics Placement", AppMenuCommand::TogglePhysicsPlacement);
     b.menu("window.missingAssets", "Missing Assets", AppMenuCommand::ToggleMissingAssets);
     b.menu("window.assetReferences", "References", AppMenuCommand::ToggleAssetReferences);
     b.menu("window.frameDebugger", "Frame Debugger", AppMenuCommand::ToggleFrameDebugger);
@@ -217,6 +219,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.add("tools.rect", "Rect Tool", C::Editor, "T").description = "2D and UI scenes";
     b.add("tools.toggleGlobalLocal", "Toggle Global/Local", C::Editor, "X").description =
         "Toggle tool handle rotation between Global and Local";
+    b.add("tools.physics", "Physics", C::Editor, "G").description =
+        "Move, Rotate and Scale push the selection through a physics simulation (3D scenes, not in Play)";
 
     b.group = "Scene View";
     b.add("sceneView.frameAll", "Frame All (3D)", C::SceneView, "Home");
@@ -231,9 +235,21 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.gesture("sceneView.orbit", "Orbit (3D)", C::SceneView, "Alt+Left Drag", "Orbit around the view's pivot");
     b.gesture("sceneView.pan", "Pan", C::SceneView, "Middle Drag (2D: also Space+Left Drag)", "Move the view");
     b.gesture("sceneView.zoom", "Zoom", C::SceneView, "Mouse Wheel", "Zoom the view");
+    b.gesture("sceneView.physicsDrop", "Drop (Physics)", C::SceneView, "Hold Space", "Drop the selection under gravity");
+    b.gesture("sceneView.physicsSnap", "Snap onto Surfaces (Physics)", C::SceneView, "Shift+Left Drag",
+              "Drag a selected object onto what is under the pointer");
+    b.gesture("sceneView.cancelGesture", "Cancel Gesture", C::SceneView, "Escape",
+              "Stops a physics gesture, the Paint Dye brush or clears the lattice points (Ctrl+Z also undoes)");
+
+    b.group = "Lattice";
+    b.add("lattice.selectNone", "Select No Points", C::SceneView, "Alt+A");
+    b.add("lattice.invert", "Invert Point Selection", C::SceneView, "Ctrl+I");
+    b.add("lattice.expand", "Expand Point Selection", C::SceneView, "Ctrl+=", "Ctrl+NumpadAdd");
+    b.add("lattice.shrink", "Shrink Point Selection", C::SceneView, "Ctrl+-", "Ctrl+NumpadSubtract");
+    b.add("lattice.toggleFalloff", "Toggle Falloff", C::SceneView, "O").description = "Proportional editing of the lattice points";
 
     b.group = "Terrain";
-    b.add("terrain.brushSmaller", "Brush Smaller", C::SceneView, "[").repeat = true;
+    b.add("terrain.brushSmaller", "Brush Smaller", C::SceneView, "[").repeat = true;   // also Paint Dye's radius
     b.add("terrain.brushLarger", "Brush Larger", C::SceneView, "]").repeat = true;
     b.add("terrain.brushWeaker", "Brush Weaker", C::SceneView, "Shift+[").repeat = true;
     b.add("terrain.brushStronger", "Brush Stronger", C::SceneView, "Shift+]").repeat = true;

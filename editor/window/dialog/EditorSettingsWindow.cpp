@@ -18,11 +18,14 @@
 #include "reload/HotReloadService.h"
 #include "util/ExternalCodeEditor.h"
 #include "htmlui/VideoImporter.h"
+#include "lattice/LatticeEditorOps.h"
+#include "shortcuts/CommandCatalog.h"
 
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <functional>
+#include <string>
 
 #include <cstdlib>
 #if defined(_WIN32)
@@ -51,6 +54,7 @@ namespace {
         AssetPipeline,
         Scripting,
         Undo,
+        Lattice,
         ExternalTools,
         Logging,
         ShaderCache,
@@ -201,6 +205,7 @@ void EditorSettingsWindow::open(Project* project) {
     m_ffmpegOverride = AppSettings::getFfmpegPath();
     refreshFfmpegStatus();
     m_editorVSyncEnabled = AppSettings::getEditorVSyncEnabled();
+    m_uiScalePercent = static_cast<int>(std::lround(AppSettings::getUiScale() * 100.0f));
     m_autosaveEnabled = AppSettings::isAutosaveEnabled();
     m_autosaveInterval = AppSettings::getAutosaveIntervalSeconds();
     m_htmlUiAutoImport = AppSettings::getHtmlUiAutoImport();
@@ -226,6 +231,7 @@ void EditorSettingsWindow::open(Project* project) {
     m_undoRecordSelection = AppSettings::getUndoRecordSelection();
     m_undoReviewPlayChanges = AppSettings::getUndoReviewPlayChanges();
     m_logging = AppSettings::getLoggingSettings();
+    m_lattice = AppSettings::getLatticeViewSettings();
     m_defaultExportDirectory = AppSettings::getDefaultExportDirectory();
     refreshEmsdkStatus();
 }
@@ -240,6 +246,13 @@ bool EditorSettingsWindow::showPage(const std::string& name) {
 const char* EditorSettingsWindow::pageName() const {
     const SettingsPage* page = settingsui::pageAt(SettingsScope::Preference, m_category);
     return page ? page->displayName().c_str() : "";
+}
+
+void EditorSettingsWindow::open(Project* project, const std::string& category) {
+    open(project);
+    if (showPage(category)) {
+        m_categorySearch[0] = '\0';
+    }
 }
 
 LocalBuildSettings EditorSettingsWindow::projectBuildSettings() const {
@@ -332,6 +345,7 @@ void EditorSettingsWindow::drawSettings() {
         case PreferencesCategory::AssetPipeline: drawAssetPipelineSettings(); break;
         case PreferencesCategory::Scripting: drawScriptingSettings(); break;
         case PreferencesCategory::Undo: drawUndoSettings(); break;
+        case PreferencesCategory::Lattice: drawLatticeSettings(); break;
         case PreferencesCategory::ExternalTools: drawExternalToolsSettings(); break;
         case PreferencesCategory::Logging: drawLoggingSettings(); break;
         case PreferencesCategory::ShaderCache: drawAdvancedSettings(); break;
@@ -419,6 +433,26 @@ void EditorSettingsWindow::drawGeneralSettings() {
             ImGui::Checkbox("##EditorVSync", &m_editorVSyncEnabled);
         }
 
+        if (settingsui::beginRow("preferences.ui_scale")) {
+            if (prefsBeginSettingsRow("UI Scale",
+                                 "Size of the editor text and panels, on top of the display scale the system reports.",
+                                 m_uiScalePercent != 100)) {
+                m_uiScalePercent = 100;
+            }
+            static constexpr int uiScalePercents[] = { 50, 75, 90, 100, 110, 125, 150, 175, 200, 250, 300 };
+            ImGui::SetNextItemWidth(Theme::dpi(100.0f));
+            if (ImGui::BeginCombo("##EditorUiScale", (std::to_string(m_uiScalePercent) + "%").c_str(), ImGuiComboFlags_HeightLarge)) {
+                for (int percent : uiScalePercents) {
+                    const bool selected = percent == m_uiScalePercent;
+                    if (ImGui::Selectable((std::to_string(percent) + "%").c_str(), selected)) {
+                        m_uiScalePercent = percent;
+                    }
+                    if (selected) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+        }
+
         sectionRow("Auto Save");
         if (settingsui::beginRow("preferences.auto_save")) {
             if (prefsBeginSettingsRow("Auto Save Scenes",
@@ -496,6 +530,92 @@ void EditorSettingsWindow::drawCodeEditorSettings() {
             ImGui::SetNextItemWidth(Theme::dpi(120.0f));
             ImGui::DragFloat("##CodeEditorFontSize", &m_codeEditorFontSize, 0.2f, AppSettings::minCodeEditorFontSize,
                              AppSettings::maxCodeEditorFontSize, "%.0f", ImGuiSliderFlags_AlwaysClamp);
+        }
+    });
+}
+
+void EditorSettingsWindow::drawLatticeSettings() {
+    prefsDrawSettingsPanel("##EditorLatticeSettingsPanel", [this]() {
+        const LatticeViewSettings defaults;
+        const ImGuiColorEditFlags colorFlags = ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar;
+
+        auto colorRow = [&](const char* key, const char* label, const char* tooltip, std::array<float, 4>& color,
+                            const std::array<float, 4>& defaultColor) {
+            if (!settingsui::beginRow(key)) return;
+            if (prefsBeginSettingsRow(label, tooltip, color != defaultColor)) {
+                color = defaultColor;
+            }
+            ImGui::ColorEdit4((std::string("##Lattice") + label).c_str(), color.data(), colorFlags);
+        };
+
+        if (sectionRow("Cage")) {
+            colorRow("preferences.lattice.line_color", "Line Colour", "Edges of the cage at their rest length (the middle of the stretch gradient).",
+                     m_lattice.lineColor, defaults.lineColor);
+            if (settingsui::beginRow("preferences.lattice.line_thickness")) {
+                if (prefsBeginSettingsRow("Line Thickness", "Width of the cage's edges in pixels.", m_lattice.lineThickness != defaults.lineThickness)) {
+                    m_lattice.lineThickness = defaults.lineThickness;
+                }
+                ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+                ImGui::SliderFloat("##LatticeLineThickness", &m_lattice.lineThickness, 1.0f, 4.0f, "%.0f px", ImGuiSliderFlags_AlwaysClamp);
+            }
+            if (settingsui::beginRow("preferences.lattice.behind_opacity")) {
+                if (prefsBeginSettingsRow("Behind Geometry", "Opacity of the parts of the cage that meshes hide (3D views).",
+                                     m_lattice.behindOpacity != defaults.behindOpacity)) {
+                    m_lattice.behindOpacity = defaults.behindOpacity;
+                }
+                ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+                ImGui::SliderFloat("##LatticeBehindOpacity", &m_lattice.behindOpacity, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+            }
+        }
+
+        if (sectionRow("Points")) {
+            if (settingsui::beginRow("preferences.lattice.point_size")) {
+                if (prefsBeginSettingsRow("Point Size", "Size of the point squares in pixels.", m_lattice.pointSize != defaults.pointSize)) {
+                    m_lattice.pointSize = defaults.pointSize;
+                }
+                ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+                ImGui::SliderFloat("##LatticePointSize", &m_lattice.pointSize, 3.0f, 20.0f, "%.0f px", ImGuiSliderFlags_AlwaysClamp);
+            }
+            colorRow("preferences.lattice.point_color", "Point Colour", nullptr, m_lattice.pointColor, defaults.pointColor);
+            colorRow("preferences.lattice.selected_point_color", "Selected Point Colour", nullptr, m_lattice.selectedPointColor,
+                     defaults.selectedPointColor);
+        }
+
+        if (sectionRow("Stretch")) {
+            if (settingsui::beginRow("preferences.lattice.stretch_coloring")) {
+                if (prefsBeginSettingsRow("Stretch Colouring", "Colour the edges by their length over their rest length: squashed edges "
+                                     "towards the squash colour (at half), stretched ones towards the stretch colour (at twice).",
+                                     m_lattice.stretchColoring != defaults.stretchColoring)) {
+                    m_lattice.stretchColoring = defaults.stretchColoring;
+                }
+                ImGui::Checkbox("##LatticeStretchColoring", &m_lattice.stretchColoring);
+            }
+            ImGui::BeginDisabled(!m_lattice.stretchColoring);
+            colorRow("preferences.lattice.squash_color", "Squash Colour", nullptr, m_lattice.squashColor, defaults.squashColor);
+            colorRow("preferences.lattice.stretch_color", "Stretch Colour", nullptr, m_lattice.stretchColor, defaults.stretchColor);
+            ImGui::EndDisabled();
+        }
+
+        if (sectionRow("Proportional Falloff")) {
+            static const char* curves[] = {"Smooth", "Linear", "Sharp", "Constant"};
+            if (settingsui::beginRow("preferences.lattice.falloff_curve")) {
+                const std::string falloffKey = CommandCatalog::editor().menuShortcutText("lattice.toggleFalloff");
+                const std::string tooltip = "How the points around the moved ones follow them" +
+                    (falloffKey.empty() ? std::string(".") : " (" + falloffKey + " toggles the falloff).");
+                if (prefsBeginSettingsRow("Falloff Curve", tooltip.c_str(), m_lattice.falloffCurve != defaults.falloffCurve)) {
+                    m_lattice.falloffCurve = defaults.falloffCurve;
+                }
+                ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+                ImGui::Combo("##LatticeFalloffCurve", &m_lattice.falloffCurve, curves, IM_ARRAYSIZE(curves));
+            }
+            if (settingsui::beginRow("preferences.lattice.falloff_radius")) {
+                if (prefsBeginSettingsRow("Default Radius", "Falloff radius in lattice local units (the cage is 1 across); "
+                                     "the mouse wheel changes it during a drag.", m_lattice.falloffRadius != defaults.falloffRadius)) {
+                    m_lattice.falloffRadius = defaults.falloffRadius;
+                }
+                ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+                ImGui::DragFloat("##LatticeFalloffRadius", &m_lattice.falloffRadius, 0.01f, 0.01f, 10.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+            }
         }
     });
 }
@@ -932,6 +1052,20 @@ bool EditorSettingsWindow::applySettings() {
     AppSettings::setEditorVSyncEnabled(m_editorVSyncEnabled);
     AppSettings::setAutosaveEnabled(m_autosaveEnabled);
     AppSettings::setAutosaveIntervalSeconds(m_autosaveInterval);
+    AppSettings::setUiScale(m_uiScalePercent / 100.0f);
+    const LatticeViewSettings previousLattice = AppSettings::getLatticeViewSettings();
+    AppSettings::setLatticeViewSettings(m_lattice);
+    const LatticeViewSettings lattice = AppSettings::getLatticeViewSettings();
+    if (lattice.falloffCurve != previousLattice.falloffCurve || lattice.falloffRadius != previousLattice.falloffRadius) {
+        // new defaults take over the falloff the Scene view uses
+        LatticeEditorOps::falloff().curve = static_cast<LatticeFalloffCurve>(lattice.falloffCurve);
+        LatticeEditorOps::falloff().radius = lattice.falloffRadius;
+    }
+    if (lattice != previousLattice && m_project) {
+        for (SceneProject& sceneProject : m_project->getScenes()) {
+            sceneProject.needUpdateRender = true;
+        }
+    }
     AppSettings::setHtmlUiAutoImport(m_htmlUiAutoImport);
     // the watcher starts again on the project when how it watches changed
     static const char* const watcherNames[] = {"auto", "native", "polling"};

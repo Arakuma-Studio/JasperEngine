@@ -11,7 +11,9 @@
 #include "AppMenuCommand.h"
 #include "Backend.h"
 #include "Out.h"
+#include "lattice/LatticeSceneTools.h"
 #include "shortcuts/DefaultCommands.h"
+#include "util/FluidEditorTools.h"
 #include "shortcuts/ShortcutOverrides.h"
 #include "util/EditorScripts.h"
 #include "util/EntityClipboard.h"
@@ -182,6 +184,9 @@ void editor::App::registerCommands(){
     tool("tools.rect", MainToolbar::Tool::Rect);
     bind("tools.toggleGlobalLocal", [this](const CommandArgs&) { mainToolbar->toggleGlobalTransform(); },
          [this]() { return project.getSelectedScene() != nullptr; }, noDrag);
+    // Physics (G): a modifier of Move/Rotate/Scale; turning it off always works
+    bind("tools.physics", [this](const CommandArgs&) { mainToolbar->togglePhysicsMode(); },
+         [this]() { return mainToolbar->isPhysicsMode() || mainToolbar->canUsePhysics(); }, noDrag);
 
     // ---- Scene View: the selected scene's view, a 3D one for the camera keys
     auto scene3D = [this]() {
@@ -204,16 +209,33 @@ void editor::App::registerCommands(){
         const SceneProject* scene = project.getSelectedScene();
         return scene && scene->scene && terrainEditWindow->isEditingScene(scene->scene);
     };
-    auto brush = [this, &bind, terrainEditing, noDrag](const char* id, bool size, float factor) {
-        bind(id, [this, size, factor](const CommandArgs&) {
-            if (size) terrainEditWindow->adjustBrushSize(factor);
+    // Paint Dye (a fluid's brush) takes [ and ] for its radius while it is armed
+    auto dyePainting = [this]() {
+        const SceneProject* scene = project.getSelectedScene();
+        return scene && scene->sceneRender && scene->sceneRender->isFluidPainting();
+    };
+    auto brush = [this, &bind, terrainEditing, dyePainting, noDrag](const char* id, bool size, float factor) {
+        bind(id, [this, size, factor, dyePainting](const CommandArgs&) {
+            if (size && dyePainting()) FluidEditorTools::adjustRadius(factor);
+            else if (size) terrainEditWindow->adjustBrushSize(factor);
             else terrainEditWindow->adjustBrushStrength(factor);
-        }, terrainEditing, noDrag);
+        }, [terrainEditing, dyePainting, size]() { return terrainEditing() || (size && dyePainting()); }, noDrag);
     };
     brush("terrain.brushSmaller", true, 1.0f / 1.15f);
     brush("terrain.brushLarger", true, 1.15f);
     brush("terrain.brushWeaker", false, 1.0f / 1.15f);
     brush("terrain.brushStronger", false, 1.15f);
+
+    // ---- Lattice points, while the selected scene edits a lattice's points
+    auto points = [this, &bind, noDrag](const char* id, LatticeSceneTools::PointAction action) {
+        bind(id, [this, action](const CommandArgs&) { LatticeSceneTools::runPointAction(&project, project.getSelectedSceneId(), action); },
+             [this]() { return LatticeSceneTools::isEditingPoints(&project, project.getSelectedSceneId()); }, noDrag);
+    };
+    points("lattice.selectNone", LatticeSceneTools::PointAction::SelectNone);
+    points("lattice.invert", LatticeSceneTools::PointAction::Invert);
+    points("lattice.expand", LatticeSceneTools::PointAction::Expand);
+    points("lattice.shrink", LatticeSceneTools::PointAction::Shrink);
+    points("lattice.toggleFalloff", LatticeSceneTools::PointAction::ToggleFalloff);
 
     // ---- Project window: its file operations, not while typing in its search field
     auto projectKeys = []() { return !ImGui::GetIO().WantTextInput; };

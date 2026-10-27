@@ -1157,6 +1157,17 @@ unsigned int modifierMaskForKey(KeySym key) {
     }
 }
 
+// Play expects these keys' chars, but Shift+Tab (ISO_Left_Tab) looks up as no text
+unsigned int controlCharForKey(KeySym key) {
+    switch (key) {
+        case XK_BackSpace: return '\b';
+        case XK_Tab: return '\t';
+        case XK_Return: case XK_KP_Enter: return '\r';
+        case XK_Escape: return 0x1b;
+        default: return 0;
+    }
+}
+
 void addModifiers(ImGuiIO& io, unsigned int state) {
     io.AddKeyEvent(ImGuiMod_Ctrl, (state & ControlMask) != 0);
     io.AddKeyEvent(ImGuiMod_Shift, (state & ShiftMask) != 0);
@@ -1227,20 +1238,19 @@ std::string resourceManagerString() {
 }
 
 // GNOME/KDE UI scale is Xft.dpi / 96 (any value, not a fixed percent).
-// RandR mm-width is physical DPI and often disagrees, so prefer Xft.dpi
-// / toolkit env vars when they are set.
+// Without it, 100% like GTK and Qt apps, not the monitor's physical DPI.
 float desktopUiScale() {
     if (const float gdkScale = envScale("GDK_SCALE")) return gdkScale;
     if (const float qtScale = envScale("QT_SCALE_FACTOR")) return qtScale;
 
     const std::string resources = resourceManagerString();
-    if (resources.empty()) return 0.0f;
+    if (resources.empty()) return 1.0f;
     XrmInitialize();
     XrmDatabase database = XrmGetStringDatabase(resources.c_str());
-    if (!database) return 0.0f;
+    if (!database) return 1.0f;
     XrmValue value;
     char* type = nullptr;
-    float scale = 0.0f;
+    float scale = 1.0f;
     if (XrmGetResource(database, "Xft.dpi", "Xft.Dpi", &type, &value) && value.addr) {
         const float dpi = std::strtof(value.addr, nullptr);
         if (dpi > 0.0f) {
@@ -1302,7 +1312,7 @@ void screenWorkArea(int& width, int& height) {
 void applyDesktopUiScaleToMonitors() {
     ImGuiPlatformIO& platformIo = ImGui::GetPlatformIO();
     const float uiScale = desktopUiScale();
-    if (uiScale <= 0.0f || platformIo.Monitors.empty()) return;
+    if (platformIo.Monitors.empty()) return;
     if (platformIo.Monitors[0].DpiScale == uiScale) return;
     for (ImGuiPlatformMonitor& monitor : platformIo.Monitors)
         monitor.DpiScale = uiScale;
@@ -1328,11 +1338,6 @@ void updateMonitors() {
                         ImVec2(static_cast<float>(crtc->x), static_cast<float>(crtc->y));
                     monitor.MainSize = monitor.WorkSize =
                         ImVec2(static_cast<float>(crtc->width), static_cast<float>(crtc->height));
-                    if (output->mm_width > 0) {
-                        const float dpi = static_cast<float>(crtc->width) * 25.4f /
-                                          static_cast<float>(output->mm_width);
-                        monitor.DpiScale = std::clamp(dpi / 96.0f, 0.5f, 4.0f);
-                    }
                     monitor.PlatformHandle = reinterpret_cast<void*>(
                         static_cast<uintptr_t>(resources->outputs[i]));
                     if (resources->outputs[i] == primary)
@@ -1644,6 +1649,9 @@ void handleKeyEvent(NativeWindow* window, XKeyEvent& event, bool pressed) {
         if (length > 0 && length < static_cast<int>(sizeof(buffer))) {
             buffer[length] = '\0';
             io.AddInputCharactersUTF8(buffer);
+        } else if (length == 0) {
+            if (const unsigned int control = controlCharForKey(keySym))
+                io.AddInputCharacter(control);
         }
     }
 }

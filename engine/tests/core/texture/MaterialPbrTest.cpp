@@ -27,6 +27,11 @@ namespace {
         uint8_t _pad_28[4];
         Vector3 emissiveFactor;
         float foliageTransmission;
+        // upstream's Stochastic Tiling (before S11 on the upstream sync)
+        float stochasticCellSize;
+        float stochasticBlendSharpness;
+        float stochasticContrast;
+        float stochasticRotation;
         Texture baseColorTexture;
         Texture emissiveTexture;
         Texture metallicRoughnessTexture;
@@ -34,6 +39,7 @@ namespace {
         Texture normalTexture;
         MaterialAlphaMode alphaMode;
         MaterialLighting lighting;
+        bool stochasticTiling;
         int baseColorTexCoord;
         int metallicRoughnessTexCoord;
         int occlusionTexCoord;

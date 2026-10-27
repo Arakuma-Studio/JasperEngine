@@ -97,19 +97,20 @@ vec3 getTerrainNormal(vec3 normal, vec3 position){
 
         vec3 dA = delta * normalize(cross(normal.yzx, normal));
         vec3 dB = delta * normalize(cross(dA, normal));
-        vec3 p = position;
-        vec3 pA = position + dA;
-        vec3 pB = position + dB;
 
-        float h = getHeight(position);
-        float hA = getHeight(pA);
-        float hB = getHeight(pB);
+        // Central differences: a one-sided slope sits half a step off the vertex, so the rim
+        // of a cliff read as flat ground and the flat projection streaked down its wall
+        vec3 pA0 = position - dA;
+        vec3 pA1 = position + dA;
+        vec3 pB0 = position - dB;
+        vec3 pB1 = position + dB;
 
-        p += normal * h;
-        pA += normal * hA;
-        pB += normal * hB;
+        pA0 += normal * getHeight(pA0);
+        pA1 += normal * getHeight(pA1);
+        pB0 += normal * getHeight(pB0);
+        pB1 += normal * getHeight(pB1);
 
-        normal = normalize(cross(pB - p, pA - p));
+        normal = normalize(cross(pB1 - pB0, pA1 - pA0));
 
         #ifdef TERRAIN_SURFACE_VARYINGS
             v_terrainNormal = normal;

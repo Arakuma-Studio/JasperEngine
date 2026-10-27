@@ -110,10 +110,36 @@ namespace jasperengine{
         // the larger restitution.
         float friction = 0.2f;
         float restitution = 0.0f;
+        // In a water (a mesh drawn with library:water, Water.h), Jolt's buoyancy at the centre
+        // of mass each fixed step: 1 neutral, more floats, less sinks, 0 ignores the water
+        // (the default). The drags slow the body moving and turning in it (Jolt's linear drag
+        // about 0.5, angular about 0.01 times the body's size).
+        float buoyancy = 0.0f;
+        float waterDrag = 0.5f;
+        float waterAngularDrag = 0.01f;
         uint8_t allowedDOFs = RigidbodyAllowedDOF_All;
         bool sensor = false;
         bool newBody = true;
         Vector3 loadedScale = Vector3::UNIT_SCALE;
+
+        // Runtime state of the body sync (PhysicsSystem), not saved
+        // kinematic, moving to its Transform with MoveKinematic over the frame's fixed steps (each
+        // part on its own: a part not followed keeps its own velocity)
+        bool followingPosition = false;
+        bool followingRotation = false;
+        // the last step of a frame put the followed parts at the Transform
+        bool followReached = false;
+        // the velocities the following set: a part stops with them unless a script changed them
+        Vector3 followedLinearVelocity;
+        Vector3 followedAngularVelocity;
+        // pose before the last step, drawn towards the current one
+        Vector3 previousPosition;
+        Quaternion previousRotation;
+        // world pose physics and the Transform last agreed on (written to the Transform, or
+        // the body put at it): a Transform still there was moved by nobody else since
+        bool hasSyncedPose = false;
+        Vector3 syncedPosition;
+        Quaternion syncedRotation;
 
         // Collision filter bits (Rigidbody::setBitsFilter), kept across body reloads. Two
         // bodies collide when each one's category meets the other's mask and the Layer

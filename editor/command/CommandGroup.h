@@ -34,6 +34,10 @@ namespace jasperengine::editor{
         bool execute() override;
         void undo() override;
 
+        // false when any command refuses (Command::canUndo/canRedo)
+        bool canUndo() const override;
+        bool canRedo() const override;
+
         bool affectsStructure() const override;
 
         std::string describe() const override;

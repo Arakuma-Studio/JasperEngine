@@ -24,6 +24,7 @@
 
 #include <list>
 #include <memory>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -156,6 +157,12 @@ namespace jasperengine::htmlui {
     JASPERENGINE_INTERNAL EffectSnapshotResult snapshotFromCall(const std::string& arguments, bool filterForm);
     // a snapshot's canonical texts and cache key
     JASPERENGINE_INTERNAL void finishSnapshot(EffectParamsSnapshot& snapshot);
+    // @preset (an effect with an enum parameter `preset` written literally): every parameter the
+    // chosen preset lists that the author did not write (not in `written`) takes the preset's
+    // value; a written one keeps its value, its default included. snapshotFromCall applies it; the
+    // RCSS path gets the same values from EffectSyntax::toRcss, which writes them into the slots
+    JASPERENGINE_INTERNAL void applyEffectPreset(const EffectManifest& manifest, std::vector<EffectValue>& values,
+                                                 const std::set<std::string>& written);
 
 }
 

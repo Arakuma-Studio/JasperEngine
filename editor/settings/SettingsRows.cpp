@@ -18,6 +18,7 @@
 #include "mcp/McpRefs.h"
 #include "registry/TagManager.h"
 #include "util/CxxStandards.h"
+#include "util/FileUtils.h"
 #include "window/ConsoleWindow.h"
 
 #include <algorithm>
@@ -164,7 +165,7 @@ bool readProjectFile(SettingsContext& ctx, const Json& value, fs::path& out, std
     }
     fs::path absolute;
     if (!mcp::McpRefs::resolveProjectPath(ctx.project(), text, absolute, error, true)) return false;
-    out = fs::path(text).lexically_normal();
+    out = FileUtils::pathFromUtf8(text).lexically_normal();
     return true;
 }
 
@@ -269,7 +270,7 @@ Setting pathSetting(const std::string& key, const std::string& description, std:
     s.key = key;
     s.type = "path";
     s.description = description + " Project-relative file path; \"\" clears it.";
-    s.get = [field](SettingsContext& ctx) { return Json(field(*ctx.project()).generic_string()); };
+    s.get = [field](SettingsContext& ctx) { return Json(FileUtils::pathToGenericUtf8(field(*ctx.project()))); };
     s.set = [field](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
         fs::path path;
         if (!readProjectFile(ctx, value, path, error)) return false;
@@ -464,7 +465,7 @@ std::vector<Setting> mcpSettingsTable() {
             s.key = "player.window_icon";
             s.type = "path";
             s.description = "Default icon (desktop window and platforms without their own), a project-relative image; \"\" clears it.";
-            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getWindowIcon().generic_string()); };
+            s.get = [](SettingsContext& ctx) { return Json(FileUtils::pathToGenericUtf8(ctx.project()->getWindowIcon())); };
             s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
                 fs::path path;
                 if (!readProjectFile(ctx, value, path, error)) return false;
@@ -630,6 +631,11 @@ std::vector<Setting> mcpSettingsTable() {
         add(boolField("ios.hide_status_bar", "Hide the iOS status bar.", [](Project& p) -> bool& { return p.getIOSProjectSettings().hideStatusBar; }));
         add(boolField("ios.hide_home_indicator", "Hide the iOS home indicator.", [](Project& p) -> bool& { return p.getIOSProjectSettings().hideHomeIndicator; }));
         add(boolField("ios.supports_high_refresh_rate", "Allow 120 Hz on ProMotion devices.", [](Project& p) -> bool& { return p.getIOSProjectSettings().supportsHighRefreshRate; }));
+        add(boolField("ios.admob_enabled", "Link Google Mobile Ads into the iOS export (System.initializeAdMob and the interstitial calls); needs ios.admob_app_id.",
+                      [](Project& p) -> bool& { return p.getIOSProjectSettings().admobEnabled; }));
+        add(stringSetting("ios.admob_app_id", "iOS AdMob App ID (GADApplicationIdentifier) from the AdMob console; without it the export leaves AdMob out.",
+                          [](Project& p) -> std::string& { return p.getIOSProjectSettings().admobAppId; },
+                          isAdMobAppIdValid, "an AdMob app ID like ca-app-pub-0000000000000000~0000000000 (not an ad unit ID)"));
         add(stringSetting("android.application_name", "Android label override.", [](Project& p) -> std::string& { return p.getAndroidProjectSettings().applicationName; }));
         add(stringSetting("android.package_name", "Android package name override.", [](Project& p) -> std::string& { return p.getAndroidProjectSettings().packageName; },
                           [](const std::string& v) { return isDottedIdentifier(v, javaIdPart); }, "a Java package name (dot-separated identifiers)"));
@@ -747,6 +753,11 @@ std::vector<Setting> mcpSettingsTable() {
         add(boolField("android.allow_backup", "Android allowBackup.", [](Project& p) -> bool& { return p.getAndroidProjectSettings().allowBackup; }));
         add(boolField("android.fullscreen", "Android fullscreen theme.", [](Project& p) -> bool& { return p.getAndroidProjectSettings().fullscreen; }));
         add(boolField("android.keep_screen_on", "Keep the Android screen on.", [](Project& p) -> bool& { return p.getAndroidProjectSettings().keepScreenOn; }));
+        add(boolField("android.admob_enabled", "Compile Google Mobile Ads into the Android export (System.initializeAdMob and the interstitial calls); needs android.admob_app_id.",
+                      [](Project& p) -> bool& { return p.getAndroidProjectSettings().admobEnabled; }));
+        add(stringSetting("android.admob_app_id", "Android AdMob App ID (com.google.android.gms.ads.APPLICATION_ID) from the AdMob console; without it the export leaves AdMob out.",
+                          [](Project& p) -> std::string& { return p.getAndroidProjectSettings().admobAppId; },
+                          isAdMobAppIdValid, "an AdMob app ID like ca-app-pub-0000000000000000~0000000000 (not an ad unit ID)"));
 
         // ---- graphics / quality
         for (const bool width : {true, false}) {
@@ -952,7 +963,7 @@ std::vector<Setting> mcpSettingsTable() {
                             "here can be passed back verbatim; a NEW entry must be an existing project-relative directory.";
             s.get = [](SettingsContext& ctx) {
                 Json list = Json::array();
-                for (const fs::path& dir : ctx.project()->getScriptDirs()) list.push_back(dir.generic_string());
+                for (const fs::path& dir : ctx.project()->getScriptDirs()) list.push_back(FileUtils::pathToGenericUtf8(dir));
                 return list;
             };
             s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
@@ -968,7 +979,7 @@ std::vector<Setting> mcpSettingsTable() {
                         error = "entries must be strings";
                         return false;
                     }
-                    const fs::path dir = fs::path(item.get<std::string>()).lexically_normal();
+                    const fs::path dir = FileUtils::pathFromUtf8(item.get<std::string>()).lexically_normal();
                     const bool known = std::any_of(configured.begin(), configured.end(),
                                                    [&dir](const fs::path& c) { return c.lexically_normal() == dir; });
                     if (!known) {
@@ -995,13 +1006,13 @@ std::vector<Setting> mcpSettingsTable() {
                 ? "Root of Lua script references (lua://), project-relative directory (\".\" = project root). Changing it MOVES referenced files and rewrites references."
                 : "Root of asset references (textures, models, sounds, fonts), project-relative directory (\".\" = project root). Changing it MOVES referenced files and rewrites references.";
             s.get = [lua](SettingsContext& ctx) {
-                return Json((lua ? ctx.project()->getLuaDir() : ctx.project()->getAssetsDir()).generic_string());
+                return Json(FileUtils::pathToGenericUtf8(lua ? ctx.project()->getLuaDir() : ctx.project()->getAssetsDir()));
             };
             s.set = [lua](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
                 Project* p = ctx.project();
                 std::string text;
                 if (!readString(value, text, error)) return false;
-                fs::path dir = text.empty() ? fs::path(".") : fs::path(text).lexically_normal();
+                fs::path dir = text.empty() ? fs::path(".") : FileUtils::pathFromUtf8(text).lexically_normal();
                 if (dir != ".") {
                     fs::path absolute;
                     if (!mcp::McpRefs::resolveProjectPath(p, text, absolute, error)) return false;
@@ -1273,8 +1284,8 @@ std::vector<Setting> mcpSettingsTable() {
         stringPreference("preferences.ffmpeg_path", "External Tools: ffmpeg for video imports (\"\" = JASPER_FFMPEG / PATH).",
                          [] { return AppSettings::getFfmpegPath(); }, [](const std::string& v) { AppSettings::setFfmpegPath(v); });
         stringPreference("preferences.default_export_dir", "Default output directory for builds of projects that have none yet.",
-                         [] { return AppSettings::getDefaultExportDirectory().generic_string(); },
-                         [](const std::string& v) { AppSettings::setDefaultExportDirectory(v); });
+                         [] { return FileUtils::pathToGenericUtf8(AppSettings::getDefaultExportDirectory()); },
+                         [](const std::string& v) { AppSettings::setDefaultExportDirectory(FileUtils::pathFromUtf8(v)); });
         // Compiler kit and jobs, per project (.jasperengine/user/build.yaml)
         struct KitField {
             const char* key;
@@ -1403,6 +1414,8 @@ const Placement placements[] = {
     {"ios.hide_status_bar", "Player", "iOS", "Hide Status Bar", "ios"},
     {"ios.hide_home_indicator", "Player", "iOS", "Hide Home Indicator", "ios"},
     {"ios.supports_high_refresh_rate", "Player", "iOS", "High Refresh Rate", "ios promotion 120 hz"},
+    {"ios.admob_enabled", "Player", "iOS", "Google AdMob", "ios ads advertising mobile ads sdk"},
+    {"ios.admob_app_id", "Player", "iOS", "AdMob App ID", "ios ads advertising gadapplicationidentifier"},
     {"android.application_name", "Player", "Android", "App Name", "android label"},
     {"android.package_name", "Player", "Android", "Package Name", "android"},
     {"android.version_code", "Player", "Android", "Version Code", "android"},
@@ -1418,6 +1431,8 @@ const Placement placements[] = {
     {"android.allow_backup", "Player", "Android", "Application Options", "android allow backup"},
     {"android.keep_screen_on", "Player", "Android", "Keep Screen On", "android application options"},
     {"android.fullscreen", "Player", "Android", "Screen Options", "android fullscreen"},
+    {"android.admob_enabled", "Player", "Android", "Google AdMob", "android ads advertising mobile ads sdk"},
+    {"android.admob_app_id", "Player", "Android", "AdMob App ID", "android ads advertising application id"},
     {"graphics.canvas_width", "Graphics", "", "Canvas Width", "reference resolution"},
     {"graphics.canvas_height", "Graphics", "", "Canvas Height", "reference resolution"},
     {"graphics.scaling_mode", "Graphics", "", "Scaling Mode", "letterbox fit crop stretch"},
@@ -1525,9 +1540,10 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"Asset Pipeline", SettingsScope::Preference, 2, "refresh watcher hot reload"},
         {"Scripting", SettingsScope::Preference, 3, "hot reload during play external script editor"},
         {"Undo", SettingsScope::Preference, 4, "undo redo history"},
-        {"External Tools", SettingsScope::Preference, 5, "cmake compiler emscripten ffmpeg"},
-        {"Logging", SettingsScope::Preference, 6, "log levels"},
-        {"Shader Cache", SettingsScope::Preference, 7, "shaders cache clear"},
+        {"Lattice", SettingsScope::Preference, 5, "lattice cage deformer"},
+        {"External Tools", SettingsScope::Preference, 6, "cmake compiler emscripten ffmpeg"},
+        {"Logging", SettingsScope::Preference, 7, "log levels"},
+        {"Shader Cache", SettingsScope::Preference, 8, "shaders cache clear"},
     };
     for (const SettingsPage& page : pages) {
         // two scopes may share a title (Scripting): names stay unique
@@ -1581,6 +1597,8 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
     const char* general = "General";
     addOrAbort(registry, uiRow("preferences.editor_vsync", general, "", "Editor VSync", "vertical sync refresh",
         [](SettingsContext&) { return Json(AppSettings::getEditorVSyncEnabled()); }));
+    addOrAbort(registry, uiRow("preferences.ui_scale", general, "", "UI Scale", "zoom size text panels dpi",
+        [](SettingsContext&) { return Json(AppSettings::getUiScale()); }));
     addOrAbort(registry, uiRow("preferences.auto_save", general, "Auto Save", "Auto Save Scenes", "autosave backup",
         [](SettingsContext&) { return Json(AppSettings::isAutosaveEnabled()); }));
     addOrAbort(registry, uiRow("preferences.auto_save_interval", general, "Auto Save", "Auto Save Interval (s)", "autosave backup seconds",
@@ -1622,6 +1640,33 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         [](SettingsContext&) { return Json(AppSettings::getUndoRecordSelection()); }));
     addOrAbort(registry, uiRow("preferences.undo_review_play_changes", undo, "", "Review Play Mode Changes", "keep play mode changes",
         [](SettingsContext&) { return Json(AppSettings::getUndoReviewPlayChanges()); }));
+    const char* lattice = "Lattice";
+    auto latticeRow = [&](const char* key, const char* section, const char* label, const char* keywords, auto value) {
+        addOrAbort(registry, uiRow(key, lattice, section, label, keywords,
+            [value](SettingsContext&) { return Json(value(AppSettings::getLatticeViewSettings())); }));
+    };
+    latticeRow("preferences.lattice.line_color", "Cage", "Line Colour", "color edges",
+               [](const LatticeViewSettings& v) { return v.lineColor; });
+    latticeRow("preferences.lattice.line_thickness", "Cage", "Line Thickness", "width edges",
+               [](const LatticeViewSettings& v) { return v.lineThickness; });
+    latticeRow("preferences.lattice.behind_opacity", "Cage", "Behind Geometry", "opacity hidden occluded",
+               [](const LatticeViewSettings& v) { return v.behindOpacity; });
+    latticeRow("preferences.lattice.point_size", "Points", "Point Size", "squares",
+               [](const LatticeViewSettings& v) { return v.pointSize; });
+    latticeRow("preferences.lattice.point_color", "Points", "Point Colour", "color",
+               [](const LatticeViewSettings& v) { return v.pointColor; });
+    latticeRow("preferences.lattice.selected_point_color", "Points", "Selected Point Colour", "color selection",
+               [](const LatticeViewSettings& v) { return v.selectedPointColor; });
+    latticeRow("preferences.lattice.stretch_coloring", "Stretch", "Stretch Colouring", "coloring gradient length",
+               [](const LatticeViewSettings& v) { return v.stretchColoring; });
+    latticeRow("preferences.lattice.squash_color", "Stretch", "Squash Colour", "color gradient",
+               [](const LatticeViewSettings& v) { return v.squashColor; });
+    latticeRow("preferences.lattice.stretch_color", "Stretch", "Stretch Colour", "color gradient",
+               [](const LatticeViewSettings& v) { return v.stretchColor; });
+    latticeRow("preferences.lattice.falloff_curve", "Proportional Falloff", "Falloff Curve", "smooth linear sharp constant",
+               [](const LatticeViewSettings& v) { return v.falloffCurve; });
+    latticeRow("preferences.lattice.falloff_radius", "Proportional Falloff", "Default Radius", "falloff size",
+               [](const LatticeViewSettings& v) { return v.falloffRadius; });
     addOrAbort(registry, uiRow("preferences.logging.reset", "Logging", "Category Levels", "Reset", "category levels info",
         [](SettingsContext&) { return Json(AppSettings::getLoggingSettings().categoryLevels.size()); }));
     addOrAbort(registry, uiRow("preferences.shader_cache", "Shader Cache", "", "Shader Cache", "clear shaders",
