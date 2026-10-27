@@ -249,15 +249,16 @@ namespace jasperengine {
         //     WebGPU)                                         error per draw; Metal, WebGPU:   a draw past it skipped, the first
         //                                                     writes past the end (asserts)    such frame logged
         //   stream staging (Vulkan)            16 MB / frame  the upload dropped, an error     streamStagingBytes; every STREAM
-        //                                                     per upload, every later upload   upload counted, one past it skipped,
-        //                                                     of the frame dropped too         the first such frame logged
+        //                                                     per upload, every later upload   upload counted, one past it skipped
+        //                                                     of the frame dropped too (a      (its owner uploads it next frame),
+        //                                                     still mesh never got its bones)  the first such frame logged
         //   descriptor buffer (Vulkan)         16 MB / frame  the draw dropped, an error per   descriptorBytes; every draw checked
         //                                                     draw, every later draw of the    against the room left, one past it
         //                                                     frame dropped too                skipped, the first such frame logged
         //   copy staging (Vulkan: immutable    4 MB           never: bigger uploads go in      left at sokol's default (each chunk
         //     data, DYNAMIC updates)                          4 MB chunks, each a blocking     is a queue submit and wait: DYNAMIC
         //                                                     submit and queue wait            resources should not change per frame)
-        //   bind group cache (WebGPU)          1,024 slots    never: a miss or collision      bindGroupsCacheSize (a power of 2)
+        //   bind group cache (WebGPU)          1,024 slots    never: a miss or collision       bindGroupsCacheSize (a power of 2)
         //                                                     creates a bind group (CPU cost)
         //   STREAM / DYNAMIC updates (GL,      none           no per-frame buffer: written     counted (stream bytes) on every
         //     D3D11, Metal, WebGPU)                           straight into the resource       backend, not limited
@@ -267,7 +268,9 @@ namespace jasperengine {
         //                                                     fails validation                 (RmlRenderer pages)
         //   resource pools (all)               128 .. 256     the object not made              buffers .. shaders above
         //
-        // The per-frame buffers are allocated once per frame in flight (2) in host-visible memory,
+        // So Metal has one such buffer (uniforms), D3D11 and GL none, WebGPU uniforms and the bind
+        // group cache, Vulkan uniforms, stream staging and descriptors. sokol's per-frame buffers are
+        // allocated once per frame in flight (2) in host-visible memory,
         // so their defaults depend on the platform (desktop / Android, iOS and the web). The
         // budgets: SystemRender::getUniformBytes*, getStreamBytes*, getDescriptorBytes*.
 
