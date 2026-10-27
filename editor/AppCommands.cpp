@@ -69,6 +69,13 @@ void editor::App::registerCommands(){
     // their own keys (as before the catalog)
     auto notAssetPanel = [this]() { return !projectWindow->isFocused() && !jobsMemoryWindow->isFocused(); };
     auto noDrag = [this]() { return !ImGui::IsMouseDown(ImGuiMouseButton_Right) && !ImGui::IsAnyItemActive(); };
+    // the scene's editing keys stay off while the Animation window editing a clip or the Pose
+    // Animation window (or a Scene view posing for it) has the keys: F2 would move the focus to
+    // the Inspector's name, Delete / Ctrl+D act on the poses and the clip keys there
+    auto sceneKeys = [this]() { return !clipWindowTakesKeys() && lastFocusedWindow != LastFocusedWindow::PoseAnimation; };
+    auto sceneKeysAnd = [sceneKeys](std::function<bool()> gate) {
+        return [sceneKeys, gate]() { return sceneKeys() && (!gate || gate()); };
+    };
 
     // ---- File
     enable("file.newScene3D", notBusy);
@@ -106,13 +113,13 @@ void editor::App::registerCommands(){
     auto timelineKeys = [this]() { return undoTarget() == UndoTimeline::Target::Timeline; };
     enable("edit.undo", [undoEnabled]() { return undoEnabled(true); }, timelineKeys);
     enable("edit.redo", [undoEnabled]() { return undoEnabled(false); }, timelineKeys);
-    enable("edit.selectAll", [this]() { return canSelectAll(); });
-    enable("edit.cut", [this]() { return canCutSelection(); });
-    enable("edit.copy", [this]() { return canCopySelection(); });
-    enable("edit.paste", [this]() { return canPasteSelection(false); });
-    enable("edit.pasteAsChild", [this]() { return canPasteSelection(true); });
-    enable("edit.duplicate", [this]() { return canEditSelection(true); }, notAssetPanel);
-    enable("edit.delete", [this]() { return canEditSelection(false); }, notAssetPanel);
+    enable("edit.selectAll", [this]() { return canSelectAll(); }, sceneKeys);
+    enable("edit.cut", [this]() { return canCutSelection(); }, sceneKeys);
+    enable("edit.copy", [this]() { return canCopySelection(); }, sceneKeys);
+    enable("edit.paste", [this]() { return canPasteSelection(false); }, sceneKeys);
+    enable("edit.pasteAsChild", [this]() { return canPasteSelection(true); }, sceneKeys);
+    enable("edit.duplicate", [this]() { return canEditSelection(true); }, sceneKeysAnd(notAssetPanel));
+    enable("edit.delete", [this]() { return canEditSelection(false); }, sceneKeysAnd(notAssetPanel));
     // F2 renames inline in the Hierarchy when it has focus, else in the Inspector
     bind("edit.rename", [this](const CommandArgs& args) {
         if (args.source == CommandSource::Keyboard) {
@@ -124,12 +131,12 @@ void editor::App::registerCommands(){
         const uint32_t sceneId = project.getSelectedSceneId();
         return !ImGui::GetIO().WantTextInput && !project.isAnyScenePlaying() && lastFocusedWindow == LastFocusedWindow::AnySceneWindow &&
                project.getSelectedScene() && project.getSelectedEntities(sceneId).size() == 1;
-    }, notAssetPanel);
+    }, sceneKeysAnd(notAssetPanel));
     enable("edit.frameSelected", [this]() {
         const SceneProject* scene = project.getSelectedScene();
         return scene && !ImGui::GetIO().WantTextInput && !project.isAnyScenePlaying() &&
                lastFocusedWindow == LastFocusedWindow::AnySceneWindow && sceneWindow->hasFrameableSelection(project.getSelectedSceneId());
-    }, noDrag);
+    }, sceneKeysAnd(noDrag));
     enable("edit.play", [this]() { return mainToolbar->canTogglePlay(); });
     enable("edit.pause", [this]() { return mainToolbar->canPause(); });
     enable("edit.step", [this]() { return mainToolbar->canStep(); });
