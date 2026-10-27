@@ -265,6 +265,11 @@ namespace jasperengine::editor{
         // default. Asks RenderSystem::resolveLighting / supportsLighting (the runtime's rules).
         static std::vector<MaterialLighting> getShaderLightingModes(const ShaderManifest* manifest);
         static bool supportsLighting(MaterialLighting mode, const ShaderManifest* manifest);
+        // Whether a shader with this manifest reads the material's own Normal Texture (on the 2D
+        // light path: @require normalmap, ShaderRequire_NormalMap) with the enabled features
+        // (ShaderReference::getEnabledFeatures). False for the built-in shader and forks without
+        // a manifest (null; they read it on every path) and for an absent manifest
+        static bool shaderReadsMaterialNormalMap(const ShaderManifest* manifest, const std::vector<std::string>& features);
         // The update flags a change from one material value to another needs (a whole-material
         // assignment outside a property command: linked material files)
         static uint64_t getMaterialUpdateFlags(const Material& from, const Material& to);

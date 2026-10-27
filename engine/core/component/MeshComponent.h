@@ -473,6 +473,12 @@ namespace jasperengine{
 
         CullingMode cullingMode = CullingMode::BACK;
         WindingOrder windingOrder = WindingOrder::CCW;
+        // The winding order already compensates a mirroring transform: a glTF import whose
+        // scene root or node with a negative determinant is placed on the entity transforms
+        // turns windingOrder to CW for it (MeshSystem::loadGLTF). Any other draw whose model
+        // matrix mirrors (negative determinant) reverses the face winding itself, so front faces
+        // stay front: RenderSystem::isMirroredDraw
+        bool mirroredWinding = false;
 
         bool needUpdateAABB = false;
         bool needUpdateBuffer = false;

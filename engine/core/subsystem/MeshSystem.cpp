@@ -590,9 +590,10 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
     mesh.buffer.addVector3(attNormal, Vector3(0.0f, 0.0f, 1.0f));
 
     // flat +Z quad with u along +X: constant tangent, so normal maps work with the
-    // 2D light path. Handedness (w) follows the V direction, which flipY inverts.
+    // 2D light path. The bitangent points where v shrinks, up the image (OpenGL green),
+    // which flipY turns toward +y (flatTangentHandedness)
     Attribute* attTangent = mesh.buffer.getAttribute(AttributeType::TANGENT);
-    Vector4 tangent = Vector4(1.0f, 0.0f, 0.0f, sprite.flipY ? -1.0f : 1.0f);
+    Vector4 tangent = Vector4(1.0f, 0.0f, 0.0f, flatTangentHandedness(sprite.flipY));
 
     mesh.buffer.addVector4(attTangent, tangent);
     mesh.buffer.addVector4(attTangent, tangent);
@@ -670,7 +671,8 @@ void MeshSystem::createSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, 
     Attribute* attTangent = mesh.buffer.getAttribute(AttributeType::TANGENT);
     Attribute* attColor = mesh.buffer.getAttribute(AttributeType::COLOR);
 
-    const Vector4 tangent = Vector4(1.0f, 0.0f, 0.0f, sprite.flipY ? -1.0f : 1.0f);
+    // the quad's tangent: the bitangent up the image (flatTangentHandedness)
+    const Vector4 tangent = Vector4(1.0f, 0.0f, 0.0f, flatTangentHandedness(sprite.flipY));
 
     // rows from the bottom (y0) up, x fastest
     for (int row = 0; row <= grid; row++){
@@ -711,9 +713,10 @@ void MeshSystem::createSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, 
 bool MeshSystem::createMeshPolygon(MeshPolygonComponent& polygon, MeshComponent& mesh){
     prepareMeshPolygonMesh(mesh);
 
-    // flat +Z polygon with u along +X (see texcoord generation below); handedness
-    // (w) follows the V direction, which flipY inverts
-    Vector4 tangent = Vector4(1.0f, 0.0f, 0.0f, polygon.flipY ? -1.0f : 1.0f);
+    // flat +Z polygon with u along +X (see texcoord generation below); the bitangent
+    // points where v shrinks, up the image, which flipY turns toward +y
+    // (flatTangentHandedness)
+    Vector4 tangent = Vector4(1.0f, 0.0f, 0.0f, flatTangentHandedness(polygon.flipY));
 
     for (int i = 0; i < polygon.points.size(); i++){
         mesh.buffer.addVector3(AttributeType::POSITION, polygon.points[i].position);
@@ -911,10 +914,14 @@ bool MeshSystem::createTilemap(TilemapComponent& tilemap, MeshComponent& mesh){
         mesh.buffer.addVector3(attNormal, Vector3(0.0f, 0.0f, 1.0f));
         mesh.buffer.addVector3(attNormal, Vector3(0.0f, 0.0f, 1.0f));
 
-        // flat +Z tiles with u along +X; handedness (w) follows the V direction,
-        // which flipY inverts
+        // flat +Z tiles: the tangent points where u grows, the bitangent where v shrinks,
+        // up the image, which flipY turns toward +y (flatTangentHandedness). A tile whose
+        // rect has a negative width or height (mirrored) has the mirror in its UVs: u then
+        // grows toward -x, and v turns too
+        const float mirrorX = tileRect.getWidth() < 0.0f ? -1.0f : 1.0f;
+        const float mirrorY = tileRect.getHeight() < 0.0f ? -1.0f : 1.0f;
         Attribute* attTangent = mesh.buffer.getAttribute(AttributeType::TANGENT);
-        Vector4 tangent = Vector4(1.0f, 0.0f, 0.0f, tilemap.flipY ? -1.0f : 1.0f);
+        Vector4 tangent = Vector4(mirrorX, 0.0f, 0.0f, flatTangentHandedness(tilemap.flipY) * mirrorX * mirrorY);
         mesh.buffer.addVector4(attTangent, tangent);
         mesh.buffer.addVector4(attTangent, tangent);
         mesh.buffer.addVector4(attTangent, tangent);
@@ -982,6 +989,12 @@ bool MeshSystem::createTilemap(TilemapComponent& tilemap, MeshComponent& mesh){
     tilemap.renderedTiles = numTiles;
 
     return true;
+}
+
+float MeshSystem::flatTangentHandedness(bool flipY){
+    // B = cross(+Z, +X) * w = +Y * w: up the image is +y with flipY (the bottom vertices take
+    // the image's bottom, v near 1), -y without it (v grows with +y)
+    return flipY ? 1.0f : -1.0f;
 }
 
 void MeshSystem::changeFlipY(bool& flipY, CameraComponent& camera, MeshComponent& mesh){
@@ -4923,6 +4936,10 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     // entity the root does not place has only the offset (none when the mesh cannot be baked)
     const Matrix4 placedMatrix = (bakeSceneRoot && !bakingFlatten) ? meshOffset : matrix * meshOffset;
     mesh.windingOrder = (placedMatrix.determinant() < 0.0) ? WindingOrder::CW : WindingOrder::CCW;
+    // the part of that compensation that is the entity's (the scene root on the transform: the
+    // baked offset and a flattened or baked root are in the vertices), which the draw then must
+    // not compensate again (RenderSystem::isMirroredDraw)
+    mesh.mirroredWinding = !bakeSceneRoot && !bakingFlatten && matrix.determinant() < 0.0;
 
     if (asyncLoad) {
         ResourceProgress::updateProgress(buildId, 0.4f); // Transform processing done
@@ -5119,6 +5136,8 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 ? matrix.determinant()
                 : getGLTFMeshGlobalMatrix(nodeIdx, model, nodesParent).determinant();
             mesh.windingOrder = (windingDet < 0.0) ? WindingOrder::CW : WindingOrder::CCW;
+            // all of it on the entity transforms (the node's global, or the root's above a skinned child)
+            mesh.mirroredWinding = windingDet < 0.0;
 
             // Reserve one synthetic byte-index view, one for a VEC3 COLOR_0, plus up to eight supported
             // sparse morph views per primitive so appends never invalidate non-owning buffer pointers.

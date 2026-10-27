@@ -576,7 +576,6 @@ namespace {
 uint32_t RenderSystem::pixelsWhite[64];
 uint32_t RenderSystem::pixelsBlack[64];
 uint32_t RenderSystem::pixelsTransparent[64];
-uint32_t RenderSystem::pixelsNormal[64];
 
 TextureRender RenderSystem::emptyWhite;
 TextureRender RenderSystem::emptyArrayWhite;
@@ -898,12 +897,15 @@ void RenderSystem::createEmptyTextures(){
         void* data_array[6];
         size_t size_array[6];
 
+        // (128, 128, 255): the flat tangent-space normal, bytes in memory order R, G, B, A on
+        // little-endian. What a normal map that fails to load (a missing file, a bad image) draws
+        // with, and the shader library's "normal" @texture default (emptyFlatNormal)
         for (int i = 0; i < 64; i++) {
-            pixelsNormal[i] = 0xFF808080;
+            pixelsFlatNormal[i] = 0xFFFF8080;
         }
 
         for (int i = 0; i < 6; i++){
-            data_array[i]  = (void*)pixelsNormal;
+            data_array[i]  = (void*)pixelsFlatNormal;
             size_array[i] = 8 * 8 * 4;
         }
 
@@ -961,10 +963,10 @@ void RenderSystem::createEmptyTextures(){
                 "empty|cube|black", 8, 8, ColorFormat::RGBA, TextureType::TEXTURE_CUBE, 6, data_array, size_array, 
                 TextureFilter::NEAREST, TextureFilter::NEAREST, TextureWrap::REPEAT, TextureWrap::REPEAT);
 
-        // shader library @texture defaults: mid gray, and a flat tangent-space normal (0.5, 0.5, 1)
+        // shader library @texture defaults: mid gray, and the flat tangent-space normal (0.5, 0.5, 1)
+        // filled above
         for (int i = 0; i < 64; i++) {
             pixelsGray[i] = 0xFF808080;
-            pixelsFlatNormal[i] = 0xFFFF8080;
         }
 
         for (int i = 0; i < 6; i++){
@@ -3762,6 +3764,14 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         p_hasNormal = (requiresNormals || p_punctual || p_vertexLights) && inputs.normal;
         p_hasTangent = p_hasNormal && (require & ShaderRequire_Tangents) && inputs.tangent;
         p_hasNormalMap = false;
+        // @require normalmap: the material's normal map on the 2D light path (tangent frame
+        // from the mesh, read at uv1: includes/lighting2d.glsl, surface_vs.glsl)
+        if ((require & ShaderRequire_NormalMap) && useLight2D && inputs.normalTexture && inputs.normal && inputs.tangent &&
+                p_hasTexture1 && !inputs.terrain){
+            p_hasNormal = true;
+            p_hasTangent = true;
+            p_hasNormalMap = true;
+        }
     }
     if (p_lattice){
         p_vertexColorVec3 = p_vertexColorVec3 || inputs.vertexColor3;
@@ -7393,7 +7403,7 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
 
     // the editor's "no face culling" view keeps the pass's culling: it is part of the technique
     // (an inverted hull drawn unculled covers its object)
-    if (!render.beginDraw(pipType, false)){
+    if (!render.beginDraw(pipType, false, isMirroredDraw(mesh, objectModel(transform)))){
         mesh.needReload = true;
         return;
     }
@@ -7990,6 +8000,8 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
         // model, normal and mvp matrices of this pass (one uniform block)
         Matrix4 objectScratch[3];
         const Matrix4* objectBlock = objectMatrices(transform, objectScratch);
+        // a mirroring model matrix draws with the face winding reversed (front faces stay front)
+        const bool mirroredDraw = isMirroredDraw(mesh, objectBlock[0]);
         // Transform::normalMatrix is kept only while the scene has lights (and is saved with
         // the scene), but library shaders read it whatever the lighting (outline widths,
         // fresnel, matcap, rim): without lights theirs is made here
@@ -8111,7 +8123,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                     render.addTexture(mesh.submeshes[i].shader.get()->shaderData.getTextureIndex(TextureShaderType::BASECOLOR), ShaderStageType::FRAGMENT, fluidTexture);
             }
 
-            if (!render.beginDraw(pipType, passNoFaceCulling())){
+            if (!render.beginDraw(pipType, passNoFaceCulling(), mirroredDraw)){
                 mesh.needReload = true;
                 return false;
             }
@@ -8317,6 +8329,10 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
         updateMeshBuffers(mesh);
         writeCustomUniforms(mesh);
 
+        // a mirroring model matrix draws with the face winding reversed (the shadow and depth
+        // passes cull as the colour pass)
+        const bool mirroredDraw = isMirroredDraw(mesh, objectModel(transform));
+
         // the depth pass renders the view camera's selection (view 0 in draw())
         TerrainView* terrainNodes = nullptr;
         if (terrain){
@@ -8363,7 +8379,7 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
                 bindShaderTextures(depthBindings, depthRender, mesh.submeshes[i].material.shaderTextures);
             }
 
-            if (!depthRender.beginDraw(pipelineType, passNoFaceCulling())){
+            if (!depthRender.beginDraw(pipelineType, passNoFaceCulling(), mirroredDraw)){
                 // a submesh without this depth program is left out of a pre-pass (its scene
                 // gives every mesh one when a pass needs them all: updateSceneInputPrograms);
                 // reloading would not give it one and would leave the mesh out of its colour
@@ -9102,6 +9118,9 @@ bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, Transform
 
     updateMeshBuffers(mesh);
 
+    // a mirroring model matrix draws with the face winding reversed (as the colour pass)
+    const bool mirroredDraw = isMirroredDraw(mesh, objectModel(transform));
+
     // the G-buffer pass renders the view camera's selection (view 0 in draw())
     TerrainView* terrainNodes = nullptr;
     if (terrain){
@@ -9136,7 +9155,7 @@ bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, Transform
             }
         }
 
-        if (!gbufferRender.beginDraw(PIP_GBUFFER, passNoFaceCulling())){
+        if (!gbufferRender.beginDraw(PIP_GBUFFER, passNoFaceCulling(), mirroredDraw)){
             mesh.needReload = true;
             return false;
         }
@@ -12664,6 +12683,12 @@ const Matrix4& RenderSystem::objectMVP(Transform& transform) const{
     return transform.modelViewProjectionMatrix;
 }
 
+bool RenderSystem::isMirroredDraw(const MeshComponent& mesh, const Matrix4& modelMatrix){
+    // the transform mirrors the mesh (its triangles turn over on screen) unless its winding
+    // order already compensates that mirror (MeshComponent::mirroredWinding, glTF import)
+    return (modelMatrix.determinant() < 0.0f) != mesh.mirroredWinding;
+}
+
 const Matrix4& RenderSystem::objectModel(Transform& transform) const{
 #ifdef JASPERENGINE_EDITOR
     size_t index;
@@ -13497,7 +13522,13 @@ void RenderSystem::update(double dt){
                         }
                     }
                     if (mesh.submeshes[s].manifest){
-                        // no normal map variant: its lighting comes from the manifest
+                        // a normal map variant only with @require normalmap (its 2D lights): one
+                        // gained or lost since the load picks it again
+                        if (mesh.submeshes[s].manifest->getPossibleRequire() & ShaderRequire_NormalMap){
+                            if (mesh.submeshes[s].hasNormalMap != !mesh.submeshes[s].material.normalTexture.empty()){
+                                mesh.needReload = true;
+                            }
+                        }
                     }else if (!mesh.submeshes[s].material.normalTexture.empty()){
                         if (!(mesh.submeshes[s].shaderProperties & (1 << 7))){ // not 'Nmp'
                             mesh.needReload = true;

@@ -305,11 +305,14 @@ Manifest lines (library shaders and forks that declare them) beyond the basic on
   so a material can use them without image files (`library:water`'s `BUILTIN_TEXTURES`).
 - `// @require <inputs> feature=<DEFINE>`: inputs required only while that define is on
   (`feature=!<DEFINE>`: while off). Inputs: `normals tangents uv1 uv2 color rawcolor
-  position smoothnormals`; `rawcolor` gives `v_rawColor`, the vertex colour without the
+  position smoothnormals normalmap`; `rawcolor` gives `v_rawColor`, the vertex colour without the
   instance colour (`v_color` is their product); `smoothnormals` gives a `SURFACE_DISPLACE`
   hook `surfaceSmoothNormal`, the object-space normal averaged over the vertices sharing a
   position (the engine makes it), so an inverted hull pushed along it has no gaps at hard
-  edges.
+  edges; `normalmap` (2D lights read the material's Normal Texture through `getNormal2D()`;
+  `library:sprite` uses it): under Light 2Ds, with a normal texture, on a mesh with tangents
+  and `uv1` (sprites, tilemaps, polygons), `includes/lighting2d.glsl` samples it in the OpenGL
+  convention (green up) and the light's height shapes it; the shader must include that file.
 - The engine defines the blend mode a variant draws with: `BLEND_NONE`, `BLEND_ALPHA`,
   `BLEND_PREMULTIPLIED`, `BLEND_ADDITIVE` or `BLEND_MULTIPLY` (`#ifdef BLEND_ADDITIVE`).
   `finalizeColor` fogs by it (additive fades to black, multiply to white);

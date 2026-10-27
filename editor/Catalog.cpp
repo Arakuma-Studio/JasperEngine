@@ -5075,6 +5075,10 @@ std::vector<MaterialLighting> editor::Catalog::getShaderLightingModes(const Shad
     return modes;
 }
 
+bool editor::Catalog::shaderReadsMaterialNormalMap(const ShaderManifest* manifest, const std::vector<std::string>& features) {
+    return manifest && manifest->present && (manifest->resolveRequire(features) & ShaderRequire_NormalMap) != 0;
+}
+
 bool editor::Catalog::supportsLighting(MaterialLighting mode, const ShaderManifest* manifest) {
     return RenderSystem::supportsLighting(mode, lightingManifest(manifest));
 }
