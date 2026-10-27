@@ -368,5 +368,8 @@ file relies on the default fixture.
 
 Write new test files CI-capable by default: create the project (or use `tools/fixtures/*`), then
 declare `CI = True`. The full suite, default-fixture files included, still runs on the build
-servers (`MCP_SUITE=all JASPER_FIXTURE=<fixture> tools/build.sh mcp-tests`). `docs/testing.md`
-covers every other test suite.
+servers (`MCP_SUITE=all tools/build.sh mcp-tests`, which finds `~/je/fixture-unity` there, or
+`JASPER_FIXTURE=<fixture>`). A test reaches the fixture through `harness.default_fixture()` (or
+`Editor()` with no project): `JASPER_FIXTURE`, `build/fixture-unity` of this or the main checkout,
+`/fixture` (the build image's mount) or `~/je/fixture-unity`; with none of them its tests skip.
+`docs/testing.md` covers every other test suite.

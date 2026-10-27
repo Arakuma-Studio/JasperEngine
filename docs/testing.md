@@ -53,8 +53,11 @@ The binaries also register with CTest (`ctest --preset linux-ci` in an IDE build
   targets on a loaded host (CI uses 3).
 - `tools/build.sh mcp-tests` runs `tools/mcp/run-tests.sh` in the Linux image against
   `build/linux/editor-install`. `MCP_SUITE=ci` (the default) runs the files that declare
-  `CI = True`; `MCP_SUITE=all` runs every file and needs `JASPER_FIXTURE`, the default fixture
-  project, which is not in git. See `docs/mcp/README.md` for writing MCP tests.
+  `CI = True`; `MCP_SUITE=all` runs every file and needs the default fixture project, which is
+  not in git: `JASPER_FIXTURE`, else `build/fixture-unity` of the checkout or the main checkout,
+  else `~/je/fixture-unity` (the build servers' copy), mounted at `/fixture`. The harness looks in
+  the same places (`harness.default_fixture()`); without a fixture, the tests that need it skip
+  and say where they looked. See `docs/mcp/README.md` for writing MCP tests.
 - An MCP test asserts behaviour; a wall-clock budget (a CLI start in 300 ms, a reload frame under
   16 ms, ...) goes through `harness.over_budget(what, measures, budget)`, which prints a `[bench]`
   line and fails only when `JASPER_MCP_PERF_SLACK` is set: a shared build server's load alone
