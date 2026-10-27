@@ -9,6 +9,8 @@
 #include <string>
 
 namespace jasperengine{
+    struct RenderFeatures;
+
     class SokolTexture{
 
     private:
@@ -29,10 +31,27 @@ namespace jasperengine{
         static const void* getVulkanImage(sg_image image);
 
     public:
+        // The image format and bytes per texel of a texture made from data (createTexture):
+        // RGBA -> RGBA8, RED -> R8, RED16 -> R16 (uploaded as float where unorm16 isn't sampled),
+        // and the float formats RGBA16F, RGBA32F, R32F, RG16F, R16F (half data as IEEE binary16,
+        // float data as binary32, channels interleaved, rows tightly packed, top row first).
+        // False for a format a texture can't be made from (SRGB8A8: render targets only)
+        static bool getDataPixelFormat(ColorFormat colorFormat, sg_pixel_format& pixelFormat, size_t& bytesPerTexel);
+        // Whether a texture of the format may be sampled with a linear filter: always for the 8-
+        // and 16-bit unorm formats, per the device's RenderFeatures filter flags for the float
+        // ones (RGBA32F/R32F are not filterable on GLES3/WebGL2 without OES_texture_float_linear)
+        static bool isLinearFilterable(ColorFormat colorFormat, const RenderFeatures& features);
+
         SokolTexture();
         SokolTexture(const SokolTexture& rhs);
         SokolTexture& operator=(const SokolTexture& rhs);
 
+        // An immutable texture from data (one block per face). 8-bit formats with a mipmap min
+        // filter get generated mipmaps; float formats never have mipmaps, need data of exactly
+        // width * height * bytesPerTexel per face and fall back to NEAREST (min, mag and mip)
+        // where the device can't filter them linearly. False (with an error) for an unsupported
+        // format, a float format the device can't sample, a size over the device limit or a
+        // data size that doesn't match
         bool createTexture(
                     const std::string& label, int width, int height,
                     ColorFormat colorFormat, TextureType type, int numFaces, void* data[], size_t size[],
