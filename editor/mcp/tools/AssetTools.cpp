@@ -877,6 +877,15 @@ void getAssetInfoTool(const CallPtr& call) {
     } else if (kind == "animation" && Util::isAnimationClipFile(rel)) {
         // an .anim clip: settings, tracks, events, load warnings and the Animation Players using it
         clip_tools::clipAssetInfo(project, file, data, text);
+    } else if (kind == "vertex_animation") {
+        // a .vat: mode, clips, layout, stats, staleness against its recipe, the Vertex Animators using it
+        vatAssetInfo(project, file, data, text);
+    }
+    if (kind == "model" && rel.size() > 8 && Util::isVertexAnimationFile(rel.substr(0, rel.size() - 4))) {
+        // "<stem>.vat.glb": the baked mesh and payload of the .vat next to it
+        const std::string owner = rel.substr(0, rel.size() - 4);
+        data["generated_by"] = owner;
+        text += "; generated with " + owner + " (do not edit: rebake with bake_vertex_animation {rebake: \"" + owner + "\"})";
     }
     if (CodeEditor* editor = call->ctx().codeEditor()) {
         if (editor->isFileOpen(file.string())) data["open_in_code_editor"] = {{"unsaved", editor->isFileModified(file.string())}};
@@ -919,6 +928,11 @@ void viewAssetTool(const CallPtr& call) {
     const int maxSize = std::clamp(call->args().value("max_size", 512), 16, 2048);
     if (Util::isImageFile(rel) && extensionOf(file) != ".svg") {
         replyImage(call, file, rel, maxSize, extensionOf(file) == ".png" ? synthesisAssetInfo(project, file, false) : Json());
+        return;
+    }
+    if (Util::isVertexAnimationFile(rel)) {
+        call->fail(rel + " is a Vertex Animation (no image): bake_vertex_animation with its source and no output returns a contact sheet "
+                   "(source vs VAT, nothing written); in a scene, play it and take a screenshot. get_asset_info lists its clips.");
         return;
     }
     if (Util::isAnimationClipFile(rel)) {
@@ -1113,6 +1127,15 @@ void writeFileTool(const CallPtr& call) {
             return;
         }
     }
+    // Vertex Animations must stay loadable: generated fields are the baker's (rebake), the rest are warnings
+    std::vector<std::string> vatWarnings;
+    if (Util::isVertexAnimationFile(rel)) {
+        std::string why;
+        if (!checkVatText(project, file, content, vatWarnings, why)) {
+            call->fail("Not a valid Vertex Animation: " + why + " (jasper://docs/vertex-animation).");
+            return;
+        }
+    }
     std::string error;
     if (!writeFilesUndoable(call->ctx(), {{file, content}}, error)) {
         call->fail(error);
@@ -1132,6 +1155,11 @@ void writeFileTool(const CallPtr& call) {
         }
     } else if (Util::isScriptFile(rel)) {
         text += " C++: run compile_scripts to check it.";
+    } else if (Util::isVertexAnimationFile(rel)) {
+        data["warnings"] = vatWarnings;
+        text += vatWarnings.empty() ? std::string(" Valid Vertex Animation (its animators reload).")
+                                    : " Vertex Animation loads with " + std::to_string(vatWarnings.size()) + " warning(s) (the bad parts are dropped):";
+        for (size_t i = 0; i < vatWarnings.size() && i < 8; i++) text += "\n" + vatWarnings[i];
     } else if (Util::isAnimationClipFile(rel)) {
         data["warnings"] = clipWarnings;
         text += clipWarnings.empty() ? std::string(" Valid clip.") : " Clip loads with " + std::to_string(clipWarnings.size()) + " warning(s) (the bad parts are dropped):";
@@ -3007,7 +3035,7 @@ void searchFilesTool(const CallPtr& call) {
 void registerAssetTools(McpRegistry& registry) {
     using namespace schema;
 
-    const std::vector<std::string> types = {"any", "texture", "model", "audio", "font", "html", "css", "script", "scene", "prefab", "material", "shader", "animation", "folder", "other"};
+    const std::vector<std::string> types = {"any", "texture", "model", "audio", "font", "html", "css", "script", "scene", "prefab", "material", "shader", "animation", "vertex_animation", "folder", "other"};
 
     {
         ToolDef tool;
@@ -3040,7 +3068,7 @@ void registerAssetTools(McpRegistry& registry) {
             "One project file's details by type: image size/channels (synthesized PNG: its recipe, changed sources, "
             "regenerate arguments); model meshes, materials, animations, nodes (an FBX: of its glTF conversion, fbx_import.state); "
             "WAV format/duration; .material fields, "
-            ".anim clip settings, tracks, events, users; "
+            ".anim clip settings, tracks, events, users; .vat clips, staleness, users; "
             "linked submeshes; shader includes, forks using it; Lua syntax; scene status; unsaved code editor edits.";
         tool.inputSchema = object({{"path", assetPath("")}}, {"path"});
         tool.annotations.readOnly = true;
@@ -3089,7 +3117,7 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "Write File";
         tool.description =
             "Create or change a project text file (undo scope project; for clients without file access) and "
-            "validate it: Lua syntax, forks using it recompiled (errors with lines), materials and .anim clips parsed. content = "
+            "validate it: Lua syntax, forks using it recompiled (errors with lines), materials, .anim and .vat parsed. content = "
             "whole file, or edits [{old_text, new_text}] (old_text must match once unless replace_all). Refuses "
             "project.yaml, .scene, .prefab and files with unsaved code editor edits.";
         tool.inputSchema = object({

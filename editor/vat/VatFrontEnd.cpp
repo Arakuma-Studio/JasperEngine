@@ -151,9 +151,13 @@ bool routeVatSource(Project* project, const std::vector<std::string>& files, con
     const bool folder = fs::is_directory(firstAbsolute, ec);
 
     if (!folder && anim::isModelFilePath(relatives[0])){
-        // a model, unless it is a Houdini / OpenVAT export's mesh
+        // a model, unless it is a Houdini / OpenVAT export's mesh (its data textures are next to it:
+        // the importers take any mesh, so a mesh alone is a model)
         const VatImportDetection detection = detectVatImport(FileUtils::pathToUtf8(firstAbsolute));
-        if (detection.found() && relatives.size() == 1 && clipNames[0].empty() && !Util::isVertexAnimationFile(relatives[0])){
+        const VatImportFiles& found = detection.files;
+        const bool exportData = !found.position.empty() || !found.rotation.empty() || !found.lookup.empty() || !found.vat.empty() ||
+                                !found.remapInfo.empty();
+        if (detection.found() && exportData && relatives.size() == 1 && clipNames[0].empty()){
             out.import = true;
             out.importPath = FileUtils::pathToUtf8(firstAbsolute);
             out.detection = detection;
