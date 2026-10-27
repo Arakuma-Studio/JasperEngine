@@ -12,6 +12,7 @@
 #include "texture/Material.h"
 #include "component/UIDocumentComponent.h"
 #include "component/FluidSimulationComponent.h"
+#include "particles/LegacyParticleSystem.h"
 #include "component/FogComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
 #include "component/VolumetricCloudsComponent.h"

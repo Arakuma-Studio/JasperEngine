@@ -1,0 +1,96 @@
+formatVersion: 2
+id: 1
+name: Particles
+scene:
+  backgroundColor: [0.05, 0.05, 0.08, 1]
+  gravity3D: [0, -9.81, 0]
+sceneType: scene_3d
+mainCamera: 1000
+entities:
+  - type: Entity
+    entity: 1000
+    name: Camera
+    components:
+      transform:
+        position: [0, 1.5, 7]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+      camera:
+        type: camera_perspective
+        target: [0, 1, 0]
+        up: [0, 1, 0]
+        yfov: 0.75
+        nearClip: 0.1
+        farClip: 100
+        useTarget: true
+      script:
+        scripts:
+          - type: lua
+            path: ParticlesProbe.lua
+            className: ParticlesProbe
+            enabled: true
+            properties: []
+  - type: Entity
+    entity: 1001
+    name: Fire
+    components:
+      transform:
+        position: [-1.5, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+      points:
+        enabled: true
+        maxPoints: 200
+        transparent: true
+        points: []
+  - type: Entity
+    entity: 1002
+    name: Fire Particles
+    components:
+      action:
+        state: Running
+        speed: 1
+        target: 1001
+        ownedTarget: false
+      particlesystem:
+        enabled: true
+        maxParticles: 200
+        emitter: true
+        loop: true
+        rate: 60
+        lifeInitializer:
+          minLife: 0.5
+          maxLife: 1
+        positionInitializer:
+          shape: Circle
+          radius: 0.25
+        velocityInitializer:
+          minVelocity: [-0.15, 1, -0.15]
+          maxVelocity: [0.15, 2, 0.15]
+        sizeInitializer:
+          minSize: 0.35
+          maxSize: 0.5
+        colorGradient:
+          useSRGB: true
+          stops:
+            - time: 0
+              color: [1, 0.9, 0.4]
+            - time: 1
+              color: [0.35, 0.08, 0.03]
+  - type: Entity
+    entity: 1003
+    name: Sparks
+    components:
+      transform:
+        position: [1.5, 1, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+      particlesystem:
+        enabled: true
+        effect: fx/sparks.particles
+        playOnAwake: true
+        seed: 0
+        playbackSpeed: 1

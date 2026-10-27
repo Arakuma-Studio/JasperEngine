@@ -437,6 +437,7 @@ void editor::AnimationWindow::restorePreviewState(Scene* scene) const {
         }
 
         Stream::decodeComponents(state.entity, state.parent, scene, state.components);
+        ProjectUtils::clearPreviewParticles(scene, state.entity);
 
         // tracks are left out of the snapshot: a relative one takes its base again from the
         // restored pose when the preview starts it
@@ -1479,11 +1480,6 @@ void editor::AnimationWindow::stopPreview(Scene* scene, SceneProject* sceneProje
     restorePreviewState(scene);
     if (applyBindPose) {
         applyPreviewModelBindPose(scene);
-    }
-
-    // Remove InstancedMeshComponent dynamically added during preview (e.g. particle targets).
-    for (const PreviewEntityState& state : previewState) {
-        ProjectUtils::removeDynamicInstmesh(state.entity, state.components, scene);
     }
 
     // Clear any mid-transition blend/fade state left on the previewed animations so it

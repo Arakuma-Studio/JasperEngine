@@ -107,7 +107,7 @@ public:
     // {type: Prefab, version: 4, guid, nextEntity, root, members: [...]}
     // 2: header, wrapper-root model; 3: the prefab's root GameObject is `root`; 4: light shadow
     // biases in shadow texels (StreamMigrations, prefab 3 -> 4)
-    static constexpr int FILE_VERSION = 4;
+    static constexpr int FILE_VERSION = 5;
     // the first version with the root-GameObject layout of today (`root`, members as written)
     static constexpr int ROOT_LAYOUT_VERSION = 3;
 

@@ -1,5 +1,5 @@
 {
-  "_comment": "Budgets of je-bench-jobs and je-bench-memory (docs/specs/S06-jobs-memory.md R23-R26) and je-bench-diag (S28 R26), measured with min(8, hardware threads - 2) workers on the build server's Linux x64 Release build. check_bench.py fails on a miss.",
+  "_comment": "Budgets of je-bench-jobs and je-bench-memory (docs/specs/S06-jobs-memory.md R23-R26), je-bench-diag (S28 R26) and je-bench-particles (docs/specs/S20-particles.md R20-R26, AC10-AC12), measured with min(8, hardware threads - 2) workers on the build server's Linux x64 Release build. check_bench.py fails on a miss.",
   "je-bench-jobs": {
     "submit_throughput_jobs_per_s": {"min": 3000000, "spec": "R23 empty-job submit+execute from one producer"},
     "parallel_for_dispatch_ns": {"max": 150, "spec": "R23 parallelFor of 1 unit, 0 helpers"},
@@ -20,5 +20,22 @@
     "object_pool_new_delete_ns": {"max": 25, "spec": "R26 ObjectPool new+delete"},
     "range_allocator_alloc_free_p99_ns": {"max": 250, "spec": "R26 RangeAllocator allocate+free with 10k live ranges, p99"},
     "stats_and_hooks_overhead_pct": {"max": 2, "spec": "R26 stats per job, one thread (bounds the share of R23), median of 41 paired trials"}
+  },
+  "je-bench-particles": {
+    "ref_100k_bytes_per_particle": {"max": 64, "spec": "R20 channel storage per particle of the reference stack"},
+    "trails_bytes_per_point": {"max": 24, "spec": "R20 trail storage per point"},
+    "ref_100k_sim_8w_projected_ms": {"max": 1.0, "spec": "R21 reference stack, 100k live, per tick, 8 workers (1 thread / (9 x 0.6))"},
+    "ref_100k_sim_1t_ms": {"max": 4.0, "spec": "R21 the same on 1 thread"},
+    "ref_100k_nonoise_sim_8w_projected_ms": {"max": 0.5, "spec": "R21 without Noise, 8 workers (1 thread / (9 x 0.6))"},
+    "ref_100k_nonoise_sim_1t_ms": {"max": 1.5, "spec": "R21 without Noise, 1 thread"},
+    "ref_100k_prep_8w_projected_ms": {"max": 0.6, "spec": "R22 render prep of 100k for a view, 8 workers (1 thread / (9 x 0.6))"},
+    "ref_100k_sort_extra_1t_ms": {"max": 0.5, "spec": "R22 a sorted view's extra cost at 100k (1 thread)"},
+    "ref_100k_parallel_speedup_ratio": {"min": 0.6, "spec": "R24 parallel speedup / (workers+1) at 100k"},
+    "ref_100k_simd_speedup": {"min": 2.0, "spec": "R24 SIMD against scalar, the reference tick, 1 thread"},
+    "noise_simd_speedup": {"min": 2.5, "spec": "R24 SIMD against scalar, the Noise kernel"},
+    "collision_world_10k_rays_per_tick": {"max": 256, "spec": "AC5 World collision at Medium quality: <= 256 queries per tick"},
+    "culled_emitter_us": {"max": 2, "spec": "AC10 an off-screen Automatic emitter's frame cost"},
+    "empty_scheduler_us": {"max": 5, "spec": "R26/AC12 the particle scheduler of a scene without systems"},
+    "steady_state_allocations": {"max": 0, "spec": "R25/AC12 600 steady-state frames (--count-allocs)"}
   }
 }
