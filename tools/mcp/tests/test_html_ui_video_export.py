@@ -12,6 +12,7 @@ Runs on a scratch copy of the fixture project.
 """
 
 import asyncio
+import json
 import os
 import shutil
 import time
@@ -50,6 +51,14 @@ BROKEN = """<!DOCTYPE html>
 """
 
 SHIPPED = ["ui/video.html", "ui/video/testcard.webm", "ui/video/poster.png"]
+
+
+def cooked_sources(assets: Path) -> set:
+    """The images S14 ships as cooks instead of their files (each family's je-cooked/index.json)"""
+    found = set()
+    for index in assets.glob("je-cooked/*/index.json"):
+        found |= set(json.loads(index.read_text()).get("textures", {}))
+    return found
 
 # the test card's colour bars (75 % SMPTE-like: yellow, cyan, magenta), BT.709 limited range
 BARS = [(191, 191, 0), (0, 191, 191), (191, 0, 191)]
@@ -99,8 +108,9 @@ async def test_source_export_ships_the_video(ed: Editor):
         raw, r = await export_source(ed, out, platform)
         ed.check_eq(r["status"], "succeeded", f"{platform}: {raw.text[:2000]}")
         assets = out / "project" / "assets"
+        cooked = cooked_sources(assets)
         for rel in SHIPPED:
-            ed.check((assets / rel).is_file(), f"{platform}: {rel} exported to {assets}")
+            ed.check((assets / rel).is_file() or rel in cooked, f"{platform}: {rel} exported to {assets} (or cooked: {sorted(cooked)})")
         ed.check_eq((assets / "ui/video/testcard.webm").read_bytes(), (CLIPS / "testcard.webm").read_bytes(), "the clip, byte for byte")
 
 
@@ -113,8 +123,9 @@ async def test_resource_pack_ships_the_video(ed: Editor):
         ed.check_eq(r["status"], "succeeded", f"{raw.text[:2000]}")
         pack = out / "project" / "assets" / "resources.pak"
         data = pack.read_bytes()
+        cooked = cooked_sources(out / "project" / "assets")
         for rel in SHIPPED:
-            ed.check(rel.encode() in data, f"{rel} not in the resource pack")
+            ed.check(rel.encode() in data or rel in cooked, f"{rel} not in the resource pack (nor cooked: {sorted(cooked)})")
         for rel in SHIPPED:
             ed.check(not (out / "project" / "assets" / rel).exists(), f"{rel} also left loose next to the pack")
     finally:
