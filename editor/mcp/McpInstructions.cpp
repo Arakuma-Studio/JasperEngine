@@ -29,8 +29,7 @@ You are driving a running JasperEngine editor: a C++ game engine with a Unity-st
 scripts. Each tool edit is an undoable command, live to a human watching. Build scenes
 with tools, write code with your own file tools, verify by playing, screenshots and the Console.
 tools/list is authoritative for tool names and arguments; read a tool's description before
-first use. Deeper reference: jasper://docs/... (Lua scripting and API, C++ scripting, physics,
-shaders, materials, prefabs, assets, HTML/CSS UI, data safety, undo, profiling, ECS, Unity glossary).
+first use. Each area below points to its reference (jasper://docs/<area>).
 
 ## Unity names -> engine names
 Tools, component names and script APIs use the engine names.
@@ -230,10 +229,8 @@ The profiling group: get_frame_times (the always-on history), capture_profile th
 get_cpu_profile (capture_id, frame worst), get_gpu_passes (each pass's GPU ms; with capture_id
 per-label medians), capture_pass_output, get_vram_report, get_render_stats. Compare medians,
 not single frames; GPU time semantics differ per backend (jasper://docs/profiling).
-
-## Hangs and crashes
-When calls time out, get_editor_health (diagnostics group; it answers even while the editor hangs)
-tells hung from slow; get_crash_reports lists crash and hang reports (jasper://docs/crash-diagnostics).
+Calls time out: get_editor_health (answers mid-hang) tells hung from slow; get_crash_reports
+(jasper://docs/crash-diagnostics).
 
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export
@@ -256,7 +253,6 @@ could not read is refused; allow_data_loss writes it anyway. degraded_document, 
 project_locked: jasper://docs/data-safety.
 
 ## Pitfalls
-- Edits made while playing are discarded when play stops (as in Unity).
 - Never carry over API names from Unity C#, Godot or Unreal: confirm them in jasper://docs or
   .jasperengine/engine-api first.
 - Lua: static functions use a dot (GameObject.instantiate), methods a colon (go:setScale(2)).
