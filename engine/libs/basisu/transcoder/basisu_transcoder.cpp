@@ -14677,6 +14677,38 @@ namespace basist
 		assert(*pCur_ofs <= 128);
 	}
 
+	// JasperEngine: the block's 128 bits gathered in two words, not OR-ed into bytes a field at a
+	// time (half the cost of a UASTC -> BC7 transcode was here); the same bytes (README.jasper.md)
+	struct bc7_block_bit_writer
+	{
+		uint64_t m_bits[2] = { 0, 0 };
+		uint32_t m_ofs = 0;
+
+		inline void put(uint32_t val, uint32_t num_bits)
+		{
+			assert((num_bits <= 32) && (val < (1ULL << num_bits)) && (m_ofs + num_bits <= 128));
+			const uint64_t v = val;
+			if (m_ofs < 64)
+			{
+				m_bits[0] |= v << m_ofs;
+				if (m_ofs + num_bits > 64)
+					m_bits[1] |= v >> (64 - m_ofs);
+			}
+			else
+				m_bits[1] |= v << (m_ofs - 64);
+			m_ofs += num_bits;
+		}
+
+		inline void store(uint8_t* pBytes) const
+		{
+			for (uint32_t i = 0; i < 8; i++)
+			{
+				pBytes[i] = (uint8_t)(m_bits[0] >> (i * 8));
+				pBytes[8 + i] = (uint8_t)(m_bits[1] >> (i * 8));
+			}
+		}
+	};
+
 	// TODO: Optimize this.
 	void encode_bc7_block(void* pBlock, const bc7_optimization_results* pResults)
 	{
@@ -14777,27 +14809,25 @@ namespace basist
 		}
 
 		uint8_t* pBlock_bytes = (uint8_t*)(pBlock);
-		memset(pBlock_bytes, 0, BC7ENC_BLOCK_SIZE);
-
-		uint32_t cur_bit_ofs = 0;
-		bc7_set_block_bits(pBlock_bytes, 1 << best_mode, best_mode + 1, &cur_bit_ofs);
+		bc7_block_bit_writer bits;
+		bits.put(1 << best_mode, best_mode + 1);
 
 		if ((best_mode == 4) || (best_mode == 5))
-			bc7_set_block_bits(pBlock_bytes, pResults->m_rotation, 2, &cur_bit_ofs);
+			bits.put(pResults->m_rotation, 2);
 
 		if (best_mode == 4)
-			bc7_set_block_bits(pBlock_bytes, pResults->m_index_selector, 1, &cur_bit_ofs);
+			bits.put(pResults->m_index_selector, 1);
 
 		if (total_partitions > 1)
-			bc7_set_block_bits(pBlock_bytes, pResults->m_partition, (total_partitions == 64) ? 6 : 4, &cur_bit_ofs);
+			bits.put(pResults->m_partition, (total_partitions == 64) ? 6 : 4);
 
 		const uint32_t total_comps = (best_mode >= 4) ? 4 : 3;
 		for (uint32_t comp = 0; comp < total_comps; comp++)
 		{
 			for (uint32_t subset = 0; subset < total_subsets; subset++)
 			{
-				bc7_set_block_bits(pBlock_bytes, low[subset].m_c[comp], (comp == 3) ? g_bc7_alpha_precision_table[best_mode] : g_bc7_color_precision_table[best_mode], &cur_bit_ofs);
-				bc7_set_block_bits(pBlock_bytes, high[subset].m_c[comp], (comp == 3) ? g_bc7_alpha_precision_table[best_mode] : g_bc7_color_precision_table[best_mode], &cur_bit_ofs);
+				bits.put(low[subset].m_c[comp], (comp == 3) ? g_bc7_alpha_precision_table[best_mode] : g_bc7_color_precision_table[best_mode]);
+				bits.put(high[subset].m_c[comp], (comp == 3) ? g_bc7_alpha_precision_table[best_mode] : g_bc7_color_precision_table[best_mode]);
 			}
 		}
 
@@ -14805,9 +14835,9 @@ namespace basist
 		{
 			for (uint32_t subset = 0; subset < total_subsets; subset++)
 			{
-				bc7_set_block_bits(pBlock_bytes, pbits[subset][0], 1, &cur_bit_ofs);
+				bits.put(pbits[subset][0], 1);
 				if (!g_bc7_mode_has_shared_p_bits[best_mode])
-					bc7_set_block_bits(pBlock_bytes, pbits[subset][1], 1, &cur_bit_ofs);
+					bits.put(pbits[subset][1], 1);
 			}
 		}
 
@@ -14822,7 +14852,7 @@ namespace basist
 				if ((idx == anchor[0]) || (idx == anchor[1]) || (idx == anchor[2]))
 					n--;
 
-				bc7_set_block_bits(pBlock_bytes, pResults->m_index_selector ? alpha_selectors[idx] : color_selectors[idx], n, &cur_bit_ofs);
+				bits.put(pResults->m_index_selector ? alpha_selectors[idx] : color_selectors[idx], n);
 			}
 		}
 
@@ -14839,12 +14869,13 @@ namespace basist
 					if ((idx == anchor[0]) || (idx == anchor[1]) || (idx == anchor[2]))
 						n--;
 
-					bc7_set_block_bits(pBlock_bytes, pResults->m_index_selector ? color_selectors[idx] : alpha_selectors[idx], n, &cur_bit_ofs);
+					bits.put(pResults->m_index_selector ? color_selectors[idx] : alpha_selectors[idx], n);
 				}
 			}
 		}
 
-		assert(cur_bit_ofs == 128);
+		assert(bits.m_ofs == 128);
+		bits.store(pBlock_bytes);
 	}
 
 	// ASTC
