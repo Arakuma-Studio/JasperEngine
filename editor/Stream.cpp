@@ -5872,6 +5872,8 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
 
     node["cullingMode"] = cullingModeToString(mesh.cullingMode);
     node["windingOrder"] = windingOrderToString(mesh.windingOrder);
+    if (mesh.mirroredWinding)
+        node["mirroredWinding"] = true;
 
     if (!mesh.customShader.empty())
         node["customShader"] = mesh.customShader;
@@ -5963,6 +5965,7 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
 
     if (node["cullingMode"]) mesh.cullingMode = stringToCullingMode(node["cullingMode"].as<std::string>());
     if (node["windingOrder"]) mesh.windingOrder = stringToWindingOrder(node["windingOrder"].as<std::string>());
+    if (node["windingOrder"]) mesh.mirroredWinding = node["mirroredWinding"] && YamlNumbers::as<bool>(node["mirroredWinding"]);
 
     if (node["customShader"]) mesh.customShader = node["customShader"].as<std::string>();
     if (node["customDepthShader"]) mesh.customDepthShader = node["customDepthShader"].as<std::string>();

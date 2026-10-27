@@ -61,13 +61,18 @@ namespace jasperengine{
         // the sample count of the PIP_MSAA* pipelines (endLoad's)
         int msaaSamples;
 
-#ifdef JASPERENGINE_EDITOR
-        // Editor-only variants of the pipelines that cull no face, one per pipeline type,
-        // created on the first draw that asks for one and destroyed with the others
-        sg_pipeline noCullPipelines[PIPELINE_TYPES];
-        // types whose pipeline already culls nothing, by bit index
+        // Variants of the pipelines, one per pipeline type, created on the first draw that asks
+        // for one and destroyed with the others: VARIANT_MIRRORED has the face winding reversed
+        // (a draw whose transform mirrors the mesh, so its front faces stay front: culling and
+        // gl_FrontFacing), VARIANT_NO_CULL culls no face (editor-only debug views),
+        // VARIANT_MIRRORED_NO_CULL both
+        static constexpr int VARIANT_MIRRORED = 0;
+        static constexpr int VARIANT_NO_CULL = 1;
+        static constexpr int VARIANT_MIRRORED_NO_CULL = 2;
+        static constexpr int VARIANT_COUNT = 3;
+        sg_pipeline variantPipelines[VARIANT_COUNT][PIPELINE_TYPES];
+        // types whose pipeline already culls nothing (its no-cull variant is itself), by bit index
         uint16_t noCullSame;
-#endif
 
         size_t bindSlotIndex;
         // the vertex inputs (locations) the shader declares, set by setShader
@@ -129,8 +134,9 @@ namespace jasperengine{
         bool endLoadDynamic(PrimitiveType primitiveType, IndexType indexType);
 
         // disableFaceCulling draws with a variant of the pipeline that culls no face
-        // (editor-only debug views; ignored elsewhere)
-        bool beginDraw(PipelineType pipType, bool disableFaceCulling = false);
+        // (editor-only debug views; ignored elsewhere); mirrored with one whose face winding is
+        // reversed (a draw whose transform mirrors the mesh)
+        bool beginDraw(PipelineType pipType, bool disableFaceCulling = false, bool mirrored = false);
         // the cached pipeline of that state (SokolPipelineCache), applied unless it is the one
         // applied last in this pass
         bool beginDraw(const PipelineState& state);

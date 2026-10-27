@@ -27,6 +27,7 @@
 #include "object/Light.h"
 #include "object/Light2D.h"
 #include "object/MeshPolygon.h"
+#include "object/Primitive.h"
 #include "object/Sprite.h"
 #include "object/Tilemap.h"
 #include "subsystem/RenderSystem.h"
@@ -417,6 +418,50 @@ TEST_F(Light2DNormalMapTest, LibrarySprite){
     }
 }
 
+// R13 mirrored: library:sprite (the library vertex path, surface_vs.glsl) under a negative
+// scale and with a mirrored texture rect
+TEST_F(Light2DNormalMapTest, LibrarySpriteMirrored){
+    for (int mirror : {0, 1}){
+        NormalScene s;
+        Sprite& sprite = s.addSprite();
+        sprite.getComponent<MeshComponent>().submeshes[0].material.shader = "library:sprite";
+        if (mirror == 0)
+            sprite.setScale(Vector3(-1.0f, 1.0f, 1.0f));
+        else
+            sprite.setTextureRect(Rect(1.0f, 0.0f, -1.0f, 1.0f));
+        s.addLight(LightSide::LEFT);
+        s.expectLitFromLightSide(mirror == 0 ? "library:sprite, scale (-1, 1)" : "library:sprite, texture rect mirrored in x");
+    }
+}
+
+// library:sprite gains and loses the material's normal map after it loaded: the variant
+// follows (RenderSystem's reload of a manifest submesh whose normal texture came or went)
+TEST_F(Light2DNormalMapTest, LibrarySpriteGainsAndLosesTheNormalMap){
+    NormalScene s;
+    Sprite& sprite = s.addSprite(false);
+    Submesh& submesh = sprite.getComponent<MeshComponent>().submeshes[0];
+    submesh.material.shader = "library:sprite";
+    s.addLight(LightSide::LEFT);
+    ASSERT_TRUE(s.settle());
+    const uint64_t nmp = 1u << 7;
+    EXPECT_EQ(submesh.shaderProperties & nmp, 0u) << "no map: no 'Nmp'";
+    const Quarters before = s.measure();
+    EXPECT_LE(std::fabs(before.left - before.right), 2.0f) << "flat: " << describe(before);
+
+    setNormalMap(submesh);
+    ASSERT_TRUE(s.settle());
+    EXPECT_NE(submesh.shaderProperties & nmp, 0u) << "the map set after the load: 'Nmp'";
+    const Quarters lit = s.measure();
+    EXPECT_TRUE(brighter(lit.left, lit.right, "the map set after the load: the left quarter", lit));
+
+    submesh.material.normalTexture = Texture();
+    submesh.needUpdateTexture = true;
+    ASSERT_TRUE(s.settle());
+    EXPECT_EQ(submesh.shaderProperties & nmp, 0u) << "the map removed: no 'Nmp'";
+    const Quarters after = s.measure();
+    EXPECT_LE(std::fabs(after.left - after.right), 2.0f) << "flat again: " << describe(after);
+}
+
 // R13 (all features): every library:sprite feature on compiles with the normal map and keeps
 // the lit side (glow adds the same emission to both sides)
 TEST_F(Light2DNormalMapTest, LibrarySpriteAllFeatures){
@@ -477,22 +522,21 @@ TEST_F(Light2DNormalMapTest, UICamera){
 }
 
 // R17: the Lit path (a directional light from the left, then from above, no Light 2D): the
-// tangent frame follows a negative scale. Sprites are double-sided and a runtime negative scale
-// does not swap the winding (section 3.8), so the mirrored one is wound clockwise to keep its
-// front face front.
+// tangent frame follows a negative scale, and the mirrored sprite (double-sided, wound CCW as
+// every sprite) draws with its pipeline's winding reversed, so its front stays front
+// (RenderSystem::isMirroredDraw) instead of shading as its back face
 TEST_F(Light2DNormalMapTest, LitMirrored3D){
     for (float scaleX : {1.0f, -1.0f}){
         NormalScene s;
         Sprite& sprite = s.addSprite();
         sprite.setScale(Vector3(scaleX, 1.0f, 1.0f));
-        if (scaleX < 0.0f)
-            sprite.setWindingOrder(WindingOrder::CW);
         sprite.getComponent<MeshComponent>().submeshes[0].material.lighting = MaterialLighting::PIXEL;
         s.scene().setGlobalIllumination(0.0f);
         Light& sun = s.fixture.add<Light>();
         sun.setType(LightType::DIRECTIONAL);
         sun.setIntensity(2.0f);
         const std::string what = scaleX < 0.0f ? "lit, scale (-1, 1)" : "lit";
+        EXPECT_EQ(sprite.getWindingOrder(), WindingOrder::CCW);
 
         sun.setDirection(1.0f, 0.0f, -1.0f);
         ASSERT_TRUE(s.settle());
@@ -504,6 +548,106 @@ TEST_F(Light2DNormalMapTest, LitMirrored3D){
         const Quarters top = s.measure();
         EXPECT_TRUE(brighter(top.top, top.bottom, (what + ": light from above, the top quarter").c_str(), top));
     }
+}
+
+namespace {
+
+    // a mixed scene: the sprite on the Lit path (per pixel) because the scene has a 3D light,
+    // which shines nothing (intensity 0), and a Light 2D at height 64
+    struct MixedScene : NormalScene {
+        Light* sun = nullptr;
+
+        Sprite& addLitSprite(bool normalMap, float scaleX){
+            Sprite& sprite = addSprite(normalMap);
+            sprite.setScale(Vector3(scaleX, 1.0f, 1.0f));
+            sprite.getComponent<MeshComponent>().submeshes[0].material.lighting = MaterialLighting::PIXEL;
+            scene().setGlobalIllumination(0.0f);
+            sun = &fixture.add<Light>();
+            sun->setType(LightType::DIRECTIONAL);
+            sun->setDirection(0.0f, 0.0f, -1.0f);
+            sun->setIntensity(0.0f);
+            addLight(LightSide::LEFT, 64.0f);
+            return sprite;
+        }
+    };
+
+}
+
+// A mirrored double-sided lit sprite in a mixed scene is lit by a Light 2D (height 64) on the
+// light's side, through the Lit path's normal (getNormalInfo, whose back faces negate it)
+TEST_F(Light2DNormalMapTest, MirroredLitMixedScene){
+    for (float scaleX : {1.0f, -1.0f}){
+        MixedScene s;
+        s.addLitSprite(true, scaleX);
+        s.expectLitFromLightSide(scaleX < 0.0f ? "mixed scene, Lit, scale (-1, 1)" : "mixed scene, Lit");
+    }
+}
+
+// The same without a normal map: the mirrored sprite is lit as the plain one (it faces the
+// light's height with its +Z, not its back's -Z)
+TEST_F(Light2DNormalMapTest, MirroredLitMixedSceneFlat){
+    Screen plain, mirrored;
+    for (float scaleX : {1.0f, -1.0f}){
+        MixedScene s;
+        s.addLitSprite(false, scaleX);
+        ASSERT_TRUE(s.settle());
+        ASSERT_TRUE((scaleX < 0.0f ? mirrored : plain).read());
+    }
+    EXPECT_GT(meanLuminance(plain, 288, 148, 352, 212), 40.0f) << "the plain sprite is lit";
+    EXPECT_TRUE(sameImage(plain, mirrored, 1)) << "a white sprite mirrored in x looks the same";
+}
+
+// A mesh whose winding order already compensates its mirror (MeshComponent::mirroredWinding:
+// a glTF import with a mirrored root on the entity, wound CW) is drawn as before: it is not
+// reversed again, and it looks as the uncompensated mirrored sprite now does
+TEST_F(Light2DNormalMapTest, CompensatedMirrorUnchanged){
+    Screen compensated, uncompensated;
+    for (bool compensate : {true, false}){
+        NormalScene s;
+        Sprite& sprite = s.addSprite();
+        sprite.setScale(Vector3(-1.0f, 1.0f, 1.0f));
+        MeshComponent& mesh = sprite.getComponent<MeshComponent>();
+        mesh.submeshes[0].material.lighting = MaterialLighting::PIXEL;
+        if (compensate){
+            mesh.windingOrder = WindingOrder::CW;
+            mesh.mirroredWinding = true;
+        }
+        s.scene().setGlobalIllumination(0.0f);
+        Light& sun = s.fixture.add<Light>();
+        sun.setType(LightType::DIRECTIONAL);
+        sun.setIntensity(2.0f);
+        sun.setDirection(1.0f, 0.0f, -1.0f);
+        ASSERT_TRUE(s.settle());
+        EXPECT_NE(RenderSystem::isMirroredDraw(mesh, sprite.getComponent<Transform>().modelMatrix), compensate)
+            << (compensate ? "the compensated mesh draws as wound" : "the uncompensated one reverses its winding");
+        const Quarters q = s.measure();
+        EXPECT_TRUE(brighter(q.left, q.right, compensate ? "compensated: the left quarter" : "uncompensated: the left quarter", q));
+        ASSERT_TRUE((compensate ? compensated : uncompensated).read());
+    }
+    EXPECT_TRUE(sameImage(compensated, uncompensated, 1)) << "the two ways of drawing a mirrored mesh agree";
+}
+
+// A single-sided mesh (culls back faces) mirrored at runtime shows its front faces, as the
+// unmirrored one does: a box symmetric in x lit from the front looks the same
+TEST_F(Light2DNormalMapTest, MirroredSingleSidedBoxKeepsItsFront){
+    Screen plain, mirrored;
+    for (float scaleX : {1.0f, -1.0f}){
+        NormalScene s;
+        Primitive& box = s.fixture.add<Primitive>();
+        box.createBox(64.0f, 64.0f, 64.0f);
+        box.setColor(0.8f, 0.6f, 0.4f, 1.0f);
+        box.setScale(Vector3(scaleX, 1.0f, 1.0f));
+        s.scene().setGlobalIllumination(0.0f);
+        Light& sun = s.fixture.add<Light>();
+        sun.setType(LightType::DIRECTIONAL);
+        sun.setIntensity(2.0f);
+        sun.setDirection(0.0f, 0.0f, -1.0f);
+        ASSERT_TRUE(s.settle());
+        EXPECT_TRUE(box.isFaceCulling()) << "a box culls its back faces";
+        ASSERT_TRUE((scaleX < 0.0f ? mirrored : plain).read());
+    }
+    EXPECT_GT(meanLuminance(plain, 300, 160, 340, 200), 60.0f) << "the box's front face is lit";
+    EXPECT_TRUE(sameImage(plain, mirrored, 1)) << "the mirrored box shows its front face, lit the same";
 }
 
 // R18: a normal map that fails to load shades flat, as no normal map does (Lit path)

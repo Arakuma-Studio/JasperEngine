@@ -489,3 +489,29 @@ TEST(Sprite2DNormalTexture, FreshSpriteAndData) {
     sprite.setNormalTexture("flat|normal", TextureData(1, 1, 4, ColorFormat::RGBA, 4, pixels));
     EXPECT_EQ(sprite.getNormalTexture(), "flat|normal") << "a normal map from data reads its id";
 }
+
+// ---- fix round 1: the facing of mirrored draws (RenderSystem::isMirroredDraw)
+
+TEST(Sprite2DMirroredDraw, TruthTable) {
+    MeshComponent plain;
+    const Matrix4 identity;
+    const Matrix4 mirrorX = Matrix4::scaleMatrix(Vector3(-1.0f, 1.0f, 1.0f));
+    const Matrix4 mirrorXY = Matrix4::scaleMatrix(Vector3(-1.0f, -1.0f, 1.0f));
+    EXPECT_FALSE(RenderSystem::isMirroredDraw(plain, identity));
+    EXPECT_TRUE(RenderSystem::isMirroredDraw(plain, mirrorX));
+    EXPECT_FALSE(RenderSystem::isMirroredDraw(plain, mirrorXY)) << "two mirrors are a rotation";
+    EXPECT_TRUE(RenderSystem::isMirroredDraw(plain, Matrix4::translateMatrix(Vector3(5.0f, 0.0f, 0.0f)) * mirrorX));
+
+    // a winding order that compensates the entity's mirror (glTF import)
+    MeshComponent compensated;
+    compensated.windingOrder = WindingOrder::CW;
+    compensated.mirroredWinding = true;
+    EXPECT_FALSE(RenderSystem::isMirroredDraw(compensated, mirrorX));
+    EXPECT_TRUE(RenderSystem::isMirroredDraw(compensated, identity));
+
+    // a winding order set by hand (no compensation): only the transform counts
+    MeshComponent clockwise;
+    clockwise.windingOrder = WindingOrder::CW;
+    EXPECT_FALSE(RenderSystem::isMirroredDraw(clockwise, identity));
+    EXPECT_TRUE(RenderSystem::isMirroredDraw(clockwise, mirrorX));
+}
