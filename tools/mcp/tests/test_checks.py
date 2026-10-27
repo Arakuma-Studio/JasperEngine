@@ -513,6 +513,9 @@ async def test_cli_vat():
         changed = [f for f in data["findings"] if f["code"] == "vat-source-changed"][0]
         check("assets/models/rigid_arm.gltf" in changed["message"] and "rebake" in changed["suggestion"].lower(),
               f"names it, says rebake: {changed}")
+        # on the command line the fix is bake-vat's rebake (not the MCP tool's arguments)
+        check(f"bake-vat --rebake {arm}" in changed["suggestion"] and "bake_vertex_animation" not in changed["suggestion"],
+              f"the CLI's rebake: {changed}")
         r = run_check(project, "--vat")
         check(f"{arm}: warning: " in r.stdout and "[vat-source-changed]" in r.stdout and "(fix: " in r.stdout, f"text line: {r.stdout}")
         code, data = run_json(project, "--files", "assets/models/rigid_arm.gltf")
@@ -552,6 +555,8 @@ async def test_cli_vat():
         vat_file.write_text(json.dumps(vat, indent=2))
         code, data = run_json(project, "--files", arm)
         check_eq((code, vat_findings(data)), (1, [(arm, "error", "vat-layout-mismatch")]), f"a changed generated field: {data['findings']}")
+        check(all(f"bake-vat --rebake {arm}" in f["suggestion"] for f in data["findings"] if f["tool"] == "vat"),
+              f"the CLI's rebake: {data['findings']}")
         # not a .vat at all: vat-invalid at its line:col
         vat_file.write_text('{\n  "format": "jasperengine.vat",\n  "version": 1,\n  "clips": [\n}\n')
         code, data = run_json(project, "--vat")
