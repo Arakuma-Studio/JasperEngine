@@ -322,9 +322,12 @@ Vertex Animator.
 
 ### 4.4 Outputs, existing files, undo
 
-- Default output `<source dir>/<source stem>.vat` (+ `.vat.glb`); the PoseBaker existing-file rule: a file baked
-  from the same recipe source is rewritten and keeps its GUID (Rebake); any other existing file of that name makes
-  the bake take a free name ("hero 2.vat"); an explicit path that exists is refused unless `overwrite`.
+- Default output `<source dir>/<source stem>.vat` (+ `.vat.glb`), a source dir outside the assets folder mapped to
+  the same folder under it; the PoseBaker existing-file rule: a file baked from the same recipe source (kind, path,
+  scene and the same clips) is rewritten and keeps its GUID (Rebake); any other existing file of that name makes
+  the bake take a free name ("hero 2.vat"); an explicit path that exists is refused unless `overwrite`. Images the
+  source holds inside are stored inside the `.vat.glb`. Placing needs a 3D scene; a crowd's GameObject is unrotated
+  and unscaled at the source's position, its instances carrying the source's rotation and scale.
 - `place`: `none` (files only; default from the window and Project), `beside` (default from Inspector actions: a new
   GameObject "<name> (VAT)" with the source's transform, selected), `replace` (the source GameObject is disabled and
   the VAT one takes its place), `crowd` (`{count, area, seed}`, 5.4).

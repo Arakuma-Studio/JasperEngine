@@ -53,14 +53,15 @@ Not allowed while playing.
 | `output` | `.vat` path (the mesh goes to `<name>.vat.glb` next to it), or `true` for the default; omitted = preview |
 | `overwrite` | replace an existing `output` (its GUID and, from the same source, its hand edits are kept) |
 | `rebake` | a `.vat`: run its recipe again and write over it, keeping its GUID, clip names, events, speeds, wraps and socket names; it takes no other bake settings (bake again with `output` + `overwrite` to change them) |
-| `place` | on write: `none` (default: files only), `beside` (a new GameObject "<name> (VAT)" at the source's transform, selected), `replace` (the same, and the source GameObject disabled; GameObject sources only), `{crowd: {count, area, seed}}` (an Instanced Mesh crowd: `count` instances in a square of side `area` metres, random yaw, seeded) |
+| `place` | on write: `none` (default: files only), `beside` (a new GameObject "<name> (VAT)" at the source's transform, selected), `replace` (the same, and the source GameObject disabled; GameObject sources only), `{crowd: {count, area, seed}}` (an Instanced Mesh crowd: `count` instances in a square of side `area` metres, random yaw, seeded; the instances carry the source's scale); a 2D scene refuses placing |
 | `import` | importer options for exports: `axis` (`unity`, `unreal`, `houdini`, `zup`: the export's target engine when its metadata doesn't tell), `axis_scale` (units per metre of the target), `upsample` (rigid exports: 0 automatic, 1..1024 exact), `clip` (the clip's name), `colors` (false drops the colour texel), file overrides `mesh`, `position`, `position2`, `rotation`, `color`, `lookup`, `vat`, `normals_texture` |
 | `wait`, `timeout_seconds` | the job pattern above |
 
 The default output (`output: true`) is `<source dir>/<source stem>.vat` (a GameObject: next to its
 model; an import: next to the export when it is inside the assets folder, else the assets
-folder). The existing-file rule: a `.vat` there baked from the same source is rewritten (GUID and
-hand edits kept); any other file makes the bake take a free name (`hero 2.vat`). An explicit
+folder; a source dir outside assets maps under it). The existing-file rule: a `.vat` there baked
+from the same source and clips is rewritten (GUID and hand edits kept); any other file makes the
+bake take a free name (`hero 2.vat`). An explicit
 `output` that exists is refused (`output_exists`) unless `overwrite`. The preview's
 `default_output` says where `true` would write.
 
