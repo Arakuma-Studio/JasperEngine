@@ -164,6 +164,38 @@ async def test_preview_report_and_sheet(ed: Editor):
     S["preview"] = v
 
 
+def lit_rows(png: bytes, rows_count: int) -> list[int]:
+    """Lit pixels per sheet row (the cells, not the label strips) of a contact sheet."""
+    w, h, channels, rows = decode_png(png)
+    cell = (h - 15 - (rows_count - 1)) // rows_count - 14
+    out = []
+    for r in range(rows_count):
+        top = 15 + r * (cell + 14 + 1)
+        count = 0
+        for y in range(top, top + cell):
+            row = rows[y]
+            for x in range(0, w * channels, channels):
+                if row[x] > 60 or row[x + 1] > 60 or row[x + 2] > 60:
+                    count += 1
+        out.append(count)
+    return out
+
+
+async def test_auto_mode_per_source_and_their_sheets(ed: Editor):
+    hero = await bake(ed, source=f"{HERO}#Walk", fps=15)
+    v = hero.structured
+    check(v["mode"] == "bones" and v["bones"] > 0 and v["fetches_per_vertex"] == 16, f"a skinned hero bakes as bones: {v['mode']} {v['mode_reason']}")
+    keep_image("vat_sheet_hero.png", hero.images[0][0])
+    src, vat = lit_rows(hero.images[0][0], 2)
+    check(src > 300 and abs(src - vat) <= max(40, src // 10), f"the hero's source and VAT rows agree: {src} vs {vat}")
+    blob = await bake(ed, source=BLOB)
+    v = blob.structured
+    check(v["mode"] == "vertices" and "morph" in v["mode_reason"].lower(), f"a morph target bakes as vertices: {v['mode']} ({v['mode_reason']})")
+    keep_image("vat_sheet_blob.png", blob.images[0][0])
+    forced = await bake(ed, source=ARM, clips=["Swing"], mode="vertices", normals=False)
+    check(forced.structured["mode"] == "vertices" and forced.structured["fetches_per_vertex"] == 2, f"forced vertices without normals: {forced.structured}")
+
+
 async def test_write_exactly_the_preview_one_undo_step(ed: Editor):
     before = files_under(ed.project)
     r = await bake(ed, source=ARM, clips=["Swing"], fps=20, output=True)
