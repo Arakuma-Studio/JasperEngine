@@ -30,7 +30,8 @@
 //     warnings: stretch_by_velocity_ignored, fluid_uv_from_color_ignored, color_animation_ignored
 //       (rigid Bones: per-piece colours that change over time keep their first frame),
 //       topology_changes (fluid: absolute positions per corner, no interpolation), bone_limit
-//       (rigid pieces over vat::VAT_MAX_BONES: imported as Vertices), large_interpolation_error
+//       (Auto with rigid pieces over vat::VAT_MAX_BONES (65535): imported as Vertices),
+//       large_interpolation_error
 //       (fast spins needed more upsampling than the preset allows), precision_switched (half ->
 //       float), memory_high, animations_list_form (OpenVAT `animations` as a list),
 //       clip_out_of_range (an OpenVAT clip past the texture's frames: clamped),
@@ -45,7 +46,8 @@
 //   S = diag(-1, 1, 1) (positions, quaternions (x, -y, -z, w), tangent reference (1, 0, 0)), pivots
 //   and compressed normals and smooth-trajectory accelerations are stored unmirrored by the
 //   exporter; Unreal-target data (Z-up, cm) goes back through the axis swap and / scale.
-//   Rigid pieces become bones (one per piece, weight 1) up to VAT_MAX_BONES, else Vertices;
+//   Rigid pieces become bones (one per piece, weight 1, uint16 joints: Bones-mode bones index the
+//   payload texture, not the 128-matrix skinning array) up to VAT_MAX_BONES (65535), else Vertices;
 //   frames are upsampled (Houdini's precomputed-angle slerp, smooth trajectories) when a piece
 //   turns more than 60 degrees between frames or when the GPU's lerp/nlerp between samples would
 //   leave a vertex further than the tolerance from Houdini's motion.
@@ -66,6 +68,7 @@
 
 #include "animation/VertexAnimation.h"
 #include "vat/VatAssetWriter.h"
+#include "vat/VatReport.h"
 
 #include <cstdint>
 #include <string>
@@ -73,13 +76,8 @@
 
 namespace jasperengine::editor::vat{
 
-    // An error or a warning: the same shape as the baker's issues (kind, one sentence, one fix)
-    struct VatImportIssue{
-        std::string kind;
-        std::string message;
-        std::string fix;
-        bool error = false;
-    };
+    // An error or a warning: the baker's issue (VatReport.h)
+    using VatImportIssue = VatIssue;
 
     enum class VatImportKind{
         None,
@@ -149,22 +147,13 @@ namespace jasperengine::editor::vat{
         std::string mesh, position, position2, rotation, color, lookup, vat, normalsTexture;
     };
 
-    struct VatImportClipReport{
-        std::string name;
-        int frames = 0;
-        float fps = 0.0f;
-        uint64_t bytes = 0;
-    };
+    using VatImportClipReport = VatClipReport;
 
-    // The baker's report shape (spec 6) plus what an import adds
-    struct VatImportReport{
+    // The baker's report (VatReport.h, spec 6) plus what an import adds
+    struct VatImportReport: VatReport{
         VatImportKind kind = VatImportKind::None;
         HoudiniMode houdiniMode = HoudiniMode::Unknown;
-        jasperengine::vat::VatMode mode = jasperengine::vat::VatMode::Vertices;
-        std::string modeReason;
-        int vertices = 0;               // payload vertices (Vertices) / mesh vertices (Bones)
         int meshVertices = 0;
-        int bones = 0;
         int sourcePoints = 0;           // points (FBX control points / glTF vertices) of the source mesh
         int pieces = 0;                 // Houdini rigid: pieces found
         int sourceFrames = 0;           // frames in the export
@@ -172,18 +161,7 @@ namespace jasperengine::editor::vat{
         int upsample = 1;
         float fps = 0.0f;               // the export's frames per second
         std::string target;             // Houdini: the axes converted from
-        std::vector<VatImportClipReport> clips;
-        int width = 0;
-        int height = 0;
-        jasperengine::vat::VatPrecision precision = jasperengine::vat::VatPrecision::Half;
-        uint64_t bytes = 0;
-        float maxErrorMm = 0.0f;        // payload quantization (half) at the frames
-        float meanErrorMm = 0.0f;
-        float quantizationErrorMm = 0.0f;
-        float toleranceMm = 0.0f;
         float interpolationErrorMm = 0.0f;  // rigid: worst distance from Houdini's motion between samples
-        int fetchesPerVertex = 0;
-        std::vector<VatImportIssue> warnings;
     };
 
     struct VatImportResult{
