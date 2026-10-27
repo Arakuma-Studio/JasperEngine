@@ -2183,9 +2183,13 @@ void SpriteNormalsWindow::drawFrames() {
         const SceneProject* sp = hasAssignTarget() ? project->getScene(target.sceneId) : nullptr;
         const SpriteComponent* sprite = sp && sp->scene ? sp->scene->findComponent<SpriteComponent>(target.entity) : nullptr;
         ImGui::BeginDisabled(!sprite || sprite->numFramesRect == 0);
-        if (ImGui::Button("From Sprite Frames##fromSprite") && sprite && !item.spriteCells.empty()) {
+        std::vector<sn::Cell> c;
+        if (ImGui::Button("From Sprite Frames##fromSprite") && sprite) {
+            std::string texture, error;
+            sn::framesFromSprite(sp->scene, target.entity, 0, texture, c, error);
+        }
+        if (!c.empty()) {
             // the Slicer's uniform grid back into the fields
-            const std::vector<sn::Cell>& c = item.spriteCells;
             g = sn::Grid();
             g.tileWidth = c[0].width;
             g.tileHeight = c[0].height;
@@ -2598,8 +2602,8 @@ void SpriteNormalsWindow::drawWarnings() {
                 std::string error;
                 const std::string kind = w.kind, fix = w.fixes[f];
                 if (!applyFix(kind, fix, error)) setStatus(error, true);
+                ImGui::Unindent(ImGui::GetFontSize());
                 ImGui::PopID();
-                if (f == 0 || true) ImGui::Unindent(ImGui::GetFontSize());
                 return;   // the rows changed
             }
             UIProbe::item("spriteNormals.fix." + w.kind + "." + std::to_string(f));
