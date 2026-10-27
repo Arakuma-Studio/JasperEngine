@@ -235,9 +235,11 @@ namespace jasperengine {
         // is counted as failed (not drawn, not loading). Per skinned mesh: one image, view and
         // texture view on OpenGL (bones texture), one storage buffer and view elsewhere; vertex
         // and index buffers of a model file are shared (MeshBufferPool). The defaults hold
-        // ~10,000 skinned meshes besides the editor's own objects, for about 11 MB of pool
-        // slots on Vulkan (4 MB on OpenGL): slot sizes per backend are a few hundred bytes for
-        // samplers and views on Vulkan, under 100 bytes otherwise, 1-5 KB for pipelines and shaders.
+        // ~10,000 skinned meshes besides the editor's own objects. Pool slots cost (measured,
+        // sizeof sokol's slot structs + 8 bytes) 88 / 96 / 400 / 424 bytes per buffer / image /
+        // sampler / view on Vulkan, 68 / 84 / 72 / 104 on OpenGL, 1-5 KB per pipeline and
+        // shader: these defaults take ~23 MB on Vulkan and ~21 MB on OpenGL, 10.7 MB and 3.9 MB
+        // more than the earlier 8,192 buffers, 2,048 images and 4,096 views.
         struct GpuResourceLimits{
             int buffers = 16384;   // vertex, index, storage (bones on Vulkan, Metal, D3D11), instances
             int images = 16384;    // textures and render targets (bones textures on OpenGL)
