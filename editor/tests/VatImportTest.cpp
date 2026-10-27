@@ -1201,7 +1201,7 @@ TEST(VatImport, RigidFixedUpsampleAndVertices) {
         const Q4 q = texelQuat(r, 8, (int)r.mesh.vatIndex[v], 1);
         EXPECT_LE(len3(rot(q, V3(0, 0, 1)) - rot(truth.rotation(piece, 2.0), n)), 1e-3);
     }
-    // Bones forced: fine with 3 pieces (over VAT_MAX_BONES it is bone_limit, see the SideFX RBD test)
+    // Bones forced: fine with 3 pieces (over VAT_MAX_BONES, 65535, it would be bone_limit)
     spec.mode = "bones";
     EXPECT_TRUE(ev::importVat(spec).ok());
 }
@@ -1731,20 +1731,68 @@ TEST(VatImportSideFx, SoftBodyCloth) {
 
 TEST(VatImportSideFx, RigidBodyDestruction) {
     REQUIRE_SIDEFX();
+    // Auto, default preset (mobile_web): one bone per piece, two texels per bone per sample
     ev::VatImportSpec spec;
     spec.path = (sidefxExamples() / "RBD" / "geo" / "RBD_Simulation_mesh.fbx").string();
-    // 519 pieces x ~80k vertices: the desktop preset, without colours
-    spec.preset = "desktop";
-    spec.colors = false;
-    spec.precision = "float";
     const ev::VatImportResult r = ev::importVat(spec);
     ASSERT_TRUE(r.ok()) << issues(r);
     EXPECT_EQ(r.report.houdiniMode, ev::HoudiniMode::Rigid);
     EXPECT_EQ(r.report.pieces, 519);
     EXPECT_EQ(r.report.sourceFrames, 100);
-    // over the 128 bones of Bones mode: Vertices
+    ASSERT_EQ(r.data.mode, vat::VatMode::Bones);
+    EXPECT_EQ(r.data.layout.bones, 519);
+    EXPECT_FALSE(hasWarning(r, "bone_limit"));
+    EXPECT_EQ(r.data.layout.precision, vat::VatPrecision::Float);
+    // the payload: 519 bones x 2 texels x (100 frames x the upsampling), rows of 2048
+    const int k = r.report.upsample;
+    EXPECT_GE(k, 4);   // pieces turn up to 216 degrees between frames: at least 4 steps of <= 60
+    EXPECT_EQ(r.data.layout.samples, 100 * k);
+    const uint64_t texels = 519ull * 2ull * 100ull * (uint64_t)k;
+    EXPECT_LE(texels, 2048ull * 2048ull);
+    EXPECT_EQ(r.data.layout.width, 2048);
+    EXPECT_EQ((uint64_t)r.data.layout.height, (texels + 2047) / 2048);
+    EXPECT_EQ(r.payload.bytes.size(), (size_t)r.data.layout.width * (size_t)r.data.layout.height * 16);
+    // every vertex weight 1 on its piece, joints past 255 (uint16)
+    int maxJoint = 0;
+    for (size_t v = 0; v < r.mesh.vertexCount(); v++) {
+        EXPECT_FLOAT_EQ(r.mesh.weights[v * 4], 1.0f);
+        maxJoint = std::max(maxJoint, (int)r.mesh.joints[v * 4]);
+    }
+    EXPECT_EQ(maxJoint, 518);
+    // frame 1: every piece at its pivot, unrotated: identity bones
+    for (int b = 0; b < 519; b++) {
+        const auto q = texel(r, 0, b, 0);
+        const auto t = texel(r, 0, b, 1);
+        EXPECT_NEAR(std::fabs(q[3]), 1.0, 1e-6) << b;
+        EXPECT_LT(std::max({std::fabs(t[0]), std::fabs(t[1]), std::fabs(t[2])}), 1e-5) << b;
+        EXPECT_NEAR(t[3], 1.0, 1e-6) << b;
+    }
+    // the decoded rotations (each piece's bone applied to the rest mesh) keep every piece inside
+    // the export's bounds: SideFX's own shader math puts a few vertices of piece 240 at frame 11
+    // 0.057 under the floor (the bounds come from the simulation, which lets pieces sink a
+    // little), a wrong quaternion convention throws thousands of vertices out by up to 0.25
+    expectInsideExportBounds(r, V3(-3.3, -0.201, -6.1), V3(3.7, 2.3, 7.77), "destruction (bones)", 0.1);
+    // the files encode (joints as uint16 in the .vat.glb)
+    ev::VatImportResult copy = r;
+    ev::VatEncodedFiles files;
+    std::string error;
+    const fs::path out = freshDir("sidefx-rbd") / "RBD.vat";
+    ASSERT_TRUE(ev::encodeVatImport(copy, out.string(), files, &error)) << error;
+}
+
+TEST(VatImportSideFx, RigidBodyDestructionAsVertices) {
+    REQUIRE_SIDEFX();
+    ev::VatImportSpec spec;
+    spec.path = (sidefxExamples() / "RBD" / "geo" / "RBD_Simulation_mesh.fbx").string();
+    spec.mode = "vertices";
+    // ~80k vertices x 100 frames x 2 texels: the desktop preset, without colours
+    spec.preset = "desktop";
+    spec.colors = false;
+    spec.precision = "float";
+    const ev::VatImportResult r = ev::importVat(spec);
+    ASSERT_TRUE(r.ok()) << issues(r);
     EXPECT_EQ(r.data.mode, vat::VatMode::Vertices);
-    EXPECT_TRUE(hasWarning(r, "bone_limit"));
+    EXPECT_TRUE(r.mesh.joints.empty());
     // frame 1: every piece at its pivot, unrotated: the vertices at rest
     double maxOffset = 0;
     for (size_t v = 0; v < r.mesh.vertexCount(); v++) {
@@ -1752,14 +1800,7 @@ TEST(VatImportSideFx, RigidBodyDestruction) {
         maxOffset = std::max(maxOffset, std::max({std::fabs(o[0]), std::fabs(o[1]), std::fabs(o[2])}));
     }
     EXPECT_LT(maxOffset, 1e-5);
-    // the decoded rotations keep every piece inside the export's bounds: SideFX's own shader math
-    // puts a few vertices of piece 240 at frame 11 0.057 under the floor (the bounds come from the
-    // simulation, which lets pieces sink a little), a wrong quaternion convention throws thousands
-    // of vertices out by up to 0.25
-    expectInsideExportBounds(r, V3(-3.3, -0.201, -6.1), V3(3.7, 2.3, 7.77), "destruction", 0.1);
-    ev::VatImportSpec bones = spec;
-    bones.mode = "bones";
-    EXPECT_TRUE(hasError(ev::importVat(bones), "bone_limit"));
+    expectInsideExportBounds(r, V3(-3.3, -0.201, -6.1), V3(3.7, 2.3, 7.77), "destruction (vertices)", 0.1);
 }
 
 TEST(VatImportSideFx, FluidSplash) {
