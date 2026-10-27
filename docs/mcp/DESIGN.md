@@ -282,7 +282,9 @@ the same work and reports it itself):
   `PoseAnimationDocument`s reload), animation clips `.anim` (their open
   `AnimationClipDocument`s reload, `AnimationClipPool` drops them and the Animation Players
   using them reload, during play too; load errors and warnings of `.anim` and `.poseanim`
-  files become `problems`); models `.gltf/.glb/.obj/.fbx` and glTF `.bin` buffers (picked up
+  files become `problems`), Vertex Animations `.vat` (`VertexAnimationPool` drops them and the
+  Vertex Animators reload, during play too; parse errors, a `.vat` / `.vat.glb` mismatch and the
+  lenient reader's warnings become `problems`; a changed `.vat.glb` drops its `.vat`); models `.gltf/.glb/.obj/.fbx` and glTF `.bin` buffers (picked up
   but not reported: only `AnimationClipDocument::filesChanged` sees them, which drops the
   pooled parse, the model's sub-clips and their documents and reloads the players using them;
   no full sync, so no thumbnail and no FBX import); assets: images (`.svg` included), fonts `.ttf/.otf`,
