@@ -36,6 +36,7 @@ namespace jasperengine::editor {
         // Texture (S14 R24)
         TextureProjectSettings m_textureSettings;
         PlayerLoggingSettings m_playerLogging;
+        PlayerCrashSettings m_playerCrash;
         int m_htmlUiMsaaIndex = 2;   // htmlUiMsaaValues: 1, 2, 4, 8
         // the shadow quality tier of each platform (Engine::Platform order), as ShadowTier ints
         int m_shadowTiers[6] = {2, 0, 1, 0, 2, 2};

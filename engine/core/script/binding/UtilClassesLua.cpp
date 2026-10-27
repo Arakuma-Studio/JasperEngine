@@ -13,6 +13,7 @@
 #include "util/CrashHook.h"
 #include "util/Scheduler.h"
 #include "LuaReload.h"
+#include "LuaWatchdog.h"
 #include "util/SubscriptionOwnerIndex.h"
 
 #include <cstring>
@@ -112,7 +113,9 @@ namespace je_lua_timer {
     }
 
     void reportError(const char* name, const std::string& error) {
-        if (!CrashHook::report(name, error)) {
+        if (LuaWatchdog::takeInterrupt()) {
+            LuaBinding::logLuaError("Script crash: %s: %s", name, error.c_str());
+        } else if (!CrashHook::report(name, error)) {
             LuaBinding::logLuaError("Lua Error: %s: %s", name, error.c_str());
         }
     }

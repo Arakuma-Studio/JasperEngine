@@ -378,6 +378,35 @@ gtest targets.
 - **AC20 (iOS, manual)** Simulator run with `JASPERENGINE_DEBUG_CRASH=segv@10`: `crash.txt` in
   `Library/Caches/crash/reports/*`, its `build_id` equals `dwarfdump --uuid` of the dSYM.
 
+### Acceptance status by platform
+
+As of the landing merge. Pass = executed with recorded evidence; Pending = not executed;
+n/a = the criterion does not apply there. Linux evidence: the merged-branch gate records below.
+Apple evidence: "Apple native execution (2026-10-27)" below, and the archive
+`/var/lib/orquester/workspaces/jaspersito/je-evidence/s28-apple-20261027.tar.gz` (SHA-256
+`e80dd23740a4cc34baea0c275dbe5692e222c16bdef2b931233d7730508c9089`). Windows: no Windows
+host was available, so every Windows-specific check is still pending.
+
+| AC | Linux | macOS (ARM64) | iOS simulator | Android | Web | Windows |
+|----|-------|---------------|---------------|---------|-----|---------|
+| AC1 crash modes, report keys, symbolication | Pass | Pass (16 modes, Release + ASan/UBSan) | n/a | n/a | n/a | Pending |
+| AC2 stack overflow on main and worker | Pass | Pass (SIGBUS guard page accepted) | n/a | n/a | n/a | Pending |
+| AC3 minidump, `cdb` stack, 10 s exit | n/a | n/a | n/a | n/a | n/a | Pending |
+| AC4 previous handler chained, ASan after ours | Pass | Pass | n/a | n/a | n/a | Pending |
+| AC5 guarded worker crash reaches the handler | Pass | Pass | n/a | n/a | n/a | Pending |
+| AC6 signal-safety symbol scan | Pass | n/a (Linux CI check) | n/a | n/a | n/a | n/a |
+| AC7-AC9 hang watchdog unit tests | Pass | Pass (diagnostics unit tests) | n/a | n/a | n/a | Pending |
+| AC10 walker deadline resumes the main thread | n/a | n/a | n/a | n/a | n/a | Pending |
+| AC11-AC13 MCP runaway Lua, health off main, notice | Pass | Pending (MCP suite not run on macOS) | n/a | n/a | n/a | Pending |
+| AC14 retention, AC17 report hook | Pass | Pass (unit) | n/a | n/a | n/a | Pending |
+| AC15 Android report + tombstone | n/a | n/a | n/a | Pass (API 34 emulator) | n/a | n/a |
+| AC16 web crash gate, `onCrash` | n/a | n/a | n/a | n/a | Pass | n/a |
+| AC18 bench budgets, smoke without hang lines | Pass (E bench and smoke at landing) | n/a | n/a | n/a | n/a | n/a |
+| AC19 `run_game` crash report | Pass | n/a | n/a | n/a | n/a | n/a |
+| AC20 iOS report, build id = dSYM UUID | n/a | n/a | Pass (iOS 26.5) | n/a | n/a | n/a |
+
+No physical iOS device was run.
+
 ## 8. Dependencies & conflicts
 
 - Depends on: S01 (C++20), S02 (gtest targets, CTest, presets, browser gate, CI legs), S06
@@ -408,3 +437,424 @@ gtest targets.
   every known long path; AC18 keeps the smoke runs at zero hang lines.
 - Lua interruption may leave a script half-way through its update: acceptable in Play (same as a
   script error today); never enabled in shipped games.
+
+## Deviations
+
+Recorded by the S28 implementation (branch `feat/s28-robustness`).
+
+- **Native backends are implemented on `feat/s28-native-crash`.** The editor now forwards to
+  the engine POSIX/Windows backends, including alternate stacks/stack guarantees, saved signal
+  actions, Windows writer-thread dumps, CrashGuard forwarding and bounded main-thread capture.
+  Apple uses the signal-capture alternative (SIGUSR2, configurable), rather than a Mach frame
+  walk. POSIX capture waits with monotonic 1 ms polling rather than `sem_timedwait`: Darwin
+  has no unnamed semaphores, and a realtime-clock step must not extend the 250 ms deadline.
+  A timed-out capture disables further stack captures for the process, keeping its storage
+  alive for a late handler/helper. Modules are snapshotted at installation for fatal-path
+  frame formatting; the bounded cache retains our image even when Android loads hundreds
+  of system libraries first. Linux/Android also copy the current `/proc/self/maps` so omitted
+  or later-loaded libraries remain recorded. Windows waits at most eight seconds for the writer,
+  below R5's 30-second ceiling. If DbgHelp's process-wide lock is held by the faulting thread,
+  the writer skips the dump/walk and writes saved PC/SP instead of waiting on that lock.
+  Remaining native-platform checks requiring their hosts: Windows dump inspection (AC3),
+  Windows forced-walker deadline execution (AC10), Apple builds and simulator checks (AC20).
+  R18's optional hang minidump remains outside this backend task and is not exposed in UI.
+- **Preferences are not undo steps** (R29, R31 `set_hang_watchdog`): Preferences > Diagnostics and
+  `set_hang_watchdog` apply at once and save, like every other preference and
+  `set_project_settings` (which says "not undoable"); the dialog's Cancel reverts unsaved edits.
+- **Hang threshold in whole seconds** (R29): Report After is in seconds (1-60) as the spec's UI;
+  `set_hang_watchdog threshold_ms` rounds to whole seconds. `JASPERENGINE_HANG_WATCHDOG_MS` keeps
+  millisecond precision.
+- **The heartbeat is a counter** (R12, R26): `diag::heartbeat()` is one relaxed increment (no
+  clock read: a steady-clock read alone costs more than R26's 5 ns); the watchdog timestamps the
+  change when it polls, so a stall is measured to within one poll period (250 ms).
+- **Runaway Lua keeps Play running** (R16): today's script-error path pauses and stops Play, so an
+  interrupt is logged as "Script crash: script interrupted: ..." by the error paths themselves
+  (`LuaWatchdog::takeInterrupt`), not handed to the crash hook, as R16 and AC11 require.
+- **`run_game` is `run_build`** (R31, R34, AC19): the tool's name in this code base; it gains
+  `crash_report`.
+- **Web build hash** (R2, R24): S30's build hash is used when `JASPERENGINE_BUILD_HASH` is defined;
+  until S30 defines it, a hash of the engine's compile time stands in.
+- **Crash Handling settings on Xcode exports** (R30): like Player > Logging, they reach a game
+  through the exported CMake project; the Xcode workspace (iOS, macOS Xcode) builds with the
+  defaults.
+- **`HangWatchdog.*` beat test** (AC7): the "beats every 50 ms" case runs 0.9 s, not 2 s, to stay
+  inside the 1 s rule of non-Slow unit tests.
+- **Tool verbs**: `dismiss` and `debug` were added to the verb list of
+  `test_tool_conventions.py` for the spec's `dismiss_crash_notice` and `debug_crash`.
+
+### Native backend validation (`feat/s28-native-crash`)
+
+All execution uses `je-remote/rb.sh`; no local builds or tests.
+
+- Red control, before the backend/CrashGuard fix: server D,
+  `WERROR=1 UNIT_SUITE=core UNIT_TEST_ARGS=--gtest_filter=CrashGuard.WorkerCrashReachesHandler
+  tools/build.sh unit-tests` fails with "a worker crash during a Lua guard must reach the engine
+  handler" (1 ran, 1 failed; no crash.txt).
+- Server D: `ctest --test-dir build/linux/core-tests -R 'native-crash|posix-crash'
+  --output-on-failure`: 2/2 pass. Fatal subprocess modes segv, abort, terminate, main/worker
+  overflow, worker segv, fpe, guarded-worker segv, saved-handler sentinel and the injected
+  main-thread stall all pass; reports retain registers, >=3 frames, build ID and log tail.
+  The object scan finds no printf, malloc/new/delete or mutex-lock import.
+- Server D, ASan+UBSan tree: `python3 -I engine/tests/crash/test_crash.py
+  build/linux/core-tests-address-undefined/tests/core/jasperengine-crash-test
+  --symbolicate tools/crash/symbolicate.py --expect-asan`: all 10 modes pass, explicitly checking
+  that ASan's prior fatal handler prints after the engine report.
+- Server D, refreshed focused gtest run: `Crash*:HangWatchdog.*` runs 29/29 successfully
+  in both normal and ASan+UBSan trees, including the saved handler returning, recovered guard,
+  pending hook and main-thread frame assertions. No new diagnostic allocation leak or UB is
+  reported. The sanitizer process exits with the existing 56-byte `jobs::setProfilerHooks`
+  leak from `GpuEnvironment::initEngine` (the common test harness), after all assertions pass.
+
+- Server D, full normal rerun after the hook fix: 1,077 core tests and 392 editor tests pass,
+  zero failures, zero skips (both process exit codes zero). This includes both
+  `LoggerCrashFlushTest` cases through the editor compatibility forwarder. The initial shared-D
+  timing failure did not recur in this run.
+- Final refreshed server D checks after the bounded module-cache priority fix:
+  `WERROR=1 tools/build.sh linux` and `tools/build.sh web` both exit zero; native CTest
+  (`native-crash-reports`, `posix-crash-signal-safety`) is 2/2; ASan+UBSan native subprocess
+  tests are 10/10. `LoggerCrashFlushTest.*` is 2/2 in normal and ASan+UBSan builds, with
+  WERROR enabled; only the baseline 56-byte profiler-hook harness allocation remains.
+- Server D MCP: `test_protocol.py` is 12/12; `test_crash.py` is 5/6, including off-main health,
+  the deliberate native segfault/restart notice and abnormal-session hook delivery. The existing
+  `test_runaway_lua` misses its Console interruption error. Isolated controls also fail with
+  `JASPERENGINE_HANG_SIGNAL=0` (40.3 s) and the default signal (37.8 s), so the failure does not
+  require native stack-capture delivery. Root cause (`feat/s28-robustness` da086c4a8, in this
+  merge): the interrupt raised its error with `luaL_error(L, "...%.1f s...")`, and
+  `lua_pushfstring` has no precision, so the script failed with "invalid option '%.' to
+  'lua_pushfstring'" instead of "script interrupted"; the message is now formatted with
+  `snprintf` first. Red on server A before the fix (the Console showed that Lua error), green
+  after (`test_crash.py` 5/5); the native branch was based on d397cb284, before the fix.
+- Server D smoke, the remote host's `tools/smoke-test.sh "$HOME/je/fixture-unity"`: export,
+  standalone build, game and editor runs all pass; screenshots are saved and neither log has
+  a crash, error or `JASPERENGINE HANG:` line. The brief's `--img` invocation cannot launch
+  Docker inside the build image, so the same script runs from the remote host instead.
+- Server A, final Android build: `ANDROID_PROJECT=crash-diagnostics tools/build.sh android`
+  passes for all four ABIs. The final API 34 x86_64 emulator run with
+  `tools/android-emulator-test.sh build/android-crash-diagnostics/app-debug.apk
+  --expect-native-crash --expect 'JASPERENGINE CRASH:' --out build/android-native-module-green`
+  exits zero. Artifacts include the engine report, fatal logcat marker and preserved debuggerd
+  tombstone. Both reports identify fault thread 1959 (`je-main`), build ID
+  `ca276c8e0a5b57b07ad161629e5a81ead4421d9f`, and the same first game frame
+  (`libjasperengine-android.so+0x1fc4b4e`, `debugSegv()+14` in the tombstone).
+  The strengthened game-module assertion first failed against the saved old APK, then passed
+  after the bounded module cache retained our image. Final artifacts remain on A in
+  `build/android-native-module-green`; the final APK SHA-256 is
+  `51bafb346db8457f3f9696c7e17d306789001e7687885a76e475da4a3fb995de`.
+
+#### Baseline gate failures owned by other streams
+
+Per the integration owner's instruction, this branch does not change texture, scene or profiler
+ownership and does not suppress their engine/editor leaks. BF2 (`fix/bf2-green-oe-port`) owns
+those fixes. The full ASan+UBSan run identified:
+
+- `Profiler.CommandLineCaptureWritesItsFile`, `JobsHooks.JobsReportBeginAndEnd` and
+  `JobsParallelForLanes.*`: profiler-hook snapshots allocated by `jobs::setProfilerHooks` are
+  retained; the full core run reports 280 bytes in five allocations. Even a focused CPU run
+  inherits one 56-byte snapshot from common engine initialization.
+- `Compat.CorpusRoundTrip` and `HotReloadServiceTests.*`: texture image buffers (default sky
+  and hot reload) and `Project::createSceneRender`/scene restoration ownership leak; the full
+  editor run reports 273,768,644 bytes in 24,640 allocations.
+- `ToolchainFingerprint.CompareNamesEachDifferingField`: the Debug sanitizer fixture already
+  has `ndebug=0`, so assigning zero does not create the third expected mismatch (two vs three).
+  The test fixture remains unchanged on this branch.
+- `NumericExpression.EvaluationWithinBudget` (ASan) and
+  `LoadReportOverheadBench.DecodeWithReport` (normal): wall-clock limits exceeded on shared D.
+  Timing acceptance is authoritative only on E; these unrelated D results are informational.
+
+The initial full normal run's two `CrashHook.*` failures were a real report-hook mutex
+reentrancy deadlock; this branch fixes it, and both refreshed normal and sanitizer focused
+runs pass them. Fatal helper processes deliberately print sanitizer signal diagnostics after
+our report; those are expected evidence that the saved sanitizer handler is still chained.
+
+### Merged branch gate (`feat/s28-robustness` after merging oe-port and `feat/s28-native-crash`)
+
+All through `je-remote/rb.sh`; merge commit b8808a966 plus the fixes after it.
+
+- Server A: `WERROR=1 tools/build.sh linux` passes. `WERROR=1 tools/build.sh unit-tests`: 1,078 core
+  and 392 editor tests, 0 failed.
+- Server A, `SANITIZE=address,undefined tools/build.sh unit-tests`: core 1,078 ran, 2 failed:
+  `ToolchainFingerprint.CompareNamesEachDifferingField` (the known Debug fixture value) and
+  `Backends/FileWatchServiceTests.PumpBudget/Native` (wall clock: 44 ms against its 20 ms sanitizer
+  limit on the loaded host; S05's file watcher). Editor 392 ran, 1 failed:
+  `NumericExpression.EvaluationWithinBudget` (wall clock, known). The run's container log was
+  lost when its local wrapper stopped (the results come from its gtest XML), so its leak
+  summary is not recorded here; the native branch's sanitizer record above lists the known
+  leaks of other streams.
+- MCP (A): `test_crash.py` 6/6 (`test_runaway_lua` included; the third start of the two notice
+  tests now checks the dismissed report itself, since the harness kills an editor slower than
+  2 s to exit and that session is rightly reported as abnormal) and `test_protocol.py` 12/12;
+  `test_tool_budget`, `test_tool_conventions`, `test_tool_coverage`, `test_docs`, `test_autosync`,
+  `test_tool_groups`, `test_lua_api_json` pass.
+- Web (A): `tools/build.sh web` + `web-gate` PASS; `WEB_PROJECT=crash-diagnostics` build +
+  `GATE=crash-diagnostics` PASS (ready line, then `JASPERENGINE CRASH:`, `onCrash` with stack and
+  log tail, the overlay).
+- Android (A): `tools/build.sh android` passes; `ANDROID_PROJECT=crash-diagnostics` APK on the API 34
+  emulator with `--expect-native-crash --expect 'JASPERENGINE CRASH:'`: PASS (engine report and
+  debuggerd tombstone, `F/JasperEngine: JASPERENGINE CRASH: SIGSEGV (invalid memory access)`).
+- Smoke (A): `tools/smoke-test.sh tools/fixtures/post-processing` PASS, no `JASPERENGINE HANG:` line.
+- Server E, `je-bench-diag`: heartbeat 2.25 ns (<= 5), 120-byte ring write 11.2 ns (<= 150),
+  install 0.58 ms (<= 3), idle watchdog 0.056 % of a core (<= 0.1): every budget holds.
+
+Owner review follow-up on `feat/s28-native-crash`: concurrent faulting threads now wait up to
+8 seconds for report completion before chaining (lock-free owner plus monotonic/nanosleep wait
+on POSIX, the writer's completion event on Windows). A recursive fault on the reporting thread
+or Windows writer immediately reaches the OS terminating action. A null-by-default internal
+subprocess-test seam delays or recursively faults the first reporter before it opens its report.
+POSIX stacks locate the saved fault PC and omit the handler/trampoline and duplicate PC; if that
+boundary cannot be unwound, only the saved PC is retained. Symbol names are resolved offline
+with `symbolicate.py`, including late-loaded libraries through the maps copy, keeping `dladdr`
+and symbol-loader calls out of the fatal path. Tests check both named fault frames and absence
+of handler frames. Windows dynamically resolves `GetThreadDescription` during installation;
+its writer adds `thread_name`, falling back to `unknown` on older systems.
+
+After merging oe-port again (S11, 4d5ae3093): server B `WERROR=1 tools/build.sh unit-tests` 1,121 core
+and 398 editor tests, 0 failed; server D `WERROR=1 tools/build.sh linux`, MCP 43/43
+(`test_crash.py` 6/6, `test_protocol.py` 12/12, budget, conventions, coverage, docs, tool groups),
+`tools/build.sh web` + `web-gate` PASS, the crash-diagnostics web gate PASS, `tools/build.sh android`
+passes, smoke PASS. `tools/crash/test_symbolicate.py` passes on B against a fresh
+`jasperengine-crash-test`.
+
+
+After merging oe-port e1ca0c71a and `feat/s28-native-crash` round 2 (0ef567c61; its last two
+commits are records only), all through `je-remote/rb.sh`:
+
+- Server D `WERROR=1 tools/build.sh unit-tests`: 1,176 core and 770 editor tests, 0 failed. Server B
+  `WERROR=1 tools/build.sh linux` passes.
+- Server D `SANITIZE=address,undefined tools/build.sh unit-tests`: core 1,173 ran, 1 failed
+  (`Backends/FileWatchServiceTests.PumpBudget/Native`, BF2's). Core leak summary: 280 bytes in 5
+  allocations, all `jobs::setProfilerHooks` from the `JobsHooks`/`JobsParallelForLanes` tests (known);
+  no UBSan diagnostic. The SEGV summaries in the log are the deliberate crash subprocesses
+  (`CrashGuard.WorkerCrashReachesHandler`, `LoggerCrashFlushTest`), ASan's report following ours.
+  The editor binary stops on a SIGTRAP: Jolt's Debug `JPH_ASSERT(errors == None)` at
+  `PhysicsSystem.cpp:616` fires in `PlacementWorldReview.OverflowingContactBuffersAreReported` and
+  `PhysicsPlacementSim.OverflowingContactsAreReported`, which overflow the contact buffers on
+  purpose (upstream physics-placement; the sanitizer build is Debug, so Jolt asserts are on).
+  Rerun excluding those two (`--gtest_filter=-*.OverflowingContact*`): 768 ran, 2 failed,
+  `TexSynthOutOfMemory.IsAFailedStatusNotATerminate` (ASan's allocator aborts instead of throwing
+  `bad_alloc`) and `NumericExpression.EvaluationWithinBudget` (wall clock, known). Editor leak
+  summary: 310,690,257 bytes in 30,600 allocations; no leak stack has an S28 frame. The largest roots
+  are `Compat.CorpusRoundTrip` (known), `PhysicsPlacementSim.*`, and the undo, prefab-undo and
+  play-change review tests.
+- Server D: MCP 63/63, including `test_crash.py`, `test_protocol.py`, budget, conventions, coverage
+  and docs. AC19 `test_build.py` 2/2 (the `JASPER_SLOW_BUILD=1` development build in 850 s), with
+  `crash_report` an absolute path. `docs/mcp/TOOLS.md` regenerated: 203 tools.
+- Server D: `tools/build.sh web` + `web-gate` PASS; the crash-diagnostics web build + gate PASS;
+  `tools/build.sh android` passes; smoke PASS.
+- Server C: the API 34 x86_64 emulator check on the crash-diagnostics APK passes (booted in 65 s;
+  engine report, debuggerd tombstone, `F/JasperEngine: JASPERENGINE CRASH: SIGSEGV`).
+- Server E, `je-bench-diag`: heartbeat 2.495 ns, ring write 11.27 ns, install 1.113 ms, idle
+  watchdog 0.064 % of a core; every budget holds.
+
+### Landing gate (oe-port 05eb8d3b4 with S25, native rounds 3 and Apple, 46c3df8b9)
+
+All through `je-remote/rb.sh`, on the replacement D and E servers (the old ones were retired mid-run), Android on C:
+
+- S28 settings go through S25's registry: `player.crash.*` are registry rows (Project Settings >
+  Player > Crash Handling) and Preferences > Diagnostics is a registry page; both windows draw them
+  through `settingsui::beginRow`. S28 has no menu items or shortcuts. The `check-hardcoded-shortcuts.py`
+  lint passes (682 files) and so does its self-test. The agent guide fits its 16,384-byte budget
+  again, which S25 plus S28 had exceeded by 214 bytes: S28's digest is one line, and two redundant
+  lines went.
+- After the Apple `Signal.h` fix (447ca891f), generated script projects lose their `core/util`
+  include path too (`Generator::engineApiIncludeDirs`).
+- `WERROR=1 tools/build.sh linux` passes. `WERROR=1 tools/build.sh unit-tests`: 1,185 core and 821
+  editor tests, 0 failed. Crash CTests 3/3 (`native-crash-reports` with every subprocess mode,
+  `posix-crash-signal-safety`, `crash.symbolicate`); under ASan+UBSan, 3/3 as well.
+- `SANITIZE=address,undefined tools/build.sh unit-tests`:
+  - Core: 1,183 ran, 0 failed, no leak and no UB diagnostic.
+  - Editor: 820 ran, 0 failed. The first run leaked 90 MB from S25's organisation test fixture,
+    whose Project kept its scenes. `releaseScenes` in its TearDown fixed that (46c3df8b9). The
+    rerun leaks 1,040,056 bytes in 3,809 allocations, all from V-HACD hulls in
+    `ConvexDecompositionCache`'s worker (`ConvexDecomposition.cpp:597`): upstream
+    physics-placement code; no leak stack has an S28 frame.
+- MCP 71/71: `test_crash.py`, `test_protocol.py`, budget, conventions, coverage, docs, tool groups,
+  autosync, `test_lua_api_json.py`, `test_search_organisation.py`. `docs/mcp/TOOLS.md`:
+  211 tools, unchanged on regeneration.
+- `tools/build.sh web` + `web-gate` PASS. The crash-diagnostics web build + gate PASS.
+  `tools/build.sh android` passes (C). Smoke PASS, with no `JASPERENGINE HANG:` line.
+- Server E (the replacement), `je-bench-diag`: heartbeat 2.403 ns, ring write 12.59 ns,
+  install 0.661 ms, idle watchdog 0.033 % of a core; every budget holds.
+
+### Final merge (oe-port 545618e38, S14)
+
+Conflicts resolved: ProfilerWindow includes; the core tests now have both S14's `LINK zstd` and
+S28's crash-test definition; `test_tool_conventions.py` has S14's `reimport` verb and S28's
+`dismiss`/`debug`; `TOOLS.md` was regenerated (215 tools). S14 includes no `core/util` header by
+bare name, and the agent guide still fits its budget (`test_tool_budget` passes). Server D:
+`WERROR=1 tools/build.sh linux` passes; MCP 64/64 (`test_tool_conventions`, `test_tool_budget`,
+`test_protocol`, `test_crash`, `test_texture_import`, docs, tool groups, autosync);
+`tools/build.sh web` and `tools/build.sh android` pass; smoke PASS, with no `JASPERENGINE HANG:` line.
+Server B, `WERROR=1 tools/build.sh unit-tests`: 1,230 core and 870 editor tests, 0 failed. Crash
+CTests 3/3 (`native-crash-reports` with every subprocess mode, `posix-crash-signal-safety`,
+`crash.symbolicate`).
+
+### Native review follow-up validation
+
+- Server D red control rebuilt the test-only checkpoint `84c6c0281` (the original handlers
+  plus the internal fault-injection seam), then ran the current subprocess driver with
+  `--mode concurrent`. It failed because no `crash.txt` existed: exit `-11`, stderr
+  `JASPERENGINE CRASH: another fatal signal while reporting`. The separate `--mode recursive`
+  control terminated immediately. The gate restored the fixed sources before its next build.
+- Server D fixed-source gate: `WERROR=1 tools/build.sh linux` passes (editor/install and
+  standalone game). The crash CTests (`native-crash-reports`, `posix-crash-signal-safety`,
+  `crash.symbolicate`) pass 3/3 in 15.77 s. All 13 POSIX subprocess modes pass, including
+  complete concurrent-fault reports, immediate recursive termination, and saved-handler
+  chaining after an earlier report's handler returned. The segfault cases' symbolicated stacks contain the
+  fault function once; all symbolicated crash stacks omit engine handler frames.
+- Windows review additionally covers recursive CRT faults: the synthetic path now terminates
+  directly before invoking any saved abort callback. Its Windows-only `recursive_abort`
+  subprocess installs a deliberately stalled previous abort handler; execution awaits a
+  Windows host, alongside the existing Windows dump/deadline checks.
+- Server D ASan+UBSan red controls also fail as intended: the original concurrent handler
+  exits 77 with no report, and the original recursive handler enters ASan's saved handler
+  instead of taking the OS action directly (the subprocess exits 77). After restoring the
+  fixed sources and rebuilding, all 13 sanitizer subprocess modes pass, including ordinary
+  segfault chaining to ASan, concurrent report completion, direct recursive termination and
+  saved-handler chaining after a completed report. No unexpected leak or UB diagnostic is
+  emitted by the fixed runs; the red controls' sanitizer SEGV output is deliberate evidence.
+- Server D crash/protocol MCP gate: 18 passed, 0 failed, 0 skipped in 53.3 s
+  (`test_crash.py` 6/6, `test_protocol.py` 12/12), including `test_runaway_lua` and the
+  native segfault/restart notice. This verifies the S28 fixes merged at `3b0dd7a14` together
+  with the native follow-up. All temporary red-control sources were restored afterward.
+- Final source `a1555b8d1` omits optional secondary-fault stderr notes, so a full pipe cannot
+  add an engine write after the bounded wait. Server D revalidation passes again: WERROR
+  editor/install and standalone game, 3/3 crash CTests (15.66 s), and all 13 ASan+UBSan modes.
+- Server D final Android fixture build (`ANDROID_PROJECT=crash-diagnostics tools/build.sh
+  android`) passes all four ABIs: arm64-v8a, armeabi-v7a, x86 and x86_64 (40m 6s).
+  The 107,656,922-byte APK SHA-256 is
+  `93c668ff351fb0da56ed8267e261ba27d369b9fbbba6860c665fbdd53008a6b0`; it matches after transfer
+  to A for the emulator-only gate. The initial A build attempt failed from disk exhaustion
+  before compilation; the integration owner freed space and directed APK builds to B/D.
+- Server A final API 34 x86_64 emulator gate exits zero: boot in 55 s, engine report,
+  `F/JasperEngine: JASPERENGINE CRASH: SIGSEGV` and preserved debuggerd tombstone all found.
+  The engine stack contains the game callers without reporter/trampoline duplication. Its
+  first frame `libjasperengine-android.so+0x2099e4e` matches debuggerd's `debugSegv()+14`; both
+  record thread 1967 (`je-main`), PC `0x7aa31bcbae4e`, SP `0x7aa3259f5368`, and build ID
+  `bc4d40fddcd6771488eedfbc73fdf9361207c3b2`. The crash report is complete and parseable.
+  Evidence remains on A in `build/android-native-review-green` (1.2 MB) and was fetched for
+  inspection. Per the integration owner's instruction, the APK, Gradle cache and Android
+  native/Java build outputs in this worktree on A were deleted after the passing run.
+
+### Native review round 3
+
+- Windows names are snapshots taken by `prepareThread()` (after `spawnNamed` sets the OS
+  name). `GetThreadDescription`, UTF-8 conversion and `LocalFree` run only there. Native,
+  constant-initialized TLS holds two fixed-size names and a lock-free publication index.
+  Conversion uses a stack buffer before publishing to the inactive name buffer, so a
+  fault during preparation still reads the previous complete UTF-8 snapshot. The fault
+  submitter copies it to
+  preallocated writer storage. Unprepared threads and unavailable APIs report `unknown`.
+  The writer performs no thread-name allocation or lookup. The Windows-only
+  `cached_thread_name` subprocess renames the OS thread after preparation and requires the
+  cached name. A process-heap-lock fault test could not be validated here: no Windows
+  runner is available, and the existing DbgHelp/minidump path independently uses the heap,
+  so locking the entire process heap does not isolate this name-lookup regression.
+- POSIX recursive reporter faults restore and chain the saved signal handler before OS
+  termination. If that handler returns, the default fatal disposition runs immediately;
+  the damaged writer never resumes. Restoring the previous disposition before calling it
+  prevents its signal re-delivery from re-entering our writer. Subprocess regressions
+  cover the sanitizer handler, a saved terminating handler and a saved returning handler.
+- POSIX frame trimming is a pure, signal-safe helper. When the interrupted PC is absent
+  (possible with Apple unwinders), it retains the available trace after the known
+  capture/reporter prefix, extending that prefix through the dispatch return PC when
+  present. Both capture and reporter are explicitly noinline. The saved PC remains #0;
+  symbol names are still resolved offline by `symbolicate.py`, with no loader/heap calls
+  in the signal path. Synthetic tests cover PC match, missing/zero PC, dispatch prefix,
+  short/empty traces and ARM Thumb address normalization. Apple execution awaits its SDK
+  host; the portable trim tests execute on Linux.
+- Server D red control at `7e62b9d4f`: the synthetic
+  `CrashFrames.MissingPcKeepsCallersAfterKnownHandlerFrames` test fails for both absent
+  and zero interrupted PCs (returns 4 rather than the required caller start 2). The
+  `recursive_chain` subprocess also fails because its saved-handler sentinel is absent.
+  The fixed-source gate uses `1933cfa6b`; no temporary red-source edits are left in git.
+- Server D fixed-source gate: full `WERROR=1 tools/build.sh linux` passes (editor/install
+  and standalone game); `Crash*.*` passes 19/19, including all five synthetic frame tests.
+  The three crash CTests pass in 18.05 s; all 15 normal and all 15 ASan+UBSan subprocess
+  modes pass, including concurrent faults and recursive sanitizer/returning-handler chains.
+  No unexpected sanitizer failure occurs. `test_crash.py` plus `test_protocol.py` passes
+  22/22, zero skipped, in 63.8 s using `rb.sh D --img` (its `/fixture` mount is required
+  by the four newer protocol tests). An initial `tools/build.sh exec linux` invocation
+  omitted that mount and failed those four cases with `No fixture project`.
+- Server D Android crash-diagnostics APK builds all four ABIs in 41m 51s. Its size is
+  110,681,012 bytes, SHA-256
+  `71c9e988ed0b15974a05e253085d36296bab8e3caaaa89631dd4bc30afcf47a1`, verified after transfer
+  to C. The committed AGP 9.4.1/Gradle 9.6/NDK 28.2 versions are unchanged. Google Maven
+  returned HTTP 404 over D's IPv4 route (even for known older artifacts), but HTTP 200
+  over IPv6. This gate used a temporary per-process Docker `--network host` and
+  `JAVA_TOOL_OPTIONS=-Djava.net.preferIPv6Addresses=true`, plus a temporary Gradle
+  negative-cache refresh init script. That init script and the gate helpers were removed;
+  no repository or host networking configuration was changed.
+- Server C API 34 x86_64 emulator gate passes, booting in 44 s: engine report, fatal
+  logcat marker and preserved debuggerd tombstone. Both reports identify thread 1973
+  (`je-main`), PC `0x77eb4eff930e`, SP `0x77eb57bed318`, and build ID
+  `d8633a5e5cc5b96c39b451393f9278e492095ba1`. Both have 22 frames; the first engine frame
+  `libjasperengine-android.so+0x21e130e` matches debuggerd's `debugSegv()+14`, with no
+  reporter/trampoline duplication. Evidence is retained on C in
+  `build/android-native-r3-green` and was fetched for inspection. C only prepared the
+  emulator image and ran the APK; native APK compilation ran on D.
+
+### Apple native execution (2026-10-27)
+
+- Merged `feat/s28-robustness` into `feat/s28-native-crash` by fast-forward to
+  `d862448d5`; no integration-owner worktree was edited and nothing was pushed.
+  All compilation/execution below ran on the rented Blacksmith ARM64 macOS box
+  (macOS 26.3, Xcode 26.6 / AppleClang 21), never on the Orquester host.
+- Windows rental approval was denied. No Windows box was provisioned and the
+  request was not retried. Windows execution, ASan, minidump inspection, saved
+  exception-filter chaining, WER parity and the forced walker deadline remain
+  unvalidated (AC3/AC10); source review is not execution evidence.
+- Native execution found and fixed four defects, with red checks before fixes:
+  `447ca891f` removes flat `core/util` include paths so `Signal.h` cannot shadow
+  the system `<signal.h>` on case-insensitive filesystems. The new C compile
+  regression `SystemSignalHeader.c` fails on the original macOS include paths
+  and passes on the fixed paths, as does Lua compilation. `79ec3afb4` uses
+  Darwin's `<sys/ucontext.h>` signal-context types instead of the deprecated
+  context-switch routines in `<ucontext.h>`; the focused backend compilation
+  fails before and passes afterward. `a1b594544` fixes atos' zero-load-address
+  fallback: the new real Mach-O symbolication regression fails with zero named
+  frames before and names `main` afterward. `46193a436` restricts Apple's cached
+  PC ranges to executable segments: the SIGBUS regression fails before because
+  shared-cache data spans misattribute `__pthread_kill` to libc++, and passes
+  afterward naming `libsystem_kernel.dylib`.
+- The subprocess driver now covers SIGBUS and accepts Darwin's observed SIGBUS
+  for a pthread stack-guard overflow while verifying that the process dies with
+  the signal recorded by the handler. All 16 modes pass in Release and again
+  under ASan+UBSan: main/worker faults and overflows, abort/terminate/FPE, guarded
+  worker, concurrent faults, recursive faults, saved-handler chaining (including
+  after a returning handler), recursive chains and hang stack capture.
+- The 36 diagnostics unit tests pass. Under concurrent iOS compilation, one
+  CTest run exposed the recovery test's fixed 100 ms scheduling assumption
+  (`recoveries == 0`). `9717f2c1a` waits for the callback with a one-second bound;
+  ten consecutive repetitions pass under build load.
+  Final CTest gates pass 38/38 in Release (9.65 s) and 38/38 under ASan+UBSan
+  (26.31 s), including the two Python crash/symbolication gates.
+- The full engine static library builds in Release with symbols. Strict WERROR
+  initially fails on existing ActionSystem/AudioSystem non-virtual-destructor
+  warnings in the SDK's libc++; validation kept warnings on and WERROR off.
+  The unrelated full core-test build also fails in AtomicFileTest's chrono
+  printing because new libc++ formatting APIs require a newer deployment target
+  than the engine's macOS 12 minimum. Diagnostics execution used a temporary
+  source filter selecting the existing three `diag/*Test.cpp` files; no source
+  filter or deployment-target workaround is committed.
+- Retained macOS reports have UUID `B532917F-B8C4-3363-94DA-9820C93DB437`, matching
+  their generated dSYM. Saved worker names include `First fault`, `Guard worker`
+  and `Overflow worker`. OS `.ips` for PID 9966 preserves SIGSEGV and that UUID.
+  Its stack starts in the expected re-raise path; the engine report separately
+  records the original fault PC. Later repeated crashes did not all produce
+  fresh `.ips` files, so parity is claimed for the retained matching sample.
+- AC20 passes on the installed iPhone 17 Pro simulator, iOS 26.5. The complete
+  CMake/Xcode engine app builds and runs with
+  `SIMCTL_CHILD_JASPERENGINE_DEBUG_CRASH=segv@10`. Its report lands in the app
+  container's `Library/Caches/crash/reports/20261027T064611Z-10192`; offline
+  symbolication names `debugSegv`, `debugCrash`, `Engine::runFrame`,
+  `Engine::systemDraw` and the Metal renderer. Report UUID
+  `CD00A8A4-550B-355F-8C37-F43DE13F9FE3` equals `dwarfdump --uuid` of the dSYM.
+  This is simulator evidence; no physical iOS-device run is claimed.
+- Logs, red/green checks, reports, OS `.ips` samples and both dSYMs are retained
+  outside the repository in
+  `/var/lib/orquester/workspaces/jaspersito/je-evidence/s28-apple-20261027.tar.gz`
+  (78,598,469 bytes; SHA-256
+  `e80dd23740a4cc34baea0c275dbe5692e222c16bdef2b931233d7730508c9089`).
+  The archive was downloaded and its hash verified before destruction. Box
+  `71771adcc08e` is confirmed destroyed; no Windows box ever existed and no
+  rented machine remains running.

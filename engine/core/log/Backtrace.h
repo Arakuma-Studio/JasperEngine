@@ -27,6 +27,11 @@ namespace jasperengine {
         // (the logger's symbolization and the editor's crash handler). Exists everywhere,
         // used on Windows only.
         static std::timed_mutex& dbgHelpMutex();
+        // One Windows symbol session for logging, crash reports and watchdog walks. Call
+        // initializeSymbolsLocked only with dbgHelpMutex held; the unique process handle
+        // avoids colliding with another component's DbgHelp session. Null/false elsewhere.
+        static void* dbgHelpProcess();
+        static bool initializeSymbolsLocked();
     };
 
 }
