@@ -482,12 +482,12 @@ Recorded by the implementation (branch `feat/s08-reflection`).
   Tilemap, Polygon, MeshPolygon, Points, LineRenderer, InstancedMesh, MorphTracks,
   Rigidbody2D/3D, ParticleSystem, Skybox, SpriteAnimation and the three lattice codecs below. Their YAML has quirks that one flag
   cannot express (count-limited lists, keys read from other components, legacy branches), so
-  §9's default applies. The codecs are in `editor/StreamComponents.cpp`. `Stream.cpp` is 4,319
-  lines and `StreamComponents.cpp` 2,313 lines, so the codec code that remains is about 6,630
+  §9's default applies. The codecs are in `editor/StreamComponents.cpp`. `Stream.cpp` is 4,358
+  lines and `StreamComponents.cpp` 2,313 lines, so the codec code that remains is about 6,670
   lines in total. AC15's `Stream.cpp` ≤ 5,000 is met by that split, not by deleting those codecs.
   `ComponentDesc::extraKeys` lists each codec's known keys for `StreamSchema` and
   `tools/check_stream_keys.py`.
-- **Components added upstream after the S08 base** (oe-port 05eb8d3b4): Fluid Simulation and
+- **Components added upstream after the S08 base** (oe-port 05eb8d3b4; 697d661e2 added none): Fluid Simulation and
   Lattice Follower use the generic codec (parity-tested against their upstream codecs); Lattice,
   Lattice Modifier and Lattice Tracks keep their codecs (offsets sized by the resolution,
   flow-style empty lists, clamps on read) in `StreamComponents.cpp`, with tables for the rest.
@@ -508,7 +508,7 @@ Recorded by the implementation (branch `feat/s08-reflection`).
   LocalVolumetricFog, Tween, Bone, Prefab). The others keep their hand drawers, which were moved
   into `InspectorPhysics.cpp`, `InspectorAnimation.cpp` and `InspectorRenderers.cpp` and use the
   `EnumDesc` entries. These named drawers exist: `label`, `multiline`, `direction`, `halfCone`,
-  `po2Slider`, `textureCube` and `modelEntity`. `InspectorWindow.cpp` is 11,430 lines.
+  `po2Slider`, `textureCube` and `modelEntity`. `InspectorWindow.cpp` is 11,438 lines.
 - **Extra table vocabulary** beyond R3/R4: flags `NoDefault`, `NonStructural`, `CodegenIfChanged`,
   `CodegenRuntime`, `Transient`, `EmptyIsDefault`, `NullIfEmpty`, `NotListed`, `ListWhole`,
   `ListElements`, `ListEachElement`, `ListTemplate`, `ComponentOnly` and `Clamped`. These keep the Catalog
