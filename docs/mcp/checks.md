@@ -7,7 +7,7 @@ files with its own tools, a shell, a CI job or an agent hook gets the same findi
 editor running. Both sides call the same code (`editor/util/ProjectChecks.{h,cpp}`).
 
 ```
-jasperengine-editor check --project <dir|project.yaml> [--lua] [--shaders] [--cpp] [--ui] [--textures] [--anims] [--vat] [--all]
+jasperengine-editor check --project <dir|project.yaml> [--lua] [--shaders] [--cpp] [--ui] [--textures] [--anims] [--vat] [--normals] [--all]
                           [--files <paths...>] [--format text|json] [--quiet] [--hook]
 ```
 
@@ -21,8 +21,9 @@ jasperengine-editor check --project <dir|project.yaml> [--lua] [--shaders] [--cp
 | `--textures` | Synthesized textures: every project PNG that carries a texture synthesis recipe (an iTXt chunk `jasper.synthesis`, written by `synthesize_texture` and Window > Texture Synthesis) whose sources changed or disappeared since it was made: a warning at the PNG (see below). Reads only the PNG chunks before the image data, and hashes sources only for PNGs with a recipe, both cached by mtime and size: milliseconds once cached. |
 | `--anims` | Animation clips (`.anim`): every clip read as the engine reads it (an error with `line:col` for text that is not a clip; a warning with the JSON path of each part the lenient reader drops), and the clips the project's scenes and prefabs reference: an Animation Player entry naming a missing `.anim` (an error; a warning when its GUID finds the moved file), a model clip whose model is missing or has no animation of that name (see below). Pure parsing, no engine start. |
 | `--vat` | Vertex Animations (`.vat`): every `.vat` read as the engine reads it (an error with `line:col` for text that is not one, a warning with the JSON path of each editable field the lenient reader repairs), a source changed or missing since the bake (warnings), a `.vat.glb` that is missing or no longer matches the `.vat` (errors), and a payload texture over the device limit of the recipe's preset (an error; see below). Loads the project (no scenes). |
-| `--all` | All seven. Without `--lua/--shaders/--cpp/--ui/--textures/--anims/--vat/--all`: `--lua --shaders --ui --textures --anims --vat` (C++ only when asked, since it builds). |
-| `--files <paths...>` | Only these files: absolute, relative to the current directory, or relative to the project. Lua files are checked one by one; a `.vert`/`.frag` checks its fork (a UI effect `.frag`, the effect); a `.glsl` checks every fork and UI effect (any can include it); a C++ file (`.h .hpp .hh .hxx .cpp .cc .cxx .c .inl`) builds the scripts when `--cpp` is given and is ignored otherwise; an `.html`/`.htm` is converted as a document (its stylesheets, imports, images and fonts with it), a `.css` is checked as the project's documents that load it see it (its findings and its imports'), or on its own when no document loads it. An image is checked as a synthesized texture when it carries a recipe, and as a source otherwise: the project's synthesized textures made from it are checked (an edited example reports the textures to regenerate). An `.anim` is checked as a clip (its references from scenes are checked on whole-project runs only). A `.vat` is checked as a Vertex Animation, a `.vat.glb` as its `.vat`, and any other file as a source: the project's `.vat` files whose recipe read it are checked (an edited model reports the bakes to rebake). Files outside the project, in hidden or `build` directories, deleted, or of other kinds are skipped; when nothing is left, the command returns at once (no engine start). |
+| `--normals` | Sprite normal maps: generated ones (a PNG with a `jasper.spritenormals` recipe, written by `generate_sprite_normals`, the `generate-sprite-normals` CLI and Window > Sprite Normal Map) whose source changed or went missing, and normal maps on sprites that don't match their colour texture (size, frames, filter), look like DirectX or aren't normal maps, or no Light 2D can show (height 0). Pure parsing, no engine start; cached (see below). |
+| `--all` | All eight. Without `--lua/--shaders/--cpp/--ui/--textures/--anims/--vat/--normals/--all`: `--lua --shaders --ui --textures --anims --vat --normals` (C++ only when asked, since it builds). |
+| `--files <paths...>` | Only these files: absolute, relative to the current directory, or relative to the project. Lua files are checked one by one; a `.vert`/`.frag` checks its fork (a UI effect `.frag`, the effect); a `.glsl` checks every fork and UI effect (any can include it); a C++ file (`.h .hpp .hh .hxx .cpp .cc .cxx .c .inl`) builds the scripts when `--cpp` is given and is ignored otherwise; an `.html`/`.htm` is converted as a document (its stylesheets, imports, images and fonts with it), a `.css` is checked as the project's documents that load it see it (its findings and its imports'), or on its own when no document loads it. An image is checked as a synthesized texture when it carries a recipe, and as a source otherwise: the project's synthesized textures made from it are checked (an edited example reports the textures to regenerate). An `.anim` is checked as a clip (its references from scenes are checked on whole-project runs only). A `.vat` is checked as a Vertex Animation, a `.vat.glb` as its `.vat`, and any other file as a source: the project's `.vat` files whose recipe read it are checked (an edited model reports the bakes to rebake). An image is also checked as a generated normal map when it has a sprite normals recipe, and as a source otherwise (the normal maps whose recipe names it, found through the cache's index, plus `<stem>_normal.png` / `<stem>_sheet_normal.png` beside it); the scene findings of `--normals` run on whole-project runs only. Files outside the project, in hidden or `build` directories, deleted, or of other kinds are skipped; when nothing is left, the command returns at once (no engine start). |
 | `--format json` | One JSON object on stdout (below). Default `text`. |
 | `-q`, `--quiet` | No summary line on stderr. |
 | `--hook` | Agent hook mode (below). |
@@ -70,7 +71,7 @@ JSON (`--format json`):
 }
 ```
 
-`tool` is `lua`, `shader`, `cpp`, `ui`, `texture`, `anim` or `vat`; `path` is project-relative (absolute for a file outside the
+`tool` is `lua`, `shader`, `cpp`, `ui`, `texture`, `anim`, `vat` or `normals`; `path` is project-relative (absolute for a file outside the
 project, e.g. a system header warning; `engine/shaderlib/<include>` for an engine shader include;
 `""` when there is no file); `line`/`col` are 1-based, 0 when unknown; `severity` is `error` or
 `warning`. UI findings also have `code` (the compatibility layer's stable diagnostic code) and,
@@ -78,11 +79,11 @@ when there is a fix, `suggestion`; so do the shader findings of a UI effect (`co
 `HTMLUI-FX-0012` to `HTMLUI-FX-0015`), the texture findings (`synthesis-source-changed`,
 `synthesis-source-missing`, `synthesis-recipe-invalid`), the vertex animation findings (`code` the kind:
 `vat-source-changed`, `vat-source-missing`, `vat-mesh-mismatch`, `vat-layout-mismatch`, `vat-device-limit`, `vat-invalid`,
-`vat-format`, below) and the Stochastic Tiling warnings
+`vat-format`, below), the normal map findings (`normals-*`, below) and the Stochastic Tiling warnings
 (`stochastic-tilted-normal-map`, `stochastic-no-effect`, below); the other findings have exactly the six keys above.
 `checked` counts what ran: Lua files, shader forks, C++ scripts, UI files (documents plus the
 stylesheets checked on their own), synthesized textures (`textures`: the PNGs with a recipe whose
-sources were checked), clips (`anims`: the `.anim` files read), Vertex Animations (`vat`: the `.vat` files read).
+sources were checked), clips (`anims`: the `.anim` files read), Vertex Animations (`vat`: the `.vat` files read), normal maps (`normals`: the PNGs with a recipe plus the normal maps in use checked).
 
 Exit code: **0** no errors (warnings allowed), **1** errors, **2** usage error (bad option, no
 `project.yaml`, the project fails to load).
@@ -254,6 +255,41 @@ Tool `vat`, at the `.vat`, `code` the kind and `suggestion` the fix:
 
 The CLI that bakes them is `jasperengine-editor bake-vat` (`--help`; `docs/vertex-animation.md`).
 
+## What the normal map check runs
+
+A generated normal map records how it was made (its recipe: the source with its SHA-1, the settings and the frames;
+`docs/mcp/guide/sprite-normals.md`). The check reads the recipes of the project's PNGs (the chunks before the image
+data only), hashes their sources, and reads the scenes' and prefabs' YAML (MeshComponent submesh materials, Sprite
+frames, Light 2D heights; prefab-instance overrides included) for the normal maps in use:
+
+```
+assets/sprites/hero_normal.png: warning: made from assets/sprites/hero.png, which changed since: the normal map no longer matches its sprite (fix: regenerate it: ...) [normals-source-changed]
+scenes/Main.scene: error: GameObject 'Hero' submesh 0: hero_normal.png is 64x32 but its colour texture hero.png is 128x32: they share UVs, so the lighting lands on the wrong pixels (fix: ...) [normals-size-mismatch]
+```
+
+Tool `normals`, `code` and `suggestion` set:
+
+| Code | Severity | At | When | Fix |
+|---|---|---|---|---|
+| `normals-source-changed` | warning | the generated PNG | the recipe's source SHA-1 differs | regenerate it: right-click it in the Project window > Regenerate Normal Map, `generate_sprite_normals` with the `regenerate` arguments `get_asset_info` gives, or `generate-sprite-normals` with the same settings |
+| `normals-source-missing` | warning | the generated PNG | the recipe's source no longer exists | restore it, or generate from another source; the normal map itself still works |
+| `normals-recipe-invalid` | warning | the generated PNG | the recipe chunk is garbled (CRC, JSON, types) | generate it again (a fresh recipe is written) |
+| `normals-size-mismatch` | error | scene/prefab file | a submesh's normal texture's pixel size differs from its colour texture's (they share UVs: lighting is misplaced) | generate the normal map from this colour texture (`generate_sprite_normals {source: <GameObject>, output: true, apply: true}`) |
+| `normals-frames-mismatch` | warning | scene/prefab file | the normal map's recipe cells differ from the Sprite's frames (resliced after generating) | regenerate with frames auto from the Sprite |
+| `normals-filter-mismatch` | warning | scene/prefab file | colour and normal texture of a submesh have different min/mag filters (Nearest colour + Linear normal smears the light) | set the normal texture's filter to the colour texture's (`apply: true` does it) |
+| `normals-directx` | warning | scene/prefab file | a normal map in use whose recipe says `directx: true` | regenerate without directx: the engine reads OpenGL (green up) |
+| `normals-green-convention` | warning | scene/prefab file | a normal map in use without a recipe that looks DirectX: at least 70% of the top-rim pixels (opaque, transparent above) have green < 128 and at least 70% of the bottom-rim ones green > 128, at least 32 of each | invert its green channel, or generate it again |
+| `normals-not-a-normal-map` | warning | scene/prefab file | a normal map in use (without a recipe) whose opaque texels are not unit vectors (mean \|len - 1\| > 0.1) or have blue < 128 on more than 5% of them (a colour image in the slot) | assign a normal map (`generate_sprite_normals`) or clear the slot |
+| `normals-no-light-height` | warning | scene file | the scene has a normal-mapped submesh and Light 2Ds, none with `height` > 0 | set a Light 2D's height above 0 (64 is a good start) |
+
+The cache is `.jasperengine/normals-check-cache.json` (written when `.jasperengine/` exists): per PNG its mtime,
+size, recipe, pixel size and (for a map in use without a recipe) the pixel analysis; per source its SHA-1; and a
+reverse index source -> generated PNGs, rebuilt from the cached recipes on whole-project runs (the editor's file sync
+reads it to name the maps of an edited source). A second run on an unchanged project decodes and hashes nothing.
+With `--files`, a PNG with a recipe is checked as a generated map, any other image as a source (the maps made from
+it); the scene findings need a whole-project run. The CLI that makes the maps is `jasperengine-editor
+generate-sprite-normals` (`--help`).
+
 ## Examples
 
 ```sh
@@ -277,6 +313,10 @@ jasperengine-editor check --project . --files assets/models/hero.gltf
 # synthesized textures whose sources changed (after repainting an example: --files it)
 jasperengine-editor check --project . --textures
 jasperengine-editor check --project . --files assets/textures/rock_albedo.png
+
+# sprite normal maps: stale maps, wrong sizes, filters, DirectX maps, lights without height
+jasperengine-editor check --project . --normals
+jasperengine-editor check --project . --files assets/sprites/hero.png
 
 # CI: all checks, machine-readable
 jasperengine-editor check --project . --all --format json > check.json

@@ -821,11 +821,10 @@ void registerSynthesisTools(McpRegistry& registry) {
     tool.name = "synthesize_texture";
     tool.title = "Synthesize Texture";
     tool.description =
-        "Example-based texture synthesis (editor-side): a new texture like the examples (extend), a seamless tiling one (tileable), an "
-        "image made seamless (make_tileable), a masked region regenerated (inpaint), or examples following a guide (guided). PBR "
-        "companions (normal, roughness...) get the same arrangement. Without output nothing is written: a preview with images and "
-        "metrics; the same arguments + the returned seed + output write exactly that (one undo step, PNGs with a recipe). Read "
-        "hint. Guide: jasper://docs/texture-synthesis.";
+        "Example-based texture synthesis (editor-side): mode extend, tileable, make_tileable, inpaint or guided; PBR companions "
+        "get the same arrangement. Without output nothing is written: a preview with images, metrics and a hint; the same "
+        "arguments + the returned seed + output write exactly that (one undo step, PNGs with a recipe). "
+        "Guide: jasper://docs/texture-synthesis.";
     // nested objects: the handler refuses unknown keys itself (saves tools/list bytes); what each
     // argument does: docs/mcp/guide/texture-synthesis.md
     auto loose = [](Json o) {
@@ -850,18 +849,18 @@ void registerSynthesisTools(McpRegistry& registry) {
     Json size;
     size["anyOf"] = Json::array({integer("", 1, 8192), loose(object({{"width", integer("")}, {"height", integer("")}}, {"width", "height"}))});
     tool.inputSchema = object({
-        {"mode", withDefault(stringEnum("", {"extend", "tileable", "make_tileable", "inpaint", "guided"}), "tileable")},
+        {"mode", stringEnum("", {"extend", "tileable", "make_tileable", "inpaint", "guided"})},
         {"examples", array(pathOrObject, "")},
         {"companions", companions},
         {"mask", loose(object({{"path", string("")},
-                               {"channel", withDefault(stringEnum("", {"luma", "r", "g", "b", "a"}), "luma")},
+                               {"channel", stringEnum("", {"luma", "r", "g", "b", "a"})},
                                {"invert", boolean("")}}))},
         {"target_guide", string("")},
         {"size", size},
         {"quality", withDefault(stringEnum("", {"draft", "balanced", "high"}), "balanced")},
         // the fields and their ranges: docs/mcp/guide/texture-synthesis.md (the handler checks them)
-        {"params", anyObject("Expert overrides.")},
-        {"border", withDefault(number("", 0.0001, 0.5), 0.125)},
+        {"params", anyObject("")},
+        {"border", number("", 0.0001, 0.5)},
         {"seed", [] {
              Json j;
              j["anyOf"] = Json::array({Json{{"type", "integer"}, {"minimum", 0}}, Json{{"type", "string"}, {"pattern", "^[0-9]{1,20}$"}}});

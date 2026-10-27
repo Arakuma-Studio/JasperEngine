@@ -169,6 +169,7 @@ void McpServer::registerAllTools() {
     registerLatticeTools(reg);
     registerPlacementTools(reg);
     registerVatTools(reg);
+    registerSpriteNormalsTools(reg);
     registerHtmlUiTools(reg);
     registerUiEffectTools(reg);
     registerPoseTools(reg);
