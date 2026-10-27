@@ -2977,17 +2977,18 @@ A live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `at` | array[2] of number |  | Hit test (canvas px): the element stack. |
+| `at` | array[2] of number |  | Hit test (canvas px): element stack. |
 | `depth` | integer (0..16) |  | Descendant levels (default tree 3, full 0). |
-| `detail` | `"tree"` \| `"full"` |  | full: box model, attributes, computed styles + sources (max 20 elements). Default: `"tree"`. |
+| `detail` | `"tree"` \| `"full"` |  | full: box model, attributes, styles + sources (max 20 elements). Default: `"tree"`. |
 | `entity` | integer or string |  | UI Document (default: the only one). |
-| `file` | string |  | .html/.css: its diagnostics only, no live document. |
+| `file` | string |  | .html/.css: diagnostics only. |
 | `limit` | integer (1..1000) |  | Default: `200`. |
 | `max_width` | integer (0..4096) |  | Default: `768`. |
 | `models` | boolean |  | Data-model values (play). |
 | `reload` | boolean |  | The last hot reload's report. |
+| `render_stats` | boolean |  | Last frame's render counters. |
 | `scene` | integer or string |  |  |
-| `screenshot` | boolean |  | Game view image of the matches, outlined. |
+| `screenshot` | boolean |  | Game view image, matches outlined. |
 | `selector` | string |  | Default: whole document. |
 | `styles` | array of string |  | Computed CSS properties. |
 | `viewport` | array[2] of number |  | Lay out at [w,h] first (restored after). |
@@ -3225,7 +3226,7 @@ The ordered sokol passes of a view's frame: targets, actions, draws, triangles, 
 
 Group: `profiling` (listed once `tool_groups` enables it, callable either way). Hints: read-only, idempotent
 
-A view's last drawn frame: draws, instances, triangles, passes, pipelines/bindings, uniform and upload bytes, alive resources, pipeline cache, cpu_ms, fps, gpu{available,reason,frame_ms,semantics}. One frame is one sample. gpu.frame_ms is null until GPU timing ran (get_gpu_passes arms it). Also jasper://stats.
+A view's last drawn frame: draws, instances, triangles, passes, pipelines/bindings, uniform and upload bytes, alive resources, pipeline cache, cpu_ms, fps, gpu{available,reason,frame_ms,semantics}, html_ui. One frame is one sample. gpu.frame_ms is null until GPU timing ran (get_gpu_passes arms it). Also jasper://stats.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
