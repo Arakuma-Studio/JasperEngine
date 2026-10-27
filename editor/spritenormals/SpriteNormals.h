@@ -1,0 +1,189 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+#pragma once
+
+// Sprite normal maps (editor-only, never shipped in games): a C++ port of Hugo Duprez's
+// spritefusion-sprite-normals (MIT, NOTICE.md, LICENSE-spritefusion-sprite-normals.txt) plus
+// JasperEngine's options (profiles, edge modes, auto radius, outline and colour regions, height map).
+//
+// Per frame cell, per 8-connected island of pixels above the alpha cutoff: a height field is the
+// silhouette's distance to the edge through a profile (volume) plus the Oklab lightness of the
+// painted shading, smoothed at two scales (detail); a normalized Sobel gives slopes, scaled by
+// strength, encoded OpenGL style (green up the image) unless directx. Pixels at or below the
+// alpha cutoff get (128,128,255) with their own alpha; alpha is always the source's byte.
+//
+// Deterministic: identical inputs and settings give identical bytes whatever the thread count.
+// With profile Rounded, edges Transparent, an explicit radius, no outline handling and no
+// regions, the output matches the upstream tool within 1 per channel (tests/fixtures).
+//
+// Usage:
+//   spritenormals::Request request;
+//   request.color = rgba8Image;                       // texsynth::Image, 4 channels, 8-bit
+//   request.settings = spritenormals::presetSettings(spritenormals::Preset::Default);
+//   spritenormals::Result result = spritenormals::generate(request);   // blocking
+//   if (result.status == spritenormals::Status::Ok) { result.normal ... }
+
+#include "texsynth/SynthImage.h"
+
+#include <atomic>
+#include <cstdint>
+#include <functional>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace jasperengine::editor::spritenormals {
+
+    using Image = texsynth::Image;
+
+    // ---- settings (contract section 3: names, ranges, defaults)
+
+    enum class Preset { Soft, Default, Crisp, Detailed, Chunky };
+    enum class Profile { Rounded, Dome, Bevel };
+    enum class Edges { Transparent, Wrap, Extend };
+
+    // A colour region: pixels whose Oklab colour is within `tolerance` of one of `colors`
+    struct Region {
+        std::vector<uint32_t> colors;   // 0xRRGGBB, 1..16
+        float tolerance = 0.03f;        // Oklab Euclidean distance, 0..0.5
+        float detail = 1.0f;            // 0..8: multiplier of the detail term (0: the colour is ignored by it)
+        float lift = 0.0f;              // -16..16: pixels of height added (before strength)
+        bool flat = false;              // the pixels' normals are forced to +Z
+    };
+
+    struct Settings {
+        Preset preset = Preset::Default;      // what the six main values started from (recorded, never re-applied)
+        float strength = 1.5f;                // 0..8
+        float detail = 3.0f;                  // 0..8
+        float smoothing = 1.0f;               // 0..8 px
+        float volume = 1.15f;                 // 0..8
+        std::optional<float> radius;          // nullopt: auto; else 0.5..512 px
+        float softness = 1.15f;               // 0..8 px
+        float alphaThreshold = 0.03f;         // 0..0.99
+        Profile profile = Profile::Rounded;
+        Edges edges = Edges::Transparent;
+        bool ignoreOutline = false;
+        std::vector<Region> regions;          // at most 16
+        bool directx = false;
+        bool height = false;                  // also produce Result::height
+    };
+
+    // The preset's values (contract section 3 table); softness 1.15, radius auto, alpha 0.03,
+    // Rounded, Transparent, no outline handling, no regions, OpenGL, no height map
+    Settings presetSettings(Preset preset);
+    // "soft", "default", "crisp", "detailed", "chunky" (and back; false for an unknown name)
+    const char* toString(Preset preset);
+    const char* toString(Profile profile);    // "rounded", "dome", "bevel"
+    const char* toString(Edges edges);        // "transparent", "wrap", "extend"
+    bool parsePreset(const std::string& name, Preset& out);
+    bool parseProfile(const std::string& name, Profile& out);
+    bool parseEdges(const std::string& name, Edges& out);
+    // "#rrggbb" or "rrggbb" (case-insensitive) -> 0xRRGGBB; "#rrggbb" back (lower case)
+    bool parseColor(const std::string& text, uint32_t& out);
+    std::string colorText(uint32_t rgb);
+
+    // ---- problems (shared kinds: contract + section 11)
+
+    struct Problem {
+        std::string kind;      // "invalid_settings", "frames_mismatch", "no_alpha", ...
+        std::string field;     // "strength", "regions[1].tolerance", "frames.tile_size", "source", "" ...
+        std::string message;   // one sentence naming the value and the limit
+        std::string fix;       // what to do instead ("" when there is nothing to do)
+    };
+
+    // Every problem of the settings (never only the first): non-finite values, values out of
+    // range ("strength must be between 0 and 8 (got 9)"), too many regions or colours
+    std::vector<Problem> validateSettings(const Settings& settings);
+
+    // ---- cells
+
+    // A pixel rectangle of the image, top-left origin
+    struct Cell {
+        int x = 0;
+        int y = 0;
+        int width = 0;
+        int height = 0;
+        bool operator==(const Cell& o) const { return x == o.x && y == o.y && width == o.width && height == o.height; }
+    };
+
+    // The Texture Slicer / set_sprite_frames grid: tile size, or columns and rows; offset,
+    // padding, count. Same math as the MCP sliceSheet (WorldTools.cpp): tile_size given ->
+    // columns/rows = floor((avail + padding) / (tile + padding)); columns and rows given ->
+    // tile = floor((avail - padding * (n - 1)) / n); cells row-major, the last ones clipped to
+    // the image; count (0 = all) caps them.
+    struct Grid {
+        int tileWidth = 0;
+        int tileHeight = 0;
+        int columns = 0;
+        int rows = 0;
+        int count = 0;
+        int offsetX = 0;
+        int offsetY = 0;
+        int paddingX = 0;
+        int paddingY = 0;
+    };
+    // False with `error` ("The grid is empty: the image is 30x30 pixels.") for an empty grid,
+    // or more than kMaxCells cells
+    bool sliceGrid(const Grid& grid, int imageWidth, int imageHeight, std::vector<Cell>& cells, std::string& error);
+    inline constexpr int kMaxCells = 4096;
+
+    // ---- generation
+
+    struct Request {
+        Image color;                  // RGBA8 (4 channels, 8-bit): an image, a sheet or an atlas
+        std::vector<Cell> cells;      // empty: the whole image is one cell. Inside the image, not
+                                      // overlapping (identical duplicates are processed once);
+                                      // pixels outside every cell stay neutral
+        bool sequence = false;        // the cells are frames of one animation: auto radius is one
+                                      // value for all of them (section 3.6)
+        Settings settings;
+        int threads = 0;              // 0: hardware concurrency (at most 16); never changes the output
+    };
+
+    struct Progress {
+        double fraction = 0.0;        // 0..1 (work items done / total)
+        double elapsedSeconds = 0.0;
+    };
+
+    struct Control {
+        // Called on a generating thread after work items, at most every progressIntervalSeconds
+        std::function<void(const Progress&)> onProgress;
+        double progressIntervalSeconds = 0.1;
+        // Set from any thread: generate() returns Status::Cancelled after the work items running
+        const std::atomic<bool>* cancel = nullptr;
+    };
+
+    enum class Status { Ok, InvalidRequest, Cancelled, Failed };
+    const char* toString(Status status);   // "ok", "invalid_request", "cancelled", "failed"
+
+    struct Result {
+        Status status = Status::InvalidRequest;
+        std::vector<Problem> errors;         // InvalidRequest / Failed: why
+        std::vector<Problem> warnings;       // outline_not_found, region_unmatched (section 3.8)
+
+        Image normal;                        // RGBA8, the colour image's size
+        Image height;                        // settings.height: 1-channel 16-bit (section 3.9); else empty
+        float heightMin = 0.0f;              // the height range the 16-bit values span (px, after strength)
+        float heightMax = 0.0f;
+
+        // The radius used: one value (explicit, or auto for a sequence), or per island (auto on
+        // a still image: radiusMin..radiusMax over its islands)
+        bool radiusPerIsland = false;
+        float radiusMin = 0.0f;
+        float radiusMax = 0.0f;
+
+        std::optional<uint32_t> outlineColor;   // ignoreOutline: the colour detected (0xRRGGBB)
+        int islands = 0;                     // processed (Transparent edges); cells otherwise
+        int threads = 0;                     // used
+        double seconds = 0.0;
+    };
+
+    // Validates (settings, image format and size, cells), then generates. Never throws:
+    // problems come back with Status::InvalidRequest (kinds invalid_settings, invalid_source,
+    // frames_mismatch, too_large), Failed when memory ran out. Blocking; any thread.
+    Result generate(const Request& request, const Control& control = Control());
+
+    // Limits (contract section 4)
+    inline constexpr int64_t kMaxPixels = 16777216;            // 4096 x 4096, per image or atlas
+}
