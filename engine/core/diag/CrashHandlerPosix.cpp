@@ -6,6 +6,7 @@
 // Android), __android_log_write, and Logger::flushForCrash (only atomics + clock/sleep).
 // No stdio, heap allocation, symbol-loader calls or locks are permitted in that path.
 #include "detail/CrashState.h"
+#include "detail/CrashFrames.h"
 #include "log/Logger.h"
 
 #if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
@@ -300,17 +301,12 @@ void fatal(int sig, siginfo_t* info, void* context) {
     // The unwinder starts inside this handler. Locate the saved interrupted PC, discard
     // everything through it (handler, libc trampoline and duplicate PC), then emit callers.
     // If the unwinder cannot cross the signal frame, only the saved PC is trustworthy.
-    size_t callers = count;
-    for (size_t i = 0; i < count; ++i) {
-        uintptr_t address = reinterpret_cast<uintptr_t>(frames[i]);
 #if defined(__arm__)
-        address &= ~uintptr_t{1};
-        const uintptr_t interrupted = pc & ~uintptr_t{1};
+    constexpr uintptr_t addressMask = ~uintptr_t{1};
 #else
-        const uintptr_t interrupted = pc;
+    constexpr uintptr_t addressMask = ~uintptr_t{0};
 #endif
-        if (pc && address == interrupted) { callers = i + 1; break; }
-    }
+    const size_t callers = crashCallerStart(frames, count, pc, 2, addressMask);
     line(report, "backtrace:");
     if (pc) frame(report, 0, pc);
     for (size_t i = callers; i < count; i++) frame(report, i - callers + (pc ? 1 : 0), reinterpret_cast<uintptr_t>(frames[i]));
