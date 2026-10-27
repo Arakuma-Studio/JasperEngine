@@ -4,12 +4,15 @@
 #include "Mesh.h"
 #include "render/ObjectRender.h"
 #include "util/Color.h"
+#include "Log.h"
 #include "component/MirrorComponent.h"
 #include "component/ReflectionProbeComponent.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "component/VertexAnimatorComponent.h"
 #include "animation/VertexAnimatorRuntime.h"
+
+#include <algorithm>
 
 using namespace jasperengine;
 
@@ -60,6 +63,82 @@ void Mesh::setTexture(Framebuffer* framebuffer){
     mesh.submeshes[0].material.baseColorTexture.setFramebuffer(framebuffer);
 
     mesh.submeshes[0].needUpdateTexture = true;
+}
+
+namespace {
+    // a submesh the mesh has: submesh 0 always (the slot exists before a generator builds it)
+    bool validNormalSubmesh(const MeshComponent& mesh, unsigned int submesh){
+        const unsigned int count = std::max(mesh.numSubmeshes, 1u);
+        if (submesh >= count){
+            Log::error("Cannot set the normal map of submesh %u: the mesh has %u submesh%s", submesh, mesh.numSubmeshes,
+                       mesh.numSubmeshes == 1 ? "" : "es");
+            return false;
+        }
+        return true;
+    }
+
+    // as the editor's change of material.normalTexture (needUpdateTexture), and a reload when the
+    // submesh gains or loses its normal map: the shader variant samples one or not (HAS_NORMAL_MAP)
+    void normalTextureChanged(MeshComponent& mesh, unsigned int submesh, bool hadNormalMap){
+        mesh.submeshes[submesh].needUpdateTexture = true;
+        if (hadNormalMap != !mesh.submeshes[submesh].material.normalTexture.empty())
+            mesh.needReload = true;
+    }
+}
+
+void Mesh::setNormalTexture(const std::string& path){
+    setNormalTexture(0, path);
+}
+
+void Mesh::setNormalTexture(unsigned int submesh, const std::string& path){
+    MeshComponent& mesh = getComponent<MeshComponent>();
+    if (!validNormalSubmesh(mesh, submesh))
+        return;
+
+    Texture& texture = mesh.submeshes[submesh].material.normalTexture;
+    const bool hadNormalMap = !texture.empty();
+    if (path.empty()){
+        if (!hadNormalMap)
+            return;
+        texture = Texture();
+    }else{
+        if (hadNormalMap && texture.getPath() == path)
+            return;
+        texture.setPath(path);
+    }
+    normalTextureChanged(mesh, submesh, hadNormalMap);
+}
+
+void Mesh::setNormalTexture(const std::string& id, TextureData data){
+    MeshComponent& mesh = getComponent<MeshComponent>();
+
+    Texture& texture = mesh.submeshes[0].material.normalTexture;
+    const bool hadNormalMap = !texture.empty();
+    // a fresh texture (no path left from a file), with the sampler the old one had
+    Texture fromData;
+    fromData.setMinFilter(texture.getMinFilter());
+    fromData.setMagFilter(texture.getMagFilter());
+    fromData.setWrapU(texture.getWrapU());
+    fromData.setWrapV(texture.getWrapV());
+    fromData.setData(id, data);
+    texture = fromData;
+    normalTextureChanged(mesh, 0, hadNormalMap);
+}
+
+std::string Mesh::getNormalTexture() const{
+    return getNormalTexture(0);
+}
+
+std::string Mesh::getNormalTexture(unsigned int submesh) const{
+    MeshComponent& mesh = getComponent<MeshComponent>();
+    if (submesh >= std::max(mesh.numSubmeshes, 1u))
+        return "";
+
+    const Texture& texture = mesh.submeshes[submesh].material.normalTexture;
+    if (texture.empty())
+        return "";
+    const std::string path = texture.getPath();
+    return path.empty() ? texture.getId() : path;
 }
 
 void Mesh::setColor(Vector4 color){

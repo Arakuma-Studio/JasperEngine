@@ -7168,6 +7168,10 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
             RowSettings settingsAlphaMode = settingsMaterial;
             settingsAlphaMode.enumEntries = &entriesMaterialAlphaMode;
 
+            RowSettings settingsNormalTexture = settingsMaterial;
+            settingsNormalTexture.help = "Tangent-space normal map, OpenGL convention (green up). On sprites, tilemaps and polygons it answers "
+                                         "Light 2Ds whose Height is above 0; same size and frame layout as the Base Texture.";
+
             // the shader (built-in Lit, a library shader or a custom file) and its own rows
             beginTable(cpType, getLabelSize("Met. Roug. Texture"), "submeshes_material_shader");
             // one-click setups of the shader, extra pass and state (shader library phase 2)
@@ -7188,7 +7192,7 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
             propertyRow(RowPropertyType::Color3L, cpType, "submeshes["+std::to_string(s)+"].material.emissiveFactor", "Emissive Factor", sceneProject, entities, settingsMaterial);
             propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.emissiveTexture", "Emissive Texture", sceneProject, entities, settingsMaterial);
             propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.occlusionTexture", "Occlusion Texture", sceneProject, entities, settingsMaterial);
-            propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.normalTexture", "Normal Texture", sceneProject, entities, settingsMaterial);
+            propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.normalTexture", "Normal Texture", sceneProject, entities, settingsNormalTexture);
 
             // Stochastic Tiling of these maps (includes/pbr.glsl), its values while it is on
             const std::string materialPrefix = "submeshes[" + std::to_string(s) + "].material.";
@@ -7222,6 +7226,20 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
                                               firstMaterial.normalTexture, settingsMaterial.onValueChanged);
             }
             endTable();
+            }else{
+                // a library shader with @require normalmap reads the material's own Normal Texture
+                // (the 2D lights' normal map): the one PBR row it keeps
+                Scene* materialScene = sceneProject->scene;
+                MeshComponent& firstMesh = materialScene->getComponent<MeshComponent>(entities[0]);
+                const std::string drawnShader = RenderSystem::getSubmeshShader(firstMesh, firstMesh.submeshes[s],
+                                                                               materialScene->getDefaultCustomShader(ShaderType::MESH));
+                std::shared_ptr<const ShaderManifest> drawnManifest = drawnShader.empty() ? nullptr : ShaderManifests::get(drawnShader);
+                const std::vector<std::string> features = ShaderReference::getEnabledFeatures(drawnShader, firstMesh.submeshes[s].material.shaderFeatures);
+                if (Catalog::shaderReadsMaterialNormalMap(drawnManifest.get(), features)){
+                    beginTable(cpType, getLabelSize("Met. Roug. Texture"), "submeshes_material_normal_map");
+                    propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.normalTexture", "Normal Texture", sceneProject, entities, settingsNormalTexture);
+                    endTable();
+                }
             }
 
             ImGui::SeparatorText("Surface");
@@ -9363,7 +9381,7 @@ void editor::InspectorWindow::drawLight2DComponent(ComponentType cpType, ScenePr
     settingsFloat.secondColSize = 6 * ImGui::GetFontSize();
 
     RowSettings settingsHeight = settingsFloat;
-    settingsHeight.help = "Virtual Z height of the light above the 2D plane. Gives normal maps a direction to respond to; 0 disables normal response (pure radial light).";
+    settingsHeight.help = "Virtual height of the light above the 2D plane, in world units: how steeply it shines on normal-mapped sprites (64 for new lights). 0 makes normal maps flat. Sprites without a normal map are lit the same at any height.";
 
     beginTable(cpType, getLabelSize("Intensity"));
     propertyRow(RowPropertyType::Float, cpType, "intensity", "Intensity", sceneProject, entities, settingsFloat);

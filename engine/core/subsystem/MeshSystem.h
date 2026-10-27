@@ -174,6 +174,11 @@ namespace jasperengine{
         static void applySubmeshOverride(const Submesh& saved, Submesh& submesh);
         // true when a frame of another size needs the sprite rebuilt for its texture scale factor
         static bool changesSpriteInset(const SpriteComponent& sprite, const Rect& oldRect, const Rect& newRect);
+        // The handedness (tangent w) of the flat 2D meshes (sprite, sprite grid, MeshPolygon,
+        // Tilemap: N = +Z, T = +X along u): the bitangent cross(N, T) * w points up the image,
+        // where v shrinks, so normal maps read OpenGL style (green up), as Lit. v shrinks toward
+        // +y exactly when flipY is on (world cameras): +1 then, -1 without flipY (UI cameras)
+        static float flatTangentHandedness(bool flipY);
 
         bool setFoliagePreviewEntity(Entity entity);
         bool hasPendingFoliageUpdates() const;
