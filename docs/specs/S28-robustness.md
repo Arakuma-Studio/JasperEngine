@@ -720,3 +720,69 @@ commits are records only), all through `je-remote/rb.sh`:
   reporter/trampoline duplication. Evidence is retained on C in
   `build/android-native-r3-green` and was fetched for inspection. C only prepared the
   emulator image and ran the APK; native APK compilation ran on D.
+
+### Apple native execution (2026-10-27)
+
+- Merged `feat/s28-robustness` into `feat/s28-native-crash` by fast-forward to
+  `d862448d5`; no integration-owner worktree was edited and nothing was pushed.
+  All compilation/execution below ran on the rented Blacksmith ARM64 macOS box
+  (macOS 26.3, Xcode 26.6 / AppleClang 21), never on the Orquester host.
+- Windows rental approval was denied. No Windows box was provisioned and the
+  request was not retried. Windows execution, ASan, minidump inspection, saved
+  exception-filter chaining, WER parity and the forced walker deadline remain
+  unvalidated (AC3/AC10); source review is not execution evidence.
+- Native execution found and fixed four defects, with red checks before fixes:
+  `447ca891f` removes flat `core/util` include paths so `Signal.h` cannot shadow
+  the system `<signal.h>` on case-insensitive filesystems. The new C compile
+  regression `SystemSignalHeader.c` fails on the original macOS include paths
+  and passes on the fixed paths, as does Lua compilation. `79ec3afb4` uses
+  Darwin's `<sys/ucontext.h>` signal-context types instead of the deprecated
+  context-switch routines in `<ucontext.h>`; the focused backend compilation
+  fails before and passes afterward. `a1b594544` fixes atos' zero-load-address
+  fallback: the new real Mach-O symbolication regression fails with zero named
+  frames before and names `main` afterward. `46193a436` restricts Apple's cached
+  PC ranges to executable segments: the SIGBUS regression fails before because
+  shared-cache data spans misattribute `__pthread_kill` to libc++, and passes
+  afterward naming `libsystem_kernel.dylib`.
+- The subprocess driver now covers SIGBUS and accepts Darwin's observed SIGBUS
+  for a pthread stack-guard overflow while verifying that the process dies with
+  the signal recorded by the handler. All 16 modes pass in Release and again
+  under ASan+UBSan: main/worker faults and overflows, abort/terminate/FPE, guarded
+  worker, concurrent faults, recursive faults, saved-handler chaining (including
+  after a returning handler), recursive chains and hang stack capture.
+- The 36 diagnostics unit tests pass. Under concurrent iOS compilation, one
+  CTest run exposed the recovery test's fixed 100 ms scheduling assumption
+  (`recoveries == 0`). `9717f2c1a` waits for the callback with a one-second bound;
+  ten consecutive repetitions pass under build load.
+  Final CTest gates pass 38/38 in Release (9.65 s) and 38/38 under ASan+UBSan
+  (26.31 s), including the two Python crash/symbolication gates.
+- The full engine static library builds in Release with symbols. Strict WERROR
+  initially fails on existing ActionSystem/AudioSystem non-virtual-destructor
+  warnings in the SDK's libc++; validation kept warnings on and WERROR off.
+  The unrelated full core-test build also fails in AtomicFileTest's chrono
+  printing because new libc++ formatting APIs require a newer deployment target
+  than the engine's macOS 12 minimum. Diagnostics execution used a temporary
+  source filter selecting the existing three `diag/*Test.cpp` files; no source
+  filter or deployment-target workaround is committed.
+- Retained macOS reports have UUID `B532917F-B8C4-3363-94DA-9820C93DB437`, matching
+  their generated dSYM. Saved worker names include `First fault`, `Guard worker`
+  and `Overflow worker`. OS `.ips` for PID 9966 preserves SIGSEGV and that UUID.
+  Its stack starts in the expected re-raise path; the engine report separately
+  records the original fault PC. Later repeated crashes did not all produce
+  fresh `.ips` files, so parity is claimed for the retained matching sample.
+- AC20 passes on the installed iPhone 17 Pro simulator, iOS 26.5. The complete
+  CMake/Xcode engine app builds and runs with
+  `SIMCTL_CHILD_JASPERENGINE_DEBUG_CRASH=segv@10`. Its report lands in the app
+  container's `Library/Caches/crash/reports/20261027T064611Z-10192`; offline
+  symbolication names `debugSegv`, `debugCrash`, `Engine::runFrame`,
+  `Engine::systemDraw` and the Metal renderer. Report UUID
+  `CD00A8A4-550B-355F-8C37-F43DE13F9FE3` equals `dwarfdump --uuid` of the dSYM.
+  This is simulator evidence; no physical iOS-device run is claimed.
+- Logs, red/green checks, reports, OS `.ips` samples and both dSYMs are retained
+  outside the repository in
+  `/var/lib/orquester/workspaces/jaspersito/je-evidence/s28-apple-20261027.tar.gz`
+  (78,598,469 bytes; SHA-256
+  `e80dd23740a4cc34baea0c275dbe5692e222c16bdef2b931233d7730508c9089`).
+  The archive was downloaded and its hash verified before destruction. Box
+  `71771adcc08e` is confirmed destroyed; no Windows box ever existed and no
+  rented machine remains running.
