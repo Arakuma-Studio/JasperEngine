@@ -29,11 +29,12 @@ namespace {
     // unresolved paths are looked up again at most this often after hierarchy changes (R9)
     constexpr float UNRESOLVED_RETRY_SECONDS = 0.25f;
 
-    // the entity's place in the Transform array (SIZE_MAX without a Transform): one lookup
+    // the entity's place in the Transform array (SIZE_MAX without a Transform): one lookup.
+    // The array's storage is paged (S07): an index, never a pointer difference
     size_t transformIndex(Scene* scene, Entity entity){
         auto transforms = scene->getComponentArray<Transform>();
-        Transform* transform = entity == NULL_ENTITY ? nullptr : transforms->findComponent(entity);
-        return transform ? (size_t)(transform - transforms->findComponentFromIndex(0)) : SIZE_MAX;
+        if (entity == NULL_ENTITY || !transforms->hasEntity(entity)) return SIZE_MAX;
+        return transforms->getIndex(entity);
     }
 
     Entity parentOf(Scene* scene, Entity entity){
@@ -176,8 +177,10 @@ namespace {
     bool validateBindings(Scene* scene, Entity root, anim::ClipBindings& bindings, bool namesChanged,
                           const std::unordered_set<Entity>& destroyed, std::vector<Entity>& failed){
         auto transforms = scene->getComponentArray<Transform>();
-        Transform* first = transforms->findComponentFromIndex(0);
+        // settled: a slot is then its index
+        transforms->settle();
         const size_t rootIndex = transformIndex(scene, root);
+        auto indexOf = [&transforms](Entity entity){ return transforms->orderKey(entity); };
         if (!namesChanged && !destroyed.empty()){
             for (Entity entity : bindings.pathEntities){
                 if (destroyed.count(entity)){
@@ -197,7 +200,7 @@ namespace {
                 failed.push_back(bindings.pathEntities[i]);
                 continue;
             }
-            if (uniform && (long long)(transform - first) - (long long)bindings.pathIndices[i] != shift) uniform = false;
+            if (uniform && (long long)indexOf(bindings.pathEntities[i]) - (long long)bindings.pathIndices[i] != shift) uniform = false;
         }
         if (!failed.empty()) return false;
 
@@ -210,9 +213,9 @@ namespace {
                 Transform* parentTransform = ok ? transforms->findComponent(parent) : nullptr;
                 if (ok && !parentTransform) ok = false;
                 if (ok){
-                    const size_t index = (size_t)(found[i] - first);
+                    const size_t index = indexOf(entity);
                     int earlier = 0;
-                    for (size_t j = (size_t)(parentTransform - first) + 1; j < index && earlier <= bindings.pathSiblingIndices[i]; j++){
+                    for (size_t j = indexOf(parent) + 1; j < index && earlier <= bindings.pathSiblingIndices[i]; j++){
                         if (transforms->getComponentFromIndex(j).parent == parent &&
                             scene->getEntityNameRef(transforms->getEntity(j)) == name){
                             earlier++;
@@ -226,7 +229,7 @@ namespace {
         }
 
         for (size_t i = 0; i < bindings.pathEntities.size(); i++){
-            bindings.pathIndices[i] = (size_t)(found[i] - first);
+            bindings.pathIndices[i] = indexOf(bindings.pathEntities[i]);
         }
         bindings.rootIndex = rootIndex;
         return true;

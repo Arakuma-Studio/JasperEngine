@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 
 #include "AnimTestEnvironment.h"
+#include "support/AllocationCounter.h"
 
 #include "Engine.h"
 #include "Scene.h"
@@ -1298,12 +1299,17 @@ TEST_F(Player, PerformanceBudget){
                 still.ms, still.ratio, spawning.ms, spawning.ratio, underBone.ms, underBone.ratio, BUDGET_RATIO, BUDGET_MS);
 #if defined(NDEBUG) && !defined(__SANITIZE_ADDRESS__)
     // Release builds: the budget means nothing under the sanitizers, which slow everything
-    // several times (and the reference less than the player)
-    EXPECT_LT(spawning.ratio, BUDGET_RATIO);
-    EXPECT_LT(underBone.ratio, BUDGET_RATIO);
-    if (ABSOLUTE_MS > 0.0){
-        EXPECT_LT(spawning.ms, ABSOLUTE_MS) << "JASPER_PERF_ABSOLUTE_MS";
-        EXPECT_LT(underBone.ms, ABSOLUTE_MS) << "JASPER_PERF_ABSOLUTE_MS";
+    // several times (and the reference less than the player). Enforced on the benchmark server
+    // only, with its slack (BF1: JASPER_TEST_PERF_SLACK; 0 elsewhere: printed, as a shared
+    // builder's load alone can miss it)
+    const double slack = testsupport::perfSlack();
+    if (slack > 0.0){
+        EXPECT_LT(spawning.ratio, BUDGET_RATIO * slack);
+        EXPECT_LT(underBone.ratio, BUDGET_RATIO * slack);
+        if (ABSOLUTE_MS > 0.0){
+            EXPECT_LT(spawning.ms, ABSOLUTE_MS * slack) << "JASPER_PERF_ABSOLUTE_MS";
+            EXPECT_LT(underBone.ms, ABSOLUTE_MS * slack) << "JASPER_PERF_ABSOLUTE_MS";
+        }
     }
 #endif
     // they play
