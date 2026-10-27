@@ -212,6 +212,9 @@ void ParticleChannels::save(Snapshot& out) const{
             channelCount++;
     }
     out.data.resize(channelCount * count);
+    // an empty snapshot copies nothing (and its data() may be null: memcpy's arguments may not)
+    if (count == 0)
+        return;
     uint32_t* cursor = out.data.data();
     for (float* c : channels){
         if (!c)
@@ -225,6 +228,8 @@ void ParticleChannels::restore(const Snapshot& in){
     if (in.mask != mask || in.count > cap)
         return;
     count = in.count;
+    if (count == 0)
+        return;
     const uint32_t* cursor = in.data.data();
     for (float* c : channels){
         if (!c)

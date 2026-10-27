@@ -1002,15 +1002,12 @@ namespace jasperengine { namespace particles {
                 const int potentials = p.quality == NoiseQuality::High ? 3 : 2;
                 float frequency = p.frequency;
                 float amplitude = 1.0f;
-                for (uint32_t j = 0; j < count; j += 4){
-                    st(s.noiseX, j, B::zero());
-                    st(s.noiseY, j, B::zero());
-                    st(s.noiseZ, j, B::zero());
-                }
                 for (uint32_t o = 0; o < p.octaves; o++){
+                    // the first octave (amplitude 1) is the sum so far: written in place
+                    const bool first = o == 0;
                     noise::curlNoiseWide(potentials, ctx.ch[ChPosX] + begin, ctx.ch[ChPosY] + begin, ctx.ch[ChPosZ] + begin, count, frequency, scroll,
-                                         p.seed + o * 0x632be5abu, s.curlX, s.curlY, s.curlZ);
-                    for (uint32_t j = 0; j < count; j += 4){
+                                         p.seed + o * 0x632be5abu, first ? s.noiseX : s.curlX, first ? s.noiseY : s.curlY, first ? s.noiseZ : s.curlZ);
+                    for (uint32_t j = 0; !first && j < count; j += 4){
                         st(s.noiseX, j, B::madd(ld(s.curlX, j), k(amplitude), ld(s.noiseX, j)));
                         st(s.noiseY, j, B::madd(ld(s.curlY, j), k(amplitude), ld(s.noiseY, j)));
                         st(s.noiseZ, j, B::madd(ld(s.curlZ, j), k(amplitude), ld(s.noiseZ, j)));
@@ -1044,9 +1041,14 @@ namespace jasperengine { namespace particles {
                         }else{
                             c = lowField(ctx, p, sx, sy, sz);
                         }
-                        nx = B::madd(c.x, k(amplitude), nx);
-                        ny = B::madd(c.y, k(amplitude), ny);
-                        nz = B::madd(c.z, k(amplitude), nz);
+                        if (o == 0){
+                            // the first octave's amplitude is 1: the sum starts as it (as the wide path)
+                            nx = c.x; ny = c.y; nz = c.z;
+                        }else{
+                            nx = B::madd(c.x, k(amplitude), nx);
+                            ny = B::madd(c.y, k(amplitude), ny);
+                            nz = B::madd(c.z, k(amplitude), nz);
+                        }
                         frequency *= p.octaveScale;
                         amplitude *= p.octaveMultiplier;
                     }
@@ -1119,6 +1121,17 @@ namespace jasperengine { namespace particles {
 
         static void integrate(const KernelContext& ctx, const IntegrateParams& p, const AnimatedVelocityParams* av, uint32_t begin, uint32_t end){
             ChunkScratch& s = *ctx.scratch;
+            // The update's step is one for every lane (only spawning passes per-lane steps): what
+            // depends on nothing else is worked out once, with the same operations as per lane
+            // (the same bits). A constant linear drag's decay and which formula it takes:
+            const bool uniformStep = ctx.dtLanes == nullptr;
+            const bool dragConst = p.drag && p.dragLinear.kind == CurveParam::Const && !p.dragBySize && !p.dragByVelocity;
+            const float dragK1 = dragConst ? std::max(p.dragLinear.c0, 0.0f) : 0.0f;
+            const bool decayHoisted = dragConst && uniformStep;
+            const f4 decay = decayHoisted ? M::exp(B::neg(B::mul(B::max(k(p.dragLinear.c0), B::zero()), k(ctx.dt)))) : B::zero();
+            // the limit's share of the excess removed over the step
+            const bool shareHoisted = p.limit && p.dampen < 1.0f && uniformStep;
+            const f4 shareUniform = shareHoisted ? B::sub(k(1.0f), M::exp(B::mul(B::mul(k(ctx.dt), k(30.0f)), k(p.logKeep)))) : B::zero();
             for (uint32_t i = begin; i < end; i += 4){
                 Lane L(ctx, i);
                 const uint32_t j = i - begin;
@@ -1146,11 +1159,19 @@ namespace jasperengine { namespace particles {
                         k2 = B::add(k2, k1);
                         k1 = B::zero();
                     }
-                    const f4 e = M::exp(B::neg(B::mul(k1, dt)));
+                    const f4 e = decayHoisted ? decay : M::exp(B::neg(B::mul(k1, dt)));
                     // k1 > 0: s' = k1 s e / (k1 + k2 s (1 - e)); k1 = 0: s' = s / (1 + k2 s dt)
-                    const f4 withLinear = B::div(B::mul(B::mul(k1, speed), e), B::max(B::add(k1, B::mul(B::mul(k2, speed), B::sub(k(1.0f), e))), k(1.0e-30f)));
-                    const f4 quadOnly = B::div(speed, B::add(k(1.0f), B::mul(B::mul(k2, speed), dt)));
-                    const f4 slowed = B::select(B::cmpgt(k1, k(1.0e-12f)), withLinear, quadOnly);
+                    // (a constant k1 takes one of the two: the other is not worked out)
+                    f4 slowed;
+                    if (dragConst && dragK1 > 1.0e-12f){
+                        slowed = B::div(B::mul(B::mul(k1, speed), e), B::max(B::add(k1, B::mul(B::mul(k2, speed), B::sub(k(1.0f), e))), k(1.0e-30f)));
+                    }else if (dragConst){
+                        slowed = B::div(speed, B::add(k(1.0f), B::mul(B::mul(k2, speed), dt)));
+                    }else{
+                        const f4 withLinear = B::div(B::mul(B::mul(k1, speed), e), B::max(B::add(k1, B::mul(B::mul(k2, speed), B::sub(k(1.0f), e))), k(1.0e-30f)));
+                        const f4 quadOnly = B::div(speed, B::add(k(1.0f), B::mul(B::mul(k2, speed), dt)));
+                        slowed = B::select(B::cmpgt(k1, k(1.0e-12f)), withLinear, quadOnly);
+                    }
                     const f4 scale = B::select(B::cmpgt(speed, k(1.0e-20f)), B::div(slowed, speed), k(1.0f));
                     v1x = B::mul(v1x, scale);
                     v1y = B::mul(v1y, scale);
@@ -1160,17 +1181,23 @@ namespace jasperengine { namespace particles {
                     const f4 limit = B::max(curve(p.limitSpeed, L), B::zero());
                     const f4 speed = length3(v1x, v1y, v1z);
                     // the share of the excess removed: dampen per 1/30 s, at this tick's length
-                    f4 share;
-                    if (p.dampen >= 1.0f){
-                        share = k(1.0f);
-                    }else{
-                        share = B::sub(k(1.0f), M::exp(B::mul(B::mul(dt, k(30.0f)), k(p.logKeep))));
+                    const u4 over = B::cmpgt(speed, limit);
+                    // under the limit everywhere: the scale is 1 (nothing to change)
+                    if (B::movemask(over) != 0){
+                        f4 share;
+                        if (p.dampen >= 1.0f){
+                            share = k(1.0f);
+                        }else if (shareHoisted){
+                            share = shareUniform;
+                        }else{
+                            share = B::sub(k(1.0f), M::exp(B::mul(B::mul(dt, k(30.0f)), k(p.logKeep))));
+                        }
+                        const f4 target = B::madd(B::sub(limit, speed), share, speed);
+                        const f4 scale = B::select(over, safeDiv(target, speed), k(1.0f));
+                        v1x = B::mul(v1x, scale);
+                        v1y = B::mul(v1y, scale);
+                        v1z = B::mul(v1z, scale);
                     }
-                    const f4 target = B::madd(B::sub(limit, speed), share, speed);
-                    const f4 scale = B::select(B::cmpgt(speed, limit), safeDiv(target, speed), k(1.0f));
-                    v1x = B::mul(v1x, scale);
-                    v1y = B::mul(v1y, scale);
-                    v1z = B::mul(v1z, scale);
                 }
                 // velocity-Verlet with the tick's constant acceleration: the mean of the two velocities
                 f4 mx = B::mul(B::add(v0x, v1x), k(0.5f));

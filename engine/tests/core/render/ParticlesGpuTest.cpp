@@ -245,3 +245,30 @@ TEST_F(ParticlesGpu, LongRibbonDrawsEveryParticle){
     EXPECT_GT(lower, height / 10) << "the ribbon's newest part, near the emitter";
     EXPECT_GT(upper, height / 10) << "the ribbon's oldest part, far from the emitter (" << upper << " lit rows)";
 }
+
+TEST_F(ParticlesGpu, PlayOnAwakeSystemsShowWithoutASeek){
+    JASPER_REQUIRE_GPU();
+    // a looping system that plays on awake in a running scene (no seek, no editor): after some
+    // frames its particles are on screen (an exported game's case)
+    systems.push_back(std::make_unique<ParticleSystem>(&scene));
+    ParticleSystem& ps = *systems.back();
+    ps.setPosition(Vector3(0.0f, 1.0f, 0.0f));
+    ASSERT_TRUE(ps.setInlineEffect(R"({"version": 1, "duration": 2, "seed": 3, "maxParticles": 400, "modules": [
+        {"type": "main", "startLifetime": 3, "startSpeed": 0.3, "startSize": 0.6, "startColor": [1, 0.75, 0.4, 1]},
+        {"type": "emission", "rateOverTime": 100},
+        {"type": "renderer", "renderMode": "billboard", "blend": "additive"}]})"));
+    Scene* current = &scene;
+    ASSERT_TRUE(GpuEnvironment::runFrames([current](){ return current->getSystem<RenderSystem>()->isAllLoaded(); }));
+    int frames = 0;
+    ASSERT_TRUE(GpuEnvironment::runFrames([&frames](){ return ++frames >= 60; }));
+    EXPECT_GT(ps.getParticleCount(), 0u) << "the system simulated";
+    Framebuffer& target = GpuEnvironment::target();
+    const int width = (int)target.getWidth(), height = (int)target.getHeight();
+    std::vector<uint8_t> rgba;
+    ASSERT_TRUE(readTexture(target.getRender().getColorTexture(), width, height, rgba));
+    int lit = 0;
+    for (size_t i = 0; i < rgba.size(); i += 4){
+        if (rgba[i] > 120) lit++;
+    }
+    EXPECT_GT(lit, 100) << "its particles are drawn";
+}
