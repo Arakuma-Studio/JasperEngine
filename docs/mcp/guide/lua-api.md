@@ -322,6 +322,10 @@ Mass: `self.body:getMass()` (method, kg). To get a target acceleration `a` in po
 | `scalingMode` | rw | `Scaling.*` |
 | `setAtmosphereQuality(q)`, `getAtmosphereQuality()`, `resetAtmosphereQuality()` | fn | the volumetric fog and clouds tier (`AtmosphereQuality.*`): overrides the project's per-platform one until reset |
 | `textureStrategy` | rw | `TextureStrategy.*` |
+| `setTextureQuality(q)`, `getTextureQuality()` | static fn | 0 (full) to 3 (an eighth): top mips dropped from streamable textures at load (Unity's Global Mipmap Limit); sprites and UI keep theirs. The export sets the platform's from Project Settings > Texture |
+| `setTextureMemoryBudget(mb)`, `getTextureMemoryBudget()`, `getTextureMemoryUsage()` | static fn | MB of resident textures (0 = unlimited); over it the largest streamable textures drop mips (each keeps 64 px). Usage is in bytes |
+| `setTextureLowMemoryFallback(bool)`, `isTextureLowMemoryFallback()` | static fn | RGB565 / RGBA4444 instead of RGBA8 when a GL device samples none of a texture's formats |
+| `isTextureFormatSupported(name)` | static fn | `"BC7"`, `"ASTC_6x6"`, `"ETC2_RGBA8"`...: the GPU samples it with filtering (`jasper://docs/textures`) |
 | `useDegrees` | rw | default `true`: all engine angles are degrees |
 | `scene` | rw | main scene (also `Engine.getScene()`, `Engine.setScene(s)`) |
 | `getMainScene()`, `getLastScene()`, `addSceneLayer(s)`, `removeScene(s)`, `removeAllSceneLayers()`, `removeAllScenes()`, `isSceneRunning(s)`, `executeSceneOnce(s)`, `hasScenesToExecuteOnce()` | static fn | multi-scene control |
@@ -670,6 +674,27 @@ local s = Profiler.frameStats()              -- {drawCalls, instances, triangles
   `get_gpu_passes`); GPU times arrive a few frames late.
 - In a release game (no profiler) the functions do nothing, `enabled` stays false, and
   `frameStats()` still works.
+
+### 2.15 Crash (static): reports of earlier sessions, the report hook, tags
+
+```lua
+if Crash.lastSessionEndedAbnormally() then Log.warn("the last session did not end cleanly") end
+Crash.setTag("level", "forest-2")                -- a line of this session's crash.txt (16 tags)
+for _, report in ipairs(Crash.getPendingReports()) do
+    Log.print(report.kind .. " " .. report.id .. ": " .. report.reason)
+end
+Crash.setReportHook(function(report)             -- once per pending report, now
+    -- {id, kind = "crash"|"hang"|"abnormal_exit", reason, time, version, product, handled, files}
+    return true                                  -- true marks it handled: not offered again
+end)
+Crash.markHandled("20261026T143200Z-4242")       -- the same by id (false: unknown)
+```
+
+- The engine never sends a report anywhere: the hook decides. Reports hold file paths and log
+  lines; ask the player before sending one. `files` are paths to read with the file API.
+- Pending means from an earlier session and not handled yet; the current session's reports
+  appear at the next start.
+- Editor Play reads the editor's own reports (docs/crash-diagnostics.md).
 
 ---
 
@@ -1204,6 +1229,12 @@ end
 - `Skybox`: `setTextures(positiveX, negativeX, positiveY, negativeY, positiveZ, negativeZ)` (six
   images; `+Z` is the front), `setTexture(path)` (one image holding the six faces),
   `setTexturePositiveX(path)` ... `setTextureNegativeZ(path)` (one face), rw `color`, `alpha`, `rotation`.
+- `Texture` (`Texture(path)`, or a component's): `load()`, ro `width`, `height` (the source's size:
+  layout never changes when Max Size, the texture quality or the budget shrink the GPU image),
+  `getStoredWidth()`, `getStoredHeight()` (what the GPU holds), `isCompressed()`,
+  `getGpuFormat()` (`"BC7"`, `"ASTC_6x6"`, `"RGBA8"`...), `getData()` (the pixels: empty, with a
+  warning once, for a GPU-compressed texture; set Read/Write in its import settings, or reference
+  it from a CPU slot such as a terrain height map).
 - `Terrain`, `ReflectionProbe`, `Mirror`, `Bone`: editor-configured; see bindings. A Terrain's painted layers (`TerrainSurfaceLayer`) also have `hexTiling` (anti-repetition of the flat projection) and `hexRotation` (0..1).
 - `ObjectRender.getLivePipelineCount()` (static, diagnostics): the render pipelines objects
   made and did not destroy yet (a leak check: the count before creating objects and after

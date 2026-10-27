@@ -12,7 +12,7 @@
 #include "Out.h"
 #include "Workspace.h"
 
-#include "Base64.h"
+#include "util/Base64.h"
 #include "Catalog.h"
 #include "util/YamlNumbers.h"
 #include "lattice/LatticeTypes.h"
@@ -1933,6 +1933,17 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         loggingNode["backtrace"] = logging.backtrace;
         root["playerLogging"] = loggingNode;
     }
+    if (!(project->getPlayerCrash() == PlayerCrashSettings())) {
+        const PlayerCrashSettings& crash = project->getPlayerCrash();
+        YAML::Node crashNode;
+        crashNode["enabled"] = crash.enabled;
+        crashNode["logTail"] = crash.includeLogTail;
+        crashNode["dumpType"] = crash.dumpWithHeap ? "with_heap" : "small";
+        crashNode["hangWatchdog"] = crash.hangWatchdog;
+        crashNode["hangSeconds"] = crash.hangSeconds;
+        crashNode["webOverlay"] = crash.webCrashOverlay;
+        root["playerCrash"] = crashNode;
+    }
     root["htmlUiMsaaSamples"] = project->getHtmlUiMsaaSamples();
     // graphics.shadowTier.<platform>, only the platforms away from their default tier
     {
@@ -2220,6 +2231,12 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (threadingNode.size()) root["threading"] = threadingNode;
     }
 
+    {
+        // Project Settings > Texture (S14 R24): only what differs from the defaults
+        const YAML::Node textureNode = encodeTextureProjectSettings(project->getTextureSettings());
+        if (textureNode.size() > 0) root["texture"] = textureNode;
+    }
+
     if (!project->getStandalonePrefabs().empty()) {
         YAML::Node prefabsNode;
         for (const fs::path& prefabPath : project->getStandalonePrefabs()) {
@@ -2368,6 +2385,22 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (loggingNode["backtrace"].IsDefined()) logging.backtrace = YamlNumbers::as<bool>(loggingNode["backtrace"]);
         }
         project->setPlayerLogging(logging);
+    }
+
+    {
+        PlayerCrashSettings crash;
+        if (node["playerCrash"].IsDefined() && node["playerCrash"].IsMap()) {
+            const YAML::Node crashNode = node["playerCrash"];
+            if (crashNode["enabled"].IsDefined()) crash.enabled = YamlNumbers::as<bool>(crashNode["enabled"]);
+            if (crashNode["logTail"].IsDefined()) crash.includeLogTail = YamlNumbers::as<bool>(crashNode["logTail"]);
+            if (crashNode["dumpType"].IsDefined() && crashNode["dumpType"].IsScalar()) {
+                crash.dumpWithHeap = crashNode["dumpType"].as<std::string>() == "with_heap";
+            }
+            if (crashNode["hangWatchdog"].IsDefined()) crash.hangWatchdog = YamlNumbers::as<bool>(crashNode["hangWatchdog"]);
+            if (crashNode["hangSeconds"].IsDefined()) crash.hangSeconds = YamlNumbers::as<int>(crashNode["hangSeconds"]);
+            if (crashNode["webOverlay"].IsDefined()) crash.webCrashOverlay = YamlNumbers::as<bool>(crashNode["webOverlay"]);
+        }
+        project->setPlayerCrash(crash);
     }
 
     if (node["htmlUiMsaaSamples"].IsDefined()) {
@@ -2712,6 +2745,12 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (threadingNode["webMultithreaded"]) threading.webMultithreaded = YamlNumbers::as<bool>(threadingNode["webMultithreaded"]);
         }
         project->setThreadingSettings(threading);
+    }
+
+    {
+        TextureProjectSettings textureSettings;
+        decodeTextureProjectSettings(node["texture"], textureSettings);
+        project->setTextureSettings(textureSettings);
     }
 
     if (node["standalonePrefabs"]) {

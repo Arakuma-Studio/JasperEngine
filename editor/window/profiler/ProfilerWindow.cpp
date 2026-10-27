@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProfilerWindow.h"
+#include "diag/HangWatchdog.h"
+#include "pool/TextureDataPool.h"
+#include "render/SystemRender.h"
 
 #include "App.h"
 #include "Backend.h"
@@ -548,6 +551,20 @@ void ProfilerWindow::drawModules(const std::vector<const profiler::Frame*>& list
                 if (values[c] > 0.0f)
                     text += "\n" + std::string(gpumem::categoryName((gpumem::Category)c)) + "  " + formatBytes(values[c]);
             }
+            // the textures now resident and the formats this device samples (S14 R15)
+            const std::vector<TextureResidentInfo> textures = TextureDataPool::getResidentTextures();
+            size_t cooked = 0;
+            for (const TextureResidentInfo& texture : textures)
+                cooked += texture.cooked ? 1 : 0;
+            text += "\nTextures  " + std::to_string(textures.size()) + " resident (" + std::to_string(cooked) + " cooked), " +
+                    formatBytes((float)TextureDataPool::getResidentBytes());
+            std::string formats;
+            const TextureFormatSupport support = SystemRender::getTextureFormatSupport();
+            for (size_t f = 0; f < kGpuTextureFormatCount; f++){
+                if (support((GpuTextureFormat)f) && gpuFormatInfo((GpuTextureFormat)f).compressed)
+                    formats += (formats.empty() ? "" : " ") + std::string(gpuFormatName((GpuTextureFormat)f));
+            }
+            text += "\nSampled formats  " + (formats.empty() ? std::string("uncompressed only") : formats);
             return text;
         });
     });
@@ -1149,8 +1166,11 @@ void ProfilerWindow::saveTarget(){
     args.filterCount = 1;
     args.defaultName = "capture.jetrace.json";
     args.parentWindow = *static_cast<nfdwindowhandle_t*>(Backend::getNFDWindowHandle());
-    if (NFD_SaveDialogU8_With(&outPath, &args) != NFD_OKAY)
-        return;
+    {
+        const diag::BusyScope busy("Native file dialog", 0);
+        if (NFD_SaveDialogU8_With(&outPath, &args) != NFD_OKAY)
+            return;
+    }
     std::string path = outPath;
     NFD_FreePathU8(outPath);
     std::string error;
@@ -1164,8 +1184,11 @@ void ProfilerWindow::loadFromDialog(){
     args.filterList = &filter;
     args.filterCount = 1;
     args.parentWindow = *static_cast<nfdwindowhandle_t*>(Backend::getNFDWindowHandle());
-    if (NFD_OpenDialogU8_With(&outPath, &args) != NFD_OKAY)
-        return;
+    {
+        const diag::BusyScope busy("Native file dialog", 0);
+        if (NFD_OpenDialogU8_With(&outPath, &args) != NFD_OKAY)
+            return;
+    }
     std::string path = outPath;
     NFD_FreePathU8(outPath);
     std::string error;

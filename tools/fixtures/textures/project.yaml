@@ -1,0 +1,8 @@
+name: TextureFixture
+canvasWidth: 1280
+canvasHeight: 720
+assetsDir: assets
+luaDir: scripts
+startSceneId: 1
+scenes:
+  - filepath: Main.scene

@@ -186,9 +186,10 @@ CPUS="${CPUS:-${DOCKER_CPUS:-${JOBS:-}}}"
 ENV_FLAGS=()
 for name in JASPER_HTMLUI_UPDATE_GOLDEN JASPER_HTMLUI_WRITE_ACTUAL JASPER_TEST_UPDATE_GOLDEN JASPER_TEST_WRITE_ACTUAL \
             JASPER_TEST_KEEP_TEMP JASPER_REFLECT_WRITE_FIXTURE JASPER_BENCH_ENTITIES JASPER_HTMLUI_PERF_SLACK \
-            JASPER_TEST_PERF_SLACK HTMLUI_LIVE_NETWORK JASPER_CHROME JASPER_ZERO_COST_UPDATE; do
+            JASPER_TEST_PERF_SLACK HTMLUI_LIVE_NETWORK JASPER_CHROME JASPER_ZERO_COST_UPDATE JASPER_TEST_UPDATE_FIXTURES; do
     # (JASPER_HTMLUI_PERF_SLACK: the HTML UI performance tests' tolerance on a loaded host, compat_perf_test.cpp;
-    # JASPER_TEST_PERF_SLACK: the core tests' wall-clock budgets are enforced only when it is set)
+    # JASPER_TEST_PERF_SLACK: the core tests' wall-clock budgets are enforced only when it is set;
+    # JASPER_TEST_UPDATE_FIXTURES: the editor's TextureFormatFixtures writes the GPU format test's cooks, S14)
     [[ -n "${!name:-}" ]] && ENV_FLAGS+=(-e "$name=${!name}")
 done
 # Sanitizer runtime options for every run (tools/sanitizers/*.supp: third-party code only)

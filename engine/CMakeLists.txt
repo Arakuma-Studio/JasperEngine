@@ -98,6 +98,21 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         endif()
     endif()
 
+    # Player > Crash Handling (the Exporter sets them; core/Engine.cpp has the defaults)
+    foreach(crashSetting JASPERENGINE_CRASH_HANDLER JASPERENGINE_CRASH_LOG_TAIL JASPERENGINE_CRASH_DUMP_WITH_HEAP
+            JASPERENGINE_CRASH_HANG_WATCHDOG JASPERENGINE_CRASH_WEB_OVERLAY)
+        if(DEFINED ${crashSetting})
+            if(${crashSetting})
+                add_definitions("-D${crashSetting}=1")
+            else()
+                add_definitions("-D${crashSetting}=0")
+            endif()
+        endif()
+    endforeach()
+    if(DEFINED JASPERENGINE_CRASH_HANG_MS)
+        add_definitions("-DJASPERENGINE_CRASH_HANG_MS=${JASPERENGINE_CRASH_HANG_MS}")
+    endif()
+
     if(NOT DEFINED JASPERENGINE_WINDOW_WIDTH)
         set(JASPERENGINE_WINDOW_WIDTH 960)
     endif()
@@ -236,6 +251,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         set(EM_PRELOAD_FILES)
         if(EXISTS "${PROJECT_ROOT}/assets")
             set(EM_PRELOAD_FILES "${EM_PRELOAD_FILES} --preload-file ${PROJECT_ROOT}/assets@/")
+            # the web loads the web family of the cooked textures only (S14 R9)
+            foreach(family desktop mobile android_etc2)
+                set(EM_PRELOAD_FILES "${EM_PRELOAD_FILES} --exclude-file */je-cooked/${family}")
+            endforeach()
         endif()
         if(EXISTS "${PROJECT_ROOT}/lua")
             set(EM_PRELOAD_FILES "${EM_PRELOAD_FILES} --preload-file ${PROJECT_ROOT}/lua@/")
@@ -297,11 +316,14 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 -s STACK_SIZE=4MB \
                 -s EXPORTED_FUNCTIONS=\"['_getScreenWidth','_getScreenHeight','_changeCanvasSize','_main']\" \
                 -s EXPORTED_RUNTIME_METHODS=\"['ccall', 'cwrap']\" \
+                --pre-js ${PLATFORM_ROOT}/crash_pre.js \
                 ${EM_PRELOAD_FILES} \
                 ${EM_ADDITIONAL_LINK_FLAGS} \
                 ${USE_PTHREADS} \
                 ${ALLOW_MEMORY_GROWTH} \
                 ${USE_WEBGL2}"
+            # the pre-js is read at link time: a change of it relinks
+            LINK_DEPENDS ${PLATFORM_ROOT}/crash_pre.js
         )
     endif()
 
@@ -779,7 +801,7 @@ include_directories(core/script)
 include_directories(core/shader)
 include_directories(core/subsystem)
 include_directories(core/texture)
-include_directories(core/util)
+# Keep util/ namespaced: Signal.h shadows <signal.h> on case-insensitive hosts.
 include_directories(core/htmlui)
 
 include_directories(renders)
@@ -823,6 +845,7 @@ option(JASPERENGINE_CONVEX_DECOMPOSITION "Compile V-HACD convex decomposition (P
 include_directories(SYSTEM libs/harfbuzz)
 include_directories(SYSTEM libs/sheenbidi/Headers)
 include_directories(SYSTEM libs/meshoptimizer)
+include_directories(SYSTEM libs/bcdec)
 
 add_subdirectory(libs/sokol)
 add_subdirectory(libs/lua)
@@ -837,6 +860,22 @@ endforeach()
 add_subdirectory(libs/harfbuzz)
 add_subdirectory(libs/sheenbidi)
 add_subdirectory(libs/meshoptimizer)
+# Cooked textures (S14, docs/textures.md): Zstandard (zstd_decompress in every game, zstd for the
+# cook), the Basis Universal transcoder of web textures (the web runtime, the editor's previews
+# and the tests; native games never load Basis files) and, in the editor tree only
+# (JASPERENGINE_TEXTURE_ENCODERS, set by the root CMakeLists), the encoders of the cook
+add_subdirectory(libs/zstd)
+if(EMSCRIPTEN OR JASPERENGINE_SHARED OR JASPERENGINE_TESTS)
+    set(JASPERENGINE_BASIS_TRANSCODER_DEFAULT ON)
+else()
+    set(JASPERENGINE_BASIS_TRANSCODER_DEFAULT OFF)
+endif()
+option(JASPERENGINE_BASIS_TRANSCODER "Transcode Basis Universal KTX2 textures at load" ${JASPERENGINE_BASIS_TRANSCODER_DEFAULT})
+add_subdirectory(libs/basisu)
+if(JASPERENGINE_TEXTURE_ENCODERS)
+    add_subdirectory(libs/bc7enc_rdo)
+    add_subdirectory(libs/astcenc)
+endif()
 # The RmlUi debugger (Source/Debugger, UIDocumentSystem::setDebuggerVisible): the editor, Debug
 # exports and the HTML UI tests have it; release games leave it out
 if(JASPERENGINE_SHARED OR JASPERENGINE_HTMLUI_TESTS OR CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -910,10 +949,15 @@ else()
     set(EXTERNAL_WARNING_FLAG -w)
 endif()
 
+set(JASPERENGINE_TEXTURE_LIBS zstd_decompress zstd basisu_transcoder)
+if(JASPERENGINE_TEXTURE_ENCODERS)
+    list(APPEND JASPERENGINE_TEXTURE_LIBS basisu_encoder bc7enc_rdo astcenc)
+endif()
+
 foreach(lib IN ITEMS
     sokol lua stb soloud tinyobjloader tinygltf tinyxml2
     harfbuzz sheenbidi meshoptimizer lunasvg thorvg rmlui lexbor
-    dav1d dav1d_bitdepth_8 dav1d_bitdepth_16 opus webm ${JASPERENGINE_PHYSICS_LIBS})
+    dav1d dav1d_bitdepth_8 dav1d_bitdepth_16 opus webm ${JASPERENGINE_PHYSICS_LIBS} ${JASPERENGINE_TEXTURE_LIBS})
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
 endforeach()
 
@@ -922,7 +966,10 @@ endforeach()
 # engine code) broke Wasm signatures. Most of these set a standard of their own, or none.
 jasperengine_apply_cxx_standard(
     sokol soloud tinyobjloader tinygltf tinyxml2 harfbuzz meshoptimizer
-    lunasvg thorvg rmlui webm ${JASPERENGINE_PHYSICS_LIBS})
+    lunasvg thorvg rmlui webm ${JASPERENGINE_PHYSICS_LIBS} basisu_transcoder)
+if(JASPERENGINE_TEXTURE_ENCODERS)
+    jasperengine_apply_cxx_standard(basisu_encoder bc7enc_rdo astcenc)
+endif()
 if(JASPERENGINE_RUNTIME_SHADERS)
     # shadercompiler and every glslang, SPIRV and spirv-cross target it creates
     jasperengine_apply_cxx_standard_in_directories(${CMAKE_CURRENT_SOURCE_DIR}/libs/shadercompiler)
@@ -951,6 +998,12 @@ set(JASPERENGINE_SRCS
     core/Engine.cpp
     core/Input.cpp
     core/Log.cpp
+    core/diag/CrashHandler.cpp
+    core/diag/CrashHandlerPosix.cpp
+    core/diag/CrashHandlerWin.cpp
+    core/diag/HangStackCapture.cpp
+    core/diag/CrashHandlerWeb.cpp
+    core/diag/HangWatchdog.cpp
     core/log/Logger.cpp
     core/log/LogFormat.cpp
     core/log/Backtrace.cpp
@@ -1164,6 +1217,7 @@ set(JASPERENGINE_SRCS
     core/render/shadow/ShadowTypes.cpp
     core/script/LuaBinding.cpp
     core/script/LuaFunctionBase.cpp
+    core/script/LuaWatchdog.cpp
     core/script/LuaReload.cpp
     core/script/LuaScript.cpp
     core/script/ScriptBase.cpp
@@ -1171,6 +1225,7 @@ set(JASPERENGINE_SRCS
     core/script/ToolchainFingerprint.cpp
     core/script/binding/ActionClassesLua.cpp
     core/script/binding/CoreClassesLua.cpp
+    core/script/binding/CrashClassesLua.cpp
     core/script/binding/ECSClassesLua.cpp
     core/script/binding/IOClassesLua.cpp
     core/script/binding/MathClassesLua.cpp
@@ -1214,12 +1269,21 @@ set(JASPERENGINE_SRCS
     core/subsystem/UIDocumentSystemReload.cpp
     core/subsystem/UIDocumentSystemCompat.cpp
     core/subsystem/UIDocumentSystemTexture.cpp
+    core/texture/BasisTranscode.cpp
+    core/texture/CookedTextures.cpp
     core/texture/Framebuffer.cpp
     core/texture/IBLEnvironment.cpp
+    core/texture/Ktx2.cpp
+    core/texture/Ktx2Write.cpp
+    core/texture/MipChain.cpp
     core/texture/MaterialPbr.cpp
     core/texture/TexturePack.cpp
     core/texture/Texture.cpp
     core/texture/TextureData.cpp
+    core/texture/TextureDecode.cpp
+    core/texture/TextureFallback.cpp
+    core/texture/TextureFormat.cpp
+    core/texture/TexturePrepare.cpp
     core/jobs/BackgroundGate.cpp
     core/jobs/JobCounter.cpp
     core/jobs/JobSystem.cpp
@@ -1380,9 +1444,19 @@ target_link_libraries(
     PUBLIC
 
     sokol lua stb tinyobjloader tinygltf tinyxml2 soloud harfbuzz sheenbidi meshoptimizer lunasvg thorvg rmlui lexbor
-    dav1d opus webm
+    dav1d opus webm zstd_decompress
     ${JASPERENGINE_PHYSICS_LIBS}
 )
+if(JASPERENGINE_BASIS_TRANSCODER)
+    target_link_libraries(jasperengine PUBLIC basisu_transcoder)
+    target_compile_definitions(jasperengine PUBLIC JASPERENGINE_BASIS_TRANSCODER)
+endif()
+# the mip chain and the import processing: no fused multiply-adds, so the levels (and the cook
+# cache keys built on them) are the same bytes on every CPU, like stb_image_resize2's
+if(NOT MSVC)
+    set_source_files_properties(core/texture/MipChain.cpp core/texture/TexturePrepare.cpp
+        PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+endif()
 
 # The manifests of the library shaders (shaderlib/library/), embedded in every build: a
 # game reads their properties, textures and render state even without the runtime
@@ -1464,6 +1538,9 @@ if(JASPERENGINE_SHARED)
         target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,liblexbor.a")
         # the <video> decoders (hidden visibility too: dav1d_*, opus_*, mkvparser::)
         target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,libdav1d.a:libopus.a:libwebm.a")
+        # the texture decoders (hidden visibility too: ZSTD_*, basist::); the editor links its own
+        # zstd and basisu encoder
+        target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,libzstd_decompress.a:libbasisu_transcoder.a")
         # and what engine code instantiates over RmlUi types (see the script; ELF only)
         if(NOT WIN32)
             target_link_options(jasperengine PRIVATE "LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/libs/rmlui/hidden-symbols.map")
@@ -1546,10 +1623,16 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     endif()
 
     if(DEFINED ASSETS_DEST_DIR)
+        # a native build keeps the cooked texture family its platform loads (S14 R9)
+        set(JE_COOKED_DROP)
+        foreach(family mobile android_etc2 web)
+            list(APPEND JE_COOKED_DROP COMMAND "${CMAKE_COMMAND}" -E remove_directory ${ASSETS_DEST_DIR}/je-cooked/${family})
+        endforeach()
         add_custom_command(
             TARGET ${APP_NAME} POST_BUILD
             COMMAND "${CMAKE_COMMAND}" -E remove_directory ${ASSETS_DEST_DIR}
             COMMAND "${CMAKE_COMMAND}" -E copy_directory ${PROJECT_ROOT}/assets ${ASSETS_DEST_DIR}
+            ${JE_COOKED_DROP}
         )
         install(DIRECTORY ${ASSETS_DEST_DIR} DESTINATION bin)
     endif()

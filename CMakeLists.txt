@@ -48,6 +48,10 @@ endif()
 
 set(JASPERENGINE_SHARED ON)
 
+# The texture cook's encoders (engine/libs/{bc7enc_rdo,astcenc,basisu}, S14): the editor only,
+# games never link them
+set(JASPERENGINE_TEXTURE_ENCODERS ON)
+
 # The editor builds, exports and plays every shader through the engine's shader
 # compiler (engine/libs/shadercompiler, ShaderVariantCompiler)
 set(JASPERENGINE_RUNTIME_SHADERS ON CACHE BOOL "Compile missing shader variants at runtime" FORCE)
@@ -489,7 +493,7 @@ include_directories (${JASPERENGINE_ROOT}/core/script)
 include_directories (${JASPERENGINE_ROOT}/core/shader)
 include_directories (${JASPERENGINE_ROOT}/core/subsystem)
 include_directories (${JASPERENGINE_ROOT}/core/texture)
-include_directories (${JASPERENGINE_ROOT}/core/util)
+# Keep util/ namespaced: Signal.h shadows <signal.h> on case-insensitive hosts.
 # GamepadMappings.h, shared by GamepadDB (editor) and GamepadLinux (games)
 include_directories (${JASPERENGINE_ROOT}/platform/common)
 # renderer/Renderer.h, which EditorFrame.h includes from one directory up
@@ -716,11 +720,13 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/SynthesisTools.cpp
     ${EDITOR_DIR}/mcp/tools/PlacementTools.cpp
     ${EDITOR_DIR}/mcp/tools/EcsTools.cpp
+    ${EDITOR_DIR}/mcp/tools/DiagnosticsTools.cpp
     ${EDITOR_DIR}/mcp/tools/OrganisationTools.cpp
 
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp
     ${EDITOR_DIR}/util/BidiText.cpp
     ${EDITOR_DIR}/util/CrashHandler.cpp
+    ${EDITOR_DIR}/util/EditorDiagnostics.cpp
     ${EDITOR_DIR}/util/GraphicUtils.cpp
     ${EDITOR_DIR}/util/CameraTextureLink.cpp
     ${EDITOR_DIR}/util/FluidTextureLink.cpp
@@ -836,6 +842,21 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/shader/ShaderVariantCollector.cpp
     ${EDITOR_DIR}/shader/ShaderLibraryMatrix.cpp
     ${EDITOR_DIR}/shader/ShaderLibraryDoc.cpp
+    ${EDITOR_DIR}/texture/AstcEncoder.cpp
+    ${EDITOR_DIR}/texture/BasisEncoder.cpp
+    ${EDITOR_DIR}/texture/BC7TransparentEndpointRepair.cpp
+    ${EDITOR_DIR}/texture/BcEncoder.cpp
+    ${EDITOR_DIR}/texture/TextureCookCache.cpp
+    ${EDITOR_DIR}/texture/TextureCookQueue.cpp
+    ${EDITOR_DIR}/texture/TextureCli.cpp
+    ${EDITOR_DIR}/texture/TextureCookReport.cpp
+    ${EDITOR_DIR}/texture/TextureCooker.cpp
+    ${EDITOR_DIR}/texture/TextureEncoders.cpp
+    ${EDITOR_DIR}/texture/TextureExport.cpp
+    ${EDITOR_DIR}/texture/TextureFormatSelector.cpp
+    ${EDITOR_DIR}/texture/TextureImportSettings.cpp
+    ${EDITOR_DIR}/texture/TextureTypeInference.cpp
+    ${EDITOR_DIR}/window/TextureImporterView.cpp
 
     ${EDITOR_DIR}/material/MaterialPresets.cpp
     ${EDITOR_DIR}/PostProcessingPresets.cpp
@@ -1037,6 +1058,10 @@ function(configure_jasperengine_editor_target target_name)
         jasperengine
         nfd
         yaml-cpp
+        zstd
+        bc7enc_rdo
+        astcenc
+        basisu_encoder
         ufbx
     )
 

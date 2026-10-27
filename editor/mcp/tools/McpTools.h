@@ -38,6 +38,8 @@ namespace jasperengine::editor::mcp {
     void registerAssetTools(McpRegistry& registry);
     void registerMaterialsLightingTools(McpRegistry& registry);
     void registerAssetIdentityTools(McpRegistry& registry);
+    // S14: texture import settings and cooks (in AssetTools.cpp)
+    void registerTextureTools(McpRegistry& registry);
     void registerDocsTools(McpRegistry& registry);
     void registerBuildTools(McpRegistry& registry);
     void registerWorldTools(McpRegistry& registry);
@@ -59,6 +61,7 @@ namespace jasperengine::editor::mcp {
     // " Synthesized (tileable, balanced, seed 7, role primary); sources unchanged." or ""
     std::string synthesisAssetText(const Json& info);
     void registerEcsTools(McpRegistry& registry);
+    void registerDiagnosticsTools(McpRegistry& registry);
     void registerAtmosphereTools(McpRegistry& registry);
     void registerProfilerTools(McpRegistry& registry);
     void registerScriptingTools(McpRegistry& registry);

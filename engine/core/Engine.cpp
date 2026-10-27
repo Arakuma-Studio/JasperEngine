@@ -5,6 +5,9 @@
 #include "Engine.h"
 #include "Log.h"
 #include "log/Logger.h"
+#include "diag/CrashHandler.h"
+#include "diag/HangWatchdog.h"
+#include "script/LuaWatchdog.h"
 #include "util/Scheduler.h"
 #include "Scene.h"
 #include "Input.h"
@@ -57,6 +60,7 @@
 #include <cstdlib>
 #include <map>
 #include <functional>
+#include <optional>
 
 using namespace jasperengine;
 
@@ -476,6 +480,49 @@ void Engine::setTextureStrategy(TextureStrategy textureStrategy){
 
 TextureStrategy Engine::getTextureStrategy(){
     return textureStrategy;
+}
+
+void Engine::setTextureQuality(int quality){
+    TextureDataPool::setTextureQuality(quality);
+}
+
+int Engine::getTextureQuality(){
+    return TextureDataPool::getTextureQuality();
+}
+
+void Engine::setTextureMemoryBudget(int megabytes){
+    TextureDataPool::setMemoryBudget(megabytes > 0 ? (uint64_t)megabytes * 1024ull * 1024ull : 0);
+}
+
+int Engine::getTextureMemoryBudget(){
+    return (int)(TextureDataPool::getMemoryBudget() / (1024ull * 1024ull));
+}
+
+uint64_t Engine::getTextureMemoryUsage(){
+    return TextureDataPool::getResidentBytes();
+}
+
+void Engine::setTextureLowMemoryFallback(bool enabled){
+    TextureDataPool::setLowMemoryFallback(enabled);
+}
+
+bool Engine::isTextureLowMemoryFallback(){
+    return TextureDataPool::getLowMemoryFallback();
+}
+
+bool Engine::isTextureFormatSupported(const std::string& format){
+    GpuTextureFormat parsed;
+    return gpuFormatFromName(format, parsed) && SystemRender::isTextureFormatSupported(parsed);
+}
+
+void Engine::setTextureDefaults(const TexturePlatformDefaults& desktop, const TexturePlatformDefaults& mobile,
+                                const TexturePlatformDefaults& web){
+    const Platform platform = getPlatform();
+    const TexturePlatformDefaults& chosen = (platform == Platform::iOS || platform == Platform::Android) ? mobile
+                                          : platform == Platform::Web ? web : desktop;
+    setTextureQuality(chosen.quality);
+    setTextureMemoryBudget(chosen.memoryBudgetMB);
+    setTextureLowMemoryFallback(chosen.lowMemoryFallback);
 }
 
 void Engine::setCallMouseInTouchEvent(bool callMouseInTouchEvent){
@@ -1166,9 +1213,33 @@ void Engine::calculateCanvas(){
                       Engine::canvasWidth, Engine::canvasHeight, unusedViewRect);
 }
 
+// Project Settings > Player > Crash Handling (the Exporter sets them; defaults otherwise)
+#ifndef JASPERENGINE_CRASH_HANDLER
+    #define JASPERENGINE_CRASH_HANDLER 1
+#endif
+#ifndef JASPERENGINE_CRASH_LOG_TAIL
+    #define JASPERENGINE_CRASH_LOG_TAIL 1
+#endif
+#ifndef JASPERENGINE_CRASH_DUMP_WITH_HEAP
+    #define JASPERENGINE_CRASH_DUMP_WITH_HEAP 0
+#endif
+#ifndef JASPERENGINE_CRASH_HANG_WATCHDOG
+    #define JASPERENGINE_CRASH_HANG_WATCHDOG 1
+#endif
+#ifndef JASPERENGINE_CRASH_HANG_MS
+    #define JASPERENGINE_CRASH_HANG_MS 5000
+#endif
+#ifndef JASPERENGINE_CRASH_WEB_OVERLAY
+    #define JASPERENGINE_CRASH_WEB_OVERLAY 1
+#endif
+
 namespace {
     // the game started the logger (an editor starts its own before the engine)
     bool engineOwnsLogger = false;
+#ifndef JASPERENGINE_EDITOR
+    // the game installed the crash handler and the watchdog (the editor does its own)
+    bool engineOwnsDiagnostics = false;
+#endif
     // frames systemDraw ran, stamped on log records
     uint64_t drawnFrames = 0;
 
@@ -1215,6 +1286,55 @@ namespace {
         }
         system->installLogSinks();
     }
+
+#ifndef JASPERENGINE_EDITOR
+    [[maybe_unused]] const char* graphicBackendName(){
+        switch (Engine::getGraphicBackend()){
+            case GraphicBackend::GLCORE: return "glcore";
+            case GraphicBackend::GLES3: return "gles3";
+            case GraphicBackend::D3D11: return "d3d11";
+            case GraphicBackend::METAL: return "metal";
+            case GraphicBackend::WGPU: return "wgpu";
+            case GraphicBackend::VULKAN: return "vulkan";
+        }
+        return "unknown";
+    }
+
+    // A game's crash reports (<user data>/crash) and, in a development build, its main-thread
+    // hang watchdog (docs/crash-diagnostics.md)
+    [[maybe_unused]] void startGameDiagnostics(System* system){
+    #if JASPERENGINE_CRASH_HANDLER
+        diag::crash::Config config;
+        #ifdef JASPERENGINE_WINDOW_TITLE
+        config.product = JASPERENGINE_WINDOW_TITLE;
+        #else
+        config.product = "JasperEngine Game";
+        #endif
+        config.root = system->getCrashReportPath();
+        config.includeLogTail = JASPERENGINE_CRASH_LOG_TAIL != 0;
+        config.dumpKind = JASPERENGINE_CRASH_DUMP_WITH_HEAP ? diag::crash::DumpKind::WithHeap : diag::crash::DumpKind::Small;
+        config.backend = graphicBackendName();
+        config.webOverlay = JASPERENGINE_CRASH_WEB_OVERLAY != 0;
+        #if !defined(__EMSCRIPTEN__)
+        // no report root (the unit tests' System): no handler either
+        if (config.root.empty()) return;
+        #endif
+        diag::crash::install(config);
+        engineOwnsDiagnostics = true;
+    #endif
+    #if JASPERENGINE_DEVELOPMENT_BUILD && JASPERENGINE_CRASH_HANG_WATCHDOG && !defined(__EMSCRIPTEN__)
+        // the browser owns the web's main thread
+        diag::WatchdogConfig watch;
+        watch.thresholdMs = JASPERENGINE_CRASH_HANG_MS;
+        #ifdef JASPERENGINE_WINDOW_TITLE
+        watch.product = JASPERENGINE_WINDOW_TITLE;
+        #endif
+        diag::watchdog::start(watch);
+        engineOwnsDiagnostics = true;
+    #endif
+        (void)system;
+    }
+#endif
 }
 
 void Engine::systemInit(int argc, char* argv[], System* system){
@@ -1226,6 +1346,9 @@ void Engine::systemInit(int argc, char* argv[], System* system){
         startGameLogger(system, std::vector<std::string>(argv, argv + argc));
     }
     Logger::setThreadName("main");
+#ifndef JASPERENGINE_EDITOR
+    startGameDiagnostics(system);
+#endif
     // the game's timers run on this thread (Engine::systemDraw)
     Scheduler::game().setOwnerThread();
 
@@ -1249,6 +1372,8 @@ void Engine::systemInit(int argc, char* argv[], System* system){
 #endif
 
     LuaBinding::createLuaState();
+    // the watchdog names (and in editor Play interrupts) a runaway Lua function
+    LuaWatchdog::attach();
 
     #ifndef NO_LUA_INIT
     LuaBinding::init();
@@ -1427,6 +1552,26 @@ void Engine::runFrame(bool draw){
     SystemRender::setViewTag(SystemRender::FRAME_STATS_FRAME);
 
     Logger::setFrame(++drawnFrames);
+    // the game's main-loop heartbeat, and what a hang report says about the frames
+    diag::heartbeat();
+    diag::watchdog::setFrameInfo(drawnFrames, static_cast<float>(framePeriod * 1000.0));
+#if JASPERENGINE_DEVELOPMENT_BUILD && !defined(JASPERENGINE_EDITOR)
+    // JASPERENGINE_DEBUG_CRASH=<mode>@<frame> (web: ?jasperengine_debug_crash=<mode>)
+    // without a frame: 30 frames after every scene loaded (after the ready signal's line)
+    static const std::optional<diag::crash::DebugCrashRequest> debugCrashRequest = diag::crash::debugCrashRequest();
+    static uint64_t debugCrashLoadedFrames = 0;
+    if (debugCrashRequest){
+        debugCrashLoadedFrames = areScenesLoaded() ? debugCrashLoadedFrames + 1 : 0;
+        const bool due = debugCrashRequest->frame != 0 ? drawnFrames == debugCrashRequest->frame : debugCrashLoadedFrames == 30;
+        if (due) diag::crash::debugCrash(debugCrashRequest->mode);
+    }
+#endif
+#ifndef JASPERENGINE_EDITOR
+    for (const diag::HangNotice& notice : diag::watchdog::takeNotices()){
+        Log::warn("The game was not responding for %.1f s (%s). Details saved%s%s", notice.stalledMs / 1000.0,
+                  notice.label.c_str(), notice.file.empty() ? "" : ": ", notice.file.string().c_str());
+    }
+#endif
 
     //Deltatime in seconds
     double rawDelta = stm_sec(stm_laptime(&lastTime));
@@ -1484,6 +1629,12 @@ void Engine::runFrame(bool draw){
         JE_PROFILE_SCOPE("SokolCmdQueue execute");
         // async uploads of the last frame, while the scenes that queued them still exist
         SystemRender::executeQueue();
+    }
+
+    {
+        JE_PROFILE_SCOPE("Texture loads");
+        // progressive mip swaps, main-thread transcodes, budget reloads (cooked textures)
+        TextureDataPool::update();
     }
 
     {
@@ -1717,6 +1868,10 @@ void Engine::systemViewDestroyed(){
 }
 
 void Engine::systemShutdown(){
+#ifndef JASPERENGINE_EDITOR
+    // teardown is watched on its own window; the job system is not read past here
+    if (engineOwnsDiagnostics) diag::watchdog::beginShutdownWatch();
+#endif
     Engine::onShutdown.call();
 
     // anime's and the timers' Lua references go while the Lua state still exists
@@ -1734,6 +1889,15 @@ void Engine::systemShutdown(){
 #endif
     jobs::shutdown();
 
+#ifndef JASPERENGINE_EDITOR
+    // a clean exit: no session marker is left for the next start to find
+    if (engineOwnsDiagnostics) {
+        engineOwnsDiagnostics = false;
+        diag::watchdog::stop();
+        diag::crash::shutdown();
+    }
+#endif
+
     // what the game logged (the workers' last lines too) reaches its sinks before the process goes
     if (engineOwnsLogger) {
         engineOwnsLogger = false;
@@ -1742,12 +1906,15 @@ void Engine::systemShutdown(){
 }
 
 void Engine::systemPause(){
+    // a backgrounded app expects no heartbeat; resume re-arms on the next frame
+    diag::watchdog::setPaused(true);
     AudioSystem::pauseAll();
     Engine::onPause.call();
     paused = true;
 }
 
 void Engine::systemResume(){
+    diag::watchdog::setPaused(false);
     AudioSystem::resumeAll();
     Engine::onResume.call();
     paused = false;

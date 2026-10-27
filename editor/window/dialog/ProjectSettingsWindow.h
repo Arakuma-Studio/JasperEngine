@@ -33,7 +33,10 @@ namespace jasperengine::editor {
         bool m_vsyncEnabled = true;
         // Quality > Atmosphere Quality (desktop, mobile, web) as AtmosphereQuality values
         int m_atmosphereQuality[3] = {3, 1, 1};
+        // Texture (S14 R24)
+        TextureProjectSettings m_textureSettings;
         PlayerLoggingSettings m_playerLogging;
+        PlayerCrashSettings m_playerCrash;
         int m_htmlUiMsaaIndex = 2;   // htmlUiMsaaValues: 1, 2, 4, 8
         // the shadow quality tier of each platform (Engine::Platform order), as ShadowTier ints
         int m_shadowTiers[6] = {2, 0, 1, 0, 2, 2};
@@ -133,6 +136,7 @@ namespace jasperengine::editor {
         void drawPlayerSettings();
         void drawGraphicsSettings();
         void drawQualitySettings();
+        void drawTextureSettings();
         void drawPhysicsSettings();
         void drawPhysics2DSettings();
         // Unity's triangular Layer Collision Matrix over the named layers (as typed in

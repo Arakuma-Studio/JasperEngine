@@ -62,8 +62,6 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
 
 ## The loop
 1. Inspect: `editor_status`, the scenes, the hierarchy, the GameObjects you will touch.
-   Fields, ranges, enums: list_component_types, jasper://reflection; Inspector rows:
-   get_inspector_layout.
 2. Edit scenes, prefabs and settings with tools, never by hand-editing .scene/.prefab/
    project.yaml. Group many edits in one `batch` call
    (undo_group: one undo step, see Undo). Edit code with your own tools (see Code).
@@ -86,8 +84,9 @@ undoes only your own last step. Play-time edits roll back at play stop and are o
 
 ## Editor search
 editor_ux group: search_editor is the Ctrl+K palette (prefixes > / : @ + asset:), run_command runs
-a list_shortcuts id or a result's key, set_shortcut rebinds. list_assets search: t: l: ext: path:
-re: ref: missing:. Layouts, labels, saved searches, bookmarks: edit_* (jasper://docs/editor-integration).
+a list_shortcuts id or a result's key, set_shortcut rebinds, get_inspector_layout reads the
+Inspector's rows. list_assets search: t: l: ext: path: re: ref: missing:. Layouts, labels, saved
+searches, bookmarks: edit_* (jasper://docs/editor-integration).
 
 ## Code (Lua, C++, shaders, materials)
 The project is a normal folder (`editor_status`: project.path). Work in it and read, edit,
@@ -231,6 +230,8 @@ The profiling group: get_frame_times (the always-on history), capture_profile th
 get_cpu_profile (capture_id, frame worst), get_gpu_passes (each pass's GPU ms; with capture_id
 per-label medians), capture_pass_output, get_vram_report, get_render_stats. Compare medians,
 not single frames; GPU time semantics differ per backend (jasper://docs/profiling).
+Calls time out: get_editor_health (answers mid-hang) tells hung from slow; get_crash_reports
+(jasper://docs/crash-diagnostics).
 
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export
@@ -253,7 +254,6 @@ could not read is refused; allow_data_loss writes it anyway. degraded_document, 
 project_locked: jasper://docs/data-safety.
 
 ## Pitfalls
-- Edits made while playing are discarded when play stops (as in Unity).
 - Never carry over API names from Unity C#, Godot or Unreal: confirm them in jasper://docs or
   .jasperengine/engine-api first.
 - Lua: static functions use a dot (GameObject.instantiate), methods a colon (go:setScale(2)).

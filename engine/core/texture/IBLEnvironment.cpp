@@ -123,12 +123,52 @@ namespace {
         fetchFaceBilinear(level, face, u * 0.5f + 0.5f, v * 0.5f + 0.5f, out);
     }
 
+    // An 8-bit view of one face: the decoded face, a face of levels that hold all six (cooked
+    // and prepared cubes), or the RGBA8 copy a compressed or float cube carries for CPU readers
+    struct FaceView {
+        const unsigned char* data = nullptr;
+        int width = 0;
+        int height = 0;
+        int channels = 0;
+    };
+
+    FaceView faceView(std::array<TextureData,6>& faces, int f){
+        FaceView view;
+        TextureData& first = faces[0];
+        if (first.getCpuCopy()){
+            TextureData& copy = first.getCpuCopy()->at(f);
+            view.data = (const unsigned char*)copy.getData();
+            view.width = copy.getWidth();
+            view.height = copy.getHeight();
+            view.channels = copy.getChannels();
+            return view;
+        }
+        if (first.hasLevels() && first.getFaceCount() == 6){
+            if (!first.getData() || first.getColorFormat() != ColorFormat::RGBA)
+                return view;
+            const size_t faceBytes = (size_t)first.getWidth() * (size_t)first.getHeight() * 4;
+            view.data = (const unsigned char*)first.getData() + faceBytes * (size_t)f;
+            view.width = first.getWidth();
+            view.height = first.getHeight();
+            view.channels = 4;
+            return view;
+        }
+        TextureData& face = faces[f];
+        if (TextureData::getBytesPerChannel(face.getColorFormat()) != 1)
+            return view;
+        view.data = (const unsigned char*)face.getData();
+        view.width = face.getWidth();
+        view.height = face.getHeight();
+        view.channels = face.getChannels();
+        return view;
+    }
+
     // resample one input face to dstSize, converting to linear float RGB
-    bool resampleFaceLinear(TextureData& src, int dstSize, std::vector<float>& out){
-        unsigned char* data = (unsigned char*)src.getData();
-        int srcWidth = src.getWidth();
-        int srcHeight = src.getHeight();
-        int channels = src.getChannels();
+    bool resampleFaceLinear(const FaceView& src, int dstSize, std::vector<float>& out){
+        const unsigned char* data = src.data;
+        int srcWidth = src.width;
+        int srcHeight = src.height;
+        int channels = src.channels;
 
         if (!data || srcWidth <= 0 || srcHeight <= 0 || channels <= 0){
             return false;
@@ -267,7 +307,7 @@ bool IBLEnvironment::generate(const std::string& label, std::array<TextureData,6
     std::vector<CubeLevel> chain(SPECULAR_MIPS);
     chain[0].size = SPECULAR_BASE_SIZE;
     for (int f = 0; f < 6; f++){
-        if (!resampleFaceLinear(faces[f], SPECULAR_BASE_SIZE, chain[0].faces[f])){
+        if (!resampleFaceLinear(faceView(faces, f), SPECULAR_BASE_SIZE, chain[0].faces[f])){
             Log::error("Cannot generate IBL environment of %s: invalid texture data", label.c_str());
             return false;
         }

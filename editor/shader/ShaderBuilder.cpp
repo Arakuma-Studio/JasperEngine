@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ShaderBuilder.h"
+#include "diag/HangWatchdog.h"
 #include "io/AtomicFile.h"
 
 #include "ShaderDataSerializer.h"
@@ -208,6 +209,8 @@ ShaderBuildResult editor::ShaderBuilder::buildShader(ShaderKey shaderKey, Projec
     if (!Engine::isAsyncLoading()) {
         try {
             lock.unlock();
+            // the synchronous compile blocks the main thread (a hang report names it)
+            const diag::BusyScope busy("Compiling shader", 120'000);
             ShaderData data = buildShaderInternal(shaderKey, project, false);
             lock.lock();
             shaderDataCache[shaderKey] = data;

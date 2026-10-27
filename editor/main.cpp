@@ -7,6 +7,7 @@
 #include "cli/CommandLine.h"
 #include "mcp/McpLaunch.h"
 #include "reload/HotReloadService.h"
+#include "util/EditorDiagnostics.h"
 #include "util/ShellEnv.h"
 
 #include <cstdio>
@@ -52,6 +53,9 @@ int runEditor(int argc, char* argv[]) {
     }
     if (argc >= 2 && std::strcmp(argv[1], "assets") == 0) {
         return editor::CommandLine::runAssetsCommand(argc - 1, argv + 1, argv[0]);
+    }
+    if (argc >= 2 && std::strcmp(argv[1], "cook-textures") == 0) {
+        return editor::CommandLine::runCookTexturesCommand(argc - 1, argv + 1, argv[0]);
     }
     if (argc >= 2 && std::strcmp(argv[1], "check") == 0) {
         return editor::CommandLine::runCheckCommand(argc - 1, argv + 1, argv[0]);
@@ -175,12 +179,27 @@ bool takeFileWatcherFlag(std::vector<char*>& args) {
     return true;
 }
 
+// --allow-debug-crash, anywhere on the command line: the MCP debug_crash tool may crash or hang
+// this editor (JASPERENGINE_ALLOW_DEBUG_CRASH=1 does the same); removed before the commands parse
+void takeAllowDebugCrashFlag(std::vector<char*>& args) {
+    if (isCallCommand(static_cast<int>(args.size()), args.data())) return;
+    for (size_t i = 1; i < args.size();) {
+        if (std::strcmp(args[i], "--allow-debug-crash") == 0) {
+            editor::EditorDiagnostics::setDebugCrashAllowed(true);
+            args.erase(args.begin() + static_cast<long>(i));
+            continue;
+        }
+        i++;
+    }
+}
+
 }
 
 int main(int argc, char* argv[]) {
     // before anything logs: the in-memory store and the terminal until a Console window exists
     editor::Out::startLogging();
     std::vector<char*> args(argv, argv + argc);
+    takeAllowDebugCrashFlag(args);
     if (!takeLogLevelFlag(args) || !takeFileWatcherFlag(args)) {
         editor::Out::stopLogging();
         return 2;
