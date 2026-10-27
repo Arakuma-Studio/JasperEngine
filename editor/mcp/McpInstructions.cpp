@@ -29,8 +29,7 @@ You are driving a running JasperEngine editor: a C++ game engine with a Unity-st
 scripts. Each tool edit is an undoable command, live to a human watching. Build scenes
 with tools, write code with your own file tools, verify by playing, screenshots and the Console.
 tools/list is authoritative for tool names and arguments; read a tool's description before
-first use. Deeper reference: jasper://docs/... (Lua scripting and API, C++ scripting, physics,
-shaders, materials, prefabs, assets, HTML/CSS UI, data safety, undo, profiling, ECS, Unity glossary).
+first use. Deeper reference: jasper://docs lists the area guides each section points to.
 
 ## Unity names -> engine names
 Tools, component names and script APIs use the engine names.
@@ -53,7 +52,8 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
   `entities` (array) instead of `entity` applies a tool to several GameObjects.
 - component: lowercase catalog names (transform, mesh, sprite, rigidbody2d, ...); unknown
   names fail with the valid list. property: catalog paths ("position",
-  "submeshes[0].material.baseColorFactor", "scripts[0].speed").
+  "submeshes[0].material.baseColorFactor", "scripts[0].speed"). Fields, ranges, enums:
+  list_component_types, jasper://reflection; the Inspector's rows: get_inspector_layout.
 - values: vectors [x,y,z] (or {x,y,z}); quaternions [x,y,z,w] or {"euler":[x,y,z]} degrees;
   colors as vectors (0..1); enums by name; textures/fonts/materials by asset path;
   entity references by entity ref, or {"scene": <scene>, "id": <id>} for a GameObject of
@@ -82,13 +82,6 @@ Edit results carry `undo` {id, name}: one named step per call (a `batch` with un
 named by undo_name). undo/redo scope "timeline" = the human's Ctrl+Z/Ctrl+Y; expect_top_id
 undoes only your own last step. Play-time edits roll back at play stop and are offered back
 (get_play_changes). More: jasper://docs/undo.
-
-## Component reference
-list_component_types {component}: its properties with types, defaults and enum options, and a
-JSON Schema (ranges, units, read-only fields, older names as x-aliases); jasper://reflection:
-every component and enum. set_properties refuses a value outside a field's range and a
-read-only field, and applies an older field name with a warning. get_inspector_layout: the
-rows the Inspector drew for the selection (labels, groups, mixed values).
 
 ## Editor search
 editor_ux group: search_editor is the Ctrl+K palette (prefixes > / : @ + asset:), run_command runs
