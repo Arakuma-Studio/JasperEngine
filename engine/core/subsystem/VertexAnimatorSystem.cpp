@@ -290,7 +290,8 @@ namespace {
     }
 
     void setStateTime(const Animating& a, VatTrackPair& pair, VatStateExtra& extra, double time, double now){
-        collapse(a, pair, extra, now);
+        // the current clip's time: the one faded to ends its fade (a blend sets A, B follows)
+        if (hasB(pair) && !blendMode(pair)) settle(a, pair, extra);
         if (pair.a.clip < 0 || !std::isfinite(time)) return;
         const float speed = extra.stopped ? 0.0f : effectiveSpeed(a, extra, pair.a.clip);
         setTrack(pair.a, extra.holdA, pair.a.clip, time, speed, now);
@@ -844,19 +845,6 @@ namespace {
     // the asset of `animation`, loaded or reloaded as needed; null while there is none
     bool ensureLoaded(Scene* scene, Entity entity, VertexAnimatorComponent& animator, VertexAnimatorRuntime& runtime,
                       double dt, double now){
-        if (runtime.path != animator.animation){
-            // another animation: starts over (what scripts asked for already stays)
-            std::vector<VertexAnimatorRequest> requests;
-            requests.swap(animator.requests);
-            resetPlayback(animator);
-            animator.requests.swap(requests);
-            animator.asset.reset();
-            animator.loadError.clear();
-            runtime.path = animator.animation;
-            runtime.failed = false;
-            runtime.loggedError.clear();
-            animator.needsLoad = true;
-        }
         if (animator.animation.empty()){
             animator.asset.reset();
             animator.needsLoad = false;
@@ -961,6 +949,20 @@ void VertexAnimatorSystem::updateAnimator(Entity entity, VertexAnimatorComponent
     }
     runtime.previewing = paused && animator.preview;
 
+    if (runtime.path != animator.animation){
+        // another animation: starts over, its clock too (what scripts asked for already stays)
+        std::vector<VertexAnimatorRequest> requests;
+        requests.swap(animator.requests);
+        resetPlayback(animator);
+        animator.requests.swap(requests);
+        animator.asset.reset();
+        animator.loadError.clear();
+        runtime.path = animator.animation;
+        runtime.failed = false;
+        runtime.loggedError.clear();
+        animator.needsLoad = true;
+    }
+
     // the clock: play mode, or a preview in edit mode
     double prev = animator.lastNow;
     if ((!paused || animator.preview) && std::isfinite(dt) && dt > 0.0){
@@ -979,6 +981,17 @@ void VertexAnimatorSystem::updateAnimator(Entity entity, VertexAnimatorComponent
     }
 
     if (!ensureLoaded(scene, entity, animator, runtime, dt, now)){
+        if (rebase){
+            // no clip table to bring them near the clock: the times only move with it
+            auto shiftState = [shift](VatTrackPair& pair){
+                pair.a.start = (float)((double)pair.a.start - shift);
+                pair.b.start = (float)((double)pair.b.start - shift);
+                pair.fadeStart = (float)((double)pair.fadeStart - shift);
+                pair.fadeEnd = (float)((double)pair.fadeEnd - shift);
+            };
+            shiftState(animator.state);
+            for (VatTrackPair& pair : animator.instanceStates) shiftState(pair);
+        }
         animator.gpuActive = false;
         animator.lastNow = (float)now;
         animator.gpuNow = (float)now;

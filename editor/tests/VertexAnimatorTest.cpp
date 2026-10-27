@@ -1335,7 +1335,7 @@ TEST_F(VertexAnimatorSystemTest, LuaApiThroughTheBindings) {
     EXPECT_FLOAT_EQ(global("vatPose").cast<float>().value(), 1.0f);
     EXPECT_TRUE(global("vatInstancePose").cast<bool>().value());
     EXPECT_EQ(global("vatInstanceClip").cast<std::string>().value(), "Bounce");
-    EXPECT_NEAR(global("vatInstanceTime").cast<float>().value(), 0.125f, 1e-4f);
+    EXPECT_NEAR(global("vatInstanceTime").cast<float>().value(), 0.25f, 1e-4f) << "setInstanceTime during a crossfade: the clip faded to";
     EXPECT_EQ(global("vatCount").cast<int>().value(), 2);
     EXPECT_EQ(global("vatAnimation").cast<std::string>().value(), HERO);
     EXPECT_TRUE(global("vatLoaded").cast<bool>().value());
