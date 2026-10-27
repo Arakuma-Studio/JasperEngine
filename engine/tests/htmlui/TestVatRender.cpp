@@ -605,35 +605,41 @@ TEST_F(VatRenderTest, TangentFrameNormalsLightLikeATurnedSurface){
     ASSERT_TRUE(asset);
 
     enum class Kind { ANIMATED, TURNED, PLAIN };
-    auto render = [&](Kind kind, Screen& screen){
-        VatScene s;
-        s.scene().setGlobalIllumination(0.1f);
-        Light& light = s.fixture.add<Light>();
-        light.setType(LightType::DIRECTIONAL);
-        light.setDirection(0.5f, -0.3f, -1.0f);
-        light.setIntensity(3.0f);
-        Model& model = s.addModel(writeGltf(box, "normals"));
-        if (kind == Kind::ANIMATED)
-            s.animate(model.getEntity(), asset, track(0), 0.0f);
-        else if (kind == Kind::TURNED)
-            model.setRotation(0.0f, 30.0f, 0.0f);
-        ASSERT_TRUE(s.settle());
-        ASSERT_TRUE(screen.read());
-    };
-    Screen animated, turned, plain;
-    render(Kind::ANIMATED, animated);
-    render(Kind::TURNED, turned);
-    render(Kind::PLAIN, plain);
+    // the built-in Lit (mesh.vert) and a library shader (includes/surface_vs.glsl)
+    for (const char* shader : {"", "library:simple_lit"}){
+        SCOPED_TRACE(*shader ? shader : "Lit");
+        auto render = [&](Kind kind, Screen& screen){
+            VatScene s;
+            s.scene().setGlobalIllumination(0.1f);
+            Light& light = s.fixture.add<Light>();
+            light.setType(LightType::DIRECTIONAL);
+            light.setDirection(0.5f, -0.3f, -1.0f);
+            light.setIntensity(3.0f);
+            Model& model = s.addModel(writeGltf(box, "normals"));
+            if (*shader)
+                model.setCustomShader(shader);
+            if (kind == Kind::ANIMATED)
+                s.animate(model.getEntity(), asset, track(0), 0.0f);
+            else if (kind == Kind::TURNED)
+                model.setRotation(0.0f, 30.0f, 0.0f);
+            ASSERT_TRUE(s.settle());
+            ASSERT_TRUE(screen.read());
+        };
+        Screen animated, turned, plain;
+        render(Kind::ANIMATED, animated);
+        render(Kind::TURNED, turned);
+        render(Kind::PLAIN, plain);
 
-    const int x = int(toScreenX(0.0f));
-    const int row = toScreenRow(0.2f);
-    const uint8_t* a = animated.at(x, row);
-    const uint8_t* b = turned.at(x, row);
-    const uint8_t* f = plain.at(x, row);
-    for (int c = 0; c < 3; c++){
-        EXPECT_NEAR(int(a[c]), int(b[c]), 2) << "channel " << c;
+        const int x = int(toScreenX(0.0f));
+        const int row = toScreenRow(0.2f);
+        const uint8_t* a = animated.at(x, row);
+        const uint8_t* b = turned.at(x, row);
+        const uint8_t* f = plain.at(x, row);
+        for (int c = 0; c < 3; c++){
+            EXPECT_NEAR(int(a[c]), int(b[c]), 2) << "channel " << c;
+        }
+        EXPECT_GT(std::abs(int(f[0]) - int(a[0])), 2) << "the turned frame changes the shading";
     }
-    EXPECT_GT(std::abs(int(f[0]) - int(a[0])), 2) << "the turned frame changes the shading";
 }
 
 TEST_F(VatRenderTest, BonesModeSkinsRigidPiecesWithoutShrinkingASpin){
@@ -767,68 +773,75 @@ TEST_F(VatRenderTest, ShadowsAndTheDepthPrePassFollow){
         return Vector4(0.6f, 0.0f, 0.0f, 0.0f);
     });
     ASSERT_TRUE(asset);
-    auto build = [&](VatScene& s, bool animated, bool prepass){
-        s.scene().setDepthPrepassEnabled(prepass);
-        s.scene().setGlobalIllumination(0.2f);
-        Light& light = s.fixture.add<Light>();
-        light.setType(LightType::DIRECTIONAL);
-        light.setDirection(0.3f, 0.0f, -1.0f);
-        light.setIntensity(4.0f);
-        light.setShadows(true);
-        Primitive& wall = s.fixture.add<Primitive>();
-        wall.createWall(14.0f, 8.0f);
-        wall.setPosition(0.0f, 0.0f, -3.0f);
-        Model& model = s.addModel(writeGltf(box, "shadow"));
-        if (animated)
-            s.animate(model.getEntity(), asset, track(0), 0.0f);
-    };
-    auto shadowRightEdge = [](const Screen& screen, float worldY, int x0, int litX){
-        const int row = toScreenRow(worldY);
-        auto luminance = [&](int x){
-            const uint8_t* p = screen.at(x, row);
-            return int(p[0]) + int(p[1]) + int(p[2]);
+    // the built-in Lit and depth.vert, and a library shader with its depth program
+    // (includes/surface_vs.glsl, includes/surface_depth_vs.glsl)
+    for (const char* shader : {"", "library:unlit"}){
+        SCOPED_TRACE(*shader ? shader : "Lit");
+        auto build = [&](VatScene& s, bool animated, bool prepass){
+            s.scene().setDepthPrepassEnabled(prepass);
+            s.scene().setGlobalIllumination(0.2f);
+            Light& light = s.fixture.add<Light>();
+            light.setType(LightType::DIRECTIONAL);
+            light.setDirection(0.3f, 0.0f, -1.0f);
+            light.setIntensity(4.0f);
+            light.setShadows(true);
+            Primitive& wall = s.fixture.add<Primitive>();
+            wall.createWall(14.0f, 8.0f);
+            wall.setPosition(0.0f, 0.0f, -3.0f);
+            Model& model = s.addModel(writeGltf(box, "shadow"));
+            if (*shader)
+                model.setCustomShader(shader);
+            if (animated)
+                s.animate(model.getEntity(), asset, track(0), 0.0f);
         };
-        const int lit = luminance(litX);
-        int dark = lit;
-        for (int x = x0; x < litX; x++)
-            dark = std::min(dark, luminance(x));
-        const int threshold = (lit + dark) / 2;
-        for (int x = litX; x >= x0; x--){
-            if (luminance(x) < threshold)
-                return x;
-        }
-        return -1;
-    };
+        auto shadowRightEdge = [](const Screen& screen, float worldY, int x0, int litX){
+            const int row = toScreenRow(worldY);
+            auto luminance = [&](int x){
+                const uint8_t* p = screen.at(x, row);
+                return int(p[0]) + int(p[1]) + int(p[2]);
+            };
+            const int lit = luminance(litX);
+            int dark = lit;
+            for (int x = x0; x < litX; x++)
+                dark = std::min(dark, luminance(x));
+            const int threshold = (lit + dark) / 2;
+            for (int x = litX; x >= x0; x--){
+                if (luminance(x) < threshold)
+                    return x;
+            }
+            return -1;
+        };
 
-    Screen plain, moved, prepass;
-    {
-        VatScene s;
-        build(s, false, false);
-        ASSERT_TRUE(s.settle());
-        ASSERT_TRUE(plain.read());
+        Screen plain, moved, prepass;
+        {
+            VatScene s;
+            build(s, false, false);
+            ASSERT_TRUE(s.settle());
+            ASSERT_TRUE(plain.read());
+        }
+        {
+            VatScene s;
+            build(s, true, false);
+            ASSERT_TRUE(s.settle());
+            ASSERT_TRUE(moved.read());
+        }
+        {
+            VatScene s;
+            build(s, true, true);
+            ASSERT_TRUE(s.settle());
+            ASSERT_TRUE(prepass.read());
+        }
+        const int litX = screenWidth - 4;
+        // the box's front face spans x -1..1 (moved: -0.4..1.6); its shadow's right end is the back
+        // edge moved 0.3 per unit of depth (2 from the back face to the wall)
+        const int plainEdge = shadowRightEdge(plain, 0.5f, int(toScreenX(1.0f)) + 3, litX);
+        const int movedEdge = shadowRightEdge(moved, 0.5f, int(toScreenX(1.6f)) + 3, litX);
+        ASSERT_GT(plainEdge, 0);
+        ASSERT_GT(movedEdge, 0);
+        EXPECT_NEAR(movedEdge - plainEdge, 0.6f * pixelsPerUnit, 3.0f) << "the shadow map is drawn animated";
+        int differing = 0;
+        EXPECT_TRUE(sameImage(moved, prepass, differing)) << differing << " pixels differ with the depth pre-pass";
     }
-    {
-        VatScene s;
-        build(s, true, false);
-        ASSERT_TRUE(s.settle());
-        ASSERT_TRUE(moved.read());
-    }
-    {
-        VatScene s;
-        build(s, true, true);
-        ASSERT_TRUE(s.settle());
-        ASSERT_TRUE(prepass.read());
-    }
-    const int litX = screenWidth - 4;
-    // the box's front face spans x -1..1 (moved: -0.4..1.6); its shadow's right end is the back
-    // edge moved 0.3 per unit of depth (2 from the back face to the wall)
-    const int plainEdge = shadowRightEdge(plain, 0.5f, int(toScreenX(1.0f)) + 3, litX);
-    const int movedEdge = shadowRightEdge(moved, 0.5f, int(toScreenX(1.6f)) + 3, litX);
-    ASSERT_GT(plainEdge, 0);
-    ASSERT_GT(movedEdge, 0);
-    EXPECT_NEAR(movedEdge - plainEdge, 0.6f * pixelsPerUnit, 3.0f) << "the shadow map is drawn animated";
-    int differing = 0;
-    EXPECT_TRUE(sameImage(moved, prepass, differing)) << differing << " pixels differ with the depth pre-pass";
 }
 
 TEST_F(VatRenderTest, AnimatedBoundsKeepAMovedMeshFromBeingCulled){
