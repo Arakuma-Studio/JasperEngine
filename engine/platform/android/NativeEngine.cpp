@@ -1107,6 +1107,7 @@ void NativeEngine::doFrame() {
         handleEglError(error);
         return;
     }
+    jasperengine::Engine::systemFramePresented();
 
     // print out GL errors, if any
     GLenum e;
