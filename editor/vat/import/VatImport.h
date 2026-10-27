@@ -53,8 +53,10 @@
 //   VAT_UV (FBX, bottom-left origin) addresses frame 0's texel; frame f is f rows lower; values
 //   are offsets remapped per channel from os-remap Min/Max; normals packed in the lower half of the
 //   texture (2n - 1), in <name>_vnrm.*, or absent; Blender Z-up -> Y-up (x, z, -y) for the offsets
-//   and normals (and for FBX vertex data, which Blender writes Z-up); animations (dict, or a list
-//   with a warning) from 1-based scene frames to clips; none: one clip of every frame.
+//   and normals of glTF meshes (Blender's glTF export is Y-up); FBX meshes keep Blender's own
+//   object space for the vertices and the offsets alike (the axis change is the FBX node's
+//   transform, baked like any node transform); animations (dict, or a list with a warning) from
+//   1-based scene frames to clips; none: one clip of every frame (fps from the options).
 // - Thread-safety: pure functions of the files; safe on a worker thread.
 // - Paths: UTF-8. Recipe paths are relative to spec.projectRoot when the file is inside it.
 

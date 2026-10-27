@@ -383,7 +383,10 @@ namespace{
 
     // ---- the flags in the bounds (spec 4.6.1) ----
 
-    // x * 10 in double, snapped to the integer when within 1e-3 (float32 bounds give -81.0000038)
+    // x * 10 in double, snapped to the integer when within 1e-3. The float32 trap: Unity and FBX
+    // keep the bounds as float32, so 8.1 arrives as 8.10000038 and -bMax.x * 10 = -81.0000038,
+    // whose fractional part reads 0.9999962 instead of 0 (an active height ratio of ~0, not 1);
+    // float32 arithmetic (as in the shader) can't tell the two apart, double with snapping can.
     double tenths(double value){
         const double x = value * 10.0;
         const double r = std::round(x);
@@ -1474,6 +1477,13 @@ void importHoudini(const VatImportSpec& spec, const VatImportDetection& detectio
     }
     result.filesRead.push_back(r.files.mesh);
     result.report.sourcePoints = (int)(src.positions.size() / 3);
+    if (src.gltf){
+        // the ROP's UVs are Houdini's / Unity's (V up); a glTF re-export stores 1 - v
+        for (std::vector<double>& set : src.uvs){
+            for (size_t i = 1; i < set.size(); i += 2) set[i] = 1.0 - set[i];
+        }
+        src.gltf = false;
+    }
     if (src.embeddedTextures){
         addWarning(result, "embedded_textures_dropped", "textures embedded in " + fileName(r.files.mesh) + " are not copied to the .vat.glb",
                    "keep the textures as files next to the mesh, or assign them in the material");

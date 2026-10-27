@@ -641,6 +641,21 @@ namespace {
         std::error_code ec;
         return fs::is_directory(sidefxExamples() / "Soft_body", ec);
     }
+    // every vertex at every exported frame, mirrored back to Unity's axes, inside the bounds the
+    // export wrote into its material (they bound the animation's frames, rounded out to 0.1;
+    // upsampled samples between frames may swing past them)
+    void expectInsideExportBounds(const ev::VatImportResult& r, V3 mn, V3 mx, const std::string& what, double tolerance = 0.05) {
+        double worst = 0.0;
+        for (int f = 0; f < r.data.layout.samples; f += r.report.upsample) {
+            for (size_t v = 0; v < r.mesh.vertexCount(); v++) {
+                const V3 p = animated(r, v, f);
+                const V3 u(-p.x, p.y, p.z);
+                worst = std::max({worst, mn.x - u.x, u.x - mx.x, mn.y - u.y, u.y - mx.y, mn.z - u.z, u.z - mx.z});
+            }
+        }
+        EXPECT_LT(worst, tolerance) << what << ": a vertex leaves the export's bounds by " << worst;
+    }
+
 #define REQUIRE_SIDEFX()                                                                                                              \
     if (!haveSidefx()) GTEST_SKIP() << "the SideFX VAT 3 tutorial exports are not at " << sidefxExamples().string()                    \
                                     << " (set JASPER_VAT_SIDEFX_EXAMPLES to VAT3_Houdini/VAT_Example_Files of the tutorial project)"
@@ -1687,6 +1702,7 @@ TEST(VatImportSideFx, SoftBodyCloth) {
         yN = std::min(yN, animated(r, v, 99).y);
     }
     EXPECT_LT(yN, y0 - 1.0);
+    expectInsideExportBounds(r, V3(-8.1, -12.706, -5.4), V3(8.1, 0, 5.17), "cloth");
 }
 
 TEST(VatImportSideFx, RigidBodyDestruction) {
@@ -1712,6 +1728,11 @@ TEST(VatImportSideFx, RigidBodyDestruction) {
         maxOffset = std::max(maxOffset, std::max({std::fabs(o[0]), std::fabs(o[1]), std::fabs(o[2])}));
     }
     EXPECT_LT(maxOffset, 1e-5);
+    // the decoded rotations keep every piece inside the export's bounds: SideFX's own shader math
+    // puts a few vertices of piece 240 at frame 11 0.057 under the floor (the bounds come from the
+    // simulation, which lets pieces sink a little), a wrong quaternion convention throws thousands
+    // of vertices out by up to 0.25
+    expectInsideExportBounds(r, V3(-3.3, -0.201, -6.1), V3(3.7, 2.3, 7.77), "destruction", 0.1);
     ev::VatImportSpec bones = spec;
     bones.mode = "bones";
     EXPECT_TRUE(hasError(ev::importVat(bones), "bone_limit"));
@@ -1733,6 +1754,7 @@ TEST(VatImportSideFx, FluidSplash) {
     EXPECT_EQ(r.data.layout.samples, 100);
     EXPECT_TRUE(r.data.clips[0].restNone);
     EXPECT_FALSE(r.data.clips[0].interpolate);
+    expectInsideExportBounds(r, V3(-6.03, -6.928, -6.3), V3(6.1, 3.3, 5.57), "fluid");
 }
 
 TEST(VatImportSideFx, SpritesAreRefused) {
