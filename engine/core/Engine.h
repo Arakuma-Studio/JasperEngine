@@ -310,9 +310,12 @@ namespace jasperengine {
             // buffer, VK_EXT_descriptor_buffer): each draw writes its textures', samplers' and
             // storage buffers' descriptors and its uniform blocks' addresses, each set rounded up
             // to the device's descriptor buffer alignment (64 bytes on NVIDIA). Past it a draw is
-            // skipped and the first such frame logged (SokolSystem::reserveDescriptorBytes).
-            // DESCRIPTOR_BYTES_PER_HERO_DOC. Allocated once per frame in flight (2) in host-visible
-            // memory: 32 MB on desktop (64 MB allocated), 16 MB on Android, iOS and the web
+            // skipped and the first such frame logged (SokolSystem::reserveDescriptorBytes). A
+            // skinned hero of 3 materials in shadow-casting light takes 768 bytes a frame on an
+            // NVIDIA GTX 1650 (4-16 byte descriptors; measured by SharedMeshBuffersTest); devices
+            // with 32-64 byte image descriptors (AMD) take up to ~6x that. Allocated once per
+            // frame in flight (2) in host-visible memory: 32 MB on desktop (~7,000 such heroes
+            // with the largest descriptors; 64 MB allocated), 16 MB on Android, iOS and the web
             // (sokol's default; 32 MB allocated).
             int descriptorBytes = defaultDescriptorBytes();
             // slots of WebGPU's bind group cache (a power of 2): a draw whose textures, samplers
