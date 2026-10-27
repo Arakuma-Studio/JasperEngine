@@ -2986,6 +2986,13 @@ void SpriteNormalsWindow::drawFooter() {
     }
     UIProbe::item("spriteNormals.secondary");
 
+    // strokes not in the file yet (Save writes them; closing asks)
+    if (!isBatch() && hasUnsavedPaint()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::WarningText);
+        ImGui::TextWrapped(ICON_FA_PAINTBRUSH " Unsaved paint: Save writes it into the normal map.");
+        ImGui::PopStyleColor();
+        UIProbe::item("spriteNormals.unsavedPaint");
+    }
     // progress, errors, status
     if (saveAll.active) {
         size_t total = saveAll.done + saveAll.queue.size();
@@ -3420,7 +3427,7 @@ void SpriteNormalsWindow::drawCanvas(const ImVec2& size) {
         // the tool and its size beside the cursor
         static const char* names[] = {"", "Angle", "Flatten", "Smooth", "Erase"};
         const std::string hint = std::string(names[static_cast<int>(paintTool)]) +
-                                 (brush.fill == sn::PaintBrush::Fill::Wand ? " wand" : " " + std::to_string(brush.size) + " px") + (brush.mirrorX ? ", mirror X" : "");
+                                 (brush.fill == sn::PaintBrush::Fill::Wand ? " wand: click" : " " + std::to_string(brush.size) + " px") + (brush.mirrorX ? ", mirror X" : "");
         draw->AddText(ImVec2(io.MousePos.x + Theme::dpi(14.0f), io.MousePos.y + Theme::dpi(14.0f)), IM_COL32(230, 230, 230, stroking ? 120 : 200), hint.c_str());
     } else if (hovered && lit && r && !overDivider && !draggingSplit && !paintInput) {
         const char* hint = ICON_FA_LIGHTBULB " Drag: move the light";
