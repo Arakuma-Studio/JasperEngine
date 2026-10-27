@@ -41,6 +41,8 @@
 #include "util/ProjectChecks.h"
 #include "htmlui/HtmlUiImportCli.h"
 #include "texsynth/SynthesisCli.h"
+#include "spritenormals/SpriteNormalsCheck.h"
+#include "spritenormals/SpriteNormalsCli.h"
 #include "physics/PlacementCli.h"
 #include "vat/VatCli.h"
 #include "htmlui/effects/EffectManifest.h"
@@ -261,6 +263,7 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " synthesize-texture [options]  Synthesize a texture (tileable, inpainted, ...) from examples.\n"
         << "  " << commandName << " place-physics [options]  Drop, separate or move GameObjects with edit-time physics.\n"
         << "  " << commandName << " bake-vat [options]       Bake a Vertex Animation (.vat) from a model, clips or GameObject, or import one.\n"
+        << "  " << commandName << " generate-sprite-normals [options]  Normal maps for sprites, sheets, GIF/APNG animations and tiles.\n"
         << "  " << commandName << " ui-support               Print the HTML/CSS support tables as JSON (developer: docs generation).\n"
         << "  " << commandName << " ui-effects [options]     List the HTML UI effects (--json, --validate, --project <dir>).\n"
         << "  " << commandName << " mcp [options]            Run the editor as an MCP server on stdio.\n"
@@ -2785,6 +2788,11 @@ int CommandLine::runSynthesizeTextureCommand(int argc, char** argv, const char* 
 int CommandLine::runBakeVatCommand(int argc, char** argv, const char* executableName) {
     attachHostConsoleIfNeeded();
     return vat::runBakeVat(argc, argv, getCommandName(executableName), std::cout, std::cerr);
+}
+
+int CommandLine::runGenerateSpriteNormalsCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    return spritenormals::runGenerateSpriteNormals(argc, argv, getCommandName(executableName), std::cout, std::cerr);
 }
 
 int CommandLine::runPlacePhysicsCommand(int argc, char** argv, const char* executableName) {
