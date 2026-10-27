@@ -630,7 +630,9 @@ on success, 1 when the bake is refused or fails, and 2 for bad arguments.
     value.
 - **`large_interpolation_error`.** A clip moves too much between two frames (fast spins, impacts).
   Raise its sample rate (the fix gives the rate that fits), or turn its interpolation off for a
-  stepped look.
+  stepped look. When the warning says the clip "doesn't end where it starts", the error is at the
+  loop seam, where a looping clip jumps from its last pose back to its first: no rate fixes that.
+  Bake that clip with the wrap `once` or `clamp_forever`, or turn its interpolation off.
 - **`precision_switched`.** Half floats would move vertices more than the tolerance, so the bake
   used float (twice the memory). Accept it, or set Precision to Half.
 - **`mixed_rest`.** The source has no usable bind pose, so the rest mesh is the first frame of the
