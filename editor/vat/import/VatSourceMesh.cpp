@@ -290,6 +290,10 @@ namespace{
 
     // ---- glTF ----
 
+    // an accessor without a bufferView is all zeros; its count is bounded (the vertex limit is far lower)
+    constexpr size_t MAX_ZERO_ACCESSOR_ELEMENTS = (size_t)1 << 24;
+    constexpr int MAX_UV_SETS = 32;
+
     // an accessor as doubles (normalized integers mapped to 0..1 / -1..1), `components` per element
     bool readAccessor(const tinygltf::Model& model, int index, std::vector<double>& values, int& components, std::string& error){
         if (index < 0 || index >= (int)model.accessors.size()){
@@ -307,18 +311,52 @@ namespace{
             error = "accessor " + std::to_string(index) + " is sparse (not supported): export without sparse accessors";
             return false;
         }
-        values.assign(accessor.count * (size_t)components, 0.0);
-        if (accessor.bufferView < 0) return true;   // all zeros
-        const tinygltf::BufferView& view = model.bufferViews[(size_t)accessor.bufferView];
-        const tinygltf::Buffer& buffer = model.buffers[(size_t)view.buffer];
-        const size_t stride = view.byteStride ? view.byteStride : (size_t)(components * componentSize);
-        const size_t start = view.byteOffset + accessor.byteOffset;
-        if (accessor.count > 0 && start + stride * (accessor.count - 1) + (size_t)(components * componentSize) > buffer.data.size()){
-            error = "accessor " + std::to_string(index) + " reads past its buffer";
+        // every size below is checked before it is used: a crafted file can claim any count, stride,
+        // offset or index (64-bit products overflow, indices point past the arrays)
+        const std::string name = "accessor " + std::to_string(index);
+        const uint64_t elementBytes = (uint64_t)components * (uint64_t)componentSize;
+        if (accessor.bufferView < 0){
+            // all zeros: no data backs the count, so it is bounded explicitly
+            if (accessor.count > MAX_ZERO_ACCESSOR_ELEMENTS){
+                error = name + " claims " + std::to_string(accessor.count) + " elements without any data";
+                return false;
+            }
+            values.assign(accessor.count * (size_t)components, 0.0);
+            return true;
+        }
+        if (accessor.bufferView >= (int)model.bufferViews.size()){
+            error = name + " uses bufferView " + std::to_string(accessor.bufferView) + ", which doesn't exist";
             return false;
         }
+        const tinygltf::BufferView& view = model.bufferViews[(size_t)accessor.bufferView];
+        if (view.buffer < 0 || view.buffer >= (int)model.buffers.size()){
+            error = name + "'s bufferView uses buffer " + std::to_string(view.buffer) + ", which doesn't exist";
+            return false;
+        }
+        const tinygltf::Buffer& buffer = model.buffers[(size_t)view.buffer];
+        const uint64_t stride = view.byteStride ? (uint64_t)view.byteStride : elementBytes;
+        if (stride < elementBytes){
+            error = name + "'s bufferView has a byteStride (" + std::to_string(view.byteStride) + ") smaller than an element (" +
+                    std::to_string(elementBytes) + " bytes)";
+            return false;
+        }
+        const uint64_t bufferSize = buffer.data.size();
+        const uint64_t viewOffset = view.byteOffset, accessorOffset = accessor.byteOffset, count = accessor.count;
+        // start + stride * (count - 1) + elementBytes <= bufferSize, without overflowing
+        bool fits = viewOffset <= bufferSize && accessorOffset <= bufferSize - viewOffset;
+        if (fits && count > 0){
+            const uint64_t start = viewOffset + accessorOffset;
+            const uint64_t room = bufferSize - start;
+            fits = elementBytes <= room && (count - 1 == 0 || stride <= (room - elementBytes) / (count - 1));
+        }
+        if (!fits){
+            error = name + " reads past its buffer";
+            return false;
+        }
+        const size_t start = (size_t)(viewOffset + accessorOffset);
+        values.assign(accessor.count * (size_t)components, 0.0);
         for (size_t i = 0; i < accessor.count; i++){
-            const unsigned char* element = buffer.data.data() + start + stride * i;
+            const unsigned char* element = buffer.data.data() + start + (size_t)stride * i;
             for (int c = 0; c < components; c++){
                 const unsigned char* p = element + c * componentSize;
                 double v = 0.0;
@@ -455,7 +493,12 @@ namespace{
             for (const tinygltf::Primitive& primitive : model.meshes[(size_t)instance.first].primitives){
                 for (const auto& attribute : primitive.attributes){
                     if (attribute.first.rfind("TEXCOORD_", 0) == 0){
-                        uvSets = std::max(uvSets, std::atoi(attribute.first.c_str() + 9) + 1);
+                        const int set = std::atoi(attribute.first.c_str() + 9);
+                        if (set < 0 || set >= MAX_UV_SETS){
+                            error = "the glTF uses " + attribute.first + ": at most " + std::to_string(MAX_UV_SETS) + " UV sets are read";
+                            return false;
+                        }
+                        uvSets = std::max(uvSets, set + 1);
                     }
                     if (attribute.first == "NORMAL") anyNormals = true;
                     if (attribute.first == "TANGENT") anyTangents = true;
@@ -502,12 +545,21 @@ namespace{
                     indices.resize(count);
                     for (size_t i = 0; i < count; i++) indices[i] = (double)i;
                 }
+                // every attribute has one element per vertex (glTF requires it; a shorter one would be
+                // read past its end)
                 auto attribute = [&](const std::string& name, std::vector<double>& values, int& comps) -> bool {
                     auto found = primitive.attributes.find(name);
                     values.clear();
                     comps = 0;
                     if (found == primitive.attributes.end()) return true;
-                    return readAccessor(model, found->second, values, comps, error);
+                    if (!readAccessor(model, found->second, values, comps, error)) return false;
+                    if (values.size() / (size_t)comps != count){
+                        error = name + " has " + std::to_string(values.size() / (size_t)comps) + " elements but POSITION has " +
+                                std::to_string(count) + ": every attribute of a primitive needs one per vertex";
+                        values.clear();
+                        return false;
+                    }
+                    return true;
                 };
                 std::vector<double> normals, tangents, colors;
                 int normalComps = 0, tangentComps = 0, colorComps = 0;
@@ -524,11 +576,12 @@ namespace{
                 for (size_t t = 0; t < triangles; t++){
                     out.triangleMaterial.push_back(primitive.material >= 0 && primitive.material < (int)out.materials.size() ? primitive.material : -1);
                     for (int c = 0; c < 3; c++){
-                        const size_t v = (size_t)indices[t * 3 + (size_t)c];
-                        if (v >= count){
-                            error = "an index (" + std::to_string(v) + ") is past the " + std::to_string(count) + " vertices";
+                        const double index = indices[t * 3 + (size_t)c];
+                        if (!(index >= 0.0 && index < (double)count)){
+                            error = "an index (" + num(index) + ") is past the " + std::to_string(count) + " vertices";
                             return false;
                         }
+                        const size_t v = (size_t)index;
                         out.point.push_back(offset + (uint32_t)v);
                         for (int u = 0; u < uvSets; u++){
                             const std::vector<double>& set = uvs[(size_t)u];

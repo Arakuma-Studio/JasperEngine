@@ -39,6 +39,8 @@ namespace jasperengine::editor::vat::importer{
 namespace{
 
     constexpr double PI = 3.14159265358979323846;
+    // frame counts past this are refused (they would overflow the int frame math)
+    constexpr double MAX_FRAME_COUNT = 1e7;
 
     // ---- the target engine's axes ----
 
@@ -282,7 +284,7 @@ namespace{
         meta.haveBounds = found == 6 && !allZero;
         double v = 0;
         if (number("_houdiniFPS", v) && v > 0) meta.fps = (float)v;
-        if (number("_frameCount", v) && v >= 1) meta.frames = (int)std::lround(v);
+        if (number("_frameCount", v) && v >= 1 && v <= MAX_FRAME_COUNT) meta.frames = (int)std::lround(v);
         meta.compressedNormals = flag("_B_UNLOAD_ROT_TEX");
         meta.twoPositions = flag("_B_LOAD_POS_TWO_TEX");
         meta.loadColor = flag("_B_LOAD_COL_TEX");
@@ -359,7 +361,7 @@ namespace{
         meta.source = "data json";
         double v = 0;
         if (get({"houdinifps", "fps"}, v) && v > 0) meta.fps = (float)v;
-        if (get({"framecount", "numberofframes", "frames"}, v) && v >= 1) meta.frames = (int)std::lround(v);
+        if (get({"framecount", "numberofframes", "frames"}, v) && v >= 1 && v <= MAX_FRAME_COUNT) meta.frames = (int)std::lround(v);
         if (get({"twopositiontextures", "positionsrequiretwotextures"}, v)) meta.twoPositions = v != 0 ? 1 : 0;
         if (get({"usecompressednormals", "compressednormals", "packednormals"}, v)) meta.compressedNormals = v != 0 ? 1 : 0;
         if (get({"smoothlyinterpolatedtrajectories", "smoothtrajectories"}, v)) meta.smoothTrajectories = v != 0 ? 1 : 0;
@@ -527,6 +529,11 @@ namespace{
 
     // ---- textures ----
 
+    // (x, y) is a finite point inside a width x height texture (so its floor is a valid texel)
+    bool texelInside(double x, double y, int width, int height){
+        return std::isfinite(x) && std::isfinite(y) && x >= 0.0 && y >= 0.0 && x < (double)width && y < (double)height;
+    }
+
     struct Texture{
         std::string path;
         FloatImage image;
@@ -613,9 +620,10 @@ namespace{
                       int& col, int& row, std::string& problem){
         const double x = u * activeU * texWidth;
         const double y = (1.0 - v) * activeV * texHeight;
-        col = (int)std::floor(x);
-        row = (int)std::floor(y);
-        if (std::fabs(x - col - 0.5) > 0.25 || std::fabs(y - row - 0.5) > 0.25 || col < 0 || row < 0 || col >= texWidth || row >= texHeight){
+        const bool inside = texelInside(x, y, texWidth, texHeight);
+        col = inside ? (int)std::floor(x) : -1;
+        row = inside ? (int)std::floor(y) : -1;
+        if (!inside || std::fabs(x - col - 0.5) > 0.25 || std::fabs(y - row - 0.5) > 0.25){
             problem = "UV (" + num(u) + ", " + num(v) + ") addresses (" + num(x) + ", " + num(y) + ") of the " + std::to_string(texWidth) +
                       " x " + std::to_string(texHeight) + " texture, not a texel centre (active ratios " + num(activeU) + ", " +
                       num(activeV) + " from the bounds)";
@@ -1211,7 +1219,8 @@ namespace{
                 const double u = lookupValue(lc, lr, 0) + lookupValue(lc, lr, 1) / depth;
                 const double vTop = lookupValue(lc, lr, 2) + lookupValue(lc, lr, 3) / depth;     // 1 - v
                 const double x = u * d.width, y = vTop * d.height;
-                int col = (int)std::floor(x), row = (int)std::floor(y);
+                const bool inside = texelInside(x, y, d.width, d.height);
+                int col = inside ? (int)std::floor(x) : -1, row = inside ? (int)std::floor(y) : -1;
                 // a corner that doesn't exist in this frame has an all-zero entry: the shader then
                 // samples the texture's corner, texel (0, 0)
                 const bool unused = lookupValue(lc, lr, 0) == 0.0 && lookupValue(lc, lr, 1) == 0.0 && lookupValue(lc, lr, 2) == 0.0 &&
@@ -1219,7 +1228,7 @@ namespace{
                 if (unused){
                     col = 0;
                     row = 0;
-                }else if (std::fabs(x - col - 0.5) > 0.25 || std::fabs(y - row - 0.5) > 0.25 || col < 0 || row < 0 || col >= d.width || row >= d.height){
+                }else if (!inside || std::fabs(x - col - 0.5) > 0.25 || std::fabs(y - row - 0.5) > 0.25){
                     addError(result, "metadata_mismatch",
                              "lookup texel (" + std::to_string(lc) + ", " + std::to_string(lr) + ") decodes to (" + num(x) + ", " + num(y) +
                              ") of the " + std::to_string(d.width) + " x " + std::to_string(d.height) + " position texture, not a pixel centre "
@@ -1532,6 +1541,13 @@ void importHoudini(const VatImportSpec& spec, const VatImportDetection& detectio
         }
         d.meta.haveBounds = true;
     }
+    for (int k = 0; k < 3; k++){
+        if (!std::isfinite(d.meta.bMin[k]) || !std::isfinite(d.meta.bMax[k]) || std::fabs(d.meta.bMin[k]) > 1e15 || std::fabs(d.meta.bMax[k]) > 1e15){
+            addError(result, "invalid_data", "the export's bounds (" + num(d.meta.bMin[k]) + " .. " + num(d.meta.bMax[k]) + " on axis " +
+                     std::to_string(k) + ") are not finite numbers", "re-export from the VAT ROP");
+            return;
+        }
+    }
     d.flags = decodeFlags(d.meta.bMin, d.meta.bMax);
     result.report.target = d.axis.name;
 
@@ -1601,7 +1617,7 @@ void importHoudini(const VatImportSpec& spec, const VatImportDetection& detectio
         std::set<int> rowsUsed;
         for (size_t c = 0; c < src.corners(); c++){
             const double v = src.uvs[(size_t)vatUv][c * 2 + 1];
-            if (v > 0.1) rowsUsed.insert((int)std::floor((1.0 - v) * d.activeRows));
+            if (v > 0.1 && v <= 1.0) rowsUsed.insert((int)std::floor((1.0 - v) * d.activeRows));   // (a UV outside the texture is refused later)
         }
         const int uvRows = (int)rowsUsed.size();
         if (d.meta.frames > 0){
@@ -1637,7 +1653,7 @@ void importHoudini(const VatImportSpec& spec, const VatImportDetection& detectio
             std::set<long long> distinct;
             for (size_t c = 0; c < src.corners(); c++){
                 const double v = src.uvs[(size_t)uv][c * 2 + 1];
-                if (v > 0.1) distinct.insert(std::llround(std::floor((1.0 - v) * d.flags.activeV * d.lookup.image.height)));
+                if (v > 0.1 && v <= 1.0) distinct.insert(std::llround(std::floor((1.0 - v) * d.flags.activeV * d.lookup.image.height)));
             }
             const int lookupRows = (int)std::lround(d.flags.activeV * d.lookup.image.height);
             if (distinct.empty() || lookupRows % (int)distinct.size() != 0){

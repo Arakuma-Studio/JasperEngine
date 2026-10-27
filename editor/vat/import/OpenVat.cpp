@@ -142,15 +142,22 @@ namespace{
         std::string error;
     };
 
+    // frame numbers and counts past this are refused (they would overflow the int frame math)
+    constexpr double MAX_FRAME_NUMBER = 1e7;
+
     bool numberOf(const Json& value, double& out){
-        if (value.is_number()){ out = value.get<double>(); return true; }
+        if (value.is_number()){ out = value.get<double>(); return std::isfinite(out); }
         if (value.is_string()){
             char* end = nullptr;
             const std::string text = value.get<std::string>();
             out = std::strtod(text.c_str(), &end);
-            return end && *end == '\0' && !text.empty();
+            return end && *end == '\0' && !text.empty() && std::isfinite(out);
         }
         return false;
+    }
+
+    bool frameNumberOf(const Json& value, double& out){
+        return numberOf(value, out) && std::fabs(out) <= MAX_FRAME_NUMBER;
     }
 
     const Json* member(const Json& object, std::initializer_list<const char*> names){
@@ -166,8 +173,8 @@ namespace{
         Animation a;
         a.name = name;
         double v = 0;
-        if (const Json* s = member(info, {"startFrame", "start_frame", "frameStart", "start"})) if (numberOf(*s, v)) a.start = v;
-        if (const Json* e = member(info, {"endFrame", "end_frame", "frameEnd", "end"})) if (numberOf(*e, v)) a.end = v;
+        if (const Json* s = member(info, {"startFrame", "start_frame", "frameStart", "start"})) if (frameNumberOf(*s, v)) a.start = v;
+        if (const Json* e = member(info, {"endFrame", "end_frame", "frameEnd", "end"})) if (frameNumberOf(*e, v)) a.end = v;
         if (const Json* f = member(info, {"framerate", "frameRate", "fps"})) if (numberOf(*f, v) && v > 0) a.fps = v;
         if (const Json* l = member(info, {"looping", "loop"})){
             if (l->is_boolean()) a.looping = l->get<bool>();
@@ -195,7 +202,13 @@ namespace{
         double frames = 0;
         const Json* framesValue = remap ? member(*remap, {"Frames", "frames"}) : nullptr;
         if (!framesValue) framesValue = member(root, {"Frames", "frames"});
-        if (framesValue && numberOf(*framesValue, frames) && frames >= 1) out.frames = (int)std::lround(frames);
+        if (framesValue && numberOf(*framesValue, frames) && frames >= 1){
+            if (frames > MAX_FRAME_NUMBER){
+                out.error = "Frames (" + num(frames) + ") is not a frame count";
+                return false;
+            }
+            out.frames = (int)std::lround(frames);
+        }
         const Json* animations = member(root, {"animations"});
         if (animations && animations->is_object()){
             for (auto it = animations->begin(); it != animations->end(); ++it){
@@ -369,8 +382,9 @@ void importOpenVat(const VatImportSpec& spec, const VatImportDetection& detectio
         const double u = src.uvs[(size_t)vatUv][c * 2], v = src.uvs[(size_t)vatUv][c * 2 + 1];
         const double x = u * W;
         const double y = (src.gltf ? v : 1.0 - v) * H;
-        const int col = (int)std::floor(x), row = (int)std::floor(y);
-        if (std::fabs(x - col - 0.5) > 0.25 || std::fabs(y - row - 0.5) > 0.25 || col < 0 || row < 0 || col >= W || row + F > H){
+        const bool inside = std::isfinite(x) && std::isfinite(y) && x >= 0.0 && y >= 0.0 && x < (double)W && y < (double)H;
+        const int col = inside ? (int)std::floor(x) : -1, row = inside ? (int)std::floor(y) : -1;
+        if (!inside || std::fabs(x - col - 0.5) > 0.25 || std::fabs(y - row - 0.5) > 0.25 || (int64_t)row + F > (int64_t)H){
             addError(result, "metadata_mismatch", "VAT_UV (" + num(u) + ", " + num(v) + ") addresses (" + num(x) + ", " + num(y) + ") of the " +
                      std::to_string(W) + " x " + std::to_string(H) + " texture: not a texel centre with " + std::to_string(F) + " frames below it",
                      "re-export the model and the texture together");
@@ -388,7 +402,7 @@ void importOpenVat(const VatImportSpec& spec, const VatImportDetection& detectio
     const int elements = (int)elementTexel.size();
     // packed normals: the lower half holds them (rows + H / 2)
     bool packed = false;
-    if (spec.normals && !separateNormals && H % 2 == 0 && maxRow + F <= H / 2){
+    if (spec.normals && !separateNormals && H % 2 == 0 && (int64_t)maxRow + F <= (int64_t)(H / 2)){
         int looksNormal = 0, checked = 0;
         for (int e = 0; e < elements && checked < 256; e += std::max(1, elements / 256)){
             checked++;
