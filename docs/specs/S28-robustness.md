@@ -703,3 +703,20 @@ commits are records only), all through `je-remote/rb.sh`:
   22/22, zero skipped, in 63.8 s using `rb.sh D --img` (its `/fixture` mount is required
   by the four newer protocol tests). An initial `tools/build.sh exec linux` invocation
   omitted that mount and failed those four cases with `No fixture project`.
+- Server D Android crash-diagnostics APK builds all four ABIs in 41m 51s. Its size is
+  110,681,012 bytes, SHA-256
+  `71c9e988ed0b15974a05e253085d36296bab8e3caaaa89631dd4bc30afcf47a1`, verified after transfer
+  to C. The committed AGP 9.4.1/Gradle 9.6/NDK 28.2 versions are unchanged. Google Maven
+  returned HTTP 404 over D's IPv4 route (even for known older artifacts), but HTTP 200
+  over IPv6. This gate used a temporary per-process Docker `--network host` and
+  `JAVA_TOOL_OPTIONS=-Djava.net.preferIPv6Addresses=true`, plus a temporary Gradle
+  negative-cache refresh init script. That init script and the gate helpers were removed;
+  no repository or host networking configuration was changed.
+- Server C API 34 x86_64 emulator gate passes, booting in 44 s: engine report, fatal
+  logcat marker and preserved debuggerd tombstone. Both reports identify thread 1973
+  (`je-main`), PC `0x77eb4eff930e`, SP `0x77eb57bed318`, and build ID
+  `d8633a5e5cc5b96c39b451393f9278e492095ba1`. Both have 22 frames; the first engine frame
+  `libjasperengine-android.so+0x21e130e` matches debuggerd's `debugSegv()+14`, with no
+  reporter/trampoline duplication. Evidence is retained on C in
+  `build/android-native-r3-green` and was fetched for inspection. C only prepared the
+  emulator image and ran the APK; native APK compilation ran on D.
