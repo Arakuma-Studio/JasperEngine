@@ -8,8 +8,8 @@
 #   cmake -S . -B build/linux/editor -DJASPERENGINE_SPRITENORMALS_TESTS=ON
 #   cmake --build build/linux/editor --target jasperengine-spritenormals-tests && build/linux/editor/jasperengine-spritenormals-tests
 # Tests are tests/*Test.cpp; fixtures are read from tests/fixtures (SPRITENORMALS_FIXTURES).
-# SPRITENORMALS_UPDATE_GOLDEN=1 in the environment (read when the tests run) rewrites the
-# fixtures the tests generate themselves.
+# The golden outputs come only from the upstream binary, through tests/fixtures/make_fixtures.py
+# (tests/fixtures/README.md); no test writes them.
 
 # googletest from the repository's yaml-cpp test tree (as engine/tests/htmlui and the HTML UI editor tests)
 if(NOT TARGET gtest)

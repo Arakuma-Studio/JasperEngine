@@ -222,7 +222,10 @@ TEST(SpriteNormalsParity, GoldenFixturesMatchUpstream) {
         Image color;
         std::vector<Cell> cells;
         bool sequence;
-        if (!goldenRequest(g, color, cells, sequence)) continue;
+        if (!goldenRequest(g, color, cells, sequence)) {
+            ADD_FAILURE() << g.name << ": the fixture could not be read";
+            continue;
+        }
         Settings settings = upstreamDefaults();
         if (g.adjust) g.adjust(settings);
         const Result result = run(color, settings, cells, 1, sequence);
@@ -260,7 +263,10 @@ TEST(SpriteNormalsParity, ThreadCountNeverChangesTheBytes) {
         Image color;
         std::vector<Cell> cells;
         bool sequence;
-        if (!goldenRequest(g, color, cells, sequence)) continue;
+        if (!goldenRequest(g, color, cells, sequence)) {
+            ADD_FAILURE() << g.name << ": the fixture could not be read";
+            continue;
+        }
         Settings settings = upstreamDefaults();
         if (g.adjust) g.adjust(settings);
         const Result one = run(color, settings, cells, 1, sequence);
@@ -698,6 +704,29 @@ TEST(SpriteNormalsGrid, SliceGridLikeSetSpriteFrames) {
     EXPECT_EQ(cells[3], (Cell{32, 32, 32, 32}));
     both.rows = 1;
     ASSERT_TRUE(sliceGrid(both, 128, 64, cells, error));
+    EXPECT_EQ(cells.size(), 2u);
+    // huge tile sizes, paddings and offsets never overflow
+    Grid huge;
+    huge.tileWidth = 2000000000;
+    huge.tileHeight = 2000000000;
+    EXPECT_FALSE(sliceGrid(huge, 64, 64, cells, error));
+    huge.tileWidth = huge.tileHeight = 16;
+    huge.columns = 3;
+    huge.paddingX = 2000000000;
+    huge.paddingY = 2000000000;
+    ASSERT_TRUE(sliceGrid(huge, 64, 64, cells, error)) << error;
+    EXPECT_EQ(cells, (std::vector<Cell>{{0, 0, 16, 16}}));   // the next columns start beyond the image
+    Grid far;
+    far.columns = 2;
+    far.rows = 2;
+    far.offsetX = 2000000000;
+    EXPECT_FALSE(sliceGrid(far, 64, 64, cells, error));
+    Grid manyRows;
+    manyRows.tileWidth = 1;
+    manyRows.tileHeight = 1;
+    manyRows.paddingX = 0;
+    manyRows.count = 2;
+    ASSERT_TRUE(sliceGrid(manyRows, 2000000000, 2000000000, cells, error)) << error;   // count caps before anything is made
     EXPECT_EQ(cells.size(), 2u);
     // count caps
     g = Grid();

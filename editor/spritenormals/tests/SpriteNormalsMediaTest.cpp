@@ -251,6 +251,7 @@ namespace {
         Bytes samples;                 // in the file's colour type and depth
         uint16_t delayNum = 1, delayDen = 10;
         uint8_t dispose = 0, blend = 0;
+        Bytes zlibData;                // when set: the frame's compressed data as is
     };
 
     struct ApngOptions {
@@ -263,6 +264,7 @@ namespace {
         uint32_t plays = 0;
         bool badCrc = false;
         bool decreasingSequence = false;
+        int declaredFrames = -1;       // acTL num_frames (-1: the frame count)
     };
 
     Bytes apng(int width, int height, const std::vector<ApngFrame>& frames, const ApngOptions& o = ApngOptions()) {
@@ -277,7 +279,7 @@ namespace {
         ihdr.push_back(0);
         chunk(b, "IHDR", ihdr);
         Bytes actl;
-        be32(actl, static_cast<uint32_t>(frames.size()));
+        be32(actl, static_cast<uint32_t>(o.declaredFrames >= 0 ? static_cast<size_t>(o.declaredFrames) : frames.size()));
         be32(actl, o.plays);
         chunk(b, "acTL", actl);
         if (!o.plte.empty()) chunk(b, "PLTE", o.plte);
@@ -300,7 +302,7 @@ namespace {
         };
         for (size_t i = 0; i < frames.size(); i++) {
             const ApngFrame& f = frames[i];
-            const Bytes data = scanlines(f.w, f.h, f.samples, o.bytesPerPixel);
+            const Bytes data = f.zlibData.empty() ? scanlines(f.w, f.h, f.samples, o.bytesPerPixel) : f.zlibData;
             if (i == 0) {
                 if (o.defaultIsFrame) {
                     fctl(f);
@@ -360,6 +362,14 @@ namespace {
     void writeFile(const fs::path& path, const Bytes& bytes) {
         std::ofstream out(path, std::ios::binary);
         out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    }
+
+    // frame i of a source's atlas, as bytes
+    Bytes crop3(const Source& s, int i) {
+        const Cell& c = s.cells.at(static_cast<size_t>(i));
+        Bytes out;
+        for (int y = 0; y < c.height; y++) out.insert(out.end(), s.color.pixel(c.x, c.y + y), s.color.pixel(c.x, c.y + y) + c.width * 4);
+        return out;
     }
 
     void appendBytes(void* context, void* data, int size) {
@@ -837,4 +847,108 @@ TEST(SpriteNormalsAtlas, MatchesUpstreamAtlases) {
             EXPECT_EQ(static_cast<uint64_t>(s.delays[i].numerator) * d, n * s.delays[i].denominator) << i;
         }
     }
+}
+
+// ---------------------------------------------------------------- hostile files (fix round 1)
+
+TEST(SpriteNormalsHostile, GifFrameLargerThanTheLimitIsRefusedBeforeDecoding) {
+    // a 1x1 canvas with a 65535x65535 image descriptor: refused from the descriptor
+    Bytes bytes = gif(1, 1, {fill(0, 0, 1, 1, 1, 0, 1)});
+    for (size_t i = 0; i + 16 < bytes.size(); i++) {
+        if (bytes[i] == 0x21 && bytes[i + 1] == 0xF9 && bytes[i + 2] == 4) {   // the GCE, then the descriptor
+            ASSERT_EQ(bytes[i + 8], 0x2C);
+            bytes[i + 13] = bytes[i + 14] = bytes[i + 15] = bytes[i + 16] = 0xFF;
+            break;
+        }
+    }
+    const Problem p = refused(bytes);
+    EXPECT_EQ(p.kind, "too_large");
+    EXPECT_NE(p.message.find("frame 1 is 65535x65535 (4294836225 pixels)"), std::string::npos) << p.message;
+    EXPECT_NE(p.message.find("16777216"), std::string::npos);
+}
+
+TEST(SpriteNormalsHostile, GifFramesAreClippedToTheCanvas) {
+    // an 8x8 canvas; a 4x4 frame at (6, 6) with a distinct index per pixel: only its top-left
+    // 2x2 shows, the codes of the rest are consumed
+    GifFrame f = fill(6, 6, 4, 4, 0, 1, 1);
+    for (int i = 0; i < 16; i++) f.indices[static_cast<size_t>(i)] = static_cast<uint8_t>(10 + i);
+    GifFrame inter = f;   // the same, interlaced (rows 0, 2, 1, 3 in the file... passes 0 / 2 / 1,3)
+    inter.interlaced = true;
+    inter.indices.clear();
+    for (int y : {0, 2, 1, 3})
+        for (int x = 0; x < 4; x++) inter.indices.push_back(static_cast<uint8_t>(10 + y * 4 + x));
+    GifFrame outside = fill(9, 0, 3, 3, 3, 1, 1);   // entirely right of the canvas: draws nothing
+    for (const GifFrame& frame : {f, inter}) {
+        const Source s = load(gif(8, 8, {fill(0, 0, 8, 8, 1, 1, 1), frame, outside}));
+        ASSERT_EQ(s.frameCount, 3);
+        const int cx = 8, cy = 0;   // frame 2's atlas cell (2 columns)
+        for (int y = 0; y < 2; y++)
+            for (int x = 0; x < 2; x++) {
+                const uint8_t v = static_cast<uint8_t>(10 + y * 4 + x);
+                EXPECT_EQ(px(s.color, cx + 6 + x, cy + 6 + y), (C{v, v, v, 255})) << x << "," << y;
+            }
+        EXPECT_EQ(px(s.color, cx + 5, cy + 5), kRed);
+        EXPECT_EQ(crop3(s, 1), crop3(s, 2));   // frame 3 = frame 2 (the outside frame drew nothing)
+    }
+}
+
+TEST(SpriteNormalsHostile, AtlasLimitBeforeTheFramesThatBreakIt) {
+    // 2100x2100 canvas: 3 frames decode to 13.2 M pixels, but their 2x2 atlas would be 17.6 M
+    const Problem p = refused(gif(2100, 2100, {fill(0, 0, 1, 1, 1, 1, 1), fill(0, 0, 1, 1, 2, 1, 1), fill(0, 0, 1, 1, 3, 1, 1)}));
+    EXPECT_EQ(p.kind, "too_large");
+    EXPECT_NE(p.message.find("with frame 3 the atlas would hold 17640000 pixels"), std::string::npos) << p.message;
+    // APNG: from acTL and IHDR, before any frame is looked at
+    const Problem a = refused(apng(2100, 2100, {rect(0, 0, 1, 1, kRed), rect(0, 0, 1, 1, kRed), rect(0, 0, 1, 1, kRed)}));
+    EXPECT_EQ(a.kind, "too_large");
+    EXPECT_NE(a.message.find("atlas"), std::string::npos) << a.message;
+    EXPECT_NE(a.message.find("17640000"), std::string::npos) << a.message;
+}
+
+TEST(SpriteNormalsHostile, ApngFrameCountAndDeflateBombs) {
+    // more fcTLs than acTL declares
+    ApngOptions o;
+    o.declaredFrames = 1;
+    Problem p = refused(apng(2, 2, {rect(0, 0, 2, 2, kRed), rect(0, 0, 1, 1, kGreen)}, o));
+    EXPECT_EQ(p.kind, "invalid_source");
+    EXPECT_NE(p.message.find("more fcTL chunks than the 1 frames"), std::string::npos) << p.message;
+    // a 1x1 frame whose data inflates to 100000 bytes (5 are needed)
+    ApngFrame bomb = rect(0, 0, 1, 1, kGreen);
+    bomb.zlibData = zlibStored(Bytes(100000, 0));
+    p = refused(apng(1, 1, {rect(0, 0, 1, 1, kRed), bomb}));
+    EXPECT_EQ(p.kind, "invalid_source");
+    EXPECT_NE(p.message.find("frame 2 of the APNG's image data is corrupt or does not inflate to the 5 bytes"), std::string::npos) << p.message;
+    // the same in a still PNG (and in the default image of an APNG frame 0)
+    Bytes still = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+    Bytes ihdr;
+    be32(ihdr, 1);
+    be32(ihdr, 1);
+    ihdr.insert(ihdr.end(), {8, 6, 0, 0, 0});
+    chunk(still, "IHDR", ihdr);
+    chunk(still, "IDAT", zlibStored(Bytes(100000, 0)));
+    chunk(still, "IEND", {});
+    p = refused(still);
+    EXPECT_EQ(p.kind, "invalid_source");
+    EXPECT_NE(p.message.find("inflate"), std::string::npos) << p.message;
+    // Adam7 sizes are exact: an interlaced 16-bit still loads
+    texsynth::Image wide = texsynth::Image::make(9, 7, 4, 16);
+    Bytes png;
+    ASSERT_TRUE(texsynth::encodePng(wide, png));
+    EXPECT_EQ(load(png).color.width, 9);
+}
+
+TEST(SpriteNormalsHostile, ChunkCountIsBounded) {
+    Bytes b = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+    Bytes ihdr;
+    be32(ihdr, 1);
+    be32(ihdr, 1);
+    ihdr.insert(ihdr.end(), {8, 6, 0, 0, 0});
+    chunk(b, "IHDR", ihdr);
+    Bytes empty;
+    chunk(empty, "tEXt", {});
+    for (int i = 0; i < (1 << 20); i++) b.insert(b.end(), empty.begin(), empty.end());
+    chunk(b, "IDAT", scanlines(1, 1, {1, 2, 3, 4}, 4));
+    chunk(b, "IEND", {});
+    const Problem p = refused(b);
+    EXPECT_EQ(p.kind, "too_large");
+    EXPECT_NE(p.message.find("1048576 chunks"), std::string::npos) << p.message;
 }

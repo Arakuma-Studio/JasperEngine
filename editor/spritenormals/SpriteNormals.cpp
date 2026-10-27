@@ -474,41 +474,48 @@ namespace jasperengine::editor::spritenormals {
 
     bool sliceGrid(const Grid& grid, int imageWidth, int imageHeight, std::vector<Cell>& cells, std::string& error) {
         cells.clear();
+        // everything in int64 / double: tile sizes, paddings and offsets may be any int
+        const auto toCount = [](double v) { return v >= 1e9 ? static_cast<int64_t>(1000000000) : (v <= 0.0 ? int64_t(0) : static_cast<int64_t>(v)); };
         const double availW = static_cast<double>(imageWidth) - grid.offsetX;
         const double availH = static_cast<double>(imageHeight) - grid.offsetY;
-        int cols = grid.columns, rows = grid.rows;
-        double cw = grid.tileWidth, ch = grid.tileHeight;
+        const double padX = grid.paddingX, padY = grid.paddingY;
+        int64_t cols = grid.columns, rows = grid.rows;
+        int64_t cw = grid.tileWidth, ch = grid.tileHeight;
         if (cw > 0 && ch > 0) {
             // the tile size wins; columns / rows given as well cap the counts (sliceSheet)
-            if (cols <= 0) cols = static_cast<int>(std::floor((availW + grid.paddingX) / (cw + grid.paddingX)));
-            if (rows <= 0) rows = static_cast<int>(std::floor((availH + grid.paddingY) / (ch + grid.paddingY)));
+            if (cols <= 0) cols = toCount(std::floor((availW + padX) / (static_cast<double>(cw) + padX)));
+            if (rows <= 0) rows = toCount(std::floor((availH + padY) / (static_cast<double>(ch) + padY)));
         } else if (cols > 0 && rows > 0) {
-            cw = std::floor((availW - static_cast<double>(grid.paddingX) * (cols - 1)) / cols);
-            ch = std::floor((availH - static_cast<double>(grid.paddingY) * (rows - 1)) / rows);
+            cw = toCount(std::floor((availW - padX * static_cast<double>(cols - 1)) / static_cast<double>(cols)));
+            ch = toCount(std::floor((availH - padY * static_cast<double>(rows - 1)) / static_cast<double>(rows)));
         } else {
             error = "Give the grid a tile size [w, h] (pixels), or columns and rows.";
             return false;
         }
         const std::string empty = "The grid is empty: the image is " + sizeText(imageWidth, imageHeight) + " pixels.";
-        if (cols <= 0 || rows <= 0 || cw < 1.0 || ch < 1.0 || grid.offsetX < 0 || grid.offsetY < 0 || grid.paddingX < 0 || grid.paddingY < 0) {
+        if (cols <= 0 || rows <= 0 || cw < 1 || ch < 1 || grid.offsetX < 0 || grid.offsetY < 0 || grid.paddingX < 0 || grid.paddingY < 0) {
             error = empty;
             return false;
         }
-        const int64_t all = static_cast<int64_t>(cols) * rows;
+        const int64_t all = cols * rows;   // both at most 1e9: no overflow
         const int64_t count = grid.count > 0 ? std::min<int64_t>(grid.count, all) : all;
         if (count > kMaxCells) {
             error = "The grid makes " + std::to_string(count) + " cells; at most " + std::to_string(kMaxCells) + " are allowed (pass count).";
             return false;
         }
         for (int64_t i = 0; i < count; i++) {
-            const int r = static_cast<int>(i / cols), c = static_cast<int>(i % cols);
+            const int64_t r = i / cols, c = i % cols;
+            const int64_t x = grid.offsetX + c * (cw + grid.paddingX);
+            const int64_t y = grid.offsetY + r * (ch + grid.paddingY);
+            // cells beyond the image (explicit columns / rows too many) are dropped, the last
+            // ones inside it clipped
+            if (x >= imageWidth || y >= imageHeight) continue;
             Cell cell;
-            cell.x = grid.offsetX + c * static_cast<int>(cw + grid.paddingX);
-            cell.y = grid.offsetY + r * static_cast<int>(ch + grid.paddingY);
-            cell.width = std::min(static_cast<int>(cw), imageWidth - cell.x);
-            cell.height = std::min(static_cast<int>(ch), imageHeight - cell.y);
-            // cells beyond the image (explicit columns / rows too many) are dropped
-            if (cell.width >= 1 && cell.height >= 1) cells.push_back(cell);
+            cell.x = static_cast<int>(x);
+            cell.y = static_cast<int>(y);
+            cell.width = static_cast<int>(std::min<int64_t>(cw, imageWidth - x));
+            cell.height = static_cast<int>(std::min<int64_t>(ch, imageHeight - y));
+            cells.push_back(cell);
         }
         if (cells.empty()) {
             error = empty;

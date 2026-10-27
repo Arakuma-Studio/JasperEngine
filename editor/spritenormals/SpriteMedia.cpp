@@ -14,8 +14,10 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <exception>
 #include <fstream>
 #include <iterator>
+#include <new>
 #include <numeric>
 #include <system_error>
 
@@ -129,7 +131,14 @@ namespace jasperengine::editor::spritenormals {
             return true;
         }
 
-        // Before decoding frame `decoded` (0-based): the frame count and the decoded pixels
+        // The pixels of the atlas of `frames` frames (columns = ceil(sqrt(n)), rows = ceil(n / columns))
+        int64_t atlasPixels(int64_t frames, int64_t framePixels) {
+            int64_t c = 1;
+            while (c * c < frames) c++;
+            return framePixels * c * ((frames + c - 1) / c);
+        }
+
+        // Before decoding frame `decoded` (0-based): the frame count, the decoded pixels and the atlas
         bool checkFrameLimits(const Errors& e, int decoded, int64_t canvasPixels) {
             if (decoded >= kMaxFrames) {
                 return e.fail("too_large",
@@ -141,6 +150,15 @@ namespace jasperengine::editor::spritenormals {
                 return e.fail("too_large",
                               "frame " + std::to_string(decoded + 1) + " would bring the decoded frames to " +
                                   std::to_string(static_cast<int64_t>(decoded + 1) * canvasPixels) + " pixels; at most " +
+                                  std::to_string(kMaxPixels) + " are allowed",
+                              "Trim the animation or scale it down.");
+            }
+            // the atlas of the frames so far (unused cells included) must fit too: refused before
+            // decoding the frame that would make it too big, not after all of them
+            const int64_t atlas = atlasPixels(decoded + 1, canvasPixels);
+            if (atlas > kMaxPixels) {
+                return e.fail("too_large",
+                              "with frame " + std::to_string(decoded + 1) + " the atlas would hold " + std::to_string(atlas) + " pixels; at most " +
                                   std::to_string(kMaxPixels) + " are allowed",
                               "Trim the animation or scale it down.");
             }
@@ -305,15 +323,23 @@ namespace jasperengine::editor::spritenormals {
             }
         };
 
-        // LZW-decodes the image data at `start` (minimum code size byte, then sub-blocks) into
-        // `count` palette indices
-        bool gifLzw(const uint8_t* b, size_t n, size_t start, size_t count, std::vector<uint8_t>& indices, const Errors& e, int frame) {
+        // LZW-decodes the image data at `start` (minimum code size byte, then sub-blocks) of a
+        // frame of `frameWidth` x `rowsInFile` pixels. Only the part inside the canvas is kept:
+        // pixel x of the file's row r goes to visible[destRow[r] * visibleWidth + x] when x <
+        // visibleWidth and destRow[r] >= 0 (the codes of the clipped pixels are still consumed).
+        bool gifLzw(const uint8_t* b, size_t n, size_t start, int frameWidth, const std::vector<int>& destRow, int visibleWidth,
+                    std::vector<uint8_t>& visible, const Errors& e, int frame) {
             const int minCodeSize = b[start];
             if (minCodeSize < 2 || minCodeSize > 8) {
                 return e.invalid("frame " + std::to_string(frame) + " has an LZW code size of " + std::to_string(minCodeSize) +
                                  " (2..8 are valid; offset " + std::to_string(start) + ")");
             }
-            indices.assign(count, 0);
+            const size_t count = static_cast<size_t>(frameWidth) * destRow.size();
+            auto store = [&](size_t p, uint8_t value) {
+                const size_t r = p / static_cast<size_t>(frameWidth), x = p % static_cast<size_t>(frameWidth);
+                const int row = destRow[r];
+                if (row >= 0 && x < static_cast<size_t>(visibleWidth)) visible[static_cast<size_t>(row) * visibleWidth + x] = value;
+            };
             std::vector<uint16_t> prefix(4096), length(4096);
             std::vector<uint8_t> suffix(4096), first(4096);
             const int clear = 1 << minCodeSize, end = clear + 1;
@@ -392,7 +418,7 @@ namespace jasperengine::editor::spritenormals {
                 const size_t len = length[static_cast<size_t>(emit)];
                 int c = emit;
                 for (size_t k = len; k-- > 0;) {
-                    if (out + k < count) indices[out + k] = suffix[static_cast<size_t>(c)];
+                    if (out + k < count) store(out + k, suffix[static_cast<size_t>(c)]);
                     c = prefix[static_cast<size_t>(c)];
                 }
                 out += len;
@@ -419,27 +445,40 @@ namespace jasperengine::editor::spritenormals {
             const bool ok = walker.walk(
                 [&](const GifFrameInfo& f, size_t lzw, int index) {
                     if (!checkFrameLimits(e, index, canvasPixels)) return false;
-                    if (!gifLzw(b, n, lzw, static_cast<size_t>(f.width) * f.height, indices, e, index + 1)) return false;
-                    if (f.disposal == 3) saved = canvas;
-                    // interlaced rows come in passes of 8/8/4/2 rows starting at 0/4/2/1
-                    std::vector<int> rowOf(static_cast<size_t>(f.height));
-                    if (f.interlaced) {
-                        int r = 0;
-                        for (auto [startRow, step] : {std::pair{0, 8}, std::pair{4, 8}, std::pair{2, 4}, std::pair{1, 2}}) {
-                            for (int y = startRow; y < f.height; y += step) rowOf[static_cast<size_t>(r++)] = y;
-                        }
-                    } else {
-                        std::iota(rowOf.begin(), rowOf.end(), 0);
+                    // the descriptor's own size bounds the decoding work: refused before anything is allocated
+                    const int64_t area = static_cast<int64_t>(f.width) * f.height;
+                    if (area > kMaxPixels) {
+                        return e.fail("too_large",
+                                      "frame " + std::to_string(index + 1) + " is " + sizeText(f.width, f.height) + " (" + std::to_string(area) +
+                                          " pixels); at most " + std::to_string(kMaxPixels) + " pixels are allowed",
+                                      "Re-export the GIF with frames no larger than its canvas.");
                     }
-                    for (int r = 0; r < f.height; r++) {
-                        const int y = f.top + rowOf[static_cast<size_t>(r)];
-                        if (y >= h) continue;
-                        for (int x = 0; x < f.width; x++) {
-                            const int cx = f.left + x;
-                            if (cx >= w) break;
-                            const int index8 = indices[static_cast<size_t>(r) * f.width + x];
+                    // the visible part of the frame (clipped to the canvas) and where each row of the
+                    // file goes: interlaced rows come in passes of 8/8/4/2 rows starting at 0/4/2/1
+                    const int visibleWidth = std::max(0, std::min(f.width, w - f.left));
+                    const int visibleHeight = std::max(0, std::min(f.height, h - f.top));
+                    std::vector<int> destRow(static_cast<size_t>(f.height), -1);
+                    {
+                        int r = 0;
+                        auto place = [&](int y) {
+                            destRow[static_cast<size_t>(r++)] = y < visibleHeight ? y : -1;
+                        };
+                        if (f.interlaced) {
+                            for (auto [startRow, step] : {std::pair{0, 8}, std::pair{4, 8}, std::pair{2, 4}, std::pair{1, 2}}) {
+                                for (int y = startRow; y < f.height; y += step) place(y);
+                            }
+                        } else {
+                            for (int y = 0; y < f.height; y++) place(y);
+                        }
+                    }
+                    indices.assign(static_cast<size_t>(visibleWidth) * visibleHeight, 0);
+                    if (!gifLzw(b, n, lzw, f.width, destRow, visibleWidth, indices, e, index + 1)) return false;
+                    if (f.disposal == 3) saved = canvas;
+                    for (int y = 0; y < visibleHeight; y++) {
+                        for (int x = 0; x < visibleWidth; x++) {
+                            const int index8 = indices[static_cast<size_t>(y) * visibleWidth + x];
                             if ((f.transparent && index8 == f.transparentIndex) || index8 >= f.paletteSize || !f.palette) continue;
-                            uint8_t* p = canvas.data() + (static_cast<size_t>(y) * w + cx) * 4;
+                            uint8_t* p = canvas.data() + (static_cast<size_t>(f.top + y) * w + f.left + x) * 4;
                             p[0] = f.palette[3 * index8];
                             p[1] = f.palette[3 * index8 + 1];
                             p[2] = f.palette[3 * index8 + 2];
@@ -476,14 +515,21 @@ namespace jasperengine::editor::spritenormals {
             size_t offset;
         };
 
-        bool pngChunks(const uint8_t* b, size_t n, const Errors& e, std::vector<PngChunk>& chunks) {
+        // More chunks than any real file has (a 64 MiB file could hold 5.6 million empty ones)
+        constexpr size_t kMaxPngChunks = 1u << 20;
+
+        // The chunks of a PNG up to IEND; checkCrc false for stills (stb ignores CRCs, so do we)
+        bool pngChunks(const uint8_t* b, size_t n, const Errors& e, std::vector<PngChunk>& chunks, bool checkCrc = true) {
             size_t pos = 8;
             while (true) {
+                if (chunks.size() >= kMaxPngChunks) {
+                    return e.fail("too_large", "the PNG has more than " + std::to_string(kMaxPngChunks) + " chunks", "Re-export the image.");
+                }
                 if (pos + 12 > n) return e.invalid("the PNG is cut short (offset " + std::to_string(pos) + ")");
                 const uint32_t length = be32(b + pos);
                 if (length > n - pos - 12) return e.invalid("a PNG chunk runs past the end of the file (offset " + std::to_string(pos) + ")");
                 PngChunk c{b + pos + 4, b + pos + 8, length, pos};
-                if (crc32(b + pos + 4, static_cast<size_t>(length) + 4) != be32(b + pos + 8 + length)) {
+                if (checkCrc && crc32(b + pos + 4, static_cast<size_t>(length) + 4) != be32(b + pos + 8 + length)) {
                     return e.invalid("the CRC of the " + std::string(reinterpret_cast<const char*>(c.type), 4) + " chunk at offset " +
                                      std::to_string(pos) + " does not match");
                 }
@@ -491,6 +537,44 @@ namespace jasperengine::editor::spritenormals {
                 pos += 12 + static_cast<size_t>(length);
                 if (std::memcmp(c.type, "IEND", 4) == 0) return true;
             }
+        }
+
+        // The exact inflated size of PNG image data (filter bytes included) for its IHDR fields;
+        // -1 for a colour type / bit depth PNG does not define
+        int64_t pngRawSize(int64_t width, int64_t height, int bitDepth, int colorType, int interlace) {
+            int channels;
+            switch (colorType) {
+                case 0: channels = 1; break;
+                case 2: channels = 3; break;
+                case 3: channels = 1; break;
+                case 4: channels = 2; break;
+                case 6: channels = 4; break;
+                default: return -1;
+            }
+            if (bitDepth != 1 && bitDepth != 2 && bitDepth != 4 && bitDepth != 8 && bitDepth != 16) return -1;
+            const int64_t bits = static_cast<int64_t>(channels) * bitDepth;
+            auto pass = [&](int64_t w, int64_t h) { return w > 0 && h > 0 ? h * (1 + (w * bits + 7) / 8) : 0; };
+            if (interlace != 1) return pass(width, height);
+            int64_t total = 0;
+            const int adam7[7][4] = {{0, 0, 8, 8}, {4, 0, 8, 8}, {0, 4, 4, 8}, {2, 0, 4, 4}, {0, 2, 2, 4}, {1, 0, 2, 2}, {0, 1, 1, 2}};
+            for (const auto& a : adam7) {
+                total += pass(width > a[0] ? (width - a[0] + a[2] - 1) / a[2] : 0, height > a[1] ? (height - a[1] + a[3] - 1) / a[3] : 0);
+            }
+            return total;
+        }
+
+        // A deflate bomb guard: the zlib data must inflate to exactly `expected` bytes, decoded
+        // into a buffer of that size (stb's PNG loader would grow its buffer up to 4 GiB)
+        bool checkInflatedSize(const uint8_t* data, size_t size, int64_t expected, const Errors& e, const std::string& what) {
+            if (expected < 0) return e.invalid(what + " has an invalid colour type or bit depth");
+            if (expected > 0x7FFFFFFF || size > 0x7FFFFFFF) return e.fail("too_large", what + " is too large to decode", "Scale it down.");
+            std::vector<char> buffer(static_cast<size_t>(std::max<int64_t>(expected, 1)));
+            const int got = stbi_zlib_decode_buffer(buffer.data(), static_cast<int>(expected), reinterpret_cast<const char*>(data), static_cast<int>(size));
+            if (got != expected) {
+                return e.invalid(what + "'s image data is corrupt or does not inflate to the " + std::to_string(expected) +
+                                 " bytes its size needs");
+            }
+            return true;
         }
 
         struct ApngFrame {
@@ -543,10 +627,21 @@ namespace jasperengine::editor::spritenormals {
                                   std::to_string(kMaxPixels) + " are allowed",
                               "Trim the animation or scale it down.");
             }
+            const int64_t atlas = atlasPixels(h.numFrames, static_cast<int64_t>(h.width) * h.height);
+            if (atlas > kMaxPixels) {
+                return e.fail("too_large",
+                              "the atlas of the APNG's " + std::to_string(h.numFrames) + " frames of " + sizeText(h.width, h.height) + " would hold " +
+                                  std::to_string(atlas) + " pixels; at most " + std::to_string(kMaxPixels) + " are allowed",
+                              "Trim the animation or scale it down.");
+            }
             return true;
         }
 
         bool decodeApngFrame(const ApngHeader& h, const ApngFrame& f, const Errors& e, int index, Image& out) {
+            if (!checkInflatedSize(f.data.data(), f.data.size(), pngRawSize(f.width, f.height, h.bitDepth, h.colorType, h.interlace), e,
+                                   "frame " + std::to_string(index + 1) + " of the APNG")) {
+                return false;
+            }
             std::vector<uint8_t> png(kPngSignature, kPngSignature + 8);
             uint8_t ihdr[13];
             std::memcpy(ihdr, h.ihdr->data, 13);
@@ -615,6 +710,9 @@ namespace jasperengine::editor::spritenormals {
                     f.x = static_cast<int>(fx);
                     f.y = static_cast<int>(fy);
                     if (!sawIdat && list.empty()) idatIsFrame = true;
+                    if (list.size() >= h.numFrames) {
+                        return e.invalid("the APNG has more fcTL chunks than the " + std::to_string(h.numFrames) + " frames its acTL declares");
+                    }
                     list.push_back(std::move(f));
                 } else if (std::memcmp(c.type, "IDAT", 4) == 0) {
                     sawIdat = true;
@@ -696,6 +794,22 @@ namespace jasperengine::editor::spritenormals {
             int w = 0, h = 0, comp = 0;
             if (!stbi_info_from_memory(b, length, &w, &h, &comp)) return e.invalid("not a readable image");
             if (!checkCanvas(e, "image", w, h)) return false;
+            // PNG: the image data must inflate to its IHDR size (deflate bombs). The other formats
+            // stb reads (JPEG, TGA, BMP, PSD, ...) decode into a buffer sized from their header,
+            // which checkCanvas bounded above.
+            if (isPng(b, n)) {
+                std::vector<PngChunk> chunks;
+                if (!pngChunks(b, n, e, chunks, false)) return false;
+                if (chunks.empty() || std::memcmp(chunks[0].type, "IHDR", 4) != 0 || chunks[0].length != 13) return e.invalid("the PNG does not start with IHDR");
+                const uint8_t* ihdr = chunks[0].data;
+                std::vector<uint8_t> idat;
+                for (const PngChunk& c : chunks) {
+                    if (std::memcmp(c.type, "IDAT", 4) == 0) idat.insert(idat.end(), c.data, c.data + c.length);
+                }
+                if (!checkInflatedSize(idat.data(), idat.size(), pngRawSize(be32(ihdr), be32(ihdr + 4), ihdr[8], ihdr[9], ihdr[12]), e, "the PNG")) {
+                    return false;
+                }
+            }
             texsynth::Image decoded;
             std::string error;
             if (!texsynth::loadImageFromMemory(b, n, decoded, error)) return e.invalid(error);
@@ -791,58 +905,89 @@ namespace jasperengine::editor::spritenormals {
         return v < 10.0 ? 100 : static_cast<int>(std::min(v, 2147483647.0));
     }
 
+    namespace {
+        // The exception barrier of the public functions: they return false with a problem, never throw
+        template <typename Work>
+        bool guarded(const Errors& e, Work work) {
+            try {
+                return work();
+            } catch (const std::bad_alloc&) {
+                return e.fail("failed", "ran out of memory while reading the file", "Use a smaller file.");
+            } catch (const std::exception& ex) {
+                return e.fail("failed", std::string("reading the file failed (") + ex.what() + ")", "");
+            } catch (...) {
+                return e.fail("failed", "reading the file failed", "");
+            }
+        }
+
+        bool packAtlasUnguarded(const std::vector<Image>& frames, Image& atlas, int& columns, int& rows, std::vector<Cell>& cells, std::string& error) {
+            atlas = Image();
+            cells.clear();
+            columns = rows = 0;
+            if (frames.empty()) {
+                error = "There are no frames to pack.";
+                return false;
+            }
+            const int w = frames[0].width, h = frames[0].height;
+            for (const Image& f : frames) {
+                if (f.width != w || f.height != h || f.channels != 4 || f.bitDepth != 8 || f.empty()) {
+                    error = "The frames must all be RGBA8 images of the same size.";
+                    return false;
+                }
+            }
+            const int n = static_cast<int>(frames.size());
+            int c = 1;
+            while (c * c < n) c++;
+            const int r = (n + c - 1) / c;
+            const int64_t pixels = static_cast<int64_t>(w) * c * static_cast<int64_t>(h) * r;
+            if (pixels > kMaxPixels) {
+                error = "The atlas of " + std::to_string(n) + " frames of " + sizeText(w, h) + " would be " + sizeText(static_cast<int64_t>(w) * c, static_cast<int64_t>(h) * r) +
+                        " (" + std::to_string(pixels) + " pixels); at most " + std::to_string(kMaxPixels) + " are allowed.";
+                return false;
+            }
+            atlas = Image::make(w * c, h * r, 4, 8);
+            for (int i = 0; i < n; i++) {
+                const Cell cell{(i % c) * w, (i / c) * h, w, h};
+                for (int y = 0; y < h; y++) std::memcpy(atlas.pixel(cell.x, cell.y + y), frames[static_cast<size_t>(i)].pixel(0, y), static_cast<size_t>(w) * 4);
+                cells.push_back(cell);
+            }
+            columns = c;
+            rows = r;
+            return true;
+        }
+    }
+
     bool probeSource(const fs::path& path, SourceInfo& info, std::vector<Problem>& problems) {
         const Errors e{path.filename().string(), &problems};
-        std::vector<uint8_t> bytes;
-        if (!readFile(path, bytes, e)) return false;
-        return probeBytes(bytes.data(), bytes.size(), info, e);
+        return guarded(e, [&] {
+            std::vector<uint8_t> bytes;
+            if (!readFile(path, bytes, e)) return false;
+            return probeBytes(bytes.data(), bytes.size(), info, e);
+        });
     }
 
     bool loadSource(const fs::path& path, Source& out, std::vector<Problem>& problems) {
         const Errors e{path.filename().string(), &problems};
-        std::vector<uint8_t> bytes;
-        if (!readFile(path, bytes, e)) return false;
-        return loadBytes(bytes.data(), bytes.size(), out, e, true);
+        return guarded(e, [&] {
+            std::vector<uint8_t> bytes;
+            if (!readFile(path, bytes, e)) return false;
+            return loadBytes(bytes.data(), bytes.size(), out, e, true);
+        });
     }
 
     bool loadSourceFromMemory(const uint8_t* bytes, size_t size, Source& out, std::vector<Problem>& problems, bool hash) {
-        return loadBytes(bytes, size, out, Errors{"", &problems}, hash);
+        const Errors e{"", &problems};
+        return guarded(e, [&] { return loadBytes(bytes, size, out, e, hash); });
     }
 
     bool packAtlas(const std::vector<Image>& frames, Image& atlas, int& columns, int& rows, std::vector<Cell>& cells, std::string& error) {
-        atlas = Image();
-        cells.clear();
-        columns = rows = 0;
-        if (frames.empty()) {
-            error = "There are no frames to pack.";
+        try {
+            return packAtlasUnguarded(frames, atlas, columns, rows, cells, error);
+        } catch (const std::bad_alloc&) {
+            atlas = Image();
+            error = "Out of memory while packing the atlas.";
             return false;
         }
-        const int w = frames[0].width, h = frames[0].height;
-        for (const Image& f : frames) {
-            if (f.width != w || f.height != h || f.channels != 4 || f.bitDepth != 8 || f.empty()) {
-                error = "The frames must all be RGBA8 images of the same size.";
-                return false;
-            }
-        }
-        const int n = static_cast<int>(frames.size());
-        int c = 1;
-        while (c * c < n) c++;
-        const int r = (n + c - 1) / c;
-        const int64_t pixels = static_cast<int64_t>(w) * c * static_cast<int64_t>(h) * r;
-        if (pixels > kMaxPixels) {
-            error = "The atlas of " + std::to_string(n) + " frames of " + sizeText(w, h) + " would be " + sizeText(static_cast<int64_t>(w) * c, static_cast<int64_t>(h) * r) +
-                    " (" + std::to_string(pixels) + " pixels); at most " + std::to_string(kMaxPixels) + " are allowed.";
-            return false;
-        }
-        atlas = Image::make(w * c, h * r, 4, 8);
-        for (int i = 0; i < n; i++) {
-            const Cell cell{(i % c) * w, (i / c) * h, w, h};
-            for (int y = 0; y < h; y++) std::memcpy(atlas.pixel(cell.x, cell.y + y), frames[static_cast<size_t>(i)].pixel(0, y), static_cast<size_t>(w) * 4);
-            cells.push_back(cell);
-        }
-        columns = c;
-        rows = r;
-        return true;
     }
 
     bool encodePng(const Image& image, std::vector<uint8_t>& png, std::string& error) {
@@ -853,8 +998,14 @@ namespace jasperengine::editor::spritenormals {
             error = "Only 8-bit RGBA and 16-bit grey images are written (got " + texsynth::describeFormat(image) + ").";
             return false;
         }
-        if (!texsynth::encodePng(image, png)) {
-            error = "The PNG could not be encoded.";
+        try {
+            if (!texsynth::encodePng(image, png)) {
+                error = "The PNG could not be encoded.";
+                return false;
+            }
+        } catch (const std::bad_alloc&) {
+            png.clear();
+            error = "Out of memory while encoding the PNG.";
             return false;
         }
         return true;
