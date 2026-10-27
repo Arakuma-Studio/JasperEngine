@@ -46,6 +46,8 @@
 # web, android: WEB_PROJECT=<name> / ANDROID_PROJECT=<name> build the test project
 # tools/test-projects/<name>/ instead of engine/project, into build/web-<name> or
 # build/android-<name> (core-utilities: the logger and Lua Timer, S09).
+# android: ANDROID_ABIS="x86_64" (comma separated) builds only those ABIs (the emulator's is
+# x86_64); the default is every ABI an export ships.
 # web-gate: GATE=sample-project (default, build/web), sample-project-threads (build/web-threads)
 # or a test project with a gate (tools/web/gates/<name>.json; build/web-<name>, WEB_PROJECT=<name>
 # tools/build.sh web first);
@@ -461,6 +463,12 @@ android)
         APK_DIR="$OUT-$ANDROID_PROJECT"
         # app/build.gradle builds this project instead of engine/project
         PROJECT_ENV="JASPERENGINE_PROJECT_ROOT=/src/tools/test-projects/$ANDROID_PROJECT"
+    fi
+    if [[ -n "${ANDROID_ABIS:-}" ]]; then
+        [[ "$ANDROID_ABIS" =~ ^(arm64-v8a|armeabi-v7a|x86|x86_64)(,(arm64-v8a|armeabi-v7a|x86|x86_64))*$ ]] \
+            || { echo "ANDROID_ABIS must list arm64-v8a, armeabi-v7a, x86, x86_64 (got $ANDROID_ABIS)" >&2; exit 1; }
+        # app/build.gradle builds only these
+        PROJECT_ENV="$PROJECT_ENV JASPERENGINE_ANDROID_ABIS=$ANDROID_ABIS"
     fi
     mkdir -p "$ROOT/$APK_DIR"
     run bash -euo pipefail -c "
