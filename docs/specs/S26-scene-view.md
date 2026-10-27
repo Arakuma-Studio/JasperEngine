@@ -650,3 +650,11 @@ Where the implementation differs from the text above, and why.
   (`ModelLoadCmd`, so redo lands the same), a prefab in `ImportPrefabCmd`.
 - **Workspace (R36).** `view.panes` lists all four panes (the free one too: while another pane is
   active the editor camera holds that one's pose).
+- **Bench sampling (R29, R30).** `je-bench-picking` gates each build and load timing on the median
+  of 15 runs after 2 warm-ups (the 1M-triangle build: 5 after 1; the skinned pose: 30) and prints
+  min, median and max: single runs of the 100k-leaf SceneBvh build spread 22-26 ms on the shared
+  reference host. Medians there: SceneBvh build 24.0 ms, disk load 46.8 ms, skinned pose 2.62 ms.
+- **The Scene view UI test on loaded hosts.** `test_scene_view_ui.py` drives real pointer drags
+  (gizmo click, drops onto a surface, the refused drop). It passes on an idle build host; on a host
+  rendering the editor at 1-4 fps the drag can end before ImGui sees it start, and those cases
+  fail. Making these UI tests frame-paced rather than timed is a queued follow-up.
