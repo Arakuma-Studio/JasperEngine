@@ -34,8 +34,9 @@ Json object(const Json& properties, const std::vector<std::string>& required, bo
 }
 
 Json anyObject(const std::string& description) {
-    // additionalProperties: true is the JSON Schema default, so it is not spelled out
-    return described({{"type", "object"}}, description);
+    // a free-form object says so (S31 conventions: an object with properties declares
+    // additionalProperties; upstream's trim left it to the JSON Schema default)
+    return described({{"type", "object"}, {"additionalProperties", true}}, description);
 }
 
 Json string(const std::string& description) {

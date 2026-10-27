@@ -1653,7 +1653,8 @@ void editPoseAnimationTool(const CallPtr& call) {
 // A nested object schema: no additionalProperties (the handler checks the keys, and tool
 // definitions are paid for in every agent session)
 Json obj(const Json& properties, const std::vector<std::string>& required = {}) {
-    Json out = {{"type", "object"}, {"properties", properties}};
+    // nested objects close their keys (S31 conventions: additionalProperties false)
+    Json out = {{"type", "object"}, {"properties", properties}, {"additionalProperties", false}};
     if (!required.empty()) out["required"] = required;
     return out;
 }
