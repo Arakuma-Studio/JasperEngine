@@ -13,7 +13,10 @@ harness's Xvfb on a new project holding the quad bake of editor/tests/fixtures/v
   external_changes.problems.
 
 Widgets are found through the UI probe (Editor(ui_probe=True), editor/util/UIProbe.h; Project window files are
-"project.file.<name>"). Screenshots go to $JASPER_SHOTS_DIR when set (else the scratch directory).
+"project.file.<name>"). The Inspector is scrolled with real wheel notches, each one waited for through the
+probe's Inspector scroll ([y, max_y]: a notch arrives some frames after xdotool sends it, so an unmoved
+widget never means the end of the scroll) and the layout let settle. Screenshots go to $JASPER_SHOTS_DIR
+when set (else the scratch directory).
 """
 
 from __future__ import annotations
@@ -81,30 +84,68 @@ class Ui:
     async def frames(self, n: int = 3):
         await self.ed.call("wait", frames=n)
 
+    def state(self) -> tuple[dict, list[float]]:
+        """The UI probe's widgets and the Inspector's scroll [y, max_y] of the last frame"""
+        probe = self.ed.ui_probe_state()
+        return probe.get("items", {}), probe.get("scroll", {}).get("inspector", [0.0, 0.0])
+
+    async def settled(self, limit: float = 30.0) -> tuple[dict, list[float]]:
+        """The widgets and scroll once three polls in a row (2 frames apart) agree: the layout is done
+        and the last wheel notch applied"""
+        last, same = None, 0
+        deadline = time.monotonic() + limit
+        while time.monotonic() < deadline:
+            await self.frames(2)
+            now = self.state()
+            same = same + 1 if now == last else 0
+            if same >= 2:
+                return now
+            last = now
+        self.ed.fail(f"the Inspector never settles: {last}")
+
+    async def notch(self, at, down: bool, scroll: list[float], notches: int = 1, until=None,
+                    limit: float = 30.0) -> tuple[dict, list[float]]:
+        """Wheel notches, then the state once the Inspector's scroll has moved (or until(scroll) holds).
+        xdotool's notches reach the editor some frames later (more under load): waited for, never
+        assumed applied."""
+        await self.wheel(at, down, notches)
+        deadline = time.monotonic() + limit
+        while time.monotonic() < deadline:
+            await self.frames(2)
+            now = self.state()[1]
+            if (until(now) if until else now[0] != scroll[0]):
+                return await self.settled()
+        self.ed.fail(f"{notches} wheel notch(es) {'down' if down else 'up'} never scrolled the Inspector from {scroll}")
+
     async def reveal(self, name: str, top: bool = True) -> list[float]:
-        """Scrolls the Inspector until `name` is drawn whole, near its top"""
+        """Scrolls the Inspector with real wheel notches until `name` is drawn whole near its top, or as
+        near as the Inspector scrolls (its scroll at the end), once the layout has settled. top: from
+        the Inspector's top when `name` is not drawn."""
         await self.frames()
         panel = await self.ed.ui_rect("inspector")
         self.ed.check(panel, "the inspector is drawn")
         at = ((panel[0] + panel[2]) / 2, (panel[1] + panel[3]) / 2)
-        if top:
-            await self.wheel(at, False, 80)
-        for _ in range(80):
-            await self.frames()
-            rect = self.ed.ui_items().get(name)
+        items, scroll = await self.settled()
+        if top and name not in items and scroll[0] > 0:
+            items, scroll = await self.notch(at, False, scroll, notches=80, until=lambda s: s[0] <= 0)
+        seen = False
+        for _ in range(200):
+            rect = items.get(name)
+            at_end = scroll[0] >= scroll[1]
             if rect:
-                for _ in range(40):
-                    if rect[1] < panel[1] + 60:
-                        break
-                    await self.wheel(at, True, 1)
-                    await self.frames()
-                    moved = self.ed.ui_items().get(name)
-                    if not moved or moved[1] == rect[1]:
-                        break
-                    rect = moved
+                seen = True
+                if rect[1] < panel[1] + 60 or at_end:
+                    return rect
+            elif seen:
+                # the last notch scrolled it past the top: one back draws it whole again
+                items, scroll = await self.notch(at, False, scroll)
+                rect = items.get(name)
+                self.ed.check(rect, f"{name} is drawn again one notch back: {sorted(items)}")
                 return rect
-            await self.wheel(at, True, 2)
-        self.ed.fail(f"{name} is never drawn: {sorted(self.ed.ui_items())}")
+            elif at_end:
+                break
+            items, scroll = await self.notch(at, True, scroll)
+        self.ed.fail(f"{name} is never drawn (Inspector scroll {scroll}): {sorted(items)}")
 
     async def project_file(self, name: str, folders=("assets", "vat")) -> list[float]:
         """The Project window's entry `name` of assets/vat (opening the folders by double-click)"""
@@ -195,7 +236,17 @@ async def test_animator_section_preview_and_scrub(ed: Editor):
     ui = Ui(ed)
     await ed.call("select_entities", entities=["quad"])
     await ed.call("focus_window", window="inspector")
-    await ui.reveal("vat.animation")
+    # the redo of the previous test loads the GameObject's model and animation again: the section's
+    # layout is final once they are
+    loaded = False
+    for _ in range(80):
+        if (await lua(ed, 'return object("quad"):getVertexAnimator():isLoaded()')) == [True]:
+            loaded = True
+            break
+        await ui.frames(2)
+    ed.check(loaded, "the Vertex Animator loads")
+    rect = await ui.reveal("vat.animation")
+    print(f"[ui] vat.animation at {rect}, Inspector scroll {ui.state()[1]}")
     for name in ("vat.clip", "vat.preview", "vat.addAttachment"):
         ed.check(name in ed.ui_items(), f"{name} drawn: {sorted(ed.ui_items())}")
     await shot(ed, "03-animator-section")
