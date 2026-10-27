@@ -124,6 +124,24 @@ namespace jasperengine::editor::spritenormals {
             return 0.0f;
         }
 
+        // The Sobel of the plateau profiles (dome, bevel): the same slopes as detail::sobel but
+        // summed as differences, so a plateau of any height gives exactly 0 (upstream's order,
+        // kept for Rounded's parity, leaves a 1-ulp residue on a constant: 127 instead of 128)
+        void balancedSobel(const Field& f, int x, int y, float& dx, float& dy, Border border) {
+            auto at = [&](int px, int py) {
+                if (border == Border::Wrap) {
+                    px = (px % f.width + f.width) % f.width;
+                    py = (py % f.height + f.height) % f.height;
+                } else if (border == Border::Clamp) {
+                    px = std::min(std::max(px, 0), f.width - 1);
+                    py = std::min(std::max(py, 0), f.height - 1);
+                }
+                return f.data[static_cast<size_t>(py) * f.width + px];
+            };
+            dx = (((at(x + 1, y - 1) - at(x - 1, y - 1)) + 2.0f * (at(x + 1, y) - at(x - 1, y))) + (at(x + 1, y + 1) - at(x - 1, y + 1))) * 0.125f;
+            dy = (((at(x - 1, y + 1) - at(x - 1, y - 1)) + 2.0f * (at(x, y + 1) - at(x, y - 1))) + (at(x + 1, y + 1) - at(x + 1, y - 1))) * 0.125f;
+        }
+
         // Relief of one work item (upstream relief::generate, generalised): the field is the
         // island's box padded by 1 (Transparent) or the whole cell (Wrap / Extend). Returns the
         // bit set of the effective regions that matched a pixel.
@@ -242,7 +260,11 @@ namespace jasperengine::editor::spritenormals {
                     out[2] = 255;
                 } else {
                     float dx, dy;
-                    detail::sobel(combined, fx, fy, dx, dy, border);
+                    if (s.profile == Profile::Rounded) {
+                        detail::sobel(combined, fx, fy, dx, dy, border);
+                    } else {
+                        balancedSobel(combined, fx, fy, dx, dy, border);
+                    }
                     detail::encodeNormal(dx, dy, s.strength, s.directx, out);
                 }
                 if (ctx.heights) {
@@ -457,6 +479,7 @@ namespace jasperengine::editor::spritenormals {
         int cols = grid.columns, rows = grid.rows;
         double cw = grid.tileWidth, ch = grid.tileHeight;
         if (cw > 0 && ch > 0) {
+            // the tile size wins; columns / rows given as well cap the counts (sliceSheet)
             if (cols <= 0) cols = static_cast<int>(std::floor((availW + grid.paddingX) / (cw + grid.paddingX)));
             if (rows <= 0) rows = static_cast<int>(std::floor((availH + grid.paddingY) / (ch + grid.paddingY)));
         } else if (cols > 0 && rows > 0) {
