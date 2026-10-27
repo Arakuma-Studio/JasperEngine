@@ -2410,6 +2410,8 @@ void editor::App::parseBenchmarkArgs(int argc, char** argv) {
         } else if (arg == "--depth-prepass") {
             if (const char* value = requireValue(i, "--depth-prepass"))
                 benchmarkDepthPrepass = (std::strcmp(value, "off") != 0 && std::strcmp(value, "0") != 0) ? 1 : 0;
+        } else if (arg == "--play") {
+            benchmarkPlay = true;
         } else if (arg == "--name") {
             if (const char* value = requireValue(i, "--name"))
                 benchmarkName = value;
@@ -3312,15 +3314,43 @@ void editor::App::tickBenchmark() {
         return;
     }
 
+    if (benchmarkPlay) {
+        // Play first, then measure the running scene (scripts, animation, physics) once it plays
+        if (!benchmarkPlayStarted) {
+            project.start(benchmarkSceneId);
+            benchmarkPlayStarted = true;
+            benchmarkWaitStart = std::chrono::steady_clock::now();
+            return;
+        }
+        if (selected->playState != ScenePlayState::PLAYING) {
+            if (selected->playState == ScenePlayState::STOPPED || selected->playState == ScenePlayState::CANCELLING) {
+                failBenchmark("the scene did not start playing (see the log)");
+            } else if (std::chrono::steady_clock::now() - benchmarkWaitStart > std::chrono::seconds(90)) {
+                failBenchmark("timed out waiting for the scene to start playing");
+            }
+            return;
+        }
+        // the resource wait below counts from the start of play, not from the start request
+        if (!benchmarkCameraReady)
+            benchmarkWaitStart = {};
+    }
+
     if (!benchmarkCameraReady) {
-        // the scene tab decides the selected scene, so bring it to front like Play does
-        if (sceneWindow)
-            sceneWindow->requestPlayFocus(benchmarkSceneId);
-        Entity camera = selected->scene->getCamera();
-        if (camera == NULL_ENTITY)
-            camera = selected->mainCamera;
-        if (selected->sceneRender->setPreviewCamera(camera))
+        if (benchmarkPlay) {
+            // the playing scene is the Game view's frame, through the scene's camera; in front,
+            // it hides the Scene view (the same dock), which would draw a second view of it
+            gameWindow->requestFocus();
             benchmarkCameraReady = true;
+        } else {
+            // the scene tab decides the selected scene, so bring it to front like Play does
+            if (sceneWindow)
+                sceneWindow->requestPlayFocus(benchmarkSceneId);
+            Entity camera = selected->scene->getCamera();
+            if (camera == NULL_ENTITY)
+                camera = selected->mainCamera;
+            if (selected->sceneRender->setPreviewCamera(camera))
+                benchmarkCameraReady = true;
+        }
         if (benchmarkMeshLod >= 0)
             selected->scene->setMeshLodEnabled(benchmarkMeshLod != 0);
         if (benchmarkDepthPrepass >= 0)
@@ -3351,7 +3381,7 @@ void editor::App::tickBenchmark() {
             }
             return;
         }
-        if (!renderedSceneThisFrame || sceneWindow->getWidth(selected->id) <= 0)
+        if (!renderedSceneThisFrame || (!benchmarkPlay && sceneWindow->getWidth(selected->id) <= 0))
             return;
         benchmarkPhase = 1;
         benchmarkPhaseFrames = 0;
@@ -3416,8 +3446,9 @@ void editor::App::finishBenchmark() {
     const double wallFps = (elapsed > 0.0 && n > 0) ? static_cast<double>(n) / elapsed : 0.0;
 
     SceneProject* selected = project.getScene(benchmarkSceneId);
-    const int width = selected && sceneWindow ? sceneWindow->getWidth(selected->id) : 0;
-    const int height = selected && sceneWindow ? sceneWindow->getHeight(selected->id) : 0;
+    // the view measured: the Scene view's, or the Game view's while playing
+    const int width = benchmarkPlay ? gameWindow->getRenderWidth() : (selected && sceneWindow ? sceneWindow->getWidth(selected->id) : 0);
+    const int height = benchmarkPlay ? gameWindow->getRenderHeight() : (selected && sceneWindow ? sceneWindow->getHeight(selected->id) : 0);
 
     std::ostringstream json;
     json << std::fixed;
@@ -3427,6 +3458,7 @@ void editor::App::finishBenchmark() {
          << "  \"scene\": \"" << jsonEscape(selected ? selected->name : benchmarkScene) << "\",\n"
          << "  \"meshLod\": " << ((selected && selected->scene && selected->scene->isMeshLodEnabled()) ? "true" : "false") << ",\n"
          << "  \"depthPrepass\": " << ((selected && selected->scene && selected->scene->isDepthPrepassEnabled()) ? "true" : "false") << ",\n"
+         << "  \"play\": " << (benchmarkPlay ? "true" : "false") << ",\n"
          << "  \"viewport\": [" << width << ", " << height << "],\n"
          << "  \"frames\": " << n << ",\n"
          << "  \"warmupFrames\": " << benchmarkWarmupFrames << ",\n"

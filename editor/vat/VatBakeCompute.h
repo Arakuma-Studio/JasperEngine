@@ -100,7 +100,8 @@ namespace jasperengine::editor::vat{
 
     // the mid-frames measured per clip: every one up to this many, else evenly spread
     constexpr int VAT_MAX_MID_SAMPLES = 32;
-    // which mid-frames a clip of `frames` samples measures (first frames of the pairs)
+    // which mid-frames a clip of `frames` samples measures (first frames of the pairs; a loop's
+    // seam, its last frame to frame 0, always among them)
     std::vector<int> midFramesFor(int frames, ClipWrapMode wrap);
 
     struct VatBakeInput{

@@ -776,6 +776,62 @@ TEST(VatBakerCompute, ValidationKindsOfTheBake) {
     }
 }
 
+TEST(VatBakerCompute, ALoopThatDoesntEndWhereItStartsIsNotToldToRaiseFps) {
+    // the loop seam is measured even past VAT_MAX_MID_SAMPLES pairs
+    for (int frames : {10, 33, 64, 65, 90, 400}) {
+        const std::vector<int> mids = midFramesFor(frames, ClipWrapMode::Loop);
+        ASSERT_FALSE(mids.empty());
+        EXPECT_EQ(mids.back(), frames - 1) << frames << " frames";
+        EXPECT_LE(mids.size(), (size_t)VAT_MAX_MID_SAMPLES);
+        for (size_t i = 1; i < mids.size(); i++) EXPECT_LT(mids[i - 1], mids[i]);
+    }
+    EXPECT_EQ(midFramesFor(90, ClipWrapMode::Once).back(), 87) << "no seam: spread over the 89 pairs";
+
+    auto bake = [](const std::function<Matrix4(size_t, float)>& move, float length) {
+        VatBakeInput input;
+        input.renderers = {quadRenderer("A")};
+        input.mode = VatModeChoice::Vertices;
+        input.clips.push_back(movingClip("Slide", 1, length, 30.0f, ClipWrapMode::Loop, move));
+        VatBakeOutput out;
+        std::string error;
+        EXPECT_TRUE(computeVatBake(input, out, error)) << error;
+        return out;
+    };
+    auto issueOf = [](const VatBakeOutput& out) {
+        for (const VatIssue& issue : out.report.warnings)
+            if (issue.kind == "large_interpolation_error") return issue;
+        return VatIssue();
+    };
+    auto hasFix = [](const VatIssue& issue, const std::string& setting) {
+        for (const VatFix& fix : issue.fixes)
+            if (fix.setting == setting) return true;
+        return false;
+    };
+    {
+        // a straight slide of 1 m over 3 s (90 frames): exact between frames, but looping it
+        // jumps back 1 m between its last frame and its first: no fps fixes that
+        const VatBakeOutput out = bake([](size_t, float t) { return Matrix4::translateMatrix(Vector3(t / 3.0f, 0, 0)); }, 3.0f);
+        const VatIssue issue = issueOf(out);
+        ASSERT_EQ(issue.kind, "large_interpolation_error") << kinds(out.report.warnings);
+        EXPECT_NEAR(out.report.clips[0].interpolationErrorMm, 500.0f, 20.0f) << "half the jump, at the seam";
+        EXPECT_NE(issue.message.find("doesn't end where it starts"), std::string::npos) << issue.message;
+        EXPECT_NE(issue.fix.find("once or clamp_forever"), std::string::npos) << issue.fix;
+        EXPECT_FALSE(hasFix(issue, "fps")) << "a higher rate doesn't help at the seam";
+        EXPECT_TRUE(hasFix(issue, "interpolate"));
+    }
+    {
+        // a fast spin that loops seamlessly (two turns in 1 s, 24 degrees a frame): off between every
+        // pair of frames alike, so the fix is a higher rate
+        const VatBakeOutput out = bake([](size_t, float t) { return Matrix4::rotateZMatrix(t * 720.0f); }, 1.0f);
+        const VatIssue issue = issueOf(out);
+        ASSERT_EQ(issue.kind, "large_interpolation_error") << kinds(out.report.warnings);
+        EXPECT_NEAR(out.report.clips[0].interpolationErrorMm, 1414.2f * (1.0f - std::cos(12.0f * 3.14159265f / 180.0f)), 1.0f)
+            << "the chord of 24 degrees at the far corner";
+        EXPECT_EQ(issue.message.find("doesn't end where it starts"), std::string::npos) << issue.message;
+        EXPECT_TRUE(hasFix(issue, "fps"));
+    }
+}
+
 TEST(VatBakerCompute, CancelStopsTheBake) {
     VatBakeInput input;
     input.renderers = {quadRenderer("A")};

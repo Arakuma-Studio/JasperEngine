@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 // The importer tests' fixture writers (moved from VatImportTest.cpp so the baker window's test
-// imports the same synthetic exports): small math independent of the importer's, payload readers,
-// ASCII FBX / EXR / PNG / Unity .mat / data JSON writers and the Houdini soft-body export (a 3 x 3
-// grid waving and turning, with known positions, normals and tangents per frame).
+// and the end-to-end test, VatEndToEndTest, import the same synthetic exports): small math
+// independent of the importer's, payload readers, ASCII FBX / EXR / PNG / Unity .mat / data JSON
+// writers, the Houdini soft-body export (a 3 x 3 grid waving and turning, with known positions,
+// normals and tangents per frame) and the rigid-body one (tetrahedra spinning about their pivots,
+// with their exact motion).
 
 #pragma once
 
@@ -596,6 +598,166 @@ namespace vatimportfixtures {
                       {"Frame Count", N}};
             writeText(root / "data" / (asset + "_data.json"), Json::array({j}).dump(2));
         }
+        return truth;
+    }
+
+    // ---- the Houdini rigid-body export (moved from VatImportTest.cpp for VatEndToEndTest): tetrahedra
+    // spinning about their pivots, up to 140 degrees a frame, with their exact motion ----
+
+    struct RigidPiece {
+        V3 pivot;
+        V3 axis;
+        double degreesPerFrame = 0;
+        V3 velocity;
+        double scale = 1.0;
+        V3 acceleration;    // smooth trajectories
+    };
+
+    struct RigidTruth {
+        std::vector<RigidPiece> pieces;
+        std::vector<V3> rest;           // mesh points (Houdini space)
+        std::vector<int> pointPiece;
+        int frames = 0;
+        double fps = 24;
+        bool smooth = false;
+
+        double timeOf(double frame) const { return frame / fps; }
+        V3 position(int b, double frame) const {
+            const RigidPiece& p = pieces[b];
+            const double t = timeOf(frame);
+            return p.pivot + p.velocity * t + p.acceleration * (0.5 * t * t);
+        }
+        Q4 rotation(int b, double frame) const { return axisAngle(pieces[b].axis, pieces[b].degreesPerFrame * frame * PI / 180.0); }
+        // where Houdini's shader puts a rest point at `frame` (exact motion between frames)
+        V3 point(int i, double frame) const {
+            const int b = pointPiece[i];
+            return position(b, frame) + rot(rotation(b, frame), (rest[i] - pieces[b].pivot) * pieces[b].scale);
+        }
+    };
+
+    // smallest-three encoding as the ROP writes it: rgb = three components, index = the dropped one
+    // (0 w, 1 x, 2 y, 3 z) with its sign made what the decoder rebuilds; returns the stored sign
+    inline double encodeRotation(const Q4& q, double rgb[3], int& index) {
+        const double c[4] = {std::fabs(q.w), std::fabs(q.x), std::fabs(q.y), std::fabs(q.z)};
+        index = 0;
+        for (int i = 1; i < 4; i++)
+            if (c[i] > c[index] + 1e-9) index = i;
+        Q4 s = q;
+        double sign = 1.0;
+        // the decoder rebuilds the dropped component as +sqrt (index 0, 1) or -sqrt (index 2, 3)
+        const double dropped = index == 0 ? q.w : index == 1 ? q.x : index == 2 ? q.y : q.z;
+        if ((index <= 1 && dropped < 0) || (index >= 2 && dropped > 0)) {
+            s = {-q.x, -q.y, -q.z, -q.w};
+            sign = -1.0;
+        }
+        switch (index) {
+        case 1: rgb[0] = s.w; rgb[1] = s.y; rgb[2] = s.z; break;    // q = (w', y, z, x)
+        case 2: rgb[0] = s.x; rgb[1] = -s.w; rgb[2] = s.z; break;   // q = (x, -w', z, -y)
+        case 3: rgb[0] = s.x; rgb[1] = s.y; rgb[2] = -s.w; break;   // q = (x, y, -w', -z)
+        default: rgb[0] = s.x; rgb[1] = s.y; rgb[2] = s.z; break;
+        }
+        return sign;
+    }
+
+    // tetrahedra around each pivot; spins chosen so the dropped index runs through 0..3
+    inline RigidTruth writeRigid(const fs::path& root, const std::string& asset, bool smooth, int frames = 6) {
+        RigidTruth truth;
+        truth.frames = frames;
+        truth.smooth = smooth;
+        if (smooth) {
+            truth.pieces.push_back({V3(0.5, 2, 0), V3(0, 1, 0), 10, V3(1.0, 4.0, 0.0), 1.0, V3(0, -9.8, 0.5)});
+            truth.pieces.push_back({V3(-1, 1, 1), V3(1, 0, 0), 5, V3(0.0, 2.0, -1.0), 1.0, V3(0.2, -9.8, 0)});
+        } else {
+            truth.pieces.push_back({V3(2, 1, 0), V3(0, 0, 1), 140, V3(0.5, 0, 0), 1.0, V3()});    // fast spin: needs upsampling
+            truth.pieces.push_back({V3(-1, 0.5, 3), V3(1, 0, 0), 100, V3(0, 0.3, 0), 1.0, V3()});
+            truth.pieces.push_back({V3(0, 2, -2), V3(0, 1, 0), 110, V3(0, 0, -0.4), 0.5, V3()});   // half scale
+        }
+        const Target target{"unity"};
+        const int B = (int)truth.pieces.size();
+        const V3 tet[4] = {V3(0.2, 0, 0), V3(-0.1, 0.2, 0), V3(-0.1, -0.1, 0.2), V3(0, -0.1, -0.2)};
+        for (int b = 0; b < B; b++) {
+            for (const V3& c : tet) {
+                truth.rest.push_back(truth.pieces[b].pivot + c);
+                truth.pointPiece.push_back(b);
+            }
+        }
+        const int N = frames;
+        Image pos(B, N), rotTex(B, N), col(B, N);
+        V3 lo(1e9, 1e9, 1e9), hi(-1e9, -1e9, -1e9);
+        auto grow = [&](const V3& v) {
+            lo = V3(std::min(lo.x, v.x), std::min(lo.y, v.y), std::min(lo.z, v.z));
+            hi = V3(std::max(hi.x, v.x), std::max(hi.y, v.y), std::max(hi.z, v.z));
+        };
+        for (int f = 0; f < N; f++) {
+            for (int b = 0; b < B; b++) {
+                const V3 p = target.point(truth.position(b, f));
+                grow(p);
+                const Q4 qh = truth.rotation(b, f);
+                const Q4 qt = target.quat(qh);
+                double rgb[3];
+                int index = 0;
+                const double sign0 = encodeRotation(qt, rgb, index);
+                // the angle to the next frame, in turns, negative when the next stored q must flip
+                double angle = 0.0;
+                if (f + 1 < N) {
+                    double rgb1[3];
+                    int index1 = 0;
+                    const double sign1 = encodeRotation(target.quat(truth.rotation(b, f + 1)), rgb1, index1);
+                    angle = truth.pieces[b].degreesPerFrame / 360.0 * sign0 * sign1;
+                }
+                const double alpha = (index + 1.0 - truth.pieces[b].scale) / 4.0;
+                pos.set(b, f, p.x, p.y, p.z, alpha);
+                rotTex.set(b, f, rgb[0], rgb[1], rgb[2], angle);
+                const V3 acc = target.wspace(truth.pieces[b].acceleration);
+                if (smooth) col.set(b, f, acc.x, acc.y, acc.z, 1.0);
+                else col.set(b, f, 0.2 * b, 0.5, 1.0, 1.0);
+            }
+        }
+        for (const V3& r : truth.rest) grow(target.point(r));
+        const HBounds bounds = flaggedBounds(lo, hi, true, 1.0, 1.0, 1.0, 0.0);
+        writeExrImage(root / "tex" / (asset + "_pos.exr"), pos);
+        writeExrImage(root / "tex" / (asset + "_rot.exr"), rotTex);
+        writeExrImage(root / "tex" / (asset + "_col.exr"), col);
+
+        FbxMesh mesh;
+        mesh.points = truth.rest;
+        mesh.uvNames = {"uv", "uv2", "uv3", "uv4"};
+        mesh.uvs.assign(4, {});
+        const int faces[4][3] = {{0, 2, 1}, {0, 1, 3}, {0, 3, 2}, {1, 2, 3}};
+        for (int b = 0; b < B; b++) {
+            const V3 pivotW = target.wspace(truth.pieces[b].pivot);
+            for (const auto& face : faces) {
+                const V3 n = unit(cross3(truth.rest[b * 4 + face[1]] - truth.rest[b * 4 + face[0]], truth.rest[b * 4 + face[2]] - truth.rest[b * 4 + face[0]]));
+                const V3 t = unit(cross3(V3(0.3, 1, 0.2), n));
+                for (int k = 0; k < 3; k++) {
+                    mesh.corners.push_back(b * 4 + face[k]);
+                    mesh.uvs[0].push_back({0.25 * k, 0.5});
+                    mesh.uvs[1].push_back({(b + 0.5) / B, 1.0 - 0.5 / N});
+                    mesh.uvs[2].push_back({pivotW.x, 1.0});
+                    mesh.uvs[3].push_back({pivotW.y, 1.0 - pivotW.z});
+                    mesh.normals.push_back(n);
+                    mesh.tangents.push_back(t);
+                    mesh.binormals.push_back(cross3(n, t));
+                }
+            }
+        }
+        // guard triangle
+        const int g = (int)mesh.points.size();
+        mesh.points.push_back(target.back(V3(bounds.mn[0], bounds.mn[1], bounds.mn[2])));
+        mesh.points.push_back(target.back(V3(bounds.mx[0], bounds.mx[1], bounds.mx[2])));
+        mesh.points.push_back(V3(0, 0, 0));
+        for (int k = 0; k < 3; k++) {
+            mesh.corners.push_back(g + k);
+            for (int s = 0; s < 4; s++) mesh.uvs[s].push_back({0, 0});
+            mesh.normals.push_back(V3(0, 1, 0));
+            mesh.tangents.push_back(V3(1, 0, 0));
+            mesh.binormals.push_back(V3(0, 0, -1));
+        }
+        writeFbx(root / "geo" / (asset + "_mesh.fbx"), mesh);
+        std::map<std::string, double> flags = {{"_B_LOAD_COL_TEX", 1}, {"_B_SMOOTH_TRAJECTORIES", smooth ? 1 : 0}, {"_B_pscaleAreInPosA", 1},
+                                               {"_B_stretchByVel", 0}, {"_globalPscaleMul", 1}, {"_B_interpolate", 1}};
+        writeText(root / "unity" / (asset + "_mat.mat"),
+                  unityMaterial(RIGID_GUID, bounds, N, truth.fps, flags, smooth ? "_B_LOAD_COL_TEX _B_SMOOTH_TRAJECTORIES" : "_B_LOAD_COL_TEX"));
         return truth;
     }
 

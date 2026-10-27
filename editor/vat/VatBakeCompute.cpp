@@ -1178,6 +1178,10 @@ namespace{
             report.maxErrorMm = (float)(bones ? clipFrameErrorBones[c]
                                               : (out.data.layout.precision == VatPrecision::Half ? clipFrameErrorHalf[c] : 0.0));
             double clipInterpolation = 0.0;
+            // a loop's seam (last frame to frame 0) apart: no sample rate helps a clip that doesn't
+            // end where it starts
+            double seamInterpolation = 0.0;
+            double innerInterpolation = 0.0;
             const int frames = (int)clip.samples.size();
             for (size_t m = 0; m < clip.mids.size() && m < clip.midFrames.size(); m++){
                 if (cancelled()){
@@ -1217,6 +1221,10 @@ namespace{
                     double d[3];
                     for (int i = 0; i < 3; i++) d[i] = predicted[i] - exactPositions[v * 3 + (size_t)i];
                     const double e = length3(d) * 1000.0;
+                    if (clip.wrap == ClipWrapMode::Loop && frames > 1 && f0 == frames - 1)
+                        seamInterpolation = std::max(seamInterpolation, e);
+                    else
+                        innerInterpolation = std::max(innerInterpolation, e);
                     clipInterpolation = std::max(clipInterpolation, e);
                     perVertex[v] = std::max(perVertex[v], (float)e);
                     sumError += e;
@@ -1231,15 +1239,31 @@ namespace{
             report.maxErrorMm = std::max(report.maxErrorMm, (float)clipInterpolation);
             maxError = std::max(maxError, clipInterpolation);
             if (clip.interpolate && clipInterpolation > tolerance){
+                // a seam much worse than the other pairs: a jump from the clip's end to its start,
+                // smeared over one frame at any rate (a seamless loop is off there like elsewhere)
+                const bool seamJump = seamInterpolation > tolerance && seamInterpolation > 2.0 * innerInterpolation;
+                // the error a higher rate fixes: between the other frames when the seam jumps
+                const double rateError = seamJump ? innerInterpolation : clipInterpolation;
+                const bool rateHelps = rateError > tolerance;
                 // error falls with the square of the sample rate for smooth motion
-                const double ratio = std::sqrt(clipInterpolation / tolerance);
+                const double ratio = std::sqrt(rateError / tolerance);
                 const int fps = (int)std::min(240.0, std::ceil((double)clip.fps * ratio));
                 VatIssue issue;
                 issue.kind = "large_interpolation_error";
-                issue.message = "between its frames '" + clip.name + "' is up to " + mm(clipInterpolation) +
-                                " mm off the animation (tolerance " + mm(tolerance) + " mm)";
-                issue.fix = "raise fps to " + std::to_string(fps) + ", or turn interpolation off for '" + clip.name + "'";
-                issue.fixes.push_back({"Raise to " + std::to_string(fps) + " fps", "fps", std::to_string(fps)});
+                if (seamJump){
+                    issue.message = "'" + clip.name + "' doesn't end where it starts: looping, between its last frame and its first it is up to " +
+                                    mm(seamInterpolation) + " mm off the animation (tolerance " + mm(tolerance) + " mm)";
+                    if (rateHelps)
+                        issue.message += ", and up to " + mm(innerInterpolation) + " mm between its other frames";
+                    issue.fix = "bake '" + clip.name + "' as once or clamp_forever (its wrap), or turn interpolation off for it" +
+                                (rateHelps ? ", and raise fps to " + std::to_string(fps) : std::string());
+                }else{
+                    issue.message = "between its frames '" + clip.name + "' is up to " + mm(clipInterpolation) +
+                                    " mm off the animation (tolerance " + mm(tolerance) + " mm)";
+                    issue.fix = "raise fps to " + std::to_string(fps) + ", or turn interpolation off for '" + clip.name + "'";
+                }
+                if (rateHelps)
+                    issue.fixes.push_back({"Raise to " + std::to_string(fps) + " fps", "fps", std::to_string(fps)});
                 issue.fixes.push_back({"Interpolation off for " + clip.name, "interpolate", nlohmann::json{{"clip", clip.name}, {"value", false}}.dump()});
                 out.report.warnings.push_back(issue);
             }
@@ -1594,6 +1618,9 @@ std::vector<int> midFramesFor(int frames, ClipWrapMode wrap){
         const int frame = (int)std::floor(((double)i + 0.5) * (double)pairs / (double)VAT_MAX_MID_SAMPLES);
         if (out.empty() || out.back() != frame) out.push_back(std::min(frame, pairs - 1));
     }
+    // a loop's seam (its last frame to frame 0) is always measured: a clip that doesn't end where
+    // it starts is off there whatever the sample rate
+    if (wrap == ClipWrapMode::Loop) out.back() = pairs - 1;
     return out;
 }
 
