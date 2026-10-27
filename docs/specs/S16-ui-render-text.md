@@ -713,5 +713,5 @@ one line pointing here.
   goldens) 3478 ran, the same single timing failure: `p1/texture_effects` passes. Gate on B
   (e1ca0c71a): `WERROR=1 linux`, TOOLS.md (198 tools), htmlui-editor-tests, unit tests, RmlUi
   tests (463), web + web-gate pass; MCP failures there were the ones BF2 fixed (merged since).
-- Benchmark host E is gone: the last E runs (p12 on S16 alone, p13 on e1ca0c71a) are recorded;
-  later timing runs are PENDING until a benchmark host exists.
+- Benchmark host E was replaced (a new rented box, cold builds): the earlier E runs (S16 alone and
+  e1ca0c71a) are recorded; the run on the final tree goes to the new E.
