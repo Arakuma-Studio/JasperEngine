@@ -728,7 +728,7 @@ namespace{
             }
         }
         if (isImportRecipe(data.recipe)){
-            // what the MCP tool's rebake does (and reimportVat): the recipe imported again, written
+            // what the MCP tool's rebake does (and the baker window's Re-import): the recipe imported again, written
             // over the file with its GUID and hand edits
             VatImportSpec spec;
             if (!importSpecFromRecipe(data.recipe, FileUtils::pathToUtf8(project.getProjectPath()), spec, error)){

@@ -9,7 +9,7 @@
 //   place-physics: the project loaded, the engine started with its game events paused and
 //   synchronous loading): the source routed by vat/VatFrontEnd (absolute export paths outside the
 //   project allowed), baked through VatBakeSession (check -> run -> write) or imported through
-//   importVat + writeImportedVat, rebakes through VatBakeSession::loadRebake / reimportVat. The
+//   importVat + writeImportedVat, rebakes through VatBakeSession::loadRebake / importSpecFromRecipe + importVat. The
 //   files are always files only (place none): encoded first, then written all or nothing by one
 //   WriteFilesCmd. Without --output the default name next to the source is written (the
 //   existing-file rule of spec 4.4: the bake of the same source there is rewritten, GUID kept;
