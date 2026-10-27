@@ -530,9 +530,10 @@ Recorded by the implementation (branch `feat/s08-reflection`).
 - **Benchmarks.** `ReflectCodecBench` (R17) and `ReflectResolveBench` (R18) always log their numbers
   and always check for zero allocations. The time budgets are asserted only with
   `JASPER_TEST_PERF_SLACK`, in the benchmark run on E (docs/testing.md).
-- **Goldens.** `test_golden_resave` waits 5 frames after opening each scene before saving it
-  (in the capture and in the check), so values the systems compute on the first frames (mesh
-  vertex counts, UI layout, camera clips) do not depend on load speed. The codegen golden's
+- **Goldens.** `test_golden_resave` saves each scene it opens again, 5 frames apart, until two
+  saves in a row agree (in the capture and in the check), so values the systems compute after the
+  load (mesh vertex counts, UI layout, camera clips, transparency from a texture loaded in the
+  background) do not depend on load speed. The codegen golden's
   `rigidbody.solidBoxDensity`, an uninitialized member the editor before S08 exported as whatever
   memory held, is 0 (the reflection codec value-initializes components).
 - **Not done here.** `editor/asset/AssetRefSchema` is still hand-written (its header expects S08
