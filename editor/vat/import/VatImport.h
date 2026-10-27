@@ -24,7 +24,8 @@
 //       UV rows or frame counts that disagree: the numbers are in the message), unknown_target
 //       (the export's target engine can't be told: pass axis), fps_unknown (pass fps),
 //       bad_mesh (no triangles, no VAT UVs, a node transform that isn't a similarity),
-//       too_large (the payload is over the preset's texels: fixes ordered by effect),
+//       too_large (the payload is over the preset's texels: fixes ordered by effect), bone_limit
+//       (mode "bones" with more rigid pieces than vat::VAT_MAX_BONES),
 //       vertex_limit, invalid_settings (an option value that isn't valid)
 //     warnings: stretch_by_velocity_ignored, fluid_uv_from_color_ignored, color_animation_ignored
 //       (rigid Bones: per-piece colours that change over time keep their first frame),
