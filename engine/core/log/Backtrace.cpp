@@ -76,6 +76,37 @@ std::timed_mutex& Backtrace::dbgHelpMutex() {
     return *mutex;
 }
 
+void* Backtrace::dbgHelpProcess() {
+#if defined(_WIN32)
+    // Process lifetime, like the crash writer and symbol session; never closed during exit.
+    static HANDLE process = [] {
+        HANDLE handle = nullptr;
+        DuplicateHandle(GetCurrentProcess(), GetCurrentProcess(), GetCurrentProcess(), &handle,
+                        0, FALSE, DUPLICATE_SAME_ACCESS);
+        return handle;
+    }();
+    return process;
+#else
+    return nullptr;
+#endif
+}
+
+bool Backtrace::initializeSymbolsLocked() {
+#if defined(_WIN32)
+    static bool tried = false;
+    static bool ready = false;
+    if (!tried) {
+        tried = true;
+        SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS);
+        HANDLE process = static_cast<HANDLE>(dbgHelpProcess());
+        ready = process && SymInitialize(process, nullptr, TRUE) != FALSE;
+    }
+    return ready;
+#else
+    return false;
+#endif
+}
+
 size_t Backtrace::capture(void** frames, size_t maxFrames, size_t skip) {
     if (!frames || maxFrames == 0) return 0;
     // this function's own frame
@@ -128,15 +159,8 @@ void Backtrace::describe(const void* address, std::string& out) {
     bool named = false;
     std::timed_mutex& mutex = dbgHelpMutex();
     if (mutex.try_lock_for(std::chrono::milliseconds(200))) {
-        static bool symbolsReady = false;
-        static bool symbolsTried = false;
-        HANDLE process = GetCurrentProcess();
-        if (!symbolsTried) {
-            symbolsTried = true;
-            SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS);
-            symbolsReady = SymInitialize(process, nullptr, TRUE) != FALSE;
-        }
-        if (symbolsReady) {
+        HANDLE process = static_cast<HANDLE>(dbgHelpProcess());
+        if (initializeSymbolsLocked()) {
             // modules loaded since (a C++ script library) are not in the initial list
             SymRefreshModuleList(process);
             char symbolBuffer[sizeof(SYMBOL_INFO) + 256] = {0};

@@ -17,6 +17,7 @@ The design and acceptance record is `docs/specs/S02-build-ci-tests.md`.
 | Benchmarks | the job system's and the allocators' budgets (S06 R23-R26): `je-bench-jobs`, `je-bench-memory`, gated by `tools/perf/check_bench.py` against `tools/perf/bench-thresholds.json` | `docs/jobs-memory.md` (on an otherwise idle machine) | their `--json` files |
 | Smoke test | export, build and run a project, then open it in the editor; screenshots | `tools/smoke-test.sh tools/fixtures/post-processing` | `build/smoke/` |
 | Web gate | the web build in headless Chrome (WebGL2 on SwiftShader) | `tools/build.sh web`, then `tools/build.sh web-gate` | `build/test-results/web/` |
+| Crash diagnostics | the crash handler's report folders, sessions, hook and ring, the hang watchdog (`HangWatchdog.*`, `Crash*` in `jasperengine-core-tests`, which start `jasperengine-crash-test`, `engine/tests/crash/CrashTestMain.cpp`), the symbolication tool, the web crash hooks | `tools/build.sh unit-tests`; `python3 -I tools/crash/test_symbolicate.py <jasperengine-crash-test>`; `WEB_PROJECT=crash-diagnostics tools/build.sh web`, then `GATE=crash-diagnostics tools/build.sh web-gate` | as above |
 | Tool checks | the CI scripts' own tests, the notices, the presets, the HTML UI golden ledger | `python3 tools/ci/test_gtest_gate.py`, `python3 tools/ci/test_check_notices.py`, `python3 tools/ci/check-notices.py`, `python3 tools/ci/test_check_golden_ledger.py`, `python3 tools/htmlui/check_golden_ledger.py`, `tools/build.sh exec linux tools/ci/check-presets.sh` | stdout |
 
 The only host requirement is Docker. Builds go to `build/<target>/`, a ccache shared by every
@@ -126,6 +127,22 @@ tools/android-emulator-test.sh build/android/app-debug.apk --seconds 30 --forbid
   about 40 s on servers A and C; a whole run about 70 s.
 - `EMULATOR_BOOT_TIMEOUT`, `EMULATOR_MEMORY`, `EMULATOR_CORES` and `JASPER_DOCKER_IMAGE` (a
   prebuilt emulator image) tune it.
+
+### Native crash diagnostics
+
+`jasperengine-crash-test` is built with core tests. `ctest --test-dir build/linux/core-tests
+-R 'native-crash|posix-crash' --output-on-failure` runs each deliberate fatal mode in a child,
+checks registers, frames, log tail, signal chaining and overflow reporting, and checks the POSIX
+object for allocation/stdio/mutex imports. It also verifies a main-thread hang frame. These
+checks work in the ASan/UBSan tree too (`core-tests-address-undefined`). Windows/macOS desktop
+CTest builds register the same child-process checks; Windows additionally requires a minidump.
+
+For Android (server A or C), build `ANDROID_PROJECT=crash-diagnostics tools/build.sh android`,
+then `tools/android-emulator-test.sh build/android-crash-diagnostics/app-debug.apk
+--expect-native-crash --expect 'JASPERENGINE CRASH:'`. This fixture segfaults at frame 10.
+The opt-in flag requires the engine report **and** a matching debuggerd tombstone, saves both
+under the emulator result directory, and accepts that deliberate crash. Ordinary emulator tests
+continue to fail on any native crash.
 
 ## Where a test goes
 

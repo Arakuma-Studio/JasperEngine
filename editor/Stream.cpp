@@ -11,7 +11,7 @@
 #include "Out.h"
 #include "Workspace.h"
 
-#include "Base64.h"
+#include "util/Base64.h"
 #include "Catalog.h"
 #include "util/YamlNumbers.h"
 #include "lattice/LatticeTypes.h"
@@ -1932,6 +1932,17 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         loggingNode["backtrace"] = logging.backtrace;
         root["playerLogging"] = loggingNode;
     }
+    if (!(project->getPlayerCrash() == PlayerCrashSettings())) {
+        const PlayerCrashSettings& crash = project->getPlayerCrash();
+        YAML::Node crashNode;
+        crashNode["enabled"] = crash.enabled;
+        crashNode["logTail"] = crash.includeLogTail;
+        crashNode["dumpType"] = crash.dumpWithHeap ? "with_heap" : "small";
+        crashNode["hangWatchdog"] = crash.hangWatchdog;
+        crashNode["hangSeconds"] = crash.hangSeconds;
+        crashNode["webOverlay"] = crash.webCrashOverlay;
+        root["playerCrash"] = crashNode;
+    }
     root["htmlUiMsaaSamples"] = project->getHtmlUiMsaaSamples();
     {
         const HtmlUiRenderSettings& htmlUiRender = project->getHtmlUiRenderSettings();
@@ -2379,6 +2390,22 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (loggingNode["backtrace"].IsDefined()) logging.backtrace = YamlNumbers::as<bool>(loggingNode["backtrace"]);
         }
         project->setPlayerLogging(logging);
+    }
+
+    {
+        PlayerCrashSettings crash;
+        if (node["playerCrash"].IsDefined() && node["playerCrash"].IsMap()) {
+            const YAML::Node crashNode = node["playerCrash"];
+            if (crashNode["enabled"].IsDefined()) crash.enabled = YamlNumbers::as<bool>(crashNode["enabled"]);
+            if (crashNode["logTail"].IsDefined()) crash.includeLogTail = YamlNumbers::as<bool>(crashNode["logTail"]);
+            if (crashNode["dumpType"].IsDefined() && crashNode["dumpType"].IsScalar()) {
+                crash.dumpWithHeap = crashNode["dumpType"].as<std::string>() == "with_heap";
+            }
+            if (crashNode["hangWatchdog"].IsDefined()) crash.hangWatchdog = YamlNumbers::as<bool>(crashNode["hangWatchdog"]);
+            if (crashNode["hangSeconds"].IsDefined()) crash.hangSeconds = YamlNumbers::as<int>(crashNode["hangSeconds"]);
+            if (crashNode["webOverlay"].IsDefined()) crash.webCrashOverlay = YamlNumbers::as<bool>(crashNode["webOverlay"]);
+        }
+        project->setPlayerCrash(crash);
     }
 
     if (node["htmlUiMsaaSamples"].IsDefined()) {

@@ -44,6 +44,8 @@ VERBS = {
     "verify", "enable", "disable", "validate", "convert", "cook", "paint", "place", "fill", "flatten", "profile",
     "test", "load", "reload", "simulate", "step", "pick", "show", "hide", "group", "ungroup", "align", "snap",
     "discard", "wait", "resolve", "retarget", "reimport",
+    # S28: dismiss_crash_notice (marks a report handled, not a close), debug_crash (crashes on purpose)
+    "dismiss", "debug",
 }
 
 # Names registered before the verb_noun rule (S31): they keep their names

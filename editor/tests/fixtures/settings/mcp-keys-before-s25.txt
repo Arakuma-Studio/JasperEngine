@@ -1,5 +1,6 @@
 # The keys get_project_settings listed before S25 (oe-port 2510b5069, editor/mcp/tools/ProjectTools.cpp
 # settingsTable): SettingsRegistry.CoversMcpKeys checks each is still a wired MCP row.
+# (plus S28's player.crash.* keys, which its branch had before merging S25)
 android.abis
 android.adaptive_icon_background
 android.adaptive_icon_foreground
@@ -56,6 +57,12 @@ physics2d.layer_collision_matrix
 player.application_name
 player.async_loading
 player.build
+player.crash.dump_with_heap
+player.crash.enabled
+player.crash.hang_seconds
+player.crash.hang_watchdog
+player.crash.log_tail
+player.crash.web_overlay
 player.development_build
 player.identifier
 player.loading_delay

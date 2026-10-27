@@ -26,6 +26,24 @@ struct LoggingSettings {
     }
 };
 
+// Preferences > Diagnostics (settings.yaml "diagnostics", docs/crash-diagnostics.md): the main
+// thread's hang watchdog and the notice of an abnormal previous session. Editor-wide.
+struct DiagnosticsSettings {
+    static constexpr int minReportAfterSeconds = 1;
+    static constexpr int maxReportAfterSeconds = 60;
+    static constexpr int maxBreakLuaAfterSeconds = 120;
+
+    bool hangWatchdog = true;
+    int reportAfterSeconds = 3;       // the watchdog's threshold, 1..60
+    int breakLuaAfterSeconds = 10;    // runaway Lua in Play is interrupted after it, 0..120 (0: never)
+    bool showCrashNotice = true;      // "JasperEngine closed unexpectedly last time" at startup
+
+    bool operator==(const DiagnosticsSettings& other) const {
+        return hangWatchdog == other.hangWatchdog && reportAfterSeconds == other.reportAfterSeconds &&
+               breakLuaAfterSeconds == other.breakLuaAfterSeconds && showCrashNotice == other.showCrashNotice;
+    }
+};
+
 struct PanelVisibilitySettings {
     bool hierarchy = true;
     bool inspector = true;
@@ -233,6 +251,7 @@ private:
     static bool undoRecordSelection;
     static bool undoReviewPlayChanges;
     static LoggingSettings loggingSettings;
+    static DiagnosticsSettings diagnosticsSettings;
 
     // Private methods
     static void ensureConfigDirectory();
@@ -413,6 +432,9 @@ public:
     static LoggingSettings getLoggingSettings();
     static void setLoggingSettings(const LoggingSettings& settings);
     static void applyLoggingSettings();
+    // Preferences > Diagnostics (clamped); set applies them to the running watchdog at once
+    static DiagnosticsSettings getDiagnosticsSettings();
+    static void setDiagnosticsSettings(const DiagnosticsSettings& settings);
 
     // Load and save settings
     static bool loadSettings();

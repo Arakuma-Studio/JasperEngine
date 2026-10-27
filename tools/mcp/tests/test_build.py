@@ -3,7 +3,7 @@
 Starts from a brand-new project (`mcp --create`): saves its scene, sets the start scene, exports
 the C++ source project (its Xcode workspace compiles the project's generated sources in both app
 targets: checked by parsing project.pbxproj, no Xcode needed), cancels a Desktop build, generates shaders and checks run_build's process
-handling with stand-in "players" (shell scripts).
+handling with stand-in "players" (shell scripts), including the crash report a player names (S28).
 
 The full Desktop build (compiles the engine from source with cmake + g++, ~20-60 min at 3 jobs on
 this host) and running the real player are slow: set JASPER_SLOW_BUILD=1 to run them.
@@ -313,6 +313,57 @@ async def test_run_build_process_handling(ed: Editor):
     await ed.call("run_build", path="relative", expect_error=True)
     msg = await ed.call("run_build", path=str(bin_dir), expect_error=True)   # two executables there
     ed.check_in("No player executable", msg)
+
+
+async def test_run_build_crash_report(ed: Editor):
+    """S28 AC19: a player that dies after the engine's crash line reports crashed, its signal and
+    crash_report (the report folder the line names)."""
+    bin_dir = ed.scratch.root / "fake-players-crash"
+    folder = ed.scratch.root / "player-crash" / "reports" / "20261026T120000Z-4242"
+    folder.mkdir(parents=True)
+    player = make_script(bin_dir / "crashing-player",
+                         'echo "Engine ready"\n'
+                         f'echo "JASPERENGINE CRASH: SIGSEGV (invalid memory access) report={folder}" >&2\n'
+                         'kill -SEGV $$\n')
+    r = await ed.call("run_build", path=str(player), seconds=5, screenshot=False)
+    ed.check(r["crashed"], f"the crash is detected: {r}")
+    ed.check_eq(r.get("signal"), 11, "died from SIGSEGV")
+    ed.check_eq(r.get("crash_report"), str(folder), "crash_report is the folder the crash line names")
+    ed.check(any("JASPERENGINE CRASH:" in line for line in r["fatal_lines"]), f"a fatal line: {r['fatal_lines']}")
+
+    calm = make_script(bin_dir / "calm-player", 'echo "JASPERENGINE HANG: main thread recovered after 3.1 s (Loading)" >&2\nexit 0\n')
+    r = await ed.call("run_build", path=str(calm), seconds=5, screenshot=False)
+    ed.check(not r["crashed"], f"a hang line is a warning, not a crash: {r}")
+    ed.check("crash_report" not in r, "no crash_report without a crash line")
+
+
+async def test_development_build_crash_report():
+    """S28 AC19 with a real player: a Development Build run with JASPERENGINE_DEBUG_CRASH=segv (the
+    player inherits run_build's environment, which is the editor's; the editor itself ignores it)
+    crashes once its scene loaded and writes the report run_build names."""
+    if os.environ.get("JASPER_SLOW_BUILD", "") in ("", "0"):
+        skip("set JASPER_SLOW_BUILD=1 to build and crash a real Development Build player (compiles the engine)")
+    async with Editor(create=True, name="Crash Build Test", env={"JASPERENGINE_DEBUG_CRASH": "segv"}) as ed:
+        await ed.call("create_entity", name="Box", type="box")
+        s = await ed.call("save_project", untitled_scene_dir="scenes")
+        await ed.call("edit_build_scenes", action="set_start", scene=s["scenes_in_build"][0]["id"])
+        await ed.call("set_project_settings", values={
+            "graphics.runtime_shaders": False,
+            "preferences.build_jobs": JOBS,
+            "player.development_build": True,
+        })
+        out = ed.scratch.root / "export-desktop-dev"
+        r = await ed.call("build_project", mode="desktop", output_dir=str(out), build_jobs=JOBS, timeout_seconds=30)
+        job = r if r["status"] != "running" else await wait_job(ed, r["job_id"], TIMEOUT - 300, poll=15.0)
+        ed.check_eq(job["status"], "succeeded", f"{job}")
+        raw = await ed.call_raw("run_build", {"seconds": 60, "screenshot": False})
+        r = raw.value
+        print("[test] run_build:", raw.text[:1500])
+        ed.check(r["crashed"], f"the development build crashed on purpose: {r['log'][-20:]}")
+        report = Path(r.get("crash_report", ""))
+        ed.check(r.get("crash_report") and (report / "crash.txt").is_file(), f"crash_report names a report folder: {r}")
+        text = (report / "crash.txt").read_text()
+        ed.check("reason: SIGSEGV" in text and "deliberate: true" in text, f"the report: {text[:800]}")
 
 
 async def test_desktop_build_and_run(ed: Editor):

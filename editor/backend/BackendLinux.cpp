@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Backend.h"
+#include "diag/HangWatchdog.h"
 #include "EditorHost.h"
 #include "EditorFrame.h"
 #include "GamepadDB.h"
@@ -2887,6 +2888,7 @@ int editor::Backend::init(int argc, char* argv[]) {
     while (!backend->shouldClose) {
         // idle: until an event, the next editor timer, or IDLE_WAIT_TIMEOUT
         processEvents(backend->editorFrame.isIdle() ? app.idleWaitSeconds(IDLE_WAIT_TIMEOUT) : 0.0);
+        diag::heartbeat();
         if (backend->shouldClose) break;
         app.beforeFrame();
         if (backend->shouldClose) break;
