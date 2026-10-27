@@ -3290,6 +3290,9 @@
 		4A534E4744BC97782E329223 /* VertexAnimationPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47401990531DC7D72F /* VertexAnimationPool.h */; };
 		4A534E471E767D9BE2C4AF8A /* CpuSkin.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4754E256FE333DE6E7 /* CpuSkin.h */; };
 		4A534E47348D45F4BBD323C9 /* VertexAnimatorSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474C490B38DD8DB742 /* VertexAnimatorSystem.h */; };
+		4A534E473E6B9FE60C626734 /* MeshBufferPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D911C9CB4326E948 /* MeshBufferPool.cpp */; };
+		4A534E472437676B559FC859 /* MeshBufferPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D911C9CB4326E948 /* MeshBufferPool.cpp */; };
+		4A534E47693D678BC7B907E1 /* MeshBufferPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E2D854B4242EC2F5 /* MeshBufferPool.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -6651,6 +6654,8 @@
 		4A534E47401990531DC7D72F /* VertexAnimationPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VertexAnimationPool.h; sourceTree = "<group>"; };
 		4A534E4754E256FE333DE6E7 /* CpuSkin.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CpuSkin.h; sourceTree = "<group>"; };
 		4A534E474C490B38DD8DB742 /* VertexAnimatorSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VertexAnimatorSystem.h; sourceTree = "<group>"; };
+		4A534E47D911C9CB4326E948 /* MeshBufferPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MeshBufferPool.cpp; sourceTree = "<group>"; };
+		4A534E47E2D854B4242EC2F5 /* MeshBufferPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MeshBufferPool.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -9438,6 +9443,8 @@
 				4A534E47D8CD22ABA46E1C50 /* AnimationClipPoolTesting.h */,
 				4A534E47BD942558C674B8D0 /* VertexAnimationPool.cpp */,
 				4A534E47401990531DC7D72F /* VertexAnimationPool.h */,
+				4A534E47D911C9CB4326E948 /* MeshBufferPool.cpp */,
+				4A534E47E2D854B4242EC2F5 /* MeshBufferPool.h */,
 			);
 			path = pool;
 			sourceTree = "<group>";
@@ -11882,6 +11889,7 @@
 				4A534E4744BC97782E329223 /* VertexAnimationPool.h in Headers */,
 				4A534E471E767D9BE2C4AF8A /* CpuSkin.h in Headers */,
 				4A534E47348D45F4BBD323C9 /* VertexAnimatorSystem.h in Headers */,
+				4A534E47693D678BC7B907E1 /* MeshBufferPool.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -13924,6 +13932,7 @@
 				4A534E47155BF30590DC3BB4 /* VertexAnimationPool.cpp in Sources */,
 				4A534E4759966A2ED417BECD /* CpuSkin.cpp in Sources */,
 				4A534E474B1E43D590AD23B0 /* VertexAnimatorSystem.cpp in Sources */,
+				4A534E473E6B9FE60C626734 /* MeshBufferPool.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14345,6 +14354,7 @@
 				4A534E474E1B498C285A15F3 /* VertexAnimationPool.cpp in Sources */,
 				4A534E47641FBAF4D870EBAF /* CpuSkin.cpp in Sources */,
 				4A534E47A95FB7E661773FC4 /* VertexAnimatorSystem.cpp in Sources */,
+				4A534E472437676B559FC859 /* MeshBufferPool.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
