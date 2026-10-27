@@ -570,7 +570,11 @@ Clips you removed stay removed. For imports, Rebake reads the export again.
 - `vat-source-missing`: a source is gone;
 - `vat-mesh-mismatch`: the `.vat.glb` is missing or doesn't hold the payload;
 - `vat-layout-mismatch`: the `.vat` and its mesh come from two bakes, or a generated field was
-  edited.
+  edited;
+- `vat-device-limit`: the texture is taller than its preset allows (2048 rows for Mobile & Web,
+  what WebGL2 and OpenGL ES 3 devices guarantee);
+- `vat-invalid`: the `.vat` doesn't parse;
+- `vat-format`: a value you edited was repaired when read (the warning gives its JSON path).
 
 From the command line:
 

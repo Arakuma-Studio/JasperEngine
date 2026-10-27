@@ -134,7 +134,11 @@ Errors refuse the bake (nothing written); warnings come with a written bake too.
 Staleness (`get_asset_info` `staleness`, `check --vat`): `vat-source-changed` (a source file
 changed: `rebake`), `vat-source-missing` (restore it, or bake from another source),
 `vat-mesh-mismatch` and `vat-layout-mismatch` (the `.vat` and its `.vat.glb` disagree, e.g. a
-generated field edited or files from two bakes: `rebake`).
+generated field edited or files from two bakes: `rebake`). `check --vat` adds `vat-device-limit` (the
+texture is over the recipe preset's height: 2048 rows for `mobile_web`, the WebGL2 / GLES3
+guarantee; rebake smaller or for `desktop`), `vat-invalid` (the `.vat` doesn't parse) and
+`vat-format` (an editable field the reader repaired, with its JSON path). With `--files`, an edited
+source model also checks the `.vat` files baked from it.
 
 ## The asset and the other tools
 
@@ -145,11 +149,15 @@ generated field edited or files from two bakes: `rebake`).
   "vertex_animation"}` lists the `.vat` files.
 - `write_file` / `read_file` work on `.vat` (canonical JSON). Editable: clip `name`, `wrap`
   (`loop|once|ping_pong|clamp_forever`), `speed`, `interpolate`, `events` (`[{time, function,
-  args}]`), socket names and order, removing whole clips. Generated (`mode`, `mesh`, `layout`,
-  `bounds`, `stats`, clip `start` / `frames` / `fps` / `bounds`) are refused with the rebake
-  message; bad editable values load with `warnings`. The Vertex Animators using it reload. Never
+  args}]`), socket names, removing whole clips (their rows stay in the texture until a rebake).
+  Generated (`mode`, `mesh`, `layout`, `bounds`, `stats`, `recipe`, the sockets' order and count,
+  clip `start` / `frames` / `fps` / `bounds`, a new clip) are refused with the rebake message
+  ("generated field clips[0].frames changed: rebake ..."); empty or duplicate names are refused;
+  bad editable values load with `warnings`. The Vertex Animators using it reload. Never
   edit the `.vat.glb`.
-- `move_asset` / `delete_asset` keep the `.vat` and `.vat.glb` together. `view_asset` has no image
+- `move_asset` / `delete_asset` keep the `.vat` and `.vat.glb` together (naming either one moves
+  both; a rename rewrites the `.vat`'s `mesh`, a copy gets a new GUID; the result's `pair` /
+  `with_pair` name the other file); the GUID follows a move, so Vertex Animators keep it. `view_asset` has no image
   for a `.vat`: use the preview's contact sheet or a screenshot.
 - `focus_window {window: "vertex_animation_baker"}` shows the Vertex Animation Baker window to a
   human.
