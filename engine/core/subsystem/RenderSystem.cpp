@@ -39,6 +39,7 @@
 #include <unordered_map>
 #include <random>
 #include <cstdint>
+#include <climits>
 #include <cstring>
 
 using namespace jasperengine;
@@ -594,6 +595,8 @@ uint32_t RenderSystem::pixelsNoise[DEFAULT_PATTERN_SIZE * DEFAULT_PATTERN_SIZE];
 TextureRender RenderSystem::defaultRipples;
 TextureRender RenderSystem::defaultNoise;
 TextureRender RenderSystem::emptyCubeGray;
+std::vector<RenderSystem::ZeroVertexBuffer> RenderSystem::zeroVertexBuffers;
+std::mutex RenderSystem::zeroVertexBuffersMutex;
 
 bool RenderSystem::emptyTexturesCreated = false;
 int RenderSystem::emptyTextureUsers = 0;
@@ -1017,7 +1020,44 @@ void RenderSystem::destroyEmptyTextures(){
     for (TextureRender* texture : textures){
         texture->destroyTexture();
     }
+    // the zero vertex buffers go with them: the same RenderSystems' bindings hold their handles
+    {
+        std::lock_guard<std::mutex> lock(zeroVertexBuffersMutex);
+        for (ZeroVertexBuffer& zeros : zeroVertexBuffers){
+            zeros.render.destroyBuffer();
+        }
+        zeroVertexBuffers.clear();
+    }
     emptyTexturesCreated = false;
+}
+
+bool RenderSystem::getZeroVertexBuffer(unsigned int size, BufferRender& buffer){
+    std::lock_guard<std::mutex> lock(zeroVertexBuffersMutex);
+    ZeroVertexBuffer* best = nullptr;
+    for (ZeroVertexBuffer& zeros : zeroVertexBuffers){
+        if (zeros.size >= size && zeros.render.isCreated() && (!best || zeros.size < best->size))
+            best = &zeros;
+    }
+    if (best){
+        buffer = best->render;
+        return true;
+    }
+    // a power of two from 4 KB: a few sizes serve every mesh, at most twice the largest asked
+    unsigned int bucket = 4096;
+    while (bucket < size && bucket <= (UINT_MAX >> 1))
+        bucket <<= 1;
+    if (bucket < size)
+        return false;
+    ZeroVertexBuffer zeros;
+    zeros.size = bucket;
+    std::vector<uint8_t> data(bucket, 0);
+    if (!zeros.render.createBuffer(bucket, data.data(), BufferType::VERTEX_BUFFER, BufferUsage::IMMUTABLE)){
+        Log::error("Cannot create a buffer of zero vertex inputs (%u bytes); resource pool may be exhausted", bucket);
+        return false;
+    }
+    zeroVertexBuffers.push_back(zeros);
+    buffer = zeros.render;
+    return true;
 }
 
 int RenderSystem::checkLightsAndShadow(){
@@ -6106,6 +6146,9 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         if (!bindSmoothNormals(render, shaderData, mesh, mesh.submeshes[i], buffers)){
             return false;
         }
+        if (!bindUnfedMorphInputs(render, shaderData, mesh, mesh.submeshes[i], buffers)){
+            return false;
+        }
 
         mesh.submeshes[i].libraryBindings.postColorBlend = postColorBlendOf(colorState, mesh.submeshes[i].manifest != nullptr);
         if (!render.endLoad(pipelines, colorState, msaaPipelineSamples)){
@@ -6261,6 +6304,9 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             if (!bindSmoothNormals(depthRender, depthShaderData, mesh, mesh.submeshes[i], buffers)){
                 return false;
             }
+            if (!bindUnfedMorphInputs(depthRender, depthShaderData, mesh, mesh.submeshes[i], buffers)){
+                return false;
+            }
 
             // culls as the color pass resolved (a texture shadow casts from both faces)
             RenderState depthState(colorState.faceCulling, true, colorState.cullingMode, mesh.windingOrder, colorState.faceCulling);
@@ -6404,6 +6450,9 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                     gbufferRender.addAttribute(gbufferShaderData.getAttrIndex(attr.first), instmesh->buffer.getRender(), attr.second.getElements(), attr.second.getDataType(), instmesh->buffer.getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
                 }
                 addVatInstanceAttributes(gbufferRender, gbufferShaderData, *instmesh);
+            }
+            if (!bindUnfedMorphInputs(gbufferRender, gbufferShaderData, mesh, mesh.submeshes[i], buffers)){
+                return false;
             }
 
             CullingMode gbufferCullingMode = colorState.cullingMode;
@@ -7078,6 +7127,50 @@ void RenderSystem::trimSmoothNormals(MeshComponent& mesh){
         mesh.smoothNormals.reset();
 }
 
+// The built-in shaders declare a fixed set of morph inputs (includes/morphtarget.glsl: by
+// whether normals and tangents are morphed, not by the mesh's target count) and a mesh feeds
+// those of its own targets. An input without a buffer reads zero on OpenGL but is undefined
+// on Vulkan (invalid on Metal and D3D11): a one-target morph mesh drew nothing on an NVIDIA
+// GPU once earlier draws had left garbage there (a NaN or infinity times the unused target's
+// zero weight is not zero). The unfed ones read zeros, as OpenGL's do: an unused target
+// moves nothing at any weight.
+bool RenderSystem::bindUnfedMorphInputs(ObjectRender& render, ShaderData& shaderData, MeshComponent& mesh, Submesh& submesh, BufferMap& buffers){
+    static const AttributeType morphInputs[] = {
+        AttributeType::MORPHTARGET0, AttributeType::MORPHTARGET1, AttributeType::MORPHTARGET2, AttributeType::MORPHTARGET3,
+        AttributeType::MORPHTARGET4, AttributeType::MORPHTARGET5, AttributeType::MORPHTARGET6, AttributeType::MORPHTARGET7,
+        AttributeType::MORPHNORMAL0, AttributeType::MORPHNORMAL1, AttributeType::MORPHNORMAL2, AttributeType::MORPHNORMAL3,
+        AttributeType::MORPHTANGENT0, AttributeType::MORPHTANGENT1
+    };
+    if (!submesh.hasMorphTarget)
+        return true;
+
+    BufferRender zeros;
+    bool haveZeros = false;
+    for (AttributeType type : morphInputs){
+        const int slot = shaderData.getAttrIndex(type);
+        if (slot == -1 || findSubmeshAttribute(submesh, buffers, type).attribute)
+            continue;
+        if (!haveZeros){
+            // as many vertices as any input of the submesh addresses
+            size_t vertices = mesh.vertexCount;
+            for (auto const& attr : submesh.attributes){
+                if (attr.first != AttributeType::INDEX)
+                    vertices = std::max(vertices, (size_t)attr.second.getCount());
+            }
+            for (auto const& buf : buffers){
+                if (buf.second->isRenderAttributes() && buf.second->getType() != BufferType::INDEX_BUFFER)
+                    vertices = std::max(vertices, (size_t)buf.second->getCount());
+            }
+            const size_t bytes = std::max(vertices, (size_t)1) * 3 * sizeof(float);
+            if (bytes > UINT_MAX || !getZeroVertexBuffer((unsigned int)bytes, zeros))
+                return false;
+            haveZeros = true;
+        }
+        render.addAttribute(slot, &zeros, 3, AttributeDataType::FLOAT, 3 * sizeof(float), 0, false, false);
+    }
+    return true;
+}
+
 unsigned int RenderSystem::bindSubmeshAttributes(ObjectRender& render, ShaderData& shaderData, MeshComponent& mesh, Submesh& submesh,
                                                  BufferMap& buffers, BufferRenderMap& bufferNameToRender, BufferStrideMap& bufferStride,
                                                  InstancedMeshComponent* instmesh){
@@ -7265,6 +7358,8 @@ bool RenderSystem::loadSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
 
     bindSubmeshAttributes(render, shaderData, mesh, submesh, buffers, bufferNameToRender, bufferStride, instmesh);
     if (!bindSmoothNormals(render, shaderData, mesh, submesh, buffers))
+        return false;
+    if (!bindUnfedMorphInputs(render, shaderData, mesh, submesh, buffers))
         return false;
 
     const RenderState extraState = resolveExtraPassRenderState(mesh, submesh, extra.manifest ? &extra.manifestState : nullptr);

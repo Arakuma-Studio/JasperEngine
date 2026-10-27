@@ -34,6 +34,7 @@
 #include "Engine.h"
 #include <map>
 #include <array>
+#include <mutex>
 #include <memory>
 #include <queue>
 #include <string>
@@ -584,6 +585,19 @@ namespace jasperengine{
 		static TextureRender defaultRipples;
 		static TextureRender defaultNoise;
 		static TextureRender emptyCubeGray;
+		// zeros for the morph inputs a mesh's shader declares and the mesh has none of
+		// (bindUnfedMorphInputs): one vertex buffer per size asked for, shared by every
+		// RenderSystem (a scene may load on another thread: under the mutex) and released
+		// with the static textures (bindings hold their handles)
+		struct ZeroVertexBuffer {
+			unsigned int size = 0;
+			BufferRender render;
+		};
+		static std::vector<ZeroVertexBuffer> zeroVertexBuffers;
+		static std::mutex zeroVertexBuffersMutex;
+		// a buffer of at least `size` zero bytes into `buffer`, made when missing; false when
+		// it cannot be
+		static bool getZeroVertexBuffer(unsigned int size, BufferRender& buffer);
 
 		static bool emptyTexturesCreated;
 		// the RenderSystems drawing with the static textures above (their bindings hold the
@@ -1676,6 +1690,10 @@ namespace jasperengine{
 		// a_smoothNormal for a render whose shader declares it: the mesh's generated buffer
 		// of the submesh's positions, made when missing; false when the mesh cannot have one
 		bool bindSmoothNormals(ObjectRender& render, ShaderData& shaderData, MeshComponent& mesh, Submesh& submesh, BufferMap& buffers);
+		// zeros for the morph inputs a render's shader declares (a fixed count, see
+		// includes/morphtarget.glsl) and the submesh has no target for; false when the
+		// buffer of zeros cannot be made
+		bool bindUnfedMorphInputs(ObjectRender& render, ShaderData& shaderData, MeshComponent& mesh, Submesh& submesh, BufferMap& buffers);
 		void releaseSmoothNormals(MeshComponent& mesh, bool keepData);
 		// forgets the generated buffers no submesh of the finished load uses
 		void trimSmoothNormals(MeshComponent& mesh);
