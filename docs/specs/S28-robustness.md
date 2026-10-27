@@ -401,12 +401,11 @@ host was available, so every Windows-specific check is still pending.
 | AC14 retention, AC17 report hook | Pass | Pass (unit) | n/a | n/a | n/a | Pending |
 | AC15 Android report + tombstone | n/a | n/a | n/a | Pass (API 34 emulator) | n/a | n/a |
 | AC16 web crash gate, `onCrash` | n/a | n/a | n/a | n/a | Pass | n/a |
-| AC18 bench budgets, smoke without hang lines | Pass (bench on E before E was retired; smoke) | n/a | n/a | n/a | n/a | n/a |
+| AC18 bench budgets, smoke without hang lines | Pass (E bench and smoke at landing) | n/a | n/a | n/a | n/a | n/a |
 | AC19 `run_game` crash report | Pass | n/a | n/a | n/a | n/a | n/a |
 | AC20 iOS report, build id = dSYM UUID | n/a | n/a | Pass (iOS 26.5) | n/a | n/a | n/a |
 
-The landing merge's bench rerun is PENDING (server E was retired); the last E numbers are recorded
-below. No physical iOS device was run.
+No physical iOS device was run.
 
 ## 8. Dependencies & conflicts
 
@@ -645,6 +644,36 @@ commits are records only), all through `je-remote/rb.sh`:
   engine report, debuggerd tombstone, `F/JasperEngine: JASPERENGINE CRASH: SIGSEGV`).
 - Server E, `je-bench-diag`: heartbeat 2.495 ns, ring write 11.27 ns, install 1.113 ms, idle
   watchdog 0.064 % of a core; every budget holds.
+
+### Landing gate (oe-port 05eb8d3b4 with S25, native rounds 3 and Apple, 46c3df8b9)
+
+All through `je-remote/rb.sh`, on the replacement D and E servers (the old ones were retired mid-run), Android on C:
+
+- S28 settings go through S25's registry: `player.crash.*` are registry rows (Project Settings >
+  Player > Crash Handling) and Preferences > Diagnostics is a registry page; both windows draw them
+  through `settingsui::beginRow`. S28 has no menu items or shortcuts. The `check-hardcoded-shortcuts.py`
+  lint passes (682 files) and so does its self-test. The agent guide fits its 16,384-byte budget
+  again, which S25 plus S28 had exceeded by 214 bytes: S28's digest is one line, and two redundant
+  lines went.
+- After the Apple `Signal.h` fix (447ca891f), generated script projects lose their `core/util`
+  include path too (`Generator::engineApiIncludeDirs`).
+- `WERROR=1 tools/build.sh linux` passes. `WERROR=1 tools/build.sh unit-tests`: 1,185 core and 821
+  editor tests, 0 failed. Crash CTests 3/3 (`native-crash-reports` with every subprocess mode,
+  `posix-crash-signal-safety`, `crash.symbolicate`); under ASan+UBSan, 3/3 as well.
+- `SANITIZE=address,undefined tools/build.sh unit-tests`:
+  - Core: 1,183 ran, 0 failed, no leak and no UB diagnostic.
+  - Editor: 820 ran, 0 failed. The first run leaked 90 MB from S25's organisation test fixture,
+    whose Project kept its scenes. `releaseScenes` in its TearDown fixed that (46c3df8b9). The
+    rerun leaks 1,040,056 bytes in 3,809 allocations, all from V-HACD hulls in
+    `ConvexDecompositionCache`'s worker (`ConvexDecomposition.cpp:597`): upstream
+    physics-placement code; no leak stack has an S28 frame.
+- MCP 71/71: `test_crash.py`, `test_protocol.py`, budget, conventions, coverage, docs, tool groups,
+  autosync, `test_lua_api_json.py`, `test_search_organisation.py`. `docs/mcp/TOOLS.md`:
+  211 tools, unchanged on regeneration.
+- `tools/build.sh web` + `web-gate` PASS. The crash-diagnostics web build + gate PASS.
+  `tools/build.sh android` passes (C). Smoke PASS, with no `JASPERENGINE HANG:` line.
+- Server E (the replacement), `je-bench-diag`: heartbeat 2.403 ns, ring write 12.59 ns,
+  install 0.661 ms, idle watchdog 0.033 % of a core; every budget holds.
 
 ### Native review follow-up validation
 
