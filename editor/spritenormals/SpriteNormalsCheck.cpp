@@ -3,6 +3,7 @@
 
 #include "SpriteNormalsCheck.h"
 
+#include "SpriteNormalsPaint.h"
 #include "SpriteNormalsRecipe.h"
 
 #include "texsynth/SynthImage.h"
@@ -112,6 +113,9 @@ namespace jasperengine::editor::spritenormals {
             std::string recipeError;         // a garbled one
             int width = 0;
             int height = 0;
+            std::string paintError;          // the paint chunk can't be read
+            int paintWidth = 0;              // its size (a readable one)
+            int paintHeight = 0;
         };
 
         struct Checker {
@@ -143,6 +147,14 @@ namespace jasperengine::editor::spritenormals {
                 texsynth::probeImage(png, w, h);
                 fresh["width"] = w;
                 fresh["height"] = h;
+                // the paint layer (Phase 5): its head first, then (only when there is one) the
+                // whole chunk decoded, so a damaged one is found
+                std::string paintError;
+                if (recipe && (readPaintSummary(png, &paintError) || !paintError.empty())) {
+                    const std::optional<PaintOverlay> paint = readPaint(png, &paintError);
+                    if (paint) fresh["paint"] = {{"painted", paint->paintedCount()}, {"width", paint->width}, {"height", paint->height}};
+                    else if (!paintError.empty()) fresh["paint_error"] = paintError;
+                }
                 *entry = fresh;
                 if (entry != &scratch) cache.dirty = true;
                 return entry;
@@ -158,6 +170,11 @@ namespace jasperengine::editor::spritenormals {
                 if (entry->contains("recipe_error")) info.recipeError = (*entry)["recipe_error"].get<std::string>();
                 info.width = entry->value("width", 0);
                 info.height = entry->value("height", 0);
+                if (entry->contains("paint_error") && (*entry)["paint_error"].is_string()) info.paintError = (*entry)["paint_error"].get<std::string>();
+                if (entry->contains("paint") && (*entry)["paint"].is_object()) {
+                    info.paintWidth = (*entry)["paint"].value("width", 0);
+                    info.paintHeight = (*entry)["paint"].value("height", 0);
+                }
                 return info;
             }
 
@@ -213,6 +230,19 @@ namespace jasperengine::editor::spritenormals {
                     const fs::path normal = (root / fs::u8path(recipe["outputs"]["normal"].get<std::string>())).lexically_normal();
                     std::error_code ec;
                     if (normal != path.lexically_normal() && fs::is_regular_file(normal, ec)) return;
+                }
+                // the paint layer: the map works without it, the next generation would drop it
+                const std::string paintFix = "regenerate with paint_mode: clear, or repaint";
+                if (!info.paintError.empty()) {
+                    result.findings.push_back({"normals", at, 0, 0, "warning",
+                                               "its paint layer (jasper.spritenormals.paint chunk) can't be read: " + info.paintError +
+                                                   "; the map still works, regenerating drops the paint",
+                                               "normals-paint-unreadable", paintFix});
+                } else if (info.paintWidth > 0 && (info.paintWidth != info.width || info.paintHeight != info.height)) {
+                    result.findings.push_back({"normals", at, 0, 0, "warning",
+                                               "its paint layer is " + std::to_string(info.paintWidth) + "x" + std::to_string(info.paintHeight) + " but the map is " +
+                                                   std::to_string(info.width) + "x" + std::to_string(info.height) + ": regenerating refuses it (paint_size_mismatch)",
+                                               "normals-paint-size", paintFix});
                 }
                 const fs::path source = sourceOf(recipe, path);
                 const std::string sourceRel = rel(source);
