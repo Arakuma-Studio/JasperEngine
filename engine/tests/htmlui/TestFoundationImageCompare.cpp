@@ -202,6 +202,34 @@ TEST_F(ImageCompareTest, HistogramDistance){
     EXPECT_TRUE(compare("histogram", swapped, options).passed);
 }
 
+TEST_F(ImageCompareTest, GradientHistogramDistance){
+    // vertical white lines every 8 pixels; the actual has them shifted by 3: the same edges (a
+    // line and the pixel left of it step by 255 to their right neighbour)
+    auto lines = [](int period, int offset){
+        std::vector<uint8_t> image = makeImage(0, 0, 0);
+        for (int y = 0; y < height; y++)
+            for (int x = offset; x < width; x += period)
+                setPixel(image, x, y, 255, 255, 255);
+        return image;
+    };
+    ASSERT_TRUE(writePng(golden("edges"), lines(8, 2), width, height));
+    CompareOptions options;
+    options.blockSize = 4096;
+    options.pixelThreshold = 255;
+    options.maxMeanDiff = 255.0;
+    options.maxGradientHistogramDistance = 0.0;
+    CompareResult result = compare("edges", lines(8, 5), options);
+    EXPECT_TRUE(result.passed) << result.message;
+    EXPECT_DOUBLE_EQ(result.gradientHistogramDistance, 0.0);
+
+    // twice the lines: 20 stepping columns instead of 10, 10 columns of 20 pixels of 800 go from
+    // the flat bin to the top one: 25 %
+    result = compare("edges", lines(4, 2), options);
+    EXPECT_FALSE(result.passed);
+    EXPECT_DOUBLE_EQ(result.gradientHistogramDistance, 25.0);
+    EXPECT_NE(result.message.find("edge histogram distance 25 % (limit 0 %)"), std::string::npos) << result.message;
+}
+
 TEST_F(ImageCompareTest, FailureWritesActualAndDiff){
     ASSERT_TRUE(writePng(golden("failure"), makeImage(0, 0, 0), width, height));
 

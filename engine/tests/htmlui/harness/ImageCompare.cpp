@@ -199,6 +199,34 @@ CompareResult jasperengine::test::compareWithGoldenFile(const std::string& golde
         histogramPasses = result.histogramDistance <= options.maxHistogramDistance;
     }
 
+    // the edge distributions: the histograms of each pixel's largest step to its right and lower neighbours
+    if (options.maxGradientHistogramDistance >= 0.0){
+        auto gradientBins = [&](const std::vector<uint8_t>& image, long long (&bins)[16]){
+            for (int y = 0; y < height; y++){
+                for (int x = 0; x < width; x++){
+                    const uint8_t* p = &image[(size_t(y) * width + x) * 4];
+                    int step = 0;
+                    for (int c = 0; c < 4; c++){
+                        if (x + 1 < width)
+                            step = std::max(step, std::abs(int(p[c]) - int(p[4 + c])));
+                        if (y + 1 < height)
+                            step = std::max(step, std::abs(int(p[c]) - int(p[size_t(width) * 4 + c])));
+                    }
+                    bins[step >> 4]++;
+                }
+            }
+        };
+        long long actualBins[16] = {};
+        long long goldenBins[16] = {};
+        gradientBins(rgba, actualBins);
+        gradientBins(golden, goldenBins);
+        long long moved = 0;
+        for (int b = 0; b < 16; b++)
+            moved += std::llabs(actualBins[b] - goldenBins[b]);
+        result.gradientHistogramDistance = 100.0 * double(moved) / 2.0 / double(pixelCount);
+        histogramPasses = histogramPasses && result.gradientHistogramDistance <= options.maxGradientHistogramDistance;
+    }
+
     result.meanDiff = sum / double(unitCount);
     result.badFraction = double(result.badPixels) / double(unitCount);
     result.passed = result.badFraction <= options.maxBadFraction && result.meanDiff <= options.maxMeanDiff && histogramPasses;
@@ -212,6 +240,9 @@ CompareResult jasperengine::test::compareWithGoldenFile(const std::string& golde
             << result.meanDiff << " (limit " << options.maxMeanDiff << "), largest " << result.maxDiff;
     if (options.maxHistogramDistance >= 0.0)
         message << ", histogram distance " << result.histogramDistance << " % (limit " << options.maxHistogramDistance << " %)";
+    if (options.maxGradientHistogramDistance >= 0.0)
+        message << ", edge histogram distance " << result.gradientHistogramDistance << " % (limit " << options.maxGradientHistogramDistance
+                << " %)";
 
     if (!result.passed){
         if (writePng(actualPath, rgba, width, height))

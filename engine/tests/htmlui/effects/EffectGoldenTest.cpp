@@ -37,31 +37,32 @@ namespace {
     // ---- the hardware-GPU tolerances ------------------------------------------------------------
     //
     // The goldens are glcore renders on llvmpipe (Mesa's software rasterizer). On a hardware GPU
-    // (measured on an NVIDIA GTX 1080, driver 580, Vulkan; the same failures on a GTX 1650) these
-    // effects draw a little or a lot differently, and the owner chose looser tolerances over
-    // per-GPU goldens (2026-10-27):
+    // (measured on an NVIDIA GTX 1080, driver 580, Vulkan; the same tests failed on a GTX 1650)
+    // these effects draw a little or a lot differently, and the owner chose looser tolerances
+    // over per-GPU goldens (2026-10-27):
     //   - hash noise built on sin(): fract(sin(x) * 43758.5) and fam_hash_phase() amplify the last
-    //     bits of sin(), which a GPU's sin() (a fast approximation) and llvmpipe's (libm-accurate)
-    //     do not share; the cells, curtains, lines and seeds land elsewhere (voronoi, aurora,
-    //     falling-lines, magnetic-filings, particle-flow, particles' spawns, data-mosh's blocks);
-    //   - simulations (boids, fluid, particles, smoke-fill, pixel-sort) step the same equations in
-    //     half-float targets whose filtering and rounding differ by a bit, and chaotic ones
-    //     (boids, fluid) diverge from their early state on; their early state (.t0) still matches
-    //     pixel for pixel, apart from a few pixels;
-    //   - smooth gradients (mesh-gradient, grain) differ by a few levels everywhere.
-    // Each entry compares with the tolerance the measured distance needs plus a margin of about
-    // 25 % (the measured values are in the comment of each entry), using the coarsest comparison
-    // that still tests the effect:
-    //   pixels(): per pixel (channel threshold 24) with a larger share of bad pixels or a larger
-    //             mean difference: the effects that match but for scattered pixels;
-    //   blocks(): the mean colours of 16x16 or 32x32 blocks, plus the colour histograms: the
-    //             effects whose particles or flow lie elsewhere pixel by pixel but cover the
-    //             same regions with the same colours;
-    //   means():  the image's mean colour and its colour histograms only: hash-noise patterns
-    //             (cells, curtains) laid out differently on a GPU.
-    // They stay regression tests: every entry was checked on the GTX 1080 to fail when the
-    // effect breaks (a shader mutation per effect; the report of the change lists them), and the
-    // invariants I1-I9 below (exact or within 1) are unchanged.
+    //     bits of sin(), which a GPU's sin() (a fast approximation) and llvmpipe's do not share;
+    //     cells, curtains, columns and spawn points land elsewhere (voronoi, aurora,
+    //     falling-lines, magnetic-filings, particle-flow, particles, data-mosh's blocks);
+    //   - simulations step the same equations in half-float targets whose filtering and
+    //     rounding differ by a bit, and the chaotic ones (boids, fluid) diverge from their early
+    //     state on: their early state (.t0) still matches but for a few pixels;
+    //   - smooth gradients and noise (mesh-gradient, grain) differ by a few levels.
+    // Each entry is the measured distance (in its comment) plus a margin of about 25-30 %, with
+    // the finest comparison that passes on the GPU:
+    //   pixels(): per pixel (channel threshold 24, or the threshold given) with a larger share of
+    //             bad pixels or a larger mean difference: effects that match but for scattered
+    //             pixels;
+    //   blocks(): the mean colours of 16x16 or 32x32 blocks (every block within the threshold)
+    //             and the colour histograms: effects whose particles or flow lie elsewhere pixel
+    //             by pixel but cover the same regions with the same colours;
+    //   means():  the mean colour, the colour histograms and the edge histogram only (see
+    //             CompareOptions): hash-noise patterns laid out differently on a GPU, whose
+    //             colours and scale are still the golden's.
+    // They are still regression tests: each was checked on the GTX 1080 to fail with a shader
+    // mutation of its effect (one parameter's mapping off by 25-50 %: a larger voronoi scale,
+    // boids or particles 30 % larger, faster fluid dissipation, ...), and the invariants I1-I9
+    // below (exact or within 1) are unchanged.
     struct HardwareTolerance {
         CompareOptions early;   // .t0, stateful effects
         CompareOptions late;    // .t1 and .t2
@@ -86,48 +87,49 @@ namespace {
         return options;
     }
 
-    CompareOptions means(int threshold, double histogramPercent){
-        return blocks(1 << 16, threshold, histogramPercent, threshold);
+    CompareOptions means(int threshold, double histogramPercent, double edgeHistogramPercent){
+        CompareOptions options = blocks(1 << 16, threshold, histogramPercent, threshold);
+        options.maxGradientHistogramDistance = edgeHistogramPercent;
+        return options;
     }
 
+    // the measured values: bad pixel shares at the channel threshold, mean differences, the
+    // largest block difference, colour (and edge) histogram distances, of .t0 / .t1 / .t2
     const std::map<std::string, HardwareTolerance>& hardwareTolerances(){
         static const std::map<std::string, HardwareTolerance> tolerances = {
-            // GTX 1080: t1 / t2 mean colour 4 / 5 levels apart, histograms 6.0 / 11.3 %;
-            // text 1.79 % bad pixels, mean 0.93
-            {"aurora", {{}, means(6, 14.0), pixels(2.25, 1.2)}},
-            // t0 1.04 % bad, mean 1.20; t1 / t2 in 16 px blocks: largest 23 / 18, mean 1.85 / 2.29,
+            // t1 / t2: mean colours 4 / 5 apart, histograms 6.0 / 11.3 %, edges 0.44 / 0.50 %;
+            // text 1.79 % bad, mean 0.93
+            {"aurora", {{}, means(6, 14.0, 0.65), pixels(2.25, 1.2)}},
+            // t0 1.04 % bad, mean 1.20; t1 / t2 in 16 px blocks: largest 23 / 18, mean 1.77 / 2.20,
             // histograms 0.36 / 0.47 %
-            {"boids", {pixels(1.3, 1.5), blocks(16, 3.0, 1.0, 30), {}}},
+            {"boids", {pixels(1.3, 1.5), blocks(16, 2.8, 0.6, 30), {}}},
             // t0 0.49 % bad; t1 / t2 4.20 / 4.50 % bad, mean 4.59 / 4.87
             {"data-mosh", {pixels(0.6), pixels(5.6, 6.1), {}}},
-            // 32 px blocks: largest 13 / 17, mean 4.83 / 5.04; histograms 0.05 %
-            {"falling-lines", {{}, blocks(32, 6.5, 0.25), {}}},
-            // t0 within the default; t1 / t2 in 32 px blocks: largest 18 / 10, mean 3.51 / 2.62,
+            // 32 px blocks: largest 13 / 17, mean 3.88 / 4.04, histograms 0.05 / 0.05 %
+            {"falling-lines", {{}, blocks(32, 5.0, 0.1), {}}},
+            // t0 within the default; t1 / t2 in 32 px blocks: largest 18 / 10, mean 2.81 / 2.10,
             // histograms 1.56 / 1.19 %
-            {"fluid", {{}, blocks(32, 4.5, 2.5), {}}},
+            {"fluid", {{}, blocks(32, 3.6, 2.0), {}}},
             // t2 0.32 % bad (largest 30)
             {"grain", {{}, pixels(0.4), {}}},
-            // t0 / t1 / t2 in 16 px blocks: largest 11 / 12 / 12, mean 2.07 / 2.17 / 2.21,
-            // histograms 0.34 / 0.36 / 0.17 %
-            {"magnetic-filings", {blocks(16, 3.0, 0.75), blocks(16, 3.0, 0.75), {}}},
-            // largest 26 / 30, mean 2.50 / 2.76
+            // 16 px blocks: largest 11 / 12 / 12, mean 1.99 / 2.07 / 2.11, histograms 0.34 / 0.36 / 0.17 %
+            {"magnetic-filings", {blocks(16, 2.7, 0.5), blocks(16, 2.7, 0.5), {}}},
+            // largest 26 / 30 (threshold 34), mean 2.50 / 2.76
             {"mesh-gradient", {{}, pixels(0.05, 3.5, 34), {}}},
-            // t0 / t1 / t2 0.14 / 0.21 / 0.19 % bad
+            // 0.14 / 0.21 / 0.19 % bad
             {"particle-field", {pixels(0.27), pixels(0.27), {}}},
-            // t0 / t1 / t2 in 32 px blocks: largest 18 / 19 / 18, mean 4.18 / 4.16 / 4.22,
-            // histograms 0.48 / 0.51 / 0.57 %
-            {"particle-flow", {blocks(32, 5.5, 1.0), blocks(32, 5.5, 1.0), {}}},
-            // t0 / t1 / t2 in 32 px blocks: largest 12 / 7 / 8, mean 2.17 / 0.77 / 0.74,
-            // histograms 0.49 / 0.47 / 0.41 %
-            {"particles", {blocks(32, 3.0, 1.0), blocks(32, 3.0, 1.0), {}}},
-            // t0 / t1 / t2 0.18 / 0.37 / 0.39 % bad
+            // 32 px blocks: largest 18 / 19 / 18, mean 3.35 / 3.33 / 3.39, histograms 0.48 / 0.51 / 0.57 %
+            {"particle-flow", {blocks(32, 4.4, 0.75), blocks(32, 4.4, 0.75), {}}},
+            // 32 px blocks: largest 12 / 7 / 8, mean 1.74 / 0.61 / 0.59, histograms 0.49 / 0.47 / 0.41 %
+            {"particles", {blocks(32, 2.3, 0.65), blocks(32, 0.8, 0.65), {}}},
+            // 0.18 / 0.37 / 0.39 % bad
             {"pixel-sort", {pixels(0.5), pixels(0.5), {}}},
             // t0 / t1 0.051 / 0.071 % bad
             {"shatter", {pixels(0.09), pixels(0.09), {}}},
             // t0 within the default; t1 0.13 % bad
             {"smoke-fill", {{}, pixels(0.16), {}}},
-            // t1 / t2 mean colour 2 / 3 levels apart, histograms 2.27 / 3.41 %
-            {"voronoi", {{}, means(4, 4.5), {}}},
+            // t1 / t2: mean colours 2 / 3 apart, histograms 2.27 / 3.41 %, edges 0.67 / 1.24 %
+            {"voronoi", {{}, means(4, 4.3, 1.6), {}}},
         };
         return tolerances;
     }

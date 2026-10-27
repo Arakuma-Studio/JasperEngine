@@ -29,6 +29,11 @@ namespace jasperengine { namespace test {
         // values, the distance is the largest total-variation distance over the channels (the
         // share of the pixels, in percent, whose bin would have to change); < 0: not compared
         double maxHistogramDistance = -1.0;
+        // >= 0: also the images' edge distributions: a 16-bin histogram of every pixel's largest
+        // channel difference with its right and lower neighbours, compared as the colour
+        // histograms are (in percent of the pixels): how much of the image is flat, soft or a
+        // sharp edge. It tells a pattern's scale (a cell or line size) without its layout.
+        double maxGradientHistogramDistance = -1.0;
     };
 
     struct CompareResult {
@@ -40,6 +45,7 @@ namespace jasperengine { namespace test {
         size_t badPixels = 0;           // pixels (blocks with a blockSize) over the threshold
         double badFraction = 0.0;       // of the compared units: pixels, or blocks with a blockSize
         double histogramDistance = 0.0; // percent; computed when maxHistogramDistance >= 0
+        double gradientHistogramDistance = 0.0; // percent; computed when maxGradientHistogramDistance >= 0
         std::string actualPath;         // written on failure
         std::string diffPath;           // written on failure
     };
