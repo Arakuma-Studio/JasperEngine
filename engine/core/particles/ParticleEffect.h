@@ -544,6 +544,10 @@ namespace jasperengine { namespace particles {
         std::string message;
     };
 
+    // A .particles JSON text into a document, for code that cannot include the JSON library
+    // (JasperEngine.h, exported scenes): ParticleEffectCodec::read without its diagnostics
+    JASPERENGINE_API bool readEffectText(const std::string& text, ParticleEffectDocument& document);
+
 }}
 
 #endif // PARTICLES_PARTICLEEFFECT_H

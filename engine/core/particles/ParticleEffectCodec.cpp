@@ -866,6 +866,11 @@ bool ParticleEffectCodec::fromJson(const Json& json, ParticleEffectDocument& doc
     return ok;
 }
 
+bool jasperengine::particles::readEffectText(const std::string& text, ParticleEffectDocument& document){
+    std::vector<Diagnostic> diagnostics;
+    return ParticleEffectCodec::read(text, document, diagnostics);
+}
+
 bool ParticleEffectCodec::read(std::string_view text, ParticleEffectDocument& document, std::vector<Diagnostic>& diagnostics){
     Json json;
     try {

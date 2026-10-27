@@ -164,11 +164,6 @@ apply_atmosphere_preset sets a look (list_atmosphere_presets); get_atmosphere_in
 ran (tier, passes, resolution). Atmosphere Quality is per platform (project settings
 quality.atmosphere_quality_*). More: jasper://docs/atmosphere.
 
-## Particles
-create_particles makes a Particle System from a preset. The particles group edits effects
-(edit_particle_effect: merge patches, modules keyed by type); a .particles asset is shared by
-every system using it. More: jasper://docs/particles.
-
 ## Physics
 - Add a body and its collider to the SAME GameObject in one step (edit_colliders with
   body_type + add). A Rigidbody without a Collider does not collide. Dynamic for

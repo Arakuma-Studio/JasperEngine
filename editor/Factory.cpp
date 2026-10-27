@@ -3904,8 +3904,7 @@ std::string editor::Factory::createParticleSystemComponent(int indentSpaces, Ent
         code << ind << "    std::string json;\n";
         for (size_t at = 0; at < json.size(); at += 2000)
             code << ind << "    json += " << formatString(json.substr(at, 2000)) << ";\n";
-        code << ind << "    std::vector<particles::Diagnostic> diagnostics;\n";
-        code << ind << "    particles::ParticleEffectCodec::read(json, particles.inlineEffect, diagnostics);\n";
+        code << ind << "    particles::readEffectText(json, particles.inlineEffect);\n";
         code << ind << "}\n";
     }
     if (p.playOnAwake != defaults.playOnAwake) code << ind << "particles.playOnAwake = " << formatBool(p.playOnAwake) << ";\n";
