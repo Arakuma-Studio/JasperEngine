@@ -257,7 +257,9 @@ namespace jasperengine::editor::spritenormals {
         source["path"] = in.sourcePath;
         source["sha1"] = in.sourceSha1;
         source["kind"] = in.fromSprite ? "sprite" : toString(in.sourceKind);
+        // entity exactly when the kind is "sprite"; its submesh when not the first
         if (in.fromSprite) source["entity"] = in.spriteEntity;
+        if (in.fromSprite && in.spriteSubmesh != 0) source["submesh"] = in.spriteSubmesh;
         recipe["source"] = source;
 
         json frames = json::object();
@@ -316,7 +318,7 @@ namespace jasperengine::editor::spritenormals {
             else {
                 const json& s = recipe["source"];
                 ok = c.string(s, "path", "source.", true) && c.string(s, "sha1", "source.") && c.string(s, "kind", "source.") &&
-                     c.string(s, "entity", "source.");
+                     c.string(s, "entity", "source.") && c.integer(s, "submesh", "source.", 0, 65535);
             }
         }
         if (ok && recipe.contains("frames")) {

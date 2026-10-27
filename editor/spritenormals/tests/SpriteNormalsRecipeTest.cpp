@@ -186,6 +186,7 @@ TEST(SpriteNormalsRecipe, OptionalKeysFollowTheRules) {
     const json r = sn::makeRecipe(in);
     EXPECT_EQ(r["source"]["kind"], "sprite");
     EXPECT_EQ(r["source"]["entity"], "Player/Hero");
+    EXPECT_FALSE(r["source"].contains("submesh")) << "submesh 0 is not recorded";
     EXPECT_EQ(r["frames"]["from"], "sprite");
     EXPECT_FALSE(r["frames"].contains("columns")) << "columns/rows/delays/loop only for animations";
     EXPECT_FALSE(r["frames"].contains("delays_ms"));
@@ -198,6 +199,22 @@ TEST(SpriteNormalsRecipe, OptionalKeysFollowTheRules) {
     EXPECT_EQ(r["settings"]["regions"], json::parse(R"([{"colors":["#ff0000","#00ff00"],"tolerance":0.05,"detail":0,"lift":2.5,"flat":true}])"));
     std::string invalid;
     EXPECT_TRUE(sn::validateRecipe(r, invalid)) << invalid;
+
+    // a Sprite's second submesh: source.submesh
+    in.spriteSubmesh = 2;
+    const json sub = sn::makeRecipe(in);
+    EXPECT_EQ(sub["source"]["submesh"], 2);
+    EXPECT_TRUE(sn::validateRecipe(sub, invalid)) << invalid;
+    json badSubmesh = sub;
+    badSubmesh["source"]["submesh"] = "two";
+    EXPECT_FALSE(sn::validateRecipe(badSubmesh, invalid));
+    EXPECT_NE(invalid.find("source.submesh"), std::string::npos) << invalid;
+    // a submesh without a Sprite is not recorded (kind is not "sprite")
+    in.fromSprite = false;
+    const json notSprite = sn::makeRecipe(in);
+    EXPECT_FALSE(notSprite["source"].contains("submesh"));
+    EXPECT_FALSE(notSprite["source"].contains("entity"));
+    EXPECT_EQ(notSprite["source"]["kind"], "image");
 
     // a plain image: no entity, empty cells, no outline / height range; an explicit radius
     sn::Result plain;
