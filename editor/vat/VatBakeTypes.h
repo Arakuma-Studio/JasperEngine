@@ -199,7 +199,9 @@ namespace jasperengine::editor::vat{
     // a spec that re-runs `recipe` (Rebake): false with `error` for a recipe this baker can't
     // run (an importer's: houdini_vat3 / openvat, or an unknown kind)
     bool specFromRecipe(const jasperengine::vat::VatRecipe& recipe, VatBakeSpec& spec, std::string& error);
-    // the two describe the same source (kind, path, scene, the same files): the existing-file rule
+    // the two describe the same source: kind, path and scene, and the same clips (as a set: the
+    // .anim / .poseanim files, or the model / GameObject clip names). The existing-file rule: a
+    // bake of other clips of the same model is another asset ("hero 2.vat"), never a rewrite
     bool sameRecipeSource(const jasperengine::vat::VatRecipeSource& a, const jasperengine::vat::VatRecipeSource& b);
 
 }

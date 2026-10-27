@@ -105,7 +105,7 @@ const VatPayload& VatBakeResult::payload() const{
 // ---- clip matching ----
 
 std::vector<int> matchClips(const std::vector<VatClip>& oldClips, const std::vector<std::string>& newNames,
-                            const std::vector<float>& newLengths){
+                            const std::vector<float>& newLengths, bool positional){
     std::vector<int> result(newNames.size(), -1);
     std::vector<bool> oldUsed(oldClips.size(), false);
     // by name
@@ -119,7 +119,7 @@ std::vector<int> matchClips(const std::vector<VatClip>& oldClips, const std::vec
         }
     }
     // the renamed ones, in order, preferring a new clip of the same length
-    for (size_t o = 0; o < oldClips.size(); o++){
+    for (size_t o = 0; o < oldClips.size() && positional; o++){
         if (oldUsed[o]) continue;
         int pick = -1;
         for (size_t n = 0; n < newNames.size() && pick < 0; n++){
@@ -237,10 +237,14 @@ bool VatBakeSession::loadRebake(const std::string& vatPath, std::string& error){
         VatClipOverride override;
         override.name = name;
         override.wrap = clip.wrap;
+        // a rate of its own only when the file's clip was not sampled at the recipe's fps (an
+        // override the bake had): what the recipe's fps gives for the clip's own baked length,
+        // not for the source's length now (a source clip that got longer keeps the recipe's
+        // rate). The override is the whole rate its sampling rounds (60, not 60.19)
         int frames = 1;
         float fps = 0.0f;
-        clipFrames(lengths[entry.second], clip.wrap, bakeSpec.fps, frames, fps);
-        if (std::fabs(fps - clip.fps) > 1e-4f * std::max(1.0f, clip.fps)) override.fps = clip.fps;
+        clipFrames(clip.length(), clip.wrap, bakeSpec.fps, frames, fps);
+        if (frames != clip.frames && clip.fps > 0.0f) override.fps = std::clamp(std::round(clip.fps), 1.0f, 240.0f);
         override.interpolate = clip.interpolate;
         bakeSpec.clipOverrides.push_back(override);
         rebakeClipMap.push_back({name, entry.first});
@@ -385,7 +389,18 @@ const std::vector<VatIssue>& VatBakeSession::check(){
         checkIssues.push_back(makeIssue("no_animation", true, "no track of the chosen clips animates anything under the source",
                                         "play the clips on the model they were made for"));
     }
+    // the scene the result is placed in: the source's, or the selected one for a file source
+    if (spec.place != VatPlace::None){
+        SceneProject* destination = project->getScene(target->scratch() ? project->getSelectedSceneId() : target->sceneId);
+        if (destination && destination->sceneType != SceneType::SCENE_3D){
+            checkIssues.push_back(makeIssue("invalid_settings", true, "a Vertex Animation plays in a 3D scene: '" + destination->name +
+                                            "' is 2D, the result can't be placed in it", "bake with place none, or place it in a 3D scene"));
+        }
+    }
     if (hasErrors(checkIssues)) return checkIssues;
+
+    // clip and pose previews of the source restore first: the rest pose is captured below
+    if (!target->scratch()) PoseEditSession::suspendActiveFor(target->sceneId, {target->root});
 
     // the renderers and sockets
     poser = std::make_unique<VatPoser>();
@@ -396,6 +411,8 @@ const std::vector<VatIssue>& VatBakeSession::check(){
         return checkIssues;
     }
     for (const VatIssue& warning : poser->warnings) checkIssues.push_back(warning);
+    // what the rest was captured from: start() checks again when the scene changed since
+    checkStamp = target->scratch() ? 0 : placementSceneEditStamp(project, target->sceneId);
 
     // the sizes
     const VatEstimate sizes = estimate();
@@ -406,7 +423,8 @@ const std::vector<VatIssue>& VatBakeSession::check(){
 VatEstimate VatBakeSession::estimate(){
     VatEstimate out;
     if (!checked) check();
-    if (!target || !poser) return out;
+    // (a GameObject source whose scene closed since check(): its entities are gone)
+    if (!target || !poser || !sourceGone().empty()) return out;
     const VatBakeSpec& spec = bakeSpec;
     const VatPresetLimits limits = presetLimits(spec.preset);
 
@@ -522,6 +540,16 @@ bool VatBakeSession::start(){
         rebakeClipMap = map;
     }
     check();
+    // the scene edited (or a preview started) since check() captured the rest: resolve again
+    if (target && poser && !target->scratch()){
+        if (sourceGone().empty()) PoseEditSession::suspendActiveFor(target->sceneId, {target->root});
+        if (!sourceGone().empty() || placementSceneEditStamp(project, target->sceneId) != checkStamp){
+            poser.reset();
+            target.reset();
+            checked = false;
+            check();
+        }
+    }
     failure.clear();
     if (hasErrors(checkIssues) || !target || !poser){
         for (const VatIssue& issue : checkIssues){
@@ -588,6 +616,17 @@ bool VatBakeSession::stampChanged(){
     return placementSceneEditStamp(project, target->sceneId) != sceneStamp;
 }
 
+std::string VatBakeSession::sourceGone() const{
+    if (!target || target->scratch()) return "";
+    // by id, never through the cached Scene*: a closed scene's is freed
+    SceneProject* sceneProject = project ? project->getScene(target->sceneId) : nullptr;
+    if (!sceneProject || !sceneProject->scene || sceneProject->scene != target->scene) return "the source's scene was closed";
+    if (!sceneProject->scene->isEntityCreated(target->root) || !sceneProject->scene->findComponent<Transform>(target->root)){
+        return "the source GameObject was deleted";
+    }
+    return "";
+}
+
 bool VatBakeSession::advance(double budgetMs){
     if (bakeState == VatBakeState::Posing){
         if (cancelFlag){
@@ -596,8 +635,14 @@ bool VatBakeSession::advance(double budgetMs){
         }
         if (!target->scratch()){
             SceneProject* sceneProject = project->getScene(target->sceneId);
-            if (!sceneProject || !sceneProject->scene || sceneProject->playState != ScenePlayState::STOPPED){
-                failure.push_back(makeIssue("scene_playing", true, "the scene was closed or started playing during the bake", "bake again"));
+            const std::string gone = sourceGone();
+            if (!gone.empty()){
+                failure.push_back(makeIssue("invalid_source", true, gone + " during the bake", "bake again"));
+                finishFailed(failure.back().message + ": bake again", false);
+                return true;
+            }
+            if (sceneProject->playState != ScenePlayState::STOPPED){
+                failure.push_back(makeIssue("scene_playing", true, "the scene started playing during the bake", "bake again"));
                 finishFailed(failure.back().message, false);
                 return true;
             }
@@ -633,6 +678,19 @@ bool VatBakeSession::advance(double budgetMs){
         if (cancelFlag && budgetMs > 0.0 && !workerDone) return false;
         if (!workerDone && budgetMs > 0.0) return false;
         if (worker.joinable()) worker.join();
+        // the scene may have been closed, the source deleted or edited while the worker encoded
+        if (workerOk && !cancelFlag && target && !target->scratch()){
+            std::string gone = sourceGone();
+            if (gone.empty() && stampChanged()) gone = "the scene changed";
+            if (!gone.empty()){
+                input = VatBakeInput();
+                output = VatBakeOutput();
+                failure.push_back(makeIssue("invalid_source", true, gone + " during the bake", "bake again"));
+                bakeState = VatBakeState::Failed;
+                errorText = failure.back().message + ": bake again";
+                return true;
+            }
+        }
         finalize();
         return true;
     }
@@ -772,22 +830,6 @@ void VatBakeSession::finalize(){
 
 // ---- output ----
 
-namespace{
-
-    // the mesh with every embedded texture placeholder replaced by `paths`
-    void resolveEmbedded(VatMeshData& mesh, const std::vector<std::string>& paths){
-        for (VatMaterialData& material : mesh.materials){
-            for (std::string* slot : {&material.baseColorTexture, &material.normalTexture, &material.metallicRoughnessTexture,
-                                      &material.occlusionTexture, &material.emissiveTexture}){
-                if (slot->compare(0, std::char_traits<char>::length(VAT_EMBEDDED_TEXTURE), VAT_EMBEDDED_TEXTURE) != 0) continue;
-                const size_t index = (size_t)std::atoi(slot->c_str() + std::char_traits<char>::length(VAT_EMBEDDED_TEXTURE));
-                *slot = index < paths.size() ? paths[index] : std::string();
-            }
-        }
-    }
-
-}
-
 bool VatBakeSession::writePreviewFiles(std::string& vatPath, std::string& meshPath, std::string& error){
     if (bakeState != VatBakeState::Done){
         error = "nothing baked yet";
@@ -797,18 +839,8 @@ bool VatBakeSession::writePreviewFiles(std::string& vatPath, std::string& meshPa
     const fs::path dir = vatFile.parent_path();
     std::error_code ec;
     fs::create_directories(dir, ec);
-    std::vector<std::string> images;
-    const std::string stem = FileUtils::pathToUtf8(vatFile.stem());
-    for (const VatEmbeddedImage& image : bakeResult.embeddedImages){
-        const fs::path file = dir / FileUtils::pathFromUtf8(stem + "_" + image.name + image.extension);
-        if (!FileUtils::writeFileReplacing(file, image.bytes)){
-            error = "can't write " + FileUtils::pathToGenericUtf8(file);
-            return false;
-        }
-        images.push_back(FileUtils::pathToUtf8(file));
-    }
     VatMeshData mesh = bakeResult.mesh;
-    resolveEmbedded(mesh, images);
+    mesh.images = bakeResult.embeddedImages;
     VatData data = bakeResult.data;
     data.guid = AssetDatabase::generateGuid();
     VatEncodedFiles encoded;
@@ -892,6 +924,13 @@ bool VatBakeSession::plannedOutput(std::string& vatPath, bool& rewrite, std::str
         }
         ours = recipeFromSpec(bakeSpec).sources[0];
         if (isGameObjectSource(bakeSpec.source)) ours.scene = target->sceneFile;
+        // the clips this spec bakes, as finalize() records them (empty spec.clips: all)
+        ours.clips.clear();
+        for (int index : selected){
+            const VatSourceClip& clip = target->clips[(size_t)index];
+            const std::string& name = bakeSpec.source.kind == VatSourceKind::Anim || bakeSpec.source.kind == VatSourceKind::Pose ? clip.origin : clip.name;
+            if (std::find(ours.clips.begin(), ours.clips.end(), name) == ours.clips.end()) ours.clips.push_back(name);
+        }
     }
     if (!bakeSpec.output.empty()){
         fs::path given = FileUtils::pathFromUtf8(bakeSpec.output);
@@ -933,18 +972,31 @@ bool VatBakeSession::plannedOutput(std::string& vatPath, bool& rewrite, std::str
     }
 }
 
-bool VatBakeSession::write(VatWriteResult& out, std::string& error){
+bool VatBakeSession::write(VatWriteResult& out, std::string& error, VatIssue* issue){
     out = VatWriteResult();
-    if (bakeState != VatBakeState::Done){
-        error = "nothing baked yet: bake first";
+    // every refusal as an issue too (the MCP tool reports kind and fix)
+    auto refuse = [&](const std::string& kind, const std::string& message, const std::string& fix){
+        error = message;
+        if (issue) *issue = makeIssue(kind, true, message, fix);
         return false;
+    };
+    if (bakeState != VatBakeState::Done){
+        return refuse("invalid_settings", "nothing baked yet: bake first", "bake first");
+    }
+    // placing next to a GameObject source: its scene open (by id) and the GameObject there, now
+    // (a result kept since the bake, or an async bake whose scene was closed meanwhile); files
+    // only need nothing of the scene
+    const std::string gone = bakeSpec.place == VatPlace::None ? std::string() : sourceGone();
+    if (!gone.empty()){
+        return refuse("invalid_source", gone + " since the bake: bake again", "bake again");
     }
     std::string relative;
     bool rewrite = false;
-    if (!plannedOutput(relative, rewrite, error)) return false;
+    if (!plannedOutput(relative, rewrite, error)){
+        return refuse(error.find("exists") != std::string::npos ? "output_exists" : "invalid_settings", error,
+                      "pass overwrite, or choose another output");
+    }
     const fs::path absolute = (project->getProjectPath() / FileUtils::pathFromUtf8(relative)).lexically_normal();
-    const fs::path dir = absolute.parent_path();
-    const std::string stem = FileUtils::pathToUtf8(absolute.stem());
 
     VatData data = bakeResult.data;
     VatData old;
@@ -962,13 +1014,15 @@ bool VatBakeSession::write(VatWriteResult& out, std::string& error){
                 }
             }
         }else{
+            // a bake of the same clips again: by name only (renamed clips are an explicit
+            // Rebake's, which matches them in order)
             std::vector<std::string> names;
             std::vector<float> lengths;
             for (const VatClip& clip : data.clips){
                 names.push_back(clip.name);
                 lengths.push_back(clip.length());
             }
-            match = matchClips(old.clips, names, lengths);
+            match = matchClips(old.clips, names, lengths, false);
         }
         std::set<std::string> used;
         for (size_t i = 0; i < data.clips.size(); i++){
@@ -984,6 +1038,8 @@ bool VatBakeSession::write(VatWriteResult& out, std::string& error){
             // (an explicit "interpolation off" of this bake wins over the file's)
             const VatClipOverride* override = i < bakeResult.sourceClips.size() ? overrideFor(bakeSpec, bakeResult.sourceClips[i]) : nullptr;
             if (!override || override->interpolate) clip.interpolate = previous.interpolate;
+            // a wrap edited in the file (once / clamp forever / ping-pong: the rows of a
+            // non-loop clip) stays; loop and the others are sampled differently
             if ((previous.wrap == ClipWrapMode::Loop) == (clip.wrap == ClipWrapMode::Loop)) clip.wrap = previous.wrap;
             used.insert(clip.name);
         }
@@ -995,27 +1051,17 @@ bool VatBakeSession::write(VatWriteResult& out, std::string& error){
         data.unknownKeys = old.unknownKeys;
     }
 
-    // embedded textures next to the .vat
-    std::vector<CreateVatCmd::File> files;
-    std::vector<std::string> images;
-    for (const VatEmbeddedImage& image : bakeResult.embeddedImages){
-        fs::path file;
-        for (int n = 1;; n++){
-            file = dir / FileUtils::pathFromUtf8(stem + "_" + image.name + (n > 1 ? " " + std::to_string(n) : std::string()) + image.extension);
-            std::string current;
-            // a free name, the same bytes, or (rebaking) the file this bake wrote before
-            if (!fileExists(file) || rewrite || (clipui::readWholeFile(file, current) && current == image.bytes)) break;
-        }
-        images.push_back(FileUtils::pathToUtf8(file));
-        files.push_back({file, image.bytes});
-    }
+    // images the source held inside go inside the .vat.glb: no file next to it
     VatMeshData mesh = bakeResult.mesh;
-    resolveEmbedded(mesh, images);
+    mesh.images = bakeResult.embeddedImages;
 
     VatEncodedFiles encoded;
-    if (!encodeVatFiles(FileUtils::pathToUtf8(absolute), data, mesh, bakeResult.payload(), bakeResult.sockets, encoded, &error)) return false;
-    files.insert(files.begin(), {FileUtils::pathFromUtf8(encoded.meshPath), std::string(encoded.glbBytes.begin(), encoded.glbBytes.end())});
-    files.insert(files.begin(), {absolute, encoded.vatText});
+    if (!encodeVatFiles(FileUtils::pathToUtf8(absolute), data, mesh, bakeResult.payload(), bakeResult.sockets, encoded, &error)){
+        return refuse("write_failed", error, "bake again; report it if it persists");
+    }
+    std::vector<CreateVatCmd::File> files;
+    files.push_back({absolute, encoded.vatText});
+    files.push_back({FileUtils::pathFromUtf8(encoded.meshPath), std::string(encoded.glbBytes.begin(), encoded.glbBytes.end())});
 
     out.vat = relative;
     out.mesh = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(FileUtils::pathFromUtf8(encoded.meshPath)));
@@ -1034,8 +1080,8 @@ bool VatBakeSession::write(VatWriteResult& out, std::string& error){
         });
         command->reportFailureTo(failureText);
         if (!project->getProjectCommandHistory()->addCommand(command)){
-            error = failureText->empty() ? std::string("the files could not be written") : *failureText;
-            return false;
+            return refuse("write_failed", failureText->empty() ? std::string("the files could not be written") : *failureText,
+                          "check the folder's permissions and free space");
         }
         return true;
     }
@@ -1047,38 +1093,48 @@ bool VatBakeSession::write(VatWriteResult& out, std::string& error){
     if (placement.mode == VatPlacement::Mode::Crowd){
         const std::string problem = crowdPlacementProblem(bakeSpec.crowd);
         if (!problem.empty()){
-            error = problem;
-            return false;
+            return refuse("invalid_settings", problem, "give a crowd count of 1 to " + std::to_string(MAX_CROWD) + " and an area over 0 m");
         }
-        placement.crowd = crowdPlacement(bakeSpec.crowd);
     }
     uint32_t sceneId = 0;
+    Quaternion sourceRotation;
+    Vector3 sourceScale(1.0f, 1.0f, 1.0f);
     if (!target->scratch()){
         sceneId = target->sceneId;
-        Scene* scene = target->scene;
+        Scene* scene = project->getScene(sceneId)->scene;     // sourceGone() checked it is open
         const Transform& transform = scene->getComponent<Transform>(target->root);
         placement.parent = transform.parent;
         placement.position = transform.position;
         placement.rotation = transform.rotation;
         placement.scale = transform.scale;
+        sourceRotation = transform.rotation;
+        sourceScale = transform.scale;
         placement.source = target->root;
         placement.name = scene->getEntityName(target->root) + " (VAT)";
     }else{
         if (placement.mode == VatPlacement::Mode::Replace){
-            error = "place replace needs a GameObject source";
-            return false;
+            return refuse("invalid_settings", "place replace needs a GameObject source", "use place beside");
         }
         sceneId = project->getSelectedSceneId();
         placement.name = target->stem + " (VAT)";
     }
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene){
-        error = "no open scene to place the result in";
-        return false;
+        return refuse("invalid_settings", "no open scene to place the result in", "open a 3D scene, or bake with place none");
+    }
+    if (sceneProject->sceneType != SceneType::SCENE_3D){
+        return refuse("invalid_settings", "a Vertex Animation plays in a 3D scene: '" + sceneProject->name + "' is 2D",
+                      "bake with place none, or place it in a 3D scene");
     }
     if (sceneProject->playState != ScenePlayState::STOPPED){
-        error = "the scene is playing: stop play mode to place the result";
-        return false;
+        return refuse("scene_playing", "the scene is playing: stop play mode to place the result", "stop play mode");
+    }
+    if (placement.mode == VatPlacement::Mode::Crowd){
+        // the crowd's GameObject unrotated and unscaled, so its area is in metres; each
+        // instance carries the source's rotation and scale (a 0.01-scale FBX stays its size)
+        placement.rotation = Quaternion();
+        placement.scale = Vector3(1.0f, 1.0f, 1.0f);
+        placement.crowd = crowdPlacement(bakeSpec.crowd, sourceRotation, sourceScale);
     }
     placement.model = ClipConverters::assetRelative(project, FileUtils::pathFromUtf8(encoded.meshPath));
     placement.animation = ClipConverters::assetRelative(project, absolute);
@@ -1088,8 +1144,7 @@ bool VatBakeSession::write(VatWriteResult& out, std::string& error){
     command->reportFailureTo(failureText);
     CommandHistory* history = CommandHandle::get(sceneId);
     if (!history->addCommand(command)){
-        error = failureText->empty() ? std::string("the bake could not be placed") : *failureText;
-        return false;
+        return refuse("write_failed", failureText->empty() ? std::string("the bake could not be placed") : *failureText, "bake again");
     }
     out.sceneId = sceneId;
     out.entity = command->getEntity();
@@ -1106,8 +1161,11 @@ std::string crowdPlacementProblem(const VatCrowd& crowd){
     return "";
 }
 
-std::function<bool(Project*, uint32_t, Entity, std::vector<Command*>&, std::string&)> crowdPlacement(const VatCrowd& crowd){
-    return [crowd](Project* project, uint32_t sceneId, Entity entity, std::vector<Command*>& commands, std::string& error){
+std::function<bool(Project*, uint32_t, Entity, std::vector<Command*>&, std::string&)> crowdPlacement(const VatCrowd& crowd,
+                                                                                                    const Quaternion& instanceRotation,
+                                                                                                    const Vector3& instanceScale){
+    return [crowd, instanceRotation, instanceScale](Project* project, uint32_t sceneId, Entity entity, std::vector<Command*>& commands,
+                                                    std::string& error){
         const std::string problem = crowdPlacementProblem(crowd);
         if (!problem.empty()){
             error = problem;
@@ -1127,8 +1185,8 @@ std::function<bool(Project*, uint32_t, Entity, std::vector<Command*>&, std::stri
         for (const CrowdInstanceSpec& spec : layout.instances){
             InstanceData data;
             data.position = spec.position;
-            data.rotation = spec.rotation;
-            data.scale = spec.scale;
+            data.rotation = spec.rotation * instanceRotation;
+            data.scale = Vector3(spec.scale.x * instanceScale.x, spec.scale.y * instanceScale.y, spec.scale.z * instanceScale.z);
             instances.push_back(data);
         }
         commands.push_back(new AddComponentCmd(project, sceneId, entity, ComponentType::InstancedMeshComponent));
@@ -1181,7 +1239,9 @@ std::vector<VatIssue> checkVatStaleness(Project* project, const std::string& vat
         out.push_back(makeIssue("vat-mesh-mismatch", true, "the mesh '" + data.mesh + "' doesn't hold a payload: " + error, rebake));
         return out;
     }
-    if (contents.layoutHash != data.layout.layoutHash || computeLayoutHash(data) != data.layout.layoutHash){
+    // the stored hash against the glb's, as the pool loads it (clips removed by hand leave the
+    // stored hash as baked: recomputing it over the remaining clips would differ)
+    if (contents.layoutHash != data.layout.layoutHash){
         out.push_back(makeIssue("vat-layout-mismatch", true, "'" + relative + "' and its mesh '" + data.mesh +
                                 "' describe different layouts (a generated field changed, or the files come from two bakes)", rebake));
         return out;

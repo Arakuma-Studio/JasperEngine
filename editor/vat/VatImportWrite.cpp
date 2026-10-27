@@ -143,6 +143,14 @@ bool writeVatImport(Project* project, VatImportResult& result, const VatImportDe
         error = "crowd placement is not available";
         return false;
     }
+    if (options.place != VatPlace::None && project){
+        // refused before anything is written: the scene it would go to must take a Vertex Animation
+        SceneProject* destination = project->getScene(project->getSelectedSceneId());
+        if (destination && destination->sceneType != SceneType::SCENE_3D){
+            error = "a Vertex Animation plays in a 3D scene: '" + destination->name + "' is 2D (import with place none, or select a 3D scene)";
+            return false;
+        }
+    }
     std::string relative;
     bool rewrite = false;
     if (!plannedImportOutput(project, result, detection, options, relative, rewrite, error)) return false;

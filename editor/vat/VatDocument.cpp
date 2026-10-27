@@ -199,6 +199,9 @@ namespace {
 
 // ---- static helpers ----
 
+const char* const VatDocument::LOOP_WRAP_REFUSAL =
+    "loop clips are sampled without a duplicate end frame: change the wrap in the baker and rebake";
+
 void VatDocument::setFilesWrittenHook(std::function<void(const std::vector<fs::path>&)> hook){
     registry().filesWrittenHook = std::move(hook);
 }
@@ -228,13 +231,20 @@ std::string VatDocument::generatedChange(const jv::VatData& current, const jv::V
         }
         if (it->frames != clip.frames) return path + ".frames";
         if (it->fps != clip.fps) return path + ".fps";
+        // a loop clip has no duplicate end frame, the others do: their rows can't swap
+        auto loops = [](ClipWrapMode wrap){ return wrap == ClipWrapMode::Loop || wrap == ClipWrapMode::Default; };
+        if (loops(it->wrap) != loops(clip.wrap)) return path + ".wrap (" + LOOP_WRAP_REFUSAL + ")";
         if (it->restNone != clip.restNone) return path + ".rest";
         if (!sameBounds(it->bounds, clip.bounds)) return path + ".bounds";
     }
-    // sockets are rows of the payload's socket tracks, in order: names may change, nothing else
+    // sockets find their track column by path (recipe.sockets): names and order may change,
+    // their paths may not (each baked socket once, none added)
     if (current.sockets.size() != edited.sockets.size()) return "sockets (count)";
+    std::set<std::string> paths;
     for (size_t i = 0; i < edited.sockets.size(); i++){
-        if (current.sockets[i].path != edited.sockets[i].path) return "sockets[" + std::to_string(i) + "].path";
+        const std::string& path = edited.sockets[i].path;
+        const bool baked = std::any_of(current.sockets.begin(), current.sockets.end(), [&](const jv::VatSocket& s){ return s.path == path; });
+        if (!baked || !paths.insert(path).second) return "sockets[" + std::to_string(i) + "].path";
     }
     return std::string();
 }
@@ -474,6 +484,10 @@ bool VatDocument::commit(const jv::VatData& newData, const std::string& undoName
     }
     const std::string generated = generatedChange(current, newData);
     if (!generated.empty()){
+        const size_t wrap = generated.find(".wrap (");
+        if (wrap != std::string::npos){
+            return fail(error, generated.substr(0, wrap + 5) + ": " + LOOP_WRAP_REFUSAL);
+        }
         return fail(error, "generated field " + generated + " can't be edited: rebake (Inspector > Rebake, or "
                            "bake_vertex_animation {rebake})");
     }

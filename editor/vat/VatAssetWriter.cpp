@@ -8,7 +8,9 @@
 #include "tiny_gltf.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cfloat>
+#include <cstdlib>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
@@ -125,6 +127,23 @@ namespace{
             return index;
         }
 
+        // one image (a bufferView of the glb) + texture per embedded image
+        int embeddedTextureFor(const editor::vat::VatImageData& source, size_t index){
+            auto cached = embedded.find(index);
+            if (cached != embedded.end()) return cached->second;
+            tinygltf::Image image;
+            image.name = source.name;
+            image.mimeType = source.mimeType;
+            image.bufferView = addView(source.bytes.data(), source.bytes.size(), 0);
+            model.images.push_back(image);
+            tinygltf::Texture texture;
+            texture.source = (int)model.images.size() - 1;
+            model.textures.push_back(texture);
+            const int textureIndex = (int)model.textures.size() - 1;
+            embedded[index] = textureIndex;
+            return textureIndex;
+        }
+
         std::vector<uint8_t> write(){
             tinygltf::TinyGLTF writer;
             // the default image writer cuts a URI down to its file name: keep it as given
@@ -141,6 +160,7 @@ namespace{
 
     private:
         std::map<std::string, int> textures;
+        std::map<size_t, int> embedded;
     };
 
     // the URI of an absolute texture file relative to the glb's directory; false when there is none
@@ -157,8 +177,8 @@ namespace{
         return true;
     }
 
-    bool buildMaterial(GlbWriter& glb, const editor::vat::VatMaterialData& source, const fs::path& glbDir,
-                       tinygltf::Material& material, std::string* error){
+    bool buildMaterial(GlbWriter& glb, const editor::vat::VatMaterialData& source, const std::vector<editor::vat::VatImageData>& images,
+                       const fs::path& glbDir, tinygltf::Material& material, std::string* error){
         material.name = source.name;
         material.pbrMetallicRoughness.baseColorFactor.assign(source.baseColor, source.baseColor + 4);
         material.pbrMetallicRoughness.metallicFactor = source.metallic;
@@ -170,6 +190,17 @@ namespace{
         material.alphaMode = source.alphaMode;
         material.alphaCutoff = source.alphaCutoff;
         material.doubleSided = source.doubleSided;
+        if (source.unlit){
+            material.extensions["KHR_materials_unlit"] = tinygltf::Value(tinygltf::Value::Object());
+            if (std::find(glb.model.extensionsUsed.begin(), glb.model.extensionsUsed.end(), "KHR_materials_unlit") == glb.model.extensionsUsed.end()){
+                glb.model.extensionsUsed.push_back("KHR_materials_unlit");
+            }
+        }
+        if (source.foliageTransmission > 0.0f){
+            tinygltf::Value::Object extras;
+            extras["jasperengine_foliage_transmission"] = tinygltf::Value((double)source.foliageTransmission);
+            material.extras = tinygltf::Value(std::move(extras));
+        }
         struct Slot{
             const std::string* file;
             int* index;
@@ -183,6 +214,18 @@ namespace{
         };
         for (const Slot& slot : slots){
             if (slot.file->empty()) continue;
+            const std::string prefix = editor::vat::VAT_EMBEDDED_TEXTURE;
+            if (slot.file->compare(0, prefix.size(), prefix) == 0){
+                const std::string number = slot.file->substr(prefix.size());
+                const bool digits = !number.empty() && std::all_of(number.begin(), number.end(), [](unsigned char c){ return std::isdigit(c) != 0; });
+                const size_t index = digits ? (size_t)std::strtoull(number.c_str(), nullptr, 10) : images.size();
+                if (index >= images.size() || images[index].bytes.empty()){
+                    return fail(error, "material \"" + source.name + "\": texture " + *slot.file + " names no embedded image (" +
+                                std::to_string(images.size()) + " given)");
+                }
+                *slot.index = glb.embeddedTextureFor(images[index], index);
+                continue;
+            }
             std::string uri;
             if (!textureUri(*slot.file, glbDir, uri, error)) return false;
             *slot.index = glb.textureFor(uri);
@@ -345,7 +388,7 @@ bool encodeVatFiles(const std::string& vatPath, jasperengine::vat::VatData& data
 
     for (const VatMaterialData& source : mesh.materials){
         tinygltf::Material material;
-        if (!buildMaterial(glb, source, glbDir, material, error)) return false;
+        if (!buildMaterial(glb, source, mesh.images, glbDir, material, error)) return false;
         model.materials.push_back(std::move(material));
     }
 

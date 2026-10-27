@@ -238,11 +238,16 @@ async def test_write_default_rewrite_and_free_name():
     check(vat["recipe"]["sources"][0]["kind"] == "model" and vat["recipe"]["sources"][0]["path"] == ARM, f"recipe: {vat['recipe']}")
     check(vat["layout"]["height"] == data["report"]["texture"]["height"], "the report describes the written file")
 
-    # the same source again, no --output: the same file rewritten, same GUID
-    data = bake(proj, "--source", ARM, "--clips", "Swing")
+    # the same source and clips again, no --output: the same file rewritten, same GUID
+    data = bake(proj, "--source", ARM)
     check(data["written"]["vat"] == ARM_VAT and data["written"]["rewritten"] is True and data["written"]["guid"] == vat["guid"],
           f"rewrites the default file: {data['written']}")
-    check([c["name"] for c in read_vat(proj, ARM_VAT)["clips"]] == ["Swing"], "the rewrite holds the new bake")
+    # other clips of the same model: another asset, the first one untouched
+    data = bake(proj, "--source", ARM, "--clips", "Swing")
+    check(data["written"]["vat"] == "assets/models/rigid_arm 2.vat" and data["written"]["rewritten"] is False,
+          f"another clip set takes a free name: {data['written']}")
+    check([c["name"] for c in read_vat(proj, ARM_VAT)["clips"]] == ["Swing", "Stretch"], "the first bake is untouched")
+    check([c["name"] for c in read_vat(proj, "assets/models/rigid_arm 2.vat")["clips"]] == ["Swing"], "the new bake")
     # a dry run says it would rewrite
     data = bake(proj, "--source", ARM, "--dry-run")
     check(data["output"] == {"vat": ARM_VAT, "rewrite": True}, f"planned rewrite: {data['output']}")

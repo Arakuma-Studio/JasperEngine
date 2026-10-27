@@ -134,6 +134,32 @@ namespace{
         }
     }
 
+    bool underRoot(Scene* scene, Entity entity, Entity root){
+        Entity current = entity;
+        for (int depth = 0; current != NULL_ENTITY && depth < 65536; depth++){
+            if (current == root) return true;
+            const Transform* transform = scene->findComponent<Transform>(current);
+            if (!transform) return false;
+            current = transform->parent;
+        }
+        return false;
+    }
+
+    // the model files of every Model at or under the root: the meshes a hierarchy bake reads
+    // (the scene file itself is not a source: saving it changes nothing the bake read)
+    void addHierarchyHashes(Project* project, VatBakeTarget& target){
+        Scene* scene = target.scene;
+        auto models = scene->getComponentArray<ModelComponent>();
+        for (size_t i = 0; i < models->size(); i++){
+            const ModelComponent& model = models->getComponentFromIndex(i);
+            if (model.filename.empty() || !underRoot(scene, models->getEntity(i), target.root)) continue;
+            const fs::path file = project->resolveAssetPath(FileUtils::pathFromUtf8(model.filename)).lexically_normal();
+            std::error_code ec;
+            if (!fs::is_regular_file(file, ec)) continue;
+            addModelHashes(target, project, FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(file)), file);
+        }
+    }
+
     std::string assetRelative(Project* project, const fs::path& absolute){
         return ClipConverters::assetRelative(project, absolute);
     }
@@ -255,11 +281,8 @@ namespace{
         target.root = entity;
         target.sceneFile = sceneName;
         fs::path sceneFile;
-        if (!sceneName.empty()){
-            sceneFile = (project->getProjectPath() / FileUtils::pathFromUtf8(sceneName)).lexically_normal();
-            std::error_code ec;
-            if (fs::is_regular_file(sceneFile, ec)) addHash(target, sceneName, sceneFile);
-        }
+        if (!sceneName.empty()) sceneFile = (project->getProjectPath() / FileUtils::pathFromUtf8(sceneName)).lexically_normal();
+        addHierarchyHashes(project, target);
         target.stem = target.scene->getEntityName(entity);
         // next to its model when it has one, else next to the scene (inside assets), else assets/
         target.directory.clear();
@@ -267,7 +290,6 @@ namespace{
             if (!model->filename.empty()){
                 const fs::path file = project->resolveAssetPath(FileUtils::pathFromUtf8(model->filename)).lexically_normal();
                 target.directory = parentOf(FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(file)));
-                addModelHashes(target, project, FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(file)), file);
             }
         }
         if (target.directory.empty() && !sceneName.empty() && project->isInsideAssetsPath(sceneFile)) target.directory = parentOf(sceneName);
@@ -295,6 +317,7 @@ namespace{
                 return false;
             }
             addHash(target, relative, absolute);
+            addHierarchyHashes(project, target);
         }else if (anim::isModelFilePath(relative)){
             const std::string asset = assetRelative(project, absolute);
             if (!project->prepareModelFile(asset)){
@@ -540,7 +563,12 @@ bool resolveVatSource(Project* project, const VatSourceSpec& spec, VatBakeTarget
                                                                       : "choose a source with animations"));
         return false;
     }
-    if (target.directory.empty()) target.directory = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(project->getAssetsPath()));
+    // the default output stays inside the assets folder: a source outside it (models/hero.gltf)
+    // bakes to the same folder under assets/ (assets/models/hero.vat)
+    const std::string assets = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(project->getAssetsPath()));
+    if (!project->isInsideAssetsPath((project->getProjectPath() / FileUtils::pathFromUtf8(target.directory)).lexically_normal())){
+        target.directory = target.directory.empty() ? assets : assets + "/" + target.directory;
+    }
     return true;
 }
 
@@ -582,11 +610,17 @@ namespace{
         return true;
     }
 
-    std::string extensionForMime(const std::string& mime, const std::string& bytes){
-        if (mime == "image/jpeg" || (bytes.size() > 2 && (unsigned char)bytes[0] == 0xff && (unsigned char)bytes[1] == 0xd8)) return ".jpg";
-        if (mime == "image/webp") return ".webp";
-        if (mime == "image/ktx2") return ".ktx2";
-        return ".png";
+    // the MIME type of an encoded image: the one given, else from its first bytes
+    std::string imageMime(const std::string& given, const std::string& bytes){
+        if (!given.empty()) return given;
+        auto starts = [&](const char* magic, size_t size, size_t at = 0){
+            return bytes.size() >= at + size && bytes.compare(at, size, magic, size) == 0;
+        };
+        if (starts("\x89PNG", 4)) return "image/png";
+        if (starts("\xff\xd8", 2)) return "image/jpeg";
+        if (starts("RIFF", 4) && starts("WEBP", 4, 8)) return "image/webp";
+        if (starts("\xabKTX 20", 7)) return "image/ktx2";
+        return "image/png";
     }
 
     // the glTF model files parsed for their images (no decoding), per material conversion run
@@ -604,15 +638,6 @@ namespace{
         }
     };
 
-    std::string sanitize(const std::string& name){
-        std::string out;
-        for (char c : name){
-            const unsigned char u = (unsigned char)c;
-            out += (std::isalnum(u) || c == '-' || c == '_') ? c : '_';
-        }
-        return out.empty() ? std::string("texture") : out;
-    }
-
     class MaterialConverter{
     public:
         Project* project;
@@ -621,10 +646,15 @@ namespace{
         std::map<std::string, std::string> embeddedByKey;      // "<file>|<image>" -> placeholder
         std::vector<std::string> notes;                         // material_simplified messages
         std::vector<std::string> forks;                         // materials_not_vat_ready messages
+        std::vector<std::string> files;                         // the texture files referenced (absolute)
 
         MaterialConverter(Project* project, std::vector<VatEmbeddedImage>& embedded): project(project), embedded(embedded){}
 
-        // "" (none), an absolute file, or an embedded placeholder
+        void addFile(const std::string& file){
+            if (std::find(files.begin(), files.end(), file) == files.end()) files.push_back(file);
+        }
+
+        // "" (none), an absolute file, or an embedded placeholder (VAT_EMBEDDED_TEXTURE + index)
         std::string texture(const Texture& texture, const std::string& material, const char* slot){
             if (texture.empty()) return "";
             const std::string& id = texture.getId();
@@ -639,16 +669,24 @@ namespace{
                     return "";
                 }
                 const tinygltf::Image& source = model->images[(size_t)image];
-                if (!source.uri.empty() && source.uri.compare(0, 5, "data:") != 0){
-                    return FileUtils::pathToUtf8((fs::path(FileUtils::pathFromUtf8(file)).parent_path() /
-                                                  FileUtils::pathFromUtf8(decodeUri(source.uri))).lexically_normal());
+                // a file of its own (MeshSystem::parseGLTFFile reads no image file, its bytes stay
+                // empty): referenced by its path
+                if (source.image.empty() && source.bufferView < 0 && !source.uri.empty() && source.uri.compare(0, 5, "data:") != 0){
+                    const std::string path = FileUtils::pathToUtf8((fs::path(FileUtils::pathFromUtf8(file)).parent_path() /
+                                                                    FileUtils::pathFromUtf8(decodeUri(source.uri))).lexically_normal());
+                    addFile(path);
+                    return path;
                 }
+                // held inside the model (a buffer view, a data: URI): stored inside the .vat.glb
                 const std::string key = file + "|" + std::to_string(image);
                 auto known = embeddedByKey.find(key);
                 if (known != embeddedByKey.end()) return known->second;
                 std::string bytes;
                 std::string mime = source.mimeType;
-                if (source.bufferView >= 0 && (size_t)source.bufferView < model->bufferViews.size()){
+                if (!source.image.empty()){
+                    // SetImagesAsIs: a buffer view's or a data: URI's bytes, still encoded
+                    bytes.assign(source.image.begin(), source.image.end());
+                }else if (source.bufferView >= 0 && (size_t)source.bufferView < model->bufferViews.size()){
                     const tinygltf::BufferView& view = model->bufferViews[(size_t)source.bufferView];
                     if (view.buffer >= 0 && (size_t)view.buffer < model->buffers.size() &&
                         view.byteOffset + view.byteLength <= model->buffers[(size_t)view.buffer].data.size()){
@@ -660,7 +698,7 @@ namespace{
                     const std::string header = source.uri.substr(5, comma == std::string::npos ? 0 : comma - 5);
                     if (comma != std::string::npos && header.find(";base64") != std::string::npos){
                         decodeBase64(source.uri.substr(comma + 1), bytes);
-                        mime = header.substr(0, header.find(';'));
+                        if (mime.empty()) mime = header.substr(0, header.find(';'));
                     }
                 }
                 if (bytes.empty()){
@@ -668,8 +706,8 @@ namespace{
                     return "";
                 }
                 VatEmbeddedImage out;
-                out.name = sanitize(source.name.empty() ? material + "_" + slot : source.name);
-                out.extension = extensionForMime(mime, bytes);
+                out.name = source.name.empty() ? material + " " + slot : source.name;
+                out.mimeType = imageMime(mime, bytes);
                 out.bytes = std::move(bytes);
                 embedded.push_back(std::move(out));
                 const std::string placeholder = std::string(VAT_EMBEDDED_TEXTURE) + std::to_string(embedded.size() - 1);
@@ -683,13 +721,16 @@ namespace{
             }
             fs::path file = FileUtils::pathFromUtf8(path);
             if (!file.is_absolute()) file = project->resolveAssetPath(file);
-            return FileUtils::pathToUtf8(file.lexically_normal());
+            const std::string absolute = FileUtils::pathToUtf8(file.lexically_normal());
+            addFile(absolute);
+            return absolute;
         }
 
-        VatMaterialData convert(const Submesh& submesh, int index){
+        // `sourceName`: the material's name in the model file it came from ("" when unknown)
+        VatMaterialData convert(const Submesh& submesh, int index, const std::string& sourceName){
             const Material& material = submesh.material;
             VatMaterialData out;
-            out.name = material.name.empty() ? "Material " + std::to_string(index) : material.name;
+            out.name = !material.name.empty() ? material.name : !sourceName.empty() ? sourceName : "Material " + std::to_string(index);
             out.baseColor[0] = material.baseColorFactor.x;
             out.baseColor[1] = material.baseColorFactor.y;
             out.baseColor[2] = material.baseColorFactor.z;
@@ -707,6 +748,8 @@ namespace{
                 default: out.alphaMode = material.baseColorFactor.w < 1.0f ? "BLEND" : "OPAQUE"; break;
             }
             out.doubleSided = material.cullMode == MaterialCullMode::OFF || !submesh.faceCulling;
+            out.unlit = material.lighting == MaterialLighting::NONE;
+            out.foliageTransmission = material.foliageTransmission;
             out.baseColorTexture = texture(material.baseColorTexture, out.name, "base colour");
             out.normalTexture = texture(material.normalTexture, out.name, "normal");
             out.metallicRoughnessTexture = texture(material.metallicRoughnessTexture, out.name, "metallic-roughness");
@@ -721,12 +764,73 @@ namespace{
                                     "', which the .vat.glb can't carry: the VAT mesh draws with the built-in Lit material");
                 }
             }
-            if (material.stochasticTiling) notes.push_back("'" + out.name + "' loses Stochastic Tiling");
+            if (out.unlit){
+                notes.push_back("'" + out.name + "' draws unlit (Lighting None): the .vat.glb marks it KHR_materials_unlit, which the "
+                                "engine loads lit: set Lighting to None on the placed object's material");
+            }
+            // what a glTF material has no slot for
+            std::vector<std::string> lost;
+            if (material.lighting == MaterialLighting::VERTEX) lost.push_back("Lighting Vertex");
+            if (material.lighting == MaterialLighting::MIXED) lost.push_back("Lighting Mixed");
+            if (material.stochasticTiling) lost.push_back("Stochastic Tiling");
+            if (material.blendMode != MaterialBlendMode::AUTO) lost.push_back("its blend mode");
+            if (material.cullMode == MaterialCullMode::FRONT) lost.push_back("front-face culling");
+            if (material.depthWrite != MaterialDepthWrite::AUTO) lost.push_back("its depth write");
+            if (material.depthTest != MaterialDepthTest::AUTO) lost.push_back("its depth test");
+            if (material.depthOffsetFactor != 0.0f || material.depthOffsetUnits != 0.0f) lost.push_back("its depth offset");
+            if (material.stencil.compare != MaterialStencilCompare::AUTO) lost.push_back("its stencil");
+            if (material.colorWrite != -1) lost.push_back("its colour write mask");
+            if (material.sortPriority != 0) lost.push_back("its sort priority (" + std::to_string(material.sortPriority) + ")");
+            if (!material.extraPass->shader.empty()) lost.push_back("its extra pass (" + material.extraPass->shader + ")");
+            if (!lost.empty()){
+                std::string list;
+                for (size_t i = 0; i < lost.size(); i++) list += (i ? ", " : "") + lost[i];
+                notes.push_back("'" + out.name + "' loses " + list + ": a glTF material has no slot for it");
+            }
             if (material.baseColorTexCoord != 0 || material.normalTexCoord != 0 || material.metallicRoughnessTexCoord != 0 ||
                 material.occlusionTexCoord != 0 || material.emissiveTexCoord != 0){
                 notes.push_back("'" + out.name + "' samples a texture with its second UV set: the .vat.glb uses the first");
             }
             return out;
+        }
+
+        // the name of the glTF material submesh `submesh` of `entity` came from: its model's file
+        // (the nearest Model at or above it), its glTF node (meshNodesMapping, or the one mesh node
+        // of a model its root draws) and that node's primitive; "" when unknown (merged models,
+        // FBX imports, meshes made in the editor)
+        std::string sourceName(Scene* scene, Entity entity, unsigned int submesh){
+            Entity owner = entity;
+            const ModelComponent* model = nullptr;
+            for (int depth = 0; owner != NULL_ENTITY && depth < 65536; depth++){
+                model = scene->findComponent<ModelComponent>(owner);
+                if (model && !model->filename.empty()) break;
+                model = nullptr;
+                const Transform* transform = scene->findComponent<Transform>(owner);
+                owner = transform ? transform->parent : NULL_ENTITY;
+            }
+            if (!model || model->mergeStaticMeshes) return "";
+            const std::string extension = extensionOf(model->filename);
+            if (extension != ".gltf" && extension != ".glb") return "";
+            const std::string file = FileUtils::pathToUtf8(project->resolveAssetPath(FileUtils::pathFromUtf8(model->filename)).lexically_normal());
+            tinygltf::Model* gltf = images.get(file);
+            if (!gltf) return "";
+            int node = -1;
+            for (const auto& entry : model->meshNodesMapping){
+                if (entry.second == entity) node = entry.first;
+            }
+            if (node < 0 && entity == owner){
+                for (size_t n = 0; n < gltf->nodes.size(); n++){
+                    if (gltf->nodes[n].mesh < 0) continue;
+                    if (node >= 0) return "";       // several mesh nodes drawn by the root
+                    node = (int)n;
+                }
+            }
+            if (node < 0 || (size_t)node >= gltf->nodes.size()) return "";
+            const int mesh = gltf->nodes[(size_t)node].mesh;
+            if (mesh < 0 || (size_t)mesh >= gltf->meshes.size() || submesh >= gltf->meshes[(size_t)mesh].primitives.size()) return "";
+            const int material = gltf->meshes[(size_t)mesh].primitives[submesh].material;
+            if (material < 0 || (size_t)material >= gltf->materials.size()) return "";
+            return gltf->materials[(size_t)material].name;
         }
     };
 
@@ -792,7 +896,8 @@ bool VatPoser::begin(VatBakeTarget& bakeTarget, const std::vector<std::string>& 
         for (const cpuskin::CpuSkinSubmesh& submesh : renderer.source.submeshes){
             int material = -1;
             if (submesh.submesh < mesh->numSubmeshes){
-                materials.push_back(converter.convert(mesh->submeshes[submesh.submesh], (int)materials.size()));
+                materials.push_back(converter.convert(mesh->submeshes[submesh.submesh], (int)materials.size(),
+                                                      converter.sourceName(scene, entity, submesh.submesh)));
                 material = (int)materials.size() - 1;
             }
             renderer.submeshMaterial.push_back(material);
@@ -824,6 +929,15 @@ bool VatPoser::begin(VatBakeTarget& bakeTarget, const std::vector<std::string>& 
     if (instanced){
         warnings.push_back({"not_converted", "an Instanced Mesh under the source bakes its mesh once, not its copies",
                             "bake the single object, then place copies with crowd", false, {}});
+    }
+    // the texture files the materials read are sources too
+    for (const std::string& file : converter.files){
+        const fs::path absolute = FileUtils::pathFromUtf8(file);
+        std::error_code ec;
+        if (!fs::is_regular_file(absolute, ec)) continue;
+        const std::string relative = FileUtils::pathToGenericUtf8(target->project->normalizeToProjectRelative(absolute));
+        if (relative.compare(0, 2, "..") == 0 || FileUtils::pathFromUtf8(relative).is_absolute()) continue;
+        addHash(*target, relative, absolute);
     }
     for (const std::string& note : converter.notes){
         warnings.push_back({"material_simplified", note, "set up the material on the placed VAT object if needed", false, {}});

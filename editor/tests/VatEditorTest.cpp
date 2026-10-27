@@ -185,9 +185,13 @@ namespace {
         return data;
     }
 
+    // a change of the quad bake before it is encoded (another wrap, more sockets)
+    using QuadTweak = std::function<void(jv::VatData&, jv::VatSocketTracks&)>;
+
     // the files of the quad bake at `vatPath` (with a material whose base colour is `texture`, an
     // absolute path, when given)
-    ev::VatEncodedFiles encodeQuad(const fs::path& vatPath, const std::string& guid, const fs::path& texture = fs::path()) {
+    ev::VatEncodedFiles encodeQuad(const fs::path& vatPath, const std::string& guid, const QuadTweak& tweak = nullptr,
+                                   const fs::path& texture = fs::path()) {
         jv::VatData data = quadData(guid);
         ev::VatMeshData mesh;
         mesh.positions = {0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0};
@@ -213,20 +217,22 @@ namespace {
             const float row[7] = {(float)f, 0, 0, 0, 0, 0, 1};
             sockets.data.insert(sockets.data.end(), row, row + 7);
         }
+        if (tweak) tweak(data, sockets);
         ev::VatEncodedFiles files;
         std::string error;
         EXPECT_TRUE(ev::encodeVatFiles(vatPath.generic_string(), data, mesh, payload, sockets, files, &error)) << error;
         return files;
     }
 
-    Pair writePair(const std::string& dir, const std::string& stem, const std::string& guid = "", const fs::path& texture = fs::path()) {
+    Pair writePair(const std::string& dir, const std::string& stem, const std::string& guid = "", const QuadTweak& tweak = nullptr,
+                   const fs::path& texture = fs::path()) {
         Pair pair;
         pair.vat = (root() / dir / (stem + ".vat")).lexically_normal();
         pair.mesh = (root() / dir / (stem + ".vat.glb")).lexically_normal();
         pair.relative = dir + "/" + stem + ".vat";
         pair.meshRelative = dir + "/" + stem + ".vat.glb";
         pair.guid = guid.empty() ? AssetDatabase::generateGuid() : guid;
-        const ev::VatEncodedFiles files = encodeQuad(pair.vat, pair.guid, texture);
+        const ev::VatEncodedFiles files = encodeQuad(pair.vat, pair.guid, tweak, texture);
         writeAll(pair.vat, files.vatText);
         writeBytes(pair.mesh, files.glbBytes);
         project()->importPrefabFiles(pair.vat);
@@ -322,7 +328,6 @@ TEST_F(VatEditor, DocumentCommitUndoRedoAndThePool) {
     // an editable change: one project step, canonical text, the GUID kept, the pool dropped
     jv::VatData edited = document->data();
     edited.clips[0].name = "Stroll";
-    edited.clips[0].wrap = ClipWrapMode::PingPong;
     edited.clips[0].speed = 1.5f;
     edited.clips[1].interpolate = false;
     edited.sockets[0].name = "Hand";
@@ -429,6 +434,92 @@ TEST_F(VatEditor, DocumentRefusesGeneratedFieldsAndBadNames) {
     ASSERT_EQ(document->data().clips[0].events.size(), 2u);
     EXPECT_EQ(document->data().clips[0].events[0].function, "onEarly");
     ASSERT_TRUE(history()->undo());
+    ASSERT_TRUE(history()->undo());
+}
+
+// A loop clip's rows have no duplicate end frame, the other wraps' do: loop <-> another wrap is a
+// rebake, once / clamp forever / ping-pong are edits (review 13)
+TEST_F(VatEditor, DocumentWrapsChangeOnlyAmongTheNonLoopOnes) {
+    const std::string dir = folder("wraps");
+    // Idle baked as a once clip (its end frame included)
+    const Pair pair = writePair(dir, "hero", "", [](jv::VatData& data, jv::VatSocketTracks&) {
+        data.clips[1].wrap = ClipWrapMode::Once;
+    });
+    std::shared_ptr<VatDocument> document = openDocument(pair.relative);
+    ASSERT_TRUE(document);
+    std::string error;
+    for (ClipWrapMode wrap : {ClipWrapMode::PingPong, ClipWrapMode::ClampForever, ClipWrapMode::Once}) {
+        jv::VatData data = document->data();
+        data.clips[1].wrap = wrap;
+        EXPECT_TRUE(document->commit(data, "Wrap", "", &error)) << error;
+        EXPECT_EQ(document->data().clips[1].wrap, wrap);
+    }
+    const size_t steps = history()->position();
+    jv::VatData data = document->data();
+    data.clips[1].wrap = ClipWrapMode::Loop;
+    EXPECT_FALSE(document->commit(data, "Wrap", "", &error));
+    EXPECT_EQ(error, std::string("clips[1].wrap: ") + VatDocument::LOOP_WRAP_REFUSAL);
+    data = document->data();
+    data.clips[0].wrap = ClipWrapMode::PingPong;
+    EXPECT_FALSE(document->commit(data, "Wrap", "", &error));
+    EXPECT_NE(error.find("change the wrap in the baker and rebake"), std::string::npos) << error;
+    EXPECT_EQ(history()->position(), steps) << "nothing written";
+    // the same rule for a file written by other means (MCP write_file)
+    data = document->data();
+    data.clips[0].wrap = ClipWrapMode::Once;
+    EXPECT_NE(VatDocument::generatedChange(document->data(), data).find("clips[0].wrap"), std::string::npos);
+    for (int i = 0; i < 3; i++) ASSERT_TRUE(history()->undo());
+}
+
+// Sockets find their column by path: a reorder is an edit, a path change or a new path is not
+// (review 14)
+TEST_F(VatEditor, DocumentSocketsReorderButKeepTheirPaths) {
+    const std::string dir = folder("sockets");
+    // two sockets: Tip (track 0 at x = frame) and Base (track 1 at y = 10 + frame)
+    const Pair pair = writePair(dir, "hero", "", [](jv::VatData& data, jv::VatSocketTracks& sockets) {
+        data.sockets.push_back({"Base", "Quad/Base"});
+        data.recipe.sockets.push_back("Quad/Base");
+        sockets.sockets = 2;
+        sockets.data.clear();
+        for (int f = 0; f < 4; f++) {
+            const float tip[7] = {(float)f, 0, 0, 0, 0, 0, 1};
+            const float base[7] = {0, 10.0f + (float)f, 0, 0, 0, 0, 1};
+            sockets.data.insert(sockets.data.end(), tip, tip + 7);
+            sockets.data.insert(sockets.data.end(), base, base + 7);
+        }
+    });
+    std::shared_ptr<VatDocument> document = openDocument(pair.relative);
+    ASSERT_TRUE(document);
+    ASSERT_EQ(document->data().sockets.size(), 2u);
+    std::string error;
+    jv::VatData data = document->data();
+    std::swap(data.sockets[0], data.sockets[1]);
+    ASSERT_TRUE(document->commit(data, "Reorder Sockets", "", &error)) << error;
+    EXPECT_EQ(document->data().sockets[0].name, "Base");
+    // the reordered file plays each socket from its own track
+    VertexAnimationPool::invalidate(pair.vat.generic_string());
+    std::shared_ptr<const jv::VertexAnimation> asset = VertexAnimationPool::getOrLoad(pair.vat.generic_string(), &error);
+    ASSERT_TRUE(asset) << error;
+    jv::VatTrackPair tracks;
+    tracks.a = {0, 0.0f, 1.0f};
+    Vector3 position;
+    Quaternion rotation;
+    ASSERT_TRUE(asset->sampleSocket(asset->getData().findSocket("Base"), tracks, 0.0f, position, rotation));
+    EXPECT_NEAR(position.y, 10.0f, 1e-5f) << "Base plays its own track";
+    ASSERT_TRUE(asset->sampleSocket(asset->getData().findSocket("Tip"), tracks, 0.0f, position, rotation));
+    EXPECT_NEAR(position.y, 0.0f, 1e-5f);
+    // a path changed, a path twice: refused
+    const size_t steps = history()->position();
+    data = document->data();
+    data.sockets[0].path = "Quad/Elsewhere";
+    EXPECT_FALSE(document->commit(data, "Socket", "", &error));
+    EXPECT_NE(error.find("sockets[0].path"), std::string::npos) << error;
+    data = document->data();
+    data.sockets[1].path = data.sockets[0].path;
+    data.sockets[1].name = "Other";
+    EXPECT_FALSE(document->commit(data, "Socket", "", &error));
+    EXPECT_NE(error.find("sockets[1].path"), std::string::npos) << error;
+    EXPECT_EQ(history()->position(), steps);
     ASSERT_TRUE(history()->undo());
 }
 
@@ -785,7 +876,7 @@ TEST_F(VatEditor, MoveAndCopyKeepTheTextures) {
     const std::string dir = folder("textured");
     const fs::path texture = root() / dir / "Textures" / "hero skin.png";
     writeTexture(texture);
-    const Pair pair = writePair(dir, "hero", "", texture);
+    const Pair pair = writePair(dir, "hero", "", nullptr, texture);
     ASSERT_EQ(imageUri(pair.mesh), "Textures/hero%20skin.png");
     expectTextureLoads(pair.mesh, texture);
     const std::string original = readAll(pair.mesh);
@@ -834,13 +925,13 @@ TEST_F(VatEditor, MoveAndCopyKeepTheTextures) {
     const std::string pack = dir + "/pack";
     const fs::path packTexture = root() / pack / "skin.png";
     writeTexture(packTexture);
-    const Pair packed = writePair(pack, "crate", "", packTexture);
+    const Pair packed = writePair(pack, "crate", "", nullptr, packTexture);
     fs::create_directories(root() / dir / "copies");
     ASSERT_TRUE(history()->addCommand(new CopyFileCmd(project(), {(root() / pack).string()}, (root() / dir / "copies").string(), true)));
     EXPECT_EQ(imageUri(root() / dir / "copies" / "pack" / "crate.vat.glb"), "skin.png");
     expectTextureLoads(root() / dir / "copies" / "pack" / "crate.vat.glb", root() / dir / "copies" / "pack" / "skin.png");
     ASSERT_TRUE(history()->undo());
-    const Pair outside = writePair(pack, "barrel", "", texture);
+    const Pair outside = writePair(pack, "barrel", "", nullptr, texture);
     ASSERT_EQ(imageUri(outside.mesh), "../Textures/hero%20skin.png");
     ASSERT_TRUE(history()->addCommand(new CopyFileCmd(project(), {(root() / pack).string()}, (root() / dir / "sub").string(), false)));
     EXPECT_EQ(imageUri(root() / dir / "sub" / "pack" / "barrel.vat.glb"), "../../Textures/hero%20skin.png");
@@ -863,8 +954,8 @@ TEST_F(VatEditor, DeleteKeepsTheTextures) {
     const std::string dir = folder("textured-delete");
     const fs::path texture = root() / dir / "skin.png";
     writeTexture(texture);
-    const Pair first = writePair(dir, "hero", "", texture);
-    const Pair second = writePair(dir, "knight", "", texture);
+    const Pair first = writePair(dir, "hero", "", nullptr, texture);
+    const Pair second = writePair(dir, "knight", "", nullptr, texture);
     const std::string bytes = readAll(texture);
     ASSERT_TRUE(history()->addCommand(new DeleteFileCmd(project(), {first.vat, first.mesh}, project()->getProjectPath())));
     EXPECT_FALSE(fs::exists(first.vat));

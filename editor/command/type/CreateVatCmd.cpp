@@ -150,6 +150,8 @@ bool CreateVatCmd::writeFiles(){
 }
 
 bool CreateVatCmd::buildAndRun(){
+    // takes `command` (sceneCommands owns it from here: a command that fails is deleted here,
+    // never by the caller)
     auto run = [&](Command* command) -> bool{
         sceneCommands.emplace_back(command);
         if (command->execute()) return true;
@@ -172,30 +174,25 @@ bool CreateVatCmd::buildAndRun(){
     create->addProperty<Quaternion>(ComponentType::Transform, "rotation", placement.rotation);
     create->addProperty<Vector3>(ComponentType::Transform, "scale", placement.scale);
     if (!run(create)){
-        delete create;
         return rollback("could not create the GameObject '" + placement.name + "'");
     }
     entity = create->getEntity();
     auto* load = new ModelLoadCmd(project, sceneId, entity, placement.model);
     if (!run(load)){
-        delete load;
         return rollback("could not load '" + placement.model + "' into '" + placement.name + "'");
     }
     auto* add = new AddComponentCmd(project, sceneId, entity, ComponentType::VertexAnimatorComponent);
     if (!run(add)){
-        delete add;
         return rollback("could not add the Vertex Animator");
     }
     auto* animation = new PropertyCmd<std::string>(project, sceneId, entity, ComponentType::VertexAnimatorComponent, "animation",
                                                    placement.animation);
     if (!run(animation)){
-        delete animation;
         return rollback("could not set the Vertex Animator's animation");
     }
     if (!placement.guid.empty()){
         auto* guid = new PropertyCmd<std::string>(project, sceneId, entity, ComponentType::VertexAnimatorComponent, "guid", placement.guid);
         if (!run(guid)){
-            delete guid;
             return rollback("could not set the Vertex Animator's GUID");
         }
     }
@@ -204,7 +201,6 @@ bool CreateVatCmd::buildAndRun(){
         inactive.active = false;
         auto* disable = new EntityStateCmd(project, sceneId, {placement.source}, EntityStateField::Active, inactive);
         if (!run(disable)){
-            delete disable;
             return rollback("could not disable the source GameObject");
         }
     }
@@ -220,7 +216,8 @@ bool CreateVatCmd::buildAndRun(){
         }
         for (size_t i = 0; i < commands.size(); i++){
             if (!run(commands[i])){
-                for (size_t j = i; j < commands.size(); j++) delete commands[j];
+                // commands[i] went with run(); the ones after it never ran
+                for (size_t j = i + 1; j < commands.size(); j++) delete commands[j];
                 return rollback("the editor refused a crowd change (command " + std::to_string(i + 1) + ")");
             }
         }
