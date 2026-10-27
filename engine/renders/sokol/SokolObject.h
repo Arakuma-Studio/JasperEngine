@@ -70,6 +70,8 @@ namespace jasperengine{
 #endif
 
         size_t bindSlotIndex;
+        // the vertex inputs (locations) the shader declares, set by setShader
+        uint32_t shaderInputs;
 
         // color blending of the color pipelines when set (setBlendState)
         bool blendOverride;
@@ -94,11 +96,15 @@ namespace jasperengine{
         // the description endLoad creates the pipeline of one type from
         sg_pipeline_desc makePipelineDesc(PipelineType pipType) const;
         sg_pipeline& pipelineOf(PipelineType pipType);
+        // counts (and reports) a load leaving a vertex input of its shader without a buffer
+        void checkVertexInputs();
         void resetPipelines();
 
     public:
         // pipelines made by every object and not destroyed yet (diagnostics)
         static int getLivePipelineCount();
+        // loads that left a vertex input of their shader without a buffer (diagnostics)
+        static int getUnfedVertexInputLoads();
 
         SokolObject();
         SokolObject(const SokolObject& rhs);

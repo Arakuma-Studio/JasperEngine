@@ -106,3 +106,7 @@ void ObjectRender::destroy(){
 int ObjectRender::getLivePipelineCount(){
     return SokolObject::getLivePipelineCount();
 }
+
+int ObjectRender::getUnfedVertexInputLoads(){
+    return SokolObject::getUnfedVertexInputLoads();
+}
