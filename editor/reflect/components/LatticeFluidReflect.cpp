@@ -87,6 +87,22 @@ namespace {
 
     constexpr uint64_t kLattice = UpdateFlags_Lattice;
 
+    // the saved poses: a value the tables do not look into (its codec writes it), equal when their
+    // names and offsets are
+    using Poses = std::vector<LatticePose>;
+    bool equalPoses(const void* a, const void* b, float) {
+        const Poses& x = *static_cast<const Poses*>(a);
+        const Poses& y = *static_cast<const Poses*>(b);
+        if (x.size() != y.size()) return false;
+        for (size_t i = 0; i < x.size(); i++) {
+            if (x[i].name != y[i].name || x[i].offsets != y[i].offsets) return false;
+        }
+        return true;
+    }
+    constexpr TypeOps kPosesOps{"value", Kind::Custom, PropertyType::Custom, sizeof(Poses),
+        &detail::construct<Poses>, &detail::destroy<Poses>, &detail::copy<Poses>, &equalPoses,
+        nullptr, nullptr, nullptr, nullptr, nullptr, false, nullptr, &detail::customSchema};
+
     constexpr FieldDesc kLatticeFields[] = {
         JE_FIELD(LatticeComponent, enabled),
         JE_FIELD(LatticeComponent, resolutionX, .updateFlags = kLattice, .min = 2.0f, .max = 16.0f),
@@ -98,7 +114,7 @@ namespace {
         JE_FIELD(LatticeComponent, outside, .enumDesc = &enums::kLatticeOutside, .updateFlags = kLattice),
         JE_FIELD(LatticeComponent, fadeDistance, .updateFlags = kLattice, .min = 0.0f),
         // poses only matter when applied, which writes offsets
-        JE_FIELD(LatticeComponent, poses, .ops = &ops::Opaque<std::vector<LatticePose>>, .flags = ListWhole),
+        JE_FIELD(LatticeComponent, poses, .ops = &kPosesOps, .flags = ListWhole),
         JE_FIELD(LatticeComponent, jiggle, .updateFlags = kLattice),
         JE_FIELD(LatticeComponent, jiggleStiffness, .updateFlags = kLattice, .min = 0.0f),
         JE_FIELD(LatticeComponent, jiggleDamping, .updateFlags = kLattice, .min = 0.0f),
