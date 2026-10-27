@@ -729,3 +729,387 @@ TEST(SpriteNormalsGrid, DuplicateCellsAreProcessedOnce) {
     }
     EXPECT_EQ(crop(partial.normal, 32, 0, 32, 32).data, crop(once.normal, 32, 0, 32, 32).data);
 }
+
+// ---------------------------------------------------------------- options
+
+namespace {
+    // The heights of a uniform 40x40 square (centred on 64x64) along its middle row: the height map
+    // with softness 0 and no detail is the profile itself
+    std::vector<float> profileRow(Profile profile, float volume, float radius) {
+        Image color = Image::make(64, 64, 4, 8);
+        paste(color, solid(40, 40, 120, 90, 60, 255), 12, 12);
+        Settings s = presetSettings(Preset::Default);
+        s.profile = profile;
+        s.volume = volume;
+        s.radius = radius;
+        s.softness = 0.0f;
+        s.detail = 0.0f;
+        s.strength = 1.0f;
+        s.height = true;
+        const Result r = run(color, s);
+        std::vector<float> row;
+        const uint16_t* h = reinterpret_cast<const uint16_t*>(r.height.data.data());
+        for (int x = 12; x < 32; x++) {
+            row.push_back(r.heightMin + static_cast<float>(h[32 * 64 + x]) / 65535.0f * (r.heightMax - r.heightMin));
+        }
+        return row;
+    }
+
+    float tiltDegrees(const uint8_t* p, bool directx = false) {
+        float n[3];
+        for (int k = 0; k < 3; k++) n[k] = static_cast<float>(p[k]) / 127.5f - 1.0f;
+        if (directx) n[1] = -n[1];
+        const float len = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+        return std::acos(std::clamp(n[2] / len, -1.0f, 1.0f)) * 57.29578f;
+    }
+
+    // A seamless 32x32 tile: periodic shading and two transparent holes, one crossing the wrap edge
+    Image seamlessTile() {
+        return fromFunction(32, 32, [](int x, int y) {
+            const float s = 0.5f + 0.25f * std::sin(x * 0.19634954f * 2.0f) + 0.2f * std::cos(y * 0.19634954f * 3.0f);
+            const uint8_t v = static_cast<uint8_t>(std::clamp(s, 0.0f, 1.0f) * 220.0f + 20.0f);
+            const auto hole = [&](int cx, int cy, int r) {
+                const int dx = std::min(std::abs(x - cx), 32 - std::abs(x - cx)), dy = std::min(std::abs(y - cy), 32 - std::abs(y - cy));
+                return dx * dx + dy * dy <= r * r;
+            };
+            const bool transparent = hole(10, 12, 4) || hole(0, 28, 5);
+            return std::array<uint8_t, 4>{v, static_cast<uint8_t>(v * 3 / 4), 80, static_cast<uint8_t>(transparent ? 0 : 255)};
+        });
+    }
+
+    Image shift(const Image& image, int sx, int sy) {
+        Image out = Image::make(image.width, image.height, 4, 8);
+        for (int y = 0; y < image.height; y++)
+            for (int x = 0; x < image.width; x++)
+                std::memcpy(out.pixel((x + sx) % image.width, (y + sy) % image.height), image.pixel(x, y), 4);
+        return out;
+    }
+}
+
+TEST(SpriteNormalsOptions, ProfileHeightsAtKnownInsets) {
+    // the edge pixel is 1 px from the background: inset 0.5, then 1.5, 2.5, ...
+    const std::vector<float> bevel = profileRow(Profile::Bevel, 1.0f, 4.0f);
+    for (int i = 0; i < 20; i++) EXPECT_NEAR(bevel[static_cast<size_t>(i)], std::min(i + 0.5f, 4.0f), 2e-3f) << i;
+    const std::vector<float> dome = profileRow(Profile::Dome, 2.0f, 6.0f);
+    for (int i = 0; i < 20; i++) {
+        const float t = i + 0.5f;
+        const float expected = t >= 6.0f ? 12.0f : 2.0f * std::sqrt(36.0f - (6.0f - t) * (6.0f - t));
+        EXPECT_NEAR(dome[static_cast<size_t>(i)], expected, 3e-3f) << i;
+    }
+    const std::vector<float> rounded = profileRow(Profile::Rounded, 1.15f, 4.0f);
+    for (int i = 0; i < 20; i++) EXPECT_NEAR(rounded[static_cast<size_t>(i)], 1.15f * 4.0f * std::log1p((i + 0.5f) / 4.0f), 3e-3f) << i;
+}
+
+TEST(SpriteNormalsOptions, BevelAndDomeHaveFlatCentresRoundedKeepsRising) {
+    const Image color = solid(64, 64, 120, 90, 60, 255);
+    for (Profile p : {Profile::Bevel, Profile::Dome, Profile::Rounded}) {
+        Settings s = presetSettings(Preset::Default);
+        s.profile = p;
+        s.radius = 6.0f;
+        const Result r = run(color, s);
+        const uint8_t* centre = r.normal.pixel(20, 32);
+        const uint8_t* edge = r.normal.pixel(1, 32);
+        EXPECT_LT(edge[0], 110) << toString(p);   // every profile bevels the border
+        if (p == Profile::Rounded) {
+            EXPECT_LT(centre[0], 128) << "rounded keeps rising 20 px in";
+        } else {
+            EXPECT_EQ(centre[0], 128) << toString(p);
+            EXPECT_EQ(centre[1], 128) << toString(p);
+            EXPECT_EQ(centre[2], 255) << toString(p);
+        }
+    }
+}
+
+TEST(SpriteNormalsOptions, WrapIsSeamless) {
+    const Image tile = seamlessTile();
+    Settings s = presetSettings(Preset::Default);
+    s.edges = Edges::Wrap;
+    s.radius = 4.0f;
+    const Result a = run(tile, s);
+    const Result b = run(shift(tile, 16, 16), s);
+    EXPECT_EQ(a.islands, 1);
+    // the map of the shifted tile is the shifted map: the wrap edge is like any other pixel, so
+    // a 3x3 tiling of the map has no seam
+    EXPECT_EQ(shift(a.normal, 16, 16).data, b.normal.data);
+    // Transparent edges would bevel the tile border instead
+    s.edges = Edges::Transparent;
+    const Result t = run(tile, s);
+    EXPECT_NE(shift(t.normal, 16, 16).data, run(shift(tile, 16, 16), s).normal.data);
+}
+
+TEST(SpriteNormalsOptions, ExtendHasNoBorderBevel) {
+    const Image tile = fromFunction(48, 48, [](int x, int y) {
+        const uint8_t v = static_cast<uint8_t>(110 + 40 * std::sin(x * 0.3f) * std::cos(y * 0.23f));
+        return std::array<uint8_t, 4>{v, v, static_cast<uint8_t>(v / 2), 255};
+    });
+    Settings s = presetSettings(Preset::Default);
+    s.edges = Edges::Extend;
+    const Result r = run(tile, s);
+    EXPECT_FALSE(r.radiusPerIsland && r.islands != 1);
+    float interior = 0.0f, border = 0.0f;
+    for (int y = 0; y < 48; y++) {
+        for (int x = 0; x < 48; x++) {
+            const float t = tiltDegrees(r.normal.pixel(x, y));
+            const bool nearBorder = x < 2 || y < 2 || x >= 46 || y >= 46;
+            (nearBorder ? border : interior) = std::max(nearBorder ? border : interior, t);
+        }
+    }
+    EXPECT_LE(border, interior + 0.5f);
+    // Transparent: the border bevel is much steeper than the shading
+    s.edges = Edges::Transparent;
+    const Result bevel = run(tile, s);
+    EXPECT_GT(tiltDegrees(bevel.normal.pixel(0, 24)), interior + 10.0f);
+}
+
+TEST(SpriteNormalsOptions, OpaqueCellsWithWrapOrExtendGetNoShape) {
+    // no transparent pixel: the distance is infinite, the shape a constant 0, flat colour is flat
+    for (Edges e : {Edges::Wrap, Edges::Extend}) {
+        Settings s = presetSettings(Preset::Chunky);
+        s.edges = e;
+        const Result r = run(solid(16, 16, 100, 150, 200, 255), s);
+        for (size_t i = 0; i < 256; i++) {
+            ASSERT_EQ(r.normal.data[4 * i], 128) << toString(e);
+            ASSERT_EQ(r.normal.data[4 * i + 2], 255) << toString(e);
+        }
+    }
+}
+
+TEST(SpriteNormalsOptions, AutoRadius) {
+    // a ball filling 32x32: one island, 0.15 x 32 = 4.8
+    const Image ball = fromFunction(32, 32, [](int x, int y) {
+        const bool in = std::hypot(x + 0.5f - 16.0f, y + 0.5f - 16.0f) <= 16.0f;
+        return std::array<uint8_t, 4>{200, 80, 60, static_cast<uint8_t>(in ? 255 : 0)};
+    });
+    Settings s = presetSettings(Preset::Default);
+    Result r = run(ball, s);
+    EXPECT_TRUE(r.radiusPerIsland);
+    EXPECT_FLOAT_EQ(r.radiusMin, 4.8f);
+    EXPECT_FLOAT_EQ(r.radiusMax, 4.8f);
+    // a 200x40 bar: 0.15 x 40 = 6; a 10x10 island beside it: clamped to 4
+    Image bars = Image::make(220, 40, 4, 8);
+    paste(bars, solid(200, 40, 90, 90, 90, 255), 0, 0);
+    paste(bars, solid(10, 10, 90, 90, 90, 255), 205, 5);
+    r = run(bars, s);
+    EXPECT_EQ(r.islands, 2);
+    EXPECT_FLOAT_EQ(r.radiusMin, 4.0f);
+    EXPECT_FLOAT_EQ(r.radiusMax, 6.0f);
+    // per island: the bar's normals are those of the bar alone with radius 6
+    Settings six = s;
+    six.radius = 6.0f;
+    EXPECT_EQ(crop(r.normal, 0, 0, 200, 40).data, run(solid(200, 40, 90, 90, 90, 255), six).normal.data);
+    // a sequence: one value, from the median of the largest islands' shorter sides (40, 60, 100 -> 60 -> 9)
+    Image strip = Image::make(300, 100, 4, 8);
+    paste(strip, solid(40, 80, 90, 90, 90, 255), 0, 0);
+    paste(strip, solid(5, 5, 90, 90, 90, 255), 50, 90);   // smaller island: ignored
+    paste(strip, solid(60, 60, 90, 90, 90, 255), 100, 0);
+    paste(strip, solid(100, 100, 90, 90, 90, 255), 200, 0);
+    const std::vector<Cell> cells = {{0, 0, 100, 100}, {100, 0, 100, 100}, {200, 0, 100, 100}};
+    r = run(strip, s, cells, 1, true);
+    EXPECT_FALSE(r.radiusPerIsland);
+    EXPECT_FLOAT_EQ(r.radiusMin, 9.0f);
+    EXPECT_FLOAT_EQ(r.radiusMax, 9.0f);
+    // even count: the mean of the two middle values ((40 + 60) / 2 x 0.15 = 7.5)
+    r = run(strip, s, {cells[0], cells[1]}, 1, true);
+    EXPECT_FLOAT_EQ(r.radiusMin, 7.5f);
+    // nothing anywhere: 4
+    r = run(Image::make(8, 8, 4, 8), s, {{0, 0, 4, 4}, {4, 4, 4, 4}}, 1, true);
+    EXPECT_FLOAT_EQ(r.radiusMin, 4.0f);
+    // explicit: as is
+    s.radius = 2.5f;
+    r = run(ball, s);
+    EXPECT_FALSE(r.radiusPerIsland);
+    EXPECT_FLOAT_EQ(r.radiusMax, 2.5f);
+    // Wrap / Extend on a still: the cell's own size
+    s.radius.reset();
+    s.edges = Edges::Wrap;
+    r = run(seamlessTile(), s);
+    EXPECT_FLOAT_EQ(r.radiusMin, 4.8f);
+}
+
+TEST(SpriteNormalsOptions, IgnoreOutlineFindsTheOutline) {
+    Settings s = presetSettings(Preset::Default);
+    s.ignoreOutline = true;
+    for (const char* name : {"character.png", "flat_outline.png", "ball.png"}) {
+        const Result r = run(loadPng(kFixtures / "inputs" / name), s);
+        ASSERT_TRUE(r.outlineColor.has_value()) << name;
+        EXPECT_EQ(colorText(*r.outlineColor), "#1a1020") << name;   // the evaluation sprites' outline (26, 16, 32)
+        EXPECT_TRUE(r.warnings.empty()) << name;
+    }
+    // a sprite without an outline (the disk: one mid-tone colour, Oklab L 0.53): a warning
+    const Result none = run(disk(), s);
+    EXPECT_FALSE(none.outlineColor.has_value());
+    ASSERT_EQ(none.warnings.size(), 1u);
+    EXPECT_EQ(none.warnings[0].kind, "outline_not_found");
+    EXPECT_EQ(none.warnings[0].message, "No outline colour covers half of the silhouette rim; nothing was excluded.");
+    // the outline no longer feeds the relief: the map differs from the plain one
+    const Image character = loadPng(kFixtures / "inputs" / "character.png");
+    Settings plain = presetSettings(Preset::Default);
+    EXPECT_NE(run(character, s).normal.data, run(character, plain).normal.data);
+}
+
+TEST(SpriteNormalsOptions, RegionDetailZeroCalmsPaintedHighlights) {
+    const Image color = loadPng(kFixtures / "inputs" / "highlight.png");
+    Settings s = presetSettings(Preset::Detailed);
+    const Result plain = run(color, s);
+    Region highlight;
+    highlight.colors = {0xffffff, 0xffe4c8};   // the painted specular blob
+    highlight.detail = 0.0f;
+    s.regions.push_back(highlight);
+    const Result calmed = run(color, s);
+    EXPECT_TRUE(calmed.warnings.empty());
+    // the highlight's painted light direction no longer becomes a lean: mean |red - 128| and
+    // |green - 128| over the highlight pixels drop
+    double redBefore = 0.0, redAfter = 0.0, greenBefore = 0.0, greenAfter = 0.0;
+    int count = 0;
+    for (int y = 0; y < 32; y++) {
+        for (int x = 0; x < 32; x++) {
+            const uint8_t* p = color.pixel(x, y);
+            if (!((p[0] == 255 && p[1] == 255 && p[2] == 255) || (p[0] == 255 && p[1] == 228 && p[2] == 200))) continue;
+            redBefore += std::abs(int(plain.normal.pixel(x, y)[0]) - 128);
+            redAfter += std::abs(int(calmed.normal.pixel(x, y)[0]) - 128);
+            greenBefore += std::abs(int(plain.normal.pixel(x, y)[1]) - 128);
+            greenAfter += std::abs(int(calmed.normal.pixel(x, y)[1]) - 128);
+            count++;
+        }
+    }
+    ASSERT_GT(count, 4);
+    std::printf("[ regions  ] highlight.png, %d highlight pixels: mean |red - 128| %.1f -> %.1f, |green - 128| %.1f -> %.1f\n", count,
+                redBefore / count, redAfter / count, greenBefore / count, greenAfter / count);
+    EXPECT_LT(redAfter, redBefore);
+    EXPECT_LT(greenAfter, greenBefore);
+}
+
+TEST(SpriteNormalsOptions, RegionLiftFlatAndUnmatched) {
+    // a 32x32 square with an 8x8 patch of another colour in the middle
+    Image color = solid(32, 32, 100, 100, 100, 255);
+    paste(color, solid(8, 8, 200, 40, 40, 255), 12, 12);
+    Settings s = presetSettings(Preset::Default);
+    s.detail = 0.0f;
+    s.volume = 0.0f;
+    Region lift;
+    lift.colors = {0xc82828};
+    lift.lift = 4.0f;
+    s.regions = {lift};
+    Result r = run(color, s);
+    EXPECT_LT(r.normal.pixel(12, 16)[0], 118);   // left border of the lifted patch faces left
+    EXPECT_GT(r.normal.pixel(19, 16)[0], 138);   // right border faces right
+    EXPECT_GT(r.normal.pixel(16, 12)[1], 138);   // top border faces up (OpenGL)
+    EXPECT_EQ(r.normal.pixel(4, 4)[0], 128);     // far from it: flat
+    s.regions[0].lift = -4.0f;
+    r = run(color, s);
+    EXPECT_GT(r.normal.pixel(12, 16)[0], 138);   // sunk: the slope reverses
+    // flat: exactly +Z on the region, whatever the rest does
+    Settings f = presetSettings(Preset::Chunky);
+    Region flat;
+    flat.colors = {0xc82828};
+    flat.flat = true;
+    f.regions = {flat};
+    r = run(color, f);
+    for (int y = 12; y < 20; y++) {
+        for (int x = 12; x < 20; x++) {
+            const uint8_t* p = r.normal.pixel(x, y);
+            ASSERT_EQ(p[0], 128);
+            ASSERT_EQ(p[1], 128);
+            ASSERT_EQ(p[2], 255);
+            ASSERT_EQ(p[3], 255);
+        }
+    }
+    EXPECT_NE(r.normal.pixel(1, 16)[0], 128);
+    // a region matching nothing warns, naming its index, colour and tolerance
+    Region nothing;
+    nothing.colors = {0xc0ffee};
+    f.regions.push_back(nothing);
+    r = run(color, f);
+    ASSERT_EQ(r.warnings.size(), 1u);
+    EXPECT_EQ(r.warnings[0].kind, "region_unmatched");
+    EXPECT_EQ(r.warnings[0].field, "regions[1]");
+    EXPECT_EQ(r.warnings[0].message, "regions[1] (#c0ffee) matched no pixel; widen its tolerance (0.03).");
+    // the first matching region wins
+    Region wide;
+    wide.colors = {0xc82828};
+    wide.tolerance = 0.5f;
+    f.regions = {wide, flat};
+    r = run(color, f);
+    ASSERT_EQ(r.warnings.size(), 1u);
+    EXPECT_EQ(r.warnings[0].field, "regions[1]");
+}
+
+TEST(SpriteNormalsOptions, HeightMapRangeAndMonotonicity) {
+    Settings s = presetSettings(Preset::Default);
+    s.height = true;
+    s.detail = 0.0f;
+    const Result r = run(disk(), s);
+    ASSERT_EQ(r.height.channels, 1);
+    ASSERT_EQ(r.height.bitDepth, 16);
+    ASSERT_EQ(r.height.width, 31);
+    EXPECT_LT(r.heightMin, r.heightMax);
+    const uint16_t* h = reinterpret_cast<const uint16_t*>(r.height.data.data());
+    EXPECT_EQ(h[15 * 31 + 15], 65535);   // the centre is the highest
+    EXPECT_EQ(h[0], 0);                  // outside the disk
+    for (int x = 4; x < 15; x++) EXPECT_LT(h[15 * 31 + x], h[15 * 31 + x + 1]) << x;
+    // the range is strength x combined: doubling the strength doubles it, same 16-bit values
+    s.strength = 3.0f;
+    const Result twice = run(disk(), s);
+    EXPECT_NEAR(twice.heightMax, 2.0f * r.heightMax, 1e-4f);
+    EXPECT_EQ(twice.height.data, r.height.data);
+    // directx changes nothing; a flat colour sprite with no volume is one level: 32768
+    s.directx = true;
+    EXPECT_EQ(run(disk(), s).height.data, twice.height.data);
+    s.volume = 0.0f;
+    const Result level = run(disk(), s);
+    EXPECT_EQ(level.heightMin, level.heightMax);
+    EXPECT_EQ(reinterpret_cast<const uint16_t*>(level.height.data.data())[15 * 31 + 15], 32768);
+    // no height map unless asked
+    EXPECT_TRUE(run(disk(), presetSettings(Preset::Default)).height.empty());
+}
+
+TEST(SpriteNormalsOptions, CancelProgressAndThreads) {
+    const Image color = loadPng(kFixtures / "inputs" / "sheet.png");
+    std::atomic<bool> cancel{true};
+    Control control;
+    control.cancel = &cancel;
+    Request request;
+    request.color = color;
+    request.cells = gridCells(128, 32, 32, 32);
+    Result r = generate(request, control);
+    EXPECT_EQ(r.status, Status::Cancelled);
+    EXPECT_EQ(r.errors.at(0).kind, "cancelled");
+    EXPECT_TRUE(r.normal.empty());
+    cancel = false;
+    std::vector<double> fractions;
+    control.onProgress = [&](const Progress& p) { fractions.push_back(p.fraction); };
+    control.progressIntervalSeconds = 0.0;
+    request.threads = 1;
+    r = generate(request, control);
+    ASSERT_EQ(r.status, Status::Ok);
+    ASSERT_EQ(fractions.size(), static_cast<size_t>(r.islands));
+    EXPECT_EQ(fractions.back(), 1.0);
+    EXPECT_TRUE(std::is_sorted(fractions.begin(), fractions.end()));
+    EXPECT_EQ(r.threads, 1);
+    // the thread count is capped by the work items
+    request.threads = 64;
+    EXPECT_EQ(generate(request).threads, std::min(64, r.islands));
+    request.threads = 0;
+    EXPECT_GE(generate(request).threads, 1);
+    // cancelled from the progress callback: the run stops after the items running
+    control.onProgress = [&](const Progress&) { cancel = true; };
+    request.threads = 1;
+    EXPECT_EQ(generate(request, control).status, Status::Cancelled);
+}
+
+TEST(SpriteNormalsPerformance, Opaque512UnderBudget) {
+#ifdef NDEBUG
+    const Image blob = fromFunction(512, 512, [](int x, int y) {
+        const bool in = std::hypot(x - 255.5f, y - 255.5f) <= 250.0f;
+        const uint8_t v = static_cast<uint8_t>(60 + (x * 7 + y * 3) % 120);
+        return std::array<uint8_t, 4>{v, static_cast<uint8_t>(v / 2), 90, static_cast<uint8_t>(in ? 255 : 0)};
+    });
+    run(blob, presetSettings(Preset::Default));   // warm up
+    double best = 1e9;
+    for (int i = 0; i < 3; i++) best = std::min(best, run(blob, presetSettings(Preset::Default)).seconds);
+    std::printf("[ perf     ] 512x512 blob, 1 thread: %.1f ms\n", best * 1000.0);
+    EXPECT_LT(best, 0.25);
+#else
+    GTEST_SKIP() << "Release builds only";
+#endif
+}
