@@ -364,11 +364,9 @@ namespace {
     // the events of the interval: of the dominant track only (weight >= 0.5); a crossfade hands
     // over at its midpoint
     void stateEvents(const Animating& a, int instance, VatTrackPair& pair, VatStateExtra& extra, double t0, double t1){
-        if (!firesFor(a, instance)){
-            extra.freshA = false;
-            extra.freshB = false;
-            return;
-        }
+        // nothing fires (edit mode, an instance without instanceEvents): a start still waiting
+        // for its events keeps them for when it does (Play after edit mode starts at 0)
+        if (!firesFor(a, instance)) return;
         if (!hasB(pair)){
             trackEvents(a, instance, pair.a, extra.holdA, extra.freshA, t0, t1);
             return;
