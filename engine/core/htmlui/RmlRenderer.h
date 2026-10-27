@@ -492,6 +492,10 @@ namespace jasperengine {
         uint8_t stencilRef = 0;
         int layersSize = 0;
         std::vector<bool> layerClearPending;
+        // the shared depth-stencil (the clip masks of every layer) not cleared yet this frame: the
+        // frame's first layer pass clears it, whichever layer that is (a filtered element's pushed
+        // layer can come before layer 0, with the clip mask the composite into layer 0 tests)
+        bool depthStencilClearPending = false;
 
         // the open pass
         CameraRender pass;

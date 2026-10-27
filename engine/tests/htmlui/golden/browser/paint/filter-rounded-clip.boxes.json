@@ -1,0 +1,44 @@
+{
+ "fixture": "paint/filter-rounded-clip.html",
+ "viewport": [
+  400,
+  80
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "a",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 80,
+    "h": 60
+   },
+   {
+    "id": "b",
+    "tag": "div",
+    "x": 110,
+    "y": 10,
+    "w": 80,
+    "h": 60
+   },
+   {
+    "id": "c",
+    "tag": "div",
+    "x": 210,
+    "y": 10,
+    "w": 80,
+    "h": 60
+   },
+   {
+    "id": "d",
+    "tag": "div",
+    "x": 310,
+    "y": 10,
+    "w": 80,
+    "h": 60
+   }
+  ]
+ }
+}

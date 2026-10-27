@@ -1205,13 +1205,18 @@ bool RmlRenderer::bindLayer(int index){
     if (activeKind == TargetKind::LAYER && activeIndex == index && activeFramebuffer == layer)
         return true;
 
-    // first bind in this frame (or since pushed): cleared; layer 0 also clears the shared
-    // stencil, the others keep it
+    // first bind in this frame (or since pushed): cleared. The shared depth-stencil is cleared
+    // by the frame's first layer pass only: a layer pushed before anything was drawn into layer 0
+    // (a filtered element alone in a rounded overflow clip) takes the clip mask, and layer 0's
+    // first pass, the composite tested against it, keeps it
     const bool clear = layerClearPending[index];
     const LoadAction colorLoad = clear ? LoadAction::CLEAR : LoadAction::LOAD;
-    const LoadAction depthStencilLoad = (clear && index == 0) ? LoadAction::CLEAR : LoadAction::LOAD;
+    const LoadAction depthStencilLoad = depthStencilClearPending ? LoadAction::CLEAR : LoadAction::LOAD;
+    if (!beginPass(*layer, TargetKind::LAYER, index, colorLoad, depthStencilLoad))
+        return false;
     layerClearPending[index] = false;
-    return beginPass(*layer, TargetKind::LAYER, index, colorLoad, depthStencilLoad);
+    depthStencilClearPending = false;
+    return true;
 }
 
 bool RmlRenderer::bindTopLayer(){
@@ -2569,6 +2574,7 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
     layersSize = 1;
     layerClearPending.assign(std::max<size_t>(1, target->layers.size()), false);
     layerClearPending[0] = true;
+    depthStencilClearPending = true;
     activeKind = TargetKind::NONE;
     activeIndex = -1;
     activeFramebuffer = nullptr;
