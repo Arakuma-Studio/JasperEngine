@@ -756,6 +756,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/vat/VatBakeSource.cpp
     ${EDITOR_DIR}/vat/VatBakeSession.cpp
     ${EDITOR_DIR}/vat/VatFrontEnd.cpp
+    ${EDITOR_DIR}/vat/VatCli.cpp
     ${EDITOR_DIR}/vat/VatContactSheet.cpp
     ${EDITOR_DIR}/vat/import/VatImport.cpp
     ${EDITOR_DIR}/vat/import/VatImportCommon.cpp
