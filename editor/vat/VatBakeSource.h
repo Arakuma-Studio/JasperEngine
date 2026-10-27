@@ -41,6 +41,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -133,7 +134,11 @@ namespace jasperengine::editor::vat{
         std::vector<VatEmbeddedImage> embeddedImages;
         std::vector<VatIssue> warnings;         // material_simplified, materials_not_vat_ready, not_converted
         int estimatedVertices() const;          // distinct vertices before merging renderers
-        int estimatedBones() const;             // joints used + one per rigid renderer
+        // the bones a Bones bake would hold: joints used and rigid renderers, merged where the
+        // bake merges them (`animated`: the entities the clips move, animatedEntities)
+        int estimatedBones(const std::set<Entity>& animated) const;
+        // the entities the transform tracks of `clips` move under the target's root
+        std::set<Entity> animatedEntities(const std::vector<const VatSourceClip*>& clips) const;
         bool morphOrLattice() const;            // a renderer has morph targets or lattice bindings
 
     private:

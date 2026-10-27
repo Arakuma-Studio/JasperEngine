@@ -906,11 +906,27 @@ int VatPoser::estimatedVertices() const{
     return total;
 }
 
-int VatPoser::estimatedBones() const{
-    // a joint shared by two renderers with the same bind (their bone matrices equal at rest)
-    // is one bone, as the bake merges them
+int VatPoser::estimatedBones(const std::set<Entity>& animated) const{
+    // what the bake merges: candidates whose matrices are equal at every frame. A candidate no
+    // animated transform moves (its joint, or a rigid renderer, and their ancestors up to the
+    // root) keeps its rest matrix: those merge by that matrix; a joint shared by two renderers
+    // with the same bind merges too
+    Scene* scene = target ? target->scene : nullptr;
+    // the nearest animated entity at or above `entity` (up to the root), NULL_ENTITY when none:
+    // below it nothing moves on its own, so a joint's matrix follows that entity's (equal to it
+    // when the joint's bind pose is its rest pose)
+    auto mover = [&](Entity entity) -> Entity{
+        for (int depth = 0; scene && entity != NULL_ENTITY && depth < 65536; depth++){
+            if (animated.count(entity)) return entity;
+            if (entity == target->root) return NULL_ENTITY;
+            const Transform* transform = scene->findComponent<Transform>(entity);
+            if (!transform) return NULL_ENTITY;
+            entity = transform->parent;
+        }
+        return NULL_ENTITY;
+    };
     struct Known{
-        Entity joint;
+        Entity joint;           // what moves it (NULL_ENTITY: nothing)
         Matrix4 rest;
     };
     std::vector<Known> known;
@@ -923,6 +939,13 @@ int VatPoser::estimatedBones() const{
         return true;
     };
     int total = 0;
+    auto add = [&](Entity joint, const Matrix4& rest){
+        for (const Known& other : known){
+            if (other.joint == joint && sameMatrix(other.rest, rest)) return;
+        }
+        known.push_back({joint, rest});
+        total++;
+    };
     for (size_t index = 0; index < renderers.size(); index++){
         const VatBakeRenderer& renderer = renderers[index];
         const cpuskin::CpuSkinSource& source = renderer.source;
@@ -952,18 +975,25 @@ int VatPoser::estimatedBones() const{
                 continue;
             }
             const Matrix4 rest = renderer.restToRoot * skins[(size_t)joint] * toRest;
-            bool merged = false;
-            for (const Known& other : known){
-                if (other.joint == entities[(size_t)joint] && sameMatrix(other.rest, rest)) merged = true;
-            }
-            if (!merged){
-                known.push_back({entities[(size_t)joint], rest});
-                total++;
-            }
+            add(mover(entities[(size_t)joint]), rest);
         }
-        if (rigid) total++;
+        if (rigid) add(mover(rendererEntities[index]), Matrix4());
     }
     return total;
+}
+
+std::set<Entity> VatPoser::animatedEntities(const std::vector<const VatSourceClip*>& clips) const{
+    std::set<Entity> out;
+    if (!target || !target->scene) return out;
+    for (const VatSourceClip* clip : clips){
+        for (const AnimationClip::Track& track : clip->clip->getTracks()){
+            if (!track.isSampled()) continue;
+            if (track.channel != ClipChannel::Position && track.channel != ClipChannel::Rotation && track.channel != ClipChannel::Scale) continue;
+            const Entity entity = anim::resolvePath(target->scene, target->root, track.path);
+            if (entity != NULL_ENTITY) out.insert(entity);
+        }
+    }
+    return out;
 }
 
 bool VatPoser::morphOrLattice() const{

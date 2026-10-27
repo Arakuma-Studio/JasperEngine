@@ -400,7 +400,9 @@ VatEstimate VatBakeSession::estimate(){
     const VatPresetLimits limits = presetLimits(spec.preset);
 
     out.vertices = poser->estimatedVertices();
-    out.bones = poser->estimatedBones();
+    std::vector<const VatSourceClip*> clips;
+    for (int index : selected) clips.push_back(&target->clips[(size_t)index]);
+    out.bones = poser->estimatedBones(poser->animatedEntities(clips));
     out.renderers = (int)poser->renderers.size();
 
     bool shapes = false;
