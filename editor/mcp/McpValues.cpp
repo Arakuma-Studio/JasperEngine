@@ -1487,7 +1487,8 @@ bool vatPathFromJson(Project* project, const std::string& text, std::string& sto
     const fs::path full = project->resolveAssetPath(stored);
     std::error_code ec;
     if (!fs::is_regular_file(full, ec)) {
-        error = "animation: " + text + " does not exist: bake it first with bake_vertex_animation (a " + VAT_PATH_EXAMPLE + ").";
+        error = "animation: " + text + " does not exist: bake it first with bake_vertex_animation (a " + VAT_PATH_EXAMPLE +
+                "), or list the baked ones with list_assets {type: \"vertex_animation\"}.";
         stored.clear();
         return false;
     }
