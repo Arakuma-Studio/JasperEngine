@@ -578,7 +578,7 @@ The pass state machine is new compared with GL3, which rebinds framebuffers free
 
   | Situation | Colour | Depth-stencil |
   |---|---|---|
-  | Layer pushed this frame, first time bound | CLEAR (0,0,0,0) | LOAD/STORE (layer 0 at frame start: CLEAR 0 / STORE) |
+  | Layer pushed this frame, first time bound | CLEAR (0,0,0,0) | LOAD/STORE (the frame's first layer pass, whichever layer: CLEAR 0 / STORE; not layer 0's first pass when a pushed layer came first, which holds the clip mask: a filtered element alone in a rounded overflow clip) |
   | Layer bound again after another target | LOAD/STORE | LOAD/STORE |
   | Post-process target | CLEAR, or LOAD when a pass writes only a sub-rectangle | none |
 - After each pass begins, it re-applies the viewport, the current scissor and nothing else;
