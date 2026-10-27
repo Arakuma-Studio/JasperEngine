@@ -178,6 +178,12 @@ editable `includes/` folder beside the fork.
   `latticeDeform(1, pos.xyz, normal, tangent, stretch);` after the instance matrix and before
   the model matrix (`latticeDeform(0, ...)` before skinning for bind-pose lattices), as
   `mesh.vert` does (`read_engine_source`), in the depth fork too.
+- A mesh played by a Vertex Animator compiles with `HAS_VAT` (variant bits `Vat`, Bones mode
+  `Vab` with `HAS_VAT_BONES`), without skinning or morph targets: `mesh.vert` and `depth.vert`
+  call `vatEvaluate()` first and read the rest attributes through `vatPosition(a_position)`,
+  `vatNormal(a_normal)` and `vatTangent(a_tangent.xyz)` from `includes/vat.glsl`. A fork without
+  them draws the mesh at rest; to play it, include the file after the attributes and make the
+  same calls (they return their argument without `HAS_VAT`), in the depth fork too.
 - Stochastic Tiling (the material's `stochasticTiling`) in a Mesh fork: a fork opts in by
   naming the material's four values for `includes/pbr.glsl`, as the engine's `mesh.frag` does.
   A fork made before the feature (October 2026) does not: its submeshes then draw without it in

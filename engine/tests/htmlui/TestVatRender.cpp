@@ -5,9 +5,10 @@
 // 2.2, 2.3, 3.2.3-3.2.5, 3.5, 3.6) drawn by the engine into the harness target: .vat.glb-like
 // meshes written as glTF in a temporary directory (_VAT_INDEX, JOINTS_0 / WEIGHTS_0 without a
 // skin, the JASPER_vertex_animation extension), in-memory assets made with
-// vat::VertexAnimation::create, and a Vertex Animator whose GPU state (gpuActive, asset,
-// gpuState0/1, gpuNow, gpuMode) the tests set directly. An orthographic camera looks down -z at
-// 50 pixels per world unit. Vertices mode moves vertices by the baked offsets (frames,
+// vat::VertexAnimation::create and put in the VertexAnimationPool, and a Vertex Animator played
+// by its system (paused, so its clock stays at 0: a track pair at time t is set with its times
+// moved by -t), which writes the GPU state the renderer reads. An orthographic camera looks down
+// -z at 50 pixels per world unit. Vertices mode moves vertices by the baked offsets (frames,
 // interpolation, loop seam, once clamp, ping-pong, stepped, absolute positions), crossfades and
 // phase-synced blends, turns normals by the tangent frame; Bones mode skins rigid pieces (a fast
 // spin keeps its size); instances play their own state after sorting; shadows and the depth
@@ -20,14 +21,18 @@
 #include "animation/VertexAnimation.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/MeshComponent.h"
+#include "component/ModelComponent.h"
 #include "component/VertexAnimatorComponent.h"
 #include "object/Camera.h"
 #include "object/Light.h"
 #include "object/Model.h"
 #include "object/Primitive.h"
+#include "pool/VertexAnimationPool.h"
 #include "subsystem/RenderSystem.h"
+#include "subsystem/VertexAnimatorSystem.h"
 
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -35,6 +40,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <unistd.h>
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -122,7 +128,8 @@ namespace {
         return dir;
     }
 
-    // writes the mesh as <name>.gltf in the test directory, returns its absolute path
+    // writes the mesh as <name>/mesh.gltf in the test directory (the mesh the assets name),
+    // returns its absolute path
     std::string writeGltf(const VatGltf& mesh, const std::string& name){
         std::vector<uint8_t> data;
         std::ostringstream views;
@@ -183,7 +190,8 @@ namespace {
              << ",1],\"metallicFactor\":0,\"roughnessFactor\":1}}],"
              << "\"buffers\":[{\"byteLength\":" << data.size() << ",\"uri\":\"data:application/octet-stream;base64," << base64(data) << "\"}],"
              << "\"bufferViews\":[" << views.str() << "],\"accessors\":[" << accessors.str() << "]}";
-        const std::filesystem::path path = testDirectory() / (name + ".gltf");
+        std::filesystem::create_directories(testDirectory() / name);
+        const std::filesystem::path path = testDirectory() / name / "mesh.gltf";
         std::ofstream(path) << json.str();
         return path.string();
     }
@@ -199,12 +207,15 @@ namespace {
         bool restNone = false;
     };
 
-    // texel(globalFrame, element, k): the payload, RGBA32F, 64 texels a row
+    // texel(globalFrame, element, k): the payload, RGBA32F, 64 texels a row; played on the
+    // mesh.gltf next to it; bounds: the asset's (every frame), none by default
     std::shared_ptr<const vat::VertexAnimation> makeAsset(vat::VatMode mode, int elements, bool normals, const std::vector<ClipSpec>& clips,
-                                                         const std::function<Vector4(int, int, int)>& texel){
+                                                         const std::function<Vector4(int, int, int)>& texel,
+                                                         const vat::VatBounds& bounds = vat::VatBounds()){
         vat::VatData data;
         data.mode = mode;
-        data.mesh = "test.vat.glb";
+        data.mesh = "mesh.gltf";
+        data.bounds = bounds;
         int start = 0;
         for (const ClipSpec& spec : clips){
             vat::VatClip clip;
@@ -311,8 +322,17 @@ namespace {
             camera.setPosition(0.0f, 0.0f, 10.0f);
             camera.setTarget(0.0f, 0.0f, 0.0f);
             camera.activate();
-            if (!scene().isComponentRegistered<VertexAnimatorComponent>())
-                scene().registerComponent<VertexAnimatorComponent>();
+            // the animators' clock stays at 0 (edit mode without Preview)
+            scene().getSystem<VertexAnimatorSystem>()->setPaused(true);
+        }
+
+        // a track pair at time `now` of a clock at 0: its times moved by -now
+        static vat::VatTrackPair at(vat::VatTrackPair pair, float now){
+            pair.a.start -= now;
+            pair.b.start -= now;
+            pair.fadeStart -= now;
+            pair.fadeEnd -= now;
+            return pair;
         }
 
         Scene& scene(){ return fixture.getScene(); }
@@ -323,19 +343,45 @@ namespace {
             return model;
         }
 
-        // the Vertex Animator's GPU state, as its system writes it
+        // The entity's Vertex Animator playing `asset` (put in the pool as a .vat next to the
+        // Model's mesh.gltf, the mesh it is baked for) with `pair` at time `now`: a new asset is
+        // loaded and started by the system first (which plays nothing: playAutomatically off),
+        // then the state is set as a script's play would leave it
         VertexAnimatorComponent& animate(Entity entity, const std::shared_ptr<const vat::VertexAnimation>& asset, const vat::VatTrackPair& pair, float now){
-            if (!scene().findComponent<VertexAnimatorComponent>(entity))
-                scene().addComponent<VertexAnimatorComponent>(entity, VertexAnimatorComponent());
+            const ModelComponent& model = scene().getComponent<ModelComponent>(entity);
+            char name[64];
+            std::snprintf(name, sizeof(name), "anim_%p.vat", (const void*)asset.get());
+            const std::string path = (std::filesystem::path(model.filename).parent_path() / name).generic_string();
+            if (VertexAnimationPool::get(path) != asset)
+                VertexAnimationPool::put(path, asset);
+            if (!scene().findComponent<VertexAnimatorComponent>(entity)){
+                VertexAnimatorComponent added;
+                added.playAutomatically = false;
+                added.randomStart = false;
+                scene().addComponent<VertexAnimatorComponent>(entity, added);
+            }
+            if (scene().getComponent<VertexAnimatorComponent>(entity).animation != path){
+                scene().getComponent<VertexAnimatorComponent>(entity).animation = path;
+                Scene* current = &scene();
+                EXPECT_TRUE(GpuEnvironment::runFrames([current, entity, &asset](){
+                    const VertexAnimatorComponent& animator = current->getComponent<VertexAnimatorComponent>(entity);
+                    return animator.started && animator.asset == asset;
+                }, 120)) << "the animator loads and starts " << path;
+            }
             VertexAnimatorComponent& animator = scene().getComponent<VertexAnimatorComponent>(entity);
-            animator.playAutomatically = false;
-            animator.randomStart = false;
-            animator.asset = asset;
-            animator.gpuActive = asset != nullptr;
-            animator.gpuMode = asset ? asset->getData().mode : vat::VatMode::Vertices;
-            vat::vatPackInstance(pair, animator.gpuState0, animator.gpuState1);
-            animator.gpuNow = now;
+            animator.state = at(pair, now);
             return animator;
+        }
+
+        // one instance's state (the animator started: animate first)
+        void animateInstance(Entity entity, int index, const vat::VatTrackPair& pair, float now){
+            VertexAnimatorComponent& animator = scene().getComponent<VertexAnimatorComponent>(entity);
+            InstancedMeshComponent& instmesh = scene().getComponent<InstancedMeshComponent>(entity);
+            if (animator.instanceStates.size() < instmesh.instances.size())
+                animator.instanceStates.resize(instmesh.instances.size());
+            animator.instanceStates[size_t(index)] = at(pair, now);
+            // the system writes InstanceData::vat0/vat1 again from the states
+            instmesh.needUpdateInstances = true;
         }
 
         // frames until everything is loaded and every mesh draws the variant its animator asks
@@ -523,7 +569,7 @@ TEST_F(VatRenderTest, RestPoseWhenClipIsMinusOneAndAfterTheAnimatorGoes){
     // the animator stops drawing on the GPU: the mesh goes back to the variant without VAT
     s.animate(model.getEntity(), asset, track(0), 1.0f);
     s.draw();
-    s.scene().getComponent<VertexAnimatorComponent>(model.getEntity()).gpuActive = false;
+    s.scene().getComponent<VertexAnimatorComponent>(model.getEntity()).enabled = false;
     ASSERT_TRUE(s.settle());
     const MeshComponent& mesh = model.getComponent<MeshComponent>();
     EXPECT_EQ(mesh.vat.variantActive, VatVariant::NONE);
@@ -721,13 +767,13 @@ TEST_F(VatRenderTest, InstancesPlayTheirOwnStateAfterSorting){
     const float zs[4] = {-3.0f, -2.0f, -1.0f, 0.0f};
     for (int i = 0; i < 4; i++)
         model.addInstance(xs[i], 0.0f, zs[i]);
+    ASSERT_TRUE(s.settle());
     s.animate(model.getEntity(), asset, track(-1), 0.5f);
     InstancedMeshComponent& instmesh = model.getComponent<InstancedMeshComponent>();
     for (int i = 0; i < 4; i++){
         // instance i at t = 0.5 + i (offsets 0.25, 0.75, 1.25, and Up)
-        vat::vatPackInstance(track(i < 3 ? 0 : 2, -float(i)), instmesh.instances[i].vat0, instmesh.instances[i].vat1);
+        s.animateInstance(model.getEntity(), i, track(i < 3 ? 0 : 2, -float(i)), 0.5f);
     }
-    instmesh.needUpdateInstances = true;
     ASSERT_TRUE(s.settle());
 
     EXPECT_NE(model.getComponent<MeshComponent>().submeshes[0].shaderProperties & shaderPropertyBit(18), 0u) << "'Ist'";
@@ -846,13 +892,18 @@ TEST_F(VatRenderTest, ShadowsAndTheDepthPrePassFollow){
 
 TEST_F(VatRenderTest, AnimatedBoundsKeepAMovedMeshFromBeingCulled){
     // the mesh stands at x 8, out of the view; its animation moves it back by 8 to the centre.
-    // Culled by its rest bounds, drawn with animatedBounds over the motion, single and instanced
+    // An asset without bounds leaves it culled by its rest bounds; with its bounds over the
+    // motion the animator sets animatedBounds and it is drawn, single and instanced
     VatGltf box;
     box.addBox(Vector3(0.0f, 0.0f, 0.0f), Vector3(0.5f, 0.5f, 0.5f));
-    const auto asset = makeAsset(vat::VatMode::Vertices, box.vertexCount(), false, {{"Back", 1}}, [](int, int, int){
-        return Vector4(-8.0f, 0.0f, 0.0f, 0.0f);
-    });
-    ASSERT_TRUE(asset);
+    auto back = [](int, int, int){ return Vector4(-8.0f, 0.0f, 0.0f, 0.0f); };
+    const auto unbounded = makeAsset(vat::VatMode::Vertices, box.vertexCount(), false, {{"Back", 1}}, back);
+    vat::VatBounds motion;
+    motion.extend(Vector3(-8.5f, -0.5f, -0.5f));
+    motion.extend(Vector3(0.5f, 0.5f, 0.5f));
+    const auto bounded = makeAsset(vat::VatMode::Vertices, box.vertexCount(), false, {{"Back", 1}}, back, motion);
+    ASSERT_TRUE(unbounded);
+    ASSERT_TRUE(bounded);
     for (bool instanced : {false, true}){
         SCOPED_TRACE(instanced ? "instanced" : "single");
         VatScene s;
@@ -860,25 +911,28 @@ TEST_F(VatRenderTest, AnimatedBoundsKeepAMovedMeshFromBeingCulled){
         if (instanced){
             model.createInstancedMesh();
             model.addInstance(8.0f, 0.0f, 0.0f);
-            // the instance plays its own state
-            InstancedMeshComponent& instmesh = model.getComponent<InstancedMeshComponent>();
-            vat::vatPackInstance(track(0), instmesh.instances[0].vat0, instmesh.instances[0].vat1);
-            instmesh.needUpdateInstances = true;
         }else{
             model.setPosition(8.0f, 0.0f, 0.0f);
         }
-        s.animate(model.getEntity(), asset, track(0), 0.0f);
         ASSERT_TRUE(s.settle());
+        s.animate(model.getEntity(), unbounded, track(0), 0.0f);
+        if (instanced)
+            s.animateInstance(model.getEntity(), 0, track(0), 0.0f);
+        ASSERT_TRUE(s.settle());
+        EXPECT_TRUE(model.getComponent<MeshComponent>().animatedBounds.isNull());
         Screen culled;
         ASSERT_TRUE(culled.read());
         EXPECT_TRUE(rowInk(culled, 0.0f).empty()) << "culled by the rest bounds";
 
-        model.getComponent<MeshComponent>().animatedBounds = AABB(Vector3(-8.5f, -0.5f, -0.5f), Vector3(0.5f, 0.5f, 0.5f));
-        s.draw();
+        s.animate(model.getEntity(), bounded, track(0), 0.0f);
+        if (instanced)
+            s.animateInstance(model.getEntity(), 0, track(0), 0.0f);
+        ASSERT_TRUE(s.settle());
+        const MeshComponent& mesh = model.getComponent<MeshComponent>();
+        EXPECT_EQ(mesh.animatedBounds, AABB(Vector3(-8.5f, -0.5f, -0.5f), Vector3(0.5f, 0.5f, 0.5f)));
         Screen drawn;
         ASSERT_TRUE(drawn.read());
         EXPECT_NEAR(rowInk(drawn, 0.0f).x0, toScreenX(-0.5f), 1.5f) << "drawn with the animated bounds";
-        const MeshComponent& mesh = model.getComponent<MeshComponent>();
         EXPECT_LT(mesh.worldAABB.getMinimum().x, 0.0f) << "the world AABB holds the motion";
     }
 }
@@ -976,27 +1030,21 @@ TEST_F(VatRenderTest, ShaderFrameMathMatchesTheCpp){
     model.createInstancedMesh();
     for (int r = 0; r < rows; r++)
         model.addInstance(0.0f, top - pitch * r, 0.0f);
+    ASSERT_TRUE(s.settle());
     s.animate(model.getEntity(), asset, track(-1), 0.0f);
     ASSERT_TRUE(s.settle());
     InstancedMeshComponent& instmesh = model.getComponent<InstancedMeshComponent>();
 
-    // the instances' clock is the entity's: each row's own time goes in its start
+    // the instances' clock is the entity's (0): each row's own time goes in its times
     int checked = 0;
     for (size_t first = 0; first < cases.size(); first += rows){
         const size_t count = std::min(cases.size() - first, size_t(rows));
         for (int r = 0; r < rows; r++){
-            vat::VatTrackPair pair = track(-1);
-            if (size_t(r) < count){
-                pair = cases[first + r].first;
-                const float shift = cases[first + r].second;    // now = 0 everywhere: move starts
-                pair.a.start -= shift;
-                pair.b.start -= shift;
-                pair.fadeStart -= shift;
-                pair.fadeEnd -= shift;
-            }
-            vat::vatPackInstance(pair, instmesh.instances[r].vat0, instmesh.instances[r].vat1);
+            if (size_t(r) < count)
+                s.animateInstance(model.getEntity(), r, cases[first + r].first, cases[first + r].second);
+            else
+                s.animateInstance(model.getEntity(), r, track(-1), 0.0f);
         }
-        instmesh.needUpdateInstances = true;
         s.draw();
         Screen screen;
         ASSERT_TRUE(screen.read());
