@@ -2,7 +2,7 @@
 """Check an Android screenshot for real rendering, and against its golden image.
 
     python3 tools/android-screen-check.py <screen.png> [--golden golden.png] [--update]
-        [--width 270] [--tolerance 24] [--max-fraction 0.03] [--min-detail 0.02]
+        [--width 270] [--tolerance 24] [--max-fraction 0.0025] [--min-detail 0.02]
 
 tools/android-emulator-test.sh runs it on the host for every screenshot it takes with --golden.
 
@@ -57,7 +57,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--update", action="store_true", default=os.environ.get("JASPER_UPDATE_GOLDEN") == "1")
     parser.add_argument("--width", type=int, default=270)
     parser.add_argument("--tolerance", type=int, default=24)
-    parser.add_argument("--max-fraction", type=float, default=0.03)
+    parser.add_argument("--max-fraction", type=float, default=0.0025)
     parser.add_argument("--min-detail", type=float, default=0.02)
     args = parser.parse_args(argv)
 
@@ -115,10 +115,10 @@ def main(argv: list[str]) -> int:
     diff_path.write_bytes(diff)
     if ok:
         print(f"GOLDEN   ok: {differing:.2%} of the pixels differ from {golden_path} "
-              f"(tolerance {args.tolerance}, at most {args.max_fraction:.0%})")
+              f"(tolerance {args.tolerance}, at most {args.max_fraction:.2%})")
     else:
         print(f"GOLDEN   DIFFERS: {differing:.2%} of the pixels differ from {golden_path} "
-              f"(tolerance {args.tolerance}, at most {args.max_fraction:.0%}): {diff_path}")
+              f"(tolerance {args.tolerance}, at most {args.max_fraction:.2%}): {diff_path}")
         failed = True
     return 1 if failed else 0
 

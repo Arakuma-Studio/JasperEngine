@@ -101,7 +101,7 @@ namespace {
         blueTriangle.setColor(0.25f, 0.5f, 0.9f);
 
         caption.setText("JasperEngine 2D");
-        caption.setFontSize(64);
+        caption.setFontSize(120);
         caption.setColor(0.95f, 0.9f, 0.75f);
         caption.setAnchorPreset(AnchorPreset::CENTER);
         caption.setPositionYOffset(260.0f);
