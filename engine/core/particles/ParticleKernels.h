@@ -20,6 +20,7 @@
 #include "particles/ParticleKernelContext.h"
 #include "particles/ParticleModules.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <type_traits>
@@ -792,7 +793,10 @@ namespace jasperengine { namespace particles {
                             alignas(16) float vv[4], out[4];
                             B::storeu(vv, v);
                             for (int l = 0; l < 4; l++){
-                                uint32_t idx = (uint32_t)((float)s.frameCount * vv[l]);
+                                // the window's end (1) is the last frame and an ease below 0 the
+                                // first: the position is clamped before it becomes an index
+                                const float position = std::min(std::max(vv[l], 0.0f), 1.0f) * (float)s.frameCount;
+                                uint32_t idx = (uint32_t)position;
                                 if (idx >= s.frameCount) idx = s.frameCount - 1;
                                 out[l] = (float)frames[idx];
                             }

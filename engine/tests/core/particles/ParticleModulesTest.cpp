@@ -510,3 +510,23 @@ TEST(ParticleModules, SetOverAgeHoldsTheLastValueOutsideItsWindow){
     // past the window it keeps the last value set (at age 30/60 s, the last tick inside)
     EXPECT_NEAR(sim.ch(ChVelX), 4.0f * 0.5f / 0.51f, 1e-3f);
 }
+
+TEST(ParticleModules, SetOverAgeFramesStayInsideTheList){
+    // the old sprite modifier's ends (upstream's fix of it): the window's end (1) is the last
+    // frame, not one past it; an ease outside [0, 1] sets nothing (as the old modifier), and its
+    // lanes never index the list with a negative position cast to an unsigned one
+    for (float ease : {-1.0f, 1.0f}){
+        ParticleEffectDocument d = singleParticle(Vector3(0.0f, 0.0f, 0.0f));
+        d.setOverAge.present = true;
+        SetOverAgeEntry e;
+        e.property = SetProperty::Frame;
+        e.fromTime = 0.0f;
+        e.toTime = 0.5f;
+        e.curve = Curve::polyline({{0.0f, ease}, {1.0f, ease}});
+        e.frames = {3, 5};
+        d.setOverAge.entries = {e};
+        Sim sim(d);
+        sim.ticks(1 + 10);
+        EXPECT_EQ(sim.ch(ChFrame), ease < 0.0f ? 0.0f : 5.0f) << "ease " << ease;
+    }
+}

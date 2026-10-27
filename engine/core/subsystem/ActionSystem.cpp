@@ -5,6 +5,7 @@
 
 #include "Scene.h"
 #include "util/Color.h"
+#include "util/Angle.h"
 #include "math/Interpolation.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/ParticleSubsystem.h"
