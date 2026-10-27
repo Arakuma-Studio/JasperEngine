@@ -46,10 +46,19 @@ namespace jasperengine::editor {
         static void scan(W& w) {
             w.lastScan = -1.0;
             w.tick();
-            if (w.scan.valid()) w.scan.wait();
+            if (std::shared_ptr<W::ScanJob> job = w.scan) {
+                std::unique_lock<std::mutex> lock(job->mutex);
+                job->finished.wait(lock, [&job]() { return job->done.load(); });
+            }
             w.tick();
         }
-        static bool scanning(W& w) { return w.scan.valid(); }
+        static bool scanning(W& w) { return w.scan != nullptr; }
+        static void startScan(W& w) {
+            w.lastScan = -1.0;
+            w.tick();
+        }
+        static int idleScans(W& w) { return w.idleScans; }
+        static double interval(W& w) { return w.interval(); }
         static int hashes(W& w) { return w.hashCount->load(); }
         static void settle(W& w, double seconds) { w.settleSeconds = seconds; }
         static std::shared_ptr<sn::SpriteNormalsRun> regeneration(W& w) { return w.regen; }
@@ -309,4 +318,28 @@ TEST(SpriteNormalsWatcher, ARecentChangeWaits) {
     watcher.tick();
     EXPECT_EQ(sn::checkStaleness(root(), root() / dir / "hero_normal.png").state, sn::Staleness::State::Fresh);
     project()->getSpriteNormalsSettings().autoRegenerate = false;
+}
+
+TEST(SpriteNormalsWatcher, ResetDoesNotWaitAndIdleProjectsBackOff) {
+    fresh("idle");
+    writePng("assets/idle/plain.png", disk(16, 40));
+    project()->getSpriteNormalsSettings().autoRegenerate = false;
+    SpriteNormalsWatcher watcher(project());
+    // no generated map: each scan waits longer than the last
+    const double first = Access::interval(watcher);
+    Access::scan(watcher);
+    Access::scan(watcher);
+    EXPECT_EQ(Access::idleScans(watcher), 2);
+    EXPECT_GT(Access::interval(watcher), first);
+    // a write by the tool: back to the short interval
+    watcher.invalidate(root() / "assets/idle/plain.png");
+    EXPECT_EQ(Access::interval(watcher), first);
+    // a scan in flight is dropped, never waited for
+    for (int i = 0; i < 300; i++) writePng("assets/idle/many" + std::to_string(i) + ".png", disk(8, 10));
+    Access::startScan(watcher);
+    EXPECT_TRUE(Access::scanning(watcher));
+    const auto start = std::chrono::steady_clock::now();
+    watcher.reset();
+    EXPECT_LT(std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count(), 0.05);
+    EXPECT_FALSE(Access::scanning(watcher));
 }

@@ -35,6 +35,7 @@
 namespace jasperengine::editor {
 
     class Project;
+    class Command;
 
     class SpriteNormalsWindow {
         friend struct SpriteNormalsWindowTestAccess;
@@ -79,8 +80,15 @@ namespace jasperengine::editor {
         bool openForEntity(uint32_t sceneId, Entity entity, unsigned submesh, bool now, std::string& error);
         // "Regenerate Normal Map": from the output's recipe, written over it (one Project undo
         // step), no window
+        // (blocking: tests and tools; the editor's entries use startRegenerate)
         static bool regenerateFromRecipe(Project* project, const std::filesystem::path& generatedPng,
                                          std::vector<std::string>& written, std::string& error);
+        // The same on the worker, written by a later tick (the Project window's and the Inspector's
+        // Regenerate): false + error when the recipe can't be used; the outcome goes to the
+        // Console (Out::info) or an alert
+        bool startRegenerate(const std::filesystem::path& generatedPng, std::string& error);
+        // a Shift-click generation or a Regenerate still running
+        bool hasPendingJobs() const { return !quickJobs.empty(); }
 
         // ---- settings (the shared set) and the current item's spec
 
@@ -192,6 +200,7 @@ namespace jasperengine::editor {
             std::shared_ptr<spritenormals::SpriteNormalsRun> result;
             std::string resultKey;
             std::vector<spritenormals::Problem> problems;
+            std::string problemsKey;           // what problems were checked for (source, frames, outputs, stamps)
         };
 
         struct AssignTarget {
@@ -223,10 +232,12 @@ namespace jasperengine::editor {
         };
 
         // An Inspector Shift-click: generate, save and assign with the window closed
+        // ... and a Regenerate (no target: written only)
         struct QuickJob {
             std::shared_ptr<spritenormals::SpriteNormalsRun> run;
             AssignTarget target;
             bool overwrite = false;
+            std::string label;                   // the normal map's file name
         };
 
         Project* project;
@@ -241,6 +252,7 @@ namespace jasperengine::editor {
         AssignTarget target;
         bool assign = false;
         bool storedLoaded = false;              // the project's stored settings were taken
+        std::filesystem::path storedProject;    // ... from this project
 
         // the run of the current item (live or forced) and what it was started from
         std::shared_ptr<spritenormals::SpriteNormalsRun> run;
@@ -268,8 +280,10 @@ namespace jasperengine::editor {
         // undo routing (spec 3.10)
         uint32_t assignSceneId = 0;
         size_t assignPosition = 0;               // the scene history's position right after the assign
+        const Command* assignCommand = nullptr;  // ... and its step (identity, not only the position)
         bool assignRecorded = false;
         size_t writePosition = 0;                // the project history's position right after the write
+        const Command* writeCommand = nullptr;
         bool writeRecorded = false;
 
         // preview state
@@ -354,6 +368,11 @@ namespace jasperengine::editor {
         void refreshWarnings(bool force);
         void storeSettings();
         void autoTargetFor(const std::string& imagePath);
+        // the assign target still draws `item`'s image (or its atlas); else it is cleared
+        bool targetDraws(const Item& item) const;
+        void keepTargetFor(const Item& item);
+        void recordWrite();
+        void recordAssign(uint32_t sceneId);
         std::shared_ptr<spritenormals::SpriteNormalsRun> shown() const;
         std::vector<spritenormals::Cell> shownCells() const;
         void cellRect(int index, int& x, int& y, int& w, int& h) const;

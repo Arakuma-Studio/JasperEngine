@@ -20,7 +20,8 @@
 #include <cstdint>
 #include <deque>
 #include <filesystem>
-#include <future>
+#include <condition_variable>
+#include <mutex>
 #include <map>
 #include <memory>
 #include <string>
@@ -82,14 +83,23 @@ namespace jasperengine::editor {
             std::map<std::filesystem::path, Output> outputs;
             std::map<std::filesystem::path, Hash> hashes;
         };
+        // a scan on its own detached thread: dropped (cancelled) without waiting for it
+        struct ScanJob {
+            std::atomic<bool> cancel{false};
+            std::atomic<bool> done{false};
+            ScanResult result;
+            std::mutex mutex;
+            std::condition_variable finished;
+        };
 
         Project* project;
         std::filesystem::path scannedProject;
         std::map<std::filesystem::path, Output> outputs;
         std::map<std::filesystem::path, Hash> hashes;
-        std::future<ScanResult> scan;
+        std::shared_ptr<ScanJob> scan;
         double lastScan = -1.0;
         double scanInterval = 5.0;                // seconds between scans
+        int idleScans = 0;                        // scans in a row that found no generated map (they slow down)
         double settleSeconds = 1.0;               // a source changed this recently waits
         uint64_t rev = 0;
         std::shared_ptr<std::atomic<int>> hashCount = std::make_shared<std::atomic<int>>(0);
@@ -102,6 +112,7 @@ namespace jasperengine::editor {
         std::string lastLog;                      // the last Console line (tests)
 
         double clock() const;
+        double interval() const;
         void startScan();
         void collectScan();
         void queueStale();

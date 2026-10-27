@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <chrono>
 #include <fstream>
+#include <thread>
 #include <iterator>
 #include <set>
 
@@ -52,7 +53,7 @@ SpriteNormalsWatcher::SpriteNormalsWatcher(Project* project): project(project) {
 
 SpriteNormalsWatcher::~SpriteNormalsWatcher() {
     if (regen) regen->cancel();
-    if (scan.valid()) scan.wait();
+    if (scan) scan->cancel = true;
     if (activeWatcher == this) activeWatcher = nullptr;
 }
 
@@ -77,9 +78,10 @@ void SpriteNormalsWatcher::reset() {
     regen.reset();
     regenOutput.clear();
     queue.clear();
-    // a scan of the old project finishes on its own; its result is dropped
-    if (scan.valid()) scan.wait();
-    scan = std::future<ScanResult>();
+    // a scan of the old project stops at its next file, never waited for; its result is dropped
+    if (scan) scan->cancel = true;
+    scan.reset();
+    idleScans = 0;
     outputs.clear();
     hashes.clear();
     scannedProject.clear();
@@ -95,6 +97,7 @@ void SpriteNormalsWatcher::invalidate(const fs::path& path) {
         it->second.size = static_cast<uintmax_t>(-1);
     }
     hashes.erase(key);
+    idleScans = 0;
     // soon, not at once: a write of several files lands first
     if (lastScan >= 0.0) lastScan = std::min(lastScan, clock() - scanInterval + 0.25);
 }
@@ -106,10 +109,13 @@ void SpriteNormalsWatcher::startScan() {
     std::map<fs::path, Output> previous = outputs;
     std::map<fs::path, Hash> knownHashes = hashes;
     std::shared_ptr<std::atomic<int>> counter = hashCount;
+    std::shared_ptr<ScanJob> job = std::make_shared<ScanJob>();
+    scan = job;
     // off the main thread: reading recipes and hashing sources can take a while on a big project
-    scan = std::async(std::launch::async, [root, previous = std::move(previous), knownHashes = std::move(knownHashes), counter]() {
+    auto work = [job, root, previous = std::move(previous), knownHashes = std::move(knownHashes), counter]() {
         ScanResult out;
         for (const fs::path& file : ProjectChecks::findProjectFiles(root, {".png"})) {
+            if (job->cancel) break;
             const fs::path key = file.lexically_normal();
             Output entry;
             if (!stamp(key, entry.time, entry.size)) continue;
@@ -133,6 +139,7 @@ void SpriteNormalsWatcher::startScan() {
         }
         // the sources: hashed once per mtime and size
         for (auto& [key, entry] : out.outputs) {
+            if (job->cancel) break;
             if (entry.role.empty()) continue;
             Hash h;
             if (!stamp(entry.sourceAbsolute, h.time, h.size)) {
@@ -156,13 +163,34 @@ void SpriteNormalsWatcher::startScan() {
             }
             entry.stale = known->second.sha1 != entry.recipeSha1;
         }
-        return out;
-    });
+        {
+            std::lock_guard<std::mutex> lock(job->mutex);
+            job->result = std::move(out);
+            job->done = true;
+        }
+        job->finished.notify_all();
+    };
+    try {
+        std::thread(std::move(work)).detach();
+    } catch (const std::system_error&) {
+        // no thread: no scan this time, another later
+        scan.reset();
+    }
+}
+
+double SpriteNormalsWatcher::interval() const {
+    // a project with no generated map is walked less and less often (up to every 80 s)
+    return scanInterval * static_cast<double>(1 << std::min(idleScans, 4));
 }
 
 void SpriteNormalsWatcher::collectScan() {
-    if (!scan.valid() || scan.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
-    ScanResult result = scan.get();
+    if (!scan || !scan->done) return;
+    ScanResult result;
+    {
+        std::lock_guard<std::mutex> lock(scan->mutex);
+        result = std::move(scan->result);
+    }
+    scan.reset();
     // the project changed meanwhile: dropped
     if (project->getProjectPath() != scannedProject) return;
     bool changed = result.outputs.size() != outputs.size();
@@ -175,6 +203,9 @@ void SpriteNormalsWatcher::collectScan() {
     }
     outputs = std::move(result.outputs);
     hashes = std::move(result.hashes);
+    bool anyGenerated = false;
+    for (const auto& entry : outputs) anyGenerated = anyGenerated || !entry.second.role.empty();
+    idleScans = anyGenerated ? 0 : idleScans + 1;
     if (changed) rev++;
     if (autoRegenerate()) queueStale();
 }
@@ -283,7 +314,7 @@ void SpriteNormalsWatcher::tick() {
     pausedForPlay = project->isAnyScenePlaying();
     if (pausedForPlay) return;
     collectScan();
-    if (!scan.valid() && (lastScan < 0.0 || clock() - lastScan >= scanInterval)) startScan();
+    if (!scan && (lastScan < 0.0 || clock() - lastScan >= interval())) startScan();
     if (autoRegenerate()) {
         tickRegeneration();
     } else if (!queue.empty()) {

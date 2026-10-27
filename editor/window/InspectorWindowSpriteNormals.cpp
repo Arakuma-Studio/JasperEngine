@@ -44,7 +44,6 @@ namespace sne = jasperengine::editor::spritenormalsentry;
 namespace {
 
     constexpr double PROBE_SECONDS = 1.0;
-    constexpr double STALENESS_SECONDS = 3.0;
 
     // A nearest-filtered copy of a PNG for the view (destroyed when another one replaces it)
     struct Thumbnail {
@@ -65,8 +64,6 @@ namespace {
         fs::path output;                   // the generated map shown (the asset, or its paired map)
         nlohmann::json recipe;             // the output's recipe
         int width = 0, height = 0;
-        sn::Staleness staleness;
-        double staleAt = -1.0;
         std::string status;
         bool statusError = false;
         Thumbnail thumbnail;
@@ -225,17 +222,13 @@ bool editor::InspectorWindow::drawSpriteNormalsAsset(const fs::path& asset) {
     const uintmax_t size = fs::file_size(asset, ec);
     // the probe: what the file is (a generated output, or the source of one), at most once a second
     if (s.asset != asset || s.time != time || s.size != size || s.probedAt < 0.0 || now - s.probedAt >= PROBE_SECONDS || now < s.probedAt) {
-        if (s.asset != asset) {
-            s.status.clear();
-            s.staleAt = -1.0;
-        }
+        if (s.asset != asset) s.status.clear();
         s.asset = asset;
         s.time = time;
         s.size = size;
         s.probedAt = now;
         s.head = sne::recipeHead(root, asset);
         const fs::path output = s.head.generated ? asset : sne::pairedOutput(root, asset);
-        if (output != s.output) s.staleAt = -1.0;
         s.output = output;
         s.recipe = nlohmann::json();
         if (!output.empty()) {
@@ -285,13 +278,10 @@ bool editor::InspectorWindow::drawSpriteNormalsAsset(const fs::path& asset) {
         ImGui::SetItemTooltip("Select it in the Project window");
     }
 
-    // staleness: the source hashed again at most every 3 s while shown
-    if (s.staleAt < 0.0 || now - s.staleAt >= STALENESS_SECONDS || now < s.staleAt) {
-        s.staleness = sn::checkStaleness(root, s.output);
-        s.staleAt = now;
-    }
-    const bool missing = s.staleness.state == sn::Staleness::State::Missing;
-    if (s.staleness.state == sn::Staleness::State::Changed) {
+    // staleness: the watcher's (it hashes sources off the main thread); a missing source is a stat
+    SpriteNormalsWatcher* watcher = SpriteNormalsWatcher::active();
+    const bool missing = (watcher && watcher->sourceMissing(s.output)) || (!outputHead.sourceAbsolute.empty() && !fs::exists(outputHead.sourceAbsolute, ec));
+    if (!missing && watcher && watcher->isStale(s.output)) {
         warningLine(sourceName + " changed since this normal map was generated.");
         UIProbe::item("snAsset.stale");
     } else if (missing) {
@@ -304,12 +294,11 @@ bool editor::InspectorWindow::drawSpriteNormalsAsset(const fs::path& asset) {
     const float half = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
     ImGui::BeginDisabled(missing || playing);
     if (ImGui::Button(ICON_FA_ROTATE " Regenerate##snAssetRegenerate", ImVec2(half, 0))) {
-        std::vector<std::string> written;
+        // on the worker: the Sprite Normal Map window's tick writes it (one Project undo step)
         std::string error;
-        if (SpriteNormalsWindow::regenerateFromRecipe(project, s.output, written, error)) {
-            s.status = "Regenerated " + s.output.filename().u8string() + ".";
+        if (Backend::getApp().getSpriteNormalsWindow()->startRegenerate(s.output, error)) {
+            s.status = "Regenerating " + s.output.filename().u8string() + "...";
             s.statusError = false;
-            s.staleAt = -1.0;
             s.probedAt = -1.0;
         } else {
             s.status = "Can't regenerate " + s.output.filename().u8string() + ": " + error;
@@ -380,6 +369,9 @@ bool editor::InspectorWindow::drawSpriteNormalsAsset(const fs::path& asset) {
     UIProbe::item("snAsset.autoRegenerate");
     ImGui::SetItemTooltip("Regenerate this project's normal maps when their source images change (not undoable, logged in the Console)");
 
+    if (s.status.rfind("Regenerating ", 0) == 0 && !Backend::getApp().getSpriteNormalsWindow()->hasPendingJobs()) {
+        s.status = "Regenerated " + s.output.filename().u8string() + ".";
+    }
     if (!s.status.empty()) {
         ImGui::PushStyleColor(ImGuiCol_Text, s.statusError ? Theme::Colors::ErrorText : Theme::Colors::SubtleText);
         ImGui::TextWrapped("%s", s.status.c_str());
