@@ -1666,7 +1666,8 @@ void SpriteNormalsWindow::releaseRetired() {
 
 void SpriteNormalsWindow::updateGpuImage(GpuImage& gpu, const sn::Image& rgba, uint64_t serial) {
     retire(gpu);
-    if (rgba.empty() || rgba.channels != 4 || rgba.bitDepth != 8) return;
+    // no GPU objects without the editor's renderer (the headless editor, tests)
+    if (!editorUi() || rgba.empty() || rgba.channels != 4 || rgba.bitDepth != 8) return;
     static uint64_t counter = 0;
     // TextureData frees what it is given (stbi_image_free = free)
     const size_t bytes = rgba.data.size();
