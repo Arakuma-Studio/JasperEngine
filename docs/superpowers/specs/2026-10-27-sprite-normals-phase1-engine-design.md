@@ -196,8 +196,8 @@ Editor:
 Effect on existing content (deliberate): unlit 2D objects (and unlit 3D meshes) without a normal map under a Light 2D
 with `height > 0` were dimmed by `height / |L|`; they now get the full radial light, as with height 0 (Unity's 2D
 lights behave this way). Lit materials are unchanged. Migration note: "Light 2D Height now only shapes normal-mapped
-objects; scenes that used Height to darken plain sprites: lower the light's Intensity." The contract's "lit exactly as
-before regardless of height" is read as "as with height 0, at any height".
+objects; scenes that used Height to darken plain sprites: lower the light's Intensity." The contract (section 7, as
+amended) states exactly this: "lit as a height-0 light lights them, at any height".
 
 ### 3.4 F4: library shaders sample the material's normal map (`@require normalmap`)
 
@@ -437,7 +437,8 @@ Engine: `engine/core/subsystem/MeshSystem.{h,cpp}`, `engine/core/subsystem/Rende
 `engine/shaderlib/includes/{surface_vs,lighting2d,stochastic}.glsl`, new `engine/shaderlib/includes/tangent_frame.glsl`,
 `engine/shaderlib/library/sprite.frag`, new `engine/tests/htmlui/TestLight2DNormalMaps.cpp`.
 Editor: `editor/command/type/{CreateEntityCmd,AddComponentCmd}.cpp`, `editor/window/InspectorWindow.cpp` (only the
-Light 2D help and the Normal Texture row/help: Phase 4 edits other parts of this file), `editor/Catalog.{h,cpp}`
+Light 2D help and the Normal Texture row/help (Phase 4 later adds a button to this row): Phase 4 edits other parts of
+this file), `editor/Catalog.{h,cpp}`
 (`shaderReadsMaterialNormalMap`), new `editor/tests/Sprite2DTangentFrameTest.cpp`, new
 `tools/mcp/tests/test_light2d_normals.py`.
 Docs: `README.md` (Engine bullet only; Phase 3 adds the feature bullet), `docs/mcp/guide/lua-api.md`,
@@ -456,3 +457,13 @@ Not touched: `editor/mcp/McpInstructions.cpp` (Phase 3 owns the agent guide line
 7. F6 -> R18.
 8. R16, R19; Vulkan build and the whole new test file on lavapipe; full regression runs (section 5.2-5.3); docs;
    report with the migration notes, test commands and outputs.
+
+## Amendments (2026-10-27, consistency review)
+
+- Section 7: `InspectorWindow.cpp` ownership notes that Phase 4 later adds a button (the wand) to the Normal Texture
+  row; both Normal Texture rows (built-in and the library-shader row of 3.4) get it [33]. No change to Phase 1's work.
+- Section 3.3: the contract now states the Light 2D height rule as this spec reads it ("lit as a height-0 light lights
+  them, at any height"), and lists `add_component`/Inspector Add Component among the editor-created lights that get
+  height 64 [24]. No behaviour change.
+- `Catalog::shaderReadsMaterialNormalMap` is now also called by Phase 2's `sceneWarnings` (`shader_ignores_normals`)
+  [4]. Signature unchanged.

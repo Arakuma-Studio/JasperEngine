@@ -4,13 +4,10 @@ Status: binding for the Phase 3 implementer. Conforms to `2026-10-27-sprite-norm
 any conflict; tell the controller). Wave 2: one implementer, one worktree, in parallel with Phase 4 (editor UI). Built on
 Phase 1 (engine) and Phase 2 (generator + session + apply), both merged into `sprite-normals` before this phase starts.
 
-Phase 2 owns every engine-free and session API this phase calls (contract section 8: `generate`, `presetSettings`,
-`resolveSettings`, `validateSettings`, `loadSource`, `packAtlas`, `encodePng`, `renderLit`, `contactSheet`, `metrics`,
-`assess`, `Spec`, `checkSpec`, `plannedOutputs`, `buildRequest`, `encodeOutputs`, `writeOutputsUndoable`,
-`specFromRecipe`, `checkStaleness`, `framesFromSprite`, `lightsRespondToNormals`, `SpriteNormalsRun`, and the apply
-command). Use their exact names and signatures from the Phase 2 headers as merged; this spec never redefines them. Where
-this spec needs something Phase 2 does not provide (scene-aware warnings, tilemap frames, the reverse source index),
-it is written here, inside this phase's own files.
+Phase 2 owns every engine-free and session API this phase calls (the Phase 2 names of contract section 8). Use their
+exact names and signatures from the Phase 2 headers as merged; this spec never redefines them. Where this spec needs
+something Phase 2 does not provide (tilemap frames, the reverse source index), it is written here, inside this phase's
+own files.
 
 ## 1. Goals
 
@@ -30,8 +27,8 @@ which adds `paint` to this tool, the CLI and the guide); an AI/ML backend.
 ## 2. Files this phase owns
 
 New:
-- `editor/mcp/tools/SpriteNormalsTools.cpp`: the tool, its argument parsing, scene-aware warnings, the asset-info and
-  view-asset helpers, the auto-sync hook.
+- `editor/mcp/tools/SpriteNormalsTools.cpp`: the tool, its argument parsing, the asset-info and view-asset helpers,
+  the auto-sync hook.
 - `editor/spritenormals/SpriteNormalsCli.h/.cpp`: the CLI (namespace `jasperengine::editor::spritenormals`).
 - `editor/spritenormals/SpriteNormalsCheck.h/.cpp`: the `check --normals` engine (pure parsing, no engine start), used by
   the CLI `check` command.
@@ -46,7 +43,8 @@ Edited (each edit small; listed so the merge with Phase 4 is predictable):
   `editor/mcp/tools/AssetTools.cpp` (get_asset_info / view_asset), `editor/mcp/tools/ScriptTools.cpp` (file-sync hook,
   next to `vatFileChanged`), `editor/mcp/McpInstructions.cpp` (one sentence, section 8.1).
 - `editor/main.cpp`, `editor/cli/CommandLine.h/.cpp` (dispatch, usage line, `check --normals`).
-- `CMakeLists.txt` (the new sources in the editor's source lists, next to the texsynth/vat entries).
+- `CMakeLists.txt`: already wired by the controller (the wave-2 source entries with stub `.cpp` files:
+  `SpriteNormalsCli.cpp`, `SpriteNormalsCheck.cpp`, `SpriteNormalsTools.cpp`); do not edit.
 - `tools/mcp/gen_tool_docs.py` (MODULES), `docs/mcp/TOOLS.md` (regenerated), `docs/mcp/guide/README.md`,
   `docs/mcp/README.md`, `docs/mcp/DESIGN.md`, `docs/mcp/checks.md`, `README.md`, `tools/mcp/tests/test_docs.py` (DOCS),
   `tools/mcp/tests/test_checks.py` only if a shared helper must change (prefer the new test file).
@@ -78,10 +76,10 @@ Not this phase (Phase 4 owns them, to keep the two worktrees apart): `ViewTools.
 | `scene` | `sceneRef()` | selected scene | For GameObject sources and `apply` |
 | `preset` | enum `soft` `default` `crisp` `detailed` `chunky` | `default` | Contract section 3 |
 | `params` | `anyObject("")` | `{}` | Overrides of the preset and the advanced settings: `strength`, `detail`, `smoothing`, `volume`, `radius` (`"auto"` or number), `softness`, `alpha_threshold`, `profile`, `edges`, `ignore_outline`, `regions`. Ranges: contract section 3 |
-| `frames` | `{"anyOf": [stringEnum("", ["auto","none"]), loose object {tile_size, columns, rows, count, offset, padding}]}` | `"auto"` | Contract section 3; object keys and meaning exactly `set_sprite_frames.slice` (`tile_size` a number or `[w, h]`) |
+| `frames` | `{"anyOf": [stringEnum("", ["auto","none"]), loose object {tile_size, columns, rows, count, offset, padding}]}` | `"auto"` | Contract section 3; object keys and meaning exactly `set_sprite_frames.slice` (`tile_size` a number or `[w, h]`), or `{cells: [[x,y,w,h], ...]}` (maps to `FramesSpec::Mode::Cells`, `from: "given"`; exclusive with the grid keys) |
 | `directx` | boolean | false | Green down (Unreal). The engine reads OpenGL; with `apply` it is a warning |
 | `height` | boolean | false | Also the 16-bit height map |
-| `output` | `{"type": ["string","boolean","object"]}` | (omitted: preview) | `true`: default names (contract section 5); a string: the normal map's path (the animation's normal atlas); an object `{normal?, atlas?, height?, frames?}` overriding single paths (`frames`: `true` for `<atlas stem>.frames.json`, or a path). `false` = preview |
+| `output` | `{"type": ["string","boolean","object"]}` | (omitted: preview) | `true`: default names (contract section 5); a string: the normal map's path (the animation's normal atlas); an object `{normal?, atlas?, height?, frames?}` overriding single paths (`frames`: `true` for `<atlas stem>.frames.json` for animations, `<normal stem>.frames.json` otherwise, or a path). `false` = preview |
 | `overwrite` | boolean | false | Replace existing outputs |
 | `apply` | `{"type": ["boolean","string","integer","object"]}` | false | On write: `true` = the source GameObject; an entity reference = that GameObject (a file source) |
 | `save_path` | string | | Also write the preview contact sheet PNG there (project-relative; inside the project, any folder; never needs `overwrite`, like `screenshot`) |
@@ -101,39 +99,42 @@ Reserved for Phase 5: `paint` (do not declare it in this phase).
    framebuffer texture is `invalid_source`: "its texture is not a file"). The image file is the source; the recipe
    records `kind: "sprite"` and `entity` (the GameObject path).
 4. A Tilemap: every submesh with a distinct base-texture file is one job; outputs are per texture (only `output: true`
-   or omitted are allowed: a string or object with several textures is `invalid_output`, "a Tilemap with N tileset
-   textures needs output: true (one normal map per texture)"); `frames: "auto"` is the whole texture (no tile cells are
-   inferred; the guide tells agents to pass `frames: {tile_size}` and `params: {edges: "extend"}` for tilesets);
-   `apply` assigns each submesh its texture's map. Results are a list (3.7).
-5. Frames `"auto"`: a Sprite source with frames -> `framesFromSprite(entity)` (`from: "sprite"`); GIF/APNG -> the
-   animation's frames (`from: "gif"|"apng"`); else the whole image (`from: "single"`). `"none"`: whole image (an
-   animation still packs its frames into an atlas; `"none"` only drops cell isolation and is refused for GIF/APNG with
-   `invalid_frames`, "an animation's frames come from the file"). An object: `from: "given"`, sliced exactly like
-   `set_sprite_frames.slice` over the source image; the cells must lie inside the image (`invalid_frames` otherwise,
-   with the image size and the grid). For GIF/APNG an object is refused (`invalid_frames`).
+   or omitted are allowed: a string or object with several textures is `output_invalid`, "a Tilemap with N tileset
+   textures needs output: true (one normal map per texture)"); each job is one `Spec{entity, submesh}` (the first
+   submesh using that texture); `frames: "auto"` is the whole texture (no tile cells are inferred; the guide tells
+   agents to pass `frames: {tile_size}` and `params: {edges: "extend"}` for tilesets); `apply` assigns each submesh
+   its texture's map. Results are a list (3.7).
+5. Frames `"auto"`: a Sprite source with frames -> `framesFromSprite` (`from: "sprite"`); GIF/APNG -> the
+   animation's frames (`from: "gif"|"apng"`); else the whole image (`from: "single"`). `"none"`: the whole image as
+   one cell (refused for GIF/APNG with `frames_mismatch`). A grid object: `from: "given"`, sliced exactly like
+   `set_sprite_frames.slice` over the source image; the cells must lie inside the image (`frames_mismatch` otherwise,
+   with the image size and the grid). A `{cells}` object: those rects (`from: "given"`). For GIF/APNG an object is
+   refused (`frames_mismatch`).
 
 ### 3.4 Preview and write
 
-- Every call builds a Phase 2 `Spec` from the arguments, runs `checkSpec` (no decode), then a `SpriteNormalsRun`.
+- Every call builds a Phase 2 `Spec` from the arguments, runs `checkSpec` (no decode), then `prepare` (decodes; main
+  thread, bounded by the 64 MiB limit), then a `SpriteNormalsRun`.
 - **Preview** (`output` omitted or `false`): nothing is written except `save_path`. The result (3.7) carries the
   contact sheet, `default_output` (what `output: true` would write) and the text "Preview only, nothing written: call
   again with the same arguments plus output (true for <default normal path>) to write exactly this."
 - **Write** (`output` present): the same generation (deterministic: the same arguments give the same bytes), then
   `encodeOutputs` + `writeOutputsUndoable`: one Project undo step named "Generate Normal Map <file name>" (several
-  files of one call are that one step). Then, with `apply`, the Phase 2 apply command: one Scene undo step.
+  files of one call are that one step; "Generate Normal Maps (N)" for N normal maps). Then, with `apply`, the Phase 2
+  apply command: one Scene undo step.
 - **Existing outputs**: refused before the run without `overwrite` (`output_exists`, listing them), and checked again
   when the run finishes (another call or a human may have written them meanwhile), as `synthesize_texture` does.
-  Outputs may never equal the source (or any input of the call), even with `overwrite` (`invalid_output`).
+  Outputs may never equal the source (or any input of the call), even with `overwrite` (`output_invalid`).
 - **Output paths** must be inside the assets directory, outside hidden directories, end in `.png` (`.json` for
-  `frames`), and be distinct (`invalid_output`, with the reason and the offending path).
+  `frames`), and be distinct (`output_invalid`, with the reason and the offending path).
 - **Recipe**: every PNG carries `jasper.spritenormals` (contract section 6). `regenerate` (3.9) reproduces it.
 - **Determinism** is part of the contract: same source bytes + same arguments = identical pixels, whatever the thread
   count. Tests rely on it.
 
 ### 3.5 Job, wait, timeout, project switch
 
-- The run is an `McpJob` ("Generate normal map <source> (preview)" / "... -> <output>"), progress forwarded from the
-  run's progress callback, cancel through `job->setCancelHandler` -> `run->cancel()`; results posted to the main thread
+- The run is an `McpJob` ("Generate normal map <source> (preview)" / "... -> <output>"), progress polled from
+  `run->progress()` by the job tick, cancel through `job->setCancelHandler` -> `run->cancel()`; results posted to the main thread
   with `getEditorHost().enqueueMainThreadTask`, finished with `replyWhenJobDone(call, job, wait, timeout, ...)`, with
   the same exception guard as `SynthesisTools.cpp` (a job never stays running).
 - Past `timeout_seconds` the call returns `{job_id, status: "running"}`; `get_job` later returns the same result data
@@ -146,21 +147,24 @@ Reserved for Phase 5: `paint` (do not declare it in this phase).
 
 - Needs a write: `apply` with no `output` is `apply_needs_output` ("apply assigns the written file: add output: true").
 - `apply: true` needs a GameObject source (`invalid_apply`: "apply: true wires the source GameObject; with an image
-  source name the GameObject: apply: \"Hero\""). An entity reference must be a Sprite, Polygon or Tilemap GameObject
-  in `scene` whose colour texture is the source image (or, for an animated source, any Sprite: its texture becomes the
-  atlas); otherwise `invalid_apply` with what it is.
+  source name the GameObject: apply: \"Hero\""). An entity reference must be a GameObject in `scene` (otherwise
+  `invalid_apply` with what it is), and a Sprite, Polygon or Tilemap whose colour texture is the source image (or, for
+  an animated source, any Sprite: its texture becomes the atlas); a refusal of the apply command keeps its kind
+  (`not_a_sprite`, `size_mismatch`, `too_many_frames`).
 - Refused while playing (`scene_playing`: "stop play first (play {action: \"stop\"}), then call again"), checked when
   the call starts and again before the scene command runs; the files are not written then either.
-- What it does (the Phase 2 apply command, one Scene undo step "Assign Normal Map"):
+- What it does (the Phase 2 apply command, one Scene undo step "Assign Normal Map", or "Assign Animated Sprite" for an
+  animated source):
   - Sprite/Polygon: `submeshes[0].material.normalTexture` = the normal map, with the colour texture's min/mag filter and
     wrap copied onto it.
-  - Tilemap: each submesh's `normalTexture` = its texture's map, filters copied per submesh.
+  - Tilemap: each submesh's `normalTexture` = its texture's map, filters copied per submesh (one `applyToSprite` call
+    whose `ApplyRequest::maps` holds every (normal, colour) pair: one step).
   - Animated source (GIF/APNG): base texture = the colour atlas, normal = the normal atlas, the Sprite's frames = the
-    atlas cells (named `frame_0`..), and a Sprite Animation child named after the source stem (created, or updated when
-    a child of that name exists) with the frames in order, `frame_ms` = each delay rounded to whole ms (at least 1; a
-    0-delay GIF frame becomes 100 ms, as browsers do, and a warning `zero_delay` says so), `loop` = true unless the
-    file's loop count is finite (then false), `autoplay` true when created. The Sprite's size follows the first frame
-    (`resize` as `set_sprite_frames` does).
+    atlas cells (named `frame_0`..), and a Sprite Animation child named after the source stem
+    (`ApplyRequest::animationName`), or the existing one targeting the sprite; `frame_ms` = `Delay::playbackMs` (below
+    10 ms -> 100, warning `zero_delay`); `loop` false only when the loop count is 1; `autoplay` true when created; the
+    undo step is "Assign Animated Sprite". The Sprite's size follows the first frame (`resize` as `set_sprite_frames`
+    does).
 - The result's `undo` lists both steps (3.7) and `entity` is the GameObject (`McpRefs::entityJson`).
 - Without `apply`, when the source is a GameObject, the result carries `apply_args`: the exact `set_properties` call
   (and, for animations, `set_sprite_frames` / `set_sprite_animation` calls) that wire the written files, so an agent
@@ -178,18 +182,19 @@ Text first (one paragraph, then `Warning:` lines, then `Image:` line), then one 
   "source": {"path": "assets/sprites/hero.png", "kind": "image|gif|apng|sprite", "entity": {"id": 12, "path": "Hero"}?,
              "width": 128, "height": 32},
   "frames": {"from": "sprite|gif|apng|given|single", "count": 4, "columns": 4, "rows": 1, "frame_width": 32,
-             "frame_height": 32, "delays_ms": [100, 100, 100, 100]?, "loop": 0?},
+             "frame_height": 32, "frame_ms": [100, 100, 100, 100]?, "loop": 0?},
   "settings": {"preset": "default", "strength": 1.5, "detail": 3, "smoothing": 1, "volume": 1.15, "radius": "auto",
                "softness": 1.15, "alpha_threshold": 0.03, "profile": "rounded", "edges": "transparent",
                "ignore_outline": false, "regions": [], "directx": false, "height": false},
   "radius_resolved": 4.8,                       // or "per-island"
-  "outline_color": "#1a1c2c"?,                  // when ignore_outline found one
+  "radius_range": [4, 9.6]?,                    // when radius_resolved is "per-island"
+  "outline": "#1a1c2c"?,                        // when ignore_outline found one
   "metrics": {"coverage_pct": 41.2, "flat_pct": 12.0, "steep_pct": 3.1, "mean_tilt_deg": 21.4, "noise_pct": 2.2,
               "lean_deg": 1.3},
-  "assessment": ["Shape: rounded (12% flat)", "Detail: moderate", ...],
+  "assessment": ["Shape: rounded (mean tilt 21°, 12% flat)", "Steep pixels: 3%", ...],
   "hint": "Looks fine.",
   "warnings": [{"kind": "no_light_height", "message": "...", "fix": "..."}],
-  "default_output": {"normal": "assets/sprites/hero_normal.png", "atlas": null, "height": null, "frames": null},
+  "default_output": {"normal": "assets/sprites/hero_normal.png", "atlas": null, "height": null, "frames_json": null},
   "seconds": 0.04,
   "job_id": "...", "status": "succeeded"
 }
@@ -198,20 +203,21 @@ Text first (one paragraph, then `Warning:` lines, then `Image:` line), then one 
 - `metrics` keys are Phase 2's `Metrics` fields in snake_case (the six above are required; Phase 2 may add more, which
   appear too). Percentages rounded to 0.1, degrees to 0.1.
 - Write adds: `"written": true`, `"files": [...]` (project-relative, normal first), `"undo": [{"scope": "project",
-  "name": "Generate Normal Map hero_normal.png"}, {"scope": "scene", "scene": 3, "name": "Assign Normal Map"}?]`,
+  "name": "Generate Normal Map hero_normal.png"}, {"scope": "scene", "scene": 3, "name": "Assign Normal Map"}?]` (the
+  scene step is "Assign Animated Sprite" for an animated source),
   `"entity"` (with apply), `"applied": {"normal_texture": true, "frames": 4?, "animation": {"id", "path"}?}` (with
   apply), `"apply_args"` (GameObject source without apply).
 - A Tilemap source: `{"written", "results": [<one object as above per texture, without job fields>], "files", "undo",
   "entity", "job_id", "status"}`; the image is the first texture's sheet; the text summarizes each.
 - Text (preview), e.g.: "Normal map of assets/sprites/hero.png (128x32, 4 frames from Sprite 'Hero', preset default,
   radius 4.8 px) in 0.04 s. Preview only, nothing written: call again with the same arguments plus output (true for
-  assets/sprites/hero_normal.png) to write exactly this. Shape: rounded (12% flat). Detail: moderate. Hint: Looks
-  fine.\nWarning: no_light_height: ... Fix: ...\nImage: the contact sheet (per frame: colour, normal, lit from the
+  assets/sprites/hero_normal.png) to write exactly this. Shape: rounded (mean tilt 21°, 12% flat). Steep pixels: 3%.
+  ... Hint: Looks fine.\nWarning: no_light_height: ... Fix: ...\nImage: the contact sheet (per frame: colour, normal, lit from the
   top-left, top-right, bottom-right, bottom-left)."
 - Text (write): "... Wrote assets/sprites/hero_normal.png as one undo step (undo with scope project)" + with apply "
   and assigned it to GameObject Hero (id 12) as one undo step (undo with scope scene, scene 'Main')." + without apply
   for a GameObject source " Use it: set_properties {entity: 12, values: {\"submeshes[0].material.normalTexture\":
-  \"sprites/hero_normal.png\"}} (or call again with apply: true)."
+  \"assets/sprites/hero_normal.png\"}} (or call again with apply: true)."
 - Image: the Phase 2 `contactSheet` (<= 1024 px wide, <= 8 frames; when there are more frames the sheet shows 8 spread
   evenly and `sheet_note` says which). Returned with preview and with write (an agent may skip the preview).
   `save_path` writes the same PNG.
@@ -225,35 +231,36 @@ the data (DESIGN.md "Errors"). Kinds and wording (the implementer may improve wo
 |---|---|---|
 | `invalid_source` | missing file, not an image, decode failure, not a Sprite/Polygon/Tilemap, texture not a file | "<what> (got <value>)" / "pass a project image path (assets/sprites/hero.png) or a Sprite GameObject" |
 | `invalid_settings` | unknown `preset`/`params` key, wrong type, out of range, too many regions, bad colour | "params.detail must be a number in [0, 8] (got 9)" / "valid keys: strength, detail, ..." |
-| `invalid_frames` | grid empty/outside the image, object or `"none"` on an animation, too many cells (> 256) | "the grid 40x40 at offset [0,0] does not fit the 128x32 image" / "tile_size [32, 32] or columns 4, rows 1" |
+| `frames_mismatch` | grid empty/outside the image, object or `"none"` on an animation, more than `kMaxCells` (4096) cells (the 256 limit applies only to decoded animation frames: `too_large`) | "the grid 40x40 at offset [0,0] does not fit the 128x32 image" / "tile_size [32, 32] or columns 4, rows 1" |
 | `too_large` | a contract section 4 limit | "hero.gif decodes to 300 frames; at most 256" / "trim the animation or split it" |
-| `invalid_output` | outside assets, hidden dir, wrong extension, equals an input, duplicate, string with several textures | the reason and path / "an assets path ending in .png, or output: true" |
+| `output_invalid` | outside assets, hidden dir, wrong extension, equals an input, duplicate, string with several textures | the reason and path / "an assets path ending in .png, or output: true" |
 | `output_exists` | an output exists without `overwrite` (also when it appeared during the run) | "would replace assets/sprites/hero_normal.png" / "pass overwrite: true (one undo step puts it back), or another output" |
 | `apply_needs_output` | `apply` without `output` | as 3.6 |
-| `invalid_apply` | `apply: true` with a file source, a target that is not a Sprite/Polygon/Tilemap, a texture mismatch | as 3.6 |
+| `invalid_apply` | `apply: true` with a file source, or an apply reference that is not a GameObject | as 3.6. Refusals of the apply command keep its kind (`not_a_sprite`, `size_mismatch`, `too_many_frames`) |
 | `scene_playing` | `apply` while playing | as 3.6 |
 | `project_changed` | another project opened during the run | "the project changed while the normal map was generated; nothing was written" / "call again in the open project" |
 | `write_failed` | the write or the scene command failed | the OS / command error / "check the path is writable, then call again" |
-| `generation_failed` | the core returned an error (its `Problem` list mapped to argument names, as `argumentField` does for texsynth) | the core's message / per problem |
+| `failed` | the core returned an error (its `Problem` list mapped to argument names, as `argumentField` does for texsynth) | the core's message / per problem |
 
-Warnings (in `warnings`, never failing the call). Phase 2's `assess` provides the image-only ones; this phase adds the
-scene-aware ones. Each is `{kind, message, fix}`:
+Warnings (in `warnings`, never failing the call), each `{kind, message, fix}`. Image warnings are exactly
+`assess(...).warnings` + `Result::warnings` (P2 §7.3, §3.8), message and fix verbatim:
 
-| kind | from | when | fix |
-|---|---|---|---|
-| `no_alpha` | assess | no transparent pixel and `edges: transparent` | "edges: extend for tiles, wrap for seamless textures, or a sprite with transparency" |
-| `mostly_flat` | assess | `flat_pct` > 60 | "raise params.strength or params.volume, or preset chunky" |
-| `too_steep` | assess | `steep_pct` > 25 | "lower params.strength, or raise params.smoothing" |
-| `noisy` | assess | `noise_pct` > 15 (dithering) | "raise params.smoothing to 1.5-2, lower params.detail, or a region with detail 0 for the dither colours" |
-| `highlights_as_bumps` | assess | many near-white specular pixels inside islands | "a region {colors: [<the highlight colours>], detail: 0}, or preset soft" |
-| `semi_transparent_edges` | assess | many rim pixels with 0.03 < alpha < 0.5 (glow) | "raise params.alpha_threshold (e.g. 0.5) so the glow does not count as shape" |
-| `frames_touch_edges` | assess | islands touch a cell border in most cells with `edges: transparent` | "check the frame size; for tiles use params.edges extend" |
-| `zero_delay` | this phase | a GIF/APNG frame delay of 0 | "it plays at 100 ms; set frame_ms with set_sprite_animation if another rate is meant" |
-| `no_light_height` | this phase | scene known (GameObject source or `apply`) and `lightsRespondToNormals(scene)` is false while the scene has Light 2Ds | "set_properties {entity: <light>, values: {light2d: {height: 64}}}" naming the first light |
-| `no_light` | this phase | scene known and it has no Light 2D | "create_entity {type: \"light_2d\"} (new lights get height 64)" |
-| `filter_mismatch` | this phase | GameObject source without `apply` whose existing normal texture's filter differs from the colour texture's | "apply: true copies the colour texture's filter" |
-| `shader_ignores_normals` | this phase | the target material's shader does not sample normal maps (a manifest shader without Phase 1's normal-map declaration) | "use the built-in sprite material or library:sprite" |
-| `directx_in_engine` | this phase | `directx: true` with `apply` or a GameObject source | "the engine reads OpenGL (green up): drop directx" |
+| kind | from | when (P2 §7.3 thresholds) |
+|---|---|---|
+| `no_alpha` | assess | no transparent pixel and `edges: transparent` |
+| `mostly_flat` | assess | `flat_pct` > 60 |
+| `too_steep` | assess | `steep_pct` > 25 |
+| `noisy` | assess | `noise_pct` > 15 |
+| `leaning` | assess | `lean_deg` > 8 |
+| `frames_touch_edges` | assess | some cell's opaque pixels touch its border, with `edges: transparent` |
+| `soft_edges` | assess | `soft_edge_pct` > 10 (opaque pixels with alpha < 250) |
+| `outline_not_found` | `Result::warnings` | `ignore_outline` and no outline colour covers half the rim |
+| `region_unmatched` | `Result::warnings` | a region matched no pixel |
+
+Scene warnings are `sceneWarnings(...)` verbatim (P2 §8, §8.2: `no_light`, `no_light_height`, `ambient_high`,
+`size_mismatch`, `filter_mismatch`, `material_linked`, `too_many_frames`, `directx_in_engine`,
+`shader_ignores_normals`, `zero_delay`), called on every run with the scene when it is known (GameObject source or
+`apply`; without one only `zero_delay` can apply). This phase adds none and declares no helper.
 
 ### 3.9 `get_asset_info`, `view_asset`, file sync
 
@@ -262,11 +269,12 @@ scene-aware ones. Each is `{kind, message, fix}`:
   `std::string spriteNormalsAssetText(const Json& info)`, called by `AssetTools.cpp` next to the synthesis ones for
   `.png` files.
 - On a PNG with a `jasper.spritenormals` recipe: `data.sprite_normals = {role, source: {path, kind, entity?, state:
-  unchanged|changed|missing}, preset, frames: {from, count}, outputs, stale}`; with `full` (get_asset_info) also
-  `recipe` and `regenerate` (the tool arguments that write it again: `source`, `scene`?, `preset`, `params` (only the
-  values differing from the preset), `frames` (as the recipe's cells: an object, or "auto"/"none"), `directx`,
+  fresh|changed|missing|invalid}, preset, frames: {from, count}, outputs, stale}` (`state` is the
+  `toString(Staleness::State)` text); with `full` (get_asset_info) also `recipe` and `regenerate` (the tool arguments
+  that write it again: `source`, `scene`?, `preset`, `params` (only the values differing from the preset), `frames`:
+  `{cells: <recipe frames.cells>}` when `from` is `given`; `"auto"` for `sprite`/`gif`/`apng`/`single`, `directx`,
   `height`, `output` (the recipe's outputs object), `overwrite: true`). A garbled recipe gives `{error}`.
-  Text: " Sprite normal map (normal, preset default) of sprites/hero.png; source unchanged." or "; the source changed
+  Text: " Sprite normal map (normal, preset default) of assets/sprites/hero.png; source unchanged." or "; the source changed
   since: regenerate with generate_sprite_normals and the `regenerate` arguments (get_asset_info)."
 - On a PNG without a recipe: when `<stem>_normal.png` (or `<stem>_sheet_normal.png` for a GIF/APNG) exists beside it
   and its recipe names this file as the source: `data.normal_map = {path, stale}` and text " Its normal map:
@@ -274,7 +282,8 @@ scene-aware ones. Each is `{kind, message, fix}`:
 - `view_asset` appends the same summary text (no extra image).
 - File sync (`ScriptTools.cpp`, beside `vatFileChanged`): `spriteNormalsFileChanged(Project*, path, problems)`: for a
   changed image that is the source of a normal map found by the default-name probe above (and of any recipe found in
-  the check cache, section 5.4, without scanning), push `{path: <normal map>, message: "made from <source>, which
+  the check cache, section 5.4, without scanning; when the editor's watcher (P4) exists, the sync hook asks
+  `Project`'s watcher `outputsOf(source)` before the check cache), push `{path: <normal map>, message: "made from <source>, which
   changed: regenerate it (generate_sprite_normals with get_asset_info's regenerate arguments)"}` into
   `external_changes.problems`.
 
@@ -312,6 +321,8 @@ Settings (defaults: the preset's):
 Frames (default: the animation's, the --sprite's, else the whole image):
       --frame-size <WxH|N>    Cell size.   --columns <n>  --rows <n>  --count <n>
       --offset <x,y>          --padding <x,y>      (as the Texture Slicer)
+      --cells-json <file|->   Cells as a JSON array [[x,y,w,h],...] (a recipe's frames.cells; not with the
+                              grid options; not for GIF/APNG).
       --no-frames             Whole image (not for GIF/APNG).
 Output:
   -o, --output <png>          The normal map (one source only). Default: <stem>_normal.png beside the source
@@ -319,7 +330,8 @@ Output:
       --output-dir <dir>      Write every output there instead of beside its source.
       --atlas <png>           An animation's colour atlas (default <stem>_sheet.png).
       --height-map            Also write <stem>_height.png (16-bit grey).
-      --frames-json           Also write <atlas stem>.frames.json (animations and frame grids).
+      --frames-json           Also write <atlas stem>.frames.json for animations, <normal stem>.frames.json
+                              otherwise (frame grids and cells).
       --preview-out <png>     Also write the lit contact sheet (one source only).
       --overwrite             Replace existing outputs (inputs are never replaced).
       --dry-run               Generate and report, write nothing (not even --preview-out).
@@ -339,10 +351,11 @@ exists without --overwrite (nothing is written then), 2 usage error.
   to `spritenormals::runGenerateSpriteNormals(argc, argv, commandName, out, err)`; listed in `printMainUsage`.
 - Without `--sprite`: no engine, no window, no GPU (like `synthesize-texture`). With `--sprite`: the project is loaded
   with the headless engine pattern of `place-physics`/`bake-vat`, the scene opened, `framesFromSprite` read, the engine
-  shut down before generating.
+  shut down before generating; the frames become `FramesSpec::Mode::Cells` with `from = FramesFrom::Sprite`, so the
+  recipe records `from: "sprite"`.
 - Without `--project`: recipe `source.path` is the source path relative to the output's directory (so a copied folder
   keeps working); outputs may go anywhere. With `--project`: paths project-relative, outputs must be inside the assets
-  directory (else exit 2 `invalid_output`).
+  directory (else exit 2 `output_invalid`).
 - **Preflight before any write** (the upstream lesson): parse; resolve every source; read every header; check limits,
   frames and settings; plan every output (`plannedOutputs`); refuse: `-o`/`--preview-out` with several sources (2),
   duplicate output paths across the batch (2, naming both sources), an output equal to any input (2, even with
@@ -354,7 +367,8 @@ exists without --overwrite (nothing is written then), 2 usage error.
   `planned` paths), writes nothing.
 - `--frames-json`: written for animations and frame grids only (else a usage error 2): the contract schema
   `{version: 1, source, width, height, animation: {frame_width, frame_height, columns, rows, frame_count, delays_ms:
-  [[num, den]...], frame_ms: [floats], loop}, settings}` (upstream's keys kept for compatibility, extended).
+  [[num, den]...], frame_ms: [floats], loop}, settings}` (P2 `framesJson`; upstream's keys kept for compatibility,
+  extended).
 - Text output: per source one line on stderr `generate-sprite-normals: <source> -> <outputs> (<w>x<h>, <n> frames,
   preset <p>) in <s>s` plus `warning: <kind>: <message> (fix: <fix>)` lines; errors on stderr as
   `generate-sprite-normals: <kind>: <message> (fix: <fix>)`; `-q` silences the summaries, not errors.
@@ -430,11 +444,8 @@ not cached. A second run on an unchanged project decodes nothing and hashes noth
 ## 6. Shared behaviour with the window
 
 The tool, the CLI and the window (Phase 4) all go through the Phase 2 session, so a preview in one is the same pixels
-as a write in another. This phase adds nothing the window would need to duplicate; the scene-aware warnings
-(`no_light_height`, `no_light`, `filter_mismatch`, `shader_ignores_normals`, `directx_in_engine`) are computed by a
-function in `SpriteNormalsTools.cpp` that takes `(Project*, SceneProject*, Entity or NULL_ENTITY, const Spec&)` and
-returns `{kind, message, fix}` items; declare it in `McpTools.h` so Phase 4 may call it for its banner (Phase 4 has its
-own wording and is not required to).
+as a write in another. This phase adds nothing the window would need to duplicate. Scene warnings are
+`sceneWarnings(...)` verbatim. This phase adds none and declares no helper.
 
 ## 7. Guide `docs/mcp/guide/sprite-normals.md`
 
@@ -456,7 +467,7 @@ carry:
    profiles and edges with when to use each, `ignore_outline`, `regions` with two examples (exclude a highlight colour;
    lift armour plates).
 6. **Sprites, sheets, animations, tiles**: frames auto/none/object; GIF/APNG -> atlas (columns = ceil(sqrt n), row
-   major), what `apply` sets (frames, Sprite Animation, frame_ms from delays, 0-delay -> 100 ms), `.frames.json` only
+   major), what `apply` sets (frames, Sprite Animation, frame_ms from delays, delays under 10 ms -> 100 ms), `.frames.json` only
    on request; tilesets: `frames: {tile_size: 16}`, `params: {edges: "extend"}`; seamless textures: `edges: "wrap"`.
 7. **Reading the result**: the contact sheet layout, each metric with thresholds (flat > 60%, steep > 25%, noise >
    15%), assessment lines, the hint.
@@ -572,16 +583,17 @@ disposal), a 2-frame APNG, an opaque 32x32 tile, a dithered sprite, one upstream
    2x2 cells; the Sprite's frames are the 3 cells; a Sprite Animation child exists with `frame_ms` [50, 90, 100];
    `warnings` contains `zero_delay`. APNG likewise (2 cells, its delays).
 8. Warnings: the opaque tile -> `no_alpha`; with `params: {edges: "extend"}` it is gone. A scene whose only Light 2D
-   has height 0 (set with set_properties) and a GameObject source -> `no_light_height` naming the light; after setting
-   64 it is gone; a scene with no light -> `no_light`. `directx: true` with apply -> `directx_in_engine`.
+   has height 0 (set with set_properties) and a GameObject source -> `no_light_height` (P2's message and fix); after
+   setting 64 it is gone; a scene with no light -> `no_light`. `directx: true` with apply -> `directx_in_engine`.
 9. `height: true` writes a 16-bit grey PNG of the same size (IHDR bit depth 16, colour type 0).
 10. `output: {normal: "assets/n/custom.png", frames: true}` on the sheet with `frames: {tile_size: 32}` writes both,
     the JSON has `frame_count` 4 and `version` 1.
 11. `save_path` on a preview writes the sheet PNG (same bytes as the returned image) and nothing else.
 12. Job path: `timeout_seconds` tiny on the largest input returns `job_id` + `status: "running"` or a finished result;
     `get_job` reaches `succeeded` with the same data (no images); `cancel_job` on a new run writes nothing.
-13. `get_asset_info` on the written map: `sprite_normals.source.state` `unchanged`, `regenerate` present; calling the
-    tool with `regenerate` reproduces identical pixels; after editing the source (write_file of new PNG bytes) the state
+13. `get_asset_info` on the written map: `sprite_normals.source.state` `fresh`, `regenerate` present; calling the
+    tool with `regenerate` reproduces identical pixels (also for a map written with a `frames` grid, whose
+    `regenerate.frames` is `{cells: ...}`); after editing the source (write_file of new PNG bytes) the state
     is `changed`, `stale` true, and the sync result's `external_changes.problems` names the normal map. `get_asset_info`
     on the source reports `normal_map`. `view_asset` text contains "Sprite normal map".
 14. Playing: start play, `apply` fails `scene_playing` and nothing is written; a preview during play succeeds; stop.
@@ -609,6 +621,8 @@ so relative paths must resolve against it)
     project-relative and an output outside assets exits 2.
 11. `--sprite` with a project (created through the editor binary's MCP harness once, saved): frames from the Sprite in
     the JSON (`from: "sprite"`).
+12. `--cells-json` with a written map's recipe `frames.cells` reproduces its pixels; together with `--frame-size` it
+    exits 2.
 
 ### 10.3 `test_sprite_normals_check.py`
 
@@ -650,10 +664,11 @@ creates no new cache entries and returns the same findings; deleting the cache g
 
 1. **Measure** the tool budget (report). Read the merged Phase 2 headers and the apply command.
 2. **Arguments**: `SpriteNormalsTools.cpp` skeleton, schema (3.1-3.2), source resolution (3.3), argument -> `Spec`
-   mapping and every error kind except run-time ones; register (`McpTools.h`, `McpServer.cpp`, CMake). Test items
+   mapping and every error kind except run-time ones; register (`McpTools.h`, `McpServer.cpp`; CMake is already
+   wired by the controller). Test items
    10.1.1.
-3. **Run and preview**: job, run, result (3.5, 3.7), contact sheet image, `save_path`, assess warnings + scene-aware
-   warnings (3.8, section 6 helper). Tests 10.1.2, 8, 11, 12.
+3. **Run and preview**: job, run, result (3.5, 3.7), contact sheet image, `save_path`, warnings
+   (`assess` + `Result` warnings and `sceneWarnings`, 3.8). Tests 10.1.2, 8, 11, 12.
 4. **Write and apply**: outputs, overwrite (both checks), undo steps, recipe, apply (3.6) incl. GIF/APNG and Tilemap,
    `apply_args`, playing refusal, project switch. Tests 10.1.3-7, 9, 10, 14, 15.
 5. **Asset info**: get_asset_info / view_asset / file-sync hook (3.9). Test 10.1.13.
@@ -661,3 +676,30 @@ creates no new cache entries and returns the same findings; deleting the cache g
 7. **Check** (section 5) + cache + CommandLine `--normals`. Tests 10.3.
 8. **Docs** (sections 7-8), TOOLS.md regeneration, budget trimming (section 9), docs tests 10.4.
 9. Full run of the new and the listed existing suites; report with commands and outputs.
+
+## Amendments (2026-10-27, consistency review)
+
+- API names: the Phase 2 names of contract section 8 (`prepare`, `measure`, `lightCheck`, `sceneWarnings`, ...) [1].
+- Kind renames: `invalid_frames` -> `frames_mismatch`, `invalid_output` -> `output_invalid`, `generation_failed` ->
+  `failed`; `invalid_apply` only for argument shape, apply-command refusals keep their kind (`not_a_sprite`,
+  `size_mismatch`, `too_many_frames`) [2]. Cell limit is `kMaxCells` (4096); 256 is the animation frame limit [7].
+- Warnings (3.8): image warnings are exactly `assess` + `Result::warnings` (P2 §7.3, §3.8: `leaning`, `soft_edges`,
+  `outline_not_found`, `region_unmatched` added; `highlights_as_bumps`, `semi_transparent_edges` removed); scene
+  warnings are `sceneWarnings` verbatim; no own helper (section 6, files list, task 3) [3, 4].
+- Sources: Tilemap jobs are `Spec{entity, submesh}` [5]; Tilemap apply uses one `ApplyRequest` with `maps` [6];
+  `frames: "none"` on GIF/APNG refused (`frames_mismatch`) [13]; `frames: {cells}` accepted (MCP) and `--cells-json`
+  (CLI); `regenerate.frames` is `{cells}` for `given`, else `"auto"` [11]; CLI `--sprite` uses `Cells` with
+  `from = Sprite` [28].
+- Run: `prepare` after `checkSpec` (main thread); progress polled from `run->progress()` [30].
+- Apply (3.6): Sprite Animation from `ApplyRequest::animationName`, `frame_ms` = `Delay::playbackMs`, loop false only
+  for loop count 1, undo step "Assign Animated Sprite" for animations [20]; files step "Generate Normal Maps (N)" for
+  several maps [21].
+- Result (3.7): `frames.frame_ms` (was `delays_ms`) [16]; `outline` (was `outline_color`), `radius_range` added,
+  `default_output.frames_json` (was `frames`) [17]; assessment examples are P2's lines [19]; paths
+  `assets/sprites/...` [41].
+- Asset info (3.9): `state` is `fresh|changed|missing|invalid` [18]; the sync hook asks the P4 watcher first [44].
+- Frames JSON: `<atlas stem>.frames.json` for animations, `<normal stem>.frames.json` otherwise [15]; schema is P2
+  `framesJson` [10].
+- Files: `CMakeLists.txt` already wired by the controller; do not edit [31].
+- Tests: 10.1.8 (`no_light_height` with P2's text), 10.1.13 (`fresh`, `{cells}` regenerate), new 10.2.12
+  (`--cells-json`).
