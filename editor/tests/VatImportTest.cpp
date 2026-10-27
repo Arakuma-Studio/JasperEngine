@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // The Houdini VAT 3 and OpenVAT importers (vertex animation spec 4.6, 4.6.1). The fixtures are
-// written at test time (the Houdini writers in VatHoudiniFixtures.h, shared with VatEndToEndTest),
-// from KNOWN ground truth (positions, normals, tangents, piece motion per frame) with the
-// exporters' documented encodings: ASCII FBX meshes (every UV set, normals,
+// written here, at test time, from KNOWN ground truth (positions, normals, tangents, piece motion
+// per frame) with the exporters' documented encodings: ASCII FBX meshes (every UV set, normals,
 // tangents, binormals), glTF meshes (tinygltf), EXR textures (FloatImage's writeExr), 8-bit PNGs
 // (stb), Unity .mat YAML, the legacy data JSON and OpenVAT's remap_info.json. Each import is
 // decoded back from our payload with vat::vatTexelIndex and compared with the ground truth
@@ -15,7 +14,8 @@
 
 #include <gtest/gtest.h>
 
-#include "VatHoudiniFixtures.h"
+#include "VatImportFixtures.h"
+
 #include "vat/import/VatImport.h"
 
 #include "util/FloatImage.h"
@@ -40,9 +40,14 @@
 #include <vector>
 
 using namespace jasperengine;
-using namespace vathoudini;
+namespace fs = std::filesystem;
+namespace ev = jasperengine::editor::vat;
+using Json = nlohmann::json;
 
 namespace {
+
+    using namespace vatimportfixtures;
+
 
     // every mesh vertex of a soft import against the truth (matched by rest position)
     void expectSoft(const ev::VatImportResult& r, const SoftTruth& truth, double posTol, double nrmTol, const std::string& what) {

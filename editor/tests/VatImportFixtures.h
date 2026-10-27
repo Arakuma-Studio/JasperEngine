@@ -1,18 +1,14 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Synthetic Houdini Labs VAT 3 exports for the importer tests (vertex animation spec 4.6.1),
-// shared by VatImportTest (decoded against the ground truth) and VatEndToEndTest (imported for
-// the GPU render checks of engine/tests/htmlui/TestVatEndToEnd.cpp): writers of every file an
-// export holds, from KNOWN ground truth with the exporter's documented encodings (ASCII FBX
-// meshes with every UV set, normals, tangents and binormals; EXR textures through FloatImage's
-// writeExr; 8-bit PNGs through stb; Unity .mat YAML; the legacy data JSON), the soft-body fixture
-// (writeSoft: a waving 3 x 3 grid) and the rigid-body one (writeRigid: tetrahedra spinning about
-// their pivots), plus helpers that read an import's payload back (texel, animated). The math is
-// the tests' own, in double precision, independent of the importer's.
+// The importer tests' fixture writers (moved from VatImportTest.cpp so the baker window's test
+// and the end-to-end test, VatEndToEndTest, import the same synthetic exports): small math
+// independent of the importer's, payload readers, ASCII FBX / EXR / PNG / Unity .mat / data JSON
+// writers, the Houdini soft-body export (a 3 x 3 grid waving and turning, with known positions,
+// normals and tangents per frame) and the rigid-body one (tetrahedra spinning about their pivots,
+// with their exact motion).
 
-#ifndef VAT_HOUDINI_FIXTURES_H
-#define VAT_HOUDINI_FIXTURES_H
+#pragma once
 
 #include <gtest/gtest.h>
 
@@ -22,26 +18,28 @@
 
 #include "json.hpp"
 #include "stb_image_write.h"
+#include "tiny_gltf.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
-#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <map>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
 
-namespace vathoudini {
+namespace vatimportfixtures {
 
+    using namespace jasperengine;
     namespace fs = std::filesystem;
     namespace ev = jasperengine::editor::vat;
-    namespace vat = jasperengine::vat;
     using Json = nlohmann::json;
 
     constexpr double PI = 3.14159265358979323846;
@@ -368,10 +366,10 @@ namespace vathoudini {
         return o.str();
     }
 
-    inline constexpr const char* SOFT_GUID = "987a09a96b5f17d46a88a7c429d130d2";
-    inline constexpr const char* RIGID_GUID = "085ef3ec3a5a70d4790c0957d30c9f63";
-    inline constexpr const char* FLUID_GUID = "19b419010e1004644affea18d0fc8dff";
-    inline constexpr const char* SPRITE_GUID = "8bf13a6837d559049924774e12033384";
+    const char* const SOFT_GUID = "987a09a96b5f17d46a88a7c429d130d2";
+    const char* const RIGID_GUID = "085ef3ec3a5a70d4790c0957d30c9f63";
+    const char* const FLUID_GUID = "19b419010e1004644affea18d0fc8dff";
+    const char* const SPRITE_GUID = "8bf13a6837d559049924774e12033384";
 
     // ---- the soft-body fixture ----
 
@@ -603,6 +601,8 @@ namespace vathoudini {
         return truth;
     }
 
+    // ---- the Houdini rigid-body export (moved from VatImportTest.cpp for VatEndToEndTest): tetrahedra
+    // spinning about their pivots, up to 140 degrees a frame, with their exact motion ----
 
     struct RigidPiece {
         V3 pivot;
@@ -762,5 +762,3 @@ namespace vathoudini {
     }
 
 }
-
-#endif //VAT_HOUDINI_FIXTURES_H

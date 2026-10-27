@@ -81,6 +81,7 @@
 #include "subsystem/AudioSystem.h"
 #include "pose/PoseAnimatorRuntime.h"
 #include "pose/PoseInspectorHooks.h"
+#include "window/InspectorVatBake.h"
 #include "pose/PoseEditSession.h"
 #include "animation/PreviewOwner.h"
 #include "animation/ClipRecordHooks.h"
@@ -907,10 +908,14 @@ void editor::InspectorWindow::stopTransientPreviews() {
     stopActionPreviewIfActive();
     // the fluid previews and the Paint Dye brush (play starts, a save, the window closes)
     FluidEditorTools::stopAll(project);
+    // the Vertex Animator preview (InspectorWindowVat.cpp)
+    stopVertexAnimatorPreview();
 }
 
 void editor::InspectorWindow::clearSceneState(uint32_t sceneId) {
     FluidEditorTools::forgetScene(sceneId);
+    // a Vertex Animator previewing in the closed scene: nothing to put back (its scene is gone)
+    clearVertexAnimatorPreviewScene(sceneId);
 
     if (actionPreviewing && actionPreviewSceneId == sceneId) {
         // The scene is already deleted, drop the snapshots instead of restoring them
@@ -9881,6 +9886,12 @@ void editor::InspectorWindow::drawPoseAnimatorComponent(ComponentType cpType, Sc
                 UIProbe::item("poseanimator.bakeMenu.scene");
                 ImGui::SetItemTooltip("Bake to an Animation of this Model in the scene (baking again updates it).\n"
                                       "Plays with Model:playAnimation(name) and in the Animation window.");
+                VatBakeEntry vatEntry;
+                vatEntry.kind = VatBakeEntry::Kind::PoseAnimator;
+                vatEntry.sceneId = sceneProject->id;
+                vatEntry.entity = entity;
+                vatEntry.asset = animator.animation;
+                vatbakeentry::menuItem(project, vatEntry, stopped, "poseanimator.bakeMenu.vat");
                 ImGui::EndPopup();
             }
             ImGui::EndDisabled();
@@ -15477,6 +15488,14 @@ static void drawLatticeBakeRow(editor::Project* project, editor::SceneProject* s
             Log::error("Lattice bake: %s", error.c_str());
         }
     }
+    // Bake ▾ › Vertex Animation…: the lattice tracks of the clips that move it, baked per vertex
+    if (editor::vatbakeentry::available()){
+        editor::VatBakeEntry entry;
+        entry.kind = editor::VatBakeEntry::Kind::LatticeModifier;
+        entry.sceneId = sceneProject->id;
+        entry.entity = entity;
+        editor::vatbakeentry::bakeButton(project, entry, stopped, "lattice_bake_vat", "lattice.bake");
+    }
 }
 
 void editor::InspectorWindow::drawLatticeModifierComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
@@ -15938,6 +15957,7 @@ void editor::InspectorWindow::show(){
     if (drawInspectedAsset()) {
         stopSoundPreview();
         stopActionPreviewIfActive();
+        stopVertexAnimatorPreview();
         ImGui::End();
         return;
     }
@@ -15960,6 +15980,8 @@ void editor::InspectorWindow::show(){
             && sceneProject->playState == ScenePlayState::STOPPED
             && entities.size() == 1
             && entities[0] == actionPreviewEntity;
+    // the Vertex Animator preview belongs to the shown GameObject too
+    syncVertexAnimatorPreview(sceneProject, entities);
     if (actionPreviewing && !previewSelectionMatches) {
         stopActionPreviewIfActive();
     }
@@ -16086,6 +16108,8 @@ void editor::InspectorWindow::show(){
                     drawPoseAnimatorComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::AnimationPlayerComponent){
                     drawAnimationPlayerComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::VertexAnimatorComponent){
+                    drawVertexAnimatorComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::CameraComponent){
                     drawCameraComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::AudioSourceComponent){

@@ -717,6 +717,7 @@ set(JASPERENGINE_EDITOR_SOURCES
 
     ${EDITOR_DIR}/window/InspectorWindow.cpp
     ${EDITOR_DIR}/window/InspectorWindowClips.cpp
+    ${EDITOR_DIR}/window/InspectorWindowVat.cpp
     ${EDITOR_DIR}/window/InspectorShaderLibrary.cpp
     ${EDITOR_DIR}/window/InspectorPostProcessing.cpp
     ${EDITOR_DIR}/window/InspectorFluid.cpp
@@ -749,6 +750,10 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/lattice/LatticeSceneRender.cpp
     ${EDITOR_DIR}/lattice/LatticeSceneTools.cpp
     ${EDITOR_DIR}/vat/VatAssetWriter.cpp
+    ${EDITOR_DIR}/vat/VatAssetFiles.cpp
+    ${EDITOR_DIR}/vat/VatDocument.cpp
+    ${EDITOR_DIR}/vat/VatSceneActions.cpp
+    ${EDITOR_DIR}/vat/VatCrowd.cpp
     ${EDITOR_DIR}/vat/VatReport.cpp
     ${EDITOR_DIR}/vat/VatBakeTypes.cpp
     ${EDITOR_DIR}/vat/VatBakeCompute.cpp
@@ -759,6 +764,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/vat/import/VatSourceMesh.cpp
     ${EDITOR_DIR}/vat/import/HoudiniVat3.cpp
     ${EDITOR_DIR}/vat/import/OpenVat.cpp
+    ${EDITOR_DIR}/vat/VatImportWrite.cpp
+    ${EDITOR_DIR}/window/VertexAnimationBakerWindow.cpp
     ${EDITOR_DIR}/window/TextureSynthesisWindow.cpp
     ${EDITOR_DIR}/window/PhysicsPlacementWindow.cpp
     ${EDITOR_DIR}/window/LoadingWindow.cpp
@@ -797,6 +804,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/render/preview/ModelRender.cpp
     ${EDITOR_DIR}/render/preview/PrefabRender.cpp
     ${EDITOR_DIR}/render/preview/PoseRender.cpp
+    ${EDITOR_DIR}/render/preview/VatPreviewRender.cpp
 
     ${EDITOR_DIR}/pose/PoseImage.cpp
     ${EDITOR_DIR}/pose/PoseSheetRenderer.cpp

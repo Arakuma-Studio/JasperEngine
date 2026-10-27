@@ -5,9 +5,10 @@
 // the asset file itself (a top-level `guid:` key in a .prefab, the top-level "guid" member of
 // an .anim clip's JSON), mapped to the file's project-relative path. References store the GUID
 // and the path as a hint, so a file renamed or moved, inside the editor or outside it, is still
-// found. .prefab and .anim files are tracked; isTrackedFile is the one place another type
-// (scenes, materials) would be added. The contract is in editor/project/PREFABS.md (clips:
-// animation clips spec 9.R8).
+// found. .prefab, .anim and .vat files are tracked (a .vat's GUID is its JSON "guid" member,
+// as for .anim); isTrackedFile is the one place another type (scenes, materials) would be added.
+// The contract is in editor/project/PREFABS.md (clips: animation clips spec 9.R8; Vertex
+// Animations: vertex animation spec 2.1).
 
 #pragma once
 

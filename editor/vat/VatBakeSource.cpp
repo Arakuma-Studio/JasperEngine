@@ -459,8 +459,16 @@ bool resolveVatSource(Project* project, const VatSourceSpec& spec, VatBakeTarget
                                            "use kind entity for a GameObject"));
                 return false;
             }
+            // a prefab: its root's animations (Animation Player states, entity Animations, Pose
+            // Animator), as a GameObject source would list them
+            if (extensionOf(spec.path) == ".prefab"){
+                if (!instantiateFile(project, spec.path, target, target.ownedScene, target.ownedModel, issues)) return false;
+                addEntityClips(project, target, issues);
+                break;
+            }
             if (!anim::isModelFilePath(spec.path)){
-                issues.push_back(makeIssue("invalid_source", true, "'" + spec.path + "' is not a model file", "give a .gltf, .glb or .fbx"));
+                issues.push_back(makeIssue("invalid_source", true, "'" + spec.path + "' is not a model or prefab file",
+                                           "give a .gltf, .glb, .fbx or .prefab"));
                 return false;
             }
             if (!instantiateFile(project, spec.path, target, target.ownedScene, target.ownedModel, issues)) return false;

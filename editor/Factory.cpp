@@ -1957,6 +1957,21 @@ std::string editor::Factory::createVertexAnimatorComponent(int indentSpaces, Ent
         code << ind << target << ".socket = " << formatString(attachment.socket) << ";\n";
         code << ind << target << ".entity = " << formatEntity(attachment.entity, entityVarNames) << ";\n";
     }
+    // per-instance starts (Create Crowd)
+    if (!animator.instanceClips.empty()) {
+        code << ind << "vertexanimator.instanceClips = {";
+        for (size_t i = 0; i < animator.instanceClips.size(); i++) {
+            code << (i ? ", " : "") << formatString(animator.instanceClips[i]);
+        }
+        code << "};\n";
+    }
+    if (!animator.instanceSpeeds.empty()) {
+        code << ind << "vertexanimator.instanceSpeeds = {";
+        for (size_t i = 0; i < animator.instanceSpeeds.size(); i++) {
+            code << (i ? ", " : "") << formatFloat(std::isfinite(animator.instanceSpeeds[i]) ? animator.instanceSpeeds[i] : 1.0f);
+        }
+        code << "};\n";
+    }
     addComponentCode(code, ind, sceneName, entityName, entity, "VertexAnimatorComponent", "vertexanimator", assignExisting);
     return code.str();
 }

@@ -19,11 +19,11 @@
 //                                (also the baked hero of tools/performance/vat_crowd.py)
 //   rigid_arm                    tools/fixtures/vertex-animation rigid_arm.gltf Swing, Auto (Bones)
 //   morph_blob                   morph_blob.gltf Pulse, Auto (Vertices: morph targets)
-//   houdini_soft / houdini_rigid the synthetic Houdini VAT 3 exports of VatHoudiniFixtures.h
+//   houdini_soft / houdini_rigid the synthetic Houdini VAT 3 exports of VatImportFixtures.h
 
 #include <gtest/gtest.h>
 
-#include "VatHoudiniFixtures.h"
+#include "VatImportFixtures.h"
 
 #include "AppSettings.h"
 #include "Engine.h"
@@ -471,7 +471,7 @@ namespace {
 
     // an import encoded as its files into the bundle, with the ground truth triangles at `times`
     // (truth(time) -> world-space triangle corners, 9 floats a triangle) in <name>.json
-    void importIntoBundle(const std::string& name, vathoudini::ev::VatImportResult& r, const std::vector<double>& times,
+    void importIntoBundle(const std::string& name, vatimportfixtures::ev::VatImportResult& r, const std::vector<double>& times,
                           const std::function<std::vector<double>(double)>& truth, const std::function<double(double)>& toleranceMm) {
         SCOPED_TRACE(name);
         ASSERT_TRUE(r.ok()) << vatImportIssuesText(r.errors);
@@ -532,7 +532,7 @@ TEST(VatEndToEnd, BakesTheRenderParityBundle) {
 }
 
 TEST(VatEndToEnd, ImportsTheHoudiniBundle) {
-    using namespace vathoudini;
+    using namespace vatimportfixtures;
     const fs::path root = fs::temp_directory_path() / ("jasper-vat-e2e-houdini-" + std::to_string(::getpid()));
     fs::remove_all(root);
 

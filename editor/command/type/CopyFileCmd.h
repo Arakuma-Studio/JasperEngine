@@ -34,6 +34,8 @@ namespace jasperengine::editor{
         std::vector<ClipHintEdit> clipHintEdits;
 
         void moveFile(const fs::path& source, const fs::path& destination, bool isDirectory);
+        // the other file of each Vertex Animation pair (".vat" + ".vat.glb") joins the list
+        void addVatPairs();
 
     public:
         CopyFileCmd(Project* project, std::vector<std::string> sourceFiles, std::string currentDirectory, std::string targetDirectory, bool copy);
