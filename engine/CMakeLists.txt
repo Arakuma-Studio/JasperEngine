@@ -789,6 +789,7 @@ include_directories(core/io)
 include_directories(core/io/watch)
 include_directories(core/manager)
 include_directories(core/math)
+include_directories(core/spline)
 include_directories(core/object)
 include_directories(core/object/sound)
 include_directories(core/object/ui)
@@ -1341,6 +1342,9 @@ list(APPEND JASPERENGINE_SRCS ${HTMLUI_WIDGETS_SRCS})
 # Particles (S20): the SIMD kernels' flags, the subsystem and its drawing
 include(core/particles/ParticleSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_PARTICLE_SRCS} ${JASPERENGINE_PARTICLE_SYSTEM_SRCS})
+# Splines (S18): the core, geometry and layouts (no contraction, bit-identical output)
+include(core/spline/SplineSources.cmake)
+list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_SPLINE_SRCS})
 include(libs/lucide/lucide.cmake)
 
 if(JASPERENGINE_PHYSICS_2D)
@@ -1420,6 +1424,11 @@ jasperengine_skip_unity_build(
 jasperengine_skip_unity_build(
     REASON "the particle kernels build with their own floating-point flags"
     SOURCES ${JASPERENGINE_PARTICLE_SRCS})
+if(JASPERENGINE_SPLINE_SRCS)
+    jasperengine_skip_unity_build(
+        REASON "the spline sources build with their own floating-point flags"
+        SOURCES ${JASPERENGINE_SPLINE_SRCS})
+endif()
 jasperengine_target_unity_build(jasperengine)
 
 target_compile_definitions(jasperengine
