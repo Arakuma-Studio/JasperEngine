@@ -20,6 +20,7 @@
 #include "object/MeshPolygon.h"
 #include "object/Sprite.h"
 #include "object/Tilemap.h"
+#include "subsystem/MeshSystem.h"
 
 #include <cmath>
 #include <string>
@@ -171,4 +172,9 @@ TEST(Sprite2DTangentFrame, TilemapWithMirroredTile) {
         expectOpenGLFrame(vertices, 0, 4, "plain tile" + flip);
         expectOpenGLFrame(vertices, 4, 4, "mirrored tile" + flip);
     }
+}
+
+TEST(Sprite2DTangentFrame, Handedness) {
+    EXPECT_EQ(MeshSystem::flatTangentHandedness(true), 1.0f);
+    EXPECT_EQ(MeshSystem::flatTangentHandedness(false), -1.0f);
 }
