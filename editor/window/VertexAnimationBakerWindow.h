@@ -194,6 +194,7 @@ namespace jasperengine::editor {
         // estimate
         std::unique_ptr<vat::VatBakeSession> probe;
         std::string probeKey;               // specKey() the estimate is of
+        bool probeLoading = false;          // it found the GameObject source still loading (source_loading)
         double changedAt = -1.0;
         std::vector<vat::VatIssue> issues;
         vat::VatEstimate estimate;

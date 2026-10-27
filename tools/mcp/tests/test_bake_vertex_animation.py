@@ -881,28 +881,64 @@ def check_job_error(state: dict, kinds: tuple, out: Path, what: str) -> None:
 
 
 async def vanish_scene(ed: Editor, name: str, entities: tuple) -> int:
-    """A saved scene with GameObjects of the hero model, its model loaded (a small preview of Probe bakes)"""
+    """A saved scene with GameObjects of the hero model, its model loaded (a small preview of Probe bakes:
+    the call waits for the model's meshes)"""
     made = await ed.call("create_scene", name=name, type="3D", path=f"scenes/{name}")
     sid = made["scene"]["id"]
     await ed.call("select_scene", scene=sid)
     for entity in (*entities, "Probe"):
         await ed.call("create_entity", type="model", name=entity, model=HERO, scene=sid)
     await ed.call("save_scene", scene=sid)
-    r = None
-    for _ in range(120):
-        r = await ed.call_raw("bake_vertex_animation", {"source": "Probe", "scene": sid, "fps": 5}, timeout=600)
-        if not r.is_error:
-            break
-        await asyncio.sleep(0.25)
-    check(r is not None and not r.is_error, f"the GameObject bakes: {r.text if r else ''}")
+    r = await ed.call_raw("bake_vertex_animation", {"source": "Probe", "scene": sid, "fps": 5}, timeout=600)
+    check(not r.is_error, f"the GameObject bakes: {r.text}")
     return sid
+
+
+async def test_a_gameobject_bakes_again(ed: Editor):
+    """The same GameObject bakes any number of times (a preview, place beside, replace and its undo), each
+    bake the same layout. One brought back by undo builds its meshes in the next frames: a bake right
+    after the undo waits for them (source_loading, never "no POSITION"), as a call and as a job."""
+    copy_fixtures(ed.project)
+    await ed.call("sync_files")
+    sid = await vanish_scene(ed, "Again", ("Hero",))
+
+    async def again(what: str, **args) -> dict:
+        r = await ed.call_raw("bake_vertex_animation", {"source": "Hero", "scene": sid, "fps": 5, **args}, timeout=600)
+        check(not r.is_error, f"{what}: the GameObject bakes again: {r.text}")
+        return r.structured
+
+    first = await again("a preview")
+    layout = (first["vertices"], first["bones"], first["texture"])
+    for what, args in (("a second preview", {}),
+                       ("place beside", {"output": "assets/vat/again_beside.vat", "place": "beside"}),
+                       ("after place beside", {}),
+                       ("replace", {"output": "assets/vat/again_replace.vat", "place": "replace"})):
+        v = await again(what, **args)
+        check((v["vertices"], v["bones"], v["texture"]) == layout, f"{what}: the same bake: {v} vs {first}")
+    await ed.call("undo", scope="scene", scene=sid)
+    v = await again("after undoing replace")
+    check((v["vertices"], v["bones"], v["texture"]) == layout, f"after undoing replace: {v}")
+    for attempt in range(3):
+        await ed.call("delete_entities", scene=sid, entity="Hero")
+        await ed.call("undo", scope="scene", scene=sid)
+        v = await again(f"right after undoing its deletion ({attempt + 1})")
+        check((v["vertices"], v["bones"], v["texture"]) == layout, f"after undoing its deletion: {v}")
+    v = await again("a preview after that")
+    check((v["vertices"], v["bones"], v["texture"]) == layout, f"a preview after that: {v}")
+    # as a job
+    await ed.call("delete_entities", scene=sid, entity="Hero")
+    await ed.call("undo", scope="scene", scene=sid)
+    r = await ed.call_raw("bake_vertex_animation", {"source": "Hero", "scene": sid, "fps": 5, "wait": False}, timeout=600)
+    check(not r.is_error, f"a job right after the undo: {r.text}")
+    if r.structured.get("job_id"):
+        state = await wait_job(ed, r.structured["job_id"])
+        check(state["status"] == "succeeded", f"the job bakes: {state}")
 
 
 async def test_job_errors_when_the_source_vanishes(ed: Editor):
     """A bake job whose GameObject source goes away (its scene closed, the GameObject deleted) while it
     poses or while it encodes fails as an error with a kind and a fix, nothing written (DESIGN.md:
-    errors say how to fix them). (A GameObject baked once fails its next bake with "no POSITION": not
-    this test's subject, so every case bakes a GameObject of its own.)"""
+    errors say how to fix them). Every case bakes a GameObject of its own."""
     copy_fixtures(ed.project)
     await ed.call("sync_files")
     sid = await vanish_scene(ed, "Vanish", ("Hero", "Hero2", "Hero3"))

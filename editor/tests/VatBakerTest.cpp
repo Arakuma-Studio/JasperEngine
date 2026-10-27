@@ -20,6 +20,7 @@
 #include "command/CommandHistory.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/CreateVatCmd.h"
+#include "command/type/DeleteEntityCmd.h"
 #include "command/type/ModelLoadCmd.h"
 #include "util/EntityPath.h"
 #include "util/FileUtils.h"
@@ -2480,4 +2481,93 @@ TEST_F(VatBaker_, TwoDScenesRefuseThePlacement) {
     EXPECT_NE(error.find("3D scene"), std::string::npos) << error;
     // a GameObject source of a 2D scene can still bake its files
     project()->setSelectedSceneId(threeD);
+}
+
+TEST_F(VatBaker_, AGameObjectBakesAgainAfterBakesPlacementsAndADeleteUndone) {
+    const uint32_t sceneId = newScene();
+    const Entity hero = loadModel(sceneId, "models/hero.gltf");
+    Scene* scene = sceneOf(sceneId);
+    VatBakeSpec spec;
+    spec.source.kind = VatSourceKind::Entity;
+    spec.source.sceneId = sceneId;
+    spec.source.path = EntityPath::of(*project()->getScene(sceneId), hero);
+    spec.clips = {"Walk"};
+    spec.fps = 5.0f;
+    // every bake of the same GameObject: the same layout, and the source's rest mesh unchanged
+    VatReport first;
+    std::vector<Vector3> rest;
+    auto again = [&](const std::string& what, VatPlace place = VatPlace::None, const std::string& output = std::string()) {
+        VatBakeSpec run = spec;
+        run.place = place;
+        run.output = output;
+        VatBakeSession session(project());
+        session.setSpec(run);
+        if (!session.run()) {
+            ADD_FAILURE() << what << ": " << session.error() << " / " << kinds(session.failureIssues());
+            return false;
+        }
+        const VatReport& report = session.result()->report;
+        if (first.vertices == 0) first = report;
+        EXPECT_EQ(report.vertices, first.vertices) << what;
+        EXPECT_EQ(report.bones, first.bones) << what;
+        EXPECT_EQ(report.width, first.width) << what;
+        EXPECT_EQ(report.height, first.height) << what;
+        std::string error;
+        {
+            VatBakeTarget target;
+            std::vector<VatIssue> issues;
+            VatPoser poser;
+            EXPECT_TRUE(resolveVatSource(project(), spec.source, target, issues)) << what << ": " << kinds(issues);
+            EXPECT_TRUE(poser.begin(target, {}, issues, error)) << what << ": " << error << " " << kinds(issues);
+            EXPECT_FALSE(poser.renderers.empty()) << what;
+            if (!poser.renderers.empty()) {
+                if (rest.empty()) rest = poser.renderers[0].source.positions;
+                EXPECT_TRUE(poser.renderers[0].source.positions == rest) << what << ": the source's mesh is unchanged";
+            }
+        }
+        // (replace then disables the source)
+        if (place != VatPlace::None) {
+            VatWriteResult written;
+            EXPECT_TRUE(session.write(written, error)) << what << ": " << error;
+        }
+        return true;
+    };
+    ASSERT_TRUE(again("the first bake"));
+    EXPECT_TRUE(again("the same GameObject again"));
+    EXPECT_TRUE(again("place beside", VatPlace::Beside, "assets/models/again_beside.vat"));
+    EXPECT_TRUE(again("after place beside"));
+    EXPECT_TRUE(again("replace", VatPlace::Replace, "assets/models/again_replace.vat"));
+    EXPECT_FALSE(scene->isEntityActive(hero)) << "replace disables the source";
+    ASSERT_TRUE(history(sceneId)->undo());
+    EXPECT_TRUE(scene->isEntityActive(hero));
+    EXPECT_TRUE(again("after undoing replace"));
+    ASSERT_TRUE(history(sceneId)->undo());
+    EXPECT_TRUE(again("after undoing place beside"));
+
+    // deleted, then brought back by undo: its Model builds the meshes in the next MeshSystem
+    // update (until then they hold submeshes without vertex data, which read as "no POSITION")
+    history(sceneId)->addCommandNoMerge(new DeleteEntityCmd(project(), sceneId, hero));
+    ASSERT_FALSE(scene->isEntityCreated(hero));
+    ASSERT_TRUE(history(sceneId)->undo());
+    ASSERT_TRUE(scene->isEntityCreated(hero));
+    ASSERT_TRUE(scene->getComponent<ModelComponent>(hero).needUpdateModel);
+    EXPECT_TRUE(vatSourceLoading(project(), spec.source));
+    {
+        VatBakeSession session(project());
+        session.setSpec(spec);
+        bool error = false;
+        const std::vector<VatIssue> issues = session.check();
+        EXPECT_TRUE(hasKind(issues, "source_loading", &error)) << kinds(issues);
+        EXPECT_TRUE(error);
+        EXPECT_FALSE(hasKind(issues, "invalid_source")) << kinds(issues);
+        EXPECT_FALSE(session.run());
+    }
+    // the refused bake changed nothing: the load is still the engine's to do
+    EXPECT_TRUE(scene->getComponent<ModelComponent>(hero).needUpdateModel);
+    scene->getSystem<MeshSystem>()->update(0);
+    EXPECT_FALSE(vatSourceLoading(project(), spec.source));
+    EXPECT_TRUE(again("after its deletion was undone and the model loaded"));
+    EXPECT_TRUE(again("and once more"));
+    // a file source never waits
+    EXPECT_FALSE(vatSourceLoading(project(), modelSpec("hero.gltf").source));
 }
