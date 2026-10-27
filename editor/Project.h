@@ -906,6 +906,9 @@ namespace jasperengine::editor{
         void clearPlayPrefabTemplates();
 
         void pauseEngineScene(Scene* scene, bool pause) const;
+        // Edit mode: every Vertex Animator previewing in an open scene or prefab stage goes back
+        // to its start with Preview off (play, saves: vertex animation spec 3.6)
+        void stopVertexAnimatorPreviews();
 
         void copyEngineApiToProject();
 
@@ -1605,9 +1608,12 @@ namespace jasperengine::editor{
         // repaired (asset-relative) and a missing GUID filled in. Sub-clip entries
         // ("<model>#<clip>") are path-only. True when the entry changed.
         bool resolveClipReference(AnimationPlayerClip& entry, bool mayImport = true);
-        // Every Animation Player entry of a registry (a scene, a prefab asset, a play copy); true
-        // when one changed (the players reload). `mayImport` false reads the database only (the
-        // play startup worker)
+        // The same for any GUID-tracked asset reference held as (path hint, GUID): a Vertex
+        // Animator's .vat. True when the hint or the GUID changed
+        bool resolveAssetReference(std::string& path, std::string& guid, bool mayImport = true);
+        // Every Animation Player entry and Vertex Animator animation of a registry (a scene, a
+        // prefab asset, a play copy); true when one changed (they reload). `mayImport` false
+        // reads the database only (the play startup worker)
         bool resolveRegistryClipRefs(EntityRegistry* registry, bool mayImport = true);
         // The editor renamed or moved an .anim file or a directory (RenameFileCmd, CopyFileCmd):
         // the database moves a single file (a directory moves in remapPrefabFilePath), the open
