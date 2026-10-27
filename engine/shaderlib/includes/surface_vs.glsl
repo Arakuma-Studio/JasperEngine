@@ -219,6 +219,10 @@ in vec3 a_position;
 #include "includes/morphtarget.glsl"
 #include "includes/lattice.glsl"
 #include "includes/vat.glsl"
+#ifdef SURFACE_TANGENTS
+    // mirrorTangentFrame, tangentFrameMirror: a mirroring transform or texture rect
+    #include "includes/tangent_frame.glsl"
+#endif
 
 // the rest normal vatSmoothNormal turns the smoothed normal from (the smoothed one itself on a
 // mesh without normals)
@@ -455,8 +459,17 @@ void main() {
         vec3 worldTangent = normalize(vec3(pbrParams.modelMatrix * vec4(objectTangent, 0.0)));
         // re-orthogonalised against the (possibly fallback) normal
         worldTangent = normalize(worldTangent - worldNormal * dot(worldNormal, worldTangent));
+        vec3 worldBitangent = cross(worldNormal, worldTangent) * tangentSign;
+        // mirrored by a negative determinant and a mirrored texture rect
+        // (includes/tangent_frame.glsl); the fallback tangent is not tied to u, so only by the
+        // determinant
+        #ifdef HAS_TANGENTS
+            mirrorTangentFrame(worldTangent, worldBitangent);
+        #else
+            worldBitangent *= tangentFrameMirror();
+        #endif
         v_tangent = worldTangent;
-        v_bitangent = cross(worldNormal, worldTangent) * tangentSign;
+        v_bitangent = worldBitangent;
     #endif
     #ifdef SURFACE_UV1
         v_uv1 = uv1;
