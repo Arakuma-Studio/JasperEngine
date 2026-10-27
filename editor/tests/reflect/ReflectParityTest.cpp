@@ -134,22 +134,15 @@ PARITY_COMPONENT(UIDocument)
 PARITY_COMPONENT(FluidSimulation)
 PARITY_COMPONENT(LatticeFollower)
 
-// the fluid's back colour, written by the codec it replaced only away from its default
+// the fluid's back colour, written by the codec it replaced only away from its default and finite
 TEST(ReflectParity, FluidBackColorAwayFromItsDefault) {
     FluidSimulationComponent fluid;
     fluid.backColor = Vector3(0.0f, 9845.456f, 7931.2134f);
     const YAML::Node legacy = LegacyCodecs::encodeFluidSimulationComponent(fluid);
     EXPECT_TRUE(legacy["backColor"].IsDefined()) << YAML::Dump(legacy);
     EXPECT_EQ(YAML::Dump(reflect::encodeValue(ComponentType::FluidSimulationComponent, &fluid)), YAML::Dump(legacy));
-
-    // the fuzzer's first sample
-    RandomValues random(1000u * static_cast<uint32_t>(ComponentType::FluidSimulationComponent));
-    FluidSimulationComponent sample{};
-    random.fillStruct(reflect::find(ComponentType::FluidSimulationComponent)->body, &sample);
-    const FluidSimulationComponent defaults;
-    std::printf("[fluid] backColor %a %a %a valid %d differs %d\n", sample.backColor.x, sample.backColor.y, sample.backColor.z,
-                sample.backColor.isValid() ? 1 : 0, sample.backColor != defaults.backColor ? 1 : 0);
-    std::printf("[fluid] legacy:\n%s\n", YAML::Dump(LegacyCodecs::encodeFluidSimulationComponent(sample)).c_str());
+    fluid.backColor.x = -INFINITY;
+    EXPECT_FALSE(reflect::encodeValue(ComponentType::FluidSimulationComponent, &fluid)["backColor"].IsDefined());
 }
 PARITY_COMPONENT(Camera)
 PARITY_COMPONENT(AudioSource)
