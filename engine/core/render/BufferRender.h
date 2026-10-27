@@ -28,8 +28,10 @@ namespace jasperengine{
         virtual ~BufferRender();
 
         bool createBuffer(unsigned int size, void* data, BufferType type, BufferUsage usage);
-        // a shared buffer is immutable: not updated (an error)
-        void updateBuffer(unsigned int size, void* data);
+        // false when not uploaded: a STREAM upload past the frame's stream staging buffer
+        // (Engine::GpuResourceLimits::streamStagingBytes; try again next frame), no data, a
+        // shared buffer (immutable: an error)
+        bool updateBuffer(unsigned int size, void* data);
         // appends after what this frame appended (sokol resets the position every frame) and
         // returns the data's byte offset, -1 when not appended; not mixed with updateBuffer
         // in a frame, main thread only

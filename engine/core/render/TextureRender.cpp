@@ -64,8 +64,8 @@ bool TextureRender::createDynamicColorTexture(const std::string& label, int widt
         backend.createDynamicColorTexture(label, width, height);
 }
 
-void TextureRender::updateTexture(const void* data, size_t size){
-    backend.updateTexture(data, size);
+bool TextureRender::updateTexture(const void* data, size_t size){
+    return backend.updateTexture(data, size);
 }
 
 void TextureRender::destroyTexture(){

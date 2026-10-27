@@ -52,23 +52,63 @@ bool SystemRender::hasResourcePoolRoom(){
 }
 
 uint64_t SystemRender::getUniformBytesLastFrame(){
-    return SokolSystem::getUniformBytesLastFrame();
+    return SokolSystem::getBudgetLastFrame(SokolSystem::UNIFORM_BUDGET);
 }
 
 uint64_t SystemRender::getUniformBytesPeak(){
-    return SokolSystem::getUniformBytesPeak();
+    return SokolSystem::getBudgetPeak(SokolSystem::UNIFORM_BUDGET);
 }
 
 uint64_t SystemRender::getUniformBytesLimit(){
-    return SokolSystem::getUniformBytesLimit();
+    return SokolSystem::getBudgetLimit(SokolSystem::UNIFORM_BUDGET);
 }
 
 bool SystemRender::hasUniformBufferLimit(){
-    return SokolSystem::hasUniformBufferLimit();
+    return SokolSystem::isBudgetEnforced(SokolSystem::UNIFORM_BUDGET);
 }
 
 uint64_t SystemRender::getUniformSkippedDraws(){
-    return SokolSystem::getUniformSkippedDraws();
+    return SokolSystem::getBudgetSkipped(SokolSystem::UNIFORM_BUDGET);
+}
+
+uint64_t SystemRender::getStreamBytesLastFrame(){
+    return SokolSystem::getBudgetLastFrame(SokolSystem::STREAM_BUDGET);
+}
+
+uint64_t SystemRender::getStreamBytesPeak(){
+    return SokolSystem::getBudgetPeak(SokolSystem::STREAM_BUDGET);
+}
+
+uint64_t SystemRender::getStreamBytesLimit(){
+    return SokolSystem::getBudgetLimit(SokolSystem::STREAM_BUDGET);
+}
+
+bool SystemRender::hasStreamStagingLimit(){
+    return SokolSystem::isBudgetEnforced(SokolSystem::STREAM_BUDGET);
+}
+
+uint64_t SystemRender::getStreamSkippedUploads(){
+    return SokolSystem::getBudgetSkipped(SokolSystem::STREAM_BUDGET);
+}
+
+uint64_t SystemRender::getDescriptorBytesLastFrame(){
+    return SokolSystem::getBudgetLastFrame(SokolSystem::DESCRIPTOR_BUDGET);
+}
+
+uint64_t SystemRender::getDescriptorBytesPeak(){
+    return SokolSystem::getBudgetPeak(SokolSystem::DESCRIPTOR_BUDGET);
+}
+
+uint64_t SystemRender::getDescriptorBytesLimit(){
+    return SokolSystem::getBudgetLimit(SokolSystem::DESCRIPTOR_BUDGET);
+}
+
+bool SystemRender::hasDescriptorBufferLimit(){
+    return SokolSystem::isBudgetEnforced(SokolSystem::DESCRIPTOR_BUDGET);
+}
+
+uint64_t SystemRender::getDescriptorSkippedDraws(){
+    return SokolSystem::getBudgetSkipped(SokolSystem::DESCRIPTOR_BUDGET);
 }
 
 void SystemRender::commitQueue(){

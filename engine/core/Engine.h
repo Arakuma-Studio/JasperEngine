@@ -240,8 +240,45 @@ namespace jasperengine {
         // sampler / view on Vulkan, 68 / 84 / 72 / 104 on OpenGL, 1-5 KB per pipeline and
         // shader: these defaults take ~23 MB on Vulkan and ~21 MB on OpenGL, 10.7 MB and 3.9 MB
         // more than the earlier 8,192 buffers, 2,048 images and 4,096 views.
-        // GpuResourceLimits::uniformBytes' default for this platform (64 MB desktop, 16 MB mobile/web)
+        //
+        // Fixed per-frame and fixed-size buffers of sokol_gfx, by backend: what each holds, sokol's
+        // default, what happens when a frame needs more, and what the engine does about it.
+        //
+        //   buffer (backend)                   sokol default  past it (sokol)                engine
+        //   uniform buffer (Vulkan, Metal,     4 MB / frame   Vulkan: the draw dropped, an     uniformBytes; every block counted,
+        //     WebGPU)                                         error per draw; Metal, WebGPU:   a draw past it skipped, the first
+        //                                                     writes past the end (asserts)    such frame logged
+        //   stream staging (Vulkan)            16 MB / frame  the upload dropped, an error     streamStagingBytes; every STREAM
+        //                                                     per upload, every later upload   upload counted, one past it skipped
+        //                                                     of the frame dropped too (a      (its owner uploads it next frame),
+        //                                                     still mesh never got its bones)  the first such frame logged
+        //   descriptor buffer (Vulkan)         16 MB / frame  the draw dropped, an error per   descriptorBytes; every draw checked
+        //                                                     draw, every later draw of the    against the room left, one past it
+        //                                                     frame dropped too                skipped, the first such frame logged
+        //   copy staging (Vulkan: immutable    4 MB           never: bigger uploads go in      left at sokol's default (each chunk
+        //     data, DYNAMIC updates)                          4 MB chunks, each a blocking     is a queue submit and wait: DYNAMIC
+        //                                                     submit and queue wait            resources should not change per frame)
+        //   bind group cache (WebGPU)          1,024 slots    never: a miss or collision       bindGroupsCacheSize (a power of 2)
+        //                                                     creates a bind group (CPU cost)
+        //   STREAM / DYNAMIC updates (GL,      none           no per-frame buffer: written     counted (stream bytes) on every
+        //     D3D11, Metal, WebGPU)                           straight into the resource       backend, not limited
+        //   uniforms (GL, D3D11)               none           glUniform / a constant buffer    counted, not limited
+        //                                                     per block
+        //   append past a buffer's size (all)  the buffer     the append refused, its draw     callers size their buffers
+        //                                                     fails validation                 (RmlRenderer pages)
+        //   resource pools (all)               128 .. 256     the object not made              buffers .. shaders above
+        //
+        // So Metal has one such buffer (uniforms), D3D11 and GL none, WebGPU uniforms and the bind
+        // group cache, Vulkan uniforms, stream staging and descriptors. sokol's per-frame buffers
+        // are allocated once per frame in flight (2) in host-visible memory, so their defaults
+        // depend on the platform (desktop / Android, iOS and the web). The
+        // budgets: SystemRender::getUniformBytes*, getStreamBytes*, getDescriptorBytes*.
+
+        // GpuResourceLimits' per-frame buffer defaults for this platform: uniformBytes 64 MB
+        // desktop, 16 MB mobile/web; streamStagingBytes 48 MB / 16 MB; descriptorBytes 32 MB / 16 MB
         static int defaultUniformBytes();
+        static int defaultStreamStagingBytes();
+        static int defaultDescriptorBytes();
 
         struct GpuResourceLimits{
             int buffers = 16384;   // vertex, index, storage (bones on Vulkan, Metal, D3D11), instances
@@ -260,6 +297,34 @@ namespace jasperengine {
             // Android, iOS and the web (~1,200; 32 MB allocated). sokol's own default, 4 MB, held
             // ~300. Crowds beyond that should be one instanced Vertex Animation (one draw for all).
             int uniformBytes = defaultUniformBytes();
+            // bytes a frame can upload into STREAM buffers and textures on Vulkan (sokol's
+            // per-frame stream staging buffer, each upload rounded up to 16 bytes): the bone
+            // matrices of every skinned mesh whose pose changed (an animated hero of
+            // hero_animated.gltf: 8,192 bytes a frame, measured by SharedMeshBuffersTest; a still
+            // one uploads once), HTML UI geometry, video and Lottie textures, instance data,
+            // terrain nodes. Past it an upload is skipped and tried again next frame by its
+            // owner (bones, instances, terrain nodes, HTML UI pages), and the first such frame
+            // is logged (SokolSystem::reserveStreamBytes); counted, not limited, on the other
+            // backends (they write into the resource). Allocated once per frame in flight (2) in
+            // host-visible memory: 48 MB on desktop (~6,000 animated heroes; 96 MB allocated),
+            // 16 MB on Android, iOS and the web (sokol's default, ~2,000; 32 MB allocated).
+            int streamStagingBytes = defaultStreamStagingBytes();
+            // bytes of descriptors a frame can bind on Vulkan (sokol's per-frame descriptor
+            // buffer, VK_EXT_descriptor_buffer): each draw writes its textures', samplers' and
+            // storage buffers' descriptors and its uniform blocks' addresses, each set rounded up
+            // to the device's descriptor buffer alignment (64 bytes on NVIDIA). Past it a draw is
+            // skipped and the first such frame logged (SokolSystem::reserveDescriptorBytes). A
+            // skinned hero of 3 materials in shadow-casting light takes 768 bytes a frame on an
+            // NVIDIA GTX 1650 (4-16 byte descriptors; measured by SharedMeshBuffersTest); devices
+            // with 32-64 byte image descriptors (AMD) take up to ~6x that. Allocated once per
+            // frame in flight (2) in host-visible memory: 32 MB on desktop (~7,000 such heroes
+            // with the largest descriptors; 64 MB allocated), 16 MB on Android, iOS and the web
+            // (sokol's default; 32 MB allocated).
+            int descriptorBytes = defaultDescriptorBytes();
+            // slots of WebGPU's bind group cache (a power of 2): a draw whose textures, samplers
+            // and storage buffers are not in it creates a bind group (CPU time, never a dropped
+            // draw); each skinned mesh has bindings of its own (its bones buffer)
+            int bindGroupsCacheSize = 4096;
         };
 
     private:
@@ -488,7 +553,9 @@ namespace jasperengine {
         static size_t getQueuedResourceCount();
 
         // GpuResourceLimits: set before the engine starts (the render system is set up with
-        // them; later calls apply at the next setup). A value outside 1 - 65,535 keeps the default.
+        // them; later calls apply at the next setup). A pool size outside 1 - 65,535, a
+        // per-frame buffer outside 64 KB - 1 GB or a bind group cache size that is not a power
+        // of 2 in 2 - 32,768 keeps the default.
         static void setGpuResourceLimits(const GpuResourceLimits& limits);
         static const GpuResourceLimits& getGpuResourceLimits();
 

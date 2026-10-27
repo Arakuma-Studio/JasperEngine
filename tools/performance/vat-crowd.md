@@ -51,6 +51,15 @@ material), which VAT removes entirely.
   logged once (`GPU buffer pool full: all 16384 buffers are in use ...`) and the mesh that could
   not get its object counts as failed until the pool has room; the pool sizes are
   `Engine::GpuResourceLimits` (16,384 buffers and images, 24,576 views by default).
+- On Vulkan, sokol's fixed per-frame buffers dropped work at this scale too: the uniform buffer
+  (4 MB, ~300 shadowed heroes) and the stream staging buffer that every skinned hero's bone
+  matrices go through (16 MB, ~2,000 animated heroes at 8,192 bytes each; with 3,300 heroes
+  loading, 952 never got their bones and drew nothing). Both are now
+  `Engine::GpuResourceLimits` (`uniformBytes` 64 MB, `streamStagingBytes` 48 MB,
+  `descriptorBytes` 32 MB on desktop; 16 MB each on Android, iOS and the web), the engine counts
+  what each frame puts in them, skips (and, for uploads, retries next frame) what would not fit
+  and logs the first such frame once. The table of every such sokol buffer per backend is in
+  `Engine.h` above `GpuResourceLimits`.
 
 ## Results on a GPU (27 October 2026)
 

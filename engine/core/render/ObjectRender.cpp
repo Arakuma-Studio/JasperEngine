@@ -88,7 +88,7 @@ void ObjectRender::applyUniformBlock(int slot, unsigned int count, void* data){
 }
 
 void ObjectRender::draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount){
-    // a draw skipped for want of uniform buffer space is not counted
+    // a draw skipped for want of uniform or descriptor buffer space is not counted
     if (!backend.draw(baseElement, vertexCount, instanceCount))
         return;
 

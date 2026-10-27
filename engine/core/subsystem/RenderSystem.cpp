@@ -7853,11 +7853,14 @@ void RenderSystem::updateMeshBuffers(MeshComponent& mesh){
     if (mesh.needUpdateBones){
         const unsigned int size = static_cast<unsigned int>(
             mesh.bonesMatrix.size() * sizeof(Matrix4));
+        bool uploaded = true;
         if (mesh.bonesBuffer.isCreated())
-            mesh.bonesBuffer.updateBuffer(size, mesh.bonesMatrix.data());
+            uploaded = mesh.bonesBuffer.updateBuffer(size, mesh.bonesMatrix.data()) && uploaded;
         if (mesh.bonesTexture.isCreated())
-            mesh.bonesTexture.updateTexture(mesh.bonesMatrix.data(), size);
-        mesh.needUpdateBones = false;
+            uploaded = mesh.bonesTexture.updateTexture(mesh.bonesMatrix.data(), size) && uploaded;
+        // past the frame's stream staging buffer (Engine::GpuResourceLimits::streamStagingBytes,
+        // logged): uploaded next frame, not never (a static mesh uploads its bones once)
+        mesh.needUpdateBones = !uploaded && size > 0;
     }
 
     // the lattice records (LatticeRender::prepare), while the lattice variant is loaded: whole
@@ -7881,16 +7884,24 @@ void RenderSystem::updateMeshBuffers(MeshComponent& mesh){
     if (!mesh.needUpdateBuffer)
         return;
 
-    if (mesh.buffer.getUsage() != BufferUsage::IMMUTABLE)
+    // a STREAM upload past the frame's stream staging buffer is tried again next frame
+    bool refused = false;
+    if (mesh.buffer.getUsage() == BufferUsage::STREAM)
+        refused |= !mesh.buffer.getRender()->updateBuffer(mesh.buffer.getSize(), mesh.buffer.getData()) && mesh.buffer.getSize() > 0;
+    else if (mesh.buffer.getUsage() != BufferUsage::IMMUTABLE)
         mesh.buffer.getRender()->updateBuffer(mesh.buffer.getSize(), mesh.buffer.getData());
-    if (mesh.indices.getUsage() != BufferUsage::IMMUTABLE)
+    if (mesh.indices.getUsage() == BufferUsage::STREAM)
+        refused |= !mesh.indices.getRender()->updateBuffer(mesh.indices.getSize(), mesh.indices.getData()) && mesh.indices.getSize() > 0;
+    else if (mesh.indices.getUsage() != BufferUsage::IMMUTABLE)
         mesh.indices.getRender()->updateBuffer(mesh.indices.getSize(), mesh.indices.getData());
     for (int i = 0; i < mesh.numExternalBuffers; i++){
-        if (mesh.eBuffers[i].getUsage() != BufferUsage::IMMUTABLE)
+        if (mesh.eBuffers[i].getUsage() == BufferUsage::STREAM)
+            refused |= !mesh.eBuffers[i].getRender()->updateBuffer(mesh.eBuffers[i].getSize(), mesh.eBuffers[i].getData()) && mesh.eBuffers[i].getSize() > 0;
+        else if (mesh.eBuffers[i].getUsage() != BufferUsage::IMMUTABLE)
             mesh.eBuffers[i].getRender()->updateBuffer(mesh.eBuffers[i].getSize(), mesh.eBuffers[i].getData());
     }
 
-    mesh.needUpdateBuffer = false;
+    mesh.needUpdateBuffer = refused;
 }
 
 // Once per frame, before any pass: the depth passes take their instance count from here.
@@ -7903,18 +7914,20 @@ void RenderSystem::updateInstanceBuffers(){
         if (!instmesh.needUpdateBuffer)
             continue;
 
-        // setData here because component can change order and lose reference
+        // setData here because component can change order and lose reference; an upload past
+        // the frame's stream staging buffer is tried again next frame
+        bool refused = false;
         if (instmesh.numVisible > 0 && !instmesh.renderInstances.empty()){
             instmesh.buffer.setData((unsigned char*)(&instmesh.renderInstances[0]), sizeof(InstanceRenderData)*instmesh.numVisible);
-            instmesh.buffer.getRender()->updateBuffer(instmesh.buffer.getSize(), instmesh.buffer.getData());
+            refused |= !instmesh.buffer.getRender()->updateBuffer(instmesh.buffer.getSize(), instmesh.buffer.getData());
         }
         // a VAT batch's states, in the same order
         if (instmesh.numVisible > 0 && instmesh.renderVat.size() >= instmesh.numVisible && instmesh.vatBuffer.getRender()->isCreated()){
             instmesh.vatBuffer.setData((unsigned char*)(&instmesh.renderVat[0]), sizeof(InstanceVatRenderData)*instmesh.numVisible);
-            instmesh.vatBuffer.getRender()->updateBuffer(instmesh.vatBuffer.getSize(), instmesh.vatBuffer.getData());
+            refused |= !instmesh.vatBuffer.getRender()->updateBuffer(instmesh.vatBuffer.getSize(), instmesh.vatBuffer.getData());
         }
 
-        instmesh.needUpdateBuffer = false;
+        instmesh.needUpdateBuffer = refused;
     }
 
     uploadInstanceViews(rv());
@@ -7942,7 +7955,9 @@ void RenderSystem::uploadInstanceViews(InstanceView* views, size_t count){
             render->createBuffer(view.capacity, nullptr, BufferType::VERTEX_BUFFER, BufferUsage::STREAM);
         }
         view.buffer.setData((unsigned char*)view.data.data(), size);
-        render->updateBuffer(size, view.buffer.getData());
+        // past the frame's stream staging buffer: tried again next frame
+        if (size > 0 && !render->updateBuffer(size, view.buffer.getData()))
+            view.needUpload = true;
 
         // the VAT batches' states, alike
         if (!view.vatData.empty()){
@@ -7955,7 +7970,8 @@ void RenderSystem::uploadInstanceViews(InstanceView* views, size_t count){
                 vatRender->createBuffer(view.vatCapacity, nullptr, BufferType::VERTEX_BUFFER, BufferUsage::STREAM);
             }
             view.vatBuffer.setData((unsigned char*)view.vatData.data(), vatSize);
-            vatRender->updateBuffer(vatSize, view.vatBuffer.getData());
+            if (!vatRender->updateBuffer(vatSize, view.vatBuffer.getData()))
+                view.needUpload = true;
         }
     }
 }
@@ -7969,11 +7985,14 @@ void RenderSystem::updateTerrainNodesBuffer(TerrainView& view){
     if (!view.needUpdateNodesBuffer)
         return;
 
+    // past the frame's stream staging buffer: tried again next frame
+    bool refused = false;
     for (int s = 0; s < 2; s++){
-        view.nodesbuffer[s].getRender()->updateBuffer(view.nodesbuffer[s].getSize(), view.nodesbuffer[s].getData());
+        if (view.nodesbuffer[s].getSize() > 0)
+            refused |= !view.nodesbuffer[s].getRender()->updateBuffer(view.nodesbuffer[s].getSize(), view.nodesbuffer[s].getData());
     }
 
-    view.needUpdateNodesBuffer = false;
+    view.needUpdateNodesBuffer = refused;
 }
 
 bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, int terrainView, int instanceView, const LodView* lodView){

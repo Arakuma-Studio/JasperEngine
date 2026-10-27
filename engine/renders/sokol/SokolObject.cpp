@@ -916,6 +916,10 @@ bool SokolObject::draw(unsigned int baseElement, unsigned int vertexCount, unsig
         SokolSystem::countSkippedDraw();
         return false;
     }
+    // past the frame's descriptor buffer (Vulkan): skipped (SokolSystem counts and logs it),
+    // where sokol would drop it and every draw after it in the frame
+    if (!SokolSystem::reserveDescriptorBytes())
+        return false;
     sg_apply_bindings(bind);
     sg_draw(baseElement, vertexCount, instanceCount);
     return true;
