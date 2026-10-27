@@ -218,21 +218,27 @@ VertexAnimationBakerWindow::VertexAnimationBakerWindow(Project* project)
     // Vertex Animation..., Import as Vertex Animation...)
     vatAppHooks().openBaker = [](Project*, const fs::path& path, VatBakerSource) {
         if (!hooksOwner) return;
-        std::string error;
-        // the source kind follows from the file (a .vat opens its recipe, an export imports)
-        if (!hooksOwner->setSourcePath(FileUtils::pathToUtf8(path), error)) {
-            Out::error("Vertex Animation Baker: can't open %s: %s", FileUtils::pathToUtf8(path.filename()).c_str(), error.c_str());
-            return;
-        }
-        hooksOwner->open();
+        hooksOwner->askBeforeReplacing(FileUtils::pathToUtf8(path.filename()), [path]() {
+            if (!hooksOwner) return;
+            std::string error;
+            // the source kind follows from the file (a .vat opens its recipe, an export imports)
+            if (!hooksOwner->setSourcePath(FileUtils::pathToUtf8(path), error)) {
+                Out::error("Vertex Animation Baker: can't open %s: %s", FileUtils::pathToUtf8(path.filename()).c_str(), error.c_str());
+                return;
+            }
+            hooksOwner->open();
+        });
     };
     vatAppHooks().rebake = [](Project*, const fs::path& vatPath) {
         if (!hooksOwner) return;
-        std::string error;
-        if (!hooksOwner->openVat(FileUtils::pathToUtf8(vatPath), error) || !hooksOwner->bake(true, error)) {
-            hooksOwner->setStatus("Can't rebake: " + error, true);
-            Out::error("Vertex Animation: the rebake of %s can't start: %s", FileUtils::pathToUtf8(vatPath.filename()).c_str(), error.c_str());
-        }
+        hooksOwner->askBeforeReplacing(FileUtils::pathToUtf8(vatPath.filename()), [vatPath]() {
+            if (!hooksOwner) return;
+            std::string error;
+            if (!hooksOwner->openVat(FileUtils::pathToUtf8(vatPath), error) || !hooksOwner->bake(true, error)) {
+                hooksOwner->setStatus("Can't rebake: " + error, true);
+                Out::error("Vertex Animation: the rebake of %s can't start: %s", FileUtils::pathToUtf8(vatPath.filename()).c_str(), error.c_str());
+            }
+        });
     };
 }
 
@@ -251,6 +257,33 @@ VertexAnimationBakerWindow::~VertexAnimationBakerWindow() {
         if (job->thread.joinable()) job->thread.join();
     }
     releasePreview();
+}
+
+bool VertexAnimationBakerWindow::holdsUnsavedResult() const {
+    if (isRunning()) return true;
+    if (!written.vat.empty()) return false;
+    // only the result Bake would still write (the shown settings'): a stale one is gone already
+    if (mode == Mode::Bake && run && run->state() == VatBakeState::Done) return runKey == specKey();
+    return mode == Mode::Import && importResult && importResult->ok() && importKey == importSpecKey();
+}
+
+void VertexAnimationBakerWindow::askBeforeReplacing(const std::string& what, std::function<void()> replace) {
+    if (!holdsUnsavedResult()) {
+        replace();
+        return;
+    }
+    open();
+    getEditorHost().registerConfirmAlert(
+        "Replace the Baker's Result?",
+        std::string(isRunning() ? "The baker is running a bake or import" : "The baker holds a result that was not written") +
+            ". Open " + what + " anyway? (the " + (isRunning() ? "run is cancelled and its " : "") + "result is dropped)",
+        [replace]() {
+            if (hooksOwner && hooksOwner->isRunning()) {
+                hooksOwner->cancel();
+                hooksOwner->tick(0.0);
+            }
+            replace();
+        });
 }
 
 void VertexAnimationBakerWindow::open() {
@@ -1321,7 +1354,7 @@ void VertexAnimationBakerWindow::finishImport() {
         VatCrowd crowd;
         crowd.count = crowdCount;
         crowd.area = crowdArea;
-        crowd.seed = (uint32_t)crowdSeed;
+        crowd.seed = crowdSeedValue();
         const std::string problem = crowdPlacementProblem(crowd);
         if (!problem.empty()) {
             setStatus("The import can't be placed: " + problem, true);
@@ -1817,7 +1850,7 @@ void VertexAnimationBakerWindow::drawSettings() {
 void VertexAnimationBakerWindow::drawSockets() {
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted("Sockets");
-    tooltip("Nodes whose transform is baked per frame, so props attach to them (Vertex Animator > Attachments, Lua getSocket)");
+    tooltip("Nodes whose transform is baked per frame, so props attach to them (Vertex Animator > Attachments, Lua getSocketPose)");
     ImGui::SameLine(ImGui::GetFontSize() * 7.0f);
     if (ImGui::SmallButton(ICON_FA_PLUS " Add Selected")) {
         std::string error;
@@ -2052,12 +2085,12 @@ void VertexAnimationBakerWindow::drawOutput() {
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * 6.0f);
         if (ImGui::InputFloat("Area (m)", &crowdArea, 1.0f, 10.0f, "%.3g")) crowdArea = std::max(0.1f, crowdArea);
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * 6.0f);
-        ImGui::InputInt("Seed", &crowdSeed);
+        if (ImGui::InputInt("Seed", &crowdSeed)) crowdSeed = std::max(crowdSeed, 0);
         ImGui::Unindent(ImGui::GetFontSize() * 7.0f);
-        if (spec.crowd.count != crowdCount || spec.crowd.area != crowdArea || spec.crowd.seed != (uint32_t)crowdSeed) {
+        if (spec.crowd.count != crowdCount || spec.crowd.area != crowdArea || spec.crowd.seed != crowdSeedValue()) {
             spec.crowd.count = crowdCount;
             spec.crowd.area = crowdArea;
-            spec.crowd.seed = (uint32_t)crowdSeed;
+            spec.crowd.seed = crowdSeedValue();
             markChanged();
         }
     }
@@ -2094,7 +2127,7 @@ void VertexAnimationBakerWindow::drawImportSettings() {
         if (detection.mode == HoudiniMode::Rigid) {
             label("Upsample");
             int upsample = importSpec.upsample;
-            if (ImGui::InputInt("##upsample", &upsample)) importSpec.upsample = std::clamp(upsample, 0, 64);
+            if (ImGui::InputInt("##upsample", &upsample)) importSpec.upsample = std::clamp(upsample, 0, VAT_IMPORT_MAX_UPSAMPLE);
             tooltip("Rigid pieces: samples per exported frame (0: automatic, where fast spins need more)");
             label("Mode");
             const char* modes[] = {"Auto", "Bones", "Vertices"};

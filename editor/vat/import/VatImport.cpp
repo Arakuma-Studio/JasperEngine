@@ -107,7 +107,7 @@ namespace{
         if (!(spec.axisScale >= 0.0f)){
             importer::addError(result, "invalid_settings", "axis scale " + importer::num(spec.axisScale) + " is negative", "use a positive scale");
         }
-        if (spec.upsample < 0 || spec.upsample > 1024){
+        if (spec.upsample < 0 || spec.upsample > VAT_IMPORT_MAX_UPSAMPLE){
             importer::addError(result, "invalid_settings", "upsample " + std::to_string(spec.upsample) + " is out of range",
                                "use 0 (automatic) or a factor from 1 to 1024");
         }

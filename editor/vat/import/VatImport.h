@@ -76,6 +76,10 @@
 
 namespace jasperengine::editor::vat{
 
+    // the largest Houdini rigid upsampling factor (spec.upsample; 0 = automatic)
+    constexpr int VAT_IMPORT_MAX_UPSAMPLE = 1024;
+
+
     // An error or a warning: the baker's issue (VatReport.h)
     using VatImportIssue = VatIssue;
 

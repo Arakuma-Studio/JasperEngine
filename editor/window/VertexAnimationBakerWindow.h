@@ -33,8 +33,10 @@
 
 #include "ecs/Entity.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <thread>
@@ -66,6 +68,12 @@ namespace jasperengine::editor {
         bool isOpen() const;
         // Another project is being opened: a running bake or import is cancelled, everything forgotten
         void resetForProjectSwitch();
+        // a bake or import result that was not written (or a run in progress): opening another
+        // source would drop it
+        bool holdsUnsavedResult() const;
+        // `replace` now, or (holdsUnsavedResult) once the user confirms the editor host's
+        // "Replace the Baker's Result?" (the Project window's double-click on a .vat, Rebake)
+        void askBeforeReplacing(const std::string& what, std::function<void()> replace);
 
         enum class Mode { None, Bake, Import };
 
@@ -255,6 +263,8 @@ namespace jasperengine::editor {
         void watchSource();
         void dropStoredResult(const std::string& why);
         void setStatus(const std::string& message, bool error);
+        // the Place: Crowd... seed (the field never goes below 0)
+        uint32_t crowdSeedValue() const { return (uint32_t)std::max(crowdSeed, 0); }
         void reveal(const std::string& relative);
         void rememberSettings();
         bool startBake(bool write, std::string& error);

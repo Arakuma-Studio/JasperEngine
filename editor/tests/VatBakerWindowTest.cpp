@@ -94,6 +94,7 @@ namespace jasperengine::editor {
             w.runFinished = false;
             w.tick(0.0);
         }
+        static uint32_t crowdSeed(VertexAnimationBakerWindow& w) { return w.crowdSeedValue(); }
         // the Place: Crowd... fields
         static void crowd(VertexAnimationBakerWindow& w, int count, float area, int seed) {
             w.crowdCount = count;
@@ -869,6 +870,59 @@ TEST_F(VatBakerWindow_, ClosingTheSourcesSceneResetsTheWindow) {
     EXPECT_NE(window->getStatus().find("was closed"), std::string::npos) << window->getStatus();
     EXPECT_FALSE(window->bake(true, error));
     EXPECT_NE(error.find("choose a source"), std::string::npos) << error;
+}
+
+namespace {
+    // an editor host that records the confirm alerts and answers no (the user hasn't clicked yet)
+    struct AskingHost : public EditorHost {
+        std::vector<std::string> asked;
+        std::function<void()> yes;
+        void registerConfirmAlert(std::string title, std::string message, std::function<void()> onYes, std::function<void()>) override {
+            asked.push_back(title + ": " + message);
+            yes = onYes;
+        }
+    };
+}
+
+TEST_F(VatBakerWindow_, OpeningAnotherFileAsksBeforeDroppingAnUnwrittenResult) {
+    std::string error;
+    ASSERT_TRUE(window->setSourcePath("assets/models/rigid_arm.gltf", error)) << error;
+    ASSERT_TRUE(window->bake(false, error)) << error;
+    runToEnd(*window);
+    ASSERT_TRUE(window->holdsUnsavedResult());
+    AskingHost host;
+    setEditorHost(&host);
+    // the Project window's double-click (a .vat or a model): asked first, nothing replaced yet
+    vatAppHooks().openBaker(project(), root() / "assets/models/morph_blob.gltf", VatBakerSource::Bake);
+    ASSERT_EQ(host.asked.size(), 1u);
+    EXPECT_NE(host.asked[0].find("Replace the Baker's Result?"), std::string::npos) << host.asked[0];
+    EXPECT_NE(host.asked[0].find("morph_blob.gltf"), std::string::npos) << host.asked[0];
+    EXPECT_EQ(window->getSpec().source.path, "assets/models/rigid_arm.gltf") << "kept until the user says yes";
+    ASSERT_TRUE(Access::run(*window) && Access::run(*window)->state() == VatBakeState::Done);
+    // yes: the other file opens
+    host.yes();
+    EXPECT_EQ(window->getSpec().source.path, "assets/models/morph_blob.gltf");
+    // no unwritten result: no question
+    EXPECT_FALSE(window->holdsUnsavedResult());
+    vatAppHooks().openBaker(project(), root() / "assets/models/rigid_arm.gltf", VatBakerSource::Bake);
+    EXPECT_EQ(host.asked.size(), 1u);
+    EXPECT_EQ(window->getSpec().source.path, "assets/models/rigid_arm.gltf");
+    // a written result is no reason to ask either
+    ASSERT_TRUE(window->bake(true, error)) << error;
+    runToEnd(*window);
+    ASSERT_FALSE(window->statusIsError()) << window->getStatus();
+    EXPECT_FALSE(window->holdsUnsavedResult());
+    setEditorHost(nullptr);
+    ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
+}
+
+TEST_F(VatBakerWindow_, CrowdSeedIsNeverNegative) {
+    Access::crowd(*window, 10, 5.0f, -7);
+    EXPECT_EQ(Access::crowdSeed(*window), 0u);
+    Access::crowd(*window, 10, 5.0f, 42);
+    EXPECT_EQ(Access::crowdSeed(*window), 42u);
+    // the window's import Upsample allows what the CLI and the MCP tool allow
+    EXPECT_EQ(VAT_IMPORT_MAX_UPSAMPLE, 1024);
 }
 
 TEST_F(VatBakerWindow_, AppHooksOpenTheBakerAndRebake) {
