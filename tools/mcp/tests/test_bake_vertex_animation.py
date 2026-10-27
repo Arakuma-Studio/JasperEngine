@@ -611,3 +611,36 @@ async def test_events_reach_a_lua_script(ed: Editor):
     await ed.call("play", action="stop")
     check(moving[0] is True and moving[1] is True, f"the Vertex Animator plays: {moving}")
     check(found and found[0].startswith(" left"), f"the onStep event reached the script with its argument: {found[:3]}")
+
+
+async def test_move_and_delete_keep_the_pair(ed: Editor):
+    sid = await scene(ed)
+    r = await bake(ed, source=ARM, clips=["Swing"], output="assets/vat/pair.vat")
+    guid = read_vat(ed.project, "assets/vat/pair.vat")["guid"]
+    moved = await ed.call("move_asset", path="assets/vat/pair.vat", to="assets/vat/pair_moved.vat")
+    check(moved["pair"] == {"from": "assets/vat/pair.vat.glb", "to": "assets/vat/pair_moved.vat.glb"}, f"the mesh moves too: {moved}")
+    check(not (ed.project / "assets/vat/pair.vat.glb").exists() and (ed.project / "assets/vat/pair_moved.vat.glb").is_file(), "both moved")
+    data = read_vat(ed.project, "assets/vat/pair_moved.vat")
+    check(data["mesh"] == "pair_moved.vat.glb" and data["guid"] == guid, f"the .vat's mesh follows, the GUID stays: {data['mesh']}")
+    info = (await ed.call("get_asset_info", path="assets/vat/pair_moved.vat"))["vertex_animation"]
+    check(not [s for s in info["staleness"] if "mismatch" in s["kind"]], f"the moved pair still matches: {info['staleness']}")
+    await ed.call("undo", scope="project")
+    check((ed.project / "assets/vat/pair.vat").is_file() and (ed.project / "assets/vat/pair.vat.glb").is_file(), "undo moves both back")
+    check(read_vat(ed.project, "assets/vat/pair.vat")["mesh"] == "pair.vat.glb", "with the old mesh name")
+    # naming the mesh moves the .vat; into another folder; a name that breaks the pair is refused
+    (ed.project / "assets/vat2").mkdir(exist_ok=True)
+    await ed.call("sync_files")
+    moved = await ed.call("move_asset", path="assets/vat/pair.vat.glb", to="assets/vat2/pair.vat.glb")
+    check((ed.project / "assets/vat2/pair.vat").is_file() and moved["pair"]["to"] == "assets/vat2/pair.vat", f"the .vat follows its mesh: {moved}")
+    msg = await ed.call("move_asset", {"path": "assets/vat2/pair.vat", "to": "assets/vat2/pair.json"}, expect_error=True)
+    check("must end in .vat" in msg, msg)
+    # a copy is a new asset with its own GUID
+    await ed.call("move_asset", path="assets/vat2/pair.vat", to="assets/vat2/copy.vat", copy=True)
+    copy = read_vat(ed.project, "assets/vat2/copy.vat")
+    check(copy["guid"] != guid and copy["mesh"] == "copy.vat.glb" and (ed.project / "assets/vat2/copy.vat.glb").is_file(), f"copy: {copy['guid']}")
+    # delete either half: both go to the trash, one undo brings both back
+    deleted = await ed.call("delete_asset", paths=["assets/vat2/pair.vat"])
+    check(deleted["with_pair"] == ["assets/vat2/pair.vat.glb"], f"the mesh goes too: {deleted}")
+    check(not (ed.project / "assets/vat2/pair.vat.glb").exists(), "deleted")
+    await ed.call("undo", scope="project")
+    check((ed.project / "assets/vat2/pair.vat").is_file() and (ed.project / "assets/vat2/pair.vat.glb").is_file(), "undo restores both")

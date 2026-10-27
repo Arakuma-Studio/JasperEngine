@@ -26,6 +26,8 @@
 #include "animation/ClipEditorUtil.h"
 #include "pose/PoseEditSession.h"
 #include "texsynth/SynthesisSession.h"
+#include "command/type/CreateVatCmd.h"
+#include "util/AssetDatabase.h"
 #include "util/EntityPath.h"
 #include "util/FileUtils.h"
 #include "util/Util.h"
@@ -1123,6 +1125,55 @@ void vatFileChanged(Project* project, const fs::path& path, Json& problems) {
         if (++count > 8) break;
         problems.push_back({{"path", rel}, {"severity", "warning"}, {"message", w.path.empty() ? w.message : w.path + ": " + w.message}});
     }
+}
+
+fs::path vatPartner(const fs::path& path) {
+    std::string text = FileUtils::pathToUtf8(path);
+    std::string lower = text;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (lower.size() > 8 && lower.compare(lower.size() - 8, 8, ".vat.glb") == 0) return FileUtils::pathFromUtf8(text.substr(0, text.size() - 4));
+    if (Util::isVertexAnimationFile(text)) return FileUtils::pathFromUtf8(meshPathFor(text));
+    return fs::path();
+}
+
+void vatFilesWritten(Project* project, const std::vector<fs::path>& paths) {
+    CreateVatCmd::notifyFiles(project, paths);
+}
+
+bool vatMovePair(Project* project, const fs::path& from, const fs::path& to, bool copy, fs::path& vatFrom, fs::path& vatTo, fs::path& pairFrom,
+                 fs::path& pairTo, std::string& vatText, std::string& error) {
+    vatFrom.clear();
+    vatTo.clear();
+    pairFrom.clear();
+    pairTo.clear();
+    vatText.clear();
+    std::error_code ec;
+    const fs::path partner = vatPartner(from);
+    if (partner.empty() || fs::is_directory(from, ec) || !fs::exists(partner, ec)) return true;
+    const bool fromVat = Util::isVertexAnimationFile(FileUtils::pathToUtf8(from));
+    const fs::path partnerTo = vatPartner(to);
+    if (partnerTo.empty() || Util::isVertexAnimationFile(FileUtils::pathToUtf8(to)) != fromVat) {
+        error = relativeOf(project, from) + (fromVat ? " is a Vertex Animation: its new name must end in .vat (its mesh follows as <name>.vat.glb)"
+                                                     : " is the mesh of a Vertex Animation: its new name must end in .vat.glb (its .vat follows)") + ".";
+        return false;
+    }
+    if (fs::exists(partnerTo, ec)) {
+        error = relativeOf(project, partnerTo) + " already exists (the other half of the Vertex Animation goes there): delete it first or pick another name.";
+        return false;
+    }
+    pairFrom = partner;
+    pairTo = partnerTo;
+    vatFrom = fromVat ? from : partner;
+    vatTo = fromVat ? to : partnerTo;
+    const std::string meshName = FileUtils::pathToUtf8(FileUtils::pathFromUtf8(meshPathFor(FileUtils::pathToUtf8(vatTo))).filename());
+    VatData data;
+    std::string why;
+    if (!readVatAsset(project, FileUtils::pathToUtf8(vatFrom), data, &why)) return true;     // moved as files, as they are
+    if (!copy && data.mesh == meshName) return true;
+    data.mesh = meshName;
+    if (copy) data.guid = AssetDatabase::generateGuid();
+    vatText = ::jasperengine::vat::writeVat(data);
+    return true;
 }
 
 void registerVatTools(McpRegistry& registry) {

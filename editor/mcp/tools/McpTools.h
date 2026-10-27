@@ -67,6 +67,16 @@ namespace jasperengine::editor::mcp {
     // a changed .vat / .vat.glb (file sync, auto-sync): VertexAnimationPool drops it (its
     // animators reload); a .vat's load problems go to `problems` ({path, message, severity?})
     void vatFileChanged(Project* project, const std::filesystem::path& path, Json& problems);
+    // the other half of a Vertex Animation: "<x>.vat" <-> "<x>.vat.glb" (empty for other files)
+    std::filesystem::path vatPartner(const std::filesystem::path& path);
+    // move_asset of one half: the other half's move (pairFrom -> pairTo, empty when it has none)
+    // and, when the name changes or for a copy, the .vat's new text (its `mesh`, a copy's new GUID)
+    // to write at vatTo. False + error for a destination that breaks the pair.
+    bool vatMovePair(Project* project, const std::filesystem::path& from, const std::filesystem::path& to, bool copy,
+                     std::filesystem::path& vatFrom, std::filesystem::path& vatTo, std::filesystem::path& pairFrom,
+                     std::filesystem::path& pairTo, std::string& vatText, std::string& error);
+    // the editor learns written .vat files (the pool drops them, the documents and database see them)
+    void vatFilesWritten(Project* project, const std::vector<std::filesystem::path>& paths);
 
     // the pose documents' files-written hook (their writes reach the asset database and the
     // Project window like any MCP file change): installed once, when the MCP context exists

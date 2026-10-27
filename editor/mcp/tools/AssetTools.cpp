@@ -1278,29 +1278,62 @@ void moveAssetTool(const CallPtr& call) {
         return;
     }
     const bool copy = call->args().value("copy", false);
+    auto moveCommand = [&](const fs::path& a, const fs::path& b) -> std::unique_ptr<Command> {
+        if (copy) return std::make_unique<CopyAsCmd>(project, a, b);
+        if (a.parent_path() == b.parent_path()) {
+            return std::make_unique<RenameFileCmd>(project, a.filename().string(), b.filename().string(), a.parent_path().string());
+        }
+        auto multi = std::make_unique<MultiPropertyCmd>();
+        multi->addCommand(std::make_unique<CopyFileCmd>(project, std::vector<std::string>{a.string()}, b.parent_path().string(), false));
+        if (a.filename() != b.filename()) {
+            multi->addCommand(std::make_unique<RenameFileCmd>(project, a.filename().string(), b.filename().string(), b.parent_path().string()));
+        }
+        return multi;
+    };
+    // a Vertex Animation moves with its generated mesh (.vat <-> .vat.glb, either one named), and
+    // the .vat's `mesh` follows a new name (a copy also gets a new GUID)
+    fs::path vatFrom, vatTo, pairFrom, pairTo;
+    std::string vatText;
+    if (!vatMovePair(project, from, to, copy, vatFrom, vatTo, pairFrom, pairTo, vatText, why)) {
+        call->fail(why);
+        return;
+    }
+    const bool pair = !pairFrom.empty();
+    std::unique_ptr<Command> moved = moveCommand(from, to);
     Command* cmd = nullptr;
-    if (copy) {
-        cmd = new CopyAsCmd(project, from, to);
-    } else if (from.parent_path() == to.parent_path()) {
-        cmd = new RenameFileCmd(project, from.filename().string(), to.filename().string(), from.parent_path().string());
-    } else {
+    if (pair) {
         auto* multi = new MultiPropertyCmd();
-        multi->addCommand(std::make_unique<CopyFileCmd>(project, std::vector<std::string>{from.string()}, to.parent_path().string(), false));
-        if (from.filename() != to.filename()) {
-            multi->addCommand(std::make_unique<RenameFileCmd>(project, from.filename().string(), to.filename().string(), to.parent_path().string()));
+        multi->addCommand(std::move(moved));
+        multi->addCommand(moveCommand(pairFrom, pairTo));
+        if (!vatText.empty()) {
+            Project* owner = project;
+            multi->addCommand(std::make_unique<WriteFilesCmd>(std::vector<WriteFilesCmd::Item>{{vatTo, vatText}},
+                                                              [owner](const std::vector<fs::path>& paths) { vatFilesWritten(owner, paths); }));
         }
         cmd = multi;
+    } else {
+        cmd = moved.release();
     }
     if (!addProjectCommand(call->ctx(), cmd)) {
         call->fail("Couldn't " + std::string(copy ? "copy " : "move ") + fromRel + " to " + toRel + ".");
         return;
     }
     if (CodeEditor* editor = call->ctx().codeEditor(); editor && !copy) editor->handleFileRename(from, to);
-    syncFiles(call->ctx(), {from, to}, false);
+    std::vector<fs::path> synced = {from, to};
+    if (pair) synced.insert(synced.end(), {pairFrom, pairTo});
+    syncFiles(call->ctx(), synced, false);
+    Json data = {{"from", fromRel}, {"to", toRel}, {"copy", copy}};
+    std::string pairText;
+    if (pair) {
+        data["pair"] = {{"from", projectRelative(project, pairFrom)}, {"to", projectRelative(project, pairTo)}};
+        pairText = " With it, " + projectRelative(project, pairFrom) + " -> " + projectRelative(project, pairTo) +
+                   " (a Vertex Animation and its mesh stay together" + (vatText.empty() ? std::string(")") : std::string("; the .vat's mesh follows)")) + ".";
+    }
     call->ok(std::string(copy ? "Copied " : "Moved ") + fromRel + " to " + toRel +
-             (copy ? (Util::isAnimationClipFile(toRel) ? " (a new clip with its own GUID; Animation Players keep the original)." : ".")
-                   : "; references in scenes, prefabs, materials and Animation Players follow it. Undo with scope project."),
-             Json{{"from", fromRel}, {"to", toRel}, {"copy", copy}});
+             (copy ? (Util::isAnimationClipFile(toRel) ? " (a new clip with its own GUID; Animation Players keep the original)."
+                      : pair ? " (a new Vertex Animation with its own GUID)." : ".")
+                   : "; references in scenes, prefabs, materials and Animation Players follow it. Undo with scope project.") + pairText,
+             data);
 }
 
 void deleteAssetTool(const CallPtr& call) {
@@ -1333,6 +1366,16 @@ void deleteAssetTool(const CallPtr& call) {
         files.push_back(file.lexically_normal());
         deleted.push_back(rel);
     }
+    // a Vertex Animation goes with its generated mesh (and the reverse)
+    Json pairs = Json::array();
+    for (size_t i = 0, count = files.size(); i < count; i++) {
+        const fs::path partner = vatPartner(files[i]);
+        std::error_code ec;
+        if (partner.empty() || !fs::exists(partner, ec) || std::find(files.begin(), files.end(), partner) != files.end()) continue;
+        files.push_back(partner);
+        deleted.push_back(projectRelative(project, partner));
+        pairs.push_back(projectRelative(project, partner));
+    }
     // a scene leaving the project while a scene plays: the reason, without an editor alert
     std::string refusal;
     if (project->refuseDeletionWhilePlaying(files, &refusal, false)) {
@@ -1353,6 +1396,12 @@ void deleteAssetTool(const CallPtr& call) {
     syncFiles(call->ctx(), files, false);
     Json data = {{"deleted", deleted}};
     std::string text = "Moved " + std::to_string(files.size()) + " item(s) to the project trash (undo with scope project restores them).";
+    if (!pairs.empty()) {
+        data["with_pair"] = pairs;
+        text += " With them, the other half of each Vertex Animation (.vat / .vat.glb):";
+        for (const Json& p : pairs) text += " " + p.get<std::string>();
+        text += ".";
+    }
     if (clipUsers > 0) {
         data["clip_users"] = clipUsers;
         text += " " + std::to_string(clipUsers) + " Animation Player clip entr" + (clipUsers == 1 ? "y keeps" : "ies keep") +
