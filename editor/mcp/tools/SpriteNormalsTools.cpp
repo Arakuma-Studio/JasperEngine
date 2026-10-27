@@ -1431,16 +1431,18 @@ void registerSpriteNormalsTools(McpRegistry& registry) {
     tool.inputSchema = object({
         {"source", types({"string", "integer", "object"})},
         {"scene", sceneRef()},
-        {"preset", withDefault(stringEnum("", {"soft", "default", "crisp", "detailed", "chunky"}), "default")},
+        {"preset", stringEnum("", {"soft", "default", "crisp", "detailed", "chunky"})},
         {"params", anyObject("")},
         {"frames", frames},
-        {"directx", withDefault(boolean(""), false)},
-        {"height", withDefault(boolean(""), false)},
+        // the defaults (preset default; directx, height, overwrite false; wait true) are in the
+        // guide's argument table
+        {"directx", boolean("")},
+        {"height", boolean("")},
         {"output", types({"string", "boolean", "object"})},
-        {"overwrite", withDefault(boolean(""), false)},
+        {"overwrite", boolean("")},
         {"apply", types({"boolean", "string", "integer", "object"})},
         {"save_path", string("")},
-        {"wait", withDefault(boolean(""), true)},
+        {"wait", boolean("")},
         {"timeout_seconds", withDefault(number("", 1, 3600), 120)}
     }, {"source"});
     tool.writesFiles = [](const Json& args) {

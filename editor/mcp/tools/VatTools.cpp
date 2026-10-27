@@ -1313,8 +1313,8 @@ void registerVatTools(McpRegistry& registry) {
     tool.title = "Bake Vertex Animation";
     tool.description =
         "Bake animation into a Vertex Animation (.vat + .vat.glb: GPU crowds, Vertex Animator), or import a "
-        "Houdini VAT 3 / OpenVAT export. Without output (or rebake) nothing is written: the report (mode, sizes, errors, warnings with "
-        "fixes) and a contact sheet (source vs VAT). The same arguments + output write exactly that (one undo step). "
+        "Houdini VAT 3 / OpenVAT export. Without output (or rebake) nothing is written: the report "
+        "and a contact sheet (source vs VAT). The same arguments + output write exactly that (one undo step). "
         "Guide: jasper://docs/vertex-animation.";
     // argument descriptions live in the guide's argument table (docs/mcp/guide/vertex-animation.md),
     // not in tools/list

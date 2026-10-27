@@ -849,18 +849,18 @@ void registerSynthesisTools(McpRegistry& registry) {
     Json size;
     size["anyOf"] = Json::array({integer("", 1, 8192), loose(object({{"width", integer("")}, {"height", integer("")}}, {"width", "height"}))});
     tool.inputSchema = object({
-        {"mode", withDefault(stringEnum("", {"extend", "tileable", "make_tileable", "inpaint", "guided"}), "tileable")},
+        {"mode", stringEnum("", {"extend", "tileable", "make_tileable", "inpaint", "guided"})},
         {"examples", array(pathOrObject, "")},
         {"companions", companions},
         {"mask", loose(object({{"path", string("")},
-                               {"channel", withDefault(stringEnum("", {"luma", "r", "g", "b", "a"}), "luma")},
+                               {"channel", stringEnum("", {"luma", "r", "g", "b", "a"})},
                                {"invert", boolean("")}}))},
         {"target_guide", string("")},
         {"size", size},
         {"quality", withDefault(stringEnum("", {"draft", "balanced", "high"}), "balanced")},
         // the fields and their ranges: docs/mcp/guide/texture-synthesis.md (the handler checks them)
         {"params", anyObject("")},
-        {"border", withDefault(number("", 0.0001, 0.5), 0.125)},
+        {"border", number("", 0.0001, 0.5)},
         {"seed", [] {
              Json j;
              j["anyOf"] = Json::array({Json{{"type", "integer"}, {"minimum", 0}}, Json{{"type", "string"}, {"pattern", "^[0-9]{1,20}$"}}});
