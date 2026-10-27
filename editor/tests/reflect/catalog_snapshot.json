@@ -10977,6 +10977,11 @@
      0,
      true
     ],
+    "submeshes[0].material.emissiveStrength": [
+     2,
+     0,
+     true
+    ],
     "submeshes[0].material.emissiveTexture": [
      11,
      16,
@@ -11122,6 +11127,211 @@
      16,
      true
     ],
+    "submeshes[0].material.pbr.anisotropy.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[0].material.pbr.anisotropy.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[0].material.pbr.anisotropy.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[0].material.pbr.anisotropy.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[0].material.pbr.anisotropy.strength": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[0].material.pbr.clearcoat.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[0].material.pbr.clearcoat.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[0].material.pbr.clearcoat.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[0].material.pbr.clearcoat.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[0].material.pbr.clearcoat.normalMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[0].material.pbr.clearcoat.normalScale": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[0].material.pbr.clearcoat.normalTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[0].material.pbr.clearcoat.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[0].material.pbr.hex.contrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[0].material.pbr.hex.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[0].material.pbr.hex.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[0].material.pbr.iridescence.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[0].material.pbr.iridescence.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[0].material.pbr.iridescence.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[0].material.pbr.iridescence.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[0].material.pbr.iridescence.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[0].material.pbr.iridescence.thicknessNm": [
+     4,
+     0,
+     true
+    ],
+    "submeshes[0].material.pbr.sheen.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[0].material.pbr.sheen.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[0].material.pbr.sheen.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[0].material.pbr.sheen.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[0].material.pbr.sheen.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[0].material.pbr.specular.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[0].material.pbr.specular.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[0].material.pbr.specular.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[0].material.pbr.specular.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[0].material.pbr.specular.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[0].material.pbr.specular.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[0].material.pbr.transmission.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[0].material.pbr.transmission.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[0].material.pbr.transmission.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[0].material.pbr.transmission.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[0].material.pbr.volume.attenuationColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[0].material.pbr.volume.attenuationDistance": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[0].material.pbr.volume.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[0].material.pbr.volume.thickness": [
+     2,
+     0,
+     true
+    ],
     "submeshes[0].material.roughnessFactor": [
      2,
      0,
@@ -11189,6 +11399,31 @@
     ],
     "submeshes[0].material.stencil.writeMask": [
      8,
+     8,
+     true
+    ],
+    "submeshes[0].material.stochasticBlendSharpness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[0].material.stochasticCellSize": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[0].material.stochasticContrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[0].material.stochasticRotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[0].material.stochasticTiling": [
+     0,
      8,
      true
     ],
@@ -11274,6 +11509,11 @@
     ],
     "submeshes[10].material.emissiveFactor": [
      5,
+     0,
+     true
+    ],
+    "submeshes[10].material.emissiveStrength": [
+     2,
      0,
      true
     ],
@@ -11422,6 +11662,211 @@
      16,
      true
     ],
+    "submeshes[10].material.pbr.anisotropy.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[10].material.pbr.anisotropy.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[10].material.pbr.anisotropy.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[10].material.pbr.anisotropy.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[10].material.pbr.anisotropy.strength": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[10].material.pbr.clearcoat.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[10].material.pbr.clearcoat.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[10].material.pbr.clearcoat.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[10].material.pbr.clearcoat.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[10].material.pbr.clearcoat.normalMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[10].material.pbr.clearcoat.normalScale": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[10].material.pbr.clearcoat.normalTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[10].material.pbr.clearcoat.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[10].material.pbr.hex.contrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[10].material.pbr.hex.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[10].material.pbr.hex.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[10].material.pbr.iridescence.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[10].material.pbr.iridescence.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[10].material.pbr.iridescence.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[10].material.pbr.iridescence.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[10].material.pbr.iridescence.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[10].material.pbr.iridescence.thicknessNm": [
+     4,
+     0,
+     true
+    ],
+    "submeshes[10].material.pbr.sheen.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[10].material.pbr.sheen.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[10].material.pbr.sheen.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[10].material.pbr.sheen.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[10].material.pbr.sheen.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[10].material.pbr.specular.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[10].material.pbr.specular.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[10].material.pbr.specular.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[10].material.pbr.specular.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[10].material.pbr.specular.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[10].material.pbr.specular.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[10].material.pbr.transmission.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[10].material.pbr.transmission.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[10].material.pbr.transmission.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[10].material.pbr.transmission.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[10].material.pbr.volume.attenuationColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[10].material.pbr.volume.attenuationDistance": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[10].material.pbr.volume.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[10].material.pbr.volume.thickness": [
+     2,
+     0,
+     true
+    ],
     "submeshes[10].material.roughnessFactor": [
      2,
      0,
@@ -11489,6 +11934,31 @@
     ],
     "submeshes[10].material.stencil.writeMask": [
      8,
+     8,
+     true
+    ],
+    "submeshes[10].material.stochasticBlendSharpness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[10].material.stochasticCellSize": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[10].material.stochasticContrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[10].material.stochasticRotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[10].material.stochasticTiling": [
+     0,
      8,
      true
     ],
@@ -11574,6 +12044,11 @@
     ],
     "submeshes[11].material.emissiveFactor": [
      5,
+     0,
+     true
+    ],
+    "submeshes[11].material.emissiveStrength": [
+     2,
      0,
      true
     ],
@@ -11722,6 +12197,211 @@
      16,
      true
     ],
+    "submeshes[11].material.pbr.anisotropy.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[11].material.pbr.anisotropy.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[11].material.pbr.anisotropy.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[11].material.pbr.anisotropy.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[11].material.pbr.anisotropy.strength": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[11].material.pbr.clearcoat.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[11].material.pbr.clearcoat.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[11].material.pbr.clearcoat.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[11].material.pbr.clearcoat.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[11].material.pbr.clearcoat.normalMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[11].material.pbr.clearcoat.normalScale": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[11].material.pbr.clearcoat.normalTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[11].material.pbr.clearcoat.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[11].material.pbr.hex.contrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[11].material.pbr.hex.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[11].material.pbr.hex.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[11].material.pbr.iridescence.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[11].material.pbr.iridescence.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[11].material.pbr.iridescence.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[11].material.pbr.iridescence.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[11].material.pbr.iridescence.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[11].material.pbr.iridescence.thicknessNm": [
+     4,
+     0,
+     true
+    ],
+    "submeshes[11].material.pbr.sheen.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[11].material.pbr.sheen.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[11].material.pbr.sheen.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[11].material.pbr.sheen.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[11].material.pbr.sheen.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[11].material.pbr.specular.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[11].material.pbr.specular.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[11].material.pbr.specular.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[11].material.pbr.specular.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[11].material.pbr.specular.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[11].material.pbr.specular.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[11].material.pbr.transmission.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[11].material.pbr.transmission.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[11].material.pbr.transmission.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[11].material.pbr.transmission.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[11].material.pbr.volume.attenuationColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[11].material.pbr.volume.attenuationDistance": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[11].material.pbr.volume.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[11].material.pbr.volume.thickness": [
+     2,
+     0,
+     true
+    ],
     "submeshes[11].material.roughnessFactor": [
      2,
      0,
@@ -11789,6 +12469,31 @@
     ],
     "submeshes[11].material.stencil.writeMask": [
      8,
+     8,
+     true
+    ],
+    "submeshes[11].material.stochasticBlendSharpness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[11].material.stochasticCellSize": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[11].material.stochasticContrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[11].material.stochasticRotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[11].material.stochasticTiling": [
+     0,
      8,
      true
     ],
@@ -11874,6 +12579,11 @@
     ],
     "submeshes[12].material.emissiveFactor": [
      5,
+     0,
+     true
+    ],
+    "submeshes[12].material.emissiveStrength": [
+     2,
      0,
      true
     ],
@@ -12022,6 +12732,211 @@
      16,
      true
     ],
+    "submeshes[12].material.pbr.anisotropy.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[12].material.pbr.anisotropy.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[12].material.pbr.anisotropy.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[12].material.pbr.anisotropy.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[12].material.pbr.anisotropy.strength": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[12].material.pbr.clearcoat.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[12].material.pbr.clearcoat.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[12].material.pbr.clearcoat.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[12].material.pbr.clearcoat.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[12].material.pbr.clearcoat.normalMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[12].material.pbr.clearcoat.normalScale": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[12].material.pbr.clearcoat.normalTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[12].material.pbr.clearcoat.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[12].material.pbr.hex.contrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[12].material.pbr.hex.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[12].material.pbr.hex.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[12].material.pbr.iridescence.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[12].material.pbr.iridescence.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[12].material.pbr.iridescence.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[12].material.pbr.iridescence.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[12].material.pbr.iridescence.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[12].material.pbr.iridescence.thicknessNm": [
+     4,
+     0,
+     true
+    ],
+    "submeshes[12].material.pbr.sheen.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[12].material.pbr.sheen.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[12].material.pbr.sheen.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[12].material.pbr.sheen.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[12].material.pbr.sheen.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[12].material.pbr.specular.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[12].material.pbr.specular.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[12].material.pbr.specular.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[12].material.pbr.specular.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[12].material.pbr.specular.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[12].material.pbr.specular.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[12].material.pbr.transmission.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[12].material.pbr.transmission.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[12].material.pbr.transmission.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[12].material.pbr.transmission.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[12].material.pbr.volume.attenuationColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[12].material.pbr.volume.attenuationDistance": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[12].material.pbr.volume.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[12].material.pbr.volume.thickness": [
+     2,
+     0,
+     true
+    ],
     "submeshes[12].material.roughnessFactor": [
      2,
      0,
@@ -12089,6 +13004,31 @@
     ],
     "submeshes[12].material.stencil.writeMask": [
      8,
+     8,
+     true
+    ],
+    "submeshes[12].material.stochasticBlendSharpness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[12].material.stochasticCellSize": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[12].material.stochasticContrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[12].material.stochasticRotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[12].material.stochasticTiling": [
+     0,
      8,
      true
     ],
@@ -12174,6 +13114,11 @@
     ],
     "submeshes[13].material.emissiveFactor": [
      5,
+     0,
+     true
+    ],
+    "submeshes[13].material.emissiveStrength": [
+     2,
      0,
      true
     ],
@@ -12322,6 +13267,211 @@
      16,
      true
     ],
+    "submeshes[13].material.pbr.anisotropy.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[13].material.pbr.anisotropy.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[13].material.pbr.anisotropy.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[13].material.pbr.anisotropy.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[13].material.pbr.anisotropy.strength": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[13].material.pbr.clearcoat.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[13].material.pbr.clearcoat.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[13].material.pbr.clearcoat.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[13].material.pbr.clearcoat.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[13].material.pbr.clearcoat.normalMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[13].material.pbr.clearcoat.normalScale": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[13].material.pbr.clearcoat.normalTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[13].material.pbr.clearcoat.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[13].material.pbr.hex.contrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[13].material.pbr.hex.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[13].material.pbr.hex.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[13].material.pbr.iridescence.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[13].material.pbr.iridescence.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[13].material.pbr.iridescence.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[13].material.pbr.iridescence.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[13].material.pbr.iridescence.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[13].material.pbr.iridescence.thicknessNm": [
+     4,
+     0,
+     true
+    ],
+    "submeshes[13].material.pbr.sheen.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[13].material.pbr.sheen.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[13].material.pbr.sheen.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[13].material.pbr.sheen.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[13].material.pbr.sheen.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[13].material.pbr.specular.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[13].material.pbr.specular.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[13].material.pbr.specular.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[13].material.pbr.specular.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[13].material.pbr.specular.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[13].material.pbr.specular.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[13].material.pbr.transmission.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[13].material.pbr.transmission.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[13].material.pbr.transmission.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[13].material.pbr.transmission.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[13].material.pbr.volume.attenuationColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[13].material.pbr.volume.attenuationDistance": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[13].material.pbr.volume.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[13].material.pbr.volume.thickness": [
+     2,
+     0,
+     true
+    ],
     "submeshes[13].material.roughnessFactor": [
      2,
      0,
@@ -12389,6 +13539,31 @@
     ],
     "submeshes[13].material.stencil.writeMask": [
      8,
+     8,
+     true
+    ],
+    "submeshes[13].material.stochasticBlendSharpness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[13].material.stochasticCellSize": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[13].material.stochasticContrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[13].material.stochasticRotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[13].material.stochasticTiling": [
+     0,
      8,
      true
     ],
@@ -12474,6 +13649,11 @@
     ],
     "submeshes[14].material.emissiveFactor": [
      5,
+     0,
+     true
+    ],
+    "submeshes[14].material.emissiveStrength": [
+     2,
      0,
      true
     ],
@@ -12622,6 +13802,211 @@
      16,
      true
     ],
+    "submeshes[14].material.pbr.anisotropy.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[14].material.pbr.anisotropy.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[14].material.pbr.anisotropy.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[14].material.pbr.anisotropy.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[14].material.pbr.anisotropy.strength": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[14].material.pbr.clearcoat.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[14].material.pbr.clearcoat.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[14].material.pbr.clearcoat.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[14].material.pbr.clearcoat.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[14].material.pbr.clearcoat.normalMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[14].material.pbr.clearcoat.normalScale": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[14].material.pbr.clearcoat.normalTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[14].material.pbr.clearcoat.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[14].material.pbr.hex.contrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[14].material.pbr.hex.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[14].material.pbr.hex.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[14].material.pbr.iridescence.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[14].material.pbr.iridescence.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[14].material.pbr.iridescence.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[14].material.pbr.iridescence.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[14].material.pbr.iridescence.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[14].material.pbr.iridescence.thicknessNm": [
+     4,
+     0,
+     true
+    ],
+    "submeshes[14].material.pbr.sheen.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[14].material.pbr.sheen.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[14].material.pbr.sheen.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[14].material.pbr.sheen.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[14].material.pbr.sheen.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[14].material.pbr.specular.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[14].material.pbr.specular.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[14].material.pbr.specular.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[14].material.pbr.specular.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[14].material.pbr.specular.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[14].material.pbr.specular.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[14].material.pbr.transmission.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[14].material.pbr.transmission.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[14].material.pbr.transmission.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[14].material.pbr.transmission.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[14].material.pbr.volume.attenuationColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[14].material.pbr.volume.attenuationDistance": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[14].material.pbr.volume.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[14].material.pbr.volume.thickness": [
+     2,
+     0,
+     true
+    ],
     "submeshes[14].material.roughnessFactor": [
      2,
      0,
@@ -12689,6 +14074,31 @@
     ],
     "submeshes[14].material.stencil.writeMask": [
      8,
+     8,
+     true
+    ],
+    "submeshes[14].material.stochasticBlendSharpness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[14].material.stochasticCellSize": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[14].material.stochasticContrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[14].material.stochasticRotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[14].material.stochasticTiling": [
+     0,
      8,
      true
     ],
@@ -12774,6 +14184,11 @@
     ],
     "submeshes[15].material.emissiveFactor": [
      5,
+     0,
+     true
+    ],
+    "submeshes[15].material.emissiveStrength": [
+     2,
      0,
      true
     ],
@@ -12922,6 +14337,211 @@
      16,
      true
     ],
+    "submeshes[15].material.pbr.anisotropy.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[15].material.pbr.anisotropy.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[15].material.pbr.anisotropy.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[15].material.pbr.anisotropy.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[15].material.pbr.anisotropy.strength": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[15].material.pbr.clearcoat.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[15].material.pbr.clearcoat.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[15].material.pbr.clearcoat.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[15].material.pbr.clearcoat.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[15].material.pbr.clearcoat.normalMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[15].material.pbr.clearcoat.normalScale": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[15].material.pbr.clearcoat.normalTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[15].material.pbr.clearcoat.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[15].material.pbr.hex.contrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[15].material.pbr.hex.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[15].material.pbr.hex.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[15].material.pbr.iridescence.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[15].material.pbr.iridescence.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[15].material.pbr.iridescence.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[15].material.pbr.iridescence.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[15].material.pbr.iridescence.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[15].material.pbr.iridescence.thicknessNm": [
+     4,
+     0,
+     true
+    ],
+    "submeshes[15].material.pbr.sheen.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[15].material.pbr.sheen.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[15].material.pbr.sheen.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[15].material.pbr.sheen.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[15].material.pbr.sheen.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[15].material.pbr.specular.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[15].material.pbr.specular.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[15].material.pbr.specular.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[15].material.pbr.specular.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[15].material.pbr.specular.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[15].material.pbr.specular.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[15].material.pbr.transmission.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[15].material.pbr.transmission.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[15].material.pbr.transmission.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[15].material.pbr.transmission.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[15].material.pbr.volume.attenuationColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[15].material.pbr.volume.attenuationDistance": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[15].material.pbr.volume.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[15].material.pbr.volume.thickness": [
+     2,
+     0,
+     true
+    ],
     "submeshes[15].material.roughnessFactor": [
      2,
      0,
@@ -12989,6 +14609,31 @@
     ],
     "submeshes[15].material.stencil.writeMask": [
      8,
+     8,
+     true
+    ],
+    "submeshes[15].material.stochasticBlendSharpness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[15].material.stochasticCellSize": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[15].material.stochasticContrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[15].material.stochasticRotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[15].material.stochasticTiling": [
+     0,
      8,
      true
     ],
@@ -13074,6 +14719,11 @@
     ],
     "submeshes[1].material.emissiveFactor": [
      5,
+     0,
+     true
+    ],
+    "submeshes[1].material.emissiveStrength": [
+     2,
      0,
      true
     ],
@@ -13222,6 +14872,211 @@
      16,
      true
     ],
+    "submeshes[1].material.pbr.anisotropy.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[1].material.pbr.anisotropy.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[1].material.pbr.anisotropy.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[1].material.pbr.anisotropy.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[1].material.pbr.anisotropy.strength": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[1].material.pbr.clearcoat.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[1].material.pbr.clearcoat.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[1].material.pbr.clearcoat.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[1].material.pbr.clearcoat.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[1].material.pbr.clearcoat.normalMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[1].material.pbr.clearcoat.normalScale": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[1].material.pbr.clearcoat.normalTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[1].material.pbr.clearcoat.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[1].material.pbr.hex.contrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[1].material.pbr.hex.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[1].material.pbr.hex.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[1].material.pbr.iridescence.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[1].material.pbr.iridescence.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[1].material.pbr.iridescence.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[1].material.pbr.iridescence.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[1].material.pbr.iridescence.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[1].material.pbr.iridescence.thicknessNm": [
+     4,
+     0,
+     true
+    ],
+    "submeshes[1].material.pbr.sheen.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[1].material.pbr.sheen.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[1].material.pbr.sheen.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[1].material.pbr.sheen.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[1].material.pbr.sheen.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[1].material.pbr.specular.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[1].material.pbr.specular.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[1].material.pbr.specular.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[1].material.pbr.specular.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[1].material.pbr.specular.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[1].material.pbr.specular.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[1].material.pbr.transmission.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[1].material.pbr.transmission.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[1].material.pbr.transmission.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[1].material.pbr.transmission.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[1].material.pbr.volume.attenuationColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[1].material.pbr.volume.attenuationDistance": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[1].material.pbr.volume.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[1].material.pbr.volume.thickness": [
+     2,
+     0,
+     true
+    ],
     "submeshes[1].material.roughnessFactor": [
      2,
      0,
@@ -13289,6 +15144,31 @@
     ],
     "submeshes[1].material.stencil.writeMask": [
      8,
+     8,
+     true
+    ],
+    "submeshes[1].material.stochasticBlendSharpness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[1].material.stochasticCellSize": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[1].material.stochasticContrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[1].material.stochasticRotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[1].material.stochasticTiling": [
+     0,
      8,
      true
     ],
@@ -13374,6 +15254,11 @@
     ],
     "submeshes[2].material.emissiveFactor": [
      5,
+     0,
+     true
+    ],
+    "submeshes[2].material.emissiveStrength": [
+     2,
      0,
      true
     ],
@@ -13522,6 +15407,211 @@
      16,
      true
     ],
+    "submeshes[2].material.pbr.anisotropy.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[2].material.pbr.anisotropy.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[2].material.pbr.anisotropy.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[2].material.pbr.anisotropy.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[2].material.pbr.anisotropy.strength": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[2].material.pbr.clearcoat.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[2].material.pbr.clearcoat.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[2].material.pbr.clearcoat.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[2].material.pbr.clearcoat.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[2].material.pbr.clearcoat.normalMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[2].material.pbr.clearcoat.normalScale": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[2].material.pbr.clearcoat.normalTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[2].material.pbr.clearcoat.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[2].material.pbr.hex.contrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[2].material.pbr.hex.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[2].material.pbr.hex.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[2].material.pbr.iridescence.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[2].material.pbr.iridescence.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[2].material.pbr.iridescence.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[2].material.pbr.iridescence.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[2].material.pbr.iridescence.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[2].material.pbr.iridescence.thicknessNm": [
+     4,
+     0,
+     true
+    ],
+    "submeshes[2].material.pbr.sheen.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[2].material.pbr.sheen.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[2].material.pbr.sheen.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[2].material.pbr.sheen.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[2].material.pbr.sheen.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[2].material.pbr.specular.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[2].material.pbr.specular.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[2].material.pbr.specular.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[2].material.pbr.specular.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[2].material.pbr.specular.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[2].material.pbr.specular.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[2].material.pbr.transmission.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[2].material.pbr.transmission.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[2].material.pbr.transmission.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[2].material.pbr.transmission.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[2].material.pbr.volume.attenuationColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[2].material.pbr.volume.attenuationDistance": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[2].material.pbr.volume.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[2].material.pbr.volume.thickness": [
+     2,
+     0,
+     true
+    ],
     "submeshes[2].material.roughnessFactor": [
      2,
      0,
@@ -13589,6 +15679,31 @@
     ],
     "submeshes[2].material.stencil.writeMask": [
      8,
+     8,
+     true
+    ],
+    "submeshes[2].material.stochasticBlendSharpness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[2].material.stochasticCellSize": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[2].material.stochasticContrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[2].material.stochasticRotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[2].material.stochasticTiling": [
+     0,
      8,
      true
     ],
@@ -13674,6 +15789,11 @@
     ],
     "submeshes[3].material.emissiveFactor": [
      5,
+     0,
+     true
+    ],
+    "submeshes[3].material.emissiveStrength": [
+     2,
      0,
      true
     ],
@@ -13822,6 +15942,211 @@
      16,
      true
     ],
+    "submeshes[3].material.pbr.anisotropy.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[3].material.pbr.anisotropy.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[3].material.pbr.anisotropy.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[3].material.pbr.anisotropy.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[3].material.pbr.anisotropy.strength": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[3].material.pbr.clearcoat.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[3].material.pbr.clearcoat.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[3].material.pbr.clearcoat.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[3].material.pbr.clearcoat.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[3].material.pbr.clearcoat.normalMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[3].material.pbr.clearcoat.normalScale": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[3].material.pbr.clearcoat.normalTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[3].material.pbr.clearcoat.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[3].material.pbr.hex.contrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[3].material.pbr.hex.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[3].material.pbr.hex.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[3].material.pbr.iridescence.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[3].material.pbr.iridescence.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[3].material.pbr.iridescence.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[3].material.pbr.iridescence.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[3].material.pbr.iridescence.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[3].material.pbr.iridescence.thicknessNm": [
+     4,
+     0,
+     true
+    ],
+    "submeshes[3].material.pbr.sheen.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[3].material.pbr.sheen.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[3].material.pbr.sheen.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[3].material.pbr.sheen.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[3].material.pbr.sheen.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[3].material.pbr.specular.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[3].material.pbr.specular.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[3].material.pbr.specular.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[3].material.pbr.specular.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[3].material.pbr.specular.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[3].material.pbr.specular.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[3].material.pbr.transmission.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[3].material.pbr.transmission.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[3].material.pbr.transmission.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[3].material.pbr.transmission.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[3].material.pbr.volume.attenuationColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[3].material.pbr.volume.attenuationDistance": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[3].material.pbr.volume.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[3].material.pbr.volume.thickness": [
+     2,
+     0,
+     true
+    ],
     "submeshes[3].material.roughnessFactor": [
      2,
      0,
@@ -13889,6 +16214,31 @@
     ],
     "submeshes[3].material.stencil.writeMask": [
      8,
+     8,
+     true
+    ],
+    "submeshes[3].material.stochasticBlendSharpness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[3].material.stochasticCellSize": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[3].material.stochasticContrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[3].material.stochasticRotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[3].material.stochasticTiling": [
+     0,
      8,
      true
     ],
@@ -13974,6 +16324,11 @@
     ],
     "submeshes[4].material.emissiveFactor": [
      5,
+     0,
+     true
+    ],
+    "submeshes[4].material.emissiveStrength": [
+     2,
      0,
      true
     ],
@@ -14122,6 +16477,211 @@
      16,
      true
     ],
+    "submeshes[4].material.pbr.anisotropy.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[4].material.pbr.anisotropy.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[4].material.pbr.anisotropy.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[4].material.pbr.anisotropy.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[4].material.pbr.anisotropy.strength": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[4].material.pbr.clearcoat.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[4].material.pbr.clearcoat.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[4].material.pbr.clearcoat.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[4].material.pbr.clearcoat.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[4].material.pbr.clearcoat.normalMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[4].material.pbr.clearcoat.normalScale": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[4].material.pbr.clearcoat.normalTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[4].material.pbr.clearcoat.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[4].material.pbr.hex.contrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[4].material.pbr.hex.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[4].material.pbr.hex.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[4].material.pbr.iridescence.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[4].material.pbr.iridescence.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[4].material.pbr.iridescence.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[4].material.pbr.iridescence.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[4].material.pbr.iridescence.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[4].material.pbr.iridescence.thicknessNm": [
+     4,
+     0,
+     true
+    ],
+    "submeshes[4].material.pbr.sheen.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[4].material.pbr.sheen.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[4].material.pbr.sheen.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[4].material.pbr.sheen.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[4].material.pbr.sheen.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[4].material.pbr.specular.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[4].material.pbr.specular.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[4].material.pbr.specular.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[4].material.pbr.specular.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[4].material.pbr.specular.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[4].material.pbr.specular.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[4].material.pbr.transmission.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[4].material.pbr.transmission.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[4].material.pbr.transmission.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[4].material.pbr.transmission.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[4].material.pbr.volume.attenuationColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[4].material.pbr.volume.attenuationDistance": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[4].material.pbr.volume.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[4].material.pbr.volume.thickness": [
+     2,
+     0,
+     true
+    ],
     "submeshes[4].material.roughnessFactor": [
      2,
      0,
@@ -14189,6 +16749,31 @@
     ],
     "submeshes[4].material.stencil.writeMask": [
      8,
+     8,
+     true
+    ],
+    "submeshes[4].material.stochasticBlendSharpness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[4].material.stochasticCellSize": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[4].material.stochasticContrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[4].material.stochasticRotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[4].material.stochasticTiling": [
+     0,
      8,
      true
     ],
@@ -14274,6 +16859,11 @@
     ],
     "submeshes[5].material.emissiveFactor": [
      5,
+     0,
+     true
+    ],
+    "submeshes[5].material.emissiveStrength": [
+     2,
      0,
      true
     ],
@@ -14422,6 +17012,211 @@
      16,
      true
     ],
+    "submeshes[5].material.pbr.anisotropy.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[5].material.pbr.anisotropy.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[5].material.pbr.anisotropy.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[5].material.pbr.anisotropy.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[5].material.pbr.anisotropy.strength": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[5].material.pbr.clearcoat.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[5].material.pbr.clearcoat.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[5].material.pbr.clearcoat.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[5].material.pbr.clearcoat.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[5].material.pbr.clearcoat.normalMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[5].material.pbr.clearcoat.normalScale": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[5].material.pbr.clearcoat.normalTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[5].material.pbr.clearcoat.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[5].material.pbr.hex.contrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[5].material.pbr.hex.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[5].material.pbr.hex.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[5].material.pbr.iridescence.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[5].material.pbr.iridescence.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[5].material.pbr.iridescence.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[5].material.pbr.iridescence.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[5].material.pbr.iridescence.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[5].material.pbr.iridescence.thicknessNm": [
+     4,
+     0,
+     true
+    ],
+    "submeshes[5].material.pbr.sheen.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[5].material.pbr.sheen.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[5].material.pbr.sheen.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[5].material.pbr.sheen.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[5].material.pbr.sheen.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[5].material.pbr.specular.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[5].material.pbr.specular.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[5].material.pbr.specular.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[5].material.pbr.specular.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[5].material.pbr.specular.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[5].material.pbr.specular.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[5].material.pbr.transmission.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[5].material.pbr.transmission.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[5].material.pbr.transmission.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[5].material.pbr.transmission.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[5].material.pbr.volume.attenuationColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[5].material.pbr.volume.attenuationDistance": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[5].material.pbr.volume.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[5].material.pbr.volume.thickness": [
+     2,
+     0,
+     true
+    ],
     "submeshes[5].material.roughnessFactor": [
      2,
      0,
@@ -14489,6 +17284,31 @@
     ],
     "submeshes[5].material.stencil.writeMask": [
      8,
+     8,
+     true
+    ],
+    "submeshes[5].material.stochasticBlendSharpness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[5].material.stochasticCellSize": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[5].material.stochasticContrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[5].material.stochasticRotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[5].material.stochasticTiling": [
+     0,
      8,
      true
     ],
@@ -14574,6 +17394,11 @@
     ],
     "submeshes[6].material.emissiveFactor": [
      5,
+     0,
+     true
+    ],
+    "submeshes[6].material.emissiveStrength": [
+     2,
      0,
      true
     ],
@@ -14722,6 +17547,211 @@
      16,
      true
     ],
+    "submeshes[6].material.pbr.anisotropy.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[6].material.pbr.anisotropy.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[6].material.pbr.anisotropy.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[6].material.pbr.anisotropy.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[6].material.pbr.anisotropy.strength": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[6].material.pbr.clearcoat.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[6].material.pbr.clearcoat.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[6].material.pbr.clearcoat.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[6].material.pbr.clearcoat.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[6].material.pbr.clearcoat.normalMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[6].material.pbr.clearcoat.normalScale": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[6].material.pbr.clearcoat.normalTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[6].material.pbr.clearcoat.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[6].material.pbr.hex.contrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[6].material.pbr.hex.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[6].material.pbr.hex.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[6].material.pbr.iridescence.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[6].material.pbr.iridescence.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[6].material.pbr.iridescence.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[6].material.pbr.iridescence.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[6].material.pbr.iridescence.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[6].material.pbr.iridescence.thicknessNm": [
+     4,
+     0,
+     true
+    ],
+    "submeshes[6].material.pbr.sheen.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[6].material.pbr.sheen.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[6].material.pbr.sheen.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[6].material.pbr.sheen.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[6].material.pbr.sheen.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[6].material.pbr.specular.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[6].material.pbr.specular.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[6].material.pbr.specular.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[6].material.pbr.specular.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[6].material.pbr.specular.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[6].material.pbr.specular.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[6].material.pbr.transmission.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[6].material.pbr.transmission.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[6].material.pbr.transmission.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[6].material.pbr.transmission.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[6].material.pbr.volume.attenuationColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[6].material.pbr.volume.attenuationDistance": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[6].material.pbr.volume.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[6].material.pbr.volume.thickness": [
+     2,
+     0,
+     true
+    ],
     "submeshes[6].material.roughnessFactor": [
      2,
      0,
@@ -14789,6 +17819,31 @@
     ],
     "submeshes[6].material.stencil.writeMask": [
      8,
+     8,
+     true
+    ],
+    "submeshes[6].material.stochasticBlendSharpness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[6].material.stochasticCellSize": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[6].material.stochasticContrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[6].material.stochasticRotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[6].material.stochasticTiling": [
+     0,
      8,
      true
     ],
@@ -14874,6 +17929,11 @@
     ],
     "submeshes[7].material.emissiveFactor": [
      5,
+     0,
+     true
+    ],
+    "submeshes[7].material.emissiveStrength": [
+     2,
      0,
      true
     ],
@@ -15022,6 +18082,211 @@
      16,
      true
     ],
+    "submeshes[7].material.pbr.anisotropy.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[7].material.pbr.anisotropy.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[7].material.pbr.anisotropy.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[7].material.pbr.anisotropy.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[7].material.pbr.anisotropy.strength": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[7].material.pbr.clearcoat.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[7].material.pbr.clearcoat.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[7].material.pbr.clearcoat.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[7].material.pbr.clearcoat.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[7].material.pbr.clearcoat.normalMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[7].material.pbr.clearcoat.normalScale": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[7].material.pbr.clearcoat.normalTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[7].material.pbr.clearcoat.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[7].material.pbr.hex.contrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[7].material.pbr.hex.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[7].material.pbr.hex.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[7].material.pbr.iridescence.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[7].material.pbr.iridescence.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[7].material.pbr.iridescence.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[7].material.pbr.iridescence.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[7].material.pbr.iridescence.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[7].material.pbr.iridescence.thicknessNm": [
+     4,
+     0,
+     true
+    ],
+    "submeshes[7].material.pbr.sheen.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[7].material.pbr.sheen.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[7].material.pbr.sheen.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[7].material.pbr.sheen.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[7].material.pbr.sheen.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[7].material.pbr.specular.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[7].material.pbr.specular.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[7].material.pbr.specular.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[7].material.pbr.specular.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[7].material.pbr.specular.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[7].material.pbr.specular.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[7].material.pbr.transmission.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[7].material.pbr.transmission.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[7].material.pbr.transmission.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[7].material.pbr.transmission.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[7].material.pbr.volume.attenuationColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[7].material.pbr.volume.attenuationDistance": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[7].material.pbr.volume.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[7].material.pbr.volume.thickness": [
+     2,
+     0,
+     true
+    ],
     "submeshes[7].material.roughnessFactor": [
      2,
      0,
@@ -15089,6 +18354,31 @@
     ],
     "submeshes[7].material.stencil.writeMask": [
      8,
+     8,
+     true
+    ],
+    "submeshes[7].material.stochasticBlendSharpness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[7].material.stochasticCellSize": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[7].material.stochasticContrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[7].material.stochasticRotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[7].material.stochasticTiling": [
+     0,
      8,
      true
     ],
@@ -15174,6 +18464,11 @@
     ],
     "submeshes[8].material.emissiveFactor": [
      5,
+     0,
+     true
+    ],
+    "submeshes[8].material.emissiveStrength": [
+     2,
      0,
      true
     ],
@@ -15322,6 +18617,211 @@
      16,
      true
     ],
+    "submeshes[8].material.pbr.anisotropy.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[8].material.pbr.anisotropy.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[8].material.pbr.anisotropy.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[8].material.pbr.anisotropy.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[8].material.pbr.anisotropy.strength": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[8].material.pbr.clearcoat.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[8].material.pbr.clearcoat.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[8].material.pbr.clearcoat.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[8].material.pbr.clearcoat.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[8].material.pbr.clearcoat.normalMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[8].material.pbr.clearcoat.normalScale": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[8].material.pbr.clearcoat.normalTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[8].material.pbr.clearcoat.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[8].material.pbr.hex.contrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[8].material.pbr.hex.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[8].material.pbr.hex.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[8].material.pbr.iridescence.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[8].material.pbr.iridescence.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[8].material.pbr.iridescence.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[8].material.pbr.iridescence.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[8].material.pbr.iridescence.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[8].material.pbr.iridescence.thicknessNm": [
+     4,
+     0,
+     true
+    ],
+    "submeshes[8].material.pbr.sheen.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[8].material.pbr.sheen.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[8].material.pbr.sheen.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[8].material.pbr.sheen.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[8].material.pbr.sheen.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[8].material.pbr.specular.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[8].material.pbr.specular.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[8].material.pbr.specular.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[8].material.pbr.specular.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[8].material.pbr.specular.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[8].material.pbr.specular.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[8].material.pbr.transmission.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[8].material.pbr.transmission.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[8].material.pbr.transmission.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[8].material.pbr.transmission.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[8].material.pbr.volume.attenuationColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[8].material.pbr.volume.attenuationDistance": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[8].material.pbr.volume.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[8].material.pbr.volume.thickness": [
+     2,
+     0,
+     true
+    ],
     "submeshes[8].material.roughnessFactor": [
      2,
      0,
@@ -15389,6 +18889,31 @@
     ],
     "submeshes[8].material.stencil.writeMask": [
      8,
+     8,
+     true
+    ],
+    "submeshes[8].material.stochasticBlendSharpness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[8].material.stochasticCellSize": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[8].material.stochasticContrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[8].material.stochasticRotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[8].material.stochasticTiling": [
+     0,
      8,
      true
     ],
@@ -15474,6 +18999,11 @@
     ],
     "submeshes[9].material.emissiveFactor": [
      5,
+     0,
+     true
+    ],
+    "submeshes[9].material.emissiveStrength": [
+     2,
      0,
      true
     ],
@@ -15622,6 +19152,211 @@
      16,
      true
     ],
+    "submeshes[9].material.pbr.anisotropy.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[9].material.pbr.anisotropy.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[9].material.pbr.anisotropy.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[9].material.pbr.anisotropy.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[9].material.pbr.anisotropy.strength": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[9].material.pbr.clearcoat.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[9].material.pbr.clearcoat.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[9].material.pbr.clearcoat.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[9].material.pbr.clearcoat.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[9].material.pbr.clearcoat.normalMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[9].material.pbr.clearcoat.normalScale": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[9].material.pbr.clearcoat.normalTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[9].material.pbr.clearcoat.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[9].material.pbr.hex.contrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[9].material.pbr.hex.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[9].material.pbr.hex.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[9].material.pbr.iridescence.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[9].material.pbr.iridescence.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[9].material.pbr.iridescence.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[9].material.pbr.iridescence.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[9].material.pbr.iridescence.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[9].material.pbr.iridescence.thicknessNm": [
+     4,
+     0,
+     true
+    ],
+    "submeshes[9].material.pbr.sheen.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[9].material.pbr.sheen.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[9].material.pbr.sheen.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[9].material.pbr.sheen.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[9].material.pbr.sheen.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[9].material.pbr.specular.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[9].material.pbr.specular.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[9].material.pbr.specular.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[9].material.pbr.specular.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[9].material.pbr.specular.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[9].material.pbr.specular.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[9].material.pbr.transmission.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[9].material.pbr.transmission.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[9].material.pbr.transmission.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[9].material.pbr.transmission.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[9].material.pbr.volume.attenuationColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[9].material.pbr.volume.attenuationDistance": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[9].material.pbr.volume.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[9].material.pbr.volume.thickness": [
+     2,
+     0,
+     true
+    ],
     "submeshes[9].material.roughnessFactor": [
      2,
      0,
@@ -15689,6 +19424,31 @@
     ],
     "submeshes[9].material.stencil.writeMask": [
      8,
+     8,
+     true
+    ],
+    "submeshes[9].material.stochasticBlendSharpness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[9].material.stochasticCellSize": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[9].material.stochasticContrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[9].material.stochasticRotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[9].material.stochasticTiling": [
+     0,
      8,
      true
     ],
@@ -15859,6 +19619,11 @@
      0,
      true
     ],
+    "submeshes[].material.emissiveStrength": [
+     2,
+     0,
+     true
+    ],
     "submeshes[].material.emissiveTexture": [
      11,
      16,
@@ -16004,6 +19769,211 @@
      16,
      true
     ],
+    "submeshes[].material.pbr.anisotropy.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.anisotropy.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.anisotropy.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.anisotropy.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[].material.pbr.anisotropy.strength": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[].material.pbr.clearcoat.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.clearcoat.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[].material.pbr.clearcoat.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.clearcoat.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.clearcoat.normalMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.clearcoat.normalScale": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[].material.pbr.clearcoat.normalTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.clearcoat.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[].material.pbr.hex.contrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[].material.pbr.hex.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.hex.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[].material.pbr.iridescence.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.iridescence.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[].material.pbr.iridescence.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[].material.pbr.iridescence.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.iridescence.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.iridescence.thicknessNm": [
+     4,
+     0,
+     true
+    ],
+    "submeshes[].material.pbr.sheen.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[].material.pbr.sheen.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.sheen.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.sheen.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.sheen.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[].material.pbr.specular.color": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[].material.pbr.specular.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.specular.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[].material.pbr.specular.ior": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[].material.pbr.specular.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.specular.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.transmission.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.transmission.factor": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[].material.pbr.transmission.map": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.transmission.mapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.volume.attenuationColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[].material.pbr.volume.attenuationDistance": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[].material.pbr.volume.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.volume.thickness": [
+     2,
+     0,
+     true
+    ],
     "submeshes[].material.roughnessFactor": [
      2,
      0,
@@ -16071,6 +20041,31 @@
     ],
     "submeshes[].material.stencil.writeMask": [
      8,
+     8,
+     true
+    ],
+    "submeshes[].material.stochasticBlendSharpness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[].material.stochasticCellSize": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[].material.stochasticContrast": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[].material.stochasticRotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[].material.stochasticTiling": [
+     0,
      8,
      true
     ],
@@ -16552,6 +20547,28 @@
       "Manual"
      ]
     ],
+    "intensityUnit": [
+     [
+      0,
+      "engine",
+      "Engine"
+     ],
+     [
+      1,
+      "lux",
+      "Lux"
+     ],
+     [
+      2,
+      "candela",
+      "Candela"
+     ],
+     [
+      3,
+      "lumen",
+      "Lumen"
+     ]
+    ],
     "shading": [
      [
       0,
@@ -16612,11 +20629,13 @@
     "cascadeSplitMode",
     "cascadeSplits",
     "color",
+    "colorTemperature",
     "cullingMask",
     "direction",
     "enabled",
     "innerConeCos",
     "intensity",
+    "intensityUnit",
     "mapResolution",
     "numShadowCascades",
     "outerConeCos",
@@ -16634,6 +20653,7 @@
     "softShadows",
     "spotMask",
     "type",
+    "useColorTemperature",
     "volumetricIntensity",
     "worldDirection"
    ],
@@ -16659,6 +20679,11 @@
      0,
      true
     ],
+    "colorTemperature": [
+     2,
+     0,
+     true
+    ],
     "cullingMask": [
      9,
      0,
@@ -16681,6 +20706,11 @@
     ],
     "intensity": [
      2,
+     0,
+     true
+    ],
+    "intensityUnit": [
+     13,
      0,
      true
     ],
@@ -16773,6 +20803,11 @@
      13,
      137438959616,
      false
+    ],
+    "useColorTemperature": [
+     0,
+     0,
+     true
     ],
     "volumetricIntensity": [
      2,
@@ -16801,6 +20836,11 @@
      0,
      true
     ],
+    "colorTemperature": [
+     2,
+     0,
+     true
+    ],
     "cullingMask": [
      9,
      0,
@@ -16823,6 +20863,11 @@
     ],
     "intensity": [
      2,
+     0,
+     true
+    ],
+    "intensityUnit": [
+     13,
      0,
      true
     ],
@@ -16915,6 +20960,11 @@
      13,
      137438959616,
      false
+    ],
+    "useColorTemperature": [
+     0,
+     0,
+     true
     ],
     "volumetricIntensity": [
      2,
@@ -17186,6 +21236,16 @@
      67108864,
      true
     ],
+    "surfaceLayers[].hexRotation": [
+     2,
+     67108864,
+     true
+    ],
+    "surfaceLayers[].hexTiling": [
+     0,
+     67108864,
+     true
+    ],
     "surfaceLayers[].metallicFactor": [
      2,
      67108864,
@@ -17228,6 +21288,31 @@
     ],
     "surfaceLayers[].roughnessTexture": [
      11,
+     67108864,
+     true
+    ],
+    "surfaceLayers[].stochasticBlendSharpness": [
+     2,
+     67108864,
+     true
+    ],
+    "surfaceLayers[].stochasticCellSize": [
+     2,
+     67108864,
+     true
+    ],
+    "surfaceLayers[].stochasticContrast": [
+     2,
+     67108864,
+     true
+    ],
+    "surfaceLayers[].stochasticRotation": [
+     2,
+     67108864,
+     true
+    ],
+    "surfaceLayers[].stochasticTiling": [
+     0,
      67108864,
      true
     ],
@@ -18747,7 +22832,8 @@
    "known_keys": [
     "duration",
     "function",
-    "loop"
+    "loop",
+    "pingPong"
    ],
    "name": "TweenComponent",
    "properties_of_default": {
@@ -18765,6 +22851,11 @@
      0,
      0,
      true
+    ],
+    "pingPong": [
+     0,
+     0,
+     true
     ]
    },
    "properties_without_component": {
@@ -18779,6 +22870,11 @@
      true
     ],
     "loop": [
+     0,
+     0,
+     true
+    ],
+    "pingPong": [
      0,
      0,
      true
@@ -19350,6 +23446,7 @@
    "key": "rigidbody",
    "known_keys": [
     "allowedDOFs",
+    "buoyancy",
     "colliders",
     "enabled",
     "friction",
@@ -19358,10 +23455,17 @@
     "numColliders",
     "restitution",
     "sensor",
-    "type"
+    "type",
+    "waterAngularDrag",
+    "waterDrag"
    ],
    "name": "RigidbodyComponent",
    "properties_of_default": {
+    "buoyancy": [
+     2,
+     0,
+     true
+    ],
     "enabled": [
      0,
      0,
@@ -19416,9 +23520,24 @@
      13,
      262144,
      true
+    ],
+    "waterAngularDrag": [
+     2,
+     0,
+     true
+    ],
+    "waterDrag": [
+     2,
+     0,
+     true
     ]
    },
    "properties_without_component": {
+    "buoyancy": [
+     2,
+     0,
+     true
+    ],
     "colliders[]": [
      15,
      262144,
@@ -19562,6 +23681,16 @@
     "type": [
      13,
      262144,
+     true
+    ],
+    "waterAngularDrag": [
+     2,
+     0,
+     true
+    ],
+    "waterDrag": [
+     2,
+     0,
      true
     ]
    },
@@ -21308,6 +25437,8 @@
     "easings",
     "index",
     "interpolation",
+    "loop",
+    "relative",
     "times"
    ],
    "name": "KeyframeTracksComponent",
@@ -21324,6 +25455,16 @@
     ],
     "interpolation": [
      2,
+     0,
+     true
+    ],
+    "loop": [
+     0,
+     0,
+     true
+    ],
+    "relative": [
+     0,
      0,
      true
     ],
@@ -21351,6 +25492,16 @@
     ],
     "interpolation": [
      2,
+     0,
+     true
+    ],
+    "loop": [
+     0,
+     0,
+     true
+    ],
+    "relative": [
+     0,
      0,
      true
     ],
@@ -22884,18 +27035,36 @@
    "icon": "ef8bb1",
    "key": "rotationtween",
    "known_keys": [
+    "angle",
+    "axis",
     "endRotation",
     "shortestPath",
+    "spin",
     "startRotation"
    ],
    "name": "RotationTweenComponent",
    "properties_of_default": {
+    "angle": [
+     2,
+     0,
+     true
+    ],
+    "axis": [
+     5,
+     0,
+     true
+    ],
     "endRotation": [
      7,
      0,
      false
     ],
     "shortestPath": [
+     0,
+     0,
+     true
+    ],
+    "spin": [
      0,
      0,
      true
@@ -22907,12 +27076,27 @@
     ]
    },
    "properties_without_component": {
+    "angle": [
+     2,
+     0,
+     true
+    ],
+    "axis": [
+     5,
+     0,
+     true
+    ],
     "endRotation": [
      7,
      0,
      false
     ],
     "shortestPath": [
+     0,
+     0,
+     true
+    ],
+    "spin": [
      0,
      0,
      true
@@ -25427,6 +29611,1071 @@
    "type_of_name": 52
   },
   {
+   "display_name": "Fluid Simulation",
+   "enum_options": {
+    "output": [
+     [
+      0,
+      "screen",
+      "Screen"
+     ],
+     [
+      1,
+      "material",
+      "Material"
+     ],
+     [
+      2,
+      "texture",
+      "Texture"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef8183",
+   "key": "fluidsimulation",
+   "known_keys": [
+    "aspectRatio",
+    "backColor",
+    "bloom",
+    "bloomIntensity",
+    "bloomIterations",
+    "bloomResolution",
+    "bloomSoftKnee",
+    "bloomThreshold",
+    "colorUpdateSpeed",
+    "colorful",
+    "curl",
+    "densityDissipation",
+    "dyeResolution",
+    "enabled",
+    "gradientScale",
+    "interactive",
+    "maxSubsteps",
+    "output",
+    "paused",
+    "pressure",
+    "pressureIterations",
+    "randomSplatCount",
+    "seed",
+    "shading",
+    "simResolution",
+    "simulationRate",
+    "splatForce",
+    "splatRadius",
+    "splatsOnStart",
+    "sunrays",
+    "sunraysResolution",
+    "sunraysWeight",
+    "timeScale",
+    "transparent",
+    "velocityDissipation"
+   ],
+   "name": "FluidSimulationComponent",
+   "properties_of_default": {
+    "aspectRatio": [
+     2,
+     0,
+     true
+    ],
+    "backColor": [
+     5,
+     0,
+     true
+    ],
+    "bloom": [
+     0,
+     0,
+     true
+    ],
+    "bloomIntensity": [
+     2,
+     0,
+     true
+    ],
+    "bloomIterations": [
+     9,
+     0,
+     true
+    ],
+    "bloomResolution": [
+     9,
+     0,
+     true
+    ],
+    "bloomSoftKnee": [
+     2,
+     0,
+     true
+    ],
+    "bloomThreshold": [
+     2,
+     0,
+     true
+    ],
+    "colorUpdateSpeed": [
+     2,
+     0,
+     true
+    ],
+    "colorful": [
+     0,
+     0,
+     true
+    ],
+    "curl": [
+     2,
+     0,
+     true
+    ],
+    "densityDissipation": [
+     2,
+     0,
+     true
+    ],
+    "dyeResolution": [
+     9,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "gradientScale": [
+     2,
+     0,
+     true
+    ],
+    "interactive": [
+     0,
+     0,
+     true
+    ],
+    "maxSubsteps": [
+     9,
+     0,
+     true
+    ],
+    "output": [
+     13,
+     0,
+     true
+    ],
+    "paused": [
+     0,
+     0,
+     true
+    ],
+    "pressure": [
+     2,
+     0,
+     true
+    ],
+    "pressureIterations": [
+     9,
+     0,
+     true
+    ],
+    "randomSplatCount": [
+     9,
+     549755813888,
+     true
+    ],
+    "seed": [
+     9,
+     549755813888,
+     true
+    ],
+    "shading": [
+     0,
+     0,
+     true
+    ],
+    "simResolution": [
+     9,
+     0,
+     true
+    ],
+    "simulationRate": [
+     2,
+     0,
+     true
+    ],
+    "splatForce": [
+     2,
+     0,
+     true
+    ],
+    "splatRadius": [
+     2,
+     0,
+     true
+    ],
+    "splatsOnStart": [
+     0,
+     549755813888,
+     true
+    ],
+    "sunrays": [
+     0,
+     0,
+     true
+    ],
+    "sunraysResolution": [
+     9,
+     0,
+     true
+    ],
+    "sunraysWeight": [
+     2,
+     0,
+     true
+    ],
+    "timeScale": [
+     2,
+     0,
+     true
+    ],
+    "transparent": [
+     0,
+     0,
+     true
+    ],
+    "velocityDissipation": [
+     2,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "aspectRatio": [
+     2,
+     0,
+     true
+    ],
+    "backColor": [
+     5,
+     0,
+     true
+    ],
+    "bloom": [
+     0,
+     0,
+     true
+    ],
+    "bloomIntensity": [
+     2,
+     0,
+     true
+    ],
+    "bloomIterations": [
+     9,
+     0,
+     true
+    ],
+    "bloomResolution": [
+     9,
+     0,
+     true
+    ],
+    "bloomSoftKnee": [
+     2,
+     0,
+     true
+    ],
+    "bloomThreshold": [
+     2,
+     0,
+     true
+    ],
+    "colorUpdateSpeed": [
+     2,
+     0,
+     true
+    ],
+    "colorful": [
+     0,
+     0,
+     true
+    ],
+    "curl": [
+     2,
+     0,
+     true
+    ],
+    "densityDissipation": [
+     2,
+     0,
+     true
+    ],
+    "dyeResolution": [
+     9,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "gradientScale": [
+     2,
+     0,
+     true
+    ],
+    "interactive": [
+     0,
+     0,
+     true
+    ],
+    "maxSubsteps": [
+     9,
+     0,
+     true
+    ],
+    "output": [
+     13,
+     0,
+     true
+    ],
+    "paused": [
+     0,
+     0,
+     true
+    ],
+    "pressure": [
+     2,
+     0,
+     true
+    ],
+    "pressureIterations": [
+     9,
+     0,
+     true
+    ],
+    "randomSplatCount": [
+     9,
+     549755813888,
+     true
+    ],
+    "seed": [
+     9,
+     549755813888,
+     true
+    ],
+    "shading": [
+     0,
+     0,
+     true
+    ],
+    "simResolution": [
+     9,
+     0,
+     true
+    ],
+    "simulationRate": [
+     2,
+     0,
+     true
+    ],
+    "splatForce": [
+     2,
+     0,
+     true
+    ],
+    "splatRadius": [
+     2,
+     0,
+     true
+    ],
+    "splatsOnStart": [
+     0,
+     549755813888,
+     true
+    ],
+    "sunrays": [
+     0,
+     0,
+     true
+    ],
+    "sunraysResolution": [
+     9,
+     0,
+     true
+    ],
+    "sunraysWeight": [
+     2,
+     0,
+     true
+    ],
+    "timeScale": [
+     2,
+     0,
+     true
+    ],
+    "transparent": [
+     0,
+     0,
+     true
+    ],
+    "velocityDissipation": [
+     2,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 53,
+   "type_of_key": 53,
+   "type_of_name": 53
+  },
+  {
+   "display_name": "Lattice",
+   "enum_options": {
+    "interpolation": [
+     [
+      0,
+      "sharp",
+      "Sharp"
+     ],
+     [
+      1,
+      "smooth",
+      "Smooth"
+     ],
+     [
+      2,
+      "cubic",
+      "Cubic"
+     ]
+    ],
+    "jiggleAnchor": [
+     [
+      0,
+      "none",
+      "None"
+     ],
+     [
+      1,
+      "negative_x",
+      "-X"
+     ],
+     [
+      2,
+      "positive_x",
+      "+X"
+     ],
+     [
+      3,
+      "negative_y",
+      "-Y"
+     ],
+     [
+      4,
+      "positive_y",
+      "+Y"
+     ],
+     [
+      5,
+      "negative_z",
+      "-Z"
+     ],
+     [
+      6,
+      "positive_z",
+      "+Z"
+     ]
+    ],
+    "outside": [
+     [
+      0,
+      "extend",
+      "Extend"
+     ],
+     [
+      1,
+      "fade",
+      "Fade"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "efa190",
+   "key": "lattice",
+   "known_keys": [
+    "enabled",
+    "fadeDistance",
+    "interpolation",
+    "jiggle",
+    "jiggleAnchor",
+    "jiggleDamping",
+    "jiggleInertia",
+    "jiggleMaxOffset",
+    "jiggleStiffness",
+    "offsets",
+    "outside",
+    "poses",
+    "resolutionX",
+    "resolutionY",
+    "resolutionZ"
+   ],
+   "name": "LatticeComponent",
+   "properties_of_default": {
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "fadeDistance": [
+     2,
+     1099511627776,
+     true
+    ],
+    "interpolation": [
+     13,
+     1099511627776,
+     true
+    ],
+    "jiggle": [
+     0,
+     1099511627776,
+     true
+    ],
+    "jiggleAnchor": [
+     13,
+     1099511627776,
+     true
+    ],
+    "jiggleDamping": [
+     2,
+     1099511627776,
+     true
+    ],
+    "jiggleInertia": [
+     2,
+     1099511627776,
+     true
+    ],
+    "jiggleMaxOffset": [
+     2,
+     1099511627776,
+     true
+    ],
+    "jiggleStiffness": [
+     2,
+     1099511627776,
+     true
+    ],
+    "offsets": [
+     15,
+     1099511627776,
+     true
+    ],
+    "offsets[0]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "offsets[10]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "offsets[11]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "offsets[12]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "offsets[13]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "offsets[14]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "offsets[15]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "offsets[16]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "offsets[17]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "offsets[18]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "offsets[19]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "offsets[1]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "offsets[20]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "offsets[21]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "offsets[22]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "offsets[23]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "offsets[24]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "offsets[25]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "offsets[26]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "offsets[2]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "offsets[3]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "offsets[4]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "offsets[5]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "offsets[6]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "offsets[7]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "offsets[8]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "offsets[9]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "outside": [
+     13,
+     1099511627776,
+     true
+    ],
+    "poses": [
+     15,
+     0,
+     true
+    ],
+    "resolutionX": [
+     8,
+     1099511627776,
+     true
+    ],
+    "resolutionY": [
+     8,
+     1099511627776,
+     true
+    ],
+    "resolutionZ": [
+     8,
+     1099511627776,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "fadeDistance": [
+     2,
+     1099511627776,
+     true
+    ],
+    "interpolation": [
+     13,
+     1099511627776,
+     true
+    ],
+    "jiggle": [
+     0,
+     1099511627776,
+     true
+    ],
+    "jiggleAnchor": [
+     13,
+     1099511627776,
+     true
+    ],
+    "jiggleDamping": [
+     2,
+     1099511627776,
+     true
+    ],
+    "jiggleInertia": [
+     2,
+     1099511627776,
+     true
+    ],
+    "jiggleMaxOffset": [
+     2,
+     1099511627776,
+     true
+    ],
+    "jiggleStiffness": [
+     2,
+     1099511627776,
+     true
+    ],
+    "offsets": [
+     15,
+     1099511627776,
+     true
+    ],
+    "offsets[]": [
+     5,
+     1099511627776,
+     true
+    ],
+    "outside": [
+     13,
+     1099511627776,
+     true
+    ],
+    "poses": [
+     15,
+     0,
+     true
+    ],
+    "resolutionX": [
+     8,
+     1099511627776,
+     true
+    ],
+    "resolutionY": [
+     8,
+     1099511627776,
+     true
+    ],
+    "resolutionZ": [
+     8,
+     1099511627776,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 54,
+   "type_of_key": 54,
+   "type_of_name": 54
+  },
+  {
+   "display_name": "Lattice Modifier",
+   "enum_options": {},
+   "has_enabled": true,
+   "icon": "ee8b8a",
+   "key": "latticemodifier",
+   "known_keys": [
+    "bindings",
+    "enabled",
+    "includeChildren",
+    "subdivisions"
+   ],
+   "name": "LatticeModifierComponent",
+   "properties_of_default": {
+    "bindings": [
+     15,
+     1099511627776,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "includeChildren": [
+     0,
+     1099511627776,
+     true
+    ],
+    "subdivisions": [
+     8,
+     1099511627776,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "bindings": [
+     15,
+     1099511627776,
+     true
+    ],
+    "bindings[].lattice": [
+     16,
+     1099511627776,
+     true
+    ],
+    "bindings[].mask": [
+     13,
+     1099511627776,
+     true
+    ],
+    "bindings[].stage": [
+     13,
+     1099511627776,
+     true
+    ],
+    "bindings[].submesh": [
+     8,
+     1099511627776,
+     true
+    ],
+    "bindings[].weight": [
+     2,
+     1099511627776,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "includeChildren": [
+     0,
+     1099511627776,
+     true
+    ],
+    "subdivisions": [
+     8,
+     1099511627776,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 55,
+   "type_of_key": 55,
+   "type_of_name": 55
+  },
+  {
+   "display_name": "Lattice Follower",
+   "enum_options": {},
+   "has_enabled": true,
+   "icon": "ef84a4",
+   "key": "latticefollower",
+   "known_keys": [
+    "applyPosition",
+    "applyRotation",
+    "applyScale",
+    "enabled",
+    "lattice",
+    "rest",
+    "weight"
+   ],
+   "name": "LatticeFollowerComponent",
+   "properties_of_default": {
+    "applyPosition": [
+     0,
+     0,
+     true
+    ],
+    "applyRotation": [
+     0,
+     0,
+     true
+    ],
+    "applyScale": [
+     0,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "lattice": [
+     16,
+     0,
+     true
+    ],
+    "rest": [
+     16,
+     0,
+     true
+    ],
+    "weight": [
+     2,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "applyPosition": [
+     0,
+     0,
+     true
+    ],
+    "applyRotation": [
+     0,
+     0,
+     true
+    ],
+    "applyScale": [
+     0,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "lattice": [
+     16,
+     0,
+     true
+    ],
+    "rest": [
+     16,
+     0,
+     true
+    ],
+    "weight": [
+     2,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 56,
+   "type_of_key": 56,
+   "type_of_name": 56
+  },
+  {
+   "display_name": "Lattice Tracks",
+   "enum_options": {},
+   "has_enabled": false,
+   "icon": "ee93a6",
+   "key": "latticetracks",
+   "known_keys": [
+    "inTangents",
+    "outTangents",
+    "points",
+    "values"
+   ],
+   "name": "LatticeTracksComponent",
+   "properties_of_default": {
+    "inTangents": [
+     15,
+     0,
+     true
+    ],
+    "outTangents": [
+     15,
+     0,
+     true
+    ],
+    "points": [
+     15,
+     0,
+     true
+    ],
+    "values": [
+     15,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "inTangents": [
+     15,
+     0,
+     true
+    ],
+    "outTangents": [
+     15,
+     0,
+     true
+    ],
+    "points": [
+     15,
+     0,
+     true
+    ],
+    "points[]": [
+     8,
+     0,
+     true
+    ],
+    "values": [
+     15,
+     0,
+     true
+    ],
+    "values[]": [
+     15,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 57,
+   "type_of_key": 57,
+   "type_of_name": 57
+  },
+  {
    "display_name": "Local Volumetric Fog",
    "enum_options": {
     "falloff": [
@@ -25564,9 +30813,9 @@
     ]
    },
    "structural_update_flags": 0,
-   "type": 53,
-   "type_of_key": 53,
-   "type_of_name": 53
+   "type": 58,
+   "type_of_key": 58,
+   "type_of_name": 58
   },
   {
    "display_name": "Volumetric Clouds",
@@ -25853,9 +31102,9 @@
     ]
    },
    "structural_update_flags": 0,
-   "type": 54,
-   "type_of_key": 54,
-   "type_of_name": 54
+   "type": 59,
+   "type_of_key": 59,
+   "type_of_name": 59
   }
  ],
  "ease_options": [
@@ -26382,6 +31631,183 @@
     true
    ]
   },
+  "FluidSimulationComponent": {
+   "aspectRatio": [
+    2,
+    0,
+    true
+   ],
+   "backColor": [
+    5,
+    0,
+    true
+   ],
+   "bloom": [
+    0,
+    0,
+    true
+   ],
+   "bloomIntensity": [
+    2,
+    0,
+    true
+   ],
+   "bloomIterations": [
+    9,
+    0,
+    true
+   ],
+   "bloomResolution": [
+    9,
+    0,
+    true
+   ],
+   "bloomSoftKnee": [
+    2,
+    0,
+    true
+   ],
+   "bloomThreshold": [
+    2,
+    0,
+    true
+   ],
+   "colorUpdateSpeed": [
+    2,
+    0,
+    true
+   ],
+   "colorful": [
+    0,
+    0,
+    true
+   ],
+   "curl": [
+    2,
+    0,
+    true
+   ],
+   "densityDissipation": [
+    2,
+    0,
+    true
+   ],
+   "dyeResolution": [
+    9,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "gradientScale": [
+    2,
+    0,
+    true
+   ],
+   "interactive": [
+    0,
+    0,
+    true
+   ],
+   "maxSubsteps": [
+    9,
+    0,
+    true
+   ],
+   "output": [
+    13,
+    0,
+    true
+   ],
+   "paused": [
+    0,
+    0,
+    true
+   ],
+   "pressure": [
+    2,
+    0,
+    true
+   ],
+   "pressureIterations": [
+    9,
+    0,
+    true
+   ],
+   "randomSplatCount": [
+    9,
+    549755813888,
+    true
+   ],
+   "seed": [
+    9,
+    549755813888,
+    true
+   ],
+   "shading": [
+    0,
+    0,
+    true
+   ],
+   "simResolution": [
+    9,
+    0,
+    true
+   ],
+   "simulationRate": [
+    2,
+    0,
+    true
+   ],
+   "splatForce": [
+    2,
+    0,
+    true
+   ],
+   "splatRadius": [
+    2,
+    0,
+    true
+   ],
+   "splatsOnStart": [
+    0,
+    549755813888,
+    true
+   ],
+   "sunrays": [
+    0,
+    0,
+    true
+   ],
+   "sunraysResolution": [
+    9,
+    0,
+    true
+   ],
+   "sunraysWeight": [
+    2,
+    0,
+    true
+   ],
+   "timeScale": [
+    2,
+    0,
+    true
+   ],
+   "transparent": [
+    0,
+    0,
+    true
+   ],
+   "velocityDissipation": [
+    2,
+    0,
+    true
+   ]
+  },
   "FogComponent": {
    "anisotropy": [
     2,
@@ -26885,7 +32311,180 @@
     0,
     true
    ],
+   "loop": [
+    0,
+    0,
+    true
+   ],
+   "relative": [
+    0,
+    0,
+    true
+   ],
    "times": [
+    15,
+    0,
+    true
+   ]
+  },
+  "LatticeComponent": {
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "fadeDistance": [
+    2,
+    1099511627776,
+    true
+   ],
+   "interpolation": [
+    13,
+    1099511627776,
+    true
+   ],
+   "jiggle": [
+    0,
+    1099511627776,
+    true
+   ],
+   "jiggleAnchor": [
+    13,
+    1099511627776,
+    true
+   ],
+   "jiggleDamping": [
+    2,
+    1099511627776,
+    true
+   ],
+   "jiggleInertia": [
+    2,
+    1099511627776,
+    true
+   ],
+   "jiggleMaxOffset": [
+    2,
+    1099511627776,
+    true
+   ],
+   "jiggleStiffness": [
+    2,
+    1099511627776,
+    true
+   ],
+   "offsets": [
+    15,
+    1099511627776,
+    true
+   ],
+   "offsets[N]": [
+    5,
+    1099511627776,
+    true
+   ],
+   "outside": [
+    13,
+    1099511627776,
+    true
+   ],
+   "poses": [
+    15,
+    0,
+    true
+   ],
+   "resolutionX": [
+    8,
+    1099511627776,
+    true
+   ],
+   "resolutionY": [
+    8,
+    1099511627776,
+    true
+   ],
+   "resolutionZ": [
+    8,
+    1099511627776,
+    true
+   ]
+  },
+  "LatticeFollowerComponent": {
+   "applyPosition": [
+    0,
+    0,
+    true
+   ],
+   "applyRotation": [
+    0,
+    0,
+    true
+   ],
+   "applyScale": [
+    0,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "lattice": [
+    16,
+    0,
+    true
+   ],
+   "rest": [
+    16,
+    0,
+    true
+   ],
+   "weight": [
+    2,
+    0,
+    true
+   ]
+  },
+  "LatticeModifierComponent": {
+   "bindings": [
+    15,
+    1099511627776,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "includeChildren": [
+    0,
+    1099511627776,
+    true
+   ],
+   "subdivisions": [
+    8,
+    1099511627776,
+    true
+   ]
+  },
+  "LatticeTracksComponent": {
+   "inTangents": [
+    15,
+    0,
+    true
+   ],
+   "outTangents": [
+    15,
+    0,
+    true
+   ],
+   "points": [
+    15,
+    0,
+    true
+   ],
+   "values": [
     15,
     0,
     true
@@ -27021,6 +32620,11 @@
     0,
     true
    ],
+   "colorTemperature": [
+    2,
+    0,
+    true
+   ],
    "cullingMask": [
     9,
     0,
@@ -27043,6 +32647,11 @@
    ],
    "intensity": [
     2,
+    0,
+    true
+   ],
+   "intensityUnit": [
+    13,
     0,
     true
    ],
@@ -27135,6 +32744,11 @@
     13,
     137438959616,
     false
+   ],
+   "useColorTemperature": [
+    0,
+    0,
+    true
    ],
    "volumetricIntensity": [
     2,
@@ -27427,6 +33041,11 @@
     0,
     true
    ],
+   "submeshes[N].material.emissiveStrength": [
+    2,
+    0,
+    true
+   ],
    "submeshes[N].material.emissiveTexture": [
     11,
     16,
@@ -27572,6 +33191,211 @@
     16,
     true
    ],
+   "submeshes[N].material.pbr.anisotropy.enabled": [
+    0,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.anisotropy.map": [
+    11,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.anisotropy.mapTexCoord": [
+    8,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.anisotropy.rotation": [
+    2,
+    0,
+    true
+   ],
+   "submeshes[N].material.pbr.anisotropy.strength": [
+    2,
+    0,
+    true
+   ],
+   "submeshes[N].material.pbr.clearcoat.enabled": [
+    0,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.clearcoat.factor": [
+    2,
+    0,
+    true
+   ],
+   "submeshes[N].material.pbr.clearcoat.map": [
+    11,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.clearcoat.mapTexCoord": [
+    8,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.clearcoat.normalMap": [
+    11,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.clearcoat.normalScale": [
+    2,
+    0,
+    true
+   ],
+   "submeshes[N].material.pbr.clearcoat.normalTexCoord": [
+    8,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.clearcoat.roughness": [
+    2,
+    0,
+    true
+   ],
+   "submeshes[N].material.pbr.hex.contrast": [
+    2,
+    0,
+    true
+   ],
+   "submeshes[N].material.pbr.hex.enabled": [
+    0,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.hex.rotation": [
+    2,
+    0,
+    true
+   ],
+   "submeshes[N].material.pbr.iridescence.enabled": [
+    0,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.iridescence.factor": [
+    2,
+    0,
+    true
+   ],
+   "submeshes[N].material.pbr.iridescence.ior": [
+    2,
+    0,
+    true
+   ],
+   "submeshes[N].material.pbr.iridescence.map": [
+    11,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.iridescence.mapTexCoord": [
+    8,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.iridescence.thicknessNm": [
+    4,
+    0,
+    true
+   ],
+   "submeshes[N].material.pbr.sheen.color": [
+    5,
+    0,
+    true
+   ],
+   "submeshes[N].material.pbr.sheen.enabled": [
+    0,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.sheen.map": [
+    11,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.sheen.mapTexCoord": [
+    8,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.sheen.roughness": [
+    2,
+    0,
+    true
+   ],
+   "submeshes[N].material.pbr.specular.color": [
+    5,
+    0,
+    true
+   ],
+   "submeshes[N].material.pbr.specular.enabled": [
+    0,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.specular.factor": [
+    2,
+    0,
+    true
+   ],
+   "submeshes[N].material.pbr.specular.ior": [
+    2,
+    0,
+    true
+   ],
+   "submeshes[N].material.pbr.specular.map": [
+    11,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.specular.mapTexCoord": [
+    8,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.transmission.enabled": [
+    0,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.transmission.factor": [
+    2,
+    0,
+    true
+   ],
+   "submeshes[N].material.pbr.transmission.map": [
+    11,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.transmission.mapTexCoord": [
+    8,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.volume.attenuationColor": [
+    5,
+    0,
+    true
+   ],
+   "submeshes[N].material.pbr.volume.attenuationDistance": [
+    2,
+    0,
+    true
+   ],
+   "submeshes[N].material.pbr.volume.enabled": [
+    0,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.volume.thickness": [
+    2,
+    0,
+    true
+   ],
    "submeshes[N].material.roughnessFactor": [
     2,
     0,
@@ -27642,6 +33466,31 @@
     8,
     true
    ],
+   "submeshes[N].material.stochasticBlendSharpness": [
+    2,
+    0,
+    true
+   ],
+   "submeshes[N].material.stochasticCellSize": [
+    2,
+    0,
+    true
+   ],
+   "submeshes[N].material.stochasticContrast": [
+    2,
+    0,
+    true
+   ],
+   "submeshes[N].material.stochasticRotation": [
+    2,
+    0,
+    true
+   ],
+   "submeshes[N].material.stochasticTiling": [
+    0,
+    8,
+    true
+   ],
    "submeshes[N].primitiveType": [
     13,
     8,
@@ -27706,6 +33555,11 @@
    "mergeStaticMeshes": [
     0,
     2097152,
+    true
+   ],
+   "meshNodesMapping[N]": [
+    16,
+    0,
     true
    ],
    "skeleton": [
@@ -28607,6 +34461,11 @@
    ]
   },
   "RigidbodyComponent": {
+   "buoyancy": [
+    2,
+    0,
+    true
+   ],
    "enabled": [
     0,
     0,
@@ -28661,6 +34520,16 @@
     13,
     262144,
     true
+   ],
+   "waterAngularDrag": [
+    2,
+    0,
+    true
+   ],
+   "waterDrag": [
+    2,
+    0,
+    true
    ]
   },
   "RotateTracksComponent": {
@@ -28681,12 +34550,27 @@
    ]
   },
   "RotationTweenComponent": {
+   "angle": [
+    2,
+    0,
+    true
+   ],
+   "axis": [
+    5,
+    0,
+    true
+   ],
    "endRotation": [
     7,
     0,
     false
    ],
    "shortestPath": [
+    0,
+    0,
+    true
+   ],
+   "spin": [
     0,
     0,
     true
@@ -28974,6 +34858,11 @@
     67108864,
     true
    ],
+   "blendMaps[N]": [
+    11,
+    67108864,
+    true
+   ],
    "enabled": [
     0,
     0,
@@ -29009,6 +34898,11 @@
     33554432,
     true
    ],
+   "ranges[N]": [
+    2,
+    33554432,
+    true
+   ],
    "resolution": [
     2,
     33554440,
@@ -29021,6 +34915,111 @@
    ],
    "surfaceLayers": [
     15,
+    67108864,
+    true
+   ],
+   "surfaceLayers[N].colorFactor": [
+    6,
+    67108864,
+    true
+   ],
+   "surfaceLayers[N].colorTexture": [
+    11,
+    67108864,
+    true
+   ],
+   "surfaceLayers[N].heightTexture": [
+    11,
+    67108864,
+    true
+   ],
+   "surfaceLayers[N].hexRotation": [
+    2,
+    67108864,
+    true
+   ],
+   "surfaceLayers[N].hexTiling": [
+    0,
+    67108864,
+    true
+   ],
+   "surfaceLayers[N].metallicFactor": [
+    2,
+    67108864,
+    true
+   ],
+   "surfaceLayers[N].metallicTexture": [
+    11,
+    67108864,
+    true
+   ],
+   "surfaceLayers[N].normalStrength": [
+    2,
+    67108864,
+    true
+   ],
+   "surfaceLayers[N].normalTexture": [
+    11,
+    67108864,
+    true
+   ],
+   "surfaceLayers[N].occlusionStrength": [
+    2,
+    67108864,
+    true
+   ],
+   "surfaceLayers[N].occlusionTexture": [
+    11,
+    67108864,
+    true
+   ],
+   "surfaceLayers[N].pbr": [
+    0,
+    67108864,
+    true
+   ],
+   "surfaceLayers[N].roughnessFactor": [
+    2,
+    67108864,
+    true
+   ],
+   "surfaceLayers[N].roughnessTexture": [
+    11,
+    67108864,
+    true
+   ],
+   "surfaceLayers[N].stochasticBlendSharpness": [
+    2,
+    67108864,
+    true
+   ],
+   "surfaceLayers[N].stochasticCellSize": [
+    2,
+    67108864,
+    true
+   ],
+   "surfaceLayers[N].stochasticContrast": [
+    2,
+    67108864,
+    true
+   ],
+   "surfaceLayers[N].stochasticRotation": [
+    2,
+    67108864,
+    true
+   ],
+   "surfaceLayers[N].stochasticTiling": [
+    0,
+    67108864,
+    true
+   ],
+   "surfaceLayers[N].uvOffset": [
+    4,
+    67108864,
+    true
+   ],
+   "surfaceLayers[N].uvScale": [
+    4,
     67108864,
     true
    ],
@@ -29205,6 +35204,11 @@
     true
    ],
    "loop": [
+    0,
+    0,
+    true
+   ],
+   "pingPong": [
     0,
     0,
     true
