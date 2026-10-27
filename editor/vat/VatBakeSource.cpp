@@ -233,7 +233,6 @@ namespace{
         return true;
     }
 
-    // the open scene whose file is `scene` (project-relative)
     // The first Model at or under `root` whose meshes are not built yet, NULL_ENTITY when none.
     // A Model restored by undo (its GameObject's deletion undone), of a scene just opened or with
     // a new file has needUpdateModel: MeshSystem builds its meshes in a following frame (on a
@@ -257,6 +256,7 @@ namespace{
         return NULL_ENTITY;
     }
 
+    // the open scene whose file is `scene` (project-relative)
     SceneProject* openScene(Project* project, const std::string& scene){
         const fs::path wanted = (project->getProjectPath() / FileUtils::pathFromUtf8(scene)).lexically_normal();
         for (SceneProject& candidate : project->getScenes()){
