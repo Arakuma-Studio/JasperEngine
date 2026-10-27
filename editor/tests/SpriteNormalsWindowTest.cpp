@@ -41,6 +41,7 @@
 
 #include <unistd.h>
 
+#include <atomic>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -50,6 +51,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace jasperengine;
@@ -110,6 +112,19 @@ namespace jasperengine::editor {
 namespace {
 
     using Access = SpriteNormalsWindowTestAccess;
+
+    // The editor's Platform, counting the calls of getAssetPath (what the session's checks read
+    // through System::instance()) made off the main thread
+    class CountingPlatform : public editor::Platform {
+    public:
+        explicit CountingPlatform(Project* project): editor::Platform(project), mainThread(std::this_thread::get_id()) {}
+        std::string getAssetPath() override {
+            if (std::this_thread::get_id() != mainThread) offMainThread++;
+            return editor::Platform::getAssetPath();
+        }
+        std::thread::id mainThread;
+        std::atomic<int> offMainThread{0};
+    };
 
     // ---- images
 
@@ -232,6 +247,7 @@ namespace {
         Entity hero = NULL_ENTITY;
         Entity walker = NULL_ENTITY;
         Entity light = NULL_ENTITY;
+        editor::Platform* platform = nullptr;
         CommandHistory* scene() const { return CommandHandle::get(sceneId); }
         CommandHistory* projectHistory() const { return p->getProjectCommandHistory(); }
         Scene* sceneObject() const { return p->getScene(sceneId)->scene; }
@@ -282,6 +298,7 @@ namespace {
         static char arg0[] = "jasperengine-editor-tests";
         static char* argv[] = {arg0, nullptr};
         Engine::systemInit(1, argv, platform);
+        w.platform = platform;
         Engine::pauseGameEvents(true);
         Engine::setAsyncLoading(false);
         if (!w.p->loadProject(w.dir, false)) std::exit(90);
@@ -1358,5 +1375,73 @@ TEST(SpriteNormalsWindowDeathTest, ALargeItemsManualResultSurvivesARowSwitch) {
         window.selectItem(1);
         EXPECT_TRUE(window.hasResult()) << "shown again at once, no second Generate";
         EXPECT_EQ(Access::worker(window), nullptr);
+    });
+}
+
+// ==================================================================== fix round 3
+
+TEST(SpriteNormalsWindowDeathTest, JobWorkersNeverTouchTheSystem) {
+    IN_EDITOR("nosystem", {
+        std::string error;
+        std::vector<std::string> written;
+        {
+            SpriteNormalsWindow maker(w.p);
+            ASSERT_TRUE(maker.openSources({w.file("assets/hero.png")}, error)) << error;
+            ASSERT_TRUE(settle(maker));
+            ASSERT_TRUE(maker.save(false, written, error)) << error;
+        }
+        ts::Image changed = disk(32, 32);
+        changed.pixel(16, 16)[2] = 9;
+        writePng(w.file("assets/hero.png"), changed);
+        const std::string before = readAll(w.file("assets/hero_normal.png"));
+        SpriteNormalsWindow window(w.p);
+        // the System is one that notes every asset-path read made off this thread (the project's
+        // assets directory the main thread may be changing): the workers make none, the checks
+        // run here
+        static char arg0[] = "jasperengine-editor-tests";
+        static char* argv[] = {arg0, nullptr};
+        CountingPlatform counting(w.p);
+        Engine::systemInit(1, argv, &counting);
+        ASSERT_TRUE(window.startRegenerate(w.file("assets/hero_normal.png"), error)) << error;
+        EXPECT_EQ(window.regenerateOutcome(w.file("assets/hero_normal.png")).message, "Regenerating hero_normal.png...");
+        ASSERT_TRUE(window.openForEntity(w.sceneId, w.walker, 0, true, error)) << error;
+        Access::waitWorkers(window);
+        EXPECT_EQ(counting.offMainThread.load(), 0) << "a worker read the System's asset path";
+        ASSERT_TRUE(settle(window));
+        EXPECT_EQ(counting.offMainThread.load(), 0);
+        Engine::systemInit(1, argv, w.platform);
+        EXPECT_NE(readAll(w.file("assets/hero_normal.png")), before);
+        EXPECT_TRUE(window.regenerateOutcome(w.file("assets/hero_normal.png")).ok);
+        EXPECT_EQ(w.material(w.walker).normalTexture.getPath(), "assets/walk_normal.png");
+        // a project switch forgets the outcomes
+        window.resetForProjectSwitch();
+        EXPECT_FALSE(window.regenerateOutcome(w.file("assets/hero_normal.png")).known);
+    });
+}
+
+TEST(SpriteNormalsWindowDeathTest, ShiftClickNeverWritesWhileAnySceneplays) {
+    IN_EDITOR("anyplaying", {
+        std::string error;
+        const uint32_t normals = w.sceneId;
+        // another scene of the project (a bare entry: only its play state matters here)
+        SceneProject extra;
+        extra.id = normals + 1000;
+        extra.name = "Other";
+        w.p->getScenes().push_back(extra);
+        auto other = [&]() -> SceneProject* { return w.p->getScene(normals + 1000); };
+        SpriteNormalsWindow window(w.p);
+        // another scene plays: refused at once
+        other()->playState = ScenePlayState::PLAYING;
+        EXPECT_FALSE(window.openForEntity(normals, w.hero, 0, true, error));
+        other()->playState = ScenePlayState::STOPPED;
+        // started while stopped, another scene plays when it ends: nothing written or assigned
+        ASSERT_TRUE(window.openForEntity(normals, w.hero, 0, true, error)) << error;
+        Access::waitWorkers(window);
+        other()->playState = ScenePlayState::PLAYING;
+        ASSERT_TRUE(settle(window));
+        EXPECT_FALSE(fs::exists(w.file("assets/hero_normal.png")));
+        EXPECT_TRUE(w.material(w.hero).normalTexture.getPath().empty());
+        other()->playState = ScenePlayState::STOPPED;
+        w.p->getScenes().pop_back();
     });
 }

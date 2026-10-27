@@ -571,6 +571,10 @@ namespace jasperengine::editor::spritenormals {
     }
 
     bool prepare(const fs::path& projectDir, const Spec& spec, const Scene* scene, Prepared& out, std::vector<Problem>& problems) {
+        return preparePlan(projectDir, spec, scene, out, problems) && prepareLoad(out, problems);
+    }
+
+    bool preparePlan(const fs::path& projectDir, const Spec& spec, const Scene* scene, Prepared& out, std::vector<Problem>& problems) {
         Checked c;
         problems = check(projectDir, spec, scene, c);
         if (!problems.empty()) return false;
@@ -580,13 +584,20 @@ namespace jasperengine::editor::spritenormals {
         out.sourcePath = c.sourcePath;
         out.sourceAbsolute = c.sourceAbsolute;
         out.outputs = c.outputs;
-        if (!loadSource(c.sourceAbsolute, out.source, problems)) {
+        out.plannedSpriteCells = c.spriteCells;
+        if (spec.hasSprite()) out.spriteEntityPath = EntityPath::of(mutableScene(scene), spec.entity);
+        return true;
+    }
+
+    bool prepareLoad(Prepared& out, std::vector<Problem>& problems) {
+        problems.clear();
+        const Spec& spec = out.spec;
+        if (!loadSource(out.sourceAbsolute, out.source, problems)) {
             for (Problem& p : problems) {
                 if (p.field.empty()) p.field = "source";
             }
             return false;
         }
-        if (spec.hasSprite()) out.spriteEntityPath = EntityPath::of(mutableScene(scene), spec.entity);
 
         Request& request = out.request;
         request.color = out.source.color;
@@ -607,8 +618,8 @@ namespace jasperengine::editor::spritenormals {
         } else if (spec.frames.mode == FramesSpec::Mode::Cells) {
             request.cells = spec.frames.cells;
             out.framesFrom = spec.frames.from == FramesFrom::Sprite ? FramesFrom::Sprite : FramesFrom::Given;
-        } else if (spec.frames.mode == FramesSpec::Mode::Auto && !c.spriteCells.empty()) {
-            request.cells = c.spriteCells;
+        } else if (spec.frames.mode == FramesSpec::Mode::Auto && !out.plannedSpriteCells.empty()) {
+            request.cells = out.plannedSpriteCells;
             out.framesFrom = FramesFrom::Sprite;
         }
         // frames of one animation share one auto radius (Grid, Sprite frames and Cells alike)
