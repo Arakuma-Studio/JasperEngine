@@ -107,8 +107,7 @@ namespace {
         return data;
     }
 
-    std::shared_ptr<const VertexAnimation> heroAsset(bool reordered = false) {
-        VatData data = heroData(reordered);
+    std::shared_ptr<const VertexAnimation> heroAssetOf(const VatData& data) {
         VatPayload payload;
         payload.precision = VatPrecision::Float;
         payload.width = data.layout.width;
@@ -125,6 +124,10 @@ namespace {
         std::shared_ptr<const VertexAnimation> asset = VertexAnimation::create(data, payload, sockets, &error);
         EXPECT_TRUE(asset) << error;
         return asset;
+    }
+
+    std::shared_ptr<const VertexAnimation> heroAsset(bool reordered = false) {
+        return heroAssetOf(heroData(reordered));
     }
 
     // every authored field away from its default
@@ -215,9 +218,20 @@ namespace {
 
         void step(double dt) { system()->update(dt); }
 
-        // a track's local time now
+        // a track's local time now (vatLocalTime)
         double tau(const VatTrack& track, Entity entity) {
+            if (track.speed == 0.0f) return track.start;
             return ((double)animator(entity).lastNow - track.start) * track.speed;
+        }
+
+        static bool restPacked(const InstanceData& instance) {
+            return instance.vat0 == InstanceData().vat0 && instance.vat1 == InstanceData().vat1;
+        }
+
+        static bool packedAs(const InstanceData& instance, const VatTrackPair& pair) {
+            Vector4 v0, v1;
+            vatPackInstance(pair, v0, v1);
+            return instance.vat0 == v0 && instance.vat1 == v1;
         }
     };
 
@@ -655,12 +669,15 @@ TEST_F(VertexAnimatorSystemTest, PlayStopSetTimeAndSpeedOnTheEntity) {
     EXPECT_FLOAT_EQ(animator(hero).state.a.speed, 2.0f);
     step(0.1);
     EXPECT_NEAR(object.getTime(), before + 0.2f, 1e-4f);
-    // speed 0 holds it (re-pinned every update)
+    // speed 0 holds it: packed as speed 0 with the held time as its start, written once
     object.setSpeed(0.0f);
     step(0.3);
+    const Vector4 heldState = animator(hero).gpuState0;
     step(0.3);
     EXPECT_NEAR(object.getTime(), before + 0.2f, 1e-4f);
-    EXPECT_FLOAT_EQ(animator(hero).state.a.start, animator(hero).lastNow - (before + 0.2f));
+    EXPECT_FLOAT_EQ(animator(hero).state.a.speed, 0.0f);
+    EXPECT_NEAR(animator(hero).state.a.start, before + 0.2f, 1e-4f);
+    EXPECT_EQ(animator(hero).gpuState0, heldState) << "not re-pinned at every update";
 
     // a clip with its own speed (VatClip::speed multiplies the track's)
     object.setSpeed(1.0f);
@@ -1155,7 +1172,6 @@ TEST_F(VertexAnimatorSystemTest, EpochRebaseKeepsPhasesContinuous) {
     // near the epoch, mid-crossfade on the entity
     a.runtime->clock = VAT_EPOCH_SECONDS - 0.4;
     step(0.0);
-    a.lastNow = (float)(VAT_EPOCH_SECONDS - 0.4);
     object.crossFade("Run", 0.6f);
     const double normalizedBefore = vatSample(heroData().clips[WALK], (float)tau(a.instanceStates[0].a, hero)).normalized;
     EXPECT_NEAR(normalizedBefore, 0.6, 1e-3);
@@ -1345,11 +1361,12 @@ TEST_F(VertexAnimatorSystemTest, AnimatedBoundsAreTheClipsInUse) {
     crowdBounds.extend(data.clips[BOUNCE].bounds);
     EXPECT_EQ(scene.getComponent<MeshComponent>(crowd).animatedBounds, AABB(crowdBounds.min, crowdBounds.max));
 
-    // rest pose: the asset's
+    // rest pose: the mesh's own (the clips' bounds don't hold it)
+    mesh.verticesAABB = AABB(Vector3(-0.5f, 0.0f, -0.5f), Vector3(0.5f, 1.5f, 0.5f));
     animator(hero).playAutomatically = false;
     system()->resetAnimators();
     step(0.0);
-    EXPECT_EQ(mesh.animatedBounds, AABB(data.bounds.min, data.bounds.max));
+    EXPECT_EQ(mesh.animatedBounds, mesh.verticesAABB);
     // disabled or removed: none
     animator(hero).enabled = false;
     step(0.0);
@@ -1359,6 +1376,273 @@ TEST_F(VertexAnimatorSystemTest, AnimatedBoundsAreTheClipsInUse) {
     EXPECT_FALSE(mesh.animatedBounds.isNull());
     scene.removeComponent<VertexAnimatorComponent>(hero);
     EXPECT_TRUE(mesh.animatedBounds.isNull());
+}
+
+// ---- review fixes ----------------------------------------------------------------------------
+
+// The crossing window (previous now, now] uses the previous clock exactly: a float copy of it
+// rounds by up to 30 us at 1000 s, so an event just crossed fired again at the next update
+TEST_F(VertexAnimatorSystemTest, AnEventJustCrossedAtALargeClockFiresOnce) {
+    VatData data = heroData();
+    data.clips[WALK].events[0].time = 0.3f;
+    VertexAnimationPool::put(HERO, heroAssetOf(data));
+    hero = makeHero();
+    listen(hero);
+    step(0.0);
+    step(1000.0);
+    fired.events.clear();
+    step(0.30001);
+    EXPECT_EQ(fired.events, std::vector<std::string>{"onStep@-1"});
+    step(0.01);
+    step(0.01);
+    EXPECT_EQ(fired.events.size(), 1u) << "the event at 1000.3 fired again";
+}
+
+// A steady frame rate fires every event once: 50 events a second at 60 fps, from clocks where a
+// float copy of the clock rounds (512, 1024) and across the epoch rebase (2047 -> 2048)
+TEST_F(VertexAnimatorSystemTest, EventsAtASteadyFrameRateFireExactlyOnce) {
+    VatData data = heroData();
+    std::vector<ClipEventData> events;
+    for (int i = 0; i < 50; i++) {
+        ClipEventData event;
+        event.time = (float)((i + 0.5) / 50.0);
+        event.function = "onTick";
+        events.push_back(event);
+    }
+    data.clips[WALK].events = events;
+    VertexAnimationPool::put(HERO, heroAssetOf(data));
+
+    struct Run { double from; int frames; };
+    for (const Run run : {Run{512.0, 600}, Run{1024.0, 36000}, Run{2047.0, 600}}) {
+        Scene runScene;
+        const Entity entity = runScene.createUserEntity();
+        runScene.addComponent<Transform>(entity, {});
+        runScene.addComponent<MeshComponent>(entity, {});
+        ModelComponent model;
+        model.filename = HERO_MESH;
+        model.skeleton = NULL_ENTITY;
+        model.needUpdateModel = false;
+        runScene.addComponent<ModelComponent>(entity, model);
+        VertexAnimatorComponent added;
+        added.animation = HERO;
+        added.randomStart = false;
+        runScene.addComponent<VertexAnimatorComponent>(entity, added);
+        size_t count = 0;
+        runScene.getComponent<VertexAnimatorComponent>(entity).onEvent.add("count",
+            std::function<void(const AnimationEvent&)>([&count](const AnimationEvent&) { count++; }));
+        std::shared_ptr<VertexAnimatorSystem> runSystem = runScene.getSystem<VertexAnimatorSystem>();
+        runSystem->update(0.0);
+        runSystem->update(run.from);
+        count = 0;
+        for (int f = 0; f < run.frames; f++) runSystem->update(1.0 / 60.0);
+        const double end = runScene.getComponent<VertexAnimatorComponent>(entity).runtime->clock;
+        // the events (i + 0.5) / 50 in (from, end]
+        const size_t expected = (size_t)(std::floor(end * 50.0 - 0.5) - std::floor(run.from * 50.0 - 0.5));
+        EXPECT_EQ(count, expected) << "from clock " << run.from << " for " << run.frames << " frames";
+        EXPECT_EQ(expected, (size_t)(run.frames * 50 / 60));
+    }
+}
+
+// An InstanceData written whole inside a callback (after the system wrote the states, before the
+// RenderSystem uploads and clears needUpdateInstances) gets its state back the same update; and
+// Mesh::updateInstance keeps vat0/vat1 (runtime state, not user data)
+TEST_F(VertexAnimatorSystemTest, AnInstanceRewrittenInACallbackKeepsItsState) {
+    hero = makeHero(3);
+    animator(hero).instanceEvents = true;
+    step(0.0);
+    InstancedMeshComponent& instanced = scene.getComponent<InstancedMeshComponent>(hero);
+    animator(hero).onInstanceEvent.add("rewrite", std::function<void(int, const AnimationEvent&)>([&](int i, const AnimationEvent&) {
+        if (i == 0) {
+            InstanceData fresh;
+            fresh.position = Vector3(1.0f, 2.0f, 3.0f);
+            instanced.instances[0] = fresh;
+            instanced.needUpdateInstances = true;
+        }
+    }));
+    instanced.needUpdateInstances = false;     // as the RenderSystem leaves it
+    step(0.3);      // Walk's 0.25 crossed: the callback runs
+    EXPECT_EQ(instanced.instances[0].position, Vector3(1.0f, 2.0f, 3.0f));
+    EXPECT_TRUE(packedAs(instanced.instances[0], animator(hero).instanceStates[0])) << "drawn at rest until its state changes";
+    EXPECT_TRUE(instanced.needUpdateInstances);
+    instanced.needUpdateInstances = false;
+    step(0.1);
+    EXPECT_TRUE(packedAs(instanced.instances[0], animator(hero).instanceStates[0]));
+    animator(hero).onInstanceEvent.remove("rewrite");
+
+    // Mesh::updateInstance(index, InstanceData) and its overloads keep the instance's state
+    Mesh mesh(&scene, hero);
+    InstanceData moved;
+    moved.position = Vector3(4.0f, 0.0f, 0.0f);
+    mesh.updateInstance(1, moved);
+    EXPECT_EQ(instanced.instances[1].position, Vector3(4.0f, 0.0f, 0.0f));
+    EXPECT_TRUE(packedAs(instanced.instances[1], animator(hero).instanceStates[1]));
+    mesh.updateInstance(2, Vector3(5.0f, 0.0f, 0.0f));
+    EXPECT_TRUE(packedAs(instanced.instances[2], animator(hero).instanceStates[2]));
+}
+
+// randomizeTimes re-seeds A's time and keeps a blend (B follows A's phase)
+TEST_F(VertexAnimatorSystemTest, RandomizeTimesKeepsABlend) {
+    hero = makeHero();
+    step(0.0);
+    step(0.3);
+    VertexAnimator object(&scene, hero);
+    object.blend("Walk", "Run", 0.7f);
+    object.randomizeTimes(7);
+    const VatTrackPair& pair = animator(hero).state;
+    EXPECT_EQ(pair.a.clip, WALK);
+    EXPECT_EQ(pair.b.clip, RUN);
+    EXPECT_FLOAT_EQ(pair.blend, 0.7f);
+    EXPECT_NEAR(tau(pair.a, hero), vatRandomUnit(7, 0) * 1.0, 1e-4);
+    EXPECT_FLOAT_EQ(pair.b.start, pair.a.start);
+    EXPECT_FLOAT_EQ(pair.b.speed, pair.a.speed);
+}
+
+// A callback that removes an instance: the callbacks still to dispatch in that update follow the
+// instances (the later ones move down) and the removed one's are dropped
+TEST_F(VertexAnimatorSystemTest, CallbacksAfterAnInstanceRemovalUseTheNewIndices) {
+    hero = makeHero(3);
+    animator(hero).instanceEvents = true;
+    listen(hero);
+    step(0.0);
+    animator(hero).onInstanceEvent.add("remove", std::function<void(int, const AnimationEvent&)>([&](int i, const AnimationEvent&) {
+        if (i == 0 && scene.getComponent<InstancedMeshComponent>(hero).instances.size() == 3) {
+            Mesh(&scene, hero).removeInstance(1);
+        }
+    }));
+    step(0.3);      // the three instances cross Walk's 0.25 together
+    EXPECT_EQ(fired.events, (std::vector<std::string>{"onStep@0", "onStep@1"})) << "instance 2 is now 1; 1 is gone";
+
+    // every instance cleared: none of theirs is called
+    fired = Fired();
+    animator(hero).onInstanceEvent.remove("remove");
+    animator(hero).onInstanceEvent.add("clear", std::function<void(int, const AnimationEvent&)>([&](int, const AnimationEvent&) {
+        Mesh(&scene, hero).clearInstances();
+    }));
+    step(1.0);
+    EXPECT_EQ(fired.events.size(), 1u);
+    animator(hero).onInstanceEvent.remove("clear");
+}
+
+// A mesh drawn at rest (no clip, or an instance with none) is culled with its rest bounds too
+TEST_F(VertexAnimatorSystemTest, AnimatedBoundsHoldTheRestPoseWhenATrackIsAtRest) {
+    const VatData data = heroData();
+    hero = makeHero(2);
+    animator(hero).playAutomatically = false;
+    MeshComponent& mesh = scene.getComponent<MeshComponent>(hero);
+    const AABB rest(Vector3(-0.5f, 0.0f, -0.5f), Vector3(0.5f, 1.5f, 4.0f));
+    mesh.verticesAABB = rest;
+    step(0.0);
+    EXPECT_EQ(mesh.animatedBounds, rest) << "every instance at rest";
+
+    VertexAnimator object(&scene, hero);
+    object.playInstance(0, "Walk");
+    AABB both(data.clips[WALK].bounds.min, data.clips[WALK].bounds.max);
+    both.merge(rest);
+    EXPECT_EQ(mesh.animatedBounds, both) << "instance 1 is still at rest";
+    object.playInstance(1, "Walk");
+    EXPECT_EQ(mesh.animatedBounds, AABB(data.clips[WALK].bounds.min, data.clips[WALK].bounds.max));
+
+    // the mesh's own bounds known later (its model loaded after the animator started)
+    Entity single = makeHero();
+    animator(single).playAutomatically = false;
+    step(0.0);
+    MeshComponent& singleMesh = scene.getComponent<MeshComponent>(single);
+    singleMesh.verticesAABB = rest;
+    step(0.0);
+    EXPECT_EQ(singleMesh.animatedBounds, rest);
+}
+
+// Held tracks (speed 0, stop) are packed once (speed 0, start = the held time): a paused crowd
+// costs no instance upload per frame, and the epoch rebase leaves them as they are
+TEST_F(VertexAnimatorSystemTest, HeldInstancesAreWrittenOnce) {
+    hero = makeHero(3);
+    step(0.0);
+    step(0.2);
+    VertexAnimator object(&scene, hero);
+    InstancedMeshComponent& instanced = scene.getComponent<InstancedMeshComponent>(hero);
+    object.setInstanceSpeed(0, 0.0f);
+    object.setInstanceSpeed(1, 0.0f);
+    step(0.1);
+    VertexAnimatorRequest stop;
+    stop.kind = VertexAnimatorRequest::Kind::Stop;
+    stop.instance = 2;
+    animator(hero).requests.push_back(stop);
+    system()->applyRequests(hero);
+    for (size_t i = 0; i < 3; i++) {
+        EXPECT_FLOAT_EQ(instanced.instances[i].vat0.z, 0.0f) << i;
+        EXPECT_NEAR(instanced.instances[i].vat0.y, i < 2 ? 0.2f : 0.3f, 1e-5f) << "the held local time, " << i;
+    }
+    instanced.needUpdateInstances = false;
+    for (int f = 0; f < 10; f++) step(1.0 / 60.0);
+    EXPECT_FALSE(instanced.needUpdateInstances) << "no instance upload while held";
+    EXPECT_NEAR(object.getInstanceNormalizedTime(0), 0.2f, 1e-5f);
+    EXPECT_NEAR(object.getInstanceNormalizedTime(2), 0.3f, 1e-5f);
+
+    // the epoch rebase: the held times stay
+    animator(hero).runtime->clock = VAT_EPOCH_SECONDS - 0.1;
+    step(0.0);
+    step(0.2);
+    EXPECT_EQ(animator(hero).runtime->epoch, 1);
+    EXPECT_NEAR(object.getInstanceNormalizedTime(0), 0.2f, 1e-5f);
+    EXPECT_NEAR(object.getInstanceNormalizedTime(2), 0.3f, 1e-5f);
+    // played again: from the held time on
+    object.setInstanceSpeed(0, 1.0f);
+    step(0.25);
+    EXPECT_NEAR(object.getInstanceNormalizedTime(0), 0.45f, 1e-4f);
+}
+
+// Disabled: the mesh draws at rest at once (single and instanced), once; enabled again: the
+// states are written back
+TEST_F(VertexAnimatorSystemTest, DisablingWritesTheRestStateOnce) {
+    hero = makeHero(2);
+    Entity single = makeHero();
+    step(0.0);
+    step(0.3);
+    InstancedMeshComponent& instanced = scene.getComponent<InstancedMeshComponent>(hero);
+    ASSERT_TRUE(packedAs(instanced.instances[0], animator(hero).instanceStates[0]));
+    instanced.needUpdateInstances = false;
+    animator(hero).enabled = false;
+    animator(single).enabled = false;
+    step(0.1);
+    EXPECT_FALSE(animator(hero).gpuActive);
+    EXPECT_FALSE(animator(single).gpuActive);
+    EXPECT_TRUE(restPacked(instanced.instances[0]));
+    EXPECT_TRUE(restPacked(instanced.instances[1]));
+    EXPECT_TRUE(instanced.needUpdateInstances);
+    EXPECT_EQ(animator(single).gpuState0, VertexAnimatorComponent().gpuState0);
+    EXPECT_EQ(animator(single).gpuState1, VertexAnimatorComponent().gpuState1);
+    instanced.needUpdateInstances = false;
+    step(0.1);
+    EXPECT_FALSE(instanced.needUpdateInstances) << "written once";
+
+    animator(hero).enabled = true;
+    animator(single).enabled = true;
+    step(0.1);
+    EXPECT_TRUE(animator(hero).gpuActive);
+    EXPECT_TRUE(packedAs(instanced.instances[0], animator(hero).instanceStates[0]));
+    EXPECT_TRUE(packedAs(instanced.instances[1], animator(hero).instanceStates[1]));
+    EXPECT_TRUE(instanced.needUpdateInstances);
+    Vector4 v0, v1;
+    vatPackInstance(animator(single).state, v0, v1);
+    EXPECT_EQ(animator(single).gpuState0, v0);
+}
+
+// A request made from a callback applies right away, at the update's clock
+TEST_F(VertexAnimatorSystemTest, RequestsFromCallbacksApplyAtOnce) {
+    hero = makeHero();
+    step(0.0);
+    VertexAnimator object(&scene, hero);
+    object.play("Wave");
+    animator(hero).onFinish.add("next", std::function<void(const std::string&)>([&](const std::string&) {
+        VertexAnimator(&scene, hero).play("Run");
+    }));
+    step(1.2);
+    EXPECT_EQ(animator(hero).state.a.clip, RUN);
+    EXPECT_FLOAT_EQ(animator(hero).state.a.start, 1.2f) << "at the update's clock";
+    Vector4 v0, v1;
+    vatPackInstance(animator(hero).state, v0, v1);
+    EXPECT_EQ(animator(hero).gpuState0, v0) << "and written for this frame's draw";
+    animator(hero).onFinish.remove("next");
 }
 
 // ---- Lua -------------------------------------------------------------------------------------

@@ -108,14 +108,15 @@ namespace {
         a.runtime->anyDirty = true;
     }
 
-    // a track at local time `tau` from `now`, with `speed` (0: held there)
+    // a track at local time `tau` from `now`, with `speed` (0: held there, packed as speed 0 with
+    // the local time as its start: vat::vatLocalTime, nothing to rewrite while it holds)
     void setTrack(VatTrack& track, VatTrackHold& hold, int clip, double tau, float speed, double now){
         track.clip = clip;
         if (speed == 0.0f){
             hold.held = true;
             hold.tau = tau;
-            track.speed = 1.0f;
-            track.start = (float)(now - tau);
+            track.speed = 0.0f;
+            track.start = (float)tau;
         }else{
             hold.held = false;
             hold.tau = 0.0;
@@ -299,13 +300,15 @@ namespace {
         touch(a, extra);
     }
 
-    // a seeded start time in the current clip (randomStart, randomizeTimes)
+    // a seeded start time in the current clip (randomStart, randomizeTimes); a blend keeps its
+    // pair (A gets the time, B follows its phase), a crossfade continues from the dominant clip
     void randomizeState(const Animating& a, VatTrackPair& pair, VatStateExtra& extra, uint64_t seed, int64_t index, double now){
-        collapse(a, pair, extra, now);
+        if (!blendMode(pair)) collapse(a, pair, extra, now);
         if (pair.a.clip < 0) return;
         const double tau = vatRandomUnit(seed, index) * vatClipPeriod(a.clip(pair.a.clip));
         const float speed = extra.stopped ? 0.0f : effectiveSpeed(a, extra, pair.a.clip);
         setTrack(pair.a, extra.holdA, pair.a.clip, tau, speed, now);
+        mirrorBlendB(pair);
         extra.finishNotified = false;
         touch(a, extra);
     }
@@ -519,23 +522,6 @@ namespace {
         }
     }
 
-    // a held track's start follows the clock so its local time stays
-    void pinHeld(const Animating& a, VatTrackPair& pair, VatStateExtra& extra, double now){
-        bool changed = false;
-        if (extra.holdA.held && pair.a.clip >= 0){
-            pair.a.start = (float)(now - extra.holdA.tau);
-            changed = true;
-        }
-        if (extra.holdB.held && hasB(pair) && !blendMode(pair)){
-            pair.b.start = (float)(now - extra.holdB.tau);
-            changed = true;
-        }
-        if (changed){
-            mirrorBlendB(pair);
-            touch(a, extra);
-        }
-    }
-
     // the clock moved back by `shift` (an epoch): every time is rewritten once, loops and
     // ended clips brought near the clock so their floats keep their precision
     void rebaseState(const Animating& a, VatTrackPair& pair, VatStateExtra& extra, double shift, double now){
@@ -544,11 +530,8 @@ namespace {
             settle(a, pair, extra);
         }
         auto rebaseTrack = [&](VatTrack& track, VatTrackHold& hold){
-            if (!a.validClip(track.clip)) return;
-            if (hold.held){
-                track.start = (float)(now - hold.tau);
-                return;
-            }
+            // a held track's start is its local time, not a clock time: it stays
+            if (!a.validClip(track.clip) || hold.held || track.speed == 0.0f) return;
             // the local time now, from the old clock (now + shift)
             double tau = (now + shift - (double)track.start) * (double)track.speed;
             const VatClip& clip = a.clip(track.clip);
@@ -691,12 +674,15 @@ namespace {
         }
     }
 
-    // the clips in use (bit per clip): the instances' when instanced, else the entity's
-    uint64_t clipMask(const Animating& a, const InstancedMeshComponent* instanced){
+    // the clips in use (bit per clip) and whether a drawn state is at rest (A without a clip):
+    // the instances' when instanced, else the entity's
+    uint64_t clipMask(const Animating& a, const InstancedMeshComponent* instanced, bool& rest){
         uint64_t mask = 0;
-        auto add = [&mask, &a](const VatTrackPair& pair){
+        rest = false;
+        auto add = [&mask, &rest, &a](const VatTrackPair& pair){
             if (a.validClip(pair.a.clip) && pair.a.clip < 64) mask |= (uint64_t)1 << pair.a.clip;
             if (a.validClip(pair.b.clip) && pair.b.clip < 64) mask |= (uint64_t)1 << pair.b.clip;
+            if (!a.validClip(pair.a.clip)) rest = true;
         };
         if (instanced){
             for (const VatTrackPair& pair : a.animator->instanceStates) add(pair);
@@ -716,22 +702,78 @@ namespace {
         }
     }
 
+    // the mesh's own bounds when a drawn state is at rest (the clips' bounds don't hold the rest pose)
+    AABB restBoundsOf(const Animating& a, bool rest){
+        const MeshComponent* mesh = rest ? a.scene->findComponent<MeshComponent>(a.entity) : nullptr;
+        return mesh ? mesh->verticesAABB : AABB();
+    }
+
+    // the bounds of the clips in use, and of the rest pose when a state is at rest
     void updateBounds(const Animating& a, const InstancedMeshComponent* instanced){
         VertexAnimatorRuntime& runtime = *a.runtime;
-        const uint64_t mask = clipMask(a, instanced);
-        if (runtime.boundsSet && mask == runtime.clipMask) return;
+        bool rest = false;
+        const uint64_t mask = clipMask(a, instanced, rest);
+        const AABB restBounds = restBoundsOf(a, rest);
+        if (runtime.boundsSet && mask == runtime.clipMask && rest == runtime.anyRest && restBounds == runtime.restBounds) return;
         runtime.clipMask = mask;
+        runtime.anyRest = rest;
+        runtime.restBounds = restBounds;
         runtime.boundsSet = true;
 
-        VatBounds bounds;
+        AABB bounds;
         for (size_t c = 0; c < a.data->clips.size() && c < 64; c++){
-            if ((mask & ((uint64_t)1 << c)) && a.data->clips[c].bounds.valid){
-                bounds.extend(a.data->clips[c].bounds);
+            const VatBounds& clip = a.data->clips[c].bounds;
+            if ((mask & ((uint64_t)1 << c)) && clip.valid){
+                bounds.merge(AABB(clip.min, clip.max));
             }
         }
-        // the rest pose or clips without bounds: the asset's (every frame)
-        if (!bounds.valid) bounds = a.data->bounds;
-        setAnimatedBounds(a.scene, a.entity, bounds.valid ? AABB(bounds.min, bounds.max) : AABB());
+        bounds.merge(restBounds);
+        // clips without bounds (and no mesh bounds): the asset's (every frame)
+        if (bounds.isNull() && a.data->bounds.valid) bounds = AABB(a.data->bounds.min, a.data->bounds.max);
+        setAnimatedBounds(a.scene, a.entity, bounds);
+    }
+
+    // the rest state on the GPU (a disabled or removed animator): the mesh draws at rest at once,
+    // its instances too (the loaded VAT variant still reads them until the mesh reloads)
+    void writeRest(Scene* scene, Entity entity, VertexAnimatorComponent* animator){
+        if (animator){
+            animator->gpuActive = false;
+            animator->gpuState0 = VertexAnimatorComponent().gpuState0;
+            animator->gpuState1 = VertexAnimatorComponent().gpuState1;
+        }
+        if (InstancedMeshComponent* instanced = scene->findComponent<InstancedMeshComponent>(entity)){
+            const InstanceData rest;
+            bool changed = false;
+            for (InstanceData& instance : instanced->instances){
+                if (instance.vat0 != rest.vat0 || instance.vat1 != rest.vat1){
+                    instance.vat0 = rest.vat0;
+                    instance.vat1 = rest.vat1;
+                    changed = true;
+                }
+            }
+            if (changed) instanced->needUpdateInstances = true;
+        }
+    }
+
+    // every state written to the GPU again at the next write (compared with what is there)
+    void touchAll(VertexAnimatorRuntime& runtime){
+        runtime.entity.dirty = true;
+        for (VatStateExtra& extra : runtime.instances) extra.dirty = true;
+        runtime.anyDirty = true;
+    }
+
+    Animating animating(Scene* scene, Entity entity, VertexAnimatorComponent& animator, bool fire){
+        Animating a;
+        a.scene = scene;
+        a.entity = entity;
+        a.animator = &animator;
+        a.runtime = animator.runtime.get();
+        a.asset = animator.asset.get();
+        a.data = &animator.asset->getData();
+        a.speed = std::isfinite(animator.speed) ? animator.speed : 0.0f;
+        a.fire = fire;
+        a.instanced = scene->findComponent<InstancedMeshComponent>(entity) != nullptr;
+        return a;
     }
 
     void moveAttachments(const Animating& a, double now){
@@ -785,9 +827,13 @@ namespace {
             VertexAnimatorRuntime& runtime = *animator.runtime;
             runtime.clock = 0.0;
             runtime.epoch = 0;
+            runtime.lastNow = 0.0;
             runtime.entity = VatStateExtra();
             for (VatStateExtra& extra : runtime.instances) extra = VatStateExtra();
             runtime.pending.clear();
+            // a reset from a callback: the rest of the list being dispatched goes too
+            runtime.dispatching.clear();
+            runtime.dispatchNext = 0;
             runtime.appliedSpeed = animator.speed;
             runtime.anyDirty = true;
             runtime.watchDirty = true;
@@ -947,13 +993,22 @@ void VertexAnimatorSystem::updateAnimator(Entity entity, VertexAnimatorComponent
     VertexAnimatorRuntime& runtime = animatorRuntime(animator);
 
     if (!animator.enabled){
-        // disabled: the mesh draws at rest, nothing moves
+        // disabled: the mesh draws at rest at once (its instances too: written once), nothing moves
         animator.gpuActive = false;
+        if (!runtime.restWritten){
+            writeRest(scene, entity, &animator);
+            runtime.restWritten = true;
+        }
         if (runtime.boundsSet){
             setAnimatedBounds(scene, entity, AABB());
             runtime.boundsSet = false;
         }
         return;
+    }
+    if (runtime.restWritten){
+        // enabled again: every state goes back to the GPU
+        runtime.restWritten = false;
+        touchAll(runtime);
     }
 
     // edit mode: Preview turned off puts it back where it started (deterministic Scene view)
@@ -976,8 +1031,9 @@ void VertexAnimatorSystem::updateAnimator(Entity entity, VertexAnimatorComponent
         animator.needsLoad = true;
     }
 
-    // the clock: play mode, or a preview in edit mode
-    double prev = animator.lastNow;
+    // the clock: play mode, or a preview in edit mode. The previous update's `now` in double:
+    // events cross (prev, now], each exactly once
+    double prev = runtime.lastNow;
     if ((!paused || animator.preview) && std::isfinite(dt) && dt > 0.0){
         runtime.clock += dt;
     }
@@ -997,8 +1053,9 @@ void VertexAnimatorSystem::updateAnimator(Entity entity, VertexAnimatorComponent
         if (rebase){
             // no clip table to bring them near the clock: the times only move with it
             auto shiftState = [shift](VatTrackPair& pair){
-                pair.a.start = (float)((double)pair.a.start - shift);
-                pair.b.start = (float)((double)pair.b.start - shift);
+                // (a held track's start is its local time: it stays)
+                if (pair.a.speed != 0.0f) pair.a.start = (float)((double)pair.a.start - shift);
+                if (pair.b.speed != 0.0f) pair.b.start = (float)((double)pair.b.start - shift);
                 pair.fadeStart = (float)((double)pair.fadeStart - shift);
                 pair.fadeEnd = (float)((double)pair.fadeEnd - shift);
             };
@@ -1006,6 +1063,7 @@ void VertexAnimatorSystem::updateAnimator(Entity entity, VertexAnimatorComponent
             for (VatTrackPair& pair : animator.instanceStates) shiftState(pair);
         }
         animator.gpuActive = false;
+        runtime.lastNow = now;
         animator.lastNow = (float)now;
         animator.gpuNow = (float)now;
         if (runtime.boundsSet){
@@ -1015,15 +1073,7 @@ void VertexAnimatorSystem::updateAnimator(Entity entity, VertexAnimatorComponent
         return;
     }
 
-    Animating a;
-    a.scene = scene;
-    a.entity = entity;
-    a.animator = &animator;
-    a.runtime = &runtime;
-    a.asset = animator.asset.get();
-    a.data = &animator.asset->getData();
-    a.speed = std::isfinite(animator.speed) ? animator.speed : 0.0f;
-    a.fire = !paused;
+    Animating a = animating(scene, entity, animator, !paused);
 
     // the mesh it plays on
     bool wait = false;
@@ -1045,12 +1095,10 @@ void VertexAnimatorSystem::updateAnimator(Entity entity, VertexAnimatorComponent
     animator.gpuMode = a.data->mode;
 
     InstancedMeshComponent* instanced = scene->findComponent<InstancedMeshComponent>(entity);
-    a.instanced = instanced != nullptr;
     // the instances changed elsewhere (a whole InstanceData written, an editor undo): their
     // vat0/vat1 are compared and written again where they differ
     if (instanced && instanced->needUpdateInstances){
-        for (VatStateExtra& extra : runtime.instances) extra.dirty = true;
-        runtime.anyDirty = true;
+        touchAll(runtime);
     }
 
     if (rebase){
@@ -1092,13 +1140,11 @@ void VertexAnimatorSystem::updateAnimator(Entity entity, VertexAnimatorComponent
     }
 
     advanceState(a, -1, animator.state, runtime.entity, animator.queued, prev, now);
-    pinHeld(a, animator.state, runtime.entity, now);
 
     // instances: every one when its events are wanted, else only those with work to do
     if (animator.instanceEvents){
         for (size_t i = 0; i < animator.instanceStates.size(); i++){
             advanceState(a, (int)i, animator.instanceStates[i], runtime.instances[i], runtime.instances[i].queue, prev, now);
-            pinHeld(a, animator.instanceStates[i], runtime.instances[i], now);
         }
         runtime.watchDirty = true;
     }else{
@@ -1106,7 +1152,7 @@ void VertexAnimatorSystem::updateAnimator(Entity entity, VertexAnimatorComponent
             runtime.watched.clear();
             for (size_t i = 0; i < runtime.instances.size(); i++){
                 const VatStateExtra& extra = runtime.instances[i];
-                if (!extra.queue.empty() || extra.holdA.held || extra.holdB.held){
+                if (!extra.queue.empty()){
                     runtime.watched.push_back((int)i);
                 }
             }
@@ -1115,17 +1161,20 @@ void VertexAnimatorSystem::updateAnimator(Entity entity, VertexAnimatorComponent
         for (int i : runtime.watched){
             if ((size_t)i >= animator.instanceStates.size()) continue;
             advanceState(a, i, animator.instanceStates[(size_t)i], runtime.instances[(size_t)i], runtime.instances[(size_t)i].queue, prev, now);
-            pinHeld(a, animator.instanceStates[(size_t)i], runtime.instances[(size_t)i], now);
         }
     }
 
     const bool changed = runtime.anyDirty || runtime.entity.dirty;
     writeGpu(a, instanced);
+    runtime.lastNow = now;
     animator.lastNow = (float)now;
     animator.gpuNow = (float)now;
 
     if (matches){
-        if (changed || !runtime.boundsSet) updateBounds(a, instanced);
+        // (a state at rest: the mesh's bounds may arrive after it, when its model loads)
+        if (changed || !runtime.boundsSet || (runtime.anyRest && restBoundsOf(a, true) != runtime.restBounds)){
+            updateBounds(a, instanced);
+        }
         moveAttachments(a, now);
     }else if (runtime.boundsSet){
         setAnimatedBounds(scene, entity, AABB());
@@ -1146,52 +1195,67 @@ void VertexAnimatorSystem::applyRequests(Entity entity){
         return;
     }
     VertexAnimatorRuntime& runtime = *animator->runtime;
-    Animating a;
-    a.scene = scene;
-    a.entity = entity;
-    a.animator = animator;
-    a.runtime = &runtime;
-    a.asset = animator->asset.get();
-    a.data = &animator->asset->getData();
-    a.speed = std::isfinite(animator->speed) ? animator->speed : 0.0f;
-    a.fire = false;
-
+    Animating a = animating(scene, entity, *animator, false);
     InstancedMeshComponent* instanced = scene->findComponent<InstancedMeshComponent>(entity);
-    a.instanced = instanced != nullptr;
     // instances added since the last update first: a request may name them
-    syncInstances(a, instanced, animator->lastNow);
+    syncInstances(a, instanced, runtime.lastNow);
     std::vector<VertexAnimatorRequest> requests;
     requests.swap(animator->requests);
     for (const VertexAnimatorRequest& request : requests){
-        applyRequest(a, request, animator->lastNow);
+        applyRequest(a, request, runtime.lastNow);
     }
     writeGpu(a, instanced);
     if (animator->gpuActive){
         updateBounds(a, instanced);
-        moveAttachments(a, animator->lastNow);
+        moveAttachments(a, runtime.lastNow);
     }
 }
 
-void VertexAnimatorSystem::dispatchCallbacks(){
-    if (withCallbacks.empty()) return;
+void VertexAnimatorSystem::refreshInstances(){
+    auto animators = scene->getComponentArray<VertexAnimatorComponent>();
+    for (size_t i = 0; i < animators->size(); i++){
+        VertexAnimatorComponent& animator = animators->getComponentFromIndex(i);
+        const Entity entity = animators->getEntity(i);
+        InstancedMeshComponent* instanced = scene->findComponent<InstancedMeshComponent>(entity);
+        if (!instanced || !instanced->needUpdateInstances || !animator.enabled || !animator.asset || !animator.started ||
+                animator.needsLoad || !animator.runtime || !scene->isEntityActiveInHierarchy(entity)){
+            continue;
+        }
+        VertexAnimatorRuntime& runtime = *animator.runtime;
+        Animating a = animating(scene, entity, animator, false);
+        syncInstances(a, instanced, runtime.lastNow);
+        touchAll(runtime);
+        writeGpu(a, instanced);
+        if (animator.gpuActive) updateBounds(a, instanced);
+    }
+}
+
+bool VertexAnimatorSystem::dispatchCallbacks(){
+    if (withCallbacks.empty()) return false;
     std::vector<Entity> entities;
     entities.swap(withCallbacks);
+    bool called = false;
 
     for (Entity entity : entities){
         VertexAnimatorComponent* animator = scene->isEntityCreated(entity) ? scene->findComponent<VertexAnimatorComponent>(entity) : nullptr;
-        if (!animator || !animator->runtime) continue;
+        if (!animator || !animator->runtime || !animator->runtime->dispatching.empty()) continue;
         // held: a callback can remove the component
         std::shared_ptr<VertexAnimatorRuntime> runtime = animator->runtime;
-        std::vector<VatPendingCallback> pending;
-        pending.swap(runtime->pending);
-        std::stable_sort(pending.begin(), pending.end(), [](const VatPendingCallback& a, const VatPendingCallback& b){
+        // dispatched from the runtime, so an instance removed by a callback re-indexes (or drops)
+        // the callbacks not called yet (eraseInstanceState)
+        runtime->dispatching.swap(runtime->pending);
+        runtime->dispatchNext = 0;
+        std::stable_sort(runtime->dispatching.begin(), runtime->dispatching.end(), [](const VatPendingCallback& a, const VatPendingCallback& b){
             return a.when < b.when;
         });
 
-        for (const VatPendingCallback& callback : pending){
+        while (runtime->dispatchNext < runtime->dispatching.size()){
+            // a copy: the list may change under the call
+            const VatPendingCallback callback = runtime->dispatching[runtime->dispatchNext++];
             // callbacks may add components (arrays move) or destroy the GameObject
             animator = scene->isEntityCreated(entity) ? scene->findComponent<VertexAnimatorComponent>(entity) : nullptr;
-            if (!animator) break;
+            if (!animator || animator->runtime != runtime) break;
+            called = true;
             if (callback.instance >= 0){
                 if (callback.finish){
                     animator->onInstanceFinish.call(callback.instance, callback.clip);
@@ -1219,7 +1283,10 @@ void VertexAnimatorSystem::dispatchCallbacks(){
                 }
             }
         }
+        runtime->dispatching.clear();
+        runtime->dispatchNext = 0;
     }
+    return called;
 }
 
 void VertexAnimatorSystem::resetAnimators(){
@@ -1280,9 +1347,16 @@ void VertexAnimatorSystem::update(double dt){
     }
     updating = false;
 
-    // user code last: it may add or remove components (and move the array under the loop)
+    // user code last: it may add or remove components (and move the array under the loop). An
+    // update run from a callback leaves its callbacks for the next one
     if (!paused){
-        dispatchCallbacks();
+        if (!dispatching){
+            dispatching = true;
+            const bool called = dispatchCallbacks();
+            dispatching = false;
+            // instances the callbacks wrote whole or added: their states again, before the draw
+            if (called) refreshInstances();
+        }
     }else{
         for (Entity entity : withCallbacks){
             VertexAnimatorComponent* animator = scene->isEntityCreated(entity) ? scene->findComponent<VertexAnimatorComponent>(entity) : nullptr;
@@ -1301,12 +1375,6 @@ void VertexAnimatorSystem::onComponentRemoved(Entity entity, ComponentId compone
                 mesh->needUpdateAABB = true;
             }
         }
-        if (InstancedMeshComponent* instanced = scene->findComponent<InstancedMeshComponent>(entity)){
-            for (InstanceData& instance : instanced->instances){
-                instance.vat0 = InstanceData().vat0;
-                instance.vat1 = InstanceData().vat1;
-            }
-            instanced->needUpdateInstances = true;
-        }
+        writeRest(scene, entity, nullptr);
     }
 }

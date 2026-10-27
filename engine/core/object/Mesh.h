@@ -161,6 +161,7 @@ namespace jasperengine{
 
         InstanceData& getInstance(size_t index);
 
+        // writes everything but vat0/vat1 (the Vertex Animator's state of the instance)
         void updateInstance(size_t index, InstanceData instance);
         void updateInstance(size_t index, Vector3 position);
         void updateInstance(size_t index, float x, float y, float z);
