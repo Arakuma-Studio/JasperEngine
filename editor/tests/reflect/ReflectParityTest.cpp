@@ -141,6 +141,15 @@ TEST(ReflectParity, FluidBackColorAwayFromItsDefault) {
     const YAML::Node legacy = LegacyCodecs::encodeFluidSimulationComponent(fluid);
     EXPECT_TRUE(legacy["backColor"].IsDefined()) << YAML::Dump(legacy);
     EXPECT_EQ(YAML::Dump(reflect::encodeValue(ComponentType::FluidSimulationComponent, &fluid)), YAML::Dump(legacy));
+
+    // the fuzzer's first sample
+    RandomValues random(1000u * static_cast<uint32_t>(ComponentType::FluidSimulationComponent));
+    FluidSimulationComponent sample{};
+    random.fillStruct(reflect::find(ComponentType::FluidSimulationComponent)->body, &sample);
+    const FluidSimulationComponent defaults;
+    std::printf("[fluid] backColor %a %a %a valid %d differs %d\n", sample.backColor.x, sample.backColor.y, sample.backColor.z,
+                sample.backColor.isValid() ? 1 : 0, sample.backColor != defaults.backColor ? 1 : 0);
+    std::printf("[fluid] legacy:\n%s\n", YAML::Dump(LegacyCodecs::encodeFluidSimulationComponent(sample)).c_str());
 }
 PARITY_COMPONENT(Camera)
 PARITY_COMPONENT(AudioSource)
