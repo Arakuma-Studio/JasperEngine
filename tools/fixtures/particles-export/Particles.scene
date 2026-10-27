@@ -19,6 +19,13 @@ entities:
       camera:
         type: camera_perspective
         target: [0, 1, 0]
+      script:
+        scripts:
+          - type: lua
+            path: ParticlesProbe.lua
+            className: ParticlesProbe
+            enabled: true
+            properties: []
   - type: Entity
     entity: 1001
     name: Fire

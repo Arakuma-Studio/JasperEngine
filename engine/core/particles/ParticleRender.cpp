@@ -13,10 +13,25 @@
 #include <cstring>
 #include <vector>
 
+#if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
+    #include <xmmintrin.h>
+#endif
+
 using namespace jasperengine;
 using namespace jasperengine::particles;
 
 namespace {
+
+    // a hint to start loading what a later iteration reads
+    inline void prefetchRead(const void* p){
+#if defined(__GNUC__) || defined(__clang__)
+        __builtin_prefetch(p, 0, 1);
+#elif defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
+        _mm_prefetch(static_cast<const char*>(p), _MM_HINT_T1);
+#else
+        (void)p;
+#endif
+    }
 
     // linear to sRGB8 (gamma 2.2), indexed by sqrt(linear) * 4095: fine steps in the darks
     const uint8_t* encodeTable(){
@@ -508,9 +523,11 @@ namespace {
         // the draw order: sorted by key (stable LSD), then grouped by mesh (one draw per mesh)
         uint32_t* order = arena.allocateArrayForOverwrite<uint32_t>(total);
         uint32_t* scratch = arena.allocateArrayForOverwrite<uint32_t>(total);
-        for (uint32_t i = 0; i < total; i++) order[i] = i;
-        if (sort)
-            ParticleRenderPrep::radixSort16(job.keys, order, scratch, arena.allocateArrayForOverwrite<uint16_t>(total), total);
+        if (sort){
+            ParticleRenderPrep::radixSort16Sequence(job.keys, order, scratch, arena.allocateArrayForOverwrite<uint16_t>(total), total);
+        }else{
+            for (uint32_t i = 0; i < total; i++) order[i] = i;
+        }
         if (job.meshIndex){
             uint32_t counts[kMaxRendererMeshes] = {};
             for (uint32_t i = 0; i < total; i++) counts[job.meshIndex[i]]++;
@@ -529,7 +546,12 @@ namespace {
             std::memcpy(order, scratch, total * sizeof(uint32_t));
         }
         ParticleInstance* sorted = static_cast<ParticleInstance*>(arena.allocate(sizeof(ParticleInstance) * total, 16));
-        for (uint32_t i = 0; i < total; i++) sorted[i] = job.instances[order[i]];
+        // the records in the draw order: a gather, its reads fetched ahead (the order is random)
+        constexpr uint32_t kAhead = 16;
+        for (uint32_t i = 0; i < total; i++){
+            if (i + kAhead < total) prefetchRead(job.instances + order[i + kAhead]);
+            sorted[i] = job.instances[order[i]];
+        }
         result.instances = sorted;
         if (job.mesh){
             ParticleMeshInstance* m = static_cast<ParticleMeshInstance*>(arena.allocate(sizeof(ParticleMeshInstance) * total, 16));
@@ -552,6 +574,32 @@ PackResult ParticleRenderPrep::packWith(bool scalar, const EmitterRuntime& emitt
 
 PackResult ParticleRenderPrep::pack(const EmitterRuntime& emitter, const RenderView& view, memory::Arena& arena, jobs::JobSystem* jobs){
     return packWith(forceScalarKernels(), emitter, view, arena, jobs);
+}
+
+void ParticleRenderPrep::radixSort16Sequence(const uint16_t* keys, uint32_t* out, uint32_t* scratch, uint16_t* keyScratch, uint32_t count){
+    // radixSort16 of the indices 0..count-1: the first pass reads the keys in place
+    uint32_t low[256] = {}, high[256] = {};
+    for (uint32_t i = 0; i < count; i++){
+        const uint16_t k = keys[i];
+        low[k & 255u]++;
+        high[k >> 8]++;
+    }
+    uint32_t sumLow = 0, sumHigh = 0;
+    for (uint32_t b = 0; b < 256; b++){
+        const uint32_t l = low[b], h = high[b];
+        low[b] = sumLow;
+        high[b] = sumHigh;
+        sumLow += l;
+        sumHigh += h;
+    }
+    for (uint32_t i = 0; i < count; i++){
+        const uint16_t k = keys[i];
+        const uint32_t at = low[k & 255u]++;
+        scratch[at] = i;
+        keyScratch[at] = k;
+    }
+    for (uint32_t i = 0; i < count; i++)
+        out[high[keyScratch[i] >> 8]++] = scratch[i];
 }
 
 void ParticleRenderPrep::radixSort16(const uint16_t* keys, uint32_t* indices, uint32_t* scratch, uint16_t* keyScratch, uint32_t count){

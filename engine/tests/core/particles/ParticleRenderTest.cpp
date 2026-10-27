@@ -17,6 +17,7 @@
 #include <cmath>
 #include <cstring>
 #include <random>
+#include <vector>
 
 using namespace particletest;
 
@@ -208,4 +209,20 @@ TEST(ParticleRender, ShapeOutline){
     float minX = 1e9f;
     for (const Vector3& p : segments) minX = std::min(minX, p.x);
     EXPECT_NEAR(minX, -2.0f, 1e-4f);
+}
+
+TEST(ParticleRender, RadixSortOfASequenceMatchesTheGeneralOne){
+    std::vector<uint16_t> keys(5000);
+    uint32_t x = 12345u;
+    for (uint16_t& k : keys){
+        x = x * 1664525u + 1013904223u;
+        k = (uint16_t)(x >> 16);
+    }
+    const uint32_t n = (uint32_t)keys.size();
+    std::vector<uint32_t> general(n), sequence(n), scratch(n);
+    std::vector<uint16_t> keyScratch(n);
+    for (uint32_t i = 0; i < n; i++) general[i] = i;
+    ParticleRenderPrep::radixSort16(keys.data(), general.data(), scratch.data(), keyScratch.data(), n);
+    ParticleRenderPrep::radixSort16Sequence(keys.data(), sequence.data(), scratch.data(), keyScratch.data(), n);
+    EXPECT_EQ(general, sequence);
 }

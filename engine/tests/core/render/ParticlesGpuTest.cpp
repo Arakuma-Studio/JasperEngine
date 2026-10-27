@@ -255,13 +255,14 @@ TEST_F(ParticlesGpu, PlayOnAwakeSystemsShowWithoutASeek){
     ps.setPosition(Vector3(0.0f, 1.0f, 0.0f));
     ASSERT_TRUE(ps.setInlineEffect(R"({"version": 1, "duration": 2, "seed": 3, "maxParticles": 400, "modules": [
         {"type": "main", "startLifetime": 3, "startSpeed": 0.3, "startSize": 0.6, "startColor": [1, 0.75, 0.4, 1]},
-        {"type": "emission", "rateOverTime": 100},
+        {"type": "emission", "rateOverTime": 400},
         {"type": "renderer", "renderMode": "billboard", "blend": "additive"}]})"));
     Scene* current = &scene;
     ASSERT_TRUE(GpuEnvironment::runFrames([current](){ return current->getSystem<RenderSystem>()->isAllLoaded(); }));
+    // frames at the real clock (a test's are short): until it has a crowd, then more to draw it
+    ASSERT_TRUE(GpuEnvironment::runFrames([&ps](){ return ps.getParticleCount() >= 50; }, 20000)) << ps.getParticleCount();
     int frames = 0;
-    ASSERT_TRUE(GpuEnvironment::runFrames([&frames](){ return ++frames >= 60; }));
-    EXPECT_GT(ps.getParticleCount(), 0u) << "the system simulated";
+    ASSERT_TRUE(GpuEnvironment::runFrames([&frames](){ return ++frames >= 5; }));
     Framebuffer& target = GpuEnvironment::target();
     const int width = (int)target.getWidth(), height = (int)target.getHeight();
     std::vector<uint8_t> rgba;

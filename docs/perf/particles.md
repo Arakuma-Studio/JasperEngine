@@ -45,39 +45,40 @@ The measured all-worker times stay in the JSON as information.
 
 ## Results
 
-**Status: PENDING re-run.** The figures below were measured on the benchmark server E at
-commits before the oe-port merges of 2026-10-27 (the web rows at bf06f347b); E has since been
-decommissioned. The gate (`je-bench-particles --workers 1 --count-allocs` + check_bench.py, and
-the web bench) has to run again on the next dedicated benchmark machine before the budgets
-count as met for the merged tree. Timing runs on shared build servers are not acceptance.
-
-Benchmark server **E**: AMD EPYC-Milan, 2 cores / 4 threads (KVM), Linux x64, the core-tests
-build (RelWithDebInfo, GCC, SSE2 baseline; the curl noise takes its AVX2 path), `--workers 1`,
-2026-10-26.
+Benchmark server **E** (the replacement of 2026-10-27): AMD EPYC-Milan, 2 cores / 4 threads
+(KVM), Linux x64, the core-tests build (RelWithDebInfo, GCC, SSE2 baseline; the curl noise takes
+its AVX2 path), `--workers 1 --count-allocs`, after the oe-port merges of 2026-10-27; three runs,
+the median shown (the range in brackets).
 
 | Metric | Measured | Budget |
 |---|---|---|
-| Reference stack, 100 k, one tick, 1 thread | 3.91 ms | ≤ 4.0 ms (R21) |
-| the same, 8 workers (projected) | 0.72 ms | ≤ 1.0 ms (R21) |
-| Without Noise, 1 thread | 1.19 ms | ≤ 1.5 ms (R21) |
-| Without Noise, 8 workers (projected) | 0.22 ms | ≤ 0.5 ms (R21) |
-| Parallel efficiency at 100 k (1 worker + main) | 0.84 | ≥ 0.6 (R24) |
-| SIMD against scalar, the reference tick | 60 x | ≥ 2 x (R24) |
-| SIMD against scalar, the Noise kernel | 79 x | ≥ 2.5 x (R24) |
-| Render prep, 100 k, 1 thread | 2.54 ms | |
-| Render prep, 8 workers (projected) | 0.47 ms | ≤ 0.6 ms (R22) |
-| Back-to-front sort, 100 k, 1 thread (extra) | 0.43 ms | ≤ 0.5 ms (R22) |
+| Reference stack, 100 k, one tick, 1 thread | 3.86 ms (3.81-3.88) | ≤ 4.0 ms (R21) |
+| the same, 8 workers (projected) | 0.71 ms | ≤ 1.0 ms (R21) |
+| Without Noise, 1 thread | 0.88 ms (0.86-0.89) | ≤ 1.5 ms (R21) |
+| Without Noise, 8 workers (projected) | 0.16 ms | ≤ 0.5 ms (R21) |
+| Parallel efficiency at 100 k (1 worker + main) | 0.81 | ≥ 0.6 (R24) |
+| SIMD against scalar, the reference tick | 64 x | ≥ 2 x (R24) |
+| SIMD against scalar, the Noise kernel | 78 x | ≥ 2.5 x (R24) |
+| Render prep, 100 k, 1 thread | 2.79 ms | |
+| Render prep, 8 workers (projected) | 0.52 ms (0.51-0.53) | ≤ 0.6 ms (R22) |
+| Back-to-front sort, 100 k, 1 thread (extra) | 0.45 ms (0.43-0.46) | ≤ 0.5 ms (R22) |
 | Channel storage per particle | 56 B | ≤ 64 B (R20) |
 | Trail storage per point | 17.3 B | ≤ 24 B (R20) |
 | World collision, Medium, 10 k: ray casts per tick | 256 | ≤ 256 (AC5) |
-| Off-screen Automatic emitter | 0.035 µs | ≤ 2 µs (AC10) |
+| Off-screen Automatic emitter | 0.027 µs | ≤ 2 µs (AC10) |
 | Scheduler, scene without systems | 0.03 µs | ≤ 5 µs (R26) |
 | Heap allocations, 600 steady-state frames | 0 | 0 (R25) |
 
-Information (not budgeted): `ref_10k` 0.25 ms per tick and 0.15 ms prep (2 threads),
-`trails_10k` 0.48 ms per tick and 2.07 ms for its 10 041 strips of 17 points,
-`collision_world_10k` 0.23 ms per tick, `many_small_1000x100` 1.57 ms per tick and 2.73 ms prep
-(the per-emitter overhead dominates: 1.6 µs simulation, 2.7 µs prep per emitter).
+The first runs on this machine missed two budgets (the reference tick at 4.25 ms, the sort's
+extra at 0.50-0.54 ms; the same build ran 3.91 ms and 0.43 ms on the previous E): integrate now
+works out a constant drag's decay and the limit's share once per call and skips the limit where
+no lane exceeds it, the Noise's first octave is written in place, and the sort of a fresh pack
+reads its keys in place and fetches the gather's records ahead. All of them keep the same bits.
+
+Information (not budgeted): `ref_10k` 0.25 ms per tick and 0.16 ms prep (2 threads),
+`trails_10k` 0.48 ms per tick and 2.12 ms for its 10 041 strips of 17 points,
+`collision_world_10k` 0.27 ms per tick, `many_small_1000x100` 1.56 ms per tick and 2.89 ms prep
+(the per-emitter overhead dominates: 1.6 µs simulation, 2.9 µs prep per emitter).
 
 The scalar kernels are the correctness reference (and the build without SIMD on the web): they
 emulate four lanes element by element, which is why they are so far behind.
@@ -102,11 +103,13 @@ python3 tools/perf/check_web_particles.py build/test-results/web/particles.log b
 
 | Metric | simd128 | scalar build | Budget |
 |---|---|---|---|
-| Reference stack, 30 k, one tick | 2.07 ms | 12.99 ms | ≤ 3.0 ms (R21) |
-| Without Noise | 0.39 ms | 0.94 ms | ≤ 1.5 ms (R21) |
-| Render prep, 30 k | 0.77 ms | 1.44 ms | ≤ 1.2 ms (R22) |
-| SIMD against scalar, the reference tick | 6.3 x | | ≥ 2 x (R24) |
+| Reference stack, 30 k, one tick | 2.26 ms | 14.11 ms | ≤ 3.0 ms (R21) |
+| Without Noise | 0.43 ms | 1.02 ms | ≤ 1.5 ms (R21) |
+| Render prep, 30 k | 0.87 ms | 1.56 ms | ≤ 1.2 ms (R22) |
+| SIMD against scalar, the reference tick | 6.2 x | | ≥ 2 x (R24) |
 | SIMD against scalar, the Noise kernel | 7.2 x | | ≥ 2.5 x (R24) |
+
+(The replacement E, after the 2026-10-27 merges, before the integrate changes above.)
 
 ### Not measured here
 
