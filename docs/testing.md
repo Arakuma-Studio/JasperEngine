@@ -140,8 +140,8 @@ then screenshots the device (`adb exec-out screencap`) and checks it with
   fails as BLANK: a black screen, or a frame that is only the clear colour;
 - **golden**: the screenshot, box-filtered to 270 pixels wide (270 x 600 for the emulator's
   Pixel 6, 1080 x 2400), is compared with `DIR/<scene>.png` by `tools/mcp/pngdiff.py`: at most 0.25 %
-  of the pixels (405) may differ by more than 24 in a channel (a missing line of text is about
-  1.5 %; two runs, and the two GPU modes, differ by none). `<scene>.scaled.png` and
+  of the pixels (405) may differ by more than 24 in a channel (the gate's missing caption is
+  1.3 %; two runs, and the two GPU modes, differ by none). `<scene>.scaled.png` and
   `<scene>.diff.png` (differing pixels in red) are written next to the screenshot.
   `JASPER_UPDATE_GOLDEN=1` writes the goldens instead (the content check still applies); look at
   them before committing.
