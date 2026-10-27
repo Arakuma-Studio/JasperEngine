@@ -26,6 +26,11 @@
         "sections": {}
     },
     "groups": {
+        "diagnostics": {
+            "chars": 15000,
+            "tools": 16,
+            "spec": "S06 (3 tools), S07 (4), S09 (4) and S28 (5) share it; the default 15,000 characters still apply"
+        },
         "profiling": {
             "chars": 7000,
             "tools": 7,

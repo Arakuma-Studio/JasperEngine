@@ -60,6 +60,7 @@ namespace jasperengine { namespace test {
         bool syncFileSystem() override;           // counts the calls
         int fileSystemSyncs = 0;
         std::string getCachePath() override;      // <binary>/userdata
+        std::string getCrashReportPath() override;   // "": the unit tests install no crash handler
         std::string getLuaPath() override;        // TestPaths::assetDir
         std::string getShaderPath() override;     // <binary>/shaders (empty: runtime compilation)
         bool isUserDataLoaded() override;

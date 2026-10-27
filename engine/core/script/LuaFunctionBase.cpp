@@ -19,6 +19,7 @@
 #endif
 #include "LuaBinding.h"
 #include "LuaReload.h"
+#include "LuaWatchdog.h"
 #include "Log.h"
 #include "animation/AnimationEvent.h"
 
@@ -91,8 +92,11 @@ void LuaFunctionBase::call(int args, int results) {
         std::string error = LuaBinding::getLuaStackErrorString(m_vm, -1);
         lua_pop(m_vm, 1);
 
-        // while Play runs the editor's crash hook gets it (pause, then stop)
-        if (!CrashHook::report("Lua Script Error", error)) {
+        // the hang watchdog interrupted a runaway function: a script crash, Play goes on;
+        // otherwise, while Play runs, the editor's crash hook gets it (pause, then stop)
+        if (LuaWatchdog::takeInterrupt()) {
+            LuaBinding::logLuaError("Script crash: %s", error.c_str());
+        } else if (!CrashHook::report("Lua Script Error", error)) {
             LuaBinding::logLuaError("Lua Error: %s", error.c_str());
         }
 

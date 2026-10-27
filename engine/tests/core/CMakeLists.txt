@@ -5,7 +5,8 @@
 # support/ holds headers shared by this binary's tests.
 # CPU suites build and run on Linux, Windows and macOS; *Gpu suites run on Linux (Xvfb).
 #
-# je-bench-jobs and je-bench-memory are the job system and allocator benchmarks (S06 R23-R26)
+# je-bench-jobs and je-bench-memory are the job system and allocator benchmarks (S06 R23-R26),
+# je-bench-diag the crash and hang diagnostics' (S28 R26)
 # tools/perf/check_bench.py gates on, from their JSON output (docs/jobs-memory.md).
 
 file(GLOB_RECURSE CORE_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*Test.cpp)
@@ -19,6 +20,31 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(CORE_TEST_COUNTS_ALLOCATIONS ON)
 endif()
 
+# the process the crash-diagnostics tests start (engine/tests/crash/CrashTestMain.cpp): it
+# installs the crash handler on a report root of the test's own, then crashes, hangs or reports
+find_package(Threads REQUIRED)
+add_executable(jasperengine-crash-test
+    ${CMAKE_CURRENT_SOURCE_DIR}/../crash/CrashTestMain.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../crash/SystemSignalHeader.c)
+target_link_libraries(jasperengine-crash-test PRIVATE jasperengine Threads::Threads)
+jasperengine_apply_cxx_standard(jasperengine-crash-test)
+jasperengine_target_warnings(jasperengine-crash-test)
+set_target_properties(jasperengine-crash-test PROPERTIES FOLDER "tests" ENABLE_EXPORTS ON)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+set(JASPER_CRASH_TEST_FLAGS "")
+if(JASPERENGINE_SANITIZE_ADDRESS)
+    list(APPEND JASPER_CRASH_TEST_FLAGS --expect-asan)
+endif()
+add_test(NAME native-crash-reports COMMAND ${Python3_EXECUTABLE} -I
+    ${CMAKE_CURRENT_SOURCE_DIR}/../crash/test_crash.py $<TARGET_FILE:jasperengine-crash-test>
+    --symbolicate ${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/crash/symbolicate.py ${JASPER_CRASH_TEST_FLAGS})
+set_tests_properties(native-crash-reports PROPERTIES TIMEOUT 180)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT JASPERENGINE_UNITY_BUILD)
+    add_test(NAME posix-crash-signal-safety COMMAND ${Python3_EXECUTABLE} -I
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/crash/check_posix_symbols.py
+        ${CMAKE_BINARY_DIR}/CMakeFiles/jasperengine.dir/core/diag/CrashHandlerPosix.cpp.o)
+endif()
+
 jasperengine_add_test_target(jasperengine-core-tests
     SOURCES ${CORE_TEST_SOURCES} ${CORE_TEST_ALLOCATION_COUNTER}
         # the animation clip tests' asset root (a temporary directory around each of them)
@@ -29,7 +55,18 @@ jasperengine_add_test_target(jasperengine-core-tests
         JASPER_TEST_REPO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../.."
     # the KTX2 tests write Zstandard supercompressed files (games link the decoder only)
     LINK zstd
+    DEFINITIONS
+        JASPER_TEST_CRASH_TEST_BINARY="$<TARGET_FILE:jasperengine-crash-test>"
 )
+add_dependencies(jasperengine-core-tests jasperengine-crash-test)
+# tools/crash/symbolicate.py names the crash-test binary's frames (ctest; docs/testing.md)
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND AND NOT WIN32)
+    add_test(NAME crash.symbolicate
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/crash/test_symbolicate.py
+                     $<TARGET_FILE:jasperengine-crash-test>)
+    set_tests_properties(crash.symbolicate PROPERTIES LABELS unit)
+endif()
 
 # HexTilingTest compiles the hex lattice block of the shader library as C++: the lines between
 # HEX_LATTICE_BEGIN and HEX_LATTICE_END of includes/hex_tiling.glsl, extracted at configure time
@@ -65,7 +102,8 @@ set_target_properties(jasperengine-core-tests PROPERTIES ENABLE_EXPORTS ON)
 find_package(Threads REQUIRED)
 add_executable(je-bench-jobs ${CMAKE_CURRENT_SOURCE_DIR}/bench/JobsBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
 add_executable(je-bench-memory ${CMAKE_CURRENT_SOURCE_DIR}/bench/MemoryBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
-foreach(target je-bench-jobs je-bench-memory)
+add_executable(je-bench-diag ${CMAKE_CURRENT_SOURCE_DIR}/bench/DiagBench.cpp)
+foreach(target je-bench-jobs je-bench-memory je-bench-diag)
     target_link_libraries(${target} PRIVATE jasperengine Threads::Threads)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/support)
     jasperengine_apply_cxx_standard(${target})

@@ -1052,6 +1052,18 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
         inflightReplies[key] = reply;
     }
 
+    // a tool that must answer while the main thread is stuck: right here, on this thread
+    if (def->offMainThread) {
+        trace("run", name + " " + key + " (off main)");
+        try {
+            def->handler(call);
+        } catch (const std::exception& e) {
+            call->fail(std::string("Tool ") + name + " failed: " + e.what());
+        }
+        if (!call->completed()) call->fail("Internal error: tool " + name + " returned without a result.");
+        return;
+    }
+
     trace("queued", name + " " + key);
     runOnMainThread([this, call, name, key, autoSync]() {
         trace("run", name + " " + key);

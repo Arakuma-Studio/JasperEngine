@@ -7,6 +7,7 @@
 #include "command/CommandHistory.h"
 #include "command/PlayChangeReview.h"
 #include "Out.h"
+#include "util/EditorDiagnostics.h"
 #include "io/AtomicFile.h"
 #include "io/ScopedFileLock.h"
 #include "util/FileUtils.h"
@@ -180,6 +181,7 @@ bool AppSettings::undoReviewPlayChanges = true;
 bool AppSettings::htmlUiVerboseDiagnostics = false;
 bool AppSettings::htmlUiPatchReload = true;
 LoggingSettings AppSettings::loggingSettings;
+DiagnosticsSettings AppSettings::diagnosticsSettings;
 
 bool AppSettings::initialize(bool preferUserDirectory) {
     // Settings live in the working directory, where a run from a build tree
@@ -581,6 +583,15 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             if (loggingNode["show_source"]) loggingSettings.showSource = loggingNode["show_source"].as<bool>();
         }
         applyLoggingSettings();
+        DiagnosticsSettings loaded;
+        if (settingsData["diagnostics"]) {
+            auto diagnosticsNode = settingsData["diagnostics"];
+            if (diagnosticsNode["hang_watchdog"]) loaded.hangWatchdog = diagnosticsNode["hang_watchdog"].as<bool>();
+            if (diagnosticsNode["report_after_s"]) loaded.reportAfterSeconds = diagnosticsNode["report_after_s"].as<int>();
+            if (diagnosticsNode["break_lua_after_s"]) loaded.breakLuaAfterSeconds = diagnosticsNode["break_lua_after_s"].as<int>();
+            if (diagnosticsNode["show_crash_notice"]) loaded.showCrashNotice = diagnosticsNode["show_crash_notice"].as<bool>();
+        }
+        setDiagnosticsSettings(loaded);
 
         return true;
     } catch (const std::exception& e) {
@@ -788,6 +799,16 @@ bool AppSettings::saveSettings() {
             loggingNode["backtrace_on_error"] = loggingSettings.backtraceOnError;
             loggingNode["show_source"] = loggingSettings.showSource;
             settingsData["logging"] = loggingNode;
+        }
+        if (diagnosticsSettings == DiagnosticsSettings()) {
+            if (settingsData["diagnostics"]) settingsData.remove("diagnostics");
+        } else {
+            YAML::Node diagnosticsNode;
+            diagnosticsNode["hang_watchdog"] = diagnosticsSettings.hangWatchdog;
+            diagnosticsNode["report_after_s"] = diagnosticsSettings.reportAfterSeconds;
+            diagnosticsNode["break_lua_after_s"] = diagnosticsSettings.breakLuaAfterSeconds;
+            diagnosticsNode["show_crash_notice"] = diagnosticsSettings.showCrashNotice;
+            settingsData["diagnostics"] = diagnosticsNode;
         }
         if (settingsData["ai_assistant"]) settingsData.remove("ai_assistant");
 
@@ -1217,6 +1238,19 @@ void AppSettings::applyLoggingSettings() {
     Out::setFileShowsSource(loggingSettings.showSource);
     Logger::setBacktraceOnError(loggingSettings.backtraceOnError);
     Out::applyLevelOverride();
+}
+
+DiagnosticsSettings AppSettings::getDiagnosticsSettings() {
+    return diagnosticsSettings;
+}
+
+void AppSettings::setDiagnosticsSettings(const DiagnosticsSettings& settings) {
+    diagnosticsSettings = settings;
+    diagnosticsSettings.reportAfterSeconds = std::clamp(settings.reportAfterSeconds,
+        DiagnosticsSettings::minReportAfterSeconds, DiagnosticsSettings::maxReportAfterSeconds);
+    diagnosticsSettings.breakLuaAfterSeconds = std::clamp(settings.breakLuaAfterSeconds, 0,
+        DiagnosticsSettings::maxBreakLuaAfterSeconds);
+    EditorDiagnostics::applySettings(diagnosticsSettings);
 }
 
 bool AppSettings::getEditorVSyncEnabled() {

@@ -10,7 +10,7 @@
 #include "harness/TestSystem.h"
 
 #include "HtmlUI.h"
-#include "LunaSVGRuntime.h"
+#include "util/LunaSVGRuntime.h"
 #include "texture/TextureData.h"
 
 #include <RmlUi/Core.h>

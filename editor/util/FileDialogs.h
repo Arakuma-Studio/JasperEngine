@@ -8,6 +8,7 @@
 #include <string>
 #include "Backend.h"
 #include "nfd.hpp"
+#include "diag/HangWatchdog.h"
 
 namespace jasperengine::editor{
 
@@ -82,6 +83,8 @@ namespace jasperengine::editor{
                 args.defaultPath = defaultPath.c_str();
                 args.parentWindow = *static_cast<nfdwindowhandle_t*>(Backend::getNFDWindowHandle());
 
+                // a native dialog runs its own loop for as long as the user wants
+                const diag::BusyScope busy("Native file dialog", 0);
                 nfdresult_t result = NFD_PickFolderU8_With(&outPath, &args);
 
                 if (result == NFD_OKAY) {
@@ -105,6 +108,8 @@ namespace jasperengine::editor{
                 args.defaultPath = defaultPath.c_str();
                 args.parentWindow = *static_cast<nfdwindowhandle_t*>(Backend::getNFDWindowHandle());
 
+                // a native dialog runs its own loop for as long as the user wants
+                const diag::BusyScope busy("Native file dialog", 0);
                 const nfdresult_t res = NFD_OpenDialogU8_With(&path, &args);
                 switch (res) {
                     case NFD_OKAY:
@@ -203,6 +208,8 @@ namespace jasperengine::editor{
 
             args.parentWindow = *static_cast<nfdwindowhandle_t*>(Backend::getNFDWindowHandle());
 
+            // a native dialog runs its own loop for as long as the user wants
+            const diag::BusyScope busy("Native file dialog", 0);
             const nfdresult_t res = NFD_OpenDialogMultipleU8_With(&pathSet, &args);
             switch (res) {
                 case NFD_OKAY:
@@ -241,6 +248,8 @@ namespace jasperengine::editor{
 
             args.parentWindow = *static_cast<nfdwindowhandle_t*>(Backend::getNFDWindowHandle());
 
+            // a native dialog runs its own loop for as long as the user wants
+            const diag::BusyScope busy("Native file dialog", 0);
             const nfdresult_t res = NFD_PickFolderMultipleU8_With(&pathSet, &args);
             switch (res) {
                 case NFD_OKAY:
