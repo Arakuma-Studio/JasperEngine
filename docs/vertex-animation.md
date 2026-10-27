@@ -89,7 +89,11 @@ write). The guide is [docs/mcp/guide/vertex-animation.md](mcp/guide/vertex-anima
    writes nothing. The scene stays editable between slices, but an edit to the source fails the
    bake ("the scene changed during the bake: bake again"). The **Preview** section then shows the
    source and the VAT result side by side, live (the VAT drawn by the GPU as in the game), with
-   play / pause, scrub and a clip dropdown. After a Preview run, **Bake** with the same settings
+   play / pause, scrub and a clip dropdown. **Heatmap** colours the VAT side by each vertex's
+   largest error over the frames and between them (rounding to half floats, the bones' fit,
+   interpolation): green is none, yellow the tolerance, red twice it or more, with a legend and
+   the largest error in mm. It is drawn unlit on a preview copy of the mesh; the asset is not
+   changed. Imports have no heatmap (their error isn't measured per vertex). After a Preview run, **Bake** with the same settings
    writes that result without baking again. When the bake is written, the new `.vat` is selected
    in the Project window and the Console gets a line with what was written and a Lua call to play
    it. Nothing can be baked while a scene plays.

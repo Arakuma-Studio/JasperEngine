@@ -13,6 +13,7 @@ Covered here, where the App's wiring, focus and real input matter:
   the replaced file back) and logs the status line in the Console;
 - the Inspector's Animation Player section: Bake ▾ › Vertex Animation… opens the baker on that GameObject,
   and a Shift-click bakes at once, placing "<name> (VAT)" beside it (one scene undo step);
+- Preview then a real click on Heatmap shows its legend, a second click hides it;
 - while the scene plays the Bake button is refused (the bake doesn't run).
 """
 
@@ -197,6 +198,20 @@ async def test_bake_writes_one_project_undo_step(ed: Editor):
     await ed.call("wait", frames=4)
     ed.check_eq(path.read_text(), "{}", "undo put the replaced file back")
     ed.check(not (ed.project / "assets/models/taken.vat.glb").exists(), "undo removed the mesh")
+
+
+async def test_preview_heatmap_toggles(ed: Editor):
+    """Preview (in memory) then a real click on Heatmap: its legend shows; a second click hides it."""
+    await focus_x(ed)
+    await type_into(ed, await rect_of(ed, "vatbaker.source", "the Source field"), ARM)
+    await click(ed, await rect_of(ed, "vatbaker.previewRun", "the Preview button"))
+    heat = await rect_of(ed, "vatbaker.heatmap", "the Heatmap toggle")
+    await click(ed, heat)
+    await rect_of(ed, "vatbaker.heatmapLegend", "the heatmap's legend")
+    await click(ed, await rect_of(ed, "vatbaker.heatmap", "the Heatmap toggle"))
+    await ed.call("wait", frames=10)
+    ed.check("vatbaker.heatmapLegend" not in ed.ui_items(), "the legend goes with the heatmap")
+    ed.check(not (ed.project / "assets/models/rigid_arm.vat").exists(), "a preview writes nothing")
 
 
 # ---------------------------------------------------------------------------- the Inspector's entries

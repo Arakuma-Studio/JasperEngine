@@ -55,10 +55,12 @@ namespace jasperengine::editor{
         void clear();
         // the source: a model (.gltf/.glb/.fbx) or .prefab file, project-relative or absolute
         bool loadSource(Project* project, const std::string& file, std::string& error);
-        // the baked asset: absolute .vat and .vat.glb paths (the .vat may be an in-memory pool entry)
-        bool loadVat(const std::string& vatFile, const std::string& meshFile, std::string& error);
+        // the baked asset: absolute .vat and .vat.glb paths (the .vat may be an in-memory pool entry);
+        // `unlit`: drawn with its vertex colours only (the heatmap's mesh, no lighting)
+        bool loadVat(const std::string& vatFile, const std::string& meshFile, std::string& error, bool unlit = false);
         bool hasSubject() const{ return root != NULL_ENTITY; }
         bool isVat() const{ return vat; }
+        bool isUnlit() const{ return unlit; }
         const std::string& getFile() const{ return file; }
 
         // the source posed by `clip` at `time` (seconds in the clip); null: the rest pose
@@ -95,6 +97,7 @@ namespace jasperengine::editor{
         Model* model = nullptr;
         Entity root = NULL_ENTITY;
         bool vat = false;
+        bool unlit = false;
         std::string file;
         std::string vatFile;
 

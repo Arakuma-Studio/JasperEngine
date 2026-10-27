@@ -100,6 +100,7 @@ void editor::VatPreviewView::destroyScene(){
     scene = nullptr;
     root = NULL_ENTITY;
     vat = false;
+    unlit = false;
     file.clear();
     vatFile.clear();
     posedClip = nullptr;
@@ -148,7 +149,7 @@ bool editor::VatPreviewView::loadSource(Project* project, const std::string& pat
     return true;
 }
 
-bool editor::VatPreviewView::loadVat(const std::string& vatPath, const std::string& meshPath, std::string& error){
+bool editor::VatPreviewView::loadVat(const std::string& vatPath, const std::string& meshPath, std::string& error, bool unlitColors){
     clear();
     model = new Model(scene);
     root = model->getEntity();
@@ -165,7 +166,9 @@ bool editor::VatPreviewView::loadVat(const std::string& vatPath, const std::stri
     animator.randomStart = false;
     animator.speed = 0.0f;
     scene->addComponent<VertexAnimatorComponent>(root, animator);
+    if (unlitColors) model->setReceiveLights(false);
     vat = true;
+    unlit = unlitColors;
     file = meshPath;
     vatFile = vatPath;
     settle = SETTLE_FRAMES;

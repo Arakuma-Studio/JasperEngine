@@ -151,7 +151,12 @@ void VatBakeSession::releasePreview(){
     if (bakeResult.previewKey.empty()) return;
     VertexAnimationPool::invalidate(bakeResult.previewKey);
     std::error_code ec;
-    fs::remove_all(FileUtils::pathFromUtf8(bakeResult.previewKey).parent_path(), ec);
+    const fs::path dir = FileUtils::pathFromUtf8(bakeResult.previewKey).parent_path();
+    // the heatmap's preview too (its .vat was loaded from its file)
+    const fs::path heat = dir.parent_path() / FileUtils::pathFromUtf8(FileUtils::pathToUtf8(dir.filename()) + "-heatmap");
+    VertexAnimationPool::invalidate(FileUtils::pathToUtf8(heat / FileUtils::pathFromUtf8(bakeResult.previewKey).filename()));
+    fs::remove_all(heat, ec);
+    fs::remove_all(dir, ec);
     bakeResult.previewKey.clear();
     bakeResult.preview.reset();
 }
@@ -738,6 +743,7 @@ void VatBakeSession::finalize(){
     result.sockets = output.socketTracks;
     result.report = output.report;
     result.boneNames = output.boneNames;
+    result.vertexErrorMm = std::move(output.vertexErrorMm);
     result.embeddedImages = poser->embeddedImages;
     std::vector<VatIssue> warnings;
     for (const VatIssue& issue : checkIssues){
@@ -813,6 +819,59 @@ bool VatBakeSession::writePreviewFiles(std::string& vatPath, std::string& meshPa
         error = "can't write the preview files under " + FileUtils::pathToGenericUtf8(dir);
         return false;
     }
+    vatPath = encoded.vatPath;
+    meshPath = encoded.meshPath;
+    return true;
+}
+
+void heatmapColor(float errorMm, float toleranceMm, float rgba[4]){
+    const float t = toleranceMm > 0.0f ? std::clamp(errorMm / toleranceMm, 0.0f, 2.0f) : (errorMm > 0.0f ? 2.0f : 0.0f);
+    if (t <= 1.0f){
+        rgba[0] = t;        // green -> yellow
+        rgba[1] = 1.0f;
+    }else{
+        rgba[0] = 1.0f;     // yellow -> red
+        rgba[1] = 2.0f - t;
+    }
+    rgba[2] = 0.0f;
+    rgba[3] = 1.0f;
+}
+
+bool VatBakeSession::writeHeatmapPreviewFiles(std::string& vatPath, std::string& meshPath, std::string& error){
+    if (bakeState != VatBakeState::Done){
+        error = "nothing baked yet";
+        return false;
+    }
+    const fs::path preview = FileUtils::pathFromUtf8(bakeResult.previewKey);
+    const fs::path dir = preview.parent_path().parent_path() / FileUtils::pathFromUtf8(FileUtils::pathToUtf8(preview.parent_path().filename()) + "-heatmap");
+    const fs::path vatFile = dir / preview.filename();
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    VatMeshData mesh = bakeResult.mesh;
+    const size_t vertices = mesh.vertexCount();
+    mesh.colors.assign(vertices * 4, 1.0f);
+    const float tolerance = bakeResult.report.toleranceMm;
+    for (size_t v = 0; v < vertices; v++){
+        const float e = v < bakeResult.vertexErrorMm.size() ? bakeResult.vertexErrorMm[v] : 0.0f;
+        heatmapColor(e, tolerance, &mesh.colors[v * 4]);
+    }
+    VatMaterialData white;
+    white.name = "Heatmap";
+    white.doubleSided = true;
+    mesh.materials = {white};
+    for (VatSubmesh& submesh : mesh.submeshes) submesh.material = 0;
+    VatData data = bakeResult.data;
+    data.guid = AssetDatabase::generateGuid();
+    VatEncodedFiles encoded;
+    if (!encodeVatFiles(FileUtils::pathToUtf8(vatFile), data, mesh, bakeResult.payload(), bakeResult.sockets, encoded, &error)) return false;
+    if (!FileUtils::writeFileReplacing(vatFile, encoded.vatText) ||
+        !FileUtils::writeFileReplacing(FileUtils::pathFromUtf8(encoded.meshPath),
+                                       std::string(encoded.glbBytes.begin(), encoded.glbBytes.end()))){
+        error = "can't write the heatmap preview under " + FileUtils::pathToGenericUtf8(dir);
+        return false;
+    }
+    // a file the pool may hold from an earlier result of this session
+    VertexAnimationPool::invalidate(FileUtils::pathToUtf8(vatFile));
     vatPath = encoded.vatPath;
     meshPath = encoded.meshPath;
     return true;

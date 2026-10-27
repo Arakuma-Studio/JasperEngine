@@ -144,6 +144,12 @@ namespace jasperengine::editor {
         // the settings changed since the shown result
         bool isStale() const;
 
+        // the Preview's Heatmap: the VAT side coloured by each vertex's error (green at 0, yellow at
+        // the tolerance, red at twice it), unlit; only for a bake (imports carry no per-vertex error)
+        void setHeatmap(bool on);
+        bool isHeatmap() const { return heatmap; }
+        bool heatmapAvailable() const;
+
         // the Console line of a write (the clipBakeStatusLine pattern)
         static std::string statusLine(const vat::VatWriteResult& written, const jasperengine::vat::VatData& data, bool import);
 
@@ -213,7 +219,12 @@ namespace jasperengine::editor {
         std::unique_ptr<VatPreviewView> sourceView;
         std::unique_ptr<VatPreviewView> vatView;
         const void* previewOf = nullptr;    // the result the views show
-        std::string previewVatFile;         // its preview files (import previews: removed with it)
+        std::string previewVatFile;         // its preview files
+        std::string previewMeshFile;
+        std::string heatVatFile;            // the heatmap's preview files (written on first use)
+        std::string heatMeshFile;
+        bool heatmap = false;               // the toggle
+        bool previewHeat = false;           // what the VAT view shows
         std::string previewNote;            // why there is no source view
         int previewClip = 0;
         float previewTime = 0.0f;
@@ -238,6 +249,9 @@ namespace jasperengine::editor {
         void rememberSettings();
         bool startBake(bool write, std::string& error);
         void ensurePreview();
+        // the VAT view switched to (or back from) the heatmap's mesh when the toggle says so
+        void applyHeatmap();
+        void drawHeatmapLegend();
         // the views posed at the playhead (advanced by dt while playing)
         void updatePreview(float dt);
         void releasePreview();

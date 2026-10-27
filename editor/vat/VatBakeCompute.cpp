@@ -469,6 +469,8 @@ namespace{
         uint64_t frameSamplesMeasured = 0;
         std::vector<double> clipFrameErrorHalf;    // per clip, Vertices half error at its frames
         std::vector<double> clipFrameErrorBones;
+        std::vector<float> vertexErrorHalf;        // per vertex, the same at every frame
+        std::vector<float> vertexErrorBones;
 
         bool cancelled() const{ return cancel && cancel->load(); }
         void tick(){
@@ -842,6 +844,8 @@ namespace{
         clipBounds.assign(in.clips.size(), VatBounds());
         clipFrameErrorHalf.assign(in.clips.size(), 0.0);
         clipFrameErrorBones.assign(in.clips.size(), 0.0);
+        vertexErrorHalf.assign(doVertices ? vertexCount : 0, 0.0f);
+        vertexErrorBones.assign(doBones ? vertexCount : 0, 0.0f);
         const size_t socketCount = in.socketPaths.size();
         socketData.assign((size_t)samples * socketCount * 7, 0.0f);
 
@@ -877,6 +881,7 @@ namespace{
                         halfMax = std::max(halfMax, e);
                         halfSum += e;
                         clipFrameErrorHalf[c] = std::max(clipFrameErrorHalf[c], e);
+                        vertexErrorHalf[v] = std::max(vertexErrorHalf[v], (float)e);
                         if (perSample > 1){
                             double q[4];
                             if (merged[v].normal){
@@ -941,6 +946,7 @@ namespace{
                         decompMax = std::max(decompMax, ed);
                         decompSum += ed;
                         clipFrameErrorBones[c] = std::max(clipFrameErrorBones[c], ed);
+                        vertexErrorBones[v] = std::max(vertexErrorBones[v], (float)ed);
                     }
                 }
 
@@ -1154,6 +1160,14 @@ namespace{
         double maxError = bones ? decompMax : out.report.quantizationErrorMm;
         double sumError = bones ? decompSum : (out.data.layout.precision == VatPrecision::Half ? halfSum : 0.0);
         uint64_t measured = frameSamplesMeasured;
+        // per vertex: the frames' error of the chosen mode and precision, then the mid-frames'
+        std::vector<float>& perVertex = out.vertexErrorMm;
+        if (bones) perVertex = vertexErrorBones;
+        else if (out.data.layout.precision == VatPrecision::Half) perVertex = vertexErrorHalf;
+        perVertex.resize(vertexCount, 0.0f);
+        if (!bones && out.data.layout.precision != VatPrecision::Half) std::fill(perVertex.begin(), perVertex.end(), 0.0f);
+        std::vector<float>().swap(vertexErrorHalf);
+        std::vector<float>().swap(vertexErrorBones);
 
         for (size_t c = 0; c < in.clips.size(); c++){
             const VatBakeClipInput& clip = in.clips[c];
@@ -1204,6 +1218,7 @@ namespace{
                     for (int i = 0; i < 3; i++) d[i] = predicted[i] - exactPositions[v * 3 + (size_t)i];
                     const double e = length3(d) * 1000.0;
                     clipInterpolation = std::max(clipInterpolation, e);
+                    perVertex[v] = std::max(perVertex[v], (float)e);
                     sumError += e;
                     measured++;
                     // the mid-frames' positions are shown too: culling bounds include them
