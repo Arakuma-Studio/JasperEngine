@@ -68,6 +68,7 @@ local HudGame = {
         { name = "clicks", type = "int", default = 0 },
         { name = "presses", type = "int", default = 0 },
         { name = "loads", type = "int", default = 0 },
+        { name = "reloads", type = "int", default = 0 },
     }
 }
 
@@ -81,6 +82,7 @@ function HudGame:init()
         event.currentTarget.classList:add("pressed")
     end)
     doc.onLoad = function() self.loads = self.loads + 1 end
+    doc.onReload = function(report) self.reloads = self.reloads + 1 end
 
     -- a component button of this HUD over the middle of the 3D scene's wall (owned by this
     -- Lua handle: collected after the play stop deleted the HUD's copy, see TestEntityHandleLifetime.cpp::LuaHandlesCollectedAfterTheirSceneWasDeleted)
@@ -246,13 +248,16 @@ async def test_screen_component_world_routing_and_reload(ed: Editor):
                 break
         ed.check(near(got, (0, 128, 255), 12), f"the CSS change did not show: {got}")
         loads = await hud(ed, "loads")
+        reloads = await hud(ed, "reloads")
         clicks = await hud(ed, "clicks")
 
+        # an HTML change is patched in (S17 R30): onReload fires, not onLoad
         await ed.call("write_file", path=DOC, content=HTML.replace('</body>', '<div id="extra">new</div></body>'))
-        deadline = time.monotonic() + 4
-        while time.monotonic() < deadline and await hud(ed, "loads") == loads:
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and await hud(ed, "reloads") == reloads:
             await ed.call("wait", frames=2)
-        ed.check_eq(await hud(ed, "loads"), loads + 1, "onLoad after the HTML change")
+        ed.check_eq(await hud(ed, "reloads"), reloads + 1, "onReload after the HTML change")
+        ed.check_eq(await hud(ed, "loads"), loads, "a patch does not fire onLoad")
         ed.check_eq((await lua(ed, f"return {DOC_LUA}:getElementById('extra') ~= nil"))[0], True, "the new element")
         ed.check_eq((await lua(ed, f"return {DOC_LUA}:getElementById('gold').textContent"))[0], "11", "the model kept its value")
         ed.check_eq((await lua(ed, f"return {DOC_LUA}:getElementById('name').value"))[0], "héllo ✓", "the field kept its value")

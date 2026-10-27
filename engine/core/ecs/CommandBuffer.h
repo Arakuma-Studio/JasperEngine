@@ -199,7 +199,11 @@ namespace jasperengine {
 
         template<typename C, typename Registry>
         static void applyRemove(Registry& registry, Entity entity, ecs::CommandPayload&){
-            registry.template removeComponent<C>(entity);
+            // a removal recorded twice (remove, an add that found the component still there,
+            // remove again, in one deferred scope) or of a component removed since: nothing left
+            if (registry.template findComponent<C>(entity)){
+                registry.template removeComponent<C>(entity);
+            }
         }
 
         Command& push(Op op, EntityTarget target){

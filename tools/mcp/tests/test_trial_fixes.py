@@ -201,6 +201,12 @@ async def test_create_ui_failure_says_nothing_created(ed: Editor):
     check_eq(after["count"], 0, "really nothing created")
     await ed.call("close_scene", scene=ui_scene, unsaved="discard")
 
+    # AGENTS.md there and CLAUDE.md not (what a Play's generation can leave when it writes
+    # AGENTS.md between the two deletes above): a read writes the missing CLAUDE.md, as a Play does
+    ed.check(agents_file.is_file() and not claude_file.exists(), "AGENTS.md alone")
+    await ed.session.read_resource("jasper://project/AGENTS.md")
+    ed.check(claude_file.is_file() and "@AGENTS.md" in claude_file.read_text(), "the read writes the missing CLAUDE.md")
+
 
 async def test_existing_agents_and_claude_md_never_rewritten(ed: Editor):
     """AGENTS.md and CLAUDE.md are written only when missing: once present they belong to the

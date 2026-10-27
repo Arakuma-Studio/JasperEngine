@@ -77,6 +77,9 @@ namespace {
                 for (SceneProject& candidate : project->getScenes()) {
                     CommandHandle::remove(candidate.id);
                 }
+                // closes the scenes as a project switch does: a Project lives as long as the
+                // editor and frees none at exit (ASan: each test leaked its scenes and renders)
+                project->releaseScenes();
             }
             project.reset();
         }

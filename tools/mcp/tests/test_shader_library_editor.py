@@ -271,10 +271,13 @@ async def test_material_file_round_trip(ed: Editor):
         got = await mesh_props(ed, eid, m + "sortPriority")
         ed.check_eq(got[m + "sortPriority"], 7, "the linked submesh follows the file")
 
-        # Moving an image remaps the actual persisted shader texture reference too.
+        # Moving an image takes the persisted shader texture references along by GUID (S04 R13: the
+        # .material file is not rewritten; both its texture and its extra pass's resolve to the move)
+        material_text = (ed.project / MATERIAL).read_text()
         await ed.call("move_asset", path=TEXTURE, to="assets/textures/moved.png")
-        updated = yaml.safe_load((ed.project / MATERIAL).read_text())
-        ed.check_eq(updated["shaderTextures"]["u_baseTexture"]["path"], "assets/textures/moved.png")
-        ed.check_eq(updated["extraPass"]["shaderTextures"]["u_baseTexture"]["path"], "assets/textures/moved.png")
+        ed.check_eq((ed.project / MATERIAL).read_text(), material_text, "the move rewrites no referrer file")
+        deps = await ed.call("get_asset_dependencies", asset=MATERIAL)
+        targets = [d["target"]["path"] for d in deps["dependencies"]]
+        ed.check(sum(t.endswith("textures/moved.png") for t in targets) >= 2, f"both texture references follow the move: {targets}")
 
         await ed.call("save_scene")

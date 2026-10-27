@@ -348,7 +348,7 @@ async def test_lit_variants(ed: Editor):
     ed.check(not any("Sto" in n for n in before), f"no Sto variant while it is off: {sorted(n for n in before if 'Sto' in n)}")
 
     await lit_on(ed, sid)
-    await ed.call("wait", frames=10)
+    await ed.call("wait", frames=10, timeout_seconds=600)  # the variants compile first: minutes on a loaded builder
     shaders = (await ed.call("get_build_info", include_shaders=True))["shaders"]
     # display names, "Mesh (Uv1, Puc, Sto, ...)" (a library shader's has its reference in brackets)
     built_in = {s["name"]: s for s in shaders if "[" not in s["name"]}
@@ -401,7 +401,7 @@ async def foliage_variants(ed: Editor, fork: str) -> dict:
     """the variants the build collects for the alpha-masked leaf card (the only Lit mesh with
     Stochastic Tiling on, drawn with the fork): its colour variants (the fork's), and the
     alpha-clip depth and G-buffer variants (built-in shaders)"""
-    await ed.call("wait", frames=10)
+    await ed.call("wait", frames=10, timeout_seconds=600)  # the variants compile first: minutes on a loaded builder
     shaders = (await ed.call("get_build_info", include_shaders=True))["shaders"]
     names = [s["name"] for s in shaders]
     return {

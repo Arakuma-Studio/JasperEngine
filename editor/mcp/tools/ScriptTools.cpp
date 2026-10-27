@@ -156,7 +156,8 @@ bool isEditorOwnedFile(Project* project, const fs::path& absolute, std::string& 
     return false;
 }
 
-bool writeFilesUndoable(McpContext& ctx, std::vector<WriteFilesCmd::Item> items, std::string& error) {
+bool writeFilesUndoable(McpContext& ctx, std::vector<WriteFilesCmd::Item> items, std::string& error,
+                        std::vector<fs::path> alsoSync) {
     for (const WriteFilesCmd::Item& item : items) {
         std::error_code ec;
         if (fs::is_directory(item.path, ec)) {
@@ -165,8 +166,10 @@ bool writeFilesUndoable(McpContext& ctx, std::vector<WriteFilesCmd::Item> items,
         }
     }
     McpContext* context = &ctx;
-    auto* cmd = new WriteFilesCmd(std::move(items), [context](const std::vector<fs::path>& changed) {
-        syncFiles(*context, changed, false);
+    auto* cmd = new WriteFilesCmd(std::move(items), [context, alsoSync](const std::vector<fs::path>& changed) {
+        std::vector<fs::path> files = changed;
+        files.insert(files.end(), alsoSync.begin(), alsoSync.end());
+        syncFiles(*context, files, false);
     });
     cmd->setNoMerge();
     auto failure = std::make_shared<std::string>();

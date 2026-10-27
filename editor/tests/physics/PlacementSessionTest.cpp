@@ -84,6 +84,9 @@ namespace {
     void EngineShutdown::TearDown() {
         if (!headlessStarted) return;
         placementProjectSwitching();
+        // the project's scenes and their renders go before the engine does (~Project leaves
+        // them: LeakSanitizer reported the last scene's SceneRender and what it holds)
+        if (headless().project) headless().project->releaseScenes();
         ShaderPool::setShaderBuilder(nullptr);
         ShaderBuilder::requestShutdown();
         // (TestMain's environment shuts the engine down)

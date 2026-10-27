@@ -332,7 +332,11 @@ STATE_REGIONS = {"fog": (44, 44, 396, 256), "ink": (444, 44, 796, 256), "trail":
 
 
 async def state_shot(ed: Editor, label: str) -> Shot:
-    raw = await ed.call_raw("screenshot", {"view": "game", "scene": S["state-scene"], "max_width": 1280})
+    # the first capture at a pinned time compiles the simulations' variants and replays their
+    # state up to it: over a minute on a loaded runner with llvmpipe, past the screenshot's 30 s
+    # default
+    raw = await ed.call_raw("screenshot", {"view": "game", "scene": S["state-scene"], "max_width": 1280, "timeout_seconds": 300},
+                            timeout=330)
     ed.check(not raw.is_error and raw.images, f"{label}: no screenshot: {raw.text[:300]}")
     png = raw.images[0][0]
     (ed.scratch.root / f"html-ui-effects-{label}.png").write_bytes(png)

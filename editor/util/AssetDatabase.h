@@ -127,9 +127,11 @@ namespace jasperengine::editor {
         // (the cache from the last session, else the older file) and the other file gets a
         // new one. assetsDir is relative to the project (data files are assets only there).
         void open(const std::filesystem::path& projectPath, const std::filesystem::path& assetsDir = std::filesystem::path());
-        // Read-only (a CLI check, a headless analysis): GUIDs are given in memory only, no asset
-        // file, meta or cache is ever written. Kept across open/close.
-        void setReadOnly(bool readOnly);
+        // A session that only reads the project (the CLI's check, a scene dump that saves
+        // nothing; no project lock, maybe next to an open editor): the identities open() and the
+        // edits would write (metas, in-file GUIDs) and the cache stay in memory. Before open().
+        void setReadOnly(bool enabled) { readOnly = enabled; }
+        bool isReadOnly() const { return readOnly; }
         void close();
         // The temporary siblings of atomic writes the last open() walked past (the project's
         // orphan sweep uses this walk instead of one of its own)
@@ -242,7 +244,6 @@ namespace jasperengine::editor {
 
         // The editor saves scenes (and their prefabs) on a background thread too
         mutable std::recursive_mutex mutex;
-        bool readOnly = false;
         std::filesystem::path projectPath;
         std::filesystem::path assetsDir;
         bool caseInsensitive = false;
@@ -271,6 +272,7 @@ namespace jasperengine::editor {
         std::mutex strandMutex;                  // creating / dropping the strand
         std::atomic<bool> hashStop{false};
         std::atomic<bool> hashingEnabled{true};
+        bool readOnly = false;
         std::atomic<bool> savePending{false};
         std::atomic<bool> cacheDirty{false};
         jobs::SerialQueue& strand();

@@ -119,7 +119,7 @@ namespace {
         const Entity entity = create->getEntity();
         history(sceneId)->addCommandNoMerge(new ModelLoadCmd(project(), sceneId, entity, path));
         const ModelComponent& model = sceneOf(sceneId)->getComponent<ModelComponent>(entity);
-        EXPECT_FALSE(model.loadedFilename.empty()) << "loaded " << path << " (file '" << model.filename << "')";
+        EXPECT_FALSE(model.loadedFilename.empty()) << "loaded " << path << " (file '" << model.filename.path << "')";
         return entity;
     }
 

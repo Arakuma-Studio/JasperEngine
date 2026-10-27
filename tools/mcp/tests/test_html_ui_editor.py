@@ -95,7 +95,7 @@ async def test_create_ui_document(ed: Editor):
 async def test_component_type_info(ed: Editor):
     one = await ed.call("list_component_types", component="uidocument")
     props = one["properties"]
-    for name, kind in (("filename", "string"), ("sortOrder", "int"), ("enabled", "bool"),
+    for name, kind in (("filename", "asset"), ("sortOrder", "int"), ("enabled", "bool"),
                        ("interactive", "bool"), ("renderMode", "enum"), ("textureWidth", "int"),
                        ("textureHeight", "int"), ("inputSurface", "entity"), ("pixelRatio", "float")):
         ed.check(name in props, f"{name} missing: {sorted(props)}")

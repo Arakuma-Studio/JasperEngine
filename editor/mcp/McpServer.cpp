@@ -1232,6 +1232,22 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
     // An info alert left from earlier only needs OK; anything else needs an answer first
     std::string notes;
     EditorDialogInfo dialog;
+    if (!def.annotations.readOnly && app.getOpenDialog(dialog) && dialog.kind == "progress") {
+        // the editor's own build progress (shaders compiling for files just written): an edit
+        // waits for it as a human at the window does, then runs
+        const ToolDef* waiting = &def;
+        call->waitUntil([this]() {
+            EditorDialogInfo open;
+            return !appPtr->getOpenDialog(open) || open.kind != "progress";
+        }, 120000, [this, call, waiting](bool timedOut) {
+            if (timedOut) {
+                call->fail("The editor's builds (\"Loading\") did not finish within 120 s; the edit was not run. Retry.");
+                return;
+            }
+            execute(call, *waiting);
+        });
+        return;
+    }
     if (!def.annotations.readOnly && app.getOpenDialog(dialog)) {
         if (dialog.kind == "alert" && dialog.choices.size() == 1 && dialog.choices[0] == "ok") {
             std::string error;

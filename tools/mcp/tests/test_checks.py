@@ -159,7 +159,8 @@ async def test_cli_clean_fixture_is_fast_and_read_only():
         check_eq(r.returncode, 0, f"clean --lua: {r.stdout}{r.stderr}")
         check_eq(r.stdout, "", "no findings on stdout")
         check("0 errors" in r.stderr, f"summary on stderr: {r.stderr}")
-        print(f"     [timing] check --lua on the fixture: {lua_seconds:.2f}s")
+        slow = harness.over_budget("check --lua on the fixture", {"--lua": lua_seconds}, 3.0)
+        check(not slow, f"--lua on the fixture took {lua_seconds:.2f}s")
 
         t0 = time.monotonic()
         r = run_check(project, "--shaders")

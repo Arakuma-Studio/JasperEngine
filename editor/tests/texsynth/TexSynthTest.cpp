@@ -7,6 +7,8 @@
 #include "texsynth/TextureSynthesis.h"
 #include "util/FileUtils.h"
 
+#include "support/EditorTestSupport.h"
+
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -794,8 +796,12 @@ TEST(TexSynth, CancelReachesThePreparation) {
     r.examples.push_back(Example::fromImage(Image::make(3072, 3072, 3, 8)));
     r.targetGuide = ImageInput::fromImage(noiseImage(64, 64, 4));
     std::atomic<bool> cancel{false};
+    std::atomic<int> progressCalls{0};
     Control control;
     control.cancel = &cancel;
+    // called at the start of every stage: the cancel, 100 ms into seconds of preparation, ends
+    // the synthesis before the first one (the old code prepared to the end and started it)
+    control.onProgress = [&](const Progress&) { progressCalls++; };
     std::thread canceller([&] {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         cancel = true;
@@ -805,7 +811,12 @@ TEST(TexSynth, CancelReachesThePreparation) {
     const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     canceller.join();
     EXPECT_EQ(result.status, Status::Cancelled);
-    EXPECT_LT(seconds, 1.5) << "the old code took 2.75 s here";
+    EXPECT_EQ(progressCalls.load(), 0) << "a stage started after the cancel";
+    // how soon is the benchmark run's (an instrumented build or a loaded builder is slower)
+    std::printf("[bench] cancelled synthesis returned after %.2f s (budget 1.5; the old code took 2.75)\n", seconds);
+    if (const double slack = jasperengine::editor::test::perfSlack(); slack > 0.0) {
+        EXPECT_LT(seconds, 1.5 * slack);
+    }
 }
 
 TEST(TexSynth, OversizedInputsAreRefusedBeforeDecoding) {
@@ -838,7 +849,10 @@ TEST(TexSynth, OversizedInputsAreRefusedBeforeDecoding) {
     fs::remove_all(dir);
 }
 
-#ifdef __linux__
+// Not under ASan: the address-space limit is the process size plus 40 MB, and an ASan process's
+// size is its shadow reservation (terabytes): nothing would fail. ASan's allocator also aborts on
+// an allocation it cannot make instead of failing it, which is what this checks the handling of.
+#if defined(__linux__) && !defined(JASPERENGINE_SANITIZE_ADDRESS) && !defined(__SANITIZE_ADDRESS__)
 // In a process of its own (jasperengine-texsynth-oom, built next to this binary, see
 // standalone/SynthesisOutOfMemory.cpp): an address-space limit makes the synthesis' allocations
 // fail, and the result is a failed status, not a terminate

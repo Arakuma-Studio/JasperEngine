@@ -81,7 +81,10 @@ def write(ed: Editor, rel: str, text: str) -> None:
 
 
 async def shot(ed: Editor, label: str) -> Shot:
-    raw = await ed.call_raw("screenshot", {"view": "game", "scene": S["scene"], "max_width": 1280})
+    # a simulation step on a software rasteriser of a loaded builder takes its time: the capture
+    # waits for three settled frames up to 300 s (its 30 s default is a desktop GPU's)
+    raw = await ed.call_raw("screenshot", {"view": "game", "scene": S["scene"], "max_width": 1280, "timeout_seconds": 300},
+                            timeout=330)
     ed.check(not raw.is_error and raw.images, f"{label}: no screenshot: {raw.text[:300]}")
     png = raw.images[0][0]
     (ed.scratch.root / f"fluid-effect-{label}.png").write_bytes(png)

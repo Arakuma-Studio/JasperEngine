@@ -1680,8 +1680,8 @@ static int runSceneDump(int argc, char** argv, const std::string& commandName) {
     // upgrades files to GUIDs (prefabs, clips): an analysis changes no project file
     const bool writes = save || !opsPath.empty();
     project.setSkipProjectLock(!writes);
+    project.setReadOnlyAssets(!writes);
     project.setIgnoreProjectLock(ignoreLock);
-    project.getAssetDatabase().setReadOnly(!writes);
     sceneDumpSavePolicy = allowDataLoss ? DegradedSavePolicy::SaveAnyway : DegradedSavePolicy::Refuse;
     if (!project.loadProject(projectArg, false)) {
         if (project.wasProjectLocked()) {
@@ -2544,10 +2544,11 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
     }
 
     if (shadersWanted || cppWanted) {
-        // checks only read the project: no lock, an open editor is fine, and no project file
-        // changes (no GUID upgrade of prefabs or clips)
+        // checks only read the project: no lock, an open editor is fine, and no file is written
+        // (a project from before GUIDs keeps its identities in memory; no GUID upgrade of
+        // prefabs or clips)
         project.setSkipProjectLock(true);
-        project.getAssetDatabase().setReadOnly(true);
+        project.setReadOnlyAssets(true);
         if (!project.loadProject(root, false)) {
             run.fatal = "the project could not be loaded: " + root.string();
             return run;
