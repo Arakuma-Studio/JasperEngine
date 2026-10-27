@@ -96,7 +96,10 @@ namespace jasperengine::editor::mcp {
         };
 
         // Runs a WriteFilesCmd on the project history (one undo step). False + error on failure.
-        bool writeFilesUndoable(McpContext& ctx, std::vector<WriteFilesCmd::Item> items, std::string& error);
+        // alsoSync: files written before it (an import's downloads) that the same reload takes,
+        // so the documents reading them all reload once
+        bool writeFilesUndoable(McpContext& ctx, std::vector<WriteFilesCmd::Item> items, std::string& error,
+                                std::vector<std::filesystem::path> alsoSync = {});
 
         // The MCP form of the hot reload (HotReloadService::apply, S05): what reads files that
         // changed on disk (written by a tool or by an external agent) follows them: code

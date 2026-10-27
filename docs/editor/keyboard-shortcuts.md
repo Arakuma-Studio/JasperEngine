@@ -1,0 +1,158 @@
+# Keyboard shortcuts
+
+<!-- Generated from the editor's command catalog (CommandCatalog::markdownReference, also
+     Help > Keyboard Shortcuts). Do not edit by hand: the unit test
+     CommandCatalog.MarkdownReferenceMatchesDocs fails when this file is out of date. -->
+
+The editor's default key bindings, by group. Rebind any of them in **Edit > Shortcuts...**; your
+changes are kept in `shortcuts.yaml` in the editor's settings folder and apply to every project.
+**Edit > Search All...** (Ctrl+K) finds any command by name, with its shortcut.
+
+- On macOS, Ctrl is the Command key (Cmd) and Alt is Option.
+- **Context** says where a key works: *Global* everywhere, the Code Editor and text fields included;
+  *Editor* in every window but the Code Editor, and not while typing in a field; a window's name
+  while that window has focus (the Scene View also while the mouse is over it).
+- Letters follow the keyboard layout: on AZERTY the Hand Tool is the key labelled Q.
+
+## File
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Save | Ctrl+S | Global |
+| Save All | Ctrl+Shift+S | Global |
+| Open Project... | Ctrl+O | Global |
+| Build Settings... | Ctrl+Shift+B | Editor |
+
+## Edit
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Undo | Ctrl+Z | Editor |
+| Redo | Ctrl+Y / Ctrl+Shift+Z (macOS: Cmd+Shift+Z) | Editor |
+| Select All | Ctrl+A | Hierarchy, Scene View |
+| Cut | Ctrl+X | Hierarchy, Scene View |
+| Copy | Ctrl+C | Hierarchy, Scene View |
+| Paste | Ctrl+V | Hierarchy, Scene View |
+| Paste As Child | Ctrl+Shift+V | Hierarchy, Scene View |
+| Duplicate | Ctrl+D | Editor |
+| Rename | F2 | Editor |
+| Delete | Delete / Backspace | Editor |
+| Frame Selected | F | Editor |
+| Search All... | Ctrl+K | Global |
+| Play | Ctrl+P | Global |
+| Pause | Ctrl+Shift+P | Global |
+| Step | Ctrl+Alt+P | Global |
+
+## Play Mode
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Play or Resume | F5 | Global |
+| Pause | F6 | Global |
+| Stop | F7 | Global |
+
+## Assets
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Refresh | Ctrl+R | Editor |
+
+## GameObject
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Create Empty | Ctrl+Shift+N | Editor |
+| Create Empty Child | Alt+Shift+N | Editor |
+
+## Component
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Add Component | Ctrl+Shift+A | Editor |
+
+## Window
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Scene | Ctrl+1 | Editor |
+| Game | Ctrl+2 | Editor |
+| Inspector | Ctrl+3 | Editor |
+| Hierarchy | Ctrl+4 | Editor |
+| Project | Ctrl+5 | Editor |
+| Animation | Ctrl+6 | Editor |
+| Profiler | Ctrl+7 | Editor |
+| Console | Ctrl+Shift+C | Editor |
+
+## Help
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Documentation | F1 | Global |
+
+## Tools
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Hand Tool | Q | Editor |
+| Move Tool | W | Editor |
+| Rotate Tool | E | Editor |
+| Scale Tool | R | Editor |
+| Rect Tool | T | Editor |
+| Toggle Global/Local | X | Editor |
+| Physics | G | Editor |
+
+## Scene View
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Frame All (3D) | Home | Scene View |
+| Front View | Numpad1 | Scene View |
+| Back View | Ctrl+Numpad1 | Scene View |
+| Right View | Numpad3 | Scene View |
+| Left View | Ctrl+Numpad3 | Scene View |
+| Top View | Numpad7 / Ctrl+Numpad9 | Scene View |
+| Bottom View | Numpad9 / Ctrl+Numpad7 | Scene View |
+| Fly Through (3D) | Right Mouse + W/A/S/D/Q/E | Scene View |
+| Orbit (3D) | Alt+Left Drag | Scene View |
+| Pan | Middle Drag (2D: also Space+Left Drag) | Scene View |
+| Zoom | Mouse Wheel | Scene View |
+| Drop (Physics) | Hold Space | Scene View |
+| Snap onto Surfaces (Physics) | Shift+Left Drag | Scene View |
+| Cancel Gesture | Escape | Scene View |
+
+## Lattice
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Select No Points | Alt+A | Scene View |
+| Invert Point Selection | Ctrl+I | Scene View |
+| Expand Point Selection | Ctrl+= / Ctrl+NumpadAdd | Scene View |
+| Shrink Point Selection | Ctrl+- / Ctrl+NumpadSubtract | Scene View |
+| Toggle Falloff | O | Scene View |
+
+## Terrain
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Brush Smaller | [ | Scene View |
+| Brush Larger | ] | Scene View |
+| Brush Weaker | Shift+[ | Scene View |
+| Brush Stronger | Shift+] | Scene View |
+
+## Project
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Copy Assets | Ctrl+C | Project |
+| Cut Assets | Ctrl+X | Project |
+| Paste Assets | Ctrl+V | Project |
+| Select All Assets | Ctrl+A | Project |
+| Delete Assets | Delete / Backspace | Project |
+| Rename Asset | F2 | Project |
+| Resize Items | Ctrl+Mouse Wheel | Project |
+
+## Console
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Copy Message | Ctrl+C | Console |

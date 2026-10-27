@@ -95,6 +95,7 @@ local HudGame = {
         { name = "presses", type = "int", default = 0 },
         { name = "loops", type = "int", default = 0 },
         { name = "loads", type = "int", default = 0 },
+        { name = "reloads", type = "int", default = 0 },
     }
 }
 
@@ -109,6 +110,7 @@ function HudGame:init()
     end)
     doc:getElementById("spin"):addEventListener("loop", function(event) self.loops = self.loops + 1 end)
     doc.onLoad = function() self.loads = self.loads + 1 end
+    doc.onReload = function(report) self.reloads = self.reloads + 1 end
     anime.animate("#box", { translateX = 200, duration = 1000, ease = "linear" })
 
     -- a component button of this HUD over the middle of the 3D scene's wall (owned by this
@@ -300,8 +302,8 @@ async def test_text_anime_and_lottie(ed: Editor):
 
 
 async def test_hot_reload_while_playing(ed: Editor):
-    """A CSS change restyles in place; an HTML change reloads, keeping the model, the field
-    and the listeners of elements with an id (onLoad runs once more)."""
+    """A CSS change restyles in place; an HTML change is patched in (S17 R30: onReload fires, not
+    onLoad), keeping the model, the field and the listeners of elements with an id."""
     await ed.call("write_file", path=CSS, content=STYLE.replace("#ff8000", "#0080ff"))
     deadline = time.monotonic() + 4
     got = None
@@ -312,13 +314,15 @@ async def test_hot_reload_while_playing(ed: Editor):
             break
     ed.check(near(got, (0, 128, 255), 12), f"the CSS change did not show: {got}")
     loads = await hud(ed, "loads")
+    reloads = await hud(ed, "reloads")
     clicks = await hud(ed, "clicks")
 
     await ed.call("write_file", path=DOC, content=HTML.replace('<div id="glass">', '<div id="extra">new</div>\n    <div id="glass">'))
-    deadline = time.monotonic() + 4
-    while time.monotonic() < deadline and await hud(ed, "loads") == loads:
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline and await hud(ed, "reloads") == reloads:
         await ed.call("wait", frames=2)
-    ed.check_eq(await hud(ed, "loads"), loads + 1, "onLoad after the HTML change")
+    ed.check_eq(await hud(ed, "reloads"), reloads + 1, "onReload after the HTML change")
+    ed.check_eq(await hud(ed, "loads"), loads, "a patch does not fire onLoad")
     ed.check_eq((await lua(ed, f"return {DOC_LUA}:getElementById('extra') ~= nil"))[0], True, "the new element")
     ed.check_eq((await lua(ed, f"return {DOC_LUA}:getElementById('gold').textContent"))[0], "11", "the model kept its value")
     ed.check_eq((await lua(ed, f"return {DOC_LUA}:getElementById('name').value"))[0], "héllo ✓", "the field kept its value")

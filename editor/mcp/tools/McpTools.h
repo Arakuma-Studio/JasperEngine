@@ -5,6 +5,7 @@
 
 #include "mcp/McpJson.h"
 
+#include <cstddef>
 #include <filesystem>
 #include <string>
 
@@ -63,5 +64,10 @@ namespace jasperengine::editor::mcp {
     void registerScriptingTools(McpRegistry& registry);
     void registerGraphTools(McpRegistry& registry);
     void registerParticleTools(McpRegistry& registry);
+    void registerOrganisationTools(McpRegistry& registry);
+
+    // list_assets search and saved searches (OrganisationTools.cpp): an R20 search over the asset
+    // index, as {entries: [{path, type, guid?, labels?}], total, truncated, query}; *error for a bad re:
+    Json searchAssetsJson(Project* project, const std::string& query, const std::string& folder, size_t limit, std::string& error);
 
 }

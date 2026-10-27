@@ -173,6 +173,32 @@ bool editor::Project::resolveSceneAssetRefs(SceneProject& sceneProject, bool loa
     return hintChanged;
 }
 
+void editor::Project::bindMaterialAssetRefs(Material& material) {
+    if (!assetDatabase.isOpen()) {
+        return;
+    }
+    const AssetIndex::Roots roots = getAssetRoots();
+    AssetRefSchema::forEachMaterialRef(material, std::string(), [&](AssetRef& ref, const AssetRefSite& site) {
+        // name: in a .material file, the file itself (not a reference)
+        if (!ref.guid.isNull() || site.kind == DepEdgeKind::MeshMaterialFile) {
+            return;
+        }
+        const std::string hint = AssetIndex::toProjectRelative(roots, site.base, ref.path);
+        AssetDatabase::Resolution found = assetDatabase.resolve(ref.guid, hint, site.expected, true, true);
+        std::error_code ec;
+        if (!found.found() && !hint.empty() && fs::is_regular_file(projectPath / hint, ec)) {
+            // written a moment ago (a fork_shader, a tool's file) and not seen by a refresh yet;
+            // what else the database learns waits for the next refresh, as resolvePrefabPath does
+            std::vector<AssetDatabase::Change> changes = assetDatabase.importAssets(hint);
+            pendingAssetChanges.insert(pendingAssetChanges.end(), changes.begin(), changes.end());
+            found = assetDatabase.resolve(ref.guid, hint, site.expected, true, true);
+        }
+        if (found.found()) {
+            ref.guid = found.guid;
+        }
+    });
+}
+
 void editor::Project::refreshAssetHints() {
     for (SceneProject* sceneProject : getScenesAndPrefabStages()) {
         if (sceneProject->scene && resolveSceneAssetRefs(*sceneProject, false)) {
@@ -216,6 +242,14 @@ Guid editor::Project::prepareDocumentIdentity(YAML::Node& root, const fs::path& 
     // the rest in its order: readInFileIdentity finds formerGuids right after guid
     YAML::Node ordered(YAML::NodeType::Map);
     bool placed = false;
+    // S25 R22: the asset's labels, from the label store (the file's own until the store has
+    // read them), so a save keeps them and a label edit needs no save
+    std::vector<std::string> labels;
+    if (assetLabels.isReady()) {
+        labels = assetLabels.labelsOf(guid);
+    } else {
+        AssetLabels::readFileLabels(projectPath / relative, true, labels);
+    }
     auto place = [&]() {
         ordered["guid"] = guid.str();
         if (!formerGuids.empty()) {
@@ -224,11 +258,17 @@ Guid editor::Project::prepareDocumentIdentity(YAML::Node& root, const fs::path& 
             for (const Guid& former : formerGuids) list.push_back(former.str());
             ordered["formerGuids"] = list;
         }
+        if (!labels.empty()) {
+            YAML::Node list(YAML::NodeType::Sequence);
+            list.SetStyle(YAML::EmitterStyle::Flow);
+            for (const std::string& label : labels) list.push_back(label);
+            ordered["labels"] = list;
+        }
         placed = true;
     };
     for (const auto& entry : root) {
         const std::string key = entry.first.as<std::string>();
-        if (key == "guid" || key == "formerGuids") {
+        if (key == "guid" || key == "formerGuids" || key == "labels") {
             if (!placed && key == "guid") place();
             continue;
         }
@@ -247,7 +287,9 @@ Guid editor::Project::prepareDocumentIdentity(YAML::Node& root, const fs::path& 
 editor::SaveResult editor::Project::writeMaterialFile(const fs::path& relativePath, const Material& material,
                                                     DegradedSavePolicy policy, std::string* error) {
     const fs::path relative = normalizeToProjectRelative(relativePath);
-    YAML::Node root = Stream::encodeMaterial(material);
+    Material bound = material;
+    bindMaterialAssetRefs(bound);
+    YAML::Node root = Stream::encodeMaterial(bound);
     const Guid guid = prepareDocumentIdentity(root, relative);
     const SaveResult saved = DocumentFiles::saveMaterial(projectPath / relative, root, policy, error);
     if (saved == SaveResult::Saved) {
@@ -357,6 +399,12 @@ void editor::Project::onAssetFilesChanged(const std::vector<AssetDatabase::Chang
     // instances, added ones relink them (PREFABS.md §3)
     applyAssetChanges(changes);
     assetIndex.update(changes);
+    // S25: an asset edited, put back or arriving outside the editor brings its labels
+    for (const AssetDatabase::Change& change : changes) {
+        if (change.type != AssetDatabase::Change::Type::Removed && Guid::isValidText(change.guid)) {
+            assetLabels.refreshAsset(Guid::parse(change.guid));
+        }
+    }
     if (std::any_of(changes.begin(), changes.end(), [](const AssetDatabase::Change& change) {
             return change.type != AssetDatabase::Change::Type::Modified; })) {
         // references follow their assets' GUIDs: moved ones get the new hints, a file put

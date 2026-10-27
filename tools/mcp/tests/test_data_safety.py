@@ -186,9 +186,19 @@ async def test_mcp_degraded_save(ed: Editor):
     for name in ("dropped.scene", "future.scene"):
         shutil.copy(FIXTURES / name, ed.project / name)
     shutil.copy(FIXTURES / "dropped.scene", ed.project / "dropped2.scene")
-    original = (ed.project / "dropped.scene").read_bytes()
 
     opened = await ed.call("open_scene", scene="dropped.scene")
+    # the asset database gives the copied file its identity (S04: a guid line, nothing else),
+    # when it imports the file the watcher reported
+    deadline = time.monotonic() + 60
+    while not (ed.project / "dropped.scene").read_bytes().startswith(b"guid: "):
+        check(time.monotonic() < deadline, "the asset database gave the copied scene no identity within 60 s")
+        await ed.call("editor_status")
+        await asyncio.sleep(0.2)
+    original = (ed.project / "dropped.scene").read_bytes()
+    lines = original.decode().splitlines(True)
+    check(lines[0].startswith("guid: ") and "".join(lines[1:]).encode() == (FIXTURES / "dropped.scene").read_bytes(),
+          f"the scene has its S04 identity and is otherwise the copied file: {lines[:3]}")
     report = opened["load_report"]
     check(report["dropped"] == 2 and not report["newer_format"], f"load_report: {report}")
     check(opened["scene"]["degraded"]["dropped"] == 2, f"degraded: {opened['scene']['degraded']}")

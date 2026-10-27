@@ -669,7 +669,9 @@ bool loadMaterialFile(const fs::path& file, Material& material, std::string& err
 // The file's text with its identity (S04: the GUID it has, or a new one for a new file),
 // formatVersion first and the existing file's unknown root keys kept (docs/data-safety.md)
 std::string materialFileContent(Project* project, const fs::path& file, const Material& material) {
-    YAML::Node root = Stream::encodeMaterial(material);
+    Material bound = material;
+    project->bindMaterialAssetRefs(bound);
+    YAML::Node root = Stream::encodeMaterial(bound);
     project->prepareDocumentIdentity(root, file);
     return DocumentFiles::materialText(root, file) + "\n";
 }
@@ -713,6 +715,19 @@ void listAssetsTool(const CallPtr& call) {
     std::string error;
     if (!dirArg.empty() && dirArg != "." && !McpRefs::resolveProjectPath(project, dirArg, root, error, true)) {
         call->fail(error);
+        return;
+    }
+    // search: the Project window's grammar over the asset index (S25 R20), by score then name
+    if (args.contains("search") && args["search"].is_string()) {
+        const size_t limit = static_cast<size_t>(std::clamp(args.value("limit", 200), 1, 2000));
+        Json data = searchAssetsJson(project, args["search"].get<std::string>(), dirArg, limit, error);
+        if (!error.empty()) {
+            call->fail(error);
+            return;
+        }
+        std::string text = std::to_string(data["total"].get<size_t>()) + " match(es) of " + data["query"].get<std::string>() + ":";
+        for (const Json& item : data["entries"]) text += "\n" + item["path"].get<std::string>();
+        call->ok(text, data);
         return;
     }
     if (!fs::is_directory(root)) {
@@ -1601,6 +1616,7 @@ void finishRemoteImport(const CallPtr& call, const std::shared_ptr<RemoteImport>
 
     // from_document: the URLs it imported, then (rewrite) each replaced in the file by its path relative to the file
     std::string rewriteNote;
+    bool rewritten = false;
     if (!state->document.empty()) {
         const importers::ImportResult& result = state->documentResult;
         addFiles(result);
@@ -1628,8 +1644,13 @@ void finishRemoteImport(const CallPtr& call, const std::shared_ptr<RemoteImport>
                     if (replaceAll(content, url, to) > 0) replacements.push_back({{"from", url}, {"to", to}});
                 }
                 if (!replacements.empty()) {
-                    if (writeFilesUndoable(ctx, {{file, content}}, error)) {
+                    // the downloads and the manifest reload with the rewrite: the document once
+                    jasperengine::htmlui::compat::ImportManifest::reload();
+                    std::vector<fs::path> downloads = changed;
+                    downloads.push_back(project->getAssetsPath() / FileUtils::pathFromUtf8(jasperengine::htmlui::compat::ImportManifest::kPath));
+                    if (writeFilesUndoable(ctx, {{file, content}}, error, downloads)) {
                         data["rewritten"] = {{"file", state->document}, {"replacements", replacements}};
+                        rewritten = true;
                     } else {
                         rewriteNote = " Rewriting " + state->document + " failed: " + error;
                     }
@@ -1639,9 +1660,11 @@ void finishRemoteImport(const CallPtr& call, const std::shared_ptr<RemoteImport>
     }
     if (written > 0) {
         // the runtime resolves remote URLs through the manifest (a document that keeps them: rewrite false)
-        jasperengine::htmlui::compat::ImportManifest::reload();
-        changed.push_back(project->getAssetsPath() / FileUtils::pathFromUtf8(jasperengine::htmlui::compat::ImportManifest::kPath));
-        syncFiles(ctx, changed, false);
+        if (!rewritten) {
+            jasperengine::htmlui::compat::ImportManifest::reload();
+            changed.push_back(project->getAssetsPath() / FileUtils::pathFromUtf8(jasperengine::htmlui::compat::ImportManifest::kPath));
+            syncFiles(ctx, changed, false);
+        }
         if (ProjectWindow* window = ctx.projectWindow()) window->refreshCurrentDirectory();
     }
     data["remote"] = remote;
@@ -3100,6 +3123,7 @@ void registerAssetTools(McpRegistry& registry) {
             {"type", stringEnum("", types)},
             {"pattern", string("")},
             {"query", string("Name substring.")},
+            {"search", string("Project search: t:texture l:Hero ext: path: re: ref: missing: (asset labels too).")},
             {"recursive", withDefault(boolean(""), true)},
             {"details", withDefault(boolean("Add sizes and image dimensions."), false)},
             {"limit", withDefault(integer("", 1, 2000), 200)}

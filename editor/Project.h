@@ -23,6 +23,9 @@
 #include "asset/AssetMap.h"
 #include "asset/AssetRefSchema.h"
 #include "asset/MissingAssetTracker.h"
+#include "organisation/AssetLabels.h"
+#include "organisation/Organisation.h"
+#include "search/AssetSearchIndex.h"
 #include "util/ScriptParser.h"
 #include "util/ScopedDefaultEntityPool.h"
 #include "util/CxxStandards.h"
@@ -719,6 +722,7 @@ namespace jasperengine::editor{
         std::unique_ptr<io::ScopedFileLock> projectLock;
         bool ignoreProjectLock = false;
         bool skipProjectLock = false;
+        bool readOnlyAssets = false;
         bool projectLockedFailure = false;
         std::string projectLockMessage;
         struct AutosaveScene {
@@ -898,6 +902,11 @@ namespace jasperengine::editor{
         // Who references what (S04): closed files from disk, documents with unsaved edits from memory
         AssetIndex assetIndex;
         MissingAssetTracker missingAssets;
+        // S25: asset labels (in metas and in-file keys), this user's bookmarks, saved searches
+        // and palette recents, and the index the asset search evaluates
+        AssetLabels assetLabels;
+        Organisation organisation;
+        AssetSearchIndex assetSearchIndex;
         // Lua's Asset module (AssetMap) in the editor and its Play: answered by the database
         class EditorAssetResolver : public AssetMap::Resolver {
         public:
@@ -1405,6 +1414,11 @@ namespace jasperengine::editor{
         void setIgnoreProjectLock(bool ignore);
         // A session that never writes the project (CLI checks and exports): no lock at all
         void setSkipProjectLock(bool skip);
+        // A session that only reads (the CLI's check, a scene dump that saves nothing), next to
+        // an editor that may be upgrading the same files: the asset database writes no
+        // identities (metas, in-file GUIDs) and no cache (AssetDatabase::setReadOnly). Before
+        // loadProject.
+        void setReadOnlyAssets(bool readOnly) { readOnlyAssets = readOnly; }
         // The last loadProject failed because another live editor holds the project
         bool wasProjectLocked() const;
         const std::string& getProjectLockMessage() const;
@@ -1504,6 +1518,10 @@ namespace jasperengine::editor{
         uint32_t loadUntitledScene(const std::string& text, const std::string& displayName);
         void openScene(fs::path filepath, bool closePrevious = true);
         void closeScene(uint32_t sceneId, bool systemClose = false);
+        // Frees every scene, its render and the project state, as a project switch does. The
+        // editor's Project lives until exit and frees none; code that drops a Project while the
+        // engine runs (the CLI's tools, the unit tests) calls this first
+        void releaseScenes();
         // The open scene (or prefab stage) is read again from its file, its unsaved changes
         // dropped (the hot reload's Reload, S05 R11; not an undo step). False (and `error`)
         // while a scene plays or when the file cannot be read (the open copy stays).
@@ -1733,6 +1751,13 @@ namespace jasperengine::editor{
 
         AssetIndex& getAssetIndex() { return assetIndex; }
         const AssetIndex& getAssetIndex() const { return assetIndex; }
+        // S25 (editor/organisation, editor/search)
+        AssetLabels& getAssetLabels() { return assetLabels; }
+        const AssetLabels& getAssetLabels() const { return assetLabels; }
+        Organisation& getOrganisation() { return organisation; }
+        const Organisation& getOrganisation() const { return organisation; }
+        // Brought up to date first (the database and the labels may have changed)
+        AssetSearchIndex& getAssetSearchIndex();
         // The Missing Assets lists, brought up to date with the database and the index
         MissingAssetTracker& getMissingAssets();
         // The roots reference hints are relative to (assets and Lua directories), project-relative
@@ -1751,6 +1776,10 @@ namespace jasperengine::editor{
         // asset only by path (assigned since the last save) get its GUID, so they follow it
         void bindLoadedAssetRefs();
         bool resolveRegistryAssetRefs(EntityRegistry* registry, bool loading);
+        // A material about to be written to a .material file: its references that name an
+        // asset only by path (a tool's or a paste's new values) get the asset's GUID, so the
+        // file follows the asset when it moves (R13 rewrites no referrer)
+        void bindMaterialAssetRefs(Material& material);
         // The identity keys (guid, formerGuids) a scene, prefab or material file is written
         // with, put at the top of its root; returns the GUID (a new one for a new file)
         Guid prepareDocumentIdentity(YAML::Node& root, const std::filesystem::path& relativePath);

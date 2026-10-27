@@ -310,6 +310,11 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
             if (reload::isHtmlUiFile(watch::pathToUtf8(change.path))) external["ui"].push_back(change.path);
             continue;
         }
+        // so is a renamed one under its old name (a document reading the old name reloads and
+        // reports it missing; the new name is handled below like an added file)
+        if (change.kind == FileChangeKind::Moved && reload::isHtmlUiFile(watch::pathToUtf8(change.oldPath))) {
+            (change.origin == ChangeOrigin::Editor ? editorWritten : external)["ui"].push_back(change.oldPath);
+        }
         const std::string kind = reload::kindOf(change.path);
         if (kind.empty()) continue;
         // a text file reloads only the code editor's buffer of it: with none open there is
