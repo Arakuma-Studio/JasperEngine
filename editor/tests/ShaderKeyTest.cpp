@@ -59,8 +59,9 @@ namespace {
 
     // MESH has every one of its 32 bits (bit 5, the retired 'Pcf', is Stochastic Tiling since
     // October 2026, see StochasticTilingTest.cpp)
-    // bits 0-31 and bit 32, the lattice deformer ('Ltc')
-    const uint64_t meshValidMask = 0x1FFFFFFFFULL;
+    // bits 0-31, bit 32, the lattice deformer ('Ltc'), and bits 33-34, the Vertex Animation
+    // ('Vat', 'Vab')
+    const uint64_t meshValidMask = 0x7FFFFFFFFULL;
     // every MESH bit but 5: the valid mask before Stochastic Tiling
     const uint64_t meshMaskWithoutBit5 = 0xFFFFFFDFULL;
 
@@ -190,7 +191,7 @@ TEST(ShaderKey, SpecsTakeSixtyFourBitMasks) {
 // ---- (b) normalization
 
 TEST(ShaderKeyNormalize, StripsUnnamedBitsKeepsTheRest) {
-    // MESH: every bit past 32 (the lattice's) goes; bit 5 (Stochastic Tiling) stays: a stale
+    // MESH: every bit past 34 (the Vertex Animation's) goes; bit 5 (Stochastic Tiling) stays: a stale
     // 'Pcf' of an old file is cleared where files are read (Stream), not here
     EXPECT_EQ(ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::MESH, ~0ULL)),
               ShaderPool::getShaderKey(ShaderType::MESH, meshValidMask));
@@ -397,12 +398,19 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::MESH, (1u << 3) | (1u << 30), "mesh_PucL16"},
         {ShaderType::MESH, meshMaskWithoutBit5, "mesh_UltUv1Uv2PucShwNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16Pcl"},
         // bits past the count add nothing
-        {ShaderType::MESH, 0x41 | shaderPropertyBit(33) | shaderPropertyBit(63), "mesh_UltNor"},
+        {ShaderType::MESH, 0x41 | shaderPropertyBit(35) | shaderPropertyBit(63), "mesh_UltNor"},
         // bit 32, the first past the 32 older keys use, is the lattice deformer
         {ShaderType::MESH, 0x41 | shaderPropertyBit(32), "mesh_UltNorLtc"},
+        // bits 33-34: a Vertex Animator's Vertices and Bones modes
+        {ShaderType::MESH, 0x41 | shaderPropertyBit(33), "mesh_UltNorVat"},
+        {ShaderType::MESH, 0x41 | shaderPropertyBit(34), "mesh_UltNorVab"},
+        {ShaderType::DEPTH, shaderPropertyBit(16), "depth_Vat"},
+        {ShaderType::DEPTH, shaderPropertyBit(17), "depth_Vab"},
+        {ShaderType::GBUFFER, shaderPropertyBit(14), "gbuffer_Vat"},
+        {ShaderType::GBUFFER, shaderPropertyBit(15), "gbuffer_Vab"},
         // bit 5, a '?' while it was retired, is Stochastic Tiling
         {ShaderType::MESH, 0x41 | (1u << 5), "mesh_UltStoNor"},
-        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtc"},
+        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtcVatVab"},
         {ShaderType::DEPTH, 0x3, "depth_TexSki"},
         {ShaderType::DEPTH, 0x3FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1Txr"},
         {ShaderType::DEPTH, 0x7FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1TxrSto"},

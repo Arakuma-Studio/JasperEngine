@@ -581,6 +581,9 @@ std::string editor::Stream::attributeTypeToString(AttributeType type) {
         case AttributeType::TERRAINNODERANGE: return "terrainnoderange";
         case AttributeType::TERRAINNODERESOLUTION: return "terrainnoderesolution";
         case AttributeType::SMOOTHNORMAL: return "smoothnormal";
+        case AttributeType::VAT_INDEX: return "vatindex";
+        case AttributeType::INSTANCEVAT0: return "instancevat0";
+        case AttributeType::INSTANCEVAT1: return "instancevat1";
         default: return "position"; // Default
     }
 }
@@ -623,6 +626,9 @@ AttributeType editor::Stream::stringToAttributeType(const std::string& str) {
     if (str == "terrainnoderange") return AttributeType::TERRAINNODERANGE;
     if (str == "terrainnoderesolution") return AttributeType::TERRAINNODERESOLUTION;
     if (str == "smoothnormal") return AttributeType::SMOOTHNORMAL;
+    if (str == "vatindex") return AttributeType::VAT_INDEX;
+    if (str == "instancevat0") return AttributeType::INSTANCEVAT0;
+    if (str == "instancevat1") return AttributeType::INSTANCEVAT1;
     return AttributeType::POSITION; // Default
 }
 

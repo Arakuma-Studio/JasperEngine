@@ -30,6 +30,14 @@ namespace jasperengine{
         Rect textureRect;
     };
 
+    // an instance's Vertex Animator state on the GPU (i_vat0, i_vat1: InstanceData::vat0/vat1),
+    // in a buffer of its own next to the InstanceRenderData one, only for a batch drawn with a
+    // Vertex Animation variant
+    struct InstanceVatRenderData{
+        Vector4 vat0;
+        Vector4 vat1;
+    };
+
     struct InstanceBounds{
         Vector3 center; // model space, so an entity move needs no rebuild
         float radius = 0;
@@ -39,6 +47,9 @@ namespace jasperengine{
     // slice of a RenderSystem instance view, nearest first and grouped by detail level
     struct InstanceViewRange{
         unsigned int offset = 0;
+        // where the slice's InstanceVatRenderData start in the view's VAT list (a batch drawn
+        // with a Vertex Animation variant; the others have none there)
+        unsigned int vatOffset = 0;
         unsigned int lodCount[MAX_MESH_LODS] = {};
 
         unsigned int count() const{
@@ -71,6 +82,10 @@ namespace jasperengine{
         std::vector<InstanceData> instances;
         std::vector<InstanceRenderData> renderInstances; //must be sorted
         std::vector<InstanceBounds> renderBounds; // parallel to renderInstances
+        // parallel to renderInstances (same order) while the mesh draws with a Vertex Animation
+        // variant, else empty; uploaded into vatBuffer (i_vat0, i_vat1), made by such a load
+        std::vector<InstanceVatRenderData> renderVat;
+        ExternalBuffer vatBuffer;
 
         unsigned int maxInstances = 100;
         unsigned int numVisible = 0;

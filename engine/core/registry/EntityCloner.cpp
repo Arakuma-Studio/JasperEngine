@@ -167,6 +167,9 @@ void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneConte
     mesh.lattice = LatticeMeshState();
     mesh.lattice.wantsTessellation = wantsTessellation;
     mesh.lattice.tessellation = tessellation;
+    // the Vertex Animation draw state is the original's load's: the copy's own is made with
+    // its load (RenderSystem, from the copy's Vertex Animator)
+    mesh.vat = VatMeshState();
 }
 
 template<>
@@ -260,8 +263,10 @@ void prepare<SkyboxComponent>(SkyboxComponent& sky, Entity, CloneContext& ctx) {
 template<>
 void prepare<InstancedMeshComponent>(InstancedMeshComponent& instmesh, Entity, CloneContext&) {
     detachExternalBuffer(instmesh.buffer);
+    detachExternalBuffer(instmesh.vatBuffer);
     instmesh.renderInstances.clear();
     instmesh.renderBounds.clear();
+    instmesh.renderVat.clear();
     instmesh.numVisible = 0;
     for (InstanceViewRange& view : instmesh.views) {
         view = InstanceViewRange();
