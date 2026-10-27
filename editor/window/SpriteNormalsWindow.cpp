@@ -255,6 +255,9 @@ void SpriteNormalsWindow::loadStored() {
 void SpriteNormalsWindow::storeSettings() {
     SpriteNormalsWindowSettings& s = project->getSpriteNormalsSettings();
     s.settings = settings;
+    // regions without colours yet are the window's, not settings (validateSettings refuses them)
+    auto& regions = s.settings.regions;
+    regions.erase(std::remove_if(regions.begin(), regions.end(), [](const sn::Region& r) { return r.colors.empty(); }), regions.end());
     s.view = static_cast<int>(view);
     s.lightHeight = light.userHeight ? light.height : 0.0f;
     s.lightColour = light.colour;
@@ -297,6 +300,10 @@ const Scene* SpriteNormalsWindow::sceneFor(const sn::Spec& spec) const {
 sn::Spec SpriteNormalsWindow::specOf(const Item& item) const {
     sn::Spec spec = item.spec;
     spec.settings = settings;
+    // a region still without colours (just added, its colours not picked yet) matches nothing:
+    // left out of the run instead of refusing it
+    auto& regions = spec.settings.regions;
+    regions.erase(std::remove_if(regions.begin(), regions.end(), [](const sn::Region& r) { return r.colors.empty(); }), regions.end());
     return spec;
 }
 
@@ -2040,7 +2047,10 @@ void SpriteNormalsWindow::drawSource() {
     Entity selEntity = NULL_ENTITY;
     const bool usable = usableSelection(project, selScene, selEntity);
     ImGui::BeginDisabled(!usable);
-    if (Widgets::iconButton("Selection##sourceSel", ICON_FA_ARROW_POINTER, ImVec2(button, button)) && usable) {
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, ImGui::GetStyle().FramePadding.y));
+    const bool selectionClicked = ImGui::Button(ICON_FA_ARROW_POINTER "##sourceSel", ImVec2(button, 0));
+    ImGui::PopStyleVar();
+    if (selectionClicked && usable) {
         if (!setSourceEntity(selScene, selEntity, error)) setStatus(error, true);
     }
     ImGui::EndDisabled();
@@ -2069,10 +2079,10 @@ void SpriteNormalsWindow::drawBatch() {
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
             ImGui::Checkbox("##checked", &item.checked);
+            UIProbe::item("spriteNormals.batch." + item.label);
             tooltip("Save All writes this one");
             ImGui::TableSetColumnIndex(1);
             if (ImGui::Selectable(item.label.c_str(), i == current, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap)) selectItem(i);
-            UIProbe::item("spriteNormals.batch." + item.label);
             tooltip(item.texturePath.c_str());
             ImGui::TableSetColumnIndex(2);
             ImGui::TextDisabled("%s", item.probeOk ? (std::to_string(item.info.width) + " x " + std::to_string(item.info.height)).c_str() : "-");
@@ -3218,6 +3228,11 @@ void SpriteNormalsWindow::show() {
         // the settings scroll; the buttons, progress and status stay in view under them
         const float minimum = ImGui::GetFrameHeight() * 1.4f + ImGui::GetStyle().ItemSpacing.y * 3.0f;
         ImGui::BeginChild("##settings", ImVec2(0, -std::max(footerHeight, minimum)), ImGuiChildFlags_None);
+        {
+            // UI tests: the settings' scrolling area
+            const ImRect inner = ImGui::GetCurrentWindow()->InnerClipRect;
+            UIProbe::rect("spriteNormals.settings", inner.Min.x + 1, inner.Min.y + 1, inner.Max.x - 1, inner.Max.y - 1);
+        }
         drawSettings();
         ImGui::EndChild();
         const float footerTop = ImGui::GetCursorPosY();

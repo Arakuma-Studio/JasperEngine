@@ -268,7 +268,8 @@ async def test_stale_badge_and_regenerate(ed: Editor):
     ed.check("project.generatedStale.hero_normal.png" not in ed.ui_items(), "fresh at first")
     (ed.project / "assets" / "hero.png").write_bytes(disks(32, 32, tint=0x55))
     await ed.call("sync_files")
-    await rect_of(ed, "project.generatedStale.hero_normal.png", "the stale badge after hero.png changed", seconds=30.0)
+    # the watcher re-scans every 5 s of editor frames
+    await wait_for(ed, lambda: "project.generatedStale.hero_normal.png" in ed.ui_items(), "the stale badge after hero.png changed", 40)
     await shot(ed, "p4-project-stale")
     # the Inspector's asset view of the stale map
     await click(ed, await rect_of(ed, "project.file.hero_normal.png", "hero_normal.png"))
@@ -298,3 +299,40 @@ async def test_playing_disables_the_wand(ed: Editor):
     ed.check(after == before, "nothing written while playing")
     await ed.call("play", action="stop")
     await ed.call("wait", frames=20)
+
+
+async def test_sprite_frames_button_opens_on_the_sprite(ed: Editor):
+    """Inspector > Sprite > Sprite Frames: "Normal Map..." opens the window on Walker (its 4 frames), Assign on."""
+    await ed.call("select_entities", entities=["Walker"])
+    await focus_x(ed, "inspector")
+    await click(ed, await rect_of(ed, "inspector.spriteNormalMap", "the Sprite Frames' Normal Map... button", panel="inspector"))
+    await rect_of(ed, "spriteNormals.assign", "the Assign checkbox (an assign target)")
+    await rect_of(ed, "spriteNormals.grid", "the frame grid toggle (the Sprite's frames)")
+    await rect_of(ed, "spriteNormals.play", "the Play button (more than one frame)")
+    # the Advanced foldout and a region, drawn for real
+    await click(ed, await rect_of(ed, "spriteNormals.advanced", "the Advanced foldout"))
+    await click(ed, await rect_of(ed, "spriteNormals.addRegion", "+ Region", panel="spriteNormals.settings"))
+    await rect_of(ed, "spriteNormals.region.0.pick", "the region's eyedropper", panel="spriteNormals.settings")
+    await ed.call("wait", frames=30)
+    await shot(ed, "p4-window-advanced")
+
+
+async def test_batch_from_the_project_window(ed: Editor):
+    """Two images selected (Ctrl+click), right-click > "Generate Normal Maps (2)...": the batch list."""
+    await open_assets_folder(ed)
+    await click(ed, await rect_of(ed, "project.file.hero.png", "hero.png"))
+    walk = await rect_of(ed, "project.file.walk.png", "walk.png")
+    x, y = center(walk)
+    xdo(ed, "mousemove", str(int(x)), str(int(y)))
+    await asyncio.sleep(0.2)
+    xdo(ed, "keydown", "ctrl")
+    xdo(ed, "click", "1")
+    xdo(ed, "keyup", "ctrl")
+    await ed.call("wait", frames=6)
+    await click(ed, walk, button="3")
+    await ed.call("wait", frames=6)
+    await click(ed, await rect_of(ed, "project.menu.generateNormalMaps", "Generate Normal Maps (2)..."))
+    await rect_of(ed, "spriteNormals.batch.hero.png", "hero.png in the batch list", panel="spriteNormals.settings")
+    await rect_of(ed, "spriteNormals.batch.walk.png", "walk.png in the batch list", panel="spriteNormals.settings")
+    await ed.call("wait", frames=40)
+    await shot(ed, "p4-window-batch")

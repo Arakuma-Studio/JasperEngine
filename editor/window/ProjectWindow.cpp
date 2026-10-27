@@ -3478,6 +3478,7 @@ void editor::ProjectWindow::drawSpriteNormalsMenuItems(const FileEntry& file, co
         if (ImGui::MenuItem((std::string(ICON_FA_WAND_MAGIC_SPARKLES " Generate Normal Maps (") + std::to_string(images.size()) + ")...").c_str())) {
             editor::getEditorHost().openSpriteNormals(images, false);
         }
+        UIProbe::item("project.menu.generateNormalMaps");
         ImGui::SetItemTooltip("One normal map per selected image, same settings, saved as one undo step");
     } else {
         if (ImGui::MenuItem(ICON_FA_WAND_MAGIC_SPARKLES " Generate Normal Map...")) {
