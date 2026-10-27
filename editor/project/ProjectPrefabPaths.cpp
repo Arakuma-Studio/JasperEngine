@@ -10,6 +10,8 @@
 #include "Project.h"
 #include "animation/AnimationClipDocument.h"
 #include "animation/ModelSubClips.h"
+#include "vat/VatAssetFiles.h"
+#include "vat/VatDocument.h"
 #include "Factory.h"
 #include "Out.h"
 #include "Stream.h"
@@ -164,11 +166,13 @@ void editor::Project::importPrefabFiles(const std::filesystem::path& path, bool 
 }
 
 void editor::Project::applyAssetChanges(const std::vector<AssetDatabase::Change>& allChanges) {
-    // .anim clips: their references follow in applyClipAssetChanges, the rest is prefabs'
+    // .anim clips and .vat Vertex Animations: their references follow in applyClipAssetChanges,
+    // the rest is prefabs'
     std::vector<AssetDatabase::Change> changes;
     std::vector<AssetDatabase::Change> clipChanges;
     for (const AssetDatabase::Change& change : allChanges) {
-        (Util::isAnimationClipFile(change.path.string()) ? clipChanges : changes).push_back(change);
+        const std::string path = change.path.string();
+        (Util::isAnimationClipFile(path) || Util::isVertexAnimationFile(path) ? clipChanges : changes).push_back(change);
     }
     if (!clipChanges.empty()) {
         applyClipAssetChanges(clipChanges);
@@ -501,9 +505,13 @@ bool editor::Project::resolveRegistryClipRefs(EntityRegistry* registry, bool may
     auto animators = registry->getComponentArray<VertexAnimatorComponent>();
     for (size_t i = 0; i < animators->size(); i++) {
         VertexAnimatorComponent& animator = animators->getComponentFromIndex(i);
+        const std::string before = animator.animation;
         if (resolveAssetReference(animator.animation, animator.guid, mayImport)) {
             animator.needsLoad = true;
             changed = true;
+            // its GameObject's Model played the .vat's mesh under the old name: the pair was
+            // renamed or moved together (vertex animation spec 2.1)
+            vat::followVatMesh(registry, animators->getEntity(i), before, animator.animation, false);
         }
     }
     return changed;
@@ -548,10 +556,15 @@ void editor::Project::applyClipAssetChanges(const std::vector<AssetDatabase::Cha
                     continue;
                 }
                 animator.needsLoad = true;
+                const std::string before = animator.animation;
                 if (fs::path(animator.animation).lexically_normal().generic_string() != form) {
                     animator.animation = form;
                     changed = true;
                 }
+                // the Model follows its .vat (a pair moved outside the editor), and an undone
+                // delete of the pair gives the cleared Model its mesh back
+                const bool restored = change.type == AssetDatabase::Change::Type::Added;
+                changed |= vat::followVatMesh(registry, animators->getEntity(i), before.empty() ? form : before, form, restored);
             }
             return changed;
         };
@@ -566,20 +579,26 @@ void editor::Project::applyClipAssetChanges(const std::vector<AssetDatabase::Cha
         }
     }
     AnimationClipDocument::filesChanged(touched, this);
+    // Vertex Animations: their documents reload, the pool drops them, their animators reload
+    VatDocument::filesChanged(touched, this);
 }
 
 void editor::Project::remapClipFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath) {
     if (projectPath.empty()) {
         return;
     }
+    // open .vat documents go with their files first (the asset changes below reload them)
+    VatDocument::filesMoved(oldPath.lexically_normal(), newPath.lexically_normal());
     std::error_code ec;
     // a directory's tracked files moved with remapPrefabFilePath; a model is not tracked
-    if (!fs::is_directory(newPath, ec) && (Util::isAnimationClipFile(oldPath.string()) || Util::isAnimationClipFile(newPath.string()))) {
+    if (!fs::is_directory(newPath, ec) && (Util::isAnimationClipFile(oldPath.string()) || Util::isAnimationClipFile(newPath.string()) ||
+                                           Util::isVertexAnimationFile(oldPath.string()) || Util::isVertexAnimationFile(newPath.string()))) {
         applyAssetChanges(assetDatabase.moveAssets(oldPath, newPath));
     }
     // open documents (clips, a model's sub-clips) go with their files
     AnimationClipDocument::filesMoved(oldPath.lexically_normal(), newPath.lexically_normal());
     AnimationClipDocument::filesChanged({oldPath.lexically_normal(), newPath.lexically_normal()}, this);
+    VatDocument::filesChanged({oldPath.lexically_normal(), newPath.lexically_normal()}, this);
 }
 
 void editor::Project::cleanupClipFilePath(const std::filesystem::path& deletedPath) {
@@ -589,6 +608,7 @@ void editor::Project::cleanupClipFilePath(const std::filesystem::path& deletedPa
     // what cleanupPrefabFilePath did not remove already (an undone copy)
     assetDatabase.removeAssets(deletedPath);
     AnimationClipDocument::filesChanged({deletedPath.lexically_normal()}, this);
+    VatDocument::filesChanged({deletedPath.lexically_normal()}, this);
 }
 
 void editor::Project::forEachPrefabAsset(const std::function<void(const std::filesystem::path& path, Prefab& prefab)>& visit) {

@@ -3,6 +3,7 @@
 
 #include "Project.h"
 #include "animation/AnimationClipDocument.h"
+#include "vat/VatDocument.h"
 #include "animation/ModelSubClips.h"
 #include "pose/PoseAnimationDocument.h"
 #include "pose/PoseRigProvider.h"
@@ -5351,6 +5352,7 @@ void editor::Project::resetConfigs() {
     // pose animation and clip documents and rigs belong to the project
     PoseAnimationDocument::closeAll();
     AnimationClipDocument::closeAll();
+    VatDocument::closeAll();
     // the Inspector's asset was a file of the old project
     inspectedAsset.clear();
     PoseRigProvider::clear();

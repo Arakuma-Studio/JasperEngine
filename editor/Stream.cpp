@@ -7370,6 +7370,19 @@ YAML::Node editor::Stream::encodeVertexAnimatorComponent(const VertexAnimatorCom
     }
     if (animator.attachments.empty()) attachmentsNode.SetStyle(YAML::EmitterStyle::Flow);
     node["attachments"] = attachmentsNode;
+    // per-instance starts (Create Crowd): only when set, so other animators' YAML is unchanged
+    if (!animator.instanceClips.empty()) {
+        YAML::Node clipsNode(YAML::NodeType::Sequence);
+        for (const std::string& clip : animator.instanceClips) clipsNode.push_back(clip);
+        clipsNode.SetStyle(YAML::EmitterStyle::Flow);
+        node["instanceClips"] = clipsNode;
+    }
+    if (!animator.instanceSpeeds.empty()) {
+        YAML::Node speedsNode(YAML::NodeType::Sequence);
+        for (float speed : animator.instanceSpeeds) speedsNode.push_back(YamlNumbers::text(finiteOr(speed, 1.0f)));
+        speedsNode.SetStyle(YAML::EmitterStyle::Flow);
+        node["instanceSpeeds"] = speedsNode;
+    }
     return node;
 }
 
@@ -7436,6 +7449,19 @@ VertexAnimatorComponent editor::Stream::decodeVertexAnimatorComponent(const YAML
                 }
             }
             animator.attachments.push_back(std::move(attachment));
+        }
+    }
+
+    const YAML::Node clipsNode = node["instanceClips"];
+    if (clipsNode && clipsNode.IsSequence()) {
+        for (const YAML::Node& clip : clipsNode) {
+            animator.instanceClips.push_back(clip.IsScalar() ? clip.Scalar() : std::string());
+        }
+    }
+    const YAML::Node speedsNode = node["instanceSpeeds"];
+    if (speedsNode && speedsNode.IsSequence()) {
+        for (const YAML::Node& speed : speedsNode) {
+            animator.instanceSpeeds.push_back(decodeFinite(speed, 1.0f));
         }
     }
 
