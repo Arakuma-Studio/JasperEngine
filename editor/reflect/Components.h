@@ -93,6 +93,11 @@ namespace jasperengine::editor::reflect {
     extern const ComponentDesc kUIDocumentDesc;
     extern const ComponentDesc kLocalVolumetricFogDesc;
     extern const ComponentDesc kVolumetricCloudsDesc;
+    extern const ComponentDesc kFluidSimulationDesc;
+    extern const ComponentDesc kLatticeDesc;
+    extern const ComponentDesc kLatticeModifierDesc;
+    extern const ComponentDesc kLatticeFollowerDesc;
+    extern const ComponentDesc kLatticeTracksDesc;
 
 }
 

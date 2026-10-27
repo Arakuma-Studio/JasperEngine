@@ -6,6 +6,11 @@
 // and changes a few fields, so a value that is written but not read back shows up.
 
 #include "Stream.h"
+#include "component/FluidSimulationComponent.h"
+#include "component/LatticeComponent.h"
+#include "component/LatticeFollowerComponent.h"
+#include "component/LatticeModifierComponent.h"
+#include "component/LatticeTracksComponent.h"
 #include "reflect/Reflect.h"
 
 #include "LogCapture.h"
@@ -112,5 +117,13 @@ STABLE(PointsComponent, PointsComponent, )
 STABLE(LineRendererComponent, LineRendererComponent, )
 STABLE(PolygonComponent, PolygonComponent, )
 STABLE(MeshPolygonComponent, MeshPolygonComponent, )
+STABLE(FluidSimulationComponent, FluidSimulationComponent, component.output = FluidOutput::SCREEN; component.curl = 12.5f; component.seed = 7;
+    component.backColor = Vector3(0.1f, 0.2f, 0.3f))
+STABLE(LatticeComponent, LatticeComponent, component.resolutionX = 2; component.offsets.assign(18, Vector3(0.25f, 0, 0));
+    component.interpolation = LatticeInterpolation::SMOOTH; component.poses.push_back(LatticePose{"bend", component.offsets}))
+STABLE(LatticeModifierComponent, LatticeModifierComponent, component.bindings.push_back(LatticeBinding{5, 0.5f, LatticeStage::BEFORE_SKINNING, 1,
+    LatticeMaskChannel::GREEN}); component.subdivisions = 4)
+STABLE(LatticeFollowerComponent, LatticeFollowerComponent, component.lattice = 3; component.applyScale = true; component.weight = 0.75f)
+STABLE(LatticeTracksComponent, LatticeTracksComponent, component.points = {0, 4}; component.values = {{Vector3(1, 0, 0), Vector3(0, 1, 0)}})
 
 #undef STABLE

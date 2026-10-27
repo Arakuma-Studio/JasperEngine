@@ -8,6 +8,8 @@
 // component must give the same text, and its decode the same values.
 
 #include "Stream.h"
+#include "component/FluidSimulationComponent.h"
+#include "component/LatticeFollowerComponent.h"
 
 namespace jasperengine::editor {
 

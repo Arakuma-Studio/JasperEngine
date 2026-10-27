@@ -646,6 +646,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/components/RenderReflect.cpp
     ${EDITOR_DIR}/reflect/components/TransformPhysicsReflect.cpp
     ${EDITOR_DIR}/reflect/components/UIReflect.cpp
+    ${EDITOR_DIR}/reflect/components/LatticeFluidReflect.cpp
     ${EDITOR_DIR}/Conector.cpp
     ${EDITOR_DIR}/EditorHost.cpp
     ${EDITOR_DIR}/Generator.cpp
