@@ -62,7 +62,8 @@ namespace {
         std::vector<float> normals;     // xyz
         std::vector<float> tangents;    // xyzw
         std::vector<float> vatIndex;    // _VAT_INDEX
-        std::vector<uint8_t> joints;    // JOINTS_0 (Bones), 4 per vertex
+        std::vector<uint16_t> joints;   // JOINTS_0 (Bones), 4 per vertex
+        bool shortJoints = false;       // written as UNSIGNED_SHORT (else UNSIGNED_BYTE)
         std::vector<float> weights;     // WEIGHTS_0 (Bones), 4 per vertex
         std::vector<uint16_t> indices;
         float color[3] = {0.9f, 0.4f, 0.2f};
@@ -90,7 +91,7 @@ namespace {
                     tangents.insert(tangents.end(), {face.t.x, face.t.y, face.t.z, 1.0f});
                     vatIndex.push_back(float(vatIndex.size()));
                     if (bone >= 0){
-                        joints.insert(joints.end(), {uint8_t(bone), 0, 0, 0});
+                        joints.insert(joints.end(), {uint16_t(bone), 0, 0, 0});
                         weights.insert(weights.end(), {1.0f, 0.0f, 0.0f, 0.0f});
                     }
                 }
@@ -170,7 +171,12 @@ namespace {
             attributes << ",\"" << vat::VAT_INDEX_ATTRIBUTE << "\":" << next++;
         }
         if (!mesh.joints.empty()){
-            accessor(append(mesh.joints.data(), mesh.joints.size(), 34962), 5121, vertices, "VEC4");
+            if (mesh.shortJoints){
+                accessor(append(mesh.joints.data(), mesh.joints.size() * 2, 34962), 5123, vertices, "VEC4");
+            }else{
+                const std::vector<uint8_t> bytes(mesh.joints.begin(), mesh.joints.end());
+                accessor(append(bytes.data(), bytes.size(), 34962), 5121, vertices, "VEC4");
+            }
             attributes << ",\"JOINTS_0\":" << next++;
             accessor(append(mesh.weights.data(), mesh.weights.size() * 4, 34962), 5126, vertices, "VEC4");
             attributes << ",\"WEIGHTS_0\":" << next++;
@@ -747,6 +753,54 @@ TEST_F(VatRenderTest, BonesModeSkinsRigidPiecesWithoutShrinkingASpin){
         EXPECT_NEAR(right.height(), turned * pixelsPerUnit, 2.0f);
         EXPECT_NEAR(right.centerX(), toScreenX(centre.x) - 0.5f, 1.5f);
         EXPECT_NEAR((right.y0 + right.y1) * 0.5f, toScreenY(centre.y) - 0.5f, 1.5f);
+    }
+}
+
+TEST_F(VatRenderTest, BonesModeReadsMoreBonesThanSkinningHas){
+    // 300 weight-1 pieces (a rigid destruction's pieces), one bone each, joints as
+    // UNSIGNED_SHORT: past the 128 of skinning, every piece reads its own bone (a pattern of
+    // them lifted by 0.15)
+    const int pieces = 300;
+    const int columns = 20;
+    const float cellWidth = 0.6f;
+    const float cellHeight = 0.45f;
+    auto centre = [&](int b){
+        return Vector3(-6.0f + cellWidth * (0.5f + float(b % columns)), 3.3f - cellHeight * (0.5f + float(b / columns)), 0.0f);
+    };
+    auto lifted = [](int b){ return (b * 37) % 5 < 2; };
+    VatGltf mesh;
+    mesh.shortJoints = true;
+    for (int b = 0; b < pieces; b++)
+        mesh.addBox(centre(b), Vector3(0.1f, 0.1f, 0.1f), b);
+    mesh.vatIndex.clear();      // Bones mode reads the joints only
+    const auto asset = makeAsset(vat::VatMode::Bones, pieces, false, {{"Lift", 1}}, [&](int, int bone, int k){
+        if (k == 0)
+            return Vector4(0.0f, 0.0f, 0.0f, 1.0f);
+        return Vector4(0.0f, lifted(bone) ? 0.15f : 0.0f, 0.0f, 1.0f);
+    });
+    ASSERT_TRUE(asset);
+    VatScene s;
+    Model& model = s.addModel(writeGltf(mesh, "many_bones"));
+    ASSERT_TRUE(s.settle());
+    s.animate(model.getEntity(), asset, track(0), 0.0f);
+    ASSERT_TRUE(s.settle());
+    EXPECT_EQ(model.getComponent<MeshComponent>().vat.variantActive, VatVariant::BONES);
+
+    Screen screen;
+    ASSERT_TRUE(screen.read());
+    int wrong = 0;
+    for (int b = 0; b < pieces; b++){
+        const Vector3 c = centre(b);
+        const int y0 = int(toScreenY(c.y + cellHeight * 0.5f));
+        const int y1 = int(toScreenY(c.y - cellHeight * 0.5f));
+        const InkBox ink = columnInk(screen, c.x, y0, y1);
+        const float top = c.y + 0.1f + (lifted(b) ? 0.15f : 0.0f);
+        if (ink.empty() || std::abs(float(ink.y0) - toScreenY(top)) > 1.5f){
+            ADD_FAILURE() << "piece " << b << " (lifted " << lifted(b) << ") top at row " << (ink.empty() ? -1 : ink.y0)
+                          << ", expected " << toScreenY(top);
+            if (++wrong > 10)
+                break;
+        }
     }
 }
 
