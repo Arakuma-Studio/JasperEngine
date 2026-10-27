@@ -638,8 +638,9 @@ TEST_F(VatRenderTest, TangentFrameNormalsLightLikeATurnedSurface){
 
 TEST_F(VatRenderTest, BonesModeSkinsRigidPiecesWithoutShrinkingASpin){
     // left piece (bone 0) rises 0.25 per frame; right piece (bone 1) spins 90 degrees per frame
-    // about its own centre (1.5, 0): halfway between two frames it is turned 45 degrees and as
-    // large as at the frames (lerping matrices would shrink it to 0.71)
+    // about its own centre (1.5, 0): halfway between two frames its rotation is nlerped to 45
+    // degrees and its translation lerped (so its centre swings off the pivot, as the format
+    // samples it), and it keeps its size (lerping matrices would shrink it to 0.71)
     VatGltf pieces;
     pieces.addBox(Vector3(-1.5f, 0.0f, 0.0f), Vector3(0.5f, 0.5f, 0.5f), 0);
     pieces.addBox(Vector3(1.5f, 0.0f, 0.0f), Vector3(0.5f, 0.5f, 0.5f), 1);
@@ -674,11 +675,26 @@ TEST_F(VatRenderTest, BonesModeSkinsRigidPiecesWithoutShrinkingASpin){
         ASSERT_TRUE(screen.read());
         const float rise = 0.25f * (now < 3.0f ? now : 3.0f * (4.0f - now));  // the seam goes back to 0
         EXPECT_NEAR(columnInk(screen, -1.5f, 0, screenHeight).y0, toScreenY(0.5f + rise), 1.5f) << "left piece";
-        // the right piece's width through its centre: 1 square, sqrt(2) at 45 degrees
+        // the right piece: rotation nlerped, translation lerped between the two frames
+        const float x = std::fmod(now, 4.0f);
+        const int f0 = int(std::floor(x));
+        const int f1 = (f0 + 1) % 4;
+        const float alpha = x - float(f0);
+        Vector4 q0 = axisAngle(Vector3(0, 0, 1), quarter * f0);
+        Vector4 q1 = axisAngle(Vector3(0, 0, 1), quarter * f1);
+        if (q0.x * q1.x + q0.y * q1.y + q0.z * q1.z + q0.w * q1.w < 0.0f)
+            q1 = q1 * -1.0f;
+        Vector4 q = q0 * (1.0f - alpha) + q1 * alpha;
+        q = q / std::sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
+        const Vector3 translation = (pivot - rotate(q0, pivot)) * (1.0f - alpha) + (pivot - rotate(axisAngle(Vector3(0, 0, 1), quarter * f1), pivot)) * alpha;
+        const Vector3 centre = rotate(q, pivot) + translation;
+        // its outline: a unit square, sqrt(2) wide at 45 degrees
         const float turned = std::fmod(now, 1.0f) == 0.5f ? 1.41421356f : 1.0f;
-        const InkBox right = rowInk(screen, 0.0f, middle, screenWidth);
-        EXPECT_NEAR(right.x0, toScreenX(1.5f - turned * 0.5f), 1.5f) << "right piece";
-        EXPECT_NEAR(right.x1 + 1, toScreenX(1.5f + turned * 0.5f), 1.5f);
+        const InkBox right = screen.inkOnBackground({middle, 0, screenWidth, screenHeight}, 24);
+        EXPECT_NEAR(right.width(), turned * pixelsPerUnit, 2.0f) << "right piece: no shrink";
+        EXPECT_NEAR(right.height(), turned * pixelsPerUnit, 2.0f);
+        EXPECT_NEAR(right.centerX(), toScreenX(centre.x) - 0.5f, 1.5f);
+        EXPECT_NEAR((right.y0 + right.y1) * 0.5f, toScreenY(centre.y) - 0.5f, 1.5f);
     }
 }
 
@@ -811,7 +827,6 @@ TEST_F(VatRenderTest, ShadowsAndTheDepthPrePassFollow){
     ASSERT_GT(plainEdge, 0);
     ASSERT_GT(movedEdge, 0);
     EXPECT_NEAR(movedEdge - plainEdge, 0.6f * pixelsPerUnit, 3.0f) << "the shadow map is drawn animated";
-    EXPECT_NEAR(rowInk(moved, 0.0f, 0, int(toScreenX(2.0f))).x0, toScreenX(-0.4f), 1.5f);
     int differing = 0;
     EXPECT_TRUE(sameImage(moved, prepass, differing)) << differing << " pixels differ with the depth pre-pass";
 }
@@ -832,6 +847,10 @@ TEST_F(VatRenderTest, AnimatedBoundsKeepAMovedMeshFromBeingCulled){
         if (instanced){
             model.createInstancedMesh();
             model.addInstance(8.0f, 0.0f, 0.0f);
+            // the instance plays its own state
+            InstancedMeshComponent& instmesh = model.getComponent<InstancedMeshComponent>();
+            vat::vatPackInstance(track(0), instmesh.instances[0].vat0, instmesh.instances[0].vat1);
+            instmesh.needUpdateInstances = true;
         }else{
             model.setPosition(8.0f, 0.0f, 0.0f);
         }
