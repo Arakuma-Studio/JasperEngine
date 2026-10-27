@@ -568,3 +568,12 @@ TEST(TextureCookDeterminism, SameBytesAtAnyConcurrencyAndTwice){
         }
     }
 }
+
+// a file name that is not UTF-8 is never cooked (it could not be a key of the cache's tables or
+// of an export's index.json): it loads from its source; check --textures aborted on one
+TEST(TextureCook, NamesThatAreNotUtf8AreNotCooked){
+    EXPECT_TRUE(isCookableTexture("textures/photo.png"));
+    EXPECT_TRUE(isCookableTexture("textures/caf\xc3\xa9.png"));
+    EXPECT_FALSE(isCookableTexture("textures/stal\xe9.png"));
+    EXPECT_FALSE(isCookableTexture("textures/notes.txt"));
+}

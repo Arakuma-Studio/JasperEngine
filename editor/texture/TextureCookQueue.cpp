@@ -6,6 +6,7 @@
 #include "Out.h"
 #include "Project.h"
 #include "command/type/SetAssetMetaCmd.h"
+#include "texsynth/SynthesisRecipe.h"
 #include "pool/TextureDataPool.h"
 #include "pool/TexturePool.h"
 #include "util/AssetDatabase.h"
@@ -66,7 +67,9 @@ const char* editor::textureCookStatusName(TextureCookStatus status){
 
 bool editor::isCookableTexture(const std::string& path){
     static const std::set<std::string> extensions = {".png", ".jpg", ".jpeg", ".tga", ".bmp", ".psd", ".gif", ".hdr", ".exr", ".pic", ".pnm"};
-    return extensions.count(cookLowerExtension(path)) > 0;
+    // a name that is not UTF-8 (a Latin-1 file) cannot be a key of the cache's tables or of an
+    // export's index.json: such a file loads from its source, as before cooks
+    return extensions.count(cookLowerExtension(path)) > 0 && texsynth::isValidUtf8(path);
 }
 
 bool editor::isTextureSource(const std::string& path){
