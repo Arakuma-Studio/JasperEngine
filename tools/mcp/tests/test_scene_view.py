@@ -20,9 +20,9 @@ import pngdiff
 from harness import Editor
 
 CI = True
-# background mesh BVH builds stay pending 8 s (only meshes of 256+ triangles have one): a
-# click waits for them (R33)
-EDITOR = {"create": True, "name": "Scene View", "env": {"JASPER_PICK_BUILD_DELAY_MS": "8000"}}
+# background mesh BVH builds stay pending 30 s (only meshes of 256+ triangles have one): a
+# click waits for them (R33); a loaded host takes several seconds to import the test's lattice
+EDITOR = {"create": True, "name": "Scene View", "env": {"JASPER_PICK_BUILD_DELAY_MS": "30000"}}
 TIMEOUT = 1500
 
 GOLDEN_DIR = harness.REPO / "tools" / "mcp" / "tests" / "golden" / "scene_view"

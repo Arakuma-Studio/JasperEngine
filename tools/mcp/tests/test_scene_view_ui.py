@@ -87,9 +87,11 @@ class Ui:
         await self.move(start)
         self.xdo("mousedown", "1")
         await self.settle(0.2)
+        # a frame per step: ImGui starts a drag-and-drop only from a move it sees with the
+        # button held over the source (a host drawing a frame a second skips faster moves)
         for k in range(1, steps + 1):
             self.xdo("mousemove", str(int(start[0] + (end[0] - start[0]) * k / steps)), str(int(start[1] + (end[1] - start[1]) * k / steps)))
-            await asyncio.sleep(0.06)
+            await self.ed.call("wait", frames=1)
         await self.settle(0.4)
         self.xdo("mouseup", "1")
         await self.settle(0.6)
@@ -315,6 +317,7 @@ async def test_gizmo_cube_toggles_projection(ed: Editor):
     await ui.click(centre)
     await ed.screenshot("editor", path=str(s["out"] / "s26-gizmo-iso.png"))
     ed.check_eq((await camera(ed, sid))["projection"], "orthographic", "the cube toggles to Iso")
+    await ui.settle(1.0)    # two clicks, not a double click
     await ui.click(centre)
     ed.check_eq((await camera(ed, sid))["projection"], "perspective", "and back to Persp")
 
