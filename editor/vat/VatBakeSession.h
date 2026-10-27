@@ -12,24 +12,39 @@
 //             -> write() (the files, one undo step).
 // - Posing runs on the main thread inside advance(): at most `budgetMs` per call (0 = to the
 //   end), each slice restoring the scene before it returns, so between two calls the scene is
-//   at rest and editable. An open scene is checked with placementSceneEditStamp at every slice:
-//   an edit in between fails the bake ("the scene changed during the bake: bake again"). Clip
-//   and pose previews of the source are suspended first (PoseEditSession::suspendActiveFor, as
-//   LatticeBake does). Encoding (computeVatBake) runs on a worker thread; advance() polls it.
-//   cancel() stops either stage; nothing is written and the scene is at rest.
+//   at rest and editable. An open scene is checked with placementSceneEditStamp at every slice
+//   and once more when encoding ends: an edit in between, a closed scene or a deleted source
+//   GameObject fails the bake (invalid_source, "... during the bake: bake again"). Clip and pose
+//   previews of the source are suspended (PoseEditSession::suspendActiveFor, as LatticeBake
+//   does) before check() captures the rest pose; start() checks again when the scene was edited
+//   since check() (an MCP bake checks in the tool call and starts a tick later). Encoding
+//   (computeVatBake) runs on a worker thread; advance() polls it. cancel() stops either stage;
+//   nothing is written and the scene is at rest. A 2D scene can't take a placement
+//   (invalid_settings in check() and write()).
 // - write(), spec 4.4: the output is spec.output or "<source dir>/<source stem>.vat". The
 //   existing-file rule (PoseBaker's): a default path holding a .vat baked from the same recipe
 //   source is rebaked (GUID and hand edits kept); any other existing file makes the bake take a
 //   free name ("hero 2.vat"); an explicit path that exists is refused (output_exists) unless
-//   `overwrite` (its GUID is kept, and its edits when it is from the same source). Images a
-//   glTF embeds are written next to the .vat ("<stem>_<image>.png"). place none: WriteFilesCmd
-//   on the project history; beside / replace / crowd: CreateVatCmd on the scene's history (a
-//   new GameObject "<name> (VAT)" at the source's transform with Model = the .vat.glb and a
-//   Vertex Animator = the .vat, selected; replace also disables the source; crowd also makes it
-//   a crowd: crowdPlacement below, VatCrowd's layout).
+//   `overwrite` (its GUID is kept, and its edits when it is from the same source). The same
+//   recipe source is the same kind, path and scene AND the same clips (sameRecipeSource): a
+//   bake of another clip of the model takes a free name. The default directory is the
+//   source's, inside the assets folder (VatBakeSource: a source outside it maps under it).
+//   Images the source held inside are stored inside the .vat.glb (no file is written next to
+//   the .vat; textures that are files stay referenced by URI). A placing write() re-validates a
+//   GameObject source (its scene open by id, the GameObject there: invalid_source "bake again")
+//   and the placement scene (open, 3D, stopped); every refusal is also given as a VatIssue. place none:
+//   WriteFilesCmd on the project history; beside / replace / crowd: CreateVatCmd on the scene's
+//   history (a new GameObject "<name> (VAT)" at the source's transform with Model = the
+//   .vat.glb and a Vertex Animator = the .vat, selected; replace also disables the source;
+//   crowd also makes it a crowd: crowdPlacement below, VatCrowd's layout; the crowd GameObject
+//   at the source's position, unrotated and unscaled, its instances carrying the source's
+//   rotation and scale, so the area is in metres).
 // - Rebake (spec 4.5): loadRebake(vatPath) runs the .vat's recipe again; clip names, events,
 //   speeds, wraps, interpolate and socket names are kept: clips are matched to the source's by
 //   name, then the rest in order (preferring equal lengths); clips removed by hand stay removed.
+//   Each clip bakes at the recipe's fps unless the file's clip was sampled at another rate (an
+//   override at bake time: that whole rate is kept). A bake of the same clips that is not a
+//   Rebake keeps the edits of the clips matched by name only.
 // - Staleness: checkVatStaleness compares the recipe's file hashes and the .vat.glb.
 // - Thread-safety: main thread, except the worker it owns. One session per bake.
 
@@ -42,6 +57,8 @@
 #include "vat/VatBakeTypes.h"
 
 #include "ecs/Entity.h"
+#include "math/Quaternion.h"
+#include "math/Vector3.h"
 
 #include <atomic>
 #include <functional>
@@ -152,8 +169,10 @@ namespace jasperengine::editor::vat{
         // where write() would write (the existing-file rule), without writing; after a bake, or
         // before one once check() resolved the source (the window's Output field)
         bool plannedOutput(std::string& vatPath, bool& rewrite, std::string& error);
-        // the files, one undo step (see the contract). After Done.
-        bool write(VatWriteResult& out, std::string& error);
+        // the files, one undo step (see the contract). After Done. A refusal also as `issue` when
+        // given (kind invalid_source / invalid_settings / output_exists / scene_playing /
+        // write_failed, with its fix)
+        bool write(VatWriteResult& out, std::string& error, VatIssue* issue = nullptr);
 
     private:
         struct PlanItem{
@@ -178,6 +197,7 @@ namespace jasperengine::editor::vat{
         std::vector<PlanItem> plan;
         size_t planDone = 0;
         uint64_t sceneStamp = 0;
+        uint64_t checkStamp = 0;            // the scene's stamp when check() captured the rest
 
         std::thread worker;
         std::atomic<bool> cancelFlag{false};
@@ -202,6 +222,9 @@ namespace jasperengine::editor::vat{
         void startWorker();
         void finalize();
         bool stampChanged();
+        // a GameObject source: why it can't be read now ("the source's scene was closed", "the
+        // source GameObject was deleted"), "" when it is there (and for file sources)
+        std::string sourceGone() const;
         void releasePreview();
     };
 
@@ -221,16 +244,19 @@ namespace jasperengine::editor::vat{
     // Place: Crowd (spec 4.4, 5.4): the problem with these crowd settings ("" when none), and
     // the VatPlacement::crowd that makes the placed GameObject a crowd in the same undo step: an
     // Instanced Mesh with `count` instances laid out by VatCrowd's layoutCrowd (a square of side
-    // `area` on its ground plane, random yaw, seeded, no minimum spacing) and the Vertex Animator
-    // out of step (randomStart). Also used for imports (VatImportWrite).
+    // `area` on its ground plane, random yaw, seeded, no minimum spacing), each instance turned
+    // by its yaw then `instanceRotation` and scaled by `instanceScale` (the source's, the crowd
+    // GameObject being unrotated and unscaled), and the Vertex Animator out of step
+    // (randomStart). Also used for imports (VatImportWrite).
     std::string crowdPlacementProblem(const VatCrowd& crowd);
     std::function<bool(Project* project, uint32_t sceneId, Entity entity, std::vector<Command*>& commands, std::string& error)>
-        crowdPlacement(const VatCrowd& crowd);
+        crowdPlacement(const VatCrowd& crowd, const Quaternion& instanceRotation = Quaternion(),
+                       const Vector3& instanceScale = Vector3(1.0f, 1.0f, 1.0f));
 
-    // which old clips (a .vat's) are which new clips: name first, then in order preferring equal
-    // lengths; result[i] = the old clip index of new clip i, or -1
+    // which old clips (a .vat's) are which new clips: name first, then (`positional`) in order
+    // preferring equal lengths; result[i] = the old clip index of new clip i, or -1
     std::vector<int> matchClips(const std::vector<jasperengine::vat::VatClip>& oldClips, const std::vector<std::string>& newNames,
-                                const std::vector<float>& newLengths);
+                                const std::vector<float>& newLengths, bool positional = true);
 
 }
 

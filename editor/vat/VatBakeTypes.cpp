@@ -349,12 +349,9 @@ bool specFromRecipe(const VatRecipe& recipe, VatBakeSpec& spec, std::string& err
 
 bool sameRecipeSource(const VatRecipeSource& a, const VatRecipeSource& b){
     if (a.kind != b.kind || a.path != b.path || a.scene != b.scene) return false;
-    if (a.kind == "anim" || a.kind == "pose"){
-        std::set<std::string> left(a.clips.begin(), a.clips.end());
-        std::set<std::string> right(b.clips.begin(), b.clips.end());
-        return left == right;
-    }
-    return true;
+    std::set<std::string> left(a.clips.begin(), a.clips.end());
+    std::set<std::string> right(b.clips.begin(), b.clips.end());
+    return left == right;
 }
 
 }
