@@ -32,6 +32,7 @@
 #include "command/type/RenameFileCmd.h"
 #include "command/type/ScenePropertyCmd.h"
 #include "command/type/UnlinkMaterialCmd.h"
+#include "vat/VatAssetFiles.h"
 #include "component/MeshComponent.h"
 #include "htmlui/HtmlUiImporters.h"
 #include "htmlui/VideoImporter.h"
@@ -1231,13 +1232,32 @@ public:
         if (fs::is_directory(from, ec)) fs::copy(from, to, fs::copy_options::recursive, ec);
         else fs::copy_file(from, to, ec);
         if (ec) return false;
-        // copied prefabs and clips are new assets: new GUIDs, the same ones on a redo
+        // a Vertex Animation is copied with its generated mesh (vat/VatAssetFiles.h), the copied
+        // .vat naming the copied mesh
+        fs::path vatCopy;
+        if (vat::renamedPair(from, to, pairFrom, pairTo)) {
+            fs::copy_file(pairFrom, pairTo, ec);
+            if (ec) {
+                fs::remove(to, ec);
+                pairTo.clear();
+                return false;
+            }
+            vatCopy = Util::isVertexAnimationFile(FileUtils::pathToUtf8(to)) ? to : pairTo;
+            std::string text;
+            if (ProjectChecks::readFile(vatCopy, text) &&
+                vat::setMeshField(text, FileUtils::pathToUtf8(vat::pairPathOf(vatCopy).filename()))) {
+                writeFile(vatCopy, text);
+            }
+        }
+        // copied prefabs, clips and Vertex Animations are new assets: new GUIDs, the same ones on a redo
         if (fs::is_directory(to, ec) || AssetDatabase::isTrackedFile(to)) project->importPrefabFiles(to, true, &copyGuids);
+        if (!vatCopy.empty() && vatCopy != to) project->importPrefabFiles(vatCopy, true, &copyGuids);
         return true;
     }
     void undo() override {
         std::error_code ec;
         const bool isDir = fs::is_directory(to, ec);
+        if (!pairTo.empty()) fs::remove(pairTo, ec);
         fs::remove_all(to, ec);
         project->cleanupPrefabFilePath(to);
         // references to the copied clips stay (Missing until a redo)
@@ -1250,6 +1270,7 @@ private:
     Project* project;
     fs::path from;
     fs::path to;
+    fs::path pairFrom, pairTo;      // the other file of a Vertex Animation and its copy
     std::map<std::string, std::string> copyGuids;
 };
 
@@ -1278,41 +1299,31 @@ void moveAssetTool(const CallPtr& call) {
         return;
     }
     const bool copy = call->args().value("copy", false);
-    auto moveCommand = [&](const fs::path& a, const fs::path& b) -> std::unique_ptr<Command> {
-        if (copy) return std::make_unique<CopyAsCmd>(project, a, b);
-        if (a.parent_path() == b.parent_path()) {
-            return std::make_unique<RenameFileCmd>(project, a.filename().string(), b.filename().string(), a.parent_path().string());
-        }
-        auto multi = std::make_unique<MultiPropertyCmd>();
-        multi->addCommand(std::make_unique<CopyFileCmd>(project, std::vector<std::string>{a.string()}, b.parent_path().string(), false));
-        if (a.filename() != b.filename()) {
-            multi->addCommand(std::make_unique<RenameFileCmd>(project, a.filename().string(), b.filename().string(), b.parent_path().string()));
-        }
-        return multi;
-    };
-    // a Vertex Animation moves with its generated mesh (.vat <-> .vat.glb, either one named), and
-    // the .vat's `mesh` follows a new name (a copy also gets a new GUID)
-    fs::path vatFrom, vatTo, pairFrom, pairTo;
-    std::string vatText;
-    if (!vatMovePair(project, from, to, copy, vatFrom, vatTo, pairFrom, pairTo, vatText, why)) {
-        call->fail(why);
+    // a Vertex Animation's other file goes along (RenameFileCmd / CopyFileCmd / CopyAsCmd take the
+    // pair: vat/VatAssetFiles.h); a destination that would break the pair is refused here
+    fs::path pairFrom, pairTo;
+    const bool pair = vat::renamedPair(from, to, pairFrom, pairTo);
+    if (!pair && !vat::existingPairOf(from).empty()) {
+        call->fail(fromRel + (Util::isVertexAnimationFile(fromRel) ? " is a Vertex Animation: its new name must end in .vat (its mesh follows as <name>.vat.glb)."
+                                                                  : " is the mesh of a Vertex Animation: its new name must end in .vat.glb (its .vat follows)."));
         return;
     }
-    const bool pair = !pairFrom.empty();
-    std::unique_ptr<Command> moved = moveCommand(from, to);
+    if (pair && fs::exists(pairTo, ec)) {
+        call->fail(projectRelative(project, pairTo) + " already exists (the other file of the Vertex Animation goes there): delete it first or pick another name.");
+        return;
+    }
     Command* cmd = nullptr;
-    if (pair) {
+    if (copy) {
+        cmd = new CopyAsCmd(project, from, to);
+    } else if (from.parent_path() == to.parent_path()) {
+        cmd = new RenameFileCmd(project, from.filename().string(), to.filename().string(), from.parent_path().string());
+    } else {
         auto* multi = new MultiPropertyCmd();
-        multi->addCommand(std::move(moved));
-        multi->addCommand(moveCommand(pairFrom, pairTo));
-        if (!vatText.empty()) {
-            Project* owner = project;
-            multi->addCommand(std::make_unique<WriteFilesCmd>(std::vector<WriteFilesCmd::Item>{{vatTo, vatText}},
-                                                              [owner](const std::vector<fs::path>& paths) { vatFilesWritten(owner, paths); }));
+        multi->addCommand(std::make_unique<CopyFileCmd>(project, std::vector<std::string>{from.string()}, to.parent_path().string(), false));
+        if (from.filename() != to.filename()) {
+            multi->addCommand(std::make_unique<RenameFileCmd>(project, from.filename().string(), to.filename().string(), to.parent_path().string()));
         }
         cmd = multi;
-    } else {
-        cmd = moved.release();
     }
     if (!addProjectCommand(call->ctx(), cmd)) {
         call->fail("Couldn't " + std::string(copy ? "copy " : "move ") + fromRel + " to " + toRel + ".");
@@ -1327,7 +1338,7 @@ void moveAssetTool(const CallPtr& call) {
     if (pair) {
         data["pair"] = {{"from", projectRelative(project, pairFrom)}, {"to", projectRelative(project, pairTo)}};
         pairText = " With it, " + projectRelative(project, pairFrom) + " -> " + projectRelative(project, pairTo) +
-                   " (a Vertex Animation and its mesh stay together" + (vatText.empty() ? std::string(")") : std::string("; the .vat's mesh follows)")) + ".";
+                   " (a Vertex Animation and its mesh stay together; the .vat's mesh follows).";
     }
     call->ok(std::string(copy ? "Copied " : "Moved ") + fromRel + " to " + toRel +
              (copy ? (Util::isAnimationClipFile(toRel) ? " (a new clip with its own GUID; Animation Players keep the original)."
@@ -1366,15 +1377,14 @@ void deleteAssetTool(const CallPtr& call) {
         files.push_back(file.lexically_normal());
         deleted.push_back(rel);
     }
-    // a Vertex Animation goes with its generated mesh (and the reverse)
+    // a Vertex Animation goes with its generated mesh, and the reverse (DeleteFileCmd takes the
+    // pair: vat/VatAssetFiles.h): reported, and synced with the rest
     Json pairs = Json::array();
-    for (size_t i = 0, count = files.size(); i < count; i++) {
-        const fs::path partner = vatPartner(files[i]);
-        std::error_code ec;
-        if (partner.empty() || !fs::exists(partner, ec) || std::find(files.begin(), files.end(), partner) != files.end()) continue;
-        files.push_back(partner);
-        deleted.push_back(projectRelative(project, partner));
-        pairs.push_back(projectRelative(project, partner));
+    const std::vector<fs::path> listed = files;
+    for (const fs::path& file : vat::withPairs(listed)) {
+        if (std::find(listed.begin(), listed.end(), file) != listed.end()) continue;
+        pairs.push_back(projectRelative(project, file));
+        deleted.push_back(projectRelative(project, file));
     }
     // a scene leaving the project while a scene plays: the reason, without an editor alert
     std::string refusal;
@@ -1393,9 +1403,9 @@ void deleteAssetTool(const CallPtr& call) {
         call->fail("Couldn't delete the files.");
         return;
     }
-    syncFiles(call->ctx(), files, false);
+    syncFiles(call->ctx(), vat::withPairs(listed), false);
     Json data = {{"deleted", deleted}};
-    std::string text = "Moved " + std::to_string(files.size()) + " item(s) to the project trash (undo with scope project restores them).";
+    std::string text = "Moved " + std::to_string(deleted.size()) + " item(s) to the project trash (undo with scope project restores them).";
     if (!pairs.empty()) {
         data["with_pair"] = pairs;
         text += " With them, the other half of each Vertex Animation (.vat / .vat.glb):";

@@ -654,8 +654,7 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
     VatDocument::filesChanged(changedPaths, project);
     if (full) VatDocument::checkDiskChanges(project);
     for (const fs::path& path : changed) addAnimationFileProblems(project, path, problems);
-    // Vertex Animations: the pool drops a changed .vat / .vat.glb (its animators reload); a
-    // .vat's load problems are reported like a clip's
+    // and a .vat that doesn't match its .vat.glb (it doesn't load: vat-layout-mismatch / vat-mesh-mismatch)
     for (const fs::path& path : changed) vatFileChanged(project, path, problems);
 
     // Code editor buffers

@@ -32,6 +32,7 @@
 #include "util/FileUtils.h"
 #include "util/Util.h"
 #include "vat/VatContactSheet.h"
+#include "vat/VatDocument.h"
 #include "vat/VatFrontEnd.h"
 
 #include "Scene.h"
@@ -1056,137 +1057,42 @@ bool vatAssetInfo(Project* project, const fs::path& file, Json& data, std::strin
 
 bool checkVatText(Project* project, const fs::path& file, const std::string& content, std::vector<std::string>& warnings, std::string& error) {
     const std::string rel = relativeOf(project, file);
-    const std::string rebake = "rebake (Inspector > Rebake, or bake_vertex_animation {rebake: \"" + rel + "\"})";
     ::jasperengine::vat::VatParseResult parsed = ::jasperengine::vat::parseVat(content);
     if (!parsed.ok()) {
         error = parsed.error;
         return false;
     }
     for (const ClipWarning& w : parsed.warnings) warnings.push_back(w.path.empty() ? w.message : w.path + ": " + w.message);
-    const VatData& next = *parsed.data;
+    ::jasperengine::vat::VatData next = *parsed.data;
+    if (!VatDocument::normalize(next, &error)) return false;
+    // an existing .vat: only the editable fields may change (VatDocument's rule, the Inspector's too)
     std::string oldText;
     if (!clipui::readWholeFile(file, oldText)) return true;     // a new file: its mesh decides when it loads
     ::jasperengine::vat::VatParseResult oldParsed = ::jasperengine::vat::parseVat(oldText);
     if (!oldParsed.ok()) return true;
-    const VatData& old = *oldParsed.data;
-    auto refuse = [&](const std::string& field) {
-        error = "generated field " + field + " changed: " + rebake + ". Only clip name, wrap, speed, interpolate, events, the sockets' "
-                "names and order, and removing whole clips are editable";
+    const std::string changed = VatDocument::generatedChange(*oldParsed.data, next);
+    if (!changed.empty()) {
+        error = "generated field " + changed + " changed: rebake (Inspector > Rebake, or bake_vertex_animation {rebake: \"" + rel +
+                "\"}). Only clip name, wrap, speed, interpolate, events, socket names and removing whole clips are editable";
         return false;
-    };
-    if (next.mode != old.mode) return refuse("mode");
-    if (next.mesh != old.mesh) return refuse("mesh");
-    const auto& a = next.layout;
-    const auto& b = old.layout;
-    if (a.precision != b.precision || a.width != b.width || a.height != b.height || a.samples != b.samples || a.vertices != b.vertices ||
-        a.bones != b.bones || a.normals != b.normals || a.colors != b.colors || a.layoutHash != b.layoutHash) {
-        return refuse("layout");
-    }
-    auto sameBounds = [](const ::jasperengine::vat::VatBounds& x, const ::jasperengine::vat::VatBounds& y) {
-        return x.valid == y.valid && x.min.x == y.min.x && x.min.y == y.min.y && x.min.z == y.min.z && x.max.x == y.max.x && x.max.y == y.max.y &&
-               x.max.z == y.max.z;
-    };
-    if (!sameBounds(next.bounds, old.bounds)) return refuse("bounds");
-    if (next.stats.bytes != old.stats.bytes || next.stats.maxErrorMm != old.stats.maxErrorMm || next.stats.meanErrorMm != old.stats.meanErrorMm) {
-        return refuse("stats");
-    }
-    for (size_t i = 0; i < next.clips.size(); i++) {
-        const VatClip& clip = next.clips[i];
-        bool found = false;
-        for (const VatClip& was : old.clips) {
-            if (was.start == clip.start && was.frames == clip.frames && was.fps == clip.fps && was.restNone == clip.restNone &&
-                sameBounds(was.bounds, clip.bounds)) {
-                found = true;
-                break;
-            }
-        }
-        if (!found) return refuse("clips[" + std::to_string(i) + "] (start, frames, fps or bounds)");
     }
     return true;
 }
 
 void vatFileChanged(Project* project, const fs::path& path, Json& problems) {
+    // the pool, the documents, parse errors and warnings: syncFiles (VatDocument::filesChanged,
+    // addAnimationFileProblems). Here: a .vat that doesn't match its mesh does not load
     const std::string text = FileUtils::pathToUtf8(path);
-    const std::string lower = [&] {
-        std::string out = text;
-        std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        return out;
-    }();
-    if (lower.size() > 8 && lower.compare(lower.size() - 8, 8, ".vat.glb") == 0) {
-        VertexAnimationPool::invalidate(text.substr(0, text.size() - 4));
-        return;
-    }
     if (!Util::isVertexAnimationFile(text)) return;
-    VertexAnimationPool::invalidate(text);
     std::error_code ec;
     if (!fs::is_regular_file(path, ec)) return;
-    const std::string rel = relativeOf(project, path);
     std::string content;
-    if (!clipui::readWholeFile(path, content)) return;
-    ::jasperengine::vat::VatParseResult parsed = ::jasperengine::vat::parseVat(content);
-    if (!parsed.ok()) {
-        problems.push_back({{"path", rel}, {"message", "Not a loadable Vertex Animation: " + parsed.error + " (its Vertex Animators draw at rest)."}});
-        return;
-    }
-    // a .vat that doesn't match its mesh does not load
+    if (!clipui::readWholeFile(path, content) || !::jasperengine::vat::parseVat(content).ok()) return;
+    const std::string rel = relativeOf(project, path);
     for (const VatIssue& issue : checkVatStaleness(project, rel)) {
         if (!issue.error) continue;
         problems.push_back({{"path", rel}, {"message", issue.kind + ": " + issue.message + ". Fix: " + issue.fix + "."}});
     }
-    size_t count = 0;
-    for (const ClipWarning& w : parsed.warnings) {
-        if (++count > 8) break;
-        problems.push_back({{"path", rel}, {"severity", "warning"}, {"message", w.path.empty() ? w.message : w.path + ": " + w.message}});
-    }
-}
-
-fs::path vatPartner(const fs::path& path) {
-    std::string text = FileUtils::pathToUtf8(path);
-    std::string lower = text;
-    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    if (lower.size() > 8 && lower.compare(lower.size() - 8, 8, ".vat.glb") == 0) return FileUtils::pathFromUtf8(text.substr(0, text.size() - 4));
-    if (Util::isVertexAnimationFile(text)) return FileUtils::pathFromUtf8(meshPathFor(text));
-    return fs::path();
-}
-
-void vatFilesWritten(Project* project, const std::vector<fs::path>& paths) {
-    CreateVatCmd::notifyFiles(project, paths);
-}
-
-bool vatMovePair(Project* project, const fs::path& from, const fs::path& to, bool copy, fs::path& vatFrom, fs::path& vatTo, fs::path& pairFrom,
-                 fs::path& pairTo, std::string& vatText, std::string& error) {
-    vatFrom.clear();
-    vatTo.clear();
-    pairFrom.clear();
-    pairTo.clear();
-    vatText.clear();
-    std::error_code ec;
-    const fs::path partner = vatPartner(from);
-    if (partner.empty() || fs::is_directory(from, ec) || !fs::exists(partner, ec)) return true;
-    const bool fromVat = Util::isVertexAnimationFile(FileUtils::pathToUtf8(from));
-    const fs::path partnerTo = vatPartner(to);
-    if (partnerTo.empty() || Util::isVertexAnimationFile(FileUtils::pathToUtf8(to)) != fromVat) {
-        error = relativeOf(project, from) + (fromVat ? " is a Vertex Animation: its new name must end in .vat (its mesh follows as <name>.vat.glb)"
-                                                     : " is the mesh of a Vertex Animation: its new name must end in .vat.glb (its .vat follows)") + ".";
-        return false;
-    }
-    if (fs::exists(partnerTo, ec)) {
-        error = relativeOf(project, partnerTo) + " already exists (the other half of the Vertex Animation goes there): delete it first or pick another name.";
-        return false;
-    }
-    pairFrom = partner;
-    pairTo = partnerTo;
-    vatFrom = fromVat ? from : partner;
-    vatTo = fromVat ? to : partnerTo;
-    const std::string meshName = FileUtils::pathToUtf8(FileUtils::pathFromUtf8(meshPathFor(FileUtils::pathToUtf8(vatTo))).filename());
-    VatData data;
-    std::string why;
-    if (!readVatAsset(project, FileUtils::pathToUtf8(vatFrom), data, &why)) return true;     // moved as files, as they are
-    if (!copy && data.mesh == meshName) return true;
-    data.mesh = meshName;
-    if (copy) data.guid = AssetDatabase::generateGuid();
-    vatText = ::jasperengine::vat::writeVat(data);
-    return true;
 }
 
 void registerVatTools(McpRegistry& registry) {

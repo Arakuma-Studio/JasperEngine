@@ -60,23 +60,15 @@ namespace jasperengine::editor::mcp {
     bool vatAssetInfo(Project* project, const std::filesystem::path& file, Json& data, std::string& text);
     // the Vertex Animators of the open scenes and prefab stages using a .vat: [{scene, entity}]
     Json vatUsers(Project* project, const std::string& vatRelative);
-    // write_file of a .vat: false + error when it doesn't parse or changes a generated field of the
-    // existing file (the rebake message); `warnings` the lenient reader's
+    // write_file of a .vat: false + error when it doesn't parse, VatDocument::normalize refuses it,
+    // or it changes a generated field of the existing file (VatDocument::generatedChange: the
+    // rebake message); `warnings` the lenient reader's
     bool checkVatText(Project* project, const std::filesystem::path& file, const std::string& content,
                       std::vector<std::string>& warnings, std::string& error);
-    // a changed .vat / .vat.glb (file sync, auto-sync): VertexAnimationPool drops it (its
-    // animators reload); a .vat's load problems go to `problems` ({path, message, severity?})
+    // a changed .vat (file sync, auto-sync; the pool, documents and parse problems are syncFiles'
+    // through VatDocument): a .vat that doesn't match its .vat.glb (vat-mesh-mismatch,
+    // vat-layout-mismatch: it doesn't load) goes to `problems` ({path, message})
     void vatFileChanged(Project* project, const std::filesystem::path& path, Json& problems);
-    // the other half of a Vertex Animation: "<x>.vat" <-> "<x>.vat.glb" (empty for other files)
-    std::filesystem::path vatPartner(const std::filesystem::path& path);
-    // move_asset of one half: the other half's move (pairFrom -> pairTo, empty when it has none)
-    // and, when the name changes or for a copy, the .vat's new text (its `mesh`, a copy's new GUID)
-    // to write at vatTo. False + error for a destination that breaks the pair.
-    bool vatMovePair(Project* project, const std::filesystem::path& from, const std::filesystem::path& to, bool copy,
-                     std::filesystem::path& vatFrom, std::filesystem::path& vatTo, std::filesystem::path& pairFrom,
-                     std::filesystem::path& pairTo, std::string& vatText, std::string& error);
-    // the editor learns written .vat files (the pool drops them, the documents and database see them)
-    void vatFilesWritten(Project* project, const std::vector<std::filesystem::path>& paths);
 
     // the pose documents' files-written hook (their writes reach the asset database and the
     // Project window like any MCP file change): installed once, when the MCP context exists
