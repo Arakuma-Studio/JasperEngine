@@ -361,6 +361,8 @@ namespace jasperengine {
 
         bool isOrderDirty() const { return orderDirty; }
         size_t getHoleCount() const { return holeCount; }
+        // a re-sort is pending (the next index observation does it)
+        bool isOrderDirty() const { return orderDirty; }
 
         // counters for tests and statistics
         size_t getCompactionCount() const { return compactions; }
@@ -806,6 +808,18 @@ namespace jasperengine {
                 keys[i] = (it != positions.end()) ? it->second : order.size() + i;
             }
             sortByKeys(keys);
+        }
+
+        // The component in the next live slot after the entity's, without settling: holes
+        // keep the slots' relative order, so it is the next index once the holes close
+        // (nullptr: none, or the entity has no component)
+        const T* findNextAfter(Entity entity) const {
+            const uint32_t slot = entityToSlot.find(entity);
+            if (slot == ecs::SparseIndex::kNone) return nullptr;
+            for (size_t next = (size_t)slot + 1; next < slotCount; next++){
+                if (slotEntities[next] != NULL_ENTITY) return slotPtr(next);
+            }
+            return nullptr;
         }
 
         JE_ECS_INLINE T* findComponent(Entity entity) {

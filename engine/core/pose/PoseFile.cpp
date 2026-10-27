@@ -62,7 +62,10 @@ namespace jasperengine::pose {
     // the S03 atomic write: a hidden temporary sibling, synced and renamed over the file (a
     // crash or a full disk mid-write leaves the old file whole; a read-only file is refused)
     bool writeTextFile(const std::string& path, const std::string& text, std::string* error){
-        const io::WriteResult written = io::writeFileAtomic(utf8Path(FileData::getSystemPath(path)), text);
+        // atomic (S03); the folder must exist, as before (a typo'd folder is an error, not made)
+        io::AtomicWriteOptions options;
+        options.createDirectories = false;
+        const io::WriteResult written = io::writeFileAtomic(utf8Path(FileData::getSystemPath(path)), text, options);
         if (!written.ok()){
             return fail(error, "cannot write '" + path + "': " + io::describeWriteError(written));
         }

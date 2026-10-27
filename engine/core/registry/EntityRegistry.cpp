@@ -225,12 +225,21 @@ bool EntityRegistry::isInHierarchy(Entity entity){
         return false;
     }
     auto transforms = componentManager.getComponentArray<Transform>();
-    const size_t index = transforms->getIndex(entity);
-    if (transforms->getComponentFromIndex(index).parent != NULL_ENTITY){
+    // read without settling the array: a destroy of one entity after another must not compact
+    // the holes each time (S07's one compaction at the next index observation)
+    const Transform* transform = transforms->findComponent(entity);
+    if (!transform) return false;
+    if (transform->parent != NULL_ENTITY){
         return true;
     }
-    // children follow their parent in the array (its branch)
-    return index + 1 < transforms->size() && transforms->getComponentFromIndex(index + 1).parent == entity;
+    // children follow their parent in the array (its branch); holes keep the slots' order,
+    // a pending re-sort does not (then the array settles first, as any index observation)
+    if (transforms->isOrderDirty()){
+        const size_t index = transforms->getIndex(entity);
+        return index + 1 < transforms->size() && transforms->getComponentFromIndex(index + 1).parent == entity;
+    }
+    const Transform* next = transforms->findNextAfter(entity);
+    return next && next->parent == entity;
 }
 
 Entity EntityRegistry::createEntity() {
