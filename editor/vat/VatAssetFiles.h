@@ -9,6 +9,11 @@
 //   do), a rename rewrites the .vat's "mesh" field, and a Vertex Animator's GameObject whose Model
 //   is the old mesh follows its .vat when the reference resolves by GUID (a closed scene opened
 //   after a rename, a prefab asset, an undone delete).
+//   The .vat.glb names the project's texture files by URIs relative to itself: a move or copy of
+//   the pair to another directory rewrites them (rebaseVatMeshUris: the GLB's JSON chunk only,
+//   the BIN chunk kept byte for byte) so they still name the same files (or the copies made in
+//   the same step); the commands' undo puts the JSON back. A delete never touches the textures.
+//   A rename of a pair member to another extension is refused (pairRenameRefusal).
 // - Thread-safety: pure helpers (followVatMesh writes one registry: the caller's thread).
 // - Invariants: a pair is only ever formed by the exact names "<stem>.vat" + "<stem>.vat.glb" in
 //   the same directory; a lone file (the other one missing) is handled alone.
@@ -19,6 +24,7 @@
 
 #include <filesystem>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace jasperengine{
@@ -42,6 +48,45 @@ namespace jasperengine::editor::vat{
     // there is none (another extension on either side, no pair on disk, a directory)
     bool renamedPair(const std::filesystem::path& oldPath, const std::filesystem::path& newPath,
                      std::filesystem::path& pairOld, std::filesystem::path& pairNew);
+
+    // Why `from` can't be renamed / moved to `to` (`fromName` in the text): it is one file of an
+    // existing pair and `to` doesn't keep its extension (".vat" / ".vat.glb"); empty when fine
+    std::string pairRenameRefusal(const std::filesystem::path& from, const std::filesystem::path& to, const std::string& fromName);
+
+    // The JSON chunk of a GLB (its first chunk), as stored (trailing space padding included).
+    // False when the file can't be read or is not a GLB 2.0
+    bool readGlbJson(const std::filesystem::path& glb, std::string& json);
+    // Replaces the JSON chunk of a GLB with `json` (padded with spaces to 4 bytes), keeping every
+    // other chunk's bytes, and fixes the chunk and file lengths (written through a temporary file)
+    bool writeGlbJson(const std::filesystem::path& glb, const std::string& json);
+
+    // A .vat.glb that went from `oldDirectory` to its current place `glb` (a move or a copy): its
+    // relative image URIs, which named files from `oldDirectory`, name the same files from the
+    // new directory. `along` lists what went in the same step (old -> new absolute paths of files
+    // or folders): a texture among them (or inside one of the folders) is named at its new place.
+    // data: URIs, URIs with a scheme or an absolute path, and bufferView (embedded) images are
+    // left alone. True when the chunk changed (`before` / `after` hold the two texts, for an undo
+    // that writes `before` back while the file still holds `after`)
+    bool rebaseVatMeshUris(const std::filesystem::path& glb, const std::filesystem::path& oldDirectory,
+                           const std::vector<std::pair<std::filesystem::path, std::filesystem::path>>& along,
+                           std::string& before, std::string& after);
+    // Every .vat.glb at `path` (a file) or under it (a folder)
+    std::vector<std::filesystem::path> vatMeshesAt(const std::filesystem::path& path);
+
+    // A rebase made by a command, to be undone: the file now at `file` held `after` and goes back
+    // to `before`
+    struct VatUriEdit{
+        std::filesystem::path file;
+        std::string before;
+        std::string after;
+    };
+    // After a move or copy of `moved` (old -> new absolute paths): every .vat.glb that changed
+    // directory rebased (rebaseVatMeshUris); the edits, keyed by the new place
+    std::vector<VatUriEdit> rebaseMovedVatMeshes(const std::vector<std::pair<std::filesystem::path, std::filesystem::path>>& moved);
+    // The undo of a move: every edit's file (now back at `oldPlace(edit.file)`) gets `before` when
+    // it still holds `after`
+    void restoreVatMeshUris(const std::vector<VatUriEdit>& edits,
+                            const std::vector<std::pair<std::filesystem::path, std::filesystem::path>>& moved);
 
     // What the Project window offers to the baker (vertex animation spec 5.3, 4.6):
     // a source to bake: a model (.gltf, .glb, .fbx; not a generated .vat.glb) or an .anim

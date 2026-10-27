@@ -268,6 +268,42 @@ namespace{
         }
     }
 
+    // NaN or infinity in the decoded data (a corrupt texture, bounds that overflow): refused with
+    // the first bad value's frame, element and texel, never written to an asset
+    bool checkFinite(const Assembled& in, VatImportResult& result){
+        const PayloadBuilder& p = in.payload;
+        const VatLayout& layout = p.layout;
+        const int elements = p.mode == VatMode::Bones ? layout.bones : layout.vertices;
+        const int perSample = layout.texelsPerSample(p.mode);
+        const char* what = p.mode == VatMode::Bones ? "bone " : "vertex ";
+        for (int f = 0; f < layout.samples; f++){
+            for (int e = 0; e < elements; e++){
+                for (int k = 0; k < perSample; k++){
+                    const float* t = p.at(f, e, k);
+                    for (int c = 0; c < 4; c++){
+                        if (std::isfinite(t[c])) continue;
+                        const uint64_t index = vatTexelIndex(p.mode, layout, f, e, k);
+                        const uint64_t width = (uint64_t)std::max(layout.width, 1);
+                        addError(result, "invalid_data",
+                                 "the decoded data has " + num(t[c]) + " at frame " + std::to_string(f) + ", " + what + std::to_string(e) +
+                                 " (payload texel " + std::to_string(index % width) + ", " + std::to_string(index / width) + ", channel " +
+                                 "RGBA"[c] + ")",
+                                 "re-export: the source texture or its bounds hold a value that is not a finite number");
+                        return false;
+                    }
+                }
+            }
+        }
+        const VatMeshData& mesh = in.mesh;
+        for (size_t i = 0; i < mesh.positions.size(); i++){
+            if (std::isfinite(mesh.positions[i])) continue;
+            addError(result, "invalid_data", "the mesh's vertex " + std::to_string(i / 3) + " has a position that is not a finite number (" +
+                     num(mesh.positions[i]) + ")", "re-export the mesh");
+            return false;
+        }
+        return true;
+    }
+
     void enforceContinuity(PayloadBuilder& p){
         const VatLayout& layout = p.layout;
         int k = -1;
@@ -309,36 +345,38 @@ bool finishImport(Assembled& in, const VatImportSpec& spec, VatImportResult& res
         addWarning(result, "node_transform_baked", "the mesh node has a transform: it was applied to the vertices and the animation",
                    "nothing to do (export with an identity transform to keep the mesh space)");
     }
+    if (!checkFinite(in, result)) return false;
     bakeTransform(in);
     enforceContinuity(p);
+    if (!checkFinite(in, result)) return false;     // the transform can overflow huge values
 
-    // bounds of every clip (exact values, before any half rounding)
-    const std::vector<int> owner = frameClips(in.clips, layout.samples);
-    for (VatClip& clip : in.clips) clip.bounds = VatBounds();
-    if (p.mode == VatMode::Vertices){
-        for (int f = 0; f < layout.samples; f++){
-            if (owner[(size_t)f] < 0) continue;
-            VatClip& clip = in.clips[(size_t)owner[(size_t)f]];
-            for (int e = 0; e < layout.vertices; e++){
-                const float* t = p.at(f, e, 0);
-                D3 pos(t[0], t[1], t[2]);
-                if (!clip.restNone) pos = pos + in.elementRest[(size_t)e];
-                clip.bounds.extend(Vector3((float)pos.x, (float)pos.y, (float)pos.z));
+    // bounds of every clip over all of its frames (exact values, before any half rounding);
+    // clips may overlap (OpenVAT animations sharing frames): each one covers every frame it plays
+    for (VatClip& clip : in.clips){
+        clip.bounds = VatBounds();
+        const int first = std::max(clip.start, 0);
+        const int end = std::min(clip.start + clip.frames, layout.samples);
+        if (p.mode == VatMode::Vertices){
+            for (int f = first; f < end; f++){
+                for (int e = 0; e < layout.vertices; e++){
+                    const float* t = p.at(f, e, 0);
+                    D3 pos(t[0], t[1], t[2]);
+                    if (!clip.restNone) pos = pos + in.elementRest[(size_t)e];
+                    clip.bounds.extend(Vector3((float)pos.x, (float)pos.y, (float)pos.z));
+                }
             }
-        }
-    }else{
-        const VatMeshData& mesh = in.mesh;
-        const size_t vertices = mesh.vertexCount();
-        for (int f = 0; f < layout.samples; f++){
-            if (owner[(size_t)f] < 0) continue;
-            VatClip& clip = in.clips[(size_t)owner[(size_t)f]];
-            for (size_t v = 0; v < vertices; v++){
-                const int bone = mesh.joints[v * 4];
-                const float* q = p.at(f, bone, 0);
-                const float* t = p.at(f, bone, 1);
-                const D3 rest(mesh.positions[v * 3], mesh.positions[v * 3 + 1], mesh.positions[v * 3 + 2]);
-                const D3 pos = rotate(DQ(q[0], q[1], q[2], q[3]), rest * t[3]) + D3(t[0], t[1], t[2]);
-                clip.bounds.extend(Vector3((float)pos.x, (float)pos.y, (float)pos.z));
+        }else{
+            const VatMeshData& mesh = in.mesh;
+            const size_t vertices = mesh.vertexCount();
+            for (int f = first; f < end; f++){
+                for (size_t v = 0; v < vertices; v++){
+                    const int bone = mesh.joints[v * 4];
+                    const float* q = p.at(f, bone, 0);
+                    const float* t = p.at(f, bone, 1);
+                    const D3 rest(mesh.positions[v * 3], mesh.positions[v * 3 + 1], mesh.positions[v * 3 + 2]);
+                    const D3 pos = rotate(DQ(q[0], q[1], q[2], q[3]), rest * t[3]) + D3(t[0], t[1], t[2]);
+                    clip.bounds.extend(Vector3((float)pos.x, (float)pos.y, (float)pos.z));
+                }
             }
         }
     }

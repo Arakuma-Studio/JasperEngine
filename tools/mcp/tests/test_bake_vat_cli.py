@@ -399,3 +399,76 @@ async def test_import_openvat_and_houdini():
     vat = read_vat(proj, "assets/vat/wave.vat")
     check(vat["recipe"]["sources"][0]["kind"] == "houdini_vat3" and vat["recipe"]["import"]["axis"] == "unity",
           f"the recipe keeps the import options: {vat['recipe']}")
+
+
+async def test_clip_settings_tolerance_and_import_options():
+    """--clip-wrap / --clip-interpolate set a clip's wrap and interpolation in the written .vat (an unknown
+    clip exits 1, bad values and import use exit 2, --rebake refuses them); --tolerance reaches the report;
+    the importer options --clip-name, --colors and --axis-scale reach the import and its recipe (refused on a
+    baked source); the loop-seam / interpolation warnings' fix names these flags."""
+    proj = project("clipsettings")
+    data = bake(proj, "--source", ARM, "--clip-wrap", "Swing=once", "--clip-interpolate", "Stretch=off", "--clip-wrap", "Stretch=ping_pong",
+                "--tolerance", "50", "--output", "assets/vat/arm.vat")
+    vat = read_vat(proj, "assets/vat/arm.vat")
+    clips = {c["name"]: c for c in vat["clips"]}
+    check(clips["Swing"].get("wrap") == "once" and clips["Stretch"].get("wrap") == "ping_pong", f"--clip-wrap: {vat['clips']}")
+    check(clips["Stretch"].get("interpolate") is False and clips["Swing"].get("interpolate", True) is True, f"--clip-interpolate: {vat['clips']}")
+    check(abs(data["report"]["tolerance_mm"] - 50) < 1e-3, f"--tolerance: {data['report']['tolerance_mm']}")
+
+    data = bake(proj, "--source", ARM, "--clip-wrap", "Fly=once", "--dry-run", want=1)
+    check(errors_of(data) == ["invalid_settings"] and "no clip 'Fly'" in data["errors"][0]["message"] and
+          "Swing" in data["errors"][0]["fix"], f"an unknown clip: {data}")
+    for args, needle in ((["--clip-wrap", "Swing"], "invalid --clip-wrap 'Swing'"),
+                         (["--clip-wrap", "Swing=sideways"], "invalid --clip-wrap 'Swing=sideways'"),
+                         (["--clip-wrap", "=once"], "invalid --clip-wrap '=once'"),
+                         (["--clip-interpolate", "Swing=maybe"], "invalid --clip-interpolate 'Swing=maybe'"),
+                         (["--tolerance", "0"], "invalid --tolerance '0'"),
+                         (["--tolerance", "nan"], "invalid --tolerance 'nan'"),
+                         (["--axis-scale", "-1"], "invalid --axis-scale '-1'"),
+                         (["--colors", "maybe"], "invalid --colors 'maybe'"),
+                         (["--clip-name", "Ripple"], "--clip-name is an importer option"),
+                         (["--colors", "off"], "--colors is an importer option"),
+                         (["--axis-scale", "2"], "--axis-scale is an importer option")):
+        data = bake(proj, "--source", ARM, *args, "--dry-run", want=2)
+        check(errors_of(data) == ["usage"] and needle in data["errors"][0]["message"], f"{args}: {data}")
+    for flag, value in (("--clip-wrap", "Swing=once"), ("--clip-interpolate", "Swing=off"), ("--tolerance", "2"),
+                        ("--clip-name", "X"), ("--colors", "off"), ("--axis-scale", "2")):
+        data = bake(proj, "--rebake", "assets/vat/arm.vat", flag, value, want=2)
+        check(errors_of(data) == ["usage"] and f"leave out {flag}" in data["errors"][0]["message"], f"--rebake {flag}: {data}")
+
+    # importer options
+    wave = tmp() / "exports" / "wave-options"
+    write_houdini_soft(wave)
+    data = bake(proj, "--source", str(wave), "--fps", "24", "--axis", "unity", "--clip-wrap", "Wave=once", want=2)
+    check(errors_of(data) == ["usage"] and "--clip-wrap is for baked sources" in data["errors"][0]["message"], f"{data}")
+    bake(proj, "--source", str(wave), "--fps", "24", "--axis", "unity", "--output", "assets/vat/wave1.vat")
+    data = bake(proj, "--source", str(wave), "--fps", "24", "--axis", "unity", "--clip-name", "Ripple", "--colors", "off",
+                "--axis-scale", "2", "--tolerance", "5", "--output", "assets/vat/wave2.vat")
+    one, two = read_vat(proj, "assets/vat/wave1.vat"), read_vat(proj, "assets/vat/wave2.vat")
+    check([c["name"] for c in two["clips"]] == ["Ripple"], f"--clip-name: {two['clips']}")
+    options = two["recipe"]["import"]
+    check(options.get("clip") == "Ripple" and options.get("colors") is False and abs(options.get("axis_scale", 0) - 2) < 1e-6,
+          f"the recipe keeps the importer options: {options}")
+    size1 = [b - a for a, b in zip(one["bounds"]["min"], one["bounds"]["max"])]
+    size2 = [b - a for a, b in zip(two["bounds"]["min"], two["bounds"]["max"])]
+    check(any(abs(s2 - s1) > 1e-3 for s1, s2 in zip(size1, size2)), f"--axis-scale 2 changes the decoded size: {size1} {size2}")
+    check(abs(data["report"]["tolerance_mm"] - 5) < 1e-3 or data["report"]["tolerance_mm"] > 5, f"--tolerance reaches the import: {data['report']}")
+
+    # the help lists the new options
+    r = run("--help")
+    for flag in ("--clip-wrap", "--clip-interpolate", "--tolerance", "--clip-name", "--colors", "--axis-scale"):
+        check(flag in r.stdout, f"--help lists {flag}")
+
+
+async def test_docs_exit_codes_match():
+    """docs/vertex-animation.md tells what exits 2 the way the code does: routing (a source that is not a
+    bake source) and the other usage refusals, while a source with nothing to bake exits 1."""
+    text = (REPO / "docs" / "vertex-animation.md").read_text()
+    paragraph = text[text.index("The exit code is 0"):]
+    paragraph = paragraph[:paragraph.index("\n\n")]
+    check("`no_animation`" in paragraph.split(", and 2")[0], f"no_animation exits 1: {paragraph}")
+    check("a source that is not something to bake" in paragraph and "missing `--project`" in paragraph and
+          "a project that doesn't load" in paragraph, f"the usage errors as bake-vat --help lists them: {paragraph}")
+    proj = project("exitcodes")
+    data = bake(proj, "--source", "assets/models/nope.gltf", want=2)
+    check(errors_of(data) == ["invalid_source"], f"a routing refusal exits 2: {data}")

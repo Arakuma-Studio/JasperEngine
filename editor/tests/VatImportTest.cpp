@@ -33,6 +33,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <limits>
 #include <map>
 #include <set>
 #include <sstream>
@@ -1118,4 +1119,206 @@ TEST(VatImportSideFx, SpritesAreRefused) {
     const ev::VatImportResult r = ev::importVat(spec);
     ASSERT_TRUE(hasError(r, "unsupported")) << issues(r);
     EXPECT_NE(issues(r).find("particle sprites are not supported yet"), std::string::npos);
+}
+
+// ---- malformed inputs (crafted files must be refused with an error, never read out of bounds) ----
+
+namespace {
+
+    // A 3-vertex OpenVAT export whose mesh is a .gltf (JSON + Bad.bin) the test edits before the
+    // import: POSITION (accessor 0), TEXCOORD_0 = VAT_UV (accessor 1), and when `extras` NORMAL (2),
+    // TANGENT (3) and COLOR_0 (4), every one with 3 elements. A 2 x 2 PNG, 1 frame.
+    struct BadGltf {
+        fs::path dir;
+        Json gltf;
+        void write() const { writeText(dir / "Bad.gltf", gltf.dump()); }
+    };
+
+    BadGltf badGltf(const std::string& name, bool extras = false) {
+        BadGltf out;
+        out.dir = freshDir(name);
+        std::vector<float> data = {0, 0, 0, 1, 0, 0, 0, 1, 0,                    // POSITION
+                                   0.25f, 0.25f, 0.75f, 0.25f, 0.25f, 0.75f};   // TEXCOORD_0
+        if (extras) {
+            for (int i = 0; i < 3; i++) data.insert(data.end(), {0, 0, 1});         // NORMAL
+            for (int i = 0; i < 3; i++) data.insert(data.end(), {1, 0, 0, 1});      // TANGENT
+            for (int i = 0; i < 3; i++) data.insert(data.end(), {1, 1, 1, 1});      // COLOR_0
+        }
+        std::string bytes(data.size() * 4, '\0');
+        std::memcpy(bytes.data(), data.data(), bytes.size());
+        writeText(out.dir / "Bad.bin", bytes);
+        Json views = Json::array({{{"buffer", 0}, {"byteOffset", 0}, {"byteLength", 36}}, {{"buffer", 0}, {"byteOffset", 36}, {"byteLength", 24}}});
+        Json accessors = Json::array({{{"bufferView", 0}, {"componentType", 5126}, {"count", 3}, {"type", "VEC3"}},
+                                      {{"bufferView", 1}, {"componentType", 5126}, {"count", 3}, {"type", "VEC2"}}});
+        Json attributes = {{"POSITION", 0}, {"TEXCOORD_0", 1}};
+        if (extras) {
+            views.push_back({{"buffer", 0}, {"byteOffset", 60}, {"byteLength", 36}});
+            views.push_back({{"buffer", 0}, {"byteOffset", 96}, {"byteLength", 48}});
+            views.push_back({{"buffer", 0}, {"byteOffset", 144}, {"byteLength", 48}});
+            accessors.push_back({{"bufferView", 2}, {"componentType", 5126}, {"count", 3}, {"type", "VEC3"}});
+            accessors.push_back({{"bufferView", 3}, {"componentType", 5126}, {"count", 3}, {"type", "VEC4"}});
+            accessors.push_back({{"bufferView", 4}, {"componentType", 5126}, {"count", 3}, {"type", "VEC4"}});
+            attributes["NORMAL"] = 2;
+            attributes["TANGENT"] = 3;
+            attributes["COLOR_0"] = 4;
+        }
+        out.gltf = {{"asset", {{"version", "2.0"}}},
+                    {"buffers", Json::array({{{"byteLength", bytes.size()}, {"uri", "Bad.bin"}}})},
+                    {"bufferViews", views},
+                    {"accessors", accessors},
+                    {"meshes", Json::array({{{"primitives", Json::array({{{"attributes", attributes}}})}}})},
+                    {"nodes", Json::array({{{"mesh", 0}}})},
+                    {"scenes", Json::array({{{"nodes", Json::array({0})}}})},
+                    {"scene", 0}};
+        out.write();
+        writeText(out.dir / "Bad-remap_info.json",
+                  Json({{"os-remap", {{"Min", {0, 0, 0}}, {"Max", {1, 1, 1}}, {"Frames", 1}}},
+                        {"animations", {{"A", {{"startFrame", 1}, {"endFrame", 1}, {"framerate", 24}}}}}}).dump());
+        Image vat(2, 2);
+        for (int r = 0; r < 2; r++)
+            for (int c = 0; c < 2; c++) vat.set(c, r, 0.5, 0.5, 0.5, 1.0);
+        writePng8(out.dir / "Bad_vat.png", vat);
+        return out;
+    }
+
+    // the import of the edited export fails, its errors naming `expected`
+    void expectRefused(const BadGltf& bad, const std::string& expected, const std::string& what) {
+        bad.write();
+        const ev::VatImportResult r = ev::importVat(specFor(bad.dir / "Bad-remap_info.json"));
+        ASSERT_FALSE(r.ok()) << what;
+        EXPECT_NE(issues(r).find(expected), std::string::npos) << what << ": " << issues(r);
+    }
+
+}
+
+TEST(VatImport, MalformedGltfBaseExportImports) {
+    // the unedited fixtures are valid: every refusal below comes from the edit
+    for (bool extras : {false, true}) {
+        const BadGltf bad = badGltf(extras ? "bad-base-extras" : "bad-base", extras);
+        const ev::VatImportResult r = ev::importVat(specFor(bad.dir / "Bad-remap_info.json"));
+        ASSERT_TRUE(r.ok()) << issues(r);
+        EXPECT_EQ(r.data.layout.vertices, 3);
+    }
+}
+
+TEST(VatImport, MalformedGltfAccessorSizesOverflow) {
+    // counts whose byte size or count * components wrap around 64 bits (heap corruption before)
+    for (uint64_t count : {(uint64_t)1 << 62, ((uint64_t)1 << 63) + 1, (uint64_t)0x5555555555555556ull, (uint64_t)0xFFFFFFFFFFFFFFFFull}) {
+        BadGltf bad = badGltf("bad-count");
+        bad.gltf["accessors"][0]["count"] = count;
+        expectRefused(bad, "", "POSITION count " + std::to_string(count));
+    }
+    BadGltf bad = badGltf("bad-offset");
+    bad.gltf["accessors"][0]["byteOffset"] = (uint64_t)0xFFFFFFFFFFFFFFF0ull;
+    expectRefused(bad, "", "accessor byteOffset near 2^64");
+    bad = badGltf("bad-view-offset");
+    bad.gltf["bufferViews"][0]["byteOffset"] = (uint64_t)0xFFFFFFFFFFFFFFF0ull;
+    expectRefused(bad, "", "bufferView byteOffset near 2^64");
+    bad = badGltf("bad-stride");
+    bad.gltf["bufferViews"][0]["byteStride"] = 252;
+    expectRefused(bad, "", "a stride far past the buffer");
+    bad = badGltf("bad-zeros");
+    bad.gltf["accessors"][1].erase("bufferView");
+    bad.gltf["accessors"][1]["count"] = (uint64_t)1 << 60;
+    expectRefused(bad, "", "a data-less accessor claiming 2^60 elements");
+}
+
+TEST(VatImport, MalformedGltfIndicesOutOfRange) {
+    // bufferView / buffer / accessor indices past their arrays (SIGSEGV before)
+    BadGltf bad = badGltf("bad-view");
+    bad.gltf["accessors"][0]["bufferView"] = 50;
+    expectRefused(bad, "", "POSITION bufferView 50");
+    bad = badGltf("bad-view-uv");
+    bad.gltf["accessors"][1]["bufferView"] = 50;
+    expectRefused(bad, "", "TEXCOORD_0 bufferView 50");
+    bad = badGltf("bad-buffer");
+    bad.gltf["bufferViews"][1]["buffer"] = 7;
+    expectRefused(bad, "", "bufferView buffer 7");
+    bad = badGltf("bad-accessor");
+    bad.gltf["meshes"][0]["primitives"][0]["attributes"]["TEXCOORD_0"] = 9;
+    expectRefused(bad, "", "TEXCOORD_0 accessor 9");
+    bad = badGltf("bad-uvset");
+    bad.gltf["meshes"][0]["primitives"][0]["attributes"]["TEXCOORD_99999999"] = 1;
+    expectRefused(bad, "UV sets", "TEXCOORD_99999999");
+}
+
+TEST(VatImport, MalformedGltfShortAttributes) {
+    // NORMAL / TANGENT / COLOR_0 / TEXCOORD with fewer elements than POSITION (read past the end before)
+    for (const char* name : {"NORMAL", "TANGENT", "COLOR_0", "TEXCOORD_0"}) {
+        BadGltf bad = badGltf(std::string("bad-short-") + name, true);
+        const int accessor = bad.gltf["meshes"][0]["primitives"][0]["attributes"][name].get<int>();
+        bad.gltf["accessors"][(size_t)accessor]["count"] = 1;
+        expectRefused(bad, std::string(name) + " has 1 elements but POSITION has 3", name);
+    }
+}
+
+TEST(VatImport, MalformedOpenVatFrameCounts) {
+    // frame counts / numbers that would overflow the int frame math
+    BadGltf bad = badGltf("bad-frames");
+    writeText(bad.dir / "Bad-remap_info.json",
+              Json({{"os-remap", {{"Min", {0, 0, 0}}, {"Max", {1, 1, 1}}, {"Frames", 1e300}}}}).dump());
+    expectRefused(bad, "not a frame count", "Frames 1e300");
+    writeText(bad.dir / "Bad-remap_info.json",
+              Json({{"os-remap", {{"Min", {0, 0, 0}}, {"Max", {1, 1, 1}}, {"Frames", 2147483647}}}}).dump());
+    expectRefused(bad, "", "Frames INT_MAX");
+    writeText(bad.dir / "Bad-remap_info.json",
+              Json({{"os-remap", {{"Min", {0, 0, 0}}, {"Max", {1, 1, 1}}, {"Frames", 1}}},
+                    {"animations", {{"A", {{"startFrame", -1e300}, {"endFrame", 1e300}, {"framerate", 24}}}}}}).dump());
+    const ev::VatImportResult r = ev::importVat(specFor(bad.dir / "Bad-remap_info.json"));
+    EXPECT_TRUE(r.ok()) << issues(r);   // the absurd frame numbers are ignored (the clip covers the texture)
+}
+
+TEST(VatImport, OpenVatOverlappingClipsBoundsCoverEveryFrame) {
+    const fs::path dir = freshDir("openvat-overlap");
+    const OpenVatTruth truth = writeOpenVat(dir, "Flag", OpenVatOptions());
+    // Walk plays every frame, Jump the last two: frames 3-4 belong to both
+    std::ifstream in(dir / "Flag-remap_info.json");
+    Json remap = Json::parse(in);
+    in.close();
+    remap["animations"] = {{"Walk", {{"startFrame", 1}, {"endFrame", 4}, {"framerate", 24}, {"looping", true}}},
+                           {"Jump", {{"startFrame", 3}, {"endFrame", 4}, {"framerate", 30}, {"looping", false}}}};
+    writeText(dir / "Flag-remap_info.json", remap.dump());
+    const ev::VatImportResult r = ev::importVat(specFor(dir));
+    ASSERT_TRUE(r.ok()) << issues(r);
+    ASSERT_EQ(r.data.clips.size(), 2u);
+    for (const vat::VatClip& clip : r.data.clips) {
+        ASSERT_TRUE(clip.bounds.valid) << clip.name;
+        for (int f = clip.start; f < clip.start + clip.frames; f++)
+            for (const V3& p : truth.pos[(size_t)f]) {
+                EXPECT_GE(p.x, clip.bounds.min.x - 1e-5) << clip.name << " frame " << f;
+                EXPECT_GE(p.y, clip.bounds.min.y - 1e-5) << clip.name << " frame " << f;
+                EXPECT_GE(p.z, clip.bounds.min.z - 1e-5) << clip.name << " frame " << f;
+                EXPECT_LE(p.x, clip.bounds.max.x + 1e-5) << clip.name << " frame " << f;
+                EXPECT_LE(p.y, clip.bounds.max.y + 1e-5) << clip.name << " frame " << f;
+                EXPECT_LE(p.z, clip.bounds.max.z + 1e-5) << clip.name << " frame " << f;
+            }
+    }
+}
+
+TEST(VatImport, NonFiniteDecodedDataIsRefused) {
+    // a NaN texel in the VAT texture: vertex 2 (column 2 of the single-row layout), frame 1
+    const fs::path dir = freshDir("openvat-nan");
+    writeOpenVat(dir, "Flag", OpenVatOptions());
+    jasperengine::editor::FloatImage image;
+    std::string error;
+    ASSERT_TRUE(jasperengine::editor::readFloatImage((dir / "Flag_vat.exr").string(), image, &error)) << error;
+    image.rgba[((size_t)1 * (size_t)image.width + 2) * 4 + 1] = std::numeric_limits<float>::quiet_NaN();
+    ASSERT_TRUE(jasperengine::editor::writeExr((dir / "Flag_vat.exr").string(), image, false, &error)) << error;
+    ev::VatImportResult r = ev::importVat(specFor(dir));
+    ASSERT_TRUE(hasError(r, "invalid_data")) << issues(r);
+    EXPECT_NE(issues(r).find("nan at frame 1, vertex "), std::string::npos) << issues(r);
+    EXPECT_NE(issues(r).find("payload texel"), std::string::npos) << issues(r);
+
+    // bounds whose remap overflows to infinity
+    const fs::path inf = freshDir("openvat-inf");
+    writeOpenVat(inf, "Flag", OpenVatOptions());
+    std::ifstream in(inf / "Flag-remap_info.json");
+    Json remap = Json::parse(in);
+    in.close();
+    remap["os-remap"]["Min"] = {1e308, 0, 0};
+    remap["os-remap"]["Max"] = {-1e308, 1, 1};
+    writeText(inf / "Flag-remap_info.json", remap.dump());
+    r = ev::importVat(specFor(inf));
+    ASSERT_TRUE(hasError(r, "invalid_data")) << issues(r);
+    EXPECT_NE(issues(r).find("inf at frame "), std::string::npos) << issues(r);
 }

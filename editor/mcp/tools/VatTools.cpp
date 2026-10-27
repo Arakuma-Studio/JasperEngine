@@ -24,6 +24,7 @@
 #include "Project.h"
 #include "animation/ClipConverters.h"
 #include "animation/ClipEditorUtil.h"
+#include "animation/AnimationClipIO.h"
 #include "pose/PoseEditSession.h"
 #include "texsynth/SynthesisSession.h"
 #include "command/type/CreateVatCmd.h"
@@ -94,6 +95,98 @@ Json errorsJson(const std::vector<VatIssue>& issues) {
     return list;
 }
 
+VatIssue jobIssue(const std::string& kind, const std::string& message, const std::string& fix) {
+    VatIssue issue;
+    issue.kind = kind;
+    issue.error = true;
+    issue.message = message;
+    issue.fix = fix;
+    return issue;
+}
+
+// A failed job as DESIGN.md wants every error: isError with a text that says how to fix it, and
+// `errors` [{kind, message, fix}] in its data
+void failJob(const JobPtr& job, const std::string& text, const std::vector<VatIssue>& issues, Json data = Json::object()) {
+    if (!data.is_object()) data = Json::object();
+    data["errors"] = errorsJson(issues);
+    job->fail(text + issuesLines(issues, true), data);
+}
+
+// the errors of a failed bake: the session's, else one from its message (never without a kind)
+std::vector<VatIssue> bakeFailure(const VatBakeSession& session) {
+    std::vector<VatIssue> issues;
+    for (const VatIssue& issue : session.failureIssues()) {
+        if (issue.error) issues.push_back(issue);
+    }
+    if (issues.empty()) {
+        issues.push_back(jobIssue("bake_failed", session.error().empty() ? std::string("the bake failed") : session.error(),
+                                  "call bake_vertex_animation again; if it fails the same way, read_console for the cause"));
+    }
+    return issues;
+}
+
+// a write that returned false: what the session says (FB's write re-validates the source:
+// invalid_source with its fix), else the kind read from the message
+// what a failed write reports: the write's own issue (VatBakeSession::write gives its kind and fix:
+// invalid_source when the source went away, output_exists...), else the session's, else one from
+// the error text
+std::vector<VatIssue> writeFailure(const VatIssue& writeIssue, const std::vector<VatIssue>& sessionIssues, const std::string& error) {
+    std::vector<VatIssue> issues;
+    if (!writeIssue.kind.empty()) {
+        VatIssue issue = writeIssue;
+        issue.error = true;
+        if (issue.message.empty()) issue.message = error;
+        if (issue.fix.empty()) issue.fix = "call bake_vertex_animation again";
+        issues.push_back(issue);
+        return issues;
+    }
+    for (const VatIssue& issue : sessionIssues) {
+        if (issue.error) issues.push_back(issue);
+    }
+    if (!issues.empty()) return issues;
+    if (error.find("exists") != std::string::npos) {
+        issues.push_back(jobIssue("output_exists", error, "pass overwrite: true (one undo step puts it back), or choose another output"));
+    } else {
+        issues.push_back(jobIssue("write_failed", error.empty() ? std::string("the files could not be written") : error,
+                                  "check that the output folder exists and is writable, or choose another output"));
+    }
+    return issues;
+}
+
+VatIssue projectChangedIssue() {
+    return jobIssue("project_changed", "another project was opened while the job ran", "call bake_vertex_animation again in this project");
+}
+
+// A GameObject source (or `on` target) still there for the write: its scene open and stopped, the
+// GameObject at its path. False with an invalid_source / scene_playing issue (the fix: bring it back
+// or bake again) when it went away while the job ran.
+bool sourceStillThere(Project* project, const VatSourceSpec& source, VatIssue& issue) {
+    if (!isGameObjectSource(source)) return true;
+    SceneProject* scene = source.sceneId != 0 ? project->getScene(source.sceneId) : nullptr;
+    if (!scene && !source.scene.empty()) {
+        for (SceneProject& sp : project->getScenes()) {
+            if (sp.filepath.empty()) continue;
+            const fs::path file = sp.filepath.is_absolute() ? sp.filepath : project->getProjectPath() / sp.filepath;
+            if (FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(file.lexically_normal())) == source.scene) scene = &sp;
+        }
+    }
+    if (!scene || !scene->scene) {
+        issue = jobIssue("invalid_source", "the scene of the source GameObject '" + source.path + "' was closed while the bake ran",
+                         "open the scene again (open_scene) and call bake_vertex_animation again");
+        return false;
+    }
+    if (scene->playState != ScenePlayState::STOPPED) {
+        issue = jobIssue("scene_playing", "the scene '" + scene->name + "' started playing while the bake ran", "stop play mode and bake again");
+        return false;
+    }
+    if (EntityPath::find(*scene, source.path) == NULL_ENTITY) {
+        issue = jobIssue("invalid_source", "the source GameObject '" + source.path + "' was deleted or renamed while the bake ran",
+                         "undo the deletion (undo with scope scene) or give its new path, then call bake_vertex_animation again");
+        return false;
+    }
+    return true;
+}
+
 VatIssue argIssue(const std::string& message, const std::string& fix) {
     VatIssue issue;
     issue.kind = "invalid_settings";
@@ -160,6 +253,60 @@ bool stringList(const Json& value, const char* field, std::vector<std::string>& 
         out.push_back(item.get<std::string>());
     }
     return true;
+}
+
+// `clips`: a name, or a list of names and {name, wrap, interpolate, fps} objects (the baker
+// window's clip rows: a clip's wrap / interpolation / sample rate at bake time)
+bool clipsArg(const Json& value, std::vector<std::string>& names, std::vector<VatClipOverride>& overrides, std::string& error) {
+    const Json items = value.is_array() ? value : Json::array({value});
+    const std::string shape = "clips holds clip names or {name, wrap (once|loop|ping_pong|clamp_forever), interpolate (bool), fps (0..240)}";
+    for (const Json& item : items) {
+        if (item.is_string() && !item.get<std::string>().empty()) {
+            names.push_back(item.get<std::string>());
+            continue;
+        }
+        if (!item.is_object() || !item.contains("name") || !item["name"].is_string() || item["name"].get<std::string>().empty()) {
+            error = shape + " (got " + item.dump() + ").";
+            return false;
+        }
+        VatClipOverride override;
+        override.name = item["name"].get<std::string>();
+        for (auto it = item.begin(); it != item.end(); ++it) {
+            const std::string key = it.key();
+            const Json& v = it.value();
+            if (key == "name") continue;
+            if (key == "wrap" && v.is_string() && anim::wrapFromName(v.get<std::string>(), override.wrap) && override.wrap != ClipWrapMode::Default) {
+                continue;
+            }
+            if (key == "interpolate" && v.is_boolean()) {
+                override.interpolate = v.get<bool>();
+                continue;
+            }
+            if (key == "fps" && v.is_number() && v.get<double>() >= 0.0 && v.get<double>() <= 240.0) {
+                override.fps = v.get<float>();
+                continue;
+            }
+            error = "clips[\"" + override.name + "\"]." + key + ": " + shape + " (got " + v.dump() + ").";
+            return false;
+        }
+        names.push_back(override.name);
+        auto same = std::find_if(overrides.begin(), overrides.end(), [&](const VatClipOverride& o) { return o.name == override.name; });
+        if (same != overrides.end()) *same = override;
+        else overrides.push_back(override);
+    }
+    return true;
+}
+
+// a clip override naming a clip the source doesn't have: invalid_settings (the choices listed)
+std::vector<VatIssue> unknownOverrides(const VatBakeSpec& spec, const std::vector<VatSourceClip>& clips) {
+    std::vector<VatIssue> issues;
+    std::string available;
+    for (const VatSourceClip& clip : clips) available += (available.empty() ? "" : ", ") + clip.name;
+    for (const VatClipOverride& override : spec.clipOverrides) {
+        const bool known = std::any_of(clips.begin(), clips.end(), [&](const VatSourceClip& clip) { return clip.name == override.name; });
+        if (!known) issues.push_back(argIssue("the source has no clip '" + override.name + "' (clips object)", "choose from: " + available));
+    }
+    return issues;
 }
 
 bool numberArg(const Json& args, const char* key, double minimum, double maximum, bool exclusiveMinimum, double& out, std::string& error) {
@@ -400,7 +547,7 @@ bool requestFromArgs(Project* project, const Json& args, VatRequest& request, st
     std::string name;
     if (args.contains("clips")) {
         std::vector<std::string> clips;
-        if (!stringList(args["clips"], "clips", clips, error)) return false;
+        if (!clipsArg(args["clips"], clips, spec.clipOverrides, error)) return false;
         for (const std::string& clip : clips) {
             if (std::find(spec.clips.begin(), spec.clips.end(), clip) == spec.clips.end()) spec.clips.push_back(clip);
         }
@@ -454,6 +601,12 @@ bool requestFromArgs(Project* project, const Json& args, VatRequest& request, st
     }
     if (!request.write && args.contains("overwrite") && spec.overwrite) {
         error = "overwrite needs output (a preview writes nothing).";
+        return false;
+    }
+    if (request.defaultOutput && spec.overwrite) {
+        error = "output: true and overwrite: true contradict: the default name never replaces another file (the same source's bake "
+                "there is rebaked, keeping its GUID; any other file makes it take a free name). To replace a file, give its .vat path "
+                "as output with overwrite: true; else leave overwrite out.";
         return false;
     }
 
@@ -676,8 +829,7 @@ void finishBake(const VatCallPtr& state) {
         return;
     }
     if (session.state() != VatBakeState::Done) {
-        data["errors"] = errorsJson(session.failureIssues());
-        job->fail("The bake failed, nothing was written: " + session.error() + issuesLines(session.failureIssues(), true), data);
+        failJob(job, "The bake failed, nothing was written:", bakeFailure(session), data);
         return;
     }
     const VatBakeResult& result = *session.result();
@@ -709,16 +861,38 @@ void finishBake(const VatCallPtr& state) {
     }
     // another project opened meanwhile: nothing goes into it
     if (state->generation != texsynth::projectGeneration() || !project || project->getProjectPath() != state->root) {
-        job->fail("The project changed while the bake ran: nothing was written. Call bake_vertex_animation again.", data);
+        failJob(job, "The bake finished but nothing was written:", {projectChangedIssue()}, data);
+        return;
+    }
+    // the GameObject source (or `on` target) went away while the bake ran (its scene closed, it
+    // was deleted): nothing is written from it
+    VatIssue gone;
+    if (!sourceStillThere(project, session.spec().source, gone)) {
+        failJob(job, "The bake finished but nothing was written:", {gone}, data);
+        return;
+    }
+    if (request.placeScene != 0 && !project->getScene(request.placeScene)) {
+        failJob(job, "The bake finished but nothing was written:",
+                {jobIssue("invalid_source", "the scene to place the bake in was closed while the bake ran",
+                          "open it again (open_scene) and call bake_vertex_animation again, or leave place out")}, data);
         return;
     }
     // a file source goes into the scene given: the session places into the selected scene
-    if (request.placeScene != 0 && project->getScene(request.placeScene)) project->setSelectedSceneId(request.placeScene);
+    if (request.placeScene != 0) project->setSelectedSceneId(request.placeScene);
     VatWriteResult out;
     std::string error;
-    if (!session.write(out, error)) {
-        data["errors"] = Json::array({Json{{"kind", "write_failed"}, {"message", error}, {"fix", "pass overwrite: true, or choose another output"}}});
-        job->fail("The bake finished but nothing was written: " + error + ".", data);
+    VatIssue writeIssue;
+    bool written = false;
+    try {
+        written = session.write(out, error, &writeIssue);
+    } catch (const std::exception& e) {
+        failJob(job, "The bake finished but nothing was written:",
+                {jobIssue("write_failed", std::string("writing failed: ") + e.what(),
+                          "call bake_vertex_animation again (the editor changed while the bake ran)")}, data);
+        return;
+    }
+    if (!written) {
+        failJob(job, "The bake finished but nothing was written:", writeFailure(writeIssue, session.failureIssues(), error), data);
         return;
     }
     writtenJson(project, out, data, text);
@@ -773,16 +947,32 @@ void finishImport(const VatCallPtr& state) {
         return;
     }
     if (state->generation != texsynth::projectGeneration() || !project || project->getProjectPath() != state->root) {
-        job->fail("The project changed while the import ran: nothing was written. Call bake_vertex_animation again.", data);
+        failJob(job, "The import finished but nothing was written:", {projectChangedIssue()}, data);
         return;
     }
     VatWriteResult out;
     std::string error;
     VatImportPlan options = request.importWrite;
     if (request.defaultOutput) options.output.clear();
-    if (!writeImportedVat(project, result, request.detection, options, out, error)) {
-        data["errors"] = Json::array({Json{{"kind", "write_failed"}, {"message", error}, {"fix", "pass overwrite: true, or choose another output"}}});
-        job->fail("The import finished but nothing was written: " + error + ".", data);
+    if (options.place != VatPlace::None && options.sceneId != 0) {
+        SceneProject* placeIn = project->getScene(options.sceneId);
+        if (!placeIn || !placeIn->scene) {
+            failJob(job, "The import finished but nothing was written:",
+                    {jobIssue("invalid_source", "the scene to place the import in was closed while the import ran",
+                              "open it again (open_scene) and call bake_vertex_animation again, or leave place out")}, data);
+            return;
+        }
+    }
+    bool written = false;
+    try {
+        written = writeImportedVat(project, result, request.detection, options, out, error);
+    } catch (const std::exception& e) {
+        failJob(job, "The import finished but nothing was written:",
+                {jobIssue("write_failed", std::string("writing failed: ") + e.what(), "call bake_vertex_animation again")}, data);
+        return;
+    }
+    if (!written) {
+        failJob(job, "The import finished but nothing was written:", writeFailure(VatIssue(), {}, error), data);
         return;
     }
     writtenJson(project, out, data, text);
@@ -798,7 +988,7 @@ void tick(const VatCallPtr& state) {
     if (state->generation != texsynth::projectGeneration() || !project || project->getProjectPath() != state->root) {
         state->finished = true;
         if (state->session) state->session->cancel();
-        job->fail("The project changed while the bake ran: nothing was written.");
+        failJob(job, "Nothing was written:", {projectChangedIssue()});
         return;
     }
     if (state->request.import) {
@@ -821,8 +1011,7 @@ void tick(const VatCallPtr& state) {
         state->started = true;
         if (!session.start()) {
             state->finished = true;
-            Json data = {{"errors", errorsJson(session.failureIssues())}};
-            job->fail("Can't bake:" + issuesLines(session.failureIssues(), true), data);
+            failJob(job, "Can't bake:", bakeFailure(session));
             return;
         }
     }
@@ -842,16 +1031,21 @@ void scheduleTick(const VatCallPtr& state) {
     state->ctx->app().requestRedraw();
     getEditorHost().enqueueMainThreadTask([state]() {
         // whatever goes wrong, the job ends (the main-thread loop would swallow an exception)
+        const std::string fix = "call bake_vertex_animation again; if it fails the same way, read_console for the cause";
         try {
             tick(state);
         } catch (const std::exception& e) {
             state->finished = true;
             if (state->session) state->session->cancel();
-            if (state->job->status() == JobStatus::Running) state->job->fail(std::string("The bake failed: ") + e.what());
+            if (state->job->status() == JobStatus::Running) {
+                failJob(state->job, "The bake failed, nothing was written:", {jobIssue("bake_failed", e.what(), fix)});
+            }
         } catch (...) {
             state->finished = true;
             if (state->session) state->session->cancel();
-            if (state->job->status() == JobStatus::Running) state->job->fail("The bake failed.");
+            if (state->job->status() == JobStatus::Running) {
+                failJob(state->job, "The bake failed, nothing was written:", {jobIssue("bake_failed", "an unknown error", fix)});
+            }
         }
     });
 }
@@ -913,7 +1107,10 @@ void bakeVertexAnimationTool(const CallPtr& call) {
         } else {
             state->session->setSpec(request.spec);
         }
-        const std::vector<VatIssue>& issues = state->session->check();
+        std::vector<VatIssue> issues = state->session->check();
+        if (!hasErrors(issues)) {
+            for (const VatIssue& issue : unknownOverrides(state->session->spec(), state->session->sourceClips())) issues.push_back(issue);
+        }
         if (hasErrors(issues)) {
             Json clips = Json::array();
             for (const VatSourceClip& clip : state->session->sourceClips()) clips.push_back(clip.name);
@@ -1100,9 +1297,9 @@ void registerVatTools(McpRegistry& registry) {
     tool.name = "bake_vertex_animation";
     tool.title = "Bake Vertex Animation";
     tool.description =
-        "Bake animation into a Vertex Animation (.vat + .vat.glb: crowds animated on the GPU, Vertex Animator component), or import a "
+        "Bake animation into a Vertex Animation (.vat + .vat.glb: GPU crowds, Vertex Animator), or import a "
         "Houdini VAT 3 / OpenVAT export. Without output (or rebake) nothing is written: the report (mode, sizes, errors, warnings with "
-        "fixes) and a contact sheet (source vs VAT, 4 times per clip). The same arguments + output write exactly that (one undo step). "
+        "fixes) and a contact sheet (source vs VAT). The same arguments + output write exactly that (one undo step). "
         "Guide: jasper://docs/vertex-animation.";
     auto loose = [](Json o) {
         o.erase("additionalProperties");
@@ -1125,7 +1322,8 @@ void registerVatTools(McpRegistry& registry) {
         {"source", source},
         {"scene", sceneRef()},
         {"on", on},
-        {"clips", array(Json{{"type", "string"}}, "Default all.")},
+        // (an object's keys and values are checked by clipsArg; the guide lists them)
+        {"clips", array(Json{{"type", Json::array({"string", "object"})}}, "Names or {name, wrap, interpolate, fps}. Default all.")},
         {"mode", withDefault(stringEnum("", {"auto", "vertices", "bones"}), "auto")},
         {"fps", number("Default 30.")},
         {"normals", withDefault(boolean(""), true)},

@@ -335,7 +335,8 @@ Vertex Animator.
   the bake take a free name ("hero 2.vat"); an explicit path that exists is refused unless `overwrite`. Images the
   source holds inside are stored inside the `.vat.glb`. Placing needs a 3D scene; a crowd's GameObject is unrotated
   and unscaled at the source's position, its instances carrying the source's rotation and scale.
-- `place`: `none` (files only; default from the window and Project), `beside` (default from Inspector actions: a new
+- `place`: `none` (files only: the default everywhere, also when an Inspector action opens the window), `beside` (what
+  Shift-click on an Inspector Bake entry uses: a new
   GameObject "<name> (VAT)" with the source's transform, selected), `replace` (the source GameObject is disabled and
   the VAT one takes its place), `crowd` (`{count, area, seed}`, 5.4).
 - One undo step: `CreateVatCmd` (the `CreateClipCmd` pattern: files written in `execute`, undo deletes them only if

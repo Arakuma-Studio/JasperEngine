@@ -100,6 +100,12 @@ bool editor::RenameFileCmd::execute(){
     }
     const bool withPair = !pairOldName.empty();
     std::error_code ec;
+    // a pair member keeps its extension (the other file couldn't follow)
+    const std::string refusal = vat::pairRenameRefusal(sourceFs, destFs, oldFilename.string());
+    if (!refusal.empty()) {
+        printf("Error: Renaming %s: %s\n", sourceFs.string().c_str(), refusal.c_str());
+        return false;
+    }
     if (withPair && fs::exists(directory / pairNewName, ec) && fs::exists(directory / pairOldName, ec)) {
         printf("Error: Renaming %s: %s already exists (a Vertex Animation's .vat and .vat.glb are renamed together)\n",
                sourceFs.string().c_str(), (directory / pairNewName).string().c_str());
@@ -109,12 +115,24 @@ bool editor::RenameFileCmd::execute(){
     bool renamed = false;
     try {
         renamed = renameFile(sourceFs, destFs);
-        if (renamed && withPair) {
-            renameFile(directory / pairOldName, directory / pairNewName);
-        }
     } catch (const fs::filesystem_error& e) {
         printf("Error: Renaming %s: %s\n", sourceFs.string().c_str(), e.what());
         return false;
+    }
+    // the pair is renamed whole or not at all: the other file failing puts the first one back
+    if (renamed && withPair) {
+        try {
+            renameFile(directory / pairOldName, directory / pairNewName);
+        } catch (const fs::filesystem_error& e) {
+            printf("Error: Renaming %s: %s (%s keeps its name too)\n", (directory / pairOldName).string().c_str(), e.what(),
+                   sourceFs.string().c_str());
+            try {
+                renameFile(destFs, sourceFs);
+            } catch (const fs::filesystem_error& back) {
+                printf("Error: Renaming %s back: %s\n", destFs.string().c_str(), back.what());
+            }
+            return false;
+        }
     }
 
     // the renamed .vat names its renamed mesh (the payload is the same: no rebake)

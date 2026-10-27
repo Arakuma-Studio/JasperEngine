@@ -14,6 +14,8 @@ Covered here, where the App's wiring, focus and real input matter:
 - the Inspector's Animation Player section: Bake ▾ › Vertex Animation… opens the baker on that GameObject,
   and a Shift-click bakes at once, placing "<name> (VAT)" beside it (one scene undo step);
 - Preview then a real click on Heatmap shows its legend, a second click hides it;
+- after a Shift-click bake, the source GameObject deleted and Bake clicked for real: no crash (the stored
+  result is dropped, never written), an error in the window and the Console, nothing new placed;
 - while the scene plays the Bake button is refused (the bake doesn't run).
 """
 
@@ -239,6 +241,40 @@ async def test_inspector_entry_opens_the_baker_and_shift_bakes(ed: Editor):
     await ed.call("undo", scope="scene")
     await ed.call("wait", frames=4)
     ed.check_eq(await count_named(ed, "Hero (VAT)"), heroes, "one scene undo step")
+
+
+async def test_deleted_source_then_bake_is_an_error_not_a_crash(ed: Editor):
+    """The reviewers' crash: Shift-click Bake ▾ › Vertex Animation… places "Hero (VAT)", Hero is deleted,
+    a real click on Bake wrote the stored result naming the gone Hero (FATAL: unordered_map::at)."""
+    ed.require_tools("delete_entities")
+    await ed.call("select_entities", entities=["Hero"])
+    heroes = await count_named(ed, "Hero (VAT)")
+    await focus_x(ed, "inspector")
+    await click(ed, await rect_of(ed, "player.bake", "the Animation Player's Bake button", "inspector"))
+    await click(ed, await rect_of(ed, "player.bakeMenu.vat", "Bake ▾ › Vertex Animation…", "inspector"), shift=True)
+    for _ in range(240):
+        if await count_named(ed, "Hero (VAT)") > heroes:
+            break
+        await ed.call("wait", frames=4)
+    ed.check_eq(await count_named(ed, "Hero (VAT)"), heroes + 1, "Shift-click placed the bake beside Hero")
+    await ed.console_since()
+    await ed.call("delete_entities", entities=["Hero"])
+    await ed.call("wait", frames=10)
+    await focus_x(ed)
+    await click(ed, await rect_of(ed, "vatbaker.bake", "the Bake button"))
+    await ed.call("wait", frames=40)
+    # the editor is alive (the calls answer), nothing new was placed, the error is said
+    ed.check_eq(await count_named(ed, "Hero (VAT)"), heroes + 1, "no second placement of the gone Hero")
+    entries = await ed.console_since()
+    messages = [e.get("message", "") for e in entries]
+    ed.check(any("Hero" in m and ("gone" in m or "no GameObject" in m) for m in messages),
+             f"the Console says the source is gone: {[m[:160] for m in messages]}")
+    # back as it was: Hero, then no Hero (VAT)
+    await ed.call("undo", scope="scene")
+    await ed.call("undo", scope="scene")
+    await ed.call("wait", frames=4)
+    ed.check_eq(await count_named(ed, "Hero (VAT)"), heroes, "the placement undone")
+    ed.check(await count_named(ed, "Hero") >= 1, "Hero back")
 
 
 async def test_playing_refuses_the_bake(ed: Editor):

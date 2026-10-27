@@ -26,8 +26,10 @@ only its baked clips and its colliders use the rest pose.
 4. **Use** it: `place: "beside"` makes the GameObject for you; otherwise
    `create_entity {type: "model", model: "<x>.vat.glb"}` then
    `add_component {component: "vertexanimator"}` and `set_properties {values: {vertexanimator:
-   {animation: "<x>.vat"}}}`. Check it with a screenshot during play (edit mode stands still unless
-   the Vertex Animator's `preview` is on).
+   {animation: "<x>.vat"}}}`. Check it with a screenshot during play. Edit mode stands still unless
+   the Vertex Animator's Preview is on: a runtime flag, not a saved property (`set_properties`
+   refuses it), set with `eval_lua {allow_edit_mode: true, code: "object(<id>,
+   'Model'):getVertexAnimator().preview = true"}` (no undo step, never saved; `false` stops it).
 
 A bake is a job: `wait` (default true) and `timeout_seconds` (default 120); past the timeout the
 call returns `{job_id, status: "running"}`, follow it with `get_job`, stop it with `cancel_job`
@@ -42,7 +44,7 @@ Not allowed while playing.
 | `source` | what to bake: a GameObject (id or path in `scene`: its Animation Player states, entity Animations and Pose Animator), a model file (`assets/models/hero.gltf`: its clips), `model#Clip` (one clip; a list of them for several), a list of `.anim` files (with `on`), a `.poseanim` (on its preview model, or `on`), or a Houdini VAT 3 / OpenVAT export (its folder, mesh with the textures next to it, `.mat`, data JSON or `-remap_info.json`): exports are imported, not baked |
 | `scene` | the scene of GameObject references (`source`, `on`) and where `place` puts the result; default the selected scene |
 | `on` | what `.anim` / `.poseanim` sources play on: a model or prefab file, or a GameObject |
-| `clips` | the clip names to bake, in this order (default all; errors list the source's clips) |
+| `clips` | the clip names to bake, in this order (default all; errors list the source's clips). An entry may be an object `{name, wrap, interpolate, fps}` setting that clip at bake time (the baker window's clip row): `wrap` `once` / `loop` / `ping_pong` / `clamp_forever` (default the source's), `interpolate: false` (the clip plays its nearest lower sample: the fix of a loop seam or a sharp hit no sample rate cures), `fps` (0..240, 0 = the bake's): `clips: [{name: "Die", wrap: "once"}, "Walk"]` |
 | `mode` | `auto` (default), `vertices`, `bones` (see "Which mode") |
 | `fps` | samples per second, (0, 240], default 30; for an import, the export's frame rate when its metadata has none |
 | `normals` | Vertices: a tangent-frame texel per sample (default true; false halves the texture and the fetches, the rest normals stay) |
@@ -51,9 +53,9 @@ Not allowed while playing.
 | `tolerance_mm` | the error allowed (default 1 mm, scaled up to 0.05% of the model's size); drives Auto mode and `precision: auto` |
 | `sockets` | node paths below the source's root to bake as sockets (`Armature/Hips/Spine/RightHand`), read in Lua with `getSocketPose` |
 | `output` | `.vat` path (the mesh goes to `<name>.vat.glb` next to it), or `true` for the default; omitted = preview |
-| `overwrite` | replace an existing `output` (its GUID and, from the same source, its hand edits are kept) |
+| `overwrite` | replace an existing `output` path (its GUID and, from the same source, its hand edits are kept); refused with `output: true` (the default name never replaces another file) |
 | `rebake` | a `.vat`: run its recipe again and write over it, keeping its GUID, clip names, events, speeds, wraps and socket names; it takes no other bake settings (bake again with `output` + `overwrite` to change them) |
-| `place` | on write: `none` (default: files only), `beside` (a new GameObject "<name> (VAT)" at the source's transform, selected), `replace` (the same, and the source GameObject disabled; GameObject sources only), `{crowd: {count, area, seed}}` (an Instanced Mesh crowd: `count` instances in a square of side `area` metres, random yaw, seeded; the instances carry the source's scale); a 2D scene refuses placing |
+| `place` | on write: `none` (default: files only), `beside` (a new GameObject "<name> (VAT)" at the source's transform, selected), `replace` (the same, and the source GameObject disabled; GameObject sources only), `{crowd: {count, area, seed}}` (an Instanced Mesh crowd: `count` instances (1..100000) in a square of side `area` metres, random yaw, seeded by `seed`, an integer 0..4294967295; the instances carry the source's scale); a 2D scene refuses placing |
 | `import` | importer options for exports: `axis` (`unity`, `unreal`, `houdini`, `zup`: the export's target engine when its metadata doesn't tell), `axis_scale` (units per metre of the target), `upsample` (rigid exports: 0 automatic, 1..1024 exact), `clip` (the clip's name), `colors` (false drops the colour texel), file overrides `mesh`, `position`, `position2`, `rotation`, `color`, `lookup`, `vat`, `normals_texture` |
 | `wait`, `timeout_seconds` | the job pattern above |
 
@@ -105,7 +107,9 @@ asset. At most 64 clips per asset; vertices up to 2^24.
 
 ## Problems and fixes
 
-Errors refuse the bake (nothing written); warnings come with a written bake too.
+Errors refuse the bake (nothing written); warnings come with a written bake too. A failed job
+(`get_job` status `failed`) has the same shape: its message ends with `- kind: message. Fix: fix`
+lines and its result holds `errors: [{kind, message, fix}]`.
 
 | kind | means | fix |
 |---|---|---|
@@ -115,13 +119,13 @@ Errors refuse the bake (nothing written); warnings come with a written bake too.
 | `vertex_limit` | more than 2^24 vertices | bake fewer meshes, decimate |
 | `bone_limit` | Bones mode with more than 65,535 bones | `mode: "vertices"` |
 | `no_mesh` | no renderer under the source | bake a GameObject or model with meshes |
-| `invalid_source` | the source can't be resolved (missing file, closed scene, unknown GameObject, a model that doesn't load) | the message names it; GameObject paths are hierarchy paths in `scene` |
+| `invalid_source` | the source can't be resolved (missing file, closed scene, unknown GameObject, a model that doesn't load), also when a job's GameObject is deleted or its scene closed while the job runs | the message names it; GameObject paths are hierarchy paths in `scene`; for a vanished source, undo the deletion or reopen the scene and call again |
 | `invalid_settings` | a setting out of range, an unknown clip, `place` that can't apply | the fix names the valid values |
 | `output_exists` | an explicit `output` exists | `overwrite: true` (one undo step puts it back), another path, or `output: true` |
 | `socket_not_found` | a `sockets` path isn't under the root | give node paths below the source's root |
 | `scene_playing` | the source's scene plays | stop play mode |
 | `clip_limit` | more than 64 clips | bake two assets |
-| `large_interpolation_error` (warning) | motion between samples is lost (fast spins, sharp hits) | raise `fps` to the value given, or set the clip's `interpolate: false` in the `.vat` |
+| `large_interpolation_error` (warning) | motion between samples is lost (fast spins, sharp hits) | raise `fps` to the value given, or bake that clip with `clips: [{name, interpolate: false}]` (a loop seam: or `wrap: "once"`), or set `interpolate: false` in the `.vat` |
 | `precision_switched` (warning) | half floats were not precise enough: the payload is float (twice the memory) | accept, or `tolerance_mm` higher / `mode: "bones"` |
 | `memory_high` (warning) | over the preset's memory warning | as `too_large` |
 | `mixed_rest` (warning) | no usable bind pose: the first frame is the rest | none needed; offsets are relative to it |
@@ -129,6 +133,7 @@ Errors refuse the bake (nothing written); warnings come with a written bake too.
 | `material_simplified` (warning) | a material setting the `.vat.glb` can't carry (stochastic tiling, a custom shader) was dropped | set it again on the baked GameObject's material |
 | `events_dropped` (warning) | clip events that can't be kept | re-add them in the `.vat` (`write_file`, Inspector) |
 | `not_converted` (warning) | a part of the source (instanced copies, an unsupported Animation) is not baked | bake it separately |
+| `write_failed`, `bake_failed`, `project_changed` | a job's write failed, an unexpected failure, another project opened during the job | as the fix says (call again; `read_console` for the cause) |
 | importer errors | `not_found`, `missing_file` (a texture or the mesh: export with that option, or pass it in `import`), `unsupported` (particle sprites), `read_failed`, `metadata_mismatch`, `unknown_target` (pass `import: {axis}`), `fps_unknown` (pass `fps`), `bad_mesh` | as the fix says |
 | importer warnings | `topology_changes` (fluid: absolute positions, no interpolation), `color_animation_ignored`, `stretch_by_velocity_ignored`, `fluid_uv_from_color_ignored`, `animations_list_form`, `clip_out_of_range`, `embedded_textures_dropped`, `node_transform_baked` | informative |
 
@@ -163,7 +168,9 @@ source model also checks the `.vat` files baked from it.
 - `focus_window {window: "vertex_animation_baker"}` shows the Vertex Animation Baker window to a
   human.
 - Shell: `jasperengine-editor bake-vat --project . --source <path> [--clips Walk,Run] [--output
-  ...] [--dry-run] [--format json]` (the same bake, `--dry-run` = the preview report) and
+  ...] [--dry-run] [--format json]` (the same bake, `--dry-run` = the preview report; the tool's
+  settings as flags: `--tolerance <mm>`, `--clip-wrap NAME=WRAP`, `--clip-interpolate NAME=on|off`,
+  for imports `--axis`, `--axis-scale`, `--upsample`, `--clip-name`, `--colors on|off`) and
   `jasperengine-editor check --vat` (staleness, mesh/layout mismatches, device limits per preset;
   `docs/mcp/checks.md`).
 
@@ -232,7 +239,8 @@ made since are kept; one undo step puts the previous files back. `check --vat` f
 
 - A Model that isn't the `.vat`'s `.vat.glb` with a Vertex Animator: `getLoadError()` says
   `mesh_mismatch` and the mesh draws at rest. Use the `.vat.glb` next to the `.vat`.
-- Expecting motion in edit-mode screenshots: time stands still in edit mode; play, or set the
-  Vertex Animator's `preview: true`.
+- Expecting motion in edit-mode screenshots: time stands still in edit mode; play, or turn the
+  Vertex Animator's Preview on through `eval_lua` (`...:getVertexAnimator().preview = true`,
+  `allow_edit_mode: true`; it is not a `set_properties` property).
 - Editing `.vat.glb` or generated fields: rebake instead.
 - Baking a whole scene root: bake the character (its root GameObject or model), not the level.

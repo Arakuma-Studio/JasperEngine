@@ -824,6 +824,10 @@ TEST(VatBakerCompute, ALoopThatDoesntEndWhereItStartsIsNotToldToRaiseFps) {
         EXPECT_NEAR(out.report.clips[0].interpolationErrorMm, 500.0f, 20.0f) << "half the jump, at the seam";
         EXPECT_NE(issue.message.find("doesn't end where it starts"), std::string::npos) << issue.message;
         EXPECT_NE(issue.fix.find("once or clamp_forever"), std::string::npos) << issue.fix;
+        // the fix names each surface's way: the MCP clips objects and bake-vat's flags
+        EXPECT_NE(issue.fix.find("wrap: \"once\""), std::string::npos) << issue.fix;
+        EXPECT_NE(issue.fix.find("--clip-wrap"), std::string::npos) << issue.fix;
+        EXPECT_NE(issue.fix.find("--clip-interpolate"), std::string::npos) << issue.fix;
         EXPECT_FALSE(hasFix(issue, "fps")) << "a higher rate doesn't help at the seam";
         EXPECT_TRUE(hasFix(issue, "interpolate"));
     }
@@ -837,6 +841,8 @@ TEST(VatBakerCompute, ALoopThatDoesntEndWhereItStartsIsNotToldToRaiseFps) {
             << "the chord of 24 degrees at the far corner";
         EXPECT_EQ(issue.message.find("doesn't end where it starts"), std::string::npos) << issue.message;
         EXPECT_TRUE(hasFix(issue, "fps"));
+        EXPECT_NE(issue.fix.find("interpolate: false"), std::string::npos) << issue.fix;
+        EXPECT_NE(issue.fix.find("--clip-interpolate"), std::string::npos) << issue.fix;
     }
 }
 

@@ -1256,12 +1256,18 @@ namespace{
                                     mm(seamInterpolation) + " mm off the animation (tolerance " + mm(tolerance) + " mm)";
                     if (rateHelps)
                         issue.message += ", and up to " + mm(innerInterpolation) + " mm between its other frames";
-                    issue.fix = "bake '" + clip.name + "' as once or clamp_forever (its wrap), or turn interpolation off for it" +
+                    // (each surface's way to set a clip's wrap / interpolation at bake time: the
+                    // baker's clip row, bake_vertex_animation's clips objects, bake-vat's flags)
+                    issue.fix = "bake '" + clip.name + "' as once or clamp_forever (its wrap: the baker's clip row, clips: [{name: \"" +
+                                clip.name + "\", wrap: \"once\"}], or bake-vat --clip-wrap \"" + clip.name +
+                                "=once\"), or turn interpolation off for it (interpolate: false, --clip-interpolate \"" + clip.name + "=off\")" +
                                 (rateHelps ? ", and raise fps to " + std::to_string(fps) : std::string());
                 }else{
                     issue.message = "between its frames '" + clip.name + "' is up to " + mm(clipInterpolation) +
                                     " mm off the animation (tolerance " + mm(tolerance) + " mm)";
-                    issue.fix = "raise fps to " + std::to_string(fps) + ", or turn interpolation off for '" + clip.name + "'";
+                    issue.fix = "raise fps to " + std::to_string(fps) + ", or turn interpolation off for '" + clip.name +
+                                "' (the baker's clip row, clips: [{name: \"" + clip.name + "\", interpolate: false}], or bake-vat --clip-interpolate \"" +
+                                clip.name + "=off\")";
                 }
                 if (rateHelps)
                     issue.fixes.push_back({"Raise to " + std::to_string(fps) + " fps", "fps", std::to_string(fps)});

@@ -4,17 +4,30 @@
 // The pure helpers of the Inspector's Vertex Animation parts (InspectorWindowVat.cpp: the Vertex
 // Animator section, the .vat asset view and the Create Crowd dialog; vertex animation spec 3.3,
 // 3.6, 4.5, 5.2, 5.4), kept out of InspectorWindow so the editor tests check them without ImGui.
-// Owner: W5. Thread-safety: pure.
+// Owner: W5. Thread-safety: pure, except vertexAnimatorFileCmd (main thread: reads the project).
 
 #pragma once
 
 #include "animation/VertexAnimation.h"
+#include "ecs/Entity.h"
 
 #include <cstdint>
 #include <string>
 #include <vector>
 
+namespace jasperengine::editor{
+    class Project;
+    class MultiPropertyCmd;
+}
+
 namespace jasperengine::editor::inspectorvat{
+
+    // The command of the Vertex Animator's Animation field (one GameObject or a multi-selection):
+    // `file` (a .vat or its .vat.glb, absolute or asset-relative; "" clears) set on every entity of
+    // the scene with its GUID (the GUID follows the path: a stale one would win on the next load),
+    // one undo step. Null with `error` when the file is not a .vat inside the assets folder.
+    MultiPropertyCmd* vertexAnimatorFileCmd(Project* project, uint32_t sceneId, const std::vector<Entity>& entities,
+                                            const std::string& file, std::string& error);
 
     // "812 B", "14.2 KB", "1.73 MB"
     std::string formatBytes(uint64_t bytes);

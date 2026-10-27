@@ -20,7 +20,9 @@ hero_animated.gltf "Walk"/"Idle"/"Wave") and synthetic Houdini VAT 3 / OpenVAT e
 - get_asset_info on a .vat (clips, layout, staleness, users) and on its .vat.glb (generated_by);
   list_assets type vertex_animation; view_asset refuses; write_file validates (generated fields refused
   with the rebake message, editable ones accepted with warnings); auto-sync reports a broken .vat;
-- move_asset / delete_asset keep the .vat / .vat.glb pair;
+- move_asset / delete_asset keep the .vat / .vat.glb pair; a move or copy to another folder rewrites the
+  .vat.glb's texture URIs (its JSON chunk only) so they name the same files, undo puts them back; undoing
+  the copy of a .vat.glb drops the copied .vat's GUID from the asset database;
 - play: the instances of a crowd move differently (randomStart), and a clip event reaches a Lua script.
 """
 
@@ -683,6 +685,94 @@ async def test_move_and_delete_keep_the_pair(ed: Editor):
     check((ed.project / "assets/vat2/pair.vat").is_file() and (ed.project / "assets/vat2/pair.vat.glb").is_file(), "undo restores both")
 
 
+def glb_chunks(path: Path) -> tuple[dict, bytes]:
+    """The JSON chunk (parsed) and the bytes after it (the BIN chunk) of a GLB."""
+    data = path.read_bytes()
+    magic, version, length = struct.unpack_from("<4sII", data, 0)
+    check(magic == b"glTF" and version == 2 and length == len(data), f"{path.name} is a GLB 2.0 of its length")
+    json_length, kind = struct.unpack_from("<II", data, 12)
+    check(kind == 0x4E4F534A and json_length % 4 == 0, f"{path.name}: a 4-byte aligned JSON chunk first")
+    return json.loads(data[20:20 + json_length]), data[20 + json_length:]
+
+
+def set_glb_json(path: Path, gltf: dict) -> None:
+    _, rest = glb_chunks(path)
+    text = json.dumps(gltf).encode()
+    text += b" " * (-len(text) % 4)
+    path.write_bytes(struct.pack("<4sII", b"glTF", 2, 20 + len(text) + len(rest)) + struct.pack("<II", len(text), 0x4E4F534A) + text + rest)
+
+
+def png_2x2() -> bytes:
+    def chunk(kind: bytes, payload: bytes) -> bytes:
+        return struct.pack(">I", len(payload)) + kind + payload + struct.pack(">I", zlib.crc32(kind + payload) & 0xFFFFFFFF)
+    raw = b"".join(b"\0" + b"\x80\x40\x20\xff" * 2 for _ in range(2))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 2, 2, 8, 6, 0, 0, 0)) +
+            chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+
+
+def image_uri(project: Path, glb: str) -> str:
+    return glb_chunks(project / glb)[0]["images"][0]["uri"]
+
+
+def asset_db(project: Path) -> str:
+    db = project / ".jasperengine" / "assetdb.yaml"
+    return db.read_text() if db.exists() else ""
+
+
+async def test_move_and_copy_keep_the_textures(ed: Editor):
+    await scene(ed)
+    await bake(ed, source=ARM, clips=["Swing"], output="assets/vat/skin.vat")
+    texture = ed.project / "assets/textures/skin.png"
+    texture.parent.mkdir(parents=True, exist_ok=True)
+    texture.write_bytes(png_2x2())
+    # the mesh names a project texture (as a bake of a textured model does)
+    glb = ed.project / "assets/vat/skin.vat.glb"
+    gltf, bin_chunk = glb_chunks(glb)
+    gltf["images"] = [{"uri": "../textures/skin.png"}]
+    gltf["textures"] = [{"source": 0}]
+    set_glb_json(glb, gltf)
+    original = glb.read_bytes()
+    (ed.project / "assets/vat/deep/er").mkdir(parents=True, exist_ok=True)
+    await ed.call("sync_files")
+
+    await ed.call("move_asset", path="assets/vat/skin.vat", to="assets/vat/deep/er/skin.vat")
+    moved = "assets/vat/deep/er/skin.vat.glb"
+    check(image_uri(ed.project, moved) == "../../../textures/skin.png", f"the moved mesh names the same texture: {image_uri(ed.project, moved)}")
+    check(glb_chunks(ed.project / moved)[1] == bin_chunk, "the BIN chunk is the same bytes")
+    check(((ed.project / moved).parent / image_uri(ed.project, moved)).resolve() == texture.resolve(), "it resolves to the texture")
+    info = (await ed.call("get_asset_info", path="assets/vat/deep/er/skin.vat"))["vertex_animation"]
+    check(not [s for s in info["staleness"] if "mismatch" in s["kind"]], f"the moved pair still matches: {info['staleness']}")
+    await ed.call("undo", scope="project")
+    check(glb.read_bytes() == original, "undo moves it back with the URI it had")
+    await ed.call("redo", scope="project")
+    check(image_uri(ed.project, moved) == "../../../textures/skin.png", "redo rewrites it again")
+    await ed.call("undo", scope="project")
+
+    # a copy of the mesh (with its .vat) to another folder: the copy names the same texture; undo
+    # removes both and the copied .vat's GUID leaves the asset database
+    await ed.call("move_asset", path="assets/vat/skin.vat.glb", to="assets/vat/deep/copy.vat.glb", copy=True)
+    copy_vat = read_vat(ed.project, "assets/vat/deep/copy.vat")
+    copy_guid = copy_vat["guid"]
+    check(copy_guid != read_vat(ed.project, "assets/vat/skin.vat")["guid"], "the copy has a GUID of its own")
+    check(image_uri(ed.project, "assets/vat/deep/copy.vat.glb") == "../../textures/skin.png",
+          f"the copy names the same texture: {image_uri(ed.project, 'assets/vat/deep/copy.vat.glb')}")
+    check(glb.read_bytes() == original, "the original is untouched")
+    check(copy_guid in asset_db(ed.project), "the copied .vat is in the asset database")
+    await ed.call("undo", scope="project")
+    check(not (ed.project / "assets/vat/deep/copy.vat").exists() and not (ed.project / "assets/vat/deep/copy.vat.glb").exists(), "undo removes both")
+    check(copy_guid not in asset_db(ed.project), f"the copied .vat's GUID left the asset database: {asset_db(ed.project)}")
+    await ed.call("redo", scope="project")
+    check(read_vat(ed.project, "assets/vat/deep/copy.vat")["guid"] == copy_guid, "redo gives the copy its GUID again")
+    check(image_uri(ed.project, "assets/vat/deep/copy.vat.glb") == "../../textures/skin.png", "and the URI")
+    await ed.call("undo", scope="project")
+
+    # deleting the pair leaves the texture
+    await ed.call("delete_asset", paths=["assets/vat/skin.vat"])
+    check(texture.is_file(), "a texture is never deleted with the pair")
+    await ed.call("undo", scope="project")
+    check(glb.read_bytes() == original, "undo restores the mesh as it was")
+
+
 async def test_play_instances_move_out_of_step(ed: Editor):
     sid = await scene(ed)
     r = await bake(ed, source=ARM, clips=["Swing"], output="assets/vat/herd.vat", place="beside", scene=sid)
@@ -764,3 +854,158 @@ async def test_place_crowd_bake_and_import(ed: Editor):
     msg = await ed.call("bake_vertex_animation", {"source": "assets/exports/flag", "output": "assets/vat/flag_r.vat", "place": "replace"},
                         expect_error=True)
     check("replace" in msg and "GameObject" in msg, msg)
+
+
+async def wait_job(ed: Editor, job: str, limit: float = 600.0, until_message: str = "") -> dict:
+    """get_job until the job ends (or, with until_message, until its message starts with it)"""
+    state = {}
+    for _ in range(int(limit / 0.05)):
+        state = await ed.call("get_job", job_id=job)
+        if state["status"] != "running" or (until_message and state.get("message", "").startswith(until_message)):
+            break
+        await asyncio.sleep(0.05)
+    return state
+
+
+def job_errors(state: dict) -> list:
+    return (state.get("result") or {}).get("errors") or []
+
+
+def check_job_error(state: dict, kinds: tuple, out: Path, what: str) -> None:
+    check(state["status"] == "failed", f"{what}: the job fails: {state}")
+    errors = job_errors(state)
+    check(errors and all(e.get("kind") and e.get("message") and e.get("fix") for e in errors), f"{what}: errors with kind and fix: {state}")
+    check(errors[0]["kind"] in kinds, f"{what}: kind {kinds}: {errors}")
+    check("Fix: " in state["message"], f"{what}: the message says how to fix it: {state['message']}")
+    check(not out.exists(), f"{what}: nothing written")
+
+
+async def vanish_scene(ed: Editor, name: str, entities: tuple) -> int:
+    """A saved scene with GameObjects of the hero model, its model loaded (a small preview of Probe bakes)"""
+    made = await ed.call("create_scene", name=name, type="3D", path=f"scenes/{name}")
+    sid = made["scene"]["id"]
+    await ed.call("select_scene", scene=sid)
+    for entity in (*entities, "Probe"):
+        await ed.call("create_entity", type="model", name=entity, model=HERO, scene=sid)
+    await ed.call("save_scene", scene=sid)
+    r = None
+    for _ in range(120):
+        r = await ed.call_raw("bake_vertex_animation", {"source": "Probe", "scene": sid, "fps": 5}, timeout=600)
+        if not r.is_error:
+            break
+        await asyncio.sleep(0.25)
+    check(r is not None and not r.is_error, f"the GameObject bakes: {r.text if r else ''}")
+    return sid
+
+
+async def test_job_errors_when_the_source_vanishes(ed: Editor):
+    """A bake job whose GameObject source goes away (its scene closed, the GameObject deleted) while it
+    poses or while it encodes fails as an error with a kind and a fix, nothing written (DESIGN.md:
+    errors say how to fix them). (A GameObject baked once fails its next bake with "no POSITION": not
+    this test's subject, so every case bakes a GameObject of its own.)"""
+    copy_fixtures(ed.project)
+    await ed.call("sync_files")
+    sid = await vanish_scene(ed, "Vanish", ("Hero", "Hero2", "Hero3"))
+    big = {"scene": sid, "mode": "vertices", "fps": 240, "preset": "desktop", "wait": False}
+
+    # deleted while it poses
+    out = "assets/vat/vanish_posing.vat"
+    r = await ed.call_raw("bake_vertex_animation", {**big, "source": "Hero", "output": out})
+    check(not r.is_error and r.structured.get("job_id"), f"a job: {r.text}")
+    await ed.call("delete_entities", scene=sid, entity="Hero")
+    check_job_error(await wait_job(ed, r.structured["job_id"]), ("invalid_source",), ed.project / out, "deleted while posing")
+
+    # deleted while it encodes (posing is over: the write finds it gone)
+    out = "assets/vat/vanish_encoding.vat"
+    r = await ed.call_raw("bake_vertex_animation", {**big, "source": "Hero2", "output": out})
+    state = await wait_job(ed, r.structured["job_id"], until_message="Encoding")
+    check(state["status"] == "running", f"the job reaches its encoding: {state}")
+    await ed.call("delete_entities", scene=sid, entity="Hero2")
+    check_job_error(await wait_job(ed, r.structured["job_id"]), ("invalid_source",), ed.project / out, "deleted while encoding")
+    # brought back by undo: the next bake of it writes
+    await ed.call("undo", scope="scene", scene=sid)
+
+    # the scene closed while it poses
+    out = "assets/vat/vanish_closed.vat"
+    r = await ed.call_raw("bake_vertex_animation", {**big, "source": "Hero3", "output": out})
+    check(not r.is_error and r.structured.get("job_id"), f"a job: {r.text}")
+    await ed.call("create_scene", name="Other", type="3D")
+    await ed.call("close_scene", scene=sid, unsaved="discard")
+    check_job_error(await wait_job(ed, r.structured["job_id"]), ("invalid_source", "scene_playing"), ed.project / out, "closed while posing")
+
+    # the scene closed while it encodes
+    sid2 = await vanish_scene(ed, "Vanish2", ("Hero",))
+    out = "assets/vat/vanish_closed_encoding.vat"
+    r = await ed.call_raw("bake_vertex_animation", {**big, "scene": sid2, "source": "Hero", "output": out})
+    state = await wait_job(ed, r.structured["job_id"], until_message="Encoding")
+    check(state["status"] == "running", f"the job reaches its encoding: {state}")
+    await ed.call("close_scene", scene=sid2, unsaved="discard")
+    check_job_error(await wait_job(ed, r.structured["job_id"]), ("invalid_source",), ed.project / out, "closed while encoding")
+
+    # the GameObject gone before the call: refused at once with the fix
+    msg = await ed.call("bake_vertex_animation", {**big, "source": "Hero", "scene": "Other"}, expect_error=True)
+    check("GameObject" in msg and "Give" in msg, msg)
+
+
+async def test_vertex_animator_preview_in_edit_mode(ed: Editor):
+    """The guide's route to animate a Vertex Animator in edit mode: `preview` is a runtime flag (not a
+    saved property: set_properties refuses it and says how), set through eval_lua with allow_edit_mode;
+    the clock then moves without play, and the scene file never holds it."""
+    copy_fixtures(ed.project)
+    await ed.call("sync_files")
+    sid = await scene(ed)
+    out = "assets/vat/edit_mode_arm.vat"
+    r = await bake(ed, source=ARM, clips=["Swing"], output=out, scene=sid, place="beside")
+    entity = r.structured["entity"]["id"]
+    msg = await ed.call("set_properties", {"scene": sid, "entity": entity, "values": {"vertexanimator": {"preview": True}}},
+                        expect_error=True)
+    check("eval_lua" in msg and "preview = true" in msg, f"set_properties says how to preview: {msg}")
+    code = f"local a = object({entity}, 'Model'):getVertexAnimator()"
+    loaded = False
+    for _ in range(80):
+        got = (await ed.call("eval_lua", code=code + " return a:isLoaded()", allow_edit_mode=True))["values"]
+        if got == [True]:
+            loaded = True
+            break
+        await asyncio.sleep(0.25)
+    check(loaded, "the Vertex Animator loads in edit mode")
+    first = (await ed.call("eval_lua", code=code + " a.preview = true return a.time", allow_edit_mode=True))["values"][0]
+    later = first
+    for _ in range(40):
+        await asyncio.sleep(0.25)
+        later = (await ed.call("eval_lua", code=code + " return a.time", allow_edit_mode=True))["values"][0]
+        if abs(later - first) > 1e-3:
+            break
+    check(abs(later - first) > 1e-3, f"with preview on, time moves in edit mode: {first} then {later}")
+    await ed.call("eval_lua", code=code + " a.preview = false", allow_edit_mode=True)
+    await ed.call("save_scene", scene=sid)
+    scene_files = list((ed.project / "scenes").glob("*.scene")) + list((ed.project / "assets").rglob("*.scene"))
+    check(scene_files and all("preview:" not in f.read_text() for f in scene_files), "preview is never saved")
+
+
+async def test_clip_objects_and_contradictions(ed: Editor):
+    """clips entries may be {name, wrap, interpolate, fps} objects (the baker's clip rows): the written .vat
+    has that wrap and interpolation; bad objects and unknown clips are refused with the choices; output: true
+    with overwrite: true contradict (refused with the fix); a negative crowd seed is refused."""
+    copy_fixtures(ed.project)
+    await ed.call("sync_files")
+    out = "assets/vat/clip_objects.vat"
+    r = await bake(ed, source=ARM, clips=[{"name": "Swing", "wrap": "once", "interpolate": False, "fps": 12}, "Stretch"], output=out)
+    vat = read_vat(ed.project, out)
+    clips = {c["name"]: c for c in vat["clips"]}
+    check(list(clips) == ["Swing", "Stretch"], f"the clips in order: {list(clips)}")
+    check(clips["Swing"].get("wrap") == "once" and clips["Swing"].get("interpolate") is False, f"Swing's settings: {clips['Swing']}")
+    check(clips["Stretch"].get("interpolate", True) is True, f"Stretch keeps interpolation: {clips['Stretch']}")
+    check(abs(clips["Swing"]["fps"] - 12) < 1.5 and abs(clips["Stretch"]["fps"] - 30) < 3, f"per-clip fps: {vat['clips']}")
+    cases = [
+        ({"source": ARM, "clips": [{"name": "Swing", "wrap": "sideways"}]}, "clamp_forever"),
+        ({"source": ARM, "clips": [{"wrap": "once"}]}, "clips holds clip names or {name"),
+        ({"source": ARM, "clips": [{"name": "Swing", "speed": 2}]}, "clips[\"Swing\"].speed"),
+        ({"source": ARM, "clips": [{"name": "Swing", "fps": 500}]}, "fps (0..240)"),
+        ({"source": ARM, "clips": [{"name": "Fly", "wrap": "once"}]}, "Swing"),
+        ({"source": ARM, "output": True, "overwrite": True}, "contradict"),
+        ({"source": ARM, "output": "assets/vat/x.vat", "place": {"crowd": {"seed": -1}}}, "seed an integer >= 0"),
+    ]
+    for args, needle in cases:
+        msg = await ed.call("bake_vertex_animation", args, expect_error=True)
+        check(needle in msg, f"{args}: the error says {needle!r}: {msg}")

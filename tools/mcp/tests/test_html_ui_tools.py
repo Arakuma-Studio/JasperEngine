@@ -93,6 +93,8 @@ LIMITS.update({"get_pose_animation": 700, "edit_pose_animation": 1220})
 # vertex animation (spec 6): bake_vertex_animation 1969 (its detail in jasper://docs/vertex-animation),
 # list_assets +19 (type vertex_animation), get_asset_info +30 (.vat); measured total 106016 with the trims
 # above (106041 with focus_window's vertex_animation_baker, W6). TOTAL_LIMIT lowered from 108102
+# fix FC: clips entries may be {name, wrap, interpolate, fps} objects (the detail in the guide), paid by
+# a shorter description: bake_vertex_animation 1977, total 106049
 LIMITS.update({"bake_vertex_animation": 2000})
 TOTAL_LIMIT = 106100
 

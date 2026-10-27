@@ -515,6 +515,13 @@ copy and delete:
   texture, the same for every LOD. The payload is in the glTF extension
   `JASPER_vertex_animation`, and the mesh bounds cover every frame, so culling is right.
 
+The `.vat.glb` names the project's texture files by paths relative to itself. When you move or
+copy the pair to another folder, the editor rewrites those paths, so the mesh still uses the same
+textures. A copied folder uses its own copies of any textures inside it. Undo puts the old paths
+back. Deleting the pair never deletes its textures. A `.vat` or `.vat.glb` can't be renamed to
+another extension, because its other file couldn't follow. If the other file can't be renamed,
+neither file is renamed.
+
 ```json
 {
   "format": "jasperengine.vat",
@@ -635,11 +642,18 @@ jasperengine-editor bake-vat --project . --rebake assets/vat/hero.vat
 ```
 
 `--dry-run` prints the report without writing (`--format json` for scripts). The CLI writes files
-only: it places nothing in a scene. `--source` also takes a Houdini or OpenVAT export (with `--fps`
-and `--axis` when its metadata lacks them). The exit code is 0 on success (warnings allowed), 1
-when the bake, import or write fails (`too_large`, `output_exists`...), and 2 for a usage error
-(a bad option or value, a source that can't be baked, an unknown scene or GameObject). See
-`jasperengine-editor bake-vat --help` for every option.
+only: it places nothing in a scene. `--tolerance <mm>` is the error budget (default 1 mm). The
+clip rows' settings are flags, repeated per clip: `--clip-wrap Die=once` (`once`, `loop`,
+`ping_pong` or `clamp_forever`) and `--clip-interpolate Die=off` (what a loop-seam warning
+suggests). `--source` also takes a Houdini or OpenVAT export (with `--fps` and `--axis` when its
+metadata lacks them; `--axis-scale`, `--upsample`, `--clip-name` and `--colors on|off` are the
+other import options). The exit code is 0 on success (warnings allowed), 1
+when the bake, import or write fails (`too_large`, `no_animation`, `output_exists`, a rebake whose
+recipe source is gone...), and 2 for a usage error: a bad option or value, a missing `--project` or
+`--source`, a source that is not something to bake (not a model, `.anim`, `.poseanim`, GameObject
+or export: the routing refusals, `invalid_source`), an unknown
+scene or GameObject, or a project that doesn't load. See `jasperengine-editor bake-vat --help` for
+every option.
 
 ## Troubleshooting
 
@@ -687,7 +701,9 @@ when the bake, import or write fails (`too_large`, `output_exists`...), and 2 fo
   Raise its sample rate (the fix gives the rate that fits), or turn its interpolation off for a
   stepped look. When the warning says the clip "doesn't end where it starts", the error is at the
   loop seam, where a looping clip jumps from its last pose back to its first: no rate fixes that.
-  Bake that clip with the wrap `once` or `clamp_forever`, or turn its interpolation off.
+  Bake that clip with the wrap `once` or `clamp_forever`, or turn its interpolation off: the clip
+  row's Wrap and Interpolate in the baker, `clips: [{name, wrap, interpolate}]` in the MCP tool,
+  `--clip-wrap NAME=once` / `--clip-interpolate NAME=off` with `bake-vat`.
 - **`precision_switched`.** Half floats would move vertices more than the tolerance, so the bake
   used float (twice the memory). Accept it, or set Precision to Half.
 - **`mixed_rest`.** The source has no usable bind pose, so the rest mesh is the first frame of the

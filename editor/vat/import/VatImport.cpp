@@ -10,7 +10,9 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <new>
 #include <random>
+#include <stdexcept>
 
 namespace fs = std::filesystem;
 using namespace jasperengine;
@@ -105,7 +107,7 @@ namespace{
         if (!(spec.axisScale >= 0.0f)){
             importer::addError(result, "invalid_settings", "axis scale " + importer::num(spec.axisScale) + " is negative", "use a positive scale");
         }
-        if (spec.upsample < 0 || spec.upsample > 1024){
+        if (spec.upsample < 0 || spec.upsample > VAT_IMPORT_MAX_UPSAMPLE){
             importer::addError(result, "invalid_settings", "upsample " + std::to_string(spec.upsample) + " is out of range",
                                "use 0 (automatic) or a factor from 1 to 1024");
         }
@@ -145,10 +147,24 @@ VatImportResult importVat(const VatImportSpec& spec){
         return result;
     }
     result.report.kind = detection.kind;
-    if (detection.kind == VatImportKind::OpenVat){
-        importer::importOpenVat(spec, detection, result);
-    }else{
-        importer::importHoudini(spec, detection, result);
+    // the readers allocate from sizes in the files: running out of memory (or any library
+    // exception) is an error of this import, never a crash of the caller
+    try{
+        if (detection.kind == VatImportKind::OpenVat){
+            importer::importOpenVat(spec, detection, result);
+        }else{
+            importer::importHoudini(spec, detection, result);
+        }
+    }catch (const std::bad_alloc&){
+        result = VatImportResult();
+        result.report.kind = detection.kind;
+        importer::addError(result, "too_large", "not enough memory to read the export", "export fewer frames or a smaller mesh");
+        return result;
+    }catch (const std::exception& e){
+        result = VatImportResult();
+        result.report.kind = detection.kind;
+        importer::addError(result, "read_failed", std::string("the export can't be read: ") + e.what(), "re-export it");
+        return result;
     }
     if (!result.ok()) return result;
 

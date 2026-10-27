@@ -33,8 +33,10 @@
 
 #include "ecs/Entity.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <thread>
@@ -66,6 +68,12 @@ namespace jasperengine::editor {
         bool isOpen() const;
         // Another project is being opened: a running bake or import is cancelled, everything forgotten
         void resetForProjectSwitch();
+        // a bake or import result that was not written (or a run in progress): opening another
+        // source would drop it
+        bool holdsUnsavedResult() const;
+        // `replace` now, or (holdsUnsavedResult) once the user confirms the editor host's
+        // "Replace the Baker's Result?" (the Project window's double-click on a .vat, Rebake)
+        void askBeforeReplacing(const std::string& what, std::function<void()> replace);
 
         enum class Mode { None, Bake, Import };
 
@@ -214,6 +222,7 @@ namespace jasperengine::editor {
 
         std::string status;
         bool statusError = false;
+        double sourceCheckedAt = -1.0;      // the last watchSource() check (now())
 
         // preview
         std::unique_ptr<VatPreviewView> sourceView;
@@ -244,10 +253,22 @@ namespace jasperengine::editor {
         void updateSummary();
         void finishRun();
         void finishImport();
+        // what a bake or import throws (bad_alloc, a library error) ends it with an error in the
+        // window and the Console instead of taking the editor down
+        void failWith(const std::string& what, const std::string& message);
+        // the GameObject (or file) the source or the stored result was baked from is gone: why, else ""
+        std::string sourceGone(const vat::VatSourceSpec& source) const;
+        // a few times a second: a closed scene resets a GameObject source; a deleted source drops
+        // the stored in-memory result (Bake must not write a result whose source is gone)
+        void watchSource();
+        void dropStoredResult(const std::string& why);
         void setStatus(const std::string& message, bool error);
+        // the Place: Crowd... seed (the field never goes below 0)
+        uint32_t crowdSeedValue() const { return (uint32_t)std::max(crowdSeed, 0); }
         void reveal(const std::string& relative);
         void rememberSettings();
         bool startBake(bool write, std::string& error);
+        bool startBakeFor(const std::string& key, bool write, std::string& error);
         void ensurePreview();
         // the VAT view switched to (or back from) the heatmap's mesh when the toggle says so
         void applyHeatmap();
