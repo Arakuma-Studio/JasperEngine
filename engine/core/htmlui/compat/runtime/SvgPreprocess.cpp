@@ -6,7 +6,7 @@
 #include "htmlui/compat/css/CssSerialize.h"
 
 #include "Log.h"
-#include "LunaSVGRuntime.h"
+#include "util/LunaSVGRuntime.h"
 
 #include "tinyxml2.h"
 #include <lunasvg.h>

@@ -515,6 +515,11 @@ void JasperEngineWeb::setMouseMode(jasperengine::MouseMode mode){
     }
 }
 
+std::string JasperEngineWeb::getCrashReportPath(){
+    // the page hooks (crash_pre.js) report a web crash; nothing is written
+    return std::string();
+}
+
 std::string JasperEngineWeb::getUserDataPath(){
     return "/datafs";
 }

@@ -625,6 +625,25 @@ namespace jasperengine::editor{
         }
     };
 
+    // Project Settings > Player > Crash Handling (project.yaml "playerCrash", docs/crash-diagnostics.md).
+    // The defaults are what a game does without the key.
+    struct PlayerCrashSettings {
+        static constexpr int minHangSeconds = 1;
+        static constexpr int maxHangSeconds = 60;
+
+        bool enabled = true;             // the crash handler writes <user data>/crash/reports/...
+        bool includeLogTail = true;      // log-tail.txt with the last log lines
+        bool dumpWithHeap = false;       // Windows Dump Type: Small (false) or With Heap
+        bool hangWatchdog = true;        // Development Builds: the main-thread hang watchdog
+        int hangSeconds = 5;             // its threshold
+        bool webCrashOverlay = true;     // Web: "The game stopped working. [Reload]"
+
+        bool operator==(const PlayerCrashSettings& other) const {
+            return enabled == other.enabled && includeLogTail == other.includeLogTail && dumpWithHeap == other.dumpWithHeap &&
+                   hangWatchdog == other.hangWatchdog && hangSeconds == other.hangSeconds && webCrashOverlay == other.webCrashOverlay;
+        }
+    };
+
     class Project{
     private:
 
@@ -662,6 +681,7 @@ namespace jasperengine::editor{
         // none) and the deadzone of AXIS and VECTOR2 actions without their own
         std::filesystem::path inputActionsAsset;
         float inputDeadzone = 0.15f;
+        PlayerCrashSettings playerCrash;
         int htmlUiMsaaSamples;
         // graphics.shadowTier.<platform>: the shadow quality tier a scene of Quality Auto uses
         ShadowTier shadowTiers[ShadowTiers::PLATFORM_COUNT];
@@ -1207,6 +1227,8 @@ namespace jasperengine::editor{
         // Player > Logging: what an exported game logs (JASPERENGINE_LOG_* in its CMake)
         void setPlayerLogging(const PlayerLoggingSettings& settings);
         const PlayerLoggingSettings& getPlayerLogging() const;
+        void setPlayerCrash(const PlayerCrashSettings& settings);
+        const PlayerCrashSettings& getPlayerCrash() const;
 
         // Project Settings > Input (docs/mcp/guide/input.md): the default Input Actions asset
         // (InputActions::loadDefault at Play and at game start) and the default deadzone

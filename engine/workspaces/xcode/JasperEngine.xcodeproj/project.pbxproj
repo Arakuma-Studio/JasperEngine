@@ -7,12 +7,20 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+        5E5280000000000000000010 /* HangStackCapture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000012 /* HangStackCapture.cpp */; };
+        5E5280000000000000000011 /* HangStackCapture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000012 /* HangStackCapture.cpp */; };
 		5E5150000000000000000014 /* EngineProfiling.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000001 /* EngineProfiling.cpp */; };
 		5E5150000000000000000015 /* EngineProfiling.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000001 /* EngineProfiling.cpp */; };
 		5E5150000000000000000016 /* FrameTimes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000003 /* FrameTimes.cpp */; };
 		5E5150000000000000000017 /* FrameTimes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000003 /* FrameTimes.cpp */; };
 		5E5150000000000000000018 /* GpuMemory.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000005 /* GpuMemory.cpp */; };
 		5E5150000000000000000019 /* GpuMemory.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000005 /* GpuMemory.cpp */; };
+		5E5280000000000000000007 /* CrashHandler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000001 /* CrashHandler.cpp */; };
+		5E5280000000000000000008 /* CrashHandlerPosix.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000002 /* CrashHandlerPosix.cpp */; };
+		5E5280000000000000000009 /* HangWatchdog.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000003 /* HangWatchdog.cpp */; };
+		5E528000000000000000000A /* CrashHandler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000001 /* CrashHandler.cpp */; };
+		5E528000000000000000000B /* CrashHandlerPosix.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000002 /* CrashHandlerPosix.cpp */; };
+		5E528000000000000000000C /* HangWatchdog.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000003 /* HangWatchdog.cpp */; };
 		5E515000000000000000001A /* Profiler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000007 /* Profiler.cpp */; };
 		5E515000000000000000001B /* Profiler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000007 /* Profiler.cpp */; };
 		5E515000000000000000001C /* SokolPassPreview.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000009 /* SokolPassPreview.cpp */; };
@@ -27,6 +35,8 @@
 		434F4D50C6EF06C129A2C1A1 /* GameplayClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D500FDED71A67F616CA /* GameplayClassesLua.cpp */; };
 		5E5150000000000000000025 /* ProfilerClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000012 /* ProfilerClassesLua.cpp */; };
 		434F4D5077FD9C84C36F4F2D /* GameplayClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D500FDED71A67F616CA /* GameplayClassesLua.cpp */; };
+		5E5280000000000000000042 /* CrashClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000041 /* CrashClassesLua.cpp */; };
+		5E5280000000000000000043 /* CrashClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000041 /* CrashClassesLua.cpp */; };
 		5E0A1E00000000000000000F /* CascadeFit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E0A1E000000000000000001 /* CascadeFit.cpp */; };
 		5E0A1E000000000000000010 /* CascadeFit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E0A1E000000000000000001 /* CascadeFit.cpp */; };
 		5E0A1E000000000000000011 /* ShadowCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E0A1E000000000000000003 /* ShadowCache.cpp */; };
@@ -1329,7 +1339,9 @@
 		71F97B9B262D203E00CD6F2B /* libtinygltf-ios.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 71F97B85262D1FFE00CD6F2B /* libtinygltf-ios.a */; };
 		71FCE4BE28E0FA01003C5217 /* LuaFunction.h in Headers */ = {isa = PBXBuildFile; fileRef = 71FCE4BA28E0FA01003C5217 /* LuaFunction.h */; };
 		71FCE4BF28E0FA01003C5217 /* LuaFunctionBase.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71FCE4BB28E0FA01003C5217 /* LuaFunctionBase.cpp */; };
+		5E5280000000000000000045 /* LuaWatchdog.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000044 /* LuaWatchdog.cpp */; };
 		71FCE4C028E0FA01003C5217 /* LuaFunctionBase.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71FCE4BB28E0FA01003C5217 /* LuaFunctionBase.cpp */; };
+		5E5280000000000000000046 /* LuaWatchdog.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000044 /* LuaWatchdog.cpp */; };
 		71FCE4C128E0FA01003C5217 /* LuaFunctionBase.h in Headers */ = {isa = PBXBuildFile; fileRef = 71FCE4BC28E0FA01003C5217 /* LuaFunctionBase.h */; };
 		71FCE4C228E0FA01003C5217 /* LuaBridgeAddon.h in Headers */ = {isa = PBXBuildFile; fileRef = 71FCE4BD28E0FA01003C5217 /* LuaBridgeAddon.h */; };
 		71FCE4C528E0FA31003C5217 /* LuaBridge.h in Headers */ = {isa = PBXBuildFile; fileRef = 71FCE4C428E0FA31003C5217 /* LuaBridge.h */; };
@@ -3870,12 +3882,19 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+        5E5280000000000000000012 /* HangStackCapture.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = HangStackCapture.cpp; sourceTree = "<group>"; };
 		5E5150000000000000000001 /* EngineProfiling.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = EngineProfiling.cpp; sourceTree = "<group>"; };
 		5E5150000000000000000002 /* EngineProfiling.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = EngineProfiling.h; sourceTree = "<group>"; };
 		5E5150000000000000000003 /* FrameTimes.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = FrameTimes.cpp; sourceTree = "<group>"; };
 		5E5150000000000000000004 /* FrameTimes.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FrameTimes.h; sourceTree = "<group>"; };
 		5E5150000000000000000005 /* GpuMemory.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = GpuMemory.cpp; sourceTree = "<group>"; };
 		5E5150000000000000000006 /* GpuMemory.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GpuMemory.h; sourceTree = "<group>"; };
+		5E5280000000000000000001 /* CrashHandler.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = CrashHandler.cpp; sourceTree = "<group>"; };
+		5E5280000000000000000002 /* CrashHandlerPosix.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = CrashHandlerPosix.cpp; sourceTree = "<group>"; };
+		5E5280000000000000000003 /* HangWatchdog.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = HangWatchdog.cpp; sourceTree = "<group>"; };
+		5E5280000000000000000004 /* CrashHandler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CrashHandler.h; sourceTree = "<group>"; };
+		5E5280000000000000000005 /* HangWatchdog.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = HangWatchdog.h; sourceTree = "<group>"; };
+		5E5280000000000000000006 /* CrashState.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CrashState.h; sourceTree = "<group>"; };
 		5E5150000000000000000007 /* Profiler.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = Profiler.cpp; sourceTree = "<group>"; };
 		5E5150000000000000000008 /* Profiler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Profiler.h; sourceTree = "<group>"; };
 		5E5150000000000000000009 /* SokolPassPreview.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = SokolPassPreview.cpp; sourceTree = "<group>"; };
@@ -3889,6 +3908,7 @@
 		5E5150000000000000000011 /* Profile.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Profile.h; sourceTree = "<group>"; };
 		5E5150000000000000000012 /* ProfilerClassesLua.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ProfilerClassesLua.cpp; sourceTree = "<group>"; };
 		434F4D500FDED71A67F616CA /* GameplayClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GameplayClassesLua.cpp; sourceTree = "<group>"; };
+		5E5280000000000000000041 /* CrashClassesLua.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = CrashClassesLua.cpp; sourceTree = "<group>"; };
 		5E5150000000000000000013 /* RenderStats.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RenderStats.h; sourceTree = "<group>"; };
 		5E0A1E000000000000000001 /* CascadeFit.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = CascadeFit.cpp; sourceTree = "<group>"; };
 		5E0A1E000000000000000002 /* CascadeFit.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CascadeFit.h; sourceTree = "<group>"; };
@@ -5548,6 +5568,8 @@
 		71F97B85262D1FFE00CD6F2B /* libtinygltf-ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libtinygltf-ios.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		71FCE4BA28E0FA01003C5217 /* LuaFunction.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LuaFunction.h; sourceTree = "<group>"; };
 		71FCE4BB28E0FA01003C5217 /* LuaFunctionBase.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LuaFunctionBase.cpp; sourceTree = "<group>"; };
+		5E5280000000000000000047 /* LuaWatchdog.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LuaWatchdog.h; sourceTree = "<group>"; };
+		5E5280000000000000000044 /* LuaWatchdog.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = LuaWatchdog.cpp; sourceTree = "<group>"; };
 		71FCE4BC28E0FA01003C5217 /* LuaFunctionBase.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LuaFunctionBase.h; sourceTree = "<group>"; };
 		71FCE4BD28E0FA01003C5217 /* LuaBridgeAddon.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LuaBridgeAddon.h; sourceTree = "<group>"; };
 		71FCE4C428E0FA31003C5217 /* LuaBridge.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LuaBridge.h; sourceTree = "<group>"; };
@@ -7382,6 +7404,28 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		5E528000000000000000000D /* detail */ = {
+			isa = PBXGroup;
+			children = (
+				5E5280000000000000000006 /* CrashState.h */,
+			);
+			path = detail;
+			sourceTree = "<group>";
+		};
+		5E528000000000000000000E /* diag */ = {
+			isa = PBXGroup;
+			children = (
+				5E5280000000000000000001 /* CrashHandler.cpp */,
+				5E5280000000000000000004 /* CrashHandler.h */,
+				5E5280000000000000000002 /* CrashHandlerPosix.cpp */,
+				5E5280000000000000000003 /* HangWatchdog.cpp */,
+				5E5280000000000000000012 /* HangStackCapture.cpp */,
+				5E5280000000000000000005 /* HangWatchdog.h */,
+				5E528000000000000000000D /* detail */,
+			);
+			path = diag;
+			sourceTree = "<group>";
+		};
 		5E5150000000000000000026 /* profiler */ = {
 			isa = PBXGroup;
 			children = (
@@ -7507,6 +7551,7 @@
 				716803C72DF75E6F00ED71BE /* ThreadClassesLua.cpp */,
 				5E5150000000000000000012 /* ProfilerClassesLua.cpp */,
 				434F4D500FDED71A67F616CA /* GameplayClassesLua.cpp */,
+				5E5280000000000000000041 /* CrashClassesLua.cpp */,
 				7105A56028B305B20092EA05 /* UtilClassesLua.cpp */,
 				50314C550000000000000013 /* HtmlUIClassesLua.h */,
 				50314C550000000000000014 /* HtmlUIClassesLua.cpp */,
@@ -8337,6 +8382,7 @@
 				7162FC6925962A0E0075B97D /* Log.h */,
 				7162FC2C25962A0E0075B97D /* Log.cpp */,
 				C5A54E00000005104A55E700 /* asset */,
+				5E528000000000000000000E /* diag */,
 				53303921A04E50219FF75728 /* log */,
 				1787AD932F6C333300DB1D75 /* manager */,
 				7162FC4825962A0E0075B97D /* math */,
@@ -9877,6 +9923,8 @@
 				71FCE4BA28E0FA01003C5217 /* LuaFunction.h */,
 				71FCE4BC28E0FA01003C5217 /* LuaFunctionBase.h */,
 				71FCE4BB28E0FA01003C5217 /* LuaFunctionBase.cpp */,
+				5E5280000000000000000047 /* LuaWatchdog.h */,
+				5E5280000000000000000044 /* LuaWatchdog.cpp */,
 				71BE623025B1DB9D006D6E02 /* LuaScript.h */,
 				71BE622F25B1DB9D006D6E02 /* LuaScript.cpp */,
 				71AD5E6D2E9F2B86004951AB /* ScriptBase.h */,
@@ -14350,6 +14398,7 @@
 				713D829C259D307F00567F9F /* CameraRender.cpp in Sources */,
 				D3C70B1DF15F42FA5856A0C2 /* DynamicResolutionController.cpp in Sources */,
 				71FCE4C028E0FA01003C5217 /* LuaFunctionBase.cpp in Sources */,
+				5E5280000000000000000046 /* LuaWatchdog.cpp in Sources */,
 				71451BE5270CA17F00712643 /* Action.cpp in Sources */,
 				71165BC0282981BE00CF79C1 /* Base64.cpp in Sources */,
 				713D829D259D307F00567F9F /* Vector4.cpp in Sources */,
@@ -14484,12 +14533,17 @@
 				5E5150000000000000000016 /* FrameTimes.cpp in Sources */,
 				5E5150000000000000000018 /* GpuMemory.cpp in Sources */,
 				5E515000000000000000001A /* Profiler.cpp in Sources */,
+				5E5280000000000000000007 /* CrashHandler.cpp in Sources */,
+				5E5280000000000000000008 /* CrashHandlerPosix.cpp in Sources */,
+				5E5280000000000000000009 /* HangWatchdog.cpp in Sources */,
+				5E5280000000000000000010 /* HangStackCapture.cpp in Sources */,
 				5E515000000000000000001C /* SokolPassPreview.cpp in Sources */,
 				5E515000000000000000001E /* SokolPassRecorder.cpp in Sources */,
 				5E5150000000000000000020 /* SokolTraceHub.cpp in Sources */,
 				5E5150000000000000000022 /* SokolVramTracker.cpp in Sources */,
 				5E5150000000000000000024 /* ProfilerClassesLua.cpp in Sources */,
 				434F4D50C6EF06C129A2C1A1 /* GameplayClassesLua.cpp in Sources */,
+				5E5280000000000000000042 /* CrashClassesLua.cpp in Sources */,
 				48544D4C0000000000000004 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */,
 				434F4D50EFE51A328840CA82 /* WidgetsRuntime.cpp in Sources */,
@@ -14820,12 +14874,17 @@
 				5E5150000000000000000017 /* FrameTimes.cpp in Sources */,
 				5E5150000000000000000019 /* GpuMemory.cpp in Sources */,
 				5E515000000000000000001B /* Profiler.cpp in Sources */,
+				5E528000000000000000000A /* CrashHandler.cpp in Sources */,
+				5E528000000000000000000B /* CrashHandlerPosix.cpp in Sources */,
+				5E528000000000000000000C /* HangWatchdog.cpp in Sources */,
+				5E5280000000000000000011 /* HangStackCapture.cpp in Sources */,
 				5E515000000000000000001D /* SokolPassPreview.cpp in Sources */,
 				5E515000000000000000001F /* SokolPassRecorder.cpp in Sources */,
 				5E5150000000000000000021 /* SokolTraceHub.cpp in Sources */,
 				5E5150000000000000000023 /* SokolVramTracker.cpp in Sources */,
 				5E5150000000000000000025 /* ProfilerClassesLua.cpp in Sources */,
 				434F4D5077FD9C84C36F4F2D /* GameplayClassesLua.cpp in Sources */,
+				5E5280000000000000000043 /* CrashClassesLua.cpp in Sources */,
 				71A41CB529AC3D7C006953D3 /* SokolCmdQueue.cpp in Sources */,
 				503152450000000000000002 /* SokolPipelineCache.cpp in Sources */,
 				7105A56A28B305B20092EA05 /* UtilClassesLua.cpp in Sources */,
@@ -14856,6 +14915,7 @@
 				CF890935BEC30E9977AE7802 /* AtmosphereNoise.cpp in Sources */,
 				F35C0F307D96E2D72EEB551C /* AtmosphereMath.cpp in Sources */,
 				71FCE4BF28E0FA01003C5217 /* LuaFunctionBase.cpp in Sources */,
+				5E5280000000000000000045 /* LuaWatchdog.cpp in Sources */,
 				71451BE4270CA17F00712643 /* Action.cpp in Sources */,
 				71165BBF282981BE00CF79C1 /* Base64.cpp in Sources */,
 				7162FD2325963AE00075B97D /* TextureRender.cpp in Sources */,

@@ -18,7 +18,10 @@ aborts, wasm traps); no ready line before --timeout (with --until-ready); a miss
 a centre pixel outside the baseline's rgb +- tolerance; crossOriginIsolated differing from the
 baseline's isolated; a line of the baseline's "console" list ({"text", "level"}: log, info,
 warning, error) missing, at another console level, or (with "ordered": true) out of order. An
-error the "console" list names is expected and fails nothing. Exit 2 when the gate itself cannot run (no Chrome, no page target).
+error the "console" list names is expected and fails nothing. A baseline may also give "query" (items added to the
+page URL's query), "init_script" (JavaScript run before the page's own scripts), "eval" with "eval_expect" (substrings
+its value must contain), and "allow": substrings of console lines and uncaught exceptions that are expected (a
+deliberate crash) and fail nothing. Exit 2 when the gate itself cannot run (no Chrome, no page target).
 
 A baseline's "click": n clicks the canvas centre n times after the run (CDP Input.dispatchMouseEvent:
 trusted events, so a page can lock the pointer), each followed by "after_click_seconds" (default 2)
@@ -319,7 +322,7 @@ def main() -> int:
 
     server = make_server(args.root, 0, cross_origin_isolation=not args.no_isolation, quiet=True)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    page_url = f"http://127.0.0.1:{server.server_port}/{args.page}?" + "&".join([READY_QUERY] + args.query)
+    page_url = f"http://127.0.0.1:{server.server_port}/{args.page}?" + "&".join([READY_QUERY] + baseline.get("query", []) + args.query)
 
     chrome_path = find_chrome()
     cdp_port = free_port()
@@ -356,6 +359,8 @@ def main() -> int:
         cdp.send("Runtime.setMaxCallStackSizeToCapture", size=50)
         cdp.send("Log.enable")
         cdp.send("Page.enable")
+        if baseline.get("init_script"):
+            cdp.send("Page.addScriptToEvaluateOnNewDocument", source=baseline["init_script"])
         print(f"browser_gate: {Path(chrome_path).name} opens {page_url}")
         cdp.send("Page.navigate", url=page_url)
 
@@ -390,6 +395,10 @@ def main() -> int:
 
         if args.evaluate:
             print(f"browser_gate: eval {args.evaluate} = {json.dumps(evaluate(cdp, args.evaluate))[:20000]}")
+        baseline_eval = None
+        if baseline.get("eval"):
+            baseline_eval = evaluate(cdp, baseline["eval"])
+            print(f"browser_gate: eval {baseline['eval']} = {json.dumps(baseline_eval)[:20000]}")
         isolated = evaluate(cdp, "self.crossOriginIsolated === true")
         canvas = evaluate(cdp, "(() => { const c = document.querySelector('canvas'); if (!c) return null;"
                                " const r = c.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2,"
@@ -414,8 +423,10 @@ def main() -> int:
         required = baseline.get("console", [])
         expected_errors = [item["text"] for item in required if item.get("level") == "error"]
 
+        allowed = baseline.get("allow", [])
+
         def expected(text: str) -> bool:
-            return any(e in text for e in expected_errors)
+            return any(e in text for e in expected_errors) or any(a in text for a in allowed)
 
         console_failures = []
         position = 0
@@ -430,7 +441,7 @@ def main() -> int:
                 console_failures.append(f"'{item['text']}' is a console {records[found][1]}, not {item['level']}")
             position = found + 1
 
-        exceptions = [text for _, level, text in records if level == "exception"]
+        exceptions = [text for _, level, text in records if level == "exception" and not any(a in text for a in allowed)]
         errors = [text for _, level, text in records if level == "error" and not expected(text)]
         marked = [text for _, level, text in records
                   if level not in ("exception", "error") and ERROR_MARKERS.search(text) and not expected(text)]
@@ -448,6 +459,11 @@ def main() -> int:
             failures.append(f"no '{READY_LINE}' line within {args.timeout:g} s")
         for text in missing:
             failures.append(f"no console line contains '{text}'")
+        if baseline.get("eval"):
+            value = json.dumps(baseline_eval) if not isinstance(baseline_eval, str) else baseline_eval
+            for text in baseline.get("eval_expect", []):
+                if text not in (value or ""):
+                    failures.append(f"eval {baseline['eval']} does not contain '{text}' (got {value})")
         failures += [f"console: {failure}" for failure in console_failures]
         if "rgb" in baseline:
             tolerance = int(baseline.get("tolerance", 0))

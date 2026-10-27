@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "EditorFrame.h"
+#include "diag/HangWatchdog.h"
 
 #include "AppSettings.h"
 #include "Backend.h"
@@ -107,6 +108,8 @@ bool EditorFrame::detectActivity(bool& redrawRequested){
 }
 
 bool EditorFrame::run(EditorFrameState& state){
+    // the editor's heartbeat: every loop iteration and Windows live-resize frame comes here
+    diag::heartbeat();
     Project* project = app->getProject();
     const bool playSessionActive = project->isPlaySessionActive();
 

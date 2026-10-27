@@ -493,7 +493,7 @@ include_directories (${JASPERENGINE_ROOT}/core/script)
 include_directories (${JASPERENGINE_ROOT}/core/shader)
 include_directories (${JASPERENGINE_ROOT}/core/subsystem)
 include_directories (${JASPERENGINE_ROOT}/core/texture)
-include_directories (${JASPERENGINE_ROOT}/core/util)
+# Keep util/ namespaced: Signal.h shadows <signal.h> on case-insensitive hosts.
 # GamepadMappings.h, shared by GamepadDB (editor) and GamepadLinux (games)
 include_directories (${JASPERENGINE_ROOT}/platform/common)
 # renderer/Renderer.h, which EditorFrame.h includes from one directory up
@@ -700,11 +700,13 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/PlacementTools.cpp
     ${EDITOR_DIR}/mcp/tools/EcsTools.cpp
     ${EDITOR_DIR}/mcp/tools/GameplayTools.cpp
+    ${EDITOR_DIR}/mcp/tools/DiagnosticsTools.cpp
     ${EDITOR_DIR}/mcp/tools/OrganisationTools.cpp
 
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp
     ${EDITOR_DIR}/util/BidiText.cpp
     ${EDITOR_DIR}/util/CrashHandler.cpp
+    ${EDITOR_DIR}/util/EditorDiagnostics.cpp
     ${EDITOR_DIR}/util/GraphicUtils.cpp
     ${EDITOR_DIR}/util/CameraTextureLink.cpp
     ${EDITOR_DIR}/util/FluidTextureLink.cpp

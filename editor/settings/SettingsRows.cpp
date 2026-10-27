@@ -13,6 +13,7 @@
 #include "AppSettings.h"
 #include "Out.h"
 #include "SceneBackup.h"
+#include "diag/CrashHandler.h"
 #include "Project.h"
 #include "input/InputActions.h"
 #include "texture/TextureCookQueue.h"
@@ -1022,6 +1023,39 @@ std::vector<Setting> mcpSettingsTable() {
                         [](Project& p) { return p.getPlayerLogging().backtrace; },
                         [](Project& p, bool v) { PlayerLoggingSettings l = p.getPlayerLogging(); l.backtrace = v; p.setPlayerLogging(l); }));
 
+        // ---- player crash handling (docs/crash-diagnostics.md)
+        auto crashBool = [&add](const std::string& key, const std::string& description, bool PlayerCrashSettings::* member) {
+            add(boolSetting(key, description, [member](Project& p) { return p.getPlayerCrash().*member; },
+                            [member](Project& p, bool v) { PlayerCrashSettings c = p.getPlayerCrash(); c.*member = v; p.setPlayerCrash(c); }));
+        };
+        crashBool("player.crash.enabled", "The built game writes crash reports (<user data>/crash/reports); none are sent.",
+                  &PlayerCrashSettings::enabled);
+        crashBool("player.crash.log_tail", "Crash reports keep the last log lines (log-tail.txt).", &PlayerCrashSettings::includeLogTail);
+        crashBool("player.crash.dump_with_heap", "Windows minidumps also hold the memory the stacks point to (else Small).",
+                  &PlayerCrashSettings::dumpWithHeap);
+        crashBool("player.crash.hang_watchdog", "Development Builds report a main thread that stops responding.",
+                  &PlayerCrashSettings::hangWatchdog);
+        crashBool("player.crash.web_overlay", "Web: show \"The game stopped working. [Reload]\" after a crash.",
+                  &PlayerCrashSettings::webCrashOverlay);
+        {
+            Setting s;
+            s.key = "player.crash.hang_seconds";
+            s.type = "int";
+            s.description = "The development build's hang threshold, seconds.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getPlayerCrash().hangSeconds); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                long long v;
+                if (!readInt(value, PlayerCrashSettings::minHangSeconds, PlayerCrashSettings::maxHangSeconds, v, error)) return false;
+                if (apply) {
+                    PlayerCrashSettings crash = ctx.project()->getPlayerCrash();
+                    crash.hangSeconds = static_cast<int>(v);
+                    ctx.project()->setPlayerCrash(crash);
+                }
+                return true;
+            };
+            add(std::move(s));
+        }
+
         // ---- physics
         add(boolSetting("physics.enabled", "3D physics (Jolt). Off leaves Rigidbodies and joints out of builds.",
                         [](Project& p) { return p.isPhysics3DEnabled(); }, [](Project& p, bool v) { p.setPhysics3DEnabled(v); }));
@@ -1499,6 +1533,12 @@ const Placement placements[] = {
     {"player.logging.level", "Player", "Logging", "Log Level", "player log"},
     {"player.logging.file", "Player", "Logging", "Log File", "player log"},
     {"player.logging.backtrace", "Player", "Logging", "Capture Backtrace on Errors", "stack trace"},
+    {"player.crash.enabled", "Player", "Crash Handling", "Enabled", "crash reports diagnostics"},
+    {"player.crash.log_tail", "Player", "Crash Handling", "Include Log Tail", "crash reports log"},
+    {"player.crash.dump_with_heap", "Player", "Crash Handling", "Windows Dump Type", "crash minidump heap small"},
+    {"player.crash.hang_watchdog", "Player", "Crash Handling", "Hang Watchdog In Development Builds", "hang freeze not responding"},
+    {"player.crash.hang_seconds", "Player", "Crash Handling", "Hang Threshold (s)", "hang freeze seconds"},
+    {"player.crash.web_overlay", "Player", "Crash Handling", "Web > Show Crash Overlay", "crash web reload overlay"},
     {"player.threading.workers", "Player", "Threading", "Worker Threads", "jobs threads"},
     {"player.threading.reserved_frame_workers", "Player", "Threading", "Reserved Frame Workers", "jobs threads"},
     {"player.threading.io_threads", "Player", "Threading", "Asset I/O Threads", "io loading threads"},
@@ -1702,7 +1742,8 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"Lattice", SettingsScope::Preference, 5, "lattice cage deformer"},
         {"External Tools", SettingsScope::Preference, 6, "cmake compiler emscripten ffmpeg"},
         {"Logging", SettingsScope::Preference, 7, "log levels"},
-        {"Shader Cache", SettingsScope::Preference, 8, "shaders cache clear"},
+        {"Diagnostics", SettingsScope::Preference, 8, "crash hang watchdog freeze not responding reports"},
+        {"Shader Cache", SettingsScope::Preference, 9, "shaders cache clear"},
     };
     for (const SettingsPage& page : pages) {
         // two scopes may share a title (Scripting): names stay unique
@@ -1840,6 +1881,20 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
                [](const LatticeViewSettings& v) { return v.falloffRadius; });
     addOrAbort(registry, uiRow("preferences.logging.reset", "Logging", "Category Levels", "Reset", "category levels info",
         [](SettingsContext&) { return Json(AppSettings::getLoggingSettings().categoryLevels.size()); }));
+    const char* diagnostics = "Diagnostics";
+    addOrAbort(registry, uiRow("preferences.diagnostics.hang_watchdog", diagnostics, "", "Hang Watchdog", "hang freeze not responding report",
+        [](SettingsContext&) { return Json(AppSettings::getDiagnosticsSettings().hangWatchdog); },
+        "Writes a hang report when the editor stops responding (set_hang_watchdog sets it)."));
+    addOrAbort(registry, uiRow("preferences.diagnostics.report_after", diagnostics, "", "Report After (s)", "hang threshold seconds",
+        [](SettingsContext&) { return Json(AppSettings::getDiagnosticsSettings().reportAfterSeconds); }));
+    addOrAbort(registry, uiRow("preferences.diagnostics.break_lua_after", diagnostics, "", "Interrupt Runaway Lua In Play After (s)",
+        "runaway lua script interrupt infinite loop play",
+        [](SettingsContext&) { return Json(AppSettings::getDiagnosticsSettings().breakLuaAfterSeconds); }));
+    addOrAbort(registry, uiRow("preferences.diagnostics.show_crash_notice", diagnostics, "", "Show Crash Notice On Startup",
+        "crash notice banner unexpectedly closed startup",
+        [](SettingsContext&) { return Json(AppSettings::getDiagnosticsSettings().showCrashNotice); }));
+    addOrAbort(registry, uiRow("preferences.diagnostics.reports_folder", diagnostics, "Reports", "Crash Reports", "crash reports folder open",
+        [](SettingsContext&) { return Json(diag::crash::reportsDirectory().generic_string()); }));
     addOrAbort(registry, uiRow("preferences.shader_cache", "Shader Cache", "", "Shader Cache", "clear shaders",
         [](SettingsContext&) { return Json(App::getUserShaderCacheDir().generic_string()); }));
 }
