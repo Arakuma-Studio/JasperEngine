@@ -40,7 +40,9 @@ namespace jasperengine{
         bool operator!=(const VertexAnimatorAttachment& o) const{ return !(*this == o); }
     };
 
-    // a play request queued by Lua/the editor, applied by the system at its next update
+    // a play request queued by Lua/the editor: applied at once when the asset is loaded and
+    // started (VertexAnimatorSystem::applyRequests, also from inside a callback), else at the
+    // system's next update
     struct JASPERENGINE_API VertexAnimatorRequest{
         enum class Kind : uint8_t { Play, CrossFade, Blend, Queue, Stop, SetTime, SetSpeed, RandomizeTimes };
         Kind kind = Kind::Play;
@@ -82,7 +84,8 @@ namespace jasperengine{
         std::vector<vat::VatTrackPair> instanceStates;  // parallel to InstancedMeshComponent::instances
         std::vector<std::string> queued;            // queue(name) for the entity
         std::vector<VertexAnimatorRequest> requests;
-        float lastNow = 0.0f;                       // previous update's clock (event crossing)
+        float lastNow = 0.0f;                       // the last update's clock, for the getters (the system
+                                                    // crosses events on VertexAnimatorRuntime::lastNow, a double)
         // the system's per-animator bookkeeping (its clock, per-state speeds, holds, queues, pending
         // callbacks: animation/VertexAnimatorRuntime.h); reset on clone and decode
         std::shared_ptr<vat::VertexAnimatorRuntime> runtime;
@@ -91,7 +94,7 @@ namespace jasperengine{
         Vector4 gpuState0 = Vector4(-1, 0, 1, -1);   // vatPackInstance(state)
         Vector4 gpuState1 = Vector4(0, 1, 0, 0);
         float gpuNow = 0.0f;                        // clock for this frame (scene time - epoch)
-        bool gpuActive = false;                     // asset loaded and mesh matches: draw with VAT
+        bool gpuActive = false;                     // enabled, asset loaded and mesh matches: draw with VAT
 
         // events: (event) for the entity; (instance, event) per instance when instanceEvents
         FunctionSubscribe<void(const AnimationEvent&)> onEvent;

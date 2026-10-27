@@ -4,14 +4,16 @@
 // Contract (vertex animation spec 3.3, 3.4, 3.7)
 // - Purpose: what VertexAnimatorSystem keeps per Vertex Animator besides the packed track pairs
 //   of the component (VertexAnimatorComponent::state / instanceStates): the animator's own clock
-//   and epoch, per-state speeds, holds (speed 0, stop), queues, finish flags and the callbacks
-//   waiting for dispatch; plus the pure helpers the system and the tests share (event crossing,
+//   and epoch (and the previous update's clock, in double), per-state speeds, holds (speed 0,
+//   stop), queues, finish flags and the callbacks waiting for or in dispatch; plus the pure helpers the system and the tests share (event crossing,
 //   seeded random starts, a track's local time).
 // - Thread-safety: main thread (ECS), the helpers are pure.
 // - Units as VertexAnimation.h: seconds, `now` = the animator's clock minus its epoch.
 // - Invariants: VertexAnimatorRuntime::instances stays parallel to
 //   VertexAnimatorComponent::instanceStates (and so to InstancedMeshComponent::instances);
-//   eraseInstanceState keeps both when an instance is removed from the middle.
+//   eraseInstanceState keeps both when an instance is removed from the middle, and moves the
+//   instance index of every callback still to dispatch (pending, and the rest of the list being
+//   dispatched) with them.
 
 #ifndef VERTEX_ANIMATOR_RUNTIME_H
 #define VERTEX_ANIMATOR_RUNTIME_H
@@ -19,6 +21,7 @@
 #include "Export.h"
 #include "animation/AnimationEvent.h"
 #include "animation/VertexAnimation.h"
+#include "math/AABB.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -34,9 +37,9 @@ namespace jasperengine{
 
 namespace jasperengine::vat{
 
-    // A track held at a local time (speed 0, or stopped): the GPU form can't stop a clock (its
-    // local time is (now - start) * speed), so a held track is written with speed 1 and a start
-    // re-pinned to now - tau at every update
+    // A track held at a local time (speed 0, or stopped). Its packed form is speed 0 with the
+    // local time as its start (vat::vatLocalTime), written once: a held state costs nothing per
+    // frame. `tau` keeps the time in double for the CPU (events, getTime after setTime)
     struct JASPERENGINE_API VatTrackHold{
         bool held = false;
         double tau = 0.0;
@@ -67,6 +70,10 @@ namespace jasperengine::vat{
     struct JASPERENGINE_API VertexAnimatorRuntime{
         double clock = 0.0;             // seconds this animator played (play mode, or edit-mode preview)
         int64_t epoch = 0;              // VAT_EPOCH_SECONDS periods taken off the clock: now = clock - epoch * period
+        // the previous update's `now`, in double: event crossing goes (lastNow, now] and requests
+        // apply at it, so a crossing is never counted twice nor missed (a float would round it);
+        // VertexAnimatorComponent::lastNow is its float copy for the getters
+        double lastNow = 0.0;
         std::string path;               // the animation the asset is for
         float retryTimer = 0.0f;        // a failed load tries again every second
         bool failed = false;
@@ -74,15 +81,22 @@ namespace jasperengine::vat{
         bool waitingModel = false;      // the Model is still loading
         float appliedSpeed = 1.0f;      // the component speed the tracks were written with
         bool previewing = false;        // edit mode: Preview was on at the last update
+        bool restWritten = false;       // disabled: the rest state was written (once)
         uint64_t clipMask = 0;          // clips in use when the bounds were set (bit per clip)
+        bool anyRest = false;           // a drawn state at rest (no clip) when the bounds were set
+        AABB restBounds;                // the mesh's verticesAABB they were set with (anyRest)
         bool boundsSet = false;
         bool anyDirty = true;           // an instance's state changed since the last GPU write
         bool watchDirty = true;         // `watched` needs a rebuild
         std::vector<int> watched;       // instances needing per-frame work without instanceEvents
-                                        // (a queue, or a hold to re-pin)
+                                        // (a queue)
         VatStateExtra entity;
         std::vector<VatStateExtra> instances;
         std::vector<VatPendingCallback> pending;
+        // the callbacks being dispatched (sorted) and the next one to call: an instance removed
+        // by a callback drops its own and moves the later instances' down (eraseInstanceState)
+        std::vector<VatPendingCallback> dispatching;
+        size_t dispatchNext = 0;
         std::set<std::string> warned;   // warnings given once (unknown clip, socket, instance)
     };
 
@@ -97,7 +111,8 @@ namespace jasperengine::vat{
 
     // ---- pure helpers ----
 
-    // a track's local time (seconds of its clip, unwrapped) at `now`
+    // a track's local time (seconds of its clip, unwrapped) at `now`: vat::vatLocalTime in double
+    // (a held track: hold.tau)
     JASPERENGINE_API double vatTrackTau(const VatTrack& track, const VatTrackHold& hold, double now);
     // one cycle of a clip's local time: loop = length, ping_pong = 2 * length, others = length
     JASPERENGINE_API double vatClipPeriod(const VatClip& clip);

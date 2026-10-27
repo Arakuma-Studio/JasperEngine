@@ -265,7 +265,10 @@ playing the file reloads, in edit preview and in play mode.
 - `queue(name)` plays `name` when the current clip ends, or ends its cycle for `loop` and
   `ping_pong`. With nothing playing, it plays at once. `play`, `crossFade` and `stop` clear the
   queue.
-- `stop()` holds the current pose (`isPlaying()` is false) until the next `play`.
+- `stop()` holds the current pose (`isPlaying()` is false) until the next `play`. A held clip
+  (stopped, or at speed 0) costs nothing per frame, even in a large crowd.
+- Turning the Vertex Animator off (`enabled`) draws the mesh and every instance at its rest pose
+  at once; turning it on again resumes every clip where it was.
 - **Interpolate** (per clip, on by default) mixes the two nearest frames. Off holds each frame
   until the next, for a stepped look; imported fluids are always stepped.
 - In edit mode time stands still unless **Preview** is on. The GPU and the CPU compute the frame
@@ -295,8 +298,12 @@ A crowd's instances fire only when **Instance Events** is on. Then each instance
 called for instances. This costs work per instance each frame, so leave it off for large crowds
 that don't need it.
 
-Events and finishes fire in play mode only, after the frame's update, in time order. Calls made
-inside a handler take effect on the next frame. C++ scripts subscribe to the component's
+Events and finishes fire in play mode only, after the frame's update, in time order. Each event
+fires exactly once per crossing, at any frame rate and however long the game runs. Calls made
+inside a handler take effect at once, at the time of that frame, and show in that frame's draw;
+the other events of the same frame still fire. If a handler removes an instance, the events
+still to come in that frame are for the instances' new indices, and the removed instance's are
+dropped. C++ scripts subscribe to the component's
 `onEvent`, `onFinish`, `onInstanceEvent` and `onInstanceFinish` with `REGISTER_COMPONENT_EVENT`
 (the script editor's event list has a "Vertex Animator" entry).
 
@@ -420,7 +427,10 @@ function Hero:onFootstep(side) end     -- the clip's event {function: "onFootste
   - `setInstanceSpeed(i, speed)`, `setInstanceTime(i, seconds)`.
   - `getInstanceClip(i)`, `getInstanceNormalizedTime(i)`, `getInstanceCount()`.
   - `playAll(name)` and `playAll(name, fade)` play the GameObject and every instance.
-  - `randomizeTimes(seed)` puts every instance at a seeded time of its clip.
+  - `randomizeTimes(seed)` puts every instance at a seeded time of its clip (a `blend` stays
+    blended).
+  - `Mesh:updateInstance(i, data)` keeps instance `i`'s clip and time: a new `InstanceData()`
+    moves the instance without stopping its animation.
 - Settings, all writable:
   - `animation` (the `.vat`, relative to the assets folder; setting it loads the file),
     `defaultClip`, `playAutomatically`, `randomStart`, `defaultFadeTime`.
