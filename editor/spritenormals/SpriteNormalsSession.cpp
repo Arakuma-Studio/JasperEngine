@@ -255,6 +255,8 @@ namespace jasperengine::editor::spritenormals {
         const Grid& g = frames.grid;
         j["frames"] = {static_cast<int>(frames.mode), static_cast<int>(frames.from),
                        {g.tileWidth, g.tileHeight, g.columns, g.rows, g.count, g.offsetX, g.offsetY, g.paddingX, g.paddingY}, frameCells};
+        // the paint (only when there is some: unpainted specs keep their Phase 2 fingerprint)
+        if (!paint.empty() || paintMode != PaintMode::Keep) j["paint"] = {toString(paintMode), paintOpsToJson(paint)};
         // where the files go is not part of the result (outputs, overwrite). CBOR: compared,
         // never shown, and it never throws on a path that is not valid UTF-8
         const std::vector<uint8_t> bytes = json::to_cbor(j);
@@ -346,13 +348,21 @@ namespace jasperengine::editor::spritenormals {
         };
         std::vector<PlannedOutput> out;
         const std::string normal = spec.output.normal.empty() ? defaultFor("normal") : spec.output.normal;
-        out.push_back({"normal", normal});
+        PlannedOutput normalOut{"normal", normal, std::nullopt};
+        if (spec.paintMode == PaintMode::Keep && !normal.empty()) {
+            // what keep would start from (a head read: the chunk's JSON, its image not decoded)
+            fs::path abs;
+            std::string error;
+            std::error_code ec;
+            if (resolveProjectFile(projectDir, normal, abs, error) && fs::is_regular_file(abs, ec)) normalOut.existingPaint = readPaintSummary(abs);
+        }
+        out.push_back(normalOut);
         std::string atlas;
         if (animated) {
             atlas = spec.output.atlas.empty() ? defaultFor("atlas") : spec.output.atlas;
-            out.push_back({"atlas", atlas});
+            out.push_back({"atlas", atlas, std::nullopt});
         }
-        if (spec.settings.height) out.push_back({"height", spec.output.height.empty() ? defaultFor("height") : spec.output.height});
+        if (spec.settings.height) out.push_back({"height", spec.output.height.empty() ? defaultFor("height") : spec.output.height, std::nullopt});
         if (spec.output.framesJson) {
             std::string path = spec.output.framesJsonPath;
             if (path.empty()) {
@@ -360,7 +370,7 @@ namespace jasperengine::editor::spritenormals {
                 const fs::path base = fs::u8path(animated ? atlas : normal);
                 if (!base.empty()) path = (base.parent_path() / fs::u8path(base.stem().u8string() + ".frames.json")).generic_u8string();
             }
-            out.push_back({"frames_json", path});
+            out.push_back({"frames_json", path, std::nullopt});
         }
         return out;
     }
@@ -409,6 +419,14 @@ namespace jasperengine::editor::spritenormals {
         std::vector<Problem> check(const fs::path& projectDir, const Spec& spec, const Scene* scene, Checked& c) {
             std::vector<Problem> problems = validateSettings(spec.settings);
             std::error_code ec;
+
+            // ---- paint (frames are checked against the cells by prepare)
+            for (const Problem& p : validatePaintOps(spec.paint)) problems.push_back(p);
+            if (spec.paintMode == PaintMode::Clear && !spec.paint.empty()) {
+                add(problems, "invalid_paint", "paint",
+                    "paint_mode \"clear\" drops the paint, so paint must be empty (got " + std::to_string(spec.paint.size()) + " operations).",
+                    "Use paint_mode \"replace\" to start over with these operations.");
+            }
 
             // ---- source
             std::string source = spec.source;
@@ -570,6 +588,73 @@ namespace jasperengine::editor::spritenormals {
         return check(projectDir, spec, scene, c);
     }
 
+    namespace {
+
+        std::string sizeText(int w, int h) { return std::to_string(w) + "x" + std::to_string(h); }
+
+        // The cells a recipe recorded ([] for one whole image)
+        std::vector<Cell> recipeCells(const json& recipe) {
+            std::vector<Cell> cells;
+            if (!recipe.contains("frames") || !recipe["frames"].is_object() || !recipe["frames"].contains("cells")) return cells;
+            for (const json& c : recipe["frames"]["cells"]) cells.push_back({c[0].get<int>(), c[1].get<int>(), c[2].get<int>(), c[3].get<int>()});
+            return cells;
+        }
+
+        // The paint layer of a prepared spec (2.5): the ops (their frames against the cells) and,
+        // with Keep, the overlay of the planned normal output
+        bool preparePaint(const Spec& spec, Prepared& out, std::vector<Problem>& problems) {
+            const Request& request = out.request;
+            for (const Problem& p : validatePaintOps(spec.paint, static_cast<int>(request.cells.size()))) problems.push_back(p);
+            if (!problems.empty()) return false;
+            out.paint = PaintLayer();
+            out.paint.ops = spec.paint;
+            if (spec.paintMode != PaintMode::Keep) return true;
+            const fs::path normal = [&] {
+                for (const PlannedOutput& o : out.outputs) {
+                    fs::path abs;
+                    std::string error;
+                    if (o.role == "normal" && resolveProjectFile(out.projectDir, o.path, abs, error)) return abs;
+                }
+                return fs::path();
+            }();
+            std::error_code ec;
+            if (normal.empty() || !fs::is_regular_file(normal, ec)) return true;
+            const std::string rel = out.projectDir.empty() ? normal.generic_u8string() : projectRelative(out.projectDir, normal);
+            const std::string name = normal.filename().u8string();
+            std::string why;
+            std::optional<PaintOverlay> kept = readPaint(normal, &why);
+            if (!kept) {
+                if (!why.empty()) {
+                    add(out.paintWarnings, "paint_unreadable", "paint_mode",
+                        name + "'s paint layer can't be read (" + why + "); it is dropped when this map is written.",
+                        "Regenerate with paint_mode: \"clear\", or repaint.");
+                }
+                return true;
+            }
+            const int w = request.color.width, h = request.color.height;
+            if (!kept->sized(w, h)) {
+                add(problems, "paint_size_mismatch", "paint_mode",
+                    name + " has " + std::to_string(kept->paintedCount()) + " painted pixels for a " + sizeText(kept->width, kept->height) +
+                        " image; the new output is " + sizeText(w, h) + ".",
+                    "Pass paint_mode: \"clear\" to drop the paint, or restore the source size.");
+                return false;
+            }
+            out.paint.overlay = std::move(*kept);
+            out.paintKeptFrom = rel;
+            // the frames the paint was made on
+            std::string error;
+            const std::optional<json> recipe = readRecipeHead(normal, &error);
+            if (recipe && validateRecipe(*recipe, error) && recipeCells(*recipe) != request.cells) {
+                add(out.paintWarnings, "paint_layout_changed", "frames",
+                    name + "'s frames changed since it was painted (" + std::to_string(recipeCells(*recipe).size()) + " cells then, " +
+                        std::to_string(request.cells.size()) + " now); painted pixels may now land on other frames.",
+                    "Check the painted pixels (the magenta outline), or pass paint_mode: \"clear\" to drop the paint.");
+            }
+            return true;
+        }
+
+    }
+
     bool prepare(const fs::path& projectDir, const Spec& spec, const Scene* scene, Prepared& out, std::vector<Problem>& problems) {
         Checked c;
         problems = check(projectDir, spec, scene, c);
@@ -613,7 +698,7 @@ namespace jasperengine::editor::spritenormals {
         }
         // frames of one animation share one auto radius (Grid, Sprite frames and Cells alike)
         if (!animated && request.cells.size() >= 2) request.sequence = true;
-        return true;
+        return preparePaint(spec, out, problems);
     }
 
     // ------------------------------------------------------------------ outputs
@@ -675,12 +760,15 @@ namespace jasperengine::editor::spritenormals {
         return j;
     }
 
-    bool encodeOutputs(const Prepared& prepared, const Result& result, std::vector<OutputFile>& files, std::string& error) {
+    bool encodeOutputs(const Prepared& prepared, const Result& result, std::vector<OutputFile>& files, std::string& error, Problem* problem) {
         files.clear();
-        if (result.status != Status::Ok) {
-            error = "there is no finished result to write";
+        if (problem) *problem = Problem();
+        auto fail = [&](const char* kind, const std::string& why) {
+            error = why;
+            if (problem) *problem = {kind, "output", why, "Check the output paths, then try again."};
             return false;
-        }
+        };
+        if (result.status != Status::Ok) return fail("write_failed", "there is no finished result to write");
         const Source& source = prepared.source;
         const bool animated = source.kind == SourceKind::Gif || source.kind == SourceKind::Apng;
         RecipeInput in;
@@ -705,7 +793,7 @@ namespace jasperengine::editor::spritenormals {
         for (const PlannedOutput& out : prepared.outputs) {
             OutputFile file;
             file.role = out.role;
-            if (!resolveProjectFile(prepared.projectDir, out.path, file.absolute, error)) return false;
+            if (!resolveProjectFile(prepared.projectDir, out.path, file.absolute, error)) return fail("write_failed", error);
             file.path = prepared.projectDir.empty() ? out.path : projectRelative(prepared.projectDir, file.absolute);
             if (out.role == "frames_json") {
                 file.bytes = texsynth::jsonTextLossy(framesJson(prepared), 2) + "\n";
@@ -715,18 +803,23 @@ namespace jasperengine::editor::spritenormals {
             const Image* image = &result.normal;
             if (out.role == "atlas") image = &source.color;
             else if (out.role == "height") image = &result.height;
-            if (image->empty()) {
-                error = "the result has no " + out.role + " image";
-                return false;
-            }
+            if (image->empty()) return fail("write_failed", "the result has no " + out.role + " image");
             // paths as this PNG records them (outside a project: from its own directory)
             in.role = out.role;
             in.sourcePath = recordedPath(prepared, prepared.sourceAbsolute, file.absolute);
             in.normalOutput = normalFile.empty() ? std::string() : recordedPath(prepared, normalFile, file.absolute);
             in.atlasOutput = atlasFile.empty() ? std::string() : recordedPath(prepared, atlasFile, file.absolute);
             in.heightOutput = heightFile.empty() ? std::string() : recordedPath(prepared, heightFile, file.absolute);
+            // the normal map carries the paint layer (never the atlas or the height map)
+            const PaintOverlay* paint = out.role == "normal" && !prepared.paint.overlay.empty() ? &prepared.paint.overlay : nullptr;
+            in.paintedPixels = paint ? static_cast<int>(paint->paintedCount()) : 0;
             std::vector<uint8_t> png;
-            if (!encodeWithRecipe(*image, makeRecipe(in), png, error)) return false;
+            Problem why;
+            if (!encodeWithRecipeAndPaint(*image, makeRecipe(in), paint, png, why)) {
+                error = why.message;
+                if (problem) *problem = why;
+                return false;
+            }
             file.bytes.assign(png.begin(), png.end());
             files.push_back(std::move(file));
         }
@@ -971,6 +1064,14 @@ namespace jasperengine::editor::spritenormals {
         return warnings;
     }
 
+    // ------------------------------------------------------------------ generation
+
+    Result generatePrepared(Prepared& prepared, const Control& control) {
+        Result result = generatePainted(prepared.request, prepared.paint, control);
+        result.warnings.insert(result.warnings.begin(), prepared.paintWarnings.begin(), prepared.paintWarnings.end());
+        return result;
+    }
+
     // ------------------------------------------------------------------ SpriteNormalsRun
 
     std::shared_ptr<SpriteNormalsRun> SpriteNormalsRun::start(Prepared prepared, int threads, Finished onFinished) {
@@ -1013,7 +1114,7 @@ namespace jasperengine::editor::spritenormals {
                         run->last = p;
                     };
                     // generate() reports out of memory as Status::Failed; anything else is caught here
-                    result = generate(run->prep.request, control);
+                    result = generatePrepared(run->prep, control);
                 } catch (const std::exception& e) {
                     result = failedResult(std::string("The generation failed: ") + e.what() + ".");
                 } catch (...) {
