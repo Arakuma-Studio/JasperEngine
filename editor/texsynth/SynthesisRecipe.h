@@ -121,22 +121,28 @@ namespace jasperengine::editor::texsynth {
     };
     bool writeFilesAllOrNothing(const std::vector<StagedFile>& files, std::string& failedPath, std::string& error);
 
+    // Where a failed recipe read stopped: at the file (it can't be opened, is not a PNG or its
+    // chunk list is damaged: there is no recipe to speak of) or at the recipe chunk itself (CRC
+    // mismatch, compressed, malformed, not a JSON object: a garbled recipe)
+    enum class RecipeReadError { None, File, Chunk };
+
     // The jasper.synthesis text of PNG bytes / a PNG file (iTXt, or a tEXt with that keyword).
     // nullopt when there is none, or the file is not a PNG, truncated, or the chunk is garbled
     // (CRC mismatch, compressed, malformed); `error` says which (empty for "no recipe").
     // `keyword`: the chunk of another generator (exact match: jasper.spritenormals does not read
     // jasper.spritenormals.paint).
+    // `origin` (optional): which of the two an error is (None when there is no error).
     std::optional<std::string> readRecipeTextFromPng(const uint8_t* bytes, size_t size, std::string* error = nullptr,
-                                                     const char* keyword = kRecipeKeyword);
+                                                     const char* keyword = kRecipeKeyword, RecipeReadError* origin = nullptr);
     std::optional<std::string> readRecipeText(const std::filesystem::path& path, std::string* error = nullptr,
-                                              const char* keyword = kRecipeKeyword);
-    // readRecipeText parsed: nullopt also when the text is not a JSON object
-    std::optional<nlohmann::json> readRecipe(const std::filesystem::path& path, std::string* error = nullptr);
+                                              const char* keyword = kRecipeKeyword, RecipeReadError* origin = nullptr);
+    // readRecipeText parsed: nullopt also when the text is not a JSON object (origin Chunk)
+    std::optional<nlohmann::json> readRecipe(const std::filesystem::path& path, std::string* error = nullptr, RecipeReadError* origin = nullptr);
     // Fast form for scanning many files: reads only the chunks before the first IDAT (where
     // writePngWithRecipe puts the recipe), seeking over the others; a recipe placed after the
     // image data is not seen. nullopt for no recipe, not a PNG or a garbled chunk (`error`).
     std::optional<std::string> readRecipeTextHead(const std::filesystem::path& path, std::string* error = nullptr,
-                                                  const char* keyword = kRecipeKeyword);
+                                                  const char* keyword = kRecipeKeyword, RecipeReadError* origin = nullptr);
 
     // Each source a recipe names, hashed again
     struct SourceState {

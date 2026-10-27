@@ -18,6 +18,7 @@
 #include "texsynth/SynthesisRecipe.h"
 #include "texsynth/SynthesisSession.h"
 #include "util/EntityPath.h"
+#include "util/ProjectChecks.h"
 
 #include <algorithm>
 #include <cctype>
@@ -78,8 +79,10 @@ namespace jasperengine::editor::spritenormals {
         }
 
         // The project the engine resolves paths for: the editor and the CLI both install an
-        // editor::Platform for theirs (where a scene's material links live); nullptr without one
+        // editor::Platform for theirs (where a scene's material links live); nullptr without one,
+        // and without the engine at all (the CLI without --sprite: no System is installed)
         Project* editorProject() {
+            if (!System::hasInstance()) return nullptr;
             if (auto* platform = dynamic_cast<editor::Platform*>(&System::instance())) return platform->getProject();
             return nullptr;
         }
@@ -102,7 +105,7 @@ namespace jasperengine::editor::spritenormals {
         fs::path textureFile(const std::string& stored) {
             if (stored.empty()) return fs::path();
             const fs::path path = fs::u8path(stored);
-            if (path.is_absolute()) return path.lexically_normal();
+            if (path.is_absolute() || !System::hasInstance()) return path.lexically_normal();
             return (fs::u8path(System::instance().getAssetPath()) / path).lexically_normal();
         }
 
@@ -111,13 +114,15 @@ namespace jasperengine::editor::spritenormals {
         // directory with the default assets directory ".")
         fs::path sceneProjectDir() {
             if (Project* project = editorProject()) return project->getProjectPath();
-            return fs::u8path(System::instance().getAssetPath());
+            return System::hasInstance() ? fs::u8path(System::instance().getAssetPath()) : fs::path();
         }
 
         // The assets directory outputs must be in: the Platform's asset path when it lies at or
-        // below projectDir (the project's assets directory), else projectDir itself
+        // below projectDir (the project's assets directory), else projectDir itself. Without the
+        // engine: the assets directory projectDir's project.yaml names
         fs::path assetsRoot(const fs::path& projectDir) {
-            const fs::path assets = fs::u8path(System::instance().getAssetPath());
+            const fs::path assets = System::hasInstance() ? fs::u8path(System::instance().getAssetPath())
+                                                          : ProjectChecks::assetsRootFromProjectFile(projectDir);
             if (!assets.empty() && !projectDir.empty() && isAtOrBelow(assets, projectDir)) return normalDir(assets);
             return normalDir(projectDir);
         }
@@ -759,6 +764,7 @@ namespace jasperengine::editor::spritenormals {
             case Staleness::State::Missing: return "missing";
             case Staleness::State::NoRecipe: return "no_recipe";
             case Staleness::State::Invalid: return "invalid";
+            case Staleness::State::Unreadable: return "unreadable";
         }
         return "invalid";
     }
@@ -790,10 +796,16 @@ namespace jasperengine::editor::spritenormals {
         Staleness s;
         const std::string pngName = png.filename().u8string();
         std::string error;
-        const std::optional<json> recipe = readRecipeHead(png, &error);
+        RecipeReadError origin = RecipeReadError::None;
+        const std::optional<json> recipe = readRecipeHead(png, &error, &origin);
         if (!recipe) {
-            s.state = error.empty() ? Staleness::State::NoRecipe : Staleness::State::Invalid;
-            s.message = error.empty() ? pngName + " was not made by the sprite normal generator (no recipe)." : pngName + ": " + error;
+            // the error's origin decides: a damaged recipe chunk is a garbled recipe; a file that
+            // can't be read as a PNG has none
+            s.state = origin == RecipeReadError::Chunk ? Staleness::State::Invalid
+                      : origin == RecipeReadError::File ? Staleness::State::Unreadable
+                                                        : Staleness::State::NoRecipe;
+            s.message = s.state == Staleness::State::NoRecipe ? pngName + " was not made by the sprite normal generator (no recipe)."
+                                                              : pngName + ": " + error;
             return s;
         }
         if (!validateRecipe(*recipe, error)) {

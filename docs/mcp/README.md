@@ -9,6 +9,8 @@ editor, doing what you would do by hand:
 - build HTML/CSS game UI (menus, HUDs) and check its layout
 - synthesize textures from example images (seamless tiling, inpainting, PBR sets), as Window >
   Texture Synthesis does for you ([guide/texture-synthesis.md](guide/texture-synthesis.md))
+- generate normal maps for sprites, sheets, GIF animations and tilesets so 2D lights give them volume, with a lit
+  preview before writing ([guide/sprite-normals.md](guide/sprite-normals.md), `generate_sprite_normals`)
 - place objects with physics in edit mode: drop them onto what is below, push overlapping ones
   apart, slide them against walls, snap them onto surfaces, with a preview before the commit
   ([guide/physics.md](guide/physics.md), `place_with_physics`)

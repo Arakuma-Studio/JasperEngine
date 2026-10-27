@@ -4752,9 +4752,9 @@ void registerWorldTools(McpRegistry& registry) {
         "Keyframes in seconds. clip (.anim): a shared clip file, tracks by path from the GameObject whose "
         "Animation Player plays it; create {from?: entity Animation or \"model.gltf#Walk\"}; root checks paths "
         "(bindings); a project undo step (from an Animation, or a model clip with root: scene). Without clip: an entity Animation (creates one under target), tweens, "
-        "actions; a scene step. tracks: keys {time, value|points, ease} of local position/scale, rotation "
-        "(quaternion or euler; > 180 degrees needs middle keys), morph weights or lattice points; the same "
-        "path|target+channel replaces or merges; relative: offsets from the pose when it starts. "
+        "actions; a scene step. tracks: keys {time, value|points, ease} of local position/scale, rotation, "
+        "morph weights or lattice points; the same "
+        "path|target+channel replaces or merges. "
         "Guide: jasper://docs/animation.",
         object({
             {"scene", sceneRef()},
