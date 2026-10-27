@@ -14,6 +14,7 @@
 #include "sokol_gfx.h"
 
 #include <map>
+#include <vector>
 
 
 namespace jasperengine{
@@ -29,6 +30,32 @@ namespace jasperengine{
         bool operator<(const BufferInfo &o) const {
             return id < o.id || (id == o.id && offset < o.offset);
         }
+    };
+
+    // References to SokolPipelineCache's shared pipeline variants (acquireVariant): a copy takes
+    // references of its own, clear() and the destructor release them
+    class SokolVariantRefs{
+    public:
+        struct Variant {
+            uint8_t kind;
+            uint8_t type; // pipeline type, by bit index
+            sg_pipeline pipeline;
+        };
+
+        SokolVariantRefs() = default;
+        SokolVariantRefs(const SokolVariantRefs& rhs);
+        SokolVariantRefs& operator=(const SokolVariantRefs& rhs);
+        ~SokolVariantRefs();
+
+        // the variant of that kind and type this object holds (its pipeline SG_INVALID_ID when
+        // it could not be made), null when it holds none
+        const Variant* find(uint8_t kind, uint8_t type) const;
+        // a reference acquired by the caller
+        void add(uint8_t kind, uint8_t type, sg_pipeline pipeline);
+        void clear();
+
+    private:
+        std::vector<Variant> list;
     };
 
     class SokolObject{
@@ -61,16 +88,17 @@ namespace jasperengine{
         // the sample count of the PIP_MSAA* pipelines (endLoad's)
         int msaaSamples;
 
-        // Variants of the pipelines, one per pipeline type, created on the first draw that asks
-        // for one and destroyed with the others: VARIANT_MIRRORED has the face winding reversed
-        // (a draw whose transform mirrors the mesh, so its front faces stay front: culling and
-        // gl_FrontFacing), VARIANT_NO_CULL culls no face (editor-only debug views),
-        // VARIANT_MIRRORED_NO_CULL both
-        static constexpr int VARIANT_MIRRORED = 0;
-        static constexpr int VARIANT_NO_CULL = 1;
-        static constexpr int VARIANT_MIRRORED_NO_CULL = 2;
-        static constexpr int VARIANT_COUNT = 3;
-        sg_pipeline variantPipelines[VARIANT_COUNT][PIPELINE_TYPES];
+        // Variants of the pipelines, made on the first draw that asks for one: VARIANT_MIRRORED has
+        // the face winding reversed (a draw whose transform mirrors the mesh, so its front faces
+        // stay front: culling and gl_FrontFacing), VARIANT_NO_CULL culls no face (editor-only
+        // debug views), VARIANT_MIRRORED_NO_CULL both. They are SokolPipelineCache's shared
+        // variants (every object with the same description draws with one pipeline): this object
+        // holds a reference to each it uses, its own also in a copy (taken again on copy),
+        // released by beginLoad, destroy and the destructor
+        static constexpr uint8_t VARIANT_MIRRORED = 0;
+        static constexpr uint8_t VARIANT_NO_CULL = 1;
+        static constexpr uint8_t VARIANT_MIRRORED_NO_CULL = 2;
+        SokolVariantRefs variants;
         // types whose pipeline already culls nothing (its no-cull variant is itself), by bit index
         uint16_t noCullSame;
 
@@ -108,6 +136,8 @@ namespace jasperengine{
     public:
         // pipelines made by every object and not destroyed yet (diagnostics)
         static int getLivePipelineCount();
+        // the shared pipeline variants alive (SokolPipelineCache::variantCount)
+        static size_t getSharedVariantCount();
         // loads that left a vertex input of their shader without a buffer (diagnostics)
         static int getUnfedVertexInputLoads();
 

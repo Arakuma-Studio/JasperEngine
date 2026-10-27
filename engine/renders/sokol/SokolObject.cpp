@@ -75,13 +75,14 @@ SokolObject::SokolObject(){
 
 // Forgets the variants without destroying them: a copy of this object shares the
 // handles, as it shares the pipelines, and destroy() releases them once
+// (the pipeline variants are references of this object's own to the shared ones: released)
 void SokolObject::resetPipelines(){
-    for (auto& variants : variantPipelines){
-        for (sg_pipeline& variant : variants){
-            variant.id = SG_INVALID_ID;
-        }
-    }
+    variants.clear();
     noCullSame = 0;
+}
+
+size_t SokolObject::getSharedVariantCount(){
+    return SokolPipelineCache::variantCount();
 }
 
 int SokolObject::getLivePipelineCount(){
@@ -95,6 +96,46 @@ int SokolObject::getUnfedVertexInputLoads(){
 SokolObject::SokolObject(const SokolObject& rhs) = default;
 
 SokolObject& SokolObject::operator=(const SokolObject& rhs) = default;
+
+SokolVariantRefs::SokolVariantRefs(const SokolVariantRefs& rhs): list(rhs.list){
+    for (const Variant& variant : list){
+        SokolPipelineCache::retainVariant(variant.pipeline);
+    }
+}
+
+SokolVariantRefs& SokolVariantRefs::operator=(const SokolVariantRefs& rhs){
+    if (this != &rhs){
+        for (const Variant& variant : rhs.list){
+            SokolPipelineCache::retainVariant(variant.pipeline);
+        }
+        clear();
+        list = rhs.list;
+    }
+    return *this;
+}
+
+SokolVariantRefs::~SokolVariantRefs(){
+    clear();
+}
+
+const SokolVariantRefs::Variant* SokolVariantRefs::find(uint8_t kind, uint8_t type) const{
+    for (const Variant& variant : list){
+        if (variant.kind == kind && variant.type == type)
+            return &variant;
+    }
+    return nullptr;
+}
+
+void SokolVariantRefs::add(uint8_t kind, uint8_t type, sg_pipeline pipeline){
+    list.push_back({kind, type, pipeline});
+}
+
+void SokolVariantRefs::clear(){
+    for (const Variant& variant : list){
+        SokolPipelineCache::releaseVariant(variant.pipeline);
+    }
+    list.clear();
+}
 
 sg_vertex_format SokolObject::getVertexFormat(unsigned int elements, AttributeDataType dataType, bool normalized){
     if (dataType == AttributeDataType::BYTE){
@@ -785,8 +826,8 @@ bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling, bool 
     if ((disableFaceCulling || mirrored) && index < PIPELINE_TYPES){
         const int kind = mirrored ? (disableFaceCulling ? VARIANT_MIRRORED_NO_CULL : VARIANT_MIRRORED) : VARIANT_NO_CULL;
         const bool sameAsPipeline = (kind == VARIANT_NO_CULL) && (noCullSame & (1u << index));
-        sg_pipeline& variant = variantPipelines[kind][index];
-        if (variant.id == SG_INVALID_ID && !sameAsPipeline){
+        const SokolVariantRefs::Variant* held = variants.find((uint8_t)kind, (uint8_t)index);
+        if (!held && !sameAsPipeline){
             sg_pipeline_desc desc = makePipelineDesc(pipType);
             const bool culls = desc.cull_mode == SG_CULLMODE_BACK || desc.cull_mode == SG_CULLMODE_FRONT;
             if (disableFaceCulling){
@@ -801,12 +842,15 @@ bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling, bool 
                 // already culls nothing: the pipeline is its own variant
                 noCullSame |= (uint16_t)(1u << index);
             }else{
-                variant = makePipeline(desc);
+                // shared by every object with the same description (a failed one is kept as
+                // invalid, so it is not tried again each frame)
+                variants.add((uint8_t)kind, (uint8_t)index, SokolPipelineCache::acquireVariant(desc));
+                held = variants.find((uint8_t)kind, (uint8_t)index);
             }
         }
         // a variant that failed to build leaves the pipeline as it is
-        if (variant.id != SG_INVALID_ID && sg_query_pipeline_state(variant) == SG_RESOURCESTATE_VALID){
-            selectedPipeline = variant;
+        if (held && held->pipeline.id != SG_INVALID_ID && sg_query_pipeline_state(held->pipeline) == SG_RESOURCESTATE_VALID){
+            selectedPipeline = held->pipeline;
         }
     }
 
@@ -833,11 +877,6 @@ void SokolObject::destroy(){
     if (sg_isvalid()){
         for (sg_pipeline& pipeline : pipelines){
             destroyPipeline(pipeline);
-        }
-        for (auto& variants : variantPipelines){
-            for (sg_pipeline& variant : variants){
-                destroyPipeline(variant);
-            }
         }
     }
 
