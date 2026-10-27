@@ -87,10 +87,11 @@ namespace jasperengine::editor::texsynth {
             return true;
         }
 
-        bool isRecipeChunk(const uint8_t* bytes, const Chunk& chunk) {
+        // A text chunk whose keyword is exactly `keyword` (its terminating 0 checked too)
+        bool isRecipeChunk(const uint8_t* bytes, const Chunk& chunk, const char* keyword) {
             if (std::strcmp(chunk.type, "iTXt") != 0 && std::strcmp(chunk.type, "tEXt") != 0) return false;
-            const size_t keyLength = std::strlen(kRecipeKeyword);
-            return chunk.length > keyLength && std::memcmp(bytes + chunk.offset + 8, kRecipeKeyword, keyLength) == 0 &&
+            const size_t keyLength = std::strlen(keyword);
+            return chunk.length > keyLength && std::memcmp(bytes + chunk.offset + 8, keyword, keyLength) == 0 &&
                    bytes[chunk.offset + 8 + keyLength] == 0;
         }
 
@@ -342,7 +343,8 @@ namespace jasperengine::editor::texsynth {
         return recipe;
     }
 
-    bool insertRecipeChunk(const std::vector<uint8_t>& png, const std::string& text, std::vector<uint8_t>& out, std::string& error) {
+    bool insertRecipeChunk(const std::vector<uint8_t>& png, const std::string& text, std::vector<uint8_t>& out, std::string& error,
+                           const char* keyword) {
         std::vector<Chunk> chunks;
         if (!listChunks(png.data(), png.size(), chunks, error)) return false;
         if (chunks.empty() || std::strcmp(chunks[0].type, "IHDR") != 0) {
@@ -351,12 +353,12 @@ namespace jasperengine::editor::texsynth {
         }
         // iTXt: keyword, 0, compression flag 0, method 0, empty language tag, 0, empty translated keyword, 0, text
         std::vector<uint8_t> chunk;
-        const size_t keyLength = std::strlen(kRecipeKeyword);
+        const size_t keyLength = std::strlen(keyword);
         const uint32_t length = static_cast<uint32_t>(keyLength + 5 + text.size());
         putU32(chunk, length);
         const size_t typeStart = chunk.size();
         chunk.insert(chunk.end(), {'i', 'T', 'X', 't'});
-        chunk.insert(chunk.end(), kRecipeKeyword, kRecipeKeyword + keyLength);
+        chunk.insert(chunk.end(), keyword, keyword + keyLength);
         chunk.insert(chunk.end(), {0, 0, 0, 0, 0});
         chunk.insert(chunk.end(), text.begin(), text.end());
         putU32(chunk, crc32(chunk.data() + typeStart, chunk.size() - typeStart));
@@ -366,7 +368,7 @@ namespace jasperengine::editor::texsynth {
         out.insert(out.end(), png.begin(), png.begin() + 8);
         for (size_t i = 0; i < chunks.size(); i++) {
             const Chunk& c = chunks[i];
-            if (isRecipeChunk(png.data(), c)) continue;
+            if (isRecipeChunk(png.data(), c, keyword)) continue;
             const auto begin = png.begin() + static_cast<std::ptrdiff_t>(c.offset);
             out.insert(out.end(), begin, begin + 12 + static_cast<std::ptrdiff_t>(c.length));
             if (i == 0) out.insert(out.end(), chunk.begin(), chunk.end());
@@ -503,20 +505,21 @@ namespace jasperengine::editor::texsynth {
         return true;
     }
 
-    std::optional<std::string> readRecipeTextFromPng(const uint8_t* bytes, size_t size, std::string* error) {
+    std::optional<std::string> readRecipeTextFromPng(const uint8_t* bytes, size_t size, std::string* error, const char* keyword) {
         std::string problem;
         std::vector<Chunk> chunks;
         const bool whole = listChunks(bytes, size, chunks, problem);
+        const std::string name = keyword;
         // a truncated file may still hold the recipe in the chunks before the damage
         for (const Chunk& c : chunks) {
-            if (!isRecipeChunk(bytes, c)) continue;
+            if (!isRecipeChunk(bytes, c, keyword)) continue;
             const uint8_t* data = bytes + c.offset + 8;
             const uint32_t stored = readU32(data + c.length);
             if (crc32(bytes + c.offset + 4, 4 + static_cast<size_t>(c.length)) != stored) {
-                if (error) *error = "garbled jasper.synthesis chunk (CRC mismatch)";
+                if (error) *error = "garbled " + name + " chunk (CRC mismatch)";
                 return std::nullopt;
             }
-            const size_t keyLength = std::strlen(kRecipeKeyword);
+            const size_t keyLength = std::strlen(keyword);
             size_t pos = keyLength + 1;
             if (std::strcmp(c.type, "tEXt") == 0) {
                 return std::string(reinterpret_cast<const char*>(data + pos), c.length - pos);
@@ -524,14 +527,14 @@ namespace jasperengine::editor::texsynth {
             // iTXt: compression flag, method, language tag\0, translated keyword\0, text
             if (c.length < pos + 2) break;
             if (data[pos] != 0) {
-                if (error) *error = "compressed jasper.synthesis chunk (not written by the synthesis)";
+                if (error) *error = "compressed " + name + " chunk (" + (name == kRecipeKeyword ? "not written by the synthesis" : "not written by the editor") + ")";
                 return std::nullopt;
             }
             pos += 2;
             for (int field = 0; field < 2; field++) {
                 while (pos < c.length && data[pos] != 0) pos++;
                 if (pos >= c.length) {
-                    if (error) *error = "malformed jasper.synthesis chunk";
+                    if (error) *error = "malformed " + name + " chunk";
                     return std::nullopt;
                 }
                 pos++;
@@ -542,14 +545,14 @@ namespace jasperengine::editor::texsynth {
         return std::nullopt;
     }
 
-    std::optional<std::string> readRecipeText(const fs::path& path, std::string* error) {
+    std::optional<std::string> readRecipeText(const fs::path& path, std::string* error, const char* keyword) {
         std::ifstream file(path, std::ios::binary);
         if (!file) {
             if (error) *error = "cannot open " + path.string();
             return std::nullopt;
         }
         const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-        return readRecipeTextFromPng(bytes.data(), bytes.size(), error);
+        return readRecipeTextFromPng(bytes.data(), bytes.size(), error, keyword);
     }
 
     std::optional<json> readRecipe(const fs::path& path, std::string* error) {
@@ -563,7 +566,7 @@ namespace jasperengine::editor::texsynth {
         return parsed;
     }
 
-    std::optional<std::string> readRecipeTextHead(const fs::path& path, std::string* error) {
+    std::optional<std::string> readRecipeTextHead(const fs::path& path, std::string* error, const char* keyword) {
         std::ifstream file(path, std::ios::binary);
         if (!file) {
             if (error) *error = "cannot open " + path.string();
@@ -595,7 +598,7 @@ namespace jasperengine::editor::texsynth {
                 if (!file) break;
             }
         }
-        return readRecipeTextFromPng(head.data(), head.size(), error);
+        return readRecipeTextFromPng(head.data(), head.size(), error, keyword);
     }
 
     std::vector<SourceState> checkRecipeSources(const json& recipe, const fs::path& recipeFile, const fs::path& projectDir,

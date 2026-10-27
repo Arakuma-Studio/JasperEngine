@@ -39,12 +39,17 @@ namespace jasperengine {
 
 namespace jasperengine::editor::spritenormals {
 
+    // The refusal (kind project_changed) of a run's result when another project was opened
+    // meanwhile (run->generation() != texsynth::projectGeneration()): every surface words it so
+    inline constexpr const char* kProjectChangedMessage = "Another project was opened while generating.";
+
     // How the frames are chosen (contract `frames`)
     struct FramesSpec {
         enum class Mode { Auto, None, Grid, Cells };
         Mode mode = Mode::Auto;
         Grid grid;                   // Mode::Grid
         std::vector<Cell> cells;     // Mode::Cells (a Sprite's frames, or given rects)
+        FramesFrom from = FramesFrom::Given;   // Mode::Cells: what the cells are (Sprite or Given), recorded
     };
 
     // Output paths, project-relative ('/'); "" = the default name (contract section 5)
@@ -60,13 +65,14 @@ namespace jasperengine::editor::spritenormals {
         std::string source;          // project-relative image path; "" when sprite is set (its texture)
         uint32_t sceneId = 0;        // with entity: a Sprite (or any mesh) GameObject as the source
         Entity entity = NULL_ENTITY;
+        unsigned submesh = 0;        // with entity: the submesh whose base colour texture is the source
         Settings settings;
         FramesSpec frames;
         OutputSpec output;
         bool overwrite = false;
 
         bool hasSprite() const { return entity != NULL_ENTITY; }
-        // Everything that changes the result, as text (the window's "stale" test)
+        // Everything that changes the result, as text (the window's "stale" test; submesh included)
         std::string fingerprint() const;
     };
 
@@ -91,17 +97,19 @@ namespace jasperengine::editor::spritenormals {
 
     // ---- frames
 
-    // The Sprite's frames (SpriteComponent framesRect, pixels) and its colour texture (submesh 0
-    // base colour, project-relative); false with `error` (kind not_a_sprite / invalid_source)
-    bool framesFromSprite(const Scene* scene, Entity entity, std::string& texturePath, std::vector<Cell>& cells,
-                          std::string& error);
+    // The Sprite's frames (SpriteComponent framesRect, pixels; only when submesh is 0, else no
+    // cells) and the colour texture of `submesh` (its base colour, project-relative); false with
+    // `error` (kind not_a_sprite / invalid_source)
+    bool framesFromSprite(const Scene* scene, Entity entity, unsigned submesh, std::string& texturePath,
+                          std::vector<Cell>& cells, std::string& error);
 
     // ---- check and prepare
 
     // Every problem visible without decoding pixels: settings, source missing / outside the
-    // project / unsupported (probeSource), frames (a grid on a GIF/APNG: frames_mismatch; grid
-    // empty or too many cells), outputs (not .png, outside the project, colliding with the source
-    // or each other, existing without overwrite: output_exists, not valid UTF-8)
+    // project / unsupported (probeSource), frames (a grid or none on a GIF/APNG: frames_mismatch;
+    // grid empty or too many cells; overlapping Sprite frames: frames_mismatch), outputs (not
+    // .png, outside the project's assets directory, colliding with the source or each other,
+    // existing without overwrite: output_exists, not valid UTF-8)
     std::vector<Problem> checkSpec(const std::filesystem::path& projectDir, const Spec& spec, const Scene* scene = nullptr);
 
     // A spec resolved and loaded: what generate() runs and encodeOutputs() writes
@@ -131,11 +139,17 @@ namespace jasperengine::editor::spritenormals {
     bool encodeOutputs(const Prepared& prepared, const Result& result, std::vector<OutputFile>& files, std::string& error);
     // One step of the project command history (WriteFilesCmd through w4::writeFilesUndoable),
     // then the editor notices them (textures reloaded, thumbnails, Project window). Main thread.
+    // The step is named "Generate Normal Map <file name of the first normal output>" ("Generate
+    // Normal Maps (N)" for N normal outputs).
     bool writeOutputsUndoable(const std::vector<OutputFile>& files, std::string& error);
     // All or nothing without history (the CLI): texsynth::writeFilesAllOrNothing
     bool writeOutputsDirect(const std::vector<OutputFile>& files, std::string& failedPath, std::string& error);
 
-    // The frames JSON (contract section 5): upstream schema + version, rows, loop, frame_ms, source, settings
+    // The frames JSON (contract section 5): {"version":1, "source":<recipe path>, "width":W,
+    // "height":H, "animation":{"frame_width", "frame_height", "columns", "rows", "frame_count",
+    // "delays_ms":[[num,den],...], "frame_ms":[float,...], "loop":<loopCount>},
+    // "settings":settingsToJson}; a still with cells has "animation" with frame_count = cells,
+    // delays_ms/frame_ms/loop omitted
     nlohmann::json framesJson(const Prepared& prepared);
 
     // ---- recipes and staleness
@@ -148,6 +162,7 @@ namespace jasperengine::editor::spritenormals {
         std::string message;                 // "hero.png changed since this map was made"
     };
     const char* toString(Staleness::State state);   // "fresh", "changed", "missing", "no_recipe", "invalid"
+    // projectDir empty: a recipe source.path is resolved against the PNG's own directory
     Staleness checkStaleness(const std::filesystem::path& projectDir, const std::filesystem::path& png);
 
     // A written map's recipe back into a spec (same settings, frames, outputs = that set,
@@ -164,12 +179,19 @@ namespace jasperengine::editor::spritenormals {
         float ambientIntensity = 0.0f;       // scene ambient 2D intensity
     };
     LightCheck lightCheck(const Scene* scene);
-    // no_light_height (lights > 0 but none with height, or no light at all), ambient_high
+    // The scene-aware warnings of section 8.2, the only ones every surface shows: no_light (no
+    // enabled Light 2D), no_light_height (lights > 0 but none with height), ambient_high
     // (ambientIntensity >= 0.8), and for an entity: size_mismatch (its base texture size !=
-    // normal size), filter_linear (base texture Nearest and the result would not be applied),
-    // material_linked (submesh material from a .material file), too_many_frames (> 128)
-    std::vector<Problem> sceneWarnings(const Scene* scene, Entity entity, int normalWidth, int normalHeight, int frameCount,
-                                       bool willApply);
+    // normal size), filter_mismatch (a normal texture set, or the result will be applied, and its min/mag
+    // filter or wrap differ from the base texture's; apply copies them, so a willApply result is
+    // compared after that copy), material_linked (submesh material from a .material file),
+    // too_many_frames (delays.size() > 128), directx_in_engine (settings.directx),
+    // shader_ignores_normals (a manifest shader for which !Catalog::shaderReadsMaterialNormalMap);
+    // and zero_delay (some delay's playbackMs replaced a delay under 10 ms by 100). Scene null:
+    // only zero_delay. `submesh`: the submesh the map is for (size, filter and material checks).
+    std::vector<Problem> sceneWarnings(const Scene* scene, Entity entity, const Settings& settings, int normalWidth,
+                                       int normalHeight, const std::vector<Delay>& delays, bool willApply,
+                                       unsigned submesh = 0);
 
     // ---- worker
 

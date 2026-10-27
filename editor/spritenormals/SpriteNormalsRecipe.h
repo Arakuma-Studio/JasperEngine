@@ -40,11 +40,13 @@ namespace jasperengine::editor::spritenormals {
 
     struct RecipeInput {
         std::string role;                    // "normal", "atlas", "height"
-        std::string sourcePath;              // project-relative ('/') when inside the project, else absolute
+        std::string sourcePath;              // project-relative ('/') inside the project, else relative to the
+                                             // directory of the PNG carrying the recipe ('/')
         std::string sourceSha1;
         SourceKind sourceKind = SourceKind::Image;
         bool fromSprite = false;             // the source was a Sprite GameObject's texture
         std::string spriteEntity;            // its hierarchy path (fromSprite)
+        unsigned spriteSubmesh = 0;          // its submesh (fromSprite; source.submesh when not 0)
         FramesFrom framesFrom = FramesFrom::Single;
         std::vector<Cell> cells;
         int columns = 0;                     // animations (0 otherwise)
