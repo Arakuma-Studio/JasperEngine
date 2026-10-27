@@ -7,6 +7,7 @@
 #include "Project.h"
 #include "object/Camera.h"
 #include "sceneview/SceneViewController.h"
+#include "window/ParticleEffectOverlay.h"
 #include <map>
 #include <memory>
 #include <unordered_map>
@@ -20,6 +21,8 @@ namespace jasperengine::editor {
 
     class SceneWindow {
     private:
+        // the Particle Effect panel and the Edit-mode particle preview it drives
+        ParticleEffectOverlay particleOverlay;
         bool sceneScriptMenuPending = false;   // a short right click opens the editor scripts' Scene view menu
         Project* project;
         bool windowFocused;
@@ -136,6 +139,7 @@ namespace jasperengine::editor {
 
         void show();
         bool isFocused() const;
+        ParticleEffectOverlay& getParticleOverlay() { return particleOverlay; }
         void resetProjectState();
         void clearSceneState(uint32_t sceneId);
         void requestPlayFocus(uint32_t sceneId);

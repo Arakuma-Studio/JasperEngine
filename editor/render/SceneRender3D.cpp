@@ -11,6 +11,10 @@
 #include "Project.h"
 #include "LineDrawUtils.h"
 #include "util/Angle.h"
+#include "particles/ParticleCompiler.h"
+#include "subsystem/ParticleSubsystem.h"
+#include "subsystem/ParticleSystemState.h"
+#include "window/ParticleEffectOverlay.h"
 
 #include <algorithm>
 #include <cmath>
@@ -321,6 +325,14 @@ editor::SceneRender3D::~SceneRender3D(){
     for (auto& pair : fogVolumeLines) {
         delete pair.second;
     }
+
+    for (auto& pair : particleLines) {
+        delete pair.second;
+    }
+
+    for (auto& pair : forceFieldLines) {
+        delete pair.second;
+    }
 }
 
 void editor::SceneRender3D::createLines(){
@@ -456,6 +468,145 @@ void editor::SceneRender3D::createOrUpdateReflectionProbeLines(Entity entity, co
         probeLines->addLine(capturePosition - Vector3(captureMarker, 0, 0), capturePosition + Vector3(captureMarker, 0, 0), captureColor);
         probeLines->addLine(capturePosition - Vector3(0, captureMarker, 0), capturePosition + Vector3(0, captureMarker, 0), captureColor);
         probeLines->addLine(capturePosition - Vector3(0, 0, captureMarker), capturePosition + Vector3(0, 0, captureMarker), captureColor);
+    }
+}
+
+namespace {
+
+    // the 12 edges of an axis-aligned box
+    void addBoxLines(LineRenderer* lines, const Vector3& lo, const Vector3& hi, const Vector4& color){
+        const Vector3 c[8] = {
+            Vector3(lo.x, lo.y, lo.z), Vector3(hi.x, lo.y, lo.z), Vector3(hi.x, hi.y, lo.z), Vector3(lo.x, hi.y, lo.z),
+            Vector3(lo.x, lo.y, hi.z), Vector3(hi.x, lo.y, hi.z), Vector3(hi.x, hi.y, hi.z), Vector3(lo.x, hi.y, hi.z)
+        };
+        const int edges[12][2] = {{0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 5}, {5, 6}, {6, 7}, {7, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
+        for (const auto& e : edges) lines->addLine(c[e[0]], c[e[1]], color);
+    }
+
+    // a square of the plane around a point, and its normal
+    void addPlaneLines(LineRenderer* lines, const Vector3& point, const Vector3& normal, float size, const Vector4& color){
+        auto [n, right, forward] = editor::LineDrawUtils::makeBasis(normal);
+        const Vector3 a = point + (right + forward) * size, b = point + (right - forward) * size;
+        const Vector3 c = point - (right + forward) * size, d = point - (right - forward) * size;
+        lines->addLine(a, b, color);
+        lines->addLine(b, c, color);
+        lines->addLine(c, d, color);
+        lines->addLine(d, a, color);
+        lines->addLine(point, point + n * size, color);
+    }
+
+}
+
+void editor::SceneRender3D::createOrUpdateParticleLines(Entity entity, const Transform& transform, const ParticleSystemComponent& particles, bool visible){
+    LineRenderer* lines = particleLines[entity];
+    lines->clearLines();
+    lines->setVisible(transform.visible && visible);
+    if (!transform.visible || !visible) return;
+    const particles::ParticleEffectDocument* document = ParticleSubsystem::getDocument(particles);
+    if (!document) return;
+
+    const Matrix4 rotation = transform.worldRotation.getRotationMatrix();
+    auto world = [&](const Vector3& local){
+        return transform.worldPosition + rotation * Vector3(local.x * transform.worldScale.x, local.y * transform.worldScale.y, local.z * transform.worldScale.z);
+    };
+
+    if (document->shape.present && document->shape.enabled){
+        std::vector<Vector3> segments;
+        particles::ParticleCompiler::shapeOutline(document->shape, segments);
+        const Vector4 shapeColor(0.45f, 0.8f, 1.0f, 1.0f);
+        for (size_t i = 0; i + 1 < segments.size(); i += 2) lines->addLine(world(segments[i]), world(segments[i + 1]), shapeColor);
+    }
+
+    // the bounds the culling and the budget use (the particles' last frame)
+    if (ParticleEffectOverlay::gizmos().bounds && particles.state && particles.state->runtime.count() > 0){
+        const particles::ParticleSystemState& state = *particles.state;
+        addBoxLines(lines, Vector3(state.boundsMin[0], state.boundsMin[1], state.boundsMin[2]),
+                    Vector3(state.boundsMax[0], state.boundsMax[1], state.boundsMax[2]), Vector4(1.0f, 0.85f, 0.2f, 1.0f));
+    }
+
+    const particles::CollisionModule& collision = document->collision;
+    if (ParticleEffectOverlay::gizmos().colliders && collision.present && collision.enabled && collision.type == particles::CollisionType::Planes){
+        const Vector4 planeColor(0.4f, 1.0f, 0.5f, 1.0f);
+        const bool local = document->simulationSpace == particles::SimulationSpace::Local;
+        for (const particles::CollisionPlane& plane : collision.planes){
+            const Vector3 point = local ? world(plane.point) : plane.point;
+            const Vector3 normal = local ? rotation * plane.normal : plane.normal;
+            addPlaneLines(lines, point, normal, 1.0f, planeColor);
+        }
+        for (Entity planeEntity : particles.collisionPlanes){
+            if (!scene->isEntityCreated(planeEntity)) continue;
+            if (const Transform* planeTransform = scene->findComponent<Transform>(planeEntity)){
+                const Vector3 up = planeTransform->worldRotation.getRotationMatrix() * Vector3(0.0f, 1.0f, 0.0f);
+                addPlaneLines(lines, planeTransform->worldPosition, up, 1.0f, planeColor);
+            }
+        }
+    }
+}
+
+void editor::SceneRender3D::createOrUpdateForceFieldLines(Entity entity, const Transform& transform, const ForceFieldComponent& field, bool visible){
+    LineRenderer* lines = forceFieldLines[entity];
+    lines->clearLines();
+    lines->setVisible(transform.visible && visible);
+    if (!transform.visible || !visible) return;
+
+    const Matrix4 rotation = transform.worldRotation.getRotationMatrix();
+    auto world = [&](const Vector3& local){
+        return transform.worldPosition + rotation * Vector3(local.x * transform.worldScale.x, local.y * transform.worldScale.y, local.z * transform.worldScale.z);
+    };
+    const Vector4 color(0.55f, 0.95f, 0.95f, 1.0f);
+    const int steps = 40;
+    auto ring = [&](float radius, float y, int plane){
+        for (int i = 0; i < steps; i++){
+            const float a0 = 6.2831853f * (float)i / steps, a1 = 6.2831853f * (float)(i + 1) / steps;
+            auto at = [&](float a){
+                const float c = std::cos(a) * radius, sn = std::sin(a) * radius;
+                return plane == 1 ? Vector3(c, sn, 0.0f) : (plane == 2 ? Vector3(0.0f, sn, c) : Vector3(c, y, sn));
+            };
+            lines->addLine(world(at(a0)), world(at(a1)), color);
+        }
+    };
+    switch (field.shape){
+        case ForceFieldShapeType::Sphere:
+            ring(field.size.x, 0.0f, 0);
+            ring(field.size.x, 0.0f, 1);
+            ring(field.size.x, 0.0f, 2);
+            break;
+        case ForceFieldShapeType::Box: {
+            const Vector3 h = field.size;
+            const Vector3 c[8] = {
+                world(Vector3(-h.x, -h.y, -h.z)), world(Vector3(h.x, -h.y, -h.z)), world(Vector3(h.x, h.y, -h.z)), world(Vector3(-h.x, h.y, -h.z)),
+                world(Vector3(-h.x, -h.y, h.z)), world(Vector3(h.x, -h.y, h.z)), world(Vector3(h.x, h.y, h.z)), world(Vector3(-h.x, h.y, h.z))
+            };
+            const int edges[12][2] = {{0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 5}, {5, 6}, {6, 7}, {7, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
+            for (const auto& e : edges) lines->addLine(c[e[0]], c[e[1]], color);
+            break;
+        }
+        case ForceFieldShapeType::Cylinder: {
+            ring(field.size.x, field.size.y, 0);
+            ring(field.size.x, -field.size.y, 0);
+            for (int i = 0; i < 4; i++){
+                const float a = 1.5707963f * (float)i;
+                const Vector3 side(std::cos(a) * field.size.x, 0.0f, std::sin(a) * field.size.x);
+                lines->addLine(world(side + Vector3(0.0f, field.size.y, 0.0f)), world(side - Vector3(0.0f, field.size.y, 0.0f)), color);
+            }
+            break;
+        }
+        case ForceFieldShapeType::Infinite:
+            ring(0.5f, 0.0f, 0);
+            break;
+    }
+    // the wind's direction or the vortex's axis
+    if (field.kind == ForceFieldKind::Directional || field.kind == ForceFieldKind::Vortex){
+        const float length = field.shape == ForceFieldShapeType::Infinite ? 1.0f : std::max({field.size.x, field.size.y, field.size.z});
+        const Vector3 direction = field.direction.length() > 1e-6f ? field.direction.normalized() : Vector3(0.0f, 0.0f, 1.0f);
+        const Vector3 from = transform.worldPosition;
+        const Vector3 to = world(direction * length);
+        lines->addLine(from, to, color);
+        auto [n, right, forward] = LineDrawUtils::makeBasis(to - from);
+        const float head = length * 0.15f;
+        lines->addLine(to, to - n * head + right * head * 0.5f, color);
+        lines->addLine(to, to - n * head - right * head * 0.5f, color);
+        (void)forward;
     }
 }
 
@@ -1809,6 +1960,12 @@ void editor::SceneRender3D::hideAllGizmos(){
     for (auto& pair : fogVolumeLines) {
         pair.second->setVisible(false);
     }
+    for (auto& pair : particleLines) {
+        pair.second->setVisible(false);
+    }
+    for (auto& pair : forceFieldLines) {
+        pair.second->setVisible(false);
+    }
 }
 
 void editor::SceneRender3D::activate(){
@@ -1938,6 +2095,13 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
     std::set<Entity> currentTrackLines;
     std::set<Entity> currentReflectionProbes;
     std::set<Entity> currentFogVolumes;
+    std::set<Entity> currentParticleSystems;
+    std::set<Entity> currentForceFields;
+    // force fields show with a selected Particle System (the panel's Show Force Fields)
+    bool particleSelected = false;
+    for (Entity selected : selectedEntities){
+        if (scene->isEntityCreated(selected) && scene->findComponent<ParticleSystemComponent>(selected)) particleSelected = true;
+    }
 
     for (Entity& entity: entities){
         Signature signature = scene->getSignature(entity);
@@ -2055,6 +2219,20 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             currentFogVolumes.insert(entity);
             ensureOverlayLines(fogVolumeLines, entity);
             createOrUpdateFogVolumeLines(entity, transform, volume, selectedEntities.find(entity) != selectedEntities.end());
+        }
+
+        if (signature.test(scene->getComponentId<ParticleSystemComponent>()) && signature.test(scene->getComponentId<Transform>())) {
+            currentParticleSystems.insert(entity);
+            ensureOverlayLines(particleLines, entity);
+            createOrUpdateParticleLines(entity, scene->getComponent<Transform>(entity), scene->getComponent<ParticleSystemComponent>(entity),
+                                        selectedEntities.find(entity) != selectedEntities.end());
+        }
+
+        if (signature.test(scene->getComponentId<ForceFieldComponent>()) && signature.test(scene->getComponentId<Transform>())) {
+            currentForceFields.insert(entity);
+            ensureOverlayLines(forceFieldLines, entity);
+            const bool shown = selectedEntities.find(entity) != selectedEntities.end() || (particleSelected && ParticleEffectOverlay::gizmos().forceFields);
+            createOrUpdateForceFieldLines(entity, scene->getComponent<Transform>(entity), scene->getComponent<ForceFieldComponent>(entity), shown);
         }
 
         if (signature.test(scene->getComponentId<ReflectionProbeComponent>()) && signature.test(scene->getComponentId<Transform>())) {
@@ -2195,6 +2373,18 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             it = fogVolumeLines.erase(it);
         } else {
             ++it;
+        }
+    }
+
+    for (auto* map : {&particleLines, &forceFieldLines}) {
+        const std::set<Entity>& current = map == &particleLines ? currentParticleSystems : currentForceFields;
+        for (auto it = map->begin(); it != map->end();) {
+            if (current.find(it->first) == current.end()) {
+                delete it->second;
+                it = map->erase(it);
+            } else {
+                ++it;
+            }
         }
     }
 

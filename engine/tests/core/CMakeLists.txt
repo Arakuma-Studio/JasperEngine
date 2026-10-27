@@ -7,7 +7,8 @@
 #
 # je-bench-jobs and je-bench-memory are the job system and allocator benchmarks (S06 R23-R26),
 # je-bench-diag the crash and hang diagnostics' (S28 R26), je-bench-picking the triangle picking
-# budgets (S26 R28-R31, docs/scene-view-picking.md)
+# budgets (S26 R28-R31, docs/scene-view-picking.md), je-bench-particles the particle system's
+# (S20 R20-R26, docs/perf/particles.md)
 # tools/perf/check_bench.py gates on, from their JSON output (docs/jobs-memory.md).
 
 file(GLOB_RECURSE CORE_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*Test.cpp)
@@ -100,7 +101,8 @@ add_executable(je-bench-jobs ${CMAKE_CURRENT_SOURCE_DIR}/bench/JobsBench.cpp ${C
 add_executable(je-bench-memory ${CMAKE_CURRENT_SOURCE_DIR}/bench/MemoryBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
 add_executable(je-bench-picking ${CMAKE_CURRENT_SOURCE_DIR}/bench/PickingBench.cpp)
 add_executable(je-bench-diag ${CMAKE_CURRENT_SOURCE_DIR}/bench/DiagBench.cpp)
-foreach(target je-bench-jobs je-bench-memory je-bench-picking je-bench-diag)
+add_executable(je-bench-particles ${CMAKE_CURRENT_SOURCE_DIR}/bench/ParticlesBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
+foreach(target je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-bench-particles)
     target_link_libraries(${target} PRIVATE jasperengine Threads::Threads)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/support)
     jasperengine_apply_cxx_standard(${target})
@@ -108,7 +110,7 @@ foreach(target je-bench-jobs je-bench-memory je-bench-picking je-bench-diag)
     set_target_properties(${target} PROPERTIES FOLDER "tests")
 endforeach()
 
-foreach(target jasperengine-core-tests je-bench-jobs je-bench-memory)
+foreach(target jasperengine-core-tests je-bench-jobs je-bench-memory je-bench-particles)
     if(CORE_TEST_COUNTS_ALLOCATIONS)
         target_compile_definitions(${target} PRIVATE JE_TEST_COUNTS_ALLOCATIONS)
         target_link_options(${target} PRIVATE "-Wl,--wrap=malloc" "-Wl,--wrap=calloc" "-Wl,--wrap=realloc" "-rdynamic")

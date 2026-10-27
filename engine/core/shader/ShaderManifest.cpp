@@ -174,6 +174,7 @@ namespace {
         if (name == "ui")     { type = ShaderType::UI; return true; }
         if (name == "points") { type = ShaderType::POINTS; return true; }
         if (name == "lines")  { type = ShaderType::LINES; return true; }
+        if (name == "particles") { type = ShaderType::PARTICLES; return true; }
         if (name == "sky")    { type = ShaderType::SKYBOX; return true; }
         // a user post-process pass (PostProcessPass, phase 4): fullscreen.vert and the frag
         if (name == "postprocess") { type = ShaderType::POSTPROCESS; return true; }
@@ -835,8 +836,8 @@ void ShaderManifest::checkComplete(const std::string& file, bool library){
     if (depth && hasType && type != ShaderType::MESH)
         report(1, "@depth needs @shader mesh");
 
-    // scene inputs (phase 3): the engine binds them to mesh and points draws only, by these
-    // names, and produces them for what draws after the opaque queue
+    // scene inputs (phase 3): the engine binds them to mesh, points and particle draws only, by
+    // these names, and produces them for what draws after the opaque queue
     const uint32_t sceneInputs = getPossibleSceneInputs();
     if (sceneInputs){
         int line = 1;
@@ -846,8 +847,8 @@ void ShaderManifest::checkComplete(const std::string& file, bool library){
                 break;
             }
         }
-        if (hasType && type != ShaderType::MESH && type != ShaderType::POINTS)
-            report(line, "@require scenedepth / scenecolor needs @shader mesh or points");
+        if (hasType && type != ShaderType::MESH && type != ShaderType::POINTS && type != ShaderType::PARTICLES)
+            report(line, "@require scenedepth / scenecolor needs @shader mesh, points or particles");
     }
     for (const ShaderManifestTexture& texture : textures){
         if (texture.uniform == "u_sceneDepthTexture" || texture.uniform == "u_sceneColorTexture")
@@ -1321,6 +1322,7 @@ std::string ShaderManifest::getShaderTypeToken(ShaderType type){
         case ShaderType::UI:     return "ui";
         case ShaderType::POINTS: return "points";
         case ShaderType::LINES:  return "lines";
+        case ShaderType::PARTICLES: return "particles";
         case ShaderType::SKYBOX: return "sky";
         case ShaderType::POSTPROCESS: return "postprocess";
         default:                 return "";

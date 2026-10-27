@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "duration": 2,
+  "seed": 9,
+  "maxParticles": 600,
+  "simulationSpace": "world",
+  "modules": [
+    {
+      "type": "main",
+      "startLifetime": {"mode": "twoConstants", "constant": 0.8, "constantMax": 1.4},
+      "startSpeed": {"mode": "twoConstants", "constant": 2, "constantMax": 4},
+      "startSize": {"mode": "twoConstants", "constant": 0.08, "constantMax": 0.16},
+      "startColor": [0.5, 0.8, 1, 1],
+      "gravityModifier": 0.6
+    },
+    {"type": "emission", "rateOverTime": 200},
+    {"type": "shape", "shape": "sphere", "radius": 0.2},
+    {"type": "renderer", "renderMode": "stretchedBillboard", "speedScale": 0.1, "blend": "additive"}
+  ]
+}

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "AssetRefEditor.h"
+#include "particles/ParticleEffectCodec.h"
+#include "particles/ParticleModules.h"
 
 #include "Out.h"
 #include "Project.h"
@@ -170,6 +172,10 @@ namespace {
         if (row->shape == AssetRefShape::PrefabRef && rest == "path") {
             parts.clear();
         }
+        // an inline effect: the JSON string node (the path inside it is rewritten below)
+        if (row->shape == AssetRefShape::ParticleEffect) {
+            parts = {row->path};
+        }
         for (size_t i = 0; i < parts.size(); i++) {
             long partIndex = -1;
             const std::string name = splitIndex(parts[i], partIndex);
@@ -278,6 +284,33 @@ namespace {
                     map["guid"] = newRef.guid.str();
                     if (map["name"]) map["name"] = fs::path(hint).stem().string();
                 }
+                break;
+            }
+            case AssetRefShape::ParticleEffect: {
+                // the path inside the inline effect's JSON ("inlineEffect.renderer.texture")
+                const std::string prefix = row->path + ".";
+                const size_t at = rest.find(prefix);
+                const std::string inner = at == std::string::npos ? std::string() : rest.substr(at + prefix.size());
+                YAML::Node effect = parent[key];
+                if (inner.empty() || !effect || !effect.IsScalar()) {
+                    error = "the file has no " + target.locator;
+                    return false;
+                }
+                particles::ParticleEffectDocument document;
+                std::vector<particles::Diagnostic> diagnostics;
+                particles::ParticleEffectCodec::read(effect.as<std::string>(), document, diagnostics);
+                bool rewritten = false;
+                particles::ParticleModules::visitAssets(document, [&](std::string& path, std::string& guid, particles::ParticleModules::AssetKind, const std::string& field) {
+                    if (field != inner) return;
+                    path = hint;
+                    guid = newRef.guid.isNull() ? std::string() : newRef.guid.str();
+                    rewritten = true;
+                });
+                if (!rewritten) {
+                    error = "the inline effect has no " + inner;
+                    return false;
+                }
+                parent[key] = particles::ParticleEffectCodec::write(document);
                 break;
             }
             case AssetRefShape::ScriptProperty: {
