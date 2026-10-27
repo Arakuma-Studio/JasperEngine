@@ -98,10 +98,10 @@ void SokolCmdQueue::execute_commands()
 				sg_uninit_view(command.destroy_view.view);
 				break;
 			case SokolRenderCommand::TYPE::UPDATE_BUFFER:
-				sg_update_buffer(command.update_buffer.buffer, command.update_buffer.data);
+				SokolSystem::updateBuffer(command.update_buffer.buffer, command.update_buffer.data);
 				break;
 			case SokolRenderCommand::TYPE::UPDATE_IMAGE:
-				sg_update_image(command.update_image.image, command.update_image.data);
+				SokolSystem::updateImage(command.update_image.image, command.update_image.data);
 				break;
 			case SokolRenderCommand::TYPE::BEGIN_PASS:
 				SokolSystem::beginPass(command.begin_pass.pass);

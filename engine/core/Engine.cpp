@@ -768,19 +768,38 @@ size_t Engine::getQueuedResourceCount() {
     #endif
 }
 
-int Engine::defaultUniformBytes(){
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+
+namespace{
+    // Android, iOS and the web: sokol's per-frame buffers are host-visible memory shared with
+    // the rest of a smaller device
+    bool smallGpuMemoryPlatform(){
 #if defined(JASPERENGINE_ANDROID) || defined(JASPERENGINE_WEB) || defined(__EMSCRIPTEN__)
-    return 16 * 1024 * 1024;
+        return true;
 #elif defined(__APPLE__)
-    #include <TargetConditionals.h>
     #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
-    return 16 * 1024 * 1024;
+        return true;
     #else
-    return 64 * 1024 * 1024;
+        return false;
     #endif
 #else
-    return 64 * 1024 * 1024;
+        return false;
 #endif
+    }
+}
+
+int Engine::defaultUniformBytes(){
+    return (smallGpuMemoryPlatform() ? 16 : 64) * 1024 * 1024;
+}
+
+int Engine::defaultStreamStagingBytes(){
+    return (smallGpuMemoryPlatform() ? 16 : 48) * 1024 * 1024;
+}
+
+int Engine::defaultDescriptorBytes(){
+    return (smallGpuMemoryPlatform() ? 16 : 32) * 1024 * 1024;
 }
 
 namespace{
@@ -801,7 +820,14 @@ void Engine::setGpuResourceLimits(const GpuResourceLimits& limits){
     set.views = valid(limits.views, defaults.views);
     set.pipelines = valid(limits.pipelines, defaults.pipelines);
     set.shaders = valid(limits.shaders, defaults.shaders);
-    set.uniformBytes = (limits.uniformBytes >= 65536 && limits.uniformBytes <= (1 << 30)) ? limits.uniformBytes : defaults.uniformBytes;
+    // sokol's per-frame buffers: 64 KB - 1 GB
+    auto validBytes = [](int value, int fallback){ return (value >= 65536 && value <= (1 << 30)) ? value : fallback; };
+    set.uniformBytes = validBytes(limits.uniformBytes, defaults.uniformBytes);
+    set.streamStagingBytes = validBytes(limits.streamStagingBytes, defaults.streamStagingBytes);
+    set.descriptorBytes = validBytes(limits.descriptorBytes, defaults.descriptorBytes);
+    // sokol's WebGPU bind group cache: a power of 2, 2 - 32,768 (its pools stay under 65,536)
+    const int cache = limits.bindGroupsCacheSize;
+    set.bindGroupsCacheSize = (cache >= 2 && cache <= 32768 && (cache & (cache - 1)) == 0) ? cache : defaults.bindGroupsCacheSize;
 }
 
 const Engine::GpuResourceLimits& Engine::getGpuResourceLimits(){

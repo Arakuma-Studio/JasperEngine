@@ -33,6 +33,9 @@ static const char* sokolLogItems[] = { _SG_LOG_ITEMS };
 
 // (sokol.cpp, where sokol's state is visible) slots of a resource pool in use and free
 extern "C" void jasperengine_sg_pool_usage(int kind, int* used, int* free);
+// (sokol.cpp) Vulkan's per-frame buffers: 0 stream staging, 1 uniforms, 2 descriptors
+extern "C" bool jasperengine_sg_vk_frame_buffer_usage(int which, uint32_t* used, uint32_t* size, bool* overflown);
+extern "C" bool jasperengine_sg_vk_next_draw_descriptors(uint32_t limit, uint32_t* need, uint32_t* used, uint32_t* size);
 
 namespace {
     // the pools, in GpuResourceKind order
@@ -46,23 +49,108 @@ namespace {
     std::atomic<bool> poolExhaustionLogged[GPU_RESOURCE_KINDS];
     std::atomic<uint32_t> poolsFull{0};
 
-    // the frame's uniform blocks (reserveUniformBytes; draws happen on the main thread)
-    uint64_t uniformLimit = 0;
-    uint64_t uniformFrameBytes = 0;   // applied this frame
-    uint64_t uniformFrameNeeded = 0;  // asked for this frame, refused ones too
-    uint64_t uniformLastFrame = 0;
-    uint64_t uniformPeak = 0;
-    uint64_t uniformFrameSkipped = 0;
-    uint64_t uniformSkippedDraws = 0;
-    bool uniformOverflowLogged = false;
+    uint64_t roundUp(uint64_t value, uint64_t align){
+        return align > 1 ? (value + align - 1) / align * align : value;
+    }
 
-    // the backends whose uniform blocks go in sg_desc.uniform_buffer_size per frame (GL sets
-    // them with glUniform, D3D11 updates a constant buffer per block)
+    // A per-frame GPU buffer of sokol (Engine::GpuResourceLimits): what the frame put in it
+    // (rounded as sokol places items), what it asked for (the refused items too), the items
+    // skipped since setup, and the first frame that needed more, logged once. Draws and uploads
+    // happen on the thread that commits the frame.
+    struct FrameBudget{
+        const char* name;      // in the log: "uniform buffer"
+        const char* contents;  // "uniform blocks"
+        const char* items;     // what is skipped past it: "draws"
+        const char* setting;   // the GpuResourceLimits field
+        bool backendBuffer = false;  // this backend has the buffer (it is enforced)
+        uint64_t limit = 0;
+        bool enforced = false;
+        uint64_t frameUsed = 0;
+        uint64_t frameNeeded = 0;
+        uint64_t frameSkipped = 0;
+        uint64_t lastFrame = 0;
+        uint64_t peak = 0;
+        uint64_t skipped = 0;
+        bool overflowLogged = false;
+
+        FrameBudget(const char* name, const char* contents, const char* items, const char* setting):
+            name(name), contents(contents), items(items), setting(setting){}
+
+        void setup(uint64_t bytes, bool hasBuffer){
+            backendBuffer = hasBuffer;
+            limit = bytes;
+            enforced = hasBuffer;
+            frameUsed = frameNeeded = frameSkipped = lastFrame = peak = skipped = 0;
+            overflowLogged = false;
+        }
+
+        // an item placed at the end of what the frame took, the end then rounded up to `align`
+        // (sokol's shared buffers); false where enforced and it goes past the limit (not taken)
+        bool reserve(uint64_t size, uint64_t align){
+            frameNeeded = roundUp(frameNeeded + size, align);
+            if (enforced && frameUsed + size > limit)
+                return false;
+            frameUsed = roundUp(frameUsed + size, align);
+            return true;
+        }
+
+        void skip(){
+            frameSkipped++;
+            skipped++;
+        }
+
+        // a frame committed: the first one that needed more than the limit is logged
+        void endFrame(){
+            if (frameNeeded > limit && !overflowLogged){
+                overflowLogged = true;
+                if (enforced){
+                    Log::error("GPU %s full: a frame needed %llu bytes of %s, the per-frame buffer holds %llu; "
+                               "%llu %s past it were skipped (this frame; later ones are counted, not logged). Raise "
+                               "Engine::GpuResourceLimits::%s (Engine::setGpuResourceLimits before the engine starts)\n",
+                               name, (unsigned long long)frameNeeded, contents, (unsigned long long)limit,
+                               (unsigned long long)frameSkipped, items, setting);
+                }else{
+                    Log::warn("A frame needed %llu bytes of %s, more than Engine::GpuResourceLimits::%s (%llu): "
+                              "fine on this backend (it has no per-frame %s), %s past it are skipped on Vulkan\n",
+                              (unsigned long long)frameNeeded, contents, setting, (unsigned long long)limit, name, items);
+                }
+            }
+            lastFrame = frameNeeded;
+            peak = std::max(peak, frameNeeded);
+            frameUsed = frameNeeded = frameSkipped = 0;
+        }
+    };
+
+    // the frame's uniform blocks (reserveUniformBytes): sg_desc.uniform_buffer_size on Vulkan,
+    // Metal and WebGPU (GL sets them with glUniform, D3D11 updates a constant buffer per block)
+    FrameBudget uniformBudget("uniform buffer", "uniform blocks", "draws", "uniformBytes");
+    // the frame's uploads into STREAM buffers and images (reserveStreamBytes): Vulkan stages them
+    // in sg_desc.vulkan.stream_staging_buffer_size; the other backends write the resource
+    FrameBudget streamBudget("stream staging buffer", "STREAM buffer and texture uploads", "uploads", "streamStagingBytes");
+    // the frame's descriptor sets (reserveDescriptorBytes): Vulkan's sg_desc.vulkan.descriptor_buffer_size
+    FrameBudget descriptorBudget("descriptor buffer", "descriptor sets", "draws", "descriptorBytes");
+    // descriptor bytes of the draws skipped this frame (what it needed on top of what it took)
+    uint64_t descriptorFrameSkippedBytes = 0;
+
 #if defined(SOKOL_VULKAN) || defined(SOKOL_METAL) || defined(SOKOL_WGPU)
     constexpr bool uniformBufferLimited = true;
 #else
     constexpr bool uniformBufferLimited = false;
 #endif
+#if defined(SOKOL_VULKAN)
+    constexpr bool vulkanBuffers = true;
+#else
+    constexpr bool vulkanBuffers = false;
+#endif
+
+    FrameBudget* budgetOf(int kind){
+        switch (kind){
+        case SokolSystem::UNIFORM_BUDGET: return &uniformBudget;
+        case SokolSystem::STREAM_BUDGET: return &streamBudget;
+        case SokolSystem::DESCRIPTOR_BUDGET: return &descriptorBudget;
+        default: return nullptr;
+        }
+    }
 
     int poolOfLogItem(uint32_t item){
         switch (item){
@@ -142,6 +230,9 @@ void SokolSystem::setup(){
     desc.pipeline_pool_size = limits.pipelines;
     desc.shader_pool_size = limits.shaders; // one per ShaderType+properties variant
     desc.uniform_buffer_size = limits.uniformBytes; // per frame (Vulkan, Metal, WebGPU): reserveUniformBytes
+    desc.vulkan.stream_staging_buffer_size = limits.streamStagingBytes; // per frame: reserveStreamBytes
+    desc.vulkan.descriptor_buffer_size = limits.descriptorBytes; // per frame: reserveDescriptorBytes
+    desc.wgpu.bindgroups_cache_size = limits.bindGroupsCacheSize;
     desc.environment = System::instance().getSokolEnvironment();
     desc.logger.func = sokol_log;
 
@@ -152,14 +243,10 @@ void SokolSystem::setup(){
         poolExhaustionLogged[kind] = false;
     }
     poolsFull = 0;
-    uniformLimit = (uint64_t)limits.uniformBytes;
-    uniformFrameBytes = 0;
-    uniformFrameNeeded = 0;
-    uniformLastFrame = 0;
-    uniformPeak = 0;
-    uniformFrameSkipped = 0;
-    uniformSkippedDraws = 0;
-    uniformOverflowLogged = false;
+    uniformBudget.setup((uint64_t)limits.uniformBytes, uniformBufferLimited);
+    streamBudget.setup((uint64_t)limits.streamStagingBytes, vulkanBuffers);
+    descriptorBudget.setup((uint64_t)limits.descriptorBytes, vulkanBuffers);
+    descriptorFrameSkippedBytes = 0;
 
     sg_setup(&desc);
 
@@ -397,66 +484,157 @@ void SokolSystem::executeQueue(){
 
 void SokolSystem::commit(){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
+    // what the frame took of Vulkan's descriptor buffer (sokol's own count: every draw's sets),
+    // read before sg_commit submits it
+    uint32_t descriptorUsed = 0, descriptorSize = 0;
+    bool descriptorOverflown = false;
+    if (jasperengine_sg_vk_frame_buffer_usage(2, &descriptorUsed, &descriptorSize, &descriptorOverflown)){
+        descriptorBudget.frameUsed = descriptorUsed;
+        descriptorBudget.frameNeeded = (uint64_t)descriptorUsed + descriptorFrameSkippedBytes;
+    }
+    descriptorFrameSkippedBytes = 0;
+
     sg_commit();
     if (sg_stats_enabled()){
         lastFramePasses.swap(framePasses);
         framePasses.clear();
     }
 
-    // the frame's uniform blocks: the first frame needing more than the buffer is logged
-    if (uniformFrameNeeded > uniformLimit && !uniformOverflowLogged){
-        uniformOverflowLogged = true;
-        if (uniformBufferLimited){
-            Log::error("GPU uniform buffer full: a frame needed %llu bytes of uniform blocks, the per-frame buffer holds %llu; "
-                       "%llu draws past it were skipped (this frame; later ones are counted, not logged). Raise "
-                       "Engine::GpuResourceLimits::uniformBytes (Engine::setGpuResourceLimits before the engine starts)\n",
-                       (unsigned long long)uniformFrameNeeded, (unsigned long long)uniformLimit, (unsigned long long)uniformFrameSkipped);
-        }else{
-            Log::warn("A frame needed %llu bytes of uniform blocks, more than Engine::GpuResourceLimits::uniformBytes (%llu): "
-                      "drawn here (this backend has no per-frame uniform buffer), dropped on Vulkan, Metal and WebGPU\n",
-                      (unsigned long long)uniformFrameNeeded, (unsigned long long)uniformLimit);
-        }
-    }
-    uniformLastFrame = uniformFrameNeeded;
-    uniformPeak = std::max(uniformPeak, uniformFrameNeeded);
-    uniformFrameBytes = 0;
-    uniformFrameNeeded = 0;
-    uniformFrameSkipped = 0;
+    uniformBudget.endFrame();
+    streamBudget.endFrame();
+    descriptorBudget.endFrame();
 }
 
 bool SokolSystem::reserveUniformBytes(unsigned int size){
     // sokol rounds every block up to the worst-case alignment (256 bytes) of these backends
-    const uint64_t rounded = ((uint64_t)size + 255u) & ~(uint64_t)255u;
-    uniformFrameNeeded += rounded;
-    if (uniformBufferLimited && uniformFrameBytes + rounded > uniformLimit)
-        return false;
-    uniformFrameBytes += rounded;
-    return true;
+    return uniformBudget.reserve(roundUp(size, 256), 256);
 }
 
 void SokolSystem::countSkippedDraw(){
-    uniformFrameSkipped++;
-    uniformSkippedDraws++;
+    uniformBudget.skip();
 }
 
-uint64_t SokolSystem::getUniformBytesLastFrame(){
-    return uniformLastFrame;
+bool SokolSystem::reserveStreamBytes(const uint64_t* sizes, int count){
+    // all or nothing (the mip levels of an image): sokol's staging buffer takes each at the next
+    // 16-byte boundary, and an upload it cannot take whole is dropped
+    FrameBudget saved = streamBudget;
+    for (int i = 0; i < count; i++){
+        if (sizes[i] == 0)
+            continue;
+        if (!streamBudget.reserve(sizes[i], 16)){
+            const uint64_t needed = streamBudget.frameNeeded;
+            streamBudget = saved;
+            // what the frame asked for counts the refused upload whole
+            streamBudget.frameNeeded = needed;
+            for (int j = i + 1; j < count; j++)
+                streamBudget.frameNeeded = roundUp(streamBudget.frameNeeded + sizes[j], 16);
+            streamBudget.skip();
+            return false;
+        }
+    }
+    return true;
 }
 
-uint64_t SokolSystem::getUniformBytesPeak(){
-    return uniformPeak;
+namespace{
+    bool streamUpdated(sg_buffer buffer){
+        return sg_query_buffer_state(buffer) == SG_RESOURCESTATE_VALID && sg_query_buffer_usage(buffer).stream_update;
+    }
 }
 
-uint64_t SokolSystem::getUniformBytesLimit(){
-    return uniformLimit;
+void SokolSystem::updateBuffer(sg_buffer buffer, const sg_range& data){
+    if (streamUpdated(buffer)){
+        const uint64_t size = data.size;
+        if (!reserveStreamBytes(&size, 1))
+            return;
+    }
+    sg_update_buffer(buffer, data);
 }
 
-bool SokolSystem::hasUniformBufferLimit(){
-    return uniformBufferLimited;
+int SokolSystem::appendBuffer(sg_buffer buffer, const sg_range& data){
+    if (streamUpdated(buffer)){
+        const uint64_t size = data.size;
+        if (!reserveStreamBytes(&size, 1))
+            return -1;
+    }
+    return sg_append_buffer(buffer, data);
 }
 
-uint64_t SokolSystem::getUniformSkippedDraws(){
-    return uniformSkippedDraws;
+void SokolSystem::updateImage(sg_image image, const sg_image_data& data){
+    if (sg_query_image_state(image) == SG_RESOURCESTATE_VALID && sg_query_image_usage(image).stream_update){
+        // sokol stages the image's mip levels (each slice of one together)
+        const int mips = std::min(std::max(sg_query_image_num_mipmaps(image), 1), (int)SG_MAX_MIPMAPS);
+        uint64_t sizes[SG_MAX_MIPMAPS] = {};
+        for (int mip = 0; mip < mips; mip++)
+            sizes[mip] = data.mip_levels[mip].size;
+        if (!reserveStreamBytes(sizes, mips))
+            return;
+    }
+    sg_update_image(image, data);
+}
+
+bool SokolSystem::reserveDescriptorBytes(){
+    if (!descriptorBudget.enforced)
+        return true;
+    uint32_t need = 0, used = 0, size = 0;
+    const uint32_t limit = (uint32_t)std::min<uint64_t>(descriptorBudget.limit, UINT32_MAX);
+    if (jasperengine_sg_vk_next_draw_descriptors(limit, &need, &used, &size))
+        return true;
+    descriptorFrameSkippedBytes += need;
+    descriptorBudget.skip();
+    return false;
+}
+
+uint64_t SokolSystem::getBudgetLastFrame(int kind){
+    const FrameBudget* budget = budgetOf(kind);
+    return budget ? budget->lastFrame : 0;
+}
+
+uint64_t SokolSystem::getBudgetPeak(int kind){
+    const FrameBudget* budget = budgetOf(kind);
+    return budget ? budget->peak : 0;
+}
+
+uint64_t SokolSystem::getBudgetLimit(int kind){
+    const FrameBudget* budget = budgetOf(kind);
+    return budget ? budget->limit : 0;
+}
+
+bool SokolSystem::isBudgetEnforced(int kind){
+    const FrameBudget* budget = budgetOf(kind);
+    return budget && budget->enforced;
+}
+
+uint64_t SokolSystem::getBudgetSkipped(int kind){
+    const FrameBudget* budget = budgetOf(kind);
+    return budget ? budget->skipped : 0;
+}
+
+void SokolSystem::overrideBudget(int kind, uint64_t limit, bool enforced){
+    FrameBudget* budget = budgetOf(kind);
+    if (!budget)
+        return;
+    budget->limit = limit;
+    budget->enforced = enforced;
+    budget->overflowLogged = false;
+}
+
+void SokolSystem::restoreBudgets(){
+    const Engine::GpuResourceLimits& limits = Engine::getGpuResourceLimits();
+    const uint64_t configured[3] = {(uint64_t)limits.uniformBytes, (uint64_t)limits.streamStagingBytes, (uint64_t)limits.descriptorBytes};
+    for (int kind = 0; kind < 3; kind++){
+        FrameBudget* budget = budgetOf(kind);
+        budget->limit = configured[kind];
+        budget->enforced = budget->backendBuffer;
+    }
+}
+
+bool SokolSystem::getVulkanFrameBufferUsage(int which, uint64_t& used, uint64_t& size){
+    uint32_t u = 0, z = 0;
+    bool overflown = false;
+    const bool vulkan = jasperengine_sg_vk_frame_buffer_usage(which, &u, &z, &overflown);
+    used = u;
+    size = z;
+    return vulkan;
 }
 
 void SokolSystem::shutdown(){

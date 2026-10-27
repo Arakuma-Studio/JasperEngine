@@ -5,6 +5,7 @@
 #include "SokolTexture.h"
 #include "Log.h"
 #include "SokolCmdQueue.h"
+#include "SokolSystem.h"
 #include "render/SystemRender.h"
 #include "Engine.h"
 #include "texture/TextureData.h"
@@ -616,7 +617,7 @@ void SokolTexture::updateTexture(const void* data, size_t size){
     if (Engine::isAsyncThread())
         SokolCmdQueue::add_command_update_image(image, imageData);
     else
-        sg_update_image(image, imageData);
+        SokolSystem::updateImage(image, imageData);
 }
 
 bool SokolTexture::createTextureCubeWithMips(

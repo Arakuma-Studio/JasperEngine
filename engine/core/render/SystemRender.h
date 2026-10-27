@@ -58,6 +58,26 @@ namespace jasperengine{
         static uint64_t getUniformBytesLimit();
         static bool hasUniformBufferLimit();
         static uint64_t getUniformSkippedDraws();
+        // the frame's uploads into STREAM buffers and textures (bone matrices, HTML UI geometry,
+        // video frames, instance data) against Engine::GpuResourceLimits::streamStagingBytes
+        // (counted on every backend, each upload rounded up to 16 bytes as Vulkan's per-frame
+        // stream staging buffer takes them): the last committed frame's bytes, the most a frame
+        // needed, the limit, whether this backend skips the uploads past it (Vulkan) and how
+        // many it skipped since setup (their resources keep the data they had)
+        static uint64_t getStreamBytesLastFrame();
+        static uint64_t getStreamBytesPeak();
+        static uint64_t getStreamBytesLimit();
+        static bool hasStreamStagingLimit();
+        static uint64_t getStreamSkippedUploads();
+        // the frame's descriptor sets in Vulkan's per-frame descriptor buffer against
+        // Engine::GpuResourceLimits::descriptorBytes (0 on the other backends): the last
+        // committed frame's bytes, the most a frame needed, the limit, whether the draws past
+        // it are skipped (Vulkan) and how many were since setup
+        static uint64_t getDescriptorBytesLastFrame();
+        static uint64_t getDescriptorBytesPeak();
+        static uint64_t getDescriptorBytesLimit();
+        static bool hasDescriptorBufferLimit();
+        static uint64_t getDescriptorSkippedDraws();
 
         static void commitQueue();
         static void executeQueue();

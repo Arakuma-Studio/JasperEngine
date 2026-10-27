@@ -10,6 +10,10 @@
 
 struct sg_pass;
 struct sg_attachments;
+struct sg_buffer;
+struct sg_image;
+struct sg_range;
+struct sg_image_data;
 
 namespace jasperengine{
     struct RenderFeatures;
@@ -27,21 +31,60 @@ namespace jasperengine{
         static uint64_t getResourcePoolExhaustions(int kind);
         static bool hasResourcePoolRoom();
 
-        // The uniform blocks of a frame (sg_apply_uniforms) go in a per-frame buffer of
-        // Engine::GpuResourceLimits::uniformBytes on Vulkan, Metal and WebGPU (each block rounded
-        // up to 256 bytes); past it sokol drops the draw (Vulkan) or overruns it (Metal). Every
-        // block is counted here on every backend: one that does not fit is refused (false) where
-        // the buffer exists, and its draw skipped (countSkippedDraw); the first frame that needed
-        // more is logged as an error with its size and the limit.
+        // sokol's per-frame GPU buffers the engine budgets (Engine::GpuResourceLimits), each
+        // allocated once per frame in flight. What a frame puts in each is counted on every
+        // backend (the bytes as sokol places them); where the backend has the buffer the item that
+        // does not fit is refused (and its draw or upload skipped and counted), never handed to
+        // sokol to drop or overrun; the first frame that needed more is logged once, as an error
+        // naming its bytes, the limit and the setting to raise (a warning where the backend has
+        // no such buffer).
+        enum{
+            // uniform blocks (sg_apply_uniforms, each rounded up to 256 bytes): uniformBytes,
+            // a buffer on Vulkan, Metal and WebGPU (GL, D3D11: none)
+            UNIFORM_BUDGET = 0,
+            // uploads into STREAM buffers and images (sg_update_buffer, sg_append_buffer,
+            // sg_update_image of a stream_update resource, each rounded up to 16 bytes):
+            // streamStagingBytes, Vulkan's stream staging buffer (elsewhere written into the
+            // resource)
+            STREAM_BUDGET = 1,
+            // descriptor sets of the draws (Vulkan's descriptor buffer: sokol's own count, other
+            // backends 0): descriptorBytes
+            DESCRIPTOR_BUDGET = 2
+        };
+
+        // A uniform block of the draw being set up; false: refused (the draw is skipped,
+        // countSkippedDraw)
         static bool reserveUniformBytes(unsigned int size);
         static void countSkippedDraw();
-        // bytes of the last committed frame (rounded per block), the most any frame needed, the
-        // limit, whether the backend has the buffer, draws skipped since setup
-        static uint64_t getUniformBytesLastFrame();
-        static uint64_t getUniformBytesPeak();
-        static uint64_t getUniformBytesLimit();
-        static bool hasUniformBufferLimit();
-        static uint64_t getUniformSkippedDraws();
+        // An upload of these bytes (an image's mip levels) into a STREAM resource; false:
+        // refused and counted as skipped (all or nothing)
+        static bool reserveStreamBytes(const uint64_t* sizes, int count);
+        // Every engine upload into a STREAM or DYNAMIC resource goes through these (SokolBuffer,
+        // SokolTexture, SokolCmdQueue): a STREAM one is reserved first, and dropped when
+        // refused (appendBuffer: -1)
+        static void updateBuffer(sg_buffer buffer, const sg_range& data);
+        static int appendBuffer(sg_buffer buffer, const sg_range& data);
+        static void updateImage(sg_image image, const sg_image_data& data);
+        // The draw about to be bound and drawn (its pipeline applied, its uniforms applied):
+        // false when its descriptor sets do not fit the frame's descriptor buffer (Vulkan; the
+        // draw is skipped and counted)
+        static bool reserveDescriptorBytes();
+
+        // a budget's bytes in the last committed frame (what it asked for, refused items too),
+        // the most a frame asked for, the limit, whether items past it are refused, and the
+        // items refused since setup
+        static uint64_t getBudgetLastFrame(int kind);
+        static uint64_t getBudgetPeak(int kind);
+        static uint64_t getBudgetLimit(int kind);
+        static bool isBudgetEnforced(int kind);
+        static uint64_t getBudgetSkipped(int kind);
+        // (tests) a budget's limit and whether it is enforced, until restoreBudgets (the
+        // GpuResourceLimits sokol was set up with: sokol's own buffers stay that size)
+        static void overrideBudget(int kind, uint64_t limit, bool enforced);
+        static void restoreBudgets();
+        // (tests, Vulkan) sokol's own count of the frame being recorded in a per-frame buffer
+        // (0 stream staging, 1 uniforms, 2 descriptors) and its size; false on other backends
+        static bool getVulkanFrameBufferUsage(int which, uint64_t& used, uint64_t& size);
         static void commitQueue();
         static void executeQueue();
         static void commit();

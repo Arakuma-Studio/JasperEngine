@@ -5,6 +5,7 @@
 #include "SokolBuffer.h"
 #include "Log.h"
 #include "SokolCmdQueue.h"
+#include "SokolSystem.h"
 #include "Engine.h"
 
 using namespace jasperengine;
@@ -74,7 +75,7 @@ void SokolBuffer::updateBuffer(unsigned int size, void* data){
         if (Engine::isAsyncThread()){
             SokolCmdQueue::add_command_update_buffer(buffer, {data, (size_t)size});
         }else{
-            sg_update_buffer(buffer, {data, (size_t)size});
+            SokolSystem::updateBuffer(buffer, {data, (size_t)size});
         }
     }
 }
@@ -84,7 +85,7 @@ int SokolBuffer::appendBuffer(unsigned int size, const void* data){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     if (buffer.id == SG_INVALID_ID || !data || size == 0 || Engine::isAsyncThread())
         return -1;
-    return sg_append_buffer(buffer, {data, (size_t)size});
+    return SokolSystem::appendBuffer(buffer, {data, (size_t)size});
 }
 
 void SokolBuffer::destroyBuffer(){
