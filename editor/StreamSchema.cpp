@@ -69,6 +69,10 @@ const std::vector<std::string>& StreamSchema::knownFieldKeys(ComponentType type)
         {ComponentType::InputFieldComponent, {"cursor", "cursorBlink", "cursorColor", "cursorIndex", "cursorWidth", "disabled", "password", "passwordChar", "placeholder", "placeholderColor", "selection", "selectionAnchor", "selectionColor", "text"}},
         {ComponentType::InstancedMeshComponent, {"cullDistance", "cullInstances", "distanceFade", "enabled", "fadeEnd", "fadeStart", "instancedBillboard", "instancedCylindricalBillboard", "instances", "maxInstances"}},
         {ComponentType::Joint2DComponent, {"anchorA", "anchorB", "autoAnchors", "axis", "bodyA", "bodyB", "enabled", "rope", "target", "type"}},
+        {ComponentType::WaterVolumeComponent, {"angularDrag", "density", "enabled", "flow", "infinite", "linearDrag", "size", "surfaceOffset", "waves"}},
+        {ComponentType::BuoyancyComponent, {"columns", "customPoints", "dragScale", "enabled", "volumeScale"}},
+        {ComponentType::CharacterControllerComponent, {"categoryBits", "center", "characterCollisions", "detectCollisions", "enabled", "enhancedEdgeRemoval", "height", "inheritPlatformYaw", "maskBits", "mass", "minMoveDistance", "movingPlatforms", "pushBodies", "pushStrength", "radius", "skinWidth", "slopeLimit", "stepOffset"}},
+        {ComponentType::CharacterController2DComponent, {"categoryBits", "center", "enabled", "height", "maskBits", "minMoveDistance", "movingPlatforms", "pushBodies", "pushStrength", "radius", "skinWidth", "slopeLimit", "stepOffset"}},
         {ComponentType::Joint3DComponent, {"anchor", "anchorA", "anchorB", "autoAnchors", "axis", "axisX", "axisY", "bodyA", "bodyB", "enabled", "fixedPointA", "fixedPointB", "hinge", "hingeA", "hingeB", "isLooping", "limitsMax", "limitsMin", "normal", "normalHalfConeAngle", "numTeethGear", "numTeethGearA", "numTeethGearB", "numTeethRack", "pathPoints", "pathPosition", "planeAxis", "planeHalfConeAngle", "rackLength", "slider", "twistAxis", "twistMaxAngle", "twistMinAngle", "type"}},
         {ComponentType::KeyframeTracksComponent, {"easings", "index", "interpolation", "loop", "relative", "times"}},
         {ComponentType::LatticeComponent, {"enabled", "fadeDistance", "interpolation", "jiggle", "jiggleAnchor", "jiggleDamping", "jiggleInertia", "jiggleMaxOffset", "jiggleStiffness", "offsets", "outside", "poses", "resolutionX", "resolutionY", "resolutionZ"}},
@@ -142,7 +146,7 @@ const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
             "addedTo", "childIndex", "parentRegistryEntity", "prefabRootRegistryEntity", "prefabPath"}},
         // the editor state an older project.yaml held (Workspace::adoptLegacyProjectState) and
         // its build settings (AppSettings, build.yaml) are read too
-        {RootKind::Project, {"formatVersion", "android", "application", "assetLabels", "assetsDir", "atmosphereQuality", "canvasHeight", "canvasWidth", "cxxStandard", "export", "graphics", "htmlUiMsaaSamples", "ignoredLayerCollisions", "ios", "layers", "linux", "loading", "luaDir", "macos", "mobilePbrTier", "name", "packNativeResources", "physics2D", "physics3D", "playerLogging", "runtimeShaders", "savedSearches", "scalingMode", "scenes", "scriptDirs", "standalonePrefabs", "startSceneId", "tags", "texture", "textureStrategy", "threading", "versionControlMetadata", "vsync", "web", "windowHeight", "windowIcon", "windowMode", "windowResizable", "windowTitle", "windowWidth", "windows",
+        {RootKind::Project, {"formatVersion", "android", "application", "assetLabels", "assetsDir", "atmosphereQuality", "canvasHeight", "canvasWidth", "cxxStandard", "export", "graphics", "htmlUiMsaaSamples", "ignoredLayerCollisions", "input", "ios", "layers", "linux", "loading", "luaDir", "macos", "mobilePbrTier", "name", "packNativeResources", "physics2D", "physics3D", "playerLogging", "runtimeShaders", "savedSearches", "scalingMode", "scenes", "scriptDirs", "standalonePrefabs", "startSceneId", "tags", "texture", "textureStrategy", "threading", "versionControlMetadata", "vsync", "web", "windowHeight", "windowIcon", "windowMode", "windowResizable", "windowTitle", "windowWidth", "windows",
             "cmakeBuildJobs", "cmakeCCompiler", "cmakeCxxCompiler", "cmakeGenerator", "selectedScene", "tabs", "terrainEditor"}},
         {RootKind::Material, {}},
         {RootKind::PrefabHeader, {"type", "version", "guid", "formerGuids", "labels", "nextEntity", "root", "members", "stripped"}},
@@ -485,6 +489,23 @@ const EnumTable<FogColorMode>& StreamSchema::fogColorMode() {
         {FogColorMode::COLOR, "color"},
         {FogColorMode::SKY, "sky"},
     }, FogColorMode::COLOR);
+    return table;
+}
+
+const EnumTable<WaterVolumeWaves>& StreamSchema::waterVolumeWaves() {
+    static const EnumTable<WaterVolumeWaves> table("WaterVolumeWaves", {
+        {WaterVolumeWaves::FROM_MATERIAL, "from_material"},
+        {WaterVolumeWaves::NONE, "none"},
+    }, WaterVolumeWaves::FROM_MATERIAL);
+    return table;
+}
+
+const EnumTable<BuoyancyColumns>& StreamSchema::buoyancyColumns() {
+    static const EnumTable<BuoyancyColumns> table("BuoyancyColumns", {
+        {BuoyancyColumns::AUTO_2x2, "auto_2x2"},
+        {BuoyancyColumns::AUTO_3x3, "auto_3x3"},
+        {BuoyancyColumns::CUSTOM, "custom"},
+    }, BuoyancyColumns::AUTO_2x2);
     return table;
 }
 

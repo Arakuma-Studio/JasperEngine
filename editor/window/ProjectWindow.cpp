@@ -1405,6 +1405,8 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                         project->openScene(filePath);
                     else if (Util::isPrefabFile(filePath.string()))
                         editor::getEditorHost().openPrefabAsset(filePath);  // Unity: Prefab Mode
+                    else if (filePath.extension() == ".inputactions")
+                        editor::getEditorHost().openInputActions(filePath);
                     else if (file.type == FileType::COLOR_LUT)
                         assignColorLut(filePath);  // the open scene's Color Grading LUT
                     else
@@ -3991,6 +3993,8 @@ void editor::ProjectWindow::assetsOpenSelected() {
         project->openScene(filePath);
     } else if (Util::isPrefabFile(filePath.string())) {
         editor::getEditorHost().openPrefabAsset(filePath);
+    } else if (filePath.extension() == ".inputactions") {
+        editor::getEditorHost().openInputActions(filePath);
     } else {
         codeEditor->openFile(filePath.string(), true);
     }

@@ -80,4 +80,8 @@ static CGSize _screenSize;
     jasperengine::Engine::systemResume();
 }
 
++ (void)focusChanged:(BOOL)focused {
+    jasperengine::Engine::systemFocusChanged(focused);
+}
+
 @end

@@ -197,3 +197,36 @@ bool jasperengine::test::readTexturePixels(TextureRender& texture, int width, in
     return ok;
 #endif
 }
+
+bool jasperengine::test::readTextureFloat(TextureRender& texture, int width, int height, std::vector<float>& rgba){
+    rgba.clear();
+    if (width <= 0 || height <= 0)
+        return false;
+    const size_t count = static_cast<size_t>(width) * height * 4;
+
+#if defined(SOKOL_VULKAN)
+    // 16 bytes a texel, copied as they are
+    std::vector<uint8_t> bytes;
+    if (!readVulkanImage(texture, width, height, 16, bytes) || bytes.size() != count * sizeof(float))
+        return false;
+    rgba.resize(count);
+    std::memcpy(rgba.data(), bytes.data(), bytes.size());
+    return true;
+#else
+    const GLuint handle = texture.getGLHandler();
+    if (handle == 0)
+        return false;
+
+    while (glGetError() != GL_NO_ERROR) {}
+    // as readTexturePixels: everything drawn into it has finished
+    glFinish();
+    rgba.resize(count);
+    glPixelStorei(GL_PACK_ALIGNMENT, 4);
+    glBindTexture(GL_TEXTURE_2D, handle);
+    glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, rgba.data());
+    glBindTexture(GL_TEXTURE_2D, 0);
+    const bool ok = glGetError() == GL_NO_ERROR;
+    sg_reset_state_cache();
+    return ok;
+#endif
+}
