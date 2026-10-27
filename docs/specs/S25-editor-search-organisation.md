@@ -674,3 +674,12 @@ Recorded by the implementer; each is the closest correct alternative to the text
    when run with `JASPER_UPDATE_SHORTCUT_DOCS=1` (`CommandCatalog.MarkdownReferenceMatchesDocs`);
    without it the test compares byte for byte. Help > Keyboard Shortcuts opens the Shortcuts
    window in its read-only reference mode, which shows the same table with the current bindings.
+10. **Upstream round 1 (oe-port e1ca0c71a).** The keys upstream added are catalog entries too:
+    Physics (G) is `tools.physics`; Paint Dye's [ and ] are the brush commands
+    (`terrain.brushSmaller/Larger` act on the armed Paint Dye brush first); the lattice point
+    keys are `lattice.selectNone` (Alt+A), `lattice.invert` (Ctrl+I), `lattice.expand` (Ctrl+= /
+    Ctrl+NumpadAdd), `lattice.shrink` (Ctrl+- / Ctrl+NumpadSubtract) and `lattice.toggleFalloff`
+    (O), in the Scene View context. Hold Space (physics drop), Shift+drag (physics snap) and Esc
+    (cancel a gesture, put Paint Dye down, clear the lattice points) stay local keys, listed as
+    gesture rows. Texture Synthesis and Physics Placement are Window commands and layout panels;
+    Preferences > Lattice, General > UI Scale and Player > iOS/Android AdMob are registry rows.
