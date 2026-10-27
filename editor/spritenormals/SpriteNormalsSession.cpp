@@ -207,6 +207,13 @@ namespace jasperengine::editor::spritenormals {
             return info;
         }
 
+        // How a spec names a Sprite's texture as its source (plannedOutputs and checkSpec/prepare
+        // alike): project-relative, or outside a project (empty projectDir) the texture's own
+        // absolute path, since a relative one would be read from the working directory
+        std::string spriteSourcePath(const fs::path& projectDir, const SpriteInfo& info) {
+            return projectDir.empty() ? info.texture.generic_u8string() : projectRelative(projectDir, info.texture);
+        }
+
         // ---- running workers (SpriteNormalsRun::cancelAll): the texsynth SynthesisRun pattern,
         // a registry every worker thread holds a copy of, so a thread outliving the editor's
         // statics (exit) still locks and notifies a live object
@@ -324,7 +331,7 @@ namespace jasperengine::editor::spritenormals {
             if (Project* project = editorProject()) {
                 if (SceneProject* scene = project->getScene(spec.sceneId)) {
                     const SpriteInfo info = spriteInfo(scene->scene, spec.entity, spec.submesh);
-                    if (info.problem.kind.empty()) source = projectRelative(projectDir.empty() ? project->getProjectPath() : projectDir, info.texture);
+                    if (info.problem.kind.empty()) source = spriteSourcePath(projectDir, info);
                 }
             }
         }
@@ -413,9 +420,7 @@ namespace jasperengine::editor::spritenormals {
                     if (!info.problem.kind.empty()) {
                         problems.push_back(info.problem);
                     } else {
-                        // outside a project the texture's own (absolute) path: a relative one would
-                        // be read from the working directory
-                        source = projectDir.empty() ? info.texture.generic_u8string() : projectRelative(projectDir, info.texture);
+                        source = spriteSourcePath(projectDir, info);
                         c.spriteCells = info.cells;
                     }
                 }

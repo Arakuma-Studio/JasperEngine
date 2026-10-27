@@ -999,6 +999,24 @@ TEST(SpriteNormalsScene, SubmeshSourcesAndSpriteFrameRules) {
         ASSERT_TRUE(ok) << (problems.empty() ? "" : problems[0].message);
         EXPECT_EQ(p0.sourceAbsolute, (root() / fs::u8path(dir) / "a.png").lexically_normal());
         EXPECT_EQ(p0.request.color.width, 32);
+        // plannedOutputs names the same files as prepare (the default normal beside the texture, the
+        // height map, the frames JSON), from the same source path
+        sn::Spec defaults = spec;
+        defaults.settings.height = true;
+        defaults.output.framesJson = true;
+        fs::current_path(fs::temp_directory_path());
+        const bool prepared = sn::prepare(fs::path(), defaults, scene, p0, problems);
+        fs::current_path(cwd);
+        ASSERT_TRUE(prepared) << (problems.empty() ? "" : problems[0].message);
+        auto paths = [](const std::vector<sn::PlannedOutput>& outputs) {
+            std::vector<std::string> out;
+            for (const sn::PlannedOutput& o : outputs) out.push_back(o.role + "=" + o.path);
+            return out;
+        };
+        const std::vector<sn::PlannedOutput> planned = sn::plannedOutputs(fs::path(), defaults, sn::SourceKind::Image);
+        EXPECT_EQ(paths(planned), paths(p0.outputs));
+        ASSERT_FALSE(planned.empty());
+        EXPECT_EQ(planned[0].path, (root() / fs::u8path(dir) / "a_normal.png").lexically_normal().generic_u8string());
     }
 
     // overlapping Sprite frames
