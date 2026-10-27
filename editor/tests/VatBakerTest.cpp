@@ -516,6 +516,91 @@ TEST(VatBakerCompute, RigidPartsBakeAsOneBoneEachAndMergeEqualOnes) {
     EXPECT_NE(out.report.modeReason.find("rigid parts only"), std::string::npos) << out.report.modeReason;
 }
 
+TEST(VatBakerCompute, PerVertexErrorFollowsTheMeasurements) {
+    std::string error;
+    // a rigid piece sliding linearly: Bones reproduce it at the frames and between them (~0)
+    {
+        VatBakeInput input;
+        input.renderers = {quadRenderer("Slide")};
+        input.mode = VatModeChoice::Bones;
+        input.clips.push_back(movingClip("Slide", 1, 1.0f, 10.0f, ClipWrapMode::Once, [](size_t, float t) {
+            return Matrix4::translateMatrix(Vector3(t * 0.5f, 0.0f, 0.0f));
+        }));
+        VatBakeOutput out;
+        ASSERT_TRUE(computeVatBake(input, out, error)) << error;
+        ASSERT_EQ(out.data.mode, VatMode::Bones);
+        ASSERT_EQ(out.vertexErrorMm.size(), out.mesh.vertexCount());
+        for (float e : out.vertexErrorMm) EXPECT_LT(e, 1e-3f);
+    }
+    // an orbiting piece: the error is between the frames, it grows as the sample rate falls, and
+    // the worst vertex's error is the report's max (in both modes)
+    auto turning = [&](float fps, VatModeChoice mode) {
+        VatBakeInput input;
+        input.renderers = {quadRenderer("Turn")};
+        input.mode = mode;
+        input.precision = VatPrecisionChoice::Half;
+        input.clips.push_back(movingClip("Turn", 1, 1.0f, fps, ClipWrapMode::Loop, [](size_t, float t) {
+            // an orbit (1 m around the origin, once per loop) turning as it goes: neither the
+            // offsets' lerp nor the translation's lerp follows the arc between frames
+            const float a = t * 6.2831853f;
+            return Matrix4::translateMatrix(Vector3(std::cos(a), std::sin(a), 0.0f)) * Matrix4::rotateZMatrix(t * 360.0f);
+        }));
+        VatBakeOutput out;
+        EXPECT_TRUE(computeVatBake(input, out, error)) << error;
+        return out;
+    };
+    for (VatModeChoice mode : {VatModeChoice::Vertices, VatModeChoice::Bones}) {
+        const VatBakeOutput fine = turning(30.0f, mode);
+        const VatBakeOutput coarse = turning(6.0f, mode);
+        for (const VatBakeOutput* out : {&fine, &coarse}) {
+            ASSERT_EQ(out->vertexErrorMm.size(), out->mesh.vertexCount());
+            const float worst = *std::max_element(out->vertexErrorMm.begin(), out->vertexErrorMm.end());
+            EXPECT_FLOAT_EQ(worst, out->report.maxErrorMm) << modeChoiceName(mode);
+            ASSERT_EQ(out->report.clips.size(), 1u);
+            EXPECT_FLOAT_EQ(worst, out->report.clips[0].maxErrorMm) << modeChoiceName(mode);
+            for (float e : out->vertexErrorMm) EXPECT_GT(e, 0.0f) << "every vertex leaves the arc between frames";
+        }
+        const float fineWorst = *std::max_element(fine.vertexErrorMm.begin(), fine.vertexErrorMm.end());
+        const float coarseWorst = *std::max_element(coarse.vertexErrorMm.begin(), coarse.vertexErrorMm.end());
+        EXPECT_GT(coarseWorst, fineWorst * 4.0f) << modeChoiceName(mode) << ": a lower rate, a larger error between frames";
+    }
+    // half precision far from the origin: the frames' quantization is in it too
+    {
+        VatBakeInput input;
+        input.renderers = {quadRenderer("Far")};
+        input.mode = VatModeChoice::Vertices;
+        input.precision = VatPrecisionChoice::Half;
+        input.clips.push_back(movingClip("Far", 1, 1.0f, 10.0f, ClipWrapMode::Once, [](size_t, float t) {
+            return Matrix4::translateMatrix(Vector3(100.0f + t * 0.1f, 0.0f, 0.0f));
+        }));
+        VatBakeOutput out;
+        ASSERT_TRUE(computeVatBake(input, out, error)) << error;
+        const float worst = *std::max_element(out.vertexErrorMm.begin(), out.vertexErrorMm.end());
+        EXPECT_GE(worst, out.report.quantizationErrorMm);
+        EXPECT_GT(worst, 1.0f) << "half floats 100 m from rest";
+        EXPECT_FLOAT_EQ(worst, out.report.maxErrorMm);
+    }
+}
+
+TEST(VatBakerCompute, HeatmapColoursRunGreenYellowRed) {
+    float c[4];
+    heatmapColor(0.0f, 2.0f, c);
+    EXPECT_FLOAT_EQ(c[0], 0.0f);
+    EXPECT_FLOAT_EQ(c[1], 1.0f);
+    heatmapColor(2.0f, 2.0f, c);
+    EXPECT_FLOAT_EQ(c[0], 1.0f);
+    EXPECT_FLOAT_EQ(c[1], 1.0f);
+    heatmapColor(1.0f, 2.0f, c);
+    EXPECT_FLOAT_EQ(c[0], 0.5f);
+    heatmapColor(4.0f, 2.0f, c);
+    EXPECT_FLOAT_EQ(c[0], 1.0f);
+    EXPECT_FLOAT_EQ(c[1], 0.0f);
+    heatmapColor(100.0f, 2.0f, c);
+    EXPECT_FLOAT_EQ(c[1], 0.0f) << "clamped at red";
+    EXPECT_FLOAT_EQ(c[2], 0.0f);
+    EXPECT_FLOAT_EQ(c[3], 1.0f);
+}
+
 TEST(VatBakerCompute, PrecisionAutoSwitchesToFloatFarFromRest) {
     VatBakeInput input;
     input.renderers = {quadRenderer("Far")};

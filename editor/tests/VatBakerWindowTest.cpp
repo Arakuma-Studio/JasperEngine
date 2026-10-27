@@ -40,6 +40,7 @@
 #include "component/AnimationPlayerComponent.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/LatticeModifierComponent.h"
+#include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "component/PoseAnimatorComponent.h"
 #include "component/Transform.h"
@@ -51,6 +52,7 @@
 
 #include <unistd.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -532,6 +534,57 @@ TEST_F(VatBakerWindow_, PreviewRunThenBakeWritesWithoutBakingAgain) {
     spec.fps = 20.0f;
     window->setSpec(spec);
     EXPECT_TRUE(window->isStale());
+}
+
+TEST_F(VatBakerWindow_, HeatmapSwitchesThePreviewMeshAndBack) {
+    std::string error;
+    ASSERT_TRUE(window->setSourcePath("assets/models/rigid_arm.gltf", error)) << error;
+    VatBakeSpec spec = window->getSpec();
+    spec.fps = 8.0f;
+    window->setSpec(spec);
+    ASSERT_TRUE(window->bake(false, error)) << error;
+    runToEnd(*window);
+    const VatBakeResult* result = Access::run(*window)->result();
+    ASSERT_TRUE(result);
+    ASSERT_EQ(result->vertexErrorMm.size(), result->mesh.vertexCount());
+    EXPECT_FLOAT_EQ(*std::max_element(result->vertexErrorMm.begin(), result->vertexErrorMm.end()), result->report.maxErrorMm);
+    EXPECT_TRUE(window->heatmapAvailable());
+
+    Access::preview(*window, 0.0f);
+    VatPreviewView* vat = Access::vatView(*window);
+    ASSERT_TRUE(vat && vat->hasSubject());
+    const std::string plain = vat->getFile();
+    EXPECT_FALSE(vat->isUnlit());
+
+    // on: the VAT side loads the heat-coloured preview mesh, unlit; the asset is untouched
+    window->setHeatmap(true);
+    EXPECT_TRUE(window->isHeatmap());
+    ASSERT_TRUE(vat->hasSubject()) << Access::previewNote(*window);
+    EXPECT_NE(vat->getFile(), plain);
+    EXPECT_NE(vat->getFile().find("-heatmap"), std::string::npos) << vat->getFile();
+    EXPECT_TRUE(vat->isUnlit());
+    const MeshComponent& heatMesh = vat->getScene()->getComponent<MeshComponent>(vat->getRoot());
+    EXPECT_FALSE(heatMesh.receiveLights);
+    ASSERT_GT(heatMesh.numSubmeshes, 0u);
+    EXPECT_TRUE(heatMesh.submeshes[0].hasVertexColor4) << "the error colours";
+    EXPECT_TRUE(vat->vatError().empty()) << vat->vatError();
+    Access::preview(*window, 0.1f);
+    EXPECT_FALSE(fs::exists(root() / "assets/models/rigid_arm.vat")) << "a preview writes no asset";
+
+    // off: back to the plain mesh
+    window->setHeatmap(false);
+    EXPECT_EQ(vat->getFile(), plain);
+    EXPECT_FALSE(vat->isUnlit());
+    EXPECT_TRUE(vat->getScene()->getComponent<MeshComponent>(vat->getRoot()).receiveLights);
+    // on again, and a new result starts plain until the toggle applies to it
+    window->setHeatmap(true);
+    EXPECT_TRUE(vat->isUnlit());
+
+    // imports carry no per-vertex error
+    const fs::path exportDir = vatimportfixtures::freshDir("window-heat");
+    vatimportfixtures::writeSoft(exportDir, "Wave", vatimportfixtures::SoftOptions());
+    ASSERT_TRUE(window->setSourcePath(exportDir.string(), error)) << error;
+    EXPECT_FALSE(window->heatmapAvailable());
 }
 
 TEST_F(VatBakerWindow_, ReplaceFilesIsAskedThenWrittenOver) {

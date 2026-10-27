@@ -1281,6 +1281,10 @@ void VertexAnimationBakerWindow::releasePreview() {
     if (vatView) vatView->clear();
     previewOf = nullptr;
     previewVatFile.clear();
+    previewMeshFile.clear();
+    heatVatFile.clear();
+    heatMeshFile.clear();
+    previewHeat = false;
     previewNote.clear();
 }
 
@@ -1296,7 +1300,10 @@ void VertexAnimationBakerWindow::ensurePreview() {
         key = run->result();
         data = &run->result()->data;
     }
-    if (key == previewOf) return;
+    if (key == previewOf) {
+        applyHeatmap();
+        return;
+    }
     releasePreview();
     if (!key) return;
     if (!sourceView) sourceView = std::make_unique<VatPreviewView>();
@@ -1314,6 +1321,7 @@ void VertexAnimationBakerWindow::ensurePreview() {
         return;
     }
     previewVatFile = vatFile;
+    previewMeshFile = meshFile;
     std::string vatError;
     if (!vatView->loadVat(vatFile, meshFile, vatError)) previewNote = vatError;
     const std::string sourceFile = sourcePreviewFile();
@@ -1326,6 +1334,64 @@ void VertexAnimationBakerWindow::ensurePreview() {
     }
     sourceView->setFraming(min, max);
     vatView->setFraming(min, max);
+    applyHeatmap();
+}
+
+bool VertexAnimationBakerWindow::heatmapAvailable() const {
+    return mode == Mode::Bake && run && run->result() && !run->result()->vertexErrorMm.empty();
+}
+
+void VertexAnimationBakerWindow::setHeatmap(bool on) {
+    heatmap = on;
+    applyHeatmap();
+}
+
+void VertexAnimationBakerWindow::applyHeatmap() {
+    const bool want = heatmap && heatmapAvailable();
+    if (!previewOf || !vatView || want == previewHeat || previewVatFile.empty()) return;
+    std::string error;
+    if (want && heatVatFile.empty() && !run->writeHeatmapPreviewFiles(heatVatFile, heatMeshFile, error)) {
+        heatVatFile.clear();
+        heatMeshFile.clear();
+        previewNote = "The heatmap can't be shown: " + error;
+        heatmap = false;
+        return;
+    }
+    // the view's mesh swapped (its framing stays); the playhead poses it again
+    if (!vatView->loadVat(want ? heatVatFile : previewVatFile, want ? heatMeshFile : previewMeshFile, error, want)) {
+        previewNote = error;
+    }
+    previewHeat = want;
+}
+
+void VertexAnimationBakerWindow::drawHeatmapLegend() {
+    const VatBakeResult* result = run ? run->result() : nullptr;
+    if (!result) return;
+    const float tolerance = result->report.toleranceMm;
+    float worst = 0.0f;
+    for (float e : result->vertexErrorMm) worst = std::max(worst, e);
+    // the scale: green 0 -> yellow tolerance -> red twice it
+    const float width = std::min(ImGui::GetContentRegionAvail().x, ImGui::GetFontSize() * 16.0f);
+    const float height = ImGui::GetFontSize() * 0.6f;
+    const ImVec2 at = ImGui::GetCursorScreenPos();
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    float c0[4], c1[4], c2[4];
+    heatmapColor(0.0f, tolerance, c0);
+    heatmapColor(tolerance, tolerance, c1);
+    heatmapColor(2.0f * tolerance, tolerance, c2);
+    const ImU32 green = ImGui::GetColorU32(ImVec4(c0[0], c0[1], c0[2], 1.0f));
+    const ImU32 yellow = ImGui::GetColorU32(ImVec4(c1[0], c1[1], c1[2], 1.0f));
+    const ImU32 red = ImGui::GetColorU32(ImVec4(c2[0], c2[1], c2[2], 1.0f));
+    draw->AddRectFilledMultiColor(at, ImVec2(at.x + width * 0.5f, at.y + height), green, yellow, yellow, green);
+    draw->AddRectFilledMultiColor(ImVec2(at.x + width * 0.5f, at.y), ImVec2(at.x + width, at.y + height), yellow, red, red, yellow);
+    ImGui::Dummy(ImVec2(width, height));
+    UIProbe::item("vatbaker.heatmapLegend");
+    ImGui::TextDisabled("0 mm");
+    ImGui::SameLine(width * 0.5f - ImGui::CalcTextSize("0.00 mm").x * 0.5f);
+    ImGui::TextDisabled("%.3g mm", tolerance);
+    ImGui::SameLine(std::max(0.0f, width - ImGui::CalcTextSize("0.00 mm+").x));
+    ImGui::TextDisabled("%.3g mm+", 2.0f * tolerance);
+    ImGui::TextDisabled("Largest error %.3g mm (tolerance %.3g mm)", worst, tolerance);
 }
 
 void VertexAnimationBakerWindow::updatePreview(float dt) {
@@ -1790,6 +1856,19 @@ void VertexAnimationBakerWindow::drawPreview() {
     if (ImGui::SliderFloat("##preview_time", &previewTime, 0.0f, std::max(length, 0.0001f), "%.2f s")) previewPlaying = false;
     UIProbe::item("vatbaker.previewTime");
     if (previewPlaying) Backend::getApp().requestRedraw();
+    // Heatmap: the VAT side coloured by each vertex's error
+    const bool canHeat = heatmapAvailable();
+    bool heat = heatmap && canHeat;
+    ImGui::BeginDisabled(!canHeat);
+    if (ImGui::Checkbox("Heatmap", &heat)) setHeatmap(heat);
+    ImGui::EndDisabled();
+    UIProbe::item("vatbaker.heatmap");
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        ImGui::SetTooltip("%s", canHeat ? "Colour the VAT by each vertex's largest error over the frames and between them\n"
+                                          "(green: none, yellow: the tolerance, red: twice it or more), unlit"
+                                        : "Imports carry no per-vertex error: the heatmap is for bakes");
+    }
+    if (heat) drawHeatmapLegend();
 
     // the two views
     const float spacing = ImGui::GetStyle().ItemSpacing.x;

@@ -24,7 +24,8 @@
 //     (max(toleranceMm, 0.05% of the bounds diagonal)), else Vertices, with `modeReason`;
 //     precision Auto = half unless its quantization error exceeds the tolerance (then float and
 //     a precision_switched warning); Bones payloads are always float;
-//   * measurements: quantization (Vertices half) or decomposition (Bones) error at the frames,
+//   * measurements (per vertex too: VatBakeOutput::vertexErrorMm, one float each): quantization
+//     (Vertices half) or decomposition (Bones) error at the frames,
 //     interpolation error at the mid-frames (the exact mid-frame sample vs what the GPU
 //     interpolates between the stored frames, quantized), max and mean over every vertex sample
 //     measured, per clip; large_interpolation_error with the fps that would fix it;
@@ -132,6 +133,11 @@ namespace jasperengine::editor::vat{
         float bonesRawErrorMm = 0.0f;
         float bonesErrorMm = 0.0f;
         float halfErrorMm = 0.0f;
+        // per mesh vertex (= payload row, mesh.vatIndex order): the largest distance in mm between
+        // what the GPU reconstructs and the exact pose, over every frame and measured mid-frame
+        // (quantization at the frames for half precision, the bones' decomposition, interpolation
+        // at the mid-frames); its maximum is report.maxErrorMm (the baker window's heatmap)
+        std::vector<float> vertexErrorMm;
         bool morphAnimated = false;
         bool latticeAnimated = false;
     };

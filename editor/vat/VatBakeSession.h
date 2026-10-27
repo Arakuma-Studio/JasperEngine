@@ -85,6 +85,8 @@ namespace jasperengine::editor::vat{
         std::string previewKey;
         // the source clip each baked clip came from (data.clips order)
         std::vector<std::string> sourceClips;
+        // per mesh vertex: its largest error in mm (VatBakeOutput::vertexErrorMm), the heatmap's
+        std::vector<float> vertexErrorMm;
 
         const jasperengine::vat::VatPayload& payload() const;
     };
@@ -142,6 +144,10 @@ namespace jasperengine::editor::vat{
         // the preview as files under <project>/.jasperengine/cache/vat-preview (not the
         // project's assets), so a Model can load the .vat.glb: absolute paths out
         bool writePreviewFiles(std::string& vatPath, std::string& meshPath, std::string& error);
+        // the same preview with its mesh coloured by result()->vertexErrorMm (heatmapColor against
+        // the report's tolerance, one white material): the baker window's Heatmap, in a directory
+        // of its own beside the preview (the asset is untouched)
+        bool writeHeatmapPreviewFiles(std::string& vatPath, std::string& meshPath, std::string& error);
 
         // where write() would write (the existing-file rule), without writing; after a bake, or
         // before one once check() resolved the source (the window's Output field)
@@ -198,6 +204,10 @@ namespace jasperengine::editor::vat{
         bool stampChanged();
         void releasePreview();
     };
+
+    // The heatmap's colour of an error (RGBA, linear): green at 0, yellow at the tolerance, red at
+    // twice the tolerance and above
+    void heatmapColor(float errorMm, float toleranceMm, float rgba[4]);
 
     // Staleness of a .vat (spec 4.5): [{kind vat-source-changed | vat-source-missing |
     // vat-mesh-mismatch | vat-layout-mismatch, message, fix}]; empty when up to date. A .vat that
