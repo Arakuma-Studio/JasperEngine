@@ -681,6 +681,12 @@ void editor::Exporter::startExport(Project* proj, const ExportConfig& cfg) {
         this->progress.started = true;
     }
 
+    // the export reads the open scenes and prefabs while the frames go on: the holes of
+    // destroyed entities are closed before it starts (ComponentArray)
+    if (proj) {
+        proj->compactAllComponents();
+    }
+
     // Launch export process in a separate thread so UI does not block
     exportThread = std::thread(&Exporter::runExport, this);
 }

@@ -1433,6 +1433,10 @@ void Engine::runFrame(bool draw){
 
         // GameObject::destroy: after the update, before the draw (Unity)
         ObjectManager::update(frameDelta);
+        // their holes in the component arrays closed now, not by whatever reads next
+        for (int i = 0; i < scenes.size(); i++) {
+            scenes[i]->compactComponents();
+        }
     }
 
     if (draw){

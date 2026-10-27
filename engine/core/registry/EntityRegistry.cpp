@@ -223,7 +223,7 @@ bool EntityRegistry::isInHierarchy(Entity entity){
         return true;
     }
     // children follow their parent in the array (its branch); by entity, not index: destroying
-    // entities one by one must not compact the array each time (ComponentArray)
+    // entities one by one leaves holes, which an index read would rank in O(log n) (ComponentArray)
     bool hasChild = false;
     transforms->forEachAfter(entity, [&hasChild, entity](Entity, const Transform& next){
         hasChild = next.parent == entity;
@@ -584,6 +584,7 @@ void EntityRegistry::clear() {
     }
     // Reset user counter to just before the user range
     entityManager.setLastUserEntity(EntityManager::lastSystemEntity());
+    compactComponents();
 }
 
 void EntityRegistry::addEntityChild(Entity parent, Entity child, bool changeTransform){

@@ -785,8 +785,8 @@ std::vector<Entity> EntityCloner::collectHierarchy(EntityRegistry* registry, Ent
         return meshSystem && meshSystem->getFoliageOwner(entity) != NULL_ENTITY;
     };
 
-    // Transform descendants: the branch that follows the root in the Transform array (walked
-    // by entity: GameObjects destroyed one after another must not compact the array each time)
+    // Transform descendants: the branch that follows the root in the Transform array (walked by
+    // entity: with the holes of GameObjects destroyed before, an index walk is O(log n) a step)
     const ComponentId transformId = registry->getComponentId<Transform>();
     if (hasComponentSignature(registry, root, transformId)) {
         auto transforms = registry->getComponentArray<Transform>();

@@ -6816,11 +6816,9 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
 
     sceneProject->playState = ScenePlayState::SAVING;
     fs::path savePath = path;
-    // the save reads the component arrays by index while the frames do: the holes of
-    // destroyed entities are closed here, not by whichever of the two reads first
-    if (sceneProject->scene) {
-        sceneProject->scene->compactComponents();
-    }
+    // the save reads component arrays (this scene's, the other open scenes' scripts, the
+    // prefabs') while the frames go on: their holes are closed before it starts, by this thread
+    compactAllComponents();
 
     std::thread([this, sceneId, savePath, callback = std::move(callback)]() mutable {
         bool success = false;
