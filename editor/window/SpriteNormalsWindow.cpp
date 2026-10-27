@@ -151,18 +151,14 @@ namespace {
 
 // ====================================================================== background jobs
 
-// A Shift-click generation or a Regenerate: decode (prepare), generate and encode on its own
-// thread, owning everything it reads; the main thread writes the files (an undoable command) and
-// assigns. The spec it prepares names an image (a Sprite's texture and frames resolved on the
-// main thread): the worker never reads a scene.
+// A Shift-click generation or a Regenerate: every check on the main thread (sn::preparePlan reads
+// the project, the Platform's asset path and the scene), then the decode (sn::prepareLoad), the
+// generation and the encoding on its own thread, which owns the plain data it reads and never
+// touches System, Project or a scene; the main thread writes the files (an undoable command) and
+// assigns.
 struct SpriteNormalsWindow::QuickWork {
     std::atomic<bool> cancel{false};
     std::atomic<bool> done{false};
-    fs::path projectDir;
-    sn::Spec spec;
-    bool fromSprite = false;
-    sn::Spec spriteSpec;                 // the GameObject spec recorded in the recipe
-    std::string entityPath;
     int threads = 0;
     uint64_t generation = 0;             // texsynth::projectGeneration() when it started
     sn::Prepared prepared;
@@ -178,13 +174,9 @@ void SpriteNormalsWindow::startWork(const std::shared_ptr<QuickWork>& work) {
     auto run = [work]() {
         try {
             std::vector<sn::Problem> problems;
-            if (!sn::prepare(work->projectDir, work->spec, nullptr, work->prepared, problems)) {
-                work->error = problems.empty() ? std::string("the source can't be generated from") : problems.front().message;
+            if (!sn::prepareLoad(work->prepared, problems)) {
+                work->error = problems.empty() ? std::string("the source can't be read") : problems.front().message;
             } else {
-                if (work->fromSprite) {
-                    work->prepared.spec = work->spriteSpec;
-                    work->prepared.spriteEntityPath = work->entityPath;
-                }
                 work->prepared.request.threads = work->threads;
                 sn::Control control;
                 control.cancel = &work->cancel;
@@ -300,6 +292,7 @@ void SpriteNormalsWindow::resetForProjectSwitch() {
         if (job.work) job.work->cancel = true;
     }
     quickJobs.clear();
+    regenerateOutcomes.clear();
     saveAll = SaveAllJob();
     items.clear();
     current = 0;
@@ -668,7 +661,7 @@ bool SpriteNormalsWindow::openForEntity(uint32_t sceneId, Entity entity, unsigne
     std::string texture;
     std::vector<sn::Cell> cells;
     if (!sn::framesFromSprite(sp->scene, entity, submesh, texture, cells, error)) return false;
-    if (now && sp->playState != ScenePlayState::STOPPED) {
+    if (now && project->isAnyScenePlaying()) {
         error = "stop the scene to generate a normal map: it writes files and changes the scene";
         return false;
     }
@@ -769,29 +762,13 @@ bool SpriteNormalsWindow::openForEntity(uint32_t sceneId, Entity entity, unsigne
         if (!blocked) {
             sn::Spec running = spec;
             running.overwrite = true;
-            // what can be told now (stat-only); the decode and generation run on the job's worker
-            problems = sn::checkSpec(root, running, sp->scene);
-            if (!problems.empty()) {
-                error = problems.front().message;
+            // every check here (the project, the scene); the decode and generation on the job's worker
+            auto work = std::make_shared<QuickWork>();
+            if (!sn::preparePlan(root, running, sp->scene, work->prepared, problems)) {
+                error = problems.empty() ? "the source can't be generated from" : problems.front().message;
                 return false;
             }
-            auto work = std::make_shared<QuickWork>();
-            work->projectDir = root;
-            work->spriteSpec = running;
-            work->fromSprite = true;
-            work->entityPath = EntityPath::of(sp->scene, entity);
             work->threads = workerThreads();
-            // the Sprite resolved here: its texture, and its frames (submesh 0) as given cells
-            work->spec = running;
-            work->spec.sceneId = 0;
-            work->spec.entity = NULL_ENTITY;
-            work->spec.submesh = 0;
-            work->spec.source = texture;
-            if (running.frames.mode == sn::FramesSpec::Mode::Auto && !cells.empty()) {
-                work->spec.frames.mode = sn::FramesSpec::Mode::Cells;
-                work->spec.frames.cells = cells;
-                work->spec.frames.from = sn::FramesFrom::Sprite;
-            }
             QuickJob job;
             job.target = {sceneId, entity, submesh, sp->scene->getEntityName(entity)};
             job.overwrite = true;
@@ -1391,7 +1368,6 @@ bool SpriteNormalsWindow::startRegenerate(const fs::path& generatedPng, std::str
     sn::Spec spec;
     std::vector<std::string> notes;
     if (!sn::specFromRecipe(*recipe, png, root, spec, notes, error)) return false;
-    // the source's presence only (the worker reads it)
     std::error_code ec;
     if (!fs::is_regular_file(absoluteOf(project, spec.source), ec)) {
         error = "the source " + spec.source + " is missing";
@@ -1399,18 +1375,23 @@ bool SpriteNormalsWindow::startRegenerate(const fs::path& generatedPng, std::str
     }
     spec.overwrite = true;
     spec.output.framesJson = false;
+    // the whole check here, as a Shift-click's; the worker only decodes, generates and encodes
     auto work = std::make_shared<QuickWork>();
-    work->projectDir = root;
-    work->spec = spec;
+    std::vector<sn::Problem> problems;
+    if (!sn::preparePlan(root, spec, nullptr, work->prepared, problems)) {
+        error = problems.empty() ? "the recipe can't be used" : problems.front().message;
+        return false;
+    }
     work->threads = workerThreads();
     QuickJob job;
     job.overwrite = true;
     job.label = png.filename().u8string();
     job.png = png;
     job.work = work;
+    // the in-progress outcome before the job moves into the list
+    regenerateOutcomes[png.generic_u8string()] = {true, false, false, "Regenerating " + job.label + "..."};
     startWork(work);
     quickJobs.push_back(std::move(job));
-    regenerateOutcomes[png.generic_u8string()] = {true, false, false, "Regenerating " + job.label + "..."};
     return true;
 }
 
@@ -1443,8 +1424,8 @@ void SpriteNormalsWindow::tickQuickJobs() {
             const SceneProject* sp = project->getScene(job.target.sceneId);
             if (!sp || !sp->scene || !sp->scene->isEntityCreated(job.target.entity)) {
                 targetProblem = "\"" + job.target.name + "\" is gone";
-            } else if (sp->playState != ScenePlayState::STOPPED) {
-                targetProblem = "the scene is playing";
+            } else if (project->isAnyScenePlaying()) {
+                targetProblem = "a scene is playing";
             } else if (baseTextureOf(project, sp->scene, job.target.entity, job.target.submesh) !=
                        fs::u8path(prepared.sourcePath).lexically_normal().generic_u8string()) {
                 targetProblem = "\"" + job.target.name + "\" no longer draws " + fileName(prepared.sourcePath);

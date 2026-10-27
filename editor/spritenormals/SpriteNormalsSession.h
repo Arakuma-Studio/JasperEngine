@@ -139,6 +139,7 @@ namespace jasperengine::editor::spritenormals {
         std::string spriteEntityPath;        // hierarchy path when from a Sprite
         Request request;
         std::vector<PlannedOutput> outputs;
+        std::vector<Cell> plannedSpriteCells;   // preparePlan: the Sprite's frames for prepareLoad
         // Phase 5: the starting overlay (paint mode Keep: the planned normal output's paint chunk)
         // and the ops; after generatePrepared() the overlay with the ops applied and their stats.
         // encodeOutputs() writes this overlay into the normal map.
@@ -153,6 +154,14 @@ namespace jasperengine::editor::spritenormals {
     // paint_layout_changed warning. Ops naming a frame that is not one: invalid_paint.
     bool prepare(const std::filesystem::path& projectDir, const Spec& spec, const Scene* scene, Prepared& out,
                  std::vector<Problem>& problems);
+    // prepare() in two halves, for a worker thread: preparePlan is checkSpec's whole work (main
+    // thread: it reads the project, the Platform's asset path and the scene) and fills everything
+    // but the decoded source and the Request; prepareLoad then needs nothing but `planned`'s plain
+    // data (any thread: it never touches System, Project or a scene): the source decoded, the
+    // Request built. prepare() == preparePlan() + prepareLoad().
+    bool preparePlan(const std::filesystem::path& projectDir, const Spec& spec, const Scene* scene, Prepared& out,
+                     std::vector<Problem>& problems);
+    bool prepareLoad(Prepared& planned, std::vector<Problem>& problems);
 
     // ---- outputs
 
