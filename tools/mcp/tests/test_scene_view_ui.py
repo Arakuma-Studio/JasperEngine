@@ -21,9 +21,9 @@ from pathlib import Path
 
 from harness import Editor, skip
 
-# background mesh BVH builds stay pending 20 s (only meshes of 256+ triangles have one): what a
-# click and a drop do meanwhile is seen (R16, R33)
-EDITOR = {"xvfb": "harness", "create": True, "name": "Scene View UI", "env": {"JASPER_PICK_BUILD_DELAY_MS": "20000"}}
+# background mesh BVH builds stay pending 90 s (only meshes of 256+ triangles have one): what a
+# click and a drop do meanwhile is seen (R16, R33), also on a loaded host drawing a few frames a second
+EDITOR = {"xvfb": "harness", "create": True, "name": "Scene View UI", "env": {"JASPER_PICK_BUILD_DELAY_MS": "90000"}}
 TIMEOUT = 1200
 
 S: dict = {}
@@ -433,7 +433,8 @@ async def test_drop_refused_while_pending(ed: Editor):
     message = await status_message(ed, "Preparing surface")
     await ed.screenshot("editor", path=str(s["out"] / "s26-drop-refused.png"))
     found = await ed.call("find_entities", scene=sid, name="Crate")
-    ed.check(not found["entities"], f"no drop onto a surface whose BVH builds: {found}")
+    after = (await scene_view_state(ed, sid))["bvh_cache"]
+    ed.check(not found["entities"], f"no drop onto a surface whose BVH builds: {found}; the cache before {state['bvh_cache']}, after {after}")
     ed.check("Preparing surface" in message, f"the status bar says so: {message!r}")
 
 
@@ -466,7 +467,7 @@ async def test_click_waits_for_bvh(ed: Editor):
     ed.check("Preparing picking for Grid" in message, f"the status bar after 100 ms: {message!r}")
     ed.check_eq(await selected(ed, sid), [], "nothing selected through the mesh's bounds meanwhile")
     picked = []
-    for _ in range(160):
+    for _ in range(480):
         await asyncio.sleep(0.25)
         picked = await selected(ed, sid)
         if picked:

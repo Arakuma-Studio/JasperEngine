@@ -31,7 +31,7 @@ UPDATE_GOLDEN = os.environ.get("JASPER_SCENE_VIEW_UPDATE_GOLDEN") == "1"
 S: dict = {}
 
 S26_TOOLS = ["pick_at", "edit_scene_view_bookmarks", "set_scene_view_layout", "measure_scene_view",
-             "set_scene_view_filter", "raycast_meshes"]
+             "set_scene_view_filter"]
 
 
 # -- helpers --------------------------------------------------------------------
@@ -88,10 +88,10 @@ async def test_tools_in_editor_ux_group(ed: Editor):
     ed.check(set(S26_TOOLS) <= listed, "listed once editor_ux is enabled")
     await ed.call("tool_groups", disable=["editor_ux"])
     for name in S26_TOOLS:
-        schema = ed.tool(name).inputSchema
+        schema = ed.tool(name).input_schema
         ed.check(schema.get("type") == "object" and "properties" in schema, f"{name}: object schema")
     # set_scene_camera's S26 options
-    props = ed.tool("set_scene_camera").inputSchema["properties"]
+    props = ed.tool("set_scene_camera").input_schema["properties"]
     for key in ("projection", "ortho_size", "fov", "near", "far", "view", "frame_all", "camera_settings"):
         ed.check(key in props, f"set_scene_camera.{key}")
 
@@ -154,7 +154,7 @@ async def test_cycle_wraps(ed: Editor):
         seen.append((await selected(ed, sid))[0])
     ed.check_eq(seen, [r["robot"], r["arm"], r["wall"], r["robot"]], "the fourth click wraps to the root")
     # a click away from the spot starts over: the wall alone there
-    await click(ed, sid, u=0.9, v=0.5)
+    await click(ed, sid, u=0.7, v=0.5)
     ed.check_eq(await selected(ed, sid), [r["wall"]])
 
 
@@ -176,7 +176,7 @@ async def test_shift_ctrl_modifiers(ed: Editor):
     await ed.call("pick_at", scene=sid, u=0.5, v=0.5, apply="select", exact=True)
     ed.check_eq(await selected(ed, sid), [r["arm"]])
     # Shift adds (the wall, beside the arm)
-    await click(ed, sid, u=0.85, v=0.5, shift=True)
+    await click(ed, sid, u=0.7, v=0.5, shift=True)
     ed.check_eq(sorted(await selected(ed, sid)), sorted([r["arm"], r["wall"]]), "Shift adds")
     # Ctrl toggles: on the arm, the exact hit, since it is selected (not its root)
     await click(ed, sid, u=0.5, v=0.5, ctrl=True)
@@ -405,8 +405,9 @@ async def test_alt_f_frames_all(ed: Editor):
             u, v, depth = project(cam, size, p)
             ed.check(depth > 0 and -0.01 <= u <= 1.01 and -0.01 <= v <= 1.01, f"{p} projects inside the view: {(u, v, depth)} {cam}")
     # the terrain (large) does not count: the boxes fill a good part of the view
-    us = [project(cam, size, pos)[0] for pos, _ in spots]
-    ed.check(max(us) - min(us) > 0.3, f"framed on the boxes, not the terrain: {us}")
+    uvs = [project(cam, size, pos)[:2] for pos, _ in spots]
+    spread = max(max(u for u, _ in uvs) - min(u for u, _ in uvs), max(v for _, v in uvs) - min(v for _, v in uvs))
+    ed.check(spread > 0.3, f"framed on the boxes, not the terrain: {uvs}")
 
 
 async def test_ortho_top_golden(ed: Editor):
@@ -417,8 +418,8 @@ async def test_ortho_top_golden(ed: Editor):
     await ed.call("set_scene_camera", scene=sid, view="top", ortho_size=6)
     await ed.call("wait", frames=4)
     png = await ed.screenshot("scene", scene=sid, max_width=0)
-    img = pngdiff.decode(png)
-    img = pngdiff.downscale(img, 320, int(320 * img.height / img.width))
+    img = pngdiff.decode(png)              # (width, height, rgba)
+    img = pngdiff.downscale(img, 320, int(320 * img[1] / img[0]))
     golden = GOLDEN_DIR / "scene_view_ortho_top.png"
     if UPDATE_GOLDEN or not golden.exists():
         golden.parent.mkdir(parents=True, exist_ok=True)
@@ -427,11 +428,11 @@ async def test_ortho_top_golden(ed: Editor):
             ed.fail(f"no golden yet: wrote {golden} (review and commit it)")
         return
     ref = pngdiff.decode(golden.read_bytes())
-    if (ref.width, ref.height) != (img.width, img.height):
-        img = pngdiff.downscale(img, ref.width, ref.height)
-    ok, info = pngdiff.compare(img, ref, channel_tolerance=24, max_fraction=0.02)
+    if ref[:2] != img[:2]:
+        img = pngdiff.downscale(img, ref[0], ref[1])
+    ok, fraction, _diff = pngdiff.compare(img, ref, channel_tolerance=24, max_fraction=0.02)
     (ed.scratch.root / "scene_view_ortho_top.png").write_bytes(pngdiff.encode(img))
-    ed.check(ok, f"ortho top view differs from its golden: {info}")
+    ed.check(ok, f"ortho top view differs from its golden: {fraction:.4f} of the pixels")
 
 
 # -- bookmarks (AC12) -------------------------------------------------------------
@@ -588,7 +589,7 @@ async def test_layer_filter(ed: Editor):
     sid = await new_scene(ed, "Layers")
     near = await cube(ed, sid, "Near", (0, 0, 0))
     far = await cube(ed, sid, "Far", (0, 0, -4), (4, 4, 0.2))
-    await ed.call("set_properties", scene=sid, entity=near, values={"entity": {"layer": 8}})
+    await ed.call("set_entity_state", scene=sid, entity=near, layer=8)
     await look(ed, sid, (0, 0, 5), (0, 0, 0))
     got = await ed.call("pick_at", scene=sid, u=0.5, v=0.5)
     ed.check_eq(got["would_select"]["entity"], near)

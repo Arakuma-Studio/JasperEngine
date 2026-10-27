@@ -70,7 +70,6 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
 4. Play the start scene; a C++ project builds first (seconds to minutes).
 5. Look: screenshot the Game view (Scene view for layout). Drive the game with
    send_input / wait; query runtime state while playing (get_runtime_entity, eval_lua).
-   What a Scene view click hits: pick_at (group editor_ux, jasper://docs/scene-view).
 6. Read the Console since your last cursor: compile, script and Lua errors, missing assets.
 7. Stop, fix, repeat until the Console is clean and the screenshot shows what you intended.
    Never claim a script works without playing it and reading the Console.

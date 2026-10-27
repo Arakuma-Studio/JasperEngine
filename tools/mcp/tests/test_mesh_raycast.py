@@ -53,7 +53,7 @@ async def setup(ed: Editor):
     S["static"] = (await ed.call("create_entity", scene=sid, type="cube", name="Static", position=[3, 0, 0], select=False))["entity_id"]
     S["second"] = (await ed.call("create_entity", scene=sid, type="cube", name="Second", position=[3, 0, -3], select=False))["entity_id"]
     S["layered"] = (await ed.call("create_entity", scene=sid, type="cube", name="Layered", position=[-3, 0, 0], select=False))["entity_id"]
-    await ed.call("set_properties", scene=sid, entity="Layered", values={"entity": {"layer": 9}})
+    await ed.call("set_entity_state", scene=sid, entity="Layered", layer=9)
     S["inst"] = (await ed.call("create_entity", scene=sid, type="cube", name="Inst", position=[0, -5, 0], select=False))["entity_id"]
     S["model"] = (await ed.call("create_entity", scene=sid, type="model", name="Strip", model="assets/models/skinned_morph.gltf",
                                 select=False))["entity_id"]
@@ -94,7 +94,7 @@ async def test_raycast_meshes_tool(ed: Editor):
 
 async def test_lua_raycasts_in_play(ed: Editor):
     s = await setup(ed)
-    await ed.call("play", scene=s["scene"])
+    await ed.call("play", action="start", scene=s["scene"])
     try:
         await ed.call("wait", frames=10)
         # fraction of the Ray against world units of the origin/direction/maxDistance overload
@@ -166,12 +166,12 @@ async def test_lua_raycasts_in_play(ed: Editor):
         after = (await ed.call("raycast_meshes", scene=s["scene"], origin=[100, 100, 100], direction=[0, 0, 1]))["stats"]
         ed.check(after["inline_waits"] == before["inline_waits"], f"no inline build after prepare(): {before} -> {after}")
     finally:
-        await ed.call("stop")
+        await ed.call("play", action="stop")
 
 
 async def test_raycast_entity_lua(ed: Editor):
     s = await setup(ed)
-    await ed.call("play", scene=s["scene"])
+    await ed.call("play", action="start", scene=s["scene"])
     try:
         await ed.call("wait", frames=5)
         got = await lua(ed, """
@@ -183,7 +183,7 @@ async def test_raycast_entity_lua(ed: Editor):
         ed.check(got["only"] and got["name"] == "Second" and close(got["fraction"], 12.5 / 20, 1e-4), f"raycastEntity: {got}")
         ed.check(got["none"] is False, "another GameObject is not tested")
     finally:
-        await ed.call("stop")
+        await ed.call("play", action="stop")
 
 
 async def test_web_latency():

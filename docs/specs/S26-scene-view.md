@@ -612,7 +612,8 @@ Where the implementation differs from the text above, and why.
   registry).
 - **MCP names (R34).** S31's conventions require `verb_noun` names: `scene_view_bookmark` is
   `edit_scene_view_bookmarks`, `scene_view_measure` is `measure_scene_view`, `mesh_raycast` is
-  `raycast_meshes` ("raycast" added to the verbs). An agent's camera changes (`set_scene_camera`,
+  `raycast_meshes` ("raycast" added to the verbs), in group `gameplay` beside the other runtime
+  queries (editor_ux holds S24's, S25's and the Scene view's tools within its 18). An agent's camera changes (`set_scene_camera`,
   `frame_entity`, bookmark recall) land at once; Camera Easing animates the user's moves only.
   `pick_at` waits for a building BVH (the click R33 describes for the user defers instead);
   `apply` takes `shift` and `ctrl` too; `set_scene_view_layout` takes `capture` (one image per

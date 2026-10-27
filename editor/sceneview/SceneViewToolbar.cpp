@@ -497,11 +497,15 @@ void SceneViewController::drawInactivePane(SceneProject& sceneProject, int pane)
         texture = Backend::getImGuiTexture(&p.framebuffer.getRender().getColorTexture());
     }
     Widgets::image(texture, size, IM_COL32(0, 0, 0, 255));
-    // the pane under the pointer takes the input (not while a drag of the active one goes on)
+    // the pane the pointer moves onto (or clicks) takes the input; not while a drag of the active
+    // one goes on, and not a pointer resting there (an agent's pick_at or layout chose another)
+    const ImGuiIO& io = ImGui::GetIO();
     const bool anyDown = ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsMouseDown(ImGuiMouseButton_Right) ||
                          ImGui::IsMouseDown(ImGuiMouseButton_Middle);
-    if (ImGui::IsWindowHovered() && (!anyDown || ImGui::IsMouseClicked(ImGuiMouseButton_Left) || ImGui::IsMouseClicked(ImGuiMouseButton_Right) ||
-                                     ImGui::IsMouseClicked(ImGuiMouseButton_Middle))){
+    const bool clicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left) || ImGui::IsMouseClicked(ImGuiMouseButton_Right) ||
+                         ImGui::IsMouseClicked(ImGuiMouseButton_Middle);
+    const bool moved = io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f;
+    if (ImGui::IsWindowHovered() && (clicked || (moved && !anyDown))){
         requestActivePane(sceneProject, pane);
     }
 }
