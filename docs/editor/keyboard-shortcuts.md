@@ -99,6 +99,7 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Scale Tool | R | Editor |
 | Rect Tool | T | Editor |
 | Toggle Global/Local | X | Editor |
+| Physics | G | Editor |
 
 ## Scene View
 
@@ -115,6 +116,19 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Orbit (3D) | Alt+Left Drag | Scene View |
 | Pan | Middle Drag (2D: also Space+Left Drag) | Scene View |
 | Zoom | Mouse Wheel | Scene View |
+| Drop (Physics) | Hold Space | Scene View |
+| Snap onto Surfaces (Physics) | Shift+Left Drag | Scene View |
+| Cancel Gesture | Escape | Scene View |
+
+## Lattice
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Select No Points | Alt+A | Scene View |
+| Invert Point Selection | Ctrl+I | Scene View |
+| Expand Point Selection | Ctrl+= / Ctrl+NumpadAdd | Scene View |
+| Shrink Point Selection | Ctrl+- / Ctrl+NumpadSubtract | Scene View |
+| Toggle Falloff | O | Scene View |
 
 ## Terrain
 
