@@ -15,6 +15,8 @@
 #include "SceneBackup.h"
 #include "diag/CrashHandler.h"
 #include "Project.h"
+#include "texture/TextureCookQueue.h"
+#include "texture/TextureImportSettings.h"
 #include "log/Logger.h"
 #include "mcp/McpRefs.h"
 #include "registry/TagManager.h"
@@ -25,6 +27,7 @@
 #include <algorithm>
 #include <cctype>
 #include <functional>
+#include <map>
 #include <set>
 #include <sstream>
 
@@ -827,6 +830,103 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(s);
         }
+        // ---- texture (Project Settings > Texture, S14 R24)
+        {
+            auto textureSetting = [&](const std::string& key, const std::string& type, const std::string& description,
+                                      std::function<Json(const TextureProjectSettings&)> get,
+                                      std::function<bool(TextureProjectSettings&, const Json&, std::string&)> set,
+                                      std::vector<std::string> values = {}) {
+                Setting s;
+                s.key = key;
+                s.type = type;
+                s.description = description;
+                s.values = std::move(values);
+                s.get = [get](SettingsContext& ctx) { return get(ctx.project()->getTextureSettings()); };
+                s.set = [set](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                    TextureProjectSettings next = ctx.project()->getTextureSettings();
+                    if (!set(next, value, error)) return false;
+                    if (apply) ctx.project()->setTextureSettings(next);
+                    return true;
+                };
+                add(s);
+            };
+            textureSetting("texture.android_etc2_fallback", "bool",
+                           "Android exports also carry ETC2/EAC cooks for devices without ASTC (and the manifest stops asking for ASTC).",
+                           [](const TextureProjectSettings& t) { return Json(t.androidEtc2Fallback); },
+                           [](TextureProjectSettings& t, const Json& v, std::string& e) { return readBool(v, t.androidEtc2Fallback, e); });
+            for (size_t f = 0; f < kTextureFamilyCount; f++) {
+                const std::string family = textureFamilyName((TextureFamily)f);
+                textureSetting("texture.default_quality." + family, "enum",
+                               "Compression of " + family + " cooks without an override (none keeps them uncompressed).",
+                               [f](const TextureProjectSettings& t) { return Json(textureQualityName(t.defaultQuality[f])); },
+                               [f](TextureProjectSettings& t, const Json& v, std::string& e) {
+                                   std::string name;
+                                   if (!readString(v, name, e)) return false;
+                                   for (TextureCookQuality q : {TextureCookQuality::None, TextureCookQuality::Low, TextureCookQuality::Normal, TextureCookQuality::High}) {
+                                       if (name == textureQualityName(q)) {
+                                           t.defaultQuality[f] = q;
+                                           return true;
+                                       }
+                                   }
+                                   e = "\"" + name + "\" is not one of none, low, normal, high";
+                                   return false;
+                               }, {"none", "low", "normal", "high"});
+                textureSetting("texture.default_max_size." + family, "int",
+                               "Default Max Size of " + family + " cooks (a power of two, 32-16384).",
+                               [f](const TextureProjectSettings& t) { return Json(t.defaultMaxSize[f]); },
+                               [f](TextureProjectSettings& t, const Json& v, std::string& e) {
+                                   long long size;
+                                   if (!readInt(v, 32, 16384, size, e)) return false;
+                                   if (size & (size - 1)) {
+                                       e = "must be a power of two";
+                                       return false;
+                                   }
+                                   t.defaultMaxSize[f] = (int)size;
+                                   return true;
+                               });
+            }
+            for (size_t g = 0; g < 3; g++) {
+                const std::string group = texturePlatformGroupName(g);
+                textureSetting("texture.texture_quality." + group, "int",
+                               "Top mips " + group + " games drop from streamable textures: 0 full, 1 half, 2 quarter, 3 eighth.",
+                               [g](const TextureProjectSettings& t) { return Json(t.textureQuality[g]); },
+                               [g](TextureProjectSettings& t, const Json& v, std::string& e) {
+                                   long long q;
+                                   if (!readInt(v, 0, 3, q, e)) return false;
+                                   t.textureQuality[g] = (int)q;
+                                   return true;
+                               });
+                textureSetting("texture.memory_budget_mb." + group, "int",
+                               "Resident texture MB of " + group + " games (0 = unlimited); over it the largest streamable textures drop mips.",
+                               [g](const TextureProjectSettings& t) { return Json(t.memoryBudgetMB[g]); },
+                               [g](TextureProjectSettings& t, const Json& v, std::string& e) {
+                                   long long mb;
+                                   if (!readInt(v, 0, 1 << 20, mb, e)) return false;
+                                   t.memoryBudgetMB[g] = (int)mb;
+                                   return true;
+                               });
+                textureSetting("texture.low_memory_fallback." + group, "bool",
+                               "RGB565 / RGBA4444 instead of RGBA8 when a " + group + " GL device samples none of a texture's formats.",
+                               [g](const TextureProjectSettings& t) { return Json((bool)t.lowMemoryFallback[g]); },
+                               [g](TextureProjectSettings& t, const Json& v, std::string& e) {
+                                   bool b;
+                                   if (!readBool(v, b, e)) return false;
+                                   t.lowMemoryFallback[g] = b;
+                                   return true;
+                               });
+            }
+            textureSetting("texture.cache_size_mb", "int", "MB the cooked texture cache keeps (least recently used first).",
+                           [](const TextureProjectSettings& t) { return Json(t.cacheSizeMB); },
+                           [](TextureProjectSettings& t, const Json& v, std::string& e) {
+                               long long mb;
+                               if (!readInt(v, 64, 1 << 20, mb, e)) return false;
+                               t.cacheSizeMB = (int)mb;
+                               return true;
+                           });
+            textureSetting("texture.global_cache_dir", "string", "A cooked texture cache every project shares (\"\" = the project's own).",
+                           [](const TextureProjectSettings& t) { return Json(t.globalCacheDir); },
+                           [](TextureProjectSettings& t, const Json& v, std::string& e) { return readString(v, t.globalCacheDir, e); });
+        }
         {
             Setting s;
             s.key = "graphics.html_ui_msaa_samples";
@@ -1518,6 +1618,42 @@ const Placement placements[] = {
     {"preferences.logging.levels", "Logging", "Category Levels", "Category Levels", "category level"},
 };
 
+std::string titleCase(const std::string& key);
+
+// Project Settings > Texture (S14 R24): texture.<setting>[.<family or platform group>]
+void textureRowPlacement(const std::string& key, SettingRow& row) {
+    static const std::map<std::string, std::pair<const char*, const char*>> settings = {
+        {"android_etc2_fallback", {"Android", "ETC2 Fallback"}},
+        {"default_quality", {"Defaults", "Quality"}},
+        {"default_max_size", {"Defaults", "Max Size"}},
+        {"texture_quality", {"Runtime", "Texture Quality"}},
+        {"memory_budget_mb", {"Runtime", "Memory Budget (MB)"}},
+        {"low_memory_fallback", {"Runtime", "Low-Memory Fallback"}},
+        {"cache_size_mb", {"Cache", "Cache Size (MB)"}},
+        {"global_cache_dir", {"Cache", "Global Cache Directory"}},
+    };
+    static const std::map<std::string, const char*> targets = {
+        {"desktop", "Desktop"}, {"mobile", "Mobile"}, {"android_etc2", "Android ETC2"}, {"web", "Web"}};
+    const std::string rest = key.substr(std::string("texture.").size());
+    const size_t dot = rest.find('.');
+    const std::string name = rest.substr(0, dot);
+    row.page = "Texture";
+    row.keywords = "texture compression cook";
+    auto it = settings.find(name);
+    if (it == settings.end()) {
+        row.label = titleCase(key);
+        return;
+    }
+    row.section = it->second.first;
+    row.label = it->second.second;
+    if (dot != std::string::npos) {
+        const std::string target = rest.substr(dot + 1);
+        auto t = targets.find(target);
+        row.label += std::string(" (") + (t != targets.end() ? t->second : target.c_str()) + ")";
+        row.keywords += " " + target;
+    }
+}
+
 const Placement* placementOf(const std::string& key) {
     for (const Placement& placement : placements) {
         if (key == placement.key) return &placement;
@@ -1570,11 +1706,12 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"Player", SettingsScope::Project, 0, "project product application icon resolution splash loading publishing platform"},
         {"Graphics", SettingsScope::Project, 1, "canvas scaling texture shaders shadows"},
         {"Quality", SettingsScope::Project, 2, "atmosphere fog clouds"},   // VSync: its row (a page match shows every row)
-        {"Physics", SettingsScope::Project, 3, "3d jolt"},
-        {"Physics 2D", SettingsScope::Project, 4, "2d box2d"},
-        {"Scripting", SettingsScope::Project, 5, "lua c++"},
-        {"Tags and Layers", SettingsScope::Project, 6, "tags layers"},
-        {"Editor", SettingsScope::Project, 7, "version control assets labels"},
+        {"Texture", SettingsScope::Project, 3, "texture compression import cook format astc etc2 bc7 basis mipmap budget cache"},
+        {"Physics", SettingsScope::Project, 4, "3d jolt"},
+        {"Physics 2D", SettingsScope::Project, 5, "2d box2d"},
+        {"Scripting", SettingsScope::Project, 6, "lua c++"},
+        {"Tags and Layers", SettingsScope::Project, 7, "tags layers"},
+        {"Editor", SettingsScope::Project, 8, "version control assets labels"},
         {"General", SettingsScope::Preference, 0, "editor auto save backup html ui"},
         {"Code Editor", SettingsScope::Preference, 1, "font"},
         {"Asset Pipeline", SettingsScope::Preference, 2, "refresh watcher hot reload"},
@@ -1611,6 +1748,8 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
             row.section = placement->section;
             row.label = placement->label;
             row.keywords = placement->keywords;
+        } else if (setting.key.rfind("texture.", 0) == 0) {
+            textureRowPlacement(setting.key, row);
         } else {
             row.page = setting.preference ? "General" : "Editor";
             row.label = titleCase(setting.key);
@@ -1633,6 +1772,12 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
             }
             return labels;
         }, "The project's asset labels: colour, rename and delete (edit_asset_labels)."));
+
+    addOrAbort(registry, uiRow("texture.clear_cache", "Texture", "Cache", "Texture Cache", "clear cooked textures cache size",
+        [](SettingsContext& ctx) {
+            TextureCookQueue& cooks = TextureCookQueue::get();
+            return cooks.getProject() == ctx.project() ? Json(cooks.getCache().totalBytes()) : Json(nullptr);
+        }, "The cooked texture cache's size, and Clear Texture Cache (reimport_textures cooks again)."));
 
     // ---- Preferences rows MCP does not set
     const char* general = "General";

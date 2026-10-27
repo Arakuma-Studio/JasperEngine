@@ -388,9 +388,12 @@ void Texture::setFramebuffer(Framebuffer* framebuffer){
 // GPU upload.
 bool Texture::hasTexturePixels(const std::shared_ptr<std::array<TextureData,6>>& data, size_t numFaces) {
     if (!data) return false;
+    // levels of every face (a cooked or prepared cube) sit in the first entry
+    if (data->at(0).hasLevels() && data->at(0).getFaceCount() == (int)numFaces) {
+        return true;
+    }
     for (size_t f = 0; f < numFaces; f++) {
-        TextureData& face = data->at(f);
-        if (!face.getData() || face.getSize() == 0) {
+        if (!data->at(f).hasPixels()) {
             return false;
         }
     }
@@ -696,6 +699,47 @@ bool Texture::isTransparent() const{
         return render->isTransparent();
     }
     return false;
+}
+
+bool Texture::isCompressed() const{
+    if (render && render->isCreated()){
+        return gpuFormatInfo(render->getGpuFormat()).compressed;
+    }
+    refreshFromPool();
+    return data && data->at(0).isCompressed();
+}
+
+std::string Texture::getGpuFormat() const{
+    if (render && render->isCreated()){
+        return gpuFormatName(render->getGpuFormat());
+    }
+    refreshFromPool();
+    if (data && data->at(0).hasPixels()){
+        return gpuFormatName(data->at(0).getGpuFormat());
+    }
+    return std::string();
+}
+
+unsigned int Texture::getStoredWidth() const{
+    if (framebuffer){
+        return framebuffer->getWidth();
+    }
+    if (render && render->isCreated()){
+        return (unsigned int)render->getWidth();
+    }
+    refreshFromPool();
+    return data ? (unsigned int)data->at(0).getWidth() : 0;
+}
+
+unsigned int Texture::getStoredHeight() const{
+    if (framebuffer){
+        return framebuffer->getHeight();
+    }
+    if (render && render->isCreated()){
+        return (unsigned int)render->getHeight();
+    }
+    refreshFromPool();
+    return data ? (unsigned int)data->at(0).getHeight() : 0;
 }
 
 void Texture::setReleaseDataAfterLoad(bool releaseDataAfterLoad){

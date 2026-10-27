@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <cstring>
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -15,6 +16,16 @@
 #include "util/LunaSVGRuntime.h"
 #include "Log.h"
 #include "Texture.h"
+#include "texture/BasisTranscode.h"
+#include "texture/CookedTextures.h"
+#include "texture/Ktx2.h"
+#include "texture/MipChain.h"
+#include "texture/TextureDecode.h"
+#include "texture/TextureFallback.h"
+#include "texture/TexturePrepare.h"
+
+#include <map>
+#include <mutex>
 
 using namespace jasperengine;
 
@@ -112,6 +123,13 @@ TextureData::TextureData() {
     this->dataOwned = false;
 
     this->svgScale = 1.0f;
+
+    this->gpuFormat = GpuTextureFormat::RGBA8;
+    this->srgb = true;
+    this->faceCount = 1;
+    this->flags = 0;
+    this->droppedLevels = 0;
+    this->fullLevelCount = 1;
 }
 
 TextureData::TextureData(int width, int height, unsigned int size, ColorFormat color_format, int channels, void* data){
@@ -129,6 +147,14 @@ TextureData::TextureData(int width, int height, unsigned int size, ColorFormat c
     this->dataOwned = false;
 
     this->svgScale = 1.0f;
+
+    this->gpuFormat = color_format == ColorFormat::RED ? GpuTextureFormat::R8
+                    : color_format == ColorFormat::RED16 ? GpuTextureFormat::R16 : GpuTextureFormat::RGBA8;
+    this->srgb = color_format == ColorFormat::RGBA;
+    this->faceCount = 1;
+    this->flags = 0;
+    this->droppedLevels = 0;
+    this->fullLevelCount = 1;
 }
 
 TextureData::TextureData(const char* filename) : TextureData(){
@@ -160,7 +186,10 @@ bool TextureData::operator == ( const TextureData& v ) const{
         v.channels == channels &&
         v.data == data &&
         v.transparent == transparent &&
-        v.dataOwned == dataOwned
+        v.dataOwned == dataOwned &&
+        v.levelStorage == levelStorage &&
+        v.gpuFormat == gpuFormat &&
+        v.droppedLevels == droppedLevels
     );
 }
 
@@ -173,6 +202,41 @@ bool TextureData::loadTexture(Data* filedata) {
 
     if (dataOwned && data)
         releaseImageData();
+    levels.clear();
+    levelStorage.reset();
+    cpuCopy.reset();
+    flags = 0;
+    droppedLevels = 0;
+    fullLevelCount = 1;
+
+    if (Ktx2::isKtx2(std::span<const uint8_t>(filedata->getMemPtr(), filedata->length()))) {
+        // CPU readers want pixels: compressed levels are decoded (level 0)
+        std::string error;
+        if (!loadKtx2Bytes(filedata->getMemPtr(), filedata->length(), true, 0, nullptr, false, &error)) {
+            Log::error("Error loading KTX2 texture: %s", error.c_str());
+            return false;
+        }
+        return true;
+    }
+
+    if (stbi_is_hdr_from_memory((stbi_uc const *)filedata->getMemPtr(), filedata->length())) {
+        // HDR (.hdr) stays float: the importer's hdr type cooks it to BC6H / RGB9E5 / RGBA16F
+        float* pixels = stbi_loadf_from_memory((stbi_uc const *)filedata->getMemPtr(), filedata->length(), &width, &height, &channels, 4);
+        if (!pixels){
+            Log::error("Error loading texture: %s", stbi_failure_reason());
+            return false;
+        }
+        data = pixels;
+        channels = 4;
+        color_format = ColorFormat::RGBA32F;
+        size = (unsigned int)((size_t)width * (size_t)height * 4 * sizeof(float));
+        originalWidth = width;
+        originalHeight = height;
+        gpuFormat = GpuTextureFormat::RGBA16F;
+        srgb = false;
+        transparent = hasAlpha();
+        return true;
+    }
 
     if (looksLikeSvg(filedata)) {
         if (!loadSvgTexture(filedata)) {
@@ -218,9 +282,215 @@ bool TextureData::loadTexture(Data* filedata) {
 
     originalWidth = width;
     originalHeight = height;
+    gpuFormat = color_format == ColorFormat::RED ? GpuTextureFormat::R8
+              : color_format == ColorFormat::RED16 ? GpuTextureFormat::R16 : GpuTextureFormat::RGBA8;
+    srgb = color_format == ColorFormat::RGBA;
 
     transparent = hasAlpha();
     
+    return true;
+}
+
+namespace {
+    std::mutex& floatDecoderMutex(){
+        static std::mutex* mutex = new std::mutex();
+        return *mutex;
+    }
+
+    std::map<std::string, TextureData::FloatDecoder>& floatDecoders(){
+        static auto* decoders = new std::map<std::string, TextureData::FloatDecoder>();
+        return *decoders;
+    }
+
+    std::string textureLowerExtension(const std::string& path){
+        const size_t dot = path.find_last_of('.');
+        std::string extension = dot == std::string::npos ? std::string() : path.substr(dot);
+        std::transform(extension.begin(), extension.end(), extension.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return extension;
+    }
+
+    TextureData::FloatDecoder floatDecoderFor(const std::string& path){
+        std::lock_guard<std::mutex> lock(floatDecoderMutex());
+        auto it = floatDecoders().find(textureLowerExtension(path));
+        return it == floatDecoders().end() ? nullptr : it->second;
+    }
+
+    uint32_t flagsFromKeyValues(const Ktx2Info& info){
+        uint32_t flags = 0;
+        if (TextureFallback::hasFlag(info, "alpha")) flags |= TEXTURE_FLAG_ALPHA;
+        if (TextureFallback::hasFlag(info, "normalRG")) flags |= TEXTURE_FLAG_NORMAL_RG;
+        if (TextureFallback::hasFlag(info, "coverage")) flags |= TEXTURE_FLAG_COVERAGE;
+        if (TextureFallback::hasFlag(info, "displayEncoded")) flags |= TEXTURE_FLAG_DISPLAY_ENCODED;
+        if (TextureFallback::hasFlag(info, "cpu")) flags |= TEXTURE_FLAG_CPU_READABLE;
+        if (TextureFallback::hasFlag(info, "streamable")) flags |= TEXTURE_FLAG_STREAMABLE;
+        if (info.faces == 6) flags |= TEXTURE_FLAG_CUBE;
+        return flags;
+    }
+
+}
+
+void TextureData::registerFloatDecoder(const std::string& extension, FloatDecoder decoder){
+    std::lock_guard<std::mutex> lock(floatDecoderMutex());
+    floatDecoders()[extension] = decoder;
+}
+
+bool TextureData::hasFloatDecoder(const std::string& extension){
+    std::lock_guard<std::mutex> lock(floatDecoderMutex());
+    return floatDecoders().count(extension) > 0;
+}
+
+bool TextureData::loadKtx2(const unsigned char* bytes, unsigned int length, uint32_t firstLevel,
+                           const TextureFormatSupport* support, bool lowMemoryFallback, std::string* error){
+    if (dataOwned && data)
+        releaseImageData();
+    return loadKtx2Bytes(bytes, length, false, firstLevel, support, lowMemoryFallback, error);
+}
+
+bool TextureData::loadKtx2Bytes(const unsigned char* bytes, unsigned int length, bool decodeToPixels, uint32_t firstLevel,
+                                const TextureFormatSupport* support, bool lowMemoryFallback, std::string* error){
+    std::string message;
+    std::string& err = error ? *error : message;
+    Ktx2MemorySource source(std::span<const uint8_t>(bytes, length));
+    Ktx2Image image;
+    if (!Ktx2::read(source, firstLevel, image, err))
+        return false;
+    return loadKtx2Image(image, decodeToPixels, support, lowMemoryFallback, err);
+}
+
+bool TextureData::loadKtx2Image(Ktx2Image& image, bool decodeToPixels, const TextureFormatSupport* support,
+                                bool lowMemoryFallback, std::string& err){
+    if (dataOwned && data && !levelStorage)
+        releaseImageData();
+    const Ktx2Info& info = image.info;
+
+    int logicalWidth = (int)info.width;
+    int logicalHeight = (int)info.height;
+    auto logical = info.keyValues.find("JE.logical");
+    if (logical != info.keyValues.end()){
+        int w = 0, h = 0;
+        if (sscanf(logical->second.c_str(), "%d,%d", &w, &h) == 2 && w > 0 && h > 0){
+            logicalWidth = w;
+            logicalHeight = h;
+        }
+    }
+    const int levelWidth = (int)info.levelWidth(image.firstLevel);
+    const int levelHeight = (int)info.levelHeight(image.firstLevel);
+    const int faces = (int)info.faces;
+    const TextureContent content = TextureFallback::contentOf(info);
+
+    GpuTextureFormat format = info.format;
+    bool isSrgb = info.srgb;
+    std::vector<std::vector<uint8_t>> out;
+
+    if (info.codec != Ktx2Codec::Raw){
+        // Basis: transcoded here, on the loader, to what the device samples (RGBA8 for CPU readers)
+        TextureUploadPlan plan;
+        if (decodeToPixels || !support){
+            plan.path = TextureUploadPlan::Path::Transcode;
+            plan.upload = content == TextureContent::Hdr ? GpuTextureFormat::RGBA16F
+                        : content == TextureContent::Single ? GpuTextureFormat::R8 : GpuTextureFormat::RGBA8;
+        }else{
+            plan = TextureFallback::plan(info, *support, lowMemoryFallback);
+        }
+        if (plan.path == TextureUploadPlan::Path::Unavailable){
+            err = plan.reason;
+            return false;
+        }
+        if (!plan.reason.empty())
+            TextureFallback::logOnce(format, true, plan.reason);
+        std::vector<uint8_t> rebased;
+        if (!BasisTranscode::rebase(image, rebased, err))
+            return false;
+        BasisTranscode::Session session;
+        if (!session.open(std::move(rebased), err))
+            return false;
+        const uint32_t count = decodeToPixels ? 1u : session.levelCount();
+        out.resize(count);
+        for (uint32_t level = 0; level < count; level++){
+            if (!session.transcodeLevel(level, plan.upload, content, out[level], err))
+                return false;
+        }
+        format = plan.upload;
+    }else{
+        out = std::move(image.levels);
+        const bool cpuDecode = decodeToPixels ? gpuFormatInfo(format).compressed || format == GpuTextureFormat::RGB9E5 : false;
+        TextureUploadPlan plan;
+        if (decodeToPixels){
+            plan.path = cpuDecode ? TextureUploadPlan::Path::CpuDecode : TextureUploadPlan::Path::Native;
+            plan.decoded = TextureDecode::decodedFormat(format);
+            plan.upload = plan.decoded;
+        }else if (support){
+            plan = TextureFallback::planRaw(format, content, *support, lowMemoryFallback);
+        }
+        if (plan.path == TextureUploadPlan::Path::Unavailable){
+            err = plan.reason;
+            return false;
+        }
+        if (plan.path == TextureUploadPlan::Path::CpuDecode){
+            if (!decodeToPixels)
+                TextureFallback::logOnce(format, false, plan.reason);
+            const size_t count = decodeToPixels ? 1 : out.size();
+            std::vector<std::vector<uint8_t>> decoded(count);
+            for (size_t level = 0; level < count; level++){
+                const int w = mipDimension(levelWidth, (int)level);
+                const int h = mipDimension(levelHeight, (int)level);
+                if (!TextureDecode::decodeFaces(format, w, h, faces, out[level].data(), out[level].size(), decoded[level])){
+                    err = std::string(gpuFormatName(format)) + " cannot be decoded on the CPU";
+                    return false;
+                }
+                if (plan.upload != plan.decoded){
+                    std::vector<uint8_t> converted;
+                    std::vector<uint8_t> faceOut;
+                    const size_t faceBytes = gpuFormatLevelBytes(plan.decoded, w, h);
+                    for (int f = 0; f < faces; f++){
+                        if (!TextureDecode::convert(plan.decoded, plan.upload, w, h, decoded[level].data() + faceBytes * f, faceBytes, faceOut)){
+                            err = std::string("cannot convert ") + gpuFormatName(plan.decoded) + " to " + gpuFormatName(plan.upload);
+                            return false;
+                        }
+                        converted.insert(converted.end(), faceOut.begin(), faceOut.end());
+                    }
+                    decoded[level] = std::move(converted);
+                }
+            }
+            out = std::move(decoded);
+            format = plan.upload;
+        }
+    }
+
+    // CPU readers know RGBA8, R8 and R16: the others are widened for them
+    if (decodeToPixels && format != GpuTextureFormat::RGBA8 && format != GpuTextureFormat::R8 && format != GpuTextureFormat::R16){
+        const int w = levelWidth, h = levelHeight;
+        const size_t n = (size_t)w * (size_t)h * (size_t)faces;
+        std::vector<uint8_t> rgba(n * 4);
+        const std::vector<uint8_t>& src = out[0];
+        for (size_t i = 0; i < n; i++){
+            uint8_t* o = &rgba[i * 4];
+            if (format == GpuTextureFormat::RG8){
+                const float x = src[i * 2] / 255.0f * 2.0f - 1.0f, y = src[i * 2 + 1] / 255.0f * 2.0f - 1.0f;
+                const float z = std::sqrt(std::max(0.0f, 1.0f - x * x - y * y));
+                o[0] = src[i * 2]; o[1] = src[i * 2 + 1]; o[2] = (uint8_t)std::lround((z * 0.5f + 0.5f) * 255.0f); o[3] = 255;
+            }else if (format == GpuTextureFormat::RGBA16F){
+                for (int c = 0; c < 4; c++){
+                    uint16_t half;
+                    std::memcpy(&half, &src[(i * 4 + c) * 2], 2);
+                    o[c] = (uint8_t)std::clamp((int)std::lround(halfToFloat(half) * 255.0f), 0, 255);
+                }
+            }else{
+                err = std::string(gpuFormatName(format)) + " pixels cannot be read on the CPU";
+                return false;
+            }
+        }
+        out.assign(1, std::move(rgba));
+        format = GpuTextureFormat::RGBA8;
+    }
+
+    setLevels(format, isSrgb, faces, levelWidth, levelHeight, std::move(out));
+    setLogicalSize(logicalWidth, logicalHeight);
+    flags = flagsFromKeyValues(info);
+    droppedLevels = (int)image.firstLevel;
+    fullLevelCount = (int)info.levelCount;
+    transparent = content == TextureContent::ColorAlpha;
     return true;
 }
 
@@ -273,6 +543,15 @@ bool TextureData::loadTextureFromFile(const char* filename) {
     int res = filedata.open(cleanPath.c_str());
 
     if (res==FileErrors::FILE_NOT_FOUND){
+        // a cooked export ships no source: its cooked file stands in (decoded for the CPU)
+        CookedTextureEntry cooked;
+        if (CookedTextures::find(cleanPath, cooked) && filedata.open(cooked.file.c_str()) == FileErrors::FILEDATA_OK){
+            if (!loadTexture(&filedata)){
+                Log::error("Texture file not loaded: %s (cooked %s)", cleanPath.c_str(), cooked.file.c_str());
+                return false;
+            }
+            return true;
+        }
         Log::error("Texture file not found: %s", cleanPath.c_str());
         return false;
     }
@@ -286,6 +565,8 @@ bool TextureData::loadTextureFromFile(const char* filename) {
         if (dataOwned && data)
             releaseImageData();
         result = loadSvgTexture(&filedata);
+    } else if (FloatDecoder decoder = floatDecoderFor(cleanPath)) {
+        result = loadFloatTexture(decoder, filedata.getMemPtr(), filedata.length());
     } else {
         result = loadTexture(&filedata);
     }
@@ -295,6 +576,36 @@ bool TextureData::loadTextureFromFile(const char* filename) {
     }
 
     return result;
+}
+
+bool TextureData::loadFloatTexture(FloatDecoder decoder, const unsigned char* bytes, size_t length){
+    if (dataOwned && data)
+        releaseImageData();
+    levels.clear();
+    levelStorage.reset();
+    cpuCopy.reset();
+    std::vector<float> rgba;
+    int w = 0, h = 0;
+    std::string error;
+    if (!decoder(bytes, length, rgba, w, h, error) || w <= 0 || h <= 0 || rgba.size() < (size_t)w * (size_t)h * 4){
+        Log::error("Error loading texture: %s", error.c_str());
+        return false;
+    }
+    float* pixels = static_cast<float*>(malloc((size_t)w * (size_t)h * 4 * sizeof(float)));
+    if (!pixels)
+        return false;
+    std::memcpy(pixels, rgba.data(), (size_t)w * (size_t)h * 4 * sizeof(float));
+    data = pixels;
+    width = originalWidth = w;
+    height = originalHeight = h;
+    channels = 4;
+    color_format = ColorFormat::RGBA32F;
+    size = (unsigned int)((size_t)w * (size_t)h * 4 * sizeof(float));
+    gpuFormat = GpuTextureFormat::RGBA16F;
+    srgb = false;
+    flags = 0;
+    transparent = hasAlpha();
+    return true;
 }
 
 bool TextureData::loadTextureFromMemory(unsigned char* data, unsigned int dataLength){
@@ -324,6 +635,8 @@ bool TextureData::loadTextureFromFileData(const char* filename, unsigned char* b
         if (dataOwned && data)
             releaseImageData();
         result = loadSvgTexture(&filedata);
+    } else if (FloatDecoder decoder = floatDecoderFor(cleanPath)) {
+        result = loadFloatTexture(decoder, bytes, dataLength);
     } else {
         result = loadTexture(&filedata);
     }
@@ -467,6 +780,16 @@ void TextureData::copy ( const TextureData& v ){
     this->svgScale = v.svgScale;
 
     this->data = v.data;
+
+    this->gpuFormat = v.gpuFormat;
+    this->srgb = v.srgb;
+    this->faceCount = v.faceCount;
+    this->levels = v.levels;
+    this->levelStorage = v.levelStorage;
+    this->flags = v.flags;
+    this->droppedLevels = v.droppedLevels;
+    this->fullLevelCount = v.fullLevelCount;
+    this->cpuCopy = v.cpuCopy;
 }
 
 TextureData::~TextureData() {
@@ -475,6 +798,14 @@ TextureData::~TextureData() {
 }
 
 void TextureData::releaseImageData(){
+    cpuCopy.reset();
+    if (levelStorage || !levels.empty()){
+        // `data` is level 0 inside the storage: the storage goes when its last copy lets it go
+        levels.clear();
+        levelStorage.reset();
+        data = NULL;
+        return;
+    }
     if (data){
         stbi_image_free(data);
         data = NULL;
@@ -482,6 +813,8 @@ void TextureData::releaseImageData(){
 }
 
 int TextureData::getBytesPerChannel(ColorFormat format){
+    if (format == ColorFormat::RGBA32F)
+        return 4;
     return format == ColorFormat::RED16 ? 2 : 1;
 }
 
@@ -494,6 +827,15 @@ int TextureData::getNearestPowerOfTwo(int size){
 }
 
 bool TextureData::hasAlpha(){
+    if (!data && !levels.empty())
+        return (flags & TEXTURE_FLAG_ALPHA) != 0;
+    if (color_format == ColorFormat::RGBA32F && data){
+        const float* pixels = (const float*)data;
+        for (size_t i = 0; i < (size_t)width * (size_t)height; i++)
+            if (pixels[i * 4 + 3] < 1.0f)
+                return true;
+        return false;
+    }
     if (channels == 4){
         for(int y = 0; y < height; y++){
             for(int x = 0; x < width; x++){
@@ -507,6 +849,9 @@ bool TextureData::hasAlpha(){
 }
 
 void TextureData::crop(int xOffset, int yOffset, int newWidth, int newHeight){
+    detachLevels();
+    if (!data)
+        return;
     
     int rowsize = width * channels;
     int newRowsize = newWidth * channels;
@@ -546,6 +891,9 @@ void TextureData::resizeToSquare(){
 }
 
 void TextureData::resize(int newWidth, int newHeight){
+    detachLevels();
+    if (!data)
+        return;
 
     if ((newWidth != width) || (newHeight != height)){
 
@@ -586,6 +934,9 @@ void TextureData::fitPowerOfTwo(){
 }
 
 void TextureData::fitSize(int xOffset, int yOffset, int newWidth, int newHeight){
+    detachLevels();
+    if (!data)
+        return;
     
     if ((newWidth != width) || (newHeight != height)){
 
@@ -614,94 +965,17 @@ void TextureData::fitSize(int xOffset, int yOffset, int newWidth, int newHeight)
 }
 
 void TextureData::fixAlphaBorder(){
-    // rings of transparent pixels colored around visible ones, enough for a few mip levels
-    const int borderSize = 4;
-
+    detachLevels();
     if (!data || channels != 4 || getBytesPerChannel(color_format) != 1)
         return;
-
-    unsigned char* pixels = (unsigned char*)data;
-    const int count = width * height;
-
-    // 0 transparent, 1 colored, 2 queued in the next ring
-    std::vector<unsigned char> state(count);
-    bool hasTransparent = false;
-    for (int i = 0; i < count; i++){
-        state[i] = (pixels[i * 4 + 3] > 0) ? 1 : 0;
-        if (state[i] == 0)
-            hasTransparent = true;
-    }
-    if (!hasTransparent)
-        return;
-
-    std::vector<int> ring;
-    std::vector<int> current;
-
-    auto queueNeighbors = [&](int x, int y){
-        for (int ny = std::max(0, y - 1); ny <= std::min(height - 1, y + 1); ny++){
-            for (int nx = std::max(0, x - 1); nx <= std::min(width - 1, x + 1); nx++){
-                int j = ny * width + nx;
-                if (state[j] == 0){
-                    state[j] = 2;
-                    ring.push_back(j);
-                }
-            }
-        }
-    };
-
-    for (int y = 0; y < height; y++){
-        for (int x = 0; x < width; x++){
-            if (state[y * width + x] != 0)
-                continue;
-            bool touchesColor = false;
-            for (int ny = std::max(0, y - 1); ny <= std::min(height - 1, y + 1) && !touchesColor; ny++){
-                for (int nx = std::max(0, x - 1); nx <= std::min(width - 1, x + 1); nx++){
-                    if (state[ny * width + nx] == 1){
-                        touchesColor = true;
-                        break;
-                    }
-                }
-            }
-            if (touchesColor){
-                state[y * width + x] = 2;
-                ring.push_back(y * width + x);
-            }
-        }
-    }
-
-    for (int pass = 0; pass < borderSize && !ring.empty(); pass++){
-        current.swap(ring);
-        ring.clear();
-
-        for (int i : current){
-            int x = i % width;
-            int y = i / width;
-            int color[3] = {0, 0, 0};
-            int n = 0;
-            for (int ny = std::max(0, y - 1); ny <= std::min(height - 1, y + 1); ny++){
-                for (int nx = std::max(0, x - 1); nx <= std::min(width - 1, x + 1); nx++){
-                    int j = ny * width + nx;
-                    if (state[j] == 1){
-                        for (int c = 0; c < 3; c++)
-                            color[c] += pixels[j * 4 + c];
-                        n++;
-                    }
-                }
-            }
-            for (int c = 0; c < 3; c++)
-                pixels[i * 4 + c] = (unsigned char)(color[c] / n);
-        }
-
-        for (int i : current){
-            state[i] = 1;
-        }
-        for (int i : current){
-            queueNeighbors(i % width, i / width);
-        }
-    }
+    // rings of transparent pixels colored around visible ones, enough for a few mip levels
+    bleedAlphaBorder((unsigned char*)data, width, height, 4);
 }
 
 void TextureData::flipVertical(){
+    detachLevels();
+    if (!data)
+        return;
     
     int bufsize = width * channels;
     
@@ -782,6 +1056,178 @@ bool TextureData::isTransparent(){
 
 int TextureData::getMinNearestPowerOfTwo(){
     return getNearestPowerOfTwo(std::min(width, height));
+}
+
+void TextureData::detachLevels(){
+    if (levels.empty() && !levelStorage)
+        return;
+    if (!data || levels.empty()){
+        // block-compressed: no pixels to edit
+        levels.clear();
+        levelStorage.reset();
+        data = NULL;
+        return;
+    }
+    const size_t bytes = gpuFormatLevelBytes(gpuFormat, levels[0].width, levels[0].height) * (size_t)faceCount;
+    void* copy = malloc(bytes);
+    if (copy)
+        memcpy(copy, data, bytes);
+    levels.clear();
+    levelStorage.reset();
+    data = copy;
+    size = (unsigned int)bytes;
+    faceCount = 1;
+    droppedLevels = 0;
+}
+
+void TextureData::setLevels(GpuTextureFormat format, bool srgb, int faces, int width, int height, std::vector<std::vector<uint8_t>> levelBytes){
+    // decoded pixels this object owns go; shared ones stay with whoever frees them
+    if (dataOwned && data && !levelStorage)
+        releaseImageData();
+    data = NULL;
+    size_t total = 0;
+    for (const std::vector<uint8_t>& level : levelBytes)
+        total += level.size();
+    auto storage = std::make_shared<std::vector<uint8_t>>();
+    storage->reserve(total);
+    std::vector<size_t> offsets;
+    for (const std::vector<uint8_t>& level : levelBytes){
+        offsets.push_back(storage->size());
+        storage->insert(storage->end(), level.begin(), level.end());
+    }
+    levels.clear();
+    for (size_t i = 0; i < levelBytes.size(); i++){
+        TextureLevel level;
+        level.width = mipDimension(width, (int)i);
+        level.height = mipDimension(height, (int)i);
+        level.data = storage->data() + offsets[i];
+        level.size = levelBytes[i].size();
+        levels.push_back(level);
+    }
+    levelStorage = std::move(storage);
+    gpuFormat = format;
+    this->srgb = srgb;
+    faceCount = std::max(1, faces);
+    this->width = width;
+    this->height = height;
+    originalWidth = width;
+    originalHeight = height;
+    // the CPU readers' view of level 0
+    if (format == GpuTextureFormat::RGBA8 || format == GpuTextureFormat::R8 || format == GpuTextureFormat::R16){
+        data = levels.empty() ? NULL : (void*)levels[0].data;
+        size = levels.empty() ? 0 : (unsigned int)levels[0].size;
+        channels = format == GpuTextureFormat::RGBA8 ? 4 : 1;
+        color_format = format == GpuTextureFormat::RGBA8 ? ColorFormat::RGBA : (format == GpuTextureFormat::R8 ? ColorFormat::RED : ColorFormat::RED16);
+    }else{
+        size = levels.empty() ? 0 : (unsigned int)levels[0].size;
+        channels = gpuFormatInfo(format).channels;
+        color_format = ColorFormat::RGBA;
+    }
+    dataOwned = false;
+}
+
+bool TextureData::hasLevels() const{
+    return !levels.empty();
+}
+
+const std::vector<TextureLevel>& TextureData::getLevels() const{
+    return levels;
+}
+
+GpuTextureFormat TextureData::getGpuFormat() const{
+    return gpuFormat;
+}
+
+bool TextureData::isSrgb() const{
+    return srgb;
+}
+
+int TextureData::getFaceCount() const{
+    return faceCount;
+}
+
+bool TextureData::isCompressed() const{
+    return gpuFormatInfo(gpuFormat).compressed && !levels.empty();
+}
+
+bool TextureData::hasPixels() const{
+    return !levels.empty() || (data != NULL && size > 0);
+}
+
+uint32_t TextureData::getFlags() const{
+    return flags;
+}
+
+void TextureData::setFlags(uint32_t flags){
+    this->flags = flags;
+}
+
+void TextureData::setLogicalSize(int width, int height){
+    originalWidth = width;
+    originalHeight = height;
+}
+
+int TextureData::getDroppedLevels() const{
+    return droppedLevels;
+}
+
+void TextureData::setDroppedLevels(int dropped, int fullLevelCount){
+    droppedLevels = dropped;
+    this->fullLevelCount = fullLevelCount;
+}
+
+int TextureData::getFullLevelCount() const{
+    return fullLevelCount;
+}
+
+uint64_t TextureData::getLevelBytes() const{
+    uint64_t bytes = 0;
+    for (const TextureLevel& level : levels)
+        bytes += level.size;
+    if (levels.empty() && data)
+        bytes = size;
+    return bytes;
+}
+
+void TextureData::setCpuCopy(std::shared_ptr<std::array<TextureData, 6>> copy){
+    cpuCopy = std::move(copy);
+}
+
+const std::shared_ptr<std::array<TextureData, 6>>& TextureData::getCpuCopy() const{
+    return cpuCopy;
+}
+
+bool TextureData::toRgba8(std::vector<uint8_t>& out) const{
+    if (!data || width <= 0 || height <= 0)
+        return false;
+    const size_t n = (size_t)width * (size_t)height;
+    out.resize(n * 4);
+    if (color_format == ColorFormat::RGBA32F){
+        const float* src = (const float*)data;
+        for (size_t i = 0; i < n; i++){
+            for (int c = 0; c < 3; c++)
+                out[i * 4 + c] = (uint8_t)std::clamp((int)std::lround(std::pow(std::max(src[i * 4 + c], 0.0f), 1.0f / 2.2f) * 255.0f), 0, 255);
+            out[i * 4 + 3] = (uint8_t)std::clamp((int)std::lround(src[i * 4 + 3] * 255.0f), 0, 255);
+        }
+        return true;
+    }
+    const unsigned char* src = (const unsigned char*)data;
+    for (size_t i = 0; i < n; i++){
+        if (color_format == ColorFormat::RED16){
+            uint16_t v;
+            memcpy(&v, src + i * 2, 2);
+            out[i * 4 + 0] = out[i * 4 + 1] = out[i * 4 + 2] = (uint8_t)(((uint32_t)v * 255u + 32767u) / 65535u);
+            out[i * 4 + 3] = 255;
+        }else if (channels == 1){
+            out[i * 4 + 0] = out[i * 4 + 1] = out[i * 4 + 2] = src[i];
+            out[i * 4 + 3] = 255;
+        }else if (channels == 4){
+            memcpy(&out[i * 4], src + i * 4, 4);
+        }else{
+            return false;
+        }
+    }
+    return true;
 }
 
 void TextureData::cleanupTexture(void* data){

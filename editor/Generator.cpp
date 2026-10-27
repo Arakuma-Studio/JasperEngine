@@ -2448,6 +2448,17 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     mainContent += "    Engine::setAtmosphereQualityDefaults(" + qualityName(atmosphereQuality[0]) + ", " + qualityName(atmosphereQuality[1]) + ", " +
                    qualityName(atmosphereQuality[2]) + ");\n";
 
+    // the texture quality, memory budget and low-memory fallback of the platform group
+    // (Project Settings > Texture), before any texture loads
+    {
+        std::string groups[3];
+        for (int g = 0; g < 3; g++) {
+            groups[g] = "{" + std::to_string(textureQuality[g]) + ", " + std::to_string(textureBudgetMB[g]) + ", " +
+                        (textureLowMemory[g] ? "true" : "false") + "}";
+        }
+        mainContent += "    Engine::setTextureDefaults(" + groups[0] + ", " + groups[1] + ", " + groups[2] + ");\n";
+    }
+
     // MSAA of the HTML UI targets (Project Settings > Graphics), before any document draws
     mainContent += "    UIDocumentSystem::setPreferredSampleCount(" + std::to_string(htmlUiMsaaSamples) + ");\n";
     // the lobes a mobile or web build draws (Project Settings > Graphics > Mobile PBR Tier);

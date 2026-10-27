@@ -5,7 +5,10 @@
 #define TextureRender_h
 
 #include "Render.h"
+#include "texture/TextureFormat.h"
 #include "sokol/SokolTexture.h"
+
+#include <span>
 
 namespace jasperengine {
 
@@ -26,6 +29,12 @@ namespace jasperengine {
                 const std::string& label, int width, int height,
                 ColorFormat colorFormat, TextureType type, int numFaces, void* data[], size_t size[],
                 TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV);
+
+        // levels as given (level 0 first, each with every face or array slice contiguous), in a
+        // cooked or uncompressed GPU format: the one upload path of file textures (spec S14 D9)
+        bool createTextureLevels(const std::string& label, TextureType type, GpuTextureFormat format,
+                                 int width, int height, int numFaces, std::span<const TextureLevel> levels,
+                                 TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV);
 
         // a 3D texture: width x height x depth RGBA8 texels (x fastest, then y, then the
         // slices), linear or nearest and repeat or clamp on every axis, no mipmaps
@@ -86,8 +95,16 @@ namespace jasperengine {
         void setTransparent(bool transparent);
         bool isTransparent() const;
 
+        // what createTextureLevels uploaded (RGBA8 / 1 level for the other creators)
+        GpuTextureFormat getGpuFormat() const;
+        int getLevelCount() const;
+        uint64_t getGpuBytes() const;
+
     private:
         bool transparent = false;
+        GpuTextureFormat gpuFormat = GpuTextureFormat::RGBA8;
+        int levelCount = 1;
+        uint64_t gpuBytes = 0;
     };
 }
 

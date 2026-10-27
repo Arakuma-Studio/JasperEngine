@@ -29,6 +29,10 @@ namespace jasperengine::editor {
 
         static int runBenchmarkHelp(const char* executableName);
 
+        // Cooks a project's textures into its texture cache and reports them, or decodes a KTX2
+        // to PNG (editor/texture/TextureCli.h)
+        static int runCookTexturesCommand(int argc, char** argv, const char* executableName);
+
         // Checks a project's Lua scripts, shader forks, C++ scripts and HTML/CSS UI files (see docs/mcp/checks.md)
         static int runCheckCommand(int argc, char** argv, const char* executableName);
 
