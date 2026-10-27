@@ -251,10 +251,6 @@ void SokolSystem::endPass(){
     }
 }
 
-bool SokolSystem::isInPass(){
-    return passOpen;
-}
-
 uint64_t SokolSystem::getNestedPassCount(){
     return nestedPasses;
 }
@@ -265,10 +261,6 @@ void SokolSystem::initializeAttachments(const sg_attachments& attachments, bool 
         return;
     }
     runInitialization(attachments, loadDepthStencil);
-}
-
-size_t SokolSystem::getPendingInitializationCount(){
-    return pendingInitializations.size();
 }
 
 void SokolSystem::commitQueue(){

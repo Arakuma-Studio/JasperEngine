@@ -41,7 +41,6 @@ namespace jasperengine{
         // logged and counted (getNestedPassCount), and begun anyway, as before.
         static void beginPass(const sg_pass& pass);
         static void endPass();
-        static bool isInPass();
         // passes begun while another was open, since start (0 in a correct program)
         static uint64_t getNestedPassCount();
         // A pass that only gives new attachments defined contents and a readable layout
@@ -50,8 +49,6 @@ namespace jasperengine{
         // that pass ends, before any later pass can use the attachments: if they are destroyed
         // by then, it is dropped.
         static void initializeAttachments(const sg_attachments& attachments, bool loadDepthStencil);
-        // initialisations waiting for the open pass to end (tests)
-        static size_t getPendingInitializationCount();
 
         static void scheduleCleanup(void (*cleanupFunc)(void* cleanupData), void* cleanupData, int32_t numFramesToDefer = 0);
         static void addQueueCommand(void (*custom_cb)(void* custom_data), void* custom_data);
