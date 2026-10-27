@@ -71,13 +71,14 @@ namespace je_crash_test {
 
 #if !defined(_WIN32)
     char sentinelPath[1024]{};
+    bool previousReturns = false;
     void previousHandler(int sig, siginfo_t*, void*) {
         int fd = open(sentinelPath, O_CREAT | O_WRONLY, 0600);
         if (fd >= 0) {
             const ssize_t ignored = write(fd, sig == SIGTRAP ? "trap\n" : "chained\n", sig == SIGTRAP ? 5 : 8);
             (void)ignored; close(fd);
         }
-        if (sig != SIGTRAP) {
+        if (sig != SIGTRAP && !previousReturns) {
             struct sigaction action{};
             sigemptyset(&action.sa_mask);
             action.sa_handler = SIG_DFL;
@@ -144,14 +145,15 @@ int main(int argc, char** argv) {
     config.backend = "none";
 #if !defined(_WIN32)
     if (std::strcmp(mode, "chain") == 0 || std::strcmp(mode, "chain_return") == 0 ||
-            std::strcmp(mode, "chain_after_return") == 0) {
+            std::strcmp(mode, "chain_after_return") == 0 || std::strncmp(mode, "recursive_chain", 15) == 0) {
+        previousReturns = std::strcmp(mode, "recursive_chain_return") == 0;
         const std::string file = (root / "sentinel").string();
         std::memcpy(sentinelPath, file.c_str(), file.size() + 1);
         struct sigaction sentinel{};
         sigemptyset(&sentinel.sa_mask);
         sentinel.sa_sigaction = previousHandler;
         sentinel.sa_flags = SA_SIGINFO;
-        sigaction(std::strcmp(mode, "chain") == 0 ? SIGSEGV : SIGTRAP, &sentinel, nullptr);
+        sigaction((std::strcmp(mode, "chain") == 0 || std::strncmp(mode, "recursive_chain", 15) == 0) ? SIGSEGV : SIGTRAP, &sentinel, nullptr);
         if (std::strcmp(mode, "chain_after_return") == 0) sigaction(SIGSEGV, &sentinel, nullptr);
     }
 #endif
@@ -179,7 +181,7 @@ int main(int argc, char** argv) {
         return 0;
     }
 #endif
-    if (name == "concurrent" || name == "recursive" || name == "recursive_abort") {
+    if (name == "concurrent" || name == "recursive" || name == "recursive_chain" || name == "recursive_chain_return" || name == "recursive_abort") {
         log("last line before the crash");
         recursiveFault = name != "concurrent";
 #if defined(_WIN32)
@@ -195,6 +197,22 @@ int main(int argc, char** argv) {
         first.join();
         return 1;
     }
+#if defined(_WIN32)
+    if (name == "cached_thread_name") {
+        log("last line before the crash");
+        auto worker = thread::spawnNamed("Cached fault", [] {
+            // prepareThread already captured the name. A live lookup from the writer
+            // would see this newer name (and could allocate behind a held heap lock).
+            using SetDescription = HRESULT (WINAPI*)(HANDLE, PCWSTR);
+            auto setDescription = reinterpret_cast<SetDescription>(
+                GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "SetThreadDescription"));
+            if (setDescription) setDescription(GetCurrentThread(), L"Changed after preparation");
+            diag::crash::debugCrash("segv");
+        });
+        worker.join();
+        return 1;
+    }
+#endif
     if (name == "chain") { log("last line before the crash"); diag::crash::debugCrash("segv"); }
     if (name == "worker_stack_overflow") {
         log("last line before the crash");

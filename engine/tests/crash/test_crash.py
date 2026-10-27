@@ -19,9 +19,9 @@ def main():
     args = parser.parse_args()
     modes = ["segv", "abort", "terminate", "stack_overflow", "worker_segv", "worker_stack_overflow", "fpe", "guard_worker", "concurrent", "recursive"]
     if os.name == "nt":
-        modes.extend(["pure_call", "recursive_abort"])
+        modes.extend(["pure_call", "recursive_abort", "cached_thread_name"])
     else:
-        modes.extend(["chain", "chain_after_return"])
+        modes.extend(["chain", "chain_after_return", "recursive_chain", "recursive_chain_return"])
     expected = {"segv": signal.SIGSEGV, "abort": signal.SIGABRT, "terminate": signal.SIGABRT,
                 "stack_overflow": signal.SIGSEGV, "worker_segv": signal.SIGSEGV,
                 "worker_stack_overflow": signal.SIGSEGV, "fpe": signal.SIGFPE,
@@ -37,9 +37,12 @@ def main():
             if mode.startswith("recursive"):
                 assert result.returncode != 0, result
                 if os.name != "nt":
-                    assert result.returncode == -signal.SIGSEGV, result.stderr
-                    if args.expect_asan:
-                        assert "AddressSanitizer" not in result.stderr, "recursive faults must go directly to the OS action"
+                    assert result.returncode in (-signal.SIGSEGV, 77), result.stderr
+                    if mode.startswith("recursive_chain"):
+                        assert (Path(root) / "sentinel").is_file(), "recursive fault skipped the saved OS handler"
+                        assert (Path(root) / "sentinel").read_text() == "chained\n", result.stderr
+                    elif args.expect_asan:
+                        assert "AddressSanitizer" in result.stderr, "recursive fault skipped the saved sanitizer handler"
                 assert " report=" not in result.stderr, result.stderr
                 assert not files, "the recursive test faults before opening its report"
                 print(f"PASS native crash: {mode} (immediate termination)")
@@ -53,6 +56,8 @@ def main():
                 assert "recovered after" in result.stderr, result.stderr
             else:
                 assert result.returncode != 0, mode
+                if mode == "cached_thread_name":
+                    assert "thread_name: Cached fault" in report or "thread_name: unknown" in report, report
                 if mode == "concurrent":
                     assert "modules:" in report and "core:" in report, report
                     assert (files[0].parent / "log-tail.txt").is_file(), report

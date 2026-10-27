@@ -662,3 +662,61 @@ commits are records only), all through `je-remote/rb.sh`:
   Evidence remains on A in `build/android-native-review-green` (1.2 MB) and was fetched for
   inspection. Per the integration owner's instruction, the APK, Gradle cache and Android
   native/Java build outputs in this worktree on A were deleted after the passing run.
+
+### Native review round 3
+
+- Windows names are snapshots taken by `prepareThread()` (after `spawnNamed` sets the OS
+  name). `GetThreadDescription`, UTF-8 conversion and `LocalFree` run only there. Native,
+  constant-initialized TLS holds two fixed-size names and a lock-free publication index.
+  Conversion uses a stack buffer before publishing to the inactive name buffer, so a
+  fault during preparation still reads the previous complete UTF-8 snapshot. The fault
+  submitter copies it to
+  preallocated writer storage. Unprepared threads and unavailable APIs report `unknown`.
+  The writer performs no thread-name allocation or lookup. The Windows-only
+  `cached_thread_name` subprocess renames the OS thread after preparation and requires the
+  cached name. A process-heap-lock fault test could not be validated here: no Windows
+  runner is available, and the existing DbgHelp/minidump path independently uses the heap,
+  so locking the entire process heap does not isolate this name-lookup regression.
+- POSIX recursive reporter faults restore and chain the saved signal handler before OS
+  termination. If that handler returns, the default fatal disposition runs immediately;
+  the damaged writer never resumes. Restoring the previous disposition before calling it
+  prevents its signal re-delivery from re-entering our writer. Subprocess regressions
+  cover the sanitizer handler, a saved terminating handler and a saved returning handler.
+- POSIX frame trimming is a pure, signal-safe helper. When the interrupted PC is absent
+  (possible with Apple unwinders), it retains the available trace after the known
+  capture/reporter prefix, extending that prefix through the dispatch return PC when
+  present. Both capture and reporter are explicitly noinline. The saved PC remains #0;
+  symbol names are still resolved offline by `symbolicate.py`, with no loader/heap calls
+  in the signal path. Synthetic tests cover PC match, missing/zero PC, dispatch prefix,
+  short/empty traces and ARM Thumb address normalization. Apple execution awaits its SDK
+  host; the portable trim tests execute on Linux.
+- Server D red control at `7e62b9d4f`: the synthetic
+  `CrashFrames.MissingPcKeepsCallersAfterKnownHandlerFrames` test fails for both absent
+  and zero interrupted PCs (returns 4 rather than the required caller start 2). The
+  `recursive_chain` subprocess also fails because its saved-handler sentinel is absent.
+  The fixed-source gate uses `1933cfa6b`; no temporary red-source edits are left in git.
+- Server D fixed-source gate: full `WERROR=1 tools/build.sh linux` passes (editor/install
+  and standalone game); `Crash*.*` passes 19/19, including all five synthetic frame tests.
+  The three crash CTests pass in 18.05 s; all 15 normal and all 15 ASan+UBSan subprocess
+  modes pass, including concurrent faults and recursive sanitizer/returning-handler chains.
+  No unexpected sanitizer failure occurs. `test_crash.py` plus `test_protocol.py` passes
+  22/22, zero skipped, in 63.8 s using `rb.sh D --img` (its `/fixture` mount is required
+  by the four newer protocol tests). An initial `tools/build.sh exec linux` invocation
+  omitted that mount and failed those four cases with `No fixture project`.
+- Server D Android crash-diagnostics APK builds all four ABIs in 41m 51s. Its size is
+  110,681,012 bytes, SHA-256
+  `71c9e988ed0b15974a05e253085d36296bab8e3caaaa89631dd4bc30afcf47a1`, verified after transfer
+  to C. The committed AGP 9.4.1/Gradle 9.6/NDK 28.2 versions are unchanged. Google Maven
+  returned HTTP 404 over D's IPv4 route (even for known older artifacts), but HTTP 200
+  over IPv6. This gate used a temporary per-process Docker `--network host` and
+  `JAVA_TOOL_OPTIONS=-Djava.net.preferIPv6Addresses=true`, plus a temporary Gradle
+  negative-cache refresh init script. That init script and the gate helpers were removed;
+  no repository or host networking configuration was changed.
+- Server C API 34 x86_64 emulator gate passes, booting in 44 s: engine report, fatal
+  logcat marker and preserved debuggerd tombstone. Both reports identify thread 1973
+  (`je-main`), PC `0x77eb4eff930e`, SP `0x77eb57bed318`, and build ID
+  `d8633a5e5cc5b96c39b451393f9278e492095ba1`. Both have 22 frames; the first engine frame
+  `libjasperengine-android.so+0x21e130e` matches debuggerd's `debugSegv()+14`, with no
+  reporter/trampoline duplication. Evidence is retained on C in
+  `build/android-native-r3-green` and was fetched for inspection. C only prepared the
+  emulator image and ran the APK; native APK compilation ran on D.
