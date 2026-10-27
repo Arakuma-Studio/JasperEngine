@@ -1081,9 +1081,11 @@ bool MeshBvh::deserialize(std::span<const uint8_t> bytes, const PickGeometry& ge
         return fail();
     }
 
-    // the triangles, their corners from the geometry: each at most once
+    // the triangles, each at most once: their indices and corners here, their positions
+    // read while the boxes are computed (refitNodes, on the workers for a large mesh)
     const size_t vertexCount = geometry.positions.size();
     std::vector<uint8_t> seen(geometryTriangles, 0);
+    std::vector<uint32_t> corners((size_t)header.triangleCount * 3);
     triangles.resize(header.triangleCount);
     for (uint32_t i = 0; i < header.triangleCount; i++){
         uint32_t index;
@@ -1096,7 +1098,10 @@ bool MeshBvh::deserialize(std::span<const uint8_t> bytes, const PickGeometry& ge
         if (a >= vertexCount || b >= vertexCount || c >= vertexCount){
             return fail();
         }
-        triangles[i] = {geometry.positions[a], geometry.positions[b], geometry.positions[c], index};
+        triangles[i].index = index;
+        corners[(size_t)i * 3] = a;
+        corners[(size_t)i * 3 + 1] = b;
+        corners[(size_t)i * 3 + 2] = c;
     }
     // a geometry triangle the file leaves out must be one the build leaves out (not finite)
     for (uint32_t index = 0; index < geometryTriangles; index++){
@@ -1113,8 +1118,9 @@ bool MeshBvh::deserialize(std::span<const uint8_t> bytes, const PickGeometry& ge
             return fail();
         }
         Box box;
-        for (const Triangle& triangle : triangles){
-            box.expand(triangleBox(triangle));
+        for (size_t t = 0; t < triangles.size(); t++){
+            loadCorners(triangles[t], geometry.positions, corners.data() + t * 3);
+            box.expand(triangleBox(triangles[t]));
         }
         if (!box.empty()){
             bounds = AABB(box.mn[0], box.mn[1], box.mn[2], box.mx[0], box.mx[1], box.mx[2]);
@@ -1159,6 +1165,6 @@ bool MeshBvh::deserialize(std::span<const uint8_t> bytes, const PickGeometry& ge
     }
 
     // the boxes are never taken from the file: recomputed from the triangles they bound
-    refitNodes();
+    refitNodes(geometry.positions, corners);
     return true;
 }
