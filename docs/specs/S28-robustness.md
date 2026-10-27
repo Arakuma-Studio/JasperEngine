@@ -667,9 +667,10 @@ commits are records only), all through `je-remote/rb.sh`:
 
 - Windows names are snapshots taken by `prepareThread()` (after `spawnNamed` sets the OS
   name). `GetThreadDescription`, UTF-8 conversion and `LocalFree` run only there. Native,
-  trivially initialized TLS holds the fixed-size name; conversion uses a stack buffer
-  before publishing, so a fault during preparation can still read a bounded, terminated
-  snapshot. The fault submitter copies it to
+  constant-initialized TLS holds two fixed-size names and a lock-free publication index.
+  Conversion uses a stack buffer before publishing to the inactive name buffer, so a
+  fault during preparation still reads the previous complete UTF-8 snapshot. The fault
+  submitter copies it to
   preallocated writer storage. Unprepared threads and unavailable APIs report `unknown`.
   The writer performs no thread-name allocation or lookup. The Windows-only
   `cached_thread_name` subprocess renames the OS thread after preparation and requires the

@@ -37,7 +37,9 @@ DWORD writerThread = 0;
 using GetThreadDescriptionFn = HRESULT (WINAPI*)(HANDLE, PWSTR*);
 // Plain native TLS is initialized when the thread starts, with no lazy constructor in
 // the fatal path. prepareThreadPlatform refreshes it after spawnNamed sets the OS name.
-thread_local char preparedThreadName[256] = "unknown";
+thread_local char preparedThreadNames[2][256] = {"unknown", "unknown"};
+thread_local std::atomic<unsigned> preparedNameIndex{0};
+static_assert(std::atomic<unsigned>::is_always_lock_free);
 char faultThreadName[256] = "unknown";
 
 void raw(HANDLE file, const char* text, size_t size) {
@@ -146,10 +148,11 @@ void cacheThreadName() {
         }
         LocalFree(wide);
     }
-    // Keep the old snapshot valid if conversion/free itself faults. A bounded publish
-    // copies at most 255 characters, preserving the TLS buffer's final NUL even if a
-    // fault interrupts this copy. No allocating API writes into the published buffer.
-    appendText(preparedThreadName, sizeof(preparedThreadName), 0, name);
+    // Publish a complete UTF-8 snapshot. A fault during conversion/free or the copy
+    // still reads the previous buffer, without a partial string or first-use allocation.
+    const unsigned next = (preparedNameIndex.load(std::memory_order_relaxed) ^ 1u) & 1u;
+    appendText(preparedThreadNames[next], sizeof(preparedThreadNames[next]), 0, name);
+    preparedNameIndex.store(next, std::memory_order_release);
 }
 void writeThreadName(HANDLE report) {
     char lineText[288];
@@ -268,7 +271,8 @@ void submit(EXCEPTION_POINTERS* info) {
         return;
     }
     faultThread = current;
-    appendText(faultThreadName, sizeof(faultThreadName), 0, preparedThreadName);
+    const unsigned nameIndex = preparedNameIndex.load(std::memory_order_acquire) & 1u;
+    appendText(faultThreadName, sizeof(faultThreadName), 0, preparedThreadNames[nameIndex]);
     faultRecord = *info->ExceptionRecord;
     faultRecord.ExceptionRecord = nullptr;
     faultContext = *info->ContextRecord;
