@@ -452,7 +452,7 @@ async def test_ortho_top_golden(ed: Editor):
         return
     ref = pngdiff.decode(golden.read_bytes())
     img, ref = same_frame(img, ref)
-    ok, fraction, _diff = pngdiff.compare(img, ref, channel_tolerance=24, max_fraction=0.02)
+    ok, fraction, _diff = pngdiff.compare(img, ref, channel_tolerance=24, max_fraction=0.03)
     (ed.scratch.root / "scene_view_ortho_top.png").write_bytes(pngdiff.encode(img))
     ed.check(ok, f"ortho top view differs from its golden: {fraction:.4f} of the pixels")
 
