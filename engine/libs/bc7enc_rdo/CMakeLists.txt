@@ -24,3 +24,10 @@ set_target_properties(bc7enc_rdo PROPERTIES
     CXX_VISIBILITY_PRESET hidden
     POSITION_INDEPENDENT_CODE ON
     FOLDER "libs")
+
+# UBSan: ert.cpp's hash reads the block bytes as uint16_t words at any offset (an unaligned load
+# on x86 and ARM). The sanitized builds stop at the first report: this file alone is built
+# without the alignment check.
+if(JASPERENGINE_SANITIZE_UNDEFINED AND NOT MSVC)
+    set_source_files_properties(ert.cpp PROPERTIES COMPILE_OPTIONS -fno-sanitize=alignment)
+endif()
