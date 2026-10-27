@@ -13298,7 +13298,8 @@ void RenderSystem::selectCameraTerrain(CameraComponent& camera, Transform& camer
 // culled instance lists of the scene camera, the shadow maps of its lights, the 2D
 // shadow rows and the reflection probe face of the frame.
 void RenderSystem::drawFramePasses(){
-    frameTime = (float)Engine::getSystemTime();
+    // the frame's shader clock (Engine::latchShaderTime), the one the CPU's waves read
+    frameTime = Engine::getShaderTime();
     updateDynamicResolution();
 
 #ifdef JASPERENGINE_EDITOR

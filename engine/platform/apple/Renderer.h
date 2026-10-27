@@ -11,6 +11,8 @@
 
 + (void)pauseGame;
 + (void)resumeGame;
+// the app is no longer (or again) the one the user touches: held input comes up
++ (void)focusChanged:(BOOL)focused;
 
 @property (class, nonatomic, assign, readonly, nullable) MTKView* view;
 @property (class, nonatomic, assign, readonly) CGSize screenSize;

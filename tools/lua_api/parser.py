@@ -1992,6 +1992,31 @@ OVERRIDES[('MeshRaycast', 'prepare')] = {
     'doc': ['Builds the triangle trees of these GameObjects\' meshes (all when none) in the background, so a later',
             'raycast does not build them inline.'],
     'overloads': [([('scene', 'Scene'), ('entities?', '(EntityHandle|integer)[]')], '')]}
+# S22 input actions: the lua_CFunctions of InputActions (numbers or Vector2 values, an option
+# table and a callback)
+OVERRIDES[('InputActions', 'setVirtual')] = {
+    'doc': ['Feeds the virtual control `virtual/<name>` (an on-screen stick or button of the HTML UI):',
+            'a number (x) or a Vector2.'],
+    'overloads': [([('name', 'string'), ('value', 'number|Vector2')], '')]}
+OVERRIDES[('InputActions', 'inject')] = {
+    'doc': ['Forces the action ("Map/Action") to `value` (a number or a Vector2) for `windows` frame windows',
+            '(1 by default; 0 presses and releases in one window, -1 holds it until releaseInjected), at top',
+            'priority.'],
+    'overloads': [([('action', 'string'), ('value', 'number|Vector2'), ('windows?', 'integer')], '')]}
+OVERRIDES[('InputActions', 'startRebind')] = {
+    'doc': ['Waits for the next actuated control (a key, a mouse button, a gamepad button, an axis past 0.5)',
+            'and makes it the binding\'s override; every map is suspended meanwhile. `options`: `groups`,',
+            '`exclude` (path globs), `cancel` (a path, `keyboard/escape` by default; false for none),',
+            '`timeout` (seconds). `onComplete` gets {status = "completed"|"canceled"|"timed_out", action,',
+            'bindingId, path}. False when the action or the binding is not there.'],
+    'overloads': [([('action', 'string'), ('bindingId', 'string'),
+                    ('options?', '{groups?: string[], exclude?: string[], cancel?: string|false, timeout?: number}'),
+                    ('onComplete?', 'fun(result: {status: string, action: string, bindingId: string, path: string})')],
+                   'boolean')]}
+OVERRIDES[('InputActions', 'getConflicts')] = {
+    'doc': ['The bindings of enabled maps in the same group as the binding with its path.'],
+    'overloads': [([('action', 'string'), ('bindingId', 'string')],
+                   '{action: string, id: string, path: string, groups: string[]}[]')]}
 
 # HTML UI (phase 1, p1-lua): the element API's lua_CFunctions (they take Lua functions and
 # option tables, and raise errors with no C++ object alive)

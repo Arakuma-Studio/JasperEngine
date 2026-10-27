@@ -35,6 +35,10 @@ bool editor::PlayInput::forward(uint32_t sceneId, ImVec2 canvasMin, ImVec2 scale
     // so the mouse follows window focus like the keyboard below.
     const bool capturedMouse = Engine::getMouseMode() == MouseMode::CAPTURED;
     bool forwardMouse = capturedMouse ? focused : hovered;
+    // the game's pointer is locked while the Game view has the focus (Input::getPointerLockState)
+    if (capturedMouse) {
+        Engine::systemPointerLockChanged(focused);
+    }
 
     // The pointer belongs to an MCP agent until the real mouse does something here
     if (pointerInjected) {

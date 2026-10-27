@@ -328,6 +328,17 @@ Rigidbody2D GameObject::getRigidbody2D(){
 void GameObject::removeRigidbody2D(){
     scene->getSystem<PhysicsSystem>()->removeRigidbody2D(entity);
 }
+
+CharacterController2D GameObject::getCharacterController2D(){
+    if (!scene->findComponent<CharacterController2DComponent>(entity))
+        scene->addComponent<CharacterController2DComponent>(entity, {});
+    return CharacterController2D(scene, entity);
+}
+
+void GameObject::removeCharacterController2D(){
+    if (scene->findComponent<CharacterController2DComponent>(entity))
+        scene->removeComponent<CharacterController2DComponent>(entity);
+}
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
@@ -339,8 +350,31 @@ Rigidbody GameObject::getRigidbody(){
 void GameObject::removeRigidbody(){
     scene->getSystem<PhysicsSystem>()->removeRigidbody(entity);
 }
+
+CharacterController GameObject::getCharacterController(){
+    if (!scene->findComponent<CharacterControllerComponent>(entity))
+        scene->addComponent<CharacterControllerComponent>(entity, {});
+    return CharacterController(scene, entity);
+}
+
+void GameObject::removeCharacterController(){
+    if (scene->findComponent<CharacterControllerComponent>(entity))
+        scene->removeComponent<CharacterControllerComponent>(entity);
+}
+
+Buoyancy GameObject::getBuoyancy(){
+    if (!scene->findComponent<BuoyancyComponent>(entity))
+        scene->addComponent<BuoyancyComponent>(entity, {});
+    return Buoyancy(scene, entity);
+}
 #endif
 
 Ray GameObject::getRay(Vector3 direction){
     return Ray(getWorldPosition(), direction);
+}
+
+WaterVolume GameObject::getWaterVolume(){
+    if (!scene->findComponent<WaterVolumeComponent>(entity))
+        scene->addComponent<WaterVolumeComponent>(entity, {});
+    return WaterVolume(scene, entity);
 }
