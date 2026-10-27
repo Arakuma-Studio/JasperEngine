@@ -395,6 +395,8 @@ uint32_t EmitterRuntime::limit(const EmitterInput& input) const{
 
 uint32_t EmitterRuntime::planFrame(const EmitterInput& input, double dt, uint32_t maxTicks){
     ticksThisFrame = 0;
+    // the events a frame reports gather over all its ticks (caps per frame)
+    clearEvents();
     if (!prog || playState != PlayState::Playing)
         return 0;
     std::memcpy(curFrame, input.transform ? input.transform : kIdentity, sizeof(curFrame));
@@ -665,11 +667,14 @@ void EmitterRuntime::updateChunk(uint32_t chunk){
         kernels.update(ctx, op, begin, end);
 }
 
-void EmitterRuntime::finishTick(const EmitterInput& input){
-    const uint32_t chunks = chunkCount();
+void EmitterRuntime::clearEvents(){
     collisions.clear();
     deaths.clear();
     subEmits.clear();
+}
+
+void EmitterRuntime::finishTick(const EmitterInput& input){
+    const uint32_t chunks = chunkCount();
     worldCollisionStage(input);
     // collision events in chunk order: Lua and the Collision sub-emitters
     for (uint32_t c = 0; c < chunks; c++){
@@ -1359,6 +1364,7 @@ void EmitterRuntime::childrenStage(const EmitterInput& input){
         child->frameTick = tickDt;
         child->frameScaled = 0.0;
         child->ticksThisFrame = 1;
+        child->clearEvents();
         child->beginTick(childInput, 0);
         const uint32_t chunks = child->chunkCount();
         if (chunks == 1){
@@ -1407,6 +1413,7 @@ void EmitterRuntime::step(const EmitterInput& input){
     frameTick = prog->tickRate > 0 ? 1.0 / prog->tickRate : kMaxVariableStep;
     frameScaled = 0.0;
     ticksThisFrame = 1;
+    clearEvents();
     beginTick(input, 0);
     runTickSerial(input);
     std::memcpy(prevFrame, curFrame, sizeof(prevFrame));

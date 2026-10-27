@@ -241,6 +241,8 @@ namespace jasperengine { namespace particles {
         void restoreCheckpoint(const Checkpoint& in);
 
     private:
+        // the frame's collision, death and sub-emit events (they gather over its ticks)
+        void clearEvents();
         void configureStorage(uint32_t newCapacity);
         void growTo(uint32_t needed);
         void setFrameTransforms(const EmitterInput& input, double fraction);

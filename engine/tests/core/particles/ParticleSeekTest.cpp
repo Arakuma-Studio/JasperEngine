@@ -9,6 +9,7 @@
 
 #include "Scene.h"
 #include "object/ParticleSystem.h"
+#include "particles/ParticleEffectLibrary.h"
 #include "particles/ParticlePreview.h"
 #include "subsystem/ParticleSubsystem.h"
 
@@ -201,4 +202,30 @@ TEST(ParticleSeek, EmitOnAStoppedSystemEmitsOnlyThat){
     system.step(10);
     EXPECT_EQ(system.getParticleCount(), 5u);
     EXPECT_FALSE(system.isEmitting());
+}
+
+TEST(ParticleSeek, SendTriggerRaisesTheTriggerSubEmitters){
+    // a GameObject's sendTrigger reaches its effect's Trigger sub-emitters (their child from the
+    // effect library): every live particle spawns the entry's children at the next tick
+    ParticleEffectDocument child;
+    child.main.startLifetime = MinMaxCurve(1.0f);
+    child.emission.rateOverTime = MinMaxCurve(0.0f);
+    ParticleEffectLibrary::set("fx/trigger-child.particles", child);
+    Scene scene;
+    ParticleSystem system(&scene);
+    system.setPlayOnAwake(false);
+    ASSERT_TRUE(system.setInlineEffect(R"({"version": 1, "duration": 5, "seed": 4, "maxParticles": 100,
+        "subEmitters": [{"trigger": "trigger", "triggerName": "boom", "effect": "fx/trigger-child.particles", "emitCount": 2}],
+        "modules": [{"type": "main", "startLifetime": 10, "startSpeed": 0}, {"type": "emission", "rateOverTime": 60},
+                    {"type": "subEmitters"}]})"));
+    system.play();
+    system.step(10);
+    const uint32_t parents = system.getParticleCount();
+    ASSERT_GT(parents, 0u);
+    system.sendTrigger("boom");
+    system.step(1);
+    const particles::ParticleSystemState* state = scene.getSystem<ParticleSubsystem>()->getState(system.getEntity());
+    ASSERT_NE(state, nullptr);
+    EXPECT_GE(state->runtime.subEmitEvents().size(), (size_t)std::min<uint32_t>(parents, 64u));
+    ParticleEffectLibrary::clear();
 }

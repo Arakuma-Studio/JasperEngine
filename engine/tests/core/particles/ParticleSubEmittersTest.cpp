@@ -141,6 +141,22 @@ TEST(ParticleSubEmitters, TriggerSpawnsFromEveryParticle){
     EXPECT_EQ(f.kid().count(), 40u);
 }
 
+TEST(ParticleSubEmitters, AFrameKeepsTheEventsOfAllItsTicks){
+    // a frame of two ticks (30 Hz, 1/15 s): the trigger's sub-emits of its first tick are still
+    // there when the frame is over (Lua reads them then); they once lasted one tick
+    ParticleEffectDocument d = parent(SubEmitterTrigger::Trigger, 4);
+    d.main.startLifetime = MinMaxCurve(5.0f);
+    Family f(d);
+    f.ticks(2);
+    f.runtime.sendTrigger(nameHash("Boom"));
+    f.runtime.advance(f.input, 2.0 / 30.0);
+    EXPECT_EQ(f.kid().count(), 40u);
+    EXPECT_EQ(f.runtime.subEmitEvents().size(), 10u);
+    // the next frame starts them over
+    f.runtime.advance(f.input, 1.0 / 30.0);
+    EXPECT_EQ(f.runtime.subEmitEvents().size(), 0u);
+}
+
 TEST(ParticleSubEmitters, ProbabilityThinsTheSpawns){
     ParticleEffectDocument d = parent(SubEmitterTrigger::Birth, 1);
     d.emission.bursts[0].count = MinMaxCurve(1000.0f);
