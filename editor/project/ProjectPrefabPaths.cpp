@@ -411,15 +411,22 @@ void editor::Project::cleanupPrefabFilePath(const std::filesystem::path& deleted
 // ---- Animation clip references (animation clips spec 4.1, 9.R8/R26) ----
 
 bool editor::Project::resolveClipReference(AnimationPlayerClip& entry, bool mayImport) {
-    if (entry.clip.empty() && entry.guid.empty()) {
+    // sub-clips ("<model>#<clip>") are path-only: they follow the model's rename instead
+    if (anim::isSubClipReference(entry.clip)) {
         return false;
     }
-    // sub-clips ("<model>#<clip>") are path-only: they follow the model's rename instead
-    if (anim::isSubClipReference(entry.clip) || !assetDatabase.isOpen() || projectPath.empty()) {
+    return resolveAssetReference(entry.clip, entry.guid, mayImport);
+}
+
+bool editor::Project::resolveAssetReference(std::string& path, std::string& guid, bool mayImport) {
+    if (path.empty() && guid.empty()) {
+        return false;
+    }
+    if (!assetDatabase.isOpen() || projectPath.empty()) {
         return false;
     }
 
-    fs::path hint = entry.clip.empty() ? fs::path() : normalizeToProjectRelative(resolveAssetPath(entry.clip));
+    fs::path hint = path.empty() ? fs::path() : normalizeToProjectRelative(resolveAssetPath(path));
     // a path outside the project is never imported (nor given a GUID)
     if (!hint.empty() && (hint.is_absolute() || *hint.begin() == "..")) {
         hint.clear();
@@ -428,15 +435,15 @@ bool editor::Project::resolveClipReference(AnimationPlayerClip& entry, bool mayI
     const bool hintExists = !hint.empty() && fs::is_regular_file(projectPath / hint, ec);
 
     fs::path resolved;
-    if (!entry.guid.empty()) {
-        resolved = assetDatabase.getPath(entry.guid);
+    if (!guid.empty()) {
+        resolved = assetDatabase.getPath(guid);
         if (resolved.empty() && mayImport && hintExists && assetDatabase.getGuid(hint).empty() &&
-            AssetDatabase::readGuid(projectPath / hint) == entry.guid) {
+            AssetDatabase::readGuid(projectPath / hint) == guid) {
             // made outside the editor since the last refresh (what else the database learns
             // waits for the next refresh, as for prefabs)
             std::vector<AssetDatabase::Change> found = assetDatabase.importAssets(hint);
             pendingAssetChanges.insert(pendingAssetChanges.end(), found.begin(), found.end());
-            resolved = assetDatabase.getPath(entry.guid);
+            resolved = assetDatabase.getPath(guid);
         }
         if (resolved.empty()) {
             return false;   // no file has it: Missing, the hint stays (an undone delete relinks it)
@@ -445,32 +452,32 @@ bool editor::Project::resolveClipReference(AnimationPlayerClip& entry, bool mayI
         if (hint.empty()) {
             return false;
         }
-        std::string guid = assetDatabase.getGuid(hint);
-        if (guid.empty() && mayImport && hintExists) {
-            std::vector<AssetDatabase::Change> found = assetDatabase.importAssets(hint);
-            pendingAssetChanges.insert(pendingAssetChanges.end(), found.begin(), found.end());
-            guid = assetDatabase.getGuid(hint);
+        std::string found = assetDatabase.getGuid(hint);
+        if (found.empty() && mayImport && hintExists) {
+            std::vector<AssetDatabase::Change> imported = assetDatabase.importAssets(hint);
+            pendingAssetChanges.insert(pendingAssetChanges.end(), imported.begin(), imported.end());
+            found = assetDatabase.getGuid(hint);
         }
-        if (guid.empty()) {
+        if (found.empty()) {
             // written before the file had a GUID, and moved since: the GUID its path got
             const fs::path moved = assetDatabase.getPath(AssetDatabase::legacyGuid(hint));
             if (moved.empty()) {
                 return false;
             }
-            guid = AssetDatabase::legacyGuid(hint);
+            found = AssetDatabase::legacyGuid(hint);
             resolved = moved;
         } else {
             resolved = hint;
         }
         // filled in silently: where the reference points did not change
-        entry.guid = guid;
+        guid = found;
     }
 
     const std::string form = normalizeToAssetsRelative(projectPath / resolved).generic_string();
-    if (fs::path(entry.clip).lexically_normal().generic_string() == form) {
+    if (fs::path(path).lexically_normal().generic_string() == form) {
         return false;
     }
-    entry.clip = form;
+    path = form;
     return true;
 }
 
@@ -488,6 +495,14 @@ bool editor::Project::resolveRegistryClipRefs(EntityRegistry* registry, bool may
         }
         if (playerChanged) {
             player.needsLoad = true;
+            changed = true;
+        }
+    }
+    auto animators = registry->getComponentArray<VertexAnimatorComponent>();
+    for (size_t i = 0; i < animators->size(); i++) {
+        VertexAnimatorComponent& animator = animators->getComponentFromIndex(i);
+        if (resolveAssetReference(animator.animation, animator.guid, mayImport)) {
+            animator.needsLoad = true;
             changed = true;
         }
     }
@@ -524,6 +539,18 @@ void editor::Project::applyClipAssetChanges(const std::vector<AssetDatabase::Cha
                         entry.clip = form;
                         changed = true;
                     }
+                }
+            }
+            auto animators = registry->getComponentArray<VertexAnimatorComponent>();
+            for (size_t i = 0; i < animators->size(); i++) {
+                VertexAnimatorComponent& animator = animators->getComponentFromIndex(i);
+                if (animator.guid != change.guid) {
+                    continue;
+                }
+                animator.needsLoad = true;
+                if (fs::path(animator.animation).lexically_normal().generic_string() != form) {
+                    animator.animation = form;
+                    changed = true;
                 }
             }
             return changed;

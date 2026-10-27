@@ -10,6 +10,7 @@
 #include "subsystem/RenderSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/LatticeSystem.h"
+#include "subsystem/VertexAnimatorSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/FluidSystem.h"
@@ -39,6 +40,8 @@ void Scene::init(){
     registerSystem<PoseAnimatorSystem>();
     registerSystem<MeshSystem>();
     registerSystem<LatticeSystem>();
+    // after the lattices, before Render reads the GPU state it writes (vertex animation spec 3.4)
+    registerSystem<VertexAnimatorSystem>();
     registerSystem<UISystem>();
     registerSystem<UIDocumentSystem>();
     registerSystem<FluidSystem>();
@@ -99,6 +102,13 @@ void Scene::removeSubscriptionsByTag(const std::string& substring) {
     removeComponentSubscriptionsByTag<AnimationPlayerComponent>(this, substring, [](AnimationPlayerComponent& player, const std::string& tag) {
         player.onEvent.removeByTagSubstring(tag);
         player.onFinish.removeByTagSubstring(tag);
+    });
+
+    removeComponentSubscriptionsByTag<VertexAnimatorComponent>(this, substring, [](VertexAnimatorComponent& animator, const std::string& tag) {
+        animator.onEvent.removeByTagSubstring(tag);
+        animator.onFinish.removeByTagSubstring(tag);
+        animator.onInstanceEvent.removeByTagSubstring(tag);
+        animator.onInstanceFinish.removeByTagSubstring(tag);
     });
 
     removeComponentSubscriptionsByTag<UIComponent>(this, substring, [](UIComponent& ui, const std::string& tag) {

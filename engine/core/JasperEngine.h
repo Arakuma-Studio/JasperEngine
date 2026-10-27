@@ -68,6 +68,7 @@
 #include "component/ReflectionProbeComponent.h"
 #include "component/PoseAnimatorComponent.h"
 #include "component/AnimationPlayerComponent.h"
+#include "component/VertexAnimatorComponent.h"
 #include "component/ModelComponent.h"
 #include "component/MorphTracksComponent.h"
 #include "component/ShadowCaster2DComponent.h"
@@ -145,6 +146,7 @@
 #include "object/Model.h"
 #include "object/PoseAnimator.h"
 #include "object/AnimationPlayer.h"
+#include "object/VertexAnimator.h"
 #include "object/GameObject.h"
 #include "object/ShadowCaster2D.h"
 #include "object/Points.h"
@@ -209,6 +211,7 @@
 
 #include "subsystem/ActionSystem.h"
 #include "subsystem/PoseAnimatorSystem.h"
+#include "subsystem/VertexAnimatorSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/FluidSystem.h"
 #include "subsystem/MeshSystem.h"

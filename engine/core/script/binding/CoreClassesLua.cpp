@@ -1026,6 +1026,21 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("add", (bool (FunctionSubscribe<void(const AnimationEvent&)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(const AnimationEvent&)>::add)
         .endClass();
 
+    // Vertex Animator instance events: (instance, event) and (instance, clip)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<FunctionSubscribe<void(int, const AnimationEvent&)>>("FunctionSubscribe_V_IAE")
+        .addFunction("__call", &FunctionSubscribe<void(int, const AnimationEvent&)>::call)
+        .addFunction("call", &FunctionSubscribe<void(int, const AnimationEvent&)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<void(int, const AnimationEvent&)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(int, const AnimationEvent&)>::add)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<FunctionSubscribe<void(int, const std::string&)>>("FunctionSubscribe_V_IS")
+        .addFunction("__call", &FunctionSubscribe<void(int, const std::string&)>::call)
+        .addFunction("call", &FunctionSubscribe<void(int, const std::string&)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<void(int, const std::string&)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(int, const std::string&)>::add)
+        .endClass();
+
     luabridge::getGlobalNamespace(L)
         .beginClass<FunctionSubscribe<float(float)>>("FunctionSubscribe_F_F")
         .addFunction("__call", &FunctionSubscribe<float(float)>::call)

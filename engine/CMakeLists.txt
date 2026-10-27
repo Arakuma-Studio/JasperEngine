@@ -877,6 +877,7 @@ set(JASPERENGINE_SRCS
     core/animation/AnimationClipIO.cpp
     core/animation/AnimationEvent.cpp
     core/animation/AnimationPlayerRuntime.cpp
+    core/animation/VertexAnimatorRuntime.cpp
     core/animation/ClipBinding.cpp
     core/animation/KeyframeSampling.cpp
     core/animation/ModelSubClips.cpp
@@ -994,6 +995,7 @@ set(JASPERENGINE_SRCS
     core/object/Model.cpp
     core/object/PoseAnimator.cpp
     core/object/AnimationPlayer.cpp
+    core/object/VertexAnimator.cpp
     core/object/GameObject.cpp
     core/object/ShadowCaster2D.cpp
     core/object/Points.cpp
@@ -1074,6 +1076,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/ActionSystem.cpp
     core/subsystem/ActionSystemPlayers.cpp
     core/subsystem/PoseAnimatorSystem.cpp
+    core/subsystem/VertexAnimatorSystem.cpp
     core/subsystem/FluidSystem.cpp
     core/fluid/FluidSimulator.cpp
     core/fluid/FluidPresets.cpp
