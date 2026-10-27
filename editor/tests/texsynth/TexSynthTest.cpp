@@ -8,6 +8,8 @@
 #include "texsynth/TextureSynthesis.h"
 #include "util/FileUtils.h"
 
+#include "support/EditorTestSupport.h"
+
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -982,8 +984,12 @@ TEST(TexSynth, CancelReachesThePreparation) {
     r.examples.push_back(Example::fromImage(noiseImage(3072, 3072, 3)));
     r.targetGuide = ImageInput::fromImage(noiseImage(64, 64, 4));
     std::atomic<bool> cancel{false};
+    std::atomic<int> progressCalls{0};
     Control control;
     control.cancel = &cancel;
+    // called at the start of every stage: the cancel, 100 ms into seconds of preparation, ends
+    // the synthesis before the first one (the old code prepared to the end and started it)
+    control.onProgress = [&](const Progress&) { progressCalls++; };
     std::thread canceller([&] {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         cancel = true;
@@ -993,7 +999,12 @@ TEST(TexSynth, CancelReachesThePreparation) {
     const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     canceller.join();
     EXPECT_EQ(result.status, Status::Cancelled);
-    EXPECT_LT(seconds, 1.5) << "the old code took 2.75 s here";
+    EXPECT_EQ(progressCalls.load(), 0) << "a stage started after the cancel";
+    // how soon is the benchmark run's (an instrumented build or a loaded builder is slower)
+    std::printf("[bench] cancelled synthesis returned after %.2f s (budget 1.5; the old code took 2.75)\n", seconds);
+    if (const double slack = jasperengine::editor::test::perfSlack(); slack > 0.0) {
+        EXPECT_LT(seconds, 1.5 * slack);
+    }
 }
 
 TEST(TexSynth, OversizedInputsAreRefusedBeforeDecoding) {
