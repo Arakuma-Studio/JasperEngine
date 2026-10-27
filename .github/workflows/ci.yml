@@ -524,7 +524,9 @@ jobs:
         run: GATE=texture-formats tools/build.sh web-gate
 
       - name: Cooked-texture runtime size (S14 R21, wasm Release)
-        run: python3 tools/textures/runtime_size.py --wasm build/web-texture-formats --json build/test-results/texture-runtime-size-wasm.json
+        run: |
+          tools/build.sh exec web bash -c "cmake -S engine -B build/web-texture-formats -DCMAKE_EXE_LINKER_FLAGS=-Wl,--Map=/src/build/web-texture-formats.map && cmake --build build/web-texture-formats --target jasperengine-project"
+          python3 tools/textures/runtime_size.py --wasm-map build/web-texture-formats.map --json build/test-results/texture-runtime-size-wasm.json
 
       - uses: actions/upload-artifact@v4
         if: always()

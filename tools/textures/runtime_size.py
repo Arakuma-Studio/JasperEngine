@@ -4,22 +4,20 @@
 """The size the cooked-texture runtime adds to a game (docs/specs/S14-texture-compression.md R21).
 
     python3 tools/textures/runtime_size.py --binary <linked game executable> [--json out.json]
-    python3 tools/textures/runtime_size.py --wasm <web build dir> [--json out.json]
+    python3 tools/textures/runtime_size.py --wasm-map <wasm-ld map> [--json out.json]
 
 Native (budget 120 KB): the code and data symbols of a linked Release game (`nm -S`, what
 stripping keeps) that are Zstandard's decoder, bcdec and the KTX2 reader, R21's list. The rest
 of the texture runtime (CPU decodes, fallback plans, the cooked index, the Basis wrapper) is
 listed apart. Run it on build/linux/engine/jasperengine-project after tools/build.sh linux.
 
-Wasm (budget 250 KB): the code and data sections of the web build's objects (relocatable wasm)
-of the Basis Universal transcoder, Zstandard's decoder and the texture runtime's sources. Object
-sections count the inline and template code each object carries before the linker merges
-copies, so this is an upper bound.
+Wasm (budget 250 KB): from the link map of a web Release build (relink it with
+-DCMAKE_EXE_LINKER_FLAGS=-Wl,--Map=FILE), the code and initialised data the link kept of the Basis
+Universal transcoder, Zstandard's decoder and the texture runtime (bcdec included).
 """
 
 import argparse
 import json
-import os
 import re
 import subprocess
 import sys
@@ -34,10 +32,6 @@ NATIVE_GROUPS = [
 ]
 COUNTED_NATIVE = ("zstd_decoder", "bcdec", "ktx2_reader")
 
-RUNTIME = ("Ktx2.cpp", "TextureDecode.cpp", "TextureFallback.cpp", "TextureFormat.cpp", "CookedTextures.cpp",
-           "BasisTranscode.cpp")
-ZSTD = re.compile(r"/zstd_decompress\.dir/")
-BASIS = re.compile(r"/basisu_transcoder\.dir/")
 
 
 def native(binary):
@@ -58,48 +52,26 @@ def native(binary):
     return groups, counted, 120 * 1024
 
 
-def wasm_size(path):
-    # the code and data sections of a wasm object (relocatable): its size minus the custom sections
-    data = open(path, "rb").read()
-    if data[:4] != b"\0asm":
-        return 0
-    pos, total = 8, 0
-    while pos < len(data):
-        section = data[pos]
-        pos += 1
-        length, shift = 0, 0
-        while True:
-            byte = data[pos]
-            pos += 1
-            length |= (byte & 0x7F) << shift
-            shift += 7
-            if not byte & 0x80:
-                break
-        if section in (10, 11):     # code, data
-            total += length
-        pos += length
-    return total
+WASM_ENTRY = re.compile(r"^\s+(\S+)\s+([0-9a-f]+)\s+([0-9a-f]+)\s+(\S.*?\.o\)?):\(([^)]*)")
+WASM_RUNTIME = re.compile(r"\((Ktx2|TextureDecode|TextureFallback|TextureFormat|CookedTextures|BasisTranscode)\.cpp\.o\)")
 
 
-def wasm(build):
-    groups = {"runtime": 0, "zstd_decompress": 0, "basisu_transcoder": 0}
-    seen = set()
-    for directory, _, names in os.walk(build):
-        for file in names:
-            if not file.endswith((".o", ".obj")):
-                continue
-            path = os.path.join(directory, file)
-            name = file.rsplit(".", 1)[0]
-            group = None
-            if ZSTD.search(path):
-                group = "zstd_decompress"
-            elif BASIS.search(path):
-                group = "basisu_transcoder"
-            elif "/jasperengine.dir/" in path and name in RUNTIME:
-                group = "runtime"
-            if group and (group, name) not in seen:
-                seen.add((group, name))
-                groups[group] += wasm_size(path)
+def wasm(link_map):
+    # wasm-ld --Map: every input section the link kept, with its size; .bss takes no file bytes
+    groups = {"zstd_decoder": 0, "texture_runtime": 0, "basisu_transcoder": 0}
+    for line in open(link_map, errors="replace"):
+        m = WASM_ENTRY.match(line)
+        if not m:
+            continue
+        offset, size, obj, section = m.group(2), int(m.group(3), 16), m.group(4), m.group(5)
+        if offset == "0" and section.startswith(".bss"):
+            continue
+        if "basisu_transcoder.cpp.o" in obj:
+            groups["basisu_transcoder"] += size
+        elif "zstd_decompress" in obj:
+            groups["zstd_decoder"] += size
+        elif WASM_RUNTIME.search(obj) or "bcdec" in obj:
+            groups["texture_runtime"] += size
     return groups, sum(groups.values()), 250 * 1024
 
 
@@ -107,10 +79,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     mode = ap.add_mutually_exclusive_group(required=True)
     mode.add_argument("--binary", help="a linked native game executable")
-    mode.add_argument("--wasm", help="a web build directory")
+    mode.add_argument("--wasm-map", help="the wasm-ld link map (-Wl,--Map=FILE) of a web Release build")
     ap.add_argument("--json")
     args = ap.parse_args()
-    groups, counted, budget = native(args.binary) if args.binary else wasm(args.wasm)
+    groups, counted, budget = native(args.binary) if args.binary else wasm(args.wasm_map)
     report = {"groups": groups, "counted": counted, "budget": budget, "ok": counted <= budget}
     for group, size in groups.items():
         print("%-18s %8.1f KB" % (group, size / 1024.0))
