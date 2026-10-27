@@ -159,6 +159,18 @@ TEST(MeshRaycast, Kinds){
     tilemap.addTile(0, Vector2(0, 0), 4, 4);
     tilemap.addTile(0, Vector2(8, 0), 4, 4);
     tilemap.setPosition(30, 0, 0);
+    // the tile texture's pixels stay in TextureDataPool until a Texture lets them go (RenderSystem
+    // does as the entity goes, and no RenderSystem loads here): let go however the test ends
+    struct TileTextureRelease {
+        Scene& scene;
+        Entity entity;
+        ~TileTextureRelease(){
+            MeshComponent& mesh = scene.getComponent<MeshComponent>(entity);
+            for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+                mesh.submeshes[s].material.baseColorTexture.destroy();
+            }
+        }
+    } tileTextureRelease{scene, tilemap.getEntity()};
 
     // an instanced mesh: instance 7 is the one in the ray
     Primitive instanced(&scene);

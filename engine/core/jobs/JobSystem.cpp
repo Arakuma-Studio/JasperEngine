@@ -33,7 +33,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <string>
+#include <vector>
 
 #if defined(__EMSCRIPTEN__)
     #include <emscripten.h>
@@ -2119,8 +2121,16 @@ void jobs::setProfilerHooks(const ProfilerHooks& value){
     const bool empty = !value.onThreadStart && !value.onJobBegin && !value.onJobEnd && !value.onWaitBegin
         && !value.onWaitEnd && !value.onIdleBegin && !value.onIdleEnd;
     // hooks are installed a handful of times per run; the copies are kept for the threads
-    // that may still be reading an earlier one
-    const ProfilerHooks* copy = empty ? nullptr : new ProfilerHooks(value);
+    // that may still be reading an earlier one, never freed (a thread may read one at exit) and
+    // listed, so one replaced is still reachable, not a leak
+    static std::mutex keptMutex;
+    static std::vector<const ProfilerHooks*>* kept = new std::vector<const ProfilerHooks*>();
+    const ProfilerHooks* copy = nullptr;
+    if (!empty){
+        std::lock_guard<std::mutex> lock(keptMutex);
+        copy = new ProfilerHooks(value);
+        kept->push_back(copy);
+    }
     installedEpoch.fetch_add(1, std::memory_order_relaxed);
     installedHooks.store(copy, std::memory_order_release);
 }
