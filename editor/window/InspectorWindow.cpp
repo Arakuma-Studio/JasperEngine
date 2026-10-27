@@ -15949,6 +15949,8 @@ void editor::InspectorWindow::show(){
         // what shows of the window, wherever it is scrolled
         const ImRect inner = ImGui::GetCurrentWindow()->InnerClipRect;
         UIProbe::rect("inspector", inner.Min.x, inner.Min.y, inner.Max.x, inner.Max.y);
+        // and how far it is scrolled (UI tests scroll it with the mouse wheel)
+        UIProbe::scroll("inspector");
     }
     const bool openAddComponent = std::exchange(addComponentRequested, false);
 

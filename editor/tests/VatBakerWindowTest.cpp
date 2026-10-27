@@ -851,6 +851,42 @@ TEST_F(VatBakerWindow_, DeletedSourceNeverWritesTheStoredResult) {
     (void)firstVat;
 }
 
+TEST_F(VatBakerWindow_, ASourceStillLoadingIsProbedAgainOnceItsMeshesAreBuilt) {
+    // a GameObject brought back by undo builds its meshes in the next MeshSystem update: the
+    // window says it is loading (not "no POSITION"), then lists its clips with no new pick
+    const uint32_t sceneId = newScene();
+    Scene* scene = sceneOf(sceneId);
+    const Entity arm = loadModel(sceneId, "models/rigid_arm.gltf", "Robot");
+    history(sceneId)->addCommandNoMerge(new DeleteEntityCmd(project(), sceneId, arm));
+    ASSERT_TRUE(history(sceneId)->undo());
+    ASSERT_TRUE(scene->isEntityCreated(arm));
+    ASSERT_TRUE(scene->getComponent<ModelComponent>(arm).needUpdateModel);
+    std::string error;
+    ASSERT_TRUE(window->setSourceEntity(sceneId, arm, error)) << error;
+    auto has = [&](const std::string& kind) {
+        for (const VatIssue& issue : window->getIssues()) {
+            if (issue.kind == kind) return true;
+        }
+        return false;
+    };
+    EXPECT_TRUE(has("source_loading"));
+    EXPECT_FALSE(has("invalid_source"));
+    EXPECT_FALSE(window->bake(false, error)) << "not before it has loaded";
+    // still loading: a tick changes nothing
+    Access::checkSourceNow(*window);
+    window->tick(1.0);
+    EXPECT_TRUE(has("source_loading"));
+
+    scene->getSystem<MeshSystem>()->update(0);
+    Access::checkSourceNow(*window);
+    window->tick(1.0);
+    EXPECT_FALSE(has("source_loading"));
+    for (const VatIssue& issue : window->getIssues()) EXPECT_FALSE(issue.error) << issue.kind << ": " << issue.message;
+    ASSERT_TRUE(window->bake(false, error)) << error << " / " << window->getStatus();
+    runToEnd(*window);
+    ASSERT_TRUE(Access::run(*window) && Access::run(*window)->state() == VatBakeState::Done) << window->getStatus();
+}
+
 TEST_F(VatBakerWindow_, ClosingTheSourcesSceneResetsTheWindow) {
     const uint32_t sceneId = newScene();
     const Entity arm = loadModel(sceneId, "models/rigid_arm.gltf", "Robot");

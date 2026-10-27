@@ -4,6 +4,7 @@
 #include "vat/VatBakeSource.h"
 
 #include "Project.h"
+#include "command/type/ModelLoadCmd.h"
 #include "animation/ClipConverters.h"
 #include "animation/ClipEditorUtil.h"
 #include "pose/PoseAnimationDocument.h"
@@ -234,6 +235,29 @@ namespace{
         return true;
     }
 
+    // The first Model at or under `root` whose meshes are not built yet, NULL_ENTITY when none.
+    // A Model restored by undo (its GameObject's deletion undone), of a scene just opened or with
+    // a new file has needUpdateModel: MeshSystem builds its meshes in a following frame (on a
+    // worker in the editor), and until then they hold submeshes without vertex data. An editor
+    // ModelLoadCmd still loading counts too. A load that fails clears needUpdateModel.
+    Entity loadingModel(uint32_t sceneId, Scene* scene, Entity root){
+        auto models = scene->getComponentArray<ModelComponent>();
+        for (size_t i = 0; i < models->size(); i++){
+            const Entity entity = models->getEntity(i);
+            const ModelComponent& model = models->getComponentFromIndex(i);
+            const bool loading = (model.needUpdateModel && !model.filename.empty()) || ModelLoadCmd::isLoadPending(sceneId, entity);
+            if (!loading) continue;
+            Entity current = entity;
+            for (int depth = 0; current != NULL_ENTITY && depth < 65536; depth++){
+                if (current == root) return entity;
+                const Transform* transform = scene->findComponent<Transform>(current);
+                if (!transform) break;
+                current = transform->parent;
+            }
+        }
+        return NULL_ENTITY;
+    }
+
     // the open scene whose file is `scene` (project-relative)
     SceneProject* openScene(Project* project, const std::string& scene){
         const fs::path wanted = (project->getProjectPath() / FileUtils::pathFromUtf8(scene)).lexically_normal();
@@ -276,6 +300,14 @@ namespace{
         if (entity == NULL_ENTITY){
             issues.push_back(makeIssue("invalid_source", true, "no GameObject '" + spec.path + "' in '" + sceneLabel + "'",
                                        "give the GameObject's hierarchy path (e.g. Crowd/Hero)"));
+            return false;
+        }
+        // its meshes, clips and files are read below and when it is posed: not before they exist
+        const Entity loading = loadingModel(sceneProject->id, sceneProject->scene, entity);
+        if (loading != NULL_ENTITY){
+            issues.push_back(makeIssue("source_loading", true, "the model of '" + sceneProject->scene->getEntityName(loading) +
+                                       "' is still loading (a GameObject brought back by undo, a scene just opened or a new model "
+                                       "file builds its meshes in the next frames)", "bake again once it has loaded (a moment)"));
             return false;
         }
         target.sceneId = sceneProject->id;
@@ -572,6 +604,15 @@ bool resolveVatSource(Project* project, const VatSourceSpec& spec, VatBakeTarget
         target.directory = target.directory.empty() ? assets : assets + "/" + target.directory;
     }
     return true;
+}
+
+bool vatSourceLoading(Project* project, const VatSourceSpec& spec){
+    if (!project || !isGameObjectSource(spec)) return false;
+    SceneProject* sceneProject = spec.sceneId != 0 ? project->getScene(spec.sceneId)
+                                                   : (spec.scene.empty() ? nullptr : openScene(project, spec.scene));
+    if (!sceneProject || !sceneProject->scene) return false;
+    const Entity entity = EntityPath::find(*sceneProject, spec.path);
+    return entity != NULL_ENTITY && loadingModel(sceneProject->id, sceneProject->scene, entity) != NULL_ENTITY;
 }
 
 // ---- materials ----

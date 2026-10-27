@@ -124,6 +124,7 @@ lines and its result holds `errors: [{kind, message, fix}]`.
 | `output_exists` | an explicit `output` exists | `overwrite: true` (one undo step puts it back), another path, or `output: true` |
 | `socket_not_found` | a `sockets` path isn't under the root | give node paths below the source's root |
 | `scene_playing` | the source's scene plays | stop play mode |
+| `source_loading` | the GameObject's model is still building its meshes (brought back by undo, a scene just opened, a new model file); the call waits up to 60 s for it first | call again |
 | `clip_limit` | more than 64 clips | bake two assets |
 | `large_interpolation_error` (warning) | motion between samples is lost (fast spins, sharp hits) | raise `fps` to the value given, or bake that clip with `clips: [{name, interpolate: false}]` (a loop seam: or `wrap: "once"`), or set `interpolate: false` in the `.vat` |
 | `precision_switched` (warning) | half floats were not precise enough: the payload is float (twice the memory) | accept, or `tolerance_mm` higher / `mode: "bones"` |

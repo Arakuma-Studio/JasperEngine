@@ -1050,7 +1050,10 @@ void scheduleTick(const VatCallPtr& state) {
     });
 }
 
-void bakeVertexAnimationTool(const CallPtr& call) {
+// How long a call waits for a GameObject source whose model is still loading (source_loading)
+constexpr int SOURCE_LOADING_WAIT_MS = 60000;
+
+void bakeVertexAnimationRun(const CallPtr& call, bool waited) {
     McpContext& ctx = call->ctx();
     Project* project = ctx.project();
     const Json& args = call->args();
@@ -1107,6 +1110,14 @@ void bakeVertexAnimationTool(const CallPtr& call) {
         } else {
             state->session->setSpec(request.spec);
         }
+        // a GameObject restored by undo (or of a scene just opened) builds its meshes in the next
+        // frames: the bake waits for them, then checks again
+        if (!waited && vatSourceLoading(project, state->session->spec().source)) {
+            const VatSourceSpec source = state->session->spec().source;
+            call->waitUntil([project, source]() { return !vatSourceLoading(project, source); }, SOURCE_LOADING_WAIT_MS,
+                            [call](bool) { bakeVertexAnimationRun(call, true); });
+            return;
+        }
         std::vector<VatIssue> issues = state->session->check();
         if (!hasErrors(issues)) {
             for (const VatIssue& issue : unknownOverrides(state->session->spec(), state->session->sourceClips())) issues.push_back(issue);
@@ -1158,6 +1169,10 @@ void bakeVertexAnimationTool(const CallPtr& call) {
         reply.images = state->images;
         return reply;
     });
+}
+
+void bakeVertexAnimationTool(const CallPtr& call) {
+    bakeVertexAnimationRun(call, false);
 }
 
 // ---------------------------------------------------------------- .vat assets

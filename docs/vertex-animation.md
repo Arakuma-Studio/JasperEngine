@@ -718,6 +718,9 @@ every option.
 - **`socket_not_found`.** The socket path doesn't name a node under the source. Pick it from the
   list or with **Add Selected**.
 - **`scene_playing`.** GameObject sources bake in edit mode. Stop Play first.
+- **`source_loading`.** The GameObject's model is still building its meshes: one brought back by
+  undo, in a scene just opened, or given a new model file. Wait a moment: the baker lists its
+  clips once it has loaded, and `bake_vertex_animation` waits for it before baking.
 - **Houdini imports.**
   - `unknown_target`: re-export with Target Engine = Unity, or give the axis.
   - `fps_unknown`: give the frame rate.

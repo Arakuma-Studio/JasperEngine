@@ -16,7 +16,12 @@
 //     Model files, prefabs and .poseanim targets that are files are instantiated in a private
 //     scratch Scene (EntityPool::System, never seen by the Engine, as PoseRigProvider and the
 //     prefab previews do), with an Animation Player on the root so models load in the node
-//     hierarchy the clips address. GameObject sources pose the open scene in place.
+//     hierarchy the clips address. GameObject sources pose the open scene in place; one with a
+//     Model whose meshes MeshSystem has not built yet (needUpdateModel: a GameObject brought back
+//     by undo, a scene just opened, a new model file; or an editor ModelLoadCmd still loading)
+//     is refused with source_loading (vatSourceLoading tells when it is ready): until the load
+//     its meshes have submeshes but no vertex data, and nothing in the scene is changed to load
+//     them early.
 //     Clips: model animations through ClipConverters::extractModelSubClip (glTF/FBX carry no
 //     wrap: Loop); .anim files parsed as they are; an Animation Player's states with their
 //     entry wraps; entity Animations through ClipConverters::convertEntityAnimation; a Pose
@@ -114,6 +119,11 @@ namespace jasperengine::editor::vat{
 
     // False with the problems (invalid_source, no_animation...) in `issues`; warnings are added too
     bool resolveVatSource(Project* project, const VatSourceSpec& spec, VatBakeTarget& target, std::vector<VatIssue>& issues);
+
+    // Whether a GameObject source's meshes are still being built: a Model at or under it whose
+    // MeshSystem load has not run yet (source_loading). False for file sources and for sources
+    // that don't resolve (resolveVatSource reports those).
+    bool vatSourceLoading(Project* project, const VatSourceSpec& spec);
 
     // "sha1:<hex>" of a file's bytes, "" when it can't be read
     std::string fileSha1(const std::string& absolutePath);

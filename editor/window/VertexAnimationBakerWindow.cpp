@@ -915,6 +915,7 @@ void VertexAnimationBakerWindow::refreshEstimate() {
     const std::string key = specKey();
     if (key == probeKey) return;
     probeKey = key;
+    probeLoading = false;
     issues.clear();
     clips.clear();
     estimate = VatEstimate();
@@ -933,6 +934,7 @@ void VertexAnimationBakerWindow::refreshEstimate() {
     probe = std::make_unique<VatBakeSession>(project);
     probe->setSpec(spec);
     issues = probe->check();
+    for (const VatIssue& issue : issues) probeLoading = probeLoading || issue.kind == "source_loading";
     for (const VatSourceClip& clip : probe->sourceClips()) clips.push_back({clip.name, clip.origin, clip.length, clip.wrap});
     if (!hasErrors(issues) || !probe->sourceClips().empty()) estimate = probe->estimate();
     if (noneChecked && !clips.empty()) {
@@ -1182,6 +1184,12 @@ void VertexAnimationBakerWindow::watchSource() {
     if (run && run->state() == VatBakeState::Done) {
         const std::string gone = sourceGone(run->spec().source);
         if (!gone.empty()) dropStoredResult(gone);
+    }
+    // a GameObject source that was still loading (source_loading): its clips and estimate once
+    // its meshes are built
+    if (mode == Mode::Bake && probeLoading && !vatSourceLoading(project, spec.source)) {
+        probeKey.clear();
+        refreshEstimate();
     }
 }
 
