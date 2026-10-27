@@ -201,7 +201,10 @@ async def test_source_export_ships_the_imports(ed: Editor):
         ed.check((shipped / name).read_bytes()[:4] == b"glTF", f"{name} is a binary glTF")
     ed.check(not (shipped / "rigged_cube.fbx").exists(), "the .fbx itself is not shipped")
     ed.check(not (shipped / "unused.fbx").exists(), "the .fbx itself is not shipped")
-    ed.check((shipped / "textures" / "checker.png").is_file(), "its linked texture ships as an asset")
+    # its linked texture ships as an asset: the PNG, or (S14) its cooks under assets/je-cooked/
+    cooked = [p for p in assets.rglob("checker*") if "je-cooked" in p.parts]
+    ed.check((shipped / "textures" / "checker.png").is_file() or cooked,
+             f"its linked texture ships as an asset: {sorted(str(p.relative_to(assets)) for p in assets.rglob('checker*'))}")
     sources = [p for p in out.rglob("*.cpp") if "rigged_cube.fbx" in p.read_text(errors="ignore")]
     ed.check(sources, "the scene source loads the model by its .fbx path")
 
