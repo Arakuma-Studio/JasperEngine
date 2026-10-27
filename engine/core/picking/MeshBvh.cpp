@@ -1081,8 +1081,7 @@ bool MeshBvh::deserialize(std::span<const uint8_t> bytes, const PickGeometry& ge
         return fail();
     }
 
-    // the triangles, each at most once: their indices and corners here, their positions
-    // read while the boxes are computed (refitNodes, on the workers for a large mesh)
+    // each geometry triangle at most once
     const size_t vertexCount = geometry.positions.size();
     std::vector<uint8_t> seen(geometryTriangles, 0);
     for (uint32_t i = 0; i < header.triangleCount; i++){
@@ -1093,12 +1092,11 @@ bool MeshBvh::deserialize(std::span<const uint8_t> bytes, const PickGeometry& ge
         }
         seen[index] = 1;
     }
-    // the corners: reads all over the geometry's indices (leaf order), on the workers for a
-    // large mesh
-    std::vector<uint32_t> corners((size_t)header.triangleCount * 3);
+    // the triangles: reads all over the geometry's indices and positions (leaf order), on the
+    // workers for a large mesh
     triangles.resize(header.triangleCount);
     std::atomic<bool> outOfRange{false};
-    auto readCorners = [&](size_t begin, size_t end){
+    auto readTriangles = [&](size_t begin, size_t end){
         for (size_t i = begin; i < end; i++){
             uint32_t index;
             std::memcpy(&index, indexBytes + i * sizeof(uint32_t), sizeof(uint32_t));
@@ -1107,19 +1105,16 @@ bool MeshBvh::deserialize(std::span<const uint8_t> bytes, const PickGeometry& ge
                 outOfRange.store(true, std::memory_order_relaxed);
                 return;
             }
-            triangles[i].index = index;
-            corners[i * 3] = corner[0];
-            corners[i * 3 + 1] = corner[1];
-            corners[i * 3 + 2] = corner[2];
+            triangles[i] = {geometry.positions[corner[0]], geometry.positions[corner[1]], geometry.positions[corner[2]], index};
         }
     };
-    constexpr size_t CORNER_CHUNK = 16384;
-    if (header.triangleCount > CORNER_CHUNK * 2){
-        jobs::parallelFor((header.triangleCount + CORNER_CHUNK - 1) / CORNER_CHUNK, [&](size_t chunk){
-            readCorners(chunk * CORNER_CHUNK, std::min<size_t>(header.triangleCount, (chunk + 1) * CORNER_CHUNK));
+    constexpr size_t TRIANGLE_CHUNK = 16384;
+    if (header.triangleCount > TRIANGLE_CHUNK * 2){
+        jobs::parallelFor((header.triangleCount + TRIANGLE_CHUNK - 1) / TRIANGLE_CHUNK, [&](size_t chunk){
+            readTriangles(chunk * TRIANGLE_CHUNK, std::min<size_t>(header.triangleCount, (chunk + 1) * TRIANGLE_CHUNK));
         });
     }else{
-        readCorners(0, header.triangleCount);
+        readTriangles(0, header.triangleCount);
     }
     if (outOfRange.load(std::memory_order_relaxed)){
         return fail();
@@ -1139,9 +1134,8 @@ bool MeshBvh::deserialize(std::span<const uint8_t> bytes, const PickGeometry& ge
             return fail();
         }
         Box box;
-        for (size_t t = 0; t < triangles.size(); t++){
-            loadCorners(triangles[t], geometry.positions, corners.data() + t * 3);
-            box.expand(triangleBox(triangles[t]));
+        for (const Triangle& triangle : triangles){
+            box.expand(triangleBox(triangle));
         }
         if (!box.empty()){
             bounds = AABB(box.mn[0], box.mn[1], box.mn[2], box.mx[0], box.mx[1], box.mx[2]);
@@ -1186,6 +1180,6 @@ bool MeshBvh::deserialize(std::span<const uint8_t> bytes, const PickGeometry& ge
     }
 
     // the boxes are never taken from the file: recomputed from the triangles they bound
-    refitNodes(geometry.positions, corners);
+    refitNodes();
     return true;
 }
