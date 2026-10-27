@@ -30,6 +30,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -168,12 +169,14 @@ namespace {
             camera.activate();
             scene().setGlobalIllumination(0.6f);
             scene().setMeshLodEnabled(false);
-            Light& light = fixture.add<Light>();
-            light.setType(LightType::DIRECTIONAL);
-            light.setDirection(-0.2f, -0.3f, -1.0f);
-            light.setIntensity(2.0f);
-            light.setShadows(false);
+            light = &fixture.add<Light>();
+            light->setType(LightType::DIRECTIONAL);
+            light->setDirection(-0.2f, -0.3f, -1.0f);
+            light->setIntensity(2.0f);
+            light->setShadows(false);
         }
+
+        Light* light = nullptr;
 
         Scene& scene(){ return fixture.getScene(); }
 
@@ -344,11 +347,43 @@ TEST_F(SharedMeshBuffersTest, ThousandsOfSkinnedModelCopiesAllDrawFromOneSetOfBu
     EXPECT_EQ(SystemRender::getResourcePoolExhaustions(), exhaustionsBefore) << "no GPU pool ran out";
     // 3 materials: 3 draws a hero
     EXPECT_GE(Engine::getFrameStats().drawCalls, uint32_t(count * 3));
+    // their uniform blocks fit the frame's uniform buffer (Vulkan, Metal, WebGPU drop the draws
+    // past it): counted on every backend
+    EXPECT_GT(SystemRender::getUniformBytesLastFrame(), 0u);
+    EXPECT_LE(SystemRender::getUniformBytesLastFrame(), SystemRender::getUniformBytesLimit());
+    EXPECT_EQ(SystemRender::getUniformSkippedDraws(), 0u);
 
     Screen screen;
     ASSERT_TRUE(screen.read());
     const std::vector<int> blank = s.blankCells(screen, 0, count);
     EXPECT_TRUE(blank.empty()) << blank.size() << " of " << count << " heroes not drawn: " << firstOf(blank);
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR), 0u) << errorLines();
+}
+
+// The frame's uniform blocks (each rounded up to 256 bytes, as sokol's per-frame uniform buffer
+// takes them on Vulkan, Metal and WebGPU) of skinned heroes in shadow-casting light: what one
+// hero costs a frame, and that Engine::GpuResourceLimits::uniformBytes holds 10,000 of them. A
+// frame of 3,300 shadowed heroes overflowed sokol's default 4 MB on Vulkan and dropped draws.
+TEST_F(SharedMeshBuffersTest, UniformBufferHoldsTenThousandShadowedSkinnedHeroes){
+    const int count = 500;
+    AbandonedCrowd crowd(count, 2.0f, 2.4f);
+    GridScene& s = crowd.scene();
+    s.light->setShadows(true);
+    const uint64_t skippedBefore = SystemRender::getUniformSkippedDraws();
+    ASSERT_TRUE(s.settle());
+    const uint64_t empty = SystemRender::getUniformBytesLastFrame();
+    addCopies(s, heroPath(), 0, count, crowd.models());
+    ASSERT_TRUE(s.settle());
+    GpuEnvironment::drawFrames(2);
+    const uint64_t frame = SystemRender::getUniformBytesLastFrame();
+    ASSERT_GT(frame, empty);
+    const double perHero = double(frame - empty) / count;
+    std::printf("[uniforms] %d shadowed skinned heroes: %llu bytes a frame (%.0f a hero, %llu without them), limit %llu\n", count,
+                (unsigned long long)frame, perHero, (unsigned long long)empty, (unsigned long long)SystemRender::getUniformBytesLimit());
+    // a hero draws 3 submeshes in the colour pass and the shadow cascades
+    EXPECT_GT(perHero, 3 * 256.0);
+    EXPECT_LE(empty + perHero * 10000.0, double(SystemRender::getUniformBytesLimit())) << "10,000 shadowed heroes fit";
+    EXPECT_EQ(SystemRender::getUniformSkippedDraws(), skippedBefore);
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR), 0u) << errorLines();
 }
 

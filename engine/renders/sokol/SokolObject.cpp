@@ -10,6 +10,7 @@
 #include "SokolCmdQueue.h"
 #include "SokolPipelineCache.h"
 #include "SokolShader.h"
+#include "SokolSystem.h"
 #include "Engine.h"
 #include "render/SystemRender.h"
 
@@ -26,6 +27,8 @@ namespace {
     std::atomic<int> livePipelines(0);
     // loads with an unfed vertex input (SokolObject::getUnfedVertexInputLoads)
     std::atomic<int> unfedVertexInputLoads(0);
+    // a uniform block of the draw being set up did not fit the frame's uniform buffer
+    bool uniformsDropped = false;
 
     // the bit index of a pipeline type
     int pipelineIndex(PipelineType pipType){
@@ -826,6 +829,7 @@ bool SokolObject::endLoadDynamic(PrimitiveType primitiveType, IndexType indexTyp
 }
 
 bool SokolObject::beginDraw(const PipelineState& state){
+    uniformsDropped = false; // a new draw: its uniforms come next
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     if (!dynamicLoaded || sg_query_shader_state(baseDesc.shader) != SG_RESOURCESTATE_VALID)
         return false;
@@ -849,6 +853,7 @@ bool SokolObject::beginDraw(const PipelineState& state){
 }
 
 bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling){
+    uniformsDropped = false; // a new draw: its uniforms come next
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     sg_pipeline selectedPipeline = pipelineOf(pipType);
 
@@ -894,14 +899,26 @@ bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling){
 void SokolObject::applyUniformBlock(int slot, unsigned int count, void* data){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     if (slot != -1){
+        // past the frame's uniform buffer (Vulkan, Metal, WebGPU): not applied, and the draw it
+        // is for is skipped (SokolSystem logs it), not drawn with another draw's uniforms
+        if (!SokolSystem::reserveUniformBytes(count)){
+            uniformsDropped = true;
+            return;
+        }
         sg_apply_uniforms(slot, {data, count});
     }
 }
 
-void SokolObject::draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount){
+bool SokolObject::draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
+    if (uniformsDropped){
+        uniformsDropped = false;
+        SokolSystem::countSkippedDraw();
+        return false;
+    }
     sg_apply_bindings(bind);
     sg_draw(baseElement, vertexCount, instanceCount);
+    return true;
 }
 
 void SokolObject::destroy(){

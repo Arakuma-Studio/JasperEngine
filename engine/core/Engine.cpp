@@ -786,6 +786,7 @@ void Engine::setGpuResourceLimits(const GpuResourceLimits& limits){
     set.views = valid(limits.views, defaults.views);
     set.pipelines = valid(limits.pipelines, defaults.pipelines);
     set.shaders = valid(limits.shaders, defaults.shaders);
+    set.uniformBytes = (limits.uniformBytes >= 65536 && limits.uniformBytes <= (1 << 30)) ? limits.uniformBytes : defaults.uniformBytes;
 }
 
 const Engine::GpuResourceLimits& Engine::getGpuResourceLimits(){

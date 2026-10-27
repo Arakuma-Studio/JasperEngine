@@ -247,6 +247,14 @@ namespace jasperengine {
             int views = 24576;     // one per texture and storage buffer, and per render target attachment
             int pipelines = 8192;  // shared by meshes with the same shader variant and state
             int shaders = 1024;    // one per shader variant
+            // bytes of uniform blocks a frame can apply on Vulkan, Metal and WebGPU (each block
+            // rounded up to 256 bytes): past it a draw is skipped and the first such frame logged
+            // (SokolSystem::reserveUniformBytes); GL and D3D11 have no such buffer. A skinned hero
+            // of 3 materials in shadow-casting light takes 13,056 bytes a frame (51 blocks: colour
+            // pass and shadow cascades, measured by SharedMeshBuffersTest): 140 MB hold 10,000 of
+            // them and the rest of a frame. sokol allocates it once per frame in flight (2): 280 MB
+            // of host-visible memory on Vulkan and Metal (sokol's default, 4 MB, held ~300 heroes)
+            int uniformBytes = 140 * 1024 * 1024;
         };
 
     private:

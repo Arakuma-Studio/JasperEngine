@@ -51,6 +51,26 @@ bool SystemRender::hasResourcePoolRoom(){
     return SokolSystem::hasResourcePoolRoom();
 }
 
+uint64_t SystemRender::getUniformBytesLastFrame(){
+    return SokolSystem::getUniformBytesLastFrame();
+}
+
+uint64_t SystemRender::getUniformBytesPeak(){
+    return SokolSystem::getUniformBytesPeak();
+}
+
+uint64_t SystemRender::getUniformBytesLimit(){
+    return SokolSystem::getUniformBytesLimit();
+}
+
+bool SystemRender::hasUniformBufferLimit(){
+    return SokolSystem::hasUniformBufferLimit();
+}
+
+uint64_t SystemRender::getUniformSkippedDraws(){
+    return SokolSystem::getUniformSkippedDraws();
+}
+
 void SystemRender::commitQueue(){
     SokolSystem::commitQueue();
 }

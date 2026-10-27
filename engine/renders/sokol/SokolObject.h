@@ -141,7 +141,8 @@ namespace jasperengine{
         // applied last in this pass
         bool beginDraw(const PipelineState& state);
         void applyUniformBlock(int slot, unsigned int count, void* data);
-        void draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount);
+        // false: skipped, its uniforms did not fit the frame's uniform buffer (SokolSystem::reserveUniformBytes)
+        bool draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount);
 
         void destroy();
 
