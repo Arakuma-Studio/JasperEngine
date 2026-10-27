@@ -61,6 +61,8 @@ namespace {
         }
         void TearDown() override {
             service.detach();
+            // closes the project's scenes as a project switch does (a Project frees none itself)
+            project.releaseScenes();
         }
         // what the editor's loop does with the watcher running (App::pollExternalChanges),
         // until `done` or `limit`

@@ -90,3 +90,26 @@ TEST(DeferScopeTest, AddsStayImmediate){
         EXPECT_TRUE(scene.isEntityCreated(created));
     }
 }
+
+TEST(DeferScopeTest, ARemovalRecordedTwiceRemovesOnce){
+    // a contact callback toggling a component on a GameObject (tools/fixtures/ecs-collision):
+    // remove (deferred), get or add (the component is still there), remove (deferred again).
+    // The second removal finds nothing to remove when the scope plays back; the removal hooks
+    // (PhysicsSystem's reads the Rigidbody2D) must not see it (the exported game aborted with
+    // "Retrieving non-existent component")
+    Scene scene;
+    const Entity entity = makeTransformEntity(scene);
+    scene.addComponent<Rigidbody2DComponent>(entity);
+    {
+        StructuralDeferScope scope(scene);
+        scene.removeComponent<Rigidbody2DComponent>(entity);
+        EXPECT_NE(scene.findComponent<Rigidbody2DComponent>(entity), nullptr);
+        scene.removeComponent<Rigidbody2DComponent>(entity);
+        EXPECT_EQ(scene.getDeferredCommands().size(), 2u);
+    }
+    EXPECT_EQ(scene.findComponent<Rigidbody2DComponent>(entity), nullptr);
+    EXPECT_FALSE(scene.getSignature(entity).test(scene.getComponentId<Rigidbody2DComponent>()));
+    // and added again afterwards, as the next callback does
+    scene.addComponent<Rigidbody2DComponent>(entity);
+    EXPECT_NE(scene.findComponent<Rigidbody2DComponent>(entity), nullptr);
+}

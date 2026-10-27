@@ -31,6 +31,8 @@ Environment:
     JASPER_FAKE=1    use tools/mcp/fake_server.py instead of the editor (harness self-test)
     JASPER_KEEP_SCRATCH=1   keep scratch directories
     JASPER_MCP_URL   when set, Editor() with no project/url attaches to this URL instead
+    JASPER_MCP_PERF_SLACK   the factor wall-clock budgets are enforced with (over_budget); unset
+                     or 0: budgets are printed only (the benchmark run on server E sets it)
     JASPER_MCP_TOKEN bearer token for url mode (the editor's MCP window copies it)
 """
 
@@ -346,6 +348,32 @@ class CallResult:
             elif kind == "image":
                 out.images.append((base64.b64decode(c.data), c.mime_type))
         return out
+
+
+# ---------------------------------------------------------------------------
+# Wall-clock budgets
+
+def perf_slack() -> float:
+    """The factor wall-clock budgets are enforced with: JASPER_MCP_PERF_SLACK, 0 (not enforced)
+    unless set. A shared build server's load alone misses them, so a functional run asserts the
+    behaviour and prints the times; the benchmark run on the benchmark-only server E enforces them."""
+    try:
+        return max(0.0, float(os.environ.get("JASPER_MCP_PERF_SLACK", "") or 0))
+    except ValueError:
+        return 0.0
+
+
+def over_budget(what: str, measured: dict[str, float], budget: float, unit: str = "s") -> dict[str, float]:
+    """Prints `[bench] what: name value, ... (budget B)` and returns the measures over budget x
+    perf_slack(): always empty in a functional run (perf_slack() 0), for the benchmark run to fail
+    on. The measures and the budget are in `unit`."""
+    shown = ", ".join(f"{name} {value:.4g} {unit}" for name, value in measured.items())
+    slack = perf_slack()
+    enforced = f", enforced x{slack:g}" if slack > 0 else ", not enforced"
+    print(f"     [bench] {what}: {shown} (budget {budget:g} {unit}{enforced})", flush=True)
+    if slack <= 0:
+        return {}
+    return {name: value for name, value in measured.items() if value > budget * slack}
 
 
 # ---------------------------------------------------------------------------
