@@ -9,6 +9,8 @@
 --   mode "vat":     one Model of `vat`'s .vat.glb with an Instanced Mesh of `count` instances and a
 --                   Vertex Animator playing each instance's clip (no CPU pose work, one instanced
 --                   draw per material)
+-- The Models are kept in `self.objects`: a Model made with Model(scene) owns its entity, and the
+-- garbage collector taking it destroys the hero (earlier runs lost most heroes this way).
 local Crowd = {
     properties = {
         { name = "mode", displayName = "Mode", type = "string", default = "vat" },
@@ -34,10 +36,12 @@ end
 
 function Crowd:init()
     local count = math.floor(self.count)
+    self.objects = {}
     if self.mode == "skinned" then
         local lengths = {}
         for i = 0, count - 1 do
             local hero = Model(self.scene)
+            self.objects[#self.objects + 1] = hero
             hero:loadModel("models/hero.gltf")
             hero.position = place(i, count)
             local clip = CLIPS[(i % 3) + 1]
@@ -53,6 +57,7 @@ function Crowd:init()
         end
     else
         local crowd = Model(self.scene)
+        self.objects[1] = crowd
         local mesh = string.gsub(self.vat, "%.vat$", ".vat.glb")
         crowd:loadModel(mesh)
         crowd:createInstancedMesh()
