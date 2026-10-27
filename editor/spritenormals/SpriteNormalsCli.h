@@ -6,9 +6,11 @@
 // jasperengine-editor generate-sprite-normals (sprite normals Phase 3, section 4): the
 // generate_sprite_normals MCP tool for a shell or CI, through the same Phase 2 session (so a CLI
 // write is the same pixels as an MCP or window write). Without --sprite: no engine, window or
-// GPU. With --sprite: the project is loaded with the headless engine (place-physics / bake-vat
-// pattern), the scene opened, the Sprite's texture and frames read, the engine shut down before
-// generating (the frames become FramesSpec::Mode::Cells, from Sprite).
+// GPU (the session reads the assets directory from project.yaml then). With --sprite: one
+// headless engine run (place-physics / bake-vat pattern) holds the whole command: the project
+// loaded, the scene opened, one Spec per distinct colour texture of the GameObject (a Tilemap: per
+// tileset) naming it (sceneId, entity, submesh), so frames auto are the Sprite's and the recipes
+// record kind sprite and the entity, exactly as the MCP tool's.
 // - Preflight before any write: every source resolved and probed, settings, frames and outputs
 //   checked (plannedOutputs), duplicates across the batch and outputs equal to an input refused
 //   (symlinks resolved), existing outputs without --overwrite listed; then every output of every

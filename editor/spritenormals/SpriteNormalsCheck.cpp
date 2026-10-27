@@ -95,6 +95,11 @@ namespace jasperengine::editor::spritenormals {
             return ext;
         }
 
+        // readRecipeHead's errors that concern the recipe chunk itself (they name its keyword)
+        bool recipeChunkError(const std::string& error) {
+            return error.find(kRecipeKeyword) != std::string::npos;
+        }
+
         std::string name(const fs::path& path) {
             return path.filename().u8string();
         }
@@ -131,7 +136,9 @@ namespace jasperengine::editor::spritenormals {
                 std::string invalid;
                 if (recipe && validateRecipe(*recipe, invalid)) fresh["recipe"] = *recipe;
                 else if (recipe) fresh["recipe_error"] = invalid;
-                else if (!error.empty()) fresh["recipe_error"] = error;
+                // only a damaged jasper.spritenormals chunk is a garbled recipe; a file that is not a
+                // PNG, can't be opened or has a broken chunk list has no recipe to report
+                else if (recipeChunkError(error)) fresh["recipe_error"] = error;
                 int w = 0, h = 0;
                 texsynth::probeImage(png, w, h);
                 fresh["width"] = w;
@@ -259,6 +266,9 @@ namespace jasperengine::editor::spritenormals {
                     const int w = img.width, h = img.height;
                     auto px = [&](int x, int y) { return img.data.data() + (static_cast<size_t>(y) * w + x) * 4; };
                     auto opaque = [&](int x, int y) { return x >= 0 && y >= 0 && x < w && y < h && px(x, y)[3] > 7; };
+                    // a rim is an opaque pixel next to a transparent one inside the image: the image's
+                    // border is no silhouette (an opaque tile has no rims at all)
+                    auto transparent = [&](int x, int y) { return x >= 0 && y >= 0 && x < w && y < h && px(x, y)[3] <= 7; };
                     double lenError = 0.0;
                     size_t count = 0, blueLow = 0, top = 0, topDown = 0, bottom = 0, bottomUp = 0;
                     for (int y = 0; y < h; y++) {
@@ -270,11 +280,11 @@ namespace jasperengine::editor::spritenormals {
                             count++;
                             if (p[2] < 128) blueLow++;
                             // the rims: transparent (or the image's border) above / below
-                            if (!opaque(x, y - 1)) {
+                            if (transparent(x, y - 1)) {
                                 top++;
                                 if (p[1] < 128) topDown++;
                             }
-                            if (!opaque(x, y + 1)) {
+                            if (transparent(x, y + 1)) {
                                 bottom++;
                                 if (p[1] > 128) bottomUp++;
                             }
@@ -338,9 +348,13 @@ namespace jasperengine::editor::spritenormals {
                 }
                 const YAML::Node mesh = components["mesh"];
                 if (!mesh || !mesh.IsMap() || !mesh["submeshes"] || !mesh["submeshes"].IsSequence()) return;
-                // the Sprite's frames (pixel rects; fractions of the texture when all are <= 1)
-                std::vector<Cell> frames;
-                bool normalizedFrames = true;
+                // the Sprite's frames as stored: pixel rects, or a rect given as fractions of the
+                // texture (each of x, y, w, h in [0, 1], Rect::isNormalized), scaled like the session's
+                // spriteInfo does (double precision, rounded once)
+                struct Frame {
+                    double x, y, w, h;
+                };
+                std::vector<Frame> frames;
                 if (const YAML::Node sprite = components["sprite"]; sprite && sprite.IsMap() && sprite["framesRect"] && sprite["framesRect"].IsSequence()) {
                     for (const YAML::Node& frame : sprite["framesRect"]) {
                         const YAML::Node r = frame.IsMap() ? frame["rect"] : YAML::Node();
@@ -348,9 +362,7 @@ namespace jasperengine::editor::spritenormals {
                         try {
                             const double x = r[0].as<double>(), y = r[1].as<double>(), w = r[2].as<double>(), h = r[3].as<double>();
                             if (w <= 0 || h <= 0) continue;
-                            if (x > 1 || y > 1 || w > 1 || h > 1) normalizedFrames = false;
-                            frames.push_back({static_cast<int>(std::lround(x * 1000)), static_cast<int>(std::lround(y * 1000)),
-                                              static_cast<int>(std::lround(w * 1000)), static_cast<int>(std::lround(h * 1000))});
+                            frames.push_back({x, y, w, h});
                         } catch (const std::exception&) {
                         }
                     }
@@ -408,10 +420,13 @@ namespace jasperengine::editor::spritenormals {
                             std::vector<Cell> cells;
                             for (const json& c : recipeFrames["cells"]) cells.push_back({c[0].get<int>(), c[1].get<int>(), c[2].get<int>(), c[3].get<int>()});
                             std::vector<Cell> sprite;
-                            const double sx = normalizedFrames ? std::max(1, info.width) : 1.0, sy = normalizedFrames ? std::max(1, info.height) : 1.0;
-                            for (const Cell& f : frames) {
-                                sprite.push_back({static_cast<int>(std::lround(f.x / 1000.0 * sx)), static_cast<int>(std::lround(f.y / 1000.0 * sy)),
-                                                  static_cast<int>(std::lround(f.width / 1000.0 * sx)), static_cast<int>(std::lround(f.height / 1000.0 * sy))});
+                            // fractions are of the colour texture (the normal map's size when it is unknown)
+                            const double tw = baseKnown ? bw : std::max(1, info.width), th = baseKnown ? bh : std::max(1, info.height);
+                            for (const Frame& f : frames) {
+                                const bool normalized = f.x >= 0 && f.x <= 1 && f.y >= 0 && f.y <= 1 && f.w <= 1 && f.h <= 1;
+                                const double sx = normalized ? tw : 1.0, sy = normalized ? th : 1.0;
+                                sprite.push_back({static_cast<int>(std::lround(f.x * sx)), static_cast<int>(std::lround(f.y * sy)),
+                                                  static_cast<int>(std::lround(f.w * sx)), static_cast<int>(std::lround(f.h * sy))});
                             }
                             if (sprite != cells) {
                                 result.findings.push_back({"normals", at, 0, 0, "warning",

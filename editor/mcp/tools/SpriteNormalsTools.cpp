@@ -36,6 +36,7 @@
 #include <cmath>
 #include <cstdio>
 #include <fstream>
+#include <iterator>
 #include <set>
 
 namespace jasperengine::editor::mcp {
@@ -102,8 +103,13 @@ sn::Problem problem(const std::string& kind, const std::string& field, const std
     return {kind, field, message, fix};
 }
 
+// every error says how to fix it: a problem without its own fix points at the argument table
+std::string fixOf(const sn::Problem& p) {
+    return p.fix.empty() ? "check the argument against jasper://docs/sprite-normals (Arguments)" : p.fix;
+}
+
 Json problemJson(const sn::Problem& p) {
-    Json j = {{"kind", p.kind}, {"message", p.message}, {"fix", p.fix}};
+    Json j = {{"kind", p.kind}, {"message", p.message}, {"fix", fixOf(p)}};
     const std::string field = argumentField(p.field);
     if (!field.empty()) j["field"] = field;
     return j;
@@ -118,7 +124,7 @@ Json problemsJson(const std::vector<sn::Problem>& problems) {
 // "\n- kind: message Fix: fix" per problem
 std::string problemsText(const std::vector<sn::Problem>& problems) {
     std::string text;
-    for (const sn::Problem& p : problems) text += "\n- " + p.kind + ": " + p.message + (p.fix.empty() ? std::string() : " Fix: " + p.fix);
+    for (const sn::Problem& p : problems) text += "\n- " + p.kind + ": " + p.message + " Fix: " + fixOf(p);
     return text;
 }
 
@@ -138,15 +144,16 @@ void failJob(const JobPtr& job, const std::string& headline, const std::vector<s
     job->fail(headline + problemsText(problems), data);
 }
 
-// The session's output_exists problems in this tool's words (and the paths, for `existing`)
-void rewordExisting(std::vector<sn::Problem>& problems, std::vector<std::string>& existing) {
+// The session's output_exists problems in this tool's words, with the planned path of their
+// role (field "output.<role>"), and those paths for `existing`
+void rewordExisting(std::vector<sn::Problem>& problems, const std::vector<sn::PlannedOutput>& planned, std::vector<std::string>& existing) {
     for (sn::Problem& p : problems) {
         if (p.kind != "output_exists") continue;
-        std::string path = p.message;
-        const size_t at = path.rfind(" already exists.");
-        if (at != std::string::npos) path = path.substr(0, at);
-        existing.push_back(path);
-        p.message = "would replace " + path;
+        for (const sn::PlannedOutput& out : planned) {
+            if (p.field != "output." + out.role) continue;
+            existing.push_back(out.path);
+            p.message = "would replace " + out.path;
+        }
         p.fix = "pass overwrite: true (one undo step puts it back), or another output";
     }
 }
@@ -232,7 +239,8 @@ bool settingsArg(const Json& args, sn::Settings& out, std::vector<sn::Problem>& 
     s.preset = preset;
     for (const char* key : {"directx", "height"}) {
         if (args.contains(key) && !args[key].is_null() && !args[key].is_boolean()) {
-            problems.push_back(problem("invalid_settings", key, std::string(key) + " must be true or false (got " + args[key].dump() + ")", ""));
+            problems.push_back(problem("invalid_settings", key, std::string(key) + " must be true or false (got " + args[key].dump() + ")",
+                                       std::string("pass ") + key + ": true or " + key + ": false, or leave it out (false)"));
             return false;
         }
     }
@@ -706,18 +714,63 @@ void finishNormals(const NormalsCallPtr& state) {
     Json undo = Json::array();
     std::string writeText;
     std::vector<std::vector<sn::OutputFile>> written;
+    // save_path first: the contact sheet (inside the project, any folder; replaced without
+    // overwrite, like screenshot). A sheet that can't be written fails the call before anything
+    // else is; a write that fails afterwards puts the sheet path back as it was
+    struct SheetBackup {
+        fs::path path;
+        bool existed = false;
+        std::string bytes;
+    } sheetBackup;
+    if (!state->savePath.empty() && !reports.empty() && !reports[0].sheet.empty()) {
+        fs::path target;
+        std::string error;
+        if (!McpRefs::resolveProjectPath(project, state->savePath, target, error)) {
+            failJob(job, "Nothing was written:", {problem("output_invalid", "save_path", error, "a project-relative .png path")});
+            return;
+        }
+        std::error_code ec;
+        sheetBackup.path = target;
+        sheetBackup.existed = fs::is_regular_file(target, ec);
+        if (sheetBackup.existed) {
+            std::ifstream old(target, std::ios::binary);
+            sheetBackup.bytes.assign(std::istreambuf_iterator<char>(old), std::istreambuf_iterator<char>());
+        }
+        if (target.has_parent_path()) fs::create_directories(target.parent_path(), ec);
+        std::ofstream file(target, std::ios::binary | std::ios::trunc);
+        if (!file || !file.write(reinterpret_cast<const char*>(reports[0].sheet.data()), static_cast<std::streamsize>(reports[0].sheet.size()))) {
+            failJob(job, "Nothing was written:", {problem("write_failed", "save_path", "could not write the sheet to " + state->savePath,
+                                                          "save_path must name a writable file whose folders are folders (not files), then call again")});
+            return;
+        }
+        file.close();
+        data["saved_to"] = relativeOf(project, target);
+    }
+    auto failWrite = [&](const std::string& headline, const std::vector<sn::Problem>& problems) {
+        if (!sheetBackup.path.empty()) {
+            std::error_code ec;
+            if (sheetBackup.existed) {
+                std::ofstream back(sheetBackup.path, std::ios::binary | std::ios::trunc);
+                back << sheetBackup.bytes;
+            } else {
+                fs::remove(sheetBackup.path, ec);
+            }
+        }
+        failJob(job, headline, problems);
+    };
+
     SceneProject* applyScene = state->apply ? project->getScene(state->applyScene) : nullptr;
     Json applied;
     if (state->write) {
         // the scene must still be there and stopped (checked again: play may have started meanwhile)
         if (state->apply) {
             if (!applyScene || !applyScene->scene || !applyScene->scene->isEntityCreated(state->applyEntity)) {
-                failJob(job, "Nothing was written:", {problem("invalid_apply", "apply", "the GameObject to apply to went away while the normal map was generated",
+                failWrite("Nothing was written:", {problem("invalid_apply", "apply", "the GameObject to apply to went away while the normal map was generated",
                                                               "undo its deletion or name another GameObject, then call again")});
                 return;
             }
             if (applyScene->playState != ScenePlayState::STOPPED) {
-                failJob(job, "Nothing was written:", {problem("scene_playing", "apply", "scene '" + applyScene->name + "' started playing while the normal map was generated",
+                failWrite("Nothing was written:", {problem("scene_playing", "apply", "scene '" + applyScene->name + "' started playing while the normal map was generated",
                                                               "stop play first (play {action: \"stop\"}), then call again")});
                 return;
             }
@@ -728,7 +781,7 @@ void finishNormals(const NormalsCallPtr& state) {
             std::vector<sn::OutputFile> encoded;
             std::string error;
             if (!sn::encodeOutputs(t.run->prepared(), t.run->result(), encoded, error)) {
-                failJob(job, "Nothing was written:", {problem("write_failed", "output", error, "check the path is writable, then call again")});
+                failWrite("Nothing was written:", {problem("write_failed", "output", error, "check the path is writable, then call again")});
                 return;
             }
             all.insert(all.end(), encoded.begin(), encoded.end());
@@ -744,7 +797,7 @@ void finishNormals(const NormalsCallPtr& state) {
                 }
             }
             if (!existing.empty()) {
-                failJob(job, "Nothing was written:", existing);
+                failWrite("Nothing was written:", existing);
                 return;
             }
         }
@@ -752,7 +805,7 @@ void finishNormals(const NormalsCallPtr& state) {
         const size_t before = history ? history->position() : 0;
         std::string error;
         if (!sn::writeOutputsUndoable(all, error)) {
-            failJob(job, "Nothing was written:", {problem("write_failed", "output", error, "check the path is writable, then call again")});
+            failWrite("Nothing was written:", {problem("write_failed", "output", error, "check the path is writable, then call again")});
             return;
         }
         int normals = 0;
@@ -803,7 +856,7 @@ void finishNormals(const NormalsCallPtr& state) {
                 if (history && history->position() > before && history->undo()) history->dropRedo();
                 sn::Problem p = result.error;
                 if (p.kind.empty()) p.kind = "write_failed";
-                failJob(job, "Nothing was written (the files were removed again):", {p});
+                failWrite("Nothing was written (the files were removed again):", {p});
                 return;
             }
             for (const sn::Problem& w : result.warnings) {
@@ -846,25 +899,7 @@ void finishNormals(const NormalsCallPtr& state) {
         }
     }
 
-    // save_path: the contact sheet (inside the project, any folder; replaced without overwrite, like screenshot)
-    if (!state->savePath.empty() && !reports.empty() && !reports[0].sheet.empty()) {
-        fs::path target;
-        std::string error;
-        if (!McpRefs::resolveProjectPath(project, state->savePath, target, error)) {
-            failJob(job, "The sheet was not saved:", {problem("output_invalid", "save_path", error, "a project-relative .png path")});
-            return;
-        }
-        std::error_code ec;
-        if (target.has_parent_path()) fs::create_directories(target.parent_path(), ec);
-        std::ofstream file(target, std::ios::binary | std::ios::trunc);
-        if (!file || !file.write(reinterpret_cast<const char*>(reports[0].sheet.data()), static_cast<std::streamsize>(reports[0].sheet.size()))) {
-            failJob(job, "The sheet was not saved:", {problem("write_failed", "save_path", "could not write " + state->savePath, "check the path is writable")});
-            return;
-        }
-        file.close();
-        data["saved_to"] = relativeOf(project, target);
-        w4::syncFiles(ctx, {target}, false);
-    }
+    if (!sheetBackup.path.empty()) w4::syncFiles(ctx, {sheetBackup.path}, false);
 
     // the result: one object for one source, `results` for a Tilemap's tilesets
     data["written"] = state->write;
@@ -968,7 +1003,9 @@ void generateSpriteNormalsTool(const CallPtr& call) {
     }
     for (const char* key : {"overwrite", "wait"}) {
         if (args.contains(key) && !args[key].is_boolean()) {
-            failCall(call, problem("invalid_settings", key, std::string(key) + " must be true or false (got " + args[key].dump() + ")", ""));
+            failCall(call, problem("invalid_settings", key, std::string(key) + " must be true or false (got " + args[key].dump() + ")",
+                                   std::string("pass ") + key + ": true or " + key + ": false, or leave it out (" +
+                                       (std::string(key) == "wait" ? "true" : "false") + ")"));
             return;
         }
     }
@@ -1152,10 +1189,17 @@ void generateSpriteNormalsTool(const CallPtr& call) {
     std::vector<std::string> existing;
     for (NormalsTarget& t : state->targets) {
         std::vector<sn::Problem> found = sn::checkSpec(state->root, t.spec, specScene);
+        if (std::any_of(found.begin(), found.end(), [](const sn::Problem& p) { return p.kind == "output_exists"; })) {
+            // what the spec writes (its explicit paths, else the default names of the source's kind)
+            sn::SourceInfo info;
+            std::vector<sn::Problem> probe;
+            sn::probeSource(state->root / fs::u8path(t.colorPath), info, probe);
+            const bool animated = info.kind == sn::SourceKind::Gif || info.kind == sn::SourceKind::Apng;
+            rewordExisting(found, sn::plannedOutputs(state->root, t.spec, animated ? info.kind : sn::SourceKind::Image), existing);
+        }
         problems.insert(problems.end(), found.begin(), found.end());
     }
     if (!problems.empty()) {
-        rewordExisting(problems, existing);
         Json data = Json::object();
         if (!existing.empty()) data["existing"] = existing;
         failCall(call, problems, data);
@@ -1316,7 +1360,9 @@ Json spriteNormalsAssetInfo(Project* project, const fs::path& file, bool full) {
     if (lowerExtension(rel) == ".png") {
         std::string readError;
         const std::optional<Json> recipe = sn::readRecipeHead(file, &readError);
-        if (recipe || !readError.empty()) {
+        // only a damaged jasper.spritenormals chunk is a garbled recipe; a file that is not a PNG,
+        // can't be opened or has a broken chunk list simply has none
+        if (recipe || readError.find(sn::kRecipeKeyword) != std::string::npos) {
             std::string invalid;
             if (!recipe) return Json{{"sprite_normals", {{"error", readError}}}};
             if (!sn::validateRecipe(*recipe, invalid)) return Json{{"sprite_normals", {{"error", "garbled jasper.spritenormals recipe: " + invalid}}}};
