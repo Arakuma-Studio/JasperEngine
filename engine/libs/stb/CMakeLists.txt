@@ -25,3 +25,10 @@ endif()
 if(EMSCRIPTEN AND EMSCRIPTEN_THREAD_SUPPORT)
 	target_compile_options(stb PRIVATE -pthread)
 endif()
+# UBSan: stb_image_resize2 v2.12's coefficient packer stores pairs of floats as one 64-bit word
+# at float alignment (STBIR_MOVE_2 in stbir__pack_coefficients). The sanitized builds stop at the
+# first report (-fno-sanitize-recover), which a suppression cannot skip: this file alone is built
+# without the alignment check.
+if(JASPERENGINE_SANITIZE_UNDEFINED AND NOT MSVC)
+    set_source_files_properties(stb_image_resize2.c PROPERTIES COMPILE_OPTIONS -fno-sanitize=alignment)
+endif()
