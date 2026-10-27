@@ -145,7 +145,7 @@ _Unwind_Reason_Code unwindFrame(_Unwind_Context* context, void* data) {
     return _URC_NO_REASON;
 }
 #endif
-size_t capture(void** frames, size_t capacity) {
+__attribute__((noinline)) size_t capture(void** frames, size_t capacity) {
 #if defined(__ANDROID__)
     UnwindFrames out{frames, 0, capacity};
     _Unwind_Backtrace(unwindFrame, &out);
@@ -223,14 +223,17 @@ void chain(int sig, siginfo_t* info, void* context) {
     }
     defaultAction(sig);
 }
-void fatal(int sig, siginfo_t* info, void* context) {
+__attribute__((noinline)) void fatal(int sig, siginfo_t* info, void* context) {
     auto& s = state();
     // Test the calling thread before touching shared state: a fault in the handler itself
-    // cannot wait for its own report (or enter a possibly broken previous handler).
+    // cannot wait for its own report. Restore the saved handler before calling it so
+    // OS/sanitizer crash collection survives even a fault inside this reporter.
     const pthread_t current = pthread_self();
     pthread_t expected{};
     if (!reportOwner.compare_exchange_strong(expected, current, std::memory_order_acq_rel)) {
         if (expected == current && !s.reportDone.load(std::memory_order_acquire)) {
+            chain(sig, info, context);
+            // A returning saved handler must not resume our damaged reporter.
             defaultAction(sig);
         }
         const uint64_t deadline = monotonicNs() + 8000000000ULL;
@@ -300,13 +303,17 @@ void fatal(int sig, siginfo_t* info, void* context) {
     const size_t count = capture(frames, 64);
     // The unwinder starts inside this handler. Locate the saved interrupted PC, discard
     // everything through it (handler, libc trampoline and duplicate PC), then emit callers.
-    // If the unwinder cannot cross the signal frame, only the saved PC is trustworthy.
+    // If no PC matches, retain the unwind after capture/fatal (both noinline). The
+    // return PC also identifies our dispatch wrapper or a tail-called signal trampoline.
+    // No symbol lookup is performed here; symbolicate.py resolves addresses afterward.
 #if defined(__arm__)
     constexpr uintptr_t addressMask = ~uintptr_t{1};
 #else
     constexpr uintptr_t addressMask = ~uintptr_t{0};
 #endif
-    const size_t callers = crashCallerStart(frames, count, pc, 2, addressMask);
+    const uintptr_t handlerReturnPc = reinterpret_cast<uintptr_t>(
+        __builtin_extract_return_addr(__builtin_return_address(0)));
+    const size_t callers = crashCallerStart(frames, count, pc, 2, addressMask, handlerReturnPc);
     line(report, "backtrace:");
     if (pc) frame(report, 0, pc);
     for (size_t i = callers; i < count; i++) frame(report, i - callers + (pc ? 1 : 0), reinterpret_cast<uintptr_t>(frames[i]));

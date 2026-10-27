@@ -35,7 +35,10 @@ HANDLE faultThreadHandle = nullptr;
 std::atomic<DWORD> faultOwner{0};
 DWORD writerThread = 0;
 using GetThreadDescriptionFn = HRESULT (WINAPI*)(HANDLE, PWSTR*);
-GetThreadDescriptionFn getThreadDescription = nullptr;
+// Plain native TLS is initialized when the thread starts, with no lazy constructor in
+// the fatal path. prepareThreadPlatform refreshes it after spawnNamed sets the OS name.
+thread_local char preparedThreadName[256] = "unknown";
+char faultThreadName[256] = "unknown";
 
 void raw(HANDLE file, const char* text, size_t size) {
     if (!file || file == INVALID_HANDLE_VALUE) return;
@@ -129,18 +132,25 @@ MINIDUMP_TYPE dumpType() {
     }
     return static_cast<MINIDUMP_TYPE>(flags);
 }
-void writeThreadName(HANDLE report) {
-    char name[256] = "unknown";
+void cacheThreadName() {
+    // GetThreadDescription allocates. This runs only in normal thread preparation,
+    // never on the faulting path or writer, where the process heap may be locked.
+    auto getThreadDescription = reinterpret_cast<GetThreadDescriptionFn>(
+        GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "GetThreadDescription"));
     PWSTR wide = nullptr;
-    if (getThreadDescription && faultThreadHandle && SUCCEEDED(getThreadDescription(faultThreadHandle, &wide)) && wide) {
-        if (*wide && !WideCharToMultiByte(CP_UTF8, 0, wide, -1, name, sizeof(name), nullptr, nullptr)) {
-            appendText(name, sizeof(name), 0, "unknown");
+    appendText(preparedThreadName, sizeof(preparedThreadName), 0, "unknown");
+    if (getThreadDescription && SUCCEEDED(getThreadDescription(GetCurrentThread(), &wide)) && wide) {
+        if (*wide && !WideCharToMultiByte(CP_UTF8, 0, wide, -1, preparedThreadName,
+                                        sizeof(preparedThreadName), nullptr, nullptr)) {
+            appendText(preparedThreadName, sizeof(preparedThreadName), 0, "unknown");
         }
         LocalFree(wide);
     }
+}
+void writeThreadName(HANDLE report) {
     char lineText[288];
     const size_t n = appendText(lineText, sizeof(lineText), 0, "thread_name: ");
-    appendText(lineText, sizeof(lineText), n, name);
+    appendText(lineText, sizeof(lineText), n, faultThreadName);
     line(report, lineText);
 }
 DWORD WINAPI writer(void*) {
@@ -254,6 +264,7 @@ void submit(EXCEPTION_POINTERS* info) {
         return;
     }
     faultThread = current;
+    appendText(faultThreadName, sizeof(faultThreadName), 0, preparedThreadName);
     faultRecord = *info->ExceptionRecord;
     faultRecord.ExceptionRecord = nullptr;
     faultContext = *info->ContextRecord;
@@ -309,7 +320,11 @@ void onInvalidParameter(const wchar_t*, const wchar_t*, const wchar_t*, unsigned
 }
 }
 namespace jasperengine::diag::crash::detail {
-void prepareThreadPlatform() { ULONG bytes = 64 * 1024; SetThreadStackGuarantee(&bytes); }
+void prepareThreadPlatform() {
+    ULONG bytes = 64 * 1024;
+    SetThreadStackGuarantee(&bytes);
+    je_crash_win::cacheThreadName();
+}
 bool installPlatform(const Config&) {
     using namespace je_crash_win;
     prepareThreadPlatform();
@@ -320,8 +335,6 @@ bool installPlatform(const Config&) {
         std::lock_guard<std::timed_mutex> lock(Backtrace::dbgHelpMutex());
         Backtrace::initializeSymbolsLocked();
     }
-    getThreadDescription = reinterpret_cast<GetThreadDescriptionFn>(
-        GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "GetThreadDescription"));
     HANDLE worker = CreateThread(nullptr, 0, writer, nullptr, 0, &writerThread);
     if (!worker) return false;
     CloseHandle(worker);

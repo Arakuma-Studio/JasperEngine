@@ -662,3 +662,28 @@ commits are records only), all through `je-remote/rb.sh`:
   Evidence remains on A in `build/android-native-review-green` (1.2 MB) and was fetched for
   inspection. Per the integration owner's instruction, the APK, Gradle cache and Android
   native/Java build outputs in this worktree on A were deleted after the passing run.
+
+### Native review round 3
+
+- Windows names are snapshots taken by `prepareThread()` (after `spawnNamed` sets the OS
+  name). `GetThreadDescription`, UTF-8 conversion and `LocalFree` run only there. Native,
+  trivially initialized TLS holds the fixed-size name; the fault submitter copies it to
+  preallocated writer storage. Unprepared threads and unavailable APIs report `unknown`.
+  The writer performs no thread-name allocation or lookup. The Windows-only
+  `cached_thread_name` subprocess renames the OS thread after preparation and requires the
+  cached name. A process-heap-lock fault test could not be validated here: no Windows
+  runner is available, and the existing DbgHelp/minidump path independently uses the heap,
+  so locking the entire process heap does not isolate this name-lookup regression.
+- POSIX recursive reporter faults restore and chain the saved signal handler before OS
+  termination. If that handler returns, the default fatal disposition runs immediately;
+  the damaged writer never resumes. Restoring the previous disposition before calling it
+  prevents its signal re-delivery from re-entering our writer. Subprocess regressions
+  cover the sanitizer handler, a saved terminating handler and a saved returning handler.
+- POSIX frame trimming is a pure, signal-safe helper. When the interrupted PC is absent
+  (possible with Apple unwinders), it retains the available trace after the known
+  capture/reporter prefix, extending that prefix through the dispatch return PC when
+  present. Both capture and reporter are explicitly noinline. The saved PC remains #0;
+  symbol names are still resolved offline by `symbolicate.py`, with no loader/heap calls
+  in the signal path. Synthetic tests cover PC match, missing/zero PC, dispatch prefix,
+  short/empty traces and ARM Thumb address normalization. Apple execution awaits its SDK
+  host; the portable trim tests execute on Linux.

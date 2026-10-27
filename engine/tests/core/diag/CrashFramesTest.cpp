@@ -25,3 +25,7 @@ TEST(CrashFrames, ThumbPcIgnoresInstructionSetBit) {
     void* frames[] = {address(10), address(20), address(31), address(40)};
     EXPECT_EQ(crashCallerStart(frames, 4, 30, 2, ~uintptr_t{1}), 3u);
 }
+TEST(CrashFrames, MissingPcAlsoSkipsKnownDispatchWrapper) {
+    void* frames[] = {address(10), address(20), address(25), address(40), address(50)};
+    EXPECT_EQ(crashCallerStart(frames, 5, 30, 2, ~uintptr_t{0}, 25), 3u);
+}

@@ -21,7 +21,7 @@ def main():
     if os.name == "nt":
         modes.extend(["pure_call", "recursive_abort", "cached_thread_name"])
     else:
-        modes.extend(["chain", "chain_after_return", "recursive_chain"])
+        modes.extend(["chain", "chain_after_return", "recursive_chain", "recursive_chain_return"])
     expected = {"segv": signal.SIGSEGV, "abort": signal.SIGABRT, "terminate": signal.SIGABRT,
                 "stack_overflow": signal.SIGSEGV, "worker_segv": signal.SIGSEGV,
                 "worker_stack_overflow": signal.SIGSEGV, "fpe": signal.SIGFPE,
@@ -38,7 +38,7 @@ def main():
                 assert result.returncode != 0, result
                 if os.name != "nt":
                     assert result.returncode in (-signal.SIGSEGV, 77), result.stderr
-                    if mode == "recursive_chain":
+                    if mode.startswith("recursive_chain"):
                         assert (Path(root) / "sentinel").is_file(), "recursive fault skipped the saved OS handler"
                         assert (Path(root) / "sentinel").read_text() == "chained\n", result.stderr
                     elif args.expect_asan:
