@@ -171,6 +171,8 @@ namespace jasperengine::editor {
         static const EnumTable<FogType>& fogType();
         static const EnumTable<FogVolumeFalloff>& fogVolumeFalloff();
         static const EnumTable<FogVolumeShape>& fogVolumeShape();
+        static const EnumTable<ForceFieldShapeType>& forceFieldShape();
+        static const EnumTable<ForceFieldKind>& forceFieldKind();
         static const EnumTable<Joint2DType>& joint2DType();
         static const EnumTable<Joint3DType>& joint3DType();
         static const EnumTable<LayoutGroupType>& layoutGroupType();

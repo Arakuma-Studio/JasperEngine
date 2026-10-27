@@ -98,6 +98,7 @@ namespace jasperengine::editor::reflect {
     extern const ComponentDesc kLatticeModifierDesc;
     extern const ComponentDesc kLatticeFollowerDesc;
     extern const ComponentDesc kLatticeTracksDesc;
+    extern const ComponentDesc kForceFieldDesc;
 
 }
 

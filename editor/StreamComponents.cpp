@@ -14,6 +14,8 @@
 #include "util/ProjectUtils.h"
 #include "util/YamlNumbers.h"
 #include "lattice/LatticeTypes.h"
+#include "Out.h"
+#include "particles/ParticleEffectCodec.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1433,179 +1435,78 @@ MorphTracksComponent editor::Stream::decodeMorphTracksComponent(const YAML::Node
 YAML::Node editor::Stream::encodeParticleSystemComponent(const ParticleSystemComponent& particles) {
     YAML::Node node;
     node["enabled"] = particles.enabled;
-
-    node["maxParticles"] = particles.maxParticles;
-    node["emitter"] = particles.emitter;
-    node["loop"] = particles.loop;
-    node["localSpace"] = particles.localSpace;
-    node["rate"] = particles.rate;
-    node["maxPerUpdate"] = particles.maxPerUpdate;
-
-    YAML::Node bursts;
-    for (const auto& b : particles.bursts) {
-        YAML::Node bn;
-        bn["time"] = b.time;
-        bn["minCount"] = b.minCount;
-        bn["maxCount"] = b.maxCount;
-        bursts.push_back(bn);
+    if (!particles.effect.empty() || !particles.effect.guid.isNull()){
+        encodeAssetRef(node, "effect", particles.effect);
+    }else{
+        // the inline effect, as the canonical .particles JSON
+        node["inlineEffect"] = particles::ParticleEffectCodec::write(particles.inlineEffect);
     }
-    node["bursts"] = bursts;
-
-    YAML::Node lifeInit;
-    lifeInit["minLife"] = particles.lifeInitializer.minLife;
-    lifeInit["maxLife"] = particles.lifeInitializer.maxLife;
-    node["lifeInitializer"] = lifeInit;
-
-    YAML::Node posInit;
-    posInit["shape"] = particleEmitterShapeToString(particles.positionInitializer.shape);
-    posInit["minPosition"] = encodeVector3(particles.positionInitializer.minPosition);
-    posInit["maxPosition"] = encodeVector3(particles.positionInitializer.maxPosition);
-    posInit["radius"] = particles.positionInitializer.radius;
-    posInit["innerRadius"] = particles.positionInitializer.innerRadius;
-    posInit["coneAngle"] = particles.positionInitializer.coneAngle;
-    posInit["coneHeight"] = particles.positionInitializer.coneHeight;
-    node["positionInitializer"] = posInit;
-
-    YAML::Node posMod;
-    posMod["fromTime"] = particles.positionModifier.fromTime;
-    posMod["toTime"] = particles.positionModifier.toTime;
-    posMod["fromPosition"] = encodeVector3(particles.positionModifier.fromPosition);
-    posMod["toPosition"] = encodeVector3(particles.positionModifier.toPosition);
-    posMod["function"] = encodeEase(particles.positionModifier.function);
-    node["positionModifier"] = posMod;
-
-    YAML::Node velInit;
-    velInit["minVelocity"] = encodeVector3(particles.velocityInitializer.minVelocity);
-    velInit["maxVelocity"] = encodeVector3(particles.velocityInitializer.maxVelocity);
-    node["velocityInitializer"] = velInit;
-
-    YAML::Node velMod;
-    velMod["fromTime"] = particles.velocityModifier.fromTime;
-    velMod["toTime"] = particles.velocityModifier.toTime;
-    velMod["fromVelocity"] = encodeVector3(particles.velocityModifier.fromVelocity);
-    velMod["toVelocity"] = encodeVector3(particles.velocityModifier.toVelocity);
-    velMod["function"] = encodeEase(particles.velocityModifier.function);
-    node["velocityModifier"] = velMod;
-
-    YAML::Node accelInit;
-    accelInit["minAcceleration"] = encodeVector3(particles.accelerationInitializer.minAcceleration);
-    accelInit["maxAcceleration"] = encodeVector3(particles.accelerationInitializer.maxAcceleration);
-    node["accelerationInitializer"] = accelInit;
-
-    YAML::Node accelMod;
-    accelMod["fromTime"] = particles.accelerationModifier.fromTime;
-    accelMod["toTime"] = particles.accelerationModifier.toTime;
-    accelMod["fromAcceleration"] = encodeVector3(particles.accelerationModifier.fromAcceleration);
-    accelMod["toAcceleration"] = encodeVector3(particles.accelerationModifier.toAcceleration);
-    accelMod["function"] = encodeEase(particles.accelerationModifier.function);
-    node["accelerationModifier"] = accelMod;
-
-    YAML::Node colorInit;
-    colorInit["minColor"] = encodeVector3(particles.colorInitializer.minColor);
-    colorInit["maxColor"] = encodeVector3(particles.colorInitializer.maxColor);
-    colorInit["useSRGB"] = particles.colorInitializer.useSRGB;
-    node["colorInitializer"] = colorInit;
-
-    YAML::Node colorMod;
-    colorMod["fromTime"] = particles.colorModifier.fromTime;
-    colorMod["toTime"] = particles.colorModifier.toTime;
-    colorMod["fromColor"] = encodeVector3(particles.colorModifier.fromColor);
-    colorMod["toColor"] = encodeVector3(particles.colorModifier.toColor);
-    colorMod["function"] = encodeEase(particles.colorModifier.function);
-    colorMod["useSRGB"] = particles.colorModifier.useSRGB;
-    node["colorModifier"] = colorMod;
-
-    YAML::Node colorGrad;
-    colorGrad["useSRGB"] = particles.colorGradient.useSRGB;
-    YAML::Node colorGradStops;
-    for (const auto& s : particles.colorGradient.stops) {
-        YAML::Node sn;
-        sn["time"] = s.time;
-        sn["color"] = encodeVector3(s.color);
-        colorGradStops.push_back(sn);
+    node["playOnAwake"] = particles.playOnAwake;
+    node["seed"] = particles.seed;
+    node["playbackSpeed"] = particles.playbackSpeed;
+    if (!particles.exposedValues.empty()){
+        YAML::Node values;
+        for (const ParticleExposedValue& v : particles.exposedValues){
+            YAML::Node value;
+            value["name"] = v.name;
+            value["value"] = encodeVector4(v.value);
+            values.push_back(value);
+        }
+        node["exposedValues"] = values;
     }
-    colorGrad["stops"] = colorGradStops;
-    node["colorGradient"] = colorGrad;
-
-    YAML::Node alphaInit;
-    alphaInit["minAlpha"] = particles.alphaInitializer.minAlpha;
-    alphaInit["maxAlpha"] = particles.alphaInitializer.maxAlpha;
-    node["alphaInitializer"] = alphaInit;
-
-    YAML::Node alphaMod;
-    alphaMod["fromTime"] = particles.alphaModifier.fromTime;
-    alphaMod["toTime"] = particles.alphaModifier.toTime;
-    alphaMod["fromAlpha"] = particles.alphaModifier.fromAlpha;
-    alphaMod["toAlpha"] = particles.alphaModifier.toAlpha;
-    alphaMod["function"] = encodeEase(particles.alphaModifier.function);
-    node["alphaModifier"] = alphaMod;
-
-    YAML::Node sizeInit;
-    sizeInit["minSize"] = particles.sizeInitializer.minSize;
-    sizeInit["maxSize"] = particles.sizeInitializer.maxSize;
-    node["sizeInitializer"] = sizeInit;
-
-    YAML::Node sizeMod;
-    sizeMod["fromTime"] = particles.sizeModifier.fromTime;
-    sizeMod["toTime"] = particles.sizeModifier.toTime;
-    sizeMod["fromSize"] = particles.sizeModifier.fromSize;
-    sizeMod["toSize"] = particles.sizeModifier.toSize;
-    sizeMod["function"] = encodeEase(particles.sizeModifier.function);
-    node["sizeModifier"] = sizeMod;
-
-    YAML::Node spriteInit;
-    YAML::Node spriteInitFrames;
-    for (int f : particles.spriteInitializer.frames) spriteInitFrames.push_back(f);
-    spriteInit["frames"] = spriteInitFrames;
-    node["spriteInitializer"] = spriteInit;
-
-    YAML::Node spriteMod;
-    spriteMod["fromTime"] = particles.spriteModifier.fromTime;
-    spriteMod["toTime"] = particles.spriteModifier.toTime;
-    spriteMod["function"] = encodeEase(particles.spriteModifier.function);
-    YAML::Node spriteModFrames;
-    for (int f : particles.spriteModifier.frames) spriteModFrames.push_back(f);
-    spriteMod["frames"] = spriteModFrames;
-    node["spriteModifier"] = spriteMod;
-
-    YAML::Node rotInit;
-    rotInit["minRotation"] = encodeQuaternion(particles.rotationInitializer.minRotation);
-    rotInit["maxRotation"] = encodeQuaternion(particles.rotationInitializer.maxRotation);
-    rotInit["shortestPath"] = particles.rotationInitializer.shortestPath;
-    node["rotationInitializer"] = rotInit;
-
-    YAML::Node rotMod;
-    rotMod["fromTime"] = particles.rotationModifier.fromTime;
-    rotMod["toTime"] = particles.rotationModifier.toTime;
-    rotMod["fromRotation"] = encodeQuaternion(particles.rotationModifier.fromRotation);
-    rotMod["toRotation"] = encodeQuaternion(particles.rotationModifier.toRotation);
-    rotMod["function"] = encodeEase(particles.rotationModifier.function);
-    rotMod["shortestPath"] = particles.rotationModifier.shortestPath;
-    node["rotationModifier"] = rotMod;
-
-    YAML::Node scaleInit;
-    scaleInit["minScale"] = encodeVector3(particles.scaleInitializer.minScale);
-    scaleInit["maxScale"] = encodeVector3(particles.scaleInitializer.maxScale);
-    scaleInit["linearSort"] = particles.scaleInitializer.linearSort;
-    node["scaleInitializer"] = scaleInit;
-
-    YAML::Node scaleMod;
-    scaleMod["fromTime"] = particles.scaleModifier.fromTime;
-    scaleMod["toTime"] = particles.scaleModifier.toTime;
-    scaleMod["fromScale"] = encodeVector3(particles.scaleModifier.fromScale);
-    scaleMod["toScale"] = encodeVector3(particles.scaleModifier.toScale);
-    scaleMod["function"] = encodeEase(particles.scaleModifier.function);
-    node["scaleModifier"] = scaleMod;
-
+    if (!particles.collisionPlanes.empty()){
+        YAML::Node planes;
+        for (Entity plane : particles.collisionPlanes) planes.push_back(plane);
+        node["collisionPlanes"] = planes;
+    }
     return node;
 }
 
 ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML::Node& node, const ParticleSystemComponent* oldParticles) {
     ParticleSystemComponent particles;
-    if (oldParticles) { particles = *oldParticles; }
+    // over an existing component its runtime stays: the decoded effect rebinds it (keeping the
+    // live particles when only parameters changed)
+    if (oldParticles) particles = *oldParticles;
+    if (node["enabled"]) particles.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    if (node["effect"]){
+        particles.effect = decodeAssetRef(node, "effect");
+    }else if (node["inlineEffect"]){
+        particles.effect.clear();
+        particles::ParticleEffectDocument document;
+        std::vector<particles::Diagnostic> diagnostics;
+        if (particles::ParticleEffectCodec::read(node["inlineEffect"].as<std::string>(), document, diagnostics)){
+            particles.inlineEffect = document;
+        }else{
+            Out::error("The inline particle effect does not read: %s", particles::ParticleEffectCodec::format(diagnostics).c_str());
+        }
+    }
+    if (node["playOnAwake"]) particles.playOnAwake = YamlNumbers::as<bool>(node["playOnAwake"]);
+    if (node["seed"]) particles.seed = YamlNumbers::as<uint32_t>(node["seed"]);
+    if (node["playbackSpeed"]) particles.playbackSpeed = YamlNumbers::as<float>(node["playbackSpeed"]);
+    // written only when not empty: absent is none (over an old component too)
+    particles.exposedValues.clear();
+    if (node["exposedValues"] && node["exposedValues"].IsSequence()){
+        for (const YAML::Node& value : node["exposedValues"]){
+            ParticleExposedValue v;
+            if (value["name"]) v.name = value["name"].as<std::string>();
+            if (value["value"]) v.value = decodeVector4(value["value"]);
+            particles.exposedValues.push_back(v);
+        }
+    }
+    particles.collisionPlanes.clear();
+    if (node["collisionPlanes"] && node["collisionPlanes"].IsSequence()){
+        for (const YAML::Node& plane : node["collisionPlanes"]) particles.collisionPlanes.push_back(YamlNumbers::as<Entity>(plane));
+    }
+    particles.needReload = true;
+    return particles;
+}
+
+// The particle system of a scene written before S20 (migration only: StreamMigrations converts
+// it into an effect)
+LegacyParticleSystem editor::Stream::decodeLegacyParticleSystem(const YAML::Node& node) {
+    LegacyParticleSystem particles;
 
     if (node["maxParticles"]) particles.maxParticles = YamlNumbers::as<unsigned int>(node["maxParticles"]);
-    if (node["emitter"]) particles.emitter = YamlNumbers::as<bool>(node["emitter"]);
     if (node["loop"]) particles.loop = YamlNumbers::as<bool>(node["loop"]);
     if (node["localSpace"]) particles.localSpace = YamlNumbers::as<bool>(node["localSpace"]);
     if (node["rate"]) particles.rate = YamlNumbers::as<int>(node["rate"]);
@@ -1643,7 +1544,7 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
         if (n["toTime"]) particles.positionModifier.toTime = YamlNumbers::as<float>(n["toTime"]);
         if (n["fromPosition"]) particles.positionModifier.fromPosition = decodeVector3(n["fromPosition"]);
         if (n["toPosition"]) particles.positionModifier.toPosition = decodeVector3(n["toPosition"]);
-        if (n["function"]) particles.positionModifier.function = decodeEase(n["function"], oldParticles ? &oldParticles->positionModifier.function : nullptr);
+        if (n["function"]) particles.positionModifier.function = decodeEase(n["function"]);
     }
     if (node["velocityInitializer"]) {
         const YAML::Node& n = node["velocityInitializer"];
@@ -1656,7 +1557,7 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
         if (n["toTime"]) particles.velocityModifier.toTime = YamlNumbers::as<float>(n["toTime"]);
         if (n["fromVelocity"]) particles.velocityModifier.fromVelocity = decodeVector3(n["fromVelocity"]);
         if (n["toVelocity"]) particles.velocityModifier.toVelocity = decodeVector3(n["toVelocity"]);
-        if (n["function"]) particles.velocityModifier.function = decodeEase(n["function"], oldParticles ? &oldParticles->velocityModifier.function : nullptr);
+        if (n["function"]) particles.velocityModifier.function = decodeEase(n["function"]);
     }
     if (node["accelerationInitializer"]) {
         const YAML::Node& n = node["accelerationInitializer"];
@@ -1669,7 +1570,7 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
         if (n["toTime"]) particles.accelerationModifier.toTime = YamlNumbers::as<float>(n["toTime"]);
         if (n["fromAcceleration"]) particles.accelerationModifier.fromAcceleration = decodeVector3(n["fromAcceleration"]);
         if (n["toAcceleration"]) particles.accelerationModifier.toAcceleration = decodeVector3(n["toAcceleration"]);
-        if (n["function"]) particles.accelerationModifier.function = decodeEase(n["function"], oldParticles ? &oldParticles->accelerationModifier.function : nullptr);
+        if (n["function"]) particles.accelerationModifier.function = decodeEase(n["function"]);
     }
     if (node["colorInitializer"]) {
         const YAML::Node& n = node["colorInitializer"];
@@ -1683,7 +1584,7 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
         if (n["toTime"]) particles.colorModifier.toTime = YamlNumbers::as<float>(n["toTime"]);
         if (n["fromColor"]) particles.colorModifier.fromColor = decodeVector3(n["fromColor"]);
         if (n["toColor"]) particles.colorModifier.toColor = decodeVector3(n["toColor"]);
-        if (n["function"]) particles.colorModifier.function = decodeEase(n["function"], oldParticles ? &oldParticles->colorModifier.function : nullptr);
+        if (n["function"]) particles.colorModifier.function = decodeEase(n["function"]);
         if (n["useSRGB"]) particles.colorModifier.useSRGB = YamlNumbers::as<bool>(n["useSRGB"]);
     }
     if (node["colorGradient"]) {
@@ -1711,7 +1612,7 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
         if (n["toTime"]) particles.alphaModifier.toTime = YamlNumbers::as<float>(n["toTime"]);
         if (n["fromAlpha"]) particles.alphaModifier.fromAlpha = YamlNumbers::as<float>(n["fromAlpha"]);
         if (n["toAlpha"]) particles.alphaModifier.toAlpha = YamlNumbers::as<float>(n["toAlpha"]);
-        if (n["function"]) particles.alphaModifier.function = decodeEase(n["function"], oldParticles ? &oldParticles->alphaModifier.function : nullptr);
+        if (n["function"]) particles.alphaModifier.function = decodeEase(n["function"]);
     }
     if (node["sizeInitializer"]) {
         const YAML::Node& n = node["sizeInitializer"];
@@ -1724,7 +1625,7 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
         if (n["toTime"]) particles.sizeModifier.toTime = YamlNumbers::as<float>(n["toTime"]);
         if (n["fromSize"]) particles.sizeModifier.fromSize = YamlNumbers::as<float>(n["fromSize"]);
         if (n["toSize"]) particles.sizeModifier.toSize = YamlNumbers::as<float>(n["toSize"]);
-        if (n["function"]) particles.sizeModifier.function = decodeEase(n["function"], oldParticles ? &oldParticles->sizeModifier.function : nullptr);
+        if (n["function"]) particles.sizeModifier.function = decodeEase(n["function"]);
     }
     if (node["spriteInitializer"]) {
         const YAML::Node& n = node["spriteInitializer"];
@@ -1737,7 +1638,7 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
         const YAML::Node& n = node["spriteModifier"];
         if (n["fromTime"]) particles.spriteModifier.fromTime = YamlNumbers::as<float>(n["fromTime"]);
         if (n["toTime"]) particles.spriteModifier.toTime = YamlNumbers::as<float>(n["toTime"]);
-        if (n["function"]) particles.spriteModifier.function = decodeEase(n["function"], oldParticles ? &oldParticles->spriteModifier.function : nullptr);
+        if (n["function"]) particles.spriteModifier.function = decodeEase(n["function"]);
         if (n["frames"]) {
             particles.spriteModifier.frames.clear();
             for (const YAML::Node& f : n["frames"]) particles.spriteModifier.frames.push_back(YamlNumbers::as<int>(f));
@@ -1755,7 +1656,7 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
         if (n["toTime"]) particles.rotationModifier.toTime = YamlNumbers::as<float>(n["toTime"]);
         if (n["fromRotation"]) particles.rotationModifier.fromRotation = decodeQuaternion(n["fromRotation"]);
         if (n["toRotation"]) particles.rotationModifier.toRotation = decodeQuaternion(n["toRotation"]);
-        if (n["function"]) particles.rotationModifier.function = decodeEase(n["function"], oldParticles ? &oldParticles->rotationModifier.function : nullptr);
+        if (n["function"]) particles.rotationModifier.function = decodeEase(n["function"]);
         if (n["shortestPath"]) particles.rotationModifier.shortestPath = YamlNumbers::as<bool>(n["shortestPath"]);
     }
     if (node["scaleInitializer"]) {
@@ -1770,17 +1671,65 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
         if (n["toTime"]) particles.scaleModifier.toTime = YamlNumbers::as<float>(n["toTime"]);
         if (n["fromScale"]) particles.scaleModifier.fromScale = decodeVector3(n["fromScale"]);
         if (n["toScale"]) particles.scaleModifier.toScale = decodeVector3(n["toScale"]);
-        if (n["function"]) particles.scaleModifier.function = decodeEase(n["function"], oldParticles ? &oldParticles->scaleModifier.function : nullptr);
+        if (n["function"]) particles.scaleModifier.function = decodeEase(n["function"]);
     }
 
-    // Reset runtime fields
-    particles.particles.clear();
-    particles.newParticlesCount = 0;
-    particles.lastUsedParticle = 0;
-
-    if (node["enabled"]) particles.enabled = YamlNumbers::as<bool>(node["enabled"]);
-
     return particles;
+}
+
+YAML::Node editor::Stream::encodeForceFieldComponent(const ForceFieldComponent& field) {
+    YAML::Node node;
+    node["enabled"] = field.enabled;
+    node["shape"] = StreamSchema::forceFieldShape().toString(field.shape);
+    node["size"] = encodeVector3(field.size);
+    node["kind"] = StreamSchema::forceFieldKind().toString(field.kind);
+    node["strength"] = field.strength;
+    node["direction"] = encodeVector3(field.direction);
+    node["turbulence"] = field.turbulence;
+    node["pulseFrequency"] = field.pulseFrequency;
+    node["frequency"] = field.frequency;
+    // [time, value, inTangent, outTangent] per key (a step tangent is .inf)
+    YAML::Node keys(YAML::NodeType::Sequence);
+    for (const CurveKey& key : field.falloff.keys){
+        YAML::Node k(YAML::NodeType::Sequence);
+        k.SetStyle(YAML::EmitterStyle::Flow);
+        k.push_back(key.time);
+        k.push_back(key.value);
+        k.push_back(key.inTangent);
+        k.push_back(key.outTangent);
+        keys.push_back(k);
+    }
+    node["falloff"] = keys;
+    node["layers"] = field.layers;
+    return node;
+}
+
+ForceFieldComponent editor::Stream::decodeForceFieldComponent(const YAML::Node& node, const ForceFieldComponent* oldField) {
+    ForceFieldComponent field;
+    if (oldField) field = *oldField;
+    if (node["enabled"]) field.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    if (node["shape"]) field.shape = decodeEnum(node, "shape", StreamSchema::forceFieldShape());
+    if (node["size"]) field.size = decodeVector3(node["size"]);
+    if (node["kind"]) field.kind = decodeEnum(node, "kind", StreamSchema::forceFieldKind());
+    if (node["strength"]) field.strength = YamlNumbers::as<float>(node["strength"]);
+    if (node["direction"]) field.direction = decodeVector3(node["direction"]);
+    if (node["turbulence"]) field.turbulence = YamlNumbers::as<float>(node["turbulence"]);
+    if (node["pulseFrequency"]) field.pulseFrequency = YamlNumbers::as<float>(node["pulseFrequency"]);
+    if (node["frequency"]) field.frequency = YamlNumbers::as<float>(node["frequency"]);
+    if (node["falloff"] && node["falloff"].IsSequence()){
+        field.falloff.keys.clear();
+        for (const YAML::Node& k : node["falloff"]){
+            if (!k.IsSequence() || k.size() < 4) continue;
+            CurveKey key;
+            key.time = YamlNumbers::as<float>(k[0]);
+            key.value = YamlNumbers::as<float>(k[1]);
+            key.inTangent = YamlNumbers::as<float>(k[2]);
+            key.outTangent = YamlNumbers::as<float>(k[3]);
+            field.falloff.keys.push_back(key);
+        }
+    }
+    if (node["layers"]) field.layers = YamlNumbers::as<uint32_t>(node["layers"]);
+    return field;
 }
 
 YAML::Node editor::Stream::encodeInstancedMeshComponent(const InstancedMeshComponent& instmesh) {

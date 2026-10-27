@@ -12,6 +12,7 @@
 #include "math/Quaternion.h"
 #include "math/Matrix4.h"
 #include "component/FluidSimulationComponent.h"
+#include "particles/LegacyParticleSystem.h"
 
 #include <filesystem>
 #include <set>
@@ -497,6 +498,12 @@ namespace jasperengine::editor {
 
         static YAML::Node encodeParticleSystemComponent(const ParticleSystemComponent& particles);
         static ParticleSystemComponent decodeParticleSystemComponent(const YAML::Node& node, const ParticleSystemComponent* oldParticles = nullptr);
+        // a scene's particle system as written before S20 (the scene migration reads it)
+        static LegacyParticleSystem decodeLegacyParticleSystem(const YAML::Node& node);
+
+        // the falloff curve as [time, value, inTangent, outTangent] rows
+        static YAML::Node encodeForceFieldComponent(const ForceFieldComponent& field);
+        static ForceFieldComponent decodeForceFieldComponent(const YAML::Node& node, const ForceFieldComponent* oldField = nullptr);
 
         static YAML::Node encodeInstancedMeshComponent(const InstancedMeshComponent& instmesh);
         static InstancedMeshComponent decodeInstancedMeshComponent(const YAML::Node& node, const InstancedMeshComponent* oldInstmesh = nullptr);

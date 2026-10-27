@@ -387,6 +387,7 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::AudioSourceComponent: return &InspectorWindow::drawAudioComponent;
         case ComponentType::SkyboxComponent: return &InspectorWindow::drawSkyboxComponent;
         case ComponentType::ParticleSystemComponent: return &InspectorWindow::drawParticleSystemComponent;
+        case ComponentType::ForceFieldComponent: return &InspectorWindow::drawForceFieldComponent;
         case ComponentType::LineRendererComponent: return &InspectorWindow::drawLineRendererComponent;
         case ComponentType::PolygonComponent: return &InspectorWindow::drawPolygonComponent;
         case ComponentType::MeshPolygonComponent: return &InspectorWindow::drawMeshPolygonComponent;

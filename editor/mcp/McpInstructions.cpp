@@ -273,7 +273,7 @@ std::string toolGroupsSection(const McpRegistry& registry) {
     }
     return "\n## Tool groups\n`tool_groups` lists and enables the groups beyond core" +
            (names.empty() ? std::string() : " (" + names + ")") +
-           " in this session's tools/list; any tool is callable by name without it (also in `batch`).\n";
+           " in tools/list; any tool is callable by name without it (also in `batch`).\n";
 }
 
 } // namespace

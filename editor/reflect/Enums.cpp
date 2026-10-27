@@ -5,6 +5,7 @@
 
 #include "Project.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/ForceFieldComponent.h"
 #include "component/LatticeComponent.h"
 #include "component/LatticeModifierComponent.h"
 
@@ -252,6 +253,21 @@ namespace {
         {v(FluidOutput::MATERIAL), "material", "Material", "FluidOutput::MATERIAL"},
     };
     constexpr int kFluidOutputOrder[] = {v(FluidOutput::SCREEN), v(FluidOutput::MATERIAL), v(FluidOutput::TEXTURE)};
+
+    constexpr EnumItem kForceFieldShapeItems[] = {
+        {v(ForceFieldShapeType::Sphere), "sphere", "Sphere", "ForceFieldShapeType::Sphere"},
+        {v(ForceFieldShapeType::Box), "box", "Box", "ForceFieldShapeType::Box"},
+        {v(ForceFieldShapeType::Cylinder), "cylinder", "Cylinder", "ForceFieldShapeType::Cylinder"},
+        {v(ForceFieldShapeType::Infinite), "infinite", "Infinite", "ForceFieldShapeType::Infinite"},
+    };
+
+    constexpr EnumItem kForceFieldKindItems[] = {
+        {v(ForceFieldKind::Directional), "directional", "Directional", "ForceFieldKind::Directional"},
+        {v(ForceFieldKind::Radial), "radial", "Radial", "ForceFieldKind::Radial"},
+        {v(ForceFieldKind::Vortex), "vortex", "Vortex", "ForceFieldKind::Vortex"},
+        {v(ForceFieldKind::Turbulence), "turbulence", "Turbulence", "ForceFieldKind::Turbulence"},
+        {v(ForceFieldKind::Drag), "drag", "Drag", "ForceFieldKind::Drag"},
+    };
 
     constexpr EnumItem kLatticeInterpolationItems[] = {
         {v(LatticeInterpolation::SHARP), "sharp", "Sharp", "LatticeInterpolation::SHARP"},
@@ -532,6 +548,8 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kJoint2DType{"Joint2DType", kJoint2DTypeItems, v(Joint2DType::DISTANCE)};
     const EnumDesc kJoint3DType{"Joint3DType", kJoint3DTypeItems, v(Joint3DType::FIXED)};
     const EnumDesc kLayoutGroupType{"LayoutGroupType", kLayoutGroupTypeItems, v(LayoutGroupType::VERTICAL)};
+    const EnumDesc kForceFieldShape{"ForceFieldShapeType", kForceFieldShapeItems, v(ForceFieldShapeType::Sphere)};
+    const EnumDesc kForceFieldKind{"ForceFieldKind", kForceFieldKindItems, v(ForceFieldKind::Directional)};
     const EnumDesc kFluidOutput{"FluidOutput", kFluidOutputItems, v(FluidOutput::MATERIAL), nullptr, kFluidOutputOrder};
     const EnumDesc kLatticeInterpolation{"LatticeInterpolation", kLatticeInterpolationItems, v(LatticeInterpolation::CUBIC)};
     const EnumDesc kLatticeOutside{"LatticeOutside", kLatticeOutsideItems, v(LatticeOutside::FADE)};

@@ -138,7 +138,7 @@ and subscribes to `io::setPublishListener` for its own writes (S05; nothing else
 `io::ScopedFileLock` is the cross-process lock (shared or exclusive, blocking or not).
 
 **Changing the format.** Scenes, `project.yaml` and `.material` files carry `formatVersion`
-(current 1) as their first key; prefabs keep `version` (current 3). Loaders run
+(current: scenes 3, the others 1) as their first key; prefabs keep `version` (current 5). Loaders run
 `StreamMigrations::migrate` (`editor/StreamMigrations.h`) on the raw YAML before decoding, so
 decoders only see the current shape; a migrated file is not marked modified and is written in
 the current format by its next save.

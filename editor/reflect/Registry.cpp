@@ -80,6 +80,7 @@ namespace {
         &kLatticeTracksDesc,
         &kLocalVolumetricFogDesc,
         &kVolumetricCloudsDesc,
+        &kForceFieldDesc,
     };
     static_assert(std::size(kAll) == static_cast<size_t>(LAST_COMPONENT_TYPE) + 1, "a ComponentType without a description");
 
@@ -104,6 +105,7 @@ namespace {
         &kLight2DDesc,
         &kShadowCaster2DDesc,
         &kFogDesc,
+        &kForceFieldDesc,
         &kLocalVolumetricFogDesc,
         &kVolumetricCloudsDesc,
         &kMirrorDesc,
@@ -163,6 +165,7 @@ namespace {
         &kFogDesc,
         &kLocalVolumetricFogDesc,
         &kVolumetricCloudsDesc,
+        &kForceFieldDesc,
         &kMirrorDesc,
         &kReflectionProbeDesc,
         &kUIDocumentDesc,
@@ -216,7 +219,7 @@ namespace {
         &enums::kAudioSourceState, &enums::kBodyType, &enums::kCameraType, &enums::kCascadeSplitMode, &enums::kCloudsPreset,
         &enums::kCloudsRendering, &enums::kCollider2DType, &enums::kCollider3DSource, &enums::kCollider3DType, &enums::kCullingMode,
         &enums::kEaseType, &enums::kFogColorMode, &enums::kFogType, &enums::kFogVolumeFalloff, &enums::kFogVolumeShape,
-        &enums::kFluidOutput, &enums::kJoint2DType, &enums::kJoint3DType, &enums::kLatticeInterpolation, &enums::kLatticeJiggleAnchor,
+        &enums::kFluidOutput, &enums::kForceFieldKind, &enums::kForceFieldShape, &enums::kJoint2DType, &enums::kJoint3DType, &enums::kLatticeInterpolation, &enums::kLatticeJiggleAnchor,
         &enums::kLatticeMaskChannel, &enums::kLatticeOutside, &enums::kLatticeStage, &enums::kLayoutGroupType, &enums::kLightShading,
         &enums::kLightType, &enums::kLightUnit,
         &enums::kMaterialAlphaMode, &enums::kMaterialBlendMode, &enums::kMaterialCullMode, &enums::kMaterialDepthTest,

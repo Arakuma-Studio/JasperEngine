@@ -5608,26 +5608,6 @@ bool editor::InspectorWindow::propertyRowWithAutoButton(RowPropertyType propType
     return rowChanged;
 }
 
-void editor::InspectorWindow::setParticleFrames(ComponentType cpType, const std::string& propertyId, SceneProject* sceneProject, Entity entity, const std::vector<int>& frames) {
-    editor::PropertyCmd<std::vector<int>>* frameCmd = new editor::PropertyCmd<std::vector<int>>(project, sceneProject->id, entity, cpType, propertyId, frames);
-    frameCmd->setNoMerge();
-    CommandHandle::get(project->getSelectedSceneId())->addCommand(frameCmd);
-}
-
-void editor::InspectorWindow::setParticleBursts(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::vector<ParticleBurst>& bursts) {
-    editor::PropertyCmd<std::vector<ParticleBurst>>* burstCmd = new editor::PropertyCmd<std::vector<ParticleBurst>>(project, sceneProject->id, entity, cpType, "bursts", bursts);
-    burstCmd->setNoMerge();
-    CommandHandle::get(project->getSelectedSceneId())->addCommand(burstCmd);
-}
-
-void editor::InspectorWindow::setParticleColorGradient(ComponentType cpType, SceneProject* sceneProject, Entity entity, const ParticleColorGradient& gradient) {
-    ParticleColorGradient normalizedGradient = gradient;
-    normalizedGradient.normalize();
-    editor::PropertyCmd<ParticleColorGradient>* gradCmd = new editor::PropertyCmd<ParticleColorGradient>(project, sceneProject->id, entity, cpType, "colorGradient", normalizedGradient);
-    gradCmd->setNoMerge();
-    CommandHandle::get(project->getSelectedSceneId())->addCommand(gradCmd);
-}
-
 void editor::InspectorWindow::drawTransform(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     // Add this code to calculate appropriate step size based on selected scene
     RowSettings settingsPos;
@@ -10682,23 +10662,6 @@ void editor::InspectorWindow::stopActionPreviewIfActive() {
     actionPreviewSceneId = 0;
 }
 
-void editor::InspectorWindow::updateParticlePreviewSnapshot(YAML::Node& components, const ParticleSystemComponent& particles) {
-    const std::string componentName = Catalog::getComponentName(ComponentType::ParticleSystemComponent, true);
-
-    // Full re-encode so any future fields are automatically preserved.
-    YAML::Node encoded = reflect::encodeValue(ComponentType::ParticleSystemComponent, &particles);
-
-    // "emitter" is mutated by the runtime (forced true on actionStart, forced false when a
-    // non-looping system runs out). Restoring the live runtime value would silently switch
-    // off an authored emitter. Keep the pre-preview authored value from the original snapshot.
-    const YAML::Node& originalNode = components[componentName];
-    if (originalNode && !originalNode.IsNull() && originalNode["emitter"]) {
-        encoded["emitter"] = originalNode["emitter"];
-    }
-
-    components[componentName] = encoded;
-}
-
 void editor::InspectorWindow::stopActionPreview(Scene* scene, SceneProject* sceneProject) {
     if (!actionPreviewing) return;
 
@@ -10715,7 +10678,7 @@ void editor::InspectorWindow::stopActionPreview(Scene* scene, SceneProject* scen
             }
         }
         if (auto* comp = scene->findComponent<ParticleSystemComponent>(state.entity)) {
-            updateParticlePreviewSnapshot(state.components, *comp);
+            state.components[Catalog::getComponentName(ComponentType::ParticleSystemComponent, true)] = reflect::encodeValue(ComponentType::ParticleSystemComponent, comp);
         }
         if (auto* comp = scene->findComponent<KeyframeTracksComponent>(state.entity)) {
             // the keys and their settings (loop, relative) edited during the preview are kept,
@@ -10739,11 +10702,7 @@ void editor::InspectorWindow::stopActionPreview(Scene* scene, SceneProject* scen
             continue;
         }
         Stream::decodeComponents(state.entity, state.parent, scene, state.components);
-    }
-
-    // Remove InstancedMeshComponent dynamically added during preview (e.g. particle targets).
-    for (const ActionPreviewState& state : actionPreviewStates) {
-        ProjectUtils::removeDynamicInstmesh(state.entity, state.components, scene);
+        ProjectUtils::clearPreviewParticles(scene, state.entity);
     }
 
     actionPreviewStates.clear();
@@ -10953,6 +10912,16 @@ void editor::InspectorWindow::show(){
     std::vector<Entity> entities = project->getSelectedEntities(sceneProject->id);
     layoutDrawing.sceneId = sceneProject->id;
     layoutDrawing.entities = entities;
+
+    if (updateInspectedParticleAsset(sceneProject, entities)) {
+        stopTransientPreviews();
+        drawParticleAssetInspector();
+        ImGui::End();
+        if (wasOpen && !windowOpen) {
+            setOpen(false);
+        }
+        return;
+    }
 
     const bool previewSelectionMatches = actionPreviewing
             && sceneProject->id == actionPreviewSceneId

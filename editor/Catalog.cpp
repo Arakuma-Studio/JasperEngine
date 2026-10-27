@@ -1027,6 +1027,11 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
             document->needReload = true;
         }
     }
+    if (updateFlags & UpdateFlags_Particles){
+        if (ParticleSystemComponent* particles = registry->findComponent<ParticleSystemComponent>(entity)){
+            particles->needReload = true;
+        }
+    }
     if (updateFlags & UpdateFlags_Lattice){
         // offsets are left as they are: LatticeEditorOps::setResolution writes them resampled
         // with the resolution, and a prefab override applies them before it
@@ -1285,6 +1290,22 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
             } else if (property == "shaderFeatures" || endsWith(property, "material.shaderFeatures") || endsWith(property, "extraPass.shaderFeatures")) {
                 auto* source = Catalog::getPropertyRef<std::vector<std::string>>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<std::vector<std::string>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::ParticleSystemComponent && property == "inlineEffect") {
+                auto* source = Catalog::getPropertyRef<particles::ParticleEffectDocument>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<particles::ParticleEffectDocument>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::ParticleSystemComponent && property == "exposedValues") {
+                auto* source = Catalog::getPropertyRef<std::vector<ParticleExposedValue>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<ParticleExposedValue>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::ParticleSystemComponent && property == "collisionPlanes") {
+                auto* source = Catalog::getPropertyRef<std::vector<Entity>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<Entity>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::ForceFieldComponent && property == "falloff") {
+                auto* source = Catalog::getPropertyRef<Curve>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<Curve>(targetRegistry, targetEntity, compType, property);
                 if (source && target) *target = *source;
             }
             break;

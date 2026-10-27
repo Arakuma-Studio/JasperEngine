@@ -9,6 +9,7 @@
 #include "Catalog.h"
 #include "Configs.h"
 #include "Stream.h"
+#include "particles/ParticleEffectCodec.h"
 #include "util/CameraTextureLink.h"
 #include "util/FluidTextureLink.h"
 #include "component/FluidSimulationComponent.h"
@@ -705,6 +706,14 @@ std::string editor::Factory::formatAttributeType(AttributeType type) {
         case AttributeType::TERRAINNODERANGE: return "AttributeType::TERRAINNODERANGE";
         case AttributeType::TERRAINNODERESOLUTION: return "AttributeType::TERRAINNODERESOLUTION";
         case AttributeType::SMOOTHNORMAL: return "AttributeType::SMOOTHNORMAL";
+        case AttributeType::PARTICLECORNER: return "AttributeType::PARTICLECORNER";
+        case AttributeType::PARTICLEPOSITION: return "AttributeType::PARTICLEPOSITION";
+        case AttributeType::PARTICLECOLOR: return "AttributeType::PARTICLECOLOR";
+        case AttributeType::PARTICLESIZE: return "AttributeType::PARTICLESIZE";
+        case AttributeType::PARTICLEROTATIONFRAME: return "AttributeType::PARTICLEROTATIONFRAME";
+        case AttributeType::PARTICLEVELOCITY: return "AttributeType::PARTICLEVELOCITY";
+        case AttributeType::PARTICLEROTATION: return "AttributeType::PARTICLEROTATION";
+        case AttributeType::PARTICLECUSTOM: return "AttributeType::PARTICLECUSTOM";
         default: return "AttributeType::POSITION";
     }
 }
@@ -718,6 +727,7 @@ std::string editor::Factory::formatAttributeDataType(AttributeDataType type) {
         case AttributeDataType::INT: return "AttributeDataType::INT";
         case AttributeDataType::UNSIGNED_INT: return "AttributeDataType::UNSIGNED_INT";
         case AttributeDataType::FLOAT: return "AttributeDataType::FLOAT";
+        case AttributeDataType::HALF: return "AttributeDataType::HALF";
         default: return "AttributeDataType::FLOAT";
     }
 }
@@ -2909,124 +2919,57 @@ std::string editor::Factory::createPrefab(const fs::path& prefabPath, const Bake
 std::string editor::Factory::createParticleSystemComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<ParticleSystemComponent>(entity)) return "";
     ParticleSystemComponent& p = scene->getComponent<ParticleSystemComponent>(entity);
+    const ParticleSystemComponent defaults;
     std::ostringstream code;
     const std::string ind = indentation(indentSpaces);
     code << ind << "ParticleSystemComponent particles;\n";
-    code << ind << "particles.maxParticles = " << formatUInt(p.maxParticles) << ";\n";
-    code << ind << "particles.emitter = " << formatBool(p.emitter) << ";\n";
-    code << ind << "particles.loop = " << formatBool(p.loop) << ";\n";
-    code << ind << "particles.localSpace = " << formatBool(p.localSpace) << ";\n";
-    code << ind << "particles.rate = " << formatInt(p.rate) << ";\n";
-    code << ind << "particles.maxPerUpdate = " << formatInt(p.maxPerUpdate) << ";\n";
-
-    for (size_t i = 0; i < p.bursts.size(); i++) {
-        code << ind << "{ ParticleBurst b; b.time = " << formatFloat(p.bursts[i].time)
-             << "; b.minCount = " << formatInt(p.bursts[i].minCount)
-             << "; b.maxCount = " << formatInt(p.bursts[i].maxCount)
-             << "; particles.bursts.push_back(b); }\n";
+    if (!p.effect.empty()){
+        // an asset effect, packaged as a data file and read by path
+        code << ind << "particles.effect = " << formatString(p.effect.path) << ";\n";
+    }else{
+        // the inline effect as its JSON, in pieces short enough for every compiler's literals
+        const std::string json = particles::ParticleEffectCodec::write(p.inlineEffect);
+        code << ind << "{\n";
+        code << ind << "    std::string json;\n";
+        for (size_t at = 0; at < json.size(); at += 2000)
+            code << ind << "    json += " << formatString(json.substr(at, 2000)) << ";\n";
+        code << ind << "    particles::readEffectText(json, particles.inlineEffect);\n";
+        code << ind << "}\n";
     }
-
-    code << ind << "particles.lifeInitializer.minLife = " << formatFloat(p.lifeInitializer.minLife) << ";\n";
-    code << ind << "particles.lifeInitializer.maxLife = " << formatFloat(p.lifeInitializer.maxLife) << ";\n";
-
-    code << ind << "particles.positionInitializer.shape = (ParticleEmitterShape)" << formatInt((int)p.positionInitializer.shape) << ";\n";
-    code << ind << "particles.positionInitializer.minPosition = " << formatVector3(p.positionInitializer.minPosition) << ";\n";
-    code << ind << "particles.positionInitializer.maxPosition = " << formatVector3(p.positionInitializer.maxPosition) << ";\n";
-    code << ind << "particles.positionInitializer.radius = " << formatFloat(p.positionInitializer.radius) << ";\n";
-    code << ind << "particles.positionInitializer.innerRadius = " << formatFloat(p.positionInitializer.innerRadius) << ";\n";
-    code << ind << "particles.positionInitializer.coneAngle = " << formatFloat(p.positionInitializer.coneAngle) << ";\n";
-    code << ind << "particles.positionInitializer.coneHeight = " << formatFloat(p.positionInitializer.coneHeight) << ";\n";
-    code << ind << "particles.positionModifier.fromTime = " << formatFloat(p.positionModifier.fromTime) << ";\n";
-    code << ind << "particles.positionModifier.toTime = " << formatFloat(p.positionModifier.toTime) << ";\n";
-    code << ind << "particles.positionModifier.fromPosition = " << formatVector3(p.positionModifier.fromPosition) << ";\n";
-    code << ind << "particles.positionModifier.toPosition = " << formatVector3(p.positionModifier.toPosition) << ";\n";
-    code << ind << "particles.positionModifier.function = " << formatEase(p.positionModifier.function) << ";\n";
-
-    code << ind << "particles.velocityInitializer.minVelocity = " << formatVector3(p.velocityInitializer.minVelocity) << ";\n";
-    code << ind << "particles.velocityInitializer.maxVelocity = " << formatVector3(p.velocityInitializer.maxVelocity) << ";\n";
-    code << ind << "particles.velocityModifier.fromTime = " << formatFloat(p.velocityModifier.fromTime) << ";\n";
-    code << ind << "particles.velocityModifier.toTime = " << formatFloat(p.velocityModifier.toTime) << ";\n";
-    code << ind << "particles.velocityModifier.fromVelocity = " << formatVector3(p.velocityModifier.fromVelocity) << ";\n";
-    code << ind << "particles.velocityModifier.toVelocity = " << formatVector3(p.velocityModifier.toVelocity) << ";\n";
-    code << ind << "particles.velocityModifier.function = " << formatEase(p.velocityModifier.function) << ";\n";
-
-    code << ind << "particles.accelerationInitializer.minAcceleration = " << formatVector3(p.accelerationInitializer.minAcceleration) << ";\n";
-    code << ind << "particles.accelerationInitializer.maxAcceleration = " << formatVector3(p.accelerationInitializer.maxAcceleration) << ";\n";
-    code << ind << "particles.accelerationModifier.fromTime = " << formatFloat(p.accelerationModifier.fromTime) << ";\n";
-    code << ind << "particles.accelerationModifier.toTime = " << formatFloat(p.accelerationModifier.toTime) << ";\n";
-    code << ind << "particles.accelerationModifier.fromAcceleration = " << formatVector3(p.accelerationModifier.fromAcceleration) << ";\n";
-    code << ind << "particles.accelerationModifier.toAcceleration = " << formatVector3(p.accelerationModifier.toAcceleration) << ";\n";
-    code << ind << "particles.accelerationModifier.function = " << formatEase(p.accelerationModifier.function) << ";\n";
-
-    code << ind << "particles.colorInitializer.minColor = " << formatVector3(p.colorInitializer.minColor) << ";\n";
-    code << ind << "particles.colorInitializer.maxColor = " << formatVector3(p.colorInitializer.maxColor) << ";\n";
-    code << ind << "particles.colorInitializer.useSRGB = " << formatBool(p.colorInitializer.useSRGB) << ";\n";
-    code << ind << "particles.colorModifier.fromTime = " << formatFloat(p.colorModifier.fromTime) << ";\n";
-    code << ind << "particles.colorModifier.toTime = " << formatFloat(p.colorModifier.toTime) << ";\n";
-    code << ind << "particles.colorModifier.fromColor = " << formatVector3(p.colorModifier.fromColor) << ";\n";
-    code << ind << "particles.colorModifier.toColor = " << formatVector3(p.colorModifier.toColor) << ";\n";
-    code << ind << "particles.colorModifier.function = " << formatEase(p.colorModifier.function) << ";\n";
-    code << ind << "particles.colorModifier.useSRGB = " << formatBool(p.colorModifier.useSRGB) << ";\n";
-
-    code << ind << "particles.colorGradient.useSRGB = " << formatBool(p.colorGradient.useSRGB) << ";\n";
-    for (size_t i = 0; i < p.colorGradient.stops.size(); i++) {
-        code << ind << "{ ParticleColorGradientStop s; s.time = " << formatFloat(p.colorGradient.stops[i].time)
-             << "; s.color = " << formatVector3(p.colorGradient.stops[i].color)
-             << "; particles.colorGradient.stops.push_back(s); }\n";
-    }
-
-    code << ind << "particles.alphaInitializer.minAlpha = " << formatFloat(p.alphaInitializer.minAlpha) << ";\n";
-    code << ind << "particles.alphaInitializer.maxAlpha = " << formatFloat(p.alphaInitializer.maxAlpha) << ";\n";
-    code << ind << "particles.alphaModifier.fromTime = " << formatFloat(p.alphaModifier.fromTime) << ";\n";
-    code << ind << "particles.alphaModifier.toTime = " << formatFloat(p.alphaModifier.toTime) << ";\n";
-    code << ind << "particles.alphaModifier.fromAlpha = " << formatFloat(p.alphaModifier.fromAlpha) << ";\n";
-    code << ind << "particles.alphaModifier.toAlpha = " << formatFloat(p.alphaModifier.toAlpha) << ";\n";
-    code << ind << "particles.alphaModifier.function = " << formatEase(p.alphaModifier.function) << ";\n";
-
-    code << ind << "particles.sizeInitializer.minSize = " << formatFloat(p.sizeInitializer.minSize) << ";\n";
-    code << ind << "particles.sizeInitializer.maxSize = " << formatFloat(p.sizeInitializer.maxSize) << ";\n";
-    code << ind << "particles.sizeModifier.fromTime = " << formatFloat(p.sizeModifier.fromTime) << ";\n";
-    code << ind << "particles.sizeModifier.toTime = " << formatFloat(p.sizeModifier.toTime) << ";\n";
-    code << ind << "particles.sizeModifier.fromSize = " << formatFloat(p.sizeModifier.fromSize) << ";\n";
-    code << ind << "particles.sizeModifier.toSize = " << formatFloat(p.sizeModifier.toSize) << ";\n";
-    code << ind << "particles.sizeModifier.function = " << formatEase(p.sizeModifier.function) << ";\n";
-
-    if (!p.spriteInitializer.frames.empty()) {
-        for (size_t i = 0; i < p.spriteInitializer.frames.size(); i++) {
-            code << ind << "particles.spriteInitializer.frames.push_back(" << formatInt(p.spriteInitializer.frames[i]) << ");\n";
-        }
-    }
-    code << ind << "particles.spriteModifier.fromTime = " << formatFloat(p.spriteModifier.fromTime) << ";\n";
-    code << ind << "particles.spriteModifier.toTime = " << formatFloat(p.spriteModifier.toTime) << ";\n";
-    code << ind << "particles.spriteModifier.function = " << formatEase(p.spriteModifier.function) << ";\n";
-    if (!p.spriteModifier.frames.empty()) {
-        for (size_t i = 0; i < p.spriteModifier.frames.size(); i++) {
-            code << ind << "particles.spriteModifier.frames.push_back(" << formatInt(p.spriteModifier.frames[i]) << ");\n";
-        }
-    }
-
-    code << ind << "particles.rotationInitializer.minRotation = " << formatQuaternion(p.rotationInitializer.minRotation) << ";\n";
-    code << ind << "particles.rotationInitializer.maxRotation = " << formatQuaternion(p.rotationInitializer.maxRotation) << ";\n";
-    code << ind << "particles.rotationInitializer.shortestPath = " << formatBool(p.rotationInitializer.shortestPath) << ";\n";
-    code << ind << "particles.rotationModifier.fromTime = " << formatFloat(p.rotationModifier.fromTime) << ";\n";
-    code << ind << "particles.rotationModifier.toTime = " << formatFloat(p.rotationModifier.toTime) << ";\n";
-    code << ind << "particles.rotationModifier.fromRotation = " << formatQuaternion(p.rotationModifier.fromRotation) << ";\n";
-    code << ind << "particles.rotationModifier.toRotation = " << formatQuaternion(p.rotationModifier.toRotation) << ";\n";
-    code << ind << "particles.rotationModifier.function = " << formatEase(p.rotationModifier.function) << ";\n";
-    code << ind << "particles.rotationModifier.shortestPath = " << formatBool(p.rotationModifier.shortestPath) << ";\n";
-
-    code << ind << "particles.scaleInitializer.minScale = " << formatVector3(p.scaleInitializer.minScale) << ";\n";
-    code << ind << "particles.scaleInitializer.maxScale = " << formatVector3(p.scaleInitializer.maxScale) << ";\n";
-    code << ind << "particles.scaleInitializer.linearSort = " << formatBool(p.scaleInitializer.linearSort) << ";\n";
-    code << ind << "particles.scaleModifier.fromTime = " << formatFloat(p.scaleModifier.fromTime) << ";\n";
-    code << ind << "particles.scaleModifier.toTime = " << formatFloat(p.scaleModifier.toTime) << ";\n";
-    code << ind << "particles.scaleModifier.fromScale = " << formatVector3(p.scaleModifier.fromScale) << ";\n";
-    code << ind << "particles.scaleModifier.toScale = " << formatVector3(p.scaleModifier.toScale) << ";\n";
-    code << ind << "particles.scaleModifier.function = " << formatEase(p.scaleModifier.function) << ";\n";
-
+    if (p.playOnAwake != defaults.playOnAwake) code << ind << "particles.playOnAwake = " << formatBool(p.playOnAwake) << ";\n";
+    if (p.seed != defaults.seed) code << ind << "particles.seed = " << formatUInt(p.seed) << ";\n";
+    if (p.playbackSpeed != defaults.playbackSpeed) code << ind << "particles.playbackSpeed = " << formatFloat(p.playbackSpeed) << ";\n";
+    for (const ParticleExposedValue& v : p.exposedValues)
+        code << ind << "particles.exposedValues.push_back({" << formatString(v.name) << ", " << formatVector4(v.value) << "});\n";
+    for (Entity plane : p.collisionPlanes)
+        code << ind << "particles.collisionPlanes.push_back(" << formatEntity(plane, entityVarNames) << ");\n";
     if (!p.enabled) code << ind << "particles.enabled = false;\n";
 
     addComponentCode(code, ind, sceneName, entityName, entity, "ParticleSystemComponent", "particles", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createForceFieldComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting) {
+    if (!scene->findComponent<ForceFieldComponent>(entity)) return "";
+    ForceFieldComponent& f = scene->getComponent<ForceFieldComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "ForceFieldComponent field;\n";
+    code << ind << "field.shape = (ForceFieldShapeType)" << formatInt((int)f.shape) << ";\n";
+    code << ind << "field.size = " << formatVector3(f.size) << ";\n";
+    code << ind << "field.kind = (ForceFieldKind)" << formatInt((int)f.kind) << ";\n";
+    code << ind << "field.strength = " << formatFloat(f.strength) << ";\n";
+    code << ind << "field.direction = " << formatVector3(f.direction) << ";\n";
+    code << ind << "field.turbulence = " << formatFloat(f.turbulence) << ";\n";
+    code << ind << "field.pulseFrequency = " << formatFloat(f.pulseFrequency) << ";\n";
+    code << ind << "field.frequency = " << formatFloat(f.frequency) << ";\n";
+    code << ind << "field.falloff.keys.clear();\n";
+    auto tangent = [](float t){ return std::isfinite(t) ? formatFloat(t) : std::string(t > 0.0f ? "INFINITY" : "-INFINITY"); };
+    for (const CurveKey& k : f.falloff.keys)
+        code << ind << "field.falloff.keys.push_back({" << formatFloat(k.time) << ", " << formatFloat(k.value) << ", " << tangent(k.inTangent) << ", " << tangent(k.outTangent) << "});\n";
+    code << ind << "field.layers = " << formatUInt(f.layers) << ";\n";
+    if (!f.enabled) code << ind << "field.enabled = false;\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "ForceFieldComponent", "field", assignExisting);
     return code.str();
 }
 

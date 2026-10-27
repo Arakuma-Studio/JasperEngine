@@ -1,215 +1,79 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The particle system: its emitter and the initializer and modifier of each particle attribute
-// (docs/specs/S08-reflection.md P3; its encoding stays its own, ComponentCodec)
+// The particle system and the force field (docs/specs/S08-reflection.md P3, S20): both keep the
+// codecs of S20 (the effect as an asset reference or the inline .particles JSON, the falloff
+// curve as key rows), their tables giving the properties, schema, Inspector metadata and
+// asset locators. The effect's modules are edited as one document (inlineEffect).
 
 #include "reflect/Components.h"
 
 #include "Factory.h"
 #include "Stream.h"
+#include "component/ForceFieldComponent.h"
 #include "component/ParticleSystemComponent.h"
+#include "particles/ParticleEffectCodec.h"
 
 namespace jasperengine::editor::reflect {
 
 namespace {
 
-    constexpr FieldDesc kLifeInitializerFields[] = {
-        JE_FIELD(ParticleLifeInitializer, minLife, .unit = Unit::Seconds, .min = 0.0f),
-        JE_FIELD(ParticleLifeInitializer, maxLife, .unit = Unit::Seconds, .min = 0.0f),
-    };
+    // ---------------------------------------------------------------- Particle System
 
-    constexpr FieldDesc kPositionInitializerFields[] = {
-        JE_FIELD(ParticlePositionInitializer, shape, .enumDesc = &enums::kParticleEmitterShape),
-        JE_FIELD(ParticlePositionInitializer, minPosition),
-        JE_FIELD(ParticlePositionInitializer, maxPosition),
-        JE_FIELD(ParticlePositionInitializer, radius, .min = 0.0f),
-        JE_FIELD(ParticlePositionInitializer, innerRadius, .min = 0.0f),
-        JE_FIELD(ParticlePositionInitializer, coneAngle, .unit = Unit::Degrees),
-        JE_FIELD(ParticlePositionInitializer, coneHeight),
-    };
+    // a new effect, inline document, exposed value or seed rebinds the system (keeping the live
+    // particles when only parameters changed)
+    constexpr uint64_t kParticles = UpdateFlags_Particles;
 
-    constexpr FieldDesc kPositionModifierFields[] = {
-        JE_FIELD(ParticlePositionModifier, fromTime, .unit = Unit::Seconds),
-        JE_FIELD(ParticlePositionModifier, toTime, .unit = Unit::Seconds),
-        JE_FIELD(ParticlePositionModifier, fromPosition),
-        JE_FIELD(ParticlePositionModifier, toPosition),
-        JE_FIELD(ParticlePositionModifier, function),
-    };
-
-    constexpr FieldDesc kVelocityInitializerFields[] = {
-        JE_FIELD(ParticleVelocityInitializer, minVelocity),
-        JE_FIELD(ParticleVelocityInitializer, maxVelocity),
-    };
-
-    constexpr FieldDesc kVelocityModifierFields[] = {
-        JE_FIELD(ParticleVelocityModifier, fromTime, .unit = Unit::Seconds),
-        JE_FIELD(ParticleVelocityModifier, toTime, .unit = Unit::Seconds),
-        JE_FIELD(ParticleVelocityModifier, fromVelocity),
-        JE_FIELD(ParticleVelocityModifier, toVelocity),
-        JE_FIELD(ParticleVelocityModifier, function),
-    };
-
-    constexpr FieldDesc kAccelerationInitializerFields[] = {
-        JE_FIELD(ParticleAccelerationInitializer, minAcceleration),
-        JE_FIELD(ParticleAccelerationInitializer, maxAcceleration),
-    };
-
-    constexpr FieldDesc kAccelerationModifierFields[] = {
-        JE_FIELD(ParticleAccelerationModifier, fromTime, .unit = Unit::Seconds),
-        JE_FIELD(ParticleAccelerationModifier, toTime, .unit = Unit::Seconds),
-        JE_FIELD(ParticleAccelerationModifier, fromAcceleration),
-        JE_FIELD(ParticleAccelerationModifier, toAcceleration),
-        JE_FIELD(ParticleAccelerationModifier, function),
-    };
-
-    constexpr FieldDesc kColorInitializerFields[] = {
-        JE_FIELD(ParticleColorInitializer, minColor, .flags = ColorSRGB),
-        JE_FIELD(ParticleColorInitializer, maxColor, .flags = ColorSRGB),
-        JE_FIELD(ParticleColorInitializer, useSRGB, .label = "Use sRGB"),
-    };
-
-    constexpr FieldDesc kColorModifierFields[] = {
-        JE_FIELD(ParticleColorModifier, fromTime, .unit = Unit::Seconds),
-        JE_FIELD(ParticleColorModifier, toTime, .unit = Unit::Seconds),
-        JE_FIELD(ParticleColorModifier, fromColor, .flags = ColorSRGB),
-        JE_FIELD(ParticleColorModifier, toColor, .flags = ColorSRGB),
-        JE_FIELD(ParticleColorModifier, function),
-        JE_FIELD(ParticleColorModifier, useSRGB, .label = "Use sRGB"),
-    };
-
-    constexpr FieldDesc kAlphaInitializerFields[] = {
-        JE_FIELD(ParticleAlphaInitializer, minAlpha, .min = 0.0f, .max = 1.0f),
-        JE_FIELD(ParticleAlphaInitializer, maxAlpha, .min = 0.0f, .max = 1.0f),
-    };
-
-    constexpr FieldDesc kAlphaModifierFields[] = {
-        JE_FIELD(ParticleAlphaModifier, fromTime, .unit = Unit::Seconds),
-        JE_FIELD(ParticleAlphaModifier, toTime, .unit = Unit::Seconds),
-        JE_FIELD(ParticleAlphaModifier, fromAlpha, .min = 0.0f, .max = 1.0f),
-        JE_FIELD(ParticleAlphaModifier, toAlpha, .min = 0.0f, .max = 1.0f),
-        JE_FIELD(ParticleAlphaModifier, function),
-    };
-
-    constexpr FieldDesc kSizeInitializerFields[] = {
-        JE_FIELD(ParticleSizeInitializer, minSize, .min = 0.0f),
-        JE_FIELD(ParticleSizeInitializer, maxSize, .min = 0.0f),
-    };
-
-    constexpr FieldDesc kSizeModifierFields[] = {
-        JE_FIELD(ParticleSizeModifier, fromTime, .unit = Unit::Seconds),
-        JE_FIELD(ParticleSizeModifier, toTime, .unit = Unit::Seconds),
-        JE_FIELD(ParticleSizeModifier, fromSize, .min = 0.0f),
-        JE_FIELD(ParticleSizeModifier, toSize, .min = 0.0f),
-        JE_FIELD(ParticleSizeModifier, function),
-    };
-
-    constexpr FieldDesc kSpriteInitializerFields[] = {
-        JE_FIELD(ParticleSpriteInitializer, frames, .flags = ListWhole),
-    };
-
-    constexpr FieldDesc kSpriteModifierFields[] = {
-        JE_FIELD(ParticleSpriteModifier, fromTime, .unit = Unit::Seconds),
-        JE_FIELD(ParticleSpriteModifier, toTime, .unit = Unit::Seconds),
-        JE_FIELD(ParticleSpriteModifier, frames, .flags = ListWhole),
-        JE_FIELD(ParticleSpriteModifier, function),
-    };
-
-    constexpr FieldDesc kRotationInitializerFields[] = {
-        JE_FIELD(ParticleRotationInitializer, minRotation),
-        JE_FIELD(ParticleRotationInitializer, maxRotation),
-        JE_FIELD(ParticleRotationInitializer, shortestPath),
-    };
-
-    constexpr FieldDesc kRotationModifierFields[] = {
-        JE_FIELD(ParticleRotationModifier, fromTime, .unit = Unit::Seconds),
-        JE_FIELD(ParticleRotationModifier, toTime, .unit = Unit::Seconds),
-        JE_FIELD(ParticleRotationModifier, fromRotation),
-        JE_FIELD(ParticleRotationModifier, toRotation),
-        JE_FIELD(ParticleRotationModifier, function),
-        JE_FIELD(ParticleRotationModifier, shortestPath),
-    };
-
-    constexpr FieldDesc kScaleInitializerFields[] = {
-        JE_FIELD(ParticleScaleInitializer, minScale),
-        JE_FIELD(ParticleScaleInitializer, maxScale),
-        JE_FIELD(ParticleScaleInitializer, linearSort),
-    };
-
-    constexpr FieldDesc kScaleModifierFields[] = {
-        JE_FIELD(ParticleScaleModifier, fromTime, .unit = Unit::Seconds),
-        JE_FIELD(ParticleScaleModifier, toTime, .unit = Unit::Seconds),
-        JE_FIELD(ParticleScaleModifier, fromScale),
-        JE_FIELD(ParticleScaleModifier, toScale),
-        JE_FIELD(ParticleScaleModifier, function),
-    };
-
-}
-
-#define JE_PARTICLE_STRUCT(Type, desc, fields) \
-    JE_REFLECT_STRUCT_TRAITS(Type, desc); \
-    const StructDesc desc = JE_STRUCT_DESC(Type, #Type, fields)
-
-JE_PARTICLE_STRUCT(ParticleLifeInitializer, kLifeInitializerStruct, kLifeInitializerFields);
-JE_PARTICLE_STRUCT(ParticlePositionInitializer, kPositionInitializerStruct, kPositionInitializerFields);
-JE_PARTICLE_STRUCT(ParticlePositionModifier, kPositionModifierStruct, kPositionModifierFields);
-JE_PARTICLE_STRUCT(ParticleVelocityInitializer, kVelocityInitializerStruct, kVelocityInitializerFields);
-JE_PARTICLE_STRUCT(ParticleVelocityModifier, kVelocityModifierStruct, kVelocityModifierFields);
-JE_PARTICLE_STRUCT(ParticleAccelerationInitializer, kAccelerationInitializerStruct, kAccelerationInitializerFields);
-JE_PARTICLE_STRUCT(ParticleAccelerationModifier, kAccelerationModifierStruct, kAccelerationModifierFields);
-JE_PARTICLE_STRUCT(ParticleColorInitializer, kColorInitializerStruct, kColorInitializerFields);
-JE_PARTICLE_STRUCT(ParticleColorModifier, kColorModifierStruct, kColorModifierFields);
-JE_PARTICLE_STRUCT(ParticleAlphaInitializer, kAlphaInitializerStruct, kAlphaInitializerFields);
-JE_PARTICLE_STRUCT(ParticleAlphaModifier, kAlphaModifierStruct, kAlphaModifierFields);
-JE_PARTICLE_STRUCT(ParticleSizeInitializer, kSizeInitializerStruct, kSizeInitializerFields);
-JE_PARTICLE_STRUCT(ParticleSizeModifier, kSizeModifierStruct, kSizeModifierFields);
-JE_PARTICLE_STRUCT(ParticleSpriteInitializer, kSpriteInitializerStruct, kSpriteInitializerFields);
-JE_PARTICLE_STRUCT(ParticleSpriteModifier, kSpriteModifierStruct, kSpriteModifierFields);
-JE_PARTICLE_STRUCT(ParticleRotationInitializer, kRotationInitializerStruct, kRotationInitializerFields);
-JE_PARTICLE_STRUCT(ParticleRotationModifier, kRotationModifierStruct, kRotationModifierFields);
-JE_PARTICLE_STRUCT(ParticleScaleInitializer, kScaleInitializerStruct, kScaleInitializerFields);
-JE_PARTICLE_STRUCT(ParticleScaleModifier, kScaleModifierStruct, kScaleModifierFields);
-
-#undef JE_PARTICLE_STRUCT
-
-namespace {
+    // the inline effect: a document the tables do not look into (its codec writes it), equal when
+    // its canonical .particles JSON is
+    using EffectDocument = particles::ParticleEffectDocument;
+    bool equalEffects(const void* a, const void* b, float) {
+        return particles::ParticleEffectCodec::write(*static_cast<const EffectDocument*>(a)) ==
+               particles::ParticleEffectCodec::write(*static_cast<const EffectDocument*>(b));
+    }
+    constexpr TypeOps kEffectDocumentOps{"value", Kind::Custom, PropertyType::Custom, sizeof(EffectDocument),
+        &detail::construct<EffectDocument>, &detail::destroy<EffectDocument>, &detail::copy<EffectDocument>, &equalEffects,
+        nullptr, nullptr, nullptr, nullptr, nullptr, false, nullptr, &detail::customSchema};
 
     constexpr FieldDesc kParticleSystemFields[] = {
         JE_FIELD(ParticleSystemComponent, enabled),
-        JE_FIELD(ParticleSystemComponent, maxParticles, .min = 1.0f),
-        JE_FIELD(ParticleSystemComponent, emitter),
-        JE_FIELD(ParticleSystemComponent, loop),
-        JE_FIELD(ParticleSystemComponent, localSpace),
-        JE_FIELD(ParticleSystemComponent, rate, .min = 0.0f, .tooltip = "Particles emitted per second."),
-        JE_FIELD(ParticleSystemComponent, maxPerUpdate, .min = 0.0f),
-        JE_FIELD(ParticleSystemComponent, bursts, .ops = &ops::Opaque<std::vector<ParticleBurst>>),
-        JE_FIELD(ParticleSystemComponent, lifeInitializer),
-        JE_FIELD(ParticleSystemComponent, positionInitializer),
-        JE_FIELD(ParticleSystemComponent, positionModifier),
-        JE_FIELD(ParticleSystemComponent, velocityInitializer),
-        JE_FIELD(ParticleSystemComponent, velocityModifier),
-        JE_FIELD(ParticleSystemComponent, accelerationInitializer),
-        JE_FIELD(ParticleSystemComponent, accelerationModifier),
-        JE_FIELD(ParticleSystemComponent, colorInitializer),
-        JE_FIELD(ParticleSystemComponent, colorModifier),
-        // overrides the colour modifier when it has stops
-        JE_FIELD(ParticleSystemComponent, colorGradient, .ops = &ops::Opaque<ParticleColorGradient>),
-        JE_FIELD(ParticleSystemComponent, alphaInitializer),
-        JE_FIELD(ParticleSystemComponent, alphaModifier),
-        JE_FIELD(ParticleSystemComponent, sizeInitializer),
-        JE_FIELD(ParticleSystemComponent, sizeModifier),
-        JE_FIELD(ParticleSystemComponent, spriteInitializer),
-        JE_FIELD(ParticleSystemComponent, spriteModifier),
-        JE_FIELD(ParticleSystemComponent, rotationInitializer),
-        JE_FIELD(ParticleSystemComponent, rotationModifier),
-        JE_FIELD(ParticleSystemComponent, scaleInitializer),
-        JE_FIELD(ParticleSystemComponent, scaleModifier),
+        JE_FIELD(ParticleSystemComponent, effect, .ops = &ops::AssetRef, .updateFlags = kParticles,
+                 .tooltip = "A .particles asset; empty: the inline effect."),
+        JE_FIELD(ParticleSystemComponent, inlineEffect, .ops = &kEffectDocumentOps, .flags = NoDefault, .updateFlags = kParticles),
+        JE_FIELD(ParticleSystemComponent, playOnAwake),
+        JE_FIELD(ParticleSystemComponent, seed, .updateFlags = kParticles, .tooltip = "0: a new random seed at every play."),
+        JE_FIELD(ParticleSystemComponent, playbackSpeed),
+        JE_FIELD(ParticleSystemComponent, exposedValues, .ops = &ops::Opaque<std::vector<ParticleExposedValue>>, .updateFlags = kParticles),
+        // GameObjects whose transforms are more collision planes (their up axis is the normal)
+        JE_FIELD(ParticleSystemComponent, collisionPlanes, .flags = NoDefault | ListWhole, .elementOps = &ops::Entity),
     };
 
     const ComponentCodec kParticleSystemCodec = JE_STREAM_CODEC(ParticleSystemComponent, encodeParticleSystemComponent, decodeParticleSystemComponent);
 
     // the keys its codec reads
-    constexpr const char* kParticleSystemKnownKeys[] = {"accelerationInitializer", "accelerationModifier", "alphaInitializer", "alphaModifier", "bursts", "colorGradient", "colorInitializer", "colorModifier", "emitter", "enabled", "lifeInitializer", "localSpace", "loop", "maxParticles", "maxPerUpdate", "positionInitializer", "positionModifier", "rate", "rotationInitializer", "rotationModifier", "scaleInitializer", "scaleModifier", "sizeInitializer", "sizeModifier", "spriteInitializer", "spriteModifier", "velocityInitializer", "velocityModifier"};
+    constexpr const char* kParticleSystemKnownKeys[] = {"collisionPlanes", "effect", "effectGuid", "enabled", "exposedValues", "inlineEffect", "playOnAwake", "playbackSpeed", "seed"};
+
+    // ---------------------------------------------------------------- Force Field
+
+    constexpr FieldDesc kForceFieldFields[] = {
+        JE_FIELD(ForceFieldComponent, enabled),
+        JE_FIELD(ForceFieldComponent, shape, .enumDesc = &enums::kForceFieldShape),
+        // Sphere: x the radius; Box: the half extents; Cylinder: x the radius, y the half height
+        JE_FIELD(ForceFieldComponent, size),
+        JE_FIELD(ForceFieldComponent, kind, .enumDesc = &enums::kForceFieldKind),
+        JE_FIELD(ForceFieldComponent, strength),
+        JE_FIELD(ForceFieldComponent, direction),
+        JE_FIELD(ForceFieldComponent, turbulence),
+        JE_FIELD(ForceFieldComponent, pulseFrequency, .unit = Unit::Hertz),
+        JE_FIELD(ForceFieldComponent, frequency),
+        // strength over the distance from the centre (0) to the edge (1)
+        JE_FIELD(ForceFieldComponent, falloff, .ops = &ops::Opaque<Curve>, .flags = NoDefault),
+        JE_FIELD(ForceFieldComponent, layers, .ops = &ops::LayerMask),
+    };
+
+    const ComponentCodec kForceFieldCodec = JE_STREAM_CODEC(ForceFieldComponent, encodeForceFieldComponent, decodeForceFieldComponent);
+
+    constexpr const char* kForceFieldKnownKeys[] = {"direction", "enabled", "falloff", "frequency", "kind", "layers", "pulseFrequency", "shape", "size", "strength", "turbulence"};
 
 }
 
@@ -222,6 +86,19 @@ const ComponentDesc kParticleSystemDesc{
     .decodeApply = DecodeApply::MarkOnly,
     .codegen = JE_FACTORY_CODEGEN(createParticleSystemComponent),
     .extraKeys = kParticleSystemKnownKeys,
+};
+
+const ComponentDesc kForceFieldDesc{
+    .type = ComponentType::ForceFieldComponent, .cppName = "ForceFieldComponent", .key = "forcefield",
+    .displayName = "Force Field", .icon = ICON_FA_WIND,
+    .body = JE_STRUCT_DESC(ForceFieldComponent, "ForceFieldComponent", kForceFieldFields),
+    .hasEnabled = true, .structural = true, JE_COMPONENT_ACCESS(ForceFieldComponent),
+    .codec = &kForceFieldCodec,
+    .decodeApply = DecodeApply::MarkOnly,
+    .codegen = [](EntityRegistry* registry, Entity entity, const CodegenContext& ctx) {
+        return Factory::createForceFieldComponent(ctx.indentSpaces, registry, entity, ctx.sceneName, ctx.entityName, ctx.assignExisting);
+    },
+    .extraKeys = kForceFieldKnownKeys,
 };
 
 }

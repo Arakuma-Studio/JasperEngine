@@ -7,10 +7,12 @@
 
 #include "Stream.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/ForceFieldComponent.h"
 #include "component/LatticeComponent.h"
 #include "component/LatticeFollowerComponent.h"
 #include "component/LatticeModifierComponent.h"
 #include "component/LatticeTracksComponent.h"
+#include "particles/ParticleEffectCodec.h"
 #include "reflect/Reflect.h"
 
 #include "LogCapture.h"
@@ -114,7 +116,14 @@ STABLE(TranslateTracksComponent, TranslateTracksComponent, )
 STABLE(RotateTracksComponent, RotateTracksComponent, )
 STABLE(ScaleTracksComponent, ScaleTracksComponent, )
 STABLE(MorphTracksComponent, MorphTracksComponent, )
-STABLE(ParticleSystemComponent, ParticleSystemComponent, )
+STABLE(ParticleSystemComponent, ParticleSystemComponent,
+    component.playOnAwake = false; component.seed = 42; component.playbackSpeed = 1.5f;
+    component.inlineEffect.duration = 3.0f; component.inlineEffect.noise.present = true;
+    component.inlineEffect.emission.rateOverTime = particles::MinMaxCurve::twoConstants(2.0f, 8.0f);
+    component.exposedValues.push_back({"Intensity", Vector4(2.0f, 0.0f, 0.0f, 0.0f)}))
+STABLE(ForceFieldComponent, ForceFieldComponent,
+    component.shape = ForceFieldShapeType::Box; component.kind = ForceFieldKind::Vortex; component.strength = -3.0f;
+    component.falloff = Curve::linear(1.0f, 0.0f); component.layers = 0x6u)
 STABLE(InstancedMeshComponent, InstancedMeshComponent, )
 STABLE(PointsComponent, PointsComponent, )
 STABLE(LineRendererComponent, LineRendererComponent, )
@@ -212,5 +221,74 @@ TEST(StreamComponent, SubmeshOverrideMaskKeepsItsHighBits){
     EXPECT_EQ(decoded.submeshes[0].overrideFields, (uint64_t)(SubmeshOverride_EmissiveStrength | SubmeshOverride_StochasticTiling))
         << "bit 32 and up survive the save";
     EXPECT_FLOAT_EQ(decoded.submeshes[0].material.emissiveStrength, 4.0f);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// an asset effect: its path and GUID, and the inline effect left as it was
+TEST(StreamComponent, ParticleSystemComponentAssetReEncodesIdentically){
+    ParticleSystemComponent component{};
+    component.effect.set("fx/fire.particles", Guid(1, 2));
+    expectStable<ParticleSystemComponent>(component,
+        [](const ParticleSystemComponent& c){ return reflect::encodeValue(ComponentType::ParticleSystemComponent, &c); },
+        [](const YAML::Node& node){ return reflect::decodeValue<ParticleSystemComponent>(ComponentType::ParticleSystemComponent, node); });
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// S20's components through their tables: every field read back with its value
+TEST(StreamComponent, ParticleSystemFieldsRoundTrip){
+    ParticleSystemComponent inlineSystem{};
+    inlineSystem.inlineEffect.duration = 4.5f;
+    inlineSystem.inlineEffect.emission.rateOverTime = particles::MinMaxCurve::twoConstants(3.0f, 9.0f);
+    inlineSystem.playOnAwake = false;
+    inlineSystem.seed = 42;
+    inlineSystem.playbackSpeed = 1.5f;
+    inlineSystem.exposedValues.push_back({"Intensity", Vector4(2.0f, 0.5f, 0.0f, 1.0f)});
+    inlineSystem.collisionPlanes = {7, 9};
+    ParticleSystemComponent decoded = roundTrip(ComponentType::ParticleSystemComponent, inlineSystem);
+    EXPECT_TRUE(decoded.effect.empty());
+    EXPECT_FLOAT_EQ(decoded.inlineEffect.duration, 4.5f);
+    EXPECT_EQ(particles::ParticleEffectCodec::write(decoded.inlineEffect), particles::ParticleEffectCodec::write(inlineSystem.inlineEffect));
+    EXPECT_FALSE(decoded.playOnAwake);
+    EXPECT_EQ(decoded.seed, 42u);
+    EXPECT_FLOAT_EQ(decoded.playbackSpeed, 1.5f);
+    ASSERT_EQ(decoded.exposedValues.size(), 1u);
+    EXPECT_EQ(decoded.exposedValues[0], inlineSystem.exposedValues[0]);
+    EXPECT_EQ(decoded.collisionPlanes, (std::vector<Entity>{7, 9}));
+
+    ParticleSystemComponent assetSystem{};
+    assetSystem.effect.set("fx/smoke.particles", Guid(3, 4));
+    assetSystem.enabled = false;
+    decoded = roundTrip(ComponentType::ParticleSystemComponent, assetSystem);
+    EXPECT_EQ(decoded.effect.path, "fx/smoke.particles");
+    EXPECT_EQ(decoded.effect.guid, Guid(3, 4));
+    EXPECT_FALSE(decoded.enabled);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST(StreamComponent, ForceFieldFieldsRoundTrip){
+    ForceFieldComponent field{};
+    field.enabled = false;
+    field.shape = ForceFieldShapeType::Cylinder;
+    field.size = Vector3(2.0f, 3.0f, 4.0f);
+    field.kind = ForceFieldKind::Turbulence;
+    field.strength = -2.5f;
+    field.direction = Vector3(0.0f, 1.0f, 0.0f);
+    field.turbulence = 0.25f;
+    field.pulseFrequency = 0.5f;
+    field.frequency = 2.0f;
+    field.falloff = Curve::linear(1.0f, 0.0f);
+    field.layers = 0x5u;
+    const ForceFieldComponent decoded = roundTrip(ComponentType::ForceFieldComponent, field);
+    EXPECT_FALSE(decoded.enabled);
+    EXPECT_EQ(decoded.shape, ForceFieldShapeType::Cylinder);
+    EXPECT_EQ(decoded.size, Vector3(2.0f, 3.0f, 4.0f));
+    EXPECT_EQ(decoded.kind, ForceFieldKind::Turbulence);
+    EXPECT_FLOAT_EQ(decoded.strength, -2.5f);
+    EXPECT_EQ(decoded.direction, Vector3(0.0f, 1.0f, 0.0f));
+    EXPECT_FLOAT_EQ(decoded.turbulence, 0.25f);
+    EXPECT_FLOAT_EQ(decoded.pulseFrequency, 0.5f);
+    EXPECT_FLOAT_EQ(decoded.frequency, 2.0f);
+    EXPECT_EQ(decoded.falloff, field.falloff);
+    EXPECT_EQ(decoded.layers, 0x5u);
     EXPECT_NO_ENGINE_ERRORS();
 }

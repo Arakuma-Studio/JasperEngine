@@ -304,6 +304,7 @@ void editor::InspectorWindow::drawActionComponent(ComponentType cpType, ScenePro
                         continue;
                     }
                     Stream::decodeComponents(state.entity, state.parent, scene, state.components);
+                    ProjectUtils::clearPreviewParticles(scene, state.entity);
                 }
 
                 actionComp = scene->findComponent<ActionComponent>(entity);

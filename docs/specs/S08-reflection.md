@@ -476,11 +476,11 @@ in `tools/mcp/tests/test_reflection.py`.
 
 Recorded by the implementation (branch `feat/s08-reflection`).
 
-- **Hand codecs kept (P3 → P4).** 38 of the 60 components use the generic codec. 22 keep a whole-component
+- **Hand codecs kept (P3 → P4).** 38 of the 61 components use the generic codec. 23 keep a whole-component
   codec called through `ComponentDesc::codec`, with their table driving the Catalog, Inspector,
   MCP, locators and codegen: the P4 set (Mesh, UI, Model, Prefab, Script, Terrain) plus Sprite,
   Tilemap, Polygon, MeshPolygon, Points, LineRenderer, InstancedMesh, MorphTracks,
-  Rigidbody2D/3D, ParticleSystem, Skybox, SpriteAnimation and the three lattice codecs below. Their YAML has quirks that one flag
+  Rigidbody2D/3D, Skybox, SpriteAnimation and the lattice, particle and force field codecs below. Their YAML has quirks that one flag
   cannot express (count-limited lists, keys read from other components, legacy branches), so
   §9's default applies. The codecs are in `editor/StreamComponents.cpp`. `Stream.cpp` is 4,358
   lines and `StreamComponents.cpp` 2,313 lines, so the codec code that remains is about 6,670
@@ -493,6 +493,15 @@ Recorded by the implementation (branch `feat/s08-reflection`).
   flow-style empty lists, clamps on read) in `StreamComponents.cpp`, with tables for the rest.
   Their exported code stays the Factory writers'. The lattice drawers moved to
   `InspectorLattice.cpp`; the fluid keeps its own drawer (`InspectorFluid.cpp`).
+- **S20 (oe-port 64d735104).** The new Particle System (an effect asset or an inline `.particles`
+  document, exposed values, collision planes) and the Force Field keep S20's codecs in
+  `StreamComponents.cpp` (the inline effect is its canonical JSON, the falloff curve key rows);
+  their tables (`ParticlesReflect.cpp`) give the properties, MCP schema and locators, the inline
+  document compared by its JSON. Their drawers are S20's (`InspectorParticles.cpp`), registered
+  in the drawer lookup, with the force field's enum rows from its `EnumDesc`s. S20's scene 2→3
+  and prefab 4→5 migrations (`StreamMigrations`) are the only format bumps: S08 adds no
+  migration, so the sequence stays S20's. The old particle model's table, drawer and emitter-shape
+  rows are gone; its `EnumDesc` stays for the legacy decode the migration uses.
 - **Legacy oracle kept.** `editor/tests/reflect/legacy/` (the deleted hand codecs, test-only)
   stays so the parity fuzzers can keep running. D5 deletes it once S08 completes. Deleting it is
   a follow-up for the integrator after merge, and the goldens do not depend on it.

@@ -24,6 +24,20 @@ namespace jasperengine{
     enum class HtmlUIPostVariant { PASSTHROUGH, COLOR_MATRIX, BLEND_MASK, DROP_SHADOW, BLUR, UNPREMULTIPLY, YUV };
     static const int HTMLUI_POST_VARIANT_COUNT = 7;
 
+    // what a particle system draw needs of its variant (ShaderType::PARTICLES)
+    struct ParticlesShaderFlags {
+        bool texture = false;        // HAS_TEXTURE: the sprite sheet
+        bool mesh = false;           // PARTICLE_MESH: mesh particles (the mesh's vertices, a rotation per instance)
+        bool trail = false;          // PARTICLE_TRAIL: trail and ribbon strips
+        bool stretch = false;        // STRETCH: stretched billboards
+        bool frameBlend = false;     // FRAME_BLEND: the next sprite frame blended in
+        bool lit = false;            // LIT: per-vertex lighting
+        bool sixWay = false;         // SIXWAY: six-way smoke lighting
+        bool customData = false;     // CUSTOM_DATA: the Custom Data stream
+        bool receiveShadows = false; // RECEIVE_SHADOWS: the main light's shadow
+        bool fog = false;            // HAS_FOG: the scene fog
+    };
+
     class JASPERENGINE_API ShaderPool{
     private:
         static shaders_t& getMap();
@@ -237,6 +251,8 @@ namespace jasperengine{
         // lists): HTMLUI untextured and textured, HTMLUI_GRADIENT, the seven HTMLUI_POST
         static std::vector<std::pair<ShaderType, uint64_t>> getHtmlUIVariants();
         static uint64_t getPointsProperties(bool texture, bool vertexColorVec3, bool vertexColorVec4, bool textureRect);
+        // a particle draw's variant (the post-processing colour bit comes from getPostColorProperty)
+        static uint64_t getParticlesProperties(const ParticlesShaderFlags& flags);
         static uint64_t getLinesProperties(bool vertexColorVec3, bool vertexColorVec4);
 
 		// necessary for engine shutdown

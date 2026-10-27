@@ -66,6 +66,7 @@ namespace jasperengine::editor::mcp {
     void registerProfilerTools(McpRegistry& registry);
     void registerScriptingTools(McpRegistry& registry);
     void registerGraphTools(McpRegistry& registry);
+    void registerParticleTools(McpRegistry& registry);
     void registerOrganisationTools(McpRegistry& registry);
 
     // list_assets search and saved searches (OrganisationTools.cpp): an R20 search over the asset
