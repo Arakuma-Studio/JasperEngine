@@ -52,6 +52,10 @@ size_t SystemRender::getPipelineCacheSize(){
     return SokolSystem::getPipelineCacheSize();
 }
 
+uint64_t SystemRender::getNestedPassCount(){
+    return SokolSystem::getNestedPassCount();
+}
+
 void SystemRender::shutdown(){
     SokolSystem::shutdown();
 }

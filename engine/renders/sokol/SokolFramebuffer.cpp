@@ -4,7 +4,7 @@
 #include "SokolFramebuffer.h"
 #include "Log.h"
 #include "SokolCmdQueue.h"
-#include "SokolPipelineCache.h"
+#include "SokolSystem.h"
 #include "Engine.h"
 #include "render/FramebufferRender.h"
 
@@ -378,22 +378,26 @@ void SokolFramebuffer::initializeAttachments(size_t faces){
 #if defined(SOKOL_VULKAN)
     // A camera texture can be sampled before its camera has rendered once.
     // Give new attachments defined contents and a shader-readable layout.
-    sg_pass pass = {};
-    for (int i = 0; i < numColorAttachments; i++){
-        pass.action.colors[i].store_action = SG_STOREACTION_STORE;
-    }
-    pass.action.depth.store_action = SG_STOREACTION_STORE;
-    pass.action.stencil.store_action = SG_STOREACTION_STORE;
-
+    // A borrowed depth-stencil keeps its owner's content.
+    const bool loadDepthStencil = !ownsDepthAttachment;
     for (size_t face = 0; face < faces; face++){
-        pass.attachments = get(face);
         if (Engine::isAsyncThread()){
+            sg_pass pass = {};
+            for (int i = 0; i < numColorAttachments; i++){
+                pass.action.colors[i].store_action = SG_STOREACTION_STORE;
+            }
+            pass.action.depth.store_action = SG_STOREACTION_STORE;
+            pass.action.stencil.store_action = SG_STOREACTION_STORE;
+            if (loadDepthStencil){
+                pass.action.depth.load_action = SG_LOADACTION_LOAD;
+                pass.action.stencil.load_action = SG_LOADACTION_LOAD;
+            }
+            pass.attachments = get(face);
             SokolCmdQueue::add_command_begin_pass(pass);
             SokolCmdQueue::add_command_end_pass();
         }else{
-            sg_begin_pass(pass);
-            sg_end_pass();
-            SokolPipelineCache::invalidateApplied();
+            // after the open pass when created inside one (sokol passes do not nest)
+            SokolSystem::initializeAttachments(get(face), loadDepthStencil);
         }
     }
 #else

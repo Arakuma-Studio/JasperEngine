@@ -183,6 +183,94 @@ std::string SokolSystem::getFrameStatsLine(){
     return std::string(line) + "; pass list: " + list;
 }
 
+namespace{
+    bool passOpen = false;
+    uint64_t nestedPasses = 0;
+
+    struct PendingInitialization{
+        sg_attachments attachments;
+        bool loadDepthStencil;
+    };
+    std::vector<PendingInitialization> pendingInitializations;
+
+    bool attachmentsAlive(const sg_attachments& attachments){
+        bool any = false;
+        const auto alive = [&any](sg_view view){
+            if (view.id == SG_INVALID_ID)
+                return true;
+            any = true;
+            return sg_query_view_state(view) == SG_RESOURCESTATE_VALID;
+        };
+        for (int i = 0; i < SG_MAX_COLOR_ATTACHMENTS; i++){
+            if (!alive(attachments.colors[i]) || !alive(attachments.resolves[i]))
+                return false;
+        }
+        return alive(attachments.depth_stencil) && any;
+    }
+
+    void runInitialization(const sg_attachments& attachments, bool loadDepthStencil){
+        sg_pass pass = {};
+        pass.attachments = attachments;
+        // the colours are cleared (sokol's default action) and kept
+        for (int i = 0; i < SG_MAX_COLOR_ATTACHMENTS; i++)
+            pass.action.colors[i].store_action = SG_STOREACTION_STORE;
+        // a depth-stencil borrowed from another framebuffer (FramebufferDesc::shareDepthStencil)
+        // was initialised by its owner and may hold that one's content (an HTML UI clip mask)
+        const sg_load_action depthLoad = loadDepthStencil ? SG_LOADACTION_LOAD : SG_LOADACTION_CLEAR;
+        pass.action.depth.load_action = depthLoad;
+        pass.action.depth.store_action = SG_STOREACTION_STORE;
+        pass.action.stencil.load_action = depthLoad;
+        pass.action.stencil.store_action = SG_STOREACTION_STORE;
+        SokolSystem::beginPass(pass);
+        SokolSystem::endPass();
+    }
+}
+
+void SokolSystem::beginPass(const sg_pass& pass){
+    if (passOpen){
+        nestedPasses++;
+        Log::error("Render pass '%s' begun inside another: passes do not nest (an engine bug)", pass.label ? pass.label : "pass");
+    }
+    sg_begin_pass(pass);
+    passOpen = true;
+    // a new pass has no pipeline applied (the dynamic path's "applied last")
+    SokolPipelineCache::invalidateApplied();
+}
+
+void SokolSystem::endPass(){
+    sg_end_pass();
+    passOpen = false;
+    if (pendingInitializations.empty())
+        return;
+    // the targets created during that pass; each one's pass ends here again (none is pending then)
+    std::vector<PendingInitialization> pending;
+    pending.swap(pendingInitializations);
+    for (const PendingInitialization& initialization : pending){
+        if (attachmentsAlive(initialization.attachments))
+            runInitialization(initialization.attachments, initialization.loadDepthStencil);
+    }
+}
+
+bool SokolSystem::isInPass(){
+    return passOpen;
+}
+
+uint64_t SokolSystem::getNestedPassCount(){
+    return nestedPasses;
+}
+
+void SokolSystem::initializeAttachments(const sg_attachments& attachments, bool loadDepthStencil){
+    if (passOpen){
+        pendingInitializations.push_back({attachments, loadDepthStencil});
+        return;
+    }
+    runInitialization(attachments, loadDepthStencil);
+}
+
+size_t SokolSystem::getPendingInitializationCount(){
+    return pendingInitializations.size();
+}
+
 void SokolSystem::commitQueue(){
     SokolCmdQueue::commit_commands();
 }
@@ -205,6 +293,8 @@ void SokolSystem::shutdown(){
     SokolCmdQueue::wait_for_flush();
     SokolCmdQueue::finish();
     SokolPipelineCache::clear();
+    pendingInitializations.clear();
+    passOpen = false;
     sg_shutdown();
     featuresQueried = false;
     features = RenderFeatures();
