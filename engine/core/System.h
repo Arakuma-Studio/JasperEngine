@@ -63,7 +63,7 @@ namespace jasperengine {
     private:
 
         friend class Engine;
-        // tests only: detach and restore the instance to run the engine-free code paths
+        // TEST-ONLY seam (no engine code defines it): a test detaches and restores the instance
         friend struct SystemTestAccess;
 
         static System* systemInstance;
@@ -82,8 +82,9 @@ namespace jasperengine {
         std::vector<std::string> args;
 
         static System& instance();
-        // True once Engine::systemInit installed a System (instance() aborts before that): for
-        // code that also runs without the engine (editor command-line tools)
+        // Whether a System instance is set (Engine::systemInit sets it, Engine::systemShutdown
+        // clears it; instance() aborts while none is). It says nothing about the System object
+        // being alive otherwise. For code that also runs without the engine (editor CLI tools).
         static bool hasInstance() { return systemInstance != nullptr; }
 
         virtual ~System() {}

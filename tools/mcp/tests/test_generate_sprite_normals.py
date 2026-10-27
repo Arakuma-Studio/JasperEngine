@@ -634,6 +634,22 @@ async def test_save_path_failure_writes_nothing(ed: Editor):
     (ed.project / SPR / "blocker").unlink()
 
 
+async def test_save_path_rolls_back_when_a_later_step_fails(ed: Editor):
+    # the sheet is written first; the apply then refuses (Hero draws sheet.png, not ball.png):
+    # the files are taken back, the sheet with the folders made for it, an old sheet restored
+    spr = ed.project / SPR
+    out = f"{SPR}/rb/ball_rb.png"
+    got = await gen_error(ed, source=BALL, output=out, apply="Hero", save_path=f"{SPR}/rbs/new/sheet.png")
+    check("not_a_sprite" in got["kinds"], f"the apply refusal: {got}")
+    check(not (ed.project / out).exists(), "the normal map is taken back")
+    check(not (spr / "rbs").exists(), "the sheet and the folders made for it are removed")
+    keep = spr / "keep_sheet.png"
+    keep.write_bytes(b"previous bytes")
+    got = await gen_error(ed, source=BALL, output=out, apply="Hero", save_path=f"{SPR}/keep_sheet.png")
+    check("not_a_sprite" in got["kinds"] and keep.read_bytes() == b"previous bytes", f"the replaced sheet gets its bytes back: {got['kinds']}")
+    keep.unlink()
+
+
 # ---------------------------------------------------------------------------- 10.4 docs
 
 async def test_description_and_guide_line(ed: Editor):

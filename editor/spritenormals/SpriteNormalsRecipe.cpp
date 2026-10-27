@@ -410,11 +410,12 @@ namespace jasperengine::editor::spritenormals {
 
     namespace {
 
-        std::optional<json> parseRecipe(const std::optional<std::string>& text, std::string* error) {
+        std::optional<json> parseRecipe(const std::optional<std::string>& text, std::string* error, RecipeReadError* origin) {
             if (!text) return std::nullopt;
             json parsed = json::parse(*text, nullptr, false);
             if (parsed.is_discarded() || !parsed.is_object()) {
                 if (error) *error = std::string("the ") + kRecipeKeyword + " chunk is not a JSON object";
+                if (origin) *origin = RecipeReadError::Chunk;
                 return std::nullopt;
             }
             return parsed;
@@ -422,19 +423,19 @@ namespace jasperengine::editor::spritenormals {
 
     }
 
-    std::optional<json> readRecipe(const uint8_t* bytes, size_t size, std::string* error) {
+    std::optional<json> readRecipe(const uint8_t* bytes, size_t size, std::string* error, RecipeReadError* origin) {
         if (error) error->clear();
-        return parseRecipe(texsynth::readRecipeTextFromPng(bytes, size, error, kRecipeKeyword), error);
+        return parseRecipe(texsynth::readRecipeTextFromPng(bytes, size, error, kRecipeKeyword, origin), error, origin);
     }
 
-    std::optional<json> readRecipe(const fs::path& png, std::string* error) {
+    std::optional<json> readRecipe(const fs::path& png, std::string* error, RecipeReadError* origin) {
         if (error) error->clear();
-        return parseRecipe(texsynth::readRecipeText(png, error, kRecipeKeyword), error);
+        return parseRecipe(texsynth::readRecipeText(png, error, kRecipeKeyword, origin), error, origin);
     }
 
-    std::optional<json> readRecipeHead(const fs::path& png, std::string* error) {
+    std::optional<json> readRecipeHead(const fs::path& png, std::string* error, RecipeReadError* origin) {
         if (error) error->clear();
-        return parseRecipe(texsynth::readRecipeTextHead(png, error, kRecipeKeyword), error);
+        return parseRecipe(texsynth::readRecipeTextHead(png, error, kRecipeKeyword, origin), error, origin);
     }
 
 }

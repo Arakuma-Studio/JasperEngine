@@ -1708,7 +1708,8 @@ editor::ProjectChecks::SynthesisCheck editor::ProjectChecks::checkSynthesisRecip
         check.pngs++;
         if (cache.pngs.contains(key) && cachedStamp(cache.pngs[key], time, size) && cache.pngs[key][2] == 0) return std::nullopt;
         std::string readError;
-        const std::optional<std::string> text = editor::texsynth::readRecipeTextHead(png, &readError);
+        editor::texsynth::RecipeReadError origin = editor::texsynth::RecipeReadError::None;
+        const std::optional<std::string> text = editor::texsynth::readRecipeTextHead(png, &readError, editor::texsynth::kRecipeKeyword, &origin);
         std::optional<Json> recipe;
         if (text) {
             Json parsed = Json::parse(*text, nullptr, false);
@@ -1716,8 +1717,10 @@ editor::ProjectChecks::SynthesisCheck editor::ProjectChecks::checkSynthesisRecip
             if (parsed.is_discarded()) recipe = Json("the jasper.synthesis chunk is not JSON");
             else if (!editor::texsynth::validateRecipe(parsed, invalid)) recipe = Json(invalid);
             else recipe = parsed;
-        } else if (!readError.empty() && readError.find("jasper.synthesis") != std::string::npos) {
-            recipe = Json(readError);   // garbled chunk (CRC mismatch, compressed, malformed)
+        } else if (origin == editor::texsynth::RecipeReadError::Chunk) {
+            // garbled chunk (CRC mismatch, compressed, malformed); a file that is not a PNG or
+            // can't be read has no recipe (decided on the error's origin, not its text)
+            recipe = Json(readError);
         }
         if (cacheable(key)) {
             cache.pngs[key] = Json::array({time, size, recipe ? 1 : 0});

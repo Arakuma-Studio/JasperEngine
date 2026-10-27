@@ -184,13 +184,16 @@ namespace jasperengine::editor::spritenormals {
     // ---- recipes and staleness
 
     struct Staleness {
-        enum class State { Fresh, Changed, Missing, NoRecipe, Invalid };
+        // NoRecipe: a PNG without a recipe chunk; Invalid: the recipe chunk is garbled;
+        // Unreadable: the file can't be opened or is not a PNG (no recipe to speak of, not a
+        // garbled one: never report it as Invalid)
+        enum class State { Fresh, Changed, Missing, NoRecipe, Invalid, Unreadable };
         State state = State::NoRecipe;
         std::string sourcePath;              // as recorded
         std::filesystem::path sourceAbsolute;
         std::string message;                 // "hero.png changed since this map was made"
     };
-    const char* toString(Staleness::State state);   // "fresh", "changed", "missing", "no_recipe", "invalid"
+    const char* toString(Staleness::State state);   // "fresh", "changed", "missing", "no_recipe", "invalid", "unreadable"
     // projectDir empty: a recipe source.path is resolved against the PNG's own directory
     Staleness checkStaleness(const std::filesystem::path& projectDir, const std::filesystem::path& png);
 

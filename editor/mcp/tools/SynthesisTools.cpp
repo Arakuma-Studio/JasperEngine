@@ -758,9 +758,12 @@ void synthesizeTextureTool(const CallPtr& call) {
 
 Json synthesisAssetInfo(Project* project, const fs::path& file, bool full) {
     std::string readError;
-    const std::optional<nlohmann::json> recipe = ts::readRecipe(file, &readError);
+    ts::RecipeReadError origin = ts::RecipeReadError::None;
+    const std::optional<nlohmann::json> recipe = ts::readRecipe(file, &readError, &origin);
     if (!recipe) {
-        if (!readError.empty()) return Json{{"error", readError}};
+        // only a damaged jasper.synthesis chunk is an unusable recipe; a file that is not a PNG
+        // (a JPEG named .png) or can't be read has none (decided on the error's origin)
+        if (origin == ts::RecipeReadError::Chunk) return Json{{"error", readError}};
         return Json();
     }
     // a garbled recipe (another writer, a hand edit) is reported as such, the rest of the asset info stays
