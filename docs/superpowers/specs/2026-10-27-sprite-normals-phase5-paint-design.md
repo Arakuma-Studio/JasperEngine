@@ -1,9 +1,9 @@
 # Sprite Normals Phase 5: paint correction layer
 
 Status: binding spec for wave 3 (one implementer, after Phases 1-4 are merged into `sprite-normals`). Conforms to
-`2026-10-27-sprite-normals-contract.md`; names below that come from Phases 2-4 (`generate`, `Spec`, `encodeOutputs`,
-`writeOutputsUndoable`, `SpriteNormalsWindow`, `generate_sprite_normals`, `generate-sprite-normals`) are the contract's
-and their exact signatures are whatever Phases 2-4 shipped. This phase may extend those files.
+`2026-10-27-sprite-normals-contract.md`; names below that come from Phase 2 are the P2 names of contract section 8
+(Phases 3-4: `SpriteNormalsWindow`, `generate_sprite_normals`, `generate-sprite-normals`), and their exact signatures
+are whatever Phases 2-4 shipped. This phase may extend those files.
 
 ## 1. Goal and non-goals
 
@@ -48,8 +48,9 @@ struct PaintOverlay {
 
 ### 2.2 Storage: iTXt `jasper.spritenormals.paint`
 
-Every normal-map PNG the generator writes with a non-empty overlay carries, immediately after the
-`jasper.spritenormals` recipe chunk, one iTXt chunk:
+Every normal-map PNG the generator writes with a non-empty overlay carries, after IHDR, after the
+`jasper.spritenormals` recipe chunk (insert the paint chunk first, then the recipe: Phase 2's `insertRecipeChunk`
+inserts right after IHDR and keeps chunks of other keywords), one iTXt chunk:
 
 - keyword `jasper.spritenormals.paint`, compression flag 0, method 0, empty language tag, empty translated keyword
   (the same layout as the recipe chunk; the generalised recipe chunk writer/reader from Phase 2 takes the keyword);
@@ -69,7 +70,7 @@ Every normal-map PNG the generator writes with a non-empty overlay carries, imme
   otherwise; paint never changes the recipe's `source.sha1`, so painting is not staleness.
 - Reading: `readPaint(pngBytes) -> std::optional<PaintOverlay>` plus a problem string. A chunk with another format,
   a version above 1, bad base64, a PNG that fails to decode, or a size that disagrees with `size` or with the PNG's own
-  IHDR is reported as `paint_invalid` (a warning: the file still works as a normal map; the overlay is treated as
+  IHDR is reported as `paint_unreadable` (a warning: the file still works as a normal map; the overlay is treated as
   empty and the next write drops it after saying so). Unknown extra JSON keys are ignored (forward compatibility).
 - Fast probing: `readPaintSummary(path)` reads only chunks before IDAT (the recipe reader's head scan) and returns
   `{painted, size}` from the JSON without decoding `data`, for `get_asset_info`, `view_asset` and the Project window.
@@ -90,14 +91,17 @@ For each pixel:
    set `n.z = 0.0175` and renormalise. Encode `round((n*0.5+0.5)*255)`, round half away from zero.
 4. Then, if `directx`, green = 255 - green (the only place the convention flips).
 
-The generator's pipeline order is: generate (OpenGL) -> composite paint -> DirectX flip -> encode. Phase 2's
-`generate` therefore produces OpenGL internally; the flip moves after compositing (`Request` gains
-`const PaintOverlay* paint`; when null, output is byte-identical to Phase 2).
+The session composites in the worker run, after `generate()` and before `measure()`: when `spec.paint` is non-empty
+or a kept overlay exists, the run calls `generate()` with `settings.directx = false`, then `applyPaintOps`, then
+`composite(..., directx)` (which flips green). Otherwise it calls `generate()` unchanged, so unpainted output, both
+conventions, stays byte-identical to Phase 2. `Request` is not changed.
 
 ### 2.4 Operations (shared by window, MCP and CLI)
 
 ```cpp
 enum class PaintOpKind { Angle, Flatten, Smooth, Erase };
+enum class PaintMode { Keep, Replace, Clear };                    // 2.5
+enum class PaintTool { Navigate, Angle, Flatten, Smooth, Erase };  // the window (5.5)
 struct PaintWhere {                     // at least one member; members intersect
     std::optional<std::array<int,4>> rect;             // x, y, w, h (w,h >= 1)
     std::vector<std::array<int,2>> pixels;             // <= 65,536 pairs
@@ -108,15 +112,32 @@ struct PaintWhere {                     // at least one member; members intersec
 struct PaintOp {
     PaintOpKind kind;
     PaintWhere where;
-    Vector3f direction{0,0,1};          // Angle only; OpenGL tangent space, normalised, z > 0
+    std::array<float,3> direction{0,0,1};   // Angle only; OpenGL tangent space, normalised, z > 0
     float strength = 1.0f;              // 0..1
     int radius = 1;                     // Smooth only, 1..4 (box kernel (2r+1)^2)
 };
 struct PaintContext {                   // what selection and Smooth need
     const Image& source;                // RGBA8, output layout (the colour atlas for animated sources)
     const Image& generatedGL;           // before paint
-    std::vector<Rect> cells;            // the output's frame cells (one full-image cell when none)
+    std::vector<Cell> cells;            // the output's frame cells (one full-image cell when none)
     float alphaThreshold;
+};
+struct PaintStats {
+    struct Op { int selected = 0, changed = 0; };
+    std::vector<Op> ops;                // one per op, in order
+    int painted = 0, hidden = 0;        // painted pixels after the ops; of those, now transparent
+};
+struct PaintBrush {                     // the window's brush (5.1, 5.5)
+    enum class Shape { Round, Square } shape = Shape::Round;
+    int size = 1;                       // 1..64 px
+    float strength = 1.0f;              // 0..1
+    int smoothRadius = 1;               // 1..4
+    enum class Fill { Brush, Wand } fill = Fill::Brush;
+    float wandTolerance = 0.0f;         // 0..0.5
+    bool wandContiguous = true;
+    bool wandAllFrames = false;
+    bool mirrorX = false;
+    std::array<float,3> direction{0,0,1};
 };
 std::vector<Problem> applyPaintOps(PaintOverlay&, const std::vector<PaintOp>&, const PaintContext&,
                                    PaintStats* stats);   // stats: per op selected/changed counts
@@ -171,16 +192,16 @@ are now transparent are counted as `hidden` and reported (`paint_hidden_pixels` 
 
 ## 3. Session integration (Phase 2 files, extended)
 
-- `Spec` gains `std::vector<PaintOp> paint` and `PaintMode paintMode = Keep`; `fingerprint()` includes both
+- `Spec` gains `std::vector<PaintOp> paint` and `PaintMode paintMode = PaintMode::Keep`; `fingerprint()` includes both
   (canonical serialisation of the ops).
 - `checkSpec` validates ops (ranges, counts, direction) without decoding images, problems keyed `paint[i].field`.
 - `plannedOutputs` reports, per normal output, `existingPaint: {painted, size}` from `readPaintSummary`.
-- `buildRequest` loads the starting overlay per 2.5, then `applyPaintOps` after generation (the session runs it
-  between `generate` and encoding, using the generated OpenGL image, the source/colour atlas and the cells), then
-  `composite`.
-- `encodeOutputs` writes the paint chunk after the recipe chunk for the normal map (never for atlas or height).
-- `SpriteNormalsRun` results gain `PaintStats` and the resulting overlay (the window adopts it).
-- Metrics (`metrics`, `assess`) are computed on the **composited** result; metrics gain `painted_pct` (painted and
+- `prepare` loads the starting overlay (per 2.5) into `Prepared`; `SpriteNormalsRun` applies ops and composites (2.3,
+  using the generated OpenGL image, the source/colour atlas and the cells); `Result` (or the run) carries the overlay
+  and `PaintStats` (the window adopts the overlay).
+- `encodeOutputs` writes the paint chunk after the recipe chunk for the normal map (never for atlas or height; order
+  of insertion: 2.2).
+- Metrics (`measure`, `assess`) are computed on the **composited** result; metrics gain `painted_pct` (painted and
   visible pixels / opaque pixels, one decimal) and the assessment adds "Painted: N px (P%)" when N > 0.
 - `checkStaleness` is unchanged (paint is not a source). The regenerate arguments built from a recipe
   (`specFromRecipe`) use `paint_mode: keep` and no ops, so regenerating preserves paint.
@@ -196,9 +217,12 @@ Two top-level arguments (kept loose in the schema; validated by the handler, as 
 | `paint` | array of op objects, <= 256 ops | `{op: "angle"|"flatten"|"smooth"|"erase", where: {rect, pixels, colors, tolerance, frame}, direction: [x,y,z] | {azimuth_deg, tilt_deg}, strength, radius}` |
 | `paint_mode` | `"keep"` (default) | `"replace"`, `"clear"` |
 
-Errors (tool result `isError`, `- kind: message. Fix: fix` lines, as the other kinds): `invalid_paint` (names
+`paint` is refused (`invalid_paint`) when the call has more than one normal output (Tilemaps with several textures, CLI
+batches); use one call per output.
+
+Text as P3 §3.7 text (`Warning:` lines; errors as P3 §3.8). Errors (tool result `isError`): `invalid_paint` (names
 `paint[i].field`, the valid range or enum), `paint_size_mismatch`, `paint_too_large`. Warnings:
-`paint_empty_selection`, `paint_layout_changed`, `paint_hidden_pixels`, `paint_invalid` (an unreadable chunk was
+`paint_empty_selection`, `paint_layout_changed`, `paint_hidden_pixels`, `paint_unreadable` (an unreadable chunk was
 dropped).
 
 Result additions (`structuredContent`): `paint: {mode, kept_from: <path or null>, ops: [{op, selected, changed}],
@@ -221,7 +245,7 @@ when a paint chunk exists; `view_asset`'s summary line adds "Painted: N px".
 
 ### 4.3 `check --normals`
 
-Adds `normals-paint-invalid` (warning, at the PNG: the paint chunk cannot be read; fix: "regenerate with
+Adds `normals-paint-unreadable` (warning, at the PNG: the paint chunk cannot be read; fix: "regenerate with
 paint_mode: clear, or repaint") and `normals-paint-size` (warning: paint size differs from the PNG size; same fix).
 
 ## 5. Window (Sprite Normal Map, Phase 4 file, extended)
@@ -254,6 +278,9 @@ Direction  (hemisphere disk)  Azimuth [  135 ]  Tilt [ 40 ]   (Angle only)
   painted, visible pixels on the canvas in every view mode.
 
 ### 5.2 Canvas input
+
+With a paint tool other than Navigate active, left-drag paints, Alt+click samples the normal and Shift+wheel sizes the
+brush. In Navigate, P4's bindings (light drag, Alt+click region pick, Shift+wheel light height) apply.
 
 - With a paint tool active: left-drag paints; right/middle drag still pans; wheel zooms; **Shift+wheel** changes brush
   size by 1 px per notch (Ctrl+Shift+wheel by 4); Alt+left-click samples the composited normal under the cursor into
@@ -293,7 +320,7 @@ Direction  (hemisphere disk)  Azimuth [  135 ]  Tilt [ 40 ]   (Angle only)
 | Alt+click | sample direction |
 | Ctrl+Z / Ctrl+Shift+Z, Ctrl+Y | undo / redo the last stroke (5.4) |
 
-These do not clash with the Phase 4 window keys (1-4 views, F fit, 0 100%, L light, `[`/`]` frames, Ctrl+S, Ctrl+Enter).
+These do not clash with the Phase 4 window keys (1-4, G, Space, `,`/`.`, O, F, 0, Esc, Ctrl+Enter).
 The Help > Keyboard Shortcuts text gains a "Sprite Normal Map: paint" block.
 
 ### 5.4 Undo
@@ -301,8 +328,8 @@ The Help > Keyboard Shortcuts text gains a "Sprite Normal Map: paint" block.
 - Strokes are window-local until Save: a stroke stack of patches `{pixel indices, old RGBA, new RGBA}` (Clear is one
   patch; a wand fill is one patch). Cap: 256 steps or 64 MiB of patch data, oldest dropped first.
 - Routing: when the Sprite Normal Map window was focused last and its stroke stack can undo (or redo), Ctrl+Z/Ctrl+Y
-  and Edit > Undo/Redo act on the stroke stack (the Edit menu label reads "Undo Paint Stroke"); otherwise they go to
-  the Project history as Phase 4 routes the window. Implemented in `App` next to `undoGoesToProjectHistory` (a new
+  and Edit > Undo/Redo act on the stroke stack (the Edit menu label reads "Undo Paint Stroke"); otherwise Phase 4's
+  routing (the last assign's scene, else the Project). Implemented in `App` next to `undoGoesToProjectHistory` (a new
   branch asking `spriteNormalsWindow->canUndoPaint()/canRedoPaint()`).
 - Save writes the normal map with its paint chunk through `writeOutputsUndoable`: one Project undo step that restores
   the previous file bytes (and so the previous paint) on undo. Saving does not clear the stroke stack; the window shows
@@ -310,10 +337,10 @@ The Help > Keyboard Shortcuts text gains a "Sprite Normal Map: paint" block.
 - Opening a file (Edit Normal Map..., the Inspector entries) or changing the output path loads the overlay from the
   target file's paint chunk (`keep`), clears the stroke stack, and reports `paint_size_mismatch` as a warning row with
   a "Clear Paint" fix button instead of failing (the window cannot save until it is resolved).
-- Project switch and window close with unsaved paint ask "Discard Paint Changes?" (the Phase 4 unsaved-result prompt
-  covers it when present; otherwise this phase adds it).
+- Project switch and window close with unsaved paint ask "Discard Paint Changes?" (Phase 5 adds the prompt; a project
+  switch asks before `resetForProjectSwitch()` runs).
 
-### 5.5 Scripted API (tests and MCP `show_in_editor`, public on `SpriteNormalsWindow`)
+### 5.5 Scripted API (tests, public on `SpriteNormalsWindow`)
 
 ```cpp
 void setPaintTool(PaintTool tool);            // Navigate, Angle, Flatten, Smooth, Erase
@@ -339,6 +366,8 @@ bool hasUnsavedPaint() const;
 - two worked examples: flatten a highlight by colour
   (`{"op":"flatten","where":{"colors":["#ffffff"],"tolerance":0.02}}`) and turn a sleeve left on frame 3
   (`{"op":"angle","where":{"frame":3,"rect":[10,12,4,6]},"direction":{"azimuth_deg":180,"tilt_deg":45}}`).
+
+Keep `sprite-normals.md` <= 18 KB; trim P3 sections if needed.
 
 `docs/mcp/TOOLS.md` regenerated; `docs/mcp/checks.md` gains the two codes; the README feature bullet's sentence gains
 "…and paint corrections that survive regeneration". The agent guide line (McpInstructions) is unchanged (budget).
@@ -394,10 +423,11 @@ bool hasUnsavedPaint() const;
    nothing written.
 2. Write with paint -> PNG has both chunks; `get_asset_info` reports `paint.painted`; `view_asset` summary line.
 3. Regenerate via the returned regenerate args keeps paint; `paint_mode: clear` drops it.
-4. Each error/warning kind once (invalid op enum, tilt 90, 257 ops, size mismatch, empty selection, layout changed).
+4. Each error/warning kind once (invalid op enum, tilt 90, 257 ops, size mismatch, empty selection, layout changed,
+   `paint` on a Tilemap with two tileset textures -> `invalid_paint`).
 5. Undo after write restores the previous file (project history).
 6. CLI `--paint-json` file, inline and stdin; `--paint-mode`; JSON output `paint` object; exit codes 0/1/2.
-7. `check --normals` reports `normals-paint-invalid` for a hand-corrupted chunk.
+7. `check --normals` reports `normals-paint-unreadable` for a hand-corrupted chunk.
 
 ## 8. Acceptance criteria
 
@@ -411,12 +441,31 @@ bool hasUnsavedPaint() const;
 ## 9. Task breakdown (one implementer, in order, one or more commits each, prefix "Sprite normals paint:")
 
 1. Core `SpriteNormalsPaint.{h,cpp}`: overlay, ops, selection, direction parsing, compositing, chunk encode/decode and
-   head summary, `Request::paint` with the DirectX flip moved after compositing; tests 7.1. Generalise the recipe chunk
-   writer to emit a second chunk after the recipe if Phase 2 did not already allow several.
-2. Session: `Spec.paint/paintMode`, check, planned outputs, build/encode, metrics, recipe `paint`, staleness and
-   regenerate; tests 7.2.
+   head summary (`Request` unchanged: the run composites, 2.3); tests 7.1. Insert the paint chunk first, then the
+   recipe (2.2; Phase 2's `insertRecipeChunk` keeps chunks of other keywords).
+2. Session: `Spec.paint/paintMode`, check, planned outputs, prepare/run compositing/encode, metrics, recipe `paint`,
+   staleness and regenerate; tests 7.2.
 3. MCP and CLI: args, errors/warnings, result `paint`, contact-sheet outline, `get_asset_info`/`view_asset`,
    `check --normals` codes; e2e 7.4; regenerate TOOLS.md; tool budget numbers.
 4. Window: Paint foldout, hemisphere picker, canvas strokes/wand/mirror/sampling, highlight, shortcuts, stroke undo
    and App routing, unsaved-paint prompts, scripted API; tests 7.3; Help shortcuts text.
 5. Docs: guide section, checks.md, README sentence; final full run of core, editor and MCP suites.
+
+## Amendments (2026-10-27, consistency review)
+
+- API names: the Phase 2 names of contract section 8; `prepare` (was `buildRequest`), `measure` (was `metrics`) [1].
+- Compositing (2.3, 3, task 1): `Request` is not changed (no `Request::paint`); the run calls `generate()` with
+  `settings.directx = false`, then `applyPaintOps`, then `composite(..., directx)` when there is paint; otherwise
+  `generate()` unchanged, so unpainted output stays byte-identical in both conventions. `prepare` loads the overlay
+  into `Prepared`; `Result` (or the run) carries the overlay and `PaintStats` [12].
+- Chunk order (2.2, task 1): the paint chunk is inserted first, then the recipe, so the recipe sits right after IHDR
+  and the paint chunk after it [38].
+- Types (2.4): `Cell` cells, `std::array<float,3> direction`, and defined `PaintStats`, `PaintMode`, `PaintTool`,
+  `PaintBrush` [37].
+- MCP (4.1): `paint` refused (`invalid_paint`) with more than one normal output [39]; texts as P3 §3.7/§3.8;
+  warning `paint_invalid` renamed `paint_unreadable` and check code `normals-paint-invalid` renamed
+  `normals-paint-unreadable` [40]. Test 7.4.4 gains the multi-output case.
+- Window: paint tools other than Navigate own left-drag, Alt+click and Shift+wheel; Navigate keeps P4's bindings
+  (5.2) [34]; P4 key list, undo routing and the unsaved-paint prompt corrected (5.3, 5.4) [35]; scripted API is for
+  tests only (no `show_in_editor`) [36].
+- Docs (6): keep `sprite-normals.md` <= 18 KB [32].
