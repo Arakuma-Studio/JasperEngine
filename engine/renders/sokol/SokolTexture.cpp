@@ -10,6 +10,7 @@
 
 #include "memory/MemoryStats.h"
 
+#include <algorithm>
 #include <cstring>
 #include <cstdlib>
 #include <mutex>
@@ -104,12 +105,26 @@ namespace {
     uint64_t pixelBytes(sg_pixel_format format){
         switch (format){
             case SG_PIXELFORMAT_R8: return 1;
-            case SG_PIXELFORMAT_R16: return 2;
+            case SG_PIXELFORMAT_R16: case SG_PIXELFORMAT_RG8: case SG_PIXELFORMAT_RGB565: case SG_PIXELFORMAT_RGBA4: return 2;
             case SG_PIXELFORMAT_R16F: return 2;
             case SG_PIXELFORMAT_RGBA16F: return 8;
             case SG_PIXELFORMAT_RGBA32F: return 16;
             default: return 4;
         }
+    }
+
+    // the exact bytes of an upload of levels (block formats included)
+    void trackImageBytes(sg_image image, uint64_t bytes){
+        if (image.id == SG_INVALID_ID)
+            return;
+        jasperengine::memory::TrackedBytes& record = textureBytes();
+        std::lock_guard<std::mutex> lock(trackedImageMutex());
+        TrackedImage& tracked = trackedImages()[image.id];
+        if (tracked.record)
+            tracked.record->subtract(tracked.bytes);
+        tracked.bytes = bytes;
+        tracked.record = &record;
+        record.add(bytes);
     }
 
     // a full mip chain is ~4/3 of the base level
@@ -214,153 +229,40 @@ sg_wrap SokolTexture::getWrap(TextureWrap textureWrap){
     return _SG_WRAP_DEFAULT;
 }
 
-// https://github.com/floooh/sokol/issues/102
-// mip-level data layout: all slices (cube faces) of a level in one contiguous block
-sg_image SokolTexture::generateMipmaps(const sg_image_desc* desc_){
-    sg_image_desc desc = *desc_;
-
-    unsigned pixel_size = 0;
-
-    if (desc.pixel_format == SG_PIXELFORMAT_RGBA8){
-        pixel_size = 4;
-    }else if (desc.pixel_format == SG_PIXELFORMAT_BGRA8){
-        pixel_size = 4;
-    }else if (desc.pixel_format == SG_PIXELFORMAT_R8){
-        pixel_size = 1;
-    }else{
-        Log::error("Undefined pixel format to generate mipmaps of %s", desc.label);
-        if (Engine::isAsyncThread()){
-            return SokolCmdQueue::add_command_make_image(*desc_);
-        }else{
-            return sg_make_image(*desc_);
-        }
-    }
-
-    int num_slices = (desc.num_slices > 0)? desc.num_slices : 1;
-
-    int total_size = 0;
-    {
-        int w = desc.width;
-        int h = desc.height;
-        for (int level = 1; level < SG_MAX_MIPMAPS; ++level) {
-            if (w == 1 && h == 1)
-                break;
-
-            w /= 2;
-            h /= 2;
-
-            if (w < 1)
-                w = 1;
-
-            if (h < 1)
-                h = 1;
-
-            total_size += (w * h * num_slices * pixel_size);
-        }
-    }
-
-    unsigned char *big_target = (unsigned char *)malloc(total_size);
-    unsigned char *target = big_target;
-
-    const unsigned char* source = (const unsigned char*)desc.data.mip_levels[0].ptr;
-    int source_width = desc.width;
-    int source_height = desc.height;
-
-    for (int level = 1; level < SG_MAX_MIPMAPS; ++level) {
-        if (!source)
-            break;
-
-        if (source_width == 1 && source_height == 1)
-            break;
-
-        int target_width = source_width / 2;
-        int target_height = source_height / 2;
-
-        if (target_width < 1)
-            target_width = 1;
-
-        if (target_height < 1)
-            target_height = 1;
-
-        unsigned level_size = target_width * target_height * num_slices * pixel_size;
-
-        for (int slice = 0; slice < num_slices; ++slice) {
-            const unsigned char* srcslice = source + (slice * source_width * source_height * pixel_size);
-            unsigned char* miptarget = target + (slice * target_width * target_height * pixel_size);
-
-            for (int x = 0; x < target_width; ++x)
-            {
-                for (int y = 0; y < target_height; ++y)
-                {
-                    for (int chanell = 0; chanell < pixel_size; ++chanell)
-                    {
-                        int color = 0;
-                        int sx = x * 2;
-                        int sy = y * 2;
-                        const int sx1 = (sx + 1 < source_width) ? (sx + 1) : (source_width - 1);
-                        const int sy1 = (sy + 1 < source_height) ? (sy + 1) : (source_height - 1);
-
-                        color += srcslice[(sy * source_width + sx) * pixel_size + chanell];
-                        color += srcslice[(sy * source_width + sx1) * pixel_size + chanell];
-                        color += srcslice[(sy1 * source_width + sx1) * pixel_size + chanell];
-                        color += srcslice[(sy1 * source_width + sx) * pixel_size + chanell];
-                        color /= 4;
-                        miptarget[(y * target_width + x) * pixel_size + chanell] = (uint8_t)color;
-                    }
-                }
-            }
-        }
-
-        desc.data.mip_levels[level].ptr = target;
-        desc.data.mip_levels[level].size = level_size;
-
-        source = target;
-        target += level_size;
-        source_width = target_width;
-        source_height = target_height;
-
-        if (desc.num_mipmaps <= level)
-            desc.num_mipmaps = level + 1;
-    }
-
-    sg_image img;
-
-    if (Engine::isAsyncThread()){
-        img = SokolCmdQueue::add_command_make_image(desc);
-    }else{
-        img = sg_make_image(desc);
-    }
-    SystemRender::scheduleCleanup(std::free, big_target);
-
-    return img;
-}
-
 // GLES3 and WebGL2 have no unorm16 textures (sokol reports R16 unsupported there),
 // so 16-bit heightmaps go up as R32F where float textures filter, else as R16F,
-// which always does. Returns the converted pixels, freed once the image is made.
-static void* unorm16ToFloat(sg_image_desc* desc){
-    const uint16_t* source = (const uint16_t*)desc->data.mip_levels[0].ptr;
-    const size_t count = desc->data.mip_levels[0].size / sizeof(uint16_t);
-
-    if (sg_query_pixelformat(SG_PIXELFORMAT_R32F).filter){
-        float* target = (float*)malloc(count * sizeof(float));
+// which always does. Every mip level is converted; returns the converted pixels (one
+// block), freed once the image is made, and the bytes they take.
+static void* unorm16ToFloat(sg_image_desc* desc, uint64_t* bytes = nullptr){
+    const bool full = sg_query_pixelformat(SG_PIXELFORMAT_R32F).filter;
+    const size_t texel = full ? sizeof(float) : sizeof(uint16_t);
+    size_t total = 0;
+    for (int level = 0; level < SG_MAX_MIPMAPS && desc->data.mip_levels[level].ptr; level++){
+        total += desc->data.mip_levels[level].size / sizeof(uint16_t) * texel;
+    }
+    unsigned char* block = (unsigned char*)malloc(total);
+    unsigned char* at = block;
+    for (int level = 0; level < SG_MAX_MIPMAPS && desc->data.mip_levels[level].ptr; level++){
+        const uint16_t* source = (const uint16_t*)desc->data.mip_levels[level].ptr;
+        const size_t count = desc->data.mip_levels[level].size / sizeof(uint16_t);
         for (size_t i = 0; i < count; i++){
-            target[i] = source[i] / 65535.0f;
+            if (full){
+                const float value = source[i] / 65535.0f;
+                memcpy(at + i * texel, &value, texel);
+            }else{
+                const uint16_t value = meshopt_quantizeHalf(source[i] / 65535.0f);
+                memcpy(at + i * texel, &value, texel);
+            }
         }
-        desc->pixel_format = SG_PIXELFORMAT_R32F;
-        desc->data.mip_levels[0].ptr = target;
-        desc->data.mip_levels[0].size = count * sizeof(float);
-        return target;
+        desc->data.mip_levels[level].ptr = at;
+        desc->data.mip_levels[level].size = count * texel;
+        at += count * texel;
     }
-
-    uint16_t* target = (uint16_t*)malloc(count * sizeof(uint16_t));
-    for (size_t i = 0; i < count; i++){
-        target[i] = meshopt_quantizeHalf(source[i] / 65535.0f);
+    desc->pixel_format = full ? SG_PIXELFORMAT_R32F : SG_PIXELFORMAT_R16F;
+    if (bytes){
+        *bytes = total;
     }
-    desc->pixel_format = SG_PIXELFORMAT_R16F;
-    desc->data.mip_levels[0].ptr = target;
-    desc->data.mip_levels[0].size = count * sizeof(uint16_t);
-    return target;
+    return block;
 }
 
 bool SokolTexture::createTexture(
@@ -419,16 +321,12 @@ bool SokolTexture::createTexture(
         converted = unorm16ToFloat(&image_desc);
     }
 
-    if (sampler_desc.mipmap_filter == SG_FILTER_LINEAR || sampler_desc.mipmap_filter == SG_FILTER_NEAREST){
-        image = generateMipmaps(&image_desc);
+    if (Engine::isAsyncThread()){
+        image = SokolCmdQueue::add_command_make_image(image_desc);
     }else{
-        if (Engine::isAsyncThread()){
-            image = SokolCmdQueue::add_command_make_image(image_desc);
-        }else{
-            image = sg_make_image(image_desc);
-        }
+        image = sg_make_image(image_desc);
     }
-    trackImage(image, image_desc, sampler_desc.mipmap_filter == SG_FILTER_LINEAR || sampler_desc.mipmap_filter == SG_FILTER_NEAREST, false);
+    trackImage(image, image_desc, false, false);
     // must come after image creation: in the synchronous path scheduleCleanup
     // frees immediately, and the data is only consumed inside sg_make_image
     if (combined){
@@ -449,6 +347,108 @@ bool SokolTexture::createTexture(
         return true;
 
     return false;
+}
+
+sg_pixel_format SokolTexture::toSokol(GpuTextureFormat format, bool srgb){
+    (void)srgb;   // D7: every colour texture uploads UNORM; the sRGB flag rides in the KTX2 DFD
+    switch (format){
+        case GpuTextureFormat::R8: return SG_PIXELFORMAT_R8;
+        case GpuTextureFormat::RG8: return SG_PIXELFORMAT_RG8;
+        case GpuTextureFormat::RGBA8: return SG_PIXELFORMAT_RGBA8;
+        case GpuTextureFormat::R16: return SG_PIXELFORMAT_R16;
+        case GpuTextureFormat::RGB565: return SG_PIXELFORMAT_RGB565;
+        case GpuTextureFormat::RGBA4: return SG_PIXELFORMAT_RGBA4;
+        case GpuTextureFormat::RGB9E5: return SG_PIXELFORMAT_RGB9E5;
+        case GpuTextureFormat::RGBA16F: return SG_PIXELFORMAT_RGBA16F;
+        case GpuTextureFormat::BC1: return SG_PIXELFORMAT_BC1_RGBA;
+        case GpuTextureFormat::BC3: return SG_PIXELFORMAT_BC3_RGBA;
+        case GpuTextureFormat::BC4: return SG_PIXELFORMAT_BC4_R;
+        case GpuTextureFormat::BC5: return SG_PIXELFORMAT_BC5_RG;
+        case GpuTextureFormat::BC6H: return SG_PIXELFORMAT_BC6H_RGBUF;
+        case GpuTextureFormat::BC7: return SG_PIXELFORMAT_BC7_RGBA;
+        case GpuTextureFormat::ETC2_RGB8: return SG_PIXELFORMAT_ETC2_RGB8;
+        case GpuTextureFormat::ETC2_RGBA8: return SG_PIXELFORMAT_ETC2_RGBA8;
+        case GpuTextureFormat::EAC_R11: return SG_PIXELFORMAT_EAC_R11;
+        case GpuTextureFormat::EAC_RG11: return SG_PIXELFORMAT_EAC_RG11;
+        case GpuTextureFormat::ASTC_4x4: return SG_PIXELFORMAT_ASTC_4x4_RGBA;
+        case GpuTextureFormat::ASTC_5x5: return SG_PIXELFORMAT_ASTC_5x5_RGBA;
+        case GpuTextureFormat::ASTC_6x6: return SG_PIXELFORMAT_ASTC_6x6_RGBA;
+        case GpuTextureFormat::ASTC_8x8: return SG_PIXELFORMAT_ASTC_8x8_RGBA;
+        case GpuTextureFormat::ASTC_10x10: return SG_PIXELFORMAT_ASTC_10x10_RGBA;
+        case GpuTextureFormat::ASTC_12x12: return SG_PIXELFORMAT_ASTC_12x12_RGBA;
+    }
+    return SG_PIXELFORMAT_RGBA8;
+}
+
+bool SokolTexture::isFormatSupported(GpuTextureFormat format){
+    if (!sg_isvalid())
+        return false;
+    const sg_pixelformat_info info = sg_query_pixelformat(toSokol(format, false));
+    return info.sample && info.filter;
+}
+
+bool SokolTexture::createTextureLevels(
+            const std::string& label, TextureType type, GpuTextureFormat format,
+            int width, int height, int numFaces, std::span<const TextureLevel> levels,
+            TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV){
+    if (levels.empty() || (int)levels.size() > SG_MAX_MIPMAPS || width <= 0 || height <= 0){
+        Log::error("Texture '%s': %zu levels of %i x %i cannot be uploaded", label.c_str(), levels.size(), width, height);
+        return false;
+    }
+    const int slices = (type == TextureType::TEXTURE_CUBE) ? 6 : ((type == TextureType::TEXTURE_ARRAY) ? std::max(1, numFaces) : 1);
+    uint64_t bytes = 0;
+    for (size_t level = 0; level < levels.size(); level++){
+        const int levelWidth = mipDimension(width, (int)level);
+        const int levelHeight = mipDimension(height, (int)level);
+        const size_t expected = gpuFormatLevelBytes(format, levelWidth, levelHeight) * (size_t)slices;
+        if (!levels[level].data || levels[level].size != expected){
+            Log::error("Texture '%s': level %zu has %zu bytes, %s %i x %i x %i needs %zu",
+                       label.c_str(), level, levels[level].size, gpuFormatName(format), levelWidth, levelHeight, slices, expected);
+            return false;
+        }
+        bytes += expected;
+    }
+
+    sg_image_desc imageDesc = {};
+    imageDesc.type = getTextureType(type);
+    imageDesc.width = width;
+    imageDesc.height = height;
+    imageDesc.pixel_format = toSokol(format, false);
+    imageDesc.num_slices = slices;
+    imageDesc.num_mipmaps = (int)levels.size();
+    imageDesc.label = label.c_str();
+    for (size_t level = 0; level < levels.size(); level++){
+        imageDesc.data.mip_levels[level].ptr = levels[level].data;
+        imageDesc.data.mip_levels[level].size = levels[level].size;
+    }
+
+    // a 16-bit height map where unorm16 does not filter (GLES3, WebGL2): as float, full precision
+    void* converted = nullptr;
+    if (format == GpuTextureFormat::R16 && !sg_query_pixelformat(SG_PIXELFORMAT_R16).filter){
+        converted = unorm16ToFloat(&imageDesc, &bytes);
+    }
+
+    sg_sampler_desc samplerDesc = {};
+    samplerDesc.min_filter = getFilter(minFilter);
+    samplerDesc.mag_filter = getFilter(magFilter);
+    samplerDesc.mipmap_filter = getFilterMipmap(minFilter);
+    samplerDesc.wrap_u = getWrap(wrapU);
+    samplerDesc.wrap_v = getWrap(wrapV);
+
+    if (Engine::isAsyncThread()){
+        image = SokolCmdQueue::add_command_make_image(imageDesc);
+        sampler = SokolCmdQueue::add_command_make_sampler(samplerDesc);
+    }else{
+        image = sg_make_image(imageDesc);
+        sampler = sg_make_sampler(samplerDesc);
+    }
+    // after the image: the synchronous path frees at once, and sg_make_image consumed the data
+    if (converted){
+        SystemRender::scheduleCleanup(std::free, converted);
+    }
+    trackImageBytes(image, bytes);
+    createTextureView(label.c_str());
+    return image.id != SG_INVALID_ID && sampler.id != SG_INVALID_ID && view.id != SG_INVALID_ID;
 }
 
 bool SokolTexture::createTexture3D(

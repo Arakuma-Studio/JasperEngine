@@ -328,8 +328,6 @@ namespace jasperengine {
         // logs once that every scene is loaded and no shader build is pending
         // (JASPERENGINE_READY_SIGNAL set: tools/smoke-test.sh waits for it)
         static void signalReadyOnce();
-        // every scene drawn is loaded (its HTML UI documents too) and no shader build is pending
-        static bool areScenesLoaded();
         static void includeScene(Scene* scene);
         // Copy for iteration outside sceneListMutex: callbacks invoked while iterating are
         // free to add or remove scenes without invalidating the caller's traversal.
@@ -390,6 +388,33 @@ namespace jasperengine {
 
         static void setTextureStrategy(TextureStrategy textureStrategy);
         static TextureStrategy getTextureStrategy();
+
+        // Cooked textures (spec S14 R12, docs/textures.md): quality 0 (full) to 3 (an eighth)
+        // drops top mips of streamable textures, like Unity's Global Mipmap Limit; the memory
+        // budget (MB, 0 = none) drops more mips of the largest ones until the resident bytes fit
+        static void setTextureQuality(int quality);
+        static int getTextureQuality();
+        static void setTextureMemoryBudget(int megabytes);
+        static int getTextureMemoryBudget();
+        // resident texture bytes the budget counts
+        static uint64_t getTextureMemoryUsage();
+        // RGB565 / RGBA4 when a GL-family device samples none of a texture's formats
+        static void setTextureLowMemoryFallback(bool enabled);
+        static bool isTextureLowMemoryFallback();
+        // "BC7", "ASTC_6x6"...: the device samples it with filtering
+        static bool isTextureFormatSupported(const std::string& format);
+        // Project Settings > Texture per platform group (desktop, mobile, web): the generated
+        // init applies the group this build runs on
+        struct TexturePlatformDefaults {
+            int quality = 0;
+            int memoryBudgetMB = 0;
+            bool lowMemoryFallback = false;
+        };
+        static void setTextureDefaults(const TexturePlatformDefaults& desktop, const TexturePlatformDefaults& mobile,
+                                       const TexturePlatformDefaults& web);
+
+        // every scene drawn is loaded (its HTML UI documents too) and no shader build is pending
+        static bool areScenesLoaded();
         
         static void setCallMouseInTouchEvent(bool callMouseInTouchEvent);
         static bool isCallMouseInTouchEvent();

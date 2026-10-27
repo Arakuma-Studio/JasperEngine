@@ -123,7 +123,7 @@
         ((hex) ? HEX_SAMPLE(tex, smp, pbrHexTaps, pbrHexWeights) : texture(sampler2D(tex, smp), uv))
     // a tangent-space normal map, -1..1
     #define PBR_HEX_NORMAL(tex, smp, uv, hex) \
-        ((hex) ? HEX_SAMPLE_NORMAL(tex, smp, pbrHexTaps, pbrHexWeights) : texture(sampler2D(tex, smp), uv).rgb * 2.0 - 1.0)
+        ((hex) ? HEX_SAMPLE_NORMAL(tex, smp, pbrHexTaps, pbrHexWeights) : decodeNormalMap(texture(sampler2D(tex, smp), uv)))
     #define PBR_HEX_ACTIVE
 #endif
 

@@ -27,6 +27,8 @@ jasperengine_add_test_target(jasperengine-core-tests
     DEFINITIONS
         # the repository root: the fixture projects of tools/fixtures (pose and clip tests' models)
         JASPER_TEST_REPO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../.."
+    # the KTX2 tests write Zstandard supercompressed files (games link the decoder only)
+    LINK zstd
 )
 
 # HexTilingTest compiles the hex lattice block of the shader library as C++: the lines between

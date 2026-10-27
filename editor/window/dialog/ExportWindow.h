@@ -145,6 +145,8 @@ namespace jasperengine::editor {
         void drawGraphicBackendRow();
         void drawDesktopKitRows();
         void drawShaderSection();
+        // the cooked textures the platform ships: per family count, download and VRAM (S14 R25)
+        void drawTextureSection();
         void drawBackendSection();
         void applySourcePlatformPresets();
         void drawProgress();

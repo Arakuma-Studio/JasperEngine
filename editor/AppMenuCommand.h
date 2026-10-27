@@ -78,6 +78,7 @@ namespace jasperengine::editor {
         AssetsDelete,
         AssetsImport,
         AssetsRefresh,
+        AssetsReimportTextures,    // S14: every texture cooked again (assets.reimportTextures)
         About,
         Documentation,
         KeyboardShortcuts,

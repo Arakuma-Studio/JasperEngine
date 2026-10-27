@@ -5,6 +5,8 @@
 
 #include "Out.h"
 #include "Project.h"
+#include "asset/AssetFileWrite.h"
+#include "asset/AssetMeta.h"
 #include "command/CommandNames.h"
 #include "io/AtomicFile.h"
 #include "util/YamlFootprint.h"
@@ -107,7 +109,26 @@ YAML::Node editor::SetAssetMetaCmd::read(const std::filesystem::path& absoluteAs
     return findKey(root, splitKey(key));
 }
 
+namespace {
+    editor::SetAssetMetaCmd::WriteListener& metaWriteListener(){
+        static editor::SetAssetMetaCmd::WriteListener listener;
+        return listener;
+    }
+}
+
+void editor::SetAssetMetaCmd::setWriteListener(WriteListener listener){
+    metaWriteListener() = std::move(listener);
+}
+
 bool editor::SetAssetMetaCmd::write(const YAML::Node& value, bool removeFileIfEmpty){
+    const bool written = writeFile(value, removeFileIfEmpty);
+    if (written && metaWriteListener()){
+        metaWriteListener()(project, asset, key);
+    }
+    return written;
+}
+
+bool editor::SetAssetMetaCmd::writeFile(const YAML::Node& value, bool removeFileIfEmpty){
     const std::filesystem::path path = metaPath();
     bool existed = false;
     YAML::Node root = loadMeta(path, existed);
@@ -117,9 +138,30 @@ bool editor::SetAssetMetaCmd::write(const YAML::Node& value, bool removeFileIfEm
         std::filesystem::remove(path, ec);
         return !ec;
     }
-    YAML::Emitter out;
-    out << root;
-    const io::WriteResult result = io::writeFileAtomic(path, std::string(out.c_str()) + "\n");
+    // A sidecar S04 reads keeps every other section byte for byte (its GUID lines, the labels of
+    // S25): only the key's top-level section is written again
+    std::string text;
+    const std::string section = splitKey(key).front();
+    std::string bytes;
+    AssetMeta meta;
+    const bool sectionOfItsOwn = !AssetMeta::isKnownSection(section);
+    if (sectionOfItsOwn && existed && assetio::readFile(path, text) && AssetMeta::parse(text, meta) && root[section]){
+        YAML::Node wrapped(YAML::NodeType::Map);
+        wrapped[section] = root[section];
+        YAML::Emitter out;
+        out << wrapped;
+        const std::string emitted = out.c_str();
+        meta.setSection(section, emitted.substr(section.size() + 1));
+        bytes = meta.serialize();
+    }else if (sectionOfItsOwn && existed && assetio::readFile(path, text) && AssetMeta::parse(text, meta) && !root[section]){
+        meta.removeSection(section);
+        bytes = meta.serialize();
+    }else{
+        YAML::Emitter out;
+        out << root;
+        bytes = std::string(out.c_str()) + "\n";
+    }
+    const io::WriteResult result = io::writeFileAtomic(path, bytes);
     if (!result.ok()){
         Out::error("Could not write %s: %s", path.generic_string().c_str(), result.message.c_str());
         return false;

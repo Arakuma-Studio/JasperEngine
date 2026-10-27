@@ -16868,6 +16868,14 @@ void editor::InspectorWindow::show(){
     }
     const bool openAddComponent = std::exchange(addComponentRequested, false);
 
+    // texture files selected in the Project window: their import settings (S14 R22)
+    if (!project->getInspectedAssets().empty()) {
+        if (!textureImporter) textureImporter = std::make_unique<TextureImporterView>(project);
+        if (textureImporter->draw(project->getInspectedAssets())) {
+            ImGui::End();
+            return;
+        }
+    }
     // the inspected .anim (or model clips) the Project window's last click chose: drawn instead of
     // the scene selection, never touching a scene (R30)
     if (drawInspectedAsset()) {

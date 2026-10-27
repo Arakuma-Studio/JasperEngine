@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectWindow.h"
+#include "texture/TextureCookQueue.h"
 #include "util/EditorScripts.h"
 #include "asset/AssetTypes.h"
 #include "window/AssetPanels.h"
@@ -1600,6 +1601,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                     UIUtils::drawPrefabVariantBadge(ImGui::GetWindowDrawList(), ImVec2(imageX + Theme::dpi(3.0f), imageY + dispH - badge - Theme::dpi(2.0f)),
                         ImVec2(imageX + Theme::dpi(3.0f) + badge, imageY + dispH - Theme::dpi(2.0f)), IM_COL32(140, 205, 255, 255));
                 }
+                drawTextureCookBadge(ImGui::GetWindowDrawList(), file, ImVec2(imageX, imageY), ImVec2(imageX + dispW, imageY + dispH));
 
                 // --- Extension badge over thumbnail -------------------------
                 if (!extLabel.empty()){
@@ -1712,6 +1714,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                         UIUtils::drawPrefabVariantBadge(drawList, ImVec2(iconMin.x, iconMin.y + iconExtent - badge), ImVec2(iconMin.x + badge, iconMin.y + iconExtent),
                             IM_COL32(140, 205, 255, (int)(255 * alpha)));
                     }
+                    drawTextureCookBadge(drawList, file, iconMin, ImVec2(iconMin.x + iconExtent, iconMin.y + iconExtent));
                     ImVec2 textMin(itemMin.x + Theme::dpi(8.0f) + iconExtent, itemMin.y + (rowH - lineHeight) * 0.5f);
                     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetColorU32(ImGuiCol_Text, alpha));
                     ImGui::RenderTextEllipsis(drawList, textMin, ImVec2(itemMax.x - Theme::dpi(4.0f), itemMax.y), itemMax.x - Theme::dpi(4.0f),
@@ -1742,6 +1745,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                         UIUtils::drawPrefabVariantBadge(drawList, ImVec2(iconBoxMin.x + Theme::dpi(3.0f), iconBoxMax.y - badge - Theme::dpi(2.0f)),
                             ImVec2(iconBoxMin.x + Theme::dpi(3.0f) + badge, iconBoxMax.y - Theme::dpi(2.0f)), IM_COL32(140, 205, 255, (int)(255 * alpha)));
                     }
+                    drawTextureCookBadge(drawList, file, iconBoxMin, iconBoxMax);
 
                     // One line, centred when it fits, cut with an ellipsis when not
                     const char* label = file.displayBaseName.c_str();
@@ -1854,6 +1858,30 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                             revealAsset(project->getProjectPath() / base);
                         }
                         ImGui::SetItemTooltip("This Prefab Variant's base: %s", base.generic_string().c_str());
+                    }
+                    ImGui::Separator();
+                }
+
+                // textures: cook again (S14 R23); the selected ones, or every texture
+                if (file.type == FileType::IMAGE && TextureCookQueue::get().getProject() == project) {
+                    const bool reimport = ImGui::MenuItem(ICON_FA_ARROWS_ROTATE " Reimport");
+                    uiBuilding.contextMenu.push_back({"Reimport", lastItemRect()});
+                    ImGui::SetItemTooltip("Cooks the selected textures again for the desktop (the cache answers when nothing changed)");
+                    const bool reimportAll = ImGui::MenuItem(ICON_FA_ARROWS_ROTATE " Reimport All Textures");
+                    uiBuilding.contextMenu.push_back({"Reimport All Textures", lastItemRect()});
+                    if (reimport) {
+                        std::vector<fs::path> chosen = getSelectedFiles();
+                        if (std::find(chosen.begin(), chosen.end(), currentPath / file.name) == chosen.end()) chosen = {currentPath / file.name};
+                        for (const fs::path& path : chosen) {
+                            if (!project->isInsideAssetsPath(path)) continue;
+                            const std::string assetPath = project->normalizeToAssetsRelative(path).generic_string();
+                            TextureCookQueue::get().invalidate(assetPath);
+                            TextureCookQueue::get().request(assetPath, TextureFamily::Desktop, TextureCookQueue::Selected);
+                        }
+                    }
+                    if (reimportAll) {
+                        TextureCookQueue::get().invalidateAll();
+                        TextureCookQueue::get().requestAll({TextureFamily::Desktop});
                     }
                     ImGui::Separator();
                 }
@@ -3781,6 +3809,21 @@ void editor::ProjectWindow::show() {
 
     renderSearchPopups();
 
+    // the Inspector shows the importer of the files selected here (S14 R22): after a click or a
+    // key in this window, or when the selection changed
+    {
+        const bool interacted = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+            (ImGui::IsMouseReleased(ImGuiMouseButton_Left) || ImGui::IsKeyReleased(ImGuiKey_UpArrow) ||
+             ImGui::IsKeyReleased(ImGuiKey_DownArrow) || ImGui::IsKeyReleased(ImGuiKey_LeftArrow) ||
+             ImGui::IsKeyReleased(ImGuiKey_RightArrow) || ImGui::IsKeyReleased(ImGuiKey_A));
+        std::vector<fs::path> selection;
+        for (const fs::path& file : getSelectedFiles()) selection.push_back(project->normalizeToProjectRelative(file));
+        if (interacted || (selection != inspectedSelection && !project->getInspectedAssets().empty())) {
+            project->setInspectedAssets(selection);
+        }
+        inspectedSelection = std::move(selection);
+    }
+
     uiBuilding.drawn = true;
     uiBuilding.directory = project->normalizeToProjectRelative(currentPath).generic_string();
     uiBuilding.search = searchText;
@@ -4065,6 +4108,30 @@ void editor::ProjectWindow::assetsShowInFileManager() {
     if (!target.empty()) {
         openInFileManager(target);
     }
+}
+
+void editor::ProjectWindow::drawTextureCookBadge(ImDrawList* drawList, const FileEntry& file, ImVec2 min, ImVec2 max) {
+    if (file.type != FileType::IMAGE || file.isDirectory) return;
+    TextureCookQueue& cooks = TextureCookQueue::get();
+    if (cooks.getProject() != project) return;
+    const fs::path absolute = currentPath / file.name;
+    if (!project->isInsideAssetsPath(absolute)) return;
+    const TextureCookStatus status = cooks.badgeStatus(project->normalizeToAssetsRelative(absolute).generic_string());
+    const char* icon = nullptr;
+    ImU32 color = 0;
+    const char* tooltip = nullptr;
+    switch (status) {
+        case TextureCookStatus::Queued: icon = ICON_FA_HOURGLASS_HALF; color = IM_COL32(200, 200, 200, 230); tooltip = "Texture cook queued"; break;
+        case TextureCookStatus::Cooking: icon = ICON_FA_GEAR; color = IM_COL32(120, 200, 255, 240); tooltip = "Cooking the texture"; break;
+        case TextureCookStatus::Failed: icon = ICON_FA_TRIANGLE_EXCLAMATION; color = IM_COL32(255, 110, 90, 255); tooltip = "The texture cook failed: the Inspector shows why"; break;
+        default: return;
+    }
+    const float size = std::max(Theme::dpi(9.0f), std::min(max.x - min.x, max.y - min.y) * 0.3f);
+    const ImVec2 at(max.x - size - Theme::dpi(1.0f), max.y - size - Theme::dpi(1.0f));
+    drawList->AddRectFilled(ImVec2(at.x - Theme::dpi(1.0f), at.y - Theme::dpi(1.0f)), ImVec2(at.x + size + Theme::dpi(1.0f), at.y + size + Theme::dpi(1.0f)),
+                            IM_COL32(20, 20, 20, 170), Theme::dpi(2.0f));
+    drawList->AddText(ImGui::GetFont(), size, at, color, icon);
+    if (ImGui::IsMouseHoveringRect(at, ImVec2(at.x + size, at.y + size))) ImGui::SetTooltip("%s", tooltip);
 }
 
 std::vector<fs::path> editor::ProjectWindow::getSelectedFiles() const {
