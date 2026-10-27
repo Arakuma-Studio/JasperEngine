@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 #include "stb_image.h"
-#include "LunaSVGRuntime.h"
+#include "util/LunaSVGRuntime.h"
 #include "Log.h"
 #include "Texture.h"
 #include "texture/BasisTranscode.h"

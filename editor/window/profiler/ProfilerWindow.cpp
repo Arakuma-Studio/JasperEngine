@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProfilerWindow.h"
+#include "diag/HangWatchdog.h"
 #include "pool/TextureDataPool.h"
 #include "render/SystemRender.h"
 
@@ -1165,8 +1166,11 @@ void ProfilerWindow::saveTarget(){
     args.filterCount = 1;
     args.defaultName = "capture.jetrace.json";
     args.parentWindow = *static_cast<nfdwindowhandle_t*>(Backend::getNFDWindowHandle());
-    if (NFD_SaveDialogU8_With(&outPath, &args) != NFD_OKAY)
-        return;
+    {
+        const diag::BusyScope busy("Native file dialog", 0);
+        if (NFD_SaveDialogU8_With(&outPath, &args) != NFD_OKAY)
+            return;
+    }
     std::string path = outPath;
     NFD_FreePathU8(outPath);
     std::string error;
@@ -1180,8 +1184,11 @@ void ProfilerWindow::loadFromDialog(){
     args.filterList = &filter;
     args.filterCount = 1;
     args.parentWindow = *static_cast<nfdwindowhandle_t*>(Backend::getNFDWindowHandle());
-    if (NFD_OpenDialogU8_With(&outPath, &args) != NFD_OKAY)
-        return;
+    {
+        const diag::BusyScope busy("Native file dialog", 0);
+        if (NFD_OpenDialogU8_With(&outPath, &args) != NFD_OKAY)
+            return;
+    }
     std::string path = outPath;
     NFD_FreePathU8(outPath);
     std::string error;

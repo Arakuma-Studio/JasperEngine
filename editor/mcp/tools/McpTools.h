@@ -61,6 +61,7 @@ namespace jasperengine::editor::mcp {
     // " Synthesized (tileable, balanced, seed 7, role primary); sources unchanged." or ""
     std::string synthesisAssetText(const Json& info);
     void registerEcsTools(McpRegistry& registry);
+    void registerDiagnosticsTools(McpRegistry& registry);
     void registerAtmosphereTools(McpRegistry& registry);
     void registerProfilerTools(McpRegistry& registry);
     void registerScriptingTools(McpRegistry& registry);

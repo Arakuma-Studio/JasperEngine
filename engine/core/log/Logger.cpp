@@ -150,6 +150,9 @@ namespace je_logger {
 
     // ------------------------------------------------------------ per thread
 
+    // Constant-initialized TLS: crash flush must not construct ThreadState in a signal.
+    thread_local bool crashDrainThread = false;
+
     struct ThreadState {
         uint64_t id = 0;
         char name[LogRecord::MAX_THREAD_NAME_BYTES] = {0};
@@ -699,6 +702,7 @@ namespace je_logger {
         LoggerState& s = logState();
         ThreadState& thread = logCurrentThread();
         thread.isDrainThread = true;
+        crashDrainThread = true;
         std::snprintf(thread.name, sizeof(thread.name), "je-log");
         logSetOsThreadName("je-log");
         JE_PROFILE_THREAD("je-log");
@@ -1427,7 +1431,7 @@ bool Logger::flushForCrash(std::chrono::milliseconds timeout, uint64_t* unwritte
     if (!s.initialized.load(std::memory_order_acquire)) return false;
     const uint64_t target = s.pushedSeq.load(std::memory_order_acquire);
     if (!s.async.load(std::memory_order_relaxed)) return true;
-    if (logThreadState().isDrainThread) {
+    if (crashDrainThread) {
         if (unwritten) *unwritten = target - std::min(target, s.drainedSeq.load(std::memory_order_acquire));
         return false;
     }

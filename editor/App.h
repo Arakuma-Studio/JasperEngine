@@ -357,6 +357,11 @@ namespace jasperengine::editor{
         void showMenu();
         void showAlert();
         void showFooter();
+        // "JasperEngine closed unexpectedly last time" under the menu bar, after the S03
+        // recovery modal (Preferences > Diagnostics > Show Crash Notice On Startup)
+        void showCrashNotice();
+        // "The editor was not responding for 7.4 s (...)" above the footer for 8 s
+        void showHangToast();
         void buildDockspace(bool resetLayout = false);
         void buildDefaultLayout();
         // Matches a layout restored from the ini to the current UI scale.
