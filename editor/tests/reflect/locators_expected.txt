@@ -255,6 +255,7 @@
 1021 button/textureHovered texture
 1021 button/texturePressed texture
 1021 button/textureDisabled texture
+1033 particlesystem/effect any
 1044 text/font[0] font
 1052 reflectionprobe/texture cubemap
 1053 uidocument/filename ui_document

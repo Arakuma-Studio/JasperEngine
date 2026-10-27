@@ -1,4 +1,4 @@
-formatVersion: 2
+formatVersion: 3
 id: 2026080800
 name: AllComponents
 scene:
@@ -1171,108 +1171,10 @@ entities:
         cylindricalBillboard: false
       particlesystem:
         enabled: false
-        maxParticles: 100
-        emitter: true
-        loop: false
-        localSpace: true
-        rate: 3
-        maxPerUpdate: 100
-        bursts: ~
-        lifeInitializer:
-          minLife: 3.1
-          maxLife: 7.7
-        positionInitializer:
-          shape: Cone
-          minPosition: [4.2, 6.3, 0.5]
-          maxPosition: [8.2, 2.7, 6.6]
-          radius: 7.4
-          innerRadius: 8.2
-          coneAngle: 4.5
-          coneHeight: 3.6
-        positionModifier:
-          fromTime: 2.1
-          toTime: 6.2
-          fromPosition: [7.8, 8.8, 8.1]
-          toPosition: [7.8, 4.8, 2.2]
-          function: CUBIC_IN_OUT
-        velocityInitializer:
-          minVelocity: [4, 4.4, 1.9]
-          maxVelocity: [3.4, 5.2, 3.3]
-        velocityModifier:
-          fromTime: 3.5
-          toTime: 4.5
-          fromVelocity: [4.1, 2.6, 1.1]
-          toVelocity: [1.4, 2.8, 0.7]
-          function: CUBIC_IN_OUT
-        accelerationInitializer:
-          minAcceleration: [3.2, 6.4, 4.3]
-          maxAcceleration: [2, 3.8, 2.5]
-        accelerationModifier:
-          fromTime: 6.7
-          toTime: 6.1
-          fromAcceleration: [4.6, 5.2, 8.5]
-          toAcceleration: [2.5, 7.4, 6.5]
-          function: CUBIC_IN_OUT
-        colorInitializer:
-          minColor: [9, 7.8, 2]
-          maxColor: [3.7, 5.2, 2.4]
-          useSRGB: false
-        colorModifier:
-          fromTime: 1
-          toTime: 6.4
-          fromColor: [5.3, 4.8, 0.5]
-          toColor: [8.3, 1.3, 8.6]
-          function: CUBIC_IN_OUT
-          useSRGB: false
-        colorGradient:
-          useSRGB: true
-          stops: ~
-        alphaInitializer:
-          minAlpha: 7.7
-          maxAlpha: 4
-        alphaModifier:
-          fromTime: 4
-          toTime: 8.5
-          fromAlpha: 8.9
-          toAlpha: 8.1
-          function: CUBIC_IN_OUT
-        sizeInitializer:
-          minSize: 4.6
-          maxSize: 5.2
-        sizeModifier:
-          fromTime: 0.6
-          toTime: 8.1
-          fromSize: 1.2
-          toSize: 6.1
-          function: CUBIC_IN_OUT
-        spriteInitializer:
-          frames: ~
-        spriteModifier:
-          fromTime: 7
-          toTime: 8
-          function: CUBIC_IN_OUT
-          frames: ~
-        rotationInitializer:
-          minRotation: [0.77162457, 0, 0.63607824, 0]
-          maxRotation: [0.99904823, 0, 0.043619387, 0]
-          shortestPath: true
-        rotationModifier:
-          fromTime: 5.2
-          toTime: 5.8
-          fromRotation: [0.7253744, 0, 0.68835455, 0]
-          toRotation: [0.8660254, 0, 0.5, 0]
-          function: CUBIC_IN_OUT
-          shortestPath: true
-        scaleInitializer:
-          minScale: [6.2, 5.9, 3.4]
-          maxScale: [0.5, 4.3, 7.9]
-          linearSort: false
-        scaleModifier:
-          fromTime: 3
-          toTime: 7.1
-          fromScale: [8.6, 1.6, 5.1]
-          toScale: [1.2, 5, 5.2]
-          function: CUBIC_IN_OUT
+        inlineEffect: "{\n  \"version\": 1,\n  \"modules\": [\n    {\n      \"type\": \"main\"\n    },\n    {\n      \"type\": \"emission\"\n    },\n    {\n      \"type\": \"shape\"\n    },\n    {\n      \"type\": \"renderer\"\n    }\n  ]\n}\n"
+        playOnAwake: false
+        seed: 0
+        playbackSpeed: 2.5
   - type: Entity
     entity: 1034
     name: PolygonComponent
@@ -1314,8 +1216,8 @@ entities:
         fakeBillboard: false
         cylindricalBillboard: false
       positiontween:
-        endPosition: [7.1, 5.6, 3.9]
-        startPosition: [2.7, 3.1, 0.1]
+        endPosition: [4.3, 2, 3.8]
+        startPosition: [8.5, 3.2, 6.4]
   - type: Entity
     entity: 1036
     name: ProgressbarComponent
@@ -1338,11 +1240,11 @@ entities:
       progressbar:
         fill: 0
         type: horizontal
-        value: 2.4
-        fillMarginLeft: 7
-        fillMarginRight: 4
+        value: 7.4
+        fillMarginLeft: 4
+        fillMarginRight: 6
         fillMarginTop: 6
-        fillMarginBottom: 6
+        fillMarginBottom: 4
   - type: Entity
     entity: 1037
     name: RotateTracksComponent
@@ -1384,12 +1286,12 @@ entities:
         fakeBillboard: false
         cylindricalBillboard: false
       rotationtween:
-        endRotation: [0.976296, 0, 0.21643962, 0]
-        startRotation: [0.85264015, 0, 0.52249855, 0]
+        endRotation: [0.71325046, 0, 0.70090926, 0]
+        startRotation: [0.9396926, 0, 0.34202012, 0]
         shortestPath: true
         spin: true
-        axis: [5.5, 4.7, 7.7]
-        angle: 6.7
+        axis: [7.7, 4, 6.1]
+        angle: 2.5
   - type: Entity
     entity: 1039
     name: ScaleTweenComponent
@@ -1410,8 +1312,8 @@ entities:
         fakeBillboard: false
         cylindricalBillboard: false
       scaletween:
-        endScale: [4.4, 4.1, 8.5]
-        startScale: [3.5, 7.2, 2.5]
+        endScale: [2.4, 8.5, 8.1]
+        startScale: [2, 3.7, 5.2]
   - type: Entity
     entity: 1040
     name: ScaleTracksComponent
@@ -1455,12 +1357,12 @@ entities:
       scrollbar:
         bar: 0
         type: horizontal
-        barSize: 1.8
-        step: 5.4
-        barMarginLeft: 1
+        barSize: 5.3
+        step: 1
+        barMarginLeft: 7
         barMarginRight: 1
-        barMarginTop: 6
-        barMarginBottom: 4
+        barMarginTop: 4
+        barMarginBottom: 7
   - type: Entity
     entity: 1042
     name: SpriteAnimationComponent
@@ -1509,7 +1411,7 @@ entities:
         height: 0
         automaticFlipY: false
         flipY: true
-        textureScaleFactor: 5.1
+        textureScaleFactor: 8.6
         pivotPreset: bottom_right
   - type: Entity
     entity: 1044
@@ -1563,12 +1465,12 @@ entities:
         text: 0
         selection: 0
         cursor: 0
-        cursorBlink: 2.1
-        cursorWidth: 0.8
-        cursorColor: [0.37777779, 0.56666666, 0.82222223, 1]
-        selectionColor: [0.24444444, 0.82222223, 0.9333333, 1]
-        placeholderColor: [0.81111115, 0.36666667, 0.73333335, 1]
-        placeholder: Reflection parity
+        cursorBlink: 8.3
+        cursorWidth: 4.5
+        cursorColor: [0.34444442, 0.85555553, 0.7111111, 1]
+        selectionColor: [0.70000005, 0.055555556, 0.9111111, 1]
+        placeholderColor: [0.3, 0.73333335, 0.9111111, 1]
+        placeholder: "text: [1, 2]"
         passwordChar: "*"
         cursorIndex: 0
         selectionAnchor: 0
@@ -1599,7 +1501,7 @@ entities:
         height: 0
         automaticFlipY: false
         flipY: true
-        textureScaleFactor: 8.3
+        textureScaleFactor: 4.2
         reserveTiles: 10
   - type: Entity
     entity: 1047
@@ -1645,7 +1547,7 @@ entities:
         type: horizontal_wrap
         useAllWrapSpace: true
         wrapCellWidth: 6
-        wrapCellHeight: 5
+        wrapCellHeight: 3
   - type: Entity
     entity: 1049
     name: MirrorComponent
@@ -1666,7 +1568,7 @@ entities:
         fakeBillboard: false
         cylindricalBillboard: false
       mirror:
-        normal: [3.5, 0.5, 4.4]
+        normal: [2.2, 7.4, 8.4]
   - type: Entity
     entity: 1050
     name: Light2DComponent
@@ -1688,14 +1590,14 @@ entities:
         cylindricalBillboard: false
       light2d:
         enabled: false
-        color: [3.6, 8.1, 7]
-        intensity: 4.3
-        range: 8.4
-        falloff: 8
+        color: [8.3, 0.1, 8.3]
+        intensity: 3.6
+        range: 7.6
+        falloff: 4.8
         height: 0
         shadows: true
-        shadowBias: 5.6
-        shadowSoftness: 4.8
+        shadowBias: 8.7
+        shadowSoftness: 2
         mapResolution: 512
   - type: Entity
     entity: 1051
@@ -1744,17 +1646,17 @@ entities:
       reflectionprobe:
         mode: dynamic
         updateMode: manual
-        boxOffset: [3.8, 8.7, 6.6]
-        boxSize: [8.1, 1.5, 5.2]
-        blendDistance: 7.1
-        intensity: 3.1
-        priority: 5
+        boxOffset: [1.2, 0.3, 3.4]
+        boxSize: [3.6, 1, 3.3]
+        blendDistance: 8.5
+        intensity: 0.1
+        priority: 1
         resolution: 128
-        nearClip: 0.8
-        farClip: 3.2
-        updateInterval: 2.7
+        nearClip: 8.4
+        farClip: 3.7
+        updateInterval: 1.1
         includeSky: false
-        cullingMask: 3
+        cullingMask: 2
         texture:
           textureType: 2D
           source: path
@@ -1786,10 +1688,10 @@ entities:
       uidocument:
         enabled: false
         filename: ""
-        sortOrder: 6
+        sortOrder: 4
         interactive: false
         renderMode: texture
-        pixelRatio: 7.9
+        pixelRatio: 5.6
   - type: Entity
     entity: 1054
     name: FluidSimulationComponent
@@ -1813,33 +1715,33 @@ entities:
         enabled: false
         output: texture
         interactive: false
-        aspectRatio: 8.9
-        densityDissipation: 8.7
-        velocityDissipation: 6.8
-        pressure: 1.3
-        pressureIterations: 2
-        curl: 8.6
-        gradientScale: 5.2
-        simulationRate: 5.8
-        maxSubsteps: 1
-        timeScale: 8
+        aspectRatio: 5.6
+        densityDissipation: 6.3
+        velocityDissipation: 8.6
+        pressure: 0.9
+        pressureIterations: 6
+        curl: 7.3
+        gradientScale: 8.9
+        simulationRate: 4
+        maxSubsteps: 7
+        timeScale: 6
         paused: true
-        splatRadius: 1
+        splatRadius: 3.6
         splatForce: 1.6
         colorful: false
         colorUpdateSpeed: 1.8
         splatsOnStart: false
-        randomSplatCount: 7
+        randomSplatCount: 4
         shading: false
-        backColor: [2.7, 2, 3.2]
+        backColor: [0.3, 6.9, 7.9]
         transparent: true
         bloom: false
-        bloomIterations: 7
-        bloomIntensity: 6.4
-        bloomThreshold: 4.7
-        bloomSoftKnee: 1.5
+        bloomIterations: 4
+        bloomIntensity: 1.3
+        bloomThreshold: 7
+        bloomSoftKnee: 7.3
         sunrays: false
-        sunraysWeight: 2
+        sunraysWeight: 7.6
   - type: Entity
     entity: 1055
     name: LatticeComponent
@@ -1865,43 +1767,43 @@ entities:
         resolutionY: 3
         resolutionZ: 3
         offsets:
-          - [6, 5.7, 4.1]
-          - [1.1, 1.9, 3.5]
-          - [3.4, 1.5, 4.4]
-          - [3.8, 7.9, 7.9]
-          - [5, 6.6, 3.1]
-          - [5.7, 4.8, 4.9]
-          - [2.4, 5.6, 7.4]
-          - [1.2, 8.3, 8.2]
-          - [3, 0.5, 1.3]
-          - [1.7, 5.2, 4.9]
-          - [4.6, 5.7, 5.8]
-          - [0.7, 8.3, 2.6]
-          - [4.5, 6.9, 2.9]
-          - [5.6, 3.1, 5.4]
-          - [3.6, 5.2, 1.1]
-          - [5.7, 3.8, 3.4]
-          - [3.7, 8.4, 2.7]
-          - [8.5, 2.2, 8.2]
-          - [0.9, 8.6, 4.3]
-          - [8.7, 5.9, 8.7]
-          - [0.4, 6.1, 1.2]
-          - [1.7, 0.4, 0.7]
-          - [0.1, 1.2, 7.4]
-          - [2.4, 6.3, 1.7]
-          - [1.7, 1.2, 7]
-          - [0.9, 7.8, 7]
-          - [6.9, 8.8, 9]
+          - [5.6, 5, 2]
+          - [3.6, 6.2, 6.6]
+          - [1.5, 5.2, 3.8]
+          - [3.2, 3.3, 8.1]
+          - [5.5, 0.8, 3.1]
+          - [6.9, 7.9, 2.7]
+          - [2, 3.2, 8.9]
+          - [8.6, 6.4, 2.7]
+          - [1.8, 4.7, 1.5]
+          - [5.2, 8.7, 8.6]
+          - [1.5, 4.6, 7.9]
+          - [6.4, 1.5, 8.7]
+          - [3.7, 0.8, 0.2]
+          - [7.6, 3.5, 7]
+          - [3.5, 6.2, 5.4]
+          - [2.6, 7.5, 3.7]
+          - [8.6, 0.9, 1.5]
+          - [3.3, 3.2, 8.3]
+          - [7.4, 8.9, 2]
+          - [8, 4.3, 4.1]
+          - [8.3, 6.8, 3]
+          - [5.7, 1.7, 3.6]
+          - [0.5, 4.4, 7.1]
+          - [8.1, 7, 3.5]
+          - [4.3, 8, 3.6]
+          - [4.8, 5.6, 8.4]
+          - [8.7, 6.6, 7.1]
         interpolation: cubic
         outside: fade
-        fadeDistance: 5.6
+        fadeDistance: 4.6
         poses: []
         jiggle: true
-        jiggleStiffness: 3.8
-        jiggleDamping: 4.4
-        jiggleInertia: 4.7
+        jiggleStiffness: 8.1
+        jiggleDamping: 8.8
+        jiggleInertia: 7.6
         jiggleAnchor: positive_z
-        jiggleMaxOffset: 3.9
+        jiggleMaxOffset: 8.2
   - type: Entity
     entity: 1056
     name: LatticeModifierComponent
@@ -1952,7 +1854,7 @@ entities:
         applyPosition: false
         applyRotation: false
         applyScale: true
-        weight: 4.2
+        weight: 0.6
   - type: Entity
     entity: 1058
     name: LatticeTracksComponent
@@ -1996,14 +1898,14 @@ entities:
         cylindricalBillboard: false
       localvolumetricfog:
         shape: sphere
-        size: [6.4, 5.6, 3.6]
-        attenuationDistance: 0.6
-        albedo: [6.3, 4.2, 6.2]
-        blendDistance: 4.7
+        size: [3.9, 4.7, 4.4]
+        attenuationDistance: 5.8
+        albedo: [8.4, 1.4, 1.3]
+        blendDistance: 1.6
         falloff: exponential
-        noiseIntensity: 4.9
-        noiseScale: 0.8
-        scrollSpeed: [7.3, 5, 3.7]
+        noiseIntensity: 1
+        noiseScale: 2
+        scrollSpeed: [5.6, 6.8, 8]
   - type: Entity
     entity: 1060
     name: VolumetricCloudsComponent
@@ -2026,17 +1928,17 @@ entities:
       volumetricclouds:
         preset: stormy
         rendering: screen
-        coverage: 8.9
-        density: 4.8
-        shapeScale: 8
-        shapeFactor: 2.1
-        erosionFactor: 3.2
-        erosionScale: 2.8
-        bottomAltitude: 4.3
-        altitudeRange: 6.9
-        earthCurvature: 0.6
-        windDirection: 2.9
-        windSpeed: 2
+        coverage: 6
+        density: 5.8
+        shapeScale: 2.9
+        shapeFactor: 0.7
+        erosionFactor: 4.6
+        erosionScale: 2.6
+        bottomAltitude: 5.7
+        altitudeRange: 3.8
+        earthCurvature: 5.7
+        windDirection: 5.4
+        windSpeed: 3.1
         weatherMap:
           textureType: 2D
           source: path
@@ -2046,8 +1948,40 @@ entities:
           wrapU: repeat
           wrapV: repeat
           releaseDataAfterLoad: true
-        weatherMapScale: 6.5
-        sunLightDimmer: 3.1
-        ambientLightDimmer: 6.1
-        maxDistance: 7.8
+        weatherMapScale: 4.5
+        sunLightDimmer: 6.9
+        ambientLightDimmer: 4.1
+        maxDistance: 8.3
         qualityOverride: medium
+  - type: Entity
+    entity: 1061
+    name: ForceFieldComponent
+    components:
+      transform:
+        position: [60, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      forcefield:
+        enabled: false
+        shape: infinite
+        size: [8.4, 2.7, 5.7]
+        kind: drag
+        strength: 3.7
+        direction: [5.2, 1.1, 5.6]
+        turbulence: 8.2
+        pulseFrequency: 3.8
+        frequency: 3.6
+        falloff:
+          - [0, 1, 0, 0]
+        layers: 3

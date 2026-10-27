@@ -25903,198 +25903,31 @@
   },
   {
    "display_name": "Particle System",
-   "enum_options": {
-    "positionInitializer.shape": [
-     [
-      0,
-      "box",
-      "Box"
-     ],
-     [
-      1,
-      "sphere",
-      "Sphere"
-     ],
-     [
-      2,
-      "hemisphere",
-      "Hemisphere"
-     ],
-     [
-      3,
-      "circle",
-      "Circle"
-     ],
-     [
-      4,
-      "cone",
-      "Cone"
-     ]
-    ]
-   },
+   "enum_options": {},
    "has_enabled": true,
    "icon": "ef81ad",
    "key": "particlesystem",
    "known_keys": [
-    "accelerationInitializer",
-    "accelerationModifier",
-    "alphaInitializer",
-    "alphaModifier",
-    "bursts",
-    "colorGradient",
-    "colorInitializer",
-    "colorModifier",
-    "emitter",
+    "collisionPlanes",
+    "effect",
+    "effectGuid",
     "enabled",
-    "lifeInitializer",
-    "localSpace",
-    "loop",
-    "maxParticles",
-    "maxPerUpdate",
-    "positionInitializer",
-    "positionModifier",
-    "rate",
-    "rotationInitializer",
-    "rotationModifier",
-    "scaleInitializer",
-    "scaleModifier",
-    "sizeInitializer",
-    "sizeModifier",
-    "spriteInitializer",
-    "spriteModifier",
-    "velocityInitializer",
-    "velocityModifier"
+    "exposedValues",
+    "inlineEffect",
+    "playOnAwake",
+    "playbackSpeed",
+    "seed"
    ],
    "name": "ParticleSystemComponent",
    "properties_of_default": {
-    "accelerationInitializer.maxAcceleration": [
-     5,
-     0,
-     true
-    ],
-    "accelerationInitializer.minAcceleration": [
-     5,
-     0,
-     true
-    ],
-    "accelerationModifier.fromAcceleration": [
-     5,
-     0,
-     true
-    ],
-    "accelerationModifier.fromTime": [
-     2,
-     0,
-     true
-    ],
-    "accelerationModifier.function": [
-     14,
-     0,
-     true
-    ],
-    "accelerationModifier.toAcceleration": [
-     5,
-     0,
-     true
-    ],
-    "accelerationModifier.toTime": [
-     2,
-     0,
-     true
-    ],
-    "alphaInitializer.maxAlpha": [
-     2,
-     0,
-     true
-    ],
-    "alphaInitializer.minAlpha": [
-     2,
-     0,
-     true
-    ],
-    "alphaModifier.fromAlpha": [
-     2,
-     0,
-     true
-    ],
-    "alphaModifier.fromTime": [
-     2,
-     0,
-     true
-    ],
-    "alphaModifier.function": [
-     14,
-     0,
-     true
-    ],
-    "alphaModifier.toAlpha": [
-     2,
-     0,
-     true
-    ],
-    "alphaModifier.toTime": [
-     2,
-     0,
-     true
-    ],
-    "bursts": [
+    "collisionPlanes": [
      15,
      0,
-     true
+     false
     ],
-    "colorGradient": [
-     15,
-     0,
-     true
-    ],
-    "colorInitializer.maxColor": [
-     5,
-     0,
-     true
-    ],
-    "colorInitializer.minColor": [
-     5,
-     0,
-     true
-    ],
-    "colorInitializer.useSRGB": [
-     0,
-     0,
-     true
-    ],
-    "colorModifier.fromColor": [
-     5,
-     0,
-     true
-    ],
-    "colorModifier.fromTime": [
-     2,
-     0,
-     true
-    ],
-    "colorModifier.function": [
-     14,
-     0,
-     true
-    ],
-    "colorModifier.toColor": [
-     5,
-     0,
-     true
-    ],
-    "colorModifier.toTime": [
-     2,
-     0,
-     true
-    ],
-    "colorModifier.useSRGB": [
-     0,
-     0,
-     true
-    ],
-    "emitter": [
-     0,
-     0,
+    "effect": [
+     18,
+     2199023255552,
      true
     ],
     "enabled": [
@@ -26102,411 +25935,41 @@
      0,
      true
     ],
-    "lifeInitializer.maxLife": [
+    "exposedValues": [
+     15,
+     2199023255552,
+     true
+    ],
+    "inlineEffect": [
+     15,
+     2199023255552,
+     false
+    ],
+    "playOnAwake": [
+     0,
+     0,
+     true
+    ],
+    "playbackSpeed": [
      2,
      0,
      true
     ],
-    "lifeInitializer.minLife": [
-     2,
-     0,
-     true
-    ],
-    "localSpace": [
-     0,
-     0,
-     true
-    ],
-    "loop": [
-     0,
-     0,
-     true
-    ],
-    "maxParticles": [
+    "seed": [
      9,
-     0,
-     true
-    ],
-    "maxPerUpdate": [
-     8,
-     0,
-     true
-    ],
-    "positionInitializer.coneAngle": [
-     2,
-     0,
-     true
-    ],
-    "positionInitializer.coneHeight": [
-     2,
-     0,
-     true
-    ],
-    "positionInitializer.innerRadius": [
-     2,
-     0,
-     true
-    ],
-    "positionInitializer.maxPosition": [
-     5,
-     0,
-     true
-    ],
-    "positionInitializer.minPosition": [
-     5,
-     0,
-     true
-    ],
-    "positionInitializer.radius": [
-     2,
-     0,
-     true
-    ],
-    "positionInitializer.shape": [
-     13,
-     0,
-     true
-    ],
-    "positionModifier.fromPosition": [
-     5,
-     0,
-     true
-    ],
-    "positionModifier.fromTime": [
-     2,
-     0,
-     true
-    ],
-    "positionModifier.function": [
-     14,
-     0,
-     true
-    ],
-    "positionModifier.toPosition": [
-     5,
-     0,
-     true
-    ],
-    "positionModifier.toTime": [
-     2,
-     0,
-     true
-    ],
-    "rate": [
-     8,
-     0,
-     true
-    ],
-    "rotationInitializer.maxRotation": [
-     7,
-     0,
-     true
-    ],
-    "rotationInitializer.minRotation": [
-     7,
-     0,
-     true
-    ],
-    "rotationInitializer.shortestPath": [
-     0,
-     0,
-     true
-    ],
-    "rotationModifier.fromRotation": [
-     7,
-     0,
-     true
-    ],
-    "rotationModifier.fromTime": [
-     2,
-     0,
-     true
-    ],
-    "rotationModifier.function": [
-     14,
-     0,
-     true
-    ],
-    "rotationModifier.shortestPath": [
-     0,
-     0,
-     true
-    ],
-    "rotationModifier.toRotation": [
-     7,
-     0,
-     true
-    ],
-    "rotationModifier.toTime": [
-     2,
-     0,
-     true
-    ],
-    "scaleInitializer.linearSort": [
-     0,
-     0,
-     true
-    ],
-    "scaleInitializer.maxScale": [
-     5,
-     0,
-     true
-    ],
-    "scaleInitializer.minScale": [
-     5,
-     0,
-     true
-    ],
-    "scaleModifier.fromScale": [
-     5,
-     0,
-     true
-    ],
-    "scaleModifier.fromTime": [
-     2,
-     0,
-     true
-    ],
-    "scaleModifier.function": [
-     14,
-     0,
-     true
-    ],
-    "scaleModifier.toScale": [
-     5,
-     0,
-     true
-    ],
-    "scaleModifier.toTime": [
-     2,
-     0,
-     true
-    ],
-    "sizeInitializer.maxSize": [
-     2,
-     0,
-     true
-    ],
-    "sizeInitializer.minSize": [
-     2,
-     0,
-     true
-    ],
-    "sizeModifier.fromSize": [
-     2,
-     0,
-     true
-    ],
-    "sizeModifier.fromTime": [
-     2,
-     0,
-     true
-    ],
-    "sizeModifier.function": [
-     14,
-     0,
-     true
-    ],
-    "sizeModifier.toSize": [
-     2,
-     0,
-     true
-    ],
-    "sizeModifier.toTime": [
-     2,
-     0,
-     true
-    ],
-    "spriteInitializer.frames": [
-     15,
-     0,
-     true
-    ],
-    "spriteModifier.frames": [
-     15,
-     0,
-     true
-    ],
-    "spriteModifier.fromTime": [
-     2,
-     0,
-     true
-    ],
-    "spriteModifier.function": [
-     14,
-     0,
-     true
-    ],
-    "spriteModifier.toTime": [
-     2,
-     0,
-     true
-    ],
-    "velocityInitializer.maxVelocity": [
-     5,
-     0,
-     true
-    ],
-    "velocityInitializer.minVelocity": [
-     5,
-     0,
-     true
-    ],
-    "velocityModifier.fromTime": [
-     2,
-     0,
-     true
-    ],
-    "velocityModifier.fromVelocity": [
-     5,
-     0,
-     true
-    ],
-    "velocityModifier.function": [
-     14,
-     0,
-     true
-    ],
-    "velocityModifier.toTime": [
-     2,
-     0,
-     true
-    ],
-    "velocityModifier.toVelocity": [
-     5,
-     0,
+     2199023255552,
      true
     ]
    },
    "properties_without_component": {
-    "accelerationInitializer.maxAcceleration": [
-     5,
-     0,
-     true
-    ],
-    "accelerationInitializer.minAcceleration": [
-     5,
-     0,
-     true
-    ],
-    "accelerationModifier.fromAcceleration": [
-     5,
-     0,
-     true
-    ],
-    "accelerationModifier.fromTime": [
-     2,
-     0,
-     true
-    ],
-    "accelerationModifier.function": [
-     14,
-     0,
-     true
-    ],
-    "accelerationModifier.toAcceleration": [
-     5,
-     0,
-     true
-    ],
-    "accelerationModifier.toTime": [
-     2,
-     0,
-     true
-    ],
-    "alphaInitializer.maxAlpha": [
-     2,
-     0,
-     true
-    ],
-    "alphaInitializer.minAlpha": [
-     2,
-     0,
-     true
-    ],
-    "alphaModifier.fromAlpha": [
-     2,
-     0,
-     true
-    ],
-    "alphaModifier.fromTime": [
-     2,
-     0,
-     true
-    ],
-    "alphaModifier.function": [
-     14,
-     0,
-     true
-    ],
-    "alphaModifier.toAlpha": [
-     2,
-     0,
-     true
-    ],
-    "alphaModifier.toTime": [
-     2,
-     0,
-     true
-    ],
-    "bursts": [
+    "collisionPlanes": [
      15,
      0,
-     true
+     false
     ],
-    "colorGradient": [
-     15,
-     0,
-     true
-    ],
-    "colorInitializer.maxColor": [
-     5,
-     0,
-     true
-    ],
-    "colorInitializer.minColor": [
-     5,
-     0,
-     true
-    ],
-    "colorInitializer.useSRGB": [
-     0,
-     0,
-     true
-    ],
-    "colorModifier.fromColor": [
-     5,
-     0,
-     true
-    ],
-    "colorModifier.fromTime": [
-     2,
-     0,
-     true
-    ],
-    "colorModifier.function": [
-     14,
-     0,
-     true
-    ],
-    "colorModifier.toColor": [
-     5,
-     0,
-     true
-    ],
-    "colorModifier.toTime": [
-     2,
-     0,
-     true
-    ],
-    "colorModifier.useSRGB": [
-     0,
-     0,
-     true
-    ],
-    "emitter": [
-     0,
-     0,
+    "effect": [
+     18,
+     2199023255552,
      true
     ],
     "enabled": [
@@ -26514,279 +25977,29 @@
      0,
      true
     ],
-    "lifeInitializer.maxLife": [
+    "exposedValues": [
+     15,
+     2199023255552,
+     true
+    ],
+    "inlineEffect": [
+     15,
+     2199023255552,
+     false
+    ],
+    "playOnAwake": [
+     0,
+     0,
+     true
+    ],
+    "playbackSpeed": [
      2,
      0,
      true
     ],
-    "lifeInitializer.minLife": [
-     2,
-     0,
-     true
-    ],
-    "localSpace": [
-     0,
-     0,
-     true
-    ],
-    "loop": [
-     0,
-     0,
-     true
-    ],
-    "maxParticles": [
+    "seed": [
      9,
-     0,
-     true
-    ],
-    "maxPerUpdate": [
-     8,
-     0,
-     true
-    ],
-    "positionInitializer.coneAngle": [
-     2,
-     0,
-     true
-    ],
-    "positionInitializer.coneHeight": [
-     2,
-     0,
-     true
-    ],
-    "positionInitializer.innerRadius": [
-     2,
-     0,
-     true
-    ],
-    "positionInitializer.maxPosition": [
-     5,
-     0,
-     true
-    ],
-    "positionInitializer.minPosition": [
-     5,
-     0,
-     true
-    ],
-    "positionInitializer.radius": [
-     2,
-     0,
-     true
-    ],
-    "positionInitializer.shape": [
-     13,
-     0,
-     true
-    ],
-    "positionModifier.fromPosition": [
-     5,
-     0,
-     true
-    ],
-    "positionModifier.fromTime": [
-     2,
-     0,
-     true
-    ],
-    "positionModifier.function": [
-     14,
-     0,
-     true
-    ],
-    "positionModifier.toPosition": [
-     5,
-     0,
-     true
-    ],
-    "positionModifier.toTime": [
-     2,
-     0,
-     true
-    ],
-    "rate": [
-     8,
-     0,
-     true
-    ],
-    "rotationInitializer.maxRotation": [
-     7,
-     0,
-     true
-    ],
-    "rotationInitializer.minRotation": [
-     7,
-     0,
-     true
-    ],
-    "rotationInitializer.shortestPath": [
-     0,
-     0,
-     true
-    ],
-    "rotationModifier.fromRotation": [
-     7,
-     0,
-     true
-    ],
-    "rotationModifier.fromTime": [
-     2,
-     0,
-     true
-    ],
-    "rotationModifier.function": [
-     14,
-     0,
-     true
-    ],
-    "rotationModifier.shortestPath": [
-     0,
-     0,
-     true
-    ],
-    "rotationModifier.toRotation": [
-     7,
-     0,
-     true
-    ],
-    "rotationModifier.toTime": [
-     2,
-     0,
-     true
-    ],
-    "scaleInitializer.linearSort": [
-     0,
-     0,
-     true
-    ],
-    "scaleInitializer.maxScale": [
-     5,
-     0,
-     true
-    ],
-    "scaleInitializer.minScale": [
-     5,
-     0,
-     true
-    ],
-    "scaleModifier.fromScale": [
-     5,
-     0,
-     true
-    ],
-    "scaleModifier.fromTime": [
-     2,
-     0,
-     true
-    ],
-    "scaleModifier.function": [
-     14,
-     0,
-     true
-    ],
-    "scaleModifier.toScale": [
-     5,
-     0,
-     true
-    ],
-    "scaleModifier.toTime": [
-     2,
-     0,
-     true
-    ],
-    "sizeInitializer.maxSize": [
-     2,
-     0,
-     true
-    ],
-    "sizeInitializer.minSize": [
-     2,
-     0,
-     true
-    ],
-    "sizeModifier.fromSize": [
-     2,
-     0,
-     true
-    ],
-    "sizeModifier.fromTime": [
-     2,
-     0,
-     true
-    ],
-    "sizeModifier.function": [
-     14,
-     0,
-     true
-    ],
-    "sizeModifier.toSize": [
-     2,
-     0,
-     true
-    ],
-    "sizeModifier.toTime": [
-     2,
-     0,
-     true
-    ],
-    "spriteInitializer.frames": [
-     15,
-     0,
-     true
-    ],
-    "spriteModifier.frames": [
-     15,
-     0,
-     true
-    ],
-    "spriteModifier.fromTime": [
-     2,
-     0,
-     true
-    ],
-    "spriteModifier.function": [
-     14,
-     0,
-     true
-    ],
-    "spriteModifier.toTime": [
-     2,
-     0,
-     true
-    ],
-    "velocityInitializer.maxVelocity": [
-     5,
-     0,
-     true
-    ],
-    "velocityInitializer.minVelocity": [
-     5,
-     0,
-     true
-    ],
-    "velocityModifier.fromTime": [
-     2,
-     0,
-     true
-    ],
-    "velocityModifier.fromVelocity": [
-     5,
-     0,
-     true
-    ],
-    "velocityModifier.function": [
-     14,
-     0,
-     true
-    ],
-    "velocityModifier.toTime": [
-     2,
-     0,
-     true
-    ],
-    "velocityModifier.toVelocity": [
-     5,
-     0,
+     2199023255552,
      true
     ]
    },
@@ -31105,6 +30318,195 @@
    "type": 59,
    "type_of_key": 59,
    "type_of_name": 59
+  },
+  {
+   "display_name": "Force Field",
+   "enum_options": {
+    "kind": [
+     [
+      0,
+      "directional",
+      "Directional"
+     ],
+     [
+      1,
+      "radial",
+      "Radial"
+     ],
+     [
+      2,
+      "vortex",
+      "Vortex"
+     ],
+     [
+      3,
+      "turbulence",
+      "Turbulence"
+     ],
+     [
+      4,
+      "drag",
+      "Drag"
+     ]
+    ],
+    "shape": [
+     [
+      0,
+      "sphere",
+      "Sphere"
+     ],
+     [
+      1,
+      "box",
+      "Box"
+     ],
+     [
+      2,
+      "cylinder",
+      "Cylinder"
+     ],
+     [
+      3,
+      "infinite",
+      "Infinite"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef9cae",
+   "key": "forcefield",
+   "known_keys": [
+    "direction",
+    "enabled",
+    "falloff",
+    "frequency",
+    "kind",
+    "layers",
+    "pulseFrequency",
+    "shape",
+    "size",
+    "strength",
+    "turbulence"
+   ],
+   "name": "ForceFieldComponent",
+   "properties_of_default": {
+    "direction": [
+     5,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "falloff": [
+     15,
+     0,
+     false
+    ],
+    "frequency": [
+     2,
+     0,
+     true
+    ],
+    "kind": [
+     13,
+     0,
+     true
+    ],
+    "layers": [
+     9,
+     0,
+     true
+    ],
+    "pulseFrequency": [
+     2,
+     0,
+     true
+    ],
+    "shape": [
+     13,
+     0,
+     true
+    ],
+    "size": [
+     5,
+     0,
+     true
+    ],
+    "strength": [
+     2,
+     0,
+     true
+    ],
+    "turbulence": [
+     2,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "direction": [
+     5,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "falloff": [
+     15,
+     0,
+     false
+    ],
+    "frequency": [
+     2,
+     0,
+     true
+    ],
+    "kind": [
+     13,
+     0,
+     true
+    ],
+    "layers": [
+     9,
+     0,
+     true
+    ],
+    "pulseFrequency": [
+     2,
+     0,
+     true
+    ],
+    "shape": [
+     13,
+     0,
+     true
+    ],
+    "size": [
+     5,
+     0,
+     true
+    ],
+    "strength": [
+     2,
+     0,
+     true
+    ],
+    "turbulence": [
+     2,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 60,
+   "type_of_key": 60,
+   "type_of_name": 60
   }
  ],
  "ease_options": [
@@ -31921,6 +31323,63 @@
    ],
    "wind": [
     5,
+    0,
+    true
+   ]
+  },
+  "ForceFieldComponent": {
+   "direction": [
+    5,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "falloff": [
+    15,
+    0,
+    false
+   ],
+   "frequency": [
+    2,
+    0,
+    true
+   ],
+   "kind": [
+    13,
+    0,
+    true
+   ],
+   "layers": [
+    9,
+    0,
+    true
+   ],
+   "pulseFrequency": [
+    2,
+    0,
+    true
+   ],
+   "shape": [
+    13,
+    0,
+    true
+   ],
+   "size": [
+    5,
+    0,
+    true
+   ],
+   "strength": [
+    2,
+    0,
+    true
+   ],
+   "turbulence": [
+    2,
     0,
     true
    ]
@@ -33663,134 +33122,14 @@
    ]
   },
   "ParticleSystemComponent": {
-   "accelerationInitializer.maxAcceleration": [
-    5,
-    0,
-    true
-   ],
-   "accelerationInitializer.minAcceleration": [
-    5,
-    0,
-    true
-   ],
-   "accelerationModifier.fromAcceleration": [
-    5,
-    0,
-    true
-   ],
-   "accelerationModifier.fromTime": [
-    2,
-    0,
-    true
-   ],
-   "accelerationModifier.function": [
-    14,
-    0,
-    true
-   ],
-   "accelerationModifier.toAcceleration": [
-    5,
-    0,
-    true
-   ],
-   "accelerationModifier.toTime": [
-    2,
-    0,
-    true
-   ],
-   "alphaInitializer.maxAlpha": [
-    2,
-    0,
-    true
-   ],
-   "alphaInitializer.minAlpha": [
-    2,
-    0,
-    true
-   ],
-   "alphaModifier.fromAlpha": [
-    2,
-    0,
-    true
-   ],
-   "alphaModifier.fromTime": [
-    2,
-    0,
-    true
-   ],
-   "alphaModifier.function": [
-    14,
-    0,
-    true
-   ],
-   "alphaModifier.toAlpha": [
-    2,
-    0,
-    true
-   ],
-   "alphaModifier.toTime": [
-    2,
-    0,
-    true
-   ],
-   "bursts": [
+   "collisionPlanes": [
     15,
     0,
-    true
+    false
    ],
-   "colorGradient": [
-    15,
-    0,
-    true
-   ],
-   "colorInitializer.maxColor": [
-    5,
-    0,
-    true
-   ],
-   "colorInitializer.minColor": [
-    5,
-    0,
-    true
-   ],
-   "colorInitializer.useSRGB": [
-    0,
-    0,
-    true
-   ],
-   "colorModifier.fromColor": [
-    5,
-    0,
-    true
-   ],
-   "colorModifier.fromTime": [
-    2,
-    0,
-    true
-   ],
-   "colorModifier.function": [
-    14,
-    0,
-    true
-   ],
-   "colorModifier.toColor": [
-    5,
-    0,
-    true
-   ],
-   "colorModifier.toTime": [
-    2,
-    0,
-    true
-   ],
-   "colorModifier.useSRGB": [
-    0,
-    0,
-    true
-   ],
-   "emitter": [
-    0,
-    0,
+   "effect": [
+    18,
+    2199023255552,
     true
    ],
    "enabled": [
@@ -33798,279 +33137,29 @@
     0,
     true
    ],
-   "lifeInitializer.maxLife": [
+   "exposedValues": [
+    15,
+    2199023255552,
+    true
+   ],
+   "inlineEffect": [
+    15,
+    2199023255552,
+    false
+   ],
+   "playOnAwake": [
+    0,
+    0,
+    true
+   ],
+   "playbackSpeed": [
     2,
     0,
     true
    ],
-   "lifeInitializer.minLife": [
-    2,
-    0,
-    true
-   ],
-   "localSpace": [
-    0,
-    0,
-    true
-   ],
-   "loop": [
-    0,
-    0,
-    true
-   ],
-   "maxParticles": [
+   "seed": [
     9,
-    0,
-    true
-   ],
-   "maxPerUpdate": [
-    8,
-    0,
-    true
-   ],
-   "positionInitializer.coneAngle": [
-    2,
-    0,
-    true
-   ],
-   "positionInitializer.coneHeight": [
-    2,
-    0,
-    true
-   ],
-   "positionInitializer.innerRadius": [
-    2,
-    0,
-    true
-   ],
-   "positionInitializer.maxPosition": [
-    5,
-    0,
-    true
-   ],
-   "positionInitializer.minPosition": [
-    5,
-    0,
-    true
-   ],
-   "positionInitializer.radius": [
-    2,
-    0,
-    true
-   ],
-   "positionInitializer.shape": [
-    13,
-    0,
-    true
-   ],
-   "positionModifier.fromPosition": [
-    5,
-    0,
-    true
-   ],
-   "positionModifier.fromTime": [
-    2,
-    0,
-    true
-   ],
-   "positionModifier.function": [
-    14,
-    0,
-    true
-   ],
-   "positionModifier.toPosition": [
-    5,
-    0,
-    true
-   ],
-   "positionModifier.toTime": [
-    2,
-    0,
-    true
-   ],
-   "rate": [
-    8,
-    0,
-    true
-   ],
-   "rotationInitializer.maxRotation": [
-    7,
-    0,
-    true
-   ],
-   "rotationInitializer.minRotation": [
-    7,
-    0,
-    true
-   ],
-   "rotationInitializer.shortestPath": [
-    0,
-    0,
-    true
-   ],
-   "rotationModifier.fromRotation": [
-    7,
-    0,
-    true
-   ],
-   "rotationModifier.fromTime": [
-    2,
-    0,
-    true
-   ],
-   "rotationModifier.function": [
-    14,
-    0,
-    true
-   ],
-   "rotationModifier.shortestPath": [
-    0,
-    0,
-    true
-   ],
-   "rotationModifier.toRotation": [
-    7,
-    0,
-    true
-   ],
-   "rotationModifier.toTime": [
-    2,
-    0,
-    true
-   ],
-   "scaleInitializer.linearSort": [
-    0,
-    0,
-    true
-   ],
-   "scaleInitializer.maxScale": [
-    5,
-    0,
-    true
-   ],
-   "scaleInitializer.minScale": [
-    5,
-    0,
-    true
-   ],
-   "scaleModifier.fromScale": [
-    5,
-    0,
-    true
-   ],
-   "scaleModifier.fromTime": [
-    2,
-    0,
-    true
-   ],
-   "scaleModifier.function": [
-    14,
-    0,
-    true
-   ],
-   "scaleModifier.toScale": [
-    5,
-    0,
-    true
-   ],
-   "scaleModifier.toTime": [
-    2,
-    0,
-    true
-   ],
-   "sizeInitializer.maxSize": [
-    2,
-    0,
-    true
-   ],
-   "sizeInitializer.minSize": [
-    2,
-    0,
-    true
-   ],
-   "sizeModifier.fromSize": [
-    2,
-    0,
-    true
-   ],
-   "sizeModifier.fromTime": [
-    2,
-    0,
-    true
-   ],
-   "sizeModifier.function": [
-    14,
-    0,
-    true
-   ],
-   "sizeModifier.toSize": [
-    2,
-    0,
-    true
-   ],
-   "sizeModifier.toTime": [
-    2,
-    0,
-    true
-   ],
-   "spriteInitializer.frames": [
-    15,
-    0,
-    true
-   ],
-   "spriteModifier.frames": [
-    15,
-    0,
-    true
-   ],
-   "spriteModifier.fromTime": [
-    2,
-    0,
-    true
-   ],
-   "spriteModifier.function": [
-    14,
-    0,
-    true
-   ],
-   "spriteModifier.toTime": [
-    2,
-    0,
-    true
-   ],
-   "velocityInitializer.maxVelocity": [
-    5,
-    0,
-    true
-   ],
-   "velocityInitializer.minVelocity": [
-    5,
-    0,
-    true
-   ],
-   "velocityModifier.fromTime": [
-    2,
-    0,
-    true
-   ],
-   "velocityModifier.fromVelocity": [
-    5,
-    0,
-    true
-   ],
-   "velocityModifier.function": [
-    14,
-    0,
-    true
-   ],
-   "velocityModifier.toTime": [
-    2,
-    0,
-    true
-   ],
-   "velocityModifier.toVelocity": [
-    5,
-    0,
+    2199023255552,
     true
    ]
   },
