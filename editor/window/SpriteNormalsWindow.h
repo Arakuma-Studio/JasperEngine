@@ -408,6 +408,8 @@ namespace jasperengine::editor {
         bool paintOpen = false;                  // the Paint foldout
         bool paintOpenSet = false;               // ... opened once for a non-empty overlay
         uint64_t paintSerial = 1;                // the overlay changed
+        mutable uint64_t unsavedFor = 0;         // hasUnsavedPaint() for this paintSerial ...
+        mutable bool unsavedCached = false;      // ... (an overlay compare per change, not per frame)
         // a stroke in progress (mouse or paintStroke)
         bool stroking = false;
         std::vector<uint8_t> strokeMask;

@@ -1020,6 +1020,7 @@ bool SpriteNormalsWindow::writeResults(const std::vector<size_t>& itemIndices, b
         }
         paintSaved = paint;
         paintProblem.clear();
+        paintChanged();
     }
     // batch: the decoded sources and results of the items not shown are not kept once written
     if (isBatch()) {
@@ -3579,8 +3580,11 @@ std::string SpriteNormalsWindow::paintDisabledReason() const {
 }
 
 bool SpriteNormalsWindow::hasUnsavedPaint() const {
-    if (paint.empty() && paintSaved.empty()) return false;
-    return paint != paintSaved;
+    if (unsavedFor != paintSerial) {
+        unsavedFor = paintSerial;
+        unsavedCached = !(paint.empty() && paintSaved.empty()) && paint != paintSaved;
+    }
+    return unsavedCached;
 }
 
 void SpriteNormalsWindow::discardPaint() {
