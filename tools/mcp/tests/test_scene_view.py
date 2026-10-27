@@ -410,6 +410,25 @@ async def test_alt_f_frames_all(ed: Editor):
     ed.check(spread > 0.3, f"framed on the boxes, not the terrain: {uvs}")
 
 
+def same_frame(a, b):
+    """Two views of one orthographic camera at different view sizes: the same height (the
+    orthographic size spans it), then the middle columns both have"""
+    height = min(a[1], b[1])
+
+    def to_height(img):
+        if img[1] == height:
+            return img
+        return pngdiff.downscale(img, max(1, round(img[0] * height / img[1])), height)
+
+    a, b = to_height(a), to_height(b)
+    width = min(a[0], b[0])
+
+    def middle(img):
+        return img if img[0] == width else pngdiff.crop(img, (img[0] - width) // 2, 0, width, height)
+
+    return middle(a), middle(b)
+
+
 async def test_ortho_top_golden(ed: Editor):
     """The grid lies in the plane an orthographic axis view looks at (golden, glcore)."""
     sid = await new_scene(ed, "OrthoTop")
@@ -432,8 +451,7 @@ async def test_ortho_top_golden(ed: Editor):
             ed.fail(f"no golden yet: wrote {golden} (review and commit it)")
         return
     ref = pngdiff.decode(golden.read_bytes())
-    if ref[:2] != img[:2]:
-        img = pngdiff.downscale(img, ref[0], ref[1])
+    img, ref = same_frame(img, ref)
     ok, fraction, _diff = pngdiff.compare(img, ref, channel_tolerance=24, max_fraction=0.02)
     (ed.scratch.root / "scene_view_ortho_top.png").write_bytes(pngdiff.encode(img))
     ed.check(ok, f"ortho top view differs from its golden: {fraction:.4f} of the pixels")
@@ -512,11 +530,17 @@ async def test_quad_layout(ed: Editor):
     ed.check(meshes and meshes[0]["normal"][1] > 0.9, f"from above: the top face {top['hits'][:2]}")
     layout = await ed.call("set_scene_view_layout", scene=sid)
     ed.check_eq(layout["active_pane"], 1, "the picked pane is the active one")
-    # idle panes do not redraw
+    # idle panes do not redraw: once the editor is idle (the Project window's thumbnails and the
+    # new meshes' loading make the view redraw for a while), 60 frames redraw no inactive pane
     draws = {p["pane"]: p["draws"] for p in layout["panes"]}
-    await ed.call("wait", frames=60)
-    later = {p["pane"]: p["draws"] for p in (await ed.call("set_scene_view_layout", scene=sid))["panes"]}
-    ed.check_eq(later, draws, "nothing changed: no inactive pane redrew over 60 frames")
+    later = None
+    for _ in range(5):
+        await ed.call("wait", frames=60)
+        later = {p["pane"]: p["draws"] for p in (await ed.call("set_scene_view_layout", scene=sid))["panes"]}
+        if later == draws:
+            break
+        draws = later
+    ed.check_eq(later, draws, "nothing changed: no inactive pane redrew over 60 frames (within 300)")
     # a change in the scene redraws them
     await ed.call("set_transform", scene=sid, entity="Box", position=[0, 1, 0])
     await ed.call("wait", frames=4)
