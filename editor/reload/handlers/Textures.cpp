@@ -59,7 +59,7 @@ void reload::reloadTextures(Context& ctx, const std::vector<fs::path>& files) {
         ctx.service.startJob("texture", path, [sources, project]() -> HotReloadService::AdoptFn {
             std::vector<std::pair<std::string, std::shared_ptr<std::array<TextureData, 6>>>> decoded;
             for (const auto& [id, source] : sources) {
-                decoded.emplace_back(id, std::make_shared<std::array<TextureData, 6>>(TextureDataPool::decode(id, source)));
+                decoded.emplace_back(id, TextureDataPool::shareDecoded(TextureDataPool::decode(id, source)));
             }
             return [decoded, project](std::string&) {
                 for (const auto& [id, data] : decoded) {

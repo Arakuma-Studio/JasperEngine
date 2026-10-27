@@ -40,6 +40,7 @@ editor::Object2DGizmo::~Object2DGizmo(){
         delete rects[i];
     }
     delete lines;
+    delete center;
 }
 
 void editor::Object2DGizmo::updateRects(){

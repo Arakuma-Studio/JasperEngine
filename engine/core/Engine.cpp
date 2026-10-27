@@ -48,6 +48,9 @@
 #if defined(__APPLE__)
     #include <TargetConditionals.h>
 #endif
+#if defined(__ANDROID__)
+    #include <sys/system_properties.h>
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -1400,7 +1403,15 @@ bool Engine::areScenesLoaded(){
 void Engine::signalReadyOnce(){
     static const bool enabled = [](){
         const char* value = std::getenv("JASPERENGINE_READY_SIGNAL");
-        return value && value[0] != '\0' && value[0] != '0';
+        if (value && value[0] != '\0' && value[0] != '0')
+            return true;
+    #if defined(__ANDROID__)
+        // an app gets no environment: tools/android-emulator-test.sh sets this property instead
+        char property[PROP_VALUE_MAX] = {};
+        return __system_property_get("debug.jasperengine.ready_signal", property) > 0 && property[0] != '0';
+    #else
+        return false;
+    #endif
     }();
     static const bool frameStats = [](){
         const char* value = std::getenv("JASPERENGINE_FRAME_STATS");

@@ -475,7 +475,12 @@ void captureGame(const CaptureJobPtr& job) {
             GameWindow* g = c.gameWindow();
             if (!g->isVisible()) job->fail("The Game view did not become visible.");
             else if (g->getWidth() <= 0 || g->getHeight() <= 0) job->fail("The Game view has no size (too small or collapsed).");
-            else job->fail("The Game view preview did not finish rendering in time (assets still loading?).");
+            else {
+                SceneProject* s = c.project()->getScene(sceneId);
+                job->fail("The Game view preview did not finish rendering in time (assets still loading?). (preview current " +
+                          std::to_string(!g->isEditPassDirty()) + ", assets loaded " + std::to_string(sceneContentLoaded(s)) +
+                          ", UI effect replays pending " + std::to_string(UIDocument::getPendingEffectReplays()) + ")");
+            }
             return;
         }
         readGameView(job, sceneId, false);

@@ -3371,10 +3371,14 @@ void previewAnimationTool(const CallPtr& call) {
     };
     const int waitMs = std::clamp(intOr(call->args(), "wait_ms", 0), 0, 30000);
     if (waitMs > 0) {
+        // wait_ms of wall time and a few frames: the preview moves only when a frame updates it, and
+        // a loaded machine can spend the whole wait in one frame (the one that starts the playback)
         auto start = std::make_shared<std::chrono::steady_clock::time_point>(std::chrono::steady_clock::now());
-        call->waitUntil([start, waitMs]() {
-            return std::chrono::steady_clock::now() - *start >= std::chrono::milliseconds(waitMs);
-        }, waitMs + 5000, [report](bool) { report(); });
+        auto frames = std::make_shared<int>(0);
+        call->waitUntil([start, frames, waitMs]() {
+            ++*frames;
+            return *frames >= 3 && std::chrono::steady_clock::now() - *start >= std::chrono::milliseconds(waitMs);
+        }, waitMs + 30000, [report](bool) { report(); });
         return;
     }
     call->afterFrames(1, report);

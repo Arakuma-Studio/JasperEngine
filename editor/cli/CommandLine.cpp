@@ -1676,6 +1676,7 @@ static int runSceneDump(int argc, char** argv, const std::string& commandName) {
     // a dump only reads: only a writer takes the project's lock (R10)
     const bool writes = save || !opsPath.empty();
     project.setSkipProjectLock(!writes);
+    project.setReadOnlyAssets(!writes);
     project.setIgnoreProjectLock(ignoreLock);
     sceneDumpSavePolicy = allowDataLoss ? DegradedSavePolicy::SaveAnyway : DegradedSavePolicy::Refuse;
     if (!project.loadProject(projectArg, false)) {
@@ -2416,8 +2417,10 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
     }
 
     if (shadersWanted || cppWanted || texturesWanted) {
-        // checks only read the project: no lock, an open editor is fine
+        // checks only read the project: no lock, an open editor is fine, and no file is written
+        // (a project from before GUIDs keeps its identities in memory)
         project.setSkipProjectLock(true);
+        project.setReadOnlyAssets(true);
         if (!project.loadProject(root, false)) {
             run.fatal = "the project could not be loaded: " + root.string();
             return run;

@@ -186,6 +186,10 @@ namespace jasperengine{
         static std::vector<std::string> findIdsUsingFile(const std::string& systemPath);
         // Decodes `source` as loadFromFile would; any thread. Throws with the decoder's message.
         static std::array<TextureData,6> decode(const std::string& id, const TextureSource& source);
+        // Faces the pool decoded from files, shared: when the last holder lets go, their pixels
+        // are freed (an upload with releaseDataAfterLoad frees them earlier; a texture kept on the
+        // CPU, or replaced by a hot reload before it was drawn, had nobody to free them)
+        static std::shared_ptr<std::array<TextureData,6>> shareDecoded(std::array<TextureData,6> data);
 
         static void clear();
         // removes only entries no one else references (safe while other scenes are alive)

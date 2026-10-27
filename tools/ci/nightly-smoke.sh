@@ -46,6 +46,8 @@ gles3|vulkan)
     smoke stencil stencil
     smoke extra-pass extra-pass
     smoke textures textures
+    # S07: an exported game that destroys bodies and toggles a component in contact callbacks
+    smoke ecs-collision ecs-collision
     ;;
 *)
     echo "usage: tools/ci/nightly-smoke.sh opengl|gles3|vulkan" >&2

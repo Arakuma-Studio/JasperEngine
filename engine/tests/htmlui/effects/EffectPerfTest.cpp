@@ -40,9 +40,12 @@
 //   them, and the engine's own work is within kStatefulFrameBudget of document B's.
 //
 // The timings are gated like the compat performance tests (PerfFixtures.h): the least of up to 5
-// measurements is compared, since a loaded host only ever adds time to one.
+// measurements is compared, since a loaded host only ever adds time to one, and the budgets are
+// scaled by JASPER_HTMLUI_PERF_SLACK (3 on the shared builders and CI; unset, 1, on the benchmark
+// server).
 
 #include "EffectTestCommon.h"
+#include "../compat/PerfFixtures.h"
 
 #include "htmlui/HtmlUIClock.h"
 #include "htmlui/compat/runtime/RuntimeRegistry.h"
@@ -532,8 +535,9 @@ TEST(EffectPerfTest, GridSteadyStateAndBudgets){
     const Least c = gated("C", 0.0, [&](int){ return measure(grid); }, {});
 
     ASSERT_TRUE(grid.load(gridDocument(true, false))) << "document A";
-    const double budgetA = 1.5 * b.gate(gateEngine) + 1.0;
-    const double budgetA2 = 3.0 * b.gate(gateEngine) + 4.0;
+    const double slack = jasperengine::test::compat::perfSlack();
+    const double budgetA = (1.5 * b.gate(gateEngine) + 1.0) * slack;
+    const double budgetA2 = (3.0 * b.gate(gateEngine) + 4.0) * slack;
     const Least a = gated("A", budgetA, [&](int){ return measure(grid); }, [](const PerfRun& run){
         EXPECT_EQ(run.delta.instancesCreated, 0u) << "no effect instance is created in the steady state";
         EXPECT_EQ(run.delta.compileCalls, 0u) << "no variant is compiled in the steady state";
@@ -632,7 +636,7 @@ TEST(EffectPerfTest, StatefulSteadyState){
     ASSERT_TRUE(grid.load(gridDocument(false, false))) << "document B";
     const double b = least("B", 0.0, {});
     ASSERT_TRUE(grid.load(statefulDocument())) << "the stateful document";
-    const double budget = b + kStatefulFrameBudget;
+    const double budget = (b + kStatefulFrameBudget) * jasperengine::test::compat::perfSlack();
     const double s = least("S (six stateful effects)", budget, [&](const PerfRun& run){
         // a step a frame (the clock moves 1/60 s a frame): every pass of every effect, nothing created
         EXPECT_EQ(run.delta.instancesCreated, 0u) << "no effect instance is created in the steady state";

@@ -8,6 +8,7 @@
 #include "io/Data.h"
 #include "io/FileData.h"
 #include "thread/ResourceProgress.h"
+#include "render/SystemRender.h"
 #include "io/AssetIOService.h"
 #include "pool/TexturePool.h"
 #include "render/SystemRender.h"
@@ -262,6 +263,23 @@ std::array<TextureData,6> TextureDataPool::decode(const std::string& id, const T
     return loadTextureInternal(id, source.paths, source.numFaces, source.fixAlphaBorder, false);
 }
 
+std::shared_ptr<std::array<TextureData,6>> TextureDataPool::shareDecoded(std::array<TextureData,6> data){
+    // The faces (one pixel allocation each, see loadCubeMapFromSingleFile) go through the render
+    // queue's cleanup like the release after an upload: queued after it, they are released (a
+    // no-op when that release ran) and deleted once an upload queued from a loading thread and
+    // its own release have run; on the main thread at once
+    return std::shared_ptr<std::array<TextureData,6>>(new std::array<TextureData,6>(std::move(data)),
+        [](std::array<TextureData,6>* faces){
+            SystemRender::scheduleCleanup([](void* pointer){
+                auto* decoded = static_cast<std::array<TextureData,6>*>(pointer);
+                for (TextureData& face : *decoded){
+                    face.releaseImageData();
+                }
+                delete decoded;
+            }, faces);
+        });
+}
+
 bool TextureDataPool::hasTexturePixels(const std::shared_ptr<std::array<TextureData,6>>& data, size_t numFaces) {
     if (!data) {
         return false;
@@ -502,13 +520,13 @@ TextureLoadResult TextureDataPool::loadFromFile(const std::string& id, const std
                         result.state = ResourceLoadState::Loading;
                         return result;
                     }
-                    shared = std::make_shared<std::array<TextureData,6>>(tail);
+                    shared = shareDecoded(tail);
                     noteResident(id, *shared, true);
                     result.state = ResourceLoadState::Finished;
                     result.data = shared;
                     return result;
                 }
-                shared = std::make_shared<std::array<TextureData,6>>(loaded.data);
+                shared = shareDecoded(std::move(loaded.data));
                 noteResident(id, *shared, loaded.cooked);
 
                 result.state = ResourceLoadState::Finished;
@@ -535,8 +553,7 @@ TextureLoadResult TextureDataPool::loadFromFile(const std::string& id, const std
 
     } else {
         try {
-            std::array<TextureData,6> data = loadTextureInternal(id, paths, numFaces, fixAlphaBorder, false);
-            shared = std::make_shared<std::array<TextureData,6>>(data);
+            shared = shareDecoded(loadTextureInternal(id, paths, numFaces, fixAlphaBorder, false));
             std::vector<CookedTextureEntry> entries;
             noteResident(id, *shared, findCooked(paths, numFaces, entries));
 
@@ -1194,7 +1211,7 @@ void TextureDataPool::rebalanceBudget(){
 }
 
 void TextureDataPool::adopt(const std::string& id, LoadResult& result, bool replacing){
-    auto shared = std::make_shared<std::array<TextureData,6>>(result.data);
+    auto shared = shareDecoded(result.data);
     if (replacing || getMap().count(id)){
         replace(id, shared);
         TexturePool::invalidate(id);

@@ -18,6 +18,8 @@
 #include "Factory.h"
 #include "pool/SoundPool.h"
 #include "pool/ShaderPool.h"
+#include "subsystem/MeshSystem.h"
+#include "System.h"
 #include "util/CameraTextureLink.h"
 #include "util/FluidTextureLink.h"
 #include "util/ProjectUtils.h"
@@ -1285,6 +1287,14 @@ YAML::Node editor::Stream::encodeTexture(const Texture& texture, bool embedData)
     return node;
 }
 
+namespace {
+    // A model texture's id from a scene saved before the ids were relative (the model file's
+    // absolute path on the machine that saved it): as the model keys it now
+    std::string modelTextureId(const std::string& id) {
+        return MeshSystem::migrateModelTextureId(id, System::instance().getAssetPath());
+    }
+}
+
 Texture editor::Stream::decodeTexture(const YAML::Node& node) {
     StreamLoad::checkNestedKeys(node, NestedKind::Texture);
     Texture texture;
@@ -1333,7 +1343,7 @@ Texture editor::Stream::decodeTexture(const YAML::Node& node) {
                     const size_t expectedSize = static_cast<size_t>(width) * static_cast<size_t>(height) * static_cast<size_t>(channels);
                     const size_t dataSize = node["size"] ? YamlNumbers::as<size_t>(node["size"]) : expectedSize;
                     const std::string colorFormat = node["colorFormat"] ? node["colorFormat"].as<std::string>() : std::string();
-                    const std::string textureId = node["id"] ? node["id"].as<std::string>() : std::string();
+                    const std::string textureId = node["id"] ? modelTextureId(node["id"].as<std::string>()) : std::string();
 
                     if (dataSize == expectedSize && decodedData.size() >= dataSize) {
                         setEmbeddedTextureData(texture, textureId, width, height, stringToColorFormat(colorFormat, channels), channels, decodedData);
@@ -1341,7 +1351,7 @@ Texture editor::Stream::decodeTexture(const YAML::Node& node) {
                 }
             } else if (source == "id") {
                 if (node["id"]) {
-                    texture.setId(node["id"].as<std::string>());
+                    texture.setId(modelTextureId(node["id"].as<std::string>()));
                 }
             } else if (source == "camera") {
                 // framebuffer is bound later by CameraTextureLink::resolve,

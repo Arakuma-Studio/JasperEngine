@@ -27,7 +27,11 @@ SHOT_DIR = harness.REPO / "build" / "test-output" / "shadows-ui"
 
 
 class Ui:
+    """xdotool input aimed where find_ui_item says a widget is drawn now (by its ImGui label), each
+    action followed by editor frames (test_undo_ui.py and test_jobs_memory_ui.py do the same)."""
+
     def __init__(self, ed: Editor):
+        self.ed = ed
         self.env = dict(os.environ, DISPLAY=ed._xvfb.display)
         windows = self.xdo("search", "--name", "JasperEngine").split() or self.xdo("search", "--name", ".").split()
         if not windows:
@@ -43,15 +47,41 @@ class Ui:
     def xdo(self, *args: str) -> str:
         return subprocess.run(["xdotool", *args], env=self.env, capture_output=True, text=True, timeout=20).stdout
 
+    async def settle(self, seconds: float):
+        await asyncio.sleep(seconds)
+        await self.ed.call("wait", frames=2)
+
+    async def at(self, label: str, index: int = 0, window: str = "Inspector") -> tuple[int, int]:
+        """the centre of the widget drawn with this label (window coordinates), as drawn now; a
+        widget drawn below its window's visible area is scrolled into view with the wheel"""
+        for _ in range(30):
+            drawn = (await self.ed.call("find_ui_item", label=label, window=window))["items"]
+            items = [item for item in drawn if item["visible"]]
+            if len(items) > index:
+                rect = items[index]["rect"]
+                return (int(rect["x"] + rect["width"] / 2), int(rect["y"] + rect["height"] / 2))
+            if drawn:
+                area = drawn[0]["window_rect"]
+                self.xdo("mousemove", str(int(self.origin[0] + area["x"] + area["width"] / 2)),
+                         str(int(self.origin[1] + area["y"] + area["height"] / 2)))
+                self.xdo("click", "5")
+                await self.settle(0.2)
+            else:
+                await self.ed.call("wait", frames=5)
+        raise harness.TestFailure(f"find_ui_item: no visible {label!r} in {window!r}")
+
     async def move(self, point: tuple[int, int]):
         """to a point in window coordinates"""
         self.xdo("mousemove", str(self.origin[0] + point[0]), str(self.origin[1] + point[1]))
-        await asyncio.sleep(0.25)
+        await self.settle(0.25)
 
     async def click(self, point: tuple[int, int]):
         await self.move(point)
-        self.xdo("click", "1")
-        await asyncio.sleep(0.6)
+        # press and release frames apart: in one frame the widget never sees the press
+        self.xdo("mousedown", "1")
+        await self.settle(0.1)
+        self.xdo("mouseup", "1")
+        await self.settle(0.5)
 
 
 async def editor_shot(ed: Editor, name: str):
@@ -61,20 +91,18 @@ async def editor_shot(ed: Editor, name: str):
     (SHOT_DIR / f"{name}.png").write_bytes(pngdiff.encode(pngdiff.decode(r.images[0][0])))
 
 
-# Window coordinates of the light's Shadows rows (default layout: the Inspector at x 1248..1600,
-# its Shadows section in view without scrolling, a directional light selected)
-SHADOW_TYPE = (1487, 592)
-RESOLUTION = (1470, 642)
-BIAS = (1487, 667)
-NORMAL_BIAS = (1487, 692)
-SHADOW_DISTANCE = (1487, 742)
-CASCADE_COUNT = (1470, 767)
-SPLIT_BAR = (1395, 1580, 817)     # x from, x to, y
-# a combo's popup: its first item this far under the combo's centre, the next ones a row apart
-POPUP_FIRST = 29
-POPUP_ROW = 21
-# a mesh's Static Shadow Caster checkbox (the Inspector scrolled to its top)
-STATIC_SHADOW_CASTER = (1404, 452)
+# The ImGui labels of the light's Shadows rows (editor/window/InspectorShadows.cpp, the float rows
+# InspectorWindow::propertyRow's), found where they are drawn: rows other sections add above them
+# (the merge of upstream's lighting work did) move them
+SHADOW_TYPE = "##shadow_type"
+RESOLUTION = "##shadow_resolution"
+BIAS = "##input_float_shadowBias"
+NORMAL_BIAS = "##input_float_shadowNormalBias"
+SHADOW_DISTANCE = "##input_float_shadowDistance"
+CASCADE_COUNT = "##shadow_cascades"
+SPLIT_HANDLE = "##split_handle"
+# a mesh's Static Shadow Caster checkbox
+STATIC_SHADOW_CASTER = "##checkbox_staticShadowCaster"
 
 S: dict = {}
 
@@ -121,24 +149,30 @@ async def edit_and_undo(ed: Editor, sid: int, name: str, read, act, changed):
     print(f"     [ui] {name}: {before} -> {after} (\"{label}\"), undone")
 
 
-async def type_into(ui: Ui, point: tuple[int, int], text: str):
+async def type_into(ui: Ui, label: str, text: str):
     """a drag field's text input (double click), its text replaced"""
-    await ui.move(point)
+    await ui.move(await ui.at(label))
     ui.xdo("click", "--repeat", "2", "--delay", "80", "1")
-    await asyncio.sleep(0.5)
+    await ui.settle(0.5)
     ui.xdo("key", "ctrl+a")
-    await asyncio.sleep(0.2)
+    await ui.settle(0.2)
     ui.xdo("type", "--delay", "40", text)
-    await asyncio.sleep(0.3)
+    await ui.settle(0.3)
     ui.xdo("key", "Return")
-    await asyncio.sleep(0.6)
+    await ui.settle(0.6)
 
 
-async def pick(ed: Editor, ui: Ui, combo: tuple[int, int], index: int, name: str):
-    await ui.click(combo)
+async def pick(ed: Editor, ui: Ui, label: str, item: str, name: str):
+    """opens the combo and clicks the item with this text in its popup (above or below the combo,
+    wherever ImGui opens it)"""
+    await ui.click(await ui.at(label))
     await ed.call("wait", frames=3)
     await editor_shot(ed, f"{name}_popup")
-    await ui.click((combo[0], combo[1] + POPUP_FIRST + POPUP_ROW * index))
+    await ui.click(await ui.at(item, window="##Combo"))
+
+
+async def _click_label(ui: Ui, label: str):
+    await ui.click(await ui.at(label))
 
 
 async def test_inspector_shadow_rows_undo(ed: Editor):
@@ -164,35 +198,36 @@ async def test_inspector_shadow_rows_undo(ed: Editor):
 
     # Shadow Type: Hard Shadows (shadows and softShadows together, one step)
     await edit_and_undo(ed, sid, "shadow_type", read("softShadows"),
-                        lambda: pick(ed, ui, SHADOW_TYPE, 1, "shadow_type"), differs)
+                        lambda: pick(ed, ui, SHADOW_TYPE, "Hard Shadows", "shadow_type"), differs)
     # Resolution: 512 (the combo's third entry after Use Quality Settings and 256)
     await edit_and_undo(ed, sid, "resolution", read("mapResolution"),
-                        lambda: pick(ed, ui, RESOLUTION, 2, "resolution"), differs)
+                        lambda: pick(ed, ui, RESOLUTION, "512", "resolution"), differs)
     await edit_and_undo(ed, sid, "bias", read("shadowBias"), lambda: type_into(ui, BIAS, "2.5"), differs)
     await edit_and_undo(ed, sid, "normal_bias", read("shadowNormalBias"), lambda: type_into(ui, NORMAL_BIAS, "0.25"), differs)
     await edit_and_undo(ed, sid, "shadow_distance", read("shadowDistance"), lambda: type_into(ui, SHADOW_DISTANCE, "42"), differs)
     # Cascade Count: 2 (after Use Quality Settings and 1)
     await edit_and_undo(ed, sid, "cascade_count", read("numShadowCascades"),
-                        lambda: pick(ed, ui, CASCADE_COUNT, 2, "cascade_count"), differs)
+                        lambda: pick(ed, ui, CASCADE_COUNT, "2", "cascade_count"), differs)
 
-    # the split bar's handle between the first two cascades, dragged right: one step
+    # the cascade split bar (manual splits, 4 cascades)
     await ed.call("set_properties", scene=sid, entity=sun, values={"light": {"cascadeSplitMode": "manual", "numShadowCascades": 4}})
     await ed.call("wait", frames=4)
     await editor_shot(ed, "split_bar")
-    x0, x1, y = SPLIT_BAR
-    splits = await light_value(ed, sid, sun, "cascadeSplits")
-    handle = (int(x0 + (x1 - x0) * splits[0]), y)
+    # a handle of the bar (the first find_ui_item reports visible), dragged right: one step
+    handle = await ui.at(SPLIT_HANDLE)
+    y = handle[1]
 
     async def drag():
         await ui.move(handle)
         ui.xdo("mousedown", "1")
-        await asyncio.sleep(0.3)
+        await ui.settle(0.3)
         for k in range(1, 9):
             ui.xdo("mousemove", str(ui.origin[0] + handle[0] + 2 * k), str(ui.origin[1] + y))
             await asyncio.sleep(0.05)
-        await asyncio.sleep(0.3)
+            await ui.ed.call("wait", frames=1)
+        await ui.settle(0.3)
         ui.xdo("mouseup", "1")
-        await asyncio.sleep(0.6)
+        await ui.settle(0.6)
     await edit_and_undo(ed, sid, "split_bar", read("cascadeSplits"), drag, differs)
 
     # the mesh's Static Shadow Caster
@@ -203,4 +238,4 @@ async def test_inspector_shadow_rows_undo(ed: Editor):
     async def static_flag():
         got = await ed.call("get_entity", scene=sid, entity=cube, components=["mesh"])
         return harness.find_key(got, "staticShadowCaster")
-    await edit_and_undo(ed, sid, "static_shadow_caster", static_flag, lambda: ui.click(STATIC_SHADOW_CASTER), differs)
+    await edit_and_undo(ed, sid, "static_shadow_caster", static_flag, lambda: _click_label(ui, STATIC_SHADOW_CASTER), differs)
