@@ -3,7 +3,7 @@
 # under tools/fixtures/, after tools/build.sh linux. One backend per call:
 #
 #   tools/ci/nightly-smoke.sh opengl    every fixture project
-#   tools/ci/nightly-smoke.sh gles3     the GLES3 set of docs/html-ui/phase-6-acceptance.md §4.4
+#   tools/ci/nightly-smoke.sh gles3     the GLES3 set of docs/html-ui/phase-6-acceptance.md §4.4 and S14's textures fixture
 #   tools/ci/nightly-smoke.sh vulkan    the Vulkan set (the same projects and cases)
 #
 # Each run writes build/smoke-<backend>-<case>/ (game*.png, editor.png, the logs). The GLES3 and
@@ -45,6 +45,7 @@ gles3|vulkan)
     done
     smoke stencil stencil
     smoke extra-pass extra-pass
+    smoke textures textures
     # S07: an exported game that destroys bodies and toggles a component in contact callbacks
     smoke ecs-collision ecs-collision
     ;;

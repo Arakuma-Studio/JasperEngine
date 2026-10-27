@@ -9,7 +9,8 @@ namespace jasperengine::editor {
 
     // The bar along the bottom of the editor window. On its right, the file watcher (S05 R28):
     // "Watching (inotify)", "Polling 1 s", "Auto Refresh off: N changes", with the details in
-    // its tooltip; a click opens Edit > Preferences > Asset Pipeline.
+    // its tooltip; a click opens Edit > Preferences > Asset Pipeline. On its left, the texture
+    // cooks: "Cooking textures 12/40" with Cancel (S14 R23).
     class StatusBar {
     public:
         explicit StatusBar(std::function<void()> openAssetPipeline);

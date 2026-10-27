@@ -1,0 +1,72 @@
+{
+ "textures": {
+  "textures/normal.png": {
+   "bytes": 19813,
+   "faces": 1,
+   "file": "6135e679f23f32f45de7b5c66a6e1cdd2f2636b6d0f0226a89e221aef7d074e5.ktx2",
+   "flags": [
+    "normalRG",
+    "streamable"
+   ],
+   "format": "EAC_RG11",
+   "height": 128,
+   "levels": 8,
+   "tail": 5587,
+   "width": 128
+  },
+  "textures/photo.png": {
+   "bytes": 8959,
+   "faces": 1,
+   "file": "306d9d5696479d4812e78361850cf3515109f99c8f1da58f033f3d974ce4019c.ktx2",
+   "flags": [
+    "streamable"
+   ],
+   "format": "ETC2_RGB8",
+   "height": 128,
+   "levels": 8,
+   "tail": 2953,
+   "width": 128
+  },
+  "textures/sky.hdr": {
+   "bytes": 7126,
+   "faces": 1,
+   "file": "8bbda0dd3979e90bb75cf700e308932710c8435755782c2c9f6857a12d9115d5.ktx2",
+   "flags": [
+    "displayEncoded",
+    "streamable"
+   ],
+   "format": "RGB9E5",
+   "height": 32,
+   "levels": 7,
+   "tail": 0,
+   "width": 64
+  },
+  "textures/solid.png": {
+   "bytes": 553,
+   "faces": 1,
+   "file": "2077100d31db85eefe836ccfb053cf1522accc6aeb662d83f0d506d9bf0e6aed.ktx2",
+   "flags": [
+    "streamable"
+   ],
+   "format": "ETC2_RGB8",
+   "height": 64,
+   "levels": 7,
+   "tail": 0,
+   "width": 64
+  },
+  "textures/sprite.png": {
+   "bytes": 970,
+   "faces": 1,
+   "file": "ef63a84a30703e5b193dd75c65078aab38a480f6d9e59bd742536b6e18e294c6.ktx2",
+   "flags": [
+    "alpha"
+   ],
+   "format": "ETC2_RGBA8",
+   "height": 32,
+   "levels": 1,
+   "tail": 0,
+   "width": 64
+  }
+ },
+ "version": 1
+}

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectSettingsWindow.h"
+#include "texture/TextureCookReport.h"
 #include "util/FileDialogs.h"
 #include "Backend.h"
 #include "window/Widgets.h"
@@ -146,6 +147,7 @@ enum class ProjectCategory {
     Player,
     Graphics,
     Quality,
+    Texture,
     Physics,
     Physics2D,
     Input,
@@ -888,6 +890,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_vsyncEnabled = project->isVSyncEnabled();
     for (int i = 0; i < 3; i++)
         m_atmosphereQuality[i] = (int)project->getAtmosphereQuality()[i];
+    m_textureSettings = project->getTextureSettings();
     m_playerLogging = project->getPlayerLogging();
     m_htmlUiMsaaIndex = findHtmlUiMsaaIndex(project->getHtmlUiMsaaSamples());
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) {
@@ -1077,6 +1080,7 @@ void ProjectSettingsWindow::drawSettings() {
         case ProjectCategory::Player: drawPlayerSettings(); break;
         case ProjectCategory::Graphics: drawGraphicsSettings(); break;
         case ProjectCategory::Quality: drawQualitySettings(); break;
+        case ProjectCategory::Texture: drawTextureSettings(); break;
         case ProjectCategory::Physics: drawPhysicsSettings(); break;
         case ProjectCategory::Physics2D: drawPhysics2DSettings(); break;
         case ProjectCategory::Input: drawInputSettings(); break;
@@ -1561,6 +1565,122 @@ void ProjectSettingsWindow::drawQualitySettings() {
         for (int i = 0; i < 3; i++) {
             if (!settingsui::beginRow(keys[i])) continue;
             drawComboSetting(rows[i], ids[i], qualityNames, 4, m_atmosphereQuality[i], (int)Project::defaultAtmosphereQuality[i], tooltips[i]);
+        }
+    });
+}
+
+void ProjectSettingsWindow::drawTextureSettings() {
+    projectDrawSettingsPanel("##TextureSettingsPanel", [this]() {
+        const TextureProjectSettings defaults;
+        TextureProjectSettings& t = m_textureSettings;
+        // the cook defaults of each family (a texture's own settings win)
+        static const char* const qualityLabels[] = {"None (uncompressed)", "Low", "Normal", "High"};
+        static const char* const sizeLabels[] = {"32", "64", "128", "256", "512", "1024", "2048", "4096", "8192", "16384"};
+        for (size_t f = 0; f < kTextureFamilyCount; f++) {
+            const std::string family = textureFamilyLabel((TextureFamily)f);
+            const std::string familyKey = textureFamilyName((TextureFamily)f);
+            if (settingsui::beginRow(("texture.default_quality." + familyKey).c_str())) {
+            const std::string qualityRow = "Default Quality (" + family + ")";
+            const std::string qualityId = "##TextureQuality" + family;
+            int quality = (int)t.defaultQuality[f];
+            drawComboSetting(qualityRow.c_str(), qualityId.c_str(), qualityLabels, 4, quality, (int)defaults.defaultQuality[f],
+                "The compression of this family's textures without an override: None keeps them uncompressed; Low, "
+                "Normal, High pick the formats of the spec's table (docs/textures.md).");
+            t.defaultQuality[f] = (TextureCookQuality)quality;
+            }
+            if (!settingsui::beginRow(("texture.default_max_size." + familyKey).c_str())) continue;
+            const std::string sizeRow = "Default Max Size (" + family + ")";
+            const std::string sizeId = "##TextureMaxSize" + family;
+            int sizeIndex = 0, defaultIndex = 0;
+            for (int i = 0; i < 10; i++) {
+                if ((32 << i) == t.defaultMaxSize[f]) sizeIndex = i;
+                if ((32 << i) == defaults.defaultMaxSize[f]) defaultIndex = i;
+            }
+            drawComboSetting(sizeRow.c_str(), sizeId.c_str(), sizeLabels, 10, sizeIndex, defaultIndex,
+                             "A larger source is shrunk to this on its longest side at cook time.");
+            t.defaultMaxSize[f] = 32 << sizeIndex;
+        }
+
+        if (settingsui::beginRow("texture.android_etc2_fallback")) {
+            if (projectBeginSettingsRow("Android ETC2 Fallback", t.androidEtc2Fallback != defaults.androidEtc2Fallback)) {
+                t.androidEtc2Fallback = defaults.androidEtc2Fallback;
+            }
+            ImGui::Checkbox("##AndroidEtc2Fallback", &t.androidEtc2Fallback);
+            endSettingsRow("Android exports also carry an ETC2 / EAC cook, loaded by devices without ASTC, and the manifest no "
+                           "longer asks the store for ASTC.");
+        }
+
+        // the runtime per platform group: Engine::setTextureQuality / setTextureMemoryBudget
+        static const char* const groups[3] = {"Desktop", "Mobile", "Web"};
+        static const char* const mipLabels[] = {"Full (0)", "Half (1)", "Quarter (2)", "Eighth (3)"};
+        for (int g = 0; g < 3; g++) {
+            const std::string groupKey = texturePlatformGroupName((size_t)g);
+            if (settingsui::beginRow(("texture.texture_quality." + groupKey).c_str())) {
+            const std::string qualityRow = std::string("Texture Quality (") + groups[g] + ")";
+            const std::string qualityId = std::string("##TextureRuntimeQuality") + groups[g];
+            drawComboSetting(qualityRow.c_str(), qualityId.c_str(), mipLabels, 4, t.textureQuality[g], defaults.textureQuality[g],
+                "Top mips of streamable textures dropped at load (Unity's Global Mipmap Limit); Lua: Engine.setTextureQuality.");
+            }
+            if (settingsui::beginRow(("texture.memory_budget_mb." + groupKey).c_str())) {
+            const std::string budgetRow = std::string("Texture Memory Budget (") + groups[g] + ")";
+            const std::string budgetId = std::string("##TextureBudget") + groups[g];
+            if (projectBeginSettingsRow(budgetRow.c_str(), t.memoryBudgetMB[g] != defaults.memoryBudgetMB[g])) {
+                t.memoryBudgetMB[g] = defaults.memoryBudgetMB[g];
+            }
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            ImGui::InputInt(budgetId.c_str(), &t.memoryBudgetMB[g], 32, 256);
+            t.memoryBudgetMB[g] = std::clamp(t.memoryBudgetMB[g], 0, 1 << 20);
+            endSettingsRow("MB of resident textures; 0 = unlimited. Over it, the largest streamable textures drop mips "
+                           "(a texture keeps at least 64 px).");
+            }
+            if (!settingsui::beginRow(("texture.low_memory_fallback." + groupKey).c_str())) continue;
+            const std::string lowRow = std::string("Low-Memory Fallback (") + groups[g] + ")";
+            const std::string lowId = std::string("##TextureLowMemory") + groups[g];
+            if (projectBeginSettingsRow(lowRow.c_str(), t.lowMemoryFallback[g] != defaults.lowMemoryFallback[g])) {
+                t.lowMemoryFallback[g] = defaults.lowMemoryFallback[g];
+            }
+            bool low = t.lowMemoryFallback[g];
+            ImGui::Checkbox(lowId.c_str(), &low);
+            t.lowMemoryFallback[g] = low;
+            endSettingsRow("When a GL-family device samples none of a texture's formats: RGB565 / RGBA4444 instead of RGBA8.");
+        }
+
+        // the cook cache
+        if (settingsui::beginRow("texture.cache_size_mb")) {
+        if (projectBeginSettingsRow("Cache Size", t.cacheSizeMB != defaults.cacheSizeMB)) {
+            t.cacheSizeMB = defaults.cacheSizeMB;
+        }
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        ImGui::InputInt("##TextureCacheSize", &t.cacheSizeMB, 256, 1024);
+        t.cacheSizeMB = std::clamp(t.cacheSizeMB, 64, 1 << 20);
+        endSettingsRow("MB the cooked texture cache keeps (least recently used files go first).");
+        }
+        if (settingsui::beginRow("texture.global_cache_dir")) {
+        if (projectBeginSettingsRow("Global Cache Directory", !t.globalCacheDir.empty())) {
+            t.globalCacheDir.clear();
+        }
+        char buffer[1024];
+        snprintf(buffer, sizeof(buffer), "%s", t.globalCacheDir.c_str());
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        if (ImGui::InputTextWithHint("##TextureGlobalCache", ".jasperengine/cache/textures (this project)", buffer, sizeof(buffer))) {
+            t.globalCacheDir = buffer;
+        }
+        endSettingsRow("A directory every project shares (the keys are content addresses, so sharing is safe).");
+        }
+        if (!settingsui::beginRow("texture.clear_cache")) return;
+        projectBeginSettingsRow("Texture Cache");
+        TextureCookQueue& cooks = TextureCookQueue::get();
+        const bool attached = cooks.getProject() == m_project;
+        ImGui::BeginDisabled(!attached);
+        if (ImGui::Button("Clear Texture Cache")) {
+            cooks.cancelAll();
+            cooks.getCache().clear();
+            cooks.invalidateAll();
+        }
+        ImGui::EndDisabled();
+        if (attached) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", TextureCookReport::formatBytes(cooks.getCache().totalBytes()).c_str());
         }
     });
 }
@@ -2489,6 +2609,7 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setVSyncEnabled(m_vsyncEnabled);
     m_project->setAtmosphereQuality({(AtmosphereQuality)m_atmosphereQuality[0], (AtmosphereQuality)m_atmosphereQuality[1],
                                      (AtmosphereQuality)m_atmosphereQuality[2]});
+    m_project->setTextureSettings(m_textureSettings);
     m_project->setPlayerLogging(m_playerLogging);
     m_project->setHtmlUiMsaaSamples(htmlUiMsaaValues[m_htmlUiMsaaIndex]);
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) {

@@ -21,6 +21,7 @@ rule, not checked here.
 from __future__ import annotations
 
 CI = True
+EDITOR = {"create": True, "name": "Tool Conventions CI"}
 
 import re
 
@@ -42,7 +43,7 @@ VERBS = {
     "build", "eval", "measure", "query", "toggle", "commit", "diff", "lock", "unlock", "revert", "publish",
     "verify", "enable", "disable", "validate", "convert", "cook", "paint", "place", "fill", "flatten", "profile",
     "test", "load", "reload", "simulate", "step", "pick", "show", "hide", "group", "ungroup", "align", "snap",
-    "discard", "wait", "resolve", "retarget",
+    "discard", "wait", "resolve", "retarget", "reimport",
 }
 
 # Names registered before the verb_noun rule (S31): they keep their names

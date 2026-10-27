@@ -3420,6 +3420,44 @@
 		64F8D0F603C260AA87E1ABA3 /* ScratchScope.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 173FC152830948AB621DDCA3 /* ScratchScope.cpp */; };
 		27B4E894C8EE1F33E2D2935A /* AssetIOService.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CBB1E8D1CB13912DD7AAB17E /* AssetIOService.cpp */; };
 		1ED7FD701BCEB526C9EB4B00 /* AssetIOService.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CBB1E8D1CB13912DD7AAB17E /* AssetIOService.cpp */; };
+		54585452F804789ADBE29404 /* debug.c in Sources */ = {isa = PBXBuildFile; fileRef = 545854520ED07E7BBD097A3F /* debug.c */; };
+		54585452A388E7CCB0C03227 /* entropy_common.c in Sources */ = {isa = PBXBuildFile; fileRef = 54585452DF8B421F8F695B7A /* entropy_common.c */; };
+		54585452222B89E326CA3AB6 /* error_private.c in Sources */ = {isa = PBXBuildFile; fileRef = 545854525E7179C8B876C84D /* error_private.c */; };
+		54585452A08CC2325B48E466 /* fse_decompress.c in Sources */ = {isa = PBXBuildFile; fileRef = 545854529543FE909A58F6A6 /* fse_decompress.c */; };
+		545854521E0BB0595280D71E /* xxhash.c in Sources */ = {isa = PBXBuildFile; fileRef = 545854527186AF06A26F8C65 /* xxhash.c */; };
+		545854529F2EC29F954EBEBB /* zstd_common.c in Sources */ = {isa = PBXBuildFile; fileRef = 54585452830955785CC227D4 /* zstd_common.c */; };
+		54585452869596A7546F6EA1 /* huf_decompress.c in Sources */ = {isa = PBXBuildFile; fileRef = 54585452EEA8BD2DF4B40598 /* huf_decompress.c */; };
+		54585452811C7F56DAACC423 /* zstd_ddict.c in Sources */ = {isa = PBXBuildFile; fileRef = 5458545200D7E9DFC201362E /* zstd_ddict.c */; };
+		545854526E1F6A49C530DF4F /* zstd_decompress.c in Sources */ = {isa = PBXBuildFile; fileRef = 54585452258877561E8D8309 /* zstd_decompress.c */; };
+		545854526444C7A4202E19E7 /* zstd_decompress_block.c in Sources */ = {isa = PBXBuildFile; fileRef = 545854527936B8E74DBC5EA8 /* zstd_decompress_block.c */; };
+		545854521759054146D90E3D /* debug.c in Sources */ = {isa = PBXBuildFile; fileRef = 545854520ED07E7BBD097A3F /* debug.c */; };
+		545854526D07770266CE0BA8 /* entropy_common.c in Sources */ = {isa = PBXBuildFile; fileRef = 54585452DF8B421F8F695B7A /* entropy_common.c */; };
+		545854520A246A22D52D175D /* error_private.c in Sources */ = {isa = PBXBuildFile; fileRef = 545854525E7179C8B876C84D /* error_private.c */; };
+		54585452C1EBCFE411FC9790 /* fse_decompress.c in Sources */ = {isa = PBXBuildFile; fileRef = 545854529543FE909A58F6A6 /* fse_decompress.c */; };
+		54585452922748A7717120DE /* xxhash.c in Sources */ = {isa = PBXBuildFile; fileRef = 545854527186AF06A26F8C65 /* xxhash.c */; };
+		545854525E88693BF00CF539 /* zstd_common.c in Sources */ = {isa = PBXBuildFile; fileRef = 54585452830955785CC227D4 /* zstd_common.c */; };
+		54585452A3653EDD4FA8A15B /* huf_decompress.c in Sources */ = {isa = PBXBuildFile; fileRef = 54585452EEA8BD2DF4B40598 /* huf_decompress.c */; };
+		545854524FC3606A52A690F9 /* zstd_ddict.c in Sources */ = {isa = PBXBuildFile; fileRef = 5458545200D7E9DFC201362E /* zstd_ddict.c */; };
+		545854526DCCD708E46AD33E /* zstd_decompress.c in Sources */ = {isa = PBXBuildFile; fileRef = 54585452258877561E8D8309 /* zstd_decompress.c */; };
+		54585452E02E01B49E945795 /* zstd_decompress_block.c in Sources */ = {isa = PBXBuildFile; fileRef = 545854527936B8E74DBC5EA8 /* zstd_decompress_block.c */; };
+		5458545259CB5F9143FDCA75 /* libzstd-ios.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5458545206117992C981EF93 /* libzstd-ios.a */; };
+		545854521DB9865AD8F63146 /* libzstd-macos.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 545854524F81EF8691EBEBCC /* libzstd-macos.a */; };
+		54585452337DBB33FFA49625 /* BasisTranscode.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 545854526064F947321E683C /* BasisTranscode.cpp */; };
+		545854524A66D29960C46434 /* BasisTranscode.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 545854526064F947321E683C /* BasisTranscode.cpp */; };
+		54585452DECB4093F1AA2EDA /* CookedTextures.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 545854529600C460E89ABA9F /* CookedTextures.cpp */; };
+		5458545279AD740D40738DCC /* CookedTextures.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 545854529600C460E89ABA9F /* CookedTextures.cpp */; };
+		54585452834ACA971471EC68 /* Ktx2.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5458545245EC4E4B78AB2446 /* Ktx2.cpp */; };
+		54585452239CFC7B85B16C43 /* Ktx2.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5458545245EC4E4B78AB2446 /* Ktx2.cpp */; };
+		54585452D14B54CBB708BB94 /* MipChain.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54585452649E3C76E0AEE624 /* MipChain.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		545854528E59D90FA883DBBD /* MipChain.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54585452649E3C76E0AEE624 /* MipChain.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		545854528F4D5ECA4804EBDE /* TextureDecode.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54585452DD0B0EDD41C1B3CB /* TextureDecode.cpp */; };
+		54585452248AA2616B7BEA77 /* TextureDecode.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54585452DD0B0EDD41C1B3CB /* TextureDecode.cpp */; };
+		54585452C83433D85F50DE9D /* TextureFallback.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54585452BF23CFD29610DC0B /* TextureFallback.cpp */; };
+		54585452E5E203C4F4A0E985 /* TextureFallback.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54585452BF23CFD29610DC0B /* TextureFallback.cpp */; };
+		545854520D102A1C2FBF346F /* TextureFormat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5458545237AEE60BC29F6862 /* TextureFormat.cpp */; };
+		54585452C46EF25C05A7C8F0 /* TextureFormat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5458545237AEE60BC29F6862 /* TextureFormat.cpp */; };
+		54585452D9459E273375FD61 /* TexturePrepare.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 545854520E4B724D1653E613 /* TexturePrepare.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		5458545286178645EF01D4C7 /* TexturePrepare.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 545854520E4B724D1653E613 /* TexturePrepare.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -3775,6 +3813,20 @@
 			proxyType = 1;
 			remoteGlobalIDString = 5649444518A140BC8A082C53;
 			remoteInfo = "webm-macos";
+		};
+		5458545230225339108D21FD /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7162F8C0259547D60075B97D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 54585452EC438CFBB0DCF3E7;
+			remoteInfo = "zstd-ios";
+		};
+		545854521C86DFFACE021A3E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7162F8C0259547D60075B97D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 545854526D6292947F3BFC30;
+			remoteInfo = "zstd-macos";
 		};
 /* End PBXContainerItemProxy section */
 
@@ -6916,6 +6968,34 @@
 		EA199B0F796D9E777176C601 /* MemoryDebug.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = MemoryDebug.h; path = ../memory/MemoryDebug.h; sourceTree = "<group>"; };
 		CBB1E8D1CB13912DD7AAB17E /* AssetIOService.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = AssetIOService.cpp; path = AssetIOService.cpp; sourceTree = "<group>"; };
 		6275E3D8D049746EE76E8FFF /* AssetIOService.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = AssetIOService.h; path = AssetIOService.h; sourceTree = "<group>"; };
+		5458545206117992C981EF93 /* libzstd-ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libzstd-ios.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		545854524F81EF8691EBEBCC /* libzstd-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libzstd-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		545854520ED07E7BBD097A3F /* debug.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = debug.c; sourceTree = "<group>"; };
+		54585452DF8B421F8F695B7A /* entropy_common.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = entropy_common.c; sourceTree = "<group>"; };
+		545854525E7179C8B876C84D /* error_private.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = error_private.c; sourceTree = "<group>"; };
+		545854529543FE909A58F6A6 /* fse_decompress.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = fse_decompress.c; sourceTree = "<group>"; };
+		545854527186AF06A26F8C65 /* xxhash.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = xxhash.c; sourceTree = "<group>"; };
+		54585452830955785CC227D4 /* zstd_common.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = zstd_common.c; sourceTree = "<group>"; };
+		54585452EEA8BD2DF4B40598 /* huf_decompress.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = huf_decompress.c; sourceTree = "<group>"; };
+		5458545200D7E9DFC201362E /* zstd_ddict.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = zstd_ddict.c; sourceTree = "<group>"; };
+		54585452258877561E8D8309 /* zstd_decompress.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = zstd_decompress.c; sourceTree = "<group>"; };
+		545854527936B8E74DBC5EA8 /* zstd_decompress_block.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = zstd_decompress_block.c; sourceTree = "<group>"; };
+		545854526064F947321E683C /* BasisTranscode.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = BasisTranscode.cpp; sourceTree = "<group>"; };
+		5458545218D8822CEB6FDDD7 /* BasisTranscode.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = BasisTranscode.h; sourceTree = "<group>"; };
+		545854529600C460E89ABA9F /* CookedTextures.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CookedTextures.cpp; sourceTree = "<group>"; };
+		54585452428EB97BEE5ABE7A /* CookedTextures.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CookedTextures.h; sourceTree = "<group>"; };
+		5458545245EC4E4B78AB2446 /* Ktx2.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Ktx2.cpp; sourceTree = "<group>"; };
+		5458545232AE562A7DC09DF6 /* Ktx2.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Ktx2.h; sourceTree = "<group>"; };
+		54585452649E3C76E0AEE624 /* MipChain.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MipChain.cpp; sourceTree = "<group>"; };
+		5458545236E136CC3FB208F8 /* MipChain.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MipChain.h; sourceTree = "<group>"; };
+		54585452DD0B0EDD41C1B3CB /* TextureDecode.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextureDecode.cpp; sourceTree = "<group>"; };
+		5458545219451F6A0FD682A2 /* TextureDecode.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TextureDecode.h; sourceTree = "<group>"; };
+		54585452BF23CFD29610DC0B /* TextureFallback.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextureFallback.cpp; sourceTree = "<group>"; };
+		54585452032ECD08AF689D69 /* TextureFallback.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TextureFallback.h; sourceTree = "<group>"; };
+		5458545237AEE60BC29F6862 /* TextureFormat.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextureFormat.cpp; sourceTree = "<group>"; };
+		545854528641E8CBE84CB9B4 /* TextureFormat.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TextureFormat.h; sourceTree = "<group>"; };
+		545854520E4B724D1653E613 /* TexturePrepare.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TexturePrepare.cpp; sourceTree = "<group>"; };
+		5458545287A8FF0F79300B90 /* TexturePrepare.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TexturePrepare.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -6969,6 +7049,7 @@
 				48544D4C0000000000000292 /* librmlui-ios.a in Frameworks */,
 				50564543000000000000011B /* libthorvg-ios.a in Frameworks */,
 				50564543000000000000004D /* liblunasvg-ios.a in Frameworks */,
+				5458545259CB5F9143FDCA75 /* libzstd-ios.a in Frameworks */,
 				564944456952266E8C78E9D0 /* libwebm-ios.a in Frameworks */,
 				56494445CE183DB339340913 /* libopus-ios.a in Frameworks */,
 				5649444593ADB99E9EF342AE /* libdav1d-ios.a in Frameworks */,
@@ -7029,6 +7110,7 @@
 				48544D4C0000000000000293 /* librmlui-macos.a in Frameworks */,
 				505645430000000000000156 /* libthorvg-macos.a in Frameworks */,
 				50564543000000000000006D /* liblunasvg-macos.a in Frameworks */,
+				545854521DB9865AD8F63146 /* libzstd-macos.a in Frameworks */,
 				56494445672427D86A43EBF3 /* libwebm-macos.a in Frameworks */,
 				56494445880DCE3D89AEDC6F /* libopus-macos.a in Frameworks */,
 				56494445085E8B5DA06397AF /* libdav1d-macos.a in Frameworks */,
@@ -7277,6 +7359,20 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		5649444547202E343F200BAF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		545854528FB0A81CD44A9A12 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		54585452693CE922727CB6F1 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -8179,6 +8275,8 @@
 				5056454300000000000000E3 /* libthorvg-ios.a */,
 				505645430000000000000050 /* liblunasvg-macos.a */,
 				505645430000000000000030 /* liblunasvg-ios.a */,
+				545854524F81EF8691EBEBCC /* libzstd-macos.a */,
+				5458545206117992C981EF93 /* libzstd-ios.a */,
 				56494445D8B4361E94C9BE1B /* libwebm-macos.a */,
 				564944455854CF707ED63216 /* libwebm-ios.a */,
 				564944453275D44A6A04C8F6 /* libopus-macos.a */,
@@ -8552,6 +8650,22 @@
 				7162FC6C25962A0E0075B97D /* Texture.cpp */,
 				71BE621F25B1DB83006D6E02 /* TextureData.h */,
 				71BE621E25B1DB83006D6E02 /* TextureData.cpp */,
+				5458545287A8FF0F79300B90 /* TexturePrepare.h */,
+				545854520E4B724D1653E613 /* TexturePrepare.cpp */,
+				545854528641E8CBE84CB9B4 /* TextureFormat.h */,
+				5458545237AEE60BC29F6862 /* TextureFormat.cpp */,
+				54585452032ECD08AF689D69 /* TextureFallback.h */,
+				54585452BF23CFD29610DC0B /* TextureFallback.cpp */,
+				5458545219451F6A0FD682A2 /* TextureDecode.h */,
+				54585452DD0B0EDD41C1B3CB /* TextureDecode.cpp */,
+				5458545236E136CC3FB208F8 /* MipChain.h */,
+				54585452649E3C76E0AEE624 /* MipChain.cpp */,
+				5458545232AE562A7DC09DF6 /* Ktx2.h */,
+				5458545245EC4E4B78AB2446 /* Ktx2.cpp */,
+				54585452428EB97BEE5ABE7A /* CookedTextures.h */,
+				545854529600C460E89ABA9F /* CookedTextures.cpp */,
+				5458545218D8822CEB6FDDD7 /* BasisTranscode.h */,
+				545854526064F947321E683C /* BasisTranscode.cpp */,
 			);
 			path = texture;
 			sourceTree = "<group>";
@@ -8675,6 +8789,7 @@
 				71F97B1D262D1E2B00CD6F2B /* tinygltf */,
 				71E36BB125D599C000EFEED4 /* tinyobjloader */,
 				71393ED328F8EF200074442E /* tinyxml2 */,
+				5458545227649E7756DFE7F0 /* zstd */,
 			);
 			path = libs;
 			sourceTree = "<group>";
@@ -11886,6 +12001,47 @@
 			path = backends;
 			sourceTree = "<group>";
 		};
+		5458545227649E7756DFE7F0 /* zstd */ = {
+			isa = PBXGroup;
+			children = (
+				545854529C9A0BD9F22B3949 /* lib */,
+			);
+			path = zstd;
+			sourceTree = "<group>";
+		};
+		545854529C9A0BD9F22B3949 /* lib */ = {
+			isa = PBXGroup;
+			children = (
+				54585452682E51A9CB00EEBB /* common */,
+				545854520B64BFC2500CDFD2 /* decompress */,
+			);
+			path = lib;
+			sourceTree = "<group>";
+		};
+		54585452682E51A9CB00EEBB /* common */ = {
+			isa = PBXGroup;
+			children = (
+				545854520ED07E7BBD097A3F /* debug.c */,
+				54585452DF8B421F8F695B7A /* entropy_common.c */,
+				545854525E7179C8B876C84D /* error_private.c */,
+				545854529543FE909A58F6A6 /* fse_decompress.c */,
+				545854527186AF06A26F8C65 /* xxhash.c */,
+				54585452830955785CC227D4 /* zstd_common.c */,
+			);
+			path = common;
+			sourceTree = "<group>";
+		};
+		545854520B64BFC2500CDFD2 /* decompress */ = {
+			isa = PBXGroup;
+			children = (
+				54585452EEA8BD2DF4B40598 /* huf_decompress.c */,
+				5458545200D7E9DFC201362E /* zstd_ddict.c */,
+				54585452258877561E8D8309 /* zstd_decompress.c */,
+				545854527936B8E74DBC5EA8 /* zstd_decompress_block.c */,
+			);
+			path = decompress;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
@@ -12629,6 +12785,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5458545221E228B5F4A51AD7 /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		54585452872C069F817C721C /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXHeadersBuildPhase section */
 
 /* Begin PBXNativeTarget section */
@@ -12748,6 +12918,7 @@
 				48544D4C000000000000029C /* PBXTargetDependency */,
 				50564543000000000000011D /* PBXTargetDependency */,
 				50564543000000000000004F /* PBXTargetDependency */,
+				54585452977E8C024A2A10F8 /* PBXTargetDependency */,
 				5649444521115696D429F1BF /* PBXTargetDependency */,
 				56494445B91CD1A19F7D8721 /* PBXTargetDependency */,
 				564944452AD4E3634E9BCE42 /* PBXTargetDependency */,
@@ -12794,6 +12965,7 @@
 				7162F8CA259547DA0075B97D /* Sources */,
 				7162F8CB259547DA0075B97D /* Frameworks */,
 				7162F8CC259547DA0075B97D /* Resources */,
+				54585452612FE2DBC286FB2F /* Keep this platform's cooked textures */,
 			);
 			buildRules = (
 			);
@@ -12812,6 +12984,7 @@
 				7162F8E0259547DA0075B97D /* Sources */,
 				7162F8E1259547DA0075B97D /* Frameworks */,
 				7162F8E2259547DA0075B97D /* Resources */,
+				54585452BB50C2C92C943069 /* Keep this platform's cooked textures */,
 			);
 			buildRules = (
 			);
@@ -12838,6 +13011,7 @@
 				48544D4C00000000000002A5 /* PBXTargetDependency */,
 				505645430000000000000158 /* PBXTargetDependency */,
 				50564543000000000000006F /* PBXTargetDependency */,
+				54585452B91FC47B881142FD /* PBXTargetDependency */,
 				56494445C4D616F46482E4AB /* PBXTargetDependency */,
 				56494445B650B2E2F7BAB588 /* PBXTargetDependency */,
 				56494445619D2BD5CCB740D3 /* PBXTargetDependency */,
@@ -13425,6 +13599,40 @@
 			productReference = 56494445D8B4361E94C9BE1B /* libwebm-macos.a */;
 			productType = "com.apple.product-type.library.static";
 		};
+		54585452EC438CFBB0DCF3E7 /* zstd-ios */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 545854521B1246B4AECBE37F /* Build configuration list for PBXNativeTarget "zstd-ios" */;
+			buildPhases = (
+				5458545221E228B5F4A51AD7 /* Headers */,
+				54585452F724C1B50D075573 /* Sources */,
+				545854528FB0A81CD44A9A12 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "zstd-ios";
+			productName = "zstd-ios";
+			productReference = 5458545206117992C981EF93 /* libzstd-ios.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+		545854526D6292947F3BFC30 /* zstd-macos */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 54585452040E04C7BD4CB097 /* Build configuration list for PBXNativeTarget "zstd-macos" */;
+			buildPhases = (
+				54585452872C069F817C721C /* Headers */,
+				5458545244D65686EF8ED8DF /* Sources */,
+				54585452693CE922727CB6F1 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "zstd-macos";
+			productName = "zstd-macos";
+			productReference = 545854524F81EF8691EBEBCC /* libzstd-macos.a */;
+			productType = "com.apple.product-type.library.static";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -13572,6 +13780,8 @@
 				50564543000000000000011A /* thorvg-ios */,
 				50564543000000000000006C /* lunasvg-macos */,
 				50564543000000000000004C /* lunasvg-ios */,
+				545854526D6292947F3BFC30 /* zstd-macos */,
+				54585452EC438CFBB0DCF3E7 /* zstd-ios */,
 				5649444518A140BC8A082C53 /* webm-macos */,
 				56494445104464A820BD9E10 /* webm-ios */,
 				56494445DF3AD0C0695D7C0C /* opus-macos */,
@@ -13615,6 +13825,39 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		54585452612FE2DBC286FB2F /* Keep this platform's cooked textures */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Keep this platform's cooked textures";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "COOKED=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/assets/je-cooked\"\nfor family in desktop android_etc2 web; do rm -rf \"$COOKED/$family\"; done\n";
+		};
+		54585452BB50C2C92C943069 /* Keep this platform's cooked textures */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Keep this platform's cooked textures";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "COOKED=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/assets/je-cooked\"\nfor family in mobile android_etc2 web; do rm -rf \"$COOKED/$family\"; done\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		7105CAC82AD61D1E007C91BA /* Sources */ = {
@@ -14134,6 +14377,14 @@
 				717AD96E290B661A007D7DB5 /* AudioSystem.cpp in Sources */,
 				71651FF92AA804B4008D9BF5 /* Contact2D.cpp in Sources */,
 				71BE622125B1DB83006D6E02 /* TextureData.cpp in Sources */,
+				5458545286178645EF01D4C7 /* TexturePrepare.cpp in Sources */,
+				54585452C46EF25C05A7C8F0 /* TextureFormat.cpp in Sources */,
+				54585452E5E203C4F4A0E985 /* TextureFallback.cpp in Sources */,
+				54585452248AA2616B7BEA77 /* TextureDecode.cpp in Sources */,
+				545854528E59D90FA883DBBD /* MipChain.cpp in Sources */,
+				54585452239CFC7B85B16C43 /* Ktx2.cpp in Sources */,
+				5458545279AD740D40738DCC /* CookedTextures.cpp in Sources */,
+				545854524A66D29960C46434 /* BasisTranscode.cpp in Sources */,
 				713D82A8259D307F00567F9F /* Camera.cpp in Sources */,
 				17FB42782FDDA782002F919C /* IBLEnvironment.cpp in Sources */,
 				511A00080000000000000000 /* TexturePack.cpp in Sources */,
@@ -14634,6 +14885,14 @@
 				71651FF82AA804B4008D9BF5 /* Contact2D.cpp in Sources */,
 				71BE624325B1DB9E006D6E02 /* ShaderPool.cpp in Sources */,
 				71BE622025B1DB83006D6E02 /* TextureData.cpp in Sources */,
+				54585452D9459E273375FD61 /* TexturePrepare.cpp in Sources */,
+				545854520D102A1C2FBF346F /* TextureFormat.cpp in Sources */,
+				54585452C83433D85F50DE9D /* TextureFallback.cpp in Sources */,
+				545854528F4D5ECA4804EBDE /* TextureDecode.cpp in Sources */,
+				54585452D14B54CBB708BB94 /* MipChain.cpp in Sources */,
+				54585452834ACA971471EC68 /* Ktx2.cpp in Sources */,
+				54585452DECB4093F1AA2EDA /* CookedTextures.cpp in Sources */,
+				54585452337DBB33FFA49625 /* BasisTranscode.cpp in Sources */,
 				17FB42762FDDA782002F919C /* IBLEnvironment.cpp in Sources */,
 				511A00070000000000000000 /* TexturePack.cpp in Sources */,
 				511A00020000000000000000 /* MaterialPbr.cpp in Sources */,
@@ -16778,6 +17037,40 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		54585452F724C1B50D075573 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				54585452F804789ADBE29404 /* debug.c in Sources */,
+				54585452A388E7CCB0C03227 /* entropy_common.c in Sources */,
+				54585452222B89E326CA3AB6 /* error_private.c in Sources */,
+				54585452A08CC2325B48E466 /* fse_decompress.c in Sources */,
+				545854521E0BB0595280D71E /* xxhash.c in Sources */,
+				545854529F2EC29F954EBEBB /* zstd_common.c in Sources */,
+				54585452869596A7546F6EA1 /* huf_decompress.c in Sources */,
+				54585452811C7F56DAACC423 /* zstd_ddict.c in Sources */,
+				545854526E1F6A49C530DF4F /* zstd_decompress.c in Sources */,
+				545854526444C7A4202E19E7 /* zstd_decompress_block.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5458545244D65686EF8ED8DF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				545854521759054146D90E3D /* debug.c in Sources */,
+				545854526D07770266CE0BA8 /* entropy_common.c in Sources */,
+				545854520A246A22D52D175D /* error_private.c in Sources */,
+				54585452C1EBCFE411FC9790 /* fse_decompress.c in Sources */,
+				54585452922748A7717120DE /* xxhash.c in Sources */,
+				545854525E88693BF00CF539 /* zstd_common.c in Sources */,
+				54585452A3653EDD4FA8A15B /* huf_decompress.c in Sources */,
+				545854524FC3606A52A690F9 /* zstd_ddict.c in Sources */,
+				545854526DCCD708E46AD33E /* zstd_decompress.c in Sources */,
+				54585452E02E01B49E945795 /* zstd_decompress_block.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -17011,6 +17304,16 @@
 			target = 5649444518A140BC8A082C53 /* webm-macos */;
 			targetProxy = 56494445C067DC715415C011 /* PBXContainerItemProxy */;
 		};
+		54585452977E8C024A2A10F8 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 54585452EC438CFBB0DCF3E7 /* zstd-ios */;
+			targetProxy = 5458545230225339108D21FD /* PBXContainerItemProxy */;
+		};
+		54585452B91FC47B881142FD /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 545854526D6292947F3BFC30 /* zstd-macos */;
+			targetProxy = 545854521C86DFFACE021A3E /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -17242,6 +17545,8 @@
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/rmlui/Include",
 					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/bcdec",
+					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/libwebm",
 					"$(SRCROOT)/../../libs/opus/include",
 					"$(SRCROOT)/../../libs/dav1d/include",
@@ -17292,6 +17597,8 @@
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/rmlui/Include",
 					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/bcdec",
+					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/libwebm",
 					"$(SRCROOT)/../../libs/opus/include",
 					"$(SRCROOT)/../../libs/dav1d/include",
@@ -17499,6 +17806,8 @@
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/rmlui/Include",
 					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/bcdec",
+					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/libwebm",
 					"$(SRCROOT)/../../libs/opus/include",
 					"$(SRCROOT)/../../libs/dav1d/include",
@@ -17557,6 +17866,8 @@
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/rmlui/Include",
 					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/bcdec",
+					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/libwebm",
 					"$(SRCROOT)/../../libs/opus/include",
 					"$(SRCROOT)/../../libs/dav1d/include",
@@ -17621,6 +17932,8 @@
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/rmlui/Include",
 					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/bcdec",
+					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/libwebm",
 					"$(SRCROOT)/../../libs/opus/include",
 					"$(SRCROOT)/../../libs/dav1d/include",
@@ -17681,6 +17994,8 @@
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/rmlui/Include",
 					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/bcdec",
+					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/libwebm",
 					"$(SRCROOT)/../../libs/opus/include",
 					"$(SRCROOT)/../../libs/dav1d/include",
@@ -17741,6 +18056,8 @@
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/rmlui/Include",
 					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/bcdec",
+					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/libwebm",
 					"$(SRCROOT)/../../libs/opus/include",
 					"$(SRCROOT)/../../libs/dav1d/include",
@@ -17794,6 +18111,8 @@
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/rmlui/Include",
 					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/bcdec",
+					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/libwebm",
 					"$(SRCROOT)/../../libs/opus/include",
 					"$(SRCROOT)/../../libs/dav1d/include",
@@ -19432,6 +19751,115 @@
 			};
 			name = Release;
 		};
+		54585452023CF4016D9699BA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"ZSTD_DISABLE_ASM=1",
+					"ZSTD_LEGACY_SUPPORT=0",
+					"XXH_NAMESPACE=JE_ZSTD_",
+				);
+				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
+				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/zstd/lib",
+					"$(SRCROOT)/../../libs/zstd/lib/common",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				OTHER_LDFLAGS = "-ObjC";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		545854528ADE04B0F9796AF2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"ZSTD_DISABLE_ASM=1",
+					"ZSTD_LEGACY_SUPPORT=0",
+					"XXH_NAMESPACE=JE_ZSTD_",
+				);
+				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
+				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/zstd/lib",
+					"$(SRCROOT)/../../libs/zstd/lib/common",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				OTHER_LDFLAGS = "-ObjC";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		545854529A6FAFFDF15DFE3A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
+				EXECUTABLE_PREFIX = lib;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"ZSTD_DISABLE_ASM=1",
+					"ZSTD_LEGACY_SUPPORT=0",
+					"XXH_NAMESPACE=JE_ZSTD_",
+				);
+				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
+				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/zstd/lib",
+					"$(SRCROOT)/../../libs/zstd/lib/common",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		5458545263854B58CDABC553 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
+				EXECUTABLE_PREFIX = lib;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"ZSTD_DISABLE_ASM=1",
+					"ZSTD_LEGACY_SUPPORT=0",
+					"XXH_NAMESPACE=JE_ZSTD_",
+				);
+				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
+				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/zstd/lib",
+					"$(SRCROOT)/../../libs/zstd/lib/common",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -19836,6 +20264,24 @@
 			buildConfigurations = (
 				5649444556E401AE99C1FEE6 /* Debug */,
 				56494445A6574EA6DB7531EC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		545854521B1246B4AECBE37F /* Build configuration list for PBXNativeTarget "zstd-ios" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				54585452023CF4016D9699BA /* Debug */,
+				545854528ADE04B0F9796AF2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		54585452040E04C7BD4CB097 /* Build configuration list for PBXNativeTarget "zstd-macos" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				545854529A6FAFFDF15DFE3A /* Debug */,
+				5458545263854B58CDABC553 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

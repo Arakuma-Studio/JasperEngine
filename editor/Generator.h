@@ -151,6 +151,10 @@ namespace jasperengine::editor {
         // Project Settings > Input: the actions asset (assets-relative, "" none) and the deadzone
         std::string inputActionsAsset;
         float inputDeadzone = 0.15f;
+        // Project Settings > Texture per platform group (desktop, mobile, web; S14 R12)
+        std::array<int, 3> textureQuality = {0, 0, 0};
+        std::array<int, 3> textureBudgetMB = {0, 512, 384};
+        std::array<bool, 3> textureLowMemory = {false, false, true};
     private:
         // what the build's events name (setStatusRow)
         std::string statusRow = "cpp";
@@ -258,6 +262,11 @@ namespace jasperengine::editor {
         void setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality) { atmosphereQuality = quality; }
         // the Input Actions the game starts with (InputActions::loadDefault); set before configure()
         void setInputSettings(const std::string& actionsAsset, float deadzone) { inputActionsAsset = actionsAsset; inputDeadzone = deadzone; }
+        void setTextureDefaults(const std::array<int, 3>& quality, const std::array<int, 3>& budgetMB, const std::array<bool, 3>& lowMemory) {
+            textureQuality = quality;
+            textureBudgetMB = budgetMB;
+            textureLowMemory = lowMemory;
+        }
         // Configures and builds on the process channel; called from a channel job (the Play
         // startup), it builds on that thread instead and returns when done.
         void runBuild(const fs::path& projectPath, const fs::path& buildPath, const std::string& cCompiler, const std::string& cxxCompiler, const std::string& generator, unsigned int parallelJobs);
