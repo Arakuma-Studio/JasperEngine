@@ -1178,6 +1178,31 @@ TEST_F(VertexAnimatorSystemTest, EpochRebaseKeepsPhasesContinuous) {
     EXPECT_EQ(scene.getComponent<InstancedMeshComponent>(hero).instances[0].vat0, v0);
 }
 
+// The Inspector's preview scrubber: a SetTime request applied at once in edit mode (applyRequests)
+TEST_F(VertexAnimatorSystemTest, PreviewScrubSetsTheTimeAtOnce) {
+    hero = makeHero(2);
+    system()->setPaused(true);
+    VertexAnimatorComponent& a = animator(hero);
+    a.preview = true;
+    step(0.1);
+    step(0.1);
+    a.speed = 0.001f;
+    step(0.1);
+    VertexAnimatorRequest request;
+    request.kind = VertexAnimatorRequest::Kind::SetTime;
+    request.value = 0.9f;
+    a.requests.push_back(request);
+    request.instance = 1;
+    request.value = 0.4f;
+    a.requests.push_back(request);
+    system()->applyRequests(hero);
+    VertexAnimator object(&scene, hero);
+    EXPECT_NEAR(object.getTime(), 0.9f, 1e-3f);
+    EXPECT_NEAR(object.getInstanceNormalizedTime(1), 0.4f, 1e-3f);
+    step(0.1);
+    EXPECT_NEAR(object.getTime(), 0.9f, 1e-3f) << "nearly still at speed 0.001";
+}
+
 TEST_F(VertexAnimatorSystemTest, EditModeClockMovesOnlyWithPreview) {
     hero = makeHero();
     system()->setPaused(true);

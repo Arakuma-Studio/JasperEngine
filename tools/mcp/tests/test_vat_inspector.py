@@ -215,12 +215,14 @@ async def test_animator_section_preview_and_scrub(ed: Editor):
     scrub = await ui.reveal("vat.scrub", top=False)
     ed.check(scrub, "the scrubber shows while previewing")
     await shot(ed, "04-preview-scrubber")
-    # held still (speed 0), a click near the scrubber's right end then its left end sets the time
-    await lua(ed, 'object("quad"):getVertexAnimator().speed = 0; return true')
-    await ui.click(scrub[2] - 6, (scrub[1] + scrub[3]) / 2)
-    late = await lua(ed, 'return object("quad"):getVertexAnimator().time')
-    ed.check(late[0] > 0.8, f"the scrubber set a late time: {late}")
-    await ui.click(scrub[0] + 6, (scrub[1] + scrub[3]) / 2)
+    # nearly still (speed 0.001), a drag to the scrubber's right end then its left end sets the time
+    await lua(ed, 'object("quad"):getVertexAnimator().speed = 0.001; return true')
+    mid = (scrub[1] + scrub[3]) / 2
+    await ui.drag(((scrub[0] + scrub[2]) / 2, mid), (scrub[2] - 4, mid), steps=6)
+    await shot(ed, "04b-scrub-late")
+    late = await lua(ed, 'local va = object("quad"):getVertexAnimator(); return va.time, va.preview, va.currentClip, va.speed')
+    ed.check(late[0] > 0.8, f"the scrubber set a late time: {late} (scrubber {scrub}, items {ed.ui_items().get('vat.scrub')})")
+    await ui.drag(((scrub[0] + scrub[2]) / 2, mid), (scrub[0] + 4, mid), steps=6)
     early = await lua(ed, 'return object("quad"):getVertexAnimator().time')
     ed.check(early[0] < 0.2, f"the scrubber set an early time: {early}")
     await lua(ed, 'object("quad"):getVertexAnimator().speed = 1; return true')
