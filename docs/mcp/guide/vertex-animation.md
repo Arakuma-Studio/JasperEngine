@@ -191,7 +191,10 @@ fade])`, `randomizeTimes(seed)`; `isLoaded()`, `getLoadError()` (`mesh_mismatch:
 Model isn't the `.vat`'s mesh); callbacks `onEvent(event)`, `onFinish(clip)`,
 `onInstanceEvent(i, event)`, `onInstanceFinish(i, clip)`. A clip event `{function: "onStep",
 args: ["left"]}` also calls `self:onStep("left")` on the GameObject's scripts (single
-GameObjects; instances only through `onInstanceEvent` with `instanceEvents` on).
+GameObjects; instances only through `onInstanceEvent` with `instanceEvents` on). Each event
+fires once per crossing; calls made inside a callback apply at once (that frame). `stop()` and
+speed 0 hold a clip at no per-frame cost; `Mesh:updateInstance(i, data)` keeps the instance's
+clip and time; `enabled = false` draws the mesh and its instances at rest.
 
 ## Recipes
 

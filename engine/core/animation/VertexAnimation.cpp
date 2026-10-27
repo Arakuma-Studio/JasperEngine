@@ -172,6 +172,10 @@ namespace{
 
 }
 
+float vat::vatLocalTime(const VatTrack& track, float now){
+    return track.speed == 0.0f ? track.start : (now - track.start) * track.speed;
+}
+
 VatFrameSample vat::vatSample(const VatClip& clip, float tau){
     // C++ guards (the shader gets valid data): a non-finite time or a clip without a rate
     // samples its first frame
@@ -1411,7 +1415,7 @@ bool VertexAnimation::sampleSocket(int socket, const VatTrackPair& pair, float n
     SocketPose pose;
     VatFrameSample sampleA;
     if (hasA){
-        sampleA = vatSample(data.clips[pair.a.clip], (now - pair.a.start) * pair.a.speed);
+        sampleA = vatSample(data.clips[pair.a.clip], vatLocalTime(pair.a, now));
         pose = socketPoseAt(sockets, column, sampleA);
     }
     if (hasB){
@@ -1419,7 +1423,7 @@ bool VertexAnimation::sampleSocket(int socket, const VatTrackPair& pair, float n
         // blend mode: B's phase follows A's; a fade plays B on its own clock
         VatFrameSample sampleB = (pair.blend >= 0.0f && hasA)
             ? vatSampleNormalized(clipB, sampleA.normalized)
-            : vatSample(clipB, (now - pair.b.start) * pair.b.speed);
+            : vatSample(clipB, vatLocalTime(pair.b, now));
         SocketPose poseB = socketPoseAt(sockets, column, sampleB);
         // the sockets have no rest pose: B alone when A is the rest
         pose = hasA ? blendPoses(pose, poseB, vatWeightB(pair, now)) : poseB;

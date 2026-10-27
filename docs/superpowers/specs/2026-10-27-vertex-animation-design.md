@@ -181,7 +181,8 @@ and one error names the asset and the device limit.
    Catalog/Stream/Factory/EntityCloner instance I/O.
 5. **Bounds override**: `MeshComponent::animatedBounds` (AABB, empty = none) used instead of `verticesAABB` for the
    world AABB, the visibility precheck and instance spheres (`RenderSystem.cpp:13085, 12363, 7427, 11473`). Set
-   from the clip bounds of the clips in use (or the asset bounds).
+   from the clip bounds of the clips in use, plus the mesh's own `verticesAABB` while a drawn state is at rest
+   (no clip: the clips' bounds don't hold the rest pose); the asset bounds when neither is known.
 
 ### 3.3 Vertex Animator component
 
@@ -208,7 +209,8 @@ fadeEnd}` or a fixed blend weight with phase sync. The GPU computes everything f
 looping characters costs **zero CPU work and zero uploads per frame**; a `play`/`crossFade` writes 32 bytes.
 
 ```
-f    = (now - start) * speed * clip.fps                       // highp float
+tau  = speed == 0 ? start : (now - start) * speed             // vatLocalTime: speed 0 holds at tau = start
+f    = tau * clip.fps                                         // highp float
 loop:      f = mod(f, frames)            f1 = mod(f0 + 1, frames)
 once/clamp:f = clamp(f, 0, frames - 1)   f1 = min(f0 + 1, frames - 1)
 ping_pong: f = triangle(f, frames - 1)   f1 = next on the same leg
@@ -224,6 +226,11 @@ result   = mix(value(A), value(B), weightB(now))               // weightB from t
   **Blend** `blend(a, b, w)` holds both with a fixed weight and phase sync (B's normalized time follows A's), for
   walk/run by speed.
 - `once` clips finish at their last frame; `onFinish` fires from the CPU mirror; `queue(name)` plays next.
+- **Held** tracks (`stop()`, speed 0) are written once as speed 0 with `start` = the held local time, so a paused
+  crowd costs nothing per frame either. Events cross `(previous now, now]` on a double clock: once per crossing.
+- Requests made inside `onEvent`/`onFinish` apply at once (at that update's time) and draw that frame. A disabled
+  animator writes the rest state once (entity and instances); `Mesh:updateInstance` keeps an instance's
+  `vat0/vat1`.
 - Single (non-instanced) entities carry the same state in the uniform block instead of instance attributes.
 
 ### 3.5 Shader integration (mirrors the Lattice deformer end to end)
