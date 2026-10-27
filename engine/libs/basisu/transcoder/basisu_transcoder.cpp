@@ -87,6 +87,11 @@
 	#define JASPER_BASISD_COMPUTE_DXT1_TABLES 0
 #endif
 
+// JasperEngine: faster UASTC -> BC7 packing and endpoint decoding, the same bytes (README.jasper.md)
+#ifndef JASPER_BASISD_FAST_TRANSCODE
+	#define JASPER_BASISD_FAST_TRANSCODE 0
+#endif
+
 // Disable all BC7 transcoders if necessary (useful when cross compiling to Javascript)
 #if defined(BASISD_SUPPORT_BC7) && !BASISD_SUPPORT_BC7
 	#ifndef BASISD_SUPPORT_BC7_MODE5
@@ -14677,6 +14682,7 @@ namespace basist
 		assert(*pCur_ofs <= 128);
 	}
 
+#if JASPER_BASISD_FAST_TRANSCODE
 	// JasperEngine: the block's 128 bits gathered in two words, not OR-ed into bytes a field at a
 	// time (half the cost of a UASTC -> BC7 transcode was here); the same bytes (README.jasper.md)
 	struct bc7_block_bit_writer
@@ -14709,6 +14715,212 @@ namespace basist
 		}
 	};
 
+	void encode_bc7_block(void* pBlock, const bc7_optimization_results* pResults)
+	{
+		const uint32_t best_mode = pResults->m_mode;
+
+		const uint32_t total_subsets = g_bc7_num_subsets[best_mode];
+		const uint32_t total_partitions = 1 << g_bc7_partition_bits[best_mode];
+		//const uint32_t num_rotations = 1 << g_bc7_rotation_bits[best_mode];
+		//const uint32_t num_index_selectors = (best_mode == 4) ? 2 : 1;
+
+		const uint8_t* pPartition;
+		if (total_subsets == 1)
+			pPartition = &g_bc7_partition1[0];
+		else if (total_subsets == 2)
+			pPartition = &g_bc7_partition2[pResults->m_partition * 16];
+		else
+			pPartition = &g_bc7_partition3[pResults->m_partition * 16];
+
+		uint8_t color_selectors[16];
+		memcpy(color_selectors, pResults->m_selectors, 16);
+
+		uint8_t alpha_selectors[16];
+		memcpy(alpha_selectors, pResults->m_alpha_selectors, 16);
+
+		color_quad_u8 low[3], high[3];
+		memcpy(low, pResults->m_low, sizeof(low));
+		memcpy(high, pResults->m_high, sizeof(high));
+
+		uint32_t pbits[3][2];
+		memcpy(pbits, pResults->m_pbits, sizeof(pbits));
+
+		int anchor[3] = { -1, -1, -1 };
+
+		for (uint32_t k = 0; k < total_subsets; k++)
+		{
+			uint32_t anchor_index = 0;
+			if (k)
+			{
+				if ((total_subsets == 3) && (k == 1))
+					anchor_index = g_bc7_table_anchor_index_third_subset_1[pResults->m_partition];
+				else if ((total_subsets == 3) && (k == 2))
+					anchor_index = g_bc7_table_anchor_index_third_subset_2[pResults->m_partition];
+				else
+					anchor_index = g_bc7_table_anchor_index_second_subset[pResults->m_partition];
+			}
+
+			anchor[k] = anchor_index;
+
+			const uint32_t color_index_bits = get_bc7_color_index_size(best_mode, pResults->m_index_selector);
+			const uint32_t num_color_indices = 1 << color_index_bits;
+
+			if (color_selectors[anchor_index] & (num_color_indices >> 1))
+			{
+				for (uint32_t i = 0; i < 16; i++)
+					if (pPartition[i] == k)
+						color_selectors[i] = (uint8_t)((num_color_indices - 1) - color_selectors[i]);
+
+				if (get_bc7_mode_has_seperate_alpha_selectors(best_mode))
+				{
+					for (uint32_t q = 0; q < 3; q++)
+					{
+						uint8_t t = low[k].m_c[q];
+						low[k].m_c[q] = high[k].m_c[q];
+						high[k].m_c[q] = t;
+					}
+				}
+				else
+				{
+					color_quad_u8 tmp = low[k];
+					low[k] = high[k];
+					high[k] = tmp;
+				}
+
+				if (!g_bc7_mode_has_shared_p_bits[best_mode])
+				{
+					uint32_t t = pbits[k][0];
+					pbits[k][0] = pbits[k][1];
+					pbits[k][1] = t;
+				}
+			}
+
+			if (get_bc7_mode_has_seperate_alpha_selectors(best_mode))
+			{
+				const uint32_t alpha_index_bits = get_bc7_alpha_index_size(best_mode, pResults->m_index_selector);
+				const uint32_t num_alpha_indices = 1 << alpha_index_bits;
+
+				if (alpha_selectors[anchor_index] & (num_alpha_indices >> 1))
+				{
+					for (uint32_t i = 0; i < 16; i++)
+						if (pPartition[i] == k)
+							alpha_selectors[i] = (uint8_t)((num_alpha_indices - 1) - alpha_selectors[i]);
+
+					uint8_t t = low[k].m_c[3];
+					low[k].m_c[3] = high[k].m_c[3];
+					high[k].m_c[3] = t;
+				}
+			}
+		}
+
+		uint8_t* pBlock_bytes = (uint8_t*)(pBlock);
+
+		// the two modes UASTC's common modes land on, their layouts written out
+		if ((best_mode == 6) || (best_mode == 5))
+		{
+			bc7_block_bit_writer bits;
+			uint64_t lo, hi;
+			if (best_mode == 6)
+			{
+				// mode 1000000 (7), RGBA endpoints 7 bits each (56), P0 P1, 16 4-bit indices (the first 3)
+				lo = 1ULL << 6;
+				for (uint32_t c = 0; c < 4; c++)
+					lo |= ((uint64_t)low[0].m_c[c] << (7 + c * 14)) | ((uint64_t)high[0].m_c[c] << (14 + c * 14));
+				lo |= (uint64_t)pbits[0][0] << 63;
+				hi = pbits[0][1] | ((uint64_t)color_selectors[0] << 1);
+				for (uint32_t i = 1; i < 16; i++)
+					hi |= (uint64_t)color_selectors[i] << (4 * i);
+			}
+			else
+			{
+				// mode 100000 (6), rotation (2), RGB endpoints 7 bits each (42), A endpoints 8 bits each,
+				// 16 2-bit colour indices then 16 2-bit alpha indices (the first ones 1 bit)
+				lo = (1ULL << 5) | ((uint64_t)pResults->m_rotation << 6);
+				for (uint32_t c = 0; c < 3; c++)
+					lo |= ((uint64_t)low[0].m_c[c] << (8 + c * 14)) | ((uint64_t)high[0].m_c[c] << (15 + c * 14));
+				lo |= ((uint64_t)low[0].m_c[3] << 50) | ((uint64_t)high[0].m_c[3] << 58);
+				hi = (uint64_t)high[0].m_c[3] >> 6;
+				hi |= (uint64_t)color_selectors[0] << 2;
+				for (uint32_t i = 1; i < 16; i++)
+					hi |= (uint64_t)color_selectors[i] << (1 + 2 * i);
+				hi |= (uint64_t)alpha_selectors[0] << 33;
+				for (uint32_t i = 1; i < 16; i++)
+					hi |= (uint64_t)alpha_selectors[i] << (32 + 2 * i);
+			}
+			bits.m_bits[0] = lo;
+			bits.m_bits[1] = hi;
+			bits.store(pBlock_bytes);
+			return;
+		}
+
+		bc7_block_bit_writer bits;
+		bits.put(1 << best_mode, best_mode + 1);
+
+		if ((best_mode == 4) || (best_mode == 5))
+			bits.put(pResults->m_rotation, 2);
+
+		if (best_mode == 4)
+			bits.put(pResults->m_index_selector, 1);
+
+		if (total_partitions > 1)
+			bits.put(pResults->m_partition, (total_partitions == 64) ? 6 : 4);
+
+		const uint32_t total_comps = (best_mode >= 4) ? 4 : 3;
+		for (uint32_t comp = 0; comp < total_comps; comp++)
+		{
+			for (uint32_t subset = 0; subset < total_subsets; subset++)
+			{
+				bits.put(low[subset].m_c[comp], (comp == 3) ? g_bc7_alpha_precision_table[best_mode] : g_bc7_color_precision_table[best_mode]);
+				bits.put(high[subset].m_c[comp], (comp == 3) ? g_bc7_alpha_precision_table[best_mode] : g_bc7_color_precision_table[best_mode]);
+			}
+		}
+
+		if (g_bc7_mode_has_p_bits[best_mode])
+		{
+			for (uint32_t subset = 0; subset < total_subsets; subset++)
+			{
+				bits.put(pbits[subset][0], 1);
+				if (!g_bc7_mode_has_shared_p_bits[best_mode])
+					bits.put(pbits[subset][1], 1);
+			}
+		}
+
+		// JasperEngine: the indices gathered 32 bits at a time, their sizes and the anchors read
+		// once, not per texel (README.jasper.md)
+		uint32_t anchor_mask = 0;
+		for (uint32_t k = 0; k < total_subsets; k++)
+			anchor_mask |= 1U << anchor[k];
+		uint64_t index_bits = 0;
+		uint32_t index_bit_count = 0;
+		auto put_indices = [&](const uint8_t* pIndices, uint32_t n)
+		{
+			for (uint32_t idx = 0; idx < 16; idx++)
+			{
+				index_bits |= (uint64_t)pIndices[idx] << index_bit_count;
+				index_bit_count += n - ((anchor_mask >> idx) & 1);
+				if (index_bit_count >= 32)
+				{
+					bits.put((uint32_t)index_bits, 32);
+					index_bits >>= 32;
+					index_bit_count -= 32;
+				}
+			}
+		};
+		const bool alpha_first = pResults->m_index_selector != 0;
+		put_indices(alpha_first ? alpha_selectors : color_selectors,
+			alpha_first ? get_bc7_alpha_index_size(best_mode, pResults->m_index_selector) : get_bc7_color_index_size(best_mode, pResults->m_index_selector));
+		if (get_bc7_mode_has_seperate_alpha_selectors(best_mode))
+		{
+			put_indices(alpha_first ? color_selectors : alpha_selectors,
+				alpha_first ? get_bc7_color_index_size(best_mode, pResults->m_index_selector) : get_bc7_alpha_index_size(best_mode, pResults->m_index_selector));
+		}
+		if (index_bit_count)
+			bits.put((uint32_t)index_bits, index_bit_count);
+
+		assert(bits.m_ofs == 128);
+		bits.store(pBlock_bytes);
+	}
+#else
 	// TODO: Optimize this.
 	void encode_bc7_block(void* pBlock, const bc7_optimization_results* pResults)
 	{
@@ -14809,25 +15021,27 @@ namespace basist
 		}
 
 		uint8_t* pBlock_bytes = (uint8_t*)(pBlock);
-		bc7_block_bit_writer bits;
-		bits.put(1 << best_mode, best_mode + 1);
+		memset(pBlock_bytes, 0, BC7ENC_BLOCK_SIZE);
+
+		uint32_t cur_bit_ofs = 0;
+		bc7_set_block_bits(pBlock_bytes, 1 << best_mode, best_mode + 1, &cur_bit_ofs);
 
 		if ((best_mode == 4) || (best_mode == 5))
-			bits.put(pResults->m_rotation, 2);
+			bc7_set_block_bits(pBlock_bytes, pResults->m_rotation, 2, &cur_bit_ofs);
 
 		if (best_mode == 4)
-			bits.put(pResults->m_index_selector, 1);
+			bc7_set_block_bits(pBlock_bytes, pResults->m_index_selector, 1, &cur_bit_ofs);
 
 		if (total_partitions > 1)
-			bits.put(pResults->m_partition, (total_partitions == 64) ? 6 : 4);
+			bc7_set_block_bits(pBlock_bytes, pResults->m_partition, (total_partitions == 64) ? 6 : 4, &cur_bit_ofs);
 
 		const uint32_t total_comps = (best_mode >= 4) ? 4 : 3;
 		for (uint32_t comp = 0; comp < total_comps; comp++)
 		{
 			for (uint32_t subset = 0; subset < total_subsets; subset++)
 			{
-				bits.put(low[subset].m_c[comp], (comp == 3) ? g_bc7_alpha_precision_table[best_mode] : g_bc7_color_precision_table[best_mode]);
-				bits.put(high[subset].m_c[comp], (comp == 3) ? g_bc7_alpha_precision_table[best_mode] : g_bc7_color_precision_table[best_mode]);
+				bc7_set_block_bits(pBlock_bytes, low[subset].m_c[comp], (comp == 3) ? g_bc7_alpha_precision_table[best_mode] : g_bc7_color_precision_table[best_mode], &cur_bit_ofs);
+				bc7_set_block_bits(pBlock_bytes, high[subset].m_c[comp], (comp == 3) ? g_bc7_alpha_precision_table[best_mode] : g_bc7_color_precision_table[best_mode], &cur_bit_ofs);
 			}
 		}
 
@@ -14835,9 +15049,9 @@ namespace basist
 		{
 			for (uint32_t subset = 0; subset < total_subsets; subset++)
 			{
-				bits.put(pbits[subset][0], 1);
+				bc7_set_block_bits(pBlock_bytes, pbits[subset][0], 1, &cur_bit_ofs);
 				if (!g_bc7_mode_has_shared_p_bits[best_mode])
-					bits.put(pbits[subset][1], 1);
+					bc7_set_block_bits(pBlock_bytes, pbits[subset][1], 1, &cur_bit_ofs);
 			}
 		}
 
@@ -14852,7 +15066,7 @@ namespace basist
 				if ((idx == anchor[0]) || (idx == anchor[1]) || (idx == anchor[2]))
 					n--;
 
-				bits.put(pResults->m_index_selector ? alpha_selectors[idx] : color_selectors[idx], n);
+				bc7_set_block_bits(pBlock_bytes, pResults->m_index_selector ? alpha_selectors[idx] : color_selectors[idx], n, &cur_bit_ofs);
 			}
 		}
 
@@ -14869,14 +15083,14 @@ namespace basist
 					if ((idx == anchor[0]) || (idx == anchor[1]) || (idx == anchor[2]))
 						n--;
 
-					bits.put(pResults->m_index_selector ? color_selectors[idx] : alpha_selectors[idx], n);
+					bc7_set_block_bits(pBlock_bytes, pResults->m_index_selector ? color_selectors[idx] : alpha_selectors[idx], n, &cur_bit_ofs);
 				}
 			}
 		}
 
-		assert(bits.m_ofs == 128);
-		bits.store(pBlock_bytes);
+		assert(cur_bit_ofs == 128);
 	}
+#endif // JASPER_BASISD_FAST_TRANSCODE
 
 	// ASTC
 	static inline void astc_set_bits_1_to_9(uint32_t* pDst, int& bit_offset, uint32_t code, uint32_t codesize)
@@ -15579,8 +15793,22 @@ namespace basist
 				}
 
 				// TODO: Optimize with tables
+#if JASPER_BASISD_FAST_TRANSCODE // JasperEngine: divisions by the constants 3 and 5, not by a variable (README.jasper.md)
+				uint32_t v;
+				if (mul == 3)
+				{
+					v = accum % 3;
+					accum /= 3;
+				}
+				else
+				{
+					v = accum % 5;
+					accum /= 5;
+				}
+#else
 				uint32_t v = accum % mul;
 				accum /= mul;
+#endif
 				accum_remaining--;
 
 				value |= (v << ep_bits);

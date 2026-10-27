@@ -46,4 +46,11 @@ shader-deblocking samples, the build files.
     and `.inl`), the arithmetic decoder's lookup table (`arith_fastbits_f32`) and the XUASTC
     transcoders' block helpers, which v2.50 leaves outside it (it does not compile without XUASTC
     otherwise: spec S14 deviation 12).
+  - Speed of the UASTC -> BC7 / ASTC transcodes the web measures (spec S14 R19), the same bytes
+    (the editor's `TextureWebTranscode` tests compare the engine's copy with the encoder's): the
+    16-bit word reads of UASTC bit fields are `memcpy` loads (no unaligned `uint16_t*` read, so
+    the engine's copy takes `BASISD_USE_UNALIGNED_WORD_READS=1` on every platform, wasm and UBSan
+    builds included); `encode_bc7_block()` gathers the block's 128 bits in two words
+    (`bc7_block_bit_writer`) and its indices 32 bits at a time instead of OR-ing each field into
+    the bytes; `unpack_uastc()` divides the trit / quint bundles by the constants 3 and 5.
 - Otherwise no source file is changed; `encoder/*` is byte for byte the tag's.

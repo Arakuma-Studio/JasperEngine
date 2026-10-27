@@ -38,7 +38,8 @@ target_compile_definitions(basisu_transcoder PRIVATE
     BASISD_SUPPORT_ASTC=0
     BASISD_SUPPORT_BC7_MODE5=0
     BASISD_SUPPORT_ASTC_HIGHER_OPAQUE_QUALITY=0
-    JASPER_BASISD_COMPUTE_DXT1_TABLES=1)
+    JASPER_BASISD_COMPUTE_DXT1_TABLES=1
+    JASPER_BASISD_FAST_TRANSCODE=1)
 target_link_libraries(basisu_transcoder PRIVATE zstd_decompress)
 target_compile_options(basisu_transcoder PRIVATE $<${BASISU_GNU_FE}:-fno-strict-aliasing>)
 # the web downloads the transcoder: -O2 there, not -O3 (spec S14 R21 and R19: docs/textures.md
