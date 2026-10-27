@@ -9,6 +9,8 @@
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include "SettingsCategoryList.h"
+#include "organisation/LabelOperations.h"
+#include "Out.h"
 #include "command/CommandHistory.h"
 #include "command/type/ThreadingSettingsCmd.h"
 
@@ -151,27 +153,9 @@ enum class ProjectCategory {
     Count
 };
 
-// Order matches ProjectCategory. Keywords are the page's setting labels, for the search field.
-static const settingsui::Category projectCategories[] = {
-    {"Player", "", "project product name application identifier version build default icon resolution presentation "
-                   "fullscreen mode screen width height resizable window title start scene splash loading async publishing "
-                   "threading worker threads reserved frame workers asset io threads web pump budget multithreaded "
-                   "native resource pack windows macos linux ios android web company bundle identifier package favicon "
-                   "google admob ads app id"},
-    {"Graphics", "", "canvas width height scaling mode texture strategy reference resolution runtime shader compilation variants shadows shadow tier quality "
-                     "mobile pbr tier clear coat iridescence anisotropy "
-                     "html ui msaa anti-aliasing antialiasing"},
-    {"Quality", "", "vsync atmosphere quality volumetric fog clouds desktop mobile web"},
-    {"Texture", "", "texture compression import cook format quality max size astc etc2 bc7 basis android fallback "
-                    "low memory budget mipmap limit cache clear desktop mobile web"},
-    {"Physics", "", "3d physics jolt rigidbody"},
-    {"Physics 2D", "", "2d physics box2d rigidbody 2d"},
-    {"Scripting", "", "lua directory script directories c++ standard"},
-    {"Tags and Layers", "", "tags layers"},
-    {"Editor", "", "version control files assets directory"},
-};
+// ProjectCategory follows the order of the Project Settings pages in the settings registry
+// (settings/SettingsRows.cpp), which lists them and their rows for the search
 static constexpr int projectCategoryCount = static_cast<int>(ProjectCategory::Count);
-static_assert(std::size(projectCategories) == static_cast<size_t>(ProjectCategory::Count));
 
 static constexpr float projectSettingsLabelWidth = 200.0f;
 static constexpr float projectSettingsPanelPadding = 12.0f;
@@ -410,6 +394,14 @@ static void projectDrawSettingsPanel(const char* panelId, DrawContents drawConte
     endSettingsPanel();
 }
 
+// A foldout of the page: hidden while the search matches none of its rows, open while it
+// matches some (S25 R30)
+static bool settingsFoldout(const char* title, ImGuiTreeNodeFlags flags = 0) {
+    if (!settingsui::sectionVisible(title)) return false;
+    if (settingsui::searching()) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+    return Theme::foldoutHeader(title, flags);
+}
+
 // Section text that belongs outside the row table.
 static void drawSectionNote(const char* text) {
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
@@ -438,7 +430,8 @@ static bool projectBeginSettingsRow(const char* label, bool defChanged = false, 
     ImGui::TableNextRow();
     ImGui::TableNextColumn();
     ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(label);
+    // the search's matches highlighted, a row the Search palette opened flashing
+    settingsui::rowLabel(label);
 
     bool reset = false;
     if (defChanged) {
@@ -877,12 +870,10 @@ Texture* ProjectSettingsWindow::findThumbnail(const std::string& path) {
 void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_isOpen = true;
     if (category) {
-        for (int i = 0; i < projectCategoryCount; i++) {
-            if (strcmp(projectCategories[i].name, category) == 0) {
-                m_category = i;
-                m_categorySearch[0] = '\0';
-                break;
-            }
+        const int index = settingsui::pageIndex(SettingsScope::Project, category);
+        if (index >= 0) {
+            m_category = index;
+            m_categorySearch[0] = '\0';
         }
     }
     m_project = project;
@@ -1054,12 +1045,19 @@ void ProjectSettingsWindow::drawSettings() {
     ImGui::BeginChild("##ProjectSettingsRegion", ImVec2(0, regionHeight), ImGuiChildFlags_None, projectNoScrollFlags);
 
     const float listWidth = std::min(Theme::dpi(projectCategoryListWidth), ImGui::GetContentRegionAvail().x * 0.3f);
-    settingsui::categoryList("##ProjectSettingsCategories", projectCategories, projectCategoryCount, m_category,
-                             m_categorySearch, sizeof(m_categorySearch), ImVec2(listWidth, ImGui::GetContentRegionAvail().y));
+    // the Search palette opened a row: its page
+    if (const std::string revealPage = settingsui::pendingRevealPage(); !revealPage.empty()) {
+        const int index = settingsui::pageIndex(SettingsScope::Project, revealPage);
+        if (index >= 0) m_category = index;
+    }
+    settingsui::pageList("##ProjectSettingsCategories", SettingsScope::Project, m_category,
+                         m_categorySearch, sizeof(m_categorySearch), ImVec2(listWidth, ImGui::GetContentRegionAvail().y));
     ImGui::SameLine();
 
     ImGui::BeginGroup();
-    settingsui::categoryTitle(projectCategories[m_category].name);
+    const SettingsPage* page = settingsui::pageAt(SettingsScope::Project, m_category);
+    settingsui::categoryTitle(page ? page->displayName().c_str() : "");
+    settingsui::beginPage(page ? page->name : std::string(), m_categorySearch);
     switch (static_cast<ProjectCategory>(m_category)) {
         case ProjectCategory::Player: drawPlayerSettings(); break;
         case ProjectCategory::Graphics: drawGraphicsSettings(); break;
@@ -1072,6 +1070,7 @@ void ProjectSettingsWindow::drawSettings() {
         case ProjectCategory::Editor: drawEditorSettings(); break;
         default: break;
     }
+    settingsui::endPage();
     ImGui::EndGroup();
 
     ImGui::EndChild();
@@ -1137,157 +1136,181 @@ std::string ProjectSettingsWindow::inheritedApplicationBuild() const {
 void ProjectSettingsWindow::drawPlayerSettings() {
     if (beginSettingsPanel("##PlayerSettingsPanel")) {
         if (beginSettingsTable("##PlayerProductTable")) {
-            projectBeginSettingsRow("Project Name");
-            ImGui::SetNextItemWidth(-1);
-            ImGui::InputText("##ProjectName", m_projectNameBuffer, sizeof(m_projectNameBuffer));
+            if (settingsui::beginRow("player.product_name")) {
+                projectBeginSettingsRow("Project Name");
+                ImGui::SetNextItemWidth(-1);
+                ImGui::InputText("##ProjectName", m_projectNameBuffer, sizeof(m_projectNameBuffer));
+            }
 
 
             const ApplicationSettings defaults;
 
-            projectBeginSettingsRow("Product Name");
-            ImGui::SetNextItemWidth(-helpMarkerWidth());
-            std::string nameHint = m_projectNameBuffer[0] ? m_projectNameBuffer : "JasperEngine";
-            ImGui::InputTextWithHint("##ApplicationName", nameHint.c_str(), m_applicationNameBuffer, sizeof(m_applicationNameBuffer));
-            endSettingsRow("Name every platform shows to the player. Empty means the project name.");
-
-            if (projectBeginSettingsRow("Application Identifier", strcmp(m_applicationIdentifierBuffer, defaults.identifier.c_str()) != 0)) {
-                snprintf(m_applicationIdentifierBuffer, sizeof(m_applicationIdentifierBuffer), "%s", defaults.identifier.c_str());
-            }
-            ImGui::SetNextItemWidth(-helpMarkerWidth());
-            ImGui::InputText("##ApplicationIdentifier", m_applicationIdentifierBuffer, sizeof(m_applicationIdentifierBuffer));
-            endSettingsRow("Reverse-DNS id behind the Apple bundle identifiers and the Android package name.");
-            if (!isSharedIdentifierValid(m_applicationIdentifierBuffer)) {
-                ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Use letters and digits only, for example com.company.game.");
+            if (settingsui::beginRow("player.application_name")) {
+                projectBeginSettingsRow("Product Name");
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                std::string nameHint = m_projectNameBuffer[0] ? m_projectNameBuffer : "JasperEngine";
+                ImGui::InputTextWithHint("##ApplicationName", nameHint.c_str(), m_applicationNameBuffer, sizeof(m_applicationNameBuffer));
+                endSettingsRow("Name every platform shows to the player. Empty means the project name.");
             }
 
-            if (projectBeginSettingsRow("Version", strcmp(m_applicationVersionBuffer, defaults.version.c_str()) != 0)) {
-                snprintf(m_applicationVersionBuffer, sizeof(m_applicationVersionBuffer), "%s", defaults.version.c_str());
-            }
-            ImGui::SetNextItemWidth(-helpMarkerWidth());
-            ImGui::InputText("##ApplicationVersion", m_applicationVersionBuffer, sizeof(m_applicationVersionBuffer));
-            endSettingsRow("Version shown to the player. Apple takes at most three parts, Windows pads to four.");
-            if (!isAppleVersionValid(m_applicationVersionBuffer)) {
-                ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Use up to three numbers from 0 to 65535, for example 1.0.");
+            if (settingsui::beginRow("player.identifier")) {
+                if (projectBeginSettingsRow("Application Identifier", strcmp(m_applicationIdentifierBuffer, defaults.identifier.c_str()) != 0)) {
+                    snprintf(m_applicationIdentifierBuffer, sizeof(m_applicationIdentifierBuffer), "%s", defaults.identifier.c_str());
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::InputText("##ApplicationIdentifier", m_applicationIdentifierBuffer, sizeof(m_applicationIdentifierBuffer));
+                endSettingsRow("Reverse-DNS id behind the Apple bundle identifiers and the Android package name.");
+                if (!isSharedIdentifierValid(m_applicationIdentifierBuffer)) {
+                    ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Use letters and digits only, for example com.company.game.");
+                }
             }
 
-            drawIntSetting("Build", "##ApplicationBuild", m_applicationBuild, static_cast<int>(defaults.build), 1,
-                "Apple build number and Android version code. Increase it for every release.");
+            if (settingsui::beginRow("player.version")) {
+                if (projectBeginSettingsRow("Version", strcmp(m_applicationVersionBuffer, defaults.version.c_str()) != 0)) {
+                    snprintf(m_applicationVersionBuffer, sizeof(m_applicationVersionBuffer), "%s", defaults.version.c_str());
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::InputText("##ApplicationVersion", m_applicationVersionBuffer, sizeof(m_applicationVersionBuffer));
+                endSettingsRow("Version shown to the player. Apple takes at most three parts, Windows pads to four.");
+                if (!isAppleVersionValid(m_applicationVersionBuffer)) {
+                    ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Use up to three numbers from 0 to 65535, for example 1.0.");
+                }
+            }
+
+            if (settingsui::beginRow("player.build")) {
+                drawIntSetting("Build", "##ApplicationBuild", m_applicationBuild, static_cast<int>(defaults.build), 1,
+                    "Apple build number and Android version code. Increase it for every release.");
+            }
 
             ImGui::EndTable();
         }
 
-        if (Theme::foldoutHeader("Icon", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##PlayerIconTable")) {
-            projectBeginSettingsRow("Default Icon");
-            {
-                const ImGuiStyle& style = ImGui::GetStyle();
-                float browseWidth = ImGui::CalcTextSize("Browse").x + style.FramePadding.x * 2.0f;
-                float clearWidth = ImGui::CalcTextSize("Clear").x + style.FramePadding.x * 2.0f;
-                float pathWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x - browseWidth - clearWidth - style.ItemSpacing.x * 2.0f - helpMarkerWidth());
+        if (settingsFoldout("Icon", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##PlayerIconTable")) {
+            if (settingsui::beginRow("player.window_icon")) {
+                projectBeginSettingsRow("Default Icon");
+                {
+                    const ImGuiStyle& style = ImGui::GetStyle();
+                    float browseWidth = ImGui::CalcTextSize("Browse").x + style.FramePadding.x * 2.0f;
+                    float clearWidth = ImGui::CalcTextSize("Clear").x + style.FramePadding.x * 2.0f;
+                    float pathWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x - browseWidth - clearWidth - style.ItemSpacing.x * 2.0f - helpMarkerWidth());
 
-                fs::path iconDisplay = m_windowIcon.empty() ? fs::path("<None>") : m_windowIcon;
-                Widgets::pathDisplay("##WindowIconPath", iconDisplay, Vector2(pathWidth, ImGui::GetFrameHeight()));
+                    fs::path iconDisplay = m_windowIcon.empty() ? fs::path("<None>") : m_windowIcon;
+                    Widgets::pathDisplay("##WindowIconPath", iconDisplay, Vector2(pathWidth, ImGui::GetFrameHeight()));
 
-                ImGui::SameLine();
-                if (ImGui::Button("Browse##windowicon")) {
-                    std::string defaultPath = m_project->getProjectPath().string();
-                    std::string selectedPath = FileDialogs::openFileDialog(defaultPath, FILE_DIALOG_IMAGE, false);
-                    if (!selectedPath.empty()) {
-                        // Store project-relative when the file is inside the project
-                        // so the setting survives moving the project folder.
-                        std::error_code ec;
-                        fs::path relPath = fs::relative(fs::path(selectedPath), m_project->getProjectPath(), ec);
-                        if (ec || relPath.empty() || relPath.string().rfind("..", 0) == 0) {
-                            m_windowIcon = fs::path(selectedPath);
-                        } else {
-                            m_windowIcon = relPath;
+                    ImGui::SameLine();
+                    if (ImGui::Button("Browse##windowicon")) {
+                        std::string defaultPath = m_project->getProjectPath().string();
+                        std::string selectedPath = FileDialogs::openFileDialog(defaultPath, FILE_DIALOG_IMAGE, false);
+                        if (!selectedPath.empty()) {
+                            // Store project-relative when the file is inside the project
+                            // so the setting survives moving the project folder.
+                            std::error_code ec;
+                            fs::path relPath = fs::relative(fs::path(selectedPath), m_project->getProjectPath(), ec);
+                            if (ec || relPath.empty() || relPath.string().rfind("..", 0) == 0) {
+                                m_windowIcon = fs::path(selectedPath);
+                            } else {
+                                m_windowIcon = relPath;
+                            }
+                        }
+                    }
+
+                    ImGui::SameLine();
+                    ImGui::BeginDisabled(m_windowIcon.empty());
+                    if (ImGui::Button("Clear##windowicon")) {
+                        m_windowIcon.clear();
+                    }
+                    ImGui::EndDisabled();
+                    endSettingsRow("Application icon for desktop builds: embedded into the Windows executable and used as the window/taskbar icon. Square PNG recommended (256x256 or larger).");
+
+                    if (!m_windowIcon.empty()) {
+                        if (Texture* thumb = findThumbnail(m_windowIcon.string())) {
+                            ImGui::Spacing();
+
+                            const float previewSize = Theme::dpi(64.0f);
+                            float thumbWidth = (float)thumb->getWidth();
+                            float thumbHeight = (float)thumb->getHeight();
+                            float scale = previewSize / std::max(1.0f, std::max(thumbWidth, thumbHeight));
+                            ImVec2 imageSize(std::max(1.0f, thumbWidth * scale), std::max(1.0f, thumbHeight * scale));
+
+                            ImVec2 imagePos = ImGui::GetCursorScreenPos();
+                            Widgets::image(Backend::getImGuiTexture(thumb->getRender()), imageSize);
+                            ImGui::GetWindowDrawList()->AddRect(
+                                imagePos, ImVec2(imagePos.x + imageSize.x, imagePos.y + imageSize.y),
+                                ImGui::GetColorU32(ImGuiCol_Border));
+                        }
+                    }
+                }
+            }
+
+            ImGui::EndTable();
+        }
+
+        if (settingsFoldout("Resolution and Presentation", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##PlayerResolutionTable")) {
+            if (settingsui::beginRow("player.window_mode")) {
+                drawComboSetting("Fullscreen Mode", "##WindowMode", windowModeNames, windowModeCount, m_windowModeIndex,
+                    findWindowModeIndex(Project::defaultWindowMode),
+                    "Initial window state of desktop builds. Web and mobile ignore window settings.");
+            }
+
+            if (settingsui::beginRow("player.window_width")) {
+                drawIntSetting("Default Screen Width", "##WindowWidth", m_windowWidth, (int)Project::defaultWindowWidth);
+            }
+            if (settingsui::beginRow("player.window_height")) {
+                drawIntSetting("Default Screen Height", "##WindowHeight", m_windowHeight, (int)Project::defaultWindowHeight);
+            }
+
+            if (settingsui::beginRow("player.window_resizable")) {
+                if (projectBeginSettingsRow("Resizable Window", m_windowResizable != Project::defaultWindowResizable)) {
+                    m_windowResizable = Project::defaultWindowResizable;
+                }
+                ImGui::Checkbox("##WindowResizable", &m_windowResizable);
+                endSettingsRow("Applies to desktop builds. Exported Windows and macOS builds are always resizable.");
+            }
+
+            if (settingsui::beginRow("player.window_title")) {
+                if (projectBeginSettingsRow("Window Title", strcmp(m_windowTitleBuffer, Project::defaultWindowTitle) != 0)) {
+                    snprintf(m_windowTitleBuffer, sizeof(m_windowTitleBuffer), "%s", Project::defaultWindowTitle);
+                }
+                std::string titleHint = m_project->getName().empty() ? "JasperEngine" : m_project->getName();
+                ImGui::SetNextItemWidth(-1);
+                ImGui::InputTextWithHint("##WindowTitle", titleHint.c_str(), m_windowTitleBuffer, sizeof(m_windowTitleBuffer));
+            }
+
+            ImGui::EndTable();
+        }
+
+        if (settingsFoldout("Splash and Loading", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##PlayerLoadingTable")) {
+            if (settingsui::beginRow("player.start_scene")) {
+                projectBeginSettingsRow("Start Scene");
+
+                const auto& scenes = m_project->getScenes();
+                const SceneProject* selectedScene = m_project->getScene(m_startSceneId);
+                if (!selectedScene || selectedScene->filepath.empty()) {
+                    selectedScene = nullptr;
+                    m_startSceneId = NULL_PROJECT_SCENE;
+                    for (const auto& scene : scenes) {
+                        if (!scene.filepath.empty()) {
+                            selectedScene = &scene;
+                            m_startSceneId = scene.id;
+                            break;
                         }
                     }
                 }
 
-                ImGui::SameLine();
-                ImGui::BeginDisabled(m_windowIcon.empty());
-                if (ImGui::Button("Clear##windowicon")) {
-                    m_windowIcon.clear();
-                }
-                ImGui::EndDisabled();
-                endSettingsRow("Application icon for desktop builds: embedded into the Windows executable and used as the window/taskbar icon. Square PNG recommended (256x256 or larger).");
+                if (!selectedScene) {
+                    ImGui::TextDisabled("No saved scenes");
+                } else {
+                    ImGui::SetNextItemWidth(-1);
+                    if (ImGui::BeginCombo("##StartScene", selectedScene->name.c_str())) {
+                        for (const auto& scene : scenes) {
+                            if (scene.filepath.empty()) continue;
 
-                if (!m_windowIcon.empty()) {
-                    if (Texture* thumb = findThumbnail(m_windowIcon.string())) {
-                        ImGui::Spacing();
-
-                        const float previewSize = Theme::dpi(64.0f);
-                        float thumbWidth = (float)thumb->getWidth();
-                        float thumbHeight = (float)thumb->getHeight();
-                        float scale = previewSize / std::max(1.0f, std::max(thumbWidth, thumbHeight));
-                        ImVec2 imageSize(std::max(1.0f, thumbWidth * scale), std::max(1.0f, thumbHeight * scale));
-
-                        ImVec2 imagePos = ImGui::GetCursorScreenPos();
-                        Widgets::image(Backend::getImGuiTexture(thumb->getRender()), imageSize);
-                        ImGui::GetWindowDrawList()->AddRect(
-                            imagePos, ImVec2(imagePos.x + imageSize.x, imagePos.y + imageSize.y),
-                            ImGui::GetColorU32(ImGuiCol_Border));
+                            bool selected = m_startSceneId == scene.id;
+                            if (ImGui::Selectable(scene.name.c_str(), selected)) m_startSceneId = scene.id;
+                            if (selected) ImGui::SetItemDefaultFocus();
+                        }
+                        ImGui::EndCombo();
                     }
-                }
-            }
-
-            ImGui::EndTable();
-        }
-
-        if (Theme::foldoutHeader("Resolution and Presentation", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##PlayerResolutionTable")) {
-            drawComboSetting("Fullscreen Mode", "##WindowMode", windowModeNames, windowModeCount, m_windowModeIndex,
-                findWindowModeIndex(Project::defaultWindowMode),
-                "Initial window state of desktop builds. Web and mobile ignore window settings.");
-
-            drawIntSetting("Default Screen Width", "##WindowWidth", m_windowWidth, (int)Project::defaultWindowWidth);
-            drawIntSetting("Default Screen Height", "##WindowHeight", m_windowHeight, (int)Project::defaultWindowHeight);
-
-            if (projectBeginSettingsRow("Resizable Window", m_windowResizable != Project::defaultWindowResizable)) {
-                m_windowResizable = Project::defaultWindowResizable;
-            }
-            ImGui::Checkbox("##WindowResizable", &m_windowResizable);
-            endSettingsRow("Applies to desktop builds. Exported Windows and macOS builds are always resizable.");
-
-            if (projectBeginSettingsRow("Window Title", strcmp(m_windowTitleBuffer, Project::defaultWindowTitle) != 0)) {
-                snprintf(m_windowTitleBuffer, sizeof(m_windowTitleBuffer), "%s", Project::defaultWindowTitle);
-            }
-            std::string titleHint = m_project->getName().empty() ? "JasperEngine" : m_project->getName();
-            ImGui::SetNextItemWidth(-1);
-            ImGui::InputTextWithHint("##WindowTitle", titleHint.c_str(), m_windowTitleBuffer, sizeof(m_windowTitleBuffer));
-
-            ImGui::EndTable();
-        }
-
-        if (Theme::foldoutHeader("Splash and Loading", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##PlayerLoadingTable")) {
-            projectBeginSettingsRow("Start Scene");
-
-            const auto& scenes = m_project->getScenes();
-            const SceneProject* selectedScene = m_project->getScene(m_startSceneId);
-            if (!selectedScene || selectedScene->filepath.empty()) {
-                selectedScene = nullptr;
-                m_startSceneId = NULL_PROJECT_SCENE;
-                for (const auto& scene : scenes) {
-                    if (!scene.filepath.empty()) {
-                        selectedScene = &scene;
-                        m_startSceneId = scene.id;
-                        break;
-                    }
-                }
-            }
-
-            if (!selectedScene) {
-                ImGui::TextDisabled("No saved scenes");
-            } else {
-                ImGui::SetNextItemWidth(-1);
-                if (ImGui::BeginCombo("##StartScene", selectedScene->name.c_str())) {
-                    for (const auto& scene : scenes) {
-                        if (scene.filepath.empty()) continue;
-
-                        bool selected = m_startSceneId == scene.id;
-                        if (ImGui::Selectable(scene.name.c_str(), selected)) m_startSceneId = scene.id;
-                        if (selected) ImGui::SetItemDefaultFocus();
-                    }
-                    ImGui::EndCombo();
                 }
             }
 
@@ -1295,110 +1318,136 @@ void ProjectSettingsWindow::drawPlayerSettings() {
             const LoadingSettings defaults;
             LoadingSettings& loading = m_loadingSettings;
 
-            if (projectBeginSettingsRow("Loading Scene", loading.sceneId != defaults.sceneId)) {
-                loading.sceneId = defaults.sceneId;
-            }
-            const SceneProject* loadingScene = m_project->getScene(loading.sceneId);
-            ImGui::SetNextItemWidth(-helpMarkerWidth());
-            if (ImGui::BeginCombo("##LoadingScene", loadingScene ? loadingScene->name.c_str() : "None")) {
-                if (ImGui::Selectable("None", !loadingScene)) loading.sceneId = NULL_PROJECT_SCENE;
-                for (const auto& scene : m_project->getScenes()) {
-                    if (scene.filepath.empty()) continue;
-
-                    bool selected = loading.sceneId == scene.id;
-                    if (ImGui::Selectable(scene.name.c_str(), selected)) loading.sceneId = scene.id;
-                    if (selected) ImGui::SetItemDefaultFocus();
+            if (settingsui::beginRow("player.loading_scene")) {
+                if (projectBeginSettingsRow("Loading Scene", loading.sceneId != defaults.sceneId)) {
+                    loading.sceneId = defaults.sceneId;
                 }
-                ImGui::EndCombo();
-            }
-            endSettingsRow("Shown over scene changes until the new scene has loaded.");
+                const SceneProject* loadingScene = m_project->getScene(loading.sceneId);
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                if (ImGui::BeginCombo("##LoadingScene", loadingScene ? loadingScene->name.c_str() : "None")) {
+                    if (ImGui::Selectable("None", !loadingScene)) loading.sceneId = NULL_PROJECT_SCENE;
+                    for (const auto& scene : m_project->getScenes()) {
+                        if (scene.filepath.empty()) continue;
 
-            drawSecondsSetting("Loading Delay", "##LoadingDelay", loading.delay, defaults.delay,
-                "Time the loading scene covers the old scene before replacing it.");
-            drawSecondsSetting("Loading Timeout", "##LoadingTimeout", loading.timeout, defaults.timeout,
-                "Time a load waits without progress before giving up.");
-
-            if (projectBeginSettingsRow("Async Loading", loading.asyncLoading != defaults.asyncLoading)) {
-                loading.asyncLoading = defaults.asyncLoading;
+                        bool selected = loading.sceneId == scene.id;
+                        if (ImGui::Selectable(scene.name.c_str(), selected)) loading.sceneId = scene.id;
+                        if (selected) ImGui::SetItemDefaultFocus();
+                    }
+                    ImGui::EndCombo();
+                }
+                endSettingsRow("Shown over scene changes until the new scene has loaded.");
             }
-            ImGui::Checkbox("##AsyncLoading", &loading.asyncLoading);
-            endSettingsRow("Exported games load resources on worker threads. The editor always does.");
+
+            if (settingsui::beginRow("player.loading_delay")) {
+                drawSecondsSetting("Loading Delay", "##LoadingDelay", loading.delay, defaults.delay,
+                    "Time the loading scene covers the old scene before replacing it.");
+            }
+            if (settingsui::beginRow("player.loading_timeout")) {
+                drawSecondsSetting("Loading Timeout", "##LoadingTimeout", loading.timeout, defaults.timeout,
+                    "Time a load waits without progress before giving up.");
+            }
+
+            if (settingsui::beginRow("player.async_loading")) {
+                if (projectBeginSettingsRow("Async Loading", loading.asyncLoading != defaults.asyncLoading)) {
+                    loading.asyncLoading = defaults.asyncLoading;
+                }
+                ImGui::Checkbox("##AsyncLoading", &loading.asyncLoading);
+                endSettingsRow("Exported games load resources on worker threads. The editor always does.");
+            }
 
             ImGui::EndTable();
         }
 
-        if (Theme::foldoutHeader("Logging") && beginSettingsTable("##PlayerLoggingTable")) {
+        if (settingsFoldout("Logging") && beginSettingsTable("##PlayerLoggingTable")) {
             const PlayerLoggingSettings defaults;
-            if (projectBeginSettingsRow("Log Level", m_playerLogging.level != defaults.level)) {
-                m_playerLogging.level = defaults.level;
+            if (settingsui::beginRow("player.logging.level")) {
+                if (projectBeginSettingsRow("Log Level", m_playerLogging.level != defaults.level)) {
+                    m_playerLogging.level = defaults.level;
+                }
+                static const char* const levelNames[] = {"trace", "debug", "info", "warn", "error", "off"};
+                static const char* const levelLabels[] = {"Trace", "Debug", "Info", "Warning", "Error", "Off"};
+                int levelIndex = 2;
+                for (int i = 0; i < IM_ARRAYSIZE(levelNames); i++) {
+                    if (m_playerLogging.level == levelNames[i]) levelIndex = i;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                if (ImGui::Combo("##PlayerLogLevel", &levelIndex, levelLabels, IM_ARRAYSIZE(levelLabels))) {
+                    m_playerLogging.level = levelNames[levelIndex];
+                }
+                endSettingsRow("The lowest level the built game logs (the console, logcat, the browser console). "
+                    "JASPER_LOG_LEVEL and --log-level override it when the game starts.");
             }
-            static const char* const levelNames[] = {"trace", "debug", "info", "warn", "error", "off"};
-            static const char* const levelLabels[] = {"Trace", "Debug", "Info", "Warning", "Error", "Off"};
-            int levelIndex = 2;
-            for (int i = 0; i < IM_ARRAYSIZE(levelNames); i++) {
-                if (m_playerLogging.level == levelNames[i]) levelIndex = i;
-            }
-            ImGui::SetNextItemWidth(-helpMarkerWidth());
-            if (ImGui::Combo("##PlayerLogLevel", &levelIndex, levelLabels, IM_ARRAYSIZE(levelLabels))) {
-                m_playerLogging.level = levelNames[levelIndex];
-            }
-            endSettingsRow("The lowest level the built game logs (the console, logcat, the browser console). "
-                "JASPER_LOG_LEVEL and --log-level override it when the game starts.");
 
-            if (projectBeginSettingsRow("Log File", m_playerLogging.fileLog != defaults.fileLog)) {
-                m_playerLogging.fileLog = defaults.fileLog;
+            if (settingsui::beginRow("player.logging.file")) {
+                if (projectBeginSettingsRow("Log File", m_playerLogging.fileLog != defaults.fileLog)) {
+                    m_playerLogging.fileLog = defaults.fileLog;
+                }
+                ImGui::Checkbox("##PlayerLogFile", &m_playerLogging.fileLog);
+                endSettingsRow("Desktop games also write logs/player.log in their user data folder (1 MB, the previous one kept).");
             }
-            ImGui::Checkbox("##PlayerLogFile", &m_playerLogging.fileLog);
-            endSettingsRow("Desktop games also write logs/player.log in their user data folder (1 MB, the previous one kept).");
 
-            if (projectBeginSettingsRow("Capture Backtrace on Errors", m_playerLogging.backtrace != defaults.backtrace)) {
-                m_playerLogging.backtrace = defaults.backtrace;
+            if (settingsui::beginRow("player.logging.backtrace")) {
+                if (projectBeginSettingsRow("Capture Backtrace on Errors", m_playerLogging.backtrace != defaults.backtrace)) {
+                    m_playerLogging.backtrace = defaults.backtrace;
+                }
+                ImGui::Checkbox("##PlayerLogBacktrace", &m_playerLogging.backtrace);
+                endSettingsRow("Errors record their call stack (written to the log file). Debug builds always do.");
             }
-            ImGui::Checkbox("##PlayerLogBacktrace", &m_playerLogging.backtrace);
-            endSettingsRow("Errors record their call stack (written to the log file). Debug builds always do.");
 
             ImGui::EndTable();
         }
 
-        if (Theme::foldoutHeader("Threading") && beginSettingsTable("##PlayerThreadingTable")) {
+        if (settingsFoldout("Threading") && beginSettingsTable("##PlayerThreadingTable")) {
             const ThreadingProjectSettings defaults;
             ThreadingProjectSettings& threading = m_threading;
-            drawCountSetting("Worker Threads", "##WorkerThreads", threading.workers, 1, 15,
-                "Job system workers. Auto: one per logical core minus one (at most 15; 4 on mobile and web). "
-                "Applies on the next launch.");
-            drawCountSetting("Reserved Frame Workers", "##ReservedFrameWorkers", threading.reservedFrameWorkers, 0, 4,
-                "Workers Background work (asset decoding, cooks) never takes, so the frame always has them. "
-                "Auto: 2 on desktop, 1 on mobile and web. Applies immediately.");
-            drawCountSetting("Asset I/O Threads", "##AssetIOThreads", threading.ioThreads, 0, 4,
-                "Threads that read asset files. Auto: 2 on desktop, 1 on mobile, none on web (the decode job reads). "
-                "Applies on the next launch.");
-
-            if (projectBeginSettingsRow("Web Pump Budget", threading.webPumpBudgetMs != defaults.webPumpBudgetMs)) {
-                threading.webPumpBudgetMs = defaults.webPumpBudgetMs;
+            if (settingsui::beginRow("player.threading.workers")) {
+                drawCountSetting("Worker Threads", "##WorkerThreads", threading.workers, 1, 15,
+                    "Job system workers. Auto: one per logical core minus one (at most 15; 4 on mobile and web). "
+                    "Applies on the next launch.");
             }
-            ImGui::SetNextItemWidth(-helpMarkerWidth());
-            ImGui::InputFloat("##WebPumpBudget", &threading.webPumpBudgetMs, 0.5f, 1.0f, "%.1f ms");
-            threading.webPumpBudgetMs = std::isfinite(threading.webPumpBudgetMs)
-                ? std::min(std::max(threading.webPumpBudgetMs, 0.5f), 50.0f) : defaults.webPumpBudgetMs;
-            endSettingsRow("Web builds without threads run Background jobs for this long each frame.");
-
-            if (projectBeginSettingsRow("Web: Multithreaded", threading.webMultithreaded != defaults.webMultithreaded)) {
-                threading.webMultithreaded = defaults.webMultithreaded;
+            if (settingsui::beginRow("player.threading.reserved_frame_workers")) {
+                drawCountSetting("Reserved Frame Workers", "##ReservedFrameWorkers", threading.reservedFrameWorkers, 0, 4,
+                    "Workers Background work (asset decoding, cooks) never takes, so the frame always has them. "
+                    "Auto: 2 on desktop, 1 on mobile and web. Applies immediately.");
             }
-            ImGui::Checkbox("##WebMultithreaded", &threading.webMultithreaded);
-            endSettingsRow("Also builds the web player with threads (requires cross-origin isolation): the page "
-                           "picks it when the browser allows SharedArrayBuffer, else the single-thread build.");
+            if (settingsui::beginRow("player.threading.io_threads")) {
+                drawCountSetting("Asset I/O Threads", "##AssetIOThreads", threading.ioThreads, 0, 4,
+                    "Threads that read asset files. Auto: 2 on desktop, 1 on mobile, none on web (the decode job reads). "
+                    "Applies on the next launch.");
+            }
+
+            if (settingsui::beginRow("player.threading.web_pump_budget_ms")) {
+                if (projectBeginSettingsRow("Web Pump Budget", threading.webPumpBudgetMs != defaults.webPumpBudgetMs)) {
+                    threading.webPumpBudgetMs = defaults.webPumpBudgetMs;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::InputFloat("##WebPumpBudget", &threading.webPumpBudgetMs, 0.5f, 1.0f, "%.1f ms");
+                threading.webPumpBudgetMs = std::isfinite(threading.webPumpBudgetMs)
+                    ? std::min(std::max(threading.webPumpBudgetMs, 0.5f), 50.0f) : defaults.webPumpBudgetMs;
+                endSettingsRow("Web builds without threads run Background jobs for this long each frame.");
+            }
+
+            if (settingsui::beginRow("player.threading.web_multithreaded")) {
+                if (projectBeginSettingsRow("Web: Multithreaded", threading.webMultithreaded != defaults.webMultithreaded)) {
+                    threading.webMultithreaded = defaults.webMultithreaded;
+                }
+                ImGui::Checkbox("##WebMultithreaded", &threading.webMultithreaded);
+                endSettingsRow("Also builds the web player with threads (requires cross-origin isolation): the page "
+                               "picks it when the browser allows SharedArrayBuffer, else the single-thread build.");
+            }
 
             ImGui::EndTable();
         }
 
-        if (Theme::foldoutHeader("Publishing Settings") && beginSettingsTable("##PlayerPublishingTable")) {
-            if (projectBeginSettingsRow("Native Resource Pack", m_packNativeResources != Project::defaultPackNativeResources)) {
-                m_packNativeResources = Project::defaultPackNativeResources;
+        if (settingsFoldout("Publishing Settings") && beginSettingsTable("##PlayerPublishingTable")) {
+            if (settingsui::beginRow("player.pack_native_resources")) {
+                if (projectBeginSettingsRow("Native Resource Pack", m_packNativeResources != Project::defaultPackNativeResources)) {
+                    m_packNativeResources = Project::defaultPackNativeResources;
+                }
+                ImGui::Checkbox("##PackNativeResources", &m_packNativeResources);
+                endSettingsRow("Experimental. Packs exported assets and Lua files into resources.pak for Desktop and Android source exports. "
+                    "Packed resources are read through Data; direct File handles cannot open them.");
             }
-            ImGui::Checkbox("##PackNativeResources", &m_packNativeResources);
-            endSettingsRow("Experimental. Packs exported assets and Lua files into resources.pak for Desktop and Android source exports. "
-                "Packed resources are read through Data; direct File handles cannot open them.");
 
             ImGui::EndTable();
         }
@@ -1411,31 +1460,45 @@ void ProjectSettingsWindow::drawPlayerSettings() {
 
 void ProjectSettingsWindow::drawGraphicsSettings() {
     projectDrawSettingsPanel("##GraphicsSettingsPanel", [this]() {
-        drawIntSetting("Canvas Width", "##CanvasWidth", m_canvasWidth, (int)Project::defaultCanvasWidth);
-        drawIntSetting("Canvas Height", "##CanvasHeight", m_canvasHeight, (int)Project::defaultCanvasHeight);
+        if (settingsui::beginRow("graphics.canvas_width")) {
+            drawIntSetting("Canvas Width", "##CanvasWidth", m_canvasWidth, (int)Project::defaultCanvasWidth);
+        }
+        if (settingsui::beginRow("graphics.canvas_height")) {
+            drawIntSetting("Canvas Height", "##CanvasHeight", m_canvasHeight, (int)Project::defaultCanvasHeight);
+        }
 
-        drawComboSetting("Scaling Mode", "##ScalingMode", scalingModeNames, scalingModeCount, m_scalingModeIndex, findScalingIndex(Project::defaultScalingMode));
-        ImGui::Spacing();
-        drawScalingPreview(scalingModeValues[m_scalingModeIndex], m_canvasWidth, m_canvasHeight);
+        if (settingsui::beginRow("graphics.scaling_mode")) {
+            drawComboSetting("Scaling Mode", "##ScalingMode", scalingModeNames, scalingModeCount, m_scalingModeIndex, findScalingIndex(Project::defaultScalingMode));
+            ImGui::Spacing();
+            drawScalingPreview(scalingModeValues[m_scalingModeIndex], m_canvasWidth, m_canvasHeight);
+        }
 
-        drawComboSetting("Texture Strategy", "##TextureStrategy", textureStrategyNames, textureStrategyCount, m_textureStrategyIndex, findTextureStrategyIndex(Project::defaultTextureStrategy),
-            "Only very old GPUs need power-of-two textures. Resize blurs the edges of atlas tiles. The editor applies a change when the project is reopened.");
+        if (settingsui::beginRow("graphics.texture_strategy")) {
+            drawComboSetting("Texture Strategy", "##TextureStrategy", textureStrategyNames, textureStrategyCount, m_textureStrategyIndex, findTextureStrategyIndex(Project::defaultTextureStrategy),
+                "Only very old GPUs need power-of-two textures. Resize blurs the edges of atlas tiles. The editor applies a change when the project is reopened.");
+        }
 
-        drawComboSetting("HTML UI MSAA", "##HtmlUiMsaa", htmlUiMsaaNames, htmlUiMsaaCount, m_htmlUiMsaaIndex, findHtmlUiMsaaIndex(Project::defaultHtmlUiMsaaSamples),
-            "Multisampling of the HTML/CSS UI documents: smoother rounded corners, thin borders and rotated edges. "
-            "Devices without MSAA draw them without it.");
+        if (settingsui::beginRow("graphics.html_ui_msaa_samples")) {
+            drawComboSetting("HTML UI MSAA", "##HtmlUiMsaa", htmlUiMsaaNames, htmlUiMsaaCount, m_htmlUiMsaaIndex, findHtmlUiMsaaIndex(Project::defaultHtmlUiMsaaSamples),
+                "Multisampling of the HTML/CSS UI documents: smoother rounded corners, thin borders and rotated edges. "
+                "Devices without MSAA draw them without it.");
+        }
 
-        drawComboSetting("Mobile PBR Tier", "##MobilePbrTier", mobilePbrTierNames, 2, m_mobilePbrTierIndex, findMobilePbrTierIndex(Project::defaultMobilePbrTier),
-            "Android, iOS and HTML5 exports with Reduced leave out iridescence, anisotropy direction maps and clear coat normal maps "
-            "of the built-in Lit's extended lobes (fewer and lighter shader variants). Desktop exports and the editor draw everything.");
+        if (settingsui::beginRow("graphics.mobile_pbr_tier")) {
+            drawComboSetting("Mobile PBR Tier", "##MobilePbrTier", mobilePbrTierNames, 2, m_mobilePbrTierIndex, findMobilePbrTierIndex(Project::defaultMobilePbrTier),
+                "Android, iOS and HTML5 exports with Reduced leave out iridescence, anisotropy direction maps and clear coat normal maps "
+                "of the built-in Lit's extended lobes (fewer and lighter shader variants). Desktop exports and the editor draw everything.");
+        }
 
         // Shadows: the quality tier a scene of Quality Auto renders with, per platform
-        ImGui::SeparatorText("Shadows");
-        {
+        if (settingsui::sectionVisible("Shadows")) {
+            ImGui::SeparatorText("Shadows");
             static const char* const tierNames[] = {"Low", "Medium", "High", "Ultra"};
             static const char* const platformLabels[] = {"macOS", "iOS", "Web", "Android", "Linux", "Windows"};
             static const int platformOrder[] = {5, 4, 0, 2, 3, 1};   // Windows, Linux, macOS, Web, Android, iOS
             for (int platform : platformOrder) {
+                const std::string key = std::string("graphics.shadow_tier.") + Project::getShadowTierPlatformName(platform);
+                if (!settingsui::beginRow(key.c_str())) continue;
                 const std::string label = std::string(platformLabels[platform]) + " Shadow Tier";
                 const std::string id = std::string("##ShadowTier") + platformLabels[platform];
                 drawComboSetting(label.c_str(), id.c_str(), tierNames, 4, m_shadowTiers[platform],
@@ -1446,25 +1509,29 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
             }
         }
 
-        if (projectBeginSettingsRow("Runtime Shader Compilation", m_runtimeShadersEnabled != Project::defaultRuntimeShadersEnabled)) {
-            m_runtimeShadersEnabled = Project::defaultRuntimeShadersEnabled;
+        if (settingsui::beginRow("graphics.runtime_shaders")) {
+            if (projectBeginSettingsRow("Runtime Shader Compilation", m_runtimeShadersEnabled != Project::defaultRuntimeShadersEnabled)) {
+                m_runtimeShadersEnabled = Project::defaultRuntimeShadersEnabled;
+            }
+            ImGui::Checkbox("##RuntimeShaders", &m_runtimeShadersEnabled);
+            endSettingsRow("Exported builds compile the shader variants they do not ship precompiled, such as those of meshes and materials "
+                "that scripts build or change, in the background and cache them on disk. When off, the build carries only the "
+                "variants in Build Settings > Shaders and leaves out what draws with any other. Play always compiles.");
         }
-        ImGui::Checkbox("##RuntimeShaders", &m_runtimeShadersEnabled);
-        endSettingsRow("Exported builds compile the shader variants they do not ship precompiled, such as those of meshes and materials "
-            "that scripts build or change, in the background and cache them on disk. When off, the build carries only the "
-            "variants in Build Settings > Shaders and leaves out what draws with any other. Play always compiles.");
     });
 }
 
 void ProjectSettingsWindow::drawQualitySettings() {
     projectDrawSettingsPanel("##QualitySettingsPanel", [this]() {
-        if (projectBeginSettingsRow("VSync", m_vsyncEnabled != Project::defaultVSyncEnabled)) {
-            m_vsyncEnabled = Project::defaultVSyncEnabled;
+        if (settingsui::beginRow("quality.vsync")) {
+            if (projectBeginSettingsRow("VSync", m_vsyncEnabled != Project::defaultVSyncEnabled)) {
+                m_vsyncEnabled = Project::defaultVSyncEnabled;
+            }
+            ImGui::Checkbox("##VSync", &m_vsyncEnabled);
+            endSettingsRow("Synchronize Play mode and supported desktop builds to the display refresh rate. "
+                "The editor window follows Preferences > General > Editor VSync. "
+                "macOS Metal exports remain synchronized.");
         }
-        ImGui::Checkbox("##VSync", &m_vsyncEnabled);
-        endSettingsRow("Synchronize Play mode and supported desktop builds to the display refresh rate. "
-            "The editor window follows Preferences > General > Editor VSync. "
-            "macOS Metal exports remain synchronized.");
 
         // the tiers of volumetric fog and clouds (docs/mcp/guide/atmosphere.md)
         static const char* const qualityNames[] = {"Off", "Low", "Medium", "High"};
@@ -1475,8 +1542,11 @@ void ProjectSettingsWindow::drawQualitySettings() {
             "Low, Medium, High: their resolution, steps, light and volume counts. Height fog and the sky fill are never tiered.",
             "Volumetric fog and volumetric clouds on Android and iOS.",
             "Volumetric fog and volumetric clouds in HTML5 builds."};
-        for (int i = 0; i < 3; i++)
+        static const char* const keys[3] = {"quality.atmosphere_quality_desktop", "quality.atmosphere_quality_mobile", "quality.atmosphere_quality_web"};
+        for (int i = 0; i < 3; i++) {
+            if (!settingsui::beginRow(keys[i])) continue;
             drawComboSetting(rows[i], ids[i], qualityNames, 4, m_atmosphereQuality[i], (int)Project::defaultAtmosphereQuality[i], tooltips[i]);
+        }
     });
 }
 
@@ -1489,6 +1559,8 @@ void ProjectSettingsWindow::drawTextureSettings() {
         static const char* const sizeLabels[] = {"32", "64", "128", "256", "512", "1024", "2048", "4096", "8192", "16384"};
         for (size_t f = 0; f < kTextureFamilyCount; f++) {
             const std::string family = textureFamilyLabel((TextureFamily)f);
+            const std::string familyKey = textureFamilyName((TextureFamily)f);
+            if (settingsui::beginRow(("texture.default_quality." + familyKey).c_str())) {
             const std::string qualityRow = "Default Quality (" + family + ")";
             const std::string qualityId = "##TextureQuality" + family;
             int quality = (int)t.defaultQuality[f];
@@ -1496,6 +1568,8 @@ void ProjectSettingsWindow::drawTextureSettings() {
                 "The compression of this family's textures without an override: None keeps them uncompressed; Low, "
                 "Normal, High pick the formats of the spec's table (docs/textures.md).");
             t.defaultQuality[f] = (TextureCookQuality)quality;
+            }
+            if (!settingsui::beginRow(("texture.default_max_size." + familyKey).c_str())) continue;
             const std::string sizeRow = "Default Max Size (" + family + ")";
             const std::string sizeId = "##TextureMaxSize" + family;
             int sizeIndex = 0, defaultIndex = 0;
@@ -1508,21 +1582,27 @@ void ProjectSettingsWindow::drawTextureSettings() {
             t.defaultMaxSize[f] = 32 << sizeIndex;
         }
 
-        if (projectBeginSettingsRow("Android ETC2 Fallback", t.androidEtc2Fallback != defaults.androidEtc2Fallback)) {
-            t.androidEtc2Fallback = defaults.androidEtc2Fallback;
+        if (settingsui::beginRow("texture.android_etc2_fallback")) {
+            if (projectBeginSettingsRow("Android ETC2 Fallback", t.androidEtc2Fallback != defaults.androidEtc2Fallback)) {
+                t.androidEtc2Fallback = defaults.androidEtc2Fallback;
+            }
+            ImGui::Checkbox("##AndroidEtc2Fallback", &t.androidEtc2Fallback);
+            endSettingsRow("Android exports also carry an ETC2 / EAC cook, loaded by devices without ASTC, and the manifest no "
+                           "longer asks the store for ASTC.");
         }
-        ImGui::Checkbox("##AndroidEtc2Fallback", &t.androidEtc2Fallback);
-        endSettingsRow("Android exports also carry an ETC2 / EAC cook, loaded by devices without ASTC, and the manifest no "
-                       "longer asks the store for ASTC.");
 
         // the runtime per platform group: Engine::setTextureQuality / setTextureMemoryBudget
         static const char* const groups[3] = {"Desktop", "Mobile", "Web"};
         static const char* const mipLabels[] = {"Full (0)", "Half (1)", "Quarter (2)", "Eighth (3)"};
         for (int g = 0; g < 3; g++) {
+            const std::string groupKey = texturePlatformGroupName((size_t)g);
+            if (settingsui::beginRow(("texture.texture_quality." + groupKey).c_str())) {
             const std::string qualityRow = std::string("Texture Quality (") + groups[g] + ")";
             const std::string qualityId = std::string("##TextureRuntimeQuality") + groups[g];
             drawComboSetting(qualityRow.c_str(), qualityId.c_str(), mipLabels, 4, t.textureQuality[g], defaults.textureQuality[g],
                 "Top mips of streamable textures dropped at load (Unity's Global Mipmap Limit); Lua: Engine.setTextureQuality.");
+            }
+            if (settingsui::beginRow(("texture.memory_budget_mb." + groupKey).c_str())) {
             const std::string budgetRow = std::string("Texture Memory Budget (") + groups[g] + ")";
             const std::string budgetId = std::string("##TextureBudget") + groups[g];
             if (projectBeginSettingsRow(budgetRow.c_str(), t.memoryBudgetMB[g] != defaults.memoryBudgetMB[g])) {
@@ -1533,6 +1613,8 @@ void ProjectSettingsWindow::drawTextureSettings() {
             t.memoryBudgetMB[g] = std::clamp(t.memoryBudgetMB[g], 0, 1 << 20);
             endSettingsRow("MB of resident textures; 0 = unlimited. Over it, the largest streamable textures drop mips "
                            "(a texture keeps at least 64 px).");
+            }
+            if (!settingsui::beginRow(("texture.low_memory_fallback." + groupKey).c_str())) continue;
             const std::string lowRow = std::string("Low-Memory Fallback (") + groups[g] + ")";
             const std::string lowId = std::string("##TextureLowMemory") + groups[g];
             if (projectBeginSettingsRow(lowRow.c_str(), t.lowMemoryFallback[g] != defaults.lowMemoryFallback[g])) {
@@ -1545,6 +1627,7 @@ void ProjectSettingsWindow::drawTextureSettings() {
         }
 
         // the cook cache
+        if (settingsui::beginRow("texture.cache_size_mb")) {
         if (projectBeginSettingsRow("Cache Size", t.cacheSizeMB != defaults.cacheSizeMB)) {
             t.cacheSizeMB = defaults.cacheSizeMB;
         }
@@ -1552,6 +1635,8 @@ void ProjectSettingsWindow::drawTextureSettings() {
         ImGui::InputInt("##TextureCacheSize", &t.cacheSizeMB, 256, 1024);
         t.cacheSizeMB = std::clamp(t.cacheSizeMB, 64, 1 << 20);
         endSettingsRow("MB the cooked texture cache keeps (least recently used files go first).");
+        }
+        if (settingsui::beginRow("texture.global_cache_dir")) {
         if (projectBeginSettingsRow("Global Cache Directory", !t.globalCacheDir.empty())) {
             t.globalCacheDir.clear();
         }
@@ -1562,6 +1647,8 @@ void ProjectSettingsWindow::drawTextureSettings() {
             t.globalCacheDir = buffer;
         }
         endSettingsRow("A directory every project shares (the keys are content addresses, so sharing is safe).");
+        }
+        if (!settingsui::beginRow("texture.clear_cache")) return;
         projectBeginSettingsRow("Texture Cache");
         TextureCookQueue& cooks = TextureCookQueue::get();
         const bool attached = cooks.getProject() == m_project;
@@ -1582,18 +1669,20 @@ void ProjectSettingsWindow::drawTextureSettings() {
 void ProjectSettingsWindow::drawPhysicsSettings() {
     if (beginSettingsPanel("##PhysicsSettingsPanel")) {
         if (beginSettingsTable("##SettingsTable")) {
-            if (projectBeginSettingsRow("3D Physics", m_physics3DEnabled != Project::defaultPhysics3DEnabled)) {
-                m_physics3DEnabled = Project::defaultPhysics3DEnabled;
+            if (settingsui::beginRow("physics.enabled")) {
+                if (projectBeginSettingsRow("3D Physics", m_physics3DEnabled != Project::defaultPhysics3DEnabled)) {
+                    m_physics3DEnabled = Project::defaultPhysics3DEnabled;
+                }
+                ImGui::Checkbox("##Physics3D", &m_physics3DEnabled);
+                endSettingsRow("Jolt-based 3D physics. When off, Jolt is left out of exported builds, along with any Rigidbodies and joints the scenes still use. Play always runs with both backends available.");
             }
-            ImGui::Checkbox("##Physics3D", &m_physics3DEnabled);
-            endSettingsRow("Jolt-based 3D physics. When off, Jolt is left out of exported builds, along with any Rigidbodies and joints the scenes still use. Play always runs with both backends available.");
             ImGui::EndTable();
         }
 
-        if (Theme::foldoutHeader("Layer Collision Matrix", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (settingsFoldout("Layer Collision Matrix", ImGuiTreeNodeFlags_DefaultOpen)) {
             drawSectionNote("Rigidbodies on layers whose box is cleared pass through each other and report no contacts. "
                 "Scripts change it with Physics.ignoreLayerCollision; collider category and mask bits still apply to the checked pairs.");
-            drawLayerCollisionMatrix("##LayerCollisionMatrix3D", m_layerCollision3D);
+            if (settingsui::beginRow("physics.layer_collision_matrix")) drawLayerCollisionMatrix("##LayerCollisionMatrix3D", m_layerCollision3D);
         }
     }
     endSettingsPanel();
@@ -1602,18 +1691,20 @@ void ProjectSettingsWindow::drawPhysicsSettings() {
 void ProjectSettingsWindow::drawPhysics2DSettings() {
     if (beginSettingsPanel("##Physics2DSettingsPanel")) {
         if (beginSettingsTable("##SettingsTable")) {
-            if (projectBeginSettingsRow("2D Physics", m_physics2DEnabled != Project::defaultPhysics2DEnabled)) {
-                m_physics2DEnabled = Project::defaultPhysics2DEnabled;
+            if (settingsui::beginRow("physics2d.enabled")) {
+                if (projectBeginSettingsRow("2D Physics", m_physics2DEnabled != Project::defaultPhysics2DEnabled)) {
+                    m_physics2DEnabled = Project::defaultPhysics2DEnabled;
+                }
+                ImGui::Checkbox("##Physics2D", &m_physics2DEnabled);
+                endSettingsRow("Box2D-based 2D physics. When off, Box2D is left out of exported builds, along with any Rigidbody 2D and joints the scenes still use. Play always runs with both backends available.");
             }
-            ImGui::Checkbox("##Physics2D", &m_physics2DEnabled);
-            endSettingsRow("Box2D-based 2D physics. When off, Box2D is left out of exported builds, along with any Rigidbody 2D and joints the scenes still use. Play always runs with both backends available.");
             ImGui::EndTable();
         }
 
-        if (Theme::foldoutHeader("Layer Collision Matrix", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (settingsFoldout("Layer Collision Matrix", ImGuiTreeNodeFlags_DefaultOpen)) {
             drawSectionNote("Rigidbody 2D colliders on layers whose box is cleared pass through each other and report no contacts or triggers. "
                 "Scripts change it with Physics2D.ignoreLayerCollision; collider category, mask and group still apply to the checked pairs.");
-            drawLayerCollisionMatrix("##LayerCollisionMatrix2D", m_layerCollision2D);
+            if (settingsui::beginRow("physics2d.layer_collision_matrix")) drawLayerCollisionMatrix("##LayerCollisionMatrix2D", m_layerCollision2D);
         }
     }
     endSettingsPanel();
@@ -1746,20 +1837,26 @@ void ProjectSettingsWindow::drawLayerCollisionMatrix(const char* id, LayerCollis
 
 void ProjectSettingsWindow::drawScriptingSettings() {
     projectDrawSettingsPanel("##ScriptingSettingsPanel", [this]() {
-        drawDirectorySetting(
-            m_project, "Lua Directory", nullptr, "##LuaPath", "Browse##lua",
-            m_luaDir, fs::path(Project::defaultLuaDir), true
-        );
-        drawScriptDirsSetting(m_project, m_scriptDirs);
+        if (settingsui::beginRow("scripting.lua_dir")) {
+            drawDirectorySetting(
+                m_project, "Lua Directory", nullptr, "##LuaPath", "Browse##lua",
+                m_luaDir, fs::path(Project::defaultLuaDir), true
+            );
+        }
+        if (settingsui::beginRow("scripting.script_dirs")) {
+            drawScriptDirsSetting(m_project, m_scriptDirs);
+        }
 
-        drawComboSetting("C++ Standard", "##CxxStandard", cxxStandardNames(), cxxStandardCount, m_cxxStandardIndex,
-            findCxxStandardIndex(Project::defaultCxxStandard),
-            "Language standard for C++ scripts in Play and exported games. Saved with the project. "
-            "Exports also compile the engine with this standard. "
-            "Choose a compatible compiler in Preferences > External Tools: GCC " JASPERENGINE_CXX_FLOOR_GNU
-            ", Clang " JASPERENGINE_CXX_FLOOR_CLANG ", Apple Clang " JASPERENGINE_CXX_FLOOR_APPLECLANG
-            " or MSVC " JASPERENGINE_CXX_FLOOR_MSVC
-            " (Visual Studio 2022) or newer. C++23 exports to Xcode need Xcode 16 or newer.");
+        if (settingsui::beginRow("scripting.cxx_standard")) {
+            drawComboSetting("C++ Standard", "##CxxStandard", cxxStandardNames(), cxxStandardCount, m_cxxStandardIndex,
+                findCxxStandardIndex(Project::defaultCxxStandard),
+                "Language standard for C++ scripts in Play and exported games. Saved with the project. "
+                "Exports also compile the engine with this standard. "
+                "Choose a compatible compiler in Preferences > External Tools: GCC " JASPERENGINE_CXX_FLOOR_GNU
+                ", Clang " JASPERENGINE_CXX_FLOOR_CLANG ", Apple Clang " JASPERENGINE_CXX_FLOOR_APPLECLANG
+                " or MSVC " JASPERENGINE_CXX_FLOOR_MSVC
+                " (Visual Studio 2022) or newer. C++23 exports to Xcode need Xcode 16 or newer.");
+        }
     });
 }
 
@@ -1803,7 +1900,7 @@ void ProjectSettingsWindow::drawTagsAndLayersSettings() {
         const ImVec4 errorColor(1.0f, 0.45f, 0.35f, 1.0f);
         const float buttonWidth = ImGui::GetFrameHeight();
 
-        if (Theme::foldoutHeader("Tags", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##TagsTable")) {
+        if (settingsFoldout("Tags", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##TagsTable")) {
             for (const std::string& tag : TagManager::getBuiltinTags()) {
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
@@ -1866,7 +1963,7 @@ void ProjectSettingsWindow::drawTagsAndLayersSettings() {
             ImGui::EndTable();
         }
 
-        if (Theme::foldoutHeader("Layers", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##LayersTable")) {
+        if (settingsFoldout("Layers", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##LayersTable")) {
             for (int layer = 0; layer < MAX_LAYERS; layer++) {
                 ImGui::PushID(layer);
                 ImGui::TableNextRow();
@@ -1900,30 +1997,105 @@ void ProjectSettingsWindow::drawTagsAndLayersSettings() {
 
 void ProjectSettingsWindow::drawEditorSettings() {
     projectDrawSettingsPanel("##EditorSettingsPanel", [this]() {
-        if (projectBeginSettingsRow("Version Control Files", m_versionControlMetadata != Project::defaultVersionControlMetadata)) {
-            m_versionControlMetadata = Project::defaultVersionControlMetadata;
+        if (settingsui::beginRow("editor.version_control_files")) {
+            if (projectBeginSettingsRow("Version Control Files", m_versionControlMetadata != Project::defaultVersionControlMetadata)) {
+                m_versionControlMetadata = Project::defaultVersionControlMetadata;
+            }
+            ImGui::Checkbox("##VersionControlMetadata", &m_versionControlMetadata);
+            endSettingsRow("Keep .gitignore and .gitattributes in the project up to date, so the editor's "
+                "working directory, this machine's build settings and each developer's own layout stay out "
+                "of the repository. A file the editor did not generate is never replaced.");
         }
-        ImGui::Checkbox("##VersionControlMetadata", &m_versionControlMetadata);
-        endSettingsRow("Keep .gitignore and .gitattributes in the project up to date, so the editor's "
-            "working directory, this machine's build settings and each developer's own layout stay out "
-            "of the repository. A file the editor did not generate is never replaced.");
 
 
-        drawDirectorySetting(
-            m_project, "Assets Directory", nullptr, "##AssetsPath", "Browse##assets",
-            m_assetsDir, fs::path(Project::defaultAssetsDir)
-        );
+        if (settingsui::beginRow("editor.assets_dir")) {
+            drawDirectorySetting(
+                m_project, "Assets Directory", nullptr, "##AssetsPath", "Browse##assets",
+                m_assetsDir, fs::path(Project::defaultAssetsDir)
+            );
+        }
     });
+    drawAssetLabelsSettings();
+}
+
+// Asset Labels (S25 R23): each label's colour, rename and delete. These apply at once, each one
+// undo step of the project history (they rewrite the assets' metas and in-file keys), not with OK.
+void ProjectSettingsWindow::drawAssetLabelsSettings() {
+    if (!settingsFoldout("Asset Labels", ImGuiTreeNodeFlags_DefaultOpen)) return;
+    if (!settingsui::beginRow("editor.asset_labels")) return;
+    drawSectionNote("Colours, names and removal apply at once and are undoable (Edit > Undo). Label assets with "
+                    "the Project window's Labels menu; find them with l:Name in its search.");
+    const std::vector<AssetLabels::LabelInfo> labels = m_project->getAssetLabels().labels();
+    if (labels.empty()) {
+        ImGui::TextDisabled("No labels yet.");
+        return;
+    }
+    if (!beginSettingsTable("##AssetLabelsTable")) return;
+    for (const AssetLabels::LabelInfo& label : labels) {
+        ImGui::PushID(label.name.c_str());
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        float color[3] = {0.5f, 0.5f, 0.5f};
+        if (AssetLabels::isColor(label.color)) {
+            const unsigned int value = static_cast<unsigned int>(std::strtoul(label.color.c_str() + 1, nullptr, 16));
+            color[0] = ((value >> 16) & 0xFF) / 255.0f;
+            color[1] = ((value >> 8) & 0xFF) / 255.0f;
+            color[2] = (value & 0xFF) / 255.0f;
+        }
+        ImGui::ColorEdit3("##LabelColor", color, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
+            char hex[8];
+            std::snprintf(hex, sizeof(hex), "#%02X%02X%02X", static_cast<int>(color[0] * 255.0f + 0.5f),
+                          static_cast<int>(color[1] * 255.0f + 0.5f), static_cast<int>(color[2] * 255.0f + 0.5f));
+            const LabelOperations::Result result = LabelOperations::setColor(m_project, label.name, hex);
+            if (!result.ok) Out::warning("Asset Labels: %s", result.error.c_str());
+        }
+        ImGui::SameLine();
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("%s  (%zu)", label.name.c_str(), label.assets);
+        ImGui::SetItemTooltip("%zu asset(s) have this label", label.assets);
+        ImGui::TableNextColumn();
+        const bool editing = m_renamingLabel == label.name;
+        if (editing) {
+            ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.0f);
+            const bool enter = ImGui::InputText("##LabelName", m_labelNameBuffer, sizeof(m_labelNameBuffer), ImGuiInputTextFlags_EnterReturnsTrue);
+            ImGui::SameLine();
+            if (ImGui::Button("Rename") || enter) {
+                const LabelOperations::Result result = LabelOperations::rename(m_project, label.name, m_labelNameBuffer);
+                if (!result.ok) Out::warning("Asset Labels: %s", result.error.c_str());
+                m_renamingLabel.clear();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel")) m_renamingLabel.clear();
+        } else {
+            if (ImGui::Button("Rename...")) {
+                m_renamingLabel = label.name;
+                std::snprintf(m_labelNameBuffer, sizeof(m_labelNameBuffer), "%s", label.name.c_str());
+            }
+            ImGui::SetItemTooltip("Rename it on every asset");
+            ImGui::SameLine();
+            if (ImGui::Button("Delete")) {
+                const LabelOperations::Result result = LabelOperations::remove(m_project, label.name);
+                if (!result.ok) Out::warning("Asset Labels: %s", result.error.c_str());
+            }
+            ImGui::SetItemTooltip("Take it off every asset (undoable)");
+        }
+        ImGui::PopID();
+    }
+    ImGui::EndTable();
 }
 
 void ProjectSettingsWindow::drawPlatformsSettings() {
     // Unity's per-platform Player tabs: each adds what its platform needs on top
     // of the shared product settings above.
+    // while searching, only the platforms with a matching row
+    static const char* const platforms[] = {"Windows", "macOS", "Linux", "iOS", "Android", "Web"};
+    if (std::none_of(std::begin(platforms), std::end(platforms), [](const char* name) { return settingsui::sectionVisible(name); })) return;
     settingsui::boldText("Settings for Platform");
     ImGui::Spacing();
     if (!ImGui::BeginTabBar("##PlayerPlatformTabs", ImGuiTabBarFlags_FittingPolicyShrink)) return;
 
-    if (ImGui::BeginTabItem(ICON_FA_WINDOW_MAXIMIZE " Windows")) {
+    if (settingsui::sectionVisible("Windows") && ImGui::BeginTabItem(ICON_FA_WINDOW_MAXIMIZE " Windows")) {
         drawSectionNote("The Default Icon above is embedded into Windows players.");
         if (beginSettingsTable("##WindowsSettingsTable")) {
             drawWindowsSettings();
@@ -1932,7 +2104,7 @@ void ProjectSettingsWindow::drawPlatformsSettings() {
         ImGui::EndTabItem();
     }
 
-    if (ImGui::BeginTabItem(ICON_FA_LAPTOP " macOS")) {
+    if (settingsui::sectionVisible("macOS") && ImGui::BeginTabItem(ICON_FA_LAPTOP " macOS")) {
         drawSectionNote("Bundle settings apply to Apple projects exported as source code. "
             "An Executable Player is a standalone executable, not an .app bundle.");
         if (beginSettingsTable("##MacOSSettingsTable")) {
@@ -1942,7 +2114,7 @@ void ProjectSettingsWindow::drawPlatformsSettings() {
         ImGui::EndTabItem();
     }
 
-    if (ImGui::BeginTabItem(ICON_FA_TERMINAL " Linux")) {
+    if (settingsui::sectionVisible("Linux") && ImGui::BeginTabItem(ICON_FA_TERMINAL " Linux")) {
         if (beginSettingsTable("##LinuxSettingsTable")) {
             drawLinuxSettings();
             ImGui::EndTable();
@@ -1950,7 +2122,7 @@ void ProjectSettingsWindow::drawPlatformsSettings() {
         ImGui::EndTabItem();
     }
 
-    if (ImGui::BeginTabItem(ICON_FA_MOBILE_BUTTON " iOS")) {
+    if (settingsui::sectionVisible("iOS") && ImGui::BeginTabItem(ICON_FA_MOBILE_BUTTON " iOS")) {
         if (beginSettingsTable("##IOSSettingsTable")) {
             drawIOSSettings();
             ImGui::EndTable();
@@ -1958,7 +2130,7 @@ void ProjectSettingsWindow::drawPlatformsSettings() {
         ImGui::EndTabItem();
     }
 
-    if (ImGui::BeginTabItem(ICON_FA_MOBILE_SCREEN_BUTTON " Android")) {
+    if (settingsui::sectionVisible("Android") && ImGui::BeginTabItem(ICON_FA_MOBILE_SCREEN_BUTTON " Android")) {
         if (beginSettingsTable("##AndroidSettingsTable")) {
             drawAndroidSettings();
             ImGui::EndTable();
@@ -1966,7 +2138,7 @@ void ProjectSettingsWindow::drawPlatformsSettings() {
         ImGui::EndTabItem();
     }
 
-    if (ImGui::BeginTabItem(ICON_FA_GLOBE " Web")) {
+    if (settingsui::sectionVisible("Web") && ImGui::BeginTabItem(ICON_FA_GLOBE " Web")) {
         if (beginSettingsTable("##WebSettingsTable")) {
             drawWebSettings();
             ImGui::EndTable();
@@ -1978,277 +2150,369 @@ void ProjectSettingsWindow::drawPlatformsSettings() {
 }
 
 void ProjectSettingsWindow::drawWebSettings() {
-    drawOverrideSetting("App Name", "##WebAppName", m_webApplicationNameBuffer, inheritedApplicationName(),
-        "Title used by the exported web page. Empty means the shared application name.");
-
-    drawProjectFilePathSetting(m_project, "Favicon", "Browser tab icon for web export.", "##WebFaviconPath",
-        "Browse##webfavicon", "Clear##webfavicon", m_webFavicon);
-    drawProjectFilePathSetting(m_project, "Custom HTML Shell", "Optional web HTML wrapper. The file must contain {{JASPERENGINE_DEFAULT_HTML}} marker.", "##WebHtmlShellPath",
-        "Browse##webhtmlshell", "Clear##webhtmlshell", m_webCustomHtmlShell, FILE_DIALOG_ALL);
-
-    projectBeginSettingsRow("Head Include");
-    ImGui::SetNextItemWidth(-1);
-    ImGui::InputTextMultiline("##WebHeadInclude", m_webHeadIncludeBuffer, sizeof(m_webHeadIncludeBuffer), ImVec2(-1, Theme::dpi(80.0f)));
-    endSettingsRow("HTML inserted into the <head> section by web export when supported.");
-
-    if (projectBeginSettingsRow("Resize Canvas To Window", !m_webResizeCanvasToWindow)) {
-        m_webResizeCanvasToWindow = true;
+    if (settingsui::beginRow("web.application_name")) {
+        drawOverrideSetting("App Name", "##WebAppName", m_webApplicationNameBuffer, inheritedApplicationName(),
+            "Title used by the exported web page. Empty means the shared application name.");
     }
-    ImGui::Checkbox("##WebResizeCanvasToWindow", &m_webResizeCanvasToWindow);
-    endSettingsRow("Resize the rendering surface to the browser window. Canvas Scaling Mode controls aspect ratio and stretching.");
 
-    if (projectBeginSettingsRow("Hide Emscripten UI", m_webHideEmscriptenUI)) {
-        m_webHideEmscriptenUI = false;
+    if (settingsui::beginRow("web.favicon")) {
+        drawProjectFilePathSetting(m_project, "Favicon", "Browser tab icon for web export.", "##WebFaviconPath",
+            "Browse##webfavicon", "Clear##webfavicon", m_webFavicon);
     }
-    ImGui::Checkbox("##WebHideEmscriptenUI", &m_webHideEmscriptenUI);
-    endSettingsRow("Hide the standard logo, status, controls and output console. Runtime scripts remain active. Custom HTML elements are not removed.");
+    if (settingsui::beginRow("web.custom_html_shell")) {
+        drawProjectFilePathSetting(m_project, "Custom HTML Shell", "Optional web HTML wrapper. The file must contain {{JASPERENGINE_DEFAULT_HTML}} marker.", "##WebHtmlShellPath",
+            "Browse##webhtmlshell", "Clear##webhtmlshell", m_webCustomHtmlShell, FILE_DIALOG_ALL);
+    }
+
+    if (settingsui::beginRow("web.head_include")) {
+        projectBeginSettingsRow("Head Include");
+        ImGui::SetNextItemWidth(-1);
+        ImGui::InputTextMultiline("##WebHeadInclude", m_webHeadIncludeBuffer, sizeof(m_webHeadIncludeBuffer), ImVec2(-1, Theme::dpi(80.0f)));
+        endSettingsRow("HTML inserted into the <head> section by web export when supported.");
+    }
+
+    if (settingsui::beginRow("web.resize_canvas_to_window")) {
+        if (projectBeginSettingsRow("Resize Canvas To Window", !m_webResizeCanvasToWindow)) {
+            m_webResizeCanvasToWindow = true;
+        }
+        ImGui::Checkbox("##WebResizeCanvasToWindow", &m_webResizeCanvasToWindow);
+        endSettingsRow("Resize the rendering surface to the browser window. Canvas Scaling Mode controls aspect ratio and stretching.");
+    }
+
+    if (settingsui::beginRow("web.hide_emscripten_ui")) {
+        if (projectBeginSettingsRow("Hide Emscripten UI", m_webHideEmscriptenUI)) {
+            m_webHideEmscriptenUI = false;
+        }
+        ImGui::Checkbox("##WebHideEmscriptenUI", &m_webHideEmscriptenUI);
+        endSettingsRow("Hide the standard logo, status, controls and output console. Runtime scripts remain active. Custom HTML elements are not removed.");
+    }
 }
 
 void ProjectSettingsWindow::drawLinuxSettings() {
-    drawOverrideSetting("App Name", "##LinuxAppName", m_linuxApplicationNameBuffer, inheritedApplicationName(),
-        "Linux desktop launcher name. Empty means the shared application name.");
-
-    projectBeginSettingsRow("Comment");
-    ImGui::SetNextItemWidth(-helpMarkerWidth());
-    ImGui::InputText("##LinuxComment", m_linuxCommentBuffer, sizeof(m_linuxCommentBuffer));
-    endSettingsRow("Short description written to the .desktop launcher file.");
-
-    if (projectBeginSettingsRow("Categories", strcmp(m_linuxCategoriesBuffer, LinuxProjectSettings{}.categories.c_str()) != 0)) {
-        snprintf(m_linuxCategoriesBuffer, sizeof(m_linuxCategoriesBuffer), "%s", LinuxProjectSettings{}.categories.c_str());
+    if (settingsui::beginRow("linux.application_name")) {
+        drawOverrideSetting("App Name", "##LinuxAppName", m_linuxApplicationNameBuffer, inheritedApplicationName(),
+            "Linux desktop launcher name. Empty means the shared application name.");
     }
-    ImGui::SetNextItemWidth(-helpMarkerWidth());
-    ImGui::InputText("##LinuxCategories", m_linuxCategoriesBuffer, sizeof(m_linuxCategoriesBuffer));
-    endSettingsRow("Desktop Entry categories. Example: Game;ArcadeGame;");
+
+    if (settingsui::beginRow("linux.comment")) {
+        projectBeginSettingsRow("Comment");
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        ImGui::InputText("##LinuxComment", m_linuxCommentBuffer, sizeof(m_linuxCommentBuffer));
+        endSettingsRow("Short description written to the .desktop launcher file.");
+    }
+
+    if (settingsui::beginRow("linux.categories")) {
+        if (projectBeginSettingsRow("Categories", strcmp(m_linuxCategoriesBuffer, LinuxProjectSettings{}.categories.c_str()) != 0)) {
+            snprintf(m_linuxCategoriesBuffer, sizeof(m_linuxCategoriesBuffer), "%s", LinuxProjectSettings{}.categories.c_str());
+        }
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        ImGui::InputText("##LinuxCategories", m_linuxCategoriesBuffer, sizeof(m_linuxCategoriesBuffer));
+        endSettingsRow("Desktop Entry categories. Example: Game;ArcadeGame;");
+    }
 }
 
 void ProjectSettingsWindow::drawWindowsSettings() {
-    drawOverrideSetting("Product Name", "##WindowsProductName", m_windowsProductNameBuffer, inheritedApplicationName(),
-        "Windows executable metadata. Empty means the shared application name.");
+    if (settingsui::beginRow("windows.product_name")) {
+        drawOverrideSetting("Product Name", "##WindowsProductName", m_windowsProductNameBuffer, inheritedApplicationName(),
+            "Windows executable metadata. Empty means the shared application name.");
+    }
 
-    projectBeginSettingsRow("Company Name");
-    ImGui::SetNextItemWidth(-helpMarkerWidth());
-    ImGui::InputText("##WindowsCompanyName", m_windowsCompanyNameBuffer, sizeof(m_windowsCompanyNameBuffer));
-    endSettingsRow("Windows executable metadata company name.");
+    if (settingsui::beginRow("windows.company_name")) {
+        projectBeginSettingsRow("Company Name");
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        ImGui::InputText("##WindowsCompanyName", m_windowsCompanyNameBuffer, sizeof(m_windowsCompanyNameBuffer));
+        endSettingsRow("Windows executable metadata company name.");
+    }
 
     const std::string inheritedWindowsVersion = Project::toFourPartVersion(inheritedApplicationVersion());
 
-    drawOverrideSetting("File Version", "##WindowsFileVersion", m_windowsFileVersionBuffer, inheritedWindowsVersion,
-        "Windows numeric file version. Empty means the shared version, padded to four parts.");
-    drawOverrideWarning(m_windowsFileVersionBuffer, isWindowsVersionValid,
-        "Use up to four numbers from 0 to 65535, for example 1.0.0.0.");
-    drawWindowsVersionResult(m_windowsFileVersionBuffer);
+    if (settingsui::beginRow("windows.file_version")) {
+        drawOverrideSetting("File Version", "##WindowsFileVersion", m_windowsFileVersionBuffer, inheritedWindowsVersion,
+            "Windows numeric file version. Empty means the shared version, padded to four parts.");
+        drawOverrideWarning(m_windowsFileVersionBuffer, isWindowsVersionValid,
+            "Use up to four numbers from 0 to 65535, for example 1.0.0.0.");
+        drawWindowsVersionResult(m_windowsFileVersionBuffer);
+    }
 
-    drawOverrideSetting("Product Version", "##WindowsProductVersion", m_windowsProductVersionBuffer, inheritedWindowsVersion,
-        "Windows product version. Empty means the shared version, padded to four parts.");
-    drawOverrideWarning(m_windowsProductVersionBuffer, isWindowsVersionValid,
-        "Use up to four numbers from 0 to 65535, for example 1.0.0.0.");
-    drawWindowsVersionResult(m_windowsProductVersionBuffer);
+    if (settingsui::beginRow("windows.product_version")) {
+        drawOverrideSetting("Product Version", "##WindowsProductVersion", m_windowsProductVersionBuffer, inheritedWindowsVersion,
+            "Windows product version. Empty means the shared version, padded to four parts.");
+        drawOverrideWarning(m_windowsProductVersionBuffer, isWindowsVersionValid,
+            "Use up to four numbers from 0 to 65535, for example 1.0.0.0.");
+        drawWindowsVersionResult(m_windowsProductVersionBuffer);
+    }
 
 }
 
 void ProjectSettingsWindow::drawMacOSSettings() {
-    drawOverrideSetting("App Name", "##MacOSAppName", m_macOSApplicationNameBuffer, inheritedApplicationName(),
-        "macOS bundle display name. Empty means the shared application name.");
-
-    drawOverrideSetting("Bundle Identifier", "##MacOSBundleIdentifier", m_macOSBundleIdentifierBuffer, inheritedApplicationIdentifier(),
-        "CFBundleIdentifier. Empty means the shared identifier.");
-    drawOverrideWarning(m_macOSBundleIdentifierBuffer, isAppleBundleIdentifierValid,
-        "Use letters, digits and hyphens, for example com.company.my-game.");
-
-    drawOverrideSetting("Version Name", "##MacOSVersionName", m_macOSVersionNameBuffer, inheritedApplicationVersion(),
-        "CFBundleShortVersionString. Empty means the shared version.");
-    drawOverrideWarning(m_macOSVersionNameBuffer, isAppleVersionValid,
-        "Apple accepts at most three numbers, for example 1.0.2.");
-    drawOverrideSetting("Build Number", "##MacOSBuildNumber", m_macOSBuildNumberBuffer, inheritedApplicationBuild(),
-        "CFBundleVersion. Empty means the shared build.");
-    drawOverrideWarning(m_macOSBuildNumberBuffer, isAppleBuildValid,
-        "Apple accepts at most three numbers, for example 42.");
-
-    drawProjectFilePathSetting(m_project, "Icon", "macOS application icon source image. Export support depends on the generated Xcode project.", "##MacOSIconPath",
-        "Browse##macosicon", "Clear##macosicon", m_macOSIcon);
-
-    if (projectBeginSettingsRow("High DPI", !m_macOSHighDpi)) {
-        m_macOSHighDpi = true;
+    if (settingsui::beginRow("macos.application_name")) {
+        drawOverrideSetting("App Name", "##MacOSAppName", m_macOSApplicationNameBuffer, inheritedApplicationName(),
+            "macOS bundle display name. Empty means the shared application name.");
     }
-    ImGui::Checkbox("##MacOSHighDpi", &m_macOSHighDpi);
-    endSettingsRow("Allow high-DPI rendering on macOS.");
+
+    if (settingsui::beginRow("macos.bundle_identifier")) {
+        drawOverrideSetting("Bundle Identifier", "##MacOSBundleIdentifier", m_macOSBundleIdentifierBuffer, inheritedApplicationIdentifier(),
+            "CFBundleIdentifier. Empty means the shared identifier.");
+        drawOverrideWarning(m_macOSBundleIdentifierBuffer, isAppleBundleIdentifierValid,
+            "Use letters, digits and hyphens, for example com.company.my-game.");
+    }
+
+    if (settingsui::beginRow("macos.version_name")) {
+        drawOverrideSetting("Version Name", "##MacOSVersionName", m_macOSVersionNameBuffer, inheritedApplicationVersion(),
+            "CFBundleShortVersionString. Empty means the shared version.");
+        drawOverrideWarning(m_macOSVersionNameBuffer, isAppleVersionValid,
+            "Apple accepts at most three numbers, for example 1.0.2.");
+    }
+    if (settingsui::beginRow("macos.build_number")) {
+        drawOverrideSetting("Build Number", "##MacOSBuildNumber", m_macOSBuildNumberBuffer, inheritedApplicationBuild(),
+            "CFBundleVersion. Empty means the shared build.");
+        drawOverrideWarning(m_macOSBuildNumberBuffer, isAppleBuildValid,
+            "Apple accepts at most three numbers, for example 42.");
+    }
+
+    if (settingsui::beginRow("macos.icon")) {
+        drawProjectFilePathSetting(m_project, "Icon", "macOS application icon source image. Export support depends on the generated Xcode project.", "##MacOSIconPath",
+            "Browse##macosicon", "Clear##macosicon", m_macOSIcon);
+    }
+
+    if (settingsui::beginRow("macos.high_dpi")) {
+        if (projectBeginSettingsRow("High DPI", !m_macOSHighDpi)) {
+            m_macOSHighDpi = true;
+        }
+        ImGui::Checkbox("##MacOSHighDpi", &m_macOSHighDpi);
+        endSettingsRow("Allow high-DPI rendering on macOS.");
+    }
 }
 
 void ProjectSettingsWindow::drawIOSSettings() {
-    drawOverrideSetting("App Name", "##IOSAppName", m_iosApplicationNameBuffer, inheritedApplicationName(),
-        "iOS bundle display name. Empty means the shared application name.");
-
-    drawOverrideSetting("Bundle Identifier", "##IOSBundleIdentifier", m_iosBundleIdentifierBuffer, inheritedApplicationIdentifier(),
-        "CFBundleIdentifier. Empty means the shared identifier.");
-    drawOverrideWarning(m_iosBundleIdentifierBuffer, isAppleBundleIdentifierValid,
-        "Use letters, digits and hyphens, for example com.company.my-game.");
-
-    drawOverrideSetting("Version Name", "##IOSVersionName", m_iosVersionNameBuffer, inheritedApplicationVersion(),
-        "CFBundleShortVersionString. Empty means the shared version.");
-    drawOverrideWarning(m_iosVersionNameBuffer, isAppleVersionValid,
-        "Apple accepts at most three numbers, for example 1.0.2.");
-    drawOverrideSetting("Build Number", "##IOSBuildNumber", m_iosBuildNumberBuffer, inheritedApplicationBuild(),
-        "CFBundleVersion. Empty means the shared build.");
-    drawOverrideWarning(m_iosBuildNumberBuffer, isAppleBuildValid,
-        "Apple accepts at most three numbers, for example 42.");
-
-    drawProjectFilePathSetting(m_project, "Icon", "iOS application icon source image. Export support depends on the generated Xcode project.", "##IOSIconPath",
-        "Browse##iosicon", "Clear##iosicon", m_iosIcon);
-
-    if (projectBeginSettingsRow("Hide Status Bar", !m_iosHideStatusBar)) {
-        m_iosHideStatusBar = true;
+    if (settingsui::beginRow("ios.application_name")) {
+        drawOverrideSetting("App Name", "##IOSAppName", m_iosApplicationNameBuffer, inheritedApplicationName(),
+            "iOS bundle display name. Empty means the shared application name.");
     }
-    ImGui::Checkbox("##IOSHideStatusBar", &m_iosHideStatusBar);
-    endSettingsRow("Hide the iOS status bar while the app runs.");
 
-    if (projectBeginSettingsRow("Hide Home Indicator", !m_iosHideHomeIndicator)) {
-        m_iosHideHomeIndicator = true;
+    if (settingsui::beginRow("ios.bundle_identifier")) {
+        drawOverrideSetting("Bundle Identifier", "##IOSBundleIdentifier", m_iosBundleIdentifierBuffer, inheritedApplicationIdentifier(),
+            "CFBundleIdentifier. Empty means the shared identifier.");
+        drawOverrideWarning(m_iosBundleIdentifierBuffer, isAppleBundleIdentifierValid,
+            "Use letters, digits and hyphens, for example com.company.my-game.");
     }
-    ImGui::Checkbox("##IOSHideHomeIndicator", &m_iosHideHomeIndicator);
-    endSettingsRow("Request hiding the iOS home indicator.");
 
-    if (projectBeginSettingsRow("High Refresh Rate", !m_iosSupportsHighRefreshRate)) {
-        m_iosSupportsHighRefreshRate = true;
+    if (settingsui::beginRow("ios.version_name")) {
+        drawOverrideSetting("Version Name", "##IOSVersionName", m_iosVersionNameBuffer, inheritedApplicationVersion(),
+            "CFBundleShortVersionString. Empty means the shared version.");
+        drawOverrideWarning(m_iosVersionNameBuffer, isAppleVersionValid,
+            "Apple accepts at most three numbers, for example 1.0.2.");
     }
-    ImGui::Checkbox("##IOSHighRefreshRate", &m_iosSupportsHighRefreshRate);
-    endSettingsRow("Allow 120 Hz displays when supported.");
+    if (settingsui::beginRow("ios.build_number")) {
+        drawOverrideSetting("Build Number", "##IOSBuildNumber", m_iosBuildNumberBuffer, inheritedApplicationBuild(),
+            "CFBundleVersion. Empty means the shared build.");
+        drawOverrideWarning(m_iosBuildNumberBuffer, isAppleBuildValid,
+            "Apple accepts at most three numbers, for example 42.");
+    }
 
-    if (projectBeginSettingsRow("Google AdMob", m_iosAdmobEnabled)) {
-        m_iosAdmobEnabled = false;
+    if (settingsui::beginRow("ios.icon")) {
+        drawProjectFilePathSetting(m_project, "Icon", "iOS application icon source image. Export support depends on the generated Xcode project.", "##IOSIconPath",
+            "Browse##iosicon", "Clear##iosicon", m_iosIcon);
     }
-    ImGui::Checkbox("##IOSAdMob", &m_iosAdmobEnabled);
-    endSettingsRow("Links Google Mobile Ads for System.initializeAdMob and the interstitial ad calls. Without it the export leaves the SDK out and those calls do nothing.");
 
-    ImGui::BeginDisabled(!m_iosAdmobEnabled);
-    projectBeginSettingsRow("AdMob App ID");
-    ImGui::SetNextItemWidth(-helpMarkerWidth());
-    ImGui::InputTextWithHint("##IOSAdMobAppId", "ca-app-pub-0000000000000000~0000000000", m_iosAdmobAppIdBuffer, sizeof(m_iosAdmobAppIdBuffer));
-    endSettingsRow((std::string("GADApplicationIdentifier from the AdMob console, required with AdMob. Google's sample app ") +
-        iosSampleAdMobAppId + " only serves test ads.").c_str());
-    drawOverrideWarning(m_iosAdmobAppIdBuffer, isAdMobAppIdValid,
-        "Use the app ID (with ~), not an ad unit ID (with /).");
-    if (m_iosAdmobEnabled && m_iosAdmobAppIdBuffer[0] == '\0') {
-        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Exports need the AdMob App ID.");
+    if (settingsui::beginRow("ios.hide_status_bar")) {
+        if (projectBeginSettingsRow("Hide Status Bar", !m_iosHideStatusBar)) {
+            m_iosHideStatusBar = true;
+        }
+        ImGui::Checkbox("##IOSHideStatusBar", &m_iosHideStatusBar);
+        endSettingsRow("Hide the iOS status bar while the app runs.");
     }
-    ImGui::EndDisabled();
+
+    if (settingsui::beginRow("ios.hide_home_indicator")) {
+        if (projectBeginSettingsRow("Hide Home Indicator", !m_iosHideHomeIndicator)) {
+            m_iosHideHomeIndicator = true;
+        }
+        ImGui::Checkbox("##IOSHideHomeIndicator", &m_iosHideHomeIndicator);
+        endSettingsRow("Request hiding the iOS home indicator.");
+    }
+
+    if (settingsui::beginRow("ios.supports_high_refresh_rate")) {
+        if (projectBeginSettingsRow("High Refresh Rate", !m_iosSupportsHighRefreshRate)) {
+            m_iosSupportsHighRefreshRate = true;
+        }
+        ImGui::Checkbox("##IOSHighRefreshRate", &m_iosSupportsHighRefreshRate);
+        endSettingsRow("Allow 120 Hz displays when supported.");
+    }
+
+    if (settingsui::beginRow("ios.admob_enabled")) {
+        if (projectBeginSettingsRow("Google AdMob", m_iosAdmobEnabled)) {
+            m_iosAdmobEnabled = false;
+        }
+        ImGui::Checkbox("##IOSAdMob", &m_iosAdmobEnabled);
+        endSettingsRow("Links Google Mobile Ads for System.initializeAdMob and the interstitial ad calls. Without it the export leaves the SDK out and those calls do nothing.");
+    }
+
+    if (settingsui::beginRow("ios.admob_app_id")) {
+        ImGui::BeginDisabled(!m_iosAdmobEnabled);
+        projectBeginSettingsRow("AdMob App ID");
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        ImGui::InputTextWithHint("##IOSAdMobAppId", "ca-app-pub-0000000000000000~0000000000", m_iosAdmobAppIdBuffer, sizeof(m_iosAdmobAppIdBuffer));
+        endSettingsRow((std::string("GADApplicationIdentifier from the AdMob console, required with AdMob. Google's sample app ") +
+            iosSampleAdMobAppId + " only serves test ads.").c_str());
+        drawOverrideWarning(m_iosAdmobAppIdBuffer, isAdMobAppIdValid,
+            "Use the app ID (with ~), not an ad unit ID (with /).");
+        if (m_iosAdmobEnabled && m_iosAdmobAppIdBuffer[0] == '\0') {
+            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Exports need the AdMob App ID.");
+        }
+        ImGui::EndDisabled();
+    }
 }
 
 void ProjectSettingsWindow::drawAndroidSettings() {
     AndroidProjectSettings defaults;
 
-    drawOverrideSetting("App Name", "##AndroidAppName", m_androidApplicationNameBuffer, inheritedApplicationName(),
-        "Android launcher label. Empty means the shared application name.");
-
-    drawOverrideSetting("Package Name", "##AndroidPackageName", m_androidPackageNameBuffer, inheritedApplicationIdentifier(),
-        "Android applicationId. Empty means the shared identifier.");
-    drawOverrideWarning(m_androidPackageNameBuffer, isJavaPackageNameValid,
-        "Use a Java package name, for example com.company.game.");
-
-    drawOverrideSetting("Version Code", "##AndroidVersionCode", m_androidVersionCodeBuffer, inheritedApplicationBuild(),
-        "Integer version used by Android and stores. Empty means the shared build.");
-    drawOverrideWarning(m_androidVersionCodeBuffer, isAndroidVersionCodeValid,
-        "Use a whole number from 1 to 2100000000.");
-
-    drawOverrideSetting("Version Name", "##AndroidVersionName", m_androidVersionNameBuffer, inheritedApplicationVersion(),
-        "Visible version string. Empty means the shared version.");
-
-    projectBeginSettingsRow("Launcher Icons");
-    ImGui::TextWrapped("PNG recommended. Adaptive icon requires foreground and background images.");
-    endSettingsRow("Android launcher icon resources. If adaptive foreground and background are set, the export creates an adaptive icon. Otherwise Launcher Icon is used.");
-
-    drawProjectFilePathSetting(m_project, "Launcher Icon", "Fallback launcher icon. Square PNG recommended.", "##AndroidLauncherIconPath",
-        "Browse##androidlaunchericon", "Clear##androidlaunchericon", m_androidLauncherIcon);
-    drawProjectFilePathSetting(m_project, "Adaptive Foreground", "Adaptive icon foreground image.", "##AndroidAdaptiveIconForegroundPath",
-        "Browse##androidadaptiveforeground", "Clear##androidadaptiveforeground", m_androidAdaptiveIconForeground);
-    drawProjectFilePathSetting(m_project, "Adaptive Background", "Adaptive icon background image.", "##AndroidAdaptiveIconBackgroundPath",
-        "Browse##androidadaptivebackground", "Clear##androidadaptivebackground", m_androidAdaptiveIconBackground);
-
-    drawIntSetting("Min SDK", "##AndroidMinSdk", m_androidMinSdk, static_cast<int>(defaults.minSdk), 1,
-        "Lowest Android API level the exported project supports.");
-    drawIntSetting("Target SDK", "##AndroidTargetSdk", m_androidTargetSdk, static_cast<int>(defaults.targetSdk), 1,
-        "Android API level the app declares as its target.");
-    m_androidTargetSdk = std::max(m_androidTargetSdk, m_androidMinSdk);
-
-    drawComboSetting("Orientation", "##AndroidOrientation", androidOrientationNames, androidOrientationCount,
-        m_androidOrientationIndex, findAndroidOrientationIndex(defaults.orientation),
-        "Screen orientation requested by the Android activity.");
-
-    projectBeginSettingsRow("Architectures");
-    ImGui::Checkbox("armeabi-v7a", &m_androidAbiArmeabiV7a);
-    ImGui::Checkbox("arm64-v8a", &m_androidAbiArm64V8a);
-    ImGui::Checkbox("x86", &m_androidAbiX86);
-    ImGui::Checkbox("x86_64", &m_androidAbiX86_64);
-    endSettingsRow("Native CPU architectures included in the APK.");
-    if (!hasAndroidAbiSelection(m_androidAbiArmeabiV7a, m_androidAbiArm64V8a, m_androidAbiX86, m_androidAbiX86_64)) {
-        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Select at least one architecture.");
+    if (settingsui::beginRow("android.application_name")) {
+        drawOverrideSetting("App Name", "##AndroidAppName", m_androidApplicationNameBuffer, inheritedApplicationName(),
+            "Android launcher label. Empty means the shared application name.");
     }
 
-    projectBeginSettingsRow("Permissions");
-    if (ImGui::SmallButton("None##AndroidPermissionsNone")) {
-        m_androidPermissions.clear();
-    }
-    ImGui::SameLine();
-    if (ImGui::SmallButton("Game Defaults##AndroidPermissionsGameDefaults")) {
-        m_androidPermissions.clear();
-        m_androidPermissions.insert("internet");
-        m_androidPermissions.insert("access_network_state");
-        m_androidPermissions.insert("vibrate");
+    if (settingsui::beginRow("android.package_name")) {
+        drawOverrideSetting("Package Name", "##AndroidPackageName", m_androidPackageNameBuffer, inheritedApplicationIdentifier(),
+            "Android applicationId. Empty means the shared identifier.");
+        drawOverrideWarning(m_androidPackageNameBuffer, isJavaPackageNameValid,
+            "Use a Java package name, for example com.company.game.");
     }
 
-    ImGui::BeginChild("##AndroidPermissionsList", ImVec2(0, Theme::dpi(170.0f)), ImGuiChildFlags_Borders);
-    for (int i = 0; i < androidPermissionCount; i++) {
-        const AndroidPermissionInfo& permission = androidPermissionInfos[i];
-        bool enabled = m_androidPermissions.count(permission.key) > 0;
-        std::string label = std::string(permission.manifestName) + "##AndroidPermission_" + permission.key;
-        if (ImGui::Checkbox(label.c_str(), &enabled)) {
-            if (enabled) {
-                m_androidPermissions.insert(permission.key);
-            } else {
-                m_androidPermissions.erase(permission.key);
-            }
+    if (settingsui::beginRow("android.version_code")) {
+        drawOverrideSetting("Version Code", "##AndroidVersionCode", m_androidVersionCodeBuffer, inheritedApplicationBuild(),
+            "Integer version used by Android and stores. Empty means the shared build.");
+        drawOverrideWarning(m_androidVersionCodeBuffer, isAndroidVersionCodeValid,
+            "Use a whole number from 1 to 2100000000.");
+    }
+
+    if (settingsui::beginRow("android.version_name")) {
+        drawOverrideSetting("Version Name", "##AndroidVersionName", m_androidVersionNameBuffer, inheritedApplicationVersion(),
+            "Visible version string. Empty means the shared version.");
+    }
+
+    if (settingsui::beginRow({"android.launcher_icon", "android.adaptive_icon_foreground", "android.adaptive_icon_background"})) {
+        projectBeginSettingsRow("Launcher Icons");
+        ImGui::TextWrapped("PNG recommended. Adaptive icon requires foreground and background images.");
+        endSettingsRow("Android launcher icon resources. If adaptive foreground and background are set, the export creates an adaptive icon. Otherwise Launcher Icon is used.");
+    }
+
+    if (settingsui::beginRow("android.launcher_icon")) {
+        drawProjectFilePathSetting(m_project, "Launcher Icon", "Fallback launcher icon. Square PNG recommended.", "##AndroidLauncherIconPath",
+            "Browse##androidlaunchericon", "Clear##androidlaunchericon", m_androidLauncherIcon);
+    }
+    if (settingsui::beginRow("android.adaptive_icon_foreground")) {
+        drawProjectFilePathSetting(m_project, "Adaptive Foreground", "Adaptive icon foreground image.", "##AndroidAdaptiveIconForegroundPath",
+            "Browse##androidadaptiveforeground", "Clear##androidadaptiveforeground", m_androidAdaptiveIconForeground);
+    }
+    if (settingsui::beginRow("android.adaptive_icon_background")) {
+        drawProjectFilePathSetting(m_project, "Adaptive Background", "Adaptive icon background image.", "##AndroidAdaptiveIconBackgroundPath",
+            "Browse##androidadaptivebackground", "Clear##androidadaptivebackground", m_androidAdaptiveIconBackground);
+    }
+
+    if (settingsui::beginRow("android.min_sdk")) {
+        drawIntSetting("Min SDK", "##AndroidMinSdk", m_androidMinSdk, static_cast<int>(defaults.minSdk), 1,
+            "Lowest Android API level the exported project supports.");
+    }
+    if (settingsui::beginRow("android.target_sdk")) {
+        drawIntSetting("Target SDK", "##AndroidTargetSdk", m_androidTargetSdk, static_cast<int>(defaults.targetSdk), 1,
+            "Android API level the app declares as its target.");
+        m_androidTargetSdk = std::max(m_androidTargetSdk, m_androidMinSdk);
+    }
+
+    if (settingsui::beginRow("android.orientation")) {
+        drawComboSetting("Orientation", "##AndroidOrientation", androidOrientationNames, androidOrientationCount,
+            m_androidOrientationIndex, findAndroidOrientationIndex(defaults.orientation),
+            "Screen orientation requested by the Android activity.");
+    }
+
+    if (settingsui::beginRow("android.abis")) {
+        projectBeginSettingsRow("Architectures");
+        ImGui::Checkbox("armeabi-v7a", &m_androidAbiArmeabiV7a);
+        ImGui::Checkbox("arm64-v8a", &m_androidAbiArm64V8a);
+        ImGui::Checkbox("x86", &m_androidAbiX86);
+        ImGui::Checkbox("x86_64", &m_androidAbiX86_64);
+        endSettingsRow("Native CPU architectures included in the APK.");
+        if (!hasAndroidAbiSelection(m_androidAbiArmeabiV7a, m_androidAbiArm64V8a, m_androidAbiX86, m_androidAbiX86_64)) {
+            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Select at least one architecture.");
         }
     }
-    ImGui::EndChild();
-    endSettingsRow("Android permissions written to AndroidManifest.xml. Some permissions still require runtime approval in your Android code.");
 
-    if (projectBeginSettingsRow("Application Options", m_androidAllowBackup != defaults.allowBackup || m_androidKeepScreenOn != defaults.keepScreenOn)) {
-        m_androidAllowBackup = defaults.allowBackup;
-        m_androidKeepScreenOn = defaults.keepScreenOn;
+    if (settingsui::beginRow("android.permissions")) {
+        projectBeginSettingsRow("Permissions");
+        if (ImGui::SmallButton("None##AndroidPermissionsNone")) {
+            m_androidPermissions.clear();
+        }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Game Defaults##AndroidPermissionsGameDefaults")) {
+            m_androidPermissions.clear();
+            m_androidPermissions.insert("internet");
+            m_androidPermissions.insert("access_network_state");
+            m_androidPermissions.insert("vibrate");
+        }
+
+        ImGui::BeginChild("##AndroidPermissionsList", ImVec2(0, Theme::dpi(170.0f)), ImGuiChildFlags_Borders);
+        for (int i = 0; i < androidPermissionCount; i++) {
+            const AndroidPermissionInfo& permission = androidPermissionInfos[i];
+            bool enabled = m_androidPermissions.count(permission.key) > 0;
+            std::string label = std::string(permission.manifestName) + "##AndroidPermission_" + permission.key;
+            if (ImGui::Checkbox(label.c_str(), &enabled)) {
+                if (enabled) {
+                    m_androidPermissions.insert(permission.key);
+                } else {
+                    m_androidPermissions.erase(permission.key);
+                }
+            }
+        }
+        ImGui::EndChild();
+        endSettingsRow("Android permissions written to AndroidManifest.xml. Some permissions still require runtime approval in your Android code.");
     }
 
-    ImGui::Checkbox("Allow Backup", &m_androidAllowBackup);
-    ImGui::SetItemTooltip("Maps to android:allowBackup.");
+    if (settingsui::beginRow({"android.allow_backup", "android.keep_screen_on"})) {
+        if (projectBeginSettingsRow("Application Options", m_androidAllowBackup != defaults.allowBackup || m_androidKeepScreenOn != defaults.keepScreenOn)) {
+            m_androidAllowBackup = defaults.allowBackup;
+            m_androidKeepScreenOn = defaults.keepScreenOn;
+        }
 
-    ImGui::Checkbox("Keep Screen On", &m_androidKeepScreenOn);
-    ImGui::SetItemTooltip("Adds FLAG_KEEP_SCREEN_ON to the Android activity.");
-    endSettingsRow("Android application/activity behavior.");
+        ImGui::Checkbox("Allow Backup", &m_androidAllowBackup);
+        ImGui::SetItemTooltip("Maps to android:allowBackup.");
 
-    if (projectBeginSettingsRow("Screen Options", m_androidFullscreen != defaults.fullscreen)) {
-        m_androidFullscreen = defaults.fullscreen;
+        ImGui::Checkbox("Keep Screen On", &m_androidKeepScreenOn);
+        ImGui::SetItemTooltip("Adds FLAG_KEEP_SCREEN_ON to the Android activity.");
+        endSettingsRow("Android application/activity behavior.");
     }
 
-    ImGui::Checkbox("Fullscreen", &m_androidFullscreen);
-    ImGui::SetItemTooltip("Uses the fullscreen Android theme and hides system bars in MainActivity.");
-    endSettingsRow("Android screen/window behavior.");
+    if (settingsui::beginRow("android.fullscreen")) {
+        if (projectBeginSettingsRow("Screen Options", m_androidFullscreen != defaults.fullscreen)) {
+            m_androidFullscreen = defaults.fullscreen;
+        }
 
-    if (projectBeginSettingsRow("Google AdMob", m_androidAdmobEnabled != defaults.admobEnabled)) {
-        m_androidAdmobEnabled = defaults.admobEnabled;
+        ImGui::Checkbox("Fullscreen", &m_androidFullscreen);
+        ImGui::SetItemTooltip("Uses the fullscreen Android theme and hides system bars in MainActivity.");
+        endSettingsRow("Android screen/window behavior.");
     }
-    ImGui::Checkbox("##AndroidAdMob", &m_androidAdmobEnabled);
-    endSettingsRow("Compiles in Google Mobile Ads for System.initializeAdMob and the interstitial ad calls. Without it the export leaves the SDK out and those calls do nothing. Declare ads and Ad ID use in the Play Console.");
 
-    ImGui::BeginDisabled(!m_androidAdmobEnabled);
-    projectBeginSettingsRow("AdMob App ID");
-    ImGui::SetNextItemWidth(-helpMarkerWidth());
-    ImGui::InputTextWithHint("##AndroidAdMobAppId", "ca-app-pub-0000000000000000~0000000000", m_androidAdmobAppIdBuffer, sizeof(m_androidAdmobAppIdBuffer));
-    endSettingsRow((std::string("APPLICATION_ID from the AdMob console, required with AdMob. Google's sample app ") +
-        androidSampleAdMobAppId + " only serves test ads.").c_str());
-    drawOverrideWarning(m_androidAdmobAppIdBuffer, isAdMobAppIdValid,
-        "Use the app ID (with ~), not an ad unit ID (with /).");
-    if (m_androidAdmobEnabled && m_androidAdmobAppIdBuffer[0] == '\0') {
-        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Exports need the AdMob App ID.");
+    if (settingsui::beginRow("android.admob_enabled")) {
+        if (projectBeginSettingsRow("Google AdMob", m_androidAdmobEnabled != defaults.admobEnabled)) {
+            m_androidAdmobEnabled = defaults.admobEnabled;
+        }
+        ImGui::Checkbox("##AndroidAdMob", &m_androidAdmobEnabled);
+        endSettingsRow("Compiles in Google Mobile Ads for System.initializeAdMob and the interstitial ad calls. Without it the export leaves the SDK out and those calls do nothing. Declare ads and Ad ID use in the Play Console.");
     }
-    ImGui::EndDisabled();
+
+    if (settingsui::beginRow("android.admob_app_id")) {
+        ImGui::BeginDisabled(!m_androidAdmobEnabled);
+        projectBeginSettingsRow("AdMob App ID");
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        ImGui::InputTextWithHint("##AndroidAdMobAppId", "ca-app-pub-0000000000000000~0000000000", m_androidAdmobAppIdBuffer, sizeof(m_androidAdmobAppIdBuffer));
+        endSettingsRow((std::string("APPLICATION_ID from the AdMob console, required with AdMob. Google's sample app ") +
+            androidSampleAdMobAppId + " only serves test ads.").c_str());
+        drawOverrideWarning(m_androidAdmobAppIdBuffer, isAdMobAppIdValid,
+            "Use the app ID (with ~), not an ad unit ID (with /).");
+        if (m_androidAdmobEnabled && m_androidAdmobAppIdBuffer[0] == '\0') {
+            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Exports need the AdMob App ID.");
+        }
+        ImGui::EndDisabled();
+    }
 }
 
 bool ProjectSettingsWindow::applySettings() {

@@ -1,0 +1,272 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+#include "DefaultCommands.h"
+
+#include "AppMenuCommand.h"
+#include "window/HierarchyWindow.h"
+
+#include <cctype>
+
+using namespace jasperengine::editor;
+
+namespace {
+
+    using C = ShortcutContext;
+
+    Chord chord(const char* text) {
+        if (!text || !*text) return Chord();
+        // the table is authored here: a typo must fail the tests, not leave a key unbound
+        return Chord::parse(text).value_or(Chord());
+    }
+
+    struct Builder {
+        std::vector<CommandDef>& out;
+        std::string group;
+
+        CommandDef& add(const char* id, const char* name, C context, const char* primary = nullptr,
+                        const char* secondary = nullptr) {
+            CommandDef def;
+            def.id = id;
+            def.group = group;
+            def.name = name;
+            def.context = context;
+            def.primary = chord(primary);
+            def.secondary = chord(secondary);
+            out.push_back(std::move(def));
+            return out.back();
+        }
+
+        CommandDef& menu(const char* id, const char* name, AppMenuCommand command, C context = C::Editor,
+                         const char* primary = nullptr, const char* secondary = nullptr) {
+            CommandDef& def = add(id, name, context, primary, secondary);
+            def.menuCommand = static_cast<uint32_t>(command);
+            return def;
+        }
+
+        CommandDef& gesture(const char* id, const char* name, C context, const char* gestureText, const char* description) {
+            CommandDef& def = add(id, name, context);
+            def.readOnly = true;
+            def.gesture = gestureText;
+            def.description = description;
+            return def;
+        }
+    };
+
+    // "3D Object" -> "3dObject", "Directional Light" -> "directionalLight"
+    std::string camel(const char* text) {
+        std::string out;
+        bool upperNext = false;
+        for (const char* c = text; *c; ++c) {
+            const unsigned char ch = static_cast<unsigned char>(*c);
+            if (std::isalnum(ch) == 0) {
+                upperNext = !out.empty();
+                continue;
+            }
+            if (out.empty()) out.push_back(static_cast<char>(std::tolower(ch)));
+            else out.push_back(static_cast<char>(upperNext ? std::toupper(ch) : ch));
+            upperNext = false;
+        }
+        return out;
+    }
+
+}
+
+std::string jasperengine::editor::createEntryCommandId(size_t entryIndex) {
+    const auto& entries = HierarchyWindow::getCreateMenuEntries();
+    if (entryIndex >= entries.size()) return {};
+    const CreateMenuEntry& entry = entries[entryIndex];
+    if (entry.command) return entry.command;
+    std::string id = "gameobject.create.";
+    if (entry.submenu) id += camel(entry.submenu) + ".";
+    return id + camel(entry.label);
+}
+
+std::vector<CommandDef> jasperengine::editor::defaultCommands() {
+    std::vector<CommandDef> out;
+    Builder b{out, ""};
+
+    b.group = "File";
+    b.menu("file.newScene3D", "New Scene (3D)", AppMenuCommand::NewScene3D);
+    b.menu("file.newScene2D", "New Scene (2D)", AppMenuCommand::NewScene2D);
+    b.menu("file.newSceneUI", "New Scene (UI)", AppMenuCommand::NewSceneUI);
+    b.menu("file.save", "Save", AppMenuCommand::Save, C::Global, "Ctrl+S").description = "Save the current scene or script";
+    b.menu("file.saveAll", "Save All", AppMenuCommand::SaveAll, C::Global, "Ctrl+Shift+S").description =
+        "Save every scene, script and the project";
+    b.menu("file.removeScene", "Remove Scene from Project", AppMenuCommand::RemoveScene);
+    b.menu("file.newProject", "New Project...", AppMenuCommand::NewProject).agentSafe = false;
+    b.menu("file.openProject", "Open Project...", AppMenuCommand::OpenProject, C::Global, "Ctrl+O").agentSafe = false;
+    b.menu("file.clearRecentProjects", "Clear Recent Projects", AppMenuCommand::ClearRecentProjects).agentSafe = false;
+    b.menu("file.saveProjectAs", "Save Project As...", AppMenuCommand::SaveProjectAs);
+    b.menu("file.buildSettings", "Build Settings...", AppMenuCommand::ExportProject, C::Editor, "Ctrl+Shift+B");
+    b.menu("file.exit", "Exit", AppMenuCommand::Exit).agentSafe = false;
+
+    b.group = "Edit";
+    CommandDef& undo = b.menu("edit.undo", "Undo", AppMenuCommand::Undo, C::Editor, "Ctrl+Z");
+    undo.repeat = true;
+    CommandDef& redo = b.menu("edit.redo", "Redo", AppMenuCommand::Redo, C::Editor, "Ctrl+Y", "Ctrl+Shift+Z");
+    redo.macPrimary = chord("Ctrl+Shift+Z");
+    redo.repeat = true;
+    for (auto [id, name, command, key] : {
+             std::tuple{"edit.selectAll", "Select All", AppMenuCommand::SelectAll, "Ctrl+A"},
+             std::tuple{"edit.cut", "Cut", AppMenuCommand::CutSelection, "Ctrl+X"},
+             std::tuple{"edit.copy", "Copy", AppMenuCommand::CopySelection, "Ctrl+C"},
+             std::tuple{"edit.paste", "Paste", AppMenuCommand::PasteSelection, "Ctrl+V"},
+             std::tuple{"edit.pasteAsChild", "Paste As Child", AppMenuCommand::PasteAsChild, "Ctrl+Shift+V"}}) {
+        CommandDef& def = b.menu(id, name, command, C::Hierarchy, key);
+        def.alsoIn = {C::SceneView};
+    }
+    b.menu("edit.duplicate", "Duplicate", AppMenuCommand::DuplicateSelection, C::Editor, "Ctrl+D");
+    b.menu("edit.rename", "Rename", AppMenuCommand::RenameSelection, C::Editor, "F2");
+    b.menu("edit.delete", "Delete", AppMenuCommand::DeleteSelection, C::Editor, "Delete", "Backspace").repeat = true;
+    b.menu("edit.frameSelected", "Frame Selected", AppMenuCommand::FrameSelected, C::Editor, "F").repeat = true;
+    b.menu("edit.searchAll", "Search All...", AppMenuCommand::SearchAll, C::Global, "Ctrl+K").description =
+        "Find any command, window, setting, asset, GameObject or component";
+    b.menu("edit.play", "Play", AppMenuCommand::TogglePlay, C::Global, "Ctrl+P").description = "Enter or leave Play mode";
+    b.menu("edit.pause", "Pause", AppMenuCommand::TogglePause, C::Global, "Ctrl+Shift+P").description = "Pause or resume Play mode";
+    b.menu("edit.step", "Step", AppMenuCommand::StepFrame, C::Global, "Ctrl+Alt+P").description = "Advance a paused game by one frame";
+    b.menu("edit.stop", "Stop", AppMenuCommand::StopScene);
+    b.menu("edit.projectSettings", "Project Settings...", AppMenuCommand::ProjectSettings);
+    b.menu("edit.preferences", "Preferences...", AppMenuCommand::EditorSettings);
+    b.menu("edit.shortcuts", "Shortcuts...", AppMenuCommand::Shortcuts).description = "View and rebind the editor's keyboard shortcuts";
+
+    b.group = "Play Mode";
+    b.add("playmode.playOrResume", "Play or Resume", C::Global, "F5");
+    b.add("playmode.pauseOnly", "Pause", C::Global, "F6");
+    b.add("playmode.stop", "Stop", C::Global, "F7");
+
+    b.group = "Assets";
+    b.menu("assets.createFolder", "Create Folder", AppMenuCommand::AssetsCreateFolder);
+    b.menu("assets.createLuaScript", "Create Lua Script", AppMenuCommand::AssetsCreateLuaScript);
+    b.menu("assets.createCppScript", "Create C++ Script", AppMenuCommand::AssetsCreateCppScript);
+    b.menu("assets.createHtmlDocument", "Create HTML Document", AppMenuCommand::AssetsCreateHtmlDocument);
+    b.menu("assets.showInFileManager", "Show in File Manager", AppMenuCommand::AssetsShowInFileManager);
+    b.menu("assets.open", "Open", AppMenuCommand::AssetsOpen);
+    b.menu("assets.rename", "Rename Asset", AppMenuCommand::AssetsRename);
+    b.menu("assets.delete", "Delete Asset", AppMenuCommand::AssetsDelete);
+    b.menu("assets.import", "Import New Asset...", AppMenuCommand::AssetsImport);
+    b.menu("assets.refresh", "Refresh", AppMenuCommand::AssetsRefresh, C::Editor, "Ctrl+R");
+    b.menu("assets.reimportTextures", "Reimport All Textures", AppMenuCommand::AssetsReimportTextures).description =
+        "Cook every texture of the project again for the editor (the cache answers what did not change)";
+    b.menu("assets.migrateReferences", "Migrate References", AppMenuCommand::MigrateAssetReferences);
+    b.menu("assets.scenesInBuild", "Scenes in Build...", AppMenuCommand::ProjectScenes);
+    b.menu("assets.prefabs", "Prefabs...", AppMenuCommand::ProjectPrefabs);
+    b.menu("assets.emptyTrash", "Empty Trash...", AppMenuCommand::ClearTrash).agentSafe = false;
+    b.menu("scripts.reload", "Reload Scripts", AppMenuCommand::ScriptsReload);
+    b.menu("scripts.rebuildCpp", "Rebuild C++ Scripts", AppMenuCommand::ScriptsRebuildCpp);
+    b.menu("scripts.cancelBuild", "Cancel Script Build", AppMenuCommand::ScriptsCancelBuild);
+
+    b.group = "GameObject";
+    const auto& entries = HierarchyWindow::getCreateMenuEntries();
+    for (size_t i = 0; i < entries.size(); i++) {
+        const CreateMenuEntry& entry = entries[i];
+        const std::string id = createEntryCommandId(i);
+        const std::string name = entry.submenu ? std::string(entry.submenu) + " / " + entry.label : std::string(entry.label);
+        CommandDef& def = b.menu("", "", AppMenuCommand::CreateGameObject, C::Editor,
+                                 entry.type == EntityCreationType::GAMEOBJECT ? "Ctrl+Shift+N" : nullptr);
+        def.id = id;
+        def.name = name;
+        def.menuPayload = std::to_string(i);
+        if (entry.type == EntityCreationType::GAMEOBJECT) {
+            b.menu("gameobject.createEmptyChild", "Create Empty Child", AppMenuCommand::CreateEmptyChild, C::Editor, "Alt+Shift+N");
+        }
+    }
+
+    b.group = "Component";
+    b.menu("component.add", "Add Component", AppMenuCommand::AddComponent, C::Editor, "Ctrl+Shift+A");
+
+    b.group = "Window";
+    b.menu("window.scene", "Scene", AppMenuCommand::FocusScene, C::Editor, "Ctrl+1");
+    b.menu("window.game", "Game", AppMenuCommand::FocusGame, C::Editor, "Ctrl+2");
+    b.menu("window.inspector", "Inspector", AppMenuCommand::ToggleInspector, C::Editor, "Ctrl+3");
+    b.menu("window.hierarchy", "Hierarchy", AppMenuCommand::ToggleHierarchy, C::Editor, "Ctrl+4");
+    b.menu("window.project", "Project", AppMenuCommand::ToggleProject, C::Editor, "Ctrl+5");
+    b.menu("window.animation", "Animation", AppMenuCommand::ToggleAnimation, C::Editor, "Ctrl+6");
+    b.menu("window.profiler", "Profiler", AppMenuCommand::ToggleProfiler, C::Editor, "Ctrl+7");
+    b.menu("window.console", "Console", AppMenuCommand::ToggleConsole, C::Editor, "Ctrl+Shift+C");
+    b.menu("window.bookmarks", "Bookmarks", AppMenuCommand::ToggleBookmarks);
+    b.menu("window.undoHistory", "Undo History", AppMenuCommand::ToggleUndoHistory);
+    b.menu("window.playModeChanges", "Play Mode Changes", AppMenuCommand::TogglePlayModeChanges);
+    b.menu("window.terrain", "Terrain", AppMenuCommand::ToggleTerrain);
+    b.menu("window.textureSynthesis", "Texture Synthesis", AppMenuCommand::ToggleTextureSynthesis);
+    b.menu("window.physicsPlacement", "Physics Placement", AppMenuCommand::TogglePhysicsPlacement);
+    b.menu("window.missingAssets", "Missing Assets", AppMenuCommand::ToggleMissingAssets);
+    b.menu("window.assetReferences", "References", AppMenuCommand::ToggleAssetReferences);
+    b.menu("window.frameDebugger", "Frame Debugger", AppMenuCommand::ToggleFrameDebugger);
+    b.menu("window.systems", "Systems", AppMenuCommand::ToggleSystems);
+    b.menu("window.jobsMemory", "Jobs & Memory", AppMenuCommand::ToggleJobsMemory);
+    b.menu("window.mcpActivity", "MCP Server", AppMenuCommand::ToggleMcpActivity);
+    b.menu("window.detachableWindows", "Detachable Windows", AppMenuCommand::ToggleDetachableWindows);
+
+    b.group = "Layouts";
+    b.menu("window.layouts.apply", "Apply Layout", AppMenuCommand::LayoutApply).description = "Switch to a saved window layout";
+    b.menu("window.layouts.save", "Save Layout...", AppMenuCommand::LayoutSave).description = "Save the window layout as a named preset";
+    b.menu("window.layouts.rename", "Rename Layout", AppMenuCommand::LayoutRename);
+    b.menu("window.layouts.delete", "Delete Layout", AppMenuCommand::LayoutDelete);
+    b.menu("window.layouts.saveToFile", "Save Layout to File...", AppMenuCommand::LayoutSaveToFile);
+    b.menu("window.layouts.loadFromFile", "Load Layout from File...", AppMenuCommand::LayoutLoadFromFile);
+    b.menu("window.layouts.reset", "Reset Layout", AppMenuCommand::ResetLayout).description = "Apply the Default layout";
+
+    b.group = "Help";
+    b.menu("help.about", "About JasperEngine", AppMenuCommand::About);
+    b.menu("help.documentation", "Documentation", AppMenuCommand::Documentation, C::Global, "F1");
+    b.menu("help.keyboardShortcuts", "Keyboard Shortcuts", AppMenuCommand::KeyboardShortcuts);
+    b.menu("help.reportIssue", "Report an Issue...", AppMenuCommand::ReportIssue);
+
+    b.group = "Tools";
+    b.add("tools.hand", "Hand Tool", C::Editor, "Q").description = "Pan the Scene view";
+    b.add("tools.move", "Move Tool", C::Editor, "W");
+    b.add("tools.rotate", "Rotate Tool", C::Editor, "E");
+    b.add("tools.scale", "Scale Tool", C::Editor, "R");
+    b.add("tools.rect", "Rect Tool", C::Editor, "T").description = "2D and UI scenes";
+    b.add("tools.toggleGlobalLocal", "Toggle Global/Local", C::Editor, "X").description =
+        "Toggle tool handle rotation between Global and Local";
+    b.add("tools.physics", "Physics", C::Editor, "G").description =
+        "Move, Rotate and Scale push the selection through a physics simulation (3D scenes, not in Play)";
+
+    b.group = "Scene View";
+    b.add("sceneView.frameAll", "Frame All (3D)", C::SceneView, "Home");
+    b.add("sceneView.viewFront", "Front View", C::SceneView, "Numpad1");
+    b.add("sceneView.viewBack", "Back View", C::SceneView, "Ctrl+Numpad1");
+    b.add("sceneView.viewRight", "Right View", C::SceneView, "Numpad3");
+    b.add("sceneView.viewLeft", "Left View", C::SceneView, "Ctrl+Numpad3");
+    b.add("sceneView.viewTop", "Top View", C::SceneView, "Numpad7", "Ctrl+Numpad9");
+    b.add("sceneView.viewBottom", "Bottom View", C::SceneView, "Numpad9", "Ctrl+Numpad7");
+    b.gesture("sceneView.flyThrough", "Fly Through (3D)", C::SceneView, "Right Mouse + W/A/S/D/Q/E",
+              "Hold Shift to move faster");
+    b.gesture("sceneView.orbit", "Orbit (3D)", C::SceneView, "Alt+Left Drag", "Orbit around the view's pivot");
+    b.gesture("sceneView.pan", "Pan", C::SceneView, "Middle Drag (2D: also Space+Left Drag)", "Move the view");
+    b.gesture("sceneView.zoom", "Zoom", C::SceneView, "Mouse Wheel", "Zoom the view");
+    b.gesture("sceneView.physicsDrop", "Drop (Physics)", C::SceneView, "Hold Space", "Drop the selection under gravity");
+    b.gesture("sceneView.physicsSnap", "Snap onto Surfaces (Physics)", C::SceneView, "Shift+Left Drag",
+              "Drag a selected object onto what is under the pointer");
+    b.gesture("sceneView.cancelGesture", "Cancel Gesture", C::SceneView, "Escape",
+              "Stops a physics gesture, the Paint Dye brush or clears the lattice points (Ctrl+Z also undoes)");
+
+    b.group = "Lattice";
+    b.add("lattice.selectNone", "Select No Points", C::SceneView, "Alt+A");
+    b.add("lattice.invert", "Invert Point Selection", C::SceneView, "Ctrl+I");
+    b.add("lattice.expand", "Expand Point Selection", C::SceneView, "Ctrl+=", "Ctrl+NumpadAdd");
+    b.add("lattice.shrink", "Shrink Point Selection", C::SceneView, "Ctrl+-", "Ctrl+NumpadSubtract");
+    b.add("lattice.toggleFalloff", "Toggle Falloff", C::SceneView, "O").description = "Proportional editing of the lattice points";
+
+    b.group = "Terrain";
+    b.add("terrain.brushSmaller", "Brush Smaller", C::SceneView, "[").repeat = true;   // also Paint Dye's radius
+    b.add("terrain.brushLarger", "Brush Larger", C::SceneView, "]").repeat = true;
+    b.add("terrain.brushWeaker", "Brush Weaker", C::SceneView, "Shift+[").repeat = true;
+    b.add("terrain.brushStronger", "Brush Stronger", C::SceneView, "Shift+]").repeat = true;
+
+    b.group = "Project";
+    b.add("project.copy", "Copy Assets", C::Project, "Ctrl+C");
+    b.add("project.cut", "Cut Assets", C::Project, "Ctrl+X");
+    b.add("project.paste", "Paste Assets", C::Project, "Ctrl+V");
+    b.add("project.selectAll", "Select All Assets", C::Project, "Ctrl+A");
+    b.add("project.delete", "Delete Assets", C::Project, "Delete", "Backspace");
+    b.add("project.rename", "Rename Asset", C::Project, "F2");
+    b.gesture("project.resizeItems", "Resize Items", C::Project, "Ctrl+Mouse Wheel", "Change the icon size in 16 px steps");
+
+    b.group = "Console";
+    b.add("console.copy", "Copy Message", C::Console, "Ctrl+C");
+
+    return out;
+}
