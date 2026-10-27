@@ -30,6 +30,17 @@ namespace jasperengine{
         void setTexture(const std::string& path);
         void setTexture(const std::string& id, TextureData data);
         void setTexture(Framebuffer* framebuffer);
+
+        // the normal map (tangent-space, OpenGL green up) of submesh 0 / of a submesh; "" removes
+        // it. On sprites, tilemaps and polygons it answers Light 2Ds whose height is above 0;
+        // same size and frame layout as the colour texture (a Tilemap: submesh i is the tileset
+        // whose colour texture submesh i holds, one normal map per tileset texture, same size)
+        void setNormalTexture(const std::string& path);
+        void setNormalTexture(unsigned int submesh, const std::string& path);
+        void setNormalTexture(const std::string& id, TextureData data);
+        // submesh 0's path, "" when none (the id for a normal map set from data)
+        std::string getNormalTexture() const;
+        std::string getNormalTexture(unsigned int submesh) const;
         
         void setColor(Vector4 color);
         void setColor(const float red, const float green, const float blue, const float alpha);

@@ -3,8 +3,8 @@
 // @shader mesh
 // @name "Sprite"
 // @category "2D"
-// @description "Sprite, tilemap and polygon effects on the sprite's own texture and colour: outline, hue shift, hit flash, grayscale, colour replace, overlay and glow; lit by 2D lights. Alpha blended, both faces, no shadows; with the Premultiplied blend mode the texture is read as premultiplied."
-// @require uv1 color
+// @description "Sprite, tilemap and polygon effects on the sprite's own texture and colour: outline, hue shift, hit flash, grayscale, colour replace, overlay and glow; lit by 2D lights, with the material's Normal Texture as the normal map. Alpha blended, both faces, no shadows; with the Premultiplied blend mode the texture is read as premultiplied."
+// @require uv1 color normalmap
 // @state blend=alpha zwrite=off cull=off shadows=off
 // @feature OUTLINE "Outline"
 // @feature HUE_SHIFT "Hue shift"
@@ -36,7 +36,7 @@
 // MeshPolygon), its texture rect (atlas frame), the vertex and instance colours. The
 // effects run on straight-alpha linear colour in this order: colour replace, hue shift,
 // grayscale, overlay, flash, outline (behind the sprite), the material's alpha mode, 2D
-// lights, glow. With OUTLINE or OVERLAY the texture is read inside the current frame only.
+// lights (shaped by the material's Normal Texture when it has one: @require normalmap), glow. With OUTLINE or OVERLAY the texture is read inside the current frame only.
 // The blend mode is the material's (alpha by default): with Premultiplied (BLEND_PREMULTIPLIED)
 // the texture is premultiplied, un-premultiplied for the effects and premultiplied again on
 // output (finalizeStraightColor), as are the other modes' outputs. No shadows by default:
@@ -231,7 +231,9 @@ void main() {
     color = applyMaterialAlphaMode(color);
 
     #ifdef USE_LIGHT2D
-        color.rgb *= getLight2DIntensity(v_position, getNormal2D(), true);
+        // the normal map (the material's Normal Texture, OpenGL green) at the colour's UV,
+        // in-frame clamped with OUTLINE or OVERLAY
+        color.rgb *= getLight2DIntensity(v_position, getNormal2DAt(uv), true);
     #endif
 
     #ifdef GLOW

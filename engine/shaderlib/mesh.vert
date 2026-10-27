@@ -144,6 +144,10 @@ in vec3 a_position;
 #include "includes/lattice.glsl"
 // the baked vertex animation (HAS_VAT): vatEvaluate, vatPosition, vatNormal, vatTangent
 #include "includes/vat.glsl"
+// a mirroring transform or texture rect turns the tangent frame (HAS_TANGENTS): mirrorTangentFrame
+#ifdef HAS_TANGENTS
+    #include "includes/tangent_frame.glsl"
+#endif
 
 vec4 getPosition(mat4 boneTransform){
     vec3 pos = vatPosition(a_position);
@@ -267,6 +271,8 @@ void main() {
         #endif
         vec3 tangentW = normalize(vec3(pbrParams.modelMatrix * vec4(tangent, 0.0)));
         vec3 bitangentW = cross(worldNormal, tangentW) * a_tangent.w;
+        // a negative determinant or a mirrored texture rect (includes/tangent_frame.glsl)
+        mirrorTangentFrame(tangentW, bitangentW);
         v_tbn = mat3(tangentW, bitangentW, worldNormal);
     #else // !HAS_TANGENTS
         v_normal = worldNormal;

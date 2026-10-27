@@ -414,7 +414,8 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 else if (input == "scenedepth") rule.require |= ShaderRequire_SceneDepth;
                 else if (input == "scenecolor") rule.require |= ShaderRequire_SceneColor;
                 else if (input == "environment") rule.require |= ShaderRequire_Environment;
-                else report(lineNumber, true, "unknown input '" + arg.text + "' (normals, tangents, uv1, uv2, color, rawcolor, position, smoothnormals, scenedepth, scenecolor, environment)");
+                else if (input == "normalmap") rule.require |= ShaderRequire_NormalMap;
+                else report(lineNumber, true, "unknown input '" + arg.text + "' (normals, tangents, uv1, uv2, color, rawcolor, position, smoothnormals, scenedepth, scenecolor, environment, normalmap)");
             }
             if (!valid)
                 continue;
@@ -865,6 +866,23 @@ void ShaderManifest::checkComplete(const std::string& file, bool library){
     }
     if ((possibleRequire & ShaderRequire_Environment) && hasType && type != ShaderType::MESH)
         report(environmentLine, "@require environment needs @shader mesh");
+    // the material's normal map is bound to mesh draws, by the name the 2D light path reads
+    if (possibleRequire & ShaderRequire_NormalMap){
+        // the first feature= line asking for it (1 when every variant does)
+        int normalMapLine = 1;
+        for (const ShaderManifestRequireRule& rule : requireRules){
+            if (!(require & ShaderRequire_NormalMap) && (rule.require & ShaderRequire_NormalMap)){
+                normalMapLine = rule.line;
+                break;
+            }
+        }
+        if (hasType && type != ShaderType::MESH)
+            report(normalMapLine, "@require normalmap needs @shader mesh");
+        for (const ShaderManifestTexture& texture : textures){
+            if (texture.uniform == "u_normalTexture")
+                report(texture.line, "@texture 'u_normalTexture' is reserved with @require normalmap: it is the material's Normal Texture");
+        }
+    }
     // a mesh variant reading the scene must draw after the opaque queue: its state has to put
     // it in the transparent queue (a material can still override it; the inspector and the
     // checks report that). Checked for the default features and for each feature= rule's
@@ -1136,14 +1154,19 @@ std::vector<std::string> ShaderManifest::getRequireDefines(uint32_t require){
     if (require & ShaderRequire_SceneDepth) defines.push_back("SURFACE_SCENE_DEPTH");
     if (require & ShaderRequire_SceneColor) defines.push_back("SURFACE_SCENE_COLOR");
     if (require & ShaderRequire_Environment) defines.push_back("SURFACE_ENVIRONMENT");
+    if (require & ShaderRequire_NormalMap) defines.push_back("SURFACE_NORMAL_MAP");
     return defines;
 }
 
 uint32_t ShaderManifest::getPossibleSceneInputs() const{
+    return getPossibleRequire() & ShaderRequire_SceneInputs;
+}
+
+uint32_t ShaderManifest::getPossibleRequire() const{
     uint32_t inputs = require;
     for (const ShaderManifestRequireRule& rule : requireRules)
         inputs |= rule.require;
-    return inputs & ShaderRequire_SceneInputs;
+    return inputs;
 }
 
 std::vector<std::string> ShaderManifest::getRequireNames(uint32_t require){
@@ -1152,7 +1175,7 @@ std::vector<std::string> ShaderManifest::getRequireNames(uint32_t require){
         {ShaderRequire_UV1, "uv1"}, {ShaderRequire_UV2, "uv2"}, {ShaderRequire_Color, "color"},
         {ShaderRequire_RawColor, "rawcolor"}, {ShaderRequire_SmoothNormals, "smoothnormals"},
         {ShaderRequire_SceneDepth, "scenedepth"}, {ShaderRequire_SceneColor, "scenecolor"},
-        {ShaderRequire_Environment, "environment"}};
+        {ShaderRequire_Environment, "environment"}, {ShaderRequire_NormalMap, "normalmap"}};
     std::vector<std::string> result;
     for (const auto& name : names){
         if (require & name.first)

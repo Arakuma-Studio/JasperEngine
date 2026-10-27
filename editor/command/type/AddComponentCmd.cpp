@@ -4,6 +4,7 @@
 #include "AddComponentCmd.h"
 
 #include "Out.h"
+#include "component/Light2DComponent.h"
 #include "util/CameraTextureLink.h"
 #include "util/ProjectUtils.h"
 
@@ -26,6 +27,15 @@ bool editor::AddComponentCmd::execute() {
         for (Entity& entity : entities){
             prefabUndo.capture(project, sceneId, entity);
             ProjectUtils::addEntityComponent(scene, entity, componentType, sceneProject->entities);
+
+            // a Light 2D added in the editor (Add Component, add_component) starts at the
+            // virtual height normal maps respond to, as a created one (CreateEntityCmd); the
+            // struct default (0) stays the loader's and the scripts'. Redo adds it again here
+            if (componentType == ComponentType::Light2DComponent){
+                if (Light2DComponent* light = scene->findComponent<Light2DComponent>(entity)){
+                    light->height = 64.0f;
+                }
+            }
 
             if (componentType == ComponentType::InstancedMeshComponent &&
                 ProjectUtils::hasModelMeshChildrenWithoutRootGeometry(scene, entity)){
