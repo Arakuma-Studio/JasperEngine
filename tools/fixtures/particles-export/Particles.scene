@@ -19,6 +19,11 @@ entities:
       camera:
         type: camera_perspective
         target: [0, 1, 0]
+        up: [0, 1, 0]
+        yfov: 0.75
+        nearClip: 0.1
+        farClip: 100
+        useTarget: true
       script:
         scripts:
           - type: lua
