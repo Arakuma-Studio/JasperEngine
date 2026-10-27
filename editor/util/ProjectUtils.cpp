@@ -1148,6 +1148,34 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<Joint2DComponent>(entity, Stream::decodeJoint2DComponent(componentNode));
             }
             break;
+        case ComponentType::WaterVolumeComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<WaterVolumeComponent>(entity, {});
+            }else{
+                registry->addComponent<WaterVolumeComponent>(entity, Stream::decodeWaterVolumeComponent(componentNode));
+            }
+            break;
+        case ComponentType::BuoyancyComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<BuoyancyComponent>(entity, {});
+            }else{
+                registry->addComponent<BuoyancyComponent>(entity, Stream::decodeBuoyancyComponent(componentNode));
+            }
+            break;
+        case ComponentType::CharacterControllerComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<CharacterControllerComponent>(entity, {});
+            }else{
+                registry->addComponent<CharacterControllerComponent>(entity, Stream::decodeCharacterControllerComponent(componentNode));
+            }
+            break;
+        case ComponentType::CharacterController2DComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<CharacterController2DComponent>(entity, {});
+            }else{
+                registry->addComponent<CharacterController2DComponent>(entity, Stream::decodeCharacterController2DComponent(componentNode));
+            }
+            break;
         case ComponentType::Joint3DComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
                 registry->addComponent<Joint3DComponent>(entity, {});
@@ -1646,6 +1674,30 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
                 oldComponent = Stream::encodeJoint2DComponent(registry->getComponent<Joint2DComponent>(entity));
             }
             registry->removeComponent<Joint2DComponent>(entity);
+            break;
+        case ComponentType::WaterVolumeComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeWaterVolumeComponent(registry->getComponent<WaterVolumeComponent>(entity));
+            }
+            registry->removeComponent<WaterVolumeComponent>(entity);
+            break;
+        case ComponentType::BuoyancyComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeBuoyancyComponent(registry->getComponent<BuoyancyComponent>(entity));
+            }
+            registry->removeComponent<BuoyancyComponent>(entity);
+            break;
+        case ComponentType::CharacterControllerComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeCharacterControllerComponent(registry->getComponent<CharacterControllerComponent>(entity));
+            }
+            registry->removeComponent<CharacterControllerComponent>(entity);
+            break;
+        case ComponentType::CharacterController2DComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeCharacterController2DComponent(registry->getComponent<CharacterController2DComponent>(entity));
+            }
+            registry->removeComponent<CharacterController2DComponent>(entity);
             break;
         case ComponentType::Joint3DComponent:
             if (encodeComponent){

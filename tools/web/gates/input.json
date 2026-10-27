@@ -1,0 +1,16 @@
+{
+  "description": "tools/test-projects/input (WEB_PROJECT=input tools/build.sh web): Input.getPointerLockState() with a captured pointer is PENDING until a user gesture, then LOCKED after the gate's synthetic click (CDP Input.dispatchMouseEvent). No pixel check: the scene is empty.",
+  "isolated": true,
+  "click": 1,
+  "console": [
+    {
+      "text": "[gate] pointer pending",
+      "level": "log"
+    },
+    {
+      "text": "[gate] pointer locked",
+      "level": "log"
+    }
+  ],
+  "ordered": true
+}

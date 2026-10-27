@@ -60,6 +60,9 @@
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "object/physics/Rigidbody2D.h"
 #include "object/physics/Joint2D.h"
+#include "object/physics/CharacterController2D.h"
+#include "object/physics/ControllerColliderHit.h"
+#include "object/physics/CharacterController.h"
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "object/physics/Rigidbody.h"
@@ -794,6 +797,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerUtilClasses(L);
     registerThreadClasses(L);
     registerProfilerClasses(L);
+    registerGameplayClasses(L);
     registerCrashClasses(L);
     registerHtmlUIClasses(L);
     registerHtmlUIAnimeClasses(L);
@@ -974,10 +978,12 @@ bool LuaBinding::pushEntityHandleByType(lua_State* L, jasperengine::Scene* scene
 #ifdef JASPERENGINE_PHYSICS_2D
     DISPATCH_TYPE(Rigidbody2D, "rigidbody2d");
     DISPATCH_TYPE(Joint2D, "joint2d");
+    DISPATCH_TYPE(CharacterController2D, "charactercontroller2d");
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
     DISPATCH_TYPE(Rigidbody, "rigidbody");
     DISPATCH_TYPE(Joint3D, "joint3d");
+    DISPATCH_TYPE(CharacterController, "charactercontroller");
 #endif
     DISPATCH_TYPE(Action, "action");
     DISPATCH_TYPE(Tween, "tween");
@@ -1224,6 +1230,39 @@ void LuaBinding::callLuaScriptFunction(lua_State* L, ScriptEntry& scriptEntry, c
     }
     lua_pop(L, 1);
 }
+
+#ifdef JASPERENGINE_PHYSICS_3D
+void LuaBinding::callScriptHook(Scene* scene, Entity entity, const char* function, const ControllerColliderHit& hit) {
+    lua_State* L = luastate;
+    if (!L || !scene) return;
+    ScriptComponent* scripts = scene->findComponent<ScriptComponent>(entity);
+    if (!scripts) return;
+    // a copy of the instance refs: the hook may add or remove scripts
+    std::vector<std::pair<int, std::string>> instances;
+    for (const ScriptEntry& entry : scripts->scripts) {
+        if (entry.type == ScriptType::LUA && entry.enabled && entry.instance)
+            instances.emplace_back(static_cast<int>(reinterpret_cast<intptr_t>(entry.instance)), entry.className);
+    }
+    for (const auto& [ref, className] : instances) {
+        lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+        lua_getfield(L, -1, function);
+        if (lua_isfunction(L, -1)) {
+            lua_pushvalue(L, -2);
+            if (!luabridge::push<ControllerColliderHit>(L, hit)) {
+                lua_pop(L, 3);
+                continue;
+            }
+            if (pcallWithTraceback(L, 2, 0) != LUA_OK) {
+                logLuaError("Lua %s() failed for '%s': %s", function, className.c_str(), getLuaStackErrorString(L, -1).c_str());
+                lua_pop(L, 1);
+            }
+        } else {
+            lua_pop(L, 1);
+        }
+        lua_pop(L, 1);
+    }
+}
+#endif
 
 void LuaBinding::releaseLuaScriptInstance(Scene* scene, ScriptEntry& scriptEntry) {
     int ref = static_cast<int>(reinterpret_cast<intptr_t>(scriptEntry.instance));

@@ -51,6 +51,11 @@
 #include "PrefabAsset.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "Rigidbody2D.h"
+#include "CharacterController2D.h"
+#include "Buoyancy.h"
+#include "WaterVolume.h"
+#include "CharacterController.h"
+#include "ControllerColliderHit.h"
 #include "Joint2D.h"
 #include "Contact2D.h"
 #include "Manifold2D.h"
@@ -469,6 +474,40 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addStaticFunction("getNormal", &Water::getNormal)
         .addStaticFunction("isUnderwater", &Water::isUnderwater)
         .addStaticFunction("getTime", &Water::getTime)
+        .addStaticFunction("sample", &Water::sample)
+        .addStaticFunction("sampleHeight", &Water::sampleHeight)
+        .endClass();
+
+    // what the water is at a point (Water.sample)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<WaterSample>("WaterSample")
+        .addProperty("inWater", &WaterSample::isInWater)
+        .addProperty("surfaceHeight", &WaterSample::getSurfaceHeight)
+        .addProperty("normal", &WaterSample::getNormal)
+        .addProperty("flowVelocity", &WaterSample::getFlowVelocity)
+        .addProperty("volume", &WaterSample::getVolume)
+        .addProperty("hasWater", &WaterSample::hasWater)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("WaterVolumeWaves")
+        .addVariable("FROM_MATERIAL", WaterVolumeWaves::FROM_MATERIAL)
+        .addVariable("NONE", WaterVolumeWaves::NONE)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<WaterVolume, EntityHandle>("WaterVolume")
+        .addConstructor <void (Scene*, Entity)> ()
+        .addProperty("valid", &WaterVolume::isValid)
+        .addProperty("enabled", &WaterVolume::isEnabled, &WaterVolume::setEnabled)
+        .addProperty("size", &WaterVolume::getSize, &WaterVolume::setSize)
+        .addProperty("surfaceOffset", &WaterVolume::getSurfaceOffset, &WaterVolume::setSurfaceOffset)
+        .addProperty("infinite", &WaterVolume::isInfinite, &WaterVolume::setInfinite)
+        .addProperty("density", &WaterVolume::getDensity, &WaterVolume::setDensity)
+        .addProperty("flow", &WaterVolume::getFlow, &WaterVolume::setFlow)
+        .addProperty("linearDrag", &WaterVolume::getLinearDrag, &WaterVolume::setLinearDrag)
+        .addProperty("angularDrag", &WaterVolume::getAngularDrag, &WaterVolume::setAngularDrag)
+        .addProperty("waves", &WaterVolume::getWaves, &WaterVolume::setWaves)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -559,11 +598,17 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 #ifdef JASPERENGINE_PHYSICS_2D
         .addFunction("getRigidbody2D", &GameObject::getRigidbody2D)
         .addFunction("removeRigidbody2D", &GameObject::removeRigidbody2D)
+        .addFunction("getCharacterController2D", &GameObject::getCharacterController2D)
+        .addFunction("removeCharacterController2D", &GameObject::removeCharacterController2D)
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
         .addFunction("getRigidbody", &GameObject::getRigidbody)
         .addFunction("removeRigidbody", &GameObject::removeRigidbody)
+        .addFunction("getCharacterController", &GameObject::getCharacterController)
+        .addFunction("removeCharacterController", &GameObject::removeCharacterController)
+        .addFunction("getBuoyancy", &GameObject::getBuoyancy)
 #endif
+        .addFunction("getWaterVolume", &GameObject::getWaterVolume)
         .addFunction("getRay", &GameObject::getRay)
         .endClass();
 
@@ -2051,6 +2096,120 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getAudioSourceComponent", &AudioSource::getComponent<AudioSourceComponent>)
         .endClass();
 
+    // CharacterController(2D).move's result, Unity's CollisionFlags
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("CollisionFlags")
+        .addVariable("NONE", CharacterCollisionFlags::CharacterCollision_None)
+        .addVariable("SIDES", CharacterCollisionFlags::CharacterCollision_Sides)
+        .addVariable("ABOVE", CharacterCollisionFlags::CharacterCollision_Above)
+        .addVariable("BELOW", CharacterCollisionFlags::CharacterCollision_Below)
+        .endNamespace();
+
+#ifdef JASPERENGINE_PHYSICS_3D
+    luabridge::getGlobalNamespace(L)
+        .beginClass<FunctionSubscribe<void(Entity, ControllerColliderHit)>>("FunctionSubscribe_V_UCCH")
+        .addFunction("__call", &FunctionSubscribe<void(Entity, ControllerColliderHit)>::call)
+        .addFunction("call", &FunctionSubscribe<void(Entity, ControllerColliderHit)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<void(Entity, ControllerColliderHit)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(Entity, ControllerColliderHit)>::add)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ControllerColliderHit>("ControllerColliderHit")
+        .addProperty("controller", &ControllerColliderHit::getController)
+        .addProperty("entity", &ControllerColliderHit::getEntity)
+        .addProperty("point", &ControllerColliderHit::getPoint)
+        .addProperty("normal", &ControllerColliderHit::getNormal)
+        .addProperty("moveDirection", &ControllerColliderHit::getMoveDirection)
+        .addProperty("moveLength", &ControllerColliderHit::getMoveLength)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<CharacterController, EntityHandle>("CharacterController")
+        .addConstructor <void (Scene*, Entity)> ()
+        .addProperty("valid", &CharacterController::isValid)
+        .addProperty("enabled", &CharacterController::isEnabled, &CharacterController::setEnabled)
+        .addFunction("move", &CharacterController::move)
+        .addFunction("simpleMove", &CharacterController::simpleMove)
+        .addFunction("trySetSize", &CharacterController::trySetSize)
+        .addProperty("center", &CharacterController::getCenter, &CharacterController::setCenter)
+        .addProperty("height", &CharacterController::getHeight, &CharacterController::setHeight)
+        .addProperty("radius", &CharacterController::getRadius, &CharacterController::setRadius)
+        .addProperty("slopeLimit", &CharacterController::getSlopeLimit, &CharacterController::setSlopeLimit)
+        .addProperty("stepOffset", &CharacterController::getStepOffset, &CharacterController::setStepOffset)
+        .addProperty("skinWidth", &CharacterController::getSkinWidth, &CharacterController::setSkinWidth)
+        .addProperty("minMoveDistance", &CharacterController::getMinMoveDistance, &CharacterController::setMinMoveDistance)
+        .addProperty("mass", &CharacterController::getMass, &CharacterController::setMass)
+        .addProperty("pushStrength", &CharacterController::getPushStrength, &CharacterController::setPushStrength)
+        .addProperty("pushBodies", &CharacterController::isPushBodies, &CharacterController::setPushBodies)
+        .addProperty("movingPlatforms", &CharacterController::isMovingPlatforms, &CharacterController::setMovingPlatforms)
+        .addProperty("inheritPlatformYaw", &CharacterController::isInheritPlatformYaw, &CharacterController::setInheritPlatformYaw)
+        .addProperty("detectCollisions", &CharacterController::isDetectCollisions, &CharacterController::setDetectCollisions)
+        .addProperty("characterCollisions", &CharacterController::isCharacterCollisions, &CharacterController::setCharacterCollisions)
+        .addProperty("enhancedEdgeRemoval", &CharacterController::isEnhancedEdgeRemoval, &CharacterController::setEnhancedEdgeRemoval)
+        .addFunction("setBitsFilter", &CharacterController::setBitsFilter)
+        .addProperty("categoryBits", &CharacterController::getCategoryBits)
+        .addProperty("maskBits", &CharacterController::getMaskBits)
+        .addProperty("isGrounded", &CharacterController::isGrounded)
+        .addProperty("isOnSteepSlope", &CharacterController::isOnSteepSlope)
+        .addProperty("collisionFlags", &CharacterController::getCollisionFlags)
+        .addProperty("velocity", &CharacterController::getVelocity)
+        .addProperty("groundNormal", &CharacterController::getGroundNormal)
+        .addProperty("groundEntity", &CharacterController::getGroundEntity)
+        .addProperty("groundVelocity", &CharacterController::getGroundVelocity)
+        .endClass();
+#endif
+
+#ifdef JASPERENGINE_PHYSICS_3D
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("BuoyancyColumns")
+        .addVariable("AUTO_2x2", BuoyancyColumns::AUTO_2x2)
+        .addVariable("AUTO_3x3", BuoyancyColumns::AUTO_3x3)
+        .addVariable("CUSTOM", BuoyancyColumns::CUSTOM)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<Buoyancy, EntityHandle>("Buoyancy")
+        .addConstructor <void (Scene*, Entity)> ()
+        .addProperty("valid", &Buoyancy::isValid)
+        .addProperty("enabled", &Buoyancy::isEnabled, &Buoyancy::setEnabled)
+        .addProperty("columns", &Buoyancy::getColumns, &Buoyancy::setColumns)
+        .addProperty("customPoints", &Buoyancy::getCustomPoints, &Buoyancy::setCustomPoints)
+        .addProperty("volumeScale", &Buoyancy::getVolumeScale, &Buoyancy::setVolumeScale)
+        .addProperty("dragScale", &Buoyancy::getDragScale, &Buoyancy::setDragScale)
+        .endClass();
+#endif
+
+#ifdef JASPERENGINE_PHYSICS_2D
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<CharacterController2D, EntityHandle>("CharacterController2D")
+        .addConstructor <void (Scene*, Entity)> ()
+        .addProperty("valid", &CharacterController2D::isValid)
+        .addProperty("enabled", &CharacterController2D::isEnabled, &CharacterController2D::setEnabled)
+        .addFunction("move", &CharacterController2D::move)
+        .addFunction("simpleMove", &CharacterController2D::simpleMove)
+        .addProperty("center", &CharacterController2D::getCenter, &CharacterController2D::setCenter)
+        .addProperty("height", &CharacterController2D::getHeight, &CharacterController2D::setHeight)
+        .addProperty("radius", &CharacterController2D::getRadius, &CharacterController2D::setRadius)
+        .addProperty("slopeLimit", &CharacterController2D::getSlopeLimit, &CharacterController2D::setSlopeLimit)
+        .addProperty("stepOffset", &CharacterController2D::getStepOffset, &CharacterController2D::setStepOffset)
+        .addProperty("skinWidth", &CharacterController2D::getSkinWidth, &CharacterController2D::setSkinWidth)
+        .addProperty("minMoveDistance", &CharacterController2D::getMinMoveDistance, &CharacterController2D::setMinMoveDistance)
+        .addProperty("pushStrength", &CharacterController2D::getPushStrength, &CharacterController2D::setPushStrength)
+        .addProperty("pushBodies", &CharacterController2D::isPushBodies, &CharacterController2D::setPushBodies)
+        .addProperty("movingPlatforms", &CharacterController2D::isMovingPlatforms, &CharacterController2D::setMovingPlatforms)
+        .addFunction("setBitsFilter", &CharacterController2D::setBitsFilter)
+        .addProperty("categoryBits", &CharacterController2D::getCategoryBits)
+        .addProperty("maskBits", &CharacterController2D::getMaskBits)
+        .addProperty("isGrounded", &CharacterController2D::isGrounded)
+        .addProperty("isOnSteepSlope", &CharacterController2D::isOnSteepSlope)
+        .addProperty("collisionFlags", &CharacterController2D::getCollisionFlags)
+        .addProperty("velocity", &CharacterController2D::getVelocity)
+        .addProperty("groundNormal", &CharacterController2D::getGroundNormal)
+        .addProperty("groundEntity", &CharacterController2D::getGroundEntity)
+        .addProperty("groundVelocity", &CharacterController2D::getGroundVelocity)
+        .endClass();
+#endif
+
 #ifdef JASPERENGINE_PHYSICS_2D
     luabridge::getGlobalNamespace(L)
         .deriveClass<Rigidbody2D, EntityHandle>("Rigidbody2D")
@@ -2222,6 +2381,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .deriveClass<Rigidbody, EntityHandle>("Rigidbody")
         .addConstructor <void (Scene*, Entity)> ()
+        .addProperty("valid", &Rigidbody::isValid)
         .addProperty("enabled", &Rigidbody::isEnabled, &Rigidbody::setEnabled)
         .addFunction("getAttachedObject", &Rigidbody::getAttachedObject)
         .addFunction("load", &Rigidbody::load)

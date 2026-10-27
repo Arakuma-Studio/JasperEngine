@@ -18,6 +18,8 @@ namespace jasperengine { namespace test {
     // the same for a sampled RGBA8 (bytesPerPixel 4) or R8 (1) texture, e.g. a dynamic one:
     // width * height * bytesPerPixel bytes, rows top first, tightly packed
     bool readTexturePixels(TextureRender& texture, int width, int height, int bytesPerPixel, std::vector<uint8_t>& pixels);
+    // the same for an RGBA32F render target: width * height * 4 floats, rows top first
+    bool readTextureFloat(TextureRender& texture, int width, int height, std::vector<float>& rgba);
 
 } }
 
