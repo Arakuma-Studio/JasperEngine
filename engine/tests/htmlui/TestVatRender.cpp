@@ -712,7 +712,7 @@ TEST_F(VatRenderTest, InstancesPlayTheirOwnStateAfterSorting){
     EXPECT_TRUE(instmesh.vatBuffer.getRender()->isCreated()) << "the VAT batch has its state buffer";
     EXPECT_EQ(instmesh.vatBuffer.getStride(), 8 * sizeof(float));
     EXPECT_EQ(instmesh.buffer.getStride(), 24 * sizeof(float)) << "its instance buffer keeps its layout";
-    const InstancedMeshComponent& plain = plainModel.getComponent<InstancedMeshComponent>();
+    InstancedMeshComponent& plain = plainModel.getComponent<InstancedMeshComponent>();
     EXPECT_FALSE(plain.vatBuffer.getRender()->isCreated()) << "another batch has none";
     EXPECT_EQ(plain.buffer.getStride(), 24 * sizeof(float));
     EXPECT_TRUE(plain.renderVat.empty());
@@ -892,7 +892,6 @@ TEST_F(VatRenderTest, ShaderFrameMathMatchesTheCpp){
         if (pair.a.clip >= 0){
             const vat::VatClip& clip = data.clips[pair.a.clip];
             sampleA = vat::vatSample(clip, (now - pair.a.start) * pair.a.speed);
-            sampleA.frame0 += 0;
             a = value(sampleA);
         }
         const float w = vat::vatWeightB(pair, now);
@@ -971,8 +970,10 @@ TEST_F(VatRenderTest, ShaderFrameMathMatchesTheCpp){
         ASSERT_TRUE(screen.read());
         for (size_t r = 0; r < count; r++){
             const auto& c = cases[first + r];
-            vat::VatTrackPair pair = c.first;
-            const float x = expected(pair, c.second);
+            const vat::VatTrackPair pair = c.first;
+            // what the instance carries (its times moved by -now), at the entity's clock 0
+            const float x = expected(vat::vatUnpackInstance(instmesh.instances[r].vat0, instmesh.instances[r].vat1), 0.0f);
+            EXPECT_NEAR(x, expected(pair, c.second), 1e-4f) << "the packing keeps the case, " << first + r;
             const InkBox ink = rowInk(screen, top - pitch * float(r));
             ASSERT_FALSE(ink.empty()) << "case " << first + r;
             EXPECT_NEAR(ink.x0, toScreenX(x - 0.05f), 1.0f)

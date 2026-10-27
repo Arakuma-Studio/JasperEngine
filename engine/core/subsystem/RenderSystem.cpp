@@ -7592,7 +7592,7 @@ void RenderSystem::buildInstanceView(InstanceView& view, InstanceViewRange& rang
     // a VAT batch's states go with its instances, in the same order (at rest until its list
     // has them: its draws read them whatever)
     range.vatOffset = (unsigned int)view.vatData.size();
-    const bool vatBatch = vat || instmesh.vatBuffer.getRender()->isCreated();
+    const bool vatBatch = vat || mesh.vat.variantActive != VatVariant::NONE;
     auto pushVat = [&view, vat, vatBatch](unsigned int index){
         static const InstanceVatRenderData rest{Vector4(-1.0f, 0.0f, 1.0f, -1.0f), Vector4(0.0f, 1.0f, 0.0f, 0.0f)};
         if (vatBatch)

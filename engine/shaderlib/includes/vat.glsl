@@ -106,58 +106,56 @@ int vatClipFlags(vec4 clip){
     return int(clip.w + 0.5);
 }
 
-// the frames at a local position x (in samples) of a clip, wrapped as `wrap` (vat::vatSample
-// after x)
-VatFrames vatFramesAt(vec4 clip, float x, int wrap){
+// the frames at a local position x (in samples since the clip's first frame, not wrapped yet)
+// of a clip (VertexAnimation.cpp's sampleAt, which vat::vatSample and vatSampleNormalized share)
+VatFrames vatFramesAt(vec4 clip, float x){
     VatFrames f;
-    int frames = int(clip.y + 0.5);
     int flags = vatClipFlags(clip);
-    float framesF = float(frames);
-    int f0 = 0;
-    int f1 = 0;
-    float normalized = 0.0;
-    if (frames <= 1){
-        x = 0.0;
-    }else if (wrap == 0){
-        x = x - framesF * floor(x / framesF);
-        f0 = min(int(floor(x)), frames - 1);
-        f1 = (f0 + 1 == frames) ? 0 : f0 + 1;
-        normalized = x / framesF;
+    int wrap = flags & 3;
+    float frames = max(floor(clip.y + 0.5), 1.0);
+    float last = frames - 1.0;
+    float f0;
+    float f1;
+    if (wrap == 0){
+        x = x - frames * floor(x / frames);
+        // float rounding of a tiny negative x lands on `frames`: the same phase as 0, kept
+        // continuous by f0 = last with alpha 1 (= the first frame)
+        x = clamp(x, 0.0, frames);
+        f0 = min(floor(x), last);
+        f1 = (f0 + 1.0 == frames) ? 0.0 : f0 + 1.0;
+        f.normalized = x / frames;
     }else{
-        float last = framesF - 1.0;
         if (wrap == 2){
             float p = 2.0 * last;
-            float y = x - p * floor(x / p);
+            float y = (p > 0.0) ? x - p * floor(x / p) : 0.0;
             x = (y <= last) ? y : p - y;
         }
         x = clamp(x, 0.0, last);
-        f0 = min(int(floor(x)), frames - 1);
-        f1 = min(f0 + 1, frames - 1);
-        normalized = x / last;
+        f0 = floor(x);
+        f1 = min(f0 + 1.0, last);
+        f.normalized = (last > 0.0) ? x / last : 0.0;
     }
+    f.alpha = ((flags & 4) != 0 && frames > 1.0) ? x - f0 : 0.0;
     int start = int(clip.x + 0.5);
-    f.frame0 = start + f0;
-    f.frame1 = start + f1;
-    f.alpha = ((flags & 4) != 0 && frames > 1) ? x - float(f0) : 0.0;
-    f.normalized = normalized;
+    f.frame0 = start + int(f0);
+    f.frame1 = start + int(f1);
     return f;
 }
 
 // vat::vatSample: the clip at local time tau (seconds, (now - start) * speed)
 VatFrames vatSample(vec4 clip, float tau){
-    return vatFramesAt(clip, tau * clip.z, vatClipFlags(clip) & 3);
+    return vatFramesAt(clip, tau * clip.z);
 }
 
-// vat::vatSampleNormalized: the clip at a phase (0..1) instead of a time (phase-synced B)
+// vat::vatSampleNormalized: the clip at a phase (0..1) instead of a time (phase-synced B):
+// x = phase * frames for a loop clip, phase * (frames - 1) for the others
 VatFrames vatSampleNormalized(vec4 clip, float normalized){
-    int frames = int(clip.y + 0.5);
-    int wrap = vatClipFlags(clip) & 3;
-    float span = (wrap == 0) ? float(frames) : float(frames - 1);
-    // ping-pong reads the phase as a once clip does (a phase is already folded)
-    return vatFramesAt(clip, normalized * span, (wrap == 0) ? 0 : 1);
+    float frames = max(floor(clip.y + 0.5), 1.0);
+    bool loop = (vatClipFlags(clip) & 3) == 0;
+    return vatFramesAt(clip, normalized * (loop ? frames : frames - 1.0));
 }
 
-// vat::vatUnpackInstance
+// vat::vatUnpackInstance (v1.w < 0 only in blend mode: vatPackInstance writes max(fadeEnd, 0))
 VatTracks vatUnpackInstance(vec4 v0, vec4 v1){
     VatTracks t;
     t.clipA = int(floor(v0.x + 0.5));
