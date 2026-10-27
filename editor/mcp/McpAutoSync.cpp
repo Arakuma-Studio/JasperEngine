@@ -5,6 +5,7 @@
 
 #include "McpContext.h"
 #include "McpServer.h"
+#include "tools/McpTools.h"
 #include "tools/W4Shared.h"
 
 #include "Project.h"
@@ -164,6 +165,8 @@ bool McpAutoSync::isTrackedFile(const std::string& path) {
     // pose animations and humanoid sidecars: their open documents reload (editor/pose); clips:
     // their documents reload, AnimationClipPool drops them and their players reload
     if (ext == ".c" || ext == ".inl" || ext == ".poseanim" || ext == ".humanoid" || Util::isAnimationClipFile(path)) return true;
+    // Vertex Animations: VertexAnimationPool drops them and their animators reload (problems reported)
+    if (Util::isVertexAnimationFile(path)) return true;
     // models and glTF buffers: the clips made from their animations reload (picked up, not reported)
     return isModelSourceFile(path);
 }
@@ -573,6 +576,9 @@ Json McpAutoSync::process(McpContext& ctx, const std::vector<Change>& changes, s
     }
     if (!models.empty()) {
         AnimationClipDocument::filesChanged(models, ctx.project());
+        // a regenerated .vat.glb: the pool drops its .vat (the animators reload)
+        Json ignored = Json::array();
+        for (const fs::path& model : models) vatFileChanged(ctx.project(), model, ignored);
         filesSynced(ctx, models, false);
     }
     Json result = paths.empty() ? Json{{"problems", Json::array()}} : w4::syncFiles(ctx, paths, false);
@@ -651,7 +657,7 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
             // reload their documents now too (phase 5); so do clip and pose animation documents
             // (players see a clip's new pool generation; their problems are reported now)
             if (isUiCodeFile(rel) || (isAssetFile(rel) && !Util::isImageFile(rel)) || lowerExtension(rel) == ".glsl" ||
-                Util::isAnimationClipFile(rel) || Util::isPoseAnimationFile(rel) ||
+                Util::isAnimationClipFile(rel) || Util::isPoseAnimationFile(rel) || Util::isVertexAnimationFile(rel) ||
                 (lowerExtension(rel) == ".frag" && (pending.kind == 'r' || ProjectChecks::isUiEffectFile(path)))) {
                 uiPaths.push_back(path);
                 continue;
