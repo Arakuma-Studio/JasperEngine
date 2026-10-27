@@ -45,8 +45,9 @@ documents have their own effects library instead, `effect(<name>, ...)` in CSS (
     (draw order within the opaque or the transparent queue, lower first, before distance). `auto` takes the shader's default state, else the
     engine's. UI, Points and Lines have `blendMode` and `depthWrite`.
   - `lighting`: auto, pixel, vertex, mixed or none (unlit), only the modes the shader lists
-    (`list_shaders` gives them, the default first; the built-in Lit takes pixel, vertex and
-    mixed). Choosing another shader puts a mode it does not list back to auto. `mixed`
+    (`list_shaders` gives them, the default first; the built-in Lit takes pixel, vertex, mixed
+    and none, which draws the base colour only: a glTF material with `KHR_materials_unlit`
+    loads as none). Choosing another shader puts a mode it does not list back to auto. `mixed`
     follows each light's `shading` (both, pixel, vertex). The scene setting
     `max_lights_per_object` (1-16, default 8) caps the lights per object; the rest reaching
     it fold into its ambient.
