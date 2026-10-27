@@ -361,8 +361,6 @@ namespace jasperengine {
 
         bool isOrderDirty() const { return orderDirty; }
         size_t getHoleCount() const { return holeCount; }
-        // a re-sort is pending (the next index observation does it)
-        bool isOrderDirty() const { return orderDirty; }
 
         // counters for tests and statistics
         size_t getCompactionCount() const { return compactions; }
