@@ -15,6 +15,7 @@
 #include "tiny_gltf.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <map>
@@ -394,6 +395,13 @@ namespace{
         out.alphaMode = material.alphaMode.empty() ? "OPAQUE" : material.alphaMode;
         out.alphaCutoff = (float)material.alphaCutoff;
         out.doubleSided = material.doubleSided;
+        // what MeshSystem reads from a glTF material besides the core slots
+        out.unlit = material.extensions.count("KHR_materials_unlit") != 0;
+        if (material.extras.IsObject() && material.extras.Has("jasperengine_foliage_transmission")){
+            const tinygltf::Value& value = material.extras.Get("jasperengine_foliage_transmission");
+            if (value.IsNumber() && std::isfinite(value.GetNumberAsDouble()))
+                out.foliageTransmission = std::clamp((float)value.GetNumberAsDouble(), 0.0f, 1.0f);
+        }
         out.baseColorTexture = gltfImageFile(model, pbr.baseColorTexture.index, dir, embedded);
         out.metallicRoughnessTexture = gltfImageFile(model, pbr.metallicRoughnessTexture.index, dir, embedded);
         out.normalTexture = gltfImageFile(model, material.normalTexture.index, dir, embedded);

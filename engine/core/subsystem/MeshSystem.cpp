@@ -5268,6 +5268,10 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                     if (value.IsNumber() && std::isfinite(value.GetNumberAsDouble()))
                         mesh.submeshes[i].material.foliageTransmission = std::clamp((float)value.GetNumberAsDouble(), 0.0f, 1.0f);
                 }
+                // KHR_materials_unlit: drawn in its base colour (factor, texture, vertex colour)
+                // without lights, as Lighting None does
+                if (mat->extensions.count("KHR_materials_unlit"))
+                    mesh.submeshes[i].material.lighting = MaterialLighting::NONE;
             }
 
             // Alpha-masked glTF materials need the base-color alpha in the depth

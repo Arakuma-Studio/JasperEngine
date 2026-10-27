@@ -1964,7 +1964,8 @@ namespace jasperengine{
 		static SubmeshShaderVariant getSubmeshShaderVariant(const MeshShaderEnvironment& environment, const SubmeshShaderInputs& inputs);
 		// The lighting mode a submesh draws with: the material's when the shader lists it,
 		// else the shader's default (the first of its manifest's @lighting, NONE without one;
-		// the built-in Lit and forks without a manifest: PIXEL, listing PIXEL, VERTEX, MIXED).
+		// the built-in Lit and forks without a manifest: PIXEL, listing PIXEL, VERTEX, MIXED,
+		// NONE).
 		// Never AUTO. manifest: the one the submesh draws with (SubmeshShaderInputs::manifest).
 		static MaterialLighting resolveLighting(MaterialLighting requested, const ShaderManifest* manifest);
 		// whether the shader lists the mode (AUTO: always)
