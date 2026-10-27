@@ -9,6 +9,7 @@
 #include "picking/MeshPose.h"
 #include "picking/PickCache.h"
 #include "picking/PickGeometry.h"
+#include "component/ParticleSystemComponent.h"
 #include "object/ParticleSystem.h"
 #include "subsystem/ParticleSystemState.h"
 #include "component/InstancedMeshComponent.h"
@@ -271,7 +272,7 @@ TEST(MeshRaycast, Kinds){
         const float mn[3] = {-62, 28, -2}, mx[3] = {-58, 32, 2};
         std::copy(mn, mn + 3, state->boundsMin);
         std::copy(mx, mx + 3, state->boundsMax);
-        particles.system().state = state;
+        scene.getComponent<ParticleSystemComponent>(particles.getEntity()).state = state;
     }
     hit = MeshRaycast::raycast(&scene, Vector3(-60, 30, 50), Vector3(0, 0, -1), 100.0f);
     ASSERT_TRUE(hit.hit);
