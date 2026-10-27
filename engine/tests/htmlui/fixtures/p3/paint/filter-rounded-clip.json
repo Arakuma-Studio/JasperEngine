@@ -1,0 +1,10 @@
+{
+ "comment": "a colour-filtered element as the only child of a rounded overflow clip (brightness filling it, invert over its top-left corner only), as the first of two children (grayscale, a square drawn after it) and as the second (sepia over a hidden square): drawn, clipped to the rounded padding box. No page background: the filtered element's layer is the frame's first pass. Its layer was once the first pass to hold the clip mask, and layer 0's first pass (the composite) cleared it: nothing was drawn, nor the square after it. Blur and drop-shadow are left to RenderFilterClip's pixel checks: the engine filters the content as clipped by the ancestor (its rounded corners), Chromium filters it unclipped and clips the result. Tolerance: as radius-clip-children, the content is clipped by the stencil along the curves (4 samples: five coverage levels, no fade), Skia uses the covered area: single pixels along the curves differ (largest cluster 4 px), and the image is little else than four clipped boxes. Measured 0.825 % on glcore; the cluster limit stays at the default (16 px).",
+ "viewport": [
+  400,
+  80
+ ],
+ "tolerance": {
+  "badPercent": 0.85
+ }
+}
