@@ -119,7 +119,10 @@ TEST(TextureWebTranscode, TrimmedTranscoderMatchesUpstreamOnEveryTarget){
             }
             compared++;
         }
-        // a session on the levels from 2 down, as a load that drops the top mips makes one
+        // a session on the levels from 2 down, as a load that drops the top mips makes one (the
+        // sprite has no mips)
+        if (image.info.levelCount <= 2)
+            continue;
         Ktx2Image dropped;
         ASSERT_TRUE(Ktx2::read(source, 2, dropped, error)) << error;
         const GpuTextureFormat first = TextureFallback::transcodeCandidates(codec, content, true).front();
