@@ -2047,6 +2047,8 @@ struct CheckRun {
     std::vector<std::pair<std::string, size_t>> checked;   // category, count (in run order)
     std::vector<std::string> cppLogTail;                   // a failed C++ build without diagnostics
     std::string fatal;                                     // the checks could not run
+    vat::VatCheck vat;                                     // --vat (listed last, after the pure checks)
+    bool vatRan = false;
 };
 
 std::string plural(size_t count, const std::string& word) {
@@ -2266,9 +2268,8 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
 
     if (vatWanted) {
         // the .vat files (all of them, or the given ones): format, staleness, device limits
-        const vat::VatCheck check = vat::checkVatAssets(&project, vatFiles);
-        run.findings.insert(run.findings.end(), check.findings.begin(), check.findings.end());
-        run.checked.push_back({"vat", check.assets});
+        run.vat = vat::checkVatAssets(&project, vatFiles);
+        run.vatRan = true;
     }
 
     if (shadersWanted) {
@@ -2467,6 +2468,10 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         const ClipCheck clips = checkClipFiles(root, fileMode ? clipFiles : std::vector<fs::path>());
         run.findings.insert(run.findings.end(), clips.findings.begin(), clips.findings.end());
         run.checked.push_back({"anims", clips.clips});
+    }
+    if (run.vatRan) {
+        run.findings.insert(run.findings.end(), run.vat.findings.begin(), run.vat.findings.end());
+        run.checked.push_back({"vat", run.vat.assets});
     }
     ProjectChecks::sortFindings(run.findings);
     const size_t errors = ProjectChecks::countSeverity(run.findings, "error");

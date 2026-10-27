@@ -404,7 +404,7 @@ namespace{
         std::string text = std::string(report.mode == VatMode::Bones ? "Bones" : "Vertices") + " mode";
         if (!report.modeReason.empty()) text += " (" + report.modeReason + ")";
         text += ": " + std::to_string(report.vertices) + " vertices";
-        if (report.mode == VatMode::Bones) text += ", " + std::to_string(report.bones) + " bones";
+        if (report.mode == VatMode::Bones) text += ", " + std::to_string(report.bones) + (report.bones == 1 ? " bone" : " bones");
         text += ", texture " + std::to_string(report.width) + "x" + std::to_string(report.height) + " " + textureFormatName(report.precision) +
                 ", " + fixed(static_cast<double>(report.bytes) / (1024.0 * 1024.0), 2) + " MB, error max " + fixed(report.maxErrorMm, 2) +
                 " mm (mean " + fixed(report.meanErrorMm, 2) + "), " + std::to_string(report.fetchesPerVertex) + " fetches per vertex";
@@ -844,7 +844,7 @@ void printBakeVatUsage(const std::string& commandName, std::ostream& out){
         << "      --dry-run             Bake (or import) and print the report and where it would write; write nothing.\n"
         << "      --format <format>     text (default): a summary, warnings and their fixes; json: one object on stdout\n"
         << "                            {ok, dry_run, source, report, output: {vat, rewrite}, written: {vat, mesh, files, guid,\n"
-        << "                            rewritten}, errors: [{kind, message, fix}]}.\n"
+        << "                            rewritten}, errors: [{kind, message, fix}], source_clips (a clip the source lacks)}.\n"
         << "  -q, --quiet               No engine log or progress on stderr.\n"
         << "  -h, --help                Show this help.\n\n"
         << "Paths are absolute, relative to the current directory, or relative to the project. The files are encoded\n"
