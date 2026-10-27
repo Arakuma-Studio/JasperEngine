@@ -352,7 +352,7 @@ void SceneViewController::drawToolbar(SceneProject& sceneProject, float rightLim
         const std::string measureMenu = "MeasureMenu" + sid;
         if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) ImGui::OpenPopup(measureMenu.c_str());
         if (ImGui::BeginPopup(measureMenu.c_str())){
-            if (ImGui::MenuItem("Measure", measureShortcut, rt.measuring)) setMeasuring(sceneProject, !rt.measuring);
+            if (ImGui::MenuItem("Measure", measureShortcut.empty() ? nullptr : measureShortcut.c_str(), rt.measuring)) setMeasuring(sceneProject, !rt.measuring);
             if (ImGui::MenuItem("Clear Measures", nullptr, false, !state.measures.empty())) clearMeasures(sceneProject);
             ImGui::EndPopup();
         }
@@ -391,7 +391,7 @@ void SceneViewController::drawToolbar(SceneProject& sceneProject, float rightLim
                 drawLayersMenu();
                 ImGui::EndMenu();
             }
-            if (ImGui::MenuItem("Measure", measureShortcut, rt.measuring)) setMeasuring(sceneProject, !rt.measuring);
+            if (ImGui::MenuItem("Measure", measureShortcut.empty() ? nullptr : measureShortcut.c_str(), rt.measuring)) setMeasuring(sceneProject, !rt.measuring);
             if (ImGui::MenuItem("Rulers", nullptr, appSettings.rulers)){
                 appSettings.rulers = !appSettings.rulers;
                 AppSettings::setSceneViewSettings(appSettings);
