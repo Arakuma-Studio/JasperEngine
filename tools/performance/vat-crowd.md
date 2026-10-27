@@ -88,6 +88,29 @@ cost grows little with the count (13.75 ms at 5,000 heroes, one instanced draw p
 Vertices mode is ~10-15% faster than Bones here (2 texel fetches per vertex vs 16 for 4 influences);
 Bones mode trades that for a payload a hundred times smaller.
 
+## Results on a GPU after the engine fixes (27 October 2026)
+
+NVIDIA GeForce GTX 1650 (driver 595.91.07), Vulkan editor build, Release, 32 cores, engine-fixes
+47402dde5 (shared mesh buffers and pipelines, per-frame uniform / stream staging / descriptor buffers
+sized by `Engine::GpuResourceLimits`). Same script and settings as above; a slower card than the GTX
+1080 Ti, so compare rows within this table.
+
+| case | heroes | drawn | avg frame | fps | draws |
+|---|---|---|---|---|---|
+| skinned (Animation Players) | 1,000 | 1,000 | 532.00 ms | 1.9 | 3,000 |
+| VAT Vertices | 1,000 | 1,000 | 43.66 ms | 22.9 | 3 |
+| VAT Bones | 1,000 | 1,000 | 30.97 ms | 32.3 | 3 |
+| skinned | 2,000 | **2,000** | 1,145.55 ms | 0.9 | 6,000 |
+| VAT Vertices | 2,000 | 2,000 | 36.73 ms | 27.2 | 3 |
+| VAT Bones | 2,000 | 2,000 | 42.08 ms | 23.8 | 3 |
+| skinned | 5,000 | **5,000** | 3,004.84 ms | 0.3 | 15,000 |
+| VAT Vertices | 5,000 | 5,000 | 35.00 ms | 28.6 | 3 |
+| VAT Bones | 5,000 | 5,000 | 51.69 ms | 19.3 | 3 |
+
+Every skinned hero is drawn now (before the fixes the same crowd drew 820 of 2,000 and 1,023 of
+5,000 on the GTX 1080 Ti), at the cost of one CPU pose and 3 draws per hero per frame; a Vertex
+Animation crowd stays one instanced draw per material and ~85x faster at 5,000 heroes.
+
 ## Running it
 
 ```
