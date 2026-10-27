@@ -356,6 +356,13 @@ The harness API and conventions are described in the docstrings of `tools/mcp/ha
 and `tools/mcp/run_tests.py`. Every tool needs a test. The harness's Python packages are pinned
 in `tools/mcp/requirements.txt`.
 
+Tests that drive the editor with real input (xdotool, `EDITOR = {"xvfb": "harness", ...}`) use
+`tools/mcp/ui_input.py`: its `Ui` waits for editor frames after every step instead of sleeping,
+puts a press and its release, and each step of a drag, in different frames, keeps two clicks
+apart by more than ImGui's double-click time, holds a chord's modifiers across frames, and finds
+controls where `find_ui_item` says they are drawn now. A host drawing a frame a second runs them
+as a fast one does.
+
 ### The CI suite (`CI = True`)
 
 CI runs only the test files that declare `CI = True` at module level

@@ -20,6 +20,7 @@ import subprocess
 from pathlib import Path
 
 from harness import Editor, skip
+import ui_input
 
 REPO = Path(__file__).resolve().parents[3]
 EDITOR = {"project": REPO / "tools" / "fixtures" / "post-processing", "xvfb": "harness"}
@@ -47,8 +48,7 @@ def window(ed: Editor) -> str:
 
 
 async def frames(ed: Editor, count: int = 2) -> None:
-    for _ in range(count):
-        await ed.call("editor_status")
+    await ed.call("wait", frames=count)   # editor frames: a call alone can be answered within one
 
 
 async def ui(ed: Editor) -> dict:
@@ -61,7 +61,7 @@ async def wait_ui(ed: Editor, predicate, what: str, timeout: float = 15.0) -> di
         state = await ui(ed)
         if predicate(state):
             return state
-        await asyncio.sleep(0.25)
+        await ed.call("wait", frames=2)
     ed.fail(f"{what}; ui: {state}")
 
 
@@ -70,24 +70,15 @@ def centre(rect: list) -> tuple[str, str]:
     return str(int(x + w / 2)), str(int(y + h / 2))
 
 
-async def click(ed: Editor, rect: list) -> None:
-    x, y = centre(rect)
-    xdo(ed, "mousemove", "--window", window(ed), x, y)
-    await frames(ed)
-    xdo(ed, "mousedown", "1")
-    await frames(ed)
-    xdo(ed, "mouseup", "1")
-    await frames(ed)
+async def click(ed: Editor, rect: list, button: str = "1") -> None:
+    """a click at the centre of a window-coordinate rect (ui_input: frame-paced, never a double click)"""
+    window(ed)
+    ui = ui_input.for_editor(ed)
+    await ui.click(ui.centre(rect), button)
 
 
 async def click_right(ed: Editor, rect: list) -> None:
-    x, y = centre(rect)
-    xdo(ed, "mousemove", "--window", window(ed), x, y)
-    await frames(ed)
-    xdo(ed, "mousedown", "3")
-    await frames(ed)
-    xdo(ed, "mouseup", "3")
-    await frames(ed)
+    await click(ed, rect, "3")
 
 
 def menu_item(state: dict, label: str) -> list | None:

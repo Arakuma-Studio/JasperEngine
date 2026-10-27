@@ -16,6 +16,7 @@ import shutil
 import subprocess
 
 from harness import Editor, find_key, skip
+import ui_input
 
 # the harness owns the Xvfb so xdotool can click in the editor window
 EDITOR = {"xvfb": "harness"}
@@ -29,26 +30,17 @@ NOT_EQUAL_ITEM = (1432, 704)   # "Not Equal" in its list
 BLUE_CHANNEL = (1508, 723)     # the Color Write row's B toggle
 
 
-class Ui:
-    def __init__(self, ed: Editor):
-        self.env = dict(os.environ, DISPLAY=ed._xvfb.display)
-
-    def xdo(self, *args: str) -> str:
-        return subprocess.run(["xdotool", *args], env=self.env, capture_output=True, text=True, timeout=20).stdout
+class Ui(ui_input.Ui):
+    """The shared frame-paced input (tools/mcp/ui_input.py), at screen points of the default layout."""
 
     async def click(self, x: int, y: int, repeat: int = 1):
-        self.xdo("mousemove", str(x), str(y))
-        await asyncio.sleep(0.3)
-        self.xdo("click", "--repeat", str(repeat), "--delay", "80", "1")
-        await asyncio.sleep(0.8)
+        if repeat == 2:
+            await self.double_click((x, y))
+        else:
+            await super().click((x, y))
 
     async def wheel(self, x: int, y: int, notches: int):
-        self.xdo("mousemove", str(x), str(y))
-        await asyncio.sleep(0.2)
-        for _ in range(notches):
-            self.xdo("click", "5")
-            await asyncio.sleep(0.1)
-        await asyncio.sleep(0.5)
+        await super().wheel((x, y), notches)
 
 
 async def values(ed: Editor, eid) -> tuple:
