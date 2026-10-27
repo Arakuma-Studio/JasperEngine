@@ -959,6 +959,16 @@ TEST(PlacementWorldColliders, BakeThenMoveIsDecomposedAtOnce) {
 
 namespace {
 
+    // Under a sanitizer a decomposition runs several times slower: a coarser one and a longer
+    // wait, the same queue (what the ordering tests check does not depend on either)
+#if defined(JASPERENGINE_SANITIZE_ADDRESS) || defined(JASPERENGINE_SANITIZE_THREAD) || defined(JASPERENGINE_SANITIZE_UNDEFINED)
+    constexpr int QUEUE_RACE_RESOLUTION = 25000;
+    constexpr int QUEUE_RACE_SECONDS = 1200;
+#else
+    constexpr int QUEUE_RACE_RESOLUTION = 100000;
+    constexpr int QUEUE_RACE_SECONDS = 300;
+#endif
+
     // The order a bake's roots and a mover finish their decompositions in, polled every 2 ms
     struct QueueRace {
         TestScene t;
@@ -973,13 +983,13 @@ namespace {
             mover = t.torus(0.75f, 0.12f, Vector3(-5, 0, 0));
             t.resolve();
             settings.decompositionCache = &cache;
-            settings.decompositionResolution = 100000;
+            settings.decompositionResolution = QUEUE_RACE_RESOLUTION;
         }
 
         // the moment (poll index) each root's parts were all cached
         std::vector<int> finishOrder(const std::vector<Entity>& roots) {
             std::vector<int> when(roots.size(), -1);
-            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(300);
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(QUEUE_RACE_SECONDS);
             for (int poll = 0; std::chrono::steady_clock::now() < deadline; poll++) {
                 bool all = true;
                 for (size_t i = 0; i < roots.size(); i++) {

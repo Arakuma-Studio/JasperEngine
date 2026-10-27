@@ -36,6 +36,11 @@ namespace {
         fp.stdlib = toolchain::StdlibLibstdcxx;
         fp.stdlibVersion = 13;
         fp.stdlibAbi = 1;
+        // a Release editor, whatever this test binary is (the sanitizer builds keep assertions:
+        // no NDEBUG): the tests below change these fields and expect them to differ
+        fp.ndebug = 1;
+        fp.iteratorDebugLevel = 0;
+        fp.crtDebug = 0;
         return fp;
     }
 

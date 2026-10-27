@@ -27,7 +27,10 @@ worktree of a checkout makes rebuilds cheap.
 Builds `jasperengine-core-tests` in the standalone engine tree (`build/linux/core-tests`, preset
 `engine-linux-tests`, RelWithDebInfo) and `jasperengine-editor-tests` in the editor tree
 (`build/linux/editor-tests`, preset `linux-ci`), runs both under Xvfb, and puts each result
-through the gate (below). An unfiltered run must execute at least 300 core and 150 editor tests,
+through the gate (below). The test targets start their X server with `tools/with-xvfb.sh`, not
+`xvfb-run`: xvfb-run waits forever when Xvfb signals ready before its `wait` starts (a loaded
+builder), whereas the helper reads the display from `Xvfb -displayfd` within `XVFB_TIMEOUT`
+seconds (30). An unfiltered run must execute at least 300 core and 150 editor tests,
 with none skipped.
 
 ```sh
@@ -57,6 +60,12 @@ waiting click and refused drop (`tools/mcp/tests/test_scene_view*.py`).
   `build/linux/editor-install`. `MCP_SUITE=ci` (the default) runs the files that declare
   `CI = True`; `MCP_SUITE=all` runs every file and needs `JASPER_FIXTURE`, the default fixture
   project, which is not in git. See `docs/mcp/README.md` for writing MCP tests.
+- An MCP test asserts behaviour; a wall-clock budget (a CLI start in 300 ms, a reload frame under
+  16 ms, ...) goes through `harness.over_budget(what, measures, budget)`, which prints a `[bench]`
+  line and fails only when `JASPER_MCP_PERF_SLACK` is set: a shared build server's load alone
+  misses those budgets. The benchmark run enforces them on the benchmark-only server E:
+  `rb.sh E --img 'JASPER_MCP_PERF_SLACK=1 dbus-run-session -- tools/mcp/run-tests.sh
+  tools/mcp/tests/test_call_cli.py tools/mcp/tests/test_hot_reload.py tools/mcp/tests/test_checks.py'`.
 - `tools/smoke-test.sh <project>`: see its header. It also checks that the exported project
   configures as a user's game does: no presets file, no warnings as errors, no sanitizer.
 - `tools/build.sh web-gate` serves `build/web` with cross-origin isolation, opens
@@ -72,6 +81,9 @@ waiting click and refused drop (`tools/mcp/tests/test_scene_view*.py`).
   web`) checks the logger's browser console sink and a Lua `Timer` that way.
 - `GATE=mesh-raycast` (after `WEB_PROJECT=mesh-raycast tools/build.sh web`) times 10,000
   MeshRaycast rays against 1,000 meshes in WebAssembly and fails on a p99 over 4 ms (S26 AC17).
+- The other test projects with a gate: `atmosphere` (S12), `post-fx` (S13) and `terrain`, a
+  terrain displaced by a 16-bit heightmap, which WebGL2 and GLES3 cannot sample as R16 (the
+  renderer uploads it as R32F or R16F there).
 
 ### Test projects
 
