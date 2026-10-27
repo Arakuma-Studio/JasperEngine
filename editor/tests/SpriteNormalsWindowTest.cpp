@@ -89,6 +89,10 @@ namespace jasperengine::editor {
         static void requestSave(W& w) { w.requestSave(); }
         static void setAdvancedOpen(W& w, bool open) { w.advancedOpen = open; }
         static std::shared_ptr<sn::SpriteNormalsRun> shown(W& w) { return w.shown(); }
+        static bool setSource(W& w, const std::string& path, std::string& error) { return w.setSourcePath(path, error); }
+        static size_t quickJobs(W& w) { return w.quickJobs.size(); }
+        static double orbitTime(W& w) { return w.orbitTime; }
+        static bool itemHasResult(W& w, size_t i) { return i < w.items.size() && w.items[i].result != nullptr; }
         // one headless ImGui frame of show()
         static void drawFrame(W& w) {
             ImGui::NewFrame();
@@ -1028,4 +1032,187 @@ TEST(SpriteNormalsWindowSettings, WorkspaceRoundTrip) {
     EXPECT_FALSE(fallback.orbit);
     YAML::Node outOfRange = YAML::Load("settings: {preset: default, strength: 99}\n");
     EXPECT_THROW(Stream::decodeSpriteNormalsSettings(outOfRange), std::exception) << "the workspace reader warns and keeps the defaults";
+}
+
+// ==================================================================== fix round 1
+
+TEST(SpriteNormalsWindowDeathTest, AnotherSourceDropsTheAssignTarget) {
+    IN_EDITOR("target", {
+        std::string error;
+        std::vector<std::string> written;
+        {
+            SpriteNormalsWindow window(w.p);
+            ASSERT_TRUE(window.openSources({w.file("assets/walk.png")}, error)) << error;
+            ASSERT_TRUE(settle(window));
+            ASSERT_TRUE(window.save(false, written, error)) << error;
+        }
+        SpriteNormalsWindow window(w.p);
+        ASSERT_TRUE(window.openForEntity(w.sceneId, w.hero, 0, false, error)) << error;
+        ASSERT_TRUE(window.getAssign());
+        // the same image typed again keeps Hero as the target
+        ASSERT_TRUE(Access::setSource(window, "assets/hero.png", error)) << error;
+        EXPECT_TRUE(window.hasAssignTarget());
+        // another image: Hero does not draw it, so no Save & Assign onto Hero
+        ASSERT_TRUE(Access::setSource(window, "assets/walk.png", error)) << error;
+        EXPECT_FALSE(window.hasAssignTarget());
+        EXPECT_FALSE(window.getAssign());
+        // Edit Normal Map on walk_normal.png after the wand on Hero: no target either
+        ASSERT_TRUE(window.openForEntity(w.sceneId, w.hero, 0, false, error)) << error;
+        ASSERT_TRUE(window.openRecipe(w.file("assets/walk_normal.png"), error)) << error;
+        EXPECT_FALSE(window.hasAssignTarget());
+        EXPECT_FALSE(window.getAssign());
+        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(window.save(true, written, error)) << error;
+        EXPECT_TRUE(w.material(w.hero).normalTexture.getPath().empty()) << "Hero untouched";
+    });
+}
+
+TEST(SpriteNormalsWindowDeathTest, StartRegenerateRunsOnTheWorker) {
+    IN_EDITOR("startregen", {
+        std::string error;
+        std::vector<std::string> written;
+        SpriteNormalsWindow window(w.p);
+        ASSERT_TRUE(window.openSources({w.file("assets/hero.png")}, error)) << error;
+        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(window.save(false, written, error)) << error;
+        const std::string first = readAll(w.file("assets/hero_normal.png"));
+        ts::Image changed = disk(32, 32);
+        changed.pixel(16, 16)[0] = 3;
+        writePng(w.file("assets/hero.png"), changed);
+        const size_t before = w.projectHistory()->position();
+        ASSERT_TRUE(window.startRegenerate(w.file("assets/hero_normal.png"), error)) << error;
+        EXPECT_TRUE(window.hasPendingJobs());
+        EXPECT_EQ(readAll(w.file("assets/hero_normal.png")), first) << "nothing written on the UI thread";
+        ASSERT_TRUE(settle(window));
+        EXPECT_FALSE(window.hasPendingJobs());
+        EXPECT_NE(readAll(w.file("assets/hero_normal.png")), first);
+        EXPECT_EQ(w.projectHistory()->position(), before + 1) << "one project undo step";
+        EXPECT_EQ(sn::checkStaleness(w.dir, w.file("assets/hero_normal.png")).state, sn::Staleness::State::Fresh);
+        fs::remove(w.file("assets/hero.png"));
+        EXPECT_FALSE(window.startRegenerate(w.file("assets/hero_normal.png"), error));
+        EXPECT_NE(error.find("missing"), std::string::npos) << error;
+    });
+}
+
+TEST(SpriteNormalsWindowDeathTest, StoredSettingsSurviveAProjectSwitch) {
+    IN_EDITOR("stored", {
+        std::string error;
+        SpriteNormalsWindow window(w.p);
+        window.open();
+        // the next project's stored settings, as its workspace restored them
+        window.resetForProjectSwitch();
+        SpriteNormalsWindowSettings stored;
+        stored.settings = sn::presetSettings(sn::Preset::Chunky);
+        stored.settings.preset = sn::Preset::Chunky;
+        stored.settings.strength = 5.0f;
+        stored.view = 3;
+        w.p->getSpriteNormalsSettings() = stored;
+        Access::tick(window);
+        EXPECT_FLOAT_EQ(window.getSettings().strength, 5.0f) << "taken from the project";
+        EXPECT_EQ(window.getView(), SpriteNormalsWindow::View::Split);
+        ASSERT_TRUE(window.openSources({w.file("assets/hero.png")}, error)) << error;
+        window.setView(SpriteNormalsWindow::View::Lit);
+        EXPECT_FLOAT_EQ(w.p->getSpriteNormalsSettings().settings.strength, 5.0f) << "never overwritten by the defaults";
+        EXPECT_EQ(w.p->getSpriteNormalsSettings().settings.preset, sn::Preset::Chunky);
+    });
+}
+
+TEST(SpriteNormalsWindowDeathTest, OrbitStopsWithTheWindow) {
+    IN_EDITOR("orbit", {
+        std::string error;
+        SpriteNormalsWindow window(w.p);
+        window.setOrbit(true);
+        Access::advance(window, 0.5);
+        EXPECT_DOUBLE_EQ(Access::orbitTime(window), 0.0) << "no source, no result: nothing orbits";
+        ASSERT_TRUE(window.openSources({w.file("assets/hero.png")}, error)) << error;
+        ASSERT_TRUE(settle(window));
+        const double t = Access::orbitTime(window);
+        EXPECT_GT(t, 0.0);
+        window.setOpen(false);
+        Access::advance(window, 0.5);
+        EXPECT_DOUBLE_EQ(Access::orbitTime(window), t) << "closed: the orbit stands still";
+    });
+}
+
+TEST(SpriteNormalsWindowDeathTest, SaveAllRegeneratesItemsChangedMeanwhile) {
+    IN_EDITOR("saveallstale", {
+        writePng(w.file("assets/a.png"), disk(16, 16));
+        SpriteNormalsWindow window(w.p);
+        std::string error;
+        std::vector<std::string> written;
+        ASSERT_TRUE(window.openSources({w.file("assets/hero.png"), w.file("assets/a.png")}, error)) << error;
+        ASSERT_TRUE(window.save(false, written, error)) << error;
+        // a setting changes while Save All runs: what is written follows it
+        sn::Settings s = window.getSettings();
+        s.strength = 3.25f;
+        window.setSettings(s);
+        ASSERT_TRUE(settle(window));
+        for (const char* name : {"assets/hero_normal.png", "assets/a_normal.png"}) {
+            const std::optional<nlohmann::json> recipe = sn::readRecipeHead(w.file(name));
+            ASSERT_TRUE(recipe.has_value()) << name;
+            EXPECT_DOUBLE_EQ((*recipe)["settings"]["strength"].get<double>(), 3.25) << name;
+        }
+        // written: only the shown item keeps its decoded result
+        EXPECT_FALSE(Access::itemHasResult(window, 1));
+    });
+}
+
+TEST(SpriteNormalsWindowDeathTest, QuickJobChecksItsTargetAndIgnoresARepeat) {
+    IN_EDITOR("quicktarget", {
+        std::string error;
+        SpriteNormalsWindow window(w.p);
+        ASSERT_TRUE(window.openForEntity(w.sceneId, w.hero, 0, true, error)) << error;
+        ASSERT_TRUE(window.openForEntity(w.sceneId, w.hero, 0, true, error)) << error;
+        EXPECT_EQ(Access::quickJobs(window), 1u) << "a repeated Shift-click is ignored while the first runs";
+        // the target draws another image by the time the run ends: nothing written or assigned
+        w.material(w.hero).baseColorTexture = Texture("assets/walk.png");
+        ASSERT_TRUE(settle(window));
+        EXPECT_FALSE(fs::exists(w.file("assets/hero_normal.png")));
+        EXPECT_TRUE(w.material(w.hero).normalTexture.getPath().empty());
+    });
+}
+
+TEST(SpriteNormalsWindowDeathTest, UndoRoutingKnowsItsOwnStep) {
+    IN_EDITOR("undoidentity", {
+        SpriteNormalsWindow window(w.p);
+        std::string error;
+        std::vector<std::string> written;
+        uint32_t sceneId = 0;
+        ASSERT_TRUE(window.openForEntity(w.sceneId, w.hero, 0, false, error)) << error;
+        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(window.save(false, written, error)) << error;
+        ASSERT_TRUE(window.undoGoesToScene(sceneId));
+        // undone, then another edit takes the same position: not the assign
+        ASSERT_TRUE(w.scene()->undo());
+        auto* move = new PropertyCmd<Vector3>(w.p, w.sceneId, w.walker, ComponentType::Transform, "position", Vector3(7, 7, 0));
+        move->setNoMerge();
+        w.scene()->addCommand(move);
+        EXPECT_FALSE(window.undoGoesToScene(sceneId)) << "the newest step is the move, at the assign's old position";
+        EXPECT_FALSE(window.redoGoesToScene(sceneId));
+    });
+}
+
+TEST(SpriteNormalsWindowDeathTest, ShiftClickUsesTheDefaultMapsRecipe) {
+    IN_EDITOR("shiftrecipe", {
+        std::string error;
+        std::vector<std::string> written;
+        {
+            // hero_normal.png generated with Detailed, not assigned to Hero
+            SpriteNormalsWindow window(w.p);
+            ASSERT_TRUE(window.openSources({w.file("assets/hero.png")}, error)) << error;
+            window.setPreset(sn::Preset::Detailed);
+            ASSERT_TRUE(settle(window));
+            ASSERT_TRUE(window.save(false, written, error)) << error;
+            window.setPreset(sn::Preset::Soft);
+        }
+        ASSERT_TRUE(w.material(w.hero).normalTexture.getPath().empty());
+        SpriteNormalsWindow quick(w.p);
+        ASSERT_TRUE(quick.openForEntity(w.sceneId, w.hero, 0, true, error)) << error;
+        EXPECT_FALSE(quick.isOpen());
+        ASSERT_TRUE(settle(quick));
+        const std::optional<nlohmann::json> recipe = sn::readRecipeHead(w.file("assets/hero_normal.png"));
+        ASSERT_TRUE(recipe.has_value());
+        EXPECT_EQ((*recipe)["settings"]["preset"], "detailed") << "the map's own settings, not the last ones (soft)";
+        EXPECT_EQ(w.material(w.hero).normalTexture.getPath(), "assets/hero_normal.png");
+    });
 }

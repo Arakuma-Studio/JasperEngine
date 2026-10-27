@@ -71,6 +71,10 @@ namespace jasperengine::editor{
         bool groupSince(size_t mark);
         // Current position (what mark() returns, without its side effect)
         size_t position() const { return index; }
+        // The step undo() would revert / redo() would apply (nullptr when none): who made the
+        // newest step (the Sprite Normal Map window's undo routing compares its own)
+        const Command* undoCommand() const { return index > 0 && index <= list.size() ? list[index - 1] : nullptr; }
+        const Command* redoCommand() const { return index < list.size() ? list[index] : nullptr; }
         // Deletes the redo tail (the commands after position()): a call that rolled itself back
         // with undo() leaves nothing to redo
         void dropRedo();

@@ -179,6 +179,7 @@ void SpriteNormalsWindow::setOpen(bool openIt) {
     // closing frees the GPU copies and stops a live run (a Shift-click generation goes on)
     stopRun();
     saveAll = SaveAllJob();
+    changedAt = -1.0;
     pickingRegion = -1;
     playing = false;
     retire(colorGpu);
@@ -217,8 +218,11 @@ void SpriteNormalsWindow::resetForProjectSwitch() {
     warningsDirty = true;
     lastConfirm = nullptr;
     assignRecorded = false;
+    assignCommand = nullptr;
     writeRecorded = false;
+    writeCommand = nullptr;
     storedLoaded = false;
+    storedProject.clear();
     view = View::Lit;
     frame = -1;
     playing = false;
@@ -239,8 +243,12 @@ void SpriteNormalsWindow::resetForProjectSwitch() {
 }
 
 void SpriteNormalsWindow::loadStored() {
-    if (storedLoaded) return;
+    // a project's settings exist once it is loaded (startup restores the window before that;
+    // a switch resets them): taken once per project, before anything stores over them
+    const fs::path path = project->getProjectPath();
+    if (path.empty() || (storedLoaded && storedProject == path)) return;
     storedLoaded = true;
+    storedProject = path;
     const SpriteNormalsWindowSettings& s = project->getSpriteNormalsSettings();
     settings = s.settings;
     view = static_cast<View>(std::clamp(s.view, 0, 3));
@@ -253,6 +261,9 @@ void SpriteNormalsWindow::loadStored() {
 }
 
 void SpriteNormalsWindow::storeSettings() {
+    // never over a project's stored settings not read yet
+    loadStored();
+    if (!storedLoaded) return;
     SpriteNormalsWindowSettings& s = project->getSpriteNormalsSettings();
     s.settings = settings;
     // regions without colours yet are the window's, not settings (validateSettings refuses them)
@@ -344,6 +355,23 @@ void SpriteNormalsWindow::refreshProblems(Item& item) {
     // outputs that exist are a row of their own (Save asks): checked as overwriting
     sn::Spec spec = specOf(item);
     spec.overwrite = true;
+    // what the full check looks at besides the settings: a slider drag only re-validates the
+    // settings (checkSpec probes the source file)
+    std::string key = spec.source + "|" + std::to_string(spec.sceneId) + ":" + std::to_string(spec.entity) + ":" + std::to_string(spec.submesh);
+    const sn::FramesSpec& f = spec.frames;
+    const sn::Grid& g = f.grid;
+    key += "|" + std::to_string(static_cast<int>(f.mode)) + ":" + std::to_string(static_cast<int>(f.from));
+    for (int v : {g.tileWidth, g.tileHeight, g.columns, g.rows, g.count, g.offsetX, g.offsetY, g.paddingX, g.paddingY}) key += "," + std::to_string(v);
+    for (const sn::Cell& c : f.cells) key += ";" + std::to_string(c.x) + "," + std::to_string(c.y) + "," + std::to_string(c.width) + "," + std::to_string(c.height);
+    key += "|" + spec.output.normal + "|" + spec.output.atlas + "|" + spec.output.height + "|" + (spec.settings.height ? "h" : "-");
+    key += "|" + std::to_string(item.stampTime.time_since_epoch().count()) + ":" + std::to_string(item.stampSize) + ":" + std::to_string(item.spriteCells.size());
+    if (key == item.problemsKey) {
+        item.problems.erase(std::remove_if(item.problems.begin(), item.problems.end(), [](const sn::Problem& p) { return p.kind == "invalid_settings"; }),
+                            item.problems.end());
+        for (const sn::Problem& p : sn::validateSettings(spec.settings)) item.problems.push_back(p);
+        return;
+    }
+    item.problemsKey = key;
     item.problems = sn::checkSpec(project->getProjectPath(), spec, sceneFor(spec));
 }
 
@@ -458,8 +486,6 @@ bool SpriteNormalsWindow::openRecipe(const fs::path& generatedPng, std::string& 
     loadStored();
     stopRun();
     saveAll = SaveAllJob();
-    // a target the Inspector set for this map stays
-    const AssignTarget keep = target;
     items = {makeItem(spec)};
     current = 0;
     settings = spec.settings;
@@ -478,8 +504,10 @@ bool SpriteNormalsWindow::openRecipe(const fs::path& generatedPng, std::string& 
     }
     probe(items[0], true);
     refreshProblems(items[0]);
-    target = keep;
-    if (!hasAssignTarget()) autoTargetFor(items[0].texturePath);
+    // another source: a target set before is not this map's (the selection may offer one, Assign off)
+    target = AssignTarget();
+    assign = false;
+    autoTargetFor(items[0].texturePath);
     resetPreviewFor(false);
     markChanged();
     storeSettings();
@@ -537,13 +565,52 @@ bool SpriteNormalsWindow::openForEntity(uint32_t sceneId, Entity entity, unsigne
     }
 
     if (now) {
-        // overwrite only the files the recipe names (or another generated map of this source):
-        // an existing file of someone else opens the window, whose Save asks first
+        // a second Shift-click while the first one runs: nothing more to do
+        for (const QuickJob& job : quickJobs) {
+            if (job.target.sceneId == sceneId && job.target.entity == entity && job.target.submesh == submesh) return true;
+        }
+        // a generated map of this texture's (its recipe names it as the source), read without hashing
+        auto generatedFrom = [&](const fs::path& png, nlohmann::json* recipeOut) {
+            const std::optional<nlohmann::json> recipe = sn::readRecipeHead(png);
+            std::string invalid;
+            if (!recipe || !sn::validateRecipe(*recipe, invalid)) return false;
+            const fs::path recorded = fs::u8path((*recipe)["source"]["path"].get<std::string>());
+            if (recorded.lexically_normal() != fs::u8path(texture).lexically_normal()) return false;
+            if (recipeOut) *recipeOut = *recipe;
+            return true;
+        };
         sn::Spec planning = spec;
         planning.source = texture;
         sn::SourceInfo info;
         std::vector<sn::Problem> problems;
         sn::probeSource(absoluteOf(project, texture), info, problems);
+        // no recipe on the Normal Texture, but a generated map of this texture at the default path:
+        // regenerated with its own settings (not the last ones)
+        if (recipePng.empty()) {
+            for (const sn::PlannedOutput& out : sn::plannedOutputs(root, planning, info.kind)) {
+                if (out.role != "normal") continue;
+                const fs::path abs = absoluteOf(project, out.path);
+                nlohmann::json recipe;
+                std::error_code ec;
+                if (!fs::is_regular_file(abs, ec) || !generatedFrom(abs, &recipe)) break;
+                sn::Spec fromRecipe;
+                std::string recipeError;
+                std::vector<std::string> ignored;
+                if (sn::specFromRecipe(recipe, abs, root, fromRecipe, ignored, recipeError)) {
+                    spec.settings = fromRecipe.settings;
+                    spec.output = fromRecipe.output;
+                    spec.output.framesJson = false;
+                    recipePng = abs;
+                    for (const std::string& path : {fromRecipe.output.normal, fromRecipe.output.atlas, fromRecipe.output.height}) {
+                        if (!path.empty()) recipeOutputs.push_back(path);
+                    }
+                    planning = spec;
+                    planning.source = texture;
+                }
+            }
+        }
+        // overwrite only the files the recipe names (or another generated map of this source):
+        // an existing file of someone else opens the window, whose Save asks first
         bool blocked = false;
         std::string blocker;
         for (const sn::PlannedOutput& out : sn::plannedOutputs(root, planning, info.kind)) {
@@ -551,11 +618,7 @@ bool SpriteNormalsWindow::openForEntity(uint32_t sceneId, Entity entity, unsigne
             const fs::path abs = absoluteOf(project, out.path);
             if (out.path.empty() || !fs::exists(abs, ec)) continue;
             if (std::find(recipeOutputs.begin(), recipeOutputs.end(), out.path) != recipeOutputs.end()) continue;
-            const sn::Staleness s = sn::checkStaleness(root, abs);
-            if (s.state != sn::Staleness::State::NoRecipe && s.state != sn::Staleness::State::Invalid &&
-                fs::u8path(s.sourcePath).lexically_normal() == fs::u8path(texture).lexically_normal()) {
-                continue;
-            }
+            if (generatedFrom(abs, nullptr)) continue;
             blocked = true;
             blocker = out.path;
             break;
@@ -571,6 +634,9 @@ bool SpriteNormalsWindow::openForEntity(uint32_t sceneId, Entity entity, unsigne
             QuickJob job;
             job.target = {sceneId, entity, submesh, sp->scene->getEntityName(entity)};
             job.overwrite = true;
+            for (const sn::PlannedOutput& out : prepared.outputs) {
+                if (out.role == "normal") job.label = fileName(out.path);
+            }
             job.run = sn::SpriteNormalsRun::start(std::move(prepared), workerThreads());
             quickJobs.push_back(std::move(job));
             return true;
@@ -665,12 +731,14 @@ bool SpriteNormalsWindow::regenerateFromRecipe(Project* project, const fs::path&
 // ====================================================================== settings
 
 void SpriteNormalsWindow::setSettings(const sn::Settings& s) {
+    loadStored();   // the project's stored values first, then this change over them
     settings = s;
     markChanged();
     storeSettings();
 }
 
 void SpriteNormalsWindow::setPreset(sn::Preset p) {
+    loadStored();   // the project's stored values first, then this change over them
     const sn::Settings base = sn::presetSettings(p);
     settings.preset = p;
     settings.strength = base.strength;
@@ -699,6 +767,7 @@ void SpriteNormalsWindow::setOutput(const std::string& projectRelative) {
 }
 
 void SpriteNormalsWindow::setHeightMap(bool on) {
+    loadStored();   // the project's stored values first, then this change over them
     settings.height = on;
     markChanged();
     storeSettings();
@@ -734,6 +803,8 @@ void SpriteNormalsWindow::setAssign(bool on) {
 void SpriteNormalsWindow::selectItem(size_t i) {
     if (i >= items.size() || i == current) return;
     stopRun();
+    // the item left keeps no decoded image (Save All keeps them until its one write)
+    if (!saveAll.active) items[current].result.reset();
     current = i;
     probe(items[current], false);
     refreshProblems(items[current]);
@@ -901,10 +972,15 @@ bool SpriteNormalsWindow::writeResults(const std::vector<size_t>& itemIndices, b
         return false;
     }
     if (!writeAndNotify(project, all, error)) return false;
-    writePosition = project->getProjectCommandHistory()->position();
-    writeRecorded = true;
+    recordWrite();
     for (const sn::OutputFile& f : all) written.push_back(f.path);
     lastWritten = written;
+    // batch: the decoded sources and results of the items not shown are not kept once written
+    if (isBatch()) {
+        for (size_t i = 0; i < items.size(); i++) {
+            if (i != current) items[i].result.reset();
+        }
+    }
     if (editorUi()) {
         if (ProjectWindow* projectWindow = Backend::getApp().getProjectWindow()) {
             for (const sn::OutputFile& f : all) {
@@ -1010,9 +1086,7 @@ bool SpriteNormalsWindow::save(bool overwrite, std::vector<std::string>& written
         setStatus(error, true);
         return false;
     }
-    assignSceneId = target.sceneId;
-    assignPosition = CommandHandle::get(target.sceneId)->position();
-    assignRecorded = true;
+    recordAssign(target.sceneId);
     std::string status = "Saved " + fileName(request.normalPath) + " (Project undo) and assigned to " + target.name + " (Scene undo).";
     if (written.size() > 1) status = "Saved " + std::to_string(written.size()) + " files (one Project undo step) and assigned them to " + target.name + " (Scene undo).";
     for (const sn::Problem& w : applied.warnings) status += " " + w.message;
@@ -1071,16 +1145,76 @@ void SpriteNormalsWindow::tickSaveAll() {
         }
         return;
     }
-    // every checked item has its result: one write
-    const bool overwrite = saveAll.overwrite;
-    saveAll = SaveAllJob();
+    // every checked item has its result; a setting changed meanwhile makes some stale again:
+    // those run again first (a write is always of the settings shown)
     std::vector<size_t> checked;
     for (size_t i = 0; i < items.size(); i++) {
-        if (items[i].checked) checked.push_back(i);
+        if (!items[i].checked) continue;
+        checked.push_back(i);
+        const Item& item = items[i];
+        const bool fresh = item.result && item.result->finished() && item.result->result().status == sn::Status::Ok && item.resultKey == keyOf(item);
+        if (!fresh) saveAll.queue.push_back(i);
     }
+    if (!saveAll.queue.empty()) return;
+    const bool overwrite = saveAll.overwrite;
+    saveAll = SaveAllJob();
     std::vector<std::string> written;
     std::string error;
     if (!writeResults(checked, overwrite, written, error)) setStatus("Save failed: " + error, true);
+}
+
+void SpriteNormalsWindow::recordWrite() {
+    CommandHistory* history = project->getProjectCommandHistory();
+    writePosition = history->position();
+    writeCommand = history->undoCommand();
+    writeRecorded = true;
+}
+
+void SpriteNormalsWindow::recordAssign(uint32_t sceneId) {
+    CommandHistory* history = CommandHandle::get(sceneId);
+    assignSceneId = sceneId;
+    assignPosition = history->position();
+    assignCommand = history->undoCommand();
+    assignRecorded = true;
+}
+
+bool SpriteNormalsWindow::startRegenerate(const fs::path& generatedPng, std::string& error) {
+    const fs::path root = project->getProjectPath();
+    const fs::path png = generatedPng.is_absolute() ? generatedPng.lexically_normal() : (root / generatedPng).lexically_normal();
+    for (const QuickJob& job : quickJobs) {
+        // already regenerating it: one is enough
+        if (job.target.entity == NULL_ENTITY && job.label == png.filename().u8string() && job.run && !job.run->finished()) return true;
+    }
+    std::string readError;
+    const std::optional<nlohmann::json> recipe = sn::readRecipeHead(png, &readError);
+    if (!recipe) {
+        error = readError.empty() ? "it carries no Sprite Normal Map recipe" : readError;
+        return false;
+    }
+    sn::Spec spec;
+    std::vector<std::string> notes;
+    if (!sn::specFromRecipe(*recipe, png, root, spec, notes, error)) return false;
+    // the source's presence only (the worker reads it)
+    const fs::path source = absoluteOf(project, spec.source);
+    std::error_code ec;
+    if (!fs::is_regular_file(source, ec)) {
+        error = "the source " + spec.source + " is missing";
+        return false;
+    }
+    spec.overwrite = true;
+    spec.output.framesJson = false;
+    sn::Prepared prepared;
+    std::vector<sn::Problem> problems;
+    if (!sn::prepare(root, spec, nullptr, prepared, problems)) {
+        error = problems.empty() ? "the recipe can't be used" : problems.front().message;
+        return false;
+    }
+    QuickJob job;
+    job.overwrite = true;
+    job.label = png.filename().u8string();
+    job.run = sn::SpriteNormalsRun::start(std::move(prepared), workerThreads());
+    quickJobs.push_back(std::move(job));
+    return true;
 }
 
 void SpriteNormalsWindow::tickQuickJobs() {
@@ -1092,27 +1226,47 @@ void SpriteNormalsWindow::tickQuickJobs() {
         }
         const sn::Result& result = job.run->result();
         const sn::Prepared& prepared = job.run->prepared();
+        const bool assigning = job.target.entity != NULL_ENTITY;
         const std::string normalName = [&]() {
+            if (!job.label.empty()) return job.label;
             for (const sn::PlannedOutput& out : prepared.outputs) {
                 if (out.role == "normal") return fileName(out.path);
             }
             return fileName(prepared.sourcePath);
         }();
-        auto fail = [&](const std::string& why) { getEditorHost().registerAlert("Sprite Normal Map", "Can't generate " + normalName + ": " + why); };
+        auto fail = [&](const std::string& why) {
+            getEditorHost().registerAlert("Sprite Normal Map", (assigning ? "Can't generate " : "Can't regenerate ") + normalName + ": " + why);
+        };
+        // the target as it is now: still there, still drawing the source, the scene stopped
+        std::string targetProblem;
+        if (assigning) {
+            const SceneProject* sp = project->getScene(job.target.sceneId);
+            if (!sp || !sp->scene || !sp->scene->isEntityCreated(job.target.entity)) {
+                targetProblem = "\"" + job.target.name + "\" is gone";
+            } else if (sp->playState != ScenePlayState::STOPPED) {
+                targetProblem = "the scene is playing";
+            } else if (baseTextureOf(project, sp->scene, job.target.entity, job.target.submesh) !=
+                       fs::u8path(prepared.sourcePath).lexically_normal().generic_u8string()) {
+                targetProblem = "\"" + job.target.name + "\" no longer draws " + fileName(prepared.sourcePath);
+            }
+        }
         if (result.status == sn::Status::Cancelled) {
             // a project switch or shutdown: nothing to say
         } else if (result.status != sn::Status::Ok) {
             fail(result.errors.empty() ? std::string("the generation failed") : result.errors.front().message);
         } else if (job.run->generation() != texsynth::projectGeneration()) {
             fail(sn::kProjectChangedMessage);
+        } else if (!targetProblem.empty()) {
+            fail(targetProblem + "; nothing was written.");
         } else {
             std::vector<sn::OutputFile> files;
             std::string error;
             if (!sn::encodeOutputs(prepared, result, files, error) || !writeAndNotify(project, files, error)) {
                 fail(error);
+            } else if (!assigning) {
+                Out::info("Regenerated %s", normalName.c_str());
             } else {
-                writePosition = project->getProjectCommandHistory()->position();
-                writeRecorded = true;
+                recordWrite();
                 sn::ApplyRequest request;
                 request.sceneId = job.target.sceneId;
                 request.entity = job.target.entity;
@@ -1130,9 +1284,7 @@ void SpriteNormalsWindow::tickQuickJobs() {
                 if (!applied.ok) {
                     fail("it was written (Project undo removes it) but not assigned: " + applied.error.message);
                 } else {
-                    assignSceneId = job.target.sceneId;
-                    assignPosition = CommandHandle::get(job.target.sceneId)->position();
-                    assignRecorded = true;
+                    recordAssign(job.target.sceneId);
                     Out::info("Generated %s and assigned it to %s", normalName.c_str(), job.target.name.c_str());
                 }
             }
@@ -1172,6 +1324,7 @@ void SpriteNormalsWindow::checkSourceOnDisk() {
 }
 
 void SpriteNormalsWindow::tick() {
+    loadStored();
     const double t = now();
     const double dt = lastTick < 0.0 ? 0.0 : std::clamp(t - lastTick, 0.0, 1.0);
     lastTick = t;
@@ -1194,7 +1347,7 @@ void SpriteNormalsWindow::tick() {
 
     // Play: the cells with the result's delays (sheets: 100 ms); Orbit: one turn per 4 s
     const std::vector<sn::Cell> cells = shownCells();
-    if (playing && cells.size() > 1) {
+    if (windowOpen && playing && cells.size() > 1) {
         if (frame < 0) frame = 0;
         playElapsed += dt;
         std::vector<sn::Delay> delays;
@@ -1207,7 +1360,7 @@ void SpriteNormalsWindow::tick() {
             litDirty = true;
         }
     }
-    if (orbit) {
+    if (windowOpen && orbit && shown()) {
         orbitTime += dt;
         int x, y, w, h;
         cellRect(frame, x, y, w, h);
@@ -1221,9 +1374,10 @@ void SpriteNormalsWindow::tick() {
             litDirty = true;
         }
     }
-    if ((playing || orbit || isRunning() || changedAt >= 0.0 || saveAll.active || !quickJobs.empty()) && editorUi()) {
-        Backend::getApp().requestRedraw();
-    }
+    // frames while something moves on screen or work waits for a tick (a closed window animates nothing)
+    const bool animating = windowOpen && shown() && (playing || orbit);
+    const bool working = (windowOpen && (isRunning() || changedAt >= 0.0 || saveAll.active)) || !quickJobs.empty();
+    if ((animating || working) && editorUi()) Backend::getApp().requestRedraw();
     refreshWarnings(false);
 }
 
@@ -1339,12 +1493,14 @@ void SpriteNormalsWindow::renderLit() {
 // ====================================================================== preview controls
 
 void SpriteNormalsWindow::setView(View v) {
+    loadStored();   // the project's stored values first, then this change over them
     view = v;
     litDirty = true;
     storeSettings();
 }
 
 void SpriteNormalsWindow::setLight(float x, float y, float height) {
+    loadStored();   // the project's stored values first, then this change over them
     ensureLight();
     light.x = x;
     light.y = y;
@@ -1359,12 +1515,14 @@ void SpriteNormalsWindow::setLight(float x, float y, float height) {
 }
 
 void SpriteNormalsWindow::setLightColour(const Vector3& c) {
+    loadStored();   // the project's stored values first, then this change over them
     light.colour = c;
     litDirty = true;
     storeSettings();
 }
 
 void SpriteNormalsWindow::setAmbient(float a) {
+    loadStored();   // the project's stored values first, then this change over them
     light.ambient = std::clamp(a, 0.0f, 1.0f);
     litDirty = true;
     storeSettings();
@@ -1388,6 +1546,7 @@ void SpriteNormalsWindow::setPlaying(bool on) {
 }
 
 void SpriteNormalsWindow::setOrbit(bool on) {
+    loadStored();   // the project's stored values first, then this change over them
     orbit = on;
     orbitTime = 0.0;
     lastTick = now();
@@ -1396,6 +1555,7 @@ void SpriteNormalsWindow::setOrbit(bool on) {
 }
 
 bool SpriteNormalsWindow::pickRegionColour(int region, int px, int py, std::string& error) {
+    loadStored();   // the project's stored values first, then this change over them
     if (current >= items.size()) {
         error = "Pick a source first.";
         return false;
@@ -1639,8 +1799,10 @@ bool SpriteNormalsWindow::applyFix(const std::string& kind, const std::string& f
 
 bool SpriteNormalsWindow::undoGoesToScene(uint32_t& sceneId) const {
     if (!assignRecorded || !project->getScene(assignSceneId)) return false;
+    // the assign itself is the scene's newest step (its position and its command: a new edit
+    // made after undoing it, at the same position, is not it)
     const CommandHistory* history = CommandHandle::get(assignSceneId);
-    if (history->position() == assignPosition && history->canUndo()) {
+    if (history->position() == assignPosition && history->undoCommand() == assignCommand && history->canUndo()) {
         sceneId = assignSceneId;
         return true;
     }
@@ -1650,9 +1812,12 @@ bool SpriteNormalsWindow::undoGoesToScene(uint32_t& sceneId) const {
 bool SpriteNormalsWindow::redoGoesToScene(uint32_t& sceneId) const {
     if (!assignRecorded || !project->getScene(assignSceneId)) return false;
     // undone after the assign, the write is the newest redoable: it comes back first
-    if (writeRecorded && project->getProjectCommandHistory()->position() + 1 == writePosition && project->getProjectCommandHistory()->canRedo()) return false;
+    const CommandHistory* projectHistory = const_cast<Project*>(project)->getProjectCommandHistory();
+    if (writeRecorded && projectHistory->position() + 1 == writePosition && projectHistory->redoCommand() == writeCommand && projectHistory->canRedo()) {
+        return false;
+    }
     const CommandHistory* history = CommandHandle::get(assignSceneId);
-    if (assignPosition > 0 && history->position() + 1 == assignPosition && history->canRedo()) {
+    if (assignPosition > 0 && history->position() + 1 == assignPosition && history->redoCommand() == assignCommand && history->canRedo()) {
         sceneId = assignSceneId;
         return true;
     }
@@ -1749,10 +1914,32 @@ bool SpriteNormalsWindow::setSourcePath(const std::string& text, std::string& er
     notices.clear();
     runErrors.clear();
     probe(items[current], true);
+    // the target stays only while it draws the new image
+    keepTargetFor(items[current]);
     if (!hasAssignTarget()) autoTargetFor(items[current].texturePath);
     resetPreviewFor(false);
     markChanged();
     return true;
+}
+
+bool SpriteNormalsWindow::targetDraws(const Item& item) const {
+    if (!hasAssignTarget()) return false;
+    const SceneProject* sp = project->getScene(target.sceneId);
+    if (!sp || !sp->scene) return false;
+    const std::string base = baseTextureOf(project, sp->scene, target.entity, target.submesh);
+    if (base.empty()) return false;
+    if (base == fs::u8path(item.texturePath).lexically_normal().generic_u8string()) return true;
+    // an animation's atlas (a GIF assigned before draws its sheet)
+    sn::Spec spec = specOf(item);
+    if (spec.hasSprite()) spec.source = item.texturePath;
+    for (const sn::PlannedOutput& out : sn::plannedOutputs(project->getProjectPath(), spec, item.info.kind)) {
+        if (out.role == "atlas" && fs::u8path(out.path).lexically_normal().generic_u8string() == base) return true;
+    }
+    return false;
+}
+
+void SpriteNormalsWindow::keepTargetFor(const Item& item) {
+    if (hasAssignTarget() && !targetDraws(item)) clearAssignTarget();
 }
 
 bool SpriteNormalsWindow::setSourceEntity(uint32_t sceneId, Entity entity, std::string& error) {
@@ -1849,13 +2036,27 @@ namespace {
         return changed;
     }
 
-    void tooltip(const char* text) {
-        ImGui::SetItemTooltip("%s", text);
+    // A tooltip above the hovered item (never over the rows under it, the controls a user
+    // goes to next); wrapped at 30 font-sizes
+    void tooltipAbove(const std::string& text, ImGuiHoveredFlags flags) {
+        if (text.empty() || !ImGui::IsItemHovered(flags)) return;
+        const ImVec2 min = ImGui::GetItemRectMin();
+        ImGui::SetNextWindowPos(ImVec2(min.x, min.y - Theme::dpi(4.0f)), ImGuiCond_Always, ImVec2(0.0f, 1.0f));
+        if (ImGui::BeginTooltip()) {
+            ImGui::PushTextWrapPos(ImGui::GetFontSize() * 30.0f);
+            ImGui::TextUnformatted(text.c_str());
+            ImGui::PopTextWrapPos();
+            ImGui::EndTooltip();
+        }
+    }
+
+    void tooltip(const std::string& text) {
+        tooltipAbove(text, ImGuiHoveredFlags_ForTooltip);
     }
 
     // a tooltip that also shows on a disabled item (the reason it is disabled)
     void reasonTooltip(const std::string& text) {
-        if (!text.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled | ImGuiHoveredFlags_DelayShort)) ImGui::SetTooltip("%s", text.c_str());
+        tooltipAbove(text, ImGuiHoveredFlags_AllowWhenDisabled | ImGuiHoveredFlags_ForTooltip);
     }
 
     void subtle(const std::string& text) {
@@ -1907,7 +2108,7 @@ namespace {
                 changed = true;
             }
             if (selected) ImGui::PopStyleColor(2);
-            if (tooltips && tooltips[i]) ImGui::SetItemTooltip("%s", tooltips[i]);
+            if (tooltips && tooltips[i]) tooltip(tooltips[i]);
         }
         ImGui::PopStyleVar();
         ImGui::PopID();
@@ -1923,7 +2124,7 @@ namespace {
         const bool clicked = ImGui::Button((std::string(ICON_FA_ROTATE_LEFT) + "##" + id).c_str());
         ImGui::PopStyleColor(2);
         ImGui::PopStyleVar(2);
-        ImGui::SetItemTooltip("Back to the preset");
+        tooltip("Back to the preset");
         return clicked;
     }
 
@@ -2087,7 +2288,16 @@ void SpriteNormalsWindow::drawBatch() {
             ImGui::TableSetColumnIndex(2);
             ImGui::TextDisabled("%s", item.probeOk ? (std::to_string(item.info.width) + " x " + std::to_string(item.info.height)).c_str() : "-");
             ImGui::TableSetColumnIndex(3);
-            ImGui::TextDisabled("%s", !item.probeOk ? "-" : item.info.kind == sn::SourceKind::Gif ? "GIF" : item.info.kind == sn::SourceKind::Apng ? "APNG" : "image");
+            // where its frames come from (each item's own Auto)
+            const char* from = !item.probeOk                                      ? "-"
+                               : item.info.kind == sn::SourceKind::Gif            ? "GIF"
+                               : item.info.kind == sn::SourceKind::Apng           ? "APNG"
+                               : item.spec.frames.mode == sn::FramesSpec::Mode::Grid  ? "grid"
+                               : item.spec.frames.mode == sn::FramesSpec::Mode::Cells ? "given"
+                               : !item.spriteCells.empty()                        ? "Sprite"
+                                                                                  : "single";
+            ImGui::TextDisabled("%s", from);
+            tooltip(std::string("Frames from: ") + from);
             ImGui::TableSetColumnIndex(4);
             std::string problem = item.probeError;
             for (const sn::Problem& p : item.problems) {
@@ -2099,7 +2309,7 @@ void SpriteNormalsWindow::drawBatch() {
                 tooltip(problem.c_str());
             } else if (!existing.empty()) {
                 ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
-                ImGui::SetItemTooltip("%s exists: Save All replaces it (undo puts it back)", fileName(existing[0]).c_str());
+                tooltip(fileName(existing[0]) + " exists: Save All replaces it (undo puts it back)");
             } else {
                 ImGui::TextColored(ImVec4(0.5f, 0.85f, 0.55f, 1.0f), ICON_FA_CHECK);
                 tooltip("Ready");
@@ -2117,7 +2327,6 @@ void SpriteNormalsWindow::drawBatch() {
         for (Item& item : items) item.checked = false;
     }
     tooltip("Uncheck every image");
-    ImGui::SameLine();
     subtle("Click a row to preview it. The settings are shared; each image keeps its own frames.");
 }
 
@@ -2426,7 +2635,7 @@ void SpriteNormalsWindow::drawRegions() {
             ImGui::PushID(static_cast<int>(c));
             if (ImGui::GetContentRegionAvail().x < chip + ImGui::GetStyle().ItemSpacing.x) ImGui::NewLine();
             if (ImGui::ColorButton("##chip", colourOf(region.colors[c]), ImGuiColorEditFlags_NoTooltip, ImVec2(chip, chip))) removeColour = static_cast<int>(c);
-            ImGui::SetItemTooltip("%s: click to remove", sn::colorText(region.colors[c]).c_str());
+            tooltip(sn::colorText(region.colors[c]) + ": click to remove");
             ImGui::SameLine();
             ImGui::PopID();
         }
@@ -2672,9 +2881,10 @@ void SpriteNormalsWindow::drawFooter() {
     }
     const std::string reason = primaryDisabledReason();
     ImGui::BeginDisabled(!reason.empty());
-    accentButtonColours();
+    // the accent only when it can be pressed: disabled, it looks like any disabled button
+    if (reason.empty()) accentButtonColours();
     if (ImGui::Button((label + "##primary").c_str(), ImVec2(half, height))) primaryAction();
-    ImGui::PopStyleColor(3);
+    if (reason.empty()) ImGui::PopStyleColor(3);
     ImGui::EndDisabled();
     UIProbe::item("spriteNormals.primary");
     reasonTooltip(!reason.empty() ? reason
@@ -2895,7 +3105,9 @@ void SpriteNormalsWindow::drawCanvas(const ImVec2& size) {
 
     // zoom: screen pixels per image pixel; Fit = the largest whole number that fits
     auto fitZoom = [&]() {
-        const float fit = std::min((area.x - Theme::dpi(16.0f)) / cw, (area.y - Theme::dpi(16.0f)) / ch);
+        // a margin wide enough for the light (it starts up-left of the sprite, at its corner)
+        const float margin = Theme::dpi(56.0f);
+        const float fit = std::min((area.x - margin) / cw, (area.y - margin) / ch);
         return fit >= 1.0f ? std::floor(fit) : std::max(0.05f, fit);
     };
     if (fitRequested || zoom <= 0.0f) {
@@ -2988,8 +3200,10 @@ void SpriteNormalsWindow::drawCanvas(const ImVec2& size) {
     // the light: a disc with a soft halo
     if (lit && r) {
         ensureLight();
-        const ImVec2 p(imgMin.x + light.x * zoom, imgMin.y + light.y * zoom);
         const float radius = Theme::dpi(5.0f);
+        // kept in view (dragged or zoomed past the edge it stays grabbable at the border)
+        const float inset = radius + Theme::dpi(3.0f);
+        const ImVec2 p(std::clamp(imgMin.x + light.x * zoom, origin.x + inset, end.x - inset), std::clamp(imgMin.y + light.y * zoom, origin.y + inset, end.y - inset));
         for (int ring = 4; ring >= 1; ring--) draw->AddCircleFilled(p, radius + ring * Theme::dpi(3.0f), IM_COL32(255, 230, 150, 18 * (5 - ring)), 32);
         const ImU32 fill = ImGui::ColorConvertFloat4ToU32(ImVec4(std::min(1.0f, light.colour.x), std::min(1.0f, light.colour.y), std::min(1.0f, light.colour.z), 1.0f));
         draw->AddCircleFilled(p, radius, fill, 24);
@@ -3230,7 +3444,8 @@ void SpriteNormalsWindow::show() {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
         // the settings scroll; the buttons, progress and status stay in view under them
-        const float minimum = ImGui::GetFrameHeight() * 1.4f + ImGui::GetStyle().ItemSpacing.y * 3.0f;
+        // at least the buttons and one status line
+        const float minimum = ImGui::GetFrameHeight() * 1.4f + ImGui::GetTextLineHeightWithSpacing() + ImGui::GetStyle().ItemSpacing.y * 3.0f;
         ImGui::BeginChild("##settings", ImVec2(0, -std::max(footerHeight, minimum)), ImGuiChildFlags_None);
         {
             // UI tests: the settings' scrolling area

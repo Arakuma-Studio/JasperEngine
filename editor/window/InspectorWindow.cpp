@@ -8055,6 +8055,7 @@ void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, ScenePro
         }
         ImGui::SameLine();
         spritenormalsentry::normalMapButton(sceneProject, entities[0], ImGui::GetContentRegionAvail().x);
+        spritenormalsentry::normalMapHint(sceneProject, entities[0]);
 
         beginTable(cpType, getLabelSize("Frames"), "sprite_frames_header");
         propertyHeader("Frames", -1, false, false);

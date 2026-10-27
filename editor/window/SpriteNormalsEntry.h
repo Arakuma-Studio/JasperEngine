@@ -166,4 +166,18 @@ namespace jasperengine::editor::spritenormalsentry {
         if (clicked && stopped) getEditorHost().openSpriteNormalsForEntity(sceneProject->id, entity, 0, false);
     }
 
+    // Under the Sprite's buttons: one subtle line when the scene's Light 2Ds would light this
+    // sprite in depth but it has no normal map yet
+    inline void normalMapHint(SceneProject* sceneProject, Entity entity) {
+        if (!sceneProject || !sceneProject->scene) return;
+        MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(entity);
+        if (!mesh || !mesh->submeshes[0].material.normalTexture.getPath().empty()) return;
+        if (mesh->submeshes[0].material.baseColorTexture.getPath().empty()) return;
+        if (spritenormals::lightCheck(sceneProject->scene).lightsWithHeight == 0) return;
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        ImGui::TextWrapped(ICON_FA_LIGHTBULB " Light 2Ds light this sprite flat: Normal Map... gives it depth.");
+        ImGui::PopStyleColor();
+        UIProbe::item("inspector.spriteNormalMapHint");
+    }
+
 }

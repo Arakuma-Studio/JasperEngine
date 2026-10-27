@@ -3449,6 +3449,8 @@ void editor::ProjectWindow::refreshCurrentDirectory() {
 
 void editor::ProjectWindow::updateSpriteNormalsBadge(FileEntry& file, const fs::path& path) {
     const spritenormalsentry::RecipeHead head = spritenormalsentry::recipeHead(project->getProjectPath(), path);
+    // re-evaluated from scratch: a recipe gone (the file replaced) leaves no badge behind
+    file.generated = false;
     file.generatedBy.clear();
     file.generatedStale = false;
     if (!head.generated) return;
@@ -3502,13 +3504,10 @@ void editor::ProjectWindow::drawSpriteNormalsMenuItems(const FileEntry& file, co
         const spritenormalsentry::RecipeHead outputHead = head.generated ? head : spritenormalsentry::recipeHead(root, output);
         const bool sourceThere = fs::is_regular_file(outputHead.sourceAbsolute, ec);
         if (ImGui::MenuItem(ICON_FA_ROTATE " Regenerate Normal Map", nullptr, false, sourceThere)) {
-            std::vector<std::string> written;
+            // on the worker; the window's tick writes it (one undo step) and refreshes this window
             std::string error;
-            if (!SpriteNormalsWindow::regenerateFromRecipe(project, output, written, error)) {
+            if (!Backend::getApp().getSpriteNormalsWindow()->startRegenerate(output, error)) {
                 editor::getEditorHost().registerAlert("Sprite Normal Map", "Can't regenerate " + output.filename().u8string() + ": " + error);
-            } else {
-                for (const std::string& rel : written) requestThumbnailGeneration(root / fs::u8path(rel), true);
-                refreshCurrentDirectory();
             }
         }
         UIProbe::item("project.menu.regenerateNormalMap");
