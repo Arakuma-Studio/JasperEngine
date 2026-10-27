@@ -9,7 +9,8 @@
 #include "picking/MeshPose.h"
 #include "picking/PickCache.h"
 #include "picking/PickGeometry.h"
-#include "action/ParticleSystem.h"
+#include "object/ParticleSystem.h"
+#include "subsystem/ParticleSystemState.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/MeshComponent.h"
 #include "component/TerrainComponent.h"
@@ -256,15 +257,28 @@ TEST(MeshRaycast, Kinds){
     EXPECT_EQ(hit.entity, points.getEntity());
     EXPECT_EQ(hit.kind, PickKind::BOUNDS);
 
-    // a particle system drawing instances: the system's bounds, never one particle
+    // a particle system (it renders itself): the bounds its particles had last frame, never one
+    // particle; none before it simulated any
     ParticleSystem particles(&scene);
-    particles.setTarget(instanced.getEntity());
+    particles.setPosition(-60, 30, 0);
     scene.getPickBvh().markStructureChanged();
-    hit = MeshRaycast::raycast(&scene, Vector3(21, 30, 50), Vector3(0, 0, -1), 100.0f);
+    hit = MeshRaycast::raycast(&scene, Vector3(-60, 30, 50), Vector3(0, 0, -1), 100.0f);
+    EXPECT_FALSE(hit.hit && hit.entity == particles.getEntity()) << "no bounds yet";
+    {
+        // what ParticleSubsystem writes after a frame of particles around the system
+        auto state = std::make_shared<particles::ParticleSystemState>();
+        state->hasBounds = true;
+        const float mn[3] = {-62, 28, -2}, mx[3] = {-58, 32, 2};
+        std::copy(mn, mn + 3, state->boundsMin);
+        std::copy(mx, mx + 3, state->boundsMax);
+        particles.system().state = state;
+    }
+    hit = MeshRaycast::raycast(&scene, Vector3(-60, 30, 50), Vector3(0, 0, -1), 100.0f);
     ASSERT_TRUE(hit.hit);
-    EXPECT_EQ(hit.entity, instanced.getEntity());
+    EXPECT_EQ(hit.entity, particles.getEntity());
     EXPECT_EQ(hit.kind, PickKind::BOUNDS);
     EXPECT_EQ(hit.instance, -1);
+    EXPECT_NEAR(hit.point.z, 2.0f, 1e-4f);
 
     // kinds filter
     MeshRaycastOptions onlyMeshes;

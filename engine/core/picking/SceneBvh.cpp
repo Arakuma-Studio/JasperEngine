@@ -12,11 +12,11 @@
 #include "MeshRaycast.h"
 
 #include "Scene.h"
-#include "component/ActionComponent.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/LineRendererComponent.h"
 #include "component/MeshComponent.h"
 #include "component/ParticleSystemComponent.h"
+#include "subsystem/ParticleSystemState.h"
 #include "component/PointsComponent.h"
 #include "component/PolygonComponent.h"
 #include "component/RectTransformComponent.h"
@@ -476,7 +476,6 @@ SceneBvh::SceneBvh(Scene* scene): scene(scene){
     trackedComponents.set(scene->getComponentId<LineRendererComponent>());
     trackedComponents.set(scene->getComponentId<ShadowCaster2DComponent>());
     trackedComponents.set(scene->getComponentId<ParticleSystemComponent>());
-    trackedComponents.set(scene->getComponentId<ActionComponent>());
 }
 
 SceneBvh::~SceneBvh(){
@@ -651,20 +650,6 @@ void SceneBvh::collectLeaves(){
     entityLeaves.clear();
     volatileLeaves.clear();
 
-    // particle systems pick by their simulated bounds, never per particle: their targets
-    std::unordered_set<Entity> particleTargets;
-    {
-        auto particles = scene->getComponentArray<ParticleSystemComponent>();
-        for (size_t i = 0; i < particles->size(); i++){
-            const Entity system = particles->getEntity(i);
-            if (const ActionComponent* action = scene->findComponent<ActionComponent>(system)){
-                if (action->target != NULL_ENTITY){
-                    particleTargets.insert(action->target);
-                }
-            }
-        }
-    }
-
     auto add = [&](Entity entity, PickKind kind, uint32_t subIndex, bool isVolatile){
         Leaf leaf;
         leaf.entity = entity;
@@ -693,6 +678,7 @@ void SceneBvh::collectLeaves(){
     const ComponentId pointsId = scene->getComponentId<PointsComponent>();
     const ComponentId linesId = scene->getComponentId<LineRendererComponent>();
     const ComponentId occluderId = scene->getComponentId<ShadowCaster2DComponent>();
+    const ComponentId particlesId = scene->getComponentId<ParticleSystemComponent>();
 #ifdef JASPERENGINE_EDITOR
     // the editor's gizmos, icons and grid live in the scene they annotate: never picked
     const RenderSystem* renderSystem = scene->getSystem<RenderSystem>().get();
@@ -705,19 +691,18 @@ void SceneBvh::collectLeaves(){
         }
 #endif
         const Signature signature = scene->getSignature(entity);
-        const bool particleTarget = particleTargets.count(entity) > 0;
+        if (signature.test(particlesId)){
+            // a particle system (S20, it renders itself): its simulated bounds, never per particle
+            add(entity, PickKind::BOUNDS, 0, true);
+        }
         if (signature.test(meshId)){
             if (signature.test(terrainId)){
                 add(entity, PickKind::TERRAIN, 0, false);
             }else if (signature.test(instancedId)){
-                if (particleTarget){
-                    add(entity, PickKind::BOUNDS, 0, true);
-                }else{
-                    const InstancedMeshComponent& instmesh = scene->getComponent<InstancedMeshComponent>(entity);
-                    const size_t drawn = std::min<size_t>(instmesh.instances.size(), instmesh.maxInstances);
-                    for (size_t instance = 0; instance < drawn; instance++){
-                        add(entity, PickKind::INSTANCE, (uint32_t)instance, false);
-                    }
+                const InstancedMeshComponent& instmesh = scene->getComponent<InstancedMeshComponent>(entity);
+                const size_t drawn = std::min<size_t>(instmesh.instances.size(), instmesh.maxInstances);
+                for (size_t instance = 0; instance < drawn; instance++){
+                    add(entity, PickKind::INSTANCE, (uint32_t)instance, false);
                 }
             }else{
                 add(entity, PickKind::MESH, 0, false);
@@ -780,18 +765,17 @@ bool SceneBvh::computeLeafBounds(const Leaf& leaf, AABB& bounds) const{
             return !bounds.isNull();
         }
         case PickKind::BOUNDS:{
-            AABB local;
-            if (const InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity)){
-                // a particle system drawing instances: the visible ones
-                const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
-                const AABB instanceBounds = mesh ? instanceLocalBounds(*mesh) : AABB(Vector3(-0.5f, -0.5f, -0.5f), Vector3(0.5f, 0.5f, 0.5f));
-                const size_t drawn = std::min<size_t>(instmesh->instances.size(), instmesh->maxInstances);
-                for (size_t i = 0; i < drawn; i++){
-                    if (instmesh->instances[i].visible){
-                        local.merge(instanceMatrix(*instmesh, instmesh->instances[i]) * instanceBounds);
-                    }
+            if (const ParticleSystemComponent* system = scene->findComponent<ParticleSystemComponent>(entity)){
+                // the world bounds of its particles last frame (ParticleSubsystem's), none before
+                // it has simulated any
+                if (!system->state || !system->state->hasBounds){
+                    return false;
                 }
+                const particles::ParticleSystemState& state = *system->state;
+                bounds = AABB(state.boundsMin[0], state.boundsMin[1], state.boundsMin[2], state.boundsMax[0], state.boundsMax[1], state.boundsMax[2]);
+                return true;
             }
+            AABB local;
             if (const PointsComponent* points = scene->findComponent<PointsComponent>(entity)){
                 for (const PointData& point : points->points){
                     if (point.visible){
