@@ -4,7 +4,7 @@ A **Vertex Animation** (`.vat` + its generated `.vat.glb`) is animation baked in
 played by the GPU: thousands of characters, each with its own clip, time, speed and crossfade, in
 one instanced draw per material, with no CPU pose work. The **Vertex Animator** component
 (`vertexanimator`) plays it on the GameObject whose Model is the `.vat.glb`, and on every instance
-of its Instanced Mesh. User guide: `docs/vertex-animation.md` in the engine repository.
+of its Instanced Mesh. User guide: [docs/vertex-animation.md](../../vertex-animation.md) in the engine repository.
 
 Use it for crowds, flocks, background characters and imported simulations (Houdini, OpenVAT).
 Keep the Animation Player for characters you control closely (clips still edited, bones as
