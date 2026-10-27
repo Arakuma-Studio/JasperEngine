@@ -281,6 +281,8 @@ Tool `normals`, `code` and `suggestion` set:
 | `normals-green-convention` | warning | scene/prefab file | a normal map in use without a recipe that looks DirectX: at least 70% of the top-rim pixels (opaque, transparent above) have green < 128 and at least 70% of the bottom-rim ones green > 128, at least 32 of each | invert its green channel, or generate it again |
 | `normals-not-a-normal-map` | warning | scene/prefab file | a normal map in use (without a recipe) whose opaque texels are not unit vectors (mean \|len - 1\| > 0.1) or have blue < 128 on more than 5% of them (a colour image in the slot) | assign a normal map (`generate_sprite_normals`) or clear the slot |
 | `normals-no-light-height` | warning | scene file | the scene has a normal-mapped submesh and Light 2Ds, none with `height` > 0 | set a Light 2D's height above 0 (64 is a good start) |
+| `normals-paint-unreadable` | warning | the generated PNG | its paint layer (`jasper.spritenormals.paint` chunk) can't be read (another format, a newer version, bad base64, an image that doesn't decode, sizes that disagree); the map still works, a regeneration drops the paint | regenerate with `paint_mode: clear`, or repaint |
+| `normals-paint-size` | warning | the generated PNG | its paint layer's size differs from the PNG's (a regeneration refuses it: `paint_size_mismatch`) | regenerate with `paint_mode: clear`, or repaint |
 
 The cache is `.jasperengine/normals-check-cache.json` (written when `.jasperengine/` exists): per PNG its mtime,
 size, recipe, pixel size and (for a map in use without a recipe) the pixel analysis; per source its SHA-1; and a
