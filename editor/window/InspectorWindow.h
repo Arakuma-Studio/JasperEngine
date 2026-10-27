@@ -290,7 +290,10 @@ namespace jasperengine::editor{
         InspectorVatState& vatState();
         void drawVertexAnimatorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // the Animation field: a .vat (or its .vat.glb) as the component's path + GUID, one step
-        void setVertexAnimatorFile(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::string& file);
+        // the Vertex Animator's Animation of `entities` (one undo step): the path and its GUID
+        void setVertexAnimatorFile(SceneProject* sceneProject, const std::vector<Entity>& entities, const std::string& file);
+        void drawVertexAnimatorFileField(SceneProject* sceneProject, const std::vector<Entity>& entities, const std::string& animation,
+                                         bool mixed, bool stopped);
         // Preview: the GameObject plays in edit mode (PreviewOwner); one at a time
         void startVertexAnimatorPreview(SceneProject* sceneProject, Entity entity);
         void stopVertexAnimatorPreview();

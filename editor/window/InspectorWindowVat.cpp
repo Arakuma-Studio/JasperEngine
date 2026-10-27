@@ -542,33 +542,95 @@ void editor::InspectorWindow::syncVertexAnimatorPreview(SceneProject* shown, con
 
 // ---- Vertex Animator section ----
 
-void editor::InspectorWindow::setVertexAnimatorFile(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::string& file){
-    InspectorVatState& state = vatState();
+MultiPropertyCmd* inspectorvat::vertexAnimatorFileCmd(Project* project, uint32_t sceneId, const std::vector<Entity>& entities,
+                                                     const std::string& file, std::string& error){
     const std::string vatFile = file.empty() ? std::string() : vatFileOf(file);
     const std::string relative = vatFile.empty() ? std::string() : assetRelative(project, fs::path(vatFile));
     if (!file.empty() && relative.empty()){
-        state.sectionError = "Not a Vertex Animation: " + fs::path(file).filename().string() +
-                             ". The Animation is a .vat file inside the assets folder (bake one with the Vertex Animation Baker).";
-        return;
+        error = "Not a Vertex Animation: " + fs::path(file).filename().string() +
+                ". The Animation is a .vat file inside the assets folder (bake one with the Vertex Animation Baker).";
+        return nullptr;
     }
-    state.sectionError.clear();
+    if (entities.empty()){
+        error = "no GameObject";
+        return nullptr;
+    }
     std::string guid;
     if (!relative.empty()){
         const fs::path full = project->resolveAssetPath(relative);
         guid = project->getAssetDatabase().getGuid(full);
         if (guid.empty()){
-            std::string error;
-            if (std::shared_ptr<VatDocument> document = VatDocument::open(project, full.string(), &error)){
+            std::string openError;
+            if (std::shared_ptr<VatDocument> document = VatDocument::open(project, full.string(), &openError)){
                 guid = document->data().guid;
             }
         }
     }
-    // the GUID follows the path (the old one would win on the next load)
+    // the GUID follows the path (the old one would win on the next load), on every GameObject
     MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
-    multiCmd->addPropertyCmd<std::string>(project, sceneProject->id, entity, cpType, "animation", relative);
-    multiCmd->addPropertyCmd<std::string>(project, sceneProject->id, entity, cpType, "guid", guid);
+    for (Entity entity : entities){
+        multiCmd->addPropertyCmd<std::string>(project, sceneId, entity, ComponentType::VertexAnimatorComponent, "animation", relative);
+        multiCmd->addPropertyCmd<std::string>(project, sceneId, entity, ComponentType::VertexAnimatorComponent, "guid", guid);
+    }
     multiCmd->setNoMerge();
-    CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
+    return multiCmd;
+}
+
+void editor::InspectorWindow::setVertexAnimatorFile(SceneProject* sceneProject, const std::vector<Entity>& entities, const std::string& file){
+    InspectorVatState& state = vatState();
+    std::string error;
+    MultiPropertyCmd* command = inspectorvat::vertexAnimatorFileCmd(project, sceneProject->id, entities, file, error);
+    if (!command){
+        state.sectionError = error;
+        return;
+    }
+    state.sectionError.clear();
+    CommandHandle::get(sceneProject->id)->addCommand(command);
+}
+
+// The Animation field: the file name (or "—" when the selection differs), a pick button and a
+// .vat drop target; every change goes through setVertexAnimatorFile (the path and its GUID)
+void editor::InspectorWindow::drawVertexAnimatorFileField(SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                                          const std::string& animation, bool mixed, bool stopped){
+    const float pickWidth = iconButtonWidth(ICON_FA_FOLDER_OPEN);
+    const float fieldWidth = std::max(ImGui::GetContentRegionAvail().x - pickWidth - ImGui::GetStyle().ItemSpacing.x, 1.0f);
+    ImGui::BeginGroup();
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, Theme::Colors::filenameLabel);
+    ImGui::BeginChild("vertexanimatorfile", ImVec2(fieldWidth, ImGui::GetFrameHeight()), false,
+                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    ImGui::SetCursorPos(ImVec2(ImGui::GetStyle().FramePadding.x, ImGui::GetStyle().FramePadding.y));
+    if (mixed){
+        ImGui::TextDisabled("\xE2\x80\x94");
+    }else if (animation.empty()){
+        ImGui::TextDisabled("< Not set >");
+    }else{
+        ImGui::TextUnformatted(fs::path(animation).filename().string().c_str());
+    }
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+    UIProbe::item("vat.animation");
+    if (mixed) ImGui::SetItemTooltip("The selected GameObjects play different Vertex Animations");
+    else if (!animation.empty()) ImGui::SetItemTooltip("%s", animation.c_str());
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!stopped);
+    if (ImGui::Button(ICON_FA_FOLDER_OPEN "##vertexanimator_pick")){
+        const std::string path = FileDialogs::openFileDialog(project->getAssetsPath().string(), FILE_DIALOG_VERTEX_ANIMATION);
+        if (!path.empty()) setVertexAnimatorFile(sceneProject, entities, path);
+    }
+    ImGui::EndDisabled();
+    ImGui::SetItemTooltip(entities.size() > 1 ? "Pick a Vertex Animation (.vat) for every selected GameObject" : "Pick a Vertex Animation (.vat)");
+    ImGui::EndGroup();
+    if (stopped && draggingVat() && ImGui::BeginDragDropTarget()){
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")){
+            for (const std::string& file : Util::getStringsFromPayload(payload)){
+                if (!vatFileOf(file).empty()){
+                    setVertexAnimatorFile(sceneProject, entities, file);
+                    break;
+                }
+            }
+        }
+        ImGui::EndDragDropTarget();
+    }
 }
 
 void editor::InspectorWindow::drawVertexAnimatorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
@@ -595,13 +657,31 @@ void editor::InspectorWindow::drawVertexAnimatorComponent(ComponentType cpType, 
 
     if (entities.size() != 1){
         beginTable(cpType, labelSize, "vertexanimator_multi");
-        propertyRow(RowPropertyType::String, cpType, "animation", "Animation", sceneProject, entities);
+        // Animation: the same field as one GameObject's (the path and its GUID on every one)
+        {
+            std::string first;
+            bool mixed = false;
+            bool any = false;
+            for (size_t i = 0; i < entities.size(); i++){
+                const VertexAnimatorComponent* animator = scene->findComponent<VertexAnimatorComponent>(entities[i]);
+                const std::string value = animator ? animator->animation : std::string();
+                any = any || !value.empty();
+                if (i == 0) first = value;
+                else if (value != first) mixed = true;
+            }
+            prefabRowProperty = "animation";
+            if (propertyHeader("Animation", -1, any)){
+                setVertexAnimatorFile(sceneProject, entities, "");
+            }
+            drawVertexAnimatorFileField(sceneProject, entities, first, mixed, stopped);
+        }
         propertyRow(RowPropertyType::Float, cpType, "speed", "Speed", sceneProject, entities, speedSettings);
         propertyRow(RowPropertyType::Bool, cpType, "randomStart", "Random Start", sceneProject, entities, randomSettings);
         propertyRow(RowPropertyType::Bool, cpType, "playAutomatically", "Play Automatically", sceneProject, entities, autoSettings);
         propertyRow(RowPropertyType::FloatPositive, cpType, "defaultFadeTime", "Default Fade", sceneProject, entities, fadeSettings);
         propertyRow(RowPropertyType::Bool, cpType, "instanceEvents", "Instance Events", sceneProject, entities, eventsSettings);
         endTable();
+        if (!state.sectionError.empty()) errorText(state.sectionError);
         return;
     }
 
@@ -626,46 +706,9 @@ void editor::InspectorWindow::drawVertexAnimatorComponent(ComponentType cpType, 
     // Animation: the .vat (drop one, pick one, clear)
     prefabRowProperty = "animation";
     if (propertyHeader("Animation", -1, !animator.animation.empty())){
-        setVertexAnimatorFile(cpType, sceneProject, entity, "");
+        setVertexAnimatorFile(sceneProject, {entity}, "");
     }
-    {
-        const float pickWidth = iconButtonWidth(ICON_FA_FOLDER_OPEN);
-        const float fieldWidth = std::max(ImGui::GetContentRegionAvail().x - pickWidth - ImGui::GetStyle().ItemSpacing.x, 1.0f);
-        ImGui::BeginGroup();
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, Theme::Colors::filenameLabel);
-        ImGui::BeginChild("vertexanimatorfile", ImVec2(fieldWidth, ImGui::GetFrameHeight()), false,
-                          ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-        ImGui::SetCursorPos(ImVec2(ImGui::GetStyle().FramePadding.x, ImGui::GetStyle().FramePadding.y));
-        if (animator.animation.empty()){
-            ImGui::TextDisabled("< Not set >");
-        }else{
-            ImGui::TextUnformatted(fs::path(animator.animation).filename().string().c_str());
-        }
-        ImGui::EndChild();
-        ImGui::PopStyleColor();
-        UIProbe::item("vat.animation");
-        if (!animator.animation.empty()) ImGui::SetItemTooltip("%s", animator.animation.c_str());
-        ImGui::SameLine();
-        ImGui::BeginDisabled(!stopped);
-        if (ImGui::Button(ICON_FA_FOLDER_OPEN "##vertexanimator_pick")){
-            const std::string path = FileDialogs::openFileDialog(project->getAssetsPath().string(), FILE_DIALOG_VERTEX_ANIMATION);
-            if (!path.empty()) setVertexAnimatorFile(cpType, sceneProject, entity, path);
-        }
-        ImGui::EndDisabled();
-        ImGui::SetItemTooltip("Pick a Vertex Animation (.vat)");
-        ImGui::EndGroup();
-        if (stopped && draggingVat() && ImGui::BeginDragDropTarget()){
-            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")){
-                for (const std::string& file : Util::getStringsFromPayload(payload)){
-                    if (!vatFileOf(file).empty()){
-                        setVertexAnimatorFile(cpType, sceneProject, entity, file);
-                        break;
-                    }
-                }
-            }
-            ImGui::EndDragDropTarget();
-        }
-    }
+    drawVertexAnimatorFileField(sceneProject, {entity}, animator.animation, false, stopped);
 
     // Clip: the default clip, with Preview
     prefabRowProperty = "defaultClip";

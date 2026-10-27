@@ -22,6 +22,7 @@
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
 #include "command/type/CopyFileCmd.h"
+#include "command/type/MultiPropertyCmd.h"
 #include "command/type/DeleteFileCmd.h"
 #include "command/type/RenameFileCmd.h"
 #include "component/InstancedMeshComponent.h"
@@ -588,6 +589,54 @@ TEST_F(VatEditor, RenameTakesThePairAndRewritesTheMeshField) {
     EXPECT_FALSE(history()->addCommand(new RenameFileCmd(project(), "hero.vat", "taken.vat", (root() / dir).string())));
     EXPECT_TRUE(fs::exists(pair.vat));
     EXPECT_TRUE(fs::exists(pair.mesh));
+}
+
+TEST_F(VatEditor, AnimationFieldSetsPathAndGuidOnEverySelectedGameObject) {
+    // the multi-selection's Animation row used to edit `animation` alone: the stale GUID won on the
+    // next load (and a non-.vat was taken)
+    const std::string dir = folder("multi");
+    const Pair first = writePair(dir, "first");
+    const Pair second = writePair(dir, "second");
+    VatScene a = vatScene(first, "MultiA");
+    Scene* scene = a.sceneProject->scene;
+    const Entity other = scene->createEntity();
+    scene->addComponent<Transform>(other);
+    a.sceneProject->entities.push_back(other);
+    VertexAnimatorComponent animator;
+    animator.animation = first.relative;
+    animator.guid = first.guid;
+    scene->addComponent<VertexAnimatorComponent>(other, animator);
+    const std::vector<Entity> both = {a.entity, other};
+
+    std::string error;
+    MultiPropertyCmd* command = inspectorvat::vertexAnimatorFileCmd(project(), a.sceneProject->id, both, second.vat.string(), error);
+    ASSERT_TRUE(command) << error;
+    CommandHandle::get(a.sceneProject->id)->addCommand(command);
+    for (Entity entity : both) {
+        EXPECT_EQ(scene->getComponent<VertexAnimatorComponent>(entity).animation, second.relative);
+        EXPECT_EQ(scene->getComponent<VertexAnimatorComponent>(entity).guid, second.guid) << "the GUID follows the path";
+    }
+    // one undo step for both
+    ASSERT_TRUE(CommandHandle::get(a.sceneProject->id)->undo());
+    for (Entity entity : both) {
+        EXPECT_EQ(scene->getComponent<VertexAnimatorComponent>(entity).animation, first.relative);
+        EXPECT_EQ(scene->getComponent<VertexAnimatorComponent>(entity).guid, first.guid);
+    }
+    // the .vat.glb stands for its .vat; a file of another kind is refused; "" clears both
+    command = inspectorvat::vertexAnimatorFileCmd(project(), a.sceneProject->id, both, second.mesh.string(), error);
+    ASSERT_TRUE(command) << error;
+    CommandHandle::get(a.sceneProject->id)->addCommand(command);
+    EXPECT_EQ(scene->getComponent<VertexAnimatorComponent>(other).guid, second.guid);
+    writeAll(root() / dir / "notes.txt", "hello");
+    EXPECT_EQ(inspectorvat::vertexAnimatorFileCmd(project(), a.sceneProject->id, both, (root() / dir / "notes.txt").string(), error), nullptr);
+    EXPECT_NE(error.find("Not a Vertex Animation"), std::string::npos) << error;
+    command = inspectorvat::vertexAnimatorFileCmd(project(), a.sceneProject->id, both, "", error);
+    ASSERT_TRUE(command) << error;
+    CommandHandle::get(a.sceneProject->id)->addCommand(command);
+    for (Entity entity : both) {
+        EXPECT_TRUE(scene->getComponent<VertexAnimatorComponent>(entity).animation.empty());
+        EXPECT_TRUE(scene->getComponent<VertexAnimatorComponent>(entity).guid.empty());
+    }
 }
 
 TEST_F(VatEditor, AClosedSceneAndAPrefabFollowByGuid) {
