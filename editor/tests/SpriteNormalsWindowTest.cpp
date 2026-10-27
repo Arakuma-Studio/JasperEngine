@@ -48,6 +48,7 @@
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -91,6 +92,9 @@ namespace jasperengine::editor {
         static std::shared_ptr<sn::SpriteNormalsRun> shown(W& w) { return w.shown(); }
         static bool setSource(W& w, const std::string& path, std::string& error) { return w.setSourcePath(path, error); }
         static size_t quickJobs(W& w) { return w.quickJobs.size(); }
+        // the jobs' workers to their end, without a tick (nothing written yet)
+        static void waitWorkers(W& w) { w.waitJobWorkers(); }
+        static const std::vector<sn::Problem>& problems(W& w) { return w.items[w.current].problems; }
         static double orbitTime(W& w) { return w.orbitTime; }
         static bool itemHasResult(W& w, size_t i) { return i < w.items.size() && w.items[i].result != nullptr; }
         // one headless ImGui frame of show()
@@ -1214,5 +1218,145 @@ TEST(SpriteNormalsWindowDeathTest, ShiftClickUsesTheDefaultMapsRecipe) {
         ASSERT_TRUE(recipe.has_value());
         EXPECT_EQ((*recipe)["settings"]["preset"], "detailed") << "the map's own settings, not the last ones (soft)";
         EXPECT_EQ(w.material(w.hero).normalTexture.getPath(), "assets/hero_normal.png");
+    });
+}
+
+// ==================================================================== fix round 2
+
+TEST(SpriteNormalsWindowDeathTest, RegenerateWaitsForTheSceneToStop) {
+    IN_EDITOR("regenplay", {
+        std::string error;
+        std::vector<std::string> written;
+        SpriteNormalsWindow window(w.p);
+        ASSERT_TRUE(window.openSources({w.file("assets/hero.png")}, error)) << error;
+        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(window.save(false, written, error)) << error;
+        const std::string first = readAll(w.file("assets/hero_normal.png"));
+        ts::Image changed = disk(32, 32);
+        changed.pixel(16, 16)[1] = 7;
+        writePng(w.file("assets/hero.png"), changed);
+        SceneProject* sp = w.p->getScene(w.sceneId);
+        // refused while playing
+        sp->playState = ScenePlayState::PLAYING;
+        EXPECT_FALSE(window.startRegenerate(w.file("assets/hero_normal.png"), error));
+        EXPECT_NE(error.find("stop the scene"), std::string::npos) << error;
+        // started while stopped, the scene plays when it ends: it waits
+        sp->playState = ScenePlayState::STOPPED;
+        ASSERT_TRUE(window.startRegenerate(w.file("assets/hero_normal.png"), error)) << error;
+        Access::waitWorkers(window);
+        sp->playState = ScenePlayState::PLAYING;
+        for (int i = 0; i < 10; i++) Access::advance(window, 0.1);
+        EXPECT_EQ(readAll(w.file("assets/hero_normal.png")), first) << "nothing written during play";
+        SpriteNormalsWindow::RegenerateOutcome outcome = window.regenerateOutcome(w.file("assets/hero_normal.png"));
+        EXPECT_TRUE(outcome.known);
+        EXPECT_FALSE(outcome.finished);
+        EXPECT_NE(outcome.message.find("once the scene stops"), std::string::npos) << outcome.message;
+        sp->playState = ScenePlayState::STOPPED;
+        ASSERT_TRUE(settle(window));
+        EXPECT_NE(readAll(w.file("assets/hero_normal.png")), first);
+        outcome = window.regenerateOutcome(w.file("assets/hero_normal.png"));
+        EXPECT_TRUE(outcome.finished && outcome.ok);
+        EXPECT_EQ(outcome.message, "Regenerated hero_normal.png.");
+    });
+}
+
+TEST(SpriteNormalsWindowDeathTest, RegenerateOutcomesAndSameNamesInTwoFolders) {
+    IN_EDITOR("regenpaths", {
+        std::string error;
+        std::vector<std::string> written;
+        for (const char* dir : {"assets/a", "assets/b"}) {
+            writePng(w.file(std::string(dir) + "/hero.png"), disk(32, 32));
+            SpriteNormalsWindow maker(w.p);
+            ASSERT_TRUE(maker.openSources({w.file(std::string(dir) + "/hero.png")}, error)) << error;
+            ASSERT_TRUE(settle(maker));
+            ASSERT_TRUE(maker.save(false, written, error)) << error;
+        }
+        SpriteNormalsWindow window(w.p);
+        ASSERT_TRUE(window.startRegenerate(w.file("assets/a/hero_normal.png"), error)) << error;
+        ASSERT_TRUE(window.startRegenerate(w.file("assets/b/hero_normal.png"), error)) << error;
+        EXPECT_EQ(Access::quickJobs(window), 2u) << "same file name, another folder: its own job";
+        ASSERT_TRUE(window.startRegenerate(w.file("assets/a/hero_normal.png"), error)) << error;
+        EXPECT_EQ(Access::quickJobs(window), 2u) << "the same file again: ignored while it runs";
+        // b's write fails (a folder took its place): its outcome says so, a's says written
+        Access::waitWorkers(window);
+        fs::remove(w.file("assets/b/hero_normal.png"));
+        fs::create_directories(w.file("assets/b/hero_normal.png"));
+        ASSERT_TRUE(settle(window));
+        const SpriteNormalsWindow::RegenerateOutcome a = window.regenerateOutcome(w.file("assets/a/hero_normal.png"));
+        const SpriteNormalsWindow::RegenerateOutcome b = window.regenerateOutcome(w.file("assets/b/hero_normal.png"));
+        EXPECT_TRUE(a.finished && a.ok) << a.message;
+        EXPECT_TRUE(b.finished);
+        EXPECT_FALSE(b.ok);
+        EXPECT_EQ(b.message.rfind("Can't regenerate hero_normal.png", 0), 0u) << b.message;
+    });
+}
+
+TEST(SpriteNormalsWindowDeathTest, UndoRoutingSurvivesUndoEditCycles) {
+    IN_EDITOR("undoserial", {
+        SpriteNormalsWindow window(w.p);
+        std::string error;
+        std::vector<std::string> written;
+        uint32_t sceneId = 0;
+        ASSERT_TRUE(window.openForEntity(w.sceneId, w.hero, 0, false, error)) << error;
+        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(window.save(false, written, error)) << error;
+        ASSERT_TRUE(window.undoGoesToScene(sceneId));
+        ASSERT_TRUE(w.scene()->undo());
+        // undo / edit / undo / edit: freed steps' memory may come back; the assign never does
+        for (int i = 0; i < 20; i++) {
+            auto* move = new PropertyCmd<Vector3>(w.p, w.sceneId, w.walker, ComponentType::Transform, "position", Vector3(float(i), 1, 0));
+            move->setNoMerge();
+            w.scene()->addCommand(move);
+            EXPECT_FALSE(window.undoGoesToScene(sceneId)) << i;
+            ASSERT_TRUE(w.scene()->undo());
+            EXPECT_FALSE(window.redoGoesToScene(sceneId)) << "the redoable step is the move, not the assign: " << i;
+        }
+    });
+}
+
+TEST(SpriteNormalsWindowDeathTest, ProblemsFollowTheGameObject) {
+    IN_EDITOR("sceneproblems", {
+        SpriteNormalsWindow window(w.p);
+        std::string error;
+        ASSERT_TRUE(window.openForEntity(w.sceneId, w.walker, 0, false, error)) << error;
+        Access::tick(window);
+        EXPECT_TRUE(Access::problems(window).empty());
+        // re-sliced with the same number of frames, now overlapping: found on the next change
+        SpriteComponent& walk = w.sceneObject()->getComponent<SpriteComponent>(w.walker);
+        walk.framesRect[1].rect = Rect(16.0f, 0.0f, 32.0f, 32.0f);
+        sn::Settings s = window.getSettings();
+        s.strength = 9.0f;   // out of range: a settings problem too
+        window.setSettings(s);
+        const std::vector<sn::Problem>& problems = Access::problems(window);
+        ASSERT_GE(problems.size(), 2u);
+        EXPECT_EQ(problems[0].kind, "invalid_settings") << "settings problems first, as checkSpec lists them";
+        bool overlap = false;
+        for (const sn::Problem& p : problems) overlap = overlap || p.kind == "frames_mismatch";
+        EXPECT_TRUE(overlap);
+        // the texture swapped: the check runs again (and its order is kept)
+        w.material(w.walker).baseColorTexture = Texture("assets/hero.png");
+        s.strength = 9.5f;
+        window.setSettings(s);
+        EXPECT_EQ(Access::problems(window)[0].kind, "invalid_settings");
+    });
+}
+
+TEST(SpriteNormalsWindowDeathTest, ALargeItemsManualResultSurvivesARowSwitch) {
+    IN_EDITOR("batchkeep", {
+        writePng(w.file("assets/big.png"), disk(1100, 1000));
+        SpriteNormalsWindow window(w.p);
+        std::string error;
+        ASSERT_TRUE(window.openSources({w.file("assets/hero.png"), w.file("assets/big.png")}, error)) << error;
+        ASSERT_TRUE(settle(window));
+        window.selectItem(1);
+        ASSERT_TRUE(window.regenerate(error)) << error;
+        ASSERT_TRUE(settle(window, 60000));
+        ASSERT_TRUE(window.hasResult());
+        window.selectItem(0);
+        ASSERT_TRUE(settle(window));
+        EXPECT_TRUE(Access::itemHasResult(window, 1)) << "not saved, not live: kept";
+        window.selectItem(1);
+        EXPECT_TRUE(window.hasResult()) << "shown again at once, no second Generate";
+        EXPECT_EQ(Access::worker(window), nullptr);
     });
 }

@@ -18,6 +18,7 @@
 #include "imgui.h"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <fstream>
 #include <thread>
@@ -114,7 +115,25 @@ void SpriteNormalsWatcher::startScan() {
     // off the main thread: reading recipes and hashing sources can take a while on a big project
     auto work = [job, root, previous = std::move(previous), knownHashes = std::move(knownHashes), counter]() {
         ScanResult out;
-        for (const fs::path& file : ProjectChecks::findProjectFiles(root, {".png"})) {
+        // the project's PNGs (ProjectChecks' walk: hidden and build directories skipped), stopping
+        // at once when cancelled (a project switch, the editor closing)
+        std::vector<fs::path> pngs;
+        std::error_code walkError;
+        for (fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, walkError), end;
+             it != end && !walkError && !job->cancel; it.increment(walkError)) {
+            const fs::path& path = it->path();
+            std::error_code ec;
+            if (it->is_directory(ec)) {
+                if (ProjectChecks::isSkippedDir(path)) it.disable_recursion_pending();
+                continue;
+            }
+            const std::string name = path.filename().string();
+            if (name.empty() || name[0] == '.' || !it->is_regular_file(ec)) continue;
+            std::string ext = path.extension().string();
+            std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (ext == ".png") pngs.push_back(path);
+        }
+        for (const fs::path& file : pngs) {
             if (job->cancel) break;
             const fs::path key = file.lexically_normal();
             Output entry;
@@ -154,8 +173,15 @@ void SpriteNormalsWatcher::startScan() {
                 if (previousHash != knownHashes.end() && previousHash->second.time == h.time && previousHash->second.size == h.size) {
                     h.sha1 = previousHash->second.sha1;
                 } else {
+                    // read in chunks, the cancel flag checked between them
                     std::ifstream in(entry.sourceAbsolute, std::ios::binary);
-                    const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+                    std::vector<uint8_t> bytes;
+                    std::vector<char> chunk(1 << 20);
+                    while (in && !job->cancel) {
+                        in.read(chunk.data(), static_cast<std::streamsize>(chunk.size()));
+                        bytes.insert(bytes.end(), chunk.begin(), chunk.begin() + in.gcount());
+                    }
+                    if (job->cancel) break;
                     h.sha1 = texsynth::sha1Hex(bytes.data(), bytes.size());
                     (*counter)++;
                 }
@@ -175,6 +201,17 @@ void SpriteNormalsWatcher::startScan() {
     } catch (const std::system_error&) {
         // no thread: no scan this time, another later
         scan.reset();
+    }
+}
+
+void SpriteNormalsWatcher::shutdown(double timeoutSeconds) {
+    if (regen) regen->cancel();
+    std::shared_ptr<ScanJob> job = scan;
+    reset();
+    // the scan stops at its next file or chunk: waited for a moment, so no thread outlives the editor
+    if (job) {
+        std::unique_lock<std::mutex> lock(job->mutex);
+        job->finished.wait_for(lock, std::chrono::duration<double>(timeoutSeconds), [&job]() { return job->done.load(); });
     }
 }
 

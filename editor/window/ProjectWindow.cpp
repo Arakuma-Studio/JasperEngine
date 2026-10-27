@@ -3503,7 +3503,8 @@ void editor::ProjectWindow::drawSpriteNormalsMenuItems(const FileEntry& file, co
         std::error_code ec;
         const spritenormalsentry::RecipeHead outputHead = head.generated ? head : spritenormalsentry::recipeHead(root, output);
         const bool sourceThere = fs::is_regular_file(outputHead.sourceAbsolute, ec);
-        if (ImGui::MenuItem(ICON_FA_ROTATE " Regenerate Normal Map", nullptr, false, sourceThere)) {
+        const bool playing = project->isAnyScenePlaying();
+        if (ImGui::MenuItem(ICON_FA_ROTATE " Regenerate Normal Map", nullptr, false, sourceThere && !playing)) {
             // on the worker; the window's tick writes it (one undo step) and refreshes this window
             std::string error;
             if (!Backend::getApp().getSpriteNormalsWindow()->startRegenerate(output, error)) {
@@ -3512,8 +3513,9 @@ void editor::ProjectWindow::drawSpriteNormalsMenuItems(const FileEntry& file, co
         }
         UIProbe::item("project.menu.regenerateNormalMap");
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-            ImGui::SetTooltip("%s", sourceThere ? "Generate it again from its source with the same settings (one undo step)"
-                                                : ("Its source " + outputHead.source + " is missing").c_str());
+            ImGui::SetTooltip("%s", !sourceThere ? ("Its source " + outputHead.source + " is missing").c_str()
+                                    : playing     ? "Stop the scene first: regenerating reloads the texture the game draws"
+                                                  : "Generate it again from its source with the same settings (one undo step)");
         }
     }
 }

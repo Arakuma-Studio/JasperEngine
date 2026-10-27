@@ -23,6 +23,7 @@
 #include "mcp/McpValues.h"
 #include "spritenormals/SpriteNormalsWatcher.h"
 #include "texsynth/SynthesisSession.h"
+#include "util/EntityPath.h"
 #include "util/EntityPayload.h"
 #include "util/ProjectChecks.h"
 #include "util/UIProbe.h"
@@ -38,6 +39,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <condition_variable>
+#include <mutex>
 #include <thread>
 
 using namespace jasperengine;
@@ -146,6 +149,98 @@ namespace {
 
 }
 
+// ====================================================================== background jobs
+
+// A Shift-click generation or a Regenerate: decode (prepare), generate and encode on its own
+// thread, owning everything it reads; the main thread writes the files (an undoable command) and
+// assigns. The spec it prepares names an image (a Sprite's texture and frames resolved on the
+// main thread): the worker never reads a scene.
+struct SpriteNormalsWindow::QuickWork {
+    std::atomic<bool> cancel{false};
+    std::atomic<bool> done{false};
+    fs::path projectDir;
+    sn::Spec spec;
+    bool fromSprite = false;
+    sn::Spec spriteSpec;                 // the GameObject spec recorded in the recipe
+    std::string entityPath;
+    int threads = 0;
+    uint64_t generation = 0;             // texsynth::projectGeneration() when it started
+    sn::Prepared prepared;
+    sn::Result result;
+    std::vector<sn::OutputFile> files;
+    std::string error;
+    std::mutex mutex;
+    std::condition_variable finished;
+};
+
+void SpriteNormalsWindow::startWork(const std::shared_ptr<QuickWork>& work) {
+    work->generation = texsynth::projectGeneration();
+    auto run = [work]() {
+        try {
+            std::vector<sn::Problem> problems;
+            if (!sn::prepare(work->projectDir, work->spec, nullptr, work->prepared, problems)) {
+                work->error = problems.empty() ? std::string("the source can't be generated from") : problems.front().message;
+            } else {
+                if (work->fromSprite) {
+                    work->prepared.spec = work->spriteSpec;
+                    work->prepared.spriteEntityPath = work->entityPath;
+                }
+                work->prepared.request.threads = work->threads;
+                sn::Control control;
+                control.cancel = &work->cancel;
+                work->result = sn::generate(work->prepared.request, control);
+                if (work->result.status == sn::Status::Ok && !work->cancel) {
+                    sn::encodeOutputs(work->prepared, work->result, work->files, work->error);
+                } else if (work->result.status != sn::Status::Ok && work->result.status != sn::Status::Cancelled) {
+                    work->error = work->result.errors.empty() ? std::string("the generation failed") : work->result.errors.front().message;
+                }
+            }
+        } catch (const std::exception& e) {
+            work->error = std::string("the generation failed: ") + e.what();
+        } catch (...) {
+            work->error = "the generation failed";
+        }
+        {
+            std::lock_guard<std::mutex> lock(work->mutex);
+            work->done = true;
+        }
+        work->finished.notify_all();
+    };
+    try {
+        std::thread(std::move(run)).detach();
+    } catch (const std::system_error& e) {
+        work->error = std::string("could not start a worker thread: ") + e.what();
+        work->done = true;
+    }
+}
+
+void SpriteNormalsWindow::shutdownJobs(double timeoutSeconds) {
+    for (QuickJob& job : quickJobs) {
+        if (job.work) job.work->cancel = true;
+    }
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::duration<double>(timeoutSeconds);
+    for (QuickJob& job : quickJobs) {
+        if (!job.work) continue;
+        std::unique_lock<std::mutex> lock(job.work->mutex);
+        job.work->finished.wait_until(lock, deadline, [&job]() { return job.work->done.load(); });
+    }
+    quickJobs.clear();
+}
+
+void SpriteNormalsWindow::waitJobWorkers() {
+    for (QuickJob& job : quickJobs) {
+        if (!job.work) continue;
+        std::unique_lock<std::mutex> lock(job.work->mutex);
+        job.work->finished.wait(lock, [&job]() { return job.work->done.load(); });
+    }
+}
+
+SpriteNormalsWindow::RegenerateOutcome SpriteNormalsWindow::regenerateOutcome(const fs::path& generatedPng) const {
+    const fs::path png = generatedPng.is_absolute() ? generatedPng : project->getProjectPath() / generatedPng;
+    auto it = regenerateOutcomes.find(png.lexically_normal().generic_u8string());
+    return it == regenerateOutcomes.end() ? RegenerateOutcome() : it->second;
+}
+
 // ====================================================================== lifecycle
 
 SpriteNormalsWindow::SpriteNormalsWindow(Project* project)
@@ -156,7 +251,7 @@ SpriteNormalsWindow::SpriteNormalsWindow(Project* project)
 SpriteNormalsWindow::~SpriteNormalsWindow() {
     if (run) run->cancel();
     for (QuickJob& job : quickJobs) {
-        if (job.run) job.run->cancel();
+        if (job.work) job.work->cancel = true;
     }
 }
 
@@ -199,7 +294,7 @@ void SpriteNormalsWindow::resetForProjectSwitch() {
     stopRun();
     run.reset();
     for (QuickJob& job : quickJobs) {
-        if (job.run) job.run->cancel();
+        if (job.work) job.work->cancel = true;
     }
     quickJobs.clear();
     saveAll = SaveAllJob();
@@ -218,9 +313,9 @@ void SpriteNormalsWindow::resetForProjectSwitch() {
     warningsDirty = true;
     lastConfirm = nullptr;
     assignRecorded = false;
-    assignCommand = nullptr;
+    assignSerial = 0;
     writeRecorded = false;
-    writeCommand = nullptr;
+    writeSerial = 0;
     storedLoaded = false;
     storedProject.clear();
     view = View::Lit;
@@ -364,11 +459,35 @@ void SpriteNormalsWindow::refreshProblems(Item& item) {
     for (int v : {g.tileWidth, g.tileHeight, g.columns, g.rows, g.count, g.offsetX, g.offsetY, g.paddingX, g.paddingY}) key += "," + std::to_string(v);
     for (const sn::Cell& c : f.cells) key += ";" + std::to_string(c.x) + "," + std::to_string(c.y) + "," + std::to_string(c.width) + "," + std::to_string(c.height);
     key += "|" + spec.output.normal + "|" + spec.output.atlas + "|" + spec.output.height + "|" + (spec.settings.height ? "h" : "-");
-    key += "|" + std::to_string(item.stampTime.time_since_epoch().count()) + ":" + std::to_string(item.stampSize) + ":" + std::to_string(item.spriteCells.size());
+    key += "|" + std::to_string(item.stampTime.time_since_epoch().count()) + ":" + std::to_string(item.stampSize);
+    // a GameObject source: whether it is there, the texture it draws and its frame rects
+    if (spec.hasSprite()) {
+        const Scene* scene = sceneFor(spec);
+        if (!scene || !scene->isEntityCreated(spec.entity)) {
+            key += "|gone";
+        } else {
+            Scene* s = const_cast<Scene*>(scene);
+            if (MeshComponent* mesh = s->findComponent<MeshComponent>(spec.entity)) {
+                key += "|" + (spec.submesh < MAX_SUBMESHES ? mesh->submeshes[spec.submesh].material.baseColorTexture.getPath() : std::string());
+            }
+            if (SpriteComponent* sprite = s->findComponent<SpriteComponent>(spec.entity)) {
+                key += "|" + std::to_string(sprite->numFramesRect);
+                for (unsigned i = 0; i < sprite->numFramesRect && i < MAX_SPRITE_FRAMES; i++) {
+                    const Rect& r = sprite->framesRect[i].rect;
+                    char rect[96];
+                    std::snprintf(rect, sizeof(rect), ";%g,%g,%g,%g", r.getX(), r.getY(), r.getWidth(), r.getHeight());
+                    key += rect;
+                }
+            }
+        }
+    }
     if (key == item.problemsKey) {
-        item.problems.erase(std::remove_if(item.problems.begin(), item.problems.end(), [](const sn::Problem& p) { return p.kind == "invalid_settings"; }),
-                            item.problems.end());
-        for (const sn::Problem& p : sn::validateSettings(spec.settings)) item.problems.push_back(p);
+        // only the settings changed: their problems again, first as checkSpec lists them
+        std::vector<sn::Problem> problems = sn::validateSettings(spec.settings);
+        for (const sn::Problem& p : item.problems) {
+            if (p.kind != "invalid_settings") problems.push_back(p);
+        }
+        item.problems = std::move(problems);
         return;
     }
     item.problemsKey = key;
@@ -626,18 +745,37 @@ bool SpriteNormalsWindow::openForEntity(uint32_t sceneId, Entity entity, unsigne
         if (!blocked) {
             sn::Spec running = spec;
             running.overwrite = true;
-            sn::Prepared prepared;
-            if (!sn::prepare(root, running, sp->scene, prepared, problems)) {
-                error = problems.empty() ? "the source can't be generated from" : problems.front().message;
+            // what can be told now (stat-only); the decode and generation run on the job's worker
+            problems = sn::checkSpec(root, running, sp->scene);
+            if (!problems.empty()) {
+                error = problems.front().message;
                 return false;
+            }
+            auto work = std::make_shared<QuickWork>();
+            work->projectDir = root;
+            work->spriteSpec = running;
+            work->fromSprite = true;
+            work->entityPath = EntityPath::of(sp->scene, entity);
+            work->threads = workerThreads();
+            // the Sprite resolved here: its texture, and its frames (submesh 0) as given cells
+            work->spec = running;
+            work->spec.sceneId = 0;
+            work->spec.entity = NULL_ENTITY;
+            work->spec.submesh = 0;
+            work->spec.source = texture;
+            if (running.frames.mode == sn::FramesSpec::Mode::Auto && !cells.empty()) {
+                work->spec.frames.mode = sn::FramesSpec::Mode::Cells;
+                work->spec.frames.cells = cells;
+                work->spec.frames.from = sn::FramesFrom::Sprite;
             }
             QuickJob job;
             job.target = {sceneId, entity, submesh, sp->scene->getEntityName(entity)};
             job.overwrite = true;
-            for (const sn::PlannedOutput& out : prepared.outputs) {
+            for (const sn::PlannedOutput& out : sn::plannedOutputs(root, planning, info.kind)) {
                 if (out.role == "normal") job.label = fileName(out.path);
             }
-            job.run = sn::SpriteNormalsRun::start(std::move(prepared), workerThreads());
+            job.work = work;
+            startWork(work);
             quickJobs.push_back(std::move(job));
             return true;
         }
@@ -803,8 +941,10 @@ void SpriteNormalsWindow::setAssign(bool on) {
 void SpriteNormalsWindow::selectItem(size_t i) {
     if (i >= items.size() || i == current) return;
     stopRun();
-    // the item left keeps no decoded image (Save All keeps them until its one write)
-    if (!saveAll.active) items[current].result.reset();
+    // the item left keeps no decoded image when it is written already or cheap to make again
+    // (live sizes); a large item's manual Generate is kept. Save All keeps them until its write.
+    Item& left = items[current];
+    if (!saveAll.active && left.result && (left.savedKey == left.resultKey || liveAllowed(left))) left.result.reset();
     current = i;
     probe(items[current], false);
     refreshProblems(items[current]);
@@ -975,9 +1115,10 @@ bool SpriteNormalsWindow::writeResults(const std::vector<size_t>& itemIndices, b
     recordWrite();
     for (const sn::OutputFile& f : all) written.push_back(f.path);
     lastWritten = written;
-    // batch: the decoded sources and results of the items not shown are not kept once written
+    for (size_t i : itemIndices) items[i].savedKey = items[i].resultKey;
+    // batch: the decoded sources and results of the written items not shown are not kept
     if (isBatch()) {
-        for (size_t i = 0; i < items.size(); i++) {
+        for (size_t i : itemIndices) {
             if (i != current) items[i].result.reset();
         }
     }
@@ -1166,7 +1307,7 @@ void SpriteNormalsWindow::tickSaveAll() {
 void SpriteNormalsWindow::recordWrite() {
     CommandHistory* history = project->getProjectCommandHistory();
     writePosition = history->position();
-    writeCommand = history->undoCommand();
+    writeSerial = history->undoSerial();
     writeRecorded = true;
 }
 
@@ -1174,16 +1315,20 @@ void SpriteNormalsWindow::recordAssign(uint32_t sceneId) {
     CommandHistory* history = CommandHandle::get(sceneId);
     assignSceneId = sceneId;
     assignPosition = history->position();
-    assignCommand = history->undoCommand();
+    assignSerial = history->undoSerial();
     assignRecorded = true;
 }
 
 bool SpriteNormalsWindow::startRegenerate(const fs::path& generatedPng, std::string& error) {
     const fs::path root = project->getProjectPath();
-    const fs::path png = generatedPng.is_absolute() ? generatedPng.lexically_normal() : (root / generatedPng).lexically_normal();
+    const fs::path png = (generatedPng.is_absolute() ? generatedPng : root / generatedPng).lexically_normal();
     for (const QuickJob& job : quickJobs) {
-        // already regenerating it: one is enough
-        if (job.target.entity == NULL_ENTITY && job.label == png.filename().u8string() && job.run && !job.run->finished()) return true;
+        // already regenerating this very file: one is enough
+        if (job.target.entity == NULL_ENTITY && job.png == png) return true;
+    }
+    if (project->isAnyScenePlaying()) {
+        error = "stop the scene first: regenerating reloads the texture the game draws";
+        return false;
     }
     std::string readError;
     const std::optional<nlohmann::json> recipe = sn::readRecipeHead(png, &readError);
@@ -1195,47 +1340,50 @@ bool SpriteNormalsWindow::startRegenerate(const fs::path& generatedPng, std::str
     std::vector<std::string> notes;
     if (!sn::specFromRecipe(*recipe, png, root, spec, notes, error)) return false;
     // the source's presence only (the worker reads it)
-    const fs::path source = absoluteOf(project, spec.source);
     std::error_code ec;
-    if (!fs::is_regular_file(source, ec)) {
+    if (!fs::is_regular_file(absoluteOf(project, spec.source), ec)) {
         error = "the source " + spec.source + " is missing";
         return false;
     }
     spec.overwrite = true;
     spec.output.framesJson = false;
-    sn::Prepared prepared;
-    std::vector<sn::Problem> problems;
-    if (!sn::prepare(root, spec, nullptr, prepared, problems)) {
-        error = problems.empty() ? "the recipe can't be used" : problems.front().message;
-        return false;
-    }
+    auto work = std::make_shared<QuickWork>();
+    work->projectDir = root;
+    work->spec = spec;
+    work->threads = workerThreads();
     QuickJob job;
     job.overwrite = true;
     job.label = png.filename().u8string();
-    job.run = sn::SpriteNormalsRun::start(std::move(prepared), workerThreads());
+    job.png = png;
+    job.work = work;
+    startWork(work);
     quickJobs.push_back(std::move(job));
+    regenerateOutcomes[png.generic_u8string()] = {true, false, false, "Regenerating " + job.label + "..."};
     return true;
 }
 
 void SpriteNormalsWindow::tickQuickJobs() {
     for (size_t j = 0; j < quickJobs.size();) {
         QuickJob& job = quickJobs[j];
-        if (!job.run || !job.run->finished()) {
+        if (!job.work || !job.work->done) {
             j++;
             continue;
         }
-        const sn::Result& result = job.run->result();
-        const sn::Prepared& prepared = job.run->prepared();
+        QuickWork& work = *job.work;
         const bool assigning = job.target.entity != NULL_ENTITY;
-        const std::string normalName = [&]() {
-            if (!job.label.empty()) return job.label;
-            for (const sn::PlannedOutput& out : prepared.outputs) {
-                if (out.role == "normal") return fileName(out.path);
-            }
-            return fileName(prepared.sourcePath);
-        }();
+        // a Regenerate written while a scene plays would reload what the game draws: it waits
+        if (!assigning && project->isAnyScenePlaying()) {
+            regenerateOutcomes[job.png.generic_u8string()] = {true, false, false, "Regenerating " + job.label + " once the scene stops..."};
+            j++;
+            continue;
+        }
+        const sn::Prepared& prepared = work.prepared;
+        const std::string normalName = job.label.empty() ? fileName(prepared.sourcePath) : job.label;
+        std::string outcome;
+        bool ok = false;
         auto fail = [&](const std::string& why) {
-            getEditorHost().registerAlert("Sprite Normal Map", (assigning ? "Can't generate " : "Can't regenerate ") + normalName + ": " + why);
+            outcome = (assigning ? "Can't generate " : "Can't regenerate ") + normalName + ": " + why;
+            getEditorHost().registerAlert("Sprite Normal Map", outcome);
         };
         // the target as it is now: still there, still drawing the source, the scene stopped
         std::string targetProblem;
@@ -1250,20 +1398,21 @@ void SpriteNormalsWindow::tickQuickJobs() {
                 targetProblem = "\"" + job.target.name + "\" no longer draws " + fileName(prepared.sourcePath);
             }
         }
-        if (result.status == sn::Status::Cancelled) {
-            // a project switch or shutdown: nothing to say
-        } else if (result.status != sn::Status::Ok) {
-            fail(result.errors.empty() ? std::string("the generation failed") : result.errors.front().message);
-        } else if (job.run->generation() != texsynth::projectGeneration()) {
+        if (work.cancel || work.result.status == sn::Status::Cancelled) {
+            outcome = "Cancelled.";
+        } else if (!work.error.empty()) {
+            fail(work.error);
+        } else if (work.generation != texsynth::projectGeneration()) {
             fail(sn::kProjectChangedMessage);
         } else if (!targetProblem.empty()) {
             fail(targetProblem + "; nothing was written.");
         } else {
-            std::vector<sn::OutputFile> files;
             std::string error;
-            if (!sn::encodeOutputs(prepared, result, files, error) || !writeAndNotify(project, files, error)) {
+            if (!writeAndNotify(project, work.files, error)) {
                 fail(error);
             } else if (!assigning) {
+                ok = true;
+                outcome = "Regenerated " + normalName + ".";
                 Out::info("Regenerated %s", normalName.c_str());
             } else {
                 recordWrite();
@@ -1271,7 +1420,7 @@ void SpriteNormalsWindow::tickQuickJobs() {
                 request.sceneId = job.target.sceneId;
                 request.entity = job.target.entity;
                 request.colorSourcePath = prepared.sourcePath;
-                for (const sn::OutputFile& f : files) {
+                for (const sn::OutputFile& f : work.files) {
                     if (f.role == "normal") request.normalPath = f.path;
                     if (f.role == "atlas") request.atlasPath = f.path;
                 }
@@ -1284,11 +1433,13 @@ void SpriteNormalsWindow::tickQuickJobs() {
                 if (!applied.ok) {
                     fail("it was written (Project undo removes it) but not assigned: " + applied.error.message);
                 } else {
+                    ok = true;
                     recordAssign(job.target.sceneId);
                     Out::info("Generated %s and assigned it to %s", normalName.c_str(), job.target.name.c_str());
                 }
             }
         }
+        if (!assigning) regenerateOutcomes[job.png.generic_u8string()] = {true, true, ok, outcome};
         quickJobs.erase(quickJobs.begin() + static_cast<std::ptrdiff_t>(j));
     }
 }
@@ -1802,7 +1953,7 @@ bool SpriteNormalsWindow::undoGoesToScene(uint32_t& sceneId) const {
     // the assign itself is the scene's newest step (its position and its command: a new edit
     // made after undoing it, at the same position, is not it)
     const CommandHistory* history = CommandHandle::get(assignSceneId);
-    if (history->position() == assignPosition && history->undoCommand() == assignCommand && history->canUndo()) {
+    if (history->position() == assignPosition && history->undoSerial() == assignSerial && history->canUndo()) {
         sceneId = assignSceneId;
         return true;
     }
@@ -1813,11 +1964,11 @@ bool SpriteNormalsWindow::redoGoesToScene(uint32_t& sceneId) const {
     if (!assignRecorded || !project->getScene(assignSceneId)) return false;
     // undone after the assign, the write is the newest redoable: it comes back first
     const CommandHistory* projectHistory = const_cast<Project*>(project)->getProjectCommandHistory();
-    if (writeRecorded && projectHistory->position() + 1 == writePosition && projectHistory->redoCommand() == writeCommand && projectHistory->canRedo()) {
+    if (writeRecorded && projectHistory->position() + 1 == writePosition && projectHistory->redoSerial() == writeSerial && projectHistory->canRedo()) {
         return false;
     }
     const CommandHistory* history = CommandHandle::get(assignSceneId);
-    if (assignPosition > 0 && history->position() + 1 == assignPosition && history->redoCommand() == assignCommand && history->canRedo()) {
+    if (assignPosition > 0 && history->position() + 1 == assignPosition && history->redoSerial() == assignSerial && history->canRedo()) {
         sceneId = assignSceneId;
         return true;
     }

@@ -28,6 +28,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -89,6 +90,16 @@ namespace jasperengine::editor {
         bool startRegenerate(const std::filesystem::path& generatedPng, std::string& error);
         // a Shift-click generation or a Regenerate still running
         bool hasPendingJobs() const { return !quickJobs.empty(); }
+        // How the last Regenerate of a generated PNG ended (the Inspector's asset view says it)
+        struct RegenerateOutcome {
+            bool known = false;              // one was started in this window's life
+            bool finished = false;
+            bool ok = false;
+            std::string message;             // "Regenerated hero_normal.png.", the error, or why it waits
+        };
+        RegenerateOutcome regenerateOutcome(const std::filesystem::path& generatedPng) const;
+        // Editor shutdown: the Shift-click / Regenerate workers are cancelled and waited for (bounded)
+        void shutdownJobs(double timeoutSeconds = 2.0);
 
         // ---- settings (the shared set) and the current item's spec
 
@@ -199,6 +210,7 @@ namespace jasperengine::editor {
             // the result shown for it (a finished run) and the fingerprint it was made from
             std::shared_ptr<spritenormals::SpriteNormalsRun> result;
             std::string resultKey;
+            std::string savedKey;              // the resultKey last written (Save / Save All)
             std::vector<spritenormals::Problem> problems;
             std::string problemsKey;           // what problems were checked for (source, frames, outputs, stamps)
         };
@@ -232,13 +244,21 @@ namespace jasperengine::editor {
         };
 
         // An Inspector Shift-click: generate, save and assign with the window closed
-        // ... and a Regenerate (no target: written only)
+        // ... and a Regenerate (no target: written only). Decoding, generating and encoding run on
+        // the job's worker (QuickWork); the write (an undoable command) and the assign on the main thread
+        struct QuickWork;
         struct QuickJob {
-            std::shared_ptr<spritenormals::SpriteNormalsRun> run;
+            std::shared_ptr<QuickWork> work;
             AssignTarget target;
             bool overwrite = false;
             std::string label;                   // the normal map's file name
+            std::filesystem::path png;           // Regenerate: the map regenerated (normalized)
         };
+        std::map<std::string, RegenerateOutcome> regenerateOutcomes;
+        // starts `work` on a detached thread
+        static void startWork(const std::shared_ptr<QuickWork>& work);
+        // every job's worker to its end, without writing (tests)
+        void waitJobWorkers();
 
         Project* project;
         bool windowOpen = false;
@@ -280,10 +300,10 @@ namespace jasperengine::editor {
         // undo routing (spec 3.10)
         uint32_t assignSceneId = 0;
         size_t assignPosition = 0;               // the scene history's position right after the assign
-        const Command* assignCommand = nullptr;  // ... and its step (identity, not only the position)
+        unsigned long long assignSerial = 0;     // ... and its step (Command::serial, not only the position)
         bool assignRecorded = false;
         size_t writePosition = 0;                // the project history's position right after the write
-        const Command* writeCommand = nullptr;
+        unsigned long long writeSerial = 0;
         bool writeRecorded = false;
 
         // preview state

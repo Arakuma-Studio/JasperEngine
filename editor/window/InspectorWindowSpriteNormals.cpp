@@ -309,7 +309,9 @@ bool editor::InspectorWindow::drawSpriteNormalsAsset(const fs::path& asset) {
     ImGui::EndDisabled();
     UIProbe::item("snAsset.regenerate");
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-        ImGui::SetTooltip("%s", missing ? "The source is missing" : playing ? "Stop the scene first" : "Generate it again from its source with the same settings");
+        ImGui::SetTooltip("%s", missing ? "The source is missing"
+                                : playing ? "Stop the scene first: regenerating reloads the texture the game draws"
+                                          : "Generate it again from its source with the same settings");
     }
     ImGui::SameLine();
     if (ImGui::Button(ICON_FA_WAND_MAGIC_SPARKLES " Open in Generator##snAssetOpen", ImVec2(half, 0))) {
@@ -369,8 +371,13 @@ bool editor::InspectorWindow::drawSpriteNormalsAsset(const fs::path& asset) {
     UIProbe::item("snAsset.autoRegenerate");
     ImGui::SetItemTooltip("Regenerate this project's normal maps when their source images change (not undoable, logged in the Console)");
 
-    if (s.status.rfind("Regenerating ", 0) == 0 && !Backend::getApp().getSpriteNormalsWindow()->hasPendingJobs()) {
-        s.status = "Regenerated " + s.output.filename().u8string() + ".";
+    // a Regenerate started here: what it really came to (written, refused, failed, or waiting for Stop)
+    if (s.status.rfind("Regenerating ", 0) == 0) {
+        const SpriteNormalsWindow::RegenerateOutcome outcome = Backend::getApp().getSpriteNormalsWindow()->regenerateOutcome(s.output);
+        if (outcome.known) {
+            s.status = outcome.message;
+            s.statusError = outcome.finished && !outcome.ok;
+        }
     }
     if (!s.status.empty()) {
         ImGui::PushStyleColor(ImGuiCol_Text, s.statusError ? Theme::Colors::ErrorText : Theme::Colors::SubtleText);
