@@ -1411,7 +1411,7 @@ void spriteNormalsFileChanged(Project* project, const fs::path& path, Json& prob
 void registerSpriteNormalsTools(McpRegistry& registry) {
     using namespace schema;
     ToolDef tool;
-    tool.name = TOOL;
+    tool.name = "generate_sprite_normals";
     tool.title = "Generate Sprite Normals";
     tool.description =
         "Normal maps for pixel-art sprites, sheets, GIF/APNG animations and tiles (2D lights). Without output nothing is "

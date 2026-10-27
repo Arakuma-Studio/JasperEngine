@@ -1316,21 +1316,19 @@ void registerVatTools(McpRegistry& registry) {
         "Houdini VAT 3 / OpenVAT export. Without output (or rebake) nothing is written: the report (mode, sizes, errors, warnings with "
         "fixes) and a contact sheet (source vs VAT). The same arguments + output write exactly that (one undo step). "
         "Guide: jasper://docs/vertex-animation.";
+    // argument descriptions live in the guide's argument table (docs/mcp/guide/vertex-animation.md),
+    // not in tools/list
     auto loose = [](Json o) {
         o.erase("additionalProperties");
         return o;
     };
     Json source;
-    source["description"] = "GameObject, model, model#Clip, .anim list (+on), .poseanim, or an export path.";
     source["type"] = Json::array({"string", "integer", "array"});
     Json on;
-    on["description"] = "Model, prefab or GameObject the clips play on.";
     on["type"] = Json::array({"string", "integer"});
     Json output;
-    output["description"] = ".vat path, or true: default name. Omitted: preview.";
     output["type"] = Json::array({"string", "boolean"});
     Json place;
-    place["description"] = "On write.";
     place["anyOf"] = Json::array({stringEnum("", {"none", "beside", "replace"}),
                                   loose(object({{"crowd", loose(object({{"count", integer("")}, {"area", number("m")}, {"seed", integer("")}}))}}))});
     tool.inputSchema = object({
@@ -1338,21 +1336,21 @@ void registerVatTools(McpRegistry& registry) {
         {"scene", sceneRef()},
         {"on", on},
         // (an object's keys and values are checked by clipsArg; the guide lists them)
-        {"clips", array(Json{{"type", Json::array({"string", "object"})}}, "Names or {name, wrap, interpolate, fps}. Default all.")},
+        {"clips", array(Json{{"type", Json::array({"string", "object"})}}, "")},
         {"mode", withDefault(stringEnum("", {"auto", "vertices", "bones"}), "auto")},
-        {"fps", number("Default 30.")},
+        {"fps", number("")},
         {"normals", withDefault(boolean(""), true)},
         {"precision", withDefault(stringEnum("", {"auto", "half", "float"}), "auto")},
         {"preset", withDefault(stringEnum("", {"mobile_web", "desktop"}), "mobile_web")},
         {"tolerance_mm", number("")},
-        {"sockets", array(Json{{"type", "string"}}, "Node paths.")},
+        {"sockets", array(Json{{"type", "string"}}, "")},
         {"output", output},
         {"overwrite", withDefault(boolean(""), false)},
-        {"rebake", string("A .vat: run its recipe again.")},
+        {"rebake", string("")},
         {"place", place},
-        {"import", anyObject("Importer options (guide).")},
+        {"import", anyObject("")},
         {"wait", withDefault(boolean(""), true)},
-        {"timeout_seconds", withDefault(number("Then a job_id (get_job).", 1, 3600), 120)}
+        {"timeout_seconds", withDefault(number("", 1, 3600), 120)}
     });
     tool.allowedWhilePlaying = false;
     tool.activity = ToolActivity::Edit;

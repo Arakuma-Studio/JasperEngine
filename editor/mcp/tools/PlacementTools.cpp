@@ -1127,11 +1127,10 @@ void registerPlacementTools(McpRegistry& registry) {
     tool.name = "place_with_physics";
     tool.title = "Place With Physics";
     tool.description =
-        "Edit-time physics placement (the scene's own physics never runs): drop GameObjects onto what is under them, separate "
-        "overlapping ones, move them toward a target until they hit something, snap them onto the surface a ray hits, gather or "
-        "distribute them; then they settle. Generated colliders, nothing added to the scene. Preview by default (nothing "
-        "changes); the same arguments with apply: true commit exactly the preview (same state_hash, one undo step). Read hint "
-        "and warnings. Guide: jasper://docs/physics.";
+        "Edit-time physics placement (the scene's own physics never runs): drop, separate, move, snap, gather or distribute "
+        "GameObjects, then they settle (generated colliders, nothing added). Preview by default; the same arguments with "
+        "apply: true commit exactly the preview (same state_hash, one undo step). Read hint and warnings. "
+        "Guide: jasper://docs/physics.";
     // nested objects: the handler refuses unknown keys itself (saves tools/list bytes)
     auto loose = [](Json o) {
         o.erase("additionalProperties");

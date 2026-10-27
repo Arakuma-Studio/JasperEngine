@@ -122,6 +122,9 @@ editor/mcp/
     AssetTools.cpp        assets, imports, materials and shaders
     SynthesisTools.cpp    texture synthesis (synthesize_texture; the recipe summary get_asset_info shows),
                           sharing texsynth/SynthesisSession with Window > Texture Synthesis
+    SpriteNormalsTools.cpp sprite normal maps (generate_sprite_normals; the recipe summary get_asset_info shows),
+                          sharing spritenormals/SpriteNormalsSession with Window > Sprite Normal Map and the
+                          generate-sprite-normals CLI
     DocsTools.cpp         engine API docs and resources
     BuildTools.cpp        export, build and player jobs
     WorldTools.cpp        terrain, tilemaps, animation, physics, UI and audio
