@@ -76,6 +76,7 @@ namespace jasperengine::editor {
         // Selection is kept by log id so it survives rebuilds and trimming.
         uint64_t selectedLogId;
         bool hasSelection;
+        bool listFocused = false;   // the message list had the keyboard last frame
         bool scrollToSelection;
 
         bool autoScroll;                     // stick to the newest message
@@ -130,6 +131,12 @@ namespace jasperengine::editor {
         void requestFocus();
         // The search field's text (the messages shown are those containing it)
         void setSearchText(const std::string& text);
+
+        // The message list has focus (the catalog's Console context): Ctrl+C copies the
+        // selected message (console.copy)
+        bool isListFocused() const { return listFocused; }
+        bool hasSelectedMessage() const;
+        void copySelectedMessage();
 
         // Toolbar toggles (MCP preferences)
         bool isClearOnPlay() const { return clearOnPlay; }

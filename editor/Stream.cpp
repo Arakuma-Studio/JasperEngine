@@ -18,6 +18,8 @@
 #include "Factory.h"
 #include "pool/SoundPool.h"
 #include "pool/ShaderPool.h"
+#include "subsystem/MeshSystem.h"
+#include "System.h"
 #include "util/CameraTextureLink.h"
 #include "util/FluidTextureLink.h"
 #include "util/ProjectUtils.h"
@@ -1285,6 +1287,14 @@ YAML::Node editor::Stream::encodeTexture(const Texture& texture, bool embedData)
     return node;
 }
 
+namespace {
+    // A model texture's id from a scene saved before the ids were relative (the model file's
+    // absolute path on the machine that saved it): as the model keys it now
+    std::string modelTextureId(const std::string& id) {
+        return MeshSystem::migrateModelTextureId(id, System::instance().getAssetPath());
+    }
+}
+
 Texture editor::Stream::decodeTexture(const YAML::Node& node) {
     StreamLoad::checkNestedKeys(node, NestedKind::Texture);
     Texture texture;
@@ -1333,7 +1343,7 @@ Texture editor::Stream::decodeTexture(const YAML::Node& node) {
                     const size_t expectedSize = static_cast<size_t>(width) * static_cast<size_t>(height) * static_cast<size_t>(channels);
                     const size_t dataSize = node["size"] ? YamlNumbers::as<size_t>(node["size"]) : expectedSize;
                     const std::string colorFormat = node["colorFormat"] ? node["colorFormat"].as<std::string>() : std::string();
-                    const std::string textureId = node["id"] ? node["id"].as<std::string>() : std::string();
+                    const std::string textureId = node["id"] ? modelTextureId(node["id"].as<std::string>()) : std::string();
 
                     if (dataSize == expectedSize && decodedData.size() >= dataSize) {
                         setEmbeddedTextureData(texture, textureId, width, height, stringToColorFormat(colorFormat, channels), channels, decodedData);
@@ -1341,7 +1351,7 @@ Texture editor::Stream::decodeTexture(const YAML::Node& node) {
                 }
             } else if (source == "id") {
                 if (node["id"]) {
-                    texture.setId(node["id"].as<std::string>());
+                    texture.setId(modelTextureId(node["id"].as<std::string>()));
                 }
             } else if (source == "camera") {
                 // framebuffer is bound later by CameraTextureLink::resolve,
@@ -2281,6 +2291,24 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     }
     root["scenes"] = scenesNode;
 
+    // S25: label colours and the saved searches shared with the project
+    if (!project->getAssetLabels().entries().empty()) {
+        YAML::Node labels(YAML::NodeType::Sequence);
+        for (const LabelColor& entry : project->getAssetLabels().entries()) {
+            YAML::Node label(YAML::NodeType::Map);
+            label.SetStyle(YAML::EmitterStyle::Flow);
+            label["name"] = entry.name;
+            label["color"] = entry.color;
+            labels.push_back(label);
+        }
+        root["assetLabels"] = labels;
+    }
+    if (!project->getOrganisation().projectSearches().empty()) {
+        YAML::Node searches;
+        Organisation::encodeSearches(project->getOrganisation().projectSearches(), searches);
+        root["savedSearches"] = searches;
+    }
+
     return root;
 }
 
@@ -2465,6 +2493,19 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
 
     if (node["versionControlMetadata"].IsDefined()) {
         project->setVersionControlMetadata(YamlNumbers::as<bool>(node["versionControlMetadata"]));
+    }
+
+    // S25: label colours, saved searches of scope project
+    {
+        std::vector<LabelColor> entries;
+        if (node["assetLabels"] && node["assetLabels"].IsSequence()) {
+            for (const auto& label : node["assetLabels"]) {
+                if (!label.IsMap() || !label["name"]) continue;
+                entries.push_back({label["name"].as<std::string>(""), label["color"] ? label["color"].as<std::string>("") : std::string()});
+            }
+        }
+        project->getAssetLabels().setEntries(std::move(entries));
+        project->getOrganisation().setProjectSearches(Organisation::decodeSearches(node["savedSearches"], true));
     }
 
     {

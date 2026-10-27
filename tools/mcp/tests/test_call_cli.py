@@ -161,8 +161,8 @@ async def test_dry_run(ed: Editor):
         "--dry-run": await asyncio.to_thread(cli.timed, "call", "--dry-run", "create_entity", "--name", "T"),
         "list-tools": await asyncio.to_thread(cli.timed, "list-tools"),
     }
-    print("     [timing] " + ", ".join(f"{k} {v * 1000:.0f} ms" for k, v in times.items()))
-    slow = {k: v for k, v in times.items() if v > 0.3}
+    # R29's 300 ms is a wall-clock budget: the benchmark run enforces it (harness.over_budget)
+    slow = harness.over_budget("R29 call --help, --dry-run, list-tools", {k: v * 1000 for k, v in times.items()}, 300, "ms")
     ed.check(not slow, f"R29: at most 300 ms each: {slow}")
 
 

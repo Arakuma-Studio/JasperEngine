@@ -246,6 +246,12 @@ async def test_agents_md_and_claude_md(ed: Editor):
     check_eq(claude_file.read_text(), "# My rules\nBe nice.\n", "user CLAUDE.md untouched")
     claude_file.unlink()
 
+    # AGENTS.md there and CLAUDE.md not (what a Play's generation can leave when it writes
+    # AGENTS.md between the two deletes above): a read writes the missing CLAUDE.md, as a Play does
+    ed.check(agents_file.is_file() and not claude_file.exists(), "AGENTS.md alone")
+    await ed.session.read_resource("jasper://project/AGENTS.md")
+    ed.check(claude_file.is_file() and "@AGENTS.md" in claude_file.read_text(), "the read writes the missing CLAUDE.md")
+
 
 async def test_existing_agents_and_claude_md_never_rewritten(ed: Editor):
     """AGENTS.md and CLAUDE.md are written only when missing: once present they belong to the

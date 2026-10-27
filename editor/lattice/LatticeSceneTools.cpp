@@ -11,6 +11,7 @@
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include "lattice/LatticePresets.h"
+#include "shortcuts/CommandCatalog.h"
 #include "imgui.h"
 #include "imgui_internal.h"
 
@@ -23,6 +24,11 @@ using namespace jasperengine;
 using namespace jasperengine::editor;
 
 namespace{
+
+    // the catalog's text for a menu item's shortcut (S25: the keys are rebindable)
+    std::string shortcutText(const char* id){
+        return CommandCatalog::editor().menuShortcutText(id);
+    }
 
     // what the Presets submenu applies, kept between menus
     lattice::PresetParams presetParams;
@@ -165,6 +171,24 @@ bool LatticeSceneTools::handleShortcuts(Project* project, uint32_t sceneId){
         return false;
     }
     Entity lattice = LatticeEditorOps::getEditedLattice(project, sceneId);
+    if (!latticeComponent(project, sceneId, lattice)){
+        return false;
+    }
+    const std::vector<int>& selected = LatticeEditorOps::getSelectedPoints(sceneId, lattice);
+    const bool plain = !io.KeyCtrl && !io.KeyShift && !io.KeyAlt && !io.KeySuper;
+    if (plain && ImGui::IsKeyPressed(ImGuiKey_Escape, false) && !selected.empty()){
+        select(project, sceneId, lattice, {});
+        return true;
+    }
+    return false;
+}
+
+bool LatticeSceneTools::isEditingPoints(Project* project, uint32_t sceneId){
+    return latticeComponent(project, sceneId, LatticeEditorOps::getEditedLattice(project, sceneId)) != nullptr;
+}
+
+bool LatticeSceneTools::runPointAction(Project* project, uint32_t sceneId, PointAction action){
+    Entity lattice = LatticeEditorOps::getEditedLattice(project, sceneId);
     LatticeComponent* component = latticeComponent(project, sceneId, lattice);
     if (!component){
         return false;
@@ -172,40 +196,31 @@ bool LatticeSceneTools::handleShortcuts(Project* project, uint32_t sceneId){
     const int rx = component->resolutionX;
     const int ry = component->resolutionY;
     const int rz = component->resolutionZ;
-    const std::vector<int>& selected = LatticeEditorOps::getSelectedPoints(sceneId, lattice);
-    const bool plain = !io.KeyCtrl && !io.KeyShift && !io.KeyAlt && !io.KeySuper;
-
-    if (plain && ImGui::IsKeyPressed(ImGuiKey_Escape, false) && !selected.empty()){
-        select(project, sceneId, lattice, {});
-        return true;
+    const std::vector<int> selected = LatticeEditorOps::getSelectedPoints(sceneId, lattice);
+    switch (action){
+        case PointAction::SelectNone:
+            select(project, sceneId, lattice, {});
+            // the Alt of Alt+A must not also toggle the menu layer on release: ImGui only
+            // cancels that toggle for a key pressed in a later frame than Alt, so a fast chord (Alt
+            // and A in one frame) moved the keyboard focus to the menu bar and the next Scene-view
+            // shortcut (Ctrl+A) went nowhere
+            if (ImGui::GetCurrentContext()) ImGui::GetCurrentContext()->NavWindowingToggleLayer = false;
+            break;
+        case PointAction::Invert:
+            select(project, sceneId, lattice, lattice::invertSelection(rx, ry, rz, selected));
+            break;
+        case PointAction::Expand:
+            select(project, sceneId, lattice, lattice::expandSelection(rx, ry, rz, selected));
+            break;
+        case PointAction::Shrink:
+            select(project, sceneId, lattice, lattice::shrinkSelection(rx, ry, rz, selected));
+            break;
+        case PointAction::ToggleFalloff:
+            LatticeEditorOps::falloff().enabled = !LatticeEditorOps::falloff().enabled;
+            redraw(project, sceneId);
+            break;
     }
-    if (plain && ImGui::IsKeyPressed(ImGuiKey_O, false)){
-        LatticeEditorOps::falloff().enabled = !LatticeEditorOps::falloff().enabled;
-        redraw(project, sceneId);
-        return true;
-    }
-    if (io.KeyAlt && !io.KeyCtrl && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_A, false)){
-        select(project, sceneId, lattice, {});
-        // the Alt of this chord must not also toggle the menu layer on release: ImGui only
-        // cancels that toggle for a key pressed in a later frame than Alt, so a fast chord (Alt
-        // and A in one frame) moved the keyboard focus to the menu bar and the next Scene-view
-        // shortcut (Ctrl+A) went nowhere
-        ImGui::GetCurrentContext()->NavWindowingToggleLayer = false;
-        return true;
-    }
-    if (io.KeyCtrl && !io.KeyAlt && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_I, false)){
-        select(project, sceneId, lattice, lattice::invertSelection(rx, ry, rz, selected));
-        return true;
-    }
-    if (io.KeyCtrl && !io.KeyAlt && (ImGui::IsKeyPressed(ImGuiKey_Equal, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadAdd, false))){
-        select(project, sceneId, lattice, lattice::expandSelection(rx, ry, rz, selected));
-        return true;
-    }
-    if (io.KeyCtrl && !io.KeyAlt && (ImGui::IsKeyPressed(ImGuiKey_Minus, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadSubtract, false))){
-        select(project, sceneId, lattice, lattice::shrinkSelection(rx, ry, rz, selected));
-        return true;
-    }
-    return false;
+    return true;
 }
 
 void LatticeSceneTools::drawContextMenu(Project* project, uint32_t sceneId, Entity lattice){
@@ -229,13 +244,13 @@ void LatticeSceneTools::drawContextMenu(Project* project, uint32_t sceneId, Enti
     ImGui::Separator();
 
     ImGui::BeginDisabled(!editable);
-    if (ImGui::MenuItem("Select All", "Ctrl+A")){
+    if (ImGui::MenuItem("Select All", shortcutText("edit.selectAll").c_str())){
         select(project, sceneId, lattice, lattice::selectAll(rx, ry, rz));
     }
-    if (ImGui::MenuItem("Select None", "Alt+A", false, !selected.empty())){
+    if (ImGui::MenuItem("Select None", shortcutText("lattice.selectNone").c_str(), false, !selected.empty())){
         select(project, sceneId, lattice, {});
     }
-    if (ImGui::MenuItem("Invert", "Ctrl+I")){
+    if (ImGui::MenuItem("Invert", shortcutText("lattice.invert").c_str())){
         select(project, sceneId, lattice, lattice::invertSelection(rx, ry, rz, selected));
     }
     if (ImGui::MenuItem("Select Exterior")){
@@ -253,10 +268,10 @@ void LatticeSceneTools::drawContextMenu(Project* project, uint32_t sceneId, Enti
         }
         ImGui::EndMenu();
     }
-    if (ImGui::MenuItem("Expand", "Ctrl+=", false, !selected.empty())){
+    if (ImGui::MenuItem("Expand", shortcutText("lattice.expand").c_str(), false, !selected.empty())){
         select(project, sceneId, lattice, lattice::expandSelection(rx, ry, rz, selected));
     }
-    if (ImGui::MenuItem("Shrink", "Ctrl+-", false, !selected.empty())){
+    if (ImGui::MenuItem("Shrink", shortcutText("lattice.shrink").c_str(), false, !selected.empty())){
         select(project, sceneId, lattice, lattice::shrinkSelection(rx, ry, rz, selected));
     }
     ImGui::EndDisabled();

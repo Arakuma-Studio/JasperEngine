@@ -1,6 +1,7 @@
 """Shader library phase 2, review fixes in the editor (sl/p2-fix-editor):
-- a fork renamed, moved or deleted remaps (or clears) the material's and the extra pass's shader
-  in scenes, prefabs and .material files (D1);
+- a fork renamed or moved remaps the material's and the extra pass's shader in scenes, prefabs
+  and .material files by GUID (D1, S04 R13: no referrer file is rewritten); deleted, they stay
+  referenced and Missing (S04 R15);
 - set_properties refuses a whole value (extra pass, material, stencil, collection) together
   with a path inside it in one call, with the one-value form (D2);
 - the material presets judge a material by the shader it draws with (the mesh's customShader,
@@ -61,9 +62,16 @@ async def test_setup(ed: Editor):
 
 # ---------------------------------------------------------------------------- D1: fork remaps
 
+async def resolved_targets(ed: Editor, asset: str) -> list[str]:
+    """The paths an asset's references resolve to now (by GUID: S04)"""
+    deps = await ed.call("get_asset_dependencies", asset=asset)
+    return [d["target"]["path"] for d in deps["dependencies"]]
+
+
 async def test_fork_rename_remaps_material_and_pass_shaders(ed: Editor):
     """A fork used as a submesh material's shader and as its extra pass's, in the scene, a prefab
-    and a .material file: moving its folder remaps all of them; deleting it clears them"""
+    and a .material file: moving its folder remaps all of them by GUID, no referrer file rewritten
+    (S04 R13); deleting it leaves them referenced and Missing (S04 R15)"""
     eid = await make_entity(ed, "ForkUser")
     forked = await ed.call("fork_shader", entity=eid, directory="shaders/review", name="ReviewFork")
     base = forked["vert_path"][:-len(".vert")]
@@ -74,16 +82,24 @@ async def test_fork_rename_remaps_material_and_pass_shaders(ed: Editor):
     await ed.call("create_material", path="assets/materials/ReviewFork", values={"shader": base, "extraPass": {"shader": base}})
     await ed.call("create_prefab", entity=eid, path="prefabs/ReviewFork.prefab")
     await ed.call("save_scene")
+    material_file = ed.project / "assets/materials/ReviewFork.material"
+    prefab_file = ed.project / "prefabs/ReviewFork.prefab"
+    material = yaml.safe_load(material_file.read_text())
+    ed.check(material.get("shaderGuid") and (material.get("extraPass") or {}).get("shaderGuid"),
+             f"the .material file names the fork with its GUIDs: {material!r}")
+    material_text, prefab_text = material_file.read_text(), prefab_file.read_text()
 
     await ed.call("move_asset", path="shaders/review", to="shaders/review_moved")
     moved = "shaders/review_moved/ReviewFork"
     got = await props(ed, eid, M + "shader", P + "shader")
     ed.check_eq((got[M + "shader"], got[P + "shader"]), (moved, moved), "the scene's submesh follows the move")
-    material = yaml.safe_load((ed.project / "assets/materials/ReviewFork.material").read_text())
-    ed.check_eq((material.get("shader"), material.get("extraPass", {}).get("shader")), (moved, moved),
-                f"the .material file follows the move: {material!r}")
-    prefab = (ed.project / "prefabs/ReviewFork.prefab").read_text()
-    ed.check(moved in prefab and base + "\n" not in prefab, f"the prefab follows the move:\n{prefab}")
+    ed.check_eq((material_file.read_text(), prefab_file.read_text()), (material_text, prefab_text),
+                "R13: the move rewrites no referrer file")
+    for owner in ("assets/materials/ReviewFork.material", "prefabs/ReviewFork.prefab"):
+        targets = await resolved_targets(ed, owner)
+        for ext in (".vert", ".frag"):
+            ed.check(sum(t.endswith(moved + ext) for t in targets) >= 2,
+                     f"{owner}: the shader and the pass's resolve to the moved fork's {ext}: {targets}")
     await ed.call("save_scene")
     scene = (ed.project / SCENE).read_text()
     ed.check(scene.count(moved) >= 2, f"the saved scene names the moved fork twice:\n{scene}")
@@ -94,13 +110,18 @@ async def test_fork_rename_remaps_material_and_pass_shaders(ed: Editor):
     ed.check_eq((got[M + "shader"], got[P + "shader"]), (base, base), "undo of the move")
     await ed.call("move_asset", path="shaders/review", to="shaders/review_moved")
 
-    # deleting the fork's files clears the references (the pass is gone, the material draws Lit)
+    # deleting the fork's files clears nothing (R15): the references are Missing until it is back
     await ed.call("delete_asset", paths=["shaders/review_moved"])
     got = await props(ed, eid, M + "shader", P + "shader")
-    ed.check_eq((got[M + "shader"], got[P + "shader"]), ("", ""), "a deleted fork is no reference")
-    material = yaml.safe_load((ed.project / "assets/materials/ReviewFork.material").read_text()) or {}
-    ed.check(not material.get("shader") and not (material.get("extraPass") or {}).get("shader"),
-             f"the .material file drops the deleted fork: {material!r}")
+    ed.check_eq((got[M + "shader"], got[P + "shader"]), (moved, moved), "a deleted fork stays referenced")
+    ed.check_eq(material_file.read_text(), material_text, "the .material file keeps the deleted fork")
+    listed = (await ed.call("list_missing_assets"))["missing"]
+    # (the .material file still names the fork's first path: R13 rewrote nothing; the GUID is missing)
+    missing = {r["owner"] for g in listed if "ReviewFork" in g["last_path"] for r in g["referrers"]}
+    ed.check(any(o.endswith("ReviewFork.material") for o in missing), f"Missing Assets lists the .material file: {listed!r:.3000}")
+    await ed.call("undo", scope="project")
+    got = await props(ed, eid, M + "shader", P + "shader")
+    ed.check_eq((got[M + "shader"], got[P + "shader"]), (moved, moved), "the fork is back")
     await ed.call("save_scene")
 
 

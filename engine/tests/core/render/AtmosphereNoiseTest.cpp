@@ -14,6 +14,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -28,6 +29,14 @@ namespace {
     std::string_view view(const std::vector<uint8_t>& bytes){
         return std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size());
     }
+
+    // What the test's thread (the main thread of the bake) does inside the job system while the
+    // bake runs, counted by the jobs profiler hooks: a job it runs, or a wait it enters
+    thread_local bool onBakeCaller = false;
+    std::atomic<int> callerJobs{0};
+    std::atomic<int> callerWaits{0};
+    void countCallerJob(const char*, jobs::Lane, int){ if (onBakeCaller) callerJobs++; }
+    void countCallerWait(jobs::WaitKind){ if (onBakeCaller) callerWaits++; }
 
     double nowMs(){
         return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -132,6 +141,21 @@ TEST(AtmosphereNoise, ChannelsSpanTheFullRange){
 
 TEST(AtmosphereNoise, BakesOnTheJobsWithoutBlockingTheMainThread){
     ASSERT_FALSE(jobs::system().isSingleThreaded()) << "the threaded bake needs workers";
+    // the behaviour: the main thread never runs a piece of the bake and never waits for one
+    // (a wall-clock budget per call measures the host's load as much: it is the benchmark's)
+    jobs::ProfilerHooks hooks;
+    hooks.onJobBegin = &countCallerJob;
+    hooks.onWaitBegin = &countCallerWait;
+    callerJobs = 0;
+    callerWaits = 0;
+    onBakeCaller = true;
+    jobs::setProfilerHooks(hooks);
+    struct Uninstall {
+        ~Uninstall(){
+            jobs::setProfilerHooks(jobs::ProfilerHooks());
+            onBakeCaller = false;
+        }
+    } uninstall;
     AtmosphereNoise noise;
     const double start = nowMs();
     double longestCall = 0.0;
@@ -150,6 +174,8 @@ TEST(AtmosphereNoise, BakesOnTheJobsWithoutBlockingTheMainThread){
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     const double wall = nowMs() - start;
+    EXPECT_EQ(callerJobs.load(), 0) << "the main thread ran part of the bake";
+    EXPECT_EQ(callerWaits.load(), 0) << "the main thread waited for the bake";
     // R20's 250 ms is the reference desktop's (8 hardware threads: 4 workers run Background
     // jobs beside the 2 kept for the frame); a host granting fewer gets a proportionally longer
     // budget

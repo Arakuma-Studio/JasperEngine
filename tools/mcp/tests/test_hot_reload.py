@@ -15,6 +15,7 @@ import time
 import zlib
 from pathlib import Path
 
+import harness
 import pngdiff
 from harness import Editor, find_key
 
@@ -324,6 +325,7 @@ async def test_reload_hitch(ed: Editor):
     r = await ed.call_raw("play", {"action": "start", "scene": STATE["scene"], "timeout_seconds": 300})
     ed.check(not r.is_error, f"play failed: {r.text[:500]}")
     latencies = []
+    missed = 0
     runs: dict[str, list[dict]] = {"control": [], "reload": []}
 
     async def stat(run: str) -> dict:
@@ -340,12 +342,15 @@ async def test_reload_hitch(ed: Editor):
                 t0 = time.monotonic()
                 if run == "reload":
                     safe_save(big, png_bytes(GREEN if i % 2 == 0 else RED, 2048))
+                reloaded = False
                 while time.monotonic() - t0 < (5.0 if run == "reload" else 0.25):
                     if (await stat(run))["file_watcher"]["reloads"] > before:
+                        reloaded = True
                         break
                     time.sleep(0.02)
                 if run == "reload":
                     latencies.append(time.monotonic() - t0)
+                    missed += 0 if reloaded else 1
                 time.sleep(0.2)
             await stat(run)
     finally:
@@ -356,11 +361,17 @@ async def test_reload_hitch(ed: Editor):
           f"reload {reload[0]} frames, median {reload[1]:.1f} ms, max {reload[2]:.1f} ms; "
           f"reload latency max {max(latencies) * 1000:.0f} ms")
     ed.check(reload[0] >= 100, f"the view redrew continuously: {reload[0]} frames")
+    ed.check(missed == 0, f"{missed} of the 20 saves were not reloaded within 5 s: latencies (s) {latencies!r}")
+    # R22-R24's budgets are wall-clock ones: the benchmark run enforces them (harness.over_budget);
+    # on a shared builder the neighbours' load makes frames of 60-100 ms with or without a reload
     hitch = (reload[2] - reload[1]) - max(0.0, control[2] - control[1])
-    ed.check(hitch <= 16.0, f"a reload frame hitched {hitch:.1f} ms over the run's own spikes: control {control}, reload {reload}")
-    ed.check(reload[1] <= control[1] * 1.25 + 2.0, f"the reloads slowed every frame: control {control}, reload {reload}")
+    slow = harness.over_budget("AC19 reload frame hitch over the run's own spikes", {"hitch": hitch}, 16.0, "ms")
+    ed.check(not slow, f"a reload frame hitched {hitch:.1f} ms over the run's own spikes: control {control}, reload {reload}")
+    slow = harness.over_budget("AC19 median frame, reload run", {"median": reload[1]}, control[1] * 1.25 + 2.0, "ms")
+    ed.check(not slow, f"the reloads slowed every frame: control {control}, reload {reload}")
     # each measure includes the status calls' own round trips
-    ed.check(max(latencies) <= 0.5 + 0.25, f"reload latencies (s): {latencies!r}")
+    slow = harness.over_budget("AC19 slowest reload latency", {"latency": max(latencies)}, 0.5 + 0.25)
+    ed.check(not slow, f"reload latencies (s): {latencies!r}")
 
 
 async def test_bulk_checkout(ed: Editor):
@@ -385,23 +396,31 @@ async def test_bulk_checkout(ed: Editor):
     t0 = time.monotonic()
     for i, p in enumerate(files):
         p.write_text(f"{i} checked out")
-    # editor_status is asked throughout the 10 s, also after the watcher settled (the asset
-    # database's refresh of the burst runs then)
+    written = time.monotonic() - t0
+    # editor_status is asked until the watcher settled and for at least the 10 s of the budget
+    # (the asset database's refresh of the burst runs after it settled); a loaded runner may take
+    # longer than that to write the files alone, so the wait ends 120 s after the writes
     slowest = 0.0
     took = None
-    while time.monotonic() - t0 < 10.0:
+    stats: dict = {}
+    while True:
         c0 = time.monotonic()
         stats = await ed.call("editor_status")
         slowest = max(slowest, time.monotonic() - c0)
         fw = stats["file_watcher"]
         if took is None and fw["pending"] == 0 and fw["reloading"] == 0:
             took = time.monotonic() - t0
+        if (took is not None and time.monotonic() - t0 >= 10.0) or time.monotonic() - t0 > written + 120.0:
+            break
         time.sleep(0.1)
-    if took is None:
-        took = time.monotonic() - t0
-    print(f"     [bulk] settled in {took:.1f} s, slowest editor_status {slowest:.3f} s, last {stats['file_watcher']!r}")
-    ed.check(took <= 10.0 + 1.0, f"the burst settled within 10 s (took {took:.1f} s, slowest call {slowest:.3f} s)")
-    ed.check(slowest < 0.2 + 0.3, f"editor_status stayed responsive (slowest {slowest:.3f} s)")
+    print(f"     [bulk] files written in {written:.1f} s, settled in {took}, slowest editor_status {slowest:.3f} s, "
+          f"last {stats['file_watcher']!r}")
+    ed.check(took is not None, f"the burst never settled: {stats['file_watcher']!r}")
+    # R25's budgets are wall-clock ones: the benchmark run enforces them (harness.over_budget)
+    slow = harness.over_budget("S05 R25 checkout burst settled", {"settled": took}, 10.0 + 1.0)
+    ed.check(not slow, f"the burst settled within 10 s (took {took:.1f} s, slowest call {slowest:.3f} s)")
+    slow = harness.over_budget("S05 R25 slowest editor_status during the burst", {"slowest": slowest}, 0.2 + 0.3)
+    ed.check(not slow, f"editor_status stayed responsive (slowest {slowest:.3f} s)")
     lines = await ed.console_since(contains="[Hot Reload]")
     ed.check(len(lines) <= 10, f"{len(lines)} [Hot Reload] lines: {[e['message'] for e in lines][:12]!r}")
 

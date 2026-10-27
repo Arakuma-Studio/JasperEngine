@@ -892,19 +892,25 @@ void editor::ProjectWindow::renderHeader() {
 
     const float gearW = ImGui::CalcTextSize(ICON_FA_ELLIPSIS_VERTICAL).x + ImGui::GetStyle().FramePadding.x * 2.0f;
     const float searchW = std::min(Theme::dpi(240.0f), std::max(Theme::dpi(100.0f), barW * 0.35f));
+    // Search by Type, Search by Label and Save Search sit left of the field (Unity)
+    const float toolW = (ImGui::GetFrameHeight() + Theme::dpi(2.0f)) * 3.0f;
     ImGui::SameLine();
+    ImGui::SetCursorScreenPos(ImVec2(barMin.x + barW - padX - gearW - Theme::dpi(8.0f) - searchW - toolW, barMin.y + padY));
+    renderSearchTools();
+    ImGui::SameLine(0.0f, Theme::dpi(4.0f));
     ImGui::SetCursorScreenPos(ImVec2(barMin.x + barW - padX - gearW - Theme::dpi(4.0f) - searchW, barMin.y + padY));
-    const bool searchEdited = UIUtils::searchInput("##ProjectSearch", "Search", searchBuffer, IM_ARRAYSIZE(searchBuffer), false, nullptr, searchW);
+    const bool searchEdited = UIUtils::searchInput("##ProjectSearch", "Search  (t:Texture2D l:Label ext: path: re:)", searchBuffer,
+                                                   IM_ARRAYSIZE(searchBuffer), false, nullptr, searchW);
     uiBuilding.searchBox = lastItemRect();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
+        ImGui::SetTooltip("Words match names (typos forgiven); \"a phrase\" exactly; t:type l:label ext:png path:part re:regex "
+                          "ref:asset missing:; the same key ORs, different keys AND; OR joins whole searches");
+    }
     if (searchEdited) {
         std::string trimmed = searchBuffer;
         trimmed.erase(0, trimmed.find_first_not_of(" \t"));
         trimmed.erase(trimmed.find_last_not_of(" \t") + 1);
-        if (trimmed != searchText) {
-            searchText = trimmed;
-            selectedFiles.clear();
-            scanDirectory(currentPath);
-        }
+        if (trimmed != searchText) setSearch(trimmed);
     }
     ImGui::SameLine(0.0f, Theme::dpi(4.0f));
     if (projectToolbarButton(ICON_FA_ELLIPSIS_VERTICAL, "Project panel options")) {
@@ -1009,6 +1015,9 @@ void editor::ProjectWindow::renderBottomBar() {
     } else if (selectedFiles.size() > 1) {
         status = std::to_string(selectedFiles.size()) + " items selected";
     }
+    // the selection's Asset Labels, left of the size slider (S25 R23)
+    const float stripWidth = renderLabelStrip(barMin, barH, sliderX - padX);
+    const float statusRight = sliderX - padX - stripWidth - (stripWidth > 0.0f ? padX : 0.0f);
     if (!status.empty()) {
         float x = barMin.x + padX;
         const float lineH = ImGui::GetTextLineHeight();
@@ -1017,7 +1026,7 @@ void editor::ProjectWindow::renderBottomBar() {
             dl->AddImage(tex, ImVec2(x, textY), ImVec2(x + lineH, textY + lineH));
             x += lineH + Theme::dpi(4.0f);
         }
-        ImGui::RenderTextEllipsis(dl, ImVec2(x, textY), ImVec2(sliderX - padX, textY + lineH), sliderX - padX, status.c_str(), nullptr, nullptr);
+        ImGui::RenderTextEllipsis(dl, ImVec2(x, textY), ImVec2(statusRight, textY + lineH), statusRight, status.c_str(), nullptr, nullptr);
     }
 
     ImGui::SetCursorScreenPos(ImVec2(sliderX, barMin.y + padY));
@@ -1220,6 +1229,9 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
 
     ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, cellPadding);
 
+    handleTypeAhead();
+    handleWheelResize();
+
     bool clickedInFile = false;
     hoveredFile.clear();
 
@@ -1351,6 +1363,21 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
 
             ImVec2 itemMin = ImGui::GetItemRectMin();
             ImVec2 itemMax = ImGui::GetItemRectMax();
+            // type-ahead picked it: into view
+            if (file.name == scrollToFile) {
+                ImGui::SetScrollHereY(0.5f);
+                scrollToFile.clear();
+            }
+            // a ping (Search, Bookmarks): a fading frame around the item, scrolled into view once
+            if (file.name == pingName && ImGui::GetTime() < pingUntil) {
+                if (pingScroll) {
+                    ImGui::SetScrollHereY(0.5f);
+                    pingScroll = false;
+                }
+                const float alpha = static_cast<float>((pingUntil - ImGui::GetTime()) / 1.5);
+                ImGui::GetWindowDrawList()->AddRect(itemMin, itemMax, ImGui::GetColorU32(ImVec4(1.0f, 0.85f, 0.2f, alpha)),
+                                                    Theme::dpi(3.0f), 0, Theme::dpi(2.0f));
+            }
             if (uiBuilding.entries.size() < 200) {
                 uiBuilding.entries.push_back({file.name, lastItemRect()});
             }
@@ -1692,6 +1719,9 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                 }
             }
 
+            // its asset labels: dots on tiles, chips on list rows (S25 R23)
+            drawItemLabels(file, itemMin, itemMax, useListView);
+
             // --- Selection behavior (unified) ------------------------------
             if (itemPressed && !doubleClickedItem){
                 clickedInFile = true;
@@ -1850,8 +1880,12 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
 
                 ImGui::Separator();
 
+                renderLabelsMenu();
+                if (ImGui::MenuItem(ICON_FA_BOOKMARK " Add to Bookmarks")) addSelectionToBookmarks();
+                ImGui::Separator();
                 if (ImGui::MenuItem(ICON_FA_TRASH " Delete")) showDeleteConfirmation = true;
-                const bool rename = ImGui::MenuItem(ICON_FA_I_CURSOR " Rename", "F2");
+                const std::string renameKeys = CommandCatalog::editor().menuShortcutText("project.rename");
+                const bool rename = ImGui::MenuItem(ICON_FA_I_CURSOR " Rename", renameKeys.empty() ? nullptr : renameKeys.c_str());
                 uiBuilding.contextMenu.push_back({"Rename", lastItemRect()});
                 if (rename){
                     startRename(file.name);
@@ -1896,6 +1930,11 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
         }
 
         ImGui::EndTable();
+    }
+    if (!searchText.empty() && searchMoreResults > 0) {
+        ImGui::TextDisabled("%zu more results: narrow the search", searchMoreResults);
+    } else if (!searchText.empty() && files.empty() && searchError.empty()) {
+        ImGui::TextDisabled("Nothing matches the search.");
     }
 
     ImGui::PopStyleVar();
@@ -2134,6 +2173,7 @@ void editor::ProjectWindow::renderDirectoryTree(const fs::path& rootPath) {
         if (rootPath != currentPath || !searchText.empty()) {
             searchText.clear();
             searchBuffer[0] = '\0';
+            searchReturnPath.clear();
             scanDirectory(rootPath);
             selectedFiles.clear();
         }
@@ -2218,12 +2258,17 @@ void editor::ProjectWindow::rebuildFileIndex() {
 }
 
 editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::directory_entry& entry, const std::string& name) {
+    std::error_code entryEc;
+    const bool isDirectory = entry.is_directory(entryEc) && !entryEc;
+    return makeFileEntry(entry.path(), name, isDirectory);
+}
+
+editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::path& path, const std::string& name, bool isDirectory) {
     FileEntry fileEntry;
     fileEntry.name = name;
-    std::error_code entryEc;
-    fileEntry.isDirectory = entry.is_directory(entryEc) && !entryEc;
+    fileEntry.isDirectory = isDirectory;
 
-    const std::string fileName = entry.path().filename().string();
+    const std::string fileName = path.filename().string();
     fileEntry.displayName = BidiText::toVisual(fileName);
     std::string baseName = fileName;
     if (!fileEntry.isDirectory){
@@ -2236,7 +2281,7 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::directory_entry
     fileEntry.hasThumbnail = false;
 
     if (!fileEntry.isDirectory) {
-        fileEntry.extension = entry.path().extension().string();
+        fileEntry.extension = path.extension().string();
         if (Util::isImageFile(fileEntry.extension)){
             fileEntry.type = FileType::IMAGE;
         }else if (Util::isSceneFile(fileEntry.extension)){
@@ -2277,44 +2322,16 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::directory_entry
 
         if (fileEntry.type == FileType::IMAGE || fileEntry.type == FileType::MATERIAL || fileEntry.type == FileType::MODEL ||
             fileEntry.type == FileType::PREFAB) {
-            queueThumbnailGeneration(entry.path(), fileEntry.type);
+            queueThumbnailGeneration(path, fileEntry.type);
         }
+        // its asset labels (S25)
+        const Guid guid = project->getAssetDatabase().getAssetGuid(project->normalizeToProjectRelative(path));
+        if (!guid.isNull()) fileEntry.labels = project->getAssetLabels().labelsOf(guid);
     } else {
         fileEntry.extension = "";
     }
 
     return fileEntry;
-}
-
-void editor::ProjectWindow::collectSearchResults() {
-    // Case-insensitive substring match on the file name, like Unity's search
-    // box. Entry names are paths relative to currentPath, so every
-    // currentPath / name use (open, drag, delete, rename) keeps working.
-    auto lower = [](std::string s) {
-        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        return s;
-    };
-    const std::string needle = lower(searchText);
-    constexpr size_t MAX_SEARCH_RESULTS = 2000;
-
-    std::error_code ec;
-    fs::recursive_directory_iterator it(currentPath, fs::directory_options::skip_permission_denied, ec);
-    fs::recursive_directory_iterator end;
-    while (!ec && it != end && files.size() < MAX_SEARCH_RESULTS) {
-        const fs::directory_entry entry = *it;
-        const std::string fileName = entry.path().filename().string();
-        std::error_code entryEc;
-        const bool isDir = entry.is_directory(entryEc) && !entryEc;
-        if (fileName.empty() || fileName[0] == '.') {
-            if (isDir) it.disable_recursion_pending();
-            it.increment(ec);
-            continue;
-        }
-        if (fileName != "project.yaml" && !AssetTypes::isMetaFile(entry.path()) && lower(fileName).find(needle) != std::string::npos) {
-            files.push_back(makeFileEntry(entry, entry.path().lexically_relative(currentPath).generic_string()));
-        }
-        it.increment(ec);
-    }
 }
 
 void editor::ProjectWindow::sortWithSortSpecs(ImGuiTableSortSpecs* sortSpecs, std::vector<FileEntry>& files) {
@@ -3496,6 +3513,10 @@ void editor::ProjectWindow::show() {
     ctrlPressed = ImGui::GetIO().KeyCtrl;
     shiftPressed = ImGui::GetIO().KeyShift;
 
+    // S25: a search follows the asset index, the listing the label store
+    refreshSearchIfStale();
+    refreshEntryLabels();
+
     if (focusRequested) {
         ImGui::SetNextWindowFocus();
         focusRequested = false;
@@ -3522,6 +3543,7 @@ void editor::ProjectWindow::show() {
         float windowWidth = ImGui::GetWindowWidth();
         effectiveLayout = (windowWidth < Theme::dpi(layoutAutoThreshold)) ? LayoutType::GRID : LayoutType::SPLIT;
     }
+    lastLayout = effectiveLayout;
 
     // Folders first, then names (the listing has no sortable header)
     if (requestSort) {
@@ -3579,12 +3601,15 @@ void editor::ProjectWindow::show() {
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
         renderPathBreadcrumb(ImVec2(0.0f, breadcrumbHeight));
         ImGui::PopStyleVar();
+        renderSearchScopeBar();
 
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(Theme::dpi(4.0f), Theme::dpi(1.0f)));
         const float bottomBarHeight = ImGui::GetFrameHeight() + Theme::dpi(4.0f);
         ImGui::PopStyleVar();
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, innerPadding);
-        ImGui::BeginChild("FileTableScrollRegion", ImVec2(0, -bottomBarHeight), ImGuiChildFlags_AlwaysUseWindowPadding);
+        // Ctrl+wheel resizes the items instead of scrolling (S25 R25)
+        ImGui::BeginChild("FileTableScrollRegion", ImVec2(0, -bottomBarHeight), ImGuiChildFlags_AlwaysUseWindowPadding,
+                          ImGui::GetIO().KeyCtrl ? ImGuiWindowFlags_NoScrollWithMouse : ImGuiWindowFlags_None);
         renderFileListing(showDirectories);
         ImGui::EndChild();
         ImGui::PopStyleVar();
@@ -3602,6 +3627,8 @@ void editor::ProjectWindow::show() {
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImGui::GetStyle().ItemSpacing);
         ImGui::BeginChild("LeftPanel", ImVec2(Theme::dpi(leftPanelWidth), 0), ImGuiChildFlags_AlwaysUseWindowPadding);
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, Theme::dpi(2.0f)));
+        // Unity's Favorites: saved searches and bookmarks over the folders (S25 R26)
+        renderFavorites();
         renderDirectoryTree(project->getProjectPath());
         ImGui::PopStyleVar();
         ImGui::EndChild();
@@ -3651,36 +3678,10 @@ void editor::ProjectWindow::show() {
 
     windowFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 
-    if (windowFocused) {
-        if (!selectedFiles.empty() && !ImGui::GetIO().WantTextInput &&
-            (ImGui::IsKeyPressed(ImGuiKey_Delete) || ImGui::IsKeyPressed(ImGuiKey_Backspace))) {
-            // Trigger delete confirmation (handled in renderFileListing)
-            showDeleteConfirmation = true;
-        }
-        // F2 renames the single selected file, or the hovered one when nothing is selected
-        if (ImGui::IsKeyPressed(ImGuiKey_F2, false) && !ImGui::GetIO().WantTextInput) {
-            std::string target = hoveredFile;
-            if (selectedFiles.size() == 1) {
-                const std::string& selected = *selectedFiles.begin();
-                if (std::any_of(files.begin(), files.end(), [&](const FileEntry& f){ return f.name == selected; })) target = selected;
-            }
-            if (!target.empty()) startRename(target);
-        }
-        if (ctrlPressed) {
-            if (ImGui::IsKeyPressed(ImGuiKey_C)) copySelectedFiles(false);
-            else if (ImGui::IsKeyPressed(ImGuiKey_X)) copySelectedFiles(true);
-            else if (ImGui::IsKeyPressed(ImGuiKey_V) && !clipboardFiles.empty()) pasteFiles(currentPath);
-            else if (ImGui::IsKeyPressed(ImGuiKey_A)) {
-                // Directories are only selectable when the listing shows them
-                bool listingShowsDirectories = (effectiveLayout != LayoutType::SPLIT_FILES_ONLY);
-                selectedFiles.clear();
-                for (const auto& file : files) {
-                    if (listingShowsDirectories || !file.isDirectory) selectedFiles.insert(file.name);
-                }
-                if (!files.empty()) lastSelectedFile = files.back().name;
-            }
-        }
-    }
+    // Its keys (Ctrl+C/X/V/A, Delete, F2) are the command catalog's Project context
+    // (shortcuts/DefaultCommands.cpp), which calls copySelection, pasteClipboard and the others
+
+    renderSearchPopups();
 
     uiBuilding.drawn = true;
     uiBuilding.directory = project->normalizeToProjectRelative(currentPath).generic_string();
@@ -3954,4 +3955,49 @@ void editor::ProjectWindow::assetsImport() {
 
 void editor::ProjectWindow::assetsRefresh() {
     refreshCurrentDirectory();
+}
+
+// ---- the Project context's commands (the catalog's project.*) ---------------
+
+void editor::ProjectWindow::copySelection(bool cut) {
+    copySelectedFiles(cut);
+}
+
+bool editor::ProjectWindow::canPasteClipboard() const {
+    return !clipboardFiles.empty();
+}
+
+void editor::ProjectWindow::pasteClipboard() {
+    if (!clipboardFiles.empty()) pasteFiles(currentPath);
+}
+
+void editor::ProjectWindow::selectAllInListing() {
+    // Directories are only selectable when the listing shows them
+    const bool listingShowsDirectories = lastLayout != LayoutType::SPLIT_FILES_ONLY;
+    selectedFiles.clear();
+    for (const auto& file : files) {
+        if (listingShowsDirectories || !file.isDirectory) selectedFiles.insert(file.name);
+    }
+    if (!files.empty()) lastSelectedFile = files.back().name;
+}
+
+void editor::ProjectWindow::requestDeleteSelection() {
+    // the confirmation is drawn by renderFileListing
+    if (!selectedFiles.empty()) showDeleteConfirmation = true;
+}
+
+void editor::ProjectWindow::renameSelectedOrHovered() {
+    // the single selected file, or the hovered one when nothing is selected
+    std::string target = hoveredFile;
+    if (selectedFiles.size() == 1) {
+        const std::string& selected = *selectedFiles.begin();
+        if (std::any_of(files.begin(), files.end(), [&](const FileEntry& f){ return f.name == selected; })) target = selected;
+    }
+    if (!target.empty()) startRename(target);
+}
+
+void editor::ProjectWindow::pingAsset(const std::string& projectRelative) {
+    pingName = fs::path(projectRelative).filename().string();
+    pingUntil = ImGui::GetTime() + 1.5;
+    pingScroll = true;
 }

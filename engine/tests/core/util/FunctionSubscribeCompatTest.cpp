@@ -7,6 +7,8 @@
 
 #include <gtest/gtest.h>
 
+#include <csignal>
+
 #include <string>
 #include <vector>
 
@@ -185,9 +187,22 @@ TEST(FunctionSubscribeCompatTest, ZeroAllocCall) {
     EXPECT_EQ(sum, 2002);
 }
 
-// The subscribers crash on purpose (a null store, caught by the crash guard): UBSan reports that
-// store as undefined behaviour and halts first, and TSan does not run the guard's handler
-#if !defined(__EMSCRIPTEN__) && !defined(JASPERENGINE_SANITIZE_THREAD) && !defined(JASPERENGINE_SANITIZE_UNDEFINED)
+#if !defined(__EMSCRIPTEN__) && !defined(JASPERENGINE_SANITIZE_THREAD)
+namespace {
+    // The subscribers' deliberate crash: a null store, which the crash guard's SIGSEGV handler
+    // catches. Under ASan and UBSan the same signal is raised instead: UBSan halts on the null
+    // store as undefined behaviour before any handler runs (-fno-sanitize-recover), and a raised
+    // SIGSEGV goes through the guard's handler as the fault does.
+    void crashHere() {
+#if defined(JASPERENGINE_SANITIZE_UNDEFINED) || defined(JASPERENGINE_SANITIZE_ADDRESS)
+        std::raise(SIGSEGV);
+#else
+        volatile int* nothing = nullptr;
+        *nothing = 1;
+#endif
+    }
+}
+
 TEST(FunctionSubscribeCompatTest, CrashingSubscriberIsRemovedAndReported) {
     std::vector<std::string> reported;
     CrashHook::set([&reported](const std::string& tag, const std::string& error) { reported.push_back(tag + ": " + error); });
@@ -195,10 +210,7 @@ TEST(FunctionSubscribeCompatTest, CrashingSubscriberIsRemovedAndReported) {
     int before = 0;
     int after = 0;
     event.add("before", [&]() { before++; });
-    event.add("crasher", []() {
-        volatile int* nothing = nullptr;
-        *nothing = 1;
-    });
+    event.add("crasher", []() { crashHere(); });
     event.add("after", [&]() { after++; });
     event.call();
     event.call();
@@ -213,8 +225,8 @@ TEST(FunctionSubscribeCompatTest, CrashingSubscriberIsRemovedAndReported) {
     CrashHook::set([](const std::string&, const std::string&) {});
     FunctionSubscribe<int()> ret;
     ret.add("crasher", []() {
-        volatile int* nothing = nullptr;
-        return *nothing;
+        crashHere();
+        return 0;
     });
     ret.add("answer", []() { return 42; });
     EXPECT_EQ(ret.callRet(7), 42);
