@@ -1085,8 +1085,6 @@ bool MeshBvh::deserialize(std::span<const uint8_t> bytes, const PickGeometry& ge
     // read while the boxes are computed (refitNodes, on the workers for a large mesh)
     const size_t vertexCount = geometry.positions.size();
     std::vector<uint8_t> seen(geometryTriangles, 0);
-    std::vector<uint32_t> corners((size_t)header.triangleCount * 3);
-    triangles.resize(header.triangleCount);
     for (uint32_t i = 0; i < header.triangleCount; i++){
         uint32_t index;
         std::memcpy(&index, indexBytes + (size_t)i * sizeof(uint32_t), sizeof(uint32_t));
@@ -1094,14 +1092,37 @@ bool MeshBvh::deserialize(std::span<const uint8_t> bytes, const PickGeometry& ge
             return fail();
         }
         seen[index] = 1;
-        const uint32_t a = geometry.indices[(size_t)index * 3], b = geometry.indices[(size_t)index * 3 + 1], c = geometry.indices[(size_t)index * 3 + 2];
-        if (a >= vertexCount || b >= vertexCount || c >= vertexCount){
-            return fail();
+    }
+    // the corners: reads all over the geometry's indices (leaf order), on the workers for a
+    // large mesh
+    std::vector<uint32_t> corners((size_t)header.triangleCount * 3);
+    triangles.resize(header.triangleCount);
+    std::atomic<bool> outOfRange{false};
+    auto readCorners = [&](size_t begin, size_t end){
+        for (size_t i = begin; i < end; i++){
+            uint32_t index;
+            std::memcpy(&index, indexBytes + i * sizeof(uint32_t), sizeof(uint32_t));
+            const uint32_t* corner = geometry.indices.data() + (size_t)index * 3;
+            if (corner[0] >= vertexCount || corner[1] >= vertexCount || corner[2] >= vertexCount){
+                outOfRange.store(true, std::memory_order_relaxed);
+                return;
+            }
+            triangles[i].index = index;
+            corners[i * 3] = corner[0];
+            corners[i * 3 + 1] = corner[1];
+            corners[i * 3 + 2] = corner[2];
         }
-        triangles[i].index = index;
-        corners[(size_t)i * 3] = a;
-        corners[(size_t)i * 3 + 1] = b;
-        corners[(size_t)i * 3 + 2] = c;
+    };
+    constexpr size_t CORNER_CHUNK = 16384;
+    if (header.triangleCount > CORNER_CHUNK * 2){
+        jobs::parallelFor((header.triangleCount + CORNER_CHUNK - 1) / CORNER_CHUNK, [&](size_t chunk){
+            readCorners(chunk * CORNER_CHUNK, std::min<size_t>(header.triangleCount, (chunk + 1) * CORNER_CHUNK));
+        });
+    }else{
+        readCorners(0, header.triangleCount);
+    }
+    if (outOfRange.load(std::memory_order_relaxed)){
+        return fail();
     }
     // a geometry triangle the file leaves out must be one the build leaves out (not finite)
     for (uint32_t index = 0; index < geometryTriangles; index++){
