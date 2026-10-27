@@ -5,6 +5,7 @@
 
 #include "component/MeshComponent.h"
 #include "jobs/JobSystem.h"
+#include "texture/TexturePrepare.h"
 
 #include <algorithm>
 #include <cmath>
@@ -22,7 +23,8 @@ namespace {
             case AttributeDataType::BYTE:
             case AttributeDataType::UNSIGNED_BYTE: return 1;
             case AttributeDataType::SHORT:
-            case AttributeDataType::UNSIGNED_SHORT: return 2;
+            case AttributeDataType::UNSIGNED_SHORT:
+            case AttributeDataType::HALF: return 2;
             default: return 4;
         }
     }
@@ -142,6 +144,10 @@ namespace {
             case AttributeDataType::FLOAT:{
                 float value; std::memcpy(&value, data, 4);
                 return value;
+            }
+            case AttributeDataType::HALF:{
+                uint16_t value; std::memcpy(&value, data, 2);
+                return halfToFloat(value);
             }
         }
         return 0.0f;
