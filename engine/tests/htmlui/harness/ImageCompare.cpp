@@ -10,6 +10,7 @@
 #include "stb_image_write.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -106,25 +107,71 @@ CompareResult jasperengine::test::compareWithGoldenFile(const std::string& golde
         return result;
     }
 
-    const size_t pixelCount = static_cast<size_t>(width) * height;
-    std::vector<uint8_t> diff(pixelCount * 4);
-    double sum = 0.0;
-
-    for (size_t i = 0; i < pixelCount; i++){
-        const uint8_t* a = &rgba[i * 4];
-        const uint8_t* g = &golden[i * 4];
+    // the compared units: pixels, or the mean colours of blockSize x blockSize blocks
+    const int block = std::max(1, options.blockSize);
+    const int columns = (width + block - 1) / block;
+    const int rows = (height + block - 1) / block;
+    std::vector<int> actualUnits;
+    std::vector<int> goldenUnits;
+    if (block > 1){
+        actualUnits.assign(size_t(columns) * rows * 4, 0);
+        goldenUnits.assign(size_t(columns) * rows * 4, 0);
+        for (int by = 0; by < rows; by++){
+            for (int bx = 0; bx < columns; bx++){
+                const int x0 = bx * block, y0 = by * block;
+                const int x1 = std::min(width, x0 + block), y1 = std::min(height, y0 + block);
+                const double count = double(x1 - x0) * double(y1 - y0);
+                double a[4] = {0.0, 0.0, 0.0, 0.0};
+                double g[4] = {0.0, 0.0, 0.0, 0.0};
+                for (int y = y0; y < y1; y++){
+                    for (int x = x0; x < x1; x++){
+                        const size_t i = (size_t(y) * width + x) * 4;
+                        for (int c = 0; c < 4; c++){
+                            a[c] += rgba[i + c];
+                            g[c] += golden[i + c];
+                        }
+                    }
+                }
+                for (int c = 0; c < 4; c++){
+                    actualUnits[(size_t(by) * columns + bx) * 4 + c] = int(std::lround(a[c] / count));
+                    goldenUnits[(size_t(by) * columns + bx) * 4 + c] = int(std::lround(g[c] / count));
+                }
+            }
+        }
+    }
+    auto unitDifference = [&](size_t unit){
         int d = 0;
         for (int c = 0; c < 4; c++){
-            d = std::max(d, std::abs(int(a[c]) - int(g[c])));
+            const int a = block > 1 ? actualUnits[unit * 4 + c] : int(rgba[unit * 4 + c]);
+            const int g = block > 1 ? goldenUnits[unit * 4 + c] : int(golden[unit * 4 + c]);
+            d = std::max(d, std::abs(a - g));
         }
+        return d;
+    };
+
+    const size_t pixelCount = static_cast<size_t>(width) * height;
+    const size_t unitCount = block > 1 ? size_t(columns) * rows : pixelCount;
+    std::vector<int> unitDiffs(unitCount);
+    double sum = 0.0;
+    for (size_t u = 0; u < unitCount; u++){
+        const int d = unitDifference(u);
+        unitDiffs[u] = d;
         sum += d;
         result.maxDiff = std::max(result.maxDiff, d);
+        if (d > options.pixelThreshold)
+            result.badPixels++;
+    }
 
-        // golden at 30 % gray, red where the pixel is bad
+    // golden at 30 % gray, red where the pixel (its block) is bad
+    std::vector<uint8_t> diff(pixelCount * 4);
+    for (size_t i = 0; i < pixelCount; i++){
+        const uint8_t* g = &golden[i * 4];
+        const int x = int(i % size_t(width)), y = int(i / size_t(width));
+        const size_t unit = block > 1 ? size_t(y / block) * columns + size_t(x / block) : i;
+        const int d = unitDiffs[unit];
         const int gray = int((0.299 * g[0] + 0.587 * g[1] + 0.114 * g[2]) * 0.3);
         uint8_t* out = &diff[i * 4];
         if (d > options.pixelThreshold){
-            result.badPixels++;
             out[0] = uint8_t(std::min(255, 96 + d * 159 / 255));
             out[1] = uint8_t(gray / 2);
             out[2] = uint8_t(gray / 2);
@@ -134,14 +181,68 @@ CompareResult jasperengine::test::compareWithGoldenFile(const std::string& golde
         out[3] = 255;
     }
 
-    result.meanDiff = sum / double(pixelCount);
-    result.badFraction = double(result.badPixels) / double(pixelCount);
-    result.passed = result.badFraction <= options.maxBadFraction && result.meanDiff <= options.maxMeanDiff;
+    // the colour distributions: per channel the share of the pixels whose 16-bin histogram bin differs
+    bool histogramPasses = true;
+    if (options.maxHistogramDistance >= 0.0){
+        for (int c = 0; c < 4; c++){
+            long long actualBins[16] = {};
+            long long goldenBins[16] = {};
+            for (size_t i = 0; i < pixelCount; i++){
+                actualBins[rgba[i * 4 + c] >> 4]++;
+                goldenBins[golden[i * 4 + c] >> 4]++;
+            }
+            long long moved = 0;
+            for (int b = 0; b < 16; b++)
+                moved += std::llabs(actualBins[b] - goldenBins[b]);
+            result.histogramDistance = std::max(result.histogramDistance, 100.0 * double(moved) / 2.0 / double(pixelCount));
+        }
+        histogramPasses = result.histogramDistance <= options.maxHistogramDistance;
+    }
+
+    // the edge distributions: the histograms of each pixel's largest step to its right and lower neighbours
+    if (options.maxGradientHistogramDistance >= 0.0){
+        auto gradientBins = [&](const std::vector<uint8_t>& image, long long (&bins)[16]){
+            for (int y = 0; y < height; y++){
+                for (int x = 0; x < width; x++){
+                    const uint8_t* p = &image[(size_t(y) * width + x) * 4];
+                    int step = 0;
+                    for (int c = 0; c < 4; c++){
+                        if (x + 1 < width)
+                            step = std::max(step, std::abs(int(p[c]) - int(p[4 + c])));
+                        if (y + 1 < height)
+                            step = std::max(step, std::abs(int(p[c]) - int(p[size_t(width) * 4 + c])));
+                    }
+                    bins[step >> 4]++;
+                }
+            }
+        };
+        long long actualBins[16] = {};
+        long long goldenBins[16] = {};
+        gradientBins(rgba, actualBins);
+        gradientBins(golden, goldenBins);
+        long long moved = 0;
+        for (int b = 0; b < 16; b++)
+            moved += std::llabs(actualBins[b] - goldenBins[b]);
+        result.gradientHistogramDistance = 100.0 * double(moved) / 2.0 / double(pixelCount);
+        histogramPasses = histogramPasses && result.gradientHistogramDistance <= options.maxGradientHistogramDistance;
+    }
+
+    result.meanDiff = sum / double(unitCount);
+    result.badFraction = double(result.badPixels) / double(unitCount);
+    result.passed = result.badFraction <= options.maxBadFraction && result.meanDiff <= options.maxMeanDiff && histogramPasses;
 
     std::ostringstream message;
-    message << "'" << name << "': " << result.badPixels << " pixels over the threshold " << options.pixelThreshold
+    message << "'" << name << "': ";
+    if (block > 1)
+        message << "in " << block << "x" << block << " blocks (" << columns << "x" << rows << "), ";
+    message << result.badPixels << (block > 1 ? " blocks" : " pixels") << " over the threshold " << options.pixelThreshold
             << " (" << result.badFraction * 100.0 << " %, limit " << options.maxBadFraction * 100.0 << " %), mean difference "
             << result.meanDiff << " (limit " << options.maxMeanDiff << "), largest " << result.maxDiff;
+    if (options.maxHistogramDistance >= 0.0)
+        message << ", histogram distance " << result.histogramDistance << " % (limit " << options.maxHistogramDistance << " %)";
+    if (options.maxGradientHistogramDistance >= 0.0)
+        message << ", edge histogram distance " << result.gradientHistogramDistance << " % (limit " << options.maxGradientHistogramDistance
+                << " %)";
 
     if (!result.passed){
         if (writePng(actualPath, rgba, width, height))
