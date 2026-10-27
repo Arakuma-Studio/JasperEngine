@@ -11,7 +11,7 @@
 #include "Out.h"
 #include "Workspace.h"
 
-#include "Base64.h"
+#include "util/Base64.h"
 #include "Catalog.h"
 #include "util/YamlNumbers.h"
 #include "lattice/LatticeTypes.h"

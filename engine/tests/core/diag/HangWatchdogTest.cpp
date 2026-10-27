@@ -14,6 +14,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -89,6 +90,7 @@ namespace {
 
 TEST(HangWatchdog, InjectedStallReports) {
     std::mutex mutex;
+    std::condition_variable recovered;
     std::vector<HangReport> reports;
     size_t recoveries = 0;
     WatchdogConfig config;
@@ -98,6 +100,7 @@ TEST(HangWatchdog, InjectedStallReports) {
         std::lock_guard<std::mutex> lock(mutex);
         if (report.recovered) recoveries++;
         else reports.push_back(report);
+        recovered.notify_all();
     };
     watchdog::start(config);
     for (int i = 0; i < 4; i++) {
@@ -115,7 +118,12 @@ TEST(HangWatchdog, InjectedStallReports) {
     }
     asker.join();
     heartbeat();
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        // Scheduling under a concurrent native build can exceed a fixed 100 ms
+        // sleep. Wait for the observed recovery, with a bounded failure deadline.
+        recovered.wait_for(lock, std::chrono::seconds(1), [&] { return recoveries != 0; });
+    }
     watchdog::stop();
 
     std::lock_guard<std::mutex> lock(mutex);

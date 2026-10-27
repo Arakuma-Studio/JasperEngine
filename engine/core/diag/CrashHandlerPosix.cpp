@@ -19,7 +19,13 @@
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <time.h>
+#if defined(__APPLE__)
+// Only the signal context types are needed; Darwin's ucontext.h exposes
+// unsupported context-switch routines and refuses builds without _XOPEN_SOURCE.
+#include <sys/ucontext.h>
+#else
 #include <ucontext.h>
+#endif
 #include <unistd.h>
 #include <cstdlib>
 #include <cstring>
@@ -30,6 +36,7 @@
 #include <execinfo.h>
 #endif
 #if defined(__APPLE__)
+#include <mach/vm_prot.h>
 #include <mach-o/dyld.h>
 #include <mach-o/loader.h>
 #if defined(__aarch64__) || defined(__arm64__)
@@ -439,7 +446,9 @@ bool installPlatform(const Config&) {
             const auto* load = reinterpret_cast<const load_command*>(command);
             if (load->cmd == LC_SEGMENT_64) {
                 const auto* segment = reinterpret_cast<const segment_command_64*>(load);
-                if (segment->initprot) addModule(segment->vmaddr + slide, segment->vmaddr + slide + segment->vmsize,
+                // Shared-cache images have interleaved text/data regions. Merging
+                // their full spans lets one image claim another image's code PC.
+                if (segment->initprot & VM_PROT_EXECUTE) addModule(segment->vmaddr + slide, segment->vmaddr + slide + segment->vmsize,
                                                reinterpret_cast<uintptr_t>(image), _dyld_get_image_name(i));
             }
             command += load->cmdsize;

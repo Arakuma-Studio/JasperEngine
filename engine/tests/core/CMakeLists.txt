@@ -23,7 +23,9 @@ endif()
 # the process the crash-diagnostics tests start (engine/tests/crash/CrashTestMain.cpp): it
 # installs the crash handler on a report root of the test's own, then crashes, hangs or reports
 find_package(Threads REQUIRED)
-add_executable(jasperengine-crash-test ${CMAKE_CURRENT_SOURCE_DIR}/../crash/CrashTestMain.cpp)
+add_executable(jasperengine-crash-test
+    ${CMAKE_CURRENT_SOURCE_DIR}/../crash/CrashTestMain.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../crash/SystemSignalHeader.c)
 target_link_libraries(jasperengine-crash-test PRIVATE jasperengine Threads::Threads)
 jasperengine_apply_cxx_standard(jasperengine-crash-test)
 jasperengine_target_warnings(jasperengine-crash-test)
@@ -52,7 +54,7 @@ jasperengine_add_test_target(jasperengine-core-tests
 add_dependencies(jasperengine-core-tests jasperengine-crash-test)
 # tools/crash/symbolicate.py names the crash-test binary's frames (ctest; docs/testing.md)
 find_package(Python3 COMPONENTS Interpreter)
-if(Python3_Interpreter_FOUND AND NOT WIN32 AND NOT APPLE)
+if(Python3_Interpreter_FOUND AND NOT WIN32)
     add_test(NAME crash.symbolicate
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/crash/test_symbolicate.py
                      $<TARGET_FILE:jasperengine-crash-test>)

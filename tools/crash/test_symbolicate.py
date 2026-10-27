@@ -3,13 +3,14 @@
 
     python3 -I tools/crash/test_symbolicate.py BINARY
 
-BINARY is an ELF built with symbols (build/linux/core-tests/.../jasperengine-crash-test). A report
-naming `main` by module+offset (nm's value: the module-relative address of a PIE) must come back
+BINARY is an ELF or Mach-O built with symbols (the native jasperengine-crash-test). A report
+naming `main` by module+offset must come back
 with main named; a Windows report prints the cdb steps; a report with no frames named exits 1.
 """
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 import tempfile
@@ -19,11 +20,21 @@ HERE = Path(__file__).resolve().parent
 
 
 def symbol_offset(binary: Path, name: str) -> int:
-    out = subprocess.run(["nm", "--defined-only", str(binary)], capture_output=True, text=True, check=True).stdout
+    apple = sys.platform == "darwin"
+    out = subprocess.run(["nm", "-U" if apple else "--defined-only", str(binary)], capture_output=True, text=True, check=True).stdout
+    base = 0
+    if apple:
+        commands = subprocess.run(["otool", "-l", str(binary)], capture_output=True, text=True, check=True).stdout
+        # Mach-O symbol values include the preferred __TEXT address (usually 4 GiB
+        # for an executable); engine reports store offsets from the loaded image.
+        match = re.search(r"segname __TEXT\s+vmaddr (0x[0-9a-fA-F]+)", commands)
+        if not match:
+            raise SystemExit(f"{binary} has no Mach-O __TEXT segment")
+        base = int(match[1], 16)
     for line in out.splitlines():
         parts = line.split()
-        if len(parts) == 3 and parts[2] == name:
-            return int(parts[0], 16)
+        if len(parts) == 3 and parts[2] == ("_" + name if apple else name):
+            return int(parts[0], 16) - base
     raise SystemExit(f"{binary} defines no {name}")
 
 
