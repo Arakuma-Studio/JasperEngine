@@ -417,6 +417,22 @@ TEST_F(Light2DNormalMapTest, LibrarySprite){
     }
 }
 
+// R13 (all features): every library:sprite feature on compiles with the normal map and keeps
+// the lit side (glow adds the same emission to both sides)
+TEST_F(Light2DNormalMapTest, LibrarySpriteAllFeatures){
+    NormalScene s;
+    Sprite& sprite = s.addSprite();
+    Material& material = sprite.getComponent<MeshComponent>().submeshes[0].material;
+    material.shader = "library:sprite";
+    material.shaderFeatures = {"OUTLINE", "HUE_SHIFT", "FLASH", "GRAYSCALE", "COLOR_REPLACE", "OVERLAY", "GLOW"};
+    s.addLight(LightSide::LEFT);
+    ASSERT_TRUE(s.settle());
+    const MeshComponent& mesh = sprite.getComponent<MeshComponent>();
+    EXPECT_NE(mesh.submeshes[0].shaderProperties & (1u << 7), 0u) << "the variant samples the normal map ('Nmp')";
+    const Quarters q = s.measure();
+    EXPECT_GT(q.left, q.right + 10.0f) << "every feature on: " << describe(q);
+}
+
 // R14: a sprite without a normal map is lit the same whatever the light's height
 TEST_F(Light2DNormalMapTest, FlatIgnoresHeight){
     NormalScene s;
