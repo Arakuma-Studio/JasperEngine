@@ -54,7 +54,7 @@ animates the user's moves):
   `hide` / `show` / `lock` / `unlock` GameObjects (children too unless `children: false`),
   `show_all`. Hidden is the Scene view only: the Game view, play and builds draw them.
 
-`jasper://scene-view/{scene}` returns all of it plus the BVH cache stats (built, pending, bytes).
+`jasper://scene-view/{scene}` returns all of it plus the BVH cache stats (built, pending, bytes) and `pending_click`, the status text of a user click still waiting for a mesh's BVH (null when none).
 
 ## MeshRaycast (runtime and editor)
 

@@ -593,6 +593,9 @@ ResourceResult sceneViewResource(const std::string& uri, const std::map<std::str
                  {"bookmarks", bookmarksJson(*sp, view)}, {"measures", measures}, {"filters", filterJson(project, *sp)},
                  {"bvh_cache", {{"built", cache.built}, {"pending", cache.pending}, {"bytes", cache.bytes},
                                 {"build_ms_total", cache.buildMsTotal}, {"disk_loads", cache.diskLoads}, {"inline_waits", cache.inlineWaits}}}};
+    // a click waiting for a mesh's BVH (R33): the status bar's text, null when none
+    const std::string waiting = view.pendingStatus(sp->id);
+    data["pending_click"] = waiting.empty() ? Json(nullptr) : Json(waiting);
     if (SceneBvh* bvh = sp->scene ? sp->scene->findPickBvh() : nullptr) {
         const SceneBvh::Stats stats = bvh->getStats();
         data["scene_bvh"] = {{"leaves", stats.leaves}, {"builds", stats.builds}, {"refits", stats.refits}};

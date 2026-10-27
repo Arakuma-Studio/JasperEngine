@@ -21,9 +21,9 @@ from pathlib import Path
 
 from harness import Editor, skip
 
-# background mesh BVH builds stay pending 6 s (only meshes of 256+ triangles have one): what a
+# background mesh BVH builds stay pending 20 s (only meshes of 256+ triangles have one): what a
 # click and a drop do meanwhile is seen (R16, R33)
-EDITOR = {"xvfb": "harness", "create": True, "name": "Scene View UI", "env": {"JASPER_PICK_BUILD_DELAY_MS": "6000"}}
+EDITOR = {"xvfb": "harness", "create": True, "name": "Scene View UI", "env": {"JASPER_PICK_BUILD_DELAY_MS": "20000"}}
 TIMEOUT = 1200
 
 S: dict = {}
@@ -245,6 +245,8 @@ async def test_collapsed_group_is_root(ed: Editor):
     # the tree arrow at the row's left (about a font height wide)
     await ui.click(ui.at(row, (row["height"] / 2, row["height"] / 2)))
     await ed.screenshot("editor", path=str(s["out"] / "s26-collapsed-group.png"))
+    # the arrow's click selects the row too: from no selection (a selected root drills, R13)
+    await ed.call("select_entities", scene=sid, entities=[])
     got = await ed.call("pick_at", scene=sid, u=0.5, v=0.5)
     ed.check_eq(got["would_select"]["entity"], group, "under a collapsed row: the row (R12 root source)")
 
@@ -420,9 +422,10 @@ async def test_drop_refused_while_pending(ed: Editor):
         await ed.call("delete_entities", scene=sid, entities=[crate])
     await ed.call("sync_files")
     await ed.call("set_scene_camera", scene=sid, position=[0, 0, 6], target=[0, 0, 0])
-    await ed.call("create_entity", scene=sid, type="model", name="Slab", model="assets/models/slab.obj", select=False)
+    # the Project window shows the prefab first: the slab's tree is pending from its load on
     item = await project_item(ed, ui, "Crate.prefab")
     await ed.call("select_scene", scene=sid)
+    await ed.call("create_entity", scene=sid, type="model", name="Slab", model="assets/models/slab.obj", select=False)
     rect, _ = await view(ed, sid)      # loaded and drawn; its BVH is held pending
     state = await scene_view_state(ed, sid)
     ed.check(state["bvh_cache"]["pending"] >= 1, f"the slab's tree is still building: {state['bvh_cache']}")
@@ -451,12 +454,19 @@ async def test_click_waits_for_bvh(ed: Editor):
     state = await scene_view_state(ed, sid)
     ed.check(state["bvh_cache"]["pending"] >= 1, f"the grid's tree is still building: {state['bvh_cache']}")
     await ui.click(uv(ui, rect, 0.5, 0.5))
+    waiting = None
+    for _ in range(20):
+        waiting = (await scene_view_state(ed, sid)).get("pending_click")
+        if waiting:
+            break
+        await asyncio.sleep(0.1)
     message = await status_message(ed, "Preparing picking for Grid")
     await ed.screenshot("editor", path=str(s["out"] / "s26-click-waiting.png"))
+    ed.check(waiting is not None and "Grid" in waiting, f"the click waits for the grid's tree: {waiting!r}, selected {await selected(ed, sid)}")
     ed.check("Preparing picking for Grid" in message, f"the status bar after 100 ms: {message!r}")
     ed.check_eq(await selected(ed, sid), [], "nothing selected through the mesh's bounds meanwhile")
     picked = []
-    for _ in range(80):
+    for _ in range(160):
         await asyncio.sleep(0.25)
         picked = await selected(ed, sid)
         if picked:
