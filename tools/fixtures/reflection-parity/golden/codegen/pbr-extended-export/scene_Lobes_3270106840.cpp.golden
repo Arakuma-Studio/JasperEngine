@@ -7744,6 +7744,51 @@ SceneResources resources_scene_Lobes_3270106840(){
         texture.setWrapV(TextureWrap::REPEAT);
         resources.textures.push_back(texture);
     }
+    {
+        Texture texture;
+        texture.setPath("assets/models/ClearCoatTest/ClearCoatTest_image1.png");
+        texture.setMinFilter(TextureFilter::NEAREST);
+        texture.setMagFilter(TextureFilter::NEAREST);
+        texture.setWrapU(TextureWrap::REPEAT);
+        texture.setWrapV(TextureWrap::REPEAT);
+        resources.textures.push_back(texture);
+    }
+    {
+        Texture texture;
+        texture.setPath("assets/models/ClearCoatTest/ClearCoatTest_image2.png");
+        texture.setMinFilter(TextureFilter::NEAREST);
+        texture.setMagFilter(TextureFilter::NEAREST);
+        texture.setWrapU(TextureWrap::REPEAT);
+        texture.setWrapV(TextureWrap::REPEAT);
+        resources.textures.push_back(texture);
+    }
+    {
+        Texture texture;
+        texture.setPath("assets/models/ClearCoatTest/ClearCoatTest_image3.png");
+        texture.setMinFilter(TextureFilter::NEAREST);
+        texture.setMagFilter(TextureFilter::NEAREST);
+        texture.setWrapU(TextureWrap::REPEAT);
+        texture.setWrapV(TextureWrap::REPEAT);
+        resources.textures.push_back(texture);
+    }
+    {
+        Texture texture;
+        texture.setPath("assets/models/ClearCoatTest/ClearCoatTest_image4.jpg");
+        texture.setMinFilter(TextureFilter::NEAREST);
+        texture.setMagFilter(TextureFilter::NEAREST);
+        texture.setWrapU(TextureWrap::REPEAT);
+        texture.setWrapV(TextureWrap::REPEAT);
+        resources.textures.push_back(texture);
+    }
+    {
+        Texture texture;
+        texture.setPath("assets/models/ClearCoatTest/ClearCoatTest_image5.png");
+        texture.setMinFilter(TextureFilter::NEAREST);
+        texture.setMagFilter(TextureFilter::NEAREST);
+        texture.setWrapU(TextureWrap::REPEAT);
+        texture.setWrapV(TextureWrap::REPEAT);
+        resources.textures.push_back(texture);
+    }
     resources.models.push_back("assets/models/ClearCoatTest/ClearCoatTest.gltf");
     return resources;
 }

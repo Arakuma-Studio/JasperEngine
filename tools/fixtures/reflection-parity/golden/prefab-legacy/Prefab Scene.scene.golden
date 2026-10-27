@@ -1,4 +1,4 @@
-formatVersion: 2
+formatVersion: 3
 guid: 9881b90d074c33a513001465bb7d3d23
 id: 1
 name: Prefab Scene
@@ -88,7 +88,7 @@ entities:
         path: prefabs/Rock.prefab
         guid: be6090bd331dae57064d1f63cc9ada05
     prefabInstance:
-      version: 4
+      version: 5
       memberIds:
         - [1001, 1103]
         - [1002, 1002]
@@ -379,7 +379,7 @@ entities:
         path: prefabs/Rock.prefab
         guid: be6090bd331dae57064d1f63cc9ada05
     prefabInstance:
-      version: 4
+      version: 5
       memberIds:
         - [1001, 1104]
         - [1002, 1105]
@@ -416,7 +416,7 @@ entities:
         path: prefabs/Tower.prefab
         guid: a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1
     prefabInstance:
-      version: 4
+      version: 5
       memberIds:
         - [1001, 1106]
         - [1002, 1107]
@@ -716,7 +716,7 @@ entities:
         path: prefabs/Castle.prefab
         guid: b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2
     prefabInstance:
-      version: 4
+      version: 5
       memberIds:
         - [1001, 1111]
         - [1002, 1112]
@@ -759,7 +759,7 @@ entities:
         path: prefabs/Gem.prefab
         guid: 6a121bc13079cc89021cde9df07e3778
     prefabInstance:
-      version: 4
+      version: 5
       memberIds:
         - [1050, 1118]
   - type: Entity

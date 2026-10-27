@@ -99,6 +99,7 @@ JASPERENGINE_INIT void init() {
     Engine::setScalingMode(Scaling::FITWIDTH);
     Engine::setTextureStrategy(TextureStrategy::NONE);
     Engine::setAtmosphereQualityDefaults(AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW);
+    Engine::setTextureDefaults({0, 0, false}, {0, 512, false}, {0, 384, true});
     UIDocumentSystem::setPreferredSampleCount(4);
 
     SceneManager::registerScene(1102162980, "Main Scene", load_scene_Main_Scene_1102162980, add_scene_Main_Scene_1102162980, {1102162980}, resources_scene_Main_Scene_1102162980);

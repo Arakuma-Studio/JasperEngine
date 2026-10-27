@@ -1087,7 +1087,7 @@ void create_scene__2D_4155373791(Scene* scene){
         // Entity components initialization
         PointsComponent pointscomp;
         pointscomp.maxPoints = 100;
-        pointscomp.transparent = true;
+        pointscomp.transparent = false;
         pointscomp.autoTransparency = true;
         pointscomp.customShader = "library:particle";
         pointscomp.texture.setPath("assets/textures/soft.png");
@@ -1157,7 +1157,7 @@ void create_scene__2D_4155373791(Scene* scene){
         // Entity components initialization
         PointsComponent pointscomp;
         pointscomp.maxPoints = 100;
-        pointscomp.transparent = true;
+        pointscomp.transparent = false;
         pointscomp.autoTransparency = true;
         pointscomp.customShader = "library:particle";
         pointscomp.blendMode = MaterialBlendMode::NONE;
@@ -1228,7 +1228,7 @@ void create_scene__2D_4155373791(Scene* scene){
         // Entity components initialization
         PointsComponent pointscomp;
         pointscomp.maxPoints = 100;
-        pointscomp.transparent = true;
+        pointscomp.transparent = false;
         pointscomp.autoTransparency = true;
         pointscomp.customShader = "library:particle";
         pointscomp.blendMode = MaterialBlendMode::ALPHA;
@@ -1299,7 +1299,7 @@ void create_scene__2D_4155373791(Scene* scene){
         // Entity components initialization
         PointsComponent pointscomp;
         pointscomp.maxPoints = 100;
-        pointscomp.transparent = true;
+        pointscomp.transparent = false;
         pointscomp.autoTransparency = true;
         pointscomp.customShader = "library:particle";
         pointscomp.blendMode = MaterialBlendMode::PREMULTIPLIED;
@@ -1370,7 +1370,7 @@ void create_scene__2D_4155373791(Scene* scene){
         // Entity components initialization
         PointsComponent pointscomp;
         pointscomp.maxPoints = 100;
-        pointscomp.transparent = true;
+        pointscomp.transparent = false;
         pointscomp.autoTransparency = true;
         pointscomp.customShader = "library:particle";
         pointscomp.blendMode = MaterialBlendMode::ADDITIVE;
@@ -1441,7 +1441,7 @@ void create_scene__2D_4155373791(Scene* scene){
         // Entity components initialization
         PointsComponent pointscomp;
         pointscomp.maxPoints = 100;
-        pointscomp.transparent = true;
+        pointscomp.transparent = false;
         pointscomp.autoTransparency = true;
         pointscomp.customShader = "library:particle";
         pointscomp.blendMode = MaterialBlendMode::MULTIPLY;
@@ -1512,7 +1512,7 @@ void create_scene__2D_4155373791(Scene* scene){
         // Entity components initialization
         PointsComponent pointscomp;
         pointscomp.maxPoints = 100;
-        pointscomp.transparent = true;
+        pointscomp.transparent = false;
         pointscomp.autoTransparency = true;
         pointscomp.customShader = "library:particle";
         pointscomp.shaderUniforms = {{"glowColor", Vector4(3.000000f, 0.800000f, 2.500000f, 1.000000f)}, {"glowPower", Vector4(2.000000f, 0.000000f, 0.000000f, 0.000000f)}, {"glowScale", Vector4(0.800000f, 0.000000f, 0.000000f, 0.000000f)}};
@@ -1584,7 +1584,7 @@ void create_scene__2D_4155373791(Scene* scene){
         // Entity components initialization
         PointsComponent pointscomp;
         pointscomp.maxPoints = 100;
-        pointscomp.transparent = true;
+        pointscomp.transparent = false;
         pointscomp.autoTransparency = true;
         pointscomp.customShader = "library:particle";
         pointscomp.shaderUniforms = {{"erosionSoftness", Vector4(0.150000f, 0.000000f, 0.000000f, 0.000000f)}, {"erosionTiling", Vector4(1.500000f, 0.000000f, 0.000000f, 0.000000f)}};

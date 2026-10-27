@@ -4025,75 +4025,75 @@
  ],
  "particle_system#0": [
   {
-   "component": "action",
+   "component": "transform",
    "group": "",
-   "kind": "Enum",
-   "label": "State",
-   "path": "state",
+   "kind": "Vector3",
+   "label": "Position",
+   "path": "position",
    "read_only": false
   },
   {
-   "component": "action",
+   "component": "transform",
    "group": "",
-   "kind": "Float",
-   "label": "Speed",
-   "path": "speed",
+   "kind": "Quat",
+   "label": "Rotation",
+   "path": "rotation",
    "read_only": false
   },
   {
-   "component": "action",
+   "component": "transform",
    "group": "",
-   "kind": "LocalEntity",
-   "label": "Target",
-   "path": "target",
+   "kind": "Vector3",
+   "label": "Scale",
+   "path": "scale",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Visible",
+   "path": "visible",
+   "read_only": false
+  },
+  {
+   "component": "transform",
+   "group": "",
+   "kind": "Bool",
+   "label": "Billboard",
+   "path": "billboard",
+   "read_only": false
+  },
+  {
+   "component": "particlesystem",
+   "group": "",
+   "kind": "Asset",
+   "label": "Effect",
+   "path": "effect",
+   "read_only": false
+  },
+  {
+   "component": "particlesystem",
+   "group": "",
+   "kind": "Bool",
+   "label": "Play On Awake",
+   "path": "playOnAwake",
    "read_only": false
   },
   {
    "component": "particlesystem",
    "group": "",
    "kind": "UInt",
-   "label": "Max Particles",
-   "path": "maxParticles",
+   "label": "Seed",
+   "path": "seed",
    "read_only": false
   },
   {
    "component": "particlesystem",
    "group": "",
-   "kind": "Bool",
-   "label": "Emitter",
-   "path": "emitter",
-   "read_only": false
-  },
-  {
-   "component": "particlesystem",
-   "group": "",
-   "kind": "Bool",
-   "label": "Loop",
-   "path": "loop",
-   "read_only": false
-  },
-  {
-   "component": "particlesystem",
-   "group": "",
-   "kind": "Bool",
-   "label": "Local Space",
-   "path": "localSpace",
-   "read_only": false
-  },
-  {
-   "component": "particlesystem",
-   "group": "",
-   "kind": "Int",
-   "label": "Rate",
-   "path": "rate",
-   "read_only": false
-  },
-  {
-   "component": "particlesystem",
-   "group": "",
-   "kind": "Int",
-   "label": "Max Per Update",
-   "path": "maxPerUpdate",
+   "kind": "Float",
+   "label": "Playback Speed",
+   "path": "playbackSpeed",
    "read_only": false
   }
  ],

@@ -68,7 +68,8 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     scene->recreateEntity(1058);
     scene->recreateEntity(1059);
     scene->recreateEntity(1060);
-    scene->setLastEntity(1060);
+    scene->recreateEntity(1061);
+    scene->setLastEntity(1061);
 
     {
         // Entity 1001 (Transform)
@@ -1085,84 +1086,13 @@ void create_scene_AllComponents_2026080800(Scene* scene){
 
         // Entity components initialization
         ParticleSystemComponent particles;
-        particles.maxParticles = 100;
-        particles.emitter = true;
-        particles.loop = false;
-        particles.localSpace = true;
-        particles.rate = 3;
-        particles.maxPerUpdate = 100;
-        particles.lifeInitializer.minLife = 3.100000f;
-        particles.lifeInitializer.maxLife = 7.700000f;
-        particles.positionInitializer.shape = (ParticleEmitterShape)4;
-        particles.positionInitializer.minPosition = Vector3(4.200000f, 6.300000f, 0.500000f);
-        particles.positionInitializer.maxPosition = Vector3(8.200000f, 2.700000f, 6.600000f);
-        particles.positionInitializer.radius = 7.400000f;
-        particles.positionInitializer.innerRadius = 8.200000f;
-        particles.positionInitializer.coneAngle = 4.500000f;
-        particles.positionInitializer.coneHeight = 3.600000f;
-        particles.positionModifier.fromTime = 2.100000f;
-        particles.positionModifier.toTime = 6.200000f;
-        particles.positionModifier.fromPosition = Vector3(7.800000f, 8.800000f, 8.100000f);
-        particles.positionModifier.toPosition = Vector3(7.800000f, 4.800000f, 2.200000f);
-        particles.positionModifier.function = Ease(EaseType::CUBIC_IN_OUT);
-        particles.velocityInitializer.minVelocity = Vector3(4.000000f, 4.400000f, 1.900000f);
-        particles.velocityInitializer.maxVelocity = Vector3(3.400000f, 5.200000f, 3.300000f);
-        particles.velocityModifier.fromTime = 3.500000f;
-        particles.velocityModifier.toTime = 4.500000f;
-        particles.velocityModifier.fromVelocity = Vector3(4.100000f, 2.600000f, 1.100000f);
-        particles.velocityModifier.toVelocity = Vector3(1.400000f, 2.800000f, 0.700000f);
-        particles.velocityModifier.function = Ease(EaseType::CUBIC_IN_OUT);
-        particles.accelerationInitializer.minAcceleration = Vector3(3.200000f, 6.400000f, 4.300000f);
-        particles.accelerationInitializer.maxAcceleration = Vector3(2.000000f, 3.800000f, 2.500000f);
-        particles.accelerationModifier.fromTime = 6.700000f;
-        particles.accelerationModifier.toTime = 6.100000f;
-        particles.accelerationModifier.fromAcceleration = Vector3(4.600000f, 5.200000f, 8.500000f);
-        particles.accelerationModifier.toAcceleration = Vector3(2.500000f, 7.400000f, 6.500000f);
-        particles.accelerationModifier.function = Ease(EaseType::CUBIC_IN_OUT);
-        particles.colorInitializer.minColor = Vector3(9.000000f, 7.800000f, 2.000000f);
-        particles.colorInitializer.maxColor = Vector3(3.700000f, 5.200000f, 2.400000f);
-        particles.colorInitializer.useSRGB = false;
-        particles.colorModifier.fromTime = 1.000000f;
-        particles.colorModifier.toTime = 6.400000f;
-        particles.colorModifier.fromColor = Vector3(5.300000f, 4.800000f, 0.500000f);
-        particles.colorModifier.toColor = Vector3(8.300000f, 1.300000f, 8.600000f);
-        particles.colorModifier.function = Ease(EaseType::CUBIC_IN_OUT);
-        particles.colorModifier.useSRGB = false;
-        particles.colorGradient.useSRGB = true;
-        particles.alphaInitializer.minAlpha = 7.700000f;
-        particles.alphaInitializer.maxAlpha = 4.000000f;
-        particles.alphaModifier.fromTime = 4.000000f;
-        particles.alphaModifier.toTime = 8.500000f;
-        particles.alphaModifier.fromAlpha = 8.900000f;
-        particles.alphaModifier.toAlpha = 8.100000f;
-        particles.alphaModifier.function = Ease(EaseType::CUBIC_IN_OUT);
-        particles.sizeInitializer.minSize = 4.600000f;
-        particles.sizeInitializer.maxSize = 5.200000f;
-        particles.sizeModifier.fromTime = 0.600000f;
-        particles.sizeModifier.toTime = 8.100000f;
-        particles.sizeModifier.fromSize = 1.200000f;
-        particles.sizeModifier.toSize = 6.100000f;
-        particles.sizeModifier.function = Ease(EaseType::CUBIC_IN_OUT);
-        particles.spriteModifier.fromTime = 7.000000f;
-        particles.spriteModifier.toTime = 8.000000f;
-        particles.spriteModifier.function = Ease(EaseType::CUBIC_IN_OUT);
-        particles.rotationInitializer.minRotation = Quaternion(0.771625f, 0.000000f, 0.636078f, 0.000000f);
-        particles.rotationInitializer.maxRotation = Quaternion(0.999048f, 0.000000f, 0.043619f, 0.000000f);
-        particles.rotationInitializer.shortestPath = true;
-        particles.rotationModifier.fromTime = 5.200000f;
-        particles.rotationModifier.toTime = 5.800000f;
-        particles.rotationModifier.fromRotation = Quaternion(0.725374f, 0.000000f, 0.688355f, 0.000000f);
-        particles.rotationModifier.toRotation = Quaternion(0.866025f, 0.000000f, 0.500000f, 0.000000f);
-        particles.rotationModifier.function = Ease(EaseType::CUBIC_IN_OUT);
-        particles.rotationModifier.shortestPath = true;
-        particles.scaleInitializer.minScale = Vector3(6.200000f, 5.900000f, 3.400000f);
-        particles.scaleInitializer.maxScale = Vector3(0.500000f, 4.300000f, 7.900000f);
-        particles.scaleInitializer.linearSort = false;
-        particles.scaleModifier.fromTime = 3.000000f;
-        particles.scaleModifier.toTime = 7.100000f;
-        particles.scaleModifier.fromScale = Vector3(8.600000f, 1.600000f, 5.100000f);
-        particles.scaleModifier.toScale = Vector3(1.200000f, 5.000000f, 5.200000f);
-        particles.scaleModifier.function = Ease(EaseType::CUBIC_IN_OUT);
+        {
+            std::string json;
+            json += "{\n  \"version\": 1,\n  \"modules\": [\n    {\n      \"type\": \"main\"\n    },\n    {\n      \"type\": \"emission\"\n    },\n    {\n      \"type\": \"shape\"\n    },\n    {\n      \"type\": \"renderer\"\n    }\n  ]\n}\n";
+            particles::readEffectText(json, particles.inlineEffect);
+        }
+        particles.playOnAwake = false;
+        particles.playbackSpeed = 2.500000f;
         particles.enabled = false;
         scene->addComponent<ParticleSystemComponent>(1033, particles);
 
@@ -1206,8 +1136,8 @@ void create_scene_AllComponents_2026080800(Scene* scene){
 
         // Entity components initialization
         PositionTweenComponent poscomp;
-        poscomp.endPosition = Vector3(7.100000f, 5.600000f, 3.900000f);
-        poscomp.startPosition = Vector3(2.700000f, 3.100000f, 0.100000f);
+        poscomp.endPosition = Vector3(4.300000f, 2.000000f, 3.800000f);
+        poscomp.startPosition = Vector3(8.500000f, 3.200000f, 6.400000f);
         scene->addComponent<PositionTweenComponent>(1035, poscomp);
 
         Transform transform;
@@ -1231,11 +1161,11 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         ProgressbarComponent progressbar;
         progressbar.fill = NULL_ENTITY;
         progressbar.type = ProgressbarType::HORIZONTAL;
-        progressbar.value = 2.400000f;
-        progressbar.fillMarginLeft = 7;
-        progressbar.fillMarginRight = 4;
+        progressbar.value = 7.400000f;
+        progressbar.fillMarginLeft = 4;
+        progressbar.fillMarginRight = 6;
         progressbar.fillMarginTop = 6;
-        progressbar.fillMarginBottom = 6;
+        progressbar.fillMarginBottom = 4;
         scene->addComponent<ProgressbarComponent>(1036, progressbar);
 
         Transform transform;
@@ -1278,12 +1208,12 @@ void create_scene_AllComponents_2026080800(Scene* scene){
 
         // Entity components initialization
         RotationTweenComponent rotcomp;
-        rotcomp.endRotation = Quaternion(0.976296f, 0.000000f, 0.216440f, 0.000000f);
-        rotcomp.startRotation = Quaternion(0.852640f, 0.000000f, 0.522499f, 0.000000f);
+        rotcomp.endRotation = Quaternion(0.713250f, 0.000000f, 0.700909f, 0.000000f);
+        rotcomp.startRotation = Quaternion(0.939693f, 0.000000f, 0.342020f, 0.000000f);
         rotcomp.shortestPath = true;
         rotcomp.spin = true;
-        rotcomp.axis = Vector3(5.500000f, 4.700000f, 7.700000f);
-        rotcomp.angle = 6.700000f;
+        rotcomp.axis = Vector3(7.700000f, 4.000000f, 6.100000f);
+        rotcomp.angle = 2.500000f;
         scene->addComponent<RotationTweenComponent>(1038, rotcomp);
 
         Transform transform;
@@ -1305,8 +1235,8 @@ void create_scene_AllComponents_2026080800(Scene* scene){
 
         // Entity components initialization
         ScaleTweenComponent scalecomp;
-        scalecomp.endScale = Vector3(4.400000f, 4.100000f, 8.500000f);
-        scalecomp.startScale = Vector3(3.500000f, 7.200000f, 2.500000f);
+        scalecomp.endScale = Vector3(2.400000f, 8.500000f, 8.100000f);
+        scalecomp.startScale = Vector3(2.000000f, 3.700000f, 5.200000f);
         scene->addComponent<ScaleTweenComponent>(1039, scalecomp);
 
         Transform transform;
@@ -1351,12 +1281,12 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         ScrollbarComponent scrollbar;
         scrollbar.bar = NULL_ENTITY;
         scrollbar.type = ScrollbarType::HORIZONTAL;
-        scrollbar.barSize = 1.800000f;
-        scrollbar.step = 5.400000f;
-        scrollbar.barMarginLeft = 1;
+        scrollbar.barSize = 5.300000f;
+        scrollbar.step = 1.000000f;
+        scrollbar.barMarginLeft = 7;
         scrollbar.barMarginRight = 1;
-        scrollbar.barMarginTop = 6;
-        scrollbar.barMarginBottom = 4;
+        scrollbar.barMarginTop = 4;
+        scrollbar.barMarginBottom = 7;
         scene->addComponent<ScrollbarComponent>(1041, scrollbar);
 
         Transform transform;
@@ -1410,7 +1340,7 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         sprite.automaticFlipY = false;
         sprite.flipY = true;
         sprite.pivotPreset = PivotPreset::BOTTOM_RIGHT;
-        sprite.textureScaleFactor = 5.100000f;
+        sprite.textureScaleFactor = 8.600000f;
         sprite.enabled = false;
         scene->addComponent<SpriteComponent>(1043, sprite);
 
@@ -1466,12 +1396,12 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         inputfield.text = NULL_ENTITY;
         inputfield.selection = NULL_ENTITY;
         inputfield.cursor = NULL_ENTITY;
-        inputfield.cursorBlink = 2.100000f;
-        inputfield.cursorWidth = 0.800000f;
-        inputfield.cursorColor = Vector4(0.377778f, 0.566667f, 0.822222f, 1.000000f);
-        inputfield.selectionColor = Vector4(0.244444f, 0.822222f, 0.933333f, 1.000000f);
-        inputfield.placeholderColor = Vector4(0.811111f, 0.366667f, 0.733333f, 1.000000f);
-        inputfield.placeholder = "Reflection parity";
+        inputfield.cursorBlink = 8.300000f;
+        inputfield.cursorWidth = 4.500000f;
+        inputfield.cursorColor = Vector4(0.344444f, 0.855556f, 0.711111f, 1.000000f);
+        inputfield.selectionColor = Vector4(0.700000f, 0.055556f, 0.911111f, 1.000000f);
+        inputfield.placeholderColor = Vector4(0.300000f, 0.733333f, 0.911111f, 1.000000f);
+        inputfield.placeholder = "text: [1, 2]";
         inputfield.passwordChar = '*';
         inputfield.cursorIndex = 0;
         inputfield.selectionAnchor = 0;
@@ -1503,7 +1433,7 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         tilemap.height = 0;
         tilemap.automaticFlipY = false;
         tilemap.flipY = true;
-        tilemap.textureScaleFactor = 8.300000f;
+        tilemap.textureScaleFactor = 4.200000f;
         tilemap.reserveTiles = 10;
         tilemap.enabled = false;
         scene->addComponent<TilemapComponent>(1046, std::move(*tilemapStorage));
@@ -1563,7 +1493,7 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         container.type = LayoutGroupType::HORIZONTAL_WRAP;
         container.useAllWrapSpace = true;
         container.wrapCellWidth = 6;
-        container.wrapCellHeight = 5;
+        container.wrapCellHeight = 3;
         scene->addComponent<LayoutGroupComponent>(1048, container);
     }
 
@@ -1573,7 +1503,7 @@ void create_scene_AllComponents_2026080800(Scene* scene){
 
         // Entity components initialization
         MirrorComponent mirror;
-        mirror.normal = Vector3(3.500000f, 0.500000f, 4.400000f);
+        mirror.normal = Vector3(2.200000f, 7.400000f, 8.400000f);
         scene->addComponent<MirrorComponent>(1049, mirror);
 
         Transform transform;
@@ -1595,14 +1525,14 @@ void create_scene_AllComponents_2026080800(Scene* scene){
 
         // Entity components initialization
         Light2DComponent light2d;
-        light2d.color = Vector3(3.600000f, 8.100000f, 7.000000f);
-        light2d.intensity = 4.300000f;
-        light2d.range = 8.400000f;
-        light2d.falloff = 8.000000f;
+        light2d.color = Vector3(8.300000f, 0.100000f, 8.300000f);
+        light2d.intensity = 3.600000f;
+        light2d.range = 7.600000f;
+        light2d.falloff = 4.800000f;
         light2d.height = 0.000000f;
         light2d.shadows = true;
-        light2d.shadowBias = 5.600000f;
-        light2d.shadowSoftness = 4.800000f;
+        light2d.shadowBias = 8.700000f;
+        light2d.shadowSoftness = 2.000000f;
         light2d.mapResolution = 512;
         light2d.enabled = false;
         scene->addComponent<Light2DComponent>(1050, light2d);
@@ -1652,17 +1582,17 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         ReflectionProbeComponent probe;
         probe.mode = ReflectionProbeMode::DYNAMIC;
         probe.updateMode = ReflectionProbeUpdateMode::MANUAL;
-        probe.boxOffset = Vector3(3.800000f, 8.700000f, 6.600000f);
-        probe.boxSize = Vector3(8.100000f, 1.500000f, 5.200000f);
-        probe.blendDistance = 7.100000f;
-        probe.intensity = 3.100000f;
-        probe.priority = 5;
+        probe.boxOffset = Vector3(1.200000f, 0.300000f, 3.400000f);
+        probe.boxSize = Vector3(3.600000f, 1.000000f, 3.300000f);
+        probe.blendDistance = 8.500000f;
+        probe.intensity = 0.100000f;
+        probe.priority = 1;
         probe.resolution = 128;
-        probe.nearClip = 0.800000f;
-        probe.farClip = 3.200000f;
-        probe.updateInterval = 2.700000f;
+        probe.nearClip = 8.400000f;
+        probe.farClip = 3.700000f;
+        probe.updateInterval = 1.100000f;
         probe.includeSky = false;
-        probe.cullingMask = 0x00000003u;
+        probe.cullingMask = 0x00000002u;
         probe.texture.setPath("textures/parity.png");
         probe.texture.setMinFilter(TextureFilter::LINEAR);
         probe.texture.setMagFilter(TextureFilter::LINEAR);
@@ -1690,11 +1620,11 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         // Entity components initialization
         UIDocumentComponent uidocument;
         uidocument.filename = "";
-        uidocument.sortOrder = 6;
+        uidocument.sortOrder = 4;
         uidocument.enabled = false;
         uidocument.interactive = false;
         uidocument.renderMode = UIDocumentRenderMode::TEXTURE;
-        uidocument.pixelRatio = 7.900000f;
+        uidocument.pixelRatio = 5.600000f;
         scene->addComponent<UIDocumentComponent>(1053, uidocument);
 
         Transform transform;
@@ -1719,33 +1649,33 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         fluid.enabled = false;
         fluid.output = FluidOutput::TEXTURE;
         fluid.interactive = false;
-        fluid.aspectRatio = 8.900000f;
-        fluid.densityDissipation = 8.700000f;
-        fluid.velocityDissipation = 6.800000f;
-        fluid.pressure = 1.300000f;
-        fluid.pressureIterations = 2u;
-        fluid.curl = 8.600000f;
-        fluid.gradientScale = 5.200000f;
-        fluid.simulationRate = 5.800000f;
-        fluid.maxSubsteps = 1u;
-        fluid.timeScale = 8.000000f;
+        fluid.aspectRatio = 5.600000f;
+        fluid.densityDissipation = 6.300000f;
+        fluid.velocityDissipation = 8.600000f;
+        fluid.pressure = 0.900000f;
+        fluid.pressureIterations = 6u;
+        fluid.curl = 7.300000f;
+        fluid.gradientScale = 8.900000f;
+        fluid.simulationRate = 4.000000f;
+        fluid.maxSubsteps = 7u;
+        fluid.timeScale = 6.000000f;
         fluid.paused = true;
-        fluid.splatRadius = 1.000000f;
+        fluid.splatRadius = 3.600000f;
         fluid.splatForce = 1.600000f;
         fluid.colorful = false;
         fluid.colorUpdateSpeed = 1.800000f;
         fluid.splatsOnStart = false;
-        fluid.randomSplatCount = 7u;
+        fluid.randomSplatCount = 4u;
         fluid.shading = false;
-        fluid.backColor = Vector3(2.700000f, 2.000000f, 3.200000f);
+        fluid.backColor = Vector3(0.300000f, 6.900000f, 7.900000f);
         fluid.transparent = true;
         fluid.bloom = false;
-        fluid.bloomIterations = 7u;
-        fluid.bloomIntensity = 6.400000f;
-        fluid.bloomThreshold = 4.700000f;
-        fluid.bloomSoftKnee = 1.500000f;
+        fluid.bloomIterations = 4u;
+        fluid.bloomIntensity = 1.300000f;
+        fluid.bloomThreshold = 7.000000f;
+        fluid.bloomSoftKnee = 7.300000f;
         fluid.sunrays = false;
-        fluid.sunraysWeight = 2.000000f;
+        fluid.sunraysWeight = 7.600000f;
         scene->addComponent<FluidSimulationComponent>(1054, fluid);
 
         Transform transform;
@@ -1771,42 +1701,42 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         lattice.resolutionY = 3;
         lattice.resolutionZ = 3;
         lattice.offsets.assign(27, Vector3(0.0f, 0.0f, 0.0f));
-        lattice.offsets[0] = Vector3(6.000000f, 5.700000f, 4.100000f);
-        lattice.offsets[1] = Vector3(1.100000f, 1.900000f, 3.500000f);
-        lattice.offsets[2] = Vector3(3.400000f, 1.500000f, 4.400000f);
-        lattice.offsets[3] = Vector3(3.800000f, 7.900000f, 7.900000f);
-        lattice.offsets[4] = Vector3(5.000000f, 6.600000f, 3.100000f);
-        lattice.offsets[5] = Vector3(5.700000f, 4.800000f, 4.900000f);
-        lattice.offsets[6] = Vector3(2.400000f, 5.600000f, 7.400000f);
-        lattice.offsets[7] = Vector3(1.200000f, 8.300000f, 8.200000f);
-        lattice.offsets[8] = Vector3(3.000000f, 0.500000f, 1.300000f);
-        lattice.offsets[9] = Vector3(1.700000f, 5.200000f, 4.900000f);
-        lattice.offsets[10] = Vector3(4.600000f, 5.700000f, 5.800000f);
-        lattice.offsets[11] = Vector3(0.700000f, 8.300000f, 2.600000f);
-        lattice.offsets[12] = Vector3(4.500000f, 6.900000f, 2.900000f);
-        lattice.offsets[13] = Vector3(5.600000f, 3.100000f, 5.400000f);
-        lattice.offsets[14] = Vector3(3.600000f, 5.200000f, 1.100000f);
-        lattice.offsets[15] = Vector3(5.700000f, 3.800000f, 3.400000f);
-        lattice.offsets[16] = Vector3(3.700000f, 8.400000f, 2.700000f);
-        lattice.offsets[17] = Vector3(8.500000f, 2.200000f, 8.200000f);
-        lattice.offsets[18] = Vector3(0.900000f, 8.600000f, 4.300000f);
-        lattice.offsets[19] = Vector3(8.700000f, 5.900000f, 8.700000f);
-        lattice.offsets[20] = Vector3(0.400000f, 6.100000f, 1.200000f);
-        lattice.offsets[21] = Vector3(1.700000f, 0.400000f, 0.700000f);
-        lattice.offsets[22] = Vector3(0.100000f, 1.200000f, 7.400000f);
-        lattice.offsets[23] = Vector3(2.400000f, 6.300000f, 1.700000f);
-        lattice.offsets[24] = Vector3(1.700000f, 1.200000f, 7.000000f);
-        lattice.offsets[25] = Vector3(0.900000f, 7.800000f, 7.000000f);
-        lattice.offsets[26] = Vector3(6.900000f, 8.800000f, 9.000000f);
+        lattice.offsets[0] = Vector3(5.600000f, 5.000000f, 2.000000f);
+        lattice.offsets[1] = Vector3(3.600000f, 6.200000f, 6.600000f);
+        lattice.offsets[2] = Vector3(1.500000f, 5.200000f, 3.800000f);
+        lattice.offsets[3] = Vector3(3.200000f, 3.300000f, 8.100000f);
+        lattice.offsets[4] = Vector3(5.500000f, 0.800000f, 3.100000f);
+        lattice.offsets[5] = Vector3(6.900000f, 7.900000f, 2.700000f);
+        lattice.offsets[6] = Vector3(2.000000f, 3.200000f, 8.900000f);
+        lattice.offsets[7] = Vector3(8.600000f, 6.400000f, 2.700000f);
+        lattice.offsets[8] = Vector3(1.800000f, 4.700000f, 1.500000f);
+        lattice.offsets[9] = Vector3(5.200000f, 8.700000f, 8.600000f);
+        lattice.offsets[10] = Vector3(1.500000f, 4.600000f, 7.900000f);
+        lattice.offsets[11] = Vector3(6.400000f, 1.500000f, 8.700000f);
+        lattice.offsets[12] = Vector3(3.700000f, 0.800000f, 0.200000f);
+        lattice.offsets[13] = Vector3(7.600000f, 3.500000f, 7.000000f);
+        lattice.offsets[14] = Vector3(3.500000f, 6.200000f, 5.400000f);
+        lattice.offsets[15] = Vector3(2.600000f, 7.500000f, 3.700000f);
+        lattice.offsets[16] = Vector3(8.600000f, 0.900000f, 1.500000f);
+        lattice.offsets[17] = Vector3(3.300000f, 3.200000f, 8.300000f);
+        lattice.offsets[18] = Vector3(7.400000f, 8.900000f, 2.000000f);
+        lattice.offsets[19] = Vector3(8.000000f, 4.300000f, 4.100000f);
+        lattice.offsets[20] = Vector3(8.300000f, 6.800000f, 3.000000f);
+        lattice.offsets[21] = Vector3(5.700000f, 1.700000f, 3.600000f);
+        lattice.offsets[22] = Vector3(0.500000f, 4.400000f, 7.100000f);
+        lattice.offsets[23] = Vector3(8.100000f, 7.000000f, 3.500000f);
+        lattice.offsets[24] = Vector3(4.300000f, 8.000000f, 3.600000f);
+        lattice.offsets[25] = Vector3(4.800000f, 5.600000f, 8.400000f);
+        lattice.offsets[26] = Vector3(8.700000f, 6.600000f, 7.100000f);
         lattice.interpolation = LatticeInterpolation::CUBIC;
         lattice.outside = LatticeOutside::FADE;
-        lattice.fadeDistance = 5.600000f;
+        lattice.fadeDistance = 4.600000f;
         lattice.jiggle = true;
-        lattice.jiggleStiffness = 3.800000f;
-        lattice.jiggleDamping = 4.400000f;
-        lattice.jiggleInertia = 4.700000f;
+        lattice.jiggleStiffness = 8.100000f;
+        lattice.jiggleDamping = 8.800000f;
+        lattice.jiggleInertia = 7.600000f;
         lattice.jiggleAnchor = LatticeJiggleAnchor::POSITIVE_Z;
-        lattice.jiggleMaxOffset = 3.900000f;
+        lattice.jiggleMaxOffset = 8.200000f;
         lattice.enabled = false;
         scene->addComponent<LatticeComponent>(1055, lattice);
 
@@ -1858,7 +1788,7 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         latticefollower.applyPosition = false;
         latticefollower.applyRotation = false;
         latticefollower.applyScale = true;
-        latticefollower.weight = 4.200000f;
+        latticefollower.weight = 0.600000f;
         latticefollower.enabled = false;
         scene->addComponent<LatticeFollowerComponent>(1057, latticefollower);
 
@@ -1903,14 +1833,14 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         // Entity components initialization
         LocalVolumetricFogComponent volume;
         volume.shape = FogVolumeShape::SPHERE;
-        volume.size = Vector3(6.400000f, 5.600000f, 3.600000f);
-        volume.attenuationDistance = 0.600000f;
-        volume.albedo = Vector3(6.300000f, 4.200000f, 6.200000f);
-        volume.blendDistance = 4.700000f;
+        volume.size = Vector3(3.900000f, 4.700000f, 4.400000f);
+        volume.attenuationDistance = 5.800000f;
+        volume.albedo = Vector3(8.400000f, 1.400000f, 1.300000f);
+        volume.blendDistance = 1.600000f;
         volume.falloff = FogVolumeFalloff::EXPONENTIAL;
-        volume.noiseIntensity = 4.900000f;
-        volume.noiseScale = 0.800000f;
-        volume.scrollSpeed = Vector3(7.300000f, 5.000000f, 3.700000f);
+        volume.noiseIntensity = 1.000000f;
+        volume.noiseScale = 2.000000f;
+        volume.scrollSpeed = Vector3(5.600000f, 6.800000f, 8.000000f);
         scene->addComponent<LocalVolumetricFogComponent>(1059, volume);
 
         Transform transform;
@@ -1934,26 +1864,21 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         VolumetricCloudsComponent clouds;
         clouds.preset = CloudsPreset::STORMY;
         clouds.rendering = CloudsRendering::SCREEN;
-        clouds.coverage = 8.900000f;
-        clouds.density = 4.800000f;
-        clouds.shapeScale = 8.000000f;
-        clouds.shapeFactor = 2.100000f;
-        clouds.erosionFactor = 3.200000f;
-        clouds.erosionScale = 2.800000f;
-        clouds.bottomAltitude = 4.300000f;
-        clouds.altitudeRange = 6.900000f;
-        clouds.earthCurvature = 0.600000f;
-        clouds.windDirection = 2.900000f;
-        clouds.windSpeed = 2.000000f;
-        clouds.weatherMap.setPath("textures/parity.png");
-        clouds.weatherMap.setMinFilter(TextureFilter::LINEAR);
-        clouds.weatherMap.setMagFilter(TextureFilter::LINEAR);
-        clouds.weatherMap.setWrapU(TextureWrap::REPEAT);
-        clouds.weatherMap.setWrapV(TextureWrap::REPEAT);
-        clouds.weatherMapScale = 6.500000f;
-        clouds.sunLightDimmer = 3.100000f;
-        clouds.ambientLightDimmer = 6.100000f;
-        clouds.maxDistance = 7.800000f;
+        clouds.coverage = 6.000000f;
+        clouds.density = 5.800000f;
+        clouds.shapeScale = 2.900000f;
+        clouds.shapeFactor = 0.700000f;
+        clouds.erosionFactor = 4.600000f;
+        clouds.erosionScale = 2.600000f;
+        clouds.bottomAltitude = 5.700000f;
+        clouds.altitudeRange = 3.800000f;
+        clouds.earthCurvature = 5.700000f;
+        clouds.windDirection = 5.400000f;
+        clouds.windSpeed = 3.100000f;
+        clouds.weatherMapScale = 4.500000f;
+        clouds.sunLightDimmer = 6.900000f;
+        clouds.ambientLightDimmer = 4.100000f;
+        clouds.maxDistance = 8.300000f;
         clouds.qualityOverride = AtmosphereQualityOverride::MEDIUM;
         scene->addComponent<VolumetricCloudsComponent>(1060, clouds);
 
@@ -1970,6 +1895,39 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         scene->addComponent<Transform>(1060, transform);
     }
 
+    {
+        // Entity 1061 (ForceFieldComponent)
+        scene->setEntityName(1061, "ForceFieldComponent");
+
+        // Entity components initialization
+        ForceFieldComponent field;
+        field.shape = (ForceFieldShapeType)3;
+        field.size = Vector3(8.400000f, 2.700000f, 5.700000f);
+        field.kind = (ForceFieldKind)4;
+        field.strength = 3.700000f;
+        field.direction = Vector3(5.200000f, 1.100000f, 5.600000f);
+        field.turbulence = 8.200000f;
+        field.pulseFrequency = 3.800000f;
+        field.frequency = 3.600000f;
+        field.falloff.keys.clear();
+        field.falloff.keys.push_back({0.000000f, 1.000000f, 0.000000f, 0.000000f});
+        field.layers = 3;
+        field.enabled = false;
+        scene->addComponent<ForceFieldComponent>(1061, field);
+
+        Transform transform;
+        transform.position = Vector3(60.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1061, transform);
+    }
+
     // Default Camera 1
     Entity cameraEntity = scene->createSystemEntity();
 
@@ -1979,11 +1937,11 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     camera.target = Vector3(0.000000f, 0.000000f, 0.000000f);
     camera.up = Vector3(0.000000f, 1.000000f, 0.000000f);
     camera.leftClip = 0.000000f;
-    camera.rightClip = 944.000000f;
+    camera.rightClip = 933.000000f;
     camera.bottomClip = 0.000000f;
     camera.topClip = 488.000000f;
     camera.yfov = 0.750000f;
-    camera.aspect = 1.934426f;
+    camera.aspect = 1.911885f;
     camera.nearClip = 0.300000f;
     camera.farClip = 4000.000000f;
     camera.renderToTexture = false;
