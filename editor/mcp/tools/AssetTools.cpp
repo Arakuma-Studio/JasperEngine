@@ -808,6 +808,16 @@ void getAssetInfoTool(const CallPtr& call) {
                 text.pop_back();
             }
         }
+        if (extensionOf(file) != ".svg") {
+            // a sprite normal map: its recipe, whether its source changed, the regenerate arguments;
+            // a plain image: its normal map by the default names
+            const Json normals = spriteNormalsAssetInfo(project, file, true);
+            if (normals.is_object()) {
+                for (auto it = normals.begin(); it != normals.end(); ++it) data[it.key()] = it.value();
+                text += "." + spriteNormalsAssetText(normals);
+                text.pop_back();
+            }
+        }
     } else if (kind == "model") {
         std::string error;
         Json info;
@@ -896,7 +906,8 @@ void getAssetInfoTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ view_asset
 
-void replyImage(const CallPtr& call, const fs::path& image, const std::string& label, int maxSize, const Json& synthesis = Json()) {
+void replyImage(const CallPtr& call, const fs::path& image, const std::string& label, int maxSize, const Json& synthesis = Json(),
+                const Json& normals = Json()) {
     int w = 0, h = 0, c = 0;
     unsigned char* pixels = stbi_load(image.string().c_str(), &w, &h, &c, 4);
     if (!pixels) {
@@ -913,9 +924,12 @@ void replyImage(const CallPtr& call, const fs::path& image, const std::string& l
     }
     Json data = {{"width", w}, {"height", h}, {"preview_width", outW}, {"preview_height", outH}};
     if (!synthesis.is_null()) data["synthesis"] = synthesis;
+    if (normals.is_object()) {
+        for (auto it = normals.begin(); it != normals.end(); ++it) data[it.key()] = it.value();
+    }
     ToolResult result = ToolResult::success(label + " (" + std::to_string(w) + "x" + std::to_string(h) +
                                                 (outW != w ? ", shown at " + std::to_string(outW) + "x" + std::to_string(outH) : std::string()) + ")." +
-                                                synthesisAssetText(synthesis),
+                                                synthesisAssetText(synthesis) + spriteNormalsAssetText(normals),
                                             data);
     result.images.push_back({base64, "image/png"});
     call->reply(std::move(result));
@@ -928,7 +942,8 @@ void viewAssetTool(const CallPtr& call) {
     const std::string rel = projectRelative(project, file);
     const int maxSize = std::clamp(call->args().value("max_size", 512), 16, 2048);
     if (Util::isImageFile(rel) && extensionOf(file) != ".svg") {
-        replyImage(call, file, rel, maxSize, extensionOf(file) == ".png" ? synthesisAssetInfo(project, file, false) : Json());
+        replyImage(call, file, rel, maxSize, extensionOf(file) == ".png" ? synthesisAssetInfo(project, file, false) : Json(),
+                   spriteNormalsAssetInfo(project, file, false));
         return;
     }
     if (Util::isVertexAnimationFile(rel)) {

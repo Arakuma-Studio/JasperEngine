@@ -651,6 +651,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/PoseTools.cpp
     ${EDITOR_DIR}/mcp/tools/PlacementTools.cpp
     ${EDITOR_DIR}/mcp/tools/VatTools.cpp
+    ${EDITOR_DIR}/mcp/tools/SpriteNormalsTools.cpp
 
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp
     ${EDITOR_DIR}/util/BidiText.cpp
@@ -685,6 +686,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${JASPERENGINE_SPRITENORMALS_SOURCES}
     ${EDITOR_DIR}/spritenormals/SpriteNormalsSession.cpp
     ${EDITOR_DIR}/spritenormals/SpriteNormalsApply.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsCli.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsCheck.cpp
     ${EDITOR_DIR}/physics/PlacementSettings.cpp
     ${EDITOR_DIR}/physics/PlacementSession.cpp
     ${EDITOR_DIR}/physics/PlacementCli.cpp
