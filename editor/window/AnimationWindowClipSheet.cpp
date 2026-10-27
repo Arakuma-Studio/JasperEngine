@@ -229,7 +229,7 @@ Entity AnimationWindowClip::findModelInstance(SceneProject* sceneProject, const 
         if (!scene->isEntityCreated(entity)) return false;
         if (const ModelComponent* component = scene->findComponent<ModelComponent>(entity)){
             if (!component->filename.empty() &&
-                project->resolveAssetPath(fs::u8path(component->filename)).lexically_normal() == target) return true;
+                project->resolveAssetPath(FileUtils::pathFromUtf8(component->filename.path)).lexically_normal() == target) return true;
         }
         PrefabObjectRef ref;
         if (project->isPrefabInstanceRoot(sceneProject->id, entity) && project->findPrefabObject(sceneProject->id, entity, ref) &&
@@ -264,7 +264,7 @@ std::string AnimationWindowClip::previewBlocker(SceneProject* sceneProject) cons
     const std::string model = previewModelOf();
     if (model.empty()) return "Nothing to preview on: select a GameObject, or set the Preview Model";
     if (findModelInstance(sceneProject, model) == NULL_ENTITY){
-        return "No instance of " + fs::u8path(model).filename().u8string() +
+        return "No instance of " + FileUtils::pathToUtf8(FileUtils::pathFromUtf8(model).filename()) +
                " in this scene: select a GameObject, or drop a model or prefab on Preview Model";
     }
     return std::string();
@@ -316,7 +316,7 @@ std::vector<std::string> AnimationWindowClip::scriptFunctions() const{
             stamp += std::to_string((int)entry.type) + (entry.enabled ? "1" : "0") + entry.path + "|" + entry.className + "|";
             if (entry.type == ScriptType::LUA && !entry.path.empty()){
                 std::error_code ec;
-                const auto time = fs::last_write_time(project->resolveLuaPath(fs::u8path(entry.path)), ec);
+                const auto time = fs::last_write_time(project->resolveLuaPath(FileUtils::pathFromUtf8(entry.path.path)), ec);
                 if (!ec) stamp += std::to_string((long long)time.time_since_epoch().count());
             }
             stamp += ";";
@@ -639,7 +639,7 @@ bool AnimationWindowClip::createNewClip(SceneProject* sceneProject, const std::s
     if (!c.openClip(result.clip, &openError)) setNotice(openError, true);
     selection.clear();
     selectEvent(-1);
-    setNotice("Created " + fs::u8path(result.clip).filename().u8string() + " (one scene undo step)", false);
+    setNotice("Created " + FileUtils::pathToUtf8(FileUtils::pathFromUtf8(result.clip).filename()) + " (one scene undo step)", false);
     return true;
 }
 
@@ -722,7 +722,7 @@ bool AnimationWindowClip::extract(SceneProject* sceneProject, const std::string&
     selection.clear();
     selectEvent(-1);
     previewOverride.clear();
-    setNotice("Extracted to " + fs::u8path(result.clip).filename().u8string() +
+    setNotice("Extracted to " + FileUtils::pathToUtf8(FileUtils::pathFromUtf8(result.clip).filename()) +
               (result.projectStep ? " (one project undo step)" : " (one scene undo step)"), false);
     return true;
 }

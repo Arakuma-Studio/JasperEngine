@@ -363,10 +363,6 @@ namespace{
         }
     }
 
-    size_t channelWidth(const ClipTrackData& track, size_t morphCount){
-        return ClipData::valueWidth(track.channel, morphCount, track.points.size());
-    }
-
     bool trackLess(const ClipTrackData& a, const ClipTrackData& b){
         if (a.path != b.path) return a.path < b.path;
         if (a.channel != b.channel) return a.channel < b.channel;

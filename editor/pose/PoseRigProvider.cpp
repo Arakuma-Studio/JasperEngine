@@ -149,7 +149,7 @@ std::shared_ptr<const editor::PoseRigInfo> editor::PoseRigProvider::forSceneMode
         info->error = "the model GameObject has no model file";
         return info;
     }
-    const fs::path file = project->resolveAssetPath(fs::u8path(component->filename)).lexically_normal();
+    const fs::path file = project->resolveAssetPath(FileUtils::pathFromUtf8(component->filename.path)).lexically_normal();
     buildRig(project, scene, model, file, *info);
     return info;
 }

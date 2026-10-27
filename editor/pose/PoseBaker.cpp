@@ -488,7 +488,7 @@ bool editor::PoseBaker::bakeToClip(Project* project, uint32_t sceneId, Entity mo
     const AnimationPlayerComponent* player = scene->findComponent<AnimationPlayerComponent>(model);
     if (player && result.entry < player->clips.size()){
         const AnimationPlayerClip& listed = player->clips[result.entry];
-        result.name = listed.name.empty() ? fs::u8path(listed.clip).stem().u8string() : listed.name;
+        result.name = listed.name.empty() ? FileUtils::pathToUtf8(FileUtils::pathFromUtf8(listed.clip).stem()) : listed.name;
     }
     return true;
 }

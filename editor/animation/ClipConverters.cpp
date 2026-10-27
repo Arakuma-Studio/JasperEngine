@@ -911,7 +911,7 @@ std::string ClipConverters::defaultClipDirectory(Project* project, uint32_t scen
     if (modelEntity != NULL_ENTITY){
         const ModelComponent& model = scene->getComponent<ModelComponent>(modelEntity);
         if (!model.filename.empty()){
-            return directoryOf(project->resolveAssetPath(fs::u8path(model.filename)));
+            return directoryOf(project->resolveAssetPath(FileUtils::pathFromUtf8(model.filename.path)));
         }
     }
     if (const PrefabComponent* prefab = scene->findComponent<PrefabComponent>(root)){

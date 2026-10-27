@@ -10,6 +10,7 @@
 // PoseTemplates; every change is one project undo step.
 
 #include "PoseAnimationWindow.h"
+#include "util/FileUtils.h"
 
 #include "App.h"
 #include "Backend.h"
@@ -83,7 +84,7 @@ namespace {
             std::error_code fileError;
             const auto size = fs::file_size(it->path(), fileError);
             const auto time = fs::last_write_time(it->path(), fileError);
-            parts.push_back(it->path().filename().u8string() + ":" + std::to_string(fileError ? 0 : size) + ":" +
+            parts.push_back(editor::FileUtils::pathToUtf8(it->path().filename()) + ":" + std::to_string(fileError ? 0 : size) + ":" +
                             std::to_string(fileError ? 0 : static_cast<long long>(time.time_since_epoch().count())));
         }
         std::sort(parts.begin(), parts.end());
@@ -310,7 +311,7 @@ void editor::PoseAnimationWindow::drawTemplatesTab(){
     ImGui::BeginDisabled(!canSave);
     if (ImGui::Button(saveLabel)){
         const auto& doc = session.document();
-        copyTo(templateSaveName, sizeof(templateSaveName), doc ? fs::u8path(doc->path()).stem().u8string() : std::string());
+        copyTo(templateSaveName, sizeof(templateSaveName), doc ? editor::FileUtils::pathToUtf8(editor::FileUtils::pathFromUtf8(doc->path()).stem()) : std::string());
         templateSaveDescription[0] = '\0';
         copyTo(templateSaveCategory, sizeof(templateSaveCategory), "User");
         templateSaveError.clear();

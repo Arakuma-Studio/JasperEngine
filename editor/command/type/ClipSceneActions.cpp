@@ -70,11 +70,6 @@ namespace {
         return clipui::quotedName(scene, entity);
     }
 
-    // a previewed value never reaches a written clip or the scene
-    void stopPreviewsFor(uint32_t sceneId, std::vector<Entity> roots){
-        ClipSceneActions::stopPreviewsFor(sceneId, std::move(roots));
-    }
-
     using clipui::readWholeFile;
 
     // a project-relative .anim path to write: inside the project, .anim
@@ -115,7 +110,7 @@ namespace {
         if (!entry.name.empty()) return entry.name;
         anim::SubClipReference reference;
         if (anim::parseSubClipReference(entry.clip, reference)) return reference.clip;
-        return fs::u8path(entry.clip).stem().u8string();
+        return FileUtils::pathToUtf8(FileUtils::pathFromUtf8(entry.clip).stem());
     }
 
     std::string readText(const fs::path& path){

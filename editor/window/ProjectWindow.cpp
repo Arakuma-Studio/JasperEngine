@@ -3999,7 +3999,7 @@ void editor::ProjectWindow::assetsCreatePoseAnimation() {
         return;
     }
     scanDirectory(currentPath);
-    const std::string fileName = fs::u8path(created).filename().u8string();
+    const std::string fileName = FileUtils::pathToUtf8(FileUtils::pathFromUtf8(created).filename());
     selectedFiles.clear();
     selectedFiles.insert(fileName);
     lastSelectedFile = fileName;

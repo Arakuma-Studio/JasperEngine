@@ -12,6 +12,7 @@
 #include "asset/ContentHash.h"
 #include "asset/ModelSubAssets.h"
 #include "util/SHA1.h"
+#include "util/Util.h"
 
 #include "json.hpp"
 #include "animation/AnimationClipIO.h"
@@ -232,6 +233,7 @@ namespace {
             out.push_back({entry.key, entry.guid, entry.name, kind});
         }
         return out;
+    }
 
     // .anim clips are JSON: their GUID is the top-level "guid" member (AnimationClipIO)
     bool isClipFile(const fs::path& path) {
@@ -282,7 +284,6 @@ namespace {
         data.guid = guid.str();
         text = anim::writeClip(data);
         return true;
-    }
     }
 
 }

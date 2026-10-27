@@ -11,10 +11,8 @@
 #include "io/Data.h"
 #include "io/FileData.h"
 #include "subsystem/MeshSystem.h"
-#include "thread/ThreadPoolManager.h"
+#include "jobs/JobSystem.h"
 
-#include <chrono>
-#include <future>
 #include <map>
 #include <mutex>
 
@@ -204,7 +202,7 @@ namespace{
     };
     struct AsyncLoads{
         std::mutex mutex;
-        std::map<std::string, std::shared_future<AsyncLoad>> pending;
+        std::map<std::string, jobs::Task<AsyncLoad>> pending;
     };
 
     AsyncLoads& asyncLoads(){
@@ -378,42 +376,36 @@ std::shared_ptr<const AnimationClip> AnimationClipPool::pollOrLoad(const std::st
 
     const std::string key = getKey(path);
     AsyncLoads& loads = asyncLoads();
-    std::shared_future<AsyncLoad> build;
+    jobs::Task<AsyncLoad> build;
     {
         std::lock_guard<std::mutex> lock(loads.mutex);
         auto it = loads.pending.find(key);
         if (it != loads.pending.end()){
             build = it->second;
         }else{
-            try{
-                build = ThreadPoolManager::getInstance().enqueue([path](){
-                    AsyncLoad result;
-                    result.clip = getOrLoad(path, &result.error);
-                    return result;
-                }).share();
-                loads.pending[key] = build;
-            }catch (const std::exception&){
-                // the pool is stopping: built on this thread below
-            }
+            // a Background job of the S06 system (a stopping system cancels it: built here then)
+            jobs::SubmitOptions options;
+            options.lane = jobs::Lane::Background;
+            options.name = "anim-clip-load";
+            options.tags = jobs::Tag::Asset;
+            build = jobs::submit([path](){
+                AsyncLoad result;
+                result.clip = getOrLoad(path, &result.error);
+                return result;
+            }, options);
+            loads.pending[key] = build;
         }
-        if (build.valid()){
-            if (build.wait_for(std::chrono::seconds(0)) != std::future_status::ready){
-                loading = true;
-                return nullptr;
-            }
-            loads.pending.erase(key);
+        if (build.status() != jobs::TaskStatus::Cancelled && !build.isReady()){
+            loading = true;
+            return nullptr;
         }
+        loads.pending.erase(key);
     }
-    if (!build.valid()) return getOrLoad(path, error);
-    try{
-        const AsyncLoad& result = build.get();
-        if (!result.clip && error) *error = result.error;
-        return result.clip;
-    }catch (const std::exception& e){
-        // the pool dropped the task (shutdown)
-        if (error) *error = std::string("cannot load ") + path + ": " + e.what();
-    }
-    return nullptr;
+    // cancelled (a stopping job system) or failed: built on this thread
+    if (build.status() != jobs::TaskStatus::Completed) return getOrLoad(path, error);
+    const AsyncLoad& result = build.get();
+    if (!result.clip && error) *error = result.error;
+    return result.clip;
 }
 
 uint64_t AnimationClipPool::getGeneration(const std::string& path){

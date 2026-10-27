@@ -199,7 +199,7 @@ bool EntityRegistry::changeTransformChildren(Entity entity){
     // Get the parent of the entity being removed before it's deleted
     Transform* removedTransform = findComponent<Transform>(entity);
     if (!removedTransform) {
-        return;
+        return false;
     }
     const Entity newParent = removedTransform->parent;
 

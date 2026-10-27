@@ -1066,13 +1066,13 @@ bool saveTemplateOp(EditState& state, const Json& op, const std::string& path, s
     std::string key = lower(name);
     key.erase(0, key.find_first_not_of(" \t"));
     key.erase(key.find_last_not_of(" \t") + 1);
-    if (!state.templateNames.insert(key).second || state.templateFiles.count(file.lexically_normal().u8string())) {
+    if (!state.templateNames.insert(key).second || state.templateFiles.count(FileUtils::pathToUtf8(file.lexically_normal()))) {
         error = path + ".name: this call already saves a template named '" + name + "' (" + projectRel(state.project, file) +
                 "); save it once, after the ops that change it";
         return false;
     }
     const PoseAnimationTemplateInfo info{name, op.value("description", std::string()), op.value("category", std::string("User"))};
-    state.templateFiles[file.lexically_normal().u8string()] = PoseTemplates::fileText(data, info);
+    state.templateFiles[FileUtils::pathToUtf8(file.lexically_normal())] = PoseTemplates::fileText(data, info);
     state.changes.push_back("save_template \"" + name + "\": " + std::to_string(data.poses.size()) + " pose(s) -> " +
                             projectRel(state.project, file));
     return true;
@@ -1397,7 +1397,7 @@ void bakeAnimatorTool(const CallPtr& call) {
         return;
     }
     // the component stores it relative to the assets folder: shown project-relative, as the tools take it
-    const std::string source = projectRel(project, project->resolveAssetPath(fs::u8path(animator->animation)).lexically_normal());
+    const std::string source = projectRel(project, project->resolveAssetPath(FileUtils::pathFromUtf8(animator->animation.path)).lexically_normal());
     if (toClip) {
         std::shared_ptr<PoseAnimationDocument> document = PoseAnimationDocument::open(project, source, &error);
         Json baked;

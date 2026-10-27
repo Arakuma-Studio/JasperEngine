@@ -8,6 +8,7 @@
 // the bottom left), the menus and popups (keys, rows, Add Property, Rebind) and the shortcuts.
 
 #include "AnimationWindowClip.h"
+#include "util/FileUtils.h"
 #include "AnimationWindowClipUtil.h"
 
 #include "imgui_internal.h"
@@ -280,7 +281,7 @@ void AnimationWindowClip::drawClipCombo(SceneProject* sceneProject){
     AnimationClipController& c = controller();
     std::shared_ptr<AnimationClipDocument> doc = document();
     std::string current = !c.getStateName().empty() ? c.getStateName()
-                        : doc ? fs::u8path(doc->path()).filename().u8string() : std::string("(No Clip)");
+                        : doc ? FileUtils::pathToUtf8(FileUtils::pathFromUtf8(doc->path()).filename()) : std::string("(No Clip)");
     if (doc && doc->isReadOnly()) current = ICON_FA_LOCK " " + current;
     const float width = std::max(Theme::dpi(150.0f), ImGui::CalcTextSize(current.c_str()).x + ImGui::GetFrameHeight() * 2.0f);
     ImGui::SetNextItemWidth(width);
@@ -573,7 +574,7 @@ void AnimationWindowClip::drawRowLabel(const Row& row, size_t index, ImVec2 pos,
     // labels end 8 px before the value column (no run-in)
     const float labelEnd = pos.x + width - m.valueWidth - 8.0f * m.s;
     if (row.kind == Row::Kind::Summary){
-        const std::string clip = doc ? fs::u8path(doc->path()).filename().u8string() : std::string();
+        const std::string clip = doc ? FileUtils::pathToUtf8(FileUtils::pathFromUtf8(doc->path()).filename()) : std::string();
         drawList->PushClipRect(pos, ImVec2(labelEnd, pos.y + height), true);
         drawList->AddText(ImVec2(pos.x + m.indent * 0.5f, textY), color(Theme::Colors::SubtleText), clip.c_str());
         drawList->PopClipRect();

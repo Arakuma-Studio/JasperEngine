@@ -19,7 +19,7 @@ namespace {
 bool writeWhole(const fs::path& path, const std::string& content) {
     std::error_code ec;
     fs::create_directories(path.parent_path(), ec);
-    return FileUtils::writeFileReplacing(path, content);
+    return editor::FileUtils::writeFileReplacing(path, content);
 }
 
 }

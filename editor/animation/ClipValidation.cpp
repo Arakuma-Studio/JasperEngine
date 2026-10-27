@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ClipValidation.h"
+#include "util/FileUtils.h"
 
 #include "Project.h"
 #include "animation/AnimationClipIO.h"
@@ -776,8 +777,8 @@ std::vector<std::string> ClipValidation::scriptFunctions(Project* project, Scene
     for (const ScriptEntry& entry : scripts->scripts){
         // the engine calls methods on enabled Lua scripts only
         if (entry.type != ScriptType::LUA || entry.path.empty() || !entry.enabled) continue;
-        std::filesystem::path file = project ? project->resolveLuaPath(std::filesystem::u8path(entry.path))
-                                             : std::filesystem::u8path(entry.path);
+        std::filesystem::path file = project ? project->resolveLuaPath(FileUtils::pathFromUtf8(entry.path.path))
+                                             : FileUtils::pathFromUtf8(entry.path.path);
         std::string text;
         if (!readText(file, text)) continue;
         // methods of the script's own table (named like its class) and of the tables it inherits

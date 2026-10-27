@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AnimationClipController.h"
+#include "util/FileUtils.h"
 
 #include "Out.h"
 #include "Project.h"
@@ -784,7 +785,7 @@ Entity AnimationClipController::findPreviewInstance(SceneProject* sceneProject) 
         if (!scene->isEntityCreated(entity)) return false;
         if (const ModelComponent* component = scene->findComponent<ModelComponent>(entity)){
             if (!component->filename.empty() &&
-                project->resolveAssetPath(fs::u8path(component->filename)).lexically_normal() == target) return true;
+                project->resolveAssetPath(FileUtils::pathFromUtf8(component->filename.path)).lexically_normal() == target) return true;
         }
         PrefabObjectRef ref;
         if (project->isPrefabInstanceRoot(sceneProject->id, entity) && project->findPrefabObject(sceneProject->id, entity, ref) &&

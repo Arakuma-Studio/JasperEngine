@@ -483,8 +483,6 @@ bool editor::Project::visitClipPathsInRegistry(EntityRegistry* registry, const s
         }
     }
     return changed;
-        }
-    });
 }
 
 SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* registry) {
@@ -7406,9 +7404,11 @@ std::vector<Scene*> editor::Project::getPlayingScenes() const {
         return scenes;
     }
     for (const PlayRuntimeScene& entry : activePlaySession->runtimeScenes) {
-        if (entry.runtime && entry.runtime->scene && entry.initialized &&
-            std::find(scenes.begin(), scenes.end(), entry.runtime->scene) == scenes.end()) {
-            scenes.push_back(entry.runtime->scene);
+        // the played scene by its id (runtimeOf): the scenes vector may have moved it
+        const SceneProject* runtime = entry.ownedRuntime ? entry.copy : getScene(entry.sourceSceneId);
+        if (runtime && runtime->scene && entry.initialized &&
+            std::find(scenes.begin(), scenes.end(), runtime->scene) == scenes.end()) {
+            scenes.push_back(runtime->scene);
         }
     }
     return scenes;
@@ -9138,7 +9138,7 @@ void editor::Project::stop(uint32_t sceneId) {
 
             // the Systems window's and set_system_options' switches are Play-mode debug state
             for (const auto& entry : runtimeScenes) {
-                if (entry.runtime && entry.runtime->scene) entry.runtime->scene->getScheduler().resetDebugOptions();
+                if (Scene* scene = runtimeSceneOf(entry)) scene->getScheduler().resetDebugOptions();
             }
             if (mainSceneProject && mainSceneProject->scene) {
                 mainSceneProject->scene->getScheduler().resetDebugOptions();

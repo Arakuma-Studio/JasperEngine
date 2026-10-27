@@ -106,7 +106,7 @@ namespace {
 
     std::string fileStem(const std::string& path){
         const fs::path p = fs::u8path(path);
-        return p.stem().u8string();
+        return editor::FileUtils::pathToUtf8(p.stem());
     }
 
     const char* curveLabel(pose::TransitionCurve curve){
@@ -343,7 +343,7 @@ bool editor::PoseAnimationWindow::openAnimation(const std::string& path, std::st
         // an assets-relative path (as components and preview_model store them)
         const fs::path inAssets = project->getAssetsPath() / fs::u8path(path);
         std::string second;
-        opened = session.open(inAssets.u8string(), &second);
+        opened = session.open(editor::FileUtils::pathToUtf8(inAssets), &second);
     }
     if (!opened){
         if (error) *error = failure;
@@ -396,7 +396,7 @@ bool editor::PoseAnimationWindow::createAnimation(std::string* error){
         return false;
     }
     const fs::path modelFile = project->resolveAssetPath(model->filename);
-    const std::string path = createAsset(project, modelFile.parent_path(), fs::u8path(model->filename).stem().u8string(),
+    const std::string path = createAsset(project, modelFile.parent_path(), editor::FileUtils::pathToUtf8(editor::FileUtils::pathFromUtf8(model->filename.path).stem()),
                                          model->filename, error);
     if (path.empty()) return false;
     if (!openAnimation(path, error)) return false;
@@ -1072,7 +1072,7 @@ void editor::PoseAnimationWindow::drawAnimationField(bool inlineRow){
     if (inlineRow) ImGui::SameLine();
     else ImGui::SameLine(Theme::dpi(78.0f));
     const auto& doc = session.document();
-    std::string label = doc ? std::string(ICON_FA_PERSON " ") + fs::u8path(doc->path()).filename().u8string() : std::string("None (Pose Animation)");
+    std::string label = doc ? std::string(ICON_FA_PERSON " ") + editor::FileUtils::pathToUtf8(editor::FileUtils::pathFromUtf8(doc->path()).filename()) : std::string("None (Pose Animation)");
     if (doc && !doc->exists()) label += " (deleted)";
     label += "###PoseAnimationAsset";
     const float buttons = ImGui::CalcTextSize(ICON_FA_FILE_CIRCLE_PLUS " New" ICON_FA_FOLDER_OPEN " Open").x +
@@ -2366,7 +2366,7 @@ void editor::PoseAnimationWindow::openMappingPopup(uint32_t sceneId, Entity enti
     mappingFilter[0] = '\0';
     // the sidecar's overrides as they are
     if (ModelComponent* model = sceneProject->scene->findComponent<ModelComponent>(entity)){
-        const fs::path sidecar = project->resolveAssetPath(FileUtils::pathFromUtf8(pose::humanoidSidecarPath(model->filename)));
+        const fs::path sidecar = project->resolveAssetPath(editor::FileUtils::pathFromUtf8(pose::humanoidSidecarPath(model->filename)));
         std::string text;
         std::error_code ec;
         if (fs::exists(sidecar, ec) && ProjectChecks::readFile(sidecar, text)){
@@ -2385,7 +2385,7 @@ void editor::PoseAnimationWindow::applyMapping(){
     if (!sceneProject || !sceneProject->scene) return;
     ModelComponent* model = sceneProject->scene->findComponent<ModelComponent>(mappingEntity);
     if (!model) return;
-    const fs::path sidecar = project->resolveAssetPath(FileUtils::pathFromUtf8(pose::humanoidSidecarPath(model->filename)));
+    const fs::path sidecar = project->resolveAssetPath(editor::FileUtils::pathFromUtf8(pose::humanoidSidecarPath(model->filename)));
     pose::HumanoidOverrides overrides;
     overrides.bones = mappingOverrides;
     const std::string text = pose::writeHumanoidOverrides(overrides);
@@ -2446,7 +2446,7 @@ void editor::PoseAnimationWindow::drawMappingPopup(){
         return;
     }
     ImGui::TextWrapped("Pick the skeleton bone of each humanoid slot. Slots marked * are required; \"Auto\" uses the name-based detection. "
-                       "Apply writes %s.humanoid (one undo step).", fs::u8path(mappingInfo->model).filename().u8string().c_str());
+                       "Apply writes %s.humanoid (one undo step).", editor::FileUtils::pathToUtf8(editor::FileUtils::pathFromUtf8(mappingInfo->model).filename()).c_str());
     ImGui::SetNextItemWidth(Theme::dpi(220.0f));
     ImGui::InputTextWithHint("##MapFilter", ICON_FA_MAGNIFYING_GLASS " filter bones", mappingFilter, sizeof(mappingFilter));
     const std::string filter = [&]{
