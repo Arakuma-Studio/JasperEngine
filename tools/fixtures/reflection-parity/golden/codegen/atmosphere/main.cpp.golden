@@ -10,52 +10,59 @@
 #endif
 using namespace jasperengine;
 
-void create_AtmosphereBench(Scene* scene);
-SceneResources resources_AtmosphereBench();
+void create_scene_AtmosphereBench_910579834(Scene* scene);
+SceneResources resources_scene_AtmosphereBench_910579834();
 extern "C" void initScripts(jasperengine::Scene* scene);
 extern "C" void cleanupScripts(jasperengine::Scene* scene);
 extern "C" void initEntityScripts(jasperengine::Scene* scene, const jasperengine::Entity* entities, size_t count);
 extern "C" void cleanupEntityScripts(jasperengine::Scene* scene, const jasperengine::Entity* entities, size_t count);
 
-static Scene* _AtmosphereBench = nullptr;
+static Scene* _scene_AtmosphereBench_910579834 = nullptr;
 
 // --- Scene stack: AtmosphereBench ---
-void load_AtmosphereBench() {
-    bool _AtmosphereBench_needsInit = false;
-
-    if (!_AtmosphereBench){
-        _AtmosphereBench = new Scene();
-        SceneManager::setScenePtr(910579834, _AtmosphereBench);
-        _AtmosphereBench_needsInit = true;
+void load_scene_AtmosphereBench_910579834() {
+    if (_scene_AtmosphereBench_910579834 && !Engine::isSceneRunning(_scene_AtmosphereBench_910579834)) {
+        cleanupScripts(_scene_AtmosphereBench_910579834);
+        SceneManager::removeScenePtr(910579834);
+        delete _scene_AtmosphereBench_910579834;
+        _scene_AtmosphereBench_910579834 = nullptr;
     }
 
-    if (_AtmosphereBench_needsInit) {
-        create_AtmosphereBench(_AtmosphereBench);
+    bool _scene_AtmosphereBench_910579834_needsInit = false;
+
+    if (!_scene_AtmosphereBench_910579834){
+        _scene_AtmosphereBench_910579834 = new Scene();
+        SceneManager::setScenePtr(910579834, _scene_AtmosphereBench_910579834);
+        _scene_AtmosphereBench_910579834_needsInit = true;
     }
 
-    if (_AtmosphereBench_needsInit) {
-        initScripts(_AtmosphereBench);
+    if (_scene_AtmosphereBench_910579834_needsInit) {
+        create_scene_AtmosphereBench_910579834(_scene_AtmosphereBench_910579834);
     }
 
-    Engine::setScene(_AtmosphereBench);
+    if (_scene_AtmosphereBench_910579834_needsInit) {
+        initScripts(_scene_AtmosphereBench_910579834);
+    }
+
+    Engine::setScene(_scene_AtmosphereBench_910579834);
 
 }
 
-void add_AtmosphereBench() {
-    bool _AtmosphereBench_needsInit = false;
+void add_scene_AtmosphereBench_910579834() {
+    bool _scene_AtmosphereBench_910579834_needsInit = false;
 
-    if (!_AtmosphereBench){
-        _AtmosphereBench = new Scene();
-        SceneManager::setScenePtr(910579834, _AtmosphereBench);
-        _AtmosphereBench_needsInit = true;
+    if (!_scene_AtmosphereBench_910579834){
+        _scene_AtmosphereBench_910579834 = new Scene();
+        SceneManager::setScenePtr(910579834, _scene_AtmosphereBench_910579834);
+        _scene_AtmosphereBench_910579834_needsInit = true;
     }
 
-    if (_AtmosphereBench_needsInit) {
-        create_AtmosphereBench(_AtmosphereBench);
+    if (_scene_AtmosphereBench_910579834_needsInit) {
+        create_scene_AtmosphereBench_910579834(_scene_AtmosphereBench_910579834);
     }
 
-    if (_AtmosphereBench_needsInit) {
-        initScripts(_AtmosphereBench);
+    if (_scene_AtmosphereBench_910579834_needsInit) {
+        initScripts(_scene_AtmosphereBench_910579834);
     }
 }
 
@@ -94,7 +101,7 @@ JASPERENGINE_INIT void init() {
     Engine::setAtmosphereQualityDefaults(AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW);
     UIDocumentSystem::setPreferredSampleCount(4);
 
-    SceneManager::registerScene(910579834, "AtmosphereBench", load_AtmosphereBench, add_AtmosphereBench, {910579834}, resources_AtmosphereBench);
+    SceneManager::registerScene(910579834, "AtmosphereBench", load_scene_AtmosphereBench_910579834, add_scene_AtmosphereBench_910579834, {910579834}, resources_scene_AtmosphereBench_910579834);
 
     ObjectManager::setCppScriptHooks(initEntityScripts, cleanupEntityScripts);
 

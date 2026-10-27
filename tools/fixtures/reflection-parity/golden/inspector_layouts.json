@@ -43,6 +43,14 @@
   {
    "component": "tween",
    "group": "",
+   "kind": "Bool",
+   "label": "Ping-pong",
+   "path": "pingPong",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
    "kind": "Ease",
    "label": "Ease",
    "path": "function",
@@ -1261,6 +1269,14 @@
   {
    "component": "tween",
    "group": "",
+   "kind": "Bool",
+   "label": "Ping-pong",
+   "path": "pingPong",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
    "kind": "Ease",
    "label": "Ease",
    "path": "function",
@@ -1521,6 +1537,14 @@
   {
    "component": "light",
    "group": "",
+   "kind": "Bool",
+   "label": "Use Color Temperature",
+   "path": "useColorTemperature",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
    "kind": "Direction",
    "label": "Direction",
    "path": "direction",
@@ -1614,6 +1638,14 @@
    "kind": "Color3L",
    "label": "Color",
    "path": "color",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Color Temperature",
+   "path": "useColorTemperature",
    "read_only": false
   },
   {
@@ -3679,6 +3711,14 @@
   {
    "component": "keyframetracks",
    "group": "",
+   "kind": "Bool",
+   "label": "Loop",
+   "path": "loop",
+   "read_only": false
+  },
+  {
+   "component": "keyframetracks",
+   "group": "",
    "kind": "Int",
    "label": "Index",
    "path": "index",
@@ -4133,6 +4173,14 @@
   {
    "component": "light",
    "group": "",
+   "kind": "Bool",
+   "label": "Use Color Temperature",
+   "path": "useColorTemperature",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
    "kind": "FloatPositive",
    "label": "Volumetric Intensity",
    "path": "volumetricIntensity",
@@ -4406,6 +4454,14 @@
    "kind": "Bool",
    "label": "Loop",
    "path": "loop",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "Bool",
+   "label": "Ping-pong",
+   "path": "pingPong",
    "read_only": false
   },
   {
@@ -5035,6 +5091,14 @@
   {
    "component": "rigidbody",
    "group": "",
+   "kind": "Float",
+   "label": "Buoyancy",
+   "path": "buoyancy",
+   "read_only": false
+  },
+  {
+   "component": "rigidbody",
+   "group": "",
    "kind": "Bool",
    "label": "Override Mass",
    "path": "overrideMassProperties",
@@ -5119,6 +5183,22 @@
   {
    "component": "keyframetracks",
    "group": "",
+   "kind": "Bool",
+   "label": "Loop",
+   "path": "loop",
+   "read_only": false
+  },
+  {
+   "component": "keyframetracks",
+   "group": "",
+   "kind": "Bool",
+   "label": "Relative",
+   "path": "relative",
+   "read_only": false
+  },
+  {
+   "component": "keyframetracks",
+   "group": "",
    "kind": "Int",
    "label": "Index",
    "path": "index",
@@ -5177,6 +5257,14 @@
   {
    "component": "tween",
    "group": "",
+   "kind": "Bool",
+   "label": "Ping-pong",
+   "path": "pingPong",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
    "kind": "Ease",
    "label": "Ease",
    "path": "function",
@@ -5188,6 +5276,14 @@
    "kind": "Quat",
    "label": "Start rotation",
    "path": "startRotation",
+   "read_only": false
+  },
+  {
+   "component": "rotationtween",
+   "group": "",
+   "kind": "Bool",
+   "label": "Spin",
+   "path": "spin",
    "read_only": false
   },
   {
@@ -5230,6 +5326,22 @@
    "kind": "LocalEntity",
    "label": "Target",
    "path": "target",
+   "read_only": false
+  },
+  {
+   "component": "keyframetracks",
+   "group": "",
+   "kind": "Bool",
+   "label": "Loop",
+   "path": "loop",
+   "read_only": false
+  },
+  {
+   "component": "keyframetracks",
+   "group": "",
+   "kind": "Bool",
+   "label": "Relative",
+   "path": "relative",
    "read_only": false
   },
   {
@@ -5288,6 +5400,14 @@
    "kind": "Bool",
    "label": "Loop",
    "path": "loop",
+   "read_only": false
+  },
+  {
+   "component": "tween",
+   "group": "",
+   "kind": "Bool",
+   "label": "Ping-pong",
+   "path": "pingPong",
    "read_only": false
   },
   {
@@ -5786,6 +5906,14 @@
    "kind": "Color3L",
    "label": "Color",
    "path": "color",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Bool",
+   "label": "Use Color Temperature",
+   "path": "useColorTemperature",
    "read_only": false
   },
   {
@@ -6710,6 +6838,22 @@
    "kind": "LocalEntity",
    "label": "Target",
    "path": "target",
+   "read_only": false
+  },
+  {
+   "component": "keyframetracks",
+   "group": "",
+   "kind": "Bool",
+   "label": "Loop",
+   "path": "loop",
+   "read_only": false
+  },
+  {
+   "component": "keyframetracks",
+   "group": "",
+   "kind": "Bool",
+   "label": "Relative",
+   "path": "relative",
    "read_only": false
   },
   {

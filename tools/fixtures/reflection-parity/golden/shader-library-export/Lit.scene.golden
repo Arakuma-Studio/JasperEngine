@@ -51,13 +51,9 @@ shaderKeys:
   - type: mesh
     properties: 4184
   - type: mesh
-    properties: 4216
-  - type: mesh
     properties: 5123
   - type: mesh
     properties: 5210
-  - type: mesh
-    properties: 5242
   - type: mesh
     properties: 33558593
   - type: mesh
@@ -73,17 +69,21 @@ shaderKeys:
   - type: mesh
     properties: 33559642
   - type: mesh
-    properties: 33559672
-  - type: mesh
-    properties: 33559674
-  - type: mesh
     properties: 301995072
   - type: mesh
     properties: 301995074
   - type: mesh
     properties: 301995098
   - type: mesh
-    properties: 301995130
+    properties: 8589938776
+  - type: mesh
+    properties: 8589939802
+  - type: mesh
+    properties: 8623494232
+  - type: mesh
+    properties: 8623494234
+  - type: mesh
+    properties: 8891929690
   - type: sky
   - type: depth
   - type: depth
@@ -96,7 +96,7 @@ shaderKeys:
     properties: 5210
     customShader: library:simple_lit#BLEND_NONE
   - type: mesh
-    properties: 5242
+    properties: 8589939802
     customShader: library:simple_lit#BLEND_NONE
   - type: mesh
     properties: 5123
@@ -116,7 +116,7 @@ shaderKeys:
     properties: 33559642
     customShader: library:dissolve#BLEND_NONE,WORLD_NOISE
   - type: mesh
-    properties: 33559674
+    properties: 8623494234
     customShader: library:dissolve#BLEND_NONE,WORLD_NOISE
   - type: depth
     customShader: library:dissolve#WORLD_NOISE
@@ -139,7 +139,7 @@ shaderKeys:
     properties: 33559642
     customShader: library:foliage#ALPHA_CLIP,BLEND_NONE,WIND_MASK_VERTEX_COLOR
   - type: mesh
-    properties: 33559674
+    properties: 8623494234
     customShader: library:foliage#ALPHA_CLIP,BLEND_NONE,WIND_MASK_VERTEX_COLOR
   - type: depth
     customShader: library:foliage#ALPHA_CLIP,WIND_MASK_VERTEX_COLOR
@@ -170,13 +170,13 @@ shaderKeys:
     properties: 33559642
     customShader: library:simple_lit#BLEND_NONE,EMISSION,NORMAL_MAP
   - type: mesh
-    properties: 33559674
-    customShader: library:simple_lit#BLEND_NONE,EMISSION,NORMAL_MAP
-  - type: mesh
     properties: 301995098
     customShader: library:simple_lit#BLEND_NONE,EMISSION,NORMAL_MAP
   - type: mesh
-    properties: 301995130
+    properties: 8623494234
+    customShader: library:simple_lit#BLEND_NONE,EMISSION,NORMAL_MAP
+  - type: mesh
+    properties: 8891929690
     customShader: library:simple_lit#BLEND_NONE,EMISSION,NORMAL_MAP
   - type: mesh
     properties: 301995074
@@ -185,7 +185,7 @@ shaderKeys:
     properties: 33559642
     customShader: library:spin_bob#BLEND_NONE
   - type: mesh
-    properties: 33559674
+    properties: 8623494234
     customShader: library:spin_bob#BLEND_NONE
   - type: depth
     customShader: library:spin_bob
@@ -210,13 +210,13 @@ shaderKeys:
     properties: 33559642
     customShader: library:toon#BLEND_NONE,RIM,SPECULAR
   - type: mesh
-    properties: 33559674
+    properties: 8623494234
     customShader: library:toon#BLEND_NONE,RIM,SPECULAR
   - type: mesh
     properties: 301995098
     customShader: library:toon#BLEND_NONE,RAMP,RIM
   - type: mesh
-    properties: 301995130
+    properties: 8891929690
     customShader: library:toon#BLEND_NONE,RAMP,RIM
   - type: mesh
     properties: 301995074
@@ -231,7 +231,7 @@ shaderKeys:
     properties: 33559640
     customShader: library:triplanar#BLEND_NONE,NOISE_MASK,SPACE_OBJECT
   - type: mesh
-    properties: 33559672
+    properties: 8623494232
     customShader: library:triplanar#BLEND_NONE,NOISE_MASK,SPACE_OBJECT
   - type: mesh
     properties: 33559555
@@ -245,7 +245,7 @@ shaderKeys:
     properties: 33559640
     customShader: library:vertex_color#BLEND_NONE
   - type: mesh
-    properties: 33559672
+    properties: 8623494232
     customShader: library:vertex_color#BLEND_NONE
   - type: mesh
     properties: 33559555
@@ -263,7 +263,7 @@ shaderKeys:
     properties: 4184
     customShader: library:water#BLEND_ALPHA,WAVES
   - type: mesh
-    properties: 4216
+    properties: 8589938776
     customShader: library:water#BLEND_ALPHA,WAVES
   - type: sky
     customShader: library:procedural_sky#BLEND_ALPHA,CLOUDS

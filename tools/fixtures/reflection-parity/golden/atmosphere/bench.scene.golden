@@ -49,7 +49,7 @@ shaderKeys:
   - type: mesh
     properties: 5208
   - type: mesh
-    properties: 5240
+    properties: 8589939800
   - type: sky
   - type: depth
   - type: blit

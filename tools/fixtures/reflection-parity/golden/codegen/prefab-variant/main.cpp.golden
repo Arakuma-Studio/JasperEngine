@@ -10,52 +10,59 @@
 #endif
 using namespace jasperengine;
 
-void create_Variant_Scene(Scene* scene);
-SceneResources resources_Variant_Scene();
+void create_scene_Variant_Scene_1(Scene* scene);
+SceneResources resources_scene_Variant_Scene_1();
 extern "C" void initScripts(jasperengine::Scene* scene);
 extern "C" void cleanupScripts(jasperengine::Scene* scene);
 extern "C" void initEntityScripts(jasperengine::Scene* scene, const jasperengine::Entity* entities, size_t count);
 extern "C" void cleanupEntityScripts(jasperengine::Scene* scene, const jasperengine::Entity* entities, size_t count);
 
-static Scene* _Variant_Scene = nullptr;
+static Scene* _scene_Variant_Scene_1 = nullptr;
 
 // --- Scene stack: Variant Scene ---
-void load_Variant_Scene() {
-    bool _Variant_Scene_needsInit = false;
-
-    if (!_Variant_Scene){
-        _Variant_Scene = new Scene();
-        SceneManager::setScenePtr(1, _Variant_Scene);
-        _Variant_Scene_needsInit = true;
+void load_scene_Variant_Scene_1() {
+    if (_scene_Variant_Scene_1 && !Engine::isSceneRunning(_scene_Variant_Scene_1)) {
+        cleanupScripts(_scene_Variant_Scene_1);
+        SceneManager::removeScenePtr(1);
+        delete _scene_Variant_Scene_1;
+        _scene_Variant_Scene_1 = nullptr;
     }
 
-    if (_Variant_Scene_needsInit) {
-        create_Variant_Scene(_Variant_Scene);
+    bool _scene_Variant_Scene_1_needsInit = false;
+
+    if (!_scene_Variant_Scene_1){
+        _scene_Variant_Scene_1 = new Scene();
+        SceneManager::setScenePtr(1, _scene_Variant_Scene_1);
+        _scene_Variant_Scene_1_needsInit = true;
     }
 
-    if (_Variant_Scene_needsInit) {
-        initScripts(_Variant_Scene);
+    if (_scene_Variant_Scene_1_needsInit) {
+        create_scene_Variant_Scene_1(_scene_Variant_Scene_1);
     }
 
-    Engine::setScene(_Variant_Scene);
+    if (_scene_Variant_Scene_1_needsInit) {
+        initScripts(_scene_Variant_Scene_1);
+    }
+
+    Engine::setScene(_scene_Variant_Scene_1);
 
 }
 
-void add_Variant_Scene() {
-    bool _Variant_Scene_needsInit = false;
+void add_scene_Variant_Scene_1() {
+    bool _scene_Variant_Scene_1_needsInit = false;
 
-    if (!_Variant_Scene){
-        _Variant_Scene = new Scene();
-        SceneManager::setScenePtr(1, _Variant_Scene);
-        _Variant_Scene_needsInit = true;
+    if (!_scene_Variant_Scene_1){
+        _scene_Variant_Scene_1 = new Scene();
+        SceneManager::setScenePtr(1, _scene_Variant_Scene_1);
+        _scene_Variant_Scene_1_needsInit = true;
     }
 
-    if (_Variant_Scene_needsInit) {
-        create_Variant_Scene(_Variant_Scene);
+    if (_scene_Variant_Scene_1_needsInit) {
+        create_scene_Variant_Scene_1(_scene_Variant_Scene_1);
     }
 
-    if (_Variant_Scene_needsInit) {
-        initScripts(_Variant_Scene);
+    if (_scene_Variant_Scene_1_needsInit) {
+        initScripts(_scene_Variant_Scene_1);
     }
 }
 
@@ -94,7 +101,7 @@ JASPERENGINE_INIT void init() {
     Engine::setAtmosphereQualityDefaults(AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW);
     UIDocumentSystem::setPreferredSampleCount(4);
 
-    SceneManager::registerScene(1, "Variant Scene", load_Variant_Scene, add_Variant_Scene, {1}, resources_Variant_Scene);
+    SceneManager::registerScene(1, "Variant Scene", load_scene_Variant_Scene_1, add_scene_Variant_Scene_1, {1}, resources_scene_Variant_Scene_1);
 
     ObjectManager::setCppScriptHooks(initEntityScripts, cleanupEntityScripts);
 

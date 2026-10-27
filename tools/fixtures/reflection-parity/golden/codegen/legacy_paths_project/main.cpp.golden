@@ -12,107 +12,121 @@
 
 using namespace jasperengine;
 
-void create_Main(Scene* scene);
-SceneResources resources_Main();
-void create_Closed(Scene* scene);
-SceneResources resources_Closed();
+void create_scene_Main_1(Scene* scene);
+SceneResources resources_scene_Main_1();
+void create_scene_Closed_2(Scene* scene);
+SceneResources resources_scene_Closed_2();
 extern "C" void initScripts(jasperengine::Scene* scene);
 extern "C" void cleanupScripts(jasperengine::Scene* scene);
 extern "C" void initEntityScripts(jasperengine::Scene* scene, const jasperengine::Entity* entities, size_t count);
 extern "C" void cleanupEntityScripts(jasperengine::Scene* scene, const jasperengine::Entity* entities, size_t count);
 
-static Scene* _Main = nullptr;
-static Scene* _Closed = nullptr;
+static Scene* _scene_Main_1 = nullptr;
+static Scene* _scene_Closed_2 = nullptr;
 
 // --- Scene stack: Main ---
-void load_Main() {
-    bool _Main_needsInit = false;
-
-    if (!_Main){
-        _Main = new Scene();
-        SceneManager::setScenePtr(1, _Main);
-        _Main_needsInit = true;
+void load_scene_Main_1() {
+    if (_scene_Main_1 && !Engine::isSceneRunning(_scene_Main_1)) {
+        cleanupScripts(_scene_Main_1);
+        SceneManager::removeScenePtr(1);
+        delete _scene_Main_1;
+        _scene_Main_1 = nullptr;
     }
 
-    if (_Main_needsInit) {
-        create_Main(_Main);
+    bool _scene_Main_1_needsInit = false;
+
+    if (!_scene_Main_1){
+        _scene_Main_1 = new Scene();
+        SceneManager::setScenePtr(1, _scene_Main_1);
+        _scene_Main_1_needsInit = true;
     }
 
-    if (_Main_needsInit) {
-        initScripts(_Main);
+    if (_scene_Main_1_needsInit) {
+        create_scene_Main_1(_scene_Main_1);
     }
 
-    Engine::setScene(_Main);
+    if (_scene_Main_1_needsInit) {
+        initScripts(_scene_Main_1);
+    }
 
-    if (_Closed && !Engine::isSceneRunning(_Closed)) {
-        cleanupScripts(_Closed);
+    Engine::setScene(_scene_Main_1);
+
+    if (_scene_Closed_2 && !Engine::isSceneRunning(_scene_Closed_2)) {
+        cleanupScripts(_scene_Closed_2);
         SceneManager::removeScenePtr(2);
-        delete _Closed;
-        _Closed = nullptr;
+        delete _scene_Closed_2;
+        _scene_Closed_2 = nullptr;
     }
 }
 
-void add_Main() {
-    bool _Main_needsInit = false;
+void add_scene_Main_1() {
+    bool _scene_Main_1_needsInit = false;
 
-    if (!_Main){
-        _Main = new Scene();
-        SceneManager::setScenePtr(1, _Main);
-        _Main_needsInit = true;
+    if (!_scene_Main_1){
+        _scene_Main_1 = new Scene();
+        SceneManager::setScenePtr(1, _scene_Main_1);
+        _scene_Main_1_needsInit = true;
     }
 
-    if (_Main_needsInit) {
-        create_Main(_Main);
+    if (_scene_Main_1_needsInit) {
+        create_scene_Main_1(_scene_Main_1);
     }
 
-    if (_Main_needsInit) {
-        initScripts(_Main);
+    if (_scene_Main_1_needsInit) {
+        initScripts(_scene_Main_1);
     }
 }
 
 // --- Scene stack: Closed ---
-void load_Closed() {
-    bool _Closed_needsInit = false;
-
-    if (!_Closed){
-        _Closed = new Scene();
-        SceneManager::setScenePtr(2, _Closed);
-        _Closed_needsInit = true;
+void load_scene_Closed_2() {
+    if (_scene_Closed_2 && !Engine::isSceneRunning(_scene_Closed_2)) {
+        cleanupScripts(_scene_Closed_2);
+        SceneManager::removeScenePtr(2);
+        delete _scene_Closed_2;
+        _scene_Closed_2 = nullptr;
     }
 
-    if (_Closed_needsInit) {
-        create_Closed(_Closed);
+    bool _scene_Closed_2_needsInit = false;
+
+    if (!_scene_Closed_2){
+        _scene_Closed_2 = new Scene();
+        SceneManager::setScenePtr(2, _scene_Closed_2);
+        _scene_Closed_2_needsInit = true;
     }
 
-    if (_Closed_needsInit) {
-        initScripts(_Closed);
+    if (_scene_Closed_2_needsInit) {
+        create_scene_Closed_2(_scene_Closed_2);
     }
 
-    Engine::setScene(_Closed);
+    if (_scene_Closed_2_needsInit) {
+        initScripts(_scene_Closed_2);
+    }
 
-    if (_Main && !Engine::isSceneRunning(_Main)) {
-        cleanupScripts(_Main);
+    Engine::setScene(_scene_Closed_2);
+
+    if (_scene_Main_1 && !Engine::isSceneRunning(_scene_Main_1)) {
+        cleanupScripts(_scene_Main_1);
         SceneManager::removeScenePtr(1);
-        delete _Main;
-        _Main = nullptr;
+        delete _scene_Main_1;
+        _scene_Main_1 = nullptr;
     }
 }
 
-void add_Closed() {
-    bool _Closed_needsInit = false;
+void add_scene_Closed_2() {
+    bool _scene_Closed_2_needsInit = false;
 
-    if (!_Closed){
-        _Closed = new Scene();
-        SceneManager::setScenePtr(2, _Closed);
-        _Closed_needsInit = true;
+    if (!_scene_Closed_2){
+        _scene_Closed_2 = new Scene();
+        SceneManager::setScenePtr(2, _scene_Closed_2);
+        _scene_Closed_2_needsInit = true;
     }
 
-    if (_Closed_needsInit) {
-        create_Closed(_Closed);
+    if (_scene_Closed_2_needsInit) {
+        create_scene_Closed_2(_scene_Closed_2);
     }
 
-    if (_Closed_needsInit) {
-        initScripts(_Closed);
+    if (_scene_Closed_2_needsInit) {
+        initScripts(_scene_Closed_2);
     }
 }
 
@@ -151,8 +165,8 @@ JASPERENGINE_INIT void init() {
     Engine::setAtmosphereQualityDefaults(AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW);
     UIDocumentSystem::setPreferredSampleCount(4);
 
-    SceneManager::registerScene(1, "Main", load_Main, add_Main, {1}, resources_Main);
-    SceneManager::registerScene(2, "Closed", load_Closed, add_Closed, {2}, resources_Closed);
+    SceneManager::registerScene(1, "Main", load_scene_Main_1, add_scene_Main_1, {1}, resources_scene_Main_1);
+    SceneManager::registerScene(2, "Closed", load_scene_Closed_2, add_scene_Closed_2, {2}, resources_scene_Closed_2);
 
     PrefabManager::registerPrefab(1, "prefabs/Lamp", "30aeaad93c80be96b89030fe283e7a8b", create_prefab_prefabs_Lamp);
 

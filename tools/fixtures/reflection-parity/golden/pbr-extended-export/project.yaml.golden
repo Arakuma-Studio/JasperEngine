@@ -1,0 +1,21 @@
+formatVersion: 1
+name: PbrExtendedExport
+canvasWidth: 1280
+canvasHeight: 720
+scalingMode: fitwidth
+textureStrategy: none
+vsync: true
+htmlUiMsaaSamples: 4
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+luaDir: .
+runtimeShaders: false
+scenes:
+  - filepath: Lobes.scene
+    filepathGuid: 9f2fe4d9b42d1eaec91693585834766b
+  - filepath: Transmission.scene
+    filepathGuid: 33f66ffad68db21b96d301737b305bed
+  - filepath: Hex.scene
+    filepathGuid: 7ee0ed86c1403d0c6603f0a7ff3ea8c0

@@ -10,52 +10,59 @@
 #endif
 using namespace jasperengine;
 
-void create_AllComponents(Scene* scene);
-SceneResources resources_AllComponents();
+void create_scene_AllComponents_2026080800(Scene* scene);
+SceneResources resources_scene_AllComponents_2026080800();
 extern "C" void initScripts(jasperengine::Scene* scene);
 extern "C" void cleanupScripts(jasperengine::Scene* scene);
 extern "C" void initEntityScripts(jasperengine::Scene* scene, const jasperengine::Entity* entities, size_t count);
 extern "C" void cleanupEntityScripts(jasperengine::Scene* scene, const jasperengine::Entity* entities, size_t count);
 
-static Scene* _AllComponents = nullptr;
+static Scene* _scene_AllComponents_2026080800 = nullptr;
 
 // --- Scene stack: AllComponents ---
-void load_AllComponents() {
-    bool _AllComponents_needsInit = false;
-
-    if (!_AllComponents){
-        _AllComponents = new Scene();
-        SceneManager::setScenePtr(2026080800, _AllComponents);
-        _AllComponents_needsInit = true;
+void load_scene_AllComponents_2026080800() {
+    if (_scene_AllComponents_2026080800 && !Engine::isSceneRunning(_scene_AllComponents_2026080800)) {
+        cleanupScripts(_scene_AllComponents_2026080800);
+        SceneManager::removeScenePtr(2026080800);
+        delete _scene_AllComponents_2026080800;
+        _scene_AllComponents_2026080800 = nullptr;
     }
 
-    if (_AllComponents_needsInit) {
-        create_AllComponents(_AllComponents);
+    bool _scene_AllComponents_2026080800_needsInit = false;
+
+    if (!_scene_AllComponents_2026080800){
+        _scene_AllComponents_2026080800 = new Scene();
+        SceneManager::setScenePtr(2026080800, _scene_AllComponents_2026080800);
+        _scene_AllComponents_2026080800_needsInit = true;
     }
 
-    if (_AllComponents_needsInit) {
-        initScripts(_AllComponents);
+    if (_scene_AllComponents_2026080800_needsInit) {
+        create_scene_AllComponents_2026080800(_scene_AllComponents_2026080800);
     }
 
-    Engine::setScene(_AllComponents);
+    if (_scene_AllComponents_2026080800_needsInit) {
+        initScripts(_scene_AllComponents_2026080800);
+    }
+
+    Engine::setScene(_scene_AllComponents_2026080800);
 
 }
 
-void add_AllComponents() {
-    bool _AllComponents_needsInit = false;
+void add_scene_AllComponents_2026080800() {
+    bool _scene_AllComponents_2026080800_needsInit = false;
 
-    if (!_AllComponents){
-        _AllComponents = new Scene();
-        SceneManager::setScenePtr(2026080800, _AllComponents);
-        _AllComponents_needsInit = true;
+    if (!_scene_AllComponents_2026080800){
+        _scene_AllComponents_2026080800 = new Scene();
+        SceneManager::setScenePtr(2026080800, _scene_AllComponents_2026080800);
+        _scene_AllComponents_2026080800_needsInit = true;
     }
 
-    if (_AllComponents_needsInit) {
-        create_AllComponents(_AllComponents);
+    if (_scene_AllComponents_2026080800_needsInit) {
+        create_scene_AllComponents_2026080800(_scene_AllComponents_2026080800);
     }
 
-    if (_AllComponents_needsInit) {
-        initScripts(_AllComponents);
+    if (_scene_AllComponents_2026080800_needsInit) {
+        initScripts(_scene_AllComponents_2026080800);
     }
 }
 
@@ -94,7 +101,7 @@ JASPERENGINE_INIT void init() {
     Engine::setAtmosphereQualityDefaults(AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW);
     UIDocumentSystem::setPreferredSampleCount(4);
 
-    SceneManager::registerScene(2026080800, "AllComponents", load_AllComponents, add_AllComponents, {2026080800}, resources_AllComponents);
+    SceneManager::registerScene(2026080800, "AllComponents", load_scene_AllComponents_2026080800, add_scene_AllComponents_2026080800, {2026080800}, resources_scene_AllComponents_2026080800);
 
     ObjectManager::setCppScriptHooks(initEntityScripts, cleanupEntityScripts);
 

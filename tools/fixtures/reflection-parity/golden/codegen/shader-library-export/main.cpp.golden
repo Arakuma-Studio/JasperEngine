@@ -10,562 +10,611 @@
 #endif
 using namespace jasperengine;
 
-void create_Lit(Scene* scene);
-SceneResources resources_Lit();
-void create_Blend(Scene* scene);
-SceneResources resources_Blend();
-void create__2D(Scene* scene);
-SceneResources resources__2D();
-void create_UI(Scene* scene);
-SceneResources resources_UI();
-void create_Stencil(Scene* scene);
-SceneResources resources_Stencil();
-void create_Phase3A(Scene* scene);
-SceneResources resources_Phase3A();
-void create_Phase3B(Scene* scene);
-SceneResources resources_Phase3B();
+void create_scene_Lit_2154334445(Scene* scene);
+SceneResources resources_scene_Lit_2154334445();
+void create_scene_Blend_242685459(Scene* scene);
+SceneResources resources_scene_Blend_242685459();
+void create_scene__2D_4155373791(Scene* scene);
+SceneResources resources_scene__2D_4155373791();
+void create_scene_UI_2461316713(Scene* scene);
+SceneResources resources_scene_UI_2461316713();
+void create_scene_Stencil_2971396629(Scene* scene);
+SceneResources resources_scene_Stencil_2971396629();
+void create_scene_Phase3A_1212407318(Scene* scene);
+SceneResources resources_scene_Phase3A_1212407318();
+void create_scene_Phase3B_1866003970(Scene* scene);
+SceneResources resources_scene_Phase3B_1866003970();
 extern "C" void initScripts(jasperengine::Scene* scene);
 extern "C" void cleanupScripts(jasperengine::Scene* scene);
 extern "C" void initEntityScripts(jasperengine::Scene* scene, const jasperengine::Entity* entities, size_t count);
 extern "C" void cleanupEntityScripts(jasperengine::Scene* scene, const jasperengine::Entity* entities, size_t count);
 
-static Scene* _Lit = nullptr;
-static Scene* _Blend = nullptr;
-static Scene* __2D = nullptr;
-static Scene* _UI = nullptr;
-static Scene* _Stencil = nullptr;
-static Scene* _Phase3A = nullptr;
-static Scene* _Phase3B = nullptr;
+static Scene* _scene_Lit_2154334445 = nullptr;
+static Scene* _scene_Blend_242685459 = nullptr;
+static Scene* _scene__2D_4155373791 = nullptr;
+static Scene* _scene_UI_2461316713 = nullptr;
+static Scene* _scene_Stencil_2971396629 = nullptr;
+static Scene* _scene_Phase3A_1212407318 = nullptr;
+static Scene* _scene_Phase3B_1866003970 = nullptr;
 
 // --- Scene stack: Lit ---
-void load_Lit() {
-    bool _Lit_needsInit = false;
-
-    if (!_Lit){
-        _Lit = new Scene();
-        SceneManager::setScenePtr(2154334445, _Lit);
-        _Lit_needsInit = true;
+void load_scene_Lit_2154334445() {
+    if (_scene_Lit_2154334445 && !Engine::isSceneRunning(_scene_Lit_2154334445)) {
+        cleanupScripts(_scene_Lit_2154334445);
+        SceneManager::removeScenePtr(2154334445);
+        delete _scene_Lit_2154334445;
+        _scene_Lit_2154334445 = nullptr;
     }
 
-    if (_Lit_needsInit) {
-        create_Lit(_Lit);
+    bool _scene_Lit_2154334445_needsInit = false;
+
+    if (!_scene_Lit_2154334445){
+        _scene_Lit_2154334445 = new Scene();
+        SceneManager::setScenePtr(2154334445, _scene_Lit_2154334445);
+        _scene_Lit_2154334445_needsInit = true;
     }
 
-    if (_Lit_needsInit) {
-        initScripts(_Lit);
+    if (_scene_Lit_2154334445_needsInit) {
+        create_scene_Lit_2154334445(_scene_Lit_2154334445);
     }
 
-    Engine::setScene(_Lit);
+    if (_scene_Lit_2154334445_needsInit) {
+        initScripts(_scene_Lit_2154334445);
+    }
 
-    if (_Blend && !Engine::isSceneRunning(_Blend)) {
-        cleanupScripts(_Blend);
+    Engine::setScene(_scene_Lit_2154334445);
+
+    if (_scene_Blend_242685459 && !Engine::isSceneRunning(_scene_Blend_242685459)) {
+        cleanupScripts(_scene_Blend_242685459);
         SceneManager::removeScenePtr(242685459);
-        delete _Blend;
-        _Blend = nullptr;
+        delete _scene_Blend_242685459;
+        _scene_Blend_242685459 = nullptr;
     }
-    if (__2D && !Engine::isSceneRunning(__2D)) {
-        cleanupScripts(__2D);
+    if (_scene__2D_4155373791 && !Engine::isSceneRunning(_scene__2D_4155373791)) {
+        cleanupScripts(_scene__2D_4155373791);
         SceneManager::removeScenePtr(4155373791);
-        delete __2D;
-        __2D = nullptr;
+        delete _scene__2D_4155373791;
+        _scene__2D_4155373791 = nullptr;
     }
-    if (_UI && !Engine::isSceneRunning(_UI)) {
-        cleanupScripts(_UI);
+    if (_scene_UI_2461316713 && !Engine::isSceneRunning(_scene_UI_2461316713)) {
+        cleanupScripts(_scene_UI_2461316713);
         SceneManager::removeScenePtr(2461316713);
-        delete _UI;
-        _UI = nullptr;
+        delete _scene_UI_2461316713;
+        _scene_UI_2461316713 = nullptr;
     }
-    if (_Stencil && !Engine::isSceneRunning(_Stencil)) {
-        cleanupScripts(_Stencil);
+    if (_scene_Stencil_2971396629 && !Engine::isSceneRunning(_scene_Stencil_2971396629)) {
+        cleanupScripts(_scene_Stencil_2971396629);
         SceneManager::removeScenePtr(2971396629);
-        delete _Stencil;
-        _Stencil = nullptr;
+        delete _scene_Stencil_2971396629;
+        _scene_Stencil_2971396629 = nullptr;
     }
-    if (_Phase3A && !Engine::isSceneRunning(_Phase3A)) {
-        cleanupScripts(_Phase3A);
+    if (_scene_Phase3A_1212407318 && !Engine::isSceneRunning(_scene_Phase3A_1212407318)) {
+        cleanupScripts(_scene_Phase3A_1212407318);
         SceneManager::removeScenePtr(1212407318);
-        delete _Phase3A;
-        _Phase3A = nullptr;
+        delete _scene_Phase3A_1212407318;
+        _scene_Phase3A_1212407318 = nullptr;
     }
-    if (_Phase3B && !Engine::isSceneRunning(_Phase3B)) {
-        cleanupScripts(_Phase3B);
+    if (_scene_Phase3B_1866003970 && !Engine::isSceneRunning(_scene_Phase3B_1866003970)) {
+        cleanupScripts(_scene_Phase3B_1866003970);
         SceneManager::removeScenePtr(1866003970);
-        delete _Phase3B;
-        _Phase3B = nullptr;
+        delete _scene_Phase3B_1866003970;
+        _scene_Phase3B_1866003970 = nullptr;
     }
 }
 
-void add_Lit() {
-    bool _Lit_needsInit = false;
+void add_scene_Lit_2154334445() {
+    bool _scene_Lit_2154334445_needsInit = false;
 
-    if (!_Lit){
-        _Lit = new Scene();
-        SceneManager::setScenePtr(2154334445, _Lit);
-        _Lit_needsInit = true;
+    if (!_scene_Lit_2154334445){
+        _scene_Lit_2154334445 = new Scene();
+        SceneManager::setScenePtr(2154334445, _scene_Lit_2154334445);
+        _scene_Lit_2154334445_needsInit = true;
     }
 
-    if (_Lit_needsInit) {
-        create_Lit(_Lit);
+    if (_scene_Lit_2154334445_needsInit) {
+        create_scene_Lit_2154334445(_scene_Lit_2154334445);
     }
 
-    if (_Lit_needsInit) {
-        initScripts(_Lit);
+    if (_scene_Lit_2154334445_needsInit) {
+        initScripts(_scene_Lit_2154334445);
     }
 }
 
 // --- Scene stack: Blend ---
-void load_Blend() {
-    bool _Blend_needsInit = false;
-
-    if (!_Blend){
-        _Blend = new Scene();
-        SceneManager::setScenePtr(242685459, _Blend);
-        _Blend_needsInit = true;
+void load_scene_Blend_242685459() {
+    if (_scene_Blend_242685459 && !Engine::isSceneRunning(_scene_Blend_242685459)) {
+        cleanupScripts(_scene_Blend_242685459);
+        SceneManager::removeScenePtr(242685459);
+        delete _scene_Blend_242685459;
+        _scene_Blend_242685459 = nullptr;
     }
 
-    if (_Blend_needsInit) {
-        create_Blend(_Blend);
+    bool _scene_Blend_242685459_needsInit = false;
+
+    if (!_scene_Blend_242685459){
+        _scene_Blend_242685459 = new Scene();
+        SceneManager::setScenePtr(242685459, _scene_Blend_242685459);
+        _scene_Blend_242685459_needsInit = true;
     }
 
-    if (_Blend_needsInit) {
-        initScripts(_Blend);
+    if (_scene_Blend_242685459_needsInit) {
+        create_scene_Blend_242685459(_scene_Blend_242685459);
     }
 
-    Engine::setScene(_Blend);
+    if (_scene_Blend_242685459_needsInit) {
+        initScripts(_scene_Blend_242685459);
+    }
 
-    if (_Lit && !Engine::isSceneRunning(_Lit)) {
-        cleanupScripts(_Lit);
+    Engine::setScene(_scene_Blend_242685459);
+
+    if (_scene_Lit_2154334445 && !Engine::isSceneRunning(_scene_Lit_2154334445)) {
+        cleanupScripts(_scene_Lit_2154334445);
         SceneManager::removeScenePtr(2154334445);
-        delete _Lit;
-        _Lit = nullptr;
+        delete _scene_Lit_2154334445;
+        _scene_Lit_2154334445 = nullptr;
     }
-    if (__2D && !Engine::isSceneRunning(__2D)) {
-        cleanupScripts(__2D);
+    if (_scene__2D_4155373791 && !Engine::isSceneRunning(_scene__2D_4155373791)) {
+        cleanupScripts(_scene__2D_4155373791);
         SceneManager::removeScenePtr(4155373791);
-        delete __2D;
-        __2D = nullptr;
+        delete _scene__2D_4155373791;
+        _scene__2D_4155373791 = nullptr;
     }
-    if (_UI && !Engine::isSceneRunning(_UI)) {
-        cleanupScripts(_UI);
+    if (_scene_UI_2461316713 && !Engine::isSceneRunning(_scene_UI_2461316713)) {
+        cleanupScripts(_scene_UI_2461316713);
         SceneManager::removeScenePtr(2461316713);
-        delete _UI;
-        _UI = nullptr;
+        delete _scene_UI_2461316713;
+        _scene_UI_2461316713 = nullptr;
     }
-    if (_Stencil && !Engine::isSceneRunning(_Stencil)) {
-        cleanupScripts(_Stencil);
+    if (_scene_Stencil_2971396629 && !Engine::isSceneRunning(_scene_Stencil_2971396629)) {
+        cleanupScripts(_scene_Stencil_2971396629);
         SceneManager::removeScenePtr(2971396629);
-        delete _Stencil;
-        _Stencil = nullptr;
+        delete _scene_Stencil_2971396629;
+        _scene_Stencil_2971396629 = nullptr;
     }
-    if (_Phase3A && !Engine::isSceneRunning(_Phase3A)) {
-        cleanupScripts(_Phase3A);
+    if (_scene_Phase3A_1212407318 && !Engine::isSceneRunning(_scene_Phase3A_1212407318)) {
+        cleanupScripts(_scene_Phase3A_1212407318);
         SceneManager::removeScenePtr(1212407318);
-        delete _Phase3A;
-        _Phase3A = nullptr;
+        delete _scene_Phase3A_1212407318;
+        _scene_Phase3A_1212407318 = nullptr;
     }
-    if (_Phase3B && !Engine::isSceneRunning(_Phase3B)) {
-        cleanupScripts(_Phase3B);
+    if (_scene_Phase3B_1866003970 && !Engine::isSceneRunning(_scene_Phase3B_1866003970)) {
+        cleanupScripts(_scene_Phase3B_1866003970);
         SceneManager::removeScenePtr(1866003970);
-        delete _Phase3B;
-        _Phase3B = nullptr;
+        delete _scene_Phase3B_1866003970;
+        _scene_Phase3B_1866003970 = nullptr;
     }
 }
 
-void add_Blend() {
-    bool _Blend_needsInit = false;
+void add_scene_Blend_242685459() {
+    bool _scene_Blend_242685459_needsInit = false;
 
-    if (!_Blend){
-        _Blend = new Scene();
-        SceneManager::setScenePtr(242685459, _Blend);
-        _Blend_needsInit = true;
+    if (!_scene_Blend_242685459){
+        _scene_Blend_242685459 = new Scene();
+        SceneManager::setScenePtr(242685459, _scene_Blend_242685459);
+        _scene_Blend_242685459_needsInit = true;
     }
 
-    if (_Blend_needsInit) {
-        create_Blend(_Blend);
+    if (_scene_Blend_242685459_needsInit) {
+        create_scene_Blend_242685459(_scene_Blend_242685459);
     }
 
-    if (_Blend_needsInit) {
-        initScripts(_Blend);
+    if (_scene_Blend_242685459_needsInit) {
+        initScripts(_scene_Blend_242685459);
     }
 }
 
 // --- Scene stack: 2D ---
-void load__2D() {
-    bool __2D_needsInit = false;
-
-    if (!__2D){
-        __2D = new Scene();
-        SceneManager::setScenePtr(4155373791, __2D);
-        __2D_needsInit = true;
+void load_scene__2D_4155373791() {
+    if (_scene__2D_4155373791 && !Engine::isSceneRunning(_scene__2D_4155373791)) {
+        cleanupScripts(_scene__2D_4155373791);
+        SceneManager::removeScenePtr(4155373791);
+        delete _scene__2D_4155373791;
+        _scene__2D_4155373791 = nullptr;
     }
 
-    if (__2D_needsInit) {
-        create__2D(__2D);
+    bool _scene__2D_4155373791_needsInit = false;
+
+    if (!_scene__2D_4155373791){
+        _scene__2D_4155373791 = new Scene();
+        SceneManager::setScenePtr(4155373791, _scene__2D_4155373791);
+        _scene__2D_4155373791_needsInit = true;
     }
 
-    if (__2D_needsInit) {
-        initScripts(__2D);
+    if (_scene__2D_4155373791_needsInit) {
+        create_scene__2D_4155373791(_scene__2D_4155373791);
     }
 
-    Engine::setScene(__2D);
+    if (_scene__2D_4155373791_needsInit) {
+        initScripts(_scene__2D_4155373791);
+    }
 
-    if (_Lit && !Engine::isSceneRunning(_Lit)) {
-        cleanupScripts(_Lit);
+    Engine::setScene(_scene__2D_4155373791);
+
+    if (_scene_Lit_2154334445 && !Engine::isSceneRunning(_scene_Lit_2154334445)) {
+        cleanupScripts(_scene_Lit_2154334445);
         SceneManager::removeScenePtr(2154334445);
-        delete _Lit;
-        _Lit = nullptr;
+        delete _scene_Lit_2154334445;
+        _scene_Lit_2154334445 = nullptr;
     }
-    if (_Blend && !Engine::isSceneRunning(_Blend)) {
-        cleanupScripts(_Blend);
+    if (_scene_Blend_242685459 && !Engine::isSceneRunning(_scene_Blend_242685459)) {
+        cleanupScripts(_scene_Blend_242685459);
         SceneManager::removeScenePtr(242685459);
-        delete _Blend;
-        _Blend = nullptr;
+        delete _scene_Blend_242685459;
+        _scene_Blend_242685459 = nullptr;
     }
-    if (_UI && !Engine::isSceneRunning(_UI)) {
-        cleanupScripts(_UI);
+    if (_scene_UI_2461316713 && !Engine::isSceneRunning(_scene_UI_2461316713)) {
+        cleanupScripts(_scene_UI_2461316713);
         SceneManager::removeScenePtr(2461316713);
-        delete _UI;
-        _UI = nullptr;
+        delete _scene_UI_2461316713;
+        _scene_UI_2461316713 = nullptr;
     }
-    if (_Stencil && !Engine::isSceneRunning(_Stencil)) {
-        cleanupScripts(_Stencil);
+    if (_scene_Stencil_2971396629 && !Engine::isSceneRunning(_scene_Stencil_2971396629)) {
+        cleanupScripts(_scene_Stencil_2971396629);
         SceneManager::removeScenePtr(2971396629);
-        delete _Stencil;
-        _Stencil = nullptr;
+        delete _scene_Stencil_2971396629;
+        _scene_Stencil_2971396629 = nullptr;
     }
-    if (_Phase3A && !Engine::isSceneRunning(_Phase3A)) {
-        cleanupScripts(_Phase3A);
+    if (_scene_Phase3A_1212407318 && !Engine::isSceneRunning(_scene_Phase3A_1212407318)) {
+        cleanupScripts(_scene_Phase3A_1212407318);
         SceneManager::removeScenePtr(1212407318);
-        delete _Phase3A;
-        _Phase3A = nullptr;
+        delete _scene_Phase3A_1212407318;
+        _scene_Phase3A_1212407318 = nullptr;
     }
-    if (_Phase3B && !Engine::isSceneRunning(_Phase3B)) {
-        cleanupScripts(_Phase3B);
+    if (_scene_Phase3B_1866003970 && !Engine::isSceneRunning(_scene_Phase3B_1866003970)) {
+        cleanupScripts(_scene_Phase3B_1866003970);
         SceneManager::removeScenePtr(1866003970);
-        delete _Phase3B;
-        _Phase3B = nullptr;
+        delete _scene_Phase3B_1866003970;
+        _scene_Phase3B_1866003970 = nullptr;
     }
 }
 
-void add__2D() {
-    bool __2D_needsInit = false;
+void add_scene__2D_4155373791() {
+    bool _scene__2D_4155373791_needsInit = false;
 
-    if (!__2D){
-        __2D = new Scene();
-        SceneManager::setScenePtr(4155373791, __2D);
-        __2D_needsInit = true;
+    if (!_scene__2D_4155373791){
+        _scene__2D_4155373791 = new Scene();
+        SceneManager::setScenePtr(4155373791, _scene__2D_4155373791);
+        _scene__2D_4155373791_needsInit = true;
     }
 
-    if (__2D_needsInit) {
-        create__2D(__2D);
+    if (_scene__2D_4155373791_needsInit) {
+        create_scene__2D_4155373791(_scene__2D_4155373791);
     }
 
-    if (__2D_needsInit) {
-        initScripts(__2D);
+    if (_scene__2D_4155373791_needsInit) {
+        initScripts(_scene__2D_4155373791);
     }
 }
 
 // --- Scene stack: UI ---
-void load_UI() {
-    bool _UI_needsInit = false;
-
-    if (!_UI){
-        _UI = new Scene();
-        SceneManager::setScenePtr(2461316713, _UI);
-        _UI_needsInit = true;
+void load_scene_UI_2461316713() {
+    if (_scene_UI_2461316713 && !Engine::isSceneRunning(_scene_UI_2461316713)) {
+        cleanupScripts(_scene_UI_2461316713);
+        SceneManager::removeScenePtr(2461316713);
+        delete _scene_UI_2461316713;
+        _scene_UI_2461316713 = nullptr;
     }
 
-    if (_UI_needsInit) {
-        create_UI(_UI);
+    bool _scene_UI_2461316713_needsInit = false;
+
+    if (!_scene_UI_2461316713){
+        _scene_UI_2461316713 = new Scene();
+        SceneManager::setScenePtr(2461316713, _scene_UI_2461316713);
+        _scene_UI_2461316713_needsInit = true;
     }
 
-    if (_UI_needsInit) {
-        initScripts(_UI);
+    if (_scene_UI_2461316713_needsInit) {
+        create_scene_UI_2461316713(_scene_UI_2461316713);
     }
 
-    Engine::setScene(_UI);
+    if (_scene_UI_2461316713_needsInit) {
+        initScripts(_scene_UI_2461316713);
+    }
 
-    if (_Lit && !Engine::isSceneRunning(_Lit)) {
-        cleanupScripts(_Lit);
+    Engine::setScene(_scene_UI_2461316713);
+
+    if (_scene_Lit_2154334445 && !Engine::isSceneRunning(_scene_Lit_2154334445)) {
+        cleanupScripts(_scene_Lit_2154334445);
         SceneManager::removeScenePtr(2154334445);
-        delete _Lit;
-        _Lit = nullptr;
+        delete _scene_Lit_2154334445;
+        _scene_Lit_2154334445 = nullptr;
     }
-    if (_Blend && !Engine::isSceneRunning(_Blend)) {
-        cleanupScripts(_Blend);
+    if (_scene_Blend_242685459 && !Engine::isSceneRunning(_scene_Blend_242685459)) {
+        cleanupScripts(_scene_Blend_242685459);
         SceneManager::removeScenePtr(242685459);
-        delete _Blend;
-        _Blend = nullptr;
+        delete _scene_Blend_242685459;
+        _scene_Blend_242685459 = nullptr;
     }
-    if (__2D && !Engine::isSceneRunning(__2D)) {
-        cleanupScripts(__2D);
+    if (_scene__2D_4155373791 && !Engine::isSceneRunning(_scene__2D_4155373791)) {
+        cleanupScripts(_scene__2D_4155373791);
         SceneManager::removeScenePtr(4155373791);
-        delete __2D;
-        __2D = nullptr;
+        delete _scene__2D_4155373791;
+        _scene__2D_4155373791 = nullptr;
     }
-    if (_Stencil && !Engine::isSceneRunning(_Stencil)) {
-        cleanupScripts(_Stencil);
+    if (_scene_Stencil_2971396629 && !Engine::isSceneRunning(_scene_Stencil_2971396629)) {
+        cleanupScripts(_scene_Stencil_2971396629);
         SceneManager::removeScenePtr(2971396629);
-        delete _Stencil;
-        _Stencil = nullptr;
+        delete _scene_Stencil_2971396629;
+        _scene_Stencil_2971396629 = nullptr;
     }
-    if (_Phase3A && !Engine::isSceneRunning(_Phase3A)) {
-        cleanupScripts(_Phase3A);
+    if (_scene_Phase3A_1212407318 && !Engine::isSceneRunning(_scene_Phase3A_1212407318)) {
+        cleanupScripts(_scene_Phase3A_1212407318);
         SceneManager::removeScenePtr(1212407318);
-        delete _Phase3A;
-        _Phase3A = nullptr;
+        delete _scene_Phase3A_1212407318;
+        _scene_Phase3A_1212407318 = nullptr;
     }
-    if (_Phase3B && !Engine::isSceneRunning(_Phase3B)) {
-        cleanupScripts(_Phase3B);
+    if (_scene_Phase3B_1866003970 && !Engine::isSceneRunning(_scene_Phase3B_1866003970)) {
+        cleanupScripts(_scene_Phase3B_1866003970);
         SceneManager::removeScenePtr(1866003970);
-        delete _Phase3B;
-        _Phase3B = nullptr;
+        delete _scene_Phase3B_1866003970;
+        _scene_Phase3B_1866003970 = nullptr;
     }
 }
 
-void add_UI() {
-    bool _UI_needsInit = false;
+void add_scene_UI_2461316713() {
+    bool _scene_UI_2461316713_needsInit = false;
 
-    if (!_UI){
-        _UI = new Scene();
-        SceneManager::setScenePtr(2461316713, _UI);
-        _UI_needsInit = true;
+    if (!_scene_UI_2461316713){
+        _scene_UI_2461316713 = new Scene();
+        SceneManager::setScenePtr(2461316713, _scene_UI_2461316713);
+        _scene_UI_2461316713_needsInit = true;
     }
 
-    if (_UI_needsInit) {
-        create_UI(_UI);
+    if (_scene_UI_2461316713_needsInit) {
+        create_scene_UI_2461316713(_scene_UI_2461316713);
     }
 
-    if (_UI_needsInit) {
-        initScripts(_UI);
+    if (_scene_UI_2461316713_needsInit) {
+        initScripts(_scene_UI_2461316713);
     }
 }
 
 // --- Scene stack: Stencil ---
-void load_Stencil() {
-    bool _Stencil_needsInit = false;
-
-    if (!_Stencil){
-        _Stencil = new Scene();
-        SceneManager::setScenePtr(2971396629, _Stencil);
-        _Stencil_needsInit = true;
+void load_scene_Stencil_2971396629() {
+    if (_scene_Stencil_2971396629 && !Engine::isSceneRunning(_scene_Stencil_2971396629)) {
+        cleanupScripts(_scene_Stencil_2971396629);
+        SceneManager::removeScenePtr(2971396629);
+        delete _scene_Stencil_2971396629;
+        _scene_Stencil_2971396629 = nullptr;
     }
 
-    if (_Stencil_needsInit) {
-        create_Stencil(_Stencil);
+    bool _scene_Stencil_2971396629_needsInit = false;
+
+    if (!_scene_Stencil_2971396629){
+        _scene_Stencil_2971396629 = new Scene();
+        SceneManager::setScenePtr(2971396629, _scene_Stencil_2971396629);
+        _scene_Stencil_2971396629_needsInit = true;
     }
 
-    if (_Stencil_needsInit) {
-        initScripts(_Stencil);
+    if (_scene_Stencil_2971396629_needsInit) {
+        create_scene_Stencil_2971396629(_scene_Stencil_2971396629);
     }
 
-    Engine::setScene(_Stencil);
+    if (_scene_Stencil_2971396629_needsInit) {
+        initScripts(_scene_Stencil_2971396629);
+    }
 
-    if (_Lit && !Engine::isSceneRunning(_Lit)) {
-        cleanupScripts(_Lit);
+    Engine::setScene(_scene_Stencil_2971396629);
+
+    if (_scene_Lit_2154334445 && !Engine::isSceneRunning(_scene_Lit_2154334445)) {
+        cleanupScripts(_scene_Lit_2154334445);
         SceneManager::removeScenePtr(2154334445);
-        delete _Lit;
-        _Lit = nullptr;
+        delete _scene_Lit_2154334445;
+        _scene_Lit_2154334445 = nullptr;
     }
-    if (_Blend && !Engine::isSceneRunning(_Blend)) {
-        cleanupScripts(_Blend);
+    if (_scene_Blend_242685459 && !Engine::isSceneRunning(_scene_Blend_242685459)) {
+        cleanupScripts(_scene_Blend_242685459);
         SceneManager::removeScenePtr(242685459);
-        delete _Blend;
-        _Blend = nullptr;
+        delete _scene_Blend_242685459;
+        _scene_Blend_242685459 = nullptr;
     }
-    if (__2D && !Engine::isSceneRunning(__2D)) {
-        cleanupScripts(__2D);
+    if (_scene__2D_4155373791 && !Engine::isSceneRunning(_scene__2D_4155373791)) {
+        cleanupScripts(_scene__2D_4155373791);
         SceneManager::removeScenePtr(4155373791);
-        delete __2D;
-        __2D = nullptr;
+        delete _scene__2D_4155373791;
+        _scene__2D_4155373791 = nullptr;
     }
-    if (_UI && !Engine::isSceneRunning(_UI)) {
-        cleanupScripts(_UI);
+    if (_scene_UI_2461316713 && !Engine::isSceneRunning(_scene_UI_2461316713)) {
+        cleanupScripts(_scene_UI_2461316713);
         SceneManager::removeScenePtr(2461316713);
-        delete _UI;
-        _UI = nullptr;
+        delete _scene_UI_2461316713;
+        _scene_UI_2461316713 = nullptr;
     }
-    if (_Phase3A && !Engine::isSceneRunning(_Phase3A)) {
-        cleanupScripts(_Phase3A);
+    if (_scene_Phase3A_1212407318 && !Engine::isSceneRunning(_scene_Phase3A_1212407318)) {
+        cleanupScripts(_scene_Phase3A_1212407318);
         SceneManager::removeScenePtr(1212407318);
-        delete _Phase3A;
-        _Phase3A = nullptr;
+        delete _scene_Phase3A_1212407318;
+        _scene_Phase3A_1212407318 = nullptr;
     }
-    if (_Phase3B && !Engine::isSceneRunning(_Phase3B)) {
-        cleanupScripts(_Phase3B);
+    if (_scene_Phase3B_1866003970 && !Engine::isSceneRunning(_scene_Phase3B_1866003970)) {
+        cleanupScripts(_scene_Phase3B_1866003970);
         SceneManager::removeScenePtr(1866003970);
-        delete _Phase3B;
-        _Phase3B = nullptr;
+        delete _scene_Phase3B_1866003970;
+        _scene_Phase3B_1866003970 = nullptr;
     }
 }
 
-void add_Stencil() {
-    bool _Stencil_needsInit = false;
+void add_scene_Stencil_2971396629() {
+    bool _scene_Stencil_2971396629_needsInit = false;
 
-    if (!_Stencil){
-        _Stencil = new Scene();
-        SceneManager::setScenePtr(2971396629, _Stencil);
-        _Stencil_needsInit = true;
+    if (!_scene_Stencil_2971396629){
+        _scene_Stencil_2971396629 = new Scene();
+        SceneManager::setScenePtr(2971396629, _scene_Stencil_2971396629);
+        _scene_Stencil_2971396629_needsInit = true;
     }
 
-    if (_Stencil_needsInit) {
-        create_Stencil(_Stencil);
+    if (_scene_Stencil_2971396629_needsInit) {
+        create_scene_Stencil_2971396629(_scene_Stencil_2971396629);
     }
 
-    if (_Stencil_needsInit) {
-        initScripts(_Stencil);
+    if (_scene_Stencil_2971396629_needsInit) {
+        initScripts(_scene_Stencil_2971396629);
     }
 }
 
 // --- Scene stack: Phase3A ---
-void load_Phase3A() {
-    bool _Phase3A_needsInit = false;
-
-    if (!_Phase3A){
-        _Phase3A = new Scene();
-        SceneManager::setScenePtr(1212407318, _Phase3A);
-        _Phase3A_needsInit = true;
+void load_scene_Phase3A_1212407318() {
+    if (_scene_Phase3A_1212407318 && !Engine::isSceneRunning(_scene_Phase3A_1212407318)) {
+        cleanupScripts(_scene_Phase3A_1212407318);
+        SceneManager::removeScenePtr(1212407318);
+        delete _scene_Phase3A_1212407318;
+        _scene_Phase3A_1212407318 = nullptr;
     }
 
-    if (_Phase3A_needsInit) {
-        create_Phase3A(_Phase3A);
+    bool _scene_Phase3A_1212407318_needsInit = false;
+
+    if (!_scene_Phase3A_1212407318){
+        _scene_Phase3A_1212407318 = new Scene();
+        SceneManager::setScenePtr(1212407318, _scene_Phase3A_1212407318);
+        _scene_Phase3A_1212407318_needsInit = true;
     }
 
-    if (_Phase3A_needsInit) {
-        initScripts(_Phase3A);
+    if (_scene_Phase3A_1212407318_needsInit) {
+        create_scene_Phase3A_1212407318(_scene_Phase3A_1212407318);
     }
 
-    Engine::setScene(_Phase3A);
+    if (_scene_Phase3A_1212407318_needsInit) {
+        initScripts(_scene_Phase3A_1212407318);
+    }
 
-    if (_Lit && !Engine::isSceneRunning(_Lit)) {
-        cleanupScripts(_Lit);
+    Engine::setScene(_scene_Phase3A_1212407318);
+
+    if (_scene_Lit_2154334445 && !Engine::isSceneRunning(_scene_Lit_2154334445)) {
+        cleanupScripts(_scene_Lit_2154334445);
         SceneManager::removeScenePtr(2154334445);
-        delete _Lit;
-        _Lit = nullptr;
+        delete _scene_Lit_2154334445;
+        _scene_Lit_2154334445 = nullptr;
     }
-    if (_Blend && !Engine::isSceneRunning(_Blend)) {
-        cleanupScripts(_Blend);
+    if (_scene_Blend_242685459 && !Engine::isSceneRunning(_scene_Blend_242685459)) {
+        cleanupScripts(_scene_Blend_242685459);
         SceneManager::removeScenePtr(242685459);
-        delete _Blend;
-        _Blend = nullptr;
+        delete _scene_Blend_242685459;
+        _scene_Blend_242685459 = nullptr;
     }
-    if (__2D && !Engine::isSceneRunning(__2D)) {
-        cleanupScripts(__2D);
+    if (_scene__2D_4155373791 && !Engine::isSceneRunning(_scene__2D_4155373791)) {
+        cleanupScripts(_scene__2D_4155373791);
         SceneManager::removeScenePtr(4155373791);
-        delete __2D;
-        __2D = nullptr;
+        delete _scene__2D_4155373791;
+        _scene__2D_4155373791 = nullptr;
     }
-    if (_UI && !Engine::isSceneRunning(_UI)) {
-        cleanupScripts(_UI);
+    if (_scene_UI_2461316713 && !Engine::isSceneRunning(_scene_UI_2461316713)) {
+        cleanupScripts(_scene_UI_2461316713);
         SceneManager::removeScenePtr(2461316713);
-        delete _UI;
-        _UI = nullptr;
+        delete _scene_UI_2461316713;
+        _scene_UI_2461316713 = nullptr;
     }
-    if (_Stencil && !Engine::isSceneRunning(_Stencil)) {
-        cleanupScripts(_Stencil);
+    if (_scene_Stencil_2971396629 && !Engine::isSceneRunning(_scene_Stencil_2971396629)) {
+        cleanupScripts(_scene_Stencil_2971396629);
         SceneManager::removeScenePtr(2971396629);
-        delete _Stencil;
-        _Stencil = nullptr;
+        delete _scene_Stencil_2971396629;
+        _scene_Stencil_2971396629 = nullptr;
     }
-    if (_Phase3B && !Engine::isSceneRunning(_Phase3B)) {
-        cleanupScripts(_Phase3B);
+    if (_scene_Phase3B_1866003970 && !Engine::isSceneRunning(_scene_Phase3B_1866003970)) {
+        cleanupScripts(_scene_Phase3B_1866003970);
         SceneManager::removeScenePtr(1866003970);
-        delete _Phase3B;
-        _Phase3B = nullptr;
+        delete _scene_Phase3B_1866003970;
+        _scene_Phase3B_1866003970 = nullptr;
     }
 }
 
-void add_Phase3A() {
-    bool _Phase3A_needsInit = false;
+void add_scene_Phase3A_1212407318() {
+    bool _scene_Phase3A_1212407318_needsInit = false;
 
-    if (!_Phase3A){
-        _Phase3A = new Scene();
-        SceneManager::setScenePtr(1212407318, _Phase3A);
-        _Phase3A_needsInit = true;
+    if (!_scene_Phase3A_1212407318){
+        _scene_Phase3A_1212407318 = new Scene();
+        SceneManager::setScenePtr(1212407318, _scene_Phase3A_1212407318);
+        _scene_Phase3A_1212407318_needsInit = true;
     }
 
-    if (_Phase3A_needsInit) {
-        create_Phase3A(_Phase3A);
+    if (_scene_Phase3A_1212407318_needsInit) {
+        create_scene_Phase3A_1212407318(_scene_Phase3A_1212407318);
     }
 
-    if (_Phase3A_needsInit) {
-        initScripts(_Phase3A);
+    if (_scene_Phase3A_1212407318_needsInit) {
+        initScripts(_scene_Phase3A_1212407318);
     }
 }
 
 // --- Scene stack: Phase3B ---
-void load_Phase3B() {
-    bool _Phase3B_needsInit = false;
-
-    if (!_Phase3B){
-        _Phase3B = new Scene();
-        SceneManager::setScenePtr(1866003970, _Phase3B);
-        _Phase3B_needsInit = true;
+void load_scene_Phase3B_1866003970() {
+    if (_scene_Phase3B_1866003970 && !Engine::isSceneRunning(_scene_Phase3B_1866003970)) {
+        cleanupScripts(_scene_Phase3B_1866003970);
+        SceneManager::removeScenePtr(1866003970);
+        delete _scene_Phase3B_1866003970;
+        _scene_Phase3B_1866003970 = nullptr;
     }
 
-    if (_Phase3B_needsInit) {
-        create_Phase3B(_Phase3B);
+    bool _scene_Phase3B_1866003970_needsInit = false;
+
+    if (!_scene_Phase3B_1866003970){
+        _scene_Phase3B_1866003970 = new Scene();
+        SceneManager::setScenePtr(1866003970, _scene_Phase3B_1866003970);
+        _scene_Phase3B_1866003970_needsInit = true;
     }
 
-    if (_Phase3B_needsInit) {
-        initScripts(_Phase3B);
+    if (_scene_Phase3B_1866003970_needsInit) {
+        create_scene_Phase3B_1866003970(_scene_Phase3B_1866003970);
     }
 
-    Engine::setScene(_Phase3B);
+    if (_scene_Phase3B_1866003970_needsInit) {
+        initScripts(_scene_Phase3B_1866003970);
+    }
 
-    if (_Lit && !Engine::isSceneRunning(_Lit)) {
-        cleanupScripts(_Lit);
+    Engine::setScene(_scene_Phase3B_1866003970);
+
+    if (_scene_Lit_2154334445 && !Engine::isSceneRunning(_scene_Lit_2154334445)) {
+        cleanupScripts(_scene_Lit_2154334445);
         SceneManager::removeScenePtr(2154334445);
-        delete _Lit;
-        _Lit = nullptr;
+        delete _scene_Lit_2154334445;
+        _scene_Lit_2154334445 = nullptr;
     }
-    if (_Blend && !Engine::isSceneRunning(_Blend)) {
-        cleanupScripts(_Blend);
+    if (_scene_Blend_242685459 && !Engine::isSceneRunning(_scene_Blend_242685459)) {
+        cleanupScripts(_scene_Blend_242685459);
         SceneManager::removeScenePtr(242685459);
-        delete _Blend;
-        _Blend = nullptr;
+        delete _scene_Blend_242685459;
+        _scene_Blend_242685459 = nullptr;
     }
-    if (__2D && !Engine::isSceneRunning(__2D)) {
-        cleanupScripts(__2D);
+    if (_scene__2D_4155373791 && !Engine::isSceneRunning(_scene__2D_4155373791)) {
+        cleanupScripts(_scene__2D_4155373791);
         SceneManager::removeScenePtr(4155373791);
-        delete __2D;
-        __2D = nullptr;
+        delete _scene__2D_4155373791;
+        _scene__2D_4155373791 = nullptr;
     }
-    if (_UI && !Engine::isSceneRunning(_UI)) {
-        cleanupScripts(_UI);
+    if (_scene_UI_2461316713 && !Engine::isSceneRunning(_scene_UI_2461316713)) {
+        cleanupScripts(_scene_UI_2461316713);
         SceneManager::removeScenePtr(2461316713);
-        delete _UI;
-        _UI = nullptr;
+        delete _scene_UI_2461316713;
+        _scene_UI_2461316713 = nullptr;
     }
-    if (_Stencil && !Engine::isSceneRunning(_Stencil)) {
-        cleanupScripts(_Stencil);
+    if (_scene_Stencil_2971396629 && !Engine::isSceneRunning(_scene_Stencil_2971396629)) {
+        cleanupScripts(_scene_Stencil_2971396629);
         SceneManager::removeScenePtr(2971396629);
-        delete _Stencil;
-        _Stencil = nullptr;
+        delete _scene_Stencil_2971396629;
+        _scene_Stencil_2971396629 = nullptr;
     }
-    if (_Phase3A && !Engine::isSceneRunning(_Phase3A)) {
-        cleanupScripts(_Phase3A);
+    if (_scene_Phase3A_1212407318 && !Engine::isSceneRunning(_scene_Phase3A_1212407318)) {
+        cleanupScripts(_scene_Phase3A_1212407318);
         SceneManager::removeScenePtr(1212407318);
-        delete _Phase3A;
-        _Phase3A = nullptr;
+        delete _scene_Phase3A_1212407318;
+        _scene_Phase3A_1212407318 = nullptr;
     }
 }
 
-void add_Phase3B() {
-    bool _Phase3B_needsInit = false;
+void add_scene_Phase3B_1866003970() {
+    bool _scene_Phase3B_1866003970_needsInit = false;
 
-    if (!_Phase3B){
-        _Phase3B = new Scene();
-        SceneManager::setScenePtr(1866003970, _Phase3B);
-        _Phase3B_needsInit = true;
+    if (!_scene_Phase3B_1866003970){
+        _scene_Phase3B_1866003970 = new Scene();
+        SceneManager::setScenePtr(1866003970, _scene_Phase3B_1866003970);
+        _scene_Phase3B_1866003970_needsInit = true;
     }
 
-    if (_Phase3B_needsInit) {
-        create_Phase3B(_Phase3B);
+    if (_scene_Phase3B_1866003970_needsInit) {
+        create_scene_Phase3B_1866003970(_scene_Phase3B_1866003970);
     }
 
-    if (_Phase3B_needsInit) {
-        initScripts(_Phase3B);
+    if (_scene_Phase3B_1866003970_needsInit) {
+        initScripts(_scene_Phase3B_1866003970);
     }
 }
 
@@ -604,13 +653,13 @@ JASPERENGINE_INIT void init() {
     Engine::setAtmosphereQualityDefaults(AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW);
     UIDocumentSystem::setPreferredSampleCount(4);
 
-    SceneManager::registerScene(2154334445, "Lit", load_Lit, add_Lit, {2154334445}, resources_Lit);
-    SceneManager::registerScene(242685459, "Blend", load_Blend, add_Blend, {242685459}, resources_Blend);
-    SceneManager::registerScene(4155373791, "2D", load__2D, add__2D, {4155373791}, resources__2D);
-    SceneManager::registerScene(2461316713, "UI", load_UI, add_UI, {2461316713}, resources_UI);
-    SceneManager::registerScene(2971396629, "Stencil", load_Stencil, add_Stencil, {2971396629}, resources_Stencil);
-    SceneManager::registerScene(1212407318, "Phase3A", load_Phase3A, add_Phase3A, {1212407318}, resources_Phase3A);
-    SceneManager::registerScene(1866003970, "Phase3B", load_Phase3B, add_Phase3B, {1866003970}, resources_Phase3B);
+    SceneManager::registerScene(2154334445, "Lit", load_scene_Lit_2154334445, add_scene_Lit_2154334445, {2154334445}, resources_scene_Lit_2154334445);
+    SceneManager::registerScene(242685459, "Blend", load_scene_Blend_242685459, add_scene_Blend_242685459, {242685459}, resources_scene_Blend_242685459);
+    SceneManager::registerScene(4155373791, "2D", load_scene__2D_4155373791, add_scene__2D_4155373791, {4155373791}, resources_scene__2D_4155373791);
+    SceneManager::registerScene(2461316713, "UI", load_scene_UI_2461316713, add_scene_UI_2461316713, {2461316713}, resources_scene_UI_2461316713);
+    SceneManager::registerScene(2971396629, "Stencil", load_scene_Stencil_2971396629, add_scene_Stencil_2971396629, {2971396629}, resources_scene_Stencil_2971396629);
+    SceneManager::registerScene(1212407318, "Phase3A", load_scene_Phase3A_1212407318, add_scene_Phase3A_1212407318, {1212407318}, resources_scene_Phase3A_1212407318);
+    SceneManager::registerScene(1866003970, "Phase3B", load_scene_Phase3B_1866003970, add_scene_Phase3B_1866003970, {1866003970}, resources_scene_Phase3B_1866003970);
 
     ObjectManager::setCppScriptHooks(initEntityScripts, cleanupEntityScripts);
 

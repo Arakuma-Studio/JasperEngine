@@ -1,0 +1,1735 @@
+formatVersion: 2
+guid: 3fd27cb3fc9895425b8e5635b2d2d3d9
+id: 449654186
+name: Plates
+scene:
+  backgroundColor: [0.25, 0.45, 0.65, 1]
+  shadowQuality: auto
+  meshLodEnabled: false
+  meshLodThreshold: 1
+  depthPrepassEnabled: false
+  lightState: on
+  globalIlluminationIntensity: 0.2
+  globalIlluminationColor: [1, 1, 1]
+  ambientLight2DIntensity: 1
+  ambientLight2DColor: [1, 1, 1]
+  shadow2DQuality: low
+  ssaoEnabled: false
+  ssaoRadius: 0.5
+  ssaoIntensity: 1
+  ssaoBias: 0.025
+  ssrEnabled: false
+  ssrMaxDistance: 8
+  ssrThickness: 0.5
+  ssrMaxSteps: 48
+  ssrIntensity: 1
+  ssrBlur: 0
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+  fixedResolutionEnabled: false
+  fixedResolutionWidth: 640
+  fixedResolutionHeight: 360
+  fixedResolutionFilter: nearest
+  enableUIEvents: not_set
+sceneType: scene_3d
+mainCamera: 1016
+maxValues:
+  maxSubmeshes: 1
+  maxTilemapTilesRect: 0
+  maxTilemapTiles: 0
+  maxExternalBuffers: 0
+  maxSpriteFrames: 0
+  maxBones: 128
+  maxColliders2D: 0
+  maxColliderPoints2D: 0
+  maxColliders3D: 0
+  maxColliderVertices3D: 0
+  maxColliderIndices3D: 0
+shaderKeys:
+  - type: mesh
+    properties: 1112
+  - type: mesh
+    properties: 8589935704
+  - type: sky
+  - type: depth
+  - type: blit
+  - type: shadowcache
+entities:
+  - type: Entity
+    entity: 1001
+    name: Directional Light
+    components:
+      transform:
+        position: [0, 10, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 10, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 10, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 10, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, -10], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      light:
+        enabled: true
+        type: directional
+        direction: [-0.2, -0.5, 0.3]
+        worldDirection: [-0.2, -0.5, 0.3]
+        color: [1, 1, 1]
+        range: 100
+        intensity: 4
+        innerConeCos: 0.76604444
+        outerConeCos: 0.64278764
+        spotMask: ~
+        cullingMask: 4294967295
+        shadows: true
+        automaticShadowCamera: true
+        shadowBias: 1
+        mapResolution: 2048
+        shadowCameraNearFar: [0.3, 100]
+        numShadowCascades: 3
+  - type: Entity
+    entity: 1002
+    name: Skybox
+    components:
+      skybox:
+        useDefaultTexture: true
+        texture:
+          textureType: CUBE
+          cubeMode: faces
+          source: paths
+          paths: ["", "", "", "", "", ""]
+          hasEmptyFaces: true
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: false
+        color: [1, 1, 1, 1]
+        rotation: 0
+        visible: true
+  - type: Entity
+    entity: 1003
+    name: Floor
+    components:
+      transform:
+        position: [0, -0.1, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [12, 0.2, 12]
+        worldPosition: [0, -0.1, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [12, 0.2, 12]
+        localMatrix: [[12, 0, 0, 0], [0, 0.2, 0, 0], [0, 0, 12, 0], [0, -0.1, 0, 1]]
+        modelMatrix: [[12, 0, 0, 0], [0, 0.2, 0, 0], [0, 0, 12, 0], [0, -0.1, 0, 1]]
+        normalMatrix: [[0.08333333, 0, 0, 0], [0, 4.9999995, 0, 0.5], [0, 0, 0.08333333, -0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        buffer:
+          type: vertex_buffer
+          usage: immutable
+          stride: 48
+          size: 1152
+          count: 24
+          renderAttributes: true
+          instanceBuffer: false
+          attributes:
+            - type: position
+              dataType: float
+              bufferName: ""
+              elements: 3
+              offset: 0
+              count: 24
+              normalized: true
+              perInstance: false
+            - type: texcoord1
+              dataType: float
+              bufferName: ""
+              elements: 2
+              offset: 12
+              count: 24
+              normalized: true
+              perInstance: false
+            - type: normal
+              dataType: float
+              bufferName: ""
+              elements: 3
+              offset: 20
+              count: 24
+              normalized: true
+              perInstance: false
+            - type: color
+              dataType: float
+              bufferName: ""
+              elements: 4
+              offset: 32
+              count: 24
+              normalized: true
+              perInstance: false
+          data: AAAAvwAAAL8AAAA/AAAAAAAAgD8AAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAA/AACAPwAAgD8AAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAA/AACAPwAAAAAAAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAC/AAAAAAAAgD8AAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAC/AACAPwAAgD8AAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAC/AACAPwAAAAAAAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAC/AAAAAAAAAAAAAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAA/AAAAAAAAgD8AAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAA/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAC/AACAPwAAAAAAAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAC/AACAPwAAgD8AAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAA/AAAAAAAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAC/AACAPwAAAAAAAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAC/AACAPwAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAA/AACAPwAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAC/AACAPwAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAC/AAAAAAAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAA/AAAAAAAAAAAAAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAA/AACAPwAAAAAAAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAC/AACAPwAAgD8AAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAC/AAAAAAAAgD8AAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/
+          vertexSize: 48
+        indices:
+          type: index_buffer
+          usage: immutable
+          stride: 2
+          size: 72
+          count: 36
+          renderAttributes: true
+          instanceBuffer: false
+          attributes:
+            - type: index
+              dataType: unsigned_short
+              bufferName: ""
+              elements: 1
+              offset: 0
+              count: 36
+              normalized: true
+              perInstance: false
+          data: AAABAAIAAAACAAMABAAGAAUABAAHAAYACAAJAAoACAAKAAsADAAOAA0ADAAPAA4AEAARABIAEAASABMAFAAWABUAFAAXABYA
+        eBuffers: ~
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 36
+            faceCulling: true
+            textureShadow: false
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: false
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        bonesMatrix:
+          []
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        verticesAABB:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        worldAABB:
+          min: [-6, -0.2, -6]
+          max: [6, 0, 6]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+  - type: Entity
+    entity: 1004
+    name: Plates
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+    children:
+      - type: Entity
+        entity: 1005
+        name: Plate1
+        components:
+          transform:
+            position: [-0.05, 0.4, 0]
+            rotation: [1, 0, 0, 0]
+            scale: [0.5, 0.012, 0.35]
+            worldPosition: [-0.05, 0.4, 0]
+            worldRotation: [1, 0, 0, 0]
+            worldScale: [0.5, 0.012, 0.35]
+            localMatrix: [[0.5, 0, 0, 0], [0, 0.012, 0, 0], [0, 0, 0.35, 0], [-0.05, 0.4, 0, 1]]
+            modelMatrix: [[0.5, 0, 0, 0], [0, 0.012, 0, 0], [0, 0, 0.35, 0], [-0.05, 0.4, 0, 1]]
+            normalMatrix: [[2, 0, 0, 0.1], [0, 83.333336, 0, -33.333336], [0, 0, 2.857143, 0], [0, 0, 0, 1]]
+            visible: true
+            billboardRotation: [1, 0, 0, 0]
+            billboard: false
+            fakeBillboard: false
+            cylindricalBillboard: false
+          mesh:
+            enabled: true
+            buffer:
+              type: vertex_buffer
+              usage: immutable
+              stride: 48
+              size: 1152
+              count: 24
+              renderAttributes: true
+              instanceBuffer: false
+              attributes:
+                - type: position
+                  dataType: float
+                  bufferName: ""
+                  elements: 3
+                  offset: 0
+                  count: 24
+                  normalized: true
+                  perInstance: false
+                - type: texcoord1
+                  dataType: float
+                  bufferName: ""
+                  elements: 2
+                  offset: 12
+                  count: 24
+                  normalized: true
+                  perInstance: false
+                - type: normal
+                  dataType: float
+                  bufferName: ""
+                  elements: 3
+                  offset: 20
+                  count: 24
+                  normalized: true
+                  perInstance: false
+                - type: color
+                  dataType: float
+                  bufferName: ""
+                  elements: 4
+                  offset: 32
+                  count: 24
+                  normalized: true
+                  perInstance: false
+              data: AAAAvwAAAL8AAAA/AAAAAAAAgD8AAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAA/AACAPwAAgD8AAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAA/AACAPwAAAAAAAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAC/AAAAAAAAgD8AAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAC/AACAPwAAgD8AAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAC/AACAPwAAAAAAAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAC/AAAAAAAAAAAAAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAA/AAAAAAAAgD8AAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAA/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAC/AACAPwAAAAAAAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAC/AACAPwAAgD8AAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAA/AAAAAAAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAC/AACAPwAAAAAAAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAC/AACAPwAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAA/AACAPwAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAC/AACAPwAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAC/AAAAAAAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAA/AAAAAAAAAAAAAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAA/AACAPwAAAAAAAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAC/AACAPwAAgD8AAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAC/AAAAAAAAgD8AAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/
+              vertexSize: 48
+            indices:
+              type: index_buffer
+              usage: immutable
+              stride: 2
+              size: 72
+              count: 36
+              renderAttributes: true
+              instanceBuffer: false
+              attributes:
+                - type: index
+                  dataType: unsigned_short
+                  bufferName: ""
+                  elements: 1
+                  offset: 0
+                  count: 36
+                  normalized: true
+                  perInstance: false
+              data: AAABAAIAAAACAAMABAAGAAUABAAHAAYACAAJAAoACAAKAAsADAAOAA0ADAAPAA4AEAARABIAEAASABMAFAAWABUAFAAXABYA
+            eBuffers: ~
+            submeshes:
+              - material:
+                  baseColorFactor: [1, 1, 1, 1]
+                  metallicFactor: 1
+                  roughnessFactor: 1
+                  alphaCutoff: 0.5
+                  foliageTransmission: 0
+                  alphaMode: AUTO
+                  emissiveFactor: [0, 0, 0]
+                  baseColorTexCoord: 0
+                  metallicRoughnessTexCoord: 0
+                  occlusionTexCoord: 0
+                  emissiveTexCoord: 0
+                  normalTexCoord: 0
+                  name: ""
+                textureRect: [0, 0, 1, 1]
+                primitiveType: triangles
+                vertexCount: 36
+                faceCulling: true
+                textureShadow: false
+                hasTexCoord1: true
+                hasTexCoord2: false
+                hasNormalMap: false
+                hasTangent: false
+                hasVertexColor3: false
+                hasVertexColor4: true
+                hasTextureRect: false
+                hasSkinning: false
+                hasMorphTarget: false
+                hasMorphNormal: false
+                hasMorphTangent: false
+            bonesMatrix:
+              []
+            normAdjustJoint: 1
+            normAdjustWeight: 1
+            morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+            aabb:
+              min: [-0.5, -0.5, -0.5]
+              max: [0.5, 0.5, 0.5]
+            verticesAABB:
+              min: [-0.5, -0.5, -0.5]
+              max: [0.5, 0.5, 0.5]
+            worldAABB:
+              min: [-0.3, 0.394, -0.175]
+              max: [0.2, 0.40600002, 0.175]
+            receiveLights: true
+            receiveIBL: false
+            castShadows: true
+            receiveShadows: true
+            lodEnabled: true
+            lodBias: 1
+            renderInReflectionProbes: true
+            shadowsBillboard: true
+            transparent: false
+            autoTransparency: true
+            cullingMode: back
+            windingOrder: ccw
+      - type: Entity
+        entity: 1006
+        name: Plate2
+        components:
+          transform:
+            position: [0, 0.65, 0.04]
+            rotation: [0.96186835, 0.07857748, 0.25500378, -0.06006758]
+            scale: [0.5, 0.012, 0.35]
+            worldPosition: [0, 0.65, 0.04]
+            worldRotation: [0.96186835, 0.07857748, 0.25500378, -0.06006758]
+            worldScale: [0.5, 0.012, 0.35]
+            localMatrix: [[0.43136495, -0.03773955, -0.25000003, 0], [0.0018675517, 0.011765219, 0.0014463296, 0], [0.16839206, -0.06362906, 0.30015904, 0], [0, 0.65, 0.04, 1]]
+            modelMatrix: [[0.43136495, -0.03773955, -0.25000003, 0], [0.0018675517, 0.011765219, 0.0014463296, 0], [0.16839206, -0.06362906, 0.30015904, 0], [0, 0.65, 0.04, 1]]
+            normalMatrix: [[1.7254598, -0.15095815, -1, 0.1381228], [12.969111, 81.7029, 10.043956, -53.508648], [1.3746293, -0.5194209, 2.450278, 0.23961246], [-0, 0, 0, 1]]
+            visible: true
+            billboardRotation: [1, 0, 0, 0]
+            billboard: false
+            fakeBillboard: false
+            cylindricalBillboard: false
+          mesh:
+            enabled: true
+            buffer:
+              type: vertex_buffer
+              usage: immutable
+              stride: 48
+              size: 1152
+              count: 24
+              renderAttributes: true
+              instanceBuffer: false
+              attributes:
+                - type: position
+                  dataType: float
+                  bufferName: ""
+                  elements: 3
+                  offset: 0
+                  count: 24
+                  normalized: true
+                  perInstance: false
+                - type: texcoord1
+                  dataType: float
+                  bufferName: ""
+                  elements: 2
+                  offset: 12
+                  count: 24
+                  normalized: true
+                  perInstance: false
+                - type: normal
+                  dataType: float
+                  bufferName: ""
+                  elements: 3
+                  offset: 20
+                  count: 24
+                  normalized: true
+                  perInstance: false
+                - type: color
+                  dataType: float
+                  bufferName: ""
+                  elements: 4
+                  offset: 32
+                  count: 24
+                  normalized: true
+                  perInstance: false
+              data: AAAAvwAAAL8AAAA/AAAAAAAAgD8AAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAA/AACAPwAAgD8AAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAA/AACAPwAAAAAAAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAC/AAAAAAAAgD8AAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAC/AACAPwAAgD8AAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAC/AACAPwAAAAAAAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAC/AAAAAAAAAAAAAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAA/AAAAAAAAgD8AAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAA/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAC/AACAPwAAAAAAAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAC/AACAPwAAgD8AAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAA/AAAAAAAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAC/AACAPwAAAAAAAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAC/AACAPwAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAA/AACAPwAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAC/AACAPwAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAC/AAAAAAAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAA/AAAAAAAAAAAAAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAA/AACAPwAAAAAAAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAC/AACAPwAAgD8AAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAC/AAAAAAAAgD8AAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/
+              vertexSize: 48
+            indices:
+              type: index_buffer
+              usage: immutable
+              stride: 2
+              size: 72
+              count: 36
+              renderAttributes: true
+              instanceBuffer: false
+              attributes:
+                - type: index
+                  dataType: unsigned_short
+                  bufferName: ""
+                  elements: 1
+                  offset: 0
+                  count: 36
+                  normalized: true
+                  perInstance: false
+              data: AAABAAIAAAACAAMABAAGAAUABAAHAAYACAAJAAoACAAKAAsADAAOAA0ADAAPAA4AEAARABIAEAASABMAFAAWABUAFAAXABYA
+            eBuffers: ~
+            submeshes:
+              - material:
+                  baseColorFactor: [1, 1, 1, 1]
+                  metallicFactor: 1
+                  roughnessFactor: 1
+                  alphaCutoff: 0.5
+                  foliageTransmission: 0
+                  alphaMode: AUTO
+                  emissiveFactor: [0, 0, 0]
+                  baseColorTexCoord: 0
+                  metallicRoughnessTexCoord: 0
+                  occlusionTexCoord: 0
+                  emissiveTexCoord: 0
+                  normalTexCoord: 0
+                  name: ""
+                textureRect: [0, 0, 1, 1]
+                primitiveType: triangles
+                vertexCount: 36
+                faceCulling: true
+                textureShadow: false
+                hasTexCoord1: true
+                hasTexCoord2: false
+                hasNormalMap: false
+                hasTangent: false
+                hasVertexColor3: false
+                hasVertexColor4: true
+                hasTextureRect: false
+                hasSkinning: false
+                hasMorphTarget: false
+                hasMorphNormal: false
+                hasMorphTangent: false
+            bonesMatrix:
+              []
+            normAdjustJoint: 1
+            normAdjustWeight: 1
+            morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+            aabb:
+              min: [-0.5, -0.5, -0.5]
+              max: [0.5, 0.5, 0.5]
+            verticesAABB:
+              min: [-0.5, -0.5, -0.5]
+              max: [0.5, 0.5, 0.5]
+            worldAABB:
+              min: [-0.3008123, 0.5934331, -0.23580271]
+              max: [0.3008123, 0.7065669, 0.3158027]
+            receiveLights: true
+            receiveIBL: false
+            castShadows: true
+            receiveShadows: true
+            lodEnabled: true
+            lodBias: 1
+            renderInReflectionProbes: true
+            shadowsBillboard: true
+            transparent: false
+            autoTransparency: true
+            cullingMode: back
+            windingOrder: ccw
+      - type: Entity
+        entity: 1007
+        name: Plate3
+        components:
+          transform:
+            position: [0.05, 0.9, 0]
+            rotation: [0.78045887, -0.13537884, 0.5958951, 0.13215727]
+            scale: [0.5, 0.012, 0.35]
+            worldPosition: [0.05, 0.9, 0]
+            worldRotation: [0.78045887, -0.13537884, 0.5958951, 0.13215727]
+            worldScale: [0.5, 0.012, 0.35]
+            localMatrix: [[0.12744349, 0.022471726, -0.4829629, 0], [-0.0044115577, 0.011140969, -0.0006457379, 0], [0.31302622, 0.12908664, 0.088607125, 0], [0.05, 0.9, 0, 1]]
+            modelMatrix: [[0.12744349, 0.022471726, -0.4829629, 0], [-0.0044115577, 0.011140969, -0.0006457379, 0], [0.31302622, 0.12908664, 0.088607125, 0], [0.05, 0.9, 0, 1]]
+            normalMatrix: [[0.509774, 0.089886926, -1.9318517, -0.10638693], [-30.635817, 77.367836, -4.484292, -68.099266], [2.5553162, 1.0537685, 0.7233235, -1.0761575], [0, 0, 0, 1]]
+            visible: true
+            billboardRotation: [1, 0, 0, 0]
+            billboard: false
+            fakeBillboard: false
+            cylindricalBillboard: false
+          mesh:
+            enabled: true
+            buffer:
+              type: vertex_buffer
+              usage: immutable
+              stride: 48
+              size: 1152
+              count: 24
+              renderAttributes: true
+              instanceBuffer: false
+              attributes:
+                - type: position
+                  dataType: float
+                  bufferName: ""
+                  elements: 3
+                  offset: 0
+                  count: 24
+                  normalized: true
+                  perInstance: false
+                - type: texcoord1
+                  dataType: float
+                  bufferName: ""
+                  elements: 2
+                  offset: 12
+                  count: 24
+                  normalized: true
+                  perInstance: false
+                - type: normal
+                  dataType: float
+                  bufferName: ""
+                  elements: 3
+                  offset: 20
+                  count: 24
+                  normalized: true
+                  perInstance: false
+                - type: color
+                  dataType: float
+                  bufferName: ""
+                  elements: 4
+                  offset: 32
+                  count: 24
+                  normalized: true
+                  perInstance: false
+              data: AAAAvwAAAL8AAAA/AAAAAAAAgD8AAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAA/AACAPwAAgD8AAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAA/AACAPwAAAAAAAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAC/AAAAAAAAgD8AAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAC/AACAPwAAgD8AAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAC/AACAPwAAAAAAAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAC/AAAAAAAAAAAAAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAA/AAAAAAAAgD8AAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAA/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAC/AACAPwAAAAAAAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAC/AACAPwAAgD8AAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAA/AAAAAAAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAC/AACAPwAAAAAAAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAC/AACAPwAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAA/AACAPwAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAC/AACAPwAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAC/AAAAAAAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAA/AAAAAAAAAAAAAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAA/AACAPwAAAAAAAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAC/AACAPwAAgD8AAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAC/AAAAAAAAgD8AAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/
+              vertexSize: 48
+            indices:
+              type: index_buffer
+              usage: immutable
+              stride: 2
+              size: 72
+              count: 36
+              renderAttributes: true
+              instanceBuffer: false
+              attributes:
+                - type: index
+                  dataType: unsigned_short
+                  bufferName: ""
+                  elements: 1
+                  offset: 0
+                  count: 36
+                  normalized: true
+                  perInstance: false
+              data: AAABAAIAAAACAAMABAAGAAUABAAHAAYACAAJAAoACAAKAAsADAAOAA0ADAAPAA4AEAARABIAEAASABMAFAAWABUAFAAXABYA
+            eBuffers: ~
+            submeshes:
+              - material:
+                  baseColorFactor: [1, 1, 1, 1]
+                  metallicFactor: 1
+                  roughnessFactor: 1
+                  alphaCutoff: 0.5
+                  foliageTransmission: 0
+                  alphaMode: AUTO
+                  emissiveFactor: [0, 0, 0]
+                  baseColorTexCoord: 0
+                  metallicRoughnessTexCoord: 0
+                  occlusionTexCoord: 0
+                  emissiveTexCoord: 0
+                  normalTexCoord: 0
+                  name: ""
+                textureRect: [0, 0, 1, 1]
+                primitiveType: triangles
+                vertexCount: 36
+                faceCulling: true
+                textureShadow: false
+                hasTexCoord1: true
+                hasTexCoord2: false
+                hasNormalMap: false
+                hasTangent: false
+                hasVertexColor3: false
+                hasVertexColor4: true
+                hasTextureRect: false
+                hasSkinning: false
+                hasMorphTarget: false
+                hasMorphNormal: false
+                hasMorphTangent: false
+            bonesMatrix:
+              []
+            normAdjustJoint: 1
+            normAdjustWeight: 1
+            morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+            aabb:
+              min: [-0.5, -0.5, -0.5]
+              max: [0.5, 0.5, 0.5]
+            verticesAABB:
+              min: [-0.5, -0.5, -0.5]
+              max: [0.5, 0.5, 0.5]
+            worldAABB:
+              min: [-0.17244063, 0.8186503, -0.28610787]
+              max: [0.27244064, 0.98134965, 0.28610787]
+            receiveLights: true
+            receiveIBL: false
+            castShadows: true
+            receiveShadows: true
+            lodEnabled: true
+            lodBias: 1
+            renderInReflectionProbes: true
+            shadowsBillboard: true
+            transparent: false
+            autoTransparency: true
+            cullingMode: back
+            windingOrder: ccw
+      - type: Entity
+        entity: 1008
+        name: Plate4
+        components:
+          transform:
+            position: [-0.05, 1.15, 0.04]
+            rotation: [0.9811203, 0.17068131, 0.09033051, 0.010551917]
+            scale: [0.5, 0.012, 0.35]
+            worldPosition: [-0.05, 1.15, 0.04]
+            worldRotation: [0.9811203, 0.17068131, 0.09033051, 0.010551917]
+            worldScale: [0.5, 0.012, 0.35]
+            localMatrix: [[0.49172905, 0.02577043, -0.08682408, 0], [0.00012156073, 0.011298157, 0.004041889, 0], [0.06329828, -0.116554014, 0.3238958, 0], [-0.05, 1.15, 0.04, 1]]
+            modelMatrix: [[0.49172905, 0.02577043, -0.08682408, 0], [0.00012156073, 0.011298157, 0.004041889, 0], [0.06329828, -0.116554014, 0.3238958, 0], [-0.05, 1.15, 0.04, 1]]
+            normalMatrix: [[1.9669161, 0.1030817, -0.34729627, -0.0063063004], [0.844172, 78.45942, 28.068672, -91.30886], [0.5167206, -0.9514612, 2.6440473, 1.0142546], [0, 0, -0, 1]]
+            visible: true
+            billboardRotation: [1, 0, 0, 0]
+            billboard: false
+            fakeBillboard: false
+            cylindricalBillboard: false
+          mesh:
+            enabled: true
+            buffer:
+              type: vertex_buffer
+              usage: immutable
+              stride: 48
+              size: 1152
+              count: 24
+              renderAttributes: true
+              instanceBuffer: false
+              attributes:
+                - type: position
+                  dataType: float
+                  bufferName: ""
+                  elements: 3
+                  offset: 0
+                  count: 24
+                  normalized: true
+                  perInstance: false
+                - type: texcoord1
+                  dataType: float
+                  bufferName: ""
+                  elements: 2
+                  offset: 12
+                  count: 24
+                  normalized: true
+                  perInstance: false
+                - type: normal
+                  dataType: float
+                  bufferName: ""
+                  elements: 3
+                  offset: 20
+                  count: 24
+                  normalized: true
+                  perInstance: false
+                - type: color
+                  dataType: float
+                  bufferName: ""
+                  elements: 4
+                  offset: 32
+                  count: 24
+                  normalized: true
+                  perInstance: false
+              data: AAAAvwAAAL8AAAA/AAAAAAAAgD8AAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAA/AACAPwAAgD8AAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAA/AACAPwAAAAAAAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAC/AAAAAAAAgD8AAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAC/AACAPwAAgD8AAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAC/AACAPwAAAAAAAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAC/AAAAAAAAAAAAAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAA/AAAAAAAAgD8AAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAA/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAC/AACAPwAAAAAAAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAC/AACAPwAAgD8AAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAA/AAAAAAAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAC/AACAPwAAAAAAAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAC/AACAPwAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAA/AACAPwAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAC/AACAPwAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAC/AAAAAAAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAA/AAAAAAAAAAAAAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAA/AACAPwAAAAAAAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAC/AACAPwAAgD8AAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAC/AAAAAAAAgD8AAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/
+              vertexSize: 48
+            indices:
+              type: index_buffer
+              usage: immutable
+              stride: 2
+              size: 72
+              count: 36
+              renderAttributes: true
+              instanceBuffer: false
+              attributes:
+                - type: index
+                  dataType: unsigned_short
+                  bufferName: ""
+                  elements: 1
+                  offset: 0
+                  count: 36
+                  normalized: true
+                  perInstance: false
+              data: AAABAAIAAAACAAMABAAGAAUABAAHAAYACAAJAAoACAAKAAsADAAOAA0ADAAPAA4AEAARABIAEAASABMAFAAWABUAFAAXABYA
+            eBuffers: ~
+            submeshes:
+              - material:
+                  baseColorFactor: [1, 1, 1, 1]
+                  metallicFactor: 1
+                  roughnessFactor: 1
+                  alphaCutoff: 0.5
+                  foliageTransmission: 0
+                  alphaMode: AUTO
+                  emissiveFactor: [0, 0, 0]
+                  baseColorTexCoord: 0
+                  metallicRoughnessTexCoord: 0
+                  occlusionTexCoord: 0
+                  emissiveTexCoord: 0
+                  normalTexCoord: 0
+                  name: ""
+                textureRect: [0, 0, 1, 1]
+                primitiveType: triangles
+                vertexCount: 36
+                faceCulling: true
+                textureShadow: false
+                hasTexCoord1: true
+                hasTexCoord2: false
+                hasNormalMap: false
+                hasTangent: false
+                hasVertexColor3: false
+                hasVertexColor4: true
+                hasTextureRect: false
+                hasSkinning: false
+                hasMorphTarget: false
+                hasMorphNormal: false
+                hasMorphTangent: false
+            bonesMatrix:
+              []
+            normAdjustJoint: 1
+            normAdjustWeight: 1
+            morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+            aabb:
+              min: [-0.5, -0.5, -0.5]
+              max: [0.5, 0.5, 0.5]
+            verticesAABB:
+              min: [-0.5, -0.5, -0.5]
+              max: [0.5, 0.5, 0.5]
+            worldAABB:
+              min: [-0.32757446, 1.0731887, -0.1673809]
+              max: [0.22757445, 1.2268113, 0.24738088]
+            receiveLights: true
+            receiveIBL: false
+            castShadows: true
+            receiveShadows: true
+            lodEnabled: true
+            lodBias: 1
+            renderInReflectionProbes: true
+            shadowsBillboard: true
+            transparent: false
+            autoTransparency: true
+            cullingMode: back
+            windingOrder: ccw
+      - type: Entity
+        entity: 1009
+        name: Plate5
+        components:
+          transform:
+            position: [0, 1.4, 0]
+            rotation: [0.49928352, 0.11380611, 0.8579609, -0.04083237]
+            scale: [0.5, 0.012, 0.35]
+            worldPosition: [0, 1.4, 0]
+            worldRotation: [0.49928352, 0.11380611, 0.8579609, -0.04083237]
+            worldScale: [0.5, 0.012, 0.35]
+            localMatrix: [[-0.23776412, 0.077254266, -0.43301272, 0], [0.002832675, 0.011649141, 0.00052293454, 0], [0.2966031, -0.06429786, -0.1743341, 0], [0, 1.4, 0, 1]]
+            modelMatrix: [[-0.23776412, 0.077254266, -0.43301272, 0], [0.002832675, 0.011649141, 0.00052293454, 0], [0.2966031, -0.06429786, -0.1743341, 0], [0, 1.4, 0, 1]]
+            normalMatrix: [[-0.95105654, 0.30901703, -1.7320507, -0.43262383], [19.671352, 80.896805, 3.6314912, -113.25552], [2.4212499, -0.5248805, -1.423135, 0.7348327], [-0, 0, 0, 1]]
+            visible: true
+            billboardRotation: [1, 0, 0, 0]
+            billboard: false
+            fakeBillboard: false
+            cylindricalBillboard: false
+          mesh:
+            enabled: true
+            buffer:
+              type: vertex_buffer
+              usage: immutable
+              stride: 48
+              size: 1152
+              count: 24
+              renderAttributes: true
+              instanceBuffer: false
+              attributes:
+                - type: position
+                  dataType: float
+                  bufferName: ""
+                  elements: 3
+                  offset: 0
+                  count: 24
+                  normalized: true
+                  perInstance: false
+                - type: texcoord1
+                  dataType: float
+                  bufferName: ""
+                  elements: 2
+                  offset: 12
+                  count: 24
+                  normalized: true
+                  perInstance: false
+                - type: normal
+                  dataType: float
+                  bufferName: ""
+                  elements: 3
+                  offset: 20
+                  count: 24
+                  normalized: true
+                  perInstance: false
+                - type: color
+                  dataType: float
+                  bufferName: ""
+                  elements: 4
+                  offset: 32
+                  count: 24
+                  normalized: true
+                  perInstance: false
+              data: AAAAvwAAAL8AAAA/AAAAAAAAgD8AAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAA/AACAPwAAgD8AAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAA/AACAPwAAAAAAAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAC/AAAAAAAAgD8AAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAC/AACAPwAAgD8AAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAC/AACAPwAAAAAAAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAC/AAAAAAAAAAAAAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAA/AAAAAAAAgD8AAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAA/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAC/AACAPwAAAAAAAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAC/AACAPwAAgD8AAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAA/AAAAAAAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAC/AACAPwAAAAAAAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAC/AACAPwAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAA/AACAPwAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAC/AACAPwAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAC/AAAAAAAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAA/AAAAAAAAAAAAAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAA/AACAPwAAAAAAAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAC/AACAPwAAgD8AAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAC/AAAAAAAAgD8AAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/
+              vertexSize: 48
+            indices:
+              type: index_buffer
+              usage: immutable
+              stride: 2
+              size: 72
+              count: 36
+              renderAttributes: true
+              instanceBuffer: false
+              attributes:
+                - type: index
+                  dataType: unsigned_short
+                  bufferName: ""
+                  elements: 1
+                  offset: 0
+                  count: 36
+                  normalized: true
+                  perInstance: false
+              data: AAABAAIAAAACAAMABAAGAAUABAAHAAYACAAJAAoACAAKAAsADAAOAA0ADAAPAA4AEAARABIAEAASABMAFAAWABUAFAAXABYA
+            eBuffers: ~
+            submeshes:
+              - material:
+                  baseColorFactor: [1, 1, 1, 1]
+                  metallicFactor: 1
+                  roughnessFactor: 1
+                  alphaCutoff: 0.5
+                  foliageTransmission: 0
+                  alphaMode: AUTO
+                  emissiveFactor: [0, 0, 0]
+                  baseColorTexCoord: 0
+                  metallicRoughnessTexCoord: 0
+                  occlusionTexCoord: 0
+                  emissiveTexCoord: 0
+                  normalTexCoord: 0
+                  name: ""
+                textureRect: [0, 0, 1, 1]
+                primitiveType: triangles
+                vertexCount: 36
+                faceCulling: true
+                textureShadow: false
+                hasTexCoord1: true
+                hasTexCoord2: false
+                hasNormalMap: false
+                hasTangent: false
+                hasVertexColor3: false
+                hasVertexColor4: true
+                hasTextureRect: false
+                hasSkinning: false
+                hasMorphTarget: false
+                hasMorphNormal: false
+                hasMorphTangent: false
+            bonesMatrix:
+              []
+            normAdjustJoint: 1
+            normAdjustWeight: 1
+            morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+            aabb:
+              min: [-0.5, -0.5, -0.5]
+              max: [0.5, 0.5, 0.5]
+            verticesAABB:
+              min: [-0.5, -0.5, -0.5]
+              max: [0.5, 0.5, 0.5]
+            worldAABB:
+              min: [-0.26859996, 1.3233993, -0.30393487]
+              max: [0.26859996, 1.4766006, 0.30393487]
+            receiveLights: true
+            receiveIBL: false
+            castShadows: true
+            receiveShadows: true
+            lodEnabled: true
+            lodBias: 1
+            renderInReflectionProbes: true
+            shadowsBillboard: true
+            transparent: false
+            autoTransparency: true
+            cullingMode: back
+            windingOrder: ccw
+      - type: Entity
+        entity: 1010
+        name: Plate6
+        components:
+          transform:
+            position: [0.05, 1.65, 0.04]
+            rotation: [0.17505363, -0.20864053, 0.9621182, 0.012403287]
+            scale: [0.5, 0.012, 0.35]
+            worldPosition: [0.05, 1.65, 0.04]
+            worldRotation: [0.17505363, -0.20864053, 0.9621182, 0.012403287]
+            worldScale: [0.5, 0.012, 0.35]
+            localMatrix: [[-0.4258253, -0.19856562, -0.1710101, 0], [-0.004869794, 0.0109515665, -0.00059015653, 0], [0.11608412, 0.033919696, -0.32844162, 0], [0.05, 1.65, 0.04, 1]]
+            modelMatrix: [[-0.4258253, -0.19856562, -0.1710101, 0], [-0.004869794, 0.0109515665, -0.00059015653, 0], [0.11608412, 0.033919696, -0.32844162, 0], [0.05, 1.65, 0.04, 1]]
+            normalMatrix: [[-1.7033018, -0.7942626, -0.68404067, 1.4230598], [-33.818024, 76.05256, -4.098312, -123.63187], [0.9476257, 0.27689555, -2.6811569, -0.39701265], [0, 0, 0, 1]]
+            visible: true
+            billboardRotation: [1, 0, 0, 0]
+            billboard: false
+            fakeBillboard: false
+            cylindricalBillboard: false
+          mesh:
+            enabled: true
+            buffer:
+              type: vertex_buffer
+              usage: immutable
+              stride: 48
+              size: 1152
+              count: 24
+              renderAttributes: true
+              instanceBuffer: false
+              attributes:
+                - type: position
+                  dataType: float
+                  bufferName: ""
+                  elements: 3
+                  offset: 0
+                  count: 24
+                  normalized: true
+                  perInstance: false
+                - type: texcoord1
+                  dataType: float
+                  bufferName: ""
+                  elements: 2
+                  offset: 12
+                  count: 24
+                  normalized: true
+                  perInstance: false
+                - type: normal
+                  dataType: float
+                  bufferName: ""
+                  elements: 3
+                  offset: 20
+                  count: 24
+                  normalized: true
+                  perInstance: false
+                - type: color
+                  dataType: float
+                  bufferName: ""
+                  elements: 4
+                  offset: 32
+                  count: 24
+                  normalized: true
+                  perInstance: false
+              data: AAAAvwAAAL8AAAA/AAAAAAAAgD8AAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAA/AACAPwAAgD8AAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAA/AACAPwAAAAAAAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAC/AAAAAAAAgD8AAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAC/AACAPwAAgD8AAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAC/AACAPwAAAAAAAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAC/AAAAAAAAAAAAAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAA/AAAAAAAAgD8AAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAA/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAC/AACAPwAAAAAAAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAC/AACAPwAAgD8AAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAA/AAAAAAAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAC/AACAPwAAAAAAAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAC/AACAPwAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAA/AACAPwAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAC/AACAPwAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAC/AAAAAAAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAA/AAAAAAAAAAAAAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAA/AACAPwAAAAAAAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAC/AACAPwAAgD8AAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAC/AAAAAAAAgD8AAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/
+              vertexSize: 48
+            indices:
+              type: index_buffer
+              usage: immutable
+              stride: 2
+              size: 72
+              count: 36
+              renderAttributes: true
+              instanceBuffer: false
+              attributes:
+                - type: index
+                  dataType: unsigned_short
+                  bufferName: ""
+                  elements: 1
+                  offset: 0
+                  count: 36
+                  normalized: true
+                  perInstance: false
+              data: AAABAAIAAAACAAMABAAGAAUABAAHAAYACAAJAAoACAAKAAsADAAOAA0ADAAPAA4AEAARABIAEAASABMAFAAWABUAFAAXABYA
+            eBuffers: ~
+            submeshes:
+              - material:
+                  baseColorFactor: [1, 1, 1, 1]
+                  metallicFactor: 1
+                  roughnessFactor: 1
+                  alphaCutoff: 0.5
+                  foliageTransmission: 0
+                  alphaMode: AUTO
+                  emissiveFactor: [0, 0, 0]
+                  baseColorTexCoord: 0
+                  metallicRoughnessTexCoord: 0
+                  occlusionTexCoord: 0
+                  emissiveTexCoord: 0
+                  normalTexCoord: 0
+                  name: ""
+                textureRect: [0, 0, 1, 1]
+                primitiveType: triangles
+                vertexCount: 36
+                faceCulling: true
+                textureShadow: false
+                hasTexCoord1: true
+                hasTexCoord2: false
+                hasNormalMap: false
+                hasTangent: false
+                hasVertexColor3: false
+                hasVertexColor4: true
+                hasTextureRect: false
+                hasSkinning: false
+                hasMorphTarget: false
+                hasMorphNormal: false
+                hasMorphTangent: false
+            bonesMatrix:
+              []
+            normAdjustJoint: 1
+            normAdjustWeight: 1
+            morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+            aabb:
+              min: [-0.5, -0.5, -0.5]
+              max: [0.5, 0.5, 0.5]
+            verticesAABB:
+              min: [-0.5, -0.5, -0.5]
+              max: [0.5, 0.5, 0.5]
+            worldAABB:
+              min: [-0.22338961, 1.5282816, -0.21002096]
+              max: [0.32338962, 1.7717184, 0.29002094]
+            receiveLights: true
+            receiveIBL: false
+            castShadows: true
+            receiveShadows: true
+            lodEnabled: true
+            lodBias: 1
+            renderInReflectionProbes: true
+            shadowsBillboard: true
+            transparent: false
+            autoTransparency: true
+            cullingMode: back
+            windingOrder: ccw
+  - type: Entity
+    entity: 1011
+    name: Pencils
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+    children:
+      - type: Entity
+        entity: 1012
+        name: Pencil1
+        components:
+          transform:
+            position: [0.6, 0.3, -0.2]
+            rotation: [0.70710677, 0, 0, 0.70710677]
+            scale: [0.35, 1, 0.35]
+            worldPosition: [0.6, 0.3, -0.2]
+            worldRotation: [0.70710677, 0, 0, 0.70710677]
+            worldScale: [0.35, 1, 0.35]
+            localMatrix: [[2.0861625e-08, 0.34999996, 0, 0], [-0.99999994, 5.9604645e-08, 0, 0], [0, 0, 0.35, 0], [0.6, 0.3, -0.2, 1]]
+            modelMatrix: [[2.0861625e-08, 0.34999996, 0, 0], [-0.99999994, 5.9604645e-08, 0, 0], [0, 0, 0.35, 0], [0.6, 0.3, -0.2, 1]]
+            normalMatrix: [[1.7029902e-07, 2.8571432, 0, -0.85714316], [-1.0000001, 5.960466e-08, 0, 0.6000001], [0, -0, 2.857143, 0.5714286], [0, 0, 0, 1]]
+            visible: true
+            billboardRotation: [1, 0, 0, 0]
+            billboard: false
+            fakeBillboard: false
+            cylindricalBillboard: false
+          mesh:
+            enabled: true
+            buffer:
+              type: vertex_buffer
+              usage: immutable
+              stride: 48
+              size: 13104
+              count: 273
+              renderAttributes: true
+              instanceBuffer: false
+              attributes:
+                - type: position
+                  dataType: float
+                  bufferName: ""
+                  elements: 3
+                  offset: 0
+                  count: 273
+                  normalized: true
+                  perInstance: false
+                - type: texcoord1
+                  dataType: float
+                  bufferName: ""
+                  elements: 2
+                  offset: 12
+                  count: 273
+                  normalized: true
+                  perInstance: false
+                - type: normal
+                  dataType: float
+                  bufferName: ""
+                  elements: 3
+                  offset: 20
+                  count: 273
+                  normalized: true
+                  perInstance: false
+                - type: color
+                  dataType: float
+                  bufferName: ""
+                  elements: 4
+                  offset: 32
+                  count: 273
+                  normalized: true
+                  perInstance: false
+              data: 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
+              vertexSize: 48
+            indices:
+              type: index_buffer
+              usage: immutable
+              stride: 2
+              size: 2736
+              count: 1368
+              renderAttributes: true
+              instanceBuffer: false
+              attributes:
+                - type: index
+                  dataType: unsigned_short
+                  bufferName: ""
+                  elements: 1
+                  offset: 0
+                  count: 1368
+                  normalized: true
+                  perInstance: false
+              data: AAANAAEADQAOAAEAAQAOAAIADgAPAAIAAgAPAAMADwAQAAMAAwAQAAQAEAARAAQABAARAAUAEQASAAUABQASAAYAEgATAAYABgATAAcAEwAUAAcABwAUAAgAFAAVAAgACAAVAAkAFQAWAAkACQAWAAoAFgAXAAoACgAXAAsAFwAYAAsACwAYAAwAGAAZAAwADQAaAA4AGgAbAA4ADgAbAA8AGwAcAA8ADwAcABAAHAAdABAAEAAdABEAHQAeABEAEQAeABIAHgAfABIAEgAfABMAHwAgABMAEwAgABQAIAAhABQAFAAhABUAIQAiABUAFQAiABYAIgAjABYAFgAjABcAIwAkABcAFwAkABgAJAAlABgAGAAlABkAJQAmABkAGgAnABsAJwAoABsAGwAoABwAKAApABwAHAApAB0AKQAqAB0AHQAqAB4AKgArAB4AHgArAB8AKwAsAB8AHwAsACAALAAtACAAIAAtACEALQAuACEAIQAuACIALgAvACIAIgAvACMALwAwACMAIwAwACQAMAAxACQAJAAxACUAMQAyACUAJQAyACYAMgAzACYAJwA0ACgANAA1ACgAKAA1ACkANQA2ACkAKQA2ACoANgA3ACoAKgA3ACsANwA4ACsAKwA4ACwAOAA5ACwALAA5AC0AOQA6AC0ALQA6AC4AOgA7AC4ALgA7AC8AOwA8AC8ALwA8ADAAPAA9ADAAMAA9ADEAPQA+ADEAMQA+ADIAPgA/ADIAMgA/ADMAPwBAADMANABBADUAQQBCADUANQBCADYAQgBDADYANgBDADcAQwBEADcANwBEADgARABFADgAOABFADkARQBGADkAOQBGADoARgBHADoAOgBHADsARwBIADsAOwBIADwASABJADwAPABJAD0ASQBKAD0APQBKAD4ASgBLAD4APgBLAD8ASwBMAD8APwBMAEAATABNAEAAQQBOAEIATgBPAEIAQgBPAEMATwBQAEMAQwBQAEQAUABRAEQARABRAEUAUQBSAEUARQBSAEYAUgBTAEYARgBTAEcAUwBUAEcARwBUAEgAVABVAEgASABVAEkAVQBWAEkASQBWAEoAVgBXAEoASgBXAEsAVwBYAEsASwBYAEwAWABZAEwATABZAE0AWQBaAE0ATgBbAE8AWwBcAE8ATwBcAFAAXABdAFAAUABdAFEAXQBeAFEAUQBeAFIAXgBfAFIAUgBfAFMAXwBgAFMAUwBgAFQAYABhAFQAVABhAFUAYQBiAFUAVQBiAFYAYgBjAFYAVgBjAFcAYwBkAFcAVwBkAFgAZABlAFgAWABlAFkAZQBmAFkAWQBmAFoAZgBnAFoAWwBoAFwAaABpAFwAXABpAF0AaQBqAF0AXQBqAF4AagBrAF4AXgBrAF8AawBsAF8AXwBsAGAAbABtAGAAYABtAGEAbQBuAGEAYQBuAGIAbgBvAGIAYgBvAGMAbwBwAGMAYwBwAGQAcABxAGQAZABxAGUAcQByAGUAZQByAGYAcgBzAGYAZgBzAGcAcwB0AGcAaAB1AGkAdQB2AGkAaQB2AGoAdgB3AGoAagB3AGsAdwB4AGsAawB4AGwAeAB5AGwAbAB5AG0AeQB6AG0AbQB6AG4AegB7AG4AbgB7AG8AewB8AG8AbwB8AHAAfAB9AHAAcAB9AHEAfQB+AHEAcQB+AHIAfgB/AHIAcgB/AHMAfwCAAHMAcwCAAHQAgACBAHQAdQCCAHYAggCDAHYAdgCDAHcAgwCEAHcAdwCEAHgAhACFAHgAeACFAHkAhQCGAHkAeQCGAHoAhgCHAHoAegCHAHsAhwCIAHsAewCIAHwAiACJAHwAfACJAH0AiQCKAH0AfQCKAH4AigCLAH4AfgCLAH8AiwCMAH8AfwCMAIAAjACNAIAAgACNAIEAjQCOAIEAggCPAIMAjwCQAIMAgwCQAIQAkACRAIQAhACRAIUAkQCSAIUAhQCSAIYAkgCTAIYAhgCTAIcAkwCUAIcAhwCUAIgAlACVAIgAiACVAIkAlQCWAIkAiQCWAIoAlgCXAIoAigCXAIsAlwCYAIsAiwCYAIwAmACZAIwAjACZAI0AmQCaAI0AjQCaAI4AmgCbAI4AjwCcAJAAnACdAJAAkACdAJEAnQCeAJEAkQCeAJIAngCfAJIAkgCfAJMAnwCgAJMAkwCgAJQAoAChAJQAlAChAJUAoQCiAJUAlQCiAJYAogCjAJYAlgCjAJcAowCkAJcAlwCkAJgApAClAJgAmAClAJkApQCmAJkAmQCmAJoApgCnAJoAmgCnAJsApwCoAJsAnACpAJ0AqQCqAJ0AnQCqAJ4AqgCrAJ4AngCrAJ8AqwCsAJ8AnwCsAKAArACtAKAAoACtAKEArQCuAKEAoQCuAKIArgCvAKIAogCvAKMArwCwAKMAowCwAKQAsACxAKQApACxAKUAsQCyAKUApQCyAKYAsgCzAKYApgCzAKcAswC0AKcApwC0AKgAtAC1AKgAqQC2AKoAtgC3AKoAqgC3AKsAtwC4AKsAqwC4AKwAuAC5AKwArAC5AK0AuQC6AK0ArQC6AK4AugC7AK4ArgC7AK8AuwC8AK8ArwC8ALAAvAC9ALAAsAC9ALEAvQC+ALEAsQC+ALIAvgC/ALIAsgC/ALMAvwDAALMAswDAALQAwADBALQAtADBALUAwQDCALUAtgDDALcAwwDEALcAtwDEALgAxADFALgAuADFALkAxQDGALkAuQDGALoAxgDHALoAugDHALsAxwDIALsAuwDIALwAyADJALwAvADJAL0AyQDKAL0AvQDKAL4AygDLAL4AvgDLAL8AywDMAL8AvwDMAMAAzADNAMAAwADNAMEAzQDOAMEAwQDOAMIAzgDPAMIAwwDQAMQA0ADRAMQAxADRAMUA0QDSAMUAxQDSAMYA0gDTAMYAxgDTAMcA0wDUAMcAxwDUAMgA1ADVAMgAyADVAMkA1QDWAMkAyQDWAMoA1gDXAMoAygDXAMsA1wDYAMsAywDYAMwA2ADZAMwAzADZAM0A2QDaAM0AzQDaAM4A2gDbAM4AzgDbAM8A2wDcAM8A0ADdANEA3QDeANEA0QDeANIA3gDfANIA0gDfANMA3wDgANMA0wDgANQA4ADhANQA1ADhANUA4QDiANUA1QDiANYA4gDjANYA1gDjANcA4wDkANcA1wDkANgA5ADlANgA2ADlANkA5QDmANkA2QDmANoA5gDnANoA2gDnANsA5wDoANsA2wDoANwA6ADpANwA3QDqAN4A6gDrAN4A3gDrAN8A6wDsAN8A3wDsAOAA7ADtAOAA4ADtAOEA7QDuAOEA4QDuAOIA7gDvAOIA4gDvAOMA7wDwAOMA4wDwAOQA8ADxAOQA5ADxAOUA8QDyAOUA5QDyAOYA8gDzAOYA5gDzAOcA8wD0AOcA5wD0AOgA9AD1AOgA6AD1AOkA9QD2AOkA9wD4APkA9wD5APoA9wD6APsA9wD7APwA9wD8AP0A9wD9AP4A9wD+AP8A9wD/AAAB9wAAAQEB9wABAQIB9wACAQMB9wADAfgABAEGAQUBBAEHAQYBBAEIAQcBBAEJAQgBBAEKAQkBBAELAQoBBAEMAQsBBAENAQwBBAEOAQ0BBAEPAQ4BBAEQAQ8BBAEFARAB
+            eBuffers: ~
+            submeshes:
+              - material:
+                  baseColorFactor: [1, 1, 1, 1]
+                  metallicFactor: 1
+                  roughnessFactor: 1
+                  alphaCutoff: 0.5
+                  foliageTransmission: 0
+                  alphaMode: AUTO
+                  emissiveFactor: [0, 0, 0]
+                  baseColorTexCoord: 0
+                  metallicRoughnessTexCoord: 0
+                  occlusionTexCoord: 0
+                  emissiveTexCoord: 0
+                  normalTexCoord: 0
+                  name: ""
+                textureRect: [0, 0, 1, 1]
+                primitiveType: triangles
+                vertexCount: 1368
+                faceCulling: true
+                textureShadow: false
+                hasTexCoord1: true
+                hasTexCoord2: false
+                hasNormalMap: false
+                hasTangent: false
+                hasVertexColor3: false
+                hasVertexColor4: true
+                hasTextureRect: false
+                hasSkinning: false
+                hasMorphTarget: false
+                hasMorphNormal: false
+                hasMorphTangent: false
+            bonesMatrix:
+              []
+            normAdjustJoint: 1
+            normAdjustWeight: 1
+            morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+            aabb:
+              min: [-0.01, -0.09, -0.01]
+              max: [0.01, 0.09, 0.01]
+            verticesAABB:
+              min: [-0.01, -0.09, -0.01]
+              max: [0.01, 0.09, 0.01]
+            worldAABB:
+              min: [0.51000005, 0.2965, -0.2035]
+              max: [0.69, 0.30350003, -0.1965]
+            receiveLights: true
+            receiveIBL: false
+            castShadows: true
+            receiveShadows: true
+            lodEnabled: true
+            lodBias: 1
+            renderInReflectionProbes: true
+            shadowsBillboard: true
+            transparent: false
+            autoTransparency: true
+            cullingMode: back
+            windingOrder: ccw
+      - type: Entity
+        entity: 1013
+        name: Pencil2
+        components:
+          transform:
+            position: [0.7, 0.42, -0.08]
+            rotation: [0.6743797, -0.2126311, 0.2126311, 0.6743797]
+            scale: [0.35, 1, 0.35]
+            worldPosition: [0.7, 0.42, -0.08]
+            worldRotation: [0.6743797, -0.2126311, 0.2126311, 0.6743797]
+            worldScale: [0.35, 1, 0.35]
+            localMatrix: [[0, 0.2867032, -0.20075174, 0], [-1, 0, 0, 0], [0, 0.20075174, 0.28670323, 0], [0.7, 0.42, -0.08, 1]]
+            modelMatrix: [[0, 0.2867032, -0.20075174, 0], [-1, 0, 0, 0], [0, 0.20075174, 0.28670323, 0], [0.7, 0.42, -0.08, 1]]
+            normalMatrix: [[0, 2.3404348, -1.6387899, -1.1140858], [-1, 0, 0, 0.7], [0, 1.6387899, 2.3404346, -0.50105697], [0, -0, 0, 1]]
+            visible: true
+            billboardRotation: [1, 0, 0, 0]
+            billboard: false
+            fakeBillboard: false
+            cylindricalBillboard: false
+          mesh:
+            enabled: true
+            buffer:
+              type: vertex_buffer
+              usage: immutable
+              stride: 48
+              size: 13104
+              count: 273
+              renderAttributes: true
+              instanceBuffer: false
+              attributes:
+                - type: position
+                  dataType: float
+                  bufferName: ""
+                  elements: 3
+                  offset: 0
+                  count: 273
+                  normalized: true
+                  perInstance: false
+                - type: texcoord1
+                  dataType: float
+                  bufferName: ""
+                  elements: 2
+                  offset: 12
+                  count: 273
+                  normalized: true
+                  perInstance: false
+                - type: normal
+                  dataType: float
+                  bufferName: ""
+                  elements: 3
+                  offset: 20
+                  count: 273
+                  normalized: true
+                  perInstance: false
+                - type: color
+                  dataType: float
+                  bufferName: ""
+                  elements: 4
+                  offset: 32
+                  count: 273
+                  normalized: true
+                  perInstance: false
+              data: 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
+              vertexSize: 48
+            indices:
+              type: index_buffer
+              usage: immutable
+              stride: 2
+              size: 2736
+              count: 1368
+              renderAttributes: true
+              instanceBuffer: false
+              attributes:
+                - type: index
+                  dataType: unsigned_short
+                  bufferName: ""
+                  elements: 1
+                  offset: 0
+                  count: 1368
+                  normalized: true
+                  perInstance: false
+              data: AAANAAEADQAOAAEAAQAOAAIADgAPAAIAAgAPAAMADwAQAAMAAwAQAAQAEAARAAQABAARAAUAEQASAAUABQASAAYAEgATAAYABgATAAcAEwAUAAcABwAUAAgAFAAVAAgACAAVAAkAFQAWAAkACQAWAAoAFgAXAAoACgAXAAsAFwAYAAsACwAYAAwAGAAZAAwADQAaAA4AGgAbAA4ADgAbAA8AGwAcAA8ADwAcABAAHAAdABAAEAAdABEAHQAeABEAEQAeABIAHgAfABIAEgAfABMAHwAgABMAEwAgABQAIAAhABQAFAAhABUAIQAiABUAFQAiABYAIgAjABYAFgAjABcAIwAkABcAFwAkABgAJAAlABgAGAAlABkAJQAmABkAGgAnABsAJwAoABsAGwAoABwAKAApABwAHAApAB0AKQAqAB0AHQAqAB4AKgArAB4AHgArAB8AKwAsAB8AHwAsACAALAAtACAAIAAtACEALQAuACEAIQAuACIALgAvACIAIgAvACMALwAwACMAIwAwACQAMAAxACQAJAAxACUAMQAyACUAJQAyACYAMgAzACYAJwA0ACgANAA1ACgAKAA1ACkANQA2ACkAKQA2ACoANgA3ACoAKgA3ACsANwA4ACsAKwA4ACwAOAA5ACwALAA5AC0AOQA6AC0ALQA6AC4AOgA7AC4ALgA7AC8AOwA8AC8ALwA8ADAAPAA9ADAAMAA9ADEAPQA+ADEAMQA+ADIAPgA/ADIAMgA/ADMAPwBAADMANABBADUAQQBCADUANQBCADYAQgBDADYANgBDADcAQwBEADcANwBEADgARABFADgAOABFADkARQBGADkAOQBGADoARgBHADoAOgBHADsARwBIADsAOwBIADwASABJADwAPABJAD0ASQBKAD0APQBKAD4ASgBLAD4APgBLAD8ASwBMAD8APwBMAEAATABNAEAAQQBOAEIATgBPAEIAQgBPAEMATwBQAEMAQwBQAEQAUABRAEQARABRAEUAUQBSAEUARQBSAEYAUgBTAEYARgBTAEcAUwBUAEcARwBUAEgAVABVAEgASABVAEkAVQBWAEkASQBWAEoAVgBXAEoASgBXAEsAVwBYAEsASwBYAEwAWABZAEwATABZAE0AWQBaAE0ATgBbAE8AWwBcAE8ATwBcAFAAXABdAFAAUABdAFEAXQBeAFEAUQBeAFIAXgBfAFIAUgBfAFMAXwBgAFMAUwBgAFQAYABhAFQAVABhAFUAYQBiAFUAVQBiAFYAYgBjAFYAVgBjAFcAYwBkAFcAVwBkAFgAZABlAFgAWABlAFkAZQBmAFkAWQBmAFoAZgBnAFoAWwBoAFwAaABpAFwAXABpAF0AaQBqAF0AXQBqAF4AagBrAF4AXgBrAF8AawBsAF8AXwBsAGAAbABtAGAAYABtAGEAbQBuAGEAYQBuAGIAbgBvAGIAYgBvAGMAbwBwAGMAYwBwAGQAcABxAGQAZABxAGUAcQByAGUAZQByAGYAcgBzAGYAZgBzAGcAcwB0AGcAaAB1AGkAdQB2AGkAaQB2AGoAdgB3AGoAagB3AGsAdwB4AGsAawB4AGwAeAB5AGwAbAB5AG0AeQB6AG0AbQB6AG4AegB7AG4AbgB7AG8AewB8AG8AbwB8AHAAfAB9AHAAcAB9AHEAfQB+AHEAcQB+AHIAfgB/AHIAcgB/AHMAfwCAAHMAcwCAAHQAgACBAHQAdQCCAHYAggCDAHYAdgCDAHcAgwCEAHcAdwCEAHgAhACFAHgAeACFAHkAhQCGAHkAeQCGAHoAhgCHAHoAegCHAHsAhwCIAHsAewCIAHwAiACJAHwAfACJAH0AiQCKAH0AfQCKAH4AigCLAH4AfgCLAH8AiwCMAH8AfwCMAIAAjACNAIAAgACNAIEAjQCOAIEAggCPAIMAjwCQAIMAgwCQAIQAkACRAIQAhACRAIUAkQCSAIUAhQCSAIYAkgCTAIYAhgCTAIcAkwCUAIcAhwCUAIgAlACVAIgAiACVAIkAlQCWAIkAiQCWAIoAlgCXAIoAigCXAIsAlwCYAIsAiwCYAIwAmACZAIwAjACZAI0AmQCaAI0AjQCaAI4AmgCbAI4AjwCcAJAAnACdAJAAkACdAJEAnQCeAJEAkQCeAJIAngCfAJIAkgCfAJMAnwCgAJMAkwCgAJQAoAChAJQAlAChAJUAoQCiAJUAlQCiAJYAogCjAJYAlgCjAJcAowCkAJcAlwCkAJgApAClAJgAmAClAJkApQCmAJkAmQCmAJoApgCnAJoAmgCnAJsApwCoAJsAnACpAJ0AqQCqAJ0AnQCqAJ4AqgCrAJ4AngCrAJ8AqwCsAJ8AnwCsAKAArACtAKAAoACtAKEArQCuAKEAoQCuAKIArgCvAKIAogCvAKMArwCwAKMAowCwAKQAsACxAKQApACxAKUAsQCyAKUApQCyAKYAsgCzAKYApgCzAKcAswC0AKcApwC0AKgAtAC1AKgAqQC2AKoAtgC3AKoAqgC3AKsAtwC4AKsAqwC4AKwAuAC5AKwArAC5AK0AuQC6AK0ArQC6AK4AugC7AK4ArgC7AK8AuwC8AK8ArwC8ALAAvAC9ALAAsAC9ALEAvQC+ALEAsQC+ALIAvgC/ALIAsgC/ALMAvwDAALMAswDAALQAwADBALQAtADBALUAwQDCALUAtgDDALcAwwDEALcAtwDEALgAxADFALgAuADFALkAxQDGALkAuQDGALoAxgDHALoAugDHALsAxwDIALsAuwDIALwAyADJALwAvADJAL0AyQDKAL0AvQDKAL4AygDLAL4AvgDLAL8AywDMAL8AvwDMAMAAzADNAMAAwADNAMEAzQDOAMEAwQDOAMIAzgDPAMIAwwDQAMQA0ADRAMQAxADRAMUA0QDSAMUAxQDSAMYA0gDTAMYAxgDTAMcA0wDUAMcAxwDUAMgA1ADVAMgAyADVAMkA1QDWAMkAyQDWAMoA1gDXAMoAygDXAMsA1wDYAMsAywDYAMwA2ADZAMwAzADZAM0A2QDaAM0AzQDaAM4A2gDbAM4AzgDbAM8A2wDcAM8A0ADdANEA3QDeANEA0QDeANIA3gDfANIA0gDfANMA3wDgANMA0wDgANQA4ADhANQA1ADhANUA4QDiANUA1QDiANYA4gDjANYA1gDjANcA4wDkANcA1wDkANgA5ADlANgA2ADlANkA5QDmANkA2QDmANoA5gDnANoA2gDnANsA5wDoANsA2wDoANwA6ADpANwA3QDqAN4A6gDrAN4A3gDrAN8A6wDsAN8A3wDsAOAA7ADtAOAA4ADtAOEA7QDuAOEA4QDuAOIA7gDvAOIA4gDvAOMA7wDwAOMA4wDwAOQA8ADxAOQA5ADxAOUA8QDyAOUA5QDyAOYA8gDzAOYA5gDzAOcA8wD0AOcA5wD0AOgA9AD1AOgA6AD1AOkA9QD2AOkA9wD4APkA9wD5APoA9wD6APsA9wD7APwA9wD8AP0A9wD9AP4A9wD+AP8A9wD/AAAB9wAAAQEB9wABAQIB9wACAQMB9wADAfgABAEGAQUBBAEHAQYBBAEIAQcBBAEJAQgBBAEKAQkBBAELAQoBBAEMAQsBBAENAQwBBAEOAQ0BBAEPAQ4BBAEQAQ8BBAEFARAB
+            eBuffers: ~
+            submeshes:
+              - material:
+                  baseColorFactor: [1, 1, 1, 1]
+                  metallicFactor: 1
+                  roughnessFactor: 1
+                  alphaCutoff: 0.5
+                  foliageTransmission: 0
+                  alphaMode: AUTO
+                  emissiveFactor: [0, 0, 0]
+                  baseColorTexCoord: 0
+                  metallicRoughnessTexCoord: 0
+                  occlusionTexCoord: 0
+                  emissiveTexCoord: 0
+                  normalTexCoord: 0
+                  name: ""
+                textureRect: [0, 0, 1, 1]
+                primitiveType: triangles
+                vertexCount: 1368
+                faceCulling: true
+                textureShadow: false
+                hasTexCoord1: true
+                hasTexCoord2: false
+                hasNormalMap: false
+                hasTangent: false
+                hasVertexColor3: false
+                hasVertexColor4: true
+                hasTextureRect: false
+                hasSkinning: false
+                hasMorphTarget: false
+                hasMorphNormal: false
+                hasMorphTangent: false
+            bonesMatrix:
+              []
+            normAdjustJoint: 1
+            normAdjustWeight: 1
+            morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+            aabb:
+              min: [-0.01, -0.09, -0.01]
+              max: [0.01, 0.09, 0.01]
+            verticesAABB:
+              min: [-0.01, -0.09, -0.01]
+              max: [0.01, 0.09, 0.01]
+            worldAABB:
+              min: [0.61, 0.41512543, -0.08487455]
+              max: [0.78999996, 0.42487454, -0.07512545]
+            receiveLights: true
+            receiveIBL: false
+            castShadows: true
+            receiveShadows: true
+            lodEnabled: true
+            lodBias: 1
+            renderInReflectionProbes: true
+            shadowsBillboard: true
+            transparent: false
+            autoTransparency: true
+            cullingMode: back
+            windingOrder: ccw
+      - type: Entity
+        entity: 1014
+        name: Pencil3
+        components:
+          transform:
+            position: [0.8, 0.54, 0.04]
+            rotation: [0.579228, -0.4055798, 0.4055798, 0.579228]
+            scale: [0.35, 1, 0.35]
+            worldPosition: [0.8, 0.54, 0.04]
+            worldRotation: [0.579228, -0.4055798, 0.4055798, 0.579228]
+            worldScale: [0.35, 1, 0.35]
+            localMatrix: [[-4.172325e-08, 0.11970706, -0.32889244, 0], [-1.0000001, -1.1920929e-07, 0, 0], [0, 0.32889244, 0.11970703, 0], [0.8, 0.54, 0.04, 1]]
+            modelMatrix: [[-4.172325e-08, 0.11970706, -0.32889244, 0], [-1.0000001, -1.1920929e-07, 0, 0], [0, 0.32889244, 0.11970703, 0], [0.8, 0.54, 0.04, 1]]
+            normalMatrix: [[-1.1649132e-07, 0.97720015, -2.684836, -0.4202946], [-0.9999998, -4.0771962e-08, 1.1202007e-07, 0.79999983], [-3.2005735e-07, 2.684836, 0.9772004, -1.4888991], [0, -0, 0, 0.99999994]]
+            visible: true
+            billboardRotation: [1, 0, 0, 0]
+            billboard: false
+            fakeBillboard: false
+            cylindricalBillboard: false
+          mesh:
+            enabled: true
+            buffer:
+              type: vertex_buffer
+              usage: immutable
+              stride: 48
+              size: 13104
+              count: 273
+              renderAttributes: true
+              instanceBuffer: false
+              attributes:
+                - type: position
+                  dataType: float
+                  bufferName: ""
+                  elements: 3
+                  offset: 0
+                  count: 273
+                  normalized: true
+                  perInstance: false
+                - type: texcoord1
+                  dataType: float
+                  bufferName: ""
+                  elements: 2
+                  offset: 12
+                  count: 273
+                  normalized: true
+                  perInstance: false
+                - type: normal
+                  dataType: float
+                  bufferName: ""
+                  elements: 3
+                  offset: 20
+                  count: 273
+                  normalized: true
+                  perInstance: false
+                - type: color
+                  dataType: float
+                  bufferName: ""
+                  elements: 4
+                  offset: 32
+                  count: 273
+                  normalized: true
+                  perInstance: false
+              data: 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
+              vertexSize: 48
+            indices:
+              type: index_buffer
+              usage: immutable
+              stride: 2
+              size: 2736
+              count: 1368
+              renderAttributes: true
+              instanceBuffer: false
+              attributes:
+                - type: index
+                  dataType: unsigned_short
+                  bufferName: ""
+                  elements: 1
+                  offset: 0
+                  count: 1368
+                  normalized: true
+                  perInstance: false
+              data: AAANAAEADQAOAAEAAQAOAAIADgAPAAIAAgAPAAMADwAQAAMAAwAQAAQAEAARAAQABAARAAUAEQASAAUABQASAAYAEgATAAYABgATAAcAEwAUAAcABwAUAAgAFAAVAAgACAAVAAkAFQAWAAkACQAWAAoAFgAXAAoACgAXAAsAFwAYAAsACwAYAAwAGAAZAAwADQAaAA4AGgAbAA4ADgAbAA8AGwAcAA8ADwAcABAAHAAdABAAEAAdABEAHQAeABEAEQAeABIAHgAfABIAEgAfABMAHwAgABMAEwAgABQAIAAhABQAFAAhABUAIQAiABUAFQAiABYAIgAjABYAFgAjABcAIwAkABcAFwAkABgAJAAlABgAGAAlABkAJQAmABkAGgAnABsAJwAoABsAGwAoABwAKAApABwAHAApAB0AKQAqAB0AHQAqAB4AKgArAB4AHgArAB8AKwAsAB8AHwAsACAALAAtACAAIAAtACEALQAuACEAIQAuACIALgAvACIAIgAvACMALwAwACMAIwAwACQAMAAxACQAJAAxACUAMQAyACUAJQAyACYAMgAzACYAJwA0ACgANAA1ACgAKAA1ACkANQA2ACkAKQA2ACoANgA3ACoAKgA3ACsANwA4ACsAKwA4ACwAOAA5ACwALAA5AC0AOQA6AC0ALQA6AC4AOgA7AC4ALgA7AC8AOwA8AC8ALwA8ADAAPAA9ADAAMAA9ADEAPQA+ADEAMQA+ADIAPgA/ADIAMgA/ADMAPwBAADMANABBADUAQQBCADUANQBCADYAQgBDADYANgBDADcAQwBEADcANwBEADgARABFADgAOABFADkARQBGADkAOQBGADoARgBHADoAOgBHADsARwBIADsAOwBIADwASABJADwAPABJAD0ASQBKAD0APQBKAD4ASgBLAD4APgBLAD8ASwBMAD8APwBMAEAATABNAEAAQQBOAEIATgBPAEIAQgBPAEMATwBQAEMAQwBQAEQAUABRAEQARABRAEUAUQBSAEUARQBSAEYAUgBTAEYARgBTAEcAUwBUAEcARwBUAEgAVABVAEgASABVAEkAVQBWAEkASQBWAEoAVgBXAEoASgBXAEsAVwBYAEsASwBYAEwAWABZAEwATABZAE0AWQBaAE0ATgBbAE8AWwBcAE8ATwBcAFAAXABdAFAAUABdAFEAXQBeAFEAUQBeAFIAXgBfAFIAUgBfAFMAXwBgAFMAUwBgAFQAYABhAFQAVABhAFUAYQBiAFUAVQBiAFYAYgBjAFYAVgBjAFcAYwBkAFcAVwBkAFgAZABlAFgAWABlAFkAZQBmAFkAWQBmAFoAZgBnAFoAWwBoAFwAaABpAFwAXABpAF0AaQBqAF0AXQBqAF4AagBrAF4AXgBrAF8AawBsAF8AXwBsAGAAbABtAGAAYABtAGEAbQBuAGEAYQBuAGIAbgBvAGIAYgBvAGMAbwBwAGMAYwBwAGQAcABxAGQAZABxAGUAcQByAGUAZQByAGYAcgBzAGYAZgBzAGcAcwB0AGcAaAB1AGkAdQB2AGkAaQB2AGoAdgB3AGoAagB3AGsAdwB4AGsAawB4AGwAeAB5AGwAbAB5AG0AeQB6AG0AbQB6AG4AegB7AG4AbgB7AG8AewB8AG8AbwB8AHAAfAB9AHAAcAB9AHEAfQB+AHEAcQB+AHIAfgB/AHIAcgB/AHMAfwCAAHMAcwCAAHQAgACBAHQAdQCCAHYAggCDAHYAdgCDAHcAgwCEAHcAdwCEAHgAhACFAHgAeACFAHkAhQCGAHkAeQCGAHoAhgCHAHoAegCHAHsAhwCIAHsAewCIAHwAiACJAHwAfACJAH0AiQCKAH0AfQCKAH4AigCLAH4AfgCLAH8AiwCMAH8AfwCMAIAAjACNAIAAgACNAIEAjQCOAIEAggCPAIMAjwCQAIMAgwCQAIQAkACRAIQAhACRAIUAkQCSAIUAhQCSAIYAkgCTAIYAhgCTAIcAkwCUAIcAhwCUAIgAlACVAIgAiACVAIkAlQCWAIkAiQCWAIoAlgCXAIoAigCXAIsAlwCYAIsAiwCYAIwAmACZAIwAjACZAI0AmQCaAI0AjQCaAI4AmgCbAI4AjwCcAJAAnACdAJAAkACdAJEAnQCeAJEAkQCeAJIAngCfAJIAkgCfAJMAnwCgAJMAkwCgAJQAoAChAJQAlAChAJUAoQCiAJUAlQCiAJYAogCjAJYAlgCjAJcAowCkAJcAlwCkAJgApAClAJgAmAClAJkApQCmAJkAmQCmAJoApgCnAJoAmgCnAJsApwCoAJsAnACpAJ0AqQCqAJ0AnQCqAJ4AqgCrAJ4AngCrAJ8AqwCsAJ8AnwCsAKAArACtAKAAoACtAKEArQCuAKEAoQCuAKIArgCvAKIAogCvAKMArwCwAKMAowCwAKQAsACxAKQApACxAKUAsQCyAKUApQCyAKYAsgCzAKYApgCzAKcAswC0AKcApwC0AKgAtAC1AKgAqQC2AKoAtgC3AKoAqgC3AKsAtwC4AKsAqwC4AKwAuAC5AKwArAC5AK0AuQC6AK0ArQC6AK4AugC7AK4ArgC7AK8AuwC8AK8ArwC8ALAAvAC9ALAAsAC9ALEAvQC+ALEAsQC+ALIAvgC/ALIAsgC/ALMAvwDAALMAswDAALQAwADBALQAtADBALUAwQDCALUAtgDDALcAwwDEALcAtwDEALgAxADFALgAuADFALkAxQDGALkAuQDGALoAxgDHALoAugDHALsAxwDIALsAuwDIALwAyADJALwAvADJAL0AyQDKAL0AvQDKAL4AygDLAL4AvgDLAL8AywDMAL8AvwDMAMAAzADNAMAAwADNAMEAzQDOAMEAwQDOAMIAzgDPAMIAwwDQAMQA0ADRAMQAxADRAMUA0QDSAMUAxQDSAMYA0gDTAMYAxgDTAMcA0wDUAMcAxwDUAMgA1ADVAMgAyADVAMkA1QDWAMkAyQDWAMoA1gDXAMoAygDXAMsA1wDYAMsAywDYAMwA2ADZAMwAzADZAM0A2QDaAM0AzQDaAM4A2gDbAM4AzgDbAM8A2wDcAM8A0ADdANEA3QDeANEA0QDeANIA3gDfANIA0gDfANMA3wDgANMA0wDgANQA4ADhANQA1ADhANUA4QDiANUA1QDiANYA4gDjANYA1gDjANcA4wDkANcA1wDkANgA5ADlANgA2ADlANkA5QDmANkA2QDmANoA5gDnANoA2gDnANsA5wDoANsA2wDoANwA6ADpANwA3QDqAN4A6gDrAN4A3gDrAN8A6wDsAN8A3wDsAOAA7ADtAOAA4ADtAOEA7QDuAOEA4QDuAOIA7gDvAOIA4gDvAOMA7wDwAOMA4wDwAOQA8ADxAOQA5ADxAOUA8QDyAOUA5QDyAOYA8gDzAOYA5gDzAOcA8wD0AOcA5wD0AOgA9AD1AOgA6AD1AOkA9QD2AOkA9wD4APkA9wD5APoA9wD6APsA9wD7APwA9wD8AP0A9wD9AP4A9wD+AP8A9wD/AAAB9wAAAQEB9wABAQIB9wACAQMB9wADAfgABAEGAQUBBAEHAQYBBAEIAQcBBAEJAQgBBAEKAQkBBAELAQoBBAEMAQsBBAENAQwBBAEOAQ0BBAEPAQ4BBAEQAQ8BBAEFARAB
+            eBuffers: ~
+            submeshes:
+              - material:
+                  baseColorFactor: [1, 1, 1, 1]
+                  metallicFactor: 1
+                  roughnessFactor: 1
+                  alphaCutoff: 0.5
+                  foliageTransmission: 0
+                  alphaMode: AUTO
+                  emissiveFactor: [0, 0, 0]
+                  baseColorTexCoord: 0
+                  metallicRoughnessTexCoord: 0
+                  occlusionTexCoord: 0
+                  emissiveTexCoord: 0
+                  normalTexCoord: 0
+                  name: ""
+                textureRect: [0, 0, 1, 1]
+                primitiveType: triangles
+                vertexCount: 1368
+                faceCulling: true
+                textureShadow: false
+                hasTexCoord1: true
+                hasTexCoord2: false
+                hasNormalMap: false
+                hasTangent: false
+                hasVertexColor3: false
+                hasVertexColor4: true
+                hasTextureRect: false
+                hasSkinning: false
+                hasMorphTarget: false
+                hasMorphNormal: false
+                hasMorphTangent: false
+            bonesMatrix:
+              []
+            normAdjustJoint: 1
+            normAdjustWeight: 1
+            morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+            aabb:
+              min: [-0.01, -0.09, -0.01]
+              max: [0.01, 0.09, 0.01]
+            verticesAABB:
+              min: [-0.01, -0.09, -0.01]
+              max: [0.01, 0.09, 0.01]
+            worldAABB:
+              min: [0.71, 0.535514, 0.035514005]
+              max: [0.89000005, 0.54448605, 0.044485994]
+            receiveLights: true
+            receiveIBL: false
+            castShadows: true
+            receiveShadows: true
+            lodEnabled: true
+            lodBias: 1
+            renderInReflectionProbes: true
+            shadowsBillboard: true
+            transparent: false
+            autoTransparency: true
+            cullingMode: back
+            windingOrder: ccw
+      - type: Entity
+        entity: 1015
+        name: Pencil4
+        components:
+          transform:
+            position: [0.9, 0.66, 0.16]
+            rotation: [0.43045932, -0.5609855, 0.5609855, 0.43045932]
+            scale: [0.35, 1, 0.35]
+            worldPosition: [0.9, 0.66, 0.16]
+            worldRotation: [0.43045932, -0.5609855, 0.5609855, 0.43045932]
+            worldScale: [0.35, 1, 0.35]
+            localMatrix: [[2.0861625e-08, -0.09058666, -0.338074, 0], [-0.99999994, 5.9604645e-08, 0, 0], [0, 0.338074, -0.09058664, 0], [0.9, 0.66, 0.16, 1]]
+            modelMatrix: [[2.0861625e-08, -0.09058666, -0.338074, 0], [-0.99999994, 5.9604645e-08, 0, 0], [0, 0.338074, -0.09058664, 0], [0.9, 0.66, 0.16, 1]]
+            normalMatrix: [[-4.407662e-08, -0.73948294, -2.7597885, 0.92962503], [-1.0000001, -1.5426817e-08, -5.7573676e-08, 0.9000001], [1.6449623e-07, 2.7597885, -0.7394832, -1.7031432], [0, 0, 0, 1]]
+            visible: true
+            billboardRotation: [1, 0, 0, 0]
+            billboard: false
+            fakeBillboard: false
+            cylindricalBillboard: false
+          mesh:
+            enabled: true
+            buffer:
+              type: vertex_buffer
+              usage: immutable
+              stride: 48
+              size: 13104
+              count: 273
+              renderAttributes: true
+              instanceBuffer: false
+              attributes:
+                - type: position
+                  dataType: float
+                  bufferName: ""
+                  elements: 3
+                  offset: 0
+                  count: 273
+                  normalized: true
+                  perInstance: false
+                - type: texcoord1
+                  dataType: float
+                  bufferName: ""
+                  elements: 2
+                  offset: 12
+                  count: 273
+                  normalized: true
+                  perInstance: false
+                - type: normal
+                  dataType: float
+                  bufferName: ""
+                  elements: 3
+                  offset: 20
+                  count: 273
+                  normalized: true
+                  perInstance: false
+                - type: color
+                  dataType: float
+                  bufferName: ""
+                  elements: 4
+                  offset: 32
+                  count: 273
+                  normalized: true
+                  perInstance: false
+              data: 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
+              vertexSize: 48
+            indices:
+              type: index_buffer
+              usage: immutable
+              stride: 2
+              size: 2736
+              count: 1368
+              renderAttributes: true
+              instanceBuffer: false
+              attributes:
+                - type: index
+                  dataType: unsigned_short
+                  bufferName: ""
+                  elements: 1
+                  offset: 0
+                  count: 1368
+                  normalized: true
+                  perInstance: false
+              data: AAANAAEADQAOAAEAAQAOAAIADgAPAAIAAgAPAAMADwAQAAMAAwAQAAQAEAARAAQABAARAAUAEQASAAUABQASAAYAEgATAAYABgATAAcAEwAUAAcABwAUAAgAFAAVAAgACAAVAAkAFQAWAAkACQAWAAoAFgAXAAoACgAXAAsAFwAYAAsACwAYAAwAGAAZAAwADQAaAA4AGgAbAA4ADgAbAA8AGwAcAA8ADwAcABAAHAAdABAAEAAdABEAHQAeABEAEQAeABIAHgAfABIAEgAfABMAHwAgABMAEwAgABQAIAAhABQAFAAhABUAIQAiABUAFQAiABYAIgAjABYAFgAjABcAIwAkABcAFwAkABgAJAAlABgAGAAlABkAJQAmABkAGgAnABsAJwAoABsAGwAoABwAKAApABwAHAApAB0AKQAqAB0AHQAqAB4AKgArAB4AHgArAB8AKwAsAB8AHwAsACAALAAtACAAIAAtACEALQAuACEAIQAuACIALgAvACIAIgAvACMALwAwACMAIwAwACQAMAAxACQAJAAxACUAMQAyACUAJQAyACYAMgAzACYAJwA0ACgANAA1ACgAKAA1ACkANQA2ACkAKQA2ACoANgA3ACoAKgA3ACsANwA4ACsAKwA4ACwAOAA5ACwALAA5AC0AOQA6AC0ALQA6AC4AOgA7AC4ALgA7AC8AOwA8AC8ALwA8ADAAPAA9ADAAMAA9ADEAPQA+ADEAMQA+ADIAPgA/ADIAMgA/ADMAPwBAADMANABBADUAQQBCADUANQBCADYAQgBDADYANgBDADcAQwBEADcANwBEADgARABFADgAOABFADkARQBGADkAOQBGADoARgBHADoAOgBHADsARwBIADsAOwBIADwASABJADwAPABJAD0ASQBKAD0APQBKAD4ASgBLAD4APgBLAD8ASwBMAD8APwBMAEAATABNAEAAQQBOAEIATgBPAEIAQgBPAEMATwBQAEMAQwBQAEQAUABRAEQARABRAEUAUQBSAEUARQBSAEYAUgBTAEYARgBTAEcAUwBUAEcARwBUAEgAVABVAEgASABVAEkAVQBWAEkASQBWAEoAVgBXAEoASgBXAEsAVwBYAEsASwBYAEwAWABZAEwATABZAE0AWQBaAE0ATgBbAE8AWwBcAE8ATwBcAFAAXABdAFAAUABdAFEAXQBeAFEAUQBeAFIAXgBfAFIAUgBfAFMAXwBgAFMAUwBgAFQAYABhAFQAVABhAFUAYQBiAFUAVQBiAFYAYgBjAFYAVgBjAFcAYwBkAFcAVwBkAFgAZABlAFgAWABlAFkAZQBmAFkAWQBmAFoAZgBnAFoAWwBoAFwAaABpAFwAXABpAF0AaQBqAF0AXQBqAF4AagBrAF4AXgBrAF8AawBsAF8AXwBsAGAAbABtAGAAYABtAGEAbQBuAGEAYQBuAGIAbgBvAGIAYgBvAGMAbwBwAGMAYwBwAGQAcABxAGQAZABxAGUAcQByAGUAZQByAGYAcgBzAGYAZgBzAGcAcwB0AGcAaAB1AGkAdQB2AGkAaQB2AGoAdgB3AGoAagB3AGsAdwB4AGsAawB4AGwAeAB5AGwAbAB5AG0AeQB6AG0AbQB6AG4AegB7AG4AbgB7AG8AewB8AG8AbwB8AHAAfAB9AHAAcAB9AHEAfQB+AHEAcQB+AHIAfgB/AHIAcgB/AHMAfwCAAHMAcwCAAHQAgACBAHQAdQCCAHYAggCDAHYAdgCDAHcAgwCEAHcAdwCEAHgAhACFAHgAeACFAHkAhQCGAHkAeQCGAHoAhgCHAHoAegCHAHsAhwCIAHsAewCIAHwAiACJAHwAfACJAH0AiQCKAH0AfQCKAH4AigCLAH4AfgCLAH8AiwCMAH8AfwCMAIAAjACNAIAAgACNAIEAjQCOAIEAggCPAIMAjwCQAIMAgwCQAIQAkACRAIQAhACRAIUAkQCSAIUAhQCSAIYAkgCTAIYAhgCTAIcAkwCUAIcAhwCUAIgAlACVAIgAiACVAIkAlQCWAIkAiQCWAIoAlgCXAIoAigCXAIsAlwCYAIsAiwCYAIwAmACZAIwAjACZAI0AmQCaAI0AjQCaAI4AmgCbAI4AjwCcAJAAnACdAJAAkACdAJEAnQCeAJEAkQCeAJIAngCfAJIAkgCfAJMAnwCgAJMAkwCgAJQAoAChAJQAlAChAJUAoQCiAJUAlQCiAJYAogCjAJYAlgCjAJcAowCkAJcAlwCkAJgApAClAJgAmAClAJkApQCmAJkAmQCmAJoApgCnAJoAmgCnAJsApwCoAJsAnACpAJ0AqQCqAJ0AnQCqAJ4AqgCrAJ4AngCrAJ8AqwCsAJ8AnwCsAKAArACtAKAAoACtAKEArQCuAKEAoQCuAKIArgCvAKIAogCvAKMArwCwAKMAowCwAKQAsACxAKQApACxAKUAsQCyAKUApQCyAKYAsgCzAKYApgCzAKcAswC0AKcApwC0AKgAtAC1AKgAqQC2AKoAtgC3AKoAqgC3AKsAtwC4AKsAqwC4AKwAuAC5AKwArAC5AK0AuQC6AK0ArQC6AK4AugC7AK4ArgC7AK8AuwC8AK8ArwC8ALAAvAC9ALAAsAC9ALEAvQC+ALEAsQC+ALIAvgC/ALIAsgC/ALMAvwDAALMAswDAALQAwADBALQAtADBALUAwQDCALUAtgDDALcAwwDEALcAtwDEALgAxADFALgAuADFALkAxQDGALkAuQDGALoAxgDHALoAugDHALsAxwDIALsAuwDIALwAyADJALwAvADJAL0AyQDKAL0AvQDKAL4AygDLAL4AvgDLAL8AywDMAL8AvwDMAMAAzADNAMAAwADNAMEAzQDOAMEAwQDOAMIAzgDPAMIAwwDQAMQA0ADRAMQAxADRAMUA0QDSAMUAxQDSAMYA0gDTAMYAxgDTAMcA0wDUAMcAxwDUAMgA1ADVAMgAyADVAMkA1QDWAMkAyQDWAMoA1gDXAMoAygDXAMsA1wDYAMsAywDYAMwA2ADZAMwAzADZAM0A2QDaAM0AzQDaAM4A2gDbAM4AzgDbAM8A2wDcAM8A0ADdANEA3QDeANEA0QDeANIA3gDfANIA0gDfANMA3wDgANMA0wDgANQA4ADhANQA1ADhANUA4QDiANUA1QDiANYA4gDjANYA1gDjANcA4wDkANcA1wDkANgA5ADlANgA2ADlANkA5QDmANkA2QDmANoA5gDnANoA2gDnANsA5wDoANsA2wDoANwA6ADpANwA3QDqAN4A6gDrAN4A3gDrAN8A6wDsAN8A3wDsAOAA7ADtAOAA4ADtAOEA7QDuAOEA4QDuAOIA7gDvAOIA4gDvAOMA7wDwAOMA4wDwAOQA8ADxAOQA5ADxAOUA8QDyAOUA5QDyAOYA8gDzAOYA5gDzAOcA8wD0AOcA5wD0AOgA9AD1AOgA6AD1AOkA9QD2AOkA9wD4APkA9wD5APoA9wD6APsA9wD7APwA9wD8AP0A9wD9AP4A9wD+AP8A9wD/AAAB9wAAAQEB9wABAQIB9wACAQMB9wADAfgABAEGAQUBBAEHAQYBBAEIAQcBBAEJAQgBBAEKAQkBBAELAQoBBAEMAQsBBAENAQwBBAEOAQ0BBAEPAQ4BBAEQAQ8BBAEFARAB
+            eBuffers: ~
+            submeshes:
+              - material:
+                  baseColorFactor: [1, 1, 1, 1]
+                  metallicFactor: 1
+                  roughnessFactor: 1
+                  alphaCutoff: 0.5
+                  foliageTransmission: 0
+                  alphaMode: AUTO
+                  emissiveFactor: [0, 0, 0]
+                  baseColorTexCoord: 0
+                  metallicRoughnessTexCoord: 0
+                  occlusionTexCoord: 0
+                  emissiveTexCoord: 0
+                  normalTexCoord: 0
+                  name: ""
+                textureRect: [0, 0, 1, 1]
+                primitiveType: triangles
+                vertexCount: 1368
+                faceCulling: true
+                textureShadow: false
+                hasTexCoord1: true
+                hasTexCoord2: false
+                hasNormalMap: false
+                hasTangent: false
+                hasVertexColor3: false
+                hasVertexColor4: true
+                hasTextureRect: false
+                hasSkinning: false
+                hasMorphTarget: false
+                hasMorphNormal: false
+                hasMorphTangent: false
+            bonesMatrix:
+              []
+            normAdjustJoint: 1
+            normAdjustWeight: 1
+            morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+            aabb:
+              min: [-0.01, -0.09, -0.01]
+              max: [0.01, 0.09, 0.01]
+            verticesAABB:
+              min: [-0.01, -0.09, -0.01]
+              max: [0.01, 0.09, 0.01]
+            worldAABB:
+              min: [0.81, 0.65571344, 0.1557134]
+              max: [0.98999995, 0.6642866, 0.1642866]
+            receiveLights: true
+            receiveIBL: false
+            castShadows: true
+            receiveShadows: true
+            lodEnabled: true
+            lodBias: 1
+            renderInReflectionProbes: true
+            shadowsBillboard: true
+            transparent: false
+            autoTransparency: true
+            cullingMode: back
+            windingOrder: ccw
+  - type: Entity
+    entity: 1016
+    name: View
+    components:
+      transform:
+        position: [1.8, 2.2, -2.8]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [1.8, 2.2, -2.8]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [1.8, 2.2, -2.8, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [1.8, 2.2, -2.8, 1]]
+        normalMatrix: [[1, 0, 0, -1.8], [0, 1, 0, -2.2], [0, -0, 1, 2.8], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      camera:
+        enabled: true
+        type: camera_perspective
+        cullingMask: 4294967295
+        target: [0.3, 0.7, 0]
+        up: [0, 1, 0]
+        leftClip: 0
+        rightClip: 10
+        bottomClip: 0
+        topClip: 10
+        yfov: 0.8
+        aspect: 1.8546169
+        nearClip: 0.2
+        farClip: 300
+        renderToTexture: false
+        transparentSort: true
+        depthTest: true
+        useTarget: true
+        autoResize: true
+        framebufferWidth: 512
+        framebufferHeight: 512
+        framebufferFilter: linear
