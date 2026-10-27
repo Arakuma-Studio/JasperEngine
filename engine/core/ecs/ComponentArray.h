@@ -3,7 +3,7 @@
 
 #ifndef COMPONENTARRAY_H
 #define COMPONENTARRAY_H
-    
+
 #include <unordered_map>
 #include <vector>
 #include <algorithm>
@@ -11,6 +11,7 @@
 #include <numeric>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <unordered_set>
 #include <utility>
 #include "Entity.h"
@@ -33,16 +34,21 @@ namespace jasperengine {
     // Transforms' order), with the entity of each and the index of each entity's.
     //
     // A removal from the middle leaves a hole (the slot's component replaced by a default
-    // one, its entity NULL_ENTITY) instead of shifting everything after it: the holes are
-    // closed all at once, in order, by the next access by index (size(), getIndex(),
-    // getComponentFromIndex(), getEntity(), the moves and sorts) or compact(). So indexes
-    // and size() are always those of the packed array, as if every removal had shifted it,
-    // and a run of removals (destroying entities one by one, a scene's teardown) costs O(1)
-    // each instead of O(size) each. Access by entity (findComponent, getComponent,
-    // hasEntity), forEach() and forEachAfter() never compact: a component found so stays where
-    // it is until the next access by index (shifting moved it at once before), or a removal
-    // that leaves the array half holes (closed then, so an array nothing reads by index does
-    // not grow). Removing the last slot pops it, with the holes before it.
+    // one, its entity NULL_ENTITY) instead of shifting everything after it, so a run of
+    // removals (destroying entities one by one, a scene's teardown) costs O(1) each instead
+    // of O(size) each. The holes are invisible: size(), getIndex(), getComponentFromIndex(),
+    // getEntity() and the rest answer as if every removal had shifted the array (through a
+    // rank tree over the slots while there are holes, O(log size) an access), and none of
+    // them moves a component: a reference or pointer taken by entity stays valid through
+    // any read. The holes are closed, in order, by compact() (the scene does it at fixed
+    // points: the start of its update and draw, after the frame's deferred destroys, between
+    // editor commands and MCP calls, before a thread reads it), by the moves and sorts that
+    // really reorder (they moved components before too), and by an insert once half the
+    // slots are holes (an insert could always move them all, growing the array). Removing
+    // the last slot pops it, with the holes before it.
+    //
+    // Reads from several threads at once are safe as before (the rank tree is built under a
+    // lock); a thread reading while another removes or compacts is not (it never was).
 
 
     template<typename T>
@@ -58,6 +64,11 @@ namespace jasperengine {
         // For a hole: a slot after it, no further than the first live one after it (made
         // shorter by each search, so a search over a run of holes costs O(1) amortized)
         std::vector<size_t> holeNext{};
+        // While there are holes and something read by index: a Fenwick tree counting the live
+        // slots (1-based), kept by removals and inserts once built
+        std::vector<size_t> rankTree{};
+        bool rankTreeBuilt = false;
+        std::recursive_mutex rankMutex; // the rank tree and the skip links, for readers on several threads
 
         bool isHole(size_t slot) const{
             return indexToEntity[slot] == NULL_ENTITY;
@@ -79,6 +90,86 @@ namespace jasperengine {
             return live;
         }
 
+        // ---- rank tree
+
+        static size_t lowBit(size_t i){
+            return i & (~i + 1);
+        }
+
+        void buildRankTree(){
+            const size_t count = indexToEntity.size();
+            rankTree.assign(count + 1, 0);
+            for (size_t i = 1; i <= count; i++){
+                rankTree[i] += isHole(i - 1) ? 0 : 1;
+                const size_t parent = i + lowBit(i);
+                if (parent <= count){
+                    rankTree[parent] += rankTree[i];
+                }
+            }
+            rankTreeBuilt = true;
+        }
+
+        void dropRankTree(){
+            rankTree.clear();
+            rankTreeBuilt = false;
+        }
+
+        // live slots among the first `count`
+        size_t liveBefore(size_t count) const{
+            size_t sum = 0;
+            for (size_t i = count; i > 0; i -= lowBit(i)){
+                sum += rankTree[i];
+            }
+            return sum;
+        }
+
+        void rankTreeHole(size_t slot){
+            for (size_t i = slot + 1; i < rankTree.size(); i += lowBit(i)){
+                rankTree[i]--;
+            }
+        }
+
+        // the slot just appended (live), the tree having the ones before it
+        void rankTreeAppend(){
+            const size_t i = rankTree.size();
+            rankTree.push_back(1 + liveBefore(i - 1) - liveBefore(i - lowBit(i)));
+        }
+
+        // the slot of the index-th live one (index < live count)
+        size_t slotOfLive(size_t index) const{
+            size_t slot = 0;
+            size_t remaining = index + 1;
+            size_t step = 1;
+            while (step * 2 < rankTree.size()) step *= 2;
+            for (; step > 0; step /= 2){
+                if (slot + step < rankTree.size() && rankTree[slot + step] < remaining){
+                    slot += step;
+                    remaining -= rankTree[slot];
+                }
+            }
+            return slot;
+        }
+
+        // index <-> slot while there are holes
+        size_t slotOfIndex(size_t index){
+            std::lock_guard<std::recursive_mutex> lock(rankMutex);
+            if (!rankTreeBuilt) buildRankTree();
+            return slotOfLive(index);
+        }
+
+        size_t indexOfSlot(size_t slot){
+            std::lock_guard<std::recursive_mutex> lock(rankMutex);
+            if (!rankTreeBuilt) buildRankTree();
+            return liveBefore(slot);
+        }
+
+        size_t indexOfEntity(Entity entity){
+            const size_t slot = entityToIndexMap.at(entity);
+            return holes == 0 ? slot : indexOfSlot(slot);
+        }
+
+        // ----
+
         void removeSlot(size_t slot){
             if (slot + 1 == componentArray.size()){
                 componentArray.pop_back();
@@ -91,6 +182,9 @@ namespace jasperengine {
                 }
                 if (holes == 0){
                     holeNext.clear();
+                    dropRankTree();
+                }else if (rankTreeBuilt){
+                    rankTree.resize(componentArray.size() + 1);
                 }
                 return;
             }
@@ -103,10 +197,8 @@ namespace jasperengine {
             holeNext[slot] = slot + 1;
             firstHole = (holes == 0) ? slot : std::min(firstHole, slot);
             holes++;
-            // an array nothing reads by index does not keep growing: closed once half holes
-            // (O(size) after size/2 removals, still O(1) each)
-            if (holes >= 64 && holes * 2 >= componentArray.size()){
-                closeHoles();
+            if (rankTreeBuilt){
+                rankTreeHole(slot);
             }
         }
 
@@ -128,6 +220,18 @@ namespace jasperengine {
                 return;
             }
 
+            if (holes >= 64 && holes * 2 >= componentArray.size()){
+                // Built before closing: the arguments may name a component of this array
+                T component(std::forward<Args>(args)...);
+                closeHoles();
+                append(entity, std::move(component));
+                return;
+            }
+            append(entity, std::forward<Args>(args)...);
+        }
+
+        template<typename... Args>
+        void append(Entity entity, Args&&... args) {
             size_t newIndex = componentArray.size();
             if (componentArray.size() == componentArray.capacity()){
                 // Built before growing: the arguments may name a component of this array
@@ -139,6 +243,9 @@ namespace jasperengine {
             }
             entityToIndexMap[entity] = newIndex;
             indexToEntity.push_back(entity);
+            if (rankTreeBuilt){
+                rankTreeAppend();
+            }
         }
 
         void reindex(size_t first, size_t last){
@@ -161,6 +268,30 @@ namespace jasperengine {
             std::rotate(componentArray.begin() + first, componentArray.begin() + middle, componentArray.begin() + last);
             std::rotate(indexToEntity.begin() + first, indexToEntity.begin() + middle, indexToEntity.begin() + last);
             reindex(first, last);
+        }
+
+        void closeHolesNow(){
+            size_t write = firstHole;
+            for (size_t read = firstHole; read < componentArray.size(); read++){
+                const Entity entity = indexToEntity[read];
+                if (entity == NULL_ENTITY){
+                    continue;
+                }
+                componentArray[write] = std::move(componentArray[read]);
+                indexToEntity[write] = entity;
+                entityToIndexMap.find(entity)->second = write;
+                write++;
+            }
+            componentArray.erase(componentArray.begin() + write, componentArray.end());
+            indexToEntity.resize(write);
+            holes = 0;
+            holeNext.clear();
+            dropRankTree();
+        }
+
+        static void outOfRange(){
+            Log::error("Retrieving non-existent component: %s", "index out of range");
+            throw std::out_of_range("ComponentArray: index out of range");
         }
 
     public:
@@ -188,49 +319,33 @@ namespace jasperengine {
         }
 
         // Closes the holes left by removals, keeping the order: O(size) once for any number
-        // of them. Index access does it first; call it before handing the array to another
-        // thread that reads it by index while this one may too.
+        // of them, nothing without. Moves the components after the first hole.
         void compact() override {
             closeHoles();
         }
 
-        // what compact() does, without a virtual call (in every access by index)
+        // what compact() does, without a virtual call
         void closeHoles(){
             if (holes != 0){
                 closeHolesNow();
             }
         }
 
-    private:
-        void closeHolesNow(){
-            size_t write = firstHole;
-            for (size_t read = firstHole; read < componentArray.size(); read++){
-                const Entity entity = indexToEntity[read];
-                if (entity == NULL_ENTITY){
-                    continue;
-                }
-                componentArray[write] = std::move(componentArray[read]);
-                indexToEntity[write] = entity;
-                entityToIndexMap.find(entity)->second = write;
-                write++;
-            }
-            componentArray.erase(componentArray.begin() + write, componentArray.end());
-            indexToEntity.resize(write);
-            holes = 0;
-            holeNext.clear();
+        bool hasHoles() const{
+            return holes != 0;
         }
 
-    public:
         // Calls fn(entity, component) for the components after `entity`'s, in order, while it
-        // returns true, without compacting (destroying entities one by one asks what follows
-        // each in the Transform order). Nothing when the entity has none. fn must not add or
-        // remove components of this array.
+        // returns true (O(1) amortized a step over holes). Nothing when the entity has none.
+        // fn must not add or remove components of this array.
         template<typename Fn>
         void forEachAfter(Entity entity, Fn&& fn) {
             auto it = entityToIndexMap.find(entity);
             if (it == entityToIndexMap.end()){
                 return;
             }
+            std::unique_lock<std::recursive_mutex> lock(rankMutex, std::defer_lock);
+            if (holes != 0) lock.lock(); // the walk shortens the skip links
             for (size_t slot = liveSlotFrom(it->second + 1); slot < componentArray.size(); slot = liveSlotFrom(slot + 1)){
                 if (!fn(indexToEntity[slot], componentArray[slot])){
                     return;
@@ -241,6 +356,8 @@ namespace jasperengine {
         // The same for every component, in order
         template<typename Fn>
         void forEach(Fn&& fn) {
+            std::unique_lock<std::recursive_mutex> lock(rankMutex, std::defer_lock);
+            if (holes != 0) lock.lock();
             for (size_t slot = liveSlotFrom(0); slot < componentArray.size(); slot = liveSlotFrom(slot + 1)){
                 if (!fn(indexToEntity[slot], componentArray[slot])){
                     return;
@@ -249,43 +366,48 @@ namespace jasperengine {
         }
 
         void moveEntityRangeToIndex(Entity start, Entity end, size_t newIndex){
-            closeHoles();
 
-            size_t startIndex = entityToIndexMap[start];
-            size_t endIndex = entityToIndexMap[end];
+            size_t startIndex = indexOfEntity(start);
+            size_t endIndex = indexOfEntity(end);
             size_t length = endIndex - startIndex + 1;
 
-            if ((newIndex + length) > componentArray.size()){
+            if ((newIndex + length) > size()){
                 Log::error("Cannot move entity range out of array");
                 return;
             }
+            if (newIndex == startIndex){
+                return; // where it is (the rotation moved nothing)
+            }
 
+            closeHoles();
             moveRange(startIndex, length, newIndex);
         }
 
         void moveEntityToIndex(Entity entity, size_t newIndex){
+
+            size_t oldIndex = indexOfEntity(entity);
+            if (newIndex == oldIndex){
+                return; // where it is (the rotation moved nothing)
+            }
+
             closeHoles();
-
-            size_t oldIndex = entityToIndexMap[entity];
-
             moveRange(oldIndex, 1, newIndex);
         }
 
         template<typename C>
         void sortByComponent(ComponentArray<C>* otherComponent) {
-            closeHoles();
-            otherComponent->closeHoles();
             // Key: index in the other array; entities without it go last
-            const size_t count = componentArray.size();
+            const size_t count = size();
             const size_t missing = std::numeric_limits<size_t>::max();
             if (count < 2){
                 return;
             }
-            std::vector<size_t> keys(count);
-            for (size_t i = 0; i < count; i++){
-                auto it = otherComponent->entityToIndexMap.find(indexToEntity[i]);
-                keys[i] = it != otherComponent->entityToIndexMap.end() ? it->second : missing;
-            }
+            std::vector<size_t> keys;
+            keys.reserve(count);
+            forEach([&keys, otherComponent, missing](Entity entity, T&){
+                keys.push_back(otherComponent->hasEntity(entity) ? otherComponent->indexOfEntity(entity) : missing);
+                return true;
+            });
 
             sortByKeys(keys);
         }
@@ -294,28 +416,30 @@ namespace jasperengine {
         // For components without a Transform whose order is a list's, e.g. the editor's
         // scene entity list for skyboxes (the first one is the scene's sky).
         void sortByEntityOrder(const std::vector<Entity>& order) {
-            closeHoles();
-            const size_t count = componentArray.size();
+            const size_t count = size();
             if (count < 2){
                 return;
             }
-            std::vector<size_t> keys(count);
-            for (size_t i = 0; i < count; i++){
-                auto it = std::find(order.begin(), order.end(), indexToEntity[i]);
-                keys[i] = (it != order.end()) ? (size_t)(it - order.begin()) : order.size() + i;
-            }
+            std::vector<size_t> keys;
+            keys.reserve(count);
+            forEach([&keys, &order](Entity entity, T&){
+                auto it = std::find(order.begin(), order.end(), entity);
+                keys.push_back((it != order.end()) ? (size_t)(it - order.begin()) : order.size() + keys.size());
+                return true;
+            });
             sortByKeys(keys);
         }
 
     private:
         // reorders the components by ascending key (one key per component, in array order)
         void sortByKeys(const std::vector<size_t>& keys) {
-            const size_t count = componentArray.size();
             // Usually already ordered (a block appended at the end). Check the
             // keys directly before allocating and filling the permutation.
             if (std::is_sorted(keys.begin(), keys.end())){
                 return;
             }
+            closeHoles();
+            const size_t count = componentArray.size();
 
             // Create a vector of indices [0, 1, ..., N-1]
             std::vector<size_t> indices(count);
@@ -376,7 +500,9 @@ namespace jasperengine {
         }
 
         T* findComponentFromIndex(size_t index) {
-            closeHoles();
+            if (holes != 0){
+                return index < size() ? &componentArray[slotOfIndex(index)] : NULL;
+            }
             if (index >= componentArray.size()){
                 return NULL;
             }
@@ -385,7 +511,12 @@ namespace jasperengine {
         }
 
         T& getComponentFromIndex(size_t index) {
-            closeHoles();
+            if (holes != 0){
+                if (index >= size()){
+                    outOfRange();
+                }
+                return componentArray[slotOfIndex(index)];
+            }
             try{
 
                 return componentArray.at(index);
@@ -397,10 +528,9 @@ namespace jasperengine {
         }
 
         size_t getIndex(Entity entity){
-            closeHoles();
             try{
 
-                return entityToIndexMap.at(entity);
+                return indexOfEntity(entity);
 
             }catch (const std::out_of_range& e){
                 Log::error("Retrieving non-existent component: %s", e.what());
@@ -409,18 +539,16 @@ namespace jasperengine {
         }
 
         Entity getEntity(size_t index){
-            closeHoles();
-            if (index >= indexToEntity.size()){
+            if (index >= size()){
                 Log::error("Entity not found");
                 return NULL_ENTITY;
             }
 
-            return indexToEntity[index];
+            return indexToEntity[holes != 0 ? slotOfIndex(index) : index];
         }
 
         size_t size(){
-            closeHoles();
-            return componentArray.size();
+            return componentArray.size() - holes;
         }
 
         void entityDestroyed(Entity entity) override {

@@ -119,14 +119,15 @@ namespace jasperengine {
         bool isEntityCreated(Entity entity) const;
 
         // O(1) amortized whatever the number of entities (a component removed from the middle
-        // of its array leaves a hole the next access by index closes, see ComponentArray), so
-        // destroying all of a scene's, one by one or by its teardown, is O(n)
+        // of its array leaves a hole, closed at the next compactComponents(), see
+        // ComponentArray), so destroying all of a scene's, one by one or by its teardown, is O(n)
         void destroyEntity(Entity entity);
         // Several entities: every component removal callback first, then their components
         void destroyEntities(const std::vector<Entity>& entities);
-        // Closes the holes destroyed entities left in every component array now (an access by
-        // index does it for its array). Before another thread reads the arrays by index while
-        // this one may too, e.g. a scene saved in the background.
+        // Closes the holes destroyed entities left in every component array (moving the
+        // components after them; reads never do). The scene does it at the start of its update
+        // and draw and the engine after the frame's deferred destroys; the editor between
+        // commands and MCP calls and before a thread reads the scene.
         void compactComponents();
 
         void addEntityChild(Entity parent, Entity child, bool changeTransform);
@@ -267,8 +268,9 @@ namespace jasperengine {
 
             if (componentManager.getComponentId<T>() == getComponentId<Transform>()) {
                 Transform* removed = componentManager.findComponent<Transform>(entity);
+                const bool hadParent = removed && removed->parent != NULL_ENTITY;
                 // children are reparented to its parent: a hierarchy change when it had either
-                if (changeTransformChildren(entity) || (removed && removed->parent != NULL_ENTITY)) {
+                if (changeTransformChildren(entity) || hadParent) {
                     hierarchyRev++;
                 }
             }

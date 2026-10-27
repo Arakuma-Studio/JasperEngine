@@ -869,25 +869,21 @@ bool editor::ProjectUtils::moveEntityOrderByTarget(EntityRegistry* registry, std
 
     if (transformSource && transformTarget){
         hasTransform = true;
+        // the parents read by entity first, before the hierarchy and index queries
+        const Entity newParent = (type == InsertionType::INTO) ? target : transformTarget->parent;
+        const Entity sourceParent = transformSource->parent;
 
         if (registry->isParentOf(source, target)){
             Out::error("Cannot move an entity to its own child");
             return false;
         }
+        oldParent = sourceParent;
 
         auto transforms = registry->getComponentArray<Transform>();
 
         size_t sourceTransformIndex = transforms->getIndex(source);
         size_t targetTransformIndex = transforms->getIndex(target);
 
-        Entity newParent = NULL_ENTITY;
-        if (type == InsertionType::INTO){
-            newParent = target;
-        }else{
-            newParent = transformTarget->parent;
-        }
-
-        oldParent = transformSource->parent;
         oldIndex = sourceTransformIndex;
 
         if (type == InsertionType::AFTER || type == InsertionType::INTO){

@@ -295,19 +295,26 @@ TEST(ComponentArrayHoles, ForEachAfterSkipsRunsOfHolesAndStopsWhenAsked) {
     EXPECT_EQ(array.getEntity(10), 91u);
 }
 
-// An array nothing reads by index (no size(), no loop over it) is closed once half holes
-TEST(ComponentArrayHoles, ArrayHalfHolesIsClosedWithoutAnIndexAccess) {
+// Holes stay through reads (they close at compaction points), but an insert into an array that
+// is half holes closes them first: an array nothing compacts does not keep growing
+TEST(ComponentArrayHoles, InsertIntoAnArrayHalfHolesClosesThem) {
     ComponentArray<int> array;
     for (Entity e = 1; e <= 200; e++) array.insert(e, int(e));
-    int* const firstSlot = array.findComponent(1);
+    array.remove(150);
+    array.insert(201, 201); // one hole of 201 slots: left open
+    EXPECT_TRUE(array.hasHoles());
+    for (Entity e = 1; e <= 100; e++) array.remove(e);
     int* const last = array.findComponent(200);
-    for (Entity e = 1; e <= 99; e++) array.remove(e);
-    EXPECT_EQ(array.findComponent(200), last) << "99 holes of 200: left open";
-    array.remove(100);
-    EXPECT_EQ(array.findComponent(101), firstSlot) << "100 of 200: closed";
-    EXPECT_EQ(*array.findComponent(200), 200);
-    EXPECT_EQ(array.getIndex(200), 99u);
     EXPECT_EQ(array.size(), 100u);
+    EXPECT_EQ(array.getIndex(200), 98u);
+    EXPECT_EQ(array.findComponent(200), last) << "reads move nothing";
+    EXPECT_TRUE(array.hasHoles());
+    array.insert(202, 202); // 101 holes of 201 slots: closed, then appended
+    EXPECT_FALSE(array.hasHoles());
+    EXPECT_EQ(*array.findComponent(200), 200);
+    EXPECT_EQ(array.getIndex(200), 98u);
+    EXPECT_EQ(array.getIndex(202), 100u);
+    EXPECT_EQ(array.size(), 101u);
 }
 
 TEST(ComponentArrayHoles, MovesSortsAndBatchesSeeThePackedArray) {
@@ -365,9 +372,80 @@ TEST(ComponentArrayHoles, RandomOperationsMatchAPlainVector) {
     m.expectSame("end");
 }
 
-// A component found by entity stays where it is through later removals (until an access by
-// index): destroying others no longer moves it under a pointer held across
-TEST(ComponentArrayHoles, ComponentFoundByEntityStaysThroughRemovalsOfOthers) {
+// Many short random runs (inserts, removals one by one and in batches, moves, reads by index
+// and by entity, compactions): the indexes always read as the packed array, and a pointer taken
+// by entity stays on its component through every read (by index, rank, walk), only a removal
+// of it, a move or sort that reorders, an insert into a half-holes array or a compaction move it
+TEST(ComponentArrayHoles, ReadsNeverMoveAComponent) {
+    std::mt19937 random(4321);
+    for (int round = 0; round < 1500; round++) {
+        PackedMirror m;
+        Entity next = 1;
+        const int ops = 50 + int(random() % 400);
+        for (int k = 0; k < ops; k++) {
+            const int op = int(random() % 12);
+            if (op <= 3 || m.order.empty()) {
+                m.insert(next, int(next) * 7);
+                next++;
+            } else if (op <= 6) {
+                if (random() % 4 == 0) {
+                    std::unordered_set<Entity> doomed;
+                    const size_t count = 1 + random() % std::max<size_t>(1, m.order.size() / 2);
+                    for (size_t q = 0; q < count; q++) doomed.insert(m.order[random() % m.order.size()]);
+                    m.array.entitiesDestroyed(doomed);
+                    for (size_t i = 0; i < m.order.size();) {
+                        if (doomed.count(m.order[i])) {
+                            m.order.erase(m.order.begin() + i);
+                            m.values.erase(m.values.begin() + i);
+                        } else {
+                            i++;
+                        }
+                    }
+                } else {
+                    m.remove(m.order[random() % m.order.size()]);
+                }
+            } else if (op <= 9) {
+                // pointers by entity, then every read by index: none of them moved
+                std::vector<int*> pointers;
+                for (Entity e : m.order) pointers.push_back(m.array.findComponent(e));
+                ASSERT_EQ(m.array.size(), m.order.size());
+                for (size_t i = 0; i < m.order.size(); i++) {
+                    ASSERT_EQ(m.array.getEntity(i), m.order[i]);
+                    ASSERT_EQ(m.array.getIndex(m.order[i]), i);
+                    ASSERT_EQ(&m.array.getComponentFromIndex(i), pointers[i]) << "round " << round << " op " << k;
+                    ASSERT_EQ(m.array.findComponentFromIndex(i), pointers[i]);
+                }
+                EXPECT_EQ(m.array.findComponentFromIndex(m.order.size()), nullptr);
+                if (!m.order.empty()) {
+                    const size_t at = random() % m.order.size();
+                    size_t seen = 0;
+                    m.array.forEachAfter(m.order[at], [&](Entity entity, int& value) {
+                        EXPECT_EQ(entity, m.order[at + 1 + seen]);
+                        EXPECT_EQ(&value, pointers[at + 1 + seen]);
+                        seen++;
+                        return true;
+                    });
+                    EXPECT_EQ(seen, m.order.size() - at - 1);
+                    // a move to where it is reorders nothing, and moves nothing
+                    m.array.moveEntityToIndex(m.order[at], at);
+                    EXPECT_EQ(m.array.findComponent(m.order[at]), pointers[at]);
+                }
+                for (size_t i = 0; i < m.order.size(); i++) ASSERT_EQ(*pointers[i], m.values[i]);
+            } else if (op == 10) {
+                m.moveTo(m.order[random() % m.order.size()], random() % m.order.size());
+            } else {
+                m.array.compact();
+                EXPECT_FALSE(m.array.hasHoles());
+            }
+        }
+        m.expectSame("round " + std::to_string(round));
+        if (::testing::Test::HasFatalFailure()) return;
+    }
+}
+
+// A component found by entity stays where it is through later removals of others and every
+// read (by index too), until a compaction
+TEST(ComponentArrayHoles, ComponentFoundByEntityStaysThroughRemovalsOfOthersAndReads) {
     ComponentArray<int> array;
     for (Entity e = 1; e <= 5; e++) array.insert(e, int(e));
     int* fifth = array.findComponent(5);
@@ -376,7 +454,13 @@ TEST(ComponentArrayHoles, ComponentFoundByEntityStaysThroughRemovalsOfOthers) {
     EXPECT_EQ(array.findComponent(5), fifth);
     EXPECT_EQ(*fifth, 5);
     EXPECT_EQ(array.getIndex(5), 2u);
+    EXPECT_EQ(array.size(), 3u);
+    EXPECT_EQ(&array.getComponentFromIndex(2), fifth);
+    EXPECT_EQ(array.getEntity(0), 2u);
+    EXPECT_EQ(array.findComponent(5), fifth) << "reads by index moved it";
+    array.compact();
     EXPECT_EQ(*array.findComponent(5), 5);
+    EXPECT_EQ(array.getIndex(5), 2u);
 }
 
 // ---- the registry's hierarchy bookkeeping, with holes around
