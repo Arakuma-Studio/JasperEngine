@@ -138,6 +138,8 @@ namespace jasperengine::editor::vat{
     private:
         VatBakeTarget* target = nullptr;
         std::vector<Entity> rendererEntities;
+        std::vector<std::vector<Entity>> rendererJoints;            // per renderer: skin joint -> entity
+        std::vector<std::vector<jasperengine::Matrix4>> restSkins;  // per renderer: skin matrices at rest
         std::vector<Entity> socketEntities;
         jasperengine::Matrix4 rootInverse;      // inverse of the root's rest model matrix
         anim::ClipPreviewSession session;

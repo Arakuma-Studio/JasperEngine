@@ -35,6 +35,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <filesystem>
 #include <map>
 #include <set>
@@ -771,6 +772,18 @@ bool VatPoser::begin(VatBakeTarget& bakeTarget, const std::vector<std::string>& 
             }
             renderer.submeshMaterial.push_back(material);
         }
+        // its joints' entities and rest skin matrices (the bone estimate merges shared joints)
+        std::vector<Entity> joints;
+        auto models = scene->getComponentArray<ModelComponent>();
+        for (size_t m = 0; m < models->size(); m++){
+            for (const ModelSkinBinding& binding : models->getComponentFromIndex(m).skinBindings){
+                if (binding.mesh == entity) joints = binding.joints;
+            }
+        }
+        std::vector<Matrix4> restSkin;
+        cpuskin::computeSkinMatrices(scene, entity, restSkin, nullptr);
+        rendererJoints.push_back(joints);
+        restSkins.push_back(restSkin);
         renderers.push_back(std::move(renderer));
         rendererEntities.push_back(entity);
     }
@@ -873,8 +886,24 @@ int VatPoser::estimatedVertices() const{
 }
 
 int VatPoser::estimatedBones() const{
+    // a joint shared by two renderers with the same bind (their bone matrices equal at rest)
+    // is one bone, as the bake merges them
+    struct Known{
+        Entity joint;
+        Matrix4 rest;
+    };
+    std::vector<Known> known;
+    auto sameMatrix = [](const Matrix4& a, const Matrix4& b){
+        for (int c = 0; c < 4; c++){
+            for (int r = 0; r < 3; r++){
+                if (std::fabs(a.get(c, r) - b.get(c, r)) > 1e-4f) return false;
+            }
+        }
+        return true;
+    };
     int total = 0;
-    for (const VatBakeRenderer& renderer : renderers){
+    for (size_t index = 0; index < renderers.size(); index++){
+        const VatBakeRenderer& renderer = renderers[index];
         const cpuskin::CpuSkinSource& source = renderer.source;
         std::set<int> joints;
         bool rigid = false;
@@ -893,7 +922,25 @@ int VatPoser::estimatedBones() const{
             }
             if (!any) rigid = true;
         }
-        total += (int)joints.size() + (rigid ? 1 : 0);
+        const Matrix4 toRest = renderer.restToRoot.inverse();
+        for (int joint : joints){
+            const std::vector<Entity>& entities = rendererJoints[index];
+            const std::vector<Matrix4>& skins = restSkins[index];
+            if (joint < 0 || (size_t)joint >= entities.size() || (size_t)joint >= skins.size() || entities[(size_t)joint] == NULL_ENTITY){
+                total++;
+                continue;
+            }
+            const Matrix4 rest = renderer.restToRoot * skins[(size_t)joint] * toRest;
+            bool merged = false;
+            for (const Known& other : known){
+                if (other.joint == entities[(size_t)joint] && sameMatrix(other.rest, rest)) merged = true;
+            }
+            if (!merged){
+                known.push_back({entities[(size_t)joint], rest});
+                total++;
+            }
+        }
+        if (rigid) total++;
     }
     return total;
 }
