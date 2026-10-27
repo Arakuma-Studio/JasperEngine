@@ -32,6 +32,9 @@
 #include "animation/AnimationClipAppHooks.h"
 #include "animation/ClipRecordHooks.h"
 #include "animation/PreviewOwner.h"
+#include "shortcuts/DefaultCommands.h"
+#include "shortcuts/ShortcutDispatcher.h"
+#include "window/AnimationWindowClip.h"
 #include "command/CommandHistory.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/ModelClearCmd.h"
@@ -217,6 +220,9 @@ namespace {
         ImGuiContext* previousContext = nullptr;
         ImGuiContext* context = nullptr;
         std::unique_ptr<AnimationWindow> window;
+        // the command catalog's animation.* keys (S25), dispatched as the App does
+        CommandCatalog catalog;
+        std::unique_ptr<ShortcutDispatcher> dispatcher;
         std::unique_ptr<InspectorWindow> inspector;
         uint32_t sceneId = 0;
 
@@ -260,6 +266,9 @@ namespace {
             inspector.reset(new InspectorWindow(project()));
             setDriverInspector(inspector.get());
             window.reset(new AnimationWindow(project()));
+            for (CommandDef& def : defaultCommands()) catalog.add(std::move(def));
+            AnimationWindowClip::bindCommands(catalog, [this]() { return window ? window->getClipMode() : nullptr; });
+            dispatcher = std::make_unique<ShortcutDispatcher>(catalog);
             frame();
         }
 
@@ -340,6 +349,12 @@ namespace {
                 ImGui::Begin("Elsewhere");
                 ImGui::End();
             }
+            // the App's one dispatcher: the Animation context while the clip window takes keys
+            ShortcutState keys;
+            keys.wantTextInput = ImGui::GetIO().WantTextInput;
+            keys.popupOpen = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
+            if (animationClipAppHooks().takesKeys && animationClipAppHooks().takesKeys()) keys.panels.push_back(ShortcutContext::Animation);
+            dispatcher->process(ImGuiShortcutKeys(), keys);
             ImGui::EndFrame();
         }
         void frames(int count, bool focused = true, double dt = 1.0 / 60.0) {
@@ -612,7 +627,7 @@ TEST_F(AnimationWindowClipTest, SelectDragDeleteCopyPaste) {
     EXPECT_FALSE(modified()) << "key edits never modify the scene";
 }
 
-// The window's shortcuts while it is focused (handleShortcuts on a drawn frame; the App's key routing
+// The window's shortcuts while it is focused (the catalog's animation.* commands on a drawn frame; the App's key routing
 // with real X key presses is test_animation_window.py)
 TEST_F(AnimationWindowClipTest, ShortcutsWhileFocused) {
     const Vector3 rest = position("Hero");

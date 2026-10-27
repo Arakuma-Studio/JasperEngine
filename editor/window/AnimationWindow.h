@@ -222,6 +222,8 @@ namespace jasperengine::editor{
         void openClip(uint32_t sceneId, Entity root, const std::string& clip);
         void openEntityAnimation(uint32_t sceneId, Entity animation);
         bool isClipMode() const;
+        // its clip mode (the catalog's animation.* commands run on it)
+        AnimationWindowClip* getClipMode() const { return clipMode.get(); }
 
         void show();
         void setOpen(bool open);

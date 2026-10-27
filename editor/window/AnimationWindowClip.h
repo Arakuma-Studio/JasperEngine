@@ -33,6 +33,8 @@
 #include "math/Vector3.h"
 
 #include <cstdint>
+#include <functional>
+#include <string_view>
 #include <memory>
 #include <set>
 #include <tuple>
@@ -48,6 +50,7 @@ namespace jasperengine{
 namespace jasperengine::editor{
 
     class Project;
+    class CommandCatalog;
     struct SceneProject;
 
     // editor/tests/AnimationWindowClipDriver.h: the editor tests' driver of the clip mode (its
@@ -57,6 +60,10 @@ namespace jasperengine::editor{
     class AnimationWindowClip{
         friend struct AnimationWindowClipTestAccess;
     public:
+        // The catalog's animation.* commands (shortcuts/DefaultCommands.cpp) run on the clip
+        // window target() returns, while it takes keys (App; the editor tests' own catalog)
+        static void bindCommands(CommandCatalog& catalog, std::function<AnimationWindowClip*()> target);
+
         // the key rows or the curves (AnimationWindowClipCurves.cpp)
         enum class View{ Dopesheet, Curves };
 
@@ -375,7 +382,9 @@ namespace jasperengine::editor{
         void drawAddPropertyPopup();
         void openRebindFor(int track);
         void drawRebindPopup();
-        void handleShortcuts();
+        // a catalog animation.* command (S25), run by the dispatcher while the window takes keys
+        void runKeyCommand(std::string_view id);
+        float sheetWidth = 1.0f;     // the key sheet's width at the last draw (F / A frame over it)
 
         // ---- actions (the buttons, menus and shortcuts) ----
         void seek(float time);

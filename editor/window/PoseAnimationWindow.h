@@ -25,6 +25,8 @@
 
 namespace jasperengine::editor{
 
+    class CommandCatalog;
+
     class PoseAnimationWindow{
     public:
         static constexpr const char* WINDOW_NAME = "Pose Animation";
@@ -66,9 +68,15 @@ namespace jasperengine::editor{
         // opens the humanoid mapping popup for the Character field's model (Map Bones...)
         bool openMappingFor(std::string* error);
 
-        // The shortcuts of spec 3.3. The window runs them while it has focus; the App runs them
-        // for the Scene view while it poses this window's model.
-        void handleShortcuts(bool fromSceneView);
+        // The shortcuts of spec 3.3 are the command catalog's pose.* commands (S25): their
+        // actions on this window; keysHere gates the keys (the window focused, or a Scene view
+        // posing its model), fromSceneView keeps Home / End for the Scene view's own
+        void bindCommands(CommandCatalog& catalog, std::function<bool()> keysHere, std::function<bool()> fromSceneView);
+        // Esc (cancel Global Edit, stop the preview): a local key, not a catalog command. The
+        // window runs it while it has focus; the App for a Scene view posing this window's model
+        void handleLocalKeys();
+        // the Scene view's keys and undo go to this window (its "Pose keys" hint is shown)
+        bool sceneKeysActive() const;
         // Ctrl/Cmd+Z/Y go to the project history: the window or a posing Scene view has focus
         bool ownsUndo(bool sceneViewFocused) const;
 

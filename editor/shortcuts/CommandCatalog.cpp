@@ -36,6 +36,8 @@ const char* jasperengine::editor::shortcutContextName(ShortcutContext context) {
         case ShortcutContext::Hierarchy: return "Hierarchy";
         case ShortcutContext::Project: return "Project";
         case ShortcutContext::Console: return "Console";
+        case ShortcutContext::Animation: return "Animation";
+        case ShortcutContext::PoseAnimation: return "Pose Animation";
     }
     return "Editor";
 }
@@ -48,12 +50,14 @@ const char* jasperengine::editor::shortcutContextKey(ShortcutContext context) {
         case ShortcutContext::Hierarchy: return "hierarchy";
         case ShortcutContext::Project: return "project";
         case ShortcutContext::Console: return "console";
+        case ShortcutContext::Animation: return "animation";
+        case ShortcutContext::PoseAnimation: return "pose_animation";
     }
     return "editor";
 }
 
 std::optional<ShortcutContext> jasperengine::editor::parseShortcutContext(std::string_view text) {
-    for (uint8_t value = 0; value <= static_cast<uint8_t>(ShortcutContext::Console); value++) {
+    for (uint8_t value = 0; value <= static_cast<uint8_t>(ShortcutContext::PoseAnimation); value++) {
         const auto context = static_cast<ShortcutContext>(value);
         if (text == shortcutContextName(context) || text == shortcutContextKey(context)) return context;
     }

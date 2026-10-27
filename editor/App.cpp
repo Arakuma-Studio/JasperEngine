@@ -4565,7 +4565,8 @@ namespace {
                       editor::MissingAssetsWindow* missing, editor::AssetReferencesWindow* references, editor::JobsMemoryWindow* jobs,
                       editor::ProfilerWindow* profiler, editor::FrameDebuggerWindow* frameDebugger, editor::UndoHistoryWindow* undo,
                       editor::PlayModeChangesWindow* playChanges, editor::GameWindow* game, editor::BookmarksWindow* bookmarks,
-                      editor::TextureSynthesisWindow* textureSynthesis, editor::PhysicsPlacementWindow* physicsPlacement) {
+                      editor::TextureSynthesisWindow* textureSynthesis, editor::PhysicsPlacementWindow* physicsPlacement,
+                      editor::PoseAnimationWindow* poseAnimation) {
         visit(editor::GameWindow::WINDOW_NAME, game);
         visit(editor::InspectorWindow::WINDOW_NAME, inspector);
         visit(editor::HierarchyWindow::WINDOW_NAME, hierarchy);
@@ -4585,6 +4586,7 @@ namespace {
         visit(editor::BookmarksWindow::WINDOW_NAME, bookmarks);
         visit(editor::TextureSynthesisWindow::WINDOW_NAME, textureSynthesis);
         visit(editor::PhysicsPlacementWindow::WINDOW_NAME, physicsPlacement);
+        visit(editor::PoseAnimationWindow::WINDOW_NAME, poseAnimation);
     }
 
 }
@@ -4602,7 +4604,7 @@ std::map<std::string, bool> editor::App::panelStates() const{
                  hierarchyWindow, inspectorWindow, projectWindow, consoleWindow, animationWindow, terrainEditWindow,
                  mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
                  frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
-                 textureSynthesisWindow, physicsPlacementWindow);
+                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow);
     return panels;
 }
 
@@ -4614,7 +4616,7 @@ void editor::App::applyPanelStates(const std::map<std::string, bool>& panels){
     }, hierarchyWindow, inspectorWindow, projectWindow, consoleWindow, animationWindow, terrainEditWindow,
        mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
        frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
-                 textureSynthesisWindow, physicsPlacementWindow);
+                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow);
 }
 
 void editor::App::applyDefaultLayout(){
@@ -4623,6 +4625,7 @@ void editor::App::applyDefaultLayout(){
     projectWindow->setOpen(true);
     consoleWindow->setOpen(true);
     animationWindow->setOpen(true);
+    poseAnimationWindow->setOpen(false);
     terrainEditWindow->setOpen(false);
     textureSynthesisWindow->setOpen(false);
     physicsPlacementWindow->setOpen(false);

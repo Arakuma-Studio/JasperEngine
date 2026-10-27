@@ -336,6 +336,11 @@ namespace jasperengine::editor{
         void syncScriptCommands();
         ShortcutState shortcutState() const;
         void processShortcuts();
+        // the Animation window (clip mode) and the Pose Animation window's key routing (S25 contexts)
+        bool clipWindowTakesKeys() const;
+        bool poseKeysFromSceneView() const;
+        bool poseKeysActive() const;
+        bool animationOrPoseOwnsLetterKeys() const;
         void recordMenuItems(const PlatformMenuModel& menu);
         // Window > Layouts (also the toolbar's Layout menu)
         LayoutManager layouts;

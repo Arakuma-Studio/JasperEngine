@@ -29,8 +29,10 @@
 #include "pose/PoseInspectorHooks.h"
 #include "animation/ClipRecordHooks.h"
 #include "AppSettings.h"
+#include "shortcuts/CommandCatalog.h"
 
 #include <algorithm>
+#include <map>
 #include <cmath>
 #include <cstdio>
 #include <random>
@@ -99,9 +101,12 @@ namespace {
         return command == ctrl && io.KeyShift == shift && !io.KeyAlt && ImGui::IsKeyPressed(key, false);
     }
 
-    bool keyRepeat(bool shift, ImGuiKey key){
-        const ImGuiIO& io = ImGui::GetIO();
-        return !(io.KeyCtrl || io.KeySuper) && io.KeyShift == shift && !io.KeyAlt && ImGui::IsKeyPressed(key, true);
+    // a context menu item's shortcut text: the catalog's binding (S25: rebindable)
+    const char* shortcutText(const char* id){
+        static std::map<std::string, std::string> texts;
+        std::string& text = texts[id];
+        text = editor::CommandCatalog::editor().menuShortcutText(id);
+        return text.c_str();
     }
 
     std::string fileStem(const std::string& path){
@@ -813,43 +818,58 @@ void editor::PoseAnimationWindow::drawSceneKeysHint(){
     ImGui::PopStyleVar(3);
 }
 
-void editor::PoseAnimationWindow::handleShortcuts(bool fromSceneView){
+void editor::PoseAnimationWindow::handleLocalKeys(){
+    // Esc stays local (S25: dialogs and gestures keep it); the window's other keys are the
+    // command catalog's pose.* commands (bindCommands)
     const ImGuiIO& io = ImGui::GetIO();
     if (io.WantTextInput || !data()) return;
     if (ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) return;
-    const int count = static_cast<int>(data()->poses.size());
-    const int primary = session.primary();
-
-    if (keyChord(false, false, ImGuiKey_Space)){
-        if (session.previewPlaying()) pause(); else play();
-    }
     if (keyChord(false, false, ImGuiKey_Escape)){
         if (session.globalEditActive()) session.cancelGlobalEdit();
         else if (session.mode() == PoseEditSession::Mode::Previewing) stop();
     }
-    if (count > 0){
-        if (keyRepeat(false, ImGuiKey_LeftArrow)) actionSelect(std::max(0, primary - 1), false, false);
-        if (keyRepeat(false, ImGuiKey_RightArrow)) actionSelect(std::min(count - 1, primary + 1), false, false);
-        if (keyRepeat(true, ImGuiKey_LeftArrow)) actionMove(-1);
-        if (keyRepeat(true, ImGuiKey_RightArrow)) actionMove(1);
-        // the Scene view frames everything with Home
-        if (!fromSceneView && keyChord(false, false, ImGuiKey_Home)) actionSelect(0, false, false);
-        if (!fromSceneView && keyChord(false, false, ImGuiKey_End)) actionSelect(count - 1, false, false);
-    }
-    if (keyRepeat(false, ImGuiKey_Comma)) actionStepFrame(-1);
-    if (keyRepeat(false, ImGuiKey_Period)) actionStepFrame(1);
+}
+
+void editor::PoseAnimationWindow::bindCommands(CommandCatalog& catalog, std::function<bool()> keysHere, std::function<bool()> fromSceneView){
+    auto bind = [&](const char* id, std::function<void()> run, std::function<bool()> available = nullptr, bool notFromSceneView = false){
+        const CommandDef* existing = catalog.find(id);
+        if (!existing) return;
+        CommandDef def = *existing;
+        def.run = [run](const CommandArgs&){ run(); };
+        def.enabled = [this, available](){ return data() != nullptr && (!available || available()); };
+        def.keyGate = [keysHere, fromSceneView, notFromSceneView](){
+            return !ImGui::GetIO().WantTextInput && (!keysHere || keysHere()) && !(notFromSceneView && fromSceneView && fromSceneView());
+        };
+        catalog.add(std::move(def));
+    };
+    auto count = [this](){ return data() ? static_cast<int>(data()->poses.size()) : 0; };
+    auto any = [count](){ return count() > 0; };
+    bind("pose.playPause", [this](){ if (session.previewPlaying()) pause(); else play(); });
+    bind("pose.selectPrevious", [this](){ actionSelect(std::max(0, session.primary() - 1), false, false); }, any);
+    bind("pose.selectNext", [this, count](){ actionSelect(std::min(count() - 1, session.primary() + 1), false, false); }, any);
+    bind("pose.moveLeft", [this](){ actionMove(-1); }, any);
+    bind("pose.moveRight", [this](){ actionMove(1); }, any);
+    // the Scene view frames everything with Home
+    bind("pose.selectFirst", [this](){ actionSelect(0, false, false); }, any, true);
+    bind("pose.selectLast", [this, count](){ actionSelect(count() - 1, false, false); }, any, true);
+    bind("pose.previousFrame", [this](){ actionStepFrame(-1); });
+    bind("pose.nextFrame", [this](){ actionStepFrame(1); });
     // the rename popup opens with the window: not from a Scene view while it is behind a tab
-    if (keyChord(false, false, ImGuiKey_F2) && windowVisible) actionRename(primary);
-    if (keyChord(true, false, ImGuiKey_D)) actionDuplicate(false, false);
-    if (keyChord(true, true, ImGuiKey_D)) actionDuplicate(false, true);
-    if (keyChord(false, false, ImGuiKey_M)) actionMirror();
-    if (keyChord(false, false, ImGuiKey_Delete) || keyChord(false, false, ImGuiKey_Backspace)) actionDelete();
-    if (keyChord(false, false, ImGuiKey_G)) actionGround();
-    if (keyChord(true, false, ImGuiKey_C)) actionCopy();
-    if (keyChord(true, false, ImGuiKey_V)) actionPaste();
-    if (keyChord(false, false, ImGuiKey_N)) actionAdd();
-    // E: from a posing Scene view too (the App keeps the rotate tool's E from it then)
-    if (keyChord(false, false, ImGuiKey_E)) actionGlobalEdit();
+    bind("pose.rename", [this](){ actionRename(session.primary()); }, [this](){ return windowVisible; });
+    bind("pose.duplicate", [this](){ actionDuplicate(false, false); });
+    bind("pose.duplicateMirrored", [this](){ actionDuplicate(false, true); });
+    bind("pose.mirror", [this](){ actionMirror(); });
+    bind("pose.delete", [this](){ actionDelete(); });
+    bind("pose.ground", [this](){ actionGround(); });
+    bind("pose.copy", [this](){ actionCopy(); });
+    bind("pose.paste", [this](){ actionPaste(); });
+    bind("pose.add", [this](){ actionAdd(); });
+    // E: from a posing Scene view too (the catalog's pose context comes before the rotate tool's E)
+    bind("pose.globalEdit", [this](){ actionGlobalEdit(); });
+}
+
+bool editor::PoseAnimationWindow::sceneKeysActive() const{
+    return session.keyRouting();
 }
 
 // ---- frame ----
@@ -931,7 +951,7 @@ void editor::PoseAnimationWindow::show(){
         drawOpenPopup();
         drawRenamePopup();
         drawTemplatePopups();
-        if (windowFocused) handleShortcuts(false);
+        if (windowFocused) handleLocalKeys();
     }else{
         processPendingOpen();
     }
@@ -1637,20 +1657,20 @@ void editor::PoseAnimationWindow::drawCardMenu(){
     menuShownFrame = ImGui::GetFrameCount();
     menuShown = "card";
     const int count = static_cast<int>(selection().size());
-    if (ImGui::MenuItem(poseui::poseCountLabel("Duplicate", count).c_str(), "Ctrl+D")) actionDuplicate(false, false);
+    if (ImGui::MenuItem(poseui::poseCountLabel("Duplicate", count).c_str(), shortcutText("pose.duplicate"))) actionDuplicate(false, false);
     if (ImGui::MenuItem(poseui::poseCountLabel("Duplicate", count).append(" at End").c_str())) actionDuplicate(true, false);
-    if (ImGui::MenuItem(poseui::poseCountLabel("Duplicate", count).append(" Mirrored").c_str(), "Ctrl+Shift+D")) actionDuplicate(false, true);
-    if (ImGui::MenuItem(poseui::poseCountLabel("Mirror", count).append(" (L \xE2\x86\x94 R)").c_str(), "M")) actionMirror();
+    if (ImGui::MenuItem(poseui::poseCountLabel("Duplicate", count).append(" Mirrored").c_str(), shortcutText("pose.duplicateMirrored"))) actionDuplicate(false, true);
+    if (ImGui::MenuItem(poseui::poseCountLabel("Mirror", count).append(" (L \xE2\x86\x94 R)").c_str(), shortcutText("pose.mirror"))) actionMirror();
     ImGui::Separator();
-    if (ImGui::MenuItem("Copy Pose", "Ctrl+C")) actionCopy();
-    if (ImGui::MenuItem(poseui::poseCountLabel("Paste", count).c_str(), "Ctrl+V", false, clipboard.has_value())) actionPaste();
+    if (ImGui::MenuItem("Copy Pose", shortcutText("pose.copy"))) actionCopy();
+    if (ImGui::MenuItem(poseui::poseCountLabel("Paste", count).c_str(), shortcutText("pose.paste"), false, clipboard.has_value())) actionPaste();
     ImGui::Separator();
-    if (ImGui::MenuItem(poseui::poseCountLabel("Move", count).append(" Left").c_str(), "Shift+Left")) actionMove(-1);
-    if (ImGui::MenuItem(poseui::poseCountLabel("Move", count).append(" Right").c_str(), "Shift+Right")) actionMove(1);
+    if (ImGui::MenuItem(poseui::poseCountLabel("Move", count).append(" Left").c_str(), shortcutText("pose.moveLeft"))) actionMove(-1);
+    if (ImGui::MenuItem(poseui::poseCountLabel("Move", count).append(" Right").c_str(), shortcutText("pose.moveRight"))) actionMove(1);
     ImGui::Separator();
-    if (ImGui::MenuItem("Rename", "F2", false, count == 1)) actionRename(session.primary());
+    if (ImGui::MenuItem("Rename", shortcutText("pose.rename"), false, count == 1)) actionRename(session.primary());
     if (ImGui::MenuItem(poseui::poseCountLabel("Reset", count).append(" to Neutral").c_str())) actionResetNeutral();
-    if (ImGui::MenuItem(poseui::poseCountLabel("Delete", count).c_str(), "Delete")) actionDelete();
+    if (ImGui::MenuItem(poseui::poseCountLabel("Delete", count).c_str(), shortcutText("pose.delete"))) actionDelete();
     ImGui::EndPopup();
 }
 

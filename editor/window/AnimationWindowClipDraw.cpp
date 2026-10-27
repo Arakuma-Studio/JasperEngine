@@ -28,6 +28,7 @@
 #include "util/EntityPath.h"
 #include "util/UIProbe.h"
 #include "util/Util.h"
+#include "shortcuts/CommandCatalog.h"
 
 #include <chrono>
 #include <functional>
@@ -40,6 +41,14 @@ using namespace jasperengine::editor::clipui;
 namespace fs = std::filesystem;
 
 namespace {
+
+    // a context menu item's shortcut text: the catalog's binding (S25: rebindable)
+    const char* shortcutText(const char* id){
+        static std::map<std::string, std::string> texts;
+        std::string& text = texts[id];
+        text = CommandCatalog::editor().menuShortcutText(id);
+        return text.c_str();
+    }
 
     // `text` shortened in its middle ("mixamo...Spinee") to fit `width` (UTF-8 safe)
     std::string elideMiddle(const std::string& text, float width){
@@ -106,7 +115,8 @@ void AnimationWindowClip::draw(SceneProject* sceneProject, bool focused){
         drawEventEditor(sceneProject);
         drawAddPropertyPopup();
         drawRebindPopup();
-        if (focused) handleShortcuts();
+        // the catalog's animation.* commands frame the keys over the sheet's width (S25)
+        sheetWidth = std::max(1.0f, ImGui::GetWindowWidth() - scaledLabelWidth());
     }
     ImGui::PopID();
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
@@ -1108,11 +1118,11 @@ void AnimationWindowClip::drawKeyContextMenu(){
     ImGui::EndDisabled();
     ImGui::EndDisabled();
     ImGui::Separator();
-    if (ImGui::MenuItem("Copy", "Ctrl+C", false, !selectedRefs.empty())) copySelected();
-    if (ImGui::MenuItem("Paste", "Ctrl+V", false, editable && !clipboard.empty())){
+    if (ImGui::MenuItem("Copy", shortcutText("animation.copy"), false, !selectedRefs.empty())) copySelected();
+    if (ImGui::MenuItem("Paste", shortcutText("animation.paste"), false, editable && !clipboard.empty())){
         if (!paste(contextTime, &error)) setNotice(error, true);
     }
-    if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, editable && !selectedRefs.empty())){
+    if (ImGui::MenuItem("Duplicate", shortcutText("animation.duplicate"), false, editable && !selectedRefs.empty())){
         if (!duplicateSelected(&error)) setNotice(error, true);
     }
     ImGui::Separator();
@@ -1344,53 +1354,58 @@ void AnimationWindowClip::drawRebindPopup(){
 
 // ---- shortcuts ----
 
-void AnimationWindowClip::handleShortcuts(){
-    ImGuiIO& io = ImGui::GetIO();
-    if (io.WantTextInput || ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) return;
+void AnimationWindowClip::runKeyCommand(std::string_view id){
     AnimationClipController& c = controller();
-    std::shared_ptr<AnimationClipDocument> doc = document();
-    if (!doc) return;
+    if (!document()) return;
     std::string error;
     auto report = [&](bool ok){
         if (!ok && !error.empty()) setNotice(error, true);
         error.clear();
     };
-    // Ctrl is the command key as in the rest of the editor (App's Ctrl+Z / Ctrl+S / Ctrl+D): on
-    // macOS ImGui's ConfigMacOSXBehaviors (on by default there) swaps the modifiers, so Cmd is
-    // io.KeyCtrl and the Control key io.KeySuper; a chord with the other one is not a shortcut
-    const bool plain = !io.KeyCtrl && !io.KeyAlt && !io.KeySuper;
-    if (plain && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Space, false)) togglePlay(project->getSelectedScene());
-    if (plain && ImGui::IsKeyPressed(ImGuiKey_K, false)) report(keyAt(io.KeyShift, &error));
-    if (!io.KeyCtrl && !io.KeySuper && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Comma, true)){
-        if (io.KeyAlt) stepKey(-1);
-        else stepFrame(-1);
-    }
-    if (!io.KeyCtrl && !io.KeySuper && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Period, true)){
-        if (io.KeyAlt) stepKey(1);
-        else stepFrame(1);
-    }
-    if (plain && (ImGui::IsKeyPressed(ImGuiKey_Delete, false) || ImGui::IsKeyPressed(ImGuiKey_Backspace, false))){
+    if (id == "animation.playPause") togglePlay(project->getSelectedScene());
+    else if (id == "animation.addKey") report(keyAt(false, &error));
+    else if (id == "animation.addKeyModified") report(keyAt(true, &error));
+    else if (id == "animation.previousFrame") stepFrame(-1);
+    else if (id == "animation.nextFrame") stepFrame(1);
+    else if (id == "animation.previousKey") stepKey(-1);
+    else if (id == "animation.nextKey") stepKey(1);
+    else if (id == "animation.delete"){
         if (!selectedRefs.empty()) report(deleteSelected(&error));
         else if (selectedEvent >= 0) report(deleteEvent(selectedEvent, &error));
     }
-    if (io.KeyCtrl && !io.KeySuper && !io.KeyShift && !io.KeyAlt){
-        if (ImGui::IsKeyPressed(ImGuiKey_C, false)) copySelected();
-        if (ImGui::IsKeyPressed(ImGuiKey_V, false)) report(paste(snapToFrame(c.getTime()), &error));
-        if (ImGui::IsKeyPressed(ImGuiKey_D, false)) report(duplicateSelected(&error));
-    }
-    const float width = std::max(1.0f, ImGui::GetWindowWidth() - scaledLabelWidth());
+    else if (id == "animation.copy") copySelected();
+    else if (id == "animation.paste") report(paste(snapToFrame(c.getTime()), &error));
+    else if (id == "animation.duplicate") report(duplicateSelected(&error));
     // F / A: the time range, and in the curves view the value range too
-    if (plain && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_F, false)){
-        frameKeys(true, width);
-        if (view == View::Curves) frameCurveValues(true);
-    }
-    if (plain && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_A, false)){
-        frameKeys(false, width);
-        if (view == View::Curves) frameCurveValues(false);
+    else if (id == "animation.frameSelected" || id == "animation.frameAll"){
+        const bool selectedOnly = id == "animation.frameSelected";
+        frameKeys(selectedOnly, sheetWidth);
+        if (view == View::Curves) frameCurveValues(selectedOnly);
     }
     // R: Record on / off
-    if (plain && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_R, false)){
+    else if (id == "animation.record"){
         if (!setRecording(project->getSelectedScene(), !c.isRecording(), &error)) report(false);
         error.clear();
+    }
+}
+
+void AnimationWindowClip::bindCommands(CommandCatalog& catalog, std::function<AnimationWindowClip*()> target){
+    for (const CommandDef& existing : std::vector<CommandDef>(catalog.commands())){
+        if (existing.id.rfind("animation.", 0) != 0) continue;
+        CommandDef def = existing;
+        const std::string id = def.id;
+        def.run = [target, id](const CommandArgs&){
+            if (AnimationWindowClip* clip = target()) clip->runKeyCommand(id);
+        };
+        def.enabled = [target](){
+            AnimationWindowClip* clip = target();
+            return clip && clip->document() != nullptr;
+        };
+        // while the window has focus (the controller's takesKeys), not while typing in it
+        def.keyGate = [target](){
+            AnimationWindowClip* clip = target();
+            return clip && clip->controller().takesKeys() && !ImGui::GetIO().WantTextInput;
+        };
+        catalog.add(std::move(def));
     }
 }
