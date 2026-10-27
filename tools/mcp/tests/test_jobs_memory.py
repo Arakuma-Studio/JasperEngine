@@ -125,18 +125,47 @@ async def test_loading_count_never_idle_mid_decode(ed: Editor):
         await asyncio.sleep(0.05)
     ed.check_eq(quiet, 10, "the editor went idle before the storm")
 
-    # every texture is requested at once: an asset storm on the Background lane
-    await ed.batch([("set_properties", {"scene": scene, "entity": eid,
-                                        "values": {"mesh": {"submeshes[0].material.baseColorTexture": path}}})
-                    for eid, path in zip(ids, paths)])
+    # every texture is requested at once: an asset storm on the Background lane. One asset job
+    # at a time (the gate's max): the 40 decodes take tens of probes, where 11 workers finish
+    # them within a frame of a loaded builder, before the first probe can see them. The first
+    # probe is the batch's last call, right after the requests.
+    await lua(ed, "Engine.setMaxResourceLoadingThreads(1) return true")
+    try:
+        storm = await ed.batch([("set_properties", {"scene": scene, "entity": eid,
+                                                    "values": {"mesh": {"submeshes[0].material.baseColorTexture": path}}})
+                                for eid, path in zip(ids, paths)]
+                               + [("eval_lua", {"code": probe, "allow_edit_mode": True})])
+        ed.check_eq(storm.get("failed", 0), 0, f"the storm's calls: {str(storm)[:600]}")
+        first = find_key(storm["results"][-1], "values")
+        ed.check(first, f"the probe in the batch: {str(storm['results'][-1])[:300]}")
+        observe = await observe_storm(ed, probe, first[0])
+    finally:
+        await lua(ed, "Engine.setMaxResourceLoadingThreads(0) return true")
+    samples, busy, background, violations = observe
+    ed.check(not violations, f"getQueuedResourceCount read 0 while loads were running: {violations[:5]}")
+    ed.check(busy > 0, f"the storm was observed loading ({samples} samples)")
+    print(f"storm: {samples} samples, {busy} loading, {background} with Background bodies running")
 
+    stats = await ed.call("get_memory_stats", prefix="Texture")
+    gpu = [r for r in stats["records"] if r["residency"] == "Gpu"]
+    ed.check(len(gpu) >= 1, f"a Gpu texture record: {stats['records']}")
+    ed.check(sum(r["current"] for r in gpu) >= TEXTURES * SIZE * SIZE * 4 // 2, f"the textures are counted: {gpu}")
+    ed.check(stats["totals"]["Gpu"] > 0, "Gpu total")
+
+
+async def observe_storm(ed: Editor, probe: str, first: list) -> tuple:
+    """Samples the loading counts until the storm is over: (samples, busy, background, violations)."""
     deadline = time.monotonic() + 120
     samples = 0
     busy = 0
     background = 0
     violations = []
+    sample = first
     while time.monotonic() < deadline:
-        queued, active, before, after = (await lua(ed, probe))[0]
+        if sample is None:
+            sample = (await lua(ed, probe))[0]
+        queued, active, before, after = sample
+        sample = None
         samples += 1
         busy += queued > 0
         background += before > 0
@@ -147,15 +176,7 @@ async def test_loading_count_never_idle_mid_decode(ed: Editor):
         if queued == 0 and active == 0 and before == 0 and samples > 5:
             break
         await asyncio.sleep(0.01)
-    ed.check(not violations, f"getQueuedResourceCount read 0 while loads were running: {violations[:5]}")
-    ed.check(busy > 0, f"the storm was observed loading ({samples} samples)")
-    print(f"storm: {samples} samples, {busy} loading, {background} with Background bodies running")
-
-    stats = await ed.call("get_memory_stats", prefix="Texture")
-    gpu = [r for r in stats["records"] if r["residency"] == "Gpu"]
-    ed.check(len(gpu) >= 1, f"a Gpu texture record: {stats['records']}")
-    ed.check(sum(r["current"] for r in gpu) >= TEXTURES * SIZE * SIZE * 4 // 2, f"the textures are counted: {gpu}")
-    ed.check(stats["totals"]["Gpu"] > 0, "Gpu total")
+    return samples, busy, background, violations
 
 
 async def test_lua_jobs_table(ed: Editor):

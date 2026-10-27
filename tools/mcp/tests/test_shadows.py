@@ -474,8 +474,18 @@ async def test_cascade_blend_fade(ed: Editor):
     w, h, _ = cascades
     cx = w // 2
     column = [tint_of(cascades, cx, y) for y in range(h)]
-    # the cascade changes along the centre column (bottom = near)
-    boundaries = [y for y in range(1, h) if isinstance(column[y], int) and isinstance(column[y - 1], int) and column[y] != column[y - 1]]
+    # the cascade changes along the centre column (bottom = near); a blend band between two
+    # cascades mixes their tints (rows of no cascade), so a split is where the cascade of the
+    # rows that have one changes, however many rows the band takes at this view's size
+    boundaries = []
+    last = None
+    for y, c in enumerate(column):
+        if c == "beyond":
+            last = None   # past the shadow distance: its fade is no split
+        elif isinstance(c, int):
+            if last is not None and c != last:
+                boundaries.append(y)
+            last = c
     ed.check(len(boundaries) >= 2, f"the cascades show along the centre line: {sorted(set(c for c in column if c is not None), key=str)}")
     for y in boundaries:
         for yy in range(max(1, y - 3), min(h, y + 4)):
@@ -700,7 +710,12 @@ async def test_shadow_goldens(ed: Editor):
 async def test_pcss_contact_hardening(ed: Editor):
     """AC8: on Ultra (PCSS) a pole's shadow is sharp at its base and soft where its top casts. The
     sun is 45 degrees up, so the pole's point h metres up shades the ground h metres out; the shadow
-    is measured across, from just above the ground, in shadow texels (its umbra is the pole's 0.3 m)."""
+    is measured across, from just above the ground (its umbra is the pole's 0.3 m). At the base the
+    penumbra is under 2 shadow texels. Up the pole it is measured in metres: a count of texels
+    follows the cascade's texel size, which follows the Scene view's frustum (S05's status bar made
+    the view shorter and the same shadow 5.5 texels instead of 6.4), while PCSS widens the penumbra
+    with the distance to the occluder as the sun's disc does (0.53 degrees: about 4 cm one edge at
+    3 m up, 4.2 m along the light)."""
     scene = await make_scene(ed, "Pcss")
     sun = await sun_of(ed, scene)
     a = math.radians(45)
@@ -721,14 +736,19 @@ async def test_pcss_contact_hardening(ed: Editor):
         st = await stats(ed, scene)
         texel = [light for light in st["lights"] if light["type"] == "directional"][0]["texel_world"][0]
         ed.check(dark > 0 and texel > 0, f"the shadow shows {x} m out")
-        return soft / (dark / 0.3) / texel
+        metres = soft / (dark / 0.3)
+        print(f"     [pcss] {x} m: soft {soft} px, dark {dark} px, texel {texel:.5f} m, penumbra {metres:.4f} m")
+        return metres, metres / texel
 
-    base = await across(0.25)
-    top = await across(3.0)
+    base_m, base = await across(0.25)
+    top_m, top = await across(3.0)
     await debug_view(ed, scene, "none")
-    print(f"     [pcss] penumbra {base:.1f} texels at the base, {top:.1f} texels 3 m up")
+    disc = 3.0 / math.cos(a) * math.radians(0.53)
+    print(f"     [pcss] penumbra {base:.1f} texels at the base, {top:.1f} texels ({top_m:.4f} m, the sun's disc "
+          f"{disc:.4f} m) 3 m up")
     ed.check(base < 2.0, f"sharp at the base: {base:.1f} texels")
-    ed.check(top > 6.0, f"soft 3 m up: {top:.1f} texels")
+    ed.check(top_m > 0.5 * disc and top_m > 2.5 * base_m,
+             f"soft 3 m up: {top_m:.4f} m (the sun's disc gives {disc:.4f} m; {base_m:.4f} m at the base)")
 
 
 # ------------------------------------------------------------------ old scenes (AC18)

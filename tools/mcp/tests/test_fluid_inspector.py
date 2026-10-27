@@ -60,36 +60,47 @@ class Ui:
         self.ed.check(windows, "the editor window")
         self.xdo("windowfocus", "--sync", windows[-1])
 
+    # each action is followed by editor frames, not only by a sleep: the editor reads the X events
+    # at the start of a frame, and on a loaded builder one frame outlasts the sleep (a drag whose
+    # press and moves land in one frame is never a drag); test_undo_ui's Ui does the same
+    async def settle(self, seconds: float, frames: int = 2):
+        await asyncio.sleep(seconds)
+        await self.ed.call("wait", frames=frames)
+
     async def move(self, x: float, y: float):
         self.xdo("mousemove", str(int(x)), str(int(y)))
-        await asyncio.sleep(0.3)
+        await self.settle(0.3)
 
     async def click(self, x: float, y: float):
         await self.move(x, y)
-        self.xdo("click", "1")
-        await asyncio.sleep(0.6)
+        # press and release frames apart: in one frame the widget never sees the press
+        self.xdo("mousedown", "1")
+        await self.settle(0.1)
+        self.xdo("mouseup", "1")
+        await self.settle(0.5)
 
     async def key(self, name: str):
         self.xdo("key", name)
-        await asyncio.sleep(0.5)
+        await self.settle(0.5)
 
     async def drag(self, x: float, y: float, dx: float, dy: float = 0.0, steps: int = 8):
         """press, move by (dx, dy) in steps (a frame between each), release"""
         await self.move(x, y)
         self.xdo("mousedown", "1")
-        await asyncio.sleep(0.2)
+        await self.settle(0.2)
         for i in range(1, steps + 1):
             self.xdo("mousemove", str(int(x + dx * i / steps)), str(int(y + dy * i / steps)))
-            await asyncio.sleep(0.1)
-        await asyncio.sleep(0.2)
+            await self.settle(0.05, frames=1)
+        await self.settle(0.2)
         self.xdo("mouseup", "1")
-        await asyncio.sleep(0.5)
+        await self.settle(0.5)
 
     async def wheel(self, at, down: bool, notches: int):
         await self.move(*at)
         for _ in range(notches):
             self.xdo("click", "5" if down else "4")
-        await asyncio.sleep(0.3)
+            await self.settle(0.05, frames=1)
+        await self.settle(0.3)
 
     async def frames(self, n: int = 3):
         await self.ed.call("wait", frames=n)
