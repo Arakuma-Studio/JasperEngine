@@ -63,6 +63,8 @@ namespace jasperengine {
     private:
 
         friend class Engine;
+        // tests only: detach and restore the instance to run the engine-free code paths
+        friend struct SystemTestAccess;
 
         static System* systemInstance;
 
@@ -80,6 +82,9 @@ namespace jasperengine {
         std::vector<std::string> args;
 
         static System& instance();
+        // True once Engine::systemInit installed a System (instance() aborts before that): for
+        // code that also runs without the engine (editor command-line tools)
+        static bool hasInstance() { return systemInstance != nullptr; }
 
         virtual ~System() {}
 

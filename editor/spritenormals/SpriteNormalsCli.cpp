@@ -19,6 +19,9 @@
 #include "cli/CommandLine.h"
 #include "pool/ShaderPool.h"
 #include "shader/ShaderBuilder.h"
+#include "Scene.h"
+#include "component/MeshComponent.h"
+#include "component/TilemapComponent.h"
 #include "subsystem/MeshSystem.h"
 #include "texsynth/SynthesisRecipe.h"
 #include "util/EntityPath.h"
@@ -33,6 +36,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <iterator>
 #include <map>
@@ -497,15 +501,11 @@ namespace jasperengine::editor::spritenormals {
             int saved = -1;
         };
 
-        struct SpriteSource {
-            fs::path texture;                // absolute
-            std::vector<Cell> cells;
-            std::string entityPath;
-        };
-
-        // The project loaded headless, the scene opened, the Sprite's texture and frames read;
-        // the engine is shut down when this returns. False with a usage error.
-        bool readSprite(int argc, char** argv, const Options& o, SpriteSource& out, std::string& error) {
+        // --sprite: the project loaded with the headless engine, the scene opened, the GameObject
+        // found; `body` runs with them (the whole generation: the Specs name the GameObject, so
+        // recipes record kind sprite and its entity) and the engine is shut down when it returns.
+        // The only engine start of the command; stdout goes to stderr meanwhile.
+        int withSprite(int argc, char** argv, const Options& o, Run& state, const std::function<int(SceneProject&, Entity)>& body) {
             StdoutToStderr redirect(o.quiet);
             EditorHostOverrideGuard hostOverride(nullptr);
             Out::setConsoleWindow(nullptr);
@@ -516,12 +516,10 @@ namespace jasperengine::editor::spritenormals {
             EngineRuntimeGuard engineRuntime;
             ::jasperengine::Engine::pauseGameEvents(true);
             ::jasperengine::Engine::setAsyncLoading(false);
+            const std::string fix = "give a Sprite, Polygon or Tilemap GameObject of the scene (path or unique name) and its --scene";
             // reading changes no project file
             project.getAssetDatabase().setReadOnly(true);
-            if (!project.loadProject(o.project, false)) {
-                error = "the project could not be loaded: " + o.project.u8string();
-                return false;
-            }
+            if (!project.loadProject(o.project, false)) return state.fail(2, "usage", "the project could not be loaded: " + o.project.u8string(), "give a project directory or its project.yaml");
             ::jasperengine::Engine::setAsyncLoading(false);
             SceneProject* found = nullptr;
             std::string names;
@@ -537,64 +535,27 @@ namespace jasperengine::editor::spritenormals {
                 }
             }
             if (!found) {
-                error = (o.scene.empty() ? std::string("the project has no start scene") : "no scene '" + o.scene + "'") + " (scenes: " +
-                        (names.empty() ? std::string("none") : names) + ")";
-                return false;
+                return state.fail(2, "usage", (o.scene.empty() ? std::string("the project has no start scene") : "no scene '" + o.scene + "'") + " (scenes: " +
+                                                  (names.empty() ? std::string("none") : names) + ")",
+                                  fix);
             }
             const uint32_t id = found->id;
-            if (!found->scene && !project.loadScene(found->filepath, false, false, true)) {
-                error = "the scene " + found->name + " could not be loaded";
-                return false;
-            }
+            if (!found->scene && !project.loadScene(found->filepath, false, false, true)) return state.fail(2, "usage", "the scene " + found->name + " could not be loaded", fix);
             ::jasperengine::Engine::setAsyncLoading(false);
             SceneProject* sp = project.getScene(id);
-            if (!sp || !sp->scene) {
-                error = "the scene could not be opened";
-                return false;
-            }
+            if (!sp || !sp->scene) return state.fail(2, "usage", "the scene could not be opened", fix);
             Entity entity = EntityPath::find(*sp, o.sprite);
             if (entity == NULL_ENTITY) {
                 const std::vector<Entity> named = EntityPath::findByName(sp->scene, sp->entities, o.sprite);
-                if (named.size() == 1) entity = named[0];
-                else {
-                    error = named.empty() ? "no GameObject '" + o.sprite + "' in scene " + sp->name
-                                          : "several GameObjects are named '" + o.sprite + "' in scene " + sp->name + ": give its path";
-                    return false;
+                if (named.size() != 1) {
+                    return state.fail(2, "usage", named.empty() ? "no GameObject '" + o.sprite + "' in scene " + sp->name
+                                                                : "several GameObjects are named '" + o.sprite + "' in scene " + sp->name + ": give its path",
+                                      fix);
                 }
+                entity = named[0];
             }
-            std::string texture;
-            if (!framesFromSprite(sp->scene, entity, 0, texture, out.cells, error)) return false;
-            out.texture = (project.getProjectPath() / fs::u8path(texture)).lexically_normal();
-            out.entityPath = EntityPath::of(*sp, entity);
-            return true;
+            return body(*sp, entity);
         }
-
-        // Without the engine the session still asks System for the assets directory (outputs
-        // must be inside it): this one answers from the project file, nothing else
-        class CliSystem : public System {
-        public:
-            explicit CliSystem(std::string assets): assets(std::move(assets)) {}
-            int getScreenWidth() override { return 0; }
-            int getScreenHeight() override { return 0; }
-            std::string getAssetPath() override { return assets; }
-
-        private:
-            std::string assets;
-        };
-
-        // The engine's system layer only (Engine::systemInit: the System instance, a Lua state; no
-        // project, window or GPU), with stdout sent to stderr while it lives
-        struct SystemLayer {
-            StdoutToStderr redirect;
-            EditorHostOverrideGuard hostOverride{nullptr};
-            SystemLayer(int argc, char** argv, System* system, bool quiet): redirect(quiet) {
-                Out::setConsoleWindow(nullptr);
-                ::jasperengine::Engine::systemInit(argc, argv, system);
-            }
-            ~SystemLayer() { ::jasperengine::Engine::systemShutdown(); }
-            SystemLayer(const SystemLayer&) = delete;
-            SystemLayer& operator=(const SystemLayer&) = delete;
-        };
 
         // ---------------------------------------------------------------- paths
 
@@ -676,7 +637,8 @@ namespace jasperengine::editor::spritenormals {
         struct Item {
             fs::path source;                 // absolute
             std::string label;               // shown()
-            bool fromSprite = false;
+            bool fromSprite = false;          // spec names the GameObject (sceneId, entity, submesh)
+            bool spriteHasFrames = false;     // ... and its frames are the cells (submesh 0)
             std::string entityPath;
             SourceInfo info;
             Spec spec;
@@ -756,8 +718,9 @@ namespace jasperengine::editor::spritenormals {
 
         // ---------------------------------------------------------------- the command
 
+        int pipeline(const Options& o, Run& state, json& results, const Settings& settings, std::vector<Item>& items, const Scene* scene);
+
         int run(int argc, char** argv, Options& o, Run& state, json& results) {
-            std::ostream& err = *state.err;
             // settings: the preset, the flags over it (every surface resolves them the same way)
             Settings settings = presetSettings(o.preset);
             std::string error;
@@ -783,28 +746,58 @@ namespace jasperengine::editor::spritenormals {
                 if (!fs::is_regular_file(o.project / "project.yaml", ec)) return state.fail(2, "usage", "no project.yaml in " + o.project.u8string(), "give a project directory or its project.yaml");
             }
 
-            // ---- the sources (a --sprite read with the engine, which is shut down again)
-            std::vector<Item> items;
-            if (!o.sprite.empty()) {
-                SpriteSource sprite;
-                if (!readSprite(argc, argv, o, sprite, error)) return state.fail(2, "usage", error, "give a Sprite GameObject of the scene (path or unique name)");
-                Item item;
-                item.source = sprite.texture;
-                item.fromSprite = true;
-                item.entityPath = sprite.entityPath;
-                item.spec.frames.cells = sprite.cells;
-                items.push_back(std::move(item));
+            // ---- the sources: image files (no engine at all), or --sprite's GameObject inside one
+            // headless engine run: one job per distinct colour texture (a Tilemap: per tileset)
+            if (o.sprite.empty()) {
+                std::vector<Item> items;
+                for (const fs::path& given : o.sources) {
+                    Item item;
+                    item.source = inputPath(o, given);
+                    items.push_back(std::move(item));
+                }
+                return pipeline(o, state, results, settings, items, nullptr);
             }
-            for (const fs::path& given : o.sources) {
-                Item item;
-                item.source = inputPath(o, given);
-                items.push_back(std::move(item));
-            }
-            // with a project the session reads its assets directory through System (outputs must be
-            // inside it): the system layer answers from the project file
-            CliSystem cliSystem(o.project.empty() ? std::string() : ProjectChecks::assetsRootFromProjectFile(o.project).u8string());
-            std::unique_ptr<SystemLayer> systemLayer;
-            if (!o.project.empty()) systemLayer = std::make_unique<SystemLayer>(argc, argv, &cliSystem, o.quiet);
+            return withSprite(argc, argv, o, state, [&](SceneProject& sp, Entity entity) {
+                Scene* scene = sp.scene;
+                MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+                const bool tilemap = scene->findComponent<TilemapComponent>(entity) != nullptr;
+                const unsigned count = tilemap && mesh ? std::min<unsigned>(mesh->numSubmeshes, MAX_SUBMESHES) : 1;
+                std::vector<Item> items;
+                std::set<fs::path> textures;
+                std::string why;
+                for (unsigned i = 0; i < count; i++) {
+                    std::string texture;
+                    std::vector<Cell> cells;
+                    if (!framesFromSprite(scene, entity, i, texture, cells, why)) continue;
+                    const fs::path absolute = (o.project / fs::u8path(texture)).lexically_normal();
+                    if (!textures.insert(absolute).second) continue;
+                    Item item;
+                    item.source = absolute;
+                    item.fromSprite = true;
+                    item.spriteHasFrames = !cells.empty();
+                    item.entityPath = EntityPath::of(sp, entity);
+                    item.spec.sceneId = sp.id;
+                    item.spec.entity = entity;
+                    item.spec.submesh = i;
+                    items.push_back(std::move(item));
+                }
+                if (items.empty()) {
+                    return state.fail(2, "usage", "'" + o.sprite + "' can't be the source: " + (why.empty() ? std::string("it has no colour texture") : why),
+                                      "give it a texture file first, or pass the image with --source");
+                }
+                if (items.size() > 1 && (!o.output.empty() || !o.atlas.empty() || !o.previewOut.empty())) {
+                    return state.fail(2, "usage", "'" + o.sprite + "' has " + std::to_string(items.size()) +
+                                                      " tileset textures: -o, --atlas and --preview-out take one (one normal map per texture)",
+                                      "leave them out (the default names), or use --output-dir");
+                }
+                return pipeline(o, state, results, settings, items, scene);
+            });
+        }
+
+        // Preflight, generation and the all-or-nothing write of every item; `scene` the --sprite's
+        int pipeline(const Options& o, Run& state, json& results, const Settings& settings, std::vector<Item>& items, const Scene* scene) {
+            std::ostream& err = *state.err;
+            std::string error;
 
             // ---- preflight: every problem of every source before anything is generated or written
             std::set<fs::path> inputs;
@@ -829,8 +822,9 @@ namespace jasperengine::editor::spritenormals {
                 }
                 const bool animated = item.info.kind == SourceKind::Gif || item.info.kind == SourceKind::Apng;
                 Spec& spec = item.spec;
-                const std::vector<Cell> spriteCells = spec.frames.cells;
-                spec.source = specPath(o, item.source);
+                // a GameObject source names its texture through the scene (spec.source stays empty)
+                const std::string sourcePath = specPath(o, item.source);
+                if (!item.fromSprite) spec.source = sourcePath;
                 spec.settings = settings;
                 spec.overwrite = o.overwrite;
                 spec.frames = FramesSpec();
@@ -843,12 +837,11 @@ namespace jasperengine::editor::spritenormals {
                     spec.frames.mode = FramesSpec::Mode::Cells;
                     spec.frames.cells = o.cells;
                     spec.frames.from = FramesFrom::Given;
-                } else if (item.fromSprite && !spriteCells.empty()) {
-                    spec.frames.mode = FramesSpec::Mode::Cells;
-                    spec.frames.cells = spriteCells;
-                    spec.frames.from = FramesFrom::Sprite;
                 }
-                if (o.framesJson && !animated && spec.frames.mode != FramesSpec::Mode::Grid && spec.frames.mode != FramesSpec::Mode::Cells) {
+                // (frames auto on a GameObject: the session takes the Sprite's frames, from: "sprite")
+                const bool hasCells = spec.frames.mode == FramesSpec::Mode::Grid || spec.frames.mode == FramesSpec::Mode::Cells ||
+                                      (spec.frames.mode == FramesSpec::Mode::Auto && item.spriteHasFrames);
+                if (o.framesJson && !animated && !hasCells) {
                     state.fail(2, "usage", "--frames-json is for animations and frame grids: " + item.label + " is one whole image",
                                "give --frame-size (or --columns and --rows, or --cells-json), or leave --frames-json out", item.label);
                     continue;
@@ -859,7 +852,7 @@ namespace jasperengine::editor::spritenormals {
                 if (!o.atlas.empty()) spec.output.atlas = specPath(o, outputPath(o, o.atlas));
                 if (!o.outputDir.empty()) {
                     const fs::path dir = outputPath(o, o.outputDir);
-                    for (const PlannedOutput& d : defaultOutputs(spec.source, item.info.kind, settings.height, o.framesJson)) {
+                    for (const PlannedOutput& d : defaultOutputs(sourcePath, item.info.kind, settings.height, o.framesJson)) {
                         const std::string path = specPath(o, dir / fs::u8path(d.path).filename());
                         if (d.role == "normal") spec.output.normal = path;
                         if (d.role == "atlas" && o.atlas.empty()) spec.output.atlas = path;
@@ -868,21 +861,21 @@ namespace jasperengine::editor::spritenormals {
                     }
                 }
                 if (!o.previewOut.empty()) item.previewPath = outputPath(o, o.previewOut);
-                std::vector<Problem> problems = checkSpec(o.project, spec, nullptr);
+                const std::vector<PlannedOutput> outputs = plannedOutputs(o.project, spec, animated ? item.info.kind : SourceKind::Image);
+                std::vector<Problem> problems = checkSpec(o.project, spec, scene);
                 for (const Problem& p : problems) {
                     if (p.kind == "output_exists") {
-                        // "<path> already exists." as the user typed it
-                        std::string path = p.message;
-                        const size_t at = path.rfind(" already exists.");
-                        if (at != std::string::npos) path = path.substr(0, at);
-                        existing.push_back(shown(o, specAbsolute(o, path)));
+                        // the planned path of that role (field "output.<role>"), as the user typed it
+                        for (const PlannedOutput& out : outputs) {
+                            if (p.field == "output." + out.role) existing.push_back(shown(o, specAbsolute(o, out.path)));
+                        }
                         continue;
                     }
                     state.fail(exitFor(p.kind), p.kind, p.message, p.fix, item.label);
                 }
                 // across the batch: no output twice, none equal to an input (aliases resolved)
                 std::vector<fs::path> planned;
-                for (const PlannedOutput& out : plannedOutputs(o.project, spec, animated ? item.info.kind : SourceKind::Image)) planned.push_back(specAbsolute(o, out.path));
+                for (const PlannedOutput& out : outputs) planned.push_back(specAbsolute(o, out.path));
                 if (!item.previewPath.empty()) planned.push_back(item.previewPath);
                 for (const fs::path& out : planned) {
                     const fs::path key = canonicalPath(out);
@@ -911,7 +904,7 @@ namespace jasperengine::editor::spritenormals {
             // ---- generate every source (blocking; --threads never changes the output)
             for (Item& item : items) {
                 std::vector<Problem> problems;
-                if (!prepare(o.project, item.spec, nullptr, item.prepared, problems)) {
+                if (!prepare(o.project, item.spec, scene, item.prepared, problems)) {
                     for (const Problem& p : problems) state.fail(exitFor(p.kind), p.kind, p.message, p.fix, item.label);
                     continue;
                 }

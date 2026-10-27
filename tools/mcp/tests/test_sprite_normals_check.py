@@ -13,6 +13,7 @@ through MCP and saved, then checked with the binary (`check --normals --format j
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import struct
 import subprocess
@@ -84,6 +85,12 @@ def ball_png(size: int) -> bytes:
                 row += bytes((v, v // 2, 40, 255))
         rows.append(b"\x00" + bytes(row))
     return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(b"".join(rows)))
+            + chunk(b"IEND", b""))
+
+
+def png_rgba(width: int, height: int, pixel) -> bytes:
+    rows = [b"\x00" + b"".join(bytes(pixel(x, y)) for x in range(width)) for y in range(height)]
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(b"".join(rows)))
             + chunk(b"IEND", b""))
 
 
@@ -241,3 +248,74 @@ async def test_light_height_and_frames(ed: Editor):
     _, data = run_check(ed.project, "--normals")
     check(not any(f["code"] == "normals-no-light-height" for f in normals(data)), "height 64: gone")
     check(any(f["code"] == "normals-frames-mismatch" and "'Hero'" in f["message"] for f in normals(data)), f"frames: {normals(data)}")
+
+
+# ---------------------------------------------------------------------------- fix round 1
+
+async def test_files_without_a_recipe_chunk_are_not_garbled_recipes(ed: Editor):
+    art = ed.project / ART
+    (art / "photo.png").write_bytes((REPO / "engine/tests/htmlui/fixtures/compat/net/img/photo.jpg").read_bytes())
+    (art / "trunc.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR\x00\x00")
+    (art / "garbage.png").write_bytes(b"not an image at all")
+    _, data = run_check(ed.project)
+    bogus = [f for f in normals(data) if f["path"] in (f"{ART}/photo.png", f"{ART}/trunc.png", f"{ART}/garbage.png")]
+    check(not bogus, f"a JPEG named .png, a truncated PNG and garbage are no garbled recipes: {bogus}")
+    check(any(f["code"] == "normals-recipe-invalid" and f["path"] == f"{ART}/rock_normal.png" for f in normals(data)),
+          "a damaged recipe chunk still is one")
+    for name in ("photo.png", "trunc.png", "garbage.png"):
+        (art / name).unlink()
+
+
+async def test_opaque_tile_with_a_raised_border_is_no_directx_map(ed: Editor):
+    # an opaque OpenGL map of a tile whose border is raised: its top rows lean down, its bottom
+    # rows up, like a DirectX map's rims would; but the image's border is no silhouette
+    art = ed.project / ART
+    (art / "tile64.png").write_bytes(png_rgba(64, 64, lambda x, y: (120, 140, 90, 255)))
+
+    def raised(x, y):
+        if y < 3:
+            return (128, 81, 246, 255)
+        if y > 60:
+            return (128, 175, 246, 255)
+        return (128, 128, 255, 255)
+    (art / "hand").mkdir(exist_ok=True)
+    (art / "hand" / "tile64_n.png").write_bytes(png_rgba(64, 64, raised))
+    await sprite(ed, "Raised", f"{ART}/tile64.png")
+    await assign(ed, "Raised", f"{ART}/hand/tile64_n.png")
+    await save(ed)
+    _, data = run_check(ed.project, "--normals")
+    raised_findings = [f for f in normals(data) if "'Raised'" in f["message"]]
+    check(not raised_findings, f"no green-convention (or other) finding for the opaque tile: {raised_findings}")
+
+
+async def test_normalized_frames_on_a_wide_sheet(ed: Editor):
+    # a 2048-wide sheet of 64 frames of 32 px, its frames stored as fractions of the texture
+    def blobs(x, y):
+        cx = (x // 32) * 32 + 16
+        inside = (x - cx) ** 2 + (y - 16) ** 2 < 140
+        return (200, 90 + (x // 32), 60, 255) if inside else (0, 0, 0, 0)
+    art = ed.project / ART
+    (art / "wide.png").write_bytes(png_rgba(2048, 32, blobs))
+    await ed.call("set_sprite_frames", create={"name": "Wide"}, texture=f"{ART}/wide.png", slice={"tile_size": [32, 32]})
+    await ed.call("set_texture_settings", entity="Wide", component="mesh", property="submeshes[0].material.baseColorTexture",
+                  min_filter="nearest", mag_filter="nearest")
+    await gen(ed, source="Wide", output=True, apply=True)
+    await save(ed)
+    _, data = run_check(ed.project, "--normals")
+    check(not any("'Wide'" in f["message"] for f in normals(data)), f"pixel frames: clean: {[f for f in normals(data) if 'Wide' in f['message']]}")
+    # the same frames as fractions (x / 2048, 0, 32 / 2048, 1): what the session scales them to
+    scene = ed.project / SCENE
+    text = scene.read_text()
+    start = text.index("name: Wide")
+    end = text.find("- type: Entity", start)
+    end = len(text) if end < 0 else end
+
+    def fraction(m):
+        x, y, w, h = (float(v) for v in m.group(1).split(","))
+        return f"rect: [{x / 2048!r}, {y / 32!r}, {w / 2048!r}, {h / 32!r}]"
+    block = re.sub(r"rect: \[([^\]]+)\]", fraction, text[start:end])
+    check(block != text[start:end] and "0.015625" in block, "the frames were rewritten as fractions")
+    scene.write_text(text[:start] + block + text[end:])
+    _, data = run_check(ed.project, "--normals")
+    wide = [f for f in normals(data) if "'Wide'" in f["message"]]
+    check(not wide, f"normalized frames of a 2048-wide sheet match the map's cells: {wide}")

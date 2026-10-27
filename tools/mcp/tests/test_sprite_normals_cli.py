@@ -73,6 +73,10 @@ def run_json(cwd: Path, *args: str) -> tuple[int, dict, str]:
         return 0, {}, ""
 
 
+def chunk(kind: bytes, data: bytes) -> bytes:
+    return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+
+
 def chunks(data: bytes) -> list[tuple[bytes, bytes]]:
     out, pos = [], 8
     while pos < len(data):
@@ -236,6 +240,10 @@ async def test_recipe_paths_and_project():
     check(code == 0, err + json.dumps(out))
     check(out["results"][0]["outputs"]["normal"] == "assets/art/ball_normal.png", f"{out['results'][0]['outputs']}")
     check(recipe(project / "assets" / "art" / "ball_normal.png")["source"]["path"] == "assets/art/ball.png", "project-relative")
+    # --project without --sprite starts no engine: no engine log, no Lua state, no .jasperengine made
+    r = run(project, "--project", str(project), "--source", "assets/art/ball.png", "-o", "assets/art/again.png")
+    check(r.returncode == 0 and "[INFO]" not in r.stderr and "Lua" not in r.stderr, f"no engine start: {r.stderr[-600:]}")
+    check(not (project / ".jasperengine").exists(), "nothing of the engine's project state is created")
     r = run(project, "--project", str(project), "--source", "assets/art/ball.png", "-o", "outside.png")
     check(r.returncode == 2 and "output_invalid" in r.stderr, f"outside the assets directory: {r.returncode} {r.stderr}")
     check(not (project / "outside.png").exists(), "not written")
@@ -268,4 +276,36 @@ async def test_sprite_frames(ed: Editor):
     check(code == 0, f"{err} {out}")
     res = out["results"][0]
     check(res["kind"] == "sprite" and res["entity"] == "Hero" and res["frames"]["from"] == "sprite" and res["frames"]["count"] == 4, f"{res}")
-    check(recipe(art / "sheet_normal.png")["frames"]["from"] == "sprite", "the recipe records from: sprite")
+    rec = recipe(art / "sheet_normal.png")
+    check(rec["frames"]["from"] == "sprite", "the recipe records from: sprite")
+    check(rec["source"]["kind"] == "sprite" and rec["source"]["entity"] == "Hero", f"the recipe records the Sprite like the MCP tool: {rec['source']}")
+
+
+async def test_sprite_tilemap_with_two_tilesets(ed: Editor):
+    art = ed.project / "assets" / "art"
+    art.mkdir(parents=True, exist_ok=True)
+    for name, shade in (("ground_a.png", 90), ("ground_b.png", 180)):
+        rows = [b"\x00" + b"".join(bytes((shade, 140, (x * y) % 90, 255)) for x in range(32)) for y in range(16)]
+        (art / name).write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 32, 16, 8, 6, 0, 0, 0)) +
+                                 chunk(b"IDAT", zlib.compress(b"".join(rows))) + chunk(b"IEND", b""))
+    await ed.call("edit_tilemap", create={"name": "Ground"}, texture="assets/art/ground_a.png", tileset={"tile_size": [16, 16]},
+                  rects=[{"name": "b0", "rect": [0, 0, 16, 16], "submesh": 1}],
+                  ops=[{"op": "fill", "tile": 0, "from": [0, 0], "to": [3, 0]}, {"op": "set", "cells": [[0, 1, "b0"], [1, 1, "b0"]]}])
+    await ed.call("wait", frames=3)
+    # the second tileset: submesh 1 with its own colour texture
+    await ed.call("set_properties", entity="Ground", values={"mesh": {"numSubmeshes": 2}})
+    await ed.call("set_properties", entity="Ground", values={"mesh": {"submeshes[1].material.baseColorTexture": "assets/art/ground_b.png"}})
+    await ed.call("wait", frames=3)
+    await ed.call("save_scene", path="scenes/Main.scene")
+    await ed.call("save_project")
+    code, out, err = run_json(ed.project, "--project", str(ed.project), "--sprite", "Ground", "--scene", "scenes/Main.scene", "--frame-size", "16",
+                              "--edges", "extend")
+    check(code == 0, f"{err} {out}")
+    sources = sorted(r["source"] for r in out["results"])
+    check(sources == ["assets/art/ground_a.png", "assets/art/ground_b.png"], f"one job per tileset texture: {sources}")
+    for name in ("ground_a_normal.png", "ground_b_normal.png"):
+        rec = recipe(art / name)
+        check(rec["source"]["kind"] == "sprite" and rec["source"]["entity"] == "Ground", f"{name}: {rec['source']}")
+    check(recipe(art / "ground_b_normal.png")["source"].get("submesh") == 1, "the second tileset's recipe names its submesh")
+    r = run(ed.project, "--project", str(ed.project), "--sprite", "Ground", "--scene", "scenes/Main.scene", "-o", "assets/art/one.png", "--overwrite")
+    check(r.returncode == 2 and "tileset" in r.stderr, f"-o with several tilesets: {r.returncode} {r.stderr[-400:]}")

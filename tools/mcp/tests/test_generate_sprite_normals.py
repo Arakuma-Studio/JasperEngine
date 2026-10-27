@@ -292,10 +292,13 @@ async def test_invalid_arguments_write_nothing(ed: Editor):
         ({"source": BALL, "output": "assets/.hidden/x.png"}, "output_invalid"),
         ({"source": BALL, "output": "assets/x.jpg"}, "output_invalid"),
         ({"source": BALL, "output": BALL, "overwrite": True}, "output_invalid"),
+        ({"source": BALL, "directx": "yes"}, "invalid_settings"),
+        ({"source": BALL, "wait": 1}, "invalid_settings"),
     ]
     for args, kind in cases:
         got = await gen_error(ed, **args)
         check(kind in got["kinds"], f"{args}: kind {kind} expected, got {got['kinds']}: {got['text']}")
+        check(all(e["fix"] for e in got["data"]["errors"]), f"{args}: every error has a fix: {got['data']['errors']}")
     msg = (await gen_error(ed, source=BALL, params={"detail": 9}))["text"]
     check("params.detail" in msg and "8" in msg and "9" in msg, f"the range error names the setting, the range and the value: {msg}")
     msg = (await gen_error(ed, source=BALL, params={"bogus": 1}))["text"]
@@ -599,6 +602,36 @@ async def test_apply_refused_while_playing(ed: Editor):
         check(r.structured["written"] is False and r.images, "a preview works while playing")
     finally:
         await ed.call("play", action="stop")
+
+
+# ---------------------------------------------------------------------------- fix round 1
+
+async def test_files_without_a_recipe_chunk_report_none(ed: Editor):
+    # a JPEG named .png, a truncated PNG and garbage: none has a sprite normals recipe to report
+    spr = ed.project / SPR
+    (spr / "photo.png").write_bytes((REPO / "engine/tests/htmlui/fixtures/compat/net/img/photo.jpg").read_bytes())
+    (spr / "trunc.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR\x00\x00")
+    (spr / "garbage.png").write_bytes(b"not an image at all")
+    for name in ("photo.png", "trunc.png", "garbage.png"):
+        r = await ed.call_raw("get_asset_info", {"path": f"{SPR}/{name}"})
+        check(not r.is_error and "sprite_normals" not in (r.structured or {}) and "sprite normal map recipe" not in r.text,
+              f"get_asset_info {name}: no sprite_normals block: {r.text[:300]} {r.structured}")
+    view = await ed.call_raw("view_asset", {"path": f"{SPR}/photo.png"})
+    check("sprite_normals" not in (view.structured or {}) and "sprite normal map recipe" not in view.text, f"view_asset: {view.text[:300]}")
+    for name in ("photo.png", "trunc.png", "garbage.png"):
+        (spr / name).unlink()
+
+
+async def test_save_path_failure_writes_nothing(ed: Editor):
+    (ed.project / SPR / "blocker").write_text("a file where a folder is expected")
+    out = f"{SPR}/sp/ball_sp.png"
+    got = await gen_error(ed, source="Hero", output=out, apply=True, save_path=f"{SPR}/blocker/sheet.png")
+    check("write_failed" in got["kinds"] and "save_path" in got["text"], f"the sheet's failure: {got}")
+    check(not (ed.project / out).exists(), "the normal map is not written")
+    mat = (await ed.call("get_entity", entity="Hero", components=["mesh"]))["components"]["mesh"]["submeshes[0].material"]
+    tex = mat.get("normalTexture")
+    check(not tex or (tex if isinstance(tex, str) else tex.get("path")) != out, f"nothing applied: {tex}")
+    (ed.project / SPR / "blocker").unlink()
 
 
 # ---------------------------------------------------------------------------- 10.4 docs
