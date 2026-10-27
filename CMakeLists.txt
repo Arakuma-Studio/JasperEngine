@@ -634,6 +634,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/SynthesisTools.cpp
     ${EDITOR_DIR}/mcp/tools/PoseTools.cpp
     ${EDITOR_DIR}/mcp/tools/PlacementTools.cpp
+    ${EDITOR_DIR}/mcp/tools/VatTools.cpp
 
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp
     ${EDITOR_DIR}/util/BidiText.cpp
@@ -754,6 +755,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/vat/VatBakeCompute.cpp
     ${EDITOR_DIR}/vat/VatBakeSource.cpp
     ${EDITOR_DIR}/vat/VatBakeSession.cpp
+    ${EDITOR_DIR}/vat/VatFrontEnd.cpp
+    ${EDITOR_DIR}/vat/VatContactSheet.cpp
     ${EDITOR_DIR}/vat/import/VatImport.cpp
     ${EDITOR_DIR}/vat/import/VatImportCommon.cpp
     ${EDITOR_DIR}/vat/import/VatSourceMesh.cpp

@@ -7,6 +7,7 @@
 
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace jasperengine::editor {
     class Project;
@@ -37,6 +38,7 @@ namespace jasperengine::editor::mcp {
     void registerUiEffectTools(McpRegistry& registry);
     void registerSynthesisTools(McpRegistry& registry);
     void registerPlacementTools(McpRegistry& registry);
+    void registerVatTools(McpRegistry& registry);
 
     // PlacementTools.cpp: puts back the preview poses a place_with_physics screenshot shows for a
     // few frames (App::stopTransientPreviews: before a save or Play)
@@ -50,6 +52,21 @@ namespace jasperengine::editor::mcp {
     // " Synthesized (tileable, balanced, seed 7, role primary); sources unchanged." or ""
     std::string synthesisAssetText(const Json& info);
     void registerPoseTools(McpRegistry& registry);
+
+    // VatTools.cpp (vertex animation spec 6): the .vat parts of the asset tools.
+    // get_asset_info of a .vat: data.vertex_animation = {guid, mode, mesh, layout, bounds, clips,
+    // sockets, stats, recipe, warnings, staleness, stale, rebake?, users}; `text` gets a summary.
+    // False (data.error, data.fix) when it doesn't parse.
+    bool vatAssetInfo(Project* project, const std::filesystem::path& file, Json& data, std::string& text);
+    // the Vertex Animators of the open scenes and prefab stages using a .vat: [{scene, entity}]
+    Json vatUsers(Project* project, const std::string& vatRelative);
+    // write_file of a .vat: false + error when it doesn't parse or changes a generated field of the
+    // existing file (the rebake message); `warnings` the lenient reader's
+    bool checkVatText(Project* project, const std::filesystem::path& file, const std::string& content,
+                      std::vector<std::string>& warnings, std::string& error);
+    // a changed .vat / .vat.glb (file sync, auto-sync): VertexAnimationPool drops it (its
+    // animators reload); a .vat's load problems go to `problems` ({path, message, severity?})
+    void vatFileChanged(Project* project, const std::filesystem::path& path, Json& problems);
 
     // the pose documents' files-written hook (their writes reach the asset database and the
     // Project window like any MCP file change): installed once, when the MCP context exists
