@@ -518,9 +518,9 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 33;
-        case ShaderType::DEPTH:  return 16;
-        case ShaderType::GBUFFER: return 14;
+        case ShaderType::MESH:   return 35;
+        case ShaderType::DEPTH:  return 18;
+        case ShaderType::GBUFFER: return 16;
         case ShaderType::UI:     return 4;
         case ShaderType::POINTS: return 5;
         case ShaderType::LINES:  return 3;
@@ -588,6 +588,11 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             // the lattice deformer (HAS_LATTICE, includes/lattice.glsl): the first property past
             // the 32 of older keys, so keys without a lattice read as they always did
             case 32: return shortName ? "Ltc" : "Lattice";
+            // a Vertex Animator's baked animation (includes/vat.glsl): Vertices mode
+            // (HAS_VAT) or Bones mode (HAS_VAT and HAS_VAT_BONES), never both; either one
+            // replaces the skinning and the morph targets
+            case 33: return shortName ? "Vat" : "Vertex Animation";
+            case 34: return shortName ? "Vab" : "Vertex Animation Bones";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
@@ -611,6 +616,9 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 14: return shortName ? "Sto" : "Stochastic Tiling";
             // the lattice deformer (HAS_LATTICE, includes/lattice.glsl)
             case 15: return shortName ? "Ltc" : "Lattice";
+            // a Vertex Animator's baked animation (includes/vat.glsl), as MESH 33/34
+            case 16: return shortName ? "Vat" : "Vertex Animation";
+            case 17: return shortName ? "Vab" : "Vertex Animation Bones";
         }
     } else if (shaderType == ShaderType::GBUFFER) {
         switch (bit) {
@@ -631,6 +639,9 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             // the vertex colour a lattice's mask reads, never set without 'Ltc'
             case 12: return shortName ? "Vc3" : "Vertex Color 3";
             case 13: return shortName ? "Vc4" : "Vertex Color 4";
+            // a Vertex Animator's baked animation (includes/vat.glsl), as MESH 33/34
+            case 14: return shortName ? "Vat" : "Vertex Animation";
+            case 15: return shortName ? "Vab" : "Vertex Animation Bones";
         }
     } else if (shaderType == ShaderType::UI) {
         switch (bit) {
@@ -1440,7 +1451,7 @@ uint64_t ShaderPool::getMeshProperties(
     bool fog, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent,
     bool terrain, bool instanced, bool ibl, bool mirror, bool ssao, bool light2d, bool shadows2d,
     bool alphaMask, bool alphaOpaque, bool instanceFade, bool terrainPBR,
-    bool vertexLights, int lightCapacity, bool stochasticTiling, bool lattice){
+    bool vertexLights, int lightCapacity, bool stochasticTiling, bool lattice, bool vat, bool vatBones){
     uint64_t prop = 0;
 
     prop |= unlit            ? shaderPropertyBit(0) : 0;
@@ -1478,13 +1489,16 @@ uint64_t ShaderPool::getMeshProperties(
     prop |= (lightCapacity == 4)  ? shaderPropertyBit(29) : 0;
     prop |= (lightCapacity == 16) ? shaderPropertyBit(30) : 0;
     prop |= lattice          ? shaderPropertyBit(32) : 0;
+    // one of the two: Bones mode is 'Vab' alone
+    prop |= (vat && !vatBones) ? shaderPropertyBit(33) : 0;
+    prop |= vatBones         ? shaderPropertyBit(34) : 0;
 
     return prop;
 }
 
 uint64_t ShaderPool::getDepthMeshProperties(bool texture, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool alphaMask, bool instanceFade,
                                             bool normals, bool vertexColorVec3, bool vertexColorVec4, bool uv1, bool textureRect,
-                                            bool stochasticTiling, bool lattice){
+                                            bool stochasticTiling, bool lattice, bool vat, bool vatBones){
     uint64_t prop = 0;
 
     prop |= texture          ? shaderPropertyBit(0) : 0;
@@ -1503,12 +1517,15 @@ uint64_t ShaderPool::getDepthMeshProperties(bool texture, bool skinning, bool mo
     prop |= textureRect      ? shaderPropertyBit(13) : 0;
     prop |= stochasticTiling ? shaderPropertyBit(14) : 0;
     prop |= lattice          ? shaderPropertyBit(15) : 0;
+    prop |= (vat && !vatBones) ? shaderPropertyBit(16) : 0;
+    prop |= vatBones         ? shaderPropertyBit(17) : 0;
 
     return prop;
 }
 
 uint64_t ShaderPool::getGBufferMeshProperties(bool baseColorTexture, bool normals, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool metallicRoughnessTexture, bool terrainPBR,
-                                              bool stochasticTiling, bool lattice, bool vertexColorVec3, bool vertexColorVec4){
+                                              bool stochasticTiling, bool lattice, bool vertexColorVec3, bool vertexColorVec4,
+                                              bool vat, bool vatBones){
     uint64_t prop = 0;
 
     prop |= baseColorTexture        ? shaderPropertyBit(0) : 0;
@@ -1525,6 +1542,8 @@ uint64_t ShaderPool::getGBufferMeshProperties(bool baseColorTexture, bool normal
     prop |= lattice                 ? shaderPropertyBit(11) : 0;
     prop |= (lattice && vertexColorVec3) ? shaderPropertyBit(12) : 0;
     prop |= (lattice && vertexColorVec4) ? shaderPropertyBit(13) : 0;
+    prop |= (vat && !vatBones)      ? shaderPropertyBit(14) : 0;
+    prop |= vatBones                ? shaderPropertyBit(15) : 0;
 
     return prop;
 }

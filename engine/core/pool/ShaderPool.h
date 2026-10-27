@@ -212,17 +212,19 @@ namespace jasperengine{
                         bool alphaMask = false, bool alphaOpaque = false, bool instanceFade = false,
                         bool terrainPBR = false,
                         bool vertexLights = false, int lightCapacity = 8, bool stochasticTiling = false,
-                        bool lattice = false);
+                        bool lattice = false, bool vat = false, bool vatBones = false);
         // normals, vertexColorVec3/4 and uv1: the inputs a library depth program requires
         // (vertexColorVec3/4 also a lattice's vertex colour mask); textureRect: the sprite
         // texture rect its UV (texture or uv1) goes through
         static uint64_t getDepthMeshProperties(bool texture, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool alphaMask = false, bool instanceFade = false,
                                                bool normals = false, bool vertexColorVec3 = false, bool vertexColorVec4 = false, bool uv1 = false,
-                                               bool textureRect = false, bool stochasticTiling = false, bool lattice = false);
+                                               bool textureRect = false, bool stochasticTiling = false, bool lattice = false,
+                                               bool vat = false, bool vatBones = false);
         // vertexColorVec3/4: the vertex colour a lattice's mask reads (set only with lattice)
         static uint64_t getGBufferMeshProperties(bool baseColorTexture, bool normals, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool metallicRoughnessTexture, bool terrainPBR = false,
                                                  bool stochasticTiling = false, bool lattice = false,
-                                                 bool vertexColorVec3 = false, bool vertexColorVec4 = false);
+                                                 bool vertexColorVec3 = false, bool vertexColorVec4 = false,
+                                                 bool vat = false, bool vatBones = false);
         static uint64_t getUIProperties(bool texture, bool fontAtlasTexture, bool vertexColorVec3, bool vertexColorVec4);
         static uint64_t getHtmlUIProperties(bool texture);
         // HTMLUI_POST: one property bit per (exclusive) variant

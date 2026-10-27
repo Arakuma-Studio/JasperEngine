@@ -3828,12 +3828,16 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
                     // its lattice variant: its depth one too, with the vertex colour a lattice mask reads
                     bool depthStochastic = depthTexture && (meshProperties & shaderPropertyBit(5)) != 0;
                     bool lattice = mesh.lattice.variantActive && !isTerrain;
+                    // and its Vertex Animation variant (the skinning and morph flags of a mesh
+                    // loaded with one are off already)
+                    const VatVariant vat = isTerrain ? VatVariant::NONE : mesh.vat.variantActive;
                     uint64_t depthProperties = ShaderPool::getDepthMeshProperties(
                         depthTexture, mesh.submeshes[s].hasSkinning,
                         mesh.submeshes[s].hasMorphTarget, mesh.submeshes[s].hasMorphNormal,
                         mesh.submeshes[s].hasMorphTangent, isTerrain, isInstanced, depthAlphaMask,
                         instancedFade, false, lattice && mesh.submeshes[s].hasVertexColor3,
-                        lattice && mesh.submeshes[s].hasVertexColor4, false, false, depthStochastic, lattice);
+                        lattice && mesh.submeshes[s].hasVertexColor4, false, false, depthStochastic, lattice,
+                        vat != VatVariant::NONE, vat == VatVariant::BONES);
                     insertKeys(ShaderType::DEPTH, depthProperties, customDepthShaderId);
                     insertKeys(ShaderType::DEPTH, mesh.submeshes[s].depthShaderProperties, customDepthShaderId);
                     if (mesh.submeshes[s].gbufferShader) {

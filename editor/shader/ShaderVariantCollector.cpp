@@ -35,6 +35,9 @@
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/effects/EffectRegistry.h"
 #include "lattice/LatticeRender.h"
+#include "animation/VertexAnimation.h"
+#include "component/VertexAnimatorComponent.h"
+#include "pool/VertexAnimationPool.h"
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
 
@@ -272,6 +275,7 @@ namespace {
     // of each node's, attribute flags scanned (RenderSystem::scanSubmeshAttributes)
     struct ModelProbe {
         bool loaded = false;
+        bool vatMesh = false;   // a Vertex Animation mesh (.vat.glb): MeshComponent::vatMesh
         std::vector<Submesh> root;
         std::map<int, std::vector<Submesh>> nodes; // glTF node index
         std::filesystem::file_time_type writeTime;
@@ -332,6 +336,7 @@ namespace {
         probe.loaded = obj ? meshSystem->loadOBJ(entity, filename, false) : meshSystem->loadGLTF(entity, filename, false, false, false);
 
         if (probe.loaded){
+            probe.vatMesh = scene.getComponent<MeshComponent>(entity).vatMesh;
             probe.root = probeSubmeshes(scene.getComponent<MeshComponent>(entity));
             const ModelComponent& model = scene.getComponent<ModelComponent>(entity);
             for (const auto& [nodeIndex, nodeEntity] : model.meshNodesMapping){
@@ -365,6 +370,39 @@ namespace {
         ModelProbe& stored = modelProbes()[key];
         stored = std::move(probe);
         return stored;
+    }
+
+    // A mesh a Vertex Animator plays: the Vertex Animation variants it draws with besides the
+    // ones at rest (Vertices, Bones, or both when its asset cannot be read here), and whether it
+    // is a .vat.glb (no skin: at rest it draws without one)
+    struct VatTarget {
+        bool vertices = false;
+        bool bones = false;
+        bool vatMesh = false;
+    };
+
+    VatTarget vatTargetOf(EntityRegistry* registry, Entity entity, bool vatMesh){
+        VatTarget target;
+        target.vatMesh = vatMesh;
+        if (!registry || !registry->isComponentRegistered<VertexAnimatorComponent>()){
+            return target;
+        }
+        const VertexAnimatorComponent* animator = registry->findComponent<VertexAnimatorComponent>(entity);
+        if (!animator){
+            return target;
+        }
+        std::shared_ptr<const vat::VertexAnimation> asset = animator->asset;
+        if (!asset && !animator->animation.empty()){
+            asset = VertexAnimationPool::getOrLoad(animator->animation);
+        }
+        if (asset){
+            target.bones = asset->getData().mode == vat::VatMode::Bones;
+            target.vertices = !target.bones;
+        }else{
+            target.vertices = true;
+            target.bones = true;
+        }
+        return target;
     }
 
     class Collector {
@@ -460,10 +498,12 @@ namespace {
         }
 
         // lattice: the mesh is bound to a lattice (LatticeRender::isLatticeTarget), so it also
-        // draws with the lattice variants (the bindings can be switched off at runtime: both)
+        // draws with the lattice variants (the bindings can be switched off at runtime: both).
+        // vat: a Vertex Animator plays it, so it also draws with those variants (and at rest
+        // until its animation is on the GPU, or when the animator is off: both)
         void collectSubmesh(const MeshComponent& mesh, Submesh submesh, const std::vector<const Buffer*>* buffers,
                             const TerrainComponent* terrain, const InstancedMeshComponent* instmesh, bool mirror,
-                            bool lattice = false){
+                            bool lattice = false, const VatTarget& vat = VatTarget()){
             // MeshSystem::update turns the texture rect path on before the mesh loads
             if (MeshSystem::usesTextureRect(submesh)){
                 submesh.hasTextureRect = true;
@@ -482,8 +522,27 @@ namespace {
             const uint16_t passShaderId = hasPass ? ShaderPool::registerCustomShader(RenderSystem::getSubmeshExtraPassReference(submesh)) : 0;
             // (a terrain is never deformed)
             const bool latticeVariants = lattice && !terrain;
+            // (a terrain never plays one)
+            std::vector<VatVariant> vatVariants{VatVariant::NONE};
+            if (vat.vertices && !terrain){
+                vatVariants.push_back(VatVariant::VERTICES);
+            }
+            if (vat.bones && !terrain){
+                vatVariants.push_back(VatVariant::BONES);
+            }
+            // the geometry as RenderSystem::getSubmeshShaderInputs gives it, whatever the
+            // variant the mesh draws with now
+            const bool restSkinning = submesh.hasSkinning && !mesh.vatMesh && !vat.vatMesh;
+            const bool restMorph = !mesh.vatMesh && !vat.vatMesh;
+            for (VatVariant vatVariant : vatVariants)
             for (int latticeVariant = 0; latticeVariant <= (latticeVariants ? 1 : 0); latticeVariant++){
                 inputs.lattice = latticeVariant != 0;
+                inputs.vat = vatVariant;
+                const bool rest = vatVariant == VatVariant::NONE;
+                inputs.skinning = rest && restSkinning;
+                inputs.morphTarget = rest && restMorph && submesh.hasMorphTarget;
+                inputs.morphNormal = rest && restMorph && submesh.hasMorphNormal;
+                inputs.morphTangent = rest && restMorph && submesh.hasMorphTangent;
                 for (const MeshShaderEnvironment& environment : environments){
                     const SubmeshShaderVariant variant = RenderSystem::getSubmeshShaderVariant(environment, inputs);
                     insertKeys(ShaderType::MESH, variant.properties, meshShaderId);
@@ -510,6 +569,7 @@ namespace {
             const InstancedMeshComponent* instmesh = registry->findComponent<InstancedMeshComponent>(entity);
             const bool mirror = registry->findComponent<MirrorComponent>(entity) != nullptr;
             const bool lattice = LatticeRender::isLatticeTarget(registry, entity);
+            const VatTarget vat = vatTargetOf(registry, entity, mesh.vatMesh);
 
             // Generated meshes: the layout their generator gives them, whatever is saved
             const TerrainComponent* terrain = registry->findComponent<TerrainComponent>(entity);
@@ -537,9 +597,9 @@ namespace {
                 // material (RenderSystem::loadMesh), so they draw with the same variant
                 const unsigned int submeshes = terrain ? 1 : generated->numSubmeshes;
                 for (unsigned int s = 0; s < submeshes; s++){
-                    collectSubmesh(*generated, generated->submeshes[s], &buffers, terrain, instmesh, mirror, lattice);
+                    collectSubmesh(*generated, generated->submeshes[s], &buffers, terrain, instmesh, mirror, lattice, vat);
                     if (s == 0 && lentBaseColor)
-                        collectSubmesh(*generated, lent(generated->submeshes[s]), &buffers, terrain, instmesh, mirror, lattice);
+                        collectSubmesh(*generated, lent(generated->submeshes[s]), &buffers, terrain, instmesh, mirror, lattice, vat);
                 }
                 return;
             }
@@ -550,9 +610,9 @@ namespace {
                 return;
             }
             for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
-                collectSubmesh(mesh, mesh.submeshes[s], &buffers, nullptr, instmesh, mirror, lattice);
+                collectSubmesh(mesh, mesh.submeshes[s], &buffers, nullptr, instmesh, mirror, lattice, vat);
                 if (s == 0 && lentBaseColor)
-                    collectSubmesh(mesh, lent(mesh.submeshes[s]), &buffers, nullptr, instmesh, mirror, lattice);
+                    collectSubmesh(mesh, lent(mesh.submeshes[s]), &buffers, nullptr, instmesh, mirror, lattice, vat);
             }
         }
 
@@ -566,16 +626,18 @@ namespace {
 
         // A model mesh: the file's submeshes, with the fields saved over them (overrideFields)
         // and the renderer settings of the mesh they load into
-        void collectModelSubmeshes(EntityRegistry* registry, Entity entity, const MeshComponent& mesh, const std::vector<Submesh>& probed){
+        void collectModelSubmeshes(EntityRegistry* registry, Entity entity, const MeshComponent& mesh, const std::vector<Submesh>& probed,
+                                   bool vatMesh = false){
             const InstancedMeshComponent* instmesh = registry ? registry->findComponent<InstancedMeshComponent>(entity) : nullptr;
             const bool mirror = registry && registry->findComponent<MirrorComponent>(entity) != nullptr;
             const bool lattice = registry && LatticeRender::isLatticeTarget(registry, entity);
+            const VatTarget vat = vatTargetOf(registry, entity, vatMesh);
             for (size_t s = 0; s < probed.size(); s++){
                 Submesh submesh = probed[s];
                 if (s < mesh.numSubmeshes && mesh.submeshes[s].overrideFields != 0){
                     MeshSystem::applySubmeshOverride(mesh.submeshes[s], submesh);
                 }
-                collectSubmesh(mesh, submesh, nullptr, nullptr, instmesh, mirror, lattice);
+                collectSubmesh(mesh, submesh, nullptr, nullptr, instmesh, mirror, lattice, vat);
             }
         }
 
@@ -594,7 +656,7 @@ namespace {
             // (MeshComponent is large in a build with fixed capacities, kept off the stack)
             const std::unique_ptr<MeshComponent> defaultMesh = std::make_unique<MeshComponent>();
             if (rootMesh){
-                collectModelSubmeshes(registry, entity, *rootMesh, probe.root);
+                collectModelSubmeshes(registry, entity, *rootMesh, probe.root, probe.vatMesh);
             }
             std::set<int> mappedNodes;
             for (const auto& [nodeIndex, nodeEntity] : model.meshNodesMapping){
@@ -606,15 +668,15 @@ namespace {
                 auto probed = probe.nodes.find(nodeIndex);
                 if (probed != probe.nodes.end()){
                     mappedNodes.insert(nodeIndex);
-                    collectModelSubmeshes(registry, nodeEntity, *nodeMesh, probed->second);
+                    collectModelSubmeshes(registry, nodeEntity, *nodeMesh, probed->second, probe.vatMesh);
                 }else{
                     // The file loads this node into the GameObject's own mesh here
-                    collectModelSubmeshes(registry, nodeEntity, *nodeMesh, probe.root);
+                    collectModelSubmeshes(registry, nodeEntity, *nodeMesh, probe.root, probe.vatMesh);
                 }
             }
             for (const auto& [nodeIndex, submeshes] : probe.nodes){
                 if (!mappedNodes.count(nodeIndex)){
-                    collectModelSubmeshes(nullptr, NULL_ENTITY, *defaultMesh, submeshes);
+                    collectModelSubmeshes(nullptr, NULL_ENTITY, *defaultMesh, submeshes, probe.vatMesh);
                 }
             }
         }
