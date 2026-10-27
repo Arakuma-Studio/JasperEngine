@@ -7,7 +7,7 @@ from harness import Editor
 
 EDITOR = {"create": True, "name": "MCP Resources"}
 
-DOCS = ["animation", "cpp-scripting", "html-ui", "lattice", "lua-api", "physics", "post-processing", "prefabs", "shaders", "unity-glossary"]
+DOCS = ["animation", "cpp-scripting", "html-ui", "lattice", "lua-api", "physics", "post-processing", "prefabs", "shaders", "unity-glossary", "vertex-animation"]
 
 
 async def read_text(ed: Editor, uri: str) -> str:
@@ -100,3 +100,12 @@ async def test_prompts(ed: Editor):
     got = await ed.session.get_prompt("new_2d_game", {"idea": idea})
     text = got.messages[0].content.text
     ed.check_in(idea, text, "the prompt preserves the caller's complete game idea")
+
+
+async def test_tool_reference_has_no_other_section(ed: Editor):
+    """docs/mcp/TOOLS.md (tools/mcp/gen_tool_docs.py) files every tool under its module's section: none
+    falls into "Other" (a tools/*.cpp missing from the generator's MODULES)."""
+    from harness import REPO
+    text = (REPO / "docs" / "mcp" / "TOOLS.md").read_text()
+    ed.check("\n## Other\n" not in text and "[Other](#other)" not in text, "a tool is listed under Other: add its module to gen_tool_docs.py")
+    ed.check("- [Vertex animation](#vertex-animation) (1): `bake_vertex_animation`" in text, "bake_vertex_animation under Vertex animation")

@@ -20,6 +20,7 @@
 #include "window/PoseAnimationWindow.h"
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
+#include "window/VertexAnimationBakerWindow.h"
 #include "window/PhysicsPlacementWindow.h"
 #include "window/GameWindow.h"
 #include "window/MainToolbar.h"
@@ -146,6 +147,9 @@ namespace jasperengine::editor{
         // scene setting overrides: -1 keeps the scene's value
         int benchmarkMeshLod = -1;
         int benchmarkDepthPrepass = -1;
+        // --play: the scene is measured playing (scripts, animation, physics), not in edit mode
+        bool benchmarkPlay = false;
+        bool benchmarkPlayStarted = false;
         int benchmarkPhase = 0;
         int benchmarkPhaseFrames = 0;
         std::vector<float> benchmarkFps;
@@ -172,6 +176,7 @@ namespace jasperengine::editor{
         PoseAnimationWindow* poseAnimationWindow;
         TerrainEditWindow* terrainEditWindow;
         TextureSynthesisWindow* textureSynthesisWindow;
+        VertexAnimationBakerWindow* vertexAnimationBakerWindow;
         PhysicsPlacementWindow* physicsPlacementWindow;
         mcp::McpActivityWindow* mcpActivityWindow;
         PlayInput* playInput;
@@ -424,9 +429,11 @@ namespace jasperengine::editor{
         HierarchyWindow* getHierarchyWindow() const;
         TerrainEditWindow* getTerrainEditWindow() const;
         TextureSynthesisWindow* getTextureSynthesisWindow() const;
+        VertexAnimationBakerWindow* getVertexAnimationBakerWindow() const;
         PhysicsPlacementWindow* getPhysicsPlacementWindow() const;
         MainToolbar* getMainToolbar() const;
         void openTextureSynthesis(const std::filesystem::path& image, bool editRecipe) override;
+        void openVertexAnimationBaker(const std::filesystem::path& path, bool bakeNow) override;
         // Game view: setOpen()/isOpen() toggle it (Window menu), requestFocus() shows it
         GameWindow* getGameWindow() const;
         SceneWindow* getSceneWindow() const;

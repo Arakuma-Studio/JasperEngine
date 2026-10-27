@@ -3271,6 +3271,25 @@
 		4A534E475BC653E2B289D2B2 /* AnimationClipPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477A468AF36BAE7CED /* AnimationClipPool.h */; };
 		4A534E473A3476C38FBCCB3B /* ClipTypes.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47EBF307C4032AEC37 /* ClipTypes.h */; };
 		4A534E47D8B688AFD86C2F95 /* AnimationClipPoolTesting.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D8CD22ABA46E1C50 /* AnimationClipPoolTesting.h */; };
+		4A534E47CC13C8C412DB108A /* VertexAnimatorRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CF58BA7A83C3FA66 /* VertexAnimatorRuntime.cpp */; };
+		4A534E473755AC2BABF1B73D /* VertexAnimatorRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CF58BA7A83C3FA66 /* VertexAnimatorRuntime.cpp */; };
+		4A534E4757AC3EE186286D26 /* VertexAnimation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CAF9C2B816B80C47 /* VertexAnimation.cpp */; };
+		4A534E47A5EEED9853189CC6 /* VertexAnimation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CAF9C2B816B80C47 /* VertexAnimation.cpp */; };
+		4A534E47B9FCC85DD853EC1E /* VertexAnimator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47DA7ED38894929ED6 /* VertexAnimator.cpp */; };
+		4A534E47ECA5B9EB455C1097 /* VertexAnimator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47DA7ED38894929ED6 /* VertexAnimator.cpp */; };
+		4A534E47155BF30590DC3BB4 /* VertexAnimationPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47BD942558C674B8D0 /* VertexAnimationPool.cpp */; };
+		4A534E474E1B498C285A15F3 /* VertexAnimationPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47BD942558C674B8D0 /* VertexAnimationPool.cpp */; };
+		4A534E4759966A2ED417BECD /* CpuSkin.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473A33F3DC4FB8A61C /* CpuSkin.cpp */; };
+		4A534E47641FBAF4D870EBAF /* CpuSkin.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473A33F3DC4FB8A61C /* CpuSkin.cpp */; };
+		4A534E474B1E43D590AD23B0 /* VertexAnimatorSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470570E826DC760188 /* VertexAnimatorSystem.cpp */; };
+		4A534E47A95FB7E661773FC4 /* VertexAnimatorSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470570E826DC760188 /* VertexAnimatorSystem.cpp */; };
+		4A534E476AF4D3453B6FDB2F /* VertexAnimation.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AD5E53AFFD11DDEA /* VertexAnimation.h */; };
+		4A534E4721B3FC78A3346BD5 /* VertexAnimatorRuntime.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E472C320572A975C725 /* VertexAnimatorRuntime.h */; };
+		4A534E47A2C66EC65C694120 /* VertexAnimatorComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F4D574AFECE5C17E /* VertexAnimatorComponent.h */; };
+		4A534E47C43121F25A682263 /* VertexAnimator.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E1D001E6946218B1 /* VertexAnimator.h */; };
+		4A534E4744BC97782E329223 /* VertexAnimationPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47401990531DC7D72F /* VertexAnimationPool.h */; };
+		4A534E471E767D9BE2C4AF8A /* CpuSkin.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4754E256FE333DE6E7 /* CpuSkin.h */; };
+		4A534E47348D45F4BBD323C9 /* VertexAnimatorSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474C490B38DD8DB742 /* VertexAnimatorSystem.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -6619,6 +6638,19 @@
 		4A534E477A468AF36BAE7CED /* AnimationClipPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimationClipPool.h; sourceTree = "<group>"; };
 		4A534E47EBF307C4032AEC37 /* ClipTypes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ClipTypes.h; sourceTree = "<group>"; };
 		4A534E47D8CD22ABA46E1C50 /* AnimationClipPoolTesting.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimationClipPoolTesting.h; sourceTree = "<group>"; };
+		4A534E47CF58BA7A83C3FA66 /* VertexAnimatorRuntime.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VertexAnimatorRuntime.cpp; sourceTree = "<group>"; };
+		4A534E47CAF9C2B816B80C47 /* VertexAnimation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VertexAnimation.cpp; sourceTree = "<group>"; };
+		4A534E47DA7ED38894929ED6 /* VertexAnimator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VertexAnimator.cpp; sourceTree = "<group>"; };
+		4A534E47BD942558C674B8D0 /* VertexAnimationPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VertexAnimationPool.cpp; sourceTree = "<group>"; };
+		4A534E473A33F3DC4FB8A61C /* CpuSkin.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CpuSkin.cpp; sourceTree = "<group>"; };
+		4A534E470570E826DC760188 /* VertexAnimatorSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VertexAnimatorSystem.cpp; sourceTree = "<group>"; };
+		4A534E47AD5E53AFFD11DDEA /* VertexAnimation.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VertexAnimation.h; sourceTree = "<group>"; };
+		4A534E472C320572A975C725 /* VertexAnimatorRuntime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VertexAnimatorRuntime.h; sourceTree = "<group>"; };
+		4A534E47F4D574AFECE5C17E /* VertexAnimatorComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VertexAnimatorComponent.h; sourceTree = "<group>"; };
+		4A534E47E1D001E6946218B1 /* VertexAnimator.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VertexAnimator.h; sourceTree = "<group>"; };
+		4A534E47401990531DC7D72F /* VertexAnimationPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VertexAnimationPool.h; sourceTree = "<group>"; };
+		4A534E4754E256FE333DE6E7 /* CpuSkin.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CpuSkin.h; sourceTree = "<group>"; };
+		4A534E474C490B38DD8DB742 /* VertexAnimatorSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VertexAnimatorSystem.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -7892,6 +7924,10 @@
 				4A534E47BCB011C3E31AFD7C /* KeyframeSampling.h */,
 				4A534E47D4B21584C2974167 /* ModelSubClips.h */,
 				4A534E47EBF307C4032AEC37 /* ClipTypes.h */,
+				4A534E47CF58BA7A83C3FA66 /* VertexAnimatorRuntime.cpp */,
+				4A534E47CAF9C2B816B80C47 /* VertexAnimation.cpp */,
+				4A534E47AD5E53AFFD11DDEA /* VertexAnimation.h */,
+				4A534E472C320572A975C725 /* VertexAnimatorRuntime.h */,
 			);
 			path = animation;
 			sourceTree = "<group>";
@@ -8034,6 +8070,8 @@
 				7162FC3B25962A0E0075B97D /* TextureRender.h */,
 				503152450000000000000010 /* PipelineState.h */,
 				4A534E4749FAA44055DBA213 /* RenderBackendTime.h */,
+				4A534E473A33F3DC4FB8A61C /* CpuSkin.cpp */,
+				4A534E4754E256FE333DE6E7 /* CpuSkin.h */,
 			);
 			path = render;
 			sourceTree = "<group>";
@@ -8101,6 +8139,7 @@
 				48544D4C0000000000000045 /* UIDocumentComponent.h */,
 				4A534E47C6821B885199BD43 /* PoseAnimatorComponent.h */,
 				4A534E47625F8F2E8CA675B3 /* AnimationPlayerComponent.h */,
+				4A534E47F4D574AFECE5C17E /* VertexAnimatorComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -8186,6 +8225,8 @@
 				4A534E4730B30EBAC88D841B /* PoseAnimator.h */,
 				4A534E47DFCDF1B297C0DA2F /* AnimationPlayer.cpp */,
 				4A534E474E482C208244479A /* AnimationPlayer.h */,
+				4A534E47DA7ED38894929ED6 /* VertexAnimator.cpp */,
+				4A534E47E1D001E6946218B1 /* VertexAnimator.h */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -8237,6 +8278,8 @@
 				4A534E47463DE0CF0861026A /* InstanceSort.h */,
 				4A534E470DA1EC3E5E63F3DD /* PoseAnimatorSystem.h */,
 				4A534E47452204C1B7C473FF /* ActionSystemPlayers.cpp */,
+				4A534E470570E826DC760188 /* VertexAnimatorSystem.cpp */,
+				4A534E474C490B38DD8DB742 /* VertexAnimatorSystem.h */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -9393,6 +9436,8 @@
 				4A534E47454541377D81967E /* AnimationClipPool.cpp */,
 				4A534E477A468AF36BAE7CED /* AnimationClipPool.h */,
 				4A534E47D8CD22ABA46E1C50 /* AnimationClipPoolTesting.h */,
+				4A534E47BD942558C674B8D0 /* VertexAnimationPool.cpp */,
+				4A534E47401990531DC7D72F /* VertexAnimationPool.h */,
 			);
 			path = pool;
 			sourceTree = "<group>";
@@ -11830,6 +11875,13 @@
 				4A534E475BC653E2B289D2B2 /* AnimationClipPool.h in Headers */,
 				4A534E473A3476C38FBCCB3B /* ClipTypes.h in Headers */,
 				4A534E47D8B688AFD86C2F95 /* AnimationClipPoolTesting.h in Headers */,
+				4A534E476AF4D3453B6FDB2F /* VertexAnimation.h in Headers */,
+				4A534E4721B3FC78A3346BD5 /* VertexAnimatorRuntime.h in Headers */,
+				4A534E47A2C66EC65C694120 /* VertexAnimatorComponent.h in Headers */,
+				4A534E47C43121F25A682263 /* VertexAnimator.h in Headers */,
+				4A534E4744BC97782E329223 /* VertexAnimationPool.h in Headers */,
+				4A534E471E767D9BE2C4AF8A /* CpuSkin.h in Headers */,
+				4A534E47348D45F4BBD323C9 /* VertexAnimatorSystem.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -13866,6 +13918,12 @@
 				4A534E47C483368DEBAAFF66 /* AnimationPlayer.cpp in Sources */,
 				4A534E47432EC41600E2F5B1 /* AnimationClipPool.cpp in Sources */,
 				4A534E47086278F8BB02588C /* ActionSystemPlayers.cpp in Sources */,
+				4A534E47CC13C8C412DB108A /* VertexAnimatorRuntime.cpp in Sources */,
+				4A534E4757AC3EE186286D26 /* VertexAnimation.cpp in Sources */,
+				4A534E47B9FCC85DD853EC1E /* VertexAnimator.cpp in Sources */,
+				4A534E47155BF30590DC3BB4 /* VertexAnimationPool.cpp in Sources */,
+				4A534E4759966A2ED417BECD /* CpuSkin.cpp in Sources */,
+				4A534E474B1E43D590AD23B0 /* VertexAnimatorSystem.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14281,6 +14339,12 @@
 				4A534E4783B9FA2F22FE6B57 /* AnimationPlayer.cpp in Sources */,
 				4A534E4720A5E7BECF56A42E /* AnimationClipPool.cpp in Sources */,
 				4A534E473A1CBC7D5467E451 /* ActionSystemPlayers.cpp in Sources */,
+				4A534E473755AC2BABF1B73D /* VertexAnimatorRuntime.cpp in Sources */,
+				4A534E47A5EEED9853189CC6 /* VertexAnimation.cpp in Sources */,
+				4A534E47ECA5B9EB455C1097 /* VertexAnimator.cpp in Sources */,
+				4A534E474E1B498C285A15F3 /* VertexAnimationPool.cpp in Sources */,
+				4A534E47641FBAF4D870EBAF /* CpuSkin.cpp in Sources */,
+				4A534E47A95FB7E661773FC4 /* VertexAnimatorSystem.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

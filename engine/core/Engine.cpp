@@ -27,6 +27,7 @@
 #include "component/ActionComponent.h"
 #include "component/PoseAnimatorComponent.h"
 #include "component/AnimationPlayerComponent.h"
+#include "component/VertexAnimatorComponent.h"
 #include "pool/TexturePool.h"
 #include "pool/SoundPool.h"
 #include "pool/TextureDataPool.h"
@@ -35,6 +36,7 @@
 #include "pool/ModelPool.h"
 #include "pool/MeshLodPool.h"
 #include "pool/AnimationClipPool.h"
+#include "pool/VertexAnimationPool.h"
 #include "shader/RuntimeShaderCompiler.h"
 #ifndef NO_THREAD_SUPPORT
     #include "thread/ThreadPoolManager.h"
@@ -817,6 +819,8 @@ void Engine::endCompositeFramebuffer(){
 }
 
 void Engine::clearPools(){
+    // first: its assets' payload textures go back to the texture pools cleared next
+    VertexAnimationPool::clear();
     TexturePool::clear();
     SoundPool::clear();
     TextureDataPool::clear();
@@ -828,6 +832,7 @@ void Engine::clearPools(){
 }
 
 void Engine::clearUnusedPools(){
+    VertexAnimationPool::clearUnused();
     TexturePool::clearUnused();
     SoundPool::clearUnused();
     TextureDataPool::clearUnused();
@@ -1001,6 +1006,15 @@ void Engine::clearComponentSubscriptions(Scene* scene) {
         AnimationPlayerComponent& player = players->getComponentFromIndex(i);
         player.onEvent.clear();
         player.onFinish.clear();
+    }
+
+    auto vertexAnimators = scene->getComponentArray<VertexAnimatorComponent>();
+    for (size_t i = 0; i < vertexAnimators->size(); i++) {
+        VertexAnimatorComponent& animator = vertexAnimators->getComponentFromIndex(i);
+        animator.onEvent.clear();
+        animator.onFinish.clear();
+        animator.onInstanceEvent.clear();
+        animator.onInstanceFinish.clear();
     }
 }
 

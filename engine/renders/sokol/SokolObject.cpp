@@ -19,6 +19,8 @@ using namespace jasperengine;
 namespace {
     // pipelines made and not destroyed yet (SokolObject::getLivePipelineCount)
     std::atomic<int> livePipelines(0);
+    // loads with an unfed vertex input (SokolObject::getUnfedVertexInputLoads)
+    std::atomic<int> unfedVertexInputLoads(0);
 
     // the bit index of a pipeline type
     int pipelineIndex(PipelineType pipType){
@@ -65,6 +67,7 @@ SokolObject::SokolObject(){
     lastDynamicGeneration = 0;
     loadState = RenderState();
     bindSlotIndex = 0;
+    shaderInputs = 0;
     blendOverride = false;
     blendState = BlendState();
     resetPipelines();
@@ -83,6 +86,10 @@ void SokolObject::resetPipelines(){
 
 int SokolObject::getLivePipelineCount(){
     return livePipelines.load();
+}
+
+int SokolObject::getUnfedVertexInputLoads(){
+    return unfedVertexInputLoads.load();
 }
 
 SokolObject::SokolObject(const SokolObject& rhs) = default;
@@ -291,6 +298,7 @@ void SokolObject::beginLoad(PrimitiveType primitiveType){
 
     bindSlotIndex = 0;
     bufferToBindSlot.clear();
+    shaderInputs = 0;
 
     blendOverride = false;
     blendState = BlendState();
@@ -298,6 +306,15 @@ void SokolObject::beginLoad(PrimitiveType primitiveType){
 
 void SokolObject::setShader(ShaderRender* shader){
     pipeline_desc.shader = shader->backend.get();
+    shaderInputs = 0;
+    for (const ShaderStage& stage : shader->shaderData.stages){
+        if (stage.type != ShaderStageType::VERTEX)
+            continue;
+        for (const ShaderAttr& attr : stage.attributes){
+            if (attr.location >= 0 && attr.location < SG_MAX_VERTEX_ATTRIBUTES)
+                shaderInputs |= (1u << attr.location);
+        }
+    }
 }
 
 void SokolObject::setIndex(BufferRender* buffer, AttributeDataType dataType, size_t offset){
@@ -660,8 +677,26 @@ sg_pipeline& SokolObject::pipelineOf(PipelineType pipType){
     return pipelines[index < PIPELINE_TYPES ? index : 0];
 }
 
+// An input the vertex shader declares with no buffer behind it reads zero on OpenGL but is
+// undefined on Vulkan (and invalid on Metal and D3D11): a morph mesh with fewer targets than
+// the shader declares drew nothing on NVIDIA once earlier draws had left garbage there.
+// The callers bind every input (RenderSystem::bindUnfedMorphInputs); one left out is
+// reported here, and counted for the tests.
+void SokolObject::checkVertexInputs(){
+    uint32_t unfed = 0;
+    for (int slot = 0; slot < SG_MAX_VERTEX_ATTRIBUTES; slot++){
+        if ((shaderInputs & (1u << slot)) && pipeline_desc.layout.attrs[slot].format == SG_VERTEXFORMAT_INVALID)
+            unfed |= (1u << slot);
+    }
+    if (unfed){
+        unfedVertexInputLoads++;
+        Log::warn("A pipeline leaves vertex inputs of its shader (locations mask 0x%x) without a buffer: undefined on Vulkan", unfed);
+    }
+}
+
 bool SokolObject::endLoad(uint16_t types, const RenderState& state, int samples){
     loadState = state;
+    checkVertexInputs();
     // the PIP_MSAA* types' sample count, given by the RenderSystem loading the object (never
     // shared state: another scene or the editor's thumbnail thread loads with its own)
     msaaSamples = samples > 1 ? samples : 1;
@@ -692,6 +727,7 @@ bool SokolObject::endLoad(uint16_t types, const RenderState& state, int samples)
 }
 
 bool SokolObject::endLoadDynamic(PrimitiveType primitiveType, IndexType indexType){
+    checkVertexInputs();
     baseDesc = pipeline_desc;
     baseDesc.primitive_type = getPrimitiveType(primitiveType);
     switch (indexType){

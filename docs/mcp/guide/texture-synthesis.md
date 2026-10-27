@@ -15,6 +15,11 @@ right-click an image in the Project window > **Synthesize Texture...**); both ru
 | `inpaint` | the example with a region regenerated from the rest: remove a logo, a blemish, a visible seam, a watermark | the example's |
 | `guided` | the examples rearranged to follow `target_guide` (a layout image: paths, patches, a height map); each example may have its own `guide` (e.g. its height map) | `size`, default the target guide's |
 
+`inpaint` regenerates what `mask` marks: `{path, channel, invert}`, `path` a mask image (white =
+regenerate) read from `channel` (`luma` default, `r`, `g`, `b`, `a`), `invert: true` swaps it;
+without `mask` (or without its `path`) the example's transparent pixels are regenerated. `size`
+is for the modes that make a new texture, not `make_tileable` / `inpaint`.
+
 `tileable` makes a new texture; `make_tileable` keeps the photo you have and fixes only its
 edges. Prefer `make_tileable` when the example is already the right content and size, `tileable`
 when you want another size or more variation.
@@ -61,7 +66,7 @@ when you want another size or more variation.
    step (`undo` with scope `project`), refused when they exist unless `overwrite: true` (checked
    again when the run finishes: a file another call wrote meanwhile is not replaced). The set is
    written whole or not at all: if one file can't be written, the others keep their content.
-   Seeds are 0..2^53 as numbers; larger ones (from the CLI or a recipe) are decimal strings.
+   Seeds are 0..2^53 as numbers; larger ones (from the CLI or a recipe, up to 2^64-1) are decimal strings.
    Opening another project cancels a run; its job fails and nothing is written.
 
 Output paths (`output`, companion `output`s, `uncertainty_output`) must be inside the assets
@@ -113,7 +118,8 @@ so a watching human sees the live preview (the window's Save writes it when `out
 
 Time grows with the output's pixels (Balanced, 8 cores): about 1 s at 512 x 512, 4-5 s at
 1024 x 1024, 20 s at 2048 x 2048. `draft` is about twice as fast, `high` about twice as slow.
-At most 4096 x 4096 pixels (each side 1..8192). Inputs: each image at most 8192 per side, and
+`size` is one number (a square) or `{width, height}`: at most 4096 x 4096 pixels (each side
+1..8192). Inputs: each image at most 8192 per side, and
 all of them together (examples, companions, masks, guides) at most 268 megapixels, e.g. one
 8192 x 8192 example with three companion maps; both are checked from the files' headers before
 anything is decoded. Cancelling reaches the loading and preparation too (within about a second),

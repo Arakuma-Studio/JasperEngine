@@ -73,6 +73,8 @@ namespace jasperengine::editor{
         UpdateFlags_PoseAnimator_Reload = (uint64_t)1 << 41,
         // an Animation Player's clip list changed: the next update reloads and rebinds it
         UpdateFlags_AnimationPlayer_Reload = (uint64_t)1 << 42,
+        // a Vertex Animator's animation changed: load it again (the fade is kept >= 0)
+        UpdateFlags_VertexAnimator_Reload = (uint64_t)1 << 43,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -141,12 +143,14 @@ namespace jasperengine::editor{
         LatticeTracksComponent,
         PoseAnimatorComponent,
         // Unity's legacy Animation component (animation clips spec 3.2)
-        AnimationPlayerComponent
+        AnimationPlayerComponent,
+        // baked vertex / bone animation played on the GPU (vertex animation spec 3.3)
+        VertexAnimatorComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::AnimationPlayerComponent;
+    constexpr ComponentType LastComponentType = ComponentType::VertexAnimatorComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
 
     enum class PropertyType{
@@ -257,7 +261,7 @@ namespace jasperengine::editor{
         static std::string getShaderReferenceForProperty(Scene* scene, Entity entity, ComponentType component, const std::string& propertyName);
         // The lighting modes a material may ask of a shader, its default first: a manifest's
         // @lighting list (none without the directive), else the built-in Lit's (and a fork's
-        // without a manifest) pixel, vertex, mixed. AUTO is always allowed and draws the
+        // without a manifest) pixel, vertex, mixed, none. AUTO is always allowed and draws the
         // default. Asks RenderSystem::resolveLighting / supportsLighting (the runtime's rules).
         static std::vector<MaterialLighting> getShaderLightingModes(const ShaderManifest* manifest);
         static bool supportsLighting(MaterialLighting mode, const ShaderManifest* manifest);

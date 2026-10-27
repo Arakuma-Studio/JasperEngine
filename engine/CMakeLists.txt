@@ -28,6 +28,9 @@ option(JASPERENGINE_LATTICE_TESTS "Build jasperengine-lattice-tests" OFF)
 # googletest suite of the animation clips core (engine/tests/anim): clip IO, sampling, binding,
 # pool and players against the engine library; no GPU or window
 option(JASPERENGINE_ANIM_TESTS "Build jasperengine-anim-tests" OFF)
+# googletest suite of the vertex animation asset (engine/tests/vat): .vat IO, payload addressing,
+# playback math, the .vat.glb reader and the pool against the engine library; no GPU or window
+option(JASPERENGINE_VAT_TESTS "Build jasperengine-vat-tests" OFF)
 
 # =============================================================
 # STANDALONE PROJECT SETUP
@@ -874,9 +877,11 @@ set(JASPERENGINE_SRCS
     core/animation/AnimationClipIO.cpp
     core/animation/AnimationEvent.cpp
     core/animation/AnimationPlayerRuntime.cpp
+    core/animation/VertexAnimatorRuntime.cpp
     core/animation/ClipBinding.cpp
     core/animation/KeyframeSampling.cpp
     core/animation/ModelSubClips.cpp
+    core/animation/VertexAnimation.cpp
     core/pose/HumanBones.cpp
     core/pose/HumanoidMap.cpp
     core/pose/HumanoidMapIO.cpp
@@ -990,6 +995,7 @@ set(JASPERENGINE_SRCS
     core/object/Model.cpp
     core/object/PoseAnimator.cpp
     core/object/AnimationPlayer.cpp
+    core/object/VertexAnimator.cpp
     core/object/GameObject.cpp
     core/object/ShadowCaster2D.cpp
     core/object/Points.cpp
@@ -1027,6 +1033,7 @@ set(JASPERENGINE_SRCS
     core/pool/ModelPool.cpp
     core/pool/MeshLodPool.cpp
     core/pool/AnimationClipPool.cpp
+    core/pool/VertexAnimationPool.cpp
     core/registry/EntityCloner.cpp
     core/registry/EntityRegistry.cpp
     core/registry/TagManager.cpp
@@ -1036,6 +1043,7 @@ set(JASPERENGINE_SRCS
     core/physics/PlacementWorld.cpp
     core/render/BufferRender.cpp
     core/render/CameraRender.cpp
+    core/render/CpuSkin.cpp
     core/render/FramebufferRender.cpp
     core/render/ObjectRender.cpp
     core/render/ShaderRender.cpp
@@ -1068,6 +1076,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/ActionSystem.cpp
     core/subsystem/ActionSystemPlayers.cpp
     core/subsystem/PoseAnimatorSystem.cpp
+    core/subsystem/VertexAnimatorSystem.cpp
     core/subsystem/FluidSystem.cpp
     core/fluid/FluidSimulator.cpp
     core/fluid/FluidPresets.cpp
@@ -1436,4 +1445,8 @@ endif()
 
 if(JASPERENGINE_ANIM_TESTS)
     add_subdirectory(tests/anim)
+endif()
+
+if(JASPERENGINE_VAT_TESTS)
+    add_subdirectory(tests/vat)
 endif()

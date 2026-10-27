@@ -9,6 +9,7 @@
 #include "util/Util.h"
 
 #include "animation/AnimationClipIO.h"
+#include "animation/VertexAnimation.h"
 #include "yaml-cpp/yaml.h"
 
 #include <algorithm>
@@ -60,14 +61,26 @@ namespace {
         return value;
     }
 
-    // .anim clips are JSON: their GUID is the top-level "guid" member (AnimationClipIO)
+    // .anim clips and .vat Vertex Animations are JSON: their GUID is the top-level "guid" member
+    // (AnimationClipIO reads and replaces it in any JSON object that has a "version" member)
     bool isClipFile(const fs::path& path) {
-        return editor::Util::isAnimationClipFile(path.string());
+        return editor::Util::isAnimationClipFile(path.string()) || editor::Util::isVertexAnimationFile(path.string());
+    }
+
+    // the JSON asset parses as its own type; a broken or foreign file (a Unity YAML .anim, broken
+    // JSON) is left alone: its error must keep its line
+    bool parsesAsJsonAsset(const fs::path& path, const std::string& text) {
+        if (editor::Util::isVertexAnimationFile(path.string())) {
+            return vat::parseVat(text).ok();
+        }
+        return anim::parseClip(text).ok();
     }
 
     // for the warnings
     const char* kindOf(const std::string& relative) {
-        return editor::Util::isAnimationClipFile(relative) ? "Animation clip" : "Prefab";
+        if (editor::Util::isAnimationClipFile(relative)) return "Animation clip";
+        if (editor::Util::isVertexAnimationFile(relative)) return "Vertex Animation";
+        return "Prefab";
     }
 
     bool skippedDirectory(const std::string& name) {
@@ -79,7 +92,8 @@ namespace {
 }
 
 bool editor::AssetDatabase::isTrackedFile(const fs::path& path) {
-    return Util::isPrefabFile(path.string()) || Util::isAnimationClipFile(path.string());
+    return Util::isPrefabFile(path.string()) || Util::isAnimationClipFile(path.string()) ||
+           Util::isVertexAnimationFile(path.string());
 }
 
 std::string editor::AssetDatabase::generateGuid() {
@@ -142,7 +156,7 @@ bool editor::AssetDatabase::writeGuid(const fs::path& fullPath, const std::strin
         // the member replaced or inserted after "version", the rest of the text unchanged; a
         // file that is not a clip (a Unity YAML .anim, broken JSON: its error must keep its
         // line) is left alone
-        if (!anim::parseClip(text).ok() || !anim::replaceClipGuid(text, guid)) {
+        if (!parsesAsJsonAsset(fullPath, text) || !anim::replaceClipGuid(text, guid)) {
             return false;
         }
         if (!writeText(fullPath, text)) {
@@ -304,7 +318,7 @@ std::string editor::AssetDatabase::assignNewGuid(const std::string& relative, co
         // a clip that does not parse (a Unity YAML .anim, broken JSON) is reported by the clip
         // checks, not here
         std::string text;
-        if (!(isClipFile(relative) && readText(projectPath / relative, text) && !anim::parseClip(text).ok())) {
+        if (!(isClipFile(relative) && readText(projectPath / relative, text) && !parsesAsJsonAsset(relative, text))) {
             Out::warning("The GUID of %s is kept in memory only", relative.c_str());
         }
     }

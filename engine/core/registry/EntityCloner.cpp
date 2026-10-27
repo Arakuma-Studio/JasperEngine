@@ -167,6 +167,9 @@ void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneConte
     mesh.lattice = LatticeMeshState();
     mesh.lattice.wantsTessellation = wantsTessellation;
     mesh.lattice.tessellation = tessellation;
+    // the Vertex Animation draw state is the original's load's: the copy's own is made with
+    // its load (RenderSystem, from the copy's Vertex Animator)
+    mesh.vat = VatMeshState();
 }
 
 template<>
@@ -260,8 +263,10 @@ void prepare<SkyboxComponent>(SkyboxComponent& sky, Entity, CloneContext& ctx) {
 template<>
 void prepare<InstancedMeshComponent>(InstancedMeshComponent& instmesh, Entity, CloneContext&) {
     detachExternalBuffer(instmesh.buffer);
+    detachExternalBuffer(instmesh.vatBuffer);
     instmesh.renderInstances.clear();
     instmesh.renderBounds.clear();
+    instmesh.renderVat.clear();
     instmesh.numVisible = 0;
     for (InstanceViewRange& view : instmesh.views) {
         view = InstanceViewRange();
@@ -369,6 +374,36 @@ void prepare<AnimationPlayerComponent>(AnimationPlayerComponent& player, Entity,
     player.runtime.reset();
     player.onEvent.clear();
     player.onFinish.clear();
+}
+
+template<>
+void prepare<VertexAnimatorComponent>(VertexAnimatorComponent& animator, Entity, CloneContext& ctx) {
+    // the authored fields are copied (a copied attachment follows the copy); the copy loads,
+    // starts and plays on its own as a loaded scene starts it, with no callbacks
+    for (VertexAnimatorAttachment& attachment : animator.attachments) {
+        attachment.entity = ctx.remap(attachment.entity);
+    }
+    animator.preview = false;
+    animator.needsLoad = true;
+    animator.started = false;
+    animator.loadedGeneration = 0;
+    animator.loadError.clear();
+    animator.asset.reset();
+    animator.state = vat::VatTrackPair();
+    animator.instanceStates.clear();
+    animator.queued.clear();
+    animator.requests.clear();
+    animator.lastNow = 0.0f;
+    animator.runtime.reset();
+    animator.gpuMode = vat::VatMode::Vertices;
+    animator.gpuState0 = VertexAnimatorComponent().gpuState0;
+    animator.gpuState1 = VertexAnimatorComponent().gpuState1;
+    animator.gpuNow = 0.0f;
+    animator.gpuActive = false;
+    animator.onEvent.clear();
+    animator.onFinish.clear();
+    animator.onInstanceEvent.clear();
+    animator.onInstanceFinish.clear();
 }
 
 template<>
@@ -720,6 +755,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<LatticeTracksComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<PoseAnimatorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<AnimationPlayerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<VertexAnimatorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ScriptComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
 }
 

@@ -140,12 +140,17 @@ bool isPlayerWrapProperty(ComponentType component, const std::string& propertyNa
            endsWith(propertyName, "].wrap");
 }
 
+// A Vertex Animator's animation: a .vat (its GUID follows it, read-only over MCP)
+bool isVertexAnimationProperty(ComponentType component, const std::string& propertyName) {
+    return component == ComponentType::VertexAnimatorComponent && propertyName == "animation";
+}
+
 // String properties holding an asset reference instead of plain text: stored relative to the
 // assets folder, project-relative over MCP (a model's or document's filename, a Pose Animator's
-// animation, an Animation Player's clip)
+// animation, an Animation Player's clip, a Vertex Animator's animation)
 bool isAssetPathProperty(ComponentType component, const std::string& propertyName) {
     return propertyName == "filename" || (component == ComponentType::PoseAnimatorComponent && propertyName == "animation") ||
-           isPlayerClipProperty(component, propertyName);
+           isPlayerClipProperty(component, propertyName) || isVertexAnimationProperty(component, propertyName);
 }
 
 // Stochastic Tiling's values of a material, in the Inspector's ranges: false (and error) out of
@@ -1442,6 +1447,55 @@ bool clipPathFromJson(Project* project, const std::string& text, std::string& st
     return true;
 }
 
+// ---- Vertex Animator animation (vertex animation spec 6): a .vat, stored relative to the
+// assets folder, project-relative over MCP
+
+const char* const VAT_PATH_EXAMPLE = ".vat file, e.g. assets/vat/hero.vat";
+
+// The .vat's GUID: the database's, else the file's own "guid" key
+std::string vatFileGuid(Project* project, const fs::path& full) {
+    std::string guid = project->getAssetDatabase().getGuid(full);
+    if (guid.empty()) {
+        std::ifstream file(full, std::ios::binary);
+        const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        const Json json = Json::parse(text, nullptr, false);
+        if (json.is_object() && json.contains("guid") && json["guid"].is_string()) {
+            guid = json["guid"].get<std::string>();
+        }
+    }
+    return guid;
+}
+
+// animation as MCP sets it: an existing .vat (empty clears it); `guid` the .vat's GUID
+bool vatPathFromJson(Project* project, const std::string& text, std::string& stored, std::string& guid, std::string& error) {
+    stored.clear();
+    guid.clear();
+    if (text.empty()) {
+        return true;
+    }
+    std::string why;
+    if (!storedAssetPathFromJson(project, text, stored, why)) {
+        error = "animation must be a " + std::string(VAT_PATH_EXAMPLE) + ": " + why;
+        stored.clear();
+        return false;
+    }
+    if (!Util::isVertexAnimationFile(stored)) {
+        error = "animation must be a " + std::string(VAT_PATH_EXAMPLE) + " (bake one with bake_vertex_animation; the .vat.glb next to it is its Model).";
+        stored.clear();
+        return false;
+    }
+    const fs::path full = project->resolveAssetPath(stored);
+    std::error_code ec;
+    if (!fs::is_regular_file(full, ec)) {
+        error = "animation: " + text + " does not exist: bake it first with bake_vertex_animation (a " + VAT_PATH_EXAMPLE +
+                "), or list the baked ones with list_assets {type: \"vertex_animation\"}.";
+        stored.clear();
+        return false;
+    }
+    guid = vatFileGuid(project, full);
+    return true;
+}
+
 // "default", "once", "loop", "ping_pong", "clamp_forever"
 std::string clipWrapNames() {
     std::string names;
@@ -1467,6 +1521,49 @@ Json playerClipsToJson(Project* project, const std::vector<AnimationPlayerClip>&
 // checked again (a missing clip stays missing, R8). Any other entry is checked and stored as
 // clips[N].clip is. GUIDs never come from the caller: the held entry's, else the file's. Wraps
 // are checked.
+// A Vertex Animator's attachments as MCP writes them: [{socket, entity}] with the entity as an
+// id or a path of names ("Hero/Sword"), stored as ids of the same scene
+bool normalizeVertexAnimatorAttachments(SceneProject* scene, YAML::Node value, std::string& error) {
+    const YAML::Node& constValue = value;
+    const YAML::Node attachments = constValue["attachments"];
+    if (!attachments || attachments.IsNull()) {
+        value["attachments"] = YAML::Node(YAML::NodeType::Sequence);
+        return true;
+    }
+    const char* const shape = "attachments must be a list of {socket, entity}, e.g. [{\"socket\": \"RightHand\", \"entity\": \"Hero/Sword\"}].";
+    if (!attachments.IsSequence()) {
+        error = shape;
+        return false;
+    }
+    YAML::Node rebuilt(YAML::NodeType::Sequence);
+    for (size_t i = 0; i < attachments.size(); i++) {
+        const YAML::Node entry = attachments[i];
+        if (!entry.IsMap()) {
+            error = std::string("attachments[") + std::to_string(i) + "]: " + shape;
+            return false;
+        }
+        YAML::Node out;
+        const YAML::Node socket = entry["socket"];
+        out["socket"] = socket && socket.IsScalar() ? socket.Scalar() : std::string();
+        Entity target = NULL_ENTITY;
+        const YAML::Node entity = entry["entity"];
+        if (entity && entity.IsScalar() && !entity.Scalar().empty()) {
+            const std::string text = entity.Scalar();
+            const bool digits = std::all_of(text.begin(), text.end(), [](unsigned char c) { return std::isdigit(c) != 0; });
+            std::string why;
+            target = McpRefs::resolveEntity(scene, digits && text.size() < 10 ? Json(std::stoull(text)) : Json(text), why);
+            if (target == NULL_ENTITY) {
+                error = std::string("attachments[") + std::to_string(i) + "].entity: " + why;
+                return false;
+            }
+        }
+        out["entity"] = target;
+        rebuilt.push_back(out);
+    }
+    value["attachments"] = rebuilt;
+    return true;
+}
+
 bool normalizePlayerClips(Project* project, const AnimationPlayerComponent* current, YAML::Node value, std::string& error) {
     const YAML::Node& constValue = value;
     const YAML::Node clips = constValue["clips"];
@@ -2429,6 +2526,19 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                                                    propertyName.substr(0, propertyName.size() - 5) + ".guid", guid);
                 return multi;
             }
+            if (isVertexAnimationProperty(component, propertyName)) {
+                // the path and the GUID it names change together: the GUID wins when the scene loads
+                std::string stored, guid;
+                if (!vatPathFromJson(project, text, stored, guid, error)) return nullptr;
+                auto* multi = new MultiPropertyCmd();
+                multi->addPropertyCmd<std::string>(project, sceneId, entity, component, propertyName, stored, onChanged);
+                multi->addPropertyCmd<std::string>(project, sceneId, entity, component, "guid", guid);
+                return multi;
+            }
+            if (component == ComponentType::VertexAnimatorComponent && propertyName == "guid") {
+                error = "guid is read-only: set animation, its GUID follows the file.";
+                return nullptr;
+            }
             if (isPlayerGuidProperty(component, propertyName)) {
                 // a GUID wins over the path when the scene loads: it only ever comes from the file
                 error = propertyName + " is read-only: set " + propertyName.substr(0, propertyName.size() - 5) +
@@ -3170,6 +3280,14 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                             error = "Unknown property \"" + edit.property + "\" of " + componentLabel + " on " + label +
                                     ". Properties: " + propertyNamesText(scene, entity, component) +
                                     " (custom ones also by their scene-file keys, see get_entity detail=\"yaml\").";
+                            // the Vertex Animator's edit-mode Preview is a runtime flag, never saved
+                            // (no undo step, no scene change): its route is Lua
+                            if (component == ComponentType::VertexAnimatorComponent && edit.property == "preview") {
+                                error = "vertexanimator.preview is not a saved property (the Inspector's Preview toggle, a runtime flag). "
+                                        "To animate it in edit mode: eval_lua {allow_edit_mode: true, code: \"object(" +
+                                        std::to_string(entity) + ", 'Model'):getVertexAnimator().preview = true\"} (false to stop; "
+                                        "play mode always animates).";
+                            }
                         } else {
                             error = componentLabel + "." + edit.property + " on " + label + ": " + why;
                         }
@@ -3180,6 +3298,13 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                 if (component == ComponentType::AnimationPlayerComponent) {
                     std::string why;
                     if (!normalizePlayerClips(project, scene->scene->findComponent<AnimationPlayerComponent>(entity), value, why)) {
+                        error = componentLabel + " on " + label + ": " + why;
+                        return false;
+                    }
+                }
+                if (component == ComponentType::VertexAnimatorComponent) {
+                    std::string why;
+                    if (!normalizeVertexAnimatorAttachments(scene, value, why)) {
                         error = componentLabel + " on " + label + ": " + why;
                         return false;
                     }

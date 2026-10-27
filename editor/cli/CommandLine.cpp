@@ -42,6 +42,7 @@
 #include "htmlui/HtmlUiImportCli.h"
 #include "texsynth/SynthesisCli.h"
 #include "physics/PlacementCli.h"
+#include "vat/VatCli.h"
 #include "htmlui/effects/EffectManifest.h"
 #include "htmlui/effects/EffectRegistry.h"
 #include "shader/ShaderVariantCompiler.h"
@@ -255,10 +256,11 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " shaders [options]        Generate shaders.\n"
         << "  " << commandName << " benchmark [options]      Measure scene FPS with vsync off.\n"
         << "  " << commandName << " scene-dump [options]     Dump every scene's GameObjects (developer check).\n"
-        << "  " << commandName << " check [options]          Check Lua scripts, shader forks, C++ scripts and HTML/CSS UI (compiler-style).\n"
+        << "  " << commandName << " check [options]          Check Lua scripts, shader forks, C++ scripts, HTML/CSS UI, clips and vertex animations (compiler-style).\n"
         << "  " << commandName << " import-ui [options]      Import the remote resources of HTML UI documents.\n"
         << "  " << commandName << " synthesize-texture [options]  Synthesize a texture (tileable, inpainted, ...) from examples.\n"
         << "  " << commandName << " place-physics [options]  Drop, separate or move GameObjects with edit-time physics.\n"
+        << "  " << commandName << " bake-vat [options]       Bake a Vertex Animation (.vat) from a model, clips or GameObject, or import one.\n"
         << "  " << commandName << " ui-support               Print the HTML/CSS support tables as JSON (developer: docs generation).\n"
         << "  " << commandName << " ui-effects [options]     List the HTML UI effects (--json, --validate, --project <dir>).\n"
         << "  " << commandName << " mcp [options]            Run the editor as an MCP server on stdio.\n"
@@ -301,6 +303,8 @@ static void printBenchmarkUsage(const std::string& commandName) {
         << "      --warmup <n>       Warmup frames after resources load. Default: 90.\n"
         << "      --mesh-lod <on|off>      Override the scene's mesh LOD setting.\n"
         << "      --depth-prepass <on|off> Override the scene's depth prepass setting.\n"
+        << "      --play             Measure the scene playing (Play: scripts, animation, physics run)\n"
+        << "                         as the Game view draws it, instead of the Scene view in edit mode.\n"
         << "      --name <label>     Label written into the JSON result.\n"
         << "      --out <path>       Write JSON to this file in addition to stdout.\n"
         << "  -h, --help             Show this help.\n\n"
@@ -1672,6 +1676,7 @@ struct CheckOptions {
     bool ui = false;
     bool textures = false;
     bool anims = false;
+    bool vat = false;
     bool all = false;
     bool filesGiven = false;
     std::vector<std::string> files;
@@ -1698,10 +1703,15 @@ void printCheckUsage(const std::string& commandName) {
         << "                           source changed or went missing since (regenerate them).\n"
         << "      --anims              Animation clips (.anim): the format, with line:col for JSON errors and the\n"
         << "                           JSON path of every dropped part, and the clips scenes and prefabs reference.\n"
-        << "      --all                Lua, shaders, C++, UI, textures and clips.\n"
-        << "                           Default: --lua --shaders --ui --textures --anims.\n"
+        << "      --vat                Vertex Animations (.vat): the format, a source changed or missing since the\n"
+        << "                           bake (warnings), a mesh or layout that no longer matches, a payload over its\n"
+        << "                           preset's device limit (errors).\n"
+        << "      --all                Lua, shaders, C++, UI, textures, clips and vertex animations.\n"
+        << "                           Default: --lua --shaders --ui --textures --anims --vat.\n"
         << "      --files <paths...>   Only these files (absolute, or relative to the current directory or\n"
         << "                           the project); files outside the project or of other kinds are ignored.\n"
+        << "                           A .vat or .vat.glb checks the Vertex Animation; another file checks the\n"
+        << "                           .vat files baked from it.\n"
         << "      --format <format>    text (default) or json.\n"
         << "  -q, --quiet              No summary line.\n"
         << "      --hook               Agent hook mode: read the hook's JSON on stdin (any tool: Claude Code\n"
@@ -1738,6 +1748,8 @@ bool parseCheckArgs(int argc, char** argv, CheckOptions& options, std::string& e
             options.textures = true;
         } else if (arg == "--anims") {
             options.anims = true;
+        } else if (arg == "--vat") {
+            options.vat = true;
         } else if (arg == "--all") {
             options.all = true;
         } else if (arg == "--files") {
@@ -1825,10 +1837,17 @@ struct HookStamp {
     uintmax_t size = 0;
 };
 
+// "<name>.vat.glb": the generated mesh of a Vertex Animation
+bool isVatMeshFile(const std::string& rel) {
+    std::string lower = rel;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+    return lower.size() > 8 && lower.compare(lower.size() - 8, 8, ".vat.glb") == 0;
+}
+
 bool isHookTrackedFile(const std::string& rel) {
     if (Util::isLuaFile(rel) || Util::isShaderFile(rel) || Util::isHeaderFile(rel) || Util::isSourceFile(rel)) return true;
     if (ProjectChecks::isUiFile(rel)) return true;
-    if (Util::isAnimationClipFile(rel)) return true;
+    if (Util::isAnimationClipFile(rel) || Util::isVertexAnimationFile(rel) || isVatMeshFile(rel)) return true;
     const std::string ext = fs::path(rel).extension().string();
     return ext == ".c" || ext == ".inl";
 }
@@ -1836,7 +1855,8 @@ bool isHookTrackedFile(const std::string& rel) {
 std::map<std::string, HookStamp> scanHookFiles(const fs::path& root) {
     std::map<std::string, HookStamp> files;
     static const std::vector<std::string> extensions = {".lua", ".vert", ".frag", ".glsl", ".h", ".hh", ".hpp", ".hxx",
-                                                        ".cpp", ".cc", ".cxx", ".c", ".inl", ".html", ".htm", ".css", ".anim"};
+                                                        ".cpp", ".cc", ".cxx", ".c", ".inl", ".html", ".htm", ".css", ".anim",
+                                                        ".vat", ".glb"};
     for (const fs::path& file : ProjectChecks::findProjectFiles(root, extensions)) {
         std::error_code ec;
         HookStamp stamp;
@@ -2029,6 +2049,8 @@ struct CheckRun {
     std::vector<std::pair<std::string, size_t>> checked;   // category, count (in run order)
     std::vector<std::string> cppLogTail;                   // a failed C++ build without diagnostics
     std::string fatal;                                     // the checks could not run
+    vat::VatCheck vat;                                     // --vat (listed last, after the pure checks)
+    bool vatRan = false;
 };
 
 std::string plural(size_t count, const std::string& word) {
@@ -2198,7 +2220,8 @@ ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& file
 }
 
 CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vector<fs::path>& luaFiles, bool luaWanted,
-                   bool shadersAll, const std::vector<std::string>& shaderFiles, bool shadersWanted, bool cppWanted) {
+                   bool shadersAll, const std::vector<std::string>& shaderFiles, bool shadersWanted, bool cppWanted,
+                   const std::vector<fs::path>& vatFiles, bool vatWanted) {
     CheckRun run;
     EditorHostOverrideGuard hostOverride(nullptr);
     Out::setConsoleWindow(nullptr);
@@ -2229,7 +2252,7 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         run.checked.push_back({"lua", count});
     }
 
-    if (shadersWanted || cppWanted) {
+    if (shadersWanted || cppWanted || vatWanted) {
         // a check changes no project file (no GUID upgrade of prefabs or clips)
         project.getAssetDatabase().setReadOnly(true);
         if (!project.loadProject(root, false)) {
@@ -2238,11 +2261,17 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         }
         // every scene, so the forks in use and the scripts attached are all known
         auto& scenes = project.getScenes();
-        for (size_t i = 0; i < scenes.size(); i++) {
+        for (size_t i = 0; (shadersWanted || cppWanted) && i < scenes.size(); i++) {
             if (!scenes[i].filepath.empty() && !scenes[i].scene) {
                 project.loadScene(scenes[i].filepath, false, false, true);
             }
         }
+    }
+
+    if (vatWanted) {
+        // the .vat files (all of them, or the given ones): format, staleness, device limits
+        run.vat = vat::checkVatAssets(&project, vatFiles);
+        run.vatRan = true;
     }
 
     if (shadersWanted) {
@@ -2326,8 +2355,9 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     bool ui = options.ui || options.all;
     bool textures = options.textures || options.all;
     bool anims = options.anims || options.all;
-    if (!options.lua && !options.shaders && !options.cpp && !options.ui && !options.textures && !options.anims && !options.all) {
-        lua = shaders = ui = textures = anims = true;
+    bool vatAssets = options.vat || options.all;
+    if (!options.lua && !options.shaders && !options.cpp && !options.ui && !options.textures && !options.anims && !options.vat && !options.all) {
+        lua = shaders = ui = textures = anims = vatAssets = true;
     }
 
     fs::path base = CommandLine::invocationDirectory();
@@ -2358,6 +2388,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     std::vector<fs::path> uiFiles;
     std::vector<fs::path> textureFiles;
     std::vector<fs::path> clipFiles;
+    std::vector<fs::path> vatGiven;     // .vat, .vat.glb and the other files (sources of bakes)
     bool cppFiles = false;
     std::vector<std::string> checkedNames;   // project-relative, for the hook log
     const bool fileMode = options.filesGiven || options.hook;
@@ -2379,6 +2410,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
             if (ProjectChecks::isInSkippedDir(rel) || !seen.insert(rel.generic_string()).second) continue;
             const std::string name = rel.generic_string();
             if (isHookTrackedFile(name)) checkedNames.push_back(name);
+            // a .vat, its mesh, or a file a .vat was baked from
+            if (vatAssets) vatGiven.push_back(path);
             if (Util::isLuaFile(name)) {
                 if (lua) luaFiles.push_back(path);
             } else if (Util::isShaderFile(name)) {
@@ -2402,6 +2435,9 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     const bool uiWanted = fileMode ? !uiFiles.empty() : ui;
     const bool texturesWanted = fileMode ? !textureFiles.empty() : textures;
     const bool animsWanted = fileMode ? !clipFiles.empty() : anims;
+    // the recipes are read without the engine: it starts only when a .vat is concerned
+    const std::vector<fs::path> vatFiles = fileMode ? vat::vatAssetsForFiles(root, vatGiven) : std::vector<fs::path>();
+    const bool vatWanted = fileMode ? !vatFiles.empty() : vatAssets;
 
     // The UI check is pure parsing (no engine): first, and the engine starts only for the others
     ProjectChecks::UiCheck uiCheck;
@@ -2410,9 +2446,9 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         uiCheck = ProjectChecks::checkUiFiles(root, fileMode ? uiFiles : std::vector<fs::path>());
     }
     CheckRun run;
-    if (luaWanted || shadersWanted || cppWanted) {
+    if (luaWanted || shadersWanted || cppWanted || vatWanted) {
         QuietOutput quiet;
-        run = runChecks(argc, argv, root, luaFiles, luaWanted, !fileMode, shaderFiles, shadersWanted, cppWanted);
+        run = runChecks(argc, argv, root, luaFiles, luaWanted, !fileMode, shaderFiles, shadersWanted, cppWanted, vatFiles, vatWanted);
     }
     if (!run.fatal.empty()) {
         std::cerr << commandName << " check: " << run.fatal << "\n";
@@ -2434,6 +2470,10 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         const ClipCheck clips = checkClipFiles(root, fileMode ? clipFiles : std::vector<fs::path>());
         run.findings.insert(run.findings.end(), clips.findings.begin(), clips.findings.end());
         run.checked.push_back({"anims", clips.clips});
+    }
+    if (run.vatRan) {
+        run.findings.insert(run.findings.end(), run.vat.findings.begin(), run.vat.findings.end());
+        run.checked.push_back({"vat", run.vat.assets});
     }
     ProjectChecks::sortFindings(run.findings);
     const size_t errors = ProjectChecks::countSeverity(run.findings, "error");
@@ -2492,7 +2532,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     if (!options.quiet) {
         std::string what;
         const std::map<std::string, std::string> units = {{"lua", "file"}, {"shaders", "fork"}, {"cpp", "script"}, {"ui", "file"},
-                                                          {"textures", "recipe"}, {"anims", "clip"}};
+                                                          {"textures", "recipe"}, {"anims", "clip"}, {"vat", "file"}};
         for (const auto& [category, count] : run.checked) {
             what += (what.empty() ? "" : ", ") + category + " " + plural(count, units.at(category));
         }
@@ -2740,6 +2780,11 @@ int CommandLine::runImportUiCommand(int argc, char** argv, const char* executabl
 int CommandLine::runSynthesizeTextureCommand(int argc, char** argv, const char* executableName) {
     attachHostConsoleIfNeeded();
     return texsynth::runSynthesizeTexture(argc, argv, getCommandName(executableName), std::cout, std::cerr);
+}
+
+int CommandLine::runBakeVatCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    return vat::runBakeVat(argc, argv, getCommandName(executableName), std::cout, std::cerr);
 }
 
 int CommandLine::runPlacePhysicsCommand(int argc, char** argv, const char* executableName) {

@@ -156,7 +156,8 @@ async def test_lighting_modes_follow_manifest(ed: Editor):
         m = "submeshes[0].material."
         eid = await make_entity(ed, "LibLightingModes")
         for shader, allowed, refused in (
-            ("", ["pixel", "vertex", "mixed"], "none"),
+            # the built-in Lit lists every mode: none draws its base colour (KHR_materials_unlit)
+            ("", ["pixel", "vertex", "mixed", "none"], None),
             ("library:unlit", ["none"], "pixel"),
             ("library:toon", ["pixel", "vertex", "mixed"], "none"),
         ):
@@ -165,7 +166,8 @@ async def test_lighting_modes_follow_manifest(ed: Editor):
                 await ed.call("set_properties", entity=eid, values={"mesh": {m + "lighting": mode}})
                 got = await mesh_props(ed, eid, m + "lighting")
                 ed.check_eq(got[m + "lighting"], mode)
-            await ed.check_error("set_properties", entity=eid, values={"mesh": {m + "lighting": refused}}, contains="lighting")
+            if refused:
+                await ed.check_error("set_properties", entity=eid, values={"mesh": {m + "lighting": refused}}, contains="lighting")
         await ed.call("delete_entities", entities=[eid])
 
 

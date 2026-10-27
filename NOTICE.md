@@ -71,6 +71,27 @@ FBX import of the editor (editor-only: an exported game ships the converted `.gl
 |---|---|---|---|---|
 | [ufbx](https://github.com/ufbx/ufbx) | 0.23.1 (as vendored by Doriax `8e8dde5d6`) | `libs/ufbx/` (`LICENSE`) | MIT OR Unlicense (public domain), used under MIT | reading `.fbx` files, converted to `.glb` by `editor/util/FbxImporter` and `GlbBuilder` |
 
+EXR reading of the editor (editor-only: the Vertex Animation importers re-pack EXR textures into `.vat.glb` payloads, exported games never read EXR):
+
+| Library | Version | Location | License | Used for |
+|---|---|---|---|---|
+| [tinyexr](https://github.com/syoyo/tinyexr) (v1: `tinyexr.h` with the two headers it includes, `exr_reader.hh` and `streamreader.hh`; it contains OpenEXR-derived code under the same BSD-3-Clause terms, noted in its header) | v3.2.0 release (`6f470c9ab24b`), unmodified | `libs/tinyexr/` (`LICENSE`; configured in `CMakeLists.txt`: deflate through the engine's stb_image/stb_image_write zlib, so neither miniz nor zlib is vendored) | BSD-3-Clause | reading and writing `.exr` images (`editor/util/FloatImage`) |
+
+Vertex Animation (`.vat`, [docs/vertex-animation.md](docs/vertex-animation.md)): no third-party code is copied. The formats and formulas below were reimplemented from their sources and are credited here:
+
+| Source | License | What was taken | Where |
+|---|---|---|---|
+| [SideFX Labs](https://github.com/sideeffects/SideFXLabs): the Houdini Vertex Animation Textures ROP 3.0 and its Unity Shader Graphs (`VAT_SoftBodyDeformation`, `VAT_RigidBodyDynamics`, `VAT_DynamicRemeshing`) | BSD | the VAT 3 format and its decoding: the flags in the bounds' digits, texel addressing, LDR remaps, Two Position Textures, smallest-three rigid quaternions, the precomputed-angle slerp, smooth trajectories, compressed spheremap normals, the fluid lookup table; also the quaternion tangent frame | the Houdini importer (`editor/vat/import/HoudiniVat3.cpp`, decoded on the CPU at import) |
+| G4ND44/Godot_VAT3 (GitHub) | MIT | a second reference for the VAT 3 decoding | `editor/vat/import/HoudiniVat3.cpp` |
+| OpenVAT's engine decoders (OpenVAT-Engine_Tools) | MIT | the OpenVAT file layout (per-channel remap, packed normals, `remap_info.json` animations); the A/B crossfade computed on the GPU from one clock | `editor/vat/import/OpenVat.cpp`, `engine/shaderlib/includes/vat.glsl`. The OpenVAT Blender add-on (GPL) is not used |
+| keijiro/HdrpVatExample (GitHub) | Unlicense | integer-addressed `texelFetch` decoding; the shrinking of rigid pieces that lerped matrices cause, which Bones mode avoids (quaternion nlerp) | `engine/shaderlib/includes/vat.glsl` |
+| maxartz15/VertexAnimation (GitHub) | MIT | a per-vertex index attribute that survives reordering and is shared by LODs (`_VAT_INDEX`); mesh bounds over every frame | the baker (`editor/vat/`), `engine/core/animation/VertexAnimation` |
+| fuqunaga/VatBaker (GitHub) | MIT | frame timing: loop clips sampled without a duplicate end frame and interpolated from the last frame back to the first | the baker, `engine/core/animation/VertexAnimation` |
+| sandwichpuissant/Unity-VAT (GitHub) | Unlicense | positions stored as offsets from the rest pose | the baker, `engine/shaderlib/includes/vat.glsl` |
+| sugi-cho/Animation-Texture-Baker (GitHub) | MIT | a random start time per instance | `engine/core/subsystem/VertexAnimatorSystem` |
+
+Bonjour-Interactive-Lab/Unity3D-VATUtils was read as a VAT 3 decoding reference only (its repository licence is GPL-3.0 while its `package.json` says MIT): none of its code is copied, and the math it implements is SideFX Labs'. The SideFX "VAT in Unity" tutorial exports used by the importer tests are not in the repository: the tests read them from outside it when present and skip otherwise.
+
 Convex decomposition of Physics Placement (edit-time placement in the Scene view and for agents):
 
 | Library | Version | Location | License | Used for |

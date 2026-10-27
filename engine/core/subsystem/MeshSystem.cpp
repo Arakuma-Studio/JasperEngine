@@ -7,6 +7,7 @@
 #include "Engine.h"
 #include "System.h"
 #include "animation/ModelSubClips.h"
+#include "animation/VertexAnimation.h"
 #include "buffer/InterleavedBuffer.h"
 #include "io/FileData.h"
 #include "io/Data.h"
@@ -4807,6 +4808,13 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         model.animationClipNames = anim::subClipNames(animationNames);
     }
 
+    // A Vertex Animation mesh (.vat.glb, vertex animation spec 2.3): its _VAT_INDEX and, in
+    // Bones mode, its JOINTS_0 / WEIGHTS_0 without a skin are what the Vertex Animator plays
+    const bool vatGltf = std::find(model.gltfModel->extensionsUsed.begin(), model.gltfModel->extensionsUsed.end(),
+                             vat::VAT_GLTF_EXTENSION) != model.gltfModel->extensionsUsed.end() ||
+                         model.gltfModel->extensions.count(vat::VAT_GLTF_EXTENSION) != 0;
+    mesh.vatMesh = vatGltf;
+
     // Build parent map and collect all nodes that own a mesh primitive.
     int meshNode    = -1; // first skinned mesh node — used for skeleton lookup
     std::vector<int> meshNodes;
@@ -5098,6 +5106,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             mesh.bonesMatrix = HybridArray<Matrix4, MAX_BONES>();
             mesh.needUpdateBones = false;
             mesh.morphTargetNames.clear();
+            mesh.vatMesh = vatGltf;
 
             mesh.numSubmeshes = static_cast<unsigned int>(gltfmesh.primitives.size());
             if (mesh.numSubmeshes > 0 && !mesh.submeshes.validIndex(static_cast<int>(mesh.numSubmeshes) - 1)) {
@@ -5259,6 +5268,10 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                     if (value.IsNumber() && std::isfinite(value.GetNumberAsDouble()))
                         mesh.submeshes[i].material.foliageTransmission = std::clamp((float)value.GetNumberAsDouble(), 0.0f, 1.0f);
                 }
+                // KHR_materials_unlit: drawn in its base colour (factor, texture, vertex colour)
+                // without lights, as Lighting None does
+                if (mat->extensions.count("KHR_materials_unlit"))
+                    mesh.submeshes[i].material.lighting = MaterialLighting::NONE;
             }
 
             // Alpha-masked glTF materials need the base-color alpha in the depth
@@ -5290,7 +5303,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 int attrBufferView = accessor.bufferView;
                 size_t attrByteOffset = accessor.byteOffset;
                 int byteStride = accessor.ByteStride(model.gltfModel->bufferViews[accessor.bufferView]);
-                if (bakingFlatten && (attrib.first == "JOINTS_0" || attrib.first == "WEIGHTS_0")) {
+                if (bakingFlatten && !vatGltf && (attrib.first == "JOINTS_0" || attrib.first == "WEIGHTS_0")) {
                     continue; // baked preview is static geometry; drop the skinning attributes
                 }
                 if ((bakingFlatten || bakeMeshOffset) && (attrib.first == "POSITION" || attrib.first == "NORMAL")) {
@@ -5426,6 +5439,17 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                     if (dataType == AttributeDataType::UNSIGNED_SHORT) {
                         mesh.normAdjustWeight = 65535.0;
                         mesh.submeshes[i].normAdjustWeight = 65535.0f;
+                    }
+                }
+
+                // the vertex's row in a Vertex Animation payload (float, exact below 2^24)
+                if (attrib.first == vat::VAT_INDEX_ATTRIBUTE) {
+                    if (dataType == AttributeDataType::FLOAT && elements == 1) {
+                        attType = AttributeType::VAT_INDEX;
+                        foundAttrs = true;
+                    } else {
+                        Log::warn("Model attribute %s must be a float scalar: %s", attrib.first.c_str(), filename.c_str());
+                        continue;
                     }
                 }
 

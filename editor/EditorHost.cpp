@@ -104,6 +104,10 @@ void EditorHost::openTextureSynthesis(const std::filesystem::path& image, bool) 
     Out::warning("Texture Synthesis needs the editor window: %s not opened", image.string().c_str());
 }
 
+void EditorHost::openVertexAnimationBaker(const std::filesystem::path& path, bool) {
+    Out::warning("The Vertex Animation Baker needs the editor window: %s not opened", path.string().c_str());
+}
+
 void EditorHost::registerSaveSceneDialog(uint32_t, std::function<void()> callback) {
     if (callback) {
         callback();

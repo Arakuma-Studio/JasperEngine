@@ -810,6 +810,9 @@ std::string editor::Factory::formatAttributeType(AttributeType type) {
         case AttributeType::TERRAINNODERANGE: return "AttributeType::TERRAINNODERANGE";
         case AttributeType::TERRAINNODERESOLUTION: return "AttributeType::TERRAINNODERESOLUTION";
         case AttributeType::SMOOTHNORMAL: return "AttributeType::SMOOTHNORMAL";
+        case AttributeType::VAT_INDEX: return "AttributeType::VAT_INDEX";
+        case AttributeType::INSTANCEVAT0: return "AttributeType::INSTANCEVAT0";
+        case AttributeType::INSTANCEVAT1: return "AttributeType::INSTANCEVAT1";
         default: return "AttributeType::POSITION";
     }
 }
@@ -1932,6 +1935,47 @@ std::string editor::Factory::createAnimationPlayerComponent(int indentSpaces, En
     return code.str();
 }
 
+std::string editor::Factory::createVertexAnimatorComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<VertexAnimatorComponent>(entity)) return "";
+    VertexAnimatorComponent& animator = scene->getComponent<VertexAnimatorComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "VertexAnimatorComponent vertexanimator;\n";
+    if (!animator.enabled) code << ind << "vertexanimator.enabled = false;\n";
+    // the runtime loads it by path (the exporter copies the .vat and its .vat.glb); the GUID is the editor's
+    code << ind << "vertexanimator.animation = " << formatString(animator.animation) << ";\n";
+    if (!animator.defaultClip.empty()) code << ind << "vertexanimator.defaultClip = " << formatString(animator.defaultClip) << ";\n";
+    code << ind << "vertexanimator.playAutomatically = " << formatBool(animator.playAutomatically) << ";\n";
+    code << ind << "vertexanimator.speed = " << formatFloat(animator.speed) << ";\n";
+    code << ind << "vertexanimator.randomStart = " << formatBool(animator.randomStart) << ";\n";
+    code << ind << "vertexanimator.defaultFadeTime = " << formatFloat(animator.defaultFadeTime) << ";\n";
+    if (animator.instanceEvents) code << ind << "vertexanimator.instanceEvents = true;\n";
+    if (!animator.attachments.empty()) code << ind << "vertexanimator.attachments.resize(" << animator.attachments.size() << ");\n";
+    for (size_t i = 0; i < animator.attachments.size(); i++) {
+        const VertexAnimatorAttachment& attachment = animator.attachments[i];
+        const std::string target = "vertexanimator.attachments[" + std::to_string(i) + "]";
+        code << ind << target << ".socket = " << formatString(attachment.socket) << ";\n";
+        code << ind << target << ".entity = " << formatEntity(attachment.entity, entityVarNames) << ";\n";
+    }
+    // per-instance starts (Create Crowd)
+    if (!animator.instanceClips.empty()) {
+        code << ind << "vertexanimator.instanceClips = {";
+        for (size_t i = 0; i < animator.instanceClips.size(); i++) {
+            code << (i ? ", " : "") << formatString(animator.instanceClips[i]);
+        }
+        code << "};\n";
+    }
+    if (!animator.instanceSpeeds.empty()) {
+        code << ind << "vertexanimator.instanceSpeeds = {";
+        for (size_t i = 0; i < animator.instanceSpeeds.size(); i++) {
+            code << (i ? ", " : "") << formatFloat(std::isfinite(animator.instanceSpeeds[i]) ? animator.instanceSpeeds[i] : 1.0f);
+        }
+        code << "};\n";
+    }
+    addComponentCode(code, ind, sceneName, entityName, entity, "VertexAnimatorComponent", "vertexanimator", assignExisting);
+    return code.str();
+}
+
 std::string editor::Factory::createUIDocumentComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<UIDocumentComponent>(entity)) return "";
     UIDocumentComponent& document = scene->getComponent<UIDocumentComponent>(entity);
@@ -2943,6 +2987,7 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::FluidSimulationComponent: return createFluidSimulationComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::PoseAnimatorComponent: return createPoseAnimatorComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::AnimationPlayerComponent: return createAnimationPlayerComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::VertexAnimatorComponent: return createVertexAnimatorComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::CameraComponent: return createCameraComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::AudioSourceComponent: return createAudioSourceComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::ScriptComponent: return createScriptComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
@@ -3456,6 +3501,9 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
     }
     for (const std::string& clip : resources.clips) {
         out << ind2 << "resources.clips.push_back(" << formatString(clip) << ");\n";
+    }
+    for (const std::string& vat : resources.vats) {
+        out << ind2 << "resources.vats.push_back(" << formatString(vat) << ");\n";
     }
     out << ind2 << "return resources;\n";
     out << ind << "}\n";

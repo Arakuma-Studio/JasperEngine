@@ -47,6 +47,8 @@
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/HtmlUiAutoImport.h"
 #include "render/preview/PoseRender.h"
+#include "render/preview/VatPreviewRender.h"
+#include "util/FileUtils.h"
 #include "pose/PoseTemplates.h"
 #include "pose/PoseViewport.h"
 #include "animation/AnimationClipAppHooks.h"
@@ -134,6 +136,7 @@ editor::App::App(){
     poseAnimationWindow = new PoseAnimationWindow(&project);
     terrainEditWindow = new TerrainEditWindow(&project);
     textureSynthesisWindow = new TextureSynthesisWindow(&project);
+    vertexAnimationBakerWindow = new VertexAnimationBakerWindow(&project);
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
     mcpActivityWindow = new mcp::McpActivityWindow();
     // pose templates saved or deleted (and their undo/redo): the asset database and the Project
@@ -272,6 +275,7 @@ enum class AppMenuCommand : uint32_t {
     TogglePoseAnimation,
     ToggleTerrain,
     ToggleTextureSynthesis,
+    ToggleVertexAnimationBaker,
     TogglePhysicsPlacement,
     ToggleMcpActivity,
     FocusScene,
@@ -612,7 +616,8 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         }),
         menuSubmenu("Animation", {
             menuShortcut(AppMenuCommand::ToggleAnimation, windowMenuLabel(AnimationWindow::WINDOW_NAME), "Ctrl+6"),
-            menuCommand(AppMenuCommand::TogglePoseAnimation, windowMenuLabel(PoseAnimationWindow::WINDOW_NAME))
+            menuCommand(AppMenuCommand::TogglePoseAnimation, windowMenuLabel(PoseAnimationWindow::WINDOW_NAME)),
+            menuCommand(AppMenuCommand::ToggleVertexAnimationBaker, windowMenuLabel(VertexAnimationBakerWindow::WINDOW_NAME))
         }),
         menuCommand(AppMenuCommand::ToggleTerrain, windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
         menuCommand(AppMenuCommand::ToggleTextureSynthesis, windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
@@ -789,6 +794,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleTextureSynthesis:
             textureSynthesisWindow->open();
             break;
+        case AppMenuCommand::ToggleVertexAnimationBaker:
+            vertexAnimationBakerWindow->open();
+            break;
         case AppMenuCommand::TogglePhysicsPlacement:
             showEditorWindow(physicsPlacementWindow);
             break;
@@ -833,6 +841,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             poseAnimationWindow->setOpen(false);
             terrainEditWindow->setOpen(false);
             textureSynthesisWindow->setOpen(false);
+            vertexAnimationBakerWindow->setOpen(false);
             physicsPlacementWindow->setOpen(false);
             mcpActivityWindow->setOpen(false);
             gameWindow->setOpen(true);
@@ -1497,6 +1506,8 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow("Game", dock_id_middle_top);
     // Texture Synthesis is mostly a preview: a tab next to the Scene and Game views
     ImGui::DockBuilderDockWindow(TextureSynthesisWindow::WINDOW_NAME, dock_id_middle_top);
+    // the baker too (its preview), so the Inspector entries that open it stay in view
+    ImGui::DockBuilderDockWindow(VertexAnimationBakerWindow::WINDOW_NAME, dock_id_middle_top);
 
     // Tab order inside the shared nodes (first one is the visible tab).
     auto stampPanelDockOrder = [](const char* windowName, short order) {
@@ -2292,6 +2303,8 @@ void editor::App::show(){
     PoseViewport::frame(&project);
     terrainEditWindow->show();
     textureSynthesisWindow->show();
+    // also the tick of a running bake (a Shift-click bake runs with the window closed)
+    vertexAnimationBakerWindow->show();
     // also the tick of the Scene view's physics sessions, with the panel closed too
     physicsPlacementWindow->show();
     inspectorWindow->show();
@@ -2397,6 +2410,8 @@ void editor::App::parseBenchmarkArgs(int argc, char** argv) {
         } else if (arg == "--depth-prepass") {
             if (const char* value = requireValue(i, "--depth-prepass"))
                 benchmarkDepthPrepass = (std::strcmp(value, "off") != 0 && std::strcmp(value, "0") != 0) ? 1 : 0;
+        } else if (arg == "--play") {
+            benchmarkPlay = true;
         } else if (arg == "--name") {
             if (const char* value = requireValue(i, "--name"))
                 benchmarkName = value;
@@ -3037,6 +3052,8 @@ void editor::App::engineRender(){
     if (PoseRender::processFrame()) {
         requestRedraw();
     }
+    // the Vertex Animation Baker's preview views (private scenes too, drawn the same way)
+    VatPreviewView::processFrame();
 
     if (benchmarkEnabled)
         tickBenchmark();
@@ -3297,15 +3314,43 @@ void editor::App::tickBenchmark() {
         return;
     }
 
+    if (benchmarkPlay) {
+        // Play first, then measure the running scene (scripts, animation, physics) once it plays
+        if (!benchmarkPlayStarted) {
+            project.start(benchmarkSceneId);
+            benchmarkPlayStarted = true;
+            benchmarkWaitStart = std::chrono::steady_clock::now();
+            return;
+        }
+        if (selected->playState != ScenePlayState::PLAYING) {
+            if (selected->playState == ScenePlayState::STOPPED || selected->playState == ScenePlayState::CANCELLING) {
+                failBenchmark("the scene did not start playing (see the log)");
+            } else if (std::chrono::steady_clock::now() - benchmarkWaitStart > std::chrono::seconds(90)) {
+                failBenchmark("timed out waiting for the scene to start playing");
+            }
+            return;
+        }
+        // the resource wait below counts from the start of play, not from the start request
+        if (!benchmarkCameraReady)
+            benchmarkWaitStart = {};
+    }
+
     if (!benchmarkCameraReady) {
-        // the scene tab decides the selected scene, so bring it to front like Play does
-        if (sceneWindow)
-            sceneWindow->requestPlayFocus(benchmarkSceneId);
-        Entity camera = selected->scene->getCamera();
-        if (camera == NULL_ENTITY)
-            camera = selected->mainCamera;
-        if (selected->sceneRender->setPreviewCamera(camera))
+        if (benchmarkPlay) {
+            // the playing scene is the Game view's frame, through the scene's camera; in front,
+            // it hides the Scene view (the same dock), which would draw a second view of it
+            gameWindow->requestFocus();
             benchmarkCameraReady = true;
+        } else {
+            // the scene tab decides the selected scene, so bring it to front like Play does
+            if (sceneWindow)
+                sceneWindow->requestPlayFocus(benchmarkSceneId);
+            Entity camera = selected->scene->getCamera();
+            if (camera == NULL_ENTITY)
+                camera = selected->mainCamera;
+            if (selected->sceneRender->setPreviewCamera(camera))
+                benchmarkCameraReady = true;
+        }
         if (benchmarkMeshLod >= 0)
             selected->scene->setMeshLodEnabled(benchmarkMeshLod != 0);
         if (benchmarkDepthPrepass >= 0)
@@ -3336,7 +3381,7 @@ void editor::App::tickBenchmark() {
             }
             return;
         }
-        if (!renderedSceneThisFrame || sceneWindow->getWidth(selected->id) <= 0)
+        if (!renderedSceneThisFrame || (!benchmarkPlay && sceneWindow->getWidth(selected->id) <= 0))
             return;
         benchmarkPhase = 1;
         benchmarkPhaseFrames = 0;
@@ -3401,8 +3446,9 @@ void editor::App::finishBenchmark() {
     const double wallFps = (elapsed > 0.0 && n > 0) ? static_cast<double>(n) / elapsed : 0.0;
 
     SceneProject* selected = project.getScene(benchmarkSceneId);
-    const int width = selected && sceneWindow ? sceneWindow->getWidth(selected->id) : 0;
-    const int height = selected && sceneWindow ? sceneWindow->getHeight(selected->id) : 0;
+    // the view measured: the Scene view's, or the Game view's while playing
+    const int width = benchmarkPlay ? gameWindow->getRenderWidth() : (selected && sceneWindow ? sceneWindow->getWidth(selected->id) : 0);
+    const int height = benchmarkPlay ? gameWindow->getRenderHeight() : (selected && sceneWindow ? sceneWindow->getHeight(selected->id) : 0);
 
     std::ostringstream json;
     json << std::fixed;
@@ -3412,6 +3458,7 @@ void editor::App::finishBenchmark() {
          << "  \"scene\": \"" << jsonEscape(selected ? selected->name : benchmarkScene) << "\",\n"
          << "  \"meshLod\": " << ((selected && selected->scene && selected->scene->isMeshLodEnabled()) ? "true" : "false") << ",\n"
          << "  \"depthPrepass\": " << ((selected && selected->scene && selected->scene->isDepthPrepassEnabled()) ? "true" : "false") << ",\n"
+         << "  \"play\": " << (benchmarkPlay ? "true" : "false") << ",\n"
          << "  \"viewport\": [" << width << ", " << height << "],\n"
          << "  \"frames\": " << n << ",\n"
          << "  \"warmupFrames\": " << benchmarkWarmupFrames << ",\n"
@@ -3507,6 +3554,7 @@ void editor::App::engineViewDestroyed(){
     // objects here, while the view still exists (not on Engine::onViewDestroyed, which a play
     // session's stop fires too)
     PoseRender::releaseGpu();
+    VatPreviewView::releaseGpu();
     // Closing during project loading can leave uploads committed before any scene frame
     // consumes them. Drain that batch before shutdown waits to flush the queue.
     SystemRender::executeQueue();
@@ -3569,6 +3617,8 @@ void editor::App::prepareForProjectSwitch() {
     imageViewerWindow->closeAll();
     // a synthesis started in this project is cancelled and never written into the next one
     textureSynthesisWindow->resetForProjectSwitch();
+    // a running bake or import is cancelled, its source and result forgotten
+    vertexAnimationBakerWindow->resetForProjectSwitch();
     editor::texsynth::projectSwitching();
     // physics gestures are cancelled, the sessions and the decomposition cache dropped
     physicsPlacementWindow->resetForProjectSwitch();
@@ -3957,7 +4007,10 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      and the surface includes (MESH bit 32 'Ltc', DEPTH bit 15, GBUFFER bits 11-13), the
     //      tangent of includes/surface_vs.glsl transformed before the hooks. (Builds of the lattice
     //      branch used v34/v35 with 'Ltc' at MESH bit 5, then v37 before this v37 of main.)
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v38";
+    // v39: vertex animation (includes/vat.glsl): vatEvaluate() and the vatPosition/vatNormal/...
+    //      wrappers in every vertex entry point, HAS_VAT / HAS_VAT_BONES (MESH bits 33/34, DEPTH 16/17,
+    //      GBUFFER 14/15).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v39";
 }
 
 void editor::App::pushTabNotificationStyle(){
@@ -4019,6 +4072,23 @@ editor::TerrainEditWindow* editor::App::getTerrainEditWindow() const{
 
 editor::TextureSynthesisWindow* editor::App::getTextureSynthesisWindow() const{
     return textureSynthesisWindow;
+}
+
+editor::VertexAnimationBakerWindow* editor::App::getVertexAnimationBakerWindow() const{
+    return vertexAnimationBakerWindow;
+}
+
+void editor::App::openVertexAnimationBaker(const std::filesystem::path& path, bool bakeNow){
+    std::string error;
+    const std::string file = FileUtils::pathToUtf8(path);
+    if (!vertexAnimationBakerWindow->setSourcePath(file, error)) {
+        registerAlert("Vertex Animation Baker", "Can't open " + FileUtils::pathToUtf8(path.filename()) + ": " + error);
+        return;
+    }
+    vertexAnimationBakerWindow->open();
+    if (bakeNow && !vertexAnimationBakerWindow->bake(true, error)) {
+        registerAlert("Vertex Animation Baker", "Can't bake " + FileUtils::pathToUtf8(path.filename()) + ": " + error);
+    }
 }
 
 editor::PhysicsPlacementWindow* editor::App::getPhysicsPlacementWindow() const{
@@ -4251,6 +4321,7 @@ void editor::App::applyPanelVisibilitySettings() {
     poseAnimationWindow->setOpen(visibility.poseAnimation);
     terrainEditWindow->setOpen(visibility.terrain);
     textureSynthesisWindow->setOpen(visibility.textureSynthesis);
+    vertexAnimationBakerWindow->setOpen(visibility.vertexAnimationBaker);
     physicsPlacementWindow->setOpen(visibility.physicsPlacement);
     mcpActivityWindow->setOpen(visibility.mcp);
     gameWindow->setOpen(visibility.game);
@@ -4266,6 +4337,7 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.poseAnimation = poseAnimationWindow->isOpen();
     visibility.terrain = terrainEditWindow->isOpen();
     visibility.textureSynthesis = textureSynthesisWindow->isOpen();
+    visibility.vertexAnimationBaker = vertexAnimationBakerWindow->isOpen();
     visibility.physicsPlacement = physicsPlacementWindow->isOpen();
     visibility.mcp = mcpActivityWindow->isOpen();
     visibility.game = gameWindow->isOpen();

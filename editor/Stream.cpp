@@ -581,6 +581,9 @@ std::string editor::Stream::attributeTypeToString(AttributeType type) {
         case AttributeType::TERRAINNODERANGE: return "terrainnoderange";
         case AttributeType::TERRAINNODERESOLUTION: return "terrainnoderesolution";
         case AttributeType::SMOOTHNORMAL: return "smoothnormal";
+        case AttributeType::VAT_INDEX: return "vatindex";
+        case AttributeType::INSTANCEVAT0: return "instancevat0";
+        case AttributeType::INSTANCEVAT1: return "instancevat1";
         default: return "position"; // Default
     }
 }
@@ -623,6 +626,9 @@ AttributeType editor::Stream::stringToAttributeType(const std::string& str) {
     if (str == "terrainnoderange") return AttributeType::TERRAINNODERANGE;
     if (str == "terrainnoderesolution") return AttributeType::TERRAINNODERESOLUTION;
     if (str == "smoothnormal") return AttributeType::SMOOTHNORMAL;
+    if (str == "vatindex") return AttributeType::VAT_INDEX;
+    if (str == "instancevat0") return AttributeType::INSTANCEVAT0;
+    if (str == "instancevat1") return AttributeType::INSTANCEVAT1;
     return AttributeType::POSITION; // Default
 }
 
@@ -4691,6 +4697,11 @@ YAML::Node editor::Stream::encodeComponents(const Entity entity, const EntityReg
         compNode[Catalog::getComponentName(ComponentType::AnimationPlayerComponent, true)] = encodeAnimationPlayerComponent(player);
     }
 
+    if (signature.test(registry->getComponentId<VertexAnimatorComponent>())) {
+        const VertexAnimatorComponent& animator = registry->getComponent<VertexAnimatorComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::VertexAnimatorComponent, true)] = encodeVertexAnimatorComponent(animator);
+    }
+
     if (signature.test(registry->getComponentId<CameraComponent>())) {
         const CameraComponent& camera = registry->getComponent<CameraComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::CameraComponent, true)] = encodeCameraComponent(camera);
@@ -5232,6 +5243,17 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->addComponent<AnimationPlayerComponent>(entity, std::move(player));
         }else{
             registry->getComponent<AnimationPlayerComponent>(entity) = std::move(player);
+        }
+    }
+
+    compName = Catalog::getComponentName(ComponentType::VertexAnimatorComponent, true);
+    if (compNode[compName]) {
+        VertexAnimatorComponent* existing = registry->findComponent<VertexAnimatorComponent>(entity);
+        VertexAnimatorComponent animator = decodeVertexAnimatorComponent(compNode[compName], existing);
+        if (!signature.test(registry->getComponentId<VertexAnimatorComponent>())){
+            registry->addComponent<VertexAnimatorComponent>(entity, std::move(animator));
+        }else{
+            registry->getComponent<VertexAnimatorComponent>(entity) = std::move(animator);
         }
     }
 
@@ -7331,6 +7353,125 @@ AnimationPlayerComponent editor::Stream::decodeAnimationPlayerComponent(const YA
     }
 
     return player;
+}
+
+YAML::Node editor::Stream::encodeVertexAnimatorComponent(const VertexAnimatorComponent& animator) {
+    YAML::Node node;
+    node["enabled"] = YamlNumbers::text(animator.enabled);
+    // written when empty too: decoding over an animator with an animation must clear it
+    node["animation"] = animator.animation;
+    if (!animator.guid.empty()) node["guid"] = animator.guid;
+    node["defaultClip"] = animator.defaultClip;
+    node["playAutomatically"] = YamlNumbers::text(animator.playAutomatically);
+    encodeFinite(node, "speed", animator.speed);
+    node["randomStart"] = YamlNumbers::text(animator.randomStart);
+    encodeFinite(node, "defaultFadeTime", animator.defaultFadeTime);
+    node["instanceEvents"] = YamlNumbers::text(animator.instanceEvents);
+    YAML::Node attachmentsNode(YAML::NodeType::Sequence);
+    for (const VertexAnimatorAttachment& attachment : animator.attachments) {
+        YAML::Node attachmentNode;
+        attachmentNode["socket"] = attachment.socket;
+        attachmentNode["entity"] = attachment.entity;
+        attachmentsNode.push_back(attachmentNode);
+    }
+    if (animator.attachments.empty()) attachmentsNode.SetStyle(YAML::EmitterStyle::Flow);
+    node["attachments"] = attachmentsNode;
+    // per-instance starts (Create Crowd): only when set, so other animators' YAML is unchanged
+    if (!animator.instanceClips.empty()) {
+        YAML::Node clipsNode(YAML::NodeType::Sequence);
+        for (const std::string& clip : animator.instanceClips) clipsNode.push_back(clip);
+        clipsNode.SetStyle(YAML::EmitterStyle::Flow);
+        node["instanceClips"] = clipsNode;
+    }
+    if (!animator.instanceSpeeds.empty()) {
+        YAML::Node speedsNode(YAML::NodeType::Sequence);
+        for (float speed : animator.instanceSpeeds) speedsNode.push_back(YamlNumbers::text(finiteOr(speed, 1.0f)));
+        speedsNode.SetStyle(YAML::EmitterStyle::Flow);
+        node["instanceSpeeds"] = speedsNode;
+    }
+    return node;
+}
+
+VertexAnimatorComponent editor::Stream::decodeVertexAnimatorComponent(const YAML::Node& node, const VertexAnimatorComponent* oldAnimator) {
+    // the authored fields only: what an old one played starts over (its runtime is not copied),
+    // the Inspector's Preview toggle stays
+    VertexAnimatorComponent animator;
+    if (oldAnimator) {
+        animator.preview = oldAnimator->preview;
+    }
+
+    // a missing key is the default, not the old value
+    const VertexAnimatorComponent defaults;
+    auto given = [&node](const char* key) {
+        const YAML::Node value = node[key];
+        return value && !value.IsNull() && !(value.IsScalar() && value.Scalar().empty());
+    };
+    // a value of the wrong shape is the default (one bad key never fails the scene's load)
+    auto boolean = [&node, &given](const char* key, bool fallback) {
+        if (!given(key) || !node[key].IsScalar()) return fallback;
+        bool value = fallback;
+        if (YamlNumbers::readPlain(node[key].Scalar(), value)) return value;
+        try {
+            return node[key].as<bool>();
+        } catch (const YAML::Exception&) {
+            return fallback;
+        }
+    };
+    auto text = [&node, &given](const char* key) {
+        return given(key) && node[key].IsScalar() ? node[key].Scalar() : std::string();
+    };
+    auto number = [&node, &given](const char* key, float fallback) {
+        if (!given(key) || !node[key].IsScalar()) return fallback;
+        try {
+            return decodeFinite(node[key], fallback);
+        } catch (const YAML::Exception&) {
+            return fallback;
+        }
+    };
+
+    animator.enabled = boolean("enabled", defaults.enabled);
+    animator.animation = text("animation");
+    animator.guid = text("guid");
+    animator.defaultClip = text("defaultClip");
+    animator.playAutomatically = boolean("playAutomatically", defaults.playAutomatically);
+    animator.speed = number("speed", defaults.speed);
+    animator.randomStart = boolean("randomStart", defaults.randomStart);
+    animator.defaultFadeTime = std::max(0.0f, number("defaultFadeTime", defaults.defaultFadeTime));
+    animator.instanceEvents = boolean("instanceEvents", defaults.instanceEvents);
+
+    const YAML::Node attachmentsNode = node["attachments"];
+    if (attachmentsNode && attachmentsNode.IsSequence()) {
+        for (const YAML::Node& attachmentNode : attachmentsNode) {
+            if (!attachmentNode.IsMap()) continue;
+            VertexAnimatorAttachment attachment;
+            const YAML::Node socket = attachmentNode["socket"];
+            attachment.socket = socket && socket.IsScalar() ? socket.Scalar() : std::string();
+            const YAML::Node entity = attachmentNode["entity"];
+            if (entity && entity.IsScalar() && !entity.Scalar().empty()) {
+                try {
+                    attachment.entity = YamlNumbers::as<Entity>(entity);
+                } catch (const YAML::Exception&) {
+                    attachment.entity = NULL_ENTITY;
+                }
+            }
+            animator.attachments.push_back(std::move(attachment));
+        }
+    }
+
+    const YAML::Node clipsNode = node["instanceClips"];
+    if (clipsNode && clipsNode.IsSequence()) {
+        for (const YAML::Node& clip : clipsNode) {
+            animator.instanceClips.push_back(clip.IsScalar() ? clip.Scalar() : std::string());
+        }
+    }
+    const YAML::Node speedsNode = node["instanceSpeeds"];
+    if (speedsNode && speedsNode.IsSequence()) {
+        for (const YAML::Node& speed : speedsNode) {
+            animator.instanceSpeeds.push_back(decodeFinite(speed, 1.0f));
+        }
+    }
+
+    return animator;
 }
 
 ReflectionProbeComponent editor::Stream::decodeReflectionProbeComponent(const YAML::Node& node, const ReflectionProbeComponent* oldProbe) {

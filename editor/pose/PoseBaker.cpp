@@ -71,19 +71,10 @@ namespace {
         int frames = 0;
     };
 
-    bool computeBake(editor::Project* project, uint32_t sceneId, Entity model, editor::PoseAnimationDocument& document,
-                     BakeFrames& out, std::string& error){
+    // the frames on a model of any scene (an open one or a private one)
+    bool computeBakeIn(editor::Project* project, Scene* scene, Entity model, editor::PoseAnimationDocument& document,
+                       BakeFrames& out, std::string& error){
         using namespace editor;
-        SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
-        if (!sceneProject || !sceneProject->scene){
-            error = "the scene is not open";
-            return false;
-        }
-        if (sceneProject->playState != ScenePlayState::STOPPED){
-            error = "the scene is playing: stop play mode before baking";
-            return false;
-        }
-        Scene* scene = sceneProject->scene;
         if (!scene->findComponent<ModelComponent>(model)){
             error = "\"" + scene->getEntityName(model) + "\" is not a model GameObject";
             return false;
@@ -153,6 +144,52 @@ namespace {
         }
         out.length = length;
         out.frames = static_cast<int>(frames.size());
+        return true;
+    }
+
+    bool computeBake(editor::Project* project, uint32_t sceneId, Entity model, editor::PoseAnimationDocument& document,
+                     BakeFrames& out, std::string& error){
+        using namespace editor;
+        SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
+        if (!sceneProject || !sceneProject->scene){
+            error = "the scene is not open";
+            return false;
+        }
+        if (sceneProject->playState != ScenePlayState::STOPPED){
+            error = "the scene is playing: stop play mode before baking";
+            return false;
+        }
+        return computeBakeIn(project, sceneProject->scene, model, document, out, error);
+    }
+
+    // the baked frames as clip data on the model's bones (paths from the model root)
+    bool clipFromFrames(Scene* scene, Entity model, const BakeFrames& baked, const pose::PoseAnimationData& data,
+                        ClipData& clip, std::string& error){
+        using namespace editor;
+        std::vector<BakedChannel> channels;
+        for (const TrackPlan& plan : baked.plans){
+            BakedChannel channel;
+            channel.target = plan.bone;
+            channel.channel = plan.translation ? ClipChannel::Position : ClipChannel::Rotation;
+            channel.times = baked.times;
+            channel.ease = data.settings.stepRate > 0.0f ? EaseType::STEP : EaseType::LINEAR;
+            if (plan.translation){
+                for (const Vector3& position : plan.positions) channel.values.push_back({position.x, position.y, position.z});
+            }else{
+                for (const Quaternion& rotation : plan.rotations){
+                    std::vector<float> value(4);
+                    quaternionToXYZW(rotation, value.data());
+                    channel.values.push_back(value);
+                }
+            }
+            channels.push_back(channel);
+        }
+        std::string failure;
+        if (!ClipConverters::bakeChannels(scene, model, channels, baked.length, data.settings.loop, clip, &failure)){
+            error = failure;
+            return false;
+        }
+        clip.frameRate = std::max(1.0f, std::min(240.0f, static_cast<float>(data.settings.frameRate)));
         return true;
     }
 
@@ -398,31 +435,10 @@ bool editor::PoseBaker::bakeToClip(Project* project, uint32_t sceneId, Entity mo
     const std::string name = requestedName.empty() ? documentStem(document) : requestedName;
 
     // the frames as channels on the actual bone entities: their paths from the model root
-    std::vector<BakedChannel> channels;
-    for (const TrackPlan& plan : baked.plans){
-        BakedChannel channel;
-        channel.target = plan.bone;
-        channel.channel = plan.translation ? ClipChannel::Position : ClipChannel::Rotation;
-        channel.times = baked.times;
-        channel.ease = data.settings.stepRate > 0.0f ? EaseType::STEP : EaseType::LINEAR;
-        if (plan.translation){
-            for (const Vector3& position : plan.positions) channel.values.push_back({position.x, position.y, position.z});
-        }else{
-            for (const Quaternion& rotation : plan.rotations){
-                std::vector<float> value(4);
-                quaternionToXYZW(rotation, value.data());
-                channel.values.push_back(value);
-            }
-        }
-        channels.push_back(channel);
-    }
     ClipData clip;
-    std::string failure;
-    if (!ClipConverters::bakeChannels(scene, model, channels, baked.length, data.settings.loop, clip, &failure)){
-        error = failure;
+    if (!clipFromFrames(scene, model, baked, data, clip, error)){
         return false;
     }
-    clip.frameRate = std::max(1.0f, std::min(240.0f, static_cast<float>(data.settings.frameRate)));
     clip.source.kind = "pose";
     clip.source.path = document.path();
     clip.source.name = name;
@@ -490,6 +506,26 @@ bool editor::PoseBaker::bakeToClip(Project* project, uint32_t sceneId, Entity mo
         const AnimationPlayerClip& listed = player->clips[result.entry];
         result.name = listed.name.empty() ? fs::u8path(listed.clip).stem().u8string() : listed.name;
     }
+    return true;
+}
+
+bool editor::PoseBaker::clipData(Project* project, Scene* scene, Entity model, PoseAnimationDocument& document, ClipData& out,
+                                 std::string& error){
+    out = ClipData();
+    if (!scene || !scene->isEntityCreated(model)){
+        error = "the model GameObject does not exist";
+        return false;
+    }
+    BakeFrames baked;
+    if (!computeBakeIn(project, scene, model, document, baked, error)){
+        return false;
+    }
+    if (!clipFromFrames(scene, model, baked, document.data(), out, error)){
+        return false;
+    }
+    out.source.kind = "pose";
+    out.source.path = document.path();
+    out.source.name = documentStem(document);
     return true;
 }
 
