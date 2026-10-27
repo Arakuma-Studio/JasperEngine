@@ -160,13 +160,9 @@ ran (tier, passes, resolution). Atmosphere Quality is per platform (project sett
 quality.atmosphere_quality_*). More: jasper://docs/atmosphere.
 
 ## Particles
-create_particles makes a Particle System from a preset (fire, smoke, sparks, explosion, snow,
-rain, magic). The particles group edits its effect: particles_get_effect (JSON, modules keyed by
-type), particles_edit_effect (a merge patch {"modules": {"emission": {"rateOverTime": 20}}}, one
-undo step), particles_add_module / particles_remove_module. A .particles asset
-(particles_create_effect, particles_assign) is shared: editing it changes every system using it.
-particles_control plays, seeks and emits (Edit mode too), particles_stats and particles_capture
-check. More: jasper://docs/particles.
+create_particles makes a Particle System from a preset. The particles group edits effects
+(edit_particle_effect: merge patches, modules keyed by type); a .particles asset is shared by
+every system using it. More: jasper://docs/particles.
 
 ## Physics
 - Add a body and its collider to the SAME GameObject in one step (edit_colliders with

@@ -5,7 +5,7 @@
 
 // What the S20 migration converted (docs/specs/S20-particles.md R32): each old Particle System a
 // document read since the project opened, with the line its migration logged (the target it
-// moved to, the approximations it made). particles_migration_report lists them.
+// moved to, the approximations it made). get_particle_migration_report lists them.
 
 #include <mutex>
 #include <string>

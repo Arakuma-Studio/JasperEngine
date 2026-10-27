@@ -30,31 +30,31 @@ async def setup(ed: Editor) -> dict:
     if S.get("ed") is ed:
         return S
     S.clear()
-    S["ed"] = ed
     ed.require_tools("create_particles", "eval_lua", "play", "tool_groups")
     await ed.call("tool_groups", enable=["particles"])
     made = await ed.call("create_scene", name="ParticleLua", type="3D", path="scenes/ParticleLua")
     S["scene"] = made["scene"]["id"]
     await ed.call("select_scene", scene=S["scene"])
-    await ed.call("particles_create_effect", path="assets/fx/burst.particles", preset="sparks")
+    await ed.call("create_particle_effect", path="assets/fx/burst.particles", preset="sparks")
     rain = await ed.call("create_particles", scene=S["scene"], name="Rain", preset="none", position=[0, 3, 0])
     S["rain"] = rain["particle_system"]["id"]
-    await ed.call("particles_edit_effect", scene=S["scene"], entity=S["rain"], patch={
+    await ed.call("edit_particle_effect", scene=S["scene"], entity=S["rain"], patch={
         "seed": 5,
         "simulationSpace": "world",
         "maxParticles": 500,
         "exposed": [{"name": "Rate", "path": "emission.rateOverTime", "type": "float"}],
-        "subEmitters": [{"trigger": "trigger", "triggerName": "boom", "effect": "fx/burst.particles", "emitCount": 4}],
+        "subEmitters": [{"trigger": "trigger", "triggerName": "boom", "effect": "assets/fx/burst.particles", "emitCount": 4}],
         "modules": {
             "main": {"startSpeed": 0, "startLifetime": 4, "gravityModifier": 1},
             "emission": {"rateOverTime": 200},
-            "collision": {"type": "planes", "planes": [{"point": [0, -3, 0], "normal": [0, 1, 0]}], "sendEvents": True,
+            "collision": {"collisionType": "planes", "planes": [{"point": [0, -3, 0], "normal": [0, 1, 0]}], "sendEvents": True,
                           "maxCollisionEvents": CAP, "bounce": 0.2},
             "subEmitters": {},
         },
     })
     await ed.call("play", action="start")
     await ed.call("wait", frames=5)
+    S["ed"] = ed
     return S
 
 
@@ -67,7 +67,10 @@ async def stop(ed: Editor):
 async def test_playback(ed: Editor):
     await setup(ed)
     ed.check_eq(await lua(ed, "return object('Rain', 'ParticleSystem').isPlaying"), True, "Play On Awake")
-    count = await lua(ed, "local ps = object('Rain', 'ParticleSystem'); ps:stop(true); ps:emit(5); return ps.particleCount")
+    await lua(ed, "local ps = object('Rain', 'ParticleSystem'); ps:stop(true); ps:emit(5)")
+    # emitted particles are born at the system's next tick
+    await ed.call("wait", frames=2)
+    count = await lua(ed, "return object('Rain', 'ParticleSystem').particleCount")
     ed.check_eq(count, 5, "stop(true) cleared, emit(5) made five")
     ed.check_eq(await lua(ed, "return object('Rain', 'ParticleSystem').isEmitting"), False, "stopped systems do not emit")
     t = await lua(ed, "local ps = object('Rain', 'ParticleSystem'); ps:seek(1.5); return ps.time")

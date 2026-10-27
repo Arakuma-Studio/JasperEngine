@@ -119,7 +119,7 @@ namespace jasperengine{
             uint32_t planeCount = 0;
             std::vector<ForceFieldSample> fields;
 
-            // stats (particles_stats)
+            // stats (get_particle_stats)
             uint32_t ticks = 0;
             uint32_t budget = 0;
             float emissionScale = 1.0f;

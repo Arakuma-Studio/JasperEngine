@@ -485,7 +485,8 @@ namespace {
     ModuleDesc makeCollision(){
         ModuleDesc d = module<CollisionModule>(ModuleId::Collision, "collision", "Collision", JE_DOC(collision), "Particles bounce off planes, the physics world or terrain");
         auto& f = d.fields.fields;
-        f.push_back(enumField("type", "Type", JE_ACC(CollisionModule, type), kCollisionTypes));
+        // "collisionType": a module entry's "type" is the module
+        f.push_back(enumField("collisionType", "Type", JE_ACC(CollisionModule, type), kCollisionTypes));
         f.push_back(shownIf(arrayField<std::vector<CollisionPlane>>("planes", "Planes", JE_ACC(CollisionModule, planes), &planeDesc(), (uint32_t)kMaxCollisionPlanes),
                             JE_IF(CollisionModule, m.type == CollisionType::Planes)));
         f.push_back(ranged(field("dampen", "Dampen", FieldType::MinMaxCurve, JE_ACC(CollisionModule, dampen)), 0.0f, 1.0f));

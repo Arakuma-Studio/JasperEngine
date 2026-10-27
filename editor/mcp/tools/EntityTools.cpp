@@ -1218,10 +1218,10 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "create_entity";
         tool.title = "Create Entity";
         tool.description =
-            "GameObject > Create with parent, name, local transform, extra components and initial values in one "
-            "step. empty = Transform only; bare = no components (root only); model needs model (imports a project "
-            "model); *_tween/*_tracks are animation actions. values {component: {property: value}} or changes, as "
-            "set_properties.";
+            "GameObject > Create with parent, name, local transform, components and initial values in one "
+            "step. empty = Transform only; bare = no components (root only); model needs model (a project "
+            "model); *_tween/*_tracks: animation actions. values {component: {property: value}} or changes "
+            "(set_properties).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"type", withDefault(stringEnum("", types), "empty")},

@@ -1108,7 +1108,7 @@ offsets (`relative` does not apply to it).
 A GameObject with a Particle System (`ParticleSystem(scene)` makes one; a script property of
 type ParticleSystem, or `object(ref, 'ParticleSystem')` in eval_lua). Methods: `play()`,
 `pause()`, `stop([clear])` (true also removes the particles), `restart()`,
-`emit(count [, {position, velocity, size, color, lifetime}])`, `seek(t)` (restart and simulate to
+`emit(count [, {position, velocity, size, color, lifetime}])` (born at the system's next tick), `seek(t)` (restart and simulate to
 t seconds), `step(ticks)`, `sendTrigger(name)` (the effect's Trigger sub-emitters named so),
 `setFloat(name, v)` / `setVector3(name, v)` / `setColor(name, v)` and `getFloat` / `getVector3` /
 `getColor` for the effect's exposed parameters (false / nil for an unknown name),

@@ -102,7 +102,7 @@ bool resolveEffectPath(Project* project, const std::string& value, bool mustExis
         return false;
     }
     if (mustExist && !fs::exists(absolute)) {
-        error = "No effect at \"" + value + "\" (particles_create_effect makes one).";
+        error = "No effect at \"" + value + "\" (create_particle_effect makes one).";
         return false;
     }
     out = project->normalizeToAssetsRelative(absolute).generic_string();
@@ -231,7 +231,7 @@ void createEffectTool(const CallPtr& call) {
     }
     const fs::path absolute = project->resolveAssetPath(path);
     if (fs::exists(absolute) && !args.value("overwrite", false)) {
-        call->fail("\"" + path + "\" exists (overwrite: true replaces it; particles_edit_effect edits it).");
+        call->fail("\"" + path + "\" exists (overwrite: true replaces it; edit_particle_effect edits it).");
         return;
     }
 
@@ -286,7 +286,7 @@ void getEffectTool(const CallPtr& call) {
     data["diagnostics"] = diagnosticsJson(diagnostics);
     std::string text = std::string(target.inlineEffect ? "Inline effect" : "Effect " + target.asset) + ": " +
                        std::to_string(data["modules"].size()) + " modules, " + std::to_string(diagnostics.size()) + " diagnostics. "
-                       "The effect is the keyed form particles_edit_effect patches (modules keyed by type, defaults left out).";
+                       "The effect is the keyed form edit_particle_effect patches (modules keyed by type, defaults left out).";
     call->ok(text, data);
 }
 
@@ -315,7 +315,7 @@ void moduleTool(const CallPtr& call, bool add) {
         return;
     }
     if (!add && module->alwaysPresent) {
-        call->fail(std::string(module->label) + " cannot be removed (an effect always has it); particles_edit_effect can disable it.");
+        call->fail(std::string(module->label) + " cannot be removed (an effect always has it); edit_particle_effect can disable it.");
         return;
     }
     EffectTarget target;
@@ -603,40 +603,40 @@ void registerParticleTools(McpRegistry& registry) {
         registry.addTool(std::move(tool));
     };
 
-    add("particles_create_effect", "Create Particle Effect",
-        "A new .particles asset from a create_particles preset or an effect JSON (the keyed form particles_get_effect returns), "
-        "one undo step of the project. particles_assign plays it on a Particle System.",
+    add("create_particle_effect", "Create Particle Effect",
+        "A new .particles asset from a create_particles preset or an effect JSON (the keyed form get_particle_effect returns), "
+        "one undo step of the project. set_particle_effect plays it on a Particle System.",
         object({{"path", assetPath("The new file (.particles).")},
                 {"preset", stringEnum("", particlePresetNames())},
                 {"effect", anyObject("The whole effect (modules keyed by type).")},
                 {"overwrite", withDefault(boolean(""), false)}}, {"path"}),
         createEffectTool, false);
-    add("particles_get_effect", "Get Particle Effect",
+    add("get_particle_effect", "Get Particle Effect",
         "An effect as JSON (keyed: {duration, looping, ..., modules: {main, emission, shape, ...}}, defaults left out), the "
         "modules present and its validation diagnostics [{severity, path, message}].",
         object(withTarget(Json::object()), std::vector<std::string>{}), getEffectTool, true);
-    add("particles_edit_effect", "Edit Particle Effect",
+    add("edit_particle_effect", "Edit Particle Effect",
         "Apply a JSON merge patch (RFC 7386) to an effect's keyed form as one undo step: {\"modules\": {\"emission\": "
         "{\"rateOverTime\": 20}}}; null removes a key (a module: removes it). A value is a number, or {mode: twoConstants, "
         "constant, constantMax}, {mode: curve, curve: [[t, v], ...], multiplier}; colours [r, g, b, a] sRGB. An asset's edit "
         "changes every system using it. A patch that leaves the effect invalid is refused with its diagnostics.",
         object(withTarget({{"patch", anyObject("The merge patch.")}}), std::vector<std::string>{"patch"}), editEffectTool, false);
-    add("particles_add_module", "Add Particle Module",
+    add("add_particle_module", "Add Particle Module",
         "Add (or re-enable) a module of an effect, with optional fields: emission, shape, startVelocity, velocityOverLifetime, "
         "limitVelocity, forceOverLifetime, colorOverLifetime, colorBySpeed, sizeOverLifetime, sizeBySpeed, rotationOverLifetime, "
         "rotationBySpeed, externalForces, noise, orbit, collision, subEmitters, textureSheetAnimation, trails, customData, setOverAge.",
         object(withTarget({{"module", string("")}, {"fields", anyObject("The module's fields.")}}), std::vector<std::string>{"module"}),
         addModuleTool, false);
-    add("particles_remove_module", "Remove Particle Module",
-        "Remove a module from an effect (Main and Renderer stay: disable them through particles_edit_effect).",
+    add("remove_particle_module", "Remove Particle Module",
+        "Remove a module from an effect (Main and Renderer stay: disable them through edit_particle_effect).",
         object(withTarget({{"module", string("")}}), std::vector<std::string>{"module"}), removeModuleTool, false);
-    add("particles_assign", "Assign Particle Effect",
+    add("set_particle_effect", "Assign Particle Effect",
         "Make a Particle System play a .particles asset (effect: its path) or its inline effect (effect: \"inline\" or empty; "
         "copy_to_inline keeps the asset's effect as the inline one).",
         object({{"entity", entityRef()}, {"scene", sceneRef()}, {"effect", string("")}, {"copy_to_inline", withDefault(boolean(""), true)}},
                {"entity", "effect"}),
         assignTool, false);
-    add("particles_control", "Control Particle System",
+    add("control_particles", "Control Particle System",
         "Play, pause, stop (keeps the particles), clear, restart, emit count particles, seek to time (restart and simulate) or "
         "step ticks. In Edit mode the Scene view's Particle Effect preview runs the system. Returns its statistics.",
         object({{"entity", entityRef()}, {"scene", sceneRef()},
@@ -644,11 +644,11 @@ void registerParticleTools(McpRegistry& registry) {
                 {"count", integer("", 1, 100000)}, {"time", number("Seconds.")}, {"ticks", integer("", 1, 100000)}},
                {"entity", "action"}),
         controlTool, false);
-    add("particles_stats", "Particle Statistics",
+    add("get_particle_stats", "Particle Statistics",
         "Live statistics of one Particle System (entity) or every one of the scene: particle_count, capacity, budget share, "
         "ticks, dropped time, simulate/render microseconds, culled, sorted views; and the world's totals.",
         object({{"entity", entityRef()}, {"scene", sceneRef()}}), statsTool, true);
-    add("particles_capture", "Capture Particle Effect",
+    add("capture_particles", "Capture Particle Effect",
         "Seek a Particle System to time (seconds) and capture the view (camera: scene or game) as an image; the system stays "
         "paused there.",
         object({{"entity", entityRef()}, {"scene", sceneRef()}, {"time", number("Seconds.")},
@@ -656,7 +656,7 @@ void registerParticleTools(McpRegistry& registry) {
                 {"max_width", withDefault(integer("", 0, 4096), 768)}, {"save_path", string("Also write the PNG here.")}},
                {"entity", "time"}),
         captureTool, false);
-    add("particles_migration_report", "Particle Migration Report",
+    add("get_particle_migration_report", "Particle Migration Report",
         "The old particle systems the documents read since the project opened were converted from (S20): per document, one "
         "line per system (where its effect went, what was approximated).",
         object({}), migrationReportTool, true);

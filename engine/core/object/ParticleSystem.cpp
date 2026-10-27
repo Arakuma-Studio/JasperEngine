@@ -41,7 +41,7 @@ namespace {
         if (std::find(noted.begin(), noted.end(), what) != noted.end())
             return;
         noted.push_back(what);
-        Log::warn("[Particles] ParticleSystem.%s is deprecated: edit the effect's modules (particles_edit_effect, the Inspector, setFloat)", what);
+        Log::warn("[Particles] ParticleSystem.%s is deprecated: edit the effect's modules (edit_particle_effect, the Inspector, setFloat)", what);
     }
 
 }

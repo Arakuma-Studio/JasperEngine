@@ -27,7 +27,7 @@ namespace jasperengine{
 
     struct Transform;
 
-    // what particles_stats reports of one system
+    // what get_particle_stats reports of one system
     struct ParticleSystemStats{
         bool valid = false;
         uint32_t live = 0;

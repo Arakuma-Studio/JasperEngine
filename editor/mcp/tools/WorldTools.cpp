@@ -4206,7 +4206,7 @@ void createParticlesTool(const CallPtr& call) {
     const LegacyParticleSystem view = particles::LegacyParticleConverter::extract(document);
     call->ok(std::string(created ? "Created" : "Updated") + " particle system \"" + scene->getEntityName(system) + "\"" +
              (preset.empty() ? std::string() : " (" + preset + ")") + ". It plays when the scene plays (autoplay: Play On Awake) or when a "
-             "script calls play(); particles_edit_effect edits any module of its effect.",
+             "script calls play(); edit_particle_effect edits any module of its effect.",
              Json{{"particle_system", entityJson(target, system)}, {"emitter", entityJson(target, system)}, {"created", created},
                   {"effect", c.effect.empty() ? Json(nullptr) : Json(c.effect.path)},
                   {"max_particles", view.maxParticles}, {"rate", view.rate}, {"loop", view.loop},
@@ -4882,8 +4882,8 @@ void registerWorldTools(McpRegistry& registry) {
         "effect, the asset when it has one). 3D presets in meters; 2D ones scaled by scale (px per unit). emitter {shape: "
         "box|sphere|hemisphere|circle|cone, min, max, radius, inner_radius, cone_angle, cone_height}; "
         "velocity/acceleration/color: value or {min, max}; gradient = color over life; bursts [{time, count}]. "
-        "Plays in play (autoplay = Play On Awake). emitter_entity: put the system on that GameObject (a Mesh one emits its mesh). "
-        "particles_* tools edit every module.",
+        "Plays in play (autoplay = Play On Awake). emitter_entity: put it on that GameObject (a Mesh one emits its mesh). "
+        "edit_particle_effect edits every module.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef("Effect to reconfigure.")},

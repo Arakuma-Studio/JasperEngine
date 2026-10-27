@@ -13,15 +13,15 @@ for a given seed and frame-rate independent.
   makes a Particle System GameObject with an inline effect (the overrides `rate`, `life`,
   `size`, `velocity`, `color`, `gradient`, `bursts`, `emitter {shape...}` work as before).
   Given `entity`, it reconfigures that system's effect.
-- `particles_create_effect {path: "assets/fx/fire.particles", preset}` writes an asset;
-  `particles_assign {entity, effect: "fx/fire.particles"}` plays it (`effect: "inline"` goes
+- `create_particle_effect {path: "assets/fx/fire.particles", preset}` writes an asset;
+  `set_particle_effect {entity, effect: "fx/fire.particles"}` plays it (`effect: "inline"` goes
   back to an inline copy).
 - The editor: GameObject > Effects > Particle System; the Inspector's Save as Asset / Make
   Inline buttons move an effect between the two forms.
 
 ## The effect JSON
 
-`particles_get_effect {entity | path}` returns the keyed form, defaults left out:
+`get_particle_effect {entity | path}` returns the keyed form, defaults left out:
 
 ```json
 {
@@ -57,24 +57,24 @@ for a given seed and frame-rate independent.
 
 ## Editing
 
-- `particles_edit_effect {entity | path, patch}`: an RFC 7386 merge patch of the keyed form,
+- `edit_particle_effect {entity | path, patch}`: an RFC 7386 merge patch of the keyed form,
   one undo step. `null` removes a key (a module: removes it); arrays are replaced whole. A patch
   that leaves the effect invalid is refused with its diagnostics `[{severity, path, message}]`.
-- `particles_add_module {module, fields}` / `particles_remove_module {module}`.
+- `add_particle_module {module, fields}` / `remove_particle_module {module}`.
 - A GameObject with an asset edits the **asset**: every system playing it changes. Make it
-  inline first (`particles_assign effect: "inline"`) to change one GameObject only.
+  inline first (`set_particle_effect effect: "inline"`) to change one GameObject only.
 - An edit that changes values only keeps the live particles (the system rebinds); one that
   changes the structure (modules, capacity, trails) restarts it.
 
 ## Playing and checking
 
 - In Play, a system with `playOnAwake` (create_particles `autoplay`) starts with the scene.
-- `particles_control {entity, action: play|pause|stop|clear|restart|emit|seek|step}` works in
+- `control_particles {entity, action: play|pause|stop|clear|restart|emit|seek|step}` works in
   Play and in Edit mode, where the Scene view's Particle Effect preview runs the system (the
   selected systems play there too; the panel's Playback Time slider scrubs).
-- `particles_stats` reports particle_count, time, ticks, the world budget, simulate/render µs,
-  culled; `particles_capture {entity, time, camera: scene|game}` seeks and returns an image.
-- `particles_migration_report` lists the old particle systems (Points + Particle System action)
+- `get_particle_stats` reports particle_count, time, ticks, the world budget, simulate/render µs,
+  culled; `capture_particles {entity, time, camera: scene|game}` seeks and returns an image.
+- `get_particle_migration_report` lists the old particle systems (Points + Particle System action)
   the documents read were converted from; saving writes the new format.
 
 ## Lua
@@ -82,7 +82,7 @@ for a given seed and frame-rate independent.
 ```lua
 local ps = self.fire           -- a script property of type ParticleSystem, or ParticleSystem(scene, entity)
 ps:play()
-ps:emit(20, {position = Vector3(0, 1, 0), color = Vector4(1, 0.5, 0.2, 1)})
+ps:emit(20, {position = Vector3(0, 1, 0), color = Vector4(1, 0.5, 0.2, 1)})  -- born at the next tick
 ps:seek(1.5)
 ps:stop(true)                  -- true also clears the particles
 ps:setFloat("Intensity", 3)    -- an exposed parameter of the effect
@@ -112,6 +112,6 @@ particles of systems whose External Forces module shares one of its layers.
 
 Budgets: the world keeps at most its particle budget alive (higher `priority` effects keep more),
 Automatic culling pauses off-screen emitters and catches up when they come back, Distance LOD
-thins far ones. Collision against the world (`collision.type: world`) is the costly module:
+thins far ones. Collision against the world (`collision.collisionType: world`) is the costly module:
 Medium quality caches planes and caps the ray casts per tick (`maxQueriesPerTick`). Sorting
 (`renderer.sortMode`) costs a sort per view; additive particles need none.

@@ -38,6 +38,28 @@ TEST(ParticleEffectCodec, RoundTrip){
     EXPECT_EQ(first, second);
 }
 
+// a module's own fields never take the keys of its entry's header: in the file a module is
+// {"type": <module>, "enabled": ..., ...fields}, so a field named "type" overwrote the module
+TEST(ParticleEffectCodec, ModuleFieldsKeepOutOfTheHeader){
+    for (const ModuleDesc& m : ParticleModules::all()){
+        for (const FieldDesc& f : m.fields.fields){
+            EXPECT_STRNE(f.key, "type") << m.key;
+            EXPECT_STRNE(f.key, "enabled") << m.key;
+        }
+    }
+}
+
+TEST(ParticleEffectCodec, WorldCollisionRoundTrips){
+    ParticleEffectDocument doc;
+    doc.collision.present = true;
+    doc.collision.type = CollisionType::World;
+    ParticleEffectDocument read;
+    std::vector<Diagnostic> diagnostics;
+    ASSERT_TRUE(ParticleEffectCodec::read(ParticleEffectCodec::write(doc), read, diagnostics)) << ParticleEffectCodec::format(diagnostics);
+    EXPECT_TRUE(read.collision.present);
+    EXPECT_EQ(read.collision.type, CollisionType::World);
+}
+
 TEST(ParticleEffectCodec, DefaultsAreLeftOut){
     const std::string text = ParticleEffectCodec::write(ParticleEffectDocument());
     // the version, the modules shown by default and nothing else

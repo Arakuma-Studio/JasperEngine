@@ -8,7 +8,7 @@
 // ticks to the time in chunks of at most budgetMs per call; checkpoints (full copies of the
 // state) every second of simulated time, at most 32 MB per emitter (the oldest dropped), let a
 // backward or repeated scrub start from the nearest one instead of from 0. The editor's Scene
-// view overlay, the Inspector preview, the animation window and particles_control seek use it.
+// view overlay, the Inspector preview, the animation window and control_particles seek use it.
 
 #include "Export.h"
 #include "particles/EmitterRuntime.h"

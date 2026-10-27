@@ -38,7 +38,7 @@ namespace jasperengine::editor {
         void draw(Project* project, SceneProject* sceneProject, const ImVec2& canvasMin, const ImVec2& canvasSize);
         void clear(uint32_t sceneId);
 
-        // The panel's controls, also for tools (the MCP particles_control in Edit mode)
+        // The panel's controls, also for tools (the MCP control_particles in Edit mode)
         void play(uint32_t sceneId);
         void pause(uint32_t sceneId);
         void restart(Project* project, SceneProject* sceneProject);
