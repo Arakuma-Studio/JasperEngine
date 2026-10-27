@@ -30,6 +30,7 @@
 #include "pool/VertexAnimationPool.h"
 
 #include "imgui.h"
+#include "imgui_internal.h"
 #include "json.hpp"
 
 #include <algorithm>
@@ -2055,6 +2056,11 @@ void VertexAnimationBakerWindow::show() {
     const bool playing = scenePlaying(&playingReason);
     const float minimum = ImGui::GetFrameHeight() * 1.4f + ImGui::GetStyle().ItemSpacing.y * 3.0f;
     ImGui::BeginChild("##vat_body", ImVec2(0, -std::max(footerHeight, minimum)), ImGuiChildFlags_None);
+    if (UIProbe::enabled()) {
+        // what shows of the scrolling body, wherever it is scrolled (UI tests scroll it)
+        const ImRect inner = ImGui::GetCurrentWindow()->InnerClipRect;
+        UIProbe::rect("vatbaker", inner.Min.x, inner.Min.y, inner.Max.x, inner.Max.y);
+    }
     ImGui::BeginDisabled(isRunning() || playing);
     drawSource();
     if (mode == Mode::Bake) {

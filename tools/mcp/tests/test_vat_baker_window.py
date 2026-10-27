@@ -86,10 +86,24 @@ async def type_into(ed: Editor, rect, text: str, enter: bool = True) -> None:
     await ed.call("wait", frames=10)
 
 
-async def rect_of(ed: Editor, name: str, what: str):
-    rect = await ed.ui_rect(name, timeout=20.0)
-    ed.check(rect, f"{what} ({name}) is drawn: {sorted(ed.ui_items())[:80]}")
-    return rect
+async def rect_of(ed: Editor, name: str, what: str, panel: str = "vatbaker"):
+    """`name`'s rectangle, scrolling `panel` (the baker's body, or "inspector") until it is drawn whole."""
+    rect = await ed.ui_rect(name, timeout=3.0)
+    if rect:
+        return rect
+    area = await ed.ui_rect(panel, timeout=10.0)
+    ed.check(area, f"the {panel} panel is drawn: {sorted(ed.ui_items())[:80]}")
+    at = center(area)
+    xdo(ed, "mousemove", str(int(at[0])), str(int(at[1])))
+    await asyncio.sleep(0.2)
+    for down in (False, True):
+        for _ in range(40):
+            await ed.call("wait", frames=3)
+            rect = ed.ui_items().get(name)
+            if rect:
+                return rect
+            xdo(ed, "click", "5" if down else "4")
+    ed.fail(f"{what} ({name}) is never drawn: {sorted(ed.ui_items())[:80]}")
 
 
 async def wait_for(ed: Editor, predicate, what: str, seconds: float = 120.0) -> None:
@@ -190,14 +204,14 @@ async def test_bake_writes_one_project_undo_step(ed: Editor):
 async def test_inspector_entry_opens_the_baker_and_shift_bakes(ed: Editor):
     await ed.call("select_entities", entities=["Hero"])
     await focus_x(ed, "inspector")
-    await click(ed, await rect_of(ed, "player.bake", "the Animation Player's Bake button"))
-    await click(ed, await rect_of(ed, "player.bakeMenu.vat", "Bake ▾ › Vertex Animation…"))
+    await click(ed, await rect_of(ed, "player.bake", "the Animation Player's Bake button", "inspector"))
+    await click(ed, await rect_of(ed, "player.bakeMenu.vat", "Bake ▾ › Vertex Animation…", "inspector"))
     await rect_of(ed, "vatbaker.clip.0", "the baker on Hero's clips")
     # Shift-click: bakes now, placed beside Hero
     heroes = await count_named(ed, "Hero (VAT)")
     await focus_x(ed, "inspector")
-    await click(ed, await rect_of(ed, "player.bake", "the Animation Player's Bake button"))
-    await click(ed, await rect_of(ed, "player.bakeMenu.vat", "Bake ▾ › Vertex Animation…"), shift=True)
+    await click(ed, await rect_of(ed, "player.bake", "the Animation Player's Bake button", "inspector"))
+    await click(ed, await rect_of(ed, "player.bakeMenu.vat", "Bake ▾ › Vertex Animation…", "inspector"), shift=True)
     for _ in range(240):
         if await count_named(ed, "Hero (VAT)") > heroes:
             break
@@ -213,17 +227,17 @@ async def test_inspector_entry_opens_the_baker_and_shift_bakes(ed: Editor):
 
 
 async def test_playing_refuses_the_bake(ed: Editor):
-    ed.require_tools("play_scene", "stop_scene")
+    ed.require_tools("play")
     for name in ("assets/models/rigid_arm.vat", "assets/models/rigid_arm.vat.glb"):
         (ed.project / name).unlink(missing_ok=True)
     await focus_x(ed)
     await type_into(ed, await rect_of(ed, "vatbaker.source", "the Source field"), ARM)
     await type_into(ed, await rect_of(ed, "vatbaker.output", "the Output field"), "", enter=False)
-    await ed.call("play_scene")
+    await ed.call("play", action="start")
     await ed.call("wait", frames=20)
     await focus_x(ed)
     await click(ed, await rect_of(ed, "vatbaker.bake", "the Bake button"))
     await ed.call("wait", frames=30)
     ed.check(not (ed.project / "assets/models/rigid_arm.vat").exists(), "nothing baked while playing")
-    await ed.call("stop_scene")
+    await ed.call("play", action="stop")
     await ed.call("wait", frames=20)
