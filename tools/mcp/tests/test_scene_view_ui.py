@@ -87,11 +87,9 @@ class Ui:
         await self.move(start)
         self.xdo("mousedown", "1")
         await self.settle(0.2)
-        # a frame per step: ImGui starts a drag-and-drop only from a move it sees with the
-        # button held over the source (a host drawing a frame a second skips faster moves)
         for k in range(1, steps + 1):
             self.xdo("mousemove", str(int(start[0] + (end[0] - start[0]) * k / steps)), str(int(start[1] + (end[1] - start[1]) * k / steps)))
-            await self.ed.call("wait", frames=1)
+            await asyncio.sleep(0.06)
         await self.settle(0.4)
         self.xdo("mouseup", "1")
         await self.settle(0.6)
