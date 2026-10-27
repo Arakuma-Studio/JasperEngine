@@ -60,7 +60,11 @@ namespace jasperengine::editor::mcp {
         // The call's undo steps are the agent's (S24 R24): edit tools always; a control tool
         // whose steps are edits of the user's state too (select_entities) sets this
         bool attributesUndo = false;
-        std::function<void(CallPtr)> handler;  // runs on the MAIN thread
+        // Answered on the transport's thread, never queued for the main thread, so it replies
+        // while the editor is hung (get_editor_health only): the handler may read only state that
+        // is safe from any thread, and no busy, play or dialog checks apply
+        bool offMainThread = false;
+        std::function<void(CallPtr)> handler;  // runs on the MAIN thread (but offMainThread)
     };
 
     // One item of resources/read

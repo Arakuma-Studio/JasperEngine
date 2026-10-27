@@ -16,8 +16,8 @@
 
 #include "Engine.h"
 #include "Log.h"
-#include "LunaSVGRuntime.h"
-#include "ThorVGRuntime.h"
+#include "util/LunaSVGRuntime.h"
+#include "util/ThorVGRuntime.h"
 
 #include <RmlUi/Core.h>
 #ifdef JASPERENGINE_HTMLUI_DEBUGGER

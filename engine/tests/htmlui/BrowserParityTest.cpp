@@ -26,7 +26,7 @@
 
 #include "htmlui/compat/DocumentLoader.h"
 
-#include "DefaultFont.h"
+#include "util/DefaultFont.h"
 
 #include "json.hpp"
 

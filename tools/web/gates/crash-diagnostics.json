@@ -1,0 +1,13 @@
+{
+  "description": "tools/test-projects/crash-diagnostics (WEB_PROJECT=crash-diagnostics tools/build.sh web), opened with ?jasperengine_debug_crash=abort: the development build aborts 30 frames after its scenes loaded (after the ready line) and the page hooks (engine/platform/emscripten/crash_pre.js) log JASPERENGINE CRASH: with the stack and the log tail and call window.jasperengine.onCrash, which init_script defines before the page loads. The abort's own errors are allowed.",
+  "isolated": true,
+  "query": ["jasperengine_debug_crash=abort"],
+  "init_script": "window.jasperengine = { onCrash: function (report) { window.jasperengineCrashTest = { stack: report.stack.length > 0, logTail: report.logTail.indexOf('[gate] crash diagnostics: cpp init') >= 0, message: report.message, buildHash: report.buildHash }; } };",
+  "eval": "JSON.stringify({test: window.jasperengineCrashTest || null, overlay: !!document.getElementById('jasperengine-crash')})",
+  "eval_expect": ["\"stack\":true", "\"logTail\":true", "abort", "\"overlay\":true"],
+  "expect": ["[gate] crash diagnostics: cpp init"],
+  "console": [
+    {"text": "JASPERENGINE CRASH:", "level": "error"}
+  ],
+  "allow": ["JASPERENGINE CRASH:", "debug crash: abort", "Aborted(", "RuntimeError", "abort("]
+}
