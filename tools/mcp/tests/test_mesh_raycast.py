@@ -37,7 +37,9 @@ def close(a, b, tol=1e-3):
 
 
 async def lua(ed: Editor, code: str):
-    return await ed.call("eval_lua", code=code)
+    """The chunk's one return value (eval_lua answers {values: [...]})"""
+    values = (await ed.call("eval_lua", code=code))["values"]
+    return values[0] if len(values) == 1 else values
 
 
 async def setup(ed: Editor):

@@ -413,6 +413,10 @@ async def test_alt_f_frames_all(ed: Editor):
 async def test_ortho_top_golden(ed: Editor):
     """The grid lies in the plane an orthographic axis view looks at (golden, glcore)."""
     sid = await new_scene(ed, "OrthoTop")
+    # the default light's icon would sit in the middle of the image: the grid and the marker only
+    lights = await ed.call("find_entities", scene=sid, name="Directional Light")
+    if lights["entities"]:
+        await ed.call("delete_entities", scene=sid, entities=[e["id"] for e in lights["entities"]])
     await cube(ed, sid, "Marker", (2, 0, -1))
     await look(ed, sid, (0, 10, 0.001), (0, 0, 0))
     await ed.call("set_scene_camera", scene=sid, view="top", ortho_size=6)
@@ -503,7 +507,9 @@ async def test_quad_layout(ed: Editor):
         (ed.scratch.root / f"quad-pane-{i}.png").write_bytes(data)
     # picking in the Top pane: its own (orthographic, from above) ray
     top = await ed.call("pick_at", scene=sid, pane=1, u=0.5, v=0.5, exact=True)
-    ed.check(top["hits"] and top["hits"][0]["normal"][1] > 0.9, f"from above: the top face {top['hits'][:1]}")
+    # (the Directional Light's icon may be first along that ray: the first mesh)
+    meshes = [h for h in top["hits"] if h["kind"] == "mesh"]
+    ed.check(meshes and meshes[0]["normal"][1] > 0.9, f"from above: the top face {top['hits'][:2]}")
     layout = await ed.call("set_scene_view_layout", scene=sid)
     ed.check_eq(layout["active_pane"], 1, "the picked pane is the active one")
     # idle panes do not redraw

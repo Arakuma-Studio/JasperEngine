@@ -718,8 +718,8 @@ void registerSceneViewTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "raycast_meshes";
-        // a runtime query beside the gameplay tools (editor_ux holds the Scene view's)
-        tool.group = "gameplay";
+        // the MCP face of Lua's MeshRaycast, beside the scripting tools
+        tool.group = "scripting";
         tool.title = "Raycast Meshes";
         tool.description =
             "MeshRaycast (Lua's): triangle-exact ray against meshes, instances, terrains and UI, edit or play, no physics. "

@@ -59,7 +59,7 @@ animates the user's moves):
 ## MeshRaycast (runtime and editor)
 
 `raycast_meshes {scene, origin, direction, max_distance, layer_mask, all, backfaces}` (group
-`gameplay`) is Lua's `MeshRaycast` (see `jasper://docs/lua-api-reference`, class MeshRaycast):
+`scripting`) is Lua's `MeshRaycast` (see `jasper://docs/lua-api-reference`, class MeshRaycast):
 
 ```lua
 local function look(scene, origin, direction, ray, door)
