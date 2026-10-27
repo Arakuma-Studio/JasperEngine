@@ -353,3 +353,226 @@ async def test_autosync_reports_a_broken_vat(ed: Editor):
     r = await ed.call_raw("editor_status")
     ext = (r.structured or {}).get("external_changes") or {}
     check(not [p for p in ext.get("problems", []) if p.get("path") == "assets/models/rigid_arm.vat"], f"clean again: {ext}")
+
+
+# ---------------------------------------------------------------------------- synthetic exports
+
+def png_rgba8(width: int, height: int, pixels: list[list[float]]) -> bytes:
+    """8-bit RGBA PNG of values 0..1 (rows top first, 4 per pixel)."""
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+    raw = b""
+    for y in range(height):
+        raw += b"\x00" + bytes(max(0, min(255, round(v * 255))) for v in pixels[y])
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+
+
+def write_glb(path: Path, positions, normals, uv0, uv1, indices) -> None:
+    """A glTF binary with one triangle mesh (float attributes, uint32 indices)."""
+    data = bytearray()
+    views, accessors = [], []
+
+    def add(values, fmt, kind, count, target, minmax=False):
+        while len(data) % 4:
+            data.append(0)
+        offset = len(data)
+        data.extend(struct.pack("<%d%s" % (len(values), fmt), *values))
+        views.append({"buffer": 0, "byteOffset": offset, "byteLength": len(data) - offset, "target": target})
+        accessor = {"bufferView": len(views) - 1, "componentType": 5126 if fmt == "f" else 5125, "count": count, "type": kind}
+        if minmax:
+            accessor["min"] = [min(values[k::3]) for k in range(3)]
+            accessor["max"] = [max(values[k::3]) for k in range(3)]
+        accessors.append(accessor)
+        return len(accessors) - 1
+
+    n = len(positions) // 3
+    attributes = {"POSITION": add(positions, "f", "VEC3", n, 34962, True), "NORMAL": add(normals, "f", "VEC3", n, 34962),
+                  "TEXCOORD_0": add(uv0, "f", "VEC2", n, 34962), "TEXCOORD_1": add(uv1, "f", "VEC2", n, 34962)}
+    index = add(indices, "I", "SCALAR", len(indices), 34963)
+    while len(data) % 4:
+        data.append(0)
+    doc = {"asset": {"version": "2.0"}, "scene": 0, "scenes": [{"nodes": [0]}], "nodes": [{"mesh": 0, "name": "Flag"}],
+           "meshes": [{"primitives": [{"attributes": attributes, "indices": index, "mode": 4}]}],
+           "buffers": [{"byteLength": len(data)}], "bufferViews": views, "accessors": accessors}
+    text = json.dumps(doc).encode()
+    text += b" " * ((4 - len(text) % 4) % 4)
+    body = struct.pack("<II", len(text), 0x4E4F534A) + text + struct.pack("<II", len(data), 0x004E4942) + bytes(data)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(struct.pack("<III", 0x46546C67, 2, 12 + len(body)) + body)
+
+
+def write_openvat(folder: Path, name: str = "Flag", frames: int = 4) -> None:
+    """An OpenVAT export (format of editor/tests/VatImportTest.cpp writeOpenVat): two quads bending, a
+    single-row 8-bit _vat.png with packed normals in its lower half, -remap_info.json with two clips
+    and the glTF mesh whose last TEXCOORD is VAT_UV."""
+    V, W = 6, 8
+    rest_b = [((i % 3) * 0.5, (i // 3) * 0.7, 0.1 * i) for i in range(V)]          # Blender space
+    offs = [[(0.0, 0.0, 0.0) if f == 0 else (0.1 * math.sin(f + i), 0.05 * f * i, 0.3 * math.cos(f * 0.5 + i) - 0.3 * math.cos(i))
+             for i in range(V)] for f in range(frames)]
+    mn = [min(o[k] for fr in offs for o in fr) - 0.01 for k in range(3)]
+    mx = [max(o[k] for fr in offs for o in fr) + 0.01 for k in range(3)]
+    H = frames * 2
+    pixels = [[0.0] * (W * 4) for _ in range(H)]
+    for f in range(frames):
+        for i in range(V):
+            o = offs[f][i]
+            pixels[f][i * 4:i * 4 + 4] = [(o[k] - mn[k]) / (mx[k] - mn[k]) for k in range(3)] + [1.0]
+            pixels[f + H // 2][i * 4:i * 4 + 4] = [0.5, 0.5, 1.0, 1.0]       # normal +Z (Blender)
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / f"{name}_vat.png").write_bytes(png_rgba8(W, H, pixels))
+    remap = {"os-remap": {"Min": mn, "Max": mx, "Frames": frames},
+             "animations": {"Wave": {"startFrame": 1, "endFrame": 2, "framerate": 24, "looping": True},
+                            "Flap": {"startFrame": 3, "endFrame": frames, "framerate": 30, "looping": False}}}
+    (folder / f"{name}-remap_info.json").write_text(json.dumps(remap, indent=2))
+    positions, normals, uv0, uv1 = [], [], [], []
+    for i in range(V):
+        x, y, z = rest_b[i]
+        positions += [x, z, -y]           # Blender Z-up -> glTF Y-up
+        normals += [0.0, 1.0, 0.0]
+        uv0 += [(i % 3) / 2.0, float(i // 3)]
+        uv1 += [(i % W + 0.5) / W, (0 * frames + 0.5) / H]
+    write_glb(folder / f"{name}.glb", positions, normals, uv0, uv1, [0, 1, 4, 0, 4, 3, 1, 2, 5, 1, 5, 4])
+
+
+def g17(v: float) -> str:
+    return "%.17g" % v
+
+
+def write_fbx_ascii(path: Path, points, corners, uv_names, uvs, normals, tangents, binormals) -> None:
+    """A minimal ASCII FBX 7.4 mesh (VatImportTest.cpp writeFbx): what ufbx reads."""
+    o = ['; FBX 7.4.0 project file\nFBXHeaderExtension:  {\n\tFBXHeaderVersion: 1003\n\tFBXVersion: 7400\n\tCreator: "test_bake_vertex_animation"\n}\n',
+         'GlobalSettings:  {\n\tVersion: 1000\n\tProperties70:  {\n'
+         '\t\tP: "UpAxis", "int", "Integer", "",1\n\t\tP: "UpAxisSign", "int", "Integer", "",1\n'
+         '\t\tP: "FrontAxis", "int", "Integer", "",2\n\t\tP: "FrontAxisSign", "int", "Integer", "",1\n'
+         '\t\tP: "CoordAxis", "int", "Integer", "",0\n\t\tP: "CoordAxisSign", "int", "Integer", "",1\n'
+         '\t\tP: "UnitScaleFactor", "double", "Number", "",1\n\t}\n}\n',
+         'Objects:  {\n\tGeometry: 1000, "Geometry::MESH", "Mesh" {\n']
+    o.append(f"\t\tVertices: *{len(points) * 3} {{\n\t\t\ta: " + ",".join(g17(c) for p in points for c in p) + "\n\t\t}\n")
+    o.append(f"\t\tPolygonVertexIndex: *{len(corners)} {{\n\t\t\ta: " +
+             ",".join(str(-c - 1 if i % 3 == 2 else c) for i, c in enumerate(corners)) + "\n\t\t}\n\t\tGeometryVersion: 124\n")
+    for element, name, values in (("LayerElementNormal", "Normals", normals), ("LayerElementTangent", "Tangents", tangents),
+                                  ("LayerElementBinormal", "Binormals", binormals)):
+        o.append(f'\t\t{element}: 0 {{\n\t\t\tVersion: 102\n\t\t\tName: ""\n\t\t\tMappingInformationType: "ByPolygonVertex"\n'
+                 f'\t\t\tReferenceInformationType: "Direct"\n\t\t\t{name}: *{len(values) * 3} {{\n\t\t\t\ta: ' +
+                 ",".join(g17(c) for v in values for c in v) + "\n\t\t\t}\n\t\t}\n")
+    for s, uv in enumerate(uvs):
+        o.append(f'\t\tLayerElementUV: {s} {{\n\t\t\tVersion: 101\n\t\t\tName: "{uv_names[s]}"\n'
+                 f'\t\t\tMappingInformationType: "ByPolygonVertex"\n\t\t\tReferenceInformationType: "Direct"\n'
+                 f'\t\t\tUV: *{len(uv) * 2} {{\n\t\t\t\ta: ' + ",".join(g17(c) for t in uv for c in t) + "\n\t\t\t}\n\t\t}\n")
+    o.append("\t\tLayer: 0 {\n\t\t\tVersion: 100\n")
+    for kind in ("LayerElementNormal", "LayerElementTangent", "LayerElementBinormal", "LayerElementUV"):
+        o.append(f'\t\t\tLayerElement:  {{\n\t\t\t\tType: "{kind}"\n\t\t\t\tTypedIndex: 0\n\t\t\t}}\n')
+    o.append("\t\t}\n")
+    for s in range(1, len(uvs)):
+        o.append(f'\t\tLayer: {s} {{\n\t\t\tVersion: 100\n\t\t\tLayerElement:  {{\n\t\t\t\tType: "LayerElementUV"\n\t\t\t\tTypedIndex: {s}\n\t\t\t}}\n\t\t}}\n')
+    o.append('\t}\n\tModel: 2000, "Model::MESH", "Mesh" {\n\t\tVersion: 232\n\t\tProperties70:  {\n'
+             '\t\t\tP: "Lcl Translation", "Lcl Translation", "", "A",0,0,0\n'
+             '\t\t\tP: "Lcl Rotation", "Lcl Rotation", "", "A",0,0,0\n'
+             '\t\t\tP: "Lcl Scaling", "Lcl Scaling", "", "A",1,1,1\n'
+             '\t\t}\n\t}\n}\nConnections:  {\n\tC: "OO",2000,0\n\tC: "OO",1000,2000\n}\n')
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(o))
+
+
+def write_houdini_soft(root: Path, asset: str = "Wave", frames: int = 4) -> None:
+    """A Houdini VAT 3 soft-body export, Unity target, LDR (8-bit PNG) with the legacy data JSON
+    (VatImportTest.cpp writeSoft, metadata json, hdr off): a 3 x 3 grid waving, plus the guard
+    triangle at the bound corners."""
+    P, A = 9, 4
+    rest = [((i % 3) * 0.5 - 0.5, 1.0 + 0.1 * (i // 3), (i // 3) * 0.5 - 0.5) for i in range(P)]   # Houdini space
+    unity = lambda v: (-v[0], v[1], v[2])
+    offs = [[(0.0, 0.0, 0.0) if f == 0 else (0.3 * math.sin(f * 0.7 + i), 0.2 * f, -0.1 * math.cos(f + 2.0 * i) + 0.1 * math.cos(2.0 * i))
+             for i in range(P)] for f in range(frames)]
+    pts = [unity(o) for fr in offs for o in fr] + [unity(r) for r in rest]
+    lo = [min(p[k] for p in pts) for k in range(3)]
+    hi = [max(p[k] for p in pts) for k in range(3)]
+    mx = [(math.ceil(hi[0] * 10) + 1) / 10.0, (math.ceil(hi[1] * 10) + 1) / 10.0, (math.ceil(hi[2] * 10) + 1 + 0.2) / 10.0]
+    mn = [-(math.ceil(-lo[0] * 10) + 1) / 10.0, (math.floor(lo[1] * 10) - 1) / 10.0, (math.floor(lo[2] * 10) - 1) / 10.0]
+    R = (P + A - 1) // A
+    H = R * frames
+    pos = [[0.0] * (A * 4) for _ in range(H)]
+    rot = [[0.0] * (A * 4) for _ in range(H)]
+    for f in range(frames):
+        for i in range(P):
+            c, r = i % A, i // A + f * R
+            o = unity(offs[f][i])
+            pos[r][c * 4:c * 4 + 4] = [(o[k] - mn[k]) / (mx[k] - mn[k]) for k in range(3)] + [1.0]
+            rot[r][c * 4:c * 4 + 4] = [0.5, 0.5, 0.5, 1.0]      # the identity rotation, (q + 1) / 2
+    (root / "tex").mkdir(parents=True, exist_ok=True)
+    (root / "tex" / f"{asset}_pos.png").write_bytes(png_rgba8(A, H, pos))
+    (root / "tex" / f"{asset}_rot.png").write_bytes(png_rgba8(A, H, rot))
+    g0, g1 = unity(mn), unity(mx)
+    points = rest + [g0, g1, (g0[0], g1[1], g0[2])]
+    corners, uv_a, uv_b, nrm, tan, bin_ = [], [], [], [], [], []
+    for t in ((0, 1, 4), (0, 4, 3), (1, 2, 5), (1, 5, 4), (3, 4, 7), (3, 7, 6), (4, 5, 8), (4, 8, 7)):
+        for i in t:
+            corners.append(i)
+            uv_a.append(((i % 3) / 2.0, (i // 3) / 2.0))
+            uv_b.append((((i % A) + 0.5) / A, 1.0 - ((i // A) + 0.5) / H))
+            nrm.append((0.0, 1.0, 0.0))
+            tan.append((1.0, 0.0, 0.0))
+            bin_.append((0.0, 0.0, -1.0))
+    for k in range(3):
+        corners.append(P + k)
+        uv_a.append((0.0, 0.0))
+        uv_b.append((0.0, 0.0))
+        nrm.append((0.0, 1.0, 0.0))
+        tan.append((1.0, 0.0, 0.0))
+        bin_.append((0.0, 0.0, -1.0))
+    write_fbx_ascii(root / "geo" / f"{asset}_mesh.fbx", points, corners, ["uv", "uv2"], [uv_a, uv_b], nrm, tan, bin_)
+    meta = {"Bound Min X": mn[0], "Bound Min Y": mn[1], "Bound Min Z": mn[2], "Bound Max X": mx[0], "Bound Max Y": mx[1],
+            "Bound Max Z": mx[2], "Houdini FPS": 24.0, "Two Position Textures": False,
+            "Axis System": "Y-Z-X Clockwise (Left-Handed Y-Up)", "Frame Count": frames}
+    (root / "data").mkdir(parents=True, exist_ok=True)
+    (root / "data" / f"{asset}_data.json").write_text(json.dumps([meta], indent=2))
+
+
+async def test_import_openvat(ed: Editor):
+    folder = ed.project / "assets" / "exports" / "flag"
+    write_openvat(folder)
+    await ed.call("sync_files")
+    before = files_under(ed.project)
+    msg = await ed.call("bake_vertex_animation", {"source": "assets/exports/flag", "clips": ["Wave"]}, expect_error=True)
+    check("clips is for baked sources" in msg, f"an import takes its clips as they are: {msg}")
+    r = await bake(ed, source="assets/exports/flag")
+    v = r.structured
+    check(files_under(ed.project) == before, "an import preview writes nothing")
+    check(v["kind"] == "openvat" and v["mode"] == "vertices" and v["written"] is False, f"report: {v}")
+    check(sorted(c["name"] for c in v["clips"]) == ["Flap", "Wave"], f"clips from remap_info: {v['clips']}")
+    check(v["default_output"] == "assets/exports/flag/Flag.vat", f"default output next to the export: {v.get('default_output')}")
+    check(len(r.images) == 1 and "VAT at 4 times" in r.text, f"VAT rows only: {r.text}")
+    keep_image("vat_sheet_openvat.png", r.images[0][0])
+    r = await bake(ed, source="assets/exports/flag", output=True)
+    v = r.structured
+    vat = "assets/exports/flag/Flag.vat"
+    check(v["vat"] == vat and (ed.project / vat).is_file() and (ed.project / "assets/exports/flag/Flag.vat.glb").is_file(), f"written: {v}")
+    data = read_vat(ed.project, vat)
+    check(data["recipe"]["sources"][0]["kind"] == "openvat", f"recipe: {data['recipe']}")
+    info = (await ed.call("get_asset_info", path=vat))["vertex_animation"]
+    check(info["stale"] is False, f"fresh import: {info['staleness']}")
+    # rebake an import: imported again, GUID and edits kept
+    data["clips"][0]["speed"] = 2
+    await ed.call("write_file", path=vat, content=json.dumps(data, indent=2))
+    r = await bake(ed, rebake=vat)
+    after = read_vat(ed.project, vat)
+    check(after["guid"] == data["guid"] and after["clips"][0]["speed"] == 2, f"rebake of an import keeps edits: {after['clips'][0]}")
+    check("Re-imported" in r.text, r.text)
+
+
+async def test_import_houdini_soft(ed: Editor):
+    root = ed.project / "assets" / "exports" / "wave"
+    write_houdini_soft(root)
+    await ed.call("sync_files")
+    r = await bake(ed, source="assets/exports/wave", fps=24, normals=False)
+    v = r.structured
+    check(v["kind"] == "houdini_vat3" and v["houdini_mode"] == "soft" and v["mode"] == "vertices", f"report: {v}")
+    check(v["vertices"] == 9 and v["clips"][0]["frames"] >= 4, f"9 points, 4 frames: {v['vertices']} {v['clips']}")
+    keep_image("vat_sheet_houdini.png", r.images[0][0])
+    msg = await ed.call("bake_vertex_animation", {"source": "assets/exports/wave", "import": {"axis": "sideways"}}, expect_error=True)
+    check("import.axis must be" in msg, msg)
+    await bake(ed, **{"source": "assets/exports/wave", "fps": 24, "normals": False, "output": "assets/vat/wave.vat",
+                      "import": {"axis": "unity"}})
+    data = read_vat(ed.project, "assets/vat/wave.vat")
+    check(data["recipe"]["sources"][0]["kind"] == "houdini_vat3" and data["recipe"]["import"]["axis"] == "unity",
+          f"the recipe keeps the import options: {data['recipe']}")
