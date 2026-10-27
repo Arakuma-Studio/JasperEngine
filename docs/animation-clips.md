@@ -516,7 +516,9 @@ clips are path-only), and `name`/`wrap` only when set.
 
 ## Keyboard shortcuts
 
-With the Animation window focused (and no text field active):
+With the Animation window focused (and no text field active). These are the command catalog's
+`animation.*` commands (context Animation): Edit > Shortcuts... rebinds them, and Help > Keyboard
+Shortcuts lists them ([docs/editor/keyboard-shortcuts.md](editor/keyboard-shortcuts.md)):
 
 | key | action | key | action |
 |---|---|---|---|

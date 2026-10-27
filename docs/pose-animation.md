@@ -86,7 +86,9 @@ and `render_pose_animation` (see [docs/mcp/guide/pose-animation.md](mcp/guide/po
 
 ### Keyboard shortcuts
 
-With the Pose Animation window focused, or the Scene view while posing:
+With the Pose Animation window focused, or the Scene view while posing. These are the command
+catalog's `pose.*` commands (context Pose Animation; Esc stays the window's own): Edit > Shortcuts...
+rebinds them, and Help > Keyboard Shortcuts lists them ([docs/editor/keyboard-shortcuts.md](editor/keyboard-shortcuts.md)):
 
 | key | action | key | action |
 |---|---|---|---|
