@@ -1236,7 +1236,9 @@ void VertexAnimationBakerWindow::finishRun() {
                 return;
             }
             std::string error;
-            if (!run->write(written, error)) {
+            VatIssue issue;
+            if (!run->write(written, error, &issue)) {
+                if (!issue.fix.empty() && error.find(issue.fix) == std::string::npos) error += " (" + issue.fix + ")";
                 setStatus("The bake can't be written: " + error, true);
                 Out::error("Vertex Animation: the bake can't be written: %s", error.c_str());
                 return;

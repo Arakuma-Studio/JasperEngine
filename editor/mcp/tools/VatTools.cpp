@@ -127,8 +127,19 @@ std::vector<VatIssue> bakeFailure(const VatBakeSession& session) {
 
 // a write that returned false: what the session says (FB's write re-validates the source:
 // invalid_source with its fix), else the kind read from the message
-std::vector<VatIssue> writeFailure(const std::vector<VatIssue>& sessionIssues, const std::string& error) {
+// what a failed write reports: the write's own issue (VatBakeSession::write gives its kind and fix:
+// invalid_source when the source went away, output_exists...), else the session's, else one from
+// the error text
+std::vector<VatIssue> writeFailure(const VatIssue& writeIssue, const std::vector<VatIssue>& sessionIssues, const std::string& error) {
     std::vector<VatIssue> issues;
+    if (!writeIssue.kind.empty()) {
+        VatIssue issue = writeIssue;
+        issue.error = true;
+        if (issue.message.empty()) issue.message = error;
+        if (issue.fix.empty()) issue.fix = "call bake_vertex_animation again";
+        issues.push_back(issue);
+        return issues;
+    }
     for (const VatIssue& issue : sessionIssues) {
         if (issue.error) issues.push_back(issue);
     }
@@ -870,9 +881,10 @@ void finishBake(const VatCallPtr& state) {
     if (request.placeScene != 0) project->setSelectedSceneId(request.placeScene);
     VatWriteResult out;
     std::string error;
+    VatIssue writeIssue;
     bool written = false;
     try {
-        written = session.write(out, error);
+        written = session.write(out, error, &writeIssue);
     } catch (const std::exception& e) {
         failJob(job, "The bake finished but nothing was written:",
                 {jobIssue("write_failed", std::string("writing failed: ") + e.what(),
@@ -880,7 +892,7 @@ void finishBake(const VatCallPtr& state) {
         return;
     }
     if (!written) {
-        failJob(job, "The bake finished but nothing was written:", writeFailure(session.failureIssues(), error), data);
+        failJob(job, "The bake finished but nothing was written:", writeFailure(writeIssue, session.failureIssues(), error), data);
         return;
     }
     writtenJson(project, out, data, text);
@@ -960,7 +972,7 @@ void finishImport(const VatCallPtr& state) {
         return;
     }
     if (!written) {
-        failJob(job, "The import finished but nothing was written:", writeFailure({}, error), data);
+        failJob(job, "The import finished but nothing was written:", writeFailure(VatIssue(), {}, error), data);
         return;
     }
     writtenJson(project, out, data, text);
