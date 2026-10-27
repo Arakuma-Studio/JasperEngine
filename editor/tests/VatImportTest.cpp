@@ -385,6 +385,7 @@ namespace {
         double ur = 1.0, vr = 1.0;
         bool float32Trap = false;           // bounds as float32 values whose tenths aren't whole
         int frames = 6;
+        bool nodeTransform = false;     // the mesh node: translated, turned 90 degrees about Y, scaled 2
         double fps = 24.0;
     };
 
@@ -572,6 +573,11 @@ namespace {
             mesh.normals.push_back(V3(0, 1, 0));
             mesh.tangents.push_back(V3(1, 0, 0));
             mesh.binormals.push_back(V3(0, 0, -1));
+        }
+        if (opt.nodeTransform) {
+            mesh.translation = V3(1, 2, 3);
+            mesh.rotationDeg = V3(0, 90, 0);
+            mesh.scale = 2.0;
         }
         writeFbx(root / "geo" / (asset + "_mesh.fbx"), mesh);
 
@@ -822,6 +828,24 @@ TEST(VatImport, SoftHdrSplitPositions) {
     const SoftTruth truth = writeSoft(root, "Split", opt);
     const ev::VatImportResult r = ev::importVat(specFor(root));
     expectSoft(r, truth, 1e-4, 1e-3, "HDR, two position textures");
+}
+
+TEST(VatImport, SoftNodeTransformBaked) {
+    // the VAT data is in the mesh's own space: the node's transform moves both into the .vat.glb's
+    const fs::path root = freshDir("soft-node");
+    SoftOptions opt;
+    opt.nodeTransform = true;
+    SoftTruth truth = writeSoft(root, "Moved", opt);
+    const Q4 turn = axisAngle(V3(0, 1, 0), PI / 2);
+    auto place = [&](const V3& p) { return rot(turn, p * 2.0) + V3(1, 2, 3); };
+    for (V3& p : truth.rest) p = place(p);
+    for (auto& frame : truth.pos)
+        for (V3& p : frame) p = place(p);
+    for (auto& frame : truth.nrm)
+        for (V3& n : frame) n = rot(turn, n);
+    const ev::VatImportResult r = ev::importVat(specFor(root));
+    expectSoft(r, truth, 1e-4, 1e-3, "node transform");
+    EXPECT_TRUE(hasWarning(r, "node_transform_baked"));
 }
 
 TEST(VatImport, SoftCompressedNormals) {

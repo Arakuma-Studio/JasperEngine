@@ -4,13 +4,13 @@
 #include "vat/import/VatImport.h"
 #include "vat/import/VatImportInternal.h"
 
-#include "util/AssetDatabase.h"
 #include "util/FileUtils.h"
 
 #include "json.hpp"
 
 #include <algorithm>
 #include <filesystem>
+#include <random>
 
 namespace fs = std::filesystem;
 using namespace jasperengine;
@@ -56,6 +56,21 @@ VatImportDetection detectVatImport(const std::string& path){
 }
 
 namespace{
+
+    // 32 lowercase hex digits (the .vat/.anim GUID form); a generator per call so worker threads
+    // never share state
+    std::string newGuid(){
+        std::random_device device;
+        std::seed_seq seed{device(), device(), device(), device(), device(), device(), device(), device()};
+        std::mt19937_64 generator(seed);
+        static const char* hex = "0123456789abcdef";
+        std::string out;
+        for (int part = 0; part < 2; part++){
+            const uint64_t value = generator();
+            for (int shift = 60; shift >= 0; shift -= 4) out += hex[(value >> shift) & 0xF];
+        }
+        return out;
+    }
 
     // project-relative with '/' when inside `root`, else the absolute path
     std::string recipePath(const std::string& path, const std::string& root){
@@ -139,7 +154,7 @@ VatImportResult importVat(const VatImportSpec& spec){
 
     // the recipe: every file read, hashed, so Rebake can tell when the export changed
     VatData& data = result.data;
-    data.guid = AssetDatabase::generateGuid();
+    data.guid = newGuid();
     VatRecipeSource source;
     source.kind = importKindName(detection.kind);
     source.path = recipePath(spec.path, spec.projectRoot);

@@ -1628,6 +1628,10 @@ void importHoudini(const VatImportSpec& spec, const VatImportDetection& detectio
             return;
         }
     }else{
+        if (src.uvs.empty()){
+            addError(result, "bad_mesh", "the fluid mesh has no UV set (the lookup address, Houdini's uv)", "re-export the mesh from the VAT ROP");
+            return;
+        }
         if (d.meta.frames <= 0){
             const int uv = 0;
             std::set<long long> distinct;
