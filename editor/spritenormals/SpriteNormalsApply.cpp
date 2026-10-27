@@ -36,11 +36,15 @@ namespace jasperengine::editor::spritenormals {
 
             bool add(Command* command) {
                 command->setNoMerge();
-                return history->addCommand(command);
+                const bool ok = history->addCommand(command);
+                added = added || ok;
+                return ok;
             }
             void commit() { history->groupSince(start); }
-            // ... leaving nothing to redo
+            // ... leaving nothing of it to redo; when nothing was added the history (and the
+            // user's redo tail) is left as it was
             void rollback() {
+                if (!added) return;
                 while (history->position() > start && history->canUndo() && history->undo()) {}
                 history->dropRedo();
             }
@@ -48,6 +52,7 @@ namespace jasperengine::editor::spritenormals {
         private:
             CommandHistory* history;
             size_t start;
+            bool added = false;
         };
 
         std::string normalized(const std::string& path) { return fs::u8path(path).lexically_normal().generic_u8string(); }
@@ -166,6 +171,15 @@ namespace jasperengine::editor::spritenormals {
                     return fail("invalid_source", "The colour atlas " + request.atlasPath + " can't be read" + (error.empty() ? std::string(".") : ": " + error),
                                 "Write the atlas inside the project first.");
                 }
+                for (size_t i = 0; i < frames.size(); i++) {
+                    const Cell& c = frames[i];
+                    if (c.x < 0 || c.y < 0 || c.width < 1 || c.height < 1 || c.x + c.width > atlasW || c.y + c.height > atlasH) {
+                        return fail("frames_mismatch",
+                                    "Frame " + std::to_string(i) + " [" + std::to_string(c.x) + ", " + std::to_string(c.y) + ", " + std::to_string(c.width) +
+                                        ", " + std::to_string(c.height) + "] is not inside the " + sizeText(atlasW, atlasH) + " atlas.",
+                                    "Apply the frames the atlas was generated with.");
+                    }
+                }
                 if (atlasW != normalW || atlasH != normalH) {
                     return fail("size_mismatch",
                                 "The colour atlas is " + sizeText(atlasW, atlasH) + " but the normal map is " + sizeText(normalW, normalH) +
@@ -208,7 +222,7 @@ namespace jasperengine::editor::spritenormals {
                                            "Save the material from the Inspector to keep the map in " + linked + "."});
                 break;
             }
-            if (!step.add(multi.release())) return fail("not_a_sprite", "The editor rejected the change to \"" + name + "\".", "Check the GameObject in the Inspector.");
+            if (!step.add(multi.release())) return fail("failed", "The editor rejected the change to \"" + name + "\".", "Check the GameObject in the Inspector.");
             for (int i : given) result.submeshes.push_back(i);
             if (!animated) return true;
 
@@ -228,7 +242,7 @@ namespace jasperengine::editor::spritenormals {
             if (animation == NULL_ENTITY) {
                 auto* create = new CreateEntityCmd(project, sceneId, request.animationName.empty() ? std::string("Sprite Animation") : request.animationName,
                                                    EntityCreationType::SPRITE_ANIMATION, entity);
-                if (!step.add(create)) return fail("not_a_sprite", "Could not create the Sprite Animation GameObject.", "Try again.");
+                if (!step.add(create)) return fail("failed", "Could not create the Sprite Animation GameObject.", "Try again.");
                 animation = create->getEntity();
                 created = true;
             }
@@ -251,7 +265,7 @@ namespace jasperengine::editor::spritenormals {
             }
             // autoplay: a created animation runs (set_sprite_animation's autoplay, the Action's state)
             if (created) props->addPropertyCmd<ActionState>(project, sceneId, animation, ComponentType::ActionComponent, "state", ActionState::Running);
-            if (!step.add(props)) return fail("not_a_sprite", "The editor rejected the Sprite Animation edit.", "Check the GameObject in the Inspector.");
+            if (!step.add(props)) return fail("failed", "The editor rejected the Sprite Animation edit.", "Check the GameObject in the Inspector.");
             result.animation = animation;
             result.createdAnimation = result.createdAnimation || created;
             return true;

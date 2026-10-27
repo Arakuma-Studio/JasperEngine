@@ -19,6 +19,9 @@ namespace jasperengine::editor{
     public:
         Platform(Project* project);
 
+        // the project this Platform resolves paths for (the editor's, the CLI's)
+        Project* getProject() const { return project; }
+
         static bool setSizes(int width, int height);
 
         int getScreenWidth() override;

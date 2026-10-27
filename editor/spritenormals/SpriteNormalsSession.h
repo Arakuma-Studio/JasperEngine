@@ -39,6 +39,10 @@ namespace jasperengine {
 
 namespace jasperengine::editor::spritenormals {
 
+    // The refusal (kind project_changed) of a run's result when another project was opened
+    // meanwhile (run->generation() != texsynth::projectGeneration()): every surface words it so
+    inline constexpr const char* kProjectChangedMessage = "Another project was opened while generating.";
+
     // How the frames are chosen (contract `frames`)
     struct FramesSpec {
         enum class Mode { Auto, None, Grid, Cells };
@@ -184,9 +188,10 @@ namespace jasperengine::editor::spritenormals {
     // too_many_frames (delays.size() > 128), directx_in_engine (settings.directx),
     // shader_ignores_normals (a manifest shader for which !Catalog::shaderReadsMaterialNormalMap);
     // and zero_delay (some delay's playbackMs replaced a delay under 10 ms by 100). Scene null:
-    // only zero_delay.
+    // only zero_delay. `submesh`: the submesh the map is for (size, filter and material checks).
     std::vector<Problem> sceneWarnings(const Scene* scene, Entity entity, const Settings& settings, int normalWidth,
-                                       int normalHeight, const std::vector<Delay>& delays, bool willApply);
+                                       int normalHeight, const std::vector<Delay>& delays, bool willApply,
+                                       unsigned submesh = 0);
 
     // ---- worker
 

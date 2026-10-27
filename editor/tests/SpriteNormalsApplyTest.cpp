@@ -308,6 +308,13 @@ TEST(SpriteNormalsApply, Refusals) {
     EXPECT_FALSE(r.error.fix.empty());
 
     EXPECT_EQ(history(sceneId)->position(), before + 1) << "only the Empty GameObject was added";
+    // a refusal keeps the user's redo tail
+    ASSERT_TRUE(history(sceneId)->undo());
+    ASSERT_TRUE(history(sceneId)->canRedo());
+    r = sn::applyToSprite(project(), still(sceneId, hero, dir + "/small_normal.png", dir + "/hero.png"));
+    EXPECT_EQ(r.error.kind, "size_mismatch");
+    EXPECT_TRUE(history(sceneId)->canRedo()) << "nothing was added, so nothing is dropped";
+    ASSERT_TRUE(history(sceneId)->redo());
     EXPECT_TRUE(material(sceneId, hero).normalTexture.getPath().empty());
     EXPECT_FALSE(sn::applyToSprite(nullptr, still(sceneId, hero, "", "")).ok);
 }
@@ -435,6 +442,12 @@ TEST(SpriteNormalsApply, AnimatedRefusals) {
     EXPECT_FALSE(result.ok);
     EXPECT_EQ(result.error.kind, "too_many_frames");
     EXPECT_EQ(result.error.message, "The animation has 129 frames; a Sprite holds at most 128.");
+
+    // frames outside the atlas
+    r.frames = {{0, 0, 32, 32}, {48, 0, 32, 32}};
+    result = sn::applyToSprite(project(), r);
+    EXPECT_EQ(result.error.kind, "frames_mismatch");
+    EXPECT_EQ(result.error.message, "Frame 1 [48, 0, 32, 32] is not inside the 64x32 atlas.");
 
     // a mesh that is not a Sprite can't hold frames
     const Entity plane = create(sceneId, "Plane", EntityCreationType::PLANE);

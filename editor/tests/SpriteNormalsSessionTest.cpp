@@ -356,6 +356,24 @@ TEST(SpriteNormalsSession, CheckSpecKinds) {
     EXPECT_EQ(kinds(problems), (std::vector<std::string>{"invalid_settings", "invalid_settings"}));
 }
 
+TEST(SpriteNormalsSession, OutputsMustBeInsideTheAssetsDirectory) {
+    const std::string dir = folder("assetsdir");
+    writePng(dir + "/hero.png", balls(16, 16, 16, 6));
+    // the project's assets directory is "assets" for this test (the Platform's asset path follows it)
+    project()->setAssetsDir("assets");
+    sn::Spec spec = stillSpec(dir + "/hero.png");
+    EXPECT_TRUE(sn::checkSpec(root(), spec).empty()) << "the default output is beside the source, in assets/";
+    spec.output.normal = "elsewhere/hero_normal.png";
+    const std::vector<sn::Problem> problems = sn::checkSpec(root(), spec);
+    std::optional<sn::Problem> p = findKind(problems, "output_invalid");
+    project()->setAssetsDir(".");
+    ASSERT_TRUE(p);
+    EXPECT_EQ(p->field, "output.normal");
+    EXPECT_EQ(p->message, "elsewhere/hero_normal.png is outside the project's assets directory (assets).");
+    // with the default assets directory "." the whole project is assets
+    EXPECT_TRUE(sn::checkSpec(root(), spec).empty());
+}
+
 // ---- prepare, generate, encode
 
 TEST(SpriteNormalsSession, StillPrepareGenerateEncode) {
@@ -724,7 +742,8 @@ TEST(SpriteNormalsRun, AProjectSwitchMakesItsResultStale) {
     ASSERT_TRUE(run->finished());
     EXPECT_EQ(run->generation(), ts::projectGeneration()) << "the writer may write it";
     ts::projectSwitching();
-    EXPECT_NE(run->generation(), ts::projectGeneration()) << "the writer refuses it (write_failed)";
+    EXPECT_NE(run->generation(), ts::projectGeneration()) << "the writer refuses it (project_changed)";
+    EXPECT_STREQ(sn::kProjectChangedMessage, "Another project was opened while generating.");
 }
 
 TEST(SpriteNormalsRunDeathTest, ShutdownCancelsWaitsAndCallsNothingBack) {
@@ -894,7 +913,20 @@ TEST(SpriteNormalsScene, SceneWarnings) {
     ASSERT_EQ(kinds(w), std::vector<std::string>{"zero_delay"});
     EXPECT_EQ(w[0].message, "2 frames have a delay under 10 ms; they play at 100 ms, as browsers do.");
     EXPECT_TRUE(sn::sceneWarnings(nullptr, hero, dx, 16, 16, still, false).empty());
-    // material_linked needs the editor's project (its material links): see SpriteNormalsApplyTest
+    // too many frames needs a Sprite to hold them: without a scene only zero_delay
+    EXPECT_EQ(kinds(sn::sceneWarnings(nullptr, NULL_ENTITY, settings, 32, 32, std::vector<sn::Delay>(129, sn::Delay{0, 1}), false)),
+              std::vector<std::string>{"zero_delay"});
+    EXPECT_TRUE(sn::sceneWarnings(nullptr, NULL_ENTITY, settings, 32, 32, std::vector<sn::Delay>(129, sn::Delay{100, 1}), false).empty());
+    // 9.5 ms rounds to 10 (Delay::playbackMs keeps it); 9.4 does not
+    EXPECT_TRUE(sn::sceneWarnings(nullptr, NULL_ENTITY, settings, 32, 32, {{19, 2}}, false).empty());
+    EXPECT_EQ(kinds(sn::sceneWarnings(nullptr, NULL_ENTITY, settings, 32, 32, {{47, 5}}, false)), std::vector<std::string>{"zero_delay"});
+
+    // a linked material file (the Platform's project holds the links, no editor needed)
+    project()->linkMaterialFile(sceneId, hero, 0, dir + "/hero.material");
+    w = sn::sceneWarnings(scene, hero, settings, 32, 32, still, true);
+    ASSERT_EQ(kinds(w), std::vector<std::string>{"material_linked"});
+    EXPECT_EQ(w[0].message, "The sprite's material comes from " + dir + "/hero.material; the scene's copy changed, the file did not.");
+    project()->unlinkMaterialFile(sceneId, hero, 0);
 }
 
 TEST(SpriteNormalsScene, SubmeshSourcesAndSpriteFrameRules) {
@@ -944,6 +976,30 @@ TEST(SpriteNormalsScene, SubmeshSourcesAndSpriteFrameRules) {
     files = generateFiles(spec, scene, &prepared);
     EXPECT_FALSE(recipeOf(files[0])["source"].contains("submesh"));
     EXPECT_EQ(prepared.framesFrom, sn::FramesFrom::Sprite);
+
+    // warnings for submesh 1: its own texture's size, its own material link
+    scene->setAmbientLight2D(0.2f);
+    EXPECT_EQ(kinds(sn::sceneWarnings(scene, hero, sn::Settings(), 16, 16, {}, false)), (std::vector<std::string>{"no_light", "size_mismatch"}));
+    EXPECT_EQ(kinds(sn::sceneWarnings(scene, hero, sn::Settings(), 16, 16, {}, false, 1)), std::vector<std::string>{"no_light"});
+    project()->linkMaterialFile(sceneId, hero, 1, dir + "/b.material");
+    EXPECT_EQ(kinds(sn::sceneWarnings(scene, hero, sn::Settings(), 16, 16, {}, false, 1)), (std::vector<std::string>{"no_light", "material_linked"}));
+    EXPECT_EQ(kinds(sn::sceneWarnings(scene, hero, sn::Settings(), 32, 32, {}, false, 0)), std::vector<std::string>{"no_light"});
+    project()->unlinkMaterialFile(sceneId, hero, 1);
+
+    // outside a project (empty projectDir) a Sprite's texture is its absolute path, whatever the working directory
+    {
+        const fs::path cwd = fs::current_path();
+        fs::current_path(fs::temp_directory_path());
+        sn::Spec loose = spec;
+        loose.output.normal = (root() / fs::u8path(dir) / "loose_normal.png").string();
+        sn::Prepared p0;
+        std::vector<sn::Problem> problems;
+        const bool ok = sn::prepare(fs::path(), loose, scene, p0, problems);
+        fs::current_path(cwd);
+        ASSERT_TRUE(ok) << (problems.empty() ? "" : problems[0].message);
+        EXPECT_EQ(p0.sourceAbsolute, (root() / fs::u8path(dir) / "a.png").lexically_normal());
+        EXPECT_EQ(p0.request.color.width, 32);
+    }
 
     // overlapping Sprite frames
     sc.framesRect[1] = {"b", Rect(8, 0, 16, 32)};

@@ -4,6 +4,7 @@
 #include "SpriteNormalsSession.h"
 
 #include "Catalog.h"
+#include "Platform.h"
 #include "Project.h"
 #include "Scene.h"
 #include "System.h"
@@ -76,11 +77,24 @@ namespace jasperengine::editor::spritenormals {
             return true;
         }
 
-        // The editor's open project, when there is one (the MCP context is the App's): where a
-        // scene's material links live. nullptr in headless tools and tests.
+        // The project the engine resolves paths for: the editor and the CLI both install an
+        // editor::Platform for theirs (where a scene's material links live); nullptr without one
         Project* editorProject() {
-            mcp::McpServer& server = mcp::McpServer::get();
-            return server.isStarted() ? server.context().project() : nullptr;
+            if (auto* platform = dynamic_cast<editor::Platform*>(&System::instance())) return platform->getProject();
+            return nullptr;
+        }
+
+        // `path` without a trailing separator, lexically normal
+        fs::path normalDir(const fs::path& path) {
+            fs::path p = path.lexically_normal();
+            if (!p.has_filename() && p.has_parent_path()) p = p.parent_path();
+            return p;
+        }
+
+        // `path` is `dir` or below it
+        bool isAtOrBelow(const fs::path& path, const fs::path& dir) {
+            const fs::path rel = normalDir(path).lexically_relative(normalDir(dir));
+            return !rel.empty() && *rel.begin() != "..";
         }
 
         // A stored texture path (relative to the project's assets directory, as Texture keeps
@@ -98,6 +112,14 @@ namespace jasperengine::editor::spritenormals {
         fs::path sceneProjectDir() {
             if (Project* project = editorProject()) return project->getProjectPath();
             return fs::u8path(System::instance().getAssetPath());
+        }
+
+        // The assets directory outputs must be in: the Platform's asset path when it lies at or
+        // below projectDir (the project's assets directory), else projectDir itself
+        fs::path assetsRoot(const fs::path& projectDir) {
+            const fs::path assets = fs::u8path(System::instance().getAssetPath());
+            if (!assets.empty() && !projectDir.empty() && isAtOrBelow(assets, projectDir)) return normalDir(assets);
+            return normalDir(projectDir);
         }
 
         Scene* mutableScene(const Scene* scene) { return const_cast<Scene*>(scene); }
@@ -391,7 +413,9 @@ namespace jasperengine::editor::spritenormals {
                     if (!info.problem.kind.empty()) {
                         problems.push_back(info.problem);
                     } else {
-                        source = projectRelative(projectDir.empty() ? sceneProjectDir() : projectDir, info.texture);
+                        // outside a project the texture's own (absolute) path: a relative one would
+                        // be read from the working directory
+                        source = projectDir.empty() ? info.texture.generic_u8string() : projectRelative(projectDir, info.texture);
                         c.spriteCells = info.cells;
                     }
                 }
@@ -484,8 +508,7 @@ namespace jasperengine::editor::spritenormals {
             resolved.source = c.sourcePath;
             c.outputs = plannedOutputs(projectDir, resolved, animated ? c.info.kind : SourceKind::Image);
             std::set<std::string> written;
-            Project* assets = editorProject();
-            if (assets && (projectDir.empty() || assets->getProjectPath().lexically_normal() != projectDir.lexically_normal())) assets = nullptr;
+            const fs::path assets = projectDir.empty() ? fs::path() : assetsRoot(projectDir);
             const std::string sourceKey = c.sourceAbsolute.empty() ? std::string() : c.sourceAbsolute.lexically_normal().generic_u8string();
             for (const PlannedOutput& out : c.outputs) {
                 const std::string field = "output." + out.role;
@@ -509,10 +532,9 @@ namespace jasperengine::editor::spritenormals {
                     add(problems, "output_invalid", field, error, "Write it inside the project's assets directory.");
                     continue;
                 }
-                // the editor's project knows its assets directory; below projectDir otherwise
-                if (assets && !assets->isInsideAssetsPath(abs)) {
+                if (!assets.empty() && !isAtOrBelow(abs, assets)) {
                     add(problems, "output_invalid", field,
-                        out.path + " is outside the project's assets directory (" + assets->getAssetsDir().generic_u8string() + ").",
+                        out.path + " is outside the project's assets directory (" + projectRelative(projectDir, assets) + ").",
                         "Write it inside the assets directory.");
                     continue;
                 }
@@ -867,11 +889,11 @@ namespace jasperengine::editor::spritenormals {
     }
 
     std::vector<Problem> sceneWarnings(const Scene* scene, Entity entity, const Settings& settings, int normalWidth, int normalHeight,
-                                       const std::vector<Delay>& delays, bool willApply) {
+                                       const std::vector<Delay>& delays, bool willApply, unsigned submesh) {
         std::vector<Problem> warnings;
         int zero = 0;
         for (const Delay& d : delays) {
-            if (d.ms() < 10.0) zero++;
+            if (std::round(d.ms()) < 10.0) zero++;   // as Delay::playbackMs() replaces them
         }
         if (scene) {
             const LightCheck lights = lightCheck(scene);
@@ -888,8 +910,8 @@ namespace jasperengine::editor::spritenormals {
         }
         Scene* s = mutableScene(scene);
         MeshComponent* mesh = scene && entity != NULL_ENTITY && scene->isEntityCreated(entity) ? s->findComponent<MeshComponent>(entity) : nullptr;
-        if (mesh && submeshCount(s, entity, *mesh) > 0) {
-            const Material& material = mesh->submeshes[0].material;
+        if (mesh && submesh < submeshCount(s, entity, *mesh)) {
+            const Material& material = mesh->submeshes[submesh].material;
             const Texture& base = material.baseColorTexture;
             int w = 0, h = 0;
             // applying an animation makes its atlas the base texture (and a still's mismatch is refused by apply)
@@ -913,12 +935,10 @@ namespace jasperengine::editor::spritenormals {
             if (Project* project = editorProject()) {
                 for (SceneProject& sp : project->getScenes()) {
                     if (sp.scene != scene) continue;
-                    for (unsigned i = 0; i < submeshCount(s, entity, *mesh); i++) {
-                        const std::string linked = project->getMaterialFilePath(sp.id, entity, i);
-                        if (linked.empty()) continue;
+                    const std::string linked = project->getMaterialFilePath(sp.id, entity, submesh);
+                    if (!linked.empty()) {
                         add(warnings, "material_linked", "", "The sprite's material comes from " + linked + "; the scene's copy changed, the file did not.",
                             "Save the material from the Inspector to keep the map in " + linked + ".");
-                        break;
                     }
                 }
             }
@@ -930,7 +950,7 @@ namespace jasperengine::editor::spritenormals {
                 }
             }
         }
-        if (delays.size() > MAX_SPRITE_FRAMES) {
+        if (scene && entity != NULL_ENTITY && delays.size() > MAX_SPRITE_FRAMES) {
             add(warnings, "too_many_frames", "",
                 "The animation has " + std::to_string(delays.size()) + " frames; a Sprite holds at most " + std::to_string(MAX_SPRITE_FRAMES) + ".",
                 "Trim the animation, or use the atlas with your own frames.");

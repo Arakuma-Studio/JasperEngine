@@ -48,7 +48,8 @@ namespace jasperengine::editor::spritenormals {
 
     struct ApplyResult {
         bool ok = false;
-        Problem error;                       // scene_playing, not_a_sprite, size_mismatch, too_many_frames
+        Problem error;                       // scene_playing, not_a_sprite, size_mismatch, too_many_frames,
+                                             // frames_mismatch, invalid_source, failed (a command rejected)
         std::vector<Problem> warnings;       // material_linked
         std::vector<int> submeshes;          // the submeshes given the map
         Entity animation = NULL_ENTITY;      // the Sprite Animation made or updated
