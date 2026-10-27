@@ -20,6 +20,10 @@
 #ifndef PBR_EXT_GLSL
 #define PBR_EXT_GLSL
 
+#ifdef PBR_EXT
+    #include "includes/normal_map.glsl"
+#endif
+
 #if defined(PBR_CLEARCOAT) || defined(PBR_SHEEN) || defined(PBR_ANISOTROPY) || defined(PBR_IRIDESCENCE) || \
     defined(PBR_TRANSMISSION) || defined(PBR_SPECULAR)
     #define PBR_EXT_LOBES
@@ -60,7 +64,7 @@
     #define PBR_EXT_SAMPLE_NORMAL(tex, smp, set) PBR_HEX_NORMAL(tex, smp, PBR_EXT_UV(set), (set) == 0)
 #else
     #define PBR_EXT_SAMPLE(tex, smp, set) texture(sampler2D(tex, smp), PBR_EXT_UV(set))
-    #define PBR_EXT_SAMPLE_NORMAL(tex, smp, set) (texture(sampler2D(tex, smp), PBR_EXT_UV(set)).rgb * 2.0 - 1.0)
+    #define PBR_EXT_SAMPLE_NORMAL(tex, smp, set) decodeNormalMap(texture(sampler2D(tex, smp), PBR_EXT_UV(set)))
 #endif
 
 #ifdef PBR_EXT_MAP0

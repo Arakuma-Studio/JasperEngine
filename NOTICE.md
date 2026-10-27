@@ -107,6 +107,16 @@ Convex decomposition of Physics Placement (edit-time placement in the Scene view
 |---|---|---|---|---|
 | [V-HACD](https://github.com/kmammou/v-hacd) by Khaled Mamou (version 4 by John W. Ratcliff) | 4.1.0 (`master` at `f900e4236149`, the single header `include/VHACD.h`) | `engine/libs/vhacd/` (`LICENSE`, `README.jasper.md`; three local fixes for its multithreaded mode, `jasper.patch`) | BSD-3-Clause | splitting concave meshes into convex hulls (`engine/core/physics/ConvexDecomposition`), the editor on desktop only, never exported games (`JASPERENGINE_CONVEX_DECOMPOSITION`) |
 
+Texture compression (cooked KTX2 textures, spec S14, `docs/textures.md`). Games link only Zstandard's decoder, bcdec and, on the web, the Basis Universal transcoder; the encoders are in the editor alone:
+
+| Library | Version | Location | License | Used for |
+|---|---|---|---|---|
+| [Zstandard](https://github.com/facebook/zstd) | 1.5.7 | `engine/libs/zstd/` (`LICENSE`, `README.jasper.md`) | BSD-3-Clause | the supercompression of cooked KTX2 textures: the decoder in games, the encoder in the editor's cook |
+| [bcdec](https://github.com/iOrange/bcdec) | `main` at `80859ed3b7af` | `engine/libs/bcdec/` (`LICENSE`, `README.jasper.md`) | MIT or Unlicense | BC1-BC7 CPU decoding: the fallback when a GPU cannot sample a cooked BC format, editor previews |
+| [Basis Universal](https://github.com/BinomialLLC/basis_universal) | 2.50 (`v2_50`) | `engine/libs/basisu/` (`LICENSE`, `NOTICE`, `LICENSES/`, `README.jasper.md`; local change: `zstd/zstd.h` forwards to the engine's Zstandard) | Apache-2.0; its encoder's bundled tinyexr BSD-3-Clause, qoi and tinydds MIT, miniz MIT, jpgd public domain (`LICENSES/`) | ETC1S / UASTC / UASTC HDR encoding of web textures, UASTC to ETC2/EAC, `.exr` reading (editor); the transcoder of web textures (web games, editor) |
+| [astc-encoder](https://github.com/ARM-software/astc-encoder) | 5.7.0 | `engine/libs/astcenc/` (`LICENSE.txt`, `README.jasper.md`) | Apache-2.0 | ASTC 4x4-12x12 encoding and decoding of mobile textures (editor only) |
+| [bc7enc_rdo](https://github.com/richgel999/bc7enc_rdo) | `master` at `b9438627eef7` | `engine/libs/bc7enc_rdo/` (`LICENSE`, `README.jasper.md`) | MIT or Unlicense | BC1/BC3/BC4/BC5/BC7 encoding with rate-distortion optimisation of desktop textures (editor only) |
+
 Code from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, Copyright (c) 2026 Gamecrafters Guild Limited and contributors), used by the OpenEngine port (`docs/specs/`). Each adapted file names its source in its header.
 
 | Code | Location | Used for |
@@ -152,6 +162,7 @@ Code from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, 
 | `Engine/Modules/Noise/Include/Noise/GradientCurl3D.h` (copied, vector type and namespace changed) and its 4-wide port; `Tests/GradientCurl3DTests.cpp` (reference samples, ported) | `engine/core/math/noise/GradientCurl3D.h`, `GradientCurl3DSimd.h`, `CurlNoiseBatch.*`, `engine/tests/core/particles/CurlNoiseTest.cpp` | the particle Noise module's curl noise (S20) |
 | `Engine/Modules/Rendering/Shaders/Includes/particle_six_way.glsl` (the three map layouts and the squared-direction response), adapted | `engine/shaderlib/includes/particles_fs.glsl` | six-way smoke lighting (S20) |
 | `Engine/Modules/Particles` (`ParticleChannels`, `ParticleRuntime`, `ParticleStackCompiler` with `ContinuousEmissionPeak` and the structure comparison, `ParticleStackValidation`, `ParticleValue` with `RemapParticleInput`, the processors, `ParticleTrailStore`, `ParticleExtraction`): designs and rules followed, rewritten for SoA SIMD kernels | `engine/core/particles/` | the particle system (S20); each file names what it follows |
+| `Engine/Source/Assets/Textures/BC7TransparentEndpointRepair.cpp`, `Engine/Include/Assets/Textures/BC7TransparentEndpointRepair.h` (copied, namespace and integer types changed); `Engine/Tests/BC7TransparentEndpointRepairTests.cpp` (ported) | `editor/texture/BC7TransparentEndpointRepair.*`, `editor/tests/texture/BC7TransparentEndpointRepairTest.cpp` | transparent texels of BC7 cooks stay at alpha 0 (S14) |
 
 The extended lobes' formulas (`engine/shaderlib/includes/pbr_ext.glsl`) follow the [Khronos glTF-Sample-Renderer](https://github.com/KhronosGroup/glTF-Sample-Renderer) shaders (Apache-2.0, Copyright The Khronos Group Inc.), as `includes/pbr.glsl`, `brdf.glsl` and `ibl.glsl` already do.
 

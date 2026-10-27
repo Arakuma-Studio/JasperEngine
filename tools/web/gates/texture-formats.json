@@ -1,0 +1,20 @@
+{
+  "description": "tools/test-projects/texture-formats (WEB_PROJECT=texture-formats tools/build.sh web): the web family of cooked textures (Basis ETC1S and UASTC, UASTC HDR) transcoded at load to what WebGL2 on SwiftShader samples, uploaded and drawn. The canvas centre is the cooked solid colour 200 60 30; the log names each texture's uploaded format.",
+  "rgb": [
+    200,
+    60,
+    30
+  ],
+  "tolerance": 10,
+  "isolated": true,
+  "console": [
+    {
+      "text": "[gate] texture family web",
+      "level": "log"
+    },
+    {
+      "text": "[gate] textures loaded 4 compressed yes",
+      "level": "log"
+    }
+  ]
+}

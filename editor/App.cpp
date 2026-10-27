@@ -47,6 +47,7 @@
 #include "shortcuts/DefaultCommands.h"
 #include "shortcuts/ShortcutsWindow.h"
 #include "window/BookmarksWindow.h"
+#include "texture/TextureCookQueue.h"
 
 #include "util/CrashHandler.h"
 #include "util/FileDialogs.h"
@@ -563,6 +564,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuSeparator(),
         catalogItem("assets.import"),
         catalogItem("assets.refresh"),
+        catalogItem("assets.reimportTextures"),
         menuSubmenu("Asset Database", {
             catalogItem("window.missingAssets", "Missing Assets..."),
             catalogItem("assets.migrateReferences")
@@ -973,6 +975,12 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             // what changed on disk (the journal with Auto Refresh off), then the open folder
             HotReloadService::get().refresh();
             projectWindow->assetsRefresh();
+            break;
+        case AppMenuCommand::AssetsReimportTextures:
+            if (TextureCookQueue::get().getProject() == &project) {
+                TextureCookQueue::get().invalidateAll();
+                TextureCookQueue::get().requestAll({TextureCookQueue::get().getViewFamily()});
+            }
             break;
         case AppMenuCommand::About:
             aboutWindow.open();
@@ -2908,6 +2916,12 @@ void editor::App::pollExternalChanges(){
     wake = htmlui::HtmlUiAutoImport::get().update(&project) || wake;
     // the asset database's walk a watcher batch started (S04 refresh, no poll)
     project.updateAssetScan();
+    // texture cooks (S14 R8): planned and cooked on the Background lane, swapped in here
+    if (!projectLoading && !project.getProjectPath().empty()) {
+        TextureCookQueue& cooks = TextureCookQueue::get();
+        if (cooks.getProject() != &project) cooks.attach(&project);
+        wake = cooks.update() || wake;
+    }
 
     const auto now = std::chrono::steady_clock::now();
     for (const auto& pair : htmlUIRedrawTimes) {

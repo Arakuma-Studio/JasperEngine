@@ -45,6 +45,8 @@ uniform u_fs_customParams {
     #endif
 } customParams;
 
+// (before Stochastic Tiling: its normal taps decode through it)
+#include "includes/normal_map.glsl"
 #ifdef STOCHASTIC
     #include "library/stochastic_surface.glsl"
 #endif
@@ -100,7 +102,7 @@ vec3 perturbNormal(vec3 normal, vec2 uv){
         // blended as slopes with the base map's weights, each cell's turn undone
         vec3 mapped = stochasticNormal(u_normalTexture, u_normal_smp, surfaceStochastic, customParams.normalStrength, STOCHASTIC_NORMAL_GL);
     #else
-        vec3 mapped = texture(sampler2D(u_normalTexture, u_normal_smp), uv).rgb * 2.0 - vec3(1.0);
+        vec3 mapped = decodeNormalMap(texture(sampler2D(u_normalTexture, u_normal_smp), uv));
         mapped.xy *= customParams.normalStrength;
     #endif
 

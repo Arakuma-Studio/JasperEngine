@@ -46,6 +46,8 @@
 #include "asset/AssetFileWrite.h"
 #include "json.hpp"
 #include "util/ProjectChecks.h"
+#include "texture/TextureCli.h"
+#include "texture/TextureCookQueue.h"
 #include "util/EditorScripts.h"
 #include "htmlui/HtmlUiImportCli.h"
 #include "texsynth/SynthesisCli.h"
@@ -1943,6 +1945,48 @@ static int runAssets(int argc, char** argv, const std::string& commandName) {
     return missing.empty() ? 0 : 1;
 }
 
+static int runCookTextures(int argc, char** argv, const std::string& commandName) {
+    TextureCliOptions options;
+    std::string error;
+    if (!TextureCli::parse(argc, argv, options, error)) {
+        std::cerr << commandName << " cook-textures: " << error << "\n\n";
+        TextureCli::printUsage(commandName);
+        return 2;
+    }
+    if (options.help) {
+        TextureCli::printUsage(commandName);
+        return 0;
+    }
+    if (!options.decodeIn.empty()) {
+        return TextureCli::decode(options);
+    }
+
+    EditorHostOverrideGuard hostOverride(nullptr);
+    Out::setConsoleWindow(nullptr);
+    AppSettings::initialize();
+
+    Project project;
+    auto platform = std::make_unique<Platform>(&project);
+    Engine::systemInit(argc, argv, platform.get());
+    EngineRuntimeGuard engineRuntime;
+    Engine::pauseGameEvents(true);
+    Engine::setAsyncLoading(false);
+
+    // reads the project: an open editor is fine (the cache's writes are atomic)
+    project.setSkipProjectLock(true);
+    if (!project.loadProject(options.project, false)) {
+        std::cerr << commandName << " cook-textures: the project could not be loaded: " << options.project.string() << "\n";
+        return 1;
+    }
+    project.getAssetIndex().waitUntilReady();
+    return TextureCli::cook(project, options);
+}
+
+int CommandLine::runCookTexturesCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    return runCookTextures(argc, argv, getCommandName(executableName));
+}
+
 int CommandLine::runAssetsCommand(int argc, char** argv, const char* executableName) {
     attachHostConsoleIfNeeded();
     return runAssets(argc, argv, getCommandName(executableName));
@@ -1990,8 +2034,10 @@ void printCheckUsage(const std::string& commandName) {
         << "      --cpp                C++ scripts: configured and built like Play does (slow the first time).\n"
         << "      --ui                 HTML/CSS UI documents: the compatibility diagnostics (dropped or rewritten\n"
         << "                           constructs, missing or remote files) with file:line:col, code and fix.\n"
-        << "      --textures           Synthesized textures (PNGs with a jasper.synthesis recipe): warns when a\n"
-        << "                           source changed or went missing since (regenerate them).\n"
+        << "      --textures           Textures: import problems (a reference that does not fit the texture's\n"
+        << "                           type, a size block formats cannot take, a format the data does not fit)\n"
+        << "                           and synthesized textures (PNGs with a jasper.synthesis recipe) whose\n"
+        << "                           sources changed or went missing since (regenerate them).\n"
         << "      --all                Lua, shaders, C++, UI and textures.\n"
         << "                           Default: --lua --shaders --ui --textures.\n"
         << "      --files <paths...>   Only these files (absolute, or relative to the current directory or\n"
@@ -2318,7 +2364,8 @@ std::string plural(size_t count, const std::string& word) {
 }
 
 CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vector<fs::path>& luaFiles, bool luaWanted,
-                   bool shadersAll, const std::vector<std::string>& shaderFiles, bool shadersWanted, bool cppWanted) {
+                   bool shadersAll, const std::vector<std::string>& shaderFiles, bool shadersWanted, bool cppWanted,
+                   const std::vector<std::string>& textureFiles, bool texturesWanted) {
     CheckRun run;
     EditorHostOverrideGuard hostOverride(nullptr);
     Out::setConsoleWindow(nullptr);
@@ -2369,7 +2416,7 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         run.checked.push_back({"lua", count});
     }
 
-    if (shadersWanted || cppWanted) {
+    if (shadersWanted || cppWanted || texturesWanted) {
         // checks only read the project: no lock, an open editor is fine, and no file is written
         // (a project from before GUIDs keeps its identities in memory)
         project.setSkipProjectLock(true);
@@ -2417,6 +2464,14 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
             run.findings.insert(run.findings.end(), stochastic.begin(), stochastic.end());
         }
         run.checked.push_back({"shaders", forks.size()});
+    }
+
+    if (texturesWanted) {
+        project.getAssetIndex().waitUntilReady();
+        size_t count = 0;
+        const std::vector<ProjectChecks::Finding> textures = TextureCli::check(project, textureFiles, count);
+        run.findings.insert(run.findings.end(), textures.begin(), textures.end());
+        run.checked.push_back({"texture_imports", count});
     }
 
     if (cppWanted) {
@@ -2495,7 +2550,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     std::vector<fs::path> luaFiles;
     std::vector<std::string> shaderFiles;
     std::vector<fs::path> uiFiles;
-    std::vector<fs::path> textureFiles;
+    std::vector<std::string> textureFiles;   // project-relative: cookable textures (import settings)
+    std::vector<fs::path> synthesisFiles;    // images: synthesized ones, or their examples
     bool cppFiles = false;
     std::vector<std::string> checkedNames;   // project-relative, for the hook log
     const bool fileMode = options.filesGiven || options.hook;
@@ -2525,9 +2581,11 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
                 cppFiles = true;
             } else if (ProjectChecks::isUiFile(name)) {
                 if (ui) uiFiles.push_back(path);
+            } else if (isCookableTexture(name)) {
+                if (textures) textureFiles.push_back(name);
             }
             // a synthesized PNG, or an image a synthesized texture was made from
-            if (textures && Util::isImageFile(name)) textureFiles.push_back(path);
+            if (textures && Util::isImageFile(name)) synthesisFiles.push_back(path);
         }
     } else if (lua) {
         luaFiles = ProjectChecks::findProjectFiles(root, {".lua"});
@@ -2536,7 +2594,9 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     const bool shadersWanted = fileMode ? !shaderFiles.empty() : shaders;
     const bool cppWanted = cpp && (!fileMode || cppFiles);
     const bool uiWanted = fileMode ? !uiFiles.empty() : ui;
+    // --textures: the import check (cookable textures, the engine) and the synthesis recipes
     const bool texturesWanted = fileMode ? !textureFiles.empty() : textures;
+    const bool synthesisWanted = fileMode ? !synthesisFiles.empty() : textures;
 
     // The UI check is pure parsing (no engine): first, and the engine starts only for the others
     ProjectChecks::UiCheck uiCheck;
@@ -2545,9 +2605,9 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         uiCheck = ProjectChecks::checkUiFiles(root, fileMode ? uiFiles : std::vector<fs::path>());
     }
     CheckRun run;
-    if (luaWanted || shadersWanted || cppWanted) {
+    if (luaWanted || shadersWanted || cppWanted || texturesWanted) {
         QuietOutput quiet;
-        run = runChecks(argc, argv, root, luaFiles, luaWanted, !fileMode, shaderFiles, shadersWanted, cppWanted);
+        run = runChecks(argc, argv, root, luaFiles, luaWanted, !fileMode, shaderFiles, shadersWanted, cppWanted, textureFiles, texturesWanted);
     }
     if (!run.fatal.empty()) {
         std::cerr << commandName << " check: " << run.fatal << "\n";
@@ -2558,9 +2618,9 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         run.findings.insert(run.findings.end(), uiCheck.findings.begin(), uiCheck.findings.end());
         run.checked.push_back({"ui", uiCheck.documents + uiCheck.stylesheets});
     }
-    if (texturesWanted) {
+    if (synthesisWanted) {
         // reads PNG headers and hashes the sources of synthesized ones: no engine
-        const ProjectChecks::SynthesisCheck synthesis = ProjectChecks::checkSynthesisRecipes(root, fileMode ? textureFiles : std::vector<fs::path>());
+        const ProjectChecks::SynthesisCheck synthesis = ProjectChecks::checkSynthesisRecipes(root, fileMode ? synthesisFiles : std::vector<fs::path>());
         run.findings.insert(run.findings.end(), synthesis.findings.begin(), synthesis.findings.end());
         run.checked.push_back({"textures", synthesis.recipes});
     }
@@ -2621,7 +2681,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     if (!options.quiet) {
         std::string what;
         const std::map<std::string, std::string> units = {{"lua", "file"}, {"shaders", "fork"}, {"cpp", "script"}, {"ui", "file"},
-                                                          {"textures", "recipe"}};
+                                                          {"textures", "recipe"}, {"texture_imports", "texture"}};
         for (const auto& [category, count] : run.checked) {
             what += (what.empty() ? "" : ", ") + category + " " + plural(count, units.at(category));
         }

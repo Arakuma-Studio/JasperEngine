@@ -2220,6 +2220,12 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (threadingNode.size()) root["threading"] = threadingNode;
     }
 
+    {
+        // Project Settings > Texture (S14 R24): only what differs from the defaults
+        const YAML::Node textureNode = encodeTextureProjectSettings(project->getTextureSettings());
+        if (textureNode.size() > 0) root["texture"] = textureNode;
+    }
+
     if (!project->getStandalonePrefabs().empty()) {
         YAML::Node prefabsNode;
         for (const fs::path& prefabPath : project->getStandalonePrefabs()) {
@@ -2712,6 +2718,12 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (threadingNode["webMultithreaded"]) threading.webMultithreaded = YamlNumbers::as<bool>(threadingNode["webMultithreaded"]);
         }
         project->setThreadingSettings(threading);
+    }
+
+    {
+        TextureProjectSettings textureSettings;
+        decodeTextureProjectSettings(node["texture"], textureSettings);
+        project->setTextureSettings(textureSettings);
     }
 
     if (node["standalonePrefabs"]) {

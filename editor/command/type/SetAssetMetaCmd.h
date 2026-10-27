@@ -8,6 +8,7 @@
 #include "yaml-cpp/yaml.h"
 
 #include <filesystem>
+#include <functional>
 #include <string>
 
 namespace jasperengine::editor{
@@ -31,6 +32,7 @@ namespace jasperengine::editor{
 
         std::filesystem::path metaPath() const;
         bool write(const YAML::Node& value, bool removeFileIfEmpty);
+        bool writeFile(const YAML::Node& value, bool removeFileIfEmpty);
 
     public:
         SetAssetMetaCmd(Project* project, const std::filesystem::path& asset, std::string key, YAML::Node value);
@@ -39,6 +41,11 @@ namespace jasperengine::editor{
         static std::filesystem::path metaPathOf(const std::filesystem::path& absoluteAsset);
         // The key's value in an asset's sidecar (null when absent)
         static YAML::Node read(const std::filesystem::path& absoluteAsset, const std::string& key);
+
+        // Told after every write, undo included (the texture cook queue requeues what an
+        // import-settings edit changed): the project, the project-relative asset and the key
+        using WriteListener = std::function<void(Project* project, const std::filesystem::path& asset, const std::string& key)>;
+        static void setWriteListener(WriteListener listener);
 
         bool execute() override;
         void undo() override;

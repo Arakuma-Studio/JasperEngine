@@ -101,6 +101,12 @@ async def test_loading_count_never_idle_mid_decode(ed: Editor):
     """40 textures load asynchronously: Engine.getQueuedResourceCount() never reads 0 while a
     load is in progress, and get_memory_stats reports the GPU textures afterwards."""
     paths = await setup_textures(ed)
+    # their cooks first (S14: the editor cooks new textures on the Background lane, and a raw load
+    # asks for one): during the storm every Background body is then an asset load, of the cooks.
+    # Uncompressed (RGBA8 + Zstandard): their loads decode enough for the probe to see them
+    await ed.call("set_texture_import_settings", paths=paths, settings={"format": "RGBA8"}, platform="desktop")
+    cooked = await ed.call("reimport_textures", paths=paths, platforms=["desktop"], wait=True, timeout_s=600)
+    ed.check(not cooked["timed_out"], "the storm textures cooked")
     made = await ed.call("create_scene", name="Storm", type="3D", path="scenes/Storm")
     scene = made["scene"]["id"]
     calls = []

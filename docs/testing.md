@@ -198,6 +198,20 @@ JASPER_TEST_UPDATE_GOLDEN=1 UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=Rende
 GRAPHIC_BACKEND=vulkan UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=RenderGpu.*' tools/build.sh unit-tests
 ```
 
+The cooked fixtures of the texture format test (`engine/tests/core/fixtures/texture_formats/`, S14
+AC8: every `GpuTextureFormat` as a cooked 32 px KTX2 with the CPU decode of each level, which
+`TextureFormatsGpu` compares the GPU's sampling with) come from the editor's encoders and
+decoders. `JASPER_TEST_UPDATE_FIXTURES=1` rewrites them; otherwise `TextureFormatFixtures` checks
+that they are complete and that the editor still decodes them the same:
+
+```sh
+JASPER_TEST_UPDATE_FIXTURES=1 UNIT_SUITE=editor UNIT_TEST_ARGS='--gtest_filter=TextureFormatFixtures.*' tools/build.sh unit-tests
+```
+
+The cooked families of `tools/test-projects/texture-formats` (the web gate and the Android
+emulator run) are rewritten with `tools/test-projects/texture-formats/make_assets.sh` after
+`tools/build.sh linux`.
+
 The post FX goldens (`tools/mcp/tests/test_post_fx_golden.py`, S13) live in
 `tools/mcp/tests/golden/post_fx/` and are rewritten with `JASPER_POST_FX_UPDATE_GOLDEN=1`, except
 `defaults.png`: the post-processing fixture with every field at its default, captured by that test

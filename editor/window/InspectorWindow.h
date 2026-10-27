@@ -16,6 +16,7 @@
 #include "lattice/LatticePresets.h"
 #include "window/dialog/ScriptCreateDialog.h"
 #include "window/dialog/ShaderForkDialog.h"
+#include "window/TextureImporterView.h"
 #include "window/dialog/ComponentAddDialog.h"
 #include "window/dialog/TextureSlicerToolDialog.h"
 
@@ -117,6 +118,8 @@ namespace jasperengine::editor{
 
     class InspectorWindow{
     private:
+        // the Project window's texture files: their import settings (S14)
+        std::unique_ptr<TextureImporterView> textureImporter;
         Project* project;
         SceneWindow* sceneWindow;
         Command* cmd;

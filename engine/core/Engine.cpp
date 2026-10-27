@@ -478,6 +478,49 @@ TextureStrategy Engine::getTextureStrategy(){
     return textureStrategy;
 }
 
+void Engine::setTextureQuality(int quality){
+    TextureDataPool::setTextureQuality(quality);
+}
+
+int Engine::getTextureQuality(){
+    return TextureDataPool::getTextureQuality();
+}
+
+void Engine::setTextureMemoryBudget(int megabytes){
+    TextureDataPool::setMemoryBudget(megabytes > 0 ? (uint64_t)megabytes * 1024ull * 1024ull : 0);
+}
+
+int Engine::getTextureMemoryBudget(){
+    return (int)(TextureDataPool::getMemoryBudget() / (1024ull * 1024ull));
+}
+
+uint64_t Engine::getTextureMemoryUsage(){
+    return TextureDataPool::getResidentBytes();
+}
+
+void Engine::setTextureLowMemoryFallback(bool enabled){
+    TextureDataPool::setLowMemoryFallback(enabled);
+}
+
+bool Engine::isTextureLowMemoryFallback(){
+    return TextureDataPool::getLowMemoryFallback();
+}
+
+bool Engine::isTextureFormatSupported(const std::string& format){
+    GpuTextureFormat parsed;
+    return gpuFormatFromName(format, parsed) && SystemRender::isTextureFormatSupported(parsed);
+}
+
+void Engine::setTextureDefaults(const TexturePlatformDefaults& desktop, const TexturePlatformDefaults& mobile,
+                                const TexturePlatformDefaults& web){
+    const Platform platform = getPlatform();
+    const TexturePlatformDefaults& chosen = (platform == Platform::iOS || platform == Platform::Android) ? mobile
+                                          : platform == Platform::Web ? web : desktop;
+    setTextureQuality(chosen.quality);
+    setTextureMemoryBudget(chosen.memoryBudgetMB);
+    setTextureLowMemoryFallback(chosen.lowMemoryFallback);
+}
+
 void Engine::setCallMouseInTouchEvent(bool callMouseInTouchEvent){
     Engine::callMouseInTouchEvent = callMouseInTouchEvent;
 }
@@ -1484,6 +1527,12 @@ void Engine::runFrame(bool draw){
         JE_PROFILE_SCOPE("SokolCmdQueue execute");
         // async uploads of the last frame, while the scenes that queued them still exist
         SystemRender::executeQueue();
+    }
+
+    {
+        JE_PROFILE_SCOPE("Texture loads");
+        // progressive mip swaps, main-thread transcodes, budget reloads (cooked textures)
+        TextureDataPool::update();
     }
 
     {
