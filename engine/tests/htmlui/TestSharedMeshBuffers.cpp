@@ -33,6 +33,7 @@
 #include "sokol_gfx.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -298,14 +299,27 @@ namespace {
     // took hours to go, each one erased from every component array in turn)
     class Crowd {
     public:
-        Crowd(int count, float cellWidth, float cellHeight): grid(count, cellWidth, cellHeight){}
+        Crowd(int count, float cellWidth, float cellHeight): grid(new GridScene(count, cellWidth, cellHeight)){}
+        ~Crowd(){
+            using Clock = std::chrono::steady_clock;
+            const size_t entities = grid->scene().getEntityList().size();
+            const Clock::time_point start = Clock::now();
+            copies.clear();
+            const Clock::time_point modelsGone = Clock::now();
+            grid.reset();
+            const Clock::time_point sceneGone = Clock::now();
+            std::printf("[crowd] %zu entities destroyed: the Models with their nodes in %.3f s, then the scene in %.3f s\n", entities,
+                        std::chrono::duration<double>(modelsGone - start).count(), std::chrono::duration<double>(sceneGone - modelsGone).count());
+        }
+        Crowd(const Crowd&) = delete;
+        Crowd& operator=(const Crowd&) = delete;
 
         std::vector<std::unique_ptr<Model>>& models(){ return copies; }
-        GridScene& scene(){ return grid; }
+        GridScene& scene(){ return *grid; }
 
     private:
-        GridScene grid;
-        std::vector<std::unique_ptr<Model>> copies; // go first
+        std::unique_ptr<GridScene> grid;
+        std::vector<std::unique_ptr<Model>> copies;
     };
 
     // the sokol id of every GPU buffer a mesh draws from (vertex, index, external)
