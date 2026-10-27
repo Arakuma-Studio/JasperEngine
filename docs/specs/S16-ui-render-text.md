@@ -717,3 +717,12 @@ one line pointing here.
   e1ca0c71a) are recorded; the run on the final tree goes to the new E.
 - Vulkan, whole suite, twice on the tree with e1ca0c71a and the white-block fix (server A):
   3478 ran, 0 failed, both runs. Gate on B: android, smoke (glcore and Vulkan) pass.
+- MCP on c67bbdc8a (C): the remaining S16 failures were run-to-run differences:
+  `test_html_ui_effects::test_determinism_and_live_clock` (the pinned effect time rendered twice)
+  and `test_html_ui_examples::test_main_menu_play_golden` (two fixed_fps runs). Text depended on wall
+  time: distance glyphs come from background jobs and the settle budget counted milliseconds.
+  Under a deterministic clock (fixed_fps, a fixed UI or effect time) distance glyphs are now waited
+  for and the budget counts glyphs only; a pixel-ratio change (resized view, screenshot size) draws
+  the bitmap at once (092ec068f). Editor unit tests there: 822 ran, 0 failed; htmlui-editor 76.
+- Merged oe-port 545618e38 (S14, 11ee1a967); final gate running on it (htmlui suites on B, the
+  rest on B, timings on E).
