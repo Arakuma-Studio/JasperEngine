@@ -10,6 +10,8 @@
 // buffers and the old ones go with their last user; an edited buffer (a procedural mesh, a
 // written copy of a model's bytes) gets one of its own and the others keep theirs; a full pool
 // is logged once, its meshes count as failed (settled, not drawn) and load once there is room.
+// sokol's per-frame buffers (uniforms, STREAM uploads, Vulkan descriptors) hold thousands of
+// shadowed heroes, and what goes past one is skipped, counted and logged once.
 
 #include "TestGoldenCommon.h"
 
@@ -24,7 +26,10 @@
 #include "render/SystemRender.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
+#include "harness/Readback.h"
 #include "harness/TestSystem.h"
+#include "render/TextureRender.h"
+#include "sokol/SokolSystem.h"
 #include "sokol_gfx.h"
 
 #include <algorithm>
@@ -352,6 +357,14 @@ TEST_F(SharedMeshBuffersTest, ThousandsOfSkinnedModelCopiesAllDrawFromOneSetOfBu
     EXPECT_GT(SystemRender::getUniformBytesLastFrame(), 0u);
     EXPECT_LE(SystemRender::getUniformBytesLastFrame(), SystemRender::getUniformBytesLimit());
     EXPECT_EQ(SystemRender::getUniformSkippedDraws(), 0u);
+    // and their bone matrices the frame's stream staging buffer (Vulkan skips the uploads past
+    // it: sokol's default 16 MB held 2,348 of these heroes), the draws' descriptor sets the
+    // descriptor buffer (Vulkan)
+    EXPECT_GT(SystemRender::getStreamBytesLastFrame(), 0u);
+    EXPECT_LE(SystemRender::getStreamBytesLastFrame(), SystemRender::getStreamBytesLimit());
+    EXPECT_EQ(SystemRender::getStreamSkippedUploads(), 0u);
+    EXPECT_LE(SystemRender::getDescriptorBytesLastFrame(), SystemRender::getDescriptorBytesLimit());
+    EXPECT_EQ(SystemRender::getDescriptorSkippedDraws(), 0u);
 
     Screen screen;
     ASSERT_TRUE(screen.read());
@@ -360,32 +373,200 @@ TEST_F(SharedMeshBuffersTest, ThousandsOfSkinnedModelCopiesAllDrawFromOneSetOfBu
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR), 0u) << errorLines();
 }
 
-// The frame's uniform blocks (each rounded up to 256 bytes, as sokol's per-frame uniform buffer
-// takes them on Vulkan, Metal and WebGPU) of skinned heroes in shadow-casting light: what one
-// hero costs a frame, and that Engine::GpuResourceLimits::uniformBytes' desktop default (64 MB)
-// holds 4,000 of them. A frame of 3,300 shadowed heroes overflowed sokol's default 4 MB on
-// Vulkan and dropped draws.
-TEST_F(SharedMeshBuffersTest, UniformBufferHoldsFourThousandShadowedSkinnedHeroes){
+// sokol's per-frame buffers (Engine::GpuResourceLimits), measured with skinned heroes in
+// shadow-casting light: what one hero costs a frame in each, and that the desktop defaults hold
+// 4,000 of them. The uniform blocks (each rounded up to 256 bytes, as the uniform buffer of
+// Vulkan, Metal and WebGPU takes them; 3,300 shadowed heroes overflowed sokol's default 4 MB on
+// Vulkan and dropped draws), the STREAM uploads (each hero's bone matrices, once a frame,
+// staged on Vulkan: 3,300 heroes overflowed sokol's default 16 MB stream staging buffer and 952
+// of them drew without bones) and, on Vulkan, the descriptor sets of every draw.
+TEST_F(SharedMeshBuffersTest, PerFrameBuffersHoldFourThousandShadowedSkinnedHeroes){
     const int count = 500;
     AbandonedCrowd crowd(count, 2.0f, 2.4f);
     GridScene& s = crowd.scene();
     s.light->setShadows(true);
-    const uint64_t skippedBefore = SystemRender::getUniformSkippedDraws();
+    const uint64_t uniformSkippedBefore = SystemRender::getUniformSkippedDraws();
+    const uint64_t streamSkippedBefore = SystemRender::getStreamSkippedUploads();
+    const uint64_t descriptorSkippedBefore = SystemRender::getDescriptorSkippedDraws();
     ASSERT_TRUE(s.settle());
-    const uint64_t empty = SystemRender::getUniformBytesLastFrame();
+    const uint64_t emptyUniforms = SystemRender::getUniformBytesLastFrame();
+    const uint64_t emptyStream = SystemRender::getStreamBytesLastFrame();
+    const uint64_t emptyDescriptors = SystemRender::getDescriptorBytesLastFrame();
     addCopies(s, heroPath(), 0, count, crowd.models());
     ASSERT_TRUE(s.settle());
     GpuEnvironment::drawFrames(2);
-    const uint64_t frame = SystemRender::getUniformBytesLastFrame();
-    ASSERT_GT(frame, empty);
-    const double perHero = double(frame - empty) / count;
+    const Engine::GpuResourceLimits defaults;
+
+    const uint64_t uniforms = SystemRender::getUniformBytesLastFrame();
+    ASSERT_GT(uniforms, emptyUniforms);
+    const double uniformsPerHero = double(uniforms - emptyUniforms) / count;
     std::printf("[uniforms] %d shadowed skinned heroes: %llu bytes a frame (%.0f a hero, %llu without them), limit %llu\n", count,
-                (unsigned long long)frame, perHero, (unsigned long long)empty, (unsigned long long)SystemRender::getUniformBytesLimit());
+                (unsigned long long)uniforms, uniformsPerHero, (unsigned long long)emptyUniforms, (unsigned long long)SystemRender::getUniformBytesLimit());
     // a hero draws 3 submeshes in the colour pass and the shadow cascades
-    EXPECT_GT(perHero, 3 * 256.0);
-    EXPECT_LE(empty + perHero * 4000.0, double(SystemRender::getUniformBytesLimit())) << "4,000 shadowed heroes fit";
-    EXPECT_EQ(SystemRender::getUniformSkippedDraws(), skippedBefore);
+    EXPECT_GT(uniformsPerHero, 3 * 256.0);
+    EXPECT_LE(emptyUniforms + uniformsPerHero * 4000.0, double(SystemRender::getUniformBytesLimit())) << "4,000 shadowed heroes fit";
+    EXPECT_EQ(SystemRender::getUniformBytesLimit(), uint64_t(defaults.uniformBytes));
+    EXPECT_EQ(SystemRender::getUniformSkippedDraws(), uniformSkippedBefore);
+
+    const uint64_t stream = SystemRender::getStreamBytesLastFrame();
+    ASSERT_GT(stream, emptyStream);
+    const double streamPerHero = double(stream - emptyStream) / count;
+    std::printf("[stream] %d shadowed skinned heroes: %llu bytes a frame (%.0f a hero, %llu without them), limit %llu\n", count,
+                (unsigned long long)stream, streamPerHero, (unsigned long long)emptyStream, (unsigned long long)SystemRender::getStreamBytesLimit());
+    // the hero's bone matrices (64 bytes each), uploaded once a frame whatever the passes
+    EXPECT_GE(streamPerHero, 64.0);
+    EXPECT_EQ(std::fmod(streamPerHero, 16.0), 0.0) << "each upload rounded up to 16 bytes";
+    EXPECT_LE(emptyStream + streamPerHero * 4000.0, double(SystemRender::getStreamBytesLimit())) << "4,000 skinned heroes fit";
+    EXPECT_EQ(SystemRender::getStreamBytesLimit(), uint64_t(defaults.streamStagingBytes));
+    EXPECT_EQ(SystemRender::getStreamSkippedUploads(), streamSkippedBefore);
+
+    const uint64_t descriptors = SystemRender::getDescriptorBytesLastFrame();
+    std::printf("[descriptors] %d shadowed skinned heroes: %llu bytes a frame (%.0f a hero, %llu without them), limit %llu\n", count,
+                (unsigned long long)descriptors, double(descriptors - std::min(descriptors, emptyDescriptors)) / count,
+                (unsigned long long)emptyDescriptors, (unsigned long long)SystemRender::getDescriptorBytesLimit());
+    EXPECT_EQ(SystemRender::getDescriptorBytesLimit(), uint64_t(defaults.descriptorBytes));
+    if (SystemRender::hasDescriptorBufferLimit()){
+        ASSERT_GT(descriptors, emptyDescriptors);
+        const double descriptorsPerHero = double(descriptors - emptyDescriptors) / count;
+        EXPECT_LE(emptyDescriptors + descriptorsPerHero * 4000.0, double(SystemRender::getDescriptorBytesLimit())) << "4,000 shadowed heroes fit";
+    }else{
+        EXPECT_EQ(descriptors, 0u) << "no descriptor buffer on this backend";
+    }
+    EXPECT_EQ(SystemRender::getDescriptorSkippedDraws(), descriptorSkippedBefore);
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR), 0u) << errorLines();
+}
+
+// A frame's STREAM uploads past the stream staging buffer (a limit made small for the test,
+// enforced on any backend as on Vulkan): the uploads that do not fit are skipped (each frame the
+// same ones), counted, and the first such frame is logged once as an error with the bytes
+// needed, the limit and the setting to raise; sokol never sees an upload it would drop. Back
+// to the configured limit, nothing is skipped.
+TEST_F(SharedMeshBuffersTest, StreamUploadsPastTheStagingBufferAreSkippedCountedAndLoggedOnce){
+    const int count = 40;
+    AbandonedCrowd crowd(count, 2.0f, 2.4f);
+    GridScene& s = crowd.scene();
+    ASSERT_TRUE(s.settle());
+    const uint64_t empty = SystemRender::getStreamBytesLastFrame();
+    addCopies(s, heroPath(), 0, count, crowd.models());
+    ASSERT_TRUE(s.settle());
+    GpuEnvironment::drawFrames(1);
+    const uint64_t full = SystemRender::getStreamBytesLastFrame();
+    ASSERT_GT(full, empty);
+    const uint64_t perHero = (full - empty) / count;
+    ASSERT_GT(perHero, 0u);
+
+    // room for 10 heroes' bones (and what the frame streams without them)
+    const uint64_t limit = empty + perHero * 10 + perHero / 2;
+    TestSystem::get().clearLogs();
+    SokolSystem::overrideBudget(SokolSystem::STREAM_BUDGET, limit, true);
+    const uint64_t before = SystemRender::getStreamSkippedUploads();
+    GpuEnvironment::drawFrames(1);
+    const uint64_t firstFrame = SystemRender::getStreamSkippedUploads() - before;
+    GpuEnvironment::drawFrames(1);
+    const uint64_t secondFrame = SystemRender::getStreamSkippedUploads() - before - firstFrame;
+    GpuEnvironment::drawFrames(1);
+    const uint64_t needed = SystemRender::getStreamBytesLastFrame();
+    SokolSystem::restoreBudgets();
+
+    EXPECT_GE(firstFrame, uint64_t(count - 11));
+    EXPECT_LE(firstFrame, uint64_t(count - 10));
+    EXPECT_EQ(secondFrame, firstFrame) << "the same uploads skipped every frame";
+    EXPECT_EQ(needed, full) << "what the frame needed counts the skipped uploads";
+    const std::string message = "GPU stream staging buffer full: a frame needed " + std::to_string(full) +
+                                " bytes of STREAM buffer and texture uploads, the per-frame buffer holds " + std::to_string(limit);
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, message), 1u) << errorLines();
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "Engine::GpuResourceLimits::streamStagingBytes"), 1u) << "names the setting";
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR), 1u) << "logged once, not every frame or upload: " << errorLines();
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "STAGING_STREAM_BUFFER_OVERFLOW"), 0u) << "sokol never overflows";
+
+    const uint64_t restored = SystemRender::getStreamSkippedUploads();
+    GpuEnvironment::drawFrames(2);
+    EXPECT_EQ(SystemRender::getStreamSkippedUploads(), restored) << "nothing skipped at the configured limit";
+    EXPECT_EQ(SystemRender::getStreamBytesLastFrame(), full);
+}
+
+// A STREAM texture update past the stream staging buffer keeps the texture's content (the
+// update is dropped whole, not half-staged) and is counted; one that fits goes through.
+TEST_F(SharedMeshBuffersTest, StreamTextureUpdatePastTheStagingBufferKeepsTheTexture){
+    const int size = 16;
+    TextureRender texture;
+    ASSERT_TRUE(texture.createDynamicTexture("stream-budget-texture", size, size, ColorFormat::RGBA, TextureFilter::NEAREST));
+    std::vector<uint8_t> first(size * size * 4), second(size * size * 4);
+    for (size_t i = 0; i < first.size(); i++){
+        first[i] = uint8_t(i * 7);
+        second[i] = uint8_t(255 - i * 3);
+    }
+    texture.updateTexture(first.data(), first.size());
+    GpuEnvironment::drawFrames(1);
+    EXPECT_GE(SystemRender::getStreamBytesLastFrame(), uint64_t(first.size()));
+
+    TestSystem::get().clearLogs();
+    const uint64_t before = SystemRender::getStreamSkippedUploads();
+    SokolSystem::overrideBudget(SokolSystem::STREAM_BUDGET, first.size() - 1, true);
+    texture.updateTexture(second.data(), second.size());
+    GpuEnvironment::drawFrames(1);
+    SokolSystem::restoreBudgets();
+    EXPECT_EQ(SystemRender::getStreamSkippedUploads(), before + 1);
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "GPU stream staging buffer full"), 1u) << errorLines();
+    std::vector<uint8_t> pixels;
+    ASSERT_TRUE(readTexturePixels(texture, size, size, 4, pixels));
+    EXPECT_EQ(pixels, first) << "the skipped update left the texture as it was";
+
+    texture.updateTexture(second.data(), second.size());
+    GpuEnvironment::drawFrames(1);
+    EXPECT_EQ(SystemRender::getStreamSkippedUploads(), before + 1);
+    ASSERT_TRUE(readTexturePixels(texture, size, size, 4, pixels));
+    EXPECT_EQ(pixels, second);
+    texture.destroyTexture();
+}
+
+// Draws past the uniform buffer (a limit of 0 for the test, enforced on any backend as on
+// Vulkan, Metal and WebGPU) and, on Vulkan, past the descriptor buffer: skipped (not drawn with
+// another draw's data, not handed to sokol to drop), counted, and logged once each.
+TEST_F(SharedMeshBuffersTest, DrawsPastTheUniformOrDescriptorBufferAreSkippedCountedAndLoggedOnce){
+    const int count = 12;
+    AbandonedCrowd crowd(count, 2.0f, 2.4f);
+    GridScene& s = crowd.scene();
+    addCopies(s, heroPath(), 0, count, crowd.models());
+    ASSERT_TRUE(s.settle());
+
+    TestSystem::get().clearLogs();
+    const uint64_t uniformBefore = SystemRender::getUniformSkippedDraws();
+    SokolSystem::overrideBudget(SokolSystem::UNIFORM_BUDGET, 0, true);
+    GpuEnvironment::drawFrames(2);
+    Screen none;
+    ASSERT_TRUE(none.read());
+    SokolSystem::restoreBudgets();
+    EXPECT_GE(SystemRender::getUniformSkippedDraws() - uniformBefore, uint64_t(count * 3 * 2)) << "3 draws a hero, 2 frames";
+    EXPECT_EQ(s.blankCells(none, 0, count).size(), size_t(count)) << "no hero drawn";
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "GPU uniform buffer full"), 1u) << errorLines();
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "Engine::GpuResourceLimits::uniformBytes"), 1u);
+
+    GpuEnvironment::drawFrames(1);
+    Screen all;
+    ASSERT_TRUE(all.read());
+    EXPECT_TRUE(s.blankCells(all, 0, count).empty()) << "drawn again at the configured limit";
+
+    // Vulkan: the descriptor sets of a few draws only
+    TestSystem::get().clearLogs();
+    const uint64_t descriptorBefore = SystemRender::getDescriptorSkippedDraws();
+    SokolSystem::overrideBudget(SokolSystem::DESCRIPTOR_BUDGET, 1024, true);
+    GpuEnvironment::drawFrames(2);
+    SokolSystem::restoreBudgets();
+    if (SystemRender::hasDescriptorBufferLimit()){
+        EXPECT_GT(SystemRender::getDescriptorSkippedDraws(), descriptorBefore);
+        EXPECT_GT(SystemRender::getDescriptorBytesLastFrame(), 1024u) << "what the frame needed";
+        EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "GPU descriptor buffer full"), 1u) << errorLines();
+        EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "DESCRIPTOR_BUFFER_OVERFLOW"), 0u) << "sokol never overflows";
+        EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR), 1u) << errorLines();
+    }else{
+        EXPECT_EQ(SystemRender::getDescriptorSkippedDraws(), descriptorBefore) << "no descriptor buffer on this backend";
+        EXPECT_EQ(SystemRender::getDescriptorBytesLastFrame(), 0u);
+        EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR), 0u) << errorLines();
+    }
+    const uint64_t restored = SystemRender::getDescriptorSkippedDraws();
+    GpuEnvironment::drawFrames(1);
+    EXPECT_EQ(SystemRender::getDescriptorSkippedDraws(), restored);
 }
 
 // 3,000 copies of a static glTF and 3,000 of an OBJ: one vertex (or 2 for the glTF's positions
