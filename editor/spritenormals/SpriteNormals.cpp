@@ -479,6 +479,7 @@ namespace jasperengine::editor::spritenormals {
         int cols = grid.columns, rows = grid.rows;
         double cw = grid.tileWidth, ch = grid.tileHeight;
         if (cw > 0 && ch > 0) {
+            // the tile size wins; columns / rows given as well cap the counts (sliceSheet)
             if (cols <= 0) cols = static_cast<int>(std::floor((availW + grid.paddingX) / (cw + grid.paddingX)));
             if (rows <= 0) rows = static_cast<int>(std::floor((availH + grid.paddingY) / (ch + grid.paddingY)));
         } else if (cols > 0 && rows > 0) {

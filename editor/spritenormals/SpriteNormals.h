@@ -70,7 +70,9 @@ namespace jasperengine::editor::spritenormals {
     };
 
     // The preset's values (contract section 3 table); softness 1.15, radius auto, alpha 0.03,
-    // Rounded, Transparent, no outline handling, no regions, OpenGL, no height map
+    // Rounded, Transparent, no outline handling, no regions, OpenGL, no height map.
+    // Resolving a preset with overrides (every surface does exactly this):
+    //   Settings s = presetSettings(p); settingsFromJson(overrides, s, error); s.preset = p; validateSettings(s)
     Settings presetSettings(Preset preset);
     // "soft", "default", "crisp", "detailed", "chunky" (and back; false for an unknown name)
     const char* toString(Preset preset);
@@ -110,7 +112,8 @@ namespace jasperengine::editor::spritenormals {
     // The Texture Slicer / set_sprite_frames grid: tile size, or columns and rows; offset,
     // padding, count. Same math as the MCP sliceSheet (WorldTools.cpp): tile_size given ->
     // columns/rows = floor((avail + padding) / (tile + padding)); columns and rows given ->
-    // tile = floor((avail - padding * (n - 1)) / n); cells row-major, the last ones clipped to
+    // tile = floor((avail - padding * (n - 1)) / n); both given: the tile size is used and
+    // columns/rows > 0 cap the counts (sliceSheet); cells row-major, the last ones clipped to
     // the image; count (0 = all) caps them.
     struct Grid {
         int tileWidth = 0;

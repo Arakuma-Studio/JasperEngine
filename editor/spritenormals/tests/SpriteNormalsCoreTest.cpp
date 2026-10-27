@@ -688,6 +688,17 @@ TEST(SpriteNormalsGrid, SliceGridLikeSetSpriteFrames) {
     clip.rows = 1;
     ASSERT_TRUE(sliceGrid(clip, 70, 40, cells, error));
     EXPECT_EQ(cells[1], (Cell{40, 0, 30, 40}));
+    // both given: the tile size is used, columns / rows cap the counts (sliceSheet)
+    Grid both;
+    both.tileWidth = 32;
+    both.tileHeight = 32;
+    both.columns = 2;
+    ASSERT_TRUE(sliceGrid(both, 128, 64, cells, error));
+    ASSERT_EQ(cells.size(), 4u);   // 2 columns (capped from 4) x 2 rows (from the tile size)
+    EXPECT_EQ(cells[3], (Cell{32, 32, 32, 32}));
+    both.rows = 1;
+    ASSERT_TRUE(sliceGrid(both, 128, 64, cells, error));
+    EXPECT_EQ(cells.size(), 2u);
     // count caps
     g = Grid();
     g.tileWidth = 16;
