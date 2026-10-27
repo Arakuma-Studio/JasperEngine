@@ -215,10 +215,15 @@ async def test_animator_section_preview_and_scrub(ed: Editor):
     scrub = await ui.reveal("vat.scrub", top=False)
     ed.check(scrub, "the scrubber shows while previewing")
     await shot(ed, "04-preview-scrubber")
-    # a click near the scrubber's left end sets an early time
-    await ui.click(scrub[0] + 4, (scrub[1] + scrub[3]) / 2)
+    # held still (speed 0), a click near the scrubber's right end then its left end sets the time
+    await lua(ed, 'object("quad"):getVertexAnimator().speed = 0; return true')
+    await ui.click(scrub[2] - 6, (scrub[1] + scrub[3]) / 2)
+    late = await lua(ed, 'return object("quad"):getVertexAnimator().time')
+    ed.check(late[0] > 0.8, f"the scrubber set a late time: {late}")
+    await ui.click(scrub[0] + 6, (scrub[1] + scrub[3]) / 2)
     early = await lua(ed, 'return object("quad"):getVertexAnimator().time')
-    ed.check(early[0] < 0.4, f"the scrubber set the time: {early}")
+    ed.check(early[0] < 0.2, f"the scrubber set an early time: {early}")
+    await lua(ed, 'object("quad"):getVertexAnimator().speed = 1; return true')
 
     # another selection stops it (the Scene view goes back to where it started)
     await ed.call("select_entities", entities=[])
@@ -341,8 +346,8 @@ async def test_create_crowd(ed: Editor):
     got = await ed.call("get_entity", entity="quad Crowd", components=["instancedmesh", "vertexanimator"])
     comps = got.get("components", got)
     ed.check("instancedmesh" in comps and "vertexanimator" in comps, f"the crowd GameObject: {json.dumps(got)[:600]}")
-    instances = comps["instancedmesh"].get("instances", [])
-    ed.check(40 <= len(instances) <= 100, f"its instances: {len(instances)}")
+    count = (await lua(ed, 'return object("quad Crowd", "Mesh"):getNumInstances()'))[0]
+    ed.check(40 <= count <= 100, f"its instances: {count}")
     await shot(ed, "09-crowd")
     await ed.call("undo")
     found = await ed.call("find_entities", name="quad Crowd")

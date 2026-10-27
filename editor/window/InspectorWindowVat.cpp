@@ -966,14 +966,14 @@ void editor::InspectorWindow::drawVatAsset(const fs::path& asset){
     const float tableHeight = (std::min((float)data.clips.size(), 10.0f) + 1.0f) * rowHeight + ImGui::GetStyle().ScrollbarSize + 4.0f;
     if (!data.clips.empty() && ImGui::BeginTable("vat_asset_clips", 9, tableFlags, ImVec2(0, tableHeight))){
         ImGui::TableSetupScrollFreeze(1, 1);
-        ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, textWidth("MMMMMMMMMM"));
+        ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, textWidth("MMMMMMM"));
+        ImGui::TableSetupColumn("Wrap", ImGuiTableColumnFlags_WidthFixed, textWidth("Ping Pong") + ImGui::GetFrameHeight());
+        ImGui::TableSetupColumn("Speed", ImGuiTableColumnFlags_WidthFixed, textWidth("00.00") + 8.0f);
+        ImGui::TableSetupColumn("Interp.");
+        ImGui::TableSetupColumn("Events");
         ImGui::TableSetupColumn("Frames");
         ImGui::TableSetupColumn("FPS");
         ImGui::TableSetupColumn("Length");
-        ImGui::TableSetupColumn("Wrap", ImGuiTableColumnFlags_WidthFixed, textWidth("Clamp Forever") + ImGui::GetFrameHeight() * 1.5f);
-        ImGui::TableSetupColumn("Speed", ImGuiTableColumnFlags_WidthFixed, textWidth("00.000") + 12.0f);
-        ImGui::TableSetupColumn("Interp.");
-        ImGui::TableSetupColumn("Events");
         ImGui::TableSetupColumn("Bytes");
         ImGui::TableHeadersRow();
         for (size_t i = 0; i < data.clips.size() && i < MAX_ROWS; i++){
@@ -990,12 +990,6 @@ void editor::InspectorWindow::drawVatAsset(const fs::path& asset){
                 commit(edited, "Rename Clip", "");
             }
             UIProbe::item(id + ".name");
-            ImGui::TableNextColumn();
-            ImGui::Text("%d", clip.frames);
-            ImGui::TableNextColumn();
-            ImGui::Text("%.4g", clip.fps);
-            ImGui::TableNextColumn();
-            ImGui::Text("%.2f s", clip.length());
             ImGui::TableNextColumn();
             ImGui::SetNextItemWidth(-FLT_MIN);
             if (ImGui::BeginCombo("##wrap", inspectorvat::wrapLabel(clip.wrap))){
@@ -1038,6 +1032,13 @@ void editor::InspectorWindow::drawVatAsset(const fs::path& asset){
             }
             UIProbe::item(id + ".events");
             ImGui::SetItemTooltip("The clip's events (functions called on the GameObject's scripts)");
+            // the baked (read-only) columns after the editable ones
+            ImGui::TableNextColumn();
+            ImGui::TextDisabled("%d", clip.frames);
+            ImGui::TableNextColumn();
+            ImGui::TextDisabled("%.4g", clip.fps);
+            ImGui::TableNextColumn();
+            ImGui::TextDisabled("%.2f s", clip.length());
             ImGui::TableNextColumn();
             ImGui::TextDisabled("%s", inspectorvat::formatBytes(inspectorvat::clipBytes(data, clip)).c_str());
             ImGui::PopID();
