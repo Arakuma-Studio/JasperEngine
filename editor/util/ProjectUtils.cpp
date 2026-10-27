@@ -1097,6 +1097,13 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<AnimationPlayerComponent>(entity, Stream::decodeAnimationPlayerComponent(componentNode));
             }
             break;
+        case ComponentType::VertexAnimatorComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<VertexAnimatorComponent>(entity, {});
+            }else{
+                registry->addComponent<VertexAnimatorComponent>(entity, Stream::decodeVertexAnimatorComponent(componentNode));
+            }
+            break;
         case ComponentType::Light2DComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
                 registry->addComponent<Light2DComponent>(entity, {});
@@ -1595,6 +1602,13 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
                 oldComponent = Stream::encodeAnimationPlayerComponent(registry->getComponent<AnimationPlayerComponent>(entity));
             }
             registry->removeComponent<AnimationPlayerComponent>(entity);
+            break;
+        case ComponentType::VertexAnimatorComponent:
+            // the mesh draws at rest again (VertexAnimatorSystem::onComponentRemoved)
+            if (encodeComponent){
+                oldComponent = Stream::encodeVertexAnimatorComponent(registry->getComponent<VertexAnimatorComponent>(entity));
+            }
+            registry->removeComponent<VertexAnimatorComponent>(entity);
             break;
         case ComponentType::Light2DComponent:
             if (encodeComponent){
