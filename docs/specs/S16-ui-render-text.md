@@ -715,3 +715,5 @@ one line pointing here.
   tests (463), web + web-gate pass; MCP failures there were the ones BF2 fixed (merged since).
 - Benchmark host E was replaced (a new rented box, cold builds): the earlier E runs (S16 alone and
   e1ca0c71a) are recorded; the run on the final tree goes to the new E.
+- Vulkan, whole suite, twice on the tree with e1ca0c71a and the white-block fix (server A):
+  3478 ran, 0 failed, both runs. Gate on B: android, smoke (glcore and Vulkan) pass.
