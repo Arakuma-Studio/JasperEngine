@@ -573,12 +573,14 @@ set(JASPERENGINE_SPRITENORMALS_SOURCES
     ${EDITOR_DIR}/spritenormals/SpriteMedia.cpp
     ${EDITOR_DIR}/spritenormals/SpriteNormalsRecipe.cpp
     ${EDITOR_DIR}/spritenormals/SpriteNormalsPreview.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsPaint.cpp
 )
 # Upstream parity: Rust never contracts a*b+c into an FMA (the generator calls std::fma itself
-# exactly where upstream calls mul_add)
+# exactly where upstream calls mul_add); the paint layer's compositing likewise gives the same
+# bytes on every target
 if(NOT MSVC)
     set_source_files_properties(${EDITOR_DIR}/spritenormals/SpriteNormals.cpp ${EDITOR_DIR}/spritenormals/SpriteNormalsField.cpp
-        PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+        ${EDITOR_DIR}/spritenormals/SpriteNormalsPaint.cpp PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
 endif()
 
 set(JASPERENGINE_EDITOR_SOURCES
