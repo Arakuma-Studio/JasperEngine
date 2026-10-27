@@ -11,9 +11,10 @@
 //     empty: the caller gives a GameObject, or a .poseanim's preview model is used).
 //   * imports written as the baker window writes them (vat/VatImportWrite.h: the default output
 //     next to the export, the existing-file rule, one undo step): planVatImport / writeImportedVat
-//     add what a front end gives besides, the scene to place in and the crowd (crowdPlacement);
-//     reimportVat is the Rebake of an import recipe (written over the .vat: GUID and hand edits
-//     kept by the existing-file rule).
+//     add what a front end gives besides, the scene to place in and the crowd (crowdPlacement).
+//     The Rebake of an import recipe is importSpecFromRecipe + importVat (on a worker: the MCP
+//     tool's job, the baker window's import, which the Inspector's Rebake opens) + writeImportedVat
+//     over the .vat (GUID and hand edits kept by the existing-file rule): never on the main thread.
 // - Thread-safety: main thread (reads the project, runs commands); importVat itself may run on
 //   any thread before writeImportedVat.
 // - Paths: project-relative with '/' in and out; absolute paths for import sources outside the
@@ -78,10 +79,6 @@ namespace jasperengine::editor::vat{
     // writes a successful import (one undo step); `result` keeps its data (guid/mesh/layout hash set)
     bool writeImportedVat(Project* project, VatImportResult& result, const VatImportDetection& detection,
                         const VatImportPlan& options, VatWriteResult& out, std::string& error);
-    // Rebake of an imported .vat: its recipe imported again and written over it (GUID and edits
-    // kept). `report` (optional) gets the import's report. False with `error`.
-    bool reimportVat(Project* project, const std::string& vatPath, VatWriteResult& out, std::string& error,
-                     VatImportReport* report = nullptr);
 
 }
 

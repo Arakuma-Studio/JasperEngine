@@ -324,23 +324,4 @@ bool writeImportedVat(Project* project, VatImportResult& result, const VatImport
     return writeVatImport(project, result, detection, writeOptions(options), out, error);
 }
 
-bool reimportVat(Project* project, const std::string& vatPath, VatWriteResult& out, std::string& error, VatImportReport* report){
-    VatData old;
-    if (!readVatAsset(project, vatPath, old, &error)) return false;
-    VatImportSpec spec;
-    if (!importSpecFromRecipe(old.recipe, FileUtils::pathToUtf8(project->getProjectPath()), spec, error)) return false;
-    VatImportResult result = importVat(spec);
-    if (report) *report = result.report;
-    if (!result.ok()){
-        error = vatImportIssuesText(result.errors);
-        return false;
-    }
-    const VatImportDetection detection = detectVatImport(spec.path);
-    VatImportPlan options;
-    if (!projectRelativeFile(project, vatPath, true, options.output, error)) return false;
-    // the same export: rewritten in place, GUID and hand edits kept (the existing-file rule)
-    options.overwrite = true;
-    return writeImportedVat(project, result, detection, options, out, error);
-}
-
 }

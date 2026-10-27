@@ -27,6 +27,7 @@
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
 #include "command/type/CreateEntityCmd.h"
+#include "command/type/DeleteEntityCmd.h"
 #include "command/type/ModelLoadCmd.h"
 #include "render/preview/VatPreviewRender.h"
 #include "util/EntityPath.h"
@@ -84,6 +85,15 @@ namespace jasperengine::editor {
         static const std::string& sourceLabel(VertexAnimationBakerWindow& w) { return w.sourceLabel; }
         static const VatImportDetection& detection(VertexAnimationBakerWindow& w) { return w.detection; }
         static bool noneChecked(VertexAnimationBakerWindow& w) { return w.noneChecked; }
+        // the next tick checks the source now (watchSource runs a few times a second)
+        static void checkSourceNow(VertexAnimationBakerWindow& w) { w.sourceCheckedAt = -1.0; }
+        // writes the stored in-memory result as finishRun does, past Bake's checks (what a write
+        // throws must end in the window's error, not in the editor)
+        static void writeStored(VertexAnimationBakerWindow& w) {
+            w.writeWhenDone = true;
+            w.runFinished = false;
+            w.tick(0.0);
+        }
         // the Place: Crowd... fields
         static void crowd(VertexAnimationBakerWindow& w, int count, float area, int seed) {
             w.crowdCount = count;
@@ -781,6 +791,86 @@ TEST_F(VatBakerWindow_, BakeEntriesPrefillTheWindow) {
     EXPECT_FALSE(fs::exists(root() / written.vat));
 }
 
+TEST_F(VatBakerWindow_, DeletedSourceNeverWritesTheStoredResult) {
+    // the Inspector's Shift-click bake places "Robot (VAT)"; Robot is deleted; Bake (the stored
+    // result's settings) used to write it, naming the gone GameObject: a crash
+    const uint32_t sceneId = newScene();
+    Scene* scene = sceneOf(sceneId);
+    const Entity arm = loadModel(sceneId, "models/rigid_arm.gltf", "Robot");
+    AnimationPlayerComponent player;
+    AnimationPlayerClip clip;
+    clip.clip = "models/rigid_arm.gltf#Swing";
+    player.clips.push_back(clip);
+    scene->addComponent<AnimationPlayerComponent>(arm, player);
+    VatBakeEntry entry;
+    entry.kind = VatBakeEntry::Kind::AnimationPlayer;
+    entry.sceneId = sceneId;
+    entry.entity = arm;
+    vatBakerHooks().bake(project(), entry, true);
+    runToEnd(*window);
+    ASSERT_FALSE(window->statusIsError()) << window->getStatus();
+    ASSERT_NE(window->lastWrite().entity, NULL_ENTITY);
+    const std::string firstVat = window->lastWrite().vat;
+    ASSERT_TRUE(Access::run(*window) && Access::run(*window)->state() == VatBakeState::Done);
+
+    history(sceneId)->addCommandNoMerge(new DeleteEntityCmd(project(), sceneId, arm));
+    ASSERT_FALSE(scene->isEntityCreated(arm));
+    std::string error;
+    EXPECT_FALSE(window->bake(true, error)) << "nothing to bake: the source is gone";
+    EXPECT_NE(error.find("Robot"), std::string::npos) << error;
+    EXPECT_TRUE(window->statusIsError()) << window->getStatus();
+    EXPECT_FALSE(window->isRunning());
+    VatBakeSession* after = Access::run(*window);
+    EXPECT_TRUE(!after || after->state() != VatBakeState::Done) << "no stored result names the gone GameObject";
+
+    // a preview run, then the source deleted: the next ticks drop the stored result
+    const Entity back = loadModel(sceneId, "models/rigid_arm.gltf", "Robot");
+    ASSERT_TRUE(window->setSourceEntity(sceneId, back, error)) << error;
+    ASSERT_TRUE(window->bake(false, error)) << error;
+    runToEnd(*window);
+    ASSERT_TRUE(Access::run(*window) && Access::run(*window)->state() == VatBakeState::Done) << window->getStatus();
+    history(sceneId)->addCommandNoMerge(new DeleteEntityCmd(project(), sceneId, back));
+    Access::checkSourceNow(*window);
+    window->tick(1.0);
+    EXPECT_EQ(Access::run(*window), nullptr) << "the stored result is dropped";
+    EXPECT_TRUE(window->statusIsError());
+    EXPECT_NE(window->getStatus().find("The baked result was dropped: the GameObject 'Robot' is gone"), std::string::npos) << window->getStatus();
+    EXPECT_FALSE(window->bake(true, error));
+
+    // what a write throws ends in the window's error (with the Console line), never in a crash
+    const Entity again = loadModel(sceneId, "models/rigid_arm.gltf", "Robot");
+    ASSERT_TRUE(window->setSourceEntity(sceneId, again, error)) << error;
+    ASSERT_TRUE(window->bake(false, error)) << error << " / " << window->getStatus();
+    runToEnd(*window);
+    ASSERT_TRUE(Access::run(*window) && Access::run(*window)->state() == VatBakeState::Done);
+    history(sceneId)->addCommandNoMerge(new DeleteEntityCmd(project(), sceneId, again));
+    Access::writeStored(*window);
+    EXPECT_TRUE(window->statusIsError()) << window->getStatus();
+    EXPECT_FALSE(window->isRunning());
+    (void)firstVat;
+}
+
+TEST_F(VatBakerWindow_, ClosingTheSourcesSceneResetsTheWindow) {
+    const uint32_t sceneId = newScene();
+    const Entity arm = loadModel(sceneId, "models/rigid_arm.gltf", "Robot");
+    std::string error;
+    ASSERT_TRUE(window->setSourceEntity(sceneId, arm, error)) << error;
+    ASSERT_TRUE(window->bake(false, error)) << error;
+    runToEnd(*window);
+    ASSERT_TRUE(Access::run(*window) && Access::run(*window)->result());
+    project()->getScene(sceneId)->isModified = false;
+    project()->closeScene(sceneId, true);
+    ASSERT_TRUE(!project()->getScene(sceneId) || !project()->getScene(sceneId)->scene);
+    Access::checkSourceNow(*window);
+    window->tick(1.0);
+    EXPECT_EQ(window->getMode(), VertexAnimationBakerWindow::Mode::None);
+    EXPECT_EQ(Access::run(*window), nullptr);
+    EXPECT_TRUE(window->getSpec().source.path.empty());
+    EXPECT_NE(window->getStatus().find("was closed"), std::string::npos) << window->getStatus();
+    EXPECT_FALSE(window->bake(true, error));
+    EXPECT_NE(error.find("choose a source"), std::string::npos) << error;
+}
+
 TEST_F(VatBakerWindow_, AppHooksOpenTheBakerAndRebake) {
     ASSERT_TRUE(vatAppHooks().openBaker && vatAppHooks().rebake) << "the window installs the .vat view's and Project window's hooks";
     // "Bake Vertex Animation..." on a model
@@ -827,6 +917,46 @@ TEST_F(VatBakerWindow_, AppHooksOpenTheBakerAndRebake) {
 }
 
 // ==================================================================== import
+
+TEST_F(VatBakerWindow_, InspectorRebakeOfAnImportRunsOnAWorker) {
+    // the Inspector's Rebake (the app hook) of an imported .vat: the import runs on the window's
+    // worker with its stage line (the SideFX destruction takes seconds), never on the main thread
+    const fs::path exportDir = vatimportfixtures::freshDir("window-rebake-import");
+    vatimportfixtures::writeSoft(exportDir, "Wave", vatimportfixtures::SoftOptions());
+    std::string error;
+    ASSERT_TRUE(window->setSourcePath(exportDir.string(), error)) << error;
+    window->importOutput().output = "assets/RebakeWave.vat";
+    ASSERT_TRUE(window->bake(true, error)) << error;
+    window->tick(0.0);
+    ASSERT_FALSE(window->statusIsError()) << window->getStatus();
+    const VatWriteResult first = window->lastWrite();
+    ASSERT_EQ(first.vat, "assets/RebakeWave.vat");
+
+    ASSERT_TRUE(vatAppHooks().rebake);
+    window->setOpen(false);
+    vatAppHooks().rebake(project(), root() / first.vat);
+    EXPECT_TRUE(window->isOpen()) << "the progress shows";
+    EXPECT_TRUE(window->isRunning()) << "the import is on the worker when the hook returns";
+    EXPECT_EQ(window->stageLine(), "Stage 1 of 1: Importing Wave");
+    window->tick(0.0);
+    EXPECT_FALSE(window->isRunning());
+    ASSERT_FALSE(window->statusIsError()) << window->getStatus();
+    EXPECT_EQ(window->lastWrite().vat, first.vat);
+    EXPECT_EQ(window->lastWrite().guid, first.guid) << "written over, GUID kept";
+
+    // a failing import (the export's textures gone) ends in the window's error, nothing written
+    const std::string before = readAll(root() / first.vat);
+    for (const auto& file : fs::recursive_directory_iterator(exportDir)) {
+        if (file.path().extension() == ".exr") fs::remove(file.path());
+    }
+    vatAppHooks().rebake(project(), root() / first.vat);
+    window->tick(0.0);
+    EXPECT_FALSE(window->isRunning());
+    EXPECT_TRUE(window->statusIsError()) << window->getStatus();
+    EXPECT_EQ(readAll(root() / first.vat), before);
+    ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
+    ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
+}
 
 TEST_F(VatBakerWindow_, ImportsAHoudiniExport) {
     // a synthetic soft-body export (the importer tests' writer), outside the assets folder

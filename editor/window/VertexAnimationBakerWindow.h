@@ -214,6 +214,7 @@ namespace jasperengine::editor {
 
         std::string status;
         bool statusError = false;
+        double sourceCheckedAt = -1.0;      // the last watchSource() check (now())
 
         // preview
         std::unique_ptr<VatPreviewView> sourceView;
@@ -244,10 +245,20 @@ namespace jasperengine::editor {
         void updateSummary();
         void finishRun();
         void finishImport();
+        // what a bake or import throws (bad_alloc, a library error) ends it with an error in the
+        // window and the Console instead of taking the editor down
+        void failWith(const std::string& what, const std::string& message);
+        // the GameObject (or file) the source or the stored result was baked from is gone: why, else ""
+        std::string sourceGone(const vat::VatSourceSpec& source) const;
+        // a few times a second: a closed scene resets a GameObject source; a deleted source drops
+        // the stored in-memory result (Bake must not write a result whose source is gone)
+        void watchSource();
+        void dropStoredResult(const std::string& why);
         void setStatus(const std::string& message, bool error);
         void reveal(const std::string& relative);
         void rememberSettings();
         bool startBake(bool write, std::string& error);
+        bool startBakeFor(const std::string& key, bool write, std::string& error);
         void ensurePreview();
         // the VAT view switched to (or back from) the heatmap's mesh when the toggle says so
         void applyHeatmap();

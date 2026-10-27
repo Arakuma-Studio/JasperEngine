@@ -230,6 +230,7 @@ VertexAnimationBakerWindow::VertexAnimationBakerWindow(Project* project)
         if (!hooksOwner) return;
         std::string error;
         if (!hooksOwner->openVat(FileUtils::pathToUtf8(vatPath), error) || !hooksOwner->bake(true, error)) {
+            hooksOwner->setStatus("Can't rebake: " + error, true);
             Out::error("Vertex Animation: the rebake of %s can't start: %s", FileUtils::pathToUtf8(vatPath.filename()).c_str(), error.c_str());
         }
     };
@@ -998,7 +999,23 @@ bool VertexAnimationBakerWindow::bake(bool write, std::string& error) {
 }
 
 bool VertexAnimationBakerWindow::startBake(bool write, std::string& error) {
-    const std::string key = specKey();
+    try {
+        const std::string key = specKey();
+        // an in-memory result whose source is gone is never written (it would name a GameObject
+        // that no longer exists): dropped, and the bake below reports the source
+        if (run && run->state() == VatBakeState::Done) {
+            const std::string gone = sourceGone(run->spec().source);
+            if (!gone.empty()) dropStoredResult(gone);
+        }
+        return startBakeFor(key, write, error);
+    } catch (const std::exception& exception) {
+        failWith("bake", exception.what());
+        error = status;
+        return false;
+    }
+}
+
+bool VertexAnimationBakerWindow::startBakeFor(const std::string& key, bool write, std::string& error) {
     // the same settings as an in-memory result: written as it is, no second bake
     if (write && run && run->state() == VatBakeState::Done && runKey == key) {
         writeWhenDone = true;
@@ -1055,11 +1072,84 @@ void VertexAnimationBakerWindow::tick(double budgetMs) {
         if (budgetMs <= 0.0 && importJob->thread.joinable()) importJob->thread.join();
         if (importJob->done) finishImport();
     }
+    watchSource();
     if (!run || runFinished) return;
-    if (run->state() == VatBakeState::Posing || run->state() == VatBakeState::Encoding) {
-        if (!run->advance(budgetMs)) return;
+    try {
+        if (run->state() == VatBakeState::Posing || run->state() == VatBakeState::Encoding) {
+            if (!run->advance(budgetMs)) return;
+        }
+        finishRun();
+    } catch (const std::exception& exception) {
+        if (run && (run->state() == VatBakeState::Posing || run->state() == VatBakeState::Encoding)) run->cancel();
+        failWith("bake", exception.what());
     }
-    finishRun();
+}
+
+void VertexAnimationBakerWindow::failWith(const std::string& what, const std::string& message) {
+    runFinished = true;
+    writeWhenDone = false;
+    const std::string text = "The " + what + " stopped on an error: " + message;
+    setStatus(text, true);
+    Out::error("Vertex Animation: %s", text.c_str());
+}
+
+std::string VertexAnimationBakerWindow::sourceGone(const VatSourceSpec& source) const {
+    if (!project) return "no project is open";
+    if (source.sceneId != 0) {
+        SceneProject* sceneProject = project->getScene(source.sceneId);
+        if (!sceneProject || !sceneProject->scene) return "the scene of '" + source.path + "' was closed";
+        if (!source.path.empty() && EntityPath::find(*sceneProject, source.path) == NULL_ENTITY) {
+            return "the GameObject '" + source.path + "' is gone from '" + sceneProject->name + "'";
+        }
+    } else if (source.scene.empty() && !source.path.empty() && !fileExists(absoluteOf(project, source.path))) {
+        return "'" + source.path + "' is gone";
+    }
+    for (const std::string& anim : source.anims) {
+        if (!fileExists(absoluteOf(project, anim))) return "'" + anim + "' is gone";
+    }
+    return "";
+}
+
+void VertexAnimationBakerWindow::dropStoredResult(const std::string& why) {
+    releasePreview();
+    run.reset();
+    runKey.clear();
+    runFinished = false;
+    writeWhenDone = false;
+    probeKey.clear();
+    markChanged();
+    setStatus("The baked result was dropped: " + why + ".", true);
+    Out::error("Vertex Animation: %s", status.c_str());
+}
+
+void VertexAnimationBakerWindow::watchSource() {
+    if (!project || isRunning()) return;
+    const double time = now();
+    if (sourceCheckedAt >= 0.0 && time - sourceCheckedAt < 0.2) return;
+    sourceCheckedAt = time;
+    // a GameObject source whose scene closed: the window starts over (nothing of it is reachable)
+    if (mode == Mode::Bake && spec.source.sceneId != 0) {
+        SceneProject* sceneProject = project->getScene(spec.source.sceneId);
+        if (!sceneProject || !sceneProject->scene) {
+            const std::string label = sourceLabel;
+            releasePreview();
+            run.reset();
+            runKey.clear();
+            runFinished = false;
+            writeWhenDone = false;
+            mode = Mode::None;
+            sourceLabel.clear();
+            playOnLabel.clear();
+            resetSource();
+            spec.source = VatSourceSpec();
+            setStatus("The scene of the source (" + label + ") was closed: choose a source.", false);
+            return;
+        }
+    }
+    if (run && run->state() == VatBakeState::Done) {
+        const std::string gone = sourceGone(run->spec().source);
+        if (!gone.empty()) dropStoredResult(gone);
+    }
 }
 
 std::string VertexAnimationBakerWindow::stageLine() const {
@@ -1198,6 +1288,12 @@ bool VertexAnimationBakerWindow::runImport(std::string& error) {
             issue.error = true;
             issue.message = exception.what();
             raw->result.errors.push_back(issue);
+        } catch (...) {
+            VatIssue issue;
+            issue.kind = "read_failed";
+            issue.error = true;
+            issue.message = "the import stopped on an unknown error";
+            raw->result.errors.push_back(issue);
         }
         raw->done = true;
     });
@@ -1233,7 +1329,14 @@ void VertexAnimationBakerWindow::finishImport() {
         }
         options.crowd = crowdPlacement(crowd);
     }
-    if (!writeVatImport(project, *importResult, detection, options, written, error)) {
+    bool wrote = false;
+    try {
+        wrote = writeVatImport(project, *importResult, detection, options, written, error);
+    } catch (const std::exception& exception) {
+        failWith("import", exception.what());
+        return;
+    }
+    if (!wrote) {
         setStatus("The import can't be written: " + error, true);
         Out::error("Vertex Animation: the import can't be written: %s", error.c_str());
         return;
@@ -2078,7 +2181,10 @@ void VertexAnimationBakerWindow::drawFooter() {
         ImGui::BeginDisabled(!reason.empty());
         if (accentButton(label, ImVec2(width - previewWidth - (importing ? 0.0f : ImGui::GetStyle().ItemSpacing.x), height))) {
             std::string error;
-            if (!bake(true, error)) setStatus("Can't " + std::string(importing ? "import" : "bake") + ": " + error, true);
+            if (!bake(true, error)) {
+                setStatus("Can't " + std::string(importing ? "import" : "bake") + ": " + error, true);
+                Out::error("Vertex Animation: %s", status.c_str());
+            }
         }
         ImGui::EndDisabled();
         UIProbe::item("vatbaker.bake");
