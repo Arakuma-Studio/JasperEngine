@@ -26,12 +26,12 @@ bool BufferRender::createBuffer(unsigned int size, void* data, BufferType type, 
         return false;
 }
 
-void BufferRender::updateBuffer(unsigned int size, void* data){
+bool BufferRender::updateBuffer(unsigned int size, void* data){
     if (shared){
         Log::error("A shared GPU buffer is immutable: not updated (the buffer's bytes were written without dropping its share source)");
-        return;
+        return false;
     }
-    backend.updateBuffer(size, data);
+    return backend.updateBuffer(size, data);
 }
 
 int BufferRender::appendBuffer(unsigned int size, const void* data){

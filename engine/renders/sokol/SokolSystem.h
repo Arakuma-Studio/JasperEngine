@@ -60,11 +60,11 @@ namespace jasperengine{
         // refused and counted as skipped (all or nothing)
         static bool reserveStreamBytes(const uint64_t* sizes, int count);
         // Every engine upload into a STREAM or DYNAMIC resource goes through these (SokolBuffer,
-        // SokolTexture, SokolCmdQueue): a STREAM one is reserved first, and dropped when
-        // refused (appendBuffer: -1)
-        static void updateBuffer(sg_buffer buffer, const sg_range& data);
+        // SokolTexture, SokolCmdQueue): a STREAM one is reserved first, and not made when
+        // refused (false, appendBuffer -1: the caller tries again next frame)
+        static bool updateBuffer(sg_buffer buffer, const sg_range& data);
         static int appendBuffer(sg_buffer buffer, const sg_range& data);
-        static void updateImage(sg_image image, const sg_image_data& data);
+        static bool updateImage(sg_image image, const sg_image_data& data);
         // The draw about to be bound and drawn (its pipeline applied, its uniforms applied):
         // false when its descriptor sets do not fit the frame's descriptor buffer (Vulkan; the
         // draw is skipped and counted)

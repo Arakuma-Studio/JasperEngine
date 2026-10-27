@@ -541,13 +541,14 @@ namespace{
     }
 }
 
-void SokolSystem::updateBuffer(sg_buffer buffer, const sg_range& data){
+bool SokolSystem::updateBuffer(sg_buffer buffer, const sg_range& data){
     if (streamUpdated(buffer)){
         const uint64_t size = data.size;
         if (!reserveStreamBytes(&size, 1))
-            return;
+            return false;
     }
     sg_update_buffer(buffer, data);
+    return true;
 }
 
 int SokolSystem::appendBuffer(sg_buffer buffer, const sg_range& data){
@@ -559,7 +560,7 @@ int SokolSystem::appendBuffer(sg_buffer buffer, const sg_range& data){
     return sg_append_buffer(buffer, data);
 }
 
-void SokolSystem::updateImage(sg_image image, const sg_image_data& data){
+bool SokolSystem::updateImage(sg_image image, const sg_image_data& data){
     if (sg_query_image_state(image) == SG_RESOURCESTATE_VALID && sg_query_image_usage(image).stream_update){
         // sokol stages the image's mip levels (each slice of one together)
         const int mips = std::min(std::max(sg_query_image_num_mipmaps(image), 1), (int)SG_MAX_MIPMAPS);
@@ -567,9 +568,10 @@ void SokolSystem::updateImage(sg_image image, const sg_image_data& data){
         for (int mip = 0; mip < mips; mip++)
             sizes[mip] = data.mip_levels[mip].size;
         if (!reserveStreamBytes(sizes, mips))
-            return;
+            return false;
     }
     sg_update_image(image, data);
+    return true;
 }
 
 bool SokolSystem::reserveDescriptorBytes(){

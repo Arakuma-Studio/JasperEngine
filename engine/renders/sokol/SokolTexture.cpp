@@ -602,22 +602,24 @@ bool SokolTexture::createDynamicColorTexture(const std::string& label, int width
     return image.id != SG_INVALID_ID && sampler.id != SG_INVALID_ID && view.id != SG_INVALID_ID;
 }
 
-void SokolTexture::updateTexture(const void* data, size_t size){
+bool SokolTexture::updateTexture(const void* data, size_t size){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     if (image.id == SG_INVALID_ID || !data || size == 0)
-        return;
+        return false;
     // sokol reads width * height * bpp bytes whatever the size says
     if (streamBytes != 0 && size != streamBytes){
         Log::error("Dynamic texture update of %zu bytes ignored: the texture takes %zu", size, streamBytes);
-        return;
+        return false;
     }
 
     sg_image_data imageData = {};
     imageData.mip_levels[0] = {data, size};
-    if (Engine::isAsyncThread())
+    if (Engine::isAsyncThread()){
+        // budgeted when the render thread runs it (a refused one is counted and logged there)
         SokolCmdQueue::add_command_update_image(image, imageData);
-    else
-        SokolSystem::updateImage(image, imageData);
+        return true;
+    }
+    return SokolSystem::updateImage(image, imageData);
 }
 
 bool SokolTexture::createTextureCubeWithMips(

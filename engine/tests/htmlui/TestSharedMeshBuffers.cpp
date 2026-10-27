@@ -216,6 +216,21 @@ namespace {
             }, maxFrames);
         }
 
+        // every skinned mesh uploads its bone matrices this frame, as an animated crowd does
+        // each frame (a still one uploads them once); returns how many
+        int dirtyBones(){
+            int skinned = 0;
+            auto meshes = scene().getComponentArray<MeshComponent>();
+            for (size_t i = 0; i < meshes->size(); i++){
+                MeshComponent& mesh = meshes->getComponentFromIndex(i);
+                if (mesh.loaded && mesh.bonesMatrix.size() > 0){
+                    mesh.needUpdateBones = true;
+                    skinned++;
+                }
+            }
+            return skinned;
+        }
+
         // meshes with geometry: loaded, failed
         void countMeshes(size_t& loaded, size_t& failed){
             loaded = failed = 0;
@@ -357,9 +372,12 @@ TEST_F(SharedMeshBuffersTest, ThousandsOfSkinnedModelCopiesAllDrawFromOneSetOfBu
     EXPECT_GT(SystemRender::getUniformBytesLastFrame(), 0u);
     EXPECT_LE(SystemRender::getUniformBytesLastFrame(), SystemRender::getUniformBytesLimit());
     EXPECT_EQ(SystemRender::getUniformSkippedDraws(), 0u);
-    // and their bone matrices the frame's stream staging buffer (Vulkan skips the uploads past
-    // it: sokol's default 16 MB held 2,348 of these heroes), the draws' descriptor sets the
-    // descriptor buffer (Vulkan)
+    // and their bone matrices, all uploaded in one frame as an animated crowd does, the frame's
+    // stream staging buffer (Vulkan skips the uploads past it: sokol's default 16 MB held 2,348
+    // of these heroes, and the 952 others, still, never got their bones and drew nothing), the
+    // draws' descriptor sets the descriptor buffer (Vulkan)
+    EXPECT_EQ(s.dirtyBones(), count);
+    GpuEnvironment::drawFrames(1);
     EXPECT_GT(SystemRender::getStreamBytesLastFrame(), 0u);
     EXPECT_LE(SystemRender::getStreamBytesLastFrame(), SystemRender::getStreamBytesLimit());
     EXPECT_EQ(SystemRender::getStreamSkippedUploads(), 0u);
@@ -389,12 +407,16 @@ TEST_F(SharedMeshBuffersTest, PerFrameBuffersHoldFourThousandShadowedSkinnedHero
     const uint64_t streamSkippedBefore = SystemRender::getStreamSkippedUploads();
     const uint64_t descriptorSkippedBefore = SystemRender::getDescriptorSkippedDraws();
     ASSERT_TRUE(s.settle());
+    GpuEnvironment::drawFrames(1);
     const uint64_t emptyUniforms = SystemRender::getUniformBytesLastFrame();
     const uint64_t emptyStream = SystemRender::getStreamBytesLastFrame();
     const uint64_t emptyDescriptors = SystemRender::getDescriptorBytesLastFrame();
     addCopies(s, heroPath(), 0, count, crowd.models());
     ASSERT_TRUE(s.settle());
-    GpuEnvironment::drawFrames(2);
+    GpuEnvironment::drawFrames(1);
+    // an animated crowd: every hero uploads its bones every frame
+    EXPECT_EQ(s.dirtyBones(), count);
+    GpuEnvironment::drawFrames(1);
     const Engine::GpuResourceLimits defaults;
 
     const uint64_t uniforms = SystemRender::getUniformBytesLastFrame();
@@ -446,10 +468,16 @@ TEST_F(SharedMeshBuffersTest, StreamUploadsPastTheStagingBufferAreSkippedCounted
     AbandonedCrowd crowd(count, 2.0f, 2.4f);
     GridScene& s = crowd.scene();
     ASSERT_TRUE(s.settle());
+    GpuEnvironment::drawFrames(1);
     const uint64_t empty = SystemRender::getStreamBytesLastFrame();
     addCopies(s, heroPath(), 0, count, crowd.models());
     ASSERT_TRUE(s.settle());
-    GpuEnvironment::drawFrames(1);
+    // an animated crowd: every hero uploads its bones every frame
+    auto animatedFrame = [&s](){
+        s.dirtyBones();
+        GpuEnvironment::drawFrames(1);
+    };
+    animatedFrame();
     const uint64_t full = SystemRender::getStreamBytesLastFrame();
     ASSERT_GT(full, empty);
     const uint64_t perHero = (full - empty) / count;
@@ -460,11 +488,11 @@ TEST_F(SharedMeshBuffersTest, StreamUploadsPastTheStagingBufferAreSkippedCounted
     TestSystem::get().clearLogs();
     SokolSystem::overrideBudget(SokolSystem::STREAM_BUDGET, limit, true);
     const uint64_t before = SystemRender::getStreamSkippedUploads();
-    GpuEnvironment::drawFrames(1);
+    animatedFrame();
     const uint64_t firstFrame = SystemRender::getStreamSkippedUploads() - before;
-    GpuEnvironment::drawFrames(1);
+    animatedFrame();
     const uint64_t secondFrame = SystemRender::getStreamSkippedUploads() - before - firstFrame;
-    GpuEnvironment::drawFrames(1);
+    animatedFrame();
     const uint64_t needed = SystemRender::getStreamBytesLastFrame();
     SokolSystem::restoreBudgets();
 
@@ -480,9 +508,27 @@ TEST_F(SharedMeshBuffersTest, StreamUploadsPastTheStagingBufferAreSkippedCounted
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "STAGING_STREAM_BUFFER_OVERFLOW"), 0u) << "sokol never overflows";
 
     const uint64_t restored = SystemRender::getStreamSkippedUploads();
-    GpuEnvironment::drawFrames(2);
+    animatedFrame();
+    animatedFrame();
     EXPECT_EQ(SystemRender::getStreamSkippedUploads(), restored) << "nothing skipped at the configured limit";
     EXPECT_EQ(SystemRender::getStreamBytesLastFrame(), full);
+
+    // a still crowd uploads its bones once: one refused is uploaded the next frame, not never
+    SokolSystem::overrideBudget(SokolSystem::STREAM_BUDGET, limit, true);
+    s.dirtyBones();
+    GpuEnvironment::drawFrames(1);
+    const uint64_t refused = SystemRender::getStreamSkippedUploads() - restored;
+    EXPECT_GE(refused, uint64_t(count - 11));
+    GpuEnvironment::drawFrames(1);
+    EXPECT_GT(SystemRender::getStreamBytesLastFrame(), empty) << "the refused heroes upload their bones the next frame";
+    SokolSystem::restoreBudgets();
+    GpuEnvironment::drawFrames(2);
+    EXPECT_EQ(SystemRender::getStreamBytesLastFrame(), empty) << "every hero has its bones, nothing left to upload";
+    int pending = 0;
+    auto meshes = s.scene().getComponentArray<MeshComponent>();
+    for (size_t i = 0; i < meshes->size(); i++)
+        pending += meshes->getComponentFromIndex(i).needUpdateBones ? 1 : 0;
+    EXPECT_EQ(pending, 0);
 }
 
 // A STREAM texture update past the stream staging buffer keeps the texture's content (the

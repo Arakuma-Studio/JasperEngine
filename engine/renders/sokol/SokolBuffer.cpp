@@ -69,15 +69,16 @@ bool SokolBuffer::createBuffer(unsigned int size, void* data, BufferType type, B
 }
 
 // called by draw
-void SokolBuffer::updateBuffer(unsigned int size, void* data){
+bool SokolBuffer::updateBuffer(unsigned int size, void* data){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
-    if (buffer.id != SG_INVALID_ID && data && size > 0){
-        if (Engine::isAsyncThread()){
-            SokolCmdQueue::add_command_update_buffer(buffer, {data, (size_t)size});
-        }else{
-            SokolSystem::updateBuffer(buffer, {data, (size_t)size});
-        }
+    if (buffer.id == SG_INVALID_ID || !data || size == 0)
+        return false;
+    if (Engine::isAsyncThread()){
+        // budgeted when the render thread runs it (a refused one is counted and logged there)
+        SokolCmdQueue::add_command_update_buffer(buffer, {data, (size_t)size});
+        return true;
     }
+    return SokolSystem::updateBuffer(buffer, {data, (size_t)size});
 }
 
 // main thread: the offset is needed right away
