@@ -698,3 +698,9 @@ one line pointing here.
 - AC1 golden drift: oe-port's own render of `p1/texture_effects` matches its golden at the
   golden's commit 723cbba62 and is 30 pixels off from the phase-3 merge 08ec10485 on (bisect of
   the phase-3 branch between them in progress).
+- AC1 drift bisect (stopped: its steps starved on the shared host): oe-port's `p1/texture_effects`
+  render matches its golden at 723cbba62 and is off by the 30 disc-edge pixels at every later
+  commit tested; the change lies in html-ui phase 3's p3-text branch, between e812f9753 ("rmlui:
+  Unicode line breaking and text-transform") and 31c67f7de ("rmlui: native text-shadow") (10
+  commits, two of which did not build in the bisect), merged into oe-port by 08ec10485 before any
+  S stream. It stays within oe-port's budget (30 <= 32); S16's own share was the 18 text pixels.
