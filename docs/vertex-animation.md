@@ -78,16 +78,21 @@ write). The guide is [docs/mcp/guide/vertex-animation.md](mcp/guide/vertex-anima
    - **Precision**: Auto, Half or Float. Auto bakes half floats and switches to float when half
      would move a vertex more than the tolerance (1 mm, or 0.05% of the model's size when larger).
    - **Preset**: **Mobile & Web** or **Desktop** (table below).
-   - **Sockets**: nodes whose transform is baked too, so a sword can follow a hand. Use **Add
-     Selected**, or pick bones and nodes from the list.
+   - **Sockets**: nodes whose transform is baked too, so a sword can follow a hand. Select them in
+     the Hierarchy and use **Add Selected**, or type a node path (`Armature/Hips/...`).
 5. **Estimate.** Before anything is sampled, the window shows the texture size, the memory in
    total and per clip, the texel fetches per vertex, and a bar against the preset's limit. Each
    problem appears as a row with its fixes as buttons ("Lower to 20 fps").
-6. **Bake, then Preview.** **Bake** samples the clips. A progress bar ("Posing clip 2 of 5:
-   Walk") and **Cancel** take its place while it runs. The scene stays editable between slices,
-   but an edit to the source fails the bake ("the scene changed during the bake: bake again").
-   Then **Preview** shows the source and the VAT result side by side, with play, scrub, a clip
-   dropdown and an error heatmap. Nothing has been written yet.
+6. **Preview, then Bake.** **Preview** (next to Bake) bakes in memory only: nothing is written.
+   **Bake** bakes and writes the files. A progress bar ("Stage 1 of 2: Posing clip 2 of 5: Walk",
+   then "Stage 2 of 2: Encoding") and **Cancel** take the button's place while it runs; Cancel
+   writes nothing. The scene stays editable between slices, but an edit to the source fails the
+   bake ("the scene changed during the bake: bake again"). The **Preview** section then shows the
+   source and the VAT result side by side, live (the VAT drawn by the GPU as in the game), with
+   play / pause, scrub and a clip dropdown. After a Preview run, **Bake** with the same settings
+   writes that result without baking again. When the bake is written, the new `.vat` is selected
+   in the Project window and the Console gets a line with what was written and a Lua call to play
+   it. Nothing can be baked while a scene plays.
 7. **Output.** The file goes to the **Output** path. By default that is the source's folder and
    name: `models/hero.gltf` gives `models/hero.vat` and `models/hero.vat.glb`. **Place** says what
    else happens:
@@ -105,7 +110,8 @@ write). The guide is [docs/mcp/guide/vertex-animation.md](mcp/guide/vertex-anima
    - A `.vat` at the default path that was baked from the same source is **rebaked**. It keeps its
      GUID and your edits (clip names, events, speeds, wraps).
    - Any other existing file at the default path makes the bake take a free name (`hero 2.vat`).
-   - An Output path you typed that exists is refused unless you tick **Overwrite**.
+   - An Output path you typed that exists is refused (a problem row) until you click its
+     **Overwrite it** button; undo then puts the old files back.
 
    Textures embedded in a glTF are written next to the `.vat` as `<stem>_<image>.png`.
 

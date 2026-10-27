@@ -8,14 +8,18 @@
 #include "animation/ClipEditorUtil.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
+#include "command/type/AddComponentCmd.h"
 #include "command/type/CreateVatCmd.h"
+#include "command/type/PropertyCmd.h"
 #include "command/type/WriteFilesCmd.h"
 #include "physics/PlacementSession.h"
 #include "pose/PoseEditSession.h"
 #include "util/AssetDatabase.h"
 #include "util/FileUtils.h"
+#include "vat/VatCrowd.h"
 
 #include "Scene.h"
+#include "component/InstancedMeshComponent.h"
 #include "component/Transform.h"
 #include "pool/VertexAnimationPool.h"
 
@@ -232,6 +236,7 @@ bool VatBakeSession::loadRebake(const std::string& vatPath, std::string& error){
         float fps = 0.0f;
         clipFrames(lengths[entry.second], clip.wrap, bakeSpec.fps, frames, fps);
         if (std::fabs(fps - clip.fps) > 1e-4f * std::max(1.0f, clip.fps)) override.fps = clip.fps;
+        override.interpolate = clip.interpolate;
         bakeSpec.clipOverrides.push_back(override);
         rebakeClipMap.push_back({name, entry.first});
     }
@@ -321,8 +326,9 @@ const std::vector<VatIssue>& VatBakeSession::check(){
         }
     }
     if (spec.place == VatPlace::Crowd){
-        checkIssues.push_back(makeIssue("invalid_settings", true, "crowd placement is not available yet",
-                                        "bake with place beside, then turn the GameObject into a crowd"));
+        const std::string problem = crowdPlacementProblem(spec.crowd);
+        if (!problem.empty()) checkIssues.push_back(makeIssue("invalid_settings", true, problem, "give a crowd count of 1 to " +
+                                                              std::to_string(MAX_CROWD) + " and an area over 0 m"));
     }
     if (spec.place == VatPlace::Replace && !isGameObjectSource(spec.source)){
         checkIssues.push_back(makeIssue("invalid_settings", true, "place replace needs a GameObject source (a file has nothing to replace)",
@@ -553,6 +559,7 @@ void VatBakeSession::buildPlan(){
         clip.wrap = effectiveWrap(spec, source);
         clip.length = source.length;
         clip.events = source.events;
+        if (const VatClipOverride* override = overrideFor(spec, source.name)) clip.interpolate = override->interpolate;
         clipFrames(clip.length, clip.wrap, effectiveFps(spec, source), clip.frames, clip.fps);
         clip.samples.resize((size_t)clip.frames);
         clip.midFrames = midFramesFor(clip.frames, clip.wrap);
@@ -813,11 +820,20 @@ bool VatBakeSession::writePreviewFiles(std::string& vatPath, std::string& meshPa
 
 bool VatBakeSession::plannedOutput(std::string& vatPath, bool& rewrite, std::string& error){
     rewrite = false;
-    if (bakeState != VatBakeState::Done){
-        error = "nothing baked yet";
-        return false;
+    // after a bake its recipe; before one (the window's Output field) the spec's, once the
+    // source is resolved
+    VatRecipeSource ours;
+    if (bakeState == VatBakeState::Done){
+        ours = bakeResult.data.recipe.sources[0];
+    }else{
+        if (!checked) check();
+        if (!target){
+            error = "the source can't be resolved";
+            return false;
+        }
+        ours = recipeFromSpec(bakeSpec).sources[0];
+        if (isGameObjectSource(bakeSpec.source)) ours.scene = target->sceneFile;
     }
-    const VatRecipeSource& ours = bakeResult.data.recipe.sources[0];
     if (!bakeSpec.output.empty()){
         fs::path given = FileUtils::pathFromUtf8(bakeSpec.output);
         const fs::path absolute = (given.is_absolute() ? given : project->getProjectPath() / given).lexically_normal();
@@ -906,7 +922,9 @@ bool VatBakeSession::write(VatWriteResult& out, std::string& error){
             if (!used.count(previous.name)) clip.name = previous.name;
             clip.events = previous.events;
             clip.speed = previous.speed;
-            clip.interpolate = previous.interpolate;
+            // (an explicit "interpolation off" of this bake wins over the file's)
+            const VatClipOverride* override = i < bakeResult.sourceClips.size() ? overrideFor(bakeSpec, bakeResult.sourceClips[i]) : nullptr;
+            if (!override || override->interpolate) clip.interpolate = previous.interpolate;
             if ((previous.wrap == ClipWrapMode::Loop) == (clip.wrap == ClipWrapMode::Loop)) clip.wrap = previous.wrap;
             used.insert(clip.name);
         }
@@ -968,8 +986,12 @@ bool VatBakeSession::write(VatWriteResult& out, std::string& error){
     placement.mode = bakeSpec.place == VatPlace::Replace ? VatPlacement::Mode::Replace
                    : bakeSpec.place == VatPlace::Crowd ? VatPlacement::Mode::Crowd : VatPlacement::Mode::Beside;
     if (placement.mode == VatPlacement::Mode::Crowd){
-        error = "crowd placement is not available yet: bake with place beside, then make it a crowd";
-        return false;
+        const std::string problem = crowdPlacementProblem(bakeSpec.crowd);
+        if (!problem.empty()){
+            error = problem;
+            return false;
+        }
+        placement.crowd = crowdPlacement(bakeSpec.crowd);
     }
     uint32_t sceneId = 0;
     if (!target->scratch()){
@@ -1013,6 +1035,51 @@ bool VatBakeSession::write(VatWriteResult& out, std::string& error){
     out.sceneId = sceneId;
     out.entity = command->getEntity();
     return true;
+}
+
+// ---- crowd placement ----
+
+std::string crowdPlacementProblem(const VatCrowd& crowd){
+    if (crowd.count < 1 || crowd.count > MAX_CROWD){
+        return "the crowd count must be 1 to " + std::to_string(MAX_CROWD) + " (" + std::to_string(crowd.count) + " given)";
+    }
+    if (!(crowd.area > 0.0f) || !std::isfinite(crowd.area)) return "the crowd area must be over 0 m";
+    return "";
+}
+
+std::function<bool(Project*, uint32_t, Entity, std::vector<Command*>&, std::string&)> crowdPlacement(const VatCrowd& crowd){
+    return [crowd](Project* project, uint32_t sceneId, Entity entity, std::vector<Command*>& commands, std::string& error){
+        const std::string problem = crowdPlacementProblem(crowd);
+        if (!problem.empty()){
+            error = problem;
+            return false;
+        }
+        // Create Crowd's layout: a square of side `area` on the placed GameObject's ground plane,
+        // random yaw, out of step; no minimum spacing (every instance placed)
+        CrowdSettings settings;
+        settings.count = crowd.count;
+        settings.area = CrowdArea::Box;
+        settings.width = crowd.area;
+        settings.depth = crowd.area;
+        settings.minSpacing = 0.0f;
+        settings.seed = crowd.seed;
+        const CrowdLayout layout = layoutCrowd(settings, nullptr);
+        std::vector<InstanceData> instances;
+        for (const CrowdInstanceSpec& spec : layout.instances){
+            InstanceData data;
+            data.position = spec.position;
+            data.rotation = spec.rotation;
+            data.scale = spec.scale;
+            instances.push_back(data);
+        }
+        commands.push_back(new AddComponentCmd(project, sceneId, entity, ComponentType::InstancedMeshComponent));
+        const unsigned int capacity = std::max<unsigned int>(InstancedMeshComponent().maxInstances, (unsigned int)instances.size());
+        commands.push_back(new PropertyCmd<unsigned int>(project, sceneId, entity, ComponentType::InstancedMeshComponent, "maxInstances", capacity));
+        commands.push_back(new PropertyCmd<std::vector<InstanceData>>(project, sceneId, entity, ComponentType::InstancedMeshComponent, "instances",
+                                                                       instances));
+        commands.push_back(new PropertyCmd<bool>(project, sceneId, entity, ComponentType::VertexAnimatorComponent, "randomStart", true));
+        return true;
+    };
 }
 
 // ---- staleness and rebake ----
