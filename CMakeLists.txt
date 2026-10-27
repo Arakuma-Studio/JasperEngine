@@ -749,6 +749,11 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/lattice/LatticeSceneRender.cpp
     ${EDITOR_DIR}/lattice/LatticeSceneTools.cpp
     ${EDITOR_DIR}/vat/VatAssetWriter.cpp
+    ${EDITOR_DIR}/vat/VatReport.cpp
+    ${EDITOR_DIR}/vat/VatBakeTypes.cpp
+    ${EDITOR_DIR}/vat/VatBakeCompute.cpp
+    ${EDITOR_DIR}/vat/VatBakeSource.cpp
+    ${EDITOR_DIR}/vat/VatBakeSession.cpp
     ${EDITOR_DIR}/vat/import/VatImport.cpp
     ${EDITOR_DIR}/vat/import/VatImportCommon.cpp
     ${EDITOR_DIR}/vat/import/VatSourceMesh.cpp
@@ -832,6 +837,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/LinkMaterialCmd.cpp
     ${EDITOR_DIR}/command/type/CreatePrefabCmd.cpp
     ${EDITOR_DIR}/command/type/CreateClipCmd.cpp
+    ${EDITOR_DIR}/command/type/CreateVatCmd.cpp
     ${EDITOR_DIR}/command/type/ClipSceneActions.cpp
     ${EDITOR_DIR}/command/type/CreatePrefabVariantAssetCmd.cpp
     ${EDITOR_DIR}/command/type/ComponentToPrefabSharedCmd.cpp

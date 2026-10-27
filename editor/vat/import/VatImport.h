@@ -68,6 +68,7 @@
 
 #include "animation/VertexAnimation.h"
 #include "vat/VatAssetWriter.h"
+#include "vat/VatReport.h"
 
 #include <cstdint>
 #include <string>
@@ -75,13 +76,8 @@
 
 namespace jasperengine::editor::vat{
 
-    // An error or a warning: the same shape as the baker's issues (kind, one sentence, one fix)
-    struct VatImportIssue{
-        std::string kind;
-        std::string message;
-        std::string fix;
-        bool error = false;
-    };
+    // An error or a warning: the baker's issue (VatReport.h)
+    using VatImportIssue = VatIssue;
 
     enum class VatImportKind{
         None,
@@ -151,22 +147,13 @@ namespace jasperengine::editor::vat{
         std::string mesh, position, position2, rotation, color, lookup, vat, normalsTexture;
     };
 
-    struct VatImportClipReport{
-        std::string name;
-        int frames = 0;
-        float fps = 0.0f;
-        uint64_t bytes = 0;
-    };
+    using VatImportClipReport = VatClipReport;
 
-    // The baker's report shape (spec 6) plus what an import adds
-    struct VatImportReport{
+    // The baker's report (VatReport.h, spec 6) plus what an import adds
+    struct VatImportReport: VatReport{
         VatImportKind kind = VatImportKind::None;
         HoudiniMode houdiniMode = HoudiniMode::Unknown;
-        jasperengine::vat::VatMode mode = jasperengine::vat::VatMode::Vertices;
-        std::string modeReason;
-        int vertices = 0;               // payload vertices (Vertices) / mesh vertices (Bones)
         int meshVertices = 0;
-        int bones = 0;
         int sourcePoints = 0;           // points (FBX control points / glTF vertices) of the source mesh
         int pieces = 0;                 // Houdini rigid: pieces found
         int sourceFrames = 0;           // frames in the export
@@ -174,18 +161,7 @@ namespace jasperengine::editor::vat{
         int upsample = 1;
         float fps = 0.0f;               // the export's frames per second
         std::string target;             // Houdini: the axes converted from
-        std::vector<VatImportClipReport> clips;
-        int width = 0;
-        int height = 0;
-        jasperengine::vat::VatPrecision precision = jasperengine::vat::VatPrecision::Half;
-        uint64_t bytes = 0;
-        float maxErrorMm = 0.0f;        // payload quantization (half) at the frames
-        float meanErrorMm = 0.0f;
-        float quantizationErrorMm = 0.0f;
-        float toleranceMm = 0.0f;
         float interpolationErrorMm = 0.0f;  // rigid: worst distance from Houdini's motion between samples
-        int fetchesPerVertex = 0;
-        std::vector<VatImportIssue> warnings;
     };
 
     struct VatImportResult{
