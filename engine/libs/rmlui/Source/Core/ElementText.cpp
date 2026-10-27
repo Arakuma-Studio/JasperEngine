@@ -1173,11 +1173,30 @@ void ElementText::UpdateRasterScale(RenderManager& render_manager, FontFaceHandl
 			geometry_dirty = true;
 		}
 		last_screen_scale = 0.f;
+		last_base_scale = 0.f;
 		return;
 	}
 
 	bool non_affine = false;
 	const float scale = ComputeScreenScale(base_scale, non_affine);
+	// The context's pixel ratio changed (a resized view, a screenshot at another size): no animation to wait out, the
+	// bitmap at the new scale at once, as at the first generation, so that a frame at a given size draws the same text
+	// whatever was drawn before it.
+	const bool base_changed = last_base_scale > 0.f && Math::Absolute(base_scale - last_base_scale) > 1e-4f * last_base_scale;
+	last_base_scale = base_scale;
+	if (base_changed && !(computed.text_rendering() == Style::TextRendering::GeometricPrecision || non_affine ||
+							computed.font_size() * scale > 128.f))
+	{
+		last_screen_scale = scale;
+		frames_since_scale_change = settle_frames;
+		if (raster_scale != scale || distance_field)
+		{
+			raster_scale = scale;
+			distance_field = false;
+			geometry_dirty = true;
+		}
+		return;
+	}
 	if (last_screen_scale <= 0.f)
 		frames_since_scale_change = settle_frames;
 	else if (Math::Absolute(scale - last_screen_scale) > 1e-4f * last_screen_scale)

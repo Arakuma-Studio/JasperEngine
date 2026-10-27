@@ -5,6 +5,9 @@
 
 #include "HtmlUIDependencies.h"
 #include "HtmlUITexture.h"
+#include "HtmlUIClock.h"
+#include "Engine.h"
+#include "effects/EffectRuntime.h"
 #include "Log.h"
 #include "RmlFontMsdf.h"
 #include "RmlRenderer.h"
@@ -42,6 +45,14 @@ namespace {
     std::atomic<bool> transformAwareText{true};
     std::atomic<bool> gpuTextEffects{true};
     std::atomic<bool> synchronousDistanceGlyphs{false};
+
+    // A deterministic clock (play's fixed_fps, a fixed UI or effect time, the tests' switch): the
+    // text of a frame depends on the frames before it only, not on wall time: distance glyphs
+    // are waited for, and the settle budget counts glyphs, not milliseconds
+    bool deterministicText(){
+        return synchronousDistanceGlyphs || Engine::getFixedDeltatime() > 0.0 || HtmlUIClock::getFixedTime().has_value() ||
+               htmlui::EffectClock::isFixed();
+    }
 
     // GPU text effects are the text layer of D1: off with transform-aware text, as before S16
     bool gpuEffects(){
@@ -1090,8 +1101,9 @@ const RmlFontEngine::DistanceEntry& RmlFontEngine::requestDistanceGlyph(const Fa
         return glyph;
     }, jobs::SubmitOptions{jobs::Lane::Background, jobs::GateClass::Default, "htmlui-msdf-glyph"});
     distanceJobs.push_back(std::move(job));
-    if (synchronousDistanceGlyphs){
-        // (tests) at once: waited for and placed, the asking text drawn from it in this frame
+    if (deterministicText()){
+        // (a deterministic clock, the tests) at once: waited for and placed, the asking text drawn
+        // from it in this frame
         collectDistanceGlyphs(true);
         return distanceGlyphs[key];
     }
@@ -1135,7 +1147,7 @@ void RmlFontEngine::collectDistanceGlyphs(bool wait){
                 }
             }
             // the text that asked draws again, now from the distance glyph (made at once, it already does)
-            if (!synchronousDistanceGlyphs){
+            if (!deterministicText()){
                 for (FaceHandle* handle : job.waiting)
                     bump(handle);
             }
@@ -1436,7 +1448,7 @@ bool RmlFontEngine::PrepareGlyphs(Rml::FontFaceHandle face_handle, Rml::StringVi
     for (const ShapedGlyph& glyph : shaped){
         if (findGlyph(*handle, glyph.face, glyph.glyphIndex, scale, rasterKey))
             continue;
-        if (settleGlyphs >= settleGlyphBudget || settleMs >= settleTimeBudgetMs){
+        if (settleGlyphs >= settleGlyphBudget || (settleMs >= settleTimeBudgetMs && !deterministicText())){
             ready = false;
             break;
         }

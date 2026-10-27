@@ -193,6 +193,8 @@ private:
 	float raster_scale = 0.f;
 	float last_screen_scale = 0.f;
 	int frames_since_scale_change = 0;
+	// the font engine's base scale (the context's pixel ratio) the last render had
+	float last_base_scale = 0.f;
 	bool distance_field = false;
 
 	// The line-break opportunities of the text (TextUnicode::GetLineBreakOpportunities, tailored as Chromium), by the byte
