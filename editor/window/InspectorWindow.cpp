@@ -16352,6 +16352,15 @@ void editor::InspectorWindow::show(){
     }
     const bool openAddComponent = std::exchange(addComponentRequested, false);
 
+    // texture files selected in the Project window: their import settings (S14 R22)
+    if (!project->getInspectedAssets().empty()) {
+        if (!textureImporter) textureImporter = std::make_unique<TextureImporterView>(project);
+        if (textureImporter->draw(project->getInspectedAssets())) {
+            ImGui::End();
+            return;
+        }
+    }
+
     uint32_t propertiesSceneId = project->getSelectedSceneForProperties();
     SceneProject* sceneProject = project->getScene(propertiesSceneId);
     if (!sceneProject) {

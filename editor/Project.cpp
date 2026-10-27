@@ -75,6 +75,7 @@
 #include "json.hpp"
 
 #include "texture/Texture.h"
+#include "texture/TextureCookQueue.h"
 #include "component/UIDocumentComponent.h"
 #include "Engine.h"
 #include "pool/ShaderPool.h"
@@ -1369,7 +1370,12 @@ Scaling editor::Project::getScalingMode() const{
 }
 
 void editor::Project::setTextureStrategy(TextureStrategy textureStrategy){
+    const bool changed = this->textureStrategy != textureStrategy;
     this->textureStrategy = textureStrategy;
+    // FIT / RESIZE apply at cook time (S14 R31): a key input
+    if (changed && TextureCookQueue::get().getProject() == this){
+        TextureCookQueue::get().projectSettingsChanged();
+    }
 }
 
 TextureStrategy editor::Project::getTextureStrategy() const{
@@ -2468,6 +2474,24 @@ editor::TerrainEditorSettings& editor::Project::getTerrainEditorSettings(){
 
 const editor::TerrainEditorSettings& editor::Project::getTerrainEditorSettings() const{
     return terrainEditorSettings;
+}
+
+const editor::TextureProjectSettings& editor::Project::getTextureSettings() const{
+    return textureSettings;
+}
+
+void editor::Project::setTextureSettings(const TextureProjectSettings& settings){
+    if (settings == textureSettings){
+        return;
+    }
+    textureSettings = settings;
+    if (TextureCookQueue::get().getProject() == this){
+        TextureCookQueue::get().projectSettingsChanged();
+    }
+    // the standalone build's main.cpp bakes the runtime quality and budgets in
+    if (modelLoaded){
+        markGeneratedSourcesDirty();
+    }
 }
 
 editor::PhysicsPlacementSettings& editor::Project::getPhysicsPlacementSettings(){
@@ -4740,8 +4764,13 @@ void editor::Project::resetConfigs() {
     terrainEditorSettings = {};
     physicsPlacementSettings = {};
     simulateTouch = false;
-    // nothing reloads into a project that is going (S05)
+    // nothing reloads into a project that is going (S05), nothing cooks for it (S14)
     HotReloadService::get().stopWatching();
+    if (TextureCookQueue::get().getProject() == this){
+        TextureCookQueue::get().attach(nullptr);
+    }
+    textureSettings = {};
+    inspectedAssets.clear();
     projectPath.clear();
     AssetMap::setResolver(nullptr);
     waitForAssetScan();
@@ -6259,6 +6288,7 @@ void editor::Project::configureGenerator() {
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
     generator.setAtmosphereQuality(atmosphereQuality);
+    generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
     generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier);
 }
 
@@ -7636,6 +7666,10 @@ void editor::Project::setSelection(uint32_t sceneId, const SelectionState& state
     if (!sceneProject){
         return;
     }
+    // a GameObject takes the Inspector back from the Project window's files
+    if (!state.entities.empty()){
+        inspectedAssets.clear();
+    }
     // the active GameObject last; no copy when the state already is that way, and none at
     // all when nothing changes (a click on what is selected)
     const bool ordered = state.active == NULL_ENTITY || (!state.entities.empty() && state.entities.back() == state.active) ||
@@ -7692,6 +7726,14 @@ void editor::Project::nextSelectionFrame(){
     if (!selectionGestureHeld){
         selectionGesture++;
     }
+}
+
+void editor::Project::setInspectedAssets(std::vector<std::filesystem::path> assets){
+    inspectedAssets = std::move(assets);
+}
+
+const std::vector<std::filesystem::path>& editor::Project::getInspectedAssets() const{
+    return inspectedAssets;
 }
 
 void editor::Project::replaceSelectedEntities(uint32_t sceneId, std::vector<Entity> selectedEntities){
@@ -8290,6 +8332,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
         std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
         std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
         generator.setAtmosphereQuality(atmosphereQuality);
+        generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
         generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier);
         if (hasMissingSceneSources()) {
             generatedSourcesDirty.store(true);

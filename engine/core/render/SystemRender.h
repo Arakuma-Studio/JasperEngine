@@ -6,6 +6,7 @@
 
 #include "Export.h"
 #include "RenderStats.h"
+#include "texture/TextureFormat.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <string>
@@ -26,6 +27,8 @@ namespace jasperengine{
         bool renderRGBA16F = false, blendRGBA16F = false, filterRGBA16F = false;
         bool renderRGBA32F = false, blendRGBA32F = false, filterRGBA32F = false;
         bool renderR32F = false, blendR32F = false, filterR32F = false;
+        // the cooked texture formats it samples with linear filtering (spec S14 R15)
+        TextureFormatSupport textureFormats;
         bool renderRG16F = false, blendRG16F = false, filterRG16F = false;
         bool renderR16F = false, blendR16F = false, filterR16F = false;
         // the largest side of a 2D texture (0: unknown)
@@ -42,6 +45,14 @@ namespace jasperengine{
         static uint64_t getFrameCount();
         // cached on the first call after setup (defaults before it)
         static const RenderFeatures& getFeatures();
+        // sg_query_pixelformat(f).sample && .filter of the format's one sokol format, cached at
+        // device creation, or what setTextureFormatSupportOverride says (spec S14 R15)
+        static bool isTextureFormatSupported(GpuTextureFormat format);
+        static TextureFormatSupport getTextureFormatSupport();
+        // tests fake a device ("no BPTC"), the editor's Game view simulates a platform; null
+        // returns to the device's answer
+        static void setTextureFormatSupportOverride(const TextureFormatSupport* support);
+        static bool hasTextureFormatSupportOverride();
         // the dynamic pipeline cache (ObjectRender::beginDraw(PipelineState)): pipelines
         // created and applied since start, and how many it holds now
         static uint64_t getPipelineCacheMisses();

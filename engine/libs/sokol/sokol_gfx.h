@@ -2170,6 +2170,11 @@ typedef enum sg_pixel_format {
     SG_PIXELFORMAT_RGBA32SI,
     SG_PIXELFORMAT_RGBA32F,
 
+    // JasperEngine: 16-bit packed formats (GL/GLES3/WebGL2 core formats; every other backend
+    // reports them unsupported), the low-memory fallback of cooked textures (PATCHES.md)
+    SG_PIXELFORMAT_RGB565,
+    SG_PIXELFORMAT_RGBA4,
+
     SG_PIXELFORMAT_DEPTH,
     SG_PIXELFORMAT_DEPTH_STENCIL,
 
@@ -2198,6 +2203,17 @@ typedef enum sg_pixel_format {
 
     SG_PIXELFORMAT_ASTC_4x4_RGBA,
     SG_PIXELFORMAT_ASTC_4x4_SRGBA,
+    // JasperEngine: the square ASTC LDR block sizes (PATCHES.md)
+    SG_PIXELFORMAT_ASTC_5x5_RGBA,
+    SG_PIXELFORMAT_ASTC_5x5_SRGBA,
+    SG_PIXELFORMAT_ASTC_6x6_RGBA,
+    SG_PIXELFORMAT_ASTC_6x6_SRGBA,
+    SG_PIXELFORMAT_ASTC_8x8_RGBA,
+    SG_PIXELFORMAT_ASTC_8x8_SRGBA,
+    SG_PIXELFORMAT_ASTC_10x10_RGBA,
+    SG_PIXELFORMAT_ASTC_10x10_SRGBA,
+    SG_PIXELFORMAT_ASTC_12x12_RGBA,
+    SG_PIXELFORMAT_ASTC_12x12_SRGBA,
 
     _SG_PIXELFORMAT_NUM,
     _SG_PIXELFORMAT_FORCE_U32 = 0x7FFFFFFF
@@ -6072,6 +6088,52 @@ inline int sg_append_buffer(sg_buffer buf_id, const sg_range& data) { return sg_
     #ifndef GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR
     #define GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR 0x93D0
     #endif
+    // JasperEngine: the square ASTC block sizes and the 16-bit packed formats (PATCHES.md)
+    #ifndef GL_COMPRESSED_RGBA_ASTC_5x5_KHR
+    #define GL_COMPRESSED_RGBA_ASTC_5x5_KHR 0x93B2
+    #endif
+    #ifndef GL_COMPRESSED_RGBA_ASTC_6x6_KHR
+    #define GL_COMPRESSED_RGBA_ASTC_6x6_KHR 0x93B4
+    #endif
+    #ifndef GL_COMPRESSED_RGBA_ASTC_8x8_KHR
+    #define GL_COMPRESSED_RGBA_ASTC_8x8_KHR 0x93B7
+    #endif
+    #ifndef GL_COMPRESSED_RGBA_ASTC_10x10_KHR
+    #define GL_COMPRESSED_RGBA_ASTC_10x10_KHR 0x93BB
+    #endif
+    #ifndef GL_COMPRESSED_RGBA_ASTC_12x12_KHR
+    #define GL_COMPRESSED_RGBA_ASTC_12x12_KHR 0x93BD
+    #endif
+    #ifndef GL_COMPRESSED_SRGB8_ALPHA8_ASTC_5x5_KHR
+    #define GL_COMPRESSED_SRGB8_ALPHA8_ASTC_5x5_KHR 0x93D2
+    #endif
+    #ifndef GL_COMPRESSED_SRGB8_ALPHA8_ASTC_6x6_KHR
+    #define GL_COMPRESSED_SRGB8_ALPHA8_ASTC_6x6_KHR 0x93D4
+    #endif
+    #ifndef GL_COMPRESSED_SRGB8_ALPHA8_ASTC_8x8_KHR
+    #define GL_COMPRESSED_SRGB8_ALPHA8_ASTC_8x8_KHR 0x93D7
+    #endif
+    #ifndef GL_COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR
+    #define GL_COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR 0x93DB
+    #endif
+    #ifndef GL_COMPRESSED_SRGB8_ALPHA8_ASTC_12x12_KHR
+    #define GL_COMPRESSED_SRGB8_ALPHA8_ASTC_12x12_KHR 0x93DD
+    #endif
+    #ifndef GL_RGB565
+    #define GL_RGB565 0x8D62
+    #endif
+    #ifndef GL_RGB5
+    #define GL_RGB5 0x8050
+    #endif
+    #ifndef GL_RGBA4
+    #define GL_RGBA4 0x8056
+    #endif
+    #ifndef GL_UNSIGNED_SHORT_5_6_5
+    #define GL_UNSIGNED_SHORT_5_6_5 0x8363
+    #endif
+    #ifndef GL_UNSIGNED_SHORT_4_4_4_4
+    #define GL_UNSIGNED_SHORT_4_4_4_4 0x8033
+    #endif
     #ifndef GL_DEPTH24_STENCIL8
     #define GL_DEPTH24_STENCIL8 0x88F0
     #endif
@@ -8600,6 +8662,16 @@ _SOKOL_PRIVATE bool _sg_is_compressed_pixel_format(sg_pixel_format fmt) {
         case SG_PIXELFORMAT_EAC_RG11SN:
         case SG_PIXELFORMAT_ASTC_4x4_RGBA:
         case SG_PIXELFORMAT_ASTC_4x4_SRGBA:
+        case SG_PIXELFORMAT_ASTC_5x5_RGBA:
+        case SG_PIXELFORMAT_ASTC_5x5_SRGBA:
+        case SG_PIXELFORMAT_ASTC_6x6_RGBA:
+        case SG_PIXELFORMAT_ASTC_6x6_SRGBA:
+        case SG_PIXELFORMAT_ASTC_8x8_RGBA:
+        case SG_PIXELFORMAT_ASTC_8x8_SRGBA:
+        case SG_PIXELFORMAT_ASTC_10x10_RGBA:
+        case SG_PIXELFORMAT_ASTC_10x10_SRGBA:
+        case SG_PIXELFORMAT_ASTC_12x12_RGBA:
+        case SG_PIXELFORMAT_ASTC_12x12_SRGBA:
             return true;
         default:
             return false;
@@ -8648,6 +8720,8 @@ _SOKOL_PRIVATE int _sg_pixelformat_bytesize(sg_pixel_format fmt) {
         case SG_PIXELFORMAT_RG8SN:
         case SG_PIXELFORMAT_RG8UI:
         case SG_PIXELFORMAT_RG8SI:
+        case SG_PIXELFORMAT_RGB565:
+        case SG_PIXELFORMAT_RGBA4:
             return 2;
         case SG_PIXELFORMAT_R32UI:
         case SG_PIXELFORMAT_R32SI:
@@ -8691,10 +8765,25 @@ _SOKOL_PRIVATE int _sg_pixelformat_bytesize(sg_pixel_format fmt) {
 
 // return the texture block width/height of an image format
 _SOKOL_PRIVATE int _sg_block_dim(sg_pixel_format fmt) {
-    if (_sg_is_compressed_pixel_format(fmt)) {
-        return 4;
-    } else {
-        return 1;
+    switch (fmt) {
+        // JasperEngine: the square ASTC block sizes (PATCHES.md)
+        case SG_PIXELFORMAT_ASTC_5x5_RGBA:
+        case SG_PIXELFORMAT_ASTC_5x5_SRGBA:
+            return 5;
+        case SG_PIXELFORMAT_ASTC_6x6_RGBA:
+        case SG_PIXELFORMAT_ASTC_6x6_SRGBA:
+            return 6;
+        case SG_PIXELFORMAT_ASTC_8x8_RGBA:
+        case SG_PIXELFORMAT_ASTC_8x8_SRGBA:
+            return 8;
+        case SG_PIXELFORMAT_ASTC_10x10_RGBA:
+        case SG_PIXELFORMAT_ASTC_10x10_SRGBA:
+            return 10;
+        case SG_PIXELFORMAT_ASTC_12x12_RGBA:
+        case SG_PIXELFORMAT_ASTC_12x12_SRGBA:
+            return 12;
+        default:
+            return _sg_is_compressed_pixel_format(fmt) ? 4 : 1;
     }
 }
 
@@ -8725,6 +8814,16 @@ _SOKOL_PRIVATE int _sg_block_bytesize(sg_pixel_format fmt) {
         case SG_PIXELFORMAT_EAC_RG11SN:
         case SG_PIXELFORMAT_ASTC_4x4_RGBA:
         case SG_PIXELFORMAT_ASTC_4x4_SRGBA:
+        case SG_PIXELFORMAT_ASTC_5x5_RGBA:
+        case SG_PIXELFORMAT_ASTC_5x5_SRGBA:
+        case SG_PIXELFORMAT_ASTC_6x6_RGBA:
+        case SG_PIXELFORMAT_ASTC_6x6_SRGBA:
+        case SG_PIXELFORMAT_ASTC_8x8_RGBA:
+        case SG_PIXELFORMAT_ASTC_8x8_SRGBA:
+        case SG_PIXELFORMAT_ASTC_10x10_RGBA:
+        case SG_PIXELFORMAT_ASTC_10x10_SRGBA:
+        case SG_PIXELFORMAT_ASTC_12x12_RGBA:
+        case SG_PIXELFORMAT_ASTC_12x12_SRGBA:
             return 16;
         default:
             return _sg_pixelformat_bytesize(fmt);
@@ -9602,6 +9701,10 @@ _SOKOL_PRIVATE GLenum _sg_gl_teximage_type(sg_pixel_format fmt) {
             return GL_UNSIGNED_INT_10F_11F_11F_REV;
         case SG_PIXELFORMAT_RGB9E5:
             return GL_UNSIGNED_INT_5_9_9_9_REV;
+        case SG_PIXELFORMAT_RGB565:
+            return GL_UNSIGNED_SHORT_5_6_5;
+        case SG_PIXELFORMAT_RGBA4:
+            return GL_UNSIGNED_SHORT_4_4_4_4;
         case SG_PIXELFORMAT_DEPTH:
             return GL_FLOAT;
         case SG_PIXELFORMAT_DEPTH_STENCIL:
@@ -9649,6 +9752,7 @@ _SOKOL_PRIVATE GLenum _sg_gl_teximage_format(sg_pixel_format fmt) {
         case SG_PIXELFORMAT_RGBA16F:
         case SG_PIXELFORMAT_RGBA32F:
         case SG_PIXELFORMAT_RGB10A2:
+        case SG_PIXELFORMAT_RGBA4:
             return GL_RGBA;
         case SG_PIXELFORMAT_RGBA8UI:
         case SG_PIXELFORMAT_RGBA8SI:
@@ -9659,6 +9763,7 @@ _SOKOL_PRIVATE GLenum _sg_gl_teximage_format(sg_pixel_format fmt) {
             return GL_RGBA_INTEGER;
         case SG_PIXELFORMAT_RG11B10F:
         case SG_PIXELFORMAT_RGB9E5:
+        case SG_PIXELFORMAT_RGB565:
             return GL_RGB;
         case SG_PIXELFORMAT_DEPTH:
             return GL_DEPTH_COMPONENT;
@@ -9710,6 +9815,16 @@ _SOKOL_PRIVATE GLenum _sg_gl_teximage_format(sg_pixel_format fmt) {
             return GL_COMPRESSED_RGBA_ASTC_4x4_KHR;
         case SG_PIXELFORMAT_ASTC_4x4_SRGBA:
             return GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR;
+        case SG_PIXELFORMAT_ASTC_5x5_RGBA:      return GL_COMPRESSED_RGBA_ASTC_5x5_KHR;
+        case SG_PIXELFORMAT_ASTC_5x5_SRGBA:     return GL_COMPRESSED_SRGB8_ALPHA8_ASTC_5x5_KHR;
+        case SG_PIXELFORMAT_ASTC_6x6_RGBA:      return GL_COMPRESSED_RGBA_ASTC_6x6_KHR;
+        case SG_PIXELFORMAT_ASTC_6x6_SRGBA:     return GL_COMPRESSED_SRGB8_ALPHA8_ASTC_6x6_KHR;
+        case SG_PIXELFORMAT_ASTC_8x8_RGBA:      return GL_COMPRESSED_RGBA_ASTC_8x8_KHR;
+        case SG_PIXELFORMAT_ASTC_8x8_SRGBA:     return GL_COMPRESSED_SRGB8_ALPHA8_ASTC_8x8_KHR;
+        case SG_PIXELFORMAT_ASTC_10x10_RGBA:    return GL_COMPRESSED_RGBA_ASTC_10x10_KHR;
+        case SG_PIXELFORMAT_ASTC_10x10_SRGBA:   return GL_COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR;
+        case SG_PIXELFORMAT_ASTC_12x12_RGBA:    return GL_COMPRESSED_RGBA_ASTC_12x12_KHR;
+        case SG_PIXELFORMAT_ASTC_12x12_SRGBA:   return GL_COMPRESSED_SRGB8_ALPHA8_ASTC_12x12_KHR;
         default:
             SOKOL_UNREACHABLE; return 0;
     }
@@ -9788,6 +9903,23 @@ _SOKOL_PRIVATE GLenum _sg_gl_teximage_internal_format(sg_pixel_format fmt) {
         case SG_PIXELFORMAT_EAC_RG11SN:         return GL_COMPRESSED_SIGNED_RG11_EAC;
         case SG_PIXELFORMAT_ASTC_4x4_RGBA:      return GL_COMPRESSED_RGBA_ASTC_4x4_KHR;
         case SG_PIXELFORMAT_ASTC_4x4_SRGBA:     return GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR;
+        case SG_PIXELFORMAT_ASTC_5x5_RGBA:      return GL_COMPRESSED_RGBA_ASTC_5x5_KHR;
+        case SG_PIXELFORMAT_ASTC_5x5_SRGBA:     return GL_COMPRESSED_SRGB8_ALPHA8_ASTC_5x5_KHR;
+        case SG_PIXELFORMAT_ASTC_6x6_RGBA:      return GL_COMPRESSED_RGBA_ASTC_6x6_KHR;
+        case SG_PIXELFORMAT_ASTC_6x6_SRGBA:     return GL_COMPRESSED_SRGB8_ALPHA8_ASTC_6x6_KHR;
+        case SG_PIXELFORMAT_ASTC_8x8_RGBA:      return GL_COMPRESSED_RGBA_ASTC_8x8_KHR;
+        case SG_PIXELFORMAT_ASTC_8x8_SRGBA:     return GL_COMPRESSED_SRGB8_ALPHA8_ASTC_8x8_KHR;
+        case SG_PIXELFORMAT_ASTC_10x10_RGBA:    return GL_COMPRESSED_RGBA_ASTC_10x10_KHR;
+        case SG_PIXELFORMAT_ASTC_10x10_SRGBA:   return GL_COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR;
+        case SG_PIXELFORMAT_ASTC_12x12_RGBA:    return GL_COMPRESSED_RGBA_ASTC_12x12_KHR;
+        case SG_PIXELFORMAT_ASTC_12x12_SRGBA:   return GL_COMPRESSED_SRGB8_ALPHA8_ASTC_12x12_KHR;
+        // JasperEngine: GL_RGB565 is a sized format from GL 4.1 / GLES 2 on; GL 3.3 core takes GL_RGB5
+        #if defined(SOKOL_GLCORE)
+            case SG_PIXELFORMAT_RGB565:         return GL_RGB5;
+        #else
+            case SG_PIXELFORMAT_RGB565:         return GL_RGB565;
+        #endif
+        case SG_PIXELFORMAT_RGBA4:              return GL_RGBA4;
         default: SOKOL_UNREACHABLE; return 0;
     }
 }
@@ -9850,6 +9982,12 @@ _SOKOL_PRIVATE void _sg_gl_init_pixelformats(bool has_bgra) {
     _sg_pixelformat_srm(&_sg.formats[SG_PIXELFORMAT_RGBA32SI]);
     _sg_pixelformat_srmd(&_sg.formats[SG_PIXELFORMAT_DEPTH]);
     _sg_pixelformat_srmd(&_sg.formats[SG_PIXELFORMAT_DEPTH_STENCIL]);
+    // JasperEngine: core 16-bit packed formats of GL 3.3, GLES 3.0 and WebGL2 (PATCHES.md); GL 3.3
+    // core stores RGB565 as GL_RGB5 (5-bit green, lossy), so only GLES / WebGL2 report it
+    #if !defined(SOKOL_GLCORE)
+    _sg_pixelformat_sf(&_sg.formats[SG_PIXELFORMAT_RGB565]);
+    #endif
+    _sg_pixelformat_sf(&_sg.formats[SG_PIXELFORMAT_RGBA4]);
 }
 
 // FIXME: OES_half_float_blend
@@ -9935,6 +10073,10 @@ _SOKOL_PRIVATE void _sg_gl_init_pixelformats_etc2(void) {
 _SOKOL_PRIVATE void _sg_gl_init_pixelformats_astc(void) {
      _sg_pixelformat_sf(&_sg.formats[SG_PIXELFORMAT_ASTC_4x4_RGBA]);
      _sg_pixelformat_sf(&_sg.formats[SG_PIXELFORMAT_ASTC_4x4_SRGBA]);
+     // JasperEngine: KHR_texture_compression_astc_ldr has every block size (PATCHES.md)
+     for (int fmt = SG_PIXELFORMAT_ASTC_5x5_RGBA; fmt <= SG_PIXELFORMAT_ASTC_12x12_SRGBA; fmt++) {
+         _sg_pixelformat_sf(&_sg.formats[fmt]);
+     }
 }
 
 _SOKOL_PRIVATE void _sg_gl_init_limits(void) {
@@ -14803,6 +14945,17 @@ _SOKOL_PRIVATE MTLPixelFormat _sg_mtl_pixel_format(sg_pixel_format fmt) {
         case SG_PIXELFORMAT_EAC_RG11SN:             return MTLPixelFormatEAC_RG11Snorm;
         case SG_PIXELFORMAT_ASTC_4x4_RGBA:          return MTLPixelFormatASTC_4x4_LDR;
         case SG_PIXELFORMAT_ASTC_4x4_SRGBA:         return MTLPixelFormatASTC_4x4_sRGB;
+        // JasperEngine: the square ASTC block sizes (PATCHES.md)
+        case SG_PIXELFORMAT_ASTC_5x5_RGBA:          return MTLPixelFormatASTC_5x5_LDR;
+        case SG_PIXELFORMAT_ASTC_5x5_SRGBA:         return MTLPixelFormatASTC_5x5_sRGB;
+        case SG_PIXELFORMAT_ASTC_6x6_RGBA:          return MTLPixelFormatASTC_6x6_LDR;
+        case SG_PIXELFORMAT_ASTC_6x6_SRGBA:         return MTLPixelFormatASTC_6x6_sRGB;
+        case SG_PIXELFORMAT_ASTC_8x8_RGBA:          return MTLPixelFormatASTC_8x8_LDR;
+        case SG_PIXELFORMAT_ASTC_8x8_SRGBA:         return MTLPixelFormatASTC_8x8_sRGB;
+        case SG_PIXELFORMAT_ASTC_10x10_RGBA:        return MTLPixelFormatASTC_10x10_LDR;
+        case SG_PIXELFORMAT_ASTC_10x10_SRGBA:       return MTLPixelFormatASTC_10x10_sRGB;
+        case SG_PIXELFORMAT_ASTC_12x12_RGBA:        return MTLPixelFormatASTC_12x12_LDR;
+        case SG_PIXELFORMAT_ASTC_12x12_SRGBA:       return MTLPixelFormatASTC_12x12_sRGB;
         #endif
         default: return MTLPixelFormatInvalid;
     }
@@ -15288,6 +15441,10 @@ _SOKOL_PRIVATE void _sg_mtl_init_caps(void) {
         _sg_pixelformat_sf(&_sg.formats[SG_PIXELFORMAT_EAC_RG11SN]);
         _sg_pixelformat_sf(&_sg.formats[SG_PIXELFORMAT_ASTC_4x4_RGBA]);
         _sg_pixelformat_sf(&_sg.formats[SG_PIXELFORMAT_ASTC_4x4_SRGBA]);
+        // JasperEngine: every ASTC LDR block size on iOS GPUs (PATCHES.md)
+        for (int fmt = SG_PIXELFORMAT_ASTC_5x5_RGBA; fmt <= SG_PIXELFORMAT_ASTC_12x12_SRGBA; fmt++) {
+            _sg_pixelformat_sf(&_sg.formats[fmt]);
+        }
     #endif
 
     // compute shader access
@@ -17070,6 +17227,20 @@ _SOKOL_PRIVATE WGPUTextureFormat _sg_wgpu_textureformat(sg_pixel_format p) {
         case SG_PIXELFORMAT_EAC_RG11SN:     return WGPUTextureFormat_EACRG11Snorm;
         case SG_PIXELFORMAT_ASTC_4x4_RGBA:  return WGPUTextureFormat_ASTC4x4Unorm;
         case SG_PIXELFORMAT_ASTC_4x4_SRGBA: return WGPUTextureFormat_ASTC4x4UnormSrgb;
+        // JasperEngine: the square ASTC block sizes; the 16-bit packed formats are GL only (PATCHES.md)
+        case SG_PIXELFORMAT_ASTC_5x5_RGBA:      return WGPUTextureFormat_ASTC5x5Unorm;
+        case SG_PIXELFORMAT_ASTC_5x5_SRGBA:     return WGPUTextureFormat_ASTC5x5UnormSrgb;
+        case SG_PIXELFORMAT_ASTC_6x6_RGBA:      return WGPUTextureFormat_ASTC6x6Unorm;
+        case SG_PIXELFORMAT_ASTC_6x6_SRGBA:     return WGPUTextureFormat_ASTC6x6UnormSrgb;
+        case SG_PIXELFORMAT_ASTC_8x8_RGBA:      return WGPUTextureFormat_ASTC8x8Unorm;
+        case SG_PIXELFORMAT_ASTC_8x8_SRGBA:     return WGPUTextureFormat_ASTC8x8UnormSrgb;
+        case SG_PIXELFORMAT_ASTC_10x10_RGBA:    return WGPUTextureFormat_ASTC10x10Unorm;
+        case SG_PIXELFORMAT_ASTC_10x10_SRGBA:   return WGPUTextureFormat_ASTC10x10UnormSrgb;
+        case SG_PIXELFORMAT_ASTC_12x12_RGBA:    return WGPUTextureFormat_ASTC12x12Unorm;
+        case SG_PIXELFORMAT_ASTC_12x12_SRGBA:   return WGPUTextureFormat_ASTC12x12UnormSrgb;
+        case SG_PIXELFORMAT_RGB565:
+        case SG_PIXELFORMAT_RGBA4:
+            return WGPUTextureFormat_Undefined;
         default:
             SOKOL_UNREACHABLE;
             return WGPUTextureFormat_Force32;
@@ -17300,6 +17471,10 @@ _SOKOL_PRIVATE void _sg_wgpu_init_caps(void) {
     if (wgpuDeviceHasFeature(_sg.wgpu.dev, WGPUFeatureName_TextureCompressionASTC)) {
         _sg_pixelformat_sf(&_sg.formats[SG_PIXELFORMAT_ASTC_4x4_RGBA]);
         _sg_pixelformat_sf(&_sg.formats[SG_PIXELFORMAT_ASTC_4x4_SRGBA]);
+        // JasperEngine: texture-compression-astc has every block size (PATCHES.md)
+        for (int fmt = SG_PIXELFORMAT_ASTC_5x5_RGBA; fmt <= SG_PIXELFORMAT_ASTC_12x12_SRGBA; fmt++) {
+            _sg_pixelformat_sf(&_sg.formats[fmt]);
+        }
     }
 
     // see: https://github.com/gpuweb/gpuweb/issues/513
@@ -18029,8 +18204,9 @@ _SOKOL_PRIVATE void _sg_wgpu_copy_image_data(const _sg_image_t* img, const sg_im
         const int row_pitch = _sg_row_pitch(img->cmn.pixel_format, mip_width, 1);
         const int num_rows = _sg_num_rows(img->cmn.pixel_format, mip_height);
         if (_sg_is_compressed_pixel_format(img->cmn.pixel_format)) {
-            mip_width = _sg_roundup(mip_width, 4);
-            mip_height = _sg_roundup(mip_height, 4);
+            // JasperEngine: the format's block size, not always 4 (ASTC, PATCHES.md)
+            mip_width = _sg_roundup(mip_width, _sg_block_dim(img->cmn.pixel_format));
+            mip_height = _sg_roundup(mip_height, _sg_block_dim(img->cmn.pixel_format));
         }
         wgpu_layout.bytesPerRow = (uint32_t)row_pitch;
         wgpu_layout.rowsPerImage = (uint32_t)num_rows;
@@ -20348,6 +20524,18 @@ _SOKOL_PRIVATE VkFormat _sg_vk_format(sg_pixel_format fmt) {
         case SG_PIXELFORMAT_EAC_RG11SN:     return VK_FORMAT_EAC_R11G11_SNORM_BLOCK;
         case SG_PIXELFORMAT_ASTC_4x4_RGBA:  return VK_FORMAT_ASTC_4x4_UNORM_BLOCK;
         case SG_PIXELFORMAT_ASTC_4x4_SRGBA: return VK_FORMAT_ASTC_4x4_SRGB_BLOCK;
+        // JasperEngine: the square ASTC block sizes, queried per format like the others; the
+        // 16-bit packed formats stay undefined (unsupported) outside GL (PATCHES.md)
+        case SG_PIXELFORMAT_ASTC_5x5_RGBA:  return VK_FORMAT_ASTC_5x5_UNORM_BLOCK;
+        case SG_PIXELFORMAT_ASTC_5x5_SRGBA: return VK_FORMAT_ASTC_5x5_SRGB_BLOCK;
+        case SG_PIXELFORMAT_ASTC_6x6_RGBA:  return VK_FORMAT_ASTC_6x6_UNORM_BLOCK;
+        case SG_PIXELFORMAT_ASTC_6x6_SRGBA: return VK_FORMAT_ASTC_6x6_SRGB_BLOCK;
+        case SG_PIXELFORMAT_ASTC_8x8_RGBA:  return VK_FORMAT_ASTC_8x8_UNORM_BLOCK;
+        case SG_PIXELFORMAT_ASTC_8x8_SRGBA: return VK_FORMAT_ASTC_8x8_SRGB_BLOCK;
+        case SG_PIXELFORMAT_ASTC_10x10_RGBA:  return VK_FORMAT_ASTC_10x10_UNORM_BLOCK;
+        case SG_PIXELFORMAT_ASTC_10x10_SRGBA: return VK_FORMAT_ASTC_10x10_SRGB_BLOCK;
+        case SG_PIXELFORMAT_ASTC_12x12_RGBA:  return VK_FORMAT_ASTC_12x12_UNORM_BLOCK;
+        case SG_PIXELFORMAT_ASTC_12x12_SRGBA: return VK_FORMAT_ASTC_12x12_SRGB_BLOCK;
         default:                            return VK_FORMAT_UNDEFINED;
     };
 }

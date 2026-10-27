@@ -22,6 +22,8 @@ endif()
 jasperengine_add_test_target(jasperengine-core-tests
     SOURCES ${CORE_TEST_SOURCES} ${CORE_TEST_ALLOCATION_COUNTER}
     INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/support
+    # the KTX2 tests write Zstandard supercompressed files (games link the decoder only)
+    LINK zstd
 )
 
 # HexTilingTest compiles the hex lattice block of the shader library as C++: the lines between

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "GameWindow.h"
+#include "texture/TextureCookQueue.h"
 #include "profiler/FrameTimes.h"
 
 #include "imgui_internal.h"
@@ -389,13 +390,17 @@ void editor::GameWindow::drawToolbar() {
     const char* touchLabel = ICON_FA_MOBILE_SCREEN "##GameTouch";
     const char* maximizeLabel = "Maximize On Play##GameMaximize";
     const char* statsLabel = "Stats##GameStats";
+    // Simulate platform textures (S14 R26): the family the views render cooked textures with
+    TextureCookQueue& cooks = TextureCookQueue::get();
+    const TextureFamily viewFamily = cooks.getViewFamily();
+    std::string texturesLabel = std::string(ICON_FA_IMAGE " ") + textureFamilyLabel(viewFamily) + "##GameTextures";
     const ImGuiStyle& style = ImGui::GetStyle();
     auto buttonWidth = [&](const char* label) {
         return ImGui::CalcTextSize(label, nullptr, true).x + style.FramePadding.x * 2.0f;
     };
     auto groupWidth = [&]() {
-        return buttonWidth(debuggerLabel) + buttonWidth(touchLabel) + buttonWidth(maximizeLabel) + buttonWidth(statsLabel) +
-               style.ItemSpacing.x * 3.0f;
+        return buttonWidth(texturesLabel.c_str()) + buttonWidth(debuggerLabel) + buttonWidth(touchLabel) + buttonWidth(maximizeLabel) +
+               buttonWidth(statsLabel) + style.ItemSpacing.x * 4.0f;
     };
     ImGui::SameLine();
     const float contentRight = ImGui::GetWindowContentRegionMax().x;
@@ -403,11 +408,28 @@ void editor::GameWindow::drawToolbar() {
         debuggerLabel = ICON_FA_BUG "##GameHtmlUiDebugger";
         maximizeLabel = ICON_FA_MAXIMIZE "##GameMaximize";
         statsLabel = ICON_FA_CHART_SIMPLE "##GameStats";
+        texturesLabel = ICON_FA_IMAGE "##GameTextures";
     }
     const float rightX = contentRight - groupWidth();
     if (rightX > ImGui::GetCursorPosX()) {
         ImGui::SetCursorPosX(rightX);
     }
+
+    ImGui::BeginDisabled(cooks.getProject() != project);
+    if (toggleButton(texturesLabel.c_str(), viewFamily != TextureFamily::Desktop,
+                     "Simulate platform textures: render with the Desktop, Mobile or Web cook of every texture (decoded "
+                     "on the CPU when this GPU cannot sample it), to see their artefacts before an export")) {
+        ImGui::OpenPopup("##GameTexturesPopup");
+    }
+    ImGui::EndDisabled();
+    if (ImGui::BeginPopup("##GameTexturesPopup")) {
+        for (TextureFamily family : {TextureFamily::Desktop, TextureFamily::Mobile, TextureFamily::AndroidEtc2, TextureFamily::Web}) {
+            if (family == TextureFamily::AndroidEtc2 && !project->getTextureSettings().androidEtc2Fallback) continue;
+            if (ImGui::MenuItem(textureFamilyLabel(family), nullptr, family == viewFamily)) cooks.setViewFamily(family);
+        }
+        ImGui::EndPopup();
+    }
+    ImGui::SameLine();
 
     const bool debuggerShown = playedDocuments && playedDocuments->isDebuggerVisible();
     ImGui::BeginDisabled(!playedDocuments);

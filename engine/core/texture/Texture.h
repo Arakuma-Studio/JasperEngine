@@ -129,9 +129,17 @@ namespace jasperengine{
             TextureType getType() const;
             bool isCubeMap() const;
 
+            // the source's (logical) size: UI and sprite layout never change with the GPU image
             unsigned int getWidth() const;
             unsigned int getHeight() const;
             bool isTransparent() const;
+
+            // the GPU image (spec S14 R28): block-compressed, its format ("BC7", "RGBA8") and
+            // its level 0 after maxSize, the mip limit and the memory budget
+            bool isCompressed() const;
+            std::string getGpuFormat() const;
+            unsigned int getStoredWidth() const;
+            unsigned int getStoredHeight() const;
 
             void setReleaseDataAfterLoad(bool releaseDataAfterLoad);
             bool isReleaseDataAfterLoad() const;

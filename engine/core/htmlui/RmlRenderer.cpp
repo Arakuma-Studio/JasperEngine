@@ -846,8 +846,14 @@ Rml::TextureHandle RmlRenderer::LoadTexture(Rml::Vector2i& texture_dimensions, c
 
     const int width = data.getWidth();
     const int height = data.getHeight();
-    const int channels = data.getChannels();
+    int channels = data.getChannels();
     const unsigned char* pixels = static_cast<const unsigned char*>(data.getData());
+    // float images (.hdr, .exr) display-encoded to 8 bits like every texture
+    std::vector<uint8_t> converted;
+    if (data.getColorFormat() == ColorFormat::RGBA32F && data.toRgba8(converted)){
+        pixels = converted.data();
+        channels = 4;
+    }
     if (data.getColorFormat() == ColorFormat::RED16 || !pixels || width <= 0 || height <= 0 || channels < 1 || channels > 4){
         Log::error("[HTML UI] unsupported image format '%s'", source.c_str());
         return 0;

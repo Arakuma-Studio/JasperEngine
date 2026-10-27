@@ -62,6 +62,9 @@
 #include "stb_image_write.h"
 #include "yaml-cpp/yaml.h"
 #include "util/FileUtils.h"
+#include "command/type/SetAssetMetaCmd.h"
+#include "texture/TextureCookReport.h"
+#include "texture/TextureDecode.h"
 
 #include <algorithm>
 #include <cctype>
@@ -3555,6 +3558,517 @@ void registerAssetTools(McpRegistry& registry) {
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.handler = searchFilesTool;
+        registry.addTool(std::move(tool));
+    }
+}
+
+// ------------------------------------------------------------------ textures (S14 R27)
+
+namespace {
+
+// once the dependency index has its first build (the references decide the inferred type)
+void textureWhenIndexed(const CallPtr& call, std::function<void()> then) {
+    Project* project = call->ctx().project();
+    project->refreshAssetDatabase(true);
+    if (project->getAssetIndex().isReady()) {
+        then();
+        return;
+    }
+    call->waitUntil([project] { return project->getAssetIndex().isReady(); }, 60000, [call, then](bool timedOut) {
+        if (timedOut) {
+            call->fail("The asset index is still being built; try again in a moment.");
+            return;
+        }
+        then();
+    });
+}
+
+// MCP's snake_case keys of the import settings and their sidecar (YAML) names
+const std::vector<std::pair<std::string, std::string>>& textureSettingFields() {
+    static const std::vector<std::pair<std::string, std::string>> fields = {
+        {"type", "type"}, {"shape", "shape"}, {"srgb", "srgb"}, {"alpha_source", "alphaSource"},
+        {"alpha_is_transparency", "alphaIsTransparency"}, {"readable", "readable"}, {"max_size", "maxSize"},
+        {"resize_filter", "resizeFilter"}, {"mipmaps", "mipmaps"}, {"mip_filter", "mipFilter"}, {"mip_limit", "mipLimit"},
+        {"preserve_coverage", "preserveCoverage"}, {"alpha_cutoff", "alphaCutoff"}, {"flip_green", "flipGreen"},
+        {"channel", "channel"}, {"quality", "quality"}, {"effort", "effort"}, {"streamable", "streamable"},
+        {"ship_source", "shipSource"}};
+    return fields;
+}
+
+const std::vector<std::pair<std::string, std::string>>& texturePlatformFields() {
+    static const std::vector<std::pair<std::string, std::string>> fields = {
+        {"override", "override"}, {"max_size", "maxSize"}, {"format", "format"}, {"quality", "quality"},
+        {"effort", "effort"}, {"rdo", "rdo"}};
+    return fields;
+}
+
+std::string textureSnakeOf(const std::string& yamlKey) {
+    for (const auto& [snake, yaml] : textureSettingFields())
+        if (yaml == yamlKey) return snake;
+    for (const auto& [snake, yaml] : texturePlatformFields())
+        if (yaml == yamlKey) return snake;
+    return yamlKey;
+}
+
+Json textureYamlToJson(const YAML::Node& node) {
+    if (!node || node.IsNull()) return nullptr;
+    if (node.IsMap()) {
+        Json out = Json::object();
+        for (const auto& entry : node) out[textureSnakeOf(entry.first.as<std::string>())] = textureYamlToJson(entry.second);
+        return out;
+    }
+    if (node.IsSequence()) {
+        Json out = Json::array();
+        for (const auto& item : node) out.push_back(textureYamlToJson(item));
+        return out;
+    }
+    const std::string text = node.as<std::string>();
+    if (text == "true" || text == "false") return text == "true";
+    char* end = nullptr;
+    const long integer = std::strtol(text.c_str(), &end, 10);
+    if (end && *end == '\0' && !text.empty()) return integer;
+    const double number = std::strtod(text.c_str(), &end);
+    if (end && *end == '\0' && !text.empty()) return number;
+    return text;
+}
+
+YAML::Node textureJsonToYaml(const Json& value) {
+    if (value.is_boolean()) return YAML::Node(value.get<bool>());
+    if (value.is_number_integer()) return YAML::Node(value.get<long long>());
+    if (value.is_number()) return YAML::Node(value.get<double>());
+    if (value.is_string()) return YAML::Node(value.get<std::string>());
+    return YAML::Node();
+}
+
+Json resolvedTextureJson(const ResolvedTextureSettings& r) {
+    return Json{{"type", textureImportTypeName(r.type)}, {"shape", textureShapeName(r.shape)}, {"srgb", r.srgb},
+                {"alpha_source", alphaSourceName(r.alphaSource)}, {"alpha_is_transparency", r.alphaIsTransparency},
+                {"readable", r.readable}, {"max_size", r.maxSize}, {"resize_filter", mipFilterName(r.resizeFilter)},
+                {"mipmaps", r.mipmaps}, {"mip_filter", mipFilterName(r.mipFilter)}, {"mip_limit", r.mipLimit},
+                {"preserve_coverage", r.preserveCoverage}, {"alpha_cutoff", r.alphaCutoff}, {"flip_green", r.flipGreen},
+                {"channel", textureChannelName(r.channel)}, {"quality", textureQualityName(r.quality)},
+                {"effort", textureEffortName(r.effort)}, {"streamable", r.streamable},
+                {"format", r.format.empty() ? Json(nullptr) : Json(r.format)}, {"rdo", r.rdo < 0.0f ? Json(nullptr) : Json(r.rdo)},
+                {"cpu_readable", r.cpuReadable}};
+}
+
+// a texture source named by its project-relative path; its asset-relative form
+bool textureArg(const CallPtr& call, const std::string& given, std::string& assetPath, std::string& projectPath) {
+    Project* project = call->ctx().project();
+    fs::path file;
+    std::string error;
+    if (!McpRefs::resolveProjectPath(project, given, file, error, true)) {
+        call->fail(error);
+        return false;
+    }
+    file = file.lexically_normal();
+    projectPath = w4::projectRelative(project, file);
+    assetPath = project->normalizeToAssetsRelative(file).generic_string();
+    if (!isTextureSource(assetPath) || !project->isInsideAssetsPath(file)) {
+        call->fail(projectPath + " is not a texture source in the assets directory (png, jpg, tga, bmp, psd, gif, hdr, exr, svg, ktx2).");
+        return false;
+    }
+    return true;
+}
+
+bool textureFamiliesArg(const CallPtr& call, const std::string& key, std::vector<TextureFamily>& out, bool allByDefault) {
+    out.clear();
+    const Json& args = call->args();
+    if (!args.contains(key) || args[key].is_null()) {
+        out = {TextureFamily::Desktop};
+        if (allByDefault) {
+            out = {TextureFamily::Desktop, TextureFamily::Mobile, TextureFamily::Web};
+            if (call->ctx().project()->getTextureSettings().androidEtc2Fallback) out.push_back(TextureFamily::AndroidEtc2);
+        }
+        return true;
+    }
+    const Json list = args[key].is_array() ? args[key] : Json::array({args[key]});
+    for (const Json& item : list) {
+        TextureFamily family;
+        if (!item.is_string() || !textureFamilyFromName(item.get<std::string>(), family)) {
+            call->fail(key + ": " + item.dump() + " is not desktop, mobile, android_etc2 or web.");
+            return false;
+        }
+        if (std::find(out.begin(), out.end(), family) == out.end()) out.push_back(family);
+    }
+    return true;
+}
+
+bool texturePathsArg(const CallPtr& call, std::vector<std::string>& assetPaths, std::vector<std::string>& projectPaths) {
+    Project* project = call->ctx().project();
+    const Json& args = call->args();
+    if (!args.contains("paths") || args["paths"].is_null() || (args["paths"].is_string() && args["paths"].get<std::string>() == "all")) {
+        for (const std::string& path : projectTextureSources(*project, true)) {
+            assetPaths.push_back(path);
+            projectPaths.push_back(w4::projectRelative(project, project->getAssetsPath() / path));
+        }
+        return true;
+    }
+    if (!args["paths"].is_array()) {
+        call->fail("paths is a list of project-relative texture paths (or \"all\").");
+        return false;
+    }
+    for (const Json& item : args["paths"]) {
+        if (!item.is_string()) {
+            call->fail("paths holds project-relative texture paths.");
+            return false;
+        }
+        std::string assetPath, projectPath;
+        if (!textureArg(call, item.get<std::string>(), assetPath, projectPath)) return false;
+        assetPaths.push_back(assetPath);
+        projectPaths.push_back(projectPath);
+    }
+    return true;
+}
+
+void getTextureImportSettingsTool(const CallPtr& call) {
+    textureWhenIndexed(call, [call] {
+        Project* project = call->ctx().project();
+        std::string assetPath, projectPath;
+        if (!textureArg(call, call->args().value("path", ""), assetPath, projectPath)) return;
+        std::vector<TextureFamily> families;
+        if (!textureFamiliesArg(call, "platform", families, true)) return;
+        TextureCookInputs inputs;
+        if (!gatherTextureInputs(*project, assetPath, inputs)) {
+            std::string reason;
+            TextureImportSettings ignored;
+            TextureImportSettings::load(inputs.absolute.string(), ignored, &reason);
+            call->fail(projectPath + ": its import settings cannot be read: " + reason);
+            return;
+        }
+        const TextureProjectSettings settings = textureProjectSettingsOf(*project);
+        Json resolved = Json::object();
+        Json warnings = Json::array();
+        for (const std::string& conflict : TextureTypeInference::conflicts(inputs.settings.resolvedType(), inputs.inference))
+            warnings.push_back(conflict);
+        for (TextureFamily family : families) {
+            ResolvedTextureSettings r = inputs.settings.resolve(family, settings);
+            r.cpuReadable = r.cpuReadable || inputs.inference.cpuReadable || r.readable;
+            Json entry = resolvedTextureJson(r);
+            TextureCookState state;
+            if (TextureCookQueue::get().getProject() == project && TextureCookQueue::get().getState(assetPath, family, state)) {
+                if (!state.plan.key.empty()) entry["cooked_format"] = state.plan.choice.label();
+                for (const std::string& warning : state.warnings)
+                    if (std::find(warnings.begin(), warnings.end(), warning) == warnings.end()) warnings.push_back(warning);
+            }
+            resolved[textureFamilyName(family)] = entry;
+        }
+        const YAML::Node stored = SetAssetMetaCmd::read(inputs.absolute, TextureImportSettings::metaKey);
+        Json inferred = {{"type", textureImportTypeName(inputs.inference.type)}, {"reason", inputs.inference.reason},
+                         {"linear", inputs.inference.linear}, {"shape", textureShapeName(inputs.inference.shape)},
+                         {"cpu_readable", inputs.inference.cpuReadable}, {"source_only", inputs.inference.sourceOnly},
+                         {"reads_source", inputs.inference.readsSource}};
+        if (!inputs.inference.cpuReason.empty()) inferred["cpu_reason"] = inputs.inference.cpuReason;
+        Json data = {{"path", projectPath}, {"stored", textureYamlToJson(stored)}, {"inferred", inferred},
+                     {"resolved", resolved}, {"warnings", warnings}};
+        call->ok(projectPath + ": " + textureImportTypeName(inputs.settings.resolvedType()) +
+                 (stored && !stored.IsNull() ? "" : " (inferred: " + inputs.inference.reason + ")"), data);
+    });
+}
+
+void setTextureImportSettingsTool(const CallPtr& call) {
+    textureWhenIndexed(call, [call] {
+        Project* project = call->ctx().project();
+        const Json& args = call->args();
+        std::vector<std::string> assetPaths, projectPaths;
+        if (!args.contains("paths") || !args["paths"].is_array() || args["paths"].empty()) {
+            call->fail("paths is a non-empty list of project-relative texture paths.");
+            return;
+        }
+        if (!texturePathsArg(call, assetPaths, projectPaths)) return;
+        if (!args.contains("settings") || !args["settings"].is_object() || args["settings"].empty()) {
+            call->fail("settings is an object of import settings (type, srgb, max_size, quality...); null removes one.");
+            return;
+        }
+        const Json& settings = args["settings"];
+        TextureFamily family = TextureFamily::Desktop;
+        const bool perPlatform = args.contains("platform") && !args["platform"].is_null();
+        if (perPlatform && (!args["platform"].is_string() || !textureFamilyFromName(args["platform"].get<std::string>(), family))) {
+            call->fail("platform must be desktop, mobile, android_etc2 or web.");
+            return;
+        }
+        const auto& fields = perPlatform ? texturePlatformFields() : textureSettingFields();
+        std::vector<std::pair<std::string, YAML::Node>> edits;   // yaml key, value (null: removed)
+        for (const auto& [key, value] : settings.items()) {
+            auto field = std::find_if(fields.begin(), fields.end(), [&](const auto& f) { return f.first == key; });
+            if (field == fields.end()) {
+                std::string valid;
+                for (const auto& f : fields) valid += (valid.empty() ? "" : ", ") + f.first;
+                call->fail("settings." + key + " is not " + (perPlatform ? "a platform override" : "an import setting") + " (" + valid + ").");
+                return;
+            }
+            const YAML::Node yaml = value.is_null() ? YAML::Node() : textureJsonToYaml(value);
+            if (!value.is_null()) {
+                if (!yaml) {
+                    call->fail("settings." + key + " must be a boolean, number or string.");
+                    return;
+                }
+                std::string error;
+                // a platform field is checked as the top-level one of its name (maxSize: a power of two)
+                const std::string checked = perPlatform ? (field->second == "maxSize" || field->second == "quality" || field->second == "effort" ? field->second : std::string()) : field->second;
+                if (!checked.empty() && !validateTextureSettingsField(checked, yaml, error)) {
+                    call->fail("settings." + key + ": " + error.substr(error.find(':') == std::string::npos ? 0 : error.find(':') + 2));
+                    return;
+                }
+                if (perPlatform && field->second == "format" && !TextureFormatSelector::isFormatName(value.get<std::string>())) {
+                    std::string names;
+                    for (const std::string& name : TextureFormatSelector::formatNames()) names += (names.empty() ? "" : ", ") + name;
+                    call->fail("settings.format: '" + value.get<std::string>() + "' is not one of " + names + ".");
+                    return;
+                }
+            }
+            edits.push_back({field->second, yaml});
+        }
+        // every texture's new section, checked whole before anything is written
+        std::vector<std::pair<size_t, YAML::Node>> writes;
+        for (size_t i = 0; i < assetPaths.size(); i++) {
+            const fs::path absolute = project->getAssetsPath() / assetPaths[i];
+            const YAML::Node stored = SetAssetMetaCmd::read(absolute, TextureImportSettings::metaKey);
+            YAML::Node node = stored && stored.IsMap() ? YAML::Clone(stored) : YAML::Node(YAML::NodeType::Map);
+            if (!node["version"]) node["version"] = TextureImportSettings::currentVersion;
+            // an explicit choice ends the inference's say on it
+            if (!perPlatform) node.remove("inferredFrom");
+            auto apply = [&edits](YAML::Node target) {
+                for (const auto& [key, value] : edits) {
+                    if (value) target[key] = value;
+                    else target.remove(key);
+                }
+            };
+            if (perPlatform) {
+                if (!node["platforms"] || !node["platforms"].IsMap()) node["platforms"] = YAML::Node(YAML::NodeType::Map);
+                YAML::Node platforms = node["platforms"];
+                const std::string name = textureFamilyName(family);
+                if (!platforms[name] || !platforms[name].IsMap()) platforms[name] = YAML::Node(YAML::NodeType::Map);
+                // (a node bound once: yaml-cpp's assignment to a bound node overwrites what it holds)
+                YAML::Node platform = platforms[name];
+                if (!settings.contains("override")) platform["override"] = true;
+                apply(platform);
+            } else {
+                apply(node);
+            }
+            TextureImportSettings parsed;
+            std::string error;
+            if (!TextureImportSettings::parse(node, parsed, &error)) {
+                call->fail(projectPaths[i] + ": " + error);
+                return;
+            }
+            // the canonical form (flow style platform blocks, known order)
+            writes.push_back({i, parsed.serialize()});
+        }
+        CommandHistory* history = project->getProjectCommandHistory();
+        InteractiveEdit edit = history->beginInteractive("Set Texture Import Settings");
+        Json updated = Json::array();
+        for (const auto& [i, node] : writes) {
+            Command* command = new SetAssetMetaCmd(project, project->normalizeToProjectRelative(project->getAssetsPath() / assetPaths[i]),
+                                                   TextureImportSettings::metaKey, node);
+            if (command->isNoOp()) {
+                delete command;
+                continue;
+            }
+            if (!history->addCommand(command)) {
+                edit.cancel();
+                call->fail("Couldn't write the import settings of " + projectPaths[i] + ".");
+                return;
+            }
+            updated.push_back(projectPaths[i]);
+        }
+        edit.commit();
+        if (ProjectWindow* window = call->ctx().projectWindow()) window->refreshCurrentDirectory();
+        call->ok("Updated the import settings of " + std::to_string(updated.size()) + " texture(s); their cooks are queued. "
+                 "Undo with scope project.", Json{{"updated", updated}, {"unchanged", writes.size() - updated.size()}});
+    });
+}
+
+Json textureReportRows(Project* project, const std::vector<std::string>& assetPaths, const std::vector<std::string>& projectPaths,
+                       const std::vector<TextureFamily>& families, std::vector<TextureReportRow>& rows) {
+    TextureCookQueue& queue = TextureCookQueue::get();
+    for (size_t i = 0; i < assetPaths.size(); i++) {
+        TextureReportRow row;
+        row.path = projectPaths[i];
+        TextureImportSettings settings;
+        TextureImportSettings::load((project->getAssetsPath() / assetPaths[i]).string(), settings);
+        row.type = settings.resolvedType();
+        row.inferredFrom = settings.inferredFrom;
+        for (TextureFamily family : families) {
+            TextureCookState state;
+            if (!queue.getState(assetPaths[i], family, state)) state.status = TextureCookStatus::None;
+            row.families[family] = state;
+        }
+        rows.push_back(std::move(row));
+    }
+    return TextureCookReport::toJson(rows);
+}
+
+void reimportTexturesTool(const CallPtr& call) {
+    textureWhenIndexed(call, [call] {
+        Project* project = call->ctx().project();
+        TextureCookQueue& queue = TextureCookQueue::get();
+        if (queue.getProject() != project) {
+            call->fail("The texture cook queue is not running for this project yet; try again in a moment.");
+            return;
+        }
+        std::vector<std::string> assetPaths, projectPaths;
+        if (!texturePathsArg(call, assetPaths, projectPaths)) return;
+        std::vector<TextureFamily> families;
+        if (!textureFamiliesArg(call, "platforms", families, false)) return;
+        for (const std::string& path : assetPaths) {
+            if (!isCookableTexture(path)) continue;
+            queue.invalidate(path);
+            for (TextureFamily family : families) queue.request(path, family, TextureCookQueue::Selected);
+        }
+        const bool wait = call->args().value("wait", true);
+        const int timeoutMs = (int)std::lround(std::clamp(call->args().value("timeout_s", 120.0), 1.0, 3600.0) * 1000.0);
+        auto finish = [call, project, assetPaths, projectPaths, families](bool timedOut) {
+            std::vector<TextureReportRow> rows;
+            Json report = textureReportRows(project, assetPaths, projectPaths, families, rows);
+            report["timed_out"] = timedOut;
+            const std::vector<std::string> problems = TextureCookReport::problems(rows);
+            int failed = 0;
+            for (const TextureReportRow& row : rows)
+                for (const auto& [family, state] : row.families) failed += state.status == TextureCookStatus::Failed ? 1 : 0;
+            const std::string text = timedOut ? "Some cooks are still running (timed_out); get_texture_cook_report shows them later."
+                                              : "Reimported " + std::to_string(rows.size()) + " texture(s)" +
+                                                    (failed ? ", " + std::to_string(failed) + " cook(s) failed." : ".");
+            if (failed && !timedOut) call->fail(text, report);
+            else call->ok(text, report);
+        };
+        if (!wait) {
+            finish(false);
+            return;
+        }
+        call->waitUntil([&queue, assetPaths, families]() {
+            for (const std::string& path : assetPaths) {
+                for (TextureFamily family : families) {
+                    if (queue.isPending(path, family))
+                        return false;
+                }
+            }
+            return true;
+        }, timeoutMs, finish);
+    });
+}
+
+void getTextureCookReportTool(const CallPtr& call) {
+    textureWhenIndexed(call, [call] {
+        Project* project = call->ctx().project();
+        std::vector<std::string> assetPaths, projectPaths;
+        if (!texturePathsArg(call, assetPaths, projectPaths)) return;
+        std::vector<TextureFamily> families;
+        if (!textureFamiliesArg(call, "platforms", families, false)) return;
+        std::vector<TextureReportRow> rows;
+        const Json report = textureReportRows(project, assetPaths, projectPaths, families, rows);
+        ToolResult result = ToolResult::success(TextureCookReport::toText(rows), report);
+        if (call->args().value("include_preview", false)) {
+            // the cooked level 0 as the family's devices see it, for the first textures
+            TextureCookCache& cache = TextureCookQueue::get().getCache();
+            int shown = 0;
+            for (const TextureReportRow& row : rows) {
+                if (shown >= 4) break;
+                for (const auto& [family, state] : row.families) {
+                    if (state.status != TextureCookStatus::Cooked) continue;
+                    std::vector<uint8_t> file;
+                    if (!cache.readArtifact(state.record.key, file)) continue;
+                    GpuTextureFormat format;
+                    int width = 0, height = 0, faces = 1;
+                    std::vector<uint8_t> pixels;
+                    std::string error;
+                    if (!decodeKtx2ForPreview(file, 0, format, width, height, faces, pixels, error)) continue;
+                    std::vector<uint8_t> rgba;
+                    if (format == GpuTextureFormat::RGBA8) {
+                        rgba = std::move(pixels);
+                    } else if (format == GpuTextureFormat::RGBA16F) {
+                        TextureDecode::convert(format, GpuTextureFormat::RGBA8, width, height * faces, pixels.data(), pixels.size(), rgba);
+                    } else {
+                        const size_t channels = format == GpuTextureFormat::RG8 ? 2 : 1;
+                        const size_t texels = pixels.size() / channels;
+                        rgba.resize(texels * 4);
+                        for (size_t t = 0; t < texels; t++) {
+                            rgba[t * 4] = pixels[t * channels];
+                            rgba[t * 4 + 1] = channels == 2 ? pixels[t * channels + 1] : pixels[t * channels];
+                            rgba[t * 4 + 2] = channels == 2 ? 255 : pixels[t * channels];
+                            rgba[t * 4 + 3] = 255;
+                        }
+                    }
+                    std::string base64;
+                    int outW = 0, outH = 0;
+                    if (rgba.size() >= (size_t)width * height * 4 && encodePng(rgba.data(), width, height, 256, base64, outW, outH)) {
+                        result.images.push_back({base64, "image/png"});
+                        result.text += "\nPreview: " + row.path + " [" + textureFamilyName(family) + "]";
+                        shown++;
+                    }
+                    break;
+                }
+            }
+        }
+        call->reply(std::move(result));
+    });
+}
+
+} // namespace
+
+void registerTextureTools(McpRegistry& registry) {
+    using namespace schema;
+    {
+        ToolDef tool;
+        tool.name = "get_texture_import_settings";
+        tool.title = "Get Texture Import Settings";
+        tool.description = "A texture's import settings: stored (null until set), inferred type and reason, resolved per "
+                           "platform (desktop, mobile, android_etc2, web), warnings (a reference that does not fit the type).";
+        tool.inputSchema = object({
+            {"path", string("Project-relative texture path.")},
+            {"platform", stringEnum("", {"desktop", "mobile", "android_etc2", "web"})}
+        }, {"path"});
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = getTextureImportSettingsTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "set_texture_import_settings";
+        tool.title = "Set Texture Import Settings";
+        tool.description = "Partial update of textures' import settings (type, srgb, max_size, mipmaps, quality, effort, "
+                           "flip_green...; null removes one); with platform, that platform's override (max_size, format, "
+                           "quality, effort, rdo). One undo step; recooks.";
+        tool.inputSchema = object({
+            {"paths", array(string(""), "Project-relative texture paths.")},
+            {"settings", anyObject("")},
+            {"platform", stringEnum("", {"desktop", "mobile", "android_etc2", "web"})}
+        }, {"paths", "settings"});
+        tool.allowedWhilePlaying = false;
+        tool.handler = setTextureImportSettingsTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "reimport_textures";
+        tool.title = "Reimport Textures";
+        tool.description = "Cooks textures again (paths, or all) for platforms (default desktop); waits for the results "
+                           "unless wait is false. Returns get_texture_cook_report's fields.";
+        tool.inputSchema = object({
+            {"paths", array(string(""), "Project-relative texture paths; omit for all.")},
+            {"platforms", array(stringEnum("", {"desktop", "mobile", "android_etc2", "web"}), "")},
+            {"wait", withDefault(boolean(""), true)},
+            {"timeout_s", withDefault(number("", 1, 3600), 120)}
+        });
+        tool.allowedWhilePlaying = false;
+        tool.handler = reimportTexturesTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "get_texture_cook_report";
+        tool.title = "Get Texture Cook Report";
+        tool.description = "Per texture and platform: status, format, size, mips, VRAM, disk and source bytes, PSNR, cache "
+                           "hit, warnings; totals per platform. include_preview adds the cooked images (first 4).";
+        tool.inputSchema = object({
+            {"paths", array(string(""), "Project-relative texture paths; omit for all.")},
+            {"platforms", array(stringEnum("", {"desktop", "mobile", "android_etc2", "web"}), "")},
+            {"include_preview", withDefault(boolean(""), false)}
+        });
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = getTextureCookReportTool;
         registry.addTool(std::move(tool));
     }
 }

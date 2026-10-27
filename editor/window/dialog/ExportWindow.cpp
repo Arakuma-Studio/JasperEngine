@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ExportWindow.h"
+#include "texture/TextureCookReport.h"
 #include "util/FileDialogs.h"
 #include "AppSettings.h"
 #include "Backend.h"
@@ -982,6 +983,11 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
         ImGui::Spacing();
     }
 
+    if (Theme::foldoutHeader("Textures")) {
+        drawTextureSection();
+        ImGui::Spacing();
+    }
+
     // --- Validation warnings ---
     bool canExport = !m_targetDir.empty();
     std::error_code ec;
@@ -1039,6 +1045,73 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
     ImGui::PopTextWrapPos();
 
     return canExport;
+}
+
+void ExportWindow::drawTextureSection() {
+    // the families the platform loads (R9) and what their cooks weigh (R25)
+    std::vector<std::string> platforms;
+    switch (m_platform) {
+        case BuildPlatform::Windows: platforms = {"windows"}; break;
+        case BuildPlatform::MacOS: platforms = {"macos"}; break;
+        case BuildPlatform::Linux: platforms = {"linux"}; break;
+        case BuildPlatform::Android: platforms = {"android"}; break;
+        case BuildPlatform::IOS: platforms = {"ios"}; break;
+        case BuildPlatform::Web: platforms = {"web"}; break;
+        default: platforms = {"windows", "linux", "macos", "ios", "android", "web"}; break;
+    }
+    const std::vector<TextureFamily> families =
+        TextureCookQueue::familiesForExport(platforms, m_project->getTextureSettings().androidEtc2Fallback);
+    TextureCookQueue& cooks = TextureCookQueue::get();
+    if (cooks.getProject() != m_project) {
+        ImGui::TextDisabled("Texture cooks start once the project is open.");
+        return;
+    }
+    const std::vector<std::string> textures = projectTextureSources(*m_project, true);
+    bool missing = false;
+    if (ImGui::BeginTable("export_textures", 4, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerH)) {
+        ImGui::TableSetupColumn("Family");
+        ImGui::TableSetupColumn("Cooked");
+        ImGui::TableSetupColumn("Download");
+        ImGui::TableSetupColumn("VRAM");
+        ImGui::TableHeadersRow();
+        for (TextureFamily family : families) {
+            int cooked = 0, total = 0;
+            uint64_t disk = 0, vram = 0;
+            for (const std::string& path : textures) {
+                TextureCookState state;
+                const bool known = cooks.getState(path, family, state);
+                if (known && state.status == TextureCookStatus::Source) continue;
+                total++;
+                if (known && state.status == TextureCookStatus::Cooked) {
+                    cooked++;
+                    disk += state.record.diskBytes;
+                    vram += state.record.gpuBytes;
+                }
+            }
+            missing = missing || cooked < total;
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextUnformatted(textureFamilyLabel(family));
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%d / %d", cooked, total);
+            ImGui::TableSetColumnIndex(2);
+            ImGui::TextUnformatted(TextureCookReport::formatBytes(disk).c_str());
+            ImGui::TableSetColumnIndex(3);
+            ImGui::TextUnformatted(TextureCookReport::formatBytes(vram).c_str());
+        }
+        ImGui::EndTable();
+    }
+    if (missing) {
+        ImGui::TextDisabled("The totals cover the cooked textures; the export cooks the rest.");
+    }
+    if (std::find(families.begin(), families.end(), TextureFamily::AndroidEtc2) != families.end()) {
+        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION
+                           " Android ETC2 Fallback is on: the APK carries every texture twice (ASTC and ETC2)");
+    }
+    if (ImGui::Button("Cook Textures Now")) {
+        cooks.requestAll(families, TextureCookQueue::Selected);
+    }
+    ImGui::SetItemTooltip("Cooks every texture for these families in the background, so the export finds them in the cache");
 }
 
 void ExportWindow::drawSettings() {
