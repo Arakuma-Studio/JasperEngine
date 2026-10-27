@@ -22,6 +22,9 @@ namespace jasperengine {
         // best-height shelf fit; the padding is added right and below. A 0-sized rect packs
         // at (0, 0) and takes no space
         bool pack(int width, int height, int& x, int& y);
+        // keeps the last `rows` rows out of the packing (until reset): what the owner writes
+        // there moves no packed rectangle
+        void reserveBottom(int rows);
         // copies a width x height bitmap (rows of width * bytesPerPixel bytes) to (x, y), clipped to the atlas
         void blit(const unsigned char* pixels, int width, int height, int x, int y);
         const std::vector<unsigned char>& getPixels() const;
@@ -43,6 +46,7 @@ namespace jasperengine {
         unsigned int height = 0;
         int padding = 0;
         int bytesPerPixel = 1;
+        int reservedRows = 0;
     };
 
 }

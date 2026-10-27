@@ -20,6 +20,11 @@ void GlyphAtlas::reset(unsigned int width, unsigned int height){
 
     pixels.assign((size_t)width * (size_t)height * (size_t)bytesPerPixel, 0);
     shelves.clear();
+    reservedRows = 0;
+}
+
+void GlyphAtlas::reserveBottom(int rows){
+    reservedRows = std::max(0, std::min(rows, (int)height));
 }
 
 bool GlyphAtlas::pack(int width, int height, int& x, int& y){
@@ -55,7 +60,7 @@ bool GlyphAtlas::pack(int width, int height, int& x, int& y){
         shelfY = shelves.back().y + shelves.back().h;
     }
 
-    if (width > (int)this->width || (shelfY + height) > (int)this->height){
+    if (width > (int)this->width || (shelfY + height) > (int)this->height - reservedRows){
         return false;
     }
 

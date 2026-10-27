@@ -676,14 +676,16 @@ void RmlFontEngine::makeSource(Page& page){
 }
 
 void RmlFontEngine::reserveWhiteBlock(Page& page){
-    // (only for the batched replay, whose untextured geometry joins a glyph page's run through
-    // it; with batching off the pages hold the glyphs where they were before S16 (AC1): a glyph
-    // drawn under a transform samples its atlas neighbours, and the block moved them)
-    if (page.kind != PageKind::BASE || !RmlRenderer::isBatching())
+    // in the page's last rows, below every shelf and a row of padding: the glyphs are packed
+    // where they were before S16 (a glyph drawn under a transform samples its edge rows, and
+    // a block among them moved them: AC1), whether the frame batches or not
+    if (page.kind != PageKind::BASE)
         return;
-    int x = 0, y = 0;
-    if (!page.atlas->pack(whiteBlockSize, whiteBlockSize, x, y))
+    const int height = (int)page.atlas->getHeight();
+    if (height <= whiteBlockSize + 1)
         return;
+    page.atlas->reserveBottom(whiteBlockSize + 1);
+    const int x = 0, y = height - whiteBlockSize;
     const std::vector<unsigned char> white((size_t)(whiteBlockSize * whiteBlockSize), 255);
     page.atlas->blit(white.data(), whiteBlockSize, whiteBlockSize, x, y);
     (*page.generation)++;
