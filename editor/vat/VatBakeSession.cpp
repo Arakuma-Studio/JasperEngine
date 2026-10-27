@@ -423,7 +423,8 @@ const std::vector<VatIssue>& VatBakeSession::check(){
 VatEstimate VatBakeSession::estimate(){
     VatEstimate out;
     if (!checked) check();
-    if (!target || !poser) return out;
+    // (a GameObject source whose scene closed since check(): its entities are gone)
+    if (!target || !poser || !sourceGone().empty()) return out;
     const VatBakeSpec& spec = bakeSpec;
     const VatPresetLimits limits = presetLimits(spec.preset);
 
@@ -541,7 +542,7 @@ bool VatBakeSession::start(){
     check();
     // the scene edited (or a preview started) since check() captured the rest: resolve again
     if (target && poser && !target->scratch()){
-        PoseEditSession::suspendActiveFor(target->sceneId, {target->root});
+        if (sourceGone().empty()) PoseEditSession::suspendActiveFor(target->sceneId, {target->root});
         if (!sourceGone().empty() || placementSceneEditStamp(project, target->sceneId) != checkStamp){
             poser.reset();
             target.reset();
