@@ -178,6 +178,10 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::PASS_PREVIEW;
         return true;
     }
+    if (typeToken == "particles") {
+        shaderType = ShaderType::PARTICLES;
+        return true;
+    }
     if (typeToken == "htmluiprim") {
         shaderType = ShaderType::HTMLUI_PRIM;
         return true;
@@ -551,6 +555,7 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::SKY_COMPOSITE: return lowerCase ? "skycomposite" : "Sky Composite";
         case ShaderType::VOLUMETRIC_COMPOSITE: return lowerCase ? "volumetriccomposite" : "Volumetric Composite";
         case ShaderType::PASS_PREVIEW: return lowerCase ? "passpreview" : "Pass Preview";
+        case ShaderType::PARTICLES: return lowerCase ? "particles" : "Particles";
         case ShaderType::HTMLUI_PRIM: return lowerCase ? "htmluiprim" : "HTML UI Primitives";
         default:                 return lowerCase ? "unknown": "Unknown";
     }
@@ -568,6 +573,7 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
         case ShaderType::POINTS: return shaderPropertyBit(4);
         case ShaderType::LINES:  return shaderPropertyBit(2);
         case ShaderType::SKYBOX: return shaderPropertyBit(0);
+        case ShaderType::PARTICLES: return shaderPropertyBit(10);
         default:                 return 0;
     }
 }
@@ -602,6 +608,8 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::SHADOW_CACHE: return 1;
         // the source's texture type: 2D (none), array, cube or 3D
         case ShaderType::PASS_PREVIEW: return 3;
+        // ShaderPool::getParticlesProperties
+        case ShaderType::PARTICLES: return 11;
         case ShaderType::HTMLUI_PRIM: return 0;
         default:                 return 0;
     }
@@ -742,6 +750,21 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 2: return shortName ? "Vc4" : "Vertex Color 4";
             case 3: return shortName ? "Txr" : "Texture Rect";
             case 4: return shortName ? "Pcl" : "Post Color";
+        }
+    } else if (shaderType == ShaderType::PARTICLES) {
+        // what the effect's modules draw (getParticlesProperties)
+        switch (bit) {
+            case 0: return shortName ? "Tex" : "Texture";
+            case 1: return shortName ? "Msh" : "Mesh";
+            case 2: return shortName ? "Trl" : "Trail";
+            case 3: return shortName ? "Str" : "Stretch";
+            case 4: return shortName ? "Fbl" : "Frame Blend";
+            case 5: return shortName ? "Lit" : "Lit";
+            case 6: return shortName ? "Sxw" : "Six-Way";
+            case 7: return shortName ? "Cus" : "Custom Data";
+            case 8: return shortName ? "Rsh" : "Receive Shadows";
+            case 9: return "Fog";
+            case 10: return shortName ? "Pcl" : "Post Color";
         }
     } else if (shaderType == ShaderType::LINES) {
         switch (bit) {
@@ -1676,6 +1699,23 @@ uint64_t ShaderPool::getPointsProperties(bool texture, bool vertexColorVec3, boo
     prop |= vertexColorVec3	 ? shaderPropertyBit(1) : 0;
     prop |= vertexColorVec4  ? shaderPropertyBit(2) : 0;
     prop |= textureRect      ? shaderPropertyBit(3) : 0;
+
+    return prop;
+}
+
+uint64_t ShaderPool::getParticlesProperties(const ParticlesShaderFlags& flags){
+    uint64_t prop = 0;
+
+    prop |= flags.texture        ? (1 <<  0) : 0;
+    prop |= flags.mesh           ? (1 <<  1) : 0;
+    prop |= flags.trail          ? (1 <<  2) : 0;
+    prop |= flags.stretch        ? (1 <<  3) : 0;
+    prop |= flags.frameBlend     ? (1 <<  4) : 0;
+    prop |= flags.lit            ? (1 <<  5) : 0;
+    prop |= flags.sixWay         ? (1 <<  6) : 0;
+    prop |= flags.customData     ? (1 <<  7) : 0;
+    prop |= flags.receiveShadows ? (1 <<  8) : 0;
+    prop |= flags.fog            ? (1 <<  9) : 0;
 
     return prop;
 }

@@ -110,6 +110,12 @@ sg_vertex_format SokolObject::getVertexFormat(unsigned int elements, AttributeDa
         if (elements == 4)
             return SG_VERTEXFORMAT_USHORT4N;
     }
+    if (dataType == AttributeDataType::HALF){
+        if (elements == 2)
+            return SG_VERTEXFORMAT_HALF2;
+        if (elements == 4)
+            return SG_VERTEXFORMAT_HALF4;
+    }
     if (dataType == AttributeDataType::FLOAT){
         if (elements == 1)
             return SG_VERTEXFORMAT_FLOAT;

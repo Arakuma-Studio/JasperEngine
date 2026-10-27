@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "particles/ParticleEffectLibrary.h"
+#include "util/ParticleMigrationReport.h"
 #include "AppMenuCommand.h"
 #include "util/NumericExpression.h"
 #include "util/EditorFingerprint.h"
@@ -4052,6 +4054,9 @@ void editor::App::prepareForProjectSwitch() {
     consoleWindow->clear();
     sceneWindow->resetProjectState();
     gameWindow->resetProjectState();
+    // the next project's .particles files are other files under the same paths
+    particles::ParticleEffectLibrary::clear();
+    ParticleMigrationReport::clear();
     dockspaceNeedsRebuild = true;
 }
 
@@ -4440,7 +4445,8 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v40: S11's built-in Lit (lobes, hex tiling, Lit Quality: pbr.glsl, mesh.frag, terrain) with
     //      upstream's Stochastic Tiling in the same Lit and terrain sources and block layout.
     // v41: S16's HTMLUI_PRIM and htmlui changes (its v36-v39) with upstream's and S11's (v39, v40).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v41";
+    // v42: S20's PARTICLES before HTMLUI_PRIM (the merge of both): a v41 cache numbers them otherwise.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v42";
 }
 
 void editor::App::pushTabNotificationStyle(){

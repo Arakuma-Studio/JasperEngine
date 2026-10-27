@@ -1026,7 +1026,6 @@ set(JASPERENGINE_SRCS
     core/action/AlphaTween.cpp
     core/action/Animation.cpp
     core/action/ColorTween.cpp
-    core/action/ParticleSystem.cpp
     core/action/PositionTween.cpp
     core/action/RotationTween.cpp
     core/action/ScaleTween.cpp
@@ -1133,6 +1132,7 @@ set(JASPERENGINE_SRCS
     core/io/AtomicFile.cpp
     core/io/ScopedFileLock.cpp
     core/math/AABB.cpp
+    core/math/Curve.cpp
     core/math/Matrix3.cpp
     core/math/Matrix4.cpp
     core/math/OBB.cpp
@@ -1333,6 +1333,9 @@ list(APPEND JASPERENGINE_SRCS ${HTMLUI_COMPAT_SRCS})
 # HTML UI widgets (S17): virtual views, tooltips, drag and drop, Markdown
 include(core/htmlui/widgets/WidgetsSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${HTMLUI_WIDGETS_SRCS})
+# Particles (S20): the SIMD kernels' flags, the subsystem and its drawing
+include(core/particles/ParticleSources.cmake)
+list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_PARTICLE_SRCS} ${JASPERENGINE_PARTICLE_SYSTEM_SRCS})
 include(libs/lucide/lucide.cmake)
 
 if(JASPERENGINE_PHYSICS_2D)
@@ -1405,6 +1408,9 @@ list(FILTER JASPERENGINE_UNITY_SKIP INCLUDE REGEX "core/htmlui/")
 jasperengine_skip_unity_build(
     REASON "the HTML UI subsystem: per-file helper sets with the same names"
     SOURCES ${JASPERENGINE_UNITY_SKIP})
+jasperengine_skip_unity_build(
+    REASON "the particle kernels build with their own floating-point flags"
+    SOURCES ${JASPERENGINE_PARTICLE_SRCS})
 jasperengine_target_unity_build(jasperengine)
 
 target_compile_definitions(jasperengine

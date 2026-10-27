@@ -19,11 +19,11 @@ TIMEOUT = 900
 # screenshots of the Systems window kept as evidence (AC17)
 EVIDENCE = Path(__file__).resolve().parents[3] / "build" / "evidence"
 
-SYSTEMS = ["ActionSystem", "MeshSystem", "UISystem", "UIDocumentSystem", "RenderSystem", "PhysicsSystem", "AudioSystem"]
+SYSTEMS = ["ActionSystem", "MeshSystem", "UISystem", "UIDocumentSystem", "RenderSystem", "PhysicsSystem", "ParticleSubsystem", "AudioSystem"]
 # every scene system in schedule order: upstream's lattice deformer and fluid simulation systems
 # too (the timing checks stay on SYSTEMS: those two have nothing to do in these scenes)
 ALL_SYSTEMS = ["ActionSystem", "MeshSystem", "LatticeSystem", "UISystem", "UIDocumentSystem", "FluidSystem", "RenderSystem",
-               "PhysicsSystem", "AudioSystem"]
+               "PhysicsSystem", "ParticleSubsystem", "AudioSystem"]
 
 
 def type_count(stats, name):
@@ -264,7 +264,7 @@ async def test_systems_window(ed: Editor):
         shot = await evidence_shot(ed, "systems-window.png")
         ed.check(not shot.is_error and shot.images, f"editor screenshot: {shot.text[:300]}")
 
-        # the table: the seven systems with their timings
+        # the table: the eight systems with their timings
         schedule = await ed.call("get_system_schedule", runtime=True)
         for system in SYSTEMS:
             timing = system_entry(schedule, "Update", system)["timing"]

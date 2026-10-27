@@ -22,9 +22,6 @@
 #include "component/ScaleTweenComponent.h"
 #include "component/ColorTweenComponent.h"
 #include "component/AlphaTweenComponent.h"
-#include "component/PointsComponent.h"
-#include "component/ParticleSystemComponent.h"
-#include "component/InstancedMeshComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/KeyframeTracksComponent.h"
 #include "component/TranslateTracksComponent.h"
@@ -107,53 +104,11 @@ namespace jasperengine{
 		void colorTweenUpdate(TweenComponent& tween, ColorTweenComponent& colortween, Vector4& targetColor);
 		void alphaTweenUpdate(TweenComponent& tween, AlphaTweenComponent& alphatween, Vector4& targetColor);
 
-		//Particle helpers functions
-		float getParticleInverseScale(float value);
-		Vector3 getParticleDisplayScale(Vector3 scale, Transform* targetTransform);
-		bool isParticleWorldSpace(ParticleSystemComponent& particles, Transform* targetTransform);
-		void updateParticleTargetTransform(Transform& transform);
-		void updateParticleTargetCache(ParticleSystemComponent& particles, Transform* targetTransform);
-		Vector3 samplePositionInitializer(ParticlePositionInitializer& init);
-		int sampleBurstCount(ParticleBurst& burst);
-		void sortParticleBursts(ParticleSystemComponent& particles);
-		void sortParticleColorGradient(ParticleSystemComponent& particles);
-		Vector3 sampleParticleColorGradient(const ParticleColorGradient& gradient, float time, float life);
-		float getParticleCycleDuration(ParticleSystemComponent& particles);
-		Vector3 getParticleSimulationPosition(ParticleSystemComponent& particles, Transform* targetTransform, Vector3 position);
-		Vector3 getParticleSimulationDirection(ParticleSystemComponent& particles, Transform* targetTransform, Vector3 direction);
-		Quaternion getParticleSimulationRotation(ParticleSystemComponent& particles, Transform* targetTransform, Quaternion rotation);
-		Vector3 getParticleDisplayPosition(ParticleSystemComponent& particles, Transform* targetTransform, Vector3 position);
-		Quaternion getParticleDisplayRotation(ParticleSystemComponent& particles, Transform* targetTransform, Quaternion rotation);
-		Vector3 getParticleDisplayScale(ParticleSystemComponent& particles, Transform* targetTransform, Vector3 scale);
-		void syncParticleInstance(size_t idx, ParticleSystemComponent& particles, InstancedMeshComponent& instmesh, Transform* targetTransform);
-		void syncParticlePoint(size_t idx, ParticleSystemComponent& particles, PointsComponent& points, Transform* targetTransform);
-
-		int findUnusedParticle(ParticleSystemComponent& particles);
-
-		float getFloatInitializerValue(float& min, float& max);
-		Vector3 getVector3InitializerValue(Vector3& min, Vector3& max, bool linearSort);
-		Quaternion getQuaternionInitializerValue(Quaternion& min, Quaternion& max, bool shortestPath);
-		Rect getSpriteInitializerValue(std::vector<int>& frames, SpriteComponent& sprite);
-		Rect getSpriteInitializerValue(std::vector<int>& frames, PointsComponent& points);
-		void applyParticleInitializers(size_t idx, ParticleSystemComponent& particles, InstancedMeshComponent& instmesh, SpriteComponent* sprite, Transform* targetTransform);
-		void applyParticleInitializers(size_t idx, ParticleSystemComponent& particles, PointsComponent& points, Transform* targetTransform);
-
-		float getTimeFromParticleTime(float& time, float& fromTime, float& toTime);
-		bool getParticleModifierValue(float& particleTime, float& fromTime, float& toTime, Ease& function, float& value);
-		float getFloatModifierValue(float& value, float& fromValue, float& toValue);
-		Vector3 getVector3ModifierValue(float& value, Vector3& fromValue, Vector3& toValue);
-		Quaternion getQuaternionModifierValue(float& value, Quaternion& fromValue, Quaternion& toValue, bool shortestPath);
-		Rect getSpriteModifierValue(float& value, std::vector<int>& frames, SpriteComponent& sprite);
-		Rect getSpriteModifierValue(float& value, std::vector<int>& frames, PointsComponent& points);
-		void applyParticleModifiers(size_t idx, ParticleSystemComponent& particles, InstancedMeshComponent& instmesh, SpriteComponent* sprite, Transform* targetTransform);
-		void applyParticleModifiers(size_t idx, ParticleSystemComponent& particles, PointsComponent& points, Transform* targetTransform);
-		void advanceParticle(size_t idx, float dt, ParticleSystemComponent& particles, InstancedMeshComponent& instmesh, SpriteComponent* sprite, Transform* targetTransform);
-		void advanceParticle(size_t idx, float dt, ParticleSystemComponent& particles, PointsComponent& points, Transform* targetTransform);
-
-		void particleActionStart(ParticleSystemComponent& particles, InstancedMeshComponent& instmesh, MeshComponent& mesh);
-		void particleActionStart(ParticleSystemComponent& particles, PointsComponent& points);
-		void particlesActionUpdate(double dt, Entity entity, Entity target, ActionComponent& action, ParticleSystemComponent& particles, InstancedMeshComponent& instmesh);
-		void particlesActionUpdate(double dt, Entity entity, Entity target, ActionComponent& action, ParticleSystemComponent& particles, PointsComponent& points);
+		// an action whose target is a particle system and which has no other kind (D1): its
+		// start, stop and pause play, stop and pause the system
+		bool isParticleController(Entity entity, const ActionComponent& action);
+		// an editor preview steps no systems: a running controller advances its particles itself
+		void previewParticleController(double dt, Entity entity, const ActionComponent& action);
 
 		//Keyframe
 		void keyframeUpdate(double dt, ActionComponent& action, KeyframeTracksComponent& keyframe);
@@ -175,7 +130,6 @@ namespace jasperengine{
 		void actionStart(Entity entity, bool newRun = true);
 		void actionStop(Entity entity);
 		void actionPause(Entity entity);
-		void particleActionReset(Entity entity);
 
 		void updateAnimationPreview(double dt, Entity entity);
 		void updateAnimationPreview(double dt, const std::vector<Entity>& entities);

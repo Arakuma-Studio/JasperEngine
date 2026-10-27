@@ -475,6 +475,22 @@ void addLinesPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, co
     if (prop & shaderPropertyBit(2))  defs.push_back({"USE_POST_COLOR", "1"});           // 'Pcl'
 }
 
+// ShaderPool::getParticlesProperties; the effect's modules pick them (the Renderer module, Texture
+// Sheet Animation's frame blending, Custom Data)
+void addParticlesPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
+    if (prop & (1 << 0))  defs.push_back({"HAS_TEXTURE", "1"});              // 'Tex'
+    if (prop & (1 << 1))  defs.push_back({"PARTICLE_MESH", "1"});            // 'Msh'
+    if (prop & (1 << 2))  defs.push_back({"PARTICLE_TRAIL", "1"});           // 'Trl'
+    if (prop & (1 << 3))  defs.push_back({"STRETCH", "1"});                  // 'Str'
+    if (prop & (1 << 4))  defs.push_back({"FRAME_BLEND", "1"});              // 'Fbl'
+    if (prop & (1 << 5))  defs.push_back({"LIT", "1"});                      // 'Lit'
+    if (prop & (1 << 6))  defs.push_back({"SIXWAY", "1"});                   // 'Sxw'
+    if (prop & (1 << 7))  defs.push_back({"CUSTOM_DATA", "1"});              // 'Cus'
+    if (prop & (1 << 8))  defs.push_back({"RECEIVE_SHADOWS", "1"});          // 'Rsh'
+    if (prop & (1 << 9))  defs.push_back({"HAS_FOG", "1"});                  // 'Fog'
+    if (prop & (1 << 10)) defs.push_back({"USE_POST_COLOR", "1"});           // 'Pcl'
+}
+
 // the uber pass's features (RenderSystem::UberFeature)
 void addUberPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
     static const char* const defines[] = {"UBER_FXAA", "UBER_CHROMATIC", "UBER_PIXELATE", "UBER_CRT", "UBER_EDGE", "UBER_GRAIN",
@@ -525,6 +541,10 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
         args.vert_file = "points.vert";
         args.frag_file = "points.frag";
         addPointsPropertyDefinitions(args.defines, properties);
+    }else if (shaderType == ShaderType::PARTICLES){
+        args.vert_file = "particles.vert";
+        args.frag_file = "particles.frag";
+        addParticlesPropertyDefinitions(args.defines, properties);
     }else if (shaderType == ShaderType::LINES){
         args.vert_file = "lines.vert";
         args.frag_file = "lines.frag";
@@ -659,6 +679,15 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
         args.defines.push_back({"MAX_SHADOWCASCADES", std::to_string(MAX_SHADOWCASCADES)});
         args.defines.push_back({"MAX_POINT_SHADOW_LIGHTS", std::to_string(MAX_POINT_SHADOW_LIGHTS)});
         args.defines.push_back({"SHADOW_CUBE_FACES", std::to_string(SHADOW_CUBE_FACES)});
+    }
+    if (shaderType == ShaderType::PARTICLES){
+        // RECEIVE_SHADOWS samples S10's directional cascades (includes/shadow_sampling.glsl)
+        args.defines.push_back({"MAX_SHADOW_ATLAS_SLOTS", std::to_string(MAX_SHADOW_ATLAS_SLOTS)});
+        args.defines.push_back({"MAX_POINT_SHADOW_ATLAS_SLOTS", std::to_string(MAX_POINT_SHADOW_ATLAS_SLOTS)});
+        args.defines.push_back({"MAX_SHADOWCASCADES", std::to_string(MAX_SHADOWCASCADES)});
+        args.defines.push_back({"MAX_POINT_SHADOW_LIGHTS", std::to_string(MAX_POINT_SHADOW_LIGHTS)});
+        args.defines.push_back({"SHADOW_CUBE_FACES", std::to_string(SHADOW_CUBE_FACES)});
+        args.defines.push_back({"MAX_PARTICLE_LIGHTS", std::to_string(MAX_PARTICLE_LIGHTS)});
     }
     if (shaderType == ShaderType::MESH){
         args.defines.push_back({"MAX_LIGHTS", std::to_string(MAX_LIGHTS)}); // legacy u_fs_lighting

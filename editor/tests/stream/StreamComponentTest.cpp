@@ -104,7 +104,14 @@ STABLE(TranslateTracksComponent, TranslateTracksComponent, )
 STABLE(RotateTracksComponent, RotateTracksComponent, )
 STABLE(ScaleTracksComponent, ScaleTracksComponent, )
 STABLE(MorphTracksComponent, MorphTracksComponent, )
-STABLE(ParticleSystemComponent, ParticleSystemComponent, )
+STABLE(ParticleSystemComponent, ParticleSystemComponent,
+    component.playOnAwake = false; component.seed = 42; component.playbackSpeed = 1.5f;
+    component.inlineEffect.duration = 3.0f; component.inlineEffect.noise.present = true;
+    component.inlineEffect.emission.rateOverTime = particles::MinMaxCurve::twoConstants(2.0f, 8.0f);
+    component.exposedValues.push_back({"Intensity", Vector4(2.0f, 0.0f, 0.0f, 0.0f)}))
+STABLE(ForceFieldComponent, ForceFieldComponent,
+    component.shape = ForceFieldShapeType::Box; component.kind = ForceFieldKind::Vortex; component.strength = -3.0f;
+    component.falloff = Curve::linear(1.0f, 0.0f); component.layers = 0x6u)
 STABLE(InstancedMeshComponent, InstancedMeshComponent, )
 STABLE(PointsComponent, PointsComponent, )
 STABLE(LineRendererComponent, LineRendererComponent, )
@@ -112,3 +119,12 @@ STABLE(PolygonComponent, PolygonComponent, )
 STABLE(MeshPolygonComponent, MeshPolygonComponent, )
 
 #undef STABLE
+
+// an asset effect: its path and GUID, and the inline effect left as it was
+TEST(StreamComponent, ParticleSystemComponentAssetReEncodesIdentically){
+    ParticleSystemComponent component{};
+    component.effect.set("fx/fire.particles", Guid(1, 2));
+    expectStable<ParticleSystemComponent>(component, [](const ParticleSystemComponent& c){ return Stream::encodeParticleSystemComponent(c); },
+                                          [](const YAML::Node& node){ return Stream::decodeParticleSystemComponent(node); });
+    EXPECT_NO_ENGINE_ERRORS();
+}

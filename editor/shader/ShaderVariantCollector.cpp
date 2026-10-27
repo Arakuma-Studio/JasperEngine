@@ -21,6 +21,8 @@
 #include "component/ModelComponent.h"
 #include "util/FbxImporter.h"
 #include "component/ParticleSystemComponent.h"
+#include "particles/ParticleCompiler.h"
+#include "subsystem/ParticleSubsystem.h"
 #include "component/PointsComponent.h"
 #include "component/ReflectionProbeComponent.h"
 #include "component/ShadowCaster2DComponent.h"
@@ -155,6 +157,14 @@ namespace {
             if (const PointsComponent* points = registry->findComponent<PointsComponent>(entity)){
                 if (readsSceneDepth(points->customShader.empty() ? scenePointsShader : points->customShader.path, points->shaderFeatures)){
                     facts |= FACT_SCENE_DEPTH;
+                }
+            }
+            // a particle system's soft particles (library:particles SOFT)
+            if (const ParticleSystemComponent* particles = registry->findComponent<ParticleSystemComponent>(entity)){
+                if (const particles::ParticleEffectDocument* effect = ParticleSubsystem::getDocument(*particles)){
+                    if (readsSceneDepth(effect->renderer.shader, effect->renderer.shaderFeatures)){
+                        facts |= FACT_SCENE_DEPTH;
+                    }
                 }
             }
         }
@@ -480,9 +490,11 @@ namespace {
                     for (const auto& variant : ShaderPool::getHtmlUIVariants())
                         insertKeys(variant.first, variant.second, 0);
                 }
-                const PointsComponent* points = registry->findComponent<PointsComponent>(entity);
-                if (points || registry->findComponent<ParticleSystemComponent>(entity)){
+                if (const PointsComponent* points = registry->findComponent<PointsComponent>(entity)){
                     collectPoints(points);
+                }
+                if (const ParticleSystemComponent* particles = registry->findComponent<ParticleSystemComponent>(entity)){
+                    collectParticles(*particles);
                 }
                 if (const LineRendererComponent* lines = registry->findComponent<LineRendererComponent>(entity)){
                     insertKeys(ShaderType::LINES, ShaderPool::getLinesProperties(false, true), shaderId(lines->customShader, ShaderType::LINES, lines->shaderFeatures, lines->blendMode));
@@ -718,6 +730,24 @@ namespace {
             insertKeys(ShaderType::UI, ShaderPool::getUIProperties(false, false, false, true), id);
             insertKeys(ShaderType::UI, ShaderPool::getUIProperties(true, false, false, true), id);
             insertKeys(ShaderType::UI, ShaderPool::getUIProperties(false, true, false, false), id);
+        }
+
+        // what RenderSystem::loadParticles draws with: the effect's quads, meshes and trails,
+        // with and without the scene fog
+        void collectParticles(const ParticleSystemComponent& particles){
+            const particles::ParticleEffectDocument* document = ParticleSubsystem::getDocument(particles);
+            if (!document)
+                return;
+            const std::shared_ptr<particles::CompiledEffect> effect = particles::ParticleCompiler::compile(*document);
+            if (!effect->valid)
+                return;
+            for (bool fog : {false, true}){
+                const RenderSystem::ParticleVariantSet set = RenderSystem::getParticleVariants(*effect, fog);
+                const uint16_t id = set.reference.empty() ? 0 : ShaderPool::registerCustomShader(set.reference);
+                if (set.quads) insertKeys(ShaderType::PARTICLES, set.quadProperties, id);
+                if (set.meshes) insertKeys(ShaderType::PARTICLES, set.meshProperties, id);
+                if (set.trails) insertKeys(ShaderType::PARTICLES, set.trailProperties, id);
+            }
         }
 
         // Likewise for points, with or without a texture and texture rects (RenderSystem::loadPoints)
