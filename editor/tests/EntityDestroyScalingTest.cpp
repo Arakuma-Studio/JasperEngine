@@ -195,7 +195,7 @@ TEST(EntityDestroyScaling, Profile) {
 namespace {
 
     // A ComponentArray and the plain vector it must read as
-    struct Mirror {
+    struct PackedMirror {
         ComponentArray<int> array;
         std::vector<Entity> order;
         std::vector<int> values;
@@ -246,7 +246,7 @@ namespace {
 }
 
 TEST(ComponentArrayHoles, RemovalsFromTheMiddleReadAsShiftedOnes) {
-    Mirror m;
+    PackedMirror m;
     for (Entity e = 1; e <= 10; e++) m.insert(e, int(e) * 10);
     m.remove(3);
     m.remove(4);
@@ -259,7 +259,7 @@ TEST(ComponentArrayHoles, RemovalsFromTheMiddleReadAsShiftedOnes) {
 }
 
 TEST(ComponentArrayHoles, RemovingTheLastPopsItAndTheHolesBeforeIt) {
-    Mirror m;
+    PackedMirror m;
     for (Entity e = 1; e <= 6; e++) m.insert(e, int(e));
     m.remove(4);
     m.remove(5);
@@ -291,7 +291,7 @@ TEST(ComponentArrayHoles, ForEachAfterSkipsRunsOfHolesAndStopsWhenAsked) {
 }
 
 TEST(ComponentArrayHoles, MovesSortsAndBatchesSeeThePackedArray) {
-    Mirror m;
+    PackedMirror m;
     for (Entity e = 1; e <= 12; e++) m.insert(e, int(e));
     m.remove(2);
     m.remove(5);
@@ -326,7 +326,7 @@ TEST(ComponentArrayHoles, MovesSortsAndBatchesSeeThePackedArray) {
 
 TEST(ComponentArrayHoles, RandomOperationsMatchAPlainVector) {
     std::mt19937 random(1234);
-    Mirror m;
+    PackedMirror m;
     Entity next = 1;
     for (int step = 0; step < 4000; step++) {
         const int op = random() % 10;
