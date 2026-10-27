@@ -617,3 +617,23 @@ alternative, recorded here).
     level with its 4 KB window took 30.7 s for the 2048² λ1 cook on the benchmark server; this
     takes 9.57 s, for 0.4 dB less PSNR (47.2 dB, floor 39) and smaller files after Zstandard
     (4.62 bpt corpus, 5.72 bpt normal maps).
+23. **R21 sizes.** Measured on the linked Release game, not object files (which count every
+    inline copy): `tools/textures/runtime_size.py --binary` sums the symbols of Zstandard's
+    decoder, bcdec and the KTX2 reader: **97.3 KB** (≤ 120) once the decoder is built with
+    upstream's size options and the KTX2 writer is a file of its own no game links. The web is
+    measured from the wasm-ld link map (`--wasm-map`): Zstandard 43 KB, the texture runtime 61 KB
+    and the Basis Universal transcoder **718 KB** at `-Os` (922 KB at `-O3`), **823 KB** in all
+    against R21's 250 KB. v2.50's transcoder keeps XUASTC (deviation 12: its BC7 decoder does not
+    compile without it: about 330 KB at `-O3` with the fast BC7 packers it brings) and the ETC1S →
+    BC1, BC7 and ASTC tables (240 KB of read-only data, 120 KB of it the BC1 path desktop browsers
+    take). The check holds the measured 850 KB so the size
+    cannot grow unnoticed; meeting 250 KB needs a transcoder without XUASTC (an upstream change)
+    and the ETC1S → BC7 / ASTC paths dropped from D5's lists (follow-up).
+24. **R19 on the web.** The 2048² UASTC → BC7 / ASTC transcode times in desktop Chrome and on a
+    Pixel 6a were not measured: the benchmark server has no browser timing harness and no
+    device; the web gate checks the transcode and the drawing (WebGL2 in headless Chrome), and the
+    loader's main-thread cap of one level per frame is in BasisTranscode / TextureDataPool.
+25. **Android gate.** The emulator's SwiftShader GLES3 has no ASTC: the texture-formats project
+    ships `android_etc2` (an export with the ETC2 fallback), which the runtime picks there (`This
+    GPU has no ASTC: loading the android_etc2 textures`). Devices with ASTC take `mobile`, as the
+    store filter of the manifest guarantees.

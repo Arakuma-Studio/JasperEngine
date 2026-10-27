@@ -211,6 +211,12 @@ Times (R19, R20):
 | cold 2048² cook, web UASTC λ1 | 9.57 s | 12 s |
 | warm cook (cache hits) of 200 textures | 0.01 s | 10 s |
 
+Sizes (R21, `tools/textures/runtime_size.py`): a linked Release game carries 97.3 KB of Zstandard's
+decoder (73.5), bcdec (9.8) and the KTX2 reader (14.0), budget 120 KB, and 35.8 KB more of CPU
+decodes, fallback plans and the cooked index. The web build adds 823 KB (Basis Universal's
+transcoder 718 KB at `-Os`, Zstandard 43 KB, the texture runtime 61 KB) against R21's 250 KB: spec
+deviation 23.
+
 ## Libraries
 
 Zstandard 1.5.7 (decoder in every game, encoder in the editor), bcdec, Basis Universal 2.50 (the

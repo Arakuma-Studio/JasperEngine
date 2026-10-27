@@ -11,7 +11,7 @@ stripping keeps) that are Zstandard's decoder, bcdec and the KTX2 reader, R21's 
 of the texture runtime (CPU decodes, fallback plans, the cooked index, the Basis wrapper) is
 listed apart. Run it on build/linux/engine/jasperengine-project after tools/build.sh linux.
 
-Wasm (budget 250 KB): from the link map of a web Release build (relink it with
+Wasm (R21: 250 KB; checked against 850 KB, spec S14 deviation 23): from the link map of a web Release build (relink it with
 -DCMAKE_EXE_LINKER_FLAGS=-Wl,--Map=FILE), the code and initialised data the link kept of the Basis
 Universal transcoder, Zstandard's decoder and the texture runtime (bcdec included).
 """
@@ -72,7 +72,9 @@ def wasm(link_map):
             groups["zstd_decoder"] += size
         elif WASM_RUNTIME.search(obj) or "bcdec" in obj:
             groups["texture_runtime"] += size
-    return groups, sum(groups.values()), 250 * 1024
+    # R21 asks 250 KB; Basis Universal 2.50's transcoder alone is 718 KB at -Os (spec S14 deviation
+    # 23): the ceiling is the measured size, so a growth fails while the gap stays recorded
+    return groups, sum(groups.values()), 850 * 1024
 
 
 def main():
