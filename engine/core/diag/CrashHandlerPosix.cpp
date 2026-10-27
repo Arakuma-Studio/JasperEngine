@@ -19,7 +19,13 @@
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <time.h>
+#if defined(__APPLE__)
+// Only the signal context types are needed; Darwin's ucontext.h exposes
+// unsupported context-switch routines and refuses builds without _XOPEN_SOURCE.
+#include <sys/ucontext.h>
+#else
 #include <ucontext.h>
+#endif
 #include <unistd.h>
 #include <cstdlib>
 #include <cstring>
