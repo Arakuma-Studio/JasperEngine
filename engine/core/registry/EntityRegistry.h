@@ -382,6 +382,11 @@ namespace jasperengine {
             if (structuralLocked("removeComponent")){
                 return;
             }
+            if (!componentManager.findComponent<T>(entity)){
+                // the removal hooks read the component: none to remove is an error, not a crash
+                Log::error("Removing non-existent component: entity %u", entity);
+                return;
+            }
             // the record (signature) and the component load together, while the hooks run
             entityManager.prefetch(entity);
             componentManager.getComponentArray<T>()->prefetchEntity(entity);

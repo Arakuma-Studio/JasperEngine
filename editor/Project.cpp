@@ -1721,6 +1721,7 @@ void editor::Project::openAssetDatabase() {
     if (relativeAssets == ".") {
         relativeAssets.clear();
     }
+    assetDatabase.setReadOnly(readOnlyAssets);
     assetDatabase.open(projectPath, relativeAssets);
     // the dependency index builds in the background; documents with unsaved edits answer from memory
     assetIndex.setOverlayProvider([this](std::unordered_map<Guid, std::vector<DepEdge>>& edges) {
@@ -1728,6 +1729,19 @@ void editor::Project::openAssetDatabase() {
     });
     assetIndex.open(&assetDatabase, projectPath, getAssetRoots());
     AssetMap::setResolver(&assetResolver);
+    // S25: the labels are read again (the assets may have moved roots), the search index
+    // follows, and this user's organisation file belongs to the project's root
+    assetLabels.open(this);
+    assetSearchIndex.attach(this);
+    if (!organisation.isOpen() || organisation.projectRoot() != projectPath) {
+        organisation.open(projectPath);
+    }
+}
+
+editor::AssetSearchIndex& editor::Project::getAssetSearchIndex() {
+    assetLabels.update();
+    assetSearchIndex.refresh();
+    return assetSearchIndex;
 }
 
 std::filesystem::path editor::Project::getAssetsPath() const{
@@ -4663,6 +4677,10 @@ void editor::Project::resetEngineConfigs(bool executeViewChanged) {
     }
 }
 
+void editor::Project::releaseScenes() {
+    resetConfigs();
+}
+
 void editor::Project::resetConfigs() {
     // Prefab Mode ends with the project (what it had unsaved was offered for saving before)
     while (!prefabStages.empty()) {
@@ -4748,6 +4766,9 @@ void editor::Project::resetConfigs() {
     projectPath.clear();
     AssetMap::setResolver(nullptr);
     waitForAssetScan();
+    assetSearchIndex.detach();
+    assetLabels.close();
+    organisation.close();
     assetIndex.close();
     assetDatabase.close();
     pendingAssetChanges.clear();

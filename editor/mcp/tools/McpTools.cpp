@@ -52,6 +52,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerScriptingTools, "Scripting: hot reload, script status, editor menus, expressions", "scripting"},   // S23
     {registerGraphTools, "Graphs", "scripting"},   // S23
     {registerGameplayTools, "Gameplay: input, character controller, water", "gameplay"},   // S22
+    {registerOrganisationTools, "Search, shortcuts, layouts, labels, saved searches and bookmarks", "organisation"},   // S25
 };
 
 // JASPER_MCP_SELFTEST_GROUP: one tool in the test-only group "selftest", for the tests of

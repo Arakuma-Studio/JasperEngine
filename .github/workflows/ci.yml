@@ -83,6 +83,12 @@ jobs:
           python3 tools/ci/test_gtest_gate.py
           python3 tools/ci/test_check_notices.py
 
+      # editor keys are bound in the command catalog, not polled by hand (S25 R4, AC3)
+      - name: Hard-coded editor shortcuts
+        run: |
+          python3 tools/ci/check-hardcoded-shortcuts.py --self-test
+          python3 tools/ci/check-hardcoded-shortcuts.py
+
       # AGENTS.md, CLAUDE.md and .claude/rules name paths and build targets that exist (S31 R27)
       - name: Contributor docs for agents
         run: python3 tools/check_agent_docs.py
@@ -259,6 +265,9 @@ jobs:
 
       - name: Smoke test (export, build, run; OpenGL)
         run: tools/smoke-test.sh tools/fixtures/post-processing
+
+      - name: Smoke test of the ECS collision fixture (an exported game changing its ECS in contact callbacks)
+        run: SMOKE_DIR=build/smoke-ecs-collision tools/smoke-test.sh tools/fixtures/ecs-collision
 
       - uses: actions/upload-artifact@v4
         if: always()

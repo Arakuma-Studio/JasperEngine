@@ -16,6 +16,7 @@
 #include "util/ProjectChecks.h"
 
 #include "imgui.h"
+#include "imgui_internal.h"
 
 #include <algorithm>
 #include <cctype>
@@ -290,7 +291,15 @@ void InputActionsWindow::show(){
         ImGui::Separator();
         ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.3f, 1.0f), "%s", status.c_str());
     }
+    deleteRequested = false;   // nothing the pane it was for could delete
     ImGui::End();
+}
+
+bool InputActionsWindow::canDelete() const{
+    if (!focused) return false;
+    if (lastPane == 1) return !selectedMap.empty() && renamingMap.empty();
+    if (lastPane == 2) return renamingAction.empty() && (!selectedBinding.empty() || !selectedAction.empty());
+    return false;
 }
 
 void InputActionsWindow::drawToolbar(){
@@ -412,8 +421,9 @@ void InputActionsWindow::drawMaps(){
         remove["map"] = pendingDelete;
         commit(remove);
     }
-    if (focused && !selectedMap.empty() && selectedAction.empty() && selectedBinding.empty() && renamingMap.empty() &&
-        ImGui::IsWindowFocused() && ImGui::IsKeyPressed(ImGuiKey_Delete, false)){
+    if (ImGui::IsWindowFocused()) lastPane = 1;
+    if (deleteRequested && lastPane == 1 && !selectedMap.empty() && renamingMap.empty()){
+        deleteRequested = false;
         InputJson remove = op("remove");
         remove["map"] = selectedMap;
         commit(remove);
@@ -616,7 +626,9 @@ void InputActionsWindow::drawActions(){
         }
         ImGui::PopID();
     }
-    if (focused && ImGui::IsWindowFocused() && ImGui::IsKeyPressed(ImGuiKey_Delete, false) && renamingAction.empty()){
+    if (ImGui::IsWindowFocused()) lastPane = 2;
+    if (deleteRequested && lastPane == 2 && renamingAction.empty()){
+        deleteRequested = false;
         if (!selectedBinding.empty()){
             pending = op("remove");
             pending["binding"] = selectedBinding;
@@ -849,10 +861,14 @@ void InputActionsWindow::updateListen(){
         listeningBinding.clear();
         return;
     }
+    // Listen takes the next key for the game's binding, not an editor shortcut
     for (int key = ImGuiKey_NamedKey_BEGIN; key < ImGuiKey_NamedKey_END; key++){
-        if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(key), false)){
+        if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(key), false)){   // shortcut-lint: allow Listen captures any key for a game binding
             const int engineKey = engineKeyOf(static_cast<ImGuiKey>(key));
             if (engineKey != D_KEY_UNKNOWN){
+                // the key is the binding's: no editor command sees it while it is held
+                ImGui::SetKeyOwner(static_cast<ImGuiKey>(key), ImGui::GetID("##InputActionsListen"),
+                                   ImGuiInputFlags_LockThisFrame | ImGuiInputFlags_LockUntilRelease);
                 finishListen(InputControlPath{InputControlKind::KEY, engineKey}.toString());
                 return;
             }

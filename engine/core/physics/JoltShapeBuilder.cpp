@@ -2,6 +2,8 @@
 
 #include "JoltShapeBuilder.h"
 
+#include "Log.h"
+
 #include "Scene.h"
 #include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
@@ -30,7 +32,9 @@
 #include <cmath>
 #include <limits>
 #include <map>
+#include <mutex>
 #include <set>
+#include <string>
 
 using namespace jasperengine;
 
@@ -285,6 +289,20 @@ bool JoltShapeBuilder::isGeometryLoading(Scene* scene, Entity entity){
 void JoltShapeBuilder::ensureJoltGlobalInit(){
     static const bool done = [](){
         JPH::RegisterDefaultAllocator();
+#ifdef JPH_ENABLE_ASSERTS
+        // Jolt's default handler breaks into a debugger (a trap that ends the process without one).
+        // Its asserts include conditions it then reports and survives, such as an update whose
+        // contact buffer filled (EPhysicsUpdateError, which the engine reports itself): logged,
+        // once per place, and the step goes on
+        JPH::AssertFailed = [](const char* expression, const char* message, const char* file, JPH::uint line) -> bool {
+            static std::mutex mutex;
+            static std::set<std::string>* seen = new std::set<std::string>();
+            std::lock_guard<std::mutex> lock(mutex);
+            if (seen->insert(std::string(file) + ":" + std::to_string(line)).second)
+                Log::warn("Jolt assertion: %s%s%s (%s:%u)", expression, message ? ": " : "", message ? message : "", file, (unsigned int)line);
+            return false;
+        };
+#endif
         JPH::Factory::sInstance = new JPH::Factory();
         JPH::RegisterTypes();
         return true;

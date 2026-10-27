@@ -22,6 +22,9 @@ namespace jasperengine::editor {
 
         // UI state
         char m_projectNameBuffer[256] = {0};
+        // Editor > Asset Labels: the label being renamed, its new name
+        std::string m_renamingLabel;
+        char m_labelNameBuffer[64] = {0};
         std::string m_projectNameOriginal;
         int m_canvasWidth = 0;
         int m_canvasHeight = 0;
@@ -151,6 +154,7 @@ namespace jasperengine::editor {
         // First Tags and Layers problem that blocks OK, "" when there is none
         std::string tagsAndLayersError() const;
         void drawEditorSettings();
+        void drawAssetLabelsSettings();
         Texture* findThumbnail(const std::string& path);
 
         // Player's per-platform tabs; each platform draws rows into the table its tab opens.

@@ -30,6 +30,12 @@ namespace jasperengine::editor {
         void setOpen(bool open);
         bool isOpen() const { return windowOpen; }
         bool isFocused() const { return focused; }
+        // Edit > Delete (the catalog's edit.delete) while the window has focus: removes the
+        // map, action or binding selected in the pane last focused, on the next frame
+        bool canDelete() const;
+        void requestDelete() { deleteRequested = true; }
+        // Listen waits for a control: the editor's shortcuts stay quiet (App::shortcutState)
+        bool isListening() const { return !listeningBinding.empty(); }
 
         // opens the asset (an absolute path) and the window
         void openFile(const std::filesystem::path& file);
@@ -42,6 +48,8 @@ namespace jasperengine::editor {
         bool windowOpen = false;
         bool focusRequested = false;
         bool focused = false;
+        bool deleteRequested = false;
+        int lastPane = 0;                    // 1 the maps, 2 the actions and bindings
 
         std::filesystem::path file;
         std::string text;                    // the file as last read
