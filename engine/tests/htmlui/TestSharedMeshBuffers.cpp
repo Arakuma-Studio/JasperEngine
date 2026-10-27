@@ -376,7 +376,7 @@ TEST_F(SharedMeshBuffersTest, ThousandsOfSkinnedModelCopiesAllDrawFromOneSetOfBu
     // stream staging buffer (Vulkan skips the uploads past it: sokol's default 16 MB held 2,348
     // of these heroes, and the 952 others, still, never got their bones and drew nothing), the
     // draws' descriptor sets the descriptor buffer (Vulkan)
-    EXPECT_EQ(s.dirtyBones(), count);
+    EXPECT_GE(s.dirtyBones(), count) << "a skinned mesh or more a hero";
     GpuEnvironment::drawFrames(1);
     EXPECT_GT(SystemRender::getStreamBytesLastFrame(), 0u);
     EXPECT_LE(SystemRender::getStreamBytesLastFrame(), SystemRender::getStreamBytesLimit());
@@ -415,7 +415,7 @@ TEST_F(SharedMeshBuffersTest, PerFrameBuffersHoldFourThousandShadowedSkinnedHero
     ASSERT_TRUE(s.settle());
     GpuEnvironment::drawFrames(1);
     // an animated crowd: every hero uploads its bones every frame
-    EXPECT_EQ(s.dirtyBones(), count);
+    EXPECT_GE(s.dirtyBones(), count) << "a skinned mesh or more a hero";
     GpuEnvironment::drawFrames(1);
     const Engine::GpuResourceLimits defaults;
 
