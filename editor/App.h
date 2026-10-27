@@ -10,6 +10,9 @@
 #include "PlatformMenu.h"
 #include "Project.h"
 #include "command/UndoTimeline.h"
+#include "layout/LayoutManager.h"
+#include "shortcuts/CommandCatalog.h"
+#include "shortcuts/ShortcutDispatcher.h"
 
 #include "window/InspectorWindow.h"
 #include "window/HierarchyWindow.h"
@@ -69,6 +72,9 @@ namespace jasperengine::editor{
     class FrameDebuggerWindow;
     class UndoHistoryWindow;
     class PlayModeChangesWindow;
+    class SearchPalette;
+    class ShortcutsWindow;
+    class BookmarksWindow;
 
     // A dialog waiting for an answer, as MCP reports it to agents (App::getOpenDialog)
     struct EditorDialogInfo {
@@ -221,6 +227,11 @@ namespace jasperengine::editor{
         FrameDebuggerWindow* frameDebuggerWindow;
         UndoHistoryWindow* undoHistoryWindow;
         PlayModeChangesWindow* playModeChangesWindow;
+        // S25: Edit > Search All..., Edit > Shortcuts... (and Help > Keyboard Shortcuts),
+        // Window > General > Bookmarks
+        SearchPalette* searchPalette;
+        ShortcutsWindow* shortcutsWindow;
+        BookmarksWindow* bookmarksWindow;
         PlayInput* playInput;
         GameWindow* gameWindow;
         MainToolbar* mainToolbar;
@@ -241,8 +252,6 @@ namespace jasperengine::editor{
         bool tabsOrderDirty = false;
         double tabsOrderChangeTime = 0.0;
 
-        // Backing buffer for ImGui's io.IniFilename (must outlive ImGui).
-        std::string layoutIniPath;
 
         // Scale the persisted dock layout was written at, and whether the
         // restored layout has been matched to the current one.
@@ -307,6 +316,25 @@ namespace jasperengine::editor{
         void selectAll();
         void copySelection(bool cut);
         void pasteSelection(bool asChild);
+
+        // S25: the command catalog's actions (AppCommands.cpp), the one key dispatcher and the
+        // editor scripts' menu items as commands
+        ShortcutDispatcher shortcutDispatcher{CommandCatalog::editor()};
+        uint64_t scriptCommandsRevision = 0;
+        PlatformMenuModel lastMenuModel;
+        void registerCommands();
+        void syncScriptCommands();
+        ShortcutState shortcutState() const;
+        void processShortcuts();
+        void recordMenuItems(const PlatformMenuModel& menu);
+        // Window > Layouts (also the toolbar's Layout menu)
+        LayoutManager layouts;
+        std::vector<PlatformMenuItem> layoutMenuItems();
+        void setupLayouts();
+        // Default: Unity's layout, its panels open (what Reset Layout always did)
+        void applyDefaultLayout();
+        std::map<std::string, bool> panelStates() const;
+        void applyPanelStates(const std::map<std::string, bool>& panels);
 
         PlatformMenuModel buildMenuModel();
         // The project's editor-script menu items (EditorScripts) in the main menu
@@ -374,6 +402,24 @@ namespace jasperengine::editor{
         void setup();
 
         void show();
+
+        // Between frames, before NewFrame (every backend loop): a project change, then a layout
+        void beforeFrame();
+        // The catalog's menu items of Window > Layouts, in an open ImGui menu (MainToolbar)
+        void drawLayoutsMenu();
+        LayoutManager& getLayouts() { return layouts; }
+        ShortcutDispatcher& getShortcutDispatcher() { return shortcutDispatcher; }
+        SearchPalette* getSearchPalette() const { return searchPalette; }
+        ShortcutsWindow* getShortcutsWindow() const { return shortcutsWindow; }
+        BookmarksWindow* getBookmarksWindow() const { return bookmarksWindow; }
+        // Runs a main-menu command as a menu click would (the palette, run_command)
+        void runMenuCommand(const PlatformMenuCommand& command) { executeMenuCommand(command); }
+        // The main menu as it is now (the palette's commands, run_command's checks)
+        PlatformMenuModel currentMenuModel() { return buildMenuModel(); }
+        // The panels by window name, open or not (editor_status, the layouts)
+        std::map<std::string, bool> openPanels() const { return panelStates(); }
+        // The window with the keyboard focus (its root's ImGui name), "" when none
+        std::string focusedWindowName() const;
 
         void engineInit(int argc, char** argv);
         void engineViewLoaded();
@@ -504,6 +550,8 @@ namespace jasperengine::editor{
         AssetReferencesWindow* getAssetReferencesWindow() const { return assetReferencesWindow; }
         // Preferences (Edit > Preferences), for the MCP focus_window tool
         EditorSettingsWindow& getEditorSettingsWindow() { return editorSettingsWindow; }
+        // Project Settings (the Search palette's settings rows open it at their page)
+        ProjectSettingsWindow& getProjectSettingsWindow() { return projectSettingsWindow; }
         // Preferences on one of its pages ("Lattice" from the Scene view's lattice menu)
         void openPreferences(const std::string& category);
         PlayInput* getPlayInput() const;

@@ -4,43 +4,22 @@
 #pragma once
 
 // Unity-style settings layout shared by Preferences and Project Settings: a
-// searchable category list on the left, a bold category title over the page.
+// searchable page list on the left, a bold page title over the page.
 
 #include "Theme.h"
 #include "imgui.h"
+#include "search/SearchScorer.h"
+#include "settings/SettingsRegistry.h"
+#include "settings/SettingsSearch.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <string>
+#include <vector>
 
 namespace jasperengine::editor::settingsui {
-
-    struct Category {
-        const char* name;
-        const char* icon;
-        // Setting labels on the page, so the search finds a category by its contents.
-        const char* keywords;
-    };
-
-    inline bool containsNoCase(const char* haystack, const char* needle) {
-        if (!needle || !*needle) return true;
-        if (!haystack) return false;
-        const size_t needleLen = std::strlen(needle);
-        for (const char* h = haystack; *h; ++h) {
-            size_t i = 0;
-            while (i < needleLen && h[i] &&
-                   std::tolower(static_cast<unsigned char>(h[i])) == std::tolower(static_cast<unsigned char>(needle[i]))) {
-                ++i;
-            }
-            if (i == needleLen) return true;
-        }
-        return false;
-    }
-
-    inline bool categoryMatches(const Category& category, const char* search) {
-        return containsNoCase(category.name, search) || containsNoCase(category.keywords, search);
-    }
 
     // Text drawn twice, one pixel apart: the editor ships no bold face.
     inline void boldText(const char* text, float scale = 1.0f) {
@@ -60,20 +39,26 @@ namespace jasperengine::editor::settingsui {
         ImGui::Spacing();
     }
 
-    // Search field over the category list. Keeps `selected` on a visible category
+    // Search field over the page list (the settings registry's pages of a scope, S25 R29-R30):
+    // the search finds pages by their rows (label, keywords, key), and the page draws only the
+    // rows that match. Keeps `selected` (an index into the scope's pages) on a visible page
     // while a search is active.
-    inline void categoryList(const char* id, const Category* categories, int count, int& selected,
-                             char* search, size_t searchSize, ImVec2 size) {
+    inline void pageList(const char* id, SettingsScope scope, int& selected, char* search, size_t searchSize, ImVec2 size) {
         ImGui::BeginGroup();
         ImGui::PushID(id);
 
         ImGui::SetNextItemWidth(size.x);
         ImGui::InputTextWithHint("##search", "Search", search, searchSize);
+        ImGui::SetItemTooltip("Finds settings by name: the pages that have one, then only its rows");
 
-        bool selectedVisible = selected >= 0 && selected < count && categoryMatches(categories[selected], search);
+        const SettingsRegistry& registry = SettingsRegistry::get();
+        const std::vector<const SettingsPage*> pages = registry.pages(scope);
+        const std::string query = jasperengine::editor::search::normalize(search);
+        const int count = static_cast<int>(pages.size());
+        bool selectedVisible = selected >= 0 && selected < count && registry.pageMatches(*pages[selected], query);
         if (!selectedVisible) {
             for (int i = 0; i < count; i++) {
-                if (categoryMatches(categories[i], search)) {
+                if (registry.pageMatches(*pages[i], query)) {
                     selected = i;
                     break;
                 }
@@ -86,16 +71,10 @@ namespace jasperengine::editor::settingsui {
         if (ImGui::BeginChild("##categories", ImVec2(size.x, listHeight), ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding)) {
             bool any = false;
             for (int i = 0; i < count; i++) {
-                if (!categoryMatches(categories[i], search)) continue;
+                if (!registry.pageMatches(*pages[i], query)) continue;
                 any = true;
                 ImGui::PushID(i);
-                char label[128];
-                if (categories[i].icon && *categories[i].icon) {
-                    std::snprintf(label, sizeof(label), "%s  %s", categories[i].icon, categories[i].name);
-                } else {
-                    std::snprintf(label, sizeof(label), "%s", categories[i].name);
-                }
-                if (ImGui::Selectable(label, selected == i)) {
+                if (ImGui::Selectable(pages[i]->displayName().c_str(), selected == i)) {
                     selected = i;
                 }
                 ImGui::PopID();
@@ -108,6 +87,19 @@ namespace jasperengine::editor::settingsui {
 
         ImGui::PopID();
         ImGui::EndGroup();
+    }
+
+    // The scope's page at an index, and the index of a page name (-1 when none)
+    inline const SettingsPage* pageAt(SettingsScope scope, int index) {
+        const std::vector<const SettingsPage*> pages = SettingsRegistry::get().pages(scope);
+        return index >= 0 && index < static_cast<int>(pages.size()) ? pages[index] : nullptr;
+    }
+    inline int pageIndex(SettingsScope scope, const std::string& name) {
+        const std::vector<const SettingsPage*> pages = SettingsRegistry::get().pages(scope);
+        for (int i = 0; i < static_cast<int>(pages.size()); i++) {
+            if (pages[i]->name == name || pages[i]->displayName() == name) return i;
+        }
+        return -1;
     }
 
 }
