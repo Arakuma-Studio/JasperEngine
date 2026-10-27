@@ -1041,6 +1041,7 @@ set(JASPERENGINE_SRCS
     core/physics/PlacementWorld.cpp
     core/render/BufferRender.cpp
     core/render/CameraRender.cpp
+    core/render/CpuSkin.cpp
     core/render/FramebufferRender.cpp
     core/render/ObjectRender.cpp
     core/render/ShaderRender.cpp
