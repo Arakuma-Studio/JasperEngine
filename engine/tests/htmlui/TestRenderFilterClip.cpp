@@ -3,12 +3,13 @@
 
 // A filtered element inside a rounded overflow clip. The clip is a stencil clip mask in the
 // depth-stencil every layer shares (layer 0's); the filtered element draws into a pushed layer
-// and is composited into layer 0 through that mask. When the filtered element was the clip's
-// only content, layer 1 was the frame's first pass: the mask went into the shared stencil there,
-// then layer 0's first pass (the composite) cleared its colour and the shared depth-stencil,
-// mask and all, and the composite tested an empty stencil: nothing was drawn. A sibling drawn
-// before it bound layer 0 first, and an empty mask was cleared instead. The shared depth-stencil
-// is now cleared by the frame's first layer pass, whichever layer it is.
+// and is composited into layer 0 through that mask. When the filtered element was the first
+// thing drawn under the clip (its only child, or the first of several), the mask went into the
+// shared stencil in the pushed layer's pass, the frame's first; then layer 0's first pass (the
+// composite) cleared its colour and the shared depth-stencil, mask and all: the composite, and
+// every sibling drawn after it through the same mask, tested an empty stencil and drew nothing.
+// A sibling drawn before it bound layer 0 first, and the stencil was cleared before the mask.
+// The shared depth-stencil is now cleared by the frame's first layer pass, whichever layer it is.
 
 #include "TestRenderCommon.h"
 
@@ -149,21 +150,48 @@ TEST(RenderFilterClip, FilteredChildOfRoundedOverflowClip){
     }
 }
 
-// The same clip as the only content of a filtered element nested in a second rounded clip
-// (an intersected clip mask, stencil reference 2), its filter's layer the frame's first pass
-TEST(RenderFilterClip, FilteredChildOfNestedRoundedClips){
+// The frame that creates the filter's layer and post-process targets (layer 1 the frame's first
+// pass) draws what the next frames draw, no pass begun inside another; the rounded clip inside a
+// rectangular overflow clip (a scissor, no clip mask: the rounded mask is still first drawn in
+// layer 1) and inside a second rounded clip (an intersected mask, stencil reference 2; the outer
+// mask goes into layer 0 when the inner box is drawn, before the filter's layer is pushed)
+TEST(RenderFilterClip, FirstFrameAndNestedClips){
     JASPER_REQUIRE_GPU();
-    const char* const rml = R"(<rml><head><style>
+    const std::string head = R"(<rml><head><style>
 body { width: 96px; height: 64px; margin: 0; padding: 0; }
 div { display: block; }
+#rect { position: absolute; left: 8px; top: 8px; width: 60px; height: 48px; overflow: hidden; }
 #outer { position: absolute; left: 4px; top: 4px; width: 68px; height: 56px; border-radius: 12px; overflow: hidden; }
-#clip { position: absolute; left: 4px; top: 4px; width: 60px; height: 48px; border-radius: 16px; overflow: hidden; }
+#clip { position: absolute; left: 0px; top: 0px; width: 60px; height: 48px; border-radius: 16px; overflow: hidden; }
+#outer #clip { left: 4px; top: 4px; }
 .filtered { position: absolute; left: -8px; top: -8px; width: 76px; height: 64px; background-color: #e04020; filter: blur(2px); }
-</style></head><body><div id="outer"><div id="clip"><div class="filtered"/></div></div></body></rml>)";
+</style></head><body>)";
+    const std::string clip = R"(<div id="clip"><div class="filtered"/></div>)";
+    const std::string documents[] = {
+        head + R"(<div id="rect">)" + clip + "</div></body></rml>",
+        head + R"(<div id="outer">)" + clip + "</div></body></rml>",
+    };
     for (int samples : {1, 4}){
-        SCOPED_TRACE(samples);
-        std::vector<uint8_t> rgba;
-        ASSERT_TRUE(renderLayer(rml, samples, rgba));
-        expectClipped(rgba, kFilters[0], Sibling::NONE);
+        for (const std::string& rml : documents){
+            SCOPED_TRACE(std::to_string(samples) + " samples, " + rml.substr(head.size()));
+            const uint64_t nestedBefore = SystemRender::getNestedPassCount();
+            RenderTestContext render(kWidth, kHeight, kWidth, kHeight, samples);
+            ASSERT_TRUE(render.isValid());
+            ASSERT_NE(render.loadFromMemory(rml, "filter-clip"), nullptr);
+
+            bool drawn = false;
+            for (int i = 0; i < 30 && !drawn; i++)
+                drawn = render.renderFrame();
+            ASSERT_TRUE(drawn);
+            std::vector<uint8_t> first;
+            ASSERT_TRUE(render.readLayer(first));
+            expectClipped(first, kFilters[0], Sibling::NONE);
+
+            ASSERT_TRUE(render.renderFrame());
+            std::vector<uint8_t> second;
+            ASSERT_TRUE(render.readLayer(second));
+            EXPECT_EQ(differingPixels(first, second), 0u) << "the frame that created the targets drew differently";
+            EXPECT_EQ(SystemRender::getNestedPassCount(), nestedBefore) << "a render pass began inside another";
+        }
     }
 }
