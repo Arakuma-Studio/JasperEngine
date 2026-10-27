@@ -65,6 +65,8 @@ int toolOrder(const std::string& tool) {
     if (tool == "shader") return 1;
     if (tool == "cpp") return 2;
     if (tool == "ui") return 3;
+    // sprite normal maps after every other tool (texture, anim, vat)
+    if (tool == "normals") return 5;
     return 4;
 }
 

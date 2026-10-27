@@ -258,7 +258,7 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " shaders [options]        Generate shaders.\n"
         << "  " << commandName << " benchmark [options]      Measure scene FPS with vsync off.\n"
         << "  " << commandName << " scene-dump [options]     Dump every scene's GameObjects (developer check).\n"
-        << "  " << commandName << " check [options]          Check Lua scripts, shader forks, C++ scripts, HTML/CSS UI, clips and vertex animations (compiler-style).\n"
+        << "  " << commandName << " check [options]          Check Lua scripts, shader forks, C++ scripts, HTML/CSS UI, clips, vertex animations and normal maps (compiler-style).\n"
         << "  " << commandName << " import-ui [options]      Import the remote resources of HTML UI documents.\n"
         << "  " << commandName << " synthesize-texture [options]  Synthesize a texture (tileable, inpainted, ...) from examples.\n"
         << "  " << commandName << " place-physics [options]  Drop, separate or move GameObjects with edit-time physics.\n"
@@ -1680,6 +1680,7 @@ struct CheckOptions {
     bool textures = false;
     bool anims = false;
     bool vat = false;
+    bool normals = false;
     bool all = false;
     bool filesGiven = false;
     std::vector<std::string> files;
@@ -1709,12 +1710,17 @@ void printCheckUsage(const std::string& commandName) {
         << "      --vat                Vertex Animations (.vat): the format, a source changed or missing since the\n"
         << "                           bake (warnings), a mesh or layout that no longer matches, a payload over its\n"
         << "                           preset's device limit (errors).\n"
-        << "      --all                Lua, shaders, C++, UI, textures, clips and vertex animations.\n"
-        << "                           Default: --lua --shaders --ui --textures --anims --vat.\n"
+        << "      --normals            Sprite normal maps: generated ones whose source changed or went missing, and\n"
+        << "                           normal maps on sprites that don't match their colour texture (size, frames,\n"
+        << "                           filter), look like DirectX or aren't normal maps, or no Light 2D can show\n"
+        << "                           (height 0).\n"
+        << "      --all                Lua, shaders, C++, UI, textures, clips, vertex animations and normal maps.\n"
+        << "                           Default: --lua --shaders --ui --textures --anims --vat --normals.\n"
         << "      --files <paths...>   Only these files (absolute, or relative to the current directory or\n"
         << "                           the project); files outside the project or of other kinds are ignored.\n"
         << "                           A .vat or .vat.glb checks the Vertex Animation; another file checks the\n"
-        << "                           .vat files baked from it.\n"
+        << "                           .vat files baked from it. An image checks the normal map it is (a recipe)\n"
+        << "                           or the normal maps made from it.\n"
         << "      --format <format>    text (default) or json.\n"
         << "  -q, --quiet              No summary line.\n"
         << "      --hook               Agent hook mode: read the hook's JSON on stdin (any tool: Claude Code\n"
@@ -1753,6 +1759,8 @@ bool parseCheckArgs(int argc, char** argv, CheckOptions& options, std::string& e
             options.anims = true;
         } else if (arg == "--vat") {
             options.vat = true;
+        } else if (arg == "--normals") {
+            options.normals = true;
         } else if (arg == "--all") {
             options.all = true;
         } else if (arg == "--files") {
@@ -2359,8 +2367,10 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     bool textures = options.textures || options.all;
     bool anims = options.anims || options.all;
     bool vatAssets = options.vat || options.all;
-    if (!options.lua && !options.shaders && !options.cpp && !options.ui && !options.textures && !options.anims && !options.vat && !options.all) {
-        lua = shaders = ui = textures = anims = vatAssets = true;
+    bool normals = options.normals || options.all;
+    if (!options.lua && !options.shaders && !options.cpp && !options.ui && !options.textures && !options.anims && !options.vat && !options.normals &&
+        !options.all) {
+        lua = shaders = ui = textures = anims = vatAssets = normals = true;
     }
 
     fs::path base = CommandLine::invocationDirectory();
@@ -2392,6 +2402,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     std::vector<fs::path> textureFiles;
     std::vector<fs::path> clipFiles;
     std::vector<fs::path> vatGiven;     // .vat, .vat.glb and the other files (sources of bakes)
+    std::vector<fs::path> normalFiles;  // images: generated normal maps, or sources of some
     bool cppFiles = false;
     std::vector<std::string> checkedNames;   // project-relative, for the hook log
     const bool fileMode = options.filesGiven || options.hook;
@@ -2428,6 +2439,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
             }
             // a synthesized PNG, or an image a synthesized texture was made from
             if (textures && Util::isImageFile(name)) textureFiles.push_back(path);
+            // a generated normal map, or an image normal maps were made from
+            if (normals && Util::isImageFile(name)) normalFiles.push_back(path);
         }
     } else if (lua) {
         luaFiles = ProjectChecks::findProjectFiles(root, {".lua"});
@@ -2438,6 +2451,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     const bool uiWanted = fileMode ? !uiFiles.empty() : ui;
     const bool texturesWanted = fileMode ? !textureFiles.empty() : textures;
     const bool animsWanted = fileMode ? !clipFiles.empty() : anims;
+    const bool normalsWanted = fileMode ? !normalFiles.empty() : normals;
     // the recipes are read without the engine: it starts only when a .vat is concerned
     const std::vector<fs::path> vatFiles = fileMode ? vat::vatAssetsForFiles(root, vatGiven) : std::vector<fs::path>();
     const bool vatWanted = fileMode ? !vatFiles.empty() : vatAssets;
@@ -2477,6 +2491,12 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     if (run.vatRan) {
         run.findings.insert(run.findings.end(), run.vat.findings.begin(), run.vat.findings.end());
         run.checked.push_back({"vat", run.vat.assets});
+    }
+    if (normalsWanted) {
+        // PNG headers, the scene and prefab YAML, pixels only of normal maps without a recipe: no engine
+        const spritenormals::NormalsCheck normalsCheck = spritenormals::checkSpriteNormals(root, fileMode ? normalFiles : std::vector<fs::path>());
+        run.findings.insert(run.findings.end(), normalsCheck.findings.begin(), normalsCheck.findings.end());
+        run.checked.push_back({"normals", normalsCheck.recipes + normalsCheck.maps});
     }
     ProjectChecks::sortFindings(run.findings);
     const size_t errors = ProjectChecks::countSeverity(run.findings, "error");
@@ -2535,7 +2555,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     if (!options.quiet) {
         std::string what;
         const std::map<std::string, std::string> units = {{"lua", "file"}, {"shaders", "fork"}, {"cpp", "script"}, {"ui", "file"},
-                                                          {"textures", "recipe"}, {"anims", "clip"}, {"vat", "file"}};
+                                                          {"textures", "recipe"}, {"anims", "clip"}, {"vat", "file"},
+                                                          {"normals", "map"}};
         for (const auto& [category, count] : run.checked) {
             what += (what.empty() ? "" : ", ") + category + " " + plural(count, units.at(category));
         }
