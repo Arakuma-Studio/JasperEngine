@@ -99,6 +99,8 @@ namespace jasperengine::editor {
         // UI tests (UIProbe): the view's rectangle and the selected fluid's Sprite on it
         void probeSceneView(SceneProject* sceneProject);
         void snapCameraToDirection(Camera* camera, const Vector3& direction);
+        // the pointer was over a Scene view's canvas this frame (the SceneView shortcut context)
+        bool viewHovered = false;
         void focusSceneWindow(const SceneProject& sceneProject) const;
         void requestOpenParentScene(uint32_t childSceneId, uint32_t parentSceneId);
         void drawParentSceneButton(const SceneProject& sceneProject);
@@ -147,6 +149,12 @@ namespace jasperengine::editor {
         void frameEntities(uint32_t viewSceneId, uint32_t entitySceneId, const std::vector<Entity>& entities);
         // The selection Frame Selected works on in the Scene view of sceneId
         bool hasFrameableSelection(uint32_t sceneId);
+        // Home: every GameObject of a 3D scene in view
+        void frameAll(uint32_t sceneId);
+        // The numpad views (3D): the camera looks along direction (Front: +Z)
+        void viewFrom(uint32_t sceneId, const Vector3& direction);
+        // A Scene view's canvas was under the pointer last frame
+        bool isHovered() const;
         bool viewThroughCamera(uint32_t sceneId, Entity cameraEntity);
         void stopViewingCamera(uint32_t sceneId);
 

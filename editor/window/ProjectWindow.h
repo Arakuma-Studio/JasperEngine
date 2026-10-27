@@ -9,6 +9,7 @@
 #include "render/preview/ModelRender.h"
 #include "render/preview/PrefabRender.h"
 #include "pose/PoseThumbnails.h"
+#include "organisation/SavedSearchRows.h"
 
 #include <iostream>
 #include "io/watch/FileWatcher.h"
@@ -65,6 +66,7 @@ namespace jasperengine::editor {
         TextureRender* icon = nullptr;
         bool hasThumbnail;
         std::string thumbnailPath;
+        std::vector<std::string> labels;   // its asset labels (S25), for the dots and chips
     };
 
     struct ThumbnailRequest {
@@ -116,6 +118,10 @@ namespace jasperengine::editor {
             SPLIT              // Directory tree sidebar, directories included in the listing
         };
         LayoutType currentLayout = LayoutType::AUTO;
+        LayoutType lastLayout = LayoutType::AUTO;   // what the last frame drew (AUTO resolved)
+        std::string pingName;                       // pingAsset: the item flashing, until pingUntil
+        double pingUntil = 0.0;
+        bool pingScroll = false;
 
         enum class ItemViewStyle {
             CARD,
@@ -181,10 +187,38 @@ namespace jasperengine::editor {
 
         char nameBuffer[256];
 
-        // Project search box: while set, the listing shows matching files from
-        // currentPath and below (entry names are then relative paths).
+        // Project search box: while set, the listing shows the matches of the query (Unity's
+        // grammar, search/AssetQuery.h) from currentPath and below, best first (entry names are
+        // then relative paths). All searches the whole project: currentPath is the project root
+        // until the search ends, then searchReturnPath again.
         char searchBuffer[128];
         std::string searchText;
+        bool searchAll = false;
+        fs::path searchReturnPath;
+        std::string searchError;          // a re: that does not compile
+        size_t searchMoreResults = 0;     // past the 2000 shown
+        uint64_t searchIndexVersion = 0;
+        uint64_t entryLabelsVersion = 0;
+        std::string activeSavedSearch;
+        // Save Search, the saved search editor, New Label
+        bool saveSearchRequested = false;
+        bool saveSearchShared = false;
+        bool renameSearchRequested = false;
+        bool editSearchRequested = false;
+        bool newLabelRequested = false;
+        char searchNameBuffer[128] = "";
+        char searchQueryBuffer[256] = "";
+        char searchFolderBuffer[256] = "";
+        char newLabelBuffer[64] = "";
+        std::string editSearchName;
+        bool editSearchProject = false;
+        bool editSearchRaw = false;
+        SavedSearchRows editSearchRows;
+        // type-ahead (750 ms) and the Ctrl+wheel size (saved 500 ms after the last step)
+        std::string typeAheadPrefix;
+        double typeAheadTime = -10.0;
+        std::string scrollToFile;
+        double iconSizeChangedAt = -1.0;
 
         UiState uiState;      // the last frame's
         UiState uiBuilding;   // this frame's
@@ -318,7 +352,32 @@ namespace jasperengine::editor {
         void updateInspectedAsset(const std::string& clickedName);
         void rebuildFileIndex();
         FileEntry makeFileEntry(const fs::directory_entry& entry, const std::string& name);
+        FileEntry makeFileEntry(const fs::path& path, const std::string& name, bool isDirectory);
         void collectSearchResults();
+
+        // ---- S25 (ProjectWindowSearch.cpp)
+        bool hasToken(const std::string& key, const std::string& value) const;
+        void toggleToken(const std::string& key, const std::string& value);
+        void setSearch(const std::string& text);
+        void setSearchScope(bool all);
+        void refreshSearchIfStale();
+        void refreshEntryLabels();
+        void renderSearchTools();
+        void renderSearchScopeBar();
+        std::vector<std::pair<Guid, std::string>> selectedAssets() const;
+        void setLabelOnSelection(const std::string& label, bool on);
+        void renderLabelsMenu();
+        void renderLabelItems();
+        float renderLabelStrip(ImVec2 barMin, float barHeight, float right);
+        void drawItemLabels(const FileEntry& entry, ImVec2 min, ImVec2 max, bool listView);
+        void handleTypeAhead();
+        void handleWheelResize();
+        void runSavedSearch(const SavedSearch& search);
+        void commitSearches(std::vector<SavedSearch> user, std::vector<SavedSearch> shared, const char* name);
+        void renderFavorites();
+        void openSearchEditor(const SavedSearch& search);
+        void renderSearchPopups();
+        void addSelectionToBookmarks();
         void sortWithSortSpecs(ImGuiTableSortSpecs* sortSpecs, std::vector<FileEntry>& files);
         void highlightDragAndDrop();
         void handleInternalDragAndDrop(const fs::path& targetDirectory);
@@ -428,6 +487,18 @@ namespace jasperengine::editor {
         void assetsDeleteSelected();
         void assetsImport();
         void assetsRefresh();
+
+        // ---- the command catalog's Project context (Ctrl+C/X/V/A, Delete, F2)
+        void copySelection(bool cut);
+        bool canPasteClipboard() const;
+        void pasteClipboard();
+        void selectAllInListing();
+        // asks to delete the selection (the confirmation the listing shows)
+        void requestDeleteSelection();
+        // the single selected file, else the one under the pointer
+        void renameSelectedOrHovered();
+        // Unity's ping: the item flashes in the listing (after revealAsset), scrolled into view
+        void pingAsset(const std::string& projectRelative);
     };
 
 }

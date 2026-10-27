@@ -5,6 +5,7 @@
 #include "external/IconsFontAwesome6.h"
 #include "util/UIUtils.h"
 #include "Theme.h"
+#include "search/SearchScorer.h"
 #include <cctype>
 #include <cstring>
 
@@ -136,14 +137,41 @@ ComponentAddDialog::ComponentAddDialog() {
     };
 }
 
+const std::vector<ComponentCategory>& ComponentAddDialog::listing() {
+    static const ComponentAddDialog dialog;
+    return dialog.m_categories;
+}
+
 bool ComponentAddDialog::isListed(ComponentType type) {
-    static const ComponentAddDialog listing;
-    for (const ComponentCategory& category : listing.m_categories) {
+    for (const ComponentCategory& category : listing()) {
         for (const ComponentEntry& entry : category.entries) {
             if (entry.type == type) return true;
         }
     }
     return false;
+}
+
+std::vector<ComponentAddDialog::Ranked> ComponentAddDialog::rank(const std::string& query) {
+    const std::string normalized = search::normalize(query);
+    std::vector<Ranked> ranked;
+    std::vector<std::string> labels;
+    const std::vector<ComponentCategory>& categories = listing();
+    for (int c = 0; c < static_cast<int>(categories.size()); c++) {
+        for (const ComponentEntry& entry : categories[c].entries) {
+            const std::string label = search::normalize(Catalog::getComponentDisplayName(entry.type));
+            const std::string more = search::normalize(std::string(categories[c].name) + " " + entry.description);
+            int score = search::fuzzyScore(normalized, label);
+            const int broad = search::fuzzyScore(normalized, more);
+            score = std::max(score, broad < 0 ? -1 : broad - 80);
+            if (score < 0) continue;
+            ranked.push_back({entry.type, c, score});
+        }
+    }
+    std::stable_sort(ranked.begin(), ranked.end(), [](const Ranked& a, const Ranked& b) {
+        if (a.score != b.score) return a.score > b.score;
+        return Catalog::getComponentDisplayName(a.type) < Catalog::getComponentDisplayName(b.type);
+    });
+    return ranked;
 }
 
 void ComponentAddDialog::open(
@@ -242,13 +270,14 @@ void ComponentAddDialog::show() {
     };
 
     if (searching) {
-        for (int c = 0; c < (int)m_categories.size(); c++) {
-            for (const ComponentEntry& entry : m_categories[c].entries) {
-                std::string name = componentAddToLower(Catalog::getComponentDisplayName(entry.type));
-                if (name.find(search) == std::string::npos) continue;
-                if (!canAdd(entry.type)) continue;
-                rows.push_back({Row::Component, c, entry.type, entry.description, true});
+        // one flat list, ranked by the editor's scorer (typos forgiven: "rigdbody")
+        for (const Ranked& match : rank(m_searchBuffer)) {
+            if (!canAdd(match.type)) continue;
+            const char* description = nullptr;
+            for (const ComponentEntry& entry : m_categories[match.category].entries) {
+                if (entry.type == match.type) description = entry.description;
             }
+            rows.push_back({Row::Component, match.category, match.type, description, true});
         }
     } else if (m_category < 0) {
         for (int c = 0; c < (int)m_categories.size(); c++) {
