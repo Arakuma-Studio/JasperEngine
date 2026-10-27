@@ -152,9 +152,9 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 - UI widgets (HTML/CSS UI: below): create_ui lays out in pixels, y DOWN from the parent's
   top-left. Put HUDs and menus in a UI scene attached as a child scene (set_child_scene): in a
   2D scene layout groups stack bottom-up and pointer input needs a UI camera.
-- Poses (.poseanim): get_pose_animation -> edit_pose_animation -> render_pose_animation
-  (jasper://docs/pose-animation). Clips (.anim): edit_animation {clip, create}; an Animation
-  Player plays them (jasper://docs/animation).
+- Poses (.poseanim): get/edit/render_pose_animation (jasper://docs/pose-animation).
+- Clips (.anim, shared): edit_animation {clip, create, tracks [{path}]}; an Animation Player
+  plays them (jasper://docs/animation).
 
 ## Atmosphere
 A Fog of type "height" is physically based height fog (volumetric: true adds light shafts and

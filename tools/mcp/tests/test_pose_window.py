@@ -17,8 +17,11 @@ import subprocess
 import harness
 from harness import Editor
 
-# the harness owns the Xvfb so xdotool can press real keys in the editor window (keyboard undo)
-EDITOR = {"project": harness.REPO / "tools" / "fixtures" / "pose-animation", "xvfb": "harness"}
+# the harness owns the Xvfb so xdotool can press real keys in the editor window (keyboard undo).
+# Selection changes are not undo steps here (Editor Settings > Undo, S24): leaving and re-entering
+# posing selects, and these tests undo the edits made around it (test_undo covers selection steps).
+EDITOR = {"project": harness.REPO / "tools" / "fixtures" / "pose-animation", "xvfb": "harness",
+          "settings": {"undo": {"record_selection": False}}}
 TIMEOUT = 900
 
 HERO = "assets/models/hero_tpose.gltf"

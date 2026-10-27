@@ -2090,6 +2090,8 @@ void renderPoseAnimationTool(const CallPtr& call) {
                 call->fail("Could not write the PNG to " + projectRel(project, saveTarget) + ".");
                 return;
             }
+            // the call's own write: not an outside change for the watcher (S05 R10)
+            FileUtils::reportWritten(saveTarget);
             out["saved_to"] = projectRel(project, saveTarget);
             text += "\nSaved to " + projectRel(project, saveTarget) + ".";
         }

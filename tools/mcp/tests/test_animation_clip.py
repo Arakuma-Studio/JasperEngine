@@ -633,7 +633,8 @@ async def test_write_file_validation(ed: Editor):
 async def test_move_copy_delete(ed: Editor):
     await ed.call("create_folder", path="assets/clips")
     r = await ed.call_raw("move_asset", {"path": BOB, "to": "assets/clips/bob.anim"})
-    ed.check(not r.is_error and "Animation Players follow it" in r.text, r.text)
+    # S04: every reference follows by GUID (the Animation Players' too), no referrer file rewritten
+    ed.check(not r.is_error and "references follow it by GUID" in r.text, r.text)
     state = (await ed.call("get_animation", entity=S["box_a"]))["players"][0]["states"][0]
     ed.check_eq(state["clip"], "assets/clips/bob.anim", "the player follows the move")
     await ed.call("undo", scope="project")
