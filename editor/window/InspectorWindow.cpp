@@ -81,6 +81,7 @@
 #include "subsystem/AudioSystem.h"
 #include "pose/PoseAnimatorRuntime.h"
 #include "pose/PoseInspectorHooks.h"
+#include "window/InspectorVatBake.h"
 #include "pose/PoseEditSession.h"
 #include "animation/PreviewOwner.h"
 #include "animation/ClipRecordHooks.h"
@@ -9881,6 +9882,12 @@ void editor::InspectorWindow::drawPoseAnimatorComponent(ComponentType cpType, Sc
                 UIProbe::item("poseanimator.bakeMenu.scene");
                 ImGui::SetItemTooltip("Bake to an Animation of this Model in the scene (baking again updates it).\n"
                                       "Plays with Model:playAnimation(name) and in the Animation window.");
+                VatBakeEntry vatEntry;
+                vatEntry.kind = VatBakeEntry::Kind::PoseAnimator;
+                vatEntry.sceneId = sceneProject->id;
+                vatEntry.entity = entity;
+                vatEntry.asset = animator.animation;
+                inspectorvat::menuItem(project, vatEntry, stopped, "poseanimator.bakeMenu.vat");
                 ImGui::EndPopup();
             }
             ImGui::EndDisabled();
@@ -15476,6 +15483,14 @@ static void drawLatticeBakeRow(editor::Project* project, editor::SceneProject* s
         }else{
             Log::error("Lattice bake: %s", error.c_str());
         }
+    }
+    // Bake ▾ › Vertex Animation…: the lattice tracks of the clips that move it, baked per vertex
+    if (editor::inspectorvat::available()){
+        editor::VatBakeEntry entry;
+        entry.kind = editor::VatBakeEntry::Kind::LatticeModifier;
+        entry.sceneId = sceneProject->id;
+        entry.entity = entity;
+        editor::inspectorvat::bakeButton(project, entry, stopped, "lattice_bake_vat", "lattice.bake");
     }
 }
 

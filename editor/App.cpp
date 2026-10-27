@@ -47,6 +47,8 @@
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/HtmlUiAutoImport.h"
 #include "render/preview/PoseRender.h"
+#include "render/preview/VatPreviewRender.h"
+#include "util/FileUtils.h"
 #include "pose/PoseTemplates.h"
 #include "pose/PoseViewport.h"
 #include "animation/AnimationClipAppHooks.h"
@@ -134,6 +136,7 @@ editor::App::App(){
     poseAnimationWindow = new PoseAnimationWindow(&project);
     terrainEditWindow = new TerrainEditWindow(&project);
     textureSynthesisWindow = new TextureSynthesisWindow(&project);
+    vertexAnimationBakerWindow = new VertexAnimationBakerWindow(&project);
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
     mcpActivityWindow = new mcp::McpActivityWindow();
     // pose templates saved or deleted (and their undo/redo): the asset database and the Project
@@ -272,6 +275,7 @@ enum class AppMenuCommand : uint32_t {
     TogglePoseAnimation,
     ToggleTerrain,
     ToggleTextureSynthesis,
+    ToggleVertexAnimationBaker,
     TogglePhysicsPlacement,
     ToggleMcpActivity,
     FocusScene,
@@ -612,7 +616,8 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         }),
         menuSubmenu("Animation", {
             menuShortcut(AppMenuCommand::ToggleAnimation, windowMenuLabel(AnimationWindow::WINDOW_NAME), "Ctrl+6"),
-            menuCommand(AppMenuCommand::TogglePoseAnimation, windowMenuLabel(PoseAnimationWindow::WINDOW_NAME))
+            menuCommand(AppMenuCommand::TogglePoseAnimation, windowMenuLabel(PoseAnimationWindow::WINDOW_NAME)),
+            menuCommand(AppMenuCommand::ToggleVertexAnimationBaker, windowMenuLabel(VertexAnimationBakerWindow::WINDOW_NAME))
         }),
         menuCommand(AppMenuCommand::ToggleTerrain, windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
         menuCommand(AppMenuCommand::ToggleTextureSynthesis, windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
@@ -789,6 +794,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleTextureSynthesis:
             textureSynthesisWindow->open();
             break;
+        case AppMenuCommand::ToggleVertexAnimationBaker:
+            vertexAnimationBakerWindow->open();
+            break;
         case AppMenuCommand::TogglePhysicsPlacement:
             showEditorWindow(physicsPlacementWindow);
             break;
@@ -833,6 +841,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             poseAnimationWindow->setOpen(false);
             terrainEditWindow->setOpen(false);
             textureSynthesisWindow->setOpen(false);
+            vertexAnimationBakerWindow->setOpen(false);
             physicsPlacementWindow->setOpen(false);
             mcpActivityWindow->setOpen(false);
             gameWindow->setOpen(true);
@@ -1479,6 +1488,8 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(mcp::McpActivityWindow::WINDOW_NAME, dock_id_right);
     ImGui::DockBuilderDockWindow(TerrainEditWindow::WINDOW_NAME, dock_id_right);
     ImGui::DockBuilderDockWindow(PhysicsPlacementWindow::WINDOW_NAME, dock_id_right);
+    // the baker is one column of settings with its preview: a tab beside the Inspector
+    ImGui::DockBuilderDockWindow(VertexAnimationBakerWindow::WINDOW_NAME, dock_id_right);
 
     // Project, Console and Animation across the bottom, under Hierarchy + Scene.
     ImGui::DockBuilderSplitNode(dock_id_middle, ImGuiDir_Down, 0.0f, &dock_id_middle_bottom, &dock_id_left);
@@ -2292,6 +2303,8 @@ void editor::App::show(){
     PoseViewport::frame(&project);
     terrainEditWindow->show();
     textureSynthesisWindow->show();
+    // also the tick of a running bake (a Shift-click bake runs with the window closed)
+    vertexAnimationBakerWindow->show();
     // also the tick of the Scene view's physics sessions, with the panel closed too
     physicsPlacementWindow->show();
     inspectorWindow->show();
@@ -3037,6 +3050,8 @@ void editor::App::engineRender(){
     if (PoseRender::processFrame()) {
         requestRedraw();
     }
+    // the Vertex Animation Baker's preview views (private scenes too, drawn the same way)
+    VatPreviewView::processFrame();
 
     if (benchmarkEnabled)
         tickBenchmark();
@@ -3507,6 +3522,7 @@ void editor::App::engineViewDestroyed(){
     // objects here, while the view still exists (not on Engine::onViewDestroyed, which a play
     // session's stop fires too)
     PoseRender::releaseGpu();
+    VatPreviewView::releaseGpu();
     // Closing during project loading can leave uploads committed before any scene frame
     // consumes them. Drain that batch before shutdown waits to flush the queue.
     SystemRender::executeQueue();
@@ -3569,6 +3585,8 @@ void editor::App::prepareForProjectSwitch() {
     imageViewerWindow->closeAll();
     // a synthesis started in this project is cancelled and never written into the next one
     textureSynthesisWindow->resetForProjectSwitch();
+    // a running bake or import is cancelled, its source and result forgotten
+    vertexAnimationBakerWindow->resetForProjectSwitch();
     editor::texsynth::projectSwitching();
     // physics gestures are cancelled, the sessions and the decomposition cache dropped
     physicsPlacementWindow->resetForProjectSwitch();
@@ -4024,6 +4042,23 @@ editor::TextureSynthesisWindow* editor::App::getTextureSynthesisWindow() const{
     return textureSynthesisWindow;
 }
 
+editor::VertexAnimationBakerWindow* editor::App::getVertexAnimationBakerWindow() const{
+    return vertexAnimationBakerWindow;
+}
+
+void editor::App::openVertexAnimationBaker(const std::filesystem::path& path, bool bakeNow){
+    std::string error;
+    const std::string file = FileUtils::pathToUtf8(path);
+    if (!vertexAnimationBakerWindow->setSourcePath(file, error)) {
+        registerAlert("Vertex Animation Baker", "Can't open " + FileUtils::pathToUtf8(path.filename()) + ": " + error);
+        return;
+    }
+    vertexAnimationBakerWindow->open();
+    if (bakeNow && !vertexAnimationBakerWindow->bake(true, error)) {
+        registerAlert("Vertex Animation Baker", "Can't bake " + FileUtils::pathToUtf8(path.filename()) + ": " + error);
+    }
+}
+
 editor::PhysicsPlacementWindow* editor::App::getPhysicsPlacementWindow() const{
     return physicsPlacementWindow;
 }
@@ -4254,6 +4289,7 @@ void editor::App::applyPanelVisibilitySettings() {
     poseAnimationWindow->setOpen(visibility.poseAnimation);
     terrainEditWindow->setOpen(visibility.terrain);
     textureSynthesisWindow->setOpen(visibility.textureSynthesis);
+    vertexAnimationBakerWindow->setOpen(visibility.vertexAnimationBaker);
     physicsPlacementWindow->setOpen(visibility.physicsPlacement);
     mcpActivityWindow->setOpen(visibility.mcp);
     gameWindow->setOpen(visibility.game);
@@ -4269,6 +4305,7 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.poseAnimation = poseAnimationWindow->isOpen();
     visibility.terrain = terrainEditWindow->isOpen();
     visibility.textureSynthesis = textureSynthesisWindow->isOpen();
+    visibility.vertexAnimationBaker = vertexAnimationBakerWindow->isOpen();
     visibility.physicsPlacement = physicsPlacementWindow->isOpen();
     visibility.mcp = mcpActivityWindow->isOpen();
     visibility.game = gameWindow->isOpen();

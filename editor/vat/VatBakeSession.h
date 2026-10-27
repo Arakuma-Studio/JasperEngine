@@ -141,7 +141,8 @@ namespace jasperengine::editor::vat{
         // project's assets), so a Model can load the .vat.glb: absolute paths out
         bool writePreviewFiles(std::string& vatPath, std::string& meshPath, std::string& error);
 
-        // where write() would write (the existing-file rule), without writing
+        // where write() would write (the existing-file rule), without writing; after a bake, or
+        // before one once check() resolved the source (the window's Output field)
         bool plannedOutput(std::string& vatPath, bool& rewrite, std::string& error);
         // the files, one undo step (see the contract). After Done.
         bool write(VatWriteResult& out, std::string& error);

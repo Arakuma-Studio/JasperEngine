@@ -232,6 +232,7 @@ bool VatBakeSession::loadRebake(const std::string& vatPath, std::string& error){
         float fps = 0.0f;
         clipFrames(lengths[entry.second], clip.wrap, bakeSpec.fps, frames, fps);
         if (std::fabs(fps - clip.fps) > 1e-4f * std::max(1.0f, clip.fps)) override.fps = clip.fps;
+        override.interpolate = clip.interpolate;
         bakeSpec.clipOverrides.push_back(override);
         rebakeClipMap.push_back({name, entry.first});
     }
@@ -553,6 +554,7 @@ void VatBakeSession::buildPlan(){
         clip.wrap = effectiveWrap(spec, source);
         clip.length = source.length;
         clip.events = source.events;
+        if (const VatClipOverride* override = overrideFor(spec, source.name)) clip.interpolate = override->interpolate;
         clipFrames(clip.length, clip.wrap, effectiveFps(spec, source), clip.frames, clip.fps);
         clip.samples.resize((size_t)clip.frames);
         clip.midFrames = midFramesFor(clip.frames, clip.wrap);
@@ -813,11 +815,20 @@ bool VatBakeSession::writePreviewFiles(std::string& vatPath, std::string& meshPa
 
 bool VatBakeSession::plannedOutput(std::string& vatPath, bool& rewrite, std::string& error){
     rewrite = false;
-    if (bakeState != VatBakeState::Done){
-        error = "nothing baked yet";
-        return false;
+    // after a bake its recipe; before one (the window's Output field) the spec's, once the
+    // source is resolved
+    VatRecipeSource ours;
+    if (bakeState == VatBakeState::Done){
+        ours = bakeResult.data.recipe.sources[0];
+    }else{
+        if (!checked) check();
+        if (!target){
+            error = "the source can't be resolved";
+            return false;
+        }
+        ours = recipeFromSpec(bakeSpec).sources[0];
+        if (isGameObjectSource(bakeSpec.source)) ours.scene = target->sceneFile;
     }
-    const VatRecipeSource& ours = bakeResult.data.recipe.sources[0];
     if (!bakeSpec.output.empty()){
         fs::path given = FileUtils::pathFromUtf8(bakeSpec.output);
         const fs::path absolute = (given.is_absolute() ? given : project->getProjectPath() / given).lexically_normal();
@@ -906,7 +917,9 @@ bool VatBakeSession::write(VatWriteResult& out, std::string& error){
             if (!used.count(previous.name)) clip.name = previous.name;
             clip.events = previous.events;
             clip.speed = previous.speed;
-            clip.interpolate = previous.interpolate;
+            // (an explicit "interpolation off" of this bake wins over the file's)
+            const VatClipOverride* override = i < bakeResult.sourceClips.size() ? overrideFor(bakeSpec, bakeResult.sourceClips[i]) : nullptr;
+            if (!override || override->interpolate) clip.interpolate = previous.interpolate;
             if ((previous.wrap == ClipWrapMode::Loop) == (clip.wrap == ClipWrapMode::Loop)) clip.wrap = previous.wrap;
             used.insert(clip.name);
         }
