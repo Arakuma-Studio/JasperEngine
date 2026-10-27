@@ -586,6 +586,36 @@ passes, smoke PASS. `tools/crash/test_symbolicate.py` passes on B against a fres
 `jasperengine-crash-test`.
 
 
+After merging oe-port e1ca0c71a and `feat/s28-native-crash` round 2 (0ef567c61; its last two
+commits are records only), all through `je-remote/rb.sh`:
+
+- Server D `WERROR=1 tools/build.sh unit-tests`: 1,176 core and 770 editor tests, 0 failed. Server B
+  `WERROR=1 tools/build.sh linux` passes.
+- Server D `SANITIZE=address,undefined tools/build.sh unit-tests`: core 1,173 ran, 1 failed
+  (`Backends/FileWatchServiceTests.PumpBudget/Native`, BF2's). Core leak summary: 280 bytes in 5
+  allocations, all `jobs::setProfilerHooks` from the `JobsHooks`/`JobsParallelForLanes` tests (known);
+  no UBSan diagnostic. The SEGV summaries in the log are the deliberate crash subprocesses
+  (`CrashGuard.WorkerCrashReachesHandler`, `LoggerCrashFlushTest`), ASan's report following ours.
+  The editor binary stops on a SIGTRAP: Jolt's Debug `JPH_ASSERT(errors == None)` at
+  `PhysicsSystem.cpp:616` fires in `PlacementWorldReview.OverflowingContactBuffersAreReported` and
+  `PhysicsPlacementSim.OverflowingContactsAreReported`, which overflow the contact buffers on
+  purpose (upstream physics-placement; the sanitizer build is Debug, so Jolt asserts are on).
+  Rerun excluding those two (`--gtest_filter=-*.OverflowingContact*`): 768 ran, 2 failed,
+  `TexSynthOutOfMemory.IsAFailedStatusNotATerminate` (ASan's allocator aborts instead of throwing
+  `bad_alloc`) and `NumericExpression.EvaluationWithinBudget` (wall clock, known). Editor leak
+  summary: 310,690,257 bytes in 30,600 allocations; no leak stack has an S28 frame. The largest roots
+  are `Compat.CorpusRoundTrip` (known), `PhysicsPlacementSim.*`, and the undo, prefab-undo and
+  play-change review tests.
+- Server D: MCP 63/63, including `test_crash.py`, `test_protocol.py`, budget, conventions, coverage
+  and docs. AC19 `test_build.py` 2/2 (the `JASPER_SLOW_BUILD=1` development build in 850 s), with
+  `crash_report` an absolute path. `docs/mcp/TOOLS.md` regenerated: 203 tools.
+- Server D: `tools/build.sh web` + `web-gate` PASS; the crash-diagnostics web build + gate PASS;
+  `tools/build.sh android` passes; smoke PASS.
+- Server C: the API 34 x86_64 emulator check on the crash-diagnostics APK passes (booted in 65 s;
+  engine report, debuggerd tombstone, `F/JasperEngine: JASPERENGINE CRASH: SIGSEGV`).
+- Server E, `je-bench-diag`: heartbeat 2.495 ns, ring write 11.27 ns, install 1.113 ms, idle
+  watchdog 0.064 % of a core; every budget holds.
+
 ### Native review follow-up validation
 
 - Server D red control rebuilt the test-only checkpoint `84c6c0281` (the original handlers
