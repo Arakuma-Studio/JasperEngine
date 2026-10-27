@@ -50,7 +50,7 @@
     "exceptions": {
         "set_scene_camera": {
             "limit": 1960,
-            "reason": "S26 (R17-R21): the Scene view camera's projection, ortho size, field of view, clip planes, axis view, Frame All and camera settings on the one camera tool agents already use (1947 chars measured)"
+            "reason": "S26 (R17-R21): the Scene view camera's projection, ortho size, axis view, Frame All and Scene Camera settings (field of view, clip planes, speed, easing, ...) on the one camera tool agents already use"
         },
         "place_with_physics": {
             "limit": 3609,

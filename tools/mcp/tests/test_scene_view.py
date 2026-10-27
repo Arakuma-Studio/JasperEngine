@@ -92,7 +92,7 @@ async def test_tools_in_editor_ux_group(ed: Editor):
         ed.check(schema.get("type") == "object" and "properties" in schema, f"{name}: object schema")
     # set_scene_camera's S26 options
     props = ed.tool("set_scene_camera").input_schema["properties"]
-    for key in ("projection", "ortho_size", "fov", "near", "far", "view", "frame_all", "camera_settings"):
+    for key in ("projection", "ortho_size", "view", "frame_all", "camera_settings"):
         ed.check(key in props, f"set_scene_camera.{key}")
 
 
@@ -564,8 +564,9 @@ async def test_quad_layout(ed: Editor):
 async def test_camera_settings(ed: Editor):
     sid = await new_scene(ed, "Camera")
     await cube(ed, sid, "Box", (0, 0, 0))
-    got = await ed.call("set_scene_camera", scene=sid, fov=45, near=0.05, far=900,
-                        camera_settings={"speed": 22, "easing": False, "acceleration": False, "dynamic_clipping": False})
+    got = await ed.call("set_scene_camera", scene=sid,
+                        camera_settings={"fov": 45, "near": 0.05, "far": 900, "speed": 22, "easing": False, "acceleration": False,
+                                         "dynamic_clipping": False})
     cs = got["camera"]["camera_settings"]
     ed.check(close(got["camera"]["fov"], 45) and close(cs["speed"], 22) and cs["easing"] is False and cs["acceleration"] is False,
              f"settings applied: {got['camera']}")

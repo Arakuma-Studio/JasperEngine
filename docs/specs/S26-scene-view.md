@@ -614,7 +614,8 @@ Where the implementation differs from the text above, and why.
   `edit_scene_view_bookmarks`, `scene_view_measure` is `measure_scene_view`, `mesh_raycast` is
   `raycast_meshes` ("raycast" added to the verbs), in group `scripting` (Lua's MeshRaycast); editor_ux takes the
   five Scene view tools (its limit 19 with upstream's place_with_physics), and set_scene_camera,
-  a core tool, carries the camera options of R17-R21 (budget exception, 1947 chars). An agent's camera changes (`set_scene_camera`,
+  a core tool, carries the camera options of R17-R21 (budget exception), the Scene Camera
+  settings in one `camera_settings` object, as Unity's camera popup groups them. An agent's camera changes (`set_scene_camera`,
   `frame_entity`, bookmark recall) land at once; Camera Easing animates the user's moves only.
   `pick_at` waits for a building BVH (the click R33 describes for the user defers instead);
   `apply` takes `shift` and `ctrl` too; `set_scene_view_layout` takes `capture` (one image per

@@ -871,7 +871,7 @@ void setSceneCameraTool(const CallPtr& call) {
         }
     }
 
-    for (const char* key : {"projection", "ortho_size", "fov", "near", "far", "view", "camera_settings"}) {
+    for (const char* key : {"projection", "ortho_size", "view", "camera_settings"}) {
         if (!is3D && args.contains(key)) {
             call->fail(std::string(key) + " is for 3D scenes; \"" + sp->name + "\" is " + McpRefs::sceneTypeName(sp->sceneType) + ".");
             return;
@@ -887,9 +887,44 @@ void setSceneCameraTool(const CallPtr& call) {
         call->fail("projection must be \"perspective\" or \"orthographic\".");
         return;
     }
-    if (args.contains("near") && args.contains("far") && args.value("near", 0.0f) >= args.value("far", 0.0f)) {
-        call->fail("near must be less than far.");
-        return;
+    // the Scene Camera settings (Unity's camera popup): one object, checked here
+    if (args.contains("camera_settings")) {
+        const Json& cs = args["camera_settings"];
+        if (!cs.is_object()) {
+            call->fail("camera_settings must be an object {fov, near, far, speed, acceleration, easing, dynamic_clipping}.");
+            return;
+        }
+        struct Range {
+            const char* key;
+            double min;
+            double max;
+        };
+        static const Range ranges[] = {{"fov", 4, 120}, {"near", 0.001, 1000}, {"far", 1, 1000000}, {"speed", 0.01, 1000}};
+        for (auto it = cs.begin(); it != cs.end(); ++it) {
+            const std::string& key = it.key();
+            const Range* range = nullptr;
+            for (const Range& r : ranges) {
+                if (key == r.key) range = &r;
+            }
+            if (range) {
+                if (!it.value().is_number() || it.value().get<double>() < range->min || it.value().get<double>() > range->max) {
+                    call->fail("camera_settings." + key + " must be a number in " + Json(range->min).dump() + ".." + Json(range->max).dump() + ".");
+                    return;
+                }
+            } else if (key == "acceleration" || key == "easing" || key == "dynamic_clipping") {
+                if (!it.value().is_boolean()) {
+                    call->fail("camera_settings." + key + " must be true or false.");
+                    return;
+                }
+            } else {
+                call->fail("camera_settings: unknown \"" + key + "\" (fov, near, far, speed, acceleration, easing, dynamic_clipping).");
+                return;
+            }
+        }
+        if (cs.contains("near") && cs.contains("far") && cs.value("near", 0.0) >= cs.value("far", 0.0)) {
+            call->fail("camera_settings: near must be less than far.");
+            return;
+        }
     }
 
     const uint32_t sceneId = sp->id;
@@ -942,11 +977,11 @@ void setSceneCameraTool(const CallPtr& call) {
             view.ensureApplied(*s);
             SceneCameraSettings settings = s->viewState.camera;
             bool settingsChanged = false;
-            if (a.contains("fov")) { settings.fieldOfView = a.value("fov", settings.fieldOfView); settingsChanged = true; }
-            if (a.contains("near")) { settings.nearClip = a.value("near", settings.nearClip); settingsChanged = true; }
-            if (a.contains("far")) { settings.farClip = a.value("far", settings.farClip); settingsChanged = true; }
             if (a.contains("camera_settings") && a["camera_settings"].is_object()) {
                 const Json& cs = a["camera_settings"];
+                settings.fieldOfView = cs.value("fov", settings.fieldOfView);
+                settings.nearClip = cs.value("near", settings.nearClip);
+                settings.farClip = cs.value("far", settings.farClip);
                 settings.speed = cs.value("speed", settings.speed);
                 settings.acceleration = cs.value("acceleration", settings.acceleration);
                 settings.easing = cs.value("easing", settings.easing);
@@ -1438,13 +1473,9 @@ void registerViewTools(McpRegistry& registry) {
             {"display", anyObject("Overlay flags, e.g. {show_grid_3d: false, show_post_processing: true}; saved with the workspace.")},
             {"projection", stringEnum("", {"perspective", "orthographic"})},
             {"ortho_size", number("Half height.", 0.001, 100000)},
-            {"fov", number("", 4, 120)},
-            {"near", number("", 0.001, 1000)},
-            {"far", number("", 1, 1000000)},
             {"view", stringEnum("Axis view.", {"top", "bottom", "front", "back", "left", "right"})},
             {"frame_all", boolean("As Alt+F.")},
-            {"camera_settings", object({{"speed", number("", 0.01, 1000)}, {"acceleration", boolean("")}, {"easing", boolean("")},
-                                        {"dynamic_clipping", boolean("")}})},
+            {"camera_settings", anyObject("fov, near, far, speed, acceleration, easing, dynamic_clipping.")},
             {"screenshot", sceneShot},
             {"max_width", maxWidth}
         });

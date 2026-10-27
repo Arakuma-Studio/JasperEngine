@@ -38,8 +38,9 @@ animates the user's moves):
   = distance x tan(fov/2)), `ortho_size`;
 - `view` top / bottom / front / back / left / right: an axis view, orthographic while it stays
   aligned (rotating out of it returns to perspective unless Iso was chosen);
-- `frame_all` (Alt+F: everything but terrains and infinite bounds), `fov`, `near`, `far`;
-- `camera_settings {speed, acceleration, easing, dynamic_clipping}`.
+- `frame_all` (Alt+F: everything but terrains and infinite bounds);
+- `camera_settings {fov, near, far, speed, acceleration, easing, dynamic_clipping}`, the Scene
+  Camera popup's settings (any of them; the reply lists them all).
 
 ## Bookmarks, layouts, measures, filters
 
