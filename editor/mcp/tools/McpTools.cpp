@@ -49,6 +49,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerHtmlUiTools, "HTML/CSS UI", ""},
     {registerUiEffectTools, "HTML/CSS UI", ""},
     {registerEcsTools, "ECS: statistics, system schedule and queries", "diagnostics"},   // S07
+    {registerDiagnosticsTools, "Crash and hang diagnostics", "diagnostics"},   // S28
     {registerAtmosphereTools, "Atmosphere: fog and clouds", "rendering_fx"},   // S12
     {registerProfilerTools, "Profiling and render diagnostics", "profiling"},   // S15
     {registerScriptingTools, "Scripting: hot reload, script status, editor menus, expressions", "scripting"},   // S23

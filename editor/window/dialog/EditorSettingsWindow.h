@@ -39,7 +39,6 @@ namespace jasperengine::editor {
         int m_uiScalePercent = 100;
         bool m_autosaveEnabled = true;
         int m_autosaveInterval = 60;
-        static void openInFileManager(const std::filesystem::path& folder);
         bool m_htmlUiAutoImport = true;
         // Asset Pipeline (S05 R26)
         bool m_autoRefresh = true;
@@ -59,6 +58,7 @@ namespace jasperengine::editor {
         bool m_undoRecordSelection = true;
         bool m_undoReviewPlayChanges = true;
         LoggingSettings m_logging;
+        DiagnosticsSettings m_diagnostics;
         LatticeViewSettings m_lattice;
         SceneViewSettings m_sceneView;
         // Unity-style category list; indexes PreferencesCategory in the .cpp.
@@ -86,10 +86,13 @@ namespace jasperengine::editor {
         void drawWebSettings();
         void drawVideoImportSettings();
         void drawLoggingSettings();
+        void drawDiagnosticsSettings();
         void drawAdvancedSettings();
         bool applySettings();
 
     public:
+        // A folder in the file manager, or a file in its default application
+        static void openInFileManager(const std::filesystem::path& folder);
         void open(Project* project);
         // Shows a page by its name ("General", "Logging" ...); false for an unknown one
         bool showPage(const std::string& name);

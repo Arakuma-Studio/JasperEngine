@@ -98,6 +98,21 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         endif()
     endif()
 
+    # Player > Crash Handling (the Exporter sets them; core/Engine.cpp has the defaults)
+    foreach(crashSetting JASPERENGINE_CRASH_HANDLER JASPERENGINE_CRASH_LOG_TAIL JASPERENGINE_CRASH_DUMP_WITH_HEAP
+            JASPERENGINE_CRASH_HANG_WATCHDOG JASPERENGINE_CRASH_WEB_OVERLAY)
+        if(DEFINED ${crashSetting})
+            if(${crashSetting})
+                add_definitions("-D${crashSetting}=1")
+            else()
+                add_definitions("-D${crashSetting}=0")
+            endif()
+        endif()
+    endforeach()
+    if(DEFINED JASPERENGINE_CRASH_HANG_MS)
+        add_definitions("-DJASPERENGINE_CRASH_HANG_MS=${JASPERENGINE_CRASH_HANG_MS}")
+    endif()
+
     if(NOT DEFINED JASPERENGINE_WINDOW_WIDTH)
         set(JASPERENGINE_WINDOW_WIDTH 960)
     endif()
@@ -301,11 +316,14 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 -s STACK_SIZE=4MB \
                 -s EXPORTED_FUNCTIONS=\"['_getScreenWidth','_getScreenHeight','_changeCanvasSize','_main']\" \
                 -s EXPORTED_RUNTIME_METHODS=\"['ccall', 'cwrap']\" \
+                --pre-js ${PLATFORM_ROOT}/crash_pre.js \
                 ${EM_PRELOAD_FILES} \
                 ${EM_ADDITIONAL_LINK_FLAGS} \
                 ${USE_PTHREADS} \
                 ${ALLOW_MEMORY_GROWTH} \
                 ${USE_WEBGL2}"
+            # the pre-js is read at link time: a change of it relinks
+            LINK_DEPENDS ${PLATFORM_ROOT}/crash_pre.js
         )
     endif()
 
@@ -783,7 +801,7 @@ include_directories(core/script)
 include_directories(core/shader)
 include_directories(core/subsystem)
 include_directories(core/texture)
-include_directories(core/util)
+# Keep util/ namespaced: Signal.h shadows <signal.h> on case-insensitive hosts.
 include_directories(core/htmlui)
 
 include_directories(renders)
@@ -980,6 +998,12 @@ set(JASPERENGINE_SRCS
     core/Engine.cpp
     core/Input.cpp
     core/Log.cpp
+    core/diag/CrashHandler.cpp
+    core/diag/CrashHandlerPosix.cpp
+    core/diag/CrashHandlerWin.cpp
+    core/diag/HangStackCapture.cpp
+    core/diag/CrashHandlerWeb.cpp
+    core/diag/HangWatchdog.cpp
     core/log/Logger.cpp
     core/log/LogFormat.cpp
     core/log/Backtrace.cpp
@@ -1202,6 +1226,7 @@ set(JASPERENGINE_SRCS
     core/render/shadow/ShadowTypes.cpp
     core/script/LuaBinding.cpp
     core/script/LuaFunctionBase.cpp
+    core/script/LuaWatchdog.cpp
     core/script/LuaReload.cpp
     core/script/LuaScript.cpp
     core/script/ScriptBase.cpp
@@ -1209,6 +1234,7 @@ set(JASPERENGINE_SRCS
     core/script/ToolchainFingerprint.cpp
     core/script/binding/ActionClassesLua.cpp
     core/script/binding/CoreClassesLua.cpp
+    core/script/binding/CrashClassesLua.cpp
     core/script/binding/ECSClassesLua.cpp
     core/script/binding/IOClassesLua.cpp
     core/script/binding/MathClassesLua.cpp

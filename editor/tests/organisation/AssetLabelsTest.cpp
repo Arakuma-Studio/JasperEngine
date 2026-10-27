@@ -103,6 +103,7 @@ TEST_F(AssetLabelsProjectTest, MetaAndInFile) {
         EXPECT_EQ(reopened.getAssetLabels().labelsOf(hero), (std::vector<std::string>{"Boss Fight", "Hero"}));
         EXPECT_EQ(reopened.getAssetLabels().labelsOf(enemy), std::vector<std::string>{"Hero"});
         for (SceneProject& candidate : reopened.getScenes()) CommandHandle::remove(candidate.id);
+        reopened.releaseScenes();
     }
 
     // one undo puts both files back

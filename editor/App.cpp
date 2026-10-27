@@ -48,6 +48,8 @@
 #include "texture/TextureCookQueue.h"
 
 #include "util/CrashHandler.h"
+#include "util/EditorDiagnostics.h"
+#include "diag/HangWatchdog.h"
 #include "util/FileDialogs.h"
 #include "util/ProjectUtils.h"
 #include "util/Util.h"
@@ -1406,6 +1408,79 @@ void editor::App::showFooter(){
     viewport->WorkSize.y -= footerHeight;
 }
 
+void editor::App::showCrashNotice(){
+    // after the S03 "Recover Unsaved Changes" modal and the other data-safety questions
+    if (dataSafetyDialogs.isShowing()) return;
+    const std::optional<diag::crash::ReportInfo> notice = EditorDiagnostics::notice();
+    if (!notice) return;
+    const std::string text = EditorDiagnostics::noticeText(*notice);
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings |
+                                   ImGuiWindowFlags_NoScrollWithMouse;
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.36f, 0.27f, 0.08f, 1.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Theme::dpi(ImVec2(8.0f, 4.0f)));
+    if (ImGui::BeginViewportSideBar("##CrashNotice", viewport, ImGuiDir_Up, ImGui::GetFrameHeight() + Theme::dpi(8.0f), flags)) {
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
+        ImGui::SameLine();
+        ImGui::TextUnformatted(text.c_str());
+        const ImGuiStyle& style = ImGui::GetStyle();
+        const char* labels[] = {"Open Report", "Show in Folder", "Copy Report Path", "Dismiss"};
+        float buttons = 0.0f;
+        for (const char* label : labels) buttons += ImGui::CalcTextSize(label).x + style.FramePadding.x * 2.0f + style.ItemSpacing.x;
+        ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - buttons + style.ItemSpacing.x));
+        if (ImGui::Button("Open Report")) {
+            EditorSettingsWindow::openInFileManager(EditorDiagnostics::primaryFile(*notice));
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Show in Folder")) {
+            EditorSettingsWindow::openInFileManager(notice->folder);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Copy Report Path")) {
+            ImGui::SetClipboardText(notice->folder.string().c_str());
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Dismiss")) {
+            EditorDiagnostics::dismiss(notice->id);
+        }
+    }
+    ImGui::End();
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor();
+}
+
+void editor::App::showHangToast(){
+    const std::optional<EditorDiagnostics::Toast> toast = EditorDiagnostics::activeToast();
+    if (!toast) return;
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    // the work area ends at the footer's top (showFooter reserved it)
+    const ImVec2 corner(viewport->WorkPos.x + viewport->WorkSize.x - Theme::dpi(12.0f),
+                        viewport->WorkPos.y + viewport->WorkSize.y - Theme::dpi(12.0f));
+    ImGui::SetNextWindowViewport(viewport->ID);
+    ImGui::SetNextWindowPos(corner, ImGuiCond_Always, ImVec2(1.0f, 1.0f));
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
+                                   ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+                                   ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoDocking;
+    if (ImGui::Begin("##HangToast", nullptr, flags)) {
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
+        ImGui::SameLine();
+        ImGui::TextUnformatted(toast->text.c_str());
+        if (!toast->file.empty()) {
+            ImGui::SameLine();
+            if (ImGui::Button("Open")) {
+                EditorSettingsWindow::openInFileManager(toast->file);
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::SmallButton(ICON_FA_XMARK "##CloseHangToast")) {
+            EditorDiagnostics::closeToast();
+        }
+    }
+    ImGui::End();
+}
+
 // Assets > Asset Database > Migrate References (S04 R35): every scene, prefab, material and
 // project.yaml written with the GUIDs of what it references. A document with unsaved edits is
 // left to its next save, which writes them too.
@@ -2339,9 +2414,12 @@ void editor::App::show(){
     dockspace_id = ImGui::GetID("MyDockspace");
 
     showMenu();
+    EditorDiagnostics::pollNotices();
+    showCrashNotice();
     mainToolbar->show();
     statusBar->show();
     showFooter();
+    showHangToast();
 
     isInitialized = true;
 
@@ -2436,6 +2514,8 @@ void editor::App::setLoadingPump(std::function<void(bool)> pump) {
 
 void editor::App::reportLoadingProgress(const std::string& status) {
     if (!isMainThread() || !projectLoading || pumpingLoading) return;
+    // a load that keeps reporting progress is alive
+    diag::heartbeat();
     if (!status.empty()) loadingStatus = status;
     if (!loadingPump) return;
 
@@ -3861,6 +3941,8 @@ void editor::App::setWakeCallback(std::function<void()> cb) {
 }
 
 void editor::App::shutdownBackgroundWork() {
+    // teardown is watched on its own window (the job system is not read from here on)
+    EditorDiagnostics::beginShutdown();
     // the window layout as it is, for the next start
     layouts.saveWorkingLayoutNow();
     // a clean quit: this session's crash backups and the project lock go
@@ -3891,6 +3973,8 @@ void editor::App::engineViewDestroyed(){
 void editor::App::engineShutdown(){
     ::jasperengine::htmlui::EffectRegistry::get().setProjectEffectListener(nullptr);
     Engine::systemShutdown();
+    // a clean exit: the watchdog stops and the session marker goes
+    EditorDiagnostics::end();
 }
 
 void editor::App::addNewSceneToDock(uint32_t sceneId){
@@ -4718,7 +4802,8 @@ void editor::App::initializeSettings() {
     // Next to settings.yaml, where a user can find it to report a crash.
     const std::filesystem::path logFile = AppSettings::getConfigDirectory() / "editor.log";
     Out::setLogFile(logFile);
-    CrashHandler::install(logFile);
+    // report folders, the session marker and the hang watchdog (docs/crash-diagnostics.md)
+    EditorDiagnostics::install(AppSettings::getConfigDirectory());
 
     applyPanelVisibilitySettings();
 }

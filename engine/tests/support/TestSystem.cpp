@@ -61,6 +61,10 @@ void TestSystem::setAssetPath(const std::string& path){
     assetPathOverride = path;
 }
 
+std::string TestSystem::getCrashReportPath(){
+    return std::string();
+}
+
 std::string TestSystem::getUserDataPath(){
     if (!userDataPathOverride.empty())
         return userDataPathOverride;

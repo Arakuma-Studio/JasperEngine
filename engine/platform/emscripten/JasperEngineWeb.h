@@ -101,6 +101,7 @@ public:
     virtual void setMouseMode(jasperengine::MouseMode mode) override;
 
     virtual std::string getUserDataPath() override;
+    virtual std::string getCrashReportPath() override;
 
     virtual bool syncFileSystem() override;
     virtual bool isUserDataLoaded() override;

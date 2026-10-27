@@ -109,16 +109,23 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
         # Lines of a log that mean the program failed: errors, and what a crash, a failed
         # assertion or a Lua error leaves. Docker has no audio device, which is expected.
         fatal_lines() {
-            grep -aE "\((ERROR|PANIC)\)|\[ERROR\]|Lua Error|[Mm]issing (precompiled )?shader|[Aa]ssertion|Aborted|Segmentation fault|terminate called|core dumped|AddressSanitizer|stack smashing" "$@" \
+            grep -aE "JASPERENGINE CRASH:|\((ERROR|PANIC)\)|\[ERROR\]|Lua Error|[Mm]issing (precompiled )?shader|[Aa]ssertion|Aborted|Segmentation fault|terminate called|core dumped|AddressSanitizer|stack smashing" "$@" \
                 | grep -avE "Failed to initialize audio output" || true
         }
-        # check_log <what> <log...>: fail on the first fatal lines
+        # check_log <what> <log...>: fail on the first fatal lines, and on a hang watchdog report
+        # (a warning to run_game, but the smoke runs must have none: docs/crash-diagnostics.md)
         check_log() {
             local what="$1"; shift
             local lines
             lines="$(fatal_lines "$@")"
             if [[ -n "$lines" ]]; then
                 echo "FAIL: $what logged errors:"
+                echo "$lines" | head -20
+                exit 1
+            fi
+            lines="$(grep -a "JASPERENGINE HANG:" "$@" || true)"
+            if [[ -n "$lines" ]]; then
+                echo "FAIL: $what reported a hang:"
                 echo "$lines" | head -20
                 exit 1
             fi

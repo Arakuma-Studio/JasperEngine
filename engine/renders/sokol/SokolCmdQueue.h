@@ -15,7 +15,7 @@
 
 #include "sokol_gfx.h"
 
-#include "ThreadUtils.h"
+#include "util/ThreadUtils.h"
 
 // ----------------------------------------------------------------------------------------------------
 
