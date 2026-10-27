@@ -87,6 +87,29 @@ namespace {
         return bench::percentile(times, 0.99);
     }
 
+    // BF1/S02 style: `warmups` untimed runs, then `reps` timed ones (ms each)
+    template<class Run>
+    std::vector<double> repeatTimed(int warmups, int reps, Run&& run){
+        for (int i = 0; i < warmups; i++){
+            run();
+        }
+        std::vector<double> times;
+        times.reserve((size_t)reps);
+        for (int i = 0; i < reps; i++){
+            const auto start = bench::Clock::now();
+            run();
+            times.push_back(millisecondsSince(start));
+        }
+        return times;
+    }
+
+    // the gated median as `name`, the spread as name_min and name_max (scaled, e.g. per 1M)
+    void addTimed(bench::Results& results, const std::string& name, const std::vector<double>& times, double scale, const char* unit){
+        results.add(name, bench::percentile(times, 0.5) * scale, unit);
+        results.add(name + "_min", bench::percentile(times, 0.0) * scale, unit);
+        results.add(name + "_max", bench::percentile(times, 1.0) * scale, unit);
+    }
+
     void waitForBuilds(Scene& scene){
         MeshRaycast::prepare(&scene);
         auto meshes = scene.getComponentArray<MeshComponent>();
@@ -245,18 +268,17 @@ int main(int argc, char** argv){
 
         MeshComponent& groundMesh = scene->getComponent<MeshComponent>(groundEntity);
         PickGeometry geometry;
-        picking::gather(groundMesh, geometry); // warm
-        const auto gatherStart = bench::Clock::now();
-        picking::gather(groundMesh, geometry);
-        const double gatherMs = millisecondsSince(gatherStart);
+        const std::vector<double> gathers = repeatTimed(2, 15, [&](){ picking::gather(groundMesh, geometry); });
         const double triangles = (double)geometry.getTriangleCount();
         results.add("ground_triangles", triangles, "tris");
-        results.add("gather_ms_per_1m_tris", gatherMs * 1.0e6 / triangles, "ms");
+        addTimed(results, "gather_ms_per_1m_tris", gathers, 1.0e6 / triangles, "ms");
 
-        const auto buildStart = bench::Clock::now();
-        const MeshBvh bvh = MeshBvh::build(geometry);
-        const double buildSeconds = bench::secondsSince(buildStart);
-        results.add("bvh_build_tris_per_s", triangles / buildSeconds, "tris/s");
+        MeshBvh bvh;
+        const std::vector<double> buildTimes = repeatTimed(1, 5, [&](){ bvh = MeshBvh::build(geometry); });
+        // a throughput: the median build's, and the slowest and fastest builds'
+        results.add("bvh_build_tris_per_s", triangles / (bench::percentile(buildTimes, 0.5) / 1000.0), "tris/s");
+        results.add("bvh_build_tris_per_s_min", triangles / (bench::percentile(buildTimes, 1.0) / 1000.0), "tris/s");
+        results.add("bvh_build_tris_per_s_max", triangles / (bench::percentile(buildTimes, 0.0) / 1000.0), "tris/s");
         results.add("bvh_bytes_per_triangle", (double)bvh.memoryBytes() / triangles, "B");
         results.add("bvh_nodes_per_1k_triangles", (double)bvh.getNodeCount() * 1000.0 / triangles, "nodes");
         {
@@ -274,19 +296,29 @@ int main(int argc, char** argv){
             std::ofstream out(file, std::ios::binary);
             out.write(reinterpret_cast<const char*>(bytes.data()), (std::streamsize)bytes.size());
         }
-        const auto loadStart = bench::Clock::now();
-        std::vector<uint8_t> read(std::filesystem::file_size(file));
-        {
-            std::ifstream in(file, std::ios::binary);
-            in.read(reinterpret_cast<char*>(read.data()), (std::streamsize)read.size());
+        // each load: the file read into a fresh buffer and deserialized into a fresh tree
+        std::vector<double> reads, deserializes;
+        bool ok = true;
+        const std::vector<double> loads = repeatTimed(2, 15, [&](){
+            const auto readStart = bench::Clock::now();
+            std::vector<uint8_t> read(std::filesystem::file_size(file));
+            {
+                std::ifstream in(file, std::ios::binary);
+                in.read(reinterpret_cast<char*>(read.data()), (std::streamsize)read.size());
+            }
+            reads.push_back(millisecondsSince(readStart));
+            MeshBvh loaded;
+            const auto deserializeStart = bench::Clock::now();
+            ok = loaded.deserialize(read, geometry) && ok;
+            deserializes.push_back(millisecondsSince(deserializeStart));
+        });
+        results.add("disk_read_ms_1m", bench::percentile(reads, 0.5) * 1.0e6 / triangles, "ms");
+        results.add("deserialize_ms_1m", bench::percentile(deserializes, 0.5) * 1.0e6 / triangles, "ms");
+        if (ok){
+            addTimed(results, "disk_load_ms_1m", loads, 1.0e6 / triangles, "ms");
+        }else{
+            results.add("disk_load_ms_1m", 1.0e9, "ms");
         }
-        const double readMs = millisecondsSince(loadStart);
-        MeshBvh loaded;
-        const auto deserializeStart = bench::Clock::now();
-        const bool ok = loaded.deserialize(read, geometry);
-        results.add("disk_read_ms_1m", readMs * 1.0e6 / triangles, "ms");
-        results.add("deserialize_ms_1m", millisecondsSince(deserializeStart) * 1.0e6 / triangles, "ms");
-        results.add("disk_load_ms_1m", ok ? millisecondsSince(loadStart) * 1.0e6 / triangles : 1.0e9, "ms");
         std::filesystem::remove(file);
 
         waitForBuilds(*scene);
@@ -315,13 +347,8 @@ int main(int argc, char** argv){
             box = AABB(c - h, c + h);
         }
         SceneBvhTree tree;
-        std::vector<double> builds;
-        for (int i = 0; i < 5; i++){
-            const auto start = bench::Clock::now();
-            tree.build(boxes);
-            builds.push_back(millisecondsSince(start));
-        }
-        results.add("scene_bvh_build_ms_100k", bench::percentile(builds, 0.5), "ms");
+        const std::vector<double> builds = repeatTimed(2, 15, [&](){ tree.build(boxes); });
+        addTimed(results, "scene_bvh_build_ms_100k", builds, 1.0, "ms");
 
         std::vector<double> serial, parallel, dirty;
         std::vector<uint32_t> hundred;
@@ -380,7 +407,8 @@ int main(int argc, char** argv){
             bindPose->raycast(ray, hit);
             statics.push_back(millisecondsSince(start));
         }
-        results.add("skinned_pose_refit_ms_50k", bench::percentile(poses, 0.5), "ms");
+        // 30 poses, the first a cold one: the median
+        addTimed(results, "skinned_pose_refit_ms_50k", poses, 1.0, "ms");
         results.add("skinned_repeat_pick_ms", bench::percentile(repeats, 0.5), "ms");
         results.add("static_pick_ms", bench::percentile(statics, 0.5), "ms");
         // the two halves of a pose: the vertices, then the refit
