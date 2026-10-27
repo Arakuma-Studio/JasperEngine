@@ -10,12 +10,13 @@
 #include "Stream.h"
 #include "shader/ShaderVariantCompiler.h"
 #include "util/Util.h"
-#include "pool/TextureDataPool.h"
+#include "texture/TextureData.h"
 #include "util/ProjectChecks.h"
 #include "script/LuaBinding.h"
 #include "System.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <fstream>
 #include <filesystem>
@@ -29,6 +30,7 @@
 #include "component/BoneComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/UIDocumentComponent.h"
+#include "component/FluidSimulationComponent.h"
 #include "component/ModelComponent.h"
 #include "component/Transform.h"
 #include "component/MeshComponent.h"
@@ -124,30 +126,25 @@ bool splitTrailingDuplicateNumber(const std::string& name, std::string& baseName
 
 void editor::ProjectUtils::setDefaultSkyTexture(Texture& outTexture) {
     static const char* const id = "editor:resources:default_sky";
-    // Decoded once: the pool keeps the first faces and ignores later ones, whose pixels (not owned
-    // by TextureData) would leak, about 7 MB for every scene decoded with the default sky
-    const std::shared_ptr<std::array<TextureData, 6>> cached = TextureDataPool::get(id);
-    if (cached && cached->at(0).getData()) {
-        outTexture.setCubeDatas(id, cached->at(4), cached->at(5), cached->at(1), cached->at(0), cached->at(2), cached->at(3));
-        return;
-    }
-
-    TextureData skyBack;
-    TextureData skyBottom;
-    TextureData skyFront;
-    TextureData skyLeft;
-    TextureData skyRight;
-    TextureData skyTop;
-
-    skyBack.loadTextureFromMemory(Daylight_Box_Back_png, Daylight_Box_Back_png_len);
-    skyBottom.loadTextureFromMemory(Daylight_Box_Bottom_png, Daylight_Box_Bottom_png_len);
-    skyFront.loadTextureFromMemory(Daylight_Box_Front_png, Daylight_Box_Front_png_len);
-    skyLeft.loadTextureFromMemory(Daylight_Box_Left_png, Daylight_Box_Left_png_len);
-    skyRight.loadTextureFromMemory(Daylight_Box_Right_png, Daylight_Box_Right_png_len);
-    skyTop.loadTextureFromMemory(Daylight_Box_Top_png, Daylight_Box_Top_png_len);
+    // Decoded once per process, and the pixels stay reachable from here: the texture pool keeps
+    // copies of the faces that do not own them (a face copy carries its owner flag, so an owning
+    // one would be freed by every temporary), and an entry the pool drops (clearUnusedPools on a
+    // project close) must not take the only pointer to 6 MB with it, as it did before (a
+    // LeakSanitizer report for every editor test process that decoded a scene with the default sky)
+    static const std::array<TextureData, 6>* const faces = []() {
+        auto* decoded = new std::array<TextureData, 6>();
+        // the order setCubeDatas takes: front, back, left, right, top, bottom
+        decoded->at(0).loadTextureFromMemory(Daylight_Box_Front_png, Daylight_Box_Front_png_len);
+        decoded->at(1).loadTextureFromMemory(Daylight_Box_Back_png, Daylight_Box_Back_png_len);
+        decoded->at(2).loadTextureFromMemory(Daylight_Box_Left_png, Daylight_Box_Left_png_len);
+        decoded->at(3).loadTextureFromMemory(Daylight_Box_Right_png, Daylight_Box_Right_png_len);
+        decoded->at(4).loadTextureFromMemory(Daylight_Box_Top_png, Daylight_Box_Top_png_len);
+        decoded->at(5).loadTextureFromMemory(Daylight_Box_Bottom_png, Daylight_Box_Bottom_png_len);
+        return decoded;
+    }();
 
     outTexture.setId(id);
-    outTexture.setCubeDatas(id, skyFront, skyBack, skyLeft, skyRight, skyTop, skyBottom);
+    outTexture.setCubeDatas(id, faces->at(0), faces->at(1), faces->at(2), faces->at(3), faces->at(4), faces->at(5));
 }
 
 namespace {
@@ -1532,11 +1529,15 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     if (signature.test(scene->getComponentId<LayoutGroupComponent>())) return objectClass("LayoutGroup");
     if (signature.test(scene->getComponentId<UIDocumentComponent>()))  return objectClass("UIDocument");
     if (signature.test(scene->getComponentId<UIComponent>()))          return objectClass("RectTransform");
+    // after the renderers: a fluid shown on a Sprite or a Mesh is that object first (its
+    // FluidSimulation is FluidSimulation(scene, entity) there)
+    if (signature.test(scene->getComponentId<FluidSimulationComponent>())) return objectClass("FluidSimulation");
     if (signature.test(scene->getComponentId<Light2DComponent>()))     return objectClass("Light2D");
     if (signature.test(scene->getComponentId<ShadowCaster2DComponent>()))  return objectClass("ShadowCaster2D");
     if (signature.test(scene->getComponentId<LightComponent>()))       return objectClass("Light");
     if (signature.test(scene->getComponentId<CameraComponent>()))      return objectClass("Camera");
     if (signature.test(scene->getComponentId<ReflectionProbeComponent>())) return objectClass("ReflectionProbe");
+    if (signature.test(scene->getComponentId<LatticeComponent>()))     return objectClass("Lattice");
     if (signature.test(scene->getComponentId<Rigidbody2DComponent>()))      return handleClass("Rigidbody2D");
     if (signature.test(scene->getComponentId<RigidbodyComponent>()))      return handleClass("Rigidbody");
     if (signature.test(scene->getComponentId<Joint2DComponent>()))     return handleClass("Joint2D");
@@ -1550,9 +1551,11 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     if (signature.test(scene->getComponentId<AnimationComponent>()))   return handleClass("Animation");
     if (signature.test(scene->getComponentId<SpriteAnimationComponent>())) return handleClass("SpriteAnimation");
     if (signature.test(scene->getComponentId<MorphTracksComponent>())) return handleClass("MorphTracks");
+    if (signature.test(scene->getComponentId<LatticeTracksComponent>())) return handleClass("LatticeTracks");
     if (signature.test(scene->getComponentId<RotateTracksComponent>())) return handleClass("RotateTracks");
     if (signature.test(scene->getComponentId<ScaleTracksComponent>())) return handleClass("ScaleTracks");
     if (signature.test(scene->getComponentId<TranslateTracksComponent>())) return handleClass("TranslateTracks");
+    if (signature.test(scene->getComponentId<KeyframeTracksComponent>())) return handleClass("KeyframeTracks");
     if (signature.test(scene->getComponentId<ParticleSystemComponent>()))   return handleClass("ParticleSystem");
     if (signature.test(scene->getComponentId<ActionComponent>()))      return handleClass("Action");
     if (signature.test(scene->getComponentId<Transform>()))            return objectClass("GameObject");

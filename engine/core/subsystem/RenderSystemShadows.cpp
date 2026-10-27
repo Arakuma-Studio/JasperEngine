@@ -246,7 +246,7 @@ void RenderSystem::planShadowSlots(int numLights){
                         ((light.type == LightType::POINT) ? SHADOW_CUBE_FACES : 1u);
         request.resolution = lightShadowResolution(light);
         if (light.type == LightType::DIRECTIONAL){
-            request.importance = light.intensity;
+            request.importance = light.resolvedIntensity;
         }else{
             const Transform* transform = scene->findComponent<Transform>(entity);
             const Vector3 position = transform ? transform->worldPosition : Vector3(0.0f, 0.0f, 0.0f);
@@ -258,7 +258,7 @@ void RenderSystem::planShadowSlots(int numLights){
                 coverage = std::clamp((light.range * light.range) / std::max(distance * distance, 1e-4f), 0.0f, 1.0f);
                 away = std::max(0.0f, distance - light.range);
             }
-            request.importance = light.intensity * coverage / (1.0f + away);
+            request.importance = light.resolvedIntensity * coverage / (1.0f + away);
         }
         request.wantsStatic = light.shadowUpdateMode == ShadowUpdateMode::AUTO && staticAndDynamic;
         shadowRequests.push_back(request);
@@ -855,8 +855,8 @@ void RenderSystem::processLights(CameraShadows& view, int numLights, const Camer
                 fit = &light.cascadeFit;
             if (!fit)
                 continue;
-            if (light.intensity > mainIntensity){
-                mainIntensity = light.intensity;
+            if (light.resolvedIntensity > mainIntensity){
+                mainIntensity = light.resolvedIntensity;
                 data.header.x = (float)light.shadowMapIndex;
                 data.header.y = (float)numMaps;
             }

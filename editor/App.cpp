@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "AppMenuCommand.h"
 #include "util/NumericExpression.h"
 #include "util/EditorFingerprint.h"
 #include "util/ScriptReloadService.h"
@@ -10,6 +11,7 @@
 #include "profiler/Profile.h"
 #include "asset/AssetRefEditor.h"
 #include "util/Scheduler.h"
+#include "thread/ResourceProgress.h"
 
 #include "imgui_internal.h"
 #include "Platform.h"
@@ -24,6 +26,7 @@
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/DuplicateEntityCmd.h"
 #include "command/type/RemoveChildSceneCmd.h"
+#include "lattice/LatticeSceneTools.h"
 #include "util/EntityClipboard.h"
 #include "mcp/McpActivityWindow.h"
 #include "window/JobsMemoryWindow.h"
@@ -36,7 +39,12 @@
 #include "command/PlayChangeReview.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpAutoSync.h"
+#include "mcp/tools/McpTools.h"
 #include "reload/HotReloadService.h"
+#include "search/SearchPalette.h"
+#include "shortcuts/DefaultCommands.h"
+#include "shortcuts/ShortcutsWindow.h"
+#include "window/BookmarksWindow.h"
 
 #include "util/CrashHandler.h"
 #include "util/FileDialogs.h"
@@ -98,20 +106,26 @@ int scaleSavedWindowSize(int saved, float uiScale) {
     return std::max(1, static_cast<int>(std::lround(saved * ratio)));
 }
 
-// The dockspace lives on the main viewport, so that is the scale it has to match.
+// The dockspace lives on the main viewport, so that is the scale it has to match,
+// times the UI Scale of Editor Settings.
 float mainViewportScale() {
-    return sanitizeUiScale(ImGui::GetMainViewport()->DpiScale);
+    return sanitizeUiScale(ImGui::GetMainViewport()->DpiScale) * editor::Theme::uiScale();
 }
 
-// SizeRef against a central node is read as an absolute size, so it has to grow
-// with the text; siblings split by ratio stay proportional under the same factor.
-void scaleDockChildren(ImGuiDockNode* node, float ratio) {
-    for (ImGuiDockNode* child : node->ChildNodes) {
-        if (!child) continue;
-        child->Size = ImVec2(child->Size.x * ratio, child->Size.y * ratio);
-        child->SizeRef = ImVec2(child->SizeRef.x * ratio, child->SizeRef.y * ratio);
-        scaleDockChildren(child, ratio);
-    }
+// DPI times UI scale, so a wider range than sanitizeUiScale().
+float sanitizeLayoutScale(float scale) {
+    return (scale >= 0.25f && scale <= 24.0f) ? scale : 1.0f;
+}
+
+// Share of the window a panel beside the scene may take (buildDefaultLayout()
+// and scaleDockChildren()).
+constexpr float panelMaxShare = 0.45f;
+
+// HasCentralNodeChild is not set yet when a restored layout is rescaled.
+bool holdsCentralNode(const ImGuiDockNode* node) {
+    if (!node) return false;
+    if (node->LocalFlags & ImGuiDockNodeFlags_CentralNode) return true;
+    return holdsCentralNode(node->ChildNodes[0]) || holdsCentralNode(node->ChildNodes[1]);
 }
 
 }
@@ -142,6 +156,8 @@ editor::App::App(){
     loadingWindow = new LoadingWindow();
     animationWindow = new AnimationWindow(&project);
     terrainEditWindow = new TerrainEditWindow(&project);
+    textureSynthesisWindow = new TextureSynthesisWindow(&project);
+    physicsPlacementWindow = new PhysicsPlacementWindow(&project);
     mcpActivityWindow = new mcp::McpActivityWindow();
     systemsWindow = new SystemsWindow(&project);
     missingAssetsWindow = new MissingAssetsWindow(&project);
@@ -151,6 +167,9 @@ editor::App::App(){
     frameDebuggerWindow = new FrameDebuggerWindow(this);
     undoHistoryWindow = new UndoHistoryWindow(&project);
     playModeChangesWindow = new PlayModeChangesWindow(&project);
+    searchPalette = new SearchPalette(this);
+    shortcutsWindow = new ShortcutsWindow(CommandCatalog::editor(), shortcutDispatcher);
+    bookmarksWindow = new BookmarksWindow(&project);
     // Stop found edits that can be kept: the window opens, or after an agent's Stop the
     // Console says where they are (S24 R30)
     PlayChangeReview::get().onPending = [this](uint32_t sceneId, size_t rows) {
@@ -257,82 +276,7 @@ void editor::App::openProjectFunc(){
 
 namespace {
 
-enum class AppMenuCommand : uint32_t {
-    NewProject = 1,
-    NewScene3D,
-    NewScene2D,
-    NewSceneUI,
-    OpenProject,
-    OpenRecentProject,
-    ClearRecentProjects,
-    SaveProjectAs,
-    Save,
-    SaveAll,
-    ExportProject,
-    EditorSettings,
-    Exit,
-    Undo,
-    Redo,
-    SelectAll,
-    CutSelection,
-    CopySelection,
-    PasteSelection,
-    PasteAsChild,
-    DuplicateSelection,
-    DeleteSelection,
-    RenameSelection,
-    FrameSelected,
-    ToggleHierarchy,
-    ToggleInspector,
-    ToggleProject,
-    ToggleConsole,
-    ToggleAnimation,
-    ToggleTerrain,
-    ToggleMcpActivity,
-    ToggleSystems,
-    ToggleMissingAssets,
-    MigrateAssetReferences,
-    ToggleAssetReferences,
-    ToggleJobsMemory,
-    ToggleProfiler,
-    ToggleFrameDebugger,
-    ToggleUndoHistory,
-    TogglePlayModeChanges,
-    FocusScene,
-    FocusGame,
-    StepFrame,
-    ToggleDetachableWindows,
-    ResetLayout,
-    ProjectSettings,
-    ProjectScenes,
-    ProjectPrefabs,
-    ClearTrash,
-    TogglePlay,
-    TogglePause,
-    StopScene,
-    RemoveScene,
-    CreateGameObject,     // payload: index into HierarchyWindow::getCreateMenuEntries()
-    CreateEmptyChild,
-    AddComponent,
-    AssetsCreateFolder,
-    AssetsCreateLuaScript,
-    AssetsCreateHtmlDocument,
-    AssetsCreateCppScript,
-    AssetsShowInFileManager,
-    AssetsOpen,
-    AssetsRename,
-    AssetsDelete,
-    AssetsImport,
-    AssetsRefresh,
-    About,
-    Documentation,
-    KeyboardShortcuts,
-    ReportIssue,
-    ScriptsReload,        // S23 commands: scripts.reload, scripts.rebuildCpp, scripts.cancelBuild
-    ScriptsRebuildCpp,
-    ScriptsCancelBuild,
-    ScriptMenu            // payload: an editor script's menu item id (EditorScripts)
-};
+using editor::AppMenuCommand;
 
 editor::PlatformMenuItem menuCommand(AppMenuCommand command,
                                      std::string label,
@@ -348,23 +292,18 @@ editor::PlatformMenuItem menuCommand(AppMenuCommand command,
     return item;
 }
 
-editor::PlatformMenuItem menuShortcut(AppMenuCommand command,
-                                      std::string label,
-                                      std::string shortcut,
-                                      bool enabled = true) {
-    editor::PlatformMenuItem item = menuCommand(command, std::move(label), enabled);
-    item.shortcut = std::move(shortcut);
-    return item;
-}
-
-editor::PlatformMenuItem menuToggle(AppMenuCommand command,
-                                    std::string label,
-                                    bool checked,
-                                    std::string shortcut = {},
-                                    bool enabled = true) {
-    editor::PlatformMenuItem item = menuCommand(command, std::move(label), enabled);
+// The menu item of a catalog command: its AppMenuCommand and payload, its shortcut text (the
+// user's binding) and its enabled state, under `label` (the menu's wording) or its name
+editor::PlatformMenuItem catalogItem(const char* id, std::string label = {}, bool checked = false) {
+    const editor::CommandCatalog& catalog = editor::CommandCatalog::editor();
+    const editor::CommandDef* def = catalog.find(id);
+    editor::PlatformMenuItem item;
+    if (!def || !def->menuCommand) return item;
+    item = menuCommand(static_cast<AppMenuCommand>(*def->menuCommand), label.empty() ? def->name : std::move(label),
+                       !def->enabled || def->enabled());
+    item.command.payload = def->menuPayload;
+    item.shortcut = catalog.menuShortcutText(id);
     item.checked = checked;
-    item.shortcut = std::move(shortcut);
     return item;
 }
 
@@ -403,10 +342,8 @@ std::string windowMenuLabel(const char* windowName) {
 }
 
 // GameObject menu from the Hierarchy's create table (HierarchyWindow::getCreateMenuEntries),
-// in the same order and grouping the Hierarchy's own menus use.
-std::vector<editor::PlatformMenuItem> gameObjectMenuItems(editor::SceneProject* scene,
-                                                          bool canCreate,
-                                                          bool canCreateChild) {
+// in the same order and grouping the Hierarchy's own menus use. Each entry is a catalog command.
+std::vector<editor::PlatformMenuItem> gameObjectMenuItems(editor::SceneProject* scene, bool canCreate) {
     using editor::HierarchyWindow;
     using editor::CreateMenuEntry;
     const auto& entries = HierarchyWindow::getCreateMenuEntries();
@@ -414,11 +351,7 @@ std::vector<editor::PlatformMenuItem> gameObjectMenuItems(editor::SceneProject* 
         return !scene || HierarchyWindow::isCreateEntryAvailable(entry, scene->sceneType);
     };
     auto entryItem = [&](size_t index) {
-        const CreateMenuEntry& entry = entries[index];
-        editor::PlatformMenuItem item = menuPayloadCommand(AppMenuCommand::CreateGameObject,
-            entry.label, std::to_string(index), canCreate);
-        if (entry.shortcut) item.shortcut = entry.shortcut;
-        return item;
+        return catalogItem(editor::createEntryCommandId(index).c_str(), entries[index].label);
     };
 
     std::vector<editor::PlatformMenuItem> items;
@@ -433,8 +366,7 @@ std::vector<editor::PlatformMenuItem> gameObjectMenuItems(editor::SceneProject* 
             items.push_back(entryItem(i));
             // Unity lists Create Empty Child right under Create Empty
             if (entry.type == editor::EntityCreationType::GAMEOBJECT) {
-                items.push_back(menuShortcut(AppMenuCommand::CreateEmptyChild, "Create Empty Child",
-                                             "Alt+Shift+N", canCreateChild));
+                items.push_back(catalogItem("gameobject.createEmptyChild"));
             }
             continue;
         }
@@ -469,7 +401,8 @@ namespace {
             separated = true;
             editor::PlatformMenuItem item = menuPayloadCommand(AppMenuCommand::ScriptMenu, parts.back(), script.id,
                                                                editor::EditorScripts::get().isEnabled(script));
-            item.shortcut = script.shortcut;
+            // the annotation's shortcut is the default of its catalog command (S23 R42), rebindable
+            item.shortcut = editor::CommandCatalog::editor().menuShortcutText("script." + script.path);
             items.push_back(std::move(item));
             return;
         }
@@ -525,64 +458,22 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
     uint32_t selectedSceneId = project.getSelectedSceneId();
     bool hasSelectedScene = selectedScene != nullptr;
     bool isProjectBusy = project.isAnyScenePlaying();
-    bool canRemove = hasSelectedScene && !isProjectBusy && project.getScenes().size() > 1;
-    const bool textInput = ImGui::GetIO().WantTextInput;
-
-    bool canSave = false;
-    if (!saveDialogInProgress) {
-        if (project.isTempProject()) {
-            canSave = !isProjectBusy;
-        } else if (lastFocusedWindow == LastFocusedWindow::Code) {
-            canSave = codeEditor->hasLastFocusedUnsavedChanges();
-        } else {
-            canSave = !isProjectBusy && project.hasSelectedSceneUnsavedChanges();
-        }
-    }
-    // Project settings are not tracked by the scene and script dirty flags.
-    bool canSaveAll = !isProjectBusy && !saveDialogInProgress;
+    const bool canCreate = hasSelectedScene && selectedScene->scene;
 
     // One timeline whatever window had focus (S24 R21): only a text field or the Code editor
     // keep their own undo, and then the items say plain Undo/Redo
-    bool canUndo = false;
-    bool canRedo = false;
     std::string undoLabel = "Undo";
     std::string redoLabel = "Redo";
-    switch (undoTarget()) {
-        case UndoTimeline::Target::TextField:
-            break;
-        case UndoTimeline::Target::CodeEditor:
-            canUndo = codeEditor->canUndoLastFocused();
-            canRedo = codeEditor->canRedoLastFocused();
-            break;
-        case UndoTimeline::Target::Timeline:
-            if (hasSelectedScene) {
-                canUndo = UndoTimeline::canUndo(selectedSceneId);
-                canRedo = UndoTimeline::canRedo(selectedSceneId);
-                undoLabel = UndoTimeline::undoLabel(selectedSceneId);
-                redoLabel = UndoTimeline::redoLabel(selectedSceneId);
-            } else {
-                canUndo = UndoTimeline::canUndo(NULL_PROJECT_SCENE);
-                canRedo = UndoTimeline::canRedo(NULL_PROJECT_SCENE);
-                undoLabel = UndoTimeline::undoLabel(NULL_PROJECT_SCENE);
-                redoLabel = UndoTimeline::redoLabel(NULL_PROJECT_SCENE);
-            }
-            break;
+    if (undoTarget() == UndoTimeline::Target::Timeline) {
+        const uint32_t sceneId = hasSelectedScene ? selectedSceneId : NULL_PROJECT_SCENE;
+        undoLabel = UndoTimeline::undoLabel(sceneId);
+        redoLabel = UndoTimeline::redoLabel(sceneId);
     }
 
-    // Single-key shortcuts (F, F2) must not steal keys from text fields, the code
-    // editor or a running game (native menus own their key equivalents)
-    const bool sceneContext = !textInput && !isProjectBusy && lastFocusedWindow == LastFocusedWindow::AnySceneWindow;
-    const size_t selectedCount = hasSelectedScene ? project.getSelectedEntities(selectedSceneId).size() : 0;
-    // the selection may be of a scene layered over the selected one (Scene view picks)
-    const bool canFrame = sceneContext && hasSelectedScene && sceneWindow->hasFrameableSelection(selectedSceneId);
-    const bool canRename = sceneContext && selectedCount == 1;
-    const bool canCreate = hasSelectedScene && selectedScene->scene;
-    const bool canCreateChild = canCreate && hierarchyWindow->getSelectedParentForCreate() != NULL_ENTITY;
-    const bool canAddComponent = hasSelectedScene && selectedCount > 0 && !isProjectBusy;
-
-    const bool assetSelected = projectWindow->hasAssetSelection();
-    const bool singleAsset = projectWindow->hasSingleAssetSelection();
-
+    // Every item below is a catalog command (shortcuts/DefaultCommands.cpp): its shortcut
+    // text is the user's binding and its enabled state the command's (AppCommands.cpp).
+    // Enabled items keep their native key equivalents (macOS), so single-key items are
+    // disabled while typing, in the Code editor or with a game running.
     std::vector<PlatformMenuItem> recentItems;
     std::vector<std::filesystem::path> recentProjects = AppSettings::getRecentProjects();
     if (recentProjects.empty()) {
@@ -596,150 +487,183 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
                 path.string()));
         }
         recentItems.push_back(menuSeparator());
-        recentItems.push_back(menuCommand(AppMenuCommand::ClearRecentProjects,
-                                          "Clear Recent Projects"));
+        recentItems.push_back(catalogItem("file.clearRecentProjects"));
     }
 
     auto newSceneItems = [&]() {
         return std::vector<PlatformMenuItem>{
-            menuCommand(AppMenuCommand::NewScene3D, "3D"),
-            menuCommand(AppMenuCommand::NewScene2D, "2D"),
-            menuCommand(AppMenuCommand::NewSceneUI, "UI")
+            catalogItem("file.newScene3D", "3D"),
+            catalogItem("file.newScene2D", "2D"),
+            catalogItem("file.newSceneUI", "UI")
         };
     };
 
     PlatformMenuModel menu;
     menu.menus.push_back(menuSubmenu("File", {
         menuSubmenu("New Scene", newSceneItems(), !isProjectBusy),
-        menuShortcut(AppMenuCommand::Save, "Save", "Ctrl+S", canSave),
-        menuShortcut(AppMenuCommand::SaveAll, "Save All", "Ctrl+Shift+S", canSaveAll),
-        menuCommand(AppMenuCommand::RemoveScene, "Remove Scene from Project", canRemove),
+        catalogItem("file.save"),
+        catalogItem("file.saveAll"),
+        catalogItem("file.removeScene"),
         menuSeparator(),
-        menuCommand(AppMenuCommand::NewProject, "New Project...", !isProjectBusy),
-        menuShortcut(AppMenuCommand::OpenProject, "Open Project...", "Ctrl+O", !isProjectBusy),
+        catalogItem("file.newProject"),
+        catalogItem("file.openProject"),
         menuSubmenu("Recent Projects", std::move(recentItems), !isProjectBusy),
-        menuCommand(AppMenuCommand::SaveProjectAs, "Save Project As...", canSaveAll),
+        catalogItem("file.saveProjectAs"),
         menuSeparator(),
-        menuShortcut(AppMenuCommand::ExportProject, "Build Settings...", "Ctrl+Shift+B"),
+        catalogItem("file.buildSettings"),
         menuSeparator(),
-        menuCommand(AppMenuCommand::Exit, "Exit")
+        catalogItem("file.exit")
     }));
 
     menu.menus.push_back(menuSubmenu("Edit", {
-        menuShortcut(AppMenuCommand::Undo, undoLabel, "Ctrl+Z", canUndo),
-#if defined(__APPLE__)
-        menuShortcut(AppMenuCommand::Redo, redoLabel, "Ctrl+Shift+Z", canRedo),
-#else
-        menuShortcut(AppMenuCommand::Redo, redoLabel, "Ctrl+Y", canRedo),
-#endif
+        catalogItem("edit.undo", undoLabel),
+        catalogItem("edit.redo", redoLabel),
         menuSeparator(),
-        menuShortcut(AppMenuCommand::SelectAll, "Select All", "Ctrl+A", canSelectAll()),
+        catalogItem("edit.selectAll"),
         menuSeparator(),
-        menuShortcut(AppMenuCommand::CutSelection, "Cut", "Ctrl+X", canCutSelection()),
-        menuShortcut(AppMenuCommand::CopySelection, "Copy", "Ctrl+C", canCopySelection()),
-        menuShortcut(AppMenuCommand::PasteSelection, "Paste", "Ctrl+V", canPasteSelection(false)),
-        menuShortcut(AppMenuCommand::PasteAsChild, "Paste As Child", "Ctrl+Shift+V", canPasteSelection(true)),
+        catalogItem("edit.cut"),
+        catalogItem("edit.copy"),
+        catalogItem("edit.paste"),
+        catalogItem("edit.pasteAsChild"),
         menuSeparator(),
-        menuShortcut(AppMenuCommand::DuplicateSelection, "Duplicate", "Ctrl+D", canEditSelection(true)),
-        menuShortcut(AppMenuCommand::RenameSelection, "Rename", "F2", canRename),
-        menuShortcut(AppMenuCommand::DeleteSelection, "Delete", "Delete", canEditSelection(false)),
+        catalogItem("edit.duplicate"),
+        catalogItem("edit.rename"),
+        catalogItem("edit.delete"),
         menuSeparator(),
-        menuShortcut(AppMenuCommand::FrameSelected, "Frame Selected", "F", canFrame),
+        catalogItem("edit.frameSelected"),
+        catalogItem("edit.searchAll"),
         menuSeparator(),
-        menuToggle(AppMenuCommand::TogglePlay, "Play", mainToolbar->isInPlayMode(), "Ctrl+P", mainToolbar->canTogglePlay()),
-        menuToggle(AppMenuCommand::TogglePause, "Pause", mainToolbar->isPaused(), "Ctrl+Shift+P", mainToolbar->canPause()),
-        menuShortcut(AppMenuCommand::StepFrame, "Step", "Ctrl+Alt+P", mainToolbar->canStep()),
-        menuCommand(AppMenuCommand::StopScene, "Stop", mainToolbar->isInPlayMode()),
+        catalogItem("edit.play", "Play", mainToolbar->isInPlayMode()),
+        catalogItem("edit.pause", "Pause", mainToolbar->isPaused()),
+        catalogItem("edit.step"),
+        catalogItem("edit.stop"),
         menuSeparator(),
-        menuCommand(AppMenuCommand::ProjectSettings, "Project Settings..."),
-        menuCommand(AppMenuCommand::EditorSettings, "Preferences...")
+        catalogItem("edit.projectSettings"),
+        catalogItem("edit.preferences"),
+        catalogItem("edit.shortcuts")
     }));
 
     menu.menus.push_back(menuSubmenu("Assets", {
         menuSubmenu("Create", {
-            menuCommand(AppMenuCommand::AssetsCreateFolder, "Folder"),
+            catalogItem("assets.createFolder", "Folder"),
             menuSeparator(),
-            menuCommand(AppMenuCommand::AssetsCreateLuaScript, "Lua Script"),
-            menuCommand(AppMenuCommand::AssetsCreateCppScript, "C++ Script"),
+            catalogItem("assets.createLuaScript", "Lua Script"),
+            catalogItem("assets.createCppScript", "C++ Script"),
             menuSeparator(),
-            menuCommand(AppMenuCommand::AssetsCreateHtmlDocument, "HTML Document"),
+            catalogItem("assets.createHtmlDocument", "HTML Document"),
             menuSeparator(),
             menuSubmenu("Scene", newSceneItems(), !isProjectBusy)
         }),
-        menuCommand(AppMenuCommand::AssetsShowInFileManager, "Show in File Manager"),
-        menuCommand(AppMenuCommand::AssetsOpen, "Open", singleAsset),
-        menuCommand(AppMenuCommand::AssetsRename, "Rename", singleAsset),
-        menuCommand(AppMenuCommand::AssetsDelete, "Delete", assetSelected),
+        catalogItem("assets.showInFileManager"),
+        catalogItem("assets.open"),
+        catalogItem("assets.rename", "Rename"),
+        catalogItem("assets.delete", "Delete"),
         menuSeparator(),
-        menuCommand(AppMenuCommand::AssetsImport, "Import New Asset..."),
-        menuShortcut(AppMenuCommand::AssetsRefresh, "Refresh", "Ctrl+R"),
+        catalogItem("assets.import"),
+        catalogItem("assets.refresh"),
         menuSubmenu("Asset Database", {
-            menuCommand(AppMenuCommand::ToggleMissingAssets, "Missing Assets..."),
-            menuCommand(AppMenuCommand::MigrateAssetReferences, "Migrate References", !isProjectBusy)
+            catalogItem("window.missingAssets", "Missing Assets..."),
+            catalogItem("assets.migrateReferences")
         }),
         menuSubmenu("Scripts", {
-            menuCommand(AppMenuCommand::ScriptsReload, "Reload Scripts", project.isAnyScenePlaying()),
-            menuCommand(AppMenuCommand::ScriptsRebuildCpp, "Rebuild C++ Scripts", !ScriptReloadService::get().isCppBuilding()),
-            menuCommand(AppMenuCommand::ScriptsCancelBuild, "Cancel Script Build", ScriptReloadService::get().isCppBuilding())
+            catalogItem("scripts.reload"),
+            catalogItem("scripts.rebuildCpp"),
+            catalogItem("scripts.cancelBuild")
         }),
         menuSeparator(),
-        menuCommand(AppMenuCommand::ProjectScenes, "Scenes in Build...", !isProjectBusy),
-        menuCommand(AppMenuCommand::ProjectPrefabs, "Prefabs..."),
-        menuCommand(AppMenuCommand::ClearTrash, "Empty Trash...", !isProjectBusy)
+        catalogItem("assets.scenesInBuild"),
+        catalogItem("assets.prefabs"),
+        catalogItem("assets.emptyTrash")
     }));
 
-    menu.menus.push_back(menuSubmenu("GameObject",
-        gameObjectMenuItems(selectedScene, canCreate, canCreateChild)));
+    menu.menus.push_back(menuSubmenu("GameObject", gameObjectMenuItems(selectedScene, canCreate)));
 
     menu.menus.push_back(menuSubmenu("Component", {
-        menuShortcut(AppMenuCommand::AddComponent, "Add...", "Ctrl+Shift+A", canAddComponent)
+        catalogItem("component.add", "Add...")
     }));
 
     menu.menus.push_back(menuSubmenu("Window", {
         menuSubmenu("General", {
-            menuShortcut(AppMenuCommand::FocusScene, "Scene", "Ctrl+1", hasSelectedScene),
-            menuShortcut(AppMenuCommand::FocusGame, "Game", "Ctrl+2"),
-            menuShortcut(AppMenuCommand::ToggleInspector, windowMenuLabel(InspectorWindow::WINDOW_NAME), "Ctrl+3"),
-            menuShortcut(AppMenuCommand::ToggleHierarchy, windowMenuLabel(HierarchyWindow::WINDOW_NAME), "Ctrl+4"),
-            menuShortcut(AppMenuCommand::ToggleProject, windowMenuLabel(ProjectWindow::WINDOW_NAME), "Ctrl+5"),
-            menuShortcut(AppMenuCommand::ToggleConsole, windowMenuLabel(ConsoleWindow::WINDOW_NAME), "Ctrl+Shift+C"),
-            menuCommand(AppMenuCommand::ToggleUndoHistory, windowMenuLabel(UndoHistoryWindow::WINDOW_NAME)),
-            menuCommand(AppMenuCommand::TogglePlayModeChanges, windowMenuLabel(PlayModeChangesWindow::WINDOW_NAME))
+            catalogItem("window.scene"),
+            catalogItem("window.game"),
+            catalogItem("window.inspector", windowMenuLabel(InspectorWindow::WINDOW_NAME)),
+            catalogItem("window.hierarchy", windowMenuLabel(HierarchyWindow::WINDOW_NAME)),
+            catalogItem("window.project", windowMenuLabel(ProjectWindow::WINDOW_NAME)),
+            catalogItem("window.console", windowMenuLabel(ConsoleWindow::WINDOW_NAME)),
+            catalogItem("window.bookmarks", windowMenuLabel(BookmarksWindow::WINDOW_NAME)),
+            catalogItem("window.undoHistory", windowMenuLabel(UndoHistoryWindow::WINDOW_NAME)),
+            catalogItem("window.playModeChanges", windowMenuLabel(PlayModeChangesWindow::WINDOW_NAME))
         }),
         menuSubmenu("Animation", {
-            menuShortcut(AppMenuCommand::ToggleAnimation, windowMenuLabel(AnimationWindow::WINDOW_NAME), "Ctrl+6")
+            catalogItem("window.animation", windowMenuLabel(AnimationWindow::WINDOW_NAME))
         }),
-        menuCommand(AppMenuCommand::ToggleTerrain, windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
+        catalogItem("window.terrain", windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
         menuSubmenu("Assets", {
-            menuCommand(AppMenuCommand::ToggleMissingAssets, windowMenuLabel(MissingAssetsWindow::WINDOW_NAME)),
-            menuCommand(AppMenuCommand::ToggleAssetReferences, windowMenuLabel(AssetReferencesWindow::WINDOW_NAME))
+            catalogItem("window.missingAssets", windowMenuLabel(MissingAssetsWindow::WINDOW_NAME)),
+            catalogItem("window.assetReferences", windowMenuLabel(AssetReferencesWindow::WINDOW_NAME))
         }),
         menuSubmenu("Analysis", {
-            menuShortcut(AppMenuCommand::ToggleProfiler, windowMenuLabel(ProfilerWindow::WINDOW_NAME), "Ctrl+7"),
-            menuCommand(AppMenuCommand::ToggleFrameDebugger, windowMenuLabel(FrameDebuggerWindow::WINDOW_NAME)),
-            menuCommand(AppMenuCommand::ToggleSystems, windowMenuLabel(SystemsWindow::WINDOW_NAME)),
-            menuCommand(AppMenuCommand::ToggleJobsMemory, windowMenuLabel(JobsMemoryWindow::WINDOW_NAME))
+            catalogItem("window.profiler", windowMenuLabel(ProfilerWindow::WINDOW_NAME)),
+            catalogItem("window.frameDebugger", windowMenuLabel(FrameDebuggerWindow::WINDOW_NAME)),
+            catalogItem("window.systems", windowMenuLabel(SystemsWindow::WINDOW_NAME)),
+            catalogItem("window.jobsMemory", windowMenuLabel(JobsMemoryWindow::WINDOW_NAME))
         }),
+        catalogItem("window.textureSynthesis", windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
+        catalogItem("window.physicsPlacement", windowMenuLabel(PhysicsPlacementWindow::WINDOW_NAME)),
         menuSubmenu("MCP", {
-            menuCommand(AppMenuCommand::ToggleMcpActivity, windowMenuLabel(mcp::McpActivityWindow::WINDOW_NAME))
+            catalogItem("window.mcpActivity", windowMenuLabel(mcp::McpActivityWindow::WINDOW_NAME))
         }),
         menuSeparator(),
-        menuSubmenu("Layouts", {
-            menuCommand(AppMenuCommand::ResetLayout, "Reset Layout")
-        }),
-        menuToggle(AppMenuCommand::ToggleDetachableWindows, "Detachable Windows",
-                   AppSettings::getMultiViewportEnabled())
+        menuSubmenu("Layouts", layoutMenuItems()),
+        catalogItem("window.detachableWindows", "Detachable Windows", AppSettings::getMultiViewportEnabled())
     }));
 
     menu.menus.push_back(menuSubmenu("Help", {
-        menuCommand(AppMenuCommand::About, "About JasperEngine"),
+        catalogItem("help.about"),
         menuSeparator(),
-        menuShortcut(AppMenuCommand::Documentation, "Documentation", "F1"),
-        menuCommand(AppMenuCommand::KeyboardShortcuts, "Keyboard Shortcuts"),
-        menuCommand(AppMenuCommand::ReportIssue, "Report an Issue...")
+        catalogItem("help.documentation"),
+        catalogItem("help.keyboardShortcuts"),
+        catalogItem("help.reportIssue")
     }));
     addScriptMenus(menu);
     return menu;
+}
+
+// Window > Layouts and the toolbar's Layout menu (S25 R16): the presets (the active one
+// checked), then Save Layout..., Rename Layout >, Delete Layout >, the file items, Reset Layout
+std::vector<editor::PlatformMenuItem> editor::App::layoutMenuItems(){
+    std::vector<PlatformMenuItem> items;
+    std::vector<PlatformMenuItem> renameItems;
+    std::vector<PlatformMenuItem> deleteItems;
+    for (const LayoutPresetInfo& preset : layouts.presets()) {
+        PlatformMenuItem apply = catalogItem("window.layouts.apply", preset.name, preset.active);
+        apply.command.payload = preset.name;
+        items.push_back(std::move(apply));
+        if (preset.builtin) continue;
+        PlatformMenuItem rename = catalogItem("window.layouts.rename", preset.name);
+        rename.command.payload = preset.name;
+        rename.shortcut.clear();
+        renameItems.push_back(std::move(rename));
+        PlatformMenuItem remove = catalogItem("window.layouts.delete", preset.name);
+        remove.command.payload = preset.name;
+        remove.shortcut.clear();
+        deleteItems.push_back(std::move(remove));
+    }
+    const bool hasUserPresets = !renameItems.empty();
+    items.push_back(menuSeparator());
+    items.push_back(catalogItem("window.layouts.save"));
+    items.push_back(menuSubmenu("Rename Layout", std::move(renameItems), hasUserPresets));
+    items.push_back(menuSubmenu("Delete Layout", std::move(deleteItems), hasUserPresets));
+    items.push_back(menuSeparator());
+    items.push_back(catalogItem("window.layouts.saveToFile"));
+    items.push_back(catalogItem("window.layouts.loadFromFile"));
+    items.push_back(menuSeparator());
+    items.push_back(catalogItem("window.layouts.reset"));
+    return items;
+}
+
+void editor::App::drawLayoutsMenu(){
+    showImGuiMenuItems(layoutMenuItems());
 }
 
 // Window menu items open the window if needed and bring it to the front (Unity).
@@ -891,6 +815,12 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::TogglePlayModeChanges:
             showEditorWindow(playModeChangesWindow);
             break;
+        case AppMenuCommand::ToggleTextureSynthesis:
+            textureSynthesisWindow->open();
+            break;
+        case AppMenuCommand::TogglePhysicsPlacement:
+            showEditorWindow(physicsPlacementWindow);
+            break;
         case AppMenuCommand::ToggleMcpActivity:
             showEditorWindow(mcpActivityWindow);
             break;
@@ -933,16 +863,8 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         }
         case AppMenuCommand::ResetLayout:
-            hierarchyWindow->setOpen(true);
-            inspectorWindow->setOpen(true);
-            projectWindow->setOpen(true);
-            consoleWindow->setOpen(true);
-            animationWindow->setOpen(true);
-            terrainEditWindow->setOpen(false);
-            mcpActivityWindow->setOpen(false);
-            systemsWindow->setOpen(false);
-            gameWindow->setOpen(true);
-            buildDockspace(true);
+            // Unity's Reset Layout: the Default preset
+            layouts.requestSwitch(LayoutPresets::DEFAULT_NAME);
             break;
         case AppMenuCommand::ProjectSettings:
             projectSettingsWindow.open(&project);
@@ -1094,36 +1016,35 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         }
         case AppMenuCommand::KeyboardShortcuts:
-            registerAlert("Keyboard Shortcuts",
-                "FILE AND EDIT\n"
-                "Ctrl+S    Save current scene or script\n"
-                "Ctrl+Shift+S    Save all scenes, scripts, and project\n"
-                "Ctrl+O    Open project\n"
-                "Ctrl+Shift+B    Build Settings\n"
-                "Ctrl+Z    Undo\n"
-                "Ctrl+Y / Ctrl+Shift+Z    Redo\n"
-                "Ctrl+A    Select All\n"
-                "Ctrl+X / Ctrl+C / Ctrl+V    Cut / Copy / Paste GameObjects\n"
-                "Ctrl+Shift+V    Paste As Child\n"
-                "Ctrl+D    Duplicate\n"
-                "F2    Rename\n"
-                "Delete / Backspace    Delete\n\n"
-                "GAMEOBJECT AND COMPONENT\n"
-                "Ctrl+Shift+N    Create Empty\n"
-                "Alt+Shift+N    Create Empty Child\n"
-                "Ctrl+Shift+A    Add Component\n\n"
-                "PLAY MODE\n"
-                "Ctrl+P    Play / Stop (F5 plays, F7 stops)\n"
-                "Ctrl+Shift+P    Pause / Resume (F6 pauses)\n\n"
-                "WINDOWS\n"
-                "Ctrl+1 Scene   Ctrl+3 Inspector   Ctrl+4 Hierarchy\n"
-                "Ctrl+5 Project   Ctrl+6 Animation   Ctrl+7 Profiler   Ctrl+Shift+C Console\n\n"
-                "SCENE VIEW\n"
-                "W / E / R    Move / Rotate / Scale\n"
-                "T    Toggle local / global transforms\n"
-                "F / Home    Frame selected / all (3D)\n\n"
-                "F1    Documentation",
-                "On macOS, menu shortcuts use Command instead of Ctrl.");
+            // generated from the command catalog, filterable (R5)
+            shortcutsWindow->openReference();
+            break;
+        case AppMenuCommand::Shortcuts:
+            shortcutsWindow->openEditor();
+            break;
+        case AppMenuCommand::SearchAll:
+            searchPalette->open();
+            break;
+        case AppMenuCommand::ToggleBookmarks:
+            showEditorWindow(bookmarksWindow);
+            break;
+        case AppMenuCommand::LayoutApply:
+            layouts.requestSwitch(command.payload);
+            break;
+        case AppMenuCommand::LayoutSave:
+            layouts.openSaveDialog();
+            break;
+        case AppMenuCommand::LayoutRename:
+            layouts.openRenameDialog(command.payload);
+            break;
+        case AppMenuCommand::LayoutDelete:
+            layouts.confirmDelete(command.payload);
+            break;
+        case AppMenuCommand::LayoutSaveToFile:
+            layouts.exportToFile();
+            break;
+        case AppMenuCommand::LayoutLoadFromFile:
+            layouts.importFromFile();
             break;
     }
 }
@@ -1249,8 +1170,34 @@ void editor::App::handleInteractiveEdits(bool popupOpen){
     }
 }
 
+// The catalog learns where each command sits in the main menu (the palette's detail, the
+// Shortcuts window's menu path) and which chord its item shows (macOS NSMenu owns that one)
+void editor::App::recordMenuItems(const PlatformMenuModel& menu){
+    CommandCatalog& catalog = CommandCatalog::editor();
+    catalog.clearMenuItems();
+    std::function<void(const std::vector<PlatformMenuItem>&, const std::string&)> walk =
+        [&](const std::vector<PlatformMenuItem>& items, const std::string& path) {
+            for (const PlatformMenuItem& item : items) {
+                if (item.type == PlatformMenuItemType::Separator) continue;
+                const std::string itemPath = path.empty() ? item.label : path + " > " + item.label;
+                if (item.type == PlatformMenuItemType::Submenu) {
+                    walk(item.children, itemPath);
+                    continue;
+                }
+                const CommandDef* def = catalog.findByMenuCommand(item.command.id, item.command.payload);
+                if (!def || !catalog.menuPath(def->id).empty()) continue;
+                catalog.setMenuItem(def->id, itemPath, item.shortcut.empty() ? Chord() : catalog.bindings(def->id).front());
+            }
+        };
+    walk(menu.menus, "");
+}
+
 void editor::App::showMenu(){
     PlatformMenuModel menu = buildMenuModel();
+    if (menu.menus != lastMenuModel.menus) {
+        recordMenuItems(menu);
+        lastMenuModel = menu;
+    }
     const float nativeMenuHeight = Backend::setMainMenu(
         menu, [this](const PlatformMenuCommand& command) {
             executeMenuCommand(command);
@@ -1606,6 +1553,7 @@ void editor::App::buildDockspace(bool resetLayout){
         dock_id_middle_top = getCentralDockId();
     } else {
         buildDefaultLayout();
+        cappedDockSizes.clear();
         // Built from the current font size, so it needs no DPI correction.
         layoutUiScale = mainViewportScale();
         layoutScaleApplied = true;
@@ -1628,7 +1576,7 @@ void editor::App::rescaleRestoredLayout(){
     if (!root) return;
 
     const float currentScale = mainViewportScale();
-    const float savedScale = sanitizeUiScale(layoutUiScale);
+    const float savedScale = sanitizeLayoutScale(layoutUiScale);
     layoutUiScale = currentScale;
     layoutScaleApplied = true;
 
@@ -1637,6 +1585,89 @@ void editor::App::rescaleRestoredLayout(){
 
     // The root node is pinned to the viewport, so only its descendants move.
     scaleDockChildren(root, ratio);
+}
+
+// SizeRef against a central node is read as an absolute size, so it has to grow
+// with the text; siblings split by ratio stay proportional under the same factor.
+void editor::App::scaleDockChildren(ImGuiDockNode* node, float ratio){
+    const ImVec2 available = ImGui::GetMainViewport()->WorkSize;
+    for (int i = 0; i < 2; i++) {
+        ImGuiDockNode* child = node->ChildNodes[i];
+        if (!child) continue;
+        const ImVec2 sizeRef = child->SizeRef;
+        child->Size = ImVec2(child->Size.x * ratio, child->Size.y * ratio);
+        child->SizeRef = ImVec2(sizeRef.x * ratio, sizeRef.y * ratio);
+
+        // Panels beside the scene only grow up to the cap, or the scene gets
+        // squeezed out. One already past its cap keeps its size.
+        if (holdsCentralNode(node->ChildNodes[i ^ 1]) && !holdsCentralNode(child)) {
+            const int axis = node->SplitAxis;
+            const float cap = available[axis] * panelMaxShare;
+            float uncapped = sizeRef[axis] * ratio;
+            // Resume from the uncapped size unless the panel was resized (the ini keeps whole pixels).
+            auto it = cappedDockSizes.find(child->ID);
+            if (it != cappedDockSizes.end() && std::fabs(it->second.capped - sizeRef[axis]) < 1.0f) {
+                uncapped = it->second.uncapped * ratio;
+            }
+            const float size = std::min(uncapped, std::max(sizeRef[axis], cap));
+            child->Size[axis] = size;
+            child->SizeRef[axis] = size;
+            if (size < uncapped) {
+                cappedDockSizes[child->ID] = { size, uncapped };
+            } else {
+                cappedDockSizes.erase(child->ID);
+            }
+        }
+        scaleDockChildren(child, ratio);
+    }
+}
+
+// The layout scale and the capped panel sizes are saved in the ini with the dock
+// sizes they describe. Inis from older versions fall back to settings.yaml.
+void editor::App::registerLayoutSettings(){
+    ImGuiSettingsHandler handler;
+    handler.TypeName = "JasperEngineLayout";
+    handler.TypeHash = ImHashStr("JasperEngineLayout");
+    handler.UserData = this;
+    handler.ReadOpenFn = [](ImGuiContext*, ImGuiSettingsHandler*, const char*) -> void* {
+        return reinterpret_cast<void*>(1);
+    };
+    handler.ReadLineFn = [](ImGuiContext*, ImGuiSettingsHandler* handler, void*, const char* line) {
+        App* app = static_cast<App*>(handler->UserData);
+        ImGuiID id;
+        float scale, capped, uncapped;
+        if (std::sscanf(line, "Scale=%f", &scale) == 1) {
+            app->layoutUiScale = scale;
+        } else if (std::sscanf(line, "Panel=0x%08X Capped=%f Uncapped=%f", &id, &capped, &uncapped) == 3) {
+            app->cappedDockSizes[id] = { capped, uncapped };
+        }
+    };
+    handler.WriteAllFn = [](ImGuiContext*, ImGuiSettingsHandler* handler, ImGuiTextBuffer* buf) {
+        const App* app = static_cast<const App*>(handler->UserData);
+        buf->appendf("[%s][Data]\n", handler->TypeName);
+        buf->appendf("Scale=%g\n", sanitizeLayoutScale(app->layoutUiScale));
+        for (const auto& [id, size] : app->cappedDockSizes) {
+            buf->appendf("Panel=0x%08X Capped=%.1f Uncapped=%.1f\n", id, size.capped, size.uncapped);
+        }
+        buf->append("\n");
+    };
+    ImGui::AddSettingsHandler(&handler);
+}
+
+// A new UI scale (Editor Settings) resizes the docked panels along with the text.
+void editor::App::applyUiScale(){
+    const float uiScale = AppSettings::getUiScale();
+    if (uiScale == Theme::uiScale()) return;
+
+    // Until the layout is restored, rescaleRestoredLayout() takes care of it.
+    if (layoutScaleApplied) {
+        const float ratio = uiScale / Theme::uiScale();
+        if (ImGuiDockNode* root = ImGui::DockBuilderGetNode(dockspace_id)) {
+            scaleDockChildren(root, ratio);
+        }
+        layoutUiScale *= ratio;
+    }
+    Theme::setUiScale(uiScale);
 }
 
 void editor::App::buildDefaultLayout(){
@@ -1655,19 +1686,20 @@ void editor::App::buildDefaultLayout(){
     // Hierarchy top-left and the Scene/Game tabs in the centre. Each share is
     // held to a minimum in font sizes so small windows keep readable panels.
     auto share = [](float fraction, float available, float minFontSizes){
-        return std::min(std::max(fraction * available, minFontSizes * ImGui::GetFontSize()), available * 0.45f);
+        return std::min(std::max(fraction * available, minFontSizes * ImGui::GetFontSize()), available * panelMaxShare);
     };
     const float rightWidth = share(0.22f, viewport.x, 16);
     const float leftWidth = share(0.18f, viewport.x, 12);
     const float bottomHeight = share(0.30f, viewport.y, 10);
 
-    // Inspector on the right, full height; MCP and Terrain behind it.
+    // Inspector on the right, full height; MCP, Terrain and Physics Placement behind it.
     ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Right, 0.0f, &dock_id_right, &dock_id_middle);
     ImGui::DockBuilderSetNodeSize(dock_id_right, ImVec2(rightWidth, viewport.y));
     ImGui::DockBuilderSetNodeSize(dock_id_middle, ImVec2(viewport.x - rightWidth, viewport.y));
     ImGui::DockBuilderDockWindow(InspectorWindow::WINDOW_NAME, dock_id_right);
     ImGui::DockBuilderDockWindow(mcp::McpActivityWindow::WINDOW_NAME, dock_id_right);
     ImGui::DockBuilderDockWindow(TerrainEditWindow::WINDOW_NAME, dock_id_right);
+    ImGui::DockBuilderDockWindow(PhysicsPlacementWindow::WINDOW_NAME, dock_id_right);
 
     // Project, Console and Animation across the bottom, under Hierarchy + Scene.
     ImGui::DockBuilderSplitNode(dock_id_middle, ImGuiDir_Down, 0.0f, &dock_id_middle_bottom, &dock_id_left);
@@ -1677,6 +1709,7 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(ConsoleWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(UndoHistoryWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(PlayModeChangesWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(BookmarksWindow::WINDOW_NAME, dock_id_middle_bottom);
     // Systems: an eight-column table, wide enough only here (in the Inspector's column the
     // system names and the Enabled checkboxes were cut off)
     ImGui::DockBuilderDockWindow(SystemsWindow::WINDOW_NAME, dock_id_middle_bottom);
@@ -1688,6 +1721,8 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderSetNodeSize(dock_id_middle_top, ImVec2(viewport.x - rightWidth - leftWidth, viewport.y - bottomHeight));
     ImGui::DockBuilderDockWindow(HierarchyWindow::WINDOW_NAME, dock_id_left_top);
     ImGui::DockBuilderDockWindow("Game", dock_id_middle_top);
+    // Texture Synthesis is mostly a preview: a tab next to the Scene and Game views
+    ImGui::DockBuilderDockWindow(TextureSynthesisWindow::WINDOW_NAME, dock_id_middle_top);
 
     // Tab order inside the shared nodes (first one is the visible tab).
     auto stampPanelDockOrder = [](const char* windowName, short order) {
@@ -1702,12 +1737,14 @@ void editor::App::buildDefaultLayout(){
     stampPanelDockOrder(InspectorWindow::WINDOW_NAME, 0);
     stampPanelDockOrder(mcp::McpActivityWindow::WINDOW_NAME, 1);
     stampPanelDockOrder(TerrainEditWindow::WINDOW_NAME, 2);
+    stampPanelDockOrder(PhysicsPlacementWindow::WINDOW_NAME, 3);
     stampPanelDockOrder(ProjectWindow::WINDOW_NAME, 0);
     stampPanelDockOrder(ConsoleWindow::WINDOW_NAME, 1);
     stampPanelDockOrder(AnimationWindow::WINDOW_NAME, 2);
     stampPanelDockOrder(UndoHistoryWindow::WINDOW_NAME, 3);
     stampPanelDockOrder(PlayModeChangesWindow::WINDOW_NAME, 4);
     stampPanelDockOrder(SystemsWindow::WINDOW_NAME, 5);
+    stampPanelDockOrder(BookmarksWindow::WINDOW_NAME, 6);
 
     // Mark the scene area as the central node. CentralNode is a saved flag, so it
     // persists in the ini and lets getCentralDockId() recover this node on the
@@ -1951,13 +1988,15 @@ void editor::App::setup() {
     ScriptReloadService::get().attach(&project);
     checkEditorEngineFingerprint();
 
-    // Persist the docking layout next to settings.yaml at a stable absolute
-    // path, so it survives restarts regardless of the working directory or
-    // build type. (initializeSettings() above has already set the config dir.)
-    // Versioned so a layout saved before the Unity-style default (and window
-    // titles) is left behind instead of restored: bump when the default changes.
-    layoutIniPath = (AppSettings::getConfigDirectory() / "editor_layout_v2.ini").string();
-    io.IniFilename = layoutIniPath.c_str();
+    // The window layout is the project's working layout (.jasperengine/user/layout.yaml), or
+    // without a saved project editor_layout_v2.ini next to settings.yaml: LayoutManager reads
+    // and writes it, so ImGui's own ini file is off (S25 R19). At most one write a second.
+    io.IniFilename = nullptr;
+    io.IniSavingRate = 1.0f;
+    layouts.loadGlobalIni();
+    setupLayouts();
+    // the command catalog and the user's rebindings (shortcuts.yaml, next to settings.yaml)
+    registerCommands();
 
     // Separate from the window scale: the layout keeps the scale it was built at,
     // while the window is measured on whichever monitor it closes on.
@@ -2049,6 +2088,7 @@ void editor::App::setup() {
     if (ImGui::GetPlatformIO().Monitors.Size > 0) {
         dpiScale = ImGui::GetPlatformIO().Monitors[0].DpiScale;
     }
+    Theme::setUiScale(AppSettings::getUiScale());
     Theme::applyDpiScale(dpiScale);
 }
 
@@ -2202,6 +2242,8 @@ bool editor::App::canPasteSelection(bool asChild) {
 void editor::App::selectAll() {
     if (!canSelectAll()) return;
     SceneProject* scene = project.getSelectedScene();
+    // in the Scene view, a selected lattice's points (its own Select All)
+    if (sceneWindow->isFocused() && LatticeSceneTools::selectAllPoints(&project, scene->id)) return;
     // A child is selected through its parent, as in the Hierarchy
     project.replaceSelectedEntities(scene->id, Project::getTopLevelEntities(scene->scene, scene->entities));
 }
@@ -2227,6 +2269,8 @@ void editor::App::pasteSelection(bool asChild) {
 }
 
 void editor::App::show(){
+    applyUiScale();
+
     float dpiScale = 1.0f;
     if (const ImGuiViewport* mainViewport = ImGui::GetMainViewport()) {
         dpiScale = mainViewport->DpiScale;
@@ -2269,63 +2313,11 @@ void editor::App::show(){
     // the selection changes of one frame are one undo step
     project.nextSelectionFrame();
 
-    ImGuiIO& io = ImGui::GetIO();
     handleInteractiveEdits(ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel));
-    bool isUndo = !io.WantTextInput && (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z) && !io.KeyShift);
-    bool isRedo = !io.WantTextInput && ((io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Y)) || (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z) && io.KeyShift));
 
-    const bool popupOpen = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
-    if (!popupOpen) {
-        if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S)) {
-            if (ImGui::GetIO().KeyShift) {
-                // Save scenes, scripts, and project configuration together.
-                saveAllFunc();
-            } else {
-                saveFunc();
-            }
-        }
-
-        if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_O)) {
-            // CTRL+O opens a project
-            openProjectFunc();
-        }
-
-        // Play mode (Ctrl+P, Ctrl+Shift+P, Ctrl+Alt+P, F5/F6/F7) and tool shortcuts
-        mainToolbar->handleShortcuts(!codeEditor->isFocused());
-        if (ImGui::IsKeyPressed(ImGuiKey_F1)) executeMenuCommand({static_cast<uint32_t>(AppMenuCommand::Documentation), {}});
-
-        // Unity menu shortcuts. Not while typing: text fields and the code editor
-        // use modifier+letter chords of their own.
-        if (!io.WantTextInput && !codeEditor->isFocused()) {
-            auto chord = [&io](bool ctrl, bool shift, bool alt, ImGuiKey key) {
-                return io.KeyCtrl == ctrl && io.KeyShift == shift && io.KeyAlt == alt && ImGui::IsKeyPressed(key, false);
-            };
-            auto run = [this](AppMenuCommand menuCommand, std::string payload = {}) {
-                executeMenuCommand({static_cast<uint32_t>(menuCommand), std::move(payload)});
-            };
-            if (chord(true, true, false, ImGuiKey_B)) run(AppMenuCommand::ExportProject);
-            if (chord(true, false, false, ImGuiKey_R)) run(AppMenuCommand::AssetsRefresh);
-            if (chord(true, true, false, ImGuiKey_N)) {
-                const auto& entries = HierarchyWindow::getCreateMenuEntries();
-                for (size_t i = 0; i < entries.size(); i++) {
-                    if (entries[i].type == EntityCreationType::GAMEOBJECT) {
-                        run(AppMenuCommand::CreateGameObject, std::to_string(i));
-                        break;
-                    }
-                }
-            }
-            if (chord(false, true, true, ImGuiKey_N)) run(AppMenuCommand::CreateEmptyChild);
-            if (chord(true, true, false, ImGuiKey_A)) run(AppMenuCommand::AddComponent);
-            if (chord(true, false, false, ImGuiKey_1)) run(AppMenuCommand::FocusScene);
-            if (chord(true, false, false, ImGuiKey_2)) run(AppMenuCommand::FocusGame);
-            if (chord(true, false, false, ImGuiKey_3)) run(AppMenuCommand::ToggleInspector);
-            if (chord(true, false, false, ImGuiKey_4)) run(AppMenuCommand::ToggleHierarchy);
-            if (chord(true, false, false, ImGuiKey_5)) run(AppMenuCommand::ToggleProject);
-            if (chord(true, false, false, ImGuiKey_6)) run(AppMenuCommand::ToggleAnimation);
-            if (chord(true, false, false, ImGuiKey_7)) run(AppMenuCommand::ToggleProfiler);
-            if (chord(true, true, false, ImGuiKey_C)) run(AppMenuCommand::ToggleConsole);
-        }
-    }
+    // Every editor key binding: the command catalog's one dispatcher (S25 R3). Local keys
+    // (Esc in dialogs, the Console's arrows, the text editors, Play input) stay with their windows.
+    processShortcuts();
 
     if (isDroppedExternalPaths) {
         isDroppedExternalPaths = false;
@@ -2333,46 +2325,6 @@ void editor::App::show(){
             std::vector<char> payload = Util::encodeStringsPayload(droppedExternalPaths);
             ImGui::SetDragDropPayload("external_files", payload.data(), payload.size());
             ImGui::EndDragDropSource();
-        }
-    }
-
-    if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()){
-        // space to keys events
-    }
-
-    // Ctrl+Z / Ctrl+Y: the timeline from any window but a text field or the Code editor,
-    // which keep their own undo (S24 R21)
-    if (!popupOpen && (isUndo || isRedo) && undoTarget() == UndoTimeline::Target::Timeline) {
-        undoRedo(isUndo);
-    }
-
-    if (!popupOpen && !projectWindow->isFocused() && !jobsMemoryWindow->isFocused() && !codeEditor->isFocused()){
-
-        if (ImGui::IsKeyPressed(ImGuiKey_Delete) || ImGui::IsKeyPressed(ImGuiKey_Backspace)) deleteSelection();
-
-        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_D)) duplicateSelection();
-
-        // Clipboard and Select All: only for the Hierarchy and the Scene view, where the keys
-        // are not text operations (the Console and the Project window have their own)
-        if (!io.WantTextInput && io.KeyCtrl && !io.KeyAlt && (hierarchyWindow->isFocused() || sceneWindow->isFocused())) {
-            auto run = [this](AppMenuCommand menuCommand) {
-                executeMenuCommand({static_cast<uint32_t>(menuCommand), {}});
-            };
-            if (!io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_A, false)) run(AppMenuCommand::SelectAll);
-            if (!io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_X, false)) run(AppMenuCommand::CutSelection);
-            if (!io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_C, false)) run(AppMenuCommand::CopySelection);
-            if (ImGui::IsKeyPressed(ImGuiKey_V, false)) run(io.KeyShift ? AppMenuCommand::PasteAsChild : AppMenuCommand::PasteSelection);
-        }
-
-        // F2 renames inline in the Hierarchy when it has focus, else in the Inspector
-        if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F2, false)) {
-            if (!(hierarchyWindow->isFocused() && hierarchyWindow->renameSelected())) inspectorWindow->focusNameInput();
-        }
-
-        // Frame Selected (Edit menu): the Scene view handles F itself while it has focus
-        if (!io.WantTextInput && !io.KeyCtrl && !io.KeyShift && !io.KeyAlt &&
-            hierarchyWindow->isFocused() && ImGui::IsKeyPressed(ImGuiKey_F, false)) {
-            executeMenuCommand({static_cast<uint32_t>(AppMenuCommand::FrameSelected), {}});
         }
     }
 
@@ -2384,6 +2336,11 @@ void editor::App::show(){
     showFooter();
 
     isInitialized = true;
+
+    // a layout applied between frames: its panels, central node, scale and documents
+    layouts.inFrame();
+    // the asset labels a background read found (S25)
+    project.getAssetLabels().update();
 
     // Before DockSpaceOverViewport() below lays the restored sizes out.
     rescaleRestoredLayout();
@@ -2419,6 +2376,9 @@ void editor::App::show(){
     consoleWindow->show();
     animationWindow->show();
     terrainEditWindow->show();
+    textureSynthesisWindow->show();
+    // also the tick of the Scene view's physics sessions, with the panel closed too
+    physicsPlacementWindow->show();
     inspectorWindow->show();
     mcpActivityWindow->show();
     systemsWindow->show();
@@ -2429,6 +2389,7 @@ void editor::App::show(){
     frameDebuggerWindow->show();
     undoHistoryWindow->show();
     playModeChangesWindow->show();
+    bookmarksWindow->show();
     codeEditor->show();
     gameWindow->show();
     // Prefab Mode's tab docks with the scene tabs the first time a stage shows
@@ -2450,6 +2411,12 @@ void editor::App::show(){
     // Closing a panel through its title-bar button changes the same state as the
     // View menu, so mirror the live state after all panels have rendered.
     persistPanelVisibilitySettings();
+
+    // S25: the Search palette, the Shortcuts window, the layout dialogs, over everything
+    searchPalette->show();
+    shortcutsWindow->show();
+    layouts.drawDialogs();
+    layouts.endFrame();
 
     // MCP calls waiting on a condition or on frames (waitUntil / afterFrames)
     mcp::McpServer::get().tick();
@@ -2533,6 +2500,12 @@ void editor::App::parseBenchmarkArgs(int argc, char** argv) {
         } else if (arg == "--depth-prepass") {
             if (const char* value = requireValue(i, "--depth-prepass"))
                 benchmarkDepthPrepass = (std::strcmp(value, "off") != 0 && std::strcmp(value, "0") != 0) ? 1 : 0;
+        } else if (arg == "--lit-quality") {
+            if (const char* value = requireValue(i, "--lit-quality")) {
+                if (std::strcmp(value, "standard") == 0) benchmarkLitQuality = 0;
+                else if (std::strcmp(value, "high") == 0) benchmarkLitQuality = 1;
+                else failBenchmark(std::string("--lit-quality must be standard or high, not ") + value);
+            }
         } else if (arg == "--name") {
             if (const char* value = requireValue(i, "--name"))
                 benchmarkName = value;
@@ -2665,6 +2638,11 @@ void editor::App::engineInit(int argc, char** argv) {
         if (projectWindow) {
             projectWindow->refreshCurrentDirectory();
         }
+    };
+    // A physics gesture previews poses in the scene: before any other edit, undo or redo of that
+    // scene it settles and commits (or, still held, is cancelled), so nothing records its preview
+    CommandHistory::beforeChange = [this](size_t sceneId, CommandHistory::Change change){
+        return physicsPlacementWindow->beforeHistoryChange((uint32_t)sceneId, change);
     };
 
     ShaderPool::setShaderBuilder([this](jasperengine::ShaderKey shaderKey) -> jasperengine::ShaderBuildResult {
@@ -2838,10 +2816,12 @@ bool editor::App::getOpenDialog(EditorDialogInfo& out) const {
         return true;
     }
     if (ImGuiWindow* modal = ImGui::GetTopMostAndVisiblePopupModal()) {
-        out.kind = "modal";
         std::string name = modal->Name ? modal->Name : "";
         const size_t idPos = name.find("##");
         if (idPos != std::string::npos) name.resize(idPos);
+        // LoadingWindow's progress of the shader, texture and model builds: no answer, it
+        // closes when they are done
+        out.kind = name == "Loading" && ResourceProgress::hasActiveBuilds() ? "progress" : "modal";
         out.title = name;
         return true;
     }
@@ -2855,7 +2835,9 @@ bool editor::App::answerDialog(const std::string& choice, std::string& error) {
         return false;
     }
     if (std::find(dialog.choices.begin(), dialog.choices.end(), choice) == dialog.choices.end()) {
-        if (dialog.choices.empty()) {
+        if (dialog.kind == "progress") {
+            error = "The editor is building shaders, textures or models (\"" + dialog.title + "\"): it closes by itself when they are done.";
+        } else if (dialog.choices.empty()) {
             error = "The dialog \"" + dialog.title + "\" can only be closed by a human in the editor window.";
         } else {
             error = "Choice must be one of:";
@@ -2879,6 +2861,12 @@ void editor::App::requestProjectChange(std::function<void()> change) {
     if (projectLoading || pendingProjectChange) return;
     pendingProjectChange = std::move(change);
     requestRedraw();
+}
+
+void editor::App::beforeFrame() {
+    processProjectChange();
+    // a layout applies between frames: a preset picked, or a project that opened (S25 R17)
+    layouts.beforeFrame();
 }
 
 void editor::App::processProjectChange() {
@@ -2963,16 +2951,20 @@ void editor::App::engineRender(){
 
 
     processMainThreadTasks();
+    // upstream's FBX reimports: their own throttled check, hashing on a Background job
+    // (not the hot reload's watcher yet)
+    project.refreshFbxImports();
     // scripts saved while a scene plays swap in here, at the frame boundary (no Lua runs now)
     ScriptStatus::get().update();
     ScriptReloadService::get().update();
     project.updateGeneratedSources();
     // Prefab Mode's Auto Save waits for the edit in progress (a drag, a field being typed)
     project.updatePrefabStages(ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsAnyItemActive()
-        || ImGui::GetIO().WantTextInput);
-    // scene Auto Save (backups only), never in the middle of a drag or a field being typed
+        || ImGui::GetIO().WantTextInput || physicsPlacementWindow->isAnyBusy());
+    // scene Auto Save (backups only), never in the middle of a drag, a field being typed or a
+    // Physics Placement gesture (its preview poses are in the scene)
     project.tickAutosave(ImGui::GetIO().DeltaTime, ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsAnyItemActive()
-        || ImGui::GetIO().WantTextInput);
+        || ImGui::GetIO().WantTextInput || physicsPlacementWindow->isAnyBusy());
     // the title says when the scene shown did not load completely (its tab does too)
     {
         const SceneProject* shown = project.getSelectedScene();
@@ -3513,6 +3505,8 @@ void editor::App::tickBenchmark() {
             selected->scene->setMeshLodEnabled(benchmarkMeshLod != 0);
         if (benchmarkDepthPrepass >= 0)
             selected->scene->setDepthPrepassEnabled(benchmarkDepthPrepass != 0);
+        if (benchmarkLitQuality >= 0)
+            selected->scene->setLitQuality(benchmarkLitQuality ? LitQuality::HIGH : LitQuality::STANDARD);
         selected->displaySettings.showGrid3D = false;
         selected->displaySettings.showOrigin = false;
         selected->displaySettings.hideSelectionOutline = true;
@@ -3849,12 +3843,17 @@ void editor::App::setWakeCallback(std::function<void()> cb) {
 }
 
 void editor::App::shutdownBackgroundWork() {
+    // the window layout as it is, for the next start
+    layouts.saveWorkingLayoutNow();
     // a clean quit: this session's crash backups and the project lock go
     project.endProjectSession();
     loadingPump = nullptr;
     pendingProjectChange = nullptr;
     // Before glfwTerminate/SDL_Quit: pending MCP calls fail, the HTTP listener closes.
     mcp::McpServer::get().stop();
+    if (!editor::texsynth::SynthesisRun::cancelAll()) {
+        Out::warning("A texture synthesis did not stop in time; it is left to finish without effect.");
+    }
     HotReloadService::get().stopWatching();
     htmlui::HtmlUiAutoImport::get().shutdown();
     setWakeCallback(nullptr);
@@ -3886,6 +3885,12 @@ void editor::App::addNewSceneToDock(uint32_t sceneId){
     }
 }
 
+void editor::App::sceneDeleting(uint32_t sceneId) {
+    if (physicsPlacementWindow) {
+        physicsPlacementWindow->sceneDeleting(sceneId);
+    }
+}
+
 void editor::App::clearSceneWindowState(uint32_t sceneId) {
     if (sceneWindow) {
         sceneWindow->clearSceneState(sceneId);
@@ -3905,9 +3910,16 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
 }
 
 void editor::App::prepareForProjectSwitch() {
+    // the project's working layout, before another project's replaces it (S25 R19)
+    layouts.saveWorkingLayoutNow();
     // the watcher stops before the project goes (S05 D2)
     HotReloadService::get().stopWatching();
     imageViewerWindow->closeAll();
+    // a synthesis started in this project is cancelled and never written into the next one
+    textureSynthesisWindow->resetForProjectSwitch();
+    editor::texsynth::projectSwitching();
+    // physics gestures are cancelled, the sessions and the decomposition cache dropped
+    physicsPlacementWindow->resetForProjectSwitch();
     projectWindow->cancelThumbnailWork();
     // Thumbnail cancellation prevents new preview loads from being queued;
     // now quiesce any remaining scene/model jobs before pool cleanup.
@@ -4018,6 +4030,13 @@ void editor::App::stopTransientPreviews() {
     if (inspectorWindow) {
         inspectorWindow->stopTransientPreviews();
     }
+    // a scene is never saved or played with physics preview poses in it: a released gesture
+    // settles and commits first, a held one is cancelled (and place_with_physics screenshots
+    // put their poses back)
+    if (physicsPlacementWindow) {
+        physicsPlacementWindow->finaliseGestures();
+    }
+    mcp::stopPlacementPreviews(&project);
 }
 
 void editor::App::flushSceneMaterialWrites(uint32_t sceneId) {
@@ -4259,11 +4278,40 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      and post-process shaders (HTMLUI_GRADIENT, HTMLUI_POST), HTML UI effects (UI_EFFECT),
     //      library effects named by their custom-shader id; the ShaderType values of HTMLUI ...
     //      UI_EFFECT moved after BLOOM.
-    // v34: (the S12 branch only: mesh bit 5 as a height fog bit; S10 has it as 'Shq')
-    // v35: atmosphere (S12): the fogged mesh variants (HAS_FOG) carry the height fog
+    // v34: Stochastic Tiling (includes/stochastic.glsl) — u_fs_terrainLayers gains
+    //      stochastic[MAX_TERRAIN_LAYERS], read by the PBR terrain path of the color pass and
+    //      the G-buffer; library shaders gain the STOCHASTIC feature.
+    //      Also .sdat format version 2 (the key holds 64 property bits). Version 1 files would be
+    //      rejected and rebuilt anyway; the new directory keeps an older editor's cache apart.
+    // v35: Stochastic Tiling of the built-in Lit material — MESH bit 5 'Sto' (USE_STOCHASTIC_TILING:
+    //      includes/pbr.glsl, u_fs_pbrParams gains a vec4), DEPTH bit 14 and GBUFFER bit 10 'Sto'
+    //      (u_fs_depthMaterial / u_fs_gbufferMaterial gain one); lighting2d.glsl's normal map.
+    //      Also supersedes v34, which two branches each bumped to (the terrain/library Stochastic
+    //      Tiling and the 64-bit shader keys): a v34 cache from either could be trusted by the other.
+    // v36: terrain triplanar: the vertex normal from central differences, the three projections
+    //      weighted by abs(normal)^8 (the slope smoothstep and the two-way side split are gone),
+    //      projections under 2% skipped.
+    // v37: mesh.frag skips the shadow lookup of a surface facing away from the light (unless
+    //      foliage transmission reads it); ssr.frag fades out rough surfaces (SSR_MAX_ROUGHNESS)
+    //      and skips their march; probe_filter (PROBE_FILTER) prefilters runtime reflection probe
+    //      captures into roughness mips, each source level downsampled from the one above.
+    //      library:water's REFLECTION, CAUSTICS, UNDERSIDE and BUILTIN_TEXTURES features, its
+    //      distant detail fade and new parameters (u_fs_customParams grows); includes/lights.glsl
+    //      gains ggxSpecular; the library post-process shader library:underwater.
+    // v38: lattice deformer (includes/lattice.glsl): HAS_LATTICE paths in mesh/depth/gbuffer.vert
+    //      and the surface includes (MESH bit 32 'Ltc', DEPTH bit 15, GBUFFER bits 11-13), the
+    //      tangent of includes/surface_vs.glsl transformed before the hooks. (Builds of the lattice
+    //      branch used v34/v35 with 'Ltc' at MESH bit 5, then v37 before this v37 of main.)
+    // (oe-port) v34: (the S12 branch only: mesh bit 5 as a height fog bit; S10 has it as 'Shq')
+    // (oe-port) v35: atmosphere (S12): the fogged mesh variants (HAS_FOG) carry the height fog
     //      (HAS_HEIGHT_FOG, u_fs_heightFog), so every cached 'Fog' variant is stale; the
     //      atmosphere pass types after S10's SHADOW_CACHE.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v35";
+    // v39: upstream (v34-v38 above) and oe-port's S10/S12 (its v34/v35) together: MESH bit 5 is
+    //      'Sto' and S10's high shadow filters moved to bit 33 ('Shq', USE_SHADOWS_HQ); the
+    //      fogged variants carry the height fog. Either side's v34-v38 cache holds other variants.
+    // v40: S11's built-in Lit (lobes, hex tiling, Lit Quality: pbr.glsl, mesh.frag, terrain) with
+    //      upstream's Stochastic Tiling in the same Lit and terrain sources and block layout.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v40";
 }
 
 void editor::App::pushTabNotificationStyle(){
@@ -4323,6 +4371,29 @@ editor::TerrainEditWindow* editor::App::getTerrainEditWindow() const{
     return terrainEditWindow;
 }
 
+editor::TextureSynthesisWindow* editor::App::getTextureSynthesisWindow() const{
+    return textureSynthesisWindow;
+}
+
+editor::PhysicsPlacementWindow* editor::App::getPhysicsPlacementWindow() const{
+    return physicsPlacementWindow;
+}
+
+editor::MainToolbar* editor::App::getMainToolbar() const{
+    return mainToolbar;
+}
+
+void editor::App::openTextureSynthesis(const std::filesystem::path& image, bool editRecipe){
+    if (!editRecipe) {
+        textureSynthesisWindow->openWithExample(image);
+        return;
+    }
+    std::string error;
+    if (!textureSynthesisWindow->openRecipe(image, error)) {
+        registerAlert("Edit Synthesis", "Can't restore the synthesis of " + image.filename().string() + ": " + error);
+    }
+}
+
 editor::SystemsWindow* editor::App::getSystemsWindow() const{
     return systemsWindow;
 }
@@ -4333,6 +4404,10 @@ editor::HierarchyWindow* editor::App::getHierarchyWindow() const{
 
 editor::SceneWindow* editor::App::getSceneWindow() const{
     return sceneWindow;
+}
+
+void editor::App::openPreferences(const std::string& category){
+    editorSettingsWindow.open(&project, category);
 }
 
 editor::ConsoleWindow* editor::App::getConsoleWindow() const{
@@ -4347,8 +4422,122 @@ editor::GameWindow* editor::App::getGameWindow() const{
     return gameWindow;
 }
 
+// ---- window layouts (S25 R15-R19, layout/LayoutManager.h)
+
+namespace {
+
+    // The dockable panels a layout opens or closes, by window name (the preset's `panels:`)
+    template <typename F>
+    void forEachPanel(F&& visit, editor::HierarchyWindow* hierarchy, editor::InspectorWindow* inspector,
+                      editor::ProjectWindow* projectWindow, editor::ConsoleWindow* console, editor::AnimationWindow* animation,
+                      editor::TerrainEditWindow* terrain, editor::mcp::McpActivityWindow* mcpActivity, editor::SystemsWindow* systems,
+                      editor::MissingAssetsWindow* missing, editor::AssetReferencesWindow* references, editor::JobsMemoryWindow* jobs,
+                      editor::ProfilerWindow* profiler, editor::FrameDebuggerWindow* frameDebugger, editor::UndoHistoryWindow* undo,
+                      editor::PlayModeChangesWindow* playChanges, editor::GameWindow* game, editor::BookmarksWindow* bookmarks,
+                      editor::TextureSynthesisWindow* textureSynthesis, editor::PhysicsPlacementWindow* physicsPlacement) {
+        visit(editor::GameWindow::WINDOW_NAME, game);
+        visit(editor::InspectorWindow::WINDOW_NAME, inspector);
+        visit(editor::HierarchyWindow::WINDOW_NAME, hierarchy);
+        visit(editor::ProjectWindow::WINDOW_NAME, projectWindow);
+        visit(editor::ConsoleWindow::WINDOW_NAME, console);
+        visit(editor::AnimationWindow::WINDOW_NAME, animation);
+        visit(editor::TerrainEditWindow::WINDOW_NAME, terrain);
+        visit(editor::mcp::McpActivityWindow::WINDOW_NAME, mcpActivity);
+        visit(editor::SystemsWindow::WINDOW_NAME, systems);
+        visit(editor::MissingAssetsWindow::WINDOW_NAME, missing);
+        visit(editor::AssetReferencesWindow::WINDOW_NAME, references);
+        visit(editor::JobsMemoryWindow::WINDOW_NAME, jobs);
+        visit(editor::ProfilerWindow::WINDOW_NAME, profiler);
+        visit(editor::FrameDebuggerWindow::WINDOW_NAME, frameDebugger);
+        visit(editor::UndoHistoryWindow::WINDOW_NAME, undo);
+        visit(editor::PlayModeChangesWindow::WINDOW_NAME, playChanges);
+        visit(editor::BookmarksWindow::WINDOW_NAME, bookmarks);
+        visit(editor::TextureSynthesisWindow::WINDOW_NAME, textureSynthesis);
+        visit(editor::PhysicsPlacementWindow::WINDOW_NAME, physicsPlacement);
+    }
+
+}
+
+std::string editor::App::focusedWindowName() const{
+    const ImGuiContext* context = ImGui::GetCurrentContext();
+    if (!context || !context->NavWindow) return {};
+    const ImGuiWindow* window = context->NavWindow->RootWindow ? context->NavWindow->RootWindow : context->NavWindow;
+    return window->Name ? std::string(window->Name) : std::string();
+}
+
+std::map<std::string, bool> editor::App::panelStates() const{
+    std::map<std::string, bool> panels;
+    forEachPanel([&panels](const char* name, auto* window) { panels[name] = window->isOpen(); },
+                 hierarchyWindow, inspectorWindow, projectWindow, consoleWindow, animationWindow, terrainEditWindow,
+                 mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
+                 frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
+                 textureSynthesisWindow, physicsPlacementWindow);
+    return panels;
+}
+
+void editor::App::applyPanelStates(const std::map<std::string, bool>& panels){
+    // panels the layout does not name keep their state (a window newer than the layout)
+    forEachPanel([&panels](const char* name, auto* window) {
+        auto it = panels.find(name);
+        if (it != panels.end()) window->setOpen(it->second);
+    }, hierarchyWindow, inspectorWindow, projectWindow, consoleWindow, animationWindow, terrainEditWindow,
+       mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
+       frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
+                 textureSynthesisWindow, physicsPlacementWindow);
+}
+
+void editor::App::applyDefaultLayout(){
+    hierarchyWindow->setOpen(true);
+    inspectorWindow->setOpen(true);
+    projectWindow->setOpen(true);
+    consoleWindow->setOpen(true);
+    animationWindow->setOpen(true);
+    terrainEditWindow->setOpen(false);
+    textureSynthesisWindow->setOpen(false);
+    physicsPlacementWindow->setOpen(false);
+    mcpActivityWindow->setOpen(false);
+    systemsWindow->setOpen(false);
+    gameWindow->setOpen(true);
+    buildDockspace(true);
+}
+
+void editor::App::setupLayouts(){
+    LayoutManager::Host host;
+    host.panelStates = [this]() { return panelStates(); };
+    host.applyPanels = [this](const std::map<std::string, bool>& panels) { applyPanelStates(panels); };
+    host.applyDefault = [this]() { applyDefaultLayout(); };
+    host.afterIniLoaded = [this](float uiScale) {
+        if (ImGui::DockBuilderGetNode(dockspace_id) == nullptr) return false;
+        // sizes in the ini are pixels at the layout's scale (rescaleRestoredLayout)
+        layoutUiScale = uiScale;
+        layoutScaleApplied = false;
+        rescaleRestoredLayout();
+        // the central node, then the open documents (not in a layout) into it
+        forceDockTabs = false;
+        dock_id_middle_top = getCentralDockId();
+        dockProjectTabs();
+        ImGui::DockBuilderFinish(dockspace_id);
+        return true;
+    };
+    host.currentUiScale = [this]() { return layoutScaleApplied ? layoutUiScale : mainViewportScale(); };
+    host.projectPath = [this]() {
+        return (project.isEditorTempProject() || project.getProjectPath().empty()) ? std::filesystem::path() : project.getProjectPath();
+    };
+    host.promptUnsaved = [this](const std::string& title, const std::string& message, std::function<void()> onSave,
+                                std::function<void()> onDontSave) {
+        registerThreeButtonAlert(title, message, std::move(onSave), std::move(onDontSave));
+        alert.yesLabel = "Save";
+        alert.noLabel = "Don't Save";
+    };
+    host.confirm = [this](const std::string& title, const std::string& message, std::function<void()> onYes) {
+        registerConfirmAlert(title, message, std::move(onYes));
+    };
+    host.alert = [this](const std::string& title, const std::string& message) { registerAlert(title, message); };
+    layouts.setHost(std::move(host));
+}
+
 void editor::App::resetLayout(){
-    executeMenuCommand({static_cast<uint32_t>(AppMenuCommand::ResetLayout), {}});
+    layouts.requestSwitch(LayoutPresets::DEFAULT_NAME);
 }
 
 void editor::App::processNextSaveDialog() {
@@ -4524,6 +4713,8 @@ void editor::App::applyPanelVisibilitySettings() {
     consoleWindow->setOpen(visibility.console);
     animationWindow->setOpen(visibility.animation);
     terrainEditWindow->setOpen(visibility.terrain);
+    textureSynthesisWindow->setOpen(visibility.textureSynthesis);
+    physicsPlacementWindow->setOpen(visibility.physicsPlacement);
     mcpActivityWindow->setOpen(visibility.mcp);
     gameWindow->setOpen(visibility.game);
     undoHistoryWindow->setOpen(visibility.undoHistory);
@@ -4537,6 +4728,8 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.console = consoleWindow->isOpen();
     visibility.animation = animationWindow->isOpen();
     visibility.terrain = terrainEditWindow->isOpen();
+    visibility.textureSynthesis = textureSynthesisWindow->isOpen();
+    visibility.physicsPlacement = physicsPlacementWindow->isOpen();
     visibility.mcp = mcpActivityWindow->isOpen();
     visibility.game = gameWindow->isOpen();
     visibility.undoHistory = undoHistoryWindow->isOpen();
@@ -4566,7 +4759,7 @@ void editor::App::saveWindowSettings(int width, int height, bool maximized, floa
     // The ini is written at the scale the layout has held all session, not the
     // monitor scale above, which is read fresh and may have changed since.
     if (layoutScaleApplied) {
-        AppSettings::setLayoutUiScale(sanitizeUiScale(layoutUiScale));
+        AppSettings::setLayoutUiScale(sanitizeLayoutScale(layoutUiScale));
     }
     AppSettings::saveSettings();
 }

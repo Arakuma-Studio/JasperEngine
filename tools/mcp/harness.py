@@ -11,12 +11,14 @@ Run with:  uv run --no-project --with-requirements tools/mcp/requirements.txt py
 
     async with Editor(create=True) as ed: ...        # a new empty project
     async with Editor(project="/path/proj") as ed: ...   # a copy of that project
-    async with Editor(url="http://127.0.0.1:47615/mcp") as ed: ...   # attach over HTTP
+    async with Editor(url="http://127.0.0.1:47615/mcp", token="...") as ed: ...   # attach over HTTP
 
 Each stdio Editor gets a scratch directory (temp) holding:
     project/             the copied (or created) project
     home/                $HOME of the editor
-    settings.yaml        editor settings (the editor reads/writes it in its cwd)
+    settings.yaml        editor settings (the editor reads/writes it in its cwd); its
+                         mcp.http_token is HTTP_TOKEN, so `--http-port` editors take that token
+                         (the editor moves it to mcp_http_token, an owner-only file, at start)
     editor.stderr.log    everything the editor wrote to stderr (stdout is the protocol)
 The scratch directory is deleted on success and kept (path printed) on failure,
 or always kept with keep=True / JASPER_KEEP_SCRATCH=1.
@@ -29,6 +31,9 @@ Environment:
     JASPER_FAKE=1    use tools/mcp/fake_server.py instead of the editor (harness self-test)
     JASPER_KEEP_SCRATCH=1   keep scratch directories
     JASPER_MCP_URL   when set, Editor() with no project/url attaches to this URL instead
+    JASPER_MCP_PERF_SLACK   the factor wall-clock budgets are enforced with (over_budget); unset
+                     or 0: budgets are printed only (the benchmark run on server E sets it)
+    JASPER_MCP_TOKEN bearer token for url mode (the editor's MCP window copies it)
 """
 
 from __future__ import annotations
@@ -57,6 +62,10 @@ from mcp.shared.exceptions import MCPError
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
+
+# The bearer token of the editors the harness starts (settings.yaml mcp.http_token): HTTP
+# requires one, and an editor with none would make a random one
+HTTP_TOKEN = "jasper-harness-http-token"
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +255,7 @@ class Scratch:
         extra_settings = settings
         settings = {
             "window": {"width": 1600, "height": 900, "maximized": True},
+            "mcp": {"http_token": HTTP_TOKEN},
         }
         if not create:
             settings["last_project_path"] = str(proj)
@@ -262,7 +272,7 @@ def launch_spec(scratch: Scratch, *, create: bool = False, name: str = "Scratch"
                 command: list[str] | None = None, display: str | None = None,
                 headless: bool = True, extra_args: list[str] | None = None,
                 inherit_display: bool = False, extra_env: dict[str, str] | None = None,
-                ) -> tuple[list[str], dict[str, str], Path]:
+                ui_probe: bool = False) -> tuple[list[str], dict[str, str], Path]:
     """argv, environment and cwd of `<editor> mcp ...` for this scratch dir.
 
     Also used by tests that need a raw subprocess (e.g. the stdout purity test).
@@ -288,6 +298,12 @@ def launch_spec(scratch: Scratch, *, create: bool = False, name: str = "Scratch"
     env["LIBGL_ALWAYS_SOFTWARE"] = "1"
     # the engine's Lua state used off the main thread aborts the editor (LuaBinding::ThreadCheck)
     env.setdefault("JASPER_LUA_THREAD_CHECK", "abort")
+    # test-only widget locator (editor/util/UIProbe.h): the editor writes the rectangles of the
+    # widgets it names there (Editor.ui_rect)
+    if ui_probe:
+        env["JASPER_UI_PROBE"] = str(scratch.root / "ui-probe.json")
+    else:
+        env.pop("JASPER_UI_PROBE", None)
     env.update(extra_env or {})
     return cmd + args, env, scratch.root
 
@@ -335,6 +351,32 @@ class CallResult:
 
 
 # ---------------------------------------------------------------------------
+# Wall-clock budgets
+
+def perf_slack() -> float:
+    """The factor wall-clock budgets are enforced with: JASPER_MCP_PERF_SLACK, 0 (not enforced)
+    unless set. A shared build server's load alone misses them, so a functional run asserts the
+    behaviour and prints the times; the benchmark run on the benchmark-only server E enforces them."""
+    try:
+        return max(0.0, float(os.environ.get("JASPER_MCP_PERF_SLACK", "") or 0))
+    except ValueError:
+        return 0.0
+
+
+def over_budget(what: str, measured: dict[str, float], budget: float, unit: str = "s") -> dict[str, float]:
+    """Prints `[bench] what: name value, ... (budget B)` and returns the measures over budget x
+    perf_slack(): always empty in a functional run (perf_slack() 0), for the benchmark run to fail
+    on. The measures and the budget are in `unit`."""
+    shown = ", ".join(f"{name} {value:.4g} {unit}" for name, value in measured.items())
+    slack = perf_slack()
+    enforced = f", enforced x{slack:g}" if slack > 0 else ", not enforced"
+    print(f"     [bench] {what}: {shown} (budget {budget:g} {unit}{enforced})", flush=True)
+    if slack <= 0:
+        return {}
+    return {name: value for name, value in measured.items() if value > budget * slack}
+
+
+# ---------------------------------------------------------------------------
 # Editor
 
 
@@ -354,7 +396,8 @@ class Editor:
     project   project dir or project.yaml to copy (default: JASPER_FIXTURE / build/fixture-unity)
     create    start with a new empty project (`mcp --create <scratch>/project --name <name>`)
     url       attach to a running editor over Streamable HTTP instead of launching one
-    token     bearer token for url mode
+    token     bearer token for url mode (default JASPER_MCP_TOKEN)
+    scratch_prefix  name prefix of the scratch directory (e.g. non-ASCII, to test such paths)
     xvfb      "editor"  (default) pass --headless with DISPLAY unset: the editor spawns its Xvfb
               "harness" the harness spawns `Xvfb -displayfd` and sets DISPLAY
               "none"    inherit the caller's DISPLAY (a visible editor on a desktop)
@@ -365,6 +408,8 @@ class Editor:
     startup_timeout  seconds for the editor to answer initialize
     call_timeout     default seconds per tool call
     keep      keep the scratch dir even on success
+    ui_probe  the editor writes the rectangles of the widgets it names (editor/util/UIProbe.h), read
+              by ui_items() / ui_rect(): UI tests click widgets wherever the layout puts them
     """
 
     def __init__(self, project: str | Path | None = None, *, create: bool = False, name: str = "Scratch",
@@ -372,7 +417,8 @@ class Editor:
                  command: list[str] | None = None, fake: bool | None = None,
                  extra_args: list[str] | None = None, env: dict[str, str] | None = None,
                  settings: dict[str, Any] | None = None, startup_timeout: float = 180.0,
-                 call_timeout: float = 300.0, keep: bool | None = None, label: str = ""):
+                 call_timeout: float = 300.0, keep: bool | None = None, label: str = "",
+                 scratch_prefix: str | None = None, ui_probe: bool = False):
         if url is None and project is None and not create and os.environ.get("JASPER_MCP_URL"):
             url = os.environ["JASPER_MCP_URL"]
         if fake is None:
@@ -393,6 +439,8 @@ class Editor:
         self.call_timeout = call_timeout
         self.keep = _env_flag("JASPER_KEEP_SCRATCH") if keep is None else keep
         self.label = label
+        self.scratch_prefix = scratch_prefix
+        self.ui_probe = ui_probe
 
         self.scratch: Scratch | None = None
         self.session: ClientSession | None = None
@@ -437,7 +485,8 @@ class Editor:
             http = await self._stack.enter_async_context(create_mcp_http_client(headers=headers))
             streams = await self._stack.enter_async_context(streamable_http_client(self.url, http_client=http))
         else:
-            self.scratch = Scratch.make(self.project_src, create=self.create, settings=self.extra_settings)
+            extra = {"prefix": self.scratch_prefix} if self.scratch_prefix else {}
+            self.scratch = Scratch.make(self.project_src, create=self.create, settings=self.extra_settings, **extra)
             display = None
             inherit = self.xvfb_mode == "none"
             if self.xvfb_mode == "harness":
@@ -445,7 +494,8 @@ class Editor:
                 display = self._xvfb.start()
             argv, env, cwd = launch_spec(
                 self.scratch, create=self.create, name=self.name, command=self.command,
-                display=display, extra_args=self.extra_args, inherit_display=inherit, extra_env=self.extra_env)
+                display=display, extra_args=self.extra_args, inherit_display=inherit, extra_env=self.extra_env,
+                ui_probe=self.ui_probe)
             self.argv = argv
             self._stderr_file = open(self.scratch.stderr_log, "w", buffering=1)
             params = StdioServerParameters(command=argv[0], args=argv[1:], env=env, cwd=str(cwd))
@@ -594,6 +644,25 @@ class Editor:
         if mime == "image/png" and not data.startswith(b"\x89PNG\r\n\x1a\n"):
             self.fail("screenshot said image/png but the data is not a PNG")
         return data
+
+    def ui_items(self) -> dict[str, list[float]]:
+        """The widgets the editor drew whole in its last frame, {name: [x0, y0, x1, y1]} in editor
+        window pixels (Editor(ui_probe=True); {} before the first frame or without it)."""
+        if not self.scratch:
+            return {}
+        path = self.scratch.root / "ui-probe.json"
+        with contextlib.suppress(OSError, ValueError):
+            return json.loads(path.read_text()).get("items", {})
+        return {}
+
+    async def ui_rect(self, name: str, timeout: float = 10.0) -> list[float] | None:
+        """A widget's rectangle once the editor draws it whole (None after timeout seconds)."""
+        deadline = time.monotonic() + timeout
+        while True:
+            rect = self.ui_items().get(name)
+            if rect or time.monotonic() > deadline:
+                return rect
+            await asyncio.sleep(0.1)
 
     async def console_since(self, since: Any = "last", **args: Any) -> list[dict]:
         """Console entries newer than `since` (a cursor). "last" (default) continues from the previous

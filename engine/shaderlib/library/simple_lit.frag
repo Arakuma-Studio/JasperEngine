@@ -13,12 +13,17 @@
 // @property gloss range(0, 1) 0.5 "Glossiness"
 // @property normalStrength range(0, 2) 1 "Normal strength" feature=NORMAL_MAP
 // @property emissionColor hdrcolor (1, 1, 1, 1) "Emission colour" feature=EMISSION
+// @property stochasticCellSize range(0.25, 4) 1 "Cell Size" feature=STOCHASTIC
+// @property stochasticBlendSharpness range(0, 1) 0.4 "Blend Sharpness" feature=STOCHASTIC
+// @property stochasticContrast range(0, 1) 0.45 "Contrast" feature=STOCHASTIC
+// @property stochasticRotation range(0, 1) 0 "Rotation" feature=STOCHASTIC
 // @texture u_baseTexture white "Base map"
 // @texture u_normalTexture normal "Normal map" feature=NORMAL_MAP
 // @texture u_emissionTexture white "Emission map" feature=EMISSION
 // @feature VERTEX_COLOR "Vertex colour"
 // @feature NORMAL_MAP "Normal map"
 // @feature EMISSION "Emission"
+// @feature STOCHASTIC "Stochastic Tiling"
 
 // Pixel lights (pixel, mixed) get the full model: Lambert diffuse, normalised Blinn-Phong
 // specular, shadows and the normal map. Vertex lights (vertex, mixed) are diffuse only,
@@ -32,7 +37,17 @@ uniform u_fs_customParams {
     vec4 emissionColor;
     float gloss;
     float normalStrength;
+    #ifdef STOCHASTIC
+        float stochasticCellSize;
+        float stochasticBlendSharpness;
+        float stochasticContrast;
+        float stochasticRotation;
+    #endif
 } customParams;
+
+#ifdef STOCHASTIC
+    #include "library/stochastic_surface.glsl"
+#endif
 
 uniform texture2D u_baseTexture;
 uniform sampler u_base_smp;
@@ -68,6 +83,11 @@ in vec4 v_color; // the instance colour, times the vertex colour with VERTEX_COL
 
 out vec4 g_finalColor;
 
+#ifdef STOCHASTIC
+    // set up by main from the base map, read by the normal and emission maps
+    StochasticTiling surfaceStochastic;
+#endif
+
 #include "includes/output.glsl"
 
 #if defined(USE_PUNCTUAL) && defined(NORMAL_MAP)
@@ -76,8 +96,13 @@ out vec4 g_finalColor;
 vec3 perturbNormal(vec3 normal, vec2 uv){
     // sampled before the early returns below: its implicit derivatives need every pixel of
     // the quad still running (uniform control flow)
-    vec3 mapped = texture(sampler2D(u_normalTexture, u_normal_smp), uv).rgb * 2.0 - vec3(1.0);
-    mapped.xy *= customParams.normalStrength;
+    #ifdef STOCHASTIC
+        // blended as slopes with the base map's weights, each cell's turn undone
+        vec3 mapped = stochasticNormal(u_normalTexture, u_normal_smp, surfaceStochastic, customParams.normalStrength, STOCHASTIC_NORMAL_GL);
+    #else
+        vec3 mapped = texture(sampler2D(u_normalTexture, u_normal_smp), uv).rgb * 2.0 - vec3(1.0);
+        mapped.xy *= customParams.normalStrength;
+    #endif
 
     vec3 dpx = dFdx(v_position);
     vec3 dpy = dFdy(v_position);
@@ -101,7 +126,13 @@ vec3 perturbNormal(vec3 normal, vec2 uv){
 
 void main() {
     vec2 uv = v_uv1 * customParams.tiling.xy + customParams.tiling.zw;
-    vec4 base = customParams.baseColor * sRGBToLinear(texture(sampler2D(u_baseTexture, u_base_smp), uv)) * v_color;
+    #ifdef STOCHASTIC
+        // the base map's taps set the weights the material's other maps reuse
+        surfaceStochastic = stochasticSetup(uv, stochasticCustomParams(), 0u);
+        vec4 base = customParams.baseColor * sRGBToLinear(stochasticTextureLuminance(u_baseTexture, u_base_smp, surfaceStochastic)) * v_color;
+    #else
+        vec4 base = customParams.baseColor * sRGBToLinear(texture(sampler2D(u_baseTexture, u_base_smp), uv)) * v_color;
+    #endif
     vec3 color = base.rgb;
 
     #if defined(USE_PUNCTUAL) || defined(USE_VERTEX_LIGHTS)
@@ -143,7 +174,11 @@ void main() {
     #endif
 
     #ifdef EMISSION
-        color += customParams.emissionColor.rgb * sRGBToLinear(texture(sampler2D(u_emissionTexture, u_emission_smp), uv).rgb);
+        #ifdef STOCHASTIC
+            color += customParams.emissionColor.rgb * sRGBToLinear(stochasticTexture(u_emissionTexture, u_emission_smp, surfaceStochastic).rgb);
+        #else
+            color += customParams.emissionColor.rgb * sRGBToLinear(texture(sampler2D(u_emissionTexture, u_emission_smp), uv).rgb);
+        #endif
     #endif
 
     g_finalColor = finalizeColor(vec4(color, base.a));

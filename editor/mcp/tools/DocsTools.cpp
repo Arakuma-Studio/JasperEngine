@@ -299,7 +299,7 @@ bool engineRoot(const CallPtr& call, fs::path& root) {
     root = FileUtils::getEngineDir();
     std::error_code ec;
     if (!fs::is_directory(root, ec)) {
-        call->fail("Engine source not found at " + root.generic_string() + ".");
+        call->fail("Engine source not found at " + FileUtils::pathToGenericUtf8(root) + ".");
         return false;
     }
     return true;
@@ -338,7 +338,7 @@ void searchEngineSourceTool(const CallPtr& call) {
     bool truncated = false;
     std::string text;
     for (const fs::path& path : files) {
-        const std::string rel = fs::relative(path, root, ec).generic_string();
+        const std::string rel = FileUtils::pathToGenericUtf8(fs::relative(path, root, ec));
         if (ec || (!pathFilter.empty() && lower(rel).find(pathFilter) == std::string::npos)) continue;
         std::string content;
         if (!ProjectChecks::readFile(path, content) || content.size() > 1024 * 1024) continue;
@@ -367,7 +367,7 @@ void searchEngineSourceTool(const CallPtr& call) {
 void readEngineSourceTool(const CallPtr& call) {
     const Json& args = call->args();
     const std::string relText = args.value("path", "");
-    const fs::path rel = fs::path(relText).lexically_normal();
+    const fs::path rel = FileUtils::pathFromUtf8(relText).lexically_normal();
     if (relText.empty() || rel.is_absolute() || rel.empty() || *rel.begin() == "..") {
         call->fail("path must be relative to the engine source root, e.g. core/math/Quaternion.h.");
         return;
@@ -380,7 +380,7 @@ void readEngineSourceTool(const CallPtr& call) {
     if (!engineRoot(call, root)) return;
     std::string content;
     if (!ProjectChecks::readFile(root / rel, content)) {
-        call->fail("No engine source file " + rel.generic_string() + "; find files with search_engine_source.");
+        call->fail("No engine source file " + FileUtils::pathToGenericUtf8(rel) + "; find files with search_engine_source.");
         return;
     }
     const int start = std::max(1, args.value("start_line", 1));
@@ -395,9 +395,9 @@ void readEngineSourceTool(const CallPtr& call) {
         emitted++;
     }
     if (out.size() > 256 * 1024) out = out.substr(0, 256 * 1024) + "\n... (truncated: read a smaller line range)";
-    const std::string header = rel.generic_string() + " lines " + std::to_string(start) + "-" +
+    const std::string header = FileUtils::pathToGenericUtf8(rel) + " lines " + std::to_string(start) + "-" +
                                std::to_string(start + emitted - 1) + " of " + std::to_string(number) + ":\n";
-    call->reply(ToolResult::success(header + out, Json{{"path", rel.generic_string()}, {"total_lines", number},
+    call->reply(ToolResult::success(header + out, Json{{"path", FileUtils::pathToGenericUtf8(rel)}, {"total_lines", number},
                                                        {"start_line", start}, {"lines", emitted}}));
 }
 
@@ -523,9 +523,11 @@ void registerDocsTools(McpRegistry& registry) {
             std::string text;
             if (!project) return notFound("No project is open.");
             const fs::path file = project->getProjectPath() / "AGENTS.md";
-            std::error_code ec;
-            // the editor writes it on play/build; a new project gets it on first read
-            if (!fs::exists(file, ec)) Generator::writeAgentsFile(project->getProjectPath(), project->getProjectInternalPath());
+            // the editor writes it on play/build; a new project gets it on first read. Always
+            // asked for, as Play does: it writes only what is missing (AGENTS.md, then CLAUDE.md),
+            // so a read leaves both even when a generation from a Play wrote AGENTS.md alone
+            // after its CLAUDE.md check
+            Generator::writeAgentsFile(project->getProjectPath(), project->getProjectInternalPath());
             if (!ProjectChecks::readFile(file, text)) return notFound("Can't read the project's AGENTS.md.");
             return textResource(uri, "text/markdown", text);
         };

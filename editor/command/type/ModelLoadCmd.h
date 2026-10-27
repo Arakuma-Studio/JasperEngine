@@ -96,6 +96,7 @@ namespace jasperengine::editor{
         bool tryLoad();
         void finalizeLoad();
         void schedulePoll();
+        void restoreTransform(Scene* scene);
 
         // Loads still running on a worker, by scene and Model entity
         static std::map<std::pair<uint32_t, Entity>, ModelLoadCmd*>& getPendingLoads();

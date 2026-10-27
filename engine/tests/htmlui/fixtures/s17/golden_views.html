@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>views</title>
+  <style>
+    body { margin: 0; font-family: sans-serif; font-size: 12px; color: #e8e8e8; }
+    .pane { position: absolute; width: 300px; height: 160px; background-color: #262a33; }
+    .htmlui-table-header { color: #e8e8e8; background-color: #3b4252; border-bottom: 1px solid #4c566a; }
+    #list { left: 10px; top: 10px; }
+    #grid { left: 330px; top: 10px; }
+    #tree { left: 10px; top: 190px; }
+    #table { left: 330px; top: 190px; }
+    .row { height: 24px; padding-left: 6px; }
+    .htmlui-row.even { background-color: #2e3440; }
+    .htmlui-row.selected { background-color: #3b5bdb; }
+    .tile { width: 56px; height: 56px; background-color: #4c566a; color: #ffffff; text-align: center; }
+    .node { height: 20px; }
+    .htmlui-row.has-children .node { color: #ffd43b; }
+  </style>
+</head>
+<body>
+  <list-view id="list" class="pane" item-height="24">
+    <template><div class="row"></div></template>
+  </list-view>
+  <grid-view id="grid" class="pane" item-width="56" item-height="56" gap="4">
+    <template><div class="tile"></div></template>
+  </grid-view>
+  <tree-view id="tree" class="pane" item-height="20" indent="14">
+    <template><div class="node"></div></template>
+  </tree-view>
+  <table-view id="table" class="pane" item-height="22">
+    <table-column key="name" width="150" sortable resizable>Name</table-column>
+    <table-column key="ping" width="70">Ping</table-column>
+    <table-column key="map" width="80">Map</table-column>
+  </table-view>
+</body>
+</html>

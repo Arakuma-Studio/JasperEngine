@@ -34,84 +34,10 @@ std::string Vector3::toString() const{
     return "Vector3(" + std::to_string(x) + ", " + std::to_string(y) + ", " + std::to_string(z) + ")"; 
 }
 
-float Vector3::operator [] ( unsigned i ) const{
-    return *(&x+i);
-}
-
-float& Vector3::operator [] ( unsigned i ){
-    return *(&x+i);
-}
-
-bool Vector3::operator == ( const Vector3& v ) const{
-    return ( x == v.x && y == v.y && z == v.z );
-}
-
-bool Vector3::operator != ( const Vector3& v ) const{
-    return ( x != v.x || y != v.y || z != v.z );
-}
-
-Vector3 Vector3::operator + ( const Vector3& v ) const{
-    return Vector3(x + v.x, y + v.y, z + v.z);
-}
-
-Vector3 Vector3::operator - ( const Vector3& v ) const{
-    return Vector3(x - v.x, y - v.y, z - v.z);
-}
-
-Vector3 Vector3::operator * ( float f ) const{
-    return Vector3(x * f, y * f, z * f);
-}
-
-Vector3 Vector3::operator * ( const Vector3& v ) const{
-    return Vector3(x * v.x, y * v.y, z * v.z);
-}
-
-Vector3 Vector3::operator / ( float f ) const{
-    f = 1.0f / f;
-    return Vector3(x * f, y * f, z * f);
-}
-
-Vector3 Vector3::operator - () const{
-    return Vector3( -x, -y, -z);
-}
-
 Vector3 operator * ( float f, const Vector3& v ){
     return Vector3(f * v.x, f * v.y, f * v.z);
 }
 
-
-Vector3& Vector3::operator += ( const Vector3& v ){
-    x += v.x;
-    y += v.y;
-    z += v.z;
-    
-    return *this;
-}
-
-Vector3& Vector3::operator -= ( const Vector3& v ){
-    x -= v.x;
-    y -= v.y;
-    z -= v.z;
-    
-    return *this;
-}
-
-Vector3& Vector3::operator *= ( float f ){
-    x *= f;
-    y *= f;
-    z *= f;
-    return *this;
-}
-
-Vector3& Vector3::operator /= ( float f ){
-    f = 1.0f / f;
-    
-    x *= f;
-    y *= f;
-    z *= f;
-    
-    return *this;
-}
 
 bool Vector3::operator < ( const Vector3& v ) const{
     return ( x < v.x && y < v.y && z < v.z );
@@ -127,14 +53,6 @@ bool Vector3::isValid() const {
 
 float Vector3::length () const{
     return (float)sqrt( x * x + y * y + z * z );
-}
-
-float Vector3::squaredLength () const{
-    return x * x + y * y + z * z;
-}
-
-float Vector3::dotProduct(const Vector3& v) const{
-    return x * v.x + y * v.y + z * v.z;
 }
 
 float Vector3::absDotProduct(const Vector3& v) const{

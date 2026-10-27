@@ -34,6 +34,13 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kJoint2DType;
     extern const EnumDesc kJoint3DType;
     extern const EnumDesc kLayoutGroupType;
+    extern const EnumDesc kFluidOutput;
+    extern const EnumDesc kLatticeInterpolation;
+    extern const EnumDesc kLatticeOutside;
+    extern const EnumDesc kLatticeJiggleAnchor;
+    extern const EnumDesc kLatticeStage;
+    extern const EnumDesc kLatticeMaskChannel;
+    extern const EnumDesc kLightUnit;
     extern const EnumDesc kLightShading;
     extern const EnumDesc kLightType;
     extern const EnumDesc kMaterialAlphaMode;

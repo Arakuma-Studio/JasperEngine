@@ -23,6 +23,7 @@
 #include "pool/TexturePool.h"
 #include "registry/EntityRegistry.h"
 #include "util/Util.h"
+#include "texture/MaterialPbr.h"
 
 #include <unordered_map>
 
@@ -55,6 +56,13 @@ namespace {
         row("occlusionTexture", Shape::Texture, AssetType::Texture, Base::Assets, Kind::MaterialTexture);
         row("normalTexture", Shape::Texture, AssetType::Texture, Base::Assets, Kind::MaterialTexture);
         row("shaderTextures{}", Shape::Texture, AssetType::Texture, Base::Assets, Kind::MaterialTexture);
+        // the built-in Lit's extended lobes' maps (S11, MaterialPbr's field table)
+        for (const PbrField& field : MaterialPbr::getFields()) {
+            if (field.type == PbrFieldType::Texture) {
+                rows.push_back({Scope::Material, ComponentType::MeshComponent, "pbr." + MaterialPbr::getFieldPath(field), Shape::Texture,
+                                AssetType::Texture, Base::Assets, Kind::MaterialTexture});
+            }
+        }
         row("shader", Shape::Shader, AssetType::Shader, Base::Project, Kind::MaterialShader);
         row("extraPass.shader", Shape::Shader, AssetType::Shader, Base::Project, Kind::MaterialShader);
         row("extraPass.shaderTextures{}", Shape::Texture, AssetType::Texture, Base::Assets, Kind::MaterialTexture);
@@ -178,7 +186,7 @@ namespace {
     void applyTextureChange(Texture& texture, Texture updated) {
         // Renders keep drawing the old GPU texture until the new one exists, so the new path
         // loads before the old texture is released
-        if (TexturePool::get(texture.getId())) {
+        if (TexturePool::get(texture.getRenderId())) {
             const bool asyncLoading = Engine::isAsyncLoading();
             Engine::setAsyncLoading(false);
             updated.getRender();
@@ -383,6 +391,15 @@ namespace {
             change.texture |= visit.texture(*textures[i], materialRow(textureFields[i]), prefix + textureFields[i]);
         }
         change.texture |= visit.textureMap(material.shaderTextures, materialRow("shaderTextures{}"), prefix + "shaderTextures.");
+        // the extended lobes' maps, only on a material that has them (an unset pbr stays unallocated)
+        if (MaterialPbrExtensions* pbr = material.pbr.editIfSet()) {
+            for (const PbrField& field : MaterialPbr::getFields()) {
+                if (field.type != PbrFieldType::Texture)
+                    continue;
+                const std::string path = "pbr." + MaterialPbr::getFieldPath(field);
+                change.texture |= visit.texture(*static_cast<Texture*>(field.ref(*pbr)), materialRow(path.c_str()), prefix + path);
+            }
+        }
         change.shader |= visit.shader(material.shader, materialRow("shader"), prefix + "shader");
         if (MaterialPass* pass = material.extraPass.editIfSet()) {
             change.shader |= visit.shader(pass->shader, materialRow("extraPass.shader"), prefix + "extraPass.shader");

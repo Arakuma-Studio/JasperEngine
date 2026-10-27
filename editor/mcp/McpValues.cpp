@@ -28,11 +28,19 @@
 #include "component/ScriptComponent.h"
 #include "component/TextComponent.h"
 #include "component/UIDocumentComponent.h"
+#include "component/LatticeComponent.h"
+#include "component/LatticeModifierComponent.h"
 #include "subsystem/RenderSystem.h"
 #include "texture/TextureData.h"
 #include "util/CameraTextureLink.h"
+#include "util/FluidTextureLink.h"
+#include "component/FluidSimulationComponent.h"
+#include "fluid/FluidPresets.h"
+#include "fluid/FluidSimulator.h"
 #include "util/EntityClipboard.h"
 #include "util/NearestName.h"
+#include "util/FbxImporter.h"
+#include "util/FileUtils.h"
 #include "util/Util.h"
 #include "reflect/Enums.h"
 #include "reflect/Reflect.h"
@@ -119,6 +127,33 @@ bool isAssetPathProperty(const std::string& propertyName) {
 
 bool endsWith(const std::string& text, const std::string& suffix) {
     return text.size() >= suffix.size() && text.compare(text.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+// Stochastic Tiling's values of a material, in the Inspector's ranges: false (and error) out of
+// them, naming the field, what it does and its default
+struct StochasticMaterialValue { const char* name; float Material::*field; float lo, hi; const char* meaning; };
+const StochasticMaterialValue stochasticMaterialValues[] = {
+    {"stochasticCellSize", &Material::stochasticCellSize, 0.25f, 4.0f, "the hex cell width in texture repeats, default 1"},
+    {"stochasticBlendSharpness", &Material::stochasticBlendSharpness, 0.0f, 1.0f, "how narrow the blend between cells is, default 0.4"},
+    {"stochasticContrast", &Material::stochasticContrast, 0.0f, 1.0f, "default 0.45, 0 blends linearly"},
+    {"stochasticRotation", &Material::stochasticRotation, 0.0f, 1.0f, "a random turn per cell, the share of +-180 degrees, default 0"}};
+
+const StochasticMaterialValue* findStochasticMaterialValue(const std::string& name) {
+    for (const StochasticMaterialValue& value : stochasticMaterialValues) {
+        if (name == value.name) return &value;
+    }
+    return nullptr;
+}
+
+bool checkStochasticMaterialValue(const StochasticMaterialValue& param, const std::string& where, const Json& value, std::string& error) {
+    const double number = value.is_number() ? value.get<double>() : -1.0;
+    if (!value.is_number() || !std::isfinite(number) || number < param.lo || number > param.hi) {
+        char range[64];
+        std::snprintf(range, sizeof(range), "%g to %g", param.lo, param.hi);
+        error = where + " must be a number from " + range + " (" + param.meaning + ").";
+        return false;
+    }
+    return true;
 }
 
 bool isShaderPathProperty(const std::string& propertyName) {
@@ -243,6 +278,14 @@ const EnumOptions& shadowTierOptions() {
         {(int)ShadowTier::MEDIUM, "medium", "Medium"},
         {(int)ShadowTier::HIGH, "high", "High"},
         {(int)ShadowTier::ULTRA, "ultra", "Ultra"}
+    };
+    return options;
+}
+
+const EnumOptions& litQualityOptions() {
+    static const EnumOptions options = {
+        {(int)LitQuality::STANDARD, "standard", "Standard"},
+        {(int)LitQuality::HIGH, "high", "High"}
     };
     return options;
 }
@@ -436,6 +479,8 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"shadow_debug_view", &shadowDebugViewOptions()},
         {"shadow_tier", &shadowTierOptions()},
         {"scene_color_scale", &sceneColorScaleOptions()},
+        {"lit_quality", &litQualityOptions()},
+        {"light_unit", &tableOptions(reflect::enums::kLightUnit)},
         {"texture_filter", &tableOptions(reflect::enums::kTextureFilter)},
         // framebuffers have no mipmaps
         {"framebuffer_filter", &tableOptions(reflect::enums::kTextureFilter, kFramebufferFilters)},
@@ -457,6 +502,11 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"collider3d_type", &tableOptions(reflect::enums::kCollider3DType)},
         {"light_type", &tableOptions(reflect::enums::kLightType)},
         {"camera_type", &tableOptions(reflect::enums::kCameraType)},
+        {"lattice_interpolation", &tableOptions(reflect::enums::kLatticeInterpolation)},
+        {"lattice_outside", &tableOptions(reflect::enums::kLatticeOutside)},
+        {"lattice_jiggle_anchor", &tableOptions(reflect::enums::kLatticeJiggleAnchor)},
+        {"lattice_stage", &tableOptions(reflect::enums::kLatticeStage)},
+        {"lattice_mask", &tableOptions(reflect::enums::kLatticeMaskChannel)},
         {"atmosphere_quality", &atmosphereQualityOptions()},
         {"ease", &easeOptions()}
     };
@@ -673,8 +723,8 @@ Json McpValues::toJson(const Quaternion& value) {
 }
 
 std::string McpValues::assetPathToJson(Project* project, const std::string& stored) {
-    if (stored.empty() || !project) return stored;
-    return project->normalizeToProjectRelative(project->resolveAssetPath(stored)).generic_string();
+    if (stored.empty() || !project) return FileUtils::pathToGenericUtf8(fs::path(stored));
+    return FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(project->resolveAssetPath(stored)));
 }
 
 bool McpValues::assetPathFromJson(Project* project, const std::string& requested, std::string& stored, std::string& error) {
@@ -692,14 +742,15 @@ bool McpValues::assetPathFromJson(Project* project, const std::string& requested
         }
         projectRelative = found.path;
     }
-    if (!isSafeRelative(projectRelative)) {
+    const fs::path relative = FileUtils::pathFromUtf8(projectRelative);
+    if (!isSafeRelative(relative)) {
         error = "\"" + projectRelative + "\" must be a project-relative path (no '..', not absolute).";
         return false;
     }
-    const fs::path full = project->getProjectPath() / projectRelative;
+    const fs::path full = project->getProjectPath() / relative;
     if (!project->isInsideAssetsPath(full)) {
         error = "\"" + projectRelative + "\" must be inside the assets directory (\"" +
-                project->getAssetsDir().generic_string() + "\").";
+                FileUtils::pathToGenericUtf8(project->getAssetsDir()) + "\").";
         return false;
     }
     stored = project->normalizeToAssetsRelative(full).generic_string();
@@ -763,6 +814,10 @@ Json McpValues::textureToJson(Project* project, SceneProject* scene, const Textu
     if (camera != NULL_ENTITY) {
         return Json{{"camera", entityToJson(scene, camera)}};
     }
+    const Entity fluid = FluidTextureLink::parse(texture.getId());
+    if (fluid != NULL_ENTITY) {
+        return Json{{"fluid", entityToJson(scene, fluid)}};
+    }
     if (texture.empty() || texture.isFramebuffer()) return nullptr;
 
     static const Texture defaults;
@@ -792,8 +847,9 @@ Json McpValues::textureToJson(Project* project, SceneProject* scene, const Textu
         if (!anyOtherFace && !texture.getPath(0).empty()) {
             out["cube"] = assetPathToJson(project, texture.getPath(0));
         } else {
+            // front, back, left, right, up, down: the order a write takes (setCubePaths)
             Json faces = Json::array();
-            for (size_t face = 0; face < 6; face++) faces.push_back(assetPathToJson(project, texture.getPath(face)));
+            for (size_t face : {4, 5, 1, 0, 2, 3}) faces.push_back(assetPathToJson(project, texture.getPath(face)));
             out["cube"] = faces;
         }
     }
@@ -828,6 +884,20 @@ bool McpValues::textureFromJson(Project* project, SceneProject* scene, const Jso
         out = Texture();
         return true;
     }
+    // a link id as a scene file keeps it: "camera|<entity id>", "fluid|<entity id>"
+    if (value.is_string()) {
+        const std::string text = value.get<std::string>();
+        if (text.rfind("camera|", 0) == 0 || text.rfind("fluid|", 0) == 0) {
+            const Entity linked = CameraTextureLink::parseLink(text);
+            if (linked == NULL_ENTITY) {
+                error = "\"" + text + "\" is not a texture link; one is \"camera|<entity id>\" or \"fluid|<entity id>\".";
+                return false;
+            }
+            Json link = Json::object();
+            link[text[0] == 'c' ? "camera" : "fluid"] = linked;
+            return textureFromJson(project, scene, link, out, camera, error);
+        }
+    }
     if (value.is_string()) {
         std::string stored;
         if (!storedPath(value, stored)) return false;
@@ -836,17 +906,32 @@ bool McpValues::textureFromJson(Project* project, SceneProject* scene, const Jso
     }
     if (!value.is_object()) {
         error = "a texture is null, a project-relative path, {\"path\": ..., \"min_filter\": ...}, "
-                "{\"cube\": [6 paths] or \"path\"} or {\"camera\": <entity>}.";
+                "{\"cube\": [front, back, left, right, up, down] or \"path\"}, {\"camera\": <entity>} or {\"fluid\": <entity>}.";
         return false;
     }
-    static const std::set<std::string> keys = {"path", "cube", "camera", "id", "min_filter", "mag_filter", "wrap_u",
+    static const std::set<std::string> keys = {"path", "cube", "camera", "fluid", "id", "min_filter", "mag_filter", "wrap_u",
                                                "wrap_v", "alpha_border", "svg_scale"};
     for (auto it = value.begin(); it != value.end(); ++it) {
         if (!keys.count(it.key())) {
-            error = "unknown texture key \"" + it.key() + "\"; valid: path, cube, camera, min_filter, mag_filter, "
+            error = "unknown texture key \"" + it.key() + "\"; valid: path, cube, camera, fluid, min_filter, mag_filter, "
                     "wrap_u, wrap_v, alpha_border, svg_scale.";
             return false;
         }
+    }
+    if (value.contains("fluid")) {
+        if (!scene || !scene->scene) {
+            error = "a fluid texture needs a loaded scene.";
+            return false;
+        }
+        Entity fluidEntity = NULL_ENTITY;
+        if (!entityFromJson(scene, value["fluid"], fluidEntity, error)) return false;
+        if (fluidEntity == NULL_ENTITY || !scene->scene->isEntityCreated(fluidEntity) ||
+            !scene->scene->findComponent<FluidSimulationComponent>(fluidEntity)) {
+            error = "the fluid of a fluid texture must be a GameObject with a FluidSimulation component.";
+            return false;
+        }
+        out = FluidTextureLink::make(scene->scene, fluidEntity);
+        return true;
     }
     if (value.contains("camera")) {
         if (!scene || !scene->scene) {
@@ -927,6 +1012,7 @@ Json McpValues::materialToJson(Project* project, SceneProject* scene, const Mate
         {"alphaMode", enumToJson((int)material.alphaMode, tableOptions(reflect::enums::kMaterialAlphaMode))},
         {"emissiveFactor", toJson(material.emissiveFactor)}
     };
+    materialStochasticToJson(material, out);
     for (const MaterialTextureField& field : MATERIAL_TEXTURES) {
         const Texture& texture = material.*field.texture;
         Json json = textureToJson(project, scene, texture);
@@ -936,11 +1022,44 @@ Json McpValues::materialToJson(Project* project, SceneProject* scene, const Mate
     // shader library: the shader and the render state always (they say how it draws), its
     // values when set
     materialShaderLibraryToJson(project, scene, material, out, false);
+    // the built-in Lit's emission intensity and its extended lobes (those set)
+    out["emissiveStrength"] = number(material.emissiveStrength);
+    if (material.pbr != MaterialPbrExtensions()) out["pbr"] = materialPbrToJson(project, scene, material.pbr);
     if (!linkedFile.empty()) {
-        out["file"] = project ? project->normalizeToProjectRelative(project->getProjectPath() / linkedFile).generic_string()
-                              : linkedFile;
+        out["file"] = project ? FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(project->getProjectPath() / linkedFile))
+                              : FileUtils::pathToGenericUtf8(fs::path(linkedFile));
     }
     return out;
+}
+
+void McpValues::materialStochasticToJson(const Material& material, Json& out) {
+    out["stochasticTiling"] = material.stochasticTiling;
+    // its values while it is on, or when set away from their defaults
+    static const Material defaults = Material();
+    for (const StochasticMaterialValue& param : stochasticMaterialValues) {
+        if (material.stochasticTiling || material.*param.field != defaults.*param.field)
+            out[param.name] = number(material.*param.field);
+    }
+}
+
+bool McpValues::isMaterialStochasticKey(const std::string& key) {
+    return key == "stochasticTiling" || findStochasticMaterialValue(key) != nullptr;
+}
+
+bool McpValues::materialStochasticFromJson(const Json& value, Material& out, std::string& error) {
+    if (value.contains("stochasticTiling")) {
+        if (!value["stochasticTiling"].is_boolean()) {
+            error = "stochasticTiling must be true or false.";
+            return false;
+        }
+        out.stochasticTiling = value["stochasticTiling"].get<bool>();
+    }
+    for (const StochasticMaterialValue& param : stochasticMaterialValues) {
+        if (!value.contains(param.name)) continue;
+        if (!checkStochasticMaterialValue(param, param.name, value[param.name], error)) return false;
+        out.*param.field = value[param.name].get<float>();
+    }
+    return true;
 }
 
 bool McpValues::materialFromJson(Project* project, SceneProject* scene, const Json& value, Material& out, std::string& error) {
@@ -961,15 +1080,17 @@ bool McpValues::materialFromJson(Project* project, SceneProject* scene, const Js
         const std::string& key = it.key();
         bool known = key == "name" || key == "baseColorFactor" || key == "metallicFactor" || key == "roughnessFactor" ||
                      key == "alphaCutoff" || key == "foliageTransmission" || key == "alphaMode" ||
-                     key == "emissiveFactor" || key == "file";
+                     key == "emissiveFactor" || key == "emissiveStrength" || key == "pbr" || key == "file" ||
+                     isMaterialStochasticKey(key);
         for (const MaterialTextureField& field : MATERIAL_TEXTURES) {
             if (key == field.name || key == field.texCoordName) known = true;
         }
         known = known || isMaterialShaderLibraryKey(key);
         if (!known) {
             error = "unknown material key \"" + key + "\"; valid: name, baseColorFactor, metallicFactor, roughnessFactor, "
-                    "alphaCutoff, foliageTransmission, alphaMode, emissiveFactor, baseColorTexture, emissiveTexture, "
-                    "metallicRoughnessTexture, occlusionTexture, normalTexture, <texture>TexCoord, shader, shaderParams, "
+                    "alphaCutoff, foliageTransmission, alphaMode, emissiveFactor, emissiveStrength, pbr, baseColorTexture, emissiveTexture, "
+                    "metallicRoughnessTexture, occlusionTexture, normalTexture, <texture>TexCoord, stochasticTiling, "
+                    "stochasticCellSize, stochasticBlendSharpness, stochasticContrast, stochasticRotation, shader, shaderParams, "
                     "shaderTextures, shaderFeatures, blendMode, cullMode, depthWrite, depthTest, depthOffsetFactor, "
                     "depthOffsetUnits, sortPriority, lighting, stencil, colorWrite, extraPass, file.";
             return false;
@@ -993,6 +1114,22 @@ bool McpValues::materialFromJson(Project* project, SceneProject* scene, const Js
     if (!number("metallicFactor", out.metallicFactor) || !number("roughnessFactor", out.roughnessFactor) ||
         !number("alphaCutoff", out.alphaCutoff) || !number("foliageTransmission", out.foliageTransmission)) {
         return false;
+    }
+    if (!materialStochasticFromJson(value, out, error)) {
+        return false;
+    }
+    if (value.contains("emissiveStrength")) {
+        if (!value["emissiveStrength"].is_number() || !(value["emissiveStrength"].get<float>() >= 0.0f) ||
+                !std::isfinite(value["emissiveStrength"].get<float>())) {
+            error = "emissiveStrength must be a number >= 0.";
+            return false;
+        }
+        out.emissiveStrength = value["emissiveStrength"].get<float>();
+    }
+    if (value.contains("pbr")) {
+        MaterialPbrExtensions pbr = out.pbr;
+        if (!materialPbrFromJson(project, scene, value["pbr"], pbr, error)) return false;
+        out.pbr = pbr;
     }
     if (value.contains("alphaMode")) {
         int mode = 0;
@@ -1021,6 +1158,149 @@ bool McpValues::materialFromJson(Project* project, SceneProject* scene, const Js
         }
     }
     return materialShaderLibraryFromJson(project, scene, value, out, error);
+}
+
+Json McpValues::materialPbrToJson(Project* project, SceneProject* scene, const MaterialPbrExtensions& pbr) {
+    static const MaterialPbrExtensions defaults;
+    MaterialPbrExtensions& values = const_cast<MaterialPbrExtensions&>(pbr);
+    Json out = Json::object();
+    for (const PbrLobeInfo& lobe : MaterialPbr::getLobes()) {
+        bool changed = false;
+        Json fields = Json::object();
+        for (const PbrField& field : MaterialPbr::getFields()) {
+            if (field.lobe != lobe.lobe) continue;
+            const void* value = field.ref(values);
+            const void* def = field.ref(const_cast<MaterialPbrExtensions&>(defaults));
+            switch (field.type) {
+                case PbrFieldType::Bool:
+                    fields[field.name] = *(const bool*)value;
+                    changed = changed || *(const bool*)value != *(const bool*)def;
+                    break;
+                case PbrFieldType::Float:
+                    // an infinite attenuation distance (no absorption) reads as null
+                    fields[field.name] = std::isfinite(*(const float*)value) ? Json(number(*(const float*)value)) : Json(nullptr);
+                    changed = changed || *(const float*)value != *(const float*)def;
+                    break;
+                case PbrFieldType::Vector2:
+                    fields[field.name] = toJson(*(const Vector2*)value);
+                    changed = changed || *(const Vector2*)value != *(const Vector2*)def;
+                    break;
+                case PbrFieldType::Color:
+                    fields[field.name] = toJson(*(const Vector3*)value);
+                    changed = changed || *(const Vector3*)value != *(const Vector3*)def;
+                    break;
+                case PbrFieldType::Texture:
+                    fields[field.name] = textureToJson(project, scene, *(const Texture*)value);
+                    changed = changed || !((const Texture*)value)->empty();
+                    break;
+                case PbrFieldType::TexCoord:
+                    fields[field.name] = *(const int*)value;
+                    changed = changed || *(const int*)value != *(const int*)def;
+                    break;
+            }
+        }
+        if (changed) out[lobe.name] = fields;
+    }
+    return out;
+}
+
+bool McpValues::materialPbrFromJson(Project* project, SceneProject* scene, const Json& value, MaterialPbrExtensions& out, std::string& error) {
+    if (value.is_null()) {
+        out = MaterialPbrExtensions();
+        return true;
+    }
+    if (!value.is_object()) {
+        error = "pbr is an object of lobes: clearcoat, sheen, anisotropy, iridescence, transmission, volume, specular, hex "
+                "(each {field: value}, partial values merge), or null for none.";
+        return false;
+    }
+    for (auto lobeIt = value.begin(); lobeIt != value.end(); ++lobeIt) {
+        const PbrLobeInfo* lobe = MaterialPbr::findLobe(lobeIt.key());
+        if (!lobe) {
+            error = "pbr: unknown lobe "" + lobeIt.key() + ""; valid: clearcoat, sheen, anisotropy, iridescence, transmission, "
+                    "volume, specular, hex.";
+            return false;
+        }
+        if (!lobeIt.value().is_object()) {
+            error = "pbr." + lobeIt.key() + " must be an object of its fields.";
+            return false;
+        }
+        for (auto fieldIt = lobeIt.value().begin(); fieldIt != lobeIt.value().end(); ++fieldIt) {
+            const PbrField* field = MaterialPbr::findField(lobe->lobe, fieldIt.key());
+            const std::string path = "pbr." + lobeIt.key() + "." + fieldIt.key();
+            if (!field) {
+                std::string names;
+                for (const PbrField& candidate : MaterialPbr::getFields()) {
+                    if (candidate.lobe == lobe->lobe) names += (names.empty() ? "" : ", ") + std::string(candidate.name);
+                }
+                error = path + ": unknown field; " + lobeIt.key() + " has " + names + ".";
+                return false;
+            }
+            const Json& item = fieldIt.value();
+            void* target = field->ref(out);
+            auto numberText = [](float number) {
+                char buffer[32];
+                std::snprintf(buffer, sizeof(buffer), "%g", number);
+                return std::string(buffer);
+            };
+            auto checked = [&](float number) {
+                if (!MaterialPbr::isInRange(*field, number)) {
+                    const std::string range = std::isinf(field->maxValue) ? (">= " + numberText(field->minValue))
+                                                                          : (numberText(field->minValue) + " to " + numberText(field->maxValue));
+                    error = path + ": " + numberText(number) + " is out of range (" + MaterialPbr::getFieldLabel(*field) + ": " + range + ").";
+                    return false;
+                }
+                return true;
+            };
+            switch (field->type) {
+                case PbrFieldType::Bool:
+                    if (!item.is_boolean()) { error = path + " must be true or false."; return false; }
+                    *(bool*)target = item.get<bool>();
+                    break;
+                case PbrFieldType::Float:
+                    // null: the attenuation distance's "no absorption"
+                    if (item.is_null() && std::isinf(field->maxValue) && std::string(field->name) == "attenuationDistance") {
+                        *(float*)target = INFINITY;
+                        break;
+                    }
+                    if (!item.is_number()) { error = path + " must be a number."; return false; }
+                    if (!checked(item.get<float>())) return false;
+                    *(float*)target = item.get<float>();
+                    break;
+                case PbrFieldType::Vector2: {
+                    Vector2 v = *(Vector2*)target;
+                    if (!parseVector2(item, v)) { error = path + " must be [x,y]."; return false; }
+                    if (!checked(v.x) || !checked(v.y)) return false;
+                    *(Vector2*)target = v;
+                    break;
+                }
+                case PbrFieldType::Color: {
+                    Vector3 v = *(Vector3*)target;
+                    if (!parseVector3(item, v)) { error = path + " must be [r,g,b] (linear) or \"#RRGGBB\"."; return false; }
+                    if (!checked(v.x) || !checked(v.y) || !checked(v.z)) return false;
+                    *(Vector3*)target = v;
+                    break;
+                }
+                case PbrFieldType::Texture: {
+                    Entity camera = NULL_ENTITY;
+                    std::string why;
+                    if (!textureFromJson(project, scene, item, *(Texture*)target, camera, why)) {
+                        error = path + ": " + why;
+                        return false;
+                    }
+                    break;
+                }
+                case PbrFieldType::TexCoord:
+                    if (!isIntegral(item) || (integralValue(item) != 0 && integralValue(item) != 1)) {
+                        error = path + " must be 0 or 1 (the UV set).";
+                        return false;
+                    }
+                    *(int*)target = (int)integralValue(item);
+                    break;
+            }
+        }
+    }
+    return true;
 }
 
 Json McpValues::shaderUniformsToJson(const ShaderUniformValues& values) {
@@ -1441,6 +1721,13 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
         error = "The scene is not loaded.";
         return nullptr;
     }
+    if (component == ComponentType::LatticeComponent &&
+        (propertyName == "resolutionX" || propertyName == "resolutionY" || propertyName == "resolutionZ")) {
+        // alone it would leave the offsets laid out for the old grid
+        error = "the resolution changes with edit_lattice resolution: [x, y, z] (or the Inspector's Resolution), "
+                "which resamples the offsets so the shape stays.";
+        return nullptr;
+    }
     const std::string typeName = propertyTypeName(property.type);
     auto expect = [&](const std::string& what) -> Command* {
         error = "Property " + propertyName + " is " + typeName + ": value must be " + what + ".";
@@ -1483,7 +1770,7 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                     return new ModelClearCmd(project, sceneId, entity);
                 }
                 if (!Util::isModelFile(stored) || !fs::exists(project->resolveAssetPath(stored))) {
-                    error = "filename must be an existing .gltf, .glb or .obj file in the assets directory.";
+                    error = "filename must be an existing .gltf, .glb, .obj or .fbx file in the assets directory.";
                     return nullptr;
                 }
                 return new ModelLoadCmd(project, sceneId, entity, stored);
@@ -1496,7 +1783,13 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                     error = propertyName + ": no asset has the GUID " + text + ".";
                     return nullptr;
                 }
-                text = found.generic_string();
+                text = FileUtils::pathToGenericUtf8(found);
+            }
+            // a foliage layer's FBX mesh loads from its import, created here the first time
+            if (component == ComponentType::TerrainComponent && endsWith(propertyName, "meshPath") &&
+                    FbxImporter::isFbxFile(text) && !project->prepareModelFile(text)) {
+                error = propertyName + ": " + text + " could not be imported (the console has details).";
+                return nullptr;
             }
             if (isShaderPathProperty(propertyName)) {
                 // an engine library shader of the component's type, or a fork whose files exist
@@ -1525,9 +1818,17 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
             }
             return stringCmd(propertyName, text);
         }
-        case PropertyType::Float:
+        case PropertyType::Float: {
             if (!value.is_number()) return expect("a number");
+            // a material's Stochastic Tiling values, in their ranges
+            const size_t field = propertyName.rfind(".material.");
+            if (field != std::string::npos) {
+                if (const StochasticMaterialValue* param = findStochasticMaterialValue(propertyName.substr(field + 10))) {
+                    if (!checkStochasticMaterialValue(*param, propertyName, value, error)) return nullptr;
+                }
+            }
             return new PropertyCmd<float>(project, sceneId, entity, component, propertyName, value.get<float>(), onChanged);
+        }
         case PropertyType::Double:
             if (!value.is_number()) return expect("a number");
             return new PropertyCmd<double>(project, sceneId, entity, component, propertyName, value.get<double>(), onChanged);
@@ -1684,6 +1985,13 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                 error = "Property " + propertyName + " is a GameObject reference: " + why;
                 return nullptr;
             }
+            // a follower moves its own subtree, which would move its rest or lattice with it (spec §6.3)
+            if (component == ComponentType::LatticeFollowerComponent && target != NULL_ENTITY &&
+                (target == entity || scene->scene->isParentOf(entity, target))) {
+                error = "a Lattice Follower's " + propertyName + " can't be the follower itself or a GameObject below it "
+                        "(the follower would move it): pick one outside its hierarchy, e.g. an empty sibling.";
+                return nullptr;
+            }
             return new PropertyCmd<Entity>(project, sceneId, entity, component, propertyName, target, onChanged);
         }
         case PropertyType::EntityReference: {
@@ -1822,6 +2130,40 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
     return nullptr;
 }
 
+namespace {
+
+// A FluidSimulation's "preset" pseudo-property (parseChanges): the preset's fields as changes,
+// their values read from the preset as get_entity reads them
+bool appendFluidPresetChanges(const Json& value, std::vector<McpValues::Change>& out, std::string& error) {
+    const FluidPreset* preset = value.is_string() ? findFluidPreset(value.get<std::string>()) : nullptr;
+    if (!preset) {
+        std::string ids;
+        for (const FluidPreset& item : getFluidPresets()) ids += (ids.empty() ? "" : ", ") + item.id;
+        error = "unknown fluid preset " + value.dump() + "; the presets: " + ids + " (jasper://docs/fluid).";
+        return false;
+    }
+    FluidSimulationComponent values = preset->values;
+    const std::map<std::string, PropertyData> properties = Catalog::getProperties(ComponentType::FluidSimulationComponent, &values);
+    McpValues::ReadContext ctx;
+    ctx.component = ComponentType::FluidSimulationComponent;
+    for (const std::string& name : preset->fields) {
+        auto it = properties.find(name);
+        if (it == properties.end()) continue;
+        McpValues::Change change;
+        change.component = ComponentType::FluidSimulationComponent;
+        change.property = name;
+        change.value = McpValues::readProperty(ctx, name, it->second);
+        out.push_back(change);
+    }
+    return true;
+}
+
+bool isFluidPreset(const McpValues::Change& change) {
+    return change.component == ComponentType::FluidSimulationComponent && change.property == "preset";
+}
+
+}
+
 bool McpValues::parseChanges(const Json& changes, std::vector<Change>& out, std::string& error) {
     out.clear();
     if (changes.is_object()) {
@@ -1833,10 +2175,15 @@ bool McpValues::parseChanges(const Json& changes, std::vector<Change>& out, std:
                 error = "values[\"" + it.key() + "\"] must be an object {property: value}.";
                 return false;
             }
+            // a fluid's preset first: the values named with it override its fields
+            if (base.component == ComponentType::FluidSimulationComponent && it.value().contains("preset")) {
+                if (!appendFluidPresetChanges(it.value()["preset"], out, error)) return false;
+            }
             for (auto prop = it.value().begin(); prop != it.value().end(); ++prop) {
                 Change change = base;
                 change.property = prop.key();
                 change.value = prop.value();
+                if (isFluidPreset(change)) continue;
                 out.push_back(change);
             }
         }
@@ -1885,6 +2232,17 @@ bool McpValues::parseChanges(const Json& changes, std::vector<Change>& out, std:
             }
             change.index = static_cast<long>(integralValue(item["remove"]));
         }
+        if (isFluidPreset(change)) {
+            if (change.op != "set") {
+                error = where + ": a fluid's preset takes value: <preset id>.";
+                return false;
+            }
+            if (!appendFluidPresetChanges(change.value, out, error)) {
+                error = where + ": " + error;
+                return false;
+            }
+            continue;
+        }
         out.push_back(change);
     }
     if (out.empty()) {
@@ -1892,6 +2250,42 @@ bool McpValues::parseChanges(const Json& changes, std::vector<Change>& out, std:
         return false;
     }
     return true;
+}
+
+Json McpValues::fluidStatsToJson(Scene* scene, Entity entity) {
+    if (!scene || !scene->isComponentRegistered<FluidSimulationComponent>()) return nullptr;
+    FluidSimulationComponent* fluid = scene->findComponent<FluidSimulationComponent>(entity);
+    if (!fluid) return nullptr;
+    const std::string preset = matchFluidPreset(*fluid);
+    Json out = {{"preset", preset.empty() ? Json(nullptr) : Json(preset)}};
+    std::string reason;
+    out["supported"] = FluidSimulator::isSupported(&reason);
+    if (!reason.empty()) out["unsupported_reason"] = reason;
+    // drawn now: enabled, its GameObject active and its last frame drew it (a view drawing the
+    // scene, the shaders built; `error` may still name a feature the device turned off); the
+    // stats below stay those of its last frame
+    out["running"] = fluid->simulator != nullptr && fluid->enabled && scene->isEntityActiveInHierarchy(entity) &&
+                     fluid->simulator->getStats().drawn;
+    if (!fluid->simulator) return out;
+    const FluidStats& stats = fluid->simulator->getStats();
+    out["steps"] = stats.steps;
+    out["time"] = stats.time;
+    out["splats"] = stats.splats;
+    out["seed"] = stats.seed;
+    out["sim_size"] = Json::array({stats.simWidth, stats.simHeight});
+    out["dye_size"] = Json::array({stats.dyeWidth, stats.dyeHeight});
+    out["output_size"] = Json::array({stats.outputWidth, stats.outputHeight});
+    out["gpu_bytes"] = stats.gpuBytes;
+    out["passes_last_frame"] = stats.passesLastFrame;
+    out["shading_active"] = stats.shadingActive;
+    out["bloom_active"] = stats.bloomActive;
+    out["sunrays_active"] = stats.sunraysActive;
+    out["manual_filtering"] = stats.manualFiltering;
+    out["compact_formats"] = stats.compactFormats;
+    out["target_failures"] = stats.targetFailures;
+    const std::string& error = fluid->simulator->getError();
+    if (!error.empty()) out["error"] = error;
+    return out;
 }
 
 std::string McpValues::propertyNamesText(SceneProject* scene, Entity entity, ComponentType component, size_t max) {

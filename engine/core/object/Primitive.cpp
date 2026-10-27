@@ -29,6 +29,14 @@ void Primitive::createPlane(float width, float depth, unsigned int tiles){
     scene->getSystem<MeshSystem>()->createPlane(getComponent<MeshComponent>(), width, depth, tiles);
 }
 
+void Primitive::createGrid(float width, float depth, unsigned int segments){
+    scene->getSystem<MeshSystem>()->createGrid(getComponent<MeshComponent>(), width, depth, segments);
+}
+
+void Primitive::createGrid(float width, float depth, unsigned int segments, unsigned int tiles){
+    scene->getSystem<MeshSystem>()->createGrid(getComponent<MeshComponent>(), width, depth, segments, tiles);
+}
+
 void Primitive::createWall(float width, float height){
     scene->getSystem<MeshSystem>()->createWall(getComponent<MeshComponent>(), width, height);
 }

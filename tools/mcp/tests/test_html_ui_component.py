@@ -94,7 +94,8 @@ async def test_component_type_listed(ed: Editor):
     one = await ed.call("list_component_types", component="UIDocument")
     ed.check_eq(one["component"], "uidocument")
     props = one["properties"]
-    for name, kind in (("filename", "string"), ("sortOrder", "int"), ("enabled", "bool")):
+    # filename is an asset reference (S04: GUID + path), set and read as a path
+    for name, kind in (("filename", "asset"), ("sortOrder", "int"), ("enabled", "bool")):
         ed.check(name in props, f"{name} missing: {props}")
         ed.check(kind in props[name]["type"].lower(), f"{name} type {props[name]['type']}")
     ed.check_eq(props["sortOrder"].get("default"), 0)

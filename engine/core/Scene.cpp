@@ -9,8 +9,10 @@
 
 #include "subsystem/RenderSystem.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/LatticeSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "subsystem/FluidSystem.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/PhysicsSystem.h"
@@ -34,8 +36,10 @@ void Scene::init(){
 
     registerSystem<ActionSystem>();
     registerSystem<MeshSystem>();
+    registerSystem<LatticeSystem>();
     registerSystem<UISystem>();
     registerSystem<UIDocumentSystem>();
+    registerSystem<FluidSystem>();
     registerSystem<RenderSystem>();
     registerSystem<PhysicsSystem>();
     registerSystem<AudioSystem>();
@@ -457,6 +461,25 @@ int Scene::getMaxLightsPerObject() const{
     return settings.maxLightsPerObject;
 }
 
+void Scene::setLitQuality(LitQuality litQuality){
+    // a new quality reloads the lit meshes' variants (RenderSystem::update)
+    settings.litQuality = litQuality;
+}
+
+LitQuality Scene::getLitQuality() const{
+    return settings.litQuality;
+}
+
+void Scene::setPhysicalLightEV100(float ev100){
+    // the lights in physical units resolve again (RenderSystem::resolveLights)
+    if (std::isfinite(ev100))
+        settings.physicalLightEV100 = std::clamp(ev100, -6.0f, 24.0f);
+}
+
+float Scene::getPhysicalLightEV100() const{
+    return settings.physicalLightEV100;
+}
+
 void Scene::setAmbientLight2D(float intensity, Vector3 color){
     settings.ambientLight2DIntensity = intensity;
     settings.ambientLight2DColor = Color::sRGBToLinear(color);
@@ -513,6 +536,14 @@ void Scene::setGravity3D(Vector3 gravity){
 
 void Scene::setGravity3D(float x, float y, float z){
     getSystem<PhysicsSystem>()->setGravity3D(x, y, z);
+}
+
+void Scene::setPhysicsInterpolation(bool interpolation){
+    getSystem<PhysicsSystem>()->setInterpolation(interpolation);
+}
+
+bool Scene::isPhysicsInterpolation() const{
+    return const_cast<Scene*>(this)->getSystem<PhysicsSystem>()->isInterpolation();
 }
 
 void Scene::setDefaultMeshShader(const std::string& path){

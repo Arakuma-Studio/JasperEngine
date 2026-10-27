@@ -128,7 +128,7 @@ namespace jasperengine::editor{
 
         inline static bool isModelFile(const std::string& path) {
              static const std::unordered_set<std::string> modelExtensions = {
-                ".gltf", ".glb", ".obj"
+                ".gltf", ".glb", ".obj", ".fbx"
             };
 
             const std::string ext = fileExtension(path);

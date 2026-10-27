@@ -57,43 +57,60 @@ namespace {
     }
 
     struct MeshCase{
-        const char* label;
+        std::string label;
         std::function<void(SubmeshShaderInputs&, MeshShaderEnvironment&)> apply;
     };
 
     const std::vector<MeshCase>& meshCases(){
-        static const std::vector<MeshCase> cases = {
-            {"skinning", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.skinning = true; }},
-            {"morph targets", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.morphTarget = true; i.morphNormal = true; }},
-            {"instancing", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.instanced = true; i.instanceFade = true; }},
-            {"vertex colour + uv2", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.vertexColor4 = true; i.texCoord2 = true; }},
-            {"vertex colour vec3", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.vertexColor3 = true; }},
-            {"texture rect", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.textureRect = true; }},
-            {"no normals or uv", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.normal = false; i.tangent = false; i.texCoord1 = false; }},
-            {"fog", [](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.fog = true; }},
-            {"shadows", [](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.lights = true; e.shadows = true; }},
-            // the High and Ultra tiers' filters (S10 'Shq': the Vogel disk, PCSS, the raw-depth view)
-            {"shadows, high filters", [](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.lights = true; e.shadows = true; e.shadowsHQ = true; }},
-            {"2d lights + shadows, sprite rect", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){ i.textureRect = true; e.lights2D = true; e.shadows2D = true; }},
-            {"instanced sprite rect", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.textureRect = true; i.instanced = true; }},
-            // a Terrain's patches (no UV or tangent attributes: uv1 is the terrain's own)
-            {"terrain", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.terrain = true; i.texCoord1 = false; i.tangent = false; }},
-            {"terrain, fog, shadows", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
-                i.terrain = true; i.texCoord1 = false; i.tangent = false; e.fog = true; e.lights = true; e.shadows = true; }},
-            {"terrain, fog, shadows, high filters", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
-                i.terrain = true; i.texCoord1 = false; i.tangent = false; e.fog = true; e.lights = true; e.shadows = true; e.shadowsHQ = true; }},
-            // the post-processing colour (phase 4, USE_POST_COLOR): its parameters in the frame
-            // block or a block of its own, and its LUT texture, next to everything else
-            {"post colour", [](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.postColor = true; }},
-            {"post colour, fog, shadows", [](SubmeshShaderInputs&, MeshShaderEnvironment& e){
-                e.postColor = true; e.fog = true; e.lights = true; e.shadows = true; }},
-            {"post colour, 2d lights + shadows, sprite rect", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
-                e.postColor = true; i.textureRect = true; e.lights2D = true; e.shadows2D = true; }},
-            {"post colour, instanced, skinning", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
-                e.postColor = true; i.instanced = true; i.instanceFade = true; i.skinning = true; }},
-            {"post colour, terrain, fog, shadows", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
-                e.postColor = true; i.terrain = true; i.texCoord1 = false; i.tangent = false; e.fog = true; e.lights = true; e.shadows = true; }},
-        };
+        static const std::vector<MeshCase> cases = [](){
+            std::vector<MeshCase> list = {
+                {"skinning", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.skinning = true; }},
+                {"morph targets", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.morphTarget = true; i.morphNormal = true; }},
+                {"instancing", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.instanced = true; i.instanceFade = true; }},
+                {"vertex colour + uv2", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.vertexColor4 = true; i.texCoord2 = true; }},
+                {"vertex colour vec3", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.vertexColor3 = true; }},
+                {"texture rect", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.textureRect = true; }},
+                {"no normals or uv", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.normal = false; i.tangent = false; i.texCoord1 = false; }},
+                {"fog", [](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.fog = true; }},
+                {"shadows", [](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.lights = true; e.shadows = true; }},
+                // the High and Ultra tiers' filters (S10 'Shq': the Vogel disk, PCSS, the raw-depth view)
+                {"shadows, high filters", [](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.lights = true; e.shadows = true; e.shadowsHQ = true; }},
+                {"2d lights + shadows, sprite rect", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){ i.textureRect = true; e.lights2D = true; e.shadows2D = true; }},
+                {"instanced sprite rect", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.textureRect = true; i.instanced = true; }},
+                // a Terrain's patches (no UV or tangent attributes: uv1 is the terrain's own)
+                {"terrain", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.terrain = true; i.texCoord1 = false; i.tangent = false; }},
+                {"terrain, fog, shadows", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
+                    i.terrain = true; i.texCoord1 = false; i.tangent = false; e.fog = true; e.lights = true; e.shadows = true; }},
+                {"terrain, fog, shadows, high filters", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
+                    i.terrain = true; i.texCoord1 = false; i.tangent = false; e.fog = true; e.lights = true; e.shadows = true; e.shadowsHQ = true; }},
+                // the post-processing colour (phase 4, USE_POST_COLOR): its parameters in the frame
+                // block or a block of its own, and its LUT texture, next to everything else
+                {"post colour", [](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.postColor = true; }},
+                {"post colour, fog, shadows", [](SubmeshShaderInputs&, MeshShaderEnvironment& e){
+                    e.postColor = true; e.fog = true; e.lights = true; e.shadows = true; }},
+                {"post colour, 2d lights + shadows, sprite rect", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
+                    e.postColor = true; i.textureRect = true; e.lights2D = true; e.shadows2D = true; }},
+                {"post colour, instanced, skinning", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
+                    e.postColor = true; i.instanced = true; i.instanceFade = true; i.skinning = true; }},
+                {"post colour, terrain, fog, shadows", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
+                    e.postColor = true; i.terrain = true; i.texCoord1 = false; i.tangent = false; e.fog = true; e.lights = true; e.shadows = true; }},
+            };
+            // every case again bound to lattices (includes/lattice.glsl, never on a terrain), on a
+            // mesh with vertex colours: its variants then read them in every pass for a mask
+            const size_t unbound = list.size();
+            for (size_t c = 0; c < unbound; c++){
+                const MeshCase base = list[c];
+                if (base.label.find("terrain") != std::string::npos)
+                    continue;
+                list.push_back({"lattice, " + base.label, [base](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
+                    base.apply(i, e);
+                    i.lattice = true;
+                    if (!i.vertexColor3)
+                        i.vertexColor4 = true;
+                }});
+            }
+            return list;
+        }();
         return cases;
     }
 
@@ -119,8 +136,8 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
     std::shared_ptr<const ShaderManifest> shared = ShaderManifests::get(base);
 
     std::vector<Variant> variants;
-    std::set<std::tuple<int, uint32_t, std::string>> seen;
-    auto add = [&](const std::string& label, const std::string& reference, ShaderType type, uint32_t properties){
+    std::set<std::tuple<int, uint64_t, std::string>> seen;
+    auto add = [&](const std::string& label, const std::string& reference, ShaderType type, uint64_t properties){
         if (seen.insert({static_cast<int>(type), properties, reference}).second)
             variants.push_back({label, reference, type, properties});
     };
@@ -288,7 +305,7 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
             add("pass [" + features.first + "]", ShaderReference::getVariantReference(base, features.second), type, 0);
     }else{
         // the variants RenderSystem loads a component of the type with
-        std::vector<std::pair<std::string, uint32_t>> properties;
+        std::vector<std::pair<std::string, uint64_t>> properties;
         if (type == ShaderType::UI){
             properties = {{"plain", ShaderPool::getUIProperties(false, false, false, true)},
                           {"texture", ShaderPool::getUIProperties(true, false, false, true)},
@@ -313,7 +330,7 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
                 add(properties.front().first + " [" + blendLabel(blend) + ", all features]", referenceOf(allOn, blend), type, properties.front().second);
         }
         // the post-processing colour (phase 4): every variant with it, each blend mode with all features
-        const uint32_t postColor = ShaderPool::getPostColorProperty(type);
+        const uint64_t postColor = ShaderPool::getPostColorProperty(type);
         if (postColor){
             for (const auto& variant : properties){
                 add(variant.first + " [post colour]", referenceOf({}), type, variant.second | postColor);
@@ -330,6 +347,62 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
     }
 
     return variants;
+}
+
+void editor::ShaderLibraryMatrix::compileVariants(const std::vector<Variant>& variants, const std::vector<ShaderBackend>& backends,
+                                                  const std::string& file, Result& result, std::vector<ShaderData>* reflections){
+    std::set<std::string> reported;
+
+    for (const Variant& variant : variants){
+        const uint16_t customId = ShaderPool::registerCustomShader(variant.reference);
+        const ShaderKey key = ShaderPool::getShaderKey(variant.type, variant.properties, customId);
+        const CustomShaderSources sources = ShaderVariantCompiler::resolveCustomShaderSources(variant.reference, nullptr, variant.type);
+        const std::string variantName = ShaderPool::getShaderStr(variant.type, variant.properties, customId);
+
+        for (ShaderBackend backend : backends){
+            ShaderData data;
+            std::string error;
+            std::string log;
+            if (ShaderVariantCompiler::compile(key, backend, &sources, data, &error, &log)){
+                result.compiled++;
+                // the per-stage budget every backend has (a GLES3 device: 16 texture units)
+                const std::string over = ShaderVariantCompiler::checkResourceBudget(data);
+                if (!over.empty()){
+                    result.failed++;
+                    const std::string message = "over the resource budget: " + over + " (" + variant.label + ", " +
+                        ShaderPool::getShaderTypeName(variant.type, true) + " " + variantName + ", " + backendToken(backend) + ")";
+                    if (reported.insert(message).second)
+                        result.problems.push_back({file, 0, true, message});
+                }
+                if (reflections && variant.type != ShaderType::DEPTH && backend == backends.front())
+                    reflections->push_back(data);
+                continue;
+            }
+
+            result.failed++;
+            const std::string where = " (" + variant.label + ", " + ShaderPool::getShaderTypeName(variant.type, true) +
+                                      " " + variantName + ", " + backendToken(backend) + ")";
+            bool located = false;
+            for (const auto& entry : ProjectChecks::parseShaderLog(log)){
+                const std::string source = entry.value("source", std::string());
+                const std::string sourceFile = ShaderVariantCompiler::getLibrarySources().count(source) ? "engine/shaderlib/" + source : source;
+                const std::string message = entry.value("message", std::string()) + where;
+                if (reported.insert(sourceFile + ":" + std::to_string(entry.value("line", 0)) + ":" + message).second)
+                    result.problems.push_back({sourceFile, entry.value("line", 0), entry.value("severity", std::string("error")) == "error", message});
+                located = true;
+            }
+            if (!located){
+                std::string first;
+                std::istringstream lines(log);
+                std::string line;
+                while (first.empty() && std::getline(lines, line)){
+                    if (line.find_first_not_of(" \t\r") != std::string::npos)
+                        first = line;
+                }
+                result.problems.push_back({file, 0, true, error + (first.empty() ? "" : ": " + first) + where});
+            }
+        }
+    }
 }
 
 editor::ShaderLibraryMatrix::Result editor::ShaderLibraryMatrix::run(const std::string& name, const std::vector<ShaderBackend>& backends){
@@ -362,58 +435,7 @@ editor::ShaderLibraryMatrix::Result editor::ShaderLibraryMatrix::run(const std::
 
     // the color variants that compiled, for the manifest's rows
     std::vector<ShaderData> reflections;
-    std::set<std::string> reported;
-
-    for (const Variant& variant : variants){
-        const uint16_t customId = ShaderPool::registerCustomShader(variant.reference);
-        const ShaderKey key = ShaderPool::getShaderKey(variant.type, variant.properties, customId);
-        const CustomShaderSources sources = ShaderVariantCompiler::resolveCustomShaderSources(variant.reference, nullptr, variant.type);
-        const std::string variantName = ShaderPool::getShaderStr(variant.type, variant.properties, customId);
-
-        for (ShaderBackend backend : backends){
-            ShaderData data;
-            std::string error;
-            std::string log;
-            if (ShaderVariantCompiler::compile(key, backend, &sources, data, &error, &log)){
-                result.compiled++;
-                // the per-stage budget every backend has (a GLES3 device: 16 texture units)
-                const std::string over = ShaderVariantCompiler::checkResourceBudget(data);
-                if (!over.empty()){
-                    result.failed++;
-                    const std::string message = "over the resource budget: " + over + " (" + variant.label + ", " +
-                        ShaderPool::getShaderTypeName(variant.type, true) + " " + variantName + ", " + backendToken(backend) + ")";
-                    if (reported.insert(message).second)
-                        result.problems.push_back({fragFile, 0, true, message});
-                }
-                if (variant.type != ShaderType::DEPTH && backend == backends.front())
-                    reflections.push_back(data);
-                continue;
-            }
-
-            result.failed++;
-            const std::string where = " (" + variant.label + ", " + ShaderPool::getShaderTypeName(variant.type, true) +
-                                      " " + variantName + ", " + backendToken(backend) + ")";
-            bool located = false;
-            for (const auto& entry : ProjectChecks::parseShaderLog(log)){
-                const std::string source = entry.value("source", std::string());
-                const std::string file = ShaderVariantCompiler::getLibrarySources().count(source) ? "engine/shaderlib/" + source : source;
-                const std::string message = entry.value("message", std::string()) + where;
-                if (reported.insert(file + ":" + std::to_string(entry.value("line", 0)) + ":" + message).second)
-                    result.problems.push_back({file, entry.value("line", 0), entry.value("severity", std::string("error")) == "error", message});
-                located = true;
-            }
-            if (!located){
-                std::string first;
-                std::istringstream lines(log);
-                std::string line;
-                while (first.empty() && std::getline(lines, line)){
-                    if (line.find_first_not_of(" \t\r") != std::string::npos)
-                        first = line;
-                }
-                result.problems.push_back({fragFile, 0, true, error + (first.empty() ? "" : ": " + first) + where});
-            }
-        }
-    }
+    compileVariants(variants, backends, fragFile, result, &reflections);
 
     // the manifest: its syntax, and its rows against every variant that compiled
     if (manifest.present){
@@ -426,5 +448,178 @@ editor::ShaderLibraryMatrix::Result editor::ShaderLibraryMatrix::run(const std::
             result.problems.push_back({d.file, d.line, d.error, "manifest: " + d.message});
     }
 
+    return result;
+}
+
+std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::buildBuiltinLitVariants(){
+    std::vector<Variant> variants;
+    std::set<std::pair<uint32_t, std::string>> seen;
+    auto add = [&](const std::string& label, const SubmeshShaderVariant& variant){
+        const std::string reference = ShaderReference::withFeatures(ShaderReference::BUILTIN_LIT, variant.litDefines);
+        if (!variant.litDefines.empty() && seen.insert({variant.properties, reference}).second)
+            variants.push_back({label + " [" + featureLabel(variant.litDefines) + "]", reference, ShaderType::MESH, variant.properties});
+    };
+    // a map's presence is all a variant knows of it
+    auto map = [](const char* path){ return Texture(path); };
+    auto lobeMaterial = [&](PbrLobe lobe, bool withMap){
+        Material material;
+        MaterialPbrExtensions& pbr = material.pbr.edit();
+        MaterialPbr::lobeEnabled(pbr, lobe) = true;
+        if (lobe == PbrLobe::VOLUME)
+            pbr.transmission.enabled = true;
+        if (withMap){
+            for (int m = 0; m < (int)PbrMap::COUNT; m++){
+                if (MaterialPbr::getMapLobe((PbrMap)m) == (lobe == PbrLobe::VOLUME ? PbrLobe::TRANSMISSION : lobe))
+                    MaterialPbr::getMap(pbr, (PbrMap)m) = map("matrix.png");
+            }
+        }
+        return material;
+    };
+    // the scene with the most fragment textures a lit mesh binds
+    MeshShaderEnvironment worst;
+    worst.lights = true;
+    worst.shadows = true;
+    worst.ibl = true;
+    worst.ssao = true;
+    worst.postColor = true;
+    worst.fog = true;
+    SubmeshShaderInputs mesh = baseMeshInputs(nullptr);
+    mesh.baseColorTexture = mesh.metallicRoughnessTexture = mesh.normalTexture = mesh.occlusionTexture = mesh.emissiveTexture = true;
+
+    for (const PbrLobeInfo& lobe : MaterialPbr::getLobes()){
+        if (lobe.lobe == PbrLobe::HEX)
+            continue;
+        for (MaterialLighting lighting : {MaterialLighting::PIXEL, MaterialLighting::MIXED}){
+            for (int withMap = 0; withMap < 2; withMap++){
+                const Material material = lobeMaterial(lobe.lobe, withMap != 0);
+                SubmeshShaderInputs inputs = mesh;
+                inputs.lighting = lighting;
+                inputs.material = &material;
+                inputs.pbrTransmission = material.pbr->transmission.enabled;
+                add(std::string(lobe.label) + (lighting == MaterialLighting::MIXED ? ", mixed" : ", pixel") + (withMap ? ", map" : ""),
+                    RenderSystem::getSubmeshShaderVariant(worst, inputs));
+            }
+        }
+    }
+
+    // every lobe and every map (three bound, by priority), with and without the post colour and
+    // with 2D shadows (one map slot less)
+    Material all;
+    {
+        MaterialPbrExtensions& pbr = all.pbr.edit();
+        for (const PbrLobeInfo& lobe : MaterialPbr::getLobes())
+            MaterialPbr::lobeEnabled(pbr, lobe.lobe) = true;
+        for (int m = 0; m < (int)PbrMap::COUNT; m++)
+            MaterialPbr::getMap(pbr, (PbrMap)m) = map("matrix.png");
+    }
+    {
+        SubmeshShaderInputs inputs = mesh;
+        inputs.lighting = MaterialLighting::PIXEL;
+        inputs.material = &all;
+        inputs.pbrTransmission = true;
+        add("all lobes, 3 maps", RenderSystem::getSubmeshShaderVariant(worst, inputs));
+        MeshShaderEnvironment lights2D = worst;
+        lights2D.lights2D = true;
+        lights2D.shadows2D = true;
+        // (transmission takes no 2D lighting: the variant is the one above)
+        add("all lobes, 3 maps, 2d shadows", RenderSystem::getSubmeshShaderVariant(lights2D, inputs));
+        // the lobes without transmission, which keeps SSAO
+        Material noTransmission = all;
+        noTransmission.pbr.edit().transmission.enabled = false;
+        noTransmission.pbr.edit().volume.enabled = false;
+        inputs.material = &noTransmission;
+        inputs.pbrTransmission = false;
+        add("all lobes but transmission, 3 maps", RenderSystem::getSubmeshShaderVariant(worst, inputs));
+        add("all lobes but transmission, 3 maps, 2d shadows", RenderSystem::getSubmeshShaderVariant(lights2D, inputs));
+        inputs.texCoord2 = true;
+        add("all lobes but transmission, 3 maps, 2d shadows, uv2", RenderSystem::getSubmeshShaderVariant(lights2D, inputs));
+        inputs.texCoord2 = false;
+        // the mobile Reduced tier
+        MeshShaderEnvironment reduced = worst;
+        reduced.pbrTier = PbrTier::REDUCED;
+        inputs.material = &all;
+        inputs.pbrTransmission = true;
+        add("all lobes, 3 maps, reduced tier", RenderSystem::getSubmeshShaderVariant(reduced, inputs));
+        // a second UV set (the slots' UV sets come from texCoordSets)
+        inputs.texCoord2 = true;
+        add("all lobes, 3 maps, uv2", RenderSystem::getSubmeshShaderVariant(worst, inputs));
+    }
+
+    // hex tiling, unlit and lit (with its maps on both UV sets)
+    Material hex;
+    hex.pbr.edit().hex.enabled = true;
+    {
+        SubmeshShaderInputs inputs = mesh;
+        inputs.material = &hex;
+        add("hex tiling, unlit", RenderSystem::getSubmeshShaderVariant(MeshShaderEnvironment(), inputs));
+        inputs.lighting = MaterialLighting::PIXEL;
+        add("hex tiling, pixel", RenderSystem::getSubmeshShaderVariant(worst, inputs));
+        inputs.texCoord2 = true;
+        add("hex tiling, pixel, uv2", RenderSystem::getSubmeshShaderVariant(worst, inputs));
+        Material hexLobes = all;
+        inputs.material = &hexLobes;
+        inputs.pbrTransmission = true;
+        add("hex tiling, all lobes", RenderSystem::getSubmeshShaderVariant(worst, inputs));
+    }
+
+    // a painted Terrain with hex tiled layers, lit and unlit
+    {
+        SubmeshShaderInputs terrain = baseMeshInputs(nullptr);
+        terrain.terrain = true;
+        terrain.terrainBlendMaps = true;
+        terrain.terrainSurface = true;
+        terrain.terrainHex = true;
+        terrain.texCoord1 = false;
+        terrain.tangent = false;
+        terrain.baseColorTexture = true;
+        add("terrain hex tiling, pixel", RenderSystem::getSubmeshShaderVariant(worst, terrain));
+        add("terrain hex tiling, unlit", RenderSystem::getSubmeshShaderVariant(MeshShaderEnvironment(), terrain));
+        MeshShaderEnvironment high = worst;
+        high.litQualityHigh = true;
+        add("terrain hex tiling, high quality", RenderSystem::getSubmeshShaderVariant(high, terrain));
+    }
+
+    // the High Lit Quality on the base variants (with lobes too)
+    MeshShaderEnvironment high = worst;
+    high.litQualityHigh = true;
+    for (MaterialLighting lighting : {MaterialLighting::PIXEL, MaterialLighting::MIXED}){
+        SubmeshShaderInputs inputs = mesh;
+        inputs.lighting = lighting;
+        add(std::string("high quality, ") + (lighting == MaterialLighting::PIXEL ? "pixel" : "mixed"), RenderSystem::getSubmeshShaderVariant(high, inputs));
+        MeshShaderEnvironment plain;
+        plain.lights = true;
+        plain.litQualityHigh = true;
+        add(std::string("high quality, plain scene, ") + (lighting == MaterialLighting::PIXEL ? "pixel" : "mixed"),
+            RenderSystem::getSubmeshShaderVariant(plain, inputs));
+        SubmeshShaderInputs noUV = baseMeshInputs(nullptr);
+        noUV.texCoord1 = false;
+        noUV.tangent = false;
+        noUV.lighting = lighting;
+        add(std::string("high quality, no uv, ") + (lighting == MaterialLighting::PIXEL ? "pixel" : "mixed"), RenderSystem::getSubmeshShaderVariant(high, noUV));
+        inputs.material = &all;
+        inputs.pbrTransmission = true;
+        add(std::string("high quality, all lobes, ") + (lighting == MaterialLighting::PIXEL ? "pixel" : "mixed"), RenderSystem::getSubmeshShaderVariant(high, inputs));
+    }
+    // IBL alone (no lights): the lobes' environment path
+    {
+        MeshShaderEnvironment ibl;
+        ibl.ibl = true;
+        SubmeshShaderInputs inputs = mesh;
+        inputs.material = &all;
+        inputs.pbrTransmission = true;
+        add("all lobes, IBL only", RenderSystem::getSubmeshShaderVariant(ibl, inputs));
+        MeshShaderEnvironment ambient;
+        ambient.lights = true;
+        add("all lobes, scene ambient", RenderSystem::getSubmeshShaderVariant(ambient, inputs));
+    }
+    return variants;
+}
+
+editor::ShaderLibraryMatrix::Result editor::ShaderLibraryMatrix::runBuiltinLit(const std::vector<ShaderBackend>& backends){
+    Result result;
+    result.shader = ShaderReference::BUILTIN_LIT;
+    const std::vector<Variant> variants = buildBuiltinLitVariants();
+    result.variants = variants.size();
+    compileVariants(variants, backends, "engine/shaderlib/mesh.frag", result, nullptr);
     return result;
 }

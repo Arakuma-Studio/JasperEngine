@@ -1,5 +1,7 @@
 # jasperengine-editor-tests: unit tests of editor logic (editor/tests/<area>/ mirrors editor/<area>/,
-# fixtures in editor/tests/fixtures, shared helpers in editor/tests/support; docs/testing.md).
+# fixtures in editor/tests/fixtures, shared helpers in editor/tests/support; docs/testing.md), and
+# in editor/tests/engine/<area>/ (mirroring engine/core/<area>/) the tests of engine code that
+# drive it through the editor's shared engine (scenes with physics, models, shader keys).
 # Included by the root CMakeLists.txt with -DJASPERENGINE_TESTS=ON (include(), not
 # add_subdirectory(): the editor's relative source and include paths must keep resolving against
 # the root). The editor's sources without its main() are compiled with jasperengine-editor's
@@ -41,5 +43,40 @@ jasperengine_add_test_target(jasperengine-editor-tests
         # tests that run the editor binary (CLI exit codes)
         JASPER_TEST_EDITOR_BINARY="$<TARGET_FILE:jasperengine-editor>"
         JASPER_TEST_LOG_CRASH_HELPER="$<TARGET_FILE:je_log_crash_helper>"
+        # whether this build compiles V-HACD (engine/CMakeLists.txt): the test of the build without
+        # it is registered only there, not skipped here (S02 R11, no skipped editor test)
+        JASPER_TEST_CONVEX_DECOMPOSITION=$<BOOL:${JASPERENGINE_CONVEX_DECOMPOSITION}>
 )
 add_dependencies(jasperengine-editor-tests jasperengine-editor je_log_crash_helper)
+
+# A process with nothing but the engine (the editor's static App builds a Scene before main, so
+# the test binary can't make a PlacementWorld before Jolt is set up); run by PlacementWorldTest
+add_executable(jasperengine-placement-fresh-process ${CMAKE_CURRENT_LIST_DIR}/engine/physics/standalone/PlacementWorldBeforeAnyScene.cpp)
+target_link_libraries(jasperengine-placement-fresh-process PRIVATE jasperengine)
+set_target_properties(jasperengine-placement-fresh-process PROPERTIES
+    CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
+    CXX_STANDARD_REQUIRED ON
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+    FOLDER "tests")
+add_dependencies(jasperengine-editor-tests jasperengine-placement-fresh-process)
+
+# A process of its own for the texture synthesis' out-of-memory check (an address-space limit
+# measured from the process size, which the engine-running test binary can't give); run by
+# TexSynthOutOfMemory.IsAFailedStatusNotATerminate, Linux only
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_executable(jasperengine-texsynth-oom
+        ${CMAKE_CURRENT_LIST_DIR}/texsynth/standalone/SynthesisOutOfMemory.cpp
+        ${JASPERENGINE_TEXSYNTH_SOURCES}
+        ${CMAKE_SOURCE_DIR}/${EDITOR_DIR}/util/PngWriter.cpp)
+    target_include_directories(jasperengine-texsynth-oom PRIVATE ${CMAKE_SOURCE_DIR}/${EDITOR_DIR} ${GENERATED_DIR})
+    target_link_libraries(jasperengine-texsynth-oom PRIVATE jasperengine)
+    if(TARGET stb)
+        target_link_libraries(jasperengine-texsynth-oom PRIVATE stb)
+    endif()
+    set_target_properties(jasperengine-texsynth-oom PROPERTIES
+        CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
+        CXX_STANDARD_REQUIRED ON
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+        FOLDER "tests")
+    add_dependencies(jasperengine-editor-tests jasperengine-texsynth-oom)
+endif()

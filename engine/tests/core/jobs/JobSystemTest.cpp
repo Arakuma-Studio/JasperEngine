@@ -615,6 +615,34 @@ TEST(JobsChannel, BlockingThreadsNeverRunComputeJobs){
     EXPECT_EQ(blockingName.get(), "blocking");
 }
 
+// A job of one channel that waits for a job of another, submitted right after it, with one
+// blocking thread idle (an earlier channel job ended): the editor's build_project submits the
+// export (process) and its watcher (build-watch) that way after a Play. Each submit must count
+// the idle threads the submits before it already woke, or both only wake the one idle thread,
+// none is started for the second job, and the watcher can take the thread and wait forever.
+TEST(JobsChannel, SubmitsRightAfterEachOtherNeverShareOneIdleThread){
+    JobSystem system(configFor(2));
+    JobChannel work("tests-work", 2, &system);
+    JobChannel watch("tests-watch", 2, &system);
+    for (int round = 0; round < 6; round++){
+        // one blocking thread, idle
+        work.submit([]{}).wait();
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+        std::atomic<bool> done{false};
+        Task<void> job = work.submit([&]{ done = true; });
+        Task<bool> watcher = watch.submit([&]{
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+            while (!done && std::chrono::steady_clock::now() < deadline){
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            return done.load();
+        });
+        EXPECT_TRUE(watcher.get()) << "round " << round << ": the job never ran beside its watcher";
+        job.wait();
+    }
+}
+
 // compile_scripts' shape: the build goes to one channel, then a job of another channel waits
 // for it. With one blocking thread idle (another busy), both submits found that thread idle and
 // only woke it; it took the waiter, and nothing ran the build: the waiter waited for good. A

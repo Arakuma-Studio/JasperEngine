@@ -36,6 +36,11 @@ namespace {
         fp.stdlib = toolchain::StdlibLibstdcxx;
         fp.stdlibVersion = 13;
         fp.stdlibAbi = 1;
+        // a Release editor, whatever this test binary is (the sanitizer builds keep assertions:
+        // no NDEBUG): the tests below change these fields and expect them to differ
+        fp.ndebug = 1;
+        fp.iteratorDebugLevel = 0;
+        fp.crtDebug = 0;
         return fp;
     }
 
@@ -83,7 +88,7 @@ TEST(ToolchainFingerprint, EqualHasNoMismatch) {
 TEST(ToolchainFingerprint, CompareNamesEachDifferingField) {
     ToolchainFingerprint library = gccEditor();
     library.iteratorDebugLevel = 2;
-    library.ndebug = 0;
+    library.ndebug = library.ndebug ? 0 : 1;   // the other one: a Debug (sanitizer) build has 0
     library.compilerMinor = 3;
     const std::vector<FingerprintMismatch> mismatches = compare(gccEditor(), library);
     ASSERT_EQ(mismatches.size(), 3u);

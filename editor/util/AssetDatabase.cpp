@@ -5,6 +5,7 @@
 #include "io/AtomicFile.h"
 
 #include "Out.h"
+#include "util/FileUtils.h"
 #include "asset/AssetFileWrite.h"
 #include "asset/AssetMeta.h"
 #include "asset/AssetTypes.h"
@@ -35,6 +36,26 @@ namespace fs = std::filesystem;
 using Json = nlohmann::json;
 
 namespace {
+
+    // A cache's text. A file name in another encoding than UTF-8 can't be JSON: its entries are
+    // left out (read from disk again next time) instead of the dump throwing, which failed the
+    // project's load
+    std::string cacheText(Json& root, const char* listKey) {
+        try {
+            return root.dump() + "\n";
+        } catch (const Json::type_error&) {
+            Json kept = Json::array();
+            for (Json& item : root[listKey]) {
+                try {
+                    (void)item.dump();
+                    kept.push_back(std::move(item));
+                } catch (const Json::type_error&) {
+                }
+            }
+            root[listKey] = std::move(kept);
+            return root.dump(-1, ' ', false, Json::error_handler_t::replace) + "\n";
+        }
+    }
 
     constexpr int databaseCacheVersion = 1;
 
@@ -664,6 +685,11 @@ bool editor::AssetDatabase::readIdentity(const std::string& relative, AssetType 
 }
 
 bool editor::AssetDatabase::writeIdentity(const Entry& entry) const {
+    // read-only: the identity lives in memory (a legacy file's GUID is the one an editor
+    // upgrading it writes, R3)
+    if (readOnly) {
+        return true;
+    }
     const AssetTypeInfo& info = AssetTypes::info(entry.type);
     if (info.identity == AssetIdentity::InFile) {
         Guid current;
@@ -801,7 +827,7 @@ editor::AssetDatabase::Entry editor::AssetDatabase::identify(const std::string& 
         Out::warning("The GUID of %s is kept in memory only", relative.c_str());
     }
     statFile(relative, entry.writeTime, entry.size);
-    if (AssetTypes::info(type).identity == AssetIdentity::Sidecar) {
+    if (AssetTypes::info(type).identity == AssetIdentity::Sidecar && !readOnly) {
         entry.hasMeta = true;
         statFile(AssetTypes::metaPathFor(relative).generic_string(), entry.metaWriteTime, entry.metaSize);
     }
@@ -1080,7 +1106,7 @@ void editor::AssetDatabase::loadCache(std::map<std::string, Entry>& cached) cons
 }
 
 void editor::AssetDatabase::saveCache() const {
-    if (projectPath.empty()) {
+    if (projectPath.empty() || readOnly) {
         return;
     }
     writeCache(snapshotCache());
@@ -1157,7 +1183,7 @@ void editor::AssetDatabase::writeCache(const CacheSnapshot& snapshot) {
     root["caseInsensitive"] = snapshot.caseInsensitive;
     root["assets"] = assets;
     std::string error;
-    if (!assetio::writeFile(snapshot.file, root.dump() + "\n", assetio::Durability::Cache, &error)) {
+    if (!assetio::writeFile(snapshot.file, cacheText(root, "assets"), assetio::Durability::Cache, &error)) {
         Out::warning("Could not write the asset database cache: %s", error.c_str());
     }
     std::error_code ec;
@@ -2111,6 +2137,9 @@ void editor::AssetDatabase::saveCacheInBackground() {
     }
     // copied under the lock, serialized and written without it: the main thread is not kept
     // waiting for the file
+    if (readOnly) {
+        return;
+    }
     CacheSnapshot snapshot;
     {
         std::lock_guard<std::recursive_mutex> dbLock(mutex);

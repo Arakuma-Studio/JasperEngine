@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <optional>
 #include <unordered_map>
 #include <functional>
 #include <vector>
@@ -163,6 +164,17 @@ namespace jasperengine{
         struct Reloaded { Entity entity; bool stylesheetOnly; };
         std::vector<std::string> getDocumentFiles(Entity entity) const;   // document + union(scanner, runtime log)
         void reloadDocument(Entity entity, bool preserveState = true);
+        // S17 (UIDocumentSystemPatch.cpp): preserveState with PATCH patches an .html document in
+        // place (R27-R31), falling back to the rebuild when it cannot; the 2-argument form uses
+        // the system's mode (setReloadMode: the editor preference, PATCH by default)
+        void reloadDocument(Entity entity, bool preserveState, UIReloadMode mode);
+        // this system's mode (tests, tools); the editor preference is the process-wide default
+        void setReloadMode(UIReloadMode mode);
+        UIReloadMode getReloadMode() const;
+        static void setDefaultReloadMode(UIReloadMode mode);
+        static UIReloadMode getDefaultReloadMode();
+        // the last reload's report of the document (empty mode before one)
+        const UIReloadReport& getLastReloadReport(Entity entity) const;
         void reloadStyleSheets(Entity entity);
         void reloadTexture(const std::string& path);               // Rml::RenderManager::ReleaseTexture(path) on every context
         const std::vector<HtmlUIMessage>& getDocumentMessages(Entity entity) const;
@@ -344,8 +356,24 @@ namespace jasperengine{
         // hook H2: a stylesheet-only change of an .html document: the new compile's sheets swap
         // in place when its RML (and scripts, templates) did not change; false = needs a full reload
         bool compatRestyle(Entity entity);
+        // one <script type="text/lua"> of a loaded .html document (its listeners scoped to it); errors
+        // logged and kept with the document's diagnostics
+        bool compatRunScript(Entity entity, Rml::ElementDocument* document, const htmlui::compat::CompatDocument& compiled, size_t index);
+        // the document scripts run (play)
+        bool compatScriptsRun() const;
         // hook H2: the compat dependencies of a loaded .html document (CSS, imports, Lua src, manifest)
         std::vector<std::string> compatDependencies(Rml::ElementDocument* document) const;
+
+        // --- S17 (UIDocumentSystemPatch.cpp) ---
+        std::optional<UIReloadMode> reloadMode;   // unset: the default (setDefaultReloadMode)
+        std::unordered_map<Entity, UIReloadReport> reloadReports;
+        // the live tree patch; false (report.fallbackReason set) when the document needs the rebuild
+        bool patchDocument(Entity entity, UIReloadReport& report);
+        // the report kept, logged as one Console line and the document's message, onReload queued (patches)
+        void finishReload(Entity entity, UIReloadReport report);
+        // a reload that keeps the document (the live patch): `work` runs inside the runtime file
+        // log; then the document's files, their stamps and the load count, as for a restyle
+        bool reloadInPlace(Entity entity, const std::function<bool()>& work);
     };
 
 }

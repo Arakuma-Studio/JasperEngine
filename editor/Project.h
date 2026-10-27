@@ -23,10 +23,14 @@
 #include "asset/AssetMap.h"
 #include "asset/AssetRefSchema.h"
 #include "asset/MissingAssetTracker.h"
+#include "organisation/AssetLabels.h"
+#include "organisation/Organisation.h"
+#include "search/AssetSearchIndex.h"
 #include "util/ScriptParser.h"
 #include "util/ScopedDefaultEntityPool.h"
 #include "util/CxxStandards.h"
 #include "util/Util.h"
+#include "physics/PlacementSettings.h"
 #include "render/shadow/ShadowTiers.h"
 
 #include "yaml-cpp/yaml.h"
@@ -42,6 +46,7 @@
 #include <span>
 #include <tuple>
 #include <atomic>
+#include <future>
 #include <mutex>
 
 namespace jasperengine::editor{
@@ -182,6 +187,8 @@ namespace jasperengine::editor{
         std::vector<ChildSceneRef> childScenes;
         std::vector<SceneScriptSource> cppScripts;
         std::vector<PrefabSceneInfo> prefabs;
+        // FBX model path -> the import its saved model parts were built from
+        std::map<std::string, std::string> imports;
         YAML::Node editorCameraState;
         // Missing Prefab instances by root entity (Project::getMissingPrefab validates them)
         std::map<Entity, MissingPrefabInstance> missingPrefabs;
@@ -553,6 +560,9 @@ namespace jasperengine::editor{
         bool hideStatusBar = true;
         bool hideHomeIndicator = true;
         bool supportsHighRefreshRate = true;
+        // Google Mobile Ads is linked only when enabled
+        bool admobEnabled = false;
+        std::string admobAppId;
     };
 
     enum class AndroidOrientation {
@@ -583,7 +593,17 @@ namespace jasperengine::editor{
         bool allowBackup = true;
         bool fullscreen = true;
         bool keepScreenOn = false;
+        // Google Mobile Ads is compiled in only when enabled
+        bool admobEnabled = false;
+        std::string admobAppId;
     };
+
+    // Google's sample AdMob apps, which only serve test ads. Exports never fall back to them.
+    inline constexpr const char* androidSampleAdMobAppId = "ca-app-pub-3940256099942544~3347511713";
+    inline constexpr const char* iosSampleAdMobAppId = "ca-app-pub-3940256099942544~1458002511";
+
+    // ca-app-pub-<publisher>~<app>; ad unit ids have a slash instead
+    bool isAdMobAppIdValid(const std::string& value);
 
     struct ComponentRecoveryEntry {
         Entity entity;
@@ -653,6 +673,7 @@ namespace jasperengine::editor{
         bool physics2DEnabled;  // Box2D in exported builds; Play always has it
         bool physics3DEnabled;  // Jolt in exported builds; Play always has it
         bool runtimeShadersEnabled;  // exported builds compile the shader variants they lack
+        PbrTier mobilePbrTier;       // the lobes Android, iOS and HTML5 exports draw
         // Tags and Layers: user tags, and user layer names indexed by layer (MAX_LAYERS
         // entries, empty for built-in and unnamed layers)
         std::vector<std::string> tags;
@@ -684,6 +705,7 @@ namespace jasperengine::editor{
         LoadingSettings loadingSettings;
         ThreadingProjectSettings threadingSettings;
         TerrainEditorSettings terrainEditorSettings;
+        PhysicsPlacementSettings physicsPlacementSettings;
         bool simulateTouch;
 
         // True while project.yaml holds the only copy of this user's editor state
@@ -700,6 +722,7 @@ namespace jasperengine::editor{
         std::unique_ptr<io::ScopedFileLock> projectLock;
         bool ignoreProjectLock = false;
         bool skipProjectLock = false;
+        bool readOnlyAssets = false;
         bool projectLockedFailure = false;
         std::string projectLockMessage;
         struct AutosaveScene {
@@ -833,6 +856,9 @@ namespace jasperengine::editor{
         };
 
         std::filesystem::path projectPath;
+        // isTempProject() cache
+        mutable std::filesystem::path tempCheckPath;
+        mutable bool tempCheckResult = false;
         std::map<MaterialLinkKey, MaterialLinkEntry> materialFileLinks;
         bool watchFiles = false;
 
@@ -876,6 +902,11 @@ namespace jasperengine::editor{
         // Who references what (S04): closed files from disk, documents with unsaved edits from memory
         AssetIndex assetIndex;
         MissingAssetTracker missingAssets;
+        // S25: asset labels (in metas and in-file keys), this user's bookmarks, saved searches
+        // and palette recents, and the index the asset search evaluates
+        AssetLabels assetLabels;
+        Organisation organisation;
+        AssetSearchIndex assetSearchIndex;
         // Lua's Asset module (AssetMap) in the editor and its Play: answered by the database
         class EditorAssetResolver : public AssetMap::Resolver {
         public:
@@ -913,6 +944,33 @@ namespace jasperengine::editor{
         // The generated source of a closed scene calls its prefabs by path-derived names:
         // one whose prefab moved, went or came back is written again (from its file)
         void invalidateClosedSceneSources(const std::function<bool(const PrefabSceneInfo&)>& affected);
+
+        // FBX imports run on any thread; their models reload on the main one
+        struct FbxImportFailure {
+            uintmax_t size = 0;
+            std::filesystem::file_time_type time;
+        };
+        std::mutex fbxImportMutex;
+        std::mutex fbxImportCallMutex; // held for a whole importFbxModel call
+        std::atomic<bool> fbxImportsPaused{false};
+        std::set<std::filesystem::path> exportedImports; // FBX an export's scenes use, kept as they are
+        std::set<std::filesystem::path> modelReloads; // FBX whose loaded models may be out of date
+        std::map<std::filesystem::path, FbxImportFailure> failedFbxImports;
+        std::chrono::steady_clock::time_point lastFbxImportCheck;
+        static constexpr double fbxImportCheckIntervalSec = 1.0;
+        // A Background job (S06); ~Project waits for it before the members it uses go
+        jobs::Task<std::map<std::filesystem::path, FbxImportFailure>> fbxImportScan;
+
+        void queueModelReload(const std::filesystem::path& fbxPath);
+        // Reloads the models loaded from an older import; false while one of them is still loading
+        bool reloadModelFile(const std::filesystem::path& fbxPath, bool synchronous = false);
+        // Applies the queued reloads and returns an FBX left waiting for a model still loading
+        std::filesystem::path applyModelReloads(bool synchronous);
+        // FBX files the loaded scenes use, with the scenes where a model of one is not loaded
+        std::map<std::filesystem::path, std::vector<const SceneProject*>> collectSceneModelFiles() const;
+        void updateSceneImports(SceneProject* sceneProject);
+        // Imports every FBX in the assets, since scripts can load any of them by path
+        void importFbxModels();
 
         std::string libName;
 
@@ -1011,6 +1069,8 @@ namespace jasperengine::editor{
                 DegradedSavePolicy policy = DegradedSavePolicy::Refuse, SaveResult* outcome = nullptr);
         bool saveSceneForPlayStartup(SceneProject* sceneProject);
         bool saveLoadedSceneOnStop(SceneProject* loadedSceneProject, SceneProject* editorScene, bool keepModified);
+        // Only the shaderKeys of the file on disk: what Stop saves of a scene that ran as a Play copy
+        bool saveSceneShaderKeys(SceneProject* sceneProject);
         bool writeSceneToPath(uint32_t sceneId, const std::filesystem::path& path, bool stopTransientPreviews = true,
                 DegradedSavePolicy policy = DegradedSavePolicy::Refuse, SaveResult* outcome = nullptr);
         void writeSceneSource(const SceneProject* sceneProject);
@@ -1062,6 +1122,11 @@ namespace jasperengine::editor{
         // Main thread, not while playing (MCP compile_scripts).
         std::vector<SceneScriptSource> prepareScriptBuild();
 
+        // The external buffers MeshSystem::loadGLTF gives the model in a .gltf/.glb (merged: with
+        // mergeStaticMeshes), read from the file: a command line export loads no model, so the
+        // meshes' numExternalBuffers alone would undersize MAX_EXTERNAL_BUFFERS. 0 when unreadable.
+        static unsigned int countGltfExternalBuffers(const std::filesystem::path& path, bool merged);
+
         // Factory defaults, also used by the settings dialog to restore a value
         static constexpr unsigned int defaultCanvasWidth = 1280;
         static constexpr unsigned int defaultCanvasHeight = 720;
@@ -1082,6 +1147,7 @@ namespace jasperengine::editor{
         static constexpr bool defaultPhysics2DEnabled = true;
         static constexpr bool defaultPhysics3DEnabled = true;
         static constexpr bool defaultRuntimeShadersEnabled = true;
+        static constexpr PbrTier defaultMobilePbrTier = PbrTier::REDUCED;
         static constexpr int defaultCxxStandard = cxxStandards[0];
 
         Project();
@@ -1198,6 +1264,11 @@ namespace jasperengine::editor{
         // The editor always compiles.
         void setRuntimeShadersEnabled(bool enabled);
         bool isRuntimeShadersEnabled() const;
+        // Project Settings > Graphics > Mobile PBR Tier: the extended lobes the Android, iOS and
+        // HTML5 exports draw (Reduced: no iridescence, anisotropy direction maps or clear coat
+        // normal maps, MaterialPbr). Desktop exports and the editor draw them all.
+        void setMobilePbrTier(PbrTier tier);
+        PbrTier getMobilePbrTier() const;
 
         // Project Settings > Tags and Layers. Also sets the engine's TagManager, which the
         // Inspector and Play read; names are kept as TagManager accepts them (trimmed,
@@ -1309,6 +1380,10 @@ namespace jasperengine::editor{
         TerrainEditorSettings& getTerrainEditorSettings();
         const TerrainEditorSettings& getTerrainEditorSettings() const;
 
+        // The Physics Placement panel's settings, per user (workspace.yaml)
+        PhysicsPlacementSettings& getPhysicsPlacementSettings();
+        const PhysicsPlacementSettings& getPhysicsPlacementSettings() const;
+
         // Play acts as a touch device: the mouse is one finger and isTouchDevice() is true
         bool isSimulateTouch() const;
         void setSimulateTouch(bool simulateTouch);
@@ -1339,6 +1414,11 @@ namespace jasperengine::editor{
         void setIgnoreProjectLock(bool ignore);
         // A session that never writes the project (CLI checks and exports): no lock at all
         void setSkipProjectLock(bool skip);
+        // A session that only reads (the CLI's check, a scene dump that saves nothing), next to
+        // an editor that may be upgrading the same files: the asset database writes no
+        // identities (metas, in-file GUIDs) and no cache (AssetDatabase::setReadOnly). Before
+        // loadProject.
+        void setReadOnlyAssets(bool readOnly) { readOnlyAssets = readOnly; }
         // The last loadProject failed because another live editor holds the project
         bool wasProjectLocked() const;
         const std::string& getProjectLockMessage() const;
@@ -1375,6 +1455,20 @@ namespace jasperengine::editor{
         // deleted (R16), the lock released
         void endProjectSession();
 
+        // Reimports changed FBX files of the scenes' models and reloads them
+        void refreshFbxImports();
+        // Imports an FBX into its .glb when that is missing or stale, or always when forced. Any thread.
+        bool importFbxModel(const std::filesystem::path& fbxPath, bool force = false);
+        // An FBX model is imported when needed; false when it has nothing to load
+        bool prepareModelFile(const std::string& modelPath);
+        // The .glb an FBX is imported into
+        std::filesystem::path getImportedModelPath(const std::filesystem::path& fbxPath) const;
+        // Stops the reimports while an export reads the scenes
+        void setFbxImportsPaused(bool paused);
+        // For exports: applies the reloads of imports done before, fails while one of their models loads
+        bool flushFbxReloads(std::string& error);
+        // For exports, with all scenes loaded: makes the imports of their FBX models current or fails
+        bool prepareFbxModelsForExport(std::string& error);
         // The .material files submeshes are linked to (project-relative). Their changes on
         // disk reach the links through the hot reload (editor/reload, S05).
         std::vector<std::string> getLinkedMaterialFiles() const;
@@ -1424,6 +1518,10 @@ namespace jasperengine::editor{
         uint32_t loadUntitledScene(const std::string& text, const std::string& displayName);
         void openScene(fs::path filepath, bool closePrevious = true);
         void closeScene(uint32_t sceneId, bool systemClose = false);
+        // Frees every scene, its render and the project state, as a project switch does. The
+        // editor's Project lives until exit and frees none; code that drops a Project while the
+        // engine runs (the CLI's tools, the unit tests) calls this first
+        void releaseScenes();
         // The open scene (or prefab stage) is read again from its file, its unsaved changes
         // dropped (the hot reload's Reload, S05 R11; not an undo step). False (and `error`)
         // while a scene plays or when the file cannot be read (the open copy stays).
@@ -1481,11 +1579,13 @@ namespace jasperengine::editor{
         bool loadChildSceneInline(uint32_t childSceneId);
         void unloadChildSceneInline(uint32_t childSceneId);
 
-        void addChildScene(uint32_t sceneId, uint32_t childSceneId, bool startActive = true);
+        bool addChildScene(uint32_t sceneId, uint32_t childSceneId, bool startActive = true);
         void removeChildScene(uint32_t sceneId, uint32_t childSceneId);
         // Dirties parents of a child scene and forces the Engine layers to rebuild.
         void markParentScenesNeedUpdate(uint32_t childSceneId);
         bool hasChildScene(uint32_t sceneId, uint32_t childSceneId) const;
+        // True when sceneId is childSceneId or one of its descendants: adding it would make a cycle
+        bool wouldCreateChildSceneCycle(uint32_t sceneId, uint32_t childSceneId) const;
         bool isChildSceneStartActive(uint32_t sceneId, uint32_t childSceneId) const;
         void setChildSceneStartActive(uint32_t sceneId, uint32_t childSceneId, bool startActive);
         std::vector<uint32_t> getChildScenes(uint32_t sceneId) const;
@@ -1572,6 +1672,8 @@ namespace jasperengine::editor{
         bool isTempUnsavedProject() const;
         std::filesystem::path getProjectPath() const;
         std::filesystem::path getProjectInternalPath() const;
+        // Where imported models (FBX converted to .glb) are kept, out of the assets and version control
+        std::filesystem::path getImportPath() const;
 
         // Where Play mode sends the engine's data:// writes, created on demand, so a
         // playtest does not dirty the working tree
@@ -1649,6 +1751,13 @@ namespace jasperengine::editor{
 
         AssetIndex& getAssetIndex() { return assetIndex; }
         const AssetIndex& getAssetIndex() const { return assetIndex; }
+        // S25 (editor/organisation, editor/search)
+        AssetLabels& getAssetLabels() { return assetLabels; }
+        const AssetLabels& getAssetLabels() const { return assetLabels; }
+        Organisation& getOrganisation() { return organisation; }
+        const Organisation& getOrganisation() const { return organisation; }
+        // Brought up to date first (the database and the labels may have changed)
+        AssetSearchIndex& getAssetSearchIndex();
         // The Missing Assets lists, brought up to date with the database and the index
         MissingAssetTracker& getMissingAssets();
         // The roots reference hints are relative to (assets and Lua directories), project-relative
@@ -1667,6 +1776,10 @@ namespace jasperengine::editor{
         // asset only by path (assigned since the last save) get its GUID, so they follow it
         void bindLoadedAssetRefs();
         bool resolveRegistryAssetRefs(EntityRegistry* registry, bool loading);
+        // A material about to be written to a .material file: its references that name an
+        // asset only by path (a tool's or a paste's new values) get the asset's GUID, so the
+        // file follows the asset when it moves (R13 rewrites no referrer)
+        void bindMaterialAssetRefs(Material& material);
         // The identity keys (guid, formerGuids) a scene, prefab or material file is written
         // with, put at the top of its root; returns the GUID (a new one for a new file)
         Guid prepareDocumentIdentity(YAML::Node& root, const std::filesystem::path& relativePath);

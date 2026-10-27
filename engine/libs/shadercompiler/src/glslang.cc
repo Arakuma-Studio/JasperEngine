@@ -325,41 +325,32 @@ namespace {
         ProcessScope() { glslang::InitializeProcess(); }
         ~ProcessScope() { glslang::FinalizeProcess(); }
     };
-}
 
-bool shadercompiler::compile_to_spirv(std::vector<spirv_t>& spirvvec, const std::vector<input_t>& inputs, const args_t& args){
-    ProcessScope processScope;
+    const int default_version = 100; // 110 for desktop
 
-    std::list<glslang::TShader*> shaders;
-
-    std::unique_ptr<glslang::TShader::Includer> includer;
-    if (args.useBuffers) {
-        includer = std::make_unique<BufferIncluder>(args.fileBuffers);
-    } else {
-        includer = std::make_unique<FileIncluder>();
+    std::unique_ptr<glslang::TShader::Includer> make_includer(const args_t& args){
+        if (args.useBuffers)
+            return std::make_unique<BufferIncluder>(args.fileBuffers);
+        auto includer = std::make_unique<FileIncluder>();
         if (!args.include_dir.empty())
-            static_cast<FileIncluder*>(includer.get())->addLocalDirectory(args.include_dir);
+            includer->addLocalDirectory(args.include_dir);
+        return includer;
     }
 
-    glslang::TProgram* program = new glslang::TProgram;
-
-    EShMessages messages = EShMsgDefault;
-    int default_version = 100; // 110 for desktop
-
-    // To be used in layout(location = SEMANTIC) for HLSL
-    std::string semantics_def;
-    for (int i = 0; i < VERTEX_ATTRIB_COUNT; i++) {
-        semantics_def += std::string("#define " + std::string(k_attrib_names[i]) + " " + std::to_string(i) + "\n");
-    }
-
-    // For more HLSL compatibility
-    for (int i = 0; i < 8; i++) {
-        semantics_def += std::string("#define SV_Target" + std::to_string(i) + " " + std::to_string(i) + "\n");
-    }
-
-    for (int i = 0; i < inputs.size(); i++){
+    // The preamble every stage is compiled with: the include extension, the HLSL semantic
+    // locations and the target language's IS_* define (the variant defines follow, add_defines)
+    std::string make_preamble(const args_t& args){
         std::string def("#extension GL_GOOGLE_include_directive : require\n");
-        def += semantics_def;
+
+        // To be used in layout(location = SEMANTIC) for HLSL
+        for (int i = 0; i < VERTEX_ATTRIB_COUNT; i++) {
+            def += std::string("#define " + std::string(k_attrib_names[i]) + " " + std::to_string(i) + "\n");
+        }
+
+        // For more HLSL compatibility
+        for (int i = 0; i < 8; i++) {
+            def += std::string("#define SV_Target" + std::to_string(i) + " " + std::to_string(i) + "\n");
+        }
 
         if (args.lang == LANG_GLSL && args.version == 100) {
             def += std::string("#define flat\n");
@@ -377,16 +368,31 @@ bool shadercompiler::compile_to_spirv(std::vector<spirv_t>& spirvvec, const std:
         }else if (args.lang == LANG_SPIRV){
             def += std::string("#define IS_VULKAN\n");
         }
+        return def;
+    }
 
-        EShLanguage stage = get_stage(inputs[i].stage_type);
+    // What a TShader points into (it keeps the pointers, not copies) until its parse or
+    // preprocess is done: the source arrays and the preamble
+    struct StageSources {
+        const char* sources[1] = {};
+        int lengths[1] = {};
+        const char* names[1] = {};
+        std::string preamble;
+    };
+
+    // One stage set up to parse or preprocess, pointing into storage
+    glslang::TShader* create_shader(const input_t& input, const args_t& args, StageSources& storage){
+        storage.preamble = make_preamble(args);
+
+        EShLanguage stage = get_stage(input.stage_type);
 
         glslang::TShader* shader = new glslang::TShader(stage);
 
-        const char* sources[1] = { inputs[i].source.c_str() };
-        const int sourcesLen[1] = { (int) inputs[i].source.length() };
-        const char* sourcesNames[1] = { inputs[i].filename.c_str() };
+        storage.sources[0] = input.source.c_str();
+        storage.lengths[0] = (int) input.source.length();
+        storage.names[0] = input.filename.c_str();
 
-        shader->setStringsWithLengthsAndNames(sources, sourcesLen, sourcesNames, 1);
+        shader->setStringsWithLengthsAndNames(storage.sources, storage.lengths, storage.names, 1);
         shader->setEnvInput(glslang::EShSourceGlsl, stage, glslang::EShClientVulkan, default_version);
         shader->setEnvClient(glslang::EShClientVulkan, glslang::EShTargetVulkan_1_0);
         shader->setEnvTarget(glslang::EshTargetSpv, glslang::EShTargetSpv_1_0);
@@ -394,7 +400,44 @@ bool shadercompiler::compile_to_spirv(std::vector<spirv_t>& spirvvec, const std:
         shader->setAutoMapLocations(true);
         shader->setAutoMapBindings(true);
 
-        add_defines(shader, args, def);
+        add_defines(shader, args, storage.preamble);
+        return shader;
+    }
+}
+
+bool shadercompiler::preprocess(std::vector<std::string>& outputs, const std::vector<input_t>& inputs, const args_t& args){
+    ProcessScope processScope;
+
+    std::unique_ptr<glslang::TShader::Includer> includer = make_includer(args);
+
+    outputs.assign(inputs.size(), std::string());
+    for (size_t i = 0; i < inputs.size(); i++){
+        StageSources storage;
+        std::unique_ptr<glslang::TShader> shader(create_shader(inputs[i], args, storage));
+        const bool success = shader->preprocess(&DefaultTBuiltInResource, default_version, ENoProfile, false, false,
+                                                EShMsgDefault, &outputs[i], *includer);
+        output_error(shader->getInfoLog(), ("File: " + inputs[i].filename).c_str(), args.error_output);
+        if (!success)
+            return false;
+    }
+    return true;
+}
+
+bool shadercompiler::compile_to_spirv(std::vector<spirv_t>& spirvvec, const std::vector<input_t>& inputs, const args_t& args){
+    ProcessScope processScope;
+
+    std::list<glslang::TShader*> shaders;
+
+    std::unique_ptr<glslang::TShader::Includer> includer = make_includer(args);
+
+    glslang::TProgram* program = new glslang::TProgram;
+
+    EShMessages messages = EShMsgDefault;
+
+    // one per stage, alive until the link (the shaders point into them)
+    std::vector<StageSources> storage(inputs.size());
+    for (int i = 0; i < inputs.size(); i++){
+        glslang::TShader* shader = create_shader(inputs[i], args, storage[i]);
 
         shaders.push_back(shader);
 

@@ -20,7 +20,7 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"diagnostics", "Jobs, memory, ECS, logging and crash/hang diagnostics."},
         {"editor_ux", "Undo history, command palette, layouts, search, bookmarks and Scene view tools."},
         {"profiling", "GPU/CPU timings, VRAM, frame passes and render statistics."},
-        {"rendering_fx", "Shadow statistics and debug views, fog, clouds and post effects beyond the core set."},
+        {"rendering_fx", "Shadow statistics and debug views, fog, clouds, post effects beyond the core set, material variants and light units."},
         {"splines", "Splines and what is built on them: roads, walls, placement, terrain and water."},
         {"terrain", "Terrain brushes (sculpt, paint, place objects), height/blend maps and sampling."},
         {"navigation", "Navigation meshes, agents, crowds and grid paths."},
@@ -30,6 +30,7 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"editor_tools", "Colour picker, curve editor, project templates and movie recording."},
         {"vcs", "Version control: status, locks, commits and scene diffs."},
         {"scripting", "Script hot reload and status, editor-script menus, numeric expressions, graph files."},
+        {"html_ui", "HTML UI views in play: scroll, select, activate, expand, collapse and sort list/grid/tree/table views."},
     };
     if (selftestGroupMode() > 0) {
         groups.push_back({"selftest", "Test-only group of the MCP tests (JASPER_MCP_SELFTEST_GROUP)."});

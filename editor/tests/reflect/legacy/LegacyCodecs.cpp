@@ -4,6 +4,7 @@
 // The codecs of editor/Stream.cpp before S08, unchanged (LegacyCodecs.h)
 
 #include "reflect/legacy/LegacyCodecs.h"
+#include "util/LightPhotometry.h"
 
 #include "StreamSchema.h"
 #include "pool/SoundPool.h"
@@ -61,6 +62,13 @@ YAML::Node LegacyCodecs::encodeLightComponent(const LightComponent& light) {
     // the volumetric fog's share of the light (omitted at its default)
     if (light.volumetricIntensity != LightComponent().volumetricIntensity)
         node["volumetricIntensity"] = light.volumetricIntensity;
+    // photometric units and colour temperature: written only away from their defaults
+    if (light.intensityUnit != LightUnit::ENGINE)
+        node["intensityUnit"] = StreamSchema::lightUnit().toString(light.intensityUnit);
+    if (light.useColorTemperature)
+        node["useColorTemperature"] = true;
+    if (light.colorTemperature != LightComponent().colorTemperature)
+        node["colorTemperature"] = YamlNumbers::text(finiteOr(light.colorTemperature, LightComponent().colorTemperature));
 
     return node;
 }
@@ -103,6 +111,10 @@ LightComponent LegacyCodecs::decodeLightComponent(const YAML::Node& node, const 
     light.shadowSourceRadius = node["shadowSourceRadius"] ? YamlNumbers::as<float>(node["shadowSourceRadius"]) : defaults.shadowSourceRadius;
     light.shadowUpdateMode = node["shadowUpdateMode"] ? decodeEnum(node, "shadowUpdateMode", StreamSchema::shadowUpdateMode()) : defaults.shadowUpdateMode;
     light.volumetricIntensity = node["volumetricIntensity"] ? YamlNumbers::as<float>(node["volumetricIntensity"]) : LightComponent().volumetricIntensity;
+    light.intensityUnit = node["intensityUnit"] ? decodeEnum(node, "intensityUnit", StreamSchema::lightUnit()) : LightUnit::ENGINE;
+    light.useColorTemperature = node["useColorTemperature"] ? YamlNumbers::as<bool>(node["useColorTemperature"]) : false;
+    light.colorTemperature = std::clamp(decodeFinite(node["colorTemperature"], LightComponent().colorTemperature),
+                                        LightPhotometry::MIN_TEMPERATURE, LightPhotometry::MAX_TEMPERATURE);
 
     if (node["enabled"]) light.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
@@ -1219,6 +1231,7 @@ YAML::Node LegacyCodecs::encodeTweenComponent(const TweenComponent& timed) {
 
     node["duration"] = timed.duration;
     node["loop"] = timed.loop;
+    node["pingPong"] = timed.pingPong;
     node["function"] = encodeEase(timed.function);
 
     return node;
@@ -1236,6 +1249,7 @@ TweenComponent LegacyCodecs::decodeTweenComponent(const YAML::Node& node, const 
 
     if (node["duration"]) timed.duration = YamlNumbers::as<float>(node["duration"]);
     if (node["loop"]) timed.loop = YamlNumbers::as<bool>(node["loop"]);
+    if (node["pingPong"]) timed.pingPong = YamlNumbers::as<bool>(node["pingPong"]);
     if (node["function"]) timed.function = decodeEase(node["function"], oldTimed ? &oldTimed->function : nullptr);
 
     return timed;
@@ -1269,6 +1283,9 @@ YAML::Node LegacyCodecs::encodeRotationTweenComponent(const RotationTweenCompone
     node["endRotation"] = encodeQuaternion(rotAction.endRotation);
     node["startRotation"] = encodeQuaternion(rotAction.startRotation);
     node["shortestPath"] = rotAction.shortestPath;
+    node["spin"] = rotAction.spin;
+    node["axis"] = encodeVector3(rotAction.axis);
+    node["angle"] = rotAction.angle;
 
     return node;
 }
@@ -1283,6 +1300,9 @@ RotationTweenComponent LegacyCodecs::decodeRotationTweenComponent(const YAML::No
     if (node["endRotation"]) rotAction.endRotation = decodeQuaternion(node["endRotation"]);
     if (node["startRotation"]) rotAction.startRotation = decodeQuaternion(node["startRotation"]);
     if (node["shortestPath"]) rotAction.shortestPath = YamlNumbers::as<bool>(node["shortestPath"]);
+    if (node["spin"]) rotAction.spin = YamlNumbers::as<bool>(node["spin"]);
+    if (node["axis"]) rotAction.axis = decodeVector3(node["axis"]);
+    if (node["angle"]) rotAction.angle = YamlNumbers::as<float>(node["angle"]);
 
     return rotAction;
 }
@@ -1505,6 +1525,8 @@ YAML::Node LegacyCodecs::encodeKeyframeTracksComponent(const KeyframeTracksCompo
 
     node["index"] = tracks.index;
     node["interpolation"] = tracks.interpolation;
+    node["loop"] = tracks.loop;
+    node["relative"] = tracks.relative;
 
     YAML::Node timesNode;
     for (float t : tracks.times) {
@@ -1532,8 +1554,13 @@ KeyframeTracksComponent LegacyCodecs::decodeKeyframeTracksComponent(const YAML::
         tracks = *oldTracks;
     }
 
+    // a decoded track takes its base again when it starts
+    tracks.hasBase = false;
+
     if (node["index"]) tracks.index = YamlNumbers::as<int>(node["index"]);
     if (node["interpolation"]) tracks.interpolation = YamlNumbers::as<float>(node["interpolation"]);
+    if (node["loop"]) tracks.loop = YamlNumbers::as<bool>(node["loop"]);
+    if (node["relative"]) tracks.relative = YamlNumbers::as<bool>(node["relative"]);
 
     if (node["times"]) {
         tracks.times.clear();
@@ -1646,4 +1673,143 @@ ScaleTracksComponent LegacyCodecs::decodeScaleTracksComponent(const YAML::Node& 
     decodeTrackLists(node, tracks, decodeVector3);
 
     return tracks;
+}
+
+YAML::Node LegacyCodecs::encodeFluidSimulationComponent(const FluidSimulationComponent& fluid) {
+    YAML::Node node;
+    node["enabled"] = fluid.enabled;
+
+    // only what differs from the defaults (Pavel's); decode restores the defaults
+    const FluidSimulationComponent defaults;
+    if (fluid.output != defaults.output) node["output"] = fluidOutputToString(fluid.output);
+    if (fluid.interactive != defaults.interactive) node["interactive"] = fluid.interactive;
+    if (fluid.aspectRatio != defaults.aspectRatio) encodeFinite(node, "aspectRatio", fluid.aspectRatio);
+    if (fluid.simResolution != defaults.simResolution) node["simResolution"] = fluid.simResolution;
+    if (fluid.dyeResolution != defaults.dyeResolution) node["dyeResolution"] = fluid.dyeResolution;
+    if (fluid.densityDissipation != defaults.densityDissipation) encodeFinite(node, "densityDissipation", fluid.densityDissipation);
+    if (fluid.velocityDissipation != defaults.velocityDissipation) encodeFinite(node, "velocityDissipation", fluid.velocityDissipation);
+    if (fluid.pressure != defaults.pressure) encodeFinite(node, "pressure", fluid.pressure);
+    if (fluid.pressureIterations != defaults.pressureIterations) node["pressureIterations"] = fluid.pressureIterations;
+    if (fluid.curl != defaults.curl) encodeFinite(node, "curl", fluid.curl);
+    if (fluid.gradientScale != defaults.gradientScale) encodeFinite(node, "gradientScale", fluid.gradientScale);
+    if (fluid.simulationRate != defaults.simulationRate) encodeFinite(node, "simulationRate", fluid.simulationRate);
+    if (fluid.maxSubsteps != defaults.maxSubsteps) node["maxSubsteps"] = fluid.maxSubsteps;
+    if (fluid.timeScale != defaults.timeScale) encodeFinite(node, "timeScale", fluid.timeScale);
+    if (fluid.paused != defaults.paused) node["paused"] = fluid.paused;
+    if (fluid.splatRadius != defaults.splatRadius) encodeFinite(node, "splatRadius", fluid.splatRadius);
+    if (fluid.splatForce != defaults.splatForce) encodeFinite(node, "splatForce", fluid.splatForce);
+    if (fluid.colorful != defaults.colorful) node["colorful"] = fluid.colorful;
+    if (fluid.colorUpdateSpeed != defaults.colorUpdateSpeed) encodeFinite(node, "colorUpdateSpeed", fluid.colorUpdateSpeed);
+    if (fluid.splatsOnStart != defaults.splatsOnStart) node["splatsOnStart"] = fluid.splatsOnStart;
+    if (fluid.randomSplatCount != defaults.randomSplatCount) node["randomSplatCount"] = fluid.randomSplatCount;
+    if (fluid.seed != defaults.seed) node["seed"] = fluid.seed;
+    if (fluid.shading != defaults.shading) node["shading"] = fluid.shading;
+    if (fluid.backColor != defaults.backColor) encodeFiniteVector3(node, "backColor", fluid.backColor);
+    if (fluid.transparent != defaults.transparent) node["transparent"] = fluid.transparent;
+    if (fluid.bloom != defaults.bloom) node["bloom"] = fluid.bloom;
+    if (fluid.bloomIterations != defaults.bloomIterations) node["bloomIterations"] = fluid.bloomIterations;
+    if (fluid.bloomResolution != defaults.bloomResolution) node["bloomResolution"] = fluid.bloomResolution;
+    if (fluid.bloomIntensity != defaults.bloomIntensity) encodeFinite(node, "bloomIntensity", fluid.bloomIntensity);
+    if (fluid.bloomThreshold != defaults.bloomThreshold) encodeFinite(node, "bloomThreshold", fluid.bloomThreshold);
+    if (fluid.bloomSoftKnee != defaults.bloomSoftKnee) encodeFinite(node, "bloomSoftKnee", fluid.bloomSoftKnee);
+    if (fluid.sunrays != defaults.sunrays) node["sunrays"] = fluid.sunrays;
+    if (fluid.sunraysResolution != defaults.sunraysResolution) node["sunraysResolution"] = fluid.sunraysResolution;
+    if (fluid.sunraysWeight != defaults.sunraysWeight) encodeFinite(node, "sunraysWeight", fluid.sunraysWeight);
+
+    return node;
+}
+
+FluidSimulationComponent LegacyCodecs::decodeFluidSimulationComponent(const YAML::Node& node, const FluidSimulationComponent* oldFluid) {
+    // the old one's runtime state (its simulator, which textures linked to "fluid|<entity>"
+    // show, and what is queued for it) stays
+    FluidSimulationComponent fluid;
+    if (oldFluid) {
+        fluid = *oldFluid;
+    }
+
+    if (node["enabled"]) fluid.enabled = YamlNumbers::as<bool>(node["enabled"]);
+
+    // keys are omitted at their defaults, so a missing key is the default, not the old value
+    // (paste and play-stop restore decode over an existing component); the clipboard fills a
+    // key it has no default for with an empty scalar, which is the default too
+    const FluidSimulationComponent defaults;
+    auto given = [&node](const char* key) {
+        const YAML::Node value = node[key];
+        return value && !value.IsNull() && !(value.IsScalar() && value.Scalar().empty());
+    };
+    fluid.output = given("output") ? decodeEnum(node, "output", StreamSchema::fluidOutput()) : defaults.output;
+    fluid.interactive = given("interactive") ? YamlNumbers::as<bool>(node["interactive"]) : defaults.interactive;
+    fluid.aspectRatio = given("aspectRatio") ? decodeFinite(node["aspectRatio"], defaults.aspectRatio) : defaults.aspectRatio;
+    fluid.simResolution = given("simResolution") ? YamlNumbers::as<unsigned int>(node["simResolution"]) : defaults.simResolution;
+    fluid.dyeResolution = given("dyeResolution") ? YamlNumbers::as<unsigned int>(node["dyeResolution"]) : defaults.dyeResolution;
+    fluid.densityDissipation = given("densityDissipation") ? decodeFinite(node["densityDissipation"], defaults.densityDissipation) : defaults.densityDissipation;
+    fluid.velocityDissipation = given("velocityDissipation") ? decodeFinite(node["velocityDissipation"], defaults.velocityDissipation) : defaults.velocityDissipation;
+    fluid.pressure = given("pressure") ? decodeFinite(node["pressure"], defaults.pressure) : defaults.pressure;
+    fluid.pressureIterations = given("pressureIterations") ? YamlNumbers::as<unsigned int>(node["pressureIterations"]) : defaults.pressureIterations;
+    fluid.curl = given("curl") ? decodeFinite(node["curl"], defaults.curl) : defaults.curl;
+    fluid.gradientScale = given("gradientScale") ? decodeFinite(node["gradientScale"], defaults.gradientScale) : defaults.gradientScale;
+    fluid.simulationRate = given("simulationRate") ? decodeFinite(node["simulationRate"], defaults.simulationRate) : defaults.simulationRate;
+    fluid.maxSubsteps = given("maxSubsteps") ? YamlNumbers::as<unsigned int>(node["maxSubsteps"]) : defaults.maxSubsteps;
+    fluid.timeScale = given("timeScale") ? decodeFinite(node["timeScale"], defaults.timeScale) : defaults.timeScale;
+    fluid.paused = given("paused") ? YamlNumbers::as<bool>(node["paused"]) : defaults.paused;
+    fluid.splatRadius = given("splatRadius") ? decodeFinite(node["splatRadius"], defaults.splatRadius) : defaults.splatRadius;
+    fluid.splatForce = given("splatForce") ? decodeFinite(node["splatForce"], defaults.splatForce) : defaults.splatForce;
+    fluid.colorful = given("colorful") ? YamlNumbers::as<bool>(node["colorful"]) : defaults.colorful;
+    fluid.colorUpdateSpeed = given("colorUpdateSpeed") ? decodeFinite(node["colorUpdateSpeed"], defaults.colorUpdateSpeed) : defaults.colorUpdateSpeed;
+    fluid.splatsOnStart = given("splatsOnStart") ? YamlNumbers::as<bool>(node["splatsOnStart"]) : defaults.splatsOnStart;
+    fluid.randomSplatCount = given("randomSplatCount") ? YamlNumbers::as<unsigned int>(node["randomSplatCount"]) : defaults.randomSplatCount;
+    fluid.seed = given("seed") ? YamlNumbers::as<uint32_t>(node["seed"]) : defaults.seed;
+    fluid.shading = given("shading") ? YamlNumbers::as<bool>(node["shading"]) : defaults.shading;
+    fluid.backColor = given("backColor") ? decodeFiniteVector3(node["backColor"], defaults.backColor) : defaults.backColor;
+    fluid.transparent = given("transparent") ? YamlNumbers::as<bool>(node["transparent"]) : defaults.transparent;
+    fluid.bloom = given("bloom") ? YamlNumbers::as<bool>(node["bloom"]) : defaults.bloom;
+    fluid.bloomIterations = given("bloomIterations") ? YamlNumbers::as<unsigned int>(node["bloomIterations"]) : defaults.bloomIterations;
+    fluid.bloomResolution = given("bloomResolution") ? YamlNumbers::as<unsigned int>(node["bloomResolution"]) : defaults.bloomResolution;
+    fluid.bloomIntensity = given("bloomIntensity") ? decodeFinite(node["bloomIntensity"], defaults.bloomIntensity) : defaults.bloomIntensity;
+    fluid.bloomThreshold = given("bloomThreshold") ? decodeFinite(node["bloomThreshold"], defaults.bloomThreshold) : defaults.bloomThreshold;
+    fluid.bloomSoftKnee = given("bloomSoftKnee") ? decodeFinite(node["bloomSoftKnee"], defaults.bloomSoftKnee) : defaults.bloomSoftKnee;
+    fluid.sunrays = given("sunrays") ? YamlNumbers::as<bool>(node["sunrays"]) : defaults.sunrays;
+    fluid.sunraysResolution = given("sunraysResolution") ? YamlNumbers::as<unsigned int>(node["sunraysResolution"]) : defaults.sunraysResolution;
+    fluid.sunraysWeight = given("sunraysWeight") ? decodeFinite(node["sunraysWeight"], defaults.sunraysWeight) : defaults.sunraysWeight;
+
+    // what the start depends on: a new seed or start burst restarts it (sizes and the look
+    // are read by FluidSimulator each frame)
+    if (oldFluid && (oldFluid->seed != fluid.seed || oldFluid->splatsOnStart != fluid.splatsOnStart ||
+                     oldFluid->randomSplatCount != fluid.randomSplatCount)) {
+        fluid.needReset = true;
+    }
+
+    return fluid;
+}
+
+YAML::Node LegacyCodecs::encodeLatticeFollowerComponent(const LatticeFollowerComponent& follower) {
+    YAML::Node node;
+    node["enabled"] = YamlNumbers::text(follower.enabled);
+
+    node["lattice"] = follower.lattice;
+    node["rest"] = follower.rest;
+    node["applyPosition"] = YamlNumbers::text(follower.applyPosition);
+    node["applyRotation"] = YamlNumbers::text(follower.applyRotation);
+    node["applyScale"] = YamlNumbers::text(follower.applyScale);
+    encodeFinite(node, "weight", follower.weight);
+
+    return node;
+}
+
+LatticeFollowerComponent LegacyCodecs::decodeLatticeFollowerComponent(const YAML::Node& node, const LatticeFollowerComponent* oldFollower) {
+    LatticeFollowerComponent follower;
+
+    if (oldFollower) {
+        follower = *oldFollower;
+    }
+
+    if (node["enabled"]) follower.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    if (node["lattice"]) follower.lattice = YamlNumbers::as<Entity>(node["lattice"]);
+    if (node["rest"]) follower.rest = YamlNumbers::as<Entity>(node["rest"]);
+    if (node["applyPosition"]) follower.applyPosition = YamlNumbers::as<bool>(node["applyPosition"]);
+    if (node["applyRotation"]) follower.applyRotation = YamlNumbers::as<bool>(node["applyRotation"]);
+    if (node["applyScale"]) follower.applyScale = YamlNumbers::as<bool>(node["applyScale"]);
+    if (node["weight"]) follower.weight = decodeFinite(node["weight"], follower.weight);
+
+    return follower;
 }

@@ -15,16 +15,23 @@
 #include "Base64.h"
 #include "Catalog.h"
 #include "util/YamlNumbers.h"
+#include "lattice/LatticeTypes.h"
 #include "Factory.h"
 #include "pool/SoundPool.h"
 #include "pool/ShaderPool.h"
+#include "subsystem/MeshSystem.h"
+#include "System.h"
 #include "util/CameraTextureLink.h"
+#include "util/FluidTextureLink.h"
 #include "util/ProjectUtils.h"
 #include "util/StringUtils.h"
+#include "util/LightPhotometry.h"
+#include "texture/TexturePack.h"
 #include "ecs/EntityManager.h"
 #include "render/SceneRender2D.h"
 #include "render/SceneRender3D.h"
 #include "window/TerrainEditWindow.h"
+#include "physics/PlacementSettingsLimits.h"
 
 #include <algorithm>
 #include <cctype>
@@ -36,63 +43,106 @@
 
 using namespace jasperengine;
 
+// The meaning of a key's property bits changed once since keys were written to files: MESH bit
+// 5 was 'Pcf' (USE_SHADOWS_PCF) until July 2026, then unnamed (stripped as keys were read), and
+// is Stochastic Tiling ('Sto') since October 2026. An editor of the time between could still
+// leave it set in what it wrote, so a key without a version (1) that has it holds a stale 'Pcf':
+// it is cleared as the key is read, or it would turn into a Stochastic Tiling variant. A key
+// written with the bit on carries `keyVersion: 2`; every other key is written as before, so
+// files without such variants keep their bytes.
 namespace {
-    // The customShaderId in a key is a session-local registry index, so a fork is
-    // named by its project-relative path instead, the way scenes name theirs.
-    // Both directions normalize, keeping a since-retired property bit out of the file.
-    YAML::Node encodeShaderKeys(const std::set<ShaderKey>& shaderKeys) {
-        YAML::Node node(YAML::NodeType::Sequence);
-        for (ShaderKey rawKey : shaderKeys) {
-            const ShaderKey key = ShaderPool::normalizeKey(rawKey);
-            const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
-            std::string customShader;
-            if (customId != 0) {
-                // Without a name there is nothing stable to write, and dropping only
-                // the id would turn the override into one for the built-in shader
-                customShader = ShaderPool::getCustomShaderName(customId);
-                if (customShader.empty()) continue;
-            }
+    constexpr int SHADER_KEY_VERSION_STOCHASTIC = 2;
 
-            const uint32_t properties = ShaderPool::getPropertiesFromKey(key);
-            YAML::Node entry(YAML::NodeType::Map);
-            entry["type"] = ShaderPool::getShaderTypeName(ShaderPool::getShaderTypeFromKey(key), true);
-            if (properties) entry["properties"] = properties;
-            if (!customShader.empty()) entry["customShader"] = customShader;
-            node.push_back(entry);
-        }
-        return node;
+    bool hasVersionedBits(ShaderKey key) {
+        return ShaderPool::getShaderTypeFromKey(key) == ShaderType::MESH && (key.properties & shaderPropertyBit(5));
     }
 
-    std::vector<ShaderKey> decodeShaderKeys(const YAML::Node& node) {
-        std::vector<ShaderKey> shaderKeys;
-        if (!node || !node.IsSequence()) {
-            return shaderKeys;
-        }
+    ShaderKey stripStaleBits(ShaderKey key, int version) {
+        if (ShaderPool::getShaderTypeFromKey(key) == ShaderType::MESH && version < SHADER_KEY_VERSION_STOCHASTIC)
+            key.properties &= ~shaderPropertyBit(5);
+        return key;
+    }
+}
 
-        for (const auto& keyNode : node) {
-            if (!keyNode.IsMap()) {
-                // Backward compatibility: scenes saved before forks were named by path
-                // stored the packed key, so only its stable half survives and the fork
-                // is re-paired on the next save. Remove this branch with support for them.
-                shaderKeys.push_back(ShaderPool::normalizeKey(ShaderPool::getStorageKey(editor::YamlNumbers::as<uint64_t>(keyNode))));
-                continue;
-            }
-            ShaderType shaderType;
-            if (!keyNode["type"] || !ShaderPool::parseShaderTypeToken(keyNode["type"].as<std::string>(), shaderType)) {
-                continue;
-            }
+// The customShaderId in a key is a session-local registry index, so a fork is
+// named by its project-relative path instead, the way scenes name theirs.
+YAML::Node editor::Stream::encodeShaderKey(ShaderKey key) {
+    const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
+    std::string customShader;
+    if (customId != 0) {
+        // Without a name there is nothing stable to write, and dropping only
+        // the id would turn the override into one for the built-in shader
+        customShader = ShaderPool::getCustomShaderName(customId);
+        if (customShader.empty()) return YAML::Node();
+    }
 
-            // Keyed by name, so this returns the id the scenes resolve for it too
-            uint16_t customId = 0;
-            if (keyNode["customShader"]) {
-                customId = ShaderPool::registerCustomShader(keyNode["customShader"].as<std::string>());
-            }
-            const uint32_t properties = keyNode["properties"] ? editor::YamlNumbers::as<uint32_t>(keyNode["properties"]) : 0;
-            shaderKeys.push_back(ShaderPool::normalizeKey(ShaderPool::getShaderKey(shaderType, properties, customId)));
+    // a plain integer: the 32-bit values files hold read and write as before
+    const uint64_t properties = ShaderPool::getPropertiesFromKey(key);
+    YAML::Node entry(YAML::NodeType::Map);
+    entry["type"] = ShaderPool::getShaderTypeName(ShaderPool::getShaderTypeFromKey(key), true);
+    if (properties) entry["properties"] = properties;
+    if (!customShader.empty()) entry["customShader"] = customShader;
+    if (hasVersionedBits(key)) entry["keyVersion"] = SHADER_KEY_VERSION_STOCHASTIC;
+    return entry;
+}
+
+bool editor::Stream::decodeShaderKey(const YAML::Node& keyNode, ShaderKey& key) {
+    if (!keyNode) {
+        return false;
+    }
+    if (!keyNode.IsMap()) {
+        // Backward compatibility: scenes saved before forks were named by path
+        // stored the packed key (32 property bits), so only its stable half survives and
+        // the fork is re-paired on the next save. Remove this branch with support for them.
+        if (!keyNode.IsScalar()) {
+            return false;
         }
+        key = stripStaleBits(ShaderPool::getStorageKey(ShaderPool::unpackLegacyKey(editor::YamlNumbers::as<uint64_t>(keyNode))), 1);
+        return true;
+    }
+    ShaderType shaderType;
+    if (!keyNode["type"] || !ShaderPool::parseShaderTypeToken(keyNode["type"].as<std::string>(), shaderType)) {
+        return false;
+    }
+
+    // Keyed by name, so this returns the id the scenes resolve for it too
+    uint16_t customId = 0;
+    if (keyNode["customShader"]) {
+        customId = ShaderPool::registerCustomShader(keyNode["customShader"].as<std::string>());
+    }
+    // 64 bits; a file written before they were widened holds a 32-bit value
+    const uint64_t properties = keyNode["properties"] ? editor::YamlNumbers::as<uint64_t>(keyNode["properties"]) : 0;
+    const int version = keyNode["keyVersion"] ? editor::YamlNumbers::as<int>(keyNode["keyVersion"]) : 1;
+    key = stripStaleBits(ShaderPool::getShaderKey(shaderType, properties, customId), version);
+    return true;
+}
+
+// Both directions normalize, keeping a since-retired property bit out of the file.
+YAML::Node editor::Stream::encodeShaderKeys(const std::set<ShaderKey>& shaderKeys) {
+    YAML::Node node(YAML::NodeType::Sequence);
+    for (ShaderKey rawKey : shaderKeys) {
+        YAML::Node entry = encodeShaderKey(ShaderPool::normalizeKey(rawKey));
+        if (entry.IsMap()) node.push_back(entry);
+    }
+    return node;
+}
+
+std::vector<ShaderKey> editor::Stream::decodeShaderKeys(const YAML::Node& node) {
+    std::vector<ShaderKey> shaderKeys;
+    if (!node || !node.IsSequence()) {
         return shaderKeys;
     }
 
+    for (const auto& keyNode : node) {
+        ShaderKey key;
+        if (decodeShaderKey(keyNode, key)) {
+            shaderKeys.push_back(ShaderPool::normalizeKey(key));
+        }
+    }
+    return shaderKeys;
+}
+
+namespace {
     YAML::Node encodeExportBackendSet(const std::set<ShaderBackend>& backends) {
         YAML::Node node(YAML::NodeType::Sequence);
         for (ShaderBackend backend : backends) {
@@ -690,7 +740,7 @@ YAML::Node editor::Stream::encodeShaderTextures(const std::vector<std::pair<std:
     YAML::Node node(YAML::NodeType::Map);
     for (const auto& [uniform, texture] : textures) {
         // an empty one binds the manifest default, like no entry
-        if (texture.empty() && !hasTexturePath(texture) && !CameraTextureLink::isCameraTexture(texture)) continue;
+        if (texture.empty() && !hasTexturePath(texture) && !CameraTextureLink::isLinkTexture(texture)) continue;
         node[uniform] = encodeTexture(texture, embedData);
     }
     return node;
@@ -825,6 +875,14 @@ static std::string shadowQualityToString(ShadowQuality quality) {
     return editor::StreamSchema::shadowQuality().toString(quality);
 }
 
+static std::string pbrTierToString(PbrTier tier) {
+    return editor::StreamSchema::pbrTier().toString(tier);
+}
+
+static PbrTier stringToPbrTier(const std::string& name) {
+    return editor::StreamSchema::pbrTier().fromString(name);
+}
+
 static std::string sceneColorScaleToString(SceneColorScale scale) {
     return editor::StreamSchema::sceneColorScale().toString(scale);
 }
@@ -851,6 +909,54 @@ std::string editor::Stream::uiDocumentRenderModeToString(UIDocumentRenderMode mo
 
 UIDocumentRenderMode editor::Stream::stringToUIDocumentRenderMode(const std::string& str) {
     return StreamSchema::uiDocumentRenderMode().fromString(str);
+}
+
+std::string editor::Stream::fluidOutputToString(FluidOutput output) {
+    return StreamSchema::fluidOutput().toString(output);
+}
+
+FluidOutput editor::Stream::stringToFluidOutput(const std::string& str) {
+    return StreamSchema::fluidOutput().fromString(str);
+}
+
+std::string editor::Stream::latticeInterpolationToString(LatticeInterpolation interpolation) {
+    return StreamSchema::latticeInterpolation().toString(interpolation);
+}
+
+LatticeInterpolation editor::Stream::stringToLatticeInterpolation(const std::string& str) {
+    return StreamSchema::latticeInterpolation().fromString(str);
+}
+
+std::string editor::Stream::latticeOutsideToString(LatticeOutside outside) {
+    return StreamSchema::latticeOutside().toString(outside);
+}
+
+LatticeOutside editor::Stream::stringToLatticeOutside(const std::string& str) {
+    return StreamSchema::latticeOutside().fromString(str);
+}
+
+std::string editor::Stream::latticeJiggleAnchorToString(LatticeJiggleAnchor anchor) {
+    return StreamSchema::latticeJiggleAnchor().toString(anchor);
+}
+
+LatticeJiggleAnchor editor::Stream::stringToLatticeJiggleAnchor(const std::string& str) {
+    return StreamSchema::latticeJiggleAnchor().fromString(str);
+}
+
+std::string editor::Stream::latticeStageToString(LatticeStage stage) {
+    return StreamSchema::latticeStage().toString(stage);
+}
+
+LatticeStage editor::Stream::stringToLatticeStage(const std::string& str) {
+    return StreamSchema::latticeStage().fromString(str);
+}
+
+std::string editor::Stream::latticeMaskChannelToString(LatticeMaskChannel mask) {
+    return StreamSchema::latticeMaskChannel().toString(mask);
+}
+
+LatticeMaskChannel editor::Stream::stringToLatticeMaskChannel(const std::string& str) {
+    return StreamSchema::latticeMaskChannel().fromString(str);
 }
 
 std::string editor::Stream::audioSourceAttenuationToString(AudioSourceAttenuation attenuation) {
@@ -1099,6 +1205,14 @@ YAML::Node editor::Stream::encodeTexture(const Texture& texture, bool embedData)
         node["camera"] = linkedCamera;
         return node;
     }
+    // a FluidSimulation's output (FluidTextureLink), the same way
+    Entity linkedFluid = FluidTextureLink::parse(texture.getId());
+    if (linkedFluid != NULL_ENTITY) {
+        node["textureType"] = "2D";
+        node["source"] = "fluid";
+        node["fluid"] = linkedFluid;
+        return node;
+    }
 
     if ((texture.empty() && !hasTexturePath(texture)) || texture.isFramebuffer())
         return node;
@@ -1174,6 +1288,14 @@ YAML::Node editor::Stream::encodeTexture(const Texture& texture, bool embedData)
     return node;
 }
 
+namespace {
+    // A model texture's id from a scene saved before the ids were relative (the model file's
+    // absolute path on the machine that saved it): as the model keys it now
+    std::string modelTextureId(const std::string& id) {
+        return MeshSystem::migrateModelTextureId(id, System::instance().getAssetPath());
+    }
+}
+
 Texture editor::Stream::decodeTexture(const YAML::Node& node) {
     StreamLoad::checkNestedKeys(node, NestedKind::Texture);
     Texture texture;
@@ -1222,7 +1344,7 @@ Texture editor::Stream::decodeTexture(const YAML::Node& node) {
                     const size_t expectedSize = static_cast<size_t>(width) * static_cast<size_t>(height) * static_cast<size_t>(channels);
                     const size_t dataSize = node["size"] ? YamlNumbers::as<size_t>(node["size"]) : expectedSize;
                     const std::string colorFormat = node["colorFormat"] ? node["colorFormat"].as<std::string>() : std::string();
-                    const std::string textureId = node["id"] ? node["id"].as<std::string>() : std::string();
+                    const std::string textureId = node["id"] ? modelTextureId(node["id"].as<std::string>()) : std::string();
 
                     if (dataSize == expectedSize && decodedData.size() >= dataSize) {
                         setEmbeddedTextureData(texture, textureId, width, height, stringToColorFormat(colorFormat, channels), channels, decodedData);
@@ -1230,13 +1352,18 @@ Texture editor::Stream::decodeTexture(const YAML::Node& node) {
                 }
             } else if (source == "id") {
                 if (node["id"]) {
-                    texture.setId(node["id"].as<std::string>());
+                    texture.setId(modelTextureId(node["id"].as<std::string>()));
                 }
             } else if (source == "camera") {
                 // framebuffer is bound later by CameraTextureLink::resolve,
                 // after every entity of the scene exists
                 if (node["camera"]) {
                     texture.setId(CameraTextureLink::makeId(YamlNumbers::as<Entity>(node["camera"])));
+                }
+            } else if (source == "fluid") {
+                // a FluidSimulation's output, bound by CameraTextureLink::resolve too
+                if (node["fluid"]) {
+                    texture.setId(FluidTextureLink::makeId(YamlNumbers::as<Entity>(node["fluid"])));
                 }
             }
         }
@@ -1419,7 +1546,7 @@ Submesh editor::Stream::decodeSubmesh(const YAML::Node& node, const Submesh* old
     if (node["textureShadow"]) submesh.textureShadow = YamlNumbers::as<bool>(node["textureShadow"]);
 
     // Omitted at its default, so an absent key is a value, not a reason to keep the old one.
-    submesh.overrideFields = node["overrideFields"] ? YamlNumbers::as<uint32_t>(node["overrideFields"]) : 0;
+    submesh.overrideFields = node["overrideFields"] ? YamlNumbers::as<uint64_t>(node["overrideFields"]) : 0;
 
     // Flags
     if (node["hasTexCoord1"]) submesh.hasTexCoord1 = YamlNumbers::as<bool>(node["hasTexCoord1"]);
@@ -1578,6 +1705,132 @@ editor::TerrainEditorSettings editor::Stream::decodeTerrainEditorSettings(const 
 
 namespace {
 
+const char* decompositionQualityToString(DecompositionQuality quality) {
+    switch (quality) {
+        case DecompositionQuality::LOW: return "low";
+        case DecompositionQuality::HIGH: return "high";
+        default: return "medium";
+    }
+}
+
+bool stringToDecompositionQuality(const std::string& name, DecompositionQuality& out) {
+    if (name == "low") { out = DecompositionQuality::LOW; return true; }
+    if (name == "medium") { out = DecompositionQuality::MEDIUM; return true; }
+    if (name == "high") { out = DecompositionQuality::HIGH; return true; }
+    return false;
+}
+
+const char* rotatePivotToString(editor::PlacementRotatePivot pivot) {
+    return pivot == editor::PlacementRotatePivot::EachObject ? "each_object" : "group_center";
+}
+
+bool stringToRotatePivot(const std::string& name, editor::PlacementRotatePivot& out) {
+    if (name == "group_center") { out = editor::PlacementRotatePivot::GroupCenter; return true; }
+    if (name == "each_object") { out = editor::PlacementRotatePivot::EachObject; return true; }
+    return false;
+}
+
+// One key of a settings map: a value that does not read keeps the default, and the rest of
+// the map still loads
+template <typename Read>
+void decodeSettingKey(const YAML::Node& map, const char* key, Read read) {
+    const YAML::Node node = map[key];
+    if (!node.IsDefined() || node.IsNull()) return;
+    try {
+        read(node);
+    } catch (const YAML::Exception&) {
+    }
+}
+
+} // namespace
+
+YAML::Node editor::Stream::encodePhysicsPlacementSettings(const PhysicsPlacementSettings& ps) {
+    YAML::Node node;
+    node["feel"] = placementFeelName(ps.feel);
+    node["settleOnRelease"] = ps.settleOnRelease;
+    node["keepFormation"] = ps.keepFormation;
+    node["pushNeighbours"] = ps.pushNeighbours;
+    encodeFiniteVector3(node, "gravity", ps.gravity);
+    node["gravityTowardSurface"] = ps.gravityTowardSurface;
+    node["colliders"] = placementColliderPolicyName(ps.colliders);
+    node["decomposition"] = placementDecompositionName(ps.decomposition);
+    node["quality"] = decompositionQualityToString(ps.quality);
+    node["alignToSurface"] = ps.alignToSurface;
+    encodeFinite(node, "snapOffset", ps.snapOffset);
+    node["rotatePivot"] = rotatePivotToString(ps.rotatePivot);
+    encodeFinite(node, "regionMargin", ps.regionMargin);
+    node["ignoreLayerMask"] = ps.ignoreLayerMask;
+    encodeFinite(node, "maxMoverSize", ps.maxMoverSize);
+    encodeFinite(node, "maxSpeed", ps.maxSpeed);
+    encodeFinite(node, "contactSpeed", ps.contactSpeed);
+    encodeFinite(node, "maxAngularSpeed", ps.maxAngularSpeed);
+    node["substeps"] = ps.substeps;
+    node["velocityIterations"] = ps.velocityIterations;
+    node["positionIterations"] = ps.positionIterations;
+    encodeFinite(node, "teleportDistance", ps.teleportDistance);
+    encodeFinite(node, "sleepLinear", ps.sleepLinear);
+    encodeFinite(node, "sleepAngularDeg", ps.sleepAngularDeg);
+    encodeFinite(node, "sleepSeconds", ps.sleepSeconds);
+    encodeFinite(node, "maxSettleSeconds", ps.maxSettleSeconds);
+    encodeFinite(node, "killYDepth", ps.killYDepth);
+    node["showDistanceIndicators"] = ps.showDistanceIndicators;
+    node["showProxies"] = ps.showProxies;
+    return node;
+}
+
+editor::PhysicsPlacementSettings editor::Stream::decodePhysicsPlacementSettings(const YAML::Node& node) {
+    PhysicsPlacementSettings ps;
+    if (!node.IsMap()) return ps;
+
+    auto readBool = [&node](const char* key, bool& value) {
+        decodeSettingKey(node, key, [&value](const YAML::Node& n) { value = YamlNumbers::as<bool>(n); });
+    };
+    auto readFloat = [&node](const char* key, float& value) {
+        decodeSettingKey(node, key, [&value](const YAML::Node& n) { value = decodeFinite(n, value); });
+    };
+    auto readInt = [&node](const char* key, int& value) {
+        decodeSettingKey(node, key, [&value](const YAML::Node& n) { value = YamlNumbers::as<int>(n); });
+    };
+    auto readName = [&node](const char* key, auto parse) {
+        decodeSettingKey(node, key, [&parse](const YAML::Node& n) { parse(n.as<std::string>()); });
+    };
+
+    readName("feel", [&ps](const std::string& name) { parsePlacementFeel(name.c_str(), ps.feel); });
+    readBool("settleOnRelease", ps.settleOnRelease);
+    readBool("keepFormation", ps.keepFormation);
+    readBool("pushNeighbours", ps.pushNeighbours);
+    decodeSettingKey(node, "gravity", [&ps](const YAML::Node& n) { ps.gravity = decodeFiniteVector3(n, ps.gravity); });
+    readBool("gravityTowardSurface", ps.gravityTowardSurface);
+    readName("colliders", [&ps](const std::string& name) { parsePlacementColliderPolicy(name.c_str(), ps.colliders); });
+    readName("decomposition", [&ps](const std::string& name) { parsePlacementDecomposition(name.c_str(), ps.decomposition); });
+    readName("quality", [&ps](const std::string& name) { stringToDecompositionQuality(name, ps.quality); });
+    readBool("alignToSurface", ps.alignToSurface);
+    readFloat("snapOffset", ps.snapOffset);
+    readName("rotatePivot", [&ps](const std::string& name) { stringToRotatePivot(name, ps.rotatePivot); });
+    readFloat("regionMargin", ps.regionMargin);
+    decodeSettingKey(node, "ignoreLayerMask", [&ps](const YAML::Node& n) { ps.ignoreLayerMask = decodeLayerMask(n, ps.ignoreLayerMask); });
+    readFloat("maxMoverSize", ps.maxMoverSize);
+    readFloat("maxSpeed", ps.maxSpeed);
+    readFloat("contactSpeed", ps.contactSpeed);
+    readFloat("maxAngularSpeed", ps.maxAngularSpeed);
+    readInt("substeps", ps.substeps);
+    readInt("velocityIterations", ps.velocityIterations);
+    readInt("positionIterations", ps.positionIterations);
+    readFloat("teleportDistance", ps.teleportDistance);
+    readFloat("sleepLinear", ps.sleepLinear);
+    readFloat("sleepAngularDeg", ps.sleepAngularDeg);
+    readFloat("sleepSeconds", ps.sleepSeconds);
+    readFloat("maxSettleSeconds", ps.maxSettleSeconds);
+    readFloat("killYDepth", ps.killYDepth);
+    readBool("showDistanceIndicators", ps.showDistanceIndicators);
+    readBool("showProxies", ps.showProxies);
+    // a hand-edited value outside what the panel allows is brought into range
+    clampPhysicsPlacementSettings(ps);
+    return ps;
+}
+
+namespace {
+
 // The per-scene view keys an older project.yaml carried
 const char* const sceneDisplayKeys[] = {
     "showAllJoints", "showAllBones", "showAllBodies", "hideCameraView",
@@ -1614,6 +1867,8 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
     sceneNode["disableClouds"]        = ds.disableClouds;
     if (ds.showPostProcessing)
         sceneNode["showPostProcessing"] = ds.showPostProcessing;
+    if (ds.showAllLattices)
+        sceneNode["showAllLattices"] = ds.showAllLattices;
     sceneNode["showGrid2D"]           = ds.showGrid2D;
     encodePositiveFinite(sceneNode, "gridSpacing2D", ds.gridSpacing2D);
     encodePositiveFinite(sceneNode, "gridSpacing3D", ds.gridSpacing3D);
@@ -1641,6 +1896,7 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     if (node["disableFog"])           ds.disableFog           = YamlNumbers::as<bool>(node["disableFog"]);
     if (node["disableClouds"])        ds.disableClouds        = YamlNumbers::as<bool>(node["disableClouds"]);
     ds.showPostProcessing = node["showPostProcessing"] ? YamlNumbers::as<bool>(node["showPostProcessing"]) : false;
+    ds.showAllLattices = node["showAllLattices"] ? YamlNumbers::as<bool>(node["showAllLattices"]) : false;
     if (node["showGrid2D"])           ds.showGrid2D           = YamlNumbers::as<bool>(node["showGrid2D"]);
     if (node["gridSpacing2D"])        ds.gridSpacing2D        = decodePositiveFinite(node["gridSpacing2D"], ds.gridSpacing2D);
     if (node["gridSpacing3D"])        ds.gridSpacing3D        = decodePositiveFinite(node["gridSpacing3D"], ds.gridSpacing3D);
@@ -1729,6 +1985,9 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     if (project->isRuntimeShadersEnabled() != Project::defaultRuntimeShadersEnabled) {
         root["runtimeShaders"] = project->isRuntimeShadersEnabled();
     }
+    if (project->getMobilePbrTier() != Project::defaultMobilePbrTier) {
+        root["mobilePbrTier"] = pbrTierToString(project->getMobilePbrTier());
+    }
     if (project->shouldPackNativeResources() != Project::defaultPackNativeResources) {
         root["packNativeResources"] = project->shouldPackNativeResources();
     }
@@ -1787,8 +2046,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         YAML::Node exportNode;
 
         const ShaderOverrides& shaders = project->getShaderOverrides();
-        if (!shaders.additions.empty()) exportNode["shaderAdditions"] = encodeShaderKeys(shaders.additions);
-        if (!shaders.exclusions.empty()) exportNode["shaderExclusions"] = encodeShaderKeys(shaders.exclusions);
+        if (!shaders.additions.empty()) exportNode["shaderAdditions"] = Stream::encodeShaderKeys(shaders.additions);
+        if (!shaders.exclusions.empty()) exportNode["shaderExclusions"] = Stream::encodeShaderKeys(shaders.exclusions);
 
         const SourceCodeExportSettings& sourceCode = project->getSourceCodeExportSettings();
         if (sourceCode.graphicBackendsConfigured) {
@@ -1884,6 +2143,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (ios.hideStatusBar != defaultIOS.hideStatusBar) iosNode["hideStatusBar"] = ios.hideStatusBar;
         if (ios.hideHomeIndicator != defaultIOS.hideHomeIndicator) iosNode["hideHomeIndicator"] = ios.hideHomeIndicator;
         if (ios.supportsHighRefreshRate != defaultIOS.supportsHighRefreshRate) iosNode["supportsHighRefreshRate"] = ios.supportsHighRefreshRate;
+        if (ios.admobEnabled != defaultIOS.admobEnabled) iosNode["admobEnabled"] = ios.admobEnabled;
+        if (!ios.admobAppId.empty()) iosNode["admobAppId"] = ios.admobAppId;
         if (iosNode.size() != 0) root["ios"] = iosNode;
     }
 
@@ -1926,6 +2187,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (android.allowBackup != defaults.allowBackup) androidNode["allowBackup"] = android.allowBackup;
         if (android.fullscreen != defaults.fullscreen) androidNode["fullscreen"] = android.fullscreen;
         if (android.keepScreenOn != defaults.keepScreenOn) androidNode["keepScreenOn"] = android.keepScreenOn;
+        if (android.admobEnabled != defaults.admobEnabled) androidNode["admobEnabled"] = android.admobEnabled;
+        if (!android.admobAppId.empty()) androidNode["admobAppId"] = android.admobAppId;
         if (androidNode.size()) root["android"] = androidNode;
     }
 
@@ -2022,6 +2285,24 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         appendUnresolved();
     }
     root["scenes"] = scenesNode;
+
+    // S25: label colours and the saved searches shared with the project
+    if (!project->getAssetLabels().entries().empty()) {
+        YAML::Node labels(YAML::NodeType::Sequence);
+        for (const LabelColor& entry : project->getAssetLabels().entries()) {
+            YAML::Node label(YAML::NodeType::Map);
+            label.SetStyle(YAML::EmitterStyle::Flow);
+            label["name"] = entry.name;
+            label["color"] = entry.color;
+            labels.push_back(label);
+        }
+        root["assetLabels"] = labels;
+    }
+    if (!project->getOrganisation().projectSearches().empty()) {
+        YAML::Node searches;
+        Organisation::encodeSearches(project->getOrganisation().projectSearches(), searches);
+        root["savedSearches"] = searches;
+    }
 
     return root;
 }
@@ -2166,6 +2447,9 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     if (node["runtimeShaders"]) {
         project->setRuntimeShadersEnabled(YamlNumbers::as<bool>(node["runtimeShaders"]));
     }
+    if (node["mobilePbrTier"]) {
+        project->setMobilePbrTier(stringToPbrTier(node["mobilePbrTier"].as<std::string>()));
+    }
 
     // Backward compatibility: the compiler and job count used to live here before
     // moving to the editor settings, still per project. Migrated once, never over an
@@ -2192,6 +2476,19 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
 
     if (node["versionControlMetadata"].IsDefined()) {
         project->setVersionControlMetadata(YamlNumbers::as<bool>(node["versionControlMetadata"]));
+    }
+
+    // S25: label colours, saved searches of scope project
+    {
+        std::vector<LabelColor> entries;
+        if (node["assetLabels"] && node["assetLabels"].IsSequence()) {
+            for (const auto& label : node["assetLabels"]) {
+                if (!label.IsMap() || !label["name"]) continue;
+                entries.push_back({label["name"].as<std::string>(""), label["color"] ? label["color"].as<std::string>("") : std::string()});
+            }
+        }
+        project->getAssetLabels().setEntries(std::move(entries));
+        project->getOrganisation().setProjectSearches(Organisation::decodeSearches(node["savedSearches"], true));
     }
 
     {
@@ -2254,8 +2551,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         const YAML::Node& exportNode = node["export"];
 
         ShaderOverrides& shaders = project->getShaderOverrides();
-        for (ShaderKey key : decodeShaderKeys(exportNode["shaderAdditions"])) shaders.additions.insert(key);
-        for (ShaderKey key : decodeShaderKeys(exportNode["shaderExclusions"])) {
+        for (ShaderKey key : Stream::decodeShaderKeys(exportNode["shaderAdditions"])) shaders.additions.insert(key);
+        for (ShaderKey key : Stream::decodeShaderKeys(exportNode["shaderExclusions"])) {
             shaders.exclusions.insert(key);
             shaders.additions.erase(key);
         }
@@ -2343,6 +2640,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (iosNode["hideStatusBar"].IsDefined()) ios.hideStatusBar = YamlNumbers::as<bool>(iosNode["hideStatusBar"]);
         if (iosNode["hideHomeIndicator"].IsDefined()) ios.hideHomeIndicator = YamlNumbers::as<bool>(iosNode["hideHomeIndicator"]);
         if (iosNode["supportsHighRefreshRate"].IsDefined()) ios.supportsHighRefreshRate = YamlNumbers::as<bool>(iosNode["supportsHighRefreshRate"]);
+        if (iosNode["admobEnabled"].IsDefined()) ios.admobEnabled = YamlNumbers::as<bool>(iosNode["admobEnabled"]);
+        if (iosNode["admobAppId"]) ios.admobAppId = iosNode["admobAppId"].as<std::string>();
     }
 
     if (node["android"] && node["android"].IsMap()) {
@@ -2378,6 +2677,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (androidNode["allowBackup"].IsDefined()) android.allowBackup = YamlNumbers::as<bool>(androidNode["allowBackup"]);
         if (androidNode["fullscreen"].IsDefined()) android.fullscreen = YamlNumbers::as<bool>(androidNode["fullscreen"]);
         if (androidNode["keepScreenOn"].IsDefined()) android.keepScreenOn = YamlNumbers::as<bool>(androidNode["keepScreenOn"]);
+        if (androidNode["admobEnabled"].IsDefined()) android.admobEnabled = YamlNumbers::as<bool>(androidNode["admobEnabled"]);
+        if (androidNode["admobAppId"]) android.admobAppId = androidNode["admobAppId"].as<std::string>();
     }
 
     if (node["startSceneId"]) {
@@ -2428,6 +2729,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     if (workspace.hasTerrainEditorSettings()) {
         project->getTerrainEditorSettings() = workspace.getTerrainEditorSettings();
     }
+    project->getPhysicsPlacementSettings() = workspace.getPhysicsPlacementSettings();
 
     project->setSimulateTouch(workspace.isSimulateTouch());
 
@@ -2561,7 +2863,7 @@ YAML::Node editor::Stream::encodeSceneProject(const Project* project, const Scen
     maxValuesNode["maxColliderIndices3D"] = sceneProject->maxValues.maxColliderIndices3D;
     root["maxValues"] = maxValuesNode;
 
-    YAML::Node shaderKeysNode = encodeShaderKeys(sceneProject->shaderKeys);
+    YAML::Node shaderKeysNode = Stream::encodeShaderKeys(sceneProject->shaderKeys);
     if (shaderKeysNode.size()) {
         root["shaderKeys"] = shaderKeysNode;
     }
@@ -2620,6 +2922,14 @@ YAML::Node editor::Stream::encodeSceneProject(const Project* project, const Scen
             prefabsNode.push_back(prefabNode);
         }
         root["prefabs"] = prefabsNode;
+    }
+
+    if (!sceneProject->imports.empty()) {
+        YAML::Node importsNode;
+        for (const auto& [path, id] : sceneProject->imports) {
+            importsNode[path] = id;
+        }
+        root["imports"] = importsNode;
     }
 
     YAML::Node entitiesNode;
@@ -2689,7 +2999,7 @@ void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::
     }
 
     sceneProject->shaderKeys.clear();
-    for (ShaderKey key : decodeShaderKeys(node["shaderKeys"])) {
+    for (ShaderKey key : Stream::decodeShaderKeys(node["shaderKeys"])) {
         sceneProject->shaderKeys.insert(key);
     }
 
@@ -2761,6 +3071,13 @@ void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::
             }
             info.functionName = Factory::prefabToFunctionName(info.prefabPath);
             sceneProject->prefabs.push_back(std::move(info));
+        }
+    }
+
+    sceneProject->imports.clear();
+    if (node["imports"] && node["imports"].IsMap()) {
+        for (const auto& entry : node["imports"]) {
+            sceneProject->imports[entry.first.as<std::string>()] = entry.second.as<std::string>();
         }
     }
 }
@@ -2937,6 +3254,12 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
     sceneNode["globalIlluminationColor"] = encodeVector3(scene->getGlobalIlluminationColor());
     if (scene->getMaxLightsPerObject() != SceneSettings().maxLightsPerObject)
         sceneNode["maxLightsPerObject"] = scene->getMaxLightsPerObject();
+    // a scene without the key is Standard (it was drawn so before Lit Quality existed); new
+    // scenes are High, which is written
+    if (scene->getLitQuality() != LitQuality::STANDARD)
+        sceneNode["litQuality"] = StreamSchema::litQuality().toString(scene->getLitQuality());
+    if (scene->getPhysicalLightEV100() != SceneSettings().physicalLightEV100)
+        sceneNode["physicalLightEV100"] = YamlNumbers::text(scene->getPhysicalLightEV100());
     sceneNode["ambientLight2DIntensity"] = scene->getAmbientLight2DIntensity();
     sceneNode["ambientLight2DColor"] = encodeVector3(scene->getAmbientLight2DColor());
     sceneNode["shadow2DQuality"] = shadowQualityToString(scene->getShadow2DQuality());
@@ -2952,6 +3275,8 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
     sceneNode["ssrBlur"] = scene->getSSRBlur();
     sceneNode["gravity2D"] = encodeVector2(scene->getGravity2D());
     sceneNode["gravity3D"] = encodeVector3(scene->getGravity3D());
+    if (scene->isPhysicsInterpolation() != SceneSettings().physicsInterpolation)
+        sceneNode["physicsInterpolation"] = scene->isPhysicsInterpolation();
     sceneNode["fixedResolutionEnabled"] = scene->isFixedResolutionEnabled();
     sceneNode["fixedResolutionWidth"] = scene->getFixedResolutionWidth();
     sceneNode["fixedResolutionHeight"] = scene->getFixedResolutionHeight();
@@ -3056,6 +3381,8 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
 
     // absent key restores the engine default so decoding into a reused scene (play restore) is exact
     scene->setMaxLightsPerObject(node["maxLightsPerObject"] ? YamlNumbers::as<int>(node["maxLightsPerObject"]) : SceneSettings().maxLightsPerObject);
+    scene->setLitQuality(node["litQuality"] ? decodeEnum(node, "litQuality", StreamSchema::litQuality()) : LitQuality::STANDARD);
+    scene->setPhysicalLightEV100(decodeFinite(node["physicalLightEV100"], SceneSettings().physicalLightEV100));
 
     if (node["ambientLight2DIntensity"] && node["ambientLight2DColor"]) {
         scene->setAmbientLight2D(
@@ -3106,6 +3433,7 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     // absent key restores the engine default so decoding into a reused scene (play restore) is exact
     scene->setGravity2D(node["gravity2D"] ? decodeVector2(node["gravity2D"]) : Vector2(0.0f, -9.81f));
     scene->setGravity3D(node["gravity3D"] ? decodeVector3(node["gravity3D"]) : Vector3(0.0f, -9.81f, 0.0f));
+    scene->setPhysicsInterpolation(node["physicsInterpolation"] ? YamlNumbers::as<bool>(node["physicsInterpolation"]) : SceneSettings().physicsInterpolation);
 
     if (node["fixedResolutionEnabled"]) {
         scene->setFixedResolutionEnabled(YamlNumbers::as<bool>(node["fixedResolutionEnabled"]));
@@ -3639,7 +3967,7 @@ YAML::Node editor::Stream::encodeMaterial(const Material& material, bool embedTe
     // Encode textures using the helper method. A camera link is one even unbound (a prefab
     // registry, its camera a stripped object or not resolved yet)
     auto present = [](const Texture& texture) {
-        return !texture.empty() || hasTexturePath(texture) || CameraTextureLink::isCameraTexture(texture);
+        return !texture.empty() || hasTexturePath(texture) || CameraTextureLink::isLinkTexture(texture);
     };
     if (present(material.baseColorTexture)) {
         node["baseColorTexture"] = encodeTexture(material.baseColorTexture, embedTextureData);
@@ -3689,11 +4017,96 @@ YAML::Node editor::Stream::encodeMaterial(const Material& material, bool embedTe
     if (material.sortPriority != 0) node["sortPriority"] = YamlNumbers::integerText(material.sortPriority);
     if (material.lighting != MaterialLighting::AUTO) node["lighting"] = materialLightingToString(material.lighting);
 
+    // Stochastic Tiling the same way: each value only away from its default
+    static const Material defaults = Material();
+    if (material.stochasticTiling) node["stochasticTiling"] = true;
+    if (material.stochasticCellSize != defaults.stochasticCellSize) node["stochasticCellSize"] = YamlNumbers::text(finiteOr(material.stochasticCellSize));
+    if (material.stochasticBlendSharpness != defaults.stochasticBlendSharpness) node["stochasticBlendSharpness"] = YamlNumbers::text(finiteOr(material.stochasticBlendSharpness));
+    if (material.stochasticContrast != defaults.stochasticContrast) node["stochasticContrast"] = YamlNumbers::text(finiteOr(material.stochasticContrast));
+    if (material.stochasticRotation != defaults.stochasticRotation) node["stochasticRotation"] = YamlNumbers::text(finiteOr(material.stochasticRotation));
+
     // Phase 2, the same way: stencil, colour write and the extra pass when set
     encodeStencilAndColorWrite(node, material.stencil, material.colorWrite);
     if (material.extraPass != MaterialPass()) node["extraPass"] = encodeMaterialPass(material.extraPass, embedTextureData);
 
+    // the extended lobes and the emission intensity, the same way (a material without them is
+    // stored as it was before they existed)
+    if (material.emissiveStrength != 1.0f) node["emissiveStrength"] = YamlNumbers::text(finiteOr(material.emissiveStrength, 1.0f));
+    if (material.pbr != MaterialPbrExtensions()) {
+        YAML::Node pbr = encodeMaterialPbr(material.pbr, embedTextureData);
+        if (pbr.size() > 0) node["pbr"] = pbr;
+    }
+
     return node;
+}
+
+YAML::Node editor::Stream::encodeMaterialPbr(const MaterialPbrExtensions& pbr, bool embedTextureData) {
+    static const MaterialPbrExtensions defaults;
+    MaterialPbrExtensions& values = const_cast<MaterialPbrExtensions&>(pbr);
+    MaterialPbrExtensions& defaultValues = const_cast<MaterialPbrExtensions&>(defaults);
+    YAML::Node node;
+    for (const PbrLobeInfo& lobe : MaterialPbr::getLobes()) {
+        YAML::Node lobeNode;
+        for (const PbrField& field : MaterialPbr::getFields()) {
+            if (field.lobe != lobe.lobe) continue;
+            const void* value = field.ref(values);
+            const void* def = field.ref(defaultValues);
+            switch (field.type) {
+                case PbrFieldType::Bool:
+                    if (*(const bool*)value != *(const bool*)def) lobeNode[field.name] = *(const bool*)value;
+                    break;
+                case PbrFieldType::Float:
+                    // an infinity (the attenuation distance's default) is only ever the default
+                    if (*(const float*)value != *(const float*)def && std::isfinite(*(const float*)value))
+                        lobeNode[field.name] = YamlNumbers::text(*(const float*)value);
+                    break;
+                case PbrFieldType::Vector2:
+                    if (*(const Vector2*)value != *(const Vector2*)def) lobeNode[field.name] = encodeVector2(*(const Vector2*)value);
+                    break;
+                case PbrFieldType::Color:
+                    if (*(const Vector3*)value != *(const Vector3*)def) lobeNode[field.name] = encodeVector3(*(const Vector3*)value);
+                    break;
+                case PbrFieldType::Texture:
+                    // a map packed from a model's images (TexturePack) is made again when the
+                    // model loads: not written
+                    if (!((const Texture*)value)->empty() && !TexturePack::isPackedId(((const Texture*)value)->getId()))
+                        lobeNode[field.name] = encodeTexture(*(const Texture*)value, embedTextureData);
+                    break;
+                case PbrFieldType::TexCoord:
+                    if (*(const int*)value != *(const int*)def) lobeNode[field.name] = YamlNumbers::integerText(*(const int*)value);
+                    break;
+            }
+        }
+        if (lobeNode.size() > 0) node[lobe.name] = lobeNode;
+    }
+    return node;
+}
+
+MaterialPbrExtensions editor::Stream::decodeMaterialPbr(const YAML::Node& node) {
+    MaterialPbrExtensions pbr;
+    if (!node || !node.IsMap()) return pbr;
+    for (const PbrLobeInfo& lobe : MaterialPbr::getLobes()) {
+        const YAML::Node lobeNode = node[lobe.name];
+        if (!lobeNode || !lobeNode.IsMap()) continue;
+        for (const PbrField& field : MaterialPbr::getFields()) {
+            if (field.lobe != lobe.lobe) continue;
+            const YAML::Node value = lobeNode[field.name];
+            if (!value) continue;
+            void* target = field.ref(pbr);
+            switch (field.type) {
+                case PbrFieldType::Bool: *(bool*)target = YamlNumbers::as<bool>(value); break;
+                case PbrFieldType::Float: *(float*)target = decodeFinite(value, *(float*)target); break;
+                case PbrFieldType::Vector2: *(Vector2*)target = decodeVector2(value); break;
+                case PbrFieldType::Color: *(Vector3*)target = decodeVector3(value); break;
+                case PbrFieldType::Texture: *(Texture*)target = decodeTexture(value); break;
+                case PbrFieldType::TexCoord: *(int*)target = YamlNumbers::as<int>(value); break;
+            }
+        }
+    }
+    // out of range from a hand edit or a newer writer: into range (the glTF loader warns, a
+    // file does not)
+    MaterialPbr::clamp(pbr);
+    return pbr;
 }
 
 Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* oldMaterial) {
@@ -3745,8 +4158,16 @@ Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* 
     material.depthOffsetUnits = decodeFinite(node["depthOffsetUnits"], 0.0f);
     material.sortPriority = node["sortPriority"] ? YamlNumbers::as<int>(node["sortPriority"]) : 0;
     material.lighting = node["lighting"] ? decodeEnum(node, "lighting", StreamSchema::materialLighting()) : MaterialLighting::AUTO;
+    static const Material defaults = Material();
+    material.stochasticTiling = node["stochasticTiling"] ? YamlNumbers::as<bool>(node["stochasticTiling"]) : false;
+    material.stochasticCellSize = decodeFinite(node["stochasticCellSize"], defaults.stochasticCellSize);
+    material.stochasticBlendSharpness = decodeFinite(node["stochasticBlendSharpness"], defaults.stochasticBlendSharpness);
+    material.stochasticContrast = decodeFinite(node["stochasticContrast"], defaults.stochasticContrast);
+    material.stochasticRotation = decodeFinite(node["stochasticRotation"], defaults.stochasticRotation);
     decodeStencilAndColorWrite(node, material.stencil, material.colorWrite);
     material.extraPass = decodeMaterialPass(node["extraPass"]);
+    material.emissiveStrength = std::max(decodeFinite(node["emissiveStrength"], 1.0f), 0.0f);
+    material.pbr = decodeMaterialPbr(node["pbr"]);
 
     return material;
 }

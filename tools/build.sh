@@ -39,6 +39,7 @@
 # HTMLUI_TEST_ARGS goes to the test binary (e.g. --gtest_filter=Golden*),
 # JASPER_HTMLUI_UPDATE_GOLDEN=1 rewrites the golden images (glcore only).
 # JASPER_HTMLUI_WRITE_ACTUAL=1 keeps every compared image in the test output directory (both backends).
+# JASPER_ZERO_COST_UPDATE=1 rewrites the built-in Lit's zero-cost hash list (ShaderZeroCostTest, unit-tests).
 # htmlui-editor-tests: HTMLUI_TEST_ARGS goes to the test binary, RUN=0 builds only,
 # HTMLUI_LIVE_NETWORK=1 adds the live Google Fonts test.
 # mcp-tests: MCP_SUITE=ci (default; the CI = True files) or all (needs JASPER_FIXTURE, the
@@ -60,11 +61,12 @@ ENGINE_TARGET=jasperengine-project
 # AC7 of docs/specs/S02-build-ci-tests.md: what an unfiltered run must at least execute
 CORE_MIN_TESTS=300
 EDITOR_MIN_TESTS=150
-# jasperengine-htmlui-tests skips these on purpose (docs/html-ui/phase-6-acceptance.md §4.2)
-HTMLUI_MAX_SKIPPED=74
+# jasperengine-htmlui-tests skips these on purpose (docs/html-ui/phase-6-acceptance.md §4.2), and
+# upstream's opt-in EffectFluidProfile.LiveCost (JASPER_EFFECT_FLUID_PROFILE=1)
+HTMLUI_MAX_SKIPPED=75
 
 usage() {
-    sed -n '2,46p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,51p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 1
 }
 
@@ -184,7 +186,7 @@ CPUS="${CPUS:-${DOCKER_CPUS:-${JOBS:-}}}"
 ENV_FLAGS=()
 for name in JASPER_HTMLUI_UPDATE_GOLDEN JASPER_HTMLUI_WRITE_ACTUAL JASPER_TEST_UPDATE_GOLDEN JASPER_TEST_WRITE_ACTUAL \
             JASPER_TEST_KEEP_TEMP JASPER_REFLECT_WRITE_FIXTURE JASPER_BENCH_ENTITIES JASPER_HTMLUI_PERF_SLACK \
-            JASPER_TEST_PERF_SLACK HTMLUI_LIVE_NETWORK JASPER_CHROME; do
+            JASPER_TEST_PERF_SLACK HTMLUI_LIVE_NETWORK JASPER_CHROME JASPER_ZERO_COST_UPDATE; do
     # (JASPER_HTMLUI_PERF_SLACK: the HTML UI performance tests' tolerance on a loaded host, compat_perf_test.cpp;
     # JASPER_TEST_PERF_SLACK: the core tests' wall-clock budgets are enforced only when it is set)
     [[ -n "${!name:-}" ]] && ENV_FLAGS+=(-e "$name=${!name}")
@@ -202,6 +204,9 @@ MOUNT_FLAGS=()
 if [[ "$TARGET" == mcp-tests && -n "${JASPER_FIXTURE:-}" ]]; then
     MOUNT_FLAGS+=(-v "$JASPER_FIXTURE:/fixture:ro" -e JASPER_FIXTURE=/fixture)
 fi
+# the UI effects' measuring switches (EffectPerfTest: JASPER_EFFECT_COST_ONLY, JASPER_EFFECT_PERF_*;
+# EffectFluidTest: JASPER_EFFECT_FLUID_PROFILE)
+for name in $(compgen -e | grep '^JASPER_EFFECT_' || true); do ENV_FLAGS+=(-e "$name=${!name}"); done
 
 run() {
     # (the ${a[@]+...} form: an empty array under set -u fails on bash before 4.4, e.g. macOS)
@@ -363,13 +368,13 @@ unit-tests)
         status=0
         if [[ $CORE == 1 ]]; then
             rm -f $RESULTS/$CORE_RESULT.xml
-            env $VK_ENV xvfb-run -a -s '-screen 0 1600x900x24' $TEST_WRAP \
+            env $VK_ENV tools/with-xvfb.sh $TEST_WRAP \
                 $CORE_DIR/tests/core/jasperengine-core-tests --gtest_output=xml:$RESULTS/$CORE_RESULT.xml ${UNIT_TEST_ARGS:-} || status=1
             $GTEST_GATE --xml $RESULTS/$CORE_RESULT.xml --min-tests $CORE_MIN --max-skipped 0 || status=1
         fi
         if [[ $EDITOR == 1 ]]; then
             rm -f $RESULTS/$EDITOR_RESULT.xml
-            xvfb-run -a -s '-screen 0 1600x900x24' $TEST_WRAP \
+            tools/with-xvfb.sh $TEST_WRAP \
                 $EDITOR_DIR/jasperengine-editor-tests --gtest_output=xml:$RESULTS/$EDITOR_RESULT.xml ${UNIT_TEST_ARGS:-} || status=1
             $GTEST_GATE --xml $RESULTS/$EDITOR_RESULT.xml --min-tests $EDITOR_MIN --max-skipped 0 || status=1
         fi
@@ -391,7 +396,7 @@ htmlui-tests)
         set -f  # a --gtest_filter pattern is not a glob
         rm -f $RESULTS/$RESULT.xml
         status=0
-        env $VK_ENV xvfb-run -a -s '-screen 0 1600x900x24' $TEST_WRAP \
+        env $VK_ENV tools/with-xvfb.sh $TEST_WRAP \
             $TESTS_DIR/tests/htmlui/jasperengine-htmlui-tests --gtest_output=xml:$RESULTS/$RESULT.xml ${HTMLUI_TEST_ARGS:-} || status=1
         $GTEST_GATE --xml $RESULTS/$RESULT.xml --max-skipped $HTMLUI_MAX_SKIPPED || status=1
         exit \$status
@@ -407,7 +412,7 @@ htmlui-editor-tests)
         set -f  # a --gtest_filter pattern is not a glob
         rm -f $RESULTS/htmlui-editor.xml
         status=0
-        xvfb-run -a -s '-screen 0 1600x900x24' $OUT/editor/jasperengine-htmlui-editor-tests \
+        tools/with-xvfb.sh $OUT/editor/jasperengine-htmlui-editor-tests \
             --gtest_output=xml:$RESULTS/htmlui-editor.xml ${HTMLUI_TEST_ARGS:-} || status=1
         # the live Google Fonts test skips without HTMLUI_LIVE_NETWORK=1
         $GTEST_GATE --xml $RESULTS/htmlui-editor.xml --max-skipped 1 || status=1

@@ -1,0 +1,156 @@
+{
+ "asset": {
+  "version": "2.0",
+  "generator": "JasperEngine GltfMaterialExtensionsTest fixture"
+ },
+ "scene": 0,
+ "scenes": [
+  {
+   "nodes": [
+    0
+   ]
+  }
+ ],
+ "nodes": [
+  {
+   "mesh": 0,
+   "name": "iridescence"
+  }
+ ],
+ "meshes": [
+  {
+   "primitives": [
+    {
+     "attributes": {
+      "POSITION": 0,
+      "NORMAL": 1,
+      "TEXCOORD_0": 2
+     },
+     "indices": 3,
+     "material": 0
+    }
+   ]
+  }
+ ],
+ "materials": [
+  {
+   "pbrMetallicRoughness": {
+    "baseColorFactor": [
+     1,
+     1,
+     1,
+     1
+    ],
+    "metallicFactor": 0.0,
+    "roughnessFactor": 0.5
+   },
+   "extensions": {
+    "KHR_materials_iridescence": {
+     "iridescenceFactor": 1.0,
+     "iridescenceIor": 1.8,
+     "iridescenceThicknessMinimum": 200,
+     "iridescenceThicknessMaximum": 600,
+     "iridescenceTexture": {
+      "index": 0
+     },
+     "iridescenceThicknessTexture": {
+      "index": 1
+     }
+    }
+   }
+  }
+ ],
+ "buffers": [
+  {
+   "byteLength": 104,
+   "uri": "data:application/octet-stream;base64,AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAABAAIAAAA="
+  }
+ ],
+ "bufferViews": [
+  {
+   "buffer": 0,
+   "byteOffset": 0,
+   "byteLength": 36
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 36,
+   "byteLength": 36
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 72,
+   "byteLength": 24
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 96,
+   "byteLength": 6
+  }
+ ],
+ "accessors": [
+  {
+   "bufferView": 0,
+   "componentType": 5126,
+   "count": 3,
+   "type": "VEC3",
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "max": [
+    1,
+    1,
+    0
+   ]
+  },
+  {
+   "bufferView": 1,
+   "componentType": 5126,
+   "count": 3,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 2,
+   "componentType": 5126,
+   "count": 3,
+   "type": "VEC2"
+  },
+  {
+   "bufferView": 3,
+   "componentType": 5123,
+   "count": 3,
+   "type": "SCALAR"
+  }
+ ],
+ "images": [
+  {
+   "uri": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGM4wSXyH4QZYAwAQugHlZ88+OIAAAAASUVORK5CYII="
+  },
+  {
+   "uri": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGOQm6bRAMIMMAYAL5IFcRHDp7IAAAAASUVORK5CYII="
+  }
+ ],
+ "samplers": [
+  {
+   "magFilter": 9729,
+   "minFilter": 9987,
+   "wrapS": 10497,
+   "wrapT": 10497
+  }
+ ],
+ "textures": [
+  {
+   "source": 0,
+   "sampler": 0
+  },
+  {
+   "source": 1,
+   "sampler": 0
+  }
+ ],
+ "extensionsUsed": [
+  "KHR_materials_iridescence"
+ ]
+}

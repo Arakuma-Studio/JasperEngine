@@ -28,6 +28,8 @@
 #include "component/UIDocumentComponent.h"
 #include "htmlui/HtmlUIAssertions.h"
 #include "htmlui/HtmlUIInspector.h"
+#include "object/ui/UIDocument.h"
+#include "object/ui/UIItemsView.h"
 #include "script/LuaBinding.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "util/Base64.h"
@@ -702,7 +704,9 @@ Json elementJson(const hui::InspectElement& e, const std::vector<hui::InspectSty
                           {"params", params}};
             // phase 6: a stateful effect's simulation
             if (effect.stateful)
-                entry["state"] = {{"bytes", effect.stateBytes}, {"steps", effect.steps}, {"time", effect.simTime}, {"paused", effect.paused}};
+                entry["state"] = {{"bytes", effect.stateBytes}, {"steps", effect.steps}, {"time", effect.simTime}, {"paused", effect.paused},
+                                  {"images", effect.stateImages}, {"replays", effect.replays}, {"replaying", effect.replaying},
+                                  {"splats", effect.splats}, {"path", effect.pathSamples}};
             effects.push_back(std::move(entry));
         }
         out["effects"] = effects;
@@ -724,11 +728,46 @@ Json elementJson(const hui::InspectElement& e, const std::vector<hui::InspectSty
         }
         out["media"] = media;
     }
+    // S17: a virtual view's window (0-based indices)
+    if (e.widget) {
+        const hui::InspectWidget& w = *e.widget;
+        out["widget"] = {{"kind", w.kind}, {"count", w.count}, {"first", w.first}, {"last", w.last}, {"pool", w.pool},
+                         {"pool_bound", w.poolBound}, {"overscan", w.overscan}, {"lanes", w.lanes}, {"selection", w.selection},
+                         {"selected", w.selected}, {"selected_keys", w.selectedKeys}, {"active", w.active},
+                         {"scrollTop", round1(w.scrollTop)}, {"totalHeight", round1(w.totalHeight)}, {"source", w.source},
+                         {"layout_boundary", w.layoutBoundary}, {"row_aliases", w.rowAliases}};
+        if (!w.sortKey.empty()) out["widget"]["sort"] = {{"key", w.sortKey}, {"direction", w.sortDirection}};
+    }
     if (styles && !styles->empty()) {
         Json map = Json::object();
         for (const hui::InspectStyle& s : *styles) map[s.property] = s.value;
         out["styles"] = map;
     }
+    return out;
+}
+
+// S17: the document's tooltip, the drag in progress and the last reload
+Json tooltipJson(const hui::InspectTooltip& t) {
+    Json out = {{"visible", t.visible}};
+    if (t.visible)
+        out.update({{"source", t.source}, {"text", t.text}, {"rect", boxInt(t.rect)}, {"side", t.side}});
+    return out;
+}
+
+Json dragJson(const hui::InspectDrag& d) {
+    Json out = {{"active", d.active}};
+    if (d.active)
+        out.update({{"source", d.source}, {"target", d.target}, {"types", d.types}, {"allowed", d.allowed}, {"effect", d.effect},
+                    {"programmatic", d.programmatic}});
+    return out;
+}
+
+Json reloadJson(const hui::InspectReload& r) {
+    if (r.mode.empty()) return nullptr;
+    Json out = {{"mode", r.mode}, {"kept", r.kept}, {"updated", r.updated}, {"inserted", r.inserted}, {"removed", r.removed},
+                {"replaced", r.replaced}, {"runtimeKept", r.runtimeKept}, {"scriptsRerun", r.scriptsRerun},
+                {"ms", std::round(r.ms * 100.0) / 100.0}, {"causes", r.causes}};
+    out["fallbackReason"] = r.fallbackReason.empty() ? Json(nullptr) : Json(r.fallbackReason);
     return out;
 }
 
@@ -747,6 +786,11 @@ std::string elementLine(const hui::InspectElement& e, const std::vector<hui::Ins
     }
     // phase 6: a paused simulation is marked "~"
     for (const hui::InspectEffect& effect : e.effects) line += " fx:" + effect.name + (effect.stateful && effect.paused ? "~" : "");
+    // S17: "list[0..12 of 10000, pool 22]"
+    if (e.widget) {
+        line += " " + e.widget->kind + "[" + std::to_string(e.widget->first) + ".." + std::to_string(e.widget->last) + " of " +
+                std::to_string(e.widget->count) + ", pool " + std::to_string(e.widget->pool) + "]";
+    }
     if (e.media) {
         char buffer[96];
         std::snprintf(buffer, sizeof(buffer), " media:%s %.3fs/%s ready%d", e.media->paused ? "paused" : "playing", e.media->currentTime,
@@ -826,7 +870,7 @@ void inspectFile(const CallPtr& call) {
     file = file.lexically_normal();
     const std::string rel = w4::projectRelative(project, file);
     std::error_code ec;
-    if (!ProjectChecks::isUiFile(FileUtils::genericPathToUtf8(file)) || !fs::is_regular_file(file, ec)) {
+    if (!ProjectChecks::isUiFile(FileUtils::pathToGenericUtf8(file)) || !fs::is_regular_file(file, ec)) {
         call->fail(rel + " is not a .html, .htm or .css file.");
         return;
     }
@@ -843,7 +887,7 @@ void inspectFile(const CallPtr& call) {
 
     // the live documents reading it
     const fs::path assetRel = file.lexically_relative(project->getAssetsPath().lexically_normal());
-    const std::string assetPath = FileUtils::genericPathToUtf8(assetRel);
+    const std::string assetPath = FileUtils::pathToGenericUtf8(assetRel);
     Json using_ = Json::array();
     std::string usingText;
     std::vector<SceneProject*> scenes = documentScenes(project);
@@ -873,7 +917,7 @@ void inspectUiTool(const CallPtr& call) {
     const Json& args = call->args();
     if (has(args, "file")) {
         std::vector<std::string> conflicts;
-        for (const char* key : {"selector", "at", "detail", "styles", "models", "viewport", "screenshot", "entity"}) {
+        for (const char* key : {"selector", "at", "detail", "styles", "models", "reload", "viewport", "screenshot", "entity"}) {
             if (has(args, key)) conflicts.push_back(key);
         }
         if (!conflicts.empty()) {
@@ -1051,6 +1095,25 @@ void inspectUiTool(const CallPtr& call) {
             data["models"] = models;
         }
 
+        // S17: the tooltip and the drag, the last reload when asked
+        data["tooltip"] = tooltipJson(view.info.tooltip);
+        data["drag"] = dragJson(view.info.drag);
+        if (view.info.tooltip.visible)
+            text += "\nTooltip of " + view.info.tooltip.source + ": \"" + view.info.tooltip.text + "\"";
+        if (view.info.drag.active) {
+            text += "\nDragging " + view.info.drag.source + (view.info.drag.target.empty() ? std::string() : " over " + view.info.drag.target) +
+                    (view.info.drag.allowed ? " (accepted, " + view.info.drag.effect + ")" : " (not accepted)");
+        }
+        if (args.value("reload", false)) {
+            data["reload"] = reloadJson(view.info.reload);
+            text += view.info.reload.mode.empty() ? std::string("\nNo hot reload yet.")
+                                                  : "\nLast reload: " + view.info.reload.mode + ", " + std::to_string(view.info.reload.updated) +
+                                                        " updated, " + std::to_string(view.info.reload.inserted) + " inserted, " +
+                                                        std::to_string(view.info.reload.removed) + " removed, " +
+                                                        std::to_string(view.info.reload.replaced) + " replaced" +
+                                                        (view.info.reload.fallbackReason.empty() ? std::string() : " (" + view.info.reload.fallbackReason + ")");
+        }
+
         ToolResult result = ToolResult::success(text, data);
         if (!wantImage) {
             call->reply(std::move(result));
@@ -1075,7 +1138,8 @@ const KindName ASSERT_KINDS[] = {
     {"exists", hui::AssertKind::Exists}, {"count", hui::AssertKind::Count}, {"visible", hui::AssertKind::Visible},
     {"text_fits", hui::AssertKind::TextFits}, {"no_overlap", hui::AssertKind::NoOverlap},
     {"within_parent", hui::AssertKind::WithinParent}, {"within_viewport", hui::AssertKind::WithinViewport},
-    {"contrast", hui::AssertKind::Contrast}, {"min_size", hui::AssertKind::MinSize}
+    {"contrast", hui::AssertKind::Contrast}, {"min_size", hui::AssertKind::MinSize},
+    {"virtual_window", hui::AssertKind::VirtualWindow}, {"tooltip", hui::AssertKind::Tooltip}, {"selected", hui::AssertKind::Selected}
 };
 
 std::vector<std::string> assertKindNames() {
@@ -1150,6 +1214,20 @@ bool parseCheck(const Json& item, size_t index, hui::AssertSpec& spec, std::stri
         !real("min_ratio", spec.minRatio, 1, 21) || !real("width", spec.minWidth, 0, 10000) ||
         !real("height", spec.minHeight, 0, 10000) || !flag("unobstructed", spec.unobstructed) ||
         !flag("allow_scroll", spec.allowScroll) || !flag("single_line", spec.singleLine)) {
+        return false;
+    }
+    // virtual_window: max is the most rows the view may hold (default its own bound)
+    if (spec.kind == hui::AssertKind::VirtualWindow)
+        spec.maxPool = spec.max;
+    if (has(item, "text")) {
+        if (!item["text"].is_string()) {
+            error = at + ".text must be a string.";
+            return false;
+        }
+        spec.text = item["text"].get<std::string>();
+    }
+    if (spec.kind == hui::AssertKind::Selected && spec.count < 0 && spec.min < 0 && spec.max < 0) {
+        error = at + ": selected needs count, min or max.";
         return false;
     }
     if (spec.kind == hui::AssertKind::Count && spec.count < 0 && spec.min < 0 && spec.max < 0) {
@@ -1461,8 +1539,9 @@ void createUiDocumentTool(const CallPtr& call) {
     const size_t projectMark = projectHistory->position();
     auto rollback = [call, sp, history, mark, projectHistory, projectMark](const std::string& why) {
         const bool undone = history->position() > mark || projectHistory->position() > projectMark;
-        while (history->position() > mark && history->canUndo()) history->undo();
-        while (projectHistory->position() > projectMark && projectHistory->canUndo()) projectHistory->undo();
+        // a refused undo leaves the position, so it ends a loop too
+        while (history->position() > mark && history->canUndo() && history->undo()) {}
+        while (projectHistory->position() > projectMark && projectHistory->canUndo() && projectHistory->undo()) {}
         sp->needUpdateRender = true;
         call->fail(undone ? "Nothing was created (the call was rolled back): " + why : why);
     };
@@ -1763,6 +1842,87 @@ bool elementCenter(McpContext& ctx, const Json& documentRef, const std::string& 
 
 // ------------------------------------------------------------------ registration
 
+// ------------------------------------------------------------------ edit_ui_view (S17 R41)
+
+// edit_ui_view {entity, selector, action, index|key|column}: drives a virtual view in play (runtime only,
+// not undoable): scroll_to, select, activate, expand, collapse, sort. Indices are 0-based.
+void editUiViewTool(const CallPtr& call) {
+    const Json& args = call->args();
+    static const char* const actions[] = {"scroll_to", "select", "activate", "expand", "collapse", "sort"};
+    const std::string action = args.value("action", std::string());
+    if (std::find(std::begin(actions), std::end(actions), action) == std::end(actions)) {
+        call->fail("action must be scroll_to, select, activate, expand, collapse or sort.");
+        return;
+    }
+    if (!args.contains("selector") || !args["selector"].is_string() || args["selector"].get<std::string>().empty()) {
+        call->fail("selector is required: the view (e.g. \"#servers\").");
+        return;
+    }
+    if (has(args, "index") && (!args["index"].is_number_integer() || args["index"].get<long long>() < 0)) {
+        call->fail("index must be an item index >= 0 (0-based, as data-for's i).");
+        return;
+    }
+    withDocument(call, [call, action](const DocTarget& target) {
+        const Json& args = call->args();
+        Project* project = call->ctx().project();
+        SceneProject* sp = targetScene(project, target);
+        if (!isPlaying(project) || !isRunning(sp->playState)) {
+            call->fail("edit_ui_view acts on a playing document (its views' data come from Lua): start play first.");
+            return;
+        }
+        UIDocument document(sp->scene, target.entity);
+        const std::string selector = args["selector"].get<std::string>();
+        UIItemsView view = document.querySelector(selector).getItemsView();
+        if (!view.isValid()) {
+            call->fail("\"" + selector + "\" is not a list-view, grid-view, tree-view or table-view of this document.");
+            return;
+        }
+        const int count = view.getCount();
+        int index = has(args, "index") ? static_cast<int>(args["index"].get<long long>()) : -1;
+        const std::string key = has(args, "key") ? (args["key"].is_string() ? args["key"].get<std::string>() : args["key"].dump()) : std::string();
+        if (index < 0 && !key.empty() && action != "expand" && action != "collapse") {
+            index = view.indexOfKey(key) - 1;
+            if (index < 0) {
+                call->fail("no item has the key \"" + key + "\".");
+                return;
+            }
+        }
+        bool done = true;
+        if (action == "sort") {
+            const std::string column = args.value("column", std::string());
+            done = view.sortBy(column, args.value("direction", std::string()));
+            if (!done) {
+                call->fail("\"" + column + "\" is no sortable column of the table.");
+                return;
+            }
+        } else if (action == "expand" || action == "collapse") {
+            const std::string node = !key.empty() ? key : (index >= 0 ? view.keyOf(index + 1) : std::string());
+            if (node.empty()) {
+                call->fail(action + " needs key or index.");
+                return;
+            }
+            done = action == "expand" ? view.expand(node) : view.collapse(node);
+        } else {
+            if (index < 0 || index >= count) {
+                call->fail(action + " needs an index of 0.." + std::to_string(count - 1) + " (or a key).");
+                return;
+            }
+            if (action == "scroll_to")
+                view.scrollToIndex(index + 1, args.value("align", std::string("nearest")));
+            else if (action == "select")
+                view.setActiveIndex(index + 1), view.setSelection({index + 1});
+            else
+                view.activate(index + 1);
+        }
+        const UIItemsViewState state = view.getState();
+        Json data = {{"done", done}, {"count", state.count}, {"first", state.first - 1}, {"last", state.last - 1}, {"active", state.active - 1},
+                     {"selected", Json::array()}};
+        for (int selected : state.selected) data["selected"].push_back(selected - 1);
+        call->ok(selector + ": " + action + (done ? "" : " (nothing to do)") + "; items " + std::to_string(state.first - 1) + ".." +
+                 std::to_string(state.last - 1) + " of " + std::to_string(state.count) + " shown.", data);
+    });
+}
+
 void registerHtmlUiTools(McpRegistry& registry) {
     using namespace schema;
 
@@ -1771,22 +1931,23 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.name = "inspect_ui";
         tool.title = "Inspect UI Document";
         tool.description =
-            "Inspect a live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] in canvas px "
-            "= send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics; detail full: box "
-            "model + computed styles with the file:line of each rule. at: hit test. file: a .html/.css's diagnostics "
-            "without a document (as `jasperengine-editor check --ui`). Content Lua makes appears in play only.";
+            "A live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] canvas px = "
+            "send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics; detail full: box model, "
+            "computed styles + each rule's file:line. at: hit test. file: a .html/.css's diagnostics, no document (= "
+            "`jasperengine-editor check --ui`). Lua-made content: play only.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
-            {"entity", entityRef("With the UI Document (default: the only one).")},
+            {"entity", entityRef("UI Document (default: the only one).")},
             {"file", assetPath(".html/.css: its diagnostics only, no live document.")},
-            {"selector", string("CSS selector (default: whole document).")},
+            {"selector", string("Default: whole document.")},
             {"at", vec2("Hit test (canvas px): the element stack.")},
             {"detail", withDefault(stringEnum("full: box model, attributes, computed styles + sources (max 20 elements).",
                                               {"tree", "full"}), "tree")},
             {"depth", integer("Descendant levels (default tree 3, full 0).", 0, 16)},
-            {"styles", array(Json{{"type", "string"}}, "Computed CSS properties per element.")},
+            {"styles", array(Json{{"type", "string"}}, "Computed CSS properties.")},
             {"limit", withDefault(integer("", 1, 1000), 200)},
             {"models", boolean("Data-model values (play).")},
+            {"reload", boolean("The last hot reload's report.")},
             {"viewport", vec2("Lay out at [w,h] first (restored after).")},
             {"screenshot", boolean("Game view image of the matches, outlined.")},
             {"max_width", w3::maxWidthArgSchema(4096, DEFAULT_IMAGE_WIDTH)}
@@ -1804,32 +1965,34 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.name = "assert_ui";
         tool.title = "Assert UI Layout";
         tool.description =
-            "Assert the layout of a live HTML/CSS UI document: passed + each failure (element ref, numbers, rects), "
-            "and on failure an image with failing boxes outlined. Checks {type, selector}: exists, count (count|min|max), "
-            "visible (unobstructed), text_fits (allow_scroll, single_line), no_overlap (with), within_parent "
-            "(container), within_viewport, contrast (min_ratio, background where the UI is transparent), min_size "
-            "(width, height). viewports: other sizes too. Zero matches fail.";
+            "Assert a live HTML/CSS UI document's layout: passed + each failure (element ref, numbers, rects), "
+            "on failure an image with failing boxes outlined. Checks {type, selector}: exists, count and selected "
+            "(count|min|max), visible (unobstructed), text_fits (allow_scroll, single_line), no_overlap (with), "
+            "within_parent (container), within_viewport, contrast (min_ratio, background where the UI is "
+            "transparent), min_size (width, height), virtual_window (max rows), tooltip (text). viewports: other "
+            "sizes too. Zero matches fail.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
-            {"entity", entityRef("With the UI Document (default: the only one).")},
+            {"entity", entityRef("UI Document (default: the only one).")},
             {"checks", Json{{"type", "array"}, {"minItems", 1}, {"maxItems", 50}, {"items", object({
                 {"type", stringEnum("", assertKindNames())},
                 {"selector", string("")},
                 {"with", string("")},
                 {"container", string("")},
-                {"count", integer("", 0, 100000)},
-                {"min", integer("", 0, 100000)},
-                {"max", integer("", 0, 100000)},
-                {"tolerance", number("px, default 0.5.", 0, 1000)},
+                {"count", Json{{"type", "integer"}, {"minimum", 0}}},
+                {"min", Json{{"type", "integer"}, {"minimum", 0}}},
+                {"max", Json{{"type", "integer"}, {"minimum", 0}}},
+                {"tolerance", Json{{"type", "number"}, {"minimum", 0}, {"description", "px, default 0.5."}}},
                 {"min_ratio", number("Default WCAG AA.", 1, 21)},
                 {"background", color("")},
                 {"unobstructed", boolean("")},
                 {"allow_scroll", boolean("")},
                 {"single_line", boolean("")},
-                {"width", number("", 0, 10000)},
-                {"height", number("", 0, 10000)}
+                {"width", Json{{"type", "number"}, {"minimum", 0}}},
+                {"height", Json{{"type", "number"}, {"minimum", 0}}},
+                {"text", string("")}
             }, {"type", "selector"})}}},
-            {"viewports", array(vec2(""), "[[w,h], ...] (max 6); default the current.")},
+            {"viewports", array(vec2(""), "Up to 6 [w,h]; default: current.")},
             {"screenshot", withDefault(stringEnum("", {"on_failure", "always", "never"}), "on_failure")},
             {"max_width", w3::maxWidthArgSchema(4096, DEFAULT_IMAGE_WIDTH)}
         }, {"checks"});
@@ -1847,10 +2010,8 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.title = "Create UI Document";
         tool.description =
             "Create a GameObject with a UI Document showing an HTML/CSS file (one scene undo step). A missing html is made "
-            "from template (blank or an example: main_menu, pause_menu, hud, inventory, settings, dialogue, shop, "
-            "toasts, loading) with its .css, assets and Lua (script: attached); existing files are kept unless "
-            "overwrite. The html must be in the assets dir (e.g. assets/ui/menu.html). Returns the files and the "
-            "first load's diagnostics.";
+            "from template (blank or an example) with its .css, assets and Lua (script: attached); existing files are "
+            "kept unless overwrite. Returns the files and the first load's diagnostics.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"parent", entityRef()},
@@ -1867,6 +2028,34 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.allowedWhilePlaying = false;
         tool.activity = ToolActivity::Edit;
         tool.handler = createUiDocumentTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "edit_ui_view";
+        tool.title = "Edit UI View";
+        tool.description =
+            "Drive a list-view, grid-view, tree-view or table-view of a playing HTML UI document (runtime only, not "
+            "undoable): scroll_to (align), select, activate (its activate event), expand / collapse (tree), sort (table: "
+            "its sort event, column, direction). index is 0-based; key names an item instead.";
+        tool.inputSchema = object({
+            {"scene", sceneRef()},
+            {"entity", entityRef("With the UI Document (default: the only one).")},
+            {"selector", string("The view, e.g. #servers.")},
+            {"action", stringEnum("", {"scroll_to", "select", "activate", "expand", "collapse", "sort"})},
+            {"index", integer("0-based item.", 0, 10000000)},
+            {"key", string("An item's key instead of index.")},
+            {"column", string("sort: the column key.")},
+            {"direction", stringEnum("sort: default toggles.", {"asc", "desc"})},
+            {"align", stringEnum("scroll_to: default nearest.", {"start", "center", "end", "nearest"})}
+        }, {"selector", "action"});
+        tool.annotations.readOnly = false;
+        tool.annotations.destructive = false;
+        tool.allowedWhilePlaying = true;
+        tool.activity = ToolActivity::Control;
+        tool.group = "html_ui";   // S17: a group tool (docs/mcp/conventions.md)
+        tool.handler = editUiViewTool;
         registry.addTool(std::move(tool));
     }
 

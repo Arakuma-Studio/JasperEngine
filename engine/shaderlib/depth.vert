@@ -55,11 +55,21 @@ out vec2 v_projZW;
     #endif
 #endif
 
+// a lattice's vertex colour mask (includes/lattice.glsl)
+#ifdef HAS_LATTICE
+    #if defined(HAS_VERTEX_COLOR_VEC3)
+        in vec3 a_color;
+    #elif defined(HAS_VERTEX_COLOR_VEC4)
+        in vec4 a_color;
+    #endif
+#endif
+
 #include "includes/skinning.glsl"
 #include "includes/morphtarget.glsl"
 #ifdef HAS_TERRAIN
     #include "includes/terrain_vs.glsl"
 #endif
+#include "includes/lattice.glsl"
 
 vec4 getPosition(mat4 boneTransform){
     vec3 pos = a_position;
@@ -76,7 +86,22 @@ vec4 getPosition(mat4 boneTransform){
 void main() {
     mat4 boneTransform = getBoneTransform();
 
-    #ifdef HAS_INSTANCING
+    #ifdef HAS_LATTICE
+        // as mesh.vert, so both passes compute the same position (the normal and tangent
+        // are not used here)
+        vec3 latticePosition = getMorphPosition(a_position);
+        vec3 latticeNormal = vec3(0.0, 1.0, 0.0);
+        vec3 latticeTangent = vec3(1.0, 0.0, 0.0);
+        float latticeStretchValue = 1.0;
+        #ifdef HAS_SKINNING
+            latticeDeform(0, latticePosition, latticeNormal, latticeTangent, latticeStretchValue);
+        #endif
+        vec4 pos = vec4(getSkinPosition(latticePosition, boneTransform), 1.0);
+        #ifdef HAS_INSTANCING
+            mat4 instanceMatrix = mat4(i_matrix_col1, i_matrix_col2, i_matrix_col3, i_matrix_col4);
+            pos = instanceMatrix * pos;
+        #endif
+    #elif defined(HAS_INSTANCING)
         mat4 instanceMatrix = mat4(i_matrix_col1, i_matrix_col2, i_matrix_col3, i_matrix_col4);
         vec4 pos = instanceMatrix *  getPosition(boneTransform);
     #else
@@ -103,6 +128,10 @@ void main() {
                 (fadeParams.fadeRange.y - fadeParams.fadeRange.x), 0.0, 1.0);
         }
         pos.xyz = mix(fadeOrigin, pos.xyz, fadeVisible);
+    #endif
+
+    #ifdef HAS_LATTICE
+        latticeDeform(1, pos.xyz, latticeNormal, latticeTangent, latticeStretchValue);
     #endif
 
     gl_Position = depthParams.mvpMatrix * pos;

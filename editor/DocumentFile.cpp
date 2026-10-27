@@ -173,7 +173,8 @@ SaveResult DocumentFiles::saveMaterial(const fs::path& path, const YAML::Node& e
             return SaveResult::RefusedDegraded;
         }
     }
-    const io::WriteResult written = write(path, materialText(encodedMaterial, path));
+    // a file of a Windows checkout keeps its \r\n
+    const io::WriteResult written = write(path, FileUtils::withLineEndings(path, materialText(encodedMaterial, path)));
     if (!written.ok()) {
         const std::string message = saveFailureMessage(path, written);
         if (error) *error = message;

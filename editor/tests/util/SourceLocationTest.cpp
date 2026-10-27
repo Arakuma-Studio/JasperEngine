@@ -7,6 +7,8 @@
 #include "util/SourceLocation.h"
 #include "TempDir.h"
 
+#include "support/EditorTestSupport.h"
+
 #include <gtest/gtest.h>
 
 #include <chrono>
@@ -172,5 +174,9 @@ TEST(SourceLocation, InsertTimeBudget) {
     const double us = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count() / (rounds * lines.size());
     std::printf("[bench] source locations %.3f us per line (budget 2)\n", us);
     EXPECT_GT(found, 0u);
-    EXPECT_LE(us, 2.0 * 4) << "R37 (2 us per line), with slack for a loaded runner";
+    // the budget is the benchmark run's (JASPER_TEST_PERF_SLACK on the benchmark server,
+    // docs/testing.md): a shared builder's load, or a sanitizer, alone can miss it
+    if (const double slack = jasperengine::editor::test::perfSlack(); slack > 0.0) {
+        EXPECT_LE(us, 2.0 * slack) << "R37 (2 us per line)";
+    }
 }

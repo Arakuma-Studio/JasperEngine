@@ -226,6 +226,30 @@ TEST_F(AssetDatabaseTest, LegacyPrefabsGetTheirPathGuidWrittenIntoThem){
     EXPECT_EQ(AssetDatabase::readGuid(project.file("old.prefab")), expected);
 }
 
+TEST_F(AssetDatabaseTest, AReadOnlyOpenWritesNothing){
+    // the CLI's check next to an open editor: the identities stay in memory, the same ones an
+    // editor upgrading the project writes (R3)
+    project.write("old.prefab", prefab(""));
+    project.write("scenes/main.scene", "name: Main\n");
+    project.write("textures/hero.png", "not decoded");
+    database.setReadOnly(true);
+    open();
+    EXPECT_EQ(database.getGuid("old.prefab"), AssetDatabase::legacyGuid("old.prefab"));
+    EXPECT_EQ(database.getGuid("scenes/main.scene"), AssetDatabase::legacyGuid("scenes/main.scene"));
+    EXPECT_EQ(database.getGuid("textures/hero.png"), AssetDatabase::legacyGuid("textures/hero.png"));
+    database.waitForBackgroundWork();
+    EXPECT_EQ(project.read("old.prefab"), prefab(""));
+    EXPECT_EQ(project.read("scenes/main.scene"), "name: Main\n");
+    EXPECT_FALSE(project.exists("textures/hero.png.meta"));
+    EXPECT_FALSE(project.exists(".jasperengine/assetdb/index.json"));
+    database.close();
+
+    database.setReadOnly(false);
+    open();
+    EXPECT_EQ(AssetDatabase::readGuid(project.file("old.prefab")), AssetDatabase::legacyGuid("old.prefab"));
+    EXPECT_TRUE(project.exists("textures/hero.png.meta"));
+}
+
 TEST_F(AssetDatabaseTest, AnInvalidGuidIsReplaced){
     project.write("bad.prefab", prefab("not-a-guid"));
     open();
@@ -262,6 +286,24 @@ TEST_F(AssetDatabaseTest, OpenWritesTheCache){
     EXPECT_TRUE(project.exists(".jasperengine/assetdb/index.json"));
     EXPECT_NE(project.read(".jasperengine/assetdb/index.json").find(guidA), std::string::npos);
 }
+
+#if defined(__linux__)
+// A file name in another encoding (Latin-1 'é' on Linux, where names are bytes) can't go in the
+// JSON cache: its entry is left out, the others are cached, and the open does not throw (it
+// failed the project's load)
+TEST_F(AssetDatabaseTest, ANonUtf8NameIsLeftOutOfTheCache){
+    project.write("a.prefab", prefab(guidA));
+    project.write("caf\xe9.prefab", prefab(guidB));
+    ASSERT_NO_THROW(open());
+    EXPECT_EQ(database.getGuid("caf\xe9.prefab"), guidB);
+    const std::string cache = project.read(".jasperengine/assetdb/index.json");
+    EXPECT_NE(cache.find(guidA), std::string::npos);
+    EXPECT_EQ(cache.find(guidB), std::string::npos);
+    database.close();
+    ASSERT_NO_THROW(open());
+    EXPECT_EQ(database.getGuid("caf\xe9.prefab"), guidB);
+}
+#endif
 
 TEST_F(AssetDatabaseTest, CloseForgetsEverything){
     project.write("a.prefab", prefab(guidA));

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<!--
+  Server browser: ten thousand game servers in one table that stays fast on a phone.
+  Shows: <table-view> over a data model array (only the rows on screen are elements), sortable
+  and resizable <table-column>s (the sort event: the script sorts the data), cell templates with
+  data-class-*, single selection with the mouse, the keys and the gamepad (Enter or A joins),
+  title tooltips on the rows, a rich tooltip from a <template> on a header, region chips, and a
+  details panel bound to the selected server.
+  In the editor (no Lua) the table is empty: press Play to see the servers.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Server browser</title>
+  <link rel="stylesheet" href="server_browser.css">
+</head>
+<body>
+  <div class="page">
+    <div class="browser" data-model="browser">
+      <header class="titlebar">
+        <h2><i data-lucide="server"></i> Servers</h2>
+        <nav class="chips">
+          <button class="chip" id="region-all" data-class-active="region == ''" data-event-click="filter('')">All</button>
+          <button class="chip" id="region-eu" data-class-active="region == 'EU'" data-event-click="filter('EU')">Europe</button>
+          <button class="chip" id="region-na" data-class-active="region == 'NA'" data-event-click="filter('NA')">America</button>
+          <button class="chip" id="region-asia" data-class-active="region == 'Asia'" data-event-click="filter('Asia')">Asia</button>
+        </nav>
+        <span id="count" class="count">{{ shown }} servers</span>
+        <button id="refresh" class="refresh" title="Refresh the list"><i data-lucide="refresh-cw"></i></button>
+      </header>
+
+      <div class="content">
+        <table-view id="servers" class="servers" items="servers" item-height="34" key="id">
+          <table-column key="name" width="300" min-width="140" sortable resizable>Name
+            <template><span class="name" data-attr-title="item.tip">{{ item.name }}</span></template>
+          </table-column>
+          <table-column key="map" width="150" min-width="80" sortable resizable>Map</table-column>
+          <table-column key="players" width="120" min-width="80" sortable resizable>Players
+            <template><span class="players" data-class-full="item.players == item.max">{{ item.players }} / {{ item.max }}</span></template>
+          </table-column>
+          <table-column key="ping" width="96" min-width="60" sortable><span class="ping-head" tooltip="#ping-help">Ping</span>
+            <template><span class="ping" data-class-good="item.ping < 60" data-class-bad="item.ping > 150">{{ item.ping }} ms</span></template>
+          </table-column>
+        </table-view>
+
+        <aside class="details" data-if="selected.name != ''">
+          <h3 id="detail-name" class="detail-name">{{ selected.name }}</h3>
+          <dl class="facts">
+            <div><dt>Map</dt><dd>{{ selected.map }}</dd></div>
+            <div><dt>Region</dt><dd>{{ selected.region }}</dd></div>
+            <div><dt>Players</dt><dd>{{ selected.players }} / {{ selected.max }}</dd></div>
+            <div><dt>Ping</dt><dd>{{ selected.ping }} ms</dd></div>
+          </dl>
+          <button id="join" class="join" data-event-click="join()">Join</button>
+        </aside>
+        <aside class="details empty" data-if="selected.name == ''">
+          <p class="hint">Select a server to see its details.</p>
+        </aside>
+      </div>
+    </div>
+  </div>
+
+  <template id="ping-help">
+    <p class="tip-title">Ping</p>
+    <p class="tip-text">The round trip to the server in milliseconds. Under 60 plays smoothly; over 150 lags.</p>
+  </template>
+</body>
+</html>

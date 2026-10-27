@@ -1,0 +1,1 @@
+<div class="markdown-body"><p>Text with &#123;&#123; player.name }} and &#123;single} braces.</p><p><code>&#123;&#123;code}}</code></p><pre><code data-lang="lua">local t = &#123;&#123;1, 2}, &#123;3}}</code></pre></div>

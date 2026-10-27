@@ -4,6 +4,9 @@
 #include "reflect/Enums.h"
 
 #include "Project.h"
+#include "component/FluidSimulationComponent.h"
+#include "component/LatticeComponent.h"
+#include "component/LatticeModifierComponent.h"
 
 #include <cctype>
 
@@ -243,6 +246,64 @@ namespace {
         {v(LayoutGroupType::HORIZONTAL_WRAP), "horizontal_wrap", "Horizontal Wrap", "LayoutGroupType::HORIZONTAL_WRAP"},
     };
 
+    constexpr EnumItem kFluidOutputItems[] = {
+        {v(FluidOutput::SCREEN), "screen", "Screen", "FluidOutput::SCREEN"},
+        {v(FluidOutput::TEXTURE), "texture", "Texture", "FluidOutput::TEXTURE"},
+        {v(FluidOutput::MATERIAL), "material", "Material", "FluidOutput::MATERIAL"},
+    };
+    constexpr int kFluidOutputOrder[] = {v(FluidOutput::SCREEN), v(FluidOutput::MATERIAL), v(FluidOutput::TEXTURE)};
+
+    constexpr EnumItem kLatticeInterpolationItems[] = {
+        {v(LatticeInterpolation::SHARP), "sharp", "Sharp", "LatticeInterpolation::SHARP"},
+        {v(LatticeInterpolation::SMOOTH), "smooth", "Smooth", "LatticeInterpolation::SMOOTH"},
+        {v(LatticeInterpolation::CUBIC), "cubic", "Cubic", "LatticeInterpolation::CUBIC"},
+    };
+
+    constexpr EnumItem kLatticeOutsideItems[] = {
+        {v(LatticeOutside::EXTEND), "extend", "Extend", "LatticeOutside::EXTEND"},
+        {v(LatticeOutside::FADE), "fade", "Fade", "LatticeOutside::FADE"},
+    };
+
+    constexpr EnumItem kLatticeJiggleAnchorItems[] = {
+        {v(LatticeJiggleAnchor::NEGATIVE_X), "negative_x", "-X", "LatticeJiggleAnchor::NEGATIVE_X"},
+        {v(LatticeJiggleAnchor::POSITIVE_X), "positive_x", "+X", "LatticeJiggleAnchor::POSITIVE_X"},
+        {v(LatticeJiggleAnchor::NEGATIVE_Y), "negative_y", "-Y", "LatticeJiggleAnchor::NEGATIVE_Y"},
+        {v(LatticeJiggleAnchor::POSITIVE_Y), "positive_y", "+Y", "LatticeJiggleAnchor::POSITIVE_Y"},
+        {v(LatticeJiggleAnchor::NEGATIVE_Z), "negative_z", "-Z", "LatticeJiggleAnchor::NEGATIVE_Z"},
+        {v(LatticeJiggleAnchor::POSITIVE_Z), "positive_z", "+Z", "LatticeJiggleAnchor::POSITIVE_Z"},
+        {v(LatticeJiggleAnchor::NONE), "none", "None", "LatticeJiggleAnchor::NONE"},
+    };
+    constexpr int kLatticeJiggleAnchorOrder[] = {v(LatticeJiggleAnchor::NONE), v(LatticeJiggleAnchor::NEGATIVE_X),
+        v(LatticeJiggleAnchor::POSITIVE_X), v(LatticeJiggleAnchor::NEGATIVE_Y), v(LatticeJiggleAnchor::POSITIVE_Y),
+        v(LatticeJiggleAnchor::NEGATIVE_Z), v(LatticeJiggleAnchor::POSITIVE_Z)};
+
+    constexpr EnumItem kLatticeStageItems[] = {
+        {v(LatticeStage::BEFORE_SKINNING), "before_skinning", "Before Skinning", "LatticeStage::BEFORE_SKINNING"},
+        {v(LatticeStage::AFTER_SKINNING), "after_skinning", "After Skinning", "LatticeStage::AFTER_SKINNING"},
+    };
+
+    constexpr EnumItem kLatticeMaskChannelItems[] = {
+        {v(LatticeMaskChannel::RED), "red", "Red", "LatticeMaskChannel::RED"},
+        {v(LatticeMaskChannel::GREEN), "green", "Green", "LatticeMaskChannel::GREEN"},
+        {v(LatticeMaskChannel::BLUE), "blue", "Blue", "LatticeMaskChannel::BLUE"},
+        {v(LatticeMaskChannel::ALPHA), "alpha", "Alpha", "LatticeMaskChannel::ALPHA"},
+        {v(LatticeMaskChannel::INVERTED_RED), "inverted_red", "Inverted Red", "LatticeMaskChannel::INVERTED_RED"},
+        {v(LatticeMaskChannel::INVERTED_GREEN), "inverted_green", "Inverted Green", "LatticeMaskChannel::INVERTED_GREEN"},
+        {v(LatticeMaskChannel::INVERTED_BLUE), "inverted_blue", "Inverted Blue", "LatticeMaskChannel::INVERTED_BLUE"},
+        {v(LatticeMaskChannel::INVERTED_ALPHA), "inverted_alpha", "Inverted Alpha", "LatticeMaskChannel::INVERTED_ALPHA"},
+        {v(LatticeMaskChannel::NONE), "none", "None", "LatticeMaskChannel::NONE"},
+    };
+    constexpr int kLatticeMaskChannelOrder[] = {v(LatticeMaskChannel::NONE), v(LatticeMaskChannel::RED), v(LatticeMaskChannel::GREEN),
+        v(LatticeMaskChannel::BLUE), v(LatticeMaskChannel::ALPHA), v(LatticeMaskChannel::INVERTED_RED), v(LatticeMaskChannel::INVERTED_GREEN),
+        v(LatticeMaskChannel::INVERTED_BLUE), v(LatticeMaskChannel::INVERTED_ALPHA)};
+
+    constexpr EnumItem kLightUnitItems[] = {
+        {v(LightUnit::ENGINE), "engine", "Engine", "LightUnit::ENGINE"},
+        {v(LightUnit::LUX), "lux", "Lux", "LightUnit::LUX"},
+        {v(LightUnit::CANDELA), "candela", "Candela", "LightUnit::CANDELA"},
+        {v(LightUnit::LUMEN), "lumen", "Lumen", "LightUnit::LUMEN"},
+    };
+
     constexpr EnumItem kLightShadingItems[] = {
         {v(LightShading::BOTH), "BOTH", "Both", "LightShading::BOTH", "both"},
         {v(LightShading::PIXEL), "PIXEL", "Per Pixel", "LightShading::PIXEL", "pixel"},
@@ -471,6 +532,13 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kJoint2DType{"Joint2DType", kJoint2DTypeItems, v(Joint2DType::DISTANCE)};
     const EnumDesc kJoint3DType{"Joint3DType", kJoint3DTypeItems, v(Joint3DType::FIXED)};
     const EnumDesc kLayoutGroupType{"LayoutGroupType", kLayoutGroupTypeItems, v(LayoutGroupType::VERTICAL)};
+    const EnumDesc kFluidOutput{"FluidOutput", kFluidOutputItems, v(FluidOutput::MATERIAL), nullptr, kFluidOutputOrder};
+    const EnumDesc kLatticeInterpolation{"LatticeInterpolation", kLatticeInterpolationItems, v(LatticeInterpolation::CUBIC)};
+    const EnumDesc kLatticeOutside{"LatticeOutside", kLatticeOutsideItems, v(LatticeOutside::FADE)};
+    const EnumDesc kLatticeJiggleAnchor{"LatticeJiggleAnchor", kLatticeJiggleAnchorItems, v(LatticeJiggleAnchor::NONE), nullptr, kLatticeJiggleAnchorOrder};
+    const EnumDesc kLatticeStage{"LatticeStage", kLatticeStageItems, v(LatticeStage::AFTER_SKINNING)};
+    const EnumDesc kLatticeMaskChannel{"LatticeMaskChannel", kLatticeMaskChannelItems, v(LatticeMaskChannel::NONE), nullptr, kLatticeMaskChannelOrder};
+    const EnumDesc kLightUnit{"LightUnit", kLightUnitItems, v(LightUnit::ENGINE)};
     const EnumDesc kLightShading{"LightShading", kLightShadingItems, v(LightShading::BOTH)};
     const EnumDesc kLightType{"LightType", kLightTypeItems, v(LightType::DIRECTIONAL)};
     const EnumDesc kMaterialAlphaMode{"MaterialAlphaMode", kMaterialAlphaModeItems, v(MaterialAlphaMode::AUTO)};

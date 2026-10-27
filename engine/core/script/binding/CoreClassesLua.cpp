@@ -49,7 +49,28 @@
 
 using namespace jasperengine;
 
+#define PBR_LUA_PROPERTY(name, lobe, Lobe, field) \
+    .addProperty(name, &PbrLuaField<&MaterialPbrExtensions::lobe, &MaterialPbrExtensions::Lobe::field>::get, \
+                 &PbrLuaField<&MaterialPbrExtensions::lobe, &MaterialPbrExtensions::Lobe::field>::set)
+#define PBR_LUA_TEXTURE(name, lobe, Lobe, field) \
+    .addProperty(name, &PbrLuaField<&MaterialPbrExtensions::lobe, &MaterialPbrExtensions::Lobe::field>::get)
+
 namespace {
+    // A field of Material::pbr as a flat Lua property of Material (MaterialPbr's table names
+    // them): read without allocating, written into the material's own value (into range)
+    template<auto Lobe, auto Field>
+    struct PbrLuaField {
+        using Value = std::decay_t<decltype(std::declval<MaterialPbrExtensions&>().*Lobe.*Field)>;
+        static Value get(const Material* self) {
+            return self->pbr.get().*Lobe.*Field;
+        }
+        static void set(Material* self, Value value) {
+            MaterialPbrExtensions& pbr = self->pbr.edit();
+            pbr.*Lobe.*Field = value;
+            MaterialPbr::clamp(pbr);
+        }
+    };
+
     // What Log.category(name) returns: a category's trace/debug/info/warn/error
     struct LuaLogCategory {
         LogCategory* category;
@@ -583,6 +604,12 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
+        .beginNamespace("LitQuality")
+        .addVariable("STANDARD", LitQuality::STANDARD)
+        .addVariable("HIGH", LitQuality::HIGH)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
         .beginNamespace("SceneColorScale")
         .addVariable("FULL", SceneColorScale::FULL)
         .addVariable("HALF", SceneColorScale::HALF)
@@ -707,6 +734,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("HTMLUI_GRADIENT", ShaderType::HTMLUI_GRADIENT)
         .addVariable("HTMLUI_POST", ShaderType::HTMLUI_POST)
         .addVariable("UI_EFFECT", ShaderType::UI_EFFECT)
+        .addVariable("PROBE_FILTER", ShaderType::PROBE_FILTER)
+        .addVariable("FLUID", ShaderType::FLUID)
         .addVariable("ATMOSPHERE_DEPTH", ShaderType::ATMOSPHERE_DEPTH)
         .addVariable("VOLUMETRIC_FOG", ShaderType::VOLUMETRIC_FOG)
         .addVariable("ATMOSPHERE_DENOISE", ShaderType::ATMOSPHERE_DENOISE)
@@ -717,7 +746,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endNamespace();
 
     // Shader variants by spec ("mesh:Uv1,Vc4"), or by type and property bits; an
-    // optional last argument names a forked shader (its project-relative base path)
+    // optional last argument names a forked shader (its project-relative base path).
+    // The property bits are a Lua integer taken as the 64-bit mask it holds (1 << 63
+    // is negative in Lua)
     luabridge::getGlobalNamespace(L)
         .beginClass<ShaderPool>("ShaderPool")
         .addStaticFunction("warmUp",
@@ -729,19 +760,19 @@ void LuaBinding::registerCoreClasses(lua_State *L){
                 ShaderKey key;
                 return ShaderPool::parseShaderSpec(spec, key, nullptr, customShader) && ShaderPool::warmUp(key);
             }),
-            luabridge::overload<ShaderType, uint32_t>(+[](ShaderType type, uint32_t properties) {
-                return ShaderPool::warmUp(type, properties);
+            luabridge::overload<ShaderType, lua_Integer>(+[](ShaderType type, lua_Integer properties) {
+                return ShaderPool::warmUp(type, static_cast<uint64_t>(properties));
             }),
-            luabridge::overload<ShaderType, uint32_t, const std::string&>(+[](ShaderType type, uint32_t properties, const std::string& customShader) {
-                return ShaderPool::warmUp(type, properties, ShaderPool::registerCustomShader(customShader));
+            luabridge::overload<ShaderType, lua_Integer, const std::string&>(+[](ShaderType type, lua_Integer properties, const std::string& customShader) {
+                return ShaderPool::warmUp(type, static_cast<uint64_t>(properties), ShaderPool::registerCustomShader(customShader));
             }))
         .addStaticFunction("isShaderReady",
             luabridge::overload<const std::string&>(+[](const std::string& spec) {
                 ShaderKey key;
                 return ShaderPool::parseShaderSpec(spec, key) && ShaderPool::getShaderState(key) == ResourceLoadState::Finished;
             }),
-            luabridge::overload<ShaderType, uint32_t>(+[](ShaderType type, uint32_t properties) {
-                return ShaderPool::isShaderReady(type, properties);
+            luabridge::overload<ShaderType, lua_Integer>(+[](ShaderType type, lua_Integer properties) {
+                return ShaderPool::isShaderReady(type, static_cast<uint64_t>(properties));
             }))
         .addStaticFunction("isShaderFailed", +[](const std::string& spec) {
             ShaderKey key;
@@ -770,11 +801,11 @@ void LuaBinding::registerCoreClasses(lua_State *L){
             luabridge::overload<ShaderVariantCollection*, const std::string&, const std::string&>(+[](ShaderVariantCollection* self, const std::string& spec, const std::string& customShader) {
                 return self->add(spec, customShader);
             }),
-            luabridge::overload<ShaderVariantCollection*, ShaderType, uint32_t>(+[](ShaderVariantCollection* self, ShaderType type, uint32_t properties) {
-                return self->add(type, properties);
+            luabridge::overload<ShaderVariantCollection*, ShaderType, lua_Integer>(+[](ShaderVariantCollection* self, ShaderType type, lua_Integer properties) {
+                return self->add(type, static_cast<uint64_t>(properties));
             }),
-            luabridge::overload<ShaderVariantCollection*, ShaderType, uint32_t, const std::string&>(+[](ShaderVariantCollection* self, ShaderType type, uint32_t properties, const std::string& customShader) {
-                return self->add(type, properties, customShader);
+            luabridge::overload<ShaderVariantCollection*, ShaderType, lua_Integer, const std::string&>(+[](ShaderVariantCollection* self, ShaderType type, lua_Integer properties, const std::string& customShader) {
+                return self->add(type, static_cast<uint64_t>(properties), customShader);
             }))
         .addFunction("addObject", +[](ShaderVariantCollection* self, EntityHandle* object) {
             return object ? self->addEntityVariants(object->getScene(), object->getEntity()) : (size_t)0;
@@ -1446,6 +1477,49 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("alphaCutoff", &Material::alphaCutoff, &Material::alphaCutoff)
         .addProperty("foliageTransmission", &Material::foliageTransmission, &Material::foliageTransmission)
         .addProperty("emissiveFactor", &Material::emissiveFactor, &Material::emissiveFactor)
+        // Stochastic Tiling of the built-in Lit's maps (no repetition); the four values shape it
+        .addProperty("stochasticTiling", &Material::stochasticTiling, &Material::stochasticTiling)
+        .addProperty("stochasticCellSize", &Material::stochasticCellSize, &Material::stochasticCellSize)
+        .addProperty("stochasticBlendSharpness", &Material::stochasticBlendSharpness, &Material::stochasticBlendSharpness)
+        .addProperty("stochasticContrast", &Material::stochasticContrast, &Material::stochasticContrast)
+        .addProperty("stochasticRotation", &Material::stochasticRotation, &Material::stochasticRotation)
+        .addProperty("emissiveStrength", &Material::emissiveStrength, &Material::emissiveStrength)
+        // the built-in Lit's extended lobes and hex tiling, flat (MaterialPbr's table: the
+        // Lua name of each field); their maps are read-only here, as the other textures
+        PBR_LUA_PROPERTY("clearcoatEnabled", clearcoat, Clearcoat, enabled)
+        PBR_LUA_PROPERTY("clearcoatFactor", clearcoat, Clearcoat, factor)
+        PBR_LUA_PROPERTY("clearcoatRoughness", clearcoat, Clearcoat, roughness)
+        PBR_LUA_PROPERTY("clearcoatNormalScale", clearcoat, Clearcoat, normalScale)
+        PBR_LUA_PROPERTY("sheenEnabled", sheen, Sheen, enabled)
+        PBR_LUA_PROPERTY("sheenColor", sheen, Sheen, color)
+        PBR_LUA_PROPERTY("sheenRoughness", sheen, Sheen, roughness)
+        PBR_LUA_PROPERTY("anisotropyEnabled", anisotropy, Anisotropy, enabled)
+        PBR_LUA_PROPERTY("anisotropyStrength", anisotropy, Anisotropy, strength)
+        PBR_LUA_PROPERTY("anisotropyRotation", anisotropy, Anisotropy, rotation)
+        PBR_LUA_PROPERTY("iridescenceEnabled", iridescence, Iridescence, enabled)
+        PBR_LUA_PROPERTY("iridescenceFactor", iridescence, Iridescence, factor)
+        PBR_LUA_PROPERTY("iridescenceIor", iridescence, Iridescence, ior)
+        PBR_LUA_PROPERTY("iridescenceThicknessRange", iridescence, Iridescence, thicknessNm)
+        PBR_LUA_PROPERTY("transmissionEnabled", transmission, Transmission, enabled)
+        PBR_LUA_PROPERTY("transmissionFactor", transmission, Transmission, factor)
+        PBR_LUA_PROPERTY("volumeEnabled", volume, Volume, enabled)
+        PBR_LUA_PROPERTY("thicknessFactor", volume, Volume, thickness)
+        PBR_LUA_PROPERTY("attenuationColor", volume, Volume, attenuationColor)
+        PBR_LUA_PROPERTY("attenuationDistance", volume, Volume, attenuationDistance)
+        PBR_LUA_PROPERTY("specularEnabled", specular, Specular, enabled)
+        PBR_LUA_PROPERTY("specularFactor", specular, Specular, factor)
+        PBR_LUA_PROPERTY("specularColor", specular, Specular, color)
+        PBR_LUA_PROPERTY("ior", specular, Specular, ior)
+        PBR_LUA_PROPERTY("hexTilingEnabled", hex, Hex, enabled)
+        PBR_LUA_PROPERTY("hexTilingRotation", hex, Hex, rotation)
+        PBR_LUA_PROPERTY("hexTilingContrast", hex, Hex, contrast)
+        PBR_LUA_TEXTURE("clearcoatTexture", clearcoat, Clearcoat, map)
+        PBR_LUA_TEXTURE("clearcoatNormalTexture", clearcoat, Clearcoat, normalMap)
+        PBR_LUA_TEXTURE("sheenTexture", sheen, Sheen, map)
+        PBR_LUA_TEXTURE("anisotropyTexture", anisotropy, Anisotropy, map)
+        PBR_LUA_TEXTURE("iridescenceTexture", iridescence, Iridescence, map)
+        PBR_LUA_TEXTURE("transmissionTexture", transmission, Transmission, map)
+        PBR_LUA_TEXTURE("specularTexture", specular, Specular, map)
         .addProperty("baseColorTexture", &Material::baseColorTexture)
         .addProperty("emissiveTexture", &Material::emissiveTexture)
         .addProperty("metallicRoughnessTexture", &Material::metallicRoughnessTexture)
@@ -1628,6 +1702,10 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("getGlobalIlluminationColorLinear", &Scene::getGlobalIlluminationColorLinear)
         .addFunction("setGlobalIllumination", (void (Scene::*)(float, Vector3))&Scene::setGlobalIllumination)
         .addProperty("maxLightsPerObject", &Scene::getMaxLightsPerObject, &Scene::setMaxLightsPerObject)
+        // the built-in Lit's quality (LitQuality.STANDARD, HIGH) and the exposure lights in
+        // physical units are drawn at (EV100)
+        .addProperty("litQuality", &Scene::getLitQuality, &Scene::setLitQuality)
+        .addProperty("physicalLightEV100", &Scene::getPhysicalLightEV100, &Scene::setPhysicalLightEV100)
         .addProperty("ambientLight2DColor", &Scene::getAmbientLight2DColor, (void (Scene::*)(Vector3))&Scene::setAmbientLight2D)
         .addProperty("ambientLight2DIntensity", &Scene::getAmbientLight2DIntensity, (void (Scene::*)(float))&Scene::setAmbientLight2D)
         .addFunction("getAmbientLight2DColorLinear", &Scene::getAmbientLight2DColorLinear)
@@ -1641,6 +1719,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("setGravity3D",
             luabridge::overload<Vector3>(&Scene::setGravity3D),
             luabridge::overload<float, float, float>(&Scene::setGravity3D))
+        .addProperty("physicsInterpolation", &Scene::isPhysicsInterpolation, &Scene::setPhysicsInterpolation)
         .addProperty("ssaoEnabled", &Scene::isSSAOEnabled, &Scene::setSSAOEnabled)
         .addProperty("ssaoRadius", &Scene::getSSAORadius, &Scene::setSSAORadius)
         .addProperty("ssaoIntensity", &Scene::getSSAOIntensity, &Scene::setSSAOIntensity)

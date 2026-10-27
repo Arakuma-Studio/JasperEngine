@@ -10,7 +10,7 @@ the project root.
 - set_ui_effect_time pins the clock: every effect region is drawn (its pixels vary) with the
   colours recorded here, a second screenshot is identical, the live clock moves the aurora.
 - inspect_ui lists each element's effects with their parameters (fx:<name> in the outline);
-  list_ui_effects lists the whole catalogue (the 101 built-in effects of html-ui-effects.md, the 18
+  list_ui_effects lists the whole catalogue (the 102 built-in effects of html-ui-effects.md, the 19
   stateful ones of phase 6 with cost stateful) and the project effects, and
   filters by name, category (glass: the four glass effects) and kind.
 - In play, the pointer over the button transitions its sheen to the hover intensity.
@@ -268,14 +268,14 @@ async def test_list_ui_effects(ed: Editor):
         ed.check(name in names, f"{name} listed: {names}")
     ed.check_eq(names, sorted(names), "sorted by name")
     builtin = [e for e in everything["effects"] if e["builtin"]]
-    # the whole catalogue (phase 5's 83 effects and phase 6's 18 stateful ones: html-ui-effects.md's table), the
+    # the whole catalogue (phase 5's 83 effects, phase 6's 18 stateful ones and fluid: html-ui-effects.md's table), the
     # project's two effects beside it
     catalogue = (harness.REPO / "docs" / "mcp" / "guide" / "html-ui-effects.md").read_text(encoding="utf-8")
     rows = re.findall(r"^\| \[`([a-z0-9-]+)`\]\(#[a-z0-9-]+\) \| ([\w, ]+) \| ([\w-]+) \| (\w+) \|", catalogue, re.M)
-    ed.check_eq(len(rows), 101, "the catalogue's effects")
+    ed.check_eq(len(rows), 102, "the catalogue's effects")
     ed.check_eq(sorted(e["name"] for e in builtin), sorted(r[0] for r in rows), "the built-in effects are the catalogue's")
     stateful = sorted(e["name"] for e in builtin if e.get("cost") == "stateful")
-    ed.check_eq(len(stateful), 18, f"the stateful effects: {stateful}")
+    ed.check_eq(len(stateful), 19, f"the stateful effects: {stateful}")
     ed.check_eq(stateful, sorted(r[0] for r in rows if r[3] == "stateful"), "the stateful effects are the catalogue's")
     ed.check_eq(everything["count"] - len(builtin), 2, "the project effects: tint-wave and spare-glow")
     ed.check(all(e["thumbnail"].startswith("docs/mcp/guide/img/effects/") for e in builtin), "thumbnails")
@@ -355,7 +355,11 @@ STATE_REGIONS = {"fog": (44, 44, 396, 256), "ink": (444, 44, 796, 256), "trail":
 
 
 async def state_shot(ed: Editor, label: str) -> Shot:
-    raw = await ed.call_raw("screenshot", {"view": "game", "scene": S["state-scene"], "max_width": 1280})
+    # the first capture at a pinned time compiles the simulations' variants and replays their
+    # state up to it: over a minute on a loaded runner with llvmpipe, past the screenshot's 30 s
+    # default
+    raw = await ed.call_raw("screenshot", {"view": "game", "scene": S["state-scene"], "max_width": 1280, "timeout_seconds": 300},
+                            timeout=330)
     ed.check(not raw.is_error and raw.images, f"{label}: no screenshot: {raw.text[:300]}")
     png = raw.images[0][0]
     (ed.scratch.root / f"html-ui-effects-{label}.png").write_bytes(png)

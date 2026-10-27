@@ -52,6 +52,14 @@ namespace jasperengine::editor {
         TokenType type;
     };
 
+    // A comment or string that runs past the end of its line, and the text that closes it.
+    // Html and Css keep the lexer's state instead, type then tells if it ends inside a comment or quote
+    struct OpenToken {
+        TokenType type = TokenType::Default;
+        std::string end;
+        HtmlCssLexer::State html;
+    };
+
     struct TextPosition {
         int line;
         int column;
@@ -210,6 +218,9 @@ namespace jasperengine::editor {
         void SetFontZoomCallback(FontZoomCallback callback) { onFontZoom = callback; }
 
     private:
+        // editor/tests/CustomTextEditorTest.cpp reads the tokens and types as handleTextInput does
+        friend struct CustomTextEditorTestAccess;
+
         // Text data
         std::vector<std::string> lines;
         std::vector<std::vector<Token>> lineTokens;
@@ -334,12 +345,19 @@ namespace jasperengine::editor {
         std::string inferTypeBefore(int lineIndex, int endColumn) const;
         // Class or Lua table the cursor is inside, what "this" and "self" resolve to
         std::string findEnclosingType(int lineIndex) const;
-        void tokenizeLine(int lineIndex);
+        // open carries a comment or string from one line to the next
+        void tokenizeText(const std::string& line, OpenToken& open, std::vector<Token>& tokens) const;
+        // A comment or string at i that can span lines: returns the length of its opening text, 0 for none
+        int multiLineTokenAt(const std::string& line, int i, OpenToken& token) const;
+        // Where the open token ends on the line, scanning from i; open stays set when it runs on to the next line
+        int scanOpenToken(const std::string& line, int i, OpenToken& open) const;
         void tokenizeAll();
         bool isHtmlOrCss() const { return language == SyntaxLanguage::Html || language == SyntaxLanguage::Css; }
         HtmlCssLexer::Language htmlCssLanguage() const;
         // Html and Css: the word starting at wordStart goes where a CSS property name does
         bool atCssPropertyName(const TextPosition& wordStart) const;
+        // where an HTML word starts: an element name (after "<", "</"), an attribute name
+        HtmlCssLexer::NamePosition htmlNamePosition(const TextPosition& wordStart) const;
         // Start of the word completion replaces; in Html and Css it spans hyphens (background-color)
         TextPosition findCompletionWordStart(const TextPosition& pos) const;
         TokenType classifyWord(const std::string& word) const;
@@ -363,7 +381,8 @@ namespace jasperengine::editor {
         void moveCursorToLineStart(Cursor& cursor, bool shift);
         void moveCursorToLineEnd(Cursor& cursor, bool shift);
 
-        void insertTextAtCursor(Cursor& cursor, const std::string& text, bool allowAutoIndent);
+        // Returns where the text that followed the cursor ended up; removed gets how much whitespace auto-indent dropped from its start
+        TextPosition insertTextAtCursor(Cursor& cursor, const std::string& text, bool allowAutoIndent, int* removed = nullptr);
         void deleteRange(const TextPosition& start, const TextPosition& end);
         void moveSelectedText(const TextPosition& destPos);
         std::string getRange(const TextPosition& start, const TextPosition& end) const;
@@ -372,6 +391,12 @@ namespace jasperengine::editor {
         void finalizeUndoRecord();
 
         int getLineIndent(int lineIndex) const;
+        // Auto-indent: a line ending in a block opener indents the next one, a line starting with a closer is outdented
+        OpenToken lineStartState(int lineIndex) const;
+        bool opensBlock(const std::string& text, const std::vector<Token>& tokens) const;
+        bool closesBlock(const std::string& text) const;
+        int openingBracketLine(const TextPosition& closer) const;
+        void reindentAfterTyping(int typedLength);
 
         TextPosition screenToText(const ImVec2& screenPos, const ImVec2& origin) const;
         ImVec2 textToScreen(const TextPosition& pos, const ImVec2& origin) const;

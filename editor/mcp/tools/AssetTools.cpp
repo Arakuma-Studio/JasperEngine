@@ -48,6 +48,8 @@
 #include "texture/Material.h"
 #include "texture/TextureData.h"
 #include "util/Base64.h"
+#include "util/FbxImporter.h"
+#include "util/FileUtils.h"
 #include "util/ProjectChecks.h"
 #include "util/ProjectUtils.h"
 #include "util/Util.h"
@@ -62,6 +64,7 @@
 #include "util/FileUtils.h"
 
 #include <algorithm>
+#include <cctype>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -92,7 +95,7 @@ void checkShadersWithFindings(const CallPtr& call, std::vector<ProjectChecks::Sh
     ProjectChecks::invalidateShaderCaches(project);
     struct Job {
         std::vector<ProjectChecks::ShaderUse> forks;
-        std::vector<uint64_t> keys;
+        std::vector<ShaderKey> keys;
         Json results = Json::array();
         std::vector<ProjectChecks::Finding> findings;
         std::atomic<bool> finished{false};
@@ -520,13 +523,14 @@ std::string alphaModeName(MaterialAlphaMode mode) {
 Json materialToJson(Project* project, const Material& material) {
     Json data = {
         {"baseColorFactor", McpValues::toJson(material.baseColorFactor)},
-        {"metallicFactor", material.metallicFactor},
-        {"roughnessFactor", material.roughnessFactor},
-        {"alphaCutoff", material.alphaCutoff},
+        {"metallicFactor", McpValues::number(material.metallicFactor)},
+        {"roughnessFactor", McpValues::number(material.roughnessFactor)},
+        {"alphaCutoff", McpValues::number(material.alphaCutoff)},
         {"alphaMode", alphaModeName(material.alphaMode)},
         {"emissiveFactor", McpValues::toJson(material.emissiveFactor)},
-        {"foliageTransmission", material.foliageTransmission}
+        {"foliageTransmission", McpValues::number(material.foliageTransmission)}
     };
+    McpValues::materialStochasticToJson(material, data);
     for (const auto& [name, member] : materialTextures()) {
         const Texture& texture = material.*member;
         data[name] = texture.empty() ? Json(nullptr) : Json(McpValues::assetPathToJson(project, texture.getPath(0)));
@@ -534,6 +538,9 @@ Json materialToJson(Project* project, const Material& material) {
     for (const auto& [name, member] : materialTexCoords()) data[name] = material.*member;
     // shader library: the shader, its values and the render state
     McpValues::materialShaderLibraryToJson(project, nullptr, material, data, true);
+    // the built-in Lit's emission intensity and extended lobes (those set)
+    data["emissiveStrength"] = McpValues::number(material.emissiveStrength);
+    if (material.pbr != MaterialPbrExtensions()) data["pbr"] = McpValues::materialPbrToJson(project, nullptr, material.pbr);
     return data;
 }
 
@@ -581,8 +588,21 @@ bool applyMaterialJson(Project* project, Material& material, const Json& values,
                 return false;
             }
             material.alphaMode = found->second;
+        } else if (key == "emissiveStrength") {
+            if (!value.is_number() || !(value.get<float>() >= 0.0f) || !std::isfinite(value.get<float>())) {
+                error = "emissiveStrength must be a number >= 0.";
+                return false;
+            }
+            material.emissiveStrength = value.get<float>();
+        } else if (key == "pbr") {
+            // a partial object merges into the lobes the material has
+            MaterialPbrExtensions pbr = material.pbr;
+            if (!McpValues::materialPbrFromJson(project, nullptr, value, pbr, error)) return false;
+            material.pbr = pbr;
         } else if (McpValues::isMaterialShaderLibraryKey(key)) {
             // applied together below, the shader first
+        } else if (McpValues::isMaterialStochasticKey(key)) {
+            // applied together below
         } else {
             handled = false;
         }
@@ -619,13 +639,15 @@ bool applyMaterialJson(Project* project, Material& material, const Json& values,
         }
         if (!handled) {
             error = "Unknown material field \"" + key + "\". Fields: baseColorFactor, metallicFactor, roughnessFactor, alphaCutoff, "
-                    "alphaMode, emissiveFactor, foliageTransmission, baseColorTexture, emissiveTexture, metallicRoughnessTexture, "
-                    "occlusionTexture, normalTexture, the *TexCoord indices, and the shader library's shader, shaderParams, "
+                    "alphaMode, emissiveFactor, emissiveStrength, pbr, foliageTransmission, baseColorTexture, emissiveTexture, metallicRoughnessTexture, "
+                    "occlusionTexture, normalTexture, the *TexCoord indices, stochasticTiling and its stochasticCellSize, "
+                    "stochasticBlendSharpness, stochasticContrast, stochasticRotation, and the shader library's shader, shaderParams, "
                     "shaderTextures, shaderFeatures, blendMode, cullMode, depthWrite, depthTest, depthOffsetFactor, "
                     "depthOffsetUnits, sortPriority, lighting, stencil, colorWrite, extraPass.";
             return false;
         }
     }
+    if (!McpValues::materialStochasticFromJson(values, material, error)) return false;
     return McpValues::materialShaderLibraryFromJson(project, nullptr, values, material, error);
 }
 
@@ -647,7 +669,9 @@ bool loadMaterialFile(const fs::path& file, Material& material, std::string& err
 // The file's text with its identity (S04: the GUID it has, or a new one for a new file),
 // formatVersion first and the existing file's unknown root keys kept (docs/data-safety.md)
 std::string materialFileContent(Project* project, const fs::path& file, const Material& material) {
-    YAML::Node root = Stream::encodeMaterial(material);
+    Material bound = material;
+    project->bindMaterialAssetRefs(bound);
+    YAML::Node root = Stream::encodeMaterial(bound);
     project->prepareDocumentIdentity(root, file);
     return DocumentFiles::materialText(root, file) + "\n";
 }
@@ -671,7 +695,7 @@ Json materialUsers(Project* project, const std::string& rel) {
             MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(entity);
             if (!mesh) continue;
             for (unsigned int i = 0; i < mesh->numSubmeshes; i++) {
-                if (fs::path(mesh->submeshes[i].material.name).lexically_normal().generic_string() == rel) {
+                if (FileUtils::pathToGenericUtf8(fs::path(mesh->submeshes[i].material.name).lexically_normal()) == rel) {
                     users.push_back({{"scene", sceneProject->id}, {"entity", McpRefs::entityJson(sceneProject, entity)}, {"submesh", i}});
                     if (users.size() >= 50) return users;
                 }
@@ -691,6 +715,19 @@ void listAssetsTool(const CallPtr& call) {
     std::string error;
     if (!dirArg.empty() && dirArg != "." && !McpRefs::resolveProjectPath(project, dirArg, root, error, true)) {
         call->fail(error);
+        return;
+    }
+    // search: the Project window's grammar over the asset index (S25 R20), by score then name
+    if (args.contains("search") && args["search"].is_string()) {
+        const size_t limit = static_cast<size_t>(std::clamp(args.value("limit", 200), 1, 2000));
+        Json data = searchAssetsJson(project, args["search"].get<std::string>(), dirArg, limit, error);
+        if (!error.empty()) {
+            call->fail(error);
+            return;
+        }
+        std::string text = std::to_string(data["total"].get<size_t>()) + " match(es) of " + data["query"].get<std::string>() + ":";
+        for (const Json& item : data["entries"]) text += "\n" + item["path"].get<std::string>();
+        call->ok(text, data);
         return;
     }
     if (!fs::is_directory(root)) {
@@ -715,10 +752,10 @@ void listAssetsTool(const CallPtr& call) {
         if (!isDir && AssetTypes::isMetaFile(path)) return;
         const std::string kind = isDir ? "folder" : assetType(path);
         if (!type.empty() && type != "any" && kind != type) return;
-        if (!query.empty() && lowerCase(path.filename().string()).find(query) == std::string::npos) return;
+        if (!query.empty() && lowerCase(FileUtils::pathToUtf8(path.filename())).find(query) == std::string::npos) return;
         if (!pattern.empty()) {
             const bool full = pattern.find('/') != std::string::npos;
-            if (!globMatch(pattern, full ? rel : path.filename().string())) return;
+            if (!globMatch(pattern, full ? rel : FileUtils::pathToUtf8(path.filename()))) return;
         }
         total++;
         if (entries.size() >= limit) return;
@@ -826,9 +863,38 @@ void getAssetInfoTool(const CallPtr& call) {
             text += " " + std::to_string(w) + "x" + std::to_string(h) + ", " + std::to_string(c) + " channel(s)";
         }
         data["sampler_note"] = "Filtering/wrap are per texture property (set_texture_settings), not per file.";
+        if (extensionOf(file) == ".png") {
+            // a texture written by the synthesis: its recipe, whether its sources changed, and
+            // the synthesize_texture arguments that regenerate it
+            Json synthesis = synthesisAssetInfo(project, file, true);
+            if (!synthesis.is_null()) {
+                data["synthesis"] = synthesis;
+                text += "." + synthesisAssetText(synthesis);
+                text.pop_back();
+            }
+        }
     } else if (kind == "model") {
         std::string error;
-        Json info = modelInfo(file, error);
+        Json info;
+        if (FbxImporter::isFbxFile(file)) {
+            // An FBX loads as the glTF it is converted into, so that is what is summarized. Read
+            // only: the conversion is not made here (set_model, import_files, Play and export do).
+            if (!project->isInsideAssetsPath(file)) {
+                error = "Outside the assets directory, so never converted.";
+            } else {
+                const fs::path glbPath = project->getImportedModelPath(file);
+                const FbxImporter::State state = FbxImporter::getState(file, glbPath, project->getAssetsPath());
+                data["fbx_import"] = {{"path", projectRelative(project, glbPath)},
+                    {"state", state == FbxImporter::State::UpToDate ? "current" : state == FbxImporter::State::Stale ? "stale" : "missing"}};
+                if (state == FbxImporter::State::Missing) {
+                    error = "Not converted yet: loading it (set_model) or import_files converts it.";
+                } else {
+                    info = modelInfo(glbPath, error);
+                }
+            }
+        } else {
+            info = modelInfo(file, error);
+        }
         if (info.is_null()) data["error"] = error;
         else {
             data["model"] = info;
@@ -883,7 +949,7 @@ void getAssetInfoTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ view_asset
 
-void replyImage(const CallPtr& call, const fs::path& image, const std::string& label, int maxSize) {
+void replyImage(const CallPtr& call, const fs::path& image, const std::string& label, int maxSize, const Json& synthesis = Json()) {
     int w = 0, h = 0, c = 0;
     unsigned char* pixels = stbi_load(image.string().c_str(), &w, &h, &c, 4);
     if (!pixels) {
@@ -898,9 +964,12 @@ void replyImage(const CallPtr& call, const fs::path& image, const std::string& l
         call->fail("Can't encode the preview of " + label + ".");
         return;
     }
+    Json data = {{"width", w}, {"height", h}, {"preview_width", outW}, {"preview_height", outH}};
+    if (!synthesis.is_null()) data["synthesis"] = synthesis;
     ToolResult result = ToolResult::success(label + " (" + std::to_string(w) + "x" + std::to_string(h) +
-                                                (outW != w ? ", shown at " + std::to_string(outW) + "x" + std::to_string(outH) : std::string()) + ").",
-                                            Json{{"width", w}, {"height", h}, {"preview_width", outW}, {"preview_height", outH}});
+                                                (outW != w ? ", shown at " + std::to_string(outW) + "x" + std::to_string(outH) : std::string()) + ")." +
+                                                synthesisAssetText(synthesis),
+                                            data);
     result.images.push_back({base64, "image/png"});
     call->reply(std::move(result));
 }
@@ -912,7 +981,7 @@ void viewAssetTool(const CallPtr& call) {
     const std::string rel = projectRelative(project, file);
     const int maxSize = std::clamp(call->args().value("max_size", 512), 16, 2048);
     if (Util::isImageFile(rel) && extensionOf(file) != ".svg") {
-        replyImage(call, file, rel, maxSize);
+        replyImage(call, file, rel, maxSize, extensionOf(file) == ".png" ? synthesisAssetInfo(project, file, false) : Json());
         return;
     }
     if (!(Util::isImageFile(rel) || Util::isModelFile(rel) || Util::isMaterialFile(rel) || Util::isPrefabFile(rel))) {
@@ -1426,6 +1495,26 @@ bool importLocalFiles(const CallPtr& call, const std::vector<std::string>& local
     for (const Json& rel : imported) changed.push_back(project->getProjectPath() / FileUtils::pathFromUtf8(rel.get<std::string>()));
     syncFiles(call->ctx(), changed, false);
     data["imported"] = imported;
+    // An FBX loads from the glTF it is converted into, made now so the next tool can use it
+    Json fbxImports = Json::array();
+    Json fbxFailed = Json::array();
+    auto importFbx = [&](const fs::path& fbxPath) {
+        if (!FbxImporter::isFbxFile(fbxPath) || !project->isInsideAssetsPath(fbxPath)) return;
+        (project->importFbxModel(fbxPath) ? fbxImports : fbxFailed).push_back(projectRelative(project, fbxPath));
+    };
+    for (const fs::path& path : changed) {
+        if (fs::is_directory(path, ec)) {
+            for (fs::recursive_directory_iterator it(path, fs::directory_options::skip_permission_denied, ec), end;
+                 !ec && it != end; it.increment(ec)) {
+                if (it->is_regular_file(ec)) importFbx(it->path());
+            }
+            ec.clear();
+        } else {
+            importFbx(path);
+        }
+    }
+    if (!fbxImports.empty()) data["fbx_imports"] = fbxImports;
+    if (!fbxFailed.empty()) data["fbx_import_failed"] = fbxFailed;
     Json importedGuids = Json::object();
     for (const Json& rel : imported) {
         const Guid guid = project->getAssetDatabase().getAssetGuid(rel.get<std::string>());
@@ -1433,6 +1522,12 @@ bool importLocalFiles(const CallPtr& call, const std::vector<std::string>& local
     }
     data["imported_guids"] = importedGuids;
     text = "Imported " + std::to_string(imported.size()) + " item(s) into " + projectRelative(project, target) + ".";
+    if (!fbxImports.empty()) {
+        text += " Converted " + std::to_string(fbxImports.size()) + " FBX model(s) to glTF.";
+    }
+    if (!fbxFailed.empty()) {
+        text += " " + std::to_string(fbxFailed.size()) + " FBX model(s) could not be converted (fbx_import_failed; the console has details).";
+    }
     if (!project->isInsideAssetsPath(target)) {
         text += " Note: outside the assets directory (" + projectRelative(project, project->getAssetsPath()) + "), components can't reference them.";
     }
@@ -1521,6 +1616,7 @@ void finishRemoteImport(const CallPtr& call, const std::shared_ptr<RemoteImport>
 
     // from_document: the URLs it imported, then (rewrite) each replaced in the file by its path relative to the file
     std::string rewriteNote;
+    bool rewritten = false;
     if (!state->document.empty()) {
         const importers::ImportResult& result = state->documentResult;
         addFiles(result);
@@ -1544,12 +1640,17 @@ void finishRemoteImport(const CallPtr& call, const std::shared_ptr<RemoteImport>
                 Json replacements = Json::array();
                 for (const auto& [url, local] : result.replaced) {
                     // a Google Fonts css2 link becomes its generated @font-face stylesheet
-                    const std::string to = FileUtils::genericPathToUtf8((state->projectRoot / FileUtils::pathFromUtf8(local)).lexically_normal().lexically_relative(dir));
+                    const std::string to = FileUtils::pathToGenericUtf8((state->projectRoot / FileUtils::pathFromUtf8(local)).lexically_normal().lexically_relative(dir));
                     if (replaceAll(content, url, to) > 0) replacements.push_back({{"from", url}, {"to", to}});
                 }
                 if (!replacements.empty()) {
-                    if (writeFilesUndoable(ctx, {{file, content}}, error)) {
+                    // the downloads and the manifest reload with the rewrite: the document once
+                    jasperengine::htmlui::compat::ImportManifest::reload();
+                    std::vector<fs::path> downloads = changed;
+                    downloads.push_back(project->getAssetsPath() / FileUtils::pathFromUtf8(jasperengine::htmlui::compat::ImportManifest::kPath));
+                    if (writeFilesUndoable(ctx, {{file, content}}, error, downloads)) {
                         data["rewritten"] = {{"file", state->document}, {"replacements", replacements}};
+                        rewritten = true;
                     } else {
                         rewriteNote = " Rewriting " + state->document + " failed: " + error;
                     }
@@ -1559,9 +1660,11 @@ void finishRemoteImport(const CallPtr& call, const std::shared_ptr<RemoteImport>
     }
     if (written > 0) {
         // the runtime resolves remote URLs through the manifest (a document that keeps them: rewrite false)
-        jasperengine::htmlui::compat::ImportManifest::reload();
-        changed.push_back(project->getAssetsPath() / FileUtils::pathFromUtf8(jasperengine::htmlui::compat::ImportManifest::kPath));
-        syncFiles(ctx, changed, false);
+        if (!rewritten) {
+            jasperengine::htmlui::compat::ImportManifest::reload();
+            changed.push_back(project->getAssetsPath() / FileUtils::pathFromUtf8(jasperengine::htmlui::compat::ImportManifest::kPath));
+            syncFiles(ctx, changed, false);
+        }
         if (ProjectWindow* window = ctx.projectWindow()) window->refreshCurrentDirectory();
     }
     data["remote"] = remote;
@@ -1657,7 +1760,7 @@ void importFilesTool(const CallPtr& call) {
                 return;
             }
             document = document.lexically_normal();
-            if (!ProjectChecks::isUiFile(FileUtils::genericPathToUtf8(document))) {
+            if (!ProjectChecks::isUiFile(FileUtils::pathToGenericUtf8(document))) {
                 call->fail("from_document must be an .html, .htm or .css file.");
                 return;
             }
@@ -1869,8 +1972,10 @@ void linkMaterialTool(const CallPtr& call) {
 
 // The fields a preset sets on a default material, as get_asset_info / update_material name them
 Json presetFieldsJson(Project* project, const MaterialPreset& preset) {
-    const Json before = materialToJson(project, Material());
-    const Json after = materialToJson(project, applyMaterialPreset(preset, Material()));
+    // in the form a submesh's material reads back in (get_entity, set_properties): enum names
+    // and float text as McpValues gives them
+    const Json before = McpValues::materialToJson(project, nullptr, Material());
+    const Json after = McpValues::materialToJson(project, nullptr, applyMaterialPreset(preset, Material()));
     Json sets = Json::object();
     for (auto it = after.begin(); it != after.end(); ++it) {
         if (!before.contains(it.key()) || before[it.key()] != it.value()) sets[it.key()] = it.value();
@@ -2017,7 +2122,7 @@ void forkShaderTool(const CallPtr& call) {
         call->ok(text + " Read the files and change only the shading math; your edits are compiled before your next "
                         "call (errors in external_changes), or check them now with check_shader.", data);
     };
-    const fs::path directory = fs::path(args.value("directory", ProjectUtils::defaultShaderForkDir().generic_string())).lexically_normal();
+    const fs::path directory = FileUtils::pathFromUtf8(args.value("directory", FileUtils::pathToGenericUtf8(ProjectUtils::defaultShaderForkDir()))).lexically_normal();
     if (directory != "." && !Util::isSafeRelativePath(directory)) {
         call->fail("directory must be project-relative.");
         return;
@@ -2591,8 +2696,13 @@ void checkShaderTool(const CallPtr& call) {
         }
     }
     // with every shader in use: the materials reading the scene from the opaque queue (phase 3)
-    const std::vector<ProjectChecks::Finding> stateFindings = args.contains("shader")
+    std::vector<ProjectChecks::Finding> stateFindings = args.contains("shader")
         ? std::vector<ProjectChecks::Finding>() : ProjectChecks::sceneInputFindings(project);
+    // and Stochastic Tiling's warnings (tilted normal maps under Rotation, no effect)
+    if (!args.contains("shader")) {
+        const std::vector<ProjectChecks::Finding> stochastic = ProjectChecks::stochasticTilingFindings(project);
+        stateFindings.insert(stateFindings.end(), stochastic.begin(), stochastic.end());
+    }
     checkShadersWithFindings(call, forks, [call, stateFindings](Json results, Json findings) {
         for (const ProjectChecks::Finding& finding : stateFindings) findings.push_back(ProjectChecks::toJson(finding));
         size_t failed = 0;
@@ -2685,14 +2795,11 @@ void setTextureSettingsTool(const CallPtr& call) {
         call->ok("The texture settings already match.", data);
         return;
     }
-    // Sampler settings are baked into the GPU texture: drop the cached render on execute and undo
+    // the sampler is part of the TexturePool key, so the new settings are their own GPU texture
     const Entity entity = where.entity;
     const ComponentType component = where.component;
-    auto onChanged = [scene, entity, component, propertyName]() {
-        if (Texture* ref = Catalog::getPropertyRef<Texture>(scene, entity, component, propertyName)) ref->invalidateRender();
-    };
     if (!addSceneCommand(where.scene->id, new PropertyCmd<Texture>(call->ctx().project(), where.scene->id, entity, component,
-                                                                   propertyName, modified, onChanged))) {
+                                                                   propertyName, modified))) {
         call->fail("Could not change the texture settings.");
         return;
     }
@@ -2717,7 +2824,7 @@ void placeholderArtTool(const CallPtr& call) {
         const std::string assets = projectRelative(project, project->getAssetsPath());
         call->fail("path is project-relative, like the texture paths the other tools take: \"" + rel +
                    "\" is outside the assets directory (\"" + assets + "\"), so no component could use it. Use \"" +
-                   projectRelative(project, project->getAssetsPath() / fs::path(rel)) + "\".");
+                   projectRelative(project, project->getAssetsPath() / FileUtils::pathFromUtf8(rel)) + "\".");
         return;
     }
     std::error_code ec;
@@ -2876,7 +2983,7 @@ void searchFilesTool(const CallPtr& call) {
     fs::path scope = root;
     std::string fileGlob = glob;
     if (!glob.empty()) {
-        const fs::path g(glob);
+        const fs::path g = FileUtils::pathFromUtf8(glob);
         if (g.is_absolute() || g.has_root_name() || g.has_root_directory()) {
             call->fail("glob must be relative to the project (no absolute paths).");
             return;
@@ -2893,7 +3000,7 @@ void searchFilesTool(const CallPtr& call) {
                 scope = target;
                 fileGlob.clear();
             } else {
-                fileGlob = g.lexically_normal().generic_string();
+                fileGlob = FileUtils::pathToGenericUtf8(g.lexically_normal());
             }
         }
     }
@@ -2920,13 +3027,13 @@ void searchFilesTool(const CallPtr& call) {
     auto clip = [&](const std::string& text) { return text.size() > maxText ? text.substr(0, maxText) + "..." : text; };
 
     std::vector<fs::path> files;
-    const fs::path scopeRel = fs::path(projectRelative(project, scope));
+    const fs::path scopeRel = FileUtils::pathFromUtf8(projectRelative(project, scope));
     const bool scopeSkipped = scope != root && (ProjectChecks::isSkippedDir(scope) || ProjectChecks::isInSkippedDir(scopeRel));
     if (!scopeSkipped && insideProject(scope) && fs::is_directory(scope, ec)) {
         for (fs::recursive_directory_iterator it(scope, fs::directory_options::skip_permission_denied, ec), end; it != end && !ec;
              it.increment(ec)) {
             const fs::path& path = it->path();
-            const std::string name = path.filename().string();
+            const std::string name = FileUtils::pathToUtf8(path.filename());
             if (it->is_directory(ec)) {
                 if (ProjectChecks::isSkippedDir(path)) it.disable_recursion_pending();
                 continue;
@@ -3016,6 +3123,7 @@ void registerAssetTools(McpRegistry& registry) {
             {"type", stringEnum("", types)},
             {"pattern", string("")},
             {"query", string("Name substring.")},
+            {"search", string("Project search: t:texture l:Hero ext: path: re: ref: missing: (asset labels too).")},
             {"recursive", withDefault(boolean(""), true)},
             {"details", withDefault(boolean("Add sizes and image dimensions."), false)},
             {"limit", withDefault(integer("", 1, 2000), 200)}
@@ -3031,9 +3139,10 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "get_asset_info";
         tool.title = "Get Asset Info";
         tool.description =
-            "One project file's details by type: image size/channels; model meshes, materials, animations, nodes; "
-            "WAV format/duration; .material fields, linked submeshes; shader includes, forks using it; Lua syntax; "
-            "scene status; unsaved code editor edits.";
+            "One project file's details by type: image size/channels (synthesized PNG: its recipe, changed sources, "
+            "regenerate arguments); model meshes, materials, animations, nodes (an FBX: of its glTF conversion, fbx_import.state); "
+            "WAV format/duration; .material fields, "
+            "linked submeshes; shader includes, forks using it; Lua syntax; scene status; unsaved code editor edits.";
         tool.inputSchema = object({{"path", assetPath("")}}, {"path"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -3081,10 +3190,10 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "write_file";
         tool.title = "Write File";
         tool.description =
-            "Create or change a project text file (undo scope project; for clients without file access) and validate "
-            "it: Lua syntax, forks using it recompiled (errors with lines), materials parsed. content = whole file, "
-            "or edits [{old_text, new_text}] (old_text matches once unless replace_all). Refuses project.yaml, "
-            ".scene, .prefab and files with unsaved code editor edits.";
+            "Create or change a project text file (undo scope project; for clients without file access) and "
+            "validate it: Lua syntax, forks using it recompiled (errors with lines), materials parsed. content = "
+            "whole file, or edits [{old_text, new_text}] (old_text must match once unless replace_all). Refuses "
+            "project.yaml, .scene, .prefab and files with unsaved code editor edits.";
         tool.inputSchema = object({
             {"path", assetPath("Parent folders are created.")},
             {"content", string("")},
@@ -3148,10 +3257,11 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "import_files";
         tool.title = "Import Files";
         tool.description =
-            "Copy files/folders from absolute local paths into a project folder (created if missing), like dropping "
-            "them on the Project window; assets go under the assets dir. Remote: URLs in sources, fonts "
-            "[\"Inter:400,700\"] (Google Fonts -> .ttf + @font-face css), icons [\"lucide:play\"] (.svg), "
-            "from_document (import every remote URL a .html/.css uses and rewrite it). Videos become AV1+Opus .webm (FFmpeg).";
+            "Copy files/folders from absolute local paths into a project folder (made if missing), as a drop on "
+            "the Project window (assets under the assets dir). Remote: URLs in sources, fonts [\"Inter:400,700\"] "
+            "(Google Fonts -> .ttf + @font-face css), icons [\"lucide:play\"] (.svg), from_document (import every "
+            "remote URL a .html/.css uses and rewrite it). Videos become AV1+Opus .webm (FFmpeg), .fbx is converted "
+            "to glTF (fbx_imports).";
         tool.inputSchema = object({
             {"sources", array(string(""), "Absolute paths or http(s) URLs.")},
             {"to_dir", assetPath("e.g. \"assets/sprites\" (remote default assets/ui/imported).")},
@@ -3168,10 +3278,12 @@ void registerAssetTools(McpRegistry& registry) {
 
     const Json materialValues = anyObject(
         "baseColorFactor [r,g,b,a], metallicFactor, roughnessFactor, alphaMode, alphaCutoff, emissiveFactor, "
-        "foliageTransmission, *Texture (path|null), *TexCoord; shader (\"library:<name>\"), shaderParams {member: value}, "
-        "shaderTextures {uniform: path}, shaderFeatures [defines]|{define: bool}, blendMode, cullMode, depthWrite, depthTest, "
-        "depthOffsetFactor/Units, sortPriority, lighting, stencil {compare, ref, readMask, writeMask, pass, fail, depthFail}, "
-        "colorWrite, extraPass {shader, its params, state, stencil, order}; null removes (jasper://docs/shaders).");
+        "foliageTransmission, *Texture (path|null), *TexCoord, stochasticTiling (Lit: hides tiling repetition, up to 3x the "
+        "reads) with stochasticCellSize (0.25-4) / BlendSharpness / Contrast / Rotation (0-1); emissiveStrength; pbr "
+        "{clearcoat|sheen|anisotropy|iridescence|transmission|volume|specular|hex: {enabled, fields, map: path|null}} merged "
+        "(jasper://docs/materials); shader (\"library:<name>\"), shaderParams {member: value}, shaderTextures {uniform: path}, "
+        "shaderFeatures [defines]|{define: bool}, render state (blendMode, cullMode, depth*, sortPriority, lighting, stencil "
+        "{...}, colorWrite), extraPass; null removes. Fields: jasper://docs/shaders.");
 
     {
         ToolDef tool;
@@ -3232,7 +3344,8 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "list_material_presets";
         tool.title = "List Material Presets";
         tool.description =
-            "One-click material setups (outlines, see-through silhouette, stencil masks, draw-once transparency...): "
+            "One-click material setups (outlines, see-through silhouette, stencil masks, draw-once transparency, the built-in "
+            "Lit's car paint, velvet, brushed metal, soap bubble, clear glass, tiled floor...): "
             "id, name, description, the fields each sets. Apply with apply_material_preset.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
@@ -3338,9 +3451,9 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "List Shaders";
         tool.description =
             "The engine's library shaders (\"library:<name>\"), to pick before forking: type (mesh: a material's "
-            "shader; ui, points, lines, sky: a component's customShader; postprocess: a post_process pass) and "
-            "lighting modes; detail (or name) adds parameters, textures, features/keywords, required inputs, default "
-            "state and their rules; scene_inputs/cost_note: reads the scene (an extra pass per camera). Using them: "
+            "shader; ui, points, lines, sky: a component's customShader; postprocess: a post_process pass), "
+            "lighting modes; detail (or name) adds parameters, textures, features/keywords, required inputs, "
+            "default state, rules; scene_inputs/cost_note: reads the scene (an extra pass per camera). Usage: "
             "jasper://docs/shaders.";
         tool.inputSchema = object({
             {"type", stringEnum("", {"mesh", "ui", "points", "lines", "sky", "postprocess"})},
@@ -3406,7 +3519,7 @@ void registerAssetTools(McpRegistry& registry) {
             "and background (default transparent); gradient: color -> color2, checker alternates them. Colors "
             "[r,g,b(,a)] 0-1 or \"#RRGGBB(AA)\".";
         tool.inputSchema = object({
-            {"path", assetPath("A .png inside the assets dir, e.g. \"assets/sprites/coin.png\" (then a texture path).")},
+            {"path", assetPath("A .png in the assets dir (\"assets/sprites/coin.png\"), then a texture path.")},
             {"width", withDefault(integer("", 1, 2048), 64)},
             {"height", withDefault(integer("", 1, 2048), 64)},
             {"shape", withDefault(stringEnum("", {"rect", "rounded_rect", "circle", "ellipse", "triangle", "diamond", "gradient", "checker"}), "rect")},

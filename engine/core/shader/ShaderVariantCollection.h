@@ -47,7 +47,7 @@ namespace jasperengine {
 
         // customShader: a forked shader's project-relative base path, "" for built-in.
         // False when the variant is already in or the spec does not parse.
-        bool add(ShaderType type, uint32_t properties, const std::string& customShader = "");
+        bool add(ShaderType type, uint64_t properties, const std::string& customShader = "");
         // "mesh:Ult,Vc4", "depth:Ski", "mesh:0x41" (ShaderPool::parseShaderSpec)
         bool add(const std::string& spec, const std::string& customShader = "");
         bool addKey(ShaderKey key);
@@ -55,9 +55,9 @@ namespace jasperengine {
         // shadow and G-buffer passes, UI, points, lines, sky); how many were new
         size_t addEntityVariants(Scene* scene, Entity entity);
 
-        bool remove(ShaderType type, uint32_t properties, const std::string& customShader = "");
+        bool remove(ShaderType type, uint64_t properties, const std::string& customShader = "");
         bool remove(const std::string& spec, const std::string& customShader = "");
-        bool contains(ShaderType type, uint32_t properties, const std::string& customShader = "") const;
+        bool contains(ShaderType type, uint64_t properties, const std::string& customShader = "") const;
         bool contains(const std::string& spec, const std::string& customShader = "") const;
         void clear();
 

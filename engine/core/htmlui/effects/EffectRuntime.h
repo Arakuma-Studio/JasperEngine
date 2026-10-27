@@ -98,6 +98,7 @@ namespace jasperengine::htmlui {
         int64_t replayCount = 0;                // N
         double replayStart = 0.0, replayT = 0.0;
         std::vector<Rml::Vector4f> replayHistory;   // context px, z age s (newest first)
+        std::vector<Rml::Vector3f> replayPath;      // the scripted path it started with (EffectElementState::scriptedPath)
         std::vector<std::pair<double, EffectSplatData>> replayLog;
         Rml::Vector2f replayPointer{0.f, 0.f};
         bool replayPointerValid = false, replayPointerDown = false;
@@ -113,9 +114,17 @@ namespace jasperengine::htmlui {
         std::vector<std::pair<double, EffectSplatData>> log;
         uint64_t inputGeneration = 0;
         std::string reseedKey;                  // the @reseed parameters' values when it started
+        // the state changed since the @frame passes last ran (a step, a reset, an allocation, a
+        // parameter change); cleared only when they all ran
+        bool frameDirty = true;
+        uint64_t paramsKey = 0;                 // a hash of the parameters' canonical texts
+        // the pointer the last step saw (the @frame passes see it)
+        Rml::Vector2f stepPointer{0.f, 0.f};
+        bool stepPointerKnown = false, stepPointerDown = false, stepPointerInside = false;
         // statistics
         uint64_t stepsRun = 0;
         uint64_t replays = 0;
+        uint64_t framePassRuns = 0;             // times the @frame passes ran
         Rml::ElementDocument* document = nullptr;
 
         EffectSimulation() = default;
@@ -155,6 +164,9 @@ namespace jasperengine::htmlui {
         // phase 6: the simulation of a stateful effect, and the live instances using this state
         // (the runtime releases the images of a simulation nothing uses any more)
         std::shared_ptr<EffectSimulation> simulation;
+        // a scripted pointer path (EffectRuntime::setPointerPath): x, y in the element's border-box
+        // CSS px, z the effect time s, ascending; a pinned replay drags the pointer along it
+        std::vector<Rml::Vector3f> scriptedPath;
         int liveInstances = 0;
         uint64_t orphanFrame = UINT64_MAX;      // the frame liveInstances went to 0
     };
@@ -265,6 +277,12 @@ namespace jasperengine::htmlui {
         int64_t steps = 0;
         double time = 0.0;
         bool paused = false;
+        // what an agent checks a scripted replay against
+        int images = 0;                 // state images (pairs counted twice)
+        uint64_t replays = 0;           // pinned-clock replays run
+        bool replaying = false;         // a replay spread over frames is still running
+        int splats = 0;                 // splats queued (live) or logged (pinned)
+        int pathSamples = 0;            // the scripted pointer path's samples
     };
 
     class JASPERENGINE_INTERNAL EffectRuntime : public Rml::Plugin {
@@ -322,8 +340,18 @@ namespace jasperengine::htmlui {
         // --- phase 6: stateful effects ---
         // the instance's simulation (created on first use; nullptr for a stateless effect)
         EffectSimulation* simulationOf(EffectInstance& instance);
-        // a splat queued on the element's simulations (of the named effect, or all); how many took it
-        int splat(Rml::Element* element, const EffectSplatData& splat, const std::string& effectName = std::string());
+        // a splat queued on the element's simulations (of the named effect, or all); how many took it.
+        // With a pinned clock it is logged at `time` (the effect clock, default the pinned time) and
+        // replayed at the step whose interval holds it
+        int splat(Rml::Element* element, const EffectSplatData& splat, const std::string& effectName = std::string(),
+                  std::optional<double> time = std::nullopt);
+        // drops the splats queued or logged on the element's simulations (of the named effect, or all)
+        int clearSplats(Rml::Element* element, const std::string& effectName = std::string());
+        // A scripted pointer path for the element's simulations (of the named effect, or all): x, y
+        // in the element's border-box CSS px, z the effect time s (sorted here). A pinned replay
+        // drags the pointer along it (down from its first sample's time to its last's, a press on
+        // its first step) instead of the recorded pointer; empty clears it. How many took it
+        int setPointerPath(Rml::Element* element, std::vector<Rml::Vector3f> path, const std::string& effectName = std::string());
         // restarts the element's simulations (of the named effect, or all); how many
         int resetSimulations(Rml::Element* element, const std::string& effectName = std::string());
         EffectSimulationInfo simulationInfo(Rml::Element* element, const std::string& effectName, int ordinal) const;
@@ -344,6 +372,16 @@ namespace jasperengine::htmlui {
         void addSimulationUniformBytes(size_t bytes) { frameUniformBytes += bytes; }
         size_t simulationUniformBytes() const { return frameUniformBytes; }
         static constexpr size_t kSimulationUniformBudget = 1536u * 1024u;
+        // a pinned replay starts at the earliest scripted input (pointer path, logged splat), at
+        // most this long before the pinned time (s; @replay's own maximum)
+        static constexpr double kMaxScriptedReplay = 30.0;
+        // a splat's velocity (px/s), radius (px) and strength are clamped to these; a non-finite
+        // value refuses it (half-float state images would hold inf/NaN for good)
+        static constexpr float kMaxSplatVelocity = 100000.f;
+        static constexpr float kMaxSplatRadius = 4096.f;
+        static constexpr float kMaxSplatStrength = 100.f;
+        // the splats a step takes (the step block's array): more in one step interval are dropped
+        static constexpr size_t kMaxSplatsPerStep = 8;
         // pinned replays still running (a capture renders until none is)
         size_t pendingReplays() const { return replaysInProgress; }
         void replayStarted() { replaysInProgress++; }

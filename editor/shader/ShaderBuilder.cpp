@@ -60,7 +60,8 @@ std::string customSourceCacheKey(editor::Project* project, const std::string& cu
 std::shared_ptr<const CustomSourceSnapshot> resolveCustomSources(editor::Project* project,
                                                                  const std::string& customShader,
                                                                  ShaderType shaderType) {
-    const bool library = ShaderReference::isLibrary(customShader);
+    // the library's and the built-in Lit's variants ("builtin:lit#...", S11) read engine sources only
+    const bool library = ShaderReference::isLibrary(customShader) || ShaderReference::isBuiltin(customShader);
     if ((!project && !library) || customShader.empty()) {
         auto invalid = std::make_shared<CustomSourceSnapshot>();
         invalid->sources.error = "Custom shader project or path is unavailable.";
@@ -130,6 +131,11 @@ void clearCustomSourceCache(const std::function<bool(const std::string&)>& which
         else
             ++it;
     }
+}
+
+// The id of a variant's build in ResourceProgress (a hash of the key, as other resources hash their name)
+uint64_t progressId(ShaderKey key) {
+    return static_cast<uint64_t>(std::hash<ShaderKey>{}(key));
 }
 
 } // namespace
@@ -217,7 +223,7 @@ ShaderBuildResult editor::ShaderBuilder::buildShader(ShaderKey shaderKey, Projec
 
     // Start new async build
     std::string shaderName = getShaderDisplayName(shaderKey);
-    ResourceProgress::startBuild(shaderKey, ResourceType::Shader, shaderName);
+    ResourceProgress::startBuild(progressId(shaderKey), ResourceType::Shader, shaderName);
 
     // a compile holds a worker for long: Heavy, so the decodes the frame waits on keep slots
     jobs::SubmitOptions options;
@@ -268,7 +274,7 @@ void editor::ShaderBuilder::requestShutdown() {
     // no wait runs a build inline while this holds cacheMutex)
     for (auto& [key, task] : pendingBuilds){
         if (task.cancel())
-            ResourceProgress::failBuild(key);
+            ResourceProgress::failBuild(progressId(key));
     }
     for (auto& [key, task] : pendingBuilds)
         task.wait();
@@ -281,7 +287,7 @@ ShaderData editor::ShaderBuilder::compileShader(ShaderKey shaderKey, Project* pr
         throw std::runtime_error("Shutdown requested");
     }
     if (trackProgress) {
-        ResourceProgress::updateProgress(shaderKey, 0.1f); // Starting
+        ResourceProgress::updateProgress(progressId(shaderKey), 0.1f); // Starting
     }
 
     // A fork's entry points and every project include they reach are overlaid on the
@@ -291,7 +297,7 @@ ShaderData editor::ShaderBuilder::compileShader(ShaderKey shaderKey, Project* pr
     if (customId != 0 && !ShaderPool::isLibraryCustomShader(customId)) {
         std::string setupError;
         const std::string customShader = ShaderPool::getCustomShaderName(customId);
-        if (!project && !ShaderReference::isLibrary(customShader)) {
+        if (!project && !ShaderReference::isLibrary(customShader) && !ShaderReference::isBuiltin(customShader)) {
             setupError = "Custom shader requested without a project";
         } else {
             if (customShader.empty()) {
@@ -305,7 +311,7 @@ ShaderData editor::ShaderBuilder::compileShader(ShaderKey shaderKey, Project* pr
         }
         if (!setupError.empty()) {
             if (trackProgress) {
-                ResourceProgress::failBuild(shaderKey);
+                ResourceProgress::failBuild(progressId(shaderKey));
             }
             throw std::runtime_error(setupError);
         }
@@ -317,7 +323,7 @@ ShaderData editor::ShaderBuilder::compileShader(ShaderKey shaderKey, Project* pr
         progress = [shaderKey](float value) {
             // the last step is reported below, once the build is in the cache
             if (value < 1.0f)
-                ResourceProgress::updateProgress(shaderKey, value);
+                ResourceProgress::updateProgress(progressId(shaderKey), value);
         };
     }
     if (cancellable) {
@@ -333,7 +339,7 @@ ShaderData editor::ShaderBuilder::compileShader(ShaderKey shaderKey, Project* pr
             throw std::runtime_error("Shutdown requested");
         }
         if (trackProgress) {
-            ResourceProgress::failBuild(shaderKey);
+            ResourceProgress::failBuild(progressId(shaderKey));
         }
         // the GLSL compiler log goes to the output window, where the details otherwise
         // only reach stderr/app output
@@ -345,8 +351,8 @@ ShaderData editor::ShaderBuilder::compileShader(ShaderKey shaderKey, Project* pr
     }
 
     if (trackProgress) {
-        ResourceProgress::updateProgress(shaderKey, 1.0f); // Complete
-        ResourceProgress::completeBuild(shaderKey);
+        ResourceProgress::updateProgress(progressId(shaderKey), 1.0f); // Complete
+        ResourceProgress::completeBuild(progressId(shaderKey));
     }
 
     Out::build(
@@ -369,7 +375,7 @@ ShaderData editor::ShaderBuilder::buildShaderInternal(ShaderKey shaderKey, Proje
 
 std::filesystem::path editor::ShaderBuilder::getShaderCachePath(ShaderKey shaderKey) {
     ShaderType shaderType = ShaderPool::getShaderTypeFromKey(shaderKey);
-    uint32_t properties = ShaderPool::getPropertiesFromKey(shaderKey);
+    uint64_t properties = ShaderPool::getPropertiesFromKey(shaderKey);
     uint16_t customId = ShaderPool::getCustomIdFromKey(shaderKey);
     std::string basename = ShaderPool::getShaderStr(shaderType, properties, customId) +
                            "_" + ShaderPool::getShaderLangStr();
@@ -441,7 +447,7 @@ bool editor::ShaderBuilder::isCustomCacheStale(ShaderKey shaderKey, Project* pro
 
 std::string editor::ShaderBuilder::getShaderDisplayName(ShaderKey key) {
     ShaderType type = ShaderPool::getShaderTypeFromKey(key);
-    uint32_t properties = ShaderPool::getPropertiesFromKey(key);
+    uint64_t properties = ShaderPool::getPropertiesFromKey(key);
     uint16_t customId = ShaderPool::getCustomIdFromKey(key);
     std::string shaderStr = ShaderPool::getShaderStr(type, properties, customId);
 
@@ -486,7 +492,7 @@ void editor::ShaderBuilder::invalidateCustomShaders(const std::function<bool(con
     for (auto it = pendingBuilds.begin(); it != pendingBuilds.end(); ) {
         if (projectCustom(it->first)){
             if (it->second.cancel())
-                ResourceProgress::failBuild(it->first);
+                ResourceProgress::failBuild(progressId(it->first));
             it = pendingBuilds.erase(it);
         }else{
             ++it;

@@ -79,8 +79,8 @@ bool ReflectedValueCmd::execute() {
         entry.oldValue = reflect::Value(target.ops, target.ref);
         prefabUndo.capture(project, sceneId, entity);
 
-        uint32_t propertyFields = 0;
-        uint32_t* overrideMask = Catalog::getSubmeshOverrideMask(scene, entity, type, path, propertyFields);
+        uint64_t propertyFields = 0;
+        uint64_t* overrideMask = Catalog::getSubmeshOverrideMask(scene, entity, type, path, propertyFields);
         if (overrideMask) entry.oldOverrideFields = *overrideMask;
 
         const reflect::ArrayOps* array = target.field->arrayOps;
@@ -123,8 +123,8 @@ void ReflectedValueCmd::undo() {
         const reflect::FieldRef target = comp ? reflect::resolve(*desc, comp, path) : reflect::FieldRef();
         if (!target || !entry.oldValue.ops() || entry.oldValue.ops()->size != target.ops->size) continue;
         target.ops->copy(target.ref, entry.oldValue.get());
-        uint32_t propertyFields = 0;
-        if (uint32_t* overrideMask = Catalog::getSubmeshOverrideMask(scene, entity, type, path, propertyFields)) {
+        uint64_t propertyFields = 0;
+        if (uint64_t* overrideMask = Catalog::getSubmeshOverrideMask(scene, entity, type, path, propertyFields)) {
             *overrideMask = entry.oldOverrideFields;
         }
         if (!entry.changed) continue;

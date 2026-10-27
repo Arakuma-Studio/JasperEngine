@@ -52,7 +52,7 @@ namespace jasperengine::editor{
     struct PropertyCmdValue{
         T oldValue;
         T newValue;
-        uint32_t oldOverrideFields = 0; // submesh properties only, see getSubmeshOverrideMask
+        uint64_t oldOverrideFields = 0; // submesh properties only, see getSubmeshOverrideMask
         bool applied = false;           // the entity had the property when it ran
     };
 
@@ -62,7 +62,7 @@ namespace jasperengine::editor{
     struct PropertyCmdValue<std::string>{
         std::string oldValue;
         std::string newValue;
-        uint32_t oldOverrideFields = 0;
+        uint64_t oldOverrideFields = 0;
         bool applied = false;
         AssetRef oldAsset;
         ShaderRef oldShader;
@@ -155,8 +155,8 @@ namespace jasperengine::editor{
 
                 // Read before the no-op check below: a command merging into this one adopts this
                 // mask, and an entity already at the new value still carries its earlier edits.
-                uint32_t propertyFields = 0;
-                uint32_t* overrideMask = Catalog::getSubmeshOverrideMask(sceneProject->scene, entity, type, propertyName, propertyFields);
+                uint64_t propertyFields = 0;
+                uint64_t* overrideMask = Catalog::getSubmeshOverrideMask(sceneProject->scene, entity, type, propertyName, propertyFields);
                 if (overrideMask){
                     value.oldOverrideFields = *overrideMask;
                 }
@@ -214,8 +214,8 @@ namespace jasperengine::editor{
                 }
 
                 // Mirrors execute: restored whether or not the value moved.
-                uint32_t propertyFields = 0;
-                if (uint32_t* overrideMask = Catalog::getSubmeshOverrideMask(sceneProject->scene, entity, type, propertyName, propertyFields)){
+                uint64_t propertyFields = 0;
+                if (uint64_t* overrideMask = Catalog::getSubmeshOverrideMask(sceneProject->scene, entity, type, propertyName, propertyFields)){
                     *overrideMask = value.oldOverrideFields;
                 }
 

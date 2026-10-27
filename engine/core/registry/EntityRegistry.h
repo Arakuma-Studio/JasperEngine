@@ -28,8 +28,13 @@
 #include "component/LocalVolumetricFogComponent.h"
 #include "component/VolumetricCloudsComponent.h"
 #include "component/MirrorComponent.h"
+#include "component/LatticeComponent.h"
+#include "component/LatticeModifierComponent.h"
+#include "component/LatticeFollowerComponent.h"
+#include "component/LatticeTracksComponent.h"
 #include "component/ReflectionProbeComponent.h"
 #include "component/UIDocumentComponent.h"
+#include "component/FluidSimulationComponent.h"
 #include "component/ImageComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/LayoutGroupComponent.h"
@@ -371,6 +376,11 @@ namespace jasperengine {
                 return;
             }
             if (structuralLocked("removeComponent")){
+                return;
+            }
+            if (!componentManager.findComponent<T>(entity)){
+                // the removal hooks read the component: none to remove is an error, not a crash
+                Log::error("Removing non-existent component: entity %u", entity);
                 return;
             }
             // the record (signature) and the component load together, while the hooks run

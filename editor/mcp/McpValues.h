@@ -43,9 +43,12 @@ namespace jasperengine::editor::mcp {
     //   Enum, Ease      name string (snake_case, e.g. "dynamic", "quad_in_out"); writes also
     //                   take the Inspector label ("Quad In Out"), the scene-file name or the int
     //   Texture         null (none) | "path.png" (project-relative; "x.svg?svgScale=2") |
-    //                   {"path"|"cube":[6 paths]|"cube":"one.png", "min_filter", "mag_filter",
+    //                   {"path"|"cube":[6 paths: front (+Z), back (-Z), left (-X), right (+X),
+    //                   up (+Y), down (-Y)]|"cube":"one.png", "min_filter", "mag_filter",
     //                   "wrap_u", "wrap_v", "alpha_border", "svg_scale"} when the sampler is not
-    //                   the default | {"camera": <entity>} (render texture of that camera)
+    //                   the default | {"camera": <entity>} (render texture of that camera) |
+    //                   {"fluid": <entity>} (that FluidSimulation's output); writes also take
+    //                   the link ids "camera|<entity id>" and "fluid|<entity id>"
     //   Font            [main font path, fallback paths...]; writes also take one path
     //   Material        {"name", "baseColorFactor", "metallicFactor", "roughnessFactor",
     //                   "alphaCutoff", "foliageTransmission", "alphaMode", "emissiveFactor",
@@ -114,7 +117,10 @@ namespace jasperengine::editor::mcp {
             long index = -1;             // insert (-1: append) / remove
         };
         // [{component, property, value}], [{component, property, insert: v, index?}],
-        // [{component, property, remove: index}], or {component: {property: value}}
+        // [{component, property, remove: index}], or {component: {property: value}}.
+        // A FluidSimulation's "preset" (an id of FluidPresets.h) stands for the preset's fields:
+        // it expands in place (in the object form before the component's other values, which
+        // then override it)
         static bool parseChanges(const Json& changes, std::vector<Change>& out, std::string& error);
         // The changes as the components' reflection tables see them (docs/specs/S08-reflection.md
         // R26): a property named by an alias is renamed to its field, with a warning ("light.old
@@ -173,12 +179,19 @@ namespace jasperengine::editor::mcp {
         static bool entityReferenceFromJson(Project* project, SceneProject* scene, const Json& value, EntityReference& out, std::string& error);
 
         static Json textureToJson(Project* project, SceneProject* scene, const Texture& texture);
-        // `camera` gets the camera entity of a {"camera": ...} value (NULL_ENTITY otherwise)
+        // `camera` gets the camera entity of a {"camera": ...} value (NULL_ENTITY otherwise; a
+        // {"fluid": ...} value is a plain texture bound to the fluid's output)
         static bool textureFromJson(Project* project, SceneProject* scene, const Json& value, Texture& out,
                                     Entity& camera, std::string& error);
         static Json materialToJson(Project* project, SceneProject* scene, const Material& material, const std::string& linkedFile = {});
         // Inline values onto `out` (holding the current material); "file" is not handled here
         static bool materialFromJson(Project* project, SceneProject* scene, const Json& value, Material& out, std::string& error);
+        // Material::pbr, the built-in Lit's extended lobes and hex tiling (docs/mcp/guide/materials.md):
+        // {"<lobe>": {"<field>": value}} with every lobe away from its defaults, each with all its
+        // fields; a write merges a partial object into `out` (null clears a map) and checks each
+        // value against its range, an error naming the field ("pbr.clearcoat.roughness: ...")
+        static Json materialPbrToJson(Project* project, SceneProject* scene, const MaterialPbrExtensions& pbr);
+        static bool materialPbrFromJson(Project* project, SceneProject* scene, const Json& value, MaterialPbrExtensions& out, std::string& error);
 
         // ShaderUniformValues (shaderUniforms, post-process pass uniforms): {name: [x,y,z,w]};
         // writes also take a number or 1-3 numbers per uniform (the rest 0)
@@ -216,6 +229,10 @@ namespace jasperengine::editor::mcp {
         // the scene in their current variants (get_entity, get_shader_uniforms): one entry per
         // reader, {component, submesh, reads, extra_pass_reads, error, fix}; empty when none
         static Json entitySceneInputsToJson(Scene* scene, Entity entity);
+        // A FluidSimulation's runtime state (get_entity, get_runtime_entity: "fluid_stats"), read
+        // only: FluidStats in snake_case plus the matching preset, the device's support and the
+        // simulator's last error; null when the entity has no FluidSimulationComponent
+        static Json fluidStatsToJson(Scene* scene, Entity entity);
 
         static Json shaderParamsToJson(const ShaderUniformValues& values);
         // `out` replaced by `value` (null clears); `manifest` (may be null) types colour hex
@@ -244,6 +261,13 @@ namespace jasperengine::editor::mcp {
         // manifest). False with `error`.
         static bool materialShaderLibraryFromJson(Project* project, SceneProject* scene, const Json& value, Material& out, std::string& error);
         static bool isMaterialShaderLibraryKey(const std::string& key);
+        // Stochastic Tiling of a material: stochasticTiling, and stochasticCellSize (0.25-4),
+        // stochasticBlendSharpness, stochasticContrast, stochasticRotation (0-1). The values are
+        // written while it is on or away from their defaults; out of range is an error naming
+        // the field, what it does and its default.
+        static void materialStochasticToJson(const Material& material, Json& out);
+        static bool materialStochasticFromJson(const Json& value, Material& out, std::string& error);
+        static bool isMaterialStochasticKey(const std::string& key);
 
         // ---- shader library phase 2 (docs/superpowers/specs/2026-10-10-shader-library-phase2-design.md)
         //   stencil     {compare, ref, readMask, writeMask, pass, fail, depthFail}: compare

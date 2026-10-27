@@ -5,6 +5,7 @@
 
 #include "Scene.h"
 #include "shader/ShaderBuildTypes.h"
+#include "texture/MaterialPbr.h"
 
 #include <filesystem>
 #include <set>
@@ -32,6 +33,10 @@ namespace jasperengine::editor {
     // their vertex attributes and materials. Generated meshes (sprites, tilemaps, polygons,
     // terrains) take the vertex layout their generator gives them.
     //
+    // A mesh bound to a lattice (its own Lattice Modifier or an ancestor's with
+    // includeChildren, LatticeRender::isLatticeTarget) adds its lattice variants ('Ltc') to
+    // the ones it draws with unbound.
+    //
     // A scene's lighting decides the variants (lights, shadows, 2D lights, fog, IBL), and a
     // prefab a script spawns can bring its own: every combination the scene's content and the
     // build's prefabs can reach is collected, for the scene's own GameObjects and for every
@@ -52,6 +57,10 @@ namespace jasperengine::editor {
     // allLightCapacities (the project's scripts set maxLightsPerObject) every tier is
     // collected, else only the scene's own.
     //
+    // The built-in Lit's variants follow the scene's Lit Quality (both with scriptsSetLitQuality:
+    // a script sets scene.litQuality) and the material lobes for desktop and, with a mobile
+    // tier other than FULL, the lobes Android, iOS and HTML5 draw (MaterialPbr::resolveTier).
+    //
     // The post-processing colour (phase 4, one global variant bit of mesh, points, lines and
     // sky variants) follows the scene's PostProcessingSettings; with scriptsSetPostProcessing
     // (a project script mentions postProcessing) both states are collected. The uber pass's
@@ -71,7 +80,8 @@ namespace jasperengine::editor {
                                  std::set<ShaderKey>& keys, const std::filesystem::path& projectRoot = {},
                                  bool allLightCapacities = false, bool scriptsSetPostProcessing = false,
                                  const std::vector<std::string>& scriptPostProcessingFields = {},
-                                 bool scriptsSetShadowQuality = false);
+                                 bool scriptsSetShadowQuality = false, bool scriptsSetLitQuality = false,
+                                 PbrTier mobilePbrTier = PbrTier::FULL);
 
         // the UI effect variants of documents (asset-relative .html/.htm/.rml paths) of a project
         static void collectUiEffects(const std::vector<std::string>& documents, const std::filesystem::path& projectRoot,
@@ -81,6 +91,10 @@ namespace jasperengine::editor {
         static void scanUiEffects(const std::string& text, bool lua, UiEffectUses& uses);
         // the variants of the uses (unknown names are skipped)
         static void addUiEffectKeys(const UiEffectUses& uses, std::set<ShaderKey>& keys);
+        // the fluid simulation's programs (FluidSimulator, ShaderType::FLUID: the solver, the
+        // look, the solver of devices that cannot filter half floats): a scene or prefab with a
+        // FluidSimulationComponent, or scripts naming FluidSimulation (Project), ship them
+        static void addFluidKeys(std::set<ShaderKey>& keys);
 
         // The PostProcessingSettings switches a script may flip (their camelCase names): the
         // effects of the uber pass, the bloom and blur, the grade (monochrome is part of its

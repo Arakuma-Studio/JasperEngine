@@ -78,7 +78,7 @@ namespace jasperengine::editor{
         uint8_t scenes;                 // CreateSceneMask
         bool separatorBefore = false;   // Within its menu level
         bool rootOnly = false;          // Only offered when creating at the scene root
-        const char* shortcut = nullptr; // Shown in the main menu bar
+        const char* command = nullptr;  // its command catalog id when it has its own (a shortcut)
     };
 
     struct EntitySelectionEntry {
@@ -175,6 +175,8 @@ namespace jasperengine::editor{
         void pushNodeImGuiId(const TreeNode& node);
         void popNodeImGuiId(const TreeNode& node);
         void drawInsertionMarker(const ImVec2& p1, const ImVec2& p2);
+        // A model file (.gltf, .glb, .obj, .fbx) dropped here makes a Model GameObject of the selected 3D scene
+        bool acceptsModelDrop(const std::string& filePath) const;
         void handleEntityFilesDrop(const std::vector<std::string>& filePaths, Entity parent = NULL_ENTITY);
         void handleSceneFilesDropAsChildScenes(const std::vector<std::string>& filePaths, uint32_t ownerSceneId);
         void showAddChildSceneMenu();
@@ -230,9 +232,11 @@ namespace jasperengine::editor{
         // [E] Prefab Variants: whether the asset is a variant (its rows get the variant icon)
         bool isPrefabVariantAsset(const std::filesystem::path& path) const;
 
+        // A lattice fitted around targets and bound to them (LatticeEditorOps::createLattice),
+        // or a unit lattice at the Scene view's focus point without targets; one undo step
+        void createLatticeAround(const std::vector<Entity>& targets);
+
         // Search-related methods
-        bool nodeMatchesSearch(const TreeNode& node, const std::string& searchLower);
-        void markMatchingNodes(TreeNode& node, const std::string& searchLower);
         void updateSearchAndSelectionOrder(TreeNode& root, bool treeRebuilt);
 
     public:

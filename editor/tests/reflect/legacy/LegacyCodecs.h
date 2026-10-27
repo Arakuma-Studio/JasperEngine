@@ -87,6 +87,11 @@ namespace jasperengine::editor {
         static PostProcessingSettings decodePostProcessing(const YAML::Node& node);
         static YAML::Node encodeBoneComponent(const BoneComponent& bone);
         static BoneComponent decodeBoneComponent(const YAML::Node& node, const BoneComponent* oldBone = nullptr);
+
+        static YAML::Node encodeFluidSimulationComponent(const FluidSimulationComponent& fluid);
+        static FluidSimulationComponent decodeFluidSimulationComponent(const YAML::Node& node, const FluidSimulationComponent* oldFluid = nullptr);
+        static YAML::Node encodeLatticeFollowerComponent(const LatticeFollowerComponent& follower);
+        static LatticeFollowerComponent decodeLatticeFollowerComponent(const YAML::Node& node, const LatticeFollowerComponent* oldFollower = nullptr);
     };
 
 }

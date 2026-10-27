@@ -308,7 +308,6 @@ pseudo-elements (`::-webkit-slider-thumb`, `::-webkit-scrollbar`, `::placeholder
 | `<canvas>` | a Lottie animation or an image sequence; 3D content drawn by the game behind a transparent part of the page, or the document on a mesh in texture mode (`HTMLUI-HTML-0002`: a placeholder box) |
 | `<video src="clip.mp4">` (H.264, VP9, ...) | `<video src="clip.webm">` with AV1 + Opus: `import_files` converts the file with FFmpeg (`HTMLUI-HTML-0027`) |
 | `<iframe>` | another UI Document (`HTMLUI-HTML-0002`) |
-| `title="tooltip"` | a tooltip element shown on `mouseover` from Lua (`HTMLUI-HTML-0004`, info) |
 | `<div/>` | `<div></div>`: in HTML a non-void element does not self-close (`HTMLUI-HTML-0026`) |
 | Tailwind's Play CDN, GSAP, jQuery `<script>`s | a built stylesheet (Tailwind CLI output), the Lua `anime` API, Lua (`HTMLUI-HTML-0007`) |
 
@@ -619,7 +618,10 @@ get no input). Create elements with `createElement` or `innerHTML`, then `append
 | `change` | a text field on blur when its value changed; checkboxes, radios, selects, ranges when they change |
 | `submit`, `reset` | forms |
 | `scroll`, `resize`, `load`, `unload`, `show`, `hide` | the element or document |
-| `dragstart`, `drag`, `dragend`, `dragover`, `dragmove`, `dragout`, `dragdrop` | elements with `drag="drag"` or `drag="drag-drop"` |
+| `dragstart`, `drag`, `dragend`, `dragenter`, `dragover`, `dragleave`, `drop` | HTML5 drag and drop: `draggable="true"` sources, any element under the drag ("Drag and drop") |
+| `dragmove`, `dragout`, `dragdrop` | RmlUi's own drag events, still sent to elements with `drag="drag"` or `drag="drag-drop"` |
+| `select`, `activate`, `expand`, `collapse`, `sort`, `columnresize` | virtual views ("Long lists"; `event.detail` / parameters say which item or column) |
+| `tooltipshow`, `tooltiphide` | an element whose tooltip shows or hides |
 | `animationstart`, `animationiteration`, `animationend`, `animationcancel`, `transitionrun`, `transitionstart`, `transitionend`, `transitioncancel` | CSS animations and transitions (`animationName`, `propertyName`, `elapsedTime` in seconds) |
 | `toggle`, `close`, `cancel`, `htmlnavigate` | `<details>`, `<dialog>`, links |
 | `play`, `pause`, `loop`, `complete`, `error`, `load` | `<lottie>` (they do not bubble) |
@@ -645,20 +647,40 @@ is logged with its traceback; the other listeners still run.
 ### Reloads, `onLoad` and lifetimes
 
 Documents load with their scene, so `init` can query elements, in the editor and in exported
-games (layout needs no GPU). Then:
+games (layout needs no GPU). A later change of the document reloads it in one of two ways:
 
-- **Hot reload** (a saved file, `doc:reload()`, a late `createDataModel`) keeps, for every
-  element with an `id`, its listeners (moved to the new element, also the document's own),
-  scroll position, form value and focus. Everything else comes from the file again: classes,
-  inline styles, attributes and elements a script (or `anime`) changed, and animations of the
-  replaced elements are cancelled. Listeners of elements without an id are dropped with one
-  warning. A stylesheet-only change restyles in place and keeps everything.
-- `doc.onLoad` runs after every later load and reload, `doc.onUnload` before every unload:
-  `RegisterEvent(self, doc.onLoad, "bind")` or `doc.onLoad = function() ... end`. Redo there
-  what a reload does not keep. A method that adds listeners from both `init` and `onLoad`
-  must pass the **same functions** each time (adding one twice is ignored), or moved
+- **Patch** (the default for `.html` documents; Preferences > HTML UI > Hot Reload, or
+  `doc:reload{mode = "patch"}`): the live document is reconciled with the new file. Elements
+  the edit did not touch are the same elements: Lua handles stay valid, every listener (with
+  or without an `id`), Lua state, scroll positions, form values, focus, running animations and
+  the nodes scripts added stay. An attribute, class, inline style or text takes the file's new
+  value only where the **file** changed it, so what a script changed live stays unless you edit
+  that same value. An element whose tag or data binding (`data-model`, `data-for`, `data-if`,
+  `{{ }}` text, ...) changed is replaced with its subtree, as are removed and added elements.
+  `<script type="text/lua">` blocks run again only when their text changed. `doc.onReload`
+  runs (with the report), **not** `onLoad`/`onUnload`.
+- **Rebuild** (`.rml` documents always; a patch that cannot apply: a changed `<body>` tag or
+  binding, a data model created after the load; `doc:reload{mode = "rebuild"}`; the Inspector's
+  *Reload (Rebuild)*): the document loads again. For every
+  element with an `id` it keeps its listeners (moved to the new element), scroll position,
+  form value and focus; the rest comes from the file again, animations of the replaced
+  elements are cancelled and listeners of elements without an id are dropped with one warning.
+  `onUnload` then `onLoad` fire.
+
+A stylesheet-only change restyles in place and keeps everything. Each reload logs one Console
+line, `[HTML UI] Patched ui/menu.html: 3 updated, 1 inserted, 0 removed, 0 replaced, 12
+runtime nodes kept (2.1 ms)` (click it for the full report), and `doc.lastReloadReport` holds
+it: `mode`, `kept`, `updated`, `inserted`, `removed`, `replaced`, `runtimeKept`,
+`scriptsRerun`, `fallbackReason` (why a patch became a rebuild), `ms`, `causes` (each replaced
+element and why). `inspect_ui {"reload": true}` reports it too.
+
+- `doc.onLoad` runs after every later load and rebuild, `doc.onUnload` before every unload,
+  `doc.onReload = function(report) ... end` after every patch:
+  `RegisterEvent(self, doc.onLoad, "bind")` or `doc.onLoad = function() ... end`. Redo in
+  `onLoad` what a rebuild does not keep. A method that adds listeners from both `init` and
+  `onLoad` must pass the **same functions** each time (adding one twice is ignored), or moved
   listeners run twice.
-- Element handles are weak: after a reload or removal, `el:isValid()` is false and other uses
+- Element handles are weak: after a rebuild or removal, `el:isValid()` is false and other uses
   raise `UIElement: element no longer exists`. Inside a listener use `event.currentTarget` or
   query again, not a handle captured before.
 - Elements from `createElement`, `removeChild` or `cloneNode` are **detached**: they live while
@@ -875,6 +897,150 @@ return HudUI
 - **From a test** (play mode), set values with `eval_lua`:
   `object('HUD', 'UIDocument'):getDataModel('hud').health = 25`; read them back with
   `inspect_ui {"models": true}`.
+
+## Widgets
+
+Engine elements and behaviours a browser leaves to JavaScript libraries: virtual lists, tooltips,
+drag and drop, Markdown.
+
+### Long lists (virtual views)
+
+`data-for` makes one element per item: fine for dozens, slow for thousands (more than 500
+reports `HTMLUI-HTML-0031`). A virtual view makes only the rows on screen, plus a few
+(`overscan`, default 4), and rebinds them as you scroll: a 10 000-row list scrolls in under a
+millisecond per frame.
+
+```html
+<div data-model="inv">
+  <list-view id="items" items="items" as="item, i" item-height="48" key="id" selection="multiple">
+    <template><div class="row" data-event-click="pick(i)">{{item.name}} <span>{{item.count}}</span></div></template>
+  </list-view>
+</div>
+```
+
+| Element | Lays out |
+|---|---|
+| `<list-view>` | one column of rows |
+| `<grid-view item-width="96" item-height="96" gap="8">` | as many columns as fit, recomputed on resize |
+| `<tree-view children-key="children" indent="16">` | the expanded nodes of a tree, flattened; the template also sees `depth`, `expanded`, `hasChildren`; an element with `tree-toggle` inside a row expands and collapses it |
+| `<table-view>` + `<table-column key="name" width="200" min-width="40" sortable resizable>Name</table-column>` | rows of cells under a sticky header; a column's `<template>` makes its cells (default `{{item.<key>}}`); dragging a header edge resizes (`columnresize`), a click on a sortable header fires `sort` `{key, direction}` and sets `sorted-asc`/`sorted-desc`: you sort the data |
+
+- **Give the view a height** (`height`, or a flex/grid parent that sets one) and an
+  `overflow` is not needed: the view scrolls. Without one it lays out 20 rows and reports
+  `HTMLUI-HTML-0029`.
+- `items="expr"` and `as="item, i"` (as `data-for`; `i` is 0-based) bind the rows to a data
+  model; the `<template>` is the row. `item-height="48"` (fixed, fastest) or `"auto"` with
+  `estimated-height="40"` (each row measured once; rows above the visible one that change height
+  do not move what you are looking at). `key="id"` names items for the selection (default: the
+  index).
+- `anchor="end"` (chat logs): while scrolled to the end, appended items keep the view at the end.
+- `selection="none|single|multiple"`: click, Shift+click, Ctrl+click; `select` fires. Each row
+  is a `div.htmlui-row` around a copy of your template; it gets `selected`, `odd`/`even` (not
+  `:nth-child`: rows are reused), `aria-selected`, and in a tree `expanded`, `has-children`
+  (style `.htmlui-row.selected .name`). Up/Down/PageUp/PageDown/Home/End move the active
+  row, Enter and double-click fire `activate`; the gamepad's d-pad does the same while focus is in
+  the view, and leaves it at an edge.
+- From Lua, `el.itemsView` (1-based indices): `setProvider{count, bind = function(row, i) end,
+  unbind, key, height, children = function(key) end (nil: the roots), hasChildren}` for data outside a model
+  (a tree asks `children` and `hasChildren` once per key: call `refresh()` after its structure changes), `setCount(n)`,
+  `refresh()`, `refreshItems{3, 7}`, `scrollToIndex(i, "start|center|end|nearest")`,
+  `getVisibleRange()`, `setSelection{...}` / `getSelection()`, `getSelectedKeys()`, `activeIndex`,
+  `activate(i)`, `getRow(i)`, `indexOf(el)`, `keyOf(i)`, `indexOfKey(key)`,
+  `expand/collapse/toggle(key)`, `isExpanded(key)`, `getNode(i)`, `getColumns()`,
+  `setColumnWidth(key, w)`, `sortBy(key, "asc|desc")`, `getState()`.
+- A row element is reused for another item as you scroll: keep state in the data, not in the
+  row (a class set from Lua on a row moves to whatever item it shows next); style with
+  `.selected` and data bindings. Rows are absolutely positioned inside the view: margins between
+  rows do nothing, use `gap` (grid) or padding inside the row.
+- MCP: `inspect_ui` reports each view's `widget` (kind, count, first..last, pool, selection),
+  `assert_ui`'s `{"type": "virtual_window", "max": 30}` and `{"type": "selected", ...}` check
+  it, and `edit_ui_view` drives it in play (`scroll_to`, `select`, `activate`, `expand`, `collapse`,
+  `sort`; 0-based indices).
+
+### Tooltips
+
+`title="..."` shows its text after 0.5 s of hover, 16 px below the pointer (above when there is
+no room), as in a browser. Moving to another element with a tooltip within 0.5 s shows the next
+one at once. Keyboard and gamepad focus show the focused element's tooltip too. A tooltip hides
+on leave, press, wheel, a key, a drag start and removal.
+
+- `tooltip="#tip"`: a rich tooltip, a copy of the element (or `<template>`) with that id;
+  `tooltip-delay="100ms"` per element.
+- Lua: `el:setTooltip("text" | element | function() return "Sell for " .. price end, {placement
+  = "top|bottom|left|right|auto", delay = 0.25, arrow = true, interactive = false})` (a function
+  runs on every show), `el:clearTooltip()`; `doc.tooltip` has `visible`, `source`, `element`,
+  `text`, `show(el)`, `hide()`, `configure{enabled = false, delay = 0.5, hopWindow = 0.5}`.
+- Style `div.htmlui-tooltip` (and `.htmlui-tooltip-arrow`; the side is a class,
+  `.htmlui-tooltip-top` ...): it is the document's own element, positioned by the engine on top of
+  everything. `tooltipshow` / `tooltiphide` fire on the source.
+- MCP: `inspect_ui` reports `tooltip`, `assert_ui {"kind": "tooltip", "text": "..."}`.
+
+### Drag and drop
+
+HTML5 drag and drop: `draggable="true"` sources, `event.dataTransfer`, `dropzone` targets.
+
+```html
+<div class="grid" data-model="inv">
+  <div class="slot" draggable="true" dropzone="item move" data-for="item, i : items"
+       data-event-dragstart="pick(i)" data-event-drop="drop(i)">{{item.name}}</div>
+</div>
+```
+
+```lua
+-- functions of the data model ("inv"); i is data-for's 0-based index
+local handlers = {
+    pick = function(event, i) event.dataTransfer:setData("item", { from = i + 1 }); event.dataTransfer.effectAllowed = "move" end,
+    drop = function(event, i) swap(event.dataTransfer:getData("item").from, i + 1) end,
+}
+```
+
+- Events, in order: `dragstart` and `drag` on the source; `dragenter`, `dragover` (on entry and on
+  every move, at most once per frame), `dragleave` on the elements under the pointer; `drop` on
+  a target that accepts; `dragend` on the source with the final `dataTransfer.dropEffect`
+  (`none` when cancelled or not accepted). `event:preventDefault()` in `dragstart` starts no
+  drag. **Changed:** `dragover` used to be RmlUi's (once, on entry: now `dragenter`); old
+  handlers on `dragover` now run on every move.
+- A target accepts when a `dragover` listener calls `event:preventDefault()`, or its nearest
+  `dropzone="item weapon [copy|move|link]"` lists one of the drag's types. Unlike a browser,
+  `getData` works in `dragenter`/`dragover`, so a target can accept by content.
+- `dataTransfer`: `setData(type, value)` (any Lua value, a table by reference), `getData(type)`,
+  `types`, `clearData(type?)`, `effectAllowed` (`none copy move link copyMove copyLink linkMove
+  all`), `dropEffect`, `setDragImage(el, x, y)` / `setDragImage(nil)`.
+- Feedback: the source gets `htmlui-drag-source`, the body `htmlui-dragging`, the target under
+  the pointer `htmlui-drop-allowed` or `htmlui-drop-denied`; the ghost (a copy of the source at
+  0.7 opacity) is `.htmlui-drag-ghost` (like every `htmlui-*` class, for CSS: `classList` does
+  not show them to scripts). Escape or the gamepad's B cancels. Within 32 px of a
+  scroll container's edge it scrolls, up to 600 px/s.
+- Touch: inside a scroll container (a virtual view's rows), a swipe scrolls and a press of
+  400 ms (moving at most 8 px) starts the drag; elsewhere a touch drags at once.
+- In a virtual view a row drag carries `getData("htmlui/row")` = `{view, index, key}`, and over
+  a view `event.dropIndex` / `event.dropPosition` (`before`, `after`, `on`) say where; the view
+  draws `.htmlui-drop-indicator`. A source row scrolled out of view does not end the drag.
+- Gamepad or scripted: `UIDrag.begin(el, {data = {item = ...}, effectAllowed = "move"})`,
+  `UIDrag.over(target)`, `UIDrag.drop(target)`, `UIDrag.cancel()`, `UIDrag.isActive()`: the same
+  events in the same order.
+- MCP: `send_input` drags with `to_target`; `inspect_ui` reports `drag` (source, target, types,
+  allowed).
+
+### Markdown
+
+```html
+<markdown>
+  ## Patch notes
+  - **Faster** loading, see <https://example.com/notes>
+</markdown>
+<markdown src="notes/journal.md"></markdown>
+<div data-model="chat"><div data-markdown="message.text"></div></div>
+```
+
+- The inline source is the text between the tags, as written (dedented); `src` follows the
+  `<img src>` path rules and reloads the document when the file changes. From Lua:
+  `el:setMarkdown(text)` (any element) and `UIDocument.markdownToHtml(text)`.
+- Supported: headings, paragraphs, emphasis, `code`, fenced code (`pre > code[data-lang]`; an
+  unclosed fence renders as code, so streamed text works), lists to any depth, quotes, rules,
+  tables, links and autolinks, images. The output is a `div.markdown-body` you can style.
+- HTML inside Markdown is shown as text, never run: text from players or servers is safe (an
+  inline source with markup notes `HTMLUI-HTML-0032`).
 
 ## Animation
 
@@ -1427,7 +1593,8 @@ play:
 |---|---|
 | a `.css`, linked or `@import`ed | restyled in place: elements, listeners, scroll and focus stay |
 | an image | redrawn with the new file; the document stays |
-| the `.html`, an SVG, a Lottie file, a font, a `<script src>` Lua file | the document reloads (keeping what "Reloads, `onLoad` and lifetimes" lists), its `<script type="text/lua">` runs again in play, `onUnload` then `onLoad` fire |
+| the `.html` | patched in place (or rebuilt, see "Reloads, `onLoad` and lifetimes"); a changed `<script type="text/lua">` runs again in play; `onReload` (patch) or `onUnload` then `onLoad` (rebuild) fire |
+| an SVG, a Lottie file, a font, a `<script src>` Lua file, a `<markdown src>` file | the document reloads; its scripts run again in play |
 | `assets/htmlui-imports/manifest.json` | documents using the imported URL restyle or reload |
 
 Files that did not exist yet count too (creating a missing stylesheet loads it), and a save in
@@ -1469,7 +1636,14 @@ Read-only, edit mode and play. Returns:
   `seeking`, `loop`, `muted`, `volume`, `playbackRate`, `readyState`, `networkState`,
   `videoWidth`/`videoHeight`, `frame` (the index on screen), `droppedFrames`, `decodeMs`,
   `memoryBytes`, `poster` (showing it), `error`, and with `controls` their rectangles
-  (`controls: {visible, bar, play, timeline, mute}`, for `send_input` clicks).
+  (`controls: {visible, bar, play, timeline, mute}`, for `send_input` clicks);
+- a virtual view's entry has `widget`: `kind`, `count`, `first`/`last` (the items shown,
+  0-based), `pool` and `pool_bound` (row elements), `overscan`, `lanes`, `selection`, `selected`,
+  `selected_keys`, `active`, `scrollTop`, `totalHeight`, `source` (`model:<name>` or `lua`),
+  `sort`; its text line reads `list[0..12 of 10000, pool 22]`;
+- `tooltip` (`{visible, source, text, rect, side}`) and `drag` (`{active, source, target, types,
+  allowed, effect, programmatic}`) of the document, and with `"reload": true` the last hot reload's
+  report (`mode`, the counts, `fallbackReason`, `ms`, `causes`).
 
 Use it to answer "why is this element there / this size / this colour" before editing CSS.
 
@@ -1481,7 +1655,9 @@ container amber). A failed check is not a tool error. Checks: `exists`, `count` 
 `min`, `max`), `visible` (`unobstructed`: nothing of another document covers it), `text_fits`
 (`single_line`, `allow_scroll`), `no_overlap` (`with`), `within_parent` (`container`),
 `within_viewport`, `contrast` (`min_ratio`, default WCAG AA; `background` where the page is
-transparent), `min_size` (`width`, `height`). Zero matches fail. `viewports` repeats the checks
+transparent), `min_size` (`width`, `height`), `virtual_window` (a view's rows within `max`,
+default its own bound), `tooltip` (the selector's tooltip is showing; `text`: it contains that),
+`selected` (a view's selection: `count`, `min`, `max`). Zero matches fail. `viewports` repeats the checks
 at other sizes. Typical sets:
 
 | Screen | Checks |
@@ -1492,6 +1668,16 @@ at other sizes. Typical sets:
 | Dialog, modal, pause | `visible` + `unobstructed` after opening it, `within_viewport`, `min_size` of its buttons |
 | Settings, forms | `text_fits` of labels, `within_parent` of rows, `min_size` of controls |
 | Toasts, lists | `no_overlap`, `within_viewport` with the most entries shown |
+
+### `edit_ui_view`
+
+In the `html_ui` tool group (`tool_groups {"enable": ["html_ui"]}` lists it; a call by name
+works either way). Drives a virtual view of a playing document (runtime only, not undoable): `{"selector": "#servers",
+"action": "scroll_to" | "select" | "activate" | "expand" | "collapse" | "sort", "index": 0-based
+| "key": "...", "column": "ping", "direction": "asc" | "desc", "align": "start" | "center" | "end"
+| "nearest"}`. `activate` and `sort` fire the view's events, so the script reacts as to a player;
+it returns the items shown and the selection. Hover with `send_input` (`target`, then
+`frames_after`) to show a tooltip; drag with `to_target` for drag and drop.
 
 ### UI screenshots
 
@@ -1545,7 +1731,8 @@ the image is: image.canvas_rect is the canvas rectangle it shows, in canvas px.
 | `line-clamp: 2` (the standard shorthand) | `display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden` | `HTMLUI-CSS-0002` |
 | `height: 100dvh`, `-webkit-fill-available` fixes for mobile browser bars | `100vh` is the canvas, exact | none |
 | hover-only affordances on touch | visible by default or on `:focus`/`:active`; `@media (hover: hover)` is false on touch devices | `HTMLUI-AT-0006` (info) |
-| `title="..."` tooltips | a tooltip element shown on `mouseover` | `HTMLUI-HTML-0004` (info) |
+| `data-for` over thousands of items | `<list-view>` / `<grid-view>` / `<table-view>` ("Long lists") | `HTMLUI-HTML-0031` (info) |
+| a JavaScript Markdown library | `<markdown>`, `data-markdown`, `el:setMarkdown` | none |
 | `<canvas>`, `<iframe>` | Lottie, images, another UI Document, a texture-mode document | `HTMLUI-HTML-0002` |
 | an MP4 / MOV / VP9 `<video>` | AV1 + Opus WebM (`import_files` converts it) | `HTMLUI-HTML-0027` |
 | `background: url(clip.webm)` | a `<video>` with `object-fit: cover` behind the content | `HTMLUI-CSS-0004` |
@@ -1554,9 +1741,20 @@ the image is: image.canvas_rect is the canvas rectangle it shows, in canvas px.
 | 0-based `data-for` index in Lua | `model.items[i + 1]` | none |
 | a white page by default | the page is transparent: set a background for full-screen menus | none |
 
+### Changes for existing documents (S17 widgets)
+
+- `dragover` follows HTML5: it fires on entry **and on every move** over the element (at most
+  once per frame). RmlUi's enter-once event is `dragenter` now; move a handler that should run
+  once there. `dragmove`, `dragout` and `dragdrop` are unchanged.
+- `title="..."` shows a tooltip (it was ignored with `HTMLUI-HTML-0004`). Turn tooltips off with
+  `doc.tooltip:configure{enabled = false}`.
+- Hot reloads of `.html` documents patch the live document: `onReload` runs instead of
+  `onUnload`/`onLoad`. Preferences > HTML UI > Hot Reload > Rebuild (or `doc:reload{mode =
+  "rebuild"}`) brings the old behaviour back.
+
 ## Examples
 
-Ten polished examples plus `blank`, each a standalone `.html` + `.css` + Lua script (and
+Thirteen polished examples plus `blank`, each a standalone `.html` + `.css` + Lua script (and
 `assets/`), compat-clean, tested at several viewports. Get them with
 `create_ui_document {"html": "assets/ui/<name>.html", "template": "<name>"}` (files renamed to
 your document: `<stem>.css`, `<stem>_assets/`, `scripts/<Stem>UI.lua`), read them in
@@ -1569,13 +1767,16 @@ your document: `<stem>.css`, `<stem>_assets/`, `scripts/<Stem>UI.lua`), read the
 | `main_menu` | title screen: animated gradient backdrop, icon buttons, keyboard navigation, a slide-in settings panel; flex, grid areas, transitions, keyframes, `backdrop-filter`, anime timeline + stagger, built-in Lucide icons (`data-lucide`), `:focus-visible` | count, visible, text_fits, no_overlap, within_viewport, contrast, min_size of `.menu-button` / `.menu` |
 | `pause_menu` | Escape toggles a blurred overlay (`backdrop-filter`) and `Engine.timeScale`; anime entrance | visible, text_fits, no_overlap, within_viewport, contrast, min_size |
 | `hud` | health and shield bars, score and timer, minimap, ammo, ability cooldowns, damage flash; data binding (`{{ }}`, `data-style-width`, `data-class-*`) | within_viewport, no_overlap, text_fits, contrast with background, visible |
-| `inventory` | a CSS grid of slots from `data-for`, drag and drop, a hover tooltip, equipment | count, no_overlap, within_parent, within_viewport, text_fits, visible |
+| `inventory` | a CSS grid of slots from `data-for`, HTML5 drag and drop (`draggable`, `dropzone`, `dataTransfer`, the ghost and drop classes), rich tooltips from `setTooltip`, equipment | count, no_overlap, within_parent, within_viewport, text_fits, visible |
 | `settings` | tabs, sliders, switches, selects, key bindings; two-way `data-value`/`data-checked` | visible, no_overlap, min_size, text_fits, within_parent, within_viewport |
 | `dialogue` | portrait, typewriter text, choices; `onUpdate` timing | text_fits, within_viewport, contrast, no_overlap, min_size |
 | `shop` | filter chips, cards with `data-for` + `data-if`, buy buttons disabled by `data-attr-disabled`, a quantity dialog, an animated gold counter | text_fits, no_overlap, within_parent, contrast, min_size, within_viewport |
 | `toasts` | toasts created from Lua (`createElement`, `appendChild`), enter and exit animations | within_viewport, no_overlap, text_fits, contrast |
 | `loading` | progress bar, Lottie spinner, rotating tips, "press any key" | visible, text_fits, within_viewport |
 | `video_menu` | a title screen over a looping `<video autoplay muted loop>` (`object-fit: cover`) under a gradient scrim; a toggle pauses the video from Lua, its label follows the `play`/`pause` events, an `error` leaves the gradient | count, visible, text_fits, no_overlap, within_viewport, contrast, min_size |
+| `server_browser` | 10 000 servers in a `<table-view>`: sort, resizable columns, region chips, keyboard and gamepad selection, row and header tooltips, a details panel | min_size, no_overlap, text_fits, virtual_window, visible, within_viewport |
+| `chat_log` | Markdown messages of any height in a `<list-view item-height="auto" anchor="end">`, a composer, teammates writing on game time | contrast, min_size, text_fits, virtual_window, visible, within_viewport |
+| `quest_log` | chapters and quests in a `<tree-view>` with keyboard and gamepad navigation, a `<markdown src>` journal | text_fits, virtual_window, visible, within_viewport |
 | `blank` | an empty page with a heading (the default template; no script) | visible |
 
 Each example's Lua class is `<Name>UI`, gets the document with
@@ -1817,7 +2018,7 @@ pixel: use them on panels, not full screen.
 ### Stateful effects (simulations)
 
 Effects of cost class `stateful` keep state from frame to frame: smoke and ink that the pointer
-stirs (`fluid-smoke`, `smoke-flow`, `smoke-fill`, `fog`, `ink-flow`, `fluid-cursor-trail`,
+stirs (`fluid`, `fluid-smoke`, `smoke-flow`, `smoke-fill`, `fog`, `ink-flow`, `fluid-cursor-trail`,
 `chroma-flow`), particles and flocks (`boids`, `particles`, `particle-flow`, `magnetic-filings`,
 `particle-field`), pattern growth (`reaction-diffusion`) and feedback on the content
 (`time-trail`, `data-mosh`, `pixel-sort`, `pixel-throw`, `shatter`). They are used like any other
@@ -1832,7 +2033,23 @@ effect:
 .loading { background-image: effect(reaction-diffusion, preset coral); }
 /* whatever moves in the panel leaves a ghost trail */
 .feed { filter: effect(time-trail, trail-length 0.8s); }
+/* Pavel Dobryakov's WebGL fluid: drag to paint glowing dye (transparent: the background shows) */
+.splash { background: #000; background-image: effect(fluid, preset calm-water, splat-radius 0.4); }
 ```
+
+- **`fluid`** is Pavel Dobryakov's WebGL-Fluid-Simulation with his parameters and defaults
+  (`density-dissipation`, `velocity-dissipation`, `pressure`, `pressure-iterations`, `curl`,
+  `splat-radius`, `splat-force`, `shading`, `colorful`, `color-speed`, `bloom*`, `sunrays*`) on the
+  same kernels as the native Fluid Simulation component (`jasper://docs/fluid`). It starts with a
+  seeded burst (`splats-on-start`, `splat-count`, `seed`), paints while the pointer drags over it
+  (`hover on`: on any movement), and is transparent where there is no dye (alpha = brightness):
+  the element's `background` is Pavel's background colour. `preset` (`mobile`, `smoke`, `ink`,
+  `calm-water`, `psychedelic`: the native presets) gives every parameter you do not write the
+  preset's value; a parameter you write keeps yours, even at its default (`preset ink, bloom on`
+  has bloom), as on the native component. Write `preset` literally (a `var()` preset is not
+  expanded). Its grids keep Pavel's sizes whatever the element's: 128 cells on the short side for the
+  velocity, the element's px for the dye (at most 1024), 256 for the bloom; `bloom off` and
+  `sunrays off` skip their passes (`preset mobile` turns both off with the shading).
 
 - **Each element has its own simulation**, kept in GPU images (`inspect_ui` and `getEffects`
   report their size). It starts when the element is first drawn and steps at a fixed 60 Hz,
@@ -1937,10 +2154,17 @@ vec4 jfx_paint(JfxContext c){
   `effects/lib/jfx_hash.glsl`, `effects/lib/jfx_sdf.glsl` (shapes), `effects/lib/jfx_geom.glsl`,
   `effects/lib/jfx_blend.glsl`, `effects/lib/jfx_tone.glsl`.
 - **Stateful effects** declare their images and passes in the manifest (`@cost stateful`):
-  `// @state <name> rgba8|rgba16f|rgba32f|r32f <w>x<h>|box[*scale] [max <px>] [linear|nearest]`,
-  `// @init <pass> <state>` (run once at the start), `// @step <pass> <state> [x<count>]
-  [add] [scatter <placement>]` (each step, in order), optional `@warmup <steps> <dt>`,
-  `@rate <hz> max <substeps>`, `@replay <s>` and `@reseed <param>`. Declare each image with
+  `// @state <name> rgba8|rgba16f|rg16f|r16f|rgba32f|r32f <w>x<h>|box[*scale] [max <px>]|aspect <short> [max <px>] [linear|nearest]`
+  (`rg16f`/`r16f`: half-float two- and one-channel fields, sampled as (r, g, 0, 1) and (r, 0, 0, 1);
+  the 32-bit formats must be `nearest`; `aspect 128`: the element's aspect with a 128-texel short
+  side at any size, square cells),
+  `// @init <pass> <state>` (run once at the start), `// @step <pass> <state> [x<count>|x<param>]
+  [add] [scatter <placement>] [if <param>]` (each step, in order; `if`: only while that boolean or
+  number parameter is not 0), `// @frame <pass> <state> ...` (same options: once a drawn frame
+  after the steps, when they changed the state: a bloom chain or light shafts only the draw
+  reads), optional `@warmup <steps> <dt>`, `@rate <hz> max <substeps>`, `@replay <s>`,
+  `@reseed <param>` and `@preset <option> <param> <value>, ...` (the options of an enum parameter
+  named `preset`; the values its parameters left at their defaults take, as `fluid`'s). Declare each image with
   `JFX_STATE(<name>)` (from `effects/lib/jfx_state.glsl`: `<name>_fetch(ivec2)`,
   `<name>_sample(uv)`, `<name>_size()`), define `vec4 jfx_step(JfxStep s)` (it writes texel
   `s.cell` of pass `s.pass`, compared with `JFX_PASS_<NAME>`, inside `#ifdef JFX_STEP_FORM`),
@@ -1962,13 +2186,28 @@ vec4 jfx_paint(JfxContext c){
 - **What an element draws**: `inspect_ui` lists each element's effects under `effects` (the
   property, the layer index, the form and every parameter's value as the engine reads it,
   universal ones included; a stateful effect adds `state`: its images' bytes, its steps, its
-  simulation time and whether it is paused) and marks them `fx:<name>` in the outline. `inspect_ui {file}` and
+  simulation time, whether it is paused, its image count, the pinned-clock replays run (`replaying`
+  while one spans frames), the splats queued or logged and the scripted path's samples) and marks
+  them `fx:<name>` in the outline. `inspect_ui {file}` and
   `jasperengine-editor check --ui` report the codes of "Effect diagnostics" with `line:col`.
 - **Stable images**: effects animate with time, so two screenshots differ. `set_ui_effect_time
   {time: 1.5}` pins the effect clock in the edit and play views (renders are then identical, the
   pointer aside; a stateful effect's state is recomputed for the pinned time); `{time: null}`
   makes it live again. In play, `eval_lua` drives a simulation with `el:effectSplat{...}`. Scripts do the same with
   `UIDocument.setEffectTime(1.5)` and `UIDocument.setEffectTime(nil)`.
+- **Scripted input, exactly replayed** (stateful effects, edit or play, no Lua): with a pinned
+  `time`, `set_ui_effect_time {time: 1, selector: ".canvas", pointer_path: [[40, 120, 0.2],
+  [200, 140, 0.5], [360, 90, 0.8]]}` drags the pointer along the path (x, y in the element's CSS
+  px, t in effect seconds: down from the first point's time to the last's) in every replay of the
+  element's simulations, and `splats: [{x, y, dx, dy, radius, color, strength, t}]` (the area's
+  px, px/s; `t` defaults to the pinned time) are applied at the step their time falls in (at most
+  8 in one step: more are refused; a splat later than the pinned time waits until the time
+  reaches it). Both stay until replaced (`[]` clears them; new splats replace the earlier ones),
+  so the same call twice gives the same screenshot, and other times show the same input's
+  evolution (`entity` names the document). The replay reaches back to the earliest scripted input
+  (at most 30 s before the pinned time; older input is reported and ignored). Velocities are
+  clamped to 100000 px/s, strengths to 100. A simulation starts at its element's first draw: take
+  a screenshot first if the call says there is none.
 - **Project effects**: `write_file` on an effect's `.frag` compiles it in each of its forms and
   returns the errors at their `.frag` line (`HTMLUI-FX-0015`; a manifest error is
   `HTMLUI-FX-0014` at its line). An edit on disk comes back the same way in `external_changes`,

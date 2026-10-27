@@ -69,7 +69,7 @@ namespace jasperengine::editor {
 
         struct EntityValue {
             reflect::Value oldValue;      // the field (or the whole array) before
-            uint32_t oldOverrideFields = 0;
+            uint64_t oldOverrideFields = 0;
             bool applied = false;         // the GameObject had the field when it ran
             bool changed = false;
         };

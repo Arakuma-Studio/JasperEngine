@@ -410,6 +410,10 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::RotateTracksComponent: return &InspectorWindow::drawRotateTracksComponent;
         case ComponentType::ScaleTracksComponent: return &InspectorWindow::drawScaleTracksComponent;
         case ComponentType::MorphTracksComponent: return &InspectorWindow::drawMorphTracksComponent;
+        case ComponentType::LatticeComponent: return &InspectorWindow::drawLatticeComponent;
+        case ComponentType::LatticeModifierComponent: return &InspectorWindow::drawLatticeModifierComponent;
+        case ComponentType::LatticeFollowerComponent: return &InspectorWindow::drawLatticeFollowerComponent;
+        case ComponentType::LatticeTracksComponent: return &InspectorWindow::drawLatticeTracksComponent;
         default: return nullptr;
     }
 }

@@ -11,6 +11,7 @@
 #include "Stream.h"
 #include "command/type/DeleteEntityCmd.h"
 #include "util/ProjectUtils.h"
+#include "util/CameraTextureLink.h"
 
 #include <algorithm>
 #include <functional>
@@ -1321,8 +1322,15 @@ editor::NodeRecovery editor::Project::removeRegistryEntityFromPrefab(const std::
                 }
                 // DeleteEntityCmd captures ownership dependencies explicitly in the source
                 // scene. Other instance overrides must not broaden that shared deletion.
+                // textures elsewhere in that scene may show a camera or a fluid going with them
+                const bool hadLinkSource = std::any_of(allEntities.begin(), allEntities.end(), [&](Entity entity) {
+                    return CameraTextureLink::isLinkSource(otherScene->scene, entity);
+                });
                 DeleteEntityCmd::destroyEntities(otherScene->scene, allEntities,
                     otherScene->entities, this, otherSceneId);
+                if (hadLinkSource) {
+                    CameraTextureLink::resolve(otherScene->scene);
+                }
             }
 
             // A destroy above can cascade inside the engine and take other members of this

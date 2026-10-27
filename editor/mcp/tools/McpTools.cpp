@@ -36,10 +36,14 @@ const ToolModule TOOL_MODULES[] = {
     {registerConsoleTools, "Console", ""},
     {registerScriptTools, "Scripts", ""},
     {registerAssetTools, "Assets, materials and shaders", ""},
+    {registerSynthesisTools, "Texture synthesis", "assets_pipeline"},   // upstream (texture synthesis)
+    {registerMaterialsLightingTools, "Assets, materials and shaders", "rendering_fx"},   // S11
     {registerAssetIdentityTools, "Asset identity: GUIDs, references, missing assets", "assets_pipeline"},   // S04
     {registerDocsTools, "Docs", ""},
     {registerBuildTools, "Build and export", ""},
     {registerWorldTools, "World: terrain, tilemaps, sprites, animation, particles, physics, UI, models", ""},
+    {registerLatticeTools, "Lattices (free-form deformation)", "animation"},   // upstream (lattice deformer)
+    {registerPlacementTools, "Physics placement", "editor_ux"},   // upstream (Physics Placement)
     {registerHtmlUiTools, "HTML/CSS UI", ""},
     {registerUiEffectTools, "HTML/CSS UI", ""},
     {registerEcsTools, "ECS: statistics, system schedule and queries", "diagnostics"},   // S07
@@ -47,6 +51,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerProfilerTools, "Profiling and render diagnostics", "profiling"},   // S15
     {registerScriptingTools, "Scripting: hot reload, script status, editor menus, expressions", "scripting"},   // S23
     {registerGraphTools, "Graphs", "scripting"},   // S23
+    {registerOrganisationTools, "Search, shortcuts, layouts, labels, saved searches and bookmarks", "organisation"},   // S25
 };
 
 // JASPER_MCP_SELFTEST_GROUP: one tool in the test-only group "selftest", for the tests of

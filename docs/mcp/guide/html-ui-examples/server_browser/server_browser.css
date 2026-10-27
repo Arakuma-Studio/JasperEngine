@@ -1,0 +1,277 @@
+/* Server browser. Design tokens first: change the look here. */
+:root {
+  --accent: #38bdf8;
+  --accent-2: #0284c7;
+  --good: #4ade80;
+  --bad: #f87171;
+  --text: #e6f3fb;
+  --muted: rgba(214, 233, 245, 0.62);
+  --window: rgba(9, 18, 28, 0.95);
+  --row: rgba(255, 255, 255, 0.025);
+  --line: rgba(56, 189, 248, 0.2);
+  --radius: 16px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: system-ui, sans-serif;
+  color: var(--text);
+}
+
+.page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  background: radial-gradient(100% 80% at 50% 0%, rgba(2, 132, 199, 0.22), rgba(2, 6, 10, 0.75) 75%);
+}
+
+.browser {
+  width: min(1100px, 100%);
+  height: min(640px, calc(100vh - 2.5rem));
+  display: flex;
+  flex-direction: column;
+  background: var(--window);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+/* ---- Header ---- */
+.titlebar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.9rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.titlebar h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.2rem;
+}
+
+.titlebar h2 svg {
+  width: 20px;
+  height: 20px;
+  color: var(--accent);
+}
+
+.chips {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.chip {
+  padding: 0.3rem 0.8rem;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.85rem;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.chip:hover,
+.chip:focus-visible {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.chip.active {
+  color: #04121c;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.count {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.refresh {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.refresh svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ---- The table: a definite height lets it scroll its rows ---- */
+.content {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 260px;
+}
+
+.servers {
+  height: 100%;
+  font-size: 0.9rem;
+}
+
+.servers .htmlui-table-header {
+  background: #0d1b28;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.servers .htmlui-header-cell {
+  padding: 0.55rem 0.75rem;
+}
+
+.servers .htmlui-header-cell.sorted-asc,
+.servers .htmlui-header-cell.sorted-desc {
+  color: var(--accent);
+}
+
+.servers .htmlui-column-resizer:hover {
+  background: var(--line);
+}
+
+.servers .htmlui-row {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+}
+
+.servers .htmlui-row.odd {
+  background: var(--row);
+}
+
+.servers .htmlui-row:hover {
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.servers .htmlui-row.selected {
+  background: rgba(56, 189, 248, 0.22);
+}
+
+.servers .htmlui-row:focus-visible {
+  outline: 1px solid var(--accent);
+}
+
+.servers .htmlui-cell {
+  padding: 0.45rem 0.75rem;
+  overflow: hidden;
+}
+
+.players.full {
+  color: var(--bad);
+}
+
+.ping.good {
+  color: var(--good);
+}
+
+.ping.bad {
+  color: var(--bad);
+}
+
+/* the rich tooltip of the Ping header */
+.htmlui-tooltip {
+  max-width: 260px;
+  padding: 0.6rem 0.75rem;
+  background: #0d1b28;
+  border-color: var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  white-space: normal;
+}
+
+.tip-title {
+  font-weight: 700;
+}
+
+.tip-text {
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+/* ---- Details ---- */
+.details {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem;
+  border-left: 1px solid var(--line);
+}
+
+.details.empty {
+  justify-content: center;
+}
+
+.detail-name {
+  font-size: 1.05rem;
+}
+
+.facts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.facts div {
+  display: flex;
+  justify-content: space-between;
+}
+
+.facts dt {
+  color: var(--muted);
+}
+
+.join {
+  margin-top: auto;
+  padding: 0.7rem;
+  color: #04121c;
+  font: inherit;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.join:focus-visible {
+  outline: 2px solid var(--text);
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+/* Narrow screens: no details column */
+@media (max-width: 900px) {
+  .content {
+    grid-template-columns: 1fr;
+  }
+
+  .details {
+    display: none;
+  }
+}

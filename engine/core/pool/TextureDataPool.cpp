@@ -7,6 +7,7 @@
 #include "Log.h"
 #include "io/FileData.h"
 #include "thread/ResourceProgress.h"
+#include "render/SystemRender.h"
 #include "io/AssetIOService.h"
 
 #include <atomic>
@@ -16,6 +17,7 @@
 using namespace jasperengine;
 
 std::unordered_map<std::string, TextureDataPool::PendingTexture> TextureDataPool::pendingBuilds;
+std::unordered_map<std::string, std::function<TextureData()>> TextureDataPool::generators;
 std::mutex TextureDataPool::cacheMutex;
 std::atomic<bool> TextureDataPool::shutdownRequested{false};
 std::atomic<uint32_t> TextureDataPool::replaceEpoch{0};
@@ -82,6 +84,23 @@ std::vector<std::string> TextureDataPool::findIdsUsingFile(const std::string& sy
 
 std::array<TextureData,6> TextureDataPool::decode(const std::string& id, const TextureSource& source){
     return loadTextureInternal(id, source.paths, source.numFaces, source.fixAlphaBorder, false);
+}
+
+std::shared_ptr<std::array<TextureData,6>> TextureDataPool::shareDecoded(std::array<TextureData,6> data){
+    // The faces (one pixel allocation each, see loadCubeMapFromSingleFile) go through the render
+    // queue's cleanup like the release after an upload: queued after it, they are released (a
+    // no-op when that release ran) and deleted once an upload queued from a loading thread and
+    // its own release have run; on the main thread at once
+    return std::shared_ptr<std::array<TextureData,6>>(new std::array<TextureData,6>(std::move(data)),
+        [](std::array<TextureData,6>* faces){
+            SystemRender::scheduleCleanup([](void* pointer){
+                auto* decoded = static_cast<std::array<TextureData,6>*>(pointer);
+                for (TextureData& face : *decoded){
+                    face.releaseImageData();
+                }
+                delete decoded;
+            }, faces);
+        });
 }
 
 bool TextureDataPool::hasTexturePixels(const std::shared_ptr<std::array<TextureData,6>>& data, size_t numFaces) {
@@ -185,7 +204,7 @@ TextureLoadResult TextureDataPool::loadFromFile(const std::string& id, const std
                 return result;
             }
             try {
-                shared = std::make_shared<std::array<TextureData,6>>(task.get());
+                shared = shareDecoded(task.get());
                 pendingBuilds.erase(it);
 
                 result.state = ResourceLoadState::Finished;
@@ -204,8 +223,7 @@ TextureLoadResult TextureDataPool::loadFromFile(const std::string& id, const std
 
     } else {
         try {
-            std::array<TextureData,6> data = loadTextureInternal(id, paths, numFaces, fixAlphaBorder, false);
-            shared = std::make_shared<std::array<TextureData,6>>(data);
+            shared = shareDecoded(loadTextureInternal(id, paths, numFaces, fixAlphaBorder, false));
 
             result.state = ResourceLoadState::Finished;
             result.data = shared;
@@ -236,6 +254,70 @@ void TextureDataPool::prepareFace(TextureData& face, size_t numFaces, bool fixAl
     if (numFaces == 6) {
         face.resizeToSquare();
     }
+}
+
+void TextureDataPool::setGenerator(const std::string& id, std::function<TextureData()> generator) {
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    generators[id] = std::move(generator);
+}
+
+TextureLoadResult TextureDataPool::loadGenerated(const std::string& id) {
+    TextureLoadResult result;
+    result.id = id;
+
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    auto generator = generators.find(id);
+    if (generator == generators.end())
+        return result;
+
+    auto& shared = getMap()[id];
+    if (shared.use_count() > 0 && hasTexturePixels(shared, 1)) {
+        result.state = ResourceLoadState::Finished;
+        result.data = shared;
+        return result;
+    }
+    if (shutdownRequested.load()) {
+        result.state = ResourceLoadState::Failed;
+        result.errorMessage = "Shutdown requested";
+        return result;
+    }
+
+    auto pending = pendingBuilds.find(id);
+    if (pending == pendingBuilds.end()) {
+        PendingTexture build;
+        std::function<TextureData()> make = generator->second;
+        build.task = jobs::submit([make]() -> std::array<TextureData, 6> {
+            std::array<TextureData, 6> faces;
+            faces[0] = make();
+            return faces;
+        }, {jobs::Lane::Background, jobs::GateClass::Heavy, "texture-generate", jobs::Tag::Asset});
+        pendingBuilds[id] = std::move(build);
+        result.state = ResourceLoadState::Loading;
+        return result;
+    }
+    if (!pending->second.task.isReady()) {
+        result.state = ResourceLoadState::Loading;
+        return result;
+    }
+    try {
+        std::array<TextureData, 6> faces = pending->second.task.get();
+        pendingBuilds.erase(pending);
+        if (!faces[0].getData() || faces[0].getSize() == 0) {
+            result.state = ResourceLoadState::Failed;
+            result.errorMessage = "No pixels were made for " + id;
+            return result;
+        }
+        shared = std::make_shared<std::array<TextureData, 6>>(faces);
+        // the pool's copy owns the pixels the generator handed over
+        shared->at(0).setDataOwned(true);
+        result.state = ResourceLoadState::Finished;
+        result.data = shared;
+    } catch (const std::exception& e) {
+        pendingBuilds.erase(pending);
+        result.state = ResourceLoadState::Failed;
+        result.errorMessage = e.what();
+    }
+    return result;
 }
 
 TextureDataPool::PendingTexture TextureDataPool::startAsyncLoad(const std::string& id, const std::array<std::string, 6>& paths, size_t numFaces, bool fixAlphaBorder) {
@@ -556,6 +638,8 @@ void TextureDataPool::remove(const std::string& id){
     if (it != map.end()){
         if (!it->second || it->second.use_count() <= 1){
             map.erase(it);
+            std::lock_guard<std::mutex> lock(cacheMutex);
+            generators.erase(id);
         }
 	}else if (!removedPending){
 		if (Engine::isViewLoaded()){
@@ -564,10 +648,28 @@ void TextureDataPool::remove(const std::string& id){
 	}
 }
 
+void TextureDataPool::invalidate(const std::string& id){
+    {
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        auto pendingIt = pendingBuilds.find(id);
+        if (pendingIt != pendingBuilds.end()) {
+            // as remove(): a load not started never runs, a running one is waited for
+            pendingIt->second.cancel.cancel();
+            if (pendingIt->second.task.cancel()) {
+                ResourceProgress::failBuild(std::hash<std::string>{}(id));
+            }
+            pendingIt->second.task.wait();
+            pendingBuilds.erase(pendingIt);
+        }
+    }
+    getMap().erase(id);
+}
+
 void TextureDataPool::clear(){
     {
 		std::lock_guard<std::mutex> lock(cacheMutex);
 		quiescePending(false);
+		generators.clear();
 	}
 	getMap().clear();
 }

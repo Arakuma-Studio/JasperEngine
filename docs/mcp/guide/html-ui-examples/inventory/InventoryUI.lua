@@ -1,6 +1,7 @@
 -- Inventory logic: attach to the GameObject that has the UI Document (inventory.html).
 -- The grid shows the "inventory" data model's 24 entries. Drag a slot onto another to swap
--- them, hover a filled slot for its tooltip, close with the X; I shows and hides the window.
+-- them (the drag carries its slot in event.dataTransfer: no drag state here), hover or focus a
+-- filled slot for its tooltip, close with the X; I shows and hides the window.
 -- A click (or the gamepad's A) on a filled slot picks its item up and one on another slot puts
 -- it down there; Escape (B) cancels that, or closes the window. The gamepad's View button shows
 -- and hides it; the d-pad moves between the slots (they have tabindex="0").
@@ -56,7 +57,6 @@ end
 
 function InventoryUI:init()
     self.doc = UIDocument(self.scene, self.entity)
-    self.dragFrom = nil
 
     local items = {}
     for i = 1, SLOTS do items[i] = entry(START[i]) end
@@ -69,11 +69,18 @@ function InventoryUI:init()
         maxWeight = 60,
         items = items,
         picked = 0,   -- 1-based slot of the item picked up with a click or A, 0 = none
-        hover = function(event, i) self:showTooltip(event.currentTarget, i + 1) end,
         select = function(event, i) self:select(i + 1) end,
-        unhover = function() self:hideTooltip() end,
-        pick = function(event, i) self.dragFrom = i + 1 end,
-        drop = function(event, i) self:swap(self.dragFrom, i + 1) end,
+        -- dragstart: the slot goes with the drag (an empty one does not drag)
+        pick = function(event, i)
+            if self.model.items[i + 1].id == "" then
+                event:preventDefault()
+                return
+            end
+            event.dataTransfer:setData("item", { from = i + 1 })
+            event.dataTransfer.effectAllowed = "move"
+        end,
+        -- drop, on a slot (dropzone="item move" takes a drag carrying an "item")
+        drop = function(event, i) self:swap(event.dataTransfer:getData("item").from, i + 1) end,
     })
     self:updateWeight()
 
@@ -90,6 +97,10 @@ end
 function InventoryUI:onDocumentLoad()
     byId(self.doc, "close"):addEventListener("click", self.onClose)
     self.doc:addEventListener("keydown", self.onKey)
+    -- each slot's tooltip: the card filled for its item when it shows (nothing for an empty slot)
+    for index, slot in ipairs(self.doc:querySelectorAll(".grid > .slot")) do
+        slot:setTooltip(function() return self:tooltipFor(index) end, { placement = "right", delay = 0.25 })
+    end
 end
 
 ---@param event UIEvent
@@ -137,13 +148,12 @@ end
 ---@param from integer|nil 1-based slot
 ---@param to integer 1-based slot
 function InventoryUI:swap(from, to)
-    self.dragFrom = nil
     local items = self.model.items
     if not from or from == to or items[from].id == "" then return end
     local moved, other = entry(items[from]), entry(items[to])
     items[from] = other   -- assigning through the proxy updates the slots
     items[to] = moved
-    self:hideTooltip()
+    self.doc.tooltip:hide()
 end
 
 function InventoryUI:updateWeight()
@@ -155,34 +165,20 @@ function InventoryUI:updateWeight()
     self.model.weight = total
 end
 
----@param slot UIElement
+-- The card of a slot's item (the engine shows a copy next to the slot: on its right, flipped to
+-- its left at the window's edge); nil for an empty slot
 ---@param index integer 1-based
-function InventoryUI:showTooltip(slot, index)
+---@return UIElement|nil
+function InventoryUI:tooltipFor(index)
     local item = self.model.items[index]
-    if item.id == "" then
-        self:hideTooltip()
-        return
-    end
-    local tooltip = byId(self.doc, "tooltip")
+    if item.id == "" then return nil end
+    local card = byId(self.doc, "tooltip")
     byId(self.doc, "tooltip-title").textContent = item.name
     byId(self.doc, "tooltip-rarity").textContent = RARITY[item.rarity] or ""
     byId(self.doc, "tooltip-desc").textContent = item.desc
-    tooltip.classList:remove("rare", "epic")
-    if item.rarity ~= "common" then tooltip.classList:add(item.rarity) end
-
-    -- next to the slot, on its left when there is no room on its right
-    local rect = slot:getBoundingClientRect()
-    local x = rect.right + 12
-    if x + tooltip.offsetWidth > self.doc.body.clientWidth then
-        x = rect.left - 12 - tooltip.offsetWidth
-    end
-    tooltip.style.left = string.format("%dpx", math.floor(x))
-    tooltip.style.top = string.format("%dpx", math.floor(rect.top))
-    tooltip.classList:add("show")
-end
-
-function InventoryUI:hideTooltip()
-    byId(self.doc, "tooltip").classList:remove("show")
+    card.classList:remove("rare", "epic")
+    if item.rarity ~= "common" then card.classList:add(item.rarity) end
+    return card
 end
 
 return InventoryUI

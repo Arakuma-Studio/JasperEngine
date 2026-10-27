@@ -24,7 +24,7 @@
 //   does not have. lavapipe records and validates every command on the thread too, and that share
 //   depends on the machine (its CPU and caches) differently from B's: gating Vulkan's full frame
 //   passed on one host and failed on another (p6-stateful-fx). Both measures are printed.
-// - Cost table: every built-in effect (the 101 of the catalogue, one row each) fills 1024 x 1024,
+// - Cost table: every built-in effect (the 102 of the catalogue, one row each) fills 1024 x 1024,
 //   rendered and read back through the golden harness (its pointer and trail inputs), against a
 //   background-color fill of the same size measured with it: rounds of 8 captures of the fill
 //   then 8 of the effect, the least of at least 3 rounds for both (the process's CPU time: the GL
@@ -40,9 +40,12 @@
 //   them, and the engine's own work is within kStatefulFrameBudget of document B's.
 //
 // The timings are gated like the compat performance tests (PerfFixtures.h): the least of up to 5
-// measurements is compared, since a loaded host only ever adds time to one.
+// measurements is compared, since a loaded host only ever adds time to one, and the budgets are
+// scaled by JASPER_HTMLUI_PERF_SLACK (3 on the shared builders and CI; unset, 1, on the benchmark
+// server).
 
 #include "EffectTestCommon.h"
+#include "../compat/PerfFixtures.h"
 
 #include "htmlui/HtmlUIClock.h"
 #include "htmlui/compat/runtime/RuntimeRegistry.h"
@@ -389,9 +392,13 @@ namespace {
     // (measured x1.43 boids, 0.97 chroma-flow, 1.58 data-mosh, 2.57 fluid-cursor-trail, 2.57
     // fluid-smoke, 2.47 fog, 2.68 ink-flow, 1.33 magnetic-filings, 2.16 particle-field, 3.38
     // particle-flow, 1.44 particles, 2.09 pixel-sort, 1.65 pixel-throw, 1.85 reaction-diffusion,
-    // 1.82 shatter, 2.62 smoke-fill, 2.72 smoke-flow, 2.13 time-trail)
+    // 1.82 shatter, 2.62 smoke-fill, 2.72 smoke-flow, 2.13 time-trail; fluid x3.85 (Pavel's 128-grid
+    // solver with 20 Jacobi passes, a 512 x 512 dye, 8-level bloom and sunrays: 50 passes a frame),
+    // but x6.4-6.5 on a 4-vCPU host (x7.9 with a fast fill run) where the others measure as here:
+    // its many small passes gain less from llvmpipe's threads than the fill, so its budget is the
+    // small host's x 1.5)
     const std::map<std::string, double> kStatefulBudgets = {
-        {"boids", 2.2}, {"chroma-flow", 1.5}, {"data-mosh", 2.4}, {"fluid-cursor-trail", 3.9}, {"fluid-smoke", 3.9},
+        {"boids", 2.2}, {"chroma-flow", 1.5}, {"data-mosh", 2.4}, {"fluid", 9.8}, {"fluid-cursor-trail", 3.9}, {"fluid-smoke", 3.9},
         {"fog", 3.8}, {"ink-flow", 4.1}, {"magnetic-filings", 2.0}, {"particle-field", 3.3}, {"particle-flow", 5.1},
         {"particles", 2.2}, {"pixel-sort", 3.2}, {"pixel-throw", 2.5}, {"reaction-diffusion", 2.8}, {"shatter", 2.8},
         {"smoke-fill", 4.0}, {"smoke-flow", 4.1}, {"time-trail", 3.2},
@@ -528,8 +535,9 @@ TEST(EffectPerfTest, GridSteadyStateAndBudgets){
     const Least c = gated("C", 0.0, [&](int){ return measure(grid); }, {});
 
     ASSERT_TRUE(grid.load(gridDocument(true, false))) << "document A";
-    const double budgetA = 1.5 * b.gate(gateEngine) + 1.0;
-    const double budgetA2 = 3.0 * b.gate(gateEngine) + 4.0;
+    const double slack = jasperengine::test::compat::perfSlack();
+    const double budgetA = (1.5 * b.gate(gateEngine) + 1.0) * slack;
+    const double budgetA2 = (3.0 * b.gate(gateEngine) + 4.0) * slack;
     const Least a = gated("A", budgetA, [&](int){ return measure(grid); }, [](const PerfRun& run){
         EXPECT_EQ(run.delta.instancesCreated, 0u) << "no effect instance is created in the steady state";
         EXPECT_EQ(run.delta.compileCalls, 0u) << "no variant is compiled in the steady state";
@@ -628,7 +636,7 @@ TEST(EffectPerfTest, StatefulSteadyState){
     ASSERT_TRUE(grid.load(gridDocument(false, false))) << "document B";
     const double b = least("B", 0.0, {});
     ASSERT_TRUE(grid.load(statefulDocument())) << "the stateful document";
-    const double budget = b + kStatefulFrameBudget;
+    const double budget = (b + kStatefulFrameBudget) * jasperengine::test::compat::perfSlack();
     const double s = least("S (six stateful effects)", budget, [&](const PerfRun& run){
         // a step a frame (the clock moves 1/60 s a frame): every pass of every effect, nothing created
         EXPECT_EQ(run.delta.instancesCreated, 0u) << "no effect instance is created in the steady state";
@@ -668,7 +676,13 @@ TEST(EffectPerfTest, CostTable){
     const std::vector<const EffectManifest*> catalogue = EffectRegistry::get().builtins();
     std::vector<std::string> measured;
     double highestLow = 0.0, highestMedium = 0.0;
+    // JASPER_EFFECT_COST_ONLY=<name>[,<name>...]: only those rows (measuring one effect's budget;
+    // the table is not written and the catalogue is not counted)
+    const char* onlyText = std::getenv("JASPER_EFFECT_COST_ONLY");
+    const std::string only = onlyText ? "," + std::string(onlyText) + "," : std::string();
     for (const EffectManifest* m : catalogue){
+        if (!only.empty() && only.find("," + m->name + ",") == std::string::npos)
+            continue;
         if (!warmUpEffect(*m)){
             ADD_FAILURE() << m->name << ": its variants do not compile";
             continue;
@@ -721,8 +735,10 @@ TEST(EffectPerfTest, CostTable){
     }
     std::printf("[ effects  ] %zu of the %zu effects of the catalogue measured; the highest low x%.2f, medium x%.2f\n", measured.size(),
                 catalogue.size(), highestLow, highestMedium);
+    if (!only.empty())
+        return;
     EXPECT_EQ(measured.size(), catalogue.size()) << "every effect of the catalogue is in the table";
-    EXPECT_EQ(catalogue.size(), 101u) << "the catalogue has 101 effects: phase 5's 83 (Appendix A) and phase 6's 18 stateful ones";
+    EXPECT_EQ(catalogue.size(), 102u) << "the catalogue has 102 effects: phase 5's 83 (Appendix A), phase 6's 18 stateful ones and fluid";
     nlohmann::json table = {{"size", 1024}, {"captures_per_round", 8}, {"effects", effects},
 #if defined(SOKOL_VULKAN)
                             {"backend", "vulkan"}

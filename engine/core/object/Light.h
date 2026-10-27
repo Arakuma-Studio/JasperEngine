@@ -54,6 +54,22 @@ namespace jasperengine{
         void setIntensity(float intensity);
         float getIntensity() const;
 
+        // Photometric units (util/LightPhotometry.h): what the intensity is in. ENGINE, LUX
+        // (directional), CANDELA or LUMEN (point, spot); a unit the type cannot take draws as
+        // its neighbour. setIntensityUnit(unit, true) converts the intensity so the light stays
+        // as bright (through the scene's Physical Light Exposure); the property sets the unit
+        // alone (the number then means the new unit).
+        void setIntensityUnit(LightUnit unit);
+        void setIntensityUnit(LightUnit unit, bool preserveBrightness);
+        LightUnit getIntensityUnit() const;
+
+        // A black body's colour at colorTemperature (Kelvin, 1000-20000; 6500 is white), with
+        // the light's colour as its filter
+        void setUseColorTemperature(bool use);
+        bool isUseColorTemperature() const;
+        void setColorTemperature(float kelvin);
+        float getColorTemperature() const;
+
         void setConeAngle(float inner, float outer);
         void setInnerConeAngle(float inner);
         float getInnerConeAngle() const;

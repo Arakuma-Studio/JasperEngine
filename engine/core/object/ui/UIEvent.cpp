@@ -5,6 +5,7 @@
 #include "HtmlUIEventListener.h"
 #include "HtmlUIScriptInternal.h"
 #include "htmlui/RmlKeyMap.h"
+#include "htmlui/widgets/DragDropSession.h"
 
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/Event.h>
@@ -221,4 +222,27 @@ UIValue UIEvent::getDetail() const{
     if (!isValid() || !state->detail)
         return UIValue();
     return *state->detail;
+}
+
+UIDataTransfer UIEvent::getDataTransfer() const{
+    static const char* const dragEvents[] = {"dragstart", "drag", "dragend", "dragenter", "dragover", "dragleave", "drop",
+                                             "dragmove", "dragdrop", "dragout"};
+    Rml::Event* event = liveEvent(state);
+    if (!event)
+        return UIDataTransfer();
+    bool drag = false;
+    for (const char* name : dragEvents)
+        drag |= state->type == name;
+    if (!drag)
+        return UIDataTransfer();
+    return UIDataTransferAccess::make(htmlui::DragDropSession::transferOf(event->GetTargetElement()));
+}
+
+int UIEvent::getDropIndex() const{
+    return intParameter(state, htmlui::DragDropSession::kDropIndexParameter, 0);
+}
+
+std::string UIEvent::getDropPosition() const{
+    Rml::Event* event = liveEvent(state);
+    return event ? event->GetParameter<Rml::String>(htmlui::DragDropSession::kDropPositionParameter, "") : std::string();
 }

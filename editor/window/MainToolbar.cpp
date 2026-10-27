@@ -9,6 +9,7 @@
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include "util/EditorScripts.h"
+#include "shortcuts/CommandCatalog.h"
 
 #include <algorithm>
 
@@ -151,6 +152,11 @@ bool editor::MainToolbar::toolSupported(const SceneProject& sceneProject, Tool t
     return false;
 }
 
+bool editor::MainToolbar::physicsSupported(const SceneProject& sceneProject) const {
+    // 2D scenes are a later phase (Box2D)
+    return sceneProject.sceneType == SceneType::SCENE_3D && toolSupported(sceneProject, Tool::Move);
+}
+
 void editor::MainToolbar::applyTool(SceneProject& sceneProject, Tool tool) const {
     SceneRender* sceneRender = sceneProject.sceneRender;
     if (!sceneRender) return;
@@ -204,6 +210,8 @@ void editor::MainToolbar::setTool(Tool tool) {
     for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
         if (sceneProject->opened) applyTool(*sceneProject, tool);
     }
+    // Hand and Rect take no physics: a running gesture finishes (and commits)
+    Backend::getApp().getPhysicsPlacementWindow()->toolChanged(tool == Tool::Move || tool == Tool::Rotate || tool == Tool::Scale);
 }
 
 bool editor::MainToolbar::isGlobalTransform() const {
@@ -221,51 +229,57 @@ void editor::MainToolbar::toggleGlobalTransform() {
     }
 }
 
-//=== Shortcuts ===
+bool editor::MainToolbar::isPhysicsMode() const {
+    return physicsMode;
+}
 
-void editor::MainToolbar::handleShortcuts(bool toolShortcuts) {
-    ImGuiIO& io = ImGui::GetIO();
+bool editor::MainToolbar::canUsePhysics() const {
+    if (project->isAnyScenePlaying()) return false;
+    const SceneProject* sceneProject = project->getSelectedScene();
+    if (!sceneProject || !sceneProject->sceneRender) return false;
+    if (sceneProject->sceneRender->isPreviewCameraActive()) return false;
+    return physicsSupported(*sceneProject);
+}
 
-    // Play mode (Unity: Ctrl+P, Ctrl+Shift+P, Ctrl+Alt+P), plus F5/F6/F7
-    if (io.KeyCtrl && !io.KeySuper && ImGui::IsKeyPressed(ImGuiKey_P, false)) {
-        if (io.KeyAlt) {
-            step();
-        } else if (io.KeyShift) {
-            togglePause();
-        } else {
-            togglePlay();
-        }
-        return;
+void editor::MainToolbar::setPhysicsMode(bool on) {
+    // off is always allowed, on only where physics works
+    if (on == physicsMode || (on && !canUsePhysics())) return;
+    physicsMode = on;
+    for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
+        if (sceneProject->opened) sceneProject->needUpdateRender = true;
     }
-    if (ImGui::IsKeyPressed(ImGuiKey_F5, false)) {
-        if (!isInPlayMode()) {
-            togglePlay();
-        } else if (isPaused()) {
-            togglePause();
-        }
-    }
-    if (ImGui::IsKeyPressed(ImGuiKey_F6, false) && canPause() && !isPaused()) {
+    Backend::getApp().getPhysicsPlacementWindow()->physicsModeChanged(on);
+}
+
+void editor::MainToolbar::togglePhysicsMode() {
+    setPhysicsMode(!physicsMode);
+}
+
+//=== Play mode keys (F5 / F6 / F7) ===
+
+void editor::MainToolbar::playOrResume() {
+    if (!isInPlayMode()) {
+        togglePlay();
+    } else if (isPaused()) {
         togglePause();
     }
-    if (ImGui::IsKeyPressed(ImGuiKey_F7, false)) {
-        const SceneProject* sceneProject = project->getScene(project->getPlaySessionSceneId());
-        if (sceneProject && (isRunningState(sceneProject->playState) || sceneProject->playState == ScenePlayState::LOADING)) {
-            project->stop(sceneProject->id);
-        }
-    }
+}
 
-    // Tools: not while typing, flying the 3D camera (RMB + WASDQE) or playing
-    // with the keyboard going to the game (the Scene view stays the editor's)
-    if (!toolShortcuts || io.WantTextInput || io.KeyCtrl || io.KeyAlt || io.KeySuper) return;
-    if (ImGui::IsMouseDown(ImGuiMouseButton_Right) || ImGui::IsAnyItemActive()) return;
-    if (project->isAnyScenePlaying() && Backend::getApp().getGameWindow()->hasKeyboardFocus()) return;
+bool editor::MainToolbar::canPlayOrResume() const {
+    return isInPlayMode() ? isPaused() : canTogglePlay();
+}
 
-    if (ImGui::IsKeyPressed(ImGuiKey_Q, false)) setTool(Tool::Hand);
-    if (ImGui::IsKeyPressed(ImGuiKey_W, false)) setTool(Tool::Move);
-    if (ImGui::IsKeyPressed(ImGuiKey_E, false)) setTool(Tool::Rotate);
-    if (ImGui::IsKeyPressed(ImGuiKey_R, false)) setTool(Tool::Scale);
-    if (ImGui::IsKeyPressed(ImGuiKey_T, false)) setTool(Tool::Rect);
-    if (ImGui::IsKeyPressed(ImGuiKey_X, false)) toggleGlobalTransform();
+void editor::MainToolbar::pauseOnly() {
+    if (canPause() && !isPaused()) togglePause();
+}
+
+bool editor::MainToolbar::canStopSession() const {
+    const SceneProject* sceneProject = project->getScene(project->getPlaySessionSceneId());
+    return sceneProject && (isRunningState(sceneProject->playState) || sceneProject->playState == ScenePlayState::LOADING);
+}
+
+void editor::MainToolbar::stopSession() {
+    if (canStopSession()) project->stop(project->getPlaySessionSceneId());
 }
 
 //=== Drawing ===
@@ -277,14 +291,22 @@ void editor::MainToolbar::drawTools(float rowHeight) {
     struct ToolButton {
         Tool tool;
         const char* icon;
-        const char* tooltip;
+        const char* command;    // its catalog command: the tooltip's name and shortcut
     };
     const ToolButton buttons[] = {
-        { Tool::Hand, ICON_FA_HAND "##ToolHand", "Hand Tool (Q)\nPan the Scene view" },
-        { Tool::Move, ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT "##ToolMove", "Move Tool (W)" },
-        { Tool::Rotate, ICON_FA_ROTATE "##ToolRotate", "Rotate Tool (E)" },
-        { Tool::Scale, ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER "##ToolScale", "Scale Tool (R)" },
-        { Tool::Rect, ICON_FA_VECTOR_SQUARE "##ToolRect", "Rect Tool (T)\n2D and UI scenes" },
+        { Tool::Hand, ICON_FA_HAND "##ToolHand", "tools.hand" },
+        { Tool::Move, ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT "##ToolMove", "tools.move" },
+        { Tool::Rotate, ICON_FA_ROTATE "##ToolRotate", "tools.rotate" },
+        { Tool::Scale, ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER "##ToolScale", "tools.scale" },
+        { Tool::Rect, ICON_FA_VECTOR_SQUARE "##ToolRect", "tools.rect" },
+    };
+    const CommandCatalog& catalog = CommandCatalog::editor();
+    auto commandTooltip = [&catalog](const char* id) {
+        const CommandDef* def = catalog.find(id);
+        if (!def) return std::string(id);
+        std::string text = catalog.tooltip(id, def->name);
+        if (!def->description.empty()) text += "\n" + def->description;
+        return text;
     };
 
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(Theme::dpi(1.0f), 0.0f));
@@ -296,8 +318,30 @@ void editor::MainToolbar::drawTools(float rowHeight) {
             setTool(button.tool);
         }
         ImGui::EndDisabled();
-        ImGui::SetItemTooltip("%s", button.tooltip);
+        ImGui::SetItemTooltip("%s", commandTooltip(button.command).c_str());
     }
+    ImGui::PopStyleVar();
+
+    // Physics (G), a modifier on the transform tools, and its panel
+    ImGui::SameLine(0, Theme::dpi(6.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(Theme::dpi(1.0f), 0.0f));
+    // where physics can't work (2D, camera preview, Play) it can still be turned off
+    ImGui::BeginDisabled(!physicsMode && !canUsePhysics());
+    if (toolbarButton(ICON_FA_MAGNET "##ToolPhysics", physicsMode, buttonSize, &Theme::Colors::PhysicsAccent, &Theme::Colors::PhysicsAccentHovered)) {
+        togglePhysicsMode();
+    }
+    ImGui::EndDisabled();
+    ImGui::SetItemTooltip("Physics (G)\nMove, Rotate and Scale push the selection through a physics\n"
+                          "simulation: it slides along and stops at what it touches, then settles.\n"
+                          "Hold Space to drop, Shift-drag a selected object to snap, Esc to cancel.\n"
+                          "3D scenes, not in Play mode.");
+    ImGui::SameLine();
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, ImGui::GetStyle().FramePadding.y));
+    if (ImGui::Button(ICON_FA_CARET_DOWN "##PhysicsPanel", ImVec2(Theme::dpi(16.0f), rowHeight))) {
+        Backend::getApp().getPhysicsPlacementWindow()->open();
+    }
+    ImGui::PopStyleVar();
+    ImGui::SetItemTooltip("Physics Placement settings");
     ImGui::PopStyleVar();
 
     // Global/Local handle orientation (Unity: X)
@@ -312,7 +356,7 @@ void editor::MainToolbar::drawTools(float rowHeight) {
         toggleGlobalTransform();
     }
     ImGui::EndDisabled();
-    ImGui::SetItemTooltip("Toggle tool handle rotation between Global and Local (X)");
+    ImGui::SetItemTooltip("%s", commandTooltip("tools.toggleGlobalLocal").c_str());
 }
 
 void editor::MainToolbar::drawPlayControls(float rowHeight) {
@@ -327,7 +371,8 @@ void editor::MainToolbar::drawPlayControls(float rowHeight) {
         togglePlay();
     }
     ImGui::EndDisabled();
-    ImGui::SetItemTooltip(inPlayMode ? "Stop (Ctrl+P)" : "Play (Ctrl+P)");
+    const CommandCatalog& catalog = CommandCatalog::editor();
+    ImGui::SetItemTooltip("%s", catalog.tooltip("edit.play", inPlayMode ? "Stop" : "Play").c_str());
 
     ImGui::SameLine();
     ImGui::BeginDisabled(!canPause());
@@ -335,7 +380,7 @@ void editor::MainToolbar::drawPlayControls(float rowHeight) {
         togglePause();
     }
     ImGui::EndDisabled();
-    ImGui::SetItemTooltip(paused ? "Resume (Ctrl+Shift+P)" : "Pause (Ctrl+Shift+P)");
+    ImGui::SetItemTooltip("%s", catalog.tooltip("edit.pause", paused ? "Resume" : "Pause").c_str());
 
     ImGui::SameLine();
     ImGui::BeginDisabled(!canStep());
@@ -343,7 +388,7 @@ void editor::MainToolbar::drawPlayControls(float rowHeight) {
         step();
     }
     ImGui::EndDisabled();
-    ImGui::SetItemTooltip("Step one frame (Ctrl+Alt+P)");
+    ImGui::SetItemTooltip("%s", catalog.tooltip("edit.step", "Step one frame").c_str());
 
     ImGui::PopStyleVar();
 }
@@ -356,9 +401,8 @@ void editor::MainToolbar::drawLayoutMenu(float rowHeight) {
 
     ImGui::SetNextWindowPos(ImVec2(ImGui::GetItemRectMax().x, ImGui::GetItemRectMax().y), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
     if (ImGui::BeginPopup("MainLayoutPopup")) {
-        if (ImGui::MenuItem("Reset Layout")) {
-            Backend::getApp().resetLayout();
-        }
+        // the same items as Window > Layouts: the presets, then Save / Rename / Delete / files / Reset
+        Backend::getApp().drawLayoutsMenu();
         ImGui::EndPopup();
     }
 }

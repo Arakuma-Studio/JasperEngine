@@ -8,10 +8,13 @@
 #include "util/EntityClipboard.h"
 #include "util/CameraTextureLink.h"
 #include "subsystem/RenderSystem.h"
+#include "component/FluidSimulationComponent.h"
 #include "external/IconsFontAwesome6.h"
+#include "lattice/LatticeTypes.h"
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstring>
 
 namespace {
@@ -43,7 +46,7 @@ namespace {
     // reload. textureRect is absent on purpose: no loader touches it.
     struct SubmeshOverrideField {
         const char* name;
-        uint32_t fields;
+        uint64_t fields;
     };
 
     const SubmeshOverrideField submeshOverrideFields[] = {
@@ -76,13 +79,20 @@ namespace {
         {"material.stencil", SubmeshOverride_Stencil},
         {"material.colorWrite", SubmeshOverride_ColorWrite},
         {"material.extraPass", SubmeshOverride_ExtraPass},
+        {"material.stochasticTiling", SubmeshOverride_StochasticTiling},
+        {"material.stochasticCellSize", SubmeshOverride_StochasticTiling},
+        {"material.stochasticBlendSharpness", SubmeshOverride_StochasticTiling},
+        {"material.stochasticContrast", SubmeshOverride_StochasticTiling},
+        {"material.stochasticRotation", SubmeshOverride_StochasticTiling},
+        {"material.emissiveStrength", SubmeshOverride_EmissiveStrength},
+        {"material.pbr", SubmeshOverride_PbrExtensions},
         {"faceCulling", SubmeshOverride_FaceCulling},
         {"textureShadow", SubmeshOverride_TextureShadow},
         {"primitiveType", SubmeshOverride_PrimitiveType}
     };
 
     // Splits "submeshes[N].<field>" into the submesh it addresses and the override bits it writes.
-    bool parseSubmeshOverrideProperty(const std::string& propertyName, size_t& submeshIndex, uint32_t& fields) {
+    bool parseSubmeshOverrideProperty(const std::string& propertyName, size_t& submeshIndex, uint64_t& fields) {
         if (propertyName.compare(0, 10, "submeshes[") != 0) {
             return false;
         }
@@ -107,6 +117,11 @@ namespace {
         }
         if (field.compare(0, 19, "material.extraPass.") == 0) {
             fields = SubmeshOverride_ExtraPass;
+            return true;
+        }
+        // so does a field of the extended lobes (one bit for all of them)
+        if (field.compare(0, 13, "material.pbr.") == 0) {
+            fields = SubmeshOverride_PbrExtensions;
             return true;
         }
 
@@ -277,8 +292,8 @@ bool editor::Catalog::mayHoldReferences(EntityRegistry* registry, Entity entity,
                 const Material& material = mesh->submeshes[s].material;
                 for (const Texture* texture : {&material.baseColorTexture, &material.emissiveTexture,
                         &material.metallicRoughnessTexture, &material.occlusionTexture, &material.normalTexture}) {
-                    // Most are empty: no id to parse
-                    if (!texture->getId().empty() && CameraTextureLink::isCameraTexture(*texture)) {
+                    // Most are empty: no id to parse ("camera|<e>" or "fluid|<e>")
+                    if (!texture->getId().empty() && CameraTextureLink::isLinkTexture(*texture)) {
                         return true;
                     }
                 }
@@ -397,7 +412,7 @@ uint64_t editor::Catalog::getComponentStructuralUpdateFlags(ComponentType compTy
     return desc ? desc->structuralUpdateFlags : UpdateFlags_None;
 }
 
-uint32_t* editor::Catalog::getSubmeshOverrideMask(EntityRegistry* registry, Entity entity, ComponentType component, const std::string& propertyName, uint32_t& propertyFields) {
+uint64_t* editor::Catalog::getSubmeshOverrideMask(EntityRegistry* registry, Entity entity, ComponentType component, const std::string& propertyName, uint64_t& propertyFields) {
     if (component != ComponentType::MeshComponent) {
         return nullptr;
     }
@@ -765,7 +780,7 @@ uint64_t editor::Catalog::getMaterialUpdateFlags(const Material& from, const Mat
             from.blendMode != to.blendMode || from.cullMode != to.cullMode || from.depthWrite != to.depthWrite ||
             from.depthTest != to.depthTest || from.depthOffsetFactor != to.depthOffsetFactor ||
             from.depthOffsetUnits != to.depthOffsetUnits || from.sortPriority != to.sortPriority ||
-            from.lighting != to.lighting || from.alphaMode != to.alphaMode) {
+            from.lighting != to.lighting || from.alphaMode != to.alphaMode || from.stochasticTiling != to.stochasticTiling) {
         flags |= UpdateFlags_Mesh_Reload;
     }
     // stencil and colour write are pipeline state too
@@ -998,6 +1013,11 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
             audio->needUpdate = true;
         }
     }
+    if (updateFlags & UpdateFlags_Fluid_Reset){
+        if (FluidSimulationComponent* fluid = registry->findComponent<FluidSimulationComponent>(entity)){
+            fluid->needReset = true;
+        }
+    }
     if (updateFlags & UpdateFlags_UIDocument_Reload){
         if (UIDocumentComponent* document = registry->findComponent<UIDocumentComponent>(entity)){
             // filename, render mode, texture size, pixel ratio (sortOrder is re-applied each update)
@@ -1005,6 +1025,23 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
             document->textureHeight = std::clamp(document->textureHeight, 1, 8192);
             if (!(document->pixelRatio >= 0.0f)) document->pixelRatio = 0.0f;
             document->needReload = true;
+        }
+    }
+    if (updateFlags & UpdateFlags_Lattice){
+        // offsets are left as they are: LatticeEditorOps::setResolution writes them resampled
+        // with the resolution, and a prefab override applies them before it
+        if (LatticeComponent* lattice = registry->findComponent<LatticeComponent>(entity)){
+            lattice->resolutionX = std::clamp(lattice->resolutionX, LATTICE_MIN_RESOLUTION, LATTICE_MAX_RESOLUTION);
+            lattice->resolutionY = std::clamp(lattice->resolutionY, LATTICE_MIN_RESOLUTION, LATTICE_MAX_RESOLUTION);
+            lattice->resolutionZ = std::clamp(lattice->resolutionZ, LATTICE_MIN_RESOLUTION, LATTICE_MAX_RESOLUTION);
+            lattice->revision++;
+        }
+        if (LatticeModifierComponent* modifier = registry->findComponent<LatticeModifierComponent>(entity)){
+            modifier->subdivisions = std::clamp(modifier->subdivisions, 1, 64);
+            for (LatticeBinding& binding : modifier->bindings){
+                binding.weight = std::isfinite(binding.weight) ? std::clamp(binding.weight, 0.0f, 2.0f) : 1.0f;
+            }
+            modifier->warnedOverflow = false;
         }
     }
 }
@@ -1037,10 +1074,13 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
             break;
     }
 
-    // The source's YAML decoded into a new component (a UI document over the target's own: its
-    // loaded document stays unless the file changes), as the scene file would load it
+    // The source's YAML decoded into a new component, as the scene file would load it; over the
+    // target's own for a UI document (its loaded document stays unless the file changes), a fluid
+    // (its simulator, and every texture showing its output, stays) and a lattice (its jiggle and
+    // tween state stay)
     const YAML::Node encoded = reflect::encode(*desc, source, reflect::EncodeContext{});
-    const bool overTarget = compType == ComponentType::UIDocumentComponent;
+    const bool overTarget = compType == ComponentType::UIDocumentComponent || compType == ComponentType::FluidSimulationComponent ||
+                            compType == ComponentType::LatticeComponent;
     reflect::Value copy(desc->body.ops, overTarget ? target : nullptr);
     reflect::DecodeContext ctx;
     ctx.old = overTarget ? target : nullptr;
@@ -1052,6 +1092,9 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
         static_cast<Transform*>(copy.get())->parent = static_cast<Transform*>(target)->parent;
     }
     desc->body.ops->move(target, copy.get());
+    if (compType == ComponentType::LatticeComponent) {
+        static_cast<LatticeComponent*>(target)->revision++;
+    }
 }
 
 void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity sourceEntity, 
@@ -1198,6 +1241,31 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
                 auto* source = Catalog::getPropertyRef<std::vector<Texture>>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<std::vector<Texture>>(targetRegistry, targetEntity, compType, property);
                 if (source && target) *target = *source;
+            } else if (compType == ComponentType::LatticeComponent && property == "offsets") {
+                auto* source = Catalog::getPropertyRef<std::vector<Vector3>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<Vector3>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::LatticeComponent && property == "poses") {
+                auto* source = Catalog::getPropertyRef<std::vector<LatticePose>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<LatticePose>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::LatticeModifierComponent && property == "bindings") {
+                auto* source = Catalog::getPropertyRef<std::vector<LatticeBinding>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<LatticeBinding>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::LatticeTracksComponent && property == "points") {
+                auto* source = Catalog::getPropertyRef<std::vector<int>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<int>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::LatticeTracksComponent &&
+                       (property == "values" || property == "inTangents" || property == "outTangents")) {
+                auto* source = Catalog::getPropertyRef<std::vector<std::vector<Vector3>>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<std::vector<Vector3>>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::LatticeTracksComponent && property.compare(0, 7, "values[") == 0) {
+                auto* source = Catalog::getPropertyRef<std::vector<Vector3>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<Vector3>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
             } else if (endsWith(property, "material.extraPass")) {
                 auto* source = Catalog::getPropertyRef<MaterialPass>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<MaterialPass>(targetRegistry, targetEntity, compType, property);
@@ -1226,9 +1294,9 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
     }
 
     // The override bit travels with the value, or the target keeps it only until its model loads.
-    uint32_t propertyFields = 0;
-    if (uint32_t* source = getSubmeshOverrideMask(sourceRegistry, sourceEntity, compType, property, propertyFields)) {
-        if (uint32_t* target = getSubmeshOverrideMask(targetRegistry, targetEntity, compType, property, propertyFields)) {
+    uint64_t propertyFields = 0;
+    if (uint64_t* source = getSubmeshOverrideMask(sourceRegistry, sourceEntity, compType, property, propertyFields)) {
+        if (uint64_t* target = getSubmeshOverrideMask(targetRegistry, targetEntity, compType, property, propertyFields)) {
             *target = (*target & ~propertyFields) | (*source & propertyFields);
         }
     }

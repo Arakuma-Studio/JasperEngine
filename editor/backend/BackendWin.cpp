@@ -661,6 +661,13 @@ HDC deviceContextOf(ImGuiViewport* viewport) {
     return deviceContext;
 }
 
+// wglMakeCurrent is costly even when the context is already current
+bool makeContextCurrent(HDC deviceContext) {
+    if (wglGetCurrentContext() == glContext && wglGetCurrentDC() == deviceContext)
+        return true;
+    return wglMakeCurrent(deviceContext, glContext) != FALSE;
+}
+
 void destroyViewportWindow(ImGuiViewport* viewport) {
     HWND window = static_cast<HWND>(viewport->PlatformHandleRaw);
     auto existing = windowContexts.find(window);
@@ -762,12 +769,12 @@ editor::RendererPlatform rendererPlatform() {
     };
     platform.makeCurrent = [](ImGuiViewport* viewport) {
         HDC deviceContext = deviceContextOf(viewport);
-        if (!deviceContext || !wglMakeCurrent(deviceContext, glContext))
+        if (!deviceContext || !makeContextCurrent(deviceContext))
             std::fprintf(stderr, "Error: Could not activate an OpenGL viewport.\n");
     };
     platform.swapBuffers = [](ImGuiViewport* viewport) {
         HDC deviceContext = deviceContextOf(viewport);
-        if (!deviceContext || !wglMakeCurrent(deviceContext, glContext)) {
+        if (!deviceContext || !makeContextCurrent(deviceContext)) {
             std::fprintf(stderr, "Error: Could not activate an OpenGL viewport.\n");
             return;
         }
@@ -786,6 +793,46 @@ editor::RendererPlatform rendererPlatform() {
 
 #endif
 
+// Play expects these keys' chars, but Alt combos post WM_SYSCHAR (not queued by
+// imgui_impl_win32) and Ctrl+Backspace posts 0x7f
+unsigned int controlCharForKey(const MSG& message) {
+    if (message.message != WM_KEYDOWN && message.message != WM_SYSKEYDOWN)
+        return 0;
+    switch (message.wParam) {
+        case VK_BACK: return '\b';
+        case VK_TAB: return '\t';
+        case VK_RETURN: return '\r';
+        case VK_ESCAPE: return 0x1b;
+        default: return 0;
+    }
+}
+
+void translateAndDispatch(MSG& message) {
+    unsigned int control = controlCharForKey(message);
+    if (!control) {
+        TranslateMessage(&message);
+        DispatchMessageW(&message);
+        return;
+    }
+
+    // Earlier presses' chars go first, leaving only this press's after translating
+    MSG pending{};
+    while (PeekMessageW(&pending, message.hwnd, WM_CHAR, WM_CHAR, PM_REMOVE))
+        DispatchMessageW(&pending);
+    TranslateMessage(&message);
+    std::vector<MSG> chars;
+    while (PeekMessageW(&pending, message.hwnd, WM_CHAR, WM_CHAR, PM_REMOVE)) {
+        if (pending.wParam == control || (control == '\r' && pending.wParam == '\n'))
+            control = 0;
+        chars.push_back(pending);
+    }
+
+    DispatchMessageW(&message);
+    for (const MSG& c : chars) DispatchMessageW(&c);
+    if (control && ImGui::GetCurrentContext())
+        ImGui::GetIO().AddInputCharacter(control);
+}
+
 // waitSeconds > 0: an idle loop sleeps until a message or then (the editor scheduler's next timer)
 void processMessages(double waitSeconds) {
     if (waitSeconds > 0.0)
@@ -797,8 +844,7 @@ void processMessages(double waitSeconds) {
             backend->shouldClose = true;
             continue;
         }
-        TranslateMessage(&message);
-        DispatchMessageW(&message);
+        translateAndDispatch(message);
     }
 }
 
@@ -919,7 +965,7 @@ int editor::Backend::init(int argc, char* argv[]) {
     while (!backend->shouldClose) {
         processMessages(backend->editorFrame.isIdle() ? app.idleWaitSeconds(0.1) : 0.0);
         if (backend->shouldClose) break;
-        app.processProjectChange();
+        app.beforeFrame();
         if (backend->shouldClose) break;
         renderFrame(false);
         if (app.consumeBenchmarkExit())
@@ -1045,6 +1091,11 @@ float editor::Backend::setMainMenu(const PlatformMenuModel& model,
     // reserving an in-client side bar.
     return -1.0f;
 #endif
+}
+
+bool editor::Backend::nativeMenuHandlesKeyEquivalents() {
+    // the native menus here show their shortcuts as text; the keys reach ImGui
+    return false;
 }
 
 ImTextureID editor::Backend::getImGuiTexture(TextureRender* texture) {

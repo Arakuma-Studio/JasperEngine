@@ -13,6 +13,7 @@
 #include "Catalog.h"
 #include "util/ProjectUtils.h"
 #include "util/YamlNumbers.h"
+#include "lattice/LatticeTypes.h"
 
 #include <algorithm>
 #include <cmath>
@@ -423,6 +424,17 @@ YAML::Node editor::Stream::encodeTerrainSurfaceLayer(const TerrainSurfaceLayer& 
     node["occlusionStrength"] = layer.occlusionStrength;
     node["uvScale"] = encodeVector2(layer.uvScale);
     node["uvOffset"] = encodeVector2(layer.uvOffset);
+    // Stochastic Tiling writes only what differs from the defaults, so a layer without it
+    // saves as it always did
+    static const TerrainSurfaceLayer defaults;
+    if (layer.stochasticTiling != defaults.stochasticTiling) node["stochasticTiling"] = layer.stochasticTiling;
+    if (layer.stochasticCellSize != defaults.stochasticCellSize) node["stochasticCellSize"] = layer.stochasticCellSize;
+    if (layer.stochasticBlendSharpness != defaults.stochasticBlendSharpness) node["stochasticBlendSharpness"] = layer.stochasticBlendSharpness;
+    if (layer.stochasticContrast != defaults.stochasticContrast) node["stochasticContrast"] = layer.stochasticContrast;
+    if (layer.stochasticRotation != defaults.stochasticRotation) node["stochasticRotation"] = layer.stochasticRotation;
+    // hex tiling: written only when on, or with a rotation of its own
+    if (layer.hexTiling) node["hexTiling"] = true;
+    if (layer.hexRotation != TerrainSurfaceLayer().hexRotation) node["hexRotation"] = YamlNumbers::text(finiteOr(layer.hexRotation, 1.0f));
     return node;
 }
 
@@ -442,6 +454,13 @@ TerrainSurfaceLayer editor::Stream::decodeTerrainSurfaceLayer(const YAML::Node& 
     layer.roughnessFactor = decodeFinite(node["roughnessFactor"], layer.roughnessFactor);
     layer.metallicFactor = decodeFinite(node["metallicFactor"], layer.metallicFactor);
     layer.occlusionStrength = decodeFinite(node["occlusionStrength"], layer.occlusionStrength);
+    if (node["stochasticTiling"]) layer.stochasticTiling = YamlNumbers::as<bool>(node["stochasticTiling"]);
+    layer.stochasticCellSize = decodeFinite(node["stochasticCellSize"], layer.stochasticCellSize);
+    layer.stochasticBlendSharpness = decodeFinite(node["stochasticBlendSharpness"], layer.stochasticBlendSharpness);
+    layer.stochasticContrast = decodeFinite(node["stochasticContrast"], layer.stochasticContrast);
+    layer.stochasticRotation = decodeFinite(node["stochasticRotation"], layer.stochasticRotation);
+    if (node["hexTiling"]) layer.hexTiling = YamlNumbers::as<bool>(node["hexTiling"]);
+    layer.hexRotation = std::clamp(decodeFinite(node["hexRotation"], layer.hexRotation), 0.0f, 1.0f);
     return layer;
 }
 
@@ -1065,6 +1084,9 @@ YAML::Node editor::Stream::encodeRigidbodyComponent(const RigidbodyComponent& bo
     node["gravityFactor"] = body.gravityFactor;
     node["friction"] = body.friction;
     node["restitution"] = body.restitution;
+    node["buoyancy"] = body.buoyancy;
+    node["waterDrag"] = body.waterDrag;
+    node["waterAngularDrag"] = body.waterAngularDrag;
 
     // Six booleans instead of the bit mask, so the file stays readable.
     YAML::Node dofsNode;
@@ -1139,6 +1161,9 @@ RigidbodyComponent editor::Stream::decodeRigidbodyComponent(const YAML::Node& no
     if (node["gravityFactor"]) body.gravityFactor = YamlNumbers::as<float>(node["gravityFactor"]);
     if (node["friction"]) body.friction = YamlNumbers::as<float>(node["friction"]);
     if (node["restitution"]) body.restitution = YamlNumbers::as<float>(node["restitution"]);
+    if (node["buoyancy"]) body.buoyancy = YamlNumbers::as<float>(node["buoyancy"]);
+    if (node["waterDrag"]) body.waterDrag = YamlNumbers::as<float>(node["waterDrag"]);
+    if (node["waterAngularDrag"]) body.waterAngularDrag = YamlNumbers::as<float>(node["waterAngularDrag"]);
 
     if (node["allowedDOFs"]) {
         const YAML::Node& dofsNode = node["allowedDOFs"];
@@ -2060,4 +2085,229 @@ MeshPolygonComponent editor::Stream::decodeMeshPolygonComponent(const YAML::Node
     polygon.needUpdatePolygon = true;
 
     return polygon;
+}
+
+YAML::Node editor::Stream::encodeLatticeOffsets(const std::vector<Vector3>& offsets) {
+    YAML::Node node(YAML::NodeType::Sequence);
+    for (const Vector3& offset : offsets) {
+        node.push_back(encodeVector3(offset));
+    }
+    if (offsets.empty()) node.SetStyle(YAML::EmitterStyle::Flow);
+    return node;
+}
+
+std::vector<Vector3> editor::Stream::decodeLatticeOffsets(const YAML::Node& node) {
+    std::vector<Vector3> offsets;
+    if (node && node.IsSequence()) {
+        offsets.reserve(node.size());
+        for (const YAML::Node& offset : node) {
+            offsets.push_back(decodeVector3(offset));
+        }
+    }
+    return offsets;
+}
+
+YAML::Node editor::Stream::encodeLatticeComponent(const LatticeComponent& lattice) {
+    YAML::Node node;
+    node["enabled"] = YamlNumbers::text(lattice.enabled);
+
+    node["resolutionX"] = YamlNumbers::integerText(lattice.resolutionX);
+    node["resolutionY"] = YamlNumbers::integerText(lattice.resolutionY);
+    node["resolutionZ"] = YamlNumbers::integerText(lattice.resolutionZ);
+    node["offsets"] = encodeLatticeOffsets(lattice.offsets);
+    node["interpolation"] = latticeInterpolationToString(lattice.interpolation);
+    node["outside"] = latticeOutsideToString(lattice.outside);
+    encodeFinite(node, "fadeDistance", lattice.fadeDistance);
+
+    YAML::Node posesNode(YAML::NodeType::Sequence);
+    for (const LatticePose& pose : lattice.poses) {
+        YAML::Node poseNode;
+        poseNode["name"] = pose.name;
+        poseNode["offsets"] = encodeLatticeOffsets(pose.offsets);
+        posesNode.push_back(poseNode);
+    }
+    if (lattice.poses.empty()) posesNode.SetStyle(YAML::EmitterStyle::Flow);
+    node["poses"] = posesNode;
+
+    node["jiggle"] = YamlNumbers::text(lattice.jiggle);
+    encodeFinite(node, "jiggleStiffness", lattice.jiggleStiffness);
+    encodeFinite(node, "jiggleDamping", lattice.jiggleDamping);
+    encodeFinite(node, "jiggleInertia", lattice.jiggleInertia);
+    node["jiggleAnchor"] = latticeJiggleAnchorToString(lattice.jiggleAnchor);
+    encodeFinite(node, "jiggleMaxOffset", lattice.jiggleMaxOffset);
+
+    return node;
+}
+
+LatticeComponent editor::Stream::decodeLatticeComponent(const YAML::Node& node, const LatticeComponent* oldLattice) {
+    LatticeComponent lattice;
+
+    if (oldLattice) {
+        lattice = *oldLattice;
+    }
+
+    if (node["enabled"]) lattice.enabled = YamlNumbers::as<bool>(node["enabled"]);
+
+    if (node["resolutionX"]) lattice.resolutionX = YamlNumbers::as<int>(node["resolutionX"]);
+    if (node["resolutionY"]) lattice.resolutionY = YamlNumbers::as<int>(node["resolutionY"]);
+    if (node["resolutionZ"]) lattice.resolutionZ = YamlNumbers::as<int>(node["resolutionZ"]);
+    lattice.resolutionX = std::clamp(lattice.resolutionX, LATTICE_MIN_RESOLUTION, LATTICE_MAX_RESOLUTION);
+    lattice.resolutionY = std::clamp(lattice.resolutionY, LATTICE_MIN_RESOLUTION, LATTICE_MAX_RESOLUTION);
+    lattice.resolutionZ = std::clamp(lattice.resolutionZ, LATTICE_MIN_RESOLUTION, LATTICE_MAX_RESOLUTION);
+    const size_t pointCount = static_cast<size_t>(lattice.resolutionX * lattice.resolutionY * lattice.resolutionZ);
+
+    if (node["offsets"]) lattice.offsets = decodeLatticeOffsets(node["offsets"]);
+    lattice.offsets.resize(pointCount, Vector3::ZERO);
+
+    if (node["interpolation"]) lattice.interpolation = decodeEnum(node, "interpolation", StreamSchema::latticeInterpolation());
+    if (node["outside"]) lattice.outside = decodeEnum(node, "outside", StreamSchema::latticeOutside());
+    if (node["fadeDistance"]) lattice.fadeDistance = decodeFinite(node["fadeDistance"], lattice.fadeDistance);
+
+    if (node["poses"]) {
+        lattice.poses.clear();
+        if (node["poses"].IsSequence()) {
+            for (const YAML::Node& poseNode : node["poses"]) {
+                LatticePose pose;
+                if (poseNode["name"]) pose.name = poseNode["name"].as<std::string>();
+                // a pose of another resolution is resampled where it is applied (spec §6.1)
+                pose.offsets = decodeLatticeOffsets(poseNode["offsets"]);
+                lattice.poses.push_back(std::move(pose));
+            }
+        }
+    }
+
+    if (node["jiggle"]) lattice.jiggle = YamlNumbers::as<bool>(node["jiggle"]);
+    if (node["jiggleStiffness"]) lattice.jiggleStiffness = decodeFinite(node["jiggleStiffness"], lattice.jiggleStiffness);
+    if (node["jiggleDamping"]) lattice.jiggleDamping = decodeFinite(node["jiggleDamping"], lattice.jiggleDamping);
+    if (node["jiggleInertia"]) lattice.jiggleInertia = decodeFinite(node["jiggleInertia"], lattice.jiggleInertia);
+    if (node["jiggleAnchor"]) lattice.jiggleAnchor = decodeEnum(node, "jiggleAnchor", StreamSchema::latticeJiggleAnchor());
+    if (node["jiggleMaxOffset"]) lattice.jiggleMaxOffset = decodeFinite(node["jiggleMaxOffset"], lattice.jiggleMaxOffset);
+
+    // the old one's springs and tween are laid out for its own points
+    if (oldLattice && (oldLattice->resolutionX != lattice.resolutionX || oldLattice->resolutionY != lattice.resolutionY ||
+                       oldLattice->resolutionZ != lattice.resolutionZ)) {
+        lattice.dynamicOffsets.clear();
+        lattice.jiggleVelocities.clear();
+        lattice.jiggleSleeping = true;
+        lattice.tweenFrom.clear();
+        lattice.tweenTo.clear();
+        lattice.tweening = false;
+    }
+
+    return lattice;
+}
+
+YAML::Node editor::Stream::encodeLatticeModifierComponent(const LatticeModifierComponent& modifier) {
+    YAML::Node node;
+    node["enabled"] = YamlNumbers::text(modifier.enabled);
+
+    YAML::Node bindingsNode(YAML::NodeType::Sequence);
+    for (const LatticeBinding& binding : modifier.bindings) {
+        YAML::Node bindingNode;
+        bindingNode["lattice"] = binding.lattice;
+        encodeFinite(bindingNode, "weight", binding.weight);
+        bindingNode["stage"] = latticeStageToString(binding.stage);
+        bindingNode["submesh"] = YamlNumbers::integerText(binding.submesh);
+        bindingNode["mask"] = latticeMaskChannelToString(binding.mask);
+        bindingsNode.push_back(bindingNode);
+    }
+    if (modifier.bindings.empty()) bindingsNode.SetStyle(YAML::EmitterStyle::Flow);
+    node["bindings"] = bindingsNode;
+    node["includeChildren"] = YamlNumbers::text(modifier.includeChildren);
+    node["subdivisions"] = YamlNumbers::integerText(modifier.subdivisions);
+
+    return node;
+}
+
+LatticeModifierComponent editor::Stream::decodeLatticeModifierComponent(const YAML::Node& node, const LatticeModifierComponent* oldModifier) {
+    LatticeModifierComponent modifier;
+
+    if (oldModifier) {
+        modifier = *oldModifier;
+    }
+
+    if (node["enabled"]) modifier.enabled = YamlNumbers::as<bool>(node["enabled"]);
+
+    if (node["bindings"]) {
+        modifier.bindings.clear();
+        if (node["bindings"].IsSequence()) {
+            for (const YAML::Node& bindingNode : node["bindings"]) {
+                LatticeBinding binding;
+                if (bindingNode["lattice"]) binding.lattice = YamlNumbers::as<Entity>(bindingNode["lattice"]);
+                if (bindingNode["weight"]) binding.weight = std::clamp(decodeFinite(bindingNode["weight"], binding.weight), 0.0f, 2.0f);
+                if (bindingNode["stage"]) binding.stage = decodeEnum(bindingNode, "stage", StreamSchema::latticeStage());
+                if (bindingNode["submesh"]) binding.submesh = YamlNumbers::as<int>(bindingNode["submesh"]);
+                if (bindingNode["mask"]) binding.mask = decodeEnum(bindingNode, "mask", StreamSchema::latticeMaskChannel());
+                modifier.bindings.push_back(binding);
+            }
+        }
+        modifier.warnedOverflow = false;
+    }
+    if (node["includeChildren"]) modifier.includeChildren = YamlNumbers::as<bool>(node["includeChildren"]);
+    if (node["subdivisions"]) modifier.subdivisions = std::clamp(YamlNumbers::as<int>(node["subdivisions"]), 1, 64);
+
+    return modifier;
+}
+
+YAML::Node editor::Stream::encodeLatticeTrackKeys(const std::vector<std::vector<Vector3>>& keys) {
+    YAML::Node node(YAML::NodeType::Sequence);
+    for (const std::vector<Vector3>& key : keys) {
+        node.push_back(encodeLatticeOffsets(key));
+    }
+    if (keys.empty()) node.SetStyle(YAML::EmitterStyle::Flow);
+    return node;
+}
+
+std::vector<std::vector<Vector3>> editor::Stream::decodeLatticeTrackKeys(const YAML::Node& node) {
+    std::vector<std::vector<Vector3>> keys;
+    if (node && node.IsSequence()) {
+        for (const YAML::Node& key : node) {
+            keys.push_back(decodeLatticeOffsets(key));
+        }
+    }
+    return keys;
+}
+
+YAML::Node editor::Stream::encodeLatticeTracksComponent(const LatticeTracksComponent& tracks) {
+    YAML::Node node;
+
+    YAML::Node pointsNode(YAML::NodeType::Sequence);
+    pointsNode.SetStyle(YAML::EmitterStyle::Flow);
+    for (int point : tracks.points) {
+        pointsNode.push_back(YamlNumbers::integerText(point));
+    }
+    node["points"] = pointsNode;
+    node["values"] = encodeLatticeTrackKeys(tracks.values);
+    // Hermite tangents only on cubic tracks
+    if (!tracks.inTangents.empty()) {
+        node["inTangents"] = encodeLatticeTrackKeys(tracks.inTangents);
+    }
+    if (!tracks.outTangents.empty()) {
+        node["outTangents"] = encodeLatticeTrackKeys(tracks.outTangents);
+    }
+
+    return node;
+}
+
+LatticeTracksComponent editor::Stream::decodeLatticeTracksComponent(const YAML::Node& node, const LatticeTracksComponent* oldTracks) {
+    LatticeTracksComponent tracks;
+
+    if (oldTracks) {
+        tracks = *oldTracks;
+    }
+
+    if (node["points"]) {
+        tracks.points.clear();
+        if (node["points"].IsSequence()) {
+            for (const YAML::Node& point : node["points"]) {
+                tracks.points.push_back(YamlNumbers::as<int>(point));
+            }
+        }
+    }
+    if (node["values"]) tracks.values = decodeLatticeTrackKeys(node["values"]);
+    // left out when empty, so an absent key is none
+    tracks.inTangents = decodeLatticeTrackKeys(node["inTangents"]);
+    tracks.outTangents = decodeLatticeTrackKeys(node["outTangents"]);
+
+    return tracks;
 }

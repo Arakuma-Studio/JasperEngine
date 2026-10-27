@@ -32,6 +32,7 @@
 #include "Project.h"
 #include "pool/ShaderPool.h"
 #include "util/Base64.h"
+#include "util/FileUtils.h"
 
 #include "stb_image_resize2.h"
 #include "stb_image_write.h"
@@ -223,27 +224,25 @@ bool parseBackends(const Json& value, std::set<ShaderBackend>& out, std::string&
     return true;
 }
 
+// "0x..." (ShaderPool::getShaderKeyText): the packed hex a key always had while its
+// properties fit in 32 bits, the 24-digit wide form beyond
 std::string shaderKeyText(ShaderKey key) {
-    std::ostringstream text;
-    text << "0x" << std::hex << key;
-    return text.str();
+    return ShaderPool::getShaderKeyText(key);
 }
 
 bool parseShaderKey(const Json& value, ShaderKey& out) {
     try {
+        // a number: the legacy packed key
         if (value.is_number_unsigned()) {
-            out = value.get<uint64_t>();
+            out = ShaderPool::unpackLegacyKey(value.get<uint64_t>());
             return true;
         }
         if (value.is_number_integer() && value.get<long long>() >= 0) {
-            out = static_cast<ShaderKey>(value.get<long long>());
+            out = ShaderPool::unpackLegacyKey(static_cast<uint64_t>(value.get<long long>()));
             return true;
         }
         if (value.is_string()) {
-            const std::string text = value.get<std::string>();
-            size_t used = 0;
-            out = static_cast<ShaderKey>(std::stoull(text, &used, 0));
-            return used == text.size();
+            return ShaderPool::parseShaderKeyText(value.get<std::string>(), out);
         }
     } catch (...) {
     }
@@ -501,7 +500,7 @@ Json artifactsJson(const fs::path& dir) {
     if (!fs::is_directory(dir, ec)) return list;
     std::vector<std::string> names;
     for (const auto& entry : fs::directory_iterator(dir, ec)) {
-        names.push_back(entry.path().filename().string() + (entry.is_directory(ec) ? "/" : ""));
+        names.push_back(FileUtils::pathToUtf8(entry.path().filename()) + (entry.is_directory(ec) ? "/" : ""));
     }
     std::sort(names.begin(), names.end());
     for (const std::string& name : names) list.push_back(name);
@@ -516,31 +515,31 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
         {"warnings", diagnosticsJson(r, "warning")},
         {"error_count", r.errorCount},
         {"warning_count", r.warningCount},
-        {"log_file", r.logPath.generic_string()}
+        {"log_file", FileUtils::pathToGenericUtf8(r.logPath)}
     };
     const fs::path outputDir = r.shadersOnly || r.mode == ExportMode::SourceCode ? r.config.targetDir : r.config.destinationDir;
-    result["output_dir"] = outputDir.generic_string();
+    result["output_dir"] = FileUtils::pathToGenericUtf8(outputDir);
 
     if (progress.finished && !progress.failed) {
         result["artifacts"] = artifactsJson(outputDir);
         std::string message;
         if (r.shadersOnly) {
-            message = "Shaders generated in " + outputDir.generic_string() + ".";
+            message = "Shaders generated in " + FileUtils::pathToGenericUtf8(outputDir) + ".";
         } else if (r.mode == ExportMode::Desktop) {
             const fs::path exe = outputDir / r.executableName;
-            result["executable"] = exe.generic_string();
-            message = "Built the Desktop player " + exe.generic_string() + ". Try it with run_build.";
+            result["executable"] = FileUtils::pathToGenericUtf8(exe);
+            message = "Built the Desktop player " + FileUtils::pathToGenericUtf8(exe) + ". Try it with run_build.";
             std::lock_guard<std::mutex> lock(manager().mutex);
             manager().lastExecutable = exe;
         } else if (r.mode == ExportMode::Web) {
-            result["index_html"] = (outputDir / "index.html").generic_string();
-            message = "Built the Web player in " + outputDir.generic_string() + " (serve it over HTTP; file:// does not load WebAssembly).";
+            result["index_html"] = FileUtils::pathToGenericUtf8(outputDir / "index.html");
+            message = "Built the Web player in " + FileUtils::pathToGenericUtf8(outputDir) + " (serve it over HTTP; file:// does not load WebAssembly).";
         } else {
-            message = "Exported the C++ source project to " + outputDir.generic_string() +
+            message = "Exported the C++ source project to " + FileUtils::pathToGenericUtf8(outputDir) +
                       ". Build it with: cmake -S <dir> -B <dir>/build -DCMAKE_BUILD_TYPE=Release && cmake --build <dir>/build "
                       "(see its README / jasperengine.py for mobile and web).";
-            result["how_to_build"] = "cmake -S \"" + outputDir.generic_string() + "\" -B \"" + (outputDir / "build").generic_string() +
-                                     "\" -DCMAKE_BUILD_TYPE=Release && cmake --build \"" + (outputDir / "build").generic_string() + "\"";
+            result["how_to_build"] = "cmake -S \"" + FileUtils::pathToGenericUtf8(outputDir) + "\" -B \"" + FileUtils::pathToGenericUtf8(outputDir / "build") +
+                                     "\" -DCMAKE_BUILD_TYPE=Release && cmake --build \"" + FileUtils::pathToGenericUtf8(outputDir / "build") + "\"";
         }
         if (r.warningCount) message += " " + std::to_string(r.warningCount) + " compiler warning(s).";
         r.job->succeed(message, result);
@@ -736,7 +735,7 @@ void buildProjectTool(const CallPtr& call) {
     // ---- output directory
     fs::path outputDir;
     if (args.contains("output_dir") && args["output_dir"].is_string() && !args["output_dir"].get<std::string>().empty()) {
-        outputDir = fs::path(args["output_dir"].get<std::string>());
+        outputDir = FileUtils::pathFromUtf8(args["output_dir"].get<std::string>());
         if (!outputDir.is_absolute()) {
             call->fail("output_dir must be an absolute directory outside the project.");
             return;
@@ -748,16 +747,16 @@ void buildProjectTool(const CallPtr& call) {
     if (outputDir.filename().empty()) outputDir = outputDir.parent_path();
     if ((isInside(outputDir, project->getProjectPath()) || isInside(outputDir, project->getAssetsPath())) &&
         !isInside(outputDir, project->getProjectInternalPath())) {
-        call->fail("output_dir " + outputDir.generic_string() + " is inside the project (its assets and scenes are scanned "
+        call->fail("output_dir " + FileUtils::pathToGenericUtf8(outputDir) + " is inside the project (its assets and scenes are scanned "
                    "from there, so the exported copies would show up as project files). Use a directory outside the "
-                   "project, e.g. " + (project->getProjectPath().parent_path() / (appName(project) + "-build")).generic_string() + ".");
+                   "project, e.g. " + FileUtils::pathToGenericUtf8(project->getProjectPath().parent_path() / (appName(project) + "-build")) + ".");
         return;
     }
     const bool overwrite = args.value("overwrite", false);
     std::error_code ec;
     if (mode == ExportMode::SourceCode) {
         if (fs::exists(outputDir, ec) && !fs::is_empty(outputDir, ec) && !overwrite) {
-            call->fail("output_dir " + outputDir.generic_string() + " is not empty: pass overwrite: true (files with the same "
+            call->fail("output_dir " + FileUtils::pathToGenericUtf8(outputDir) + " is not empty: pass overwrite: true (files with the same "
                        "name are replaced; stale ones stay) or choose an empty directory.");
             return;
         }
@@ -929,7 +928,7 @@ void buildProjectTool(const CallPtr& call) {
         std::lock_guard<std::mutex> lock(manager().mutex);
         manager().active = run;
     }
-    Out::info("MCP: %s to %s", modeLabel, outputDir.string().c_str());
+    Out::info("MCP: %s to %s", modeLabel, FileUtils::pathToUtf8(outputDir).c_str());
     run->exporter->startExport(project, config);
     startRun(run);
 
@@ -945,12 +944,12 @@ void generateShadersTool(const CallPtr& call) {
     if (busy(call)) return;
 
     const std::string target = args.value("output_dir", "");
-    if (target.empty() || !fs::path(target).is_absolute()) {
+    if (target.empty() || !FileUtils::pathFromUtf8(target).is_absolute()) {
         call->fail("output_dir is required: an absolute directory for the generated shaders.");
         return;
     }
     ExportConfig config;
-    config.targetDir = fs::path(target).lexically_normal();
+    config.targetDir = FileUtils::pathFromUtf8(target).lexically_normal();
     std::string error;
     if (!parseBackends(args.contains("backends") ? args["backends"] : Json("all"), config.selectedBackends, error)) {
         call->fail("backends: " + error + ".");
@@ -1034,13 +1033,13 @@ void getBuildInfoTool(const CallPtr& call) {
         {"executable_name", executableName(project)},
         {"kit", {{"c_compiler", kit.cCompiler}, {"cxx_compiler", kit.cxxCompiler}, {"generator", kit.generator},
                  {"build_jobs", kit.buildJobs}, {"automatic_jobs", Generator::getAutomaticParallelBuildJobs()}}},
-        {"output_dir", defaultOutputDir(project, ExportMode::Desktop).generic_string()}
+        {"output_dir", FileUtils::pathToGenericUtf8(defaultOutputDir(project, ExportMode::Desktop))}
     };
     const EmsdkInfo emsdk = Exporter::detectEmsdk(AppSettings::getEmsdkPath());
     data["web"] = {
         {"available", emsdk.found},
         {"emsdk", emsdk.found ? emsdk.description : std::string("not found (set preferences.emsdk_path)")},
-        {"output_dir", defaultOutputDir(project, ExportMode::Web).generic_string()}
+        {"output_dir", FileUtils::pathToGenericUtf8(defaultOutputDir(project, ExportMode::Web))}
     };
     const auto& sourceSettings = project->getSourceCodeExportSettings();
     std::set<ShaderBackend> sourceBackends;
@@ -1050,7 +1049,7 @@ void getBuildInfoTool(const CallPtr& call) {
         {"available", true},
         {"backends", backendList(sourceBackends)},
         {"platforms", {"windows", "macos", "linux", "android", "ios", "web"}},
-        {"output_dir", defaultOutputDir(project, ExportMode::SourceCode).generic_string()}
+        {"output_dir", FileUtils::pathToGenericUtf8(defaultOutputDir(project, ExportMode::SourceCode))}
     };
     data["all_backends"] = allBackendTokens();
 
@@ -1073,7 +1072,9 @@ void getBuildInfoTool(const CallPtr& call) {
         const bool excluded = overrides.exclusions.count(key) > 0;
         if (!excluded) included++;
         if (args.value("include_shaders", false)) {
-            Json item = {{"key", shaderKeyText(key)}, {"name", shaderName(key)}, {"from_scenes", fromScenes.count(key) > 0}};
+            Json item = {{"key", shaderKeyText(key)}, {"name", shaderName(key)}, {"from_scenes", fromScenes.count(key) > 0},
+                         {"shader", ShaderPool::getShaderStr(ShaderPool::getShaderTypeFromKey(key), ShaderPool::getPropertiesFromKey(key),
+                                                             ShaderPool::getCustomIdFromKey(key))}};
             if (excluded) item["excluded"] = true;
             shaders.push_back(item);
         }
@@ -1085,7 +1086,7 @@ void getBuildInfoTool(const CallPtr& call) {
         std::lock_guard<std::mutex> lock(manager().mutex);
         data["running_job"] = manager().active ? Json(manager().active->job->id()) : Json(nullptr);
         data["last_build"] = manager().lastBuild;
-        data["last_executable"] = manager().lastExecutable.empty() ? Json(nullptr) : Json(manager().lastExecutable.generic_string());
+        data["last_executable"] = manager().lastExecutable.empty() ? Json(nullptr) : Json(FileUtils::pathToGenericUtf8(manager().lastExecutable));
     }
 
     std::string text = std::string("Host ") + hostPlatformName() + ". Desktop player: " +
@@ -1489,7 +1490,7 @@ void finishPlayerRun(const CallPtr& call, const std::shared_ptr<PlayerRun>& run)
 
     const double ran = std::chrono::duration<double>((run->exited ? run->exitedAt : std::chrono::steady_clock::now()) - run->started).count();
     Json data = {
-        {"executable", run->exe.generic_string()},
+        {"executable", FileUtils::pathToGenericUtf8(run->exe)},
         {"pid", run->pid},
         {"ran_seconds", ran},
         {"log_lines", lines.size()},
@@ -1498,7 +1499,7 @@ void finishPlayerRun(const CallPtr& call, const std::shared_ptr<PlayerRun>& run)
         {"error_count", errorCount},
         {"warning_count", warningCount},
         {"fatal_lines", fatal},
-        {"log_file", run->logPath.generic_string()}
+        {"log_file", FileUtils::pathToGenericUtf8(run->logPath)}
     };
     bool crashed = !fatal.empty();
     std::string how;
@@ -1521,7 +1522,7 @@ void finishPlayerRun(const CallPtr& call, const std::shared_ptr<PlayerRun>& run)
     data["crashed"] = crashed;
 
     ToolResult result;
-    std::string text = run->exe.filename().string() + " " + how + ". " + std::to_string(lines.size()) + " log line(s)";
+    std::string text = FileUtils::pathToUtf8(run->exe.filename()) + " " + how + ". " + std::to_string(lines.size()) + " log line(s)";
     if (errorCount) text += ", " + std::to_string(errorCount) + " ERROR(S): " + errors[0].get<std::string>();
     if (!fatal.empty()) text += ", fatal: " + fatal[0].get<std::string>();
     text += ".";
@@ -1594,7 +1595,7 @@ void runBuildTool(const CallPtr& call) {
     fs::path exe;
     const std::string pathText = args.value("path", "");
     if (!pathText.empty()) {
-        exe = fs::path(pathText);
+        exe = FileUtils::pathFromUtf8(pathText);
         if (!exe.is_absolute()) {
             call->fail("path must be absolute: the player executable or the build's output directory.");
             return;
@@ -1618,7 +1619,7 @@ void runBuildTool(const CallPtr& call) {
                 }
             }
             if (found.size() != 1) {
-                call->fail("No player executable in " + dir.generic_string() + " (expected " + executableName(project) +
+                call->fail("No player executable in " + FileUtils::pathToGenericUtf8(dir) + " (expected " + executableName(project) +
                            "). Build one with build_project mode desktop, or pass path.");
                 return;
             }
@@ -1626,7 +1627,7 @@ void runBuildTool(const CallPtr& call) {
         }
     }
     if (!fs::is_regular_file(exe, ec) || ::access(exe.c_str(), X_OK) != 0) {
-        call->fail("No executable at " + exe.generic_string() + ". Build a Desktop player with build_project first, or pass path.");
+        call->fail("No executable at " + FileUtils::pathToGenericUtf8(exe) + ". Build a Desktop player with build_project first, or pass path.");
         return;
     }
 
@@ -1761,7 +1762,7 @@ void runBuildTool(const CallPtr& call) {
     run->pid = pid;
     run->fd = pipeFds[0];
     run->started = std::chrono::steady_clock::now();
-    Out::info("MCP run_build: started %s (pid %d)", exe.string().c_str(), static_cast<int>(pid));
+    Out::info("MCP run_build: started %s (pid %d)", FileUtils::pathToUtf8(exe).c_str(), static_cast<int>(pid));
 
     // without seconds, a player slow to open its window gets up to 10 s more (runPlayerInput)
     const double slack = run->secondsGiven || run->actions.empty() ? 0.0 : 10.0 + run->inputDelay;
@@ -1929,10 +1930,10 @@ void registerBuildTools(McpRegistry& registry) {
         tool.name = "run_build";
         tool.title = "Run Build";
         tool.description =
-            "Run a Desktop player for `seconds`, screenshot its window (Linux/X11), stop it. Returns the log tail "
-            "(full: log_file), errors (Lua ones too), exit code/signal, crashed, fatal_lines. input (Linux): "
-            "send_input events into its window: key, text, mouse (window px or space normalized), wait "
-            "{ms|frames|seconds}, release_all, screenshot (an image then). screenshots_at: seconds since launch.";
+            "Run a Desktop player for `seconds`, screenshot its window (Linux/X11), stop it. Returns the log "
+            "tail (full: log_file), errors (Lua too), exit code/signal, crashed, fatal_lines. input (Linux): "
+            "send_input events into its window: key, text, mouse (window px, or space normalized), wait "
+            "{ms|frames|seconds}, release_all, screenshot. screenshots_at: seconds since launch.";
         tool.inputSchema = object({
             {"path", string("Executable or build dir (absolute). Default: last desktop build.")},
             {"seconds", number("Default: 5, or past the input.", 0.5, 300)},

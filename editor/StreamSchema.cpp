@@ -46,20 +46,20 @@ const std::vector<std::string>& StreamSchema::knownFieldKeys(ComponentType type)
 
 const std::vector<std::string>& StreamSchema::knownNestedKeys(NestedKind kind) {
     static const std::map<NestedKind, std::vector<std::string>> tables = {
-        {NestedKind::Material, {"alphaCutoff", "alphaMode", "baseColorFactor", "baseColorTexCoord", "baseColorTexture", "blendMode", "colorWrite", "cullMode", "depthOffsetFactor", "depthOffsetUnits", "depthTest", "depthWrite", "emissiveFactor", "emissiveTexCoord", "emissiveTexture", "extraPass", "foliageTransmission", "lighting", "metallicFactor", "metallicRoughnessTexCoord", "metallicRoughnessTexture", "name", "normalTexCoord", "normalTexture", "occlusionTexCoord", "occlusionTexture", "roughnessFactor", "shader", "shaderFeatures", "shaderParams", "shaderTextures", "sortPriority", "stencil"}},
+        {NestedKind::Material, {"alphaCutoff", "alphaMode", "baseColorFactor", "baseColorTexCoord", "baseColorTexture", "blendMode", "colorWrite", "cullMode", "depthOffsetFactor", "depthOffsetUnits", "depthTest", "depthWrite", "emissiveFactor", "emissiveStrength", "emissiveTexCoord", "emissiveTexture", "extraPass", "foliageTransmission", "lighting", "metallicFactor", "metallicRoughnessTexCoord", "metallicRoughnessTexture", "name", "normalTexCoord", "normalTexture", "occlusionTexCoord", "occlusionTexture", "pbr", "roughnessFactor", "shader", "shaderFeatures", "shaderParams", "shaderTextures", "sortPriority", "stencil", "stochasticBlendSharpness", "stochasticCellSize", "stochasticContrast", "stochasticRotation", "stochasticTiling"}},
         {NestedKind::MaterialPass, {"blendMode", "colorWrite", "cullMode", "depthOffsetFactor", "depthOffsetUnits", "depthTest", "depthWrite", "order", "shader", "shaderFeatures", "shaderParams", "shaderTextures", "stencil"}},
         {NestedKind::Stencil, {"compare", "depthFail", "fail", "pass", "readMask", "ref", "writeMask"}},
         {NestedKind::Submesh, {"faceCulling", "hasMorphNormal", "hasMorphTangent", "hasMorphTarget", "hasNormalMap", "hasSkinning", "hasTangent", "hasTexCoord1", "hasTexCoord2", "hasTextureRect", "hasVertexColor3", "hasVertexColor4", "material", "normAdjustJoint", "normAdjustWeight", "overrideFields", "primitiveType", "textureRect", "textureShadow", "vertexCount"}},
-        {NestedKind::Texture, {"alphaBorder", "camera", "channels", "colorFormat", "cubeMode", "data", "guid", "guids", "height", "id", "magFilter", "minFilter", "path", "paths", "releaseDataAfterLoad", "size", "source", "svgScale", "textureType", "width", "wrapU", "wrapV"}},
+        {NestedKind::Texture, {"alphaBorder", "camera", "channels", "colorFormat", "cubeMode", "data", "fluid", "guid", "guids", "height", "id", "magFilter", "minFilter", "path", "paths", "releaseDataAfterLoad", "size", "source", "svgScale", "textureType", "width", "wrapU", "wrapV"}},
     };
     return lookup(tables, kind);
 }
 
 const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
     static const std::map<RootKind, std::vector<std::string>> tables = {
-        {RootKind::Scene, {"formatVersion", "guid", "formerGuids", "id", "name", "scene", "sceneType", "mainCamera", "maxValues", "shaderKeys",
-            "childScenes", "cppScripts", "cppScriptPaths", "prefabs", "entities"}},
-        {RootKind::SceneSettings, {"ambientLight2DColor", "ambientLight2DIntensity", "backgroundColor", "defaultLinesShader", "defaultMeshShader", "defaultPointsShader", "defaultSkyShader", "defaultUIShader", "depthPrepassEnabled", "enableUIEvents", "fixedResolutionEnabled", "fixedResolutionFilter", "fixedResolutionHeight", "fixedResolutionWidth", "globalIlluminationColor", "globalIlluminationIntensity", "gravity2D", "gravity3D", "lightState", "maxLightsPerObject", "meshLodEnabled", "meshLodThreshold", "postProcess", "postProcessing", "sceneColorScale", "shadow2DQuality", "shadowCascadeBlend", "shadowDistance", "shadowFadeFraction", "shadowQuality", "ssaoBias", "ssaoEnabled", "ssaoIntensity", "ssaoRadius", "ssrBlur", "ssrEnabled", "ssrIntensity", "ssrMaxDistance", "ssrMaxSteps", "ssrThickness"}},
+        {RootKind::Scene, {"formatVersion", "guid", "formerGuids", "labels", "id", "name", "scene", "sceneType", "mainCamera", "maxValues", "shaderKeys",
+            "childScenes", "cppScripts", "cppScriptPaths", "prefabs", "imports", "entities"}},
+        {RootKind::SceneSettings, {"ambientLight2DColor", "ambientLight2DIntensity", "backgroundColor", "defaultLinesShader", "defaultMeshShader", "defaultPointsShader", "defaultSkyShader", "defaultUIShader", "depthPrepassEnabled", "enableUIEvents", "fixedResolutionEnabled", "fixedResolutionFilter", "fixedResolutionHeight", "fixedResolutionWidth", "globalIlluminationColor", "globalIlluminationIntensity", "gravity2D", "gravity3D", "lightState", "litQuality", "maxLightsPerObject", "meshLodEnabled", "meshLodThreshold", "physicalLightEV100", "physicsInterpolation", "postProcess", "postProcessing", "sceneColorScale", "shadow2DQuality", "shadowCascadeBlend", "shadowDistance", "shadowFadeFraction", "shadowQuality", "ssaoBias", "ssaoEnabled", "ssaoIntensity", "ssaoRadius", "ssrBlur", "ssrEnabled", "ssrIntensity", "ssrMaxDistance", "ssrMaxSteps", "ssrThickness"}},
         // prefabInstance and the keys written before it (prefabOverrides...), and the keys of
         // the GameObjects a prefab adds to an instance (addedTo, childIndex...)
         {RootKind::Entity, {"type", "entity", "name", "active", "tag", "layer", "components", "children",
@@ -67,16 +67,17 @@ const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
             "addedTo", "childIndex", "parentRegistryEntity", "prefabRootRegistryEntity", "prefabPath"}},
         // the editor state an older project.yaml held (Workspace::adoptLegacyProjectState) and
         // its build settings (AppSettings, build.yaml) are read too
-        {RootKind::Project, {"formatVersion", "android", "application", "assetsDir", "atmosphereQuality", "canvasHeight", "canvasWidth", "cxxStandard", "export", "graphics", "htmlUiMsaaSamples", "ignoredLayerCollisions", "ios", "layers", "linux", "loading", "luaDir", "macos", "name", "packNativeResources", "physics2D", "physics3D", "runtimeShaders", "scalingMode", "scenes", "scriptDirs", "standalonePrefabs", "startSceneId", "tags", "textureStrategy", "versionControlMetadata", "vsync", "web", "windowHeight", "windowIcon", "windowMode", "windowResizable", "windowTitle", "windowWidth", "windows",
+        {RootKind::Project, {"formatVersion", "android", "application", "assetLabels", "assetsDir", "atmosphereQuality", "canvasHeight", "canvasWidth", "cxxStandard", "export", "graphics", "htmlUiMsaaSamples", "ignoredLayerCollisions", "ios", "layers", "linux", "loading", "luaDir", "macos", "mobilePbrTier", "name", "packNativeResources", "physics2D", "physics3D", "playerLogging", "runtimeShaders", "savedSearches", "scalingMode", "scenes", "scriptDirs", "standalonePrefabs", "startSceneId", "tags", "textureStrategy", "threading", "versionControlMetadata", "vsync", "web", "windowHeight", "windowIcon", "windowMode", "windowResizable", "windowTitle", "windowWidth", "windows",
             "cmakeBuildJobs", "cmakeCCompiler", "cmakeCxxCompiler", "cmakeGenerator", "selectedScene", "tabs", "terrainEditor"}},
         {RootKind::Material, {}},
-        {RootKind::PrefabHeader, {"type", "version", "guid", "formerGuids", "nextEntity", "root", "members", "stripped"}},
+        {RootKind::PrefabHeader, {"type", "version", "guid", "formerGuids", "labels", "nextEntity", "root", "members", "stripped"}},
     };
     if (kind == RootKind::Material) {
         // a .material file is one encoded Material
         static const std::vector<std::string> material = [] {
             // the identity of a .material is in the file (S04)
-            std::vector<std::string> keys = {"formatVersion", "guid", "formerGuids"};
+            // and its labels (S25)
+            std::vector<std::string> keys = {"formatVersion", "guid", "formerGuids", "labels"};
             const std::vector<std::string>& fields = knownNestedKeys(NestedKind::Material);
             keys.insert(keys.end(), fields.begin(), fields.end());
             return keys;
@@ -282,6 +283,11 @@ const EnumTable<EaseType>& StreamSchema::easeType() {
     return table;
 }
 
+const EnumTable<FluidOutput>& StreamSchema::fluidOutput() {
+    static const EnumTable<FluidOutput> table(reflect::enums::kFluidOutput);
+    return table;
+}
+
 const EnumTable<FogType>& StreamSchema::fogType() {
     static const EnumTable<FogType> table(reflect::enums::kFogType);
     return table;
@@ -337,6 +343,31 @@ const EnumTable<Joint3DType>& StreamSchema::joint3DType() {
     return table;
 }
 
+const EnumTable<LatticeInterpolation>& StreamSchema::latticeInterpolation() {
+    static const EnumTable<LatticeInterpolation> table(reflect::enums::kLatticeInterpolation);
+    return table;
+}
+
+const EnumTable<LatticeJiggleAnchor>& StreamSchema::latticeJiggleAnchor() {
+    static const EnumTable<LatticeJiggleAnchor> table(reflect::enums::kLatticeJiggleAnchor);
+    return table;
+}
+
+const EnumTable<LatticeMaskChannel>& StreamSchema::latticeMaskChannel() {
+    static const EnumTable<LatticeMaskChannel> table(reflect::enums::kLatticeMaskChannel);
+    return table;
+}
+
+const EnumTable<LatticeOutside>& StreamSchema::latticeOutside() {
+    static const EnumTable<LatticeOutside> table(reflect::enums::kLatticeOutside);
+    return table;
+}
+
+const EnumTable<LatticeStage>& StreamSchema::latticeStage() {
+    static const EnumTable<LatticeStage> table(reflect::enums::kLatticeStage);
+    return table;
+}
+
 const EnumTable<LayoutGroupType>& StreamSchema::layoutGroupType() {
     static const EnumTable<LayoutGroupType> table(reflect::enums::kLayoutGroupType);
     return table;
@@ -353,6 +384,27 @@ const EnumTable<LightState>& StreamSchema::lightState() {
         {LightState::ON, "on"},
         {LightState::AUTO, "auto"},
     }, LightState::AUTO);
+    return table;
+}
+
+const EnumTable<LightUnit>& StreamSchema::lightUnit() {
+    static const EnumTable<LightUnit> table(reflect::enums::kLightUnit);
+    return table;
+}
+
+const EnumTable<LitQuality>& StreamSchema::litQuality() {
+    static const EnumTable<LitQuality> table("LitQuality", {
+        {LitQuality::STANDARD, "standard"},
+        {LitQuality::HIGH, "high"},
+    }, LitQuality::STANDARD);
+    return table;
+}
+
+const EnumTable<PbrTier>& StreamSchema::pbrTier() {
+    static const EnumTable<PbrTier> table("PbrTier", {
+        {PbrTier::FULL, "full"},
+        {PbrTier::REDUCED, "reduced"},
+    }, PbrTier::REDUCED);
     return table;
 }
 
