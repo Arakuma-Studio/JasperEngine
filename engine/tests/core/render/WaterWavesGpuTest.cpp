@@ -14,6 +14,7 @@
 #include "render/ObjectRender.h"
 #include "render/PipelineState.h"
 #include "render/ShaderRender.h"
+#include "render/TextureRender.h"
 #include "render/SystemRender.h"
 #include "shader/ShaderVariantCompiler.h"
 #include "util/WaterWaves.h"
@@ -37,12 +38,17 @@ namespace {
 
     constexpr int SIZE = 32;
 
-    // r: the height, g and b: the world xz it is at (so the comparison needs no texel orientation)
+    // r: the height, g and b: the world xz it is at (so the comparison needs no texel orientation),
+    // a: a 1 x 1 white texture's 1, so a texel left undrawn shows. The texture also gives the draw
+    // a binding: sokol's validation (Debug builds) refuses a draw with no binding at all.
     const char* PROBE = R"(#version 450
 #include "library/water.glsl"
 
 in vec2 v_texcoord;
 out vec4 frag_color;
+
+uniform texture2D u_probeOneTexture;
+uniform sampler u_probeOne_smp;
 
 uniform u_fs_waterProbe {
     vec4 wave;      // direction.xy, height, waveLength
@@ -52,7 +58,7 @@ uniform u_fs_waterProbe {
 void main(){
     vec2 xz = (v_texcoord - 0.5) * probe.clock.z;
     vec3 w = waterWaves(xz, probe.clock.y, probe.wave.xy, probe.wave.z, probe.wave.w, probe.clock.x);
-    frag_color = vec4(w.x, xz, 1.0);
+    frag_color = vec4(w.x, xz, texture(sampler2D(u_probeOneTexture, u_probeOne_smp), vec2(0.5)).r);
 }
 )";
 
@@ -90,6 +96,18 @@ TEST(WaterWavesGpu, MatchesTheCpuTwin){
     ASSERT_TRUE(shader.isCreated());
     const int slot = shader.shaderData.getUniformBlockIndexByName("u_fs_waterProbe");
     ASSERT_GE(slot, 0);
+    const std::pair<int, int> oneSlot = shader.shaderData.getTextureIndexByName("u_probeOneTexture");
+    ASSERT_GE(oneSlot.first, 0);
+
+    TextureRender one;
+    uint8_t white[4] = {255, 255, 255, 255};
+    void* oneData[1] = {white};
+    size_t oneSize[1] = {sizeof(white)};
+    ASSERT_TRUE(one.createTexture("WaterWavesGpu|one", 1, 1, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, oneData, oneSize,
+                                  TextureFilter::NEAREST, TextureFilter::NEAREST, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE));
+    SystemRender::commitQueue();
+    SystemRender::executeQueue();
+    ASSERT_TRUE(one.isCreated());
 
     FramebufferRender target;
     FramebufferDesc desc;
@@ -120,6 +138,7 @@ TEST(WaterWavesGpu, MatchesTheCpuTwin){
     CameraRender pass;
     pass.setClearColor(Vector4(0.0f, 0.0f, 0.0f, 0.0f));
     pass.startRenderPass(&target);
+    object.addTexture(oneSlot, ShaderStageType::FRAGMENT, &one);
     ASSERT_TRUE(object.beginDraw(state));
     object.applyUniformBlock(slot, sizeof(block), &block);
     object.draw(0, 3, 1);
@@ -148,6 +167,7 @@ TEST(WaterWavesGpu, MatchesTheCpuTwin){
     object.destroy();
     shader.destroyShader();
     target.destroyFramebuffer();
+    one.destroyTexture();
     SystemRender::commitQueue();
     SystemRender::executeQueue();
 }
