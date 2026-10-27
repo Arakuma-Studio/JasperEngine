@@ -15242,7 +15242,8 @@ namespace basist
 		}
 
 		uint32_t byte_bit_offset = bit_offset & 7U;
-		const uint16_t w = *(const uint16_t *)(&pBuf[bit_offset >> 3U]);
+		uint16_t w; // JasperEngine: memcpy, not an unaligned uint16_t* read (README.jasper.md)
+		memcpy(&w, &pBuf[bit_offset >> 3U], sizeof(w));
 		bit_offset += codesize;
 		return (w >> byte_bit_offset) & ((1U << codesize) - 1U);
 	}
@@ -15297,7 +15298,8 @@ namespace basist
 		else
 		{
 			uint32_t byte_bit_offset = bit_offset & 7U;
-			const uint16_t w = *(const uint16_t*)(&pBuf[bit_offset >> 3U]);
+			uint16_t w; // JasperEngine: memcpy, not an unaligned uint16_t* read (README.jasper.md)
+			memcpy(&w, &pBuf[bit_offset >> 3U], sizeof(w));
 			bit_offset += codesize;
 			return (w >> byte_bit_offset) & ((1U << codesize) - 1U);
 		}

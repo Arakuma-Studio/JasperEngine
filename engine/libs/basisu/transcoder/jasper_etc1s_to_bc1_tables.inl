@@ -10,7 +10,7 @@
 // BASISD_WRITE_NEW_DXT1_TABLES: the least squared error over the range's selectors, the first pair
 // in hi-major order on ties), found here in a window around the least-squares endpoints, or along
 // the one palette entry a mapping uses. The two give the same tables entry for entry
-// (TextureBasisTranscode.Etc1sToBc1TablesMatchUpstream), in about a thousandth of the time.
+// (TextureBasisTranscode.Etc1sToBc1TablesMatchUpstream), in milliseconds instead of seconds.
 
 namespace jasper_dxt1
 {
@@ -46,13 +46,15 @@ namespace jasper_dxt1
 		return e;
 	}
 
-	// which values palette entry k takes over every endpoint pair
-	struct reachable
+	// for each value palette entry k takes: the first endpoint pair in the exhaustive search's
+	// order (hi-major) that gives it, as hi * n + lo; cNone where no pair does
+	struct first_pairs
 	{
-		bool m_value[4][256];
+		static const uint32_t cNone = UINT32_MAX;
+		uint32_t m_pair[4][256];
 	};
 
-	static void solve(const target& t, const uint8_t* pExpand, uint32_t n, const reachable& reach, etc1_to_dxt1_56_solution& out)
+	static void solve(const target& t, const uint8_t* pExpand, uint32_t n, const first_pairs& firsts, etc1_to_dxt1_56_solution& out)
 	{
 		const uint32_t k0 = t.m_map[t.m_low];
 		bool one_entry = true;
@@ -62,32 +64,25 @@ namespace jasper_dxt1
 		uint32_t best_err = UINT32_MAX, best_lo = 0, best_hi = 0;
 		if (one_entry)
 		{
-			// the error only depends on the value of that palette entry: the least error a value
-			// reaches, then the first pair in the exhaustive order that takes such a value
-			uint32_t error_at[256];
-			uint32_t least = UINT32_MAX;
+			// the error only depends on the value of that palette entry: of the values with the
+			// least error, the one an earlier pair reaches
+			uint32_t best_pair = first_pairs::cNone;
 			for (int v = 0; v < 256; v++)
 			{
+				const uint32_t pair = firsts.m_pair[k0][v];
+				if (pair == first_pairs::cNone)
+					continue;
 				uint32_t e = 0;
 				for (uint32_t s = t.m_low; s <= t.m_high; s++)
 					e += (uint32_t)((t.m_t[s] - v) * (t.m_t[s] - v));
-				error_at[v] = e;
-				if (reach.m_value[k0][v])
-					least = basisu::minimum(least, e);
-			}
-			for (uint32_t hi = 0; hi < n && best_err == UINT32_MAX; hi++)
-				for (uint32_t lo = 0; lo < n; lo++)
+				if (e < best_err || (e == best_err && pair < best_pair))
 				{
-					int c[4];
-					palette(pExpand, lo, hi, c);
-					if (error_at[c[k0]] == least)
-					{
-						best_err = least;
-						best_lo = lo;
-						best_hi = hi;
-						break;
-					}
+					best_err = e;
+					best_pair = pair;
 				}
+			}
+			best_hi = best_pair / n;
+			best_lo = best_pair % n;
 		}
 		else
 		{
@@ -168,14 +163,18 @@ namespace jasper_dxt1
 		for (uint32_t i = 0; i < n; i++)
 			expand[i] = (uint8_t)((bits == 5) ? ((i << 3) | (i >> 2)) : ((i << 2) | (i >> 4)));
 
-		reachable reach = {};
+		first_pairs firsts;
+		for (uint32_t k = 0; k < 4; k++)
+			for (uint32_t v = 0; v < 256; v++)
+				firsts.m_pair[k][v] = first_pairs::cNone;
 		for (uint32_t hi = 0; hi < n; hi++)
 			for (uint32_t lo = 0; lo < n; lo++)
 			{
 				int c[4];
 				palette(expand, lo, hi, c);
 				for (uint32_t k = 0; k < 4; k++)
-					reach.m_value[k][c[k]] = true;
+					if (firsts.m_pair[k][c[k]] == first_pairs::cNone)
+						firsts.m_pair[k][c[k]] = hi * n + lo;
 			}
 
 		uint32_t index = 0;
@@ -194,7 +193,7 @@ namespace jasper_dxt1
 					for (uint32_t m = 0; m < NUM_ETC1_TO_DXT1_SELECTOR_MAPPINGS; m++)
 					{
 						t.m_map = g_etc1_to_dxt1_selector_mappings[m];
-						solve(t, expand, n, reach, pTable[index++]);
+						solve(t, expand, n, firsts, pTable[index++]);
 					}
 				}
 			}
