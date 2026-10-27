@@ -34,6 +34,10 @@ target_compile_definitions(basisu_transcoder PRIVATE
     BASISD_SUPPORT_ASTC_HIGHER_OPAQUE_QUALITY=0)
 target_link_libraries(basisu_transcoder PRIVATE zstd_decompress)
 target_compile_options(basisu_transcoder PRIVATE $<${BASISU_GNU_FE}:-fno-strict-aliasing>)
+# the web downloads the transcoder: optimised for size there (spec S14 R21)
+if(EMSCRIPTEN)
+    target_compile_options(basisu_transcoder PRIVATE -Os)
+endif()
 set_target_properties(basisu_transcoder PROPERTIES
     CXX_VISIBILITY_PRESET hidden
     POSITION_INDEPENDENT_CODE ON
