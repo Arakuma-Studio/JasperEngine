@@ -41,7 +41,8 @@ namespace all_components_fixture_test {
             "selectionAnchor", "containerBoxIndex", "textureWidth", "textureHeight", "framebufferWidth", "framebufferHeight", "fontSize",
             "maxTextSize", "minBufferCount", "minIndicesCount", "colorWrite", "sortPriority", "customShader", "customDepthShader",
             "shader", "length", "playingTime", "width", "height", "heightMap", "filename", "actionFrameCount", "numFramesRect", "numTilesRect",
-            "numTiles", "numVertices", "numIndices"};
+            "numTiles", "numVertices", "numIndices", "resolutionX", "resolutionY", "resolutionZ", "simResolution", "dyeResolution",
+            "bloomResolution", "sunraysResolution", "subdivisions", "seed"};
         const size_t dot = name.rfind('.');
         const std::string leaf = dot == std::string::npos ? name : name.substr(dot + 1);
         for (const char* item : names) {

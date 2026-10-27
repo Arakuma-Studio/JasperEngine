@@ -487,6 +487,12 @@ Recorded by the implementation (branch `feat/s08-reflection`).
   lines in total. AC15's `Stream.cpp` ≤ 5,000 is met by that split, not by deleting those codecs.
   `ComponentDesc::extraKeys` lists each codec's known keys for `StreamSchema` and
   `tools/check_stream_keys.py`.
+- **Components added upstream after the S08 base** (oe-port 05eb8d3b4): Fluid Simulation and
+  Lattice Follower use the generic codec (parity-tested against their upstream codecs); Lattice,
+  Lattice Modifier and Lattice Tracks keep their codecs (offsets sized by the resolution,
+  flow-style empty lists, clamps on read) in `StreamComponents.cpp`, with tables for the rest.
+  Their exported code stays the Factory writers'. The lattice drawers moved to
+  `InspectorLattice.cpp`; the fluid keeps its own drawer (`InspectorFluid.cpp`).
 - **Legacy oracle kept.** `editor/tests/reflect/legacy/` (the deleted hand codecs, test-only)
   stays so the parity fuzzers can keep running. D5 deletes it once S08 completes. Deleting it is
   a follow-up for the integrator after merge, and the goldens do not depend on it.
