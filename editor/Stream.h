@@ -284,7 +284,6 @@ namespace jasperengine::editor {
         static YAML::Node encodeMaterialPass(const MaterialPass& pass, bool embedTextureData);
         static MaterialPass decodeMaterialPass(const YAML::Node& node);
 
-=======
         // A shader variant key (scene shaderKeys, project shaderAdditions/shaderExclusions):
         // a map of type, properties (a plain integer of up to 64 bits, left out when 0) and
         // customShader (a fork's project-relative path: the session-local id is not written;
