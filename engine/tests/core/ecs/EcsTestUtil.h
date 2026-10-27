@@ -15,7 +15,7 @@ namespace jasperengine::test {
     inline const std::vector<std::string>& subSystemNames(){
         static const std::vector<std::string> names{
             "ActionSystem", "MeshSystem", "LatticeSystem", "UISystem", "UIDocumentSystem", "FluidSystem", "RenderSystem",
-            "PhysicsSystem", "AudioSystem"
+            "PhysicsSystem", "ParticleSubsystem", "AudioSystem"
         };
         return names;
     }

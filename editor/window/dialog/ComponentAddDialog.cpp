@@ -78,7 +78,8 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::ShadowCaster2DComponent, "Casts shadows from 2D lights"},
         }},
         {"Effects", ICON_FA_FIRE, {
-            {ComponentType::ParticleSystemComponent, "Emits and animates particles"},
+            {ComponentType::ParticleSystemComponent, "Emits and animates particles (a .particles effect, or its own)"},
+            {ComponentType::ForceFieldComponent, "Pushes the particles of systems with External Forces"},
             {ComponentType::FluidSimulationComponent, "GPU fluid with dye, bloom and sunrays, drawn on the sprite or mesh"},
             {ComponentType::LocalVolumetricFogComponent, "A box or sphere of extra volumetric fog"},
             {ComponentType::VolumetricCloudsComponent, "Raymarched clouds lit by the sun and the sky"},

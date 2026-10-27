@@ -48,6 +48,8 @@
 # build/android-<name> (core-utilities: the logger and Lua Timer, S09).
 # android: ANDROID_ABIS="x86_64" (comma separated) builds only those ABIs (the emulator's is
 # x86_64); the default is every ABI an export ships.
+# web, web-gate: WASM_SIMD=0 builds (and gates) the scalar particle kernels instead of simd128
+# (-DJASPERENGINE_WASM_SIMD=OFF), next to the default build (build/web*-scalar).
 # web-gate: GATE=sample-project (default, build/web), sample-project-threads (build/web-threads)
 # or a test project with a gate (tools/web/gates/<name>.json; build/web-<name>, WEB_PROJECT=<name>
 # tools/build.sh web first);
@@ -66,7 +68,7 @@ EDITOR_MIN_TESTS=150
 HTMLUI_MAX_SKIPPED=75
 
 usage() {
-    sed -n '2,51p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,53p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 1
 }
 
@@ -208,6 +210,11 @@ fi
 # the UI effects' measuring switches (EffectPerfTest: JASPER_EFFECT_COST_ONLY, JASPER_EFFECT_PERF_*;
 # EffectFluidTest: JASPER_EFFECT_FLUID_PROFILE)
 for name in $(compgen -e | grep '^JASPER_EFFECT_' || true); do ENV_FLAGS+=(-e "$name=${!name}"); done
+# A non-root uid has no entry in the image's /etc/passwd; dbus (dbus-run-session, used by the MCP
+# tests and tool docs) and getpwuid() callers then fail ("User ??? unknown"). Lend the host's tables.
+if [[ "$(uname -s)" == Linux && "$(id -u)" != 0 && -r /etc/passwd && -r /etc/group ]]; then
+    MOUNT_FLAGS+=(-v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro)
+fi
 
 run() {
     # (the ${a[@]+...} form: an empty array under set -u fails on bash before 4.4, e.g. macOS)
@@ -317,8 +324,13 @@ web)
         PROJECT_FLAGS="-DPROJECT_ROOT=/src/tools/test-projects/$WEB_PROJECT"
     fi
     [[ -n "$CXX_SUFFIX" ]] && WEB_DIR="$WEB_DIR/cxx$CXX_STANDARD"
+    SIMD_FLAGS=""
+    if [[ "${WASM_SIMD:-1}" == 0 ]]; then
+        WEB_DIR="$WEB_DIR-scalar"
+        SIMD_FLAGS="-DJASPERENGINE_WASM_SIMD=OFF"
+    fi
     run bash -euo pipefail -c "
-        cmake --preset $PRESET -S engine -B $WEB_DIR -DCMAKE_BUILD_TYPE=$BT $PROJECT_FLAGS $OPTION_FLAGS $CCACHE_FLAGS
+        cmake --preset $PRESET -S engine -B $WEB_DIR -DCMAKE_BUILD_TYPE=$BT $PROJECT_FLAGS $OPTION_FLAGS $SIMD_FLAGS $CCACHE_FLAGS
         cmake --build $WEB_DIR --target $ENGINE_TARGET $JOBS_FLAG
     "
     ;;
@@ -444,12 +456,17 @@ web-gate)
                 || { echo "GATE must be sample-project, sample-project-threads or a tools/web/gates/<name>.json" >&2; exit 1; }
             WEB_DIR="$OUT-$NAME" ;;
     esac
+    SHOT_NAME="$NAME"
+    if [[ "${WASM_SIMD:-1}" == 0 ]]; then
+        WEB_DIR="$WEB_DIR-scalar"
+        SHOT_NAME="$NAME-scalar"
+    fi
     [[ -f "$ROOT/$WEB_DIR/$ENGINE_TARGET.html" ]] || { echo "No web build at $WEB_DIR; run tools/build.sh web" >&2; exit 1; }
     run bash -euo pipefail -c "
         mkdir -p $RESULTS/web
         python3 tools/web/browser_gate.py --root $WEB_DIR --page $ENGINE_TARGET.html --until-ready \
-            --baseline tools/web/gates/$NAME.json --screenshot $RESULTS/web/$NAME.png \
-            --transcript $RESULTS/web/$NAME.log ${GATE_ARGS:-}
+            --baseline tools/web/gates/$NAME.json --screenshot $RESULTS/web/$SHOT_NAME.png \
+            --transcript $RESULTS/web/$SHOT_NAME.log ${GATE_ARGS:-}
     "
     ;;
 android)

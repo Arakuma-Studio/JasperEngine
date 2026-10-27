@@ -29,6 +29,7 @@
 #include "component/ButtonComponent.h"
 #include "component/InputFieldComponent.h"
 #include "component/ParticleSystemComponent.h"
+#include "particles/LegacyParticleSystem.h"
 #include "component/AudioSourceComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/FogComponent.h"
@@ -555,83 +556,10 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleLifeInitializer>("ParticleLifeInitializer")
-        .addProperty("minLife", &ParticleLifeInitializer::minLife, &ParticleLifeInitializer::minLife)
-        .addProperty("maxLife", &ParticleLifeInitializer::maxLife, &ParticleLifeInitializer::maxLife)
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticlePositionInitializer>("ParticlePositionInitializer")
-        .addProperty("shape", &ParticlePositionInitializer::shape, &ParticlePositionInitializer::shape)
-        .addProperty("minPosition", &ParticlePositionInitializer::minPosition, &ParticlePositionInitializer::minPosition)
-        .addProperty("maxPosition", &ParticlePositionInitializer::maxPosition, &ParticlePositionInitializer::maxPosition)
-        .addProperty("radius", &ParticlePositionInitializer::radius, &ParticlePositionInitializer::radius)
-        .addProperty("innerRadius", &ParticlePositionInitializer::innerRadius, &ParticlePositionInitializer::innerRadius)
-        .addProperty("coneAngle", &ParticlePositionInitializer::coneAngle, &ParticlePositionInitializer::coneAngle)
-        .addProperty("coneHeight", &ParticlePositionInitializer::coneHeight, &ParticlePositionInitializer::coneHeight)
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
         .beginClass<ParticleBurst>("ParticleBurst")
         .addProperty("time", &ParticleBurst::time, &ParticleBurst::time)
         .addProperty("minCount", &ParticleBurst::minCount, &ParticleBurst::minCount)
         .addProperty("maxCount", &ParticleBurst::maxCount, &ParticleBurst::maxCount)
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticlePositionModifier>("ParticlePositionModifier")
-        .addProperty("fromTime", &ParticlePositionModifier::fromTime, &ParticlePositionModifier::fromTime)
-        .addProperty("toTime", &ParticlePositionModifier::toTime, &ParticlePositionModifier::toTime)
-        .addProperty("fromPosition", &ParticlePositionModifier::fromPosition, &ParticlePositionModifier::fromPosition)
-        .addProperty("toPosition", &ParticlePositionModifier::toPosition, &ParticlePositionModifier::toPosition)
-        .addProperty("function", [] (ParticlePositionModifier* self, lua_State* L) { return &self->function; }, [] (ParticlePositionModifier* self, lua_State* L) { self->function = L; })
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleVelocityInitializer>("ParticleVelocityInitializer")
-        .addProperty("minVelocity", &ParticleVelocityInitializer::minVelocity, &ParticleVelocityInitializer::minVelocity)
-        .addProperty("maxVelocity", &ParticleVelocityInitializer::maxVelocity, &ParticleVelocityInitializer::maxVelocity)
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleVelocityModifier>("ParticleVelocityModifier")
-        .addProperty("fromTime", &ParticleVelocityModifier::fromTime, &ParticleVelocityModifier::fromTime)
-        .addProperty("toTime", &ParticleVelocityModifier::toTime, &ParticleVelocityModifier::toTime)
-        .addProperty("fromVelocity", &ParticleVelocityModifier::fromVelocity, &ParticleVelocityModifier::fromVelocity)
-        .addProperty("toVelocity", &ParticleVelocityModifier::toVelocity, &ParticleVelocityModifier::toVelocity)
-        .addProperty("function", [] (ParticleVelocityModifier* self, lua_State* L) { return &self->function; }, [] (ParticleVelocityModifier* self, lua_State* L) { self->function = L; })
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleAccelerationInitializer>("ParticleAccelerationInitializer")
-        .addProperty("minAcceleration", &ParticleAccelerationInitializer::minAcceleration, &ParticleAccelerationInitializer::minAcceleration)
-        .addProperty("maxAcceleration", &ParticleAccelerationInitializer::maxAcceleration, &ParticleAccelerationInitializer::maxAcceleration)
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleAccelerationModifier>("ParticleAccelerationModifier")
-        .addProperty("fromTime", &ParticleAccelerationModifier::fromTime, &ParticleAccelerationModifier::fromTime)
-        .addProperty("toTime", &ParticleAccelerationModifier::toTime, &ParticleAccelerationModifier::toTime)
-        .addProperty("fromAcceleration", &ParticleAccelerationModifier::fromAcceleration, &ParticleAccelerationModifier::fromAcceleration)
-        .addProperty("toAcceleration", &ParticleAccelerationModifier::toAcceleration, &ParticleAccelerationModifier::toAcceleration)
-        .addProperty("function", [] (ParticleAccelerationModifier* self, lua_State* L) { return &self->function; }, [] (ParticleAccelerationModifier* self, lua_State* L) { self->function = L; })
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleColorInitializer>("ParticleColorInitializer")
-        .addProperty("minColor", &ParticleColorInitializer::minColor, &ParticleColorInitializer::minColor)
-        .addProperty("maxColor", &ParticleColorInitializer::maxColor, &ParticleColorInitializer::maxColor)
-        .addProperty("useSRGB", &ParticleColorInitializer::useSRGB, &ParticleColorInitializer::useSRGB)
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleColorModifier>("ParticleColorModifier")
-        .addProperty("fromTime", &ParticleColorModifier::fromTime, &ParticleColorModifier::fromTime)
-        .addProperty("toTime", &ParticleColorModifier::toTime, &ParticleColorModifier::toTime)
-        .addProperty("fromColor", &ParticleColorModifier::fromColor, &ParticleColorModifier::fromColor)
-        .addProperty("toColor", &ParticleColorModifier::toColor, &ParticleColorModifier::toColor)
-        .addProperty("function", [] (ParticleColorModifier* self, lua_State* L) { return &self->function; }, [] (ParticleColorModifier* self, lua_State* L) { self->function = L; })
-        .addProperty("useSRGB", &ParticleColorModifier::useSRGB, &ParticleColorModifier::useSRGB)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -641,117 +569,16 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleColorGradient>("ParticleColorGradient")
-        .addProperty("stops", &ParticleColorGradient::stops, &ParticleColorGradient::stops)
-        .addProperty("useSRGB", &ParticleColorGradient::useSRGB, &ParticleColorGradient::useSRGB)
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleAlphaInitializer>("ParticleAlphaInitializer")
-        .addProperty("minAlpha", &ParticleAlphaInitializer::minAlpha, &ParticleAlphaInitializer::minAlpha)
-        .addProperty("maxAlpha", &ParticleAlphaInitializer::maxAlpha, &ParticleAlphaInitializer::maxAlpha)
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleAlphaModifier>("ParticleAlphaModifier")
-        .addProperty("fromTime", &ParticleAlphaModifier::fromTime, &ParticleAlphaModifier::fromTime)
-        .addProperty("toTime", &ParticleAlphaModifier::toTime, &ParticleAlphaModifier::toTime)
-        .addProperty("fromAlpha", &ParticleAlphaModifier::fromAlpha, &ParticleAlphaModifier::fromAlpha)
-        .addProperty("toAlpha", &ParticleAlphaModifier::toAlpha, &ParticleAlphaModifier::toAlpha)
-        .addProperty("function", [] (ParticleAlphaModifier* self, lua_State* L) { return &self->function; }, [] (ParticleAlphaModifier* self, lua_State* L) { self->function = L; })
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleSizeInitializer>("ParticleSizeInitializer")
-        .addProperty("minSize", &ParticleSizeInitializer::minSize, &ParticleSizeInitializer::minSize)
-        .addProperty("maxSize", &ParticleSizeInitializer::maxSize, &ParticleSizeInitializer::maxSize)
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleSizeModifier>("ParticleSizeModifier")
-        .addProperty("fromTime", &ParticleSizeModifier::fromTime, &ParticleSizeModifier::fromTime)
-        .addProperty("toTime", &ParticleSizeModifier::toTime, &ParticleSizeModifier::toTime)
-        .addProperty("fromSize", &ParticleSizeModifier::fromSize, &ParticleSizeModifier::fromSize)
-        .addProperty("toSize", &ParticleSizeModifier::toSize, &ParticleSizeModifier::toSize)
-        .addProperty("function", [] (ParticleSizeModifier* self, lua_State* L) { return &self->function; }, [] (ParticleSizeModifier* self, lua_State* L) { self->function = L; })
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleSpriteInitializer>("ParticleSpriteInitializer")
-        .addProperty("frames", &ParticleSpriteInitializer::frames, &ParticleSpriteInitializer::frames)
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleSpriteModifier>("ParticleSpriteModifier")
-        .addProperty("fromTime", &ParticleSpriteModifier::fromTime, &ParticleSpriteModifier::fromTime)
-        .addProperty("toTime", &ParticleSpriteModifier::toTime, &ParticleSpriteModifier::toTime)
-        .addProperty("frames", &ParticleSpriteModifier::frames, &ParticleSpriteModifier::frames)
-        .addProperty("function", [] (ParticleSpriteModifier* self, lua_State* L) { return &self->function; }, [] (ParticleSpriteModifier* self, lua_State* L) { self->function = L; })
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleRotationInitializer>("ParticleRotationInitializer")
-        .addProperty("minRotation", &ParticleRotationInitializer::minRotation, &ParticleRotationInitializer::minRotation)
-        .addProperty("maxRotation", &ParticleRotationInitializer::maxRotation, &ParticleRotationInitializer::maxRotation)
-        .addProperty("shortestPath", &ParticleRotationInitializer::shortestPath, &ParticleRotationInitializer::shortestPath)
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleRotationModifier>("ParticleRotationModifier")
-        .addProperty("fromTime", &ParticleRotationModifier::fromTime, &ParticleRotationModifier::fromTime)
-        .addProperty("toTime", &ParticleRotationModifier::toTime, &ParticleRotationModifier::toTime)
-        .addProperty("fromRotation", &ParticleRotationModifier::fromRotation, &ParticleRotationModifier::fromRotation)
-        .addProperty("toRotation", &ParticleRotationModifier::toRotation, &ParticleRotationModifier::toRotation)
-        .addProperty("function", [] (ParticleRotationModifier* self, lua_State* L) { return &self->function; }, [] (ParticleRotationModifier* self, lua_State* L) { self->function = L; })
-        .addProperty("shortestPath", &ParticleRotationModifier::shortestPath, &ParticleRotationModifier::shortestPath)
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleScaleInitializer>("ParticleScaleInitializer")
-        .addProperty("minScale", &ParticleScaleInitializer::minScale, &ParticleScaleInitializer::minScale)
-        .addProperty("maxScale", &ParticleScaleInitializer::maxScale, &ParticleScaleInitializer::maxScale)
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<ParticleScaleModifier>("ParticleScaleModifier")
-        .addProperty("fromTime", &ParticleScaleModifier::fromTime, &ParticleScaleModifier::fromTime)
-        .addProperty("toTime", &ParticleScaleModifier::toTime, &ParticleScaleModifier::toTime)
-        .addProperty("fromScale", &ParticleScaleModifier::fromScale, &ParticleScaleModifier::fromScale)
-        .addProperty("toScale", &ParticleScaleModifier::toScale, &ParticleScaleModifier::toScale)
-        .addProperty("function", [] (ParticleScaleModifier* self, lua_State* L) { return &self->function; }, [] (ParticleScaleModifier* self, lua_State* L) { self->function = L; })
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
         .beginClass<ParticleSystemComponent>("ParticleSystemComponent")
-        .addProperty("newParticlesCount", &ParticleSystemComponent::newParticlesCount)
-        .addProperty("lastUsedParticle", &ParticleSystemComponent::lastUsedParticle)
-        .addProperty("emitter", &ParticleSystemComponent::emitter, &setTrackedMember<&ParticleSystemComponent::emitter>)
-        .addProperty("loop", &ParticleSystemComponent::loop, &setTrackedMember<&ParticleSystemComponent::loop>)
-        .addProperty("localSpace", &ParticleSystemComponent::localSpace, &setTrackedMember<&ParticleSystemComponent::localSpace>)
-        .addProperty("rate", &ParticleSystemComponent::rate, &setTrackedMember<&ParticleSystemComponent::rate>)
-        .addProperty("maxPerUpdate", &ParticleSystemComponent::maxPerUpdate, &setTrackedMember<&ParticleSystemComponent::maxPerUpdate>)
-        .addProperty("bursts", &ParticleSystemComponent::bursts, &setTrackedMember<&ParticleSystemComponent::bursts>)
-        .addProperty("currentBurst", &ParticleSystemComponent::currentBurst)
-        .addProperty("lifeInitializer", &ParticleSystemComponent::lifeInitializer, &setTrackedMember<&ParticleSystemComponent::lifeInitializer>)
-        .addProperty("positionInitializer", &ParticleSystemComponent::positionInitializer, &setTrackedMember<&ParticleSystemComponent::positionInitializer>)
-        .addProperty("positionModifier", &ParticleSystemComponent::positionModifier, &setTrackedMember<&ParticleSystemComponent::positionModifier>)
-        .addProperty("velocityInitializer", &ParticleSystemComponent::velocityInitializer, &setTrackedMember<&ParticleSystemComponent::velocityInitializer>)
-        .addProperty("velocityModifier", &ParticleSystemComponent::velocityModifier, &setTrackedMember<&ParticleSystemComponent::velocityModifier>)
-        .addProperty("accelerationInitializer", &ParticleSystemComponent::accelerationInitializer, &setTrackedMember<&ParticleSystemComponent::accelerationInitializer>)
-        .addProperty("accelerationModifier", &ParticleSystemComponent::accelerationModifier, &setTrackedMember<&ParticleSystemComponent::accelerationModifier>)
-        .addProperty("colorInitializer", &ParticleSystemComponent::colorInitializer, &setTrackedMember<&ParticleSystemComponent::colorInitializer>)
-        .addProperty("colorModifier", &ParticleSystemComponent::colorModifier, &setTrackedMember<&ParticleSystemComponent::colorModifier>)
-        .addProperty("colorGradient", &ParticleSystemComponent::colorGradient, &setTrackedMember<&ParticleSystemComponent::colorGradient>)
-        .addProperty("alphaInitializer", &ParticleSystemComponent::alphaInitializer, &setTrackedMember<&ParticleSystemComponent::alphaInitializer>)
-        .addProperty("alphaModifier", &ParticleSystemComponent::alphaModifier, &setTrackedMember<&ParticleSystemComponent::alphaModifier>)
-        .addProperty("sizeInitializer", &ParticleSystemComponent::sizeInitializer, &setTrackedMember<&ParticleSystemComponent::sizeInitializer>)
-        .addProperty("sizeModifier", &ParticleSystemComponent::sizeModifier, &setTrackedMember<&ParticleSystemComponent::sizeModifier>)
-        .addProperty("spriteInitializer", &ParticleSystemComponent::spriteInitializer, &setTrackedMember<&ParticleSystemComponent::spriteInitializer>)
-        .addProperty("spriteModifier", &ParticleSystemComponent::spriteModifier, &setTrackedMember<&ParticleSystemComponent::spriteModifier>)
-        .addProperty("rotationInitializer", &ParticleSystemComponent::rotationInitializer, &setTrackedMember<&ParticleSystemComponent::rotationInitializer>)
-        .addProperty("rotationModifier", &ParticleSystemComponent::rotationModifier, &setTrackedMember<&ParticleSystemComponent::rotationModifier>)
-        .addProperty("scaleInitializer", &ParticleSystemComponent::scaleInitializer, &setTrackedMember<&ParticleSystemComponent::scaleInitializer>)
-        .addProperty("scaleModifier", &ParticleSystemComponent::scaleModifier, &setTrackedMember<&ParticleSystemComponent::scaleModifier>)
+        .addProperty("enabled", &ParticleSystemComponent::enabled, &setTrackedMember<&ParticleSystemComponent::enabled>)
+        .addProperty("playOnAwake", &ParticleSystemComponent::playOnAwake, &setTrackedMember<&ParticleSystemComponent::playOnAwake>)
+        .addProperty("seed", &ParticleSystemComponent::seed, &setTrackedMember<&ParticleSystemComponent::seed>)
+        .addProperty("playbackSpeed", &ParticleSystemComponent::playbackSpeed, &setTrackedMember<&ParticleSystemComponent::playbackSpeed>)
+        .addProperty("effect", [] (const ParticleSystemComponent* self) { return self->effect.path; },
+                     [] (ParticleSystemComponent* self, std::string path) { self->effect = path; self->needReload = true; })
+        .addProperty("onCollision", [] (ParticleSystemComponent* self, lua_State* L) { return &self->onCollision; }, [] (ParticleSystemComponent* self, lua_State* L) { self->onCollision = L; })
+        .addProperty("onParticleDeath", [] (ParticleSystemComponent* self, lua_State* L) { return &self->onParticleDeath; }, [] (ParticleSystemComponent* self, lua_State* L) { self->onParticleDeath = L; })
+        .addProperty("onSubEmit", [] (ParticleSystemComponent* self, lua_State* L) { return &self->onSubEmit; }, [] (ParticleSystemComponent* self, lua_State* L) { self->onSubEmit = L; })
         .endClass();
 
     luabridge::getGlobalNamespace(L)

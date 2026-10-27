@@ -434,11 +434,16 @@ void prepare<AnimationComponent>(AnimationComponent& animation, Entity, CloneCon
 }
 
 template<>
-void prepare<ParticleSystemComponent>(ParticleSystemComponent& particles, Entity, CloneContext&) {
-    particles.particles.clear();
-    particles.newParticlesCount = 0;
-    particles.lastUsedParticle = 0;
-    particles.currentBurst = 0;
+void prepare<ParticleSystemComponent>(ParticleSystemComponent& particles, Entity, CloneContext& ctx) {
+    // the copy simulates on its own (its runtime is made at its first update)
+    particles.state.reset();
+    particles.needReload = true;
+    for (Entity& plane : particles.collisionPlanes) {
+        plane = ctx.remap(plane);
+    }
+    particles.onCollision.clear();
+    particles.onParticleDeath.clear();
+    particles.onSubEmit.clear();
 }
 
 template<>
@@ -650,6 +655,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<SkyboxComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<FogComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<LocalVolumetricFogComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<ForceFieldComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<VolumetricCloudsComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<MirrorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<LayoutGroupComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

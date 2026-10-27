@@ -17,6 +17,12 @@
 #define MAX_LIGHTS 6
 #endif
 
+// Point and spot lights a lit particle system takes per vertex (besides the main directional
+// light and the ambient), the ones nearest its bounds
+#ifndef MAX_PARTICLE_LIGHTS
+#define MAX_PARTICLE_LIGHTS 4
+#endif
+
 // Lights one object is lit by at most (SceneSettings::maxLightsPerObject is clamped to it);
 // the per-object lights blocks come in capacity tiers of 4, 8 and 16.
 #ifndef MAX_LIGHTS_PER_OBJECT

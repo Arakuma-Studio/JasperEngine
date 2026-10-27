@@ -1,0 +1,14 @@
+name: ParticlesExport
+canvasWidth: 960
+canvasHeight: 540
+scalingMode: letterbox
+vsync: true
+windowMode: windowed
+windowWidth: 960
+windowHeight: 540
+windowResizable: true
+assetsDir: assets
+luaDir: scripts
+startSceneId: 1
+scenes:
+  - filepath: Particles.scene
