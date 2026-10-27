@@ -41,6 +41,8 @@ namespace jasperengine::editor::test {
         void TearDown() override {
             if (project) {
                 for (SceneProject& candidate : project->getScenes()) CommandHandle::remove(candidate.id);
+                // the scenes and their renders go with the project (as the other project tests: LSan)
+                project->releaseScenes();
             }
             project.reset();
         }

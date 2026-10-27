@@ -12,10 +12,12 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <fstream>
 #include <iterator>
 #include <mutex>
+#include <vector>
 
 namespace fs = std::filesystem;
 using namespace jasperengine;
@@ -40,10 +42,32 @@ namespace {
         return true;
     }();
 
+    std::vector<Project*>& projectsToRelease() {
+        static std::vector<Project*> projects;
+        return projects;
+    }
+
+    // the headless projects' scenes go when the tests end (as PlacementSessionTest's
+    // EngineShutdown: a static environment, torn down with the others)
+    struct ReleaseProjects : public ::testing::Environment {
+        void TearDown() override {
+            for (Project* project : projectsToRelease()) project->releaseScenes();
+            projectsToRelease().clear();
+        }
+    };
+
+    [[maybe_unused]] ::testing::Environment* const releaseProjects = ::testing::AddGlobalTestEnvironment(new ReleaseProjects);
+
+}
+
+void editor::test::releaseAtExit(Project* project) {
+    std::vector<Project*>& projects = projectsToRelease();
+    if (project && std::find(projects.begin(), projects.end(), project) == projects.end()) projects.push_back(project);
 }
 
 void editor::test::useProjectPaths(Project* project) {
     (void)projectPathsResetInstalled;
+    releaseAtExit(project);
     jasperengine::test::TestSystem::PathProvider provider;
     provider.assets = [project]() { return project->getAssetsPath().string(); };
     provider.lua = [project]() { return project->getLuaPath().string(); };

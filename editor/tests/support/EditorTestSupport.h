@@ -30,6 +30,10 @@ namespace jasperengine::editor::test {
     // its log capture reading another object). Before the project loads, so the load sees them.
     void useProjectPaths(Project* project);
 
+    // A headless Project that lives as long as the test binary (a file's static): its scenes and
+    // their renders are released when the tests end (~Project leaves them: LeakSanitizer). useProjectPaths registers its project too.
+    void releaseAtExit(Project* project);
+
     // editor/tests/fixtures/<relative>
     std::filesystem::path fixture(const std::string& relative);
 

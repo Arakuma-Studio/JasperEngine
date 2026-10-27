@@ -12,6 +12,8 @@
 
 #include <gtest/gtest.h>
 
+#include "support/EditorTestSupport.h"
+
 #include "AppSettings.h"
 #include "engine/physics/PhysicsTestScene.h"
 #include "Project.h"
@@ -84,6 +86,7 @@ namespace {
             AppSettings::initialize();
             out.project.reset(new Project());
             out.ready = out.project->loadProject(out.dir, false);
+            editor::test::releaseAtExit(out.project.get());
             return out;
         }();
         return h;
