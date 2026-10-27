@@ -35,6 +35,7 @@
 #include "pool/ModelPool.h"
 #include "pool/MeshLodPool.h"
 #include "pool/AnimationClipPool.h"
+#include "pool/VertexAnimationPool.h"
 #include "shader/RuntimeShaderCompiler.h"
 #ifndef NO_THREAD_SUPPORT
     #include "thread/ThreadPoolManager.h"
@@ -817,6 +818,8 @@ void Engine::endCompositeFramebuffer(){
 }
 
 void Engine::clearPools(){
+    // first: its assets' payload textures go back to the texture pools cleared next
+    VertexAnimationPool::clear();
     TexturePool::clear();
     SoundPool::clear();
     TextureDataPool::clear();
@@ -828,6 +831,7 @@ void Engine::clearPools(){
 }
 
 void Engine::clearUnusedPools(){
+    VertexAnimationPool::clearUnused();
     TexturePool::clearUnused();
     SoundPool::clearUnused();
     TextureDataPool::clearUnused();

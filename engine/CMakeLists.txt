@@ -28,6 +28,9 @@ option(JASPERENGINE_LATTICE_TESTS "Build jasperengine-lattice-tests" OFF)
 # googletest suite of the animation clips core (engine/tests/anim): clip IO, sampling, binding,
 # pool and players against the engine library; no GPU or window
 option(JASPERENGINE_ANIM_TESTS "Build jasperengine-anim-tests" OFF)
+# googletest suite of the vertex animation asset (engine/tests/vat): .vat IO, payload addressing,
+# playback math, the .vat.glb reader and the pool against the engine library; no GPU or window
+option(JASPERENGINE_VAT_TESTS "Build jasperengine-vat-tests" OFF)
 
 # =============================================================
 # STANDALONE PROJECT SETUP
@@ -877,6 +880,7 @@ set(JASPERENGINE_SRCS
     core/animation/ClipBinding.cpp
     core/animation/KeyframeSampling.cpp
     core/animation/ModelSubClips.cpp
+    core/animation/VertexAnimation.cpp
     core/pose/HumanBones.cpp
     core/pose/HumanoidMap.cpp
     core/pose/HumanoidMapIO.cpp
@@ -1027,6 +1031,7 @@ set(JASPERENGINE_SRCS
     core/pool/ModelPool.cpp
     core/pool/MeshLodPool.cpp
     core/pool/AnimationClipPool.cpp
+    core/pool/VertexAnimationPool.cpp
     core/registry/EntityCloner.cpp
     core/registry/EntityRegistry.cpp
     core/registry/TagManager.cpp
@@ -1436,4 +1441,8 @@ endif()
 
 if(JASPERENGINE_ANIM_TESTS)
     add_subdirectory(tests/anim)
+endif()
+
+if(JASPERENGINE_VAT_TESTS)
+    add_subdirectory(tests/vat)
 endif()
