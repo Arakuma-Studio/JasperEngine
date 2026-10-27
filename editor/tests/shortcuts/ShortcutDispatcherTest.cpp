@@ -77,6 +77,16 @@ TEST(ShortcutDispatcher, CharacterizesTodaysBindings) {
         {"[", ShortcutContext::SceneView, "terrain.brushSmaller"},
         {"Shift+]", ShortcutContext::SceneView, "terrain.brushStronger"},
         {"Ctrl+Shift+N", ShortcutContext::Editor, "gameobject.createEmpty"},
+        // the Animation window editing a clip and the Pose Animation window: their keys first
+        {"K", ShortcutContext::Animation, "animation.addKey"},
+        {"Ctrl+D", ShortcutContext::Animation, "animation.duplicate"},
+        {"Delete", ShortcutContext::Animation, "animation.delete"},
+        {"Alt+.", ShortcutContext::Animation, "animation.nextKey"},
+        {"R", ShortcutContext::Animation, "animation.record"},
+        {"E", ShortcutContext::PoseAnimation, "pose.globalEdit"},
+        {"Ctrl+Shift+D", ShortcutContext::PoseAnimation, "pose.duplicateMirrored"},
+        {"Shift+Left", ShortcutContext::PoseAnimation, "pose.moveLeft"},
+        {"Ctrl+C", ShortcutContext::PoseAnimation, "pose.copy"},
     };
     for (const Expected& e : expected) {
         const Chord chord = chordOf(e.chord);
