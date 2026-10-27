@@ -62,6 +62,7 @@ namespace {
         std::string noun = kind;
         if (kind == "audio") noun = "audio clip";
         else if (kind == "ui") noun = "UI file";
+        else if (kind == "particles") noun = "particle effect";
         return std::to_string(count) + " " + noun + (count == 1 ? "" : "s");
     }
 
@@ -396,6 +397,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
     reload::reloadTextures(ctx, textures);
     reload::reloadModels(ctx, files(external, "model"));
     reload::reloadAudio(ctx, files(external, "audio"));
+    reload::reloadParticleEffects(ctx, files(external, "particles"));
     reload::reloadFonts(ctx, files(external, "font"));
     reload::reloadAnimations(ctx, both("animation"), files(external, "model"), options.full);
     // another program's changes not reloaded yet (the dedupe above): the documents' own stamps

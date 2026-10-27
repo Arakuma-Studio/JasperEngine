@@ -4,8 +4,8 @@
 // subsystem/ActionSystem timing: an action's speed applies once (its timecount already runs at
 // the speed, durations are not divided by it again), a negative speed holds at the start, sprite
 // animations stop on their last frame after its time (also a single frame one) and zero time
-// frames cannot hang an update, SpriteAnimation::setAnimation takes a range of only frame 0,
-// and the particle sprite modifier picks the last frame at its end time.
+// frames cannot hang an update, SpriteAnimation::setAnimation takes a range of only frame 0.
+// (The old particle sprite modifier's end-time test is ParticleModules.SetOverAgeFramesStayInsideTheList.)
 
 #include <gtest/gtest.h>
 
@@ -16,8 +16,6 @@
 #include "action/SpriteAnimation.h"
 #include "component/ActionComponent.h"
 #include "component/MeshComponent.h"
-#include "component/ParticleSystemComponent.h"
-#include "component/PointsComponent.h"
 #include "component/SpriteAnimationComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/Transform.h"
@@ -215,39 +213,19 @@ TEST(SpriteAnimationStop, SpeedScalesFrameTimes) {
     EXPECT_TRUE(anim.isStopped()) << "300 ms of frames at speed 2 take 150 ms";
 }
 
-// ---- particle sprite modifier
-
-TEST(ParticleSpriteModifier, EndTimeSelectsTheLastFrame) {
+TEST(SpriteAnimationRange, OnlyFrameZero) {
     Scene scene;
 
-    Entity target = scene.createEntity();
-    PointsComponent points;
-    points.numFramesRect = 2;
-    points.framesRect[0].rect = Rect(0.0f, 0.0f, 0.5f, 1.0f);
-    points.framesRect[1].rect = Rect(0.5f, 0.0f, 0.5f, 1.0f);
-    scene.addComponent<PointsComponent>(target, points);
+    SpriteAnimation anim(&scene);
+    anim.setAnimation(0, 0, 100, false);
 
-    Entity entity = scene.createEntity();
-    ActionComponent action;
-    action.target = target;
-    action.startTrigger = true;
-    scene.addComponent<ActionComponent>(entity, action);
+    SpriteAnimationComponent& spriteanim = scene.getComponent<SpriteAnimationComponent>(anim.getEntity());
+    ASSERT_EQ(spriteanim.framesSize, 1u);
+    EXPECT_EQ(spriteanim.frames[0], 0);
+    EXPECT_EQ(spriteanim.framesTimeSize, 1u);
+    EXPECT_EQ(spriteanim.framesTime[0], 100);
 
-    ParticleSystemComponent particles;
-    particles.maxParticles = 1;
-    particles.rate = 0;
-    particles.loop = false;
-    particles.bursts.push_back({0.0f, 1, 1});
-    particles.spriteModifier.fromTime = 0.0f;
-    particles.spriteModifier.toTime = 0.5f;
-    particles.spriteModifier.frames = {0, 1};
-    scene.addComponent<ParticleSystemComponent>(entity, particles);
-
-    // the burst spawns it, then the modifier sees particle times 0, 0.25 and 0.5 (its end: value 1)
-    step(scene, 0.25, 4);
-
-    PointsComponent& result = scene.getComponent<PointsComponent>(target);
-    ASSERT_EQ(result.points.size(), 1u);
-    EXPECT_FLOAT_EQ(result.points[0].textureRect.getX(), 0.5f) << "frames[size - 1], not one past the end";
-    EXPECT_FLOAT_EQ(result.points[0].textureRect.getWidth(), 0.5f);
+    anim.setAnimation(2, 4, 50, true);
+    EXPECT_EQ(spriteanim.framesSize, 3u);
+    EXPECT_EQ(spriteanim.frames[2], 4);
 }

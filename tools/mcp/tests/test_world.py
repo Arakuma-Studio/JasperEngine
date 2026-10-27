@@ -1,6 +1,6 @@
 """Domain authoring contracts on independent, minimal scenes and images."""
 
-from harness import Editor
+from harness import Editor, ToolError
 import pngdiff
 
 EDITOR = {"create": True, "name": "World Contracts"}
@@ -14,6 +14,19 @@ def image_file(ed: Editor, relative: str):
 
 async def scene(ed: Editor, kind: str, name: str):
     return (await ed.call("create_scene", name=name, type=kind))["scene"]["id"]
+
+
+async def components(ed: Editor, scene, entity) -> set:
+    result = await ed.call("get_entity", scene=scene, entity=entity, detail="summary")
+    return set(result["components"])
+
+
+async def exists(ed: Editor, scene, entity) -> bool:
+    try:
+        await ed.call("get_entity", scene=scene, entity=entity)
+        return True
+    except ToolError:
+        return False
 
 
 async def test_tilemap_from_ascii(ed: Editor):
@@ -126,6 +139,25 @@ async def test_ui_panel_with_button(ed: Editor):
     after = await ed.call("find_entities", scene=sid)
     ed.check_eq({entity["id"] for entity in after["entities"]}, original,
                 "one undo restores every original entity and removes all generated descendants")
+async def test_particles(ed: Editor):
+    ed.require_tools("create_particles")
+    sid = await scene(ed, "3d", "World")
+    fire = await ed.call("create_particles", scene=sid, name="Campfire", preset="fire", position=[0, 0, 5])
+    ed.check_eq(fire["created"], True)
+    ed.check_eq(fire["autoplay"], True)
+    ed.check(fire["gradient_stops"] == 3 and fire["rate"] == 60, f"fire preset: {fire}")
+    system = fire["particle_system"]
+    ed.check_in("particlesystem", await components(ed, sid, system["id"]))
+    ed.check_eq(fire["emitter"]["id"], system["id"], "the Particle System GameObject emits and draws itself")
+    boom = await ed.call("create_particles", scene=sid, entity=system["id"], preset="explosion", bursts=[{"time": 0, "count": [50, 80]}])
+    ed.check_eq(boom["loop"], False)
+    ed.check_eq(boom["bursts"], 1)
+    tweak = await ed.call("create_particles", scene=sid, entity=system["id"], rate=7, life=[1, 3])
+    ed.check_eq(tweak["rate"], 7)
+    ed.check_eq(tweak["life"], [1, 3])
+    ed.check_eq(tweak["bursts"], 1, "overrides without a preset keep the other settings")
+    await ed.call("undo", scene=sid, steps=3)
+    ed.check(not await exists(ed, sid, fire["emitter"]["id"]), "undo removes the effect")
 
 
 async def test_3d_bodies_and_joint(ed: Editor):

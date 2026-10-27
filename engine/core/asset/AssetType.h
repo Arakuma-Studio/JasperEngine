@@ -28,8 +28,9 @@ namespace jasperengine {
         Data = 12,
         SubAsset = 13,  // a mesh, material, animation, skin or image inside a model
         ColorLut = 14,  // a .cube colour LUT (post-processing's lutTexture, S13)
-        AnimationClip = 15,     // an .anim clip (Animation Player clips; its GUID in its JSON)
-        PoseAnimation = 16      // a .poseanim pose animation (Pose Animator's animation)
+        ParticleEffect = 15,  // a .particles effect (S20)
+        AnimationClip = 16,     // an .anim clip (Animation Player clips; its GUID in its JSON)
+        PoseAnimation = 17      // a .poseanim pose animation (Pose Animator's animation)
     };
 
     // The lowercase names used by Lua (AssetRef.type), MCP and the editor ("texture", "model", ...)
@@ -49,6 +50,7 @@ namespace jasperengine {
             case AssetType::Data: return "data";
             case AssetType::SubAsset: return "sub_asset";
             case AssetType::ColorLut: return "color_lut";
+            case AssetType::ParticleEffect: return "particle_effect";
             case AssetType::AnimationClip: return "animation_clip";
             case AssetType::PoseAnimation: return "pose_animation";
             case AssetType::Unknown: break;

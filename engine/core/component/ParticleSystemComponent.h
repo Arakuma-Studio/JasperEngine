@@ -4,291 +4,90 @@
 #ifndef PARTICLE_SYSTEM_COMPONENT_H
 #define PARTICLE_SYSTEM_COMPONENT_H
 
-#include "buffer/Buffer.h"
-#include "texture/Texture.h"
-#include "util/SpriteFrameData.h"
-#include "Engine.h"
-#include "buffer/ExternalBuffer.h"
-#include "math/Matrix4.h"
+// A particle system (docs/specs/S20-particles.md R1, R14, D1): it lives on a GameObject with a
+// Transform and renders itself. Its effect is a .particles asset, or an inline effect (the
+// same schema) for migrated and one-off emitters. ParticleSubsystem simulates it and
+// RenderSystem draws it; the runtime state is theirs (not saved, not copied).
 
-#include <algorithm>
+#include "Engine.h"
+#include "asset/AssetRef.h"
+#include "math/Vector3.h"
+#include "math/Vector4.h"
+#include "particles/ParticleEffect.h"
+#include "util/FunctionSubscribe.h"
+
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <vector>
 
 namespace jasperengine{
 
-    enum class ParticleEmitterShape{
-        Box = 0,
-        Sphere = 1,
-        Hemisphere = 2,
-        Circle = 3,
-        Cone = 4
-    };
+    namespace particles { struct ParticleSystemState; }
 
-    struct ParticleLifeInitializer{
-        float minLife = 10;
-        float maxLife = 10;
-    };
+    // a value for one of the effect's exposed parameters (setFloat("Intensity", 2)); Float uses x,
+    // Vector3 xyz, Color rgba (sRGB, as edited)
+    struct ParticleExposedValue{
+        std::string name;
+        Vector4 value = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
 
-    struct ParticlePositionInitializer{
-        ParticleEmitterShape shape = ParticleEmitterShape::Box;
-
-        // Box shape (and historical default)
-        Vector3 minPosition = Vector3(0,0,0);
-        Vector3 maxPosition = Vector3(0,0,0);
-
-        // Sphere / Hemisphere / Circle
-        float radius = 1.0f;
-        float innerRadius = 0.0f;
-
-        // Cone (apex at origin, axis +Y; half-angle in degrees)
-        float coneAngle = 30.0f;
-        float coneHeight = 1.0f;
-    };
-
-    struct ParticleBurst{
-        float time = 0.0f;
-        int minCount = 10;
-        int maxCount = 10;
-
-        bool operator==(const ParticleBurst& other) const{
-            return time == other.time && minCount == other.minCount && maxCount == other.maxCount;
+        bool operator==(const ParticleExposedValue& other) const{
+            return name == other.name && value == other.value;
         }
+        bool operator!=(const ParticleExposedValue& other) const{ return !(*this == other); }
     };
 
-    struct ParticlePositionModifier{
-        float fromTime = 0;
-        float toTime = 0;
-
-        Vector3 fromPosition = Vector3(0,0,0);
-        Vector3 toPosition = Vector3(0,0,0);
-
-        Ease function;
+    // what onCollision, onParticleDeath and onSubEmit listeners get, batched per frame (world space)
+    struct ParticleCollisionInfo{
+        Vector3 position;
+        Vector3 normal;
+        Vector3 velocity;
+        uint32_t particleId = 0;
+        bool killed = false;
     };
 
-    struct ParticleVelocityInitializer{
-        Vector3 minVelocity = Vector3(0,0,0);
-        Vector3 maxVelocity = Vector3(0,0,0);
+    struct ParticleDeathInfo{
+        Vector3 position;
+        Vector3 velocity;
+        uint32_t particleId = 0;
     };
 
-    struct ParticleVelocityModifier{
-        float fromTime = 0;
-        float toTime = 0;
-
-        Vector3 fromVelocity = Vector3(0,0,0);
-        Vector3 toVelocity = Vector3(0,0,0);
-
-        Ease function;
-    };
-
-    struct ParticleAccelerationInitializer{
-        Vector3 minAcceleration = Vector3(0,0,0);
-        Vector3 maxAcceleration = Vector3(0,0,0);
-    };
-
-    struct ParticleAccelerationModifier{
-        float fromTime = 0;
-        float toTime = 0;
-
-        Vector3 fromAcceleration = Vector3(0,0,0);
-        Vector3 toAcceleration = Vector3(0,0,0);
-
-        Ease function;
-    };
-
-    struct ParticleColorInitializer{
-        Vector3 minColor = Vector3(1,1,1);
-        Vector3 maxColor = Vector3(1,1,1);
-
-        bool useSRGB = true;
-    };
-
-    struct ParticleColorModifier{
-        float fromTime = 0;
-        float toTime = 0;
-
-        Vector3 fromColor = Vector3(0,0,0);
-        Vector3 toColor = Vector3(0,0,0);
-
-        Ease function;
-
-        bool useSRGB = true;
-    };
-
-    struct ParticleColorGradientStop{
-        float time = 0.0f; // normalized [0,1] over particle lifetime
-        Vector3 color = Vector3(1,1,1);
-
-        bool operator==(const ParticleColorGradientStop& other) const{
-            return time == other.time && color == other.color;
-        }
-    };
-
-    struct ParticleColorGradient{
-        std::vector<ParticleColorGradientStop> stops;
-        bool useSRGB = true;
-
-        void normalize(){
-            for (ParticleColorGradientStop& stop : stops){
-                if (stop.time < 0.0f) stop.time = 0.0f;
-                if (stop.time > 1.0f) stop.time = 1.0f;
-            }
-            std::stable_sort(stops.begin(), stops.end(), [](const ParticleColorGradientStop& first, const ParticleColorGradientStop& second){
-                return first.time < second.time;
-            });
-        }
-
-        bool operator==(const ParticleColorGradient& other) const{
-            return useSRGB == other.useSRGB && stops == other.stops;
-        }
-    };
-
-    struct ParticleAlphaInitializer{
-        float minAlpha = 1;
-        float maxAlpha = 1;
-    };
-
-    struct ParticleAlphaModifier{
-        float fromTime = 0;
-        float toTime = 0;
-
-        float fromAlpha = 0;
-        float toAlpha= 0;
-
-        Ease function;
-    };
-
-    struct ParticleSizeInitializer{
-        float minSize = 1;
-        float maxSize = 1;
-    };
-
-    struct ParticleSizeModifier{
-        float fromTime = 0;
-        float toTime = 0;
-
-        float fromSize = 0;
-        float toSize = 0;
-
-        Ease function;
-    };
-
-    struct ParticleSpriteInitializer{
-        std::vector<int> frames;
-    };
-
-    struct ParticleSpriteModifier{
-        float fromTime = 0;
-        float toTime = 0;
-
-        std::vector<int> frames;
-
-        Ease function;
-    };
-
-    struct ParticleRotationInitializer{
-        Quaternion minRotation;
-        Quaternion maxRotation;
-
-        bool shortestPath = false;
-    };
-
-    struct ParticleRotationModifier{
-        float fromTime = 0;
-        float toTime = 0;
-
-        Quaternion fromRotation;
-        Quaternion toRotation;
-
-        Ease function;
-
-        bool shortestPath = false;
-    };
-
-    struct ParticleScaleInitializer{
-        Vector3 minScale = Vector3(1,1,1);
-        Vector3 maxScale = Vector3(1,1,1);
-
-        bool linearSort = true; // only for initializer
-    };
-
-    struct ParticleScaleModifier{
-        float fromTime = 0;
-        float toTime = 0;
-
-        Vector3 fromScale = Vector3(1,1,1);
-        Vector3 toScale = Vector3(1,1,1);
-
-        Ease function;
-    };
-
-    struct ParticleData{
-        float life = 1;
-        Vector3 position = Vector3(0,0,0);
-        Vector3 velocity = Vector3(0,0,0);
-        Vector3 acceleration = Vector3(0,0,0);
-        Quaternion rotation;
-        Vector3 scale = Vector3(1,1,1);
-
-        float time = 0;
+    struct ParticleSubEmitInfo{
+        Vector3 position;
+        int entry = 0;            // the sub-emitter entry (0-based)
+        int count = 0;            // particles it asked its child for
+        std::string trigger;      // "birth", "death", "collision" or "trigger"
     };
 
     struct JASPERENGINE_API ParticleSystemComponent{
-        // component checkbox: its system skips a disabled component
+        // component checkbox: a disabled system neither simulates nor draws
         bool enabled = true;
 
-        std::vector<ParticleData> particles;
+        // the effect: a .particles asset; empty: inlineEffect
+        AssetRef effect;
+        particles::ParticleEffectDocument inlineEffect;
 
-        unsigned int maxParticles = 100;
+        bool playOnAwake = true;
+        // 0: a new random seed at every play (Unity's Auto Random Seed)
+        uint32_t seed = 0;
+        float playbackSpeed = 1.0f;
+        // values for the effect's exposed parameters, over the effect's own
+        std::vector<ParticleExposedValue> exposedValues;
+        // GameObjects whose transforms are more collision planes (their up axis is the
+        // normal), with the Collision module's Planes type
+        std::vector<Entity> collisionPlanes;
 
-        // animation
-        float newParticlesCount = 0;
-        int lastUsedParticle = 0;
-        bool emitter = false;
+        // runtime (ParticleSubsystem's): the simulation, the effect it runs, the render data
+        std::shared_ptr<particles::ParticleSystemState> state;
+        // the effect (asset, inline document, exposed values) changed: rebound next update,
+        // keeping the live particles when only parameters changed
+        bool needReload = true;
 
-        bool loop = true;
-        bool localSpace = false;
-
-        int rate = 5; //per second
-        int maxPerUpdate = 100;
-
-        std::vector<ParticleBurst> bursts;
-        int currentBurst = 0; // runtime, not serialized as data
-
-        // Cached target transform context (runtime only, world-space mode)
-        Matrix4 cachedTargetModelInv;
-        Quaternion cachedTargetWorldRotInv;
-        Vector3 cachedTargetInvScale = Vector3(1,1,1);
-
-        ParticleLifeInitializer lifeInitializer;
-
-        ParticlePositionInitializer positionInitializer;
-        ParticlePositionModifier positionModifier;
-
-        ParticleVelocityInitializer velocityInitializer;
-        ParticleVelocityModifier velocityModifier;
-
-        ParticleAccelerationInitializer accelerationInitializer;
-        ParticleAccelerationModifier accelerationModifier;
-
-        ParticleColorInitializer colorInitializer;
-        ParticleColorModifier colorModifier;
-        ParticleColorGradient colorGradient;
-
-        ParticleAlphaInitializer alphaInitializer;
-        ParticleAlphaModifier alphaModifier;
-
-        ParticleSizeInitializer sizeInitializer;
-        ParticleSizeModifier sizeModifier;
-
-        ParticleSpriteInitializer spriteInitializer;
-        ParticleSpriteModifier spriteModifier;
-
-        ParticleRotationInitializer rotationInitializer;
-        ParticleRotationModifier rotationModifier;
-
-        ParticleScaleInitializer scaleInitializer;
-        ParticleScaleModifier scaleModifier;
+        FunctionSubscribe<void(const std::vector<ParticleCollisionInfo>&)> onCollision;
+        FunctionSubscribe<void(const std::vector<ParticleDeathInfo>&)> onParticleDeath;
+        FunctionSubscribe<void(const std::vector<ParticleSubEmitInfo>&)> onSubEmit;
     };
-    
+
 }
 
 #endif //PARTICLE_SYSTEM_COMPONENT_H

@@ -2,7 +2,15 @@
 // SPDX-License-Identifier: MIT
 
 #include "StreamMigrations.h"
+#include "Stream.h"
+#include "component/ParticleSystemComponent.h"
+#include "component/PointsComponent.h"
+#include "particles/LegacyParticleConverter.h"
 #include "pool/ShaderPool.h"
+#include "util/YamlNumbers.h"
+
+#include <functional>
+#include <map>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -100,6 +108,166 @@ namespace {
         logShadowBiasReset(resetLightShadowBias(root["members"]), log);
     }
 
+    // ---------------------------------------------------------------- particle systems (S20)
+
+    // what an old system's target (a Points or an instanced mesh GameObject) gives the Renderer
+    particles::LegacyTarget legacyTargetOf(const YAML::Node& components){
+        particles::LegacyTarget target;
+        if (components && components["points"]){
+            const PointsComponent points = editor::Stream::decodePointsComponent(components["points"]);
+            target.kind = particles::LegacyTarget::Kind::Points;
+            target.texture = points.texture.getPath();
+            if (!points.texture.getPathGuid().isNull())
+                target.textureGuid = points.texture.getPathGuid().str();
+            for (unsigned int i = 0; i < points.numFramesRect; i++){
+                const Rect& r = points.framesRect[i].rect;
+                particles::SpriteRect rect;
+                rect.x = r.getX(); rect.y = r.getY(); rect.width = r.getWidth(); rect.height = r.getHeight();
+                target.frames.push_back(rect);
+            }
+            target.shader = points.customShader.path;
+            target.shaderFeatures = points.shaderFeatures;
+            for (const auto& u : points.shaderUniforms){
+                particles::ShaderProperty p;
+                p.name = u.first;
+                p.value = u.second;
+                p.components = 4;
+                target.shaderProperties.push_back(p);
+            }
+            for (const auto& t : points.shaderTextures){
+                particles::ShaderTexture texture;
+                texture.name = t.first;
+                texture.path = t.second.getPath();
+                if (!t.second.getPathGuid().isNull())
+                    texture.guid = t.second.getPathGuid().str();
+                target.shaderTextures.push_back(texture);
+            }
+            switch (points.blendMode){
+                case MaterialBlendMode::AUTO: target.blend = -1; break;
+                case MaterialBlendMode::NONE: target.blendOpaque = true; break;
+                case MaterialBlendMode::PREMULTIPLIED: target.blend = (int)particles::ParticleBlend::Premultiplied; break;
+                case MaterialBlendMode::ADDITIVE: target.blend = (int)particles::ParticleBlend::Additive; break;
+                case MaterialBlendMode::MULTIPLY: target.blend = (int)particles::ParticleBlend::Multiply; break;
+                default: target.blend = (int)particles::ParticleBlend::Alpha; break;
+            }
+            target.depthWrite = points.depthWrite == MaterialDepthWrite::AUTO ? -1 : (points.depthWrite == MaterialDepthWrite::ENABLED ? 1 : 0);
+            target.transparent = points.transparent;
+        }else if (components && (components["instancedmesh"] || components["mesh"])){
+            target.kind = particles::LegacyTarget::Kind::Mesh;
+        }
+        return target;
+    }
+
+    bool isEmptySequence(const YAML::Node& node){
+        return !node || !node.IsSequence() || node.size() == 0;
+    }
+
+    // The old particle systems of a document's entities (a scene's tree, a prefab's members):
+    // each becomes an inline effect (LegacyParticleConverter, docs/specs/S20-particles.md D9) on
+    // its action's target, which renders it; the action stays as its controller (D1). A target
+    // Points or InstancedMesh with nothing of its own is removed; an instanced mesh's
+    // MeshComponent stays as the particles' mesh, disabled so it does not draw itself.
+    void migrateParticleSystems(YAML::Node entities, MigrationLog& log){
+        std::vector<YAML::Node> all;
+        std::function<void(YAML::Node)> collect = [&](YAML::Node list){
+            if (!list || !list.IsSequence())
+                return;
+            for (YAML::Node entity : list){
+                if (!entity.IsMap())
+                    continue;
+                all.push_back(entity);
+                collect(entity["children"]);
+                collect(entity["members"]);
+            }
+        };
+        collect(entities);
+        std::map<uint64_t, YAML::Node> byId;
+        std::map<uint64_t, int> targeted;
+        for (YAML::Node& entity : all){
+            if (entity["entity"])
+                byId[editor::YamlNumbers::as<uint64_t>(entity["entity"])] = entity;
+            YAML::Node components = entity["components"];
+            if (components && components["action"] && components["action"]["target"])
+                targeted[editor::YamlNumbers::as<uint64_t>(components["action"]["target"])]++;
+        }
+        auto nameOf = [](const YAML::Node& entity){
+            return entity["name"] ? entity["name"].as<std::string>() : std::string("GameObject");
+        };
+
+        for (YAML::Node& entity : all){
+            YAML::Node components = entity["components"];
+            if (!components || !components["particlesystem"])
+                continue;
+            YAML::Node old = components["particlesystem"];
+            if (old["inlineEffect"] || old["effect"])
+                continue;   // already the new form
+
+            const LegacyParticleSystem legacy = editor::Stream::decodeLegacyParticleSystem(old);
+            const bool enabled = old["enabled"] ? editor::YamlNumbers::as<bool>(old["enabled"]) : true;
+            YAML::Node action = components["action"];
+            uint64_t targetId = 0;
+            if (action && action["target"])
+                targetId = editor::YamlNumbers::as<uint64_t>(action["target"]);
+            auto targetIt = byId.find(targetId);
+            YAML::Node host = targetIt != byId.end() ? targetIt->second : entity;
+            YAML::Node hostComponents = host["components"];
+
+            std::vector<std::string> notes;
+            const particles::LegacyTarget target = legacyTargetOf(hostComponents);
+            ParticleSystemComponent converted;
+            converted.enabled = enabled;
+            converted.inlineEffect = particles::LegacyParticleConverter::convert(legacy, target, &notes);
+            // the action plays it (its start, stop and pause), as it did
+            converted.playOnAwake = !action;
+            converted.playbackSpeed = action && action["speed"] ? editor::YamlNumbers::as<float>(action["speed"]) : 1.0f;
+
+            components.remove("particlesystem");
+            hostComponents["particlesystem"] = editor::Stream::encodeParticleSystemComponent(converted);
+            // a system emits from its GameObject's Transform: an action without a target had none
+            if (!hostComponents["transform"]){
+                YAML::Node transform;
+                transform["position"] = YAML::Load("[0, 0, 0]");
+                transform["rotation"] = YAML::Load("[1, 0, 0, 0]");
+                transform["scale"] = YAML::Load("[1, 1, 1]");
+                transform["visible"] = true;
+                hostComponents["transform"] = transform;
+                notes.push_back("it had no Transform: one at the origin was added");
+            }
+
+            // what the target held for the old system's particles
+            const bool onlyTarget = targetIt != byId.end() && targeted[targetId] <= 1;
+            if (hostComponents["points"]){
+                if (onlyTarget && isEmptySequence(hostComponents["points"]["points"]))
+                    hostComponents.remove("points");
+                else
+                    notes.push_back("its Points component holds points of its own (or another system targets it): kept");
+            }
+            if (hostComponents["instancedmesh"]){
+                if (onlyTarget && isEmptySequence(hostComponents["instancedmesh"]["instances"]))
+                    hostComponents.remove("instancedmesh");
+                else
+                    notes.push_back("its InstancedMesh component holds instances of its own (or another system targets it): kept");
+                if (hostComponents["mesh"])
+                    hostComponents["mesh"]["enabled"] = false;
+            }
+            std::string line = "Particle System of " + nameOf(entity) + ": converted to an inline effect";
+            if (!host.is(entity))
+                line += " on its target " + nameOf(host);
+            for (const std::string& note : notes) line += "; " + note;
+            log.info(line);
+        }
+    }
+
+    // Scene 2 -> 3 (S20 particles): the old particle systems become effects on their targets
+    void sceneV2ToV3(YAML::Node& root, MigrationLog& log){
+        migrateParticleSystems(root["entities"], log);
+    }
+
+    // Prefab 4 -> 5 (S20 particles): the same for its members
+    void prefabV4ToV5(YAML::Node& root, MigrationLog& log){
+        migrateParticleSystems(root["members"], log);
+    }
+
 }
 
 const char* StreamMigrations::versionKey(DocumentKind kind){
@@ -108,11 +276,11 @@ const char* StreamMigrations::versionKey(DocumentKind kind){
 
 int StreamMigrations::currentVersion(DocumentKind kind){
     switch (kind){
-        case DocumentKind::Scene: return 2;
+        case DocumentKind::Scene: return 3;
         case DocumentKind::Project: return 1;
         case DocumentKind::Material: return 1;
         // Prefab::FILE_VERSION
-        case DocumentKind::Prefab: return 4;
+        case DocumentKind::Prefab: return 5;
     }
     return 0;
 }
@@ -147,6 +315,7 @@ const std::vector<Migration>& StreamMigrations::table(DocumentKind kind){
     static const std::vector<Migration> scene = {
         {0, 1, "stamp the scene format version", sceneV0ToV1},
         {1, 2, "shadow bias in shadow texels, shadow quality Low to Auto", sceneV1ToV2},
+        {2, 3, "particle systems to effects on their targets", sceneV2ToV3},
     };
     static const std::vector<Migration> project = {
         {0, 1, "stamp the project format version", projectV0ToV1},
@@ -157,6 +326,7 @@ const std::vector<Migration>& StreamMigrations::table(DocumentKind kind){
     // Versions 1 and 2 are upgraded in place by Prefab::loadRegistry (needsUpgrade)
     static const std::vector<Migration> prefab = {
         {3, 4, "shadow bias in shadow texels", prefabV3ToV4},
+        {4, 5, "particle systems to effects on their targets", prefabV4ToV5},
     };
 
     switch (kind){

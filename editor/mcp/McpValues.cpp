@@ -806,13 +806,23 @@ const EnumOptions& collider3DSourceOptions() {
     return options;
 }
 
-const EnumOptions& emitterShapeOptions() {
+const EnumOptions& forceFieldShapeOptions() {
     static const EnumOptions options = {
-        {(int)ParticleEmitterShape::Box, "box", "Box"},
-        {(int)ParticleEmitterShape::Sphere, "sphere", "Sphere"},
-        {(int)ParticleEmitterShape::Hemisphere, "hemisphere", "Hemisphere"},
-        {(int)ParticleEmitterShape::Circle, "circle", "Circle"},
-        {(int)ParticleEmitterShape::Cone, "cone", "Cone"}
+        {(int)ForceFieldShapeType::Sphere, "sphere", "Sphere"},
+        {(int)ForceFieldShapeType::Box, "box", "Box"},
+        {(int)ForceFieldShapeType::Cylinder, "cylinder", "Cylinder"},
+        {(int)ForceFieldShapeType::Infinite, "infinite", "Infinite"}
+    };
+    return options;
+}
+
+const EnumOptions& forceFieldKindOptions() {
+    static const EnumOptions options = {
+        {(int)ForceFieldKind::Directional, "directional", "Directional"},
+        {(int)ForceFieldKind::Radial, "radial", "Radial"},
+        {(int)ForceFieldKind::Vortex, "vortex", "Vortex"},
+        {(int)ForceFieldKind::Turbulence, "turbulence", "Turbulence"},
+        {(int)ForceFieldKind::Drag, "drag", "Drag"}
     };
     return options;
 }
@@ -1247,8 +1257,9 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
             if (name == "colliders[].type") return &collider3DTypeOptions();
             if (name == "colliders[].source") return &collider3DSourceOptions();
             break;
-        case ComponentType::ParticleSystemComponent:
-            if (name == "positionInitializer.shape") return &emitterShapeOptions();
+        case ComponentType::ForceFieldComponent:
+            if (name == "shape") return &forceFieldShapeOptions();
+            if (name == "kind") return &forceFieldKindOptions();
             break;
         default:
             break;

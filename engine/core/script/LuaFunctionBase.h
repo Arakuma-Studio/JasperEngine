@@ -6,6 +6,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 #include "math/Vector3.h"
 
 typedef struct lua_State lua_State;
@@ -18,6 +19,9 @@ namespace jasperengine{
     class Rigidbody;
     class Contact3D;
     class CollideShapeResult3D;
+    struct ParticleCollisionInfo;
+    struct ParticleDeathInfo;
+    struct ParticleSubEmitInfo;
     struct AnimationEvent;
 
     namespace lua_reload { struct CallbackRecord; }
@@ -57,6 +61,10 @@ namespace jasperengine{
         void push_value(lua_State *vm, wchar_t s);
         void push_value(lua_State *vm, Vector2 o);
         void push_value(lua_State *vm, Vector3 o);
+        // a particle system's batched events: an array of plain tables
+        void push_value(lua_State *vm, const std::vector<ParticleCollisionInfo>& events);
+        void push_value(lua_State *vm, const std::vector<ParticleDeathInfo>& events);
+        void push_value(lua_State *vm, const std::vector<ParticleSubEmitInfo>& events);
         void push_value(lua_State *vm, Rigidbody2D o);
         void push_value(lua_State *vm, Contact2D o);
         void push_value(lua_State *vm, Manifold2D o);

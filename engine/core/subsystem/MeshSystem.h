@@ -310,7 +310,8 @@ namespace jasperengine{
 
         bool raycastTerrainSurface(const Ray& ray, TerrainComponent& terrain, Transform& transform, Vector3& worldPoint);
         // Height and normal in terrain-local space, the surface the foliage scatter uses
-        void sampleTerrainSurface(TerrainComponent& terrain, float localX, float localZ, float& height, Vector3& normal);
+        // (static and read-only: particle collisions call it from the job system's workers)
+        static void sampleTerrainSurface(TerrainComponent& terrain, float localX, float localZ, float& height, Vector3& normal);
 
         // Heightmap lookups as the terrain vertex shader does them (so collider, ray casts,
         // height queries and brushes meet the rendered surface): linear filtering with texel

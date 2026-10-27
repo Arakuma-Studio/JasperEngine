@@ -618,6 +618,8 @@ TEST(AssetRefSchema, CoversAllFields) {
         {C::LineRendererComponent, "customShader"}, {C::LineRendererComponent, "shaderTextures{}"},
         {C::ModelComponent, "filename"}, {C::AudioSourceComponent, "filename"}, {C::UIDocumentComponent, "filename"},
         {C::ScriptComponent, "scripts[].path"}, {C::ScriptComponent, "scripts[].headerPath"}, {C::ScriptComponent, "scripts[].properties[]"},
+        // the effect asset, and the asset paths an inline effect's modules hold (S20)
+        {C::ParticleSystemComponent, "effect"}, {C::ParticleSystemComponent, "inlineEffect"},
         {C::PrefabComponent, ""},
         // upstream's Pose Animator: its .poseanim (an AssetRef since the sync)
         {C::PoseAnimatorComponent, "animation"},

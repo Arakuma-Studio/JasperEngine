@@ -67,6 +67,8 @@ namespace jasperengine::editor::mcp {
     void registerProfilerTools(McpRegistry& registry);
     void registerScriptingTools(McpRegistry& registry);
     void registerGraphTools(McpRegistry& registry);
+    void registerParticleTools(McpRegistry& registry);
+
     void registerPoseTools(McpRegistry& registry);
 
     // the pose documents' files-written hook (their writes reach the asset database and the

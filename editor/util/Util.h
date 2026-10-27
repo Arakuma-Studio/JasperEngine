@@ -169,6 +169,11 @@ namespace jasperengine::editor{
             return fileExtension(path) == ".cube";
         }
 
+        // particle effects (S20)
+        inline static bool isParticleEffectFile(const std::string& path) {
+            return fileExtension(path) == ".particles";
+        }
+
         // Pose animations (PoseAnimatorComponent::animation)
         inline static bool isPoseAnimationFile(const std::string& path) {
             return fileExtension(path) == ".poseanim";
@@ -183,7 +188,8 @@ namespace jasperengine::editor{
         // Files referenced relative to the assets directory
         inline static bool isAssetFile(const std::string& path) {
             return isImageFile(path) || isModelFile(path) || isFontFile(path) || isAudioFile(path) ||
-                   isHtmlFile(path) || isCssFile(path) || isColorLutFile(path) || isPoseAnimationFile(path) || isAnimationClipFile(path);
+                   isHtmlFile(path) || isCssFile(path) || isColorLutFile(path) || isParticleEffectFile(path) || isPoseAnimationFile(path) ||
+                   isAnimationClipFile(path);
         }
 
         inline static bool isScriptFile(const std::string& path) {

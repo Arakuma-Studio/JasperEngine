@@ -84,6 +84,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<LatticeTracksComponent>(ComponentOrder::Insertion, "LatticeTracksComponent");
     registerComponent<LocalVolumetricFogComponent>(ComponentOrder::Insertion, "LocalVolumetricFogComponent");
     registerComponent<VolumetricCloudsComponent>(ComponentOrder::Insertion, "VolumetricCloudsComponent");
+    registerComponent<ForceFieldComponent>(ComponentOrder::Insertion, "ForceFieldComponent");
     registerComponent<PoseAnimatorComponent>(ComponentOrder::Insertion, "PoseAnimatorComponent");
     registerComponent<AnimationPlayerComponent>(ComponentOrder::Insertion, "AnimationPlayerComponent");
 

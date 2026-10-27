@@ -4,18 +4,33 @@
 #ifndef PARTICLE_SYSTEM_H
 #define PARTICLE_SYSTEM_H
 
-#include "Action.h"
+// A GameObject with a Particle System (docs/specs/S20-particles.md R14, R31; Unity's
+// ParticleSystem): it plays its effect (a .particles asset or an inline one), renders itself
+// and raises collision, death and sub-emitter events. The old setters (one initializer and one
+// from-to modifier per property) are kept as deprecated shims: each reads the effect's old view,
+// changes it and writes it back (LegacyParticleConverter), which keeps the live particles.
+
+#include "object/GameObject.h"
 #include "component/ParticleSystemComponent.h"
+#include "particles/LegacyParticleSystem.h"
+#include "particles/EmitterRuntime.h"
+
+#include <string>
+#include <vector>
 
 namespace jasperengine{
 
-    class JASPERENGINE_API ParticleSystem: public Action{
-    public:
+    class JASPERENGINE_API ParticleSystem: public GameObject{
+    private:
+        // the deprecated setters' edit of the effect's old view: written back when it ends
+        class LegacyEdit;
+        LegacyParticleSystem legacyView() const;
+        ParticleSystemComponent& system() const;
 
-        // component checkbox (Unity Behaviour.enabled): a disabled Particles is skipped by its system
-        void setEnabled(bool enabled);
-        bool isEnabled() const;
+    public:
         ParticleSystem(Scene* scene);
+        // a GameObject with a Particle System; for an old controller (an action entity whose
+        // target has the system) the target, with a one-time deprecation note
         ParticleSystem(Scene* scene, Entity entity);
         virtual ~ParticleSystem();
 
@@ -24,7 +39,62 @@ namespace jasperengine{
         ParticleSystem(ParticleSystem&& rhs) noexcept;
         ParticleSystem& operator=(ParticleSystem&& rhs) noexcept;
 
+        // component checkbox (Unity Behaviour.enabled)
+        void setEnabled(bool enabled);
+        bool isEnabled() const;
+
+        // ---- playback
+        void play();
+        void pause();
+        // stops emitting; clear also removes the particles
+        void stop(bool clear = false);
+        void restart();
+        void emit(unsigned int count);
+        void emit(unsigned int count, const particles::EmitOverrides& overrides);
+        void seek(float time);
+        void step(unsigned int ticks);
+        void sendTrigger(const std::string& name);
+
+        bool isPlaying() const;
+        bool isPaused() const;
+        bool isEmitting() const;
+        unsigned int getParticleCount() const;
+        float getTime() const;
+
+        void setPlayOnAwake(bool playOnAwake);
+        bool isPlayOnAwake() const;
+        void setPlaybackSpeed(float playbackSpeed);
+        float getPlaybackSpeed() const;
+        // 0: a new random seed at every play
+        void setSeed(unsigned int seed);
+        unsigned int getSeed() const;
+
+        // the effect: a .particles asset (path), or empty for the inline one
+        void setEffect(const std::string& path);
+        std::string getEffect() const;
+        // the inline effect as JSON (the .particles schema); false (and the errors logged)
+        // when it does not read
+        bool setInlineEffect(const std::string& json);
+        std::string getInlineEffect() const;
+
+        // ---- exposed parameters (the effect's `exposed` list): false for a name it does not expose
+        bool setFloat(const std::string& name, float value);
+        bool setVector3(const std::string& name, Vector3 value);
+        bool setColor(const std::string& name, Vector4 value);
+        float getFloat(const std::string& name) const;
+        Vector3 getVector3(const std::string& name) const;
+        Vector4 getColor(const std::string& name) const;
+
+        // collision planes: GameObjects whose up axis and position are planes (Collision > Planes)
+        void addCollisionPlane(Entity plane);
+        void clearCollisionPlanes();
+
+        // ---- deprecated (the old Action and its setters)
+        void start();
         void reset();
+        bool isRunning() const;
+        void setTarget(GameObject* target);
+        void setTarget(Entity target);
 
         void setMaxParticles(unsigned int maxParticles);
         unsigned int getMaxParticles() const;

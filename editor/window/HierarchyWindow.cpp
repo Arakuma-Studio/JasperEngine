@@ -507,6 +507,7 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"2D Object", "Lattice", ICON_FA_BORDER_NONE, T::LATTICE, "Lattice", CREATE_IN_2D, true},
 
         {"Effects", "Particle System", ICON_FA_FIRE, T::PARTICLE_SYSTEM, "Particle System", CREATE_IN_WORLD},
+        {"Effects", "Force Field", ICON_FA_WIND, T::FORCE_FIELD, "Force Field", CREATE_IN_3D},
         {"Effects", "Line Renderer", ICON_FA_GRIP_LINES, T::LINE_RENDERER, "Line", CREATE_IN_WORLD},
         {"Effects", "Point Renderer", ICON_FA_CIRCLE, T::POINTS, "Points", CREATE_IN_WORLD},
         {"Effects", "Fluid Simulation", ICON_FA_DROPLET, T::FLUID_SIMULATION, "Fluid Simulation", CREATE_IN_WORLD},
@@ -1096,6 +1097,8 @@ std::string editor::HierarchyWindow::getObjectIcon(Signature signature, Scene* s
         return ICON_FA_CUBES_STACKED;
     }else if (signature.test(scene->getComponentId<ParticleSystemComponent>())){
         return ICON_FA_FIRE;
+    }else if (signature.test(scene->getComponentId<ForceFieldComponent>())){
+        return ICON_FA_WIND;
     }else if (signature.test(scene->getComponentId<LineRendererComponent>())){
         return ICON_FA_GRIP_LINES;
     }else if (signature.test(scene->getComponentId<PointsComponent>())){

@@ -47,6 +47,8 @@ namespace jasperengine::editor::reload {
     bool shaderSourcesReach(Project* project, const std::string& fork, int shaderType, const std::set<std::string>& changed);
     // gltf/glb/obj/fbx: meshes, skins, morphs, animations of an unchanged hierarchy
     void reloadModels(Context& ctx, const std::vector<std::filesystem::path>& files);
+    // .particles effects: read again; every Particle System playing one rebinds (S20 R1)
+    void reloadParticleEffects(Context& ctx, const std::vector<std::filesystem::path>& files);
     // Audio: a new sample for the next plays
     void reloadAudio(Context& ctx, const std::vector<std::filesystem::path>& files);
     // Fonts: a new pool entry; the texts using it rebuild their atlas

@@ -1,0 +1,17 @@
+{
+  "description": "tools/test-projects/particles (WEB_PROJECT=particles tools/build.sh web, and with WASM_SIMD=0 the scalar kernels): a curl-noise fire and a 60-particle ribbon seeked to 2 s and held. The live counts and the state hashes are the same with the simd128 and the scalar kernels (bit-identical paths), and the fire's centre is its orange.",
+  "isolated": true,
+  "rgb": [183, 71, 37],
+  "tolerance": 24,
+  "console": [
+    {
+      "text": "[gate] particle kernels: ",
+      "level": "log"
+    },
+    {
+      "text": "[gate] particles 1506 + 60 live, state f9723297206eacdf ed425fc297c3c689",
+      "level": "log"
+    }
+  ],
+  "ordered": true
+}

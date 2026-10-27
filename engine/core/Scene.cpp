@@ -17,6 +17,7 @@
 #include "subsystem/PoseAnimatorSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/PhysicsSystem.h"
+#include "subsystem/ParticleSubsystem.h"
 #include "util/Color.h"
 
 #include <algorithm>
@@ -45,6 +46,8 @@ void Scene::init(){
     registerSystem<FluidSystem>();
     registerSystem<RenderSystem>();
     registerSystem<PhysicsSystem>();
+    // after physics (world collisions query it, never while it steps) and the transforms
+    registerSystem<ParticleSubsystem>();
     registerSystem<AudioSystem>();
 
     camera = NULL_ENTITY;

@@ -202,6 +202,7 @@ const std::vector<EntityKind>& entityKinds() {
         {"volumetric_clouds", EntityCreationType::VOLUMETRIC_CLOUDS, "Volumetric Clouds"},
         {"reflection_probe", EntityCreationType::REFLECTION_PROBE, "Reflection Probe"},
         {"particle_system", EntityCreationType::PARTICLE_SYSTEM, "Particle System"},
+        {"force_field", EntityCreationType::FORCE_FIELD, "Force Field"},
         {"fluid_simulation", EntityCreationType::FLUID_SIMULATION, "Fluid Simulation"},
         {"points", EntityCreationType::POINTS, "Points"},
         {"line_renderer", EntityCreationType::LINE_RENDERER, "Line Renderer"},
@@ -1217,10 +1218,10 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "create_entity";
         tool.title = "Create Entity";
         tool.description =
-            "GameObject > Create with parent (omitted = scene root), name, local transform, extra components "
-            "and initial values in one step. empty = Transform only; bare = no components (root only); model "
-            "needs model; *_tween/*_tracks are animation actions. values {component: {property: value}} or "
-            "changes, as set_properties.";
+            "GameObject > Create with parent, name, local transform, components and initial values in one "
+            "step. empty = Transform only; bare = no components (root only); model needs model (a project "
+            "model); *_tween/*_tracks: animation actions. values {component: {property: value}} or changes "
+            "(set_properties).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"type", withDefault(stringEnum("", types), "empty")},
