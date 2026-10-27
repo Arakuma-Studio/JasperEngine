@@ -7226,6 +7226,20 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
                                               firstMaterial.normalTexture, settingsMaterial.onValueChanged);
             }
             endTable();
+            }else{
+                // a library shader with @require normalmap reads the material's own Normal Texture
+                // (the 2D lights' normal map): the one PBR row it keeps
+                Scene* materialScene = sceneProject->scene;
+                MeshComponent& firstMesh = materialScene->getComponent<MeshComponent>(entities[0]);
+                const std::string drawnShader = RenderSystem::getSubmeshShader(firstMesh, firstMesh.submeshes[s],
+                                                                               materialScene->getDefaultCustomShader(ShaderType::MESH));
+                std::shared_ptr<const ShaderManifest> drawnManifest = drawnShader.empty() ? nullptr : ShaderManifests::get(drawnShader);
+                const std::vector<std::string> features = ShaderReference::getEnabledFeatures(drawnShader, firstMesh.submeshes[s].material.shaderFeatures);
+                if (Catalog::shaderReadsMaterialNormalMap(drawnManifest.get(), features)){
+                    beginTable(cpType, getLabelSize("Met. Roug. Texture"), "submeshes_material_normal_map");
+                    propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.normalTexture", "Normal Texture", sceneProject, entities, settingsNormalTexture);
+                    endTable();
+                }
             }
 
             ImGui::SeparatorText("Surface");

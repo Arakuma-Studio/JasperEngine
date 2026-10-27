@@ -3762,6 +3762,14 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         p_hasNormal = (requiresNormals || p_punctual || p_vertexLights) && inputs.normal;
         p_hasTangent = p_hasNormal && (require & ShaderRequire_Tangents) && inputs.tangent;
         p_hasNormalMap = false;
+        // @require normalmap: the material's normal map on the 2D light path (tangent frame
+        // from the mesh, read at uv1: includes/lighting2d.glsl, surface_vs.glsl)
+        if ((require & ShaderRequire_NormalMap) && useLight2D && inputs.normalTexture && inputs.normal && inputs.tangent &&
+                p_hasTexture1 && !inputs.terrain){
+            p_hasNormal = true;
+            p_hasTangent = true;
+            p_hasNormalMap = true;
+        }
     }
     if (p_lattice){
         p_vertexColorVec3 = p_vertexColorVec3 || inputs.vertexColor3;
@@ -13497,7 +13505,13 @@ void RenderSystem::update(double dt){
                         }
                     }
                     if (mesh.submeshes[s].manifest){
-                        // no normal map variant: its lighting comes from the manifest
+                        // a normal map variant only with @require normalmap (its 2D lights): one
+                        // gained or lost since the load picks it again
+                        if (mesh.submeshes[s].manifest->getPossibleRequire() & ShaderRequire_NormalMap){
+                            if (mesh.submeshes[s].hasNormalMap != !mesh.submeshes[s].material.normalTexture.empty()){
+                                mesh.needReload = true;
+                            }
+                        }
                     }else if (!mesh.submeshes[s].material.normalTexture.empty()){
                         if (!(mesh.submeshes[s].shaderProperties & (1 << 7))){ // not 'Nmp'
                             mesh.needReload = true;
