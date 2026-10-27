@@ -364,7 +364,12 @@ bool VertexAnimationBakerWindow::setSourcePath(const std::string& given, std::st
     // a Houdini / OpenVAT export (a folder, its mesh or its textures)
     if (!(bakeable && inside && (extension == ".prefab" || extension == ".anim" || extension == ".poseanim"))) {
         VatImportDetection detected = detectVatImport(FileUtils::pathToUtf8(absolute));
-        if (detected.found()) {
+        // a model file is an export's mesh only when the export's data sits beside it (the
+        // detection names any mesh a candidate, with the missing textures as its problems)
+        const VatImportFiles& files = detected.files;
+        const bool exportData = !files.position.empty() || !files.material.empty() || !files.dataJson.empty() || !files.vat.empty() ||
+                                !files.remapInfo.empty() || !files.lookup.empty();
+        if (detected.found() && (!bakeable || !inside || exportData)) {
             resetSource();
             mode = Mode::Import;
             sourceLabel = path;
@@ -409,6 +414,16 @@ bool VertexAnimationBakerWindow::setSourcePath(const std::string& given, std::st
             std::shared_ptr<const AnimationClip> clip = AnimationClipPool::getOrLoad(ClipConverters::assetRelative(project, absolute), &loadError);
             if (clip && !clip->getPreviewModel().empty()) {
                 spec.source.path = projectRelative(project, project->resolveAssetPath(FileUtils::pathFromUtf8(clip->getPreviewModel())));
+            }
+        } else {
+            // a pose animation names the model it is previewed on
+            std::string text;
+            if (clipui::readWholeFile(absolute, text)) {
+                const Json json = Json::parse(text, nullptr, false);
+                if (json.is_object() && json.contains("preview_model") && json["preview_model"].is_string() &&
+                    !json["preview_model"].get<std::string>().empty()) {
+                    spec.source.path = projectRelative(project, project->resolveAssetPath(FileUtils::pathFromUtf8(json["preview_model"].get<std::string>())));
+                }
             }
         }
         playOnLabel = isGameObjectSource(spec.source) ? sceneLabel(project, spec.source.sceneId) + ": " + spec.source.path : spec.source.path;
@@ -811,6 +826,7 @@ std::string VertexAnimationBakerWindow::specKey() const {
     j["overwrite"] = spec.overwrite;
     j["place"] = placeName(spec.place);
     j["crowd"] = {spec.crowd.count, spec.crowd.area, spec.crowd.seed};
+    j["none"] = noneChecked;
     return j.dump();
 }
 
@@ -1048,7 +1064,7 @@ std::string VertexAnimationBakerWindow::statusLine(const VatWriteResult& out, co
 }
 
 void VertexAnimationBakerWindow::reveal(const std::string& relative) {
-    if (relative.empty() || !project) return;
+    if (relative.empty() || !project || !ImGui::GetCurrentContext()) return;
     if (ProjectWindow* projectWindow = Backend::getApp().getProjectWindow()) {
         projectWindow->revealAsset(absoluteOf(project, relative));
     }
