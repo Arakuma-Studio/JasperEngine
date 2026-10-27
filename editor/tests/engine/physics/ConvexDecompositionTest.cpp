@@ -25,7 +25,8 @@
 #include <vector>
 
 #if defined(JASPERENGINE_SANITIZE_ADDRESS)
-    #include <sanitizer/allocator_interface.h>
+    // the ASan runtime's (sanitizer/allocator_interface.h, not installed with every compiler)
+    extern "C" size_t __sanitizer_get_current_allocated_bytes();
 #elif defined(__GLIBC__)
     #include <malloc.h>
 #endif
