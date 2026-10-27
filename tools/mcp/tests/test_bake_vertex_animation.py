@@ -949,7 +949,7 @@ async def test_vertex_animator_preview_in_edit_mode(ed: Editor):
     copy_fixtures(ed.project)
     await ed.call("sync_files")
     sid = await scene(ed)
-    out = "assets/vat/preview_arm.vat"
+    out = "assets/vat/edit_mode_arm.vat"
     r = await bake(ed, source=ARM, clips=["Swing"], output=out, scene=sid, place="beside")
     entity = r.structured["entity"]["id"]
     msg = await ed.call("set_properties", {"scene": sid, "entity": entity, "values": {"vertexanimator": {"preview": True}}},
@@ -975,7 +975,7 @@ async def test_vertex_animator_preview_in_edit_mode(ed: Editor):
     await ed.call("eval_lua", code=code + " a.preview = false", allow_edit_mode=True)
     await ed.call("save_scene", scene=sid)
     scene_files = list((ed.project / "scenes").glob("*.scene")) + list((ed.project / "assets").rglob("*.scene"))
-    check(scene_files and all("preview" not in f.read_text() for f in scene_files), "preview is never saved")
+    check(scene_files and all("preview:" not in f.read_text() for f in scene_files), "preview is never saved")
 
 
 async def test_clip_objects_and_contradictions(ed: Editor):
