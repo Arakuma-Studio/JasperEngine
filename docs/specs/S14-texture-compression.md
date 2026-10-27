@@ -530,3 +530,110 @@ The fixture corpus is `tools/fixtures/textures/` (CC0 or generated):
    frame afterwards. When `EMSCRIPTEN_THREAD_SUPPORT=ON`, transcodes run on the pool instead.
 9. **Lua scripts that read pixels of cooked textures.** *Default:* the R3 one-time error that names the
    Read/Write flag. `shipSource` exists for scripts that parse the raw file.
+
+## Deviations
+
+What the implementation does differently from the text above, and why (IMPLEMENTING.md: the best
+alternative, recorded here).
+
+1. **Settings key (R1, R30).** S04's sidecar reserves the top-level `import:` section for importers,
+   so the settings live at `import.textureImporter` (`version: 1`) rather than a top-level
+   `textureImporter:`. Writes go through `SetAssetMetaCmd`, which now rewrites only its own
+   section and keeps S04's lines (and S25's labels) byte for byte.
+2. **R1 fields added.** `shape: 2d|cube` (a single-file cross is a cube map; six files stay six 2D
+   textures), `shipSource` (R9 names it without listing it), `inferredFrom` (R2's reason, written
+   with the inferred type and shown in the inspector). `mipLimit` is the most levels kept (0 = all).
+   `streamable` defaults to on, except for sprite/ui (R12) and textures without mips.
+3. **Progressive tail (R12).** KTX2 stores levels smallest first, so the ≤ 64 px tail sits right after
+   the metadata: the first read is of the file's first bytes, not its end. Same effect, one read.
+4. **Sources read from their file (R9).** HTML UI images and terrain surface layers are read from
+   the source file by their consumers (RmlUi, the terrain detail array). A glTF's external images
+   are cooked like any texture, typed by the slots of the glTF materials that sample them: the
+   model loader takes the cook by path when there is one (`MeshSystem::loadGLTFTexture`), so they
+   ship cooked only; embedded images stay inside the model. A texture whose every reference reads
+   its file is not cooked and ships as it is; a texture with one such reference and others is cooked and its source ships too
+   (`readsSource`, like an implicit `shipSource`). `.svg` (rasterised at load at the requested
+   scale) and `.ktx2` sources load as they are. `.pic`/`.pnm` (stb formats the asset table knows)
+   cook like the R1 list.
+5. **R3 CPU readers.** Spot light masks join terrain height/density maps and LUTs: their pixels are
+   read on the CPU. Terrain blend maps are inferred as linear data (splat weights).
+6. **HDR storage (D7).** HDR textures are stored display-encoded (`pow(1/2.2)` in float) because
+   every shader decodes with `sRGBToLinear()` and the raw path's stb `.hdr` → LDR conversion does the
+   same; the cook's relative RMSE is measured in linear light on [0, 16] as AC4 asks.
+7. **ASTC profile (D7).** ASTC is encoded with the LDR (linear) profile on sRGB data, matching the
+   UNORM upload and the shader-side decode; the sRGB flag still travels in the DFD.
+8. **BC1** is opaque-only (no 3-colour punch-through mode); textures with alpha use BC7 per R5.
+   Opaque sprite/ui BC7 uses the opaque mode-6 encoding at every quality (their alpha is 255).
+9. **R6 on the web.** Basis files transcode to BC/ETC2 on most devices, so web cooks follow the
+   multiple-of-4 rule too. A rescale is a warning in the report and the inspector; only the
+   sprite/ui uncompressed fallback and an explicit format that cannot hold the data are
+   warning-level problems for `cook-textures --check` / `check --textures`, so a 65² height map
+   does not fail a project.
+10. **Key ISA (D11).** bc7enc_rdo (scalar float) and basisu are not proven ISA-invariant, so their keys
+    carry the host ISA; astcenc (invariance build) and the raw writer do not. Key numbers are printed
+    without the locale.
+11. **sokol patch (R14).** Upstream submission is not possible from this environment; the patch is in
+    `engine/libs/sokol/PATCHES.md`, marked to be offered upstream.
+12. **Basis build.** The v2.50 transcoder does not compile with XUASTC off (its BC7 decoder needs it),
+    so the transcoder keeps it; the other unused targets are compiled out. `.exr` sources are read
+    through basisu's bundled tinyexr (editor only).
+13. **Web normal maps** are UASTC with X in red and Y in both green and alpha: basisu's UASTC →
+    BC5 / EAC RG11 transcodes read channels 0 and 3, the ASTC / BC7 / RG8 ones red and green, so
+    every device gets the same two channels.
+14. **Game view simulation (R26).** The family the editor renders cooked textures with is one
+    setting for every view (the texture pool is shared), set from the Game view's toolbar.
+15. **Reports.** MCP and the CLI report project-relative paths and add each cook's cache `key` (the
+    file under `.jasperengine/cache/textures/v1`) and a `source` status for files that are not
+    cooked; `check --textures` (on by default; upstream's synthesis-recipe check shares the flag)
+    reports the import problems under the `texture_imports` count of its summary.
+16. **Batch cooks.** The export and `cook-textures` share `TextureBatchCook` (plain threads up to
+    `--jobs`, the same working-memory budget); the editor's background cooks, which MCP's
+    `reimport_textures` waits on, stay on S06's Background lane (`TextureCookQueue`). Encoders always
+    fork their bands on the job system.
+17. **RGB565 on desktop GL (R11).** GL 3.3 core has no `GL_RGB565` (it arrived in 4.1) and drivers
+    may store `GL_RGB5` with 5 bits of green, so sokol does not report RGB565 there; a file cooked
+    to RGB565 or RGBA4 on a device that does not sample it (desktop GL, D3D11, Metal, Vulkan) is
+    widened to RGBA8 on the loader. GLES 3 and WebGL2 keep RGB565 / RGBA4 as the low-memory last
+    resort, which is where R11 asks for it.
+18. **Terrain detail normals (R13).** The terrain detail arrays are built from the source files
+    (deviation 4), so their normal taps keep the RGB decode; every other normal sample goes
+    through `decodeNormalMap()`.
+19. **R17 ASTC 6x6.** 4.74 bpt is 128 bits per 36 texels × 4/3; real mip chains round every level
+    up to whole 6×6 blocks (a 512² level is 86² blocks, the small levels one block each), so a
+    512² chain measures 4.83 bpt. `TextureEncodeSize` holds non-dividing block sizes to R17
+    × 1.025, the padding of a power-of-two chain, and every other format to R17 exactly.
+20. **AC14 record.** The manual check is automated: `tools/mcp/tests/test_texture_importer_ui.py`
+    drives the Inspector with real input (xdotool) on the textures fixture and keeps a screenshot
+    of each step in `build/test-results/texture-importer-ui/`, instead of `tools/editor-shot.sh`
+    stills taken by hand.
+21. **AC8 backends.** The format test runs on Linux GL 3.3 (CI) and Vulkan on lavapipe (nightly);
+    the repository's Windows and macOS jobs run the CPU suites only (no GPU on their runners), so
+    D3D11 and Metal are covered by the R11 fallback tests and the texture smoke runs, and GLES3 by
+    the nightly GLES3 smoke set (the textures fixture), the Android emulator run of
+    `tools/test-projects/texture-formats` (SwiftShader GLES3, the mobile family) and the WebGL2
+    browser gate of the same project.
+22. **UASTC effort (R20, risk 3).** `normal` effort encodes UASTC with basisu's *faster* pack
+    level and a 2 KB RDO window (`fast`: fastest, 1 KB; `best`: slower, 4 KB). basisu's default
+    level with its 4 KB window took 30.7 s for the 2048² λ1 cook on the benchmark server; this
+    takes 9.57 s, for 0.4 dB less PSNR (47.2 dB, floor 39) and smaller files after Zstandard
+    (4.62 bpt corpus, 5.72 bpt normal maps).
+23. **R21 sizes.** Measured on the linked Release game, not object files (which count every
+    inline copy): `tools/textures/runtime_size.py --binary` sums the symbols of Zstandard's
+    decoder, bcdec and the KTX2 reader: **97.3 KB** (≤ 120) once the decoder is built with
+    upstream's size options and the KTX2 writer is a file of its own no game links. The web is
+    measured from the wasm-ld link map (`--wasm-map`): Zstandard 43 KB, the texture runtime 61 KB
+    and the Basis Universal transcoder **718 KB** at `-Os` (922 KB at `-O3`), **823 KB** in all
+    against R21's 250 KB. v2.50's transcoder keeps XUASTC (deviation 12: its BC7 decoder does not
+    compile without it: about 330 KB at `-O3` with the fast BC7 packers it brings) and the ETC1S →
+    BC1, BC7 and ASTC tables (240 KB of read-only data, 120 KB of it the BC1 path desktop browsers
+    take). The check holds the measured 850 KB so the size
+    cannot grow unnoticed; meeting 250 KB needs a transcoder without XUASTC (an upstream change)
+    and the ETC1S → BC7 / ASTC paths dropped from D5's lists (follow-up).
+24. **R19 on the web.** The 2048² UASTC → BC7 / ASTC transcode times in desktop Chrome and on a
+    Pixel 6a were not measured: the benchmark server has no browser timing harness and no
+    device; the web gate checks the transcode and the drawing (WebGL2 in headless Chrome), and the
+    loader's main-thread cap of one level per frame is in BasisTranscode / TextureDataPool.
+25. **Android gate.** The emulator's SwiftShader GLES3 has no ASTC: the texture-formats project
+    ships `android_etc2` (an export with the ETC2 fallback), which the runtime picks there (`This
+    GPU has no ASTC: loading the android_etc2 textures`). Devices with ASTC take `mobile`, as the
+    store filter of the manifest guarantees.

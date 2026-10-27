@@ -6,6 +6,7 @@
 #include "Theme.h"
 #include "io/watch/FileWatchService.h"
 #include "reload/HotReloadService.h"
+#include "texture/TextureCookQueue.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -46,6 +47,22 @@ void StatusBar::show() {
     const bool open = ImGui::BeginViewportSideBar("##StatusBar", viewport, ImGuiDir_Down, height, flags);
     ImGui::PopStyleVar(2);
     if (open) {
+        // texture cooks (S14 R23), on the left: "Cooking textures 12/40" and its cancel
+        const TextureCookQueue::Progress cooks = TextureCookQueue::get().getProgress();
+        if (cooks.total > 0) {
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Cooking textures %d/%d", cooks.done, cooks.total);
+            if (!cooks.current.empty() && ImGui::BeginItemTooltip()) {
+                ImGui::Text("Cooking %s", cooks.current.c_str());
+                ImGui::TextDisabled("Textures render from their source until their cook lands.");
+                ImGui::EndTooltip();
+            }
+            ImGui::SameLine();
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ImGui::GetStyle().FramePadding.x, 0.0f));
+            if (ImGui::SmallButton("Cancel##texture_cooks")) TextureCookQueue::get().cancelAll();
+            ImGui::PopStyleVar();
+            ImGui::SameLine();
+        }
         const FileWatchService::Stats stats = FileWatchService::get().stats();
         HotReloadService& reloads = HotReloadService::get();
         std::string label;

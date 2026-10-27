@@ -40,6 +40,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerSynthesisTools, "Texture synthesis", "assets_pipeline"},   // upstream (texture synthesis)
     {registerMaterialsLightingTools, "Assets, materials and shaders", "rendering_fx"},   // S11
     {registerAssetIdentityTools, "Asset identity: GUIDs, references, missing assets", "assets_pipeline"},   // S04
+    {registerTextureTools, "Textures: import settings and cooks", "assets_pipeline"},   // S14
     {registerDocsTools, "Docs", ""},
     {registerBuildTools, "Build and export", ""},
     {registerWorldTools, "World: terrain, tilemaps, sprites, animation, particles, physics, UI, models", ""},

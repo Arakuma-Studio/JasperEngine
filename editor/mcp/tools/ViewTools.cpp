@@ -3,6 +3,7 @@
 
 // W3: screenshots, Scene view camera, window focus, Game view settings
 #include "McpTools.h"
+#include "texture/TextureCookQueue.h"
 #include "window/dialog/EditorSettingsWindow.h"
 #include "Out.h"
 #include "io/AtomicFile.h"
@@ -1335,6 +1336,16 @@ void configureGameViewTool(const CallPtr& call) {
         settings.atmosphereQuality = (int)(it - atmosphereNames.begin()) - 1;
         changed.push_back("atmosphere_quality");
     }
+    // S14 R26: the family of cooked textures every view renders with
+    if (args.contains("simulate_textures")) {
+        TextureFamily family;
+        if (!args["simulate_textures"].is_string() || !textureFamilyFromName(args["simulate_textures"].get<std::string>(), family)) {
+            call->fail("simulate_textures must be desktop, mobile, android_etc2 or web.");
+            return;
+        }
+        TextureCookQueue::get().setViewFamily(family);
+        changed.push_back("simulate_textures");
+    }
     if (!changed.empty()) gw->applySettings(settings);
 
     Json data = {
@@ -1343,6 +1354,7 @@ void configureGameViewTool(const CallPtr& call) {
         {"maximize_on_play", settings.maximizeOnPlay},
         {"show_stats", settings.showStats},
         {"simulate_touch", project->isSimulateTouch()},
+        {"simulate_textures", textureFamilyName(TextureCookQueue::get().getViewFamily())},
         {"atmosphere_quality", atmosphereNames[std::clamp(settings.atmosphereQuality + 1, 0, 4)]},
         {"open", gw->isOpen()},
         {"visible", gw->isVisible()},
@@ -1518,6 +1530,7 @@ void registerViewTools(McpRegistry& registry) {
             {"maximize_on_play", boolean("")},
             {"show_stats", boolean("")},
             {"simulate_touch", boolean("Mouse = one finger. Not while playing.")},
+            {"simulate_textures", stringEnum("Cooked textures of this platform in every view.", {"desktop", "mobile", "android_etc2", "web"})},
             {"atmosphere_quality", stringEnum("Preview Atmosphere Quality (project = the project's desktop tier).",
                                               {"project", "off", "low", "medium", "high"})}
         });

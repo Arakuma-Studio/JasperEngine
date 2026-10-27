@@ -16,6 +16,7 @@
 #include "thread/ResourceProgress.h"
 #include "io/AssetIOService.h"
 #include "subsystem/RenderSystem.h"
+#include "texture/CookedTextures.h"
 #include "util/Angle.h"
 
 #include <algorithm>
@@ -216,6 +217,50 @@ std::string MeshSystem::migrateModelTextureId(const std::string& id, const std::
             return tail.generic_string() + rest;
     }
     return id;
+}
+
+// An external image of a glTF the cooked textures have (S14 R9): its asset path ("textures/a.png"),
+// which the texture pool loads cooked; empty for embedded images and the ones not cooked. An
+// export ships such an image cooked only, so the model loader finds no file to read.
+static std::string gltfCookedImagePath(const std::string& modelFilename, const tinygltf::Image& image){
+    if (image.uri.empty() || tinygltf::IsDataURI(image.uri))
+        return std::string();
+    std::string uri;
+    if (!tinygltf::URIDecode(image.uri, &uri, nullptr) || uri.empty())
+        return std::string();
+    const size_t slash = modelFilename.find_last_of("/\\");
+    const std::string joined = (slash == std::string::npos ? std::string() : modelFilename.substr(0, slash + 1)) + uri;
+    const std::string path = CookedTextures::normalize(joined);
+    CookedTextureEntry entry;
+    return !path.empty() && CookedTextures::find(path, entry) ? path : std::string();
+}
+
+// tinygltf's warnings less the ones about external images that ship cooked only (not found,
+// not loaded): those load from their cooked file
+static std::string withoutCookedImageWarnings(const std::string& warn, const tinygltf::Model& model, const std::string& modelFilename){
+    std::vector<std::string> cooked;
+    for (const tinygltf::Image& image : model.images){
+        std::string uri;
+        if (image.image.empty() && !gltfCookedImagePath(modelFilename, image).empty() && tinygltf::URIDecode(image.uri, &uri, nullptr))
+            cooked.push_back(uri);
+    }
+    if (cooked.empty())
+        return warn;
+    std::string out;
+    std::istringstream lines(warn);
+    std::string line;
+    while (std::getline(lines, line)){
+        const bool aboutCooked = std::any_of(cooked.begin(), cooked.end(), [&line](const std::string& uri){
+            const bool notFound = line.rfind("File not found", 0) == 0 && line.size() >= uri.size() &&
+                                  line.compare(line.size() - uri.size(), uri.size(), uri) == 0;
+            const bool notLoaded = line.rfind("Failed to load external 'uri' for image", 0) == 0 &&
+                                   line.find("\"" + uri + "\"") != std::string::npos;
+            return notFound || notLoaded;
+        });
+        if (!aboutCooked)
+            out += line + "\n";
+    }
+    return out;
 }
 
 // An FBX model loads from the .glb the editor imported it into (getImportedModelPath)
@@ -1559,6 +1604,8 @@ std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::pollOrStartAsyncMo
         return nullptr;
     }
 
+    if (!obj && result->gltfModel && !result->warn.empty())
+        result->warn = withoutCookedImageWarnings(result->warn, *result->gltfModel, filename);
     if (!result->warn.empty()){
         if (obj){
             Log::warn("Loading OBJ model (%s): %s", filename.c_str(), result->warn.c_str());
@@ -2464,7 +2511,26 @@ bool MeshSystem::loadGLTFTexture(int textureIndex, ModelComponent& model, Textur
             return true;
         }
 
+        auto applySampler = [&](){
+            if (tex.sampler >= 0 && isValidGLTFIndex(tex.sampler, model.gltfModel->samplers)){
+                tinygltf::Sampler &sampler = model.gltfModel->samplers[tex.sampler];
+                texture.setMinFilter(convertFilter(sampler.minFilter));
+                texture.setMagFilter(convertFilter(sampler.magFilter));
+                texture.setWrapU(convertWrap(sampler.wrapS));
+                texture.setWrapV(convertWrap(sampler.wrapT));
+            }else if (tex.sampler >= 0){
+                Log::warn("Invalid GLTF sampler index %i for texture %i", tex.sampler, textureIndex);
+            }
+        };
+
         tinygltf::Image &image = model.gltfModel->images[tex.source];
+        // an external image with a cook: loaded from it by path, like any project texture
+        const std::string cookedPath = gltfCookedImagePath(model.filename, image);
+        if (!cookedPath.empty()){
+            texture = Texture(cookedPath);
+            applySampler();
+            return true;
+        }
         if (image.width <= 0 || image.height <= 0 || image.component <= 0 || image.image.empty()) {
             Log::warn("Invalid GLTF image data for texture: %s", textureName.c_str());
             return true;
@@ -2512,15 +2578,7 @@ bool MeshSystem::loadGLTFTexture(int textureIndex, ModelComponent& model, Textur
             }
         }
 
-        if (tex.sampler >= 0 && isValidGLTFIndex(tex.sampler, model.gltfModel->samplers)){
-            tinygltf::Sampler &sampler = model.gltfModel->samplers[tex.sampler];
-            texture.setMinFilter(convertFilter(sampler.minFilter));
-            texture.setMagFilter(convertFilter(sampler.magFilter));
-            texture.setWrapU(convertWrap(sampler.wrapS));
-            texture.setWrapV(convertWrap(sampler.wrapT));
-        }else if (tex.sampler >= 0){
-            Log::warn("Invalid GLTF sampler index %i for texture %i", tex.sampler, textureIndex);
-        }
+        applySampler();
         // Free the pooled CPU copy after upload; the decoded pixels remain in the
         // ModelPool-retained gltfModel, so loadGLTFTexture re-copies from there on reload.
         texture.setReleaseDataAfterLoad(true);
@@ -4843,6 +4901,8 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 
             res = loadGLTFFile(loader, model.gltfModel.get(), &err, &warn, filename);
 
+            if (!warn.empty())
+                warn = withoutCookedImageWarnings(warn, *model.gltfModel, filename);
             if (!warn.empty()) {
                 Log::warn("Loading GLTF model (%s): %s", filename.c_str(), warn.c_str());
             }

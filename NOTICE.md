@@ -107,6 +107,16 @@ Convex decomposition of Physics Placement (edit-time placement in the Scene view
 |---|---|---|---|---|
 | [V-HACD](https://github.com/kmammou/v-hacd) by Khaled Mamou (version 4 by John W. Ratcliff) | 4.1.0 (`master` at `f900e4236149`, the single header `include/VHACD.h`) | `engine/libs/vhacd/` (`LICENSE`, `README.jasper.md`; three local fixes for its multithreaded mode, `jasper.patch`) | BSD-3-Clause | splitting concave meshes into convex hulls (`engine/core/physics/ConvexDecomposition`), the editor on desktop only, never exported games (`JASPERENGINE_CONVEX_DECOMPOSITION`) |
 
+Texture compression (cooked KTX2 textures, spec S14, `docs/textures.md`). Games link only Zstandard's decoder, bcdec and, on the web, the Basis Universal transcoder; the encoders are in the editor alone:
+
+| Library | Version | Location | License | Used for |
+|---|---|---|---|---|
+| [Zstandard](https://github.com/facebook/zstd) | 1.5.7 | `engine/libs/zstd/` (`LICENSE`, `README.jasper.md`) | BSD-3-Clause | the supercompression of cooked KTX2 textures: the decoder in games, the encoder in the editor's cook |
+| [bcdec](https://github.com/iOrange/bcdec) | `main` at `80859ed3b7af` | `engine/libs/bcdec/` (`LICENSE`, `README.jasper.md`) | MIT or Unlicense | BC1-BC7 CPU decoding: the fallback when a GPU cannot sample a cooked BC format, editor previews |
+| [Basis Universal](https://github.com/BinomialLLC/basis_universal) | 2.50 (`v2_50`) | `engine/libs/basisu/` (`LICENSE`, `NOTICE`, `LICENSES/`, `README.jasper.md`; local change: `zstd/zstd.h` forwards to the engine's Zstandard) | Apache-2.0; its encoder's bundled tinyexr BSD-3-Clause, qoi and tinydds MIT, miniz MIT, jpgd public domain (`LICENSES/`) | ETC1S / UASTC / UASTC HDR encoding of web textures, UASTC to ETC2/EAC, `.exr` reading (editor); the transcoder of web textures (web games, editor) |
+| [astc-encoder](https://github.com/ARM-software/astc-encoder) | 5.7.0 | `engine/libs/astcenc/` (`LICENSE.txt`, `README.jasper.md`) | Apache-2.0 | ASTC 4x4-12x12 encoding and decoding of mobile textures (editor only) |
+| [bc7enc_rdo](https://github.com/richgel999/bc7enc_rdo) | `master` at `b9438627eef7` | `engine/libs/bc7enc_rdo/` (`LICENSE`, `README.jasper.md`) | MIT or Unlicense | BC1/BC3/BC4/BC5/BC7 encoding with rate-distortion optimisation of desktop textures (editor only) |
+
 Code from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, Copyright (c) 2026 Gamecrafters Guild Limited and contributors), used by the OpenEngine port (`docs/specs/`). Each adapted file names its source in its header.
 
 | Code | Location | Used for |
@@ -154,6 +164,7 @@ Code from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, 
 | `Engine/Modules/Scene/Source/{TlasBuilder,TlasRefit,TlasTraverse}.cpp` (the binned build, bottom-up refit and ray/frustum traversal over entity bounds), adapted without sectors or async requests; `Apps/Editor/Source/Picking/MeshBvhCache.cpp` (coalescing, invalidation, the pending policy) and `MeshBvhDiskFormat` (the header checks), adapted | `engine/core/picking/{SceneBvh,PickCache}.*`, `editor/picking/BvhDiskCache.*` | the scene's pick BVH, the shared mesh trees and their disk cache (S26) |
 | `Apps/Editor/Source/SceneViewController.cpp` (`PickViaClickThrough`, Ctrl+wheel depth cycling, the drop order of `SceneView/SceneViewDropPlacement.cpp`), `Picking/PickRootResolver.cpp` (the candidate list), the behaviour and constants of `UI/Controls/Widgets/CameraBookmarksWidget.cpp`, `Panels/SceneCameraSettingsPopup.cpp`, `UI/Controls/Widgets/SceneViewRulerOverlay.cpp` (the 1-2-5 major step), `Panels/HierarchyPanel.cpp` (the lock toggle): rules re-implemented on ImGui | `editor/picking/ScenePicker.*`, `editor/picking/IconPicker.*`, `editor/sceneview/`, `editor/window/HierarchyVisibilityGutter.cpp` | the Scene view's click flow, camera bookmarks, Scene Camera settings, rulers, hide and pick lock (S26) |
 | `Tests/MeshBvhTests.cpp`, `Tests/SceneTlasTests.cpp` (cases ported) | `engine/tests/core/picking/` | test cases (tests only, never shipped) |
+| `Engine/Source/Assets/Textures/BC7TransparentEndpointRepair.cpp`, `Engine/Include/Assets/Textures/BC7TransparentEndpointRepair.h` (copied, namespace and integer types changed); `Engine/Tests/BC7TransparentEndpointRepairTests.cpp` (ported) | `editor/texture/BC7TransparentEndpointRepair.*`, `editor/tests/texture/BC7TransparentEndpointRepairTest.cpp` | transparent texels of BC7 cooks stay at alpha 0 (S14) |
 
 The extended lobes' formulas (`engine/shaderlib/includes/pbr_ext.glsl`) follow the [Khronos glTF-Sample-Renderer](https://github.com/KhronosGroup/glTF-Sample-Renderer) shaders (Apache-2.0, Copyright The Khronos Group Inc.), as `includes/pbr.glsl`, `brdf.glsl` and `ibl.glsl` already do.
 

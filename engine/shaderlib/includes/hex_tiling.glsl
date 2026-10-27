@@ -16,6 +16,8 @@
 #ifndef HEX_TILING_GLSL
 #define HEX_TILING_GLSL
 
+#include "includes/normal_map.glsl"
+
 precision highp float;
 precision highp int;
 
@@ -198,8 +200,8 @@ vec3 hexNormalBack(vec3 tangentNormal, vec2 cs){
     (HEX_TAP0(tex, smp, taps) * (weights).x + HEX_TAP1(tex, smp, taps) * (weights).y + HEX_TAP2(tex, smp, taps) * (weights).z)
 // a tangent-space normal map (xyz in -1..1), each tap's normal turned back by its tile
 #define HEX_SAMPLE_NORMAL(tex, smp, taps, weights) \
-    (hexNormalBack(HEX_TAP0(tex, smp, taps).xyz * 2.0 - 1.0, (taps).cs0) * (weights).x + \
-     hexNormalBack(HEX_TAP1(tex, smp, taps).xyz * 2.0 - 1.0, (taps).cs1) * (weights).y + \
-     hexNormalBack(HEX_TAP2(tex, smp, taps).xyz * 2.0 - 1.0, (taps).cs2) * (weights).z)
+    (hexNormalBack(decodeNormalMap(HEX_TAP0(tex, smp, taps)), (taps).cs0) * (weights).x + \
+     hexNormalBack(decodeNormalMap(HEX_TAP1(tex, smp, taps)), (taps).cs1) * (weights).y + \
+     hexNormalBack(decodeNormalMap(HEX_TAP2(tex, smp, taps)), (taps).cs2) * (weights).z)
 
 #endif

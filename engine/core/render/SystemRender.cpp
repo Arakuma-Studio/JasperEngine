@@ -9,6 +9,7 @@
 #include "Log.h"
 
 
+#include <mutex>
 #include <string>
 
 using namespace jasperengine;
@@ -40,6 +41,40 @@ uint64_t SystemRender::getFrameCount(){
 
 const RenderFeatures& SystemRender::getFeatures(){
     return SokolSystem::getFeatures();
+}
+
+namespace {
+    std::mutex& textureSupportMutex(){
+        static std::mutex* mutex = new std::mutex();
+        return *mutex;
+    }
+    bool textureSupportOverridden = false;
+    TextureFormatSupport textureSupportOverride;
+}
+
+bool SystemRender::isTextureFormatSupported(GpuTextureFormat format){
+    return getTextureFormatSupport()(format);
+}
+
+TextureFormatSupport SystemRender::getTextureFormatSupport(){
+    {
+        std::lock_guard<std::mutex> lock(textureSupportMutex());
+        if (textureSupportOverridden)
+            return textureSupportOverride;
+    }
+    return SokolSystem::getFeatures().textureFormats;
+}
+
+void SystemRender::setTextureFormatSupportOverride(const TextureFormatSupport* support){
+    std::lock_guard<std::mutex> lock(textureSupportMutex());
+    textureSupportOverridden = support != nullptr;
+    if (support)
+        textureSupportOverride = *support;
+}
+
+bool SystemRender::hasTextureFormatSupportOverride(){
+    std::lock_guard<std::mutex> lock(textureSupportMutex());
+    return textureSupportOverridden;
 }
 
 uint64_t SystemRender::getPipelineCacheMisses(){

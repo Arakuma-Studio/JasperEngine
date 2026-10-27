@@ -264,6 +264,9 @@ jobs:
       - name: Third-party notices in the install
         run: python3 tools/ci/check-notices.py --installed build/linux/editor-install/bin
 
+      - name: Cooked-texture runtime size (S14 R21, native Release)
+        run: python3 tools/textures/runtime_size.py --binary build/linux/engine/jasperengine-project --json build/test-results/texture-runtime-size.json
+
       - name: HTML UI editor tests
         run: tools/build.sh htmlui-editor-tests
 
@@ -529,6 +532,17 @@ jobs:
 
       - name: Browser gate, core utilities
         run: GATE=core-utilities tools/build.sh web-gate
+
+      - name: Build the cooked texture formats gate project (Release)
+        run: BUILD_TYPE=Release WEB_PROJECT=texture-formats tools/build.sh web
+
+      - name: Browser gate, cooked texture formats
+        run: GATE=texture-formats tools/build.sh web-gate
+
+      - name: Cooked-texture runtime size (S14 R21, wasm Release)
+        run: |
+          tools/build.sh exec web bash -c "cmake -S engine -B build/web-texture-formats -DCMAKE_EXE_LINKER_FLAGS=-Wl,--Map=/src/build/web-texture-formats.map && cmake --build build/web-texture-formats --target jasperengine-project"
+          python3 tools/textures/runtime_size.py --wasm-map build/web-texture-formats.map --json build/test-results/texture-runtime-size-wasm.json
 
       - uses: actions/upload-artifact@v4
         if: always()

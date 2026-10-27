@@ -216,7 +216,9 @@ SPEC_GROUPS = {
                      "list_atmosphere_presets", "apply_atmosphere_preset", "get_atmosphere_info",  # S12
                      "inspect_color_lut", "get_post_processing_status", "set_post_processing_debug"],  # S13
     "assets_pipeline": ["resolve_asset", "find_references", "get_asset_dependencies", "list_missing_assets",  # S04
-                        "retarget_asset_references", "clear_asset_references"],
+                        "retarget_asset_references", "clear_asset_references",
+                        "get_texture_import_settings", "set_texture_import_settings", "reimport_textures",  # S14
+                        "get_texture_cook_report"],
 }
 
 

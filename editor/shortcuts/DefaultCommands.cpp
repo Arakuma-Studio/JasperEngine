@@ -146,6 +146,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("assets.delete", "Delete Asset", AppMenuCommand::AssetsDelete);
     b.menu("assets.import", "Import New Asset...", AppMenuCommand::AssetsImport);
     b.menu("assets.refresh", "Refresh", AppMenuCommand::AssetsRefresh, C::Editor, "Ctrl+R");
+    b.menu("assets.reimportTextures", "Reimport All Textures", AppMenuCommand::AssetsReimportTextures).description =
+        "Cook every texture of the project again for the editor (the cache answers what did not change)";
     b.menu("assets.migrateReferences", "Migrate References", AppMenuCommand::MigrateAssetReferences);
     b.menu("assets.scenesInBuild", "Scenes in Build...", AppMenuCommand::ProjectScenes);
     b.menu("assets.prefabs", "Prefabs...", AppMenuCommand::ProjectPrefabs);

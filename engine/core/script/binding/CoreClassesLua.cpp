@@ -6,6 +6,7 @@
 #include "log/Logger.h"
 
 #include <algorithm>
+#include <set>
 
 #include "lua.hpp"
 
@@ -1085,6 +1086,14 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("viewRect", &Engine::getViewRect)
         .addStaticProperty("scalingMode", &Engine::getScalingMode, &Engine::setScalingMode)
         .addStaticProperty("textureStrategy", &Engine::getTextureStrategy, &Engine::setTextureStrategy)
+        .addStaticFunction("setTextureQuality", &Engine::setTextureQuality)
+        .addStaticFunction("getTextureQuality", &Engine::getTextureQuality)
+        .addStaticFunction("setTextureMemoryBudget", &Engine::setTextureMemoryBudget)
+        .addStaticFunction("getTextureMemoryBudget", &Engine::getTextureMemoryBudget)
+        .addStaticFunction("getTextureMemoryUsage", [](){ return (double)Engine::getTextureMemoryUsage(); })
+        .addStaticFunction("isTextureFormatSupported", &Engine::isTextureFormatSupported)
+        .addStaticFunction("setTextureLowMemoryFallback", &Engine::setTextureLowMemoryFallback)
+        .addStaticFunction("isTextureLowMemoryFallback", &Engine::isTextureLowMemoryFallback)
         .addStaticFunction("setAtmosphereQuality", &Engine::setAtmosphereQuality)
         .addStaticFunction("getAtmosphereQuality", &Engine::getAtmosphereQuality)
         .addStaticFunction("resetAtmosphereQuality", &Engine::resetAtmosphereQuality)
@@ -1545,7 +1554,21 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("destroy", &Texture::destroy)
         .addFunction("getRender", &Texture::getRender)
         .addFunction("getPath", &Texture::getPath)
-        .addFunction("getData", &Texture::getData)
+        .addFunction("getData", [](const Texture* texture) -> TextureData& {
+            // cooked block formats have no pixels the CPU can read (spec S14 R3)
+            if (texture->hasData() && texture->getData().isCompressed()){
+                static std::set<std::string> logged;
+                if (logged.insert(texture->getPath()).second)
+                    Log::warn("%s: pixels are GPU-compressed; enable Read/Write in its import settings", texture->getPath().c_str());
+                static TextureData empty;
+                return empty;
+            }
+            return texture->getData();
+        })
+        .addFunction("isCompressed", &Texture::isCompressed)
+        .addFunction("getGpuFormat", &Texture::getGpuFormat)
+        .addFunction("getStoredWidth", &Texture::getStoredWidth)
+        .addFunction("getStoredHeight", &Texture::getStoredHeight)
         .addFunction("getId", &Texture::getId)
         .addFunction("getNumFaces", &Texture::getNumFaces)
         .addFunction("getType", &Texture::getType)

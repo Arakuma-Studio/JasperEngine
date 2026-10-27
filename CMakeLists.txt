@@ -48,6 +48,10 @@ endif()
 
 set(JASPERENGINE_SHARED ON)
 
+# The texture cook's encoders (engine/libs/{bc7enc_rdo,astcenc,basisu}, S14): the editor only,
+# games never link them
+set(JASPERENGINE_TEXTURE_ENCODERS ON)
+
 # The editor builds, exports and plays every shader through the engine's shader
 # compiler (engine/libs/shadercompiler, ShaderVariantCompiler)
 set(JASPERENGINE_RUNTIME_SHADERS ON CACHE BOOL "Compile missing shader variants at runtime" FORCE)
@@ -826,6 +830,21 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/shader/ShaderVariantCollector.cpp
     ${EDITOR_DIR}/shader/ShaderLibraryMatrix.cpp
     ${EDITOR_DIR}/shader/ShaderLibraryDoc.cpp
+    ${EDITOR_DIR}/texture/AstcEncoder.cpp
+    ${EDITOR_DIR}/texture/BasisEncoder.cpp
+    ${EDITOR_DIR}/texture/BC7TransparentEndpointRepair.cpp
+    ${EDITOR_DIR}/texture/BcEncoder.cpp
+    ${EDITOR_DIR}/texture/TextureCookCache.cpp
+    ${EDITOR_DIR}/texture/TextureCookQueue.cpp
+    ${EDITOR_DIR}/texture/TextureCli.cpp
+    ${EDITOR_DIR}/texture/TextureCookReport.cpp
+    ${EDITOR_DIR}/texture/TextureCooker.cpp
+    ${EDITOR_DIR}/texture/TextureEncoders.cpp
+    ${EDITOR_DIR}/texture/TextureExport.cpp
+    ${EDITOR_DIR}/texture/TextureFormatSelector.cpp
+    ${EDITOR_DIR}/texture/TextureImportSettings.cpp
+    ${EDITOR_DIR}/texture/TextureTypeInference.cpp
+    ${EDITOR_DIR}/window/TextureImporterView.cpp
 
     ${EDITOR_DIR}/material/MaterialPresets.cpp
     ${EDITOR_DIR}/PostProcessingPresets.cpp
@@ -1026,6 +1045,10 @@ function(configure_jasperengine_editor_target target_name)
         jasperengine
         nfd
         yaml-cpp
+        zstd
+        bc7enc_rdo
+        astcenc
+        basisu_encoder
         ufbx
     )
 
