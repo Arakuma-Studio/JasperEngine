@@ -31,6 +31,7 @@
 #include "component/AudioSourceComponent.h"
 #include "component/PoseAnimatorComponent.h"
 #include "component/AnimationPlayerComponent.h"
+#include "component/VertexAnimatorComponent.h"
 #include "animation/AnimationEvent.h"
 #include "component/SpriteComponent.h"
 #include "component/FogComponent.h"
@@ -726,6 +727,35 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("needsLoad", &AnimationPlayerComponent::needsLoad, &AnimationPlayerComponent::needsLoad)
         .addProperty("onEvent", [] (AnimationPlayerComponent* self, lua_State*) { return &self->onEvent; }, [] (AnimationPlayerComponent* self, lua_State* L) { self->onEvent = L; })
         .addProperty("onFinish", [] (AnimationPlayerComponent* self, lua_State*) { return &self->onFinish; }, [] (AnimationPlayerComponent* self, lua_State* L) { self->onFinish = L; })
+        .endClass();
+
+    // The Vertex Animator's data (the VertexAnimator object plays it: play, crossFade, blend...)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<VertexAnimatorComponent>("VertexAnimatorComponent")
+        .addProperty("enabled", &VertexAnimatorComponent::enabled, &VertexAnimatorComponent::enabled)
+        // the .vat, relative to the assets folder
+        .addProperty("animation", &VertexAnimatorComponent::animation, &VertexAnimatorComponent::animation)
+        .addProperty("defaultClip", &VertexAnimatorComponent::defaultClip, &VertexAnimatorComponent::defaultClip)
+        .addProperty("playAutomatically", &VertexAnimatorComponent::playAutomatically, &VertexAnimatorComponent::playAutomatically)
+        .addProperty("speed", &VertexAnimatorComponent::speed, &VertexAnimatorComponent::speed)
+        .addProperty("randomStart", &VertexAnimatorComponent::randomStart, &VertexAnimatorComponent::randomStart)
+        .addProperty("defaultFadeTime", &VertexAnimatorComponent::defaultFadeTime, &VertexAnimatorComponent::defaultFadeTime)
+        .addProperty("instanceEvents", &VertexAnimatorComponent::instanceEvents, &VertexAnimatorComponent::instanceEvents)
+        // editor: animate in edit mode
+        .addProperty("preview", &VertexAnimatorComponent::preview, &VertexAnimatorComponent::preview)
+        .addProperty("needsLoad", &VertexAnimatorComponent::needsLoad, &VertexAnimatorComponent::needsLoad)
+        // why it does not play: a load error or "mesh_mismatch: ..." ("" when it plays)
+        .addProperty("loadError", &VertexAnimatorComponent::loadError)
+        // the asset is loaded and plays on this mesh
+        .addProperty("gpuActive", &VertexAnimatorComponent::gpuActive)
+        // a function called with an AnimationEvent when a clip event fires
+        .addProperty("onEvent", [] (VertexAnimatorComponent* self, lua_State*) { return &self->onEvent; }, [] (VertexAnimatorComponent* self, lua_State* L) { self->onEvent = L; })
+        // a function called with the clip name when a once clip ends
+        .addProperty("onFinish", [] (VertexAnimatorComponent* self, lua_State*) { return &self->onFinish; }, [] (VertexAnimatorComponent* self, lua_State* L) { self->onFinish = L; })
+        // a function called with (instance, AnimationEvent) when instanceEvents is on
+        .addProperty("onInstanceEvent", [] (VertexAnimatorComponent* self, lua_State*) { return &self->onInstanceEvent; }, [] (VertexAnimatorComponent* self, lua_State* L) { self->onInstanceEvent = L; })
+        // a function called with (instance, clip name) when instanceEvents is on
+        .addProperty("onInstanceFinish", [] (VertexAnimatorComponent* self, lua_State*) { return &self->onInstanceFinish; }, [] (VertexAnimatorComponent* self, lua_State* L) { self->onInstanceFinish = L; })
         .endClass();
 
     luabridge::getGlobalNamespace(L)

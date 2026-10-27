@@ -30,6 +30,7 @@
 namespace jasperengine{
 
     struct AnimationEvent;
+    namespace vat{ struct VertexAnimatorRuntime; }
 
     struct JASPERENGINE_API VertexAnimatorAttachment{
         std::string socket;
@@ -77,6 +78,9 @@ namespace jasperengine{
         std::vector<std::string> queued;            // queue(name) for the entity
         std::vector<VertexAnimatorRequest> requests;
         float lastNow = 0.0f;                       // previous update's clock (event crossing)
+        // the system's per-animator bookkeeping (its clock, per-state speeds, holds, queues, pending
+        // callbacks: animation/VertexAnimatorRuntime.h); reset on clone and decode
+        std::shared_ptr<vat::VertexAnimatorRuntime> runtime;
         // GPU state the RenderSystem reads
         vat::VatMode gpuMode = vat::VatMode::Vertices;
         Vector4 gpuState0 = Vector4(-1, 0, 1, -1);   // vatPackInstance(state)

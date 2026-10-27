@@ -740,6 +740,23 @@ namespace {
         makeFastProperty<AnimationPlayerComponent, float, &AnimationPlayerComponent::defaultFadeTime>("defaultFadeTime", PropertyType::Float, UpdateFlags_None),
     };
 
+    // enabled is the shared component checkbox. `animation` is the .vat path hint and `guid` its
+    // GUID (editor); `attachments` (Custom: the whole list, what a prefab override holds) plus
+    // attachments[i].socket / .entity (resolveVertexAnimatorPropertyFast). The runtime fields
+    // are not properties; the settings are read by the system when it plays (no update flag).
+    static const FastPropertyDescriptor kVertexAnimatorProperties[] = {
+        makeFastProperty<VertexAnimatorComponent, std::string, &VertexAnimatorComponent::animation>("animation", PropertyType::String, UpdateFlags_VertexAnimator_Reload),
+        makeFastProperty<VertexAnimatorComponent, std::string, &VertexAnimatorComponent::guid>("guid", PropertyType::String, UpdateFlags_VertexAnimator_Reload),
+        makeFastProperty<VertexAnimatorComponent, std::string, &VertexAnimatorComponent::defaultClip>("defaultClip", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<VertexAnimatorComponent, bool, &VertexAnimatorComponent::playAutomatically>("playAutomatically", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<VertexAnimatorComponent, float, &VertexAnimatorComponent::speed>("speed", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<VertexAnimatorComponent, bool, &VertexAnimatorComponent::randomStart>("randomStart", PropertyType::Bool, UpdateFlags_None),
+        // kept >= 0 by updateEntity
+        makeFastProperty<VertexAnimatorComponent, float, &VertexAnimatorComponent::defaultFadeTime>("defaultFadeTime", PropertyType::Float, UpdateFlags_VertexAnimator_Reload),
+        makeFastProperty<VertexAnimatorComponent, bool, &VertexAnimatorComponent::instanceEvents>("instanceEvents", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<VertexAnimatorComponent, std::vector<VertexAnimatorAttachment>, &VertexAnimatorComponent::attachments>("attachments", PropertyType::Custom, UpdateFlags_None),
+    };
+
     static const FastPropertyDescriptor kCameraProperties[] = {
         makeFastProperty<CameraComponent, CameraType, &CameraComponent::type>("type", PropertyType::Enum, UpdateFlags_Camera),
         // read by RenderSystem when the camera draws
@@ -1898,6 +1915,30 @@ namespace {
         return PropertyData();
     }
 
+    PropertyData getVertexAnimatorAttachmentPropertyFast(VertexAnimatorAttachment& attachment, const std::string& field) {
+        static VertexAnimatorAttachment def;
+        if (field == "socket") return {PropertyType::String, UpdateFlags_None, (void*)&def.socket, (void*)&attachment.socket};
+        if (field == "entity") return {PropertyType::Entity, UpdateFlags_None, (void*)&def.entity, (void*)&attachment.entity};
+        return PropertyData();
+    }
+
+    PropertyData resolveVertexAnimatorPropertyFast(void* compRef, const std::string& propertyName) {
+        VertexAnimatorComponent* comp = static_cast<VertexAnimatorComponent*>(compRef);
+        if (!comp) return PropertyData();
+
+        PropertyData result = resolveDirectProperties(comp, propertyName, kVertexAnimatorProperties);
+        if (result.ref) return result;
+
+        // attachments[N].<field>
+        size_t index = 0;
+        size_t fieldPos = 0;
+        if (parseIndexedProperty(propertyName, "attachments[", comp->attachments.size(), index, fieldPos) && fieldPos != std::string::npos) {
+            return getVertexAnimatorAttachmentPropertyFast(comp->attachments[index], propertyName.substr(fieldPos));
+        }
+
+        return PropertyData();
+    }
+
     PropertyData resolveLight2DPropertyFast(void* comp, const std::string& propertyName) {
         return resolveDirectProperties(static_cast<Light2DComponent*>(comp), propertyName, kLight2DProperties);
     }
@@ -2971,6 +3012,24 @@ namespace {
         }
     }
 
+    void enumerateVertexAnimatorProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
+        VertexAnimatorComponent* comp = static_cast<VertexAnimatorComponent*>(compRef);
+
+        enumerateFromDescriptors(compRef, ps, kVertexAnimatorProperties);
+
+        // without a component: the "attachments[]" templates
+        static VertexAnimatorAttachment defAttachment;
+        for (size_t i = 0; i < (compRef ? comp->attachments.size() : 1); i++) {
+            const std::string prefix = "attachments[" + (compRef ? std::to_string(i) : std::string()) + "].";
+            VertexAnimatorAttachment& attachment = compRef ? comp->attachments[i] : defAttachment;
+            for (const char* field : {"socket", "entity"}) {
+                PropertyData property = getVertexAnimatorAttachmentPropertyFast(attachment, field);
+                if (!compRef) property.ref = nullptr;
+                ps[prefix + field] = property;
+            }
+        }
+    }
+
     void enumerateLight2DProperties(void* comp, std::map<std::string, PropertyData>& ps) {
         enumerateFromDescriptors(comp, ps, kLight2DProperties);
     }
@@ -3702,6 +3761,7 @@ namespace {
         {ComponentType::FluidSimulationComponent, &findComponentPtr<FluidSimulationComponent>, &resolveFluidSimulationPropertyFast, &enumerateFluidSimulationProperties},
         {ComponentType::PoseAnimatorComponent, &findComponentPtr<PoseAnimatorComponent>, &resolvePoseAnimatorPropertyFast, &enumeratePoseAnimatorProperties},
         {ComponentType::AnimationPlayerComponent, &findComponentPtr<AnimationPlayerComponent>, &resolveAnimationPlayerPropertyFast, &enumerateAnimationPlayerProperties},
+        {ComponentType::VertexAnimatorComponent, &findComponentPtr<VertexAnimatorComponent>, &resolveVertexAnimatorPropertyFast, &enumerateVertexAnimatorProperties},
         {ComponentType::Light2DComponent, &findComponentPtr<Light2DComponent>, &resolveLight2DPropertyFast, &enumerateLight2DProperties},
         {ComponentType::ShadowCaster2DComponent, &findComponentPtr<ShadowCaster2DComponent>, &resolveShadowCaster2DPropertyFast, &enumerateShadowCaster2DProperties},
         {ComponentType::CameraComponent, &findComponentPtr<CameraComponent>, &resolveCameraPropertyFast, &enumerateCameraProperties},
@@ -3775,6 +3835,7 @@ namespace {
             case ComponentType::LatticeModifierComponent: return &getEnabledRef<LatticeModifierComponent>;
             case ComponentType::LatticeFollowerComponent: return &getEnabledRef<LatticeFollowerComponent>;
             case ComponentType::AnimationPlayerComponent: return &getEnabledRef<AnimationPlayerComponent>;
+            case ComponentType::VertexAnimatorComponent: return &getEnabledRef<VertexAnimatorComponent>;
             default: return nullptr;
         }
     }
@@ -3924,6 +3985,8 @@ std::string computeComponentName(editor::ComponentType component){
         name = "PoseAnimatorComponent";
     }else if(component == ComponentType::AnimationPlayerComponent){
         name = "AnimationPlayerComponent";
+    }else if(component == ComponentType::VertexAnimatorComponent){
+        name = "VertexAnimatorComponent";
     }else if(component == ComponentType::Light2DComponent){
         name = "Light2DComponent";
     }else if(component == ComponentType::ShadowCaster2DComponent){
@@ -4071,6 +4134,7 @@ std::string editor::Catalog::getComponentDisplayName(ComponentType component){
         case ComponentType::LatticeTracksComponent: return "Lattice Tracks";
         case ComponentType::PoseAnimatorComponent: return "Pose Animator";
         case ComponentType::AnimationPlayerComponent: return "Animation Player";
+        case ComponentType::VertexAnimatorComponent: return "Vertex Animator";
     }
     return getComponentName(component);
 }
@@ -4137,6 +4201,7 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
         case ComponentType::LatticeTracksComponent: return ICON_FA_CUBES_STACKED;
         case ComponentType::PoseAnimatorComponent: return ICON_FA_PERSON_RUNNING;
         case ComponentType::AnimationPlayerComponent: return ICON_FA_FILM;
+        case ComponentType::VertexAnimatorComponent: return ICON_FA_PEOPLE_GROUP;
     }
     return ICON_FA_PUZZLE_PIECE;
 }
@@ -4200,6 +4265,8 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<PoseAnimatorComponent>();
         case ComponentType::AnimationPlayerComponent:
             return registry->getComponentId<AnimationPlayerComponent>();
+        case ComponentType::VertexAnimatorComponent:
+            return registry->getComponentId<VertexAnimatorComponent>();
         case ComponentType::Light2DComponent:
             return registry->getComponentId<Light2DComponent>();
         case ComponentType::ShadowCaster2DComponent:
@@ -4320,6 +4387,8 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::PoseAnimatorComponent;
     }else if(normalizedName == "animationplayer"){
         return ComponentType::AnimationPlayerComponent;
+    }else if(normalizedName == "vertexanimator"){
+        return ComponentType::VertexAnimatorComponent;
     }else if(normalizedName == "light2d"){
         return ComponentType::Light2DComponent;
     }else if(normalizedName == "shadowcaster2d"){
@@ -4534,6 +4603,9 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     }
     if (registry->findComponent<AnimationPlayerComponent>(entity)){
         ret.push_back(ComponentType::AnimationPlayerComponent);
+    }
+    if (registry->findComponent<VertexAnimatorComponent>(entity)){
+        ret.push_back(ComponentType::VertexAnimatorComponent);
     }
     if (registry->findComponent<MorphTracksComponent>(entity)){
         ret.push_back(ComponentType::MorphTracksComponent);
@@ -5435,6 +5507,14 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
             player->needsLoad = true;
         }
     }
+    if (updateFlags & UpdateFlags_VertexAnimator_Reload){
+        // a new .vat (or the same one again: a fixed file) loads at the next update; a new one
+        // starts over (VertexAnimatorSystem compares the path)
+        if (VertexAnimatorComponent* animator = registry->findComponent<VertexAnimatorComponent>(entity)){
+            animator->defaultFadeTime = std::isfinite(animator->defaultFadeTime) ? std::max(0.0f, animator->defaultFadeTime) : 0.0f;
+            animator->needsLoad = true;
+        }
+    }
 }
 
 void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourceEntity,
@@ -5612,6 +5692,14 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
             YAML::Node encoded = Stream::encodeAnimationPlayerComponent(sourceRegistry->getComponent<AnimationPlayerComponent>(sourceEntity));
             AnimationPlayerComponent& target = targetRegistry->getComponent<AnimationPlayerComponent>(targetEntity);
             target = Stream::decodeAnimationPlayerComponent(encoded, &target);
+            break;
+        }
+
+        case ComponentType::VertexAnimatorComponent: {
+            // decoded over the target's own: what it plays stays unless the animation changes
+            YAML::Node encoded = Stream::encodeVertexAnimatorComponent(sourceRegistry->getComponent<VertexAnimatorComponent>(sourceEntity));
+            VertexAnimatorComponent& target = targetRegistry->getComponent<VertexAnimatorComponent>(targetEntity);
+            target = Stream::decodeVertexAnimatorComponent(encoded, &target);
             break;
         }
 
@@ -5930,6 +6018,10 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
             } else if (compType == ComponentType::LatticeModifierComponent && property == "bindings") {
                 auto* source = Catalog::getPropertyRef<std::vector<LatticeBinding>>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<std::vector<LatticeBinding>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::VertexAnimatorComponent && property == "attachments") {
+                auto* source = Catalog::getPropertyRef<std::vector<VertexAnimatorAttachment>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<VertexAnimatorAttachment>>(targetRegistry, targetEntity, compType, property);
                 if (source && target) *target = *source;
             } else if (compType == ComponentType::AnimationPlayerComponent && property == "clips") {
                 auto* source = Catalog::getPropertyRef<std::vector<AnimationPlayerClip>>(sourceRegistry, sourceEntity, compType, property);

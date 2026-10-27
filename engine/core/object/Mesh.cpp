@@ -8,6 +8,8 @@
 #include "component/ReflectionProbeComponent.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/MeshSystem.h"
+#include "component/VertexAnimatorComponent.h"
+#include "animation/VertexAnimatorRuntime.h"
 
 using namespace jasperengine;
 
@@ -833,6 +835,10 @@ void Mesh::removeInstance(size_t index){
     InstancedMeshComponent& instmesh = getComponent<InstancedMeshComponent>();
 
     instmesh.instances.erase(instmesh.instances.begin() + index);
+    // a Vertex Animator's per-instance states stay with their instances
+    if (VertexAnimatorComponent* animator = scene->findComponent<VertexAnimatorComponent>(entity)){
+        vat::eraseInstanceState(*animator, index);
+    }
 
     instmesh.needUpdateInstances = true;
 }
@@ -886,6 +892,9 @@ void Mesh::clearInstances(){
         InstancedMeshComponent& instmesh = getComponent<InstancedMeshComponent>();
 
         instmesh.instances.clear();
+        if (VertexAnimatorComponent* animator = scene->findComponent<VertexAnimatorComponent>(entity)){
+            vat::clearInstanceStates(*animator);
+        }
 
         instmesh.needUpdateInstances = true;
     }else{

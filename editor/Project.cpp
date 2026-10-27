@@ -50,6 +50,7 @@
 #include "subsystem/FluidSystem.h"
 #include "fluid/FluidSimulator.h"
 #include "subsystem/PoseAnimatorSystem.h"
+#include "subsystem/VertexAnimatorSystem.h"
 #include "pose/ModelRig.h"
 #include "pose/PoseAnimatorRuntime.h"
 #include "animation/ModelSubClips.h"
@@ -696,6 +697,20 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
         }
     });
 
+    // Vertex Animator: the .vat (its GUID stays). Its .vat.glb is the GameObject's Model,
+    // visited with the models above
+    visitComponents(registry->getComponentArray<VertexAnimatorComponent>(), [&](VertexAnimatorComponent& animator) {
+        if (animator.animation.empty()) {
+            return;
+        }
+        std::string path = animator.animation;
+        if (transform(path) && !path.empty() && path != animator.animation) {
+            animator.animation = path;
+            animator.needsLoad = true;
+            changed = true;
+        }
+    });
+
     // the document itself; references inside its HTML/CSS are not rewritten (phase 4)
     visitComponents(registry->getComponentArray<UIDocumentComponent>(), [&](UIDocumentComponent& document) {
         if (!document.filename.empty() && transform(document.filename)) {
@@ -842,6 +857,11 @@ SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* regis
             }
             addFile(resources.clips, entry.clip);
         }
+    });
+
+    // Vertex Animations (VertexAnimationPool); the .vat.glb is the Model's, in `models`
+    visitComponents(registry->getComponentArray<VertexAnimatorComponent>(), [&](VertexAnimatorComponent& animator) {
+        addFile(resources.vats, animator.animation);
     });
 
     // UIDocumentComponent: nothing to preload. RmlUi reads a document and its stylesheets when
@@ -5480,6 +5500,16 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     if (auto fluids = scene->findSystem<FluidSystem>()) fluids->setPaused(pause);
     // lattice tweens and jiggle (followers and offsets still show in edit mode)
     scene->getSystem<LatticeSystem>()->setPaused(pause);
+    // Vertex Animators hold still in edit mode unless their Preview is on
+    scene->getSystem<VertexAnimatorSystem>()->setPaused(pause);
+}
+
+void editor::Project::stopVertexAnimatorPreviews() {
+    for (SceneProject* sceneProject : getScenesAndPrefabStages()) {
+        if (sceneProject && sceneProject->scene && sceneProject->playState == ScenePlayState::STOPPED) {
+            sceneProject->scene->getSystem<VertexAnimatorSystem>()->stopPreviews();
+        }
+    }
 }
 
 void editor::Project::copyEngineApiToProject() {
@@ -5814,6 +5844,8 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         sceneProject->scene->getSystem<PoseAnimatorSystem>()->resetAnimators();
         // and the Animation Players (animation clips spec 3.3)
         sceneProject->scene->getSystem<ActionSystem>()->resetPlayers();
+        // and the Vertex Animators (vertex animation spec 3.4)
+        sceneProject->scene->getSystem<VertexAnimatorSystem>()->resetAnimators();
 
         // The copy goes with Stop, so its id does too: after the prefab instances the game
         // made in it went (their destroyer finds the copy by that id), before the copy is
@@ -6778,6 +6810,7 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
     }
 
     editor::getEditorHost().stopTransientPreviews();
+    stopVertexAnimatorPreviews();
 
     sceneProject->playState = ScenePlayState::SAVING;
     fs::path savePath = path;
@@ -6809,6 +6842,7 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
 void editor::Project::saveAllScenes(std::function<void(bool)> callback) {
     // first: a physics gesture that settles now commits, and its scene counts as changed below
     editor::getEditorHost().stopTransientPreviews();
+    stopVertexAnimatorPreviews();
 
     std::vector<uint32_t> sceneIds;
     // the prefab stages first: the scenes saved after them hold their assets' new state
@@ -8926,6 +8960,8 @@ void editor::Project::start(uint32_t sceneId) {
     }
 
     editor::getEditorHost().stopTransientPreviews();
+    // a previewing Vertex Animator plays from its start
+    stopVertexAnimatorPreviews();
 
     // Exit any editor camera preview before starting: covers the owned-runtime path
     // where the source scene's render never enters play mode, so stopping wouldn't

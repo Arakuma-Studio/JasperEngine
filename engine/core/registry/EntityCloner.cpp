@@ -377,6 +377,36 @@ void prepare<AnimationPlayerComponent>(AnimationPlayerComponent& player, Entity,
 }
 
 template<>
+void prepare<VertexAnimatorComponent>(VertexAnimatorComponent& animator, Entity, CloneContext& ctx) {
+    // the authored fields are copied (a copied attachment follows the copy); the copy loads,
+    // starts and plays on its own as a loaded scene starts it, with no callbacks
+    for (VertexAnimatorAttachment& attachment : animator.attachments) {
+        attachment.entity = ctx.remap(attachment.entity);
+    }
+    animator.preview = false;
+    animator.needsLoad = true;
+    animator.started = false;
+    animator.loadedGeneration = 0;
+    animator.loadError.clear();
+    animator.asset.reset();
+    animator.state = vat::VatTrackPair();
+    animator.instanceStates.clear();
+    animator.queued.clear();
+    animator.requests.clear();
+    animator.lastNow = 0.0f;
+    animator.runtime.reset();
+    animator.gpuMode = vat::VatMode::Vertices;
+    animator.gpuState0 = VertexAnimatorComponent().gpuState0;
+    animator.gpuState1 = VertexAnimatorComponent().gpuState1;
+    animator.gpuNow = 0.0f;
+    animator.gpuActive = false;
+    animator.onEvent.clear();
+    animator.onFinish.clear();
+    animator.onInstanceEvent.clear();
+    animator.onInstanceFinish.clear();
+}
+
+template<>
 void prepare<FluidSimulationComponent>(FluidSimulationComponent& fluid, Entity sourceEntity, CloneContext& ctx) {
     // the copy runs its own simulation (its own targets and output), restarted from its
     // settings: the simulator clone() made for it when the original had one (the copied
@@ -725,6 +755,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<LatticeTracksComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<PoseAnimatorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<AnimationPlayerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<VertexAnimatorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ScriptComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
 }
 
