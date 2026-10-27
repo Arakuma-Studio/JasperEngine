@@ -30,7 +30,8 @@
 //     warnings: stretch_by_velocity_ignored, fluid_uv_from_color_ignored, color_animation_ignored
 //       (rigid Bones: per-piece colours that change over time keep their first frame),
 //       topology_changes (fluid: absolute positions per corner, no interpolation), bone_limit
-//       (rigid pieces over vat::VAT_MAX_BONES: imported as Vertices), large_interpolation_error
+//       (Auto with rigid pieces over vat::VAT_MAX_BONES (65535): imported as Vertices),
+//       large_interpolation_error
 //       (fast spins needed more upsampling than the preset allows), precision_switched (half ->
 //       float), memory_high, animations_list_form (OpenVAT `animations` as a list),
 //       clip_out_of_range (an OpenVAT clip past the texture's frames: clamped),
@@ -45,7 +46,8 @@
 //   S = diag(-1, 1, 1) (positions, quaternions (x, -y, -z, w), tangent reference (1, 0, 0)), pivots
 //   and compressed normals and smooth-trajectory accelerations are stored unmirrored by the
 //   exporter; Unreal-target data (Z-up, cm) goes back through the axis swap and / scale.
-//   Rigid pieces become bones (one per piece, weight 1) up to VAT_MAX_BONES, else Vertices;
+//   Rigid pieces become bones (one per piece, weight 1, uint16 joints: Bones-mode bones index the
+//   payload texture, not the 128-matrix skinning array) up to VAT_MAX_BONES (65535), else Vertices;
 //   frames are upsampled (Houdini's precomputed-angle slerp, smooth trajectories) when a piece
 //   turns more than 60 degrees between frames or when the GPU's lerp/nlerp between samples would
 //   leave a vertex further than the tolerance from Houdini's motion.
