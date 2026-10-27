@@ -675,6 +675,19 @@ All through `je-remote/rb.sh`, on the replacement D and E servers (the old ones 
 - Server E (the replacement), `je-bench-diag`: heartbeat 2.403 ns, ring write 12.59 ns,
   install 0.661 ms, idle watchdog 0.033 % of a core; every budget holds.
 
+### Final merge (oe-port 545618e38, S14)
+
+Conflicts resolved: ProfilerWindow includes; the core tests now have both S14's `LINK zstd` and
+S28's crash-test definition; `test_tool_conventions.py` has S14's `reimport` verb and S28's
+`dismiss`/`debug`; `TOOLS.md` was regenerated (215 tools). S14 includes no `core/util` header by
+bare name, and the agent guide still fits its budget (`test_tool_budget` passes). Server D:
+`WERROR=1 tools/build.sh linux` passes; MCP 64/64 (`test_tool_conventions`, `test_tool_budget`,
+`test_protocol`, `test_crash`, `test_texture_import`, docs, tool groups, autosync);
+`tools/build.sh web` and `tools/build.sh android` pass; smoke PASS, with no `JASPERENGINE HANG:` line.
+Server B, `WERROR=1 tools/build.sh unit-tests`: 1,230 core and 870 editor tests, 0 failed. Crash
+CTests 3/3 (`native-crash-reports` with every subprocess mode, `posix-crash-signal-safety`,
+`crash.symbolicate`).
+
 ### Native review follow-up validation
 
 - Server D red control rebuilt the test-only checkpoint `84c6c0281` (the original handlers
