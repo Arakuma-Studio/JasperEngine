@@ -12,6 +12,7 @@
 #include "McpTools.h"
 #include "W4Shared.h"
 #include "io/AtomicFile.h"
+#include "io/watch/FileWatchService.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -2084,14 +2085,24 @@ void renderPoseAnimationTool(const CallPtr& call) {
 
         if (!saveTarget.empty()) {
             std::error_code ec;
+            // the call's own write, and the folders it makes: not outside changes for the
+            // watcher (S05 R10: announced before, reported after)
+            fs::path created = saveTarget;
+            while (created.has_parent_path() && created.parent_path() != created && !fs::exists(created.parent_path(), ec)) {
+                created = created.parent_path();
+            }
+            ScopedExpectedWrite expected(created, created != saveTarget);
             if (saveTarget.has_parent_path()) fs::create_directories(saveTarget.parent_path(), ec);
             // atomic (S03): a failed write leaves an existing file whole
             if (!io::writeFileAtomic(saveTarget, std::string_view(reinterpret_cast<const char*>(png.data()), png.size())).ok()) {
                 call->fail("Could not write the PNG to " + projectRel(project, saveTarget) + ".");
                 return;
             }
-            // the call's own write: not an outside change for the watcher (S05 R10)
-            FileUtils::reportWritten(saveTarget);
+            for (fs::path dir = saveTarget.parent_path(); created != saveTarget; dir = dir.parent_path()) {
+                expected.reported(dir);
+                if (dir == created || !dir.has_parent_path() || dir.parent_path() == dir) break;
+            }
+            expected.reported(saveTarget);
             out["saved_to"] = projectRel(project, saveTarget);
             text += "\nSaved to " + projectRel(project, saveTarget) + ".";
         }
