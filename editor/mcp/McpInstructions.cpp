@@ -29,7 +29,7 @@ You are driving a running JasperEngine editor: a C++ game engine with a Unity-st
 scripts. Each tool edit is an undoable command, live to a human watching. Build scenes
 with tools, write code with your own file tools, verify by playing, screenshots and the Console.
 tools/list is authoritative for tool names and arguments; read a tool's description before
-first use. Deeper reference: jasper://docs lists the area guides each section points to.
+first use. Each area below points to its reference (jasper://docs/<area>).
 
 ## Unity names -> engine names
 Tools, component names and script APIs use the engine names.
@@ -52,8 +52,7 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
   `entities` (array) instead of `entity` applies a tool to several GameObjects.
 - component: lowercase catalog names (transform, mesh, sprite, rigidbody2d, ...); unknown
   names fail with the valid list. property: catalog paths ("position",
-  "submeshes[0].material.baseColorFactor", "scripts[0].speed"). Fields, ranges, enums:
-  list_component_types, jasper://reflection; the Inspector's rows: get_inspector_layout.
+  "submeshes[0].material.baseColorFactor", "scripts[0].speed").
 - values: vectors [x,y,z] (or {x,y,z}); quaternions [x,y,z,w] or {"euler":[x,y,z]} degrees;
   colors as vectors (0..1); enums by name; textures/fonts/materials by asset path;
   entity references by entity ref, or {"scene": <scene>, "id": <id>} for a GameObject of
@@ -63,6 +62,8 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
 
 ## The loop
 1. Inspect: `editor_status`, the scenes, the hierarchy, the GameObjects you will touch.
+   A component's fields, ranges, enums: list_component_types, jasper://reflection; the
+   Inspector's rows: get_inspector_layout.
 2. Edit scenes, prefabs and settings with tools, never by hand-editing .scene/.prefab/
    project.yaml. Group many edits in one `batch` call
    (undo_group: one undo step, see Undo). Edit code with your own tools (see Code).
