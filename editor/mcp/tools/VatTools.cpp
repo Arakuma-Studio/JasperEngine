@@ -116,6 +116,7 @@ struct VatRequest {
     bool write = false;                 // output given, or rebake
     bool defaultOutput = false;         // output: true
     std::string sceneName;              // for messages: the scene placed in / posed
+    uint32_t placeScene = 0;            // a file source placed: the scene given (selected before the write)
 };
 
 // A GameObject reference (id, or a path in `scene`): false when it is not one; error set when it
@@ -456,6 +457,18 @@ bool requestFromArgs(Project* project, const Json& args, VatRequest& request, st
         return false;
     }
 
+    // a file source placed in the scene given (GameObject sources are placed in their own scene)
+    if (!request.import && spec.place != VatPlace::None && !isGameObjectSource(spec.source) && args.contains("scene")) {
+        std::string why;
+        SceneProject* scene = McpRefs::resolveScene(project, args["scene"], why);
+        if (!scene || !scene->scene) {
+            error = "place: no open scene to place the bake in (" + (scene ? McpRefs::notOpenError(project, *scene) : why) + ").";
+            return false;
+        }
+        request.placeScene = scene->id;
+        request.sceneName = scene->name;
+    }
+
     if (request.import) {
         VatImportSpec& importSpec = request.importSpec;
         importSpec.projectRoot = FileUtils::pathToUtf8(project->getProjectPath());
@@ -699,6 +712,8 @@ void finishBake(const VatCallPtr& state) {
         job->fail("The project changed while the bake ran: nothing was written. Call bake_vertex_animation again.", data);
         return;
     }
+    // a file source goes into the scene given: the session places into the selected scene
+    if (request.placeScene != 0 && project->getScene(request.placeScene)) project->setSelectedSceneId(request.placeScene);
     VatWriteResult out;
     std::string error;
     if (!session.write(out, error)) {
@@ -724,8 +739,6 @@ void finishImport(const VatCallPtr& state) {
     Json data = Json::parse(vatImportReportJson(result.report), nullptr, false);
     if (!data.is_object()) data = Json::object();
     if (!result.ok()) {
-        data["errors"] = errorsJson(result.errors);
-        for (Json& e : data["errors"]) (void)e;
         Json list = Json::array();
         for (const VatIssue& issue : result.errors) list.push_back(issueJson(issue));
         data["errors"] = list;
