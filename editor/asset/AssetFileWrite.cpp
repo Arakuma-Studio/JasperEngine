@@ -18,7 +18,13 @@ bool assetio::writeFile(const fs::path& target, std::string_view bytes, Durabili
     io::AtomicWriteOptions options;
     options.durability = durability == Durability::Document ? io::Durability::Document : io::Durability::Cache;
     options.skipIfUnchanged = true;
+    // the editor's own write (S05 R10), as renameFile's moves: a GUID written into a clip or a
+    // meta is no external change for the watcher, the hot reload or the MCP pick-up
+    ScopedExpectedWrite expected(target);
     const io::WriteResult result = io::writeFileAtomic(target, bytes, options);
+    if (result.written()) {
+        expected.reported();
+    }
     if (written) {
         *written = result.written();
     }

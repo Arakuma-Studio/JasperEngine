@@ -655,8 +655,13 @@ Json HotReloadService::takeLateProblems() {
     Json out = Json::array();
     for (const LateProblem& late : lateProblems) {
         watch::PathStat now;
-        const bool exists = project && watch::statPath(project->getProjectPath() / watch::pathFromUtf8(late.problem.value("path", std::string())), now, false);
-        if (exists == late.existed && (!exists || now.sameContent(late.stat))) out.push_back(late.problem);
+        const fs::path path = project ? project->getProjectPath() / watch::pathFromUtf8(late.problem.value("path", std::string())) : fs::path();
+        const bool exists = project && watch::statPath(path, now, false);
+        // a problem is stale once someone else edited the file since; the editor's own write
+        // (the asset database's GUID written into a clip after the reload found its problems)
+        // keeps it
+        const bool same = exists == late.existed && (!exists || now.sameContent(late.stat));
+        if (same || (exists && FileWatchService::get().ledger().isEchoOfOurWrite(path))) out.push_back(late.problem);
     }
     lateProblems.clear();
     return out;
