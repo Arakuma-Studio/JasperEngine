@@ -201,7 +201,10 @@ async def test_round_trip(ed: Editor):
     await ed.call("sync_files")
     before = await ed.call("open_scene", scene="scenes/Before.scene")
     report = await ed.call("get_load_report", scene=find_key(before, "id"))
-    ed.check(not find_key(report, "issues"), f"a pre-S18 scene loads with nothing reported: {report}")
+    # only the version note (info: read as format 3, the next save writes 4); nothing dropped or kept aside
+    issues = [i for i in (report.get("issues") or []) if not (i.get("fate") == "info" and i.get("kind") == "migrated")]
+    ed.check(not issues and not report.get("dropped") and not report.get("preserved"),
+             f"a pre-S18 scene loads with nothing but its version note: {report}")
     await ed.call("save_scene", scene=find_key(before, "id"))
     after = (ed.project / "scenes/Before.scene").read_text()
     ed.check(after in (current, pre), "the pre-S18 scene saves with nothing but its version line changed")
@@ -253,7 +256,7 @@ async def test_2d(ed: Editor):
                          set_knots=[[-200, -100, 0], [0, -110, 0], [200, -100, 0]])
     await ed.call("build_spline", entity=edge["entity"]["id"], preset="edge2d")
     ball = await ed.call("create_entity", name="Ball", type="sprite", position=[0, 50, 0])
-    await ed.call("edit_colliders", entity=ball["entity_id"], body_type="dynamic", add=[{"shape": "circle", "radius": 10}])
+    await ed.call("edit_colliders", entity=ball["entity_id"], body_type="dynamic", add=[{"shape": "circle", "radius": 10, "center": [0, 0]}])
     await ed.call("play", action="start", scene=scene)
     try:
         await ed.call("wait", seconds=3)
