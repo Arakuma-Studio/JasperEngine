@@ -53,16 +53,12 @@
             "reason": "S26 (R17-R21): the Scene view camera's projection, ortho size, axis view, Frame All and Scene Camera settings (field of view, clip planes, speed, easing, ...) on the one camera tool agents already use"
         },
         "place_with_physics": {
-            "limit": 3609,
-            "reason": "upstream (Physics Placement), predates its merge into oe-port: 3493 chars measured on the upstream sync, 3609 with S31's schema conventions (nested objects say additionalProperties)"
+            "limit": 2890,
+            "reason": "upstream (Physics Placement), predates its merge into oe-port: 3609 with S31's schema conventions until upstream round 3 moved its per-argument texts to jasper://docs/physics (2890 measured, nested objects still say additionalProperties)"
         },
         "synthesize_texture": {
-            "limit": 3519,
-            "reason": "upstream (Texture Synthesis), predates its merge into oe-port: 3400 chars measured on the upstream sync, 3519 with S31's schema conventions (nested objects say additionalProperties)"
-        },
-        "edit_lattice": {
-            "limit": 2058,
-            "reason": "upstream (lattice deformer), predates its merge into oe-port: 2030 chars measured on the upstream sync, 2058 with S31's schema conventions (nested objects say additionalProperties)"
+            "limit": 2341,
+            "reason": "upstream (Texture Synthesis), predates its merge into oe-port: 3519 with S31's schema conventions until upstream round 3 moved its per-argument texts to jasper://docs/texture-synthesis (2341 measured, nested objects still say additionalProperties)"
         },
         "edit_animation": {
             "limit": 3606,
@@ -132,9 +128,9 @@
             "limit": 694,
             "reason": "HTML UI cap (phase 4 §3.6.7 / phase 5 §3.13), tighter than the default; 269 when S31 set the limits; 694 measured on the upstream sync (upstream's fluid pointer_path and splats; its own cap was 750)"
         },
-        "edit_pose_animation": {
-            "limit": 3119,
-            "reason": "upstream (Pose Animation), predates its merge into oe-port: one op-list tool for every pose edit (upstream already tightened its schema, A5); 2809 chars measured on the round-2 upstream sync, 3119 once its nested objects say additionalProperties (S31 conventions) and its refs are typed integer|string; its group 'animation' stays within the group default"
+        "bake_vertex_animation": {
+            "limit": 2075,
+            "reason": "upstream round 3 (Vertex Animation Textures): one tool for bake, rebake, import and placement (preview, then the same arguments with output), its detail in jasper://docs/vertex-animation; upstream capped it at 2000 (1977 measured); 2075 with S31's schema conventions (place.crowd's nested objects say additionalProperties false). In the animation group, outside the default listing"
         }
     },
     "core_trades": []
