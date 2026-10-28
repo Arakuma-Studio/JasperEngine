@@ -1439,7 +1439,8 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
     // project (agents and people edit them), so the editor never changes an existing file.
     const fs::path agentsFile = projectPath / "AGENTS.md";
     std::error_code ec;
-    if (fs::exists(agentsFile, ec) || ec) {
+    // any entry there, a link (even a dangling one) included: never written (through)
+    if (fs::exists(fs::symlink_status(agentsFile, ec)) || ec) {
         writeClaudeFile(projectPath);
         return;
     }
@@ -1553,7 +1554,7 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
 void editor::Generator::writeClaudeFile(const fs::path& projectPath) {
     const fs::path claudeFile = projectPath / "CLAUDE.md";
     std::error_code ec;
-    if (fs::exists(claudeFile, ec) || ec) return;
+    if (fs::exists(fs::symlink_status(claudeFile, ec)) || ec) return;
     FileUtils::writeIfChanged(claudeFile, "@AGENTS.md\n");
 }
 

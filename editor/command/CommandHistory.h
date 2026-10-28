@@ -27,6 +27,7 @@ namespace jasperengine::editor{
         // the last undo()/redo() a step refused: why ("" when the last call did not refuse, or
         // the step gave no reason), and which step (kept after the next call, for the Edit menu)
         std::string refusal;
+        std::string undoProblemText;
         std::string refusedText;
         unsigned long long refusedSerial = 0;
         bool refusedUndo = false;
@@ -65,13 +66,18 @@ namespace jasperengine::editor{
         bool insertCommand(Command* cmd);
 
         // False when the history did not move, also when the command refused (Command::canUndo /
-        // canRedo: the position stays, lastRefusal() says why). Never moves on a refusal, so a
-        // loop "while (position() > mark && undo())" ends at a refused step.
+        // canRedo: the position stays, lastRefusal() says why, the console too) or a redo's execute
+        // failed (Command::failure). Never moves on a refusal, so a loop
+        // "while (position() > mark && undo())" ends at a refused step. Each step runs in the write
+        // scope it was made in (Command::writeRoot).
         bool undo();
         bool redo();
         // Why the last undo() / redo() was refused by its step (Command::undoRefusal / redoRefusal);
         // "" when that call was not refused or the step gave no reason (a child scene cycle)
         const std::string& lastRefusal() const { return refusal; }
+        // The last undo() was taken but a file it had to put back could not be (Command::takeUndoProblem;
+        // also said in the console): why ("" when it went through)
+        const std::string& lastUndoProblem() const { return undoProblemText; }
         // The step undo() / redo() would take now refused the last time it was tried: why (a
         // generic text when it gave none), "" else
         std::string undoRefusedLastTry() const;

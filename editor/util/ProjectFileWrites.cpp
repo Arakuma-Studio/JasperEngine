@@ -34,59 +34,48 @@ namespace fs = std::filesystem;
 namespace {
 
     // A WriteFilesCmd whose every execute (redo included) and undo asks the guard first; a redo
-    // or an undo the guard refuses is not offered (canRedo / canUndo: the history keeps its
-    // place, and says why: redoRefusal / undoRefusal)
+    // or an undo the guard (or WriteFilesCmd's own beneath-root check) refuses is not offered
+    // (canRedo / canUndo: the history keeps its place and says why, CommandHistory::lastRefusal)
     class GuardedWriteFilesCmd : public editor::WriteFilesCmd {
     public:
         GuardedWriteFilesCmd(std::vector<Item> items, std::function<void(const std::vector<fs::path>&)> afterChange,
                              editor::ProjectFileWrites::Guard guard, std::shared_ptr<std::string> failure)
-            : WriteFilesCmd(std::move(items), std::move(afterChange)), guard(std::move(guard)), failure(std::move(failure)) {
-            reportFailureTo(this->failure);
+            : WriteFilesCmd(std::move(items), std::move(afterChange)), guard(std::move(guard)), sink(std::move(failure)) {
+            reportFailureTo(sink);
         }
 
         bool execute() override {
             std::string why;
             if (!guard(why)) {
-                *failure = why;
-                if (executed) editor::Out::warning("Redo not applied: %s Remove the link, then redo again.", why.c_str());
+                *sink = why;
+                refused = why;
                 return false;
             }
-            executed = true;
+            refused.clear();
             return WriteFilesCmd::execute();
         }
 
-        // CommandHistory::redo / undo ask these before they move on (redo ignores execute()'s result)
-        bool canRedo() const override {
-            const std::string why = redoRefusal();
-            if (why.empty()) return true;
-            editor::Out::warning("Redo not applied: %s", why.c_str());
-            return false;
-        }
-
-        bool canUndo() const override {
-            const std::string why = undoRefusal();
-            if (why.empty()) return true;
-            editor::Out::warning("Undo not applied: %s", why.c_str());
-            return false;
-        }
+        std::string failure() const override { return refused.empty() ? WriteFilesCmd::failure() : refused + " Remove the link, then redo again."; }
 
         std::string redoRefusal() const override {
             std::string why;
-            if (guard(why)) return std::string();
-            return why + " Remove the link, then redo again.";
+            if (!guard(why)) return why + " Remove the link, then redo again.";
+            return WriteFilesCmd::redoRefusal();
         }
 
         std::string undoRefusal() const override {
             std::string why;
-            if (guard(why)) return std::string();
-            return why + " Remove the link, then undo again.";
+            if (!guard(why)) return why + " Remove the link, then undo again.";
+            return WriteFilesCmd::undoRefusal();
         }
 
         void undo() override {
-            // (a group's undo, CommandGroup, asked canUndo of every step first)
+            // checked by canUndo first; a group's undo (CommandGroup) asks every step's canUndo too.
+            // Refused here after all (a link made between the check and this): nothing removed,
+            // and said
             std::string why;
             if (!guard(why)) {
-                editor::Out::warning("Undo not applied: %s Remove the link, then undo again.", why.c_str());
+                undoProblem += (undoProblem.empty() ? "" : "; ") + why + " Remove the link, then undo again.";
                 return;
             }
             WriteFilesCmd::undo();
@@ -94,8 +83,8 @@ namespace {
 
     private:
         editor::ProjectFileWrites::Guard guard;
-        std::shared_ptr<std::string> failure;
-        bool executed = false;
+        std::shared_ptr<std::string> sink;
+        std::string refused;
     };
 
     editor::ProjectFileWrites::SyncHook& syncHook() {
@@ -270,7 +259,7 @@ void editor::ProjectFileWrites::setSyncHook(SyncHook hook) {
 
 bool editor::ProjectFileWrites::writeUndoable(Project* project, std::vector<WriteFilesCmd::Item> items, std::string& error,
                                               std::function<void(const std::vector<fs::path>&)> afterChange, Guard guard,
-                                              fs::path beneath) {
+                                              fs::path beneath, bool ownFolders) {
     if (!project) {
         error = "No project is open to write into.";
         return false;
@@ -290,8 +279,11 @@ bool editor::ProjectFileWrites::writeUndoable(Project* project, std::vector<Writ
                                : new WriteFilesCmd(std::move(items), std::move(afterChange));
     cmd->setNoMerge();
     cmd->reportFailureTo(failure);
-    // every write, removal and restore beneath the project (or `beneath`) when it happens
-    cmd->writeBeneath(beneath.empty() ? project->getProjectPath() : beneath);
+    // every write, removal and restore beneath `beneath` when it happens; else beneath the write
+    // scope it is made in (an MCP call: the project, Command::writeRoot), else (`ownFolders`) each
+    // file beneath its own folder
+    if (!beneath.empty()) cmd->writeBeneath(beneath);
+    else if (ownFolders && cmd->writeRoot().empty()) cmd->writeBeneathOwnFolders();
     // addCommand runs execute() and deletes the command when it fails (execute then changed nothing)
     if (!project->getProjectCommandHistory()->addCommand(cmd)) {
         error = "Writing the file(s) failed: " +

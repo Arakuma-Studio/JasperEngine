@@ -1466,6 +1466,16 @@ void createUiDocumentTool(const CallPtr& call) {
         while (history->position() > mark && history->canUndo() && history->undo()) {}
         while (projectHistory->position() > projectMark && projectHistory->canUndo() && projectHistory->undo()) {}
         sp->needUpdateRender = true;
+        // a refused undo stops the rollback: what stayed is said (the history positions against the marks)
+        const bool sceneLeft = history->position() > mark, projectLeft = projectHistory->position() > projectMark;
+        if (sceneLeft || projectLeft) {
+            std::string left = sceneLeft ? std::to_string(history->position() - mark) + " scene step(s)" : std::string();
+            if (projectLeft) left += std::string(left.empty() ? "" : " and ") + std::to_string(projectHistory->position() - projectMark) + " project step(s)";
+            const std::string refusal = projectLeft ? projectHistory->lastRefusal() : history->lastRefusal();
+            call->fail(why + " The rollback stopped: " + left + " of this call could not be undone" +
+                       (refusal.empty() ? std::string(".") : " (" + refusal + ")") + " Undo them with the undo tool once fixed.");
+            return;
+        }
         call->fail(undone ? "Nothing was created (the call was rolled back): " + why : why);
     };
     auto add = [history](Command* command) {

@@ -65,12 +65,15 @@ namespace jasperengine::editor {
         // failed write changes nothing and adds no step). After its execute, undo and redo it runs
         // `afterChange` with the paths (default: filesWritten). False + `error` without a
         // project, when an item is a directory, when `guard` refuses, or when the write failed.
-        // Every write, removal and restore stays beneath `beneath` (default: the project
-        // directory) when it happens (WriteFilesCmd::writeBeneath, util/SafeWrite.h): a path that
-        // resolves outside it is refused, a link planted on the way since is never followed.
+        // Every write, removal and restore stays beneath `beneath` when it happens
+        // (WriteFilesCmd::writeBeneath, util/SafeWrite.h): a path that resolves outside it is
+        // refused, a link planted on the way since is never followed. Without `beneath`: beneath
+        // the write scope the step is made in (an MCP call: the project directory), else, with
+        // `ownFolders`, each file beneath its own folder once resolved (no new refusal; still no
+        // link planted below it followed), else plain writes.
         static bool writeUndoable(Project* project, std::vector<WriteFilesCmd::Item> items, std::string& error,
                                   std::function<void(const std::vector<std::filesystem::path>&)> afterChange = nullptr,
-                                  Guard guard = nullptr, std::filesystem::path beneath = {});
+                                  Guard guard = nullptr, std::filesystem::path beneath = {}, bool ownFolders = false);
     };
 
 }

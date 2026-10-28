@@ -78,14 +78,14 @@ void CreateVatCmd::restoreFiles(size_t count, bool checkBytes){
                 Out::warning("Could not put back the previous content of '%s'", FileUtils::pathToGenericUtf8(file.path).c_str());
             }
         }else if (fs::is_regular_file(file.path, ec) || fs::is_symlink(file.path, ec)){
-            fs::remove(file.path, ec);
+            FileUtils::removePath(file.path, ec);
         }
     }
     std::vector<fs::path> dirs = createdDirs;
     std::sort(dirs.begin(), dirs.end(), [](const fs::path& a, const fs::path& b){ return a.native().size() > b.native().size(); });
     for (const fs::path& dir : dirs){
         std::error_code ec;
-        if (fs::is_directory(dir, ec) && fs::is_empty(dir, ec)) fs::remove(dir, ec);
+        if (fs::is_directory(dir, ec) && fs::is_empty(dir, ec)) FileUtils::removePath(dir, ec);
     }
     createdDirs.clear();
 }
@@ -126,7 +126,7 @@ bool CreateVatCmd::writeFiles(){
                 missing.push_back(dir);
                 if (dir.parent_path() == dir) break;
             }
-            fs::create_directories(parent, ec);
+            FileUtils::createDirectories(parent, ec);
             for (const fs::path& dir : missing){
                 std::error_code exists;
                 if (fs::is_directory(dir, exists)) createdDirs.push_back(dir);

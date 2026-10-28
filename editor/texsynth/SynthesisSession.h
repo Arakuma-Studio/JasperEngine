@@ -147,11 +147,12 @@ namespace jasperengine::editor::texsynth {
     // Writes them as one step of `project`'s command history (undo deletes or restores the whole
     // set; ProjectFileWrites::writeUndoable, no MCP server needed), then lets the editor notice them
     // (textures reloaded, the asset database, thumbnails, Project window; with the MCP server
-    // running, its file sync). Every write, removal and restore stays beneath the project (or its
-    // assets directory, when every file is in it) when it happens: a file resolving outside it
-    // through a symbolic link is refused, and no link planted on the way since is followed
-    // (WriteFilesCmd::writeBeneath, util/SafeWrite.h). Main thread.
-    bool writeOutputsUndoable(Project* project, const std::vector<OutputFile>& files, std::string& error);
+    // running, its file sync). Every write, removal and restore stays beneath `beneath` when it
+    // happens (the MCP tool: the project; a file resolving outside it through a symbolic link is
+    // refused); without it each file beneath its own folder once resolved (the window: no new
+    // refusal). No link planted on the way since is followed either way (WriteFilesCmd, util/SafeWrite.h). Main thread.
+    bool writeOutputsUndoable(Project* project, const std::vector<OutputFile>& files, std::string& error,
+                              const std::filesystem::path& beneath = {});
 
     // ---- feedback
 

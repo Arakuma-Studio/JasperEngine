@@ -736,7 +736,7 @@ void createPrefabTool(const CallPtr& call) {
         }
         taken.insert(generic(relative));
         std::error_code ec;
-        fs::create_directories((project->getProjectPath() / relative).parent_path(), ec);
+        FileUtils::createDirectories((project->getProjectPath() / relative).parent_path(), ec);
         prefabs.emplace_back(relative, prefabNode);
         const Entity root = roots[i]["entity"] ? roots[i]["entity"].as<Entity>() : NULL_ENTITY;
         results.push_back({{"path", generic(relative)}, {"root_id", root}});
@@ -789,7 +789,7 @@ void createPrefabVariantTool(const CallPtr& call) {
             call->fail("A file already exists at \"" + generic(relative) + "\". Pick another path.");
             return;
         }
-        fs::create_directories((project->getProjectPath() / relative).parent_path(), ec);
+        FileUtils::createDirectories((project->getProjectPath() / relative).parent_path(), ec);
     }
 
     const uint64_t since = Out::lastLogId();

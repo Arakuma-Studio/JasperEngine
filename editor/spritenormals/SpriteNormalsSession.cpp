@@ -932,18 +932,6 @@ namespace jasperengine::editor::spritenormals {
 
     bool writeOutputsDirect(const std::vector<OutputFile>& files, std::string& failedPath, std::string& error, const fs::path& beneath) {
         if (files.empty()) return true;
-        // the root every write stays beneath: `beneath`, else the deepest folder holding them all
-        fs::path root = beneath;
-        if (root.empty()) {
-            std::error_code ec;
-            root = fs::absolute(files.front().absolute, ec).lexically_normal().parent_path();
-            for (const OutputFile& file : files) {
-                const fs::path absolute = fs::absolute(file.absolute, ec).lexically_normal();
-                while (root.has_relative_path() && !isAtOrBelow(absolute.parent_path(), root)) root = root.parent_path();
-            }
-            // ... that exists (the folders below it are made by the write)
-            while (root.has_relative_path() && !fs::is_directory(root, ec)) root = root.parent_path();
-        }
         std::vector<WriteFilesCmd::Item> items;
         for (const OutputFile& file : files) items.push_back({file.absolute, file.bytes});
         // WriteFilesCmd without a history: all or nothing (a failure puts back what was written
@@ -951,7 +939,10 @@ namespace jasperengine::editor::spritenormals {
         WriteFilesCmd command(std::move(items), nullptr);
         auto failure = std::make_shared<std::string>();
         command.reportFailureTo(failure);
-        command.writeBeneath(root);
+        // beneath `beneath` (the watcher: the assets directory); the CLI (no containment): each
+        // file beneath its own folder once resolved, still never through a link planted since
+        if (!beneath.empty()) command.writeBeneath(beneath);
+        else command.writeBeneathOwnFolders();
         if (command.execute()) return true;
         failedPath = command.getFailedPath().empty() ? files.front().absolute.u8string() : command.getFailedPath().u8string();
         error = failure->empty() ? std::string("the files could not be written") : *failure;

@@ -131,6 +131,75 @@ public:
 
     enum class WriteResult { Unchanged, Written, Failed };
 
+    // While a write scope is active (util/SafeWrite.h, safewrite::Scope: an MCP tool call), these
+    // route the writes of paths inside its root beneath it (no symbolic link followed out of it;
+    // installed by the first Scope). Each returns -1 when `path` is not in an active scope (then
+    // the plain std::filesystem call runs), 1 when done, 0 when it failed (`ec` set; why:
+    // safewrite::lastScopedError()).
+    struct ScopedOps {
+        int (*write)(const std::filesystem::path& path, const std::string& content, std::error_code& ec);
+        int (*createDirectories)(const std::filesystem::path& path, std::error_code& ec);
+        int (*remove)(const std::filesystem::path& path, std::error_code& ec);
+        int (*removeAll)(const std::filesystem::path& path, std::error_code& ec);
+        int (*rename)(const std::filesystem::path& from, const std::filesystem::path& to, std::error_code& ec);
+        int (*copy)(const std::filesystem::path& from, const std::filesystem::path& to, bool overwrite, std::error_code& ec);
+    };
+    static const ScopedOps*& scopedOps() {
+        static const ScopedOps* ops = nullptr;
+        return ops;
+    }
+
+    // std::filesystem::create_directories / remove / remove_all / rename / copy (recursive, with
+    // overwrite_existing when `overwrite`), beneath the active write scope's root when the path is
+    // inside it (see ScopedOps). Never throw.
+    static bool createDirectories(const std::filesystem::path& path, std::error_code& ec) {
+        ec.clear();
+        if (const ScopedOps* ops = scopedOps()) {
+            const int r = ops->createDirectories(path, ec);
+            if (r >= 0) return r == 1;
+        }
+        std::filesystem::create_directories(path, ec);
+        return !ec;
+    }
+    static bool removePath(const std::filesystem::path& path, std::error_code& ec) {
+        ec.clear();
+        if (const ScopedOps* ops = scopedOps()) {
+            const int r = ops->remove(path, ec);
+            if (r >= 0) return r == 1;
+        }
+        std::filesystem::remove(path, ec);
+        return !ec;
+    }
+    static bool removeAll(const std::filesystem::path& path, std::error_code& ec) {
+        ec.clear();
+        if (const ScopedOps* ops = scopedOps()) {
+            const int r = ops->removeAll(path, ec);
+            if (r >= 0) return r == 1;
+        }
+        std::filesystem::remove_all(path, ec);
+        return !ec;
+    }
+    static bool renamePath(const std::filesystem::path& from, const std::filesystem::path& to, std::error_code& ec) {
+        ec.clear();
+        if (const ScopedOps* ops = scopedOps()) {
+            const int r = ops->rename(from, to, ec);
+            if (r >= 0) return r == 1;
+        }
+        std::filesystem::rename(from, to, ec);
+        return !ec;
+    }
+    static bool copyPath(const std::filesystem::path& from, const std::filesystem::path& to, bool overwrite, std::error_code& ec) {
+        ec.clear();
+        if (const ScopedOps* ops = scopedOps()) {
+            const int r = ops->copy(from, to, overwrite, ec);
+            if (r >= 0) return r == 1;
+        }
+        std::filesystem::copy(from, to, std::filesystem::copy_options::recursive |
+                                            (overwrite ? std::filesystem::copy_options::overwrite_existing
+                                                       : std::filesystem::copy_options::none), ec);
+        return !ec;
+    }
+
     // Writes newContent only when the file does not already hold it.
     static WriteResult writeFile(const std::filesystem::path& filePath, const std::string& newContent) {
         std::error_code ec;
@@ -145,6 +214,12 @@ public:
                     return WriteResult::Unchanged;
                 }
             }
+        }
+
+        // inside an active write scope: beneath its root (its missing folders made the same way)
+        if (const ScopedOps* ops = scopedOps()) {
+            const int r = ops->write(filePath, newContent, ec);
+            if (r >= 0) return r == 1 ? WriteResult::Written : WriteResult::Failed;
         }
 
         if (filePath.has_parent_path()) {
@@ -290,6 +365,17 @@ public:
 
         const std::string converted = crlf ? toCrlf(content) : std::string();
         const std::string& data = crlf ? converted : content;
+
+        // inside an active write scope (an MCP call): beneath its root, no link on the way followed
+        // out of it (util/SafeWrite.h); errno tells why it failed
+        if (const ScopedOps* ops = scopedOps()) {
+            std::error_code scopedError;
+            const int r = ops->write(filePath, data, scopedError);
+            if (r >= 0) {
+                if (r == 0) errno = scopedError.value() ? scopedError.value() : EACCES;
+                return r == 1;
+            }
+        }
 
         // Same directory, so the rename never crosses a file system
         static std::atomic<unsigned long long> tempCounter{0};

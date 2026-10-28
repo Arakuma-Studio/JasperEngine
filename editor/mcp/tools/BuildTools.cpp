@@ -17,6 +17,7 @@
 #include "mcp/McpContext.h"
 #include "mcp/McpJobs.h"
 #include "mcp/McpRefs.h"
+#include "util/SafeWrite.h"
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
 #include "mcp/McpValues.h"
@@ -404,6 +405,37 @@ std::string projectFileFor(const fs::path& projectPath, const std::string& file)
 
 // ------------------------------------------------------------------ build runs
 
+// A log file opened once beneath the project (util/SafeWrite.h: no link on the way followed) and
+// kept open while the run writes it
+class LogFile {
+public:
+    LogFile() = default;
+    LogFile(const LogFile&) = delete;
+    LogFile& operator=(const LogFile&) = delete;
+    ~LogFile() { close(); }
+    bool open(const fs::path& root, const fs::path& path) {
+        close();
+        std::string error;
+        file = safewrite::openFileResolvedBeneath(root, path, false, error);
+        if (!file) Out::warning("No log file for this run: %s", error.c_str());
+        return file != nullptr;
+    }
+    explicit operator bool() const { return file != nullptr; }
+    void write(const std::string& text) {
+        if (file) std::fwrite(text.data(), 1, text.size(), file);
+    }
+    void flush() {
+        if (file) std::fflush(file);
+    }
+    void close() {
+        if (file) std::fclose(file);
+        file = nullptr;
+    }
+
+private:
+    std::FILE* file = nullptr;
+};
+
 struct BuildRun {
     JobPtr job;
     ExportMode mode = ExportMode::SourceCode;
@@ -418,7 +450,7 @@ struct BuildRun {
     std::vector<Diagnostic> diagnostics;
     size_t errorCount = 0;
     size_t warningCount = 0;
-    std::ofstream logFile;
+    LogFile logFile;
     fs::path logPath;
 };
 
@@ -449,7 +481,7 @@ void consumeLog(BuildRun& run, const LogEntry& entry) {
     while (std::getline(ss, line)) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
         run.job->log(prefix + line);
-        if (run.logFile) run.logFile << prefix << line << "\n";
+        if (run.logFile) run.logFile.write(prefix + line + "\n");
         Diagnostic d;
         if (parseDiagnostic(line, d)) {
             if (d.severity == "error") run.errorCount++;
@@ -604,12 +636,23 @@ void startRun(const std::shared_ptr<BuildRun>& run) {
 }
 
 bool openRunLog(BuildRun& run, Project* project) {
-    std::error_code ec;
     const fs::path dir = project->getProjectInternalPath() / "logs";
-    fs::create_directories(dir, ec);
     run.logPath = dir / ("build-" + run.job->id() + ".log");
-    run.logFile.open(run.logPath, std::ios::trunc);
-    return static_cast<bool>(run.logFile);
+    return run.logFile.open(project->getProjectPath(), run.logPath);
+}
+
+// The editor-owned folders a build writes (the internal folder, an output folder inside the
+// project) must stay inside it once links are resolved: CMake and the exporter write there with
+// their own writers, so this is checked up front ("" when fine, else the refusal)
+std::string buildFoldersEscape(Project* project, const std::vector<fs::path>& outputs) {
+    if (const std::string escape = McpRefs::writeEscape(project, project->getProjectInternalPath()); !escape.empty()) return escape;
+    for (const fs::path& dir : outputs) {
+        if (dir.empty()) continue;
+        const fs::path rel = dir.lexically_normal().lexically_relative(project->getProjectPath().lexically_normal());
+        if (rel.empty() || *rel.begin() == "..") continue;   // outside the project: the user's choice
+        if (const std::string escape = McpRefs::writeEscape(project, dir); !escape.empty()) return escape;
+    }
+    return std::string();
 }
 
 ToolResult buildResult(const McpJob& job) {
@@ -893,6 +936,10 @@ void buildProjectTool(const CallPtr& call) {
     AppSettings::setExportTargetDir(projectFile, settingsModeKey(mode), outputDir);
 
     // ---- start
+    if (const std::string escape = buildFoldersEscape(project, {config.targetDir, config.destinationDir}); !escape.empty()) {
+        call->fail(escape);
+        return;
+    }
     const char* modeLabel = mode == ExportMode::SourceCode ? "Export source" : mode == ExportMode::Desktop ? "Build Desktop player" : "Build Web player";
     auto run = std::make_shared<BuildRun>();
     run->job = ctx.jobs().create("build", std::string(modeLabel) + (mode == ExportMode::SourceCode ? "" : " (" + config.buildType + ")"),
@@ -966,6 +1013,10 @@ void generateShadersTool(const CallPtr& call) {
         return;
     }
     config.selectedShaderKeys = keys;
+    if (const std::string escape = buildFoldersEscape(project, {config.targetDir, config.destinationDir}); !escape.empty()) {
+        call->fail(escape);
+        return;
+    }
 
     auto run = std::make_shared<BuildRun>();
     run->job = ctx.jobs().create("shaders", "Generate " + std::to_string(keys.size()) + " shader(s)");
@@ -1337,6 +1388,7 @@ struct PlayerRun {
     std::vector<PlayerShot> shots;   // timed screenshots (sorted)
     fs::path exe;
     fs::path logPath;
+    LogFile logFile;                 // opened beneath the project when the run starts
     // input script
     std::vector<PlayerAction> actions;
     size_t nextAction = 0;
@@ -1453,9 +1505,9 @@ void finishPlayerRun(const CallPtr& call, const std::shared_ptr<PlayerRun>& run)
         }
     }
 
-    if (!run->logPath.empty()) {
-        std::ofstream out(run->logPath, std::ios::trunc | std::ios::binary);
-        out << run->output;
+    if (run->logFile) {
+        run->logFile.write(run->output);
+        run->logFile.close();
     }
 
     const int maxLines = std::max(0, std::min(2000, call->args().value("log_lines", 80)));
@@ -1676,9 +1728,10 @@ void runBuildTool(const CallPtr& call) {
     if (!run->shots.empty() || !run->actions.empty()) run->windowsBefore = listTopLevelWindows();
     {
         const fs::path logs = project->getProjectInternalPath() / "logs";
-        fs::create_directories(logs, ec);
         static std::atomic<unsigned> counter{0};
         run->logPath = logs / ("run-" + std::to_string(++counter) + ".log");
+        // opened now, beneath the project (no link on the way followed), and kept for the output
+        if (!run->logFile.open(project->getProjectPath(), run->logPath)) run->logPath.clear();
     }
 
     // stdbuf: a player's stdout into a pipe is block-buffered, and lost when it is killed

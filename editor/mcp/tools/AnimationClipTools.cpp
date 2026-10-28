@@ -1488,7 +1488,7 @@ void editClip(const CallPtr& call) {
             if (keep) return;
             for (const fs::path& folder : folders) {
                 std::error_code ignored;
-                if (fs::is_directory(folder, ignored) && fs::is_empty(folder, ignored)) fs::remove(folder, ignored);
+                if (fs::is_directory(folder, ignored) && fs::is_empty(folder, ignored)) FileUtils::removePath(folder, ignored);
             }
         }
     } madeFolders;
@@ -1498,7 +1498,7 @@ void editClip(const CallPtr& call) {
             madeFolders.folders.push_back(folder);
             if (folder == folder.parent_path()) break;
         }
-        fs::create_directories(absolute.parent_path(), folderError);
+        FileUtils::createDirectories(absolute.parent_path(), folderError);
         if (!fs::is_directory(absolute.parent_path(), folderError)) {
             call->fail("create: cannot make the folder " + projectRel(project, absolute.parent_path()) +
                        (folderError ? ": " + folderError.message() : std::string()));

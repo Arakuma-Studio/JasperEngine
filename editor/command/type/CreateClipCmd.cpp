@@ -79,7 +79,7 @@ void CreateClipCmd::restoreFiles(size_t count, bool checkBytes){
                 editor::Out::warning("Could not put back the previous content of '%s'", FileUtils::pathToGenericUtf8(file.path).c_str());
             }
         }else if (fs::is_regular_file(file.path, ec) || fs::is_symlink(file.path, ec)){
-            fs::remove(file.path, ec);
+            FileUtils::removePath(file.path, ec);
         }
     }
     // the directories the write created, deepest first, when empty again
@@ -87,7 +87,7 @@ void CreateClipCmd::restoreFiles(size_t count, bool checkBytes){
     std::sort(dirs.begin(), dirs.end(), [](const fs::path& a, const fs::path& b){ return a.native().size() > b.native().size(); });
     for (const fs::path& dir : dirs){
         std::error_code ec;
-        if (fs::is_directory(dir, ec) && fs::is_empty(dir, ec)) fs::remove(dir, ec);
+        if (fs::is_directory(dir, ec) && fs::is_empty(dir, ec)) FileUtils::removePath(dir, ec);
     }
     createdDirs.clear();
 }
@@ -152,7 +152,7 @@ bool CreateClipCmd::execute(){
                 missing.push_back(dir);
                 if (dir.parent_path() == dir) break;
             }
-            fs::create_directories(parent, ec);
+            FileUtils::createDirectories(parent, ec);
             for (const fs::path& dir : missing){
                 std::error_code exists;
                 if (fs::is_directory(dir, exists)) createdDirs.push_back(dir);

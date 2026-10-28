@@ -242,20 +242,42 @@ runs several tool calls in one round-trip, sequentially on the main thread; with
   Refused: isError naming the path and where the link leads, with the fix ("use a path that is not
   behind a link to elsewhere, or replace the link with a real folder").
 - **Writes beneath the project.** The check and the write are two steps; a link planted between
-  them must not redirect the write. The tools' writes go through `editor/util/SafeWrite.h`, which
-  never follows a link below the root at the moment it writes (POSIX: `openat` with `O_NOFOLLOW`
-  folder by folder, an exclusive temporary file, `renameat` in the same folder; Windows: every
-  folder opened with `FILE_FLAG_OPEN_REPARSE_POINT`, refused when it is a reparse point, held
-  without delete sharing until the rename): a folder on the way that became a link is refused
-  (the error names it: remove the link, then try again); a link at the final name is replaced, not
-  followed. Covered: every write through `w4::writeFilesUndoable` / `ProjectFileWrites::writeUndoable`
-  (write_file, create_script, the material tools, generate_placeholder_art, create_ui_document,
-  synthesize_texture, generate_sprite_normals and its save_path sheet; undo and redo of those steps
-  too), screenshot and render_pose_animation `save_path`, edit_project_build_file, the trash moves
-  of delete_asset / delete_scene, move_asset's renames and moves, create_folder, and
-  bake_vertex_animation's files-only step. Writes made by shared editor code (scene, prefab and
-  project.yaml saves, the clip, pose and Vertex Animation documents, recursive copies) are checked
-  before they run but write with `FileUtils::writeFileReplacing`.
+  them must not redirect the write. `editor/util/SafeWrite.h` never follows a link below the root
+  at the moment it acts (POSIX: `openat` with `O_NOFOLLOW` folder by folder, `O_PATH` / `O_SEARCH`
+  for search-only folders, an exclusive temporary file renamed with `renameat` in the same folder,
+  `renameat2(RENAME_NOREPLACE)` / `renameatx_np(RENAME_EXCL)` for no-replace moves, tree removal
+  with `fdopendir` + `unlinkat`; Windows: every folder opened relative to the handle of the one
+  before (`NtCreateFile` with `RootDirectory`, `FILE_OPEN_REPARSE_POINT`), name-surrogate reparse
+  points refused, cloud-file placeholders treated as ordinary entries, files created relative to
+  the held folder and renamed by handle with `FileRenameInfoEx`): a folder on the way that became a
+  link is refused (the error names it: remove the link, then try again); a link at the final name
+  is replaced, not followed.
+- **The write scope.** `McpServer` runs every tool's main-thread handler, its deferred
+  continuations (`waitUntil` / `afterFrames`) and resource reads inside a `safewrite::Scope` of the
+  project directory (`McpWriteScope`); the tools' own continuations (enqueued main-thread tasks,
+  the remote importers' worker thread) open one too. Inside it `FileUtils::writeFileReplacing`,
+  `writeFile` / `writeIfChanged` and the `FileUtils::createDirectories` / `removePath` /
+  `removeAll` / `renamePath` / `copyPath` helpers route paths inside the project to the
+  resolve-then-beneath functions, so the editor code the tools call (scene, prefab and project.yaml
+  saves, the clip, pose and Vertex Animation documents, shader forks, code editor saves, the asset
+  root relocation, the clip-hint and `.vat` mesh-field rewrites, thumbnails, HTML UI imports, the
+  workspace file, terrain maps, lattice bakes, AGENTS.md / CLAUDE.md) writes beneath the project
+  without changes of its own. Paths outside the project (another project, the editor's settings)
+  and everything outside a scope (the GUI) keep their plain behaviour.
+- **Commands remember the scope.** A `Command` made inside a scope records its root
+  (`Command::writeRoot`); `CommandHistory` runs its execute, undo and redo in a scope of that root
+  again, also when the GUI triggers them. The file commands (`WriteFilesCmd`, `CreateDirCmd`,
+  `DeleteFileCmd`, `RenameFileCmd`, `CopyFileCmd`, the copy of `move_asset`) list the paths they
+  act on (`Command::touchedPaths`): a step whose path now resolves outside its root is refused
+  (`canUndo` / `canRedo`: the history keeps its place; the console and the `undo` tool say which
+  file, with "remove the link, then undo again"); a restore that still fails after the check is
+  reported (`CommandHistory::lastUndoProblem`, the `undo` tool's `problems`). The `undo` tool also
+  checks a step the GUI made (no root of its own) against the project (`Command::escapeFor`) before
+  taking it. A redo whose execute fails is not taken.
+- **Checked up front only.** What external programs write: CMake and the compilers in a build
+  (`build_project`, `generate_shaders` refuse an internal or output folder inside the project that
+  resolves outside it; their logs are opened once beneath the project and kept open), FFmpeg's
+  video conversions (the destination folder is checked).
 
 ## Values (McpValues)
 

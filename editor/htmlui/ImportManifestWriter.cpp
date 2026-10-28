@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "ImportManifestWriter.h"
+#include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 
 #include "json.hpp"
 
@@ -99,6 +101,14 @@ bool ImportManifestWriter::write(const ImportManifest& manifest, std::string* er
 bool ImportManifestWriter::writeFileAtomic(const fs::path& file, const std::string& content, std::string* error){
     static std::atomic<unsigned> counter{0};
     std::error_code ec;
+    // in a write scope (an MCP import): beneath its root, no link on the way followed (util/SafeWrite.h)
+    if (const editor::FileUtils::ScopedOps* ops = editor::FileUtils::scopedOps()){
+        const int r = ops->write(file, content, ec);
+        if (r >= 0){
+            if (r == 0 && error) *error = "cannot write " + file.generic_string() + ": " + editor::safewrite::lastScopedError();
+            return r == 1;
+        }
+    }
     fs::create_directories(file.parent_path(), ec);
     if (ec){
         if (error)

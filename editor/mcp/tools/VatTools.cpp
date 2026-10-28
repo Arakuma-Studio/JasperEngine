@@ -1035,6 +1035,8 @@ void tick(const VatCallPtr& state) {
 void scheduleTick(const VatCallPtr& state) {
     state->ctx->app().requestRedraw();
     getEditorHost().enqueueMainThreadTask([state]() {
+        // a continuation writes beneath the project, as the tool's run did
+        McpWriteScope writeScope;
         // whatever goes wrong, the job ends (the main-thread loop would swallow an exception)
         const std::string fix = "call bake_vertex_animation again; if it fails the same way, read_console for the cause";
         try {

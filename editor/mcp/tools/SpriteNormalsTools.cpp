@@ -1009,6 +1009,8 @@ void tick(const NormalsCallPtr& state) {
 void scheduleTick(const NormalsCallPtr& state) {
     state->ctx->app().requestRedraw();
     getEditorHost().enqueueMainThreadTask([state]() {
+        // a continuation writes beneath the project, as the tool's run did
+        McpWriteScope writeScope;
         // whatever goes wrong, the job ends (the main-thread loop would swallow an exception and
         // leave it running forever)
         try {

@@ -1320,7 +1320,7 @@ const std::vector<Setting>& settingsTable() {
                 }
                 if (apply) {
                     std::error_code ec;
-                    fs::create_directories(p->getProjectPath() / dir, ec);
+                    FileUtils::createDirectories(p->getProjectPath() / dir, ec);
                     if (lua) p->changeAssetRoots(p->getAssetsDir(), dir);
                     else p->changeAssetRoots(dir, p->getLuaDir());
                 }

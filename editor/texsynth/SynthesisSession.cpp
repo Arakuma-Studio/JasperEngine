@@ -566,17 +566,12 @@ namespace jasperengine::editor::texsynth {
         return true;
     }
 
-    bool writeOutputsUndoable(Project* project, const std::vector<OutputFile>& files, std::string& error) {
+    bool writeOutputsUndoable(Project* project, const std::vector<OutputFile>& files, std::string& error, const std::filesystem::path& beneath) {
         std::vector<WriteFilesCmd::Item> items;
-        bool inAssets = project && !project->getAssetsPath().empty();
-        for (const OutputFile& file : files) {
-            items.push_back({file.absolute, file.bytes});
-            if (inAssets && !project->isInsideAssetsPath(file.absolute)) inAssets = false;
-        }
-        // beneath the project when they are written, or beneath its assets directory when they all
-        // are in it (an assets directory linked in from elsewhere keeps working)
-        const std::filesystem::path beneath = inAssets ? project->getAssetsPath() : std::filesystem::path();
-        return ProjectFileWrites::writeUndoable(project, std::move(items), error, nullptr, nullptr, beneath);
+        for (const OutputFile& file : files) items.push_back({file.absolute, file.bytes});
+        // beneath `beneath` (the MCP tool: the project) when they are written; the window: each
+        // file beneath its own folder (no new refusal for a folder linked in from a library)
+        return ProjectFileWrites::writeUndoable(project, std::move(items), error, nullptr, nullptr, beneath, beneath.empty());
     }
 
     // ------------------------------------------------------------------ feedback

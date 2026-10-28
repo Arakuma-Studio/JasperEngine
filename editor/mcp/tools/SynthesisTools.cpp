@@ -575,7 +575,7 @@ void finishSynthesis(McpContext& ctx, const std::shared_ptr<SynthesisCall>& stat
             ok = window->save(state->overwrite, written, error, &spec);
         } else {
             std::vector<ts::OutputFile> files;
-            ok = ts::encodeOutputs(state->root, spec, run.request(), result, files, error) && ts::writeOutputsUndoable(ctx.project(), files, error);
+            ok = ts::encodeOutputs(state->root, spec, run.request(), result, files, error) && ts::writeOutputsUndoable(ctx.project(), files, error, ctx.project()->getProjectPath());
             for (const ts::OutputFile& f : files) written.push_back(f.path);
         }
         if (!ok) {
@@ -699,6 +699,8 @@ void synthesizeTextureTool(const CallPtr& call) {
     };
     ts::SynthesisRun::Finished onFinished = [context, state, job](ts::SynthesisRun&) {
         getEditorHost().enqueueMainThreadTask([context, state, job]() {
+            // a continuation writes beneath the project, as the tool's run did
+            McpWriteScope writeScope;
             // the run may finish before start() returned to the handler
             if (!state->run) return;
             // whatever goes wrong, the job ends (the main-thread loop would swallow an exception

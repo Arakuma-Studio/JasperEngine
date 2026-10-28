@@ -206,7 +206,7 @@ namespace jasperengine::editor::spritenormals {
     // failure puts back what was written before it; `failedPath` and `error` say which file and
     // why, "...; nothing was written"). Every write and rollback stays beneath `beneath` when it
     // happens (util/SafeWrite.h: a link planted on the way since the check is never followed, a
-    // link at a file's name is replaced); empty: the deepest existing folder holding all the files.
+    // link at a file's name is replaced); empty (the CLI): each file beneath its own folder once resolved.
     bool writeOutputsDirect(const std::vector<OutputFile>& files, std::string& failedPath, std::string& error,
                             const std::filesystem::path& beneath = {});
     // The folder `project`'s outputs must stay in (its assets directory, under the project's

@@ -164,6 +164,45 @@ async def test_a_refused_undo_keeps_the_history_and_says_why(ed: Editor):
     ed.check(not (sprites / "gen" / "disc_normal.png").exists(), "the undo removed the generated file")
 
 
+async def test_a_copy_out_of_a_linked_library_is_a_read(ed: Editor):
+    require_links()
+    library = OUT.get("library")
+    ed.check(library is not None and (library / "lib.txt").is_file(), "the library of the read test")
+    await ed.call("move_asset", path="assets/shared/lib.txt", to="assets/copied_lib.txt", copy=True)
+    ed.check_eq((ed.project / "assets" / "copied_lib.txt").read_text(encoding="utf-8"), "shared\n", "copied out of the linked library")
+    ed.check((library / "lib.txt").is_file(), "the library keeps its file")
+    # ... but moving it (an entry inside the linked library) is refused
+    await refused(ed, "move_asset", {"path": "assets/shared/lib.txt", "to": "assets/moved_lib.txt"}, "a move out of the linked library")
+    await ed.call("undo", scope="project")
+    ed.check(not (ed.project / "assets" / "copied_lib.txt").exists(), "undo removes the copy")
+
+
+async def test_an_undo_through_a_folder_swapped_for_a_link_is_refused(ed: Editor):
+    require_links()
+    outside = outside_dir()
+    assets = ed.project / "assets"
+    (assets / "parent").mkdir(parents=True, exist_ok=True)
+    await ed.call("create_folder", path="assets/parent/made")
+    (assets / "parent" / "made" / "mine.txt").write_text("mine\n", encoding="utf-8")
+    # the parent becomes a link to a folder of theirs holding a "made" of its own
+    shutil.rmtree(assets / "parent")
+    (outside / "made").mkdir(exist_ok=True)
+    (outside / "made" / "theirs.txt").write_text("theirs\n", encoding="utf-8")
+    os.symlink(outside, assets / "parent")
+    undo = await ed.call_raw("undo", {"scope": "project"})
+    ed.check(undo.is_error, f"the undo is refused: {undo.text[:400]}")
+    ed.check_in("Remove the link, then undo again", undo.text, "the fix")
+    ed.check_eq(undo.structured.get("steps"), 0, "nothing undone")
+    ed.check_eq((outside / "made" / "theirs.txt").read_text(encoding="utf-8"), "theirs\n", "nothing of theirs removed")
+    # a real folder again: the same step undoes
+    os.remove(assets / "parent")
+    (assets / "parent" / "made").mkdir(parents=True)
+    done = await ed.call_raw("undo", {"scope": "project"})
+    ed.check(not done.is_error and done.structured.get("steps") == 1, f"undone once the link is gone: {done.text[:300]}")
+    ed.check(not (assets / "parent" / "made").exists(), "the folder it made is gone")
+    shutil.rmtree(outside / "made", ignore_errors=True)
+
+
 async def test_the_project_opened_through_a_link_works(ed: Editor):
     # last: switches the editor to the project's linked spelling
     require_links()

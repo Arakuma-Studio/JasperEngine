@@ -315,7 +315,7 @@ void saveSceneTool(const CallPtr& call) {
                 return;
             }
             std::error_code ec;
-            fs::create_directories((project->getProjectPath() / relative).parent_path(), ec);
+            FileUtils::createDirectories((project->getProjectPath() / relative).parent_path(), ec);
             if (!project->saveSceneToPath(id, relative)) {
                 call->fail("Failed to save the scene to " + FileUtils::pathToGenericUtf8(relative) + " (see the console).");
                 return;

@@ -40,11 +40,35 @@ std::vector<fs::path> editor::WriteFilesCmd::paths() const {
 }
 
 void editor::WriteFilesCmd::fail(const std::string& message) {
+    lastFailure = message;
     if (failureSink) *failureSink = message;
+}
+
+fs::path editor::WriteFilesCmd::rootOf(const fs::path& path) const {
+    if (!writeRoot().empty() || !ownFolders) return rootFor(path);
+    // where the write lands (a live link at the name followed), its folder the root
+    const fs::path where = safewrite::writeLocation(path);
+    return where.empty() ? fs::path() : safewrite::existingFolderOf(where.parent_path());
+}
+
+std::vector<editor::Command::Touched> editor::WriteFilesCmd::touchedPaths(bool undo) const {
+    std::vector<Touched> out;
+    for (size_t i = 0; i < items.size(); i++) {
+        // an undo writes the previous bytes back (a write) or removes the file it made (the entry);
+        // a redo writes each file again
+        const bool existed = i < previous.size() && previous[i].existed;
+        out.push_back({items[i].path, undo && !existed});
+    }
+    if (undo) {
+        for (const fs::path& dir : createdDirs) out.push_back({dir, true});
+    }
+    return out;
 }
 
 bool editor::WriteFilesCmd::restore(size_t i, std::string* why) {
     std::error_code ec;
+    // beneath its write root, or the active write scope's (an MCP call undoing a step the GUI made)
+    const fs::path beneathRoot = rootOf(items[i].path);
     if (!beneathRoot.empty()) {
         // beneath the root: the previous bytes written back / the new file removed (the entry
         // itself), never through a link made since
@@ -64,6 +88,7 @@ void editor::WriteFilesCmd::removeCreatedDirs() {
     std::vector<fs::path> dirs = createdDirs;
     std::sort(dirs.begin(), dirs.end(), [](const fs::path& a, const fs::path& b) { return a.native().size() > b.native().size(); });
     for (const fs::path& dir : dirs) {
+        const fs::path beneathRoot = rootOf(dir);
         if (!beneathRoot.empty()) {
             std::string ignored;
             safewrite::removeEmptyDirResolvedBeneath(beneathRoot, dir, ignored);
@@ -107,6 +132,7 @@ bool editor::WriteFilesCmd::execute() {
     for (size_t i = 0; i < items.size(); i++) {
         const Item& item = items[i];
         std::error_code ec;
+        const fs::path beneathRoot = rootOf(item.path);
         if (!beneathRoot.empty()) {
             // the missing folders are made by the write (and listed for undo); a failed write
             // left the file as it was
@@ -150,7 +176,14 @@ bool editor::WriteFilesCmd::execute() {
 }
 
 void editor::WriteFilesCmd::undo() {
-    for (size_t i = 0; i < items.size() && i < previous.size(); i++) restore(i);
+    // checked first (canUndo); a restore that still fails (a link planted since) is reported
+    for (size_t i = 0; i < items.size() && i < previous.size(); i++) {
+        std::string why;
+        if (!restore(i, &why)) {
+            const std::string problem = "could not put back " + FileUtils::pathToGenericUtf8(items[i].path) + (why.empty() ? std::string() : ": " + why);
+            undoProblem += (undoProblem.empty() ? "" : "; ") + problem;
+        }
+    }
     removeCreatedDirs();
     if (afterChange) afterChange(paths());
 }

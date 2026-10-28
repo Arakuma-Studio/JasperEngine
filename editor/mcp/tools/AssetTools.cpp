@@ -49,6 +49,7 @@
 #include "util/AssetDatabase.h"
 #include "util/FbxImporter.h"
 #include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 #include "util/ProjectChecks.h"
 #include "util/ProjectUtils.h"
 #include "util/Util.h"
@@ -1254,18 +1255,45 @@ void createFolderTool(const CallPtr& call) {
 class CopyAsCmd : public Command {
 public:
     CopyAsCmd(Project* project, fs::path from, fs::path to) : project(project), from(std::move(from)), to(std::move(to)) {}
+    // the copy (and its undo) beneath the root it was made in (an MCP call: the project): the
+    // source read wherever its links lead, the destination never through a link
+    static bool copyEntry(const fs::path& root, const fs::path& source, const fs::path& target) {
+        std::error_code ec;
+        if (!root.empty()) {
+            std::string error;
+            if (safewrite::copyResolvedBeneath(root, source, target, false, error)) return true;
+            safewrite::warn("Copying " + FileUtils::pathToGenericUtf8(source) + " failed: " + error);
+            return false;
+        }
+        if (fs::is_directory(source, ec)) fs::copy(source, target, fs::copy_options::recursive, ec);
+        else fs::copy_file(source, target, ec);
+        return !ec;
+    }
+    static void removeEntry(const fs::path& root, const fs::path& target, std::string* problem) {
+        std::error_code ec;
+        if (root.empty()) {
+            fs::remove_all(target, ec);
+            return;
+        }
+        std::string error;
+        if (!safewrite::removeTreeResolvedBeneath(root, target, error) && problem) *problem += (problem->empty() ? "" : "; ") + error;
+    }
+
+    std::vector<Touched> touchedPaths(bool) const override {
+        std::vector<Touched> out = {{to, true}};
+        if (!pairTo.empty()) out.push_back({pairTo, true});
+        return out;
+    }
+
     bool execute() override {
         std::error_code ec;
-        if (fs::is_directory(from, ec)) fs::copy(from, to, fs::copy_options::recursive, ec);
-        else fs::copy_file(from, to, ec);
-        if (ec) return false;
+        if (!copyEntry(rootFor(to), from, to)) return false;
         // a Vertex Animation is copied with its generated mesh (vat/VatAssetFiles.h), the copied
         // .vat naming the copied mesh
         fs::path vatCopy;
         if (vat::renamedPair(from, to, pairFrom, pairTo)) {
-            fs::copy_file(pairFrom, pairTo, ec);
-            if (ec) {
-                fs::remove(to, ec);
+            if (!copyEntry(rootFor(pairTo), pairFrom, pairTo)) {
+                removeEntry(rootFor(to), to, nullptr);
                 pairTo.clear();
                 return false;
             }
@@ -1289,8 +1317,8 @@ public:
     void undo() override {
         std::error_code ec;
         const bool isDir = fs::is_directory(to, ec);
-        if (!pairTo.empty()) fs::remove(pairTo, ec);
-        fs::remove_all(to, ec);
+        if (!pairTo.empty()) removeEntry(rootFor(pairTo), pairTo, &undoProblem);
+        removeEntry(rootFor(to), to, &undoProblem);
         // the copies' GUIDs leave the database (the copied .vat of a copied .vat.glb too);
         // references to the copied clips stay (Missing until a redo)
         for (const fs::path& copied : {to, pairTo}) {
@@ -1314,7 +1342,9 @@ private:
 
 void moveAssetTool(const CallPtr& call) {
     fs::path from, to;
-    if (!resolveExisting(call, "path", from, true, PathFor::Entry)) return;
+    // a copy only reads its source (a copy out of a linked-in library is fine); a move moves the entry
+    const bool copying = call->args().value("copy", false);
+    if (!resolveExisting(call, "path", from, true, copying ? PathFor::Read : PathFor::Entry)) return;
     if (!resolveExisting(call, "to", to, false, PathFor::Write)) return;
     Project* project = call->ctx().project();
     const std::string fromRel = projectRelative(project, from), toRel = projectRelative(project, to);
@@ -1835,6 +1865,8 @@ void importFilesTool(const CallPtr& call) {
     }
 
     std::thread([state]() {
+        // the importers' files beneath the project, as on the main thread (the scope is per thread)
+        McpWriteScope writeScope(state->projectRoot);
         for (const fs::path& video : state->videos)
             state->videoResults.push_back(importers::VideoImporter::importFile(video, state->videoTarget, state->overwrite));
         const std::string dest = state->destDir;

@@ -2770,8 +2770,8 @@ void editor::Project::changeAssetRoots(const std::filesystem::path& newAssetsDir
     const bool luaChanged = oldLuaRoot != newLuaRoot;
 
     std::error_code ec;
-    fs::create_directories(newAssetsRoot, ec);
-    fs::create_directories(newLuaRoot, ec);
+    FileUtils::createDirectories(newAssetsRoot, ec);
+    FileUtils::createDirectories(newLuaRoot, ec);
 
     // Scenes that are not open still hold references, so they are loaded and unloaded again
     std::vector<uint32_t> temporarilyLoaded;
@@ -2806,7 +2806,7 @@ void editor::Project::changeAssetRoots(const std::filesystem::path& newAssetsDir
         }
 
         if (fs::is_directory(source, moveEc)){
-            fs::create_directories(destination, moveEc);
+            FileUtils::createDirectories(destination, moveEc);
             bool moved = false;
             for (const auto& entry : fs::directory_iterator(source, moveEc)){
                 moved |= moveEntry(entry.path(), destination / entry.path().filename());
@@ -2816,7 +2816,7 @@ void editor::Project::changeAssetRoots(const std::filesystem::path& newAssetsDir
                 }
             }
             // Only removes the source when everything left it.
-            fs::remove(source, moveEc);
+            FileUtils::removePath(source, moveEc);
             return moved;
         }
 
@@ -2827,22 +2827,22 @@ void editor::Project::changeAssetRoots(const std::filesystem::path& newAssetsDir
             return false;
         }
 
-        fs::create_directories(destination.parent_path(), moveEc);
-        fs::rename(source, destination, moveEc);
+        FileUtils::createDirectories(destination.parent_path(), moveEc);
+        FileUtils::renamePath(source, destination, moveEc);
         if (moveEc){
             // A root on another volume rejects rename, so the file is copied and only then dropped.
             std::error_code copyEc;
-            fs::copy_file(source, destination, copyEc);
+            FileUtils::copyPath(source, destination, false, copyEc);
             if (copyEc){
                 // A partial copy would pass as an already relocated file on the next attempt.
                 std::error_code cleanupEc;
-                fs::remove(destination, cleanupEc);
+                FileUtils::removePath(destination, cleanupEc);
 
                 Out::error("Failed to copy %s: %s", source.string().c_str(), copyEc.message().c_str());
                 relocationFailed = true;
                 return false;
             }
-            if (!fs::remove(source, copyEc)){
+            if (!FileUtils::removePath(source, copyEc)){
                 Out::warning("Copied %s but could not remove the original", source.string().c_str());
             }
         }
@@ -2858,30 +2858,30 @@ void editor::Project::changeAssetRoots(const std::filesystem::path& newAssetsDir
             std::error_code undoEc;
 
             // A directory emptied by the move is gone by now.
-            fs::create_directories(source.parent_path(), undoEc);
+            FileUtils::createDirectories(source.parent_path(), undoEc);
 
             // The copy fallback may have left the original in place.
             if (fs::exists(source, undoEc)){
-                fs::remove(destination, undoEc);
+                FileUtils::removePath(destination, undoEc);
                 continue;
             }
 
-            fs::rename(destination, source, undoEc);
+            FileUtils::renamePath(destination, source, undoEc);
             if (!undoEc){
                 continue;
             }
 
-            fs::copy_file(destination, source, undoEc);
+            FileUtils::copyPath(destination, source, false, undoEc);
             if (undoEc){
                 // References still point here, so a partial copy would pass as the file itself.
                 std::error_code cleanupEc;
-                fs::remove(source, cleanupEc);
+                FileUtils::removePath(source, cleanupEc);
 
                 Out::error("Could not restore %s, the file is at %s: %s", source.string().c_str(),
                            destination.string().c_str(), undoEc.message().c_str());
                 continue;
             }
-            fs::remove(destination, undoEc);
+            FileUtils::removePath(destination, undoEc);
         }
     };
 
@@ -4970,7 +4970,8 @@ bool editor::Project::saveSceneNow(uint32_t sceneId, const fs::path& pathIfUntit
             return failWith(error, "Another scene of the project is saved at " + normalizeToProjectRelative(target).generic_string());
         }
         std::error_code ec;
-        fs::create_directories(target.parent_path(), ec);
+        // (in a write scope: beneath its root)
+        FileUtils::createDirectories(target.parent_path(), ec);
         if (ec) {
             return failWith(error, "Could not create " + target.parent_path().generic_string() + ": " + ec.message());
         }
@@ -5544,7 +5545,8 @@ void editor::Project::copyEngineApiToProject() {
 
         // Create internal path if it doesn't exist
         if (!std::filesystem::exists(getProjectInternalPath())) {
-            std::filesystem::create_directories(getProjectInternalPath());
+            std::error_code internalError;
+            FileUtils::createDirectories(getProjectInternalPath(), internalError);
         }
 
         int updatedFiles = 0;
@@ -5570,7 +5572,8 @@ void editor::Project::copyEngineApiToProject() {
 
                 if (ext == ".h" || ext == ".hpp" || ext == ".inl" || ext == ".glsl" || ext == ".frag" || ext == ".vert" || isPlatformSource) {
                     auto destPath = engineApiDest / relPath;
-                    std::filesystem::create_directories(destPath.parent_path());
+                    std::error_code folderError;
+                    FileUtils::createDirectories(destPath.parent_path(), folderError);
 
                     std::ifstream sourceFile(dirEntry.path(), std::ios::in | std::ios::binary);
                     if (!sourceFile) {
@@ -7726,7 +7729,7 @@ fs::path editor::Project::getUserDataPath() const{
     // build has it, every playtest would leave a modified file in the working tree.
     const fs::path path = getProjectInternalPath() / "user" / "rundata";
     std::error_code ec;
-    fs::create_directories(path, ec);
+    FileUtils::createDirectories(path, ec);
     if (ec) {
         Out::error("Failed to create the Play mode data directory: %s", ec.message().c_str());
         return getAssetsPath();

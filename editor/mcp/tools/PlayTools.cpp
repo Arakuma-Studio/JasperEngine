@@ -404,13 +404,13 @@ void ensureMonitor(McpContext& ctx) {
         static void run(McpContext* c) {
             observeSession(*c);
             if (monitorNeeded(*c)) {
-                c->app().enqueueMainThreadTask([c]() { run(c); });
+                c->app().enqueueMainThreadTask([c]() { McpWriteScope writeScope; run(c); });
             } else {
                 state().monitorScheduled = false;
             }
         }
     };
-    ctx.app().enqueueMainThreadTask([context]() { Tick::run(context); });
+    ctx.app().enqueueMainThreadTask([context]() { McpWriteScope writeScope; Tick::run(context); });
 }
 
 std::string playStateName(Project* project) {

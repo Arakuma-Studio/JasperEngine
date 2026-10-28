@@ -9,8 +9,14 @@
 #include <atomic>
 #include <cerrno>
 #include <chrono>
+#include <cstddef>
 #include <cstring>
 #include <deque>
+#include <fstream>
+#include <iostream>
+#include <iterator>
+#include <memory>
+#include <mutex>
 #include <system_error>
 #include <thread>
 #include <utility>
@@ -20,11 +26,17 @@
         #define NOMINMAX
     #endif
     #include <windows.h>
+    #include <fcntl.h>
+    #include <io.h>
 #else
+    #include <dirent.h>
     #include <fcntl.h>
     #include <sys/stat.h>
     #include <sys/types.h>
     #include <unistd.h>
+    #if defined(__linux__)
+        #include <sys/syscall.h>
+    #endif
 #endif
 
 namespace fs = std::filesystem;
@@ -62,6 +74,10 @@ namespace jasperengine::editor::safewrite {
             return shown(at) + " is a symbolic link (or junction): files are written beneath " + shown(root) +
                    " without following links on the way, and this folder is a link now (it was not when the path was checked). "
                    "Remove the link (or make it a real folder), then try again.";
+        }
+
+        std::string notAFolder(const fs::path& at) {
+            return shown(at) + " is a file, not a folder: a path on the way to the file must be folders.";
         }
 
         // `target` below `root` as a relative path without "." or ".." (the root itself refused)
@@ -121,111 +137,374 @@ namespace jasperengine::editor::safewrite {
             return temp;
         }
 
+        // What is at a name, seen without following it
+        enum class Kind { Missing, File, Dir, Link, LinkToDir, Other };
+
 #ifdef _WIN32
+
+        // ---------------------------------------------------------------- Windows: NT, relative to handles
 
         std::string systemMessage(DWORD code) { return std::system_category().message(static_cast<int>(code)); }
 
         bool isMissing(DWORD code) { return code == ERROR_FILE_NOT_FOUND || code == ERROR_PATH_NOT_FOUND; }
 
-        // The folder handles of a walk, held (no delete sharing) until it is destroyed
-        struct Held {
-            std::vector<HANDLE> handles;
-            Held() = default;
-            Held(const Held&) = delete;
-            Held& operator=(const Held&) = delete;
-            ~Held() {
-                for (HANDLE h : handles) CloseHandle(h);
+        // the NT structures, under names of their own (winternl.h differs between MSVC and MinGW)
+        struct NtUnicodeString {
+            USHORT Length;
+            USHORT MaximumLength;
+            PWSTR Buffer;
+        };
+        struct NtObjectAttributes {
+            ULONG Length;
+            HANDLE RootDirectory;
+            NtUnicodeString* ObjectName;
+            ULONG Attributes;
+            PVOID SecurityDescriptor;
+            PVOID SecurityQualityOfService;
+        };
+        struct NtIoStatusBlock {
+            union {
+                LONG Status;
+                PVOID Pointer;
+            };
+            ULONG_PTR Information;
+        };
+        using NtCreateFileFn = LONG(WINAPI*)(PHANDLE, ACCESS_MASK, NtObjectAttributes*, NtIoStatusBlock*, PLARGE_INTEGER, ULONG, ULONG,
+                                             ULONG, ULONG, PVOID, ULONG);
+        using RtlNtStatusToDosErrorFn = ULONG(WINAPI*)(LONG);
+        using GetInfoByHandleExFn = BOOL(WINAPI*)(HANDLE, int, LPVOID, DWORD);
+        using SetInfoByHandleFn = BOOL(WINAPI*)(HANDLE, int, LPVOID, DWORD);
+        using GetFinalPathFn = DWORD(WINAPI*)(HANDLE, LPWSTR, DWORD, DWORD);
+
+        // NtCreateFile dispositions and options; FILE_INFO_BY_HANDLE_CLASS values
+        constexpr ULONG kNtOpen = 1, kNtCreate = 2, kNtOpenIf = 3, kNtOverwriteIf = 5;
+        constexpr ULONG kNtDirectoryFile = 0x1, kNtSynchronousIo = 0x20, kNtNonDirectoryFile = 0x40, kNtBackupIntent = 0x4000,
+                        kNtOpenReparsePoint = 0x200000;
+        constexpr ULONG kObjCaseInsensitive = 0x40;
+        constexpr int kFileRenameInfo = 3, kFileDispositionInfo = 4, kFileAttributeTagInfo = 9, kFileFullDirectoryInfo = 14,
+                      kFileFullDirectoryRestartInfo = 15, kFileDispositionInfoEx = 21, kFileRenameInfoEx = 22;
+        // a name surrogate: the reparse point names another entry (symbolic link, junction)
+        constexpr DWORD kNameSurrogateBit = 0x20000000;
+
+        template <typename Fn>
+        Fn procAddress(HMODULE module, const char* name) {
+            if (!module) return nullptr;
+            return reinterpret_cast<Fn>(reinterpret_cast<void (*)()>(GetProcAddress(module, name)));
+        }
+
+        struct Api {
+            NtCreateFileFn ntCreateFile = nullptr;
+            RtlNtStatusToDosErrorFn toDosError = nullptr;
+            GetInfoByHandleExFn getInfo = nullptr;
+            SetInfoByHandleFn setInfo = nullptr;
+            GetFinalPathFn finalPath = nullptr;
+        };
+
+        const Api& api() {
+            static const Api loaded = [] {
+                Api a;
+                const HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+                const HMODULE kernel = GetModuleHandleW(L"kernel32.dll");
+                a.ntCreateFile = procAddress<NtCreateFileFn>(ntdll, "NtCreateFile");
+                a.toDosError = procAddress<RtlNtStatusToDosErrorFn>(ntdll, "RtlNtStatusToDosError");
+                a.getInfo = procAddress<GetInfoByHandleExFn>(kernel, "GetFileInformationByHandleEx");
+                a.setInfo = procAddress<SetInfoByHandleFn>(kernel, "SetFileInformationByHandle");
+                a.finalPath = procAddress<GetFinalPathFn>(kernel, "GetFinalPathNameByHandleW");
+                return a;
+            }();
+            return loaded;
+        }
+
+        // `name` (one component) opened relative to the folder handle `parent`, never following a
+        // reparse point at it. 0, or the Win32 error.
+        DWORD ntOpen(HANDLE parent, const std::wstring& name, ACCESS_MASK access, ULONG share, ULONG disposition, ULONG options,
+                     HANDLE& out) {
+            out = INVALID_HANDLE_VALUE;
+            const Api& a = api();
+            if (!a.ntCreateFile || !a.toDosError) return ERROR_CALL_NOT_IMPLEMENTED;
+            NtUnicodeString unicodeName;
+            unicodeName.Length = unicodeName.MaximumLength = static_cast<USHORT>(name.size() * sizeof(wchar_t));
+            unicodeName.Buffer = const_cast<PWSTR>(name.c_str());
+            NtObjectAttributes attributes{sizeof(NtObjectAttributes), parent, &unicodeName, kObjCaseInsensitive, nullptr, nullptr};
+            NtIoStatusBlock io{};
+            HANDLE handle = nullptr;
+            const LONG status = a.ntCreateFile(&handle, access | SYNCHRONIZE, &attributes, &io, nullptr, FILE_ATTRIBUTE_NORMAL, share, disposition,
+                                               options | kNtSynchronousIo | kNtBackupIntent | kNtOpenReparsePoint, nullptr, 0);
+            if (status < 0) return a.toDosError(status);
+            out = handle;
+            return 0;
+        }
+
+        struct HandleCloser {
+            HANDLE h = INVALID_HANDLE_VALUE;
+            explicit HandleCloser(HANDLE handle) : h(handle) {}
+            HandleCloser(const HandleCloser&) = delete;
+            HandleCloser& operator=(const HandleCloser&) = delete;
+            ~HandleCloser() {
+                if (h != INVALID_HANDLE_VALUE && h != nullptr) CloseHandle(h);
             }
         };
 
-        // A folder (or whatever is there) opened without following a reparse point at it
-        HANDLE openFolder(const fs::path& path, bool followReparse) {
-            return CreateFileW(path.c_str(), FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE, FILE_SHARE_READ | FILE_SHARE_WRITE,
-                               nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | (followReparse ? 0 : FILE_FLAG_OPEN_REPARSE_POINT), nullptr);
-        }
-
-        DWORD attributesOf(HANDLE handle) {
-            BY_HANDLE_FILE_INFORMATION info;
-            if (!GetFileInformationByHandle(handle, &info)) return INVALID_FILE_ATTRIBUTES;
-            return info.dwFileAttributes;
-        }
-
-        // The entry at `path` itself (a link: the link): its attributes, INVALID_FILE_ATTRIBUTES
-        // when nothing is there (`missing`) or it can't be read
-        DWORD entryAttributes(const fs::path& path, bool& missing) {
-            missing = false;
-            const HANDLE h = CreateFileW(path.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
-                                         OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
-            if (h == INVALID_HANDLE_VALUE) {
-                missing = isMissing(GetLastError());
-                return INVALID_FILE_ATTRIBUTES;
+        // What the open handle is: a name surrogate (link, junction) is a link; any other reparse
+        // point (cloud files, deduplication...) is what its attributes say
+        Kind kindOf(HANDLE handle) {
+            struct AttributeTag {
+                DWORD FileAttributes;
+                DWORD ReparseTag;
+            } tag{};
+            DWORD attributes = 0;
+            bool surrogate = false;
+            if (api().getInfo && api().getInfo(handle, kFileAttributeTagInfo, &tag, sizeof(tag))) {
+                attributes = tag.FileAttributes;
+                surrogate = (attributes & FILE_ATTRIBUTE_REPARSE_POINT) && (tag.ReparseTag & kNameSurrogateBit);
+            } else {
+                BY_HANDLE_FILE_INFORMATION info;
+                if (!GetFileInformationByHandle(handle, &info)) return Kind::Other;
+                attributes = info.dwFileAttributes;
+                surrogate = (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;   // no tag: every reparse point counts
             }
-            const DWORD attributes = attributesOf(h);
-            CloseHandle(h);
-            return attributes;
+            if (surrogate) return (attributes & FILE_ATTRIBUTE_DIRECTORY) ? Kind::LinkToDir : Kind::Link;
+            return (attributes & FILE_ATTRIBUTE_DIRECTORY) ? Kind::Dir : Kind::File;
         }
 
-        // Every folder from realRoot down to realRoot/rel opened and held; `dir` is that folder.
-        // `missing` (when not creating): a folder on the way does not exist.
-        bool openDir(const fs::path& realRoot, const fs::path& rel, bool create, Held& held, fs::path& dir, std::string& error,
-                     std::vector<fs::path>* created, bool* missing = nullptr) {
+        bool readOnly(HANDLE handle) {
+            BY_HANDLE_FILE_INFORMATION info;
+            return GetFileInformationByHandle(handle, &info) && (info.dwFileAttributes & FILE_ATTRIBUTE_READONLY);
+        }
+
+        // The entry `name` in `dir`: what it is (Missing when nothing is there)
+        Kind childKind(HANDLE dir, const std::wstring& name, DWORD& code, bool* isReadOnly = nullptr) {
+            HANDLE h = INVALID_HANDLE_VALUE;
+            code = ntOpen(dir, name, FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, kNtOpen, 0, h);
+            if (code) return isMissing(code) ? Kind::Missing : Kind::Other;
+            HandleCloser closer(h);
+            if (isReadOnly) *isReadOnly = readOnly(h);
+            return kindOf(h);
+        }
+
+        // Marks the open handle's entry deleted (POSIX semantics where the system has them)
+        bool deleteByHandle(HANDLE handle, DWORD& code) {
+            const Api& a = api();
+            if (!a.setInfo) {
+                code = ERROR_CALL_NOT_IMPLEMENTED;
+                return false;
+            }
+            struct DispositionEx {
+                DWORD Flags;
+            } ex{0x1 | 0x2};   // FILE_DISPOSITION_FLAG_DELETE | FILE_DISPOSITION_FLAG_POSIX_SEMANTICS
+            if (a.setInfo(handle, kFileDispositionInfoEx, &ex, sizeof(ex))) return true;
+            code = GetLastError();
+            if (code != ERROR_INVALID_PARAMETER && code != ERROR_NOT_SUPPORTED && code != ERROR_INVALID_FUNCTION) return false;
+            struct Disposition {
+                BOOLEAN DeleteFile;
+            } classic{TRUE};
+            if (a.setInfo(handle, kFileDispositionInfo, &classic, sizeof(classic))) return true;
+            code = GetLastError();
+            return false;
+        }
+
+        // Renames the open handle's entry to `name` in the folder handle `targetDir`
+        bool renameByHandle(HANDLE handle, HANDLE targetDir, const std::wstring& name, bool replace, DWORD& code) {
+            const Api& a = api();
+            if (!a.setInfo) {
+                code = ERROR_CALL_NOT_IMPLEMENTED;
+                return false;
+            }
+            struct RenameInfo {
+                union {
+                    BOOLEAN ReplaceIfExists;
+                    DWORD Flags;
+                };
+                HANDLE RootDirectory;
+                DWORD FileNameLength;
+                WCHAR FileName[1];
+            };
+            std::vector<unsigned char> buffer(sizeof(RenameInfo) + name.size() * sizeof(WCHAR));
+            RenameInfo* info = reinterpret_cast<RenameInfo*>(buffer.data());
+            info->RootDirectory = targetDir;
+            info->FileNameLength = static_cast<DWORD>(name.size() * sizeof(WCHAR));
+            std::memcpy(info->FileName, name.data(), name.size() * sizeof(WCHAR));
+            // FileRenameInfoEx: FILE_RENAME_FLAG_REPLACE_IF_EXISTS | FILE_RENAME_FLAG_POSIX_SEMANTICS
+            info->Flags = replace ? (0x1 | 0x2) : 0;
+            for (int attempt = 0; attempt < FileUtils::renameAttempts; attempt++) {
+                if (attempt > 0) std::this_thread::sleep_for(std::chrono::milliseconds(FileUtils::renameRetryMs));
+                if (a.setInfo(handle, kFileRenameInfoEx, info, static_cast<DWORD>(buffer.size()))) return true;
+                code = GetLastError();
+                if (code == ERROR_INVALID_PARAMETER || code == ERROR_NOT_SUPPORTED || code == ERROR_INVALID_FUNCTION) {
+                    // older Windows: FileRenameInfo
+                    info->Flags = 0;
+                    info->ReplaceIfExists = replace ? TRUE : FALSE;
+                    if (a.setInfo(handle, kFileRenameInfo, info, static_cast<DWORD>(buffer.size()))) return true;
+                    code = GetLastError();
+                    info->Flags = replace ? (0x1 | 0x2) : 0;
+                }
+                // a file a reader, the indexer or a virus scan briefly holds can't be replaced: tried again
+                if (code != ERROR_SHARING_VIOLATION && code != ERROR_ACCESS_DENIED && code != ERROR_LOCK_VIOLATION) return false;
+            }
+            return false;
+        }
+
+        // The final path of an open handle is below `realRoot` (the fallback without handle renames)
+        bool finalPathBelow(HANDLE handle, const fs::path& realRoot) {
+            if (!api().finalPath) return false;
+            std::vector<wchar_t> buffer(32768);
+            const DWORD n = api().finalPath(handle, buffer.data(), static_cast<DWORD>(buffer.size()), 0);
+            if (n == 0 || n >= buffer.size()) return false;
+            std::wstring text(buffer.data(), n);
+            if (text.rfind(L"\\\\?\\UNC\\", 0) == 0) text = L"\\\\" + text.substr(8);
+            else if (text.rfind(L"\\\\?\\", 0) == 0) text = text.substr(4);
+            auto lowered = [](std::wstring s) {
+                std::transform(s.begin(), s.end(), s.begin(), [](wchar_t c) { return static_cast<wchar_t>(towlower(c)); });
+                return s;
+            };
+            return isAtOrBelow(fs::path(lowered(text)), fs::path(lowered(normalDir(realRoot).wstring())));
+        }
+
+        // Every folder from realRoot down to realRoot/rel opened (relative to the one before) and
+        // held until the walk goes; the folders above the last one are shared for reading only
+        struct Walk {
+            std::vector<HANDLE> handles;
+            fs::path at;
+            Walk() = default;
+            Walk(const Walk&) = delete;
+            Walk& operator=(const Walk&) = delete;
+            ~Walk() {
+                for (HANDLE h : handles) CloseHandle(h);
+            }
+            HANDLE last() const { return handles.back(); }
+        };
+
+        constexpr ACCESS_MASK kWalkAccess = FILE_LIST_DIRECTORY | FILE_TRAVERSE | FILE_READ_ATTRIBUTES;
+
+        // `shareWrite`: every folder shares writing (a rename between two walks opens the target's
+        // folder for adding an entry, which may be an ancestor in the other walk)
+        bool walkTo(const fs::path& realRoot, const fs::path& rel, bool create, Walk& walk, std::string& error,
+                    std::vector<fs::path>* created, bool* missing = nullptr, bool shareWrite = false) {
             if (missing) *missing = false;
-            // the root is trusted (resolved already): opened following what it is
-            HANDLE h = openFolder(realRoot, true);
-            if (h == INVALID_HANDLE_VALUE) {
+            // the root is trusted (resolved already): opened by its path, following what it is
+            const HANDLE rootHandle = CreateFileW(realRoot.c_str(), kWalkAccess | SYNCHRONIZE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                                                  OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+            if (rootHandle == INVALID_HANDLE_VALUE) {
                 error = "can't open the folder " + shown(realRoot) + ": " + systemMessage(GetLastError());
                 return false;
             }
-            held.handles.push_back(h);
-            dir = realRoot;
-            for (const fs::path& part : rel) {
-                dir /= part;
-                h = openFolder(dir, false);
-                if (h == INVALID_HANDLE_VALUE && isMissing(GetLastError()) && create) {
-                    if (CreateDirectoryW(dir.c_str(), nullptr)) {
-                        if (created) created->push_back(dir);
-                    } else if (GetLastError() != ERROR_ALREADY_EXISTS) {
-                        error = "can't create the folder " + shown(dir) + ": " + systemMessage(GetLastError());
-                        return false;
+            walk.handles.push_back(rootHandle);
+            walk.at = realRoot;
+            const std::vector<fs::path> parts(rel.begin(), rel.end());
+            for (size_t i = 0; i < parts.size(); i++) {
+                walk.at /= parts[i];
+                const std::wstring name = parts[i].wstring();
+                // the last folder shares writing too: a rename into it opens it for adding a file
+                const ULONG share = shareWrite || i + 1 == parts.size() ? (FILE_SHARE_READ | FILE_SHARE_WRITE) : FILE_SHARE_READ;
+                HANDLE h = INVALID_HANDLE_VALUE;
+                DWORD code = ntOpen(walk.last(), name, kWalkAccess, share, kNtOpen, 0, h);
+                if (code && isMissing(code) && create) {
+                    code = ntOpen(walk.last(), name, kWalkAccess, share, kNtCreate, kNtDirectoryFile, h);
+                    if (!code) {
+                        if (created) created->push_back(walk.at);
+                    } else if (code == ERROR_FILE_EXISTS || code == ERROR_ALREADY_EXISTS) {
+                        code = ntOpen(walk.last(), name, kWalkAccess, share, kNtOpen, 0, h);
                     }
-                    h = openFolder(dir, false);
                 }
-                if (h == INVALID_HANDLE_VALUE) {
-                    const DWORD code = GetLastError();
+                if (code) {
                     if (missing && isMissing(code)) *missing = true;
-                    error = "can't open the folder " + shown(dir) + ": " + systemMessage(code);
+                    error = (create ? "can't create the folder " : "can't open the folder ") + shown(walk.at) + ": " + systemMessage(code);
                     return false;
                 }
-                held.handles.push_back(h);
-                const DWORD attributes = attributesOf(h);
-                if (attributes == INVALID_FILE_ATTRIBUTES) {
-                    error = "can't read " + shown(dir) + ": " + systemMessage(GetLastError());
+                walk.handles.push_back(h);
+                const Kind kind = kindOf(h);
+                if (kind == Kind::Link || kind == Kind::LinkToDir) {
+                    error = linkRefusal(walk.at, realRoot);
                     return false;
                 }
-                if (attributes & FILE_ATTRIBUTE_REPARSE_POINT) {
-                    error = linkRefusal(dir, realRoot);
-                    return false;
-                }
-                if (!(attributes & FILE_ATTRIBUTE_DIRECTORY)) {
-                    error = shown(dir) + " is a file, not a folder: a path on the way to the file must be folders.";
+                if (kind != Kind::Dir) {
+                    error = notAFolder(walk.at);
                     return false;
                 }
             }
             return true;
         }
 
-        bool moveRetrying(const fs::path& from, const fs::path& to, DWORD flags, DWORD& code) {
-            // a file a reader, the indexer or a virus scan briefly holds can't be replaced: tried again for a while
-            for (int attempt = 0; attempt < FileUtils::renameAttempts; attempt++) {
-                if (attempt > 0) std::this_thread::sleep_for(std::chrono::milliseconds(FileUtils::renameRetryMs));
-                if (MoveFileExW(from.c_str(), to.c_str(), flags)) return true;
-                code = GetLastError();
-                if (code != ERROR_SHARING_VIOLATION && code != ERROR_ACCESS_DENIED && code != ERROR_LOCK_VIOLATION) return false;
+        // A removal of `name` in the walk's last folder: the entry itself; recursing into real
+        // folders when `tree`
+        bool removeChild(HANDLE dir, const std::wstring& name, const fs::path& shownPath, bool tree, std::string& error, int depth = 0) {
+            constexpr ULONG shareAll = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
+            HANDLE h = INVALID_HANDLE_VALUE;
+            DWORD code = ntOpen(dir, name, DELETE | FILE_READ_ATTRIBUTES, shareAll, kNtOpen, 0, h);
+            if (code) {
+                if (isMissing(code)) return true;
+                error = "can't remove " + shown(shownPath) + ": " + systemMessage(code);
+                return false;
             }
-            return false;
+            HandleCloser closer(h);
+            Kind kind = kindOf(h);
+            if (kind == Kind::Dir && tree) {
+                // listed through a handle of its own, which must still be that real folder
+                CloseHandle(h);
+                closer.h = INVALID_HANDLE_VALUE;
+                code = ntOpen(dir, name, DELETE | FILE_LIST_DIRECTORY | FILE_TRAVERSE | FILE_READ_ATTRIBUTES, shareAll, kNtOpen, kNtDirectoryFile, h);
+                if (code) {
+                    if (isMissing(code)) return true;
+                    error = "can't open " + shown(shownPath) + " to remove it: " + systemMessage(code);
+                    return false;
+                }
+                closer.h = h;
+                kind = kindOf(h);
+            }
+            if (kind == Kind::Dir) {
+                if (!tree) {
+                    error = shown(shownPath) + " is a folder, not a file: it was left alone.";
+                    return false;
+                }
+                if (depth > 256) {
+                    error = shown(shownPath) + " is too deep to remove.";
+                    return false;
+                }
+                // the names first, then each removed relative to this handle
+                std::vector<std::wstring> names;
+                std::vector<unsigned char> buffer(64 * 1024);
+                struct FullDirInfo {
+                    ULONG NextEntryOffset;
+                    ULONG FileIndex;
+                    LARGE_INTEGER CreationTime, LastAccessTime, LastWriteTime, ChangeTime, EndOfFile, AllocationSize;
+                    ULONG FileAttributes;
+                    ULONG FileNameLength;
+                    ULONG EaSize;
+                    WCHAR FileName[1];
+                };
+                bool first = true;
+                while (api().getInfo) {
+                    if (!api().getInfo(h, first ? kFileFullDirectoryRestartInfo : kFileFullDirectoryInfo, buffer.data(),
+                                       static_cast<DWORD>(buffer.size()))) {
+                        code = GetLastError();
+                        if (code == ERROR_NO_MORE_FILES) break;
+                        error = "can't list " + shown(shownPath) + ": " + systemMessage(code);
+                        return false;
+                    }
+                    first = false;
+                    size_t offset = 0;
+                    while (true) {
+                        const FullDirInfo* entry = reinterpret_cast<const FullDirInfo*>(buffer.data() + offset);
+                        std::wstring child(entry->FileName, entry->FileNameLength / sizeof(WCHAR));
+                        if (child != L"." && child != L"..") names.push_back(std::move(child));
+                        if (entry->NextEntryOffset == 0) break;
+                        offset += entry->NextEntryOffset;
+                    }
+                }
+                for (const std::wstring& child : names) {
+                    if (!removeChild(h, child, shownPath / fs::path(child), true, error, depth + 1)) return false;
+                }
+            }
+            if (!deleteByHandle(h, code)) {
+                error = "can't remove " + shown(shownPath) + ": " + systemMessage(code);
+                return false;
+            }
+            return true;
         }
 
 #else
+
+        // ---------------------------------------------------------------- POSIX: openat from folder descriptors
 
         // A file descriptor closed when it goes
         class Fd {
@@ -254,50 +533,158 @@ namespace jasperengine::editor::safewrite {
             int fd = -1;
         };
 
-        constexpr int kDirFlags = O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC;
+        // Folders on the way are opened for searching only where the system can (a folder the
+        // user may search but not list works): O_PATH on Linux, O_SEARCH where it exists
+#if defined(__linux__) && defined(O_PATH)
+        constexpr int kSearchOnly = O_PATH;
+#elif defined(O_SEARCH)
+        constexpr int kSearchOnly = O_SEARCH;
+#else
+        constexpr int kSearchOnly = O_RDONLY;
+#endif
+
+        int openFolderAt(int dirfd, const char* name) {
+            int fd = ::openat(dirfd, name, kSearchOnly | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+            // an O_SEARCH the running system doesn't know
+            if (fd < 0 && errno == EINVAL && kSearchOnly != O_RDONLY) fd = ::openat(dirfd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+            return fd;
+        }
+
+        int openRootFolder(const fs::path& realRoot) {
+            int fd = ::open(realRoot.c_str(), kSearchOnly | O_DIRECTORY | O_CLOEXEC);
+            if (fd < 0 && errno == EINVAL && kSearchOnly != O_RDONLY) fd = ::open(realRoot.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+            return fd;
+        }
+
+        Kind childKind(int dirfd, const char* name, struct stat* out = nullptr) {
+            struct stat st;
+            if (::fstatat(dirfd, name, &st, AT_SYMLINK_NOFOLLOW) != 0) return errno == ENOENT ? Kind::Missing : Kind::Other;
+            if (out) *out = st;
+            if (S_ISLNK(st.st_mode)) return Kind::Link;
+            if (S_ISDIR(st.st_mode)) return Kind::Dir;
+            return Kind::File;
+        }
+
+        struct Walk {
+            std::vector<Fd> fds;
+            fs::path at;
+            int last() const { return fds.back().get(); }
+        };
 
         // realRoot/rel opened folder by folder from realRoot (no link followed below it); `missing`
         // (when not creating): a folder on the way does not exist
-        bool openDir(const fs::path& realRoot, const fs::path& rel, bool create, Fd& out, std::string& error,
-                     std::vector<fs::path>* created, bool* missing = nullptr) {
+        bool walkTo(const fs::path& realRoot, const fs::path& rel, bool create, Walk& walk, std::string& error,
+                    std::vector<fs::path>* created, bool* missing = nullptr) {
             if (missing) *missing = false;
             // the root is trusted (resolved already): opened following what it is
-            Fd dir(::open(realRoot.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
-            if (dir.get() < 0) {
+            Fd root(openRootFolder(realRoot));
+            if (root.get() < 0) {
                 error = "can't open the folder " + shown(realRoot) + ": " + std::strerror(errno);
                 return false;
             }
-            fs::path at = realRoot;
+            walk.fds.push_back(std::move(root));
+            walk.at = realRoot;
             for (const fs::path& part : rel) {
-                at /= part;
-                int fd = ::openat(dir.get(), part.c_str(), kDirFlags);
+                walk.at /= part;
+                int fd = openFolderAt(walk.last(), part.c_str());
                 if (fd < 0 && errno == ENOENT && create) {
-                    if (::mkdirat(dir.get(), part.c_str(), 0777) == 0) {
-                        if (created) created->push_back(at);
+                    if (::mkdirat(walk.last(), part.c_str(), 0777) == 0) {
+                        if (created) created->push_back(walk.at);
                     } else if (errno != EEXIST) {
-                        error = "can't create the folder " + shown(at) + ": " + std::strerror(errno);
+                        error = "can't create the folder " + shown(walk.at) + ": " + std::strerror(errno);
                         return false;
                     }
-                    fd = ::openat(dir.get(), part.c_str(), kDirFlags);
+                    fd = openFolderAt(walk.last(), part.c_str());
                 }
                 if (fd < 0) {
                     const int code = errno;
-                    struct stat st;
-                    const bool stated = ::fstatat(dir.get(), part.c_str(), &st, AT_SYMLINK_NOFOLLOW) == 0;
-                    if (stated && S_ISLNK(st.st_mode)) {
-                        error = linkRefusal(at, realRoot);
-                    } else if (stated && !S_ISDIR(st.st_mode)) {
-                        error = shown(at) + " is a file, not a folder: a path on the way to the file must be folders.";
+                    const Kind kind = childKind(walk.last(), part.c_str());
+                    if (kind == Kind::Link) {
+                        error = linkRefusal(walk.at, realRoot);
+                    } else if (kind == Kind::File) {
+                        error = notAFolder(walk.at);
                     } else {
                         if (missing && code == ENOENT) *missing = true;
-                        error = "can't open the folder " + shown(at) + ": " + std::strerror(code);
+                        error = "can't open the folder " + shown(walk.at) + ": " + std::strerror(code);
                     }
                     errno = code;
                     return false;
                 }
-                dir = Fd(fd);
+                walk.fds.emplace_back(fd);
             }
-            out = std::move(dir);
+            return true;
+        }
+
+        // A rename that must not replace what is at the destination
+        int renameNoReplace(int fromDir, const char* from, int toDir, const char* to) {
+#if defined(__linux__) && defined(SYS_renameat2)
+            const long r = ::syscall(SYS_renameat2, fromDir, from, toDir, to, 1u /* RENAME_NOREPLACE */);
+            if (r == 0) return 0;
+            if (errno != ENOSYS && errno != EINVAL) return -1;
+#elif defined(__APPLE__) && defined(RENAME_EXCL)
+            if (::renameatx_np(fromDir, from, toDir, to, RENAME_EXCL) == 0) return 0;
+            if (errno != ENOTSUP && errno != EINVAL) return -1;
+#endif
+            // no atomic no-replace rename here: checked, then renamed
+            struct stat st;
+            if (::fstatat(toDir, to, &st, AT_SYMLINK_NOFOLLOW) == 0) {
+                errno = EEXIST;
+                return -1;
+            }
+            return ::renameat(fromDir, from, toDir, to);
+        }
+
+        // The entry `name` in `dirfd` removed (a link as a link); real folders with everything in
+        // them when `tree`
+        bool removeChild(int dirfd, const char* name, const fs::path& shownPath, bool tree, std::string& error, int depth = 0) {
+            const Kind kind = childKind(dirfd, name);
+            if (kind == Kind::Missing) return true;
+            if (kind == Kind::Dir) {
+                if (!tree) {
+                    error = shown(shownPath) + " is a folder, not a file: it was left alone.";
+                    return false;
+                }
+                if (depth > 256) {
+                    error = shown(shownPath) + " is too deep to remove.";
+                    return false;
+                }
+                const int fd = ::openat(dirfd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+                if (fd < 0) {
+                    if (errno == ENOENT) return true;
+                    error = "can't open " + shown(shownPath) + " to remove it: " + std::strerror(errno);
+                    return false;
+                }
+                // fdopendir takes the descriptor; the names first, then each removed relative to it
+                DIR* listing = ::fdopendir(fd);
+                if (!listing) {
+                    ::close(fd);
+                    error = "can't list " + shown(shownPath) + ": " + std::strerror(errno);
+                    return false;
+                }
+                std::vector<std::string> names;
+                while (const dirent* entry = ::readdir(listing)) {
+                    const std::string child = entry->d_name;
+                    if (child != "." && child != "..") names.push_back(child);
+                }
+                bool ok = true;
+                for (const std::string& child : names) {
+                    if (!removeChild(::dirfd(listing), child.c_str(), shownPath / child, true, error, depth + 1)) {
+                        ok = false;
+                        break;
+                    }
+                }
+                ::closedir(listing);
+                if (!ok) return false;
+                if (::unlinkat(dirfd, name, AT_REMOVEDIR) != 0 && errno != ENOENT) {
+                    error = "can't remove the folder " + shown(shownPath) + ": " + std::strerror(errno);
+                    return false;
+                }
+                return true;
+            }
+            if (::unlinkat(dirfd, name, 0) != 0 && errno != ENOENT) {
+                error = "can't remove " + shown(shownPath) + ": " + std::strerror(errno);
+                return false;
+            }
             return true;
         }
 
@@ -314,6 +701,11 @@ namespace jasperengine::editor::safewrite {
 
         fs::path absoluteIn(const fs::path& root, const fs::path& target) {
             return target.is_absolute() ? normalDir(target) : normalDir(absoluteNormal(root) / target);
+        }
+
+        // resolve, refuse an escape, then the rel below the resolved root
+        bool prepare(const fs::path& root, const fs::path& target, fs::path& realRoot, fs::path& rel, std::string& error) {
+            return realRootOf(root, realRoot, error) && relativeBelow(root, realRoot, target, rel, error);
         }
 
     }
@@ -388,6 +780,16 @@ namespace jasperengine::editor::safewrite {
         return parent / absolute.filename();
     }
 
+    fs::path existingFolderOf(const fs::path& path) {
+        fs::path dir = absoluteNormal(path);
+        std::error_code ec;
+        while (!dir.empty() && !fs::is_directory(dir, ec)) {
+            if (!dir.has_relative_path()) return fs::path();
+            dir = dir.parent_path();
+        }
+        return dir.empty() ? dir : resolvedPath(dir);
+    }
+
     fs::path writeLocation(const fs::path& path) {
         const fs::path entry = entryLocation(path);
         if (entry.empty()) return entry;
@@ -405,37 +807,34 @@ namespace jasperengine::editor::safewrite {
     bool writeFileBeneath(const fs::path& root, const fs::path& target, const std::string& bytes, std::string& error,
                           std::vector<fs::path>* createdDirs) {
         fs::path realRoot, rel;
-        if (!realRootOf(root, realRoot, error) || !relativeBelow(root, realRoot, target, rel, error)) return false;
+        if (!prepare(root, target, realRoot, rel, error)) return false;
         const fs::path name = rel.filename();
         const fs::path full = realRoot / rel;
         std::vector<fs::path> made;
-#ifdef _WIN32
         bool ok = false;
+#ifdef _WIN32
         {
-            Held held;
-            fs::path dir;
-            if (openDir(realRoot, rel.parent_path(), true, held, dir, error, &made)) {
-                const fs::path finalPath = dir / name;
-                bool missing = false;
-                const DWORD existing = entryAttributes(finalPath, missing);
-                if (existing != INVALID_FILE_ATTRIBUTES && (existing & FILE_ATTRIBUTE_DIRECTORY) && !(existing & FILE_ATTRIBUTE_REPARSE_POINT)) {
+            Walk walk;
+            if (walkTo(realRoot, rel.parent_path(), true, walk, error, &made)) {
+                const std::wstring finalName = name.wstring();
+                DWORD code = 0;
+                bool isReadOnly = false;
+                const Kind existing = childKind(walk.last(), finalName, code, &isReadOnly);
+                if (existing == Kind::Dir) {
                     error = shown(full) + " is a folder: name a file.";
-                } else if (existing != INVALID_FILE_ATTRIBUTES && !(existing & FILE_ATTRIBUTE_REPARSE_POINT) && (existing & FILE_ATTRIBUTE_READONLY)) {
+                } else if (existing == Kind::LinkToDir) {
+                    error = shown(full) + " is a link to a folder (or a junction): a file can't replace it. Remove the link, then try again.";
+                } else if (existing == Kind::File && isReadOnly) {
                     error = shown(full) + " is read-only: clear its read-only attribute, then try again.";
                 } else {
-                    fs::path temp;
                     HANDLE file = INVALID_HANDLE_VALUE;
-                    DWORD code = 0;
+                    std::wstring tempName;
                     for (int attempt = 0; attempt < 16 && file == INVALID_HANDLE_VALUE; attempt++) {
-                        temp = dir / tempNameFor(name);
-                        // CREATE_NEW + FILE_FLAG_OPEN_REPARSE_POINT: an entry already at the name
-                        // (a planted link) fails the create instead of being followed
-                        file = CreateFileW(temp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
-                                           FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
-                        if (file == INVALID_HANDLE_VALUE) {
-                            code = GetLastError();
-                            if (code != ERROR_FILE_EXISTS && code != ERROR_ALREADY_EXISTS) break;
-                        }
+                        tempName = tempNameFor(name).wstring();
+                        // created relative to the held folder: an entry already at the name (a
+                        // planted link) fails the create instead of being followed
+                        code = ntOpen(walk.last(), tempName, GENERIC_WRITE | DELETE, 0, kNtCreate, kNtNonDirectoryFile, file);
+                        if (code && code != ERROR_FILE_EXISTS && code != ERROR_ALREADY_EXISTS) break;
                     }
                     if (file == INVALID_HANDLE_VALUE) {
                         error = "can't write " + shown(full) + ": " + systemMessage(code);
@@ -449,94 +848,109 @@ namespace jasperengine::editor::safewrite {
                             if (!wrote) code = GetLastError();
                             done += written;
                         }
-                        if (!CloseHandle(file) && wrote) {
-                            wrote = false;
-                            code = GetLastError();
+                        if (wrote) {
+                            if (api().setInfo) {
+                                // renamed by its handle into the held folder: nothing re-parsed by name
+                                wrote = renameByHandle(file, walk.last(), finalName, true, code);
+                            } else if (finalPathBelow(file, realRoot)) {
+                                // no handle renames (very old Windows): checked, then by path
+                                const fs::path tempPath = walk.at / tempName;
+                                CloseHandle(file);
+                                file = INVALID_HANDLE_VALUE;
+                                wrote = MoveFileExW(tempPath.c_str(), (walk.at / finalName).c_str(), MOVEFILE_REPLACE_EXISTING) != 0;
+                                if (!wrote) {
+                                    code = GetLastError();
+                                    DeleteFileW(tempPath.c_str());
+                                }
+                            } else {
+                                wrote = false;
+                                code = ERROR_ACCESS_DENIED;
+                            }
                         }
-                        if (wrote && moveRetrying(temp, finalPath, MOVEFILE_REPLACE_EXISTING, code)) {
-                            ok = true;
-                        } else {
-                            error = "can't write " + shown(full) + ": " + systemMessage(code);
-                            DeleteFileW(temp.c_str());
+                        if (!wrote && file != INVALID_HANDLE_VALUE) {
+                            DWORD ignored = 0;
+                            deleteByHandle(file, ignored);
                         }
+                        if (file != INVALID_HANDLE_VALUE) CloseHandle(file);
+                        if (wrote) ok = true;
+                        else error = "can't write " + shown(full) + ": " + systemMessage(code);
                     }
                 }
             }
         }
 #else
-        bool ok = false;
-        Fd dir;
-        if (openDir(realRoot, rel.parent_path(), true, dir, error, &made)) {
-            struct stat st;
-            bool existingFile = false;
-            bool refused = false;
-            mode_t keep = 0;
-            if (::fstatat(dir.get(), name.c_str(), &st, AT_SYMLINK_NOFOLLOW) == 0) {
-                if (S_ISDIR(st.st_mode)) {
+        {
+            Walk walk;
+            if (walkTo(realRoot, rel.parent_path(), true, walk, error, &made)) {
+                struct stat st;
+                bool existingFile = false;
+                bool refused = false;
+                mode_t keep = 0;
+                const Kind existing = childKind(walk.last(), name.c_str(), &st);
+                if (existing == Kind::Dir) {
                     error = shown(full) + " is a folder: name a file.";
                     errno = EISDIR;
                     refused = true;
-                } else if (S_ISREG(st.st_mode)) {
+                } else if (existing == Kind::File && S_ISREG(st.st_mode)) {
                     existingFile = true;
                     keep = st.st_mode & 07777;
                     // the folder's permissions would let the rename replace a file the user may not write
-                    if (::faccessat(dir.get(), name.c_str(), W_OK, 0) != 0) {
+                    if (::faccessat(walk.last(), name.c_str(), W_OK, 0) != 0) {
                         const int code = errno;
                         error = shown(full) + " is read-only (" + std::strerror(code) + "): make it writable, then try again.";
                         errno = code;
                         refused = true;
                     }
                 }
-            }
-            if (!refused) {
-                fs::path temp;
-                int fd = -1;
-                int code = 0;
-                for (int attempt = 0; attempt < 16 && fd < 0; attempt++) {
-                    temp = tempNameFor(name);
-                    fd = ::openat(dir.get(), temp.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0666);
-                    if (fd < 0) {
-                        code = errno;
-                        if (code != EEXIST) break;
-                    }
-                }
-                if (fd < 0) {
-                    error = "can't write " + shown(full) + ": " + std::strerror(code);
-                    errno = code;
-                } else {
-                    bool wrote = true;
-                    size_t done = 0;
-                    while (done < bytes.size()) {
-                        const ssize_t n = ::write(fd, bytes.data() + done, bytes.size() - done);
-                        if (n < 0) {
-                            if (errno == EINTR) continue;
+                if (!refused) {
+                    fs::path temp;
+                    int fd = -1;
+                    int code = 0;
+                    for (int attempt = 0; attempt < 16 && fd < 0; attempt++) {
+                        temp = tempNameFor(name);
+                        fd = ::openat(walk.last(), temp.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0666);
+                        if (fd < 0) {
                             code = errno;
-                            wrote = false;
-                            break;
+                            if (code != EEXIST) break;
                         }
-                        done += static_cast<size_t>(n);
                     }
-                    if (wrote && existingFile) (void)::fchmod(fd, keep);
-                    if (::close(fd) != 0 && wrote) {
-                        code = errno;
-                        wrote = false;
-                    }
-                    // renameat on the folder's descriptor: a link at the name is replaced, never followed
-                    if (wrote && ::renameat(dir.get(), temp.c_str(), dir.get(), name.c_str()) != 0) {
-                        code = errno;
-                        wrote = false;
-                    }
-                    if (wrote) {
-                        ok = true;
-                    } else {
-                        ::unlinkat(dir.get(), temp.c_str(), 0);
+                    if (fd < 0) {
                         error = "can't write " + shown(full) + ": " + std::strerror(code);
                         errno = code;
+                    } else {
+                        bool wrote = true;
+                        size_t done = 0;
+                        while (done < bytes.size()) {
+                            const ssize_t n = ::write(fd, bytes.data() + done, bytes.size() - done);
+                            if (n < 0) {
+                                if (errno == EINTR) continue;
+                                code = errno;
+                                wrote = false;
+                                break;
+                            }
+                            done += static_cast<size_t>(n);
+                        }
+                        if (wrote && existingFile) (void)::fchmod(fd, keep);
+                        if (::close(fd) != 0 && wrote) {
+                            code = errno;
+                            wrote = false;
+                        }
+                        // renameat on the folder's descriptor: a link at the name is replaced, never followed
+                        if (wrote && ::renameat(walk.last(), temp.c_str(), walk.last(), name.c_str()) != 0) {
+                            code = errno;
+                            wrote = false;
+                        }
+                        if (wrote) {
+                            ok = true;
+                        } else {
+                            ::unlinkat(walk.last(), temp.c_str(), 0);
+                            error = "can't write " + shown(full) + ": " + std::strerror(code);
+                            errno = code;
+                        }
                     }
                 }
             }
         }
-        dir.reset();
 #endif
         if (!ok) {
             const int code = errno;
@@ -548,81 +962,54 @@ namespace jasperengine::editor::safewrite {
         return true;
     }
 
-    bool removeFileBeneath(const fs::path& root, const fs::path& target, std::string& error) {
-        fs::path realRoot, rel;
-        if (!realRootOf(root, realRoot, error) || !relativeBelow(root, realRoot, target, rel, error)) return false;
-        const fs::path full = realRoot / rel;
-        bool missing = false;
+    namespace {
+        // removeFileBeneath / removeTreeBeneath
+        bool removeBeneath(const fs::path& root, const fs::path& target, bool tree, std::string& error) {
+            fs::path realRoot, rel;
+            if (!prepare(root, target, realRoot, rel, error)) return false;
+            bool missing = false;
+            Walk walk;
+            if (!walkTo(realRoot, rel.parent_path(), false, walk, error, nullptr, &missing)) return missing;
 #ifdef _WIN32
-        Held held;
-        fs::path dir;
-        if (!openDir(realRoot, rel.parent_path(), false, held, dir, error, nullptr, &missing)) return missing;
-        const fs::path entry = dir / rel.filename();
-        const DWORD attributes = entryAttributes(entry, missing);
-        if (attributes == INVALID_FILE_ATTRIBUTES) {
-            if (missing) return true;
-            error = "can't remove " + shown(full) + ": " + systemMessage(GetLastError());
-            return false;
-        }
-        const bool reparse = (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
-        if ((attributes & FILE_ATTRIBUTE_DIRECTORY) && !reparse) {
-            error = shown(full) + " is a folder, not a file: it was left alone.";
-            return false;
-        }
-        // a link to a folder (or a junction) goes with RemoveDirectoryW: the link, not its target
-        const BOOL removed = (attributes & FILE_ATTRIBUTE_DIRECTORY) ? RemoveDirectoryW(entry.c_str()) : DeleteFileW(entry.c_str());
-        if (!removed && !isMissing(GetLastError())) {
-            error = "can't remove " + shown(full) + ": " + systemMessage(GetLastError());
-            return false;
-        }
-        return true;
+            return removeChild(walk.last(), rel.filename().wstring(), realRoot / rel, tree, error);
 #else
-        Fd dir;
-        if (!openDir(realRoot, rel.parent_path(), false, dir, error, nullptr, &missing)) return missing;
-        struct stat st;
-        if (::fstatat(dir.get(), rel.filename().c_str(), &st, AT_SYMLINK_NOFOLLOW) != 0) {
-            if (errno == ENOENT) return true;
-            error = "can't remove " + shown(full) + ": " + std::strerror(errno);
-            return false;
-        }
-        if (S_ISDIR(st.st_mode)) {
-            error = shown(full) + " is a folder, not a file: it was left alone.";
-            return false;
-        }
-        if (::unlinkat(dir.get(), rel.filename().c_str(), 0) != 0 && errno != ENOENT) {
-            error = "can't remove " + shown(full) + ": " + std::strerror(errno);
-            return false;
-        }
-        return true;
+            return removeChild(walk.last(), rel.filename().c_str(), realRoot / rel, tree, error);
 #endif
+        }
+    }
+
+    bool removeFileBeneath(const fs::path& root, const fs::path& target, std::string& error) {
+        return removeBeneath(root, target, false, error);
+    }
+
+    bool removeTreeBeneath(const fs::path& root, const fs::path& target, std::string& error) {
+        return removeBeneath(root, target, true, error);
     }
 
     bool removeEmptyDirBeneath(const fs::path& root, const fs::path& target, std::string& error) {
         fs::path realRoot, rel;
-        if (!realRootOf(root, realRoot, error) || !relativeBelow(root, realRoot, target, rel, error)) return false;
+        if (!prepare(root, target, realRoot, rel, error)) return false;
         bool missing = false;
+        Walk walk;
+        if (!walkTo(realRoot, rel.parent_path(), false, walk, error, nullptr, &missing)) return missing;
 #ifdef _WIN32
-        Held held;
-        fs::path dir;
-        if (!openDir(realRoot, rel.parent_path(), false, held, dir, error, nullptr, &missing)) return missing;
-        const fs::path entry = dir / rel.filename();
-        const DWORD attributes = entryAttributes(entry, missing);
-        // gone, a link now, or no folder: nothing of ours to remove
-        if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_REPARSE_POINT) || !(attributes & FILE_ATTRIBUTE_DIRECTORY)) return true;
-        if (!RemoveDirectoryW(entry.c_str())) {
-            const DWORD code = GetLastError();
+        HANDLE h = INVALID_HANDLE_VALUE;
+        DWORD code = ntOpen(walk.last(), rel.filename().wstring(), DELETE | FILE_READ_ATTRIBUTES,
+                            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, kNtOpen, 0, h);
+        if (code) return true;   // gone, or nothing of ours to remove
+        HandleCloser closer(h);
+        // a link now, or no folder: left alone
+        if (kindOf(h) != Kind::Dir) return true;
+        if (!deleteByHandle(h, code)) {
             if (code == ERROR_DIR_NOT_EMPTY || isMissing(code)) return true;
             error = "can't remove the folder " + shown(realRoot / rel) + ": " + systemMessage(code);
             return false;
         }
         return true;
 #else
-        Fd dir;
-        if (!openDir(realRoot, rel.parent_path(), false, dir, error, nullptr, &missing)) return missing;
-        struct stat st;
         // gone, a link now, or no folder: nothing of ours to remove
-        if (::fstatat(dir.get(), rel.filename().c_str(), &st, AT_SYMLINK_NOFOLLOW) != 0 || !S_ISDIR(st.st_mode)) return true;
-        if (::unlinkat(dir.get(), rel.filename().c_str(), AT_REMOVEDIR) != 0) {
+        if (childKind(walk.last(), rel.filename().c_str()) != Kind::Dir) return true;
+        if (::unlinkat(walk.last(), rel.filename().c_str(), AT_REMOVEDIR) != 0) {
             if (errno == ENOTEMPTY || errno == EEXIST || errno == ENOENT) return true;
             error = "can't remove the folder " + shown(realRoot / rel) + ": " + std::strerror(errno);
             return false;
@@ -633,22 +1020,23 @@ namespace jasperengine::editor::safewrite {
 
     bool createDirBeneath(const fs::path& root, const fs::path& target, std::string& error) {
         fs::path realRoot, rel;
-        if (!realRootOf(root, realRoot, error) || !relativeBelow(root, realRoot, target, rel, error)) return false;
+        if (!prepare(root, target, realRoot, rel, error)) return false;
         const fs::path full = realRoot / rel;
+        Walk walk;
+        if (!walkTo(realRoot, rel.parent_path(), false, walk, error, nullptr)) return false;
 #ifdef _WIN32
-        Held held;
-        fs::path dir;
-        if (!openDir(realRoot, rel.parent_path(), false, held, dir, error, nullptr)) return false;
-        if (!CreateDirectoryW((dir / rel.filename()).c_str(), nullptr)) {
-            const DWORD code = GetLastError();
-            error = code == ERROR_ALREADY_EXISTS ? shown(full) + " already exists." : "can't create the folder " + shown(full) + ": " + systemMessage(code);
+        HANDLE h = INVALID_HANDLE_VALUE;
+        const DWORD code = ntOpen(walk.last(), rel.filename().wstring(), FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES,
+                                  FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, kNtCreate, kNtDirectoryFile, h);
+        if (code) {
+            error = code == ERROR_FILE_EXISTS || code == ERROR_ALREADY_EXISTS ? shown(full) + " already exists."
+                                                                              : "can't create the folder " + shown(full) + ": " + systemMessage(code);
             return false;
         }
+        CloseHandle(h);
         return true;
 #else
-        Fd dir;
-        if (!openDir(realRoot, rel.parent_path(), false, dir, error, nullptr)) return false;
-        if (::mkdirat(dir.get(), rel.filename().c_str(), 0777) != 0) {
+        if (::mkdirat(walk.last(), rel.filename().c_str(), 0777) != 0) {
             error = errno == EEXIST ? shown(full) + " already exists." : "can't create the folder " + shown(full) + ": " + std::strerror(errno);
             return false;
         }
@@ -656,45 +1044,146 @@ namespace jasperengine::editor::safewrite {
 #endif
     }
 
-    bool renameBeneath(const fs::path& root, const fs::path& from, const fs::path& to, std::string& error) {
+    bool createDirectoriesBeneath(const fs::path& root, const fs::path& target, std::string& error, std::vector<fs::path>* createdDirs) {
+        fs::path realRoot, rel;
+        if (!realRootOf(root, realRoot, error)) return false;
+        // the root itself: there already
+        if (normalDir(absoluteIn(root, target)) == normalDir(absoluteNormal(root)) || normalDir(absoluteIn(root, target)) == normalDir(realRoot)) {
+            return true;
+        }
+        if (!relativeBelow(root, realRoot, target, rel, error)) return false;
+        Walk walk;
+        std::vector<fs::path> made;
+        if (!walkTo(realRoot, rel, true, walk, error, &made)) {
+            removeMade(realRoot, made);
+            return false;
+        }
+        if (createdDirs) createdDirs->insert(createdDirs->end(), made.begin(), made.end());
+        return true;
+    }
+
+    bool renameBeneath(const fs::path& root, const fs::path& from, const fs::path& to, std::string& error, bool replace) {
         fs::path realRoot, relFrom, relTo;
         if (!realRootOf(root, realRoot, error) || !relativeBelow(root, realRoot, from, relFrom, error) ||
             !relativeBelow(root, realRoot, to, relTo, error)) {
             return false;
         }
         const fs::path fullFrom = realRoot / relFrom, fullTo = realRoot / relTo;
+        Walk fromWalk, toWalk;
 #ifdef _WIN32
-        Held heldFrom, heldTo;
-        fs::path dirFrom, dirTo;
-        if (!openDir(realRoot, relFrom.parent_path(), false, heldFrom, dirFrom, error, nullptr) ||
-            !openDir(realRoot, relTo.parent_path(), false, heldTo, dirTo, error, nullptr)) {
+        const bool walked = walkTo(realRoot, relFrom.parent_path(), false, fromWalk, error, nullptr, nullptr, true) &&
+                            walkTo(realRoot, relTo.parent_path(), false, toWalk, error, nullptr, nullptr, true);
+#else
+        const bool walked = walkTo(realRoot, relFrom.parent_path(), false, fromWalk, error, nullptr) &&
+                            walkTo(realRoot, relTo.parent_path(), false, toWalk, error, nullptr);
+#endif
+        if (!walked) return false;
+        const std::string exists = shown(fullTo) + " already exists: delete it first or pick another name.";
+#ifdef _WIN32
+        DWORD code = 0;
+        const Kind there = childKind(toWalk.last(), relTo.filename().wstring(), code);
+        if (there != Kind::Missing && (!replace || there == Kind::Dir || there == Kind::LinkToDir)) {
+            error = exists;
             return false;
         }
-        DWORD code = 0;
-        // no MOVEFILE_REPLACE_EXISTING: an entry at `to` fails the move
-        if (!moveRetrying(dirFrom / relFrom.filename(), dirTo / relTo.filename(), 0, code)) {
-            error = code == ERROR_ALREADY_EXISTS || code == ERROR_FILE_EXISTS
-                        ? shown(fullTo) + " already exists: delete it first or pick another name."
-                        : "can't move " + shown(fullFrom) + " to " + shown(fullTo) + ": " + systemMessage(code);
+        HANDLE h = INVALID_HANDLE_VALUE;
+        code = ntOpen(fromWalk.last(), relFrom.filename().wstring(), DELETE | FILE_READ_ATTRIBUTES,
+                      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, kNtOpen, 0, h);
+        if (code) {
+            error = "can't move " + shown(fullFrom) + ": " + systemMessage(code);
+            return false;
+        }
+        HandleCloser closer(h);
+        if (!renameByHandle(h, toWalk.last(), relTo.filename().wstring(), replace, code)) {
+            error = code == ERROR_ALREADY_EXISTS || code == ERROR_FILE_EXISTS ? exists
+                                                                              : "can't move " + shown(fullFrom) + " to " + shown(fullTo) + ": " + systemMessage(code);
             return false;
         }
         return true;
 #else
-        Fd dirFrom, dirTo;
-        if (!openDir(realRoot, relFrom.parent_path(), false, dirFrom, error, nullptr) ||
-            !openDir(realRoot, relTo.parent_path(), false, dirTo, error, nullptr)) {
-            return false;
+        const fs::path fromLeaf = relFrom.filename(), toLeaf = relTo.filename();
+        const char* fromName = fromLeaf.c_str();
+        const char* toName = toLeaf.c_str();
+        if (replace) {
+            // fs::rename semantics, but never onto a folder
+            if (childKind(toWalk.last(), toName) == Kind::Dir) {
+                error = exists;
+                return false;
+            }
+            if (::renameat(fromWalk.last(), fromName, toWalk.last(), toName) != 0) {
+                error = "can't move " + shown(fullFrom) + " to " + shown(fullTo) + ": " + std::strerror(errno);
+                return false;
+            }
+            return true;
         }
-        struct stat st;
-        if (::fstatat(dirTo.get(), relTo.filename().c_str(), &st, AT_SYMLINK_NOFOLLOW) == 0) {
-            error = shown(fullTo) + " already exists: delete it first or pick another name.";
-            return false;
-        }
-        if (::renameat(dirFrom.get(), relFrom.filename().c_str(), dirTo.get(), relTo.filename().c_str()) != 0) {
-            error = "can't move " + shown(fullFrom) + " to " + shown(fullTo) + ": " + std::strerror(errno);
+        if (renameNoReplace(fromWalk.last(), fromName, toWalk.last(), toName) != 0) {
+            error = errno == EEXIST ? exists : "can't move " + shown(fullFrom) + " to " + shown(fullTo) + ": " + std::strerror(errno);
             return false;
         }
         return true;
+#endif
+    }
+
+    std::FILE* openFileBeneath(const fs::path& root, const fs::path& target, bool append, std::string& error) {
+        fs::path realRoot, rel;
+        if (!prepare(root, target, realRoot, rel, error)) return nullptr;
+        const fs::path full = realRoot / rel;
+        std::vector<fs::path> made;
+        Walk walk;
+        if (!walkTo(realRoot, rel.parent_path(), true, walk, error, &made)) {
+            removeMade(realRoot, made);
+            return nullptr;
+        }
+#ifdef _WIN32
+        DWORD code = 0;
+        const Kind existing = childKind(walk.last(), rel.filename().wstring(), code);
+        if (existing == Kind::Link || existing == Kind::LinkToDir || existing == Kind::Dir) {
+            error = shown(full) + (existing == Kind::Dir ? " is a folder: name a file." : " is a link: a file is not written through one. Remove it, then try again.");
+            return nullptr;
+        }
+        HANDLE h = INVALID_HANDLE_VALUE;
+        code = ntOpen(walk.last(), rel.filename().wstring(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                      append ? kNtOpenIf : kNtOverwriteIf, kNtNonDirectoryFile, h);
+        if (code) {
+            error = "can't open " + shown(full) + ": " + systemMessage(code);
+            return nullptr;
+        }
+        if (kindOf(h) != Kind::File) {
+            CloseHandle(h);
+            error = shown(full) + " is a link: a file is not written through one. Remove it, then try again.";
+            return nullptr;
+        }
+        const int fd = _open_osfhandle(reinterpret_cast<intptr_t>(h), _O_WRONLY | _O_BINARY | (append ? _O_APPEND : 0));
+        if (fd < 0) {
+            CloseHandle(h);
+            error = "can't open " + shown(full);
+            return nullptr;
+        }
+        std::FILE* file = _fdopen(fd, append ? "ab" : "wb");
+        if (!file) {
+            _close(fd);
+            error = "can't open " + shown(full);
+        }
+        return file;
+#else
+        const int fd = ::openat(walk.last(), rel.filename().c_str(), O_WRONLY | O_CREAT | O_NOFOLLOW | O_CLOEXEC | (append ? O_APPEND : O_TRUNC), 0666);
+        if (fd < 0) {
+            error = errno == ELOOP ? shown(full) + " is a link: a file is not written through one. Remove it, then try again."
+                                   : "can't open " + shown(full) + ": " + std::strerror(errno);
+            return nullptr;
+        }
+        struct stat st;
+        if (::fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) {
+            ::close(fd);
+            error = shown(full) + " is not a regular file.";
+            return nullptr;
+        }
+        std::FILE* file = ::fdopen(fd, append ? "ab" : "wb");
+        if (!file) {
+            ::close(fd);
+            error = "can't open " + shown(full) + ": " + std::strerror(errno);
+        }
+        return file;
 #endif
     }
 
@@ -738,14 +1227,80 @@ namespace jasperengine::editor::safewrite {
         return removeEmptyDirBeneath(resolvedPath(root), entryLocation(absoluteIn(root, dir)), error);
     }
 
+    bool removeTreeResolvedBeneath(const fs::path& root, const fs::path& target, std::string& error) {
+        if (refuseEscape(root, target, true, error)) return false;
+        return removeTreeBeneath(resolvedPath(root), entryLocation(absoluteIn(root, target)), error);
+    }
+
     bool createDirResolvedBeneath(const fs::path& root, const fs::path& dir, std::string& error) {
         if (refuseEscape(root, dir, true, error)) return false;
         return createDirBeneath(resolvedPath(root), entryLocation(absoluteIn(root, dir)), error);
     }
 
-    bool renameResolvedBeneath(const fs::path& root, const fs::path& from, const fs::path& to, std::string& error) {
+    bool createDirectoriesResolvedBeneath(const fs::path& root, const fs::path& dir, std::string& error, std::vector<fs::path>* createdDirs) {
+        if (refuseEscape(root, dir, false, error)) return false;
+        return createDirectoriesBeneath(resolvedPath(root), writeLocation(absoluteIn(root, dir)), error, createdDirs);
+    }
+
+    bool renameResolvedBeneath(const fs::path& root, const fs::path& from, const fs::path& to, std::string& error, bool replace) {
         if (refuseEscape(root, from, true, error) || refuseEscape(root, to, true, error)) return false;
-        return renameBeneath(resolvedPath(root), entryLocation(absoluteIn(root, from)), entryLocation(absoluteIn(root, to)), error);
+        return renameBeneath(resolvedPath(root), entryLocation(absoluteIn(root, from)), entryLocation(absoluteIn(root, to)), error, replace);
+    }
+
+    std::FILE* openFileResolvedBeneath(const fs::path& root, const fs::path& target, bool append, std::string& error) {
+        if (refuseEscape(root, target, true, error)) return nullptr;
+        return openFileBeneath(resolvedPath(root), entryLocation(absoluteIn(root, target)), append, error);
+    }
+
+    namespace {
+        bool readWhole(const fs::path& path, std::string& bytes) {
+            std::ifstream in(path, std::ios::binary);
+            if (!in) return false;
+            bytes.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+            return !in.bad();
+        }
+
+        bool copyInto(const fs::path& root, const fs::path& from, const fs::path& to, bool overwrite, std::string& error, int depth) {
+            std::error_code ec;
+            // the source is read wherever its links lead
+            if (fs::is_directory(from, ec)) {
+                if (depth > 256) {
+                    error = shown(from) + " is too deep to copy.";
+                    return false;
+                }
+                std::vector<fs::path> made;
+                if (!fs::is_directory(fs::symlink_status(to, ec)) && !createDirectoriesResolvedBeneath(root, to, error, &made)) return false;
+                for (const fs::directory_entry& entry : fs::directory_iterator(from, ec)) {
+                    if (!copyInto(root, entry.path(), to / entry.path().filename(), overwrite, error, depth + 1)) return false;
+                }
+                if (ec) {
+                    error = "can't list " + shown(from) + ": " + ec.message();
+                    return false;
+                }
+                return true;
+            }
+            if (!overwrite && fs::exists(fs::symlink_status(to, ec))) {
+                error = shown(to) + " already exists.";
+                return false;
+            }
+            std::string bytes;
+            if (!readWhole(from, bytes)) {
+                error = "can't read " + shown(from) + ".";
+                return false;
+            }
+            return writeFileResolvedBeneath(root, to, bytes, error);
+        }
+    }
+
+    bool copyResolvedBeneath(const fs::path& root, const fs::path& from, const fs::path& to, bool overwrite, std::string& error) {
+        std::error_code ec;
+        const bool existed = fs::exists(fs::symlink_status(to, ec));
+        if (copyInto(root, from, to, overwrite, error, 0)) return true;
+        if (!existed) {
+            std::string ignored;
+            removeTreeResolvedBeneath(root, to, ignored);
+        }
+        return false;
     }
 
     void renameOrThrow(const fs::path& root, const fs::path& from, const fs::path& to) {
@@ -770,6 +1325,136 @@ namespace jasperengine::editor::safewrite {
         if (!createDirResolvedBeneath(root, dir, error)) {
             throw fs::filesystem_error(error, dir, std::make_error_code(std::errc::operation_not_permitted));
         }
+    }
+
+    void removeTreeOrThrow(const fs::path& root, const fs::path& target) {
+        if (root.empty()) {
+            fs::remove_all(target);
+            return;
+        }
+        std::string error;
+        if (!removeTreeResolvedBeneath(root, target, error)) {
+            throw fs::filesystem_error(error, target, std::make_error_code(std::errc::operation_not_permitted));
+        }
+    }
+
+    // ------------------------------------------------------------------ the write scope
+
+    namespace {
+        thread_local std::vector<fs::path> scopes;
+        thread_local std::string scopedError;
+
+        std::mutex& sinkMutex() {
+            static std::mutex m;
+            return m;
+        }
+        std::function<void(const std::string&)>& sink() {
+            static std::function<void(const std::string&)> s;
+            return s;
+        }
+
+        int scopedResult(bool ok, const std::string& error, std::error_code& ec) {
+            if (ok) {
+                scopedError.clear();
+                ec.clear();
+                return 1;
+            }
+            scopedError = error;
+            ec = std::make_error_code(std::errc::operation_not_permitted);
+            warn(error);
+            return 0;
+        }
+
+        int scopedWrite(const fs::path& path, const std::string& content, std::error_code& ec) {
+            const fs::path root = scopeRootFor(path);
+            if (root.empty()) return -1;
+            std::string error;
+            return scopedResult(writeFileResolvedBeneath(root, path, content, error), error, ec);
+        }
+        int scopedCreateDirectories(const fs::path& path, std::error_code& ec) {
+            const fs::path root = scopeRootFor(path);
+            if (root.empty()) return -1;
+            std::string error;
+            return scopedResult(createDirectoriesResolvedBeneath(root, path, error), error, ec);
+        }
+        int scopedRemove(const fs::path& path, std::error_code& ec) {
+            const fs::path root = scopeRootFor(path);
+            if (root.empty()) return -1;
+            std::error_code status;
+            std::string error;
+            // fs::remove: a file, a link or an empty folder
+            if (fs::is_directory(fs::symlink_status(path, status))) {
+                if (!fs::is_empty(path, status)) {
+                    // as fs::remove: an error, nothing to warn about
+                    ec = std::make_error_code(std::errc::directory_not_empty);
+                    return 0;
+                }
+                return scopedResult(removeEmptyDirResolvedBeneath(root, path, error), error, ec);
+            }
+            return scopedResult(removeFileResolvedBeneath(root, path, error), error, ec);
+        }
+        int scopedRemoveAll(const fs::path& path, std::error_code& ec) {
+            const fs::path root = scopeRootFor(path);
+            if (root.empty()) return -1;
+            std::string error;
+            return scopedResult(removeTreeResolvedBeneath(root, path, error), error, ec);
+        }
+        int scopedRename(const fs::path& from, const fs::path& to, std::error_code& ec) {
+            const fs::path root = scopeRootFor(from);
+            if (root.empty() || scopeRootFor(to).empty()) return -1;
+            std::string error;
+            return scopedResult(renameResolvedBeneath(root, from, to, error, true), error, ec);
+        }
+        int scopedCopy(const fs::path& from, const fs::path& to, bool overwrite, std::error_code& ec) {
+            const fs::path root = scopeRootFor(to);
+            if (root.empty()) return -1;
+            std::string error;
+            return scopedResult(copyResolvedBeneath(root, from, to, overwrite, error), error, ec);
+        }
+
+        const FileUtils::ScopedOps kScopedOps{scopedWrite, scopedCreateDirectories, scopedRemove, scopedRemoveAll, scopedRename, scopedCopy};
+    }
+
+    Scope::Scope(fs::path root) {
+        FileUtils::scopedOps() = &kScopedOps;
+        scopes.push_back(std::move(root));
+    }
+
+    Scope::~Scope() {
+        scopes.pop_back();
+    }
+
+    fs::path Scope::current() {
+        return scopes.empty() ? fs::path() : scopes.back();
+    }
+
+    fs::path scopeRootFor(const fs::path& path) {
+        const fs::path root = Scope::current();
+        if (root.empty() || path.empty()) return fs::path();
+        const fs::path absolute = absoluteNormal(path);
+        if (isAtOrBelow(absolute, root)) return root;
+        const fs::path real = resolvedPath(root);
+        if (!real.empty() && isAtOrBelow(absolute, real)) return root;
+        return fs::path();
+    }
+
+    const std::string& lastScopedError() {
+        return scopedError;
+    }
+
+    void setWarningSink(std::function<void(const std::string&)> s) {
+        std::lock_guard<std::mutex> lock(sinkMutex());
+        sink() = std::move(s);
+    }
+
+    void warn(const std::string& message) {
+        std::function<void(const std::string&)> s;
+        {
+            std::lock_guard<std::mutex> lock(sinkMutex());
+            s = sink();
+        }
+        if (s) s(message);
+        else std::cerr << message << std::endl;
     }
 
 }

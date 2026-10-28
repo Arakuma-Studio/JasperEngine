@@ -8,7 +8,13 @@
 
 #include <gtest/gtest.h>
 
+#include "command/CommandHistory.h"
+#include "command/type/CopyFileCmd.h"
+#include "command/type/CreateDirCmd.h"
+#include "command/type/DeleteFileCmd.h"
+#include "command/type/RenameFileCmd.h"
 #include "command/type/WriteFilesCmd.h"
+#include "util/FileUtils.h"
 #include "util/SafeWrite.h"
 #include "SymlinkSupport.h"
 
@@ -236,4 +242,199 @@ TEST(SafeWrite, WriteFilesCmdBeneathARootUndoesAndRefusesLinks) {
     writeText(d.outside / "y.txt", "theirs");
     later.undo();
     EXPECT_EQ(readAll(d.outside / "y.txt"), "theirs");
+}
+
+// ---- round 2: trees, scopes, commands that record their write root
+
+namespace {
+
+    // a step whose redo fails (its execute changes nothing and says so)
+    class FailingRedoCmd : public Command {
+    public:
+        int executions = 0;
+        bool execute() override { return ++executions == 1; }
+        void undo() override {}
+        std::string failure() const override { return "it could not be done again"; }
+    };
+
+}
+
+TEST(SafeWrite, RemoveTreeNeverFollowsALink) {
+    SKIP_WITHOUT_SYMLINKS();
+    Dirs d("tree");
+    writeText(d.outside / "keep" / "theirs.txt", "theirs");
+    writeText(d.root / "tree" / "a" / "b" / "file.txt", "x");
+    fs::create_directory_symlink(d.outside / "keep", d.root / "tree" / "a" / "out");
+    fs::create_symlink(d.outside / "keep" / "theirs.txt", d.root / "tree" / "link.txt");
+    std::string error;
+    ASSERT_TRUE(sw::removeTreeBeneath(d.root, d.root / "tree", error)) << error;
+    EXPECT_FALSE(fs::exists(fs::symlink_status(d.root / "tree")));
+    EXPECT_EQ(readAll(d.outside / "keep" / "theirs.txt"), "theirs") << "the links inside were removed as links";
+    // a folder on the way swapped for a link before the removal: refused, nothing outside removed
+    writeText(d.outside / "victim" / "inner" / "data.txt", "data");
+    fs::create_directory_symlink(d.outside / "victim", d.root / "swapped");
+    EXPECT_FALSE(sw::removeTreeBeneath(d.root, d.root / "swapped" / "inner", error));
+    EXPECT_NE(error.find("is a symbolic link"), std::string::npos) << error;
+    EXPECT_EQ(readAll(d.outside / "victim" / "inner" / "data.txt"), "data");
+    EXPECT_FALSE(sw::removeTreeResolvedBeneath(d.root, d.root / "swapped" / "inner", error));
+    EXPECT_EQ(readAll(d.outside / "victim" / "inner" / "data.txt"), "data");
+}
+
+TEST(SafeWrite, CopyReadsThroughLinksAndWritesBeneath) {
+    SKIP_WITHOUT_SYMLINKS();
+    Dirs d("copy");
+    writeText(d.outside / "library" / "tex" / "a.png", "A");
+    fs::create_directory_symlink(d.outside / "library", d.root / "shared");
+    std::string error;
+    // out of a linked-in library: a read
+    ASSERT_TRUE(sw::copyResolvedBeneath(d.root, d.root / "shared" / "tex", d.root / "mine", false, error)) << error;
+    EXPECT_EQ(readAll(d.root / "mine" / "a.png"), "A");
+    // into a link out of the root: refused, nothing written there, nothing left behind
+    fs::create_directory_symlink(d.outside, d.root / "out");
+    EXPECT_FALSE(sw::copyResolvedBeneath(d.root, d.root / "mine", d.root / "out" / "copied", false, error));
+    EXPECT_FALSE(fs::exists(d.outside / "copied"));
+    // an existing file is not replaced without overwrite
+    EXPECT_FALSE(sw::copyResolvedBeneath(d.root, d.root / "mine" / "a.png", d.root / "mine" / "a.png", false, error));
+    ASSERT_TRUE(sw::copyResolvedBeneath(d.root, d.root / "shared" / "tex" / "a.png", d.root / "mine" / "b.png", true, error)) << error;
+}
+
+TEST(SafeWrite, OpenFileBeneathRefusesALinkAndAppends) {
+    SKIP_WITHOUT_SYMLINKS();
+    Dirs d("open");
+    std::string error;
+    std::FILE* file = sw::openFileResolvedBeneath(d.root, d.root / "logs" / "run.log", false, error);
+    ASSERT_TRUE(file) << error;
+    std::fputs("one\n", file);
+    std::fclose(file);
+    file = sw::openFileResolvedBeneath(d.root, d.root / "logs" / "run.log", true, error);
+    ASSERT_TRUE(file) << error;
+    std::fputs("two\n", file);
+    std::fclose(file);
+    EXPECT_EQ(readAll(d.root / "logs" / "run.log"), "one\ntwo\n");
+    writeText(d.outside / "theirs.log", "theirs");
+    fs::create_symlink(d.outside / "theirs.log", d.root / "logs" / "planted.log");
+    EXPECT_FALSE(sw::openFileBeneath(d.root, d.root / "logs" / "planted.log", true, error)) << "a link at the name";
+    EXPECT_EQ(readAll(d.outside / "theirs.log"), "theirs");
+}
+
+TEST(SafeWrite, AScopeRoutesFileUtilsWritesBeneathItsRoot) {
+    SKIP_WITHOUT_SYMLINKS();
+    Dirs d("scope");
+    fs::create_directory_symlink(d.outside, d.root / "out");
+    std::error_code ec;
+    {
+        sw::Scope scope(d.root);
+        EXPECT_EQ(sw::Scope::current(), d.root);
+        EXPECT_FALSE(FileUtils::writeFileReplacing(d.root / "out" / "x.txt", "x")) << "a link out of the root";
+        EXPECT_FALSE(fs::exists(d.outside / "x.txt"));
+        EXPECT_NE(sw::lastScopedError().find("resolves outside"), std::string::npos) << sw::lastScopedError();
+        EXPECT_TRUE(FileUtils::writeFileReplacing(d.root / "in" / "y.txt", "y")) << "its folders made beneath the root";
+        EXPECT_EQ(readAll(d.root / "in" / "y.txt"), "y");
+        EXPECT_FALSE(FileUtils::createDirectories(d.root / "out" / "made", ec));
+        EXPECT_FALSE(fs::exists(d.outside / "made"));
+        EXPECT_FALSE(FileUtils::renamePath(d.root / "in" / "y.txt", d.root / "out" / "y.txt", ec));
+        EXPECT_TRUE(fs::exists(d.root / "in" / "y.txt"));
+        // a path outside the root (the editor's settings, another project): as before
+        EXPECT_TRUE(FileUtils::writeFileReplacing(d.base / "elsewhere.txt", "e"));
+        {
+            sw::Scope suspended{fs::path()};
+            EXPECT_TRUE(sw::Scope::current().empty());
+        }
+        // a command made in the scope records it
+        WriteFilesCmd cmd({{d.root / "made.txt", "m"}}, nullptr);
+        EXPECT_EQ(cmd.writeRoot(), d.root);
+    }
+    EXPECT_TRUE(sw::Scope::current().empty());
+    WriteFilesCmd plain({{d.root / "made.txt", "m"}}, nullptr);
+    EXPECT_TRUE(plain.writeRoot().empty()) << "outside a scope: none";
+    // outside a scope the plain write follows the link, as it always did
+    EXPECT_TRUE(FileUtils::writeFileReplacing(d.root / "out" / "z.txt", "z"));
+    EXPECT_EQ(readAll(d.outside / "z.txt"), "z");
+}
+
+TEST(SafeWrite, ARefusedUndoOrRedoOfAFileCommandKeepsTheHistory) {
+    SKIP_WITHOUT_SYMLINKS();
+    Dirs d("history");
+    CommandHistory history;
+    std::string error;
+    // a folder made in a write scope, files put in it, then its parent swapped for a link to a
+    // folder of theirs with the same name: the undo is refused, nothing of theirs removed
+    fs::create_directories(d.root / "parent");
+    {
+        sw::Scope scope(d.root);
+        ASSERT_TRUE(history.addCommand(new CreateDirCmd("made", (d.root / "parent").string())));
+    }
+    writeText(d.root / "parent" / "made" / "mine.txt", "mine");
+    fs::remove_all(d.root / "parent");
+    writeText(d.outside / "made" / "theirs.txt", "theirs");
+    fs::create_directory_symlink(d.outside, d.root / "parent");
+    const size_t at = history.position();
+    EXPECT_FALSE(history.undo());
+    EXPECT_EQ(history.position(), at) << "the index does not move";
+    EXPECT_NE(history.lastRefusal().find("resolves outside"), std::string::npos) << history.lastRefusal();
+    EXPECT_NE(history.lastRefusal().find("Remove the link, then undo again."), std::string::npos) << history.lastRefusal();
+    EXPECT_EQ(readAll(d.outside / "made" / "theirs.txt"), "theirs");
+    int tries = 0;
+    while (history.position() > 0 && history.undo()) tries++;
+    EXPECT_EQ(tries, 0) << "a loop to a mark ends";
+    // the link gone, a real folder again: the undo goes through
+    fs::remove(d.root / "parent");
+    writeText(d.root / "parent" / "made" / "again.txt", "again");
+    ASSERT_TRUE(history.undo()) << history.lastRefusal();
+    EXPECT_FALSE(fs::exists(d.root / "parent" / "made"));
+    // a step the GUI made (no write root): an MCP undo checks it against the project (escapeFor)
+    writeText(d.root / "gui" / "file.txt", "f");
+    RenameFileCmd gui(nullptr, "file.txt", "renamed.txt", (d.root / "gui").string());
+    EXPECT_TRUE(gui.writeRoot().empty());
+    EXPECT_TRUE(gui.escapeFor(d.root, true).empty());
+    fs::remove_all(d.root / "gui");
+    fs::create_directory_symlink(d.outside, d.root / "gui");
+    EXPECT_NE(gui.escapeFor(d.root, true).find("resolves outside"), std::string::npos);
+    EXPECT_TRUE(gui.canUndo()) << "the GUI's own undo is unchanged";
+    // a redo whose execute fails is not taken
+    CommandHistory redoHistory;
+    ASSERT_TRUE(redoHistory.addCommand(new FailingRedoCmd()));
+    ASSERT_TRUE(redoHistory.undo());
+    EXPECT_FALSE(redoHistory.redo());
+    EXPECT_EQ(redoHistory.position(), 0u);
+    EXPECT_EQ(redoHistory.lastRefusal(), "it could not be done again");
+    EXPECT_TRUE(redoHistory.canRedo());
+}
+
+TEST(SafeWrite, CopyAndDeleteCommandsStayBeneathTheirRoot) {
+    SKIP_WITHOUT_SYMLINKS();
+    Dirs d("filecmds");
+    CommandHistory history;
+    writeText(d.root / "src" / "a.txt", "a");
+    fs::create_directories(d.root / "dst");
+    {
+        sw::Scope scope(d.root);
+        ASSERT_TRUE(history.addCommand(new CopyFileCmd(nullptr, std::vector<std::string>{(d.root / "src" / "a.txt").string()},
+                                                       (d.root / "dst").string(), true)));
+    }
+    EXPECT_EQ(readAll(d.root / "dst" / "a.txt"), "a");
+    // the destination folder swapped for a link to theirs: the copy's undo is refused
+    fs::remove_all(d.root / "dst");
+    writeText(d.outside / "a.txt", "theirs");
+    fs::create_directory_symlink(d.outside, d.root / "dst");
+    EXPECT_FALSE(history.undo());
+    EXPECT_EQ(readAll(d.outside / "a.txt"), "theirs");
+    fs::remove(d.root / "dst");
+    writeText(d.root / "dst" / "a.txt", "a");
+    ASSERT_TRUE(history.undo()) << history.lastRefusal();
+    EXPECT_FALSE(fs::exists(d.root / "dst" / "a.txt"));
+    // a delete into the trash and its undo, beneath the root
+    {
+        sw::Scope scope(d.root);
+        ASSERT_TRUE(history.addCommand(new DeleteFileCmd(nullptr, {d.root / "src" / "a.txt"}, d.root)));
+    }
+    EXPECT_FALSE(fs::exists(d.root / "src" / "a.txt"));
+    fs::remove_all(d.root / "src");
+    fs::create_directory_symlink(d.outside, d.root / "src");
+    EXPECT_FALSE(history.undo()) << "restoring into a link out of the root";
+    EXPECT_FALSE(fs::exists(d.outside / "a.txt.restored"));
+    fs::remove(d.root / "src");
+    fs::create_directories(d.root / "src");
+    ASSERT_TRUE(history.undo()) << history.lastRefusal();
+    EXPECT_EQ(readAll(d.root / "src" / "a.txt"), "a");
 }

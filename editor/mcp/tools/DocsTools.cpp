@@ -488,8 +488,10 @@ void registerDocsTools(McpRegistry& registry) {
             if (!project) return notFound("No project is open.");
             const fs::path file = project->getProjectPath() / "AGENTS.md";
             std::error_code ec;
-            // the editor writes it on play/build; a new project gets it on first read
-            if (!fs::exists(file, ec)) Generator::writeAgentsFile(project->getProjectPath(), project->getProjectInternalPath());
+            // the editor writes it on play/build; a new project gets it on first read (never when
+            // any entry is there: a dangling link would make it create the link's target; in the
+            // resource's write scope, beneath the project)
+            if (!fs::exists(fs::symlink_status(file, ec))) Generator::writeAgentsFile(project->getProjectPath(), project->getProjectInternalPath());
             if (!ProjectChecks::readFile(file, text)) return notFound("Can't read the project's AGENTS.md.");
             return textResource(uri, "text/markdown", text);
         };

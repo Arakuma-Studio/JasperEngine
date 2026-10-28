@@ -53,8 +53,16 @@ namespace jasperengine::editor{
         // and a link planted at a folder of the resolved location since is never followed (that
         // step fails, nothing is written through it). Empty (the default): plain writes
         // (FileUtils::writeFileReplacing), as for documents outside a project.
-        void writeBeneath(std::filesystem::path root) { beneathRoot = std::move(root); }
-        const std::filesystem::path& getBeneathRoot() const { return beneathRoot; }
+        // (The write root is Command::writeRoot: a WriteFilesCmd made in an MCP call's write scope
+        // writes beneath the project without this.) Its undo and redo are refused while a file or
+        // a folder it made resolves outside the root (Command::touchedPaths / canUndo / canRedo).
+        void writeBeneath(std::filesystem::path root) { setWriteRoot(std::move(root)); }
+        const std::filesystem::path& getBeneathRoot() const { return writeRoot(); }
+        // No write root: each file written (and put back) beneath its own folder once resolved (the
+        // nearest existing one): no containment, but no link planted below it is followed
+        void writeBeneathOwnFolders() { ownFolders = true; }
+        std::vector<Touched> touchedPaths(bool undo) const override;
+        std::string failure() const override { return lastFailure; }
         // The file execute() failed on (empty when it did not fail, or failed before writing)
         const std::filesystem::path& getFailedPath() const { return failedPath; }
 
@@ -70,8 +78,11 @@ namespace jasperengine::editor{
         std::string mergeKey;
         std::function<void(const std::vector<std::filesystem::path>&)> afterChange;
         std::shared_ptr<std::string> failureSink;
-        std::filesystem::path beneathRoot;
         std::filesystem::path failedPath;
+        std::string lastFailure;
+        bool ownFolders = false;
+        // the root a file's write, removal or restore stays beneath ("" = a plain write)
+        std::filesystem::path rootOf(const std::filesystem::path& path) const;
 
         std::vector<std::filesystem::path> paths() const;
         // items[i] back to what it was before execute (false when that failed; `why` the reason)

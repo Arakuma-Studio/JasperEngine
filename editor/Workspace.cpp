@@ -4,6 +4,8 @@
 #include "Workspace.h"
 
 #include "Out.h"
+#include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 #include "Stream.h"
 #include "render/SceneRender2D.h"
 #include "render/SceneRender3D.h"
@@ -254,7 +256,8 @@ bool Workspace::save(const Project* project) {
     const fs::path file = getWorkspaceFile(projectPath);
 
     std::error_code ec;
-    fs::create_directories(file.parent_path(), ec);
+    // (in a write scope, an MCP call: beneath the project)
+    FileUtils::createDirectories(file.parent_path(), ec);
     if (ec) {
         Out::error("Failed to create editor workspace directory: %s", ec.message().c_str());
         return false;
@@ -312,6 +315,17 @@ bool Workspace::save(const Project* project) {
         }
     }
     root["scenes"] = scenesNode;
+
+    // in a write scope (an MCP call): written beneath the project, no link on the way followed
+    if (const FileUtils::ScopedOps* ops = FileUtils::scopedOps()) {
+        const std::string text = "# Editor state for this checkout only. Not committed; deleting it\n"
+                                 "# costs nothing but the layout it holds.\n" + YAML::Dump(root) + "\n";
+        const int r = ops->write(file, text, ec);
+        if (r >= 0) {
+            if (r == 0) Out::error("Failed to write editor workspace: %s", safewrite::lastScopedError().c_str());
+            return r == 1;
+        }
+    }
 
     try {
         std::ofstream fout(file.string());

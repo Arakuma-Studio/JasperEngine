@@ -38,8 +38,9 @@ void editor::RenameFileCmd::moveThumbnail(const fs::path& oldThumbnail, const fs
         return;
     }
 
-    fs::create_directories(newThumbnail.parent_path(), ec);
-    fs::rename(oldThumbnail, newThumbnail, ec);
+    // (in a write scope, beneath its root: FileUtils' scoped helpers)
+    FileUtils::createDirectories(newThumbnail.parent_path(), ec);
+    FileUtils::renamePath(oldThumbnail, newThumbnail, ec);
 }
 
 bool editor::RenameFileCmd::renameFile(const fs::path& sourceFs, const fs::path& destFs){
@@ -50,7 +51,7 @@ bool editor::RenameFileCmd::renameFile(const fs::path& sourceFs, const fs::path&
         bool isDir = fs::is_directory(sourceFs);
         // Resolve the thumbnail path before the rename, while the source still exists.
         fs::path oldThumbnail = project ? project->getThumbnailPath(sourceFs) : fs::path();
-        safewrite::renameOrThrow(beneathRoot, sourceFs, destFs);
+        safewrite::renameOrThrow(rootFor(sourceFs), sourceFs, destFs);
         if (project) {
             moveThumbnail(oldThumbnail, destFs);
             std::string extension = sourceFs.extension().string();
@@ -87,6 +88,17 @@ bool editor::RenameFileCmd::renameFile(const fs::path& sourceFs, const fs::path&
     return true;
 }
 
+std::vector<editor::Command::Touched> editor::RenameFileCmd::touchedPaths(bool) const{
+    std::vector<Touched> out = {{directory / oldFilename, true}, {directory / newFilename, true}};
+    if (!pairOldName.empty()) {
+        out.push_back({directory / pairOldName, true});
+        out.push_back({directory / pairNewName, true});
+    }
+    // the renamed .vat's mesh field, written back
+    if (!meshFieldFile.empty()) out.push_back({meshFieldFile, false});
+    return out;
+}
+
 bool editor::RenameFileCmd::execute(){
     fs::path sourceFs = directory / oldFilename;
     fs::path destFs = directory / newFilename;
@@ -118,7 +130,7 @@ bool editor::RenameFileCmd::execute(){
     try {
         renamed = renameFile(sourceFs, destFs);
     } catch (const fs::filesystem_error& e) {
-        printf("Error: Renaming %s: %s\n", sourceFs.string().c_str(), e.what());
+        printf("Error: Renaming %s: %s\n", FileUtils::pathToGenericUtf8(sourceFs).c_str(), e.what());
         return false;
     }
     // the pair is renamed whole or not at all: the other file failing puts the first one back
@@ -188,7 +200,8 @@ void editor::RenameFileCmd::undo(){
             renameFile(directory / pairNewName, directory / pairOldName);
         }
     } catch (const fs::filesystem_error& e) {
-        printf("Error: Undo renaming %s: %s\n", sourceFs.string().c_str(), e.what());
+        printf("Error: Undo renaming %s: %s\n", FileUtils::pathToGenericUtf8(sourceFs).c_str(), e.what());
+        undoProblem += (undoProblem.empty() ? "" : "; ") + std::string(e.what());
     }
     if (project && !pairOldName.empty()) {
         const fs::path vatFile = Util::isVertexAnimationFile(destFs.string()) ? destFs : directory / pairOldName;

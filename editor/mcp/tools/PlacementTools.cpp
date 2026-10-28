@@ -773,6 +773,8 @@ using PlacementCapturePtr = std::shared_ptr<PlacementCapture>;
 // dropped); the job must still end and the preview poses still go back
 void watchCapture(const PlacementCapturePtr& capture) {
     getEditorHost().enqueueMainThreadTask([capture]() {
+        // a continuation writes beneath the project, as the tool's run did
+        McpWriteScope writeScope;
         if (capture->finished) return;
         const CallPtr& call = capture->state->call;
         if (call->completed() || call->cancelled()) {
@@ -1017,6 +1019,8 @@ void tick(const PlacementCallPtr& state) {
 void scheduleTick(const PlacementCallPtr& state) {
     state->ctx->app().requestRedraw();
     getEditorHost().enqueueMainThreadTask([state]() {
+        // a continuation writes beneath the project, as the tool's run did
+        McpWriteScope writeScope;
         // whatever goes wrong, the job ends (the main-thread loop would swallow an exception and
         // leave it running forever)
         try {

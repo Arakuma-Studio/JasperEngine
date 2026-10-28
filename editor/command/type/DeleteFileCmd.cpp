@@ -3,6 +3,7 @@
 
 #include "DeleteFileCmd.h"
 
+#include "util/FileUtils.h"
 #include "util/SafeWrite.h"
 
 #include "util/Util.h"
@@ -41,6 +42,19 @@ fs::path editor::DeleteFileCmd::generateUniqueTrashPath(const fs::path& trashDir
     return newPath;
 }
 
+std::vector<editor::Command::Touched> editor::DeleteFileCmd::touchedPaths(bool undo) const{
+    std::vector<Touched> out;
+    for (const DeleteFilesData& file : files){
+        if (undo){
+            if (file.trashFile.empty()) continue;
+            out.push_back({file.trashFile, true});
+        }
+        out.push_back({file.originalFile, true});
+    }
+    if (!undo) out.push_back({trash, true});
+    return out;
+}
+
 bool editor::DeleteFileCmd::execute(){
     // a closed scene whose file goes leaves the project (Project::cleanupSceneFilePath)
     refusal.clear();
@@ -56,10 +70,10 @@ bool editor::DeleteFileCmd::execute(){
 
     try {
         if (!fs::exists(trash)) {
-            safewrite::createDirOrThrow(beneathRoot, trash);
+            safewrite::createDirOrThrow(rootFor(trash), trash);
         }
     } catch (const fs::filesystem_error& e) {
-        printf("Error: Creating %s: %s\n", trash.string().c_str(), e.what());
+        printf("Error: Creating %s: %s\n", FileUtils::pathToGenericUtf8(trash).c_str(), e.what());
         return false;
     }
 
@@ -75,24 +89,22 @@ bool editor::DeleteFileCmd::execute(){
                 const fs::path relToTrash = fs::relative(file.originalFile, trash);
                 if (file.originalFile == trash ||
                     (!relToTrash.empty() && *relToTrash.begin() != "..")) {
-                    if (fs::is_directory(file.originalFile)) {
-                        fs::remove_all(file.originalFile);
-                    } else {
-                        fs::remove(file.originalFile);
-                    }
+                    // a permanent delete inside the trash: one removal beneath the root, never
+                    // following a link (fs::remove_all without one)
+                    safewrite::removeTreeOrThrow(rootFor(file.originalFile), file.originalFile);
                 } else {
                     // Normal deletion - move to trash with unique name
                     if (!fs::exists(trash)) {
-                        safewrite::createDirOrThrow(beneathRoot, trash);
+                        safewrite::createDirOrThrow(rootFor(trash), trash);
                     }
                     file.trashFile = generateUniqueTrashPath(trash, file.originalFile);
-                    safewrite::renameOrThrow(beneathRoot, file.originalFile, file.trashFile);
+                    safewrite::renameOrThrow(rootFor(file.originalFile), file.originalFile, file.trashFile);
                 }
 
                 deletedPaths.push_back(file.originalFile);
             }
         } catch (const fs::filesystem_error& e) {
-            printf("Error: Deleting %s: %s\n", file.originalFile.string().c_str(), e.what());
+            printf("Error: Deleting %s: %s\n", FileUtils::pathToGenericUtf8(file.originalFile).c_str(), e.what());
             return false;
         }
     }
@@ -122,7 +134,7 @@ void editor::DeleteFileCmd::undo(){
         try {
             // Only attempt to restore if the file was moved to trash (not permanently deleted)
             if (!file.trashFile.empty() && fs::exists(file.trashFile)) {
-                safewrite::renameOrThrow(beneathRoot, file.trashFile, file.originalFile);
+                safewrite::renameOrThrow(rootFor(file.trashFile), file.trashFile, file.originalFile);
                 restoredShaderSource |= fs::is_directory(file.originalFile) ||
                                         Util::isShaderFile(file.originalFile.string());
                 // Prefabs and clips come back with their GUIDs: their Missing Prefab instances
@@ -132,7 +144,8 @@ void editor::DeleteFileCmd::undo(){
                 }
             }
         } catch (const fs::filesystem_error& e) {
-            printf("Error: Restoring %s: %s\n", file.originalFile.string().c_str(), e.what());
+            printf("Error: Restoring %s: %s\n", FileUtils::pathToGenericUtf8(file.originalFile).c_str(), e.what());
+            undoProblem += (undoProblem.empty() ? "" : "; ") + std::string(e.what());
         }
     }
     if (project && restoredShaderSource)

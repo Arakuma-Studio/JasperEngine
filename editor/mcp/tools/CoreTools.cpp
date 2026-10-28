@@ -147,7 +147,7 @@ void runBatchStep(const std::shared_ptr<BatchState>& state) {
             // Completed later (a deferred call): continue on the main thread
             App& app = state->call->ctx().app();
             if (app.isMainThread()) runBatchStep(state);
-            else app.enqueueMainThreadTask([state]() { runBatchStep(state); });
+            else app.enqueueMainThreadTask([state]() { McpWriteScope writeScope; runBatchStep(state); });
         });
         int expected = 0;
         if (phase->compare_exchange_strong(expected, 2)) {
@@ -265,15 +265,28 @@ void undoRedo(const CallPtr& call, bool undo) {
     int done = 0;
     bool refused = false;
     std::string refusedWhy;
+    std::vector<std::string> problems;
+    const std::filesystem::path projectRoot = project->getProjectPath();
     for (; done < steps; done++) {
         if (undo ? !history->canUndo() : !history->canRedo()) break;
-        // the command itself can refuse (it would make a child scene cycle; a generated file's
-        // folder became a link out of the project): the history keeps its place
+        // a step the GUI made (no write root of its own): its files must stay inside the project
+        // too, once links are resolved (Command::escapeFor); it then runs in this call's write scope
+        if (const Command* next = undo ? history->undoCommand() : history->redoCommand()) {
+            const std::string escape = next->escapeFor(projectRoot, undo);
+            if (!escape.empty()) {
+                refused = true;
+                refusedWhy = escape;
+                break;
+            }
+        }
+        // the command itself can refuse (it would make a child scene cycle; a file it changes
+        // resolves out of its write root through a link): the history keeps its place
         if (!(undo ? history->undo() : history->redo())) {
             refused = true;
             refusedWhy = history->lastRefusal();
             break;
         }
+        if (undo && !history->lastUndoProblem().empty()) problems.push_back(history->lastUndoProblem());
     }
     if (scope == "project" && call->ctx().projectWindow()) {
         call->ctx().projectWindow()->refreshCurrentDirectory();
@@ -285,8 +298,19 @@ void undoRedo(const CallPtr& call, bool undo) {
         (refusedWhy.empty() ? std::string("it would make a child scene cycle (read_console has the scenes).") : refusedWhy);
     if (refused) data["refused"] = true;
     if (refused && !refusedWhy.empty()) data["refusal"] = refusedWhy;
+    // a step taken whose files could not all be put back (a link planted after its check)
+    std::string problemText;
+    if (!problems.empty()) {
+        data["problems"] = problems;
+        for (const std::string& problem : problems) problemText += " Not everything was put back: " + problem + ".";
+    }
     if (done == 0) {
         call->fail(refused ? refusal : std::string("Nothing to ") + verb + " in the " + scope + " history.", data);
+        return;
+    }
+    if (!problems.empty()) {
+        call->fail(std::string(undo ? "Undid " : "Redid ") + std::to_string(done) + " step(s) in the " + scope + " history." + problemText +
+                       " Remove the link, then check those files.", data);
         return;
     }
     call->ok(std::string(undo ? "Undid " : "Redid ") + std::to_string(done) + " step(s) in the " + scope + " history." +

@@ -11,6 +11,7 @@
 // every binding deforms after the instance matrix, so an instanced mesh cannot be baked.
 
 #include "LatticeEditorOps.h"
+#include "util/FileUtils.h"
 #include "LatticeBakeGltf.h"
 
 #include "Backend.h"
@@ -1073,7 +1074,7 @@ bool LatticeEditorOps::bake(Project* project, uint32_t sceneId, Entity target, s
     std::vector<fs::path> written;
     auto rollback = [&written](){
         std::error_code ec;
-        for (const fs::path& file : written) fs::remove(file, ec);
+        for (const fs::path& file : written) FileUtils::removePath(file, ec);
     };
 
     std::vector<LatticeBakeCmd::ModelChange> modelChanges;

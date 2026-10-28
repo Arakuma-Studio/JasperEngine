@@ -708,6 +708,8 @@ void McpServer::handleRequest(const SessionPtr& session, const Json& message, co
         // Resource not found: -32002 up to 2025-11-25, Invalid params since
         const int notFound = modern ? -32602 : -32002;
         runOnMainThread([this, id, uri, reply, notFound]() {
+            // a resource that writes (project-agents makes AGENTS.md / CLAUDE.md) stays beneath the project
+            McpWriteScope writeScope;
             ResourceResult result;
             try {
                 std::map<std::string, std::string> vars;
@@ -1120,6 +1122,9 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
         }
     });
 
+    // every file the tool writes stays beneath the project (util/SafeWrite.h): FileUtils' writes,
+    // and the commands it makes (their undo and redo too)
+    McpWriteScope writeScope;
     try {
         def.handler(call);
     } catch (const Json::type_error& e) {
@@ -1190,6 +1195,8 @@ void McpServer::tick() {
             call->fail("Cancelled.");
             continue;
         }
+        // a continuation writes beneath the project as the tool's run did
+        McpWriteScope writeScope;
         try {
             if (item.frames >= 0) {
                 if (item.frames > 0) {

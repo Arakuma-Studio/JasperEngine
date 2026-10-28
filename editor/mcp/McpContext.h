@@ -3,6 +3,10 @@
 
 #pragma once
 
+#include "util/SafeWrite.h"
+
+#include <filesystem>
+
 namespace jasperengine::editor {
     class App;
     class Project;
@@ -22,6 +26,19 @@ namespace jasperengine::editor::mcp {
 
     class McpServer;
     class McpJobs;
+
+    // The write scope MCP work runs in (util/SafeWrite.h, safewrite::Scope): the open project's
+    // directory ("" without a project). McpServer opens one around every tool's main-thread run,
+    // its deferred continuations and resource reads; a tool's own continuations (enqueued main
+    // thread tasks, worker threads that write) open one themselves. Main thread (or the worker it
+    // is made on: the scope is per thread).
+    class McpWriteScope : public safewrite::Scope {
+    public:
+        McpWriteScope();
+        explicit McpWriteScope(std::filesystem::path root) : safewrite::Scope(std::move(root)) {}
+        // the open project's directory ("" when none)
+        static std::filesystem::path projectRoot();
+    };
 
     // What tool handlers reach the editor through. Main thread only (except server()/jobs()).
     class McpContext {

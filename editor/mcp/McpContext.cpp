@@ -3,6 +3,8 @@
 
 #include "McpContext.h"
 
+#include "Backend.h"
+
 #include "McpServer.h"
 
 #include "App.h"
@@ -14,6 +16,14 @@ McpContext::McpContext(App& app, McpServer& server)
     : appRef(app)
     , serverRef(server) {
 }
+
+std::filesystem::path McpWriteScope::projectRoot() {
+    const App& app = Backend::getApp();
+    Project* project = const_cast<App&>(app).getProject();
+    return project ? project->getProjectPath() : std::filesystem::path();
+}
+
+McpWriteScope::McpWriteScope() : safewrite::Scope(projectRoot()) {}
 
 Project* McpContext::project() const {
     return appRef.getProject();
