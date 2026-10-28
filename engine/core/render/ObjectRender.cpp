@@ -34,6 +34,10 @@ void ObjectRender::addAttribute(int slot, BufferRender* buffer, unsigned int ele
     backend.addAttribute(slot, buffer, elements, dataType, stride, offset, normalized, perInstance);
 }
 
+void ObjectRender::addInterleavedAttribute(int slot, BufferRender* buffer, unsigned int elements, AttributeDataType dataType, unsigned int stride, size_t offset, bool normalized, bool perInstance){
+    backend.addInterleavedAttribute(slot, buffer, elements, dataType, stride, offset, normalized, perInstance);
+}
+
 void ObjectRender::addStorageBuffer(int slot, ShaderStageType stage, BufferRender* buffer){
     backend.addStorageBuffer(slot, stage, buffer);
 }

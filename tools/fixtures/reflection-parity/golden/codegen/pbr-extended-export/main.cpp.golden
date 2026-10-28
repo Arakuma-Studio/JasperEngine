@@ -237,6 +237,7 @@ JASPERENGINE_INIT void init() {
     Engine::setAtmosphereQualityDefaults(AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW);
     Engine::setTextureDefaults({0, 0, false}, {0, 512, false}, {0, 384, true});
     UIDocumentSystem::setPreferredSampleCount(4);
+    UIDocumentSystem::setHtmlUiRenderOptions(0, true, true);
 
     SceneManager::registerScene(3270106840, "Lobes", load_scene_Lobes_3270106840, add_scene_Lobes_3270106840, {3270106840}, resources_scene_Lobes_3270106840);
     SceneManager::registerScene(1966622498, "Transmission", load_scene_Transmission_1966622498, add_scene_Transmission_1966622498, {1966622498}, resources_scene_Transmission_1966622498);

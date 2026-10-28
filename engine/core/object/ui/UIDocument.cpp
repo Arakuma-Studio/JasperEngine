@@ -287,6 +287,10 @@ std::vector<htmlui::compat::Diagnostic> UIDocument::getDiagnostics() const{
     return scene->getSystem<UIDocumentSystem>()->getDiagnostics(entity);
 }
 
+HtmlUIRenderStats UIDocument::getRenderStats() const{
+    return scene->getSystem<UIDocumentSystem>()->getRenderStats(entity);
+}
+
 void UIDocument::setColorScheme(const std::string& scheme){
     scene->getSystem<UIDocumentSystem>()->setColorScheme(entity, scheme);
 }

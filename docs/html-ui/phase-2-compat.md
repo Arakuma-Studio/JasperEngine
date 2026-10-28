@@ -4286,6 +4286,7 @@ in section 3.
 | HTMLUI-GEN-0004 | Error | internal-error | the compat layer failed on this input (a bug; the message has details) |
 | HTMLUI-GEN-0005 | Warning | non-utf8-charset | a charset other than UTF-8 is declared; decoded as UTF-8 |
 | HTMLUI-GEN-0006 | Warning | rmlui-message | RmlUi rejected or warned about compat output (mapped to the source) |
+| HTMLUI-GEN-0007 | Warning | glyph-atlas-budget | S16: the glyph atlas keeps clearing pages the text needs (more than 4 times in 120 frames); logged once per context |
 | HTMLUI-HTML-0001 | Info | html-parse-error | the HTML parser recovered from an error the way browsers do |
 | HTMLUI-HTML-0002 | Warning | unsupported-element | element replaced by a placeholder or dropped |
 | HTMLUI-HTML-0003 | Info | element-mapped | element mapped to an equivalent (meter, optgroup, output, picture, …) |

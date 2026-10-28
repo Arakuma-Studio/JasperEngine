@@ -10,6 +10,7 @@
 #include "UIDataModel.h"
 #include "UIReloadReport.h"
 #include "UIValue.h"
+#include "htmlui/HtmlUIRenderStats.h"
 #include "htmlui/compat/Diagnostics.h"
 
 #include <cstdint>
@@ -102,6 +103,9 @@ namespace jasperengine{
         // the compatibility layer's diagnostics of this document (compile time, RmlUi messages
         // mapped to the HTML/CSS source, Lua script errors); what check --ui reports for the file
         std::vector<htmlui::compat::Diagnostic> getDiagnostics() const;
+        // S16 R28: the last frame of the context that draws it (draws, merged runs, stencil
+        // draws, glyph atlas, ...: HtmlUIRenderStats), for in-game profiling HUDs
+        HtmlUIRenderStats getRenderStats() const;
         // prefers-color-scheme ("light" default, "dark") and prefers-reduced-motion of the
         // documents (per scene: every document of the scene's context follows)
         void setColorScheme(const std::string& scheme);

@@ -15,6 +15,7 @@
 #include "organisation/LabelOperations.h"
 #include "Out.h"
 #include "command/CommandHistory.h"
+#include "command/type/HtmlUiRenderSettingsCmd.h"
 #include "command/type/ThreadingSettingsCmd.h"
 
 #include <algorithm>
@@ -1012,6 +1013,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
 
     m_loadingSettings = project->getLoadingSettings();
     m_threading = project->getThreadingSettings();
+    m_htmlUiRender = project->getHtmlUiRenderSettings();
 
     m_packNativeResources = project->shouldPackNativeResources();
     m_versionControlMetadata = project->hasVersionControlMetadata();
@@ -1571,6 +1573,38 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
             drawComboSetting("HTML UI MSAA", "##HtmlUiMsaa", htmlUiMsaaNames, htmlUiMsaaCount, m_htmlUiMsaaIndex, findHtmlUiMsaaIndex(Project::defaultHtmlUiMsaaSamples),
                 "Multisampling of the HTML/CSS UI documents: smoother rounded corners, thin borders and rotated edges. "
                 "Devices without MSAA draw them without it.");
+        }
+        {
+            // the renderer's cost and text options (S16)
+            const HtmlUiRenderSettings defaults;
+            if (settingsui::beginRow("graphics.html_ui_glyph_atlas_mib")) {
+                if (projectBeginSettingsRow("HTML UI Glyph Atlas (MiB)", m_htmlUiRender.glyphAtlasMiB != defaults.glyphAtlasMiB)) {
+                    m_htmlUiRender.glyphAtlasMiB = defaults.glyphAtlasMiB;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::InputInt("##HtmlUiGlyphAtlas", &m_htmlUiRender.glyphAtlasMiB);
+                if (m_htmlUiRender.glyphAtlasMiB != 0)
+                    m_htmlUiRender.glyphAtlasMiB = std::clamp(m_htmlUiRender.glyphAtlasMiB, Project::minHtmlUiGlyphAtlasMiB, Project::maxHtmlUiGlyphAtlasMiB);
+                endSettingsRow("GPU memory of the HTML UI's glyph atlas: two thirds bitmap glyphs, one third distance-field glyphs. "
+                               "0 is the platform's default (24 MiB on desktop, 12 on Android, iOS and the web). When text needs "
+                               "more, pages not drawn lately are cleared and their glyphs made again.");
+            }
+            if (settingsui::beginRow("graphics.html_ui_sdf_primitives")) {
+                if (projectBeginSettingsRow("HTML UI SDF Primitives", m_htmlUiRender.sdfPrimitives != defaults.sdfPrimitives)) {
+                    m_htmlUiRender.sdfPrimitives = defaults.sdfPrimitives;
+                }
+                ImGui::Checkbox("##HtmlUiSdfPrimitives", &m_htmlUiRender.sdfPrimitives);
+                endSettingsRow("Draws solid backgrounds, borders, outlines and box shadows as antialiased shapes in batched draws, "
+                               "without shadow textures or layers. Off draws them as meshes, as before.");
+            }
+            if (settingsui::beginRow("graphics.html_ui_transform_aware_text")) {
+                if (projectBeginSettingsRow("HTML UI Transform-Aware Text", m_htmlUiRender.transformAwareText != defaults.transformAwareText)) {
+                    m_htmlUiRender.transformAwareText = defaults.transformAwareText;
+                }
+                ImGui::Checkbox("##HtmlUiTransformAwareText", &m_htmlUiRender.transformAwareText);
+                endSettingsRow("Rasterizes text at its on-screen size under scale transforms and odd pixel ratios, and draws it "
+                               "from distance fields while that size animates. Off keeps text a bitmap at the document's scale.");
+            }
         }
 
         if (settingsui::beginRow("graphics.mobile_pbr_tier")) {
@@ -2843,6 +2877,10 @@ bool ProjectSettingsWindow::applySettings() {
     // undoable: the reserve applies to the editor's job system at once
     if (m_threading != m_project->getThreadingSettings()) {
         m_project->getProjectCommandHistory()->addCommand(new ThreadingSettingsCmd(m_project, m_threading));
+    }
+    // undoable: the editor's documents follow at once
+    if (m_htmlUiRender != m_project->getHtmlUiRenderSettings()) {
+        m_project->getProjectCommandHistory()->addCommand(new HtmlUiRenderSettingsCmd(m_project, m_htmlUiRender));
     }
 
     m_project->setPackNativeResources(m_packNativeResources);

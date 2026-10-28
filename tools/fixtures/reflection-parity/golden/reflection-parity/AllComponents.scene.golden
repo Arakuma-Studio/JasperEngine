@@ -99,6 +99,7 @@ shaderKeys:
   - type: particles
   - type: particles
     properties: 512
+  - type: htmluiprim
   - type: particles
     customShader: library:particles#BLEND_ALPHA
   - type: particles

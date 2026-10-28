@@ -653,6 +653,7 @@ JASPERENGINE_INIT void init() {
     Engine::setAtmosphereQualityDefaults(AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW);
     Engine::setTextureDefaults({0, 0, false}, {0, 512, false}, {0, 384, true});
     UIDocumentSystem::setPreferredSampleCount(4);
+    UIDocumentSystem::setHtmlUiRenderOptions(0, true, true);
 
     SceneManager::registerScene(2154334445, "Lit", load_scene_Lit_2154334445, add_scene_Lit_2154334445, {2154334445}, resources_scene_Lit_2154334445);
     SceneManager::registerScene(242685459, "Blend", load_scene_Blend_242685459, add_scene_Blend_242685459, {242685459}, resources_scene_Blend_242685459);

@@ -11,7 +11,36 @@
 #include "../../Include/RmlUi/Core/PropertyDefinition.h"
 #include "ComputeProperty.h"
 #include "DecoratorShader.h"
+#include "GeometryBackgroundBorder.h"
 #include "PropertyParserColour.h"
+
+namespace Rml {
+
+// Fork (S16-F5): the gradient over the render box's fill area (what MeshUtilities::GenerateBackground covers, with its inner
+// radii) as one primitive, when the render interface draws it so; false to draw the mesh.
+static bool MakeGradientPrimitive(RenderManager* render_manager, const RenderBox& render_box, const CompiledShader& shader, byte alpha,
+	Vector<BoxPrimitive>& out)
+{
+	CompiledShaderHandle handle = {};
+	if (!render_manager->SupportsGradientPrimitive(shader, handle))
+		return false;
+	const BorderMetrics metrics = GeometryBackgroundBorder::ComputeBorderMetrics(render_box.GetBorderOffset(), render_box.GetBorderWidths(),
+		render_box.GetFillSize(), render_box.GetBorderRadius());
+	BoxPrimitive primitive;
+	primitive.kind = BoxPrimitive::Kind::Gradient;
+	primitive.border_box = Rectanglef::FromCorners(metrics.positions_inner[0], metrics.positions_inner[2]);
+	for (int corner = 0; corner < 4; corner++)
+	{
+		const Vector2f radius = metrics.inner_radii[corner];
+		primitive.radii[corner] = (radius.x > 0.f && radius.y > 0.f) ? radius : Vector2f(0.f);
+	}
+	primitive.fill = ColourbPremultiplied(alpha, alpha);
+	primitive.shader = handle;
+	out.push_back(primitive);
+	return true;
+}
+
+} // namespace Rml
 
 namespace Rml {
 
@@ -310,8 +339,16 @@ DecoratorDataHandle DecoratorLinearGradient::GenerateElementData(Element* elemen
 	if (!shader)
 		return INVALID_DECORATORDATAHANDLE;
 
-	Mesh mesh;
 	const byte alpha = byte(element->GetDrawOpacity() * 255.f);
+	Vector<BoxPrimitive> primitives;
+	if (MakeGradientPrimitive(render_manager, render_box, shader, alpha, primitives))
+	{
+		ShaderElementData* element_data = GetShaderElementDataPool().AllocateAndConstruct(Geometry(), std::move(shader));
+		element_data->primitives = std::move(primitives);
+		return reinterpret_cast<DecoratorDataHandle>(element_data);
+	}
+
+	Mesh mesh;
 	MeshUtilities::GenerateBackground(mesh, render_box, ColourbPremultiplied(alpha, alpha));
 
 	const Vector2f render_offset = render_box.GetFillOffset();
@@ -333,6 +370,12 @@ void DecoratorLinearGradient::ReleaseElementData(DecoratorDataHandle handle) con
 void DecoratorLinearGradient::RenderElement(Element* element, DecoratorDataHandle handle) const
 {
 	ShaderElementData* element_data = reinterpret_cast<ShaderElementData*>(handle);
+	if (!element_data->primitives.empty())
+	{
+		if (RenderManager* render_manager = element->GetRenderManager())
+			render_manager->RenderPrimitives(element_data->primitives, element->GetAbsoluteOffset(BoxArea::Border));
+		return;
+	}
 	element_data->geometry.Render(element->GetAbsoluteOffset(BoxArea::Border), {}, element_data->shader);
 }
 
@@ -507,8 +550,16 @@ DecoratorDataHandle DecoratorRadialGradient::GenerateElementData(Element* elemen
 	if (!shader)
 		return INVALID_DECORATORDATAHANDLE;
 
-	Mesh mesh;
 	const byte alpha = byte(element->GetDrawOpacity() * 255.f);
+	Vector<BoxPrimitive> primitives;
+	if (MakeGradientPrimitive(render_manager, render_box, shader, alpha, primitives))
+	{
+		ShaderElementData* element_data = GetShaderElementDataPool().AllocateAndConstruct(Geometry(), std::move(shader));
+		element_data->primitives = std::move(primitives);
+		return reinterpret_cast<DecoratorDataHandle>(element_data);
+	}
+
+	Mesh mesh;
 	MeshUtilities::GenerateBackground(mesh, render_box, ColourbPremultiplied(alpha, alpha));
 
 	const Vector2f render_offset = render_box.GetFillOffset();
@@ -529,6 +580,12 @@ void DecoratorRadialGradient::ReleaseElementData(DecoratorDataHandle handle) con
 void DecoratorRadialGradient::RenderElement(Element* element, DecoratorDataHandle handle) const
 {
 	ShaderElementData* element_data = reinterpret_cast<ShaderElementData*>(handle);
+	if (!element_data->primitives.empty())
+	{
+		if (RenderManager* render_manager = element->GetRenderManager())
+			render_manager->RenderPrimitives(element_data->primitives, element->GetAbsoluteOffset(BoxArea::Border));
+		return;
+	}
 	element_data->geometry.Render(element->GetAbsoluteOffset(BoxArea::Border), {}, element_data->shader);
 }
 

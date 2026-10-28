@@ -16,6 +16,7 @@
 #include "harness/TestSystem.h"
 
 #include "HtmlUI.h"
+#include "RmlFontEngine.h"
 #include "RmlRenderer.h"
 
 #include "Engine.h"
@@ -34,6 +35,43 @@
 #include <vector>
 
 namespace jasperengine { namespace test {
+
+    // S16 off for a scope (D1): every recorded call its own draw, meshes and shadow textures, every
+    // clip mask in the stencil: what the phase-1 storage, leak and stencil tests count
+    struct ClassicReplay {
+        bool batching = RmlRenderer::isBatching();
+        bool primitives = RmlRenderer::isSdfPrimitives();
+        ClassicReplay(){
+            RmlRenderer::setBatchingForTesting(false);
+            RmlRenderer::setSdfPrimitivesForTesting(false);
+        }
+        ~ClassicReplay(){
+            RmlRenderer::setBatchingForTesting(batching);
+            RmlRenderer::setSdfPrimitivesForTesting(primitives);
+        }
+        ClassicReplay(const ClassicReplay&) = delete;
+        ClassicReplay& operator=(const ClassicReplay&) = delete;
+    };
+
+    // S16 on for a scope, whatever the run's switches (JASPER_HTMLUI_S16_OFF=1, AC1): the tests of
+    // S16's own features
+    struct S16On {
+        bool batching = RmlRenderer::isBatching();
+        bool primitives = RmlRenderer::isSdfPrimitives();
+        bool transformAware = RmlFontEngine::isTransformAwareText();
+        S16On(){
+            RmlRenderer::setBatchingForTesting(true);
+            RmlRenderer::setSdfPrimitivesForTesting(true);
+            RmlFontEngine::setTransformAwareTextForTesting(true);
+        }
+        ~S16On(){
+            RmlRenderer::setBatchingForTesting(batching);
+            RmlRenderer::setSdfPrimitivesForTesting(primitives);
+            RmlFontEngine::setTransformAwareTextForTesting(transformAware);
+        }
+        S16On(const S16On&) = delete;
+        S16On& operator=(const S16On&) = delete;
+    };
 
     // what Engine::systemDraw does before a frame that the tests need: the runtime shader
     // compiler compiles one waiting variant per frame on the main thread
@@ -125,8 +163,16 @@ namespace jasperengine { namespace test {
                 context->Update();
                 // <video> frames chosen in the update (HtmlUIContext converts them before beginFrame)
                 renderer.runVideoConversions();
-                if (begun)
+                if (begun){
+                    // the font engine's counters of this context's frame, as HtmlUIContext::render
+                    RmlFontEngine& fonts = HtmlUI::getFontEngine();
+                    fonts.beginContextFrame(context->GetRenderManager());
                     context->Render();
+                    const RmlFontEngine::FrameCounters text = fonts.takeContextFrame(context->GetRenderManager());
+                    renderer.addTextStats(text.glyphsRasterized, text.textRegenerations, text.textEffectFallbacks, text.atlasEvictions);
+                }
+                // text settling at its on-screen scale asks for another frame (S16 R15)
+                renderRequested = context->GetRenderManager().ConsumeRenderRequest();
             }
             bool drawn = renderer.endFrame();
             if (drawn)
@@ -172,6 +218,8 @@ namespace jasperengine { namespace test {
         }
 
         Rml::Context* context = nullptr;
+        // the last frame asked for another one (HtmlUIContext keeps updatedSinceRender then)
+        bool renderRequested = false;
         RmlRenderer renderer;
         RmlRenderTarget target;
         FramebufferRender screen;

@@ -31,6 +31,9 @@ namespace jasperengine {
         void setShader(ShaderRender* shader);
         void setIndex(BufferRender* buffer, AttributeDataType dataType, size_t offset);
         void addAttribute(int slot, BufferRender* buffer, unsigned int elements, AttributeDataType dataType, unsigned int stride, size_t offset, bool normalized, bool perInstance);
+        // one bind slot for every attribute of the buffer on every backend (offset inside the
+        // stride, below 2048): layouts with more attributes than vertex buffer bind slots
+        void addInterleavedAttribute(int slot, BufferRender* buffer, unsigned int elements, AttributeDataType dataType, unsigned int stride, size_t offset, bool normalized, bool perInstance);
         void addStorageBuffer(int slot, ShaderStageType stage, BufferRender* buffer);
         // swap the vertex buffer bound at load (original) for one of identical layout
         // (replacement), just before draw — used to bind a per-view instance buffer

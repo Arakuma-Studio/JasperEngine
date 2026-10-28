@@ -18,7 +18,7 @@ The design and acceptance record is `docs/specs/S02-build-ci-tests.md`.
 | Smoke test | export, build and run a project, then open it in the editor; screenshots | `tools/smoke-test.sh tools/fixtures/post-processing` | `build/smoke/` |
 | Web gate | the web build in headless Chrome (WebGL2 on SwiftShader) | `tools/build.sh web`, then `tools/build.sh web-gate` | `build/test-results/web/` |
 | Crash diagnostics | the crash handler's report folders, sessions, hook and ring, the hang watchdog (`HangWatchdog.*`, `Crash*` in `jasperengine-core-tests`, which start `jasperengine-crash-test`, `engine/tests/crash/CrashTestMain.cpp`), the symbolication tool, the web crash hooks | `tools/build.sh unit-tests`; `python3 -I tools/crash/test_symbolicate.py <jasperengine-crash-test>`; `WEB_PROJECT=crash-diagnostics tools/build.sh web`, then `GATE=crash-diagnostics tools/build.sh web-gate` | as above |
-| Tool checks | the CI scripts' own tests, the notices, the presets | `python3 tools/ci/test_gtest_gate.py`, `python3 tools/ci/test_check_notices.py`, `python3 tools/ci/check-notices.py`, `tools/build.sh exec linux tools/ci/check-presets.sh` | stdout |
+| Tool checks | the CI scripts' own tests, the notices, the presets, the HTML UI golden ledger | `python3 tools/ci/test_gtest_gate.py`, `python3 tools/ci/test_check_notices.py`, `python3 tools/ci/check-notices.py`, `python3 tools/ci/test_check_golden_ledger.py`, `python3 tools/htmlui/check_golden_ledger.py`, `tools/build.sh exec linux tools/ci/check-presets.sh` | stdout |
 
 The only host requirement is Docker. Builds go to `build/<target>/`, a ccache shared by every
 worktree of a checkout makes rebuilds cheap.
@@ -57,6 +57,14 @@ waiting click and refused drop (`tools/mcp/tests/test_scene_view*.py`).
 - `tools/build.sh htmlui-tests`: about 3,300 tests, 74 of them skipped on purpose (the gate allows
   exactly those). `HTMLUI_TEST_ARGS` filters, `JASPER_HTMLUI_PERF_SLACK` relaxes the performance
   targets on a loaded host (CI uses 3).
+- The HTML UI rendering suites of S16 (`docs/specs/S16-ui-render-text.md`): `RenderBatch.*`,
+  `RenderClip.*`, `RenderPrimitive.*`, `TextSharpness.*`, `TestFontEngine.AtlasBudget*` and, in
+  Release builds, the benchmark `HtmlUIRenderPerf.*` (`fixtures/bench/`; results in
+  `build/linux/htmlui-render-bench[-vulkan].json`, the table in `docs/html-ui/render-benchmark.md`;
+  its timings are judged on an otherwise idle machine). Changed HTML UI goldens need a row in
+  `docs/html-ui/goldens-S16.md`: `python3 tools/htmlui/check_golden_ledger.py` (tested by
+  `tools/ci/test_check_golden_ledger.py`) fails on a changed golden without one and on any change
+  of a Chromium reference (`golden/browser/**`).
 - `tools/build.sh mcp-tests` runs `tools/mcp/run-tests.sh` in the Linux image against
   `build/linux/editor-install`. `MCP_SUITE=ci` (the default) runs the files that declare
   `CI = True`; `MCP_SUITE=all` runs every file and needs the default fixture project, which is
@@ -511,3 +519,74 @@ S03's tests (`engine/tests/core/io`, `editor/tests/data_safety`) run in the same
   124 passed, 0 failed, 1 skipped. `tools/smoke-test.sh tools/fixtures/post-processing`: PASS.
 - The unit job's lints: `check_raw_writes.py --self-test` and the tree pass, `check_stream_keys.py`
   (58 tables) passes; notices, presets and actionlint pass.
+
+### S16 (HTML UI rendering cost and text)
+
+Round 2, on oe-port 50c7afd3d (S11, S17 merged; server B with `JASPER_HTMLUI_PERF_SLACK=3`, timings
+on the benchmark host E):
+
+- `tools/build.sh htmlui-tests` (glcore, without the perf suites and `EffectLifecycleTest.Hundred*`):
+  3,379 ran, 0 failed, 74 skipped. `BrowserParity` (the 277 Chromium references, unchanged) and the
+  batching equivalence pass.
+- `HTMLUI_BACKEND=vulkan`, the whole suite twice: 3,379 ran, 0 failed each. The earlier
+  order-dependent `RenderPrimitive.MatchesTheMeshPath` failures were 8-sample layer targets on
+  lavapipe (it has 1 and 4): invalid Vulkan usage that drew into foreign memory; HTML UI targets now
+  take the device's highest count up to the asked one, and the comparison skips 8 there.
+- `JASPER_HTMLUI_S16_OFF=1` against the pre-S16 goldens (AC1): see the spec's Deviations
+  (`p1/texture_effects` traced and fixed).
+- `HTMLUI_TEST_ARGS=--gtest_filter=HtmlUIRenderPerf.*` on the benchmark host: 9 passed
+  (`docs/html-ui/render-benchmark.md`; B2 44 % of the baseline engine time, B6 43 %).
+- Gate on 592d8ed28 (B): `WERROR=1 tools/build.sh linux`, `tools/build.sh htmlui-editor-tests`,
+  `tools/build.sh unit-tests` (core and editor), `tools/htmlui/run-rmlui-tests.sh --docker`,
+  `tools/build.sh web` + `web-gate`, `tools/build.sh android`, `tools/smoke-test.sh
+  tools/fixtures/post-processing` (glcore and Vulkan): pass. `docs/mcp/TOOLS.md` regenerated with
+  `gen_tool_docs.py` (195 tools).
+- MCP (`test_html_ui_*.py`, `test_ui_render_stats.py`, `test_protocol.py`, `test_profiler.py`,
+  `test_tool_budget.py`): S16's failures fixed (`inspect_ui` over its 1792-char budget; the render
+  stats test counting the cards the list's scrollport culls; S17's example play goldens
+  `inventory`/`server_browser` predating S16, updated with ledger rows). The others failing on this
+  oe-port (`test_html_ui_component` S04 asset type, `test_html_ui_phase2`/`_integration` S17 patch
+  reload, `test_html_ui_effects` "Loading" dialog under load, `test_html_ui_export`,
+  `test_html_ui_agent_sim`) are fixed on BF2's branch, whose run on oe-port passes them.
+
+Final tree (oe-port 64d735104, S20 and S28, merged; f6c0639f0 and the docs after it):
+
+- `tools/build.sh htmlui-tests` (glcore): 3,480 ran, 0 failed, 75 skipped. `JASPER_HTMLUI_S16_OFF=1`
+  against the pre-S16 goldens (AC1): 3,480 ran, 0 failed. `HTMLUI_BACKEND=vulkan`, twice: 3,480
+  ran, 0 failed each (server B).
+- `HtmlUIRenderPerf.*` on the benchmark host E: 9 passed (B2 41 % of the baseline engine time).
+- Gate on C: `WERROR=1 tools/build.sh linux`; `gen_tool_docs.py` (225 tools, no change); MCP
+  (`test_html_ui_*.py`, `test_ui_render_stats.py`, `test_protocol.py`, `test_profiler.py`,
+  `test_tool_budget.py`, `test_tool_conventions.py`, `test_search_organisation.py`): 345 passed,
+  3 failed, the three failing without S16 too: `test_html_ui_checks::test_cli_default_includes_ui`
+  (S14's `texture_imports` in the check summary; the test is updated on the origin/main sync
+  branch) and `test_html_ui_video_export`'s two export tests (the exported `poster.png`, S14).
+- On 14dcdfed6 (the S20 merge, C): `tools/build.sh unit-tests` core 1,331 and editor 881 ran,
+  0 failed; `htmlui-editor-tests` 76 ran, 0 failed; `run-rmlui-tests.sh --docker` 37,670
+  assertions pass; web + web-gate and android pass.
+- Smoke on a build directory made before S20: the export copied the old
+  `core/action/ParticleSystem.*` that `build/linux/editor-install/bin/engine` still held (S20
+  moved them to `core/object`), and the exported build failed; removing those installed engine
+  copies before the build fixes it: `tools/smoke-test.sh tools/fixtures/post-processing` (glcore
+  and Vulkan), web + web-gate pass on the final tree.
+
+Landing gate (oe-port 6f47d2c48, S22 and S14b, merged; d32267af6 and the docs after it):
+`WERROR=1 tools/build.sh linux`; `gen_tool_docs.py` (229 tools, no change); htmlui glcore and Vulkan
+3,480 ran, 0 failed each (B); unit tests core 1,419 and editor 883 ran, 0 failed (B); MCP
+(the files above): 345 passed, 3 failed, the same three that fail without S16;
+`test_html_ui_phase2::test_mistakes_are_reported` (four copies at once, five rounds) 0 of 20
+failed with the screenshot's HTML document wait, 3 of 20 without it; smoke (glcore and Vulkan,
+the installed engine copies removed first), web + web-gate pass (C).
+
+Landing gate on oe-port 424925911 (S26, BF5, S08 merged, 7dc3a625e and after): the Xcode project
+parses with no dangling reference or duplicate id and every `xcode_sync_*.py --check` passes (its
+msdfgen core group had lost its closing lines in the S17 merge; `xcode_sync_s16.py --check` now
+parses the file); `WERROR=1 tools/build.sh linux`; htmlui glcore and Vulkan 3,480 ran, 0 failed
+each, unit tests core 1,452 and editor 1,029 ran, 0 failed (B); MCP (the files above with
+`test_docs.py` and `test_reflection.py`): the three failures without S16, and two of S16 fixed
+since: the default listing 22 characters over its 100,000 with S26's and S08's tools (`inspect_ui`
+44 shorter) and S08's reflection goldens without S16's project settings, generated
+`setHtmlUiRenderOptions` and `htmluiprim` shader key (updated, nothing else in them changed);
+their rerun (`test_reflection`, `test_tool_budget`, `test_html_ui_tools`, `test_tool_conventions`,
+`test_docs`, `test_protocol`): 73 passed, 0 failed; `gen_tool_docs.py` 236 tools; smoke (glcore
+and Vulkan, on the host), web + web-gate pass (C).

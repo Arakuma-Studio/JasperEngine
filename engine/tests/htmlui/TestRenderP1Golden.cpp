@@ -443,7 +443,12 @@ TEST_F(RmlRendererP1GoldenTest, MsaaRounded){
         if (r > 0x30 && r < 0xd0)
             partialEdgePixels++;
     }
-    EXPECT_GT(differentEdgePixels, 20);
+    // (with the SDF primitives, S16 R8, one sample is antialiased as well: the edges barely differ,
+    // both are partial)
+    if (RmlRenderer::isSdfPrimitives())
+        EXPECT_LE(differentEdgePixels, 20);
+    else
+        EXPECT_GT(differentEdgePixels, 20);
     EXPECT_GT(partialEdgePixels, 20);
 }
 
@@ -539,7 +544,7 @@ TEST_F(RmlRendererP1GoldenTest, ManyElements){
     EXPECT_EQ(stats.passes, 1u);
     EXPECT_LE(stats.pipelineApplies, 10u);
     EXPECT_EQ(stats.pipelineCacheMisses, 0u);
-    EXPECT_GE(stats.drawCalls, 500u);
+    EXPECT_GE(stats.geometrySubmitted, 500u);
 
     std::vector<uint8_t> screen;
     ASSERT_TRUE(test.readScreen(screen));

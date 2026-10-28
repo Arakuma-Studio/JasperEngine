@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <string>
+#include <vector>
 
 namespace jasperengine {
 
@@ -43,6 +44,7 @@ namespace jasperengine {
         static void registerContext(HtmlUIContext* context);
         static void unregisterContext(HtmlUIContext* context);
         static size_t getContextCount();
+        static const std::vector<HtmlUIContext*>& getContexts();
         // the context the RmlUi debugger is attached to (nullptr = none)
         static void setDebuggerContext(HtmlUIContext* context, bool visible);
         static HtmlUIContext* getDebuggerContext();

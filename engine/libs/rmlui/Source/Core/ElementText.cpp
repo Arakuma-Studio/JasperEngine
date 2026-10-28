@@ -251,6 +251,26 @@ const String& ElementText::GetText() const
 	return text;
 }
 
+bool ElementText::GetPaintBounds(Rectanglef& out_bounds)
+{
+	if (lines.empty())
+		return false;
+	const auto& computed = GetComputedValues();
+	const float font_size = computed.font_size();
+	float margin = font_size + 2.f;
+	if (computed.has_text_shadow() || computed.has_font_effect())
+		margin = 3.f * font_size + 64.f;
+	Rectanglef bounds = Rectanglef::MakeInvalid();
+	for (const Line& line : lines)
+	{
+		const Rectanglef box = Rectanglef::FromCorners(line.position - Vector2f(0.f, font_size), line.position + Vector2f((float)line.width, font_size));
+		bounds = bounds.Valid() ? bounds.Join(box) : box;
+	}
+	const Vector2f offset = GetAbsoluteOffset();
+	out_bounds = Rectanglef::FromCorners(offset + bounds.TopLeft() - Vector2f(margin), offset + bounds.BottomRight() + Vector2f(margin));
+	return true;
+}
+
 void ElementText::OnRender()
 {
 	RMLUI_ZoneScoped;
@@ -260,6 +280,12 @@ void ElementText::OnRender()
 		return;
 
 	RenderManager& render_manager = GetContext()->GetRenderManager();
+
+	// Fork (S16-F4): text wholly outside the scissor region is not drawn (nor made again) this frame: its lines' boxes,
+	// with a font size of margin, and the shadows' and effects' reach
+	Rectanglef paint_bounds;
+	if (GetPaintBounds(paint_bounds) && render_manager.IsOutsideScissor(paint_bounds))
+		return;
 
 	// The opacity the parent draws with changes without a property change of ours (it is not inherited).
 	const float draw_opacity = (GetParentNode() ? GetParentNode()->GetDrawOpacity() : 1.f);
@@ -274,6 +300,9 @@ void ElementText::OnRender()
 	// If our font effects have potentially changed, update it and force a geometry generation if necessary.
 	if (font_effects_dirty && UpdateFontEffects())
 		geometry_dirty = true;
+
+	// Fork (S16-F3): the scale the text is drawn at on screen.
+	UpdateRasterScale(render_manager, font_face_handle);
 
 	// Dirty geometry if font version has changed.
 	int new_version = GetFontEngineInterface()->GetVersion(font_face_handle);
@@ -356,7 +385,8 @@ void ElementText::RenderShadowList(RenderManager& render_manager, Vector<Shadow>
 	for (auto it = shadows.rbegin(); it != shadows.rend(); ++it)
 	{
 		Shadow& shadow = *it;
-		if (shadow.blur <= 0.f)
+		// (fork, S16-F3: a shadow the font engine blurred is drawn as it is)
+		if (shadow.blur <= 0.f || shadow.gpu)
 		{
 			for (const TexturedGeometry& part : shadow.geometry)
 				part.geometry.Render(translation, part.texture);
@@ -383,6 +413,7 @@ void ElementText::RenderShadowList(RenderManager& render_manager, Vector<Shadow>
 			render_manager.SetScissorRegion(scissor);
 		}
 
+		GetFontEngineInterface()->ReportTextEffectFallback(render_manager);
 		render_manager.PushLayer();
 		for (const TexturedGeometry& part : shadow.geometry)
 			part.geometry.Render(translation, part.texture);
@@ -875,7 +906,8 @@ void ElementText::OnPropertyChange(const PropertyIdSet& changed_properties)
 		changed_properties.Contains(PropertyId::TextDecorationStyle) ||     //
 		changed_properties.Contains(PropertyId::TextDecorationThickness) || //
 		changed_properties.Contains(PropertyId::TextUnderlineOffset) ||     //
-		changed_properties.Contains(PropertyId::TextShadow))
+		changed_properties.Contains(PropertyId::TextShadow) ||              //
+		changed_properties.Contains(PropertyId::TextRendering))
 	{
 		geometry_dirty = true;
 	}
@@ -937,9 +969,13 @@ void ElementText::GenerateGeometry(RenderManager& render_manager, const FontFace
 	const TextOverflowResolved text_overflow = ResolveTextOverflow(this, font_face_handle);
 
 	const auto& computed = GetComputedValues();
-	const TextShapingContext text_shaping_context{computed.language(), computed.direction(), computed.font_kerning(), computed.letter_spacing(),
+	TextShapingContext text_shaping_context{computed.language(), computed.direction(), computed.font_kerning(), computed.letter_spacing(),
 		computed.word_spacing()};
+	// Fork (S16-F3): at the on-screen scale, or from distance glyphs (UpdateRasterScale)
+	text_shaping_context.raster_scale = raster_scale;
+	text_shaping_context.distance_field = distance_field;
 	FontEngineInterface* font_engine_interface = GetFontEngineInterface();
+	font_engine_interface->ReportTextRegeneration(render_manager);
 
 	// The strings to draw: the lines, cut at the clipping edge with the overflow text when the text overflows.
 	StringList line_strings(lines.size());
@@ -1062,14 +1098,28 @@ void ElementText::GenerateGeometry(RenderManager& render_manager, const FontFace
 				continue;
 			(void)text_colour;
 
+			// Fork (S16-F3): a blur within the font engine's distance glyphs is drawn by it, without a layer, once they are there
+			bool gpu_blur = resolved.blur > 0.f && font_engine_interface->SupportsGpuTextShadow(font_face_handle, resolved.blur);
+			if (gpu_blur)
+			{
+				for (size_t i = 0; i < lines.size(); i++)
+					gpu_blur &= font_engine_interface->PrepareDistanceGlyphs(font_face_handle, line_strings[i], text_shaping_context);
+				// (the glyphs come: the font engine gives the text a new version, drawn in another frame)
+				if (!gpu_blur)
+					render_manager.RequestRender();
+			}
+			shadow.gpu = gpu_blur;
+
 			TexturedMeshList shadow_meshes;
 			Rectanglef ink = Rectanglef::MakeInvalid();
 			for (size_t i = 0; i < lines.size(); i++)
 			{
 				const Line& line = lines[i];
 				const Vector2f position = line.position + resolved.offset;
+				TextShapingContext shadow_context = (line.justification_index < 0 ? text_shaping_context : LineContext(line));
+				shadow_context.shadow_blur = (gpu_blur ? resolved.blur : 0.f);
 				font_engine_interface->GenerateString(render_manager, font_face_handle, 0, line_strings[i], position, shadow_colour, opacity,
-					line.justification_index < 0 ? text_shaping_context : LineContext(line), shadow_meshes);
+					shadow_context, shadow_meshes);
 				const Rectanglef line_ink =
 					Rectanglef::FromCorners(position - Vector2f(0.f, metrics.ascent), position + Vector2f((float)line.width, metrics.descent));
 				ink = (ink.Valid() ? ink.Join(line_ink) : line_ink);
@@ -1091,6 +1141,193 @@ void ElementText::GenerateGeometry(RenderManager& render_manager, const FontFace
 	}
 
 	geometry_dirty = false;
+}
+
+ElementText::RasterMode ElementText::GetRasterMode(float& scale) const
+{
+	scale = (raster_scale > 0.f ? raster_scale : 0.f);
+	if (distance_field)
+		return RasterMode::DistanceField;
+	if (raster_scale > 0.f && last_screen_scale > 0.f && Math::Absolute(last_screen_scale - raster_scale) > 0.03f * raster_scale)
+		return RasterMode::Stretched;
+	return RasterMode::Bitmap;
+}
+
+void ElementText::UpdateRasterScale(RenderManager& render_manager, FontFaceHandle font_face_handle)
+{
+	// The renders a scale change keeps the text animating, and after which it settles (S16 R15).
+	constexpr int animating_frames = 4;
+	constexpr int settle_frames = 6;
+	constexpr float regenerate_ratio = 0.03f;
+
+	FontEngineInterface* font_engine_interface = GetFontEngineInterface();
+	const float base_scale = font_engine_interface->GetBaseRasterScale(render_manager);
+	const auto& computed = GetComputedValues();
+	// No transform-aware text, or 'text-rendering: optimizeSpeed': the font engine's own scale, stretched under a transform.
+	if (base_scale <= 0.f || computed.text_rendering() == Style::TextRendering::OptimizeSpeed)
+	{
+		if (raster_scale != 0.f || distance_field)
+		{
+			raster_scale = 0.f;
+			distance_field = false;
+			geometry_dirty = true;
+		}
+		last_screen_scale = 0.f;
+		last_base_scale = 0.f;
+		return;
+	}
+
+	bool non_affine = false;
+	const float scale = ComputeScreenScale(base_scale, non_affine);
+	// The context's pixel ratio changed (a resized view, a screenshot at another size): no animation to wait out, the
+	// bitmap at the new scale at once, as at the first generation, so that a frame at a given size draws the same text
+	// whatever was drawn before it.
+	const bool base_changed = last_base_scale > 0.f && Math::Absolute(base_scale - last_base_scale) > 1e-4f * last_base_scale;
+	last_base_scale = base_scale;
+	if (base_changed && !(computed.text_rendering() == Style::TextRendering::GeometricPrecision || non_affine ||
+							computed.font_size() * scale > 128.f))
+	{
+		last_screen_scale = scale;
+		frames_since_scale_change = settle_frames;
+		if (raster_scale != scale || distance_field)
+		{
+			raster_scale = scale;
+			distance_field = false;
+			geometry_dirty = true;
+		}
+		return;
+	}
+	if (last_screen_scale <= 0.f)
+		frames_since_scale_change = settle_frames;
+	else if (Math::Absolute(scale - last_screen_scale) > 1e-4f * last_screen_scale)
+		frames_since_scale_change = 0;
+	else
+		frames_since_scale_change = Math::Min(frames_since_scale_change + 1, settle_frames);
+	last_screen_scale = scale;
+
+	const bool off_scale = raster_scale <= 0.f || Math::Absolute(scale - raster_scale) > regenerate_ratio * raster_scale;
+
+	// Distance glyphs at rest: 'geometricPrecision', perspective, glyphs above 128 device px. Until they exist, the bitmap at
+	// the on-screen scale.
+	const bool at_rest_distance = computed.text_rendering() == Style::TextRendering::GeometricPrecision || non_affine ||
+		computed.font_size() * scale > 128.f;
+	if (at_rest_distance)
+	{
+		if (!distance_field)
+		{
+			if (PrepareLines(font_face_handle, true))
+			{
+				distance_field = true;
+				geometry_dirty = true;
+			}
+			else
+			{
+				if (off_scale)
+				{
+					raster_scale = scale;
+					geometry_dirty = true;
+				}
+				render_manager.RequestRender();
+			}
+		}
+		return;
+	}
+
+	// The first generation: a bitmap at the on-screen scale, at once.
+	if (raster_scale <= 0.f)
+	{
+		raster_scale = scale;
+		distance_field = false;
+		geometry_dirty = true;
+		return;
+	}
+
+	// Animating: distance glyphs when they are all there, else the bitmap as it is (stretched); another frame comes.
+	if (frames_since_scale_change < animating_frames)
+	{
+		if (off_scale && !distance_field && PrepareLines(font_face_handle, true))
+		{
+			distance_field = true;
+			geometry_dirty = true;
+		}
+		if (off_scale || distance_field)
+			render_manager.RequestRender();
+		return;
+	}
+
+	// Stable: after six renders, once, a bitmap at the exact scale (its glyphs within the font engine's frame budget).
+	if (distance_field || off_scale)
+	{
+		if (frames_since_scale_change >= settle_frames && PrepareLines(font_face_handle, false))
+		{
+			raster_scale = scale;
+			distance_field = false;
+			geometry_dirty = true;
+		}
+		else
+		{
+			render_manager.RequestRender();
+		}
+	}
+}
+
+float ElementText::ComputeScreenScale(float base_scale, bool& non_affine)
+{
+	non_affine = false;
+	const TransformState* state = GetTransformState();
+	const Matrix4f* transform = (state ? state->GetTransform() : nullptr);
+	if (!transform)
+		return base_scale;
+
+	// The text box centre, in document px.
+	Vector2f lower(0.f), upper(0.f);
+	bool first = true;
+	const FontMetrics& metrics = GetFontEngineInterface()->GetFontMetrics(GetFontFaceHandle());
+	for (const Line& line : lines)
+	{
+		const Vector2f line_lower(line.position.x, line.position.y - metrics.ascent);
+		const Vector2f line_upper(line.position.x + (float)line.width, line.position.y + metrics.descent);
+		lower = (first ? line_lower : Math::Min(lower, line_lower));
+		upper = (first ? line_upper : Math::Max(upper, line_upper));
+		first = false;
+	}
+	const Vector2f centre = GetAbsoluteOffset() + (lower + upper) * 0.5f;
+
+	// The Jacobian of the projected map p -> (M p).xy / (M p).w at the centre, and its larger singular value.
+	const Vector4f p = *transform * Vector4f(centre.x, centre.y, 0.f, 1.f);
+	const Vector4f dx = *transform * Vector4f(1.f, 0.f, 0.f, 0.f);
+	const Vector4f dy = *transform * Vector4f(0.f, 1.f, 0.f, 0.f);
+	if (Math::Absolute(p.w) < 1e-6f)
+	{
+		non_affine = true;
+		return base_scale;
+	}
+	non_affine = Math::Absolute(dx.w) > 1e-6f * Math::Absolute(p.w) || Math::Absolute(dy.w) > 1e-6f * Math::Absolute(p.w);
+	const float w2 = p.w * p.w;
+	const float a = (dx.x * p.w - p.x * dx.w) / w2, b = (dy.x * p.w - p.x * dy.w) / w2;
+	const float c = (dx.y * p.w - p.y * dx.w) / w2, d = (dy.y * p.w - p.y * dy.w) / w2;
+	const float e = a * a + b * b + c * c + d * d;
+	const float det = a * d - b * c;
+	const float sigma2 = 0.5f * (e + Math::SquareRoot(Math::Max(e * e - 4.f * det * det, 0.f)));
+	return base_scale * Math::SquareRoot(sigma2);
+}
+
+bool ElementText::PrepareLines(FontFaceHandle font_face_handle, bool distance)
+{
+	const auto& computed = GetComputedValues();
+	TextShapingContext context{computed.language(), computed.direction(), computed.font_kerning(), computed.letter_spacing(),
+		computed.word_spacing()};
+	context.raster_scale = last_screen_scale;
+	FontEngineInterface* font_engine_interface = GetFontEngineInterface();
+	bool ready = true;
+	for (const Line& line : lines)
+	{
+		if (distance)
+			ready &= font_engine_interface->PrepareDistanceGlyphs(font_face_handle, line.text, context);
+		else if (!font_engine_interface->PrepareGlyphs(font_face_handle, line.text, context))
+			return false;
+	}
+	return ready;
 }
 
 void ElementText::GenerateDecoration(Mesh& under, Mesh& over, const FontFaceHandle font_face_handle, ColourbPremultiplied decoration_colour,

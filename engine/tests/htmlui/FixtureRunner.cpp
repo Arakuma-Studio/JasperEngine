@@ -25,6 +25,7 @@
 #include <RmlUi/Core.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -422,6 +423,8 @@ struct FixtureRunner::State {
     double time = 0.0;
     bool gpu = false;
     bool pointerDown = false;
+    RmlFontEngine::FrameCounters text;   // of the last frame drawn
+    FixtureRunner::PhaseTimes phases;     // of the last frame
 };
 
 FixtureRunner::FixtureRunner(int width, int height, int sampleCount): state(std::make_unique<State>()){
@@ -474,6 +477,18 @@ RmlRenderer* FixtureRunner::renderer() const{
     return state->render ? &state->render->renderer : nullptr;
 }
 
+bool FixtureRunner::renderRequested() const{
+    return state->render && state->render->renderRequested;
+}
+
+RmlFontEngine::FrameCounters FixtureRunner::textCounters() const{
+    return state->text;
+}
+
+FixtureRunner::PhaseTimes FixtureRunner::phaseTimes() const{
+    return state->phases;
+}
+
 Rml::ElementDocument* FixtureRunner::document() const{
     return state->document;
 }
@@ -504,13 +519,31 @@ void FixtureRunner::frame(bool draw, bool* drawn){
     // only curves on a multisampled one (phase-3 spec 3.7.3); the runner draws one target pixel per px
     Rml::SetGeometryFeathering(state->sampleCount <= 1);
     Rml::SetGeometryPixelSize(1.0f);
+    using Clock = std::chrono::steady_clock;
+    auto ms = [](Clock::time_point a, Clock::time_point b){ return std::chrono::duration<double, std::milli>(b - a).count(); };
+    state->phases = PhaseTimes();
+    const Clock::time_point updateStart = Clock::now();
     hc::updateRuntime(r.context);
     r.context->Update();
+    state->phases.updateMs = ms(updateStart, Clock::now());
     // <video> frames chosen in the update (HtmlUIContext converts them before beginFrame)
     r.renderer.runVideoConversions();
-    if (begun)
+    if (begun){
+        // the font engine's counters of the frame, as HtmlUIContext::render takes them
+        RmlFontEngine& fonts = HtmlUI::getFontEngine();
+        fonts.beginContextFrame(r.context->GetRenderManager());
+        const Clock::time_point renderStart = Clock::now();
         r.context->Render();
+        state->phases.renderMs = ms(renderStart, Clock::now());
+        state->text = fonts.takeContextFrame(r.context->GetRenderManager());
+        r.renderer.addTextStats(state->text.glyphsRasterized, state->text.textRegenerations, state->text.textEffectFallbacks,
+                                state->text.atlasEvictions);
+    }
+    // text settling at its on-screen scale asks for another frame (S16 R15)
+    r.renderRequested = r.context->GetRenderManager().ConsumeRenderRequest();
+    const Clock::time_point endStart = Clock::now();
     const bool result = draw && r.renderer.endFrame();
+    state->phases.endFrameMs = ms(endStart, Clock::now());
     SystemRender::commit();
     if (drawn)
         *drawn = result;

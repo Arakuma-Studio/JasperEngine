@@ -21,6 +21,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <string>
@@ -46,6 +47,44 @@ namespace jasperengine { namespace test {
         int height() const{ return empty() ? 0 : y1 - y0 + 1; }
         float centerX() const{ return (x0 + x1) * 0.5f; }
     };
+
+    // Acutance (S16 AC10): the mean Sobel gradient magnitude of the luminance over the edge pixels
+    // of the ink box, those whose gradient is at least a tenth of the box's largest. Sharp text has
+    // steep, narrow edges and a stretched bitmap wide, shallow ones; taking the edge pixels only
+    // keeps it independent of the text's size (more pixels inside the strokes do not dilute it).
+    inline double acutance(const std::vector<uint8_t>& rgba, int width, int height, const InkBox& box){
+        if (box.empty())
+            return 0.0;
+        auto luma = [&](int x, int y){
+            x = std::clamp(x, 0, width - 1);
+            y = std::clamp(y, 0, height - 1);
+            const uint8_t* p = &rgba[(size_t(y) * width + x) * 4];
+            return 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2];
+        };
+        std::vector<double> magnitudes;
+        magnitudes.reserve((size_t)box.width() * (size_t)box.height());
+        double largest = 0.0;
+        for (int y = box.y0; y <= box.y1; y++){
+            for (int x = box.x0; x <= box.x1; x++){
+                const double gx = (luma(x + 1, y - 1) + 2.0 * luma(x + 1, y) + luma(x + 1, y + 1)) -
+                                  (luma(x - 1, y - 1) + 2.0 * luma(x - 1, y) + luma(x - 1, y + 1));
+                const double gy = (luma(x - 1, y + 1) + 2.0 * luma(x, y + 1) + luma(x + 1, y + 1)) -
+                                  (luma(x - 1, y - 1) + 2.0 * luma(x, y - 1) + luma(x + 1, y - 1));
+                const double magnitude = std::sqrt(gx * gx + gy * gy);
+                magnitudes.push_back(magnitude);
+                largest = std::max(largest, magnitude);
+            }
+        }
+        double sum = 0.0;
+        size_t edges = 0;
+        for (double magnitude : magnitudes){
+            if (magnitude >= 0.1 * largest && magnitude > 0.0){
+                sum += magnitude;
+                edges++;
+            }
+        }
+        return edges ? sum / (double)edges : 0.0;
+    }
 
     // the harness target read back, rows top first
     struct Screen {
