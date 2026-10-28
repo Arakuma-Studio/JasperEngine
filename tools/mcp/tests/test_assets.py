@@ -1,10 +1,14 @@
 """W4 asset tools: listing/info/preview, file operations with undo, import, placeholder art,
 materials (create/update/link), shader forks with compile errors, text file read/write."""
 
+import sys
 import tempfile
 from pathlib import Path
 
 from harness import Editor, find_key
+
+sys.path.insert(0, str(Path(__file__).parent))
+from test_post_process_passes import write_png  # noqa: E402
 
 TIMEOUT = 600
 
@@ -191,17 +195,18 @@ async def test_shader_fork_and_errors(ed: Editor):
 
 
 async def test_skybox_cube_faces(ed: Editor):
-    """A six-face cube map reads back in the order it is written (front, back, left, right, up, down)."""
+    """A six-face cube map reads back in the order it is written (front, back, left, right, up, down).
+    The faces are square images of one size (a cube map's faces must be; the engine refuses the
+    load otherwise, and the Skybox's texture then reads null), read back once the sky has loaded."""
     faces = ["front", "back", "left", "right", "up", "down"]
     folder = ed.project / "assets/cubefaces"
-    folder.mkdir(parents=True, exist_ok=True)
-    rock = (ed.project / "assets/sprites/rock.png").read_bytes()
     for face in faces:
-        (folder / f"{face}.png").write_bytes(rock)
+        write_png(folder / f"{face}.png", size=8)
     paths = [f"assets/cubefaces/{face}.png" for face in faces]
 
     sky = await make_entity(ed, "FacesSky", "skybox")
     await ed.call("set_properties", entity=sky, values={"skybox": {"texture": {"cube": paths}}})
+    await ed.call("wait", frames=10)
     got = await ed.call("get_entity", entity=sky, components=["skybox"])
     texture = got["components"]["skybox"]["texture"]
     ed.check(isinstance(texture, dict), f"a cube map value: {texture!r}")
@@ -209,6 +214,7 @@ async def test_skybox_cube_faces(ed: Editor):
 
     # a write of what was read keeps the faces
     await ed.call("set_properties", entity=sky, values={"skybox": {"texture": texture}})
+    await ed.call("wait", frames=10)
     again = await ed.call("get_entity", entity=sky, components=["skybox"])
     ed.check_eq(again["components"]["skybox"]["texture"].get("cube"), paths, "the read value round-trips")
     await ed.check_alive()
