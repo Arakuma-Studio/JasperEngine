@@ -22,6 +22,15 @@
 #include <string>
 
 using namespace jasperengine;
+// the API generator (tools/lua_api) reads the bound names as written: unqualified
+using nav::AvoidanceQuality;
+using nav::GridCell;
+using nav::GridLayout;
+using nav::PathStatus;
+using nav::QueryFilter;
+
+static_assert(nav::ALL_AREAS == 65535 && (1u << nav::AREA_WALKABLE) == 1 && (1u << nav::AREA_NOT_WALKABLE) == 2 &&
+              (1u << nav::AREA_JUMP) == 4, "NavAreas' masks are the areas' bits");
 
 namespace luabridge
 {
@@ -163,18 +172,18 @@ void LuaBinding::registerNavigationClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .beginNamespace("NavMeshPathStatus")
-        .addVariable("Complete", nav::PathStatus::Complete)
-        .addVariable("Partial", nav::PathStatus::Partial)
-        .addVariable("Invalid", nav::PathStatus::Invalid)
+        .addVariable("Complete", PathStatus::Complete)
+        .addVariable("Partial", PathStatus::Partial)
+        .addVariable("Invalid", PathStatus::Invalid)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
         .beginNamespace("ObstacleAvoidanceType")
-        .addVariable("NONE", nav::AvoidanceQuality::None)
-        .addVariable("LOW", nav::AvoidanceQuality::Low)
-        .addVariable("MEDIUM", nav::AvoidanceQuality::Medium)
-        .addVariable("GOOD", nav::AvoidanceQuality::Good)
-        .addVariable("HIGH", nav::AvoidanceQuality::High)
+        .addVariable("NONE", AvoidanceQuality::None)
+        .addVariable("LOW", AvoidanceQuality::Low)
+        .addVariable("MEDIUM", AvoidanceQuality::Medium)
+        .addVariable("GOOD", AvoidanceQuality::Good)
+        .addVariable("HIGH", AvoidanceQuality::High)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -201,17 +210,18 @@ void LuaBinding::registerNavigationClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .beginNamespace("GridLayout")
-        .addVariable("SQUARE", nav::GridLayout::Square)
-        .addVariable("HEX", nav::GridLayout::Hex)
+        .addVariable("SQUARE", GridLayout::Square)
+        .addVariable("HEX", GridLayout::Hex)
         .endNamespace();
 
     // area masks and the project's area table (Unity's NavMesh.AllAreas, GetAreaFromName)
     luabridge::getGlobalNamespace(L)
         .beginNamespace("NavAreas")
-        .addVariable("All", (int)nav::ALL_AREAS)
-        .addVariable("Walkable", (int)(1u << nav::AREA_WALKABLE))
-        .addVariable("NotWalkable", (int)(1u << nav::AREA_NOT_WALKABLE))
-        .addVariable("Jump", (int)(1u << nav::AREA_JUMP))
+        // masks: a bit per area (static_assert below keeps them the areas' bits)
+        .addVariable("All", 65535)
+        .addVariable("Walkable", 1)
+        .addVariable("NotWalkable", 2)
+        .addVariable("Jump", 4)
         .addFunction("getAreaFromName", +[](const std::string& name) { return nav::getSettings().findArea(name); })
         .addFunction("getAreaCost", +[](int area) {
             return area >= 0 && area < nav::AREA_COUNT ? nav::getSettings().areas[(size_t)area].cost : 0.0f;
@@ -224,7 +234,7 @@ void LuaBinding::registerNavigationClasses(lua_State *L){
         .addConstructor(
             [](void* memory) { return new (memory) nav::QueryFilter(); },
             [](void* memory, const luabridge::LuaRef& options) { return new (memory) nav::QueryFilter(filterFrom(options)); })
-        .addProperty("agentType", &nav::QueryFilter::agentType)
+        .addProperty("agentType", &QueryFilter::agentType)
         .addProperty("areaMask", +[](const nav::QueryFilter* self) { return (int)self->areaMask; },
                                  +[](nav::QueryFilter* self, int mask) { self->areaMask = (uint16_t)(mask & 0xFFFF); })
         .endClass();
@@ -234,8 +244,8 @@ void LuaBinding::registerNavigationClasses(lua_State *L){
         .addConstructor(
             [](void* memory) { return new (memory) nav::GridCell(); },
             [](void* memory, int x, int y) { return new (memory) nav::GridCell{x, y}; })
-        .addProperty("x", &nav::GridCell::x)
-        .addProperty("y", &nav::GridCell::y)
+        .addProperty("x", &GridCell::x)
+        .addProperty("y", &GridCell::y)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

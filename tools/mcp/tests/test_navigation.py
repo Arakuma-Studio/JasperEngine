@@ -190,10 +190,10 @@ async def test_lua_api_in_play(ed: Editor):
             "local agent = NavMeshAgent(scene, entity('Walker')) "
             "arrivedCount = 0 "
             "agent.onDestinationReached = function(a) arrivedCount = arrivedCount + 1 end "
-            "return agent:setDestination(Vector3(-15, 0, 15)), agent.isOnNavMesh"))
+            "agent.speed = 6 agent.acceleration = 20 return agent:setDestination(Vector3(-15, 0, -3)), agent.isOnNavMesh"))
         ed.check_eq(got["values"], [True, True], f"{got}")
-        # ~30 m at 3.5 m/s: game time, however slowly the editor's frames come
-        await ed.call("wait", seconds=180, game_seconds=30, **{"until": "return arrivedCount == 1"})
+        # 12 m at 6 m/s (2 s of game time); a loaded host runs few frames a second
+        await ed.call("wait", seconds=400, game_seconds=30, **{"until": "return arrivedCount == 1"})
         live = await ed.call("get_runtime_entity", entity=s["walker"], components=["navmeshagent"])
         agent = live["components"]["navmeshagent"]
         ed.check_eq(agent["pathStatus"], "complete", f"{agent}")

@@ -2203,6 +2203,23 @@ OVERRIDES[('UIDocument', 'reload')] = {
             'or loaded again (`mode = "rebuild"`: onUnload and onLoad fire).'],
     'overloads': [([], ''), ([('options', '{mode: "patch"|"rebuild"}')], '')]}
 PROPERTY_OVERRIDES[('UIDocument', 'onReload')] = ('fun(report: UIReloadReport)|nil', False)
+
+# S19 navigation: the queries returning (bool, hit) and the link data table
+_NAV_FILTER = 'NavMeshQueryFilter|integer'
+OVERRIDES[('NavigationSystem', 'samplePosition')] = {
+    'doc': ['The nearest navmesh point within maxDistance of `point` (Unity\'s NavMesh.SamplePosition):',
+            'found, then the hit (position, normal, distance, area, mask, hit). The filter: a',
+            'NavMeshQueryFilter or an area mask (all areas of the first agent type by default).'],
+    'overloads': [([('point', 'Vector3'), ('maxDistance', 'number'), ('filter?', _NAV_FILTER)], 'boolean, NavMeshHit')]}
+OVERRIDES[('NavigationSystem', 'raycast')] = {
+    'doc': ['Walks the navmesh surface from `from` to `to` (Unity\'s NavMesh.Raycast): blocked when an',
+            'edge stops it before `to`, then the hit (where it stopped, the edge normal).'],
+    'overloads': [([('from', 'Vector3'), ('to', 'Vector3'), ('filter?', _NAV_FILTER)], 'boolean, NavMeshHit')]}
+OVERRIDES[('NavigationSystem', 'findClosestEdge')] = {
+    'doc': ['The navmesh boundary point closest to `point` (Unity\'s NavMesh.FindClosestEdge): found, then',
+            'the hit (position, normal, distance).'],
+    'overloads': [([('point', 'Vector3'), ('filter?', _NAV_FILTER)], 'boolean, NavMeshHit')]}
+PROPERTY_OVERRIDES[('NavMeshAgent', 'currentOffMeshLinkData')] = ('OffMeshLinkData', False)
 PROPERTY_OVERRIDES[('UIDocument', 'lastReloadReport')] = ('UIReloadReport|nil', False)
 
 # HTML UI (phase 4, p4-guide): class doc lines appended to the generated ones (the guide's URI)
