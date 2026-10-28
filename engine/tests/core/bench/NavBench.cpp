@@ -334,6 +334,14 @@ int main(int argc, char** argv) {
             times.push_back(msSince(t));
         }
         results.add("grid_batch_200_4t_ms", bench::percentile(times, 0.5), "ms");
+        results.add("grid_batch_threads", (double)std::min<size_t>(4, jobs::system().getWorkerCount() + 1), "threads");
+        times.clear();
+        for (int i = 0; i < 10; i++) {
+            const auto t = bench::Clock::now();
+            nav::solveGridBatch(field, requests, costs, pool4, paths, 1);
+            times.push_back(msSince(t));
+        }
+        results.add("grid_batch_200_1t_ms", bench::percentile(times, 0.5), "ms");
         results.add("grid_bytes_per_cell", (double)field.memoryBytes() / (128.0 * 128.0), "B");
     }
 

@@ -11,6 +11,7 @@
 #include "jobs/JobSystem.h"
 
 #include <algorithm>
+#include <atomic>
 #include <functional>
 #include <cmath>
 #include <limits>
@@ -632,13 +633,13 @@ void nav::solveGridBatch(const NavGridMap& map, const std::vector<GridRequest>& 
     std::vector<std::unique_ptr<GridSolver>> solvers(chunks);
     for (size_t i = 0; i < chunks; i++)
         solvers[i] = pool.lease();
-    const size_t perChunk = (requests.size() + chunks - 1) / chunks;
+    // each worker takes the next request until none is left (paths differ a lot in cost, so a
+    // static split would wait on its slowest share); a result depends only on its request
+    std::atomic<size_t> next{0};
     jobs::ParallelForOptions options;
     options.maxHelpers = chunks > 0 ? chunks - 1 : 0;
     jobs::parallelFor(chunks, [&](size_t chunk) {
-        const size_t begin = chunk * perChunk;
-        const size_t end = std::min(requests.size(), begin + perChunk);
-        for (size_t i = begin; i < end; i++)
+        for (size_t i = next.fetch_add(1, std::memory_order_relaxed); i < requests.size(); i = next.fetch_add(1, std::memory_order_relaxed))
             results[i] = solvers[chunk]->solve(map, requests[i].start, requests[i].goal, requests[i].query, areaCosts);
     }, options);
     for (auto& solver : solvers)
