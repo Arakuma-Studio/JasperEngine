@@ -530,7 +530,9 @@ jobs:
         run: BUILD_TYPE=Release WEB_PROJECT=texture-formats tools/build.sh web
 
       - name: Browser gate, cooked texture formats
-        run: GATE=texture-formats tools/build.sh web-gate
+        # with the R19 web transcode bench in report mode (the budget is gated on the benchmark
+        # server only: docs/textures.md)
+        run: GATE=texture-formats GATE_ARGS='--query=transcode_bench=report --expect=transcode_web_budgets=report --seconds 10' tools/build.sh web-gate
 
       - name: Cooked-texture runtime size (S14 R21, wasm Release)
         run: |
