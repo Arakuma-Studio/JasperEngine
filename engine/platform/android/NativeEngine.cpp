@@ -644,6 +644,8 @@ NativeEngine::NativeEngine(struct android_app *app) {
 }
 
 NativeEngine::~NativeEngine() {
+    // the window is gone by now: what the shutdown releases needs the context current again
+    makeContextCurrent();
     jasperengine::Engine::systemShutdown();
 
     SwappyGL_destroy();
@@ -976,7 +978,26 @@ bool NativeEngine::initContext() {
     return true;
 }
 
+bool NativeEngine::makeContextCurrent() {
+    if (mEglDisplay == EGL_NO_DISPLAY || mEglContext == EGL_NO_CONTEXT) {
+        return false;
+    }
+    if (mEglSurface != EGL_NO_SURFACE) {
+        return eglMakeCurrent(mEglDisplay, mEglSurface, mEglSurface, mEglContext) == EGL_TRUE;
+    }
+    const char* extensions = eglQueryString(mEglDisplay, EGL_EXTENSIONS);
+    if (!extensions || !strstr(extensions, "EGL_KHR_surfaceless_context")) {
+        return false;
+    }
+    return eglMakeCurrent(mEglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, mEglContext) == EGL_TRUE;
+}
+
 void NativeEngine::killContext() {
+    // APP_CMD_TERM_WINDOW unbound the context with its surface: the engine's GL objects are
+    // deleted with it current again, not as calls with no context (libEGL logs those)
+    if (mHasGLObjects) {
+        makeContextCurrent();
+    }
     killGLObjects();
 
     eglMakeCurrent(mEglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
@@ -1406,8 +1427,8 @@ void NativeEngine::handleCommand(int32_t cmd) {
         case APP_CMD_LOW_MEMORY:
             // system told us we have low memory. So if we are not visible, let's
             // cooperate by deallocating all of our graphic resources.
-            // The context is no longer current once the window is gone, so GL deletes are
-            // no-ops; destroying the context is what frees the GPU memory.
+            // killContext makes the context current without a surface to delete the GL objects
+            // (EGL_KHR_surfaceless_context); destroying the context frees the GPU memory anyway.
             if (!mHasWindow) {
                 killContext();
             }

@@ -91,6 +91,9 @@ private:
     bool initContext();
 
     void killContext();
+    // the context current with the window surface, or with none when the window is gone
+    // (EGL_KHR_surfaceless_context); false when it cannot be
+    bool makeContextCurrent();
     void killSurface();
     void killDisplay();
 
