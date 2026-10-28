@@ -14,6 +14,7 @@ below are for that layout (the same one test_lattice_scene.py drives).
 
 from __future__ import annotations
 
+import math
 import os
 import sys
 
@@ -21,6 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import test_lattice_scene as ls  # noqa: E402  (helpers only: its tests are not collected here)
 from harness import Editor  # noqa: E402
+import ui_input  # noqa: E402
 
 TIMEOUT = 900
 EDITOR = {"create": True, "xvfb": "harness"}
@@ -110,22 +112,26 @@ async def test_inspector_select_all_shows_in_scene_view(ed: Editor):
     cage = (await ed.call("create_entity", type="empty", scene=sid, name="Cage"))["entity_id"]
     await ed.call("add_component", scene=sid, entity=cage, component="lattice")
     await ed.call("set_transform", scene=sid, entity=cage, scale=[2, 2, 2])
-    await ed.call("set_scene_camera", scene=sid, position=[3.2, 2.4, 5.0], target=[0, 0, 0])
+    # the field of view this view was measured with (0.75 rad, before S26's 60 degree default):
+    # the centre point sits under the gizmo there
+    await ed.call("set_scene_camera", scene=sid, position=[3.2, 2.4, 5.0], target=[0, 0, 0],
+                  camera_settings={"fov": math.degrees(0.75)})
     await ed.call("select_entities", scene=sid, entities=[cage])
     S["cage"] = cage
     ls.focus_editor(ed)
     await ls.settle(ed, 10)
     ed.check_eq(scene_blobs(ls.screen(ed)), [], "no point is selected yet")
 
-    # Inspector > Lattice > Points > Select All; the mouse stays over the Inspector
-    await ls.click(ed, 1335, 496)
+    # Inspector > Lattice > Points > Select All (where find_ui_item says it is drawn); the mouse
+    # stays over the Inspector
+    await ui_input.for_editor(ed).click_revealed("Select All", "Inspector")
     await ls.settle(ed, 10)
     points = scene_blobs(ls.screen(ed))
     ed.check_eq(len(points), 26, f"the Scene view shows the 27 selected points (the centre one under the gizmo) "
                                  f"without the mouse going over it, saw {len(points)}")
 
     # Select None, same rule
-    await ls.click(ed, 1500, 496)
+    await ui_input.for_editor(ed).click_revealed("Select None", "Inspector")
     await ls.settle(ed, 10)
     ed.check_eq(scene_blobs(ls.screen(ed)), [], "Select None clears them in the Scene view at once")
 
