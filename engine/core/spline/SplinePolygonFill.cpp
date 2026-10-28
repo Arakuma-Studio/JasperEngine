@@ -221,14 +221,8 @@ bool spline::triangulatePolygon(std::span<const Vector2> polygon, std::vector<ui
     while (remaining > 3){
         const uint32_t a = prev[current];
         const uint32_t c = next[current];
-        if (straight(current)){
-            // clipping an ear can leave a neighbour on a straight run
-            unlink(current);
-            remaining--;
-            current = c;
-            stalled = 0;
-            continue;
-        }
+        // a vertex left on a straight run by clipping is no ear (its triangle has no area), and
+        // stays: earlier triangles may use it, so dropping it would make a T-junction
         if (cross(pts[a], pts[current], pts[c]) > 0.0 && earIsEmpty(a, current, c)){
             triangles.push_back(source[a]);
             triangles.push_back(source[current]);

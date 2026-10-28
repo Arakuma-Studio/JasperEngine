@@ -20,14 +20,20 @@ namespace{
     const uint32_t CLOSEST_BRUTE_SAMPLES = 20000;
     const uint32_t CLOSEST_QUERIES = 1000;
 
-    // The curve as a polyline of CLOSEST_BRUTE_SAMPLES chords (uniform in t). Distances to it are
-    // within the chords' sagitta (~1e-5 here) of the curve's.
+    // The curve as a polyline of about CLOSEST_BRUTE_SAMPLES chords, uniform in u per segment and
+    // through every knot (a chord across a corner would cut it). Distances to it are within the
+    // chords' sagitta (~1e-5 here) of the curve's.
     std::vector<Vector3> closestDensePolyline(const SplineData& s){
+        const uint32_t segments = s.segmentCount();
+        const uint32_t perSegment = CLOSEST_BRUTE_SAMPLES / segments;
         std::vector<Vector3> out;
-        out.reserve(CLOSEST_BRUTE_SAMPLES + 1);
-        for (uint32_t i = 0; i <= CLOSEST_BRUTE_SAMPLES; i++){
-            out.push_back(evaluatePosition(s, float(i) / float(CLOSEST_BRUTE_SAMPLES)));
+        out.reserve(size_t(segments) * perSegment + 1);
+        for (uint32_t seg = 0; seg < segments; seg++){
+            for (uint32_t i = 0; i < perSegment; i++){
+                out.push_back(evaluateSegment(s, seg, float(i) / float(perSegment)).position);
+            }
         }
+        out.push_back(evaluateSegment(s, segments - 1, 1.0f).position);
         return out;
     }
 

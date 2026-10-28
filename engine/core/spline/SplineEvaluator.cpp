@@ -378,8 +378,13 @@ namespace{
                     break;
                 }
                 const float un = std::clamp(u - g / gp, lo, hi);
+                if (un == u){
+                    break;
+                }
+                // near the minimum the squared distance is flat to float precision: an equal
+                // value still takes the (more accurate) Newton point
                 const float fn = f(un);
-                if (!(fn < fBest)){
+                if (!(fn <= fBest)){
                     break;
                 }
                 uBest = un;
