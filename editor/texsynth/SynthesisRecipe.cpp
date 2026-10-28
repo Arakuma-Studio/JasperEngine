@@ -592,10 +592,22 @@ namespace jasperengine::editor::texsynth {
             const bool text = std::memcmp(header + 4, "iTXt", 4) == 0 || std::memcmp(header + 4, "tEXt", 4) == 0;
             if (std::memcmp(header + 4, "IDAT", 4) == 0 || std::memcmp(header + 4, "IEND", 4) == 0) break;
             if (text && length < (64u << 20)) {
+                // only the chunk of `keyword`: the keyword (and its NUL) is peeked, another text
+                // chunk (a large paint layer when the recipe is wanted, ...) is seeked over
+                const size_t keyLength = std::strlen(keyword);
+                const size_t peek = std::min<size_t>(length, keyLength + 1);
+                std::vector<uint8_t> start(peek);
+                if (peek > 0 && !file.read(reinterpret_cast<char*>(start.data()), static_cast<std::streamsize>(peek))) break;
+                if (peek != keyLength + 1 || std::memcmp(start.data(), keyword, keyLength) != 0 || start[keyLength] != 0) {
+                    file.seekg(static_cast<std::streamoff>(length - peek) + 4, std::ios::cur);
+                    if (!file) break;
+                    continue;
+                }
                 const size_t at = head.size();
                 head.resize(at + 12 + length);
                 std::memcpy(head.data() + at, header, 8);
-                if (!file.read(reinterpret_cast<char*>(head.data() + at + 8), static_cast<std::streamsize>(length) + 4)) {
+                std::memcpy(head.data() + at + 8, start.data(), peek);
+                if (!file.read(reinterpret_cast<char*>(head.data() + at + 8 + peek), static_cast<std::streamsize>(length - peek) + 4)) {
                     head.resize(at);
                     break;
                 }

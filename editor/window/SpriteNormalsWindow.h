@@ -218,6 +218,14 @@ namespace jasperengine::editor {
         bool hasUnsavedPaint() const;
         // the strokes since the last load or save dropped (project switch, closing: Discard)
         void discardPaint();
+        // the stroke redos dropped (the App: a project or scene step undone while the window is
+        // focused, so Ctrl+Y redoes that step first)
+        void dropPaintRedo() { paintRedo.clear(); }
+        // Opening another source or map (openSources, openRecipe, openForEntity, setSourcePath,
+        // setSourceEntity, the Use Base Texture fix, an output with its own paint) asks "Discard
+        // Paint Changes?" first while strokes are unsaved, and goes on after Discard. Off (the
+        // scripted path): unsaved strokes are dropped without asking.
+        void setConfirmPaintDiscard(bool on) { confirmPaintDiscard = on; }
         // Alt+click: the composited normal at (x, y) becomes the direction, the tool Angle
         // (false on a transparent pixel)
         bool samplePaintDirection(int x, int y);
@@ -428,6 +436,23 @@ namespace jasperengine::editor {
         bool paintOpen = false;                  // the Paint foldout
         bool paintOpenSet = false;               // ... opened once for a non-empty overlay
         uint64_t paintSerial = 1;                // the overlay changed
+        bool confirmPaintDiscard = true;
+        // the target file as it was last loaded or written (a change on disk: a Save undone, a
+        // regeneration): its paint is read again as the saved state
+        bool paintStampExists = false;
+        std::filesystem::file_time_type paintStampTime{};
+        uintmax_t paintStampSize = 0;
+        double paintStampCheckedAt = -1.0;
+        // what changed since the composite shown and the lit preview were made (a stroke: its pixels)
+        bool displayedValid = false;
+        bool dirtyAll = true;
+        int dirtyX0 = 0, dirtyY0 = 0, dirtyX1 = 0, dirtyY1 = 0;
+        int litDirtyX0 = 0, litDirtyY0 = 0, litDirtyX1 = 0, litDirtyY1 = 0;
+        double normalUploadedAt = -1.0;
+        const void* normalGpuRun = nullptr;
+        // Smooth's cells and islands of the shown result (built once per result)
+        spritenormals::PaintTopology topology;
+        const void* topologyRun = nullptr;
         mutable uint64_t unsavedFor = 0;         // hasUnsavedPaint() for this paintSerial ...
         mutable bool unsavedCached = false;      // ... (an overlay compare per change, not per frame)
         // a stroke in progress (mouse or paintStroke)
@@ -499,6 +524,16 @@ namespace jasperengine::editor {
         // ---- paint
         void loadPaintForTarget();
         void paintChanged();
+        // a change of the pixels [x0, x1) x [y0, y1): only they are composited and lit again
+        void paintChangedRect(int x0, int y0, int x1, int y1);
+        void paintChangedPixels(const std::vector<int>& pixels);
+        bool paintDiscardOk(const std::function<void()>& retry);
+        void recordPaintStamp();
+        void checkPaintTarget();
+        // the normal map `output` ("" = the default name) would write for `item`, absolute
+        std::filesystem::path plannedNormalFor(const Item& item, const std::string& output) const;
+        const spritenormals::PaintTopology* topologyFor(bool needed);
+        void renderLitRect();
         bool painting() const { return paintTool != spritenormals::PaintTool::Navigate && paintDisabledReason().empty(); }
         // the shown result's generation in OpenGL green, the colour (atlas) and cells
         const spritenormals::Image& generatedGL();

@@ -31,6 +31,8 @@ namespace jasperengine::editor::spritenormals {
 
         // ---- the cache (.jasperengine/normals-check-cache.json)
 
+        constexpr int kCacheVersion = 2;
+
         struct Cache {
             fs::path file;
             json pngs = json::object();      // rel -> {mtime, size, recipe, recipe_error?, width, height, analysis?}
@@ -50,7 +52,8 @@ namespace jasperengine::editor::spritenormals {
             std::string text;
             if (!ProjectChecks::readFile(cache.file, text)) return;
             const json j = json::parse(text, nullptr, false);
-            if (!j.is_object() || !j.contains("version") || j["version"] != 1) return;
+            // version 2 (Phase 5): PNG entries carry paint / paint_error; a version 1 cache is read again
+            if (!j.is_object() || !j.contains("version") || j["version"] != kCacheVersion) return;
             if (j.contains("pngs") && j["pngs"].is_object()) cache.pngs = j["pngs"];
             if (j.contains("sources") && j["sources"].is_object()) cache.sources = j["sources"];
             if (j.contains("index") && j["index"].is_object()) cache.index = j["index"];
@@ -58,7 +61,7 @@ namespace jasperengine::editor::spritenormals {
 
         void saveCache(const Cache& cache) {
             if (cache.file.empty() || !cache.dirty) return;
-            const json j = {{"version", 1}, {"pngs", cache.pngs}, {"sources", cache.sources}, {"index", cache.index}};
+            const json j = {{"version", kCacheVersion}, {"pngs", cache.pngs}, {"sources", cache.sources}, {"index", cache.index}};
             fs::path temporary = cache.file;
             temporary += ".partial";
             std::ofstream out(temporary, std::ios::binary | std::ios::trunc);

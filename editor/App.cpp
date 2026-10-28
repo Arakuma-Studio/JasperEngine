@@ -749,8 +749,11 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
                 if (spriteNormalsWindow->canUndoPaint()) {
                     spriteNormalsWindow->undoPaint();
                 } else if (spriteNormalsWindow->undoGoesToScene(routedScene)) {
+                    // another history's step undone: the stroke redos go (Ctrl+Y redoes that step first)
+                    spriteNormalsWindow->dropPaintRedo();
                     CommandHandle::get(routedScene)->undo();
                 } else {
+                    spriteNormalsWindow->dropPaintRedo();
                     project.getProjectCommandHistory()->undo();
                     projectWindow->refreshCurrentDirectory();
                 }
@@ -1045,7 +1048,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
                 "Ctrl+1 Scene   Ctrl+3 Inspector   Ctrl+4 Hierarchy\n"
                 "Ctrl+5 Project   Ctrl+6 Animation   Ctrl+Shift+C Console\n\n"
                 "SPRITE NORMAL MAP\n1 / 2 / 3 / 4    Color / Normal / Lit / Split\nDrag    Move the light (Shift+wheel: height)\nSpace    Play frames   , / .    Previous / next frame\nO    Orbit the light   G    Frame grid   F / 0    Fit / 100%\nAlt+click    Pick a region colour\nCtrl+Enter    Save (and assign)\n\n"
-                "SPRITE NORMAL MAP: PAINT\nV    Navigate (no brush)   B / N / M / E    Angle / Flatten / Smooth / Erase\nDrag    Paint   Alt+click    Sample the direction\nShift+wheel / - / =    Brush size (Ctrl+Shift+wheel: 4 px)\nW    Brush / Wand   X    Mirror X   H    Highlight painted   P    Show paint\nCtrl+Z / Ctrl+Y    Undo / redo a paint stroke (before the project's steps)\n\n"
+                "SPRITE NORMAL MAP: PAINT\nV    Navigate (no brush)   B / N / M / E    Angle / Flatten / Smooth / Erase\nDrag    Paint   Alt+click    Sample the direction\nShift+wheel / - / =    Brush size (Ctrl+Shift+wheel: 4 px)\nW    Brush / Wand   X    Mirror X   H    Highlight painted   P    Show paint\nCtrl+Z / Ctrl+Y    Undo / redo a paint stroke first, then the project's steps (undoing one of those drops the stroke redos)\n\n"
                 "SCENE VIEW\n"
                 "Q / W / E / R / T    Hand / Move / Rotate / Scale / Rect\n"
                 "X    Toggle local / global transforms\n"
@@ -2263,8 +2266,11 @@ void editor::App::show(){
             if (spriteNormalsWindow->canUndoPaint()) {
                 spriteNormalsWindow->undoPaint();
             } else if (spriteNormalsWindow->undoGoesToScene(routedScene)) {
+                // another history's step undone: the stroke redos go (Ctrl+Y redoes that step first)
+                spriteNormalsWindow->dropPaintRedo();
                 CommandHandle::get(routedScene)->undo();
             } else {
+                spriteNormalsWindow->dropPaintRedo();
                 project.getProjectCommandHistory()->undo();
                 projectWindow->refreshCurrentDirectory();
             }
@@ -4534,6 +4540,17 @@ void editor::App::exit() {
 
     if (project.isAnySceneSaving()) {
         registerAlert("Saving Scene", "Wait for the current scene save to finish before exiting.");
+        return;
+    }
+
+    // the Sprite Normal Map window's unsaved paint strokes (not in any file): asked first, like its close
+    if (spriteNormalsWindow && spriteNormalsWindow->hasUnsavedPaint()) {
+        registerConfirmAlert("Discard Paint Changes?",
+                             "The Sprite Normal Map window has paint strokes that are not saved into the normal map.\n\nDiscard them and exit?",
+                             [this]() {
+                                 spriteNormalsWindow->discardPaint();
+                                 exit();
+                             });
         return;
     }
 

@@ -86,12 +86,23 @@ namespace jasperengine::editor::spritenormals {
         int radius = 1;                     // Smooth only, 1..4 (box kernel (2r+1)^2)
     };
 
+    // Each pixel's cell (first holding it, -1 none) and 8-connected island of opaque pixels within
+    // it (-1 transparent): what Smooth averages within. Depends on the source, cells and cutoff
+    // only, so the window builds it once per result.
+    struct PaintTopology {
+        int width = 0, height = 0;
+        std::vector<int> owner;
+        std::vector<int> island;
+    };
+
     struct PaintContext {                   // what selection and Smooth need
         const Image& source;                // RGBA8, output layout (the colour atlas for animated sources)
         const Image& generatedGL;           // before paint (OpenGL green)
         std::vector<Cell> cells;            // the output's frame cells (empty: one full-image cell)
         float alphaThreshold = 0.03f;
+        const PaintTopology* topology = nullptr;   // optional: paintTopology() of the above (else built per Smooth)
     };
+    PaintTopology paintTopology(const Image& source, const std::vector<Cell>& cells, float alphaThreshold);
 
     struct PaintStats {
         struct Op {
@@ -166,6 +177,10 @@ namespace jasperengine::editor::spritenormals {
     // them the renormalised lerp (z at least 0.0175). Then with `directx` green = 255 - green on
     // opaque pixels. An overlay of another size counts as unpainted.
     Image composite(const Image& generatedGL, const PaintOverlay& overlay, const Image& source, float alphaThreshold, bool directx);
+    // composite() of the pixels [x0, x1) x [y0, y1) only, into `out` (the source's size): what a
+    // stroke changed, without recompositing the whole image (the same bytes as composite())
+    void compositeRect(Image& out, const Image& generatedGL, const PaintOverlay& overlay, const Image& source, float alphaThreshold, bool directx, int x0,
+                       int y0, int x1, int y1);
     // green = 255 - green on the pixels above the cutoff (DirectX <-> OpenGL; transparent pixels
     // stay (128,128,255))
     void flipGreen(Image& normal, const Image& source, float alphaThreshold);

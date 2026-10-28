@@ -772,19 +772,14 @@ namespace jasperengine::editor::spritenormals {
 
     // ------------------------------------------------------------------ operations
 
-    namespace {
-
-        // The composite before the DirectX flip (what Smooth reads)
-        Image compositeGL(const PaintContext& ctx, const PaintOverlay& overlay) {
-            return composite(ctx.generatedGL, overlay, ctx.source, ctx.alphaThreshold, false);
-        }
-
-        // Island labels and owners, built once per Smooth
-        struct SmoothField {
-            std::vector<int> owner;
-            std::vector<int> island;
-        };
-
+    PaintTopology paintTopology(const Image& source, const std::vector<Cell>& cells, float alphaThreshold) {
+        PaintTopology t;
+        if (source.channels != 4 || source.width <= 0 || source.height <= 0) return t;
+        t.width = source.width;
+        t.height = source.height;
+        t.owner = owners(cells, source.width, source.height);
+        t.island = islands(source, t.owner, alphaThreshold);
+        return t;
     }
 
     PaintStats::Op applyToPixels(PaintOverlay& overlay, PaintOpKind kind, const std::vector<int>& pixels, const std::array<float, 3>& direction,
@@ -798,15 +793,42 @@ namespace jasperengine::editor::spritenormals {
         const uint8_t target = coverage(255.0 * s);
         const size_t total = static_cast<size_t>(width) * height;
 
-        // Smooth: the composite as it stands, its cells and islands
-        Image current;
-        SmoothField field;
+        // Smooth: the cells and islands (the context's cached ones when given) and the composite as
+        // it stands (OpenGL), over the selection's bounding box grown by the radius only
         const int r = std::clamp(radius, 1, 4);
+        PaintTopology local;
+        const PaintTopology* field = ctx.topology && ctx.topology->width == width && ctx.topology->height == height ? ctx.topology : nullptr;
+        int bx0 = width, by0 = height, bx1 = 0, by1 = 0;
+        std::vector<uint8_t> current;   // RGB of [bx0, bx1) x [by0, by1)
         if (kind == PaintOpKind::Smooth) {
-            current = compositeGL(ctx, overlay);
-            field.owner = owners(ctx.cells, width, height);
-            field.island = islands(source, field.owner, ctx.alphaThreshold);
+            if (!field) {
+                local = paintTopology(source, ctx.cells, ctx.alphaThreshold);
+                field = &local;
+            }
+            for (int i : pixels) {
+                if (i < 0 || static_cast<size_t>(i) >= total) continue;
+                bx0 = std::min(bx0, i % width - r);
+                by0 = std::min(by0, i / width - r);
+                bx1 = std::max(bx1, i % width + r + 1);
+                by1 = std::max(by1, i / width + r + 1);
+            }
+            bx0 = std::max(0, bx0);
+            by0 = std::max(0, by0);
+            bx1 = std::min(width, bx1);
+            by1 = std::min(height, by1);
+            if (bx0 < bx1 && by0 < by1) {
+                current.resize(static_cast<size_t>(bx1 - bx0) * (by1 - by0) * 3);
+                for (int y = by0; y < by1; y++) {
+                    for (int x = bx0; x < bx1; x++) {
+                        const size_t i = static_cast<size_t>(y) * width + x;
+                        // transparent pixels are never averaged: their value does not matter
+                        compositePixel(ctx.generatedGL.data.data() + i * 4, overlay.rgba.data() + i * 4,
+                                       &current[(static_cast<size_t>(y - by0) * (bx1 - bx0) + (x - bx0)) * 3]);
+                    }
+                }
+            }
         }
+        auto composed = [&](size_t j) { return &current[((j / width - by0) * static_cast<size_t>(bx1 - bx0) + (j % width - bx0)) * 3]; };
         // every new value from the state before this op (order never matters within one op)
         std::vector<std::array<uint8_t, 4>> values(pixels.size());
         std::vector<uint8_t> keep(pixels.size(), 0);
@@ -832,13 +854,13 @@ namespace jasperengine::editor::spritenormals {
                     for (int yy = std::max(0, y - r); yy <= std::min(height - 1, y + r); yy++) {
                         for (int xx = std::max(0, x - r); xx <= std::min(width - 1, x + r); xx++) {
                             const size_t j = static_cast<size_t>(yy) * width + xx;
-                            if (field.island[j] < 0 || field.island[j] != field.island[static_cast<size_t>(i)] || field.owner[j] != field.owner[static_cast<size_t>(i)]) continue;
-                            const uint8_t* c = current.data.data() + j * 4;
+                            if (field->island[j] < 0 || field->island[j] != field->island[static_cast<size_t>(i)] || field->owner[j] != field->owner[static_cast<size_t>(i)]) continue;
+                            const uint8_t* c = composed(j);
                             for (int ch = 0; ch < 3; ch++) sum[ch] += c[ch] / 127.5 - 1.0;
                         }
                     }
                     const double length = std::sqrt(sum[0] * sum[0] + sum[1] * sum[1] + sum[2] * sum[2]);
-                    const uint8_t* own = current.data.data() + static_cast<size_t>(i) * 4;
+                    const uint8_t* own = composed(static_cast<size_t>(i));
                     if (length < 1e-9) v = {own[0], own[1], own[2], std::max(p[3], target)};
                     else v = {encodeByte(sum[0] / length), encodeByte(sum[1] / length), encodeByte(sum[2] / length), std::max(p[3], target)};
                     break;
@@ -877,12 +899,21 @@ namespace jasperengine::editor::spritenormals {
         PaintStats local;
         PaintStats& out = stats ? *stats : local;
         out = PaintStats();
+        // the islands once for every Smooth of the list (the context's when it has them)
+        PaintTopology topology;
+        PaintContext withTopology = ctx;
+        bool smooths = false;
+        for (const PaintOp& op : ops) smooths = smooths || op.kind == PaintOpKind::Smooth;
+        if (smooths && !ctx.topology) {
+            topology = paintTopology(ctx.source, ctx.cells, ctx.alphaThreshold);
+            withTopology.topology = &topology;
+        }
         for (size_t i = 0; i < ops.size(); i++) {
             const PaintOp& op = ops[i];
             std::vector<int> pixels;
             std::string error;
             selectPixels(op.where, ctx, pixels, &error);
-            const PaintStats::Op counts = applyToPixels(overlay, op.kind, pixels, op.direction, op.strength, op.radius, ctx);
+            const PaintStats::Op counts = applyToPixels(overlay, op.kind, pixels, op.direction, op.strength, op.radius, withTopology);
             out.ops.push_back(counts);
             if (counts.selected == 0) {
                 problems.push_back({"paint_empty_selection", fieldOf(i),
@@ -910,26 +941,42 @@ namespace jasperengine::editor::spritenormals {
         }
     }
 
+    void compositeRect(Image& out, const Image& generatedGL, const PaintOverlay& overlay, const Image& source, float alphaThreshold, bool directx, int x0,
+                       int y0, int x1, int y1) {
+        if (generatedGL.channels != 4 || generatedGL.bitDepth != 8 || source.channels != 4 || source.bitDepth != 8 || generatedGL.width != source.width ||
+            generatedGL.height != source.height || out.width != source.width || out.height != source.height || out.channels != 4 || out.bitDepth != 8) {
+            return;
+        }
+        const bool painted = overlay.sized(source.width, source.height);
+        x0 = std::max(0, x0);
+        y0 = std::max(0, y0);
+        x1 = std::min(source.width, x1);
+        y1 = std::min(source.height, y1);
+        for (int y = y0; y < y1; y++) {
+            for (int x = x0; x < x1; x++) {
+                const size_t i = static_cast<size_t>(y) * source.width + x;
+                const uint8_t* s = source.data.data() + i * 4;
+                uint8_t* o = out.data.data() + i * 4;
+                std::memcpy(o, generatedGL.data.data() + i * 4, 3);
+                o[3] = s[3];
+                if (transparent(s, alphaThreshold)) {
+                    // transparent pixels stay neutral (their paint is kept in the overlay)
+                    setNeutral(o);
+                    continue;
+                }
+                if (painted) compositePixel(generatedGL.data.data() + i * 4, overlay.rgba.data() + i * 4, o);
+                if (directx) o[1] = static_cast<uint8_t>(255 - o[1]);
+            }
+        }
+    }
+
     Image composite(const Image& generatedGL, const PaintOverlay& overlay, const Image& source, float alphaThreshold, bool directx) {
         if (generatedGL.channels != 4 || generatedGL.bitDepth != 8 || source.channels != 4 || source.bitDepth != 8 || generatedGL.width != source.width ||
             generatedGL.height != source.height) {
             return Image();
         }
         Image out = generatedGL;
-        const bool painted = overlay.sized(source.width, source.height);
-        const size_t n = source.pixelCount();
-        for (size_t i = 0; i < n; i++) {
-            const uint8_t* s = source.data.data() + i * 4;
-            uint8_t* o = out.data.data() + i * 4;
-            o[3] = s[3];
-            if (transparent(s, alphaThreshold)) {
-                // transparent pixels stay neutral (their paint is kept in the overlay)
-                setNeutral(o);
-                continue;
-            }
-            if (painted) compositePixel(generatedGL.data.data() + i * 4, overlay.rgba.data() + i * 4, o);
-            if (directx) o[1] = static_cast<uint8_t>(255 - o[1]);
-        }
+        compositeRect(out, generatedGL, overlay, source, alphaThreshold, directx, 0, 0, source.width, source.height);
         return out;
     }
 
@@ -1043,6 +1090,8 @@ namespace jasperengine::editor::spritenormals {
             return fail("the paint chunk's encoding is not \"png-base64\"");
         }
         if (!j.contains("data") || !j["data"].is_string()) return fail("the paint chunk has no data");
+        // the 8 MiB limit, checked on the text before anything is decoded
+        if (j["data"].get_ref<const std::string&>().size() > 4 * ((kMaxPaintPngBytes + 2) / 3)) return fail("the paint chunk's image is larger than 8 MiB");
         std::vector<uint8_t> png;
         if (!base64Decode(j["data"].get_ref<const std::string&>(), png)) return fail("the paint chunk's data is not base64");
         if (png.size() > kMaxPaintPngBytes) return fail("the paint chunk's image is larger than 8 MiB");

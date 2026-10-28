@@ -34,6 +34,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -69,6 +70,23 @@ namespace jasperengine::editor {
         static sn::Image composed(W& w) { return w.composedNormal(); }
         static void refreshWarningsNow(W& w) { w.refreshWarnings(true); }
         static void setPaintOpen(W& w, bool open) { w.paintOpen = open; }
+        static bool setSourcePath(W& w, const std::string& path, std::string& error) { return w.setSourcePath(path, error); }
+        static bool setSourceEntity(W& w, uint32_t sceneId, Entity entity, std::string& error) { return w.setSourceEntity(sceneId, entity, error); }
+        static sn::Image litFull(W& w) {
+            w.renderLit();
+            return w.litRgba;
+        }
+        static sn::Image litAfterStroke(W& w) {
+            w.renderLitRect();
+            return w.litRgba;
+        }
+        static void checkTarget(W& w) {
+            w.paintStampCheckedAt = -1.0;
+            w.checkPaintTarget();
+        }
+        static void beginStroke(W& w) { w.beginStroke(); }
+        static void strokeTo(W& w, int x, int y) { w.strokeTo(x, y); }
+        static void endStroke(W& w) { w.endStroke(); }
         static void drawFrame(W& w) {
             ImGui::NewFrame();
             w.show();
@@ -478,9 +496,22 @@ TEST(SpriteNormalsPaintWindowDeathTest, UndoRedoCapClearAndUnsavedPaint) {
         EXPECT_TRUE(window->hasUnsavedPaint());
         EXPECT_TRUE(window->redoPaint());
         EXPECT_FALSE(window->hasUnsavedPaint());
-        // the project's undo of the Save restores the map without paint
+        // the project's undo of the Save removes the map: the strokes are unsaved again, and said so
         EXPECT_TRUE(w.p->getProjectCommandHistory()->undo());
         EXPECT_FALSE(fs::exists(map));
+        Access::checkTarget(*window);
+        EXPECT_TRUE(window->hasUnsavedPaint());
+        EXPECT_NE(window->getStatus().find("hero_normal.png is gone"), std::string::npos) << window->getStatus();
+        // redo puts the saved file back: saved again
+        EXPECT_TRUE(w.p->getProjectCommandHistory()->redo());
+        Access::checkTarget(*window);
+        EXPECT_FALSE(window->hasUnsavedPaint());
+        // a stroke redo is dropped when another history's step is undone (the App does it)
+        window->paintStroke({{20, 20}});
+        EXPECT_TRUE(window->undoPaint());
+        EXPECT_TRUE(window->canRedoPaint());
+        window->dropPaintRedo();
+        EXPECT_FALSE(window->canRedoPaint());
 
         // the cap: 256 steps, the oldest dropped
         for (int i = 0; i < 260; i++) window->paintStroke({{8 + i % 16, 8 + (i / 16) % 16}});
@@ -508,9 +539,15 @@ TEST(SpriteNormalsPaintWindowDeathTest, OpeningAPaintedMapLoadsItsPaintAndAMisma
             std::string error;
             ASSERT_TRUE(window->openRecipe(w.file("assets/hero_normal.png"), error)) << error;
             EXPECT_EQ(window->paintedPixelCount(), 9u);
-            // another output path: that file's paint (none)
+            ASSERT_TRUE(settle(*window));
+            // another output path without a paint layer: Save As, the paint stays, unsaved for that file
             window->setOutput("assets/other_normal.png");
-            EXPECT_EQ(window->paintedPixelCount(), 0u);
+            EXPECT_EQ(window->paintedPixelCount(), 9u);
+            EXPECT_TRUE(window->hasUnsavedPaint());
+            std::vector<std::string> written;
+            ASSERT_TRUE(window->save(true, written, error)) << error;
+            EXPECT_EQ(sn::readPaint(w.file("assets/other_normal.png")).value_or(sn::PaintOverlay()).paintedCount(), 9u);
+            EXPECT_FALSE(window->hasUnsavedPaint());
         }
         // a 48 x 32 map's paint at hero's default output: a fix row, Save waits for Clear Paint
         writePaintedMap(w, "assets/wide.png", "assets/hero_normal.png", R"([{"op":"flatten","where":{"rect":[20,10,3,3]}}])");
@@ -590,5 +627,154 @@ TEST(SpriteNormalsPaintWindowDeathTest, ScriptedOpsAndBatchModeNeverPaints) {
         EXPECT_FALSE(window->paintDisabledReason().empty());
         window->setPaintTool(sn::PaintTool::Flatten);
         EXPECT_FALSE(window->paintStroke({{16, 16}}));
+    });
+}
+
+// ---- the cost of a stroke on a large atlas (2048 x 2048): per mouse sample, the stroke and the
+// composite shown (printed; a loose bound only)
+TEST(SpriteNormalsPaintWindowDeathTest, StrokeSamplesOnALargeAtlas) {
+    IN_EDITOR("bench", {
+        writePng(w.file("assets/big.png"), disk(2048, 2048));
+        auto window = std::make_unique<SpriteNormalsWindow>(w.p);
+        std::string error;
+        ASSERT_TRUE(window->openSources({w.file("assets/big.png")}, error)) << error;
+        ASSERT_TRUE(window->regenerate(error)) << error;
+        ASSERT_TRUE(settle(*window, 120000));
+        ASSERT_TRUE(window->hasResult());
+        Access::displayed(*window);
+        for (sn::PaintTool tool : {sn::PaintTool::Flatten, sn::PaintTool::Smooth}) {
+            window->setPaintTool(tool);
+            sn::PaintBrush b = brushOf(8);
+            b.smoothRadius = 2;
+            window->setPaintBrush(b);
+            Access::beginStroke(*window);
+            double total = 0.0;
+            const int samples = 20;
+            for (int k = 0; k < samples; k++) {
+                const auto t0 = std::chrono::steady_clock::now();
+                Access::strokeTo(*window, 700 + k * 30, 900 + k * 10);
+                Access::displayed(*window);
+                total += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+            }
+            Access::endStroke(*window);
+            std::fprintf(stderr, "[ bench ] 2048x2048 %s size 8: %.1f ms per stroke sample\n", tool == sn::PaintTool::Smooth ? "Smooth r2" : "Flatten", total / samples);
+            EXPECT_LT(total / samples, 5000.0);
+        }
+        EXPECT_GT(window->paintedPixelCount(), 1000u);
+        if (std::getenv("JASPER_SN_BENCH")) ADD_FAILURE() << "bench output";   // shows the child's stderr
+    });
+}
+
+// ---- fix round 1: retargeting with unsaved strokes asks first; a target changed on disk
+
+TEST(SpriteNormalsPaintWindowDeathTest, EveryRetargetAsksBeforeDroppingUnsavedStrokes) {
+    IN_EDITOR("retarget", {
+        writePaintedMap(w, "assets/walk.png", "assets/walk_normal.png", R"([{"op":"flatten","where":{"rect":[40,10,4,4]}}])");
+        auto window = openWindow(w, "assets/hero.png");
+        Access::holdConfirms(*window, true);
+        window->setPaintTool(sn::PaintTool::Flatten);
+        window->setPaintBrush(brushOf(2));
+        std::string error;
+        // each entry point: asked (nothing changed yet), then Discard does it
+        const std::vector<std::pair<std::string, std::function<bool()>>> entries = {
+            {"openSources", [&] { return window->openSources({w.file("assets/walk.png")}, error); }},
+            {"openRecipe", [&] { return window->openRecipe(w.file("assets/walk_normal.png"), error); }},
+            {"openForEntity", [&] { return window->openForEntity(w.sceneId, w.walker, 0, false, error); }},
+            {"setSourcePath", [&] { return Access::setSourcePath(*window, "assets/walk.png", error); }},
+            {"setSourceEntity", [&] { return Access::setSourceEntity(*window, w.sceneId, w.walker, error); }},
+            {"output with paint", [&] {
+                 window->setOutput("assets/walk_normal.png");
+                 return true;
+             }},
+        };
+        for (const auto& [name, call] : entries) {
+            SCOPED_TRACE(name);
+            std::string e;
+            ASSERT_TRUE(window->openSources({w.file("assets/hero.png")}, e)) << e;   // nothing unsaved: no question
+            ASSERT_TRUE(settle(*window));
+            ASSERT_TRUE(window->paintStroke({{16, 16}}));
+            ASSERT_TRUE(window->hasUnsavedPaint());
+            const std::string before = window->currentSpec().fingerprint() + window->currentSpec().output.normal;
+            const sn::PaintOverlay painted = window->paintOverlay();
+            Access::holdConfirms(*window, true);
+            ASSERT_TRUE(call()) << error;
+            EXPECT_EQ(window->paintOverlay(), painted) << "the strokes are kept while asking";
+            EXPECT_EQ(window->currentSpec().fingerprint() + window->currentSpec().output.normal, before) << "nothing retargeted yet";
+            std::function<void()> discard = Access::lastConfirm(*window);
+            ASSERT_TRUE(discard);
+            discard();
+            settle(*window);
+            EXPECT_FALSE(window->hasUnsavedPaint());
+            EXPECT_NE(window->currentSpec().fingerprint() + window->currentSpec().output.normal, before) << "retargeted after Discard";
+            // walk's map has paint (16 px): loaded with it
+            if (name != "setSourceEntity" && name != "openForEntity") EXPECT_EQ(window->paintedPixelCount(), 16u);
+            // reset for the next entry
+            window->setConfirmPaintDiscard(true);
+        }
+        // the Use Base Texture fix (a source the assign target does not draw)
+        std::string e;
+        ASSERT_TRUE(window->openSources({w.file("assets/hero.png")}, e)) << e;
+        ASSERT_TRUE(settle(*window));
+        window->setAssignTarget(w.sceneId, w.walker, 0);
+        ASSERT_TRUE(window->paintStroke({{16, 16}}));
+        ASSERT_TRUE(window->applyFix("size_mismatch", "Use Base Texture", e)) << e;
+        EXPECT_FALSE(window->currentSpec().hasSprite()) << "asked first";
+        Access::lastConfirm(*window)();
+        EXPECT_TRUE(window->currentSpec().hasSprite());
+        EXPECT_FALSE(window->hasUnsavedPaint());
+        // the scripted path drops them without asking
+        ASSERT_TRUE(window->openSources({w.file("assets/hero.png")}, e)) << e;
+        ASSERT_TRUE(settle(*window));
+        ASSERT_TRUE(window->paintStroke({{16, 16}}));
+        window->setConfirmPaintDiscard(false);
+        ASSERT_TRUE(window->openSources({w.file("assets/walk.png")}, e)) << e;
+        EXPECT_EQ(window->currentSpec().source, "assets/walk.png");
+        EXPECT_FALSE(window->hasUnsavedPaint());
+    });
+}
+
+TEST(SpriteNormalsPaintWindowDeathTest, ATargetRewrittenOnDiskIsTheNewSavedStateAndSaysSo) {
+    IN_EDITOR("ondisk", {
+        auto window = openWindow(w, "assets/hero.png");
+        window->setPaintTool(sn::PaintTool::Flatten);
+        window->setPaintBrush(brushOf(2));
+        ASSERT_TRUE(window->paintStroke({{16, 16}}));
+        std::vector<std::string> written;
+        std::string error;
+        ASSERT_TRUE(window->save(true, written, error)) << error;
+        Access::checkTarget(*window);
+        EXPECT_FALSE(window->hasUnsavedPaint()) << "our own Save is not a change on disk";
+        ASSERT_TRUE(window->paintStroke({{10, 16}}));
+        // another tool (a regeneration) writes the map with other paint
+        writePaintedMap(w, "assets/hero.png", "assets/hero_normal.png", R"([{"op":"flatten","where":{"rect":[8,8,3,3]}}])");
+        Access::checkTarget(*window);
+        EXPECT_TRUE(window->hasUnsavedPaint());
+        EXPECT_NE(window->getStatus().find("changed on disk"), std::string::npos) << window->getStatus();
+        EXPECT_EQ(window->paintedPixelCount(), 8u) << "the window's strokes stay";
+    });
+}
+
+TEST(SpriteNormalsPaintWindowDeathTest, StrokesRecompositeAndRelightOnlyTheirPixels) {
+    IN_EDITOR("dirty", {
+        auto window = openWindow(w, "assets/hero.png");
+        EXPECT_FALSE(Access::litFull(*window).empty());
+        // the Angle brush starts tilted (azimuth 135, tilt 40), not facing the viewer
+        float az = 0, tilt = 0;
+        sn::anglesOf(window->getPaintBrush().direction, az, tilt);
+        EXPECT_NEAR(az, 135.0f, 0.01f);
+        EXPECT_NEAR(tilt, 40.0f, 0.01f);
+        window->setPaintTool(sn::PaintTool::Angle);
+        sn::PaintBrush b = brushOf(3);
+        b.direction = window->getPaintBrush().direction;
+        window->setPaintBrush(b);
+        Access::displayed(*window);
+        ASSERT_TRUE(window->paintStroke({{10, 10}, {20, 14}}));
+        window->setPaintTool(sn::PaintTool::Smooth);
+        ASSERT_TRUE(window->paintStroke({{12, 20}, {22, 18}}));
+        EXPECT_EQ(Access::displayed(*window).data, Access::composed(*window).data) << "incremental composite == full";
+        const sn::Image partial = Access::litAfterStroke(*window);
+        EXPECT_EQ(partial.data, Access::litFull(*window).data) << "the stroke's lit pixels == a full render";
+        window->undoPaint();
+        EXPECT_EQ(Access::displayed(*window).data, Access::composed(*window).data);
     });
 }

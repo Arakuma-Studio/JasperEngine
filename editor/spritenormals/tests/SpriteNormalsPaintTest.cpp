@@ -809,3 +809,73 @@ TEST(SpriteNormalsPaint, ContactSheetOutlinesPaintInTheNormalColumnOnly) {
     EXPECT_FALSE(isMagenta(sheet.pixel(132 + 7 * 8 + 3, 7 * 8 + 3)));
     EXPECT_TRUE(isMagenta(sheet.pixel(132 + 6 * 8 - 1, 7 * 8 + 3)));
 }
+
+// ---------------------------------------------------------------- fix round 1
+
+// a rectangle composited again gives composite()'s bytes; Smooth with a cached topology (and
+// only its region composited) gives the same overlay as without
+TEST(SpriteNormalsPaint, RectCompositeAndCachedTopologyMatchTheFullOnes) {
+    sn::Request request;
+    request.color = sn::Image::make(40, 24, 4, 8);
+    for (int y = 0; y < 24; y++) {
+        for (int x = 0; x < 40; x++) {
+            const bool in = (x % 20 - 10) * (x % 20 - 10) + (y - 12) * (y - 12) < 80;
+            put(request.color, x, y, {static_cast<uint8_t>(90 + x * 3), static_cast<uint8_t>(60 + y * 5), 40, static_cast<uint8_t>(in ? 255 : 0)});
+        }
+    }
+    request.cells = {{0, 0, 20, 24}, {20, 0, 20, 24}};
+    request.settings = sn::presetSettings(sn::Preset::Default);
+    for (bool directx : {false, true}) {
+        request.settings.directx = directx;
+        sn::Image gl = sn::generate(request).normal;
+        if (directx) sn::flipGreen(gl, request.color, 0.03f);
+        sn::PaintOverlay o = sn::PaintOverlay::blank(40, 24);
+        const sn::PaintContext plain{request.color, gl, request.cells, 0.03f};
+        sn::applyPaintOps(o, ops(R"([{"op":"angle","where":{"rect":[2,4,30,10]},"direction":[1,1,2],"strength":0.6}])"), plain);
+        sn::Image full = sn::composite(gl, sn::PaintOverlay::blank(40, 24), request.color, 0.03f, directx);
+        sn::compositeRect(full, gl, o, request.color, 0.03f, directx, 2, 4, 32, 14);
+        EXPECT_EQ(full.data, sn::composite(gl, o, request.color, 0.03f, directx).data);
+
+        sn::PaintOverlay a = o, b = o;
+        const sn::PaintTopology topology = sn::paintTopology(request.color, request.cells, 0.03f);
+        const sn::PaintContext cached{request.color, gl, request.cells, 0.03f, &topology};
+        const auto smooth = ops(R"([{"op":"smooth","where":{"rect":[0,0,40,24]},"radius":2},{"op":"smooth","where":{"frame":1},"radius":1,"strength":0.5}])");
+        sn::applyPaintOps(a, smooth, plain);
+        sn::applyPaintOps(b, smooth, cached);
+        EXPECT_EQ(a, b);
+        EXPECT_GT(a.paintedCount(), o.paintedCount());
+    }
+}
+
+TEST(SpriteNormalsPaint, OversizedDataIsRefusedBeforeDecoding) {
+    const std::string data(4 * ((sn::kMaxPaintPngBytes + 2) / 3) + 4, 'A');
+    const std::vector<uint8_t> png =
+        pngWithPaintText(R"({"format":"jasperengine.spritenormals.paint","version":1,"size":[4,4],"painted":1,"encoding":"png-base64","data":")" + data + "\"}");
+    std::string why;
+    EXPECT_FALSE(sn::readPaint(png.data(), png.size(), &why).has_value());
+    EXPECT_NE(why.find("8 MiB"), std::string::npos) << why;
+}
+
+// the head reader peeks each text chunk's keyword: a paint chunk before the recipe is skipped
+// when the recipe is read, and read when the paint is
+TEST(SpriteNormalsPaint, HeadReadersSkipOtherKeywords) {
+    std::vector<uint8_t> plain, painted, both;
+    ASSERT_TRUE(ts::encodePng(solid(4, 4, 128, 128, 255, 255), plain));
+    std::string text, error;
+    sn::Problem problem;
+    ASSERT_TRUE(sn::encodePaintText(sampleOverlay(4, 4), text, problem));
+    std::string recipeText;
+    ASSERT_TRUE(sn::recipeText(recipe(), recipeText, error));
+    // recipe first in the file, then paint (inserted in that order: paint ends up before it)
+    ASSERT_TRUE(ts::insertRecipeChunk(plain, recipeText, painted, error, sn::kRecipeKeyword));
+    ASSERT_TRUE(ts::insertRecipeChunk(painted, text, both, error, sn::kPaintKeyword));
+    EXPECT_EQ(chunkKeys(both).at(1), std::string("iTXt:") + sn::kPaintKeyword);
+    const fs::path file = tempFile("peek.png");
+    writeBytes(file, both);
+    EXPECT_TRUE(sn::readRecipeHead(file, &error).has_value()) << error;
+    const std::optional<sn::PaintSummary> summary = sn::readPaintSummary(file, &error);
+    ASSERT_TRUE(summary.has_value()) << error;
+    EXPECT_EQ(summary->painted, 3);
+    EXPECT_EQ(ts::readRecipeTextHead(file, &error, "jasper.spritenormals.pa"), std::nullopt) << "a keyword prefix is not the keyword";
+    fs::remove(file);
+}
