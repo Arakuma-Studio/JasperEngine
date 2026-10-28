@@ -628,10 +628,10 @@ MCP tests are in `tools/mcp/tests/test_vcs.py`. Each test builds its repository 
   requires verb-first names, so the tools are `get_vcs_status` (`vcs_status`), `diff_file`
   (`vcs_diff`), `get_vcs_log` (`vcs_log`), `diff_scene` (`scene_diff`), `revert_to_baseline`
   (`scene_diff_revert`), `lock_files` / `unlock_files` (`vcs_lock` / `vcs_unlock`), `commit_files`
-  (`vcs_commit`), `revert_files` (`vcs_revert`), `fetch_remote`, `pull_remote`, `push_remote`
-  (`vcs_fetch/pull/push`), in the tool group `vcs` (hidden until `tool_groups` enables it). The
-  parameters are the spec's; the long-running remote operations are jobs (`wait`,
-  `timeout_seconds`). `get_vcs_status` with `refresh: true` also looks for a repository again
+  (`vcs_commit`), `revert_files` (`vcs_revert`) and one `sync_remote` with `action`
+  fetch / pull / push (`vcs_fetch/pull/push`: the gate has no fetch/pull/push verb, and one tool
+  keeps the group small), in the tool group `vcs` (hidden until `tool_groups` enables it). The
+  parameters are the spec's; the remote operations are jobs (`wait`, `timeout_seconds`). `get_vcs_status` with `refresh: true` also looks for a repository again
   when there was none (a `git init` after the project opened). AC17's "unsaved
   `set_component_value` edit" is a `set_transform` edit (the editor has no `set_component_value`).
 - **Hierarchy glyphs** (R27) of GameObject rows are drawn after the name, not before it: before

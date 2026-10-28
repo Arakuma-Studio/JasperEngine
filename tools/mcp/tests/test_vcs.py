@@ -4,7 +4,7 @@ tools/fixtures/prefab-runtime committed to a local temp git repository (no remot
 Main Scene.scene's Spawner is edited without a save, diffed semantically (diff_scene source=editor),
 reverted to the baseline and undone; then saved, listed by get_vcs_status and committed. The
 refusals: commit_files without paths, with a blank message or an unchanged path; revert_files and
-push_remote without confirm; a path outside the project; an option-like revision.
+sync_remote push/pull without confirm; a path outside the project; an option-like revision.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ TIMEOUT = 600
 CI = True
 
 TOOLS = ("get_vcs_status", "diff_file", "get_vcs_log", "diff_scene", "revert_to_baseline", "lock_files", "unlock_files",
-         "commit_files", "revert_files", "fetch_remote", "pull_remote", "push_remote")
+         "commit_files", "revert_files", "sync_remote")
 SCENE = "Main Scene.scene"
 S: dict = {}
 
@@ -49,6 +49,7 @@ async def setup(ed: Editor) -> dict:
     if ".jasperengine" not in (ignore.read_text() if ignore.exists() else ""):
         with ignore.open("a") as f:
             f.write("\n.jasperengine/\n")
+    (ed.project / "notes.txt").write_text("unchanged\n")
     git(ed, "add", "-A")
     git(ed, "commit", "-q", "-m", "initial")
     # the project opened without a repository: a refresh finds it
@@ -121,15 +122,15 @@ async def test_refusals_commit_nothing(ed: Editor):
     await ed.check_error("commit_files", {"message": "no paths"})
     await ed.check_error("commit_files", {"paths": [], "message": "empty paths"})
     await ed.check_error("commit_files", {"paths": [SCENE], "message": "  \n"}, contains="blank")
-    await ed.check_error("commit_files", {"paths": ["project.yaml"], "message": "unchanged"}, contains="no changes")
+    await ed.check_error("commit_files", {"paths": ["notes.txt"], "message": "unchanged"}, contains="no changes")
     ed.check_eq(git(ed, "rev-list", "--count", "HEAD").strip(), S["commits"], "nothing was committed")
     await ed.check_error("revert_files", {"paths": [SCENE], "confirm": False}, contains="confirm")
-    await ed.check_error("push_remote", {"confirm": False}, contains="confirm")
-    await ed.check_error("pull_remote", {"confirm": False}, contains="confirm")
+    await ed.check_error("sync_remote", {"action": "push"}, contains="confirm")
+    await ed.check_error("sync_remote", {"action": "pull", "confirm": False}, contains="confirm")
     await ed.check_error("lock_files", {"paths": ["../outside"]})
     await ed.check_error("unlock_files", {"paths": []})
     # no remote: git's own message, nothing hangs on a prompt
-    await ed.check_error("fetch_remote", {"wait": True, "timeout_seconds": 60})
+    await ed.check_error("sync_remote", {"action": "fetch", "wait": True, "timeout_seconds": 60})
     await ed.check_error("diff_file", {"path": "../outside"})
     await ed.check_error("commit_files", {"paths": ["../outside"], "message": "outside"})
     target = ed.scratch.root / "x"
@@ -154,7 +155,7 @@ async def test_commit_and_log(ed: Editor):
     revision = committed["revision"]
     ed.check(len(revision) >= 7, f"{committed}")
     ed.check_eq(git(ed, "rev-parse", "HEAD").strip(), revision, "HEAD is the new commit")
-    ed.check_eq(git(ed, "show", "--name-only", "--format=", "HEAD").split(), [SCENE], "exactly the scene")
+    ed.check_eq(git(ed, "show", "--name-only", "--format=", "HEAD").splitlines(), [SCENE], "exactly the scene")
     ed.check_eq(git(ed, "log", "-1", "--format=%B").strip(), "Move the spawner", "the message verbatim")
     log = await ed.call("get_vcs_log", limit=5)
     ed.check_eq(log["entries"][0]["revision"], revision, f"newest first: {log}")

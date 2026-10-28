@@ -54,7 +54,8 @@ namespace {
                                                     std::string* error, bool changedOnly = true) {
         scene::SceneYamlModel model;
         std::string why;
-        if (current && current.IsDefined()) {
+        // (no encode is a null node, which is "defined": only a map is a document)
+        if (current.IsMap()) {
             if (!scene::SceneYamlModel::fromDocument(current, model, &why)) {
                 if (error) *error = why;
                 return nullptr;

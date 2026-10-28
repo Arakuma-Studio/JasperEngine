@@ -51,7 +51,7 @@ are the `vcs` group: `tool_groups` enable `["vcs"]` lists them.
   projects) or Subversion locks. A file locked by someone else shows `lock: "locked_by_other"`
   and its owner; breaking it is `unlock_files` with `force: true` and `confirm: true`: tell them
   first.
-- `fetch_remote`, `pull_remote` (fast-forward only), `push_remote` (never forced) are jobs;
+- `sync_remote` runs `action` fetch, pull (fast-forward only) or push (never forced) as a job;
   pull and push need `confirm: true`. Credentials come from the user's own setup: a prompt is
   never shown, so a remote that asks for a password fails with git's message.
 

@@ -11,7 +11,7 @@
 //   lock_files           LFS / svn locks; unlock_files releases them (force on another user's: confirm)
 //   commit_files         exactly the given changed paths (their .meta along), optional push
 //   revert_files         files back to the baseline, undoable ("Revert N files"); confirm: true
-//   fetch_remote, pull_remote (fast-forward only), push_remote: jobs; pull and push need confirm
+//   sync_remote          fetch, pull (fast-forward only) or push: a job; pull and push need confirm
 //
 // Every path is project-relative, inside the project, without a NUL; a revision is a hash, HEAD
 // or HEAD~n (git), a number, BASE or HEAD (svn). No parameter ever becomes a flag of the tool.
@@ -635,6 +635,15 @@ void remoteTool(const CallPtr& call, const char* kind, const char* title, bool n
     replyWhenJobDone(call, job, args.value("wait", true), args.value("timeout_seconds", 120.0));
 }
 
+// sync_remote: fetch, pull or push by its action
+void syncRemoteTool(const CallPtr& call) {
+    const std::string action = call->args().value("action", std::string());
+    if (action == "fetch") remoteTool(call, "fetch", "Fetch", false, &VcsService::fetch);
+    else if (action == "pull") remoteTool(call, "pull", "Pull", true, &VcsService::pull);
+    else if (action == "push") remoteTool(call, "push", "Push", true, &VcsService::push);
+    else call->fail("action must be fetch, pull or push.");
+}
+
 // ------------------------------------------------------------------ registration
 
 Json pathsSchema(const std::string& description) {
@@ -791,46 +800,24 @@ void registerVcsTools(McpRegistry& registry) {
         tool.handler = revertFilesTool;
         registry.addTool(std::move(tool));
     }
-    const Json jobArgs = Json{{"wait", withDefault(boolean("Wait for the job (else poll get_job)."), true)},
-                              {"timeout_seconds", withDefault(number("", 1, 600), 120)}};
     {
         ToolDef tool;
-        tool.name = "fetch_remote";
-        tool.title = "Fetch Remote";
-        tool.group = GROUP;
-        tool.activity = ToolActivity::Control;
-        tool.description = "git fetch (a job): the server's commits, without touching the files; get_vcs_status then shows behind.";
-        tool.inputSchema = object(jobArgs, {});
-        tool.handler = [](const CallPtr& call) { remoteTool(call, "fetch", "Fetch", false, &VcsService::fetch); };
-        registry.addTool(std::move(tool));
-    }
-    {
-        ToolDef tool;
-        tool.name = "pull_remote";
-        tool.title = "Pull Remote";
+        tool.name = "sync_remote";
+        tool.title = "Sync Remote";
         tool.group = GROUP;
         tool.activity = ToolActivity::Edit;
         tool.annotations.destructive = true;
         tool.allowedWhilePlaying = false;
-        tool.description = "git pull --ff-only (svn update), a job. Needs confirm: true.";
-        Json pullArgs = jobArgs;
-        pullArgs["confirm"] = boolean("Must be true.");
-        tool.inputSchema = object(pullArgs, {"confirm"});
-        tool.handler = [](const CallPtr& call) { remoteTool(call, "pull", "Pull", true, &VcsService::pull); };
-        registry.addTool(std::move(tool));
-    }
-    {
-        ToolDef tool;
-        tool.name = "push_remote";
-        tool.title = "Push Remote";
-        tool.group = GROUP;
-        tool.activity = ToolActivity::Edit;
-        tool.annotations.destructive = true;
-        tool.description = "git push (never forced), a job. Needs confirm: true.";
-        Json pushArgs = jobArgs;
-        pushArgs["confirm"] = boolean("Must be true.");
-        tool.inputSchema = object(pushArgs, {"confirm"});
-        tool.handler = [](const CallPtr& call) { remoteTool(call, "push", "Push", true, &VcsService::push); };
+        tool.description =
+            "A job with the server: fetch (its commits, files untouched; get_vcs_status then shows behind), pull (git pull "
+            "--ff-only, svn update) or push (never forced). pull and push need confirm: true.";
+        tool.inputSchema = object({
+            {"action", stringEnum("", {"fetch", "pull", "push"})},
+            {"confirm", withDefault(boolean(""), false)},
+            {"wait", withDefault(boolean("Wait for the job (else poll get_job)."), true)},
+            {"timeout_seconds", withDefault(number("", 1, 600), 120)}
+        }, {"action"});
+        tool.handler = syncRemoteTool;
         registry.addTool(std::move(tool));
     }
     {
