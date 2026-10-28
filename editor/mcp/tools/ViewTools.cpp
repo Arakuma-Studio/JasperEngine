@@ -1473,7 +1473,7 @@ void registerViewTools(McpRegistry& registry) {
             {"display", anyObject("Overlay flags, e.g. {show_grid_3d: false, show_post_processing: true}; saved with the workspace.")},
             {"projection", stringEnum("", {"perspective", "orthographic"})},
             {"ortho_size", number("Half height.", 0.001, 100000)},
-            {"view", stringEnum("Axis view.", {"top", "bottom", "front", "back", "left", "right"})},
+            {"view", stringEnum("", {"top", "bottom", "front", "back", "left", "right"})},
             {"frame_all", boolean("As Alt+F.")},
             {"camera_settings", anyObject("fov, near, far, speed, acceleration, easing, dynamic_clipping.")},
             {"screenshot", sceneShot},
