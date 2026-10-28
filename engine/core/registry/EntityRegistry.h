@@ -218,6 +218,12 @@ namespace jasperengine {
         std::string getEntityTag(Entity entity) const;
         void setEntityLayer(Entity entity, int layer);
         JE_ECS_INLINE int getEntityLayer(Entity entity) const { return entityManager.getLayer(entity); }
+
+        // The editor's Scene view state of an entity (EDITOR_HIDDEN, EDITOR_PICK_LOCKED in
+        // picking/PickTypes.h): runtime only, never saved or cloned, not in Lua
+        void setEntityEditorFlags(Entity entity, uint8_t flags) { entityManager.setEditorFlags(entity, flags); }
+        JE_ECS_INLINE uint8_t getEntityEditorFlags(Entity entity) const { return entityManager.getEditorFlags(entity); }
+        bool hasEntityEditorFlags() const { return entityManager.hasEditorFlags(); }
         // First entity with the tag, NULL_ENTITY when none. Like Unity's FindWithTag, a tag
         // the project does not define (TagManager) logs "Tag: X is not defined." and finds nothing.
         Entity findEntityByTag(const std::string& tag) const;

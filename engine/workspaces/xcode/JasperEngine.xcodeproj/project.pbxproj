@@ -2128,6 +2128,33 @@
 		48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A6 /* HtmlUIClock.h */; };
 		48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
 		48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
+		434F4D50FAFD156CB8629D80 /* SceneBvh.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50C6FE9EBFFEC4D4E3 /* SceneBvh.h */; };
+		434F4D5067898F077779F5F1 /* SceneBvh.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50ACC94ABC99CC4FDE /* SceneBvh.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		434F4D50235288F913E8FD0C /* SceneBvh.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50ACC94ABC99CC4FDE /* SceneBvh.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		434F4D5039AD6A9708C7B6C4 /* PickTypes.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50FFC2C61BB26D96D4 /* PickTypes.h */; };
+		434F4D50E6D9320B8708D438 /* PickGeometry.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50BAE9B564FF04A742 /* PickGeometry.h */; };
+		434F4D50D20A7F7F148C6E4B /* PickGeometry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50F422138D982A6483 /* PickGeometry.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		434F4D507930BDC9FE52AC9B /* PickGeometry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50F422138D982A6483 /* PickGeometry.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		434F4D50AED08BDCD475544E /* PickCache.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50BD8CD85302C54891 /* PickCache.h */; };
+		434F4D50A67122A9DE9DE922 /* PickCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5088021CECE5763CA4 /* PickCache.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		434F4D508AEEC00B4FF61BAD /* PickCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5088021CECE5763CA4 /* PickCache.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		434F4D5005AE979BCBAEB9F5 /* MeshRaycast.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50EB11965439B5B87F /* MeshRaycast.h */; };
+		434F4D50D4801D2D4C1520DE /* MeshRaycast.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D502C289ADF7424FE41 /* MeshRaycast.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		434F4D5093374CB370EBD822 /* MeshRaycast.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D502C289ADF7424FE41 /* MeshRaycast.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		434F4D501D621C3609D24506 /* MeshPose.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50606975C0056223BE /* MeshPose.h */; };
+		434F4D50D23D27CF5C5F5AFC /* MeshPose.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50B30E6E7A54C57CA6 /* MeshPose.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		434F4D50B3F1F5F61352DFC3 /* MeshPose.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50B30E6E7A54C57CA6 /* MeshPose.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		434F4D50EBC0E22F23D86965 /* MeshBvhSimd_neon.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50883C927D86E69989 /* MeshBvhSimd_neon.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		434F4D507A084A561795D477 /* MeshBvhSimd_neon.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50883C927D86E69989 /* MeshBvhSimd_neon.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		434F4D50C49016012082808C /* MeshBvhSimd_avx2.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50BC70EC99D47B6AC5 /* MeshBvhSimd_avx2.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		434F4D5097F7B138F25DF588 /* MeshBvhSimd_avx2.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50BC70EC99D47B6AC5 /* MeshBvhSimd_avx2.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		434F4D506FCF0280D614B4EA /* MeshBvhSimd.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5069868B4DC697F30D /* MeshBvhSimd.h */; };
+		434F4D50D862583EBAC23C12 /* MeshBvh.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5072EA57CAA22F934A /* MeshBvh.h */; };
+		434F4D50E18DB0A6EAB707CE /* MeshBvh.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D502BA4798AAAFC91F4 /* MeshBvh.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		434F4D50962D0AF7F29567CB /* MeshBvh.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D502BA4798AAAFC91F4 /* MeshBvh.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		434F4D507914C25A0846B67B /* BinnedSah.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5072BFEA0D8A5553C4 /* BinnedSah.h */; };
+		434F4D50C943E0BE017339EE /* BinnedSah.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5072E36FC527A77E01 /* BinnedSah.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		434F4D50533936D3A646BC1A /* BinnedSah.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5072E36FC527A77E01 /* BinnedSah.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
 		434F4D50A3E1EC4D4272C97B /* WidgetsRuntime.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50416EF287A59CA7E3 /* WidgetsRuntime.h */; };
 		434F4D50BCFFED95CD0FD13F /* WidgetsRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D509EE760BD1B15803D /* WidgetsRuntime.cpp */; };
 		434F4D50EFE51A328840CA82 /* WidgetsRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D509EE760BD1B15803D /* WidgetsRuntime.cpp */; };
@@ -6064,6 +6091,24 @@
 		48544D4C0000000000000291 /* librmlui-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "librmlui-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		48544D4C00000000000002A6 /* HtmlUIClock.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIClock.h; sourceTree = "<group>"; };
 		48544D4C00000000000002A8 /* HtmlUIClock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIClock.cpp; sourceTree = "<group>"; };
+		434F4D50C6FE9EBFFEC4D4E3 /* SceneBvh.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SceneBvh.h; sourceTree = "<group>"; };
+		434F4D50ACC94ABC99CC4FDE /* SceneBvh.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SceneBvh.cpp; sourceTree = "<group>"; };
+		434F4D50FFC2C61BB26D96D4 /* PickTypes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PickTypes.h; sourceTree = "<group>"; };
+		434F4D50BAE9B564FF04A742 /* PickGeometry.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PickGeometry.h; sourceTree = "<group>"; };
+		434F4D50F422138D982A6483 /* PickGeometry.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PickGeometry.cpp; sourceTree = "<group>"; };
+		434F4D50BD8CD85302C54891 /* PickCache.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PickCache.h; sourceTree = "<group>"; };
+		434F4D5088021CECE5763CA4 /* PickCache.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PickCache.cpp; sourceTree = "<group>"; };
+		434F4D50EB11965439B5B87F /* MeshRaycast.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MeshRaycast.h; sourceTree = "<group>"; };
+		434F4D502C289ADF7424FE41 /* MeshRaycast.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MeshRaycast.cpp; sourceTree = "<group>"; };
+		434F4D50606975C0056223BE /* MeshPose.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MeshPose.h; sourceTree = "<group>"; };
+		434F4D50B30E6E7A54C57CA6 /* MeshPose.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MeshPose.cpp; sourceTree = "<group>"; };
+		434F4D50883C927D86E69989 /* MeshBvhSimd_neon.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MeshBvhSimd_neon.cpp; sourceTree = "<group>"; };
+		434F4D50BC70EC99D47B6AC5 /* MeshBvhSimd_avx2.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MeshBvhSimd_avx2.cpp; sourceTree = "<group>"; };
+		434F4D5069868B4DC697F30D /* MeshBvhSimd.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MeshBvhSimd.h; sourceTree = "<group>"; };
+		434F4D5072EA57CAA22F934A /* MeshBvh.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MeshBvh.h; sourceTree = "<group>"; };
+		434F4D502BA4798AAAFC91F4 /* MeshBvh.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MeshBvh.cpp; sourceTree = "<group>"; };
+		434F4D5072BFEA0D8A5553C4 /* BinnedSah.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = BinnedSah.h; sourceTree = "<group>"; };
+		434F4D5072E36FC527A77E01 /* BinnedSah.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = BinnedSah.cpp; sourceTree = "<group>"; };
 		434F4D50416EF287A59CA7E3 /* WidgetsRuntime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WidgetsRuntime.h; sourceTree = "<group>"; };
 		434F4D509EE760BD1B15803D /* WidgetsRuntime.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WidgetsRuntime.cpp; sourceTree = "<group>"; };
 		434F4D50D6EC2A22E21067F2 /* VirtualWindowCore.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VirtualWindowCore.h; sourceTree = "<group>"; };
@@ -8572,6 +8617,7 @@
 				7162FC6A25962A0E0075B97D /* texture */,
 				716803CE2DF75EA200ED71BE /* thread */,
 				7162FC2E25962A0E0075B97D /* util */,
+				434F4D50B7AFA40F94BBE1BA /* picking */,
 				50525443F2555146A1CC118F /* particles */,
 			);
 			path = core;
@@ -10809,6 +10855,31 @@
 			path = widgets;
 			sourceTree = "<group>";
 		};
+		434F4D50B7AFA40F94BBE1BA /* picking */ = {
+			isa = PBXGroup;
+			children = (
+				434F4D5072E36FC527A77E01 /* BinnedSah.cpp */,
+				434F4D5072BFEA0D8A5553C4 /* BinnedSah.h */,
+				434F4D502BA4798AAAFC91F4 /* MeshBvh.cpp */,
+				434F4D5072EA57CAA22F934A /* MeshBvh.h */,
+				434F4D5069868B4DC697F30D /* MeshBvhSimd.h */,
+				434F4D50BC70EC99D47B6AC5 /* MeshBvhSimd_avx2.cpp */,
+				434F4D50883C927D86E69989 /* MeshBvhSimd_neon.cpp */,
+				434F4D50B30E6E7A54C57CA6 /* MeshPose.cpp */,
+				434F4D50606975C0056223BE /* MeshPose.h */,
+				434F4D502C289ADF7424FE41 /* MeshRaycast.cpp */,
+				434F4D50EB11965439B5B87F /* MeshRaycast.h */,
+				434F4D5088021CECE5763CA4 /* PickCache.cpp */,
+				434F4D50BD8CD85302C54891 /* PickCache.h */,
+				434F4D50F422138D982A6483 /* PickGeometry.cpp */,
+				434F4D50BAE9B564FF04A742 /* PickGeometry.h */,
+				434F4D50FFC2C61BB26D96D4 /* PickTypes.h */,
+				434F4D50ACC94ABC99CC4FDE /* SceneBvh.cpp */,
+				434F4D50C6FE9EBFFEC4D4E3 /* SceneBvh.h */,
+			);
+			path = picking;
+			sourceTree = "<group>";
+		};
 		48544D4C0000000000000047 /* htmlui */ = {
 			isa = PBXGroup;
 			children = (
@@ -12565,6 +12636,15 @@
 				717AD9862919E1CB007D7DB5 /* RectTransform.h in Headers */,
 				48544D4C0000000000000002 /* HtmlUI.h in Headers */,
 				48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */,
+				434F4D50FAFD156CB8629D80 /* SceneBvh.h in Headers */,
+				434F4D5039AD6A9708C7B6C4 /* PickTypes.h in Headers */,
+				434F4D50E6D9320B8708D438 /* PickGeometry.h in Headers */,
+				434F4D50AED08BDCD475544E /* PickCache.h in Headers */,
+				434F4D5005AE979BCBAEB9F5 /* MeshRaycast.h in Headers */,
+				434F4D501D621C3609D24506 /* MeshPose.h in Headers */,
+				434F4D506FCF0280D614B4EA /* MeshBvhSimd.h in Headers */,
+				434F4D50D862583EBAC23C12 /* MeshBvh.h in Headers */,
+				434F4D507914C25A0846B67B /* BinnedSah.h in Headers */,
 				434F4D50A3E1EC4D4272C97B /* WidgetsRuntime.h in Headers */,
 				434F4D50846A57940A8D4CC6 /* VirtualWindowCore.h in Headers */,
 				434F4D505E6E0FB4F4E09C55 /* TooltipManager.h in Headers */,
@@ -14773,6 +14853,15 @@
 				5E5280000000000000000042 /* CrashClassesLua.cpp in Sources */,
 				48544D4C0000000000000004 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */,
+				434F4D50235288F913E8FD0C /* SceneBvh.cpp in Sources */,
+				434F4D507930BDC9FE52AC9B /* PickGeometry.cpp in Sources */,
+				434F4D508AEEC00B4FF61BAD /* PickCache.cpp in Sources */,
+				434F4D5093374CB370EBD822 /* MeshRaycast.cpp in Sources */,
+				434F4D50B3F1F5F61352DFC3 /* MeshPose.cpp in Sources */,
+				434F4D507A084A561795D477 /* MeshBvhSimd_neon.cpp in Sources */,
+				434F4D5097F7B138F25DF588 /* MeshBvhSimd_avx2.cpp in Sources */,
+				434F4D50962D0AF7F29567CB /* MeshBvh.cpp in Sources */,
+				434F4D50533936D3A646BC1A /* BinnedSah.cpp in Sources */,
 				434F4D50EFE51A328840CA82 /* WidgetsRuntime.cpp in Sources */,
 				434F4D50190B9F30DFAE9707 /* VirtualWindowCore.cpp in Sources */,
 				434F4D50591EFF3D524BEB21 /* UIItemsView.cpp in Sources */,
@@ -15295,6 +15384,15 @@
 				7162FD6025963AE10075B97D /* IndexBuffer.cpp in Sources */,
 				48544D4C0000000000000005 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */,
+				434F4D5067898F077779F5F1 /* SceneBvh.cpp in Sources */,
+				434F4D50D20A7F7F148C6E4B /* PickGeometry.cpp in Sources */,
+				434F4D50A67122A9DE9DE922 /* PickCache.cpp in Sources */,
+				434F4D50D4801D2D4C1520DE /* MeshRaycast.cpp in Sources */,
+				434F4D50D23D27CF5C5F5AFC /* MeshPose.cpp in Sources */,
+				434F4D50EBC0E22F23D86965 /* MeshBvhSimd_neon.cpp in Sources */,
+				434F4D50C49016012082808C /* MeshBvhSimd_avx2.cpp in Sources */,
+				434F4D50E18DB0A6EAB707CE /* MeshBvh.cpp in Sources */,
+				434F4D50C943E0BE017339EE /* BinnedSah.cpp in Sources */,
 				434F4D50BCFFED95CD0FD13F /* WidgetsRuntime.cpp in Sources */,
 				434F4D50084E5BA8D7BD13DD /* VirtualWindowCore.cpp in Sources */,
 				434F4D501240A0339E02120E /* UIItemsView.cpp in Sources */,

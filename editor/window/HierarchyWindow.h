@@ -160,6 +160,12 @@ namespace jasperengine::editor{
         void showPrefabStageMenu(SceneProject* sceneProject);
         void showOpenPrefabItems(const TreeNode& node);
         void drawPrefabRowButtons(const TreeNode& node, bool renaming);
+        // S26 R23 (HierarchyVisibilityGutter.cpp): the left gutter's eye (Scene view
+        // visibility) and hand (pick lock) of a row, shown on hover or when set; a click sets
+        // the row and its children, Alt+click the row alone
+        static constexpr float VISIBILITY_GUTTER_ICONS = 2.0f;
+        float visibilityGutterWidth() const;
+        void drawVisibilityGutter(const TreeNode& node, float rowMinY, float rowMaxY);
         // The prefab asset and instance root a row opens in Prefab Mode (false if none)
         bool getOpenPrefabTarget(const TreeNode& node, std::filesystem::path& path, Entity& instanceRoot) const;
         void beginRename(RenameTarget target, uint32_t sceneId, Entity entity, const std::string& currentName);

@@ -93,6 +93,18 @@ struct GameViewSettings {
     bool operator!=(const GameViewSettings& other) const { return !(*this == other); }
 };
 
+// Scene view toolbar toggles that follow the user, not the scene (S26 R12, R16)
+struct SceneViewSettings {
+    bool exactPick = false;       // a click selects what is under it, never its prefab or model root
+    bool alignToSurface = false;  // drops turn their up axis onto the surface normal
+    bool rulers = false;          // top and left rulers in 2D, UI and orthographic axis views
+
+    bool operator==(const SceneViewSettings& other) const {
+        return exactPick == other.exactPick && alignToSurface == other.alignToSurface && rulers == other.rulers;
+    }
+    bool operator!=(const SceneViewSettings& other) const { return !(*this == other); }
+};
+
 // How the Scene view draws lattice cages and edits their points (Preferences > Lattice)
 struct LatticeViewSettings {
     std::array<float, 4> lineColor = {0.85f, 0.85f, 0.85f, 1.0f};     // edges at rest length
@@ -216,6 +228,7 @@ private:
     static float uiScale;
     static PanelVisibilitySettings panelVisibility;
     static GameViewSettings gameViewSettings;
+    static SceneViewSettings sceneViewSettings;
     static LatticeViewSettings latticeViewSettings;
     static ProfilerSettings profilerSettings;
 
@@ -351,6 +364,8 @@ public:
 
     static GameViewSettings getGameViewSettings();
     static void setGameViewSettings(const GameViewSettings& settings);
+    static SceneViewSettings getSceneViewSettings();
+    static void setSceneViewSettings(const SceneViewSettings& settings);
 
     // Lattice cage drawing and point editing; set clamps every value to its range
     static LatticeViewSettings getLatticeViewSettings();

@@ -18,7 +18,9 @@ namespace jasperengine::editor{
         POSITIVE_Y,
         NEGATIVE_Y,
         POSITIVE_Z,
-        NEGATIVE_Z
+        NEGATIVE_Z,
+        // the cube between the arrows: Unity's projection toggle (Persp / Iso)
+        CENTER
     };
 
     class ViewportGizmo{

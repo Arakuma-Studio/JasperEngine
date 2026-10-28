@@ -26,15 +26,19 @@ namespace {
         return locator;
     }
 
-    // the whole label, or its text (before "##"), with or without the icons it starts with: Font
-    // Awesome glyphs, the Private Use Area U+E000-U+F8FF (UTF-8 EE xx xx, EF 80-A3 xx), and the
-    // spaces after them ("Rename Crate" finds the Undo History row drawn as "<robot icon>  Rename Crate")
+    // the whole label, its text (before "##"), or that text after the icons it starts with (Font
+    // Awesome glyphs, the Private Use Area U+E000-U+F8FF: UTF-8 EE xx xx, EF 80-A3 xx) and the
+    // spaces after them, or a row's text after its icon ("<icon>  Name", the Hierarchy's and the
+    // Undo History's rows)
     bool labelMatches(const std::string& wanted, const char* label) {
         if (wanted == label) return true;
-        std::string_view text(label);
-        if (const char* hidden = std::strstr(label, "##")) text = text.substr(0, (size_t)(hidden - label));
-        if (text.empty()) return false;
+        const char* hidden = std::strstr(label, "##");
+        const size_t visible = hidden ? (size_t)(hidden - label) : std::strlen(label);
+        if (visible == 0) return false;
+        const std::string_view text(label, visible);
         if (text == wanted) return true;
+        const std::string tail = "  " + wanted;
+        if (visible > tail.size() && text.substr(visible - tail.size()) == tail) return true;
         size_t start = 0;
         while (start + 3 <= text.size()) {
             const unsigned char lead = (unsigned char)text[start];
