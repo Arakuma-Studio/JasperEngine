@@ -40,10 +40,13 @@ vec4 source(vec2 uv){
 }
 
 #if defined(HAS_DROP_SHADOW)
-// 1 inside [min, max] (texel centres of the region), 0 outside: nothing bleeds in from
-// neighbouring content (GLES has no CLAMP_TO_BORDER)
+// 1 inside the region's texels ([min, max] are their centres, extended by half a texel), 0
+// outside: nothing bleeds in from neighbouring content (GLES has no CLAMP_TO_BORDER). Tested at
+// the centres themselves, an integer offset read the region's first row and column exactly at
+// `min` and rounding dropped them from the shadow at some pixels (it depended on the target size)
 float inRegion(vec2 uv){
-    vec2 inside = step(htmluiPost.texCoordMinMax.xy, uv) * step(uv, htmluiPost.texCoordMinMax.zw);
+    vec2 halfTexel = 0.5 / vec2(textureSize(sampler2D(u_htmluiPostTex, u_htmluiPost_smp), 0));
+    vec2 inside = step(htmluiPost.texCoordMinMax.xy - halfTexel, uv) * step(uv, htmluiPost.texCoordMinMax.zw + halfTexel);
     return inside.x * inside.y;
 }
 #endif

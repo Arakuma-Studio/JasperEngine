@@ -6,6 +6,7 @@
 #include "../../Include/RmlUi/Core/ElementDocument.h"
 #include "../../Include/RmlUi/Core/ElementUtilities.h"
 #include "../../Include/RmlUi/Core/Filter.h"
+#include "../../Include/RmlUi/Core/MeshUtilities.h"
 #include "../../Include/RmlUi/Core/Profiling.h"
 #include "../../Include/RmlUi/Core/StyleSheet.h"
 #include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
@@ -268,34 +269,39 @@ void ElementEffects::RenderEffects(RenderStage render_stage)
 
 	Rectanglei initial_scissor_region = render_manager->GetScissorRegion();
 
-	auto ApplyClippingRegion = [this, &render_manager](PropertyId filter_id) {
-		RMLUI_ASSERT(filter_id == PropertyId::Filter || filter_id == PropertyId::BackdropFilter);
-
-		const bool force_clip_to_self_border_box = (filter_id == PropertyId::BackdropFilter);
-		ElementUtilities::SetClippingRegion(element, force_clip_to_self_border_box);
-
-		// Find the region being affected by the active filters and apply it as a scissor.
+	// The region of the filters: the element's box with the ink overflow of its subtree and the extent of its filters.
+	// 'reach': how far the filters move content (a blur's or a shadow's extent), the largest on any side.
+	auto GetFilterRegion = [this](float& reach) {
 		Rectanglef filter_region = Rectanglef::MakeInvalid();
-		ElementUtilities::GetBoundingBox(filter_region, element, force_clip_to_self_border_box ? BoxArea::Border : BoxArea::Auto);
-		if (!force_clip_to_self_border_box)
-		{
-			const ComputedValues& computed = element->GetComputedValues();
-			const float outline = computed.outline_width() + Math::Max(computed.outline_offset(), 0.f) +
-				(computed.outline_style() == Style::BorderStyle::Auto ? 3.f : 0.f);
-			if (outline > 0.f)
-				filter_region = filter_region.Extend(Vector2f(outline));
-			ExtendBySubtreeInkOverflow(element, filter_region, 0);
-		}
+		ElementUtilities::GetBoundingBox(filter_region, element, BoxArea::Auto);
+		const ComputedValues& computed = element->GetComputedValues();
+		const float outline = computed.outline_width() + Math::Max(computed.outline_offset(), 0.f) +
+			(computed.outline_style() == Style::BorderStyle::Auto ? 3.f : 0.f);
+		if (outline > 0.f)
+			filter_region = filter_region.Extend(Vector2f(outline));
+		ExtendBySubtreeInkOverflow(element, filter_region, 0);
 
 		// The filter property may draw outside our normal clipping region due to ink overflow.
-		if (filter_id == PropertyId::Filter)
+		const Rectanglef content_region = filter_region;
+		for (const auto& filter : filters)
+			filter.filter->ExtendInkOverflow(element, filter_region);
+		reach = 0.f;
+		if (content_region.Valid() && filter_region.Valid())
 		{
-			for (const auto& filter : filters)
-				filter.filter->ExtendInkOverflow(element, filter_region);
+			const Vector2f top_left = content_region.p0 - filter_region.p0;
+			const Vector2f bottom_right = filter_region.p1 - content_region.p1;
+			reach = Math::Max(Math::Max(top_left.x, top_left.y), Math::Max(bottom_right.x, bottom_right.y));
 		}
 
 		Math::ExpandToPixelGrid(filter_region);
-
+		return filter_region;
+	};
+	auto ApplyBackdropClippingRegion = [this, &render_manager]() {
+		// The element's border box, clipped as the element is.
+		ElementUtilities::SetClippingRegion(element, true);
+		Rectanglef filter_region = Rectanglef::MakeInvalid();
+		ElementUtilities::GetBoundingBox(filter_region, element, BoxArea::Border);
+		Math::ExpandToPixelGrid(filter_region);
 		Rectanglei scissor_region = Rectanglei(filter_region).IntersectIfValid(render_manager->GetScissorRegion());
 		render_manager->SetScissorRegion(scissor_region);
 	};
@@ -318,7 +324,28 @@ void ElementEffects::RenderEffects(RenderStage render_stage)
 
 		if (layer)
 		{
+			// Fork (P7-F1): the content is drawn into the layer unclipped by the clips established outside the element
+			// (CSS Filter Effects 1: the filter applies to the element's content, the ancestors' clips to its result;
+			// Chromium filters the unclipped content and clips the result when compositing it). Those clips are applied
+			// to the composite (Exit). The content's window: those clips' scissor region extended by the filters'
+			// reach (the content beyond a clip that a blur or a shadow moves into it), twice over: a blur's downsampled
+			// passes clamp their reads at the window's edge, rounded to their coarser pixels. Without reach it is the
+			// scissor region the content had before; unbounded without a clip, as before. The layer's window, which
+			// the filters read: the filter region within the content's window.
+			float reach = 0.f;
+			const Rectanglef filter_region = GetFilterRegion(reach);
+			Rectanglei outer_scissor;
+			ClipMaskGeometryList outer_clip_mask;
+			const bool outer_scissored = ElementUtilities::GetRenderClippingRegion(element, *render_manager, outer_scissor, outer_clip_mask);
+			const Rectanglei content_window =
+				(outer_scissored ? outer_scissor.Extend(Math::RoundUpToInteger(2.f * reach)) : Rectanglei::MakeInvalid());
+			layer_window = Rectanglei(filter_region);
+			if (content_window.Valid())
+				layer_window = (layer_window.Valid() ? layer_window.Intersect(content_window) : content_window);
+			layer_clip_root = true;
+
 			render_manager->PushLayer();
+			render_manager->PushClipRoot(element, content_window);
 		}
 
 		if (!backdrop_filters.empty())
@@ -341,8 +368,10 @@ void ElementEffects::RenderEffects(RenderStage render_stage)
 			// Render the backdrop filters in the extended scissor region including any ink overflow.
 			render_manager->CompositeLayers(backdrop_source_layer, backdrop_temp_layer, BlendMode::Blend, filter_handles);
 
-			// Then composite the filter output to our destination while applying our clipping region, including any border-radius.
-			ApplyClippingRegion(PropertyId::BackdropFilter);
+			// Then composite the filter output to our destination while applying our clipping region, including any
+			// border-radius (fork, P7-F1: into the element's own layer, its border box only, the clips outside the
+			// element clip that layer's composite).
+			ApplyBackdropClippingRegion();
 			render_manager->CompositeLayers(backdrop_temp_layer, backdrop_destination_layer, BlendMode::Blend, {});
 			render_manager->PopLayer();
 			render_manager->SetScissorRegion(initial_scissor_region);
@@ -352,7 +381,48 @@ void ElementEffects::RenderEffects(RenderStage render_stage)
 	{
 		if (layer)
 		{
-			ApplyClippingRegion(PropertyId::Filter);
+			if (layer_clip_root)
+			{
+				render_manager->PopClipRoot();
+				layer_clip_root = false;
+			}
+
+			// Fork (P7-F1): the filters read the layer's window; the composite is clipped by the clips established
+			// outside the element: their clip mask, and their scissor region, as a rectangle of the clip mask when the
+			// window extends beyond it (the filters read the content there, the composite draws nothing there).
+			Rectanglei outer_scissor;
+			ClipMaskGeometryList clip_mask_list;
+			const bool outer_scissored = ElementUtilities::GetRenderClippingRegion(element, *render_manager, outer_scissor, clip_mask_list);
+			const Rectanglei window = layer_window;
+			bool force_clip_mask = false;
+			if (outer_scissored && (!window.Valid() || window.Intersect(outer_scissor) != window))
+			{
+				const Vector2f size = Vector2f(outer_scissor.Size());
+				if (clip_rect_manager != render_manager || clip_rect_size != size || !clip_rect_geometry)
+				{
+					Mesh mesh;
+					MeshUtilities::GenerateQuad(mesh, Vector2f(0.f), size, ColourbPremultiplied(255));
+					clip_rect_geometry = render_manager->MakeGeometry(std::move(mesh));
+					clip_rect_manager = render_manager;
+					clip_rect_size = size;
+				}
+				const ClipMaskOperation operation = (clip_mask_list.empty() ? ClipMaskOperation::Set : ClipMaskOperation::Intersect);
+				clip_mask_list.push_back(ClipMaskGeometry{operation, &clip_rect_geometry, Vector2f(outer_scissor.p0), nullptr});
+				// (the geometry may have been rebuilt in place: the render manager would take an equal list for the mask
+				// last drawn into the stencil)
+				force_clip_mask = true;
+			}
+
+			// The stencil of a clip mask is cleared within the scissor region: set first.
+			if (window.Valid())
+				render_manager->SetScissorRegion(window);
+			else if (outer_scissored)
+				render_manager->SetScissorRegion(outer_scissor);
+			else
+				render_manager->DisableScissorRegion();
+			if (force_clip_mask)
+				render_manager->DisableClipMask();
+			render_manager->SetClipMask(std::move(clip_mask_list));
 
 			CompiledFilter mask_image_filter;
 			FilterHandleList filter_handles;

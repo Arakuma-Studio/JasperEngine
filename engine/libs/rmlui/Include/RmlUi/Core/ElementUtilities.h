@@ -65,9 +65,16 @@ public:
 	/// @param[out] clip_region The element's clipping region in window coordinates.
 	/// @param[out] clip_mask_list Optional, returns a list of geometry that defines the element's clip mask.
 	/// @param[in] force_clip_self If true, also clips to the border area of the provided element regardless.
+	/// @param[in] clip_root Fork (P7-F1): if set, the clips established by the ancestors of this element are left out (the
+	/// element and its descendants are drawn into its effects layer, see RenderManager::PushClipRoot).
 	/// @return True if a clipping region exists for the element and clip_origin and clip_window were set, false if not.
 	static bool GetClippingRegion(Element* element, Rectanglei& clip_region, ClipMaskGeometryList* clip_mask_list = nullptr,
-		bool force_clip_self = false);
+		bool force_clip_self = false, const Element* clip_root = nullptr);
+	/// Fork (P7-F1): the scissor region and the clip mask SetClippingRegion applies, without applying them: the clips of the
+	/// element's ancestors up to the render manager's clip root, within the clip root's window.
+	/// @return True if the scissor region is set (valid), false if the element is not scissored.
+	static bool GetRenderClippingRegion(Element* element, RenderManager& render_manager, Rectanglei& scissor_region,
+		ClipMaskGeometryList& clip_mask_list, bool force_clip_self = false);
 	/// Sets the clipping region from an element and its ancestors.
 	/// @param[in] element The element to generate the clipping region from.
 	/// @param[in] force_clip_self If true, also clips to the border area of the provided element regardless.

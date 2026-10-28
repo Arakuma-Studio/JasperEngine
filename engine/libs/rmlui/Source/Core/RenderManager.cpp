@@ -49,6 +49,7 @@ void RenderManager::PrepareRender(Vector2i dimensions)
 	RMLUI_ASSERT(state.scissor_region == default_state.scissor_region);
 	RMLUI_ASSERT(state.transform == default_state.transform);
 	RMLUI_ASSERTMSG(render_stack.empty(), "Unbalanced render stack detected, ensure every PushLayer call has a corresponding call to PopLayer.");
+	RMLUI_ASSERTMSG(clip_roots.empty(), "Unbalanced clip roots detected, ensure every PushClipRoot call has a corresponding call to PopClipRoot.");
 #endif
 
 	SetViewport(dimensions);
@@ -325,6 +326,18 @@ void RenderManager::PopLayer()
 	RMLUI_ASSERT(!render_stack.empty());
 	render_interface->PopLayer();
 	render_stack.pop_back();
+}
+
+void RenderManager::PushClipRoot(const Element* element, Rectanglei window)
+{
+	clip_roots.push_back(ClipRoot{element, window});
+}
+
+void RenderManager::PopClipRoot()
+{
+	RMLUI_ASSERT(!clip_roots.empty());
+	if (!clip_roots.empty())
+		clip_roots.pop_back();
 }
 
 LayerHandle RenderManager::GetTopLayer() const
