@@ -86,6 +86,8 @@ namespace reflect_mcp_read_test {
         EXPECT_TRUE(document.contains("enums") && document.contains("post_processing"));
 
         for (SceneProject& candidate : project->getScenes()) CommandHandle::remove(candidate.id);
+        // a Project frees none of its scenes itself (LeakSanitizer: the scenes and renders leaked)
+        project->releaseScenes();
     }
 
 }
