@@ -1,2 +1,0 @@
-compat/css/vmin-vmax.css:5:33: info: '10vmin' (in a style attribute or keyframe, which has no per-orientation copy) is evaluated for the current viewport (1280x720) [HTMLUI-CSS-0013]
-compat/css/vmin-vmax.css:5:55: info: '20vmax' (in a style attribute or keyframe, which has no per-orientation copy) is evaluated for the current viewport (1280x720) [HTMLUI-CSS-0013]

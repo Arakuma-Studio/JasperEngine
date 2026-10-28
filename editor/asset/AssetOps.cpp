@@ -8,6 +8,8 @@
 #include "asset/AssetFileWrite.h"
 #include "asset/AssetTypes.h"
 #include "util/FileUtils.h"
+#include "util/Util.h"
+#include "pose/HumanoidMapIO.h"
 
 #include <algorithm>
 
@@ -20,7 +22,8 @@ namespace {
     using Result = AssetOps::Result;
 
     // The files an operation moves: the path, and its meta beside it when it is a file
-    // (a directory carries the metas inside it)
+    // (a directory carries the metas inside it). A model's .humanoid bone mapping (pose
+    // animation) goes with it the same way: it describes that model file
     std::vector<std::pair<fs::path, fs::path>> withMeta(const fs::path& from, const fs::path& to) {
         std::vector<std::pair<fs::path, fs::path>> pairs{{from, to}};
         std::error_code ec;
@@ -28,6 +31,12 @@ namespace {
             const fs::path meta = AssetTypes::metaPathFor(from);
             if (fs::is_regular_file(meta, ec)) {
                 pairs.push_back({meta, AssetTypes::metaPathFor(to)});
+            }
+            if (Util::isModelFile(FileUtils::pathToUtf8(from))) {
+                const fs::path humanoid = FileUtils::pathFromUtf8(pose::humanoidSidecarPath(FileUtils::pathToUtf8(from)));
+                if (fs::is_regular_file(humanoid, ec)) {
+                    pairs.push_back({humanoid, FileUtils::pathFromUtf8(pose::humanoidSidecarPath(FileUtils::pathToUtf8(to)))});
+                }
             }
         }
         return pairs;
@@ -160,6 +169,10 @@ Result AssetOps::move(Project& project, const fs::path& from, const fs::path& to
         addWritten(result, project, project.getProjectPath() / "project.yaml");
     }
     finish(project, result);
+    // the open clip documents (a clip's, a model's sub-clips) and the asset the Inspector shows
+    // go with their files
+    project.remapClipFilePath(from, to);
+    project.remapInspectedAsset(from, to);
     if (shaders) {
         project.invalidateCustomShaders();
     }
@@ -210,6 +223,7 @@ Result AssetOps::removeCopy(Project& project, const fs::path& path) {
     }
     result.changes = project.getAssetDatabase().removeAssets(path);
     finish(project, result);
+    project.cleanupInspectedAsset(path);
     if (shaders) {
         project.invalidateCustomShaders();
     }
@@ -244,6 +258,7 @@ Result AssetOps::remove(Project& project, const fs::path& path, fs::path& trashP
     // the references stay: they show as Missing until the file comes back (R15)
     result.changes = project.getAssetDatabase().removeAssets(path);
     finish(project, result);
+    project.cleanupInspectedAsset(path);
     if (shaders) {
         project.invalidateCustomShaders();
     }

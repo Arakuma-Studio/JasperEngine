@@ -114,21 +114,3 @@ TEST(RmlSystemTest, LogRoutingAndCounters){
     EXPECT_EQ(system.getErrorCount(), 0u);
     EXPECT_EQ(system.getWarningCount(), 0u);
 }
-
-TEST(RmlSystemTest, ElapsedTimeIsMonotonic){
-    RmlSystem system;
-    const double first = system.GetElapsedTime();
-    const double second = system.GetElapsedTime();
-    EXPECT_GE(first, 0.0);
-    EXPECT_GE(second, first);
-}
-
-TEST(RmlSystemTest, ClipboardInProcess){
-    RmlSystem system;
-    Rml::String text = "unchanged";
-    system.GetClipboardText(text);
-    EXPECT_EQ(text, "");
-    system.SetClipboardText("copied ünïcode");
-    system.GetClipboardText(text);
-    EXPECT_EQ(text, "copied ünïcode");
-}

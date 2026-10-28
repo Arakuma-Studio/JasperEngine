@@ -1,8 +1,0 @@
-compat/css/border-radius.css:4:11: info: radius 50% is drawn as 9999px: a circle on a square box, a stadium (not an ellipse) on a rectangle, until the fork has PercentRadius [HTMLUI-CSS-0007]
-compat/css/border-radius.css:5:9: info: radius 100% is drawn as 9999px: a circle on a square box, a stadium (not an ellipse) on a rectangle, until the fork has PercentRadius [HTMLUI-CSS-0007]
-compat/css/border-radius.css:6:8: warning: radius 10% is dropped until the fork has PercentRadius (fix: use a length (px) for this radius) [HTMLUI-CSS-0007]
-compat/css/border-radius.css:7:10: info: radius 50% is drawn as 9999px: a circle on a square box, a stadium (not an ellipse) on a rectangle, until the fork has PercentRadius [HTMLUI-CSS-0007]
-compat/css/border-radius.css:8:11: info: radius 50% is drawn as 9999px: a circle on a square box, a stadium (not an ellipse) on a rectangle, until the fork has PercentRadius [HTMLUI-CSS-0007]
-compat/css/border-radius.css:8:40: warning: radius 25% is dropped until the fork has PercentRadius (fix: use a length (px) for this radius) [HTMLUI-CSS-0007]
-compat/css/border-radius.css:9:15: warning: elliptical radii '10px / 20px' are drawn with the horizontal radius (fix: use one radius per corner) [HTMLUI-CSS-0006]
-compat/css/border-radius.css:14:12: warning: 'border-radius: round' is not supported; declaration dropped (fix: use lengths) [HTMLUI-CSS-0004]

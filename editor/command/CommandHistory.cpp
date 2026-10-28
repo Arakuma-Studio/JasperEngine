@@ -57,6 +57,7 @@ namespace {
 }
 
 std::function<void(size_t, bool)> editor::CommandHistory::onSceneModified = nullptr;
+std::function<void(size_t)> editor::CommandHistory::beforeStep = nullptr;
 std::function<bool(std::string&)> editor::CommandHistory::beforeMutation = nullptr;
 std::function<bool(size_t, editor::CommandHistory::Change)> editor::CommandHistory::beforeChange = nullptr;
 editor::CommandHistory::SelectionHooks editor::CommandHistory::selectionHooks;
@@ -526,6 +527,9 @@ bool editor::CommandHistory::undo(){
     if (!entry.cmd->canUndo()){
         return false;
     }
+    if (beforeStep){
+        beforeStep(sceneId);
+    }
     const bool structural = entry.cmd->affectsStructure();
     {
         Applying applying;
@@ -555,6 +559,9 @@ bool editor::CommandHistory::redo(){
     UndoEntry& entry = list[index];
     if (!entry.cmd->canRedo()){
         return false;
+    }
+    if (beforeStep){
+        beforeStep(sceneId);
     }
     {
         Applying applying;

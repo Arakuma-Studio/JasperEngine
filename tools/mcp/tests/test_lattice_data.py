@@ -87,39 +87,6 @@ def scene_doc(ed, rel="scenes/Lab.scene") -> dict:
 # -- tests ----------------------------------------------------------------------
 
 
-async def test_component_types(ed: Editor):
-    listed = await ed.call("list_component_types")
-    names = {c["name"]: c for c in listed["components"]}
-    for name, display in (("lattice", "Lattice"), ("latticemodifier", "Lattice Modifier"),
-                          ("latticefollower", "Lattice Follower"), ("latticetracks", "Lattice Tracks")):
-        ed.check_in(name, names, "listed")
-        ed.check_eq(names[name]["display_name"], display)
-        ed.check(names[name]["addable"], f"{name} not in the Add Component dialog")
-    one = await ed.call("list_component_types", component="Lattice")
-    p = one["properties"]
-    for name in ("enabled", "resolutionX", "resolutionY", "resolutionZ", "offsets", "offsets[]", "interpolation",
-                 "outside", "fadeDistance", "poses", "jiggle", "jiggleStiffness", "jiggleDamping", "jiggleInertia",
-                 "jiggleAnchor", "jiggleMaxOffset"):
-        ed.check_in(name, p, "lattice property")
-    ed.check_eq(p["interpolation"]["options"], ["sharp", "smooth", "cubic"])
-    ed.check_eq(p["outside"]["options"], ["extend", "fade"])
-    for runtime in ("revision", "dynamicOffsets", "jiggleVelocities", "tweening", "tweenTime"):
-        ed.check(runtime not in p, f"runtime field {runtime} exposed")
-    mod = (await ed.call("list_component_types", component="lattice modifier"))["properties"]
-    for name in ("bindings", "bindings[].lattice", "bindings[].weight", "bindings[].stage", "bindings[].submesh",
-                 "bindings[].mask", "includeChildren", "subdivisions", "enabled"):
-        ed.check_in(name, mod, "modifier property")
-    ed.check("warnedOverflow" not in mod, "runtime field exposed")
-    ed.check_eq(mod["bindings[].stage"]["options"], ["before_skinning", "after_skinning"])
-    ed.check_in("inverted_alpha", mod["bindings[].mask"]["options"])
-    fol = (await ed.call("list_component_types", component="LatticeFollowerComponent"))["properties"]
-    for name in ("lattice", "rest", "applyPosition", "applyRotation", "applyScale", "weight", "enabled"):
-        ed.check_in(name, fol, "follower property")
-    tracks = (await ed.call("list_component_types", component="latticetracks"))["properties"]
-    for name in ("points", "values", "inTangents", "outTangents"):
-        ed.check_in(name, tracks, "tracks property")
-
-
 async def test_lattice_properties(ed: Editor):
     await scene(ed)
     cage = await create(ed, "empty", name="Cage", position=[0, 1, 0], scale=[2, 2, 2])

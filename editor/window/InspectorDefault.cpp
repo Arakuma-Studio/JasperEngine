@@ -419,6 +419,8 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::LatticeModifierComponent: return &InspectorWindow::drawLatticeModifierComponent;
         case ComponentType::LatticeFollowerComponent: return &InspectorWindow::drawLatticeFollowerComponent;
         case ComponentType::LatticeTracksComponent: return &InspectorWindow::drawLatticeTracksComponent;
+        case ComponentType::PoseAnimatorComponent: return &InspectorWindow::drawPoseAnimatorComponent;
+        case ComponentType::AnimationPlayerComponent: return &InspectorWindow::drawAnimationPlayerComponent;
         default: return nullptr;
     }
 }

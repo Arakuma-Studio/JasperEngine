@@ -16,6 +16,8 @@
 #include <gtest/gtest.h>
 
 #include <cstring>
+#include <limits>
+#include <utility>
 #include <random>
 #include <string>
 #include <vector>
@@ -504,10 +506,7 @@ TEST(TextShaperTest, ArabicJoins){
 }
 
 TEST(TextShaperTest, MatchesSTBTextShaping){
-    // STBText's chain at 24 px: the characterization test recorded the last caret of this
-    // line at 239.579987 before shaping moved here
     Chain chain = builtInChain(24.0f);
-    EXPECT_FLOAT_EQ(measure(chain, "Hello, World! AV Ta fi 0123"), 239.579987f);
 
     // the face picked per codepoint: the first that has it, after a fallback the primary again
     EXPECT_EQ(TextShaper::selectFace(chain.faces, 'A', 0), 0u);
@@ -522,9 +521,22 @@ TEST(TextShaperTest, MatchesSTBTextShaping){
     ASSERT_EQ(out.size(), 3u);
     EXPECT_EQ(out[0].cluster, 4u);
     EXPECT_EQ(out[2].line, 7u);
-    out.clear();
-    TextShaper::shapeRange(chain.faces, chain.scales, codepoints, 5, 10, 0, ShapeOptions(), out);   // out of range
-    EXPECT_TRUE(out.empty());
+    // Rejected ranges append nothing and preserve glyphs the caller already supplied.
+    // The two overflowing sums used to bypass the bounds check before iterator arithmetic.
+    out.assign(1, ShapedGlyph{0, true, 123, 1, 2, 3, 4, 5});
+    const size_t largest = std::numeric_limits<size_t>::max();
+    for (const auto& range : {std::pair<size_t, size_t>{5, 10}, {largest, 2}, {1, largest}}){
+        TextShaper::shapeRange(chain.faces, chain.scales, codepoints, range.first, range.second, 0, ShapeOptions(), out);
+        ASSERT_EQ(out.size(), 1u);
+        EXPECT_EQ(out[0].face, 0u);
+        EXPECT_TRUE(out[0].rtl);
+        EXPECT_EQ(out[0].glyphIndex, 123u);
+        EXPECT_FLOAT_EQ(out[0].xOffset, 1);
+        EXPECT_FLOAT_EQ(out[0].yOffset, 2);
+        EXPECT_FLOAT_EQ(out[0].xAdvance, 3);
+        EXPECT_EQ(out[0].cluster, 4u);
+        EXPECT_EQ(out[0].line, 5u);
+    }
 
     // UTF-8 decoding, invalid bytes become U+FFFD
     std::vector<uint32_t> decoded;

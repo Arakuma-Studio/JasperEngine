@@ -523,7 +523,7 @@ void registerConsoleTools(McpRegistry& registry) {
             "type, level, category, message, time, frame, source?:{file,line}}] oldest first, next_cursor (pass as since for newer ones; omitted: the newest "
             "`limit`), more. play, wait and send_input return their console lines already.";
         tool.inputSchema = object({
-            {"since", integer("A previous next_cursor.")},
+            {"since", integer("")},
             {"limit", withDefault(integer("", 1, 1000), 100)},
             {"types", array(stringEnum("", {"info", "success", "warning", "error", "build"}), "")},
             {"levels", array(stringEnum("", {"trace", "debug", "info", "warn", "error", "fatal"}), "")},

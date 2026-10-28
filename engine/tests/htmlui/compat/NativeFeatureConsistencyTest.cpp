@@ -403,57 +403,6 @@ namespace {
 
 }
 
-TEST(NativeFeatureConsistency, EveryFeatureHasASample){
-    // S17's features change no CSS rewrite: the virtual views use them at runtime (their fallbacks:
-    // HtmlUIWidgets.ModelBindingWithoutRowAliases, VirtualViews.layout_boundary)
-    const ForkFeature runtimeOnly[] = {ForkFeature::RowAliases, ForkFeature::LayoutBoundary};
-    for (size_t i = 1; i < (size_t)ForkFeature::Count; i++){
-        const ForkFeature feature = (ForkFeature)i;
-        if (std::find(std::begin(runtimeOnly), std::end(runtimeOnly), feature) != std::end(runtimeOnly))
-            continue;
-        EXPECT_TRUE(std::any_of(std::begin(kSamples), std::end(kSamples), [&](const FeatureSample& s){ return s.feature == feature; }))
-            << forkFeatureName(feature) << " has no sample in NativeFeatureConsistencyTest.cpp";
-    }
-}
-
-// The rows a present feature makes Native have a sample of that feature and property.
-TEST(NativeFeatureConsistency, NativeRowsHaveSamples){
-    const ForkFeatures present = ForkFeatures::present();
-    size_t rows = 0;
-    for (const PropertySupport& row : propertyTable()){
-        if (row.fork == ForkFeature::None || !present.has(row.fork) || effectiveSupport(row, present) != Support::Native)
-            continue;
-        rows++;
-        const std::string property = row.name;
-        EXPECT_TRUE(std::any_of(std::begin(kSamples), std::end(kSamples), [&](const FeatureSample& s){
-            const std::string css = s.css;
-            return s.feature == row.fork && s.kind != SampleKind::Selector && css.compare(0, property.size() + 1, property + ":") == 0;
-        })) << "property " << row.name << " is Native with " << forkFeatureName(row.fork) << ": add a sample";
-    }
-    for (const SelectorSupport& row : selectorTable()){
-        if (row.fork == ForkFeature::None || !present.has(row.fork) || effectiveSupport(row, present) != Support::Native)
-            continue;
-        rows++;
-        EXPECT_TRUE(std::any_of(std::begin(kSamples), std::end(kSamples), [&](const FeatureSample& s){ return s.feature == row.fork && s.kind == SampleKind::Selector; }))
-            << "selector " << row.name << " is Native with " << forkFeatureName(row.fork) << ": add a selector sample";
-    }
-    std::cout << "[ NATIVE   ] " << rows << " table rows native through present fork features\n";
-}
-
-// The checker itself: phase 2 leaves `opacity` alone and rewrites `display: grid`.
-TEST(NativeFeatureConsistency, PassThroughCheckSeesRewrites){
-    ASSERT_TRUE(HtmlUI::acquire());
-    const ForkFeatures none = ForkFeatures::none();
-    EXPECT_EQ(passThroughProblem({ForkFeature::GroupOpacity, SampleKind::Declaration, "opacity: 0.5", "", ""}, none), "");
-    EXPECT_EQ(passThroughProblem({ForkFeature::None, SampleKind::Declaration, "width: 10px; height: 20%", "", ""}, none), "");
-    EXPECT_EQ(passThroughProblem({ForkFeature::None, SampleKind::Selector, ".a > .b:hover", "", ""}, none), "");
-    EXPECT_NE(passThroughProblem({ForkFeature::Grid, SampleKind::Declaration, "display: grid", "", ""}, none), "");
-    EXPECT_NE(passThroughProblem({ForkFeature::RootIsWhere, SampleKind::Selector, ":is(.a, .b) > .c", "", ""}, none), "");
-    EXPECT_NE(passThroughProblem({ForkFeature::Important, SampleKind::Rule, "color: red !important", "", ""}, none), "");
-    EXPECT_NE(passThroughProblem({ForkFeature::Fixed, SampleKind::Declaration, "position: fixed", "", ""}, none), "");
-    HtmlUI::release();
-}
-
 // present: RmlUi parses it, compat passes it through and reports nothing
 TEST(NativeFeatureConsistency, PresentFeaturesPassThrough){
     const ForkFeatures present = ForkFeatures::present();

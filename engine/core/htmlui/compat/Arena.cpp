@@ -52,10 +52,6 @@ void SpareStorage::take(size_t bytes){
     tSpareBytes = tSpareBytes >= bytes ? tSpareBytes - bytes : 0;
 }
 
-size_t SpareStorage::kept(){
-    return tSpareBytes;
-}
-
 Arena& Arena::current(){
     Arena* arena = tCurrent;
     return arena ? *arena : threadArena();

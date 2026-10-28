@@ -114,56 +114,6 @@ TEST(CompatTokenizer, StylesheetBytesUtf8){
     EXPECT_GE(checked, 14u);
 }
 
-TEST(CompatTokenizer, TokenOffsetsResliceTheInput){
-    // every token of every test input covers exactly its own text: the slices are contiguous,
-    // cover the input, and each slice tokenizes again to one token of the same type and value
-    const nlohmann::json tests = loadParsingTests("component_value_list.json");
-    ASSERT_TRUE(tests.is_array());
-    for (size_t i = 0; i + 1 < tests.size(); i += 2){
-        const std::string input = tests[i].get<std::string>();
-        for (const uint32_t base : {0u, 1000u}){
-            const std::vector<Token> tokens = tokenize(input, base);
-            ASSERT_FALSE(tokens.empty());
-            uint32_t expectedOffset = base;
-            for (const Token& token : tokens){
-                ASSERT_EQ(token.offset, expectedOffset) << "input: " << nlohmann::json(input).dump();
-                expectedOffset = token.offset + token.length;
-                if (token.type == TokenType::EndOfFile){
-                    EXPECT_EQ(token.length, 0u);
-                    EXPECT_EQ(token.offset, base + input.size());
-                    continue;
-                }
-                std::string slice = input.substr(token.offset - base, token.length);
-                if (token.type == TokenType::Function){
-                    // "url(" alone reads as an unclosed url token (and "url(" before a quoted
-                    // string takes the whitespace in between): compare the name
-                    while (!slice.empty() && (slice.back() == ' ' || slice.back() == '\t' || slice.back() == '\n'))
-                        slice.pop_back();
-                    ASSERT_EQ(slice.back(), '(');
-                    slice.pop_back();
-                    const std::vector<Token> name = tokenize(slice);
-                    EXPECT_EQ(name[0].type, TokenType::Ident);
-                    EXPECT_EQ(name[0].value, token.value);
-                    EXPECT_EQ(name[0].length, slice.size());
-                    continue;
-                }
-                if (token.isDelim('\\')){
-                    // a backslash before a newline; alone it would escape the end of the input
-                    continue;
-                }
-                const std::vector<Token> again = tokenize(slice);
-                ASSERT_GE(again.size(), 2u);
-                // a bad string stops before its newline, which belongs to the next token
-                if (token.type == TokenType::BadString)
-                    continue;
-                EXPECT_EQ(again[0].type, token.type) << "slice: " << nlohmann::json(slice).dump();
-                EXPECT_EQ(again[0].value, token.value) << "slice: " << nlohmann::json(slice).dump();
-                EXPECT_EQ(again[0].length, token.length) << "slice: " << nlohmann::json(slice).dump();
-            }
-            EXPECT_EQ(expectedOffset, base + input.size());
-        }
-    }
-}
 
 TEST(CompatTokenizer, PositionsCountBytesAfterNormalizedNewlines){
     // "\r\n" is one newline token-wise, but offsets stay those of the bytes

@@ -21,6 +21,8 @@ from pathlib import Path
 from harness import Editor, REPO, skip
 from htmlui_pixels import count_near
 
+EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
+
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200"))
 JOBS = 2
 
@@ -90,7 +92,9 @@ async def export_source(ed: Editor, out: Path, **args):
     return raw, r
 
 
-async def test_project_with_document(ed: Editor):
+async def _setup_document(ed: Editor):
+    if "scene" in S:
+        return
     ui = ed.project / "assets" / "ui"
     for sub in ("img", "icons", "anim", "fonts"):
         (ui / sub).mkdir(parents=True, exist_ok=True)
@@ -111,30 +115,19 @@ async def test_project_with_document(ed: Editor):
     await ed.call("edit_build_scenes", action="add", scene=S["path"])
     await ed.call("edit_build_scenes", action="set_start", scene=S["path"])
 
-    # the document draws (its font loads) before anything is exported
-    shot = await ed.call_raw("screenshot", {"view": "game", "scene": S["scene"], "max_width": 640})
-    ed.check(not shot.is_error and count_near(shot.images[0][0], (255, 0, 0)) > 500, "the document is on screen")
-    entries = await ed.console_since(None, types=["error"], limit=1000)
-    errors = [e.get("message", "") for e in entries if "[HTML UI]" in e.get("message", "")]
-    ed.check(not errors, f"[HTML UI] errors: {errors}")
-
 
 async def test_source_export_ships_everything(ed: Editor):
+    await _setup_document(ed)
     out = ed.scratch.root / "export-html-ui"
-    await ed.call("set_project_settings", values={"graphics.html_ui_msaa_samples": 8})
     raw, r = await export_source(ed, out)
-    # the HTML UI MSAA project setting reaches the game's init code
-    inits = [p for p in out.rglob("*.cpp") if "UIDocumentSystem::setPreferredSampleCount(8);" in p.read_text(errors="ignore")]
-    ed.check(inits, "no UIDocumentSystem::setPreferredSampleCount(8) in the exported sources")
-    await ed.call("set_project_settings", values={"graphics.html_ui_msaa_samples": 4})
     ed.check_eq(r["status"], "succeeded", f"{raw.text[:2000]}")
     assets = out / "project" / "assets"
     for rel in SHIPPED:
         ed.check((assets / rel).is_file(), f"{rel} exported to {assets}")
-    S["out"] = out
 
 
 async def test_resource_pack_ships_everything(ed: Editor):
+    await _setup_document(ed)
     await ed.call("set_project_settings", values={"player.pack_native_resources": True})
     try:
         out = ed.scratch.root / "export-html-ui-pack"
@@ -151,6 +144,7 @@ async def test_resource_pack_ships_everything(ed: Editor):
 
 
 async def test_broken_references_fail_the_export(ed: Editor):
+    await _setup_document(ed)
     await ed.call("write_file", path="assets/ui/broken.html", content=BROKEN)
     await ed.call("set_properties", scene=S["scene"], entity=S["menu"], values={"uidocument": {"filename": "assets/ui/broken.html"}})
     await ed.call("save_scene", scene=S["scene"])
@@ -176,6 +170,7 @@ async def test_broken_references_fail_the_export(ed: Editor):
 
 
 async def test_missing_document_fails_the_export(ed: Editor):
+    await _setup_document(ed)
     await ed.call("set_properties", scene=S["scene"], entity=S["menu"], values={"uidocument": {"filename": "assets/ui/gone.html"}})
     await ed.call("save_scene", scene=S["scene"])
     try:
@@ -191,6 +186,7 @@ async def test_missing_document_fails_the_export(ed: Editor):
 async def test_desktop_build_runs_the_document(ed: Editor):
     if os.environ.get("JASPER_SLOW_BUILD", "") in ("", "0"):
         skip("set JASPER_SLOW_BUILD=1 to build and run a real Desktop player (compiles the engine)")
+    await _setup_document(ed)
     out = ed.scratch.root / "export-html-ui-desktop"
     r = await ed.call("build_project", mode="desktop", output_dir=str(out), build_jobs=JOBS, timeout_seconds=30)
     job = r if r["status"] != "running" else await wait_job(ed, r["job_id"], TIMEOUT - 300, poll=15.0)

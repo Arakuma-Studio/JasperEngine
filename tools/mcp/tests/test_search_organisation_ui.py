@@ -116,7 +116,8 @@ async def test_shortcut_capture_conflict_cancel(ed: Editor):
 
     await ed.call("run_command", id="edit.shortcuts")
     await keys.click_item("##ShortcutSearch", "Shortcuts")
-    await keys.type("duplicate")
+    # (the id: the Animation and Pose Animation windows have Duplicate commands on Ctrl+D too)
+    await keys.type("edit.duplicate")
     await keys.click_item("Ctrl+D", "Shortcuts")          # Duplicate's binding: capture
     await keys.key("ctrl+s")                              # captured, not run
     s = await status(ed)

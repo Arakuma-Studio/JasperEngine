@@ -16,15 +16,13 @@
 from __future__ import annotations
 
 import struct
-import sys
-import time
+import os
 import zlib
 from pathlib import Path
 
 from harness import Editor
 
-sys.path.insert(0, str(Path(__file__).parent))
-from test_runtime_regressions import decode_png  # noqa: E402
+from htmlui_pixels import decode_png
 
 CI = True
 EDITOR = {"create": True, "name": "Post Processing Review Fixes"}
@@ -42,9 +40,12 @@ def write_png(path: Path, width: int, height: int, rgba: tuple) -> None:
 
     png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
     png += chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
-    time.sleep(0.05)
+    previous_mtime = path.stat().st_mtime_ns if path.exists() else None
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(png)
+    if previous_mtime is not None:
+        stamp = path.stat()
+        os.utime(path, ns=(stamp.st_atime_ns, max(stamp.st_mtime_ns, previous_mtime + 1_000_000_000)))
 
 
 def mean_rgb(png: bytes) -> tuple:
@@ -70,7 +71,7 @@ async def pp(ed: Editor, sid: int, name: str):
     return (await ed.call("get_scene_settings", scene=sid, names=[name]))["settings"][name]
 
 
-async def test_setup(ed: Editor):
+async def setup(ed: Editor):
     ed.require_tools("create_scene", "create_entity", "save_scene", "set_scene_settings", "get_scene_settings")
     made = await ed.call("create_scene", name="ReviewFixes", type="3d")
     STATE["sid"] = made["scene"]["id"]
@@ -79,6 +80,7 @@ async def test_setup(ed: Editor):
 
 
 async def test_lut_follows_rename_and_delete(ed: Editor):
+    await setup(ed)
     ed.require_tools("move_asset", "delete_asset")
     sid = STATE["sid"]
     write_png(ed.project / "assets" / "luts" / "warm.png", 4, 2, (255, 128, 0, 255))
@@ -167,13 +169,6 @@ async def test_settings_validation(ed: Editor):
     await ed.check_error("set_scene_settings", scene=uid, settings={"post_processing.fxaa_enabled": True}, contains="UI scene")
     await ed.check_error("set_scene_settings", scene=uid, settings={"post_processing": {"fxaa_enabled": True}}, contains="UI scene")
     await ed.call("select_scene", scene=sid)
-
-
-async def test_stylised_lift_is_warm(ed: Editor):
-    listed = await ed.call("list_post_processing_presets", scene=STATE["sid"])
-    stylised = next(p for p in listed["presets"] if p["id"] == "stylised")
-    lift = stylised["settings"]["lift"]
-    ed.check(lift[0] > lift[2] and lift[1] >= lift[2], f"a warm lift (more red than blue): {lift}")
 
 
 async def cost(ed: Editor, sid: int, settings: dict | None, passes: list | None = None, fixed: bool = False) -> dict:

@@ -1,7 +1,0 @@
-compat/html/custom_elements.html:2:1: info: <lottie-player> attributes without a <lottie> equivalent dropped: controls, renderer [HTMLUI-HTML-0004]
-compat/html/custom_elements.html:2:1: info: <lottie-player> is mapped to the engine's <lottie> element [HTMLUI-HTML-0003]
-compat/html/custom_elements.html:3:1: info: <dotlottie-player> is mapped to the engine's <lottie> element [HTMLUI-HTML-0003]
-compat/html/custom_elements.html:3:24: error: lottie 'anim/a.lottie' not found (resolved to compat/html/anim/a.lottie) (fix: check the path: relative paths start at the referencing file's directory, '/' at the assets directory) [HTMLUI-GEN-0001]
-compat/html/custom_elements.html:4:1: info: <dotlottie-wc> is mapped to the engine's <lottie> element [HTMLUI-HTML-0003]
-compat/html/custom_elements.html:5:1: info: custom element <my-widget> is rendered as a generic inline element (its JavaScript class does not run) (fix: style it with CSS (display: block, ...)) [HTMLUI-HTML-0018]
-compat/html/custom_elements.html:6:1: info: unknown element <blah> is rendered as a generic inline element, as in browsers (fix: use a standard element (div, span, ...)) [HTMLUI-HTML-0018]

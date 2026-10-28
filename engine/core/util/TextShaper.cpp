@@ -321,8 +321,19 @@ unsigned int TextShaper::selectClusterFace(const std::vector<const FontFace*>& f
 void TextShaper::shapeRange(const std::vector<const FontFace*>& faces, const std::vector<float>& scales,
                             const std::vector<uint32_t>& codepoints, size_t offset, size_t length,
                             unsigned int line, const ShapeOptions& options, std::vector<ShapedGlyph>& out){
-    if (length == 0 || faces.empty() || offset + length > codepoints.size())
+    if (length == 0 || faces.empty() || offset > codepoints.size() || length > codepoints.size() - offset)
         return;
+
+    // Printable ASCII has a single LTR bidi run in an LTR (or auto/LTR-default)
+    // paragraph. Keep the usual font/script itemization and HarfBuzz shaping, but
+    // avoid allocating and resolving a bidi paragraph for common UI labels.
+    // RTL paragraphs, controls and every non-ASCII character take the full path.
+    if (options.baseDirection != 2 &&
+        std::all_of(codepoints.begin() + offset, codepoints.begin() + offset + length,
+                    [](uint32_t c){ return c >= 0x20 && c <= 0x7E; })){
+        shapeRunItems(faces, scales, codepoints, offset, length, false, line, options, out);
+        return;
+    }
 
     SBCodepointSequence sequence;
     sequence.stringEncoding = SBStringEncodingUTF32;

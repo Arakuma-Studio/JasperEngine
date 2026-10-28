@@ -103,6 +103,8 @@ namespace jasperengine::editor::reflect {
     extern const ComponentDesc kCharacterControllerDesc;
     extern const ComponentDesc kWaterVolumeDesc;
     extern const ComponentDesc kBuoyancyDesc;
+    extern const ComponentDesc kPoseAnimatorDesc;
+    extern const ComponentDesc kAnimationPlayerDesc;
 
 }
 

@@ -4,6 +4,7 @@
 #include "SceneWindow.h"
 #include "util/EditorScripts.h"
 #include "DocumentFile.h"
+#include "pose/PoseViewport.h"
 #include "util/BidiText.h"
 #include "imgui_internal.h"
 
@@ -33,6 +34,7 @@
 #include "Out.h"
 #include "App.h"
 #include "EditorHost.h"
+#include "animation/AnimationClipAppHooks.h"
 #include "Theme.h"
 #include "Widgets.h"
 #include "window/GameWindow.h"
@@ -110,6 +112,16 @@ void editor::SceneWindow::closeSceneInternal(uint32_t sceneId) {
         }
         closeSceneQueue.push_back(sceneId);
     }
+}
+
+bool editor::SceneWindow::isNavigatingCamera() const{
+    for (const auto& [id, dragging] : draggingMouse){
+        if (dragging) return true;
+    }
+    for (const auto& [id, looking] : lookActive){
+        if (looking) return true;
+    }
+    return false;
 }
 
 bool editor::SceneWindow::isFocused() const {
@@ -239,6 +251,26 @@ Entity editor::SceneWindow::findSelectableObjectByRay(uint32_t sceneId, float x,
         *outSceneId = hitSceneId;
     }
     return resolveStructureSelection(sceneId, hitSceneId, hitEntity);
+}
+
+bool editor::SceneWindow::poseClick(uint32_t sceneId, float x, float y, Entity* picked, Entity* rawHit) {
+    if (picked) *picked = NULL_ENTITY;
+    if (rawHit) *rawHit = NULL_ENTITY;
+    SceneProject* sceneProject = project->getScene(sceneId);
+    if (!sceneProject || !sceneProject->sceneRender || !sceneProject->sceneRender->getPoseViewport()) {
+        return false;
+    }
+    // the raw hit and what selection makes of it (a collapsed Hierarchy parent of the model)
+    uint32_t rawSceneId = sceneId;
+    const Entity raw = project->findObjectByRay(sceneId, x, y, &rawSceneId);
+    if (rawSceneId != sceneId) {
+        // a scene layered over this one: not the posed model
+        return sceneProject->sceneRender->getPoseViewport()->clicked(NULL_ENTITY);
+    }
+    const Entity selectable = resolveStructureSelection(sceneId, rawSceneId, raw);
+    if (picked) *picked = selectable;
+    if (rawHit) *rawHit = raw;
+    return sceneProject->sceneRender->getPoseViewport()->clicked(selectable, raw);
 }
 
 // R13, R14: root, drill, same-spot cycling, Shift adds and Ctrl/Cmd toggles; a click on a mesh
@@ -508,6 +540,20 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                 CommandHandle::get(sceneProject->id)->addCommandNoMerge(loadCmd);
                             }
 
+                            focusSceneWindow(*sceneProject);
+                        }
+                    }
+                } else if (Util::isAnimationClipFile(droppedRelativePath)) {
+                    // clips onto a GameObject: an Animation Player (added or reused) plays them,
+                    // one scene step (animation clips spec 4.1; the hook is the converters')
+                    if (selEntity != NULL_ENTITY && animationClipAppHooks().dropClips &&
+                        sceneProject->playState == ScenePlayState::STOPPED && !project->isAnyScenePlaying()) {
+                        if (ImGui::AcceptDragDropPayload("resource_files")) {
+                            std::vector<std::string> clips;
+                            for (const std::string& path : receivedStrings) {
+                                if (Util::isAnimationClipFile(path)) clips.push_back(path);
+                            }
+                            Backend::getApp().dispatchClipDrop(sceneProject->id, selEntity, clips);
                             focusSceneWindow(*sceneProject);
                         }
                     }
@@ -1100,6 +1146,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         altHeld ||
         handPanEnabled || 
         sceneProject->sceneRender->isTerrainEditing() ||
+        sceneProject->sceneRender->isPoseDragging() ||
         fluidPainting ||
         gizmoSideActive ||
         (physicsSnapArmed[sceneId] && mouseLeftDraggedInside) ||
@@ -1113,7 +1160,23 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         float y = logicalY;
         toEngineCanvas(sceneId, x, y);
 
-        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse && !handPanEnabled){
+        // Posing a humanoid (pose animation): a click on a pose handle is the handle's, not
+        // a selection or a tool's
+        bool poseHandleClick = false;
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !altHeld && !suppressLeftMouse && !handPanEnabled &&
+                sceneProject->sceneRender->isPoseEditing()){
+            poseHandleClick = sceneProject->sceneRender->poseMouseDown(x, y, io.KeyShift, io.KeyCtrl || io.KeySuper);
+            if (poseHandleClick){
+                subSelectionClickConsumesRelease[sceneId] = true;
+                mouseLeftStartPos = Vector2(logicalX, logicalY);
+                // a joint dot only picks the joint: the rest of the press is nobody's
+                if (!sceneProject->sceneRender->isPoseDragging()){
+                    suppressLeftMouseUntilRelease[sceneId] = true;
+                }
+            }
+        }
+
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse && !handPanEnabled && !poseHandleClick){
             subSelectionClickConsumesRelease[sceneId] = false;
 
             // Lattice point picking within the selected lattice, with any tool: a click on a
@@ -1479,7 +1542,8 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             // Terrain brush strokes skip the drag threshold: holding the button
             // keeps applying flow and tiny precise drags still paint.
             // So do Paint Dye strokes: a short drag is a small splat.
-            if (mouseLeftStartPos.distance(mouseLeftDragPos) > 5 || sceneProject->sceneRender->isTerrainEditing() || fluidPainting){
+            if (mouseLeftStartPos.distance(mouseLeftDragPos) > 5 || sceneProject->sceneRender->isTerrainEditing() || fluidPainting ||
+                    sceneProject->sceneRender->isPoseDragging()){
                 mouseLeftDraggedInside = true;
             }
             if (mouseLeftDraggedInside && physicsSnapArmed[sceneId]){
@@ -1496,12 +1560,20 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 float origX = mouseLeftStartPos.x;
                 float origY = mouseLeftStartPos.y;
                 toEngineCanvas(sceneId, origX, origY);
-                sceneProject->sceneRender->mouseDragEvent(x, y, origX, origY, project, sceneId, project->getSelectedEntities(editSceneId), disableSelection, io.KeyCtrl, io.KeyShift);
+                // Cmd (macOS) snaps a pose handle's ring turn like Ctrl; the transform gizmo keeps Ctrl alone
+                const bool snapModifier = sceneProject->sceneRender->isPoseDragging() ? (io.KeyCtrl || io.KeySuper) : io.KeyCtrl;
+                sceneProject->sceneRender->mouseDragEvent(x, y, origX, origY, project, sceneId, project->getSelectedEntities(editSceneId), disableSelection, snapModifier, io.KeyShift);
             }
         }
 
         if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse){
             bool consumeSelectionRelease = subSelectionClickConsumesRelease[sceneId];
+            if (!mouseLeftDraggedInside && mouseLeftDown && !disableSelection && !consumeSelectionRelease &&
+                    sceneProject->sceneRender->isPoseEditing()){
+                // posing (pose animation): a click on empty space or on anything but the posed
+                // model and its bones leaves posing, also when the selection stays the same
+                poseClick(sceneId, x, y);
+            }
             if (!mouseLeftDraggedInside && mouseLeftDown && !disableSelection && !consumeSelectionRelease){
                 // Remember sub-selection anchors BEFORE re-selecting, so we can tell
                 // whether the release click actually changed the host entity.
@@ -1603,6 +1675,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 sceneProject->sceneRender->clearPolygonPointSelection();
                 sceneProject->sceneRender->clearTrackPointSelection();
                 project->selectObjectsByRect(sceneId, clickStartPos, clickEndPos);
+                project->clearInspectedAsset();
                 project->syncSceneRenderEditLayer(sceneId);
             }
 
@@ -1613,6 +1686,13 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         }
         physicsSnapArmed[sceneId] = false;
         physicsSnapBegun[sceneId] = false;
+    }
+
+    if (!isMouseInWindow){
+        // nothing of the view is hovered (a pose handle's highlight and the session's flag)
+        if (PoseViewport* poseViewport = sceneProject->sceneRender->getPoseViewport()){
+            poseViewport->hoverEnd();
+        }
     }
 
     if (isMouseInWindow && (ImGui::IsMouseClicked(ImGuiMouseButton_Middle) || ImGui::IsMouseClicked(ImGuiMouseButton_Right) ||

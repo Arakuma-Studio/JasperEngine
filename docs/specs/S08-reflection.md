@@ -510,6 +510,13 @@ Recorded by the implementation (branch `feat/s08-reflection`).
   schema reads `UIntAs` defaults at their own width. `Catalog::copyPropertyValue` (prefab
   Apply/Revert of one property) copies a Custom value no type branch names through its table's
   `TypeOps::copy`, so Buoyancy `customPoints` and later table fields need no branch of their own.
+- **Upstream animation (sync round 2).** The Pose Animator and the Animation Player keep their
+  codecs (a missing key is the default, a component decoded over keeps its runtime) in
+  `StreamComponents.cpp`, with tables in `ClipPlayersReflect.cpp`; their drawers stay upstream's
+  (`InspectorWindow.cpp`, `InspectorWindowClips.cpp`), registered in the drawer lookup. A clip
+  entry is a table struct (`clips[2].wrap`; the one-byte `ClipWrapMode` a Custom property, an
+  enum to the schema). The Mesh's `morphWeights[N]` and the Model's `animationEntities` are table
+  fields; their codecs stay the hand ones. No format bump: the sequence stays S20's.
 - **Legacy oracle kept.** `editor/tests/reflect/legacy/` (the deleted hand codecs, test-only)
   stays so the parity fuzzers can keep running. D5 deletes it once S08 completes. Deleting it is
   a follow-up for the integrator after merge, and the goldens do not depend on it.

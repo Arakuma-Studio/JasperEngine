@@ -8,6 +8,7 @@
 #include "tools/W4Shared.h"
 
 #include "Project.h"
+#include "animation/AnimationClipDocument.h"
 #include "util/FileUtils.h"
 #include "util/Util.h"
 #include "util/ScriptReloadService.h"
@@ -148,6 +149,11 @@ std::string shortMessage(std::string text, size_t max) {
     return text;
 }
 
+// .gltf/.glb/.obj/.fbx and glTF .bin buffers: AnimationClipPool's model sub-clips come from them
+bool isModelSourceFile(const std::string& path) {
+    return Util::isModelFile(path) || lowerExtension(path) == ".bin";
+}
+
 } // namespace
 
 McpAutoSync& McpAutoSync::get() {
@@ -159,7 +165,11 @@ bool McpAutoSync::isTrackedFile(const std::string& path) {
     if (Util::isScriptFile(path) || Util::isShaderFile(path) || Util::isMaterialFile(path) || Util::isColorLutFile(path)) return true;
     if (isUiCodeFile(path) || isAssetFile(path)) return true;
     const std::string ext = lowerExtension(path);
-    return ext == ".c" || ext == ".inl";
+    // pose animations and humanoid sidecars: their open documents reload (editor/pose); clips:
+    // their documents reload, AnimationClipPool drops them and their players reload
+    if (ext == ".c" || ext == ".inl" || ext == ".poseanim" || ext == ".humanoid" || Util::isAnimationClipFile(path)) return true;
+    // models and glTF buffers: the clips made from their animations reload (picked up, not reported)
+    return isModelSourceFile(path);
 }
 
 bool McpAutoSync::isUiCodeFile(const std::string& path) {
@@ -314,6 +324,17 @@ void McpAutoSync::walkDir(const std::string& rel, std::vector<Change>* changes, 
 }
 
 void McpAutoSync::prepare(McpContext& ctx) {
+    // clip documents' own writes (edits, their undo and redo) go through the same sync as the
+    // tools' writes, so they are not reported as outside changes (installPoseSyncHook does this
+    // for pose documents)
+    static McpContext* clipHookContext = nullptr;
+    if (clipHookContext != &ctx) {
+        clipHookContext = &ctx;
+        McpContext* target = &ctx;
+        AnimationClipDocument::setFilesWrittenHook([target](const std::vector<fs::path>& changed) {
+            w4::syncFiles(*target, changed, false);
+        });
+    }
     ensureRoot(ctx);
 }
 
@@ -561,17 +582,25 @@ void McpAutoSync::addUiReport(Json& report, const Json& reloaded, int current) {
 }
 
 Json McpAutoSync::process(McpContext& ctx, const std::vector<Change>& changes) {
-    std::vector<fs::path> paths;
+    std::vector<fs::path> paths, models;
     std::set<std::string> reportable;
     w4::SyncOptions sync;
     for (const Change& change : changes) {
-        paths.push_back((root / FileUtils::pathFromUtf8(change.rel)).lexically_normal());
+        const fs::path path = (root / FileUtils::pathFromUtf8(change.rel)).lexically_normal();
+        // a model picked up (not reported): only what is already loaded from it is dropped (its
+        // sub-clips, their documents and players). The full sync would also queue its thumbnail,
+        // which converts an FBX nothing loaded yet.
+        (!change.report && isModelSourceFile(change.rel) ? models : paths).push_back(path);
         if (change.report) reportable.insert(change.rel);
         // the journal change: what the watcher reloaded for it already is not done again
-        if (change.sequence != 0) sync.sequences[paths.back()] = change.sequence;
+        if (change.sequence != 0) sync.sequences[path] = change.sequence;
+    }
+    if (!models.empty()) {
+        AnimationClipDocument::filesChanged(models, ctx.project());
+        filesSynced(ctx, models, false);
     }
     // quiet: the call's result reports it (the Console lines are the watcher's)
-    Json result = w4::syncFiles(ctx, paths, false, sync);
+    Json result = paths.empty() ? Json{{"problems", Json::array()}} : w4::syncFiles(ctx, paths, false, sync);
     if (reportable.empty()) return nullptr;
 
     Json changed = Json::array(), added = Json::array(), removed = Json::array();
@@ -637,7 +666,8 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
     std::map<std::string, Pending> merged;
     for (auto& [rel, pending] : pendingExternal) merge(merged, rel, pending.kind, pending.report);
     pendingExternal.clear();
-    for (const Change& change : found) merge(merged, change.rel, change.kind, true, change.sequence);
+    // a changed model is picked up (its sub-clips reload) but is not news to report
+    for (const Change& change : found) merge(merged, change.rel, change.kind, !isModelSourceFile(change.rel), change.sequence);
 
     const bool playing = ctx.isPlaying();
     if (playing) {
@@ -655,8 +685,10 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
         for (const auto& [rel, pending] : merged) {
             const fs::path path = (root / FileUtils::pathFromUtf8(rel)).lexically_normal();
             // a project UI effect's .frag (or one that is gone) and the includes effects may read
-            // reload their documents now too (phase 5)
+            // reload their documents now too (phase 5); so do clip and pose animation documents
+            // (players see a clip's new pool generation; their problems are reported now)
             if (isUiCodeFile(rel) || (isAssetFile(rel) && !Util::isImageFile(rel)) || lowerExtension(rel) == ".glsl" ||
+                Util::isAnimationClipFile(rel) || Util::isPoseAnimationFile(rel) ||
                 (lowerExtension(rel) == ".frag" && (pending.kind == 'r' || ProjectChecks::isUiEffectFile(path)))) {
                 uiPaths.push_back(path);
                 if (pending.sequence != 0) uiSync.sequences[path] = pending.sequence;

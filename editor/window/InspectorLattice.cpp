@@ -279,7 +279,8 @@ void editor::InspectorWindow::drawLatticeComponent(ComponentType cpType, ScenePr
         }
         if (ImGui::IsItemDeactivatedAfterEdit() && latticeOffsetPending.isValid()){
             std::string error;
-            reportLatticeEdit(LatticeEditorOps::setOffsets(project, sceneId, entity, {index}, {latticeOffsetPending}, &error), error);
+            // Record keys the point when it claims the lattice (animation clips 9.R5)
+            reportLatticeEdit(LatticeEditorOps::setOffsets(project, sceneId, entity, {index}, {latticeOffsetPending}, &error, true), error);
         }
         if (ImGui::IsItemDeactivated()){
             latticeOffsetEditing = false;

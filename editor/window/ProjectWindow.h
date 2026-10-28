@@ -8,6 +8,7 @@
 #include "util/EntityPayload.h"
 #include "render/preview/ModelRender.h"
 #include "render/preview/PrefabRender.h"
+#include "pose/PoseThumbnails.h"
 #include "organisation/SavedSearchRows.h"
 
 #include <iostream>
@@ -47,7 +48,10 @@ namespace jasperengine::editor {
         FONT,
         HTML,
         CSS,
-        COLOR_LUT
+        COLOR_LUT,
+        POSE_ANIMATION,     // .poseanim (the Pose Animation window)
+        HUMANOID,           // .humanoid bone-mapping sidecar (plain data)
+        ANIMATION_CLIP      // .anim (the Animation window; an icon, no thumbnail)
     };
 
     struct FileEntry {
@@ -149,6 +153,12 @@ namespace jasperengine::editor {
         Texture htmlIcon;
         Texture cssIcon;
         Texture lutIcon;
+        // drawn by the editor (PoseThumbnails), not a bundled image
+        Texture poseAnimationIcon;
+        std::vector<uint8_t> poseAnimationIconPixels;
+        // drawn by the editor too: a film strip (animation clips spec 4.1, 9.R53)
+        Texture animationClipIcon;
+        std::vector<uint8_t> animationClipIconPixels;
         // Bounded cache of GPU thumbnail textures; must stay well below the
         // sokol image/sampler pool sizes (2048), which are shared with scenes
         static constexpr size_t MAX_THUMBNAIL_TEXTURES = 512;
@@ -308,6 +318,10 @@ namespace jasperengine::editor {
         // The dependency stamp (the prefab file and its nested prefabs' sizes and times) each
         // prefab's thumbnail was made from: a change re-renders it
         std::unordered_map<std::string, std::string> prefabThumbnailStamps;
+        // .poseanim thumbnails: the middle pose on the preview model (PoseRender, main thread)
+        PoseAssetThumbnailer poseThumbnailer;
+        std::queue<ThumbnailRequest> poseThumbnailQueue;
+        void processPoseThumbnails();
         // The prefab files each prefab depends on, read again when its own file changes
         struct PrefabDependencies {
             std::filesystem::file_time_type writeTime{};
@@ -333,6 +347,11 @@ namespace jasperengine::editor {
         const std::vector<fs::path>& treeSubdirectories(const fs::path& path);
 
         void scanDirectory(const fs::path& path);
+        // Opens a file as a double-click does (the Animation window for an .anim)
+        void openFile(const FileEntry& file, const fs::path& filePath);
+        // The Inspector shows the file clicked last (Unity's activeObject, spec 9.R30): a single
+        // file of the selection, nothing for a folder or an emptied selection
+        void updateInspectedAsset(const std::string& clickedName);
         void rebuildFileIndex();
         FileEntry makeFileEntry(const fs::directory_entry& entry, const std::string& name);
         FileEntry makeFileEntry(const fs::path& path, const std::string& name, bool isDirectory);
@@ -411,6 +430,8 @@ namespace jasperengine::editor {
         ~ProjectWindow();
 
         bool isFocused() const;
+        // absolute paths of the selected files and folders, sorted (animation clips spec 9.R30)
+        std::vector<fs::path> getSelectedPaths() const;
 
         void notifyProjectPathChange();
         void cancelThumbnailWork();
@@ -463,6 +484,12 @@ namespace jasperengine::editor {
         void assetsCreateScript(bool lua);
         // Assets > Create > HTML Document: NewDocument.html + NewDocument.css (HtmlUITemplates)
         void assetsCreateHtmlDocument();
+        // Assets > Create > Pose Animation: a .poseanim with one neutral pose (Pose Animation window)
+        void assetsCreatePoseAnimation();
+        // Assets > Create > Animation Clip: an empty "New Animation.anim" in the current folder,
+        // one project undo step (AnimationClipDocument::create), then renamed in place (the
+        // App's createClipAsset hook, set by this window)
+        void assetsCreateAnimationClip();
         void assetsShowInFileManager();
         // The files selected in the folder view (absolute), for editor-script menu items
         std::vector<fs::path> getSelectedFiles() const;

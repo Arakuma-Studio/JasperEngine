@@ -8,11 +8,9 @@
 
 #include "Scene.h"
 #include "component/LatticeModifierComponent.h"
-#include "component/MeshComponent.h"
 #include "object/Lattice.h"
 #include "object/Sprite.h"
 #include "registry/EntityCloner.h"
-#include "subsystem/RenderSystem.h"
 
 #include <vector>
 
@@ -31,51 +29,46 @@ namespace {
 
 }
 
-// A copied sprite keeps the grid its vertices were built for: the copy's sprite rebuild makes
-// the same grid again, never the quad (which it would draw bilinearly bent for a frame, then
-// rebuild and reload as a grid).
+// Copying a deformed sprite preserves its visible curved texture from its first
+// rendered frame; an interim untessellated quad would distort the checker differently.
 TEST_F(LatticeRuntimeTest, CopiedSpriteKeepsItsLatticeGrid){
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
-
     Sprite& sprite = fixture.add<Sprite>();
     sprite.setSize(100, 100);
+    sprite.setPivotPreset(PivotPreset::CENTER);
+    sprite.setPosition(160, 160, 0);
+    sprite.setTexture("common/checker.png");
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    Screen plain;
+    ASSERT_TRUE(plain.read());
+    ASSERT_GT(plain.countColor({0, 0, plain.width, plain.height}, 255, 0, 0, 20), 0u);
+
     Lattice& lattice = fixture.add<Lattice>();
-    lattice.setScale(Vector3(200.0f, 200.0f, 200.0f));
+    lattice.setPosition(160, 160, 0);
+    lattice.setScale(200);
+    lattice.setResolution(3, 3, 3);
+    lattice.setOffset(1, 1, 1, Vector3(0.3f, 0, 0));
     ASSERT_TRUE(lattice.bind(sprite.getEntity()));
     scene.getComponent<LatticeModifierComponent>(sprite.getEntity()).subdivisions = 6;
-
-    const int gridVertices = 7 * 7;
-    ASSERT_TRUE(GpuEnvironment::runFrames([&](){
-        const MeshComponent& mesh = sprite.getComponent<MeshComponent>();
-        return mesh.loaded && !mesh.needReload && mesh.buffer.getCount() == (unsigned int)gridVertices;
-    }, 300)) << "the bound sprite becomes a 6 x 6 grid";
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    Screen expected;
+    ASSERT_TRUE(expected.read());
+    ASSERT_GT(expected.countColor({0, 0, expected.width, expected.height}, 255, 0, 0, 20), 0u);
+    ASSERT_NE(expected.rgba, plain.rgba) << "the curved lattice must visibly distort the checker";
 
     const std::vector<Entity> copies = EntityCloner::clone(&scene, {sprite.getEntity()}, &scene);
     ASSERT_EQ(copies.size(), size_t(1));
-    const Entity copy = copies[0];
-
-    {
-        const MeshComponent& copied = scene.getComponent<MeshComponent>(copy);
-        EXPECT_TRUE(copied.lattice.wantsTessellation) << "the copy keeps the grid request";
-        EXPECT_EQ(copied.lattice.tessellation, 6);
-        EXPECT_EQ(copied.lattice.count, 0) << "the records are packed anew for the copy";
-        EXPECT_TRUE(copied.lattice.texels.empty());
-    }
-
-    // frame by frame until the copy is loaded: its vertices stay the grid's
-    std::vector<unsigned int> counts;
-    bool reloaded = false;
+    sprite.setVisible(false);
+    int visibleFrames = 0;
     ASSERT_TRUE(GpuEnvironment::runFrames([&](){
-        const MeshComponent& copied = scene.getComponent<MeshComponent>(copy);
-        counts.push_back(copied.buffer.getCount());
-        reloaded = reloaded || copied.needReload;
-        return copied.loaded && copied.lattice.count == 1 && counts.size() >= 4;
+        Screen actual;
+        if (!actual.read())
+            return false;
+        if (actual.countColor({0, 0, 640, 360}, 255, 0, 0, 20) == 0)
+            return false; // copy has not produced its first rendered frame yet
+        EXPECT_EQ(actual.rgba, expected.rgba) << "visible frame " << visibleFrames;
+        return ++visibleFrames == 4;
     }, 300));
-    for (size_t frame = 0; frame < counts.size(); frame++){
-        EXPECT_EQ(counts[frame], (unsigned int)gridVertices) << "frame " << frame << " after the copy";
-    }
-    EXPECT_FALSE(reloaded) << "the copy is loaded once, as the grid";
-
-    scene.destroyEntity(copy);
+    scene.destroyEntity(copies[0]);
 }

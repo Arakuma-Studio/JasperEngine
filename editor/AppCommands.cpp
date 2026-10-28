@@ -11,7 +11,11 @@
 #include "AppMenuCommand.h"
 #include "Backend.h"
 #include "Out.h"
+#include "animation/AnimationClipAppHooks.h"
 #include "lattice/LatticeSceneTools.h"
+#include "pose/PoseViewportLogic.h"
+#include "window/AnimationWindowClip.h"
+#include "window/PoseAnimationWindow.h"
 #include "sceneview/SceneViewController.h"
 #include "shortcuts/DefaultCommands.h"
 #include "util/FluidEditorTools.h"
@@ -68,6 +72,13 @@ void editor::App::registerCommands(){
     // their own keys (as before the catalog)
     auto notAssetPanel = [this]() { return !projectWindow->isFocused() && !jobsMemoryWindow->isFocused(); };
     auto noDrag = [this]() { return !ImGui::IsMouseDown(ImGuiMouseButton_Right) && !ImGui::IsAnyItemActive(); };
+    // the scene's editing keys stay off while the Animation window editing a clip or the Pose
+    // Animation window (or a Scene view posing for it) has the keys: F2 would move the focus to
+    // the Inspector's name, Delete / Ctrl+D act on the poses and the clip keys there
+    auto sceneKeys = [this]() { return !clipWindowTakesKeys() && lastFocusedWindow != LastFocusedWindow::PoseAnimation; };
+    auto sceneKeysAnd = [sceneKeys](std::function<bool()> gate) {
+        return [sceneKeys, gate]() { return sceneKeys() && (!gate || gate()); };
+    };
 
     // ---- Assets > Version Control (S29 R29): the Project window's selection; a disabled item
     // says why (VcsUi::canRun, the menu's tooltip)
@@ -127,14 +138,14 @@ void editor::App::registerCommands(){
     auto timelineKeys = [this]() { return undoTarget() == UndoTimeline::Target::Timeline; };
     enable("edit.undo", [undoEnabled]() { return undoEnabled(true); }, timelineKeys);
     enable("edit.redo", [undoEnabled]() { return undoEnabled(false); }, timelineKeys);
-    enable("edit.selectAll", [this]() { return canSelectAll(); });
-    enable("edit.cut", [this]() { return canCutSelection(); });
-    enable("edit.copy", [this]() { return canCopySelection(); });
-    enable("edit.paste", [this]() { return canPasteSelection(false); });
-    enable("edit.pasteAsChild", [this]() { return canPasteSelection(true); });
-    enable("edit.duplicate", [this]() { return canEditSelection(true); }, notAssetPanel);
+    enable("edit.selectAll", [this]() { return canSelectAll(); }, sceneKeys);
+    enable("edit.cut", [this]() { return canCutSelection(); }, sceneKeys);
+    enable("edit.copy", [this]() { return canCopySelection(); }, sceneKeys);
+    enable("edit.paste", [this]() { return canPasteSelection(false); }, sceneKeys);
+    enable("edit.pasteAsChild", [this]() { return canPasteSelection(true); }, sceneKeys);
+    enable("edit.duplicate", [this]() { return canEditSelection(true); }, sceneKeysAnd(notAssetPanel));
     // the Input Actions window, focused, deletes its selected map, action or binding
-    enable("edit.delete", [this]() { return canEditSelection(false) || inputActionsWindow->canDelete(); }, notAssetPanel);
+    enable("edit.delete", [this]() { return canEditSelection(false) || inputActionsWindow->canDelete(); }, sceneKeysAnd(notAssetPanel));
     // F2 renames inline in the Hierarchy when it has focus, else in the Inspector
     bind("edit.rename", [this](const CommandArgs& args) {
         if (args.source == CommandSource::Keyboard) {
@@ -146,12 +157,12 @@ void editor::App::registerCommands(){
         const uint32_t sceneId = project.getSelectedSceneId();
         return !ImGui::GetIO().WantTextInput && !project.isAnyScenePlaying() && lastFocusedWindow == LastFocusedWindow::AnySceneWindow &&
                project.getSelectedScene() && project.getSelectedEntities(sceneId).size() == 1;
-    }, notAssetPanel);
+    }, sceneKeysAnd(notAssetPanel));
     enable("edit.frameSelected", [this]() {
         const SceneProject* scene = project.getSelectedScene();
         return scene && !ImGui::GetIO().WantTextInput && !project.isAnyScenePlaying() &&
                lastFocusedWindow == LastFocusedWindow::AnySceneWindow && sceneWindow->hasFrameableSelection(project.getSelectedSceneId());
-    }, noDrag);
+    }, sceneKeysAnd(noDrag));
     enable("edit.play", [this]() { return mainToolbar->canTogglePlay(); });
     enable("edit.pause", [this]() { return mainToolbar->canPause(); });
     enable("edit.step", [this]() { return mainToolbar->canStep(); });
@@ -171,6 +182,7 @@ void editor::App::registerCommands(){
     enable("assets.open", [this]() { return projectWindow->hasSingleAssetSelection(); });
     enable("assets.rename", [this]() { return projectWindow->hasSingleAssetSelection(); });
     enable("assets.delete", [this]() { return projectWindow->hasAssetSelection(); });
+    enable("assets.createAnimationClip", []() { return static_cast<bool>(animationClipAppHooks().createClipAsset); });
     enable("assets.migrateReferences", notBusy);
     enable("assets.scenesInBuild", notBusy);
     enable("assets.emptyTrash", notBusy);
@@ -198,10 +210,13 @@ void editor::App::registerCommands(){
     // ---- Window
     enable("window.scene", [this]() { return project.getSelectedScene() != nullptr; });
 
-    // ---- Tools: not while flying the 3D camera (Right Mouse + WASDQE) or dragging a field
-    auto tool = [this, &bind, noDrag](const char* id, MainToolbar::Tool which) {
+    // ---- Tools: not while flying the 3D camera (Right Mouse + WASDQE) or dragging a field,
+    // nor while the Pose Animation window (or a Scene view posing its character) or the
+    // Animation window editing a clip has the keys: their letters are theirs
+    auto toolKeys = [this, noDrag]() { return noDrag() && !animationOrPoseOwnsLetterKeys(); };
+    auto tool = [this, &bind, toolKeys](const char* id, MainToolbar::Tool which) {
         bind(id, [this, which](const CommandArgs&) { mainToolbar->setTool(which); },
-             [this, which]() { return mainToolbar->canUseTool(which); }, noDrag);
+             [this, which]() { return mainToolbar->canUseTool(which); }, toolKeys);
     };
     tool("tools.hand", MainToolbar::Tool::Hand);
     tool("tools.move", MainToolbar::Tool::Move);
@@ -209,10 +224,10 @@ void editor::App::registerCommands(){
     tool("tools.scale", MainToolbar::Tool::Scale);
     tool("tools.rect", MainToolbar::Tool::Rect);
     bind("tools.toggleGlobalLocal", [this](const CommandArgs&) { mainToolbar->toggleGlobalTransform(); },
-         [this]() { return project.getSelectedScene() != nullptr; }, noDrag);
+         [this]() { return project.getSelectedScene() != nullptr; }, toolKeys);
     // Physics (G): a modifier of Move/Rotate/Scale; turning it off always works
     bind("tools.physics", [this](const CommandArgs&) { mainToolbar->togglePhysicsMode(); },
-         [this]() { return mainToolbar->isPhysicsMode() || mainToolbar->canUsePhysics(); }, noDrag);
+         [this]() { return mainToolbar->isPhysicsMode() || mainToolbar->canUsePhysics(); }, toolKeys);
 
     // ---- Scene View: the selected scene's view, a 3D one for the camera keys
     auto scene3D = [this]() {
@@ -311,7 +326,33 @@ void editor::App::registerCommands(){
     bind("console.copy", [this](const CommandArgs&) { consoleWindow->copySelectedMessage(); },
          [this]() { return consoleWindow->hasSelectedMessage(); });
 
+    // ---- Animation window (clip mode) and Pose Animation window: their own commands
+    AnimationWindowClip::bindCommands(catalog, [this]() { return animationWindow->getClipMode(); });
+    poseAnimationWindow->bindCommands(catalog, [this]() { return poseKeysActive(); }, [this]() { return poseKeysFromSceneView(); });
+
     ShortcutOverrides::load(ShortcutOverrides::defaultFile(), catalog);
+}
+
+bool editor::App::clipWindowTakesKeys() const{
+    return animationClipAppHooks().takesKeys && animationClipAppHooks().takesKeys();
+}
+
+bool editor::App::poseKeysFromSceneView() const{
+    // a posing Scene view gets the window's keys, but not while its camera flies or orbits
+    // (right/middle mouse: W A S D Q E move it)
+    return !poseAnimationWindow->isFocused() && lastFocusedWindow == LastFocusedWindow::PoseAnimation &&
+           poseview::sceneViewTakesPoseKeys(ImGui::IsMouseDown(ImGuiMouseButton_Right), ImGui::IsMouseDown(ImGuiMouseButton_Middle),
+                                            sceneWindow->isNavigatingCamera());
+}
+
+bool editor::App::poseKeysActive() const{
+    return poseAnimationWindow->isFocused() || poseKeysFromSceneView();
+}
+
+bool editor::App::animationOrPoseOwnsLetterKeys() const{
+    // a Scene view posing the window's character keeps its letter keys for the pose (E: Global Edit)
+    const bool scenePosing = sceneWindow->isFocused() && poseAnimationWindow->ownsUndo(true) && !poseAnimationWindow->isFocused();
+    return poseAnimationWindow->isFocused() || scenePosing || clipWindowTakesKeys();
 }
 
 void editor::App::syncScriptCommands(){
@@ -358,10 +399,15 @@ editor::ShortcutState editor::App::shortcutState() const{
     if (sceneWindow->isFocused() || sceneWindow->isHovered()) state.panels.push_back(ShortcutContext::SceneView);
     if (projectWindow->isFocused()) state.panels.push_back(ShortcutContext::Project);
     if (consoleWindow->isListFocused()) state.panels.push_back(ShortcutContext::Console);
+    if (clipWindowTakesKeys()) state.panels.push_back(ShortcutContext::Animation);
+    if (poseKeysActive()) state.panels.push_back(ShortcutContext::PoseAnimation);
     return state;
 }
 
 void editor::App::processShortcuts(){
     syncScriptCommands();
     shortcutDispatcher.process(ImGuiShortcutKeys(), shortcutState());
+    // Esc of a Scene view posing the Pose Animation window's character (a local key; the
+    // window runs it itself while focused)
+    if (poseKeysFromSceneView()) poseAnimationWindow->handleLocalKeys();
 }

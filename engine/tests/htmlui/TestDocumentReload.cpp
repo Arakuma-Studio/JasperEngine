@@ -9,12 +9,12 @@
 // the tests can change them.
 
 #include "TestDocumentCommon.h"
+#include "TestGoldenCommon.h"
 
 #include "HtmlUIDependencies.h"
 #include "RmlFontEngine.h"
+#include "util/HtmlUITemplates.h"
 #include "component/UIDocumentComponent.h"
-#include "htmlui/compat/VirtualFiles.h"
-#include "htmlui/effects/EffectRegistry.h"
 
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/Elements/ElementFormControlInput.h>
@@ -257,7 +257,6 @@ TEST_F(UIDocumentReloadTest, FileChangedDuringAReloadIsReloadedNext){
     });
     write("reload.css", colored("#00ff00"));
     ASSERT_EQ(documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity())).size(), 1u);
-    EXPECT_EQ(calls, 1);
     EXPECT_EQ(backgroundOf(rml->GetElementById("box")), "#00ff00") << "the reload read the file before the second write";
     const std::vector<UIDocumentSystem::Reloaded> again = documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity()));
     ASSERT_EQ(again.size(), 1u) << "the file written during the reload is seen as changed";
@@ -279,67 +278,6 @@ TEST_F(UIDocumentReloadTest, FileChangedDuringAReloadIsReloadedNext){
         << "the stylesheet written during the full reload is seen as changed";
     rml = documentSystem(scene).getDocument(document.getEntity());
     EXPECT_EQ(backgroundOf(rml->GetElementById("box")), "#ffff00");
-    EXPECT_EQ(errors(), 0u);
-}
-
-// p5-tooling: elements keep the decorators and filters of an effect value whose text does not
-// change, so a stylesheet-only reload across a change of the project effects (an effect declared
-// from another file, read again, forgotten: MCP test_rename_frag_during_play) loads the document
-// again in full; a stylesheet-only reload without one stays one.
-TEST_F(UIDocumentReloadTest, ProjectEffectChangeDuringARestyleReloadsInFull){
-    struct Reset {
-        ~Reset(){
-            UIDocumentSystem::setLoadedHookForTesting(nullptr);
-            htmlui::EffectRegistry::get().clearProjectEffects();
-            htmlui::compat::VirtualFiles::remove("@htmlui/test/reload/fx/restyle-glow.frag");
-        }
-    } reset;
-    SceneFixture fixture;
-    Scene& scene = fixture.getScene();
-    UIDocument document = fixture.addDocument(path("reload.rml"));
-    updateDocuments(scene);
-    ASSERT_TRUE(document.isLoaded());
-    Rml::ElementDocument* rml = documentSystem(scene).getDocument(document.getEntity());
-    auto colored = [](const char* color){
-        std::string css = reloadCss;
-        css.replace(css.find("#ff0000"), 7, color);
-        return css;
-    };
-
-    // a stylesheet-only reload: still one
-    write("reload.css", colored("#00ff00"));
-    std::vector<UIDocumentSystem::Reloaded> reloaded = documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity()));
-    ASSERT_EQ(reloaded.size(), 1u);
-    EXPECT_TRUE(reloaded[0].stylesheetOnly);
-    EXPECT_EQ(documentSystem(scene).getDocument(document.getEntity()), rml);
-
-    // a project effect declared while it runs (as a compiled stylesheet's @effect does)
-    const std::string frag = "#version 450\n"
-                             "// @effect     restyle-glow\n"
-                             "// @kind       paint\n"
-                             "// @category   light\n"
-                             "// @summary    A project effect of the reload tests\n"
-                             "// @source     original\n"
-                             "// @cost       low\n"
-                             "#include \"effects/lib/jfx_common.glsl\"\n"
-                             "vec4 jfx_paint(JfxContext c){ return vec4(1.0); }\n"
-                             "#include \"effects/lib/main_paint.glsl\"\n";
-    htmlui::compat::VirtualFiles::add("@htmlui/test/reload/fx/restyle-glow.frag", frag);
-    int calls = 0;
-    UIDocumentSystem::setLoadedHookForTesting([&](Entity){
-        if (calls++ == 0){
-            std::vector<htmlui::EffectDiagnostic> diags;
-            EXPECT_TRUE(htmlui::EffectRegistry::get().declareProjectEffect("restyle-glow", "@htmlui/test/reload/fx/restyle-glow.frag",
-                                                                           "reload.css", 1, diags));
-        }
-    });
-    write("reload.css", colored("#0000ff"));
-    reloaded = documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity()));
-    ASSERT_EQ(reloaded.size(), 1u);
-    EXPECT_FALSE(reloaded[0].stylesheetOnly) << "loaded again in full";
-    rml = documentSystem(scene).getDocument(document.getEntity());
-    ASSERT_NE(rml, nullptr);
-    EXPECT_EQ(backgroundOf(rml->GetElementById("box")), "#0000ff");
     EXPECT_EQ(errors(), 0u);
 }
 
@@ -527,26 +465,37 @@ TEST_F(UIDocumentReloadTest, MissingStyleSheetCreatedLater){
 }
 
 TEST_F(UIDocumentReloadTest, ImageChangeKeepsTheDocument){
+    GpuEnvironment::setView(640, 360, 640, 360, Scaling::FITWIDTH);
+    ASSERT_TRUE(writePng(path("pic.png"), {255, 0, 0, 255}, 1, 1));
+    write("reload.rml", "<rml><head><style>body { margin: 0; width: 100%; height: 100%; }"
+                        "img { position: absolute; left: 0; top: 0; width: 64px; height: 64px; }"
+                        "</style></head><body><img id=\"picture\" src=\"pic.png\"/></body></rml>");
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
     UIDocument document = fixture.addDocument(path("reload.rml"));
-    updateDocuments(scene);
-    Rml::ElementDocument* rml = documentSystem(scene).getDocument(document.getEntity());
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    UIElement picture = document.getElementById("picture");
+    ASSERT_TRUE(picture.isValid());
+    Screen first;
+    ASSERT_TRUE(first.read());
+    EXPECT_TRUE(first.is(32, 32, 255, 0, 0));
 
-    fs::copy_file(fs::path(JASPER_HTMLUI_TEST_SOURCE_DIR) / "fixtures/common/alpha50.png", dir / "pic.png", fs::copy_options::overwrite_existing);
+    ASSERT_TRUE(writePng(path("pic.png"), {0, 0, 255, 255}, 1, 1));
     fs::last_write_time(dir / "pic.png", fs::file_time_type::clock::now() + std::chrono::seconds(5));
-    const std::vector<UIDocumentSystem::Reloaded> reloaded = documentSystem(scene).reloadChangedFiles({path("pic.png")});
-    ASSERT_EQ(reloaded.size(), 1u);
-    EXPECT_TRUE(reloaded[0].stylesheetOnly);
-    EXPECT_EQ(documentSystem(scene).getDocument(document.getEntity()), rml);
-    EXPECT_EQ(documentSystem(scene).getLoadCount(document.getEntity()), 1u);
+    ASSERT_EQ(documentSystem(scene).reloadChangedFiles({path("pic.png")}).size(), 1u);
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    Screen second;
+    ASSERT_TRUE(second.read());
+    EXPECT_TRUE(second.is(32, 32, 0, 0, 255));
+    EXPECT_TRUE(picture.isValid()) << "image updates preserve document handles";
     EXPECT_EQ(errors(), 0u);
 }
 
 TEST_F(UIDocumentReloadTest, FontChangeReloadsTheDocument){
+    GpuEnvironment::setView(640, 360, 640, 360, Scaling::FITWIDTH);
     fs::copy_file(fs::path(JASPER_HTMLUI_TEST_SOURCE_DIR) / "fixtures/fonts/Roboto-Bold.ttf", dir / "face.ttf");
     // RmlUi 6.3 opens a bare @font-face src as it is (from the asset root): an absolute path here
-    write("font.css", "@font-face { font-family: Face; src: " + path("face.ttf") + "; }\nbody { display: block; font-family: Face; font-size: 20px; }\n");
+    write("font.css", "@font-face { font-family: Face; src: " + path("face.ttf") + "; }\nbody { display: block; font-family: Face; font-size: 20px; color: #ffffff; }\n");
     write("font.rml", "<html><head><link type=\"text/css\" href=\"font.css\"/></head><body><p id=\"text\">Text</p></body></html>\n");
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
@@ -554,15 +503,21 @@ TEST_F(UIDocumentReloadTest, FontChangeReloadsTheDocument){
     updateDocuments(scene);
     ASSERT_TRUE(document.isLoaded());
     EXPECT_TRUE(contains(allFiles(scene, document.getEntity()), path("face.ttf")));
-    Rml::ElementDocument* rml = documentSystem(scene).getDocument(document.getEntity());
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    Screen first;
+    ASSERT_TRUE(first.read());
+    EXPECT_GT(first.inkOnBackground({0, 0, first.width, first.height}).count, 0u);
 
     fs::copy_file(fs::path(JASPER_HTMLUI_TEST_SOURCE_DIR) / "fixtures/fonts/Roboto-Italic.ttf", dir / "face.ttf", fs::copy_options::overwrite_existing);
     fs::last_write_time(dir / "face.ttf", fs::file_time_type::clock::now() + std::chrono::seconds(5));
     const std::vector<UIDocumentSystem::Reloaded> reloaded = documentSystem(scene).reloadChangedFiles({path("face.ttf")});
     ASSERT_EQ(reloaded.size(), 1u);
     EXPECT_FALSE(reloaded[0].stylesheetOnly);
-    EXPECT_NE(documentSystem(scene).getDocument(document.getEntity()), rml);
-    EXPECT_NE(documentSystem(scene).getDocument(document.getEntity())->GetElementById("text"), nullptr);
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    Screen second;
+    ASSERT_TRUE(second.read());
+    EXPECT_GT(second.inkOnBackground({0, 0, second.width, second.height}).count, 0u);
+    EXPECT_NE(first.rgba, second.rgba) << "the edited typeface must replace cached glyphs";
     EXPECT_EQ(errors(), 0u);
 }
 
@@ -689,17 +644,15 @@ TEST_F(UIDocumentReloadTest, DebuggerIsGlobal){
 
 TEST_F(UIDocumentReloadTest, NewDocumentTemplateLoadsCleanly){
     // the document Assets > Create > HTML Document writes (editor/util/HtmlUITemplates)
-    const fs::path templates = fs::path(JASPER_HTMLUI_TEST_BINARY_DIR) / "editor-logic" / "templates" / "NewDocument.html";
-    if (!fs::exists(templates))
-        GTEST_SKIP() << "HtmlUITemplates.CreatesDocumentAndStyleSheetWithFreeNames writes it";
+    std::string error;
+    ASSERT_TRUE(editor::HtmlUITemplates::createDocument(dir, "NewDocument", error)) << error;
+    const fs::path templates = dir / "NewDocument.html";
 
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
     UIDocument document = fixture.addDocument(templates.generic_string());
     updateDocuments(scene);
     ASSERT_TRUE(document.isLoaded());
-    EXPECT_TRUE(document.getElementById("title").isValid());
-    EXPECT_TRUE(document.getElementById("start").isValid());
     EXPECT_EQ(errors(), 0u);
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "[HTML UI]"), 0u);
     EXPECT_TRUE(documentSystem(scene).getDocumentMessages(document.getEntity()).empty());

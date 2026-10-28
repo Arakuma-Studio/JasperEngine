@@ -1,1 +1,0 @@
-compat/html/lucide.html:5:17: warning: Lucide icon 'not-an-icon-name' does not exist; the element stays empty (fix: did you mean: git-compare, lens-concave, monitor-pause) [HTMLUI-HTML-0021]

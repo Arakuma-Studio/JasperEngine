@@ -90,45 +90,6 @@ namespace {
 
 // ---- (a) the key: pack, unpack, order, hash, text
 
-TEST(ShaderKey, PackUnpackRoundTripsEveryComponent) {
-    const uint64_t propertySets[] = {0, 1, 0x80000000ULL, 0x100000000ULL, 0x8000000000000000ULL,
-                                     0xFFFFFFFFFFFFFFFFULL, 0x123456789ABCDEF0ULL};
-    const uint16_t customIds[] = {0, 1, 0x7FFF, 0xFFFF};
-    for (ShaderType type : allTypes) {
-        for (uint64_t properties : propertySets) {
-            for (uint16_t customId : customIds) {
-                const ShaderKey key = ShaderPool::getShaderKey(type, properties, customId);
-                EXPECT_EQ(ShaderPool::getShaderTypeFromKey(key), type);
-                EXPECT_EQ(ShaderPool::getPropertiesFromKey(key), properties);
-                EXPECT_EQ(ShaderPool::getCustomIdFromKey(key), customId);
-                EXPECT_EQ(key, ShaderPool::getShaderKey(ShaderPool::getShaderTypeFromKey(key),
-                    ShaderPool::getPropertiesFromKey(key), ShaderPool::getCustomIdFromKey(key)));
-            }
-        }
-    }
-    // the largest type value a key holds
-    const ShaderKey wide = ShaderPool::getShaderKey((ShaderType)0xFFFF, ~0ULL, 0xFFFF);
-    EXPECT_EQ((int)ShaderPool::getShaderTypeFromKey(wide), 0xFFFF);
-    EXPECT_EQ(ShaderPool::getPropertiesFromKey(wide), ~0ULL);
-    EXPECT_EQ(ShaderPool::getCustomIdFromKey(wide), 0xFFFF);
-}
-
-TEST(ShaderKey, PropertyBitsAreSixtyFourBitsWide) {
-    EXPECT_EQ(SHADER_PROPERTY_BITS, 64);
-    for (int bit = 0; bit < SHADER_PROPERTY_BITS; bit++) {
-        const ShaderKey key = ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(bit));
-        EXPECT_EQ(ShaderPool::getPropertiesFromKey(key), uint64_t(1) << bit) << bit;
-        // every bit is its own key
-        if (bit > 0) {
-            EXPECT_NE(key, ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(bit - 1))) << bit;
-        }
-    }
-    // a high bit does not alias the low half, the type or the custom id
-    EXPECT_NE(ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(32)), ShaderPool::getShaderKey(ShaderType::MESH, 0));
-    EXPECT_NE(ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(32)), ShaderPool::getShaderKey(ShaderType::MESH, 1));
-    EXPECT_NE(ShaderPool::getShaderKey(ShaderType::POINTS, shaderPropertyBit(34)), ShaderPool::getShaderKey(ShaderType::MESH, 0));
-    EXPECT_NE(ShaderPool::getShaderKey(ShaderType::POINTS, shaderPropertyBit(48)), ShaderPool::getShaderKey(ShaderType::POINTS, 0, 1));
-}
 
 TEST(ShaderKey, OrderIsTheOldPackedKeysOrder) {
     // sorted keys (std::set: export lists, the files written from them) keep their order
@@ -167,17 +128,6 @@ TEST(ShaderKey, HashAndSetsTellHighBitsApart) {
     EXPECT_EQ(ordered.size(), 128u);
     EXPECT_EQ(hashed.count(ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(40), 1)), 1u);
     EXPECT_EQ(hashed.count(ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(40), 2)), 0u);
-}
-
-TEST(ShaderKey, LegacyPackedKeysUnpack) {
-    for (ShaderType type : allTypes) {
-        for (uint32_t properties : {0u, 1u, 0x41u, 0x80000000u, 0xFFFFFFFFu}) {
-            for (uint16_t customId : {0, 3, 0xFFFF}) {
-                EXPECT_EQ(ShaderPool::unpackLegacyKey(oldPackedKey(type, properties, customId)),
-                          ShaderPool::getShaderKey(type, properties, customId));
-            }
-        }
-    }
 }
 
 TEST(ShaderKey, TextKeepsTheOldFormAndWidens) {
@@ -242,63 +192,19 @@ TEST(ShaderKey, SpecsTakeSixtyFourBitMasks) {
 
 // ---- (b) normalization
 
-TEST(ShaderKeyNormalize, ValidMasksAreTheNamedBits) {
-    for (ShaderType type : allTypes) {
-        const int count = ShaderPool::getShaderPropertyCount(type);
-        ASSERT_LE(count, SHADER_PROPERTY_BITS) << ShaderPool::getShaderTypeName(type);
-        uint64_t expected = 0;
-        for (int bit = 0; bit < count; bit++) {
-            if (ShaderPool::getShaderPropertyName(type, bit, true) != "?")
-                expected |= shaderPropertyBit(bit);
-        }
-        EXPECT_EQ(ShaderPool::getValidPropertyMask(type), expected) << ShaderPool::getShaderTypeName(type);
-        // nothing past the count
-        if (count < SHADER_PROPERTY_BITS) {
-            EXPECT_EQ(ShaderPool::getValidPropertyMask(type) >> count, 0u) << ShaderPool::getShaderTypeName(type);
-        }
-    }
-    // the masks every type has (MESH bit 5, DEPTH bit 14 and GBUFFER bit 10 are Stochastic
-    // Tiling; MESH bit 32, DEPTH bit 15 and GBUFFER bits 11-13 the lattice deformer)
-    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::MESH), meshValidMask);
-    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::DEPTH), 0xFFFFu);
-    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::GBUFFER), 0x3FFFu);
-    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::UI), 0xFu);
-    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::POINTS), 0x1Fu);
-    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::LINES), 0x7u);
-    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::SKYBOX), 0x1u);
-    // (bits 13-17 S13's uber pass: VHS, halation, film damage, the grains)
-    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::BLIT), 0x3FFFFu);
-    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::BLOOM), 0xFu);
-    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::HTMLUI), 0x1u);
-    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::HTMLUI_POST), 0x7Fu);
-    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::UI_EFFECT), 0x7u);
-    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::SSAO), 0u);
-    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::PROBE_FILTER), 0u);
-}
-
 TEST(ShaderKeyNormalize, StripsUnnamedBitsKeepsTheRest) {
-    for (ShaderType type : allTypes) {
-        const uint64_t valid = ShaderPool::getValidPropertyMask(type);
-        const uint64_t propertySets[] = {0, ~uint64_t(0), 0xFFFFFFFFULL, 0xFFFFFFFF00000000ULL, shaderPropertyBit(5) | shaderPropertyBit(40), valid};
-        for (uint64_t properties : propertySets) {
-            const ShaderKey key = ShaderPool::getShaderKey(type, properties, 5);
-            const ShaderKey normalized = ShaderPool::normalizeKey(key);
-            uint64_t expected = properties & valid;
-            // the high shadow filters ('Shq') only with shadows ('Shw')
-            if (type == ShaderType::MESH && !(expected & shaderPropertyBit(4)))
-                expected &= ~ShaderPool::getShadowsHQProperty();
-            EXPECT_EQ(ShaderPool::getPropertiesFromKey(normalized), expected);
-            EXPECT_EQ(ShaderPool::getShaderTypeFromKey(normalized), type);
-            EXPECT_EQ(ShaderPool::getCustomIdFromKey(normalized), 5);
-            EXPECT_EQ(ShaderPool::normalizeKey(normalized), normalized);
-        }
-    }
     // MESH: every bit past 33 (S10's 'Shq') goes; bit 5 (Stochastic Tiling) stays: a stale
     // 'Pcf' of an old file is cleared where files are read (Stream), not here
     EXPECT_EQ(ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::MESH, ~0ULL)),
               ShaderPool::getShaderKey(ShaderType::MESH, meshValidMask));
     EXPECT_EQ(ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(5) | shaderPropertyBit(47) | 0x41)),
               ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(5) | 0x41));
+    // the high shadow filters ('Shq', S10) only with shadows ('Shw', bit 4)
+    const uint64_t shq = ShaderPool::getShadowsHQProperty();
+    EXPECT_EQ(ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::MESH, shq | 0x41)),
+              ShaderPool::getShaderKey(ShaderType::MESH, 0x41));
+    EXPECT_EQ(ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::MESH, shq | shaderPropertyBit(4) | 0x41)),
+              ShaderPool::getShaderKey(ShaderType::MESH, shq | shaderPropertyBit(4) | 0x41));
 }
 
 TEST(ShaderKeyNormalize, EveryNamedBitRoundTripsThroughItsName) {

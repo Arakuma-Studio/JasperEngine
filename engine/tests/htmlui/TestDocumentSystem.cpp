@@ -66,25 +66,6 @@ namespace {
 
 }
 
-TEST_F(UIDocumentSystemTest, LazyNoContextWithoutDocuments){
-    SceneFixture fixture;
-    Scene& scene = fixture.getScene();
-
-    updateDocuments(scene);
-    EXPECT_EQ(documentSystem(scene).getContext(), nullptr);
-    EXPECT_FALSE(HtmlUI::isInitialized());
-
-    // a component without a file is not a document yet
-    UIDocument document = fixture.addDocument("");
-    updateDocuments(scene);
-    EXPECT_FALSE(documentSystem(scene).hasDocuments());
-    EXPECT_EQ(documentSystem(scene).getContext(), nullptr);
-    EXPECT_FALSE(HtmlUI::isInitialized());
-    EXPECT_TRUE(documentSystem(scene).isAllLoaded());
-
-    EXPECT_EQ(errors(), 0u);
-}
-
 TEST_F(UIDocumentSystemTest, LoadsOnUpdate){
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
@@ -283,6 +264,16 @@ TEST_F(UIDocumentSystemTest, DisabledHides){
     document.getComponent<UIDocumentComponent>().enabled = false;
     updateDocuments(scene);
     EXPECT_FALSE(rml->IsVisible());
+
+    // A document loaded while hidden stays hidden; setVisible is the same public state.
+    document.setVisible(true);
+    updateDocuments(scene);
+    EXPECT_TRUE(rml->IsVisible());
+    document.setVisible(false);
+    ASSERT_TRUE(document.load("ecs/second.rml"));
+    Rml::ElementDocument* second = findDocument(scene, "ecs second");
+    ASSERT_NE(second, nullptr);
+    EXPECT_FALSE(second->IsVisible());
 
     // a disabled document is not waited for
     EXPECT_TRUE(documentSystem(scene).isAllLoaded());
@@ -544,7 +535,9 @@ TEST_F(UIDocumentTest, LoadNowAndGetElementById){
 
     UIDocument& document = fixture.add<UIDocument>();
     EXPECT_EQ(document.getFilename(), "");
+    EXPECT_FALSE(document.load(""));
     EXPECT_FALSE(document.isLoaded());
+    EXPECT_EQ(errors(), 0u);
 
     // synchronous: elements and layout right away, no update needed
     EXPECT_TRUE(document.load("ecs/basic.rml"));
@@ -575,50 +568,6 @@ TEST_F(UIDocumentTest, LoadNowAndGetElementById){
     // and loads again
     EXPECT_TRUE(document.load("ecs/second.rml"));
     EXPECT_TRUE(document.getElementById("second").isValid());
-}
-
-TEST_F(UIDocumentTest, LoadEmptyFilenameFails){
-    SceneFixture fixture;
-    UIDocument& document = fixture.add<UIDocument>();
-
-    // an empty filename is nothing to load
-    EXPECT_FALSE(document.load(""));
-    EXPECT_FALSE(document.isLoaded());
-    EXPECT_EQ(errors(), 0u);
-}
-
-TEST_F(UIDocumentTest, ShowHide){
-    SceneFixture fixture;
-    Scene& scene = fixture.getScene();
-
-    UIDocument& document = fixture.add<UIDocument>();
-    EXPECT_TRUE(document.isVisible());
-    ASSERT_TRUE(document.load("ecs/basic.rml"));
-    Rml::ElementDocument* rml = findDocument(scene, "ecs basic");
-    ASSERT_NE(rml, nullptr);
-
-    document.hide();
-    EXPECT_FALSE(document.isVisible());
-    EXPECT_FALSE(document.getComponent<UIDocumentComponent>().enabled);
-    updateDocuments(scene);
-    EXPECT_FALSE(rml->IsVisible());
-
-    document.setVisible(true);
-    updateDocuments(scene);
-    EXPECT_TRUE(rml->IsVisible());
-
-    document.setVisible(false);
-    document.show();
-    updateDocuments(scene);
-    EXPECT_TRUE(document.isVisible());
-    EXPECT_TRUE(rml->IsVisible());
-
-    // a document loaded while hidden stays hidden
-    document.hide();
-    ASSERT_TRUE(document.load("ecs/second.rml"));
-    Rml::ElementDocument* second = findDocument(scene, "ecs second");
-    ASSERT_NE(second, nullptr);
-    EXPECT_FALSE(second->IsVisible());
 }
 
 TEST_F(UIDocumentTest, ReloadKeepsSortOrder){

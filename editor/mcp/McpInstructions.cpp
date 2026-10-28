@@ -39,13 +39,14 @@ Mesh Filter/Renderer = MeshComponent (Primitive for box/sphere/plane...). Sprite
 SpriteComponent. Rigidbody / Rigidbody 2D = RigidbodyComponent (Jolt) / Rigidbody2DComponent
 (Box2D). Collider = an entry of the Rigidbody's colliders list, not a separate component.
 Most others are Unity's name + "Component" (AudioSourceComponent...).
+Legacy Animation = AnimationPlayerComponent (AnimationComponent: entity sequences).
 Build Settings = export; Scenes in Build = the scene list in project.yaml.
 
 ## Addressing
-- scene: numeric id, scene name, or project-relative .scene path. Omitted = the selected
-  scene. While playing, runtime-state tools resolve to the playing scene. parent: omitted =
-  the scene root. max_width 0 = full size.
-- entity: numeric id, or a path of names from the scene root joined by "/" with "#N" for the
+- scene: numeric id ("12" ok), scene name, or project-relative .scene path. Omitted = the
+  selected scene. While playing, runtime-state tools resolve to the playing scene. parent:
+  omitted = the scene root. max_width 0 = full size.
+- entity: numeric id ("12" ok), or a path of names from the scene root joined by "/" with "#N" for the
   Nth earlier sibling of the same name ("Player/Gun", "Enemy#2"), or a bare name unique in the
   scene; {"id"|"name"|"path"} objects (as results return them) work too. Ambiguous names fail
   and list the matching paths. Results return both id and path; prefer ids within a session.
@@ -72,8 +73,8 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
 6. Read the Console since your last cursor: compile, script and Lua errors, missing assets.
 7. Stop, fix, repeat until the Console is clean and the screenshot shows what you intended.
    Never claim a script works without playing it and reading the Console.
-Long operations (play with a C++ build, export, build players) take wait/timeout_seconds;
-past it you get a job id: poll get_job, cancel with cancel_job.
+Long operations (C++ builds, export, players) take timeout_seconds; past it you get a job
+id: poll get_job, cancel_job.
 A tool error says what was wrong and lists valid choices: fix the arguments, don't repeat.
 
 ## Undo
@@ -83,10 +84,10 @@ undoes only your own last step. Play-time edits roll back at play stop and are o
 (get_play_changes). More: jasper://docs/undo.
 
 ## Editor search
-editor_ux group: search_editor is the Ctrl+K palette (prefixes > / : @ + asset:), run_command runs
-a list_shortcuts id or a result's key, set_shortcut rebinds, get_inspector_layout reads the
-Inspector's rows. list_assets search: t: l: ext: path: re: ref: missing:. Layouts, labels, saved
-searches, bookmarks: edit_* (jasper://docs/editor-integration).
+editor_ux group: search_editor = the Ctrl+K palette (> / : @ + asset:); run_command runs a
+list_shortcuts id or a result key; set_shortcut rebinds; get_inspector_layout reads the Inspector's
+rows. list_assets search: t: l: ext: path: re: ref: missing:. Layouts, labels, saved searches,
+bookmarks: edit_* (jasper://docs/editor-integration).
 Git/SVN: vcs group (jasper://docs/version-control).
 
 ## Code (Lua, C++, shaders, materials)
@@ -98,7 +99,7 @@ problems first. During play a saved Lua script reloads in place, keeping its ins
 (external_changes.script_reload; a file that fails keeps its old code running); C++ waits for
 Stop unless set_script_settings reload_cpp_during_play. Open scenes and prefabs are not
 reloaded from disk: edit them with the tools.
-Validate without playing: check_script (Lua syntax, properties), check_shader, compile_scripts
+Validate without playing: check_script (Lua), check_shader, compile_scripts
 (C++), or `jasperengine-editor check` from a shell. Through tools: create_script (engine
 template, optional attach), attach_script / detach_script, set_script_properties. write_file /
 read_file / search_files are for clients without file access; sync_files forces a full rescan.
@@ -135,7 +136,7 @@ destructor; components: REGISTER_BUTTON_EVENT / REGISTER_UI_EVENT / REGISTER_COM
 DEGREES: Quaternion(angle, axis); std::sin/cos want radians (Angle::defaultToRad). Script
 directories are include roots compiled whole (a build runs only with an enabled C++ script
 attached); build settings go in ProjectBuild.cmake, never the generated CMakeLists.txt.
-compile_scripts reports errors without playing. More: jasper://docs/cpp-scripting.
+More: jasper://docs/cpp-scripting.
 
 ## Play and time
 - play: start, stop, pause, resume, step (frames), restart; clock options with any action (or
@@ -143,8 +144,8 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   auto_pause (frozen between your calls; runs only inside wait, send_input or step).
 - wait: run for seconds, game_seconds or frames, or until a Lua condition is truthy; input
   sends send_input events while it waits (hold a key for 2 game seconds, then check).
-- run_build runs an exported desktop player with input events and screenshots_at (seconds
-  since launch); returns its errors (Lua too) and the log tail.
+- run_build runs an exported desktop player (input events, screenshots_at seconds since
+  launch); returns its errors and the log tail.
 
 ## 2D and 3D
 - 2D: sprites, tilemaps, UI; units are points (pixels of the canvas, project canvasWidth x
@@ -152,11 +153,13 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   adds to the 2D ambient (lower ambient_light_2d_intensity to see it); Shadow Caster 2D needs the
   light's shadows on.
 - 3D: meshes (box, sphere, plane, model files), lights, skybox, fog, terrain. Cameras look at
-  their target by default (useTarget): the GameObject's rotation is ignored until you call
-  disableTarget() (orbiting: jasper://docs/lua-api, Camera).
+  their target (useTarget): the rotation is ignored until disableTarget() (jasper://docs/lua-api).
 - UI widgets (HTML/CSS UI: below): create_ui lays out in pixels, y DOWN from the parent's
   top-left. Put HUDs and menus in a UI scene attached as a child scene (set_child_scene): in a
   2D scene layout groups stack bottom-up and pointer input needs a UI camera.
+- Poses (.poseanim): get/edit/render_pose_animation (jasper://docs/pose-animation).
+- Clips (.anim, shared): edit_animation {clip, create, tracks [{path}]}, for an Animation
+  Player (jasper://docs/animation).
 
 ## Atmosphere
 A Fog of type "height" is physically based height fog (volumetric: true adds light shafts and
@@ -201,8 +204,8 @@ textures, features). A mesh shader goes on a submesh material
 update_material) with .shaderParams.<member> (colours linear, "#RRGGBB" is sRGB),
 .shaderTextures.<uniform> and .shaderFeatures; UI, Points, Lines and Sky take customShader plus
 shaderUniforms. Outlines and stencil effects: apply_material_preset (list_material_presets), then
-tune its extraPass and stencil. Shaders with scene_inputs (cost_note) add a depth
-pass or colour copy per camera and must draw transparent; avoid on low-end mobile. Fork only
+tune its extraPass and stencil. Shaders with scene_inputs (cost_note) cost a depth
+pass or colour copy per camera and must draw transparent. Fork only
 when nothing fits: fork_shader copies the built-in shader and sets customShader. Read a fork
 before editing (its rules: jasper://docs/shaders); its parameters are the u_fs_customParams
 block (set_shader_uniform). A failing shader draws as the built-in one (error in the Console).
@@ -220,8 +223,8 @@ inspect_color_lut a .cube. Mobile: in-shader colour, low render scale or dynamic
 passes (jasper://docs/post-processing).
 
 ## Shadows
-A light's shadows, softShadows, shadowStrength, shadowBias/shadowNormalBias (in shadow texels,
-1 is right almost always), mapResolution (0: the tier's); the scene's shadows_quality (auto:
+A light's shadows, softShadows, shadowStrength, shadowBias/shadowNormalBias (shadow texels,
+1 fits nearly always), mapResolution (0: the tier's); the scene's shadows_quality (auto:
 the platform's tier), shadow_distance; meshes that never move: staticShadowCaster true (cached).
 Verify with get_shadow_stats and the shadows_debug_view setting (jasper://docs/shadows).
 
@@ -229,14 +232,14 @@ Verify with get_shadow_stats and the shadows_debug_view setting (jasper://docs/s
 The profiling group: get_frame_times (the always-on history), capture_profile then
 get_cpu_profile (capture_id, frame worst), get_gpu_passes (each pass's GPU ms; with capture_id
 per-label medians), capture_pass_output, get_vram_report, get_render_stats. Compare medians,
-not single frames; GPU time semantics differ per backend (jasper://docs/profiling).
+not single frames (jasper://docs/profiling).
 Calls time out: get_editor_health (answers mid-hang) tells hung from slow; get_crash_reports
 (jasper://docs/crash-diagnostics).
 
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export
 (Build Settings, build_project) makes a CMake project or players per platform (a long job).
-Before exporting: every scene saved, Console clean in play, the start scene correct.
+Before exporting: scenes saved, Console clean in play, the start scene right.
 )JE"
 R"JE(
 ## HTML/CSS UI
@@ -246,7 +249,7 @@ assets/ui/<name>.html, its .css and Lua. Edit them yourself; fix what external_c
 inspect_ui (boxes in canvas px = send_input coords) and assert_ui (text_fits, no_overlap...)
 check layouts; import_files brings fonts, icons and videos; effect(<name>, ...) draws GPU effects
 (list_ui_effects, set_ui_effect_time).
-Edit mode runs no Lua. First read jasper://docs/html-ui (with the UI tools' rules).
+Edit mode runs no Lua. Read jasper://docs/html-ui (the UI tools' rules) first.
 
 ## Data safety
 Save after each step (Auto Save keeps backups only). A save that would lose data the editor

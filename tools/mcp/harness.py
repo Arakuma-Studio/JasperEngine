@@ -4,12 +4,11 @@ Run with:  uv run --no-project --with-requirements tools/mcp/requirements.txt py
 
     from harness import Editor, ToolError
 
-    async with Editor() as ed:                       # copy of build/fixture-unity
+    async with Editor(create=True) as ed:            # a new isolated project
         status = await ed.call("editor_status")
         made = await ed.call("create_entity", name="Box", type="box")
         await ed.screenshot(view="game", path="game.png")
 
-    async with Editor(create=True) as ed: ...        # a new empty project
     async with Editor(project="/path/proj") as ed: ...   # a copy of that project
     async with Editor(url="http://127.0.0.1:47615/mcp", token="...") as ed: ...   # attach over HTTP
 

@@ -57,10 +57,6 @@ namespace jasperengine::htmlui::compat {
         // values are escaped (& < > ").
         static std::optional<std::string> svgMarkup(std::string_view name, const std::vector<LucideAttribute>& elementAttributes = {});
 
-        // tests: how many times the embedded pack was inflated (1 after first use)
-        static size_t inflateCount();
-        // tests: whether bytes are a valid pack (the reason in `error` otherwise)
-        static bool validatePack(const unsigned char* data, size_t size, std::string* error = nullptr);
         // The htmlui_lucide.h header of the embedded pack, byte for byte what
         // engine/libs/lucide/embed_lucide.cmake generates (the editor's Apple export writes it).
         static std::string buildEmbeddedHeader();

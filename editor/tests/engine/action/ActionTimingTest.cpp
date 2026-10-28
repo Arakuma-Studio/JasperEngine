@@ -165,7 +165,7 @@ TEST(SpriteAnimationStop, SingleFrameAnimationStops) {
     Entity target = createSpriteTarget(scene);
 
     SpriteAnimation anim(&scene);
-    anim.setAnimation({0}, {100}, false);
+    anim.setAnimation(0, 0, 100, false);
     anim.setTarget(target);
     anim.start();
 

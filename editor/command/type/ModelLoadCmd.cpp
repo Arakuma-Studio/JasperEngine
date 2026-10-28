@@ -5,7 +5,12 @@
 #include "sceneview/SurfacePlacement.h"
 
 #include "Stream.h"
+#include "animation/PreviewOwner.h"
+#include "pose/PoseEditSession.h"
+#include "tiny_gltf.h"
 #include "util/ProjectUtils.h"
+#include "component/ActionComponent.h"
+#include "component/AnimationComponent.h"
 #include "Engine.h"
 #include "subsystem/MeshSystem.h"
 #include "io/FileData.h"
@@ -208,6 +213,122 @@ void editor::ModelLoadCmd::recordArrangement(SceneProject* sceneProject, const M
     }
 }
 
+void editor::ModelLoadCmd::recordMorphWeights(Scene* scene, const ModelComponent& model) {
+    savedMorphWeights.clear();
+    // the weights a part owns: the targets they cover (MeshComponent::morphTargetCount), so the
+    // targets a re-exported file gained keep the defaults the rebuild gives them
+    auto weightsOf = [scene](Entity part) {
+        std::vector<float> weights;
+        const MeshComponent* mesh = scene->findComponent<MeshComponent>(part);
+        if (mesh && mesh->morphWeightsSet) {
+            const int count = std::clamp(mesh->morphTargetCount, 0, MAX_MORPHTARGETS);
+            weights.assign(mesh->morphWeights, mesh->morphWeights + count);
+        }
+        return weights;
+    };
+    for (const auto& node : model.meshNodesMapping) {
+        std::vector<float> weights = weightsOf(node.second);
+        if (!weights.empty()) savedMorphWeights[node.first] = weights;
+    }
+    // the model entity's own mesh (a lone mesh, a skin without its nodes): the one mesh node
+    // no part stands for
+    if (model.gltfModel) {
+        int unmapped = -1;
+        size_t count = 0;
+        for (size_t i = 0; i < model.gltfModel->nodes.size(); i++) {
+            if (model.gltfModel->nodes[i].mesh < 0 || model.meshNodesMapping.count((int)i)) continue;
+            unmapped = (int)i;
+            count++;
+        }
+        if (count == 1) {
+            std::vector<float> weights = weightsOf(entity);
+            if (!weights.empty()) savedMorphWeights[unmapped] = weights;
+        }
+    }
+}
+
+void editor::ModelLoadCmd::restoreMorphWeights(Scene* scene, const ModelComponent& model) {
+    for (const auto& saved : savedMorphWeights) {
+        Entity part = NULL_ENTITY;
+        auto mesh = model.meshNodesMapping.find(saved.first);
+        if (mesh != model.meshNodesMapping.end()) {
+            part = mesh->second;
+        } else {
+            auto node = model.nodesIdMapping.find(saved.first);
+            if (node != model.nodesIdMapping.end()) part = node->second;
+        }
+        MeshComponent* component = part != NULL_ENTITY && scene->isEntityCreated(part) ? scene->findComponent<MeshComponent>(part) : nullptr;
+        if (!component) continue;
+        for (size_t i = 0; i < MAX_MORPHTARGETS && i < saved.second.size(); i++) {
+            component->morphWeights[i] = saved.second[i];
+        }
+        // the parts are new entities (their load gave them the file's defaults): the carried
+        // weights are theirs now, kept by later reloads like saved ones (MeshComponent::morphWeightsSet)
+        component->morphWeightsSet = true;
+        component->morphTargetCount = std::max(component->morphTargetCount, (int)saved.second.size());
+    }
+}
+
+void editor::ModelLoadCmd::recordRetargets(Scene* scene, const ModelComponent& model) {
+    retargetedActions.clear();
+    std::unordered_map<Entity, NodeRef> modelNodes;
+    for (const auto& node : model.nodesIdMapping) {
+        modelNodes.emplace(node.second, makeNodeRef(model, node.first, scene->findComponent<BoneComponent>(node.second) != nullptr));
+    }
+    for (const auto& node : model.meshNodesMapping) {
+        modelNodes.emplace(node.second, makeNodeRef(model, node.first, false));
+    }
+    for (const auto& bone : model.bonesIdMapping) {
+        modelNodes.emplace(bone.second, makeNodeRef(model, bone.first, true));
+    }
+    if (modelNodes.empty()) return;
+
+    // the loader's own animations go with the model and come back from the file
+    std::unordered_set<Entity> generated(model.animations.begin(), model.animations.end());
+    for (Entity animation : model.animations) {
+        if (const AnimationComponent* component = scene->findComponent<AnimationComponent>(animation)) {
+            for (const ActionFrame& frame : component->actions) generated.insert(frame.action);
+        }
+    }
+    auto actions = scene->getComponentArray<ActionComponent>();
+    for (size_t i = 0; i < actions->size(); i++) {
+        const Entity action = actions->getEntity(i);
+        if (generated.count(action) || modelNodes.count(action)) continue;
+        auto node = modelNodes.find(actions->getComponentFromIndex(i).target);
+        if (node == modelNodes.end()) continue;
+        retargetedActions.push_back({action, node->first, node->second});
+    }
+}
+
+void editor::ModelLoadCmd::detachRetargets(Scene* scene) {
+    for (const RetargetedAction& retarget : retargetedActions) {
+        if (ActionComponent* action = scene->isEntityCreated(retarget.action) ? scene->findComponent<ActionComponent>(retarget.action) : nullptr) {
+            action->target = NULL_ENTITY;
+        }
+    }
+}
+
+void editor::ModelLoadCmd::applyRetargets(Scene* scene, const ModelComponent& model) {
+    for (const RetargetedAction& retarget : retargetedActions) {
+        ActionComponent* action = scene->isEntityCreated(retarget.action) ? scene->findComponent<ActionComponent>(retarget.action) : nullptr;
+        if (!action) continue;
+        const Entity node = findModelNode(model, retarget.node);
+        if (node == NULL_ENTITY) {
+            Log::warn("Node %d '%s' is no longer in '%s': '%s' has no target now", retarget.node.index, retarget.node.name.c_str(),
+                model.filename.c_str(), scene->getEntityName(retarget.action).c_str());
+        }
+        action->target = node;
+    }
+}
+
+void editor::ModelLoadCmd::restoreRetargets(Scene* scene) {
+    for (const RetargetedAction& retarget : retargetedActions) {
+        if (ActionComponent* action = scene->isEntityCreated(retarget.action) ? scene->findComponent<ActionComponent>(retarget.action) : nullptr) {
+            action->target = retarget.oldTarget;
+        }
+    }
+}
+
 void editor::ModelLoadCmd::parkEntities(SceneProject* sceneProject) {
     if (parkedEntities.empty()) return;
     Scene* scene = sceneProject->scene;
@@ -330,6 +451,10 @@ void editor::ModelLoadCmd::finalizeLoad(){
     }
 
     restoreArrangement(sceneProject, newModel);
+    applyRetargets(scene, newModel);
+    if (switchesLayout) {
+        restoreMorphWeights(scene, newModel);
+    }
 
     // a drop rests the loaded model on the surface it was dropped on
     if (hasDropSurface && isNewModel){
@@ -422,6 +547,20 @@ void editor::ModelLoadCmd::completePendingLoad(uint32_t sceneId, Entity entity){
 }
 
 bool editor::ModelLoadCmd::execute(){
+    // the reload records the arrangement and moves the parts from their rest, not from a preview
+    // of the model (the clip and entity modes, the Inspector's, a pose): they restore first (9.R7)
+    if (!createEntityCmd && entity != NULL_ENTITY) {
+        SceneProject* previewed = project->getScene(sceneId);
+        const ModelComponent* loaded = previewed && previewed->scene && previewed->scene->isEntityCreated(entity)
+            ? previewed->scene->findComponent<ModelComponent>(entity) : nullptr;
+        // A model with a file (loaded before, or a reload undone and redone before its async load
+        // finished) is rebuilt from the rest. A first load stops only a preview of the entity's own
+        // values (its Transform becomes oldTransform and decides the root transform): a model
+        // created under a previewed root leaves that preview and Record running.
+        if (loaded && (!loaded->filename.empty() || PreviewOwner::writes(sceneId, entity))){
+            PoseEditSession::suspendActiveFor(sceneId, {entity});
+        }
+    }
     // An FBX loads from its import, created here the first time
     if (!project->prepareModelFile(modelPath)) {
         return false;
@@ -487,9 +626,17 @@ bool editor::ModelLoadCmd::execute(){
 
     const bool sameModelFile = MeshSystem::getModelFilenameKey(model.filename) == MeshSystem::getModelFilenameKey(modelPath);
 
+    // A model on or under an Animation Player loads in the node-hierarchy layout (animation clips
+    // spec 9.R3): one in another layout is rebuilt by this reload, the one step that switches it
+    // (its arrangement is put back by node name below).
+    if (firstExecution) {
+        switchesLayout = sameModelFile && scene->getSystem<MeshSystem>()->needsNodeHierarchyReload(entity);
+        movesLegacyRoot = switchesLayout && scene->getSystem<MeshSystem>()->getLegacyRootTransform(entity, legacyRoot);
+    }
+
     // Only a reload that would throw away a local arrangement keeps the mesh children and
     // refreshes their geometry in place. Everything else rebuilds, so node changes still apply.
-    reuseHierarchy = sameModelFile && !mergeStaticMeshesChanged
+    reuseHierarchy = sameModelFile && !mergeStaticMeshesChanged && !switchesLayout
         && model.nodesIdMapping.empty() && ProjectUtils::hasCustomMeshParenting(scene, entity);
 
     reusedEntities.clear();
@@ -514,8 +661,13 @@ bool editor::ModelLoadCmd::execute(){
     // parsed glTF to name the nodes; a redo reuses what it recorded.
     if (firstExecution && sameModelFile && !reuseHierarchy) {
         recordArrangement(sceneProject, model);
+        recordRetargets(scene, model);
+    }
+    if (firstExecution && switchesLayout) {
+        recordMorphWeights(scene, model);
     }
     parkEntities(sceneProject);
+    detachRetargets(scene);
 
     std::vector<Entity> oldSubEntityRoots;
     if (!reuseHierarchy) {
@@ -530,6 +682,7 @@ bool editor::ModelLoadCmd::execute(){
         if (!oldSubEntitiesDeleteCmd->execute()) {
             delete oldSubEntitiesDeleteCmd;
             oldSubEntitiesDeleteCmd = nullptr;
+            restoreRetargets(scene);
             unparkEntities(sceneProject);
             return false;
         }
@@ -546,6 +699,17 @@ bool editor::ModelLoadCmd::execute(){
         model.skinBindings.clear();
     }
     model.mergeStaticMeshes = requestedMergeStaticMeshes;
+
+    // The scene root node gets an entity of its own in the node hierarchy, which carries the
+    // matrix the legacy model entity stood in for: taken off the entity, everything stays where
+    // it was (undo puts oldTransform back)
+    if (movesLegacyRoot) {
+        Transform& rootTransform = scene->getComponent<Transform>(entity);
+        const Matrix4 local = Matrix4::translateMatrix(rootTransform.position) *
+            rootTransform.rotation.getRotationMatrix() * Matrix4::scaleMatrix(rootTransform.scale);
+        (local * legacyRoot.inverse()).decompose(rootTransform.position, rootTransform.scale, rootTransform.rotation);
+        rootTransform.needUpdate = true;
+    }
 
     if (tryLoad()){
         finalizeLoad();
@@ -569,6 +733,7 @@ bool editor::ModelLoadCmd::execute(){
         delete oldSubEntitiesDeleteCmd;
         oldSubEntitiesDeleteCmd = nullptr;
     }
+    restoreRetargets(scene);
     unparkEntities(sceneProject);
     if (createEntityCmd) {
         createEntityCmd->undo();
@@ -586,6 +751,11 @@ void editor::ModelLoadCmd::restoreTransform(Scene* scene){
 void editor::ModelLoadCmd::undo(){
     SceneProject* sceneProject = project->getScene(sceneId);
     Scene* scene = sceneProject->scene;
+    // the reload rebuilds (and records) the model from its rest, not from a preview (clips 9.R7)
+    // (a first load's undo writes oldTransform back: from the rest when the entity is previewed)
+    if (entity != NULL_ENTITY && scene->isEntityCreated(entity) && (!isNewModel || PreviewOwner::writes(sceneId, entity))){
+        PoseEditSession::suspendActiveFor(sceneId, {entity});
+    }
 
     if (asyncPending) {
         // Async load still in flight — cancel it; no sub-entities have been created yet
@@ -595,6 +765,7 @@ void editor::ModelLoadCmd::undo(){
     } else {
         // The attached entities sit on nodes this load created, which are removed below
         parkEntities(sceneProject);
+        detachRetargets(scene);
 
         ModelComponent& model = scene->getComponent<ModelComponent>(entity);
         std::vector<Entity> newSubEntityRoots = collectModelDeleteRoots(scene, model);
@@ -621,6 +792,7 @@ void editor::ModelLoadCmd::undo(){
         delete oldSubEntitiesDeleteCmd;
         oldSubEntitiesDeleteCmd = nullptr;
     }
+    restoreRetargets(scene);
     unparkEntities(sceneProject);
 
     sceneProject->isModified = wasModified;

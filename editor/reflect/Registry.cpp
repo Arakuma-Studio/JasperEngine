@@ -85,6 +85,8 @@ namespace {
         &kCharacterControllerDesc,
         &kWaterVolumeDesc,
         &kBuoyancyDesc,
+        &kPoseAnimatorDesc,
+        &kAnimationPlayerDesc,
     };
     static_assert(std::size(kAll) == static_cast<size_t>(LAST_COMPONENT_TYPE) + 1, "a ComponentType without a description");
 
@@ -120,6 +122,8 @@ namespace {
         &kLatticeModifierDesc,
         &kLatticeFollowerDesc,
         &kLatticeTracksDesc,
+        &kPoseAnimatorDesc,
+        &kAnimationPlayerDesc,
         &kCameraDesc,
         &kAudioSourceDesc,
         &kScriptDesc,
@@ -198,6 +202,8 @@ namespace {
         &kMeshDesc,
         &kMeshPolygonDesc,
         &kModelDesc,
+        &kPoseAnimatorDesc,
+        &kAnimationPlayerDesc,
         &kMorphTracksDesc,
         &kPanelDesc,
         &kParticleSystemDesc,
@@ -228,7 +234,7 @@ namespace {
 
     constexpr const EnumDesc* kEnums[] = {
         &enums::kActionState, &enums::kAnchorPreset, &enums::kAtmosphereQualityOverride, &enums::kAudioSourceAttenuation,
-        &enums::kAudioSourceState, &enums::kBodyType, &enums::kBuoyancyColumns, &enums::kCameraType, &enums::kCascadeSplitMode, &enums::kCloudsPreset,
+        &enums::kAudioSourceState, &enums::kBodyType, &enums::kBuoyancyColumns, &enums::kCameraType, &enums::kClipWrapMode, &enums::kCascadeSplitMode, &enums::kCloudsPreset,
         &enums::kCloudsRendering, &enums::kCollider2DType, &enums::kCollider3DSource, &enums::kCollider3DType, &enums::kCullingMode,
         &enums::kEaseType, &enums::kFogColorMode, &enums::kFogType, &enums::kFogVolumeFalloff, &enums::kFogVolumeShape,
         &enums::kFluidOutput, &enums::kForceFieldKind, &enums::kForceFieldShape, &enums::kWaterVolumeWaves, &enums::kJoint2DType, &enums::kJoint3DType, &enums::kLatticeInterpolation, &enums::kLatticeJiggleAnchor,

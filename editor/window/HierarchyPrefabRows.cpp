@@ -7,6 +7,7 @@
 // dropped on an instance root with Alt held). See editor/project/PREFABS.md, sections 13-14.
 
 #include "HierarchyWindow.h"
+#include "pose/PoseEditSession.h"
 
 #include "App.h"
 #include "Backend.h"
@@ -211,6 +212,10 @@ void editor::HierarchyWindow::requestCreateVariant(uint32_t sceneId, Entity root
         return;
     }
     const std::filesystem::path path = CreatePrefabVariantAssetCmd::defaultPath(project, base);
+    // a posed character goes back to its rest bones first, so they are what gets copied, and a
+    // clip preview of the instance restores (9.R7)
+    PoseEditSession::suspendActive();
+    PoseEditSession::suspendActiveFor(sceneId, {root});
     CommandHandle::get(sceneId)->addCommandNoMerge(new CreatePrefabCmd(project, sceneId,
         {{path, Stream::encodeEntity(root, sceneProject->scene, project, sceneProject)}}, true));
     revealInProject(path);
