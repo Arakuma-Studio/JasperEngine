@@ -1,0 +1,78 @@
+formatVersion: 4
+id: 1
+name: Main Scene
+scene:
+  backgroundColor: [0.42, 0.55, 0.72, 1]
+  shadowQuality: low
+  lightState: on
+  globalIlluminationIntensity: 0.15
+  globalIlluminationColor: [1, 1, 1]
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+sceneType: scene_3d
+mainCamera: 0
+entities:
+  - type: Entity
+    entity: 1001
+    name: Sun
+    components:
+      transform:
+        position: [0, 10, 0]
+      light:
+        enabled: true
+        type: directional
+        direction: [-0.4, -1, -0.6]
+        intensity: 2
+        shadows: false
+  - type: Entity
+    entity: 1002
+    name: Road
+    components:
+      transform:
+        position: [0, 0, 0]
+      spline:
+        enabled: true
+        knots:
+          - {p: [-30, 0, 0], r: 3}
+          - {p: [-10, 0, -6], r: 3}
+          - {p: [10, 0, 4], r: 3}
+          - {p: [30, 0, -2], r: 3}
+      mesh:
+        enabled: true
+      splineextrude:
+        enabled: true
+        shape: crown
+        tilesPerMetreU: 0.125
+  - type: Entity
+    entity: 1003
+    name: Wall
+    components:
+      transform:
+        position: [0, 0, -14]
+      spline:
+        enabled: true
+        type: linear
+        knots:
+          - {p: [-24, 0, 0]}
+          - {p: [0, 0, -3]}
+          - {p: [24, 0, 0]}
+      mesh:
+        enabled: true
+      splineextrude:
+        enabled: true
+        shape: rectangle
+        thickness: 0.8
+        height: 2
+        corners: mitre
+  - type: Entity
+    entity: 1004
+    name: Game
+    components:
+      transform:
+        position: [0, 0, 0]
+      script:
+        scripts:
+          - type: lua
+            path: SplinesSmoke.lua
+            className: SplinesSmoke
+            enabled: true
