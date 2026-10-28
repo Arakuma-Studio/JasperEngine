@@ -16,6 +16,7 @@
 #include "pose/PoseViewportLogic.h"
 #include "window/AnimationWindowClip.h"
 #include "window/PoseAnimationWindow.h"
+#include "sceneview/SceneViewController.h"
 #include "shortcuts/DefaultCommands.h"
 #include "util/FluidEditorTools.h"
 #include "shortcuts/ShortcutOverrides.h"
@@ -210,7 +211,38 @@ void editor::App::registerCommands(){
         const SceneProject* scene = project.getSelectedScene();
         return scene && scene->sceneType == SceneType::SCENE_3D && scene->sceneRender;
     };
-    bind("sceneView.frameAll", [this](const CommandArgs&) { sceneWindow->frameAll(project.getSelectedSceneId()); }, scene3D, noDrag);
+    // the selected scene's view, any type (S26)
+    auto sceneShown = [this]() {
+        const SceneProject* scene = project.getSelectedScene();
+        return scene && scene->sceneRender;
+    };
+    bind("sceneView.frameAll", [this](const CommandArgs&) { sceneWindow->frameAll(project.getSelectedSceneId()); }, sceneShown, noDrag);
+    auto onView = [this, &bind, sceneShown, noDrag](const char* id, std::function<void(SceneViewController&, SceneProject&)> action,
+                                                     std::function<bool(SceneViewController&, SceneProject&)> when = nullptr) {
+        bind(id, [this, action](const CommandArgs&) {
+            if (SceneProject* scene = project.getSelectedScene()) action(sceneWindow->getViewController(), *scene);
+        }, [this, sceneShown, when]() {
+            SceneProject* scene = project.getSelectedScene();
+            return sceneShown() && (!when || when(sceneWindow->getViewController(), *scene));
+        }, noDrag);
+    };
+    onView("sceneView.hideSelection", [](SceneViewController& view, SceneProject& scene) { view.hideSelection(scene); });
+    onView("sceneView.showAll", [](SceneViewController& view, SceneProject& scene) { view.showAll(scene); });
+    onView("sceneView.togglePickLock", [](SceneViewController& view, SceneProject& scene) { view.togglePickLockSelection(scene); });
+    onView("sceneView.measure", [](SceneViewController& view, SceneProject& scene) { view.setMeasuring(scene, !view.isMeasuring(scene.id)); });
+    onView("sceneView.deleteMeasure", [](SceneViewController& view, SceneProject& scene) { view.deleteMeasure(scene, view.selectedMeasure(scene.id)); },
+           [](SceneViewController& view, SceneProject& scene) { return view.hasSelectedMeasure(scene.id); });
+    for (int slot = 1; slot <= 9; slot++) {
+        const std::string number = std::to_string(slot);
+        onView(("sceneView.recallBookmark" + number).c_str(), [slot](SceneViewController& view, SceneProject& scene) {
+            std::string error;
+            view.recallBookmark(scene, slot, error);
+        });
+        onView(("sceneView.storeBookmark" + number).c_str(), [slot](SceneViewController& view, SceneProject& scene) {
+            std::string error;
+            view.storeBookmark(scene, slot, error);
+        });
+    }
     auto view = [this, &bind, scene3D, noDrag](const char* id, Vector3 direction) {
         bind(id, [this, direction](const CommandArgs&) { sceneWindow->viewFrom(project.getSelectedSceneId(), direction); }, scene3D, noDrag);
     };

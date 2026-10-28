@@ -12,6 +12,7 @@
 #include "command/CommandHandle.h"
 #include "command/type/ObjectTransformCmd.h"
 #include "physics/ConvexDecomposition.h"
+#include "picking/MeshRaycast.h"
 #include "util/EntityPath.h"
 
 #include <algorithm>
@@ -528,13 +529,24 @@ namespace {
                                                          const std::unordered_set<Entity>& ignore, size_t maxCount);
 
     // A world raycast that hits the nearest surface in the scene, loaded or not: the context
-    // around each bounds the ray enters is loaded, nearest first, while that bounds is nearer
-    // than what the world hits (a floor loaded under a table not loaded yet must not take it)
+    // around the first drawn triangle the ray meets (MeshRaycast, the Scene view's picking) is
+    // loaded first, then the context around each bounds the ray enters, nearest first, while that
+    // bounds is nearer than what the world hits (a floor loaded under a table not loaded yet must
+    // not take it)
     bool raycastLoading(PlacementWorld& world, Scene* scene, const Ray& ray, const std::vector<Entity>& ignoreBodies,
                         const std::unordered_set<Entity>& ignoreBounds, const std::function<void(const AABB&)>& load,
                         PlacementRayHit& hit) {
         bool found = world.raycast(ray, hit, ignoreBodies);
         if (!load || !scene) return found;
+        MeshRaycastOptions options;
+        options.hitBackfaces = true;
+        options.ignore.assign(ignoreBounds.begin(), ignoreBounds.end());
+        options.kinds = MeshRaycast::MESH | MeshRaycast::INSTANCE | MeshRaycast::TERRAIN;
+        const MeshRaycastHit surface = MeshRaycast::raycast(scene, ray, ~0u, options);
+        if (surface.hit && (!found || surface.distance * ray.getDirection().length() < hit.distance)) {
+            load(AABB(surface.point, surface.point));
+            found = world.raycast(ray, hit, ignoreBodies);
+        }
         for (const auto& entry : boundsEntries(scene, ray.getOrigin(), ray.getDirection(), ignoreBounds, 8)) {
             if (found && entry.first >= hit.distance) break;
             load(AABB(entry.second, entry.second));

@@ -72,6 +72,13 @@ TEST(ShortcutDispatcher, CharacterizesTodaysBindings) {
         {"F5", ShortcutContext::Editor, "playmode.playOrResume"},
         {"Ctrl+K", ShortcutContext::Editor, "edit.searchAll"},
         {"Home", ShortcutContext::SceneView, "sceneView.frameAll"},
+        {"Alt+F", ShortcutContext::SceneView, "sceneView.frameAll"},     // S26
+        {"H", ShortcutContext::SceneView, "sceneView.hideSelection"},
+        {"Alt+H", ShortcutContext::SceneView, "sceneView.showAll"},
+        {"L", ShortcutContext::SceneView, "sceneView.togglePickLock"},
+        {"M", ShortcutContext::SceneView, "sceneView.measure"},
+        {"Shift+3", ShortcutContext::SceneView, "sceneView.recallBookmark3"},
+        {"Ctrl+Shift+3", ShortcutContext::SceneView, "sceneView.storeBookmark3"},
         {"Numpad7", ShortcutContext::SceneView, "sceneView.viewTop"},
         {"Ctrl+Numpad7", ShortcutContext::SceneView, "sceneView.viewBottom"},
         {"[", ShortcutContext::SceneView, "terrain.brushSmaller"},

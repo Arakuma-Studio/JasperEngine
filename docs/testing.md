@@ -46,6 +46,12 @@ RUN=0 tools/build.sh unit-tests                             # build only
 The binaries also register with CTest (`ctest --preset linux-ci` in an IDE build), labelled
 `unit`, `gpu` and `slow` by suite name.
 
+Picking (S26): `JASPER_PICK_SIMD=scalar|avx2|neon` forces the mesh BVH's slab test path (CI runs
+the picking suites a second time with `scalar`); `MeshPose.MatchesGpuSkinning` is a GPU suite (the
+CPU pose against the skinned shaders, glcore and Vulkan). `JASPER_PICK_BUILD_DELAY_MS=<ms>` holds
+every background mesh BVH build pending that long: the MCP tests use it to see the Scene view's
+waiting click and refused drop (`tools/mcp/tests/test_scene_view*.py`).
+
 ### HTML UI, MCP, smoke, web
 
 - `tools/build.sh htmlui-tests`: about 3,300 tests, 74 of them skipped on purpose (the gate allows
@@ -53,8 +59,11 @@ The binaries also register with CTest (`ctest --preset linux-ci` in an IDE build
   targets on a loaded host (CI uses 3).
 - `tools/build.sh mcp-tests` runs `tools/mcp/run-tests.sh` in the Linux image against
   `build/linux/editor-install`. `MCP_SUITE=ci` (the default) runs the files that declare
-  `CI = True`; `MCP_SUITE=all` runs every file and needs `JASPER_FIXTURE`, the default fixture
-  project, which is not in git. See `docs/mcp/README.md` for writing MCP tests.
+  `CI = True`; `MCP_SUITE=all` runs every file and needs the default fixture project, which is
+  not in git: `JASPER_FIXTURE`, else `build/fixture-unity` of the checkout or the main checkout,
+  else `~/je/fixture-unity` (the build servers' copy), mounted at `/fixture`. The harness looks in
+  the same places (`harness.default_fixture()`); without a fixture, the tests that need it skip
+  and say where they looked. See `docs/mcp/README.md` for writing MCP tests.
 - An MCP test asserts behaviour; a wall-clock budget (a CLI start in 300 ms, a reload frame under
   16 ms, ...) goes through `harness.over_budget(what, measures, budget)`, which prints a `[bench]`
   line and fails only when `JASPER_MCP_PERF_SLACK` is set: a shared build server's load alone
@@ -74,6 +83,8 @@ The binaries also register with CTest (`ctest --preset linux-ci` in an IDE build
   appear at that console level (log, info, warning, error), in order; an error listed there is
   expected and fails nothing. `GATE=core-utilities` (after `WEB_PROJECT=core-utilities tools/build.sh
   web`) checks the logger's browser console sink and a Lua `Timer` that way.
+- `GATE=mesh-raycast` (after `WEB_PROJECT=mesh-raycast tools/build.sh web`) times 10,000
+  MeshRaycast rays against 1,000 meshes in WebAssembly and fails on a p99 over 4 ms (S26 AC17).
 - The other test projects with a gate: `atmosphere` (S12), `post-fx` (S13) and `terrain`, a
   terrain displaced by a 16-bit heightmap, which WebGL2 and GLES3 cannot sample as R16 (the
   renderer uploads it as R32F or R16F there).
@@ -441,7 +452,12 @@ faces (about 7 MB) every time a scene with `useDefaultTexture` was decoded after
 (`ProjectUtils::setDefaultSkyTexture` now reuses the pooled faces). A `CameraComponent` value owns
 a `Framebuffer` that only `RenderSystem` frees, when its entity is destroyed; the tests free the
 ones they make. The headless GL context stays open until exit under ASan, or Mesa's driver
-allocations show up as `<unknown module>` leaks.
+allocations show up as `<unknown module>` leaks. Later (BF5), about 1 MB of V-HACD hulls leaked
+whenever Physics Placement's convex decomposition was cancelled while V-HACD handed its merged
+hulls over: its finalize loop stopped and cleared the map that owned the rest. The vendored
+header now frees them (`engine/libs/vhacd/README.jasper.md`);
+`ConvexDecomposition.CancelWhileFinalizingFreesTheHulls` cancels at that point and measures the
+heap. With it the editor tree under ASan + UBSan ran 871 tests with no leak report.
 
 ### Unity build (R25)
 

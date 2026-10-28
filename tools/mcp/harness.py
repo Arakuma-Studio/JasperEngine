@@ -25,7 +25,9 @@ or always kept with keep=True / JASPER_KEEP_SCRATCH=1.
 Environment:
     JASPER_EDITOR    editor command (shell-split; default: build/linux/editor-install/bin/jasperengine-editor
                      of this checkout, else of the main checkout)
-    JASPER_FIXTURE   default fixture project (default: build/fixture-unity)
+    JASPER_FIXTURE   default fixture project (default: build/fixture-unity of this or the main
+                     checkout, /fixture, ~/je/fixture-unity: default_fixture(); without one, the
+                     tests that need it skip)
     JASPER_XVFB      editor | harness | none   (see Editor's xvfb argument)
     JASPER_FAKE=1    use tools/mcp/fake_server.py instead of the editor (harness self-test)
     JASPER_KEEP_SCRATCH=1   keep scratch directories
@@ -150,14 +152,39 @@ def fake_editor_command() -> list[str]:
     return [sys.executable, str(HERE / "fake_server.py")]
 
 
+# Where the default fixture project (not in git: its licence is unknown) is looked for when
+# JASPER_FIXTURE is not set: build/fixture-unity of this checkout or of the main checkout, the
+# mount point of the linux build image (rb.sh --img, tools/build.sh mcp-tests: /fixture), and the
+# build servers' copy (~/je/fixture-unity). tools/build.sh mcp-tests looks in the same places.
+FIXTURE_HOME = Path("je") / "fixture-unity"
+FIXTURE_MOUNT = Path("/fixture")
+
+
+class FixtureMissing(HarnessError, Skip):
+    """No default fixture project anywhere: the tests that need it skip (run_tests.py)."""
+
+
+def fixture_candidates() -> list[Path]:
+    found = [root / "build" / "fixture-unity" for root in (REPO, _main_checkout()) if root]
+    found.append(FIXTURE_MOUNT)
+    with contextlib.suppress(RuntimeError):
+        found.append(Path.home() / FIXTURE_HOME)
+    return found
+
+
 def default_fixture() -> Path:
+    """The default fixture project: JASPER_FIXTURE, else the first of fixture_candidates() that
+    holds a project.yaml. Raises FixtureMissing (a Skip) when there is none."""
     env = os.environ.get("JASPER_FIXTURE")
     if env:
+        if not (Path(env) / "project.yaml").exists():
+            raise HarnessError(f"JASPER_FIXTURE={env} has no project.yaml")
         return Path(env)
-    found = _first_existing("build/fixture-unity")
-    if not found:
-        raise HarnessError("No fixture project at build/fixture-unity; set JASPER_FIXTURE or pass project=")
-    return found
+    for candidate in fixture_candidates():
+        if (candidate / "project.yaml").exists():
+            return candidate
+    raise FixtureMissing("needs the default fixture project, found nowhere: set JASPER_FIXTURE, or put it at "
+                         + ", ".join(str(c) for c in fixture_candidates()))
 
 
 # ---------------------------------------------------------------------------

@@ -20,6 +20,19 @@ import sys
 import yaml
 
 
+
+def default_fixture(here):
+    """The TappyPlane fixture project: FIXTURE or JASPER_FIXTURE, else where
+    tools/mcp/harness.py default_fixture() looks (build/fixture-unity, /fixture, ~/je/fixture-unity)."""
+    for name in ("FIXTURE", "JASPER_FIXTURE"):
+        if os.environ.get(name):
+            return os.environ[name]
+    for candidate in (os.path.join(here, "..", "build", "fixture-unity"), "/fixture",
+                      os.path.join(os.path.expanduser("~"), "je", "fixture-unity")):
+        if os.path.isfile(os.path.join(candidate, "project.yaml")):
+            return candidate
+    sys.exit("needs the TappyPlane fixture project (FIXTURE or JASPER_FIXTURE=<dir>, build/fixture-unity or ~/je/fixture-unity)")
+
 def transform(x=0.0, y=0.0, sx=1.0, sy=1.0):
     return {
         "position": [x, y, 0],

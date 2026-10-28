@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ModelLoadCmd.h"
+#include "sceneview/SurfacePlacement.h"
 
 #include "Stream.h"
 #include "animation/PreviewOwner.h"
@@ -47,6 +48,13 @@ editor::ModelLoadCmd::ModelLoadCmd(Project* project, uint32_t sceneId, const std
 
     createEntityCmd = new CreateEntityCmd(project, sceneId, entityName, EntityCreationType::MODEL);
     createEntityCmd->addProperty<Vector3>(ComponentType::Transform, "position", position);
+    dropPoint = position;
+}
+
+void editor::ModelLoadCmd::setDropSurface(const Vector3& normal, bool align){
+    hasDropSurface = true;
+    dropNormal = normal;
+    dropAlign = align;
 }
 
 editor::ModelLoadCmd::ModelLoadCmd(Project* project, uint32_t sceneId, const std::string& entityName, Entity parent, const Vector3& position, const Quaternion& rotation, const Vector3& scale, const std::string& modelPath){
@@ -446,6 +454,18 @@ void editor::ModelLoadCmd::finalizeLoad(){
     applyRetargets(scene, newModel);
     if (switchesLayout) {
         restoreMorphWeights(scene, newModel);
+    }
+
+    // a drop rests the loaded model on the surface it was dropped on
+    if (hasDropSurface && isNewModel){
+        Transform& transform = scene->getComponent<Transform>(entity);
+        Vector3 position;
+        Quaternion rotation;
+        sceneview::restOnSurface(dropPoint, dropNormal, sceneview::familyLocalBounds(scene, entity), transform.scale, transform.rotation,
+                                 dropAlign, position, rotation);
+        transform.position = position;
+        transform.rotation = rotation;
+        transform.needUpdate = true;
     }
 
     // Put back on whichever mesh the primitive ended up in, which a merge change moves.

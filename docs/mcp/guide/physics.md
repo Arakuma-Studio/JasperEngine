@@ -147,6 +147,11 @@ For water with a box (or an ocean), a density, a current and drags, add a **Wate
   `Physics2D` ones with `Vector2`. Masks from `LayerMask.getMask(...)`, `Physics.ALL_LAYERS`;
   default is every layer but Ignore Raycast. With a `Ray`, distance is a fraction of
   `ray.direction`; with origin/direction/distance it is in world units.
+- What the player sees, not its colliders: `MeshRaycast.raycast` / `raycastAll` take the same
+  arguments (plus an options table) and hit the triangles of meshes, instances, terrains and UI
+  rects, no body needed, also in the editor (`raycast_meshes`). Use Physics for gameplay against
+  colliders; MeshRaycast for aiming, placement and line of sight on visible geometry.
+  `jasper://docs/scene-view` has the details.
 - Contacts in Lua: `RegisterEvent(self, self.scene:getPhysicsSystem().beginContact2D, "onHit")`
   fires for every contacting pair in the scene (filter by body).
 

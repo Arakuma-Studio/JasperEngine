@@ -56,6 +56,7 @@ namespace {
         Scripting,
         Undo,
         Lattice,
+        SceneView,
         ExternalTools,
         Logging,
         Diagnostics,
@@ -235,6 +236,7 @@ void EditorSettingsWindow::open(Project* project) {
     m_logging = AppSettings::getLoggingSettings();
     m_diagnostics = AppSettings::getDiagnosticsSettings();
     m_lattice = AppSettings::getLatticeViewSettings();
+    m_sceneView = AppSettings::getSceneViewSettings();
     m_defaultExportDirectory = AppSettings::getDefaultExportDirectory();
     refreshEmsdkStatus();
 }
@@ -349,6 +351,7 @@ void EditorSettingsWindow::drawSettings() {
         case PreferencesCategory::Scripting: drawScriptingSettings(); break;
         case PreferencesCategory::Undo: drawUndoSettings(); break;
         case PreferencesCategory::Lattice: drawLatticeSettings(); break;
+        case PreferencesCategory::SceneView: drawSceneViewSettings(); break;
         case PreferencesCategory::ExternalTools: drawExternalToolsSettings(); break;
         case PreferencesCategory::Logging: drawLoggingSettings(); break;
         case PreferencesCategory::Diagnostics: drawDiagnosticsSettings(); break;
@@ -620,6 +623,33 @@ void EditorSettingsWindow::drawLatticeSettings() {
                 ImGui::SetNextItemWidth(Theme::dpi(120.0f));
                 ImGui::DragFloat("##LatticeFalloffRadius", &m_lattice.falloffRadius, 0.01f, 0.01f, 10.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
             }
+        }
+    });
+}
+
+void EditorSettingsWindow::drawSceneViewSettings() {
+    prefsDrawSettingsPanel("##EditorSceneViewSettingsPanel", [this]() {
+        const SceneViewSettings defaults;
+        auto toggleRow = [&](const char* key, const char* label, const char* tooltip, bool& value, bool defaultValue) {
+            if (!settingsui::beginRow(key)) return;
+            if (prefsBeginSettingsRow(label, tooltip, value != defaultValue)) {
+                value = defaultValue;
+            }
+            ImGui::Checkbox((std::string("##SceneView") + label).c_str(), &value);
+        };
+        if (sectionRow("Picking")) {
+            toggleRow("preferences.scene_view.exact_pick", "Exact Pick",
+                      "A click selects the GameObject under it, never its prefab or model root (the toolbar's Exact Pick).",
+                      m_sceneView.exactPick, defaults.exactPick);
+        }
+        if (sectionRow("Drops")) {
+            toggleRow("preferences.scene_view.align_to_surface", "Align to Surface",
+                      "Objects dropped into the view turn their up axis onto the surface they land on (Alt while dropping does it once).",
+                      m_sceneView.alignToSurface, defaults.alignToSurface);
+        }
+        if (sectionRow("Views")) {
+            toggleRow("preferences.scene_view.rulers", "Rulers", "Top and left rulers in 2D, UI and orthographic axis views.",
+                      m_sceneView.rulers, defaults.rulers);
         }
     });
 }
@@ -1132,6 +1162,7 @@ bool EditorSettingsWindow::applySettings() {
             sceneProject.needUpdateRender = true;
         }
     }
+    AppSettings::setSceneViewSettings(m_sceneView);
     AppSettings::setHtmlUiAutoImport(m_htmlUiAutoImport);
     // the watcher starts again on the project when how it watches changed
     static const char* const watcherNames[] = {"auto", "native", "polling"};

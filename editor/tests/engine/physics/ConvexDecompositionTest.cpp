@@ -24,6 +24,13 @@
 #include <thread>
 #include <vector>
 
+#if defined(JASPERENGINE_SANITIZE_ADDRESS)
+    // the ASan runtime's (sanitizer/allocator_interface.h, not installed with every compiler)
+    extern "C" size_t __sanitizer_get_current_allocated_bytes();
+#elif defined(__GLIBC__)
+    #include <malloc.h>
+#endif
+
 using namespace jasperengine;
 namespace fs = std::filesystem;
 
@@ -382,6 +389,66 @@ TEST(ConvexDecomposition, RefusesFlatAndBrokenMeshes) {
     const Mesh mesh = cube();
     EXPECT_FALSE(ConvexDecompositionCache::decompose(mesh.positions, mesh.indices, LOW, hulls, &cancel, &error));
     EXPECT_EQ(error, "cancelled");
+}
+
+namespace {
+
+    // Heap bytes in use by the whole process, or 0 where this build cannot tell
+    size_t heapBytesInUse() {
+    #if defined(JASPERENGINE_SANITIZE_ADDRESS)
+        return __sanitizer_get_current_allocated_bytes();
+    #elif defined(__GLIBC__) && (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 33))
+        const struct mallinfo2 info = mallinfo2();
+        return info.uordblks + info.hblkhd;
+    #else
+        return 0;
+    #endif
+    }
+
+}
+
+// A cancel that lands once V-HACD has merged its hulls down to maxHulls used to leak every one
+// of them: its finalize loop stopped on the cancel, then cleared the map that owned the rest
+// (engine/libs/vhacd/README.jasper.md). The editor's LeakSanitizer runs saw it whenever a
+// Physics Placement decomposition was cancelled in that window.
+TEST(ConvexDecomposition, CancelWhileFinalizingFreesTheHulls) {
+    REQUIRE_DECOMPOSITION();
+    const Mesh mesh = torus(1.0f, 0.3f, 32, 12);
+    DecompositionParams params = LOW;
+    params.maxHulls = 2;          // far fewer than V-HACD splits the ring into: it has to merge
+    params.resolution = 20000;
+    std::vector<ConvexHullPoints> hulls;
+    std::string error;
+    // a whole run first: what V-HACD and its job pool set up once is not counted below
+    ASSERT_TRUE(ConvexDecompositionCache::decompose(mesh.positions, mesh.indices, params, hulls, nullptr, &error)) << error;
+
+    const size_t before = heapBytesInUse();
+    const int RUNS = 10;
+    for (int run = 0; run < RUNS; run++) {
+        std::atomic<bool> cancel{false};
+        bool merged = false;
+        bool cancelled = false;
+        auto progress = [&](const char* stage, double stageProgress) {
+            if (std::strcmp(stage, "COMPUTING_COST_MATRIX") == 0)
+                merged = true;
+            // the hulls are merged and about to be handed over: V-HACD owns every one of them
+            if (merged && std::strcmp(stage, "FINALIZING_RESULTS") == 0 && stageProgress == 0.0) {
+                cancelled = true;
+                cancel = true;
+            }
+        };
+        error.clear();
+        EXPECT_FALSE(ConvexDecompositionCache::decompose(mesh.positions, mesh.indices, params, hulls, &cancel, &error, progress));
+        EXPECT_EQ(error, "cancelled");
+        EXPECT_TRUE(hulls.empty());
+        ASSERT_TRUE(cancelled) << "V-HACD did not merge these hulls (merged " << merged << ")";
+    }
+    const size_t after = heapBytesInUse();
+    if (before != 0) {
+        // each leaking run lost every hull, tens of KB; allocator bookkeeping stays far below that
+        const long long grown = static_cast<long long>(after) - static_cast<long long>(before);
+        EXPECT_LT(grown, 16 * 1024) << "the heap grew by " << grown << " bytes over " << RUNS << " cancelled runs";
+    }
 }
 
 TEST(ConvexDecomposition, HashWeldsCopiesAndCountsParams) {

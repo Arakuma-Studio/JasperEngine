@@ -229,13 +229,47 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
         "Move, Rotate and Scale push the selection through a physics simulation (3D scenes, not in Play)";
 
     b.group = "Scene View";
-    b.add("sceneView.frameAll", "Frame All (3D)", C::SceneView, "Home");
+    // S26 (docs/specs/S26-scene-view.md R14-R24): Alt+F as Unity's, Home kept
+    b.add("sceneView.frameAll", "Frame All", C::SceneView, "Alt+F", "Home").description =
+        "Frame everything the view shows and can pick";
     b.add("sceneView.viewFront", "Front View", C::SceneView, "Numpad1");
     b.add("sceneView.viewBack", "Back View", C::SceneView, "Ctrl+Numpad1");
     b.add("sceneView.viewRight", "Right View", C::SceneView, "Numpad3");
     b.add("sceneView.viewLeft", "Left View", C::SceneView, "Ctrl+Numpad3");
     b.add("sceneView.viewTop", "Top View", C::SceneView, "Numpad7", "Ctrl+Numpad9");
     b.add("sceneView.viewBottom", "Bottom View", C::SceneView, "Numpad9", "Ctrl+Numpad7");
+    b.add("sceneView.hideSelection", "Hide Selection", C::SceneView, "H").description =
+        "Hide the selection in the Scene view (again: show it)";
+    b.add("sceneView.showAll", "Show All", C::SceneView, "Alt+H").description = "Show every GameObject hidden in the Scene view";
+    b.add("sceneView.togglePickLock", "Toggle Pick Lock", C::SceneView, "L").description =
+        "Lock the selection against picking in the Scene view, or unlock it";
+    b.add("sceneView.measure", "Measure", C::SceneView, "M").description =
+        "Measure distances: drag from A to B (Esc ends it)";
+    b.add("sceneView.deleteMeasure", "Delete Measure", C::SceneView, "Delete", "Backspace").description =
+        "Delete the selected measure (while one is selected)";
+    for (int slot = 1; slot <= 9; slot++) {
+        static const char* recallIds[] = {"sceneView.recallBookmark1", "sceneView.recallBookmark2", "sceneView.recallBookmark3",
+                                          "sceneView.recallBookmark4", "sceneView.recallBookmark5", "sceneView.recallBookmark6",
+                                          "sceneView.recallBookmark7", "sceneView.recallBookmark8", "sceneView.recallBookmark9"};
+        static const char* storeIds[] = {"sceneView.storeBookmark1", "sceneView.storeBookmark2", "sceneView.storeBookmark3",
+                                         "sceneView.storeBookmark4", "sceneView.storeBookmark5", "sceneView.storeBookmark6",
+                                         "sceneView.storeBookmark7", "sceneView.storeBookmark8", "sceneView.storeBookmark9"};
+        static const char* recallNames[] = {"Recall Camera Bookmark 1", "Recall Camera Bookmark 2", "Recall Camera Bookmark 3",
+                                            "Recall Camera Bookmark 4", "Recall Camera Bookmark 5", "Recall Camera Bookmark 6",
+                                            "Recall Camera Bookmark 7", "Recall Camera Bookmark 8", "Recall Camera Bookmark 9"};
+        static const char* storeNames[] = {"Store Camera Bookmark 1", "Store Camera Bookmark 2", "Store Camera Bookmark 3",
+                                           "Store Camera Bookmark 4", "Store Camera Bookmark 5", "Store Camera Bookmark 6",
+                                           "Store Camera Bookmark 7", "Store Camera Bookmark 8", "Store Camera Bookmark 9"};
+        static const char* recallKeys[] = {"Shift+1", "Shift+2", "Shift+3", "Shift+4", "Shift+5", "Shift+6", "Shift+7", "Shift+8", "Shift+9"};
+        static const char* storeKeys[] = {"Ctrl+Shift+1", "Ctrl+Shift+2", "Ctrl+Shift+3", "Ctrl+Shift+4", "Ctrl+Shift+5",
+                                          "Ctrl+Shift+6", "Ctrl+Shift+7", "Ctrl+Shift+8", "Ctrl+Shift+9"};
+        b.add(recallIds[slot - 1], recallNames[slot - 1], C::SceneView, recallKeys[slot - 1]);
+        b.add(storeIds[slot - 1], storeNames[slot - 1], C::SceneView, storeKeys[slot - 1]);
+    }
+    b.gesture("sceneView.cycleCandidates", "Cycle Overlapping Objects", C::SceneView, "Ctrl+Mouse Wheel",
+              "Step through what lies under the pointer; the next click confirms");
+    b.gesture("sceneView.measureVertexSnap", "Measure: Snap to Vertices", C::SceneView, "Hold V",
+              "While measuring: the ends snap to the nearest vertex");
     b.gesture("sceneView.flyThrough", "Fly Through (3D)", C::SceneView, "Right Mouse + W/A/S/D/Q/E",
               "Hold Shift to move faster");
     b.gesture("sceneView.orbit", "Orbit (3D)", C::SceneView, "Alt+Left Drag", "Orbit around the view's pivot");
@@ -245,7 +279,7 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.gesture("sceneView.physicsSnap", "Snap onto Surfaces (Physics)", C::SceneView, "Shift+Left Drag",
               "Drag a selected object onto what is under the pointer");
     b.gesture("sceneView.cancelGesture", "Cancel Gesture", C::SceneView, "Escape",
-              "Stops a physics gesture, the Paint Dye brush or clears the lattice points (Ctrl+Z also undoes)");
+              "Stops a physics gesture, the Paint Dye brush or the measure tool, or clears the lattice points (Ctrl+Z also undoes)");
 
     b.group = "Lattice";
     b.add("lattice.selectNone", "Select No Points", C::SceneView, "Alt+A");

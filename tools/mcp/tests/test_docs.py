@@ -23,7 +23,7 @@ TOOLS_MD = harness.REPO / "docs" / "mcp" / "TOOLS.md"
 EDITOR = {"create": True, "name": "MCP Resources"}
 
 DOCS = ["animation", "assets", "cpp-scripting", "data-safety", "html-ui", "lattice", "lua-api", "lua-scripting", "physics",
-        "post-processing", "prefabs", "shaders", "undo", "unity-glossary"]
+        "post-processing", "prefabs", "scene-view", "shaders", "undo", "unity-glossary"]
 
 
 async def read_text(ed: Editor, uri: str) -> str:

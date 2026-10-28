@@ -45,6 +45,7 @@
 #include "io/AssetIOService.h"
 #include "jobs/JobSystem.h"
 #include "memory/Arena.h"
+#include "picking/PickCache.h"
 #include "profiler/FrameTimes.h"
 #include "profiler/Profile.h"
 #if JASPERENGINE_PROFILER
@@ -562,6 +563,14 @@ void Engine::setAllowEventsOutCanvas(bool allowEventsOutCanvas){
 
 bool Engine::isAllowEventsOutCanvas(){
     return allowEventsOutCanvas;
+}
+
+void Engine::setMeshRaycastMaxTriangles(unsigned int maxTriangles){
+    PickCache::setMaxTriangles(maxTriangles);
+}
+
+unsigned int Engine::getMeshRaycastMaxTriangles(){
+    return PickCache::getMaxTriangles();
 }
 
 void Engine::setIgnoreEventsHandledByUI(bool ignoreEventsHandledByUI){
@@ -1945,6 +1954,7 @@ void Engine::drawView(uint32_t viewId, Framebuffer* target, const std::vector<Vi
         desc.postProcessing = layer.postProcessing;
         desc.disableClouds = layer.disableClouds;
         desc.atmosphereQuality = layer.atmosphereQuality;
+        desc.shadows = layer.shadows;
         desc.canvasWidth = layer.canvasWidth;
         desc.canvasHeight = layer.canvasHeight;
         layer.scene->getSystem<RenderSystem>()->drawView(viewId, desc);

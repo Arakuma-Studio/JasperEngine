@@ -49,6 +49,7 @@ class Source:
         self.comments = {}      # line -> comment text (stripped of // and /* */)
         self.full_line = set()  # lines whose comment is the only thing on them
         self.code_lines = set()
+        self.macros = {}        # function-like #define: name -> ([params], body text)
         self._tokenize(text)
 
     def _tokenize(self, s):
@@ -114,6 +115,11 @@ class Source:
                     elif name == 'endif' and stack:
                         stack.pop()
                         cond = tuple(x[-1] for x in stack)
+                    elif name == 'define':
+                        fm = re.match(r'(\w+)\(([^)]*)\)\s*(.*)', arg, re.S)
+                        if fm:
+                            params = [p.strip() for p in fm.group(2).split(',') if p.strip()]
+                            self.macros[fm.group(1)] = (params, fm.group(3))
                 i = j
                 continue
             at_line_start = False
@@ -1079,10 +1085,11 @@ class Bindings:
                 continue
             i += 1
 
-    def _parse_chain(self, src, toks, i, chain_doc):
+    @staticmethod
+    def _read_links(src, toks, i, calls, at=None):
+        """The `.method<targs>(args)` links from toks[i]; returns where they stop. at: the macro
+        invocation token the links were expanded from (their line, condition and doc)."""
         n = len(toks)
-        i = skip_balanced(toks, i)  # (L)
-        calls = []
         while i < n and toks[i].t == '.':
             name_tok = toks[i + 1]
             j = i + 2
@@ -1095,9 +1102,46 @@ class Bindings:
                 break
             k = skip_balanced(toks, j)
             args = split_top(toks[j + 1:k - 1])
-            doc = src.doc_before(name_tok.line)
-            calls.append(Call(name_tok.t, targs, args, name_tok.cond, doc, src, name_tok.line))
+            where = at or name_tok
+            doc = src.doc_before(where.line) if at is None or not calls or calls[-1].line != at.line else []
+            calls.append(Call(name_tok.t, targs, args, where.cond, doc, src, where.line))
             i = k
+        return i
+
+    @staticmethod
+    def _expand(src, toks, i):
+        """A function-like macro of this file whose body is chain links (`#define P(a, b)
+        .addProperty(a, ...)`), invoked at toks[i]: its body's tokens with the arguments put in,
+        and where the invocation ends; None when toks[i] is not one."""
+        macro = src.macros.get(toks[i].t) if toks[i].k == 'id' else None
+        if macro is None or i + 1 >= len(toks) or toks[i + 1].t != '(':
+            return None
+        params, body = macro
+        end = skip_balanced(toks, i + 1)
+        args = split_top(toks[i + 2:end - 1])
+        if len(args) != len(params):
+            return None
+        bound = dict(zip(params, args))
+        out = []
+        for tk in Source(src.path, body).tokens:
+            out.extend(bound.get(tk.t, [tk]) if tk.k == 'id' else [tk])
+        if not out or out[0].t != '.':
+            return None
+        return out, end
+
+    def _parse_chain(self, src, toks, i, chain_doc):
+        n = len(toks)
+        i = skip_balanced(toks, i)  # (L)
+        calls = []
+        while i < n:
+            i = self._read_links(src, toks, i, calls)
+            # a macro that expands to links (CoreClassesLua.cpp's PBR_LUA_PROPERTY): its links, then on
+            expanded = self._expand(src, toks, i) if i < n else None
+            if expanded is None:
+                break
+            body, end = expanded
+            self._read_links(src, body, 0, calls, at=toks[i])
+            i = end
         ns = None
         cls = None
         for c in calls:
@@ -1974,6 +2018,26 @@ for _phys, _vec in (('Physics', 'Vector3'), ('Physics2D', 'Vector2')):
                           ([('scene', 'Scene'), ('origin', _vec), ('direction', _vec), ('maxDistance', 'number'),
                             ('layerMask?', 'integer')], _ret)]}
 
+# S26: MeshRaycast, the triangle-exact raycast without physics (Physics.raycast's arguments)
+_MESH_RAYCAST_OPTIONS = '{hitBackfaces: boolean?, includeInactive: boolean?, ignore: (EntityHandle|integer)[]?, kinds: integer?}'
+for _all in (False, True):
+    _ret = 'MeshRaycastHit[]' if _all else 'MeshRaycastHit'
+    OVERRIDES[('MeshRaycast', 'raycastAll' if _all else 'raycast')] = {
+        'doc': [('Every hit, nearest first,' if _all else 'The closest hit') + ' of a ray against the scene\'s meshes, instances, terrains',
+                'and UI rects (their triangles, no colliders). With a Ray, distance is the fraction of ray.direction; with',
+                'origin, direction and maxDistance it is in world units. options: hitBackfaces, includeInactive, ignore,',
+                'kinds (MeshRaycast.MESH | INSTANCE | TERRAIN | UI | BOUNDS). docs/scripting/mesh-raycast.md'],
+        'overloads': [([('scene', 'Scene'), ('ray', 'Ray'), ('layerMask?', 'integer'), ('options?', _MESH_RAYCAST_OPTIONS)], _ret),
+                      ([('scene', 'Scene'), ('origin', 'Vector3'), ('direction', 'Vector3'), ('maxDistance', 'number'),
+                        ('layerMask?', 'integer'), ('options?', _MESH_RAYCAST_OPTIONS)], _ret)]}
+OVERRIDES[('MeshRaycast', 'raycastEntity')] = {
+    'doc': ['The closest hit of a ray on one GameObject only (distance: the fraction of ray.direction).'],
+    'overloads': [([('scene', 'Scene'), ('entity', 'EntityHandle|integer'), ('ray', 'Ray'), ('options?', _MESH_RAYCAST_OPTIONS)],
+                   'MeshRaycastHit')]}
+OVERRIDES[('MeshRaycast', 'prepare')] = {
+    'doc': ['Builds the triangle trees of these GameObjects\' meshes (all when none) in the background, so a later',
+            'raycast does not build them inline.'],
+    'overloads': [([('scene', 'Scene'), ('entities?', '(EntityHandle|integer)[]')], '')]}
 # S22 input actions: the lua_CFunctions of InputActions (numbers or Vector2 values, an option
 # table and a callback)
 OVERRIDES[('InputActions', 'setVirtual')] = {

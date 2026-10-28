@@ -3,18 +3,38 @@
 The command catalog behind Help, the menus and list_shortcuts (AC1, AC6), the Search palette as
 search_editor and run_command (AC11), window layout presets (AC13, the D1 reload spike), the
 Project search grammar over asset labels (AC16, AC17), saved searches (AC19) and bookmarks
-(AC20), on a copy of the default fixture project. Tests run in order and share the editor.
+(AC20). Tests run in order and share the editor, on a new project holding the two textures the
+labels, searches and bookmarks use (a CI file: no default fixture, run_tests.py).
 """
 
 from pathlib import Path
 
+import pngdiff
 from harness import Editor
 
 CI = True
+EDITOR = {"create": True, "name": "Search Organisation"}
 TIMEOUT = 900
 
 REPO = Path(__file__).resolve().parents[3]
 HERO = ["assets/sprites/rock.png", "assets/sprites/background.png"]
+
+
+async def add_hero_textures(ed: Editor) -> None:
+    """Imports the two textures (as a drop on the Project window), then waits until the asset
+    database gives them an identity"""
+    source = ed.scratch.root / "hero-textures"
+    source.mkdir(exist_ok=True)
+    for i, path in enumerate(HERO):
+        (source / Path(path).name).write_bytes(pngdiff.encode(8, 8, bytes([60 + 120 * i, 90, 140, 255]) * 64))
+    await ed.call("import_files", sources=[str(source / Path(path).name) for path in HERO], to_dir=str(Path(HERO[0]).parent))
+    got = None
+    for _ in range(120):
+        got = await ed.call_raw("edit_asset_labels", {"action": "get", "assets": HERO})
+        if not got.is_error:
+            return
+        await ed.call("wait", frames=5)
+    ed.fail(f"the asset database never gave {HERO} an identity: {got.text[:300]}")
 
 
 def by_id(listed: dict) -> dict:
@@ -185,6 +205,7 @@ async def label(ed: Editor, action: str, **args) -> dict:
 
 
 async def test_project_search(ed: Editor):
+    await add_hero_textures(ed)
     await label(ed, "add", assets=HERO, labels=["Hero"])
     found = await ed.call("list_assets", search="t:texture l:Hero")
     ed.check_eq(sorted(e["path"] for e in found["entries"]), sorted(HERO), "exactly the two labelled textures")

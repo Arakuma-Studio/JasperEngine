@@ -454,6 +454,11 @@ namespace jasperengine{
         bool needUpdateAABB = false;
         bool needUpdateBuffer = false;
         bool needReload = false;
+
+        // runtime: content hash of the triangles picking reads (picking/PickGeometry.h), the
+        // key of the shared picking BVH; 0 until a pick computes it, and again whenever the
+        // geometry may have changed (calculateMeshAABB, a dynamic buffer upload)
+        uint64_t pickGeometryHash = 0;
         // the scene's shader environment changed (light cap, fog, lights, scene depth programs:
         // RenderSystem::needReloadMeshVariants): the mesh keeps drawing its loaded variant and
         // reloads once the new variant's shaders are built (needReload then)

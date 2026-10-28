@@ -2860,6 +2860,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (state->hasDisplaySettings) {
                 loadedScene.displaySettings = state->displaySettings;
             }
+            // the Scene view's own state (S26): applied once the camera below is in place
+            loadedScene.viewState = state->viewState;
             if (!state->editorCamera.IsDefined()) {
                 continue;
             }

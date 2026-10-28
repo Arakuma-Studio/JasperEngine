@@ -5,6 +5,7 @@
 #include "profiler/Profile.h"
 #include "profiler/FrameTimes.h"
 #include "TransformPropagation.h"
+#include "picking/PickTypes.h"
 #include "InstanceSort.h"
 #include "RenderSystemShared.h"
 #include "object/Camera.h"
@@ -7631,6 +7632,9 @@ void RenderSystem::updateMeshBuffers(MeshComponent& mesh){
     if (!mesh.needUpdateBuffer)
         return;
 
+    // what picking hashed may be gone (a script edits the vertices, a tilemap rebuilds)
+    mesh.pickGeometryHash = 0;
+
     if (mesh.buffer.getUsage() != BufferUsage::IMMUTABLE)
         mesh.buffer.getRender()->updateBuffer(mesh.buffer.getSize(), mesh.buffer.getData());
     if (mesh.indices.getUsage() != BufferUsage::IMMUTABLE)
@@ -11965,6 +11969,9 @@ bool RenderSystem::isRenderActive(Entity entity) const{
 }
 
 bool RenderSystem::isLayerVisible(Entity entity, uint32_t cullingMask) const{
+    if (passHidesEditorHidden && (scene->getEntityEditorFlags(entity) & EDITOR_HIDDEN)){
+        return false;
+    }
     return cullingMask == LAYER_MASK_EVERYTHING || (cullingMask & (1u << scene->getEntityLayer(entity))) != 0;
 }
 
@@ -12864,6 +12871,9 @@ void RenderSystem::update(double dt){
                 }
 
                 instmesh->needUpdateInstances = false;
+                if (instancesNeedUpdate){
+                    scene->markPickDirty(entity);
+                }
 
                 InstanceViewSettings viewSettings = {instmesh->cullInstances, mesh.castShadows, mesh.lodEnabled, mesh.lodBias, instmesh->cullDistance};
                 if (transform.needUpdate || viewSettings != instmesh->viewSettings){
@@ -13057,6 +13067,7 @@ void RenderSystem::update(double dt){
                 }
 
                 mesh.needUpdateAABB = false;
+                scene->markPickDirty(entity);
 
                 // Tilemap chunk bounds are refreshed with the mesh AABB: rebuilding a
                 // tilemap recalculates that AABB, and MeshSystem updates before this
@@ -13103,6 +13114,7 @@ void RenderSystem::update(double dt){
             if (ui.needUpdateAABB || transform.needUpdate){
                 ui.worldAABB = transform.modelMatrix * ui.aabb;
                 ui.needUpdateAABB = false;
+                scene->markPickDirty(entity);
             }
         }else if (signature.test(scene->getComponentId<PointsComponent>())){
             PointsComponent& points = scene->getComponent<PointsComponent>(entity);
@@ -13608,6 +13620,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // so does the Scene view's face culling toggle: its camera's depth, G-buffer and color
     // passes draw every face, a camera image or reflection keeps the game's culling
     passDisablesFaceCulling = isMainCamera && !pass.renderToTexture && (rv().secondary ? rv().disableFaceCulling : disableFaceCulling);
+    // the Scene view's per-GameObject visibility (the Hierarchy's eye): its camera only
+    passHidesEditorHidden = camera.editorView && !pass.renderToTexture && scene->hasEntityEditorFlags();
 #else
     const bool primaryPass = true;
 #endif
@@ -14479,6 +14493,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     if (useMsaaRedirect){
         renderBlit(&rv().msaaResolveFramebuffer.getRender().getColorTexture(), targetViewRect());
     }
+    passHidesEditorHidden = false;
 }
 
 void RenderSystem::onComponentAdded(Entity entity, ComponentId componentId) {
@@ -15375,6 +15390,16 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
             view.instancesBuilt = false;
         }
         view.mirrors.clear();
+    }else if (!desc.shadows){
+        // its lighting without shadow maps: none is planned or drawn for it
+        const bool sceneShadows = hasShadows;
+        hasShadows = false;
+        prepareCameraShadows(viewShadows, camera, cameraTransform, TERRAIN_PASS_VIEW, false);
+        hasShadows = sceneShadows;
+        buildViewInstances(view, camera, cameraTransform);
+        selectPassTerrain(view.objects, camera, cameraTransform);
+        updatePassFrame(camera, cameraTransform);
+        renderViewMirrors(view, camera);
     }else{
         // the view's shadow passes draw its terrain cut and cull its instance lists
         prepareCameraShadows(viewShadows, camera, cameraTransform, TERRAIN_PASS_VIEW, false);
@@ -15383,6 +15408,15 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
         updatePassFrame(camera, cameraTransform);
         renderCameraShadows(viewShadows);
         renderViewMirrors(view, camera);
+    }
+    if (!desc.shadows){
+        // every slot at strength 0 (shadow_data.glsl): the fragments read their lights unshadowed
+        for (int s = 0; s < MAX_SHADOW_ATLAS_SLOTS; s++){
+            viewShadows.fs_shadow_data.filtering[s].w = 0.0f;
+        }
+        for (int p = 0; p < MAX_POINT_SHADOW_LIGHTS; p++){
+            viewShadows.fs_point_shadow_data.filtering[p].w = 0.0f;
+        }
     }
 
     if (!view.target->isCreated()){

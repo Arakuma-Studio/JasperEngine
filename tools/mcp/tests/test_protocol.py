@@ -206,7 +206,7 @@ def check_cache_hints(raw, result: dict, what: str) -> None:
 async def test_stdio_modern_without_initialize():
     """A 2026-07-28 client never initializes: server/discover and every request carry _meta;
     the same process still serves an initialize-era client afterwards (dual-era)."""
-    async with RawEditor(create=True) as raw:
+    async with RawEditor(create=True, name="Protocol CI") as raw:
         raw.send({"jsonrpc": "2.0", "id": 1, "method": "server/discover", "params": modern_params()})
         discover = (await raw.response(1)).get("result")
         if not discover or MODERN not in discover.get("supportedVersions", []):
@@ -356,8 +356,12 @@ async def test_http_token_and_protocol_eras():
     if _env_flag("JASPER_FAKE"):
         skip("the fake server's HTTP transport has no token or header checks")
     port = free_port()
-    raw_cm = RawEditor(create=True, extra_args=["--http-port", str(port)])
-    raw = await raw_cm.__aenter__()
+    os.environ["JASPER_MCP_TRACE"] = "1"   # the cancel check reads the trace on stderr
+    try:
+        raw_cm = RawEditor(create=True, name="Protocol CI", extra_args=["--http-port", str(port)])
+        raw = await raw_cm.__aenter__()
+    finally:
+        os.environ.pop("JASPER_MCP_TRACE", None)
     try:
         await raw.initialize()
         await wait_for_port(raw, port)
@@ -559,7 +563,7 @@ async def test_http_read_only_mode():
     port = free_port()
     harness.Scratch.make = make
     try:
-        raw_cm = RawEditor(create=True, extra_args=["--http-port", str(port)])
+        raw_cm = RawEditor(create=True, name="Protocol CI", extra_args=["--http-port", str(port)])
         raw = await raw_cm.__aenter__()
     finally:
         harness.Scratch.make = original

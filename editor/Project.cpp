@@ -20,6 +20,9 @@
 #include "pose/PoseRigProvider.h"
 #include "pose/PoseSheetRenderer.h"
 #include "Factory.h"
+#include "picking/ScenePicker.h"
+#include "sceneview/SceneViewVisibility.h"
+#include "picking/SceneBvh.h"
 #include "Workspace.h"
 #include "registry/PhysicsLayers.h"
 
@@ -6748,97 +6751,47 @@ AABB editor::Project::getEntityLocalAABB(Scene* scene, Entity entity) const{
     return aabb;
 }
 
-// What the view draws of an entity: hidden, inactive (itself or through a parent) and
-// disabled renderers draw nothing, so nothing of them can be clicked or boxed
-static bool isEntityDrawn(Scene* scene, Entity entity){
-    const Transform* transform = scene->findComponent<Transform>(entity);
-    if (!transform || !transform->visible){
-        return false;
-    }
-    if (scene->hasInactiveEntities() && !scene->isEntityActiveInHierarchy(entity)){
-        return false;
-    }
-    if (const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
-        return mesh->enabled;
-    }
-    if (const UIComponent* ui = scene->findComponent<UIComponent>(entity)){
-        return ui->enabled;
-    }
-    if (const TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity)){
-        return terrain->enabled;
-    }
-    return true;
-}
-
-// Bounds that come only from the icon the view's own scene draws for it
-static bool hasOnlyIconBounds(Scene* scene, Entity entity){
-    Signature signature = scene->getSignature(entity);
-    if (signature.test(scene->getComponentId<MeshComponent>()) || signature.test(scene->getComponentId<UIComponent>())){
-        return false;
-    }
-    return signature.test(scene->getComponentId<LightComponent>()) ||
-           signature.test(scene->getComponentId<Light2DComponent>()) ||
-           signature.test(scene->getComponentId<CameraComponent>()) ||
-           signature.test(scene->getComponentId<AudioSourceComponent>());
-}
-
 Entity editor::Project::findBestEntityByRay(const std::vector<Entity>& entities, Scene* scene, const Ray& ray, Scene* sizeScene, SceneType sceneType, float& distance, size_t& index, bool iconsDrawn) const{
-    Entity selEntity = NULL_ENTITY;
-    Vector3 rayDirection = ray.getDirection();
-    float rayLengthSq = rayDirection.dotProduct(rayDirection);
-    if (rayLengthSq <= std::numeric_limits<float>::epsilon()) return NULL_ENTITY;
-
-    for (auto& entity : entities) {
-        if (!scene->isEntityCreated(entity)) continue;
-        Signature signature = scene->getSignature(entity);
-        if (!signature.test(scene->getComponentId<Transform>())) continue;
-        if (!isEntityDrawn(scene, entity)) continue;
-        if (!iconsDrawn && hasOnlyIconBounds(scene, entity)) continue;
-
-        if (signature.test(scene->getComponentId<TerrainComponent>())) {
-            TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
-            Transform& transform = scene->getComponent<Transform>(entity);
-            Vector3 worldPoint;
-            if (!scene->getSystem<MeshSystem>()->raycastTerrainSurface(ray, terrain, transform, worldPoint)) continue;
-
-            float terrainDistance = (worldPoint - ray.getOrigin()).dotProduct(rayDirection) / rayLengthSq;
-            if (terrainDistance < 0.0f || terrainDistance > 1.0f) continue;
-
-            size_t nIndex = scene->getComponentArray<Transform>()->getIndex(entity);
-            if (terrainDistance < distance || (nIndex >= index && sceneType != SceneType::SCENE_3D)){
-                distance = terrainDistance;
-                index = nIndex;
-                selEntity = entity;
-            }
-            continue;
-        }
-
-        AABB aabb = getEntityWorldAABB(scene, entity, sizeScene);
-
-        if (!aabb.isNull() && !aabb.isInfinite()){
-            RayReturn rreturn = ray.intersects(aabb);
-            if (rreturn.hit){
-                size_t nIndex = scene->getComponentArray<Transform>()->getIndex(entity);
-                if (rreturn.distance < distance || (nIndex >= index && sceneType != SceneType::SCENE_3D)){
-                    distance = rreturn.distance;
-                    index = nIndex;
-                    selEntity = entity;
-                }
-            }
-        }
-    }
-    return selEntity;
+    // triangle-exact through the scene's picking BVH (editor/picking/ScenePicker.h)
+    return ScenePicker(const_cast<Project*>(this)).bestOnRay(entities, scene, ray, sizeScene, sceneType, distance, index, iconsDrawn);
 }
 
-bool editor::Project::selectEntitiesInRect(uint32_t sceneId, const std::vector<Entity>& entities, Scene* scene, const Matrix4& vpMatrix, Vector2 start, Vector2 end){
+bool editor::Project::selectEntitiesInRect(uint32_t sceneId, const std::vector<Entity>& entities, Scene* scene, const Matrix4& vpMatrix, Vector2 start, Vector2 end, const SceneProject* viewScene){
     Vector2 minRect = Vector2(std::min(start.x, end.x), std::min(start.y, end.y));
     Vector2 maxRect = Vector2(std::max(start.x, end.x), std::max(start.y, end.y));
 
+    // the BVH's frustum of the rectangle finds what may be inside (R15), the corner rule decides
+    const SceneProject* sceneProject = getScene(sceneId);
+    ScenePicker picker(this);
+    PickFilter filter = picker.makeFilter(sceneProject, viewScene, true);
+    auto listed = std::make_shared<std::unordered_set<Entity>>(entities.begin(), entities.end());
+    filter.accept = [listed](Entity entity){ return listed->count(entity) > 0; };
+    Plane planes[6];
+    ScenePicker::rectPlanes(vpMatrix, minRect, maxRect, planes);
+    std::vector<Entity> candidates;
+    scene->getPickBvh().frustum(planes, filter, candidates);
+    // icons and handles have no leaf of their own (only bounds the view sizes)
+    for (Entity entity : entities){
+        if (!scene->isEntityCreated(entity)) continue;
+        const Signature signature = scene->getSignature(entity);
+        if (signature.test(scene->getComponentId<MeshComponent>()) || signature.test(scene->getComponentId<UIComponent>())) continue;
+        if (scene->getEntityEditorFlags(entity) & filter.excludeEditorFlags) continue;
+        if (!(filter.layerMask & (1u << (scene->getEntityLayer(entity) & 31)))) continue;
+        if (std::find(candidates.begin(), candidates.end(), entity) == candidates.end()){
+            candidates.push_back(entity);
+        }
+    }
+    // in the order of the list, as before
+    std::unordered_set<Entity> inFrustum(candidates.begin(), candidates.end());
+
     bool found = false;
     for (auto& entity : entities) {
+        if (!inFrustum.count(entity)) continue;
         if (!scene->isEntityCreated(entity)) continue;
         if (!scene->getSignature(entity).test(scene->getComponentId<Transform>())) continue;
-        if (!isEntityDrawn(scene, entity)) continue;
+        const Transform* drawnTransform = scene->findComponent<Transform>(entity);
+        if (!drawnTransform || !drawnTransform->visible) continue;
+        if (scene->hasInactiveEntities() && !scene->isEntityActiveInHierarchy(entity)) continue;
 
         AABB aabb = getEntityLocalAABB(scene, entity);
 
@@ -7060,7 +7013,8 @@ bool editor::Project::selectObjectsByRect(uint32_t sceneId, Vector2 start, Vecto
             ? scenedata->sceneRender->getCamera()->getViewProjectionMatrix()
             : layer.view.viewProjectionMatrix;
 
-        if (selectEntitiesInRect(layer.sceneId, getPickableEntities(layer.sceneProject), layer.sceneProject->scene, vpMatrix, start, end)){
+        if (selectEntitiesInRect(layer.sceneId, getPickableEntities(layer.sceneProject), layer.sceneProject->scene, vpMatrix, start, end,
+                                 layer.base ? scenedata : nullptr)){
             setSelectedSceneForProperties(layer.sceneId);
             return true;
         }
@@ -7101,7 +7055,9 @@ void editor::Project::updateSceneRender(uint32_t sceneId){
     }
 
     syncSceneRenderEditLayer(sceneId);
-    sceneProject->sceneRender->update(sceneProject->selectedEntities, sceneProject->entities, sceneProject->mainCamera, sceneProject->displaySettings);
+    // what the Scene view hides (R22, R23) has no icon or gizmo there either
+    sceneProject->sceneRender->update(sceneProject->selectedEntities, sceneview::visibleEntities(*sceneProject, sceneProject->entities),
+                                      sceneProject->mainCamera, sceneProject->displaySettings);
 }
 
 std::vector<editor::SceneProject>& editor::Project::getScenes(){

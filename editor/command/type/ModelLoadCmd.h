@@ -51,6 +51,10 @@ namespace jasperengine::editor{
         Matrix4 legacyRoot;
         bool reuseHierarchy = false;
         bool asyncPending = false;
+        bool hasDropSurface = false;
+        Vector3 dropNormal = Vector3(0, 1, 0);
+        bool dropAlign = false;
+        Vector3 dropPoint;
         std::shared_ptr<std::atomic<bool>> cancelFlag;
 
         // Mesh children the reload keeps, so undo only removes the ones it created
@@ -134,6 +138,9 @@ namespace jasperengine::editor{
         ModelLoadCmd(Project* project, uint32_t sceneId, Entity entity, const std::string& modelPath);
         ModelLoadCmd(Project* project, uint32_t sceneId, Entity entity, const std::string& modelPath, bool mergeStaticMeshes);
         ModelLoadCmd(Project* project, uint32_t sceneId, const std::string& entityName, const Vector3& position, const std::string& modelPath);
+        // a Scene view drop: once loaded, the model's bottom rests on the surface at its position
+        // (normal), its up axis turned onto the normal when align (S26 R16)
+        void setDropSurface(const Vector3& normal, bool align);
         // Terrain object placement: created quiet, under `parent`, with a local transform
         ModelLoadCmd(Project* project, uint32_t sceneId, const std::string& entityName, Entity parent, const Vector3& position, const Quaternion& rotation, const Vector3& scale, const std::string& modelPath);
         ~ModelLoadCmd() override;
