@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <filesystem>
 #include <set>
 #include <vector>
@@ -53,7 +54,8 @@ struct TextureDataPool::Resident {
     }
 };
 
-// A Basis transcode the main thread runs a level at a time (web builds without threads)
+// A Basis transcode the main thread runs in time slices (web builds without threads): UASTC a
+// band of block rows at a time, ETC1S a level at a time
 struct TextureDataPool::BasisJob {
     std::string id;
     bool replacing = false;
@@ -61,6 +63,9 @@ struct TextureDataPool::BasisJob {
     GpuTextureFormat target = GpuTextureFormat::RGBA8;
     TextureContent content = TextureContent::ColorOpaque;
     uint32_t next = 0;
+    // the level `next` while its bands transcode, and the next band's first block row
+    std::vector<uint8_t> current;
+    uint32_t row = 0;
     std::vector<std::vector<uint8_t>> levels;
     int width = 0, height = 0, faces = 1;
     int logicalWidth = 0, logicalHeight = 0;
@@ -86,6 +91,12 @@ namespace {
 
     // the progressive tail is every level up to this size
     constexpr int kTextureTailSize = 64;
+
+    // Main-thread Basis transcodes once the scenes have loaded (spec S14 R19, deviation 27): the
+    // time a frame gives them, and the UASTC band size between two looks at the clock (a band of
+    // a 2048 px level to BC7 is well under a millisecond in desktop Chrome)
+    constexpr double kBasisFrameSliceMs = 4.0;
+    constexpr uint32_t kBasisBandRows = 32;
 
     bool transcodeOnMainThread(){
         return jobs::hasSystem() && jobs::system().isSingleThreaded();
@@ -140,9 +151,6 @@ bool TextureDataPool::loadCookedBytes(const std::string& id, const CookedTexture
                 error = plan.reason;
                 return false;
             }
-            std::vector<uint8_t> rebased;
-            if (!BasisTranscode::rebase(image, rebased, error) || !job->session.open(std::move(rebased), error))
-                return false;
             job->target = plan.upload;
             job->content = TextureFallback::contentOf(image.info);
             job->width = (int)image.info.levelWidth(firstLevel);
@@ -163,6 +171,9 @@ bool TextureDataPool::loadCookedBytes(const std::string& id, const CookedTexture
                          (TextureFallback::hasFlag(image.info, "streamable") ? TEXTURE_FLAG_STREAMABLE : 0) |
                          (TextureFallback::hasFlag(image.info, "cpu") ? TEXTURE_FLAG_CPU_READABLE : 0) |
                          (image.info.faces == 6 ? TEXTURE_FLAG_CUBE : 0) | entry.flags;
+            // the session takes the levels: everything of the file it needs is read above
+            if (!job->session.open(std::move(image), error))
+                return false;
             out.basis = job;
             out.complete = false;
             return true;
@@ -862,7 +873,7 @@ TextureDataPool::PendingTexture TextureDataPool::startRestLoad(const std::string
             LoadResult result;
             result.cooked = true;
             result.data[rest.face] = piece.data;
-            // web without threads: the levels transcode on the main thread, a level a frame
+            // web without threads: the levels transcode on the main thread, in time slices
             result.basis = piece.basis;
             result.complete = !piece.basis;
             return result;
@@ -1252,23 +1263,42 @@ void TextureDataPool::update(){
         }
     }
 
-    // main-thread Basis transcodes: everything while the scenes load, then a level a frame
+    // main-thread Basis transcodes: everything while the scenes load, then a slice of each frame
     if (!basisJobs.empty()){
-        bool budgetLeft = true;
         const bool unlimited = !Engine::areScenesLoaded();
-        for (size_t j = 0; j < basisJobs.size() && (budgetLeft || unlimited);){
+        const auto sliceStart = std::chrono::steady_clock::now();
+        auto sliceLeft = [&](){
+            return unlimited || std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - sliceStart).count() < kBasisFrameSliceMs;
+        };
+        for (size_t j = 0; j < basisJobs.size() && sliceLeft();){
             BasisJob& job = *basisJobs[j];
             std::string error;
-            std::vector<uint8_t> level;
-            if (job.next < job.session.levelCount()){
-                if (!job.session.transcodeLevel(job.next, job.target, job.content, level, error)){
-                    Log::error("Texture %s: %s", job.id.c_str(), error.c_str());
-                    basisJobs.erase(basisJobs.begin() + (ptrdiff_t)j);
-                    continue;
+            bool failed = false;
+            while (job.next < job.session.levelCount() && sliceLeft()){
+                if (job.session.transcodesInRows()){
+                    if (job.row == 0)
+                        job.current.assign(job.session.levelBytes(job.next, job.target), 0);
+                    const uint32_t rows = std::min(kBasisBandRows, job.session.blockRows(job.next) - job.row);
+                    if (!job.session.transcodeRows(job.next, job.row, rows, job.target, job.content, job.current, error)){
+                        failed = true;
+                        break;
+                    }
+                    job.row += rows;
+                    if (job.row < job.session.blockRows(job.next))
+                        continue;
+                }else if (!job.session.transcodeLevel(job.next, job.target, job.content, job.current, error)){
+                    failed = true;
+                    break;
                 }
-                job.levels.push_back(std::move(level));
+                job.levels.push_back(std::move(job.current));
+                job.current.clear();
+                job.row = 0;
                 job.next++;
-                budgetLeft = false;
+            }
+            if (failed){
+                Log::error("Texture %s: %s", job.id.c_str(), error.c_str());
+                basisJobs.erase(basisJobs.begin() + (ptrdiff_t)j);
+                continue;
             }
             if (job.next >= job.session.levelCount()){
                 LoadResult result;

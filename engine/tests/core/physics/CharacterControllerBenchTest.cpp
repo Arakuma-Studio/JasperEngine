@@ -129,7 +129,7 @@ TEST(CharacterControllerBench, MoveIn1kStaticBodies){
     const double ms = total / moves;
     std::printf("[bench] CharacterController move in 1k static bodies %.4f ms (budget 0.1 ms desktop)\n", ms);
     EXPECT_TRUE(cc.isGrounded());
-    if (testsupport::perfSlack() > 0.0) {
+    if (testsupport::perfSlack() > 0.0){
         EXPECT_LE(ms, 0.1 * 1.5 * testsupport::perfSlack());
     }
 }
@@ -163,9 +163,10 @@ TEST(CharacterControllerBench, TenControllersAndThePostStep){
     }
     const double ms = total / steps;
     std::printf("[bench] 10 CharacterControllers + the physics step %.4f ms (moves %.4f ms; budget 1 ms mobile)\n", ms, moving / steps);
-    for (CharacterController& cc : controllers)
+    for (CharacterController& cc : controllers){
         EXPECT_TRUE(cc.isGrounded());
-    if (testsupport::perfSlack() > 0.0) {
+    }
+    if (testsupport::perfSlack() > 0.0){
         EXPECT_LE(ms, 1.0 * 1.5 * testsupport::perfSlack());
     }
 }
@@ -199,9 +200,10 @@ TEST(CharacterControllerBench, TenControllersWithoutInnerBodies){
     }
     const double ms = total / steps;
     std::printf("[bench] 10 CharacterControllers (no inner body) + the physics step %.4f ms (moves %.4f ms; budget 1 ms mobile)\n", ms, moving / steps);
-    for (CharacterController& cc : controllers)
+    for (CharacterController& cc : controllers){
         EXPECT_TRUE(cc.isGrounded());
-    if (testsupport::perfSlack() > 0.0) {
+    }
+    if (testsupport::perfSlack() > 0.0){
         EXPECT_LE(ms, 1.0 * 1.5 * testsupport::perfSlack());
     }
 }
