@@ -13,6 +13,7 @@
 #include "mcp/McpValues.h"
 
 #include <cmath>
+#include <cstring>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -29,12 +30,22 @@ namespace {
         if (std::isfinite(field.max)) schema["maximum"] = mcp::McpValues::number(field.max);
     }
 
+    // An unsigned value of its own width (ops::UIntAs: a collider's uint16_t, a body's size_t)
+    uint64_t readUnsigned(const TypeOps& ops, const void* value) {
+        switch (ops.size) {
+            case 1: { uint8_t v; std::memcpy(&v, value, 1); return v; }
+            case 2: { uint16_t v; std::memcpy(&v, value, 2); return v; }
+            case 8: { uint64_t v; std::memcpy(&v, value, 8); return v; }
+            default: { uint32_t v; std::memcpy(&v, value, 4); return v; }
+        }
+    }
+
     // The JSON of a default value, for the kinds whose JSON does not depend on the scene
     Json defaultJson(const FieldDesc& field, const void* value) {
         if (!value) return nullptr;
         if (field.ops->kind == Kind::Bool) return *static_cast<const bool*>(value);
         if (field.ops->kind == Kind::Int) return *static_cast<const int*>(value);
-        if (field.ops->kind == Kind::UInt || field.ops->kind == Kind::LayerMask) return *static_cast<const unsigned int*>(value);
+        if (field.ops->kind == Kind::UInt || field.ops->kind == Kind::LayerMask) return readUnsigned(*field.ops, value);
         if (field.ops->kind == Kind::Float) return mcp::McpValues::number(*static_cast<const float*>(value));
         if (field.ops->kind == Kind::Double) return *static_cast<const double*>(value);
         if (field.ops->kind == Kind::Vector2) return mcp::McpValues::toJson(*static_cast<const Vector2*>(value));

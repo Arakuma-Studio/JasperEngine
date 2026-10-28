@@ -505,8 +505,9 @@ Recorded by the implementation (branch `feat/s08-reflection`).
 - **S22 (oe-port 4e4ba3964).** The Character Controller 2D and 3D, the Water Volume and the
   Buoyancy keep S22's codecs (every key written) in `StreamComponents.cpp`, with tables in
   `GameplayReflect.cpp` and S22's drawers moved to `InspectorPhysics.cpp` (enum rows from their
-  `EnumDesc`s). The controllers' `categoryBits`/`maskBits` are saved and reached by path but not
-  listed (`NotListed`), as S22's Catalog had them. `Catalog::copyPropertyValue` (prefab
+  `EnumDesc`s). The controllers' `categoryBits`/`maskBits` are saved but no property (`Derived`),
+  as S22's Catalog had them (a `uint16_t` the Catalog's `unsigned int` commands would overrun); the
+  schema reads `UIntAs` defaults at their own width. `Catalog::copyPropertyValue` (prefab
   Apply/Revert of one property) copies a Custom value no type branch names through its table's
   `TypeOps::copy`, so Buoyancy `customPoints` and later table fields need no branch of their own.
 - **Legacy oracle kept.** `editor/tests/reflect/legacy/` (the deleted hand codecs, test-only)

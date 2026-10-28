@@ -4,7 +4,7 @@
 // S22's gameplay components (docs/specs/S08-reflection.md, S22): the 2D and 3D character
 // controllers, the water volume and the buoyancy keep S22's codecs (every key written); their
 // tables give the properties, schema, Inspector metadata and the generic copy of a value. The
-// controllers' collision filter bits are saved and reached by path, not listed (as before).
+// controllers' collision filter bits are saved but no property (as before: Derived).
 
 #include "reflect/Components.h"
 
@@ -34,8 +34,8 @@ namespace {
         JE_FIELD(CharacterController2DComponent, pushStrength, .unit = Unit::Newtons),
         JE_FIELD(CharacterController2DComponent, pushBodies),
         JE_FIELD(CharacterController2DComponent, movingPlatforms),
-        JE_FIELD(CharacterController2DComponent, categoryBits, .ops = &ops::UIntAs<uint16_t>, .flags = NotListed | Hidden),
-        JE_FIELD(CharacterController2DComponent, maskBits, .ops = &ops::UIntAs<uint16_t>, .flags = NotListed | Hidden),
+        JE_FIELD(CharacterController2DComponent, categoryBits, .ops = &ops::UIntAs<uint16_t>, .flags = Derived | Hidden),
+        JE_FIELD(CharacterController2DComponent, maskBits, .ops = &ops::UIntAs<uint16_t>, .flags = Derived | Hidden),
     };
 
     const ComponentCodec kCharacterController2DCodec = JE_STREAM_CODEC(CharacterController2DComponent, encodeCharacterController2DComponent,
@@ -63,8 +63,8 @@ namespace {
         JE_FIELD(CharacterControllerComponent, detectCollisions),
         JE_FIELD(CharacterControllerComponent, characterCollisions),
         JE_FIELD(CharacterControllerComponent, enhancedEdgeRemoval),
-        JE_FIELD(CharacterControllerComponent, categoryBits, .ops = &ops::UIntAs<uint16_t>, .flags = NotListed | Hidden),
-        JE_FIELD(CharacterControllerComponent, maskBits, .ops = &ops::UIntAs<uint16_t>, .flags = NotListed | Hidden),
+        JE_FIELD(CharacterControllerComponent, categoryBits, .ops = &ops::UIntAs<uint16_t>, .flags = Derived | Hidden),
+        JE_FIELD(CharacterControllerComponent, maskBits, .ops = &ops::UIntAs<uint16_t>, .flags = Derived | Hidden),
     };
 
     const ComponentCodec kCharacterControllerCodec = JE_STREAM_CODEC(CharacterControllerComponent, encodeCharacterControllerComponent,
