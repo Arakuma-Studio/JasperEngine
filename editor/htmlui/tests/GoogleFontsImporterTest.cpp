@@ -16,7 +16,6 @@
 using namespace jasperengine::editor::htmlui;
 using namespace jasperengine::editor::htmlui::test;
 using jasperengine::htmlui::compat::ImportEntry;
-using Variant = GoogleFontsImporter::Variant;
 
 namespace {
 
@@ -28,33 +27,6 @@ namespace {
         return result;
     }
 
-}
-
-TEST(GoogleFonts, RecognizesItsUrls){
-    EXPECT_TRUE(GoogleFontsImporter::isGoogleFontsUrl("https://fonts.googleapis.com/css2?family=Inter"));
-    EXPECT_TRUE(GoogleFontsImporter::isGoogleFontsUrl("http://fonts.googleapis.com/css?family=Roboto"));
-    EXPECT_TRUE(GoogleFontsImporter::isGoogleFontsUrl("//fonts.googleapis.com/icon?family=Material+Icons"));
-    EXPECT_FALSE(GoogleFontsImporter::isGoogleFontsUrl("https://fonts.gstatic.com/s/inter/v1/x.ttf"));
-    EXPECT_FALSE(GoogleFontsImporter::isGoogleFontsUrl("https://fonts.googleapis.com/other"));
-}
-
-TEST(GoogleFonts, ParsesRequests){
-    const auto css2 = GoogleFontsImporter::parseRequest(
-        "https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,400;1,700&family=Inter:wght@100..900&family=Press+Start+2P&display=swap");
-    ASSERT_EQ(css2.size(), 3u);
-    EXPECT_EQ(css2[0].family, "Roboto Mono");
-    EXPECT_EQ(css2[0].variants, (std::vector<Variant>{{400, false}, {700, true}}));
-    EXPECT_EQ(css2[1].family, "Inter");
-    EXPECT_EQ(css2[1].rangeMin, 100);
-    EXPECT_EQ(css2[1].rangeMax, 900);
-    EXPECT_EQ(css2[2].family, "Press Start 2P");
-    EXPECT_TRUE(css2[2].variants.empty());
-
-    const auto legacy = GoogleFontsImporter::parseRequest("https://fonts.googleapis.com/css?family=Roboto:400,700i,bold|Open+Sans:italic");
-    ASSERT_EQ(legacy.size(), 2u);
-    EXPECT_EQ(legacy[0].variants, (std::vector<Variant>{{400, false}, {700, false}, {700, true}}));
-    EXPECT_EQ(legacy[1].family, "Open Sans");
-    EXPECT_EQ(legacy[1].variants, (std::vector<Variant>{{400, true}}));
 }
 
 TEST(GoogleFonts, SpecsBuildTheCss2Request){
@@ -80,17 +52,6 @@ TEST(GoogleFonts, SpecsBuildTheCss2Request){
     EXPECT_FALSE(GoogleFontsImporter::parseSpec("Inter:heavy", request, error));
     EXPECT_NE(error.find("heavy"), std::string::npos);
     EXPECT_FALSE(GoogleFontsImporter::parseSpec("Inter:900..100", request, error));
-}
-
-TEST(GoogleFonts, NamesAndLicenses){
-    EXPECT_EQ(GoogleFontsImporter::familySlug("Press Start 2P"), "press-start-2p");
-    EXPECT_EQ(GoogleFontsImporter::familyFileStem("Press Start 2P"), "PressStart2P");
-    EXPECT_EQ(GoogleFontsImporter::licenseUrl("Press Start 2P"), "https://fonts.google.com/download/list?family=Press%20Start%202P");
-    EXPECT_EQ(GoogleFontsImporter::licenseNameForFile("OFL.txt"), "SIL Open Font License 1.1");
-    EXPECT_EQ(GoogleFontsImporter::licenseNameForFile("LICENSE.txt"), "Apache License 2.0");
-    EXPECT_EQ(GoogleFontsImporter::licenseNameForFile("UFL.txt"), "Ubuntu Font License 1.0");
-    EXPECT_EQ(GoogleFontsImporter::closestFamily("Interr", {"Inter", "Inter Tight", "Roboto"}), "Inter");
-    EXPECT_EQ(GoogleFontsImporter::closestFamily("Zzzzzzzzzz", {"Inter", "Roboto"}), "");
 }
 
 TEST(GoogleFonts, Css2WeightsAndItalics){

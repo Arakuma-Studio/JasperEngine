@@ -16,8 +16,12 @@
 #include "Out.h"
 #include "Project.h"
 #include "Stream.h"
+#include "animation/PlayerModelLayout.h"
+#include "command/type/ClipSceneActions.h"
+#include "animation/AnimationClipIO.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/ComponentValuesCmd.h"
+#include "command/type/CreateClipCmd.h"
 #include "command/type/MeshChangeCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/ObjectTransformCmd.h"
@@ -41,6 +45,20 @@
 namespace jasperengine::editor::mcp {
 
 namespace {
+
+// An Animation Player entry's clips[N].wrap: Custom in Catalog (one byte), named like an enum
+bool isPlayerWrap(ComponentType type, const std::string& name) {
+    return type == ComponentType::AnimationPlayerComponent && name.compare(0, 6, "clips[") == 0 && name.size() > 6 &&
+           name.compare(name.size() - 6, 6, "].wrap") == 0;
+}
+
+Json playerWrapNames() {
+    Json names = Json::array();
+    for (ClipWrapMode wrap : {ClipWrapMode::Default, ClipWrapMode::Once, ClipWrapMode::Loop, ClipWrapMode::PingPong, ClipWrapMode::ClampForever}) {
+        names.push_back(anim::wrapName(wrap));
+    }
+    return names;
+}
 
 using namespace schema;
 
@@ -302,6 +320,10 @@ void getEntityTool(const CallPtr& call) {
                 }
             } else if (property.type == PropertyType::Ease) {
                 entry["options"] = McpValues::enumNames(McpValues::easeOptions());
+            } else if (isPlayerWrap(type, propName)) {
+                entry["type"] = "enum";
+                entry["default"] = "default";
+                entry["options"] = playerWrapNames();
             }
             if (overridden.count(propName) || overridden.count(PrefabObjectOverrides::WHOLE_COMPONENT)) entry["overridden"] = true;
             // what its reflection table says of it: label, unit, ranges, tooltip, read-only, asset kind, group (S08 R25)
@@ -654,9 +676,17 @@ void addComponentTool(const CallPtr& call) {
     auto* steps = new McpStepsCmd();
     Json added = Json::array();
     Json skipped = Json::array();
+    // an Animation Player already there whose models are in the legacy layout (no node
+    // hierarchy, so its clips can't bind them): adding it again reloads them (9.R3)
+    std::vector<Entity> reloadPlayers;
     for (Entity entity : entities) {
         for (ComponentType type : types) {
             if (McpRefs::hasComponent(scene, entity, type)) {
+                if (type == ComponentType::AnimationPlayerComponent &&
+                    !PlayerModelLayout::modelsNeedingReload(project, scene->id, entity).empty()) {
+                    reloadPlayers.push_back(entity);
+                    continue;
+                }
                 skipped.push_back(Json{{"entity", entity}, {"component", McpRefs::componentName(type)}});
                 continue;
             }
@@ -666,6 +696,36 @@ void addComponentTool(const CallPtr& call) {
                 return new AddComponentCmd(project, sceneId, entity, type);
             });
         }
+    }
+    if (added.empty() && changes.empty() && !reloadPlayers.empty()) {
+        delete steps;
+        Json reloaded = Json::array();
+        std::string text;
+        for (Entity entity : reloadPlayers) {
+            ClipActionResult result;
+            if (!ClipSceneActions::reloadModelsForPlayer(project, sceneId, entity, result, error)) {
+                call->fail("add_component: " + error);
+                return;
+            }
+            reloaded.push_back(Json{{"entity", entity}, {"models", result.reloadedModels}});
+            text += (text.empty() ? "" : "; ") + result.status;
+        }
+        call->ok(text + ": the Animation Player and its settings are kept.",
+                 Json{{"scene_id", sceneId}, {"added", added}, {"skipped", skipped}, {"reloaded", reloaded}});
+        return;
+    }
+    // with other components or values the reload is part of the same step: the legacy models
+    // under each such player reload after the additions (CreateClipCmd's player-root reload, as
+    // ClipSceneActions::reloadModelsForPlayer runs it)
+    std::vector<std::pair<Entity, std::vector<Entity>>> legacyModels;
+    for (Entity entity : reloadPlayers) {
+        legacyModels.push_back({entity, PlayerModelLayout::modelsNeedingReload(project, sceneId, entity)});
+        steps->addStep([project, sceneId, entity](std::string& why) -> Command* {
+            why = "Could not reload the models under the Animation Player in the node hierarchy.";
+            auto* reload = new CreateClipCmd(project, sceneId, {}, {});
+            reload->setPlayerRoot(entity);
+            return reload;
+        });
     }
     if (added.empty() && changes.empty()) {
         delete steps;
@@ -687,9 +747,24 @@ void addComponentTool(const CallPtr& call) {
         call->fail(error);
         return;
     }
+    Json reloaded = Json::array();
+    size_t reloadedCount = 0;
+    Scene* after = project->getScene(sceneId)->scene;
+    for (const auto& [entity, models] : legacyModels) {
+        size_t count = 0;
+        for (Entity model : models) {
+            const ModelComponent* component = after->isEntityCreated(model) ? after->findComponent<ModelComponent>(model) : nullptr;
+            if (component && !component->nodesIdMapping.empty()) count++;
+        }
+        reloaded.push_back(Json{{"entity", entity}, {"models", count}});
+        reloadedCount += count;
+    }
+    Json result{{"scene_id", sceneId}, {"added", added}, {"skipped", skipped}};
+    if (!legacyModels.empty()) result["reloaded"] = reloaded;
     call->ok("Added " + std::to_string(added.size()) + " component(s)" +
-             (skipped.empty() ? "" : ", " + std::to_string(skipped.size()) + " already there") + " (one undo step).",
-             Json{{"scene_id", sceneId}, {"added", added}, {"skipped", skipped}});
+             (skipped.empty() ? "" : ", " + std::to_string(skipped.size()) + " already there") +
+             (legacyModels.empty() ? "" : ", reloaded " + std::to_string(reloadedCount) + " model(s) under the Animation Player in the node hierarchy") +
+             " (one undo step).", result);
 }
 
 void removeComponentTool(const CallPtr& call) {
@@ -934,6 +1009,10 @@ void listComponentTypesTool(const CallPtr& call) {
                 if (const McpValues::EnumOptions* options = McpValues::enumOptions(type, name)) entry["options"] = McpValues::enumNames(*options);
             } else if (property.type == PropertyType::Ease) {
                 entry["options"] = McpValues::enumNames(McpValues::easeOptions());
+            } else if (isPlayerWrap(type, name)) {
+                entry["type"] = "enum";
+                entry["default"] = "default";
+                entry["options"] = playerWrapNames();
             }
             props[name] = entry;
         }
@@ -1125,7 +1204,7 @@ void registerComponentTools(McpRegistry& registry) {
         tool.description =
             "Component names (with Unity display names, addable flag). With component: its properties with type, "
             "default and enum options.";
-        tool.inputSchema = object({{"component", componentName("Describe this one.")}});
+        tool.inputSchema = object({{"component", componentName("")}});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.handler = listComponentTypesTool;

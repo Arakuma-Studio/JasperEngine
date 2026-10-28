@@ -53,10 +53,6 @@ namespace {
 
 }
 
-TEST_F(LuaThreadCheckTest, TheTestsAbortOnAnOffThreadUse){
-    EXPECT_EQ(mode, LuaBinding::ThreadCheck::Abort) << "JASPER_LUA_THREAD_CHECK=abort did not reach the engine";
-}
-
 TEST_F(LuaThreadCheckTest, TheOwnerThreadIsQuiet){
     EXPECT_TRUE(LuaBinding::isLuaThread());
     const size_t before = LuaBinding::getOffThreadUseCount();
@@ -88,6 +84,7 @@ TEST_F(LuaThreadCheckTest, AnotherThreadIsSeen){
 }
 
 TEST_F(LuaThreadCheckTest, AbortStopsTheProcess){
+    EXPECT_EQ(mode, LuaBinding::ThreadCheck::Abort) << "JASPER_LUA_THREAD_CHECK=abort did not reach the engine";
     LuaBinding::setThreadCheck(LuaBinding::ThreadCheck::Abort);
     // the process has threads (the engine's pool): the child runs the test anew, not a fork
     ::testing::FLAGS_gtest_death_test_style = "threadsafe";

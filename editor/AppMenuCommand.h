@@ -96,7 +96,10 @@ namespace jasperengine::editor {
         LayoutRename,         // payload: the preset's name
         LayoutDelete,         // payload: the preset's name
         LayoutSaveToFile,
-        LayoutLoadFromFile
+        LayoutLoadFromFile,
+        TogglePoseAnimation,          // Window > Animation > Pose Animation
+        AssetsCreatePoseAnimation,
+        AssetsCreateAnimationClip     // shown only once AnimationClipAppHooks::createClipAsset is set
     };
 
 }

@@ -16,6 +16,7 @@ namespace jasperengine::editor {
 namespace jasperengine::editor::mcp {
 
     class McpRegistry;
+    class McpContext;
 
     // Every tool, resource and prompt of the editor, in tools/list order (McpTools.cpp).
     // Side-effect free: needs no App and does no I/O, so the CLI builds the same registry
@@ -69,6 +70,13 @@ namespace jasperengine::editor::mcp {
     void registerGraphTools(McpRegistry& registry);
     void registerGameplayTools(McpRegistry& registry);
     void registerParticleTools(McpRegistry& registry);
+
+    void registerPoseTools(McpRegistry& registry);
+
+    // the pose documents' files-written hook (their writes reach the asset database and the
+    // Project window like any MCP file change): installed once, when the MCP context exists
+    void installPoseSyncHook(McpContext& context);
+
     void registerOrganisationTools(McpRegistry& registry);
 
     // list_assets search and saved searches (OrganisationTools.cpp): an R20 search over the asset

@@ -11,6 +11,7 @@
 #include "component/FluidSimulationComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "lattice/LatticeTypes.h"
+#include "pose/PoseAnimatorRuntime.h"
 
 #include <algorithm>
 #include <cctype>
@@ -32,8 +33,17 @@ namespace {
             return false;
         }
 
+        // one spelling per index ("00" would alias "0" under another override name), and no
+        // value that wraps around
+        if (text[pos] == '0' && pos + 1 < text.size() && std::isdigit(static_cast<unsigned char>(text[pos + 1]))) {
+            return false;
+        }
         size_t parsedValue = 0;
+        size_t digits = 0;
         while (pos < text.size() && std::isdigit(static_cast<unsigned char>(text[pos]))) {
+            if (++digits > 9) {
+                return false;
+            }
             parsedValue = parsedValue * 10 + static_cast<size_t>(text[pos] - '0');
             pos++;
         }
@@ -1070,6 +1080,23 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
             modifier->warnedOverflow = false;
         }
     }
+    if (updateFlags & UpdateFlags_PoseAnimator_Reload){
+        if (PoseAnimatorComponent* animator = registry->findComponent<PoseAnimatorComponent>(entity)){
+            animator->weight = std::clamp(animator->weight, 0.0f, 1.0f);
+            // the same path keeps what is loaded (a weight change); a new one loads, and so does
+            // the same one again after it failed (the file may be fixed now)
+            if (!animator->runtime || animator->runtime->path != animator->animation || animator->runtime->failed){
+                animator->needsLoad = true;
+            }
+        }
+    }
+    if (updateFlags & UpdateFlags_AnimationPlayer_Reload){
+        // the clip list changed (an entry added, removed, retargeted, renamed or rewrapped): the
+        // player loads it again and rebinds, keeping its states and rest values
+        if (AnimationPlayerComponent* player = registry->findComponent<AnimationPlayerComponent>(entity)){
+            player->needsLoad = true;
+        }
+    }
 }
 
 void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourceEntity,
@@ -1103,10 +1130,12 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
     // The source's YAML decoded into a new component, as the scene file would load it; over the
     // target's own for a UI document (its loaded document stays unless the file changes), a fluid
     // (its simulator, and every texture showing its output, stays) and a lattice (its jiggle and
-    // tween state stay)
+    // tween state stay), a Pose Animator (what it plays stays unless the animation changes) and an
+    // Animation Player (what it plays stays, a changed clip list reloads)
     const YAML::Node encoded = reflect::encode(*desc, source, reflect::EncodeContext{});
     const bool overTarget = compType == ComponentType::UIDocumentComponent || compType == ComponentType::FluidSimulationComponent ||
-                            compType == ComponentType::LatticeComponent;
+                            compType == ComponentType::LatticeComponent || compType == ComponentType::PoseAnimatorComponent ||
+                            compType == ComponentType::AnimationPlayerComponent;
     reflect::Value copy(desc->body.ops, overTarget ? target : nullptr);
     reflect::DecodeContext ctx;
     ctx.old = overTarget ? target : nullptr;

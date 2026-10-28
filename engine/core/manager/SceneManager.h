@@ -24,6 +24,9 @@ namespace jasperengine {
         std::vector<Texture> textures;
         std::vector<std::string> sounds;
         std::vector<std::string> models;
+        // animation clips (.anim, asset-relative) and model sub-clips ("<model>#<name>"), loaded
+        // into AnimationClipPool; a sub-clip waits for its model in `models`
+        std::vector<std::string> clips;
     };
 
     // SceneManager allows registering named scene stacks and switching between them at runtime.

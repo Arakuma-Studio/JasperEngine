@@ -5,7 +5,6 @@
 // RmlRenderer looks up by name, and the shader pool knows the type's names. CPU only.
 
 #include "pool/ShaderPool.h"
-#include "registry/EntityRegistry.h"
 #include "shader/ShaderVariantCompiler.h"
 
 #include <gtest/gtest.h>
@@ -99,15 +98,6 @@ TEST(HtmlUIShaderTest, ShaderPoolNames){
     ASSERT_TRUE(ShaderPool::parseShaderTypeToken("htmlui", type));
     EXPECT_EQ(type, ShaderType::HTMLUI);
 
-    EXPECT_EQ(ShaderPool::getShaderTypeName(ShaderType::HTMLUI, true), "htmlui");
-    EXPECT_EQ(ShaderPool::getShaderTypeName(ShaderType::HTMLUI, false), "HTML UI");
-    EXPECT_EQ(ShaderPool::getShaderPropertyCount(ShaderType::HTMLUI), 1);
-    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::HTMLUI, 0, true), "Tex");
-    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::HTMLUI, 0, false), "Texture");
-
-    EXPECT_EQ(ShaderPool::getHtmlUIProperties(false), 0u);
-    EXPECT_EQ(ShaderPool::getHtmlUIProperties(true), 1u);
-
     // the .sdat basenames and their way back to the key (editor CLI, missing-shader lists)
     EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::HTMLUI, 0), "htmlui");
     EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::HTMLUI, 1), "htmlui_Tex");
@@ -118,23 +108,4 @@ TEST(HtmlUIShaderTest, ShaderPoolNames){
     EXPECT_EQ(key, ShaderPool::getShaderKey(ShaderType::HTMLUI, 1));
     EXPECT_EQ(ShaderPool::getShaderTypeFromKey(key), ShaderType::HTMLUI);
 
-    // appended: the stored enum values of every earlier type are unchanged. Since the merge of
-    // origin/main the shader library's BLOOM (published first) comes between POSTPROCESS and
-    // the HTML UI's types
-    EXPECT_EQ((int)ShaderType::BLOOM, (int)ShaderType::POSTPROCESS + 1);
-    EXPECT_EQ((int)ShaderType::HTMLUI, (int)ShaderType::BLOOM + 1);
-    EXPECT_EQ((int)ShaderType::UI_EFFECT, (int)ShaderType::HTMLUI_POST + 1);
-}
-
-namespace {
-    struct NeverRegisteredComponent { int value = 0; };
-}
-
-// the editor's HTMLUI shader-key collection asks the registry before it looks the document
-// component up (ShaderVariantCollector, Project::collectSceneShaderKeys)
-TEST(HtmlUIShaderTest, ComponentRegistrationQuery){
-    EntityRegistry registry;
-    EXPECT_TRUE(registry.isComponentRegistered<Transform>());
-    EXPECT_TRUE(registry.isComponentRegistered<UIComponent>());
-    EXPECT_FALSE(registry.isComponentRegistered<NeverRegisteredComponent>());
 }

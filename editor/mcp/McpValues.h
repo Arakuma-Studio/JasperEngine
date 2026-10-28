@@ -89,6 +89,9 @@ namespace jasperengine::editor::mcp {
 
         // Without context (no enum names, no custom values): kept for callers that have none
         static Json toJson(Project* project, const std::string& propertyName, const PropertyData& property);
+        // The same knowing the component (its enum names; an Animation Player's clip list with
+        // project-relative paths), still without the component's scene-file encoding
+        static Json toJson(Project* project, ComponentType component, const std::string& propertyName, const PropertyData& property);
 
         // ---- writing -------------------------------------------------------------------
 

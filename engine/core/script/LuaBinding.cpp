@@ -1231,6 +1231,46 @@ void LuaBinding::callLuaScriptFunction(lua_State* L, ScriptEntry& scriptEntry, c
     lua_pop(L, 1);
 }
 
+bool LuaBinding::callLuaScriptMethod(Scene* scene, Entity entity, const std::string& method, const std::vector<AnimationEventArg>& args) {
+    lua_State* L = luastate;
+    if (!L || !scene || method.empty() || !scene->isEntityCreated(entity)) return false;
+
+    bool found = false;
+    // read again for every script: a method can make GameObjects and move the components
+    ScriptComponent* scriptComp = scene->findComponent<ScriptComponent>(entity);
+    for (size_t s = 0; scriptComp && s < scriptComp->scripts.size(); s++) {
+        const ScriptEntry& scriptEntry = scriptComp->scripts[s];
+        if (scriptEntry.type == ScriptType::LUA && scriptEntry.enabled && scriptEntry.instance) {
+            const std::string className = scriptEntry.className;
+            int ref = static_cast<int>(reinterpret_cast<intptr_t>(scriptEntry.instance));
+            lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+            lua_getfield(L, -1, method.c_str());
+            if (lua_isfunction(L, -1)) {
+                found = true;
+                lua_pushvalue(L, -2);
+                for (const AnimationEventArg& arg : args) {
+                    if (const double* number = std::get_if<double>(&arg)) {
+                        lua_pushnumber(L, *number);
+                    } else if (const std::string* text = std::get_if<std::string>(&arg)) {
+                        lua_pushlstring(L, text->data(), text->size());
+                    } else {
+                        lua_pushboolean(L, std::get<bool>(arg) ? 1 : 0);
+                    }
+                }
+                if (pcallWithTraceback(L, 1 + (int)args.size(), 0) != LUA_OK) {
+                    Log::error("Lua %s() failed for '%s': %s", method.c_str(), className.c_str(), getLuaStackErrorString(L, -1).c_str());
+                    lua_pop(L, 1);
+                }
+            } else {
+                lua_pop(L, 1);
+            }
+            lua_pop(L, 1);
+        }
+        scriptComp = scene->isEntityCreated(entity) ? scene->findComponent<ScriptComponent>(entity) : nullptr;
+    }
+    return found;
+}
+
 #ifdef JASPERENGINE_PHYSICS_3D
 void LuaBinding::callScriptHook(Scene* scene, Entity entity, const char* function, const ControllerColliderHit& hit) {
     lua_State* L = luastate;

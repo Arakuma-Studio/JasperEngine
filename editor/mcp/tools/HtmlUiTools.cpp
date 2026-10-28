@@ -2049,7 +2049,7 @@ void registerHtmlUiTools(McpRegistry& registry) {
             {"template", withDefault(stringEnum("", HtmlUiExamples::names()), "blank")},
             {"script", boolean("Attach the template's Lua (default: examples yes, blank no).")},
             {"sort_order", integer("", -32768, 32767)},
-            {"overwrite", boolean("Replace existing files.")},
+            {"overwrite", boolean("")},
             {"properties", anyObject("Other UI Document properties.")}
         }, {"html"});
         tool.annotations.readOnly = false;

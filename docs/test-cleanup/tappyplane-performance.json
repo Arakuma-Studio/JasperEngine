@@ -1,0 +1,926 @@
+{
+  "scope": "TappyPlane dependency follow-up from304e64e4378b7f9c6f700679e93170e8cd1ace3b",
+  "baseline": {
+    "revision": "304e64e4378b7f9c6f700679e93170e8cd1ace3b",
+    "test_count": 678,
+    "full_run_log": "mcp-final.log",
+    "full_run_seconds": 781.8459485490002,
+    "pass": 283,
+    "fail": 394,
+    "skip": 1,
+    "failure_reason": "All394 failed missing default build/fixture-unity before exercising product behavior. Runtime timings for those are setup failures, not test-body baselines.",
+    "configuration": {
+      "workers": 2,
+      "LP_NUM_THREADS": 2,
+      "platform": "Ubuntu24.04 x86_64",
+      "editor": "baseline-build/jasperengine-editor"
+    },
+    "comparability": "Prior full attempt was recorded during previouscleanup; named678caseinventorysame, laterfixture-only refinements individuallyvalidated. No prerequisite-complete baseline exists."
+  },
+  "final_required_mcp_gate": {
+    "complete": true,
+    "expected_current_cases": 587,
+    "cases_observed": 587,
+    "observations": {
+      "pass": 582,
+      "fail": 0,
+      "skip": 5
+    },
+    "raw_partition_observations": {
+      "pass": 579,
+      "fail": 3,
+      "skip": 5
+    },
+    "verification_method": "Complete disjoint partitions, then source-current project-resource and full stress-file replays. This is not one zero-failure invocation.",
+    "partitions": [
+      {
+        "log": "build/test-cleanup/tappy-full-examples.log",
+        "complete": true,
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0,
+        "runner_wall_seconds": 1636.8,
+        "observed_case_rows": 12
+      },
+      {
+        "log": "build/test-cleanup/tappy-full-rest.log",
+        "complete": true,
+        "passed": 567,
+        "failed": 3,
+        "skipped": 5,
+        "runner_wall_seconds": 1841.5,
+        "observed_case_rows": 575
+      }
+    ],
+    "external_fixture_env": "JASPER_FIXTURE and JASPER_FAKE unset",
+    "effective_concurrency": "two disjoint one-worker files/groups overlap; neither partition is skipped",
+    "final_docs_replay": {
+      "log": "build/test-cleanup/tappy-docs-consolidated-final.log",
+      "observed": [
+        {
+          "status": "pass",
+          "case": "test_docs.py::test_resources_listed",
+          "seconds": 0.3,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-docs-consolidated-final.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_docs.py::test_read_docs",
+          "seconds": 3.0,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-docs-consolidated-final.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_docs.py::test_project_resources",
+          "seconds": 0.3,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-docs-consolidated-final.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_docs.py::test_search_engine_api",
+          "seconds": 0.7,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-docs-consolidated-final.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_docs.py::test_prompts",
+          "seconds": 0.1,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-docs-consolidated-final.log"
+        }
+      ]
+    },
+    "final_stress_replay": {
+      "log": "build/test-cleanup/tappy-stress-final-replay.log",
+      "observed": [
+        {
+          "status": "pass",
+          "case": "test_stress.py::test_large_batches",
+          "seconds": 2.9,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-stress-final-replay.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_stress.py::test_concurrent_http_and_stdio",
+          "seconds": 0.9,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-stress-final-replay.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_stress.py::test_http_cancel_mid_wait",
+          "seconds": 0.2,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-stress-final-replay.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_stress.py::test_http_disconnect_mid_call",
+          "seconds": 2.2,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-stress-final-replay.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_stress.py::test_stdio_cancel_mid_wait",
+          "seconds": 2.2,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-stress-final-replay.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_stress.py::test_stdio_slow_reader_does_not_freeze_editor",
+          "seconds": 2.4,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-stress-final-replay.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_stress.py::test_stdio_framing_edge_cases",
+          "seconds": 1.9,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-stress-final-replay.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_stress.py::test_http_keepalive_chunked_expect",
+          "seconds": 0.0,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-stress-final-replay.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_stress.py::test_large_result_is_capped",
+          "seconds": 0.1,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-stress-final-replay.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_stress.py::test_calls_while_dialog_open",
+          "seconds": 2.0,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-stress-final-replay.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_stress.py::test_selection_changes_while_window_unmapped",
+          "seconds": 0.8,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-stress-final-replay.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_stress.py::test_calls_during_project_switch",
+          "seconds": 1.4,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-stress-final-replay.log"
+        }
+      ],
+      "runner_wall_seconds": 18.0
+    },
+    "final_stress_repeat": {
+      "log": "build/test-cleanup/tappy-stress-final-repeat.log",
+      "observed": [
+        {
+          "status": "pass",
+          "case": "test_stress.py::test_large_batches",
+          "seconds": 3.3,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-stress-final-repeat.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_stress.py::test_concurrent_http_and_stdio",
+          "seconds": 1.0,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-stress-final-repeat.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_stress.py::test_http_cancel_mid_wait",
+          "seconds": 0.2,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-stress-final-repeat.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_stress.py::test_http_disconnect_mid_call",
+          "seconds": 2.2,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-stress-final-repeat.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_stress.py::test_stdio_cancel_mid_wait",
+          "seconds": 2.6,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-stress-final-repeat.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_stress.py::test_stdio_slow_reader_does_not_freeze_editor",
+          "seconds": 2.6,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-stress-final-repeat.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_stress.py::test_stdio_framing_edge_cases",
+          "seconds": 2.5,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-stress-final-repeat.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_stress.py::test_http_keepalive_chunked_expect",
+          "seconds": 0.0,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-stress-final-repeat.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_stress.py::test_large_result_is_capped",
+          "seconds": 0.1,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-stress-final-repeat.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_stress.py::test_calls_while_dialog_open",
+          "seconds": 1.9,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-stress-final-repeat.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_stress.py::test_selection_changes_while_window_unmapped",
+          "seconds": 0.8,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-stress-final-repeat.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_stress.py::test_calls_during_project_switch",
+          "seconds": 1.6,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-stress-final-repeat.log"
+        }
+      ],
+      "runner_wall_seconds": 19.7
+    },
+    "corrected_modal_triplet": {
+      "log": "build/test-cleanup/tappy-modal-corrected.log",
+      "observed": [
+        {
+          "status": "pass",
+          "case": "test_stress.py::test_calls_while_dialog_open",
+          "seconds": 4.5,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-modal-corrected.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_stress.py::test_selection_changes_while_window_unmapped",
+          "seconds": 0.8,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-modal-corrected.log"
+        },
+        {
+          "status": "pass",
+          "case": "test_stress.py::test_calls_during_project_switch",
+          "seconds": 1.5,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-modal-corrected.log"
+        }
+      ],
+      "runner_wall_seconds": 7.6
+    },
+    "cpp_optin": {
+      "env": "JASPER_SLOW_TESTS=1",
+      "observed": [
+        {
+          "status": "pass",
+          "case": "test_play.py::test_cpp_build_failure_reported",
+          "seconds": 6.2,
+          "reported_precision_seconds": 0.1,
+          "source_log": "build/test-cleanup/tappy-cpp-play-optin.log"
+        }
+      ],
+      "runner_wall_seconds": 7.1,
+      "default_status_remains": "skip",
+      "remaining_unexecuted_desktop_optins": 4
+    },
+    "manifest": "build/test-cleanup/tappy-full-rest-manifest.json",
+    "driver_result": {
+      "command": [
+        "dbus-run-session",
+        "--",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/build/test-cleanup/venv/bin/python",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/run_tests.py",
+        "--keep",
+        "-j",
+        "1",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_assets.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_autosync.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_build.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_busy.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_checks.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_cli_paths.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_docs.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_engine_fixes_p2.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_fbx.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_fluid_agent.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_fluid_component.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_fluid_effect.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_fluid_fixed.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_fluid_inspector.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_generators.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_html_ui_basic.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_html_ui_checks.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_html_ui_docs.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_html_ui_editor.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_html_ui_effects.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_html_ui_effects_export.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_html_ui_export.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_html_ui_gamepad.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_html_ui_input.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_html_ui_integration.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_html_ui_lua.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_html_ui_phase2.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_html_ui_reload.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_html_ui_render.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_html_ui_tools.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_html_ui_video.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_html_ui_video_export.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_lattice.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_lattice_anim.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_lattice_bake.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_lattice_data.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_lattice_lua.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_lattice_review.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_lattice_review_editor.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_lattice_scene.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_lattice_shaders.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_lattice_ux.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_lua_threads.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_place_physics_cli.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_place_with_physics.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_play.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_play_stop_overlays.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_playctl.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_pose_animation.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_pose_render.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_pose_runtime.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_pose_templates.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_pose_window.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_post_process_passes.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_post_processing_presets.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_post_processing_review_fixes.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_post_processing_settings.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_post_processing_two_views.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_post_processing_views.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_prefab.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_project.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_project_save.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_protocol.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_regressions.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_render_perf.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_runtime_regressions.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_scene.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_scene_color_scale.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_scene_inputs.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_scene_inputs_editor.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_script.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_shader_keys.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_shader_library.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_shader_library_editor.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_shader_library_fixes.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_shader_library_phase2_editor.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_shader_library_phase2_review.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_stochastic_tiling.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_stress.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_stubs.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_synthesize_texture.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_synthesize_texture_tool.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_trial_fixes.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_ui_anchors.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_utf8_paths.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_water.py",
+        "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/tests/test_world.py"
+      ],
+      "returncode": 1,
+      "seconds": 1841.625692701,
+      "JASPER_FIXTURE": "unset",
+      "LP_NUM_THREADS": "2",
+      "workers": 1,
+      "partition": "all current files except separately executed html_ui_examples"
+    },
+    "baseline_comparison": "No percentage comparison against 781.84595s: baseline394 cases failed before their bodies."
+  },
+  "test_source_loc": {
+    "files": 63,
+    "before_lines": 21281,
+    "after_lines": 18112,
+    "net_lines": -3169,
+    "scope": "Changed MCP test .py, runner/selftest/harness/pixel and new project/shader helpers, and standalone prefab scripts. Excludes docs, the production fix, fixture YAML and unrelated sources.",
+    "paths": [
+      "tools/mcp/harness.py",
+      "tools/mcp/htmlui_pixels.py",
+      "tools/mcp/project_fixture.py",
+      "tools/mcp/run_tests.py",
+      "tools/mcp/selftest.py",
+      "tools/mcp/shader_project.py",
+      "tools/mcp/tests/test_assets.py",
+      "tools/mcp/tests/test_autosync.py",
+      "tools/mcp/tests/test_checks.py",
+      "tools/mcp/tests/test_cli_paths.py",
+      "tools/mcp/tests/test_docs.py",
+      "tools/mcp/tests/test_engine_fixes_p2.py",
+      "tools/mcp/tests/test_generators.py",
+      "tools/mcp/tests/test_html_ui_basic.py",
+      "tools/mcp/tests/test_html_ui_checks.py",
+      "tools/mcp/tests/test_html_ui_docs.py",
+      "tools/mcp/tests/test_html_ui_editor.py",
+      "tools/mcp/tests/test_html_ui_effects.py",
+      "tools/mcp/tests/test_html_ui_effects_export.py",
+      "tools/mcp/tests/test_html_ui_examples.py",
+      "tools/mcp/tests/test_html_ui_export.py",
+      "tools/mcp/tests/test_html_ui_gamepad.py",
+      "tools/mcp/tests/test_html_ui_input.py",
+      "tools/mcp/tests/test_html_ui_integration.py",
+      "tools/mcp/tests/test_html_ui_lua.py",
+      "tools/mcp/tests/test_html_ui_phase2.py",
+      "tools/mcp/tests/test_html_ui_reload.py",
+      "tools/mcp/tests/test_html_ui_render.py",
+      "tools/mcp/tests/test_html_ui_tools.py",
+      "tools/mcp/tests/test_html_ui_video.py",
+      "tools/mcp/tests/test_html_ui_video_export.py",
+      "tools/mcp/tests/test_lua_gc_lifetime.py",
+      "tools/mcp/tests/test_lua_threads.py",
+      "tools/mcp/tests/test_play.py",
+      "tools/mcp/tests/test_play_stop_overlays.py",
+      "tools/mcp/tests/test_playctl.py",
+      "tools/mcp/tests/test_post_processing_review_fixes.py",
+      "tools/mcp/tests/test_post_processing_views.py",
+      "tools/mcp/tests/test_prefab.py",
+      "tools/mcp/tests/test_project.py",
+      "tools/mcp/tests/test_project_save.py",
+      "tools/mcp/tests/test_protocol.py",
+      "tools/mcp/tests/test_runtime_regressions.py",
+      "tools/mcp/tests/test_scene.py",
+      "tools/mcp/tests/test_scene_color_scale.py",
+      "tools/mcp/tests/test_scene_inputs.py",
+      "tools/mcp/tests/test_scene_inputs_editor.py",
+      "tools/mcp/tests/test_script.py",
+      "tools/mcp/tests/test_shader_library.py",
+      "tools/mcp/tests/test_shader_library_editor.py",
+      "tools/mcp/tests/test_shader_library_fixes.py",
+      "tools/mcp/tests/test_shader_library_phase2_editor.py",
+      "tools/mcp/tests/test_shader_library_phase2_review.py",
+      "tools/mcp/tests/test_stress.py",
+      "tools/mcp/tests/test_stubs.py",
+      "tools/mcp/tests/test_trial_fixes.py",
+      "tools/mcp/tests/test_ui_anchors.py",
+      "tools/mcp/tests/test_world.py",
+      "tools/prefab-dump-compare.py",
+      "tools/prefab-fixtures.py",
+      "tools/prefab-instance-edit-test.py",
+      "tools/prefab-nested-test.py",
+      "tools/prefab-variant-test.py"
+    ]
+  },
+  "mcp_audit": {
+    "original_cases_audited": 408,
+    "original_missing_fixture_cases_covered": 394,
+    "adjacent_cases_audited": 14,
+    "unchanged_original_cases_outside_audit": 270,
+    "outcomes": {
+      "CONSOLIDATE": 80,
+      "OPTIMIZE": 147,
+      "REWRITE": 152,
+      "DELETE": 28,
+      "KEEP": 1
+    },
+    "before_collection": 678,
+    "after_collection": 587,
+    "net_fewer_named_cases": 91,
+    "removed_original_names": 97,
+    "new_or_renamed_names": 6
+  },
+  "standalone_prefab": {
+    "status": "complete; all retained standalone workflows validated against actual editor",
+    "scope": [
+      "tools/prefab-fixtures.py",
+      "tools/prefab-instance-edit-test.py",
+      "tools/prefab-nested-test.py",
+      "tools/prefab-variant-test.py",
+      "tools/prefab-dump-compare.py",
+      "editor/project/PREFABS.md"
+    ],
+    "original_assertion_sites": 167,
+    "remaining_assertion_sites": 145,
+    "removed_assertion_sites": 22,
+    "dispositions": {
+      "CONSOLIDATE": 20,
+      "DELETE": 2,
+      "REWRITE": 33,
+      "OPTIMIZE": 112
+    },
+    "fixture": "Authored public-format YAML; no external project, image assets or Tappy game logic. Sprites are untextured and colored.",
+    "production_changes": [],
+    "source_net_lines": -107,
+    "source_added_lines": 157,
+    "source_deleted_lines": 264,
+    "baseline_qualification": "Before-consolidation workflows after replacing the unavailable external fixture with the same owned asset-free fixture used after consolidation. Not timings of the old missing-fixture failure.",
+    "ported_before_consolidation": [
+      {
+        "script": "prefab-instance-edit-test.py",
+        "seconds": 9.308431325000129,
+        "returncode": 0,
+        "log": "/var/lib/orquester/workspaces/jaspersito/clean-tests/build/test-cleanup/tappy-prefab-instance-edit-test-ported-baseline.log"
+      },
+      {
+        "script": "prefab-nested-test.py",
+        "seconds": 18.06853493000017,
+        "returncode": 0,
+        "log": "/var/lib/orquester/workspaces/jaspersito/clean-tests/build/test-cleanup/tappy-prefab-nested-test-ported-baseline.log"
+      },
+      {
+        "script": "prefab-variant-test.py",
+        "seconds": 15.671647234001284,
+        "returncode": 0,
+        "log": "/var/lib/orquester/workspaces/jaspersito/clean-tests/build/test-cleanup/tappy-prefab-variant-test-ported-baseline.log"
+      }
+    ],
+    "first_after_consolidation": [
+      {
+        "script": "prefab-instance-edit-test.py",
+        "seconds": 7.716588945000694,
+        "returncode": 0,
+        "log": "/var/lib/orquester/workspaces/jaspersito/clean-tests/build/test-cleanup/tappy-prefab-instance-edit-test-final.log"
+      },
+      {
+        "script": "prefab-nested-test.py",
+        "seconds": 18.036450801999308,
+        "returncode": 0,
+        "log": "/var/lib/orquester/workspaces/jaspersito/clean-tests/build/test-cleanup/tappy-prefab-nested-test-final.log"
+      },
+      {
+        "script": "prefab-variant-test.py",
+        "seconds": 15.888661803001014,
+        "returncode": 0,
+        "log": "/var/lib/orquester/workspaces/jaspersito/clean-tests/build/test-cleanup/tappy-prefab-variant-test-final.log"
+      }
+    ],
+    "paired_instance_workflow": {
+      "scope": "One standalone legacy instance-edit workflow; same owned asset-free fixture generator and actual editor; three alternating pairs. Original pre-consolidation assertions versus final consolidated execution. Not original missing-fixture suite time.",
+      "runs": [
+        {
+          "variant": "before-consolidation",
+          "run": 1,
+          "seconds": 9.67007795900281,
+          "exit": 0,
+          "log": "/var/lib/orquester/workspaces/jaspersito/clean-tests/build/test-cleanup/prefab-instance-before-consolidation-1.log"
+        },
+        {
+          "variant": "after-consolidation",
+          "run": 1,
+          "seconds": 7.361360729999433,
+          "exit": 0,
+          "log": "/var/lib/orquester/workspaces/jaspersito/clean-tests/build/test-cleanup/prefab-instance-after-consolidation-1.log"
+        },
+        {
+          "variant": "before-consolidation",
+          "run": 2,
+          "seconds": 9.412855058999412,
+          "exit": 0,
+          "log": "/var/lib/orquester/workspaces/jaspersito/clean-tests/build/test-cleanup/prefab-instance-before-consolidation-2.log"
+        },
+        {
+          "variant": "after-consolidation",
+          "run": 2,
+          "seconds": 7.35132039599921,
+          "exit": 0,
+          "log": "/var/lib/orquester/workspaces/jaspersito/clean-tests/build/test-cleanup/prefab-instance-after-consolidation-2.log"
+        },
+        {
+          "variant": "before-consolidation",
+          "run": 3,
+          "seconds": 10.47120569800245,
+          "exit": 0,
+          "log": "/var/lib/orquester/workspaces/jaspersito/clean-tests/build/test-cleanup/prefab-instance-before-consolidation-3.log"
+        },
+        {
+          "variant": "after-consolidation",
+          "run": 3,
+          "seconds": 7.332967527996516,
+          "exit": 0,
+          "log": "/var/lib/orquester/workspaces/jaspersito/clean-tests/build/test-cleanup/prefab-instance-after-consolidation-3.log"
+        }
+      ],
+      "before_median_seconds": 9.67007795900281,
+      "after_median_seconds": 7.35132039599921,
+      "saved_seconds": 2.318757563003601,
+      "improvement_percent": 23.97868530982054,
+      "all_passed": true
+    },
+    "comparator_boundary_probes": [
+      {
+        "label": "derived-metadata",
+        "command": [
+          "/var/lib/orquester/workspaces/jaspersito/clean-tests/build/test-cleanup/venv/bin/python",
+          "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/prefab-dump-compare.py",
+          "/var/lib/orquester/workspaces/jaspersito/clean-tests/build/test-cleanup/prefab-comparator-probe/base.yaml",
+          "/var/lib/orquester/workspaces/jaspersito/clean-tests/build/test-cleanup/prefab-comparator-probe/same.yaml",
+          "--subtree=Root:Root"
+        ],
+        "exit": 0,
+        "stdout": "0 difference(s)\n",
+        "passed": true
+      },
+      {
+        "label": "material-regression",
+        "command": [
+          "/var/lib/orquester/workspaces/jaspersito/clean-tests/build/test-cleanup/venv/bin/python",
+          "/var/lib/orquester/workspaces/jaspersito/clean-tests/tools/prefab-dump-compare.py",
+          "/var/lib/orquester/workspaces/jaspersito/clean-tests/build/test-cleanup/prefab-comparator-probe/base.yaml",
+          "/var/lib/orquester/workspaces/jaspersito/clean-tests/build/test-cleanup/prefab-comparator-probe/bad.yaml",
+          "--subtree=Root:Root"
+        ],
+        "exit": 1,
+        "stdout": "[Probe] <root>: component mesh differs fields submeshes: [{'material': {'baseColorFactor': [1, 0, 0, 1]}}] -> [{'material': {'baseColorFactor': [0, 1, 0, 1]}}]\n1 difference(s)\n",
+        "passed": true
+      },
+      {
+        "label": "missing-root-not-vacuously-equal",
+        "exit": 1,
+        "stdout": "subtree Absent is missing from /var/lib/orquester/workspaces/jaspersito/clean-tests/build/test-cleanup/prefab-comparator-probe/base.yaml\n",
+        "passed": true
+      }
+    ],
+    "latest_variant_validation": {
+      "log": "/var/lib/orquester/workspaces/jaspersito/clean-tests/build/test-cleanup/tappy-prefab-variant-final-frozen.log",
+      "exit": 0,
+      "all_passed": true
+    },
+    "export_fixture_builder": {
+      "log": "/var/lib/orquester/workspaces/jaspersito/clean-tests/build/test-cleanup/tappy-prefab-export-builder.log",
+      "exit": 0,
+      "scope": "variant_export fixture generated, build operations and save execute; standalone compile/player smoke not claimed"
+    },
+    "validation_commands": [
+      "JASPER_EDITOR=<native editor> python tools/prefab-instance-edit-test.py",
+      "JASPER_EDITOR=<native editor> python tools/prefab-nested-test.py",
+      "JASPER_EDITOR=<native editor> python tools/prefab-variant-test.py",
+      "python3 -m py_compile tools/prefab-*.py",
+      "git diff --check -- tools/prefab-*.py editor/project/PREFABS.md"
+    ],
+    "timeouts": "Reduced per-process scene-dump guards from600/1800s to120s, over6x the measured total longest workflow; no retry or sleep added.",
+    "limitations": [
+      "Native CLI only; no full generated player compile/render smoke claimed.",
+      "One whole-workflow timing each for nested/variant under a shared host; no attributed speedup for those.",
+      "Only the legacy instance workflow has three alternating comparable pre/post runs."
+    ]
+  },
+  "ancillary_runner_contract": {
+    "scope": "Existing harness selftest outside the 408-case MCP audit",
+    "contract": "Explicit run_tests.py --url takes precedence over module-owned EDITOR project settings.",
+    "source": "tools/mcp/README.md runner --url option and tools/mcp/run_tests.py CLI contract",
+    "bug": "Runner launches a local editor instead of attaching to the explicitly supplied HTTP endpoint.",
+    "oracle": "A real local HTTP fake-server endpoint responds; the sentinel local editor path cannot launch.",
+    "seam": "Public runner CLI subprocess exit status and HTTP protocol, not private worker call shape.",
+    "refactor": "Worker internals and project setup may change while the explicit CLI destination remains valid.",
+    "unique": "The existing selftest is the lowest runner configuration boundary; MCP tool cases do not exercise runner CLI precedence.",
+    "before_log": "build/test-cleanup/tappy-url-override-before.log",
+    "before_result": "Expected selftest failure on the pre-fix runner",
+    "after_log": "build/test-cleanup/tappy-harness-selftest-final.log",
+    "after_result": "All 31 selftest checks pass"
+  },
+  "slowest_baseline_passing_cases": [
+    {
+      "status": "pass",
+      "case": "test_shader_library.py::test_cli_library_matrix_all_backends",
+      "seconds": 264.5,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/mcp-final.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_post_processing_two_views.py::test_two_views_keep_their_targets",
+      "seconds": 50.2,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/mcp-final.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_stochastic_tiling.py::test_lit_fork_passes_agree",
+      "seconds": 39.3,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/mcp-final.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_fluid_inspector.py::test_preview_animates_and_presets_change_the_look",
+      "seconds": 37.3,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/mcp-final.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_post_processing_views.py::test_post_processing_in_views",
+      "seconds": 31.2,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/mcp-final.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_fluid_inspector.py::test_preview_bar_on_a_play_created_fluid",
+      "seconds": 27.6,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/mcp-final.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_lattice_bake.py::test_ball_bake",
+      "seconds": 26.2,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/mcp-final.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_render_perf.py::test_offview_caster_still_shadows_the_view",
+      "seconds": 24.1,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/mcp-final.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_stochastic_tiling.py::test_lit_screenshots_off_and_on",
+      "seconds": 21.5,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/mcp-final.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_synthesize_texture_tool.py::test_job_and_cancel",
+      "seconds": 20.3,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/mcp-final.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_stochastic_tiling.py::test_lit_variants",
+      "seconds": 18.7,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/mcp-final.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_project_save.py::test_stop_keeps_child_scene_file",
+      "seconds": 18.4,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/mcp-final.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_fluid_inspector.py::test_paint_dye_brush",
+      "seconds": 17.7,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/mcp-final.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_regressions.py::test_delete_camera_and_empty_undo_redo",
+      "seconds": 17.6,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/mcp-final.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_lattice_bake.py::test_skinned_bake",
+      "seconds": 17.3,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/mcp-final.log"
+    }
+  ],
+  "slowest_final_observed_cases": [
+    {
+      "status": "pass",
+      "case": "test_html_ui_examples.py::test_shop_play_golden",
+      "seconds": 370.4,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/tappy-full-examples.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_html_ui_examples.py::test_inventory_play_golden",
+      "seconds": 282.6,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/tappy-full-examples.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_shader_library.py::test_cli_library_matrix_all_backends",
+      "seconds": 228.4,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/tappy-full-rest.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_html_ui_examples.py::test_main_menu_play_golden",
+      "seconds": 223.4,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/tappy-full-examples.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_html_ui_examples.py::test_dialogue_play_golden",
+      "seconds": 201.0,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/tappy-full-examples.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_html_ui_examples.py::test_toasts_play_golden",
+      "seconds": 130.4,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/tappy-full-examples.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_html_ui_examples.py::test_hud_play_golden",
+      "seconds": 111.7,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/tappy-full-examples.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_html_ui_examples.py::test_settings_play_golden",
+      "seconds": 98.0,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/tappy-full-examples.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_html_ui_examples.py::test_loading_play_golden",
+      "seconds": 97.0,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/tappy-full-examples.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_html_ui_examples.py::test_video_menu_play_golden",
+      "seconds": 64.5,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/tappy-full-examples.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_html_ui_docs.py::test_guide_snippets_play",
+      "seconds": 47.5,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/tappy-full-rest.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_html_ui_examples.py::test_pause_menu_play_golden",
+      "seconds": 45.4,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/tappy-full-examples.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_fluid_inspector.py::test_preview_animates_and_presets_change_the_look",
+      "seconds": 37.2,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/tappy-full-rest.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_post_processing_two_views.py::test_two_views_keep_their_targets",
+      "seconds": 33.6,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/tappy-full-rest.log"
+    },
+    {
+      "status": "pass",
+      "case": "test_html_ui_tools.py::test_send_input_drag_to_target",
+      "seconds": 28.6,
+      "reported_precision_seconds": 0.1,
+      "source_log": "build/test-cleanup/tappy-full-rest.log"
+    }
+  ],
+  "measurement_limits": [
+    "Full before gate failed setup for 394 cases; no prerequisite-complete baseline or valid whole-suite speedup exists.",
+    "Targeted runs occurred under changing host load; their times are observations, not attributed gains.",
+    "The only new controlled percentage is the three paired standalone instance workflows with identical owned fixtures.",
+    "The required final suite is file-partitioned; parallel partition times must not be added and called single-run wall time.",
+    "No external CI wall time or billing reduction was measured."
+  ]
+}

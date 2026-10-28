@@ -33,9 +33,18 @@ bool editor::RenameFileCmd::renameFile(const fs::path& sourceFs, const fs::path&
 }
 
 bool editor::RenameFileCmd::execute(){
-    return renameFile(directory / oldFilename, directory / newFilename);
+    const fs::path sourceFs = directory / oldFilename;
+    const fs::path destFs = directory / newFilename;
+    if (!renameFile(sourceFs, destFs)) {
+        return false;
+    }
+    // clips previewing the renamed model (or taken from it) name it again, in this step
+    clipHintEdits = remapClipHints(project, sourceFs, destFs);
+    return true;
 }
 
 void editor::RenameFileCmd::undo(){
+    restoreClipHints(project, clipHintEdits);
+    clipHintEdits.clear();
     renameFile(directory / newFilename, directory / oldFilename);
 }

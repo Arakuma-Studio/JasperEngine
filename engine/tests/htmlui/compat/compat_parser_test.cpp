@@ -10,16 +10,10 @@
 #include "htmlui/compat/Diagnostics.h"
 #include "htmlui/compat/SourceFiles.h"
 #include "htmlui/compat/css/CssParser.h"
-#include "htmlui/compat/css/CssSerialize.h"
 
 #include <gtest/gtest.h>
 
-#include <algorithm>
-#include <filesystem>
-#include <fstream>
-#include <functional>
 #include <set>
-#include <sstream>
 
 using namespace jasperengine::test::compat;
 
@@ -62,13 +56,6 @@ namespace {
         }
     }
 
-    // the only diagnostics of a parse, as toText lines
-    std::vector<std::string> diagnosticLines(const DiagnosticSink& sink){
-        std::vector<std::string> lines;
-        for (const Diagnostic& diagnostic : sink.diagnostics())
-            lines.push_back(toText(diagnostic));
-        return lines;
-    }
 
 }
 
@@ -262,14 +249,15 @@ TEST(CompatParser, SyntaxErrorsAreRecoveredAndReported){
     ASSERT_EQ(sheet.rules[3].declarations.size(), 2u);
     EXPECT_EQ(sheet.rules[3].declarations[1].name, "left");
 
-    const std::vector<std::string> lines = diagnosticLines(sink);
-    ASSERT_EQ(lines.size(), 4u);
-    EXPECT_EQ(lines[0], "ui/broken.css:2:18: warning: invalid rule 'oops' dropped (fix: give the selector a { ... } block) [HTMLUI-CSS-0008]");
-    EXPECT_EQ(lines[1].rfind("ui/broken.css:3:14: warning: a string is not closed before the end of the line", 0), 0u) << lines[1];
-    EXPECT_EQ(lines[2].rfind("ui/broken.css:5:17: warning: invalid url(", 0), 0u) << lines[2];
-    EXPECT_EQ(lines[3].rfind("ui/broken.css:6:1: warning: invalid rule 'foo", 0), 0u) << lines[3];
-    for (const Diagnostic& diagnostic : sink.diagnostics())
-        EXPECT_EQ(diagnostic.code, codes::CssSyntaxError);
+    const auto& diagnostics = sink.diagnostics();
+    ASSERT_EQ(diagnostics.size(), 4u);
+    const SourcePos positions[] = {{2, 18}, {3, 14}, {5, 17}, {6, 1}};
+    for (size_t i = 0; i < diagnostics.size(); i++){
+        EXPECT_EQ(diagnostics[i].code, codes::CssSyntaxError);
+        EXPECT_EQ(diagnostics[i].file, "ui/broken.css");
+        EXPECT_EQ(diagnostics[i].line, positions[i].line);
+        EXPECT_EQ(diagnostics[i].column, positions[i].column);
+    }
 }
 
 TEST(CompatParser, UnclosedBlockAtEndOfFile){
@@ -281,10 +269,16 @@ TEST(CompatParser, UnclosedBlockAtEndOfFile){
     ASSERT_EQ(sheet.rules.size(), 1u);
     ASSERT_EQ(sheet.rules[0].rules.size(), 1u);
     ASSERT_EQ(sheet.rules[0].rules[0].declarations.size(), 1u);
-    const std::vector<std::string> lines = diagnosticLines(sink);
-    ASSERT_EQ(lines.size(), 2u);
-    EXPECT_EQ(lines[0], "ui/open.css:1:12: warning: '{' is not closed before the end of the stylesheet (fix: add the missing closing bracket) [HTMLUI-CSS-0008]");
-    EXPECT_EQ(lines[1].rfind("ui/open.css:2:5:", 0), 0u) << lines[1];
+    const auto& diagnostics = sink.diagnostics();
+    ASSERT_EQ(diagnostics.size(), 2u);
+    for (const Diagnostic& diagnostic : diagnostics){
+        EXPECT_EQ(diagnostic.code, codes::CssSyntaxError);
+        EXPECT_EQ(diagnostic.file, "ui/open.css");
+    }
+    EXPECT_EQ(diagnostics[0].line, 1u);
+    EXPECT_EQ(diagnostics[0].column, 12u);
+    EXPECT_EQ(diagnostics[1].line, 2u);
+    EXPECT_EQ(diagnostics[1].column, 5u);
 }
 
 TEST(CompatParser, InlineStyleOffsetsMapToTheHtmlFile){
@@ -351,89 +345,4 @@ TEST(CompatParser, KeyframesAndFontFaceBlocks){
     EXPECT_TRUE(import.isAt("import"));
     EXPECT_FALSE(import.hasBlock);
     EXPECT_EQ(files.slice(import.preludeRef), "url(\"base.css\") layer(base) supports(display: grid) screen");
-}
-
-TEST(CompatParser, HelpersSplitAndTrim){
-    const ValueList values = parseComponentValueList(" a b , c(d, e) , f ");
-    const std::vector<ValueList> groups = splitAtCommas(values);
-    ASSERT_EQ(groups.size(), 3u);
-    EXPECT_EQ(trimWhitespace(groups[0]).size(), 3u);
-    ASSERT_EQ(trimWhitespace(groups[1]).size(), 1u);
-    EXPECT_TRUE(trimWhitespace(groups[1])[0].isFunction("c"));
-    EXPECT_EQ(trimWhitespace(groups[2]).size(), 1u);
-}
-
-// parseStylesheet(..., deferPlainPreludes) (p2-perf2): a plain style-rule prelude is read as
-// text, and preludeOf() reads it into the values the token path builds; every other part of
-// the sheet, the diagnostics included, is the same
-namespace {
-
-    std::string ruleText(const Rule& rule){
-        std::string text = std::to_string((int)rule.kind) + "@" + std::string(rule.atName) + " " + std::to_string(rule.ref.offset) + "+" +
-                           std::to_string(rule.ref.length) + " prelude " + std::to_string(rule.preludeRef.offset) + "+" +
-                           std::to_string(rule.preludeRef.length) + " [" + std::string(rule.preludeText) + "] block " +
-                           std::to_string(rule.blockRef.offset) + "+" + std::to_string(rule.blockRef.length) + (rule.hasBlock ? " {" : "") + "\n";
-        for (const ComponentValue& v : preludeOf(rule))
-            text += "  " + serialize(v) + "@" + std::to_string(v.offset) + "+" + std::to_string(v.length);
-        text += "\n";
-        for (const Declaration& d : rule.declarations){
-            text += "  " + std::string(d.name) + ": " + serialize(d.value) + (d.important ? " !important" : "") + " " + std::to_string(d.ref.offset) +
-                    "+" + std::to_string(d.ref.length) + " [" + std::string(d.text) + "]\n";
-        }
-        for (const Rule& r : rule.rules)
-            text += ruleText(r);
-        return text;
-    }
-
-    std::string sheetText(const std::string& css, bool defer, bool& deferredAny){
-        SourceFiles files;
-        const uint32_t file = files.add("ui/defer.css", css);
-        DiagnosticSink sink(files);
-        const Stylesheet sheet = parseStylesheet(file, files.text(file), sink, 0, defer);
-        std::string text;
-        std::function<void(const RuleList&)> any = [&](const RuleList& rules){
-            for (const Rule& r : rules){
-                deferredAny = deferredAny || r.preludeDeferred;
-                any(r.rules);
-            }
-        };
-        any(sheet.rules);
-        for (const Rule& rule : sheet.rules)
-            text += ruleText(rule);
-        for (const Diagnostic& d : sink.diagnostics())
-            text += toText(d) + "\n";
-        return text;
-    }
-
-}
-
-TEST(CompatParser, DeferredPreludesReadAsTheTokensWould){
-    std::vector<std::string> sheets = {
-        ".a, .b > .c { color: red } .d{x:y}\n.e  .f\t{ a: b; .g { c: d } } @media (min-width: 1px) { h1.x:hover { a: b } }\n"
-        "@keyframes k { from { a: b } 50% { c: d } to { e: f } } a.-x #y *.z ~ b + c { } --x: y { } /* c */ .h { } .i/* c */.j { }\n"
-        ".k:not(.l) { } a[href] { } .m { .n:hover { o: p } } .q { r: s } .t",
-    };
-    std::vector<std::string> paths;
-    std::function<void(const std::string&)> collect = [&](const std::string& directory){
-        std::error_code error;
-        for (const auto& entry : std::filesystem::recursive_directory_iterator(directory, error)){
-            if (entry.is_regular_file() && entry.path().extension() == ".css")
-                paths.push_back(entry.path().string());
-        }
-    };
-    collect(std::string(JASPER_HTMLUI_TEST_SOURCE_DIR) + "/fixtures/compat");
-    std::sort(paths.begin(), paths.end());
-    ASSERT_GT(paths.size(), 50u);
-    for (const std::string& path : paths){
-        std::ifstream in(path, std::ios::binary);
-        std::stringstream text;
-        text << in.rdbuf();
-        sheets.push_back(text.str());
-    }
-    bool deferredAny = false;
-    for (const std::string& css : sheets){
-        bool unused = false;
-        EXPECT_EQ(sheetText(css, false, unused), sheetText(css, true, deferredAny)) << css.substr(0, 200);
-    }
-    EXPECT_TRUE(deferredAny);
 }

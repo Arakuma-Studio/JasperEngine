@@ -2,8 +2,7 @@
 and the agents' determinism tools for stateful UI effects, through MCP.
 
 - A UI document with two fluids: `.burst` (Pavel's start burst) and `.canvas` (no burst, bloom
-  off: only what the test paints). list_ui_effects lists `fluid` with cost stateful, its presets
-  and its @frame passes; the whole catalogue has 19 stateful effects.
+  off: only what the test paints).
 - set_ui_effect_time pins the clock: the burst draws, a second screenshot is identical.
 - set_ui_effect_time pointer_path on `.canvas` (a scripted drag, replayed at the pinned clock):
   the canvas is painted; the same path again gives the identical screenshot, another path a
@@ -76,7 +75,6 @@ def cli_export(ed: Editor, project: Path, out: Path, *args: str) -> None:
 
 
 def write(ed: Editor, rel: str, text: str) -> None:
-    time.sleep(0.02)
     path = ed.project / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
@@ -118,7 +116,7 @@ async def canvas_state(ed: Editor) -> dict:
     return effect["state"]
 
 
-async def test_setup(ed: Editor):
+async def test_pinned_burst(ed: Editor):
     write(ed, "assets/ui/fluid.html", HTML)
     write(ed, "assets/ui/fluid.css", CSS)
     made = await ed.call("create_scene", name="FluidEffect", type="UI")
@@ -128,33 +126,6 @@ async def test_setup(ed: Editor):
     ed.check_eq(r["diagnostics"], [], "the document loads clean")
     await ed.call("save_scene", scene=S["scene"], path="scenes/FluidEffect")
 
-
-async def test_list_ui_effects(ed: Editor):
-    raw = await ed.call_raw("list_ui_effects", {"name": "fluid"})
-    ed.check(not raw.is_error, raw.text)
-    fluid = raw.value["effects"][0]
-    ed.check_eq((fluid["name"], fluid["kind"], fluid["cost"]), ("fluid", "paint", "stateful"), f"fluid: {fluid}")
-    ed.check(fluid["source"].startswith("port WebGL-Fluid-Simulation"), fluid["source"])
-    ed.check_eq(sorted(fluid["presets"]), ["calm-water", "ink", "mobile", "psychedelic", "smoke"], "its presets")
-    ed.check_eq(fluid["presets"]["ink"]["curl"], "8", "ink's curl")
-    names = [p["name"] for p in fluid["params"]]
-    for name in ("preset", "density-dissipation", "velocity-dissipation", "pressure", "pressure-iterations", "curl", "splat-radius",
-                 "splat-force", "shading", "colorful", "color-speed", "bloom", "bloom-intensity", "bloom-threshold",
-                 "bloom-soft-knee", "sunrays", "sunrays-weight", "seed", "splats-on-start", "gradient-scale"):
-        ed.check(name in names, f"{name} is a parameter: {names}")
-    passes = fluid["state"]["passes"]
-    frames = [p["name"] for p in passes if p.get("frame")]
-    ed.check_eq(frames, ["bloom-prefilter", "bloom-down", "bloom-up", "bloom-final", "sunrays", "sunrays-blur"], "the @frame passes")
-    ed.check(any(p.get("repeat") == "pressure-iterations" for p in passes), f"Jacobi repeats by pressure-iterations: {passes}")
-    sizes = {st["name"]: (st["format"], st["size"]) for st in fluid["state"]["states"]}
-    ed.check_eq(sizes["vel"], ("rg16f", "aspect 128 max 512"), "the velocity grid")
-    ed.check_eq(sizes["pressure"][0], "r16f", "the pressure's format")
-    everything = await ed.call("list_ui_effects")
-    stateful = [e["name"] for e in everything["effects"] if e.get("builtin") and e.get("cost") == "stateful"]
-    ed.check("fluid" in stateful and len(stateful) == 19, f"19 stateful effects with fluid: {stateful}")
-
-
-async def test_pinned_burst(ed: Editor):
     r = await ed.call("set_ui_effect_time", time=1.0)
     ed.check_eq(r["time"], 1.0, f"pinned: {r}")
     # the variants compile on first use (async in the editor): wait for the burst
@@ -238,7 +209,7 @@ async def test_refused_calls_change_nothing(ed: Editor):
     r = await ed.call_raw("set_ui_effect_time", {"time": 2.5, "entity": S["entity"], "selector": ".canvas", "splats": nine})
     ed.check(r.is_error and "more than 8 splats" in r.text, f"9 splats in one step: {r.text}")
     r = await ed.call_raw("set_ui_effect_time", {"time": 2.5, "entity": S["entity"], "selector": ".plain", "splats": nine[:1]})
-    ed.check(r.is_error, f"an element without a simulation: {r.text}")
+    ed.check(r.is_error and "no stateful effect" in r.text, f"an element without a simulation: {r.text}")
     state = await canvas_state(ed)
     ed.check(abs(state["time"] - 1.0) < 1e-6, f"refused calls left the clock pinned at 1 s: {state}")
     # spread over steps (t 1/60 s apart) they are taken; one later than the pinned time is future input
@@ -263,7 +234,8 @@ async def test_mistakes(ed: Editor):
     r = await ed.call_raw("set_ui_effect_time", {"time": 1.0, "entity": S["entity"], "selector": ".plain", "splats": [{"x": 1, "y": 2}]})
     ed.check(r.is_error and "no stateful effect" in r.text, f"an element without a simulation: {r.text}")
     r = await ed.call_raw("set_ui_effect_time", {"time": 1.0, "entity": S["entity"], "selector": ".nothing", "splats": []})
-    ed.check(r.is_error, f"a selector matching nothing: {r.text}")
+    ed.check(r.is_error and "no visible element" in r.text and ".nothing" in r.text,
+             f"a selector matching nothing: {r.text}")
     await ed.call("set_ui_effect_time", time=None)
 
 

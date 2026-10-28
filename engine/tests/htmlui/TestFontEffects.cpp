@@ -520,3 +520,29 @@ TEST_F(RmlFontEffectsTest, DocumentWithEffectsRenders){
     document->Close();
     context->Update();
 }
+
+// (upstream) per-context raster density, read by the production shape decorators too: independent
+// render managers keep their own scale
+TEST(RmlFontEffectsRasterScale, PerContextRasterScale){
+    ASSERT_FALSE(HtmlUI::isInitialized());
+    FontRegistry::clear();
+    RecordingRenderInterface firstRenderer, otherRenderer;
+    RmlFontEngine engine;
+    Rml::SetSystemInterface(&HtmlUI::getSystemInterface());
+    Rml::SetFileInterface(&HtmlUI::getFileInterface());
+    Rml::SetFontEngineInterface(&engine);
+    ASSERT_TRUE(Rml::Initialise());
+    Rml::Context* first = Rml::CreateContext("font-scale-first", Rml::Vector2i(640, 360), &firstRenderer);
+    Rml::Context* other = Rml::CreateContext("font-scale-other", Rml::Vector2i(320, 180), &otherRenderer);
+    ASSERT_TRUE(first && other);
+    engine.setRasterScale(first->GetRenderManager(), 2.0f);
+    EXPECT_FLOAT_EQ(engine.getRasterScale(first->GetRenderManager()), 2.0f);
+    EXPECT_FLOAT_EQ(engine.getRasterScale(other->GetRenderManager()), 1.0f);
+    engine.setRasterScale(other->GetRenderManager(), 1.5f);
+    EXPECT_FLOAT_EQ(engine.getRasterScale(first->GetRenderManager()), 2.0f);
+    EXPECT_FLOAT_EQ(engine.getRasterScale(other->GetRenderManager()), 1.5f);
+    Rml::RemoveContext("font-scale-first");
+    Rml::RemoveContext("font-scale-other");
+    Rml::Shutdown();
+    FontRegistry::clear();
+}

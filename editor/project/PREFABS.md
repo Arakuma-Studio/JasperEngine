@@ -563,9 +563,9 @@ PropertyCmd per GameObject, `also` for a multi-selection), `setName`, `setState`
 `addComponent` / `removeComponent`, `delete`, `revertComponent`, `revertAll` / `applyAll`,
 `canApply` (prints whether and the targets), `playStart` / `playStop` (Play's snapshot and
 Stop's restore without running the game), `undo` / `redo`. The dump lists each
-GameObject's `overrides`. `tools/prefab-instance-edit-test.py` (FIXTURE=<TappyPlane
-fixture>) runs these checks on the `legacy` fixture (tools/prefab-fixtures.py): a member
-edit is recorded on that instance only and the asset file stays the same until Apply; Apply
+GameObject's `overrides`. `tools/prefab-instance-edit-test.py` runs on an owned, asset-free `legacy` fixture
+(tools/prefab-fixtures.py): an explicit override remains explicit when its value equals
+the base; the asset file stays the same until Apply; Apply
 to the inner prefab or as an override in the outer one reaches exactly the instances it
 should; Revert, undo and redo restore values and overrides; edits while playing are gone
 after `playStop`; overrides survive a save and a reload.
@@ -922,6 +922,9 @@ of another prefab: a nested root (`Prefab::isNestedRoot`), or the root of a Pref
 
 ### Tests
 
+These scripts author their own project and scene files; they need no sample game or assets.
+Set `JASPER_EDITOR` to an editor command, or use the default Linux install from `tools/build.sh linux`.
+
 `tools/prefab-fixtures.py nested <dir>` writes a project of plain GameObjects four levels
 deep and `<dir>.ops/build.yaml`, the scene-dump ops making Leaf, Branch (holding Leaf), Tree
 and Forest bottom-up with overrides of every kind, added / removed GameObjects and
@@ -935,7 +938,7 @@ an exported game's log). Scene-dump ops added for this: `createPrefabs`, `addToP
 `create`, `setRef`, `setStateLocal`, `addLocalComponent` / `removeLocalComponent`, `spawn`
 (Play's factory: a bare root imported), `bake`; `@/x` in a path is next to the ops file.
 
-`FIXTURE=<TappyPlane fixture> tools/prefab-nested-test.py [work-dir]` runs all of it and
+`tools/prefab-nested-test.py [work-dir]` runs all of it and
 checks: a fresh instance of each level equals what it was made from (by
 `prefab-dump-compare.py --subtree`), the references at every level, a reload equal with
 member ids, a second save byte for byte the same, Play's spawn equal to an instantiated
@@ -943,7 +946,7 @@ instance, Apply of a reference into a nested prefab to the owning and to an oute
 undo / redo of Create Prefab holding an instance, a nested prefab going missing and coming
 back, Revert of a nested root after its prefab changed, an added GameObject applied to an
 outer prefab, Prefab Mode (open and save changes nothing; a GameObject added below a nested
-GameObject and a reference into a nested prefab are kept), and the generated sources.
+GameObject and a reference into a nested prefab are kept).
 `tools/smoke-test.sh <work-dir>/project` exports, builds and runs that project.
 
 ## 18. Runtime: Instantiate, Destroy, Prefab properties
@@ -1345,13 +1348,13 @@ Fixtures (`tools/prefab-fixtures.py`):
 
 - `variant <dir>` writes Engine and Ship (Engine nested), plus the build ops that make Ship
   Variant and Ship Variant 2 from instances with overrides of every kind at both levels.
-- `variant_export <dir>` writes a copy of the TappyPlane fixture with Badge, Badge Red (a
-  variant) and Badge Green (a variant of it) placed in the scene, for the smoke test. A
+- `variant_export <dir>` writes a minimal 2D project with untextured Badge, Badge Red (a
+  variant) and Badge Green (a variant of it), for the smoke test. A
   `BadgeSpawner.lua` instantiates Badge Red and Badge Green at runtime by path, checks
   their GameObjects and colours, and logs `[VARIANT] PASS` (or `[ERROR] [VARIANT] ...`,
   which fails the smoke test).
 
-`FIXTURE=<TappyPlane fixture> tools/prefab-variant-test.py [work-dir]` checks:
+`tools/prefab-variant-test.py [work-dir]` checks:
 
 - Creation changes nothing, and fresh instances equal what they were made from at every
   level.
@@ -1367,7 +1370,6 @@ Fixtures (`tools/prefab-fixtures.py`):
 - The base deleted (Missing Prefab with its data kept; the Prefab Mode save keeps the file)
   and put back.
 - A cycle of bases edited in by hand.
-- The generated sources.
 
 `tools/smoke-test.sh` on the `variant_export` project exports, builds and runs it. The
 game's screenshot matches the editor's Game view, plus the two runtime copies.

@@ -1,6 +1,0 @@
-compat/html/reserved_names.html:3:23: warning: 'data-htmlui-loc' is a reserved attribute name; renamed data-html-reserved-loc (fix: use another data- name) [HTMLUI-HTML-0013]
-compat/html/reserved_names.html:3:50: warning: class 'htmlui-h1' is reserved for the engine; renamed html-reserved-h1 (fix: use another class name) [HTMLUI-HTML-0013]
-compat/html/reserved_names.html:3:6: warning: id="htmlui-root" is reserved for the document root; renamed data-html-reserved-id (fix: use another id) [HTMLUI-HTML-0013]
-compat/html/reserved_names.html:4:1: warning: <htmlbody> is a reserved element name; renamed <html-reserved-htmlbody> (fix: use another element name) [HTMLUI-HTML-0013]
-compat/html/reserved_names.html:4:23: warning: <htmltemplate> is a reserved element name; renamed <html-reserved-htmltemplate> (fix: use another element name) [HTMLUI-HTML-0013]
-compat/html/reserved_names.html:4:53: warning: <marker> is a reserved element name; renamed <html-reserved-marker> (fix: use another element name) [HTMLUI-HTML-0013]

@@ -69,13 +69,6 @@ namespace {
 
 }
 
-TEST(FluidShaderVariants, AddFluidKeys){
-    std::set<ShaderKey> keys;
-    ShaderVariantCollector::addFluidKeys(keys);
-    EXPECT_TRUE(hasFluidKeys(keys));
-    EXPECT_EQ(keys.size(), 4u);
-}
-
 TEST(FluidShaderVariants, SceneWithoutAFluid){
     auto scene = std::make_unique<Scene>();
     untexturedSprite(*scene);

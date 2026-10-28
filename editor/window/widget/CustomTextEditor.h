@@ -218,9 +218,6 @@ namespace jasperengine::editor {
         void SetFontZoomCallback(FontZoomCallback callback) { onFontZoom = callback; }
 
     private:
-        // editor/tests/CustomTextEditorTest.cpp reads the tokens and types as handleTextInput does
-        friend struct CustomTextEditorTestAccess;
-
         // Text data
         std::vector<std::string> lines;
         std::vector<std::vector<Token>> lineTokens;

@@ -115,6 +115,8 @@ void create_scene_RingPeg_1698906752(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
+        mesh.morphWeightsSet = true;
+        mesh.morphTargetCount = 0;
         mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
@@ -229,6 +231,8 @@ void create_scene_RingPeg_1698906752(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
+        mesh.morphWeightsSet = true;
+        mesh.morphTargetCount = 0;
         mesh.vertexCount = 693;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
@@ -1129,6 +1133,8 @@ void create_scene_RingPeg_1698906752(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
+        mesh.morphWeightsSet = true;
+        mesh.morphTargetCount = 0;
         mesh.vertexCount = 833;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";

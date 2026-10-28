@@ -8,6 +8,7 @@
 // badge, removed ones as "(Removed)" entries, and the Apply / Revert context menus.
 
 #include "InspectorWindow.h"
+#include "pose/PoseEditSession.h"
 
 #include "external/IconsFontAwesome6.h"
 #include "command/CommandHandle.h"
@@ -108,7 +109,6 @@ void editor::InspectorWindow::endPrefabComponent(){
 }
 
 std::vector<std::string> editor::InspectorWindow::prefabOverridesOf(SceneProject* sceneProject, Entity entity, ComponentType type, const std::string& property) const{
-    std::vector<std::string> matching;
     std::set<std::string> names;
     auto cached = prefabRow.sceneProject == sceneProject ? prefabRow.overrides.find(entity) : prefabRow.overrides.end();
     if (cached != prefabRow.overrides.end()){
@@ -119,6 +119,11 @@ std::vector<std::string> editor::InspectorWindow::prefabOverridesOf(SceneProject
     }else{
         names = project->getOverriddenProperties(sceneProject->id, entity, type);
     }
+    return matchingPrefabOverrides(names, property);
+}
+
+std::vector<std::string> editor::InspectorWindow::matchingPrefabOverrides(const std::set<std::string>& names, const std::string& property){
+    std::vector<std::string> matching;
     if (names.empty() || property.empty()){
         return matching;
     }
@@ -209,6 +214,7 @@ void editor::InspectorWindow::drawPrefabApplyRevertItems(SceneProject* sceneProj
     std::string playReason;
     const bool canApplyNow = project->canApplyPrefabOverrides(&playReason);
     auto addCommand = [&](std::vector<std::unique_ptr<Command>> steps){
+        PoseEditSession::suspendActive();   // a posed character applies its rest bones
         if (!steps.empty()){
             CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new PrefabOverridesCmd(project, sceneId, std::move(steps)));
         }
@@ -573,6 +579,7 @@ void editor::InspectorWindow::drawPrefabComparison(SceneProject* sceneProject, c
     const uint32_t sceneId = sceneProject->id;
 
     auto addCommand = [&](Command* command) {
+        PoseEditSession::suspendActive();
         CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(command);
     };
 
@@ -869,6 +876,7 @@ void editor::InspectorWindow::drawPrefabOverridesPopup(SceneProject* sceneProjec
     ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
     ImGui::BeginDisabled(!canApply);
     if (ImGui::Button("Apply All")) {
+        PoseEditSession::suspendActive();
         if (PrefabOverridesCmd* command = PrefabOverridesCmd::applyAll(project, sceneId, root)) {
             CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(command);
         }

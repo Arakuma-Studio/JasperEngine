@@ -808,6 +808,18 @@ namespace jasperengine {
             sortByKeys(keys);
         }
 
+        // The component in the next live slot after the entity's, without settling: holes
+        // keep the slots' relative order, so it is the next index once the holes close
+        // (nullptr: none, or the entity has no component)
+        const T* findNextAfter(Entity entity) const {
+            const uint32_t slot = entityToSlot.find(entity);
+            if (slot == ecs::SparseIndex::kNone) return nullptr;
+            for (size_t next = (size_t)slot + 1; next < slotCount; next++){
+                if (slotEntities[next] != NULL_ENTITY) return slotPtr(next);
+            }
+            return nullptr;
+        }
+
         JE_ECS_INLINE T* findComponent(Entity entity) {
             const uint32_t slot = entityToSlot.find(entity);
             return slot == ecs::SparseIndex::kNone ? nullptr : slotPtr(slot);

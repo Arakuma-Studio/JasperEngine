@@ -140,6 +140,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("assets.createLuaScript", "Create Lua Script", AppMenuCommand::AssetsCreateLuaScript);
     b.menu("assets.createCppScript", "Create C++ Script", AppMenuCommand::AssetsCreateCppScript);
     b.menu("assets.createHtmlDocument", "Create HTML Document", AppMenuCommand::AssetsCreateHtmlDocument);
+    b.menu("assets.createPoseAnimation", "Create Pose Animation", AppMenuCommand::AssetsCreatePoseAnimation);
+    b.menu("assets.createAnimationClip", "Create Animation Clip", AppMenuCommand::AssetsCreateAnimationClip);
     b.menu("assets.showInFileManager", "Show in File Manager", AppMenuCommand::AssetsShowInFileManager);
     b.menu("assets.open", "Open", AppMenuCommand::AssetsOpen);
     b.menu("assets.rename", "Rename Asset", AppMenuCommand::AssetsRename);
@@ -182,6 +184,7 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.hierarchy", "Hierarchy", AppMenuCommand::ToggleHierarchy, C::Editor, "Ctrl+4");
     b.menu("window.project", "Project", AppMenuCommand::ToggleProject, C::Editor, "Ctrl+5");
     b.menu("window.animation", "Animation", AppMenuCommand::ToggleAnimation, C::Editor, "Ctrl+6");
+    b.menu("window.poseAnimation", "Pose Animation", AppMenuCommand::TogglePoseAnimation);
     b.menu("window.profiler", "Profiler", AppMenuCommand::ToggleProfiler, C::Editor, "Ctrl+7");
     b.menu("window.console", "Console", AppMenuCommand::ToggleConsole, C::Editor, "Ctrl+Shift+C");
     b.menu("window.bookmarks", "Bookmarks", AppMenuCommand::ToggleBookmarks);
@@ -290,6 +293,48 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.add("terrain.brushLarger", "Brush Larger", C::SceneView, "]").repeat = true;
     b.add("terrain.brushWeaker", "Brush Weaker", C::SceneView, "Shift+[").repeat = true;
     b.add("terrain.brushStronger", "Brush Stronger", C::SceneView, "Shift+]").repeat = true;
+
+    // The Animation window editing a clip (docs/animation-clips.md): while it has focus
+    b.group = "Animation";
+    b.add("animation.playPause", "Play / Pause Preview", C::Animation, "Space");
+    b.add("animation.addKey", "Add Key", C::Animation, "K").description = "Key every property at the playhead";
+    b.add("animation.addKeyModified", "Key Modified Properties", C::Animation, "Shift+K").description =
+        "Key only the properties changed since the last key";
+    b.add("animation.previousFrame", "Previous Frame", C::Animation, ",").repeat = true;
+    b.add("animation.nextFrame", "Next Frame", C::Animation, ".").repeat = true;
+    b.add("animation.previousKey", "Previous Key", C::Animation, "Alt+,").repeat = true;
+    b.add("animation.nextKey", "Next Key", C::Animation, "Alt+.").repeat = true;
+    b.add("animation.delete", "Delete Keys", C::Animation, "Delete", "Backspace").description =
+        "The selected keys, else the selected event";
+    b.add("animation.copy", "Copy Keys", C::Animation, "Ctrl+C");
+    b.add("animation.paste", "Paste Keys", C::Animation, "Ctrl+V").description = "At the playhead";
+    b.add("animation.duplicate", "Duplicate Keys", C::Animation, "Ctrl+D");
+    b.add("animation.frameSelected", "Frame Selected Keys", C::Animation, "F");
+    b.add("animation.frameAll", "Frame All Keys", C::Animation, "A");
+    b.add("animation.record", "Record", C::Animation, "R").description = "Record mode on or off";
+
+    // The Pose Animation window (docs/pose-animation.md): while it has focus, or in a Scene view
+    // posing its character
+    b.group = "Pose Animation";
+    b.add("pose.playPause", "Play / Pause Preview", C::PoseAnimation, "Space");
+    b.add("pose.selectPrevious", "Select Previous Pose", C::PoseAnimation, "Left").repeat = true;
+    b.add("pose.selectNext", "Select Next Pose", C::PoseAnimation, "Right").repeat = true;
+    b.add("pose.moveLeft", "Move Poses Left", C::PoseAnimation, "Shift+Left").repeat = true;
+    b.add("pose.moveRight", "Move Poses Right", C::PoseAnimation, "Shift+Right").repeat = true;
+    b.add("pose.selectFirst", "Select First Pose", C::PoseAnimation, "Home");
+    b.add("pose.selectLast", "Select Last Pose", C::PoseAnimation, "End");
+    b.add("pose.previousFrame", "Previous Frame", C::PoseAnimation, ",").repeat = true;
+    b.add("pose.nextFrame", "Next Frame", C::PoseAnimation, ".").repeat = true;
+    b.add("pose.rename", "Rename Pose", C::PoseAnimation, "F2");
+    b.add("pose.duplicate", "Duplicate Poses", C::PoseAnimation, "Ctrl+D");
+    b.add("pose.duplicateMirrored", "Duplicate Poses Mirrored", C::PoseAnimation, "Ctrl+Shift+D");
+    b.add("pose.mirror", "Mirror Poses", C::PoseAnimation, "M").description = "Swap the left and right sides";
+    b.add("pose.delete", "Delete Poses", C::PoseAnimation, "Delete", "Backspace");
+    b.add("pose.ground", "Ground Pose", C::PoseAnimation, "G").description = "Put the feet on the ground";
+    b.add("pose.copy", "Copy Pose", C::PoseAnimation, "Ctrl+C");
+    b.add("pose.paste", "Paste Pose", C::PoseAnimation, "Ctrl+V");
+    b.add("pose.add", "Add Pose", C::PoseAnimation, "N");
+    b.add("pose.globalEdit", "Global Edit", C::PoseAnimation, "E").description = "Edit every pose at once";
 
     b.group = "Project";
     b.add("project.copy", "Copy Assets", C::Project, "Ctrl+C");

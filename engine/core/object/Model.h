@@ -7,6 +7,7 @@
 #include "Mesh.h"
 #include "Bone.h"
 #include "action/Animation.h"
+#include "PoseAnimator.h"
 
 namespace jasperengine{
     class JASPERENGINE_API Model: public Mesh{
@@ -51,6 +52,9 @@ namespace jasperengine{
         void setMorphWeight(int id, float value);
 
         void resetToBindPose();
+
+        // the Pose Animator of this model (added when missing)
+        PoseAnimator getPoseAnimator();
     };
 }
 

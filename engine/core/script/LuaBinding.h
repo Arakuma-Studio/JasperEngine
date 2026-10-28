@@ -9,6 +9,7 @@
 #include <string_view>
 #include "Export.h"
 #include "ecs/Entity.h"
+#include "animation/AnimationEvent.h"
 #include <string>
 #include <vector>
 
@@ -139,6 +140,10 @@ namespace jasperengine {
         // Pushes what a script sees for a GameObject: its Lua script instance of class
         // `className` (its first one when empty), else a handle typed after className
         static bool pushScriptObject(lua_State* L, Scene* scene, Entity entity, const std::string& className);
+        // Calls `method` on every Lua script instance of the GameObject that defines it, with
+        // `args` spread as its parameters (an Animation Player's clip event, animation clips spec
+        // 3.5). True when at least one script defines it.
+        static bool callLuaScriptMethod(Scene* scene, Entity entity, const std::string& method, const std::vector<AnimationEventArg>& args);
         static void clearLoadedProjectModules();
 
         static std::string getLuaStackErrorString(lua_State* L, int index = -1);

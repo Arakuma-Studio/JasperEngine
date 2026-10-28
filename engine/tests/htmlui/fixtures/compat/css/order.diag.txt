@@ -1,5 +1,0 @@
-compat/css/order.css:2:10: warning: 'order' is not supported; dropped (fix: reorder the elements in the markup) [HTMLUI-CSS-0002]
-compat/css/order.css:2:31: warning: 'order' is not supported; dropped (fix: reorder the elements in the markup) [HTMLUI-CSS-0002]
-compat/css/order.css:2:50: warning: '-ms-flex-order' is not supported; dropped (fix: reorder the elements in the markup) [HTMLUI-CSS-0002]
-compat/css/order.css:2:77: warning: 'order' is not supported; dropped (fix: reorder the elements in the markup) [HTMLUI-CSS-0002]
-compat/css/order.css:2:77: info: '-webkit-order' is read as 'order' (fix: write 'order') [HTMLUI-CSS-0009]

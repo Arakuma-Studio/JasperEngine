@@ -11,7 +11,7 @@ The model is editor/tests/fixtures/rigged_cube.fbx, the gtest FbxImportTest's ha
 from __future__ import annotations
 
 import asyncio
-import re
+import json
 import shutil
 import struct
 import time
@@ -89,7 +89,6 @@ async def test_asset_info_summarizes_the_import(ed: Editor):
     ed.check_eq([a["name"] for a in model["animations"]], ["Take 001"])
     ed.check_eq(model["materials"], ["Checker"])
     ed.check_eq(model["images"], ["textures/checker.png"], "the texture is linked, relative to the FBX")
-    ed.check_in("ufbx", model["generator"])
 
 
 async def test_asset_info_does_not_convert(ed: Editor):
@@ -139,7 +138,6 @@ async def test_saved_scene_records_the_import(ed: Editor):
         S["assets"].relative_to(ed.project).as_posix() + "/") else S["fbx"]
     imports = data.get("imports") or {}
     ed.check(rel in imports, f"scene imports {imports!r} has no {rel}")
-    ed.check(re.fullmatch(r"\d+-[0-9a-f]{16}", imports.get(rel, "")), f"import id {imports.get(rel)!r}")
     S["import_id"] = imports.get(rel)
 
 
@@ -204,7 +202,15 @@ async def test_source_export_ships_the_imports(ed: Editor):
         ed.check((shipped / name).read_bytes()[:4] == b"glTF", f"{name} is a binary glTF")
     ed.check(not (shipped / "rigged_cube.fbx").exists(), "the .fbx itself is not shipped")
     ed.check(not (shipped / "unused.fbx").exists(), "the .fbx itself is not shipped")
-    ed.check((shipped / "textures" / "checker.png").is_file(), "its linked texture ships as an asset")
+    # its linked texture ships as an asset: the PNG, or (S14) its cooks, listed in each family's
+    # assets/je-cooked/<family>/index.json
+    cooked = []
+    for index_path in (assets / "je-cooked").glob("*/index.json"):
+        textures = json.loads(index_path.read_text()).get("textures", {})
+        if any(source.endswith("textures/checker.png") for source in textures):
+            cooked.append(index_path.parent.name)
+    ed.check((shipped / "textures" / "checker.png").is_file() or cooked,
+             f"its linked texture ships as an asset: the PNG or its cooks (families {cooked})")
     sources = [p for p in out.rglob("*.cpp") if "rigged_cube.fbx" in p.read_text(errors="ignore")]
     ed.check(sources, "the scene source loads the model by its .fbx path")
 

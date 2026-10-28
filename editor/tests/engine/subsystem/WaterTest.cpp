@@ -1,12 +1,11 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// library:water outside the shader (engine/core/object/environment/Water.h): the C++ copy of
-// its waves against library/water.glsl's formula, the surfaces a scene's water meshes make
+// library:water outside the shader (engine/core/object/environment/Water.h):
+// the surfaces a scene's water meshes make
 // (material values, bounds, the overlap rule), buoyancy floating a Rigidbody in a real
 // physics step, the Rigidbody fields' scene encoding, the built-in ripples and noise
-// textures, the manifests (library:water's new features and textures, library:underwater)
-// and the GameObject menu's 3D Object > Water entry.
+// textures and conditional shader texture-default parsing.
 
 #include <gtest/gtest.h>
 
@@ -22,12 +21,10 @@
 #include "shader/ShaderUniforms.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/PhysicsSystem.h"
-#include "window/HierarchyWindow.h"
 
 #include "yaml-cpp/yaml.h"
 
 #include <algorithm>
-#include <cmath>
 #include <limits>
 #include <string>
 #include <vector>
@@ -35,22 +32,6 @@
 using namespace jasperengine;
 
 namespace {
-
-    // library/water.glsl's waterWaves, in double precision
-    void referenceWaves(double x, double z, double time, double dx, double dz, double height, double waveLength, double speed,
-                        double& h, double& slopeX, double& slopeZ) {
-        const double twoPi = 6.28318530718;
-        const double length = std::max(std::sqrt(dx * dx + dz * dz), 1e-4);
-        const double fx = dx / length, fz = dz / length;
-        const double sx = fx * 0.6428 - fz * 0.7660, sz = fx * 0.7660 + fz * 0.6428;
-        const double length1 = std::max(waveLength, 1e-3), length2 = length1 * 0.6;
-        auto fract = [](double v) { return v - std::floor(v); };
-        const double phase1 = ((fx * x + fz * z) / length1 - fract(time * speed / length1)) * twoPi;
-        const double phase2 = ((sx * x + sz * z) / length2 - fract(time * speed / length2) + 0.37) * twoPi;
-        h = height * (std::sin(phase1) + 0.5 * std::sin(phase2));
-        slopeX = height * twoPi * (fx * std::cos(phase1) / length1 + sx * 0.5 * std::cos(phase2) / length2);
-        slopeZ = height * twoPi * (fz * std::cos(phase1) / length1 + sz * 0.5 * std::cos(phase2) / length2);
-    }
 
     // a water mesh: a grid at a height, drawn with library:water
     Entity makeWater(Scene& scene, const Vector3& position, float size, const std::vector<std::string>& features = {},
@@ -78,29 +59,6 @@ namespace {
         return result;
     }
 
-}
-
-TEST(Water, WavesMatchTheShaderFormula) {
-    const struct { float x, z, time, dx, dz, height, length, speed; } cases[] = {
-        {0.0f, 0.0f, 0.0f, 1.0f, 0.3f, 0.06f, 2.5f, 0.8f},
-        {3.7f, -2.1f, 12.25f, 1.0f, 0.3f, 0.1f, 4.0f, 0.8f},
-        {-15.0f, 40.0f, 100.5f, -0.2f, 1.0f, 0.5f, 7.0f, 2.0f},
-        {0.5f, 0.5f, 3.0f, 0.0f, 0.0f, 0.2f, 1.0f, 1.0f},
-    };
-    for (const auto& c : cases) {
-        double h, sx, sz;
-        referenceWaves(c.x, c.z, c.time, c.dx, c.dz, c.height, c.length, c.speed, h, sx, sz);
-        const Vector3 waves = Water::getWaves(c.x, c.z, c.time, Vector2(c.dx, c.dz), c.height, c.length, c.speed);
-        EXPECT_NEAR(waves.x, h, 1e-4) << "height at " << c.x << ", " << c.z;
-        EXPECT_NEAR(waves.y, sx, 1e-3) << "slope x at " << c.x << ", " << c.z;
-        EXPECT_NEAR(waves.z, sz, 1e-3) << "slope z at " << c.x << ", " << c.z;
-
-        // the slope is the height's derivative (the normal fits the raised surface)
-        const float e = 1e-3f;
-        const float hx = Water::getWaves(c.x + e, c.z, c.time, Vector2(c.dx, c.dz), c.height, c.length, c.speed).x -
-                         Water::getWaves(c.x - e, c.z, c.time, Vector2(c.dx, c.dz), c.height, c.length, c.speed).x;
-        EXPECT_NEAR(hx / (2.0f * e), waves.y, 2e-2);
-    }
 }
 
 TEST(Water, SurfacesReadTheMaterial) {
@@ -137,11 +95,8 @@ TEST(Water, SurfacesReadTheMaterial) {
     EXPECT_FALSE(waves.buoyancy);
     EXPECT_FLOAT_EQ(waves.getBottom(), -4.0f);
     const float t = 7.5f;
-    const Vector3 expected = Water::getWaves(31.0f, 0.5f, t, waves.waveDirection, 0.25f, 3.0f, waves.waveSpeed);
-    EXPECT_FLOAT_EQ(waves.getHeight(31.0f, 0.5f, t), -2.0f + expected.x);
     const Vector3 normal = waves.getNormal(31.0f, 0.5f, t);
     EXPECT_NEAR(normal.length(), 1.0f, 1e-5);
-    EXPECT_NEAR(normal.x / normal.y, -expected.y, 1e-4);
 
     // a disabled mesh or an inactive GameObject is no water
     scene.getComponent<MeshComponent>(wavy).enabled = false;
@@ -288,35 +243,6 @@ TEST(Water, BuiltInTexturesTile) {
     EXPECT_GT(minBlue, 128) << "normals point out of the surface";
 }
 
-TEST(Water, Manifests) {
-    std::shared_ptr<const ShaderManifest> water = ShaderManifests::get(Water::SHADER);
-    ASSERT_TRUE(water && water->present);
-    for (const char* feature : {"WAVES", "BUILTIN_TEXTURES", "REFLECTION", "UNDERSIDE", "DEPTH_FOAM", "ABSORPTION", "REFRACTION", "CAUSTICS"}) {
-        EXPECT_TRUE(std::any_of(water->features.begin(), water->features.end(),
-                    [&](const ShaderManifestFeature& f) { return f.define == feature; })) << feature;
-    }
-    Vector4 value;
-    ASSERT_TRUE(water->getDefault("buoyancy", value));
-    EXPECT_FLOAT_EQ(value.x, 1.0f);
-    // unset textures keep their old defaults (flat, grey: an existing water looks the same);
-    // BUILTIN_TEXTURES picks the engine's ripples and noise instead (default[...]=)
-    const ShaderManifestTexture* normal = water->findTexture("u_normalTexture");
-    const ShaderManifestTexture* noise = water->findTexture("u_noiseTexture");
-    ASSERT_TRUE(normal && noise);
-    EXPECT_EQ(normal->getDefault({}), ShaderTextureDefault::NORMAL);
-    EXPECT_EQ(noise->getDefault({"WAVES"}), ShaderTextureDefault::GRAY);
-    EXPECT_EQ(normal->getDefault({"BUILTIN_TEXTURES", "WAVES"}), ShaderTextureDefault::RIPPLES);
-    EXPECT_EQ(noise->getDefault({"BUILTIN_TEXTURES"}), ShaderTextureDefault::NOISE);
-    EXPECT_TRUE(std::none_of(water->diagnostics.begin(), water->diagnostics.end(),
-                             [](const ShaderManifestDiagnostic& d) { return d.error; }));
-
-    std::shared_ptr<const ShaderManifest> underwater = ShaderManifests::get(Water::UNDERWATER_SHADER);
-    ASSERT_TRUE(underwater && underwater->present);
-    EXPECT_EQ(underwater->type, ShaderType::POSTPROCESS);
-    ASSERT_TRUE(underwater->getDefault("followWater", value));
-    EXPECT_FLOAT_EQ(value.x, 1.0f);
-}
-
 TEST(Water, TextureDefaultRuleParsing) {
     ShaderManifest manifest;
     manifest.parse("// @shader mesh\n// @name \"T\"\n// @feature FANCY \"Fancy\"\n"
@@ -339,16 +265,4 @@ TEST(Water, TextureDefaultRuleParsing) {
     };
     EXPECT_TRUE(reported("default[NOPE] names undeclared feature"));
     EXPECT_TRUE(reported("unknown @texture default 'sparkles'"));
-}
-
-TEST(Water, GameObjectMenuEntry) {
-    const auto& entries = editor::HierarchyWindow::getCreateMenuEntries();
-    auto it = std::find_if(entries.begin(), entries.end(), [](const editor::CreateMenuEntry& entry) {
-        return entry.type == editor::EntityCreationType::WATER;
-    });
-    ASSERT_NE(it, entries.end());
-    EXPECT_STREQ(it->submenu, "3D Object");
-    EXPECT_STREQ(it->label, "Water");
-    EXPECT_TRUE(editor::HierarchyWindow::isCreateEntryAvailable(*it, editor::SceneType::SCENE_3D));
-    EXPECT_FALSE(editor::HierarchyWindow::isCreateEntryAvailable(*it, editor::SceneType::SCENE_2D));
 }

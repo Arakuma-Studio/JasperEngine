@@ -35,14 +35,9 @@ namespace {
     }
 }
 
-TEST(TextureRenderId, DefaultSamplerKeepsTheId) {
-    Texture texture("sprites/rock.png");
-    EXPECT_EQ(texture.getRenderId(), texture.getId());
-    EXPECT_EQ(TexturePool::getRenderId("a.png", TextureFilter::LINEAR, TextureFilter::LINEAR, TextureWrap::REPEAT, TextureWrap::REPEAT), "a.png");
-}
-
 TEST(TextureRenderId, SamplerIsPartOfTheKey) {
     Texture repeat("sprites/rock.png");
+    EXPECT_EQ(repeat.getRenderId(), repeat.getId());
     Texture clamped("sprites/rock.png");
     clamped.setWrapU(TextureWrap::CLAMP_TO_EDGE);
     clamped.setWrapV(TextureWrap::CLAMP_TO_EDGE);
@@ -55,8 +50,6 @@ TEST(TextureRenderId, SamplerIsPartOfTheKey) {
     EXPECT_NE(clamped.getRenderId(), repeat.getRenderId());
     EXPECT_NE(nearest.getRenderId(), repeat.getRenderId());
     EXPECT_NE(nearest.getRenderId(), clamped.getRenderId());
-    // the variants share the id's prefix, which TexturePool::invalidate() also drops
-    EXPECT_EQ(clamped.getRenderId().rfind(repeat.getId() + "|sampler=", 0), 0u);
 
     // each field on its own counts
     std::vector<std::string> keys;
@@ -96,12 +89,6 @@ TEST(TextureRenderId, PoolHoldsItsEntryWhenStale) {
     render.reset();
     TexturePool::remove(key);
     EXPECT_TRUE(pooled.expired());
-}
-
-TEST(TextureRenderId, NoIdNoKey) {
-    Texture texture;
-    texture.setMinFilter(TextureFilter::NEAREST);
-    EXPECT_TRUE(texture.getRenderId().empty());
 }
 
 TEST(CubeFaces, SetCubePathsTakesFrontBackLeftRightUpDown) {

@@ -54,16 +54,6 @@ members:
                   foliageTransmission: 0
                   alphaMode: AUTO
                   emissiveFactor: [0, 0, 0]
-                  baseColorTexture:
-                    textureType: 2D
-                    source: path
-                    path: sprites/rock.png
-                    guid: 3d7db38a9143846dc003c29c55eb5c4e
-                    minFilter: linear
-                    magFilter: linear
-                    wrapU: clamp_to_edge
-                    wrapV: clamp_to_edge
-                    releaseDataAfterLoad: true
                   baseColorTexCoord: 0
                   metallicRoughnessTexCoord: 0
                   occlusionTexCoord: 0
@@ -88,7 +78,6 @@ members:
                 hasMorphTangent: false
             normAdjustJoint: 1
             normAdjustWeight: 1
-            morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
             aabb:
               min: [0, 0, 0]
               max: [0, 0, 0]
@@ -149,16 +138,6 @@ members:
                       foliageTransmission: 0
                       alphaMode: AUTO
                       emissiveFactor: [0, 0, 0]
-                      baseColorTexture:
-                        textureType: 2D
-                        source: path
-                        path: sprites/rock.png
-                        guid: 3d7db38a9143846dc003c29c55eb5c4e
-                        minFilter: linear
-                        magFilter: linear
-                        wrapU: clamp_to_edge
-                        wrapV: clamp_to_edge
-                        releaseDataAfterLoad: true
                       baseColorTexCoord: 0
                       metallicRoughnessTexCoord: 0
                       occlusionTexCoord: 0
@@ -183,7 +162,6 @@ members:
                     hasMorphTangent: false
                 normAdjustJoint: 1
                 normAdjustWeight: 1
-                morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
                 aabb:
                   min: [0, 0, 0]
                   max: [0, 0, 0]
@@ -243,16 +221,6 @@ members:
                   foliageTransmission: 0
                   alphaMode: AUTO
                   emissiveFactor: [0, 0, 0]
-                  baseColorTexture:
-                    textureType: 2D
-                    source: path
-                    path: sprites/rock-down.png
-                    guid: 1035926b6b910eaf387e747d96dba4e8
-                    minFilter: linear
-                    magFilter: linear
-                    wrapU: clamp_to_edge
-                    wrapV: clamp_to_edge
-                    releaseDataAfterLoad: true
                   baseColorTexCoord: 0
                   metallicRoughnessTexCoord: 0
                   occlusionTexCoord: 0
@@ -277,7 +245,6 @@ members:
                 hasMorphTangent: false
             normAdjustJoint: 1
             normAdjustWeight: 1
-            morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
             aabb:
               min: [0, 0, 0]
               max: [0, 0, 0]

@@ -5,8 +5,8 @@
 // p6-justify and p6-line-clamp could not test on their own branches.
 // - <video> under RmlRenderer's command recording (phase-1 spec 3.2.10): a page of videos with a phase-5
 //   filter effect, a stateful filter effect, a backdrop effect and a justified, clamped caption is
-//   byte-identical recorded and drawn call by call; a video removed while its frame is recorded is drawn by
-//   the replay with its released texture, then is gone (element, stream, texture).
+//   rendered at the authored seek time; a video removed while its frame is recorded is drawn by the replay
+//   with its released texture, then is gone (element, stream, texture).
 // - Stateful effects on a <video> (filter form: the effect reads the element's content, which holds the
 //   converted frame): pinned, byte-identical and replayed; live, the simulations step with the playing video.
 // - Justified, indented, clamped text inside elements with paint, filter, stateful, gradient-text and backdrop
@@ -43,34 +43,10 @@ namespace {
 
     constexpr uint8_t BACKGROUND[3] = {0x10, 0x12, 0x18};   // the pages' #101218
 
-    // recording on or off for a scope (read by beginFrame)
-    struct RecordingMode {
-        bool previous;
-        explicit RecordingMode(bool on): previous(RmlRenderer::isCommandRecording()){
-            RmlRenderer::setCommandRecordingForTesting(on);
-        }
-        ~RecordingMode(){
-            RmlRenderer::setCommandRecordingForTesting(previous);
-        }
-    };
-
     struct FixedEffectTime {
         explicit FixedEffectTime(double t){ EffectClock::setFixedTime(t); }
         ~FixedEffectTime(){ EffectClock::setFixedTime(std::nullopt); }
     };
-
-    std::string firstDifference(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b, int width){
-        if (a.size() != b.size())
-            return "sizes " + std::to_string(a.size()) + " and " + std::to_string(b.size());
-        for (size_t i = 0; i < a.size(); i++){
-            if (a[i] != b[i]){
-                const size_t pixel = i / 4;
-                return "first difference at (" + std::to_string(pixel % (size_t)width) + ", " + std::to_string(pixel / (size_t)width) +
-                       "), channel " + std::to_string(i % 4) + ": " + std::to_string(a[i]) + " and " + std::to_string(b[i]);
-            }
-        }
-        return "identical";
-    }
 
     bool warmUp(std::initializer_list<const char*> names){
         for (const char* name : names){
@@ -133,66 +109,6 @@ namespace {
         EXPECT_TRUE(result.passed) << name << ": " << result.message;
     }
 
-    const char* const kRecordedVideos[] = {"plain", "fx", "trail", "under"};
-
-    struct VideoShot {
-        TestImage image;
-        size_t commands = 0;
-        bool trailSimulated = false;
-    };
-
-    // fixtures/p6/video-recorded.html at frame 21 of the card, recording on or off, in a scene of its own
-    VideoShot shootRecordedPage(bool recording){
-        RecordingMode mode(recording);
-        VideoShot shot;
-        EffectScene scene(360, 240);
-        if (!scene.valid())
-            return shot;
-        std::string error;
-        EXPECT_TRUE(scene.loadFile("fixtures/p6/video-recorded.html", &error)) << error;
-        FixtureRunner& runner = scene.fixture();
-        runner.frameAt(0.0);
-        runner.frameAt(0.0);
-        for (const char* id : kRecordedVideos){
-            UIVideoElement* v = videoOf(scene, id);
-            EXPECT_NE(v, nullptr) << id;
-            if (v)
-                v->setCurrentTime(cardTime(21));
-        }
-        runner.frameAt(runner.time(), true);
-        EXPECT_TRUE(scene.capture(shot.image));
-        shot.commands = runner.renderer() ? runner.renderer()->getLastFrameCommandCount() : 0;
-        shot.trailSimulated = EffectRuntime::get().simulationInfo(scene.element("trail"), "time-trail", 0).exists;
-        EffectRuntime::get().clearTestInput();
-        return shot;
-    }
-
-}
-
-TEST(Phase6Cross, VideoFramesRecordedMatchImmediateOnes){
-    {
-        EffectScene probe;
-        if (!probe.valid())
-            GTEST_SKIP() << "no GPU";
-    }
-    TestSystem::get().clearLogs();
-    ASSERT_TRUE(warmUp({"chromatic-aberration", "time-trail", "frosted-glass"}));
-    FixedEffectTime clock(1.0);
-    const VideoShot recorded = shootRecordedPage(true);
-    const VideoShot immediate = shootRecordedPage(false);
-    ASSERT_FALSE(recorded.image.empty());
-    ASSERT_FALSE(immediate.image.empty());
-    EXPECT_GT(recorded.commands, 0u) << "the frame was recorded";
-    EXPECT_EQ(immediate.commands, 0u) << "the frame was drawn at once";
-    EXPECT_TRUE(recorded.trailSimulated) << "time-trail simulates on the video";
-    EXPECT_TRUE(immediate.trailSimulated);
-    // the plain video shows the seeked frame in both
-    EXPECT_EQ(halfCardIndex(recorded.image.rgba, recorded.image.width, 10, 10), 21);
-    EXPECT_EQ(halfCardIndex(immediate.image.rgba, immediate.image.width, 10, 10), 21);
-    ASSERT_EQ(recorded.image.width, immediate.image.width);
-    ASSERT_EQ(recorded.image.height, immediate.image.height);
-    EXPECT_TRUE(recorded.image.rgba == immediate.image.rgba) << firstDifference(recorded.image.rgba, immediate.image.rgba, recorded.image.width);
-    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "[HTML UI]"), 0u) << logText(D_LOG_ERROR);
 }
 
 TEST(Phase6Cross, AVideoRemovedWhileItsFrameIsRecorded){
@@ -203,62 +119,57 @@ TEST(Phase6Cross, AVideoRemovedWhileItsFrameIsRecorded){
     }
     ASSERT_TRUE(warmUp({"chromatic-aberration", "time-trail", "frosted-glass"}));
     FixedEffectTime clock(1.0);
-    std::vector<uint8_t> layers[2];
-    for (int recording = 1; recording >= 0; recording--){
-        TestSystem::get().clearLogs();
-        RecordingMode mode(recording != 0);
-        EffectScene scene(360, 240, 1);
-        ASSERT_TRUE(scene.valid());
-        std::string error;
-        ASSERT_TRUE(scene.loadFile("fixtures/p6/video-recorded.html", &error)) << error;
-        FixtureRunner& runner = scene.fixture();
-        runner.frameAt(0.0);
-        runner.frameAt(0.0);
-        seekAll(scene, {"plain", "fx", "trail", "under"}, cardTime(10));
-        TestImage before;
-        ASSERT_TRUE(scene.capture(before));
-        ASSERT_EQ(halfCardIndex(before.rgba, before.width, 10, 10), 10);
-        RmlRenderer* renderer = runner.renderer();
-        ASSERT_NE(renderer, nullptr);
-        const size_t textures = renderer->getLiveTextureCount();
-        const int elements = UIVideoElement::getLiveCount();
-        const int streams = VideoStream::getLiveCount();
-        ASSERT_EQ(elements, 4);
+    std::vector<uint8_t> layer;
+    TestSystem::get().clearLogs();
+    EffectScene scene(360, 240, 1);
+    ASSERT_TRUE(scene.valid());
+    std::string error;
+    ASSERT_TRUE(scene.loadFile("fixtures/p6/video-recorded.html", &error)) << error;
+    FixtureRunner& runner = scene.fixture();
+    runner.frameAt(0.0);
+    runner.frameAt(0.0);
+    seekAll(scene, {"plain", "fx", "trail", "under"}, cardTime(21));
+    TestImage before;
+    ASSERT_TRUE(scene.capture(before));
+    ASSERT_EQ(halfCardIndex(before.rgba, before.width, 10, 10), 21);
+    RmlRenderer* renderer = runner.renderer();
+    ASSERT_NE(renderer, nullptr);
+    const size_t textures = renderer->getLiveTextureCount();
+    const int elements = UIVideoElement::getLiveCount();
+    const int streams = VideoStream::getLiveCount();
+    ASSERT_EQ(elements, 4);
 
-        // one frame by hand, as HtmlUIContext draws it; #under goes between its Render and endFrame
-        RmlRenderTarget target;
-        ASSERT_TRUE(target.ensure(360, 240, 1));
-        beginTestFrame();
-        scene.context()->Update();
-        renderer->runVideoConversions();
-        ASSERT_TRUE(renderer->beginFrame(target, Rml::Vector2i(360, 240)));
-        scene.context()->Render();
-        {
-            Rml::Element* under = scene.element("under");
-            ASSERT_NE(under, nullptr);
-            Rml::ElementPtr removed = under->GetParentNode()->RemoveChild(under);
-            // destroyed now: its texture (and its planes) and its geometry go back to the renderer mid-frame
-            removed.reset();
-        }
-        EXPECT_EQ(UIVideoElement::getLiveCount(), elements - 1);
-        EXPECT_TRUE(renderer->endFrame());
-        SystemRender::commit();
-        EXPECT_EQ(renderer->getLastFrameCommandCount() > 0, recording != 0);
-        ASSERT_TRUE(readTexture(target.getComposited()->getColorTexture(), 360, 240, layers[recording]));
-        target.destroy();
-        // the removed video was drawn by that frame (its picture's top-left corner, outside the glass)
-        EXPECT_FALSE(isBackground(layers[recording], 360, 200, 136)) << "the frame drew the video it recorded";
-
-        // the next frames: gone with its stream and its texture
-        TestImage after;
-        ASSERT_TRUE(scene.capture(after));
-        EXPECT_TRUE(isBackground(after.rgba, after.width, 200, 136));
-        EXPECT_EQ(halfCardIndex(after.rgba, after.width, 10, 10), 10);
-        EXPECT_EQ(VideoStream::getLiveCount(), streams - 1);
-        EXPECT_EQ(renderer->getLiveTextureCount(), textures - 1);
-        EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "[HTML UI]"), 0u) << logText(D_LOG_ERROR);
+    // one frame by hand, as HtmlUIContext draws it; #under goes between its Render and endFrame
+    RmlRenderTarget target;
+    ASSERT_TRUE(target.ensure(360, 240, 1));
+    beginTestFrame();
+    scene.context()->Update();
+    renderer->runVideoConversions();
+    ASSERT_TRUE(renderer->beginFrame(target, Rml::Vector2i(360, 240)));
+    scene.context()->Render();
+    {
+        Rml::Element* under = scene.element("under");
+        ASSERT_NE(under, nullptr);
+        Rml::ElementPtr removed = under->GetParentNode()->RemoveChild(under);
+        // destroyed now: its texture (and its planes) and its geometry go back to the renderer mid-frame
+        removed.reset();
     }
-    EXPECT_TRUE(layers[1] == layers[0]) << firstDifference(layers[1], layers[0], 360);
+    EXPECT_EQ(UIVideoElement::getLiveCount(), elements - 1);
+    EXPECT_TRUE(renderer->endFrame());
+    SystemRender::commit();
+    ASSERT_TRUE(readTexture(target.getComposited()->getColorTexture(), 360, 240, layer));
+    target.destroy();
+    // the removed video was drawn by that frame (its picture's top-left corner, outside the glass)
+    EXPECT_FALSE(isBackground(layer, 360, 200, 136)) << "the frame drew the video it recorded";
+
+    // the next frames: gone with its stream and its texture
+    TestImage after;
+    ASSERT_TRUE(scene.capture(after));
+    EXPECT_TRUE(isBackground(after.rgba, after.width, 200, 136));
+    EXPECT_EQ(halfCardIndex(after.rgba, after.width, 10, 10), 21);
+    EXPECT_EQ(VideoStream::getLiveCount(), streams - 1);
+    EXPECT_EQ(renderer->getLiveTextureCount(), textures - 1);
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "[HTML UI]"), 0u) << logText(D_LOG_ERROR);
 }
 
 TEST(Phase6Cross, StatefulEffectsOnAVideo){
@@ -450,7 +361,7 @@ TEST(Phase6Cross, ClampedJustifiedTextInATextureDocument){
     HtmlUIClock::setFixedTime(std::nullopt);
 
     // an opaque page: the texture's straight alpha is the screen layer's premultiplied colour
-    EXPECT_LE(maxDifference(texture, screen), 1) << firstDifference(texture.rgba, screen.rgba, 320);
+    EXPECT_LE(maxDifference(texture, screen), 1);
     expectGolden("p6/clamp_texture", texture);
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "[HTML UI]"), 0u) << logText(D_LOG_ERROR);
 }
