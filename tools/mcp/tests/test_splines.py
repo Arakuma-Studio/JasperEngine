@@ -10,6 +10,7 @@ Runs in one new project; tests run in order and share the editor.
 
 from __future__ import annotations
 
+import difflib
 import importlib.util
 import math
 import sys
@@ -184,7 +185,9 @@ async def test_round_trip(ed: Editor):
     s["scene"] = find_key(opened, "id")
     await ed.call("save_scene", scene=s["scene"])
     second = (ed.project / "scenes/Roads.scene").read_text()
-    ed.check(first == second, "saved, reloaded and saved again: byte-identical")
+    if first != second:
+        diff = "".join(difflib.unified_diff(first.splitlines(True), second.splitlines(True), "first", "second", n=2))
+        ed.fail(f"saved, reloaded and saved again: byte-identical, but:\n{diff[:3000]}")
 
     # a scene as an editor before S18 wrote it: format 3, the same content
     older = await ed.call("create_scene", name="Before", type="3D", path="scenes/Before")

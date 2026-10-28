@@ -1413,12 +1413,20 @@ void SplineSystem::updateCollision(Entity entity, Resolve& resolve, const Spline
     const Transform* transform = scene->findComponent<Transform>(entity);
     std::shared_ptr<PhysicsSystem> physics = scene->findSystem<PhysicsSystem>();
     if (wanted == SplineCollision::Chain2D && spline && transform && physics && spline->spline.isValid()){
-        // the centreline in world XY, simplified, cut into chains of MAX_COLLIDER_POINTS_2D
-        // points (one shared with the next chain), MAX_COLLIDERS_2D chains a body
+        // The centreline in world XY as Box2D chains, collided from both sides like Unity's
+        // EdgeCollider2D. A Box2D chain is one-sided (its right) and an open one does not collide
+        // on its first and last edge, so: every chain is made twice, the second reversed; the
+        // line gets a ghost point beyond each open end (a loop: its neighbours across the seam);
+        // it is cut into chains of at most MAX_COLLIDER_POINTS_2D points overlapping by three
+        // (Box2D's smooth join, every edge an inner edge of one chain); MAX_COLLIDERS_2D chains
+        // a body. Points stay farther apart than twice Box2D's linear slop.
         const float scale = largestScale(*transform);
+        const float pointsPerMetre = physics->getPointsToMeterScale2D();
+        const float minGap = 2.0f * 0.005f * pointsPerMetre;
         std::vector<spline::SplineFrame> frames;
-        const float length = spline::length(spline->spline);
-        const uint32_t samples = std::max<uint32_t>(2u, static_cast<uint32_t>(std::ceil(length / 0.25f)) + 1u);
+        const float length = spline::length(spline->spline) * scale;
+        const float spacing = std::max(0.05f * pointsPerMetre, minGap);
+        const uint32_t samples = std::max<uint32_t>(2u, std::min<uint32_t>(20000u, static_cast<uint32_t>(std::ceil(length / spacing)) + 1u));
         spline::sampleUniform(spline->spline, samples, frames);
         std::vector<Vector3> points;
         points.reserve(frames.size());
@@ -1430,22 +1438,44 @@ void SplineSystem::updateCollision(Entity entity, Resolve& resolve, const Spline
             points.pop_back();
         }
         std::vector<uint32_t> kept;
-        spline::simplifyIndices(points, 0.01f * scale, kept);
-        std::vector<Vector2> chain;
-        chain.reserve(kept.size() + 1);
+        spline::simplifyIndices(points, 0.002f * pointsPerMetre, kept);
+        std::vector<Vector2> line;
+        line.reserve(kept.size() + 3);
         for (uint32_t k : kept){
-            chain.push_back(Vector2(points[k].x, points[k].y));
+            const Vector2 p(points[k].x, points[k].y);
+            if (line.empty() || (p - line.back()).length() > minGap){
+                line.push_back(p);
+            }
         }
-        if (loop && chain.size() >= 3){
-            chain.push_back(chain.front());
+        if (loop){
+            while (line.size() > 2 && (line.front() - line.back()).length() <= minGap){
+                line.pop_back();
+            }
         }
-        const size_t perChain = MAX_COLLIDER_POINTS_2D;
+        const bool usable = loop ? line.size() >= 3 : line.size() >= 2;
+        std::vector<Vector2> chain;
+        if (usable){
+            if (loop){
+                // [last, all, first, second]: every edge of the loop is an inner edge
+                chain.push_back(line.back());
+                chain.insert(chain.end(), line.begin(), line.end());
+                chain.push_back(line[0]);
+                chain.push_back(line[1]);
+            }else{
+                const Vector2 headStep = line[0] - line[1];
+                const Vector2 tailStep = line[line.size() - 1] - line[line.size() - 2];
+                chain.push_back(line[0] + headStep);
+                chain.insert(chain.end(), line.begin(), line.end());
+                chain.push_back(line.back() + tailStep);
+            }
+        }
+        const size_t perChain = std::max<size_t>(4, MAX_COLLIDER_POINTS_2D);
         size_t start = 0;
         Entity bodyEntity = NULL_ENTITY;
         int chainsInBody = MAX_COLLIDERS_2D;
-        while (start + 1 < chain.size()){
+        while (chain.size() >= 4 && start + 3 < chain.size()){
             const size_t end = std::min(chain.size(), start + perChain);
-            if (chainsInBody >= MAX_COLLIDERS_2D){
+            if (chainsInBody + 2 > MAX_COLLIDERS_2D){
                 bodyEntity = scene->createEntity();
                 scene->addComponent<Transform>(bodyEntity);
                 generatedOwners[bodyEntity] = entity;
@@ -1456,8 +1486,13 @@ void SplineSystem::updateCollision(Entity entity, Resolve& resolve, const Spline
             }
             std::vector<Vector2> part(chain.begin() + static_cast<std::ptrdiff_t>(start), chain.begin() + static_cast<std::ptrdiff_t>(end));
             Rigidbody2D(scene, bodyEntity).createChainCollider(part, false);
-            chainsInBody++;
-            start = end - 1;
+            std::reverse(part.begin(), part.end());
+            Rigidbody2D(scene, bodyEntity).createChainCollider(part, false);
+            chainsInBody += 2;
+            if (end == chain.size()){
+                break;
+            }
+            start = end - 3;
         }
     }
 #endif

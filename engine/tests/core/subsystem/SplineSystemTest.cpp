@@ -15,7 +15,13 @@
 #include "component/SplineExtrudeComponent.h"
 #include "component/Transform.h"
 #include "object/spline/Spline.h"
+#include "spline/SplineEvaluator.h"
 #include "subsystem/SplineSystem.h"
+#ifdef JASPERENGINE_PHYSICS_2D
+#include "component/Rigidbody2DComponent.h"
+#include "subsystem/PhysicsSystem.h"
+#include "../ecs/EcsTestUtil.h"
+#endif
 
 #include <gtest/gtest.h>
 
@@ -296,3 +302,60 @@ TEST_F(SplineSystemTest, RoadFixtureVerticesAreDeterministic){
     EXPECT_EQ(vertexHash(owner), first);
     EXPECT_EQ(first, ROAD_FIXTURE_VERTEX_HASH) << "the road fixture's vertices changed: 0x" << std::hex << first;
 }
+
+#ifdef JASPERENGINE_PHYSICS_2D
+// R13, AC14: a 2D edge with Chain2D collision is a static Box2D chain a ball comes to rest on
+TEST_F(SplineSystemTest, AnEdgeWithChain2DCarriesABall){
+    constexpr float DT = 1.0f / 60.0f;
+    test::disableSubSystems(*scene);
+    scene->getScheduler().setEnabled("PhysicsSystem", true);
+    std::shared_ptr<PhysicsSystem> physics = scene->getSystem<PhysicsSystem>();
+    physics->setPointsToMeterScale2D(64.0f);
+    physics->setGravity2D(0.0f, -9.81f);
+
+    const Entity edge = road(3, 200.0f, SplineExtrudeShape::Flat);
+    SplineComponent& spline = scene->getComponent<SplineComponent>(edge);
+    spline.spline.setUpAxis(Vector3(0.0f, 0.0f, 1.0f));
+    std::vector<spline::SplineKnot> knots;
+    for (float x : {-200.0f, 0.0f, 200.0f}){
+        spline::SplineKnot knot;
+        knot.position = Vector3(x, x == 0.0f ? -110.0f : -100.0f, 0.0f);
+        knot.radius = 4.0f;
+        knots.push_back(knot);
+    }
+    spline.spline.setKnots(knots);
+    scene->getComponent<SplineExtrudeComponent>(edge).collision = SplineCollision::Chain2D;
+
+    const Entity ball = scene->createEntity();
+    scene->addComponent<Transform>(ball, {});
+    Transform& transform = scene->getComponent<Transform>(ball);
+    transform.position = Vector3(0.0f, 50.0f, 0.0f);
+    transform.needUpdate = true;
+    Rigidbody2DComponent body;
+    body.type = BodyType::DYNAMIC;
+    body.colliders[0].type = Collider2DType::CIRCLE;
+    body.colliders[0].radius = 10.0f;
+    body.numColliders = 1;
+    scene->addComponent<Rigidbody2DComponent>(ball, body);
+
+    for (int frame = 0; frame < 240; frame++){
+        system->update(DT);
+        scene->fixedUpdate(DT);
+    }
+    std::vector<Entity> chainBodies;
+    for (Entity generated : system->getGeneratedEntities(edge)){
+        if (scene->findComponent<Rigidbody2DComponent>(generated)){
+            chainBodies.push_back(generated);
+        }
+    }
+    ASSERT_FALSE(chainBodies.empty()) << "no chain body";
+    const Rigidbody2DComponent& chain = scene->getComponent<Rigidbody2DComponent>(chainBodies[0]);
+    EXPECT_EQ(chain.type, BodyType::STATIC);
+    ASSERT_GE(chain.numColliders, 1u);
+    EXPECT_EQ(chain.colliders[0].type, Collider2DType::CHAIN);
+    // resting on the curve under it (its lowest point -110 at x = 0): centre one radius above
+    const float y = scene->getComponent<Transform>(ball).worldPosition.y;
+    const spline::SplineHit under = spline::closestPoint(spline.spline, Vector3(0.0f, y, 0.0f));
+    EXPECT_NEAR(y, under.position.y + 10.0f, 1.5f) << "the ball fell to " << y;
+}
+#endif

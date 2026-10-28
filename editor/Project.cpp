@@ -2853,6 +2853,24 @@ void editor::Project::calculateSceneMaxValues(const SceneProject* sceneProject, 
         return;
     }
 
+    // what the splines build is counted as built: a scene saved right after it loaded (before a
+    // frame ran SplineSystem) gets the same values as after
+    if (std::shared_ptr<SplineSystem> splines = sceneProject->scene->findSystem<SplineSystem>()) {
+        auto splineArray = sceneProject->scene->getComponentArray<SplineComponent>();
+        std::vector<Entity> owners;
+        for (size_t i = 0; i < splineArray->size(); ++i) {
+            const Entity owner = splineArray->getEntity(i);
+            if ((sceneProject->scene->findComponent<SplineExtrudeComponent>(owner) ||
+                 sceneProject->scene->findComponent<SplineInstantiateComponent>(owner)) &&
+                (splines->isRebuildPending(owner) || splines->getGeneratedEntities(owner).empty())) {
+                owners.push_back(owner);
+            }
+        }
+        for (Entity owner : owners) {
+            splines->rebuildNow(owner);
+        }
+    }
+
     auto meshes = sceneProject->scene->getComponentArray<MeshComponent>();
     for (size_t i = 0; i < meshes->size(); ++i) {
         const MeshComponent& mesh = meshes->getComponentFromIndex(i);
@@ -2882,6 +2900,18 @@ void editor::Project::calculateSceneMaxValues(const SceneProject* sceneProject, 
     for (size_t i = 0; i < models->size(); ++i) {
         const ModelComponent& model = models->getComponentFromIndex(i);
         addModelFile(model.filename, model.mergeStaticMeshes);
+    }
+
+    // Spline Instantiate model pools (their pieces are merged models), also where none loaded
+    auto instantiates = sceneProject->scene->getComponentArray<SplineInstantiateComponent>();
+    for (size_t i = 0; i < instantiates->size(); ++i) {
+        const SplineInstantiateComponent& instantiate = instantiates->getComponentFromIndex(i);
+        for (const std::vector<SplinePoolEntry>* pool : {&instantiate.items, &instantiate.posts, &instantiate.spans,
+                                                         &instantiate.gates, &instantiate.crests, &instantiate.caps}) {
+            for (const SplinePoolEntry& entry : *pool) {
+                addModelFile(entry.asset.path, true);
+            }
+        }
     }
 
     // foliage chunks are merged models
