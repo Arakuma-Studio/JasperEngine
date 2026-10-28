@@ -80,7 +80,12 @@ public:
 	CompiledFilter CompileFilter(const String& name, const Dictionary& parameters);
 	CompiledShader CompileShader(const String& name, const Dictionary& parameters);
 
+	/// A layer covering the region of the top layer (Fork, P7-F2: GetLayerRegion).
 	LayerHandle PushLayer();
+	/// Fork (P7-F2): a layer covering 'region' (window coordinates), which may extend beyond the viewport
+	/// (RenderInterface::PushLayerRegion): an ordinary layer when it lies within the viewport or the render interface does
+	/// not support it. GetLayerRegion() then returns what it covers.
+	LayerHandle PushLayer(Rectanglei region);
 	void CompositeLayers(LayerHandle source, LayerHandle destination, BlendMode blend_mode, Span<const CompiledFilterHandle> filters);
 	void PopLayer();
 
@@ -101,8 +106,17 @@ public:
 	/// Its window (window coordinates), invalid when unbounded.
 	Rectanglei GetClipRootWindow() const { return clip_roots.empty() ? Rectanglei::MakeInvalid() : clip_roots.back().window; }
 
+	/// Fork (P7-F2): the region the top layer covers (window coordinates): the viewport, or the region of a layer pushed
+	/// with PushLayer(region) beyond it, and of the layers pushed on it. Scissor regions are clamped to it.
+	Rectanglei GetLayerRegion() const;
+	/// Fork (P7-F2): a callback texture's content is drawn at the texture's origin into layers the size of the viewport,
+	/// whichever layer is the top one when it is generated (used by the texture database around the callback).
+	void BeginTextureGeneration();
+	void EndTextureGeneration();
+
 private:
 	void ApplyClipMask(const ClipMaskGeometryList& clip_elements);
+	LayerHandle PushLayerInRegion(Rectanglei region);
 
 	StableVectorIndex InsertGeometry(Mesh&& mesh);
 	CompiledGeometryHandle GetCompiledGeometryHandle(StableVectorIndex index);
@@ -138,6 +152,9 @@ private:
 	Vector2i viewport_dimensions;
 
 	Vector<LayerHandle> render_stack;
+	// Fork (P7-F2): the region of each pushed layer, and the viewport for each texture generation in progress (invalid:
+	// the viewport).
+	Vector<Rectanglei> layer_regions;
 
 	struct ClipRoot {
 		const Element* element;
