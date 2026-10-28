@@ -324,7 +324,9 @@ void anim::collectCrossedEvents(const AnimationClip& clip, ClipWrapMode wrap, fl
     if (fromTime == toTime && !includeStart) return;
     const bool cyclic = (wrap == ClipWrapMode::Loop || wrap == ClipWrapMode::PingPong) && length > 0.0;
 
-    std::vector<RankedEvent> crossed;
+    // per thread and kept: a crossing allocates nothing once warm (the Animator's wave, S21 R19)
+    thread_local std::vector<RankedEvent> crossed;
+    crossed.clear();
     if (!cyclic){
         // once / clamp_forever: the time line is the clip itself
         const double from = std::min(std::max((double)fromTime, 0.0), length);

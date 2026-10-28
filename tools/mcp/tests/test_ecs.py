@@ -23,7 +23,7 @@ EVIDENCE = Path(__file__).resolve().parents[3] / "build" / "evidence"
 SYSTEMS = ["ActionSystem", "MeshSystem", "UISystem", "UIDocumentSystem", "RenderSystem", "PhysicsSystem", "ParticleSubsystem", "AudioSystem"]
 # every scene system in schedule order: upstream's pose animator, lattice deformer and fluid
 # simulation systems too (the timing checks stay on SYSTEMS: those have nothing to do in these scenes)
-ALL_SYSTEMS = ["ActionSystem", "PoseAnimatorSystem", "MeshSystem", "LatticeSystem", "UISystem", "UIDocumentSystem", "FluidSystem", "RenderSystem",
+ALL_SYSTEMS = ["ActionSystem", "AnimatorSystem", "PoseAnimatorSystem", "MeshSystem", "LatticeSystem", "UISystem", "UIDocumentSystem", "FluidSystem", "RenderSystem",
                "PhysicsSystem", "ParticleSubsystem", "AudioSystem"]
 
 

@@ -3,6 +3,8 @@
 
 #include "AnimationClipIO.h"
 
+#include "animation/AnimatorAssetIO.h"
+
 #include "Engine.h"
 #include "json.hpp"
 
@@ -1489,7 +1491,8 @@ static anim::ClipParseResult parseClipText(const std::string& text){
             data.source = source;
         }else{
             data.unknownKeys.push_back({name, value.dump(-1, ' ', false, OJson::error_handler_t::replace)});
-            unknownNames += (unknownNames.empty() ? "" : ", ") + name;
+            // the Animator's members (root_motion, editor: S21) are kept without a warning
+            if (!isClipExtensionKey(name)) unknownNames += (unknownNames.empty() ? "" : ", ") + name;
         }
     }
     if (!unknownNames.empty()){

@@ -95,6 +95,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<BuoyancyComponent>(ComponentOrder::Insertion, "BuoyancyComponent");
     registerComponent<PoseAnimatorComponent>(ComponentOrder::Insertion, "PoseAnimatorComponent");
     registerComponent<AnimationPlayerComponent>(ComponentOrder::Insertion, "AnimationPlayerComponent");
+    registerComponent<AnimatorComponent>(ComponentOrder::Insertion, "AnimatorComponent");
 
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());

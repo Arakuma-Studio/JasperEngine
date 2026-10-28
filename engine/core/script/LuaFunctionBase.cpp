@@ -162,6 +162,11 @@ void LuaFunctionBase::push_value(lua_State *vm, Vector3 o){
         throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
 }
 
+void LuaFunctionBase::push_value(lua_State *vm, Quaternion o){
+    if (!luabridge::push<Quaternion>(vm, o))
+        throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
+}
+
 // {position = Vector3, normal = Vector3, velocity = Vector3, particleId = n, killed = b}, ...
 void LuaFunctionBase::push_value(lua_State *vm, const std::vector<ParticleCollisionInfo>& events){
     lua_createtable(vm, (int)events.size(), 0);

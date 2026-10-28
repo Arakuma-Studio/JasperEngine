@@ -75,6 +75,7 @@
 #include "component/LatticeTracksComponent.h"
 #include "component/ReflectionProbeComponent.h"
 #include "component/PoseAnimatorComponent.h"
+#include "component/AnimatorComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/ModelComponent.h"
 #include "component/MorphTracksComponent.h"
@@ -223,6 +224,7 @@
 
 #include "subsystem/ActionSystem.h"
 #include "subsystem/PoseAnimatorSystem.h"
+#include "subsystem/AnimatorSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/FluidSystem.h"
 #include "subsystem/MeshSystem.h"

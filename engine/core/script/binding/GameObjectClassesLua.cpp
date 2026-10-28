@@ -34,6 +34,7 @@
 #include "Model.h"
 #include "PoseAnimator.h"
 #include "AnimationPlayer.h"
+#include "Animator.h"
 #include "animation/AnimationEvent.h"
 #include "MeshPolygon.h"
 #include "Points.h"
@@ -626,6 +627,20 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             Scene* scene = self->getScene();
             return scene && scene->isEntityCreated(self->getEntity()) &&
                    scene->findComponent<AnimationPlayerComponent>(self->getEntity()) != nullptr;
+        })
+        // the Animator of the GameObject, nil when it has none (Animator(scene, entity) adds one)
+        .addFunction("getAnimator", +[](GameObject* self) -> std::optional<Animator> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
+                !scene->findComponent<AnimatorComponent>(self->getEntity())){
+                return std::nullopt;
+            }
+            return Animator(scene, self->getEntity());
+        })
+        .addFunction("hasAnimator", +[](GameObject* self) -> bool {
+            Scene* scene = self->getScene();
+            return scene && scene->isEntityCreated(self->getEntity()) &&
+                   scene->findComponent<AnimatorComponent>(self->getEntity()) != nullptr;
         })
         .endClass();
 
@@ -2200,6 +2215,97 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         // a function called with the state name when a once state ends (or a clamp_forever one first reaches its end)
         .addProperty("onFinish", [] (AnimationPlayer* self, lua_State*) { return &self->getOnFinish(); }, [] (AnimationPlayer* self, lua_State* L) { self->getOnFinish() = L; })
         .addFunction("getAnimationPlayerComponent", &AnimationPlayer::getComponent<AnimationPlayerComponent>)
+        .endClass();
+
+    // a layer's current or next state (Animator:getCurrentState / getNextState)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<AnimatorStateInfo>("AnimatorStateInfo")
+        .addProperty("valid", &AnimatorStateInfo::valid)
+        .addProperty("name", &AnimatorStateInfo::name)
+        .addProperty("fullPath", &AnimatorStateInfo::fullPath)
+        .addProperty("tag", &AnimatorStateInfo::tag)
+        .addProperty("normalizedTime", &AnimatorStateInfo::normalizedTime)
+        .addProperty("length", &AnimatorStateInfo::length)
+        .addProperty("loop", &AnimatorStateInfo::loop)
+        .endClass();
+
+    // Unity's Animator: an Animator Controller's parameters, states, layers, montages, IK and root motion
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<Animator, EntityHandle>("Animator")
+        .addConstructor <void (*) (Scene*, Entity)> ()
+        .addProperty("controller", &Animator::getController, &Animator::setController)
+        .addFunction("isLoaded", &Animator::isLoaded)
+        .addFunction("setFloat",
+            luabridge::overload<const std::string&, float>(&Animator::setFloat),
+            luabridge::overload<const std::string&, float, float, float>(&Animator::setFloat))
+        .addFunction("getFloat", &Animator::getFloat)
+        .addFunction("setInteger", &Animator::setInteger)
+        .addFunction("getInteger", &Animator::getInteger)
+        .addFunction("setBool", &Animator::setBool)
+        .addFunction("getBool", &Animator::getBool)
+        .addFunction("setTrigger", &Animator::setTrigger)
+        .addFunction("resetTrigger", &Animator::resetTrigger)
+        .addFunction("getParameterIndex", &Animator::getParameterIndex)
+        .addFunction("getParameterCount", &Animator::getParameterCount)
+        .addFunction("getParameterName", &Animator::getParameterName)
+        .addFunction("play",
+            luabridge::overload<const std::string&>(&Animator::play),
+            luabridge::overload<const std::string&, int>(&Animator::play),
+            luabridge::overload<const std::string&, int, float>(&Animator::play))
+        .addFunction("crossFade",
+            luabridge::overload<const std::string&, float>(&Animator::crossFade),
+            luabridge::overload<const std::string&, float, int>(&Animator::crossFade),
+            luabridge::overload<const std::string&, float, int, float>(&Animator::crossFade))
+        .addFunction("crossFadeInFixedTime",
+            luabridge::overload<const std::string&, float>(&Animator::crossFadeInFixedTime),
+            luabridge::overload<const std::string&, float, int>(&Animator::crossFadeInFixedTime),
+            luabridge::overload<const std::string&, float, int, float>(&Animator::crossFadeInFixedTime))
+        .addFunction("getCurrentState", &Animator::getCurrentState)
+        .addFunction("getNextState", &Animator::getNextState)
+        .addFunction("isInTransition", &Animator::isInTransition)
+        .addFunction("getLayerCount", &Animator::getLayerCount)
+        .addFunction("getLayerName", &Animator::getLayerName)
+        .addFunction("getLayerIndex", &Animator::getLayerIndex)
+        .addFunction("setLayerWeight", &Animator::setLayerWeight)
+        .addFunction("getLayerWeight", &Animator::getLayerWeight)
+        .addFunction("playMontage",
+            luabridge::overload<const std::string&>(&Animator::playMontage),
+            luabridge::overload<const std::string&, float>(&Animator::playMontage),
+            luabridge::overload<const std::string&, float, const std::string&>(&Animator::playMontage))
+        .addFunction("stopMontage",
+            luabridge::overload<>(&Animator::stopMontage),
+            luabridge::overload<float>(&Animator::stopMontage))
+        .addFunction("isMontagePlaying", &Animator::isMontagePlaying)
+        .addFunction("getMontage", &Animator::getMontage)
+        .addFunction("getMontageSection", &Animator::getMontageSection)
+        .addFunction("montageJumpToSection", &Animator::montageJumpToSection)
+        .addFunction("montageSetNextSection", &Animator::montageSetNextSection)
+        .addFunction("setIKTarget",
+            luabridge::overload<const std::string&, const Vector3&>(&Animator::setIKTarget),
+            luabridge::overload<const std::string&, const Vector3&, float>(&Animator::setIKTarget))
+        .addFunction("clearIKTarget", &Animator::clearIKTarget)
+        .addFunction("setIKWeight", &Animator::setIKWeight)
+        .addFunction("setLookAt",
+            luabridge::overload<const Vector3&>(&Animator::setLookAt),
+            luabridge::overload<const Vector3&, float>(&Animator::setLookAt))
+        .addFunction("hasBone", &Animator::hasBone)
+        .addFunction("getBonePosition", &Animator::getBonePosition)
+        .addFunction("getBoneRotation", &Animator::getBoneRotation)
+        .addProperty("speed", &Animator::getSpeed, &Animator::setSpeed)
+        .addProperty("applyRootMotion", &Animator::isApplyRootMotion, &Animator::setApplyRootMotion)
+        .addFunction("getDeltaPosition", &Animator::getDeltaPosition)
+        .addFunction("getDeltaRotation", &Animator::getDeltaRotation)
+        .addFunction("isHumanoid", &Animator::isHumanoid)
+        // a function called with an AnimationEvent when an event fires
+        .addProperty("onEvent", [] (Animator* self, lua_State*) { return &self->getOnEvent(); }, [] (Animator* self, lua_State* L) { self->getOnEvent() = L; })
+        // functions called with (layer name, state full path)
+        .addProperty("onStateEnter", [] (Animator* self, lua_State*) { return &self->getOnStateEnter(); }, [] (Animator* self, lua_State* L) { self->getOnStateEnter() = L; })
+        .addProperty("onStateExit", [] (Animator* self, lua_State*) { return &self->getOnStateExit(); }, [] (Animator* self, lua_State* L) { self->getOnStateExit() = L; })
+        // a function called with (montage path, interrupted) when a montage ends
+        .addProperty("onMontageEnded", [] (Animator* self, lua_State*) { return &self->getOnMontageEnded(); }, [] (Animator* self, lua_State* L) { self->getOnMontageEnded() = L; })
+        // a function called with (delta position, delta rotation) in world space: root motion is then not applied
+        .addProperty("onAnimatorMove", [] (Animator* self, lua_State*) { return &self->getOnAnimatorMove(); }, [] (Animator* self, lua_State* L) { self->getOnAnimatorMove() = L; })
+        .addFunction("getAnimatorComponent", &Animator::getComponent<AnimatorComponent>)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

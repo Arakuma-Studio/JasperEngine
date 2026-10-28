@@ -22,6 +22,8 @@ namespace jasperengine{
         Entity mesh = NULL_ENTITY;
         std::vector<Entity> joints;
         std::vector<Matrix4> inverseBindMatrices;
+        // runtime: an Animator writes this skin's matrices (RenderSystem skips it; S21 R21)
+        bool animatorDriven = false;
     };
 
     struct JASPERENGINE_API ModelComponent{
