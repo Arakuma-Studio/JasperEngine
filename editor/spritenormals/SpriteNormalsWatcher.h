@@ -24,6 +24,7 @@
 #include <condition_variable>
 #include <mutex>
 #include <map>
+#include <set>
 #include <memory>
 #include <string>
 #include <vector>
@@ -62,8 +63,14 @@ namespace jasperengine::editor {
         // index does not know it as one
         bool generatedInfo(const std::filesystem::path& output, std::string& source, std::string& role) const;
         // A file was written or changed: the next scan reads it again, soon (also waking a project
-        // whose last walk found no generated map)
+        // whose last walk found no generated map, even when a scan is running meanwhile)
         void invalidate(const std::filesystem::path& path);
+        // whether the next walk would read `path` (a .png inside the project, not in a hidden or
+        // build directory: the scan's own rules)
+        bool wouldIndex(const std::filesystem::path& path) const;
+        // The Project window shows a generated PNG: a dormant watcher that has not indexed it walks
+        // the project again, once per path (a path the walk never reaches can't wake it again)
+        void noticeGenerated(const std::filesystem::path& path);
         // whether the last walk found no generated map: no walk until invalidate (or the slow
         // fallback)
         bool dormant() const { return idleScans > 0; }
@@ -113,6 +120,8 @@ namespace jasperengine::editor {
         std::shared_ptr<std::atomic<int>> hashCount = std::make_shared<std::atomic<int>>(0);
         bool pausedForPlay = false;
         bool failNextScan = false;                // tests: the next scan throws on its thread
+        bool wakePending = false;                 // invalidate() while a scan ran: its result wakes
+        std::set<std::filesystem::path> noticed;  // the paths noticeGenerated woke the watcher for
 
         // auto-regenerate: one at a time, a change during a run re-queues
         std::deque<std::filesystem::path> queue;

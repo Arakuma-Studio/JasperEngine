@@ -439,3 +439,47 @@ TEST(SpriteNormalsWatcher, AFailedScanKeepsTheIndexAndHugeSourcesAreNotRead) {
     EXPECT_TRUE(watcher.isStale(map));
     EXPECT_EQ(Access::hashes(watcher), hashed) << "not hashed (not read)";
 }
+
+// A wake while a scan runs is not lost: the scan (it may have read the project before the write)
+// does not make the watcher dormant, and the next walk comes soon; the Project window's notice of a
+// generated PNG wakes a dormant watcher once per path, and only for paths a walk reads
+TEST(SpriteNormalsWatcher, AWakeDuringAScanIsKeptAndNoticesWakeOncePerPath) {
+    const std::string dir = fresh("wake");
+    writePng(dir + "/plain.png", disk(16, 40));
+    project()->getSpriteNormalsSettings().autoRegenerate = false;
+    SpriteNormalsWatcher watcher(project());
+    Access::scan(watcher);
+    ASSERT_TRUE(watcher.dormant()) << "no generated map";
+
+    // a scan in flight (started, not collected), then a write
+    Access::startScan(watcher);
+    ASSERT_TRUE(Access::scanning(watcher));
+    watcher.invalidate(root() / dir / "hero_normal.png");
+    {
+        const auto job = Access::job(watcher);
+        std::unique_lock<std::mutex> lock(job->mutex);
+        job->finished.wait(lock, [&job]() { return job->done.load(); });
+    }
+    watcher.tick();   // collects it
+    EXPECT_FALSE(Access::scanning(watcher));
+    EXPECT_FALSE(watcher.dormant()) << "the wake during the scan holds";
+    EXPECT_EQ(Access::interval(watcher), 5.0);
+    Access::scan(watcher);
+    EXPECT_TRUE(watcher.dormant()) << "the next walk found no generated map either";
+
+    // notices: only paths a walk reads, each once
+    EXPECT_TRUE(watcher.wouldIndex(root() / dir / "a_normal.png"));
+    EXPECT_TRUE(watcher.wouldIndex(root() / dir / "sub/../b_normal.PNG"));
+    EXPECT_FALSE(watcher.wouldIndex(root() / ".hidden" / "a_normal.png"));
+    EXPECT_FALSE(watcher.wouldIndex(root() / "build" / "a_normal.png"));
+    EXPECT_FALSE(watcher.wouldIndex(root() / dir / "a_normal.jpg"));
+    EXPECT_FALSE(watcher.wouldIndex(root().parent_path() / "elsewhere" / "a_normal.png"));
+    watcher.noticeGenerated(root() / ".hidden" / "a_normal.png");
+    EXPECT_TRUE(watcher.dormant()) << "a path the walk never reads does not wake it";
+    watcher.noticeGenerated(root() / dir / "copied_normal.png");
+    EXPECT_FALSE(watcher.dormant()) << "a generated PNG the index doesn't know";
+    Access::scan(watcher);
+    ASSERT_TRUE(watcher.dormant());
+    watcher.noticeGenerated(root() / dir / "copied_normal.png");
+    EXPECT_TRUE(watcher.dormant()) << "the same path does not wake it again";
+}

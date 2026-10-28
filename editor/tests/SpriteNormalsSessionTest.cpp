@@ -24,6 +24,7 @@
 #include "mcp/McpServer.h"
 #include "mcp/tools/SpriteNormalsSheetWrite.h"
 #include "spritenormals/SpriteNormalsSession.h"
+#include "spritenormals/SpriteNormalsWatcher.h"
 #include "texsynth/SynthesisRecipe.h"
 #include "texsynth/SynthesisSession.h"
 
@@ -543,6 +544,86 @@ namespace {
         std::exit(0);
     }
 
+}
+
+namespace {
+
+    // the App's watcher, ticked until its walk ends dormant (no generated map) or not; false on time out
+    bool settleWatcher(SpriteNormalsWatcher& watcher, bool dormant) {
+        for (int i = 0; i < 2000; i++) {
+            watcher.tick();
+            if (watcher.dormant() == dormant && i > 2) return true;
+            usleep(5000);
+        }
+        return false;
+    }
+
+    // In a child process (the App with its watcher, the MCP server): the undoable write, its undo
+    // and its redo each wake the watcher (writeOutputsUndoable, and the write command's file sync)
+    void watcherWakesInTheEditor(const fs::path& dir) {
+        App& app = Backend::getApp();
+        Project* p = app.getProject();
+        editor::Platform platform(p);
+        static char arg0[] = "jasperengine-editor-tests";
+        static char* argv[] = {arg0, nullptr};
+        Engine::systemInit(1, argv, &platform);
+        if (!p->loadProject(dir, false)) std::exit(2);
+        mcp::McpServer::get().start(app);
+        SpriteNormalsWatcher* watcher = app.getSpriteNormalsWatcher();
+        if (!watcher || SpriteNormalsWatcher::active() != watcher) std::exit(3);
+        writeBytes(dir / "assets" / "wake" / "hero.png", [] {
+            std::vector<uint8_t> png;
+            ts::encodePng(balls(32, 32, 32, 12), png);
+            return png;
+        }());
+        if (!settleWatcher(*watcher, true)) std::exit(4);
+        sn::Prepared prepared;
+        std::vector<sn::Problem> problems;
+        if (!sn::prepare(dir, stillSpec("assets/wake/hero.png"), nullptr, prepared, problems)) std::exit(5);
+        const sn::Result result = sn::generate(prepared.request);
+        std::vector<sn::OutputFile> files;
+        std::string error;
+        if (result.status != sn::Status::Ok || !sn::encodeOutputs(prepared, result, files, error)) std::exit(6);
+        // the first generation wakes it
+        if (!sn::writeOutputsUndoable(files, error)) std::exit(7);
+        if (watcher->dormant()) std::exit(8);
+        // its walk indexes the map (not dormant)
+        std::string indexedSource, indexedRole;
+        bool first = false;
+        for (int i = 0; i < 2000 && !first; i++) {
+            watcher->tick();
+            first = watcher->generatedInfo(files[0].absolute, indexedSource, indexedRole);
+            if (!first) usleep(5000);
+        }
+        if (!first || watcher->dormant()) std::exit(9);
+        // undone: the map is gone, the next walk ends dormant
+        CommandHistory* history = p->getProjectCommandHistory();
+        if (!history->undo()) std::exit(10);
+        if (!settleWatcher(*watcher, true)) std::exit(11);
+        // redone: the write command's file sync wakes it at once
+        if (!history->redo()) std::exit(12);
+        if (watcher->dormant()) std::exit(13);
+        // and its next walk indexes the map again
+        std::string source, role;
+        bool indexed = false;
+        for (int i = 0; i < 2000 && !indexed; i++) {
+            watcher->tick();
+            indexed = watcher->generatedInfo(files[0].absolute, source, role);
+            if (!indexed) usleep(5000);
+        }
+        if (!indexed || watcher->dormant()) std::exit(15);
+        std::exit(0);
+    }
+
+}
+
+TEST(SpriteNormalsSessionDeathTest, TheWatcherWakesOnTheUndoableWriteItsUndoAndRedo) {
+    const fs::path dir = fs::temp_directory_path() / ("jasper-spritenormals-wake-" + std::to_string(::getpid()));
+    fs::remove_all(dir);
+    fs::create_directories(dir / ".jasperengine");
+    std::ofstream(dir / "project.yaml") << "name: wake\n";
+    EXPECT_EXIT(watcherWakesInTheEditor(dir), ::testing::ExitedWithCode(0), "");
+    fs::remove_all(dir);
 }
 
 TEST(SpriteNormalsSessionDeathTest, WriteOutputsUndoableIsOneProjectStep) {

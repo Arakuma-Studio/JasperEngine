@@ -84,6 +84,8 @@ void SpriteNormalsWatcher::reset() {
     if (scan) scan->cancel = true;
     scan.reset();
     idleScans = 0;
+    wakePending = false;
+    noticed.clear();
     outputs.clear();
     hashes.clear();
     scannedProject.clear();
@@ -100,6 +102,9 @@ void SpriteNormalsWatcher::invalidate(const fs::path& path) {
     }
     hashes.erase(key);
     idleScans = 0;
+    // a scan in flight may have read the file before the change: its result must not make the
+    // watcher dormant (collectScan)
+    if (scan) wakePending = true;
     // soon, not at once: a write of several files lands first
     if (lastScan >= 0.0) lastScan = std::min(lastScan, clock() - scanInterval + 0.25);
 }
@@ -269,7 +274,15 @@ void SpriteNormalsWatcher::collectScan() {
     hashes = std::move(result.hashes);
     bool anyGenerated = false;
     for (const auto& entry : outputs) anyGenerated = anyGenerated || !entry.second.role.empty();
-    idleScans = anyGenerated ? 0 : idleScans + 1;
+    if (wakePending) {
+        // a file changed while this scan ran (it may have been read before the change): not
+        // dormant, and walked again soon
+        wakePending = false;
+        idleScans = 0;
+        lastScan = std::min(lastScan, clock() - scanInterval + 0.25);
+    } else {
+        idleScans = anyGenerated ? 0 : idleScans + 1;
+    }
     if (changed) rev++;
     if (autoRegenerate()) queueStale();
 }
@@ -394,6 +407,28 @@ bool SpriteNormalsWatcher::isStale(const fs::path& output) const {
 bool SpriteNormalsWatcher::sourceMissing(const fs::path& output) const {
     auto it = outputs.find(output.lexically_normal());
     return it != outputs.end() && !it->second.role.empty() && it->second.missing;
+}
+
+bool SpriteNormalsWatcher::wouldIndex(const fs::path& path) const {
+    const fs::path root = project->getProjectPath().lexically_normal();
+    if (root.empty()) return false;
+    const fs::path key = path.lexically_normal();
+    const fs::path relative = key.lexically_relative(root);
+    if (relative.empty() || *relative.begin() == "..") return false;
+    const std::string name = key.filename().u8string();
+    std::string ext = key.extension().u8string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (name.empty() || name[0] == '.' || ext != ".png") return false;
+    return !ProjectChecks::isInSkippedDir(relative);
+}
+
+void SpriteNormalsWatcher::noticeGenerated(const fs::path& path) {
+    if (!dormant()) return;
+    const fs::path key = path.lexically_normal();
+    std::string source, role;
+    if (generatedInfo(key, source, role) || !wouldIndex(key)) return;
+    if (!noticed.insert(key).second) return;
+    invalidate(key);
 }
 
 std::vector<fs::path> SpriteNormalsWatcher::outputsOf(const fs::path& source) const {

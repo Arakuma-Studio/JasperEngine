@@ -2048,7 +2048,8 @@ bool editor::Exporter::copyAssets() {
         fs::path destPath = assetsDst / relPath;
         fs::create_directories(destPath.parent_path(), ec);
         // a PNG ships without the editor's own chunks (the sprite normals recipe and paint layer,
-        // the texture synthesis recipe: jasper.* text chunks a game never reads); losslessly
+        // the texture synthesis recipe: jasper.* text chunks a game never reads); losslessly, the
+        // file read once
         if (copyPngWithoutEditorChunks(entry.path(), destPath)) continue;
         fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing, ec);
     }
@@ -2063,10 +2064,12 @@ bool editor::Exporter::copyPngWithoutEditorChunks(const fs::path& source, const 
     std::ifstream in(source, std::ios::binary);
     if (!in) return false;
     const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    if (in.bad()) return false;
+    // read once: the stripped bytes, or (nothing to strip, not a well-formed PNG) the bytes as read
     std::vector<uint8_t> stripped;
-    if (!pngchunks::stripEditorChunks(bytes, stripped)) return false;
+    const std::vector<uint8_t>& shipped = pngchunks::stripEditorChunks(bytes, stripped) ? stripped : bytes;
     std::ofstream out(destination, std::ios::binary | std::ios::trunc);
-    if (!out || !out.write(reinterpret_cast<const char*>(stripped.data()), static_cast<std::streamsize>(stripped.size())) || !(out.close(), out)) {
+    if (!out || !out.write(reinterpret_cast<const char*>(shipped.data()), static_cast<std::streamsize>(shipped.size())) || !(out.close(), out)) {
         std::error_code ec;
         fs::remove(destination, ec);
         return false;   // copied as it is instead

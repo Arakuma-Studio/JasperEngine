@@ -4,7 +4,8 @@
 // The exporter ships PNGs without the editor's own text chunks (util/PngEditorChunks.h,
 // Exporter::copyPngWithoutEditorChunks): the sprite normals recipe and paint layer and the texture
 // synthesis recipe go, every other chunk stays byte for byte, the pixels decode the same; PNGs
-// without such a chunk, non-PNGs and damaged streams are left to a plain copy.
+// without such a chunk and damaged streams are copied as they are (each file read once); other
+// files are left to the exporter's plain copy.
 
 #include <gtest/gtest.h>
 
@@ -126,8 +127,11 @@ TEST(PngEditorChunks, TheExporterCopiesPngsWithoutThem) {
     write(dir / "notes.txt", recipe);
     EXPECT_TRUE(Exporter::copyPngWithoutEditorChunks(dir / "hero_normal.PNG", dir / "out.png"));
     EXPECT_EQ(read(dir / "out.png"), png);
-    EXPECT_FALSE(Exporter::copyPngWithoutEditorChunks(dir / "plain.png", dir / "out2.png")) << "nothing to strip: a plain copy";
-    EXPECT_FALSE(fs::exists(dir / "out2.png"));
+    EXPECT_TRUE(Exporter::copyPngWithoutEditorChunks(dir / "plain.png", dir / "out2.png")) << "nothing to strip: the bytes as read";
+    EXPECT_EQ(read(dir / "out2.png"), png);
+    write(dir / "broken.png", std::vector<uint8_t>(png.begin(), png.begin() + 40));
+    EXPECT_TRUE(Exporter::copyPngWithoutEditorChunks(dir / "broken.png", dir / "out4.png"));
+    EXPECT_EQ(read(dir / "out4.png"), std::vector<uint8_t>(png.begin(), png.begin() + 40)) << "a damaged PNG as it is";
     EXPECT_FALSE(Exporter::copyPngWithoutEditorChunks(dir / "notes.txt", dir / "out3.txt"));
     fs::remove_all(dir);
 }
