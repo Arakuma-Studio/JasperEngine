@@ -557,22 +557,27 @@ TEST(SpriteNormalsSession, RedoAndUndoNeverGoThroughALinkMadeInBetween) {
     ASSERT_TRUE(sn::writeOutputsUndoable(project(), {file}, error)) << error;
     ASSERT_TRUE(history->undo());
     EXPECT_FALSE(fs::exists(file.absolute));
-    // the folder becomes a link out of the assets: the redo writes nothing through it
+    // the folder becomes a link out of the assets: the redo is refused (nothing written through
+    // it) and the history stays where it is
     fs::remove_all(abs / "sub");
     fs::create_directory_symlink(outside, abs / "sub");
-    ASSERT_TRUE(history->redo());
+    const size_t undone = history->position();
+    EXPECT_FALSE(history->redo()) << "a refused redo is not taken";
+    EXPECT_EQ(history->position(), undone);
+    EXPECT_TRUE(history->canRedo()) << "still there for when the link is gone";
     EXPECT_FALSE(fs::exists(outside / "x_normal.png")) << "the redo was not applied";
-    // and an undo removes nothing through it
-    std::ofstream(outside / "x_normal.png") << "theirs";
-    ASSERT_TRUE(history->undo());
-    EXPECT_EQ(readAll(outside / "x_normal.png"), "theirs") << "the undo was not applied";
-    // back to a folder: redo and undo work again
+    // back to a folder: the redo goes through
     fs::remove(abs / "sub");
     fs::create_directories(abs / "sub");
     ASSERT_TRUE(history->redo());
+    EXPECT_EQ(history->position(), undone + 1);
     EXPECT_EQ(readAll(file.absolute), "first");
+    // a link again, a file of theirs behind it: the undo removes nothing through it
+    fs::remove_all(abs / "sub");
+    fs::create_directory_symlink(outside, abs / "sub");
+    std::ofstream(outside / "x_normal.png") << "theirs";
     ASSERT_TRUE(history->undo());
-    EXPECT_FALSE(fs::exists(file.absolute));
+    EXPECT_EQ(readAll(outside / "x_normal.png"), "theirs") << "the undo was not applied";
     fs::remove_all(abs);
     fs::remove_all(outside);
 }

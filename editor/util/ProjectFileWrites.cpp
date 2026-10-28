@@ -33,7 +33,8 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    // A WriteFilesCmd whose every execute (redo included) and undo asks the guard first
+    // A WriteFilesCmd whose every execute (redo included) and undo asks the guard first; a redo
+    // the guard refuses is not offered (canRedo: the history keeps its place)
     class GuardedWriteFilesCmd : public editor::WriteFilesCmd {
     public:
         GuardedWriteFilesCmd(std::vector<Item> items, std::function<void(const std::vector<fs::path>&)> afterChange,
@@ -51,6 +52,14 @@ namespace {
             }
             executed = true;
             return WriteFilesCmd::execute();
+        }
+
+        // CommandHistory::redo asks this before it moves on (and ignores execute()'s result)
+        bool canRedo() const override {
+            std::string why;
+            if (guard(why)) return true;
+            editor::Out::warning("Redo not applied: %s", why.c_str());
+            return false;
         }
 
         void undo() override {

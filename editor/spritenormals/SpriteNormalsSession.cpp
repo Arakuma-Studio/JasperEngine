@@ -341,8 +341,9 @@ namespace jasperengine::editor::spritenormals {
         if (ec) absolute = path;
         absolute = absolute.lexically_normal();
         // component by component (weakly_canonical stops at the first one that doesn't exist, so
-        // a dangling link would stay unresolved): every link on the way is followed, a dangling
-        // one too, up to kMaxLinks; below a component that doesn't exist the rest is lexical
+        // a dangling link would stay unresolved): every link on the way is followed (a junction
+        // too), a dangling one too, up to kMaxLinks; below a component that doesn't exist the rest
+        // is lexical; weakly_canonical last
         constexpr int kMaxLinks = 40;
         std::deque<fs::path> rest;
         for (const fs::path& part : absolute.relative_path()) rest.push_back(part);
@@ -361,7 +362,14 @@ namespace jasperengine::editor::spritenormals {
             if (!lexical) {
                 std::error_code statusError;
                 const fs::file_status status = fs::symlink_status(next, statusError);
-                if (!statusError && fs::is_symlink(status)) {
+                // MSVC reports a directory junction as file_type::junction, not as a symlink:
+                // followed the same way (read_symlink reads its target)
+#ifdef _MSC_VER
+                const bool link = fs::is_symlink(status) || status.type() == fs::file_type::junction;
+#else
+                const bool link = fs::is_symlink(status);
+#endif
+                if (!statusError && link) {
                     std::error_code readError;
                     const fs::path target = fs::read_symlink(next, readError);
                     // a loop, or a link that can't be read: nothing it could be inside of
@@ -377,7 +385,11 @@ namespace jasperengine::editor::spritenormals {
             }
             out = next;
         }
-        return out.lexically_normal();
+        // and what the walk can't see (Windows: junctions it missed, 8.3 short names, case)
+        const fs::path walked = out.lexically_normal();
+        std::error_code canonicalError;
+        const fs::path canonical = fs::weakly_canonical(walked, canonicalError);
+        return canonicalError || canonical.empty() ? walked : canonical.lexically_normal();
     }
 
     bool isInsideResolved(const fs::path& path, const fs::path& dir) {
@@ -957,10 +969,13 @@ namespace jasperengine::editor::spritenormals {
         }
         std::vector<WriteFilesCmd::Item> items;
         for (const OutputFile& file : files) items.push_back({file.absolute, file.bytes});
-        // ... and before each redo and undo of the step (a link made in between: that step is not applied)
-        auto guard = [project, files](std::string& why) {
+        // ... and before each redo and undo of the step (a link made in between: that step is not
+        // applied; a refused redo leaves the history where it is)
+        std::vector<OutputFile> where;   // the paths only, not the bytes (the step keeps those)
+        for (const OutputFile& file : files) where.push_back({file.role, file.path, file.absolute, std::string()});
+        auto guard = [project, where](std::string& why) {
             Problem p;
-            if (outputsContained(project, files, p)) return true;
+            if (outputsContained(project, where, p)) return true;
             why = p.message;
             return false;
         };

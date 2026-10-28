@@ -209,6 +209,36 @@ TEST(WriteFileReplacing, KeepsPermissionsAndWritesThroughSymlinks) {
     }
     fs::remove_all(dir);
 }
+
+// A link planted at a temporary file's name never redirects the write: the old fixed name is not
+// used any more, and writeNewFile (what writes the temporary file) refuses anything already there
+TEST(WriteFileReplacing, APlantedLinkAtTheTemporaryNameCantRedirectTheWrite) {
+    const fs::path dir = tempDir("planted");
+    const fs::path outside = tempDir("planted-outside");
+    const fs::path target = dir / "Hero.png";
+    writeAll(target, "old\n");
+    // the name writeFileReplacing used to write its temporary file to, linked out
+    fs::create_symlink(outside / "stolen.png", dir / ".Hero.png.tmp");
+    EXPECT_TRUE(FileUtils::writeFileReplacing(target, "new\n"));
+    EXPECT_EQ(readAll(target), "new\n");
+    EXPECT_FALSE(fs::exists(outside / "stolen.png")) << "nothing written through the link";
+    EXPECT_TRUE(fs::is_symlink(dir / ".Hero.png.tmp")) << "someone else's entry is left alone";
+    // exclusive creation: a dangling link, a file, a link to a file are all "already there"
+    fs::create_symlink(outside / "dangling.png", dir / "dangling.tmp");
+    errno = 0;
+    EXPECT_FALSE(FileUtils::writeNewFile(dir / "dangling.tmp", "x", 1));
+    EXPECT_EQ(errno, EEXIST);
+    EXPECT_FALSE(fs::exists(outside / "dangling.png"));
+    writeAll(outside / "theirs.png", "theirs\n");
+    fs::create_symlink(outside / "theirs.png", dir / "live.tmp");
+    EXPECT_FALSE(FileUtils::writeNewFile(dir / "live.tmp", "x", 1));
+    EXPECT_EQ(readAll(outside / "theirs.png"), "theirs\n");
+    EXPECT_TRUE(FileUtils::writeNewFile(dir / "fresh.tmp", "abc", 3));
+    EXPECT_EQ(readAll(dir / "fresh.tmp"), "abc");
+    EXPECT_FALSE(FileUtils::writeNewFile(dir / "fresh.tmp", "x", 1));
+    fs::remove_all(dir);
+    fs::remove_all(outside);
+}
 #endif
 
 // ---- child scene cycles --------------------------------------------------------------------

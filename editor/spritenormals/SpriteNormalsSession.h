@@ -99,9 +99,10 @@ namespace jasperengine::editor::spritenormals {
     bool resolveProjectFile(const std::filesystem::path& projectDir, const std::string& rel, std::filesystem::path& absolute,
                             std::string& error);
     std::string projectRelative(const std::filesystem::path& projectDir, const std::filesystem::path& absolute);
-    // `path` (absolute, lexically normal first) with every symbolic link on the way followed,
-    // a dangling one too (unlike std::filesystem::weakly_canonical, which stops at the first
-    // component that doesn't exist); below a component that doesn't exist the rest stays lexical.
+    // `path` (absolute, lexically normal first) with every symbolic link (and Windows junction) on
+    // the way followed, a dangling one too (unlike std::filesystem::weakly_canonical, which stops
+    // at the first component that doesn't exist); below a component that doesn't exist the rest
+    // stays lexical; then weakly_canonical (8.3 names, case on Windows).
     // Empty when a link loops (more than 40) or can't be read: inside nothing.
     std::filesystem::path resolvedPath(const std::filesystem::path& path);
     // `path` is `dir` or below it once both are resolved (resolvedPath): a symbolic link inside
@@ -197,7 +198,8 @@ namespace jasperengine::editor::spritenormals {
     // the Project window, the watcher; with the MCP server running, its file sync). The files are
     // checked with outputsContained first (refused: `problem` output_invalid, nothing written) and
     // again before each redo and undo of the step (refused: that step is not applied, said in the
-    // console). `problem` (optional): the refusal, or write_failed. Main thread.
+    // console; a refused redo leaves the history where it is). `problem` (optional): the refusal,
+    // or write_failed. Main thread.
     // The step is named "Generate Normal Map <file name of the first normal output>" ("Generate
     // Normal Maps (N)" for N normal outputs).
     bool writeOutputsUndoable(Project* project, const std::vector<OutputFile>& files, std::string& error, Problem* problem = nullptr);

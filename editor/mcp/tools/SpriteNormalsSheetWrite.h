@@ -4,11 +4,16 @@
 // generate_sprite_normals' save_path contact sheet (SpriteNormalsTools.cpp), written before the
 // project files (a sheet that can't be written fails the call before anything else is). Until
 // commit(), a later failure (or an exception unwinding the finish) puts the path back as it was:
-// its old bytes, or no file and none of the folders made for it. Written to a temporary file
-// beside it, then renamed over it: a symbolic link at the path is replaced, never written through.
+// its old bytes, or no file and none of the folders made for it. Written with
+// FileUtils::writeFileReplacing (a temporary file of its own beside it, created exclusively, renamed
+// over it; a failed write leaves the old file whole; a dangling link at the path is replaced).
 #pragma once
 
+#include "util/FileUtils.h"
+
+#include <cerrno>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -46,9 +51,11 @@ namespace jasperengine::editor::mcp {
             active = true;
             if (path.has_parent_path()) fs::create_directories(path.parent_path(), ec);
             // a path that could not be replaced was not touched: the rollback leaves it alone
+            errno = 0;
             touched = replace(path, reinterpret_cast<const char*>(bytes.data()), bytes.size());
             if (!touched) {
-                error = ec ? ec.message() : std::string("the file could not be written");
+                const int code = errno;
+                error = ec ? ec.message() : code ? std::string(std::strerror(code)) : std::string("the file could not be written");
                 std::string restore;
                 if (!rollback(&restore) && warning) *warning = restore;
                 return false;
@@ -78,29 +85,9 @@ namespace jasperengine::editor::mcp {
         const std::filesystem::path& path() const { return target; }
 
     private:
-        // `size` bytes into a temporary file beside `path`, renamed over it (what is at `path`,
-        // a symbolic link included, is replaced, not written through); false (and no temporary
-        // file left) when that failed
+        // FileUtils::writeFileReplacing; false (errno: why) when that failed
         static bool replace(const std::filesystem::path& path, const char* data, size_t size) {
-            namespace fs = std::filesystem;
-            std::error_code ec;
-            fs::path name(".");
-            name += path.filename();
-            name += ".sheet.tmp";
-            const fs::path temp = path.parent_path() / name;
-            {
-                std::ofstream file(temp, std::ios::binary | std::ios::trunc);
-                if (!file || !file.write(data, static_cast<std::streamsize>(size)) || !(file.close(), file)) {
-                    fs::remove(temp, ec);
-                    return false;
-                }
-            }
-            fs::rename(temp, path, ec);
-            if (ec) {
-                fs::remove(temp, ec);
-                return false;
-            }
-            return true;
+            return FileUtils::writeFileReplacing(path, std::string(data, size));
         }
 
         std::filesystem::path target;

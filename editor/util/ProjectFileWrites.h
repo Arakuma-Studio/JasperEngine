@@ -55,7 +55,9 @@ namespace jasperengine::editor {
 
         // Asked before every execute (the first one and each redo) and undo of a write: false with
         // the reason refuses that step (nothing written or removed; a refused redo or undo says so
-        // in the console). The sprite normal maps' containment check.
+        // in the console). A refused redo is not taken (canRedo: the history keeps its place); a
+        // refused undo still moves the history back (canUndo is not asked), its files untouched.
+        // The sprite normal maps' containment check.
         using Guard = std::function<bool(std::string& why)>;
 
         // A WriteFilesCmd on the project's command history: one undo step, all or nothing (a
