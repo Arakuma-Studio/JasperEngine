@@ -8,6 +8,7 @@
 
 namespace Rml {
 
+class Element;
 class Geometry;
 class CompiledFilter;
 class CompiledShader;
@@ -88,6 +89,18 @@ public:
 
 	CompiledFilter SaveLayerAsMaskImage();
 
+	/// Fork (P7-F1): the element whose effects layer (filter, mask, group opacity) is being drawn into the top layer, and
+	/// the layer's window. The content drawn into the layer is clipped by the clips established by the element and its
+	/// descendants only, and to the window; the clips established outside it clip the composite of the layer (CSS: an
+	/// effect applies to the unclipped content, the ancestors' clips to its result). Used by ElementUtilities::
+	/// SetClippingRegion; pushed and popped by ElementEffects around the element's layer.
+	void PushClipRoot(const Element* element, Rectanglei window);
+	void PopClipRoot();
+	/// The element of the innermost layer pushed with PushClipRoot, null outside every such layer.
+	const Element* GetClipRoot() const { return clip_roots.empty() ? nullptr : clip_roots.back().element; }
+	/// Its window (window coordinates), invalid when unbounded.
+	Rectanglei GetClipRootWindow() const { return clip_roots.empty() ? Rectanglei::MakeInvalid() : clip_roots.back().window; }
+
 private:
 	void ApplyClipMask(const ClipMaskGeometryList& clip_elements);
 
@@ -125,6 +138,12 @@ private:
 	Vector2i viewport_dimensions;
 
 	Vector<LayerHandle> render_stack;
+
+	struct ClipRoot {
+		const Element* element;
+		Rectanglei window;
+	};
+	Vector<ClipRoot> clip_roots;
 
 	friend class RenderManagerAccess;
 };
