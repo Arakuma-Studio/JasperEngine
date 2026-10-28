@@ -192,6 +192,7 @@ namespace jasperengine::editor {
         "text-indent",
         "text-justify",
         "text-overflow",
+        "text-rendering",
         "text-shadow",
         "text-transform",
         "text-underline-offset",

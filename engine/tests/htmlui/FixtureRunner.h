@@ -24,6 +24,8 @@
 
 #include "compat/BrowserCompare.h"
 
+#include "RmlFontEngine.h"
+
 #include <cstddef>
 #include <memory>
 #include <ostream>
@@ -179,6 +181,14 @@ namespace jasperengine::test {
 
         Rml::Context* context() const;
         RmlRenderer* renderer() const;   // the context's (leak counts of the <video> tests)
+        // the last frame asked for another one (text settling at its on-screen scale, S16 R15)
+        bool renderRequested() const;
+        // the font engine's counters of the last frame drawn (S16)
+        RmlFontEngine::FrameCounters textCounters() const;
+        // the last frame's wall time by phase (benchmarks): Context::Update, Context::Render (the
+        // recording) and the renderer's endFrame (the replay, backend calls included)
+        struct PhaseTimes { double updateMs = 0.0, renderMs = 0.0, endFrameMs = 0.0; };
+        PhaseTimes phaseTimes() const;
         Rml::ElementDocument* document() const;
         std::shared_ptr<const htmlui::compat::CompatDocument> compiled() const;
         std::string diagnosticsText() const;

@@ -117,7 +117,7 @@ CYAN = (0, 255, 255)
 # canvas probes
 P_RED = (140, 90)
 P_BLUE = (480, 240)
-P_BUTTON = (120, 264)
+P_BUTTON = (60, 252)   # (left of the "Play" label: its glyphs sit on device pixels, S16)
 P_EMPTY = (900, 500)
 P_OVERLAP = (190, 110)
 P_LAYER_OVER = (520, 260)   # the child scene's box over the blue box

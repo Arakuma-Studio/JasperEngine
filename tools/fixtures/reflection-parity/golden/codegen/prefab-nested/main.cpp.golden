@@ -101,6 +101,7 @@ JASPERENGINE_INIT void init() {
     Engine::setAtmosphereQualityDefaults(AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW);
     Engine::setTextureDefaults({0, 0, false}, {0, 512, false}, {0, 384, true});
     UIDocumentSystem::setPreferredSampleCount(4);
+    UIDocumentSystem::setHtmlUiRenderOptions(0, true, true);
 
     SceneManager::registerScene(1, "Nested Scene", load_scene_Nested_Scene_1, add_scene_Nested_Scene_1, {1}, resources_scene_Nested_Scene_1);
 

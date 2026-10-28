@@ -20,10 +20,14 @@ struct ClipMaskGeometry {
 	Geometry* geometry;
 	Vector2f absolute_offset;
 	const Matrix4f* transform;
+	// Fork (S16-F2): the shape the geometry covers (RenderInterface::RenderToClipMaskShape), when has_shape
+	bool has_shape = false;
+	ClipShape shape = {};
 };
 inline bool operator==(const ClipMaskGeometry& a, const ClipMaskGeometry& b)
 {
-	return a.operation == b.operation && a.geometry == b.geometry && a.absolute_offset == b.absolute_offset && a.transform == b.transform;
+	return a.operation == b.operation && a.geometry == b.geometry && a.absolute_offset == b.absolute_offset && a.transform == b.transform &&
+		a.has_shape == b.has_shape && (!a.has_shape || a.shape == b.shape);
 }
 inline bool operator!=(const ClipMaskGeometry& a, const ClipMaskGeometry& b)
 {
@@ -69,6 +73,17 @@ public:
 
 	Geometry MakeGeometry(Mesh&& mesh);
 
+	/// Fork (S16-F1): the render interface draws box primitives (RenderInterface::SupportsPrimitives).
+	bool SupportsPrimitives() const;
+	/// Fork (S16-F1): draws box primitives at the translation with the current state.
+	void RenderPrimitives(Span<const BoxPrimitive> primitives, Vector2f translation);
+	/// Fork (S16-F4): whether the rectangle (absolute, before any transform) is drawn wholly outside the scissor region, so that
+	/// painting it may be skipped: the render interface culls (RenderInterface::CullsOffscreenPaint), a scissor region is set
+	/// and no transform applies. False when unsure.
+	bool IsOutsideScissor(Rectanglef rectangle);
+	/// Fork (S16-F5): RenderInterface::SupportsGradientPrimitive of the shader, and its handle for the primitive.
+	bool SupportsGradientPrimitive(const CompiledShader& shader, CompiledShaderHandle& handle);
+
 	Texture LoadTexture(const String& source, const String& document_path = String());
 	/// Fork (phase 3, p3-paint): the texture of 'source' joined with the document path, with 'query' (a query parameter)
 	/// appended to the joined path; for RenderInterface::SupportsTextureWrapHint.
@@ -87,6 +102,45 @@ public:
 	LayerHandle GetNextLayer() const;
 
 	CompiledFilter SaveLayerAsMaskImage();
+
+	/// Fork (S16-F3): something drawn this frame needs another frame although nothing changed (text settling at its
+	/// on-screen scale): the application renders the context again. Taken (and cleared) by ConsumeRenderRequest.
+	void RequestRender();
+	bool ConsumeRenderRequest();
+
+	/// Fork (S16-F6): the clipping regions ElementUtilities::SetClippingRegion found for elements whose own 'clip' is auto:
+	/// that of every such element of the same offset parent, kept for the elements after it in the render pass (the last
+	/// few offset parents). Forgotten at each pass and when an element's transform is updated during it (ResetClipMemo).
+	struct ClipMemo {
+		const void* offset_parent = nullptr;
+		bool scissor = false;
+		Rectanglei region;
+		ClipMaskGeometryList masks;
+	};
+	ClipMemo* FindClipMemo(const void* offset_parent)
+	{
+		for (ClipMemo& memo : clip_memos)
+			if (memo.offset_parent == offset_parent)
+				return &memo;
+		return nullptr;
+	}
+	ClipMemo& AddClipMemo(const void* offset_parent)
+	{
+		ClipMemo& memo = clip_memos[clip_memo_next];
+		clip_memo_next = (clip_memo_next + 1) % clip_memo_count;
+		memo.offset_parent = offset_parent;
+		return memo;
+	}
+	void ResetClipMemo()
+	{
+		for (ClipMemo& memo : clip_memos)
+			memo.offset_parent = nullptr;
+	}
+	/// Fork (S16-F6): the paint traversal takes its shortcuts this pass (the clip memo, transforms updated once): while the
+	/// render interface culls (RenderInterface::CullsOffscreenPaint), read at PrepareRender.
+	bool PaintShortcuts() const { return paint_shortcuts; }
+	/// That of the last render pass prepared (elements updating their transform read it without finding their manager).
+	static bool LastPaintShortcuts();
 
 private:
 	void ApplyClipMask(const ClipMaskGeometryList& clip_elements);
@@ -118,6 +172,13 @@ private:
 	StableVector<GeometryData> geometry_list;
 	UniquePtr<TextureDatabase> texture_database;
 
+	bool render_requested = false;
+	static constexpr int clip_memo_count = 8;
+	ClipMemo clip_memos[clip_memo_count];
+	int clip_memo_next = 0;
+	// Fork (S16-F6): state.transform is the identity (SetTransform(nullptr) then compares nothing)
+	bool transform_identity = true;
+	bool paint_shortcuts = false;
 	int compiled_filter_count = 0;
 	int compiled_shader_count = 0;
 

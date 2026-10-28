@@ -2610,6 +2610,8 @@ void editor::App::parseBenchmarkArgs(int argc, char** argv) {
         } else if (arg == "--out") {
             if (const char* value = requireValue(i, "--out"))
                 benchmarkOut = CommandLine::absoluteArgPath(value);
+        } else if (arg == "--ui-stats") {
+            benchmarkUiStats = true;
         } else if (arg == "--gpu-passes") {
             benchmarkGpuPasses = true;
         } else if (arg == "--profile") {
@@ -3662,6 +3664,7 @@ void editor::App::tickBenchmark() {
             benchmarkDraws.clear();
             benchmarkInstances.clear();
             benchmarkTris.clear();
+            benchmarkUiTotals.clear();
             benchmarkCpuMs.clear();
             benchmarkGpuFrameMs.clear();
             benchmarkGpuPassList.clear();
@@ -3688,6 +3691,17 @@ void editor::App::tickBenchmark() {
         benchmarkDraws.push_back(stats.drawCalls);
         benchmarkInstances.push_back(stats.instances);
         benchmarkTris.push_back(stats.triangles);
+        if (benchmarkUiStats) {
+            // the scene's documents (screen and texture-mode contexts), this frame
+            std::shared_ptr<UIDocumentSystem> documents = selected->scene->getSystem<UIDocumentSystem>();
+            const HtmlUIRenderStats ui = documents ? documents->getRenderStats() : HtmlUIRenderStats();
+            size_t field = 0;
+            ui.forEachField([this, &field](const char* name, uint32_t value) {
+                if (field == benchmarkUiTotals.size())
+                    benchmarkUiTotals.emplace_back(name, 0.0);
+                benchmarkUiTotals[field++].second += (double)value;
+            });
+        }
         collectBenchmarkGpuFrame();
         if (static_cast<int>(benchmarkFps.size()) >= benchmarkMeasureFrames) {
             benchmarkLastFrame = FrameTimes::currentFrame();
@@ -3829,6 +3843,15 @@ void editor::App::finishBenchmark() {
     json.precision(3);
     json << "  \"cpuMs\": {\"median\": " << stat(benchmarkCpuMs, 0.5) << ", \"p95\": " << stat(benchmarkCpuMs, 0.95)
          << ", \"mean\": " << mean(benchmarkCpuMs) << "}";
+    if (benchmarkUiStats) {
+        // HtmlUIRenderStats averaged over the measured frames
+        json << ",\n  \"htmlUi\": {";
+        for (size_t i = 0; i < benchmarkUiTotals.size(); i++) {
+            json << (i ? ", " : "") << "\"" << benchmarkUiTotals[i].first << "\": "
+                 << (n > 0 ? benchmarkUiTotals[i].second / static_cast<double>(n) : 0.0);
+        }
+        json << "}";
+    }
     if (benchmarkGpuPasses) {
         const GpuTimingState gpu = SystemRender::getGpuTimingState();
         json << ",\n  \"gpu\": {\n"
@@ -4427,12 +4450,21 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // (oe-port) v35: atmosphere (S12): the fogged mesh variants (HAS_FOG) carry the height fog
     //      (HAS_HEIGHT_FOG, u_fs_heightFog), so every cached 'Fog' variant is stale; the
     //      atmosphere pass types after S10's SHADOW_CACHE.
+    // S16 side, v36: HTML UI rendering cost (S16): htmlui.vert/.frag gain the document position and
+    //      u_fs_htmluiClip (analytic clip, R8 coverage textures); HTMLUI_PRIM (instanced SDF
+    //      boxes, borders, shadows and glyph quads) appended after the atmosphere types.
+    // v37: S15's PASS_PREVIEW before HTMLUI_PRIM (the merge of both); the HTML UI's rounded-rect
+    //      distance and border colours changed (S16).
+    // v38: HTMLUI_PRIM samples four textures (u_htmluiTexture0-3, u_fs_htmluiSlots, S16).
+    // S16 v39: HTMLUI_PRIM gradients take their origin and tile period (S16-F5).
     // v39: upstream (v34-v38 above) and oe-port's S10/S12 (its v34/v35) together: MESH bit 5 is
     //      'Sto' and S10's high shadow filters moved to bit 33 ('Shq', USE_SHADOWS_HQ); the
     //      fogged variants carry the height fog. Either side's v34-v38 cache holds other variants.
     // v40: S11's built-in Lit (lobes, hex tiling, Lit Quality: pbr.glsl, mesh.frag, terrain) with
     //      upstream's Stochastic Tiling in the same Lit and terrain sources and block layout.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v40";
+    // v41: S16's HTMLUI_PRIM and htmlui changes (its v36-v39) with upstream's and S11's (v39, v40).
+    // v42: S20's PARTICLES before HTMLUI_PRIM (the merge of both): a v41 cache numbers them otherwise.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v42";
 }
 
 void editor::App::pushTabNotificationStyle(){

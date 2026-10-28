@@ -27,6 +27,7 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
+#include "subsystem/UIDocumentSystem.h"
 #include "object/ui/UIDocument.h"
 #include "util/Base64.h"
 #include "util/FileUtils.h"
@@ -80,6 +81,10 @@ bool sceneContentLoaded(SceneProject* sp) {
     if (rs && !rs->isAllLoaded()) return false;
     auto us = sp->scene->getSystem<UISystem>();
     if (us && us->hasPendingImages()) return false;
+    // its HTML documents loaded (or failed) and drawn once: the first frame waits for the HTML UI
+    // shaders, which are made when a document first draws (on a software rasterizer, seconds)
+    auto ds = sp->scene->getSystem<UIDocumentSystem>();
+    if (ds && !ds->isAllLoaded()) return false;
     // pinned stateful UI effects still replaying their state (phase 6): drawn a few frames later
     if (UIDocument::getPendingEffectReplays() > 0) return false;
     auto ms = sp->scene->getSystem<MeshSystem>();

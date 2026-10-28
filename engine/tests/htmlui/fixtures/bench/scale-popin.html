@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>S16 B4: scale-popin</title>
+<!-- S16 benchmark B4: 40 buttons pop in from scale(0.5) to scale(1) over 300 ms, and a card under
+     rotateY(30deg) with perspective. Budgets: no frame over 2 ms of glyph rasterization, at most 256
+     bitmap glyphs a frame, one regeneration per label after the settle. -->
+<style>
+  html, body { margin: 0; width: 1280px; height: 720px; background-color: #121418; font-family: sans-serif; }
+  .button { position: absolute; width: 130px; height: 64px; line-height: 64px; text-align: center; color: #ffffff; font-size: 20px;
+            background-color: #3060c0; border-radius: 8px; transform-origin: 50% 50%; animation: pop 0.3s ease-out both; }
+  @keyframes pop { from { transform: scale(0.5); } to { transform: scale(1); } }
+  #card { position: absolute; left: 480px; top: 580px; width: 320px; height: 110px; background-color: #2a2e3a; border-radius: 12px;
+          color: #f0f0f0; font-size: 22px; padding: 16px; box-sizing: border-box; transform: perspective(500px) rotateY(30deg); }
+</style>
+</head>
+<body>
+  <div class="button" style="left: 40px; top: 60px; animation-delay: 0.00s">Button 1</div>
+  <div class="button" style="left: 190px; top: 60px; animation-delay: 0.02s">Button 2</div>
+  <div class="button" style="left: 340px; top: 60px; animation-delay: 0.04s">Button 3</div>
+  <div class="button" style="left: 490px; top: 60px; animation-delay: 0.06s">Button 4</div>
+  <div class="button" style="left: 640px; top: 60px; animation-delay: 0.08s">Button 5</div>
+  <div class="button" style="left: 790px; top: 60px; animation-delay: 0.00s">Button 6</div>
+  <div class="button" style="left: 940px; top: 60px; animation-delay: 0.02s">Button 7</div>
+  <div class="button" style="left: 1090px; top: 60px; animation-delay: 0.04s">Button 8</div>
+  <div class="button" style="left: 40px; top: 160px; animation-delay: 0.06s">Button 9</div>
+  <div class="button" style="left: 190px; top: 160px; animation-delay: 0.08s">Button 10</div>
+  <div class="button" style="left: 340px; top: 160px; animation-delay: 0.00s">Button 11</div>
+  <div class="button" style="left: 490px; top: 160px; animation-delay: 0.02s">Button 12</div>
+  <div class="button" style="left: 640px; top: 160px; animation-delay: 0.04s">Button 13</div>
+  <div class="button" style="left: 790px; top: 160px; animation-delay: 0.06s">Button 14</div>
+  <div class="button" style="left: 940px; top: 160px; animation-delay: 0.08s">Button 15</div>
+  <div class="button" style="left: 1090px; top: 160px; animation-delay: 0.00s">Button 16</div>
+  <div class="button" style="left: 40px; top: 260px; animation-delay: 0.02s">Button 17</div>
+  <div class="button" style="left: 190px; top: 260px; animation-delay: 0.04s">Button 18</div>
+  <div class="button" style="left: 340px; top: 260px; animation-delay: 0.06s">Button 19</div>
+  <div class="button" style="left: 490px; top: 260px; animation-delay: 0.08s">Button 20</div>
+  <div class="button" style="left: 640px; top: 260px; animation-delay: 0.00s">Button 21</div>
+  <div class="button" style="left: 790px; top: 260px; animation-delay: 0.02s">Button 22</div>
+  <div class="button" style="left: 940px; top: 260px; animation-delay: 0.04s">Button 23</div>
+  <div class="button" style="left: 1090px; top: 260px; animation-delay: 0.06s">Button 24</div>
+  <div class="button" style="left: 40px; top: 360px; animation-delay: 0.08s">Button 25</div>
+  <div class="button" style="left: 190px; top: 360px; animation-delay: 0.00s">Button 26</div>
+  <div class="button" style="left: 340px; top: 360px; animation-delay: 0.02s">Button 27</div>
+  <div class="button" style="left: 490px; top: 360px; animation-delay: 0.04s">Button 28</div>
+  <div class="button" style="left: 640px; top: 360px; animation-delay: 0.06s">Button 29</div>
+  <div class="button" style="left: 790px; top: 360px; animation-delay: 0.08s">Button 30</div>
+  <div class="button" style="left: 940px; top: 360px; animation-delay: 0.00s">Button 31</div>
+  <div class="button" style="left: 1090px; top: 360px; animation-delay: 0.02s">Button 32</div>
+  <div class="button" style="left: 40px; top: 460px; animation-delay: 0.04s">Button 33</div>
+  <div class="button" style="left: 190px; top: 460px; animation-delay: 0.06s">Button 34</div>
+  <div class="button" style="left: 340px; top: 460px; animation-delay: 0.08s">Button 35</div>
+  <div class="button" style="left: 490px; top: 460px; animation-delay: 0.00s">Button 36</div>
+  <div class="button" style="left: 640px; top: 460px; animation-delay: 0.02s">Button 37</div>
+  <div class="button" style="left: 790px; top: 460px; animation-delay: 0.04s">Button 38</div>
+  <div class="button" style="left: 940px; top: 460px; animation-delay: 0.06s">Button 39</div>
+  <div class="button" style="left: 1090px; top: 460px; animation-delay: 0.08s">Button 40</div>
+  <div id="card">A card under rotateY(30deg) and perspective</div>
+</body>
+</html>

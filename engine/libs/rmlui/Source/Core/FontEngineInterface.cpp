@@ -73,4 +73,28 @@ int FontEngineInterface::GetVersion(FontFaceHandle /*handle*/)
 
 void FontEngineInterface::ReleaseFontResources() {}
 
+float FontEngineInterface::GetBaseRasterScale(RenderManager& /*render_manager*/)
+{
+	return 0.f;
+}
+
+bool FontEngineInterface::PrepareGlyphs(FontFaceHandle /*handle*/, StringView /*string*/, const TextShapingContext& /*text_shaping_context*/)
+{
+	return true;
+}
+
+bool FontEngineInterface::PrepareDistanceGlyphs(FontFaceHandle /*handle*/, StringView /*string*/, const TextShapingContext& /*text_shaping_context*/)
+{
+	return false;
+}
+
+bool FontEngineInterface::SupportsGpuTextShadow(FontFaceHandle /*handle*/, float /*blur_radius*/)
+{
+	return false;
+}
+
+void FontEngineInterface::ReportTextEffectFallback(RenderManager& /*render_manager*/) {}
+
+void FontEngineInterface::ReportTextRegeneration(RenderManager& /*render_manager*/) {}
+
 } // namespace Rml

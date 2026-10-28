@@ -591,7 +591,7 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     const float fps = ImGui::GetIO().Framerate;
     const float ms = fps > 0.0f ? 1000.0f / fps : 0.0f;
 
-    char lines[6][96];
+    char lines[7][112];
     int lineCount = 4;
     snprintf(lines[0], sizeof(lines[0]), "Statistics");
     snprintf(lines[1], sizeof(lines[1]), "Graphics: %.1f FPS (%.1f ms)", fps, ms);
@@ -617,7 +617,11 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     UIDocumentSystem* documents = (sceneProject && sceneProject->scene) ? sceneProject->scene->getSystem<UIDocumentSystem>().get() : nullptr;
     if (documents && documents->hasDocuments()) {
         const HtmlUIRenderStats& ui = documents->getRenderStats();
-        snprintf(lines[lineCount], sizeof(lines[lineCount]), "HTML UI: %u passes, %u draws, %u pipelines", ui.passes, ui.drawCalls, ui.pipelineApplies);
+        snprintf(lines[lineCount], sizeof(lines[lineCount]), "HTML UI: %u passes, %u draws (%u merged), %u instances", ui.passes,
+                 ui.drawCalls, ui.runsMerged, ui.instancesDrawn);
+        lineCount++;
+        snprintf(lines[lineCount], sizeof(lines[lineCount]), "HTML UI: %u stencil draws, glyph atlas %.1f MiB", ui.stencilDraws,
+                 (double)ui.atlasBytes / (1024.0 * 1024.0));
         lineCount++;
     }
 

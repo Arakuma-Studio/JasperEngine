@@ -34,6 +34,21 @@ namespace {
         }
     };
 
+    // S16: the faithful replay (no batching, no analytic clips) is what drawing at once matches
+    // byte for byte; the batched replay's own equivalence is RenderBatch's (within 1)
+    struct UnbatchedReplay {
+        bool batching = RmlRenderer::isBatching();
+        bool primitives = RmlRenderer::isSdfPrimitives();
+        UnbatchedReplay(){
+            RmlRenderer::setBatchingForTesting(false);
+            RmlRenderer::setSdfPrimitivesForTesting(false);
+        }
+        ~UnbatchedReplay(){
+            RmlRenderer::setBatchingForTesting(batching);
+            RmlRenderer::setSdfPrimitivesForTesting(primitives);
+        }
+    };
+
     struct FixedClock {
         explicit FixedClock(double t){ EffectClock::setFixedTime(t); }
         ~FixedClock(){ EffectClock::setFixedTime(std::nullopt); }
@@ -146,6 +161,7 @@ html, body { margin: 0; width: 360px; height: 240px; overflow: hidden; backgroun
     }
 
     void expectRecordingMatches(const std::string& html, const char* label){
+        UnbatchedReplay unbatched;
         size_t recordedCommands = 0, immediateCommands = 0;
         const TestImage recorded = captureWith(true, html, &recordedCommands);
         const TestImage immediate = captureWith(false, html, &immediateCommands);
@@ -338,6 +354,7 @@ TEST(RenderRecordTest, AnEmptyFrameClearsTheLayer){
 }
 
 TEST(RenderRecordTest, AContextRemovedBeforeTheFrameEnds){
+    UnbatchedReplay unbatched;
     // a document whose release mid-frame frees geometry (with its meshes), filters, shaders, box
     // shadow textures and effect instances while the frame is recorded
     const char* const rml = R"(<rml><head><style>

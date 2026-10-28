@@ -1,6 +1,8 @@
 SVG library benchmark: LunaSVG vs ThorVG (software renderer) vs nanosvg
 =========================================================================
 Results and decision: docs/html-ui/svg-benchmark.md. Standalone, not part of the engine build.
+The HTML UI rendering benchmark (draw calls, frame time, glyph atlas: S16) is HtmlUIRenderPerf in
+engine/tests/htmlui/RenderPerfTest.cpp; its results are in docs/html-ui/render-benchmark.md.
 
 Sources (read-only): LUNASVG_DIR=/tmp/htmlui-src/lunasvg, THORVG_DIR=/tmp/htmlui-src/thorvg,
 NANOSVG_DIR=/tmp/htmlui-src/nanosvg/src (scripts/fetch_nanosvg.sh clones the pinned commit: the
