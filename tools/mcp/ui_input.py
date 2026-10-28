@@ -9,7 +9,7 @@
     await ui.key("ctrl+z")
 
 The editor reads X events at the start of a frame and ImGui acts on them in that frame, so every
-step here waits for editor frames (the `wait` tool counts them), never for wall-clock time alone:
+step here waits for editor frames (Ui.frames), never for wall-clock time alone:
 on a loaded host one frame can take a second, and a fixed sleep let the next step start before
 the editor had seen the last one (a drag that never started, a press read before its release, a
 history row read before its click). Two rules on top of that:
@@ -37,6 +37,8 @@ from harness import Editor, skip
 DOUBLE_CLICK_SECONDS = 0.45
 # frames after an input event: the frame that reads it, and one that draws its effect
 SETTLE_FRAMES = 2
+# a label no control has: find_ui_item with it only waits its two frames
+FRAME_PACER = "##ui_input frame pacer (no such item)"
 
 
 class Ui:
@@ -67,8 +69,12 @@ class Ui:
         return subprocess.run(["xdotool", *args], env=self.env, capture_output=True, text=True, timeout=20).stdout
 
     async def frames(self, count: int = SETTLE_FRAMES) -> None:
-        """Waits until the editor has run `count` frames (it has read and drawn what was sent)."""
-        await self.ed.call("wait", frames=max(1, count))
+        """Waits until the editor has run at least `count` frames (it has read and drawn what was
+        sent). Paced with find_ui_item, a read-only call answered two frames after it arrives:
+        `wait` is refused while a modal dialog is open or a job runs, and ends with an error when
+        the input stops Play, and a test's input must go on in all of those."""
+        for _ in range((max(1, count) + 1) // 2):
+            await self.ed.call("find_ui_item", label=FRAME_PACER)
 
     async def settle(self, seconds: float = 0.0, frames: int = SETTLE_FRAMES) -> None:
         """Editor frames, after a minimum of wall-clock time (for what is timed by the clock:
@@ -89,8 +95,10 @@ class Ui:
         return (int(self.origin[0] + x + offset[0]), int(self.origin[1] + y + offset[1]))
 
     def centre(self, rect) -> tuple[int, int]:
-        w, h = (rect["width"], rect["height"]) if isinstance(rect, dict) else (rect[2], rect[3])
-        return self.at(rect, (w / 2, h / 2))
+        """Screen point at the centre of a window-coordinate rect."""
+        x, y, w, h = ((rect["x"], rect["y"], rect["width"], rect["height"]) if isinstance(rect, dict)
+                      else (rect[0], rect[1], rect[2], rect[3]))
+        return (int(self.origin[0] + x + w / 2), int(self.origin[1] + y + h / 2))
 
     async def find(self, label: str, window: str | None = None, *, index: int = 0, frames: int = 60,
                    **args) -> dict | None:
@@ -240,6 +248,13 @@ class Ui:
             self.xdo("keyup", mod)
         self.buttons_down.clear()
         await self.frames()
+
+
+async def frames(ed: Editor, count: int = SETTLE_FRAMES) -> None:
+    """Ui.frames without a Ui (no xdotool needed): at least `count` editor frames, also while a
+    dialog is open, a job runs or Play stops."""
+    for _ in range((max(1, count) + 1) // 2):
+        await ed.call("find_ui_item", label=FRAME_PACER)
 
 
 def for_editor(ed: Editor) -> Ui:

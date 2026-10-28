@@ -48,7 +48,7 @@ def window(ed: Editor) -> str:
 
 
 async def frames(ed: Editor, count: int = 2) -> None:
-    await ed.call("wait", frames=count)   # editor frames: a call alone can be answered within one
+    await ui_input.frames(ed, count)   # editor frames (ui_input: also while a dialog or a job blocks wait)
 
 
 async def ui(ed: Editor) -> dict:
@@ -61,7 +61,7 @@ async def wait_ui(ed: Editor, predicate, what: str, timeout: float = 15.0) -> di
         state = await ui(ed)
         if predicate(state):
             return state
-        await ed.call("wait", frames=2)
+        await ui_input.frames(ed, 2)
     ed.fail(f"{what}; ui: {state}")
 
 

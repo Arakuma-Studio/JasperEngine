@@ -560,7 +560,7 @@ async def test_calls_while_dialog_open(ed: Editor):
         dialog = st.get("dialog")
         if dialog:
             break
-        await ed.call("wait", frames=2)
+        await ui_input.frames(ed, 2)
     if not dialog:
         skip("Ctrl+S did not open a dialog under this Xvfb (no window focus?)")
     # reads still work

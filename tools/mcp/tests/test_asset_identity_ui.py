@@ -55,7 +55,7 @@ def centre(rect: list) -> tuple[str, str]:
 async def frames(ed: Editor, count: int = 2) -> None:
     """At least `count` editor frames: each call is answered between two frames (a loaded
     machine draws slowly, and ImGui takes one input event per frame)"""
-    await ed.call("wait", frames=count)   # editor frames: a call alone can be answered within one
+    await ui_input.frames(ed, count)   # editor frames (ui_input: also while a dialog or a job blocks wait)
 
 
 async def click_at(ed: Editor, x: str, y: str, button: str = "1") -> None:
@@ -80,7 +80,7 @@ async def wait_ui(ed: Editor, predicate, what: str, timeout: float = 15.0) -> di
         state = await ui(ed)
         if predicate(state):
             return state
-        await ed.call("wait", frames=2)
+        await ui_input.frames(ed, 2)
     ed.fail(f"{what}; ui: {state}")
 
 

@@ -60,7 +60,7 @@ function(remove_stale files)
             if(left)
                 break()
             endif()
-            file(REMOVE "${dir}")
+            file(REMOVE_RECURSE "${dir}")   # empty: checked above
             get_filename_component(dir "${dir}" DIRECTORY)
         endwhile()
     endforeach()

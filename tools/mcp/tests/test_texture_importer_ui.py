@@ -42,7 +42,7 @@ def window(ed: Editor) -> str:
 
 
 async def frames(ed: Editor, count: int = 2) -> None:
-    await ed.call("wait", frames=count)
+    await ui_input.frames(ed, count)
 
 
 async def click_at(ed: Editor, x: float, y: float) -> None:
@@ -67,7 +67,7 @@ async def wait_ui(ed: Editor, predicate, what: str, timeout: float = 20.0) -> di
         state = await ui(ed)
         if predicate(state):
             return state
-        await ed.call("wait", frames=2)
+        await ui_input.frames(ed, 2)
     ed.fail(f"{what}; ui: {state}")
 
 
@@ -96,7 +96,7 @@ async def wait_item(ed: Editor, label: str, window_name: str | None = None, time
         rect = await item(ed, label, window_name)
         if rect:
             return rect
-        await ed.call("wait", frames=2)
+        await ui_input.frames(ed, 2)
     ed.fail(f"no drawn UI item {label!r}")
 
 

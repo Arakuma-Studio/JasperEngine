@@ -40,7 +40,7 @@ async def wait_for(ed: Editor, predicate, what: str, tries: int = 25) -> dict:
         last = await status(ed)
         if predicate(last):
             return last
-        await ed.call("wait", frames=2)
+        await ui_input.frames(ed, 2)
     ed.fail(f"timed out waiting for {what}: windows {last.get('windows')}, palette {last.get('ui', {}).get('search_palette')}")
     return last
 
