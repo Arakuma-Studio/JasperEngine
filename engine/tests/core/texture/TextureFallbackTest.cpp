@@ -185,6 +185,20 @@ TEST(TextureFallback, TranscodeListsFollowD5){
     EXPECT_EQ(TextureFallback::plan(basisInfo(Ktx2Codec::UASTC, "alpha"), desktopWeb, false).upload, F::BC7);
     const TextureUploadPlan plan = TextureFallback::plan(basisInfo(Ktx2Codec::UASTC, ""), desktopWeb, false);
     EXPECT_EQ(plan.reason, "ASTC_4x4 is not supported by this GPU, transcoded to BC7");
+
+    // ETC1S has no ASTC 4x4 or BC7 entry (deviation 26): a device with neither ETC2 nor S3TC
+    // takes the last resort, whatever else it samples
+    const TextureFormatSupport astcBc7 = only({F::ASTC_4x4, F::BC7, F::BC5, F::BC4, F::RGBA8, F::R8, F::RG8});
+    EXPECT_EQ(TextureFallback::plan(basisInfo(Ktx2Codec::ETC1S, ""), astcBc7, false).upload, F::RGBA8);
+    EXPECT_EQ(TextureFallback::plan(basisInfo(Ktx2Codec::ETC1S, "alpha"), astcBc7, false).upload, F::RGBA8);
+    EXPECT_EQ(TextureFallback::plan(basisInfo(Ktx2Codec::ETC1S, "", "single_channel"), only({F::ASTC_4x4, F::R8}), false).upload, F::R8);
+    EXPECT_EQ(TextureFallback::plan(basisInfo(Ktx2Codec::UASTC, ""), astcBc7, false).upload, F::ASTC_4x4);
+    for (TextureContent content : {TextureContent::ColorOpaque, TextureContent::ColorAlpha, TextureContent::Normal, TextureContent::Single}){
+        for (F format : TextureFallback::transcodeCandidates(Ktx2Codec::ETC1S, content, true)){
+            EXPECT_NE(format, F::ASTC_4x4);
+            EXPECT_NE(format, F::BC7);
+        }
+    }
 }
 
 TEST(TextureFallback, NothingAvailableWithLowMemoryPicksRgb565AndRgba4){
