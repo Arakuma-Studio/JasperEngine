@@ -22,6 +22,7 @@ from pathlib import Path
 import yaml
 
 from harness import Editor, skip
+import ui_input
 
 REPO = Path(__file__).resolve().parents[3]
 EDITOR = {"project": REPO / "tools" / "fixtures" / "legacy_paths_project", "xvfb": "harness"}
@@ -54,17 +55,14 @@ def centre(rect: list) -> tuple[str, str]:
 async def frames(ed: Editor, count: int = 2) -> None:
     """At least `count` editor frames: each call is answered between two frames (a loaded
     machine draws slowly, and ImGui takes one input event per frame)"""
-    for _ in range(count):
-        await ed.call("editor_status")
+    await ui_input.frames(ed, count)   # editor frames (ui_input: also while a dialog or a job blocks wait)
 
 
 async def click_at(ed: Editor, x: str, y: str, button: str = "1") -> None:
-    xdo(ed, "mousemove", "--window", window(ed), x, y)
-    await frames(ed)            # the hover is seen before the press
-    xdo(ed, "mousedown", button)
-    await frames(ed)
-    xdo(ed, "mouseup", button)
-    await frames(ed)
+    """a click at a point in window coordinates (ui_input: frame-paced, never a double click)"""
+    window(ed)
+    ui = ui_input.for_editor(ed)
+    await ui.click(ui.at((float(x), float(y))), button)
 
 
 async def click(ed: Editor, rect: list, button: str = "1") -> None:
@@ -82,7 +80,7 @@ async def wait_ui(ed: Editor, predicate, what: str, timeout: float = 15.0) -> di
         state = await ui(ed)
         if predicate(state):
             return state
-        await asyncio.sleep(0.25)
+        await ui_input.frames(ed, 2)
     ed.fail(f"{what}; ui: {state}")
 
 
@@ -176,18 +174,14 @@ async def test_copy_guid_from_the_menu(ed: Editor):
     # pasted into the Project window's search box: the search text is the GUID
     state = await ui(ed)
     await click(ed, state["project_window"]["search_box"])
-    xdo(ed, "key", "ctrl+a")
-    await frames(ed)
-    xdo(ed, "key", "ctrl+v")
+    await ui_input.for_editor(ed).key("ctrl+a", "ctrl+v")
     rock = meta_guid(ed, "assets/textures/rock.png")
     await wait_ui(ed, lambda s: s["project_window"]["search"] == rock, f"the pasted search text is rock.png's GUID {rock}")
     await shot(ed, "ui-copy-guid")
     # cleared again
     state = await ui(ed)
     await click(ed, state["project_window"]["search_box"])
-    xdo(ed, "key", "ctrl+a")
-    await frames(ed)
-    xdo(ed, "key", "BackSpace")
+    await ui_input.for_editor(ed).key("ctrl+a", "BackSpace")
     await wait_ui(ed, lambda s: s["project_window"]["search"] == "", "the search cleared")
 
 
@@ -213,9 +207,8 @@ async def test_rename_from_the_menu(ed: Editor):
     await context_menu(ed, "brick.png", "Rename")
     await frames(ed, 4)         # the dialog opens and focuses its field
     # the dialog preselects the name without its extension
-    xdo(ed, "type", "--delay", "50", "h2")
-    await frames(ed, 3)
-    xdo(ed, "key", "Return")
+    await ui_input.for_editor(ed).type("h2")
+    await ui_input.for_editor(ed).key("Return")
     state = await wait_ui(ed, lambda s: entry(s, "h2.png") and not entry(s, "brick.png"), "h2.png listed instead of brick.png")
     names = [item["name"] for item in state["project_window"]["entries"]]
     ed.check(not any(n.endswith(".meta") for n in names), f"metas listed: {names}")

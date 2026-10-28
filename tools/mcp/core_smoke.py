@@ -10,7 +10,7 @@ and that the editor exits when the client disconnects.
 
     uv run --no-project --with mcp --with jsonschema --with httpx \
         python tools/mcp/core_smoke.py --editor build/linux/editor-install/bin/jasperengine-editor \
-        --project build/fixture-unity
+        [--project build/fixture-unity]
 
 Self-contained on purpose: the fuller harness lives next to it in tools/mcp/.
 """
@@ -310,11 +310,19 @@ def main():
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     parser = argparse.ArgumentParser()
     parser.add_argument("--editor", default=os.path.join(root, "build/linux/editor-install/bin/jasperengine-editor"))
-    parser.add_argument("--project", default=os.path.join(root, "build/fixture-unity"),
-                        help="Project to copy into a scratch directory (never modified).")
+    parser.add_argument("--project", default=None,
+                        help="Project to copy into a scratch directory (never modified). Default: the "
+                             "default fixture (JASPER_FIXTURE, build/fixture-unity, /fixture, ~/je/fixture-unity)")
     parser.add_argument("--only", choices=["stdio", "raw", "http"])
     args = parser.parse_args()
     editor = os.path.abspath(args.editor)
+    if args.project is None:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import harness
+        try:
+            args.project = str(harness.default_fixture())
+        except harness.HarnessError as e:
+            sys.exit(f"core_smoke: {e}")
     project = os.path.abspath(args.project)
 
     tests = {"raw": lambda: raw_stdio_test(editor, project),

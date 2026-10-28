@@ -14,6 +14,7 @@ import subprocess
 import time
 
 from harness import Editor, skip
+import ui_input
 
 # the harness owns the Xvfb so xdotool can press keys in the editor window
 CI = True
@@ -65,7 +66,8 @@ async def human_play_attempt(ed: Editor, job_id: str) -> None:
         dialog = st.get("dialog")
         if dialog:
             break
-        await asyncio.sleep(0.25)
+        # editor frames, not wall-clock time: a loaded host reads the key a frame later
+        await ui_input.frames(ed, 2)
     if not dialog:
         print("     (F5 did not reach the editor window: no alert seen)")
         return

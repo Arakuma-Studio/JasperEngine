@@ -7676,7 +7676,10 @@ void VHACDImpl::PerformConvexDecomposition()
                     {
                         break;
                     }
+                    // JasperEngine patch: the hull leaves the map as it moves to the output, so a
+                    // cancel that stops this loop leaves the map owning exactly the hulls not moved
                     ConvexHull* ch = i.second;
+                    i.second = nullptr;
                     // We now must reduce the convex hull
                     if ( ch->m_points.size() > m_params.m_maxNumVerticesPerCH || m_params.m_shrinkWrap)
                     {
@@ -7690,6 +7693,12 @@ void VHACDImpl::PerformConvexDecomposition()
                     ch->m_meshId = m_meshId;
                     m_meshId++;
                     m_convexHulls.push_back(ch);
+                }
+                // JasperEngine patch: frees the hulls a cancel left in the map (upstream cleared
+                // the map and leaked them); the moved ones are null here
+                for (auto& i : m_hulls)
+                {
+                    ReleaseConvexHull(i.second);
                 }
                 m_hulls.clear(); // since the hulls were moved into the output list, we don't need to delete them from this container
                 ProgressUpdate(Stages::FINALIZING_RESULTS,

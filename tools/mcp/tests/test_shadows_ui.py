@@ -18,6 +18,7 @@ import subprocess
 import harness
 import pngdiff
 from harness import Editor, skip
+import ui_input
 
 CI = True
 EDITOR = {"xvfb": "harness", "create": True, "name": "Shadows UI"}
@@ -26,30 +27,9 @@ TIMEOUT = 900
 SHOT_DIR = harness.REPO / "build" / "test-output" / "shadows-ui"
 
 
-class Ui:
-    """xdotool input aimed where find_ui_item says a widget is drawn now (by its ImGui label), each
-    action followed by editor frames (test_undo_ui.py and test_jobs_memory_ui.py do the same)."""
-
-    def __init__(self, ed: Editor):
-        self.ed = ed
-        self.env = dict(os.environ, DISPLAY=ed._xvfb.display)
-        windows = self.xdo("search", "--name", "JasperEngine").split() or self.xdo("search", "--name", ".").split()
-        if not windows:
-            skip("no editor window found")
-        self.window = windows[-1]
-        geometry = self.xdo("getwindowgeometry", self.window)
-        x, y = 0, 0
-        for line in geometry.splitlines():
-            if "Position:" in line:
-                x, y = (int(v) for v in line.split("Position:")[1].split("(")[0].strip().split(","))
-        self.origin = (x, y)
-
-    def xdo(self, *args: str) -> str:
-        return subprocess.run(["xdotool", *args], env=self.env, capture_output=True, text=True, timeout=20).stdout
-
-    async def settle(self, seconds: float):
-        await asyncio.sleep(seconds)
-        await self.ed.call("wait", frames=2)
+class Ui(ui_input.Ui):
+    """The shared frame-paced input (tools/mcp/ui_input.py) aimed where find_ui_item says a widget
+    is drawn now (by its ImGui label); points here are in window coordinates."""
 
     async def at(self, label: str, index: int = 0, window: str = "Inspector") -> tuple[int, int]:
         """the centre of the widget drawn with this label (window coordinates), as drawn now; a
@@ -62,26 +42,21 @@ class Ui:
                 return (int(rect["x"] + rect["width"] / 2), int(rect["y"] + rect["height"] / 2))
             if drawn:
                 area = drawn[0]["window_rect"]
-                self.xdo("mousemove", str(int(self.origin[0] + area["x"] + area["width"] / 2)),
-                         str(int(self.origin[1] + area["y"] + area["height"] / 2)))
-                self.xdo("click", "5")
-                await self.settle(0.2)
+                await self.wheel(self.centre(area), 1)
             else:
-                await self.ed.call("wait", frames=5)
+                await self.frames(5)
         raise harness.TestFailure(f"find_ui_item: no visible {label!r} in {window!r}")
 
-    async def move(self, point: tuple[int, int]):
-        """to a point in window coordinates"""
-        self.xdo("mousemove", str(self.origin[0] + point[0]), str(self.origin[1] + point[1]))
-        await self.settle(0.25)
+    def screen(self, point: tuple[int, int]) -> tuple[int, int]:
+        return (self.origin[0] + point[0], self.origin[1] + point[1])
 
-    async def click(self, point: tuple[int, int]):
-        await self.move(point)
-        # press and release frames apart: in one frame the widget never sees the press
-        self.xdo("mousedown", "1")
-        await self.settle(0.1)
-        self.xdo("mouseup", "1")
-        await self.settle(0.5)
+    async def move(self, point: tuple[int, int], frames: int = ui_input.SETTLE_FRAMES):
+        """to a point in window coordinates"""
+        await super().move(self.screen(point), frames)
+
+    async def click(self, point: tuple[int, int] | None = None, button: str = "1"):
+        """at a point in window coordinates"""
+        await super().click(self.screen(point) if point is not None else None, button)
 
 
 async def editor_shot(ed: Editor, name: str):
@@ -141,7 +116,7 @@ async def edit_and_undo(ed: Editor, sid: int, name: str, read, act, changed):
     ed.check(changed(before, after), f"{name}: the Inspector edited it ({before} -> {after})")
     label = await undo_label(ed)
     ed.check(label and label != "(none)", f"{name}: a named undo step ({label!r})")
-    ui.xdo("key", "Escape")
+    await ui.key("Escape")
     await ed.call("undo")
     await ed.call("wait", frames=2)
     reverted = await read()
@@ -152,14 +127,10 @@ async def edit_and_undo(ed: Editor, sid: int, name: str, read, act, changed):
 async def type_into(ui: Ui, label: str, text: str):
     """a drag field's text input (double click), its text replaced"""
     await ui.move(await ui.at(label))
-    ui.xdo("click", "--repeat", "2", "--delay", "80", "1")
-    await ui.settle(0.5)
-    ui.xdo("key", "ctrl+a")
-    await ui.settle(0.2)
-    ui.xdo("type", "--delay", "40", text)
-    await ui.settle(0.3)
-    ui.xdo("key", "Return")
-    await ui.settle(0.6)
+    await ui.double_click()
+    await ui.key("ctrl+a")
+    await ui.type(text)
+    await ui.key("Return")
 
 
 async def pick(ed: Editor, ui: Ui, label: str, item: str, name: str):
@@ -218,16 +189,8 @@ async def test_inspector_shadow_rows_undo(ed: Editor):
     y = handle[1]
 
     async def drag():
-        await ui.move(handle)
-        ui.xdo("mousedown", "1")
-        await ui.settle(0.3)
-        for k in range(1, 9):
-            ui.xdo("mousemove", str(ui.origin[0] + handle[0] + 2 * k), str(ui.origin[1] + y))
-            await asyncio.sleep(0.05)
-            await ui.ed.call("wait", frames=1)
-        await ui.settle(0.3)
-        ui.xdo("mouseup", "1")
-        await ui.settle(0.6)
+        start = ui.screen(handle)
+        await ui.drag(start, (start[0] + 16, ui.screen((0, y))[1]), steps=8)
     await edit_and_undo(ed, sid, "split_bar", read("cascadeSplits"), drag, differs)
 
     # the mesh's Static Shadow Caster

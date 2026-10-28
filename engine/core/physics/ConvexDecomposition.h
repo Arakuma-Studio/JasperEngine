@@ -18,6 +18,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -42,6 +43,10 @@ namespace jasperengine {
     struct ConvexHullPoints {
         std::vector<Vector3> points;
     };
+
+    // A synchronous decomposition's progress (ConvexDecompositionCache::decompose): V-HACD's stage
+    // name and the stage's progress, 0 to 100
+    using DecompositionProgress = std::function<void(const char* stage, double stageProgress)>;
 
     // The cache key: geometry (positions welded by exact value, triangle indices), the
     // parameters and the algorithm version. Same geometry and params: same key on every platform.
@@ -144,9 +149,13 @@ namespace jasperengine {
         // V-HACD error. The input is welded as in hashDecompositionInput(). Blocks the calling
         // thread while V-HACD's job pool (one thread less than the machine has, 1 to 8) splits
         // and merges hulls; the result does not depend on the thread count.
+        // progress, when set, is called on the calling thread at each of V-HACD's progress
+        // reports (its stage name, e.g. "COMPUTING_COST_MATRIX", and the stage's progress, 0 to
+        // 100), before cancel is read: raising cancel from it stops V-HACD at that point.
         static bool decompose(const std::vector<Vector3>& positions, const std::vector<uint32_t>& indices,
                               const DecompositionParams& params, std::vector<ConvexHullPoints>& out,
-                              const std::atomic<bool>* cancel, std::string* error);
+                              const std::atomic<bool>* cancel, std::string* error,
+                              const DecompositionProgress& progress = {});
 
         // False when the build has no V-HACD (JASPERENGINE_CONVEX_DECOMPOSITION off).
         static bool available();

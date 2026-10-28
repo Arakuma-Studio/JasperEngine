@@ -236,8 +236,11 @@ namespace {
 
 }
 
-jasperengine::editor::mcp::Json ScriptStatus::toJson() const {
+jasperengine::editor::mcp::Json ScriptStatus::toJson() {
     using jasperengine::editor::mcp::Json;
+    // reload_scripts' wait ends when the build's task does, which may be after this frame's
+    // update() (the build posts its Finished event, then its task completes)
+    update();
     Json mismatches = Json::array();
     for (const FingerprintMismatch& mismatch : current.fingerprintMismatches) {
         mismatches.push_back({{"field", mismatch.field}, {"editor", mismatch.editor}, {"library", mismatch.library},

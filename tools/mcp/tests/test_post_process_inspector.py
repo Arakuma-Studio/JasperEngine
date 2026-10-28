@@ -21,6 +21,7 @@ import sys
 from pathlib import Path
 
 from harness import Editor, skip
+import ui_input
 
 sys.path.insert(0, str(Path(__file__).parent))
 from test_post_process_passes import write_png  # noqa: E402
@@ -39,45 +40,25 @@ FORK_SHADER_COMBO_Y = 392
 FORK_PIXELATE_ITEM = (1450, 529)   # "Pixelate" in the opened combo
 
 
-class Ui:
-    def __init__(self, ed: Editor):
-        self.env = dict(os.environ, DISPLAY=ed._xvfb.display)
-
-    def xdo(self, *args: str) -> str:
-        return subprocess.run(["xdotool", *args], env=self.env, capture_output=True, text=True, timeout=20).stdout
+class Ui(ui_input.Ui):
+    """The shared frame-paced input (tools/mcp/ui_input.py), at screen points of the default layout."""
 
     async def focus(self):
-        windows = self.xdo("search", "--name", ".").split()
-        if not windows:
-            skip("no editor window found")
-        self.xdo("windowfocus", "--sync", windows[-1])
+        super().focus()
+        await self.frames()
 
     async def click(self, x: int, y: int):
-        self.xdo("mousemove", str(x), str(y))
-        await asyncio.sleep(0.3)
-        self.xdo("click", "1")
-        await asyncio.sleep(0.8)
+        await super().click((x, y))
 
     async def drag(self, x: int, y: int, dx: int):
-        """press, move right by dx in steps (a frame between each), release"""
-        self.xdo("mousemove", str(x), str(y))
-        await asyncio.sleep(0.3)
-        self.xdo("mousedown", "1")
-        await asyncio.sleep(0.2)
-        steps = 8
-        for i in range(1, steps + 1):
-            self.xdo("mousemove", str(x + dx * i // steps), str(y))
-            await asyncio.sleep(0.1)
-        await asyncio.sleep(0.2)
-        self.xdo("mouseup", "1")
-        await asyncio.sleep(0.6)
+        """press, move right by dx a frame per step, release"""
+        await super().drag((x, y), (x + dx, y), steps=8)
 
     async def scroll_to_end(self):
-        self.xdo("mousemove", *map(str, SCROLL_AT))
-        await asyncio.sleep(0.2)
+        await self.move(SCROLL_AT)
         for _ in range(200):
             self.xdo("click", "5")
-        await asyncio.sleep(0.8)
+        await self.frames(4)
 
 
 async def chain(ed: Editor, sid: int) -> list:

@@ -25,6 +25,7 @@ import subprocess
 import harness
 import pngdiff
 from harness import Editor
+import ui_input
 
 TIMEOUT = 900
 EDITOR = {"create": True, "xvfb": "harness"}
@@ -64,47 +65,22 @@ async def settle(ed: Editor, frames: int = 6):
 
 
 async def key(ed: Editor, combo: str):
-    # modifiers down, key down, key up, modifiers up: `xdotool key ctrl+a` releases Ctrl before
-    # A, and when both land in one frame (a slow headless editor) ImGui applies the release
-    # before the shortcut code reads the modifiers, so the chord reads as a plain A
-    *modifiers, last = combo.split("+")
-    for modifier in modifiers:
-        run_x(ed, "xdotool", "keydown", "--clearmodifiers", modifier)
-    run_x(ed, "xdotool", "keydown", last)
-    run_x(ed, "xdotool", "keyup", last)
-    for modifier in reversed(modifiers):
-        run_x(ed, "xdotool", "keyup", modifier)
+    # modifiers held across frames around the key (ui_input.Ui.key): when Ctrl's release lands
+    # in the key's frame, the chord reads as a plain key
+    run_x(ed, "true")     # skips without the harness' Xvfb
+    await ui_input.for_editor(ed).key(combo)
     await settle(ed)
 
 
 async def click(ed: Editor, x: int, y: int, button: int = 1, modifier: str | None = None):
-    run_x(ed, "xdotool", "mousemove", str(x), str(y))
-    await settle(ed, 3)
-    if modifier:
-        run_x(ed, "xdotool", "keydown", modifier)
-    run_x(ed, "xdotool", "mousedown", str(button))
-    await settle(ed, 3)
-    run_x(ed, "xdotool", "mouseup", str(button))
-    if modifier:
-        run_x(ed, "xdotool", "keyup", modifier)
+    run_x(ed, "true")
+    await ui_input.for_editor(ed).click((x, y), str(button), modifier)
     await settle(ed)
 
 
 async def drag(ed: Editor, start: tuple[int, int], end: tuple[int, int], steps: int = 8, modifier: str | None = None):
-    run_x(ed, "xdotool", "mousemove", str(start[0]), str(start[1]))
-    await settle(ed, 3)
-    if modifier:
-        run_x(ed, "xdotool", "keydown", modifier)
-    run_x(ed, "xdotool", "mousedown", "1")
-    await settle(ed, 3)
-    for n in range(1, steps + 1):
-        x = round(start[0] + (end[0] - start[0]) * n / steps)
-        y = round(start[1] + (end[1] - start[1]) * n / steps)
-        run_x(ed, "xdotool", "mousemove", str(x), str(y))
-        await settle(ed, 2)
-    run_x(ed, "xdotool", "mouseup", "1")
-    if modifier:
-        run_x(ed, "xdotool", "keyup", modifier)
+    run_x(ed, "true")
+    await ui_input.for_editor(ed).drag(start, end, steps=steps, modifier=modifier)
     await settle(ed)
 
 

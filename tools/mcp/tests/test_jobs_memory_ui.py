@@ -25,6 +25,7 @@ import zlib
 from pathlib import Path
 
 from harness import Editor, TestFailure, find_key, skip
+import ui_input
 
 EDITOR = {"xvfb": "harness", "create": True, "name": "Jobs Memory UI"}
 TIMEOUT = 900
@@ -35,60 +36,14 @@ TEXTURES = 200
 SIZE = 512
 
 
-class Ui:
-    """xdotool input in the editor window, each action followed by editor frames: on a loaded host
-    one frame outlasts a fixed sleep (test_undo_ui.py does the same)."""
-
-    def __init__(self, ed: Editor, window: str):
-        self.ed = ed
-        self.env = dict(os.environ, DISPLAY=ed._xvfb.display)
-        self.window = window
-        x, y = 0, 0
-        for line in self.xdo("getwindowgeometry", window).splitlines():
-            if "Position:" in line:
-                x, y = (int(v) for v in line.split("Position:")[1].split("(")[0].strip().split(","))
-        self.origin = (x, y)
-
-    def xdo(self, *args: str) -> str:
-        return subprocess.run(["xdotool", *args], env=self.env, capture_output=True, text=True, timeout=20).stdout
-
-    def centre(self, rect: dict) -> tuple[int, int]:
-        """the screen point at the centre of a rect in editor window coordinates"""
-        return (int(self.origin[0] + rect["x"] + rect["width"] / 2), int(self.origin[1] + rect["y"] + rect["height"] / 2))
-
-    async def settle(self, seconds: float):
-        await asyncio.sleep(seconds)
-        await self.ed.call("wait", frames=2)
-
-    async def click(self, at: tuple[int, int]):
-        self.xdo("mousemove", str(at[0]), str(at[1]))
-        await self.settle(0.3)
-        # press and release frames apart: in one frame the widget never sees the press
-        self.xdo("mousedown", "1")
-        await self.settle(0.1)
-        self.xdo("mouseup", "1")
-        await self.settle(0.5)
-
-    async def wheel(self, at: tuple[int, int], notches: int):
-        self.xdo("mousemove", str(at[0]), str(at[1]))
-        await self.settle(0.2)
-        for _ in range(notches):
-            self.xdo("click", "5")
-            await asyncio.sleep(0.05)
-        await self.settle(0.3)
-
-    async def find(self, label: str, window: str | None = None) -> dict | None:
-        """the first drawn, visible item with this label (find_ui_item), or None"""
-        args = {"label": label} | ({"window": window} if window else {})
-        items = (await self.ed.call("find_ui_item", **args))["items"]
-        visible = [item for item in items if item["visible"]]
-        return visible[0] if visible else None
+class Ui(ui_input.Ui):
+    """The shared frame-paced input (tools/mcp/ui_input.py), clicking items it scrolls to."""
 
     async def click_item(self, label: str, window: str | None = None, scroll_in: dict | None = None):
         """clicks the item where it is drawn; with scroll_in (a window rect), wheels down through that
         window until the item shows"""
         for _ in range(60):
-            item = await self.find(label, window)
+            item = await self.find(label, window, frames=2)
             if item:
                 await self.click(self.centre(item["rect"]))
                 return
@@ -164,14 +119,8 @@ async def test_reserved_frame_workers_from_project_settings(ed: Editor):
     # Ctrl+Z in the panel: the project history's step
     panel = (await ed.call("focus_window", window="jobs_memory"))["rect"]
     await ui.click(ui.centre(panel))
-    # Ctrl held across frames: `xdotool key ctrl+z` can land Z's press and Ctrl's release
-    # in one editor frame, where Ctrl reads up and the chord is lost
-    ui.xdo("keydown", "ctrl")
-    await asyncio.sleep(0.1)
-    ui.xdo("key", "z")
-    await asyncio.sleep(0.1)
-    ui.xdo("keyup", "ctrl")
-    await asyncio.sleep(0.5)
+    # Ctrl held across frames (ui_input.Ui.key)
+    await ui.key("ctrl+z")
     await ed.call("wait", frames=5)
     reverted = await gate(ed)
     await ed.screenshot("editor", path=str(out / "ac23-4-undone.png"))

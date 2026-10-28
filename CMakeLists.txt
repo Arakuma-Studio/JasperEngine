@@ -1200,6 +1200,8 @@ add_custom_target(copy_jasperengine_editor_engine
     COMMAND ${CMAKE_COMMAND}
         -DENGINE_SOURCE:PATH=${CMAKE_SOURCE_DIR}/engine
         -DENGINE_DEST:PATH=${JASPERENGINE_EDITOR_ENGINE_DIR}
+        # what the copy made, so a file deleted from engine/ leaves the copy too
+        -DMANIFEST:FILEPATH=${CMAKE_BINARY_DIR}/engine-copy-manifest.txt
         -P ${CMAKE_SOURCE_DIR}/CopyEditorEngine.cmake
     COMMENT "Copying engine next to the editor"
     VERBATIM
@@ -1279,6 +1281,12 @@ else()
         )
     endif()
 
+    # install(DIRECTORY) only adds and overwrites: first the files engine/ no longer has leave
+    # the installed copy (an export or a script build would compile a deleted header)
+    install(CODE "execute_process(COMMAND \"${CMAKE_COMMAND}\" \"-DENGINE_SOURCE=${CMAKE_SOURCE_DIR}/engine\"
+                      \"-DENGINE_DEST=\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin/engine\" -DPRUNE_ONLY=ON -DINSTALL_EXCLUDES=ON
+                      -P \"${CMAKE_SOURCE_DIR}/CopyEditorEngine.cmake\" COMMAND_ERROR_IS_FATAL ANY)"
+            CONFIGURATIONS Release MinSizeRel)
     install(DIRECTORY ${CMAKE_SOURCE_DIR}/engine
             DESTINATION bin
             CONFIGURATIONS Release MinSizeRel

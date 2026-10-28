@@ -20,6 +20,19 @@ import sys
 import yaml
 
 
+
+def default_fixture(here):
+    """The TappyPlane fixture project: FIXTURE or JASPER_FIXTURE, else where
+    tools/mcp/harness.py default_fixture() looks (build/fixture-unity, /fixture, ~/je/fixture-unity)."""
+    for name in ("FIXTURE", "JASPER_FIXTURE"):
+        if os.environ.get(name):
+            return os.environ[name]
+    for candidate in (os.path.join(here, "..", "build", "fixture-unity"), "/fixture",
+                      os.path.join(os.path.expanduser("~"), "je", "fixture-unity")):
+        if os.path.isfile(os.path.join(candidate, "project.yaml")):
+            return candidate
+    sys.exit("needs the TappyPlane fixture project (FIXTURE or JASPER_FIXTURE=<dir>, build/fixture-unity or ~/je/fixture-unity)")
+
 def transform(x=0.0, y=0.0, sx=1.0, sy=1.0):
     return {
         "position": [x, y, 0],
@@ -464,9 +477,7 @@ def variant(out):
     own, a fresh instance of each compared with what it was made from, and a variant made
     from the Project window. Writes <out>/ (the project) and <out>.ops/build.yaml."""
     here = os.path.dirname(os.path.abspath(__file__))
-    fixture = os.environ.get("FIXTURE", os.path.join(here, "..", "build", "fixture-unity"))
-    if not os.path.isdir(fixture):
-        sys.exit("needs the TappyPlane fixture project (build/fixture-unity, or FIXTURE=<dir>)")
+    fixture = default_fixture(here)
     os.makedirs(out, exist_ok=True)
     os.system('cp -r "%s/assets" "%s/"' % (fixture, out))
     os.makedirs(os.path.join(out, "prefabs"), exist_ok=True)
@@ -582,9 +593,7 @@ def variant_export(out):
     "[ERROR] [VARIANT] ..." otherwise). Writes <out>/ (the project) and <out>.ops/build.yaml
     (the ops that make the prefabs, then save)."""
     here = os.path.dirname(os.path.abspath(__file__))
-    fixture = os.environ.get("FIXTURE", os.path.join(here, "..", "build", "fixture-unity"))
-    if not os.path.isdir(fixture):
-        sys.exit("needs the TappyPlane fixture project (build/fixture-unity, or FIXTURE=<dir>)")
+    fixture = default_fixture(here)
     os.system('rm -rf "%s" && cp -r "%s" "%s"' % (out, fixture, out))
     os.makedirs(os.path.join(out, "prefabs"), exist_ok=True)
     os.makedirs(os.path.join(out, "scripts"), exist_ok=True)
