@@ -14,6 +14,11 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 14, 0, 0, 1]
+  AnimationPlayerComponent:
+    position: [66, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 66, 0, 0, 1]
   AudioSourceComponent:
     position: [15, 0, 0]
     rotation: [1, 0, 0, 0]
@@ -189,6 +194,11 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 33, 0, 0, 1]
+  PoseAnimatorComponent:
+    position: [65, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 65, 0, 0, 1]
   PositionTweenComponent:
     position: [34, 0, 0]
     rotation: [1, 0, 0, 0]
