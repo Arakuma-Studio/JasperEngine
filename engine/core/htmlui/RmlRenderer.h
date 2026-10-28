@@ -533,6 +533,9 @@ namespace jasperengine {
         // clipped away; all of it without a scissor)
         Rml::Rectanglei scissorIn(Rml::Rectanglei frame) const;
         Rml::Matrix4f transformIn(Rml::Rectanglei frame) const;
+        // a matrix to the target's clip space (projection x ...) made one to the frame's (S16's
+        // batched runs and primitives in a region layer); the matrix itself for the viewport's frame
+        Rml::Matrix4f toFrame(Rml::Rectanglei frame, const Rml::Matrix4f& matrix) const;
         // the post-process targets of a layer covering frame: nullptr for the viewport's (the
         // render target's postprocess), else the region set of its size
         RmlRenderTarget::RegionPost* postSetFor(Rml::Rectanglei frame);
@@ -790,10 +793,12 @@ namespace jasperengine {
         // HTMLUI_PRIM instances (translation baked) drawn at once from a transient buffer: the
         // primitives of the unbatched replay and of immediate drawing
         void drawPrimitivesNow(const HtmlUIPrimitive* primitives, size_t count, Rml::Vector2f translation);
-        // draws count instances from buffer at byteOffset with the current state
-        // (slots: the run's textures, nullptr where unused)
+        // draws count instances from buffer at byteOffset with the current state (slots: the run's
+        // textures, nullptr where unused) into a layer covering `frame` of the target plane: the
+        // transform is to the target's clip space, the scissor in the frame's px (P7-F2)
         bool drawInstances(BufferRender& buffer, size_t byteOffset, uint32_t count, const std::array<HtmlUITexture*, 4>& slots,
-                           const Rml::Matrix4f& transform, const ClipParams& clipParams, const PipelineState& state, Rml::Rectanglei scissor);
+                           const Rml::Matrix4f& transform, const ClipParams& clipParams, const PipelineState& state, Rml::Rectanglei scissor,
+                           Rml::Rectanglei frame);
 
         std::vector<ClipShapeRecord> commandClipShapes;   // RenderToClipMaskShape's (CLIP_MASK i[0] - 1)
         std::vector<HtmlUIPrimitive> commandPrimitives;   // RenderPrimitives' (PRIMITIVES), without their translation

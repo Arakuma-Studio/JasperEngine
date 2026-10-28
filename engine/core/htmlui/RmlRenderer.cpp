@@ -1282,9 +1282,13 @@ Rml::Rectanglei RmlRenderer::scissorIn(Rml::Rectanglei frame) const{
 }
 
 Rml::Matrix4f RmlRenderer::transformIn(Rml::Rectanglei frame) const{
+    return toFrame(frame, transform);
+}
+
+Rml::Matrix4f RmlRenderer::toFrame(Rml::Rectanglei frame, const Rml::Matrix4f& matrix) const{
     if (frame == standardFrame())
-        return transform;
-    // The clip space of the target, where 'transform' puts things, to that of the frame: a target
+        return matrix;
+    // The clip space of the target, where 'matrix' puts things, to that of the frame: a target
     // pixel p is the frame's pixel p - frame.p0. Rows count down from y = -1 on GL (offscreen
     // rendering is Y-flipped there), from y = 1 elsewhere.
     const float tx = (float)targetSize.x, ty = (float)targetSize.y;
@@ -1292,8 +1296,8 @@ Rml::Matrix4f RmlRenderer::transformIn(Rml::Rectanglei frame) const{
     const float bx = (tx - 2.0f * (float)frame.Left()) / sx - 1.0f;
     const float byFlipped = (ty - 2.0f * (float)frame.Top()) / sy - 1.0f;
     const float by = Engine::isOpenGL() ? byFlipped : -byFlipped;
-    const Rml::Matrix4f toFrame = Rml::Matrix4f::Translate(bx, by, 0.0f) * Rml::Matrix4f::Scale(tx / sx, ty / sy, 1.0f);
-    return toFrame * transform;
+    const Rml::Matrix4f frameClip = Rml::Matrix4f::Translate(bx, by, 0.0f) * Rml::Matrix4f::Scale(tx / sx, ty / sy, 1.0f);
+    return frameClip * matrix;
 }
 
 RmlRenderTarget::RegionPost* RmlRenderer::postSetFor(Rml::Rectanglei frame){
