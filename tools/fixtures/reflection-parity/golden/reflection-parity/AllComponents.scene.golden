@@ -553,7 +553,7 @@ entities:
         usingAnchors: true
         panel: 0
         containerBoxIndex: -1
-        scissor: [0, 0, 0, 0]
+        scissor: <view>
         ignoreScissor: true
         ignoreEvents: true
   - type: Entity
