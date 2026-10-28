@@ -6,13 +6,16 @@
 #include "physics/JoltShapeBuilder.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
+#include "subsystem/WaterSystem.h"
 #include "object/environment/Water.h"
 #include "util/Angle.h"
 
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "util/Box2DAux.h"
+#include "subsystem/CharacterController2DSystem.h"
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
+#include "subsystem/CharacterControllerSystem.h"
 #include "util/JoltPhysicsAux.h"
 #endif
 
@@ -210,13 +213,16 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
 #ifdef JASPERENGINE_PHYSICS_2D
 	declareHookType(scene->getComponentId<Rigidbody2DComponent>());
 	declareHookType(scene->getComponentId<Joint2DComponent>());
+	declareHookType(scene->getComponentId<CharacterController2DComponent>());
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
 	declareHookType(scene->getComponentId<RigidbodyComponent>());
 	declareHookType(scene->getComponentId<Joint3DComponent>());
+	declareHookType(scene->getComponentId<CharacterControllerComponent>());
 #endif
 
 	this->scene = scene;
+	water = std::make_unique<WaterSystem>(scene, this);
 
     // Default gravity comes from SceneSettings, the single source of truth for scene-setting
     // defaults. The live gravity value is then owned/mutated here (pushed to the Box2D/Jolt
@@ -227,6 +233,7 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
     this->interpolation = settingsDefaults.physicsInterpolation;
 #ifdef JASPERENGINE_PHYSICS_2D
     this->pointsToMeterScale2D = 64.0;
+    characters2D = std::make_unique<CharacterController2DSystem>(scene, this);
 
     // The Box2D world is created lazily (see ensureWorld2D): Box2D's global b2_worlds[] pool is
     // capped at B2_MAX_WORLDS (128) and is not thread-safe. Editor preview/thumbnail/gizmo scenes
@@ -271,6 +278,8 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
     world3D.SetContactListener(contactListener3D);
 
     lock3DBodies = true;
+
+    characters3D = std::make_unique<CharacterControllerSystem>(scene, this);
 #endif
 }
 
@@ -300,9 +309,12 @@ void PhysicsSystem::ensureWorld2D(){
 
 PhysicsSystem::~PhysicsSystem(){
 #ifdef JASPERENGINE_PHYSICS_3D
+    // the characters release their object layers and inner bodies while both still exist
+    characters3D.reset();
     flushPendingDestroys3D();
 #endif
 #ifdef JASPERENGINE_PHYSICS_2D
+    characters2D.reset();
     if (b2World_IsValid(world2D)){
         b2DestroyWorld(world2D);
     }
@@ -434,6 +446,14 @@ void PhysicsSystem::setPointsToMeterScale2D(float pointsToMeterScale2D){
 
 bool PhysicsSystem::isSteppingWorld2D() const{
     return steppingWorld2D;
+}
+
+int PhysicsSystem::moveCharacter2D(Entity entity, const Vector2& motion){
+    return characters2D->move(entity, motion);
+}
+
+bool PhysicsSystem::simpleMoveCharacter2D(Entity entity, const Vector2& speed){
+    return characters2D->simpleMove(entity, speed);
 }
 
 // Box2D drops a shape's contacts and pairs it again whenever its filter changes. With
@@ -698,6 +718,20 @@ void PhysicsSystem::updateTransformFromRigidbody2D(Entity entity, Rigidbody2DCom
     setSynced(body, position, rotation);
 }
 #endif
+
+void PhysicsSystem::resolveTransformWorldPose(Entity entity){
+    resolveWorldPose(scene, entity);
+}
+
+void PhysicsSystem::writeTransformWorldPose(Entity entity, const Vector3& position, const Quaternion& rotation){
+    Transform* transform = scene->findComponent<Transform>(entity);
+    if (!transform){
+        return;
+    }
+    Vector3 worldPosition = position;
+    Quaternion worldRotation = rotation;
+    setTransformWorldPose(scene, *transform, worldPosition, worldRotation);
+}
 
 #ifdef JASPERENGINE_PHYSICS_3D
 void PhysicsSystem::updateTransformFromRigidbody(Entity entity, RigidbodyComponent& body, float alpha){
@@ -1523,6 +1557,8 @@ bool PhysicsSystem::createGenericJoltBody(Entity entity, RigidbodyComponent& bod
     JPH::BodyCreationSettings settings(shape, createPosition, createRotation, joltType, layer);
     settings.mMotionQuality = getRigidbodyMotionQualityToJolt(body.motionQuality);
     settings.mIsSensor = body.sensor;
+    // a trigger sees the kinematic inner bodies of CharacterControllers (and other kinematics)
+    settings.mCollideKinematicVsNonDynamic = body.sensor;
     settings.mGravityFactor = body.gravityFactor;
     settings.mFriction = body.friction;
     settings.mRestitution = body.restitution;
@@ -3083,6 +3119,9 @@ void PhysicsSystem::fixedUpdate(double dt){
             Box2DAux::manageEvents(scene, world2D);
         }
     }
+
+    // the 2D controllers ride what moved in the step and see what is under them now
+    characters2D->postStep(fixedStep);
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
@@ -3141,7 +3180,12 @@ void PhysicsSystem::fixedUpdate(double dt){
 
     syncLayerCollisionMatrix3D();
 
-    if (bodies3d->size() > 0){
+    // characters made and removed as their components and GameObjects come and go, and moved
+    // where their Transforms were put
+    characters3D->preStep();
+
+    // the world steps for the characters too (their platforms, root motion, inner bodies)
+    if (bodies3d->size() > 0 || characters3D->count() > 0){
 		const int cCollisionSteps = 1;
 
 		// Clears the flag and drains the teardown queue from the destructor, so a C++
@@ -3154,6 +3198,8 @@ void PhysicsSystem::fixedUpdate(double dt){
 
 		// the bodies floating in a library:water (Water.h)
 		Water::applyBuoyancy(scene, fixedStep);
+		// and the ones a Buoyancy floats in Water Volumes, by its columns (WaterSystem)
+		water->applyBuoyancy(fixedStep);
 
 		StepScope stepScope(this);
 		// the contact listener runs on Jolt's threads, serialized by getCallbackMutex3D, while
@@ -3184,6 +3230,9 @@ void PhysicsSystem::fixedUpdate(double dt){
 
         updateTransformFromRigidbody(entity, body, 1.0f);
     }
+
+    // the characters ride what moved, see what is under them now and take their root motion
+    characters3D->postStep(fixedStep);
 #endif
 }
 
@@ -3237,6 +3286,7 @@ void PhysicsSystem::onEntityLayerChanged(Entity entity) {
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
     refreshRigidbodyFilter3D(entity);
+    characters3D->refreshLayer(entity);
 #endif
 }
 
@@ -3248,6 +3298,8 @@ void PhysicsSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
 	} else if (componentId == scene->getComponentId<Joint2DComponent>()) {
 		Joint2DComponent& joint2d = scene->getComponent<Joint2DComponent>(entity);
 		destroyJoint2D(joint2d);
+	} else if (componentId == scene->getComponentId<CharacterController2DComponent>()) {
+		characters2D->remove(entity);
 	}
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
@@ -3259,6 +3311,38 @@ void PhysicsSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
 	} else if (componentId == scene->getComponentId<Joint3DComponent>()) {
 		Joint3DComponent& joint3d = scene->getComponent<Joint3DComponent>(entity);
 		destroyJoint3D(joint3d);
+	} else if (componentId == scene->getComponentId<CharacterControllerComponent>()) {
+		characters3D->remove(entity);
 	}
 #endif
+}
+
+#ifdef JASPERENGINE_PHYSICS_3D
+int PhysicsSystem::moveCharacter(Entity entity, const Vector3& motion){
+    return characters3D->move(entity, motion);
+}
+
+bool PhysicsSystem::simpleMoveCharacter(Entity entity, const Vector3& speed){
+    return characters3D->simpleMove(entity, speed);
+}
+
+bool PhysicsSystem::trySetCharacterSize(Entity entity, float height, float radius, const Vector3& center){
+    return characters3D->trySetSize(entity, height, radius, center);
+}
+
+void PhysicsSystem::setRootMotion(Entity entity, const Vector3& worldVelocity, float yawRate){
+    characters3D->setRootMotion(entity, worldVelocity, yawRate);
+}
+
+bool PhysicsSystem::isCharacterInnerBody(const JPH::BodyID& body) const{
+    return characters3D && characters3D->isInnerBody(body);
+}
+#endif
+
+WaterSample PhysicsSystem::sampleWater(const Vector3& point) const{
+    return water->sample(point);
+}
+
+float PhysicsSystem::sampleWaterHeight(float x, float z) const{
+    return water->sampleHeight(x, z);
 }

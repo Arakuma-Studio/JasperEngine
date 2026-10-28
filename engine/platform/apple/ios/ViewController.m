@@ -52,6 +52,16 @@
                                              selector:@selector(resumeGame)
                                                  name:UISceneDidActivateNotification
                                                object:nil];
+
+    // a call or the app switcher: the fingers and pressed buttons are let go
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(focusLost)
+                                                 name:UIApplicationWillResignActiveNotification
+                                               object:nil];
+}
+
+- (void)focusLost {
+    [Renderer focusChanged:NO];
 }
 
 - (void)pauseGame {
@@ -59,6 +69,7 @@
 }
 
 - (void)resumeGame {
+    [Renderer focusChanged:YES];
     [Renderer resumeGame];
 }
 

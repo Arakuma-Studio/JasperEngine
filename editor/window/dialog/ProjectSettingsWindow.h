@@ -65,6 +65,12 @@ namespace jasperengine::editor {
         int m_cxxStandardIndex = 0;
         bool m_physics2DEnabled = true;
         bool m_physics3DEnabled = true;
+        // Input: the default actions asset (project-relative), the deadzone, and the
+        // .inputactions files of the assets directory as the picker lists them
+        fs::path m_inputActionsAsset;
+        float m_inputDeadzone = 0.15f;
+        std::vector<fs::path> m_inputActionsFiles;
+        std::string m_inputStatus;
         bool m_runtimeShadersEnabled = true;
         int m_mobilePbrTierIndex = 1;
         bool m_packNativeResources = false;
@@ -140,6 +146,7 @@ namespace jasperengine::editor {
         void drawTextureSettings();
         void drawPhysicsSettings();
         void drawPhysics2DSettings();
+        void drawInputSettings();
         // Unity's triangular Layer Collision Matrix over the named layers (as typed in
         // Tags and Layers, not yet applied)
         void drawLayerCollisionMatrix(const char* id, LayerCollisionRows& rows);

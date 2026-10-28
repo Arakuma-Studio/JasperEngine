@@ -999,6 +999,11 @@ endif()
 set(JASPERENGINE_SRCS
     core/Engine.cpp
     core/Input.cpp
+    core/input/InputControlPath.cpp
+    core/input/InputActionAsset.cpp
+    core/input/InputActions.cpp
+    core/input/InputRebind.cpp
+    core/input/InputVirtualControls.cpp
     core/Log.cpp
     core/diag/CrashHandler.cpp
     core/diag/CrashHandlerPosix.cpp
@@ -1169,6 +1174,8 @@ set(JASPERENGINE_SRCS
     core/object/environment/ReflectionProbe.cpp
     core/object/environment/Skybox.cpp
     core/object/environment/Water.cpp
+    core/object/environment/WaterVolume.cpp
+    core/object/physics/Buoyancy.cpp
     core/object/environment/VolumetricClouds.cpp
     core/object/ui/Button.cpp
     core/object/ui/LayoutGroup.cpp
@@ -1235,6 +1242,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/MathClassesLua.cpp
     core/script/binding/GameObjectClassesLua.cpp
     core/script/binding/ProfilerClassesLua.cpp
+    core/script/binding/GameplayClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/HtmlUIVectorLua.cpp
     core/script/binding/HtmlUIMediaLua.cpp
@@ -1261,6 +1269,7 @@ set(JASPERENGINE_SRCS
     core/lattice/LatticeRender.cpp
     core/subsystem/MeshSystemGltfPbr.cpp
     core/subsystem/PhysicsSystem.cpp
+    core/subsystem/WaterSystem.cpp
     core/subsystem/AtmosphereRenderer.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/RenderSystemShadows.cpp
@@ -1344,6 +1353,8 @@ if(JASPERENGINE_PHYSICS_2D)
         core/object/physics/Contact2D.cpp
         core/object/physics/Joint2D.cpp
         core/object/physics/Manifold2D.cpp
+        core/object/physics/CharacterController2D.cpp
+        core/subsystem/CharacterController2DSystem.cpp
     )
 endif()
 
@@ -1353,6 +1364,8 @@ if(JASPERENGINE_PHYSICS_3D)
         core/object/physics/CollideShapeResult3D.cpp
         core/object/physics/Contact3D.cpp
         core/object/physics/Joint3D.cpp
+        core/object/physics/CharacterController.cpp
+        core/subsystem/CharacterControllerSystem.cpp
     )
 endif()
 
@@ -1466,6 +1479,13 @@ endif()
 if(NOT MSVC)
     set_source_files_properties(core/texture/MipChain.cpp core/texture/TexturePrepare.cpp
         PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+endif()
+# the cooked-texture runtime the web downloads, optimised for size there like the Basis
+# transcoder (spec S14 R21): its hot loops are the transcoder's and Zstandard's
+if(EMSCRIPTEN)
+    set_source_files_properties(core/texture/Ktx2.cpp core/texture/TextureDecode.cpp core/texture/TextureFallback.cpp
+        core/texture/TextureFormat.cpp core/texture/CookedTextures.cpp core/texture/BasisTranscode.cpp
+        PROPERTIES COMPILE_OPTIONS "-Os")
 endif()
 
 # The manifests of the library shaders (shaderlib/library/), embedded in every build: a
@@ -1593,22 +1613,6 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         )
     endif()
 
-    # emcc packs project/assets and project/lua into the .data file at link time
-    # (--preload-file), which ninja does not see: list them as link inputs so an
-    # edited script or asset relinks instead of shipping the previous bundle.
-    if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-        set(EM_PRELOAD_DEPENDS)
-        foreach(preloadDir assets lua)
-            if(EXISTS "${PROJECT_ROOT}/${preloadDir}")
-                file(GLOB_RECURSE preloadFiles CONFIGURE_DEPENDS "${PROJECT_ROOT}/${preloadDir}/*")
-                list(APPEND EM_PRELOAD_DEPENDS ${preloadFiles})
-            endif()
-        endforeach()
-        if(EM_PRELOAD_DEPENDS)
-            set_property(TARGET ${APP_NAME} APPEND PROPERTY LINK_DEPENDS ${EM_PRELOAD_DEPENDS})
-        endif()
-    endif()
-
     if(WIN32)
         include(${JASPERENGINE_ROOT}/platform/win/WindowsManifest.cmake)
         jasperengine_add_windows_manifest(${APP_NAME})
@@ -1680,6 +1684,23 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         OBJCXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
         OBJCXX_STANDARD_REQUIRED ON
     )
+
+    # emcc packs project/assets and project/lua into the .data file at link time
+    # (--preload-file), which ninja does not see: list them as link inputs so an
+    # edited script or asset relinks instead of shipping the previous bundle (appended after
+    # PLATFORM_PROPERTIES, whose LINK_DEPENDS of the crash pre-js would replace them)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+        set(EM_PRELOAD_DEPENDS)
+        foreach(preloadDir assets lua)
+            if(EXISTS "${PROJECT_ROOT}/${preloadDir}")
+                file(GLOB_RECURSE preloadFiles CONFIGURE_DEPENDS "${PROJECT_ROOT}/${preloadDir}/*")
+                list(APPEND EM_PRELOAD_DEPENDS ${preloadFiles})
+            endif()
+        endforeach()
+        if(EM_PRELOAD_DEPENDS)
+            set_property(TARGET ${APP_NAME} APPEND PROPERTY LINK_DEPENDS ${EM_PRELOAD_DEPENDS})
+        endif()
+    endif()
 
     # Generated sources embed UTF-8 literals and carry no BOM, so MSVC would
     # otherwise decode them in the active code page.

@@ -677,6 +677,10 @@ namespace jasperengine::editor{
         // Quality > Atmosphere Quality: desktop, mobile, web
         std::array<AtmosphereQuality, 3> atmosphereQuality;
         PlayerLoggingSettings playerLogging;
+        // Input: the actions asset Play and the game start with (project-relative, empty for
+        // none) and the deadzone of AXIS and VECTOR2 actions without their own
+        std::filesystem::path inputActionsAsset;
+        float inputDeadzone = 0.15f;
         PlayerCrashSettings playerCrash;
         int htmlUiMsaaSamples;
         HtmlUiRenderSettings htmlUiRender;
@@ -1229,6 +1233,18 @@ namespace jasperengine::editor{
         const PlayerLoggingSettings& getPlayerLogging() const;
         void setPlayerCrash(const PlayerCrashSettings& settings);
         const PlayerCrashSettings& getPlayerCrash() const;
+
+        // Project Settings > Input (docs/mcp/guide/input.md): the default Input Actions asset
+        // (InputActions::loadDefault at Play and at game start) and the default deadzone
+        static constexpr float defaultInputDeadzone = 0.15f;
+        void setInputActionsAsset(const std::filesystem::path& asset);
+        std::filesystem::path& getInputActionsAsset();
+        const std::filesystem::path& getInputActionsAsset() const;
+        // the asset as the engine loads it: relative to the assets directory ("" when there is
+        // none or it is outside it, which a build would not ship)
+        std::string getInputActionsEnginePath() const;
+        void setInputDeadzone(float deadzone);
+        float getInputDeadzone() const;
 
         // MSAA samples of the HTML UI targets (1, 2, 4 or 8; others round down to one of
         // them), applied to the editor's documents at once and written into exports

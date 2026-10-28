@@ -1,0 +1,8 @@
+# tools/android-emulator-test.sh --two-finger-tap --expect-file: two fingers tapped together (the
+# script's sendevent sequence) appear as two touches that begin, then end, each getTouchDown once
+I/JasperEngine: [gate] touch 0 began
+I/JasperEngine: [gate] touch 0 down 1
+I/JasperEngine: [gate] touch 1 began
+I/JasperEngine: [gate] touch 1 down 1
+I/JasperEngine: [gate] touch 0 ended
+I/JasperEngine: [gate] touch 1 ended

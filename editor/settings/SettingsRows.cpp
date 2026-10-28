@@ -15,6 +15,7 @@
 #include "SceneBackup.h"
 #include "diag/CrashHandler.h"
 #include "Project.h"
+#include "input/InputActions.h"
 #include "texture/TextureCookQueue.h"
 #include "texture/TextureImportSettings.h"
 #include "log/Logger.h"
@@ -1106,6 +1107,24 @@ std::vector<Setting> mcpSettingsTable() {
                         [](Project& p) { return p.isPhysics2DEnabled(); }, [](Project& p, bool v) { p.setPhysics2DEnabled(v); }));
         add(layerCollisionSetting("physics2d.layer_collision_matrix", false));
 
+        // ---- input (S22)
+        add(pathSetting("input.actions", "The Input Actions asset Play and the game load at start (an .inputactions file in the assets directory).",
+                        [](Project& p) -> fs::path& { return p.getInputActionsAsset(); }));
+        {
+            Setting s;
+            s.key = "input.deadzone";
+            s.type = "number";
+            s.description = "Default deadzone of AXIS and VECTOR2 actions (0..0.95).";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getInputDeadzone()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                double v;
+                if (!readNumber(value, 0.0, 0.95, v, error)) return false;
+                if (apply) ctx.project()->setInputDeadzone(static_cast<float>(v));
+                return true;
+            };
+            add(std::move(s));
+        }
+
         // ---- scripting
         {
             Setting s;
@@ -1640,6 +1659,8 @@ const Placement placements[] = {
     {"physics.layer_collision_matrix", "Physics", "Layer Collision Matrix", "Layer Collision Matrix", "layers collide"},
     {"physics2d.enabled", "Physics 2D", "", "2D Physics", "box2d rigidbody 2d"},
     {"physics2d.layer_collision_matrix", "Physics 2D", "Layer Collision Matrix", "Layer Collision Matrix", "layers collide"},
+    {"input.actions", "Input", "", "Default Actions Asset", "input actions bindings controls keyboard gamepad touch inputactions"},
+    {"input.deadzone", "Input", "", "Default Deadzone", "input stick axis analog gamepad dead zone"},
     {"scripting.lua_dir", "Scripting", "", "Lua Directory", "lua"},
     {"scripting.script_dirs", "Scripting", "", "Script Directories", "c++ cpp"},
     {"scripting.cxx_standard", "Scripting", "", "C++ Standard", "cpp c++17 c++20 c++23"},
@@ -1755,9 +1776,10 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"Texture", SettingsScope::Project, 3, "texture compression import cook format astc etc2 bc7 basis mipmap budget cache"},
         {"Physics", SettingsScope::Project, 4, "3d jolt"},
         {"Physics 2D", SettingsScope::Project, 5, "2d box2d"},
-        {"Scripting", SettingsScope::Project, 6, "lua c++"},
-        {"Tags and Layers", SettingsScope::Project, 7, "tags layers"},
-        {"Editor", SettingsScope::Project, 8, "version control assets labels"},
+        {"Input", SettingsScope::Project, 6, "input actions bindings controls gamepad deadzone"},
+        {"Scripting", SettingsScope::Project, 7, "lua c++"},
+        {"Tags and Layers", SettingsScope::Project, 8, "tags layers"},
+        {"Editor", SettingsScope::Project, 9, "version control assets labels"},
         {"General", SettingsScope::Preference, 0, "editor auto save backup html ui"},
         {"Code Editor", SettingsScope::Preference, 1, "font"},
         {"Asset Pipeline", SettingsScope::Preference, 2, "refresh watcher hot reload"},
@@ -1819,6 +1841,10 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
             return labels;
         }, "The project's asset labels: colour, rename and delete (edit_asset_labels)."));
 
+    addOrAbort(registry, uiRow("input.rebinding_overrides", "Input", "", "Rebinding Overrides", "rebind reset overrides saved controls",
+        [](SettingsContext&) {
+            return InputActions::isLoaded() ? Json(InputActions::getOverridesKey()) : Json(nullptr);
+        }, "Players' rebinding is kept per asset in the user settings; Reset clears the editor's copy, which Play uses."));
     addOrAbort(registry, uiRow("texture.clear_cache", "Texture", "Cache", "Texture Cache", "clear cooked textures cache size",
         [](SettingsContext& ctx) {
             TextureCookQueue& cooks = TextureCookQueue::get();

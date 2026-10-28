@@ -6,6 +6,8 @@
 
 #include "Engine.h"
 #include "Input.h"
+#include "input/InputActions.h"
+#include "input/InputVirtualControls.h"
 #include "Log.h"
 #include "Scene.h"
 #include "SceneManager.h"
@@ -55,6 +57,10 @@
 #include "component/ImageComponent.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/Joint2DComponent.h"
+#include "component/CharacterController2DComponent.h"
+#include "component/CharacterControllerComponent.h"
+#include "component/WaterVolumeComponent.h"
+#include "component/BuoyancyComponent.h"
 #include "component/Joint3DComponent.h"
 #include "component/KeyframeTracksComponent.h"
 #include "component/LightComponent.h"
@@ -153,6 +159,9 @@
 #include "object/physics/Rigidbody2D.h"
 #include "object/physics/Contact2D.h"
 #include "object/physics/Joint2D.h"
+#include "object/physics/CharacterController2D.h"
+#include "object/physics/CharacterController.h"
+#include "object/physics/ControllerColliderHit.h"
 #include "object/physics/Manifold2D.h"
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D

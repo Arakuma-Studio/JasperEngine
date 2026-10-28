@@ -23,6 +23,10 @@ page URL's query), "init_script" (JavaScript run before the page's own scripts),
 its value must contain), and "allow": substrings of console lines and uncaught exceptions that are expected (a
 deliberate crash) and fail nothing. Exit 2 when the gate itself cannot run (no Chrome, no page target).
 
+A baseline's "click": n clicks the canvas centre n times after the run (CDP Input.dispatchMouseEvent:
+trusted events, so a page can lock the pointer), each followed by "after_click_seconds" (default 2)
+of running; the console lines it causes are checked like the others.
+
 The transcript is printed before anything that needs the page's main thread (evaluation, the
 screenshot), so a wedged page still yields its console. The only capture path is
 Page.captureScreenshot: reading a WebGL canvas back from the page returns cleared pixels.
@@ -364,6 +368,16 @@ def main() -> int:
         if args.until_ready:
             ready = cdp.pump(args.timeout, until=lambda event: READY_LINE in console_text(event))
         cdp.pump(seconds)
+
+        # user gestures the page waits for (pointer lock, audio): trusted clicks at the canvas centre
+        for _ in range(int(baseline.get("click", 0))):
+            rect = evaluate(cdp, "(() => { const c = document.querySelector('canvas'); if (!c) return null;"
+                                 " const r = c.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()")
+            x, y = (rect[0], rect[1]) if rect else (640, 360)
+            for kind in ("mouseMoved", "mousePressed", "mouseReleased"):
+                cdp.send("Input.dispatchMouseEvent", type=kind, x=x, y=y, button="left" if kind != "mouseMoved" else "none",
+                         buttons=1 if kind == "mousePressed" else 0, clickCount=1 if kind != "mouseMoved" else 0)
+            cdp.pump(float(baseline.get("after_click_seconds", 2.0)))
 
         # the transcript first: everything after this needs the page's main thread
         records = [(console_time(e), console_level(e), console_text(e)) for e in cdp.events]

@@ -35,7 +35,7 @@ namespace {
             {{AssetType::Shader, AssetIdentity::Sidecar, AssetPathBase::Project, false, false}, {".vert", ".frag", ".glsl"}},
             {{AssetType::Script, AssetIdentity::Sidecar, AssetPathBase::Project, false, false},
                 {".lua", ".cpp", ".cc", ".cxx", ".h", ".hh", ".hpp", ".hxx"}},
-            {{AssetType::Data, AssetIdentity::Sidecar, AssetPathBase::Assets, false, true}, {".json", ".txt", ".csv", ".xml", ".bytes"}},
+            {{AssetType::Data, AssetIdentity::Sidecar, AssetPathBase::Assets, false, true}, {".json", ".txt", ".csv", ".xml", ".bytes", ".inputactions"}},
             {{AssetType::ColorLut, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".cube"}},
             {{AssetType::ParticleEffect, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".particles"}},
         };

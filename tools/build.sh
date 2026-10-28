@@ -212,6 +212,13 @@ fi
 # the UI effects' measuring switches (EffectPerfTest: JASPER_EFFECT_COST_ONLY, JASPER_EFFECT_PERF_*;
 # EffectFluidTest: JASPER_EFFECT_FLUID_PROFILE)
 for name in $(compgen -e | grep '^JASPER_EFFECT_' || true); do ENV_FLAGS+=(-e "$name=${!name}"); done
+# A non-root uid has no entry in the image's /etc/passwd; dbus (dbus-run-session, used by the MCP
+# tests and tool docs) and getpwuid() callers then fail ("User ??? unknown"). Lend the host's tables
+# (whose home directory the container lacks: the Android Gradle plugin, which would take Java's
+# user.home from them, gets ANDROID_USER_HOME below).
+if [[ "$(uname -s)" == Linux && "$(id -u)" != 0 && -r /etc/passwd && -r /etc/group ]]; then
+    MOUNT_FLAGS+=(-v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro)
+fi
 
 run() {
     # (the ${a[@]+...} form: an empty array under set -u fails on bash before 4.4, e.g. macOS)
@@ -223,6 +230,7 @@ run() {
         -e HOME="/src/$CACHE/home" \
         -e CCACHE_DIR=/ccache \
         -e GRADLE_USER_HOME="/src/$CACHE/gradle" \
+        -e ANDROID_USER_HOME="/src/$CACHE/home/.android" \
         -e UV_CACHE_DIR="/src/$CACHE/uv" \
         ${ENV_FLAGS[@]+"${ENV_FLAGS[@]}"} \
         ${MOUNT_FLAGS[@]+"${MOUNT_FLAGS[@]}"} \

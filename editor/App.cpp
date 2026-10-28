@@ -38,6 +38,7 @@
 #include "profiler/Profiler.h"
 #include "window/PlayModeChangesWindow.h"
 #include "window/UndoHistoryWindow.h"
+#include "window/InputActionsWindow.h"
 #include "command/PlayChangeReview.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpAutoSync.h"
@@ -171,6 +172,7 @@ editor::App::App(){
     profilerWindow = new ProfilerWindow(this);
     frameDebuggerWindow = new FrameDebuggerWindow(this);
     undoHistoryWindow = new UndoHistoryWindow(&project);
+    inputActionsWindow = new InputActionsWindow(&project);
     playModeChangesWindow = new PlayModeChangesWindow(&project);
     searchPalette = new SearchPalette(this);
     shortcutsWindow = new ShortcutsWindow(CommandCatalog::editor(), shortcutDispatcher);
@@ -604,6 +606,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.animation", windowMenuLabel(AnimationWindow::WINDOW_NAME))
         }),
         catalogItem("window.terrain", windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
+        catalogItem("window.inputActions", windowMenuLabel(InputActionsWindow::WINDOW_NAME)),
         menuSubmenu("Assets", {
             catalogItem("window.missingAssets", windowMenuLabel(MissingAssetsWindow::WINDOW_NAME)),
             catalogItem("window.assetReferences", windowMenuLabel(AssetReferencesWindow::WINDOW_NAME))
@@ -818,6 +821,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleUndoHistory:
             showEditorWindow(undoHistoryWindow);
             break;
+        case AppMenuCommand::ToggleInputActions:
+            showEditorWindow(inputActionsWindow);
+            break;
         case AppMenuCommand::TogglePlayModeChanges:
             showEditorWindow(playModeChangesWindow);
             break;
@@ -1015,7 +1021,8 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             duplicateSelection();
             break;
         case AppMenuCommand::DeleteSelection:
-            deleteSelection();
+            if (inputActionsWindow->canDelete()) inputActionsWindow->requestDelete();
+            else deleteSelection();
             break;
         case AppMenuCommand::Documentation:
         case AppMenuCommand::ReportIssue: {
@@ -2476,6 +2483,7 @@ void editor::App::show(){
     profilerWindow->show();
     frameDebuggerWindow->show();
     undoHistoryWindow->show();
+    inputActionsWindow->show();
     playModeChangesWindow->show();
     bookmarksWindow->show();
     codeEditor->show();
@@ -4054,6 +4062,7 @@ void editor::App::prepareForProjectSwitch() {
     consoleWindow->clear();
     sceneWindow->resetProjectState();
     gameWindow->resetProjectState();
+    inputActionsWindow->reset();
     // the next project's .particles files are other files under the same paths
     particles::ParticleEffectLibrary::clear();
     ParticleMigrationReport::clear();
@@ -4232,6 +4241,11 @@ void editor::App::registerSaveDiscardAlert(std::string title, std::string messag
     registerThreeButtonAlert(std::move(title), std::move(message), std::move(onSave), std::move(onDiscard), std::move(onCancel));
     alert.yesLabel = "Save";
     alert.noLabel = "Discard Changes";
+}
+
+void editor::App::openInputActions(const std::filesystem::path& path) {
+    inputActionsWindow->openFile(path);
+    ImGui::SetWindowFocus(InputActionsWindow::WINDOW_NAME);
 }
 
 void editor::App::openPrefabAsset(const std::filesystem::path& path, uint32_t contextSceneId, uint32_t contextRoot, bool inContext) {
