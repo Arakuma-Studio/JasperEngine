@@ -163,7 +163,9 @@ def project_forms() -> list[tuple[Path, str]]:
 
 
 def check_export(out: Path, project: Path, what: str) -> None:
-    """Every scene (its generated source), every asset and every Lua script of `project` is in `out`."""
+    """Every scene (its generated source), every asset and every Lua script of `project` is in `out`:
+    an asset as itself, or a texture source the export cooked (S14 R9: the source stays out,
+    assets/je-cooked/<family>/index.json maps it to its cooked file)."""
     check((out / "CMakeLists.txt").is_file(), f"{what}: no CMakeLists.txt in {out}")
     exported = out / "project"
     for scene, identifier in SCENES.items():
@@ -174,12 +176,24 @@ def check_export(out: Path, project: Path, what: str) -> None:
     # the .meta files the export's open wrote next to the assets never ship (S04)
     assets = {p for p in files_under(project / "assets") if not p.endswith(".meta")}
     check(assets, "the fixture has assets")
-    missing = sorted(assets - files_under(exported / "assets"))
+    missing = sorted(assets - files_under(exported / "assets") - cooked_sources(exported / "assets", what))
     check(not missing, f"{what}: assets missing from {exported / 'assets'}: {missing[:20]}")
     scripts = {p.name for p in (project / "scripts").glob("*.lua")}
     check(scripts, "the fixture has Lua scripts")
     lua = {Path(p).name for p in files_under(exported / "lua")}
     check(scripts <= lua, f"{what}: Lua scripts missing: {sorted(scripts - lua)}")
+
+
+def cooked_sources(assets: Path, what: str) -> set[str]:
+    """The asset-relative sources the export's cooked families hold, each one's cooked file checked."""
+    sources: set[str] = set()
+    for index_path in sorted((assets / "je-cooked").glob("*/index.json")):
+        textures = json.loads(index_path.read_text(encoding="utf-8"))["textures"]
+        for source, entry in textures.items():
+            check((index_path.parent / entry["file"]).is_file(),
+                  f"{what}: {index_path.parent.name} cook of {source} missing: {entry['file']}")
+            sources.add(source)
+    return sources
 
 
 def scene_source(scene: Path, identifier: str) -> str:
