@@ -84,8 +84,9 @@ undoes only your own last step. Play-time edits roll back at play stop and are o
 
 ## Editor search
 editor_ux group: search_editor is the Ctrl+K palette (prefixes > / : @ + asset:), run_command runs
-a list_shortcuts id or a result's key, set_shortcut rebinds. list_assets search: t: l: ext: path:
-re: ref: missing:. Layouts, labels, saved searches, bookmarks: edit_* (jasper://docs/editor-integration).
+a list_shortcuts id or a result's key, set_shortcut rebinds, get_inspector_layout reads the
+Inspector's rows. list_assets search: t: l: ext: path: re: ref: missing:. Layouts, labels, saved
+searches, bookmarks: edit_* (jasper://docs/editor-integration).
 
 ## Code (Lua, C++, shaders, materials)
 The project is a normal folder (`editor_status`: project.path). Work in it and read, edit,

@@ -688,6 +688,12 @@ void StreamLoad::invalidValue(const YAML::Node& value, const std::string& expect
     valueNotRead(value, LoadIssueKind::InvalidValue, "invalid value, expected " + expected, std::string());
 }
 
+void StreamLoad::unreadableValue(const YAML::Node& value, const std::string& reason) {
+    if (!value)
+        return;
+    valueNotRead(value, LoadIssueKind::InvalidValue, invalidMessage(reason), std::string());
+}
+
 void StreamLoad::unknownEnumValue(const YAML::Node& value, const char* typeName, const std::vector<std::string>& names) {
     const bool scalar = value && value.IsScalar();
     const std::string text = scalar ? value.Scalar() : std::string();

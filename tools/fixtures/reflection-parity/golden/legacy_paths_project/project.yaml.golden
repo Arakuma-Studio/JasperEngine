@@ -1,0 +1,20 @@
+formatVersion: 1
+name: LegacyPaths
+canvasWidth: 1280
+canvasHeight: 720
+scalingMode: fitwidth
+textureStrategy: none
+vsync: true
+htmlUiMsaaSamples: 4
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+assetsDir: assets
+luaDir: scripts
+startSceneId: 1
+scenes:
+  - filepath: Main.scene
+    filepathGuid: 0a0a075220cf4d05f700ac24562aab37
+  - filepath: Closed.scene
+    filepathGuid: 743bbd65bf2a44796f3a2c6886d66f02

@@ -36,6 +36,12 @@ namespace jasperengine::particles {
 
 namespace jasperengine::editor{
 
+    namespace reflect {
+        struct EnumDesc;
+        struct FieldDesc;
+    }
+
+
     class SceneWindow;
     class CommandHistory;
     class ForkShaderCmd;
@@ -114,6 +120,28 @@ namespace jasperengine::editor{
         std::vector<Entity> excludeEntities;
         // What a number typed into the row's fields is in (25cm on a Meters field), S23 R25
         NumericUnit unit = NumericUnit::None;
+    };
+
+    // One row the Inspector drew (get_inspector_layout, docs/specs/S08-reflection.md R28): the
+    // property it edits, its label and widget, the group heading it sits under, whether the
+    // selection's values differ, and whether it is read-only (drawn disabled) or hidden
+    struct InspectorLayoutRow{
+        ComponentType component = ComponentType::Transform;
+        std::string path;
+        std::string label;
+        std::string kind;
+        std::string group;
+        bool mixed = false;
+        bool readOnly = false;
+        bool visible = true;
+    };
+
+    // What one frame of the Inspector drew for the selection
+    struct InspectorLayout{
+        int frame = -1;     // ImGui frame count
+        uint32_t sceneId = 0;
+        std::vector<Entity> entities;
+        std::vector<InspectorLayoutRow> rows;
     };
 
     class InspectorWindow{
@@ -286,6 +314,8 @@ namespace jasperengine::editor{
         bool compareVectorFloat(const float* a, const float* b, size_t elements, const float threshold);
 
         float getLabelSize(std::string label, bool addRotateIconSpace = true);
+        // the last component header row was clicked (not its checkbox or buttons)
+        static bool lastHeaderRowClicked();
         static bool drawSummaryAddButton(const std::string& label, float trailingReservedWidth = 0.0f, bool enabled = true, const char* disabledTooltip = nullptr);
 
         void helpMarker(std::string desc);
@@ -553,17 +583,26 @@ namespace jasperengine::editor{
                                    const std::function<void()>& onFork,
                                    const std::string& idSuffix);
         void drawShaderFilesPopup(const std::string& popupName, const std::function<void(const std::string&)>& setShader, const std::string& currentVert, const std::string& currentFrag);
+        // ---- the default Inspector (InspectorWindow/InspectorDefault.cpp, docs/specs/S08-reflection.md R10)
+        // A component's own drawer, null when its reflection table draws it
+        using ComponentDrawer = void (InspectorWindow::*)(ComponentType, SceneProject*, std::vector<Entity>);
+        static ComponentDrawer componentDrawer(ComponentType cpType);
+        // the rows of a component's table in its Inspector order, groups under their headings
+        void drawDefaultComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // a struct field as a foldout of its members; an array field as a foldout of its elements
+        // with move, remove and add buttons (ReflectedValueCmd)
+        void drawDefaultStruct(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                               const reflect::FieldDesc& field, const std::string& path, const RowSettings& base);
+        void drawDefaultArray(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                              const reflect::FieldDesc& field, const std::string& path, const RowSettings& base);
+        // what a component drawn by default shows after its rows (a warning)
+        void drawDefaultComponentNotes(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+
         void drawTransform(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawMeshComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawModelComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawUIComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        void drawButtonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        void drawScrollbarComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        void drawProgressbarComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawInputFieldComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        void drawPanelComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        void drawTextComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        void drawRectTransformComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawLayoutGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawImageComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawSpriteComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -575,11 +614,8 @@ namespace jasperengine::editor{
         void drawShadowSplitBar(SceneProject* sceneProject, std::vector<Entity> entities, const LightComponent& light);
         // the scene's Shadows settings (Quality, distance, fade, blend, the effective tier)
         void drawSceneShadows(SceneProject* sceneProject);
-        void drawLight2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawShadowCaster2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawFogComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        void drawMirrorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        void drawLocalVolumetricFogComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawVolumetricCloudsComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // the Presets menu of a Fog or Volumetric Clouds: a pick applies it as one undo step
         void drawAtmospherePresetsMenu(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
@@ -587,6 +623,22 @@ namespace jasperengine::editor{
         // a foldout of a component's rows (an ImGui tree node, open by default)
         bool beginFoldout(const char* label);
         void endFoldout();
+        // ImGui::SeparatorText that also names the group of the rows below it (the layout)
+        void separatorText(const char* label);
+
+        // ---- the layout of the frame being drawn (get_inspector_layout)
+        InspectorLayout layoutDrawing;
+        InspectorLayout layoutLast;
+        // set while a component's body draws: its rows go into the layout
+        bool layoutRecording = false;
+        ComponentType layoutComponent = ComponentType::Transform;
+        // the group headings open around the row being drawn: the component's separator, then
+        // each foldout (a separator inside a foldout renames that level)
+        std::vector<std::string> layoutGroups;
+        void beginLayoutComponent(ComponentType cpType);
+        void endLayoutComponent();
+        void recordLayoutRow(RowPropertyType type, ComponentType cpType, const std::string& id, const std::string& label,
+                             SceneProject* sceneProject, const std::vector<Entity>& entities, bool visible = true);
         void drawReflectionProbeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawUIDocumentComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCameraComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -635,7 +687,6 @@ namespace jasperengine::editor{
         void navAreaMaskRow(ComponentType cpType, const std::string& id, const std::string& label, SceneProject* sceneProject,
                             std::vector<Entity> entities, const char* help);
         void drawActionComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        void drawTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawPositionTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawRotationTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawScaleTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -643,8 +694,6 @@ namespace jasperengine::editor{
         void drawAlphaTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawSpriteAnimationComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawAnimationComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        void drawPrefabComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        void drawBoneComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawKeyframeTracksComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // onRemoveValue/onAddValue let the caller add companion property commands
         // (same undo step) when an entry is deleted or appended, e.g. keyframe
@@ -663,6 +712,11 @@ namespace jasperengine::editor{
         void drawLatticeTracksComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
 
     public:
+        // a dropdown's entries from an enum table (its labels, in its Inspector order)
+        static std::vector<EnumEntry>* enumEntries(const reflect::EnumDesc& desc, uint64_t mask = 0);
+        // the power-of-two sizes of a size slider (shadow maps, probes)
+        static std::vector<int> powerOfTwoSizes;
+
         static constexpr const char* WINDOW_NAME = "Inspector";
 
         InspectorWindow(Project* project);
@@ -684,6 +738,13 @@ namespace jasperengine::editor{
         bool addComponentToSelection(ComponentType type, std::string* why = nullptr);
         // true once after Add Tag... or Add Layer...: the App opens Project Settings on Tags and Layers
         bool consumeTagsAndLayersRequest();
+        // The rows of the last frame the Inspector was drawn (get_inspector_layout)
+        const InspectorLayout& getLastLayout() const;
+        // "Float", "Color3L"...: the widget a row draws
+        static const char* rowPropertyTypeName(RowPropertyType type);
+        // The selection's values of a property differ (lanes of vectors and colours compared
+        // one by one, floats within 1e-4, as the rows show them)
+        static bool propertyValuesDiffer(SceneProject* sceneProject, ComponentType cpType, const std::string& id, const std::vector<Entity>& entities);
     private:
         bool addComponentRequested = false;
     };

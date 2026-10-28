@@ -1,0 +1,25 @@
+formatVersion: 1
+name: PrefabNested
+canvasWidth: 1280
+canvasHeight: 720
+scalingMode: letterbox
+textureStrategy: resize
+vsync: true
+htmlUiMsaaSamples: 4
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+assetsDir: assets
+luaDir: scripts
+export:
+  sourceCode:
+    graphicBackends:
+      - opengles
+      - vulkan
+web:
+  resizeCanvasToWindow: false
+startSceneId: 1
+scenes:
+  - filepath: Nested Scene.scene
+    filepathGuid: 9833476a37f04d96e0e409177f514f7a
