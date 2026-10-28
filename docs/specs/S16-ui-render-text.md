@@ -740,3 +740,15 @@ one line pointing here.
   `TestFontEngine.GlyphsDrawTheSameWhereverTheyArePacked` draws text at a fractional offset from
   glyphs at the top of a page and from the same glyphs packed lower: 60 apart without the change,
   equal with it. No golden changed (glcore 3480 ran, 0 failed).
+- Merged oe-port 6f47d2c48 (S22, S14b, 7ac1b7ccd): no `ShaderType` or shader source changed
+  upstream, the shader cache stays v42.
+- `test_html_ui_phase2::test_mistakes_are_reported` (a black first Game view shot, 1 in 7 S16
+  runs, none on oe-port): the MCP screenshot of a stopped scene waited for meshes, images and
+  effect replays but not for its HTML documents, so it could shoot before a document's first
+  frame. That frame waits for the HTML UI shaders, made when a document first draws; the failing
+  run shot at 22:05:14, the HTML UI shaders (S16's `htmluiprim` with them) were made at 22:05:14,
+  and the document's first frame then stalled 3.1 s in the software rasterizer (hang report,
+  `UIDocumentSystem::renderOffscreen`). S16's extra program lengthens that wait; the gap is the
+  screenshot's. The shot now also waits for `UIDocumentSystem::isAllLoaded` (documents loaded and
+  drawn once), as play's loading and the editor's redraw do (d32267af6). Four copies of the test
+  at once, five rounds, on C: 3 of 20 failed without the change, 0 of 20 with it.
