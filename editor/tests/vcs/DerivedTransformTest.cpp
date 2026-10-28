@@ -108,7 +108,12 @@ TEST(Stream, DerivedTransformNotWritten) {
     const DecodedScene migrated = decodeSceneText(old, "scene-v3-derived.scene");
     const std::string resaved = encodeSceneText(migrated);
     expectNoDerivedKeys(resaved, "a re-saved old scene");
-    EXPECT_EQ(resaved, readText(fixture("migrations/scene-v3-derived.expected.scene")));
+    const fs::path expected = fixture("migrations/scene-v3-derived.expected.scene");
+    if (std::getenv("JASPER_TEST_UPDATE_GOLDEN")) writeFile(expected, resaved);
+    EXPECT_EQ(resaved, readText(expected));
+    // what was authored survives: the child's local position under its scaled parent
+    EXPECT_NE(resaved.find("position: [0, 1, 0]"), std::string::npos);
+    EXPECT_NE(resaved.find("scale: [2, 2, 2]"), std::string::npos);
     // the format version moved on, with the migration that drops them
     EXPECT_EQ(StreamMigrations::currentVersion(DocumentKind::Scene), 4);
     EXPECT_EQ(StreamMigrations::currentVersion(DocumentKind::Prefab), 6);
