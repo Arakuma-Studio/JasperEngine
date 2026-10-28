@@ -327,25 +327,25 @@ void ElementEffects::RenderEffects(RenderStage render_stage)
 			// Fork (P7-F1): the content is drawn into the layer unclipped by the clips established outside the element
 			// (CSS Filter Effects 1: the filter applies to the element's content, the ancestors' clips to its result;
 			// Chromium filters the unclipped content and clips the result when compositing it). Those clips are applied
-			// to the composite (Exit). The layer's window: the filter region, within those clips extended by the
-			// filters' reach (the content beyond a clip that a blur or a shadow moves into it), twice over: a blur's
-			// downsampled passes clamp their reads at the window's edge, rounded to their coarser pixels.
+			// to the composite (Exit). The content's window: those clips' scissor region extended by the filters'
+			// reach (the content beyond a clip that a blur or a shadow moves into it), twice over: a blur's downsampled
+			// passes clamp their reads at the window's edge, rounded to their coarser pixels. Without reach it is the
+			// scissor region the content had before; unbounded without a clip, as before. The layer's window, which
+			// the filters read: the filter region within the content's window.
 			float reach = 0.f;
 			const Rectanglef filter_region = GetFilterRegion(reach);
 			Rectanglei outer_scissor;
 			ClipMaskGeometryList outer_clip_mask;
 			const bool outer_scissored = ElementUtilities::GetRenderClippingRegion(element, *render_manager, outer_scissor, outer_clip_mask);
-			Rectanglei window = Rectanglei(filter_region);
-			if (outer_scissored)
-			{
-				const Rectanglei reach_region = outer_scissor.Extend(Math::RoundUpToInteger(2.f * reach));
-				window = (window.Valid() ? window.Intersect(reach_region) : reach_region);
-			}
-			layer_window = window;
+			const Rectanglei content_window =
+				(outer_scissored ? outer_scissor.Extend(Math::RoundUpToInteger(2.f * reach)) : Rectanglei::MakeInvalid());
+			layer_window = Rectanglei(filter_region);
+			if (content_window.Valid())
+				layer_window = (layer_window.Valid() ? layer_window.Intersect(content_window) : content_window);
 			layer_clip_root = true;
 
 			render_manager->PushLayer();
-			render_manager->PushClipRoot(element, layer_window);
+			render_manager->PushClipRoot(element, content_window);
 		}
 
 		if (!backdrop_filters.empty())

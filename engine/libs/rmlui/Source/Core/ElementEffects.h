@@ -72,8 +72,8 @@ private:
 	CompiledFilter group_opacity;
 	float group_opacity_value = 1.f;
 
-	// Fork (P7-F1): the window of the element's layer (the filter region within the clips established outside the element,
-	// extended by the filters' reach), set when the layer is pushed, and whether its clip root is pushed.
+	// Fork (P7-F1): the window of the element's layer, which the filters read (the filter region within the clips established
+	// outside the element, extended by the filters' reach), set when the layer is pushed, and whether its clip root is pushed.
 	Rectanglei layer_window = Rectanglei::MakeInvalid();
 	bool layer_clip_root = false;
 	// The rectangle of those clips' scissor region in the clip mask of the layer's composite, when the window extends
