@@ -65,7 +65,8 @@ Other fields: `set_properties` on the components (`knots[3].position`, `items[0]
   (no scene-depth pass). Water Volumes on the same GameObject and `Water.sample` follow the
   river's surface.
 - 2D (`dimension: "2d"`, a 2D scene's default): `flat` is an edge in XY, `fill` a filled
-  concave shape, `collision: chain_2d` a Box2D chain; Spline Animate turns about Z.
+  concave shape, `collision: chain_2d` Box2D chains colliding from both sides (on generated static
+  bodies); Spline Animate turns about Z.
 
 ## Lua
 
