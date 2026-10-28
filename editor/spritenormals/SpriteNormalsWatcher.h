@@ -9,8 +9,9 @@
 // and written over itself without an undo step (like an FBX reimport), logged in the Console.
 //
 // The index is every .png of the project carrying a jasper.spritenormals recipe, built off the
-// main thread (a std::future, the FBX scan pattern) when the project opens and re-scanned at most
-// every 5 s, incrementally: an unchanged PNG (mtime and size) is not read again, an unchanged
+// main thread (a detached thread that is cancelled, never waited for) when the project opens and re-scanned at most
+// every 5 s (a project without a generated map: only when invalidate() says one may have appeared,
+// or every 10 minutes), incrementally: an unchanged PNG (mtime and size) is not read again, an unchanged
 // source is not hashed again. Owned and ticked by the App (next to Project::refreshFbxImports);
 // paused while a scene plays.
 
@@ -60,8 +61,12 @@ namespace jasperengine::editor {
         // the recorded source (project-relative) and role of a generated output; false when the
         // index does not know it as one
         bool generatedInfo(const std::filesystem::path& output, std::string& source, std::string& role) const;
-        // A file was written or changed: the next scan reads it again, soon
+        // A file was written or changed: the next scan reads it again, soon (also waking a project
+        // whose last walk found no generated map)
         void invalidate(const std::filesystem::path& path);
+        // whether the last walk found no generated map: no walk until invalidate (or the slow
+        // fallback)
+        bool dormant() const { return idleScans > 0; }
         // grows whenever an output's staleness (or the set of outputs) changes
         uint64_t revision() const { return rev; }
 
@@ -101,11 +106,13 @@ namespace jasperengine::editor {
         std::shared_ptr<ScanJob> scan;
         double lastScan = -1.0;
         double scanInterval = 5.0;                // seconds between scans
-        int idleScans = 0;                        // scans in a row that found no generated map (they slow down)
+        int idleScans = 0;                        // scans in a row that found no generated map (dormant then)
+        double dormantInterval = 600.0;           // seconds between the walks of a dormant project
         double settleSeconds = 1.0;               // a source changed this recently waits
         uint64_t rev = 0;
         std::shared_ptr<std::atomic<int>> hashCount = std::make_shared<std::atomic<int>>(0);
         bool pausedForPlay = false;
+        bool failNextScan = false;                // tests: the next scan throws on its thread
 
         // auto-regenerate: one at a time, a change during a run re-queues
         std::deque<std::filesystem::path> queue;

@@ -4124,7 +4124,11 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v39: vertex animation (includes/vat.glsl): vatEvaluate() and the vatPosition/vatNormal/...
     //      wrappers in every vertex entry point, HAS_VAT / HAS_VAT_BONES (MESH bits 33/34, DEPTH 16/17,
     //      GBUFFER 14/15).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v39";
+    // v40: sprite normal maps: the 2D tangent frame (includes/tangent_frame.glsl, mesh.vert,
+    //      includes/surface_vs.glsl: OpenGL green, mirroring), the Light 2D normal response
+    //      (includes/lighting2d.glsl: LIGHT2D_NORMAL_RESPONSE, getNormal2DAt, mesh.frag's
+    //      LIGHT2D_SURFACE_NORMALS), @require normalmap (library/sprite.frag) and stochastic.glsl.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v40";
 }
 
 void editor::App::pushTabNotificationStyle(){

@@ -1464,3 +1464,11 @@ Shared:
   staleness outside a project; submesh 1 source; `project_changed`; undo step name; `no_light`/`no_light_height`,
   `filter_mismatch` with willApply, `zero_delay` with a null scene; apply `maps`, `applyToSprites`, `autoplay`.
 - [ ] Branch name `sn/p2b` (was `sn-2b`) [45].
+
+## Amendments (2026-10-28, integration review)
+
+- Parity: bit-exact with the upstream binary on every fixture on Linux/glibc (the reference platform of the
+  fixtures); across platforms within 1 per channel (the contract's bound: `cbrt`, `exp`, `pow` of another C library
+  may round differently). No compiler contracts `a*b+c` into an FMA in the generator, the media decoding or the paint
+  compositing: `-ffp-contract=off` (GCC, Clang), `/fp:precise` (MSVC), `/fp:precise` + `/clang:-ffp-contract=off`
+  (clang-cl), set on `SpriteNormals.cpp`, `SpriteNormalsField.cpp`, `SpriteMedia.cpp`, `SpriteNormalsPaint.cpp`.

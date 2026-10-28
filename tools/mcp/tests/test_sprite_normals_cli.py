@@ -376,3 +376,27 @@ async def test_paint_json_modes_and_exit_codes():
     check(code == 1 and any(e["kind"] == "paint_size_mismatch" for e in res["errors"]) and out.read_bytes() == painted, f"mismatch: {code} {res['errors']}")
     code, res, err = run_json(work, "--source", "art/ball.png", "--overwrite", "--paint-mode", "clear")
     check(code == 0 and paint_chunk(out) is None, f"cleared: {err}")
+
+
+async def test_exported_games_ship_pngs_without_the_recipe():
+    """`export` copies a generated (and painted) normal map without the editor's jasper.* chunks: the same pixels,
+    no recipe or paint layer in the game (Exporter::copyPngWithoutEditorChunks); the project's file keeps them"""
+    with tempfile.TemporaryDirectory(prefix="jasper-normals-export-") as tmp:
+        project = Path(tmp) / "game"
+        shutil.copytree(REPO / "tools" / "fixtures" / "stochastic-tiling", project)
+        shutil.copy(FIXTURES / "character.png", project / "assets" / "textures" / "hero.png")
+        r = run(project, "--project", str(project), "--source", "assets/textures/hero.png",
+                "--paint-json", '[{"op":"flatten","where":{"rect":[10,10,4,4]}}]')
+        check(r.returncode == 0, f"generate: {r.stdout} {r.stderr}")
+        source = (project / "assets" / "textures" / "hero_normal.png").read_bytes()
+        check(source.count(b"jasper.spritenormals") == 2, "the project's map has its recipe and paint layer")
+        out = Path(tmp) / "out"
+        r = subprocess.run(harness.editor_command() + ["export", "--project", str(project), "--out", str(out), "--backend", "opengl"],
+                           cwd=str(project), capture_output=True, text=True, timeout=600)
+        check(r.returncode == 0, f"export: {r.stdout[-1500:]} {r.stderr[-1500:]}")
+        shipped = list(out.rglob("hero_normal.png"))
+        check(len(shipped) == 1, f"one exported map: {shipped}")
+        data = shipped[0].read_bytes()
+        check(b"jasper." not in data, "no jasper.* chunk in the exported map")
+        check(decode_png(data) == decode_png(source), "the same pixels")
+        check((project / "assets" / "textures" / "hero_normal.png").read_bytes() == source, "the project's file is untouched")

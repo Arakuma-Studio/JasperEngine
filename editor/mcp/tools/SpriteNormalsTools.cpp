@@ -1505,7 +1505,8 @@ void spriteNormalsFileChanged(Project* project, const fs::path& path, Json& prob
     // index (written by check --normals; no scan here), which also cover a map the watcher has not
     // scanned yet and editors without one. Each candidate's recipe is read again below.
     std::vector<fs::path> candidates;
-    if (const SpriteNormalsWatcher* watcher = SpriteNormalsWatcher::active()) candidates = watcher->outputsOf(path);
+    SpriteNormalsWatcher* watcher = SpriteNormalsWatcher::active();
+    if (watcher) candidates = watcher->outputsOf(path);
     for (const fs::path& named : defaultMapsOf(path)) candidates.push_back(named);
     for (const fs::path& cached : sn::cachedMapsOf(root, path)) candidates.push_back(cached);
     std::set<fs::path> seen;
@@ -1522,6 +1523,8 @@ void spriteNormalsFileChanged(Project* project, const fs::path& path, Json& prob
             problems.push_back({{"path", map}, {"message", "made from " + rel + ", which is gone: restore it, or generate the map from another source (the map itself still works)"}});
         }
     }
+    // the watcher reads the changed file again soon (a new generated PNG wakes a dormant one)
+    if (watcher) watcher->invalidate(path);
 }
 
 void registerSpriteNormalsTools(McpRegistry& registry) {

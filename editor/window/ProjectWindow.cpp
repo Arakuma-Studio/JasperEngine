@@ -3457,6 +3457,10 @@ void editor::ProjectWindow::updateSpriteNormalsBadge(FileEntry& file, const fs::
     file.generated = true;
     file.generatedBy = spritenormalsentry::generatedText(head);
     if (SpriteNormalsWatcher* watcher = SpriteNormalsWatcher::active()) {
+        // a generated map the watcher has not indexed (copied in, a VCS update) while it rests
+        // on a project without one: it walks the project again
+        std::string recordedSource, role;
+        if (watcher->dormant() && !watcher->generatedInfo(path, recordedSource, role)) watcher->invalidate(path);
         if (watcher->isStale(path)) {
             file.generatedStale = true;
             file.generatedBy += "\n" + spritenormalsentry::fileName(head.source) + " changed since: right-click > Regenerate Normal Map";

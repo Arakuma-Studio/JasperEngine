@@ -24,6 +24,7 @@
 #include <thread>
 #include <iterator>
 #include <set>
+#include <stdexcept>
 
 namespace fs = std::filesystem;
 namespace sn = jasperengine::editor::spritenormals;
@@ -112,8 +113,11 @@ void SpriteNormalsWatcher::startScan() {
     std::shared_ptr<std::atomic<int>> counter = hashCount;
     std::shared_ptr<ScanJob> job = std::make_shared<ScanJob>();
     scan = job;
+    const bool failScan = failNextScan;
+    failNextScan = false;
     // off the main thread: reading recipes and hashing sources can take a while on a big project
-    auto work = [job, root, previous = std::move(previous), knownHashes = std::move(knownHashes), counter]() {
+    auto scanOnce = [job, root, counter, failScan](const std::map<fs::path, Output>& previous, const std::map<fs::path, Hash>& knownHashes) {
+        if (failScan) throw std::runtime_error("a failure injected by a test");
         ScanResult out;
         // the project's PNGs (ProjectChecks' walk: hidden and build directories skipped), stopping
         // at once when cancelled (a project switch, the editor closing)
@@ -127,9 +131,9 @@ void SpriteNormalsWatcher::startScan() {
                 if (ProjectChecks::isSkippedDir(path)) it.disable_recursion_pending();
                 continue;
             }
-            const std::string name = path.filename().string();
+            const std::string name = path.filename().u8string();
             if (name.empty() || name[0] == '.' || !it->is_regular_file(ec)) continue;
-            std::string ext = path.extension().string();
+            std::string ext = path.extension().u8string();
             std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
             if (ext == ".png") pngs.push_back(path);
         }
@@ -172,6 +176,10 @@ void SpriteNormalsWatcher::startScan() {
                 auto previousHash = knownHashes.find(entry.sourceAbsolute);
                 if (previousHash != knownHashes.end() && previousHash->second.time == h.time && previousHash->second.size == h.size) {
                     h.sha1 = previousHash->second.sha1;
+                } else if (h.size > static_cast<uintmax_t>(sn::kMaxInputBytes)) {
+                    // over the generator's input limit: no map was made from these bytes (the
+                    // source changed), and they are not read into memory
+                    h.sha1 = "(over the input limit)";
                 } else {
                     // read in chunks, the cancel flag checked between them
                     std::ifstream in(entry.sourceAbsolute, std::ios::binary);
@@ -188,6 +196,23 @@ void SpriteNormalsWatcher::startScan() {
                 known = out.hashes.emplace(entry.sourceAbsolute, h).first;
             }
             entry.stale = known->second.sha1 != entry.recipeSha1;
+        }
+        return out;
+    };
+    // the thread is detached: nothing may escape it (an exception would end the editor). A failed
+    // scan keeps the index as it was; the next one tries again
+    auto work = [job, scanOnce, previous = std::move(previous), knownHashes = std::move(knownHashes)]() {
+        ScanResult out;
+        try {
+            out = scanOnce(previous, knownHashes);
+        } catch (...) {
+            out = ScanResult();
+            try {
+                out.outputs = previous;
+                out.hashes = knownHashes;
+            } catch (...) {
+                out = ScanResult();
+            }
         }
         {
             std::lock_guard<std::mutex> lock(job->mutex);
@@ -216,8 +241,10 @@ void SpriteNormalsWatcher::shutdown(double timeoutSeconds) {
 }
 
 double SpriteNormalsWatcher::interval() const {
-    // a project with no generated map is walked less and less often (up to every 80 s)
-    return scanInterval * static_cast<double>(1 << std::min(idleScans, 4));
+    // a project whose last walk found no generated map is not walked again until something says a
+    // map may have appeared (invalidate: this tool's writes, the MCP file sync, a generated PNG the
+    // Project window shows), except for a slow fallback (files copied in by hand, a VCS update)
+    return idleScans > 0 ? dormantInterval : scanInterval;
 }
 
 void SpriteNormalsWatcher::collectScan() {

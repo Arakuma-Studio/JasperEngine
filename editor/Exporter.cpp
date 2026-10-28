@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Exporter.h"
+#include "util/PngEditorChunks.h"
 #include "EditorHost.h"
 #include "Factory.h"
 #include "Generator.h"
@@ -2046,9 +2047,30 @@ bool editor::Exporter::copyAssets() {
 
         fs::path destPath = assetsDst / relPath;
         fs::create_directories(destPath.parent_path(), ec);
+        // a PNG ships without the editor's own chunks (the sprite normals recipe and paint layer,
+        // the texture synthesis recipe: jasper.* text chunks a game never reads); losslessly
+        if (copyPngWithoutEditorChunks(entry.path(), destPath)) continue;
         fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing, ec);
     }
 
+    return true;
+}
+
+bool editor::Exporter::copyPngWithoutEditorChunks(const fs::path& source, const fs::path& destination) {
+    std::string ext = source.extension().u8string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (ext != ".png") return false;
+    std::ifstream in(source, std::ios::binary);
+    if (!in) return false;
+    const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    std::vector<uint8_t> stripped;
+    if (!pngchunks::stripEditorChunks(bytes, stripped)) return false;
+    std::ofstream out(destination, std::ios::binary | std::ios::trunc);
+    if (!out || !out.write(reinterpret_cast<const char*>(stripped.data()), static_cast<std::streamsize>(stripped.size())) || !(out.close(), out)) {
+        std::error_code ec;
+        fs::remove(destination, ec);
+        return false;   // copied as it is instead
+    }
     return true;
 }
 

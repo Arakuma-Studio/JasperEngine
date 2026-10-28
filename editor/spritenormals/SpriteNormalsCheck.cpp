@@ -13,8 +13,10 @@
 #include "yaml-cpp/yaml.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <fstream>
+#include <stdexcept>
 #include <map>
 #include <optional>
 #include <set>
@@ -361,6 +363,19 @@ namespace jasperengine::editor::spritenormals {
                 int lightsWithHeight = 0;
             };
 
+            // whether the GameObject has a Sprite, Tilemap, Polygon or Polygon Mesh component (component keys
+            // compared case-insensitively, as Catalog reads them)
+            static bool is2D(const YAML::Node& components) {
+                if (!components.IsMap()) return false;
+                for (const auto& item : components) {
+                    if (!item.first.IsScalar()) continue;
+                    std::string key = item.first.Scalar();
+                    std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                    if (key == "sprite" || key == "tilemap" || key == "polygon" || key == "meshpolygon") return true;
+                }
+                return false;
+            }
+
             // one GameObject (an entity, an override or an added GameObject of a prefab instance)
             void checkComponents(const fs::path& file, const fs::path& assets, const std::string& entityName, const YAML::Node& components,
                                  SceneUse& use, std::set<std::string>& seenMaps) {
@@ -376,6 +391,9 @@ namespace jasperengine::editor::spritenormals {
                         if (height > 0.0) use.lightsWithHeight++;
                     }
                 }
+                // only 2D meshes (a Sprite, Tilemap, Polygon or Polygon Mesh): a 3D mesh's normal map is a Lit
+                // material's, sized and filtered independently of its colour texture
+                if (!is2D(components)) return;
                 const YAML::Node mesh = components["mesh"];
                 if (!mesh || !mesh.IsMap() || !mesh["submeshes"] || !mesh["submeshes"].IsSequence()) return;
                 // the Sprite's frames as stored: pixel rects, or a rect given as fractions of the
@@ -512,7 +530,11 @@ namespace jasperengine::editor::spritenormals {
                 for (const fs::path& file : ProjectChecks::findProjectFiles(root, {".scene", ".prefab"})) {
                     SceneUse use;
                     try {
-                        walk(file, assets, YAML::LoadFile(file.string()), use, seen);
+                        // read through an fs::path stream: YAML::LoadFile takes a narrow string,
+                        // which is not the file's name on Windows when it has non-ASCII characters
+                        std::ifstream in(file, std::ios::binary);
+                        if (!in) throw std::runtime_error("cannot open the file");
+                        walk(file, assets, YAML::Load(in), use, seen);
                     } catch (const std::exception& e) {
                         result.findings.push_back({"normals", rel(file), 0, 0, "warning", std::string("could not read its normal maps: ") + e.what(), "", ""});
                         continue;

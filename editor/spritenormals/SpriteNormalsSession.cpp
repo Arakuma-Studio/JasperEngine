@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SpriteNormalsSession.h"
+#include "SpriteNormalsWatcher.h"
 
 #include "Catalog.h"
 #include "Platform.h"
@@ -829,7 +830,12 @@ namespace jasperengine::editor::spritenormals {
         }
         std::vector<mcp::w4::WriteFilesCmd::Item> items;
         for (const OutputFile& file : files) items.push_back({file.absolute, file.bytes});
-        return mcp::w4::writeFilesUndoable(server.context(), std::move(items), error);
+        if (!mcp::w4::writeFilesUndoable(server.context(), std::move(items), error)) return false;
+        // the editor's watcher reads them soon (and wakes when the project had no generated map)
+        if (SpriteNormalsWatcher* watcher = SpriteNormalsWatcher::active()) {
+            for (const OutputFile& file : files) watcher->invalidate(file.absolute);
+        }
+        return true;
     }
 
     bool writeOutputsDirect(const std::vector<OutputFile>& files, std::string& failedPath, std::string& error) {

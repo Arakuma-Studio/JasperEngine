@@ -17,7 +17,10 @@
 #include "Scene.h"
 #include "Theme.h"
 #include "component/MeshComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/PolygonComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/TilemapComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "mcp/McpValues.h"
 #include "spritenormals/SpriteNormalsApply.h"
@@ -205,6 +208,14 @@ editor::RowSettings editor::InspectorWindow::normalTextureRowSettings(const RowS
                                                                      unsigned int submesh) {
     RowSettings settings = base;
     if (!sceneProject || entities.empty() || !sne::baseIsImage(project, sceneProject->scene, entities[0], submesh)) return settings;
+    // only 2D meshes (a Sprite, Tilemap, Polygon or Polygon Mesh, like check --normals): a Lit 3D mesh's
+    // normal map is not a sprite normal map
+    Scene* scene = sceneProject->scene;
+    const Entity entity = entities[0];
+    if (!scene || !(scene->findComponent<SpriteComponent>(entity) || scene->findComponent<TilemapComponent>(entity) ||
+                    scene->findComponent<PolygonComponent>(entity) || scene->findComponent<MeshPolygonComponent>(entity))) {
+        return settings;
+    }
     Project* p = project;
     settings.extraButton = [p, sceneProject, entities, submesh](const ImVec2& size) { sne::wandButton(p, sceneProject, entities, submesh, size); };
     return settings;

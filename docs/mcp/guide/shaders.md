@@ -313,6 +313,12 @@ Manifest lines (library shaders and forks that declare them) beyond the basic on
   `library:sprite` uses it): under Light 2Ds, with a normal texture, on a mesh with tangents
   and `uv1` (sprites, tilemaps, polygons), `includes/lighting2d.glsl` samples it in the OpenGL
   convention (green up) and the light's height shapes it; the shader must include that file.
+  A Light 2D's height shapes only normals that mean something: `lighting2d.glsl`'s
+  `getLight2DIntensity` applies N.L (with the light raised by its height) only when it sampled
+  the normal map itself (`normalmap` above) or when the shader defines `LIGHT2D_SURFACE_NORMALS`
+  before including it; a shader that passes its own normals (from `getNormal2D()`, a texture of
+  its own, real 3D normals) must `#define LIGHT2D_SURFACE_NORMALS` first, otherwise its normal is
+  ignored and the light falls as from height 0 (`mesh.frag`'s lit path does this).
 - The engine defines the blend mode a variant draws with: `BLEND_NONE`, `BLEND_ALPHA`,
   `BLEND_PREMULTIPLIED`, `BLEND_ADDITIVE` or `BLEND_MULTIPLY` (`#ifdef BLEND_ADDITIVE`).
   `finalizeColor` fogs by it (additive fades to black, multiply to white);

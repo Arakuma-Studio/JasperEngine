@@ -576,12 +576,24 @@ set(JASPERENGINE_SPRITENORMALS_SOURCES
     ${EDITOR_DIR}/spritenormals/SpriteNormalsPaint.cpp
 )
 # Upstream parity: Rust never contracts a*b+c into an FMA (the generator calls std::fma itself
-# exactly where upstream calls mul_add); the paint layer's compositing likewise gives the same
-# bytes on every target
-if(NOT MSVC)
-    set_source_files_properties(${EDITOR_DIR}/spritenormals/SpriteNormals.cpp ${EDITOR_DIR}/spritenormals/SpriteNormalsField.cpp
-        ${EDITOR_DIR}/spritenormals/SpriteNormalsPaint.cpp PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+# exactly where upstream calls mul_add); the media decoding (resampling, frame compositing) and the
+# paint layer's compositing likewise keep their bytes on every target. MSVC: /fp:precise (no
+# contraction without /fp:contract); clang-cl (the MSVC front end of Clang, which contracts under
+# /fp:precise): Clang's own flag through /clang:; GCC and Clang: -ffp-contract=off
+set(JASPERENGINE_SPRITENORMALS_NO_FMA_SOURCES
+    ${EDITOR_DIR}/spritenormals/SpriteNormals.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsField.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteMedia.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsPaint.cpp
+)
+if(MSVC AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    set(JASPERENGINE_NO_FMA_FLAGS "/fp:precise")
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+    set(JASPERENGINE_NO_FMA_FLAGS "/fp:precise;/clang:-ffp-contract=off")
+else()
+    set(JASPERENGINE_NO_FMA_FLAGS "-ffp-contract=off")
 endif()
+set_source_files_properties(${JASPERENGINE_SPRITENORMALS_NO_FMA_SOURCES} PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_NO_FMA_FLAGS}")
 
 set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/main.cpp

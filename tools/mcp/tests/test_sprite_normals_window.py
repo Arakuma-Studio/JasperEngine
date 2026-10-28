@@ -260,6 +260,23 @@ async def test_inspector_wand_shift_click_assigns(ed: Editor):
     ed.check(out.exists(), "the file stays until the project undo")
 
 
+async def test_no_wand_on_a_lit_3d_mesh(ed: Editor):
+    """A Lit box with a texture: its Normal Texture row has no wand (sprite normal maps are for Sprites, Tilemaps and
+    Polygons, as check --normals)"""
+    await ed.call("create_entity", type="box", name="Crate", position=[200, 0, 0],
+                  values={"mesh": {"submeshes[0].material.baseColorTexture": "assets/hero.png"}})
+    await ed.call("select_entities", entities=["Crate"])
+    await focus_x(ed, "inspector")
+    toggle = await ed.ui_rect("inspector.materialToggle.submeshes[0].material", timeout=5.0)
+    if toggle and not await ed.ui_rect("inspector.normalMapWand.0", timeout=1.0):
+        await click(ed, toggle)
+    await ed.call("wait", frames=10)
+    ed.check(toggle is not None, "the box's Material section is in the Inspector")
+    ed.check("inspector.normalMapWand.0" not in ed.ui_items(), "no wand on a 3D mesh's Normal Texture row")
+    await ed.call("delete_entities", entities=["Crate"])
+    await ed.call("select_entities", entities=["Hero"])
+
+
 async def test_stale_badge_and_regenerate(ed: Editor):
     out = ed.project / "assets" / "hero_normal.png"
     ed.check(out.exists(), "hero_normal.png from the Shift-click")

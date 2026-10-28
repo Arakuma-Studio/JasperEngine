@@ -75,6 +75,14 @@ namespace {
                 {"shadows", [](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.lights = true; e.shadows = true; }},
                 {"2d lights + shadows, sprite rect", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){ i.textureRect = true; e.lights2D = true; e.shadows2D = true; }},
                 {"instanced sprite rect", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.textureRect = true; i.instanced = true; }},
+                // a normal-mapped sprite under 2D lights (@require normalmap: the material's Normal
+                // Texture through getNormal2D, the 2D tangent frame of includes/tangent_frame.glsl)
+                {"2d lights + shadows, normal-mapped sprite", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
+                    i.normal = true; i.tangent = true; i.normalTexture = true; i.textureRect = true; i.vertexColor4 = true;
+                    e.lights2D = true; e.shadows2D = true; }},
+                {"post colour, 2d lights, normal-mapped instanced sprite", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
+                    i.normal = true; i.tangent = true; i.normalTexture = true; i.textureRect = true; i.instanced = true;
+                    e.postColor = true; e.lights2D = true; }},
                 // a Terrain's patches (no UV or tangent attributes: uv1 is the terrain's own)
                 {"terrain", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.terrain = true; i.texCoord1 = false; i.tangent = false; }},
                 {"terrain, fog, shadows", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){

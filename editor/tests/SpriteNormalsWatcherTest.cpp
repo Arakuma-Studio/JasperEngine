@@ -60,6 +60,7 @@ namespace jasperengine::editor {
             w.tick();
         }
         static int idleScans(W& w) { return w.idleScans; }
+        static void failNextScan(W& w) { w.failNextScan = true; }
         static double interval(W& w) { return w.interval(); }
         static int hashes(W& w) { return w.hashCount->load(); }
         static void settle(W& w, double seconds) { w.settleSeconds = seconds; }
@@ -375,9 +376,13 @@ TEST(SpriteNormalsWatcher, ResetDoesNotWaitAndIdleProjectsBackOff) {
     Access::scan(watcher);
     EXPECT_EQ(Access::idleScans(watcher), 2);
     EXPECT_GT(Access::interval(watcher), first);
+    // dormant: not walked again until something says a map may have appeared (or 10 minutes)
+    EXPECT_TRUE(watcher.dormant());
+    EXPECT_EQ(Access::interval(watcher), 600.0);
     // a write by the tool: back to the short interval
     watcher.invalidate(root() / "assets/idle/plain.png");
     EXPECT_EQ(Access::interval(watcher), first);
+    EXPECT_FALSE(watcher.dormant());
     // a scan in flight is dropped, never waited for
     for (int i = 0; i < 300; i++) writePng("assets/idle/many" + std::to_string(i) + ".png", disk(8, 10));
     Access::startScan(watcher);
@@ -402,4 +407,35 @@ TEST(SpriteNormalsWatcher, ShutdownStopsTheScanThread) {
     watcher.shutdown(2.0);
     EXPECT_TRUE(job->done) << "cancelled at its next file and finished before shutdown returned";
     EXPECT_FALSE(Access::scanning(watcher));
+}
+
+// The scan thread is detached: an exception on it keeps the index as it was (the editor goes on),
+// and the next scan works; a source over the generator's input limit is not read into memory (no
+// map can have been made from it: stale)
+TEST(SpriteNormalsWatcher, AFailedScanKeepsTheIndexAndHugeSourcesAreNotRead) {
+    const std::string dir = fresh("barrier");
+    writePng(dir + "/hero.png", disk(32, 80));
+    generate(dir + "/hero.png");
+    age(dir + "/hero.png", 10);
+    project()->getSpriteNormalsSettings().autoRegenerate = false;
+    SpriteNormalsWatcher watcher(project());
+    const fs::path map = (root() / dir / "hero_normal.png").lexically_normal();
+    const fs::path source = root() / dir / "hero.png";
+    Access::scan(watcher);
+    ASSERT_EQ(watcher.outputsOf(source), std::vector<fs::path>{map});
+    const int hashed = Access::hashes(watcher);
+
+    Access::failNextScan(watcher);
+    Access::scan(watcher);
+    EXPECT_EQ(watcher.outputsOf(source), std::vector<fs::path>{map}) << "the index as it was";
+    EXPECT_FALSE(watcher.isStale(map));
+    Access::scan(watcher);
+    EXPECT_EQ(watcher.outputsOf(source), std::vector<fs::path>{map}) << "the next scan works";
+
+    // the source grows past 64 MiB (sparse: nothing is written to disk)
+    fs::resize_file(source, static_cast<uintmax_t>(sn::kMaxInputBytes) + 1024 * 1024);
+    age(dir + "/hero.png", 10);
+    Access::scan(watcher);
+    EXPECT_TRUE(watcher.isStale(map));
+    EXPECT_EQ(Access::hashes(watcher), hashed) << "not hashed (not read)";
 }

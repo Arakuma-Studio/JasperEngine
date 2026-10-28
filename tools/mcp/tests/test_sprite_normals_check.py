@@ -319,3 +319,22 @@ async def test_normalized_frames_on_a_wide_sheet(ed: Editor):
     _, data = run_check(ed.project, "--normals")
     wide = [f for f in normals(data) if "'Wide'" in f["message"]]
     check(not wide, f"normalized frames of a 2048-wide sheet match the map's cells: {wide}")
+
+
+# ---------------------------------------------------------------------------- 3D meshes are not checked
+
+async def test_lit_meshes_are_not_sprite_normal_maps():
+    """A 3D project (tools/fixtures/stochastic-tiling: Lit boxes and planes with normal maps) whose normal map is 64x64
+    on a 256x256 albedo: a Lit material's normal map is sized independently, so --normals reports nothing about it and
+    the default set does not fail on it (only Sprites, Tilemaps and Polygon Meshes are checked)"""
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="jasper-normals-3d-") as tmp:
+        project = Path(tmp) / "stochastic-tiling"
+        shutil.copytree(REPO / "tools" / "fixtures" / "stochastic-tiling", project)
+        (project / "assets" / "textures" / "pebbles_normal.png").write_bytes(png_rgba(64, 64, lambda x, y: (128, 128, 255, 255)))
+        code, data = run_check(project, "--normals")
+        check(code == 0 and not normals(data), f"--normals on Lit meshes: exit {code}, {normals(data)}")
+        check(data["checked"].get("normals", 0) == 0, f"no map in use is a sprite's: {data['checked']}")
+        code, data = run_check(project)
+        check(not normals(data), f"the default set: {normals(data)}")
+        check(code == 0, f"the default set exits 0 (exit {code}): {[f for f in data['findings'] if f['severity'] == 'error']}")

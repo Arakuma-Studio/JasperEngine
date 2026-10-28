@@ -7,7 +7,8 @@ frame layout, its alpha byte kept, flat `(128, 128, 255)` where it is transparen
 **Window > Sprite Normal Map**, the Project window's right-click > **Generate Normal Map...** / **Regenerate Normal
 Map** (a badge marks stale maps), and the Inspector (a wand on the Normal Texture row, **Normal Map...** under Sprite
 Frames, Regenerate on a generated PNG); shells have the CLI and `check --normals` (below). All of them run the same
-code, so a preview in one is the same pixels as a write in another.
+code, so a preview in one is the same pixels as a write in another (on one platform; another OS's maths library
+may differ by 1 per channel).
 
 ## When it shows
 
@@ -197,7 +198,8 @@ correctly lit. In Lua: `Sprite(self.scene, self.entity):setNormalTexture("sprite
 
 ## Recipes and regenerating
 
-Every PNG written carries an iTXt chunk `jasper.spritenormals` (settings, frames, source path and SHA-1).
+Every PNG written carries an iTXt chunk `jasper.spritenormals` (settings, frames, source path and SHA-1); exported
+games ship the PNGs without it (and without the paint layer).
 `get_asset_info` of a map shows `sprite_normals` (`source.state`: `fresh`, `changed`, `missing`, `invalid`; `stale`)
 and `regenerate`: the arguments that write it again (`overwrite: true`); call the tool with them. `get_asset_info`
 of a source shows `normal_map` (its `<stem>_normal.png`, stale or not). After you edit a source, the next call's

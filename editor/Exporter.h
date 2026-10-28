@@ -210,6 +210,9 @@ namespace jasperengine::editor {
         static void copyTreeIfChanged(const fs::path& src, const fs::path& dst, std::error_code& ec);
 
     public:
+        // a PNG copied without its jasper.* text chunks (util/PngEditorChunks.h); false when it is
+        // not a PNG, has none, or could not be written that way (then copied as it is)
+        static bool copyPngWithoutEditorChunks(const std::filesystem::path& source, const std::filesystem::path& destination);
         // What the HTML/CSS of each UI Document refers to (HtmlUIDependencies): a missing
         // file, a path outside the assets directory or a remote URL is an error with
         // file:line:column (project-relative); an absolute path is a warning. documents =

@@ -23,6 +23,7 @@
 #include "component/Light2DComponent.h"
 #include "object/Light2D.h"
 #include "object/Mesh.h"
+#include "shader/ShaderLibraryMatrix.h"
 #include "shader/ShaderManifest.h"
 #include "subsystem/RenderSystem.h"
 #include "util/ProjectUtils.h"
@@ -314,6 +315,21 @@ TEST(Sprite2DNormalMapManifest, VariantSamplesTheMaterialNormalMap) {
     simpleLit.manifest = ShaderManifests::get("library:simple_lit");
     ASSERT_TRUE(simpleLit.manifest);
     EXPECT_EQ(RenderSystem::getSubmeshShaderVariant(lights2D, simpleLit).properties & nmp, 0u) << "library:simple_lit";
+}
+
+// ---- the shader library matrix (shaders --library) compiles library:sprite's normal-map path
+
+TEST(Sprite2DNormalMapManifest, LibraryMatrixHasANormalMappedSprite) {
+    const std::shared_ptr<const ShaderManifest> sprite = ShaderManifests::get("library:sprite");
+    ASSERT_TRUE(sprite);
+    const uint64_t nmp = 1ull << 7;   // 'Nmp'
+    int normalMapped = 0;
+    for (const ShaderLibraryMatrix::Variant& v : ShaderLibraryMatrix::buildVariants("sprite", *sprite)) {
+        if (v.type != ShaderType::MESH || v.label.find("normal-mapped") == std::string::npos) continue;
+        EXPECT_NE(v.properties & nmp, 0u) << v.label << ": samples the normal map";
+        normalMapped++;
+    }
+    EXPECT_GE(normalMapped, 2) << "the normal-mapped sprite cases (no features, all features)";
 }
 
 // ---- U4: Catalog::shaderReadsMaterialNormalMap
