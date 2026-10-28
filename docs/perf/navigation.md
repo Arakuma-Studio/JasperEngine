@@ -44,19 +44,20 @@ the median of each metric):
 | `crowd_100_tick_ms` (p95) | <= 0.6 ms (R27) | 0.30 ms (0.45) | ok |
 | `crowd_500_tick_ms` (p95) | <= 3 ms (R27) | 2.18 ms (2.48) | ok |
 | `carve_tick_max_ms` / `carve_ticks_to_land` | <= 1 ms / <= 2 ticks (R28) | 0.19 ms / 1 tick | ok |
-| `grid_256_worst_ms` | <= 2 ms (R29) | 4.32 ms | **missed** |
+| `grid_256_worst_ms` | <= 2 ms (R29) | 0.24 ms | ok |
 | `grid_reject_us` | <= 5 us (R29) | 0.04 us | ok |
-| `grid_batch_200_4t_ms` | <= 4 ms (R29) | 10.9 ms | **missed** |
+| `grid_batch_200_4t_ms` | <= 4 ms (R29; gate 4.4 on E) | 4.14 ms (1 thread: 13.2 ms) | ok |
 | `grid_bytes_per_cell` | 1 B (+4 B index, R29) | 5.1 B | ok |
 | `empty_tick_us` / allocations | < 1 us / 0 (R25) | 0.005 us / 0 | ok |
 
 Informational: collect 2.1 ms, 400 tiles, 2643 polys, unreachable path p95 0.33 ms (the whole
 2048-node budget searched).
 
-The two grid budgets are missed: the serpentine maze expands every one of its ~49k reachable cells
-(about 88 ns per expanded cell, heap included), and the batch's random 15 %-blocked grid costs about
-0.2 ms per path. Both run the general A* (area costs, reservations, slope limits, no corner
-cutting); a uniform-cost accelerator (jump points) is the follow-up that would bring them in.
+The grids run jump point search on uniform-cost square grids (the plain A* is kept for area
+costs, reservations, heights, hex and 4-neighbour grids): per straight direction the distance to
+the next jump point is a lookup (JPS+ style tables, rebuilt with the map), so the serpentine maze
+costs 0.24 ms instead of 4.3 ms with A*, and the batch's paths about 66 us each (A*: 144 us). The
+batch hands requests to its 4 threads one at a time.
 
 ## Notes
 
