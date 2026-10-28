@@ -265,6 +265,7 @@ namespace jasperengine::editor {
             bool changedOnDisk = false;
             // the result shown for it (a finished run) and the fingerprint it was made from
             std::shared_ptr<spritenormals::SpriteNormalsRun> result;
+            uint64_t resultId = 0;             // a fresh id per result (caches key on it, never on the run's address)
             std::string resultKey;
             std::string savedKey;              // the resultKey last written (Save / Save All)
             std::vector<spritenormals::Problem> problems;
@@ -416,7 +417,7 @@ namespace jasperengine::editor {
         std::vector<Texture> retired;            // destroyed next frame (ImGui draws after show())
         // the metrics lines of the shown result (measure + assess, once per result)
         uint64_t metricsSerial = 0;
-        const void* metricsRun = nullptr;
+        uint64_t metricsResult = 0;            // the result id of the metrics line
         spritenormals::Assessment metricsAssessment;
         std::string metricsLine;
         uint64_t metricsPaintSerial = 0;
@@ -449,10 +450,9 @@ namespace jasperengine::editor {
         int dirtyX0 = 0, dirtyY0 = 0, dirtyX1 = 0, dirtyY1 = 0;
         int litDirtyX0 = 0, litDirtyY0 = 0, litDirtyX1 = 0, litDirtyY1 = 0;
         double normalUploadedAt = -1.0;
-        const void* normalGpuRun = nullptr;
         // Smooth's cells and islands of the shown result (built once per result)
         spritenormals::PaintTopology topology;
-        const void* topologyRun = nullptr;
+        uint64_t topologyFor_ = 0;              // the result id it was built for
         mutable uint64_t unsavedFor = 0;         // hasUnsavedPaint() for this paintSerial ...
         mutable bool unsavedCached = false;      // ... (an overlay compare per change, not per frame)
         // a stroke in progress (mouse or paintStroke)
@@ -463,11 +463,12 @@ namespace jasperengine::editor {
         bool strokeStarted = false;
         // the composited normal shown (the generation + the overlay) and the generation in OpenGL green
         spritenormals::Image displayed;
-        uint64_t displayedFor = 0;
-        const void* displayedRun = nullptr;
+        uint64_t displayedResult = 0;           // the result id the composite shown was made from
         spritenormals::Image generatedGLImage;
-        const void* generatedGLRun = nullptr;
-        uint64_t normalGpuFor = 0;               // the displayed serial the Normal view's GPU copy shows
+        uint64_t generatedGLResult = 0;
+        uint64_t resultIds = 0;                 // the last result id given
+        uint64_t normalGpuFor = 0;
+        uint64_t normalGpuResult = 0;               // the displayed serial the Normal view's GPU copy shows
         GpuImage hemisphereGpu;                  // the direction disk's colour wheel
         // the wand's hover outline (cached for the hovered pixel)
         int wandHoverX = -1, wandHoverY = -1;
@@ -533,6 +534,8 @@ namespace jasperengine::editor {
         // the normal map `output` ("" = the default name) would write for `item`, absolute
         std::filesystem::path plannedNormalFor(const Item& item, const std::string& output) const;
         const spritenormals::PaintTopology* topologyFor(bool needed);
+        // the shown result's id (0: none)
+        uint64_t shownId() const;
         void renderLitRect();
         bool painting() const { return paintTool != spritenormals::PaintTool::Navigate && paintDisabledReason().empty(); }
         // the shown result's generation in OpenGL green, the colour (atlas) and cells

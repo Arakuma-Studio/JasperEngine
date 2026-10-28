@@ -1080,6 +1080,7 @@ void SpriteNormalsWindow::finishRun() {
         Item& item = items[runItem];
         if (result.status == sn::Status::Ok) {
             item.result = run;
+            item.resultId = ++resultIds;
             item.resultKey = runKey;
             if (runItem == current) {
                 resultSerial++;
@@ -2123,7 +2124,7 @@ void SpriteNormalsWindow::updatePreviewImages() {
     // the colour: the result's source (the atlas for an animation), else the file as it is
     std::string key;
     if (r) {
-        key = "result:" + std::to_string(reinterpret_cast<uintptr_t>(r.get()));
+        key = "result:" + std::to_string(shownId());
     } else if (current < items.size() && !items[current].texturePath.empty()) {
         key = "file:" + items[current].texturePath;
     }
@@ -2145,9 +2146,10 @@ void SpriteNormalsWindow::updatePreviewImages() {
     // the Normal view: the generation with the paint (a stroke changes it; uploaded at most 30
     // times a second while stroking)
     const bool uploadDue = !stroking || normalUploadedAt < 0.0 || now() - normalUploadedAt >= 1.0 / 30.0 || now() < normalUploadedAt;
-    if (r && uploadDue && (normalGpuFor != paintSerial * 2 + (showPaint ? 1 : 0) || (editorUi() && !normalGpu.valid()))) {
+    if (r && uploadDue && (normalGpuFor != paintSerial * 2 + (showPaint ? 1 : 0) || normalGpuResult != shownId() || (editorUi() && !normalGpu.valid()))) {
         updateGpuImage(normalGpu, displayNormal(), resultSerial);
         normalGpuFor = paintSerial * 2 + (showPaint ? 1 : 0);
+        normalGpuResult = shownId();
         normalUploadedAt = now();
     }
     const bool litDue = litRenderedAt < 0.0 || now() - litRenderedAt >= 1.0 / 30.0 || now() < litRenderedAt;
@@ -3724,9 +3726,9 @@ void SpriteNormalsWindow::drawMetrics() {
         return;
     }
     // (while a stroke is drawn the line waits for its end: measuring a large atlas per mouse sample is too slow)
-    if (metricsSerial != resultSerial || metricsRun != r.get() || (!stroking && metricsPaintSerial != paintSerial * 2 + (showPaint ? 1 : 0))) {
+    if (metricsSerial != resultSerial || metricsResult != shownId() || (!stroking && metricsPaintSerial != paintSerial * 2 + (showPaint ? 1 : 0))) {
         metricsSerial = resultSerial;
-        metricsRun = r.get();
+        metricsResult = shownId();
         metricsPaintSerial = paintSerial * 2 + (showPaint ? 1 : 0);
         const sn::Result& res = r->result();
         const sn::Settings& used = r->prepared().request.settings;
@@ -3864,7 +3866,9 @@ void SpriteNormalsWindow::checkPaintTarget() {
     const uintmax_t size = exists ? fs::file_size(target, ec) : 0;
     if (exists == paintStampExists && time == paintStampTime && size == paintStampSize) return;
     // the file changed under the window (a Save undone, a regeneration, another tool): what it
-    // holds now is the saved state; the window's overlay stays
+    // holds now is the saved state. Without strokes in the window (none since the target was
+    // loaded) the window takes it as its overlay too; with strokes (an undone Save included) the
+    // overlay stays, unsaved
     const bool hadUnsaved = hasUnsavedPaint();
     std::string why;
     std::optional<sn::PaintOverlay> onDisk = exists ? sn::readPaint(target, &why) : std::nullopt;
@@ -3872,6 +3876,13 @@ void SpriteNormalsWindow::checkPaintTarget() {
     recordPaintStamp();
     unsavedFor = 0;
     warningsDirty = true;
+    if (paintUndo.empty() && !stroking) {
+        paint = paintSaved;
+        paintRedo.clear();
+        paintProblem = why.empty() ? std::string() : fileName(paintTarget) + "'s paint layer can't be read (" + why + "); Save writes the map without it.";
+        paintChanged();
+        return;
+    }
     if (hasUnsavedPaint() || hadUnsaved) {
         setStatus(fileName(paintTarget) + (exists ? " changed on disk (regenerated, or its Save undone)" : " is gone (its Save undone)") +
                       " while this window has unsaved paint: Save writes this window's result and paint" + (exists ? " over it." : "."),
@@ -3879,11 +3890,15 @@ void SpriteNormalsWindow::checkPaintTarget() {
     }
 }
 
+uint64_t SpriteNormalsWindow::shownId() const {
+    return shown() ? items[current].resultId : 0;
+}
+
 const sn::PaintTopology* SpriteNormalsWindow::topologyFor(bool needed) {
     const std::shared_ptr<sn::SpriteNormalsRun> r = shown();
     if (!r || !needed) return nullptr;
-    if (topologyRun != r.get()) {
-        topologyRun = r.get();
+    if (topologyFor_ != shownId()) {
+        topologyFor_ = shownId();
         topology = sn::paintTopology(r->prepared().request.color, r->prepared().request.cells, r->prepared().request.settings.alphaThreshold);
     }
     return &topology;
@@ -3963,8 +3978,8 @@ const sn::Image& SpriteNormalsWindow::generatedGL() {
     static const sn::Image none;
     const std::shared_ptr<sn::SpriteNormalsRun> r = shown();
     if (!r) return none;
-    if (generatedGLRun != r.get()) {
-        generatedGLRun = r.get();
+    if (generatedGLResult != shownId()) {
+        generatedGLResult = shownId();
         generatedGLImage = r->result().normal;
         const sn::Settings& used = r->prepared().request.settings;
         // a DirectX generation in OpenGL green (the paint is OpenGL whatever the setting)
@@ -3992,8 +4007,8 @@ const sn::Image& SpriteNormalsWindow::displayNormal() {
         displayedValid = false;
         return normal;
     }
-    if (!displayedValid || displayedRun != r.get() || dirtyAll) {
-        displayedRun = r.get();
+    if (!displayedValid || displayedResult != shownId() || dirtyAll) {
+        displayedResult = shownId();
         displayed = composedNormal();
         displayedValid = true;
         dirtyAll = false;

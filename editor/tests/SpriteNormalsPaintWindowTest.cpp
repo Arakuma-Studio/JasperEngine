@@ -84,6 +84,10 @@ namespace jasperengine::editor {
             w.paintStampCheckedAt = -1.0;
             w.checkPaintTarget();
         }
+        static sn::PaintTopology topology(W& w) {
+            const sn::PaintTopology* t = w.topologyFor(true);
+            return t ? *t : sn::PaintTopology();
+        }
         static void beginStroke(W& w) { w.beginStroke(); }
         static void strokeTo(W& w, int x, int y) { w.strokeTo(x, y); }
         static void endStroke(W& w) { w.endStroke(); }
@@ -776,5 +780,65 @@ TEST(SpriteNormalsPaintWindowDeathTest, StrokesRecompositeAndRelightOnlyTheirPix
         EXPECT_EQ(partial.data, Access::litFull(*window).data) << "the stroke's lit pixels == a full render";
         window->undoPaint();
         EXPECT_EQ(Access::displayed(*window).data, Access::composed(*window).data);
+    });
+}
+
+// ---- fix round 2: caches follow the result, never a run's address; an outside rewrite without strokes
+
+TEST(SpriteNormalsPaintWindowDeathTest, SmoothsTopologyFollowsEveryNewResult) {
+    IN_EDITOR("topology", {
+        auto window = openWindow(w, "assets/hero.png");
+        window->setPaintTool(sn::PaintTool::Smooth);
+        window->setPaintBrush(brushOf(3));
+        ASSERT_TRUE(window->paintStroke({{16, 16}}));
+        EXPECT_EQ(Access::topology(*window).owner, std::vector<int>(32 * 32, 0)) << "one whole-image cell";
+        // frames changed, regenerated twice (a freed run's address may come back for the next one)
+        sn::FramesSpec grid;
+        grid.mode = sn::FramesSpec::Mode::Grid;
+        grid.grid.tileWidth = grid.grid.tileHeight = 16;
+        window->setFrames(grid);
+        ASSERT_TRUE(settle(*window));
+        std::string error;
+        ASSERT_TRUE(window->regenerate(error)) << error;
+        ASSERT_TRUE(settle(*window));
+        ASSERT_TRUE(window->paintStroke({{8, 8}}));
+        const sn::PaintTopology now = Access::topology(*window);
+        const sn::Image source = disk(32, 32);
+        sn::Image rgba = sn::Image::make(32, 32, 4, 8);
+        rgba.data = source.data;
+        const sn::PaintTopology expected = sn::paintTopology(rgba, {{0, 0, 16, 16}, {16, 0, 16, 16}, {0, 16, 16, 16}, {16, 16, 16, 16}}, 0.03f);
+        EXPECT_EQ(now.owner, expected.owner) << "the new result's four cells";
+        EXPECT_EQ(now.island, expected.island);
+        EXPECT_EQ(Access::displayed(*window).data, Access::composed(*window).data);
+    });
+}
+
+TEST(SpriteNormalsPaintWindowDeathTest, AnOutsideRewriteWithoutStrokesIsAdopted) {
+    IN_EDITOR("adopt", {
+        writePaintedMap(w, "assets/hero.png", "assets/hero_normal.png", R"([{"op":"flatten","where":{"rect":[10,10,3,3]}}])");
+        auto window = openWindow(w, "assets/hero.png");
+        ASSERT_EQ(window->paintedPixelCount(), 9u);
+        // what generate_sprite_normals {paint_mode: "clear", output, overwrite} does: an undoable write without paint
+        sn::Spec spec;
+        spec.source = "assets/hero.png";
+        spec.settings = sn::presetSettings(sn::Preset::Default);
+        spec.overwrite = true;
+        spec.paintMode = sn::PaintMode::Clear;
+        sn::Prepared prepared;
+        std::vector<sn::Problem> problems;
+        ASSERT_TRUE(sn::prepare(w.dir, spec, nullptr, prepared, problems));
+        const sn::Result result = sn::generatePrepared(prepared);
+        std::vector<sn::OutputFile> files;
+        std::string error;
+        ASSERT_TRUE(sn::encodeOutputs(prepared, result, files, error)) << error;
+        ASSERT_TRUE(sn::writeOutputsUndoable(files, error)) << error;
+        Access::checkTarget(*window);
+        EXPECT_EQ(window->paintedPixelCount(), 0u) << "no strokes here: the file's (empty) paint is taken";
+        EXPECT_FALSE(window->hasUnsavedPaint());
+        // its undo brings the painted file back: taken again
+        EXPECT_TRUE(w.p->getProjectCommandHistory()->undo());
+        Access::checkTarget(*window);
+        EXPECT_EQ(window->paintedPixelCount(), 9u);
+        EXPECT_FALSE(window->hasUnsavedPaint());
     });
 }
