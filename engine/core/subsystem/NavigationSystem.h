@@ -27,6 +27,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -191,7 +192,9 @@ namespace jasperengine{
         uint32_t getFixedTick() const { return fixedTick; }
         // the longest main-thread slice of a time-sliced (web, no threads) bake since the reset
         double getMaxBakeSliceMs() const { return maxBakeSliceMs; }
-        void resetBakeSliceStats() { maxBakeSliceMs = 0.0; slowestBakeStepMs = 0.0; slowestBakeStep.clear(); }
+        void resetBakeSliceStats() { maxBakeSliceMs = 0.0; slowestBakeStepMs = 0.0; slowestBakeStep.clear(); bakeStageMaxMs.clear(); }
+        // each Recast stage's longest time-sliced step since the reset, ms
+        const std::map<std::string, double>& getBakeStageMaxMs() const { return bakeStageMaxMs; }
         // the longest single Recast stage of those slices, and which ("regions, tile 7")
         double getSlowestBakeStepMs() const { return slowestBakeStepMs; }
         const std::string& getSlowestBakeStep() const { return slowestBakeStep; }
@@ -207,6 +210,7 @@ namespace jasperengine{
         double maxBakeSliceMs = 0.0;
         double slowestBakeStepMs = 0.0;
         std::string slowestBakeStep;
+        std::map<std::string, double> bakeStageMaxMs;
 
         bool hasNavigationComponents() const;
         Runtime& rt();

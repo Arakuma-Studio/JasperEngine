@@ -134,6 +134,10 @@ namespace {
         const uint64_t city = fnv(system->getNavMeshFile(cityFloor));
         const uint64_t topDown = fnv(system->getNavMeshFile(topDownSurface));
         Log::print("[gate] nav baked city %016llx topdown %016llx", (unsigned long long)city, (unsigned long long)topDown);
+        std::string stages;
+        for (const auto& stage : system->getBakeStageMaxMs())
+            stages += " " + stage.first + " " + std::to_string(stage.second);
+        Log::print("[nav] longest step per stage (ms):%s", stages.c_str());
         const double slice = system->getMaxBakeSliceMs();
         const double budget = nav::getSettings().webBakeBudgetMs + 2.0;
         if (slice <= budget)

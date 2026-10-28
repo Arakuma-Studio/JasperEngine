@@ -735,6 +735,8 @@ void NavigationSystem::processBakes(double budgetMs) {
             const auto sliceStart = std::chrono::steady_clock::now();
             state.bake->pump(budgetMs);
             maxBakeSliceMs = std::max(maxBakeSliceMs, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - sliceStart).count());
+            for (const auto& stage : state.bake->getStageMaxMs())
+                bakeStageMaxMs[stage.first] = std::max(bakeStageMaxMs[stage.first], stage.second);
             if (state.bake->getSlowestStepMs() > slowestBakeStepMs) {
                 slowestBakeStepMs = state.bake->getSlowestStepMs();
                 slowestBakeStep = state.bake->getSlowestStep();

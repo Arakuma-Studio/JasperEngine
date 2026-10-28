@@ -87,6 +87,8 @@ void NavBake::pump(double budgetMs) {
         const auto stepStart = std::chrono::steady_clock::now();
         const bool finished = active->step();
         const double stepMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - stepStart).count();
+        double& stageMax = stageMaxMs[stage];
+        stageMax = std::max(stageMax, stepMs);
         if (stepMs > slowestStepMs) {
             slowestStepMs = stepMs;
             slowestStep = std::string(stage) + ", tile " + std::to_string(queue[next]);

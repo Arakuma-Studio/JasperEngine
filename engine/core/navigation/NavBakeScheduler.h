@@ -22,6 +22,7 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -73,10 +74,13 @@ namespace jasperengine::nav {
         // time-sliced: the longest single stage it ran, and which ("rasterize 12.3 ms, tile 4")
         double getSlowestStepMs() const { return slowestStepMs; }
         const std::string& getSlowestStep() const { return slowestStep; }
+        // time-sliced: each stage's longest step, ms
+        const std::map<std::string, double>& getStageMaxMs() const { return stageMaxMs; }
 
     private:
         double slowestStepMs = 0.0;
         std::string slowestStep;
+        std::map<std::string, double> stageMaxMs;
         struct Shared;
         std::shared_ptr<const NavBakeInput> input;
         std::shared_ptr<Shared> shared;
