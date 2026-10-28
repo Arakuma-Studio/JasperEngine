@@ -9,6 +9,7 @@
 #include "pool/ShaderPool.h"
 
 #include <cstdio>
+#include <cstring>
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -114,6 +115,11 @@ void GpuEnvironment::drawFrames(int count){
 
 Framebuffer& GpuEnvironment::target(){
     return *framebuffer;
+}
+
+bool GpuEnvironment::isReferenceRenderer(){
+    const char* renderer = HeadlessContext::getRendererName();
+    return !renderer || renderer[0] == '\0' || std::strstr(renderer, "llvmpipe") != nullptr;
 }
 
 void GpuEnvironment::shutdown(){

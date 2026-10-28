@@ -1,10 +1,11 @@
 {
- "comment": "double borders of 2 (solid), 3, 6, 9 and 12px, rounded and a circle. Tolerance: the curved edges of the bands are anti-aliased by the engine's feathering over 4x multisampling and by Skia's analytic coverage; edge pixels differ by up to 40 levels (scattered). Measured 0.278 % on glcore and Vulkan on the test host and 0.282 % on an NVIDIA GTX 1080 (Vulkan, driver 580); the limit is that plus about 10 %, the cluster limit stays at the default (16 px).",
+ "comment": "double borders of 2 (solid), 3, 6, 9 and 12px, rounded and a circle. Tolerance: the curved edges of the bands are anti-aliased by the engine's feathering over 4x multisampling and by Skia's analytic coverage; edge pixels differ by up to 40 levels (scattered). Measured 0.278 % on glcore and Vulkan on the test host and 0.282 % on an NVIDIA GTX 1080 (Vulkan, driver 580); the hardware limit is that plus about 10 %, the cluster limit stays at the default (16 px).",
  "viewport": [
   330,
   160
  ],
  "tolerance": {
-  "badPercent": 0.31
+  "badPercent": 0.28,
+  "hardware": {"badPercent": 0.31}
  }
 }

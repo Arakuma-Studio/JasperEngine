@@ -461,10 +461,11 @@ TEST_F(FluidSimulatorTest, ManualFilteringFallback){
     // llvmpipe (whose filter weights are full floats); a hardware GPU's filter quantises the
     // weights (8 bits of sub-texel position on NVIDIA), and six steps of advection carry that
     // further: 41 on an NVIDIA GTX 1080 and a GTX 1650 (Vulkan, driver 580). The limit is that
-    // plus about 12 %; a broken manual bilerp (the half-texel offset dropped) is off by 255 there.
+    // plus about 12 % there (24 on the goldens' renderer); a broken manual bilerp (the half-texel
+    // offset dropped) is off by 255.
     const FluidImage image = readOutput(sim);
     EXPECT_GT(brightest(image), 100);
-    EXPECT_LE(maxDifference(image, reference), 46);
+    EXPECT_LE(maxDifference(image, reference), GpuEnvironment::isReferenceRenderer() ? 24 : 46);
 }
 
 TEST_F(FluidSimulatorTest, UnsupportedDevice){

@@ -286,3 +286,7 @@ CompareResult jasperengine::test::compareTargetWithGolden(const std::string& nam
     return result;
 #endif
 }
+
+CompareOptions jasperengine::test::hardwareTolerance(const CompareOptions& hardware, const CompareOptions& reference){
+    return GpuEnvironment::isReferenceRenderer() ? reference : hardware;
+}

@@ -65,6 +65,12 @@ namespace jasperengine { namespace test {
     // reads GpuEnvironment::target() back and compares it with golden/<name>.png
     CompareResult compareTargetWithGolden(const std::string& name, const CompareOptions& options = {});
 
+    // Upstream's per-test tolerances for hardware GPUs (measured on NVIDIA GPUs: their sin(),
+    // filtering and anti-aliasing differ from the goldens' software renderer): `hardware` on a
+    // hardware GPU, `reference` (the default comparison) on the goldens' renderer
+    // (GpuEnvironment::isReferenceRenderer), so the goldens stay as strict there as they were
+    CompareOptions hardwareTolerance(const CompareOptions& hardware, const CompareOptions& reference = {});
+
     std::string getGoldenDirectory();
     std::string getOutputDirectory();
     bool isGoldenUpdateMode();

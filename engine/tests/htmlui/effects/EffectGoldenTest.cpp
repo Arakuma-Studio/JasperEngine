@@ -6,11 +6,13 @@
 // the effect clock fixed, compared with golden/effects/<name>.t1.png (t = 1.5 s) and, when it
 // is animated, <name>.t2.png (t = 4 s), and checked against the invariants I1-I7; a stateful
 // effect (phase 6) also against <name>.t0.png (t = 0.25 s: its early state) and I8-I9. The
-// goldens are llvmpipe renders; the effects listed in kHardwareTolerances are compared with the
-// looser tolerances a hardware GPU needs (see there), every other effect with the default one.
+// goldens are llvmpipe renders; on a hardware GPU the effects listed in kHardwareTolerances are
+// compared with the looser tolerances it needs (see there), every other effect, and every effect on
+// llvmpipe and lavapipe, with the default one.
 
 #include "EffectTestCommon.h"
 
+#include "harness/GpuEnvironment.h"
 #include "harness/ImageCompare.h"
 
 #include "htmlui/HtmlUIClock.h"
@@ -135,8 +137,11 @@ namespace {
         return tolerances;
     }
 
+    // the goldens' renderer (llvmpipe, lavapipe) keeps the default comparison for every effect
     const HardwareTolerance& toleranceOf(const std::string& name){
         static const HardwareTolerance strict;
+        if (GpuEnvironment::isReferenceRenderer())
+            return strict;
         const auto& tolerances = hardwareTolerances();
         const auto found = tolerances.find(name);
         return found == tolerances.end() ? strict : found->second;

@@ -215,11 +215,11 @@ TEST(Phase6Cross, StatefulEffectsOnAVideo){
     // the goldens are llvmpipe's; on a hardware GPU data-mosh's blocks (a sin() hash) and the
     // trail's half-float decay differ on a few hundred pixels: pinned 0.956 % bad, mean 0.93;
     // live 0.524 %, mean 0.53 on an NVIDIA GTX 1080 (Vulkan, driver 580). The limits are those
-    // plus about 25 % (the default 0.05 % and 1.0 otherwise).
+    // plus about 25 % there (the default 0.05 % and 1.0 on the goldens' renderer).
     CompareOptions pinnedHardware;
     pinnedHardware.maxBadFraction = 0.012;
     pinnedHardware.maxMeanDiff = 1.2;
-    expectGolden("video/stateful.pinned", pinned, pinnedHardware);
+    expectGolden("video/stateful.pinned", pinned, hardwareTolerance(pinnedHardware));
 
     // live: the effect clock follows the UI clock, the videos play; each drawn frame steps the simulations once
     {
@@ -258,7 +258,7 @@ TEST(Phase6Cross, StatefulEffectsOnAVideo){
         EXPECT_GT(differing, 200u) << "time-trail sheds a trail behind the card's moving square";
         CompareOptions liveHardware;
         liveHardware.maxBadFraction = 0.0066;
-        expectGolden("video/stateful.live", live, liveHardware);
+        expectGolden("video/stateful.live", live, hardwareTolerance(liveHardware));
     }
     EffectRuntime::get().clearTestInput();
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "[HTML UI]"), 0u) << logText(D_LOG_ERROR);
