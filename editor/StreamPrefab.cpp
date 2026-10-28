@@ -69,7 +69,9 @@ namespace {
                     continue;
                 }
                 if (it->second.IsSequence()) {
-                    for (const YAML::Node& name : it->second) {
+                    // a copy: the iterator's value is a temporary the loop would outlive
+                    const YAML::Node names = it->second;
+                    for (const YAML::Node& name : names) {
                         object.overrides.addProperty(type, name.as<std::string>());
                     }
                 } else if (it->second.IsScalar()) {

@@ -166,6 +166,10 @@ TEST(Stream, DerivedTransformWorldMatricesUnchanged) {
         spec.exe = editorBinary;
         spec.args = {"scene-dump", "--world", "--project", project.string(), "--out", out.string()};
         spec.timeoutMs = 300000;
+        // under AddressSanitizer: the CLI's exit leaves its scenes to the process's end, which
+        // LeakSanitizer would turn into a failed dump (what is compared is the dump)
+        const char* asan = std::getenv("ASAN_OPTIONS");
+        spec.env.emplace_back("ASAN_OPTIONS", std::string(asan ? asan : "") + (asan && *asan ? ":" : "") + "detect_leaks=0");
         const ProcessResult result = runOffMain(spec);
         ASSERT_EQ(result.exitCode, 0) << result.message();
         const YAML::Node world = worldOf(YAML::LoadFile(out.string()));
