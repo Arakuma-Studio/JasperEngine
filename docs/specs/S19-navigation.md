@@ -622,3 +622,22 @@ What the implementation does differently from the text above, and why.
 - **Gizmos (R34).** Link start and end handles drag in the Scene view (one undo step per drag);
   obstacle shapes, surface and modifier volumes and the agent's cylinder are drawn on selection
   and edited through their Inspector fields (no drag handles of their own).
+
+## Progress (implementation notes, keep updated)
+
+Status at d88c12d51 (branch feat/s19-navigation, oe-port merged incl. S26):
+- Green: 49 nav core tests (A), linux GL WERROR build (merged), web ST + threads Release builds,
+  Android APK (ANDROID_PROJECT=navigation), E bench all budgets except grid (median of 5).
+- OPEN 1: get_navigation_info dirty_tiles = all right after an editor bake (MCP test_bake_job_and_info).
+  Evidence: tiles 16, dirty 25 = 9 + 16 -> current input has 9 non-empty tiles vs 16 baked, or
+  coords mismatch. Suspects: render mesh geometry of the `plane` primitive at bake vs check time;
+  editor DirtyCache (NavigationEditor::dirtyTiles); NavigationSystem::countDirtyTiles.
+- OPEN 2: web ST gate slice 48 ms (> 6 ms) on the second (timed) bake; some TileJob stage is
+  indivisible (NavMeshBuilder TileJob stages; NavBakeScheduler pump). Also d88c12d51 fixed the agent
+  binding to the 2D surface (pickSurface) - re-gate (tools/build.sh web/web-gate, BUILD_TYPE=Release).
+- OPEN 3: grid A* 4.3 ms (256^2 serpentine, budget 2) and batch 10.9 ms (budget 4) on E.
+- OPEN 4: ASan re-run (fixture UAF fixed: unique heightmap ids), editor tests under ASan, Vulkan
+  WERROR, Android emulator check, navigation goldens, full MCP + web gates, TOOLS.md regen after merge
+  (currently oe-port's), S08 reflection tables when they land.
+- Scratch remote scripts (untracked): tools/.s19-core.sh (core build + Nav tests), .s19-bench.sh
+  (RUNS=N median + check_bench), .s19-editor.sh (linux build, editor tests, TOOLS.md, MCP tests).
