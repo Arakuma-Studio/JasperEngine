@@ -879,3 +879,48 @@ TEST(SpriteNormalsPaint, HeadReadersSkipOtherKeywords) {
     EXPECT_EQ(ts::readRecipeTextHead(file, &error, "jasper.spritenormals.pa"), std::nullopt) << "a keyword prefix is not the keyword";
     fs::remove(file);
 }
+
+// ---------------------------------------------------------------- Toon steps under paint
+
+// Quantization happens in generate(): paint composites over the quantized result, so painted
+// pixels keep exactly the painted direction (never snapped) and unpainted ones are the quantized
+// bytes, in both conventions
+TEST(SpriteNormalsPaint, PaintOverQuantizedOutputKeepsThePaintedValues) {
+    for (const Fixture& f : fixtures()) {
+        if (f.name != "character.png" && f.name != "ball.png" && f.name != "walk.gif") continue;
+        for (bool directx : {false, true}) {
+            SCOPED_TRACE(f.name + (directx ? " directx" : " opengl"));
+            sn::Request request = f.request;
+            request.settings = sn::presetSettings(sn::Preset::Toon);
+            request.settings.directx = directx;
+            const sn::Result plain = sn::generate(request);
+            ASSERT_EQ(plain.status, sn::Status::Ok);
+            sn::PaintLayer layer;
+            // a direction no palette has (azimuth 17, tilt 23), full strength, on the whole image
+            layer.ops = ops(R"([{"op":"angle","where":{"rect":[0,0,4096,4096]},"direction":{"azimuth_deg":17,"tilt_deg":23}}])");
+            const sn::Result painted = sn::generatePainted(request, layer);
+            ASSERT_EQ(painted.status, sn::Status::Ok);
+            const std::array<uint8_t, 3> want = sn::encodeDirection(sn::directionFromAngles(17.0f, 23.0f));
+            size_t checked = 0;
+            for (int y = 0; y < plain.normal.height; y++) {
+                for (int x = 0; x < plain.normal.width; x++) {
+                    const Px got = at(painted.normal, x, y);
+                    if (!(static_cast<float>(at(request.color, x, y)[3]) / 255.0f > request.settings.alphaThreshold)) {
+                        EXPECT_EQ(got, at(plain.normal, x, y));
+                        continue;
+                    }
+                    ASSERT_EQ(got[0], want[0]);
+                    ASSERT_EQ(got[1], directx ? 255 - want[1] : want[1]);
+                    ASSERT_EQ(got[2], want[2]);
+                    checked++;
+                }
+            }
+            EXPECT_GT(checked, 0u);
+            // erased again: the quantized bytes
+            sn::PaintLayer erased;
+            erased.overlay = layer.overlay;
+            erased.ops = ops(R"([{"op":"erase","where":{"rect":[0,0,4096,4096]}}])");
+            EXPECT_EQ(sn::generatePainted(request, erased).normal.data, plain.normal.data);
+        }
+    }
+}

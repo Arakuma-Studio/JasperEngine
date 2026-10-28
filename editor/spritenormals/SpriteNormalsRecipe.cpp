@@ -6,6 +6,7 @@
 #include "EditorVersion.h"
 #include "texsynth/SynthesisRecipe.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <fstream>
@@ -73,6 +74,32 @@ namespace jasperengine::editor::spritenormals {
                 return false;
             }
             return true;
+        }
+
+        // A whole number (2, not 2.5); values past +-1e9 saturate there (validateSettings names them)
+        bool readInt(const json& object, const char* key, const std::string& prefix, int& out, std::string& error) {
+            const auto it = object.find(key);
+            if (it == object.end()) return true;
+            if (!it->is_number()) {
+                error = wrongType(prefix + key, *it, "a whole number");
+                return false;
+            }
+            const double v = it->get<double>();
+            if (!std::isfinite(v) || std::floor(v) != v) {
+                error = prefix + key + " is " + it->dump() + ", expected a whole number";
+                return false;
+            }
+            out = static_cast<int>(std::min(std::max(v, -1e9), 1e9));
+            return true;
+        }
+
+        bool quantizeFromJson(const json& value, Quantize& q, std::string& error) {
+            if (!value.is_object()) {
+                error = wrongType("quantize", value, "an object {directions, tilts, flat_deg, rotation_deg}");
+                return false;
+            }
+            return readInt(value, "directions", "quantize.", q.directions, error) && readInt(value, "tilts", "quantize.", q.tilts, error) &&
+                   readNumber(value, "flat_deg", "quantize.", q.flatDeg, error) && readNumber(value, "rotation_deg", "quantize.", q.rotationDeg, error);
         }
 
         bool regionFromJson(const json& value, const std::string& where, Region& region, std::string& error) {
@@ -171,6 +198,14 @@ namespace jasperengine::editor::spritenormals {
         j["regions"] = regions;
         j["directx"] = s.directx;
         j["height"] = s.height;
+        // only when on (unquantized recipes and fingerprints are unchanged), or when the preset's
+        // is on (an override to off must be recorded: readers resolve over the preset)
+        if (s.quantize.on() || presetSettings(s.preset).quantize.on()) {
+            j["quantize"] = {{"directions", s.quantize.directions},
+                             {"tilts", s.quantize.tilts},
+                             {"flat_deg", number(s.quantize.flatDeg)},
+                             {"rotation_deg", number(s.quantize.rotationDeg)}};
+        }
         return j;
     }
 
@@ -180,7 +215,7 @@ namespace jasperengine::editor::spritenormals {
             return false;
         }
         Settings s = out;
-        if (!readEnum<Preset>(j, "preset", s.preset, parsePreset, "soft, default, crisp, detailed, chunky", error)) return false;
+        if (!readEnum<Preset>(j, "preset", s.preset, parsePreset, "soft, default, crisp, detailed, chunky, toon", error)) return false;
         if (!readNumber(j, "strength", "", s.strength, error) || !readNumber(j, "detail", "", s.detail, error) ||
             !readNumber(j, "smoothing", "", s.smoothing, error) || !readNumber(j, "volume", "", s.volume, error) ||
             !readNumber(j, "softness", "", s.softness, error) || !readNumber(j, "alpha_threshold", "", s.alphaThreshold, error)) {
@@ -217,6 +252,7 @@ namespace jasperengine::editor::spritenormals {
                 s.regions.push_back(region);
             }
         }
+        if (j.contains("quantize") && !quantizeFromJson(j["quantize"], s.quantize, error)) return false;
         out = s;
         return true;
     }
@@ -372,6 +408,11 @@ namespace jasperengine::editor::spritenormals {
                     if (ok && s.contains(key)) ok = c.numberValue(s[key], std::string("settings.") + key);
                 }
                 if (ok && s.contains("radius") && s["radius"].is_number()) ok = c.numberValue(s["radius"], "settings.radius");
+                if (ok && s.contains("quantize")) {
+                    for (const char* key : {"flat_deg", "rotation_deg"}) {
+                        if (ok && s["quantize"].contains(key)) ok = c.numberValue(s["quantize"][key], std::string("settings.quantize.") + key);
+                    }
+                }
             }
         }
         if (ok && recipe.contains("radius_resolved")) {

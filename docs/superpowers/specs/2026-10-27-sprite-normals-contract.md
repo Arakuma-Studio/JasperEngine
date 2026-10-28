@@ -47,7 +47,7 @@ Values outside the range are errors that name the setting, the range and the val
 
 | Setting | Type, range | Default | Meaning |
 |---|---|---|---|
-| `preset` | `soft` `default` `crisp` `detailed` `chunky` | `default` | Starting values for strength, detail, smoothing, volume, softness and radius; explicit values override the preset |
+| `preset` | `soft` `default` `crisp` `detailed` `chunky` `toon` | `default` | Starting values for strength, detail, smoothing, volume, softness, radius and quantize; explicit values override the preset |
 | `strength` "Strength" | 0..8 | preset | Multiplies every slope (upstream `normal_strength`) |
 | `detail` "Detail" | 0..8 | preset | Relief from painted shading (upstream `detail_strength`) |
 | `smoothing` "Smoothing" | 0..8 px | preset | Sigma of the fine shading blur; the broad blur is 2x (upstream `detail_scale`) |
@@ -61,9 +61,10 @@ Values outside the range are errors that name the setting, the range and the val
 | `regions` "Regions" | array, at most 16 of `{colors: ["#rrggbb", ...] (1..16), tolerance: 0..0.5 (Oklab distance, default 0.03), detail: 0..8 multiplier (default 1), lift: -16..16 px of height (default 0), flat: bool (default false)}` | `[]` | Per-colour overrides; a pixel takes the first matching region. `detail: 0` excludes painted highlights or outlines from relief; `lift` raises/sinks a material; `flat` forces the pixels' normals to +Z |
 | `directx` "Green: DirectX" | bool | false | Green points down the image (Unreal). False = OpenGL, which the engine reads after Phase 1 |
 | `height` "Height map" | bool | false | Also write a 16-bit grey height map |
+| `quantize` "Toon steps" | `{directions: 0 (off), 4, 6, 8, 12, 16; tilts: 1..4 (2); flat_deg: 0..45 (10); rotation_deg: 0..360, 360 excluded (0)}`; CLI `--quantize N`, `--quantize-tilts N`, `--quantize-flat DEG`, `--quantize-rotation DEG`; UI "Toon steps", "Tilt rings", "Flat below", "Rotation" | off | Snaps every generated normal to `1 + directions x tilts` directions for stepped, cel-shaded light (design: `2026-10-28-sprite-normals-quantize-design.md`). Recorded in the recipe when on, or when the preset's is |
 | `frames` "Frames" | `"auto"`, `"none"`, `{tile_size: N or [w,h], columns, rows, count, offset: [x,y], padding: [x,y]}`, or `{cells: [[x,y,w,h],...]}` (exclusive with the grid keys) | `"auto"` | Cells processed independently. Auto = the Sprite's frames (when the source is a Sprite GameObject), the animation's frames (GIF/APNG), else the whole image. Object keys mirror `set_sprite_frames.slice` (`names`, `prefix`, `sheet_size` are not accepted) |
 
-Presets (the six main settings; `softness` 1.15 and `radius` auto in all):
+Presets (the six main settings; `softness` 1.15 and `radius` auto in all; `quantize` off except in `toon`):
 
 | preset | strength | detail | smoothing | volume | intent |
 |---|---|---|---|---|---|
@@ -72,6 +73,7 @@ Presets (the six main settings; `softness` 1.15 and `radius` auto in all):
 | `crisp` | 1.5 | 3 | 0.6 | 1.15 | small characters, keeps 1 px features |
 | `detailed` | 1.5 | 6 | 0.6 | 1.15 | the upstream defaults except radius (upstream: 4 px; pass radius 4 for an exact match) (most painted detail, highlights become bumps) |
 | `chunky` | 2.5 | 4 | 0.6 | 2.0 | stylised, strong volume |
+| `toon` | 2.0 | 0.5 | 2.0 | 1.3 | cel-shaded pixel art; the only preset with `quantize` on (`{directions: 8, tilts: 1, flat_deg: 15, rotation_deg: 0}`) |
 
 ## 4. Algorithm contract
 

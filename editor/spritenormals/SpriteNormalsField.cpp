@@ -286,4 +286,21 @@ namespace jasperengine::editor::spritenormals::detail {
             out[k] = static_cast<uint8_t>(byte <= 0.0f ? 0.0f : (byte >= 255.0f ? 255.0f : byte));
         }
     }
+
+    void slopeNormal(float dx, float dy, float strength, float v[3]) {
+        const float x = -dx * strength;
+        const float y = dy * strength;
+        const float length = std::sqrt(std::fma(x, x, std::fma(y, y, 1.0f)));
+        v[0] = x / length;
+        v[1] = y / length;
+        v[2] = 1.0f / length;
+    }
+
+    void encodeUnit(const float v[3], bool directx, uint8_t out[3]) {
+        const float n[3] = {v[0], directx ? -v[1] : v[1], v[2]};
+        for (int k = 0; k < 3; k++) {
+            const float byte = std::round((n[k] * 0.5f + 0.5f) * 255.0f);
+            out[k] = static_cast<uint8_t>(byte <= 0.0f ? 0.0f : (byte >= 255.0f ? 255.0f : byte));
+        }
+    }
 }

@@ -26,6 +26,7 @@
 
 #include "texsynth/SynthImage.h"
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <functional>
@@ -39,7 +40,7 @@ namespace jasperengine::editor::spritenormals {
 
     // ---- settings (contract section 3: names, ranges, defaults)
 
-    enum class Preset { Soft, Default, Crisp, Detailed, Chunky };
+    enum class Preset { Soft, Default, Crisp, Detailed, Chunky, Toon };
     enum class Profile { Rounded, Dome, Bevel };
     enum class Edges { Transparent, Wrap, Extend };
 
@@ -50,6 +51,21 @@ namespace jasperengine::editor::spritenormals {
         float detail = 1.0f;            // 0..8: multiplier of the detail term (0: the colour is ignored by it)
         float lift = 0.0f;              // -16..16: pixels of height added (before strength)
         bool flat = false;              // the pixels' normals are forced to +Z
+    };
+
+    // Normal quantization ("Toon steps"): every generated normal snapped to a palette of
+    // `directions` azimuths x `tilts` tilt rings, plus flat, for stepped cel-shaded light.
+    // Off (directions 0) by default: unquantized output is byte-identical to before.
+    struct Quantize {
+        int directions = 0;                   // 0 (off), 4, 6, 8, 12, 16: azimuth steps around the circle
+        int tilts = 2;                        // 1..4: tilt rings between flatDeg and 90 degrees
+        float flatDeg = 10.0f;                // 0..45: normals tilted less become exactly (0, 0, 1)
+        float rotationDeg = 0.0f;             // [0, 360): the palette's first azimuth (0 = +X, right)
+        bool on() const { return directions > 0; }
+        bool operator==(const Quantize& o) const {
+            return directions == o.directions && tilts == o.tilts && flatDeg == o.flatDeg && rotationDeg == o.rotationDeg;
+        }
+        bool operator!=(const Quantize& o) const { return !(*this == o); }
     };
 
     struct Settings {
@@ -67,14 +83,16 @@ namespace jasperengine::editor::spritenormals {
         std::vector<Region> regions;          // at most 16
         bool directx = false;
         bool height = false;                  // also produce Result::height
+        Quantize quantize;                    // off unless directions > 0 (the toon preset turns it on)
     };
 
     // The preset's values (contract section 3 table); softness 1.15, radius auto, alpha 0.03,
-    // Rounded, Transparent, no outline handling, no regions, OpenGL, no height map.
+    // Rounded, Transparent, no outline handling, no regions, OpenGL, no height map; quantize off
+    // except for toon.
     // Resolving a preset with overrides (every surface does exactly this):
     //   Settings s = presetSettings(p); settingsFromJson(overrides, s, error); s.preset = p; validateSettings(s)
     Settings presetSettings(Preset preset);
-    // "soft", "default", "crisp", "detailed", "chunky" (and back; false for an unknown name)
+    // "soft", "default", "crisp", "detailed", "chunky", "toon" (and back; false for an unknown name)
     const char* toString(Preset preset);
     const char* toString(Profile profile);    // "rounded", "dome", "bevel"
     const char* toString(Edges edges);        // "transparent", "wrap", "extend"
@@ -84,6 +102,19 @@ namespace jasperengine::editor::spritenormals {
     // "#rrggbb" or "rrggbb" (case-insensitive) -> 0xRRGGBB; "#rrggbb" back (lower case)
     bool parseColor(const std::string& text, uint32_t& out);
     std::string colorText(uint32_t rgb);
+
+    // ---- quantization (applied by generate() per opaque pixel, after the slopes, before the
+    // DirectX flip; paint composites over it)
+
+    // The quantized direction of a unit OpenGL-convention normal (z > 0), in double: tilt
+    // t = acos(z) under flatDeg -> (0, 0, 1) (as is a normal without azimuth); else the azimuth
+    // snapped to rotation + k * 360 / directions (k rounded half away from zero, measured from
+    // the rotation in [0, 360)) and the tilt to the centre of its ring of [flatDeg, 90).
+    // directions 0: the input unchanged.
+    std::array<double, 3> quantizeNormal(const Quantize& q, double x, double y, double z);
+    // Every direction quantizeNormal can return: flat first, then ring by ring (innermost first),
+    // azimuth by azimuth from the rotation counter-clockwise. directions 0: empty.
+    std::vector<std::array<double, 3>> quantizePalette(const Quantize& q);
 
     // ---- problems (shared kinds: contract + section 11)
 

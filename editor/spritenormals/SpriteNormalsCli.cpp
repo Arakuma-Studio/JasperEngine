@@ -316,7 +316,7 @@ namespace jasperengine::editor::spritenormals {
                 } else if (arg == "--preset") {
                     if (!need()) return false;
                     if (!parsePreset(value, o.preset)) {
-                        error = "unknown preset '" + value + "' (soft, default, crisp, detailed, chunky)";
+                        error = "unknown preset '" + value + "' (soft, default, crisp, detailed, chunky, toon)";
                         return false;
                     }
                 } else if (arg == "--strength") {
@@ -358,6 +358,23 @@ namespace jasperengine::editor::spritenormals {
                     o.overrides["edges"] = value;
                 } else if (arg == "--ignore-outline") {
                     o.overrides["ignore_outline"] = true;
+                } else if (arg == "--quantize" || arg == "--quantize-tilts") {
+                    // Toon steps: whole numbers (the ranges are validateSettings')
+                    if (!need()) return false;
+                    int v = 0;
+                    if (!parseIntText(value, v)) {
+                        error = "invalid " + arg + " value '" + value + "' (" + (arg == "--quantize" ? "0 (off), 4, 6, 8, 12 or 16" : "1..4") + ")";
+                        return false;
+                    }
+                    o.overrides["quantize"][arg == "--quantize" ? "directions" : "tilts"] = v;
+                } else if (arg == "--quantize-flat" || arg == "--quantize-rotation") {
+                    if (!need()) return false;
+                    double v = 0.0;
+                    if (!parseFloatText(value, v)) {
+                        error = "invalid " + arg + " value '" + value + "' (degrees)";
+                        return false;
+                    }
+                    o.overrides["quantize"][arg == "--quantize-flat" ? "flat_deg" : "rotation_deg"] = v;
                 } else if (arg == "--region") {
                     if (!need()) return false;
                     Region region;
@@ -793,6 +810,10 @@ namespace jasperengine::editor::spritenormals {
                 for (const Problem& p : invalid) {
                     // "alpha_threshold must be ..." -> "--alpha-threshold must be ..." (the flag's name)
                     std::string message = p.message;
+                    for (const auto& [field, flag] : {std::pair<const char*, const char*>{"quantize.directions", "quantize"}, {"quantize.tilts", "quantize-tilts"},
+                                                      {"quantize.flat_deg", "quantize-flat"}, {"quantize.rotation_deg", "quantize-rotation"}}) {
+                        if (p.field == field && message.rfind(field, 0) == 0) message = flag + message.substr(std::strlen(field));
+                    }
                     const size_t space = message.find(' ');
                     std::replace(message.begin(), message.begin() + static_cast<std::ptrdiff_t>(space == std::string::npos ? 0 : space), '_', '-');
                     state.fail(2, "usage", (p.field.rfind("regions", 0) == 0 ? "--region " : "--") + message, p.fix.empty() ? "see --help" : p.fix);
@@ -1071,7 +1092,7 @@ namespace jasperengine::editor::spritenormals {
             << "  -p, --project <path>        Project directory or project.yaml: recipe paths are relative to it, and\n"
             << "                              outputs must be inside its assets directory. Optional with --source.\n"
             << "Settings (defaults: the preset's):\n"
-            << "      --preset <name>         soft, default (default), crisp, detailed, chunky.\n"
+            << "      --preset <name>         soft, default (default), crisp, detailed, chunky, toon (Toon steps 8).\n"
             << "      --strength <x>          0..8.          --detail <x>      0..8.\n"
             << "      --smoothing <px>        0..8.          --volume <x>      0..8.\n"
             << "      --radius <auto|px>      auto (default) or 0.5..512.\n"
@@ -1080,6 +1101,10 @@ namespace jasperengine::editor::spritenormals {
             << "      --edges <e>             transparent (default), wrap (seamless), extend (tiles).\n"
             << "      --ignore-outline        Leave the detected outline colour out of the relief.\n"
             << "      --region <spec>         colors=#rrggbb[,#rrggbb...][;tolerance=x][;detail=x][;lift=px][;flat]. Can repeat (16).\n"
+            << "      --quantize <n>          Toon steps: snap normals to n directions (0 off, 4, 6, 8, 12, 16) for\n"
+            << "                              stepped, cel-shaded light.   --quantize-tilts <n>  1..4 rings (2; toon 1).\n"
+            << "      --quantize-flat <deg>   0..45 (10; toon 15): flatter normals face the viewer.\n"
+            << "      --quantize-rotation <deg>  0..360 (0 = one direction points right).\n"
             << "      --directx               Green down (Unreal). The engine reads OpenGL.\n"
             << "Frames (default: the animation's, the --sprite's, else the whole image):\n"
             << "      --frame-size <WxH|N>    Cell size.   --columns <n>  --rows <n>  --count <n>\n"

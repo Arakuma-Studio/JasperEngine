@@ -916,6 +916,7 @@ void SpriteNormalsWindow::setPreset(sn::Preset p) {
     settings.volume = base.volume;
     settings.softness = base.softness;
     settings.radius = base.radius;
+    settings.quantize = base.quantize;   // Toon steps: the toon preset's, off for the others
     markChanged();
     storeSettings();
 }
@@ -2419,8 +2420,12 @@ namespace {
         ImGui::SameLine(labelWidth());
     }
 
-    // Physics Placement's segmented buttons (one selected, the others plain), equal widths
-    bool segmentedButtons(const char* id, int& value, const char* const* labels, const char* const* tooltips, int count) {
+    // the toon preset's tooltip (its values: presetSettings(Preset::Toon))
+    constexpr const char* kToonPresetTip = "Cel-shaded pixel art: Toon steps 8 (one tilt ring, flat below 15 deg), light in flat bands (strength 2, detail 0.5, smoothing 2, volume 1.3)";
+
+    // Physics Placement's segmented buttons (one selected, the others plain), equal widths; with
+    // `probe`, each button is the UI probe's "<probe>.<label>"
+    bool segmentedButtons(const char* id, int& value, const char* const* labels, const char* const* tooltips, int count, const char* probe = nullptr) {
         bool changed = false;
         const float spacing = ImGui::GetStyle().ItemInnerSpacing.x;
         const float width = std::max(1.0f, (ImGui::GetContentRegionAvail().x - spacing * (float)(count - 1)) / (float)count);
@@ -2438,6 +2443,7 @@ namespace {
                 changed = true;
             }
             if (selected) ImGui::PopStyleColor(2);
+            if (probe) UIProbe::item(std::string(probe) + (selected ? "Selected." : ".") + labels[i]);
             if (tooltips && tooltips[i]) tooltip(tooltips[i]);
         }
         ImGui::PopStyleVar();
@@ -2763,14 +2769,15 @@ void SpriteNormalsWindow::drawFrames() {
 
 void SpriteNormalsWindow::drawPresetAndSliders() {
     ImGui::SeparatorText("Settings");
-    const char* labels[] = {"Soft", "Default", "Crisp", "Detailed", "Chunky"};
+    const char* labels[] = {"Soft", "Default", "Crisp", "Detailed", "Chunky", "Toon"};
     const char* tips[] = {"Gentle relief for painterly art (strength 1, detail 2, smoothing 1)",
                           "Best measured accuracy on 16-64 px sprites (strength 1.5, detail 3, smoothing 1)",
                           "Small characters: keeps 1 px features (smoothing 0.6)",
                           "The Sprite Fusion defaults (radius 4 for an exact match): the most painted detail; highlights become bumps",
-                          "Stylised, strong volume (strength 2.5, detail 4, volume 2)"};
+                          "Stylised, strong volume (strength 2.5, detail 4, volume 2)",
+                          kToonPresetTip};
     int preset = static_cast<int>(settings.preset);
-    if (segmentedButtons("##preset", preset, labels, tips, 5)) setPreset(static_cast<sn::Preset>(preset));
+    if (segmentedButtons("##preset", preset, labels, tips, 6, "spriteNormals.presets")) setPreset(static_cast<sn::Preset>(preset));
     UIProbe::item("spriteNormals.preset");
     const sn::Settings base = sn::presetSettings(settings.preset);
     auto slider = [&](const char* label, const char* id, float& value, float presetValue, float lo, float hi, const char* format, const char* help) {
@@ -2800,9 +2807,119 @@ void SpriteNormalsWindow::drawPresetAndSliders() {
     slider("Smoothing", "##smoothing", settings.smoothing, base.smoothing, 0.0f, 8.0f, "%.2f px",
            "Blur of the shading before it becomes relief: higher removes banding steps, lower keeps 1 px detail");
     slider("Volume", "##volume", settings.volume, base.volume, 0.0f, 8.0f, "%.2f", "Rounding from the silhouette: how domed the sprite is");
+    drawToonSteps(base);
     for (const sn::Problem& p : current < items.size() ? items[current].problems : std::vector<sn::Problem>()) {
         if (p.kind == "invalid_settings") errorText(p.message);
     }
+}
+
+void SpriteNormalsWindow::drawToonSteps(const sn::Settings& base) {
+    static const char* const help =
+        "Snap every normal to a few directions so a moving light falls in flat, stepped bands (cel-shaded pixel art) "
+        "instead of smooth gradients. Off: smooth normals. 4, 8, 16: directions around the circle; 6 and 12, the tilt rings, "
+        "the flat cone and the rotation are under Advanced. Paint is kept exactly as painted";
+    ImGui::PushID("##toonSteps");
+    rowLabel("Toon steps", help);
+    if (settings.quantize.directions != base.quantize.directions) {
+        if (resetToPresetButton("toonSteps")) {
+            settings.quantize = base.quantize;
+            markChanged();
+            storeSettings();
+        }
+        ImGui::SameLine();
+    }
+    static const int values[] = {0, 4, 8, 16};
+    const char* labels[] = {"Off", "4", "8", "16"};
+    const char* tips[] = {"Smooth normals (no steps)", "4 directions: chunky, blocky light", "8 directions: classic cel shading",
+                          "16 directions: finer steps, still banded"};
+    int v = -1;   // 6 and 12 (Advanced) select no button
+    for (int i = 0; i < 4; i++) {
+        if (settings.quantize.directions == values[i]) v = i;
+    }
+    if (segmentedButtons("##toonStepsButtons", v, labels, tips, 4, "spriteNormals.toonSteps")) {
+        settings.quantize.directions = values[v];
+        markChanged();
+        storeSettings();
+    }
+    ImGui::PopID();
+}
+
+void SpriteNormalsWindow::drawToonAdvanced(const sn::Settings& base, bool& changed) {
+    const bool on = settings.quantize.on();
+    ImGui::SeparatorText("Toon steps");
+    rowLabel("Directions", "Toon steps: how many directions around the circle (Off, 4, 6, 8, 12, 16)");
+    {
+        static const int values[] = {0, 4, 6, 8, 12, 16};
+        const char* names[] = {"Off", "4", "6", "8", "12", "16"};
+        int v = 0;
+        for (int i = 0; i < 6; i++) {
+            if (settings.quantize.directions == values[i]) v = i;
+        }
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        if (ImGui::Combo("##toonDirections", &v, names, 6)) {
+            settings.quantize.directions = values[v];
+            changed = true;
+        }
+        UIProbe::item("spriteNormals.toonDirections");
+        tooltip("Toon steps: how many directions around the circle (Off, 4, 6, 8, 12, 16)");
+    }
+    ImGui::BeginDisabled(!on);
+    const char* offReason = "Turn Toon steps on (Settings) to use this";
+    auto quantSlider = [&](const char* label, const char* id, float& value, float presetValue, float lo, float hi, const char* format,
+                           const char* help) {
+        ImGui::PushID(id);
+        rowLabel(label, help);
+        if (on && std::fabs(value - presetValue) > 1e-4f) {
+            if (resetToPresetButton(id)) {
+                value = presetValue;
+                changed = true;
+            }
+            ImGui::SameLine();
+        }
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        float v = value;
+        if (UIUtils::sliderFloatInput(id, &v, lo, hi, format)) {
+            value = v;
+            changed = true;
+        }
+        if (on) tooltip(help);
+        else reasonTooltip(offReason);
+        ImGui::PopID();
+    };
+    {
+        ImGui::PushID("##toonTilts");
+        const char* help = "Toon steps: how many tilt bands between flat and edge-on (1 = one ring of slopes, 4 = finer)";
+        rowLabel("Tilt rings", help);
+        if (on && settings.quantize.tilts != base.quantize.tilts) {
+            if (resetToPresetButton("toonTilts")) {
+                settings.quantize.tilts = base.quantize.tilts;
+                changed = true;
+            }
+            ImGui::SameLine();
+        }
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        int tilts = settings.quantize.tilts;
+        if (ImGui::SliderInt("##tilts", &tilts, 1, 4, "%d", ImGuiSliderFlags_AlwaysClamp)) {
+            settings.quantize.tilts = std::clamp(tilts, 1, 4);
+            changed = true;
+        }
+        UIProbe::item("spriteNormals.toonTilts");
+        if (on) tooltip(help);
+        else reasonTooltip(offReason);
+        ImGui::PopID();
+    }
+    quantSlider("Flat below", "##toonFlat", settings.quantize.flatDeg, base.quantize.flatDeg, 0.0f, 45.0f, "%.0f deg",
+                "Toon steps: normals tilted less than this face the viewer exactly (flat tops, no speckle)");
+    const float rotationBefore = settings.quantize.rotationDeg;
+    quantSlider("Rotation", "##toonRotation", settings.quantize.rotationDeg, base.quantize.rotationDeg, 0.0f, 360.0f, "%.0f deg",
+                "Toon steps: turns the directions (0 = one points right). Keep 0 for straight-sided art: a step boundary on an axis "
+                "(22.5 with 8) makes those sides speckle");
+    if (settings.quantize.rotationDeg != rotationBefore) {
+        // 360 is 0 (the range excludes it)
+        float r = std::fmod(settings.quantize.rotationDeg, 360.0f);
+        settings.quantize.rotationDeg = r < 0.0f ? r + 360.0f : r;
+    }
+    ImGui::EndDisabled();
 }
 
 void SpriteNormalsWindow::drawAdvanced() {
@@ -2921,6 +3038,7 @@ void SpriteNormalsWindow::drawAdvanced() {
             changed = true;
         }
     }
+    drawToonAdvanced(base, changed);
     if (changed) {
         markChanged();
         storeSettings();

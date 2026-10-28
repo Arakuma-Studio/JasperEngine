@@ -16,6 +16,7 @@ Phase 1 are engine changes and ship in every game.
 | Export | PNGs ship without the editor's `jasper.*` text chunks (sprite normals recipe and paint layer, texture synthesis recipe), dropped losslessly (every other chunk kept byte for byte) |
 | Editor UI (Phase 4) | Window > Sprite Normal Map (single and batch mode, live preview with a movable light, frames, presets, advanced settings, Save / Save & Assign / Save All); Project window Generate / Edit / Regenerate Normal Map and a stale badge; Inspector: a wand on both Normal Texture rows, Normal Map... under Sprite Frames, an asset view for generated PNGs (Regenerate, Open in Generator, Assign to Selection, opt-in auto-regenerate); `SpriteNormalsWatcher` staleness index |
 | Paint (Phase 5) | A correction layer stored in the normal map (`jasper.spritenormals.paint`) and composited again on every regeneration: Angle, Flatten, Smooth, Erase brushes and a wand in the window (stroke undo, unsaved-paint prompts); `paint` / `paint_mode` in MCP and the CLI; `normals-paint-unreadable`, `normals-paint-size` checks |
+| Toon steps (2026-10-28) | Normal quantization (`quantize: {directions, tilts, flat_deg, rotation_deg}`, off by default; design `2026-10-28-sprite-normals-quantize-design.md`): every generated normal snapped to `1 + directions x tilts` directions for stepped, cel-shaded light, after the relief and before paint and the DirectX flip; preset `toon` (strength 2, detail 0.5, smoothing 2, volume 1.3, 8 directions, 1 ring, flat 15°); window "Toon steps" (Settings) and Tilt rings / Flat below / Rotation (Advanced), MCP `params.quantize`, CLI `--quantize`, `--quantize-tilts`, `--quantize-flat`, `--quantize-rotation`, guide section. Unquantized output and recipes are byte-identical to before |
 | Docs | README (features, migration notes, CLI block), NOTICE (upstream MIT row), `docs/mcp/guide/sprite-normals.md`, guide index, MCP README, `checks.md`, `lua-api.md`, `shaders.md`, `docs/shaders/library.md`, regenerated `TOOLS.md` |
 
 ## Behaviour changes and migration notes
@@ -50,6 +51,10 @@ Phase 1 are engine changes and ship in every game.
   (after every global environment, before the statics, as a game quits).
 
 ## Known limitations
+
+- Toon steps: the height map is not quantized; flat regions are not quantized (they stay flat); 2+ tilt rings put the
+  rims at 70° and over, so `too_steep` can warn on strongly domed sprites (the toon preset uses one ring); a rotation
+  that puts a step boundary on an axis (22.5 with 8 directions) speckles straight-sided art.
 
 - `check --normals` and the Inspector wand look at Sprites, Tilemaps and Polygons only; a prefab-instance override
   that changes only the mesh of such an instance (no 2D component in the override) is not checked.

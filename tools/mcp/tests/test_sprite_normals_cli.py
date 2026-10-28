@@ -229,6 +229,61 @@ async def test_threads_never_change_the_output():
     check(pixels(work / "t1.png") == pixels(work / "t0.png"), "identical pixels")
 
 
+# ---------------------------------------------------------------------------- 9b. Toon steps (quantize)
+
+def distinct_opaque(path: Path) -> set[bytes]:
+    out = set()
+    for row in pixels(path):
+        for x in range(0, len(row), 4):
+            if row[x + 3] > 0:
+                out.add(bytes(row[x:x + 3]))
+    return out
+
+
+async def test_quantize_flags_echo_and_errors():
+    """--quantize N (--quantize-tilts, -flat, -rotation) snaps the normals (at most 1 + N x tilts colours), the JSON
+    echoes settings.quantize, the recipe records it, --preset toon turns it on, and bad values exit 2 naming the flag"""
+    work = scratch()
+    code, out, err = run_json(work, "--source", "art/ball.png", "-o", "smooth.png")
+    check(code == 0 and "quantize" not in out["results"][0]["settings"], f"off: no quantize key: {out['results'][0]['settings']} {err}")
+    check(len(distinct_opaque(work / "smooth.png")) > 40, "smooth normals")
+    code, out, err = run_json(work, "--source", "art/ball.png", "-o", "q.png", "--quantize", "4", "--quantize-tilts", "1",
+                              "--quantize-flat", "5", "--quantize-rotation", "45")
+    check(code == 0, f"--quantize: {err}")
+    want = {"directions": 4, "tilts": 1, "flat_deg": 5, "rotation_deg": 45}
+    check(out["results"][0]["settings"]["quantize"] == want, f"JSON echo: {out['results'][0]['settings']}")
+    check(recipe(work / "q.png")["settings"]["quantize"] == want, f"recipe: {recipe(work / 'q.png')['settings']}")
+    colours = distinct_opaque(work / "q.png")
+    check(1 < len(colours) <= 5, f"at most 1 + 4 x 1 normals: {len(colours)}")
+    code, out, err = run_json(work, "--source", "art/ball.png", "-o", "toon.png", "--preset", "toon")
+    toon = out["results"][0]["settings"]
+    check(code == 0 and toon["preset"] == "toon" and toon["quantize"]["directions"] > 0, f"--preset toon: {toon} {err}")
+    q = toon["quantize"]
+    check(len(distinct_opaque(work / "toon.png")) <= 1 + q["directions"] * q["tilts"], "toon: palette normals only")
+    code, out, err = run_json(work, "--source", "art/ball.png", "-o", "toon_off.png", "--preset", "toon", "--quantize", "0")
+    check(code == 0 and out["results"][0]["settings"]["quantize"]["directions"] == 0, f"toon with --quantize 0: recorded off: {out['results'][0]['settings']}")
+    check(len(distinct_opaque(work / "toon_off.png")) > 40, "toon off: smooth")
+    # the same flags again reproduce the pixels
+    check(run(work, "--source", "art/ball.png", "-o", "q2.png", "--quantize", "4", "--quantize-tilts", "1", "--quantize-flat", "5",
+              "--quantize-rotation", "45", "-q").returncode == 0, "again")
+    check(pixels(work / "q.png") == pixels(work / "q2.png"), "deterministic")
+    before = listing(work)
+    for args, needle in [
+        (["--quantize", "5"], "--quantize must be 0 (off), 4, 6, 8, 12 or 16 (got 5)"),
+        (["--quantize", "8", "--quantize-tilts", "9"], "--quantize-tilts must be between 1 and 4 (got 9)"),
+        (["--quantize", "8", "--quantize-flat", "50"], "--quantize-flat must be between 0 and 45 (got 50)"),
+        (["--quantize", "8", "--quantize-rotation", "360"], "--quantize-rotation must be at least 0 and below 360 (got 360)"),
+        (["--quantize", "eight"], "invalid --quantize value 'eight'"),
+        (["--quantize", "4.5"], "invalid --quantize value '4.5'"),
+        (["--quantize-flat", "x"], "invalid --quantize-flat value 'x'"),
+    ]:
+        r = run(work, "--source", "art/ball.png", *args)
+        check(r.returncode == 2 and needle in r.stderr, f"{args}: exit 2 with {needle!r}: {r.returncode} {r.stderr[-600:]}")
+    check(listing(work) == before, "usage errors write nothing")
+    r = run(work, "--help")
+    check("--quantize" in r.stdout and "toon" in r.stdout, "--help lists the flags and the preset")
+
+
 # ---------------------------------------------------------------------------- 10. recipe paths and --project
 
 async def test_recipe_paths_and_project():

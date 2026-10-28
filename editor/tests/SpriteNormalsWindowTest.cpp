@@ -50,6 +50,8 @@
 #include <iterator>
 #include <memory>
 #include <mutex>
+#include <optional>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -465,6 +467,109 @@ TEST(SpriteNormalsWindowDeathTest, PresetsAndOverrides) {
         EXPECT_FLOAT_EQ(window.getSettings().volume, 2.0f);
         // the last settings are the project's (an Inspector Shift-click uses them)
         EXPECT_EQ(w.p->getSpriteNormalsSettings().settings.preset, sn::Preset::Chunky);
+    });
+}
+
+// Toon steps: the preset and the control's value change the live result (every opaque pixel one of
+// the palette's), another preset turns them off, and a saved map's recipe brings them back
+TEST(SpriteNormalsWindowDeathTest, ToonStepsChangeTheResultAndTheRecipeRestoresThem) {
+    IN_EDITOR("toon", {
+        SpriteNormalsWindow window(w.p);
+        std::string error;
+        ASSERT_TRUE(window.openSources({w.file("assets/hero.png")}, error)) << error;
+        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(Access::shown(window));
+        const sn::Image smooth = Access::shown(window)->result().normal;
+        auto distinct = [](const sn::Image& image) {
+            std::set<uint32_t> colours;
+            for (size_t i = 0; i < image.pixelCount(); i++) {
+                const uint8_t* p = image.data.data() + 4 * i;
+                if (p[3] > 0) colours.insert((uint32_t(p[0]) << 16) | (uint32_t(p[1]) << 8) | p[2]);
+            }
+            return colours.size();
+        };
+        EXPECT_GT(distinct(smooth), 40u) << "smooth normals";
+
+        window.setPreset(sn::Preset::Toon);
+        EXPECT_EQ(window.getSettings().quantize, sn::presetSettings(sn::Preset::Toon).quantize);
+        ASSERT_TRUE(settle(window));
+        const sn::Image toon = Access::shown(window)->result().normal;
+        EXPECT_NE(toon.data, smooth.data);
+        const sn::Quantize& q = window.getSettings().quantize;
+        EXPECT_LE(distinct(toon), static_cast<size_t>(1 + q.directions * q.tilts));
+
+        // the control's value (what a click on "4" sets), with the Advanced values drawn
+        sn::Settings s = window.getSettings();
+        s.quantize.directions = 4;
+        s.quantize.tilts = 1;
+        window.setSettings(s);
+        ASSERT_TRUE(settle(window));
+        EXPECT_LE(distinct(Access::shown(window)->result().normal), 5u);
+        {
+            ImGuiContext* context = ImGui::CreateContext();
+            ImGui::SetCurrentContext(context);
+            ImGuiIO& io = ImGui::GetIO();
+            io.IniFilename = nullptr;
+            io.DisplaySize = ImVec2(1400, 900);
+            io.DeltaTime = 1.0f / 60.0f;
+            unsigned char* pixels;
+            int width, height;
+            io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+            window.open();
+            Access::setAdvancedOpen(window, true);
+            Access::drawFrame(window);
+            s.quantize.directions = 12;   // no segmented button: the Advanced combo's
+            window.setSettings(s);
+            Access::drawFrame(window);
+            ImGui::DestroyContext(context);
+        }
+        EXPECT_EQ(w.p->getSpriteNormalsSettings().settings.quantize.directions, 12) << "the project's last settings";
+
+        // another preset: off
+        window.setPreset(sn::Preset::Crisp);
+        EXPECT_FALSE(window.getSettings().quantize.on());
+
+        // saved with Toon steps on a non-toon preset, opened again from the recipe: the same steps and pixels
+        s = window.getSettings();
+        s.quantize.directions = 6;
+        s.quantize.tilts = 3;
+        s.quantize.flatDeg = 15.0f;
+        s.quantize.rotationDeg = 30.0f;
+        window.setSettings(s);
+        window.setOutput("assets/maps/hero_toon.png");
+        ASSERT_TRUE(settle(window));
+        const sn::Image saved = Access::shown(window)->result().normal;
+        std::vector<std::string> written;
+        ASSERT_TRUE(window.save(false, written, error)) << error;
+        ASSERT_TRUE(settle(window));
+        const std::optional<nlohmann::json> recipe = sn::readRecipeHead(w.file("assets/maps/hero_toon.png"));
+        ASSERT_TRUE(recipe.has_value());
+        EXPECT_EQ((*recipe)["settings"]["quantize"].dump(), R"({"directions":6,"flat_deg":15,"rotation_deg":30,"tilts":3})");
+        {
+            SpriteNormalsWindow again(w.p);
+            ASSERT_TRUE(again.openRecipe(w.file("assets/maps/hero_toon.png"), error)) << error;
+            EXPECT_EQ(again.getSettings().preset, sn::Preset::Crisp);
+            EXPECT_EQ(again.getSettings().quantize, s.quantize);
+            ASSERT_TRUE(settle(again));
+            EXPECT_EQ(Access::shown(again)->result().normal.data, saved.data) << "regenerating gives the same pixels";
+        }
+        ts::Image file;
+        ASSERT_TRUE(ts::loadImage(w.file("assets/maps/hero_toon.png"), file, error)) << error;
+        EXPECT_EQ(ts::toRgba8(file).data, saved.data);
+
+        // the toon preset turned off: recorded as off, restored as off
+        window.setPreset(sn::Preset::Toon);
+        s = window.getSettings();
+        s.quantize.directions = 0;
+        window.setSettings(s);
+        window.setOutput("assets/maps/hero_off.png");
+        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(window.save(false, written, error)) << error;
+        ASSERT_TRUE(settle(window));
+        SpriteNormalsWindow off(w.p);
+        ASSERT_TRUE(off.openRecipe(w.file("assets/maps/hero_off.png"), error)) << error;
+        EXPECT_EQ(off.getSettings().preset, sn::Preset::Toon);
+        EXPECT_FALSE(off.getSettings().quantize.on());
     });
 }
 

@@ -90,7 +90,7 @@ std::string relativeOf(Project* project, const fs::path& absolute) {
 // The settings' field names (validateSettings, settingsFromJson) as the tool's argument names
 const std::vector<std::string>& paramKeys() {
     static const std::vector<std::string> keys = {"strength", "detail", "smoothing", "volume", "radius", "softness", "alpha_threshold",
-                                                  "profile", "edges", "ignore_outline", "regions"};
+                                                  "profile", "edges", "ignore_outline", "regions", "quantize"};
     return keys;
 }
 
@@ -182,8 +182,8 @@ bool settingsArg(const Json& args, sn::Settings& out, std::vector<sn::Problem>& 
     if (args.contains("preset") && !args["preset"].is_null()) {
         const Json& p = args["preset"];
         if (!p.is_string() || !sn::parsePreset(p.get<std::string>(), preset)) {
-            problems.push_back(problem("invalid_settings", "preset", "preset must be soft, default, crisp, detailed or chunky (got " + p.dump() + ")",
-                                       "valid presets: soft, default, crisp, detailed, chunky"));
+            problems.push_back(problem("invalid_settings", "preset", "preset must be soft, default, crisp, detailed, chunky or toon (got " + p.dump() + ")",
+                                       "valid presets: soft, default, crisp, detailed, chunky, toon"));
             return false;
         }
     }
@@ -230,6 +230,16 @@ bool settingsArg(const Json& args, sn::Settings& out, std::vector<sn::Problem>& 
                                                    "valid keys: colors, tolerance, detail, lift, flat"));
                         return false;
                     }
+                }
+            }
+        }
+        if (params.contains("quantize") && params["quantize"].is_object()) {
+            static const std::set<std::string> quantizeKeys = {"directions", "tilts", "flat_deg", "rotation_deg"};
+            for (auto it = params["quantize"].begin(); it != params["quantize"].end(); ++it) {
+                if (!quantizeKeys.count(it.key())) {
+                    problems.push_back(problem("invalid_settings", "params.quantize", "params.quantize has an unknown key \"" + it.key() + "\"",
+                                               "valid keys: directions, tilts, flat_deg, rotation_deg"));
+                    return false;
                 }
             }
         }
@@ -1550,7 +1560,7 @@ void registerSpriteNormalsTools(McpRegistry& registry) {
     tool.inputSchema = object({
         {"source", types({"string", "integer", "object"})},
         {"scene", sceneRef()},
-        {"preset", stringEnum("", {"soft", "default", "crisp", "detailed", "chunky"})},
+        {"preset", stringEnum("", {"soft", "default", "crisp", "detailed", "chunky", "toon"})},
         {"params", anyObject("")},
         {"frames", frames},
         // the defaults (preset default; directx, height, overwrite false; wait true) are in the
