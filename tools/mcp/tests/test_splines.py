@@ -48,7 +48,7 @@ def distinct_colors(png: bytes, box=None) -> int:
 
 
 async def lua(ed: Editor, code: str):
-    return (await ed.call("eval_lua", code=code))["values"]
+    return (await ed.call("eval_lua", code=code, allow_edit_mode=True))["values"]
 
 
 async def setup(ed: Editor) -> dict:
@@ -72,7 +72,7 @@ async def setup(ed: Editor) -> dict:
 
 async def heights(ed: Editor, points) -> list[float]:
     probe = await ed.call("sample_terrain", entity=S["terrain"], points=[[p[0], p[2]] for p in points])
-    return [s["world_height"] for s in probe["samples"]]
+    return [s["height"] for s in probe["samples"]]
 
 
 async def test_group(ed: Editor):
@@ -227,7 +227,7 @@ async def test_sample_and_follow(ed: Editor):
     try:
         await ed.call("wait", seconds=2.1)
         live = await ed.call("get_runtime_entity", entity=s["cart"], components=["Transform"])
-        position = live["components"]["transform"]["worldPosition"]
+        position = live["components"]["transform"]["position"]
         gap = math.dist(position, end)
         ed.check(gap <= 0.01 * sampled["length"], f"the follower reached the end: {position} vs {end} ({gap})")
     finally:
@@ -255,7 +255,7 @@ async def test_2d(ed: Editor):
     try:
         await ed.call("wait", seconds=3)
         live = await ed.call("get_runtime_entity", entity=ball["entity_id"], components=["Transform"])
-        y = live["components"]["transform"]["worldPosition"][1]
+        y = live["components"]["transform"]["position"][1]
         surface = (await ed.call("sample_spline", entity=edge["entity"]["id"], query_points=[[0, y, 0]]))["queries"][0]["closest"]["position"][1]
         # resting on the edge: its centre one radius above the chain (within 0.1 of it)
         ed.check(abs(y - (surface + 10)) <= 0.1 * 10 + 0.1, f"the ball rests on the edge: y {y}, edge {surface}")
