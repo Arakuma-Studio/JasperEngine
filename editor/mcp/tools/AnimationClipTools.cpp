@@ -1484,13 +1484,16 @@ void editClip(const CallPtr& call) {
     struct MadeFolders {
         std::vector<fs::path> folders;      // deepest first
         bool keep = false;
-        ~MadeFolders() {
+        // before the call fails (its reply may reach the client before this function returns)
+        void removeNow() {
             if (keep) return;
             for (const fs::path& folder : folders) {
                 std::error_code ignored;
                 if (fs::is_directory(folder, ignored) && fs::is_empty(folder, ignored)) FileUtils::removePath(folder, ignored);
             }
+            folders.clear();
         }
+        ~MadeFolders() { removeNow(); }
     } madeFolders;
     if (makeFolder) {
         std::error_code folderError;
@@ -1500,6 +1503,7 @@ void editClip(const CallPtr& call) {
         }
         FileUtils::createDirectories(absolute.parent_path(), folderError);
         if (!fs::is_directory(absolute.parent_path(), folderError)) {
+            madeFolders.removeNow();
             call->fail("create: cannot make the folder " + projectRel(project, absolute.parent_path()) +
                        (folderError ? ": " + folderError.message() : std::string()));
             return;
@@ -1518,11 +1522,13 @@ void editClip(const CallPtr& call) {
         if (rootPlaysIt) {
             ClipActionResult result;
             if (!ClipSceneActions::extractSubClip(project, ctx.scene->id, ctx.root, extractedFrom, relative, true, result, error, &data)) {
+                madeFolders.removeNow();
                 call->fail("create.from: " + error);
                 return;
             }
             document = AnimationClipDocument::open(project, relative, &error);
             if (!document) {
+                madeFolders.removeNow();
                 call->fail("create.from: the clip was written but can't be read back: " + error);
                 return;
             }
@@ -1539,10 +1545,12 @@ void editClip(const CallPtr& call) {
     } else if (creating) {
         document = AnimationClipDocument::create(project, relative, data, from.is_null() ? "Create Animation Clip" : "Extract to .anim", &error);
         if (!document) {
+            madeFolders.removeNow();
             call->fail("create: " + error);
             return;
         }
     } else if (!document->commit(data, "Edit Animation Clip", "", &error)) {
+        madeFolders.removeNow();
         call->fail(error);
         return;
     }
