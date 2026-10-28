@@ -107,7 +107,8 @@ async def test_queries_in_edit_mode(ed: Editor):
     ed.check_eq(path["status"], "complete", f"{path}")
     ed.check(len(path["corners"]) >= 2 and path["length"] > 40, f"{path}")
     sample = await ed.call("query_navigation", scene=s["scene"], op="sample", **{"from": [5, 3, 5]}, max_distance=5)
-    ed.check(sample["found"] and abs(sample["position"][1]) < 0.5, f"{sample}")
+    # on the floor (y 0), not on the block's top (y 2)
+    ed.check(sample["found"] and abs(sample["position"][1]) < 1.0, f"{sample}")
     ray = await ed.call("query_navigation", scene=s["scene"], op="raycast", **{"from": [-6, 0, 0]}, to=[6, 0, 0])
     ed.check(ray["blocked"], f"the box blocks the line: {ray}")
     edge = await ed.call("query_navigation", scene=s["scene"], op="closest_edge", **{"from": [-3, 0, 0]})
@@ -185,7 +186,8 @@ async def test_lua_api_in_play(ed: Editor):
             "agent.onDestinationReached = function(a) arrivedCount = arrivedCount + 1 end "
             "return agent:setDestination(Vector3(-15, 0, 15)), agent.isOnNavMesh"))
         ed.check_eq(got["values"], [True, True], f"{got}")
-        await ed.call("wait", seconds=20, **{"until": "return arrivedCount == 1"})
+        # ~30 m at 3.5 m/s: game time, however slowly the editor's frames come
+        await ed.call("wait", seconds=180, game_seconds=30, **{"until": "return arrivedCount == 1"})
         live = await ed.call("get_runtime_entity", entity=s["walker"], components=["navmeshagent"])
         agent = live["components"]["navmeshagent"]
         ed.check_eq(agent["pathStatus"], "complete", f"{agent}")

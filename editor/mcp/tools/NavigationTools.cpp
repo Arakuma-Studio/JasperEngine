@@ -679,8 +679,9 @@ void paintNavGridTool(const CallPtr& call) {
     for (size_t s = 0; s < strokes.size(); s++) {
         const Json& item = strokes[s];
         const std::string mode = item.value("mode", std::string("paint"));
-        int area = item.value("area", (int)nav::AREA_NOT_WALKABLE);
+        int area = nav::AREA_NOT_WALKABLE;
         if (item.contains("area") && item["area"].is_string()) area = nav::getSettings().findArea(item["area"].get<std::string>());
+        else if (item.contains("area") && item["area"].is_number_integer()) area = item["area"].get<int>();
         if (mode == "erase") area = nav::AREA_WALKABLE;
         if (area < 0 || area >= nav::AREA_COUNT) {
             stroke.revert(*map);

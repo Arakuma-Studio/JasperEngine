@@ -40,7 +40,8 @@ namespace {
     }
 
     Vector4 decodeColor(const YAML::Node& node, const Vector4& fallback) {
-        if (!node.IsSequence() || node.size() < 3) return fallback;
+        // a missing key is an invalid node: asking it anything else throws
+        if (!node.IsDefined() || !node.IsSequence() || node.size() < 3) return fallback;
         try {
             float c[4] = {node[0].as<float>(), node[1].as<float>(), node[2].as<float>(), node.size() > 3 ? node[3].as<float>() : 1.0f};
             for (float& value : c) {
