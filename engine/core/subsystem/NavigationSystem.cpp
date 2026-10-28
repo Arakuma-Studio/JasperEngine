@@ -1798,6 +1798,10 @@ Entity NavigationSystem::Runtime::pickSurface(NavigationSystem& system, Scene* s
     for (Entity surface : surfacesOf(scene, component.agentType)) {
         NavHit hit;
         const float reach = 2.0f * std::max(component.height, 1e-3f) * unitScaleOfSurface(scene, surface);
+        // a 2D surface holds the agents on (or near) its plane only: its queries drop the depth
+        const NavFrame surfaceFrame = NavBakeCollector::frameOf(scene, surface);
+        if (surfaceFrame.plane == NavPlane::XY && std::fabs(position.z - surfaceFrame.origin.z) > reach)
+            continue;
         if (system.samplePositionOn(surface, position, reach, hit, (uint16_t)(component.areaMask & ALL_AREAS)) && hit.distance < bestDistance) {
             best = surface;
             bestDistance = hit.distance;
