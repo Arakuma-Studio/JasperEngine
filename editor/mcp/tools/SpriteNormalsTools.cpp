@@ -1544,7 +1544,7 @@ void registerSpriteNormalsTools(McpRegistry& registry) {
     tool.title = "Generate Sprite Normals";
     tool.description =
         "Pixel-art normal maps (sprites, sheets, GIF/APNG, tiles; lights need height > 0). No output: lit contact sheet + metrics; "
-        "+ output writes that (one undo step); apply wires it on. "
+        "+ output writes that (one undo); apply wires it on. "
         "paint: fix spots (angle/flatten/smooth/erase by rect, pixels, colors or frame); kept on regenerate (paint_mode). "
         "Guide: jasper://docs/sprite-normals.";
     // nested objects are loose (the handler refuses unknown keys itself, saving tools/list bytes);
