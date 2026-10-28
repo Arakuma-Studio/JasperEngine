@@ -3,6 +3,8 @@
 
 #include "SpriteNormalsPreview.h"
 
+#include "SpriteNormalsPaint.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -73,6 +75,42 @@ namespace jasperengine::editor::spritenormals {
                     const int a = src[3];
                     for (int c = 0; c < 3; c++) dst[c] = static_cast<uint8_t>((src[c] * a + dst[c] * (255 - a) + 127) / 255);
                     dst[3] = 255;
+                }
+            }
+        }
+
+        // The magenta outline of the painted visible pixels of `frame` around its normal tile (at
+        // x0, y0; decimated by k, scaled by s): drawn on the sheet pixels next to painted ones that
+        // are not painted themselves (the gap around the tile included), so painted pixels stay visible
+        void outlinePainted(Image& sheet, const PaintOverlay& paint, const Image& color, const Cell& frame, float alphaThreshold, int k, int s, int x0,
+                            int y0) {
+            const int w = (frame.width + k - 1) / k, h = (frame.height + k - 1) / k;
+            std::vector<uint8_t> painted(static_cast<size_t>(w) * h, 0);
+            bool any = false;
+            for (int y = 0; y < h; y++) {
+                for (int x = 0; x < w; x++) {
+                    const int fx = frame.x + x * k, fy = frame.y + y * k;
+                    const size_t i = static_cast<size_t>(fy) * color.width + fx;
+                    const bool on = paint.rgba[i * 4 + 3] > 0 && color.data[i * 4 + 3] / 255.0f > alphaThreshold;
+                    painted[static_cast<size_t>(y) * w + x] = on;
+                    any = any || on;
+                }
+            }
+            if (!any) return;
+            auto paintedAt = [&](int tx, int ty) {
+                if (tx < 0 || ty < 0 || tx >= w * s || ty >= h * s) return false;
+                return painted[static_cast<size_t>(ty / s) * w + tx / s] != 0;
+            };
+            for (int ty = -1; ty <= h * s; ty++) {
+                for (int tx = -1; tx <= w * s; tx++) {
+                    const int sx = x0 + tx, sy = y0 + ty;
+                    if (sx < 0 || sy < 0 || sx >= sheet.width || sy >= sheet.height || paintedAt(tx, ty)) continue;
+                    if (!paintedAt(tx - 1, ty) && !paintedAt(tx + 1, ty) && !paintedAt(tx, ty - 1) && !paintedAt(tx, ty + 1)) continue;
+                    uint8_t* p = sheet.pixel(sx, sy);
+                    p[0] = 255;
+                    p[1] = 0;
+                    p[2] = 255;
+                    p[3] = 255;
                 }
             }
         }
@@ -168,7 +206,7 @@ namespace jasperengine::editor::spritenormals {
     }
 
     Image contactSheet(const Image& color, const Image& normal, const std::vector<Cell>& cells, bool directx, float alphaThreshold,
-                       const SheetOptions& options) {
+                       const SheetOptions& options, const PaintOverlay* paint) {
         if (!isRgba8(color) || !isRgba8(normal) || color.width != normal.width || color.height != normal.height) return Image();
         std::vector<Cell> frames;
         if (cells.empty()) {
@@ -231,13 +269,14 @@ namespace jasperengine::editor::spritenormals {
             for (size_t t = 0; t < tiles.size(); t++) {
                 blit(sheet, decimate(tiles[t], k), static_cast<int>(t) * (tw * s + kGap), y0, s);
             }
+            if (paint && paint->sized(color.width, color.height)) outlinePainted(sheet, *paint, color, frames[static_cast<size_t>(r)], alphaThreshold, k, s, tw * s + kGap, y0);
         }
         return sheet;
     }
 
     // ------------------------------------------------------------------ quality
 
-    Metrics measure(const Image& normal, const std::vector<Cell>& cells, bool directx, float alphaThreshold) {
+    Metrics measure(const Image& normal, const std::vector<Cell>& cells, bool directx, float alphaThreshold, const PaintOverlay* paint) {
         Metrics m;
         if (!isRgba8(normal)) return m;
         const int width = normal.width, height = normal.height;
@@ -269,6 +308,7 @@ namespace jasperengine::editor::spritenormals {
                 decodeNormal(p, directx, &normals[i * 3]);
             }
         }
+        const bool painted = paint && paint->sized(width, height);
         double sum[3] = {0.0, 0.0, 0.0};
         double tiltSum = 0.0;
         int64_t flat = 0, steep = 0, soft = 0, noisy = 0;
@@ -284,6 +324,7 @@ namespace jasperengine::editor::spritenormals {
                 if (tilt < 2.0) flat++;
                 if (tilt > 60.0) steep++;
                 if (normal.pixel(x, y)[3] < 250) soft++;
+                if (painted && paint->rgba[i * 4 + 3] > 0) m.paintedPixels++;
                 for (int k = 0; k < 3; k++) sum[k] += n[k];
                 // the opaque 8-neighbours of the same cell
                 double mean[3] = {0.0, 0.0, 0.0};
@@ -313,6 +354,7 @@ namespace jasperengine::editor::spritenormals {
             m.meanTiltDeg = tiltSum / count;
             m.noisePct = 100.0 * noisy / count;
             m.softEdgePct = 100.0 * soft / count;
+            m.paintedPct = 100.0 * m.paintedPixels / count;
             const double length = std::sqrt(sum[0] * sum[0] + sum[1] * sum[1] + sum[2] * sum[2]);
             if (length > 1e-12) m.leanDeg = degrees(std::acos(std::clamp(sum[2] / length, -1.0, 1.0)));
         }
@@ -343,6 +385,7 @@ namespace jasperengine::editor::spritenormals {
         if (cellCount > 0) {
             a.lines.push_back("Frames: " + std::to_string(cellCount) + " (" + std::to_string(m.framesTouchingEdges) + " touch their cell's edge)");
         }
+        if (m.paintedPixels > 0) a.lines.push_back("Painted: " + std::to_string(m.paintedPixels) + " px (" + oneDecimal(m.paintedPct) + "%)");
         auto warn = [&](const char* kind, const std::string& message, const std::string& fix) { a.warnings.push_back({kind, "", message, fix}); };
         const bool transparentEdges = settings.edges == Edges::Transparent;
         if (!m.hasTransparency && transparentEdges) {

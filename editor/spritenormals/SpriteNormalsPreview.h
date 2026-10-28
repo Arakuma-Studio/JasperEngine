@@ -16,6 +16,8 @@
 
 namespace jasperengine::editor::spritenormals {
 
+    struct PaintOverlay;   // SpriteNormalsPaint.h
+
     // A point light over the image. Image pixel coordinates (x right, y DOWN, origin top-left
     // of the image given to renderLit); height and range in pixels (world units of a 1:1 sprite)
     struct PreviewLight {
@@ -44,7 +46,9 @@ namespace jasperengine::editor::spritenormals {
     Image renderLit(const Image& normal, const Image& color, const LightSetup& setup);
 
     // The contact sheet (section 7.2): per frame a row "colour | normal | lit 135° | lit 45° |
-    // lit 315° | lit 225°" (upper-left, upper-right, lower-right, lower-left), on a checkerboard
+    // lit 315° | lit 225°" (upper-left, upper-right, lower-right, lower-left), on a checkerboard.
+    // `paint` (Phase 5, optional, the colour image's size): a 1 px magenta outline around the
+    // painted visible pixels, in the normal column only (the lit columns stay clean).
     struct SheetOptions {
         int maxWidth = 1024;
         int maxHeight = 1024;
@@ -52,7 +56,7 @@ namespace jasperengine::editor::spritenormals {
         int maxScale = 8;
     };
     Image contactSheet(const Image& color, const Image& normal, const std::vector<Cell>& cells, bool directx,
-                       float alphaThreshold, const SheetOptions& options = SheetOptions());
+                       float alphaThreshold, const SheetOptions& options = SheetOptions(), const PaintOverlay* paint = nullptr);
     // Which frames a sheet shows: all when <= maxFrames, else round(i * (n - 1) / (maxFrames - 1))
     std::vector<int> sheetFrames(int frameCount, int maxFrames);
 
@@ -70,11 +74,16 @@ namespace jasperengine::editor::spritenormals {
         int framesTouchingEdges = 0;   // cells whose opaque pixels touch the cell border (cells given)
         bool hasTransparency = false;  // some pixel at or below the cutoff
         int opaquePixels = 0;
+        int paintedPixels = 0;         // opaque pixels the paint layer covers (Phase 5; `paint` given)
+        double paintedPct = 0.0;       // ... / opaque pixels
     };
-    Metrics measure(const Image& normal, const std::vector<Cell>& cells, bool directx, float alphaThreshold);
+    // `paint` (optional, the normal's size): the painted visible pixels counted. The metrics are
+    // of `normal` as given: the composited result when there is paint.
+    Metrics measure(const Image& normal, const std::vector<Cell>& cells, bool directx, float alphaThreshold,
+                    const PaintOverlay* paint = nullptr);
 
     struct Assessment {
-        std::vector<std::string> lines;   // "Shape: rounded (mean tilt 24°, 12% flat)", ...
+        std::vector<std::string> lines;   // "Shape: rounded (mean tilt 24°, 12% flat)", ..., "Painted: 214 px (8.1%)"
         std::string hint;                 // "Looks fine." when nothing applies
         std::vector<Problem> warnings;    // kinds of section 7.3
     };

@@ -294,6 +294,8 @@ namespace jasperengine::editor::spritenormals {
         }
         auto output = [](const std::string& path) { return path.empty() ? json(nullptr) : json(path); };
         recipe["outputs"] = {{"normal", output(in.normalOutput)}, {"atlas", output(in.atlasOutput)}, {"height", output(in.heightOutput)}};
+        // the paint layer is not a source: painting never changes source.sha1 (staleness)
+        if (in.paintedPixels > 0) recipe["paint"] = {{"painted", in.paintedPixels}};
         return recipe;
     }
 
@@ -381,6 +383,10 @@ namespace jasperengine::editor::spritenormals {
             }
         }
         ok = ok && c.pair(recipe, "radius_range", "") && c.pair(recipe, "height_range_px", "") && c.string(recipe, "outline", "");
+        if (ok && recipe.contains("paint")) {
+            if (!recipe["paint"].is_object()) ok = c.fail(wrongType("paint", recipe["paint"], "an object"));
+            else ok = c.integer(recipe["paint"], "painted", "paint.", 0, kMaxPixels);
+        }
         if (ok && recipe.contains("outputs")) {
             const json& outputs = recipe["outputs"];
             if (!outputs.is_object()) ok = c.fail(wrongType("outputs", outputs, "an object"));

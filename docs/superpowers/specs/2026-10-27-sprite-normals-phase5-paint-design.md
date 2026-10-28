@@ -469,3 +469,23 @@ Keep `sprite-normals.md` <= 18 KB; trim P3 sections if needed.
   (5.2) [34]; P4 key list, undo routing and the unsaved-paint prompt corrected (5.3, 5.4) [35]; scripted API is for
   tests only (no `show_in_editor`) [36].
 - Docs (6): keep `sprite-normals.md` <= 18 KB [32].
+
+## Amendments (2026-10-28, implementation)
+
+- Compositing with `directx` (2.3, 3): the run calls `generate()` with the requested settings; a DirectX generation is
+  flipped to OpenGL green (an exact byte inversion of the opaque pixels) for the ops and `composite(..., directx)`.
+  The composite rules are unchanged, and unpainted pixels of a painted DirectX map stay bit-identical to Phase 2 (a
+  separate OpenGL generation could differ by one in rare rounding cases). Without paint: `generate()` unchanged.
+- Window (3, 5): in single mode the window's runs use `paint_mode: replace` with no ops (the plain generation); the
+  window loads the target file's paint itself, keeps it as its own overlay, composites it over every result (only the
+  pixels a stroke changed) and writes it on Save. This lets a size mismatch be a fix row instead of a failed run. A
+  batch uses `keep` (each map's paint is kept by Save All) and has no brushes. Retargeting (another source or map, an
+  output with its own paint) asks "Discard Paint Changes?" while strokes are unsaved; an output without a paint layer
+  keeps the strokes (Save As). A change of the target file on disk (a Save undone, a regeneration) re-reads its paint
+  as the saved state and says so while strokes are unsaved. Undoing a project or scene step while the window is
+  focused drops the stroke redos.
+- `Spec::fingerprint()` (3) includes the paint only when it is not the default (ops, or a mode other than `keep`), so
+  unpainted specs keep their Phase 2 fingerprints.
+- Schema (4.1): `paint_mode` is `{"type": "string"}` (its values in the description's "(paint_mode)", the guide and
+  the handler's error) to keep the tool budget.
+- `check --normals` (4.3): its cache is version 2 (PNG entries carry the paint state).

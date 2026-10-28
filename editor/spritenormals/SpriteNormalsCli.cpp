@@ -5,6 +5,7 @@
 
 #include "SpriteMedia.h"
 #include "SpriteNormals.h"
+#include "SpriteNormalsPaint.h"
 #include "SpriteNormalsPreview.h"
 #include "SpriteNormalsRecipe.h"
 #include "SpriteNormalsSession.h"
@@ -87,6 +88,11 @@ namespace jasperengine::editor::spritenormals {
             bool heightMap = false;
             bool framesJson = false;
             std::string previewOut;
+            // paint (Phase 5): --paint-json ops (the MCP `paint` shape) and --paint-mode
+            std::vector<PaintOp> paint;
+            std::vector<Problem> paintProblems;   // invalid ops: reported as invalid_paint (exit 2)
+            bool paintGiven = false;
+            PaintMode paintMode = PaintMode::Keep;
             bool overwrite = false;
             bool dryRun = false;
             int threads = 0;
@@ -225,6 +231,31 @@ namespace jasperengine::editor::spritenormals {
                 }
                 cells.push_back({c[0].get<int>(), c[1].get<int>(), c[2].get<int>(), c[3].get<int>()});
             }
+            return true;
+        }
+
+        // --paint-json: a file, "-" (stdin), or inline JSON when it starts with '['
+        bool readPaintJson(const std::string& value, Options& o, std::string& error) {
+            std::string text;
+            if (!value.empty() && value[0] == '[') {
+                text = value;
+            } else if (value == "-") {
+                text.assign(std::istreambuf_iterator<char>(std::cin), std::istreambuf_iterator<char>());
+            } else {
+                std::ifstream file(CommandLine::absoluteArgPath(fs::u8path(value)), std::ios::binary);
+                if (!file) {
+                    error = "--paint-json: can't read " + value;
+                    return false;
+                }
+                text.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+            }
+            const json j = json::parse(text, nullptr, false);
+            if (j.is_discarded()) {
+                error = "--paint-json is not JSON (a JSON array of paint operations, as generate_sprite_normals' paint)";
+                return false;
+            }
+            o.paintGiven = true;
+            paintOpsFromJson(j, o.paint, o.paintProblems);
             return true;
         }
 
@@ -371,6 +402,14 @@ namespace jasperengine::editor::spritenormals {
                     o.heightMap = true;
                 } else if (arg == "--frames-json") {
                     o.framesJson = true;
+                } else if (arg == "--paint-json") {
+                    if (!need() || !readPaintJson(value, o, error)) return false;
+                } else if (arg == "--paint-mode") {
+                    if (!need()) return false;
+                    if (!parsePaintMode(value, o.paintMode)) {
+                        error = "unknown --paint-mode '" + value + "' (keep, replace, clear)";
+                        return false;
+                    }
                 } else if (arg == "--preview-out") {
                     if (!need()) return false;
                     o.previewOut = value;
@@ -422,6 +461,10 @@ namespace jasperengine::editor::spritenormals {
             }
             if (count > 1 && !o.atlas.empty()) {
                 error = "--atlas takes one source";
+                return false;
+            }
+            if (count > 1 && o.paintGiven) {
+                error = "--paint-json paints one normal map: give one source per run";
                 return false;
             }
             if (!o.output.empty() && !o.outputDir.empty()) {
@@ -611,7 +654,10 @@ namespace jasperengine::editor::spritenormals {
         }
 
         int exitFor(const std::string& kind) {
-            return kind == "output_exists" || kind == "too_large" || kind == "failed" || kind == "write_failed" || kind == "cancelled" ? 1 : 2;
+            return kind == "output_exists" || kind == "too_large" || kind == "failed" || kind == "write_failed" || kind == "cancelled" ||
+                           kind == "paint_size_mismatch" || kind == "paint_too_large"
+                       ? 1
+                       : 2;
         }
 
         // ---------------------------------------------------------------- results
@@ -694,12 +740,24 @@ namespace jasperengine::editor::spritenormals {
                 j["radius_resolved"] = rounded(r.radiusMin, 2);
             }
             if (r.outlineColor) j["outline"] = colorText(*r.outlineColor);
-            const Metrics m = measure(r.normal, cells, s.directx, s.alphaThreshold);
+            const Metrics m = measure(r.normal, cells, s.directx, s.alphaThreshold, &p.paint.overlay);
             const Assessment a = assess(s, m, static_cast<int>(cells.size()));
             j["metrics"] = {{"coverage_pct", rounded(m.coveragePct, 1)}, {"flat_pct", rounded(m.flatPct, 1)}, {"steep_pct", rounded(m.steepPct, 1)},
                             {"mean_tilt_deg", rounded(m.meanTiltDeg, 1)}, {"noise_pct", rounded(m.noisePct, 1)}, {"lean_deg", rounded(m.leanDeg, 1)},
                             {"soft_edge_pct", rounded(m.softEdgePct, 1)}, {"frames_touching_edges", m.framesTouchingEdges},
-                            {"has_transparency", m.hasTransparency}, {"opaque_pixels", m.opaquePixels}};
+                            {"has_transparency", m.hasTransparency}, {"opaque_pixels", m.opaquePixels}, {"painted_pct", rounded(m.paintedPct, 1)}};
+            // the paint layer (Phase 5): where it came from, what each op selected and changed
+            json ops = json::array();
+            for (size_t i = 0; i < p.paint.ops.size(); i++) {
+                const PaintStats::Op counts = i < p.paint.stats.ops.size() ? p.paint.stats.ops[i] : PaintStats::Op();
+                ops.push_back({{"op", toString(p.paint.ops[i].kind)}, {"selected", counts.selected}, {"changed", counts.changed}});
+            }
+            j["paint"] = {{"mode", toString(p.spec.paintMode)},
+                          {"kept_from", p.paintKeptFrom.empty() ? json(nullptr) : json(shown(o, specAbsolute(o, p.paintKeptFrom)))},
+                          {"ops", ops},
+                          {"painted_pixels", p.paint.stats.painted},
+                          {"hidden_pixels", p.paint.stats.hidden},
+                          {"painted_pct", rounded(m.paintedPct, 1)}};
             j["assessment"] = a.lines;
             j["hint"] = a.hint.empty() ? std::string("Looks fine.") : a.hint;
             item.warnings = a.warnings;
@@ -744,6 +802,15 @@ namespace jasperengine::editor::spritenormals {
             if (!o.project.empty()) {
                 std::error_code ec;
                 if (!fs::is_regular_file(o.project / "project.yaml", ec)) return state.fail(2, "usage", "no project.yaml in " + o.project.u8string(), "give a project directory or its project.yaml");
+            }
+            // invalid paint operations: usage errors naming paint[i].<field>
+            if (!o.paintProblems.empty()) {
+                for (const Problem& p : o.paintProblems) state.fail(2, p.kind, p.message, p.fix);
+                return 2;
+            }
+            if (o.paintMode == PaintMode::Clear && !o.paint.empty()) {
+                return state.fail(2, "invalid_paint", "--paint-mode clear drops the paint, so --paint-json must be empty (got " + std::to_string(o.paint.size()) + " operations)",
+                                  "use --paint-mode replace to start over with these operations");
             }
 
             // ---- the sources: image files (no engine at all), or --sprite's GameObject inside one
@@ -827,6 +894,8 @@ namespace jasperengine::editor::spritenormals {
                 if (!item.fromSprite) spec.source = sourcePath;
                 spec.settings = settings;
                 spec.overwrite = o.overwrite;
+                spec.paint = o.paint;
+                spec.paintMode = o.paintMode;
                 spec.frames = FramesSpec();
                 if (o.noFrames) {
                     spec.frames.mode = FramesSpec::Mode::None;
@@ -892,6 +961,11 @@ namespace jasperengine::editor::spritenormals {
                 }
                 if (!item.previewPath.empty() && !o.overwrite && fs::exists(item.previewPath, ec)) existing.push_back(shown(o, item.previewPath));
             }
+            // paint: one normal map per run (a Tilemap's tilesets are several)
+            if (o.paintGiven && items.size() > 1) {
+                return state.fail(2, "invalid_paint", "--paint-json paints one normal map, and this run makes " + std::to_string(items.size()) + " (one per tileset texture)",
+                                  "one run per output: pass the tileset image with --source");
+            }
             if (state.code == 2) return 2;
             if (!existing.empty()) {
                 std::string list;
@@ -909,7 +983,8 @@ namespace jasperengine::editor::spritenormals {
                     continue;
                 }
                 item.prepared.request.threads = o.threads;
-                item.result = generate(item.prepared.request);
+                // the generation with the paint layer (kept from the existing map, the ops applied)
+                item.result = generatePrepared(item.prepared);
                 if (item.result.status != Status::Ok) {
                     for (const Problem& p : item.result.errors) state.fail(1, p.kind.empty() ? "failed" : p.kind, p.message, p.fix, item.label);
                     if (item.result.errors.empty()) state.fail(1, "failed", "the generation failed", "try again", item.label);
@@ -917,7 +992,8 @@ namespace jasperengine::editor::spritenormals {
                 }
                 if (!item.previewPath.empty()) {
                     const Settings& s = item.prepared.request.settings;
-                    const Image sheet = contactSheet(item.prepared.source.color, item.result.normal, item.prepared.request.cells, s.directx, s.alphaThreshold);
+                    const Image sheet = contactSheet(item.prepared.source.color, item.result.normal, item.prepared.request.cells, s.directx, s.alphaThreshold,
+                                                     SheetOptions(), &item.prepared.paint.overlay);
                     if (!encodePng(sheet, item.preview, error)) state.fail(1, "failed", "the preview could not be encoded: " + error, "try again", item.label);
                 }
             }
@@ -926,7 +1002,11 @@ namespace jasperengine::editor::spritenormals {
             // ---- write: every output of every source encoded first, then all or nothing
             std::vector<OutputFile> all;
             for (Item& item : items) {
-                if (!encodeOutputs(item.prepared, item.result, item.files, error)) return state.fail(1, "write_failed", error, "check the output paths", item.label);
+                Problem problem;
+                if (!encodeOutputs(item.prepared, item.result, item.files, error, &problem)) {
+                    return state.fail(1, problem.kind.empty() ? "write_failed" : problem.kind, error, problem.fix.empty() ? "check the output paths" : problem.fix,
+                                      item.label);
+                }
                 all.insert(all.end(), item.files.begin(), item.files.end());
                 if (!item.previewPath.empty()) {
                     OutputFile preview;
@@ -961,6 +1041,12 @@ namespace jasperengine::editor::spritenormals {
                     err << PREFIX << item.label << " -> " << (o.dryRun ? "(dry run, would write) " : "") << outputs << " (" << item.prepared.source.fileWidth << "x"
                         << item.prepared.source.fileHeight << ", " << frames << (frames == 1 ? " frame" : " frames") << ", preset " << toString(o.preset) << ") in "
                         << fixed(item.result.seconds, 2) << "s\n";
+                    const PaintLayer& paint = item.prepared.paint;
+                    if (paint.active() || item.spec.paintMode != PaintMode::Keep) {
+                        err << "paint: " << paint.ops.size() << (paint.ops.size() == 1 ? " op, " : " ops, ") << paint.stats.painted << " px painted (" << paint.stats.hidden
+                            << " hidden)" << (item.prepared.paintKeptFrom.empty() ? std::string() : ", kept from " + shown(o, specAbsolute(o, item.prepared.paintKeptFrom)))
+                            << "\n";
+                    }
                     for (const Problem& w : item.warnings) err << "warning: " << w.kind << ": " << w.message << " (fix: " << w.fix << ")\n";
                 }
                 results.push_back(j);
@@ -1009,7 +1095,14 @@ namespace jasperengine::editor::spritenormals {
             << "      --height-map            Also write <stem>_height.png (16-bit grey).\n"
             << "      --frames-json           Also write <atlas stem>.frames.json for animations, <normal stem>.frames.json\n"
             << "                              otherwise (frame grids and cells).\n"
-            << "      --preview-out <png>     Also write the lit contact sheet (one source only).\n"
+            << "      --preview-out <png>     Also write the lit contact sheet (one source only; painted pixels outlined\n"
+            << "                              in magenta in the normal column).\n"
+            << "Paint (one source only; corrections kept inside the normal map, re-applied on every generation):\n"
+            << "      --paint-json <file|-|[...]>  A JSON array of operations (generate_sprite_normals' paint: angle,\n"
+            << "                              flatten, smooth, erase by rect, pixels, colors or frame); - reads stdin,\n"
+            << "                              a value starting with [ is the JSON itself.\n"
+            << "      --paint-mode <mode>     keep (default: start from the existing map's paint), replace (from none),\n"
+            << "                              clear (no paint written; no --paint-json).\n"
             << "      --overwrite             Replace existing outputs (inputs are never replaced).\n"
             << "      --dry-run               Generate and report, write nothing (not even --preview-out).\n"
             << "      --threads <n>           0 = all cores (default). Never changes the output.\n"
@@ -1017,8 +1110,9 @@ namespace jasperengine::editor::spritenormals {
             << "  -q, --quiet                 No summary on stderr.\n"
             << "  -h, --help                  This help.\n\n"
             << "Paths are absolute, relative to the current directory, or (with --project) relative to the project.\n"
-            << "Exit code: 0 written (or dry run done; warnings allowed), 1 generation or write failed, or an output\n"
-            << "exists without --overwrite (nothing is written then), 2 usage error.\n";
+            << "Exit code: 0 written (or dry run done; warnings allowed), 1 generation or write failed, an output\n"
+            << "exists without --overwrite, or the kept paint does not fit (paint_size_mismatch, paint_too_large;\n"
+            << "nothing is written then), 2 usage error (invalid --paint-json operations too).\n";
     }
 
     int runGenerateSpriteNormals(int argc, char** argv, const std::string& commandName, std::ostream& out, std::ostream& err) {

@@ -46,6 +46,8 @@ The run is a job: past `timeout_seconds` (default 120) the call returns `{job_id
 | `overwrite` | false | replace existing outputs (one undo puts them back); inputs are never replaced |
 | `apply` | false | on write: `true` = the source GameObject, or a GameObject reference (with an image source) |
 | `save_path` | | also write the contact sheet PNG there (any project folder; replaced without `overwrite`) |
+| `paint` | `[]` | up to 256 correction operations (below, "Fixing spots: paint"); one normal map per call |
+| `paint_mode` | `keep` | `keep` the map's existing paint, `replace` it, or `clear` it (no `paint` then) |
 | `wait` / `timeout_seconds` | true / 120 (1..3600) | job control |
 
 Outputs must be inside the assets directory, not in a hidden folder, end in `.png` (`.json` for frames), and be
@@ -110,6 +112,47 @@ then lit from the top-left, top-right, bottom-right, bottom-left (the engine's 2
 `assessment` says the same in words ("Shape: rounded (mean tilt 24°, 12% flat)"); `hint` is the fix of the first
 warning, or "Looks fine.".
 
+## Fixing spots: paint
+
+A material wrong everywhere (all highlights, every outline) is a `regions` job. A few pixels or one frame (a
+highlight that became a bump, an eye that became a dent, a sleeve that should face left) is a `paint` job: a
+correction layer over the generation, stored in the normal map (a second iTXt chunk, `jasper.spritenormals.paint`)
+and composited again on every regeneration, whatever the settings.
+
+| op | does | extra |
+|---|---|---|
+| `angle` | the pixels face `direction` | `direction`: `[x, y, z]` (z > 0) or `{azimuth_deg, tilt_deg}` |
+| `flatten` | the pixels face the viewer | |
+| `smooth` | the box mean of the current result (same island and frame) | `radius` 1..4 |
+| `erase` | removes paint (back to the generation) | |
+
+Every op takes `where` (members intersect: `rect: [x, y, w, h]`, `pixels: [[x, y], ...]`, `colors: ["#rrggbb"]`
+matched on the source with `tolerance` 0..0.5 (Oklab, 0 = exact), `frame`: a cell index, which makes `rect` and
+`pixels` frame-relative) and `strength` 0..1 (coverage; a weaker op never lowers it). Pixels are of the output (the
+atlas for a GIF/APNG, frames row-major as the recipe's `frames.cells`); transparent ones are skipped.
+Directions are OpenGL whatever `directx`: azimuth 0 right, 90 up, 180 left, 270 down; tilt 0 faces you, at most 85.
+Smooth bakes the result it smooths: re-smooth after big setting changes.
+
+`paint_mode: keep` starts from the paint of the file the call writes (a preview: the default output), so a preview
+shows exactly what writing gives and `regenerate` keeps the paint. The result's `paint` says `{mode, kept_from, ops:
+[{op, selected, changed}], painted_pixels, hidden_pixels, painted_pct}`; the contact sheet outlines painted pixels in
+magenta in the normal column. A kept layer of another size than the new output (the source was resized) is
+`paint_size_mismatch`: `paint_mode: "clear"` drops it.
+
+Flatten a painted highlight, then turn a sleeve left on frame 3 and write:
+
+```json
+{"source": "assets/sprites/hero.png", "paint": [{"op": "flatten", "where": {"colors": ["#ffffff"], "tolerance": 0.02}}]}
+```
+
+```json
+{"source": "Hero", "output": true, "paint": [{"op": "angle", "where": {"frame": 3, "rect": [10, 12, 4, 6]},
+  "direction": {"azimuth_deg": 180, "tilt_deg": 45}}]}
+```
+
+The height map is never painted. In the window: the Paint section's brushes (Angle B, Flatten N, Smooth M, Erase E,
+a wand W, mirror X, Alt+click samples a direction); strokes undo with Ctrl+Z until Save writes the layer.
+
 ## Problems
 
 Errors (`isError`, `errors: [{kind, message, fix, field?}]`; nothing is written):
@@ -126,11 +169,15 @@ Errors (`isError`, `errors: [{kind, message, fix, field?}]`; nothing is written)
 | `not_a_sprite` / `size_mismatch` / `too_many_frames` | the apply command refused (the files are taken back) | apply to the GameObject drawing the source |
 | `scene_playing` | `apply` while playing | `play {action: "stop"}`, then call again |
 | `project_changed` | another project opened during the run | call again in the open project |
+| `invalid_paint` | a `paint` op out of range (`field`: `paint[i].<key>`), over 256 ops, `clear` with ops, several outputs | the op table above; one call per output |
+| `paint_size_mismatch` / `paint_too_large` | the kept paint has another size than the output; the layer is over 8 MiB | `paint_mode: "clear"`; paint fewer pixels |
 | `write_failed` / `failed` | the disk or the generator failed | check the path; call again |
 
 Warnings (in `warnings`, `{kind, message, fix}`): from the image `no_alpha` (no transparent pixel with edges
 transparent: use `extend`/`wrap` for tiles), `mostly_flat`, `too_steep`, `noisy`, `leaning`, `soft_edges`,
 `frames_touch_edges` (use `extend` when the art continues past the cell), `outline_not_found`, `region_unmatched`;
+from the paint `paint_empty_selection` (an op selected nothing), `paint_layout_changed` (other frames than when it was
+painted), `paint_hidden_pixels` (painted pixels now transparent), `paint_unreadable` (a damaged layer, dropped);
 from the scene `no_light`, `no_light_height`, `ambient_high`, `size_mismatch`, `filter_mismatch`,
 `material_linked` (save the material file), `too_many_frames`, `directx_in_engine`, `shader_ignores_normals`,
 `zero_delay`.
@@ -154,7 +201,7 @@ of a source shows `normal_map` (its `<stem>_normal.png`, stale or not). After yo
 `external_changes.problems` names its maps. `check --normals` (docs/mcp/checks.md) reports:
 `normals-source-changed`, `normals-source-missing`, `normals-recipe-invalid`, `normals-size-mismatch` (error),
 `normals-frames-mismatch`, `normals-filter-mismatch`, `normals-directx`, `normals-green-convention`,
-`normals-not-a-normal-map`, `normals-no-light-height`.
+`normals-not-a-normal-map`, `normals-no-light-height`, `normals-paint-unreadable`, `normals-paint-size`.
 
 ## Shell
 

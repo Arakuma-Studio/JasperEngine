@@ -17,7 +17,10 @@ for --sprite:
 - the recipe's source.path: relative to the output's directory without --project, project-relative with it; an output
   outside the assets directory exits 2;
 - --sprite: frames from the Sprite (from: "sprite");
-- --cells-json with a written map's recipe frames.cells reproduces its pixels; with --frame-size it exits 2.
+- --cells-json with a written map's recipe frames.cells reproduces its pixels; with --frame-size it exits 2;
+- paint (Phase 5 spec 4.2): --paint-json from a file, inline and stdin, --paint-mode keep / replace / clear, the JSON
+  output's paint object and the text summary line, exit 2 for invalid ops (and two sources, clear with ops), exit 1 for
+  paint_size_mismatch with nothing written.
 """
 
 from __future__ import annotations
@@ -309,3 +312,67 @@ async def test_sprite_tilemap_with_two_tilesets(ed: Editor):
     check(recipe(art / "ground_b_normal.png")["source"].get("submesh") == 1, "the second tileset's recipe names its submesh")
     r = run(ed.project, "--project", str(ed.project), "--sprite", "Ground", "--scene", "scenes/Main.scene", "-o", "assets/art/one.png", "--overwrite")
     check(r.returncode == 2 and "tileset" in r.stderr, f"-o with several tilesets: {r.returncode} {r.stderr[-400:]}")
+
+
+# ---------------------------------------------------------------------------- paint (Phase 5)
+
+def paint_chunk(path: Path) -> dict | None:
+    key = b"jasper.spritenormals.paint\x00"
+    for kind, data in chunks(path.read_bytes()):
+        if kind == b"iTXt" and data.startswith(key):
+            return json.loads(data[len(key) + 4:].decode("utf-8"))
+    return None
+
+
+async def test_paint_json_modes_and_exit_codes():
+    work = scratch()
+    out = work / "art" / "ball_normal.png"
+    ops = [{"op": "flatten", "where": {"rect": [10, 10, 8, 8]}}]
+    (work / "ops.json").write_text(json.dumps(ops))
+    # a file
+    code, res, err = run_json(work, "--source", "art/ball.png", "--paint-json", "ops.json")
+    check(code == 0, f"{err} {res}")
+    paint = res["results"][0]["paint"]
+    check(paint["mode"] == "keep" and paint["kept_from"] is None and paint["ops"] == [{"op": "flatten", "selected": 64, "changed": 64}]
+          and paint["painted_pixels"] == 64 and paint["hidden_pixels"] == 0 and paint["painted_pct"] > 0, f"paint: {paint}")
+    check(res["results"][0]["metrics"]["painted_pct"] == paint["painted_pct"], "metrics.painted_pct")
+    check(paint_chunk(out)["painted"] == 64 and recipe(out)["paint"] == {"painted": 64}, "the chunk and the recipe")
+    px = pixels(out)
+    check(tuple(px[12][12 * 4:12 * 4 + 4]) == (128, 128, 255, 255), "flattened")
+    # inline JSON (keep adds to the file's paint), and the text summary
+    r = run(work, "--source", "art/ball.png", "--overwrite", "--paint-json", '[{"op":"flatten","where":{"pixels":[[20,20]]}}]')
+    check(r.returncode == 0 and "paint: 1 op, 65 px painted (0 hidden), kept from art/ball_normal.png" in r.stderr, f"inline: {r.returncode} {r.stderr[-600:]}")
+    # stdin, replace
+    cmd = harness.editor_command() + ["generate-sprite-normals", "--source", "art/ball.png", "--overwrite", "--paint-mode", "replace",
+                                      "--paint-json", "-", "--format", "json"]
+    r = subprocess.run(cmd, cwd=str(work), input=json.dumps([{"op": "erase", "where": {"frame": 0}}, {"op": "flatten", "where": {"pixels": [[16, 16]]}}]),
+                       capture_output=True, text=True, timeout=300)
+    check(r.returncode == 0, f"stdin: {r.stderr[-600:]}")
+    paint = json.loads(r.stdout)["results"][0]["paint"]
+    check(paint["mode"] == "replace" and paint["painted_pixels"] == 1 and paint["ops"][0] == {"op": "erase", "selected": 540, "changed": 0},
+          f"replace from stdin: {paint}")
+    # clear: no chunk
+    code, res, err = run_json(work, "--source", "art/ball.png", "--overwrite", "--paint-mode", "clear")
+    check(code == 0 and res["results"][0]["paint"]["mode"] == "clear" and paint_chunk(out) is None and "paint" not in recipe(out), f"clear: {err}")
+    # usage errors (2): invalid ops, modes, two sources, clear with ops
+    before = out.read_bytes()
+    for args, needle in [
+        (["--paint-json", '[{"op":"paint","where":{"frame":0}}]'], "paint[0].op"),
+        (["--paint-json", '[{"op":"angle","where":{"frame":0},"direction":{"azimuth_deg":0,"tilt_deg":90}}]'], "85"),
+        (["--paint-json", "[not json"], "not JSON"),
+        (["--paint-mode", "sometimes"], "keep, replace, clear"),
+        (["--paint-mode", "clear", "--paint-json", '[{"op":"erase","where":{"frame":0}}]'], "clear"),
+        (["--source", "art/sheet.png", "--paint-json", "ops.json"], "one source"),
+        (["--paint-json", '[{"op":"flatten","where":{"frame":3}}]'], "frame"),
+    ]:
+        r = run(work, "--source", "art/ball.png", "--overwrite", *args)
+        check(r.returncode == 2 and needle in r.stderr, f"{args}: exit 2 with {needle!r}: {r.returncode} {r.stderr[-500:]}")
+    check(out.read_bytes() == before, "usage errors write nothing")
+    # a resized source under kept paint: exit 1, nothing written; --paint-mode clear writes
+    run(work, "--source", "art/ball.png", "--overwrite", "--paint-json", "ops.json")
+    painted = out.read_bytes()
+    shutil.copy(FIXTURES / "sheet.png", work / "art" / "ball.png")
+    code, res, err = run_json(work, "--source", "art/ball.png", "--overwrite")
+    check(code == 1 and any(e["kind"] == "paint_size_mismatch" for e in res["errors"]) and out.read_bytes() == painted, f"mismatch: {code} {res['errors']}")
+    code, res, err = run_json(work, "--source", "art/ball.png", "--overwrite", "--paint-mode", "clear")
+    check(code == 0 and paint_chunk(out) is None, f"cleared: {err}")

@@ -463,14 +463,18 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
 
     bool canUndo = false;
     bool canRedo = false;
+    bool paintUndo = false;
+    bool paintRedo = false;
     if (!textInput) {
         uint32_t routedScene = 0;
         if (lastFocusedWindow == LastFocusedWindow::SpriteNormals) {
-            // the Sprite Normal Map window: its last assign's scene, else the project
-            canUndo = spriteNormalsWindow->undoGoesToScene(routedScene) ? CommandHandle::get(routedScene)->canUndo()
-                                                                       : project.getProjectCommandHistory()->canUndo();
-            canRedo = spriteNormalsWindow->redoGoesToScene(routedScene) ? CommandHandle::get(routedScene)->canRedo()
-                                                                       : project.getProjectCommandHistory()->canRedo();
+            // the Sprite Normal Map window: its paint strokes, else its last assign's scene, else the project
+            paintUndo = spriteNormalsWindow->canUndoPaint();
+            paintRedo = spriteNormalsWindow->canRedoPaint();
+            canUndo = paintUndo || (spriteNormalsWindow->undoGoesToScene(routedScene) ? CommandHandle::get(routedScene)->canUndo()
+                                                                                      : project.getProjectCommandHistory()->canUndo());
+            canRedo = paintRedo || (spriteNormalsWindow->redoGoesToScene(routedScene) ? CommandHandle::get(routedScene)->canRedo()
+                                                                                      : project.getProjectCommandHistory()->canRedo());
         } else if (undoGoesToProjectHistory()) {
             canUndo = project.getProjectCommandHistory()->canUndo();
             canRedo = project.getProjectCommandHistory()->canRedo();
@@ -548,11 +552,11 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
     }));
 
     menu.menus.push_back(menuSubmenu("Edit", {
-        menuShortcut(AppMenuCommand::Undo, "Undo", "Ctrl+Z", canUndo),
+        menuShortcut(AppMenuCommand::Undo, paintUndo ? "Undo Paint Stroke" : "Undo", "Ctrl+Z", canUndo),
 #if defined(__APPLE__)
-        menuShortcut(AppMenuCommand::Redo, "Redo", "Ctrl+Shift+Z", canRedo),
+        menuShortcut(AppMenuCommand::Redo, paintRedo ? "Redo Paint Stroke" : "Redo", "Ctrl+Shift+Z", canRedo),
 #else
-        menuShortcut(AppMenuCommand::Redo, "Redo", "Ctrl+Y", canRedo),
+        menuShortcut(AppMenuCommand::Redo, paintRedo ? "Redo Paint Stroke" : "Redo", "Ctrl+Y", canRedo),
 #endif
         menuSeparator(),
         menuShortcut(AppMenuCommand::SelectAll, "Select All", "Ctrl+A", canSelectAll()),
@@ -742,9 +746,14 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::Undo:
             if (lastFocusedWindow == LastFocusedWindow::SpriteNormals) {
                 uint32_t routedScene = 0;
-                if (spriteNormalsWindow->undoGoesToScene(routedScene)) {
+                if (spriteNormalsWindow->canUndoPaint()) {
+                    spriteNormalsWindow->undoPaint();
+                } else if (spriteNormalsWindow->undoGoesToScene(routedScene)) {
+                    // another history's step undone: the stroke redos go (Ctrl+Y redoes that step first)
+                    spriteNormalsWindow->dropPaintRedo();
                     CommandHandle::get(routedScene)->undo();
                 } else {
+                    spriteNormalsWindow->dropPaintRedo();
                     project.getProjectCommandHistory()->undo();
                     projectWindow->refreshCurrentDirectory();
                 }
@@ -760,7 +769,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::Redo:
             if (lastFocusedWindow == LastFocusedWindow::SpriteNormals) {
                 uint32_t routedScene = 0;
-                if (spriteNormalsWindow->redoGoesToScene(routedScene)) {
+                if (spriteNormalsWindow->canRedoPaint()) {
+                    spriteNormalsWindow->redoPaint();
+                } else if (spriteNormalsWindow->redoGoesToScene(routedScene)) {
                     CommandHandle::get(routedScene)->redo();
                 } else {
                     project.getProjectCommandHistory()->redo();
@@ -1037,6 +1048,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
                 "Ctrl+1 Scene   Ctrl+3 Inspector   Ctrl+4 Hierarchy\n"
                 "Ctrl+5 Project   Ctrl+6 Animation   Ctrl+Shift+C Console\n\n"
                 "SPRITE NORMAL MAP\n1 / 2 / 3 / 4    Color / Normal / Lit / Split\nDrag    Move the light (Shift+wheel: height)\nSpace    Play frames   , / .    Previous / next frame\nO    Orbit the light   G    Frame grid   F / 0    Fit / 100%\nAlt+click    Pick a region colour\nCtrl+Enter    Save (and assign)\n\n"
+                "SPRITE NORMAL MAP: PAINT\nV    Navigate (no brush)   B / N / M / E    Angle / Flatten / Smooth / Erase\nDrag    Paint   Alt+click    Sample the direction\nShift+wheel / - / =    Brush size (Ctrl+Shift+wheel: 4 px)\nW    Brush / Wand   X    Mirror X   H    Highlight painted   P    Show paint\nCtrl+Z / Ctrl+Y    Undo / redo a paint stroke first, then the project's steps (undoing one of those drops the stroke redos)\n\n"
                 "SCENE VIEW\n"
                 "Q / W / E / R / T    Hand / Move / Rotate / Scale / Rect\n"
                 "X    Toggle local / global transforms\n"
@@ -2250,15 +2262,23 @@ void editor::App::show(){
     if (!popupOpen && spriteNormalsKeys) {
         uint32_t routedScene = 0;
         if (isUndo) {
-            if (spriteNormalsWindow->undoGoesToScene(routedScene)) {
+            // its paint strokes first (window-local until Save)
+            if (spriteNormalsWindow->canUndoPaint()) {
+                spriteNormalsWindow->undoPaint();
+            } else if (spriteNormalsWindow->undoGoesToScene(routedScene)) {
+                // another history's step undone: the stroke redos go (Ctrl+Y redoes that step first)
+                spriteNormalsWindow->dropPaintRedo();
                 CommandHandle::get(routedScene)->undo();
             } else {
+                spriteNormalsWindow->dropPaintRedo();
                 project.getProjectCommandHistory()->undo();
                 projectWindow->refreshCurrentDirectory();
             }
         }
         if (isRedo) {
-            if (spriteNormalsWindow->redoGoesToScene(routedScene)) {
+            if (spriteNormalsWindow->canRedoPaint()) {
+                spriteNormalsWindow->redoPaint();
+            } else if (spriteNormalsWindow->redoGoesToScene(routedScene)) {
                 CommandHandle::get(routedScene)->redo();
             } else {
                 project.getProjectCommandHistory()->redo();
@@ -2769,6 +2789,16 @@ bool editor::App::answerDialog(const std::string& choice, std::string& error) {
 
 void editor::App::requestProjectChange(std::function<void()> change) {
     if (projectLoading || pendingProjectChange) return;
+    // the Sprite Normal Map window's unsaved paint strokes are asked about first
+    if (spriteNormalsWindow && spriteNormalsWindow->hasUnsavedPaint()) {
+        registerConfirmAlert("Discard Paint Changes?",
+                             "The Sprite Normal Map window has paint strokes that are not saved into the normal map.\n\nDiscard them and switch projects?",
+                             [this, change]() {
+                                 spriteNormalsWindow->discardPaint();
+                                 requestProjectChange(change);
+                             });
+        return;
+    }
     pendingProjectChange = std::move(change);
     requestRedraw();
 }
@@ -3835,7 +3865,7 @@ bool editor::App::dispatchClipDrop(uint32_t sceneId, Entity target, const std::v
 bool editor::App::redoGoesToProjectHistory() const {
     if (lastFocusedWindow == LastFocusedWindow::SpriteNormals) {
         uint32_t sceneId = 0;
-        return !spriteNormalsWindow->redoGoesToScene(sceneId);
+        return !spriteNormalsWindow->canRedoPaint() && !spriteNormalsWindow->redoGoesToScene(sceneId);
     }
     if (lastFocusedWindow == LastFocusedWindow::AnimationClip || lastFocusedWindow == LastFocusedWindow::AnySceneWindow) {
         return clipRedoToProject;
@@ -3846,7 +3876,8 @@ bool editor::App::redoGoesToProjectHistory() const {
 bool editor::App::undoGoesToProjectHistory() const {
     if (lastFocusedWindow == LastFocusedWindow::SpriteNormals) {
         uint32_t sceneId = 0;
-        return !spriteNormalsWindow->undoGoesToScene(sceneId);
+        // paint strokes are the window's own steps (canUndoPaint), then the assign's scene
+        return !spriteNormalsWindow->canUndoPaint() && !spriteNormalsWindow->undoGoesToScene(sceneId);
     }
     return lastFocusedWindow == LastFocusedWindow::Resources || lastFocusedWindow == LastFocusedWindow::PoseAnimation ||
            lastFocusedWindow == LastFocusedWindow::AnimationClip;
@@ -4509,6 +4540,17 @@ void editor::App::exit() {
 
     if (project.isAnySceneSaving()) {
         registerAlert("Saving Scene", "Wait for the current scene save to finish before exiting.");
+        return;
+    }
+
+    // the Sprite Normal Map window's unsaved paint strokes (not in any file): asked first, like its close
+    if (spriteNormalsWindow && spriteNormalsWindow->hasUnsavedPaint()) {
+        registerConfirmAlert("Discard Paint Changes?",
+                             "The Sprite Normal Map window has paint strokes that are not saved into the normal map.\n\nDiscard them and exit?",
+                             [this]() {
+                                 spriteNormalsWindow->discardPaint();
+                                 exit();
+                             });
         return;
     }
 

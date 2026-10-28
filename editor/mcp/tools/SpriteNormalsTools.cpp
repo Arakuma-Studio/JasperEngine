@@ -26,6 +26,7 @@
 #include "component/TilemapComponent.h"
 #include "spritenormals/SpriteNormalsApply.h"
 #include "spritenormals/SpriteNormalsCheck.h"
+#include "spritenormals/SpriteNormalsPaint.h"
 #include "spritenormals/SpriteNormalsSession.h"
 #include "texsynth/SynthesisSession.h"
 #include "util/Base64.h"
@@ -492,7 +493,22 @@ Json metricsJson(const sn::Metrics& m) {
     return {{"coverage_pct", rounded(m.coveragePct, 1)}, {"flat_pct", rounded(m.flatPct, 1)}, {"steep_pct", rounded(m.steepPct, 1)},
             {"mean_tilt_deg", rounded(m.meanTiltDeg, 1)}, {"noise_pct", rounded(m.noisePct, 1)}, {"lean_deg", rounded(m.leanDeg, 1)},
             {"soft_edge_pct", rounded(m.softEdgePct, 1)}, {"frames_touching_edges", m.framesTouchingEdges},
-            {"has_transparency", m.hasTransparency}, {"opaque_pixels", m.opaquePixels}};
+            {"has_transparency", m.hasTransparency}, {"opaque_pixels", m.opaquePixels}, {"painted_pct", rounded(m.paintedPct, 1)}};
+}
+
+// The paint layer of a run (4.1): where it came from, what each op selected and changed
+Json paintJson(const sn::Prepared& p, const sn::Metrics& m) {
+    Json ops = Json::array();
+    for (size_t i = 0; i < p.paint.ops.size(); i++) {
+        const sn::PaintStats::Op counts = i < p.paint.stats.ops.size() ? p.paint.stats.ops[i] : sn::PaintStats::Op();
+        ops.push_back({{"op", sn::toString(p.paint.ops[i].kind)}, {"selected", counts.selected}, {"changed", counts.changed}});
+    }
+    return {{"mode", sn::toString(p.spec.paintMode)},
+            {"kept_from", p.paintKeptFrom.empty() ? Json(nullptr) : Json(p.paintKeptFrom)},
+            {"ops", ops},
+            {"painted_pixels", p.paint.stats.painted},
+            {"hidden_pixels", p.paint.stats.hidden},
+            {"painted_pct", rounded(m.paintedPct, 1)}};
 }
 
 Json warningsJson(const std::vector<sn::Problem>& warnings) {
@@ -508,6 +524,7 @@ struct Report {
     std::vector<sn::Problem> warnings;
     std::vector<uint8_t> sheet;
     std::string defaultNormal;
+    bool painted = false;          // the sheet outlines painted pixels
 };
 
 Report report(Project* project, const NormalsCall& state, const NormalsTarget& target) {
@@ -569,9 +586,11 @@ Report report(Project* project, const NormalsCall& state, const NormalsTarget& t
     }
     if (r.outlineColor) data["outline"] = sn::colorText(*r.outlineColor);
 
-    const sn::Metrics metrics = sn::measure(r.normal, cells, s.directx, s.alphaThreshold);
+    // the metrics of the composite (the paint included)
+    const sn::Metrics metrics = sn::measure(r.normal, cells, s.directx, s.alphaThreshold, &p.paint.overlay);
     const sn::Assessment assessment = sn::assess(s, metrics, static_cast<int>(cells.size()));
     data["metrics"] = metricsJson(metrics);
+    data["paint"] = paintJson(p, metrics);
     data["assessment"] = assessment.lines;
     data["hint"] = assessment.hint.empty() ? std::string("Looks fine.") : assessment.hint;
 
@@ -601,13 +620,20 @@ Report report(Project* project, const NormalsCall& state, const NormalsTarget& t
     data["seconds"] = rounded(r.seconds, 2);
 
     // the lit contact sheet (<= 1024 wide, <= 8 frames)
-    const sn::Image sheet = sn::contactSheet(source.color, r.normal, cells, s.directx, s.alphaThreshold, sheetOptions);
+    // painted pixels outlined in magenta in the normal column (the lit ones stay clean)
+    out.painted = metrics.paintedPixels > 0;
+    const sn::Image sheet = sn::contactSheet(source.color, r.normal, cells, s.directx, s.alphaThreshold, sheetOptions, out.painted ? &p.paint.overlay : nullptr);
     std::string error;
     if (!sheet.empty()) sn::encodePng(sheet, out.sheet, error);
 
     out.summary = "Normal map of " + p.sourcePath + " (" + std::to_string(source.fileWidth) + "x" + std::to_string(source.fileHeight) + ", " +
                   framesFromText(p, count) + ", preset " + sn::toString(s.preset) + ", " + radius + ") in " + fixed(r.seconds, 2) + " s.";
     for (const std::string& line : assessment.lines) out.summary += " " + line + ".";
+    if (p.paint.active() || p.spec.paintMode != sn::PaintMode::Keep) {
+        out.summary += " Paint (" + std::string(sn::toString(p.spec.paintMode)) + (p.paintKeptFrom.empty() ? "" : ", kept from " + p.paintKeptFrom) + "): " +
+                       std::to_string(p.paint.ops.size()) + (p.paint.ops.size() == 1 ? " op, " : " ops, ") + std::to_string(p.paint.stats.painted) +
+                       " px painted (" + std::to_string(p.paint.stats.hidden) + " hidden).";
+    }
     out.summary += " Hint: " + data["hint"].get<std::string>();
     return out;
 }
@@ -829,8 +855,10 @@ void finishNormals(const NormalsCallPtr& state) {
         for (const NormalsTarget& t : state->targets) {
             std::vector<sn::OutputFile> encoded;
             std::string error;
-            if (!sn::encodeOutputs(t.run->prepared(), t.run->result(), encoded, error)) {
-                failWrite("Nothing was written:", {problem("write_failed", "output", error, "check the path is writable, then call again")});
+            sn::Problem why;
+            if (!sn::encodeOutputs(t.run->prepared(), t.run->result(), encoded, error, &why)) {
+                if (why.kind == "paint_too_large") failWrite("Nothing was written:", {problem(why.kind, "paint", why.message, why.fix)});
+                else failWrite("Nothing was written:", {problem("write_failed", "output", error, "check the path is writable, then call again")});
                 return;
             }
             all.insert(all.end(), encoded.begin(), encoded.end());
@@ -982,7 +1010,8 @@ void finishNormals(const NormalsCallPtr& state) {
     if (!reports[0].sheet.empty()) {
         state->images.push_back({Base64::encode(reports[0].sheet.data(), reports[0].sheet.size()), "image/png"});
         text += std::string("\nImage: the contact sheet") + (tilemap ? " of the first tileset" : "") +
-                " (per frame: colour, normal, lit from the top-left, top-right, bottom-right, bottom-left).";
+                " (per frame: colour, normal, lit from the top-left, top-right, bottom-right, bottom-left" +
+                (reports[0].painted ? "; magenta outline: painted pixels" : "") + ").";
     }
     state->text = text;
     sheet.commit();
@@ -1050,6 +1079,28 @@ void generateSpriteNormalsTool(const CallPtr& call) {
     if (!settingsArg(args, settings, problems) || !framesArg(args, frames, problems) || !outputArg(args, output, state->write, customOutput, problems)) {
         failCall(call, problems);
         return;
+    }
+    // paint (Phase 5): operations on the output and where the starting overlay comes from
+    std::vector<sn::PaintOp> paint;
+    sn::PaintMode paintMode = sn::PaintMode::Keep;
+    if (args.contains("paint_mode") && !args["paint_mode"].is_null()) {
+        const Json& m = args["paint_mode"];
+        if (!m.is_string() || !sn::parsePaintMode(m.get<std::string>(), paintMode)) {
+            failCall(call, problem("invalid_paint", "paint_mode", "paint_mode must be keep, replace or clear (got " + m.dump() + ")",
+                                   "keep (default) starts from the existing map's paint, replace from none, clear writes none"));
+            return;
+        }
+    }
+    if (args.contains("paint") && !args["paint"].is_null()) {
+        if (!sn::paintOpsFromJson(args["paint"], paint, problems)) {
+            failCall(call, problems);
+            return;
+        }
+        if (paintMode == sn::PaintMode::Clear && !paint.empty()) {
+            failCall(call, problem("invalid_paint", "paint", "paint_mode \"clear\" drops the paint, so paint must be empty (got " + std::to_string(paint.size()) + " operations)",
+                                   "use paint_mode \"replace\" to start over with these operations"));
+            return;
+        }
     }
     for (const char* key : {"overwrite", "wait"}) {
         if (args.contains(key) && !args[key].is_boolean()) {
@@ -1206,6 +1257,12 @@ void generateSpriteNormalsTool(const CallPtr& call) {
                                    "give it a texture file first, or pass the image path"));
             return;
         }
+        if (state->targets.size() > 1 && !paint.empty()) {
+            failCall(call, problem("invalid_paint", "paint", "paint applies to one normal map, and this Tilemap has " + std::to_string(state->targets.size()) +
+                                                                 " tileset textures (one map each)",
+                                   "one call per output: pass the tileset image as source"));
+            return;
+        }
         if (state->targets.size() > 1 && customOutput) {
             failCall(call, problem("output_invalid", "output", "a Tilemap with " + std::to_string(state->targets.size()) +
                                                                    " tileset textures needs output: true (one normal map per texture)",
@@ -1224,6 +1281,8 @@ void generateSpriteNormalsTool(const CallPtr& call) {
         spec.output = output;
         // a preview never writes: an existing default output is no problem then
         spec.overwrite = state->overwrite || !state->write;
+        spec.paint = paint;
+        spec.paintMode = paintMode;
         if (state->sourceEntity != NULL_ENTITY) {
             spec.sceneId = state->sourceScene;
             spec.entity = state->sourceEntity;
@@ -1388,6 +1447,8 @@ bool regenerateArgs(Project* project, const Json& recipe, const fs::path& png, J
     if (!spec.output.height.empty()) output["height"] = spec.output.height;
     args["output"] = output;
     args["overwrite"] = true;
+    // a painted map: its paint is kept (and re-composited) by the regeneration
+    if (recipe.contains("paint")) args["paint_mode"] = "keep";
     return true;
 }
 
@@ -1430,6 +1491,13 @@ Json spriteNormalsAssetInfo(Project* project, const fs::path& file, bool full) {
                          {"outputs", recipe->contains("outputs") ? (*recipe)["outputs"] : Json::object()},
                          {"stale", staleness.state != sn::Staleness::State::Fresh}};
             if (staleness.state != sn::Staleness::State::Fresh) info["staleness"] = staleness.message;
+            // the paint layer: its summary from the chunk's head (not decoded)
+            std::string paintError;
+            if (const std::optional<sn::PaintSummary> paint = sn::readPaintSummary(file, &paintError)) {
+                info["paint"] = {{"painted", paint->painted}, {"size", Json::array({paint->width, paint->height})}};
+            } else if (!paintError.empty()) {
+                info["paint"] = {{"error", paintError}};
+            }
             if (full) {
                 info["recipe"] = *recipe;
                 Json args;
@@ -1471,6 +1539,11 @@ std::string spriteNormalsAssetText(const Json& info) {
         else if (state == "changed") text += "; the source changed since: regenerate with generate_sprite_normals and the `regenerate` arguments (get_asset_info).";
         else if (state == "missing") text += "; the source is gone (the map itself still works).";
         else text += "; its source can't be checked (" + n.value("staleness", state) + ").";
+        if (n.contains("paint") && n["paint"].is_object()) {
+            const Json& paint = n["paint"];
+            if (paint.contains("painted")) text += " Painted: " + std::to_string(paint.value("painted", 0)) + " px (kept when it is regenerated).";
+            else text += " Its paint layer can't be read (" + paint.value("error", std::string()) + "); regenerating drops it.";
+        }
         return text;
     }
     if (info.contains("normal_map")) {
@@ -1512,9 +1585,9 @@ void registerSpriteNormalsTools(McpRegistry& registry) {
     tool.name = "generate_sprite_normals";
     tool.title = "Generate Sprite Normals";
     tool.description =
-        "Normal maps for pixel-art sprites, sheets, GIF/APNG animations and tiles (2D lights). Without output nothing is "
-        "written: a lit contact sheet, metrics and a hint. The same arguments + output write exactly that (PNG with a recipe, "
-        "one undo step); apply wires it onto the GameObject (GIFs: atlas, frames, Sprite Animation). Lights need height > 0. "
+        "Pixel-art normal maps (sprites, sheets, GIF/APNG, tiles; lights need height > 0). No output: lit contact sheet + metrics; "
+        "+ output writes that (one undo step); apply wires it on. "
+        "paint: fix spots (angle/flatten/smooth/erase by rect, pixels, colors or frame); kept on regenerate (paint_mode). "
         "Guide: jasper://docs/sprite-normals.";
     // nested objects are loose (the handler refuses unknown keys itself, saving tools/list bytes);
     // what each argument does: docs/mcp/guide/sprite-normals.md
@@ -1540,6 +1613,10 @@ void registerSpriteNormalsTools(McpRegistry& registry) {
         {"overwrite", boolean("")},
         {"apply", types({"boolean", "string", "integer", "object"})},
         {"save_path", string("")},
+        // paint ops are loose too (validated by the handler: paint[i].<field> errors); paint_mode
+        // keep (default), replace or clear (the handler names them; the tool budget, P5)
+        {"paint", Json{{"type", "array"}}},
+        {"paint_mode", string("")},
         {"wait", boolean("")},
         {"timeout_seconds", withDefault(number("", 1, 3600), 120)}
     }, {"source"});

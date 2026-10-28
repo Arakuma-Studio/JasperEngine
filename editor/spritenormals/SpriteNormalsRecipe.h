@@ -59,6 +59,7 @@ namespace jasperengine::editor::spritenormals {
         std::string normalOutput;            // project-relative paths of the set written together
         std::string atlasOutput;
         std::string heightOutput;
+        int paintedPixels = 0;               // > 0: the file carries a paint chunk (recipe "paint":{"painted":N})
     };
 
     // The canonical recipe (contract section 6 + section 6.2 of the Phase 2 spec)

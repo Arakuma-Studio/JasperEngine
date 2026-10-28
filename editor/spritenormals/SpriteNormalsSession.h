@@ -14,10 +14,13 @@
 //   ONE step of the project command history; writeOutputsDirect() for the CLI;
 // - checkStaleness() / specFromRecipe(): written maps back to their source and settings;
 // - framesFromSprite(), lightCheck(), sceneWarnings(): what a scene says about the result;
-// - SpriteNormalsRun: generate() on a worker thread.
+// - SpriteNormalsRun: generate() on a worker thread;
+// - the paint layer (Phase 5): Spec::paint / paintMode, the starting overlay prepare() loads,
+//   generatePrepared() compositing it, encodeOutputs() writing its chunk.
 
 #include "SpriteMedia.h"
 #include "SpriteNormals.h"
+#include "SpriteNormalsPaint.h"
 #include "SpriteNormalsPreview.h"
 #include "SpriteNormalsRecipe.h"
 
@@ -30,6 +33,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -70,9 +74,17 @@ namespace jasperengine::editor::spritenormals {
         FramesSpec frames;
         OutputSpec output;
         bool overwrite = false;
+        // Phase 5: paint operations on the output (atlas cells for animations), and where the
+        // starting overlay comes from: Keep = the paint chunk of the file at the planned normal
+        // output (a preview reads the file the default output would write), Replace = none,
+        // Clear = none and no ops (the written map has no paint). The window paints its own
+        // overlay and generates with Replace and no ops.
+        std::vector<PaintOp> paint;
+        PaintMode paintMode = PaintMode::Keep;
 
         bool hasSprite() const { return entity != NULL_ENTITY; }
-        // Everything that changes the result, as text (the window's "stale" test; submesh included)
+        // Everything that changes the result, as text (the window's "stale" test; submesh and paint
+        // included)
         std::string fingerprint() const;
     };
 
@@ -87,12 +99,15 @@ namespace jasperengine::editor::spritenormals {
     struct PlannedOutput {
         std::string role;            // "normal", "atlas", "height", "frames_json"
         std::string path;            // project-relative
+        // role normal, paint mode Keep: the paint the file there already holds (readPaintSummary)
+        std::optional<PaintSummary> existingPaint;
     };
     // Contract section 5 names for a source: <stem>_normal.png, or <stem>_sheet.png +
     // <stem>_sheet_normal.png for GIF/APNG; <stem>_height.png / <stem>_sheet_height.png;
     // <stem>_sheet.frames.json (animations) or <stem>_normal.frames.json (stills)
     std::vector<PlannedOutput> defaultOutputs(const std::string& sourcePath, SourceKind kind, bool height, bool framesJson);
-    // The files `spec` writes (its explicit paths, else the defaults), in the order above
+    // The files `spec` writes (its explicit paths, else the defaults), in the order above; with
+    // paint mode Keep the normal output's existingPaint (a head read of that file)
     std::vector<PlannedOutput> plannedOutputs(const std::filesystem::path& projectDir, const Spec& spec, SourceKind kind);
 
     // ---- frames
@@ -109,7 +124,8 @@ namespace jasperengine::editor::spritenormals {
     // project / unsupported (probeSource), frames (a grid or none on a GIF/APNG: frames_mismatch;
     // grid empty or too many cells; overlapping Sprite frames: frames_mismatch), outputs (not
     // .png, outside the project's assets directory, colliding with the source or each other,
-    // existing without overwrite: output_exists, not valid UTF-8)
+    // existing without overwrite: output_exists, not valid UTF-8), paint (invalid_paint keyed
+    // paint[i].<field>: ranges, counts, directions; ops with paint mode Clear)
     std::vector<Problem> checkSpec(const std::filesystem::path& projectDir, const Spec& spec, const Scene* scene = nullptr);
 
     // A spec resolved and loaded: what generate() runs and encodeOutputs() writes
@@ -124,8 +140,18 @@ namespace jasperengine::editor::spritenormals {
         Request request;
         std::vector<PlannedOutput> outputs;
         std::vector<Cell> plannedSpriteCells;   // preparePlan: the Sprite's frames for prepareLoad
+        // Phase 5: the starting overlay (paint mode Keep: the planned normal output's paint chunk)
+        // and the ops; after generatePrepared() the overlay with the ops applied and their stats.
+        // encodeOutputs() writes this overlay into the normal map.
+        PaintLayer paint;
+        std::string paintKeptFrom;           // project-relative file the overlay was read from ("" none)
+        std::vector<Problem> paintWarnings;  // paint_unreadable (dropped), paint_layout_changed
     };
-    // checkSpec, then the source decoded and the Request built; false with the problems
+    // checkSpec, then the source decoded and the Request built; false with the problems. With
+    // paint mode Keep the existing normal map's paint is loaded: an overlay of another size than
+    // the new output is paint_size_mismatch (nothing to write), a chunk that can't be read a
+    // paint_unreadable warning (the overlay starts empty), other frame cells than the recipe's a
+    // paint_layout_changed warning. Ops naming a frame that is not one: invalid_paint.
     bool prepare(const std::filesystem::path& projectDir, const Spec& spec, const Scene* scene, Prepared& out,
                  std::vector<Problem>& problems);
     // prepare() in two halves, for a worker thread: preparePlan is checkSpec's whole work (main
@@ -145,7 +171,10 @@ namespace jasperengine::editor::spritenormals {
         std::filesystem::path absolute;
         std::string bytes;                   // PNG with its recipe, or the frames JSON
     };
-    bool encodeOutputs(const Prepared& prepared, const Result& result, std::vector<OutputFile>& files, std::string& error);
+    // The normal map carries prepared.paint.overlay as its paint chunk (none when empty) and the
+    // recipe "paint":{"painted":N}. `problem` (optional): the kind (paint_too_large, write_failed).
+    bool encodeOutputs(const Prepared& prepared, const Result& result, std::vector<OutputFile>& files, std::string& error,
+                       Problem* problem = nullptr);
     // One step of the project command history (WriteFilesCmd through w4::writeFilesUndoable),
     // then the editor notices them (textures reloaded, thumbnails, Project window). Main thread.
     // The step is named "Generate Normal Map <file name of the first normal output>" ("Generate
@@ -205,9 +234,16 @@ namespace jasperengine::editor::spritenormals {
                                        int normalHeight, const std::vector<Delay>& delays, bool willApply,
                                        unsigned submesh = 0);
 
+    // ---- generation
+
+    // generatePainted(prepared.request, prepared.paint): the generation with the paint layer
+    // composited (exactly generate() without paint); prepare's paint warnings first in
+    // result.warnings. What SpriteNormalsRun and the CLI run.
+    Result generatePrepared(Prepared& prepared, const Control& control = Control());
+
     // ---- worker
 
-    // generate() on a detached worker thread (the texsynth SynthesisRun pattern): the run keeps
+    // generatePrepared() on a detached worker thread (the texsynth SynthesisRun pattern): the run keeps
     // itself alive until it finishes; no exception escapes (out of memory -> Status::Failed).
     class SpriteNormalsRun : public std::enable_shared_from_this<SpriteNormalsRun> {
     public:
