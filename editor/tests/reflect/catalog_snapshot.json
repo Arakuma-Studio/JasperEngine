@@ -30507,6 +30507,564 @@
    "type": 60,
    "type_of_key": 60,
    "type_of_name": 60
+  },
+  {
+   "display_name": "Character Controller 2D",
+   "enum_options": {},
+   "has_enabled": true,
+   "icon": "ef9594",
+   "key": "charactercontroller2d",
+   "known_keys": [
+    "categoryBits",
+    "center",
+    "enabled",
+    "height",
+    "maskBits",
+    "minMoveDistance",
+    "movingPlatforms",
+    "pushBodies",
+    "pushStrength",
+    "radius",
+    "skinWidth",
+    "slopeLimit",
+    "stepOffset"
+   ],
+   "name": "CharacterController2DComponent",
+   "properties_of_default": {
+    "center": [
+     4,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "height": [
+     2,
+     0,
+     true
+    ],
+    "minMoveDistance": [
+     2,
+     0,
+     true
+    ],
+    "movingPlatforms": [
+     0,
+     0,
+     true
+    ],
+    "pushBodies": [
+     0,
+     0,
+     true
+    ],
+    "pushStrength": [
+     2,
+     0,
+     true
+    ],
+    "radius": [
+     2,
+     0,
+     true
+    ],
+    "skinWidth": [
+     2,
+     0,
+     true
+    ],
+    "slopeLimit": [
+     2,
+     0,
+     true
+    ],
+    "stepOffset": [
+     2,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "center": [
+     4,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "height": [
+     2,
+     0,
+     true
+    ],
+    "minMoveDistance": [
+     2,
+     0,
+     true
+    ],
+    "movingPlatforms": [
+     0,
+     0,
+     true
+    ],
+    "pushBodies": [
+     0,
+     0,
+     true
+    ],
+    "pushStrength": [
+     2,
+     0,
+     true
+    ],
+    "radius": [
+     2,
+     0,
+     true
+    ],
+    "skinWidth": [
+     2,
+     0,
+     true
+    ],
+    "slopeLimit": [
+     2,
+     0,
+     true
+    ],
+    "stepOffset": [
+     2,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 61,
+   "type_of_key": 61,
+   "type_of_name": 61
+  },
+  {
+   "display_name": "Character Controller",
+   "enum_options": {},
+   "has_enabled": true,
+   "icon": "ef9594",
+   "key": "charactercontroller",
+   "known_keys": [
+    "categoryBits",
+    "center",
+    "characterCollisions",
+    "detectCollisions",
+    "enabled",
+    "enhancedEdgeRemoval",
+    "height",
+    "inheritPlatformYaw",
+    "maskBits",
+    "mass",
+    "minMoveDistance",
+    "movingPlatforms",
+    "pushBodies",
+    "pushStrength",
+    "radius",
+    "skinWidth",
+    "slopeLimit",
+    "stepOffset"
+   ],
+   "name": "CharacterControllerComponent",
+   "properties_of_default": {
+    "center": [
+     5,
+     0,
+     true
+    ],
+    "characterCollisions": [
+     0,
+     0,
+     true
+    ],
+    "detectCollisions": [
+     0,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "enhancedEdgeRemoval": [
+     0,
+     0,
+     true
+    ],
+    "height": [
+     2,
+     0,
+     true
+    ],
+    "inheritPlatformYaw": [
+     0,
+     0,
+     true
+    ],
+    "mass": [
+     2,
+     0,
+     true
+    ],
+    "minMoveDistance": [
+     2,
+     0,
+     true
+    ],
+    "movingPlatforms": [
+     0,
+     0,
+     true
+    ],
+    "pushBodies": [
+     0,
+     0,
+     true
+    ],
+    "pushStrength": [
+     2,
+     0,
+     true
+    ],
+    "radius": [
+     2,
+     0,
+     true
+    ],
+    "skinWidth": [
+     2,
+     0,
+     true
+    ],
+    "slopeLimit": [
+     2,
+     0,
+     true
+    ],
+    "stepOffset": [
+     2,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "center": [
+     5,
+     0,
+     true
+    ],
+    "characterCollisions": [
+     0,
+     0,
+     true
+    ],
+    "detectCollisions": [
+     0,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "enhancedEdgeRemoval": [
+     0,
+     0,
+     true
+    ],
+    "height": [
+     2,
+     0,
+     true
+    ],
+    "inheritPlatformYaw": [
+     0,
+     0,
+     true
+    ],
+    "mass": [
+     2,
+     0,
+     true
+    ],
+    "minMoveDistance": [
+     2,
+     0,
+     true
+    ],
+    "movingPlatforms": [
+     0,
+     0,
+     true
+    ],
+    "pushBodies": [
+     0,
+     0,
+     true
+    ],
+    "pushStrength": [
+     2,
+     0,
+     true
+    ],
+    "radius": [
+     2,
+     0,
+     true
+    ],
+    "skinWidth": [
+     2,
+     0,
+     true
+    ],
+    "slopeLimit": [
+     2,
+     0,
+     true
+    ],
+    "stepOffset": [
+     2,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 62,
+   "type_of_key": 62,
+   "type_of_name": 62
+  },
+  {
+   "display_name": "Water Volume",
+   "enum_options": {
+    "waves": [
+     [
+      0,
+      "from_material",
+      "From Material"
+     ],
+     [
+      1,
+      "none",
+      "None"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef9db3",
+   "key": "watervolume",
+   "known_keys": [
+    "angularDrag",
+    "density",
+    "enabled",
+    "flow",
+    "infinite",
+    "linearDrag",
+    "size",
+    "surfaceOffset",
+    "waves"
+   ],
+   "name": "WaterVolumeComponent",
+   "properties_of_default": {
+    "angularDrag": [
+     2,
+     0,
+     true
+    ],
+    "density": [
+     2,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "flow": [
+     5,
+     0,
+     true
+    ],
+    "infinite": [
+     0,
+     0,
+     true
+    ],
+    "linearDrag": [
+     2,
+     0,
+     true
+    ],
+    "size": [
+     5,
+     0,
+     true
+    ],
+    "surfaceOffset": [
+     2,
+     0,
+     true
+    ],
+    "waves": [
+     13,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "angularDrag": [
+     2,
+     0,
+     true
+    ],
+    "density": [
+     2,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "flow": [
+     5,
+     0,
+     true
+    ],
+    "infinite": [
+     0,
+     0,
+     true
+    ],
+    "linearDrag": [
+     2,
+     0,
+     true
+    ],
+    "size": [
+     5,
+     0,
+     true
+    ],
+    "surfaceOffset": [
+     2,
+     0,
+     true
+    ],
+    "waves": [
+     13,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 63,
+   "type_of_key": 63,
+   "type_of_name": 63
+  },
+  {
+   "display_name": "Buoyancy",
+   "enum_options": {
+    "columns": [
+     [
+      0,
+      "auto_2x2",
+      "Auto 2x2"
+     ],
+     [
+      1,
+      "auto_3x3",
+      "Auto 3x3"
+     ],
+     [
+      2,
+      "custom",
+      "Custom"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef878d",
+   "key": "buoyancy",
+   "known_keys": [
+    "columns",
+    "customPoints",
+    "dragScale",
+    "enabled",
+    "volumeScale"
+   ],
+   "name": "BuoyancyComponent",
+   "properties_of_default": {
+    "columns": [
+     13,
+     0,
+     true
+    ],
+    "customPoints": [
+     15,
+     0,
+     false
+    ],
+    "dragScale": [
+     2,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "volumeScale": [
+     2,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "columns": [
+     13,
+     0,
+     true
+    ],
+    "customPoints": [
+     15,
+     0,
+     false
+    ],
+    "dragScale": [
+     2,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "volumeScale": [
+     2,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 64,
+   "type_of_key": 64,
+   "type_of_name": 64
   }
  ],
  "ease_options": [
@@ -30857,6 +31415,33 @@
     false
    ]
   },
+  "BuoyancyComponent": {
+   "columns": [
+    13,
+    0,
+    true
+   ],
+   "customPoints": [
+    15,
+    0,
+    false
+   ],
+   "dragScale": [
+    2,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "volumeScale": [
+    2,
+    0,
+    true
+   ]
+  },
   "ButtonComponent": {
    "colorDisabled": [
     6,
@@ -31013,6 +31598,145 @@
    "yfov": [
     2,
     2,
+    true
+   ]
+  },
+  "CharacterController2DComponent": {
+   "center": [
+    4,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "height": [
+    2,
+    0,
+    true
+   ],
+   "minMoveDistance": [
+    2,
+    0,
+    true
+   ],
+   "movingPlatforms": [
+    0,
+    0,
+    true
+   ],
+   "pushBodies": [
+    0,
+    0,
+    true
+   ],
+   "pushStrength": [
+    2,
+    0,
+    true
+   ],
+   "radius": [
+    2,
+    0,
+    true
+   ],
+   "skinWidth": [
+    2,
+    0,
+    true
+   ],
+   "slopeLimit": [
+    2,
+    0,
+    true
+   ],
+   "stepOffset": [
+    2,
+    0,
+    true
+   ]
+  },
+  "CharacterControllerComponent": {
+   "center": [
+    5,
+    0,
+    true
+   ],
+   "characterCollisions": [
+    0,
+    0,
+    true
+   ],
+   "detectCollisions": [
+    0,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "enhancedEdgeRemoval": [
+    0,
+    0,
+    true
+   ],
+   "height": [
+    2,
+    0,
+    true
+   ],
+   "inheritPlatformYaw": [
+    0,
+    0,
+    true
+   ],
+   "mass": [
+    2,
+    0,
+    true
+   ],
+   "minMoveDistance": [
+    2,
+    0,
+    true
+   ],
+   "movingPlatforms": [
+    0,
+    0,
+    true
+   ],
+   "pushBodies": [
+    0,
+    0,
+    true
+   ],
+   "pushStrength": [
+    2,
+    0,
+    true
+   ],
+   "radius": [
+    2,
+    0,
+    true
+   ],
+   "skinWidth": [
+    2,
+    0,
+    true
+   ],
+   "slopeLimit": [
+    2,
+    0,
+    true
+   ],
+   "stepOffset": [
+    2,
+    0,
     true
    ]
   },
@@ -34535,6 +35259,53 @@
    ],
    "windSpeed": [
     2,
+    0,
+    true
+   ]
+  },
+  "WaterVolumeComponent": {
+   "angularDrag": [
+    2,
+    0,
+    true
+   ],
+   "density": [
+    2,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "flow": [
+    5,
+    0,
+    true
+   ],
+   "infinite": [
+    0,
+    0,
+    true
+   ],
+   "linearDrag": [
+    2,
+    0,
+    true
+   ],
+   "size": [
+    5,
+    0,
+    true
+   ],
+   "surfaceOffset": [
+    2,
+    0,
+    true
+   ],
+   "waves": [
+    13,
     0,
     true
    ]

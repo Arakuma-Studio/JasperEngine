@@ -2048,3 +2048,129 @@ entities:
         falloff:
           - [0, 1, 0, 0]
         layers: 3
+  - type: Entity
+    entity: 1062
+    name: CharacterController2DComponent
+    components:
+      transform:
+        position: [61, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [61, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [61, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [61, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, -61], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      charactercontroller2d:
+        enabled: false
+        center: [8.5, 2.2]
+        height: 128
+        radius: 0.9
+        slopeLimit: 5.9
+        stepOffset: 8.7
+        skinWidth: 8.7
+        minMoveDistance: 4.3
+        pushStrength: 8.6
+        pushBodies: false
+        movingPlatforms: false
+        categoryBits: 1
+        maskBits: 65535
+  - type: Entity
+    entity: 1063
+    name: CharacterControllerComponent
+    components:
+      transform:
+        position: [62, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [62, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [62, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [62, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, -62], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      charactercontroller:
+        enabled: false
+        center: [1.1, 1.9, 3.5]
+        height: 2
+        radius: 0.7
+        slopeLimit: 1.7
+        stepOffset: 7.4
+        skinWidth: 0.4
+        minMoveDistance: 6.1
+        mass: 1.2
+        pushStrength: 0.4
+        pushBodies: false
+        movingPlatforms: false
+        inheritPlatformYaw: false
+        detectCollisions: false
+        characterCollisions: false
+        enhancedEdgeRemoval: true
+        categoryBits: 1
+        maskBits: 65535
+  - type: Entity
+    entity: 1064
+    name: WaterVolumeComponent
+    components:
+      transform:
+        position: [63, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [63, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [63, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [63, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, -63], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      watervolume:
+        enabled: false
+        size: [7, 1.7, 1.2]
+        surfaceOffset: 7.8
+        infinite: true
+        density: 0.1
+        flow: [2.4, 6.3, 1.7]
+        linearDrag: 7
+        angularDrag: 1.2
+        waves: none
+  - type: Entity
+    entity: 1065
+    name: BuoyancyComponent
+    components:
+      transform:
+        position: [64, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [64, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [64, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [64, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, -64], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      buoyancy:
+        enabled: false
+        columns: custom
+        customPoints:
+          []
+        volumeScale: 9
+        dragScale: 0.9
