@@ -26,13 +26,14 @@ namespace {
         return locator;
     }
 
-    // the whole label, its text (before "##"), or that text after the icons it starts with (Font
-    // Awesome glyphs, the Private Use Area U+E000-U+F8FF: UTF-8 EE xx xx, EF 80-A3 xx) and the
-    // spaces after them, or a row's text after its icon ("<icon>  Name", the Hierarchy's and the
-    // Undo History's rows)
+    // the whole label, its "##" id part ("##UndoHistoryForward" finds "<icon>##UndoHistoryForward"),
+    // its text (before "##"), or that text after the icons it starts with (Font Awesome glyphs, the
+    // Private Use Area U+E000-U+F8FF: UTF-8 EE xx xx, EF 80-A3 xx) and the spaces after them, or a
+    // row's text after its icon ("<icon>  Name", the Hierarchy's and the Undo History's rows)
     bool labelMatches(const std::string& wanted, const char* label) {
         if (wanted == label) return true;
         const char* hidden = std::strstr(label, "##");
+        if (hidden && hidden != label && wanted.size() > 2 && wanted.compare(0, 2, "##") == 0 && wanted == hidden) return true;
         const size_t visible = hidden ? (size_t)(hidden - label) : std::strlen(label);
         if (visible == 0) return false;
         const std::string_view text(label, visible);

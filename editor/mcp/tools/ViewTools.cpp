@@ -1539,7 +1539,7 @@ void registerViewTools(McpRegistry& registry) {
             "Where editor controls with this label are drawn now (window coords, as focus_window's rect; enabled false: "
             "greyed out), to click them with send_input or real input. Only drawn items: scroll or open their panel first.";
         tool.inputSchema = object({
-            {"label", string("Text (also after its icons; then only while drawn in view), or the whole label with its ## id.")},
+            {"label", string("Text (also after its icons), its ## id (these two only while in view), or the whole label.")},
             {"window", string("Only in windows whose name contains this.")}
         }, {"label"});
         tool.annotations.readOnly = true;
