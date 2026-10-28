@@ -19,8 +19,8 @@
 
 using namespace jasperengine;
 // the spline core's value types by their own names (the Lua API extractor matches bare names)
-using jasperengine::SplineFrame;
-using jasperengine::SplineHit;
+using jasperengine::spline::SplineFrame;
+using jasperengine::spline::SplineHit;
 using jasperengine::spline::SplineType;
 using jasperengine::spline::TangentMode;
 
