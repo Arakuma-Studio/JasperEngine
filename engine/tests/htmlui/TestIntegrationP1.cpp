@@ -709,7 +709,13 @@ TEST_F(IntegrationTest, TextureDocumentDrawsClipsLayersAndFilters){
     EXPECT_GT(green, 3000u);
     EXPECT_GT(white, 60u);
 
-    CompareResult result = compareWithGolden("p1/texture_effects", texels.rgba, texels.width, texels.height);
+    // the golden is llvmpipe's; a hardware GPU anti-aliases the rotated panel's edges, the circle
+    // and the outlined text a little differently: 68 scattered edge pixels over the threshold
+    // (0.104 %, mean difference 0.31) on an NVIDIA GTX 1080 (Vulkan, driver 580). The bad-pixel
+    // limit is that plus about 25 % (the default 0.05 % otherwise).
+    CompareOptions options;
+    options.maxBadFraction = 0.0013;
+    CompareResult result = compareWithGolden("p1/texture_effects", texels.rgba, texels.width, texels.height, options);
     EXPECT_TRUE(result.passed) << result.message;
 }
 

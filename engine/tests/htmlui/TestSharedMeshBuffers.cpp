@@ -33,6 +33,7 @@
 #include "sokol_gfx.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -282,9 +283,8 @@ namespace {
         }
     };
 
-    // Loads copies [first, last) of `path`, placed in their cells. `models` is declared before the
-    // scene, so the scene goes first, all at once: destroying 150,000 entities one by one (the
-    // heroes' node hierarchies) erases from every component array in turn and takes hours
+    // Loads copies [first, last) of `path`, placed in their cells. A `models` declared before the
+    // scene outlives it (the scene's teardown destroys their entities with the others).
     void addCopies(GridScene& s, const std::string& path, int first, int last, std::vector<std::unique_ptr<Model>>& models){
         for (int i = first; i < last; i++){
             models.emplace_back(new Model(&s.scene()));
@@ -294,26 +294,32 @@ namespace {
         }
     }
 
-    // A grid scene of thousands of copies, left alive (out of the engine: not drawn nor updated)
-    // when the test ends: destroying its entities takes minutes to hours (each one is erased
-    // from every component array in turn, by the scene's teardown too: an engine limit of its own)
-    class AbandonedCrowd {
+    // A grid scene of thousands of copies, all destroyed when the test ends: each Model with its
+    // nodes, one entity after another, then the scene (O(1) an entity: a crowd of 150,000 once
+    // took hours to go, each one erased from every component array in turn)
+    class Crowd {
     public:
-        AbandonedCrowd(int count, float cellWidth, float cellHeight): crowd(new Crowd(count, cellWidth, cellHeight)){}
-        ~AbandonedCrowd(){ Engine::removeScene(&crowd->scene.scene()); }
-        AbandonedCrowd(const AbandonedCrowd&) = delete;
-        AbandonedCrowd& operator=(const AbandonedCrowd&) = delete;
+        Crowd(int count, float cellWidth, float cellHeight): grid(new GridScene(count, cellWidth, cellHeight)){}
+        ~Crowd(){
+            using Clock = std::chrono::steady_clock;
+            const size_t entities = grid->scene().getEntityList().size();
+            const Clock::time_point start = Clock::now();
+            copies.clear();
+            const Clock::time_point modelsGone = Clock::now();
+            grid.reset();
+            const Clock::time_point sceneGone = Clock::now();
+            std::printf("[crowd] %zu entities destroyed: the Models with their nodes in %.3f s, then the scene in %.3f s\n", entities,
+                        std::chrono::duration<double>(modelsGone - start).count(), std::chrono::duration<double>(sceneGone - modelsGone).count());
+        }
+        Crowd(const Crowd&) = delete;
+        Crowd& operator=(const Crowd&) = delete;
 
-        std::vector<std::unique_ptr<Model>>& models(){ return crowd->models; }
-        GridScene& scene(){ return crowd->scene; }
+        std::vector<std::unique_ptr<Model>>& models(){ return copies; }
+        GridScene& scene(){ return *grid; }
 
     private:
-        struct Crowd {
-            std::vector<std::unique_ptr<Model>> models;
-            GridScene scene;
-            Crowd(int count, float cellWidth, float cellHeight): scene(count, cellWidth, cellHeight){}
-        };
-        Crowd* crowd;
+        std::unique_ptr<GridScene> grid;
+        std::vector<std::unique_ptr<Model>> copies;
     };
 
     // the sokol id of every GPU buffer a mesh draws from (vertex, index, external)
@@ -333,7 +339,7 @@ namespace {
 TEST_F(SharedMeshBuffersTest, ThousandsOfSkinnedModelCopiesAllDrawFromOneSetOfBuffers){
     const int firstBatch = 300;
     const int count = 3300;
-    AbandonedCrowd crowd(count, 2.0f, 2.4f);
+    Crowd crowd(count, 2.0f, 2.4f);
     std::vector<std::unique_ptr<Model>>& models = crowd.models();
     GridScene& s = crowd.scene();
     const size_t poolBefore = MeshBufferPool::getBufferCount();
@@ -400,7 +406,7 @@ TEST_F(SharedMeshBuffersTest, ThousandsOfSkinnedModelCopiesAllDrawFromOneSetOfBu
 // of them drew without bones) and, on Vulkan, the descriptor sets of every draw.
 TEST_F(SharedMeshBuffersTest, PerFrameBuffersHoldFourThousandShadowedSkinnedHeroes){
     const int count = 500;
-    AbandonedCrowd crowd(count, 2.0f, 2.4f);
+    Crowd crowd(count, 2.0f, 2.4f);
     GridScene& s = crowd.scene();
     s.light->setShadows(true);
     const uint64_t uniformSkippedBefore = SystemRender::getUniformSkippedDraws();
@@ -465,7 +471,7 @@ TEST_F(SharedMeshBuffersTest, PerFrameBuffersHoldFourThousandShadowedSkinnedHero
 // to the configured limit, nothing is skipped.
 TEST_F(SharedMeshBuffersTest, StreamUploadsPastTheStagingBufferAreSkippedCountedAndLoggedOnce){
     const int count = 40;
-    AbandonedCrowd crowd(count, 2.0f, 2.4f);
+    Crowd crowd(count, 2.0f, 2.4f);
     GridScene& s = crowd.scene();
     ASSERT_TRUE(s.settle());
     GpuEnvironment::drawFrames(1);
@@ -571,7 +577,7 @@ TEST_F(SharedMeshBuffersTest, StreamTextureUpdatePastTheStagingBufferKeepsTheTex
 // another draw's data, not handed to sokol to drop), counted, and logged once each.
 TEST_F(SharedMeshBuffersTest, DrawsPastTheUniformOrDescriptorBufferAreSkippedCountedAndLoggedOnce){
     const int count = 12;
-    AbandonedCrowd crowd(count, 2.0f, 2.4f);
+    Crowd crowd(count, 2.0f, 2.4f);
     GridScene& s = crowd.scene();
     addCopies(s, heroPath(), 0, count, crowd.models());
     ASSERT_TRUE(s.settle());
@@ -624,7 +630,7 @@ TEST_F(SharedMeshBuffersTest, ThousandsOfStaticGltfAndObjCopiesAllDrawFromOneSet
     writeQuadGltf(gltf, 0.6f, 1.6f);
     writeQuadObj(obj, 0.6f, 1.6f);
 
-    AbandonedCrowd crowd(perFile * 2, 1.6f, 2.0f);
+    Crowd crowd(perFile * 2, 1.6f, 2.0f);
     std::vector<std::unique_ptr<Model>>& models = crowd.models();
     GridScene& s = crowd.scene();
     const size_t poolBefore = MeshBufferPool::getBufferCount();
@@ -662,7 +668,7 @@ TEST_F(SharedMeshBuffersTest, ReloadedModelFileReleasesAndRecreatesTheSharedBuff
     const std::string path = (tempDir() / "reloaded_quad.gltf").string();
     writeQuadGltf(path, 0.2f, 1.6f); // narrow
     const int count = 40;
-    std::vector<std::unique_ptr<Model>> models; // (outlive the scene: see addCopies)
+    std::vector<std::unique_ptr<Model>> models; // (outlive the scene)
     GridScene s(count, 2.0f, 2.0f);
     const size_t poolBefore = MeshBufferPool::getBufferCount();
     addCopies(s, path, 0, count, models);
@@ -719,7 +725,7 @@ TEST_F(SharedMeshBuffersTest, ReloadedModelFileReleasesAndRecreatesTheSharedBuff
 // bytes are written gets a buffer of its own (copy on write) while the other copies keep the
 // shared one and draw unchanged
 TEST_F(SharedMeshBuffersTest, EditingOneMeshDoesNotAffectAnother){
-    std::vector<std::unique_ptr<Model>> models; // (outlive the scene: see addCopies)
+    std::vector<std::unique_ptr<Model>> models; // (outlive the scene)
     GridScene s(4, 3.0f, 3.0f);
 
     Primitive& a = s.fixture.add<Primitive>();
@@ -798,7 +804,7 @@ TEST_F(SharedMeshBuffersTest, EditingOneMeshDoesNotAffectAnother){
 TEST_F(SharedMeshBuffersTest, FullPoolIsReportedOnceAndItsMeshFailsUntilThereIsRoom){
     const std::string path = (tempDir() / "pool_full_quad.gltf").string();
     writeQuadGltf(path, 0.6f, 1.6f);
-    std::vector<std::unique_ptr<Model>> models; // (outlive the scene: see addCopies)
+    std::vector<std::unique_ptr<Model>> models; // (outlive the scene)
     GridScene s(1, 2.0f, 2.0f);
     ASSERT_TRUE(s.settle());
 

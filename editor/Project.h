@@ -1486,6 +1486,10 @@ namespace jasperengine::editor{
         // The scenes, then the prefab stages' scenes (Prefab Mode): for what applies to every
         // GameObject being edited (script refreshes, asset path changes, tools)
         std::vector<SceneProject*> getScenesAndPrefabStages();
+        // Closes the holes destroyed entities left in the component arrays of every open scene,
+        // prefab stage and loaded prefab (EntityRegistry::compactComponents): between editor
+        // steps (MCP calls) and before a thread reads them
+        void compactAllComponents();
 
         // Flushes compiled forked-shader caches and flags meshes that use a custom
         // shader for reload, so editing a shader source file updates the viewport.
