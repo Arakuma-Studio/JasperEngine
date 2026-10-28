@@ -25,6 +25,8 @@ using namespace Rml;
 // - P5-6: image-layer lists parsed once per text (a var() resolved the same way again shares the list).
 // - P7-F1: the content of a filter's layer is clipped by the filtered element's own clips and its descendants' only, within
 //   the layer's window; the clips of its ancestors are applied to the layer's composite.
+// - P7-F2: a filter's layer covers its window beyond the viewport (RenderManager::PushLayer(region), RenderInterface::
+//   PushLayerRegion), and a descendant's own filters extend its ancestor's filter region.
 
 namespace {
 
@@ -164,6 +166,17 @@ const ClipProbe* FindProbe(const String& id)
 	}
 	return nullptr;
 }
+
+// P7-F2: a render interface whose layers may cover a region beyond the viewport, recording the regions asked for.
+class RegionRenderInterface : public TestsRenderInterface {
+public:
+	LayerHandle PushLayerRegion(Rectanglei& region) override
+	{
+		regions.push_back(region);
+		return PushLayer();
+	}
+	Vector<Rectanglei> regions;
+};
 
 } // namespace
 
@@ -495,6 +508,148 @@ TEST_CASE("EffectHooks.filter_layer_clip_root")
 	CHECK(masks.size() == 1);
 	masks.clear();
 	CHECK_FALSE(ElementUtilities::GetClippingRegion(document->GetElementById("plain"), region, &masks, false, f));
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
+TEST_CASE("EffectHooks.filter_region_of_descendant_filters")
+{
+	filter_regions.clear();
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+	FillFilterInstancer instancer;
+	Factory::RegisterFilterInstancer("fill-test", &instancer);
+
+	// #f's children: a blurred one (5px: 15 px of extent), a blurred one scaled by 2 (30 px of extent, around its scaled
+	// box), and a grandchild with a drop shadow inside an unfiltered child
+	ElementDocument* document = context->LoadDocumentFromMemory(R"(
+<rml>
+<head>
+	<style>
+		body { display: block; width: 400px; height: 300px; }
+		div { display: block; }
+		#f { position: absolute; left: 100px; top: 80px; width: 100px; height: 50px; filter: fill-test(1px); }
+		#c { position: absolute; left: 10px; top: 10px; width: 20px; height: 20px; filter: blur(5px); }
+		#t { position: absolute; left: 60px; top: 10px; width: 20px; height: 20px; filter: blur(5px); transform: scale(2); }
+		#g { position: absolute; left: 0px; top: 30px; width: 10px; height: 10px; }
+		#s { position: absolute; left: 0px; top: 0px; width: 10px; height: 10px; filter: drop-shadow(#000 0px 60px 0px); }
+	</style>
+</head>
+<body><div id="f"><div id="c"/><div id="t"/><div id="g"><div id="s"/></div></div></body>
+</rml>
+)");
+	REQUIRE(document);
+	document->Show();
+	TestsShell::RenderLoop();
+
+	REQUIRE(!filter_regions.empty());
+	const Rectanglef region = filter_regions.back().region;
+	CHECK(filter_regions.back().id == "f");
+	// #c: (110, 90)-(130, 110) extended by 15; #t: (150, 80)-(190, 120) extended by 30; #s: (100, 110)-(110, 120) and its
+	// shadow 60 px lower, to 180; the box (100, 80)-(200, 130)
+	CHECK(region.Left() == doctest::Approx(95.f));
+	CHECK(region.Top() == doctest::Approx(50.f));
+	CHECK(region.Right() == doctest::Approx(220.f));
+	CHECK(region.Bottom() == doctest::Approx(180.f));
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
+TEST_CASE("EffectHooks.render_manager_layer_regions")
+{
+	RegionRenderInterface render_interface;
+	RenderManager render_manager(&render_interface);
+	render_manager.PrepareRender({100, 80});
+	const Rectanglei viewport = Rectanglei::FromSize({100, 80});
+	CHECK(render_manager.GetLayerRegion() == viewport);
+
+	// within the viewport: an ordinary layer
+	render_manager.PushLayer(Rectanglei::FromCorners({10, 10}, {50, 50}));
+	CHECK(render_interface.regions.empty());
+	CHECK(render_manager.GetLayerRegion() == viewport);
+	render_manager.PopLayer();
+
+	// beyond it: a region layer, the scissor clamped to its region instead of the viewport
+	const Rectanglei region = Rectanglei::FromCorners({-20, 10}, {50, 50});
+	render_manager.PushLayer(region);
+	REQUIRE(render_interface.regions.size() == 1);
+	CHECK(render_interface.regions[0] == region);
+	CHECK(render_manager.GetLayerRegion() == region);
+	render_manager.SetScissorRegion(Rectanglei::FromCorners({-100, 0}, {200, 200}));
+	CHECK(render_manager.GetScissorRegion() == region);
+
+	// a layer pushed on it covers its region
+	render_manager.PushLayer();
+	REQUIRE(render_interface.regions.size() == 2);
+	CHECK(render_interface.regions[1] == region);
+	CHECK(render_manager.GetLayerRegion() == region);
+
+	// a callback texture's layers are the viewport's, whichever layer is the top one
+	render_manager.BeginTextureGeneration();
+	CHECK(render_manager.GetLayerRegion() == viewport);
+	render_manager.SetScissorRegion(Rectanglei::FromCorners({-100, 0}, {200, 200}));
+	CHECK(render_manager.GetScissorRegion() == Rectanglei::FromCorners({0, 0}, {100, 80}));
+	render_manager.PushLayer();
+	CHECK(render_interface.regions.size() == 2);
+	render_manager.PopLayer();
+	render_manager.EndTextureGeneration();
+	CHECK(render_manager.GetLayerRegion() == region);
+
+	render_manager.PopLayer();
+	render_manager.PopLayer();
+	CHECK(render_manager.GetLayerRegion() == viewport);
+	render_manager.SetScissorRegion(Rectanglei::FromCorners({-100, 0}, {200, 200}));
+	CHECK(render_manager.GetScissorRegion() == Rectanglei::FromCorners({0, 0}, {100, 80}));
+	render_manager.ResetState();
+}
+
+TEST_CASE("EffectHooks.filter_layer_region_beyond_viewport")
+{
+	clip_probes.clear();
+	RegionRenderInterface render_interface;
+	Context* context = TestsShell::GetContext(true, &render_interface);
+	REQUIRE(context);
+	ProbeDecoratorInstancer instancer;
+	Factory::RegisterDecoratorInstancer("clip-probe", &instancer);
+
+	// #f blurred and half beyond the viewport's left edge, a probe beyond the edge in it; #g blurred inside the viewport
+	ElementDocument* document = context->LoadDocumentFromMemory(R"(
+<rml>
+<head>
+	<style>
+		body { display: block; width: 400px; height: 300px; }
+		div { display: block; }
+		#f { position: absolute; left: -50px; top: 50px; width: 100px; height: 60px; filter: blur(5px); }
+		#g { position: absolute; left: 200px; top: 50px; width: 50px; height: 50px; filter: blur(5px); }
+		#beyond, #inside { position: absolute; left: 0px; top: 0px; width: 10px; height: 10px; background-image: clip-probe(1); }
+	</style>
+</head>
+<body><div id="f"><div id="beyond"/></div><div id="g"><div id="inside"/></div></body>
+</rml>
+)");
+	REQUIRE(document);
+	document->Show();
+	render_interface.regions.clear();
+	clip_probes.clear();
+	TestsShell::RenderLoop();
+
+	// #f's layer: its filter region (-65, 35)-(65, 125) within the viewport extended by twice the blur's reach (30 px);
+	// #g's lies within the viewport (an ordinary layer)
+	REQUIRE(render_interface.regions.size() == 1);
+	CHECK(render_interface.regions[0] == Rectanglei::FromCorners({-30, 35}, {65, 125}));
+
+	// what is drawn into it beyond the viewport is scissored by the layer's region, not cut at the viewport's edge
+	const ClipProbe* beyond = FindProbe("beyond");
+	REQUIRE(beyond);
+	CHECK(beyond->clip_root == "f");
+	CHECK(beyond->scissored);
+	CHECK(beyond->scissor == Rectanglei::FromCorners({-30, 35}, {65, 125}));
+	const ClipProbe* inside = FindProbe("inside");
+	REQUIRE(inside);
+	CHECK(inside->scissor.Left() >= 0);
+	CHECK(context->GetRenderManager().GetLayerRegion() == Rectanglei::FromSize(context->GetDimensions()));
 
 	document->Close();
 	TestsShell::ShutdownShell();
