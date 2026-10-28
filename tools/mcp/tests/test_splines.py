@@ -267,3 +267,29 @@ async def test_2d(ed: Editor):
         ed.check(abs(y - (surface + 10)) <= 0.1 * 10 + 0.1, f"the ball rests on the edge: y {y}, edge {surface}")
     finally:
         await ed.call("play", action="stop")
+
+
+async def test_pick_selects_the_spline(ed: Editor):
+    """R25 (with S26 picking): a click on what a spline built selects the GameObject with the
+    Spline, not the engine-owned chunk; Surface snap lands a stroke on a box's top face."""
+    made = await ed.call("create_scene", name="Pick", type="3D", path="scenes/Pick")
+    sid = made["scene"]["id"]
+    await ed.call("select_scene", scene=sid)
+    lane = await ed.call("edit_spline", create={"name": "Lane"}, space="local", set_knots=[[-10, 0, 0], [0, 0, 0], [10, 0, 0]])
+    lane_id = lane["entity"]["id"]
+    built = await ed.call("build_spline", entity=lane_id, preset="road")
+    ed.check(built["extrude"]["vertices"] > 0, f"the lane is built: {built}")
+    await ed.call("set_scene_camera", scene=sid, position=[0, 8, 6], target=[0, 0, 0])
+    await ed.call("wait", frames=5)
+    got = await ed.call("pick_at", scene=sid, u=0.5, v=0.5)
+    ed.check(got["hits"], f"the lane is hit: {got}")
+    ed.check_eq(got["would_select"]["entity"], lane_id, f"a click selects the Lane: {got}")
+
+    # Surface snap: a stroke across a box lands on its top face (y = 2 + 1 = 3 at its middle)
+    box = await ed.call("create_entity", scene=sid, name="Block", type="box", position=[0, 2, 10])
+    await ed.call("set_properties", entity=box["entity_id"], values={"transform": {"scale": [4, 2, 4]}})
+    await ed.call("wait", frames=3)
+    drawn = await ed.call("edit_spline", create={"name": "OverBlock"},
+                          stroke={"points": [[-1, 9, 10], [0, 9, 10], [1, 9, 10]], "snap": "surface", "tolerance": 0.05})
+    ys = [k["position"][1] if isinstance(k, dict) else k[1] for k in drawn["knots"]]
+    ed.check(all(abs(y - 3.0) < 0.05 for y in ys), f"the knots sit on the box's top face (y 3): {ys}")
